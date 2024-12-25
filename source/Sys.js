@@ -2,71 +2,7 @@ Sys = {};
 
 Sys.events = ['oncontextmenu', 'onfocus', 'onkeydown', 'onkeyup', 'onmousedown', 'onmouseup', 'onmousewheel', 'onunload', 'onwheel'];
 
-Sys.Quit = function() {
-  if (Sys.frame != null) {
-    clearInterval(Sys.frame);
-  }
-  let i;
-  for (i = 0; i < Sys.events.length; ++i) {
-    window[Sys.events[i]] = null;
-  }
-  Host.Shutdown();
-  document.body.style.cursor = 'auto';
-  VID.mainwindow.style.display = 'none';
-  if (COM.registered.value !== 0) {
-    // document.getElementById('end2').style.display = 'inline';
-    parent.unloadContainer();
-  } else {
-    // document.getElementById('end1').style.display = 'inline';
-    parent.unloadContainer();
-  }
-  throw new Error;
-};
-
-Sys.Print = function(text) {
-  if (window.console != null) {
-    console.log(text);
-  }
-};
-
-Sys.Error = function(text) {
-  if (Sys.frame != null) {
-    clearInterval(Sys.frame);
-  }
-  let i;
-  for (i = 0; i < Sys.events.length; ++i) {
-    window[Sys.events[i]] = null;
-  }
-  if (Host.initialized === true) {
-    Host.Shutdown();
-  }
-  document.body.style.cursor = 'auto';
-  i = Con.text.length - 25;
-  if (i < 0) {
-    i = 0;
-  }
-  if (window.console != null) {
-    for (; i < Con.text.length; ++i) {
-      console.log(Con.text[i].text);
-    }
-  }
-  alert(text);
-  throw new Error(text);
-};
-
-Sys.FloatTime = function() {
-  return Date.now() * 0.001 - Sys.oldtime;
-};
-
-window.onload = function() {
-  if (Number.isNaN != null) {
-    Q.isNaN = Number.isNaN;
-  } else {
-    Q.isNaN = isNaN;
-  }
-
-  let i;
-
+Sys.Init = function() {
   const cmdline = decodeURIComponent(document.location.search);
   const location = document.location;
   const argv = [location.href.substring(0, location.href.length - location.search.length)];
@@ -74,7 +10,7 @@ window.onload = function() {
     let text = '';
     let quotes = false;
     let c;
-    for (i = 1; i < cmdline.length; ++i) {
+    for (let i = 1; i < cmdline.length; ++i) {
       c = cmdline.charCodeAt(i);
       if ((c < 32) || (c > 127)) {
         continue;
@@ -156,6 +92,66 @@ window.onload = function() {
   }
 
   Sys.frame = setInterval(Host.Frame, 1000.0 / 60.0);
+};
+
+Sys.Quit = function() {
+  if (Sys.frame != null) {
+    clearInterval(Sys.frame);
+  }
+  let i;
+  for (i = 0; i < Sys.events.length; ++i) {
+    window[Sys.events[i]] = null;
+  }
+  Host.Shutdown();
+  document.body.style.cursor = 'auto';
+  VID.mainwindow.style.display = 'none';
+  if (COM.registered.value !== 0) {
+    // document.getElementById('end2').style.display = 'inline';
+    // parent.unloadContainer();
+  } else {
+    // document.getElementById('end1').style.display = 'inline';
+    // parent.unloadContainer();
+  }
+  // throw new Error;
+};
+
+Sys.Print = function(text) {
+  if (window.console != null) {
+    console.log(text);
+  }
+};
+
+Sys.Error = function(text) {
+  if (Sys.frame != null) {
+    clearInterval(Sys.frame);
+  }
+  let i;
+  for (i = 0; i < Sys.events.length; ++i) {
+    window[Sys.events[i]] = null;
+  }
+  if (Host.initialized === true) {
+    Host.Shutdown();
+  }
+  document.body.style.cursor = 'auto';
+  i = Con.text.length - 25;
+  if (i < 0) {
+    i = 0;
+  }
+  if (window.console != null) {
+    for (; i < Con.text.length; ++i) {
+      console.log(Con.text[i].text);
+    }
+  }
+  alert(text);
+  throw new Error(text);
+};
+
+Sys.FloatTime = function() {
+  return Date.now() * 0.001 - Sys.oldtime;
+};
+
+window.onload = function() {
+  Sys.Init();
 };
 
 Sys.oncontextmenu = function(e) {

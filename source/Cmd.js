@@ -144,6 +144,16 @@ Cmd.TokenizeString = function(text) {
   }
 };
 
+Cmd.HasCommand = function(name) {
+  for (i = 0; i < Cmd.functions.length; ++i) {
+    if (Cmd.functions[i].name === name) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 Cmd.AddCommand = function(name, command) {
   let i;
   for (i = 0; i < Cvar.vars.length; ++i) {
@@ -199,6 +209,9 @@ Cmd.ExecuteString = function(text, client) {
 };
 
 Cmd.ForwardToServer = function() {
+  if (Host.dedicated.value) {
+    return;
+  }
   if (CL.cls.state !== CL.active.connected) {
     Con.Print('Can\'t "' + Cmd.argv[0] + '", not connected\n');
     return;

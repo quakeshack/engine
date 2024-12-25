@@ -3,6 +3,7 @@ NET = {};
 NET.activeSockets = [];
 NET.message = {data: new ArrayBuffer(8192), cursize: 0};
 NET.activeconnections = 0;
+NET.listening = false;
 
 NET.NewQSocket = function() {
   let i;
@@ -40,7 +41,6 @@ NET.Connect = function(host) {
       Con.Print('trying...\n');
       NET.start_time = NET.time;
       NET.reps = 0;
-      throw new Error('NET.Connect');
     }
     if (ret != null) {
       return ret;
@@ -212,11 +212,67 @@ NET.SendToAll = function(data) {
   return count;
 };
 
+NET.Listen_f = function() {
+  if (Cmd.argv.length < 2) {
+    Con.Print('"listen" is "' + (NET.listening ? 1 : 0) + '"\n');
+    return;
+  }
+
+  NET.listening = Q.atoi(Cmd.argv[1]) ? true : false;
+
+  for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
+    if (!NET.drivers[NET.driverlevel].initialized) {
+      continue;
+    }
+
+    NET.drivers[NET.driverlevel].Listen(NET.listening);
+  }
+};
+
+NET.MaxPlayers_f = function() {
+  if (Cmd.argv.length < 2) {
+    Con.Print('"maxplayers" is "' + SV.svs.maxclients + '"\n');
+    return;
+  }
+
+  if (SV.server.active) {
+    Con.Print('maxplayers can not be changed while a server is running.\n');
+    return;
+  }
+
+  let n = Q.atoi(Cmd.argv[1]);
+  if (n < 1) {
+    n = 1;
+  }
+  if (n > SV.svs.maxclientslimit) {
+    n = SV.svs.maxclientslimit;
+    Con.Print('"maxplayers" set to "' + n + '"\n');
+  }
+
+  if ((n == 1) && NET.listening) {
+    Cmd.ExecuteString('listen 0');
+  }
+
+  if ((n > 1) && (!NET.listening)) {
+    Cmd.ExecuteString('listen 1');
+  }
+
+  SV.svs.maxclients = n;
+  if (n == 1) {
+    Cvar.Set('deathmatch', '0');
+  } else {
+    Cvar.Set('deathmatch', '1');
+  }
+};
+
 NET.Init = function() {
   NET.time = Sys.FloatTime();
 
   NET.messagetimeout = Cvar.RegisterVariable('net_messagetimeout', '300');
   NET.hostname = Cvar.RegisterVariable('hostname', 'UNNAMED');
+
+  Cmd.AddCommand('maxplayers', NET.MaxPlayers_f);
+  Cmd.AddCommand('listen', NET.Listen_f);
 
   NET.drivers = [Loop, WEBS];
   for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {

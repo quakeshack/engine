@@ -123,3 +123,6 @@ Loop.Close = function(sock) {
     Loop.server = null;
   }
 };
+
+Loop.Listen = function(listening) {
+};

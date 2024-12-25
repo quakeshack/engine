@@ -414,10 +414,10 @@ PR.LoadProgs = function() {
     'ammo_plasma',
     'gravity',
     'items2',
-  ]; let field; let def;
+  ];
   for (i = 0; i < fields.length; ++i) {
-    field = fields[i];
-    def = ED.FindField(field);
+    const field = fields[i];
+    const def = ED.FindField(field);
     PR.entvars[field] = (def != null) ? def.ofs : null;
   }
 };

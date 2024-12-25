@@ -11,7 +11,7 @@ CDAudio.Play = function(track, looping) {
     if (CDAudio.cd != null) {
       CDAudio.cd.loop = looping;
       if ((looping === true) && (CDAudio.cd.paused === true)) {
-        CDAudio.cd.play();
+        S.HandlePlayPromise('CDAudio.Play', CDAudio.cd.play());
       }
     }
     return;
@@ -25,7 +25,7 @@ CDAudio.Play = function(track, looping) {
   CDAudio.cd = new Audio(CDAudio.known[track]);
   CDAudio.cd.loop = looping;
   CDAudio.cd.volume = CDAudio.cdvolume;
-  CDAudio.cd.play();
+  S.HandlePlayPromise('CDAudio.Play', CDAudio.cd.play());
 };
 
 CDAudio.Stop = function() {
@@ -53,7 +53,7 @@ CDAudio.Resume = function() {
     return;
   }
   if (CDAudio.cd != null) {
-    CDAudio.cd.play();
+    S.HandlePlayPromise('CDAudio.Resume', CDAudio.cd.play());
   }
 };
 

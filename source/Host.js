@@ -25,22 +25,30 @@ Host.Error = function(error) {
   CL.Disconnect();
   CL.cls.demonum = -1;
   Host.inerror = false;
-  throw new Error('Host.abortserver');
+  throw new Error('HostError: ' + error);
 };
 
 Host.FindMaxClients = function() {
-  SV.svs.maxclients = SV.svs.maxclientslimit = 1;
-  CL.cls.state = CL.active.disconnected;
-  SV.svs.clients = [{
-    num: 0,
-    message: {data: new ArrayBuffer(8000), cursize: 0, allowoverflow: true},
-    colors: 0,
-    old_frags: 0,
-  }];
+  SV.svs.maxclients = 1;
+  if (!Host.dedicated.value) {
+    CL.cls.state = CL.active.disconnected;
+    SV.svs.maxclientslimit = 1;
+  } else {
+    SV.svs.maxclientslimit = 8;
+  }
+  SV.svs.clients = [];
+  for (let i = 0; i < SV.svs.maxclientslimit; i++) {
+    SV.svs.clients.push({
+      num: i,
+      message: {data: new ArrayBuffer(8000), cursize: 0, allowoverflow: true},
+      colors: 0,
+      old_frags: 0,
+    });
+  }
   Cvar.SetValue('deathmatch', 0);
 };
 
-Host.InitLocal = function() {
+Host.InitLocal = function(dedicated) {
   Host.InitCommands();
   Host.framerate = Cvar.RegisterVariable('host_framerate', '0');
   Host.speeds = Cvar.RegisterVariable('host_speeds', '0');
@@ -57,6 +65,10 @@ Host.InitLocal = function() {
   Host.coop = Cvar.RegisterVariable('coop', '0');
   Host.pausable = Cvar.RegisterVariable('pausable', '1');
   Host.temp1 = Cvar.RegisterVariable('temp1', '0');
+
+  // dedicated server settings
+  Host.dedicated = Cvar.RegisterVariable('dedicated', dedicated ? '1' : '0', false, true);
+
   Host.FindMaxClients();
 };
 
@@ -121,7 +133,7 @@ Host.ShutdownServer = function(crash) {
     return;
   }
   SV.server.active = false;
-  if (CL.cls.state === CL.active.connected) {
+  if (!Host.dedicated.value && CL.cls.state === CL.active.connected) {
     CL.Disconnect();
   }
   const start = Sys.FloatTime(); let count; let i;
@@ -159,7 +171,7 @@ Host.ShutdownServer = function(crash) {
 };
 
 Host.WriteConfiguration = function() {
-  COM.WriteTextFile('config.cfg', Key.WriteBindings() + Cvar.WriteVariables());
+  COM.WriteTextFile('config.cfg', (!Host.dedicated.value ? Key.WriteBindings() : '') + Cvar.WriteVariables());
 };
 
 Host.ServerFrame = function() {
@@ -167,7 +179,7 @@ Host.ServerFrame = function() {
   SV.server.datagram.cursize = 0;
   SV.CheckForNewClients();
   SV.RunClients();
-  if ((SV.server.paused !== true) && ((SV.svs.maxclients >= 2) || (Key.dest.value === Key.dest.game))) {
+  if ((SV.server.paused !== true) && ((SV.svs.maxclients >= 2) || (!Host.dedicated.value && Key.dest.value === Key.dest.game))) {
     SV.Physics();
   }
   SV.SendClientMessages();
@@ -175,7 +187,7 @@ Host.ServerFrame = function() {
 
 Host.time3 = 0.0;
 Host._Frame = function() {
-  Math.random();
+  // Math.random();
 
   Host.realtime = Sys.FloatTime();
   Host.frametime = Host.realtime - Host.oldrealtime;
@@ -188,6 +200,20 @@ Host._Frame = function() {
     } else if (Host.frametime < 0.001) {
       Host.frametime = 0.001;
     }
+  }
+
+  if (Host.dedicated.value) {
+    Cmd.Execute();
+
+    if (SV.server.active === true) {
+      Host.ServerFrame();
+    }
+
+    // TODO: add times
+
+    ++Host.framecount;
+
+    return;
   }
 
   if (CL.cls.state === CL.active.connecting) {
@@ -274,40 +300,61 @@ Host.Frame = function() {
   Con.Print('serverprofile: ' + (c <= 9 ? ' ' : '') + c + ' clients ' + (m <= 9 ? ' ' : '') + m + ' msec\n');
 };
 
-Host.Init = function() {
+Host.Init = function(dedicated = false) {
   Host.oldrealtime = Sys.FloatTime();
   Cmd.Init();
-  V.Init();
-  Chase.Init();
+
+  if (!dedicated) {
+    V.Init();
+    Chase.Init();
+  }
+
   COM.Init();
-  Host.InitLocal();
+  Host.InitLocal(dedicated);
   W.LoadWadFile('gfx.wad');
-  Key.Init();
+
+  if (!dedicated) {
+    Key.Init();
+  }
+
   Con.Init();
   PR.Init();
   Mod.Init();
   NET.Init();
   SV.Init();
   Con.Print(Def.timedate);
-  VID.Init();
-  Draw.Init();
-  SCR.Init();
-  R.Init();
-  S.Init();
-  M.Init();
-  CDAudio.Init();
-  Sbar.Init();
-  CL.Init();
-  IN.Init();
+
+  if (!dedicated) {
+    VID.Init();
+    Draw.Init();
+    SCR.Init();
+    R.Init();
+    S.Init();
+    M.Init();
+    CDAudio.Init();
+    Sbar.Init();
+    CL.Init();
+    IN.Init();
+  } else {
+    // we need a few frontend things for dedicated
+    R.Init();
+  }
+
   Cmd.text = 'exec quake.rc\n' + Cmd.text;
   Host.initialized = true;
   Sys.Print('========Quake Initialized=========\n');
+
+  if (dedicated) {
+    return;
+  }
+
   try {
     if (parent.saveGameToUpload!=null) {
       const name = COM.DefaultExtension('s0', '.sav');
       COM.WriteTextFile(name, parent.saveGameToUpload);
     }
   } catch (err) {
+    Con.DPrint(err);
   }
 };
 
@@ -318,18 +365,24 @@ Host.Shutdown = function() {
   }
   Host.isdown = true;
   Host.WriteConfiguration();
-  CDAudio.Stop();
+  if (!Host.dedicated.value) {
+    CDAudio.Stop();
+  }
   NET.Shutdown();
-  S.StopAllSounds();
-  IN.Shutdown();
+  if (!Host.dedicated.value) {
+    S.StopAllSounds();
+    IN.Shutdown();
+  }
 };
 
 // Commands
 
 Host.Quit_f = function() {
-  if (Key.dest.value !== Key.dest.console) {
-    M.Menu_Quit_f();
-    return;
+  if (!Host.dedicated.value) {
+    if (Key.dest.value !== Key.dest.console) {
+      M.Menu_Quit_f();
+      return;
+    }
   }
   Sys.Quit();
 };
@@ -501,22 +554,28 @@ Host.Map_f = function() {
   if (Cmd.client === true) {
     return;
   }
-  CL.cls.demonum = -1;
-  CL.Disconnect();
+  if (!Host.dedicated.value) {
+    CL.cls.demonum = -1;
+    CL.Disconnect();
+  }
   Host.ShutdownServer();
-  Key.dest.value = Key.dest.game;
-  SCR.BeginLoadingPlaque();
+  if (!Host.dedicated.value) {
+    Key.dest.value = Key.dest.game;
+    SCR.BeginLoadingPlaque();
+  }
   SV.svs.serverflags = 0;
   SV.SpawnServer(Cmd.argv[1]);
   if (SV.server.active !== true) {
     return;
   }
-  CL.cls.spawnparms = '';
-  let i;
-  for (i = 2; i < Cmd.argv.length; ++i) {
-    CL.cls.spawnparms += Cmd.argv[i] + ' ';
+  if (!Host.dedicated.value) {
+    CL.cls.spawnparms = '';
+    let i;
+    for (i = 2; i < Cmd.argv.length; ++i) {
+      CL.cls.spawnparms += Cmd.argv[i] + ' ';
+    }
+    Cmd.ExecuteString('connect local');
   }
-  Cmd.ExecuteString('connect local');
 };
 
 Host.Changelevel_f = function() {
@@ -524,7 +583,7 @@ Host.Changelevel_f = function() {
     Con.Print('changelevel <levelname> : continue game on a new level\n');
     return;
   }
-  if ((SV.server.active !== true) || (CL.cls.demoplayback === true)) {
+  if ((SV.server.active !== true) || (!Host.dedicated.value && CL.cls.demoplayback === true)) {
     Con.Print('Only the server may changelevel\n');
     return;
   }
@@ -533,17 +592,27 @@ Host.Changelevel_f = function() {
 };
 
 Host.Restart_f = function() {
-  if ((CL.cls.demoplayback !== true) && (SV.server.active === true) && (Cmd.client !== true)) {
+  if ((SV.server.active === true) && (Host.dedicated.value || (CL.cls.demoplayback !== true) && (Cmd.client !== true))) {
     SV.SpawnServer(PR.GetString(PR.globals_int[PR.globalvars.mapname]));
   }
 };
 
 Host.Reconnect_f = function() {
+  if (Host.dedicated.value) {
+    Con.Print('cannot reconnect in dedicated server mode\n');
+    return;
+  }
+
   SCR.BeginLoadingPlaque();
   CL.cls.signon = 0;
 };
 
 Host.Connect_f = function() {
+  if (Host.dedicated.value) {
+    Con.Print('cannot connect to another server in dedicated server mode\n');
+    return;
+  }
+
   CL.cls.demonum = -1;
   if (CL.cls.demoplayback === true) {
     CL.StopPlayback();
@@ -790,6 +859,11 @@ Host.Name_f = function() {
     newName = Cmd.argv[1].substring(0, 15);
   } else {
     newName = Cmd.args.substring(0, 15);
+  }
+
+  if (Host.dedicated.value) {
+    Con.Print('cannot set player name in dedicated server mode\n');
+    return;
   }
 
   if (Cmd.client !== true) {
@@ -1325,6 +1399,11 @@ Host.Viewprev_f = function() {
 };
 
 Host.Startdemos_f = function() {
+  if (Host.dedicated.value) {
+    Con.Print('cannot play demos in dedicated server mode\n');
+    return;
+  }
+
   Con.Print((Cmd.argv.length - 1) + ' demo(s) in loop\n');
   CL.cls.demos = [];
   let i;

@@ -87,6 +87,7 @@ Con.Print = function(msg) {
       Con.text[Con.current] = {text: '', time: Host.realtime};
     }
     if (msg.charCodeAt(i) === 10) {
+      console.info(Con.text[Con.current].text);
       if (Con.text.length >= 1024) {
         Con.text = Con.text.slice(-512);
         Con.current = Con.text.length;
@@ -100,9 +101,11 @@ Con.Print = function(msg) {
 };
 
 Con.DPrint = function(msg) {
-  if (Host.developer.value !== 0) {
-    Con.Print(msg);
-  }
+  // if (Host.developer.value !== 0) {
+  //   Con.Print(msg);
+  // }
+
+  console.debug(msg);
 };
 
 Con.DrawInput = function() {
@@ -172,3 +175,27 @@ Con.DrawConsole = function(lines) {
   }
   Con.DrawInput();
 };
+
+// const Console = new Proxy({}, {
+//   set(t, prop, val) {
+//     if (Cmd.HasCommand(prop)) {
+//       return false;
+//     }
+
+//     return Cvar.Set(prop, new String(val));
+//   },
+
+//   get(t, prop) {
+//     if (Cmd.HasCommand(prop)) {
+//       return undefined;
+//     }
+
+//     const cvar = Cvar.FindVar(prop);
+
+//     if (cvar === undefined) {
+//       return undefined;
+//     }
+
+//     return cvar.string;
+//   }
+// });

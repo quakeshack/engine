@@ -703,7 +703,9 @@ SV.SpawnServer = function(server) {
     Cvar.Set('hostname', 'UNNAMED');
   }
 
-  SCR.centertime_off = 0.0;
+  if (!Host.dedicated.value) {
+    SCR.centertime_off = 0.0;
+  }
 
   Con.DPrint('SpawnServer: ' + server + '\n');
   SV.svs.changelevel_issued = false;

@@ -1105,15 +1105,22 @@ R.MakeWorldModelDisplayLists = function(m) {
 // misc
 
 R.InitTextures = function() {
+  R.notexture_mip = {name: 'notexture', width: 16, height: 16, texturenum: null};
+
+  if (Host.dedicated.value) {
+    return;
+  }
+
   const data = new Uint8Array(new ArrayBuffer(256));
-  let i; let j;
-  for (i = 0; i < 8; ++i) {
-    for (j = 0; j < 8; ++j) {
+
+  for (let i = 0; i < 8; ++i) {
+    for (let j = 0; j < 8; ++j) {
       data[(i << 4) + j] = data[136 + (i << 4) + j] = 255;
       data[8 + (i << 4) + j] = data[128 + (i << 4) + j] = 0;
     }
   }
-  R.notexture_mip = {name: 'notexture', width: 16, height: 16, texturenum: gl.createTexture()};
+
+  R.notexture_mip.texturenum = gl.createTexture();
   GL.Bind(0, R.notexture_mip.texturenum);
   GL.Upload(data, 16, 16);
 
@@ -1157,6 +1164,10 @@ R.InitTextures = function() {
 R.Init = function() {
   R.InitTextures();
 
+  if (Host.dedicated.value) {
+    return;
+  }
+
   Cmd.AddCommand('timerefresh', R.TimeRefresh_f);
   Cmd.AddCommand('pointfile', R.ReadPointFile_f);
 
@@ -1164,6 +1175,7 @@ R.Init = function() {
   R.fullbright = Cvar.RegisterVariable('r_fullbright', '0');
   R.drawentities = Cvar.RegisterVariable('r_drawentities', '1');
   R.drawviewmodel = Cvar.RegisterVariable('r_drawviewmodel', '1');
+  R.drawturbolents = Cvar.RegisterVariable('r_drawturbolents', '1');
   R.novis = Cvar.RegisterVariable('r_novis', '0');
   R.speeds = Cvar.RegisterVariable('r_speeds', '0');
   R.polyblend = Cvar.RegisterVariable('gl_polyblend', '1');
@@ -1904,6 +1916,10 @@ R.DrawBrushModel = function(e) {
     gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
   }
 
+  if (!R.drawturbolents.value) {
+    return;
+  }
+
   program = GL.UseProgram('Turbulent');
   gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
   gl.uniformMatrix3fv(program.uAngles, false, viewMatrix);
@@ -1977,6 +1993,10 @@ R.DrawWorld = function() {
       GL.Bind(program.tTexture, R.TextureAnimation(clmodel.textures[cmds[0]]).texturenum);
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
     }
+  }
+
+  if (!R.drawturbolents.value) {
+    return;
   }
 
   program = GL.UseProgram('Turbulent');

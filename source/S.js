@@ -11,6 +11,10 @@ S.listener_up = [0.0, 0.0, 0.0];
 
 S.known_sfx = [];
 
+S.HandlePlayPromise = function(fnc, promise) {
+  promise.catch((err) => Con.DPrint(`${fnc}: failed to play sound: ${err.message}`));
+}
+
 S.Init = function() {
   Con.Print('\nSound Initialization\n');
   Cmd.AddCommand('play', S.Play);
@@ -261,7 +265,7 @@ S.StartSound = function(entnum, entchannel, sfx, origin, vol, attenuation) {
       volume = 1.0;
     }
     target_chan.audio.volume = volume * S.volume.value;
-    target_chan.audio.play();
+    S.HandlePlayPromise('S.StartSound', target_chan.audio.play());
   }
 };
 
@@ -471,7 +475,7 @@ S.UpdateAmbientSounds = function() {
       ch.audio.volume = ch.master_vol * S.volume.value;
       sc = ch.sfx.cache;
       if (ch.audio.paused === true) {
-        ch.audio.play();
+        S.HandlePlayPromise('S.UpdateAmbientSounds', ch.audio.play());
         ch.end = Host.realtime + sc.length;
         continue;
       }
@@ -594,7 +598,7 @@ S.UpdateStaticSounds = function() {
       ch.audio.volume = volume * S.volume.value;
       sc = ch.sfx.cache;
       if (ch.audio.paused === true) {
-        ch.audio.play();
+        S.HandlePlayPromise('S.UpdateStaticSounds', ch.audio.play());
         ch.end = Host.realtime + sc.length;
         continue;
       }

@@ -162,7 +162,7 @@ Mod.ForName = function(name, crash) {
 /*
 ===============================================================================
 
-					BRUSHMODEL LOADING
+          BRUSHMODEL LOADING
 
 ===============================================================================
 */
@@ -219,22 +219,23 @@ Mod.LoadTextures = function(buf) {
       continue;
     }
     miptexofs += fileofs;
-    tx =
-		{
-		  name: Q.memstr(new Uint8Array(buf, miptexofs, 16)),
-		  width: view.getUint32(miptexofs + 16, true),
-		  height: view.getUint32(miptexofs + 20, true),
-		};
-    if (tx.name.substring(0, 3).toLowerCase() === 'sky') {
-      R.InitSky(new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), 32768));
-      tx.texturenum = R.solidskytexture;
-      R.skytexturenum = i;
-      tx.sky = true;
-    } else {
-      glt = GL.LoadTexture(tx.name, tx.width, tx.height, new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), tx.width * tx.height));
-      tx.texturenum = glt.texnum;
-      if (tx.name.charCodeAt(0) === 42) {
-        tx.turbulent = true;
+    tx = {
+      name: Q.memstr(new Uint8Array(buf, miptexofs, 16)),
+      width: view.getUint32(miptexofs + 16, true),
+      height: view.getUint32(miptexofs + 20, true),
+    };
+    if (!Host.dedicated.value) {
+      if (tx.name.substring(0, 3).toLowerCase() === 'sky') {
+        R.InitSky(new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), 32768));
+        tx.texturenum = R.solidskytexture;
+        R.skytexturenum = i;
+        tx.sky = true;
+      } else {
+        glt = GL.LoadTexture(tx.name, tx.width, tx.height, new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), tx.width * tx.height));
+        tx.texturenum = glt.texnum;
+        if (tx.name.charCodeAt(0) === 42) {
+          tx.turbulent = true;
+        }
       }
     }
     Mod.loadmodel.textures[i] = tx;
@@ -472,14 +473,14 @@ Mod.LoadFaces = function(buf) {
   for (i = 0; i < count; ++i) {
     styles = new Uint8Array(buf, fileofs + 12, 4);
     out =
-		{
-		  plane: Mod.loadmodel.planes[view.getUint16(fileofs, true)],
-		  firstedge: view.getUint16(fileofs + 4, true),
-		  numedges: view.getUint16(fileofs + 8, true),
-		  texinfo: view.getUint16(fileofs + 10, true),
-		  styles: [],
-		  lightofs: view.getInt32(fileofs + 16, true),
-		};
+    {
+      plane: Mod.loadmodel.planes[view.getUint16(fileofs, true)],
+      firstedge: view.getUint16(fileofs + 4, true),
+      numedges: view.getUint16(fileofs + 8, true),
+      texinfo: view.getUint16(fileofs + 10, true),
+      styles: [],
+      lightofs: view.getInt32(fileofs + 16, true),
+    };
     if (styles[0] !== 255) {
       out.styles[0] = styles[0];
     }
@@ -771,9 +772,9 @@ Mod.LoadBrushModel = function(buffer) {
     }
   };
   Mod.loadmodel.radius = Vec.Length([
-		Math.abs(mins[0]) > Math.abs(maxs[0]) ? Math.abs(mins[0]) : Math.abs(maxs[0]),
-		Math.abs(mins[1]) > Math.abs(maxs[1]) ? Math.abs(mins[1]) : Math.abs(maxs[1]),
-		Math.abs(mins[2]) > Math.abs(maxs[2]) ? Math.abs(mins[2]) : Math.abs(maxs[2]),
+    Math.abs(mins[0]) > Math.abs(maxs[0]) ? Math.abs(mins[0]) : Math.abs(maxs[0]),
+    Math.abs(mins[1]) > Math.abs(maxs[1]) ? Math.abs(mins[1]) : Math.abs(maxs[1]),
+    Math.abs(mins[2]) > Math.abs(maxs[2]) ? Math.abs(mins[2]) : Math.abs(maxs[2]),
   ]);
 };
 
@@ -786,6 +787,10 @@ ALIAS MODELS
 */
 
 Mod.TranslatePlayerSkin = function(data, skin) {
+  if (Host.dedicated.value) {
+    return;
+  }
+
   if ((Mod.loadmodel.skinwidth !== 512) || (Mod.loadmodel.skinheight !== 256)) {
     data = GL.ResampleTexture(data, Mod.loadmodel.skinwidth, Mod.loadmodel.skinheight, 512, 256);
   }
@@ -861,10 +866,10 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
       Mod.FloodFillSkin(skin);
       Mod.loadmodel.skins[i] = {
         group: false,
-        texturenum: GL.LoadTexture(Mod.loadmodel.name + '_' + i,
+        texturenum: !Host.dedicated.value ? GL.LoadTexture(Mod.loadmodel.name + '_' + i,
             Mod.loadmodel.skinwidth,
             Mod.loadmodel.skinheight,
-            skin),
+            skin) : null,
       };
       if (Mod.loadmodel.player === true) {
         Mod.TranslatePlayerSkin(new Uint8Array(buffer, inmodel, skinsize), Mod.loadmodel.skins[i]);
@@ -1096,12 +1101,20 @@ Mod.LoadAliasModel = function(buffer) {
     }
   }
 
+  if (Host.dedicated.value) {
+    return;
+  }
+
   Mod.loadmodel.cmds = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, Mod.loadmodel.cmds);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cmds), gl.STATIC_DRAW);
 };
 
 Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
+  if (Host.dedicated.value) {
+    return null;
+  }
+
   let i;
 
   const model = new DataView(buffer);

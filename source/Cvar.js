@@ -38,9 +38,12 @@ Cvar.Set = function(name, value) {
     if ((v.server === true) && (changed === true) && (SV.server.active === true)) {
       Host.BroadcastPrint('"' + v.name + '" changed to "' + v.string + '"\n');
     }
-    return;
+
+    return true;
   }
   Con.Print('Cvar.Set: variable ' + name + ' not found\n');
+
+  return false;
 };
 
 Cvar.SetValue = function(name, value) {
