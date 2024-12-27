@@ -304,8 +304,9 @@ Host.Init = function(dedicated = false) {
   Host.oldrealtime = Sys.FloatTime();
   Cmd.Init();
 
+  V.Init(); // required for V.CalcRoll
+
   if (!dedicated) {
-    V.Init();
     Chase.Init();
   }
 
@@ -396,7 +397,7 @@ Host.Status_f = function() {
     }
     print = Con.Print;
   } else {
-    print = SV.ClientPrint;
+    print = Host.ClientPrint;
   }
   print('host:    ' + NET.hostname.string + '\n');
   print('version: 1.09\n');
@@ -861,12 +862,7 @@ Host.Name_f = function() {
     newName = Cmd.args.substring(0, 15);
   }
 
-  if (Host.dedicated.value) {
-    Con.Print('cannot set player name in dedicated server mode\n');
-    return;
-  }
-
-  if (Cmd.client !== true) {
+  if (!Host.dedicated.value && Cmd.client !== true) {
     Cvar.Set('_cl_name', newName);
     if (CL.cls.state === CL.active.connected) {
       Cmd.ForwardToServer();

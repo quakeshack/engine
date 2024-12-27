@@ -3,9 +3,11 @@ NET = {};
 NET.BaseDriver = class BaseDriver {
   constructor() {
     this.initialized = false;
+    this.driverlevel = null;
   }
 
-  Init() {
+  Init(driverlevel) {
+    this.driverlevel = driverlevel;
     return false;
   }
 
@@ -21,33 +23,82 @@ NET.BaseDriver = class BaseDriver {
     return -1;
   }
 
-  GetMessage() {
+  GetMessage(qsocket) {
     return 0;
   }
 
-  SendMessage() {
+  SendMessage(qsocket, data) {
     return -1;
   }
 
-  SendUnreliableMessage() {
+  SendUnreliableMessage(qsocket, data) {
     return -1;
   }
 
-  CanSendMessage() {
+  CanSendMessage(qsocket) {
     return false;
   }
 
-  Close() {
+  Close(qsocket) {
+    qsocket.disconnected = true;
   }
 
   Listen() {
   }
 };
 
+NET.FormatIP = function (ip, port) {
+  return ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;
+}
+
 NET.activeSockets = [];
 NET.message = {data: new ArrayBuffer(8192), cursize: 0};
 NET.activeconnections = 0;
 NET.listening = false;
+
+NET.QSocket = (class QSocket {
+  constructor(time, driver) {
+    this.connecttime = time;
+    this.lastMessageTime = time;
+    this.driver = driver;
+    this.address = null;
+    this.disconnected = true;
+
+    this.receiveMessage = new Uint8Array(new ArrayBuffer(8192));
+    this.receiveMessageLength = 0;
+
+    this.sendMessage = new Uint8Array(new ArrayBuffer(8192));
+    this.sendMessageLength = 0;
+  }
+
+  _getDriver() {
+    if (!NET.drivers[this.driver]) {
+      throw new Error('This QSocket has no valid driver anymore!');
+    }
+
+    return NET.drivers[this.driver]; // FIXME: global reliance
+  }
+
+  GetMessage() {
+    return this._getDriver().GetMessage(this);
+  }
+
+  SendMessage(data) {
+    return this._getDriver().SendMessage(this, data);
+  }
+
+  SendUnreliableMessage(data) {
+    return this._getDriver().SendUnreliableMessage(this, data);
+  }
+
+  CanSendMessage() {
+    return this._getDriver().CanSendMessage(this);
+  }
+
+  Close() {
+    return this._getDriver().Close(this);
+  }
+});
 
 NET.NewQSocket = function() {
   let i;
@@ -56,12 +107,7 @@ NET.NewQSocket = function() {
       break;
     }
   }
-  NET.activeSockets[i] = {
-    connecttime: NET.time,
-    lastMessageTime: NET.time,
-    driver: NET.driverlevel,
-    address: 'UNSET ADDRESS',
-  };
+  NET.activeSockets[i] = new NET.QSocket(NET.time, NET.driverlevel);
   return NET.activeSockets[i];
 };
 
@@ -146,8 +192,7 @@ NET.Close = function(sock) {
     return;
   }
   NET.time = Sys.FloatTime();
-  NET.drivers[sock.driver].Close(sock);
-  sock.disconnected = true;
+  sock.Close();
 };
 
 NET.GetMessage = function(sock) {
@@ -159,8 +204,8 @@ NET.GetMessage = function(sock) {
     return -1;
   }
   NET.time = Sys.FloatTime();
-  const ret = NET.drivers[sock.driver].GetMessage(sock);
-  if (sock.driver !== 0) {
+  const ret = sock.GetMessage();
+  if (sock.driver !== 0) { // FIXME: hardcoded check for loopback driver
     if (ret === 0) {
       if ((NET.time - sock.lastMessageTime) > NET.messagetimeout.value) {
         NET.Close(sock);
@@ -182,7 +227,7 @@ NET.SendMessage = function(sock, data) {
     return -1;
   }
   NET.time = Sys.FloatTime();
-  return NET.drivers[sock.driver].SendMessage(sock, data);
+  return sock.SendMessage(data);
 };
 
 NET.SendUnreliableMessage = function(sock, data) {
@@ -194,7 +239,7 @@ NET.SendUnreliableMessage = function(sock, data) {
     return -1;
   }
   NET.time = Sys.FloatTime();
-  return NET.drivers[sock.driver].SendUnreliableMessage(sock, data);
+  return sock.SendUnreliableMessage(data);
 };
 
 NET.CanSendMessage = function(sock) {
@@ -205,7 +250,7 @@ NET.CanSendMessage = function(sock) {
     return;
   }
   NET.time = Sys.FloatTime();
-  return NET.drivers[sock.driver].CanSendMessage(sock);
+  return sock.CanSendMessage();
 };
 
 NET.SendToAll = function(data) {
@@ -261,16 +306,16 @@ NET.SendToAll = function(data) {
 NET.Init = function() {
   NET.time = Sys.FloatTime();
 
-  NET.messagetimeout = Cvar.RegisterVariable('net_messagetimeout', '300');
+  NET.messagetimeout = Cvar.RegisterVariable('net_messagetimeout', '5000');
   NET.hostname = Cvar.RegisterVariable('hostname', 'UNNAMED');
 
   Cmd.AddCommand('maxplayers', NET.MaxPlayers_f);
   Cmd.AddCommand('listen', NET.Listen_f);
   Cmd.AddCommand('net_drivers', NET.Drivers_f);
 
-  NET.drivers = [new Loop.LoopDriver()]; // TODO: add back WS
+  NET.drivers = [new Loop.Driver(), new WEBS.Driver()];
   for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
-    NET.drivers[NET.driverlevel].Init();
+    NET.drivers[NET.driverlevel].Init(NET.driverlevel);
   }
 };
 

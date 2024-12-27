@@ -19,6 +19,7 @@ require('./source/Cvar.js');
 require('./source/Host.js');
 require('./source/R.js'); // required for avertexnormals and notexture_mip
 require('./source/Q.js');
+require('./source/V.js'); // required for V.CalcRoll
 require('./source/VID.js');
 require('./source/Vec.js');
 require('./source/NET.js');

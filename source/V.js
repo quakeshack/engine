@@ -2,7 +2,7 @@ V = {};
 
 V.dmg_time = 0.0;
 
-V.CalcRoll = function(angles, velocity) {
+V.CalcRoll = function(angles, velocity) { // FIXME: this is required for dedicated as well
   const right = [];
   Vec.AngleVectors(angles, null, right);
   let side = velocity[0] * right[0] + velocity[1] * right[1] + velocity[2] * right[2];

@@ -1,6 +1,6 @@
 Loop = {};
 
-Loop.LoopDriver = (class LoopDriver extends NET.BaseDriver {
+Loop.Driver = (class LoopDriver extends NET.BaseDriver {
   constructor() {
     super();
     this.client = null;
@@ -8,7 +8,9 @@ Loop.LoopDriver = (class LoopDriver extends NET.BaseDriver {
     this.localconnectpending = false;
   }
 
-  Init() {
+  Init(driverlevel) {
+    this.driverlevel = driverlevel;
+
     this.client = null;
     this.server = null;
     this.localconnectpending = false;
@@ -27,8 +29,8 @@ Loop.LoopDriver = (class LoopDriver extends NET.BaseDriver {
 
     if (this.client == null) {
       this.client = NET.NewQSocket();
-      this.client.receiveMessage = new Uint8Array(new ArrayBuffer(8192));
-      this.client.address = host;
+      this.client.driver = this.driverlevel;
+      this.client.address = 'local client';
     }
 
     this.client.receiveMessageLength = 0;
@@ -36,8 +38,8 @@ Loop.LoopDriver = (class LoopDriver extends NET.BaseDriver {
 
     if (this.server == null) {
       this.server = NET.NewQSocket();
-      this.server.receiveMessage = new Uint8Array(new ArrayBuffer(8192));
-      this.server.address = host;
+      this.server.driver = this.driverlevel;
+      this.server.address = 'local server';
     }
 
     this.server.receiveMessageLength = 0;
@@ -58,9 +60,11 @@ Loop.LoopDriver = (class LoopDriver extends NET.BaseDriver {
 
     this.server.receiveMessageLength = 0;
     this.server.canSend = true;
+    this.server.disconnected = false;
 
     this.client.receiveMessageLength = 0;
     this.client.canSend = true;
+    this.client.disconnected = false;
 
     return this.server;
   }
@@ -137,6 +141,7 @@ Loop.LoopDriver = (class LoopDriver extends NET.BaseDriver {
     } else {
       this.server = null;
     }
+    sock.disconnected = true;
   }
 
   Listen() {
