@@ -145,7 +145,7 @@ COM.Init = function() {
     if ((document.location.protocol !== 'http:') && (document.location.protocol !== 'https:')) {
       Sys.Error('Protocol is ' + document.location.protocol + ', not http: or https:');
     }
-  } catch(e) {
+  } catch (e) {
     Sys.Print('COM.Init: document.location check failed, assuming dedicated environment');
   }
 

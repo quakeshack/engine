@@ -491,25 +491,29 @@ CL.Rcon_f = function() {
     }
     to = CL.rcon_address.string;
   }
-  let pw;
-  try {
-    pw = btoa('quake:' + CL.rcon_password.string);
-  } catch (e) {
-    return;
-  }
-  let message = ''; let i;
-  for (i = 1; i < Cmd.argv.length; ++i) {
-    message += Cmd.argv[i] + ' ';
-  }
-  try {
-    message = encodeURIComponent(message);
-  } catch (e) {
-    return;
-  }
-  const xhr = new XMLHttpRequest();
-  xhr.open('HEAD', 'http://' + to + '/rcon/' + message);
-  xhr.setRequestHeader('Authorization', 'Basic ' + pw);
-  xhr.send();
+  // let pw;
+  // try {
+  //   pw = btoa('quake:' + CL.rcon_password.string);
+  // } catch (e) {
+  //   return;
+  // }
+  // let message = ''; let i;
+  // for (i = 1; i < Cmd.argv.length; ++i) {
+  //   message += Cmd.argv[i] + ' ';
+  // }
+  Con.Print('NOT IMPLEMENTED\n');
+
+  // TODO: re-write protocol for RCON
+
+  // try {
+  //   message = encodeURIComponent(message);
+  // } catch (e) {
+  //   return;
+  // }
+  // const xhr = new XMLHttpRequest();
+  // xhr.open('HEAD', 'http://' + to + '/rcon/' + message);
+  // xhr.setRequestHeader('Authorization', 'Basic ' + pw);
+  // xhr.send();
 };
 
 CL.ClearState = function() {

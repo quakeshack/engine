@@ -1,3 +1,3 @@
-Draw = {}
-Draw.BeginDisc = function() {}
-Draw.EndDisc = function() {}
+Draw = {};
+Draw.BeginDisc = function() {};
+Draw.EndDisc = function() {};

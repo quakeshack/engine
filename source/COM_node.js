@@ -1,66 +1,61 @@
-// this replaces a few functions on COM, so make sure to require this after requiring COM.js
-
+// Enhanced COM.js replacements
 const fs = require('fs');
 
+/**
+ * Loads a file, searching through registered search paths and packs.
+ * @param {string} filename - The name of the file to load.
+ * @return {ArrayBuffer | undefined} - The file content as an ArrayBuffer or undefined if not found.
+ */
 COM.LoadFile = function(filename) {
   filename = filename.toLowerCase();
 
-  let i; let j; let k; let search; let netpath; let pak; let file; let data;
+  for (let i = COM.searchpaths.length - 1; i >= 0; i--) {
+    const search = COM.searchpaths[i];
+    const netpath = search.filename ? `${search.filename}/${filename}` : filename;
 
-  for (i = COM.searchpaths.length - 1; i >= 0; --i) {
-    search = COM.searchpaths[i];
-    netpath = search.filename !== '' ? search.filename + '/' + filename : filename;
+    // Search within pack files
+    for (let j = search.pack.length - 1; j >= 0; j--) {
+      const pak = search.pack[j];
 
-    for (j = search.pack.length - 1; j >= 0; --j) {
-      pak = search.pack[j];
-      for (k = 0; k < pak.length; ++k) {
-        file = pak[k];
-        if (file.name !== filename) {
-          continue;
-        }
+      for (const file of pak) {
+        if (file.name !== filename) continue;
+
         if (file.filelen === 0) {
           return new ArrayBuffer(0);
         }
 
-        const fd = fs.openSync(search.filename + 'Quake1Game' + j + '.pak', 'r');
+        const packPath = `${search.filename}Quake1Game${j}.pak`;
+        const fd = fs.openSync(packPath, 'r');
 
         try {
           const buffer = Buffer.alloc(file.filelen);
           fs.readSync(fd, buffer, 0, file.filelen, file.filepos);
-          const uint8Array = new Uint8Array(buffer);
 
-          Sys.Print('PackFile: ' + search.filename + 'Quake1Game' + j + '.pak : ' + filename + '\n');
-
-          return uint8Array.buffer;
+          Sys.Print(`PackFile: ${packPath} : ${filename}\n`);
+          return new Uint8Array(buffer).buffer;
         } finally {
           fs.closeSync(fd);
         }
       }
     }
 
+    // Search in the filesystem
     if (fs.existsSync(netpath)) {
       const buffer = fs.readFileSync(netpath);
-      const uint8Array = new Uint8Array(buffer);
-
-      Sys.Print('FindFile: ' + netpath + '\n');
-
-      return uint8Array;
+      Sys.Print(`FindFile: ${netpath}\n`);
+      return new Uint8Array(buffer).buffer;
     }
   }
-  Sys.Print('FindFile: can\'t find ' + filename + '\n');
+
+  Sys.Print(`FindFile: can't find ${filename}\n`);
 };
 
-
+/**
+ * Loads and parses a pack file.
+ * @param {string} packfile - The path to the pack file.
+ * @return {Array<Object> | undefined} - The parsed pack file entries or undefined if the file doesn't exist.
+ */
 COM.LoadPackFile = function(packfile) {
-  // const xhr = new XMLHttpRequest();
-  // xhr.overrideMimeType('text/plain; charset=x-user-defined');
-  // xhr.open('GET', packfile, false);
-  // xhr.setRequestHeader('Range', 'bytes=0-11');
-  // xhr.send();
-  // if ((xhr.status <= 199) || (xhr.status >= 300) || (xhr.responseText.length !== 12)) {
-  //   return;
-  // }
-
   if (!fs.existsSync(packfile)) {
     return;
   }
@@ -68,39 +63,48 @@ COM.LoadPackFile = function(packfile) {
   const fd = fs.openSync(packfile, 'r');
 
   try {
+    // Read and validate the pack file header
     const headerBuffer = Buffer.alloc(12);
     fs.readSync(fd, headerBuffer, 0, 12, 0);
 
     const header = new DataView(new Uint8Array(headerBuffer).buffer);
-
-    if (header.getUint32(0, true) !== 0x4b434150) {
-      Sys.Error(packfile + ' is not a packfile');
+    if (header.getUint32(0, true) !== 0x4b434150) { // "PACK" magic number
+      Sys.Error(`${packfile} is not a packfile`);
     }
 
     const dirofs = header.getUint32(4, true);
     const dirlen = header.getUint32(8, true);
-    const numpackfiles = dirlen >> 6;
+    const numpackfiles = dirlen >> 6; // Each entry is 64 bytes
+
     if (numpackfiles !== 339) {
       COM.modified = true;
     }
+
     const pack = [];
-    if (numpackfiles !== 0) {
-      const info = Buffer.alloc(dirlen);
-      fs.readSync(fd, info, 0, dirlen, dirofs);
-      const uint8ArrayInfo = new Uint8Array(info);
-      if (CRC.Block(new Uint8Array(info)) !== 32981) {
+
+    if (numpackfiles > 0) {
+      const infoBuffer = Buffer.alloc(dirlen);
+      fs.readSync(fd, infoBuffer, 0, dirlen, dirofs);
+
+      const uint8ArrayInfo = new Uint8Array(infoBuffer);
+      if (CRC.Block(uint8ArrayInfo) !== 32981) {
         COM.modified = true;
       }
+
       const dv = new DataView(uint8ArrayInfo.buffer);
-      for (let i = 0; i < numpackfiles; ++i) {
+
+      for (let i = 0; i < numpackfiles; i++) {
+        const offset = i << 6; // 64 bytes per entry
+
         pack.push({
-          name: Q.memstr(new Uint8Array(uint8ArrayInfo.buffer, i << 6, 56)).toLowerCase(),
-          filepos: dv.getUint32((i << 6) + 56, true),
-          filelen: dv.getUint32((i << 6) + 60, true),
+          name: Q.memstr(uint8ArrayInfo.slice(offset, offset + 56)).toLowerCase(),
+          filepos: dv.getUint32(offset + 56, true),
+          filelen: dv.getUint32(offset + 60, true),
         });
       }
     }
-    Con.Print('Added packfile ' + packfile + ' (' + numpackfiles + ' files)\n');
+
+    Con.Print(`Added packfile ${packfile} (${numpackfiles} files)\n`);
 
     return pack;
   } finally {

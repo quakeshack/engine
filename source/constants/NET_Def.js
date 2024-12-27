@@ -74,7 +74,7 @@ const NetFlags = {
 // Protocol Version
 const NetProtocol = {
   VERSION: 3,
-  GAME_NAME: "QUAKE",
+  GAME_NAME: 'QUAKE',
 };
 
 // Connection Control Requests
@@ -95,4 +95,4 @@ const CCReply = {
 };
 
 // Exporting the constants if using a module system
-module.exports = { NetFlags, NetProtocol, CCRequest, CCReply };
+module.exports = {NetFlags, NetProtocol, CCRequest, CCReply};

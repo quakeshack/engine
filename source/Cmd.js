@@ -152,7 +152,7 @@ Cmd.HasCommand = function(name) {
   }
 
   return false;
-}
+};
 
 Cmd.AddCommand = function(name, command) {
   let i;

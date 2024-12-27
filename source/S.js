@@ -13,7 +13,7 @@ S.known_sfx = [];
 
 S.HandlePlayPromise = function(fnc, promise) {
   promise.catch((err) => Con.DPrint(`${fnc}: failed to play sound: ${err.message}`));
-}
+};
 
 S.Init = function() {
   Con.Print('\nSound Initialization\n');

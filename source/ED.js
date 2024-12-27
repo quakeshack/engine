@@ -41,53 +41,49 @@ ED.Free = function(ed) {
   ed.freetime = SV.server.time;
 };
 
+/**
+ * Retrieves the global definition at the specified offset.
+ * @param {number} ofs - The offset to retrieve.
+ * @return {Object} - The global definition.
+ */
 ED.GlobalAtOfs = function(ofs) {
-  let i; let def;
-  for (i = 0; i < PR.globaldefs.length; ++i) {
-    def = PR.globaldefs[i];
-    if (def.ofs === ofs) {
-      return def;
-    }
-  }
+  return PR.globaldefs.find((def) => def.ofs === ofs);
 };
 
+/**
+* Retrieves the field definition at the specified offset.
+* @param {number} ofs - The offset to retrieve.
+* @return {Object} - The field definition.
+*/
 ED.FieldAtOfs = function(ofs) {
-  let i; let def;
-  for (i = 0; i < PR.fielddefs.length; ++i) {
-    def = PR.fielddefs[i];
-    if (def.ofs === ofs) {
-      return def;
-    }
-  }
+  return PR.fielddefs.find((def) => def.ofs === ofs);
 };
 
+/**
+* Finds a field definition by name.
+* @param {string} name - The field name.
+* @return {Object} - The field definition.
+*/
 ED.FindField = function(name) {
-  let def; let i;
-  for (i = 0; i < PR.fielddefs.length; ++i) {
-    def = PR.fielddefs[i];
-    if (PR.GetString(def.name) === name) {
-      return def;
-    }
-  }
+  return PR.fielddefs.find((def) => PR.GetString(def.name) === name);
 };
 
+/**
+* Finds a global definition by name.
+* @param {string} name - The global name.
+* @return {Object} - The global definition.
+*/
 ED.FindGlobal = function(name) {
-  let def; let i;
-  for (i = 0; i < PR.globaldefs.length; ++i) {
-    def = PR.globaldefs[i];
-    if (PR.GetString(def.name) === name) {
-      return def;
-    }
-  }
+  return PR.globaldefs.find((def) => PR.GetString(def.name) === name);
 };
 
+/**
+* Finds a function definition by name.
+* @param {string} name - The function name.
+* @return {number} - The function index.
+*/
 ED.FindFunction = function(name) {
-  let i;
-  for (i = 0; i < PR.functions.length; ++i) {
-    if (PR.GetString(PR.functions[i].name) === name) {
-      return i;
-    }
-  }
+  return PR.functions.findIndex((func) => PR.GetString(func.name) === name);
 };
 
 ED.Print = function(ed) {
@@ -113,7 +109,7 @@ ED.Print = function(ed) {
         continue;
       }
     }
-    for (; name.length <= 14; ) {
+    for (; name.length <= 14;) {
       name += ' ';
     }
     Con.Print(name + PR.ValueString(d.type, ed.v, v) + '\n');
@@ -121,15 +117,14 @@ ED.Print = function(ed) {
 };
 
 ED.PrintEdicts = function() {
-  if (SV.server.active !== true) {
+  if (!SV.server.active) {
     return;
   }
-  Con.Print(SV.server.num_edicts + ' entities\n');
-  let i;
-  for (i = 0; i < SV.server.num_edicts; ++i) {
-    ED.Print(SV.server.edicts[i]);
-  }
+
+  Con.Print(`${SV.server.num_edicts} entities\n`);
+  SV.server.edicts.forEach(ED.Print);
 };
+
 
 ED.PrintEdict_f = function() {
   if (SV.server.active !== true) {
@@ -171,29 +166,28 @@ ED.Count = function() {
 };
 
 ED.ParseGlobals = function(data) {
-  let keyname; let key;
-  for (;;) {
+  while (true) {
     data = COM.Parse(data);
-    if (COM.token.charCodeAt(0) === 125) {
+    if (COM.token === '}') {
       return;
     }
-    if (data == null) {
-      Sys.Error('ED.ParseGlobals: EOF without closing brace');
-    }
-    keyname = COM.token;
+
+    if (!data) Sys.Error('ED.ParseGlobals: EOF without closing brace');
+
+    const keyname = COM.token;
     data = COM.Parse(data);
-    if (data == null) {
-      Sys.Error('ED.ParseGlobals: EOF without closing brace');
-    }
-    if (COM.token.charCodeAt(0) === 125) {
+
+    if (!data || COM.token === '}') {
       Sys.Error('ED.ParseGlobals: closing brace without data');
     }
-    key = ED.FindGlobal(keyname);
-    if (key == null) {
-      Con.Print('\'' + keyname + '\' is not a global\n');
+
+    const key = ED.FindGlobal(keyname);
+    if (!key) {
+      Con.Print(`'${keyname}' is not a global\n`);
       continue;
     }
-    if (ED.ParseEpair(PR.globals, key, COM.token) !== true) {
+
+    if (!ED.ParseEpair(PR.globals, key, COM.token)) {
       Host.Error('ED.ParseGlobals: parse error');
     }
   }
@@ -216,145 +210,190 @@ ED.NewString = function(string) {
 ED.ParseEpair = function(base, key, s) {
   const d_float = new Float32Array(base);
   const d_int = new Int32Array(base);
-  let d; let v;
+  let d;
+  let v;
+
   switch (key.type & 0x7fff) {
     case PR.etype.ev_string:
+      // Parse a string and store it
       d_int[key.ofs] = ED.NewString(s);
       return true;
+
     case PR.etype.ev_float:
+      // Parse a float and store it
       d_float[key.ofs] = Q.atof(s);
       return true;
+
     case PR.etype.ev_vector:
-      v = s.split(' ');
-      d_float[key.ofs] = Q.atof(v[0]);
-      d_float[key.ofs + 1] = Q.atof(v[1]);
-      d_float[key.ofs + 2] = Q.atof(v[2]);
+      // Parse a vector (e.g., "x y z")
+      v = s.split(' ').map(Q.atof);
+      if (v.length !== 3) {
+        Con.Print(`Invalid vector: ${s}\n`);
+        return false;
+      }
+      d_float[key.ofs] = v[0];
+      d_float[key.ofs + 1] = v[1];
+      d_float[key.ofs + 2] = v[2];
       return true;
+
     case PR.etype.ev_entity:
+      // Parse an integer (entity index)
       d_int[key.ofs] = Q.atoi(s);
       return true;
+
     case PR.etype.ev_field:
+      // Parse and find a field by name
       d = ED.FindField(s);
-      if (d == null) {
-        Con.Print('Can\'t find field ' + s + '\n');
-        return;
+      if (!d) {
+        Con.Print(`Can't find field: ${s}\n`);
+        return false;
       }
       d_int[key.ofs] = d.ofs;
       return true;
+
     case PR.etype.ev_function:
+      // Parse and find a function by name
       d = ED.FindFunction(s);
-      if (d == null) {
-        Con.Print('Can\'t find function ' + s + '\n');
-        return;
+      if (!d) {
+        Con.Print(`Can't find function: ${s}\n`);
+        return false;
       }
       d_int[key.ofs] = d;
+      return true;
+
+    default:
+      Con.Print(`Unknown key type: ${key.type}\n`);
+      return false;
   }
-  return true;
 };
 
 ED.ParseEdict = function(data, ent) {
-  let i; let init; let anglehack; let keyname; let n; let key;
+  // If not the world entity, clear the entity data
   if (ent !== SV.server.edicts[0]) {
-    for (i = 0; i < PR.entityfields; ++i) {
+    for (let i = 0; i < PR.entityfields; ++i) {
       ent.v_int[i] = 0;
     }
   }
-  for (;;) {
+
+  let keyname;
+  let anglehack;
+  let init = false;
+
+  // Parse until closing brace
+  while (true) {
     data = COM.Parse(data);
+
     if (COM.token.charCodeAt(0) === 125) {
+      // Closing brace found
       break;
     }
+
     if (data == null) {
       Sys.Error('ED.ParseEdict: EOF without closing brace');
     }
+
     if (COM.token === 'angle') {
-      COM.token = 'angles';
+      keyname = 'angles';
       anglehack = true;
     } else {
+      keyname = COM.token;
       anglehack = false;
-      if (COM.token === 'light') {
-        COM.token = 'light_lev';
+
+      if (keyname === 'light') {
+        keyname = 'light_lev'; // Quake 1 convention
       }
     }
-    for (n = COM.token.length; n > 0; --n) {
-      if (COM.token.charCodeAt(n - 1) !== 32) {
-        break;
-      }
-    }
-    keyname = COM.token.substring(0, n);
+
+    // Remove trailing spaces in keyname
+    keyname = keyname.trimEnd();
+
+    // Parse the value
     data = COM.Parse(data);
+
     if (data == null) {
       Sys.Error('ED.ParseEdict: EOF without closing brace');
     }
+
     if (COM.token.charCodeAt(0) === 125) {
-      Sys.Error('ED.ParseEdict: closing brace without data');
+      Sys.Error('ED.ParseEdict: Closing brace without data');
     }
-    init = true;
+
     if (keyname.charCodeAt(0) === 95) {
+      // Ignore keys starting with "_"
       continue;
     }
-    key = ED.FindField(keyname);
+
+    const key = ED.FindField(keyname);
+
     if (key == null) {
-      Con.Print('\'' + keyname + '\' is not a field\n');
+      Con.Print(`'${keyname}' is not a field\n`);
       continue;
     }
-    if (anglehack == true) {
-      COM.token = '0 ' + COM.token + ' 0';
+
+    if (anglehack) {
+      COM.token = `0 ${COM.token} 0`;
     }
+
     if (ED.ParseEpair(ent.v, key, COM.token) !== true) {
       Host.Error('ED.ParseEdict: parse error');
     }
+
+    init = true;
   }
-  if (init !== true) {
+
+  // Mark the entity as free if no valid initialization occurred
+  if (!init) {
     ent.free = true;
   }
+
   return data;
 };
 
+/**
+ * Loads entities from a file.
+ * @param {string} data - The data to load.
+ */
 ED.LoadFromFile = function(data) {
-  let ent; let spawnflags; let inhibit = 0; let func;
+  let inhibit = 0;
+  let ent = null;
   PR.globals_float[PR.globalvars.time] = SV.server.time;
 
-  for (;;) {
+  while (true) {
     data = COM.Parse(data);
-    if (data == null) {
+    if (!data) {
       break;
     }
-    if (COM.token.charCodeAt(0) !== 123) {
-      Sys.Error('ED.LoadFromFile: found ' + COM.token + ' when expecting {');
+
+    if (COM.token !== '{') {
+      Sys.Error(`ED.LoadFromFile: found ${COM.token} when expecting {`);
     }
 
-    if (ent == null) {
-      ent = SV.server.edicts[0];
-    } else {
-      ent = ED.Alloc();
-    }
+    ent = ent ? ED.Alloc() : SV.server.edicts[0];
     data = ED.ParseEdict(data, ent);
 
-    spawnflags = ent.v_float[PR.entvars.spawnflags] >> 0;
-    if (Host.deathmatch.value !== 0) {
-      if ((spawnflags & 2048) !== 0) {
-        ED.Free(ent);
-        ++inhibit;
-        continue;
-      }
-    } else if (((Host.current_skill === 0) && ((spawnflags & 256) !== 0)) ||
-			((Host.current_skill === 1) && ((spawnflags & 512) !== 0)) ||
-			((Host.current_skill >= 2) && ((spawnflags & 1024) !== 0))) {
+    const spawnflags = ent.v_float[PR.entvars.spawnflags] | 0;
+    if (Host.deathmatch.value !== 0 && (spawnflags & 2048)) {
       ED.Free(ent);
-      ++inhibit;
+      inhibit++;
       continue;
     }
 
-    if (ent.v_int[PR.entvars.classname] === 0) {
+    const skillFlags = [256, 512, 1024];
+    if (skillFlags.some((flag, idx) => Host.current_skill === idx && (spawnflags & flag))) {
+      ED.Free(ent);
+      inhibit++;
+      continue;
+    }
+
+    if (!ent.v_int[PR.entvars.classname]) {
       Con.Print('No classname for:\n');
       ED.Print(ent);
       ED.Free(ent);
       continue;
     }
 
-    func = ED.FindFunction(PR.GetString(ent.v_int[PR.entvars.classname]));
-    if (func == null) {
+    const func = ED.FindFunction(PR.GetString(ent.v_int[PR.entvars.classname]));
+    if (!func) {
       Con.Print('No spawn function for:\n');
       ED.Print(ent);
       ED.Free(ent);
@@ -365,8 +404,9 @@ ED.LoadFromFile = function(data) {
     PR.ExecuteProgram(func);
   }
 
-  Con.DPrint(inhibit + ' entities inhibited\n');
+  Con.DPrint(`${inhibit} entities inhibited\n`);
 };
+
 
 ED.Vector = function(e, o) {
   return [e.v_float[o], e.v_float[o + 1], e.v_float[o + 2]];

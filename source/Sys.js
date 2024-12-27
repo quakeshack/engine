@@ -122,6 +122,7 @@ Sys.Print = function(text) {
 };
 
 Sys.Error = function(text) {
+  // TODO: refactor this in a proper Exception that will be caught and the catch-clause will handle all of this below
   if (Sys.frame != null) {
     clearInterval(Sys.frame);
   }

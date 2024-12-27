@@ -1,5 +1,49 @@
 NET = {};
 
+NET.BaseDriver = class BaseDriver {
+  constructor() {
+    this.initialized = false;
+  }
+
+  Init() {
+    return false;
+  }
+
+  Connect(host) {
+    return null;
+  }
+
+  CheckNewConnections() {
+    return null;
+  }
+
+  CheckForResend() {
+    return -1;
+  }
+
+  GetMessage() {
+    return 0;
+  }
+
+  SendMessage() {
+    return -1;
+  }
+
+  SendUnreliableMessage() {
+    return -1;
+  }
+
+  CanSendMessage() {
+    return false;
+  }
+
+  Close() {
+  }
+
+  Listen() {
+  }
+};
+
 NET.activeSockets = [];
 NET.message = {data: new ArrayBuffer(8192), cursize: 0};
 NET.activeconnections = 0;
@@ -25,8 +69,8 @@ NET.Connect = function(host) {
   NET.time = Sys.FloatTime();
 
   if (host === 'local') {
-    NET.driverlevel = 0;
-    return Loop.Connect(host);
+    NET.driverlevel = 0; // Loop Driver
+    return NET.drivers[NET.driverlevel].Connect(host);
   }
 
   let dfunc; let ret;
@@ -75,6 +119,8 @@ NET.CheckForResend = function() {
     Con.Print('Network Error\n');
     Host.Error('NET.CheckForResend: connect failed\n');
   }
+
+  Con.DPrint(`NET.CheckForResend: invalid CheckForResend response ${ret} by ${dfunc.constructor.name}`);
 };
 
 NET.CheckNewConnections = function() {
@@ -187,7 +233,7 @@ NET.SendToAll = function(data) {
     for (i = 0; i < SV.svs.maxclients; ++i) {
       Host.client = SV.svs.clients[i];
       if (state1[i] !== true) {
-        if (NET.CanSendMessage(Host.client.netconnection) === true) {
+        if (NET.CanSendMessage(Host.client.netconnection)) {
           state1[i] = true;
           NET.SendMessage(Host.client.netconnection, data);
         } else {
@@ -197,7 +243,7 @@ NET.SendToAll = function(data) {
         continue;
       }
       if (state2[i] !== true) {
-        if (NET.CanSendMessage(Host.client.netconnection) === true) {
+        if (NET.CanSendMessage(Host.client.netconnection)) {
           state2[i] = true;
         } else {
           NET.GetMessage(Host.client.netconnection);
@@ -210,6 +256,37 @@ NET.SendToAll = function(data) {
     }
   }
   return count;
+};
+
+NET.Init = function() {
+  NET.time = Sys.FloatTime();
+
+  NET.messagetimeout = Cvar.RegisterVariable('net_messagetimeout', '300');
+  NET.hostname = Cvar.RegisterVariable('hostname', 'UNNAMED');
+
+  Cmd.AddCommand('maxplayers', NET.MaxPlayers_f);
+  Cmd.AddCommand('listen', NET.Listen_f);
+  Cmd.AddCommand('net_drivers', NET.Drivers_f);
+
+  NET.drivers = [new Loop.LoopDriver()]; // TODO: add back WS
+  for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
+    NET.drivers[NET.driverlevel].Init();
+  }
+};
+
+NET.Shutdown = function() {
+  NET.time = Sys.FloatTime();
+  for (i = 0; i < NET.activeSockets.length; ++i) {
+    NET.Close(NET.activeSockets[i]);
+  }
+};
+
+NET.Drivers_f = function() {
+  for (const driver of NET.drivers) {
+    Con.Print(`${driver.constructor.name}\n`);
+    Con.Print(`...initialized: ${driver.initialized ? 'yes' : 'no'}\n`);
+    Con.Print('\n');
+  }
 };
 
 NET.Listen_f = function() {
@@ -262,27 +339,5 @@ NET.MaxPlayers_f = function() {
     Cvar.Set('deathmatch', '0');
   } else {
     Cvar.Set('deathmatch', '1');
-  }
-};
-
-NET.Init = function() {
-  NET.time = Sys.FloatTime();
-
-  NET.messagetimeout = Cvar.RegisterVariable('net_messagetimeout', '300');
-  NET.hostname = Cvar.RegisterVariable('hostname', 'UNNAMED');
-
-  Cmd.AddCommand('maxplayers', NET.MaxPlayers_f);
-  Cmd.AddCommand('listen', NET.Listen_f);
-
-  NET.drivers = [Loop, WEBS];
-  for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
-    NET.drivers[NET.driverlevel].initialized = NET.drivers[NET.driverlevel].Init();
-  }
-};
-
-NET.Shutdown = function() {
-  NET.time = Sys.FloatTime();
-  for (i = 0; i < NET.activeSockets.length; ++i) {
-    NET.Close(NET.activeSockets[i]);
   }
 };
