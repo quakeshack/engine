@@ -1,6 +1,6 @@
 Def = {};
 
-Def.version = '1.0.1';
+Def.version = '1.0.2';
 
 Def.max_edicts = 600;
 

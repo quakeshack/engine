@@ -1613,7 +1613,7 @@ CL.ParseTEnt = function() {
       return;
   }
 
-  Sys.Error('CL.ParseTEnt: bad type');
+  Sys.Error(`CL.ParseTEnt: bad type ${type}`);
 };
 
 CL.NewTempEntity = function() {

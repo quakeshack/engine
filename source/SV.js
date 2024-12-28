@@ -2052,7 +2052,7 @@ SV.HandleRconRequest = function(client) {
   MSG.WriteString(message, response);
 };
 
-SV.ReadClientMessage = function (client) {
+SV.ReadClientMessage = function(client) {
   const commands = [
     'status',
     'god',
@@ -2113,7 +2113,7 @@ SV.ReadClientMessage = function (client) {
         case Protocol.clc.stringcmd: {
           const input = MSG.ReadString();
           const matchedCommand = commands.find((command) =>
-            input.toLowerCase().startsWith(command)
+            input.toLowerCase().startsWith(command),
           );
 
           if (matchedCommand) {
@@ -2167,8 +2167,8 @@ SV.RunClients = function() { // FIXME: Host.client
 
 SV.FindClientByName = function(name) {
   return SV.svs.clients
-    .filter((client) => client.active)
-    .find((client) => SV.GetClientName(client) === name);
+      .filter((client) => client.active)
+      .find((client) => SV.GetClientName(client) === name);
 };
 
 // world

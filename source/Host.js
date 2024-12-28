@@ -186,7 +186,7 @@ Host.WriteConfiguration = function() {
 Host.WriteConfiguration_f = function() {
   Con.Print('Writing configuration\n');
   Host.WriteConfiguration();
-}
+};
 
 Host.ServerFrame = function() {
   PR.globals_float[PR.globalvars.frametime] = Host.frametime;
@@ -248,6 +248,8 @@ Host._Frame = function() {
   if (CL.cls.state === CL.active.connected) {
     CL.ReadFromServer();
   }
+
+  // TODO: add prediction code for player movements
 
   if (Host.speeds.value !== 0) {
     time1 = Sys.FloatTime();
@@ -611,7 +613,7 @@ Host.Changelevel_f = function() {
   const mapname = Cmd.argv[1];
 
   if (!SV.HasMap(mapname)) {
-    Con.Print(`No such map: ${mapname}\n`)
+    Con.Print(`No such map: ${mapname}\n`);
     return;
   }
 
@@ -910,7 +912,7 @@ Host.Name_f = function() {
     return;
   }
 
-  let initialNewName = newName;
+  const initialNewName = newName;
   let newNameCounter = 2;
 
   // make sure we have a somewhat unique name

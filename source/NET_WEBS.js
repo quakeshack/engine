@@ -235,7 +235,7 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
 
     const WebSocket = require('ws');
 
-    this.wss = new WebSocket.Server({ server: NET.server }); // FIXME: use cvar for port
+    this.wss = new WebSocket.Server({server: NET.server});
     this.wss.on('connection', this._OnConnectionServer.bind(this));
     this.newConnections = [];
   }

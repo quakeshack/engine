@@ -251,7 +251,7 @@ COM.LoadFile = function(filename) {
           Draw.EndDisc();
           return new ArrayBuffer(0);
         }
-        const search_filename = (search.filename !== '' ? search.filename + '/' : '')
+        const search_filename = (search.filename !== '' ? search.filename + '/' : '');
         xhr.open('GET', 'data/' + search_filename + 'pak' + j + '.pak', false);
         xhr.setRequestHeader('Range', 'bytes=' + file.filepos + '-' + (file.filepos + file.filelen - 1));
         xhr.send();

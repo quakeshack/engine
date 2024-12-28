@@ -109,7 +109,7 @@ Sys = class Sys {
 
     const basepath = COM.GetParm('-basepath');
 
-    console.log('basepath', basepath)
+    console.log('basepath', basepath);
 
     if (basepath) {
       app.use(basepath, express.static(path.join(__dirname + '/..', 'public')));
@@ -125,9 +125,9 @@ Sys = class Sys {
     const port = COM.GetParm('-port') || 3000;
 
     server.listen(port, () => {
-        Sys.Print(`Webserver listening on port ${port}\n`);
+      Sys.Print(`Webserver listening on port ${port}\n`);
 
-        NET.server = server;
+      NET.server = server;
     });
   }
 };
