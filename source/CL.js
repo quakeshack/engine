@@ -436,7 +436,7 @@ CL.SendMove = function() {
   }
   if (NET.SendUnreliableMessage(CL.cls.netcon, buf) === -1) {
     Con.Print('CL.SendMove: lost server connection\n');
-    CL.Disconnect();
+    Host.Error('lost server connection');
   }
 };
 

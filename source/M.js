@@ -13,6 +13,8 @@ M.state =
   help: 8,
   quit: 9,
 
+  alert: 10,
+
   value: 0,
 };
 
@@ -865,6 +867,33 @@ M.Menu_Quit_f = function() {
   M.msgNumber = Math.floor(Math.random() * M.quitMessage.length);
 };
 
+M.Alert = function(title, message) {
+  if (M.state.value === M.state.alert) {
+    return;
+  }
+  M.wasInMenus = (Key.dest.value === Key.dest.menu);
+  Key.dest.value = Key.dest.menu;
+  M.state.value = M.state.alert;
+  M.entersound = true; // TODO: have a different sound
+  M.alertMessage = {title, message};
+}
+
+M.Alert_Draw = function() {
+  const {title, message} = M.alertMessage;
+  M.DrawTextBox(48, 52, 34, 11);
+  M.Print(64, 68, title.substring(0, 32));
+  M.Print(64, 76, '\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37');
+  M.Print(64, 100, message.substring(0, 32));
+  M.Print(64, 108, message.substring(32, 32+32));
+  M.Print(64, 116, message.substring(32+32, 32+32+32));
+  M.Print(64, 132, 'Press any key to continue.');
+};
+
+M.Alert_Key = function(k) {
+  Key.dest.value = Key.dest.game;
+  M.state.value = M.state.none;
+};
+
 M.Quit_Draw = function() {
   if (M.wasInMenus === true) {
     M.state.value = M.quit_prevstate;
@@ -1024,6 +1053,10 @@ M.Draw = function() {
       break;
     case M.state.quit:
       M.Quit_Draw();
+      break;
+    case M.state.alert:
+      M.Alert_Draw();
+      break;
   }
   if (M.entersound === true) {
     S.LocalSound(M.sfx_menu2);
@@ -1059,5 +1092,9 @@ M.Keydown = function(key) {
       return;
     case M.state.quit:
       M.Quit_Key(key);
+      return;
+    case M.state.alert:
+      M.Alert_Key(key);
+      return;
   }
 };
