@@ -242,7 +242,13 @@ SV.CheckForNewClients = function() {
       }
     }
     if (i === SV.svs.maxclients) {
-      Sys.Error('SV.CheckForNewClients: no free clients');
+      Con.Print('SV.CheckForNewClients: Server is full\n');
+      const message = {data: new ArrayBuffer(32), cursize: 0};
+      MSG.WriteByte(message, Protocol.svc.disconnect);
+      MSG.WriteString(message, 'Server is full');
+      NET.SendUnreliableMessage(ret, message);
+      NET.Close(ret);
+      return;
     }
     SV.svs.clients[i].netconnection = ret;
     SV.ConnectClient(i);

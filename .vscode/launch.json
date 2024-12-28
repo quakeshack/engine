@@ -20,9 +20,7 @@
       ],
       "program": "${workspaceFolder}/dedicated.js",
       "args": [
-        "+developer", "1",
-        "+maxplayers", "8",
-        "+map", "dm1",
+        "+exec", "server.cfg",
       ],
     }
   ]

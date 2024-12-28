@@ -114,6 +114,7 @@ CL.Stop_f = function() {
   }
   NET.message.cursize = 0;
   MSG.WriteByte(NET.message, Protocol.svc.disconnect);
+  MSG.WriteString(NET.message, 'CL.Stop_f');
   CL.WriteDemoMessage();
   if (COM.WriteFile(CL.cls.demoname, new Uint8Array(CL.cls.demofile), CL.cls.demoofs) !== true) {
     Con.Print('ERROR: couldn\'t open.\n');
@@ -404,10 +405,8 @@ CL.BaseMove = function() {
   }
 };
 
-CL.sendmovebuf = {data: new ArrayBuffer(16), cursize: 0};
 CL.SendMove = function() {
-  const buf = CL.sendmovebuf;
-  buf.cursize = 0;
+  const buf = {data: new ArrayBuffer(16), cursize: 0};
   MSG.WriteByte(buf, Protocol.clc.move);
   MSG.WriteFloat(buf, CL.state.mtime[0]);
   MSG.WriteAngle(buf, CL.state.viewangles[0]);
