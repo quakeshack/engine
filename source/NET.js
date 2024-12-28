@@ -47,9 +47,9 @@ NET.BaseDriver = class BaseDriver {
   }
 };
 
-NET.FormatIP = function (ip, port) {
+NET.FormatIP = function(ip, port) {
   return ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;
-}
+};
 
 NET.activeSockets = [];
 NET.message = {data: new ArrayBuffer(8192), cursize: 0};

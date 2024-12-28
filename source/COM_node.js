@@ -24,7 +24,7 @@ COM.LoadFile = function(filename) {
           return new ArrayBuffer(0);
         }
 
-        const packPath = `${search.filename}Quake1Game${j}.pak`;
+        const packPath = `data/${search.filename !== '' ? search.filename + '/' : ''}pak${j}.pak`;
         const fd = fs.openSync(packPath, 'r');
 
         try {
@@ -40,8 +40,8 @@ COM.LoadFile = function(filename) {
     }
 
     // Search in the filesystem
-    if (fs.existsSync(netpath)) {
-      const buffer = fs.readFileSync(netpath);
+    if (fs.existsSync(`data/${netpath}`)) {
+      const buffer = fs.readFileSync(`data/${netpath}`);
       Sys.Print(`FindFile: ${netpath}\n`);
       return new Uint8Array(buffer).buffer;
     }
@@ -56,11 +56,11 @@ COM.LoadFile = function(filename) {
  * @return {Array<Object> | undefined} - The parsed pack file entries or undefined if the file doesn't exist.
  */
 COM.LoadPackFile = function(packfile) {
-  if (!fs.existsSync(packfile)) {
+  if (!fs.existsSync(`data/${packfile}`)) {
     return;
   }
 
-  const fd = fs.openSync(packfile, 'r');
+  const fd = fs.openSync(`data/${packfile}`, 'r');
 
   try {
     // Read and validate the pack file header

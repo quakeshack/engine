@@ -366,7 +366,10 @@ M.Save_Key = function(k) {
 // Multiplayer menu
 M.multiplayer_cursor = 0;
 M.multiplayer_cursor_table = [56, 72, 96, 120, 156];
-M.multiplayer_joinname = '';
+M.multiplayer_joinname = (function() {
+  const url = new URL(location.href);
+  return url.host;
+})();
 M.multiplayer_items = 5;
 
 M.Menu_MultiPlayer_f = function() {
@@ -407,10 +410,6 @@ M.MultiPlayer_Draw = function() {
     M.DrawCharacter(M.multiplayer_joinname.length <= 20 ? 80 + (M.multiplayer_joinname.length << 3) : 248, 56, 10 + ((Host.realtime * 4.0) & 1));
   } else if (M.multiplayer_cursor === 1) {
     M.DrawCharacter(168 + (M.multiplayer_myname.length << 3), 72, 10 + ((Host.realtime * 4.0) & 1));
-  }
-
-  if (WEBS.available !== true) {
-    M.PrintWhite(52, 172, 'No Communications Available');
   }
 };
 
@@ -459,16 +458,9 @@ M.MultiPlayer_Key = function(k) {
       switch (M.multiplayer_cursor) {
         case 0:
           S.LocalSound(M.sfx_menu2);
-          if (WEBS.available !== true) {
-            return;
-          }
           Key.dest.value = Key.dest.game;
           M.state.value = M.state.none;
-          Cmd.text += 'connect "';
-          if (M.multiplayer_joinname.substring(0, 5) !== 'ws://') {
-            Cmd.text += 'ws://';
-          }
-          Cmd.text += M.multiplayer_joinname + '"\n';
+          Cmd.text += 'connect "' + M.multiplayer_joinname + '"\n';
           return;
         case 2:
           S.LocalSound(M.sfx_menu3);

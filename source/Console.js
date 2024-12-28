@@ -3,6 +3,7 @@ Con = {};
 Con.backscroll = 0;
 Con.current = 0;
 Con.text = [];
+Con.captureBuffer = null;
 
 Con.ToggleConsole_f = function() {
   SCR.EndLoadingPlaque();
@@ -59,6 +60,16 @@ Con.Init = function() {
   Cmd.AddCommand('clear', Con.Clear_f);
 };
 
+Con.StartCapture = function() {
+  Con.captureBuffer = [];
+};
+
+Con.StopCapture = function() {
+  const data = Con.captureBuffer.join('\n') + '\n';
+  Con.captureBuffer = null;
+  return data;
+};
+
 Con.Print = function(msg) {
   if (Con.debuglog === true) {
     let data = COM.LoadTextFile('qconsole.log');
@@ -87,7 +98,11 @@ Con.Print = function(msg) {
       Con.text[Con.current] = {text: '', time: Host.realtime};
     }
     if (msg.charCodeAt(i) === 10) {
-      console.info(Con.text[Con.current].text);
+      const line = Con.text[Con.current].text;
+      if (Con.captureBuffer) {
+        Con.captureBuffer.push(line);
+      }
+      console.info(line);
       if (Con.text.length >= 1024) {
         Con.text = Con.text.slice(-512);
         Con.current = Con.text.length;
@@ -100,12 +115,8 @@ Con.Print = function(msg) {
   }
 };
 
-Con.DPrint = function(msg) {
-  // if (Host.developer.value !== 0) {
-  //   Con.Print(msg);
-  // }
-
-  console.debug(msg);
+Con.DPrint = function(msg, ...payload) {
+  console.debug(msg, ...payload);
 };
 
 Con.DrawInput = function() {
@@ -175,27 +186,3 @@ Con.DrawConsole = function(lines) {
   }
   Con.DrawInput();
 };
-
-// const Console = new Proxy({}, {
-//   set(t, prop, val) {
-//     if (Cmd.HasCommand(prop)) {
-//       return false;
-//     }
-
-//     return Cvar.Set(prop, new String(val));
-//   },
-
-//   get(t, prop) {
-//     if (Cmd.HasCommand(prop)) {
-//       return undefined;
-//     }
-
-//     const cvar = Cvar.FindVar(prop);
-
-//     if (cvar === undefined) {
-//       return undefined;
-//     }
-
-//     return cvar.string;
-//   }
-// });

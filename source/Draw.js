@@ -40,7 +40,7 @@ Draw.Init = function() {
   Draw.conback.width = 320;
   Draw.conback.height = 200;
   Draw.conback.data = new Uint8Array(cb, 8, 64000);
-  const ver = '1.09';
+  const ver = Def.version;
   for (i = 0; i < ver.length; ++i) {
     Draw.CharToConback(ver.charCodeAt(i), 59829 - ((ver.length - i) << 3), 186);
   }

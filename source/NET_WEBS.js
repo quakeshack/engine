@@ -11,19 +11,19 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
   Connect(host) {
     // append ws if there’s none mention
     if (!/^wss?:\/\//.test(host)) {
-      host = (location.protocol === 'https' ? 'wss' : 'ws') + '://' + host;
+      host = (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + host;
     }
 
     const url = new URL(host);
 
     if (!['wss:', 'ws:'].includes(url.protocol)) {
-      Con.Print('WEBS.Connect: can only conect to a WebSocket server');
+      Con.Print('WEBS.Connect: can only connect to a WebSocket server');
       return null;
     }
 
     // set a default port
     if (!url.port) {
-      url.port = '8080';
+      url.port = (new URL(location.href)).port;
     }
 
     // we can open a QSocket
@@ -53,6 +53,7 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
     sock.driverdata.qsocket = sock;
 
     sock.disconnected = false; // we silently assume a connection
+    sock.disconnecting = false;
 
     return sock;
   }
@@ -63,15 +64,14 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
   }
 
   GetMessage(qsocket) {
-    // // this is our safeguard against dead connections
-    // // FIXME: we could implement this in a different way making it reconnect and seamlessly continue
-    // if ([WebSocket.CLOSING, WebSocket.CLOSED].includes(qsocket.driverdata.readyState)) {
-    //   Con.DPrint(`WebSocketDriver.GetMessage: connection died (readyState = ${qsocket.driverdata.readyState})`);
-    //   return -1;
-    // }
-
     // check if we have collected new data
     if (qsocket.receiveMessage.length === 0) {
+      // finished message buffer draining due to a disconnect
+      if (qsocket.disconnecting) {
+        qsocket.disconnecting = false;
+        qsocket.disconnected = true;
+      }
+
       return 0;
     }
 
@@ -89,21 +89,18 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
     return ret;
   }
 
-  _SendRawMessage(qsocket, data) {
-    // push the message onto the sendMessage buffer
-    qsocket.sendMessage.push(data);
-
+  _FlushSendBuffer(qsocket) {
     switch (qsocket.driverdata.readyState) {
-      case 0:
-      // case WebSocket.CONNECTING: // still connecting // FIXME: WebSocket declaration
-        return;
-
       case 2:
       case 3:
       // case WebSocket.CLOSING: // FIXME: WebSocket declaration
       // case WebSocket.CLOSED: // FIXME: WebSocket declaration
-        Con.DPrint(`WebSocketDriver._SendMessage: connection died (readyState = ${qsocket.driverdata.readyState})`);
-        return -1;
+        Con.DPrint(`WebSocketDriver._FlushSendBuffer: connection already died (readyState = ${qsocket.driverdata.readyState})`);
+        return false;
+
+      case 0:
+      // case WebSocket.CONNECTING: // still connecting // FIXME: WebSocket declaration
+        return true;
     }
 
     while (qsocket.sendMessage.length > 0) {
@@ -111,6 +108,19 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
 
       qsocket.driverdata.send(message);
     }
+
+    return true;
+  }
+
+  _SendRawMessage(qsocket, data) {
+    // push the message onto the sendMessage buffer
+    qsocket.sendMessage.push(data);
+
+    // try sending all out, don’t wait for an immediate reaction
+    this._FlushSendBuffer(qsocket);
+
+    // we always assume it worked
+    return 1;
   }
 
   SendMessage(qsocket, data) {
@@ -135,6 +145,7 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
 
   Close(qsocket) {
     if (this.CanSendMessage(qsocket)) {
+      this._FlushSendBuffer(qsocket); // make sure to send everything queued up out
       qsocket.driverdata.close(1000);
     }
 
@@ -157,13 +168,11 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
   }
 
   _OnOpenClient() {
-    // FIXME: no longer needed, we buffer everything anyway
-    this.qsocket.disconnected = false;
   }
 
   _OnCloseClient() {
-    Con.Print(`WebSocketDriver._OnCloseClient: connection closed.\n`)
-    // this.qsocket.disconnected = true; // FIXME: make it a close pending so we can drain the message buffer
+    Con.Print(`WebSocketDriver._OnCloseClient: connection closed.\n`);
+    this.qsocket.disconnecting = true; // mark it as disconnecting, so that we can peacefully process any buffered messages
   }
 
   _OnConnectionServer(ws, req) {
@@ -173,14 +182,14 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
 
     if (!sock) {
       Con.Print(`WebSocketDriver._OnConnectionServer: failed to allocate new socket, dropping client\n`);
-      // FIXME: send a proper good bye to the client
+      // TODO: send a proper good bye to the client?
       ws.close();
       return;
     }
 
     sock.driver = this.driverlevel;
     sock.driverdata = ws;
-    sock.address = NET.FormatIP(req.socket.remoteAddress, req.socket.remotePort);
+    sock.address = NET.FormatIP((req.headers['x-forwarded-for'] || req.socket.remoteAddress), req.socket.remotePort);
 
     // these event handlers will feed into the message buffer structures
     sock.receiveMessage = [];
@@ -189,8 +198,13 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
     sock.sendMessageLength = null;
     sock.disconnected = false;
 
-    ws.on('disconnect', () => {
+    ws.on('close', () => {
       Con.DPrint(`WebSocketDriver._OnConnectionServer.disconnect: client disconnected\n`);
+      sock.disconnected = true;
+    });
+
+    ws.on('error', () => {
+      Con.DPrint(`WebSocketDriver._OnConnectionServer.disconnect: client errored out\n`);
       sock.disconnected = true;
     });
 
@@ -221,7 +235,7 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
 
     const WebSocket = require('ws');
 
-    this.wss = new WebSocket.Server({port: 8080}); // FIXME: use cvar for port
+    this.wss = new WebSocket.Server({ server: NET.server }); // FIXME: use cvar for port
     this.wss.on('connection', this._OnConnectionServer.bind(this));
     this.newConnections = [];
   }

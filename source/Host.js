@@ -3,7 +3,7 @@ Host = {};
 Host.framecount = 0;
 
 Host.EndGame = function(message) {
-  Con.DPrint('Host.EndGame: ' + message + '\n');
+  Con.Print('Host.EndGame: ' + message + '\n');
   if (CL.cls.demonum !== -1) {
     CL.NextDemo();
   } else {
@@ -43,6 +43,8 @@ Host.FindMaxClients = function() {
       message: {data: new ArrayBuffer(8000), cursize: 0, allowoverflow: true},
       colors: 0,
       old_frags: 0,
+      last_ping_update: 0,
+      netconnection: null,
     });
   }
   Cvar.SetValue('deathmatch', 0);
@@ -72,7 +74,7 @@ Host.InitLocal = function(dedicated) {
   Host.FindMaxClients();
 };
 
-Host.ClientPrint = function(string) {
+Host.ClientPrint = function(string) { // FIXME: Host.client
   MSG.WriteByte(Host.client.message, Protocol.svc.print);
   MSG.WriteString(Host.client.message, string);
 };
@@ -89,11 +91,11 @@ Host.BroadcastPrint = function(string) {
   }
 };
 
-Host.DropClient = function(crash) {
-  let client = Host.client;
+Host.DropClient = function(client, crash, reason) {
   if (crash !== true) {
     if (NET.CanSendMessage(client.netconnection) === true) {
       MSG.WriteByte(client.message, Protocol.svc.disconnect);
+      MSG.WriteString(client.message, reason);
       NET.SendMessage(client.netconnection, client.message);
     }
     if ((client.edict != null) && (client.spawned === true)) {
@@ -116,6 +118,7 @@ Host.DropClient = function(crash) {
     if (client.active !== true) {
       continue;
     }
+    // FIXME: consolidate into a single message
     MSG.WriteByte(client.message, Protocol.svc.updatename);
     MSG.WriteByte(client.message, num);
     MSG.WriteByte(client.message, 0);
@@ -125,6 +128,9 @@ Host.DropClient = function(crash) {
     MSG.WriteByte(client.message, Protocol.svc.updatecolors);
     MSG.WriteByte(client.message, num);
     MSG.WriteByte(client.message, 0);
+    MSG.WriteByte(client.message, Protocol.svc.updatepings);
+    MSG.WriteByte(client.message, num);
+    MSG.WriteShort(client.message, 0);
   }
 };
 
@@ -163,9 +169,9 @@ Host.ShutdownServer = function(crash) {
     Con.Print('Host.ShutdownServer: NET.SendToAll failed for ' + count + ' clients\n');
   }
   for (i = 0; i < SV.svs.maxclients; ++i) {
-    Host.client = SV.svs.clients[i];
-    if (Host.client.active === true) {
-      Host.DropClient(crash);
+    const client = SV.svs.clients[i];
+    if (client.active) {
+      Host.DropClient(client, crash, 'Server shutting down');
     }
   }
 };
@@ -173,6 +179,11 @@ Host.ShutdownServer = function(crash) {
 Host.WriteConfiguration = function() {
   COM.WriteTextFile('config.cfg', (!Host.dedicated.value ? Key.WriteBindings() : '') + Cvar.WriteVariables());
 };
+
+Host.WriteConfiguration_f = function() {
+  Con.Print('Writing configuration\n');
+  Host.WriteConfiguration();
+}
 
 Host.ServerFrame = function() {
   PR.globals_float[PR.globalvars.frametime] = Host.frametime;
@@ -323,7 +334,6 @@ Host.Init = function(dedicated = false) {
   Mod.Init();
   NET.Init();
   SV.Init();
-  Con.Print(Def.timedate);
 
   if (!dedicated) {
     VID.Init();
@@ -341,7 +351,8 @@ Host.Init = function(dedicated = false) {
     R.Init();
   }
 
-  Cmd.text = 'exec quake.rc\n' + Cmd.text;
+  Cmd.text = 'exec better-quake.rc\n' + Cmd.text;
+
   Host.initialized = true;
   Sys.Print('========Quake Initialized=========\n');
 
@@ -400,13 +411,13 @@ Host.Status_f = function() {
     print = Host.ClientPrint;
   }
   print('host:    ' + NET.hostname.string + '\n');
-  print('version: 1.09\n');
+  print('version: ' + Def.version + '\n');
   print('map:     ' + PR.GetString(PR.globals_int[PR.globalvars.mapname]) + '\n');
   print('players: ' + NET.activeconnections + ' active (' + SV.svs.maxclients + ' max)\n\n');
-  let i; let client; let str; let frags; let hours; let minutes; let seconds;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  let client; let str; let frags; let hours; let minutes; let seconds;
+  for (let i = 0; i < SV.svs.maxclients; ++i) {
     client = SV.svs.clients[i];
-    if (client.active !== true) {
+    if (!client.active) {
       continue;
     }
     frags = client.edict.v_float[PR.entvars.frags].toFixed(0);
@@ -588,8 +599,19 @@ Host.Changelevel_f = function() {
     Con.Print('Only the server may changelevel\n');
     return;
   }
+
+  const mapname = Cmd.argv[1];
+
+  if (!SV.HasMap(mapname)) {
+    Con.Print(`No such map: ${mapname}\n`)
+    return;
+  }
+
+  if (SV.svs.maxclients > 1) {
+    Host.BroadcastPrint(`Changing level to ${mapname}!\n`);
+  }
   SV.SaveSpawnparms();
-  SV.SpawnServer(Cmd.argv[1]);
+  SV.SpawnServer(mapname);
 };
 
 Host.Restart_f = function() {
@@ -619,7 +641,14 @@ Host.Connect_f = function() {
     CL.StopPlayback();
     CL.Disconnect();
   }
-  CL.EstablishConnection(Cmd.argv[1]);
+
+  if (Cmd.argv[1] === 'self') {
+    const url = new URL(location.href);
+    CL.EstablishConnection(url.host + url.pathname);
+  } else {
+    CL.EstablishConnection(Cmd.argv[1]);
+  }
+
   CL.cls.signon = 0;
 };
 
@@ -856,11 +885,14 @@ Host.Name_f = function() {
   }
 
   let newName;
+
   if (Cmd.argv.length === 2) {
     newName = Cmd.argv[1].substring(0, 15);
   } else {
     newName = Cmd.args.substring(0, 15);
   }
+
+  newName = newName.trim();
 
   if (!Host.dedicated.value && Cmd.client !== true) {
     Cvar.Set('_cl_name', newName);
@@ -870,10 +902,19 @@ Host.Name_f = function() {
     return;
   }
 
+  let initialNewName = newName;
+  let newNameCounter = 2;
+
+  // make sure we have a somewhat unique name
+  while (SV.FindClientByName(newName)) {
+    newName = `${initialNewName}${newNameCounter++}`;
+  }
+
   const name = SV.GetClientName(Host.client);
   if ((name.length !== 0) && (name !== 'unconnected') && (name !== newName)) {
     Con.Print(name + ' renamed to ' + newName + '\n');
   }
+
   SV.SetClientName(Host.client, newName);
   const msg = SV.server.reliable_datagram;
   MSG.WriteByte(msg, Protocol.svc.updatename);
@@ -882,8 +923,7 @@ Host.Name_f = function() {
 };
 
 Host.Version_f = function() {
-  Con.Print('Version 1.09\n');
-  Con.Print(Def.timedate);
+  Con.Print('Version ' + Def.version + '\n');
 };
 
 Host.Say = function(teamonly) {
@@ -1127,7 +1167,7 @@ Host.Begin_f = function() {
   Host.client.spawned = true;
 };
 
-Host.Kick_f = function() {
+Host.Kick_f = function() { // FIXME: Host.client
   if (Cmd.client !== true) {
     if (SV.server.active !== true) {
       Cmd.ForwardToServer();
@@ -1172,7 +1212,11 @@ Host.Kick_f = function() {
   }
   let who;
   if (Cmd.client !== true) {
-    who = CL.name.string;
+    if (Host.dedicated.value) {
+      who = NET.hostname.string;
+    } else {
+      who = CL.name.string;
+    }
   } else {
     if (Host.client === save) {
       return;
@@ -1183,6 +1227,7 @@ Host.Kick_f = function() {
   if (Cmd.argv.length >= 3) {
     message = COM.Parse(Cmd.args);
   }
+  let dropReason = 'Kicked by ' + who;
   if (message != null) {
     let p = 0;
     if (byNumber === true) {
@@ -1199,11 +1244,9 @@ Host.Kick_f = function() {
         break;
       }
     }
-    Host.ClientPrint('Kicked by ' + who + ': ' + message.substring(p) + '\n');
-  } else {
-    Host.ClientPrint('Kicked by ' + who + '\n');
+    dropReason = 'Kicked by ' + who + ': ' + message.substring(p);
   }
-  Host.DropClient();
+  Host.DropClient(Host.client, false, dropReason);
   Host.client = save;
 };
 
@@ -1470,4 +1513,5 @@ Host.InitCommands = function() {
   Cmd.AddCommand('viewnext', Host.Viewnext_f);
   Cmd.AddCommand('viewprev', Host.Viewprev_f);
   Cmd.AddCommand('mcache', Mod.Print);
+  Cmd.AddCommand('writeconfig', Host.WriteConfiguration_f);
 };

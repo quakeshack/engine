@@ -138,7 +138,7 @@ Mod.LoadModel = function(mod, crash) {
     if (crash === true) {
       Sys.Error('Mod.LoadModel: ' + mod.name + ' not found');
     }
-    return;
+    return null;
   }
   Mod.loadmodel = mod;
   mod.needload = false;

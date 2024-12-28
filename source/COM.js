@@ -83,6 +83,19 @@ COM.CheckParm = function(parm) {
       return i;
     }
   }
+
+  return null;
+};
+
+COM.GetParm = function(parm) {
+  let i;
+  for (i = 1; i < COM.argv.length; ++i) {
+    if (COM.argv[i] === parm) {
+      return COM.argv[i + 1] || null;
+    }
+  }
+
+  return null;
 };
 
 COM.CheckRegistered = function() {
@@ -178,7 +191,7 @@ COM.Path_f = function() {
   for (i = COM.searchpaths.length - 1; i >= 0; --i) {
     s = COM.searchpaths[i];
     for (j = s.pack.length - 1; j >= 0; --j) {
-      Con.Print(s.filename + 'Quake1Game' + j + '.pak (' + s.pack[j].length + ' files)\n');
+      Con.Print(s.filename + 'pak' + j + '.pak (' + s.pack[j].length + ' files)\n');
     }
     Con.Print(s.filename + '\n');
   }
@@ -238,18 +251,19 @@ COM.LoadFile = function(filename) {
           Draw.EndDisc();
           return new ArrayBuffer(0);
         }
-        xhr.open('GET', search.filename + 'Quake1Game' + j + '.pak', false);
+        const search_filename = (search.filename !== '' ? search.filename + '/' : '')
+        xhr.open('GET', 'data/' + search_filename + 'pak' + j + '.pak', false);
         xhr.setRequestHeader('Range', 'bytes=' + file.filepos + '-' + (file.filepos + file.filelen - 1));
         xhr.send();
         if ((xhr.status >= 200) && (xhr.status <= 299) && (xhr.responseText.length === file.filelen)) {
-          Sys.Print('PackFile: ' + search.filename + 'Quake1Game' + j + '.pak : ' + filename + '\n');
+          Sys.Print('PackFile: ' + search_filename + 'pak' + j + '.pak : ' + filename + '\n');
           Draw.EndDisc();
           return Q.strmem(xhr.responseText);
         }
         break;
       }
     }
-    xhr.open('GET', netpath, false);
+    xhr.open('GET', 'data/' + netpath, false);
     xhr.send();
     if ((xhr.status >= 200) && (xhr.status <= 299)) {
       Sys.Print('FindFile: ' + netpath + '\n');
@@ -280,7 +294,7 @@ COM.LoadTextFile = function(filename) {
 COM.LoadPackFile = function(packfile) {
   const xhr = new XMLHttpRequest();
   xhr.overrideMimeType('text/plain; charset=x-user-defined');
-  xhr.open('GET', packfile, false);
+  xhr.open('GET', 'data/' + packfile, false);
   xhr.setRequestHeader('Range', 'bytes=0-11');
   xhr.send();
   if ((xhr.status <= 199) || (xhr.status >= 300) || (xhr.responseText.length !== 12)) {
@@ -298,7 +312,7 @@ COM.LoadPackFile = function(packfile) {
   }
   const pack = [];
   if (numpackfiles !== 0) {
-    xhr.open('GET', packfile, false);
+    xhr.open('GET', 'data/' + packfile, false);
     xhr.setRequestHeader('Range', 'bytes=' + dirofs + '-' + (dirofs + dirlen - 1));
     xhr.send();
     if ((xhr.status <= 199) || (xhr.status >= 300) || (xhr.responseText.length !== dirlen)) {
@@ -325,7 +339,7 @@ COM.AddGameDirectory = function(dir) {
   const search = {filename: dir, pack: []};
   let pak; let i = 0;
   for (;;) {
-    pak = COM.LoadPackFile(dir + 'Quake1Game' + i + '.pak');
+    pak = COM.LoadPackFile((dir !== '' ? dir + '/' : '') + 'pak' + i + '.pak');
     if (pak == null) {
       break;
     }
@@ -345,7 +359,7 @@ COM.InitFilesystem = function() {
   if (search != null) {
     COM.AddGameDirectory(search);
   } else {
-    COM.AddGameDirectory('');
+    COM.AddGameDirectory('id1');
   }
 
   if (COM.rogue === true) {

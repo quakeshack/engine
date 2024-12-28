@@ -66,6 +66,7 @@ SV.Init = function() {
   SV.idealpitchscale = Cvar.RegisterVariable('sv_idealpitchscale', '0.8');
   SV.aim = Cvar.RegisterVariable('sv_aim', '0.93');
   SV.nostep = Cvar.RegisterVariable('sv_nostep', '0');
+  SV.rcon_password = Cvar.RegisterVariable('sv_rcon_password', '', true, true);
 
   SV.nop = {data: new ArrayBuffer(4), cursize: 1};
   (new Uint8Array(SV.nop.data))[0] = Protocol.svc.nop;
@@ -155,7 +156,7 @@ SV.StartSound = function(entity, channel, sample, volume, attenuation) {
 SV.SendServerinfo = function(client) {
   const message = client.message;
   MSG.WriteByte(message, Protocol.svc.print);
-  MSG.WriteString(message, '\2\nVERSION 1.09 SERVER (' + PR.crc + ' CRC)');
+  MSG.WriteString(message, '\2\nVERSION ' + Def.version + ' SERVER (' + PR.crc + ' CRC)');
   MSG.WriteByte(message, Protocol.svc.serverinfo);
   MSG.WriteLong(message, Protocol.version);
   MSG.WriteByte(message, SV.svs.maxclients);
@@ -527,19 +528,38 @@ SV.WriteClientdataToMessage = function(ent, msg) {
 };
 
 SV.clientdatagram = {data: new ArrayBuffer(1024), cursize: 0};
-SV.SendClientDatagram = function() {
+SV.SendClientDatagram = function() { // FIXME: Host.client
   const client = Host.client;
   const msg = SV.clientdatagram;
   msg.cursize = 0;
   MSG.WriteByte(msg, Protocol.svc.time);
   MSG.WriteFloat(msg, SV.server.time);
+
+  // Send ping times to all clients every second
+  if (Host.realtime - client.last_ping_update >= 1) {
+    for (let i = 0; i < SV.svs.clients.length; i++) {
+      const pingClient = SV.svs.clients[i];
+
+      if (!pingClient.active) {
+        continue;
+      }
+
+      const ping = Math.round((pingClient.ping_times.reduce((sum, elem) => sum + elem) / pingClient.ping_times.length) * 1000);
+      MSG.WriteByte(msg, Protocol.svc.updatepings);
+      MSG.WriteByte(msg, i);
+      MSG.WriteShort(msg, ping);
+    }
+
+    client.last_ping_update = Host.realtime;
+  }
+
   SV.WriteClientdataToMessage(client.edict, msg);
   SV.WriteEntitiesToClient(client.edict, msg);
   if ((msg.cursize + SV.server.datagram.cursize) < msg.data.byteLength) {
     SZ.Write(msg, new Uint8Array(SV.server.datagram.data), SV.server.datagram.cursize);
   }
   if (NET.SendUnreliableMessage(client.netconnection, msg) === -1) {
-    Host.DropClient(true);
+    Host.DropClient(client, true, 'Connectivity issues');
     return;
   }
   return true;
@@ -581,7 +601,7 @@ SV.SendClientMessages = function() {
   SV.UpdateToReliableMessages();
   let i; let client;
   for (i = 0; i < SV.svs.maxclients; ++i) {
-    Host.client = client = SV.svs.clients[i];
+    Host.client = client = SV.svs.clients[i]; // FIXME: Host.client
     if (client.active !== true) {
       continue;
     }
@@ -592,27 +612,27 @@ SV.SendClientMessages = function() {
     } else if (client.sendsignon !== true) {
       if ((Host.realtime - client.last_message) > 5.0) {
         if (NET.SendUnreliableMessage(client.netconnection, SV.nop) === -1) {
-          Host.DropClient(true);
+          Host.DropClient(client, true, 'Connectivity issues');
         }
         client.last_message = Host.realtime;
       }
       continue;
     }
     if (client.message.overflowed === true) {
-      Host.DropClient(true);
+      Host.DropClient(client, true, 'Connectivity issues, too many messages');
       client.message.overflowed = false;
       continue;
     }
     if (client.dropasap === true) {
       if (NET.CanSendMessage(client.netconnection) === true) {
-        Host.DropClient();
+        Host.DropClient(client, false, 'Connectivity issues, ASAP drop requested');
       }
     } else if (client.message.cursize !== 0) {
       if (NET.CanSendMessage(client.netconnection) !== true) {
         continue;
       }
       if (NET.SendMessage(client.netconnection, client.message) === -1) {
-        Host.DropClient(true);
+        Host.DropClient(client, true, 'Connectivity issues, failed to send message');
       }
       client.message.cursize = 0;
       client.last_message = Host.realtime;
@@ -696,6 +716,10 @@ SV.SaveSpawnparms = function() {
   }
 };
 
+SV.HasMap = function(mapname) {
+  return Mod.ForName('maps/' + mapname + '.bsp') > 0;
+};
+
 SV.SpawnServer = function(server) {
   let i;
 
@@ -712,7 +736,9 @@ SV.SpawnServer = function(server) {
 
   if (SV.server.active === true) {
     NET.SendToAll(SV.reconnect);
-    Cmd.ExecuteString('reconnect\n');
+    if (!Host.dedicated.value) {
+      Cmd.ExecuteString('reconnect\n');
+    }
   }
 
   if (Host.coop.value !== 0) {
@@ -1984,8 +2010,7 @@ SV.ClientThink = function() {
   }
 };
 
-SV.ReadClientMove = function() {
-  const client = Host.client;
+SV.ReadClientMove = function(client) {
   client.ping_times[client.num_pings++ & 15] = SV.server.time - MSG.ReadFloat();
   client.edict.v_float[PR.entvars.v_angle] = MSG.ReadAngle();
   client.edict.v_float[PR.entvars.v_angle1] = MSG.ReadAngle();
@@ -2002,9 +2027,33 @@ SV.ReadClientMove = function() {
   }
 };
 
-SV.ReadClientMessage = function() {
-  let ret; let cmd; let s; let i;
-  const cmds = [
+SV.HandleRconRequest = function(client) {
+  const message = client.message;
+
+  const password = MSG.ReadString();
+  const cmd = MSG.ReadString();
+
+  const rconPassword = SV.rcon_password.string;
+
+  if (rconPassword === '' || rconPassword !== password) {
+    MSG.WriteByte(message, Protocol.svc.print);
+    MSG.WriteString(message, 'Wrong rcon password!');
+    Con.Print(`SV.HandleRconRequest: rcon attempted by ${SV.GetClientName(client)} from ${client.netconnection.address}: ${cmd}\n`);
+    return;
+  }
+
+  Con.Print(`SV.HandleRconRequest: rcon by ${SV.GetClientName(client)} from ${client.netconnection.address}: ${cmd}\n`);
+
+  Con.StartCapture();
+  Cmd.ExecuteString(cmd);
+  const response = Con.StopCapture();
+
+  MSG.WriteByte(message, Protocol.svc.print);
+  MSG.WriteString(message, response);
+};
+
+SV.ReadClientMessage = function (client) {
+  const commands = [
     'status',
     'god',
     'notarget',
@@ -2025,76 +2074,101 @@ SV.ReadClientMessage = function() {
     'give',
     'ban',
   ];
-  do {
-    ret = NET.GetMessage(Host.client.netconnection);
+
+  while (true) {
+    const ret = NET.GetMessage(client.netconnection);
+
     if (ret === -1) {
       Sys.Print('SV.ReadClientMessage: NET.GetMessage failed\n');
-      return;
+      return false;
     }
+
     if (ret === 0) {
       return true;
     }
+
     MSG.BeginReading();
-    for (;;) {
-      if (Host.client.active !== true) {
-        return;
+
+    while (true) {
+      if (!client.active) {
+        return false;
       }
-      if (MSG.badread === true) {
+
+      if (MSG.badread) {
         Sys.Print('SV.ReadClientMessage: badread\n');
-        return;
+        return false;
       }
-      cmd = MSG.ReadChar();
+
+      const cmd = MSG.ReadChar();
+
       if (cmd === -1) {
-        ret = 1;
-        break;
+        break; // End of message
       }
-      if (cmd === Protocol.clc.nop) {
-        continue;
-      }
-      if (cmd === Protocol.clc.stringcmd) {
-        s = MSG.ReadString();
-        for (i = 0; i < cmds.length; ++i) {
-          if (s.substring(0, cmds[i].length).toLowerCase() !== cmds[i]) {
-            continue;
+
+      switch (cmd) {
+        case Protocol.clc.nop:
+          // No operation, continue reading
+          continue;
+
+        case Protocol.clc.stringcmd: {
+          const input = MSG.ReadString();
+          const matchedCommand = commands.find((command) =>
+            input.toLowerCase().startsWith(command)
+          );
+
+          if (matchedCommand) {
+            Cmd.ExecuteString(input, true);
+          } else {
+            Con.DPrint(`${SV.GetClientName(client)} tried to ${input}`);
           }
-          Cmd.ExecuteString(s, true);
           break;
         }
-        if (i === cmds.length) {
-          Con.DPrint(SV.GetClientName(Host.client) + ' tried to ' + s);
-        }
-      } else if (cmd === Protocol.clc.disconnect) {
-        return;
-      } else if (cmd === Protocol.clc.move) {
-        SV.ReadClientMove();
-      } else {
-        Sys.Print('SV.ReadClientMessage: unknown command char\n');
-        return;
+
+        case Protocol.clc.rconcmd:
+          SV.HandleRconRequest(client);
+          break;
+
+        case Protocol.clc.disconnect:
+          return false; // Client disconnect
+
+        case Protocol.clc.move:
+          SV.ReadClientMove(client);
+          break;
+
+        default:
+          Sys.Print(`SV.ReadClientMessage: unknown command ${cmd}\n`);
+          return false;
       }
     }
-  } while (ret === 1);
+  }
 };
 
-SV.RunClients = function() {
-  let i;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
-    Host.client = SV.svs.clients[i];
-    if (Host.client.active !== true) {
+SV.RunClients = function() { // FIXME: Host.client
+  for (let i = 0; i < SV.svs.maxclients; ++i) {
+    const client = SV.svs.clients[i];
+    if (!client.active) {
       continue;
     }
-    SV.player = Host.client.edict;
-    if (SV.ReadClientMessage() !== true) {
-      Host.DropClient();
+    Host.client = client;
+    SV.player = client.edict; // FIXME: SV.player
+    if (!SV.ReadClientMessage(client)) {
+      Host.DropClient(client, false, 'Connectivity issues, failed to read message');
       continue;
     }
-    if (Host.client.spawned !== true) {
-      Host.client.cmd.forwardmove = 0.0;
-      Host.client.cmd.sidemove = 0.0;
-      Host.client.cmd.upmove = 0.0;
+    if (!client.spawned) {
+      client.cmd.forwardmove = 0.0;
+      client.cmd.sidemove = 0.0;
+      client.cmd.upmove = 0.0;
       continue;
     }
-    SV.ClientThink();
+    SV.ClientThink(); // FIXME: SV.player
   }
+};
+
+SV.FindClientByName = function(name) {
+  return SV.svs.clients
+    .filter((client) => client.active)
+    .find((client) => SV.GetClientName(client) === name);
 };
 
 // world

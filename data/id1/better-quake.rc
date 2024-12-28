@@ -1,0 +1,7 @@
+exec default.cfg
+exec client.cfg
+exec config.cfg
+
+stuffcmds
+
+connect self

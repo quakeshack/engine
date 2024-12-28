@@ -1,0 +1,16 @@
+{
+  "name": "Quake1-browser",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/lrusso/Quake1.git",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "eslint": "^9.17.0",
+    "eslint-config-google": "^0.14.0"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}

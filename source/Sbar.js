@@ -543,6 +543,7 @@ Sbar.DeathmatchOverlay = function() {
       Draw.Character(x - 8, y, 12);
     }
     Draw.String(x + 64, y, s.name);
+    Draw.String(x + 64 + 18 * 8, y, `(${s.ping.toFixed(1)} ms)`);
     y += 10;
   }
 };

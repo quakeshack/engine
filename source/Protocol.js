@@ -74,6 +74,7 @@ Protocol.svc = {
   cdtrack: 32,
   sellscreen: 33,
   cutscene: 34,
+  updatepings: 35,
 };
 
 Protocol.clc = {
@@ -81,6 +82,7 @@ Protocol.clc = {
   disconnect: 2,
   move: 3,
   stringcmd: 4,
+  rconcmd: 5,
 };
 
 Protocol.te = {

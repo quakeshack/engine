@@ -1,6 +1,10 @@
 const {argv} = require('node:process');
 const repl = require('repl');
 
+const express = require('express');
+const path = require('path');
+const http = require('http');
+
 /**
  * System class to manage initialization, quitting, and REPL functionality.
  */
@@ -14,6 +18,9 @@ Sys = class Sys {
 
     // Record the initial time
     Sys.oldtime = Date.now() * 0.001;
+
+    // Start webserver
+    Sys.StartWebserver();
 
     Sys.Print('Host.Init\n');
     Host.Init(true);
@@ -93,6 +100,33 @@ Sys = class Sys {
    */
   static FloatTime() {
     return Date.now() * 0.001 - Sys.oldtime;
+  }
+
+  static StartWebserver() {
+    const app = express();
+
+    const basepath = COM.GetParm('-basepath');
+
+    console.log('basepath', basepath)
+
+    if (basepath) {
+      app.use(basepath, express.static(path.join(__dirname + '/..', 'public')));
+      app.use(basepath + '/data', express.static(path.join(__dirname + '/..', 'data')));
+      app.use(basepath + '/source', express.static(path.join(__dirname + '/..', 'source')));
+    } else {
+      app.use(express.static(path.join(__dirname + '/..', 'public')));
+      app.use('/data', express.static(path.join(__dirname + '/..', 'data')));
+      app.use('/source', express.static(path.join(__dirname + '/..', 'source')));
+    }
+
+    const server = http.createServer(app);
+    const port = COM.GetParm('-port') || 3000;
+
+    server.listen(port, () => {
+        Sys.Print(`Webserver listening on port ${port}\n`);
+
+        NET.server = server;
+    });
   }
 };
 

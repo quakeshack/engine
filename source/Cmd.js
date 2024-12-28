@@ -183,7 +183,7 @@ Cmd.CompleteCommand = function(partial) {
   }
 };
 
-Cmd.ExecuteString = function(text, client) {
+Cmd.ExecuteString = function(text, client = false) {
   Cmd.client = client;
   Cmd.TokenizeString(text);
   if (Cmd.argv.length === 0) {

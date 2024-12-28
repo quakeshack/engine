@@ -474,46 +474,17 @@ CL.static_entities = [];
 CL.visedicts = [];
 
 CL.Rcon_f = function() {
-  if (CL.rcon_password.string.length === 0) {
+  const password = CL.rcon_password.string;
+
+  if (password === '') {
     Con.Print('You must set \'rcon_password\' before\nissuing an rcon command.\n');
     return;
   }
-  let to;
-  if ((CL.cls.state === CL.active.connected) && (CL.cls.netcon != null)) {
-    if (NET.drivers[CL.cls.netcon.driver] === WEBS) {
-      to = CL.cls.netcon.address.substring(5);
-    }
-  }
-  if (to == null) {
-    if (CL.rcon_address.string.length === 0) {
-      Con.Print('You must either be connected,\nor set the \'rcon_address\' cvar\nto issue rcon commands\n');
-      return;
-    }
-    to = CL.rcon_address.string;
-  }
-  // let pw;
-  // try {
-  //   pw = btoa('quake:' + CL.rcon_password.string);
-  // } catch (e) {
-  //   return;
-  // }
-  // let message = ''; let i;
-  // for (i = 1; i < Cmd.argv.length; ++i) {
-  //   message += Cmd.argv[i] + ' ';
-  // }
-  Con.Print('NOT IMPLEMENTED\n');
 
-  // TODO: re-write protocol for RCON
-
-  // try {
-  //   message = encodeURIComponent(message);
-  // } catch (e) {
-  //   return;
-  // }
-  // const xhr = new XMLHttpRequest();
-  // xhr.open('HEAD', 'http://' + to + '/rcon/' + message);
-  // xhr.setRequestHeader('Authorization', 'Basic ' + pw);
-  // xhr.send();
+  const args = Cmd.argv.slice(1);
+  MSG.WriteByte(CL.cls.message, Protocol.clc.rconcmd);
+  MSG.WriteString(CL.cls.message, password);
+  MSG.WriteString(CL.cls.message, args.join(' '));
 };
 
 CL.ClearState = function() {
@@ -963,7 +934,7 @@ CL.Init = function() {
   CL.m_forward = Cvar.RegisterVariable('m_forward', '1', true);
   CL.m_side = Cvar.RegisterVariable('m_side', '0.8', true);
   CL.rcon_password = Cvar.RegisterVariable('rcon_password', '');
-  CL.rcon_address = Cvar.RegisterVariable('rcon_address', '');
+  CL.rcon_address = Cvar.RegisterVariable('rcon_address', 'deprecated');
   Cmd.AddCommand('entities', CL.PrintEntities_f);
   Cmd.AddCommand('disconnect', CL.Disconnect);
   Cmd.AddCommand('record', CL.Record_f);
@@ -1011,6 +982,7 @@ CL.svc_strings = [
   'cdtrack',
   'sellscreen',
   'cutscene',
+  'updatepings',
 ];
 
 CL.EntityNum = function(num) {
@@ -1108,7 +1080,7 @@ CL.ParseServerInfo = function() {
     return;
   }
   CL.state.maxclients = MSG.ReadByte();
-  if ((CL.state.maxclients <= 0) || (CL.state.maxclients > 16)) {
+  if ((CL.state.maxclients <= 0) || (CL.state.maxclients > 8)) {
     Con.Print('Bad maxclients (' + CL.state.maxclients + ') from server\n');
     return;
   }
@@ -1119,6 +1091,7 @@ CL.ParseServerInfo = function() {
       entertime: 0.0,
       frags: 0,
       colors: 0,
+      ping: 0,
     };
   }
   CL.state.gametype = MSG.ReadByte();
@@ -1374,7 +1347,8 @@ CL.ParseServerMessage = function() {
         }
         continue;
       case Protocol.svc.disconnect:
-        Host.EndGame('Server disconnected\n');
+        Host.EndGame(`Server disconnected: ${MSG.ReadString()}`);
+        continue;
       case Protocol.svc.print:
         Con.Print(MSG.ReadString());
         continue;
@@ -1418,7 +1392,12 @@ CL.ParseServerMessage = function() {
         if (i >= CL.state.maxclients) {
           Host.Error('CL.ParseServerMessage: svc_updatename > MAX_SCOREBOARD');
         }
-        CL.state.scores[i].name = MSG.ReadString();
+        const newName = MSG.ReadString();
+        // make sure the current player is aware of name changes
+        if (CL.state.scores[i].name !== '' && newName !== '' && newName !== CL.state.scores[i].name) {
+          Con.Print(`${CL.state.scores[i].name} renamed to ${newName}\n`);
+        }
+        CL.state.scores[i].name = newName;
         continue;
       case Protocol.svc.updatefrags:
         i = MSG.ReadByte();
@@ -1433,6 +1412,13 @@ CL.ParseServerMessage = function() {
           Host.Error('CL.ParseServerMessage: svc_updatecolors > MAX_SCOREBOARD');
         }
         CL.state.scores[i].colors = MSG.ReadByte();
+        continue;
+      case Protocol.svc.updatepings:
+        i = MSG.ReadByte();
+        if (i >= CL.state.maxclients) {
+          Host.Error('CL.ParseServerMessage: svc_updatepings > MAX_SCOREBOARD');
+        }
+        CL.state.scores[i].ping = MSG.ReadShort();
         continue;
       case Protocol.svc.particle:
         R.ParseParticleEffect();
@@ -1508,7 +1494,7 @@ CL.ParseServerMessage = function() {
         Cmd.ExecuteString('help');
         continue;
     }
-    Host.Error('CL.ParseServerMessage: Illegible server message\n');
+    Host.Error(`CL.ParseServerMessage: Illegible server message (${cmd})\n`);
   }
 };
 

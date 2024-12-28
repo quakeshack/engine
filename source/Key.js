@@ -270,7 +270,7 @@ Key.Bind_f = function() {
     Con.Print('bind <key> [command] : attach a command to a key\n');
     return;
   }
-  const b = Key.StringToKeynum(Cmd.argv[1]);
+  const b = Key.StringToKeynum(Cmd.argv[1].toLowerCase());
   if (b == null) {
     Con.Print('"' + Cmd.argv[1] + '" isn\'t a valid key\n');
     return;
