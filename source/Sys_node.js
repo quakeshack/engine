@@ -1,4 +1,4 @@
-const {argv} = require('node:process');
+const {argv, stdout} = require('node:process');
 const repl = require('repl');
 
 const express = require('express');
@@ -25,27 +25,29 @@ Sys = class Sys {
     Sys.Print('Host.Init\n');
     Host.Init(true);
 
-    // Start a REPL instance
-    Sys.repl = repl.start({
-      prompt: '] ',
-      eval(command, context, filename, callback) {
-        this.clearBufferedCommand();
-        Cmd.ExecuteString(command);
-        this.displayPrompt();
-        callback();
-      },
-      completer(line) {
-        const completions = [
-          ...Cmd.functions.map((fnc) => fnc.name),
-          ...Cvar.vars.map((cvar) => cvar.name),
-        ];
+    // Start a REPL instance (if stdout is a TTY)
+    if (stdout && stdout.isTTY) {
+      Sys.repl = repl.start({
+        prompt: '] ',
+        eval(command, context, filename, callback) {
+          this.clearBufferedCommand();
+          Cmd.ExecuteString(command);
+          this.displayPrompt();
+          callback();
+        },
+        completer(line) {
+          const completions = [
+            ...Cmd.functions.map((fnc) => fnc.name),
+            ...Cvar.vars.map((cvar) => cvar.name),
+          ];
 
-        const hits = completions.filter((c) => c.startsWith(line));
-        return [hits.length ? hits : completions, line];
-      },
-    });
+          const hits = completions.filter((c) => c.startsWith(line));
+          return [hits.length ? hits : completions, line];
+        },
+      });
 
-    Sys.repl.on('exit', () => Sys.Quit());
+      Sys.repl.on('exit', () => Sys.Quit());
+    }
 
     // Set up a frame interval for the main loop
     Sys.frame = setInterval(Host.Frame, 1000.0 / 60.0);

@@ -92,12 +92,13 @@ Host.BroadcastPrint = function(string) {
 };
 
 Host.DropClient = function(client, crash, reason) {
-  if (crash !== true) {
-    if (NET.CanSendMessage(client.netconnection) === true) {
-      MSG.WriteByte(client.message, Protocol.svc.disconnect);
-      MSG.WriteString(client.message, reason);
-      NET.SendMessage(client.netconnection, client.message);
-    }
+  if (NET.CanSendMessage(client.netconnection) === true) {
+    MSG.WriteByte(client.message, Protocol.svc.disconnect);
+    MSG.WriteString(client.message, reason);
+    NET.SendMessage(client.netconnection, client.message);
+  }
+
+  if (!crash) {
     if ((client.edict != null) && (client.spawned === true)) {
       const saveSelf = PR.globals_int[PR.globalvars.self];
       PR.globals_int[PR.globalvars.self] = client.edict.num;
@@ -106,7 +107,9 @@ Host.DropClient = function(client, crash, reason) {
     }
     Sys.Print('Client ' + SV.GetClientName(client) + ' removed\n');
   }
+
   NET.Close(client.netconnection);
+
   client.netconnection = null;
   client.active = false;
   SV.SetClientName(client, '');
@@ -115,7 +118,7 @@ Host.DropClient = function(client, crash, reason) {
   let i; const num = client.num;
   for (i = 0; i < SV.svs.maxclients; ++i) {
     client = SV.svs.clients[i];
-    if (client.active !== true) {
+    if (!client.active) {
       continue;
     }
     // FIXME: consolidate into a single message
@@ -162,12 +165,12 @@ Host.ShutdownServer = function(crash) {
       break;
     }
   } while (count !== 0);
-  const buf = {data: new ArrayBuffer(4), cursize: 1};
-  (new Uint8Array(buf.data))[0] = Protocol.svc.disconnect;
-  count = NET.SendToAll(buf);
-  if (count !== 0) {
-    Con.Print('Host.ShutdownServer: NET.SendToAll failed for ' + count + ' clients\n');
-  }
+  // const buf = {data: new ArrayBuffer(4), cursize: 1};
+  // (new Uint8Array(buf.data))[0] = Protocol.svc.disconnect;
+  // count = NET.SendToAll(buf);
+  // if (count !== 0) {
+  //   Con.Print('Host.ShutdownServer: NET.SendToAll failed for ' + count + ' clients\n');
+  // }
   for (i = 0; i < SV.svs.maxclients; ++i) {
     const client = SV.svs.clients[i];
     if (client.active) {
@@ -396,6 +399,11 @@ Host.Quit_f = function() {
       return;
     }
   }
+
+  if (SV.server.active === true) {
+    Host.ShutdownServer();
+  }
+
   Sys.Quit();
 };
 

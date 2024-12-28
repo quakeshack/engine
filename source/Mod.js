@@ -127,6 +127,7 @@ Mod.FindName = function(name) {
     Mod.known[i] = {name: name, needload: true};
     return Mod.known[i];
   }
+  return null;
 };
 
 Mod.LoadModel = function(mod, crash) {

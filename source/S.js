@@ -11,16 +11,25 @@ S.listener_up = [0.0, 0.0, 0.0];
 
 S.known_sfx = [];
 
-S.HandlePlayPromise = function(fnc, promise) {
-  promise.catch((err) => Con.DPrint(`${fnc}: failed to play sound: ${err.message}`));
-};
+S.TryPlayingChannel = function (ch) {
+  if (Host.realtime - (ch.play_failed_time || 0) < 3) {
+    return;
+  }
+
+  ch.audio.play().catch((e) => {
+    Con.Print(`S.TryPlayingChannel: failed to play audio, ${e.message}, retrying at a later point`);
+    ch.play_failed_time = Host.realtime;
+  }).then(() => {
+    ch.play_failed_time = null;
+  });
+}
 
 S.Init = function() {
   Con.Print('\nSound Initialization\n');
   Cmd.AddCommand('play', S.Play);
   Cmd.AddCommand('playvol', S.PlayVol);
   Cmd.AddCommand('stopsound', S.StopAllSounds);
-  Cmd.AddCommand('soundlist', S.SoundList);
+  Cmd.AddCommand('soundlist', S.SoundList_f);
   S.nosound = Cvar.RegisterVariable('nosound', (COM.CheckParm('-nosound') != null) ? '1' : '0');
   S.volume = Cvar.RegisterVariable('volume', '0.7', true);
   S.precache = Cvar.RegisterVariable('precache', '1');
@@ -30,16 +39,34 @@ S.Init = function() {
 
   S.started = true;
 
-  // createBuffer is broken, disable Web Audio for now.
-  /* if (window.AudioContext != null))
-		S.context = new AudioContext();
-	else if (window.webkitAudioContext != null)
-		S.context = new webkitAudioContext(); */
+  S.context = new AudioContext({
+    sampleRate: 11025,
+  });
 
   let i; const ambient_sfx = ['water1', 'wind2']; let ch; let nodes;
   for (i = 0; i < ambient_sfx.length; ++i) {
     ch = {sfx: S.PrecacheSound('ambience/' + ambient_sfx[i] + '.wav'), end: 0.0, master_vol: 0.0};
     S.ambient_channels[i] = ch;
+    ch.sfx.NotifyDataAvailable = (sc) => {
+      ch.sfx.cache = sc;
+      if (S.context != null) {
+        nodes = {
+          source: S.context.createBufferSource(),
+          gain: S.context.createGain(),
+        };
+        ch.nodes = nodes;
+        nodes.source.buffer = sc.data;
+        // if (sc.loopstart) { // FIXME??
+          nodes.source.loop = true;
+          nodes.source.loopStart = sc.loopstart;
+          nodes.source.loopEnd = sc.length;
+        // }
+        nodes.source.connect(nodes.gain);
+        nodes.gain.connect(S.context.destination);
+      } else {
+        ch.audio = sc.data.cloneNode();
+      }
+    };
     if (S.LoadSound(ch.sfx) !== true) {
       continue;
     }
@@ -47,39 +74,23 @@ S.Init = function() {
       Con.Print('Sound ambience/' + ch.sfx.name + '.wav not looped\n');
       continue;
     }
-    if (S.context != null) {
-      nodes = {
-        source: S.context.createBufferSource(),
-        gain: S.context.createGainNode(),
-      };
-      ch.nodes = nodes;
-      nodes.source.buffer = ch.sfx.cache.data;
-      nodes.source.loop = true;
-      nodes.source.loopStart = ch.sfx.cache.loopstart;
-      nodes.source.loopEnd = nodes.source.buffer.length;
-      nodes.source.connect(nodes.gain);
-      nodes.gain.connect(S.context.destination);
-    } else {
-      ch.audio = ch.sfx.cache.data.cloneNode();
-    }
   }
 
   Con.sfx_talk = S.PrecacheSound('misc/talk.wav');
 };
 
 S.NoteOff = function(node) {
-  if ((node.playbackState === 1) || (node.playbackState === 2)) {
-    try {
-      node.noteOff(0.0);
-    } catch (e) {}
+  // node.noteOff(0.0);
+  try {
+    node.stop(0);
+  } catch (e) {
   }
 };
 
 S.NoteOn = function(node) {
-  if ((node.playbackState === 0) || (node.playbackState === 3)) {
-    try {
-      node.noteOn(0.0);
-    } catch (e) {}
+  try {
+  node.start();
+  } catch (e) {
   }
 };
 
@@ -195,77 +206,83 @@ S.StartSound = function(entnum, entchannel, sfx, origin, vol, attenuation) {
     return;
   }
 
+  sfx.NotifyDataAvailable = (sc) => {
+    target_chan.sfx = sfx;
+    target_chan.pos = 0.0;
+    target_chan.end = Host.realtime + sc.length;
+    let volume;
+    if (S.context != null) {
+      const nodes = {
+        source: S.context.createBufferSource(),
+        merger1: S.context.createChannelMerger(2),
+        splitter: S.context.createChannelSplitter(2),
+        gain0: S.context.createGain(),
+        gain1: S.context.createGain(),
+        merger2: S.context.createChannelMerger(2),
+      };
+      target_chan.nodes = nodes;
+      nodes.source.buffer = sc.data;
+      if (sc.loopstart) {
+        nodes.source.loop = true;
+        nodes.source.loopStart = sc.loopstart;
+        nodes.source.loopEnd = sc.length;
+      }
+      nodes.source.connect(nodes.merger1);
+      nodes.source.connect(nodes.merger1, 0, 1);
+      nodes.merger1.connect(nodes.splitter);
+      nodes.splitter.connect(nodes.gain0, 0);
+      nodes.splitter.connect(nodes.gain1, 1);
+      volume = target_chan.leftvol;
+      if (volume > 1.0) {
+        volume = 1.0;
+      }
+      nodes.gain0.gain.value = volume * S.volume.value;
+      nodes.gain0.connect(nodes.merger2, 0, 0);
+      volume = target_chan.rightvol;
+      if (volume > 1.0) {
+        volume = 1.0;
+      }
+      nodes.gain1.gain.value = volume * S.volume.value;
+      nodes.gain1.connect(nodes.merger2, 0, 1);
+      nodes.merger2.connect(S.context.destination);
+      let i; let check; let skip;
+      for (i = 0; i < S.channels.length; ++i) {
+        check = S.channels[i];
+        if (check === target_chan) {
+          continue;
+        }
+        if ((check.sfx !== sfx) || (check.pos !== 0.0)) {
+          continue;
+        }
+        skip = Math.random() * 0.1;
+        if (skip >= sc.length) {
+          S.NoteOn(nodes.source);
+          break;
+        }
+        target_chan.pos += skip;
+        target_chan.end -= skip;
+        // nodes.source.noteGrainOn(0.0, skip, nodes.source.buffer.length - skip);
+        try {
+          nodes.source.stop(nodes.source.buffer.length);
+        } catch (e) {
+        }
+        break;
+      }
+      S.NoteOn(nodes.source);
+    } else {
+      target_chan.audio = sc.data.cloneNode();
+      volume = (target_chan.leftvol + target_chan.rightvol) * 0.5;
+      if (volume > 1.0) {
+        volume = 1.0;
+      }
+      target_chan.audio.volume = volume * S.volume.value;
+      S.TryPlayingChannel(target_chan);
+    }
+  };
+
   if (S.LoadSound(sfx) !== true) {
     target_chan.sfx = null;
     return;
-  }
-
-  target_chan.sfx = sfx;
-  target_chan.pos = 0.0;
-  target_chan.end = Host.realtime + sfx.cache.length;
-  let volume;
-  if (S.context != null) {
-    const nodes = {
-      source: S.context.createBufferSource(),
-      merger1: S.context.createChannelMerger(2),
-      splitter: S.context.createChannelSplitter(2),
-      gain0: S.context.createGainNode(),
-      gain1: S.context.createGainNode(),
-      merger2: S.context.createChannelMerger(2),
-    };
-    target_chan.nodes = nodes;
-    nodes.source.buffer = sfx.cache.data;
-    if (sfx.cache.loopstart != null) {
-      nodes.source.loop = true;
-      nodes.source.loopStart = sfx.cache.loopstart;
-      nodes.source.loopEnd = nodes.source.buffer.length;
-    }
-    nodes.source.connect(nodes.merger1);
-    nodes.source.connect(nodes.merger1, 0, 1);
-    nodes.merger1.connect(nodes.splitter);
-    nodes.splitter.connect(nodes.gain0, 0);
-    nodes.splitter.connect(nodes.gain1, 1);
-    volume = target_chan.leftvol;
-    if (volume > 1.0) {
-      volume = 1.0;
-    }
-    nodes.gain0.gain.value = volume * S.volume.value;
-    nodes.gain0.connect(nodes.merger2, 0, 0);
-    volume = target_chan.rightvol;
-    if (volume > 1.0) {
-      volume = 1.0;
-    }
-    nodes.gain1.gain.value = volume * S.volume.value;
-    nodes.gain1.connect(nodes.merger2, 0, 1);
-    nodes.merger2.connect(S.context.destination);
-    let i; let check; let skip;
-    for (i = 0; i < S.channels.length; ++i) {
-      check = S.channels[i];
-      if (check === target_chan) {
-        continue;
-      }
-      if ((check.sfx !== sfx) || (check.pos !== 0.0)) {
-        continue;
-      }
-      skip = Math.random() * 0.1;
-      if (skip >= sfx.cache.length) {
-        S.NoteOn(nodes.source);
-        break;
-      }
-      target_chan.pos += skip;
-      target_chan.end -= skip;
-      nodes.source.noteGrainOn(0.0, skip, nodes.source.buffer.length - skip);
-      break;
-    }
-    S.NoteOn(nodes.source);
-  } else {
-    target_chan.audio = sfx.cache.data.cloneNode();
-    volume = (target_chan.leftvol + target_chan.rightvol) * 0.5;
-    if (volume > 1.0) {
-      volume = 1.0;
-    }
-    target_chan.audio.volume = volume * S.volume.value;
-    S.HandlePlayPromise('S.StartSound', target_chan.audio.play());
   }
 };
 
@@ -340,50 +357,53 @@ S.StaticSound = function(sfx, origin, vol, attenuation) {
   if ((S.nosound.value !== 0) || (sfx == null)) {
     return;
   }
+  sfx.NotifyDataAvailable = (sc) => {
+    if (sc.loopstart == null) {
+      Con.Print('Sound ' + sfx.name + ' not looped\n');
+      return;
+    }
+    const ss = {
+      sfx: sfx,
+      origin: [origin[0], origin[1], origin[2]],
+      master_vol: vol,
+      dist_mult: attenuation * 0.000015625,
+      end: Host.realtime + sc.length,
+      play_failed_time: null,
+    };
+    S.static_channels[S.static_channels.length] = ss;
+    if (S.context != null) {
+      const nodes = {
+        source: S.context.createBufferSource(),
+        merger1: S.context.createChannelMerger(2),
+        splitter: S.context.createChannelSplitter(2),
+        gain0: S.context.createGain(),
+        gain1: S.context.createGain(),
+        merger2: S.context.createChannelMerger(2),
+      };
+      ss.nodes = nodes;
+      nodes.source.buffer = sc.data;
+      nodes.source.loop = true;
+      nodes.source.loopStart = sc.loopstart;
+      nodes.source.loopEnd = sc.data.duration;
+      nodes.source.connect(nodes.merger1);
+      nodes.source.connect(nodes.merger1, 0, 1);
+      nodes.merger1.connect(nodes.splitter);
+      nodes.splitter.connect(nodes.gain0, 0);
+      nodes.splitter.connect(nodes.gain1, 1);
+      nodes.gain0.connect(nodes.merger2, 0, 0);
+      nodes.gain1.connect(nodes.merger2, 0, 1);
+      nodes.merger2.connect(S.context.destination);
+    } else {
+      ss.audio = sc.data.cloneNode();
+      ss.audio.pause();
+    }
+  };
   if (S.LoadSound(sfx) !== true) {
     return;
   }
-  if (sfx.cache.loopstart == null) {
-    Con.Print('Sound ' + sfx.name + ' not looped\n');
-    return;
-  }
-  const ss = {
-    sfx: sfx,
-    origin: [origin[0], origin[1], origin[2]],
-    master_vol: vol,
-    dist_mult: attenuation * 0.000015625,
-    end: Host.realtime + sfx.cache.length,
-  };
-  S.static_channels[S.static_channels.length] = ss;
-  if (S.context != null) {
-    const nodes = {
-      source: S.context.createBufferSource(),
-      merger1: S.context.createChannelMerger(2),
-      splitter: S.context.createChannelSplitter(2),
-      gain0: S.context.createGainNode(),
-      gain1: S.context.createGainNode(),
-      merger2: S.context.createChannelMerger(2),
-    };
-    ss.nodes = nodes;
-    nodes.source.buffer = sfx.cache.data;
-    nodes.source.loop = true;
-    nodes.source.loopStart = sfx.cache.loopstart;
-    nodes.source.loopEnd = nodes.source.buffer.length;
-    nodes.source.connect(nodes.merger1);
-    nodes.source.connect(nodes.merger1, 0, 1);
-    nodes.merger1.connect(nodes.splitter);
-    nodes.splitter.connect(nodes.gain0, 0);
-    nodes.splitter.connect(nodes.gain1, 1);
-    nodes.gain0.connect(nodes.merger2, 0, 0);
-    nodes.gain1.connect(nodes.merger2, 0, 1);
-    nodes.merger2.connect(S.context.destination);
-  } else {
-    ss.audio = sfx.cache.data.cloneNode();
-    ss.audio.pause();
-  }
 };
 
-S.SoundList = function() {
+S.SoundList_f = function() {
   let total = 0; let i; let sfx; let sc; let size;
   for (i = 0; i < S.known_sfx.length; ++i) {
     sfx = S.known_sfx[i];
@@ -455,7 +475,7 @@ S.UpdateAmbientSounds = function() {
       }
     }
 
-    if (ch.master_vol === 0.0) {
+    if (ch.master_vol <= 0.0) {
       if (S.context != null) {
         S.NoteOff(ch.nodes.source);
       } else {
@@ -475,7 +495,7 @@ S.UpdateAmbientSounds = function() {
       ch.audio.volume = ch.master_vol * S.volume.value;
       sc = ch.sfx.cache;
       if (ch.audio.paused === true) {
-        S.HandlePlayPromise('S.UpdateAmbientSounds', ch.audio.play());
+        S.TryPlayingChannel(ch);
         ch.end = Host.realtime + sc.length;
         continue;
       }
@@ -550,7 +570,7 @@ S.UpdateStaticSounds = function() {
 
   for (i = 0; i < S.static_channels.length; ++i) {
     ch = S.static_channels[i];
-    if ((ch.leftvol === 0.0) && (ch.rightvol === 0.0)) {
+    if ((ch.leftvol <= 0.0) && (ch.rightvol <= 0.0)) {
       continue;
     }
     sfx = ch.sfx;
@@ -568,7 +588,7 @@ S.UpdateStaticSounds = function() {
   if (S.context != null) {
     for (i = 0; i < S.static_channels.length; ++i) {
       ch = S.static_channels[i];
-      if ((ch.leftvol === 0.0) && (ch.rightvol === 0.0)) {
+      if ((ch.leftvol <= 0.0) && (ch.rightvol <= 0.0)) {
         S.NoteOff(ch.nodes.source);
         continue;
       }
@@ -589,7 +609,7 @@ S.UpdateStaticSounds = function() {
       if (volume > 1.0) {
         volume = 1.0;
       }
-      if (volume === 0.0) {
+      if (volume <= 0.0) {
         if (ch.audio.paused !== true) {
           ch.audio.pause();
         }
@@ -597,8 +617,8 @@ S.UpdateStaticSounds = function() {
       }
       ch.audio.volume = volume * S.volume.value;
       sc = ch.sfx.cache;
-      if (ch.audio.paused === true) {
-        S.HandlePlayPromise('S.UpdateStaticSounds', ch.audio.play());
+      if (ch.audio.paused) {
+        S.TryPlayingChannel(ch);
         ch.end = Host.realtime + sc.length;
         continue;
       }
@@ -671,9 +691,13 @@ S.PlayVol = function() {
 
 S.LoadSound = function(s) {
   if (S.nosound.value !== 0) {
-    return;
+    return false;
   }
   if (s.cache != null) {
+    if (s.NotifyDataAvailable) {
+      s.NotifyDataAvailable(s.cache);
+    }
+
     return true;
   }
 
@@ -739,7 +763,7 @@ S.LoadSound = function(s) {
     return;
   }
   if (loopstart != null) {
-    sc.loopstart = loopstart * fmt.blockAlign / fmt.samplesPerSec;
+    sc.loopstart = loopstart * fmt.blockAlign / fmt.samplesPerSec; // FIXME: duration vs samples
   }
   if (samples != null) {
     sc.length = samples / fmt.samplesPerSec;
@@ -768,9 +792,19 @@ S.LoadSound = function(s) {
   view.setUint32(40, datalen, true);
   (new Uint8Array(out, 44, datalen)).set(new Uint8Array(data, dataofs, datalen));
   if (S.context != null) {
-    sc.data = S.context.createBuffer(out, true);
+    sc.data = null;
+    S.context.decodeAudioData(out).then((audioData) => {
+      sc.data = audioData;
+      sc.length = audioData.duration;
+      if (s.NotifyDataAvailable) {
+        s.NotifyDataAvailable(sc);
+      }
+    });
   } else {
     sc.data = new Audio('data:audio/wav;base64,' + Q.btoa(new Uint8Array(out)));
+    if (s.NotifyDataAvailable) {
+      s.NotifyDataAvailable(sc);
+    }
   }
 
   s.cache = sc;

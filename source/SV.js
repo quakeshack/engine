@@ -717,7 +717,7 @@ SV.SaveSpawnparms = function() {
 };
 
 SV.HasMap = function(mapname) {
-  return Mod.ForName('maps/' + mapname + '.bsp') > 0;
+  return Mod.ForName('maps/' + mapname + '.bsp') !== null;
 };
 
 SV.SpawnServer = function(server) {
