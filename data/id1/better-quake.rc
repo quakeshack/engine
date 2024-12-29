@@ -1,7 +1,6 @@
 exec default.cfg
 exec client.cfg
 exec config.cfg
+exec autoexec.cfg
 
 stuffcmds
-
-connect self
