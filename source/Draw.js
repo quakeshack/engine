@@ -169,8 +169,8 @@ Draw.BeginDisc = function() {
   if (Draw.loadingElem == null) {
     return;
   }
-  Draw.loadingElem.style.left = ((VID.width - Draw.loading.width) >> 1) + 'px';
-  Draw.loadingElem.style.top = ((VID.height - Draw.loading.height) >> 1) + 'px';
+  Draw.loadingElem.style.left = ((VID.width - Draw.loading.width)) + 'px';
+  Draw.loadingElem.style.top = ((VID.height - Draw.loading.height)) + 'px';
   Draw.loadingElem.style.display = 'inline-block';
 };
 

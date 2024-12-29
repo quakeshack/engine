@@ -225,7 +225,7 @@ COM.WriteTextFile = function(filename, data) {
   return true;
 };
 
-COM.LoadFile = function (filename) {
+COM.LoadFile = function(filename) {
   filename = filename.toLowerCase();
 
   const xhr = new XMLHttpRequest();
@@ -267,8 +267,8 @@ COM.LoadFile = function (filename) {
         const prefix = (search.filename !== '') ? `${search.filename}/` : '';
         xhr.open('GET', `data/${prefix}pak${j}.pak`, false);
         xhr.setRequestHeader(
-          'Range',
-          `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`
+            'Range',
+            `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`,
         );
         xhr.send();
 
@@ -305,7 +305,7 @@ COM.LoadFile = function (filename) {
   return null;
 };
 
-COM.LoadFileAsync = async function (filename) {
+COM.LoadFileAsync = async function(filename) {
   filename = filename.toLowerCase();
 
   Draw.BeginDisc();
@@ -346,7 +346,7 @@ COM.LoadFileAsync = async function (filename) {
         try {
           // Attempt ranged fetch
           const response = await fetch(pakUrl, {
-            headers: { Range: rangeHeader }
+            headers: {Range: rangeHeader},
           });
 
           // If the server honors the Range request, check the data

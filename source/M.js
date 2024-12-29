@@ -876,7 +876,7 @@ M.Alert = function(title, message) {
   M.state.value = M.state.alert;
   M.entersound = true; // TODO: have a different sound
   M.alertMessage = {title, message};
-}
+};
 
 M.Alert_Draw = function() {
   const {title, message} = M.alertMessage;

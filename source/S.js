@@ -53,6 +53,14 @@ S = {
 
       return this;
     }
+
+    async load() {
+      if (this.state !== S.SFX_STATE.NEW) {
+        return;
+      }
+
+      return await S.LoadSound(this);
+    }
   },
 
   //
@@ -119,6 +127,7 @@ S = {
         const matchingChan = (channel.entchannel === entchannel) || (entchannel === -1);
         if (matchingEnt && matchingChan) {
           // Kill old
+          channel.oldSfx = channel.sfx;
           channel.sfx = null;
           if (channel.nodes) {
             this.NoteOff(channel.nodes.source);
@@ -143,7 +152,7 @@ S = {
     }
     if (i === this.channels.length) {
       // No free channel found, allocate a new one
-      this.channels[i] = { end: 0.0 };
+      this.channels[i] = {end: 0.0};
     }
     return this.channels[i];
   },
@@ -197,7 +206,7 @@ S = {
 
   Init() {
     Con.Print('\nSound Initialization\n');
-    Cmd.AddCommand('Play', this.Play.bind(this));
+    Cmd.AddCommand('play', this.Play.bind(this));
     Cmd.AddCommand('playvol', this.PlayVol.bind(this));
     Cmd.AddCommand('stopsound', this.StopAllSounds.bind(this));
     Cmd.AddCommand('soundlist', this.SoundList_f.bind(this));
@@ -213,7 +222,7 @@ S = {
 
     // Attempt to create an AudioContext
     try {
-      this.context = new AudioContext({ sampleRate: 22050 });
+      this.context = new AudioContext({sampleRate: 22050});
     } catch (e) {
       this.context = null;
     }
@@ -281,8 +290,16 @@ S = {
       this.knownSfx.push(sfx);
     }
     if (this.precache.value !== 0) {
-      if (sfx.state === S.SFX_STATE.NEW) {
-        this.LoadSound(sfx);
+      // we do not need all sounds right away, let’s prioritize them
+      if (sfx.state === S.SFX_STATE.NEW && (
+        sfx.name.startsWith('weapons/') ||
+        sfx.name.startsWith('player/') ||
+        // sfx.name.startsWith('doors/') ||
+        false
+      )) {
+        this.LoadSound(sfx).catch((error) => {
+          Con.Print(`S.PrecacheSound: async precaching ${name} failed, ${error}\n`);
+        });
       }
     }
     return sfx;
@@ -447,22 +464,25 @@ S = {
     if (this.nosound.value !== 0 || !sfx) {
       return;
     }
-    // Pick or free a channel
-    const targetChan = this.PickChannel(entnum, entchannel);
-    targetChan.origin = [...origin];
-    targetChan.dist_mult = attenuation * 0.001;
-    targetChan.master_vol = vol;
-    targetChan.entnum = entnum;
-    targetChan.entchannel = entchannel;
-
-    // Spatialize
-    this.Spatialize(targetChan);
-    if (targetChan.leftvol === 0.0 && targetChan.rightvol === 0.0) {
-      return;
-    }
 
     // 1) Create a local callback that sets up the channel once data is loaded
     const onDataAvailable = (sc) => {
+      // Pick or free a channel
+      const targetChan = this.PickChannel(entnum, entchannel);
+      targetChan.origin = [...origin];
+      targetChan.dist_mult = attenuation * 0.001;
+      targetChan.master_vol = vol;
+      targetChan.entnum = entnum;
+      targetChan.entchannel = entchannel;
+      targetChan.pos = 0.0;
+      targetChan.end = 0.0;
+
+      // Spatialize
+      this.Spatialize(targetChan);
+      if (targetChan.leftvol === 0.0 && targetChan.rightvol === 0.0) {
+        return;
+      }
+
       targetChan.sfx = sfx;
       targetChan.pos = 0.0;
       targetChan.end = Host.realtime + sc.length;
@@ -610,20 +630,24 @@ S = {
       return;
     }
 
+    const ss = {
+      sfx,
+      origin: [...origin],
+      master_vol: vol,
+      dist_mult: attenuation * 0.000015625,
+      end: 0.0,
+      playFailedTime: null,
+    };
+
+    this.staticChannels.push(ss);
+
     const onDataAvailable = (sc) => {
       if (sc.loopstart == null) {
-        Con.Print(`Sound ${sfx.name} not looped\n`);
+        Con.Print(`S.StaticSound: Sound ${sfx.name} not looped\n`);
         return;
       }
-      const ss = {
-        sfx,
-        origin: [...origin],
-        master_vol: vol,
-        dist_mult: attenuation * 0.000015625,
-        end: Host.realtime + sc.length,
-        playFailedTime: null,
-      };
-      this.staticChannels.push(ss);
+
+      ss.end = Host.realtime + sc.length;
 
       if (this.context) {
         const nodes = {
@@ -650,7 +674,6 @@ S = {
         nodes.gain0.connect(nodes.merger2, 0, 0);
         nodes.gain1.connect(nodes.merger2, 0, 1);
         nodes.merger2.connect(this.context.destination);
-
       } else {
         ss.audio = sc.data.cloneNode();
         ss.audio.pause();
@@ -662,25 +685,9 @@ S = {
       return;
     }
 
-    if (sfx.state === S.SFX_STATE.LOADING) {
+    if (sfx.state === S.SFX_STATE.LOADING || sfx.state === S.SFX_STATE.NEW) {
       sfx.queueAvailableHandler((sfx) => onDataAvailable(sfx.cache));
       return;
-    }
-
-    if (sfx.state === S.SFX_STATE.NEW) {
-      this.LoadSound(sfx).then((res) => {
-        if (!res) {
-          return;
-        }
-
-        onDataAvailable(sfx.cache);
-      });
-      return;
-    }
-
-    if (sfx.state === S.SFX_STATE.LOADING) {
-      Con.Print(`S.StaticSound: loading state for ${sfx.name}\n`);
-
     }
   },
 
@@ -696,10 +703,10 @@ S = {
 
       switch (sfx.state) {
         case S.SFX_STATE.AVAILABLE: {
-            const sc = sfx.cache;
-            sizeStr = sc.size.toString();
-            total += sc.size;
-          }
+          const sc = sfx.cache;
+          sizeStr = sc.size.toString();
+          total += sc.size;
+        }
           break;
         case S.SFX_STATE.FAILED:
           sizeStr = 'FAILED';
@@ -879,8 +886,16 @@ S = {
 
   UpdateStaticSounds() {
     // Spatialize all static channels
-    for (let i = 0; i < this.staticChannels.length; i++) {
-      this.Spatialize(this.staticChannels[i]);
+    for (const ch of this.staticChannels) {
+      this.Spatialize(ch);
+
+      // lazy load sound files by distance
+      if (ch.sfx.state === S.SFX_STATE.NEW && (ch.leftvol > 0 || ch.rightvol > 0)) {
+        Con.Print(`S.UpdateStaticSounds: lazy loading ${ch.sfx.name}\n`);
+        ch.sfx.load().catch((err) => {
+          Con.Print(`S.UpdateStaticSounds: failed to lazy load ${ch.sfx.name}, ${error}\n`);
+        });
+      }
     }
 
     // Combine channels that share the same sfx

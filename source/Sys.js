@@ -157,7 +157,7 @@ Sys.Error = function(text) {
 
   document.body.style.cursor = 'auto';
 
-  const $error = document.getElementById('error')
+  const $error = document.getElementById('error');
 
   if ($error) {
     $error.textContent = text;
