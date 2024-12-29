@@ -50,6 +50,8 @@ COM.LoadFile = function(filename) {
   Sys.Print(`FindFile: can't find ${filename}\n`);
 };
 
+COM.LoadFileAsync = async() => {throw new Error('NOT IMPLEMENTED')}; // TODO
+
 /**
  * Loads and parses a pack file.
  * @param {string} packfile - The path to the pack file.

@@ -225,54 +225,174 @@ COM.WriteTextFile = function(filename, data) {
   return true;
 };
 
-COM.LoadFile = function(filename) {
+COM.LoadFile = function (filename) {
   filename = filename.toLowerCase();
+
   const xhr = new XMLHttpRequest();
+  // The Quake engine often wants data as "text/plain; charset=x-user-defined".
   xhr.overrideMimeType('text/plain; charset=x-user-defined');
-  let i; let j; let k; let search; let netpath; let pak; let file; let data;
+
   Draw.BeginDisc();
-  for (i = COM.searchpaths.length - 1; i >= 0; --i) {
-    search = COM.searchpaths[i];
-    netpath = search.filename + '/' + filename;
-    data = localStorage.getItem('Quake.' + netpath);
-    if (data != null) {
-      Sys.Print('FindFile: ' + netpath + '\n');
+
+  // Traverse the search paths from last to first
+  for (let i = COM.searchpaths.length - 1; i >= 0; i--) {
+    const search = COM.searchpaths[i];
+    const netpath = search.filename + '/' + filename;
+
+    // 1) Try to load from localStorage first
+    const localData = localStorage.getItem(`Quake.${netpath}`);
+    if (localData !== null) {
+      Sys.Print(`COM.LoadFile: ${netpath}\n`);
       Draw.EndDisc();
-      return Q.strmem(data);
+      return Q.strmem(localData);
     }
-    for (j = search.pack.length - 1; j >= 0; --j) {
-      pak = search.pack[j];
-      for (k = 0; k < pak.length; ++k) {
-        file = pak[k];
-        if (file.name !== filename) {
-          continue;
-        }
+
+    // 2) Search through any PAK files in this search path
+    for (let j = search.pack.length - 1; j >= 0; j--) {
+      const pak = search.pack[j];
+
+      for (let k = 0; k < pak.length; k++) {
+        const file = pak[k];
+
+        // File name must match exactly
+        if (file.name !== filename) continue;
+
+        // Empty file?
         if (file.filelen === 0) {
           Draw.EndDisc();
           return new ArrayBuffer(0);
         }
-        const search_filename = (search.filename !== '' ? search.filename + '/' : '');
-        xhr.open('GET', 'data/' + search_filename + 'pak' + j + '.pak', false);
-        xhr.setRequestHeader('Range', 'bytes=' + file.filepos + '-' + (file.filepos + file.filelen - 1));
+
+        // Perform a synchronous XHR for the appropriate byte range
+        const prefix = (search.filename !== '') ? `${search.filename}/` : '';
+        xhr.open('GET', `data/${prefix}pak${j}.pak`, false);
+        xhr.setRequestHeader(
+          'Range',
+          `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`
+        );
         xhr.send();
-        if ((xhr.status >= 200) && (xhr.status <= 299) && (xhr.responseText.length === file.filelen)) {
-          Sys.Print('PackFile: ' + search_filename + 'pak' + j + '.pak : ' + filename + '\n');
+
+        // Check status and length
+        if (
+          xhr.status >= 200 &&
+          xhr.status <= 299 &&
+          xhr.responseText.length === file.filelen
+        ) {
+          Sys.Print(`COM.LoadFile: ${prefix}pak${j}.pak : ${filename}\n`);
           Draw.EndDisc();
           return Q.strmem(xhr.responseText);
         }
+
+        // If we got here, it means a failed range request; break out of the pak loop
         break;
       }
     }
-    xhr.open('GET', 'data/' + netpath, false);
+
+    // 3) Fallback: try plain files on the filesystem (in data/)
+    xhr.open('GET', `data/${netpath}`, false);
     xhr.send();
-    if ((xhr.status >= 200) && (xhr.status <= 299)) {
-      Sys.Print('FindFile: ' + netpath + '\n');
+
+    if (xhr.status >= 200 && xhr.status <= 299) {
+      Sys.Print(`COM.LoadFile: ${netpath}\n`);
       Draw.EndDisc();
       return Q.strmem(xhr.responseText);
     }
   }
-  Sys.Print('FindFile: can\'t find ' + filename + '\n');
+
+  // If we exhaust all search paths, file is not found
+  Sys.Print(`COM.LoadFile: can't find ${filename}\n`);
   Draw.EndDisc();
+  return null;
+};
+
+COM.LoadFileAsync = async function (filename) {
+  filename = filename.toLowerCase();
+
+  Draw.BeginDisc();
+
+  // Traverse the search paths from last to first
+  for (let i = COM.searchpaths.length - 1; i >= 0; i--) {
+    const search = COM.searchpaths[i];
+    const netpath = search.filename + '/' + filename;
+
+    // 1) Try localStorage first (instantaneous)
+    const localData = localStorage.getItem(`Quake.${netpath}`);
+    if (localData !== null) {
+      Sys.Print(`COM.LoadFileAsync: ${netpath}\n`);
+      Draw.EndDisc();
+      return Q.strmem(localData);
+    }
+
+    // 2) Check files inside each PAK
+    for (let j = search.pack.length - 1; j >= 0; j--) {
+      const pak = search.pack[j];
+
+      for (let k = 0; k < pak.length; k++) {
+        const file = pak[k];
+        if (file.name !== filename) {
+          continue;
+        }
+
+        // Empty file?
+        if (file.filelen === 0) {
+          Draw.EndDisc();
+          return new ArrayBuffer(0);
+        }
+
+        const prefix = (search.filename !== '') ? `${search.filename}/` : '';
+        const pakUrl = `data/${prefix}pak${j}.pak`;
+        const rangeHeader = `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`;
+
+        try {
+          // Attempt ranged fetch
+          const response = await fetch(pakUrl, {
+            headers: { Range: rangeHeader }
+          });
+
+          // If the server honors the Range request, check the data
+          if (response.ok) {
+            const responseBuffer = await response.arrayBuffer();
+
+            // Validate length
+            if (responseBuffer.byteLength === file.filelen) {
+              Sys.Print(`COM.LoadFileAsync: ${prefix}pak${j}.pak : ${filename}\n`);
+              Draw.EndDisc();
+              return responseBuffer;
+            } else {
+              Sys.Print(`COM.LoadFileAsync: ${prefix}pak${j}.pak : ${filename} invalid length received\n`);
+            }
+          }
+        } catch (err) {
+          // Possibly log error, but continue gracefully
+          console.error(err);
+        }
+
+        // If the fetch or length check fails, break out of the PAK loop
+        break;
+      }
+    }
+
+    // 3) Fallback: try direct file
+    try {
+      const fallbackUrl = `data/${netpath}`;
+      const directResponse = await fetch(fallbackUrl);
+
+      if (directResponse.ok) {
+        const textData = await directResponse.text();
+        Sys.Print(`COM.LoadFileAsync: ${netpath}\n`);
+        Draw.EndDisc();
+        return Q.strmem(textData);
+      }
+    } catch (err) {
+      // If direct fetch failed, continue searching
+      console.error(err);
+    }
+  }
+
+  // If we exhaust all search paths, file is not found
+  Sys.Print(`COM.LoadFileAsync: can't find ${filename}\n`);
+  Draw.EndDisc();
+  return null;
 };
 
 COM.LoadTextFile = function(filename) {

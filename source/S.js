@@ -21,6 +21,40 @@ S = {
   ambientLevel: null,
   ambientFade: null,
 
+  // Constants
+  SFX_STATE: {
+    NEW: 0,
+    LOADING: 1,
+    AVAILABLE: 2,
+    FAILED: 3,
+  },
+
+  SFX: class SFX {
+    constructor(name) {
+      this.name = name;
+      this.cache = null;
+      this.state = S.SFX_STATE.NEW;
+
+      this._availableQueue = [];
+    }
+
+    queueAvailableHandler(handler) {
+      this._availableQueue.push(handler);
+      return this;
+    }
+
+    makeAvailable() {
+      this.state = S.SFX_STATE.AVAILABLE;
+
+      while (this._availableQueue.length > 0) {
+        const handler = this._availableQueue.shift();
+        handler(this);
+      }
+
+      return this;
+    }
+  },
+
   //
   // --- Helpers
   //
@@ -196,8 +230,12 @@ S = {
       this.ambientChannels[i] = ch;
 
       // Will get called after the sound data is loaded & decoded
-      ch.sfx.NotifyDataAvailable = (sc) => {
-        ch.sfx.cache = sc;
+      if (ch.sfx.state !== S.SFX_STATE.NEW) {
+        continue;
+      }
+
+      this.LoadSound(ch.sfx).then(() => {
+        const sc = ch.sfx.cache;
         if (this.context) {
           const nodes = {
             source: this.context.createBufferSource(),
@@ -215,15 +253,11 @@ S = {
           // fallback
           ch.audio = sc.data.cloneNode();
         }
-      };
 
-      // Trigger a load if needed
-      if (!this.LoadSound(ch.sfx)) {
-        continue;
-      }
-      if (ch.sfx.cache.loopstart == null) {
-        Con.Print(`Sound ${name} not looped\n`);
-      }
+        if (ch.sfx.cache.loopstart == null) {
+          Con.Print(`Sound ${name} not looped\n`);
+        }
+      });
     }
 
     Con.sfx_talk = this.PrecacheSound('misc/talk.wav');
@@ -243,31 +277,42 @@ S = {
     // Search known list
     let sfx = this.knownSfx.find((k) => k.name === name);
     if (!sfx) {
-      sfx = { name };
+      sfx = new S.SFX(name);
       this.knownSfx.push(sfx);
     }
     if (this.precache.value !== 0) {
-      this.LoadSound(sfx);
+      if (sfx.state === S.SFX_STATE.NEW) {
+        this.LoadSound(sfx);
+      }
     }
     return sfx;
   },
 
   /**
    * Actually load sound data from disk (COM.LoadFile) and decode it.
-   * Then calls sfx.NotifyDataAvailable once loaded.
    */
-  LoadSound(s) {
+  async LoadSound(sfx) {
     if (this.nosound.value !== 0) {
+      sfx.state = S.SFX_STATE.FAILED;
       return false;
     }
-    if (s.cache) {
-      // Already loaded
-      return true;
+
+    if (sfx.state === S.SFX_STATE.LOADING) {
+      throw new Error('LoadSound on isLoading = true');
     }
+
+    if ([S.SFX_STATE.AVAILABLE, S.SFX_STATE.FAILED].includes(sfx.state)) {
+      // Already loaded or given up on
+      return sfx.cache !== null;
+    }
+
     const sc = {};
-    const data = COM.LoadFile(`sound/${s.name}`);
+    sfx.state = S.SFX_STATE.LOADING;
+    const data = await COM.LoadFileAsync(`sound/${sfx.name}`);
+
     if (!data) {
-      Con.Print(`Couldn't load sound/${s.name}\n`);
+      Con.Print(`Couldn't load sound/${sfx.name}\n`);
+      sfx.state = S.SFX_STATE.FAILED;
       return false;
     }
 
@@ -275,7 +320,8 @@ S = {
     let view = new DataView(data);
     // Quick check for 'RIFF' & 'WAVE'
     if (view.getUint32(0, true) !== 0x46464952 || view.getUint32(8, true) !== 0x45564157) {
-      Con.Print('Missing RIFF/WAVE chunks\n');
+      Con.Print(`S.LoadSound: Missing RIFF/WAVE chunks on ${sfx.name}\n`);
+      sfx.state = S.SFX_STATE.FAILED;
       return false;
     }
 
@@ -293,7 +339,8 @@ S = {
       switch (chunkId) {
         case 0x20746d66: // 'fmt '
           if (view.getInt16(p + 8, true) !== 1) {
-            Con.Print('Microsoft PCM format only\n');
+            Con.Print(`S.LoadSound: ${sfx.name} is not in Microsoft PCM format\n`);
+            sfx.state = S.SFX_STATE.FAILED;
             return false;
           }
           fmt = {
@@ -329,11 +376,13 @@ S = {
     }
 
     if (!fmt) {
-      Con.Print('Missing fmt chunk\n');
+      Con.Print(`S.LoadSound: ${sfx.name} is missing the fmt chunk\n`);
+      sfx.state = S.SFX_STATE.FAILED;
       return false;
     }
     if (dataOfs == null) {
-      Con.Print('Missing data chunk\n');
+      Con.Print(`S.LoadSound: ${sfx.name} is missing the data chunk\n`);
+      sfx.state = S.SFX_STATE.FAILED;
       return false;
     }
 
@@ -376,21 +425,17 @@ S = {
     // Decode via AudioContext or fallback to HTMLAudioElement
     if (this.context) {
       sc.data = null;
-      this.context.decodeAudioData(out).then((audioData) => {
-        sc.data = audioData;
-        sc.length = audioData.duration;
-        if (s.NotifyDataAvailable) {
-          s.NotifyDataAvailable(sc);
-        }
-      });
+
+      const audioData = await this.context.decodeAudioData(out);
+
+      sc.data = audioData;
+      sc.length = audioData.duration;
     } else {
       sc.data = new Audio(`data:audio/wav;base64,${Q.btoa(new Uint8Array(out))}`);
-      if (s.NotifyDataAvailable) {
-        s.NotifyDataAvailable(sc);
-      }
     }
 
-    s.cache = sc;
+    sfx.cache = sc;
+    sfx.makeAvailable();
     return true;
   },
 
@@ -417,7 +462,7 @@ S = {
     }
 
     // 1) Create a local callback that sets up the channel once data is loaded
-    const onDataLoaded = (sc) => {
+    const onDataAvailable = (sc) => {
       targetChan.sfx = sfx;
       targetChan.pos = 0.0;
       targetChan.end = Host.realtime + sc.length;
@@ -472,15 +517,24 @@ S = {
       }
     };
 
-    // 2) If already cached, call onDataLoaded immediately
-    if (sfx.cache != null) {
-      onDataLoaded(sfx.cache);
-    } else {
-      // 3) Not cached yet—tell the load routine to call us back
-      sfx.NotifyDataAvailable = onDataLoaded;
-      if (!this.loadSound(sfx)) {
-        targetChan.sfx = null;
-      }
+    if (sfx.state === S.SFX_STATE.AVAILABLE) {
+      // 2) If already cached, call onDataAvailable immediately
+      onDataAvailable(sfx.cache);
+      return;
+    }
+
+    if (sfx.state === S.SFX_STATE.NEW) {
+      // 3) Not cached yet
+      this.LoadSound(sfx).then((res) => {
+        if (!res) {
+          targetChan.sfx = null;
+          return;
+        }
+
+        // jump back up to playing it
+        onDataAvailable(sfx.cache);
+      });
+      return;
     }
   },
 
@@ -556,7 +610,7 @@ S = {
       return;
     }
 
-    const onDataLoaded = (sc) => {
+    const onDataAvailable = (sc) => {
       if (sc.loopstart == null) {
         Con.Print(`Sound ${sfx.name} not looped\n`);
         return;
@@ -603,11 +657,30 @@ S = {
       }
     };
 
-    if (sfx.cache) {
-      onDataLoaded(sfx.cache);
-    } else {
-      sfx.NotifyDataAvailable = onDataLoaded;
-      this.LoadSound(sfx);
+    if (sfx.state === S.SFX_STATE.AVAILABLE) {
+      onDataAvailable(sfx.cache);
+      return;
+    }
+
+    if (sfx.state === S.SFX_STATE.LOADING) {
+      sfx.queueAvailableHandler((sfx) => onDataAvailable(sfx.cache));
+      return;
+    }
+
+    if (sfx.state === S.SFX_STATE.NEW) {
+      this.LoadSound(sfx).then((res) => {
+        if (!res) {
+          return;
+        }
+
+        onDataAvailable(sfx.cache);
+      });
+      return;
+    }
+
+    if (sfx.state === S.SFX_STATE.LOADING) {
+      Con.Print(`S.StaticSound: loading state for ${sfx.name}\n`);
+
     }
   },
 
@@ -619,14 +692,34 @@ S = {
     let total = 0;
     for (let i = 0; i < this.knownSfx.length; i++) {
       const sfx = this.knownSfx[i];
-      const sc = sfx.cache;
-      if (!sc) continue;
-      let sizeStr = sc.size.toString();
-      total += sc.size;
-      while (sizeStr.length <= 5) {
+      let sizeStr = '';
+
+      switch (sfx.state) {
+        case S.SFX_STATE.AVAILABLE: {
+            const sc = sfx.cache;
+            sizeStr = sc.size.toString();
+            total += sc.size;
+          }
+          break;
+        case S.SFX_STATE.FAILED:
+          sizeStr = 'FAILED';
+          break;
+        case S.SFX_STATE.LOADING:
+          sizeStr = 'LOADING';
+          break;
+        case S.SFX_STATE.NEW:
+          sizeStr = 'NEW';
+          break;
+        default:
+          sizeStr = `(${sfx.state})`;
+      }
+
+      while (sizeStr.length <= 8) {
         sizeStr = ` ${sizeStr}`;
       }
-      sizeStr = (sc.loopstart != null) ? `L${sizeStr}` : ` ${sizeStr}`;
+
+      sizeStr = (sfx.cache?.loopstart != null) ? `L ${sizeStr}` : `  ${sizeStr}`;
+
       Con.Print(`${sizeStr} : ${sfx.name}\n`);
     }
     Con.Print(`Total resident: ${total}\n`);
