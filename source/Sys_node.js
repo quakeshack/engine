@@ -16,6 +16,11 @@ Sys = class Sys {
     // Initialize command-line arguments
     COM.InitArgv(argv);
 
+    // Configure Console output
+    Con.OnLinePrint = function(line) {
+      console.info(line);
+    };
+
     // Record the initial time
     Sys.oldtime = Date.now() * 0.001;
 

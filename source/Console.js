@@ -70,6 +70,9 @@ Con.StopCapture = function() {
   return data;
 };
 
+Con.OnLinePrint = function(line) {
+};
+
 Con.Print = function(msg) {
   if (Con.debuglog === true) {
     let data = COM.LoadTextFile('qconsole.log');
@@ -102,7 +105,7 @@ Con.Print = function(msg) {
       if (Con.captureBuffer) {
         Con.captureBuffer.push(line);
       }
-      console.info(line);
+      Con.OnLinePrint(line);
       if (Con.text.length >= 1024) {
         Con.text = Con.text.slice(-512);
         Con.current = Con.text.length;

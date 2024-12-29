@@ -389,6 +389,7 @@ Host.Shutdown = function() {
   if (!Host.dedicated.value) {
     S.StopAllSounds();
     IN.Shutdown();
+    VID.Shutdown();
   }
 };
 

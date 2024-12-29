@@ -521,4 +521,9 @@ GL.Init = function() {
   GL.streamBufferPosition = 0;
 
   VID.mainwindow.style.display = 'inline-block';
+  VID.mainwindow.style.backgroundImage = 'url("' + Draw.PicToDataURL(Draw.PicFromWad('BACKTILE')) + '")';
+};
+
+GL.Shutdown = function() {
+  VID.mainwindow.style.display = 'none';
 };

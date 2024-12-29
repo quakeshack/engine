@@ -16,7 +16,17 @@ VID.SetPalette = function() {
 };
 
 VID.Init = function() {
-  document.getElementById('progress').style.display = 'none';
+  const $progress = document.getElementById('progress');
+  $progress.parentElement.removeChild($progress);
+
+  document.getElementById('console').style.display = 'none';
+
   GL.Init();
   VID.SetPalette();
+};
+
+VID.Shutdown = function() {
+  GL.Shutdown();
+
+  document.getElementById('console').style.display = 'block';
 };

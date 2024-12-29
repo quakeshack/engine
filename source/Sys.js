@@ -35,9 +35,23 @@ Sys.Init = function() {
   }
   COM.InitArgv(argv);
 
-  const elem = document.documentElement;
-  VID.width = (elem.clientWidth <= 320) ? 320 : elem.clientWidth;
-  VID.height = (elem.clientHeight <= 200) ? 200 : elem.clientHeight;
+  const $elem = document.documentElement;
+  VID.width = ($elem.clientWidth <= 320) ? 320 : $elem.clientWidth;
+  VID.height = ($elem.clientHeight <= 200) ? 200 : $elem.clientHeight;
+
+  const $console = document.getElementById('console');
+
+  Con.OnLinePrint = function(line) {
+    const $li = document.createElement('li');
+    $li.textContent = line;
+    $console.appendChild($li);
+    console.info(line);
+
+    // limit the raw console to 25 entries
+    if ($console.childNodes.length > 25) {
+      $console.removeChild($console.childNodes.item(0));
+    }
+  };
 
   Sys.scantokey = [];
   Sys.scantokey[8] = Key.k.backspace;
@@ -95,16 +109,25 @@ Sys.Init = function() {
 };
 
 Sys.Quit = function() {
+  const $console = document.getElementById('console');
+
+  while ($console.childNodes.length > 0) {
+    $console.removeChild($console.childNodes.item(0));
+  }
+
   if (Sys.frame != null) {
     clearInterval(Sys.frame);
   }
-  let i;
-  for (i = 0; i < Sys.events.length; ++i) {
+
+  for (let i = 0; i < Sys.events.length; ++i) {
     window[Sys.events[i]] = null;
   }
+
   Host.Shutdown();
+
   document.body.style.cursor = 'auto';
   VID.mainwindow.style.display = 'none';
+
   if (COM.registered.value !== 0) {
     // document.getElementById('end2').style.display = 'inline';
     // parent.unloadContainer();
@@ -112,13 +135,10 @@ Sys.Quit = function() {
     // document.getElementById('end1').style.display = 'inline';
     // parent.unloadContainer();
   }
-  // throw new Error;
 };
 
 Sys.Print = function(text) {
-  if (window.console != null) {
-    console.log(text);
-  }
+  Con.OnLinePrint(text);
 };
 
 Sys.Error = function(text) {
@@ -126,24 +146,23 @@ Sys.Error = function(text) {
   if (Sys.frame != null) {
     clearInterval(Sys.frame);
   }
-  let i;
-  for (i = 0; i < Sys.events.length; ++i) {
+
+  for (let i = 0; i < Sys.events.length; ++i) {
     window[Sys.events[i]] = null;
   }
+
   if (Host.initialized === true) {
     Host.Shutdown();
   }
+
   document.body.style.cursor = 'auto';
-  i = Con.text.length - 25;
-  if (i < 0) {
-    i = 0;
+
+  const $error = document.getElementById('error')
+
+  if ($error) {
+    $error.textContent = text;
   }
-  if (window.console != null) {
-    for (; i < Con.text.length; ++i) {
-      console.log(Con.text[i].text);
-    }
-  }
-  alert(text);
+
   throw new Error(text);
 };
 
