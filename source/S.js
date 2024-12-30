@@ -1,5 +1,12 @@
 
 class SFX {
+  static STATE = {
+    NEW: 'new',
+    LOADING: 'loading',
+    AVAILABLE: 'available',
+    FAILED: 'failed',
+  };
+
   constructor(name) {
     this.name = name;
     this.cache = null;
@@ -34,14 +41,13 @@ class SFX {
   }
 }
 
-SFX.STATE = {
-  NEW: 'new',
-  LOADING: 'loading',
-  AVAILABLE: 'available',
-  FAILED: 'failed',
-};
-
 class SoundBaseChannel {
+  static STATE = {
+    NOT_READY: 'not-ready',
+    STOPPED: 'stopped',
+    PLAYING: 'playing',
+  };
+
   constructor(S) {
     this._S = S;
     this.reset();
@@ -158,12 +164,6 @@ class SoundBaseChannel {
     return this;
   }
 }
-
-SoundBaseChannel.STATE = {
-  NOT_READY: 'not-ready',
-  STOPPED: 'stopped',
-  PLAYING: 'playing',
-};
 
 class AudioContextChannel extends SoundBaseChannel {
   static async decodeAudioData(rawData) {
