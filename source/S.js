@@ -1,110 +1,380 @@
-S = {
-  channels: [],
-  staticChannels: [],
-  ambientChannels: [],
-  knownSfx: [],
 
-  // Listener state
-  listenerOrigin: [0.0, 0.0, 0.0],
-  listenerForward: [0.0, 0.0, 0.0],
-  listenerRight: [0.0, 0.0, 0.0],
-  listenerUp: [0.0, 0.0, 0.0],
+class SFX {
+  constructor(name) {
+    this.name = name;
+    this.cache = null;
+    this.state = SFX.STATE.NEW;
 
-  started: false,
-  context: null,
+    this._availableQueue = [];
+  }
 
-  // Cvars
-  nosound: null,
-  volume: null,
-  precache: null,
-  bgmvolume: null,
-  ambientLevel: null,
-  ambientFade: null,
+  queueAvailableHandler(handler) {
+    this._availableQueue.push(handler);
 
-  // Constants
-  SFX_STATE: {
-    NEW: 0,
-    LOADING: 1,
-    AVAILABLE: 2,
-    FAILED: 3,
-  },
+    return this;
+  }
 
-  SFX: class SFX {
-    constructor(name) {
-      this.name = name;
-      this.cache = null;
-      this.state = S.SFX_STATE.NEW;
+  makeAvailable() {
+    this.state = SFX.STATE.AVAILABLE;
 
-      this._availableQueue = [];
+    while (this._availableQueue.length > 0) {
+      const handler = this._availableQueue.shift();
+      handler(this);
     }
 
-    queueAvailableHandler(handler) {
-      this._availableQueue.push(handler);
-      return this;
-    }
+    return this;
+  }
 
-    makeAvailable() {
-      this.state = S.SFX_STATE.AVAILABLE;
-
-      while (this._availableQueue.length > 0) {
-        const handler = this._availableQueue.shift();
-        handler(this);
-      }
-
-      return this;
-    }
-
-    async load() {
-      if (this.state !== S.SFX_STATE.NEW) {
-        return;
-      }
-
-      return await S.LoadSound(this);
-    }
-  },
-
-  //
-  // --- Helpers
-  //
-
-  /**
-   * Safely starts (NoteOn) an AudioBufferSourceNode.
-   */
-  NoteOn(node) {
-    try {
-      node.start();
-    } catch (e) {
-      // Possibly already started
-    }
-  },
-
-  /**
-   * Safely stops (NoteOff) an AudioBufferSourceNode.
-   */
-  NoteOff(node) {
-    try {
-      node.stop(0);
-    } catch (e) {
-      // Possibly already stopped
-    }
-  },
-
-  /**
-   * Helper to attempt playing a fallback HTML audio element,
-   * catching any user gesture issues and retrying later.
-   */
-  TryPlayingChannel(ch) {
-    // If we tried playing too recently, wait a bit
-    if (Host.realtime - (ch.playFailedTime || 0) < 3) {
+  async load() {
+    if (this.state !== SFX.STATE.NEW) {
       return;
     }
 
-    ch.audio.Play().catch((e) => {
-      Con.Print(`S.TryPlayingChannel: failed to Play audio, ${e.message}, retrying later\n`);
-      ch.playFailedTime = Host.realtime;
+    return await S.LoadSound(this);
+  }
+}
+
+SFX.STATE = {
+  NEW: 'new',
+  LOADING: 'loading',
+  AVAILABLE: 'available',
+  FAILED: 'failed',
+};
+
+class SoundBaseChannel {
+  constructor(S) {
+    this._S = S;
+    this.reset();
+  }
+
+  reset() {
+    this.stop();
+
+    this.sfx = null;
+
+    this.origin = [0.0, 0.0, 0.0];
+    this.dist_mult = 0;
+    this.entnum = null;
+    this.entchannel = null;
+
+    this.end = 0.0;
+    this.pos = 0.0;
+
+    this.master_vol = 0.0;
+    this.left_vol = 0.0;
+    this.right_vol = 0.0;
+
+    this._playFailedTime = null;
+    this._state = SoundBaseChannel.STATE.NOT_READY;
+
+    return this;
+  }
+
+  withOrigin(origin) {
+    this.origin = [...origin];
+    this.spatialize();
+
+    return this;
+  }
+
+  withSfx(sfx) {
+    this.sfx = sfx;
+
+    if (!sfx) {
+      this.reset();
+    }
+
+    return this;
+  }
+
+  static async decodeAudioData(rawData) {
+    return null;
+  }
+
+  loadData() {
+    return this;
+  }
+
+  stop() {
+    return this;
+  }
+
+  start() {
+    return this;
+  }
+
+  updateVol() {
+    return this;
+  }
+
+  updateLoop() {
+    return this;
+  }
+
+  /**
+   * (Re)computes left_vol and right_vol for a channel based on the listener position/orientation.
+   */
+  spatialize() {
+    this._S = S;
+
+    // If channel is from the player's own gun, full volume in both ears
+    if (this.entnum === CL.state.viewentity) {
+      this.left_vol = this.master_vol;
+      this.right_vol = this.master_vol;
+      this.updateVol();
+      return;
+    }
+
+    // Calculate distance from the listener
+    const source = [
+      this.origin[0] - this._S._listenerOrigin[0],
+      this.origin[1] - this._S._listenerOrigin[1],
+      this.origin[2] - this._S._listenerOrigin[2],
+    ];
+
+    let dist = Math.sqrt(source[0] * source[0] + source[1] * source[1] + source[2] * source[2]);
+    if (dist !== 0.0) {
+      source[0] /= dist;
+      source[1] /= dist;
+      source[2] /= dist;
+    }
+    dist *= this.dist_mult;
+
+    // Dot product with the listener's right vector
+    const dot = (
+      this._S._listenerRight[0] * source[0] +
+      this._S._listenerRight[1] * source[1] +
+      this._S._listenerRight[2] * source[2]
+    );
+
+    const adjustedVolume = (1.0 - dist);
+    const left = adjustedVolume * (1.0 - dot);
+    const right = adjustedVolume * (1.0 + dot);
+
+    this.right_vol = Math.max(0, this.master_vol * right);
+    this.left_vol = Math.max(0, this.master_vol * left);
+    this.updateVol();
+
+    return this;
+  }
+}
+
+SoundBaseChannel.STATE = {
+  NOT_READY: 'not-ready',
+  STOPPED: 'stopped',
+  PLAYING: 'playing',
+};
+
+class AudioContextChannel extends SoundBaseChannel {
+  static async decodeAudioData(rawData) {
+    return await S._context.decodeAudioData(rawData);
+  }
+
+  reset() {
+    super.reset();
+
+    this._nodes = null;
+  }
+
+  loadData() {
+    if (!this.sfx || this.sfx.state === SFX.STATE.FAILED) {
+      this._state = SoundBaseChannel.STATE.NOT_READY;
+      return this;
+    }
+
+    const sc = this.sfx.cache;
+
+    const nodes = {
+      source: this._S._context.createBufferSource(),
+      merger1: this._S._context.createChannelMerger(2),
+      splitter: this._S._context.createChannelSplitter(2),
+      gain0: this._S._context.createGain(),
+      gain1: this._S._context.createGain(),
+      merger2: this._S._context.createChannelMerger(2),
+    };
+
+    nodes.source.buffer = sc.data;
+
+    // looping
+    if (sc.loopstart !== null) {
+      nodes.source.loop = true;
+      nodes.source.loopStart = sc.loopstart;
+      nodes.source.loopEnd = sc.data.duration;
+    }
+
+    // Duplicate into left & right channels
+    nodes.source.connect(nodes.merger1);
+    nodes.source.connect(nodes.merger1, 0, 1);
+    nodes.merger1.connect(nodes.splitter);
+
+    // Gains
+    nodes.splitter.connect(nodes.gain0, 0);
+    nodes.splitter.connect(nodes.gain1, 1);
+
+    // Set initial volume
+    this.updateVol();
+
+    // Merge back to stereo
+    nodes.gain0.connect(nodes.merger2, 0, 0);
+    nodes.gain1.connect(nodes.merger2, 0, 1);
+    nodes.merger2.connect(this._S._context.destination);
+
+    this._nodes = nodes;
+
+    this._state = SoundBaseChannel.STATE.STOPPED;
+
+    return this;
+  }
+
+  updateVol() {
+    if (!this._nodes) {
+      return this;
+    }
+
+    const leftVol = Math.min(this.left_vol, 1.0) * this._S.volume.value;
+    const rightVol = Math.min(this.right_vol, 1.0) * this._S.volume.value;
+    this._nodes.gain0.gain.value = leftVol;
+    this._nodes.gain1.gain.value = rightVol;
+
+    return this;
+  }
+
+  stop() {
+    if (this._state !== SoundBaseChannel.STATE.PLAYING) {
+      return this;
+    }
+
+    if (this._nodes.source) {
+      this._nodes.source.stop(0);
+    }
+
+    this._state = SoundBaseChannel.STATE.STOPPED;
+    return this;
+  }
+
+  start() {
+    if (this._state !== SoundBaseChannel.STATE.STOPPED) {
+      return this;
+    }
+
+    if (this._nodes.source) {
+      this._nodes.source.start();
+    }
+
+    this._state = SoundBaseChannel.STATE.PLAYING;
+    return this;
+  }
+}
+
+class AudioElementChannel extends SoundBaseChannel {
+  static async decodeAudioData(rawData) {
+    return new Audio(`data:audio/wav;base64,${Q.btoa(new Uint8Array(rawData))}`);
+  }
+
+  loadData() {
+    if (!this.sfx || this.sfx.state === SFX.STATE.FAILED) {
+      this._state = SoundBaseChannel.STATE.NOT_READY;
+      return this;
+    }
+
+    this._audio = this.sfx.cache.data.cloneNode();
+    this._audio.pause();
+
+    this._audio.loop = this.sfx.cache.loopstart !== null;
+
+    this.updateVol();
+
+    this._state = SoundBaseChannel.STATE.STOPPED;
+
+    return this;
+  }
+
+  updateVol() {
+    if (!this._audio) {
+      return this;
+    }
+
+    const volume = Math.min((this.left_vol + this.right_vol) * 0.5, 1.0);
+    this._audio.volume = volume * this._S.volume.value;
+
+    return this;
+  }
+
+  updateLoop() {
+    if (!this.sfx || !this.sfx.cache) {
+      return this;
+    }
+
+    try {
+      this._audio.currentTime = this.sfx.cache.loopstart;
+      this.end = Host.realtime + this.sfx.cache.length - (this.sfx.cache.loopstart || 0);
+    } catch (e) {
+      this.end = Host.realtime;
+    }
+
+    return this;
+  }
+
+  stop() {
+    if (this._state !== SoundBaseChannel.STATE.PLAYING) {
+      return this;
+    }
+
+    this._audio.pause();
+
+    this._state = SoundBaseChannel.STATE.STOPPED;
+    return this;
+  }
+
+  start() {
+    if (this._state !== SoundBaseChannel.STATE.STOPPED) {
+      return this;
+    }
+
+    // If we tried playing too recently, wait a bit
+    if (Host.realtime - (this._playFailedTime || 0) < 3) {
+      return this;
+    }
+
+    this._audio.play().catch((e) => {
+      Con.Print(`AudioElementChannel.start: failed to play audio, ${e.message}, retrying later\n`);
+      this._playFailedTime = Host.realtime;
     }).then(() => {
-      ch.playFailedTime = null;
+      this._playFailedTime = null;
     });
+
+    this._state = SoundBaseChannel.STATE.PLAYING;
+    return this;
+  }
+}
+
+S = {
+  _channels: [],
+  _staticChannels: [],
+  _ambientChannels: [],
+  _knownSfx: [],
+
+  // Listener state
+  _listenerOrigin: [0.0, 0.0, 0.0],
+  _listenerForward: [0.0, 0.0, 0.0],
+  _listenerRight: [0.0, 0.0, 0.0],
+  _listenerUp: [0.0, 0.0, 0.0],
+
+  _started: false,
+  _context: null,
+
+  // Cvars
+  _precache: null,
+  _nosound: null,
+  _ambientLevel: null,
+  _ambientFade: null,
+
+  // Public Cvars
+  volume: null,
+  bgmvolume: null,
+
+  _NewChannel() {
+    return new this._channelDriver(this);
   },
 
   /**
@@ -118,8 +388,8 @@ S = {
     // If entchannel != 0, see if there is an existing channel with the same
     // entnum and entchannel. If so, kill it.
     if (entchannel !== 0) {
-      for (i = 0; i < this.channels.length; ++i) {
-        channel = this.channels[i];
+      for (i = 0; i < this._channels.length; ++i) {
+        channel = this._channels[i];
         if (!channel) {
           continue;
         }
@@ -127,77 +397,27 @@ S = {
         const matchingChan = (channel.entchannel === entchannel) || (entchannel === -1);
         if (matchingEnt && matchingChan) {
           // Kill old
-          channel.oldSfx = channel.sfx;
-          channel.sfx = null;
-          if (channel.nodes) {
-            this.NoteOff(channel.nodes.source);
-            channel.nodes = null;
-          } else if (channel.audio) {
-            channel.audio.pause();
-            channel.audio = null;
-          }
+          channel.reset();
           break;
         }
       }
     }
 
     // If entchannel == 0 or we never found a free channel, pick a free or new channel.
-    if ((entchannel === 0) || (i === this.channels.length)) {
-      for (i = 0; i < this.channels.length; ++i) {
-        channel = this.channels[i];
+    if ((entchannel === 0) || (i === this._channels.length)) {
+      for (i = 0; i < this._channels.length; ++i) {
+        channel = this._channels[i];
         if (!channel || !channel.sfx) {
           break;
         }
       }
     }
-    if (i === this.channels.length) {
+    if (i === this._channels.length) {
       // No free channel found, allocate a new one
-      this.channels[i] = {end: 0.0};
+      this._channels[i] = this._NewChannel();
     }
-    return this.channels[i];
-  },
-
-  /**
-   * (Re)computes leftvol and rightvol for a channel based on the listener position/orientation.
-   */
-  Spatialize(ch) {
-    // If channel is from the player's own gun, full volume in both ears
-    if (ch.entnum === CL.state.viewentity) {
-      ch.leftvol = ch.master_vol;
-      ch.rightvol = ch.master_vol;
-      return;
-    }
-
-    // Calculate distance from the listener
-    const source = [
-      ch.origin[0] - this.listenerOrigin[0],
-      ch.origin[1] - this.listenerOrigin[1],
-      ch.origin[2] - this.listenerOrigin[2],
-    ];
-    let dist = Math.sqrt(source[0] * source[0] + source[1] * source[1] + source[2] * source[2]);
-    if (dist !== 0.0) {
-      source[0] /= dist;
-      source[1] /= dist;
-      source[2] /= dist;
-    }
-    dist *= ch.dist_mult;
-
-    // Dot product with the listener's right vector
-    const dot = (
-      this.listenerRight[0] * source[0] +
-      this.listenerRight[1] * source[1] +
-      this.listenerRight[2] * source[2]
-    );
-
-    const adjustedVolume = (1.0 - dist);
-    const left = adjustedVolume * (1.0 - dot);
-    const right = adjustedVolume * (1.0 + dot);
-
-    ch.rightvol = ch.master_vol * right;
-    ch.leftvol = ch.master_vol * left;
-
-    if (ch.rightvol < 0.0) ch.rightvol = 0.0;
-    if (ch.leftvol < 0.0) ch.leftvol = 0.0;
+    this._channels[i].reset();
+    return this._channels[i];
   },
 
   //
@@ -206,67 +426,52 @@ S = {
 
   Init() {
     Con.Print('\nSound Initialization\n');
-    Cmd.AddCommand('play', this.Play.bind(this));
-    Cmd.AddCommand('playvol', this.PlayVol.bind(this));
+    Cmd.AddCommand('play', this.Play_f.bind(this));
+    Cmd.AddCommand('playvol', this.PlayVol_f.bind(this));
     Cmd.AddCommand('stopsound', this.StopAllSounds.bind(this));
     Cmd.AddCommand('soundlist', this.SoundList_f.bind(this));
 
-    this.nosound = Cvar.RegisterVariable('nosound', COM.CheckParm('-nosound') != null ? '1' : '0');
+    this._nosound = Cvar.RegisterVariable('nosound', COM.CheckParm('-nosound') != null ? '1' : '0');
     this.volume = Cvar.RegisterVariable('volume', '0.7', true);
-    this.precache = Cvar.RegisterVariable('precache', '1');
+    this._precache = Cvar.RegisterVariable('precache', '1');
     this.bgmvolume = Cvar.RegisterVariable('bgmvolume', '1', true);
-    this.ambientLevel = Cvar.RegisterVariable('ambient_level', '0.3');
-    this.ambientFade = Cvar.RegisterVariable('ambient_fade', '100');
+    this._ambientLevel = Cvar.RegisterVariable('ambient_level', '0.3');
+    this._ambientFade = Cvar.RegisterVariable('ambient_fade', '100');
 
-    this.started = true;
+    this._started = true;
 
     // Attempt to create an AudioContext
     try {
-      this.context = new AudioContext({sampleRate: 22050});
+      this._context = new AudioContext({sampleRate: 22050});
+      this._channelDriver = AudioContextChannel;
     } catch (e) {
-      this.context = null;
+      Con.Print(`S.Init: failed to initialize AudioContextChannel (${e.message}), falling back to AudioElementChannel.\n`);
+      this._context = null;
+      this._channelDriver = AudioElementChannel;
     }
 
     // Initialize ambient channels
-    const ambientSfxList = ['water1', 'wind2'];
-    for (let i = 0; i < ambientSfxList.length; ++i) {
-      const name = `ambience/${ambientSfxList[i]}.wav`;
-      const ch = {
-        sfx: this.PrecacheSound(name),
-        end: 0.0,
-        master_vol: 0.0,
-      };
-      this.ambientChannels[i] = ch;
+    for (const ambientSfx of ['water1', 'wind2']) {
+      const name = `ambience/${ambientSfx}.wav`;
 
-      // Will get called after the sound data is loaded & decoded
-      if (ch.sfx.state !== S.SFX_STATE.NEW) {
-        continue;
-      }
+      const sfx = this.PrecacheSound(name);
+      const ch = this._NewChannel().withSfx(sfx);
 
-      this.LoadSound(ch.sfx).then(() => {
-        const sc = ch.sfx.cache;
-        if (this.context) {
-          const nodes = {
-            source: this.context.createBufferSource(),
-            gain: this.context.createGain(),
-          };
-          ch.nodes = nodes;
-          nodes.source.buffer = sc.data;
-          // Attempt to loop
-          nodes.source.loop = true;
-          nodes.source.loopStart = sc.loopstart || 0;
-          nodes.source.loopEnd = sc.length;
-          nodes.source.connect(nodes.gain);
-          nodes.gain.connect(this.context.destination);
-        } else {
-          // fallback
-          ch.audio = sc.data.cloneNode();
-        }
+      this._ambientChannels.push(ch);
 
-        if (ch.sfx.cache.loopstart == null) {
-          Con.Print(`Sound ${name} not looped\n`);
+      sfx.queueAvailableHandler(() => {
+        ch.loadData();
+        ch.updateVol();
+        ch.start();
+
+        if (sfx.cache.loopstart === null) {
+          Con.Print(`S.Init: Sound ${name} not looped\n`);
         }
       });
+
+      if (sfx.state === SFX.STATE.NEW) {
+        this.LoadSound(sfx);
+      }
     }
 
     Con.sfx_talk = this.PrecacheSound('misc/talk.wav');
@@ -280,18 +485,18 @@ S = {
    * Precache a sound by name. Optionally load it if precache cvar is set.
    */
   PrecacheSound(name) {
-    if (this.nosound.value !== 0) {
+    if (this._nosound.value !== 0) {
       return null;
     }
     // Search known list
-    let sfx = this.knownSfx.find((k) => k.name === name);
+    let sfx = this._knownSfx.find((k) => k.name === name);
     if (!sfx) {
-      sfx = new S.SFX(name);
-      this.knownSfx.push(sfx);
+      sfx = new SFX(name);
+      this._knownSfx.push(sfx);
     }
-    if (this.precache.value !== 0) {
+    if (this._precache.value !== 0) {
       // we do not need all sounds right away, let’s prioritize them
-      if (sfx.state === S.SFX_STATE.NEW && (
+      if (sfx.state === SFX.STATE.NEW && (
         sfx.name.startsWith('weapons/') ||
         sfx.name.startsWith('player/') ||
         // sfx.name.startsWith('doors/') ||
@@ -309,27 +514,33 @@ S = {
    * Actually load sound data from disk (COM.LoadFile) and decode it.
    */
   async LoadSound(sfx) {
-    if (this.nosound.value !== 0) {
-      sfx.state = S.SFX_STATE.FAILED;
+    if (this._nosound.value !== 0) {
+      sfx.state = SFX.STATE.FAILED;
       return false;
     }
 
-    if (sfx.state === S.SFX_STATE.LOADING) {
+    if (sfx.state === SFX.STATE.LOADING) {
       throw new Error('LoadSound on isLoading = true');
     }
 
-    if ([S.SFX_STATE.AVAILABLE, S.SFX_STATE.FAILED].includes(sfx.state)) {
+    if ([SFX.STATE.AVAILABLE, SFX.STATE.FAILED].includes(sfx.state)) {
       // Already loaded or given up on
       return sfx.cache !== null;
     }
 
-    const sc = {};
-    sfx.state = S.SFX_STATE.LOADING;
+    const sc = {
+      length: null,
+      size: null,
+      data: null,
+      loopstart: null,
+    };
+
+    sfx.state = SFX.STATE.LOADING;
     const data = await COM.LoadFileAsync(`sound/${sfx.name}`);
 
     if (!data) {
       Con.Print(`Couldn't load sound/${sfx.name}\n`);
-      sfx.state = S.SFX_STATE.FAILED;
+      sfx.state = SFX.STATE.FAILED;
       return false;
     }
 
@@ -338,7 +549,7 @@ S = {
     // Quick check for 'RIFF' & 'WAVE'
     if (view.getUint32(0, true) !== 0x46464952 || view.getUint32(8, true) !== 0x45564157) {
       Con.Print(`S.LoadSound: Missing RIFF/WAVE chunks on ${sfx.name}\n`);
-      sfx.state = S.SFX_STATE.FAILED;
+      sfx.state = SFX.STATE.FAILED;
       return false;
     }
 
@@ -357,7 +568,7 @@ S = {
         case 0x20746d66: // 'fmt '
           if (view.getInt16(p + 8, true) !== 1) {
             Con.Print(`S.LoadSound: ${sfx.name} is not in Microsoft PCM format\n`);
-            sfx.state = S.SFX_STATE.FAILED;
+            sfx.state = SFX.STATE.FAILED;
             return false;
           }
           fmt = {
@@ -394,18 +605,20 @@ S = {
 
     if (!fmt) {
       Con.Print(`S.LoadSound: ${sfx.name} is missing the fmt chunk\n`);
-      sfx.state = S.SFX_STATE.FAILED;
+      sfx.state = SFX.STATE.FAILED;
       return false;
     }
     if (dataOfs == null) {
       Con.Print(`S.LoadSound: ${sfx.name} is missing the data chunk\n`);
-      sfx.state = S.SFX_STATE.FAILED;
+      sfx.state = SFX.STATE.FAILED;
       return false;
     }
 
     // Convert loopstart from "samples" to "seconds" if we have it
     if (loopstart != null) {
       sc.loopstart = loopstart * fmt.blockAlign / fmt.samplesPerSec;
+    } else {
+      sc.loopstart = null;
     }
 
     if (totalSamples != null) {
@@ -439,20 +652,10 @@ S = {
     view.setUint32(40, dataLen, true);
     new Uint8Array(out, 44, dataLen).set(new Uint8Array(data, dataOfs, dataLen));
 
-    // Decode via AudioContext or fallback to HTMLAudioElement
-    if (this.context) {
-      sc.data = null;
-
-      const audioData = await this.context.decodeAudioData(out);
-
-      sc.data = audioData;
-      sc.length = audioData.duration;
-    } else {
-      sc.data = new Audio(`data:audio/wav;base64,${Q.btoa(new Uint8Array(out))}`);
-    }
-
+    sc.data = await this._channelDriver.decodeAudioData(out);
     sfx.cache = sc;
     sfx.makeAvailable();
+
     return true;
   },
 
@@ -461,89 +664,45 @@ S = {
   //
 
   StartSound(entnum, entchannel, sfx, origin, vol, attenuation) {
-    if (this.nosound.value !== 0 || !sfx) {
+    if (this._nosound.value !== 0 || !sfx) {
       return;
     }
 
     // 1) Create a local callback that sets up the channel once data is loaded
     const onDataAvailable = (sc) => {
       // Pick or free a channel
-      const targetChan = this.PickChannel(entnum, entchannel);
+      const targetChan = this.PickChannel(entnum, entchannel).withSfx(sfx);
       targetChan.origin = [...origin];
       targetChan.dist_mult = attenuation * 0.001;
       targetChan.master_vol = vol;
       targetChan.entnum = entnum;
       targetChan.entchannel = entchannel;
-      targetChan.pos = 0.0;
-      targetChan.end = 0.0;
 
       // Spatialize
-      this.Spatialize(targetChan);
-      if (targetChan.leftvol === 0.0 && targetChan.rightvol === 0.0) {
+      targetChan.spatialize();
+
+      // Out of reach
+      if (targetChan.left_vol <= 0 && targetChan.right_vol <= 0) {
         return;
       }
 
-      targetChan.sfx = sfx;
       targetChan.pos = 0.0;
       targetChan.end = Host.realtime + sc.length;
 
-      if (this.context) {
-        // Web Audio path
-        const nodes = {
-          source: this.context.createBufferSource(),
-          merger1: this.context.createChannelMerger(2),
-          splitter: this.context.createChannelSplitter(2),
-          gain0: this.context.createGain(),
-          gain1: this.context.createGain(),
-          merger2: this.context.createChannelMerger(2),
-        };
-        targetChan.nodes = nodes;
+      // Load channel data
+      targetChan.loadData();
 
-        nodes.source.buffer = sc.data;
-        if (sc.loopstart) {
-          nodes.source.loop = true;
-          nodes.source.loopStart = sc.loopstart;
-          nodes.source.loopEnd = sc.length;
-        }
-
-        // Duplicate into left & right channels
-        nodes.source.connect(nodes.merger1);
-        nodes.source.connect(nodes.merger1, 0, 1);
-        nodes.merger1.connect(nodes.splitter);
-        // Gains
-        nodes.splitter.connect(nodes.gain0, 0);
-        nodes.splitter.connect(nodes.gain1, 1);
-
-        // Set initial volume
-        const leftVol = Math.min(targetChan.leftvol, 1.0) * this.volume.value;
-        const rightVol = Math.min(targetChan.rightvol, 1.0) * this.volume.value;
-        nodes.gain0.gain.value = leftVol;
-        nodes.gain1.gain.value = rightVol;
-
-        // Merge back to stereo
-        nodes.gain0.connect(nodes.merger2, 0, 0);
-        nodes.gain1.connect(nodes.merger2, 0, 1);
-        nodes.merger2.connect(this.context.destination);
-
-        // Start playing
-        this.NoteOn(nodes.source);
-      } else {
-        // Fallback to HTMLAudioElement
-        targetChan.audio = sc.data.cloneNode();
-        let volume = (targetChan.leftvol + targetChan.rightvol) * 0.5;
-        if (volume > 1.0) volume = 1.0;
-        targetChan.audio.volume = volume * this.volume.value;
-        this.TryPlayingChannel(targetChan);
-      }
+      // Play immediately
+      targetChan.start();
     };
 
-    if (sfx.state === S.SFX_STATE.AVAILABLE) {
+    if (sfx.state === SFX.STATE.AVAILABLE) {
       // 2) If already cached, call onDataAvailable immediately
       onDataAvailable(sfx.cache);
       return;
     }
 
-    if (sfx.state === S.SFX_STATE.NEW) {
+    if (sfx.state === SFX.STATE.NEW) {
       // 3) Not cached yet
       this.LoadSound(sfx).then((res) => {
         if (!res) {
@@ -559,162 +718,100 @@ S = {
   },
 
   StopSound(entnum, entchannel) {
-    if (this.nosound.value !== 0) {
+    if (this._nosound.value !== 0) {
       return;
     }
-    for (let i = 0; i < this.channels.length; ++i) {
-      const ch = this.channels[i];
-      if (!ch) continue;
-      if (ch.entnum === entnum && ch.entchannel === entchannel) {
-        ch.end = 0.0;
-        ch.sfx = null;
-        if (ch.nodes) {
-          this.NoteOff(ch.nodes.source);
-          ch.nodes = null;
-        } else if (ch.audio) {
-          ch.audio.pause();
-          ch.audio = null;
-        }
-        return;
-      }
-    }
+
+    // release that channel
+    this.channels.find((ch) => ch && ch.entnum === entnum && ch.entchannel === entchannel).reset();
   },
 
   StopAllSounds() {
-    if (this.nosound.value !== 0) return;
-
-    // Ambient channels
-    for (let i = 0; i < this.ambientChannels.length; i++) {
-      const ch = this.ambientChannels[i];
-      ch.master_vol = 0.0;
-      if (ch.nodes) {
-        this.NoteOff(ch.nodes.source);
-      } else if (ch.audio) {
-        ch.audio.pause();
-      }
-    }
-
-    // Dynamic channels
-    for (let i = 0; i < this.channels.length; i++) {
-      const ch = this.channels[i];
-      if (!ch) continue;
-      if (ch.nodes) {
-        this.NoteOff(ch.nodes.source);
-      } else if (ch.audio) {
-        ch.audio.pause();
-      }
-    }
-    this.channels = [];
-
-    // Static channels
-    if (this.context) {
-      for (let i = 0; i < this.staticChannels.length; i++) {
-        const sch = this.staticChannels[i];
-        if (sch && sch.nodes && sch.nodes.source) {
-          this.NoteOff(sch.nodes.source);
-        }
-      }
-    } else {
-      for (let i = 0; i < this.staticChannels.length; i++) {
-        const sch = this.staticChannels[i];
-        if (sch && sch.audio) {
-          sch.audio.pause();
-        }
-      }
-    }
-    this.staticChannels = [];
-  },
-
-  StaticSound(sfx, origin, vol, attenuation) {
-    if (this.nosound.value !== 0 || !sfx) {
+    if (this._nosound.value !== 0) {
       return;
     }
 
-    const ss = {
-      sfx,
-      origin: [...origin],
-      master_vol: vol,
-      dist_mult: attenuation * 0.000015625,
-      end: 0.0,
-      playFailedTime: null,
-    };
+    // Ambient channels
+    for (const ch of this._ambientChannels) {
+      ch.right_vol = 0;
+      ch.left_vol = 0;
+      ch.updateVol();
+    }
 
-    this.staticChannels.push(ss);
+    // Dynamic channels
+    while (this._channels.length > 0) {
+      const ch = this._channels.shift();
+      ch.stop();
+    }
+
+    // Static channels
+    while (this._staticChannels.length > 0) {
+      const ch = this._staticChannels.shift();
+      ch.stop();
+    }
+  },
+
+  StaticSound(sfx, origin, vol, attenuation) {
+    if (this._nosound.value !== 0 || !sfx) {
+      return;
+    }
+
+    const ss = this._NewChannel().withSfx(sfx);
+    ss.origin = [...origin];
+    ss.master_vol = vol;
+    ss.dist_mult = attenuation * 0.000015625;
+
+    this._staticChannels.push(ss);
 
     const onDataAvailable = (sc) => {
-      if (sc.loopstart == null) {
+      if (sc.loopstart === null) {
         Con.Print(`S.StaticSound: Sound ${sfx.name} not looped\n`);
         return;
       }
 
       ss.end = Host.realtime + sc.length;
 
-      if (this.context) {
-        const nodes = {
-          source: this.context.createBufferSource(),
-          merger1: this.context.createChannelMerger(2),
-          splitter: this.context.createChannelSplitter(2),
-          gain0: this.context.createGain(),
-          gain1: this.context.createGain(),
-          merger2: this.context.createChannelMerger(2),
-        };
-        ss.nodes = nodes;
-
-        nodes.source.buffer = sc.data;
-        nodes.source.loop = true;
-        nodes.source.loopStart = sc.loopstart;
-        nodes.source.loopEnd = sc.data.duration;
-
-        // route
-        nodes.source.connect(nodes.merger1);
-        nodes.source.connect(nodes.merger1, 0, 1);
-        nodes.merger1.connect(nodes.splitter);
-        nodes.splitter.connect(nodes.gain0, 0);
-        nodes.splitter.connect(nodes.gain1, 1);
-        nodes.gain0.connect(nodes.merger2, 0, 0);
-        nodes.gain1.connect(nodes.merger2, 0, 1);
-        nodes.merger2.connect(this.context.destination);
-      } else {
-        ss.audio = sc.data.cloneNode();
-        ss.audio.pause();
-      }
+      // Load the channel
+      ss.loadData();
+      ss.spatialize();
+      ss.start();
     };
 
-    if (sfx.state === S.SFX_STATE.AVAILABLE) {
+    if (sfx.state === SFX.STATE.AVAILABLE) {
       onDataAvailable(sfx.cache);
       return;
     }
 
-    if (sfx.state === S.SFX_STATE.LOADING || sfx.state === S.SFX_STATE.NEW) {
+    if (sfx.state === SFX.STATE.LOADING || sfx.state === SFX.STATE.NEW) {
       sfx.queueAvailableHandler((sfx) => onDataAvailable(sfx.cache));
       return;
     }
   },
 
   //
-  // --- Commands
+  // --- Console Commands
   //
 
   SoundList_f() {
     let total = 0;
-    for (let i = 0; i < this.knownSfx.length; i++) {
-      const sfx = this.knownSfx[i];
+    for (let i = 0; i < this._knownSfx.length; i++) {
+      const sfx = this._knownSfx[i];
       let sizeStr = '';
 
       switch (sfx.state) {
-        case S.SFX_STATE.AVAILABLE: {
+        case SFX.STATE.AVAILABLE: {
           const sc = sfx.cache;
           sizeStr = sc.size.toString();
           total += sc.size;
         }
           break;
-        case S.SFX_STATE.FAILED:
+        case SFX.STATE.FAILED:
           sizeStr = 'FAILED';
           break;
-        case S.SFX_STATE.LOADING:
+        case SFX.STATE.LOADING:
           sizeStr = 'LOADING';
           break;
-        case S.SFX_STATE.NEW:
+        case SFX.STATE.NEW:
           sizeStr = 'NEW';
           break;
         default:
@@ -725,29 +822,29 @@ S = {
         sizeStr = ` ${sizeStr}`;
       }
 
-      sizeStr = (sfx.cache?.loopstart != null) ? `L ${sizeStr}` : `  ${sizeStr}`;
+      sizeStr = (sfx.cache?.loopstart !== null) ? `L ${sizeStr}` : `  ${sizeStr}`;
 
       Con.Print(`${sizeStr} : ${sfx.name}\n`);
     }
     Con.Print(`Total resident: ${total}\n`);
   },
 
-  Play() {
-    if (this.nosound.value !== 0) {
+  Play_f() {
+    if (this._nosound.value !== 0) {
       return;
     }
-    // e.g. "Play misc/hit1 misc/hit2"
+    // e.g. "play misc/hit1 misc/hit2"
     for (let i = 1; i < Cmd.argv.length; ++i) {
       const sfxName = COM.DefaultExtension(Cmd.argv[i], '.wav');
       const sfx = this.PrecacheSound(sfxName);
       if (sfx) {
-        this.StartSound(CL.state.viewentity, 0, sfx, this.listenerOrigin, 1.0, 1.0);
+        this.StartSound(CL.state.viewentity, 0, sfx, this._listenerOrigin, 1.0, 1.0);
       }
     }
   },
 
-  PlayVol() {
-    if (this.nosound.value !== 0) {
+  PlayVol_f() {
+    if (this._nosound.value !== 0) {
       return;
     }
     // e.g. "playvol misc/hit1 0.5 misc/hit2 0.2"
@@ -756,7 +853,7 @@ S = {
       const volume = Q.atof(Cmd.argv[i + 1]);
       const sfx = this.PrecacheSound(sfxName);
       if (sfx) {
-        this.StartSound(CL.state.viewentity, 0, sfx, this.listenerOrigin, volume, 1.0);
+        this.StartSound(CL.state.viewentity, 0, sfx, this._listenerOrigin, volume, 1.0);
       }
     }
   },
@@ -771,127 +868,83 @@ S = {
       return;
     }
 
-    const l = Mod.PointInLeaf(this.listenerOrigin, CL.state.worldmodel);
-    if (!l || this.ambientLevel.value === 0) {
+    const l = Mod.PointInLeaf(this._listenerOrigin, CL.state.worldmodel);
+    if (!l || this._ambientLevel.value === 0) {
       // turn off all ambients
-      for (let i = 0; i < this.ambientChannels.length; i++) {
-        const ch = this.ambientChannels[i];
-        ch.master_vol = 0.0;
-        if (ch.nodes) {
-          this.NoteOff(ch.nodes.source);
-        } else if (ch.audio && !ch.audio.paused) {
-          ch.audio.pause();
-        }
+
+      for (const ch of this._ambientChannels) {
+        ch.right_vol = 0;
+        ch.left_vol = 0;
+        ch.updateVol();
       }
       return;
     }
 
     // ramp up/down volumes
-    for (let i = 0; i < this.ambientChannels.length; i++) {
-      const ch = this.ambientChannels[i];
-      if (!ch.nodes && !ch.audio) {
-        continue;
+    for (let i = 0; i < this._ambientChannels.length; i++) {
+      const ch = this._ambientChannels[i];
+      let vol = this._ambientLevel.value * l.ambient_level[i];
+      if (vol < 8.0) {
+        vol = 0.0;
       }
-      let vol = this.ambientLevel.value * l.ambient_level[i];
-      if (vol < 8.0) vol = 0.0;
       vol /= 255.0;
 
       // fade
       if (ch.master_vol < vol) {
-        ch.master_vol += (Host.frametime * this.ambientFade.value) / 255.0;
-        if (ch.master_vol > vol) ch.master_vol = vol;
+        ch.master_vol += (Host.frametime * this._ambientFade.value) / 255.0;
+        if (ch.master_vol > vol) {
+          ch.master_vol = vol;
+        }
       } else if (ch.master_vol > vol) {
-        ch.master_vol -= (Host.frametime * this.ambientFade.value) / 255.0;
-        if (ch.master_vol < vol) ch.master_vol = vol;
+        ch.master_vol -= (Host.frametime * this._ambientFade.value) / 255.0;
+        if (ch.master_vol < vol) {
+          ch.master_vol = vol;
+        }
       }
 
-      // If volume = 0, stop playing
-      if (ch.master_vol <= 0.0) {
-        if (ch.nodes) {
-          this.NoteOff(ch.nodes.source);
-        } else if (ch.audio && !ch.audio.paused) {
-          ch.audio.pause();
-        }
-        continue;
+      if (ch.master_vol > 1.0) {
+        ch.master_vol = 1.0;
       }
-      if (ch.master_vol > 1.0) ch.master_vol = 1.0;
 
-      // Actually set volume
-      if (this.context && ch.nodes) {
-        ch.nodes.gain.gain.value = ch.master_vol * this.volume.value;
-        this.NoteOn(ch.nodes.source);
-      } else if (ch.audio) {
-        ch.audio.volume = ch.master_vol * this.volume.value;
-        const sc = ch.sfx.cache;
-        if (ch.audio.paused) {
-          this.TryPlayingChannel(ch);
-          ch.end = Host.realtime + sc.length;
-          continue;
-        }
-        if (Host.realtime >= ch.end) {
-          try {
-            ch.audio.currentTime = sc.loopstart;
-          } catch (e) {
-            ch.end = Host.realtime;
-            continue;
-          }
-          ch.end = Host.realtime + sc.length - sc.loopstart;
-        }
-      }
+      ch.right_vol = ch.master_vol;
+      ch.left_vol = ch.master_vol;
+
+      ch.updateVol();
     }
   },
 
   UpdateDynamicSounds() {
-    for (let i = 0; i < this.channels.length; i++) {
-      const ch = this.channels[i];
-      if (!ch || !ch.sfx) continue;
+    for (let i = 0; i < this._channels.length; i++) {
+      const ch = this._channels[i];
+
+      if (!ch || !ch.sfx) {
+        continue;
+      }
 
       if (Host.realtime >= ch.end) {
         const sc = ch.sfx.cache;
         // If it's looped, try to wrap around
-        if (sc.loopstart != null) {
-          if (!this.context && ch.audio) {
-            try {
-              ch.audio.currentTime = sc.loopstart;
-            } catch (e) {
-              ch.end = Host.realtime;
-              continue;
-            }
-          }
-          ch.end = Host.realtime + sc.length - (sc.loopstart || 0);
+        if (sc.loopstart !== null) {
+          ch.updateLoop();
         } else {
-          ch.sfx = null;
-          ch.nodes = null;
-          ch.audio = null;
+          // no longer needed, release channel
+          ch.reset();
           continue;
         }
       }
 
       // Re-Spatialize
-      this.Spatialize(ch);
-
-      // Recompute volume
-      if (this.context && ch.nodes) {
-        ch.leftvol = Math.min(ch.leftvol, 1.0);
-        ch.rightvol = Math.min(ch.rightvol, 1.0);
-        ch.nodes.gain0.gain.value = ch.leftvol * this.volume.value;
-        ch.nodes.gain1.gain.value = ch.rightvol * this.volume.value;
-      } else if (ch.audio) {
-        let volume = (ch.leftvol + ch.rightvol) * 0.5;
-        volume = Math.min(volume, 1.0);
-        ch.audio.volume = volume * this.volume.value;
-      }
+      ch.spatialize();
     }
   },
 
   UpdateStaticSounds() {
     // Spatialize all static channels
-    for (const ch of this.staticChannels) {
-      this.Spatialize(ch);
+    for (const ch of this._staticChannels) {
+      ch.spatialize();
 
-      // lazy load sound files by distance
-      if (ch.sfx.state === S.SFX_STATE.NEW && (ch.leftvol > 0 || ch.rightvol > 0)) {
-        Con.Print(`S.UpdateStaticSounds: lazy loading ${ch.sfx.name}\n`);
+      // Only load sound files when really needed
+      if (ch.sfx.state === SFX.STATE.NEW && (ch.left_vol > 0 || ch.right_vol > 0)) {
         ch.sfx.load().catch((err) => {
           Con.Print(`S.UpdateStaticSounds: failed to lazy load ${ch.sfx.name}, ${error}\n`);
         });
@@ -899,88 +952,44 @@ S = {
     }
 
     // Combine channels that share the same sfx
-    for (let i = 0; i < this.staticChannels.length; i++) {
-      const ch = this.staticChannels[i];
-      if (ch.leftvol <= 0.0 && ch.rightvol <= 0.0) {
+    for (let i = 0; i < this._staticChannels.length; i++) {
+      const ch = this._staticChannels[i];
+      if (ch.left_vol <= 0.0 && ch.right_vol <= 0.0) {
         continue;
       }
-      for (let j = i + 1; j < this.staticChannels.length; j++) {
-        const ch2 = this.staticChannels[j];
+      for (let j = i + 1; j < this._staticChannels.length; j++) {
+        const ch2 = this._staticChannels[j];
         if (ch.sfx === ch2.sfx) {
-          ch.leftvol += ch2.leftvol;
-          ch.rightvol += ch2.rightvol;
-          ch2.leftvol = 0.0;
-          ch2.rightvol = 0.0;
-        }
-      }
-    }
-
-    if (this.context) {
-      for (let i = 0; i < this.staticChannels.length; i++) {
-        const ch = this.staticChannels[i];
-        if (!ch.nodes || (!ch.leftvol && !ch.rightvol)) {
-          if (ch?.nodes?.source) this.NoteOff(ch.nodes.source);
-          continue;
-        }
-        ch.leftvol = Math.min(ch.leftvol, 1.0);
-        ch.rightvol = Math.min(ch.rightvol, 1.0);
-        ch.nodes.gain0.gain.value = ch.leftvol * this.volume.value;
-        ch.nodes.gain1.gain.value = ch.rightvol * this.volume.value;
-        this.NoteOn(ch.nodes.source);
-      }
-    } else {
-      for (let i = 0; i < this.staticChannels.length; i++) {
-        const ch = this.staticChannels[i];
-        if (!ch.audio) continue;
-
-        let vol = (ch.leftvol + ch.rightvol) * 0.5;
-        vol = Math.min(vol, 1.0);
-        if (vol <= 0.0) {
-          if (!ch.audio.paused) {
-            ch.audio.pause();
-          }
-          continue;
-        }
-        ch.audio.volume = vol * this.volume.value;
-
-        const sc = ch.sfx.cache;
-        if (ch.audio.paused) {
-          this.TryPlayingChannel(ch);
-          ch.end = Host.realtime + sc.length;
-          continue;
-        }
-        if (Host.realtime >= ch.end) {
-          try {
-            ch.audio.currentTime = sc.loopstart;
-          } catch (e) {
-            ch.end = Host.realtime;
-          }
+          ch.left_vol += ch2.left_vol;
+          ch.right_vol += ch2.right_vol;
+          ch2.left_vol = 0.0;
+          ch2.right_vol = 0.0;
         }
       }
     }
   },
 
   Update(origin, forward, right, up) {
-    if (this.nosound.value !== 0) {
+    if (this._nosound.value !== 0) {
       return;
     }
 
     // Copy listener info
-    this.listenerOrigin[0] = origin[0];
-    this.listenerOrigin[1] = origin[1];
-    this.listenerOrigin[2] = origin[2];
+    this._listenerOrigin[0] = origin[0];
+    this._listenerOrigin[1] = origin[1];
+    this._listenerOrigin[2] = origin[2];
 
-    this.listenerForward[0] = forward[0];
-    this.listenerForward[1] = forward[1];
-    this.listenerForward[2] = forward[2];
+    this._listenerForward[0] = forward[0];
+    this._listenerForward[1] = forward[1];
+    this._listenerForward[2] = forward[2];
 
-    this.listenerRight[0] = right[0];
-    this.listenerRight[1] = right[1];
-    this.listenerRight[2] = right[2];
+    this._listenerRight[0] = right[0];
+    this._listenerRight[1] = right[1];
+    this._listenerRight[2] = right[2];
 
-    this.listenerUp[0] = up[0];
-    this.listenerUp[1] = up[1];
-    this.listenerUp[2] = up[2];
+    this._listenerUp[0] = up[0];
+    this._listenerUp[1] = up[1];
+    this._listenerUp[2] = up[2];
 
     // Bound volume [0..1]
     if (this.volume.value < 0.0) {
@@ -993,10 +1002,6 @@ S = {
     this.UpdateDynamicSounds();
     this.UpdateStaticSounds();
   },
-
-  //
-  // --- Utility
-  //
 
   LocalSound(sound) {
     // Plays a sound at the view entity, entchannel = -1
