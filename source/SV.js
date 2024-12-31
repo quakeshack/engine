@@ -1,3 +1,5 @@
+/*global SV, Sys, COM,  Q, Host, Vec, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, PF, V, SCR */
+
 SV = {};
 
 SV.movetype = {
@@ -685,7 +687,7 @@ SV.CreateBaseline = function() {
     baseline.frame = svent.v_float[PR.entvars.frame] >> 0;
     baseline.skin = svent.v_float[PR.entvars.skin] >> 0;
     if ((i > 0) && (i <= SV.server.maxclients)) {
-      baseline.colormap = entnum;
+      baseline.colormap = i;
       baseline.modelindex = player;
     } else {
       baseline.colormap = 0;
