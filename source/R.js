@@ -257,9 +257,9 @@ R.visframecount = 0;
 
 R.frustum = [{}, {}, {}, {}];
 
-R.vup = [];
-R.vpn = [];
-R.vright = [];
+R.vup = [0.0, 0.0, 0.0];
+R.vpn = [0.0, 0.0, 0.0];
+R.vright = [0.0, 0.0, 0.0];
 
 R.refdef = {
   vrect: {},

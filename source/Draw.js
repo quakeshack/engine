@@ -72,33 +72,33 @@ Draw.Init = function() {
       ['tTexture', 'tTrans']);
 };
 
-Draw.Char = function(x, y, num) {
-  GL.StreamDrawTexturedQuad(x, y, 8, 8,
+Draw.Char = function(x, y, num, scale = 1.0) {
+  GL.StreamDrawTexturedQuad(x, y, 8 * scale, 8 * scale,
       (num & 15) * 0.0625, (num >> 4) * 0.0625,
       ((num & 15) + 1) * 0.0625, ((num >> 4) + 1) * 0.0625);
 };
 
-Draw.Character = function(x, y, num) {
+Draw.Character = function(x, y, num, scale = 1.0) {
   const program = GL.UseProgram('Pic', true);
   GL.Bind(program.tTexture, Draw.char_texture, true);
-  Draw.Char(x, y, num);
+  Draw.Char(x, y, num, scale);
 };
 
-Draw.String = function(x, y, str) {
+Draw.String = function(x, y, str, scale = 1.0) {
   const program = GL.UseProgram('Pic', true);
   GL.Bind(program.tTexture, Draw.char_texture, true);
   for (let i = 0; i < str.length; ++i) {
-    Draw.Char(x, y, str.charCodeAt(i));
-    x += 8;
+    Draw.Char(x, y, str.charCodeAt(i), scale);
+    x += 8 * scale;
   }
 };
 
-Draw.StringWhite = function(x, y, str) {
+Draw.StringWhite = function(x, y, str, scale = 1.0) {
   const program = GL.UseProgram('Pic', true);
   GL.Bind(program.tTexture, Draw.char_texture, true);
   for (let i = 0; i < str.length; ++i) {
-    Draw.Char(x, y, str.charCodeAt(i) + 128);
-    x += 8;
+    Draw.Char(x, y, str.charCodeAt(i) + 128, scale);
+    x += 8 * scale;
   }
 };
 

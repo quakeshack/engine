@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Draw */
 
 // eslint-disable-next-line no-global-assign
 CL = {};
@@ -470,6 +470,7 @@ CL.cls = {
   spawnparms: '',
   demonum: 0,
   message: {data: new ArrayBuffer(8192), cursize: 0},
+  connecting: null,
 };
 
 CL.static_entities = [];
@@ -489,12 +490,32 @@ CL.Rcon_f = function() {
   MSG.WriteString(CL.cls.message, args.join(' '));
 };
 
+CL._SetConnectingStep = function(percentage, message) {
+  percentage = Math.round(percentage);
+  Con.DPrint(`CL._SetConnectingStep: ${message} (${percentage}%)\n`);
+  CL.cls.connecting = {
+    percentage,
+    message
+  };
+  SCR.UpdateScreen();
+};
+
+CL.Draw = function() { // FIXME: maybe put that into M?
+  if (CL.cls.connecting !== null) {
+    Draw.FadeScreen();
+    Draw.StringWhite(32, 32, "Connecting", 2);
+    Draw.StringWhite(32, 64, CL.cls.connecting.message);
+  }
+};
+
 CL.ClearState = function() {
   if (SV.server.active !== true) {
     Con.DPrint('Clearing memory\n');
     Mod.ClearAll();
     CL.cls.signon = 0;
   }
+
+  CL.cls.connecting = null;
 
   CL.state = {
     movemessages: 0,
@@ -584,6 +605,7 @@ CL.Disconnect = function() {
   }
   CL.cls.demoplayback = CL.cls.timedemo = false;
   CL.cls.signon = 0;
+  CL.cls.connecting = null;
 };
 
 CL.Connect = function(sock) {
@@ -592,6 +614,7 @@ CL.Connect = function(sock) {
   CL.cls.demonum = -1;
   CL.cls.state = CL.active.connected;
   CL.cls.signon = 0;
+  CL._SetConnectingStep(10, 'Connected to ' + CL.host);
 };
 
 CL.EstablishConnection = function(host) {
@@ -600,6 +623,7 @@ CL.EstablishConnection = function(host) {
   }
   CL.Disconnect();
   CL.host = host;
+  CL._SetConnectingStep(5, 'Connecting to ' + CL.host);
   const sock = NET.Connect(host);
   if (sock == null) {
     Host.Error('CL.EstablishConnection: connect failed\n');
@@ -613,6 +637,7 @@ CL.SignonReply = function() {
     case 1:
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'prespawn');
+      CL._SetConnectingStep(90, 'About to spawn');
       return;
     case 2:
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
@@ -621,13 +646,18 @@ CL.SignonReply = function() {
       MSG.WriteString(CL.cls.message, 'color ' + (CL.color.value >> 4) + ' ' + (CL.color.value & 15) + '\n');
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'spawn ' + CL.cls.spawnparms);
+      CL._SetConnectingStep(95, 'Setting client state');
       return;
     case 3:
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'begin');
+      CL._SetConnectingStep(100, 'Joining the game!');
       return;
     case 4:
+      CL.cls.connecting = null;
+      SCR.con_current = 0;
       SCR.EndLoadingPlaque();
+      return;
   }
 };
 
@@ -859,13 +889,20 @@ CL.ReadFromServer = function() {
   CL.state.oldtime = CL.state.time;
   CL.state.time += Host.frametime;
   let ret;
-  for (;;) {
-    ret = CL.GetMessage();
-    if (ret === -1) {
-      Host.Error('CL.ReadFromServer: lost server connection');
+  while (true) {
+    if (CL.processingServerInfoState === 1) {
+      return;
     }
-    if (ret === 0) {
-      break;
+    if (CL.processingServerInfoState === 2) {
+      CL.processingServerInfoState = 3;
+    } else {
+      ret = CL.GetMessage();
+      if (ret === -1) {
+        Host.Error('CL.ReadFromServer: lost server connection');
+      }
+      if (ret === 0) {
+        break;
+      }
     }
     CL.state.last_received_message = Host.realtime;
     CL.ParseServerMessage();
@@ -1088,6 +1125,7 @@ CL.ParseServerInfo = function() {
     Con.Print('Bad maxclients (' + CL.state.maxclients + ') from server\n');
     return;
   }
+  CL._SetConnectingStep(15, 'Received server info');
   CL.state.scores = [];
   for (i = 0; i < CL.state.maxclients; ++i) {
     CL.state.scores[i] = {
@@ -1122,24 +1160,38 @@ CL.ParseServerInfo = function() {
   }
 
   CL.state.model_precache = [];
-  for (i = 1; i < nummodels; ++i) {
-    CL.state.model_precache[i] = Mod.ForName(model_precache[i]);
-    if (CL.state.model_precache[i] == null) {
-      Con.Print('Model ' + model_precache[i] + ' not found\n');
-      return;
-    }
-    CL.KeepaliveMessage();
-  }
   CL.state.sound_precache = [];
-  for (i = 1; i < numsounds; ++i) {
-    CL.state.sound_precache[i] = S.PrecacheSound(sound_precache[i]);
-    CL.KeepaliveMessage();
-  }
 
-  CL.state.worldmodel = CL.state.model_precache[1];
-  CL.EntityNum(0).model = CL.state.worldmodel;
-  R.NewMap();
-  Host.noclip_anglehack = false;
+  CL.processingServerInfoState = 1;
+
+  (async () => {
+    for (i = 1; i < nummodels; ++i) {
+      CL._SetConnectingStep(25 + (i / nummodels) * 20, 'Loading model: ' + model_precache[i]);
+      CL.state.model_precache[i] = Mod.ForName(model_precache[i]);
+      if (CL.state.model_precache[i] == null) {
+        Con.Print('Model ' + model_precache[i] + ' not found\n');
+        return;
+      }
+
+      await Q.yield();
+      //CL.KeepaliveMessage();
+    }
+
+    for (i = 1; i < numsounds; ++i) {
+      CL._SetConnectingStep(45 + (i / numsounds) * 20, 'Loading sound: ' + sound_precache[i]);
+      CL.state.sound_precache[i] = S.PrecacheSound(sound_precache[i]);
+
+      //CL.KeepaliveMessage();
+      await Q.yield();
+    }
+  })().then(() => {
+    CL.processingServerInfoState = 2;
+    CL.state.worldmodel = CL.state.model_precache[1];
+    CL.EntityNum(0).model = CL.state.worldmodel;
+    CL._SetConnectingStep(66, 'Preparing map');
+    R.NewMap();
+    Host.noclip_anglehack = false;
+  });
 };
 
 CL.ParseUpdate = function(bits) {
@@ -1303,6 +1355,16 @@ CL.Shownet = function(x) {
   }
 };
 
+/**
+ * as long as we do not have a fully async architecture, we have to cheat
+ * processingServerInfoState will hold off parsing and processing any further command
+ * 0 - normal operation
+ * 1 - we entered parsing serverinfo, holding off any further processing
+ * 2 - we are done processing, we can continue processing the rest
+ * 3 - we need to re-enter the loop, but not reset the MSG pointer
+ */
+CL.processingServerInfoState = 0;
+
 CL.ParseServerMessage = function() {
   if (CL.shownet.value === 1) {
     Con.Print(NET.message.cursize + ' ');
@@ -1312,10 +1374,22 @@ CL.ParseServerMessage = function() {
 
   CL.state.onground = false;
 
-  MSG.BeginReading();
+  if (CL.processingServerInfoState === 1) {
+    return;
+  }
+
+  if (CL.processingServerInfoState === 3) {
+    CL.processingServerInfoState = 0;
+  } else {
+    MSG.BeginReading();
+  }
 
   let cmd; let i;
-  for (;;) {
+  while (true) {
+    if (CL.processingServerInfoState > 0) {
+      return;
+    }
+
     if (MSG.badread === true) {
       Host.Error('CL.ParseServerMessage: Bad server message');
     }

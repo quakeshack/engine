@@ -8,6 +8,8 @@ SCR.con_current = 0;
 SCR.centerstring = [];
 SCR.centertime_off = 0.0;
 
+SCR._requestedAnimationFrames = 0;
+
 SCR.CenterPrint = function(str) {
   SCR.centerstring = [];
   let i; let start = 0; let next;
@@ -263,13 +265,13 @@ SCR.EndLoadingPlaque = function() {
 };
 
 SCR.UpdateScreen = function() {
-  if (SCR.disabled_for_loading === true) {
-    if (Host.realtime <= SCR.disabled_time) {
-      return;
-    }
-    SCR.disabled_for_loading = false;
-    Con.Print('load failed.\n');
-  }
+  // if (SCR.disabled_for_loading === true) {
+  //   if (Host.realtime <= SCR.disabled_time) {
+  //     return;
+  //   }
+  //   SCR.disabled_for_loading = false;
+  //   Con.Print('load failed.\n');
+  // }
 
   const elem = document.documentElement;
   const width = (elem.clientWidth <= 320) ? 320 : elem.clientWidth;
@@ -304,45 +306,60 @@ SCR.UpdateScreen = function() {
   }
 
   SCR.SetUpToDrawConsole();
-  V.RenderView();
-  GL.Set2D();
-  if (R.dowarp === true) {
-    R.WarpScreen();
-  }
-  if (Con.forcedup !== true) {
-    R.PolyBlend();
+
+  if (SCR._requestedAnimationFrames > 3) {
+    // too many rendering requests active
+    return;
   }
 
-  if (CL.cls.state === CL.active.connecting) {
-    SCR.DrawConsole();
-  } else if ((CL.state.intermission === 1) && (Key.dest.value === Key.dest.game)) {
-    Sbar.IntermissionOverlay();
-  } else if ((CL.state.intermission === 2) && (Key.dest.value === Key.dest.game)) {
-    Sbar.FinaleOverlay();
-    SCR.DrawCenterString();
-  } else if ((CL.state.intermission === 3) && (Key.dest.value === Key.dest.game)) {
-    SCR.DrawCenterString();
-  } else {
-    if (V.crosshair.value !== 0) {
-      Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width >> 1) + V.crossx.value,
-          R.refdef.vrect.y + (R.refdef.vrect.height >> 1) + V.crossy.value, 43);
+  requestAnimationFrame(() => {
+    V.RenderView();
+    GL.Set2D();
+    if (R.dowarp === true) {
+      R.WarpScreen();
     }
-    SCR.DrawNet();
-    SCR.DrawTurtle();
-    SCR.DrawPause();
-    SCR.DrawCenterString();
-    Sbar.Draw();
-    SCR.DrawConsole();
-    M.Draw();
-  }
+    if (Con.forcedup !== true) {
+      R.PolyBlend();
+    }
 
-  GL.StreamFlush();
+    if (CL.cls.state === CL.active.connecting) {
+      SCR.DrawConsole();
+    } else if ((CL.state.intermission === 1) && (Key.dest.value === Key.dest.game)) {
+      Sbar.IntermissionOverlay();
+    } else if ((CL.state.intermission === 2) && (Key.dest.value === Key.dest.game)) {
+      Sbar.FinaleOverlay();
+      SCR.DrawCenterString();
+    } else if ((CL.state.intermission === 3) && (Key.dest.value === Key.dest.game)) {
+      SCR.DrawCenterString();
+    } else {
+      if (V.crosshair.value !== 0) {
+        Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width >> 1) + V.crossx.value,
+            R.refdef.vrect.y + (R.refdef.vrect.height >> 1) + V.crossy.value, 43);
+      }
+      SCR.DrawNet();
+      SCR.DrawTurtle();
+      SCR.DrawPause();
+      SCR.DrawCenterString();
+      Sbar.Draw();
+      SCR.DrawConsole();
+      M.Draw();
+    }
 
-  gl.disable(gl.BLEND);
+    CL.Draw();
+
+    GL.StreamFlush();
+
+    gl.disable(gl.BLEND);
+
+    SCR._requestedAnimationFrames--;
+  });
+
+  SCR._requestedAnimationFrames++;
 
   if (SCR.screenshot === true) {
+    Con.Print('SCR.UpdateScreen: not implemented');
     SCR.screenshot = false;
-    gl.finish();
-    open(VID.mainwindow.toDataURL('image/jpeg'));
+    // gl.finish();
+    // open(VID.mainwindow.toDataURL('image/jpeg'));
   }
 };

@@ -46,3 +46,6 @@ Q.btoa = function(src) {
   }
   return val.join('');
 };
+
+Q.yield = () => new Promise(resolve => setTimeout(resolve, 0));
+Q.sleep = (msec) => new Promise(resolve => setTimeout(resolve, msec));
