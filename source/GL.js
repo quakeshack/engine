@@ -531,5 +531,7 @@ GL.Init = function() {
 };
 
 GL.Shutdown = function() {
+  // eslint-disable-next-line no-global-assign
+  gl = null;
   VID.mainwindow.style.display = 'none';
 };

@@ -142,6 +142,10 @@ Draw.CachePicDeferred = function(path) {
   };
 
   COM.LoadFileAsync(path).then((buf) => {
+    if (buf == null) {
+      throw new Error('buf == null');
+    }
+
     const view = new DataView(buf, 0, 8);
     dat.width = view.getUint32(0, true);
     dat.height = view.getUint32(4, true);

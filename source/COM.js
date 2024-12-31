@@ -273,7 +273,11 @@ COM.LoadFile = function(filename) {
             'Range',
             `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`,
         );
-        xhr.send();
+        try {
+          xhr.send();
+        } catch (err) {
+          Sys.Error(`COM.LoadFile: failed to load ${filename} from pak, ${err.message}`);
+        }
 
         // Check status and length
         if (
@@ -293,7 +297,11 @@ COM.LoadFile = function(filename) {
 
     // 3) Fallback: try plain files on the filesystem (in data/)
     xhr.open('GET', `data/${netpath}`, false);
-    xhr.send();
+    try {
+      xhr.send();
+    } catch (err) {
+      Sys.Error(`COM.LoadFile: failed to load ${filename}, ${err.message}`);
+    }
 
     if (xhr.status >= 200 && xhr.status <= 299) {
       Sys.Print(`COM.LoadFile: ${netpath}\n`);
@@ -419,7 +427,11 @@ COM.LoadPackFile = function(packfile) {
   xhr.overrideMimeType('text/plain; charset=x-user-defined');
   xhr.open('GET', 'data/' + packfile, false);
   xhr.setRequestHeader('Range', 'bytes=0-11');
-  xhr.send();
+  try {
+    xhr.send();
+  } catch (err) {
+    Sys.Error(`COM.LoadPackFile: failed to load ${packfile}, ${err.message}`);
+  }
   if ((xhr.status <= 199) || (xhr.status >= 300) || (xhr.responseText.length !== 12)) {
     return;
   }
@@ -437,7 +449,11 @@ COM.LoadPackFile = function(packfile) {
   if (numpackfiles !== 0) {
     xhr.open('GET', 'data/' + packfile, false);
     xhr.setRequestHeader('Range', 'bytes=' + dirofs + '-' + (dirofs + dirlen - 1));
-    xhr.send();
+    try {
+      xhr.send();
+    } catch (err) {
+      Sys.Error(`COM.LoadPackFile: failed to load ${packfile}, ${err.message}`);
+    }
     if ((xhr.status <= 199) || (xhr.status >= 300) || (xhr.responseText.length !== dirlen)) {
       return;
     }

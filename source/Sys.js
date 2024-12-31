@@ -129,7 +129,9 @@ Sys.Quit = function() {
   Host.Shutdown();
 
   document.body.style.cursor = 'auto';
-  VID.mainwindow.style.display = 'none';
+  if (VID.mainwindow) {
+    VID.mainwindow.style.display = 'none';
+  }
 
   if (COM.registered.value !== 0) {
     // document.getElementById('end2').style.display = 'inline';
@@ -159,6 +161,9 @@ Sys.Error = function(text) {
   }
 
   document.body.style.cursor = 'auto';
+  if (VID.mainwindow) {
+    VID.mainwindow.style.display = 'none';
+  }
 
   const $error = document.getElementById('error');
 

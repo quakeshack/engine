@@ -1,4 +1,4 @@
-/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ */
+/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ, GL */
 
 // eslint-disable-next-line no-global-assign
 Host = {};
@@ -396,11 +396,11 @@ Host.Shutdown = function() {
   Host.isdown = true;
   Host.WriteConfiguration();
   if (!Host.dedicated.value) {
+    S.StopAllSounds();
     CDAudio.Stop();
   }
   NET.Shutdown();
   if (!Host.dedicated.value) {
-    S.StopAllSounds();
     IN.Shutdown();
     VID.Shutdown();
   }
