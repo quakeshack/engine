@@ -12,6 +12,7 @@ class SFX {
     this.name = name;
     this.cache = null;
     this.state = SFX.STATE.NEW;
+    this.loadtime = null;
 
     this._availableQueue = [];
   }
@@ -260,7 +261,7 @@ class AudioContextChannel extends SoundBaseChannel {
     }
 
     if (this._nodes.source) {
-      this._nodes.source.start();
+      this._nodes.source.start(0, this.pos);
     }
 
     this._state = SoundBaseChannel.STATE.PLAYING;
@@ -339,6 +340,7 @@ class AudioElementChannel extends SoundBaseChannel {
       return this;
     }
 
+    this._audio.currentTime = this.pos;
     this._audio.play().catch((e) => {
       Con.Print(`AudioElementChannel.start: failed to play audio, ${e.message}, retrying later\n`);
       this._playFailedTime = Host.realtime;
@@ -515,7 +517,7 @@ S = {
   },
 
   /**
-   * Actually load sound data from disk (COM.LoadFile) and decode it.
+   * Actually load sound data and decode it.
    */
   async LoadSound(sfx) {
     if (this._nosound.value !== 0) {
@@ -540,6 +542,7 @@ S = {
     };
 
     sfx.state = SFX.STATE.LOADING;
+    sfx.loadtime = Host.realtime || null;
     const data = await COM.LoadFileAsync(`sound/${sfx.name}`);
 
     if (!data) {
@@ -696,6 +699,21 @@ S = {
       // Load channel data
       targetChan.loadData();
 
+      // Adjust play time and check whether it is still worth playing
+      if (sfx.loadtime !== null) {
+        const loadtime = Host.realtime - sfx.loadtime;
+        sfx.loadtime = null; // Once loaded, we do not need this anymore
+
+        if (loadtime < sc.length && sc.length - loadtime < 0.5 && loadtime < 0.2) {
+          // Skip forward, if it still makes sense
+          // We rather accept a delayed play than a chopped off one
+          targetChan.pos = sc.length - loadtime;
+        } else if (loadtime > 3) {
+          // It’s too long time ago for play some meaningful content noww
+          return;
+        }
+      }
+
       // Play immediately
       targetChan.start();
     };
@@ -772,10 +790,9 @@ S = {
         return;
       }
 
+      ss.loadData();
       ss.end = Host.realtime + sc.length;
 
-      // Load the channel
-      ss.loadData();
       ss.spatialize();
       ss.start();
     };
