@@ -202,6 +202,11 @@ Host.ServerFrame = function() {
   SV.SendClientMessages();
 };
 
+Host._scheduledForNextFrame = [];
+Host.ScheduleForNextFrame = function(callback) {
+  Host._scheduledForNextFrame.push(callback);
+}
+
 Host.time3 = 0.0;
 Host._Frame = function() {
   // Math.random();
@@ -217,6 +222,11 @@ Host._Frame = function() {
     } else if (Host.frametime < 0.001) {
       Host.frametime = 0.001;
     }
+  }
+
+  while (Host._scheduledForNextFrame.length > 0) {
+    const callback = Host._scheduledForNextFrame.shift();
+    callback();
   }
 
   if (Host.dedicated.value) {
@@ -590,18 +600,35 @@ Host.Map_f = function() {
     SCR.BeginLoadingPlaque();
   }
   SV.svs.serverflags = 0;
-  SV.SpawnServer(Cmd.argv[1]);
-  if (SV.server.active !== true) {
-    return;
+
+  if (!Host.dedicated.value) {
+    CL.SetConnectingStep(5, 'Spawning server');
   }
+
+  const mapname = Cmd.argv[1];
+
   if (!Host.dedicated.value) {
     CL.cls.spawnparms = '';
-    let i;
-    for (i = 2; i < Cmd.argv.length; ++i) {
+    for (let i = 2; i < Cmd.argv.length; ++i) {
       CL.cls.spawnparms += Cmd.argv[i] + ' ';
     }
-    Cmd.ExecuteString('connect local');
   }
+
+  Host.ScheduleForNextFrame(() => {
+    SV.SpawnServer(mapname);
+
+    if (!Host.dedicated.value) {
+      CL.SetConnectingStep(null, null);
+    }
+
+    if (SV.server.active !== true) {
+      return;
+    }
+
+    if (!Host.dedicated.value) {
+      Cmd.ExecuteString('connect local');
+    }
+  });
 };
 
 Host.Changelevel_f = function() {
@@ -624,8 +651,20 @@ Host.Changelevel_f = function() {
   if (SV.svs.maxclients > 1) {
     Host.BroadcastPrint(`Changing level to ${mapname}!\n`);
   }
-  SV.SaveSpawnparms();
-  SV.SpawnServer(mapname);
+
+  if (!Host.dedicated.value) {
+    CL.SetConnectingStep(5, `Changing level to ${mapname}`);
+  } else {
+    Con.Print(`Changing level to ${mapname}!\n`);
+  }
+
+  Host.ScheduleForNextFrame(() => {
+    SV.SaveSpawnparms();
+    SV.SpawnServer(mapname);
+    if (!Host.dedicated.value) {
+      CL.SetConnectingStep(null, null);
+    }
+  });
 };
 
 Host.Restart_f = function() {
@@ -789,7 +828,7 @@ Host.Savegame_f = function() {
   }
 };
 
-Host.Loadgame_f = function() {
+Host.Loadgame_f = function() { // TODO: schedule for next frame, add loading screen
   if (Cmd.client === true) {
     return;
   }
@@ -827,6 +866,9 @@ Host.Loadgame_f = function() {
   CL.Disconnect();
   SV.SpawnServer(f[19]);
   if (SV.server.active !== true) {
+    if (!Host.dedicated.value) {
+      CL.SetConnectingStep(null, null);
+    }
     Con.Print('Couldn\'t load map\n');
     return;
   }

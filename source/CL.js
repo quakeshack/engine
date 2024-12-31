@@ -491,9 +491,14 @@ CL.Rcon_f = function() {
   MSG.WriteString(CL.cls.message, args.join(' '));
 };
 
-CL._SetConnectingStep = function(percentage, message) {
+CL.SetConnectingStep = function(percentage, message) {
+  if (percentage === null && message === null) {
+    CL.cls.connecting = null;
+    return;
+  }
+
   percentage = Math.round(percentage);
-  Con.DPrint(`CL._SetConnectingStep: ${message} (${percentage}%)\n`);
+  Con.DPrint(`CL.SetConnectingStep: ${message} (${percentage}%)\n`);
   CL.cls.connecting = {
     percentage,
     message
@@ -504,8 +509,12 @@ CL._SetConnectingStep = function(percentage, message) {
 CL.Draw = function() { // FIXME: maybe put that into M?
   if (CL.cls.connecting !== null) {
     Draw.FadeScreen();
-    Draw.StringWhite(32, 32, "Connecting", 2);
+    Draw.String(32, 32, "Connecting", 2);
     Draw.StringWhite(32, 64, CL.cls.connecting.message);
+
+    const len = 30;
+    const p = CL.cls.connecting.percentage;
+    Draw.String(32, 80, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p}%`);
   }
 };
 
@@ -516,7 +525,7 @@ CL.ClearState = function() {
     CL.cls.signon = 0;
   }
 
-  CL.cls.connecting = null;
+  CL.SetConnectingStep(null, null);
 
   CL.state = {
     movemessages: 0,
@@ -606,7 +615,7 @@ CL.Disconnect = function() {
   }
   CL.cls.demoplayback = CL.cls.timedemo = false;
   CL.cls.signon = 0;
-  CL.cls.connecting = null;
+  CL.SetConnectingStep(null, null);
 };
 
 CL.Connect = function(sock) {
@@ -615,7 +624,7 @@ CL.Connect = function(sock) {
   CL.cls.demonum = -1;
   CL.cls.state = CL.active.connected;
   CL.cls.signon = 0;
-  CL._SetConnectingStep(10, 'Connected to ' + CL.host);
+  CL.SetConnectingStep(10, 'Connected to ' + CL.host);
 };
 
 CL.EstablishConnection = function(host) {
@@ -624,7 +633,7 @@ CL.EstablishConnection = function(host) {
   }
   CL.Disconnect();
   CL.host = host;
-  CL._SetConnectingStep(5, 'Connecting to ' + CL.host);
+  CL.SetConnectingStep(5, 'Connecting to ' + CL.host);
   const sock = NET.Connect(host);
   if (sock == null) {
     Host.Error('CL.EstablishConnection: connect failed\n');
@@ -638,7 +647,7 @@ CL.SignonReply = function() {
     case 1:
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'prespawn');
-      CL._SetConnectingStep(90, 'About to spawn');
+      CL.SetConnectingStep(90, 'About to spawn');
       return;
     case 2:
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
@@ -647,15 +656,15 @@ CL.SignonReply = function() {
       MSG.WriteString(CL.cls.message, 'color ' + (CL.color.value >> 4) + ' ' + (CL.color.value & 15) + '\n');
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'spawn ' + CL.cls.spawnparms);
-      CL._SetConnectingStep(95, 'Setting client state');
+      CL.SetConnectingStep(95, 'Setting client state');
       return;
     case 3:
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'begin');
-      CL._SetConnectingStep(100, 'Joining the game!');
+      CL.SetConnectingStep(100, 'Joining the game!');
       return;
     case 4:
-      CL.cls.connecting = null;
+      CL.SetConnectingStep(null, null);
       SCR.con_current = 0;
       SCR.EndLoadingPlaque();
       return;
@@ -1126,7 +1135,7 @@ CL.ParseServerInfo = function() {
     Con.Print('Bad maxclients (' + CL.state.maxclients + ') from server\n');
     return;
   }
-  CL._SetConnectingStep(15, 'Received server info');
+  CL.SetConnectingStep(15, 'Received server info');
   CL.state.scores = [];
   for (i = 0; i < CL.state.maxclients; ++i) {
     CL.state.scores[i] = {
@@ -1167,7 +1176,7 @@ CL.ParseServerInfo = function() {
 
   (async () => {
     for (i = 1; i < nummodels; ++i) {
-      CL._SetConnectingStep(25 + (i / nummodels) * 20, 'Loading model: ' + model_precache[i]);
+      CL.SetConnectingStep(25 + (i / nummodels) * 20, 'Loading model: ' + model_precache[i]);
       CL.state.model_precache[i] = Mod.ForName(model_precache[i]);
       if (CL.state.model_precache[i] == null) {
         Con.Print('Model ' + model_precache[i] + ' not found\n');
@@ -1179,7 +1188,7 @@ CL.ParseServerInfo = function() {
     }
 
     for (i = 1; i < numsounds; ++i) {
-      CL._SetConnectingStep(45 + (i / numsounds) * 20, 'Loading sound: ' + sound_precache[i]);
+      CL.SetConnectingStep(45 + (i / numsounds) * 20, 'Loading sound: ' + sound_precache[i]);
       CL.state.sound_precache[i] = S.PrecacheSound(sound_precache[i]);
 
       //CL.KeepaliveMessage();
@@ -1189,7 +1198,7 @@ CL.ParseServerInfo = function() {
     CL.processingServerInfoState = 2;
     CL.state.worldmodel = CL.state.model_precache[1];
     CL.EntityNum(0).model = CL.state.worldmodel;
-    CL._SetConnectingStep(66, 'Preparing map');
+    CL.SetConnectingStep(66, 'Preparing map');
     R.NewMap();
     Host.noclip_anglehack = false;
   });

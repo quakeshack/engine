@@ -813,7 +813,7 @@ SV.SpawnServer = function(server) {
   if (SV.server.worldmodel == null) {
     Con.Print('Couldn\'t spawn server ' + SV.server.modelname + '\n');
     SV.server.active = false;
-    return;
+    return false;
   }
   SV.server.models = [];
   SV.server.models[1] = SV.server.worldmodel;
@@ -863,6 +863,7 @@ SV.SpawnServer = function(server) {
     SV.SendServerinfo(Host.client);
   }
   Con.DPrint('Server spawned.\n');
+  return true;
 };
 
 SV.GetClientName = function(client) {
