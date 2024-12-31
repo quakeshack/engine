@@ -78,6 +78,7 @@ Protocol.svc = {
   sellscreen: 33,
   cutscene: 34,
   updatepings: 35,
+  loadsound: 36,
 };
 
 Protocol.clc = {

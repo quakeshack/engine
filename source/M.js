@@ -1000,8 +1000,8 @@ M.Init = function() {
   M.menuplyr.translate = gl.createTexture();
   GL.Bind(0, M.menuplyr.translate);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, trans);
-  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
   M.p_option = Draw.CachePic('p_option');
   M.ttl_cstm = Draw.CachePic('ttl_cstm');

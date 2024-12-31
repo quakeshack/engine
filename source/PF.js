@@ -783,8 +783,8 @@ PF.builtin = [
   PF.precache_file,
   PF.setspawnparms,
 
-  // PF.logfrag,
-  // PF.infokey,
-  // PF.stof,
-  // PF.multicast,
+  PF.Fixme, // PF.logfrag,
+  PF.Fixme, // PF.infokey,
+  PF.Fixme, // PF.stof,
+  PF.Fixme, // PF.multicast,
 ];

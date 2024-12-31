@@ -126,8 +126,11 @@ SV.StartSound = function(entity, channel, sample, volume, attenuation) {
     }
   }
   if (i >= SV.server.sound_precache.length) {
-    Con.Print('SV.StartSound: ' + sample + ' not precached\n');
-    return;
+    Con.Print('SV.StartSound: ' + sample + ' was not precached\n');
+    SV.server.sound_precache.push(sample);
+    MSG.WriteByte(datagram, Protocol.svc.loadsound);
+    MSG.WriteByte(datagram, i);
+    MSG.WriteString(datagram, sample);
   }
 
   let field_mask = 0;

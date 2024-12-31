@@ -469,6 +469,7 @@ CL.cls = {
   state: 0,
   spawnparms: '',
   demonum: 0,
+  demos: [],
   message: {data: new ArrayBuffer(8192), cursize: 0},
   connecting: null,
 };
@@ -1464,6 +1465,11 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.stopsound:
         i = MSG.ReadShort();
         S.StopSound(i >> 3, i & 7);
+        continue;
+      case Protocol.svc.loadsound:
+        i = MSG.ReadByte();
+        CL.state.sound_precache[i] = S.PrecacheSound(MSG.ReadString());
+        Con.Print(`CL.ParseServerMessage: load sound "${CL.state.sound_precache[i].name}" (${CL.state.sound_precache[i].state}) on slot ${i}\n`);
         continue;
       case Protocol.svc.updatename: {
           i = MSG.ReadByte();
