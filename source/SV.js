@@ -1,5 +1,6 @@
 /*global SV, Sys, COM,  Q, Host, Vec, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, PF, V, SCR */
 
+// eslint-disable-next-line no-global-assign
 SV = {};
 
 SV.movetype = {

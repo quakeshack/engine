@@ -1,3 +1,6 @@
+/* global Key, Con, CL, Cmd, Cvar, M */
+
+// eslint-disable-next-line no-global-assign
 Key = {};
 
 Key.k = {

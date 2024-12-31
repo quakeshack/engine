@@ -1,3 +1,6 @@
+/* global Draw, COM, Sys, Def, VID, W, gl, GL */
+
+// eslint-disable-next-line no-global-assign
 Draw = {};
 
 Draw.CharToConback = function(num, dest) {

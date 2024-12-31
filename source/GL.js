@@ -1,3 +1,6 @@
+/* global GL, gl, Con, COM, Cmd, Cvar, SCR, Sys, Draw, VID */
+
+// eslint-disable-next-line no-global-assign
 GL = {};
 
 GL.textures = [];
@@ -484,8 +487,11 @@ GL.StreamDrawColoredQuad = function(x, y, w, h, r, g, b, a) {
 GL.Init = function() {
   VID.mainwindow = document.getElementById('mainwindow');
   try {
+    // eslint-disable-next-line no-global-assign
     gl = VID.mainwindow.getContext('webgl') || VID.mainwindow.getContext('experimental-webgl');
-  } catch (e) {}
+  } catch (e) {
+    Sys.Error(`Unable to initialize WebGL. ${e.message}`);
+  }
   if (gl == null) {
     Sys.Error('Unable to initialize WebGL. Your browser may not support it.');
   }

@@ -1,3 +1,6 @@
+/* global CDAudio, Con, COM, Cmd, Cvar, S, Q */
+
+// eslint-disable-next-line no-global-assign
 CDAudio = {};
 
 CDAudio.known = [];

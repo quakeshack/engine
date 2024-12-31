@@ -1,3 +1,6 @@
+/* global CRC */
+
+// eslint-disable-next-line no-global-assign
 CRC = {};
 
 CRC.table =

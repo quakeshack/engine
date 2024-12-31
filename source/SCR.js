@@ -1,3 +1,6 @@
+/* global SCR, Con, Host, CL, Cmd, Cvar, S, R, V, VID, Key, Draw, Sbar, GL, gl, M */
+
+// eslint-disable-next-line no-global-assign
 SCR = {};
 
 SCR.con_current = 0;

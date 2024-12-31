@@ -1,3 +1,6 @@
+/* global VID, COM, GL, Sys */
+
+// eslint-disable-next-line no-global-assign
 VID = {};
 
 // FIXME: make d_8to24table private, expose methods to do a 8-to-24

@@ -1,3 +1,6 @@
+/* global Con, Key, COM, Host, CL, Cmd, Cvar, S, SCR, Draw, VID, M */
+
+// eslint-disable-next-line no-global-assign
 Con = {};
 
 Con.backscroll = 0;
@@ -70,6 +73,7 @@ Con.StopCapture = function() {
   return data;
 };
 
+// eslint-disable-next-line no-unused-vars
 Con.OnLinePrint = function(line) {
 };
 

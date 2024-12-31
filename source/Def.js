@@ -1,3 +1,6 @@
+/* global Def */
+
+// eslint-disable-next-line no-global-assign
 Def = {};
 
 Def.version = '1.0.5';

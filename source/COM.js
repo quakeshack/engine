@@ -1,3 +1,6 @@
+/* global Con, COM, Cmd, Cvar, Q, Sys, Draw, CRC */
+
+// eslint-disable-next-line no-global-assign
 COM = {};
 
 COM.argv = [];
@@ -159,7 +162,7 @@ COM.Init = function() {
       Sys.Error('Protocol is ' + document.location.protocol + ', not http: or https:');
     }
   } catch (e) {
-    Sys.Print('COM.Init: document.location check failed, assuming dedicated environment');
+    Sys.Print(`COM.Init: document.location check failed (${e.message}), assuming dedicated environment`);
   }
 
   const swaptest = new ArrayBuffer(2);
@@ -206,7 +209,7 @@ COM.WriteFile = function(filename, data, len) {
   try {
     localStorage.setItem('Quake.' + COM.searchpaths[COM.searchpaths.length - 1].filename + '/' + filename, dest.join(''));
   } catch (e) {
-    Sys.Print('COM.WriteFile: failed on ' + filename + '\n');
+    Sys.Print('COM.WriteFile: failed on ' + filename + ', ' + e.message + '\n');
     return;
   }
   Sys.Print('COM.WriteFile: ' + filename + '\n');
@@ -218,7 +221,7 @@ COM.WriteTextFile = function(filename, data) {
   try {
     localStorage.setItem('Quake.' + COM.searchpaths[COM.searchpaths.length - 1].filename + '/' + filename, data);
   } catch (e) {
-    Sys.Print('COM.WriteTextFile: failed on ' + filename + '\n');
+    Sys.Print('COM.WriteTextFile: failed on ' + filename + ', ' + e.message + '\n');
     return;
   }
   Sys.Print('COM.WriteTextFile: ' + filename + '\n');

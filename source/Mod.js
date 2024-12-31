@@ -1,4 +1,5 @@
 /*global Mod, VID, Sys, gl, COM, R, Q, Host, Vec, GL, Con */
+// eslint-disable-next-line no-global-assign
 Mod = {};
 
 /**
@@ -42,6 +43,7 @@ class BaseModel {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 class AliasModel extends BaseModel {
   reset() {
     super.reset();

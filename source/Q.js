@@ -1,3 +1,6 @@
+/* global Q */
+
+// eslint-disable-next-line no-global-assign
 Q = {};
 
 Q.memstr = function(src) {

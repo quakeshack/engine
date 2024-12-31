@@ -1,3 +1,6 @@
+/* global Con, COM, Cmd, Cvar, Host, CL, MSG, Protocol */
+
+// eslint-disable-next-line no-global-assign
 Cmd = {};
 
 Cmd.alias = [];
@@ -145,7 +148,7 @@ Cmd.TokenizeString = function(text) {
 };
 
 Cmd.HasCommand = function(name) {
-  for (i = 0; i < Cmd.functions.length; ++i) {
+  for (let i = 0; i < Cmd.functions.length; ++i) {
     if (Cmd.functions[i].name === name) {
       return true;
     }

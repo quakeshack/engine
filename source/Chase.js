@@ -1,3 +1,6 @@
+/* global Chase, CL, Cvar, Vec, SV, R, Chase */
+
+// eslint-disable-next-line no-global-assign
 Chase = {};
 
 Chase.Init = function() {

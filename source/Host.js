@@ -1,3 +1,6 @@
+/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ */
+
+// eslint-disable-next-line no-global-assign
 Host = {};
 
 Host.framecount = 0;
@@ -950,7 +953,7 @@ Host.Say = function(teamonly) {
   if (p.charCodeAt(0) === 34) {
     p = p.substring(1, p.length - 1);
   }
-  text = '\1' + SV.GetClientName(save) + ': ';
+  let text = '\1' + SV.GetClientName(save) + ': ';
   let i = 62 - text.length;
   if (p.length > i) {
     p = p.substring(0, i);
@@ -1388,14 +1391,15 @@ Host.FindViewthing = function() {
     }
   }
   Con.Print('No viewthing on map\n');
+  return null;
 };
 
 Host.Viewmodel_f = function() {
   if (Cmd.argv.length !== 2) {
     return;
   }
-  const e = Host.FindViewthing();
-  if (e == null) {
+  const ent = Host.FindViewthing();
+  if (ent == null) {
     return;
   }
   const m = Mod.ForName(Cmd.argv[1]);
@@ -1408,8 +1412,8 @@ Host.Viewmodel_f = function() {
 };
 
 Host.Viewframe_f = function() {
-  const e = Host.FindViewthing();
-  if (e == null) {
+  const ent = Host.FindViewthing();
+  if (ent == null) {
     return;
   }
   const m = CL.state.model_precache[ent.v_float[PR.entvars.modelindex] >> 0];
@@ -1417,12 +1421,12 @@ Host.Viewframe_f = function() {
   if (f >= m.frames.length) {
     f = m.frames.length - 1;
   }
-  e.v_float[PR.entvars.frame] = f;
+  ent.v_float[PR.entvars.frame] = f;
 };
 
 Host.Viewnext_f = function() {
-  const e = Host.FindViewthing();
-  if (e == null) {
+  const ent = Host.FindViewthing();
+  if (ent == null) {
     return;
   }
   const m = CL.state.model_precache[ent.v_float[PR.entvars.modelindex] >> 0];
@@ -1430,13 +1434,13 @@ Host.Viewnext_f = function() {
   if (f >= m.frames.length) {
     f = m.frames.length - 1;
   }
-  e.v_float[PR.entvars.frame] = f;
+  ent.v_float[PR.entvars.frame] = f;
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 
 Host.Viewprev_f = function() {
-  const e = Host.FindViewthing();
-  if (e == null) {
+  const ent = Host.FindViewthing();
+  if (ent == null) {
     return;
   }
   const m = CL.state.model_precache[ent.v_float[PR.entvars.modelindex] >> 0];
@@ -1444,7 +1448,7 @@ Host.Viewprev_f = function() {
   if (f < 0) {
     f = 0;
   }
-  e.v_float[PR.entvars.frame] = f;
+  ent.v_float[PR.entvars.frame] = f;
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 

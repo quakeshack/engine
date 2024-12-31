@@ -1,3 +1,6 @@
+/* global Sbar Draw, COM, Host, CL, Cmd, SCR, Def, VID */
+
+// eslint-disable-next-line no-global-assign
 Sbar = {};
 
 Sbar.ShowScores = function() {

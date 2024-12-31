@@ -1,3 +1,6 @@
+/* global MSG, Q, NET, SZ */
+
+// eslint-disable-next-line no-global-assign
 MSG = {};
 
 MSG.WriteChar = function(sb, c) {

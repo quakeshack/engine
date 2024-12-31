@@ -1,3 +1,6 @@
+/* global Con, Mod, PR, PF, Host, Cmd, Cvar, Vec, ED, SV, Protocol, MSG */
+
+// eslint-disable-next-line no-global-assign
 PF = {};
 
 PF.VarString = function(first) {
@@ -619,12 +622,13 @@ PF.WriteDest = function() {
   switch (PR.globals_float[4] >> 0) {
     case 0: // broadcast
       return SV.server.datagram;
-    case 1: // one
-      const entnum = PR.globals_int[PR.globalvars.msg_entity];
-      if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
-        PR.RunError('WriteDest: not a client');
+    case 1: { // one
+        const entnum = PR.globals_int[PR.globalvars.msg_entity];
+        if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
+          PR.RunError('WriteDest: not a client');
+        }
+        return SV.svs.clients[entnum - 1].message;
       }
-      return SV.svs.clients[entnum - 1].message;
     case 2: // all
       return SV.server.reliable_datagram;
     case 3: // init

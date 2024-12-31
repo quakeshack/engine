@@ -1,3 +1,6 @@
+/* global Con, SZ, Sys */
+
+// eslint-disable-next-line no-global-assign
 SZ = {};
 
 SZ.GetSpace = function(buf, length) {

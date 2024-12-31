@@ -1,3 +1,6 @@
+/* global V, Con, Mod, Host, CL, Cmd, Cvar, Vec, Q, MSG, SCR, R, Chase, Def, V */
+
+// eslint-disable-next-line no-global-assign
 V = {};
 
 V.dmg_time = 0.0;

@@ -1,3 +1,6 @@
+/* global ED, Host, Con, COM, Host, Cmd, Vec, Q, SV, Sys, Def, PR */
+
+// eslint-disable-next-line no-global-assign
 ED = {};
 
 ED.ClearEdict = function(e) {

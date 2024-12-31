@@ -1,3 +1,6 @@
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio */
+
+// eslint-disable-next-line no-global-assign
 CL = {};
 
 CL.cshift = {
@@ -1046,10 +1049,12 @@ CL.KeepaliveMessage = function() {
         break;
       case 1:
         Host.Error('CL.KeepaliveMessage: received a message');
+        break;
       case 2:
         if (MSG.ReadByte() !== Protocol.svc.nop) {
           Host.Error('CL.KeepaliveMessage: datagram wasn\'t a nop');
         }
+        break;
       default:
         Host.Error('CL.KeepaliveMessage: CL.GetMessage failed');
     }
@@ -1386,17 +1391,18 @@ CL.ParseServerMessage = function() {
         i = MSG.ReadShort();
         S.StopSound(i >> 3, i & 7);
         continue;
-      case Protocol.svc.updatename:
-        i = MSG.ReadByte();
-        if (i >= CL.state.maxclients) {
-          Host.Error('CL.ParseServerMessage: svc_updatename > MAX_SCOREBOARD');
+      case Protocol.svc.updatename: {
+          i = MSG.ReadByte();
+          if (i >= CL.state.maxclients) {
+            Host.Error('CL.ParseServerMessage: svc_updatename > MAX_SCOREBOARD');
+          }
+          const newName = MSG.ReadString();
+          // make sure the current player is aware of name changes
+          if (CL.state.scores[i].name !== '' && newName !== '' && newName !== CL.state.scores[i].name) {
+            Con.Print(`${CL.state.scores[i].name} renamed to ${newName}\n`);
+          }
+          CL.state.scores[i].name = newName;
         }
-        const newName = MSG.ReadString();
-        // make sure the current player is aware of name changes
-        if (CL.state.scores[i].name !== '' && newName !== '' && newName !== CL.state.scores[i].name) {
-          Con.Print(`${CL.state.scores[i].name} renamed to ${newName}\n`);
-        }
-        CL.state.scores[i].name = newName;
         continue;
       case Protocol.svc.updatefrags:
         i = MSG.ReadByte();
@@ -1599,16 +1605,17 @@ CL.ParseTEnt = function() {
     case Protocol.te.teleport:
       R.TeleportSplash(pos);
       return;
-    case Protocol.te.explosion2:
-      const colorStart = MSG.ReadByte();
-      const colorLength = MSG.ReadByte();
-      R.ParticleExplosion2(pos, colorStart, colorLength);
-      dl = CL.AllocDlight(0);
-      dl.origin = [pos[0], pos[1], pos[2]];
-      dl.radius = 350.0;
-      dl.die = CL.state.time + 0.5;
-      dl.decay = 300.0;
-      S.StartSound(-1, 0, CL.sfx_r_exp3, pos, 1.0, 1.0);
+    case Protocol.te.explosion2: {
+        const colorStart = MSG.ReadByte();
+        const colorLength = MSG.ReadByte();
+        R.ParticleExplosion2(pos, colorStart, colorLength);
+        dl = CL.AllocDlight(0);
+        dl.origin = [pos[0], pos[1], pos[2]];
+        dl.radius = 350.0;
+        dl.die = CL.state.time + 0.5;
+        dl.decay = 300.0;
+        S.StartSound(-1, 0, CL.sfx_r_exp3, pos, 1.0, 1.0);
+      }
       return;
   }
 

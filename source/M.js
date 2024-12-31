@@ -1,3 +1,6 @@
+/* global M, Con, COM, Host, CL, Cmd, Cvar, S, SV, SCR, V, Key, Draw, GL, gl, VID */
+
+// eslint-disable-next-line no-global-assign
 M = {};
 
 M.state =
@@ -890,8 +893,10 @@ M.Alert_Draw = function() {
 };
 
 M.Alert_Key = function(k) {
-  Key.dest.value = Key.dest.game;
-  M.state.value = M.state.none;
+  if (k === Key.k.enter || k === Key.k.escape) {
+    Key.dest.value = Key.dest.game;
+    M.state.value = M.state.none;
+  }
 };
 
 M.Quit_Draw = function() {

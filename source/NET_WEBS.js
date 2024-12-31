@@ -1,3 +1,6 @@
+/* global WEBS, Con, NET */
+
+// eslint-disable-next-line no-global-assign
 WEBS = {};
 
 WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
@@ -152,6 +155,7 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
     qsocket.disconnected = true;
   }
 
+  // eslint-disable-next-line no-unused-vars
   _OnErrorClient(error) {
     Con.Print(`WebSocketDriver._OnErrorClient: lost connection to ${this.qsocket.address}\n`);
     NET.Close(this.qsocket);

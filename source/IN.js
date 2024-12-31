@@ -1,3 +1,6 @@
+/* global IN, COM, Host, CL, Cvar, IN, V, VID, Key */
+
+// eslint-disable-next-line no-global-assign
 IN = {};
 
 IN.mouse_x = 0.0;

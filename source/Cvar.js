@@ -1,94 +1,81 @@
-Cvar = {};
+/* global Host, Cmd, Cvar, Q, SV */
+
+// eslint-disable-next-line no-global-assign
+Cvar = class Cvar {
+  static FindVar(name) {
+    return Cvar.vars.find((v) => v.name === name) || null;
+  }
+
+  static CompleteVariable(partial) {
+    if (!partial.length) {
+      return null;
+    }
+    return Cvar.vars.find((v) => v.name.startsWith(partial))?.name || null;
+  }
+
+  static Set(name, value) {
+    const variable = Cvar.vars.find((v) => v.name === name);
+
+    if (!variable) {
+      console.warn(`Cvar.Set: variable ${name} not found`);
+      return false;
+    }
+
+    const changed = variable.string !== value;
+    variable.string = value;
+    variable.value = Q.atof(value);
+
+    if (variable.server && changed && SV.server.active) {
+      Host.BroadcastPrint(`"${variable.name}" changed to "${variable.string}"\n`);
+    }
+
+    return true;
+  }
+
+  static SetValue(name, value) {
+    Cvar.Set(name, value.toFixed(6));
+  }
+
+  static RegisterVariable(name, value, archive, server) {
+    if (Cvar.vars.some((v) => v.name === name)) {
+      console.warn(`Can't register variable ${name}, already defined`);
+      return null;
+    }
+
+    const newVar = {
+      name,
+      string: value,
+      archive: !!archive,
+      server: !!server,
+      value: Q.atof(value),
+    };
+
+    Cvar.vars.push(newVar);
+    return newVar;
+  }
+
+  static Command() {
+    const v = Cvar.FindVar(Cmd.argv[0]);
+
+    if (!v) {
+      return null;
+    }
+
+    if (Cmd.argv.length <= 1) {
+      console.log(`"${v.name}" is "${v.string}"\n`);
+      return true;
+    }
+
+    Cvar.Set(v.name, Cmd.argv[1]);
+    return true;
+  }
+
+  static WriteVariables() {
+    return Cvar.vars
+        .filter((v) => v.archive)
+        .map((v) => `${v.name} "${v.string}"\n`)
+        .join('');
+  }
+};
 
 Cvar.vars = [];
-
-Cvar.FindVar = function(name) {
-  let i;
-  for (i = 0; i < Cvar.vars.length; ++i) {
-    if (Cvar.vars[i].name === name) {
-      return Cvar.vars[i];
-    }
-  }
-};
-
-Cvar.CompleteVariable = function(partial) {
-  if (partial.length === 0) {
-    return;
-  }
-  let i;
-  for (i = 0; i < Cvar.vars.length; ++i) {
-    if (Cvar.vars[i].name.substring(0, partial.length) === partial) {
-      return Cvar.vars[i].name;
-    }
-  }
-};
-
-Cvar.Set = function(name, value) {
-  let i; let v; let changed;
-  for (i = 0; i < Cvar.vars.length; ++i) {
-    v = Cvar.vars[i];
-    if (v.name !== name) {
-      continue;
-    }
-    if (v.string !== value) {
-      changed = true;
-    }
-    v.string = value;
-    v.value = Q.atof(value);
-    if ((v.server === true) && (changed === true) && (SV.server.active === true)) {
-      Host.BroadcastPrint('"' + v.name + '" changed to "' + v.string + '"\n');
-    }
-
-    return true;
-  }
-  Con.Print('Cvar.Set: variable ' + name + ' not found\n');
-
-  return false;
-};
-
-Cvar.SetValue = function(name, value) {
-  Cvar.Set(name, value.toFixed(6));
-};
-
-Cvar.RegisterVariable = function(name, value, archive, server) {
-  let i;
-  for (i = 0; i < Cvar.vars.length; ++i) {
-    if (Cvar.vars[i].name === name) {
-      Con.Print('Can\'t register variable ' + name + ', allready defined\n');
-      return;
-    }
-  }
-  Cvar.vars[Cvar.vars.length] =
-	{
-	  name: name,
-	  string: value,
-	  archive: archive,
-	  server: server,
-	  value: Q.atof(value),
-	};
-  return Cvar.vars[Cvar.vars.length - 1];
-};
-
-Cvar.Command = function() {
-  const v = Cvar.FindVar(Cmd.argv[0]);
-  if (v == null) {
-    return;
-  }
-  if (Cmd.argv.length <= 1) {
-    Con.Print('"' + v.name + '" is "' + v.string + '"\n');
-    return true;
-  }
-  Cvar.Set(v.name, Cmd.argv[1]);
-  return true;
-};
-
-Cvar.WriteVariables = function() {
-  const f = []; let i; let v;
-  for (i = 0; i < Cvar.vars.length; ++i) {
-    v = Cvar.vars[i];
-    if (v.archive === true) {
-      f[f.length] = v.name + ' "' + v.string + '"\n';
-    }
-  }
-  return f.join('');
-};

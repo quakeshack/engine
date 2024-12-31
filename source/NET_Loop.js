@@ -1,3 +1,6 @@
+/* global Loop, NET, Sys */
+
+// eslint-disable-next-line no-global-assign
 Loop = {};
 
 Loop.Driver = (class LoopDriver extends NET.BaseDriver {

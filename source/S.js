@@ -1,3 +1,4 @@
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q */
 
 class SFX {
   static STATE = {
@@ -93,6 +94,7 @@ class SoundBaseChannel {
     return this;
   }
 
+  // eslint-disable-next-line no-unused-vars
   static async decodeAudioData(rawData) {
     return null;
   }
@@ -309,6 +311,7 @@ class AudioElementChannel extends SoundBaseChannel {
       this._audio.currentTime = this.sfx.cache.loopstart;
       this.end = Host.realtime + this.sfx.cache.length - (this.sfx.cache.loopstart || 0);
     } catch (e) {
+      Con.DPrint(`AudioElementChannel.updateLoop: failed to set currentTime, ${e.message}`);
       this.end = Host.realtime;
     }
 
@@ -348,6 +351,7 @@ class AudioElementChannel extends SoundBaseChannel {
   }
 }
 
+// eslint-disable-next-line no-global-assign
 S = {
   _channels: [],
   _staticChannels: [],
@@ -706,7 +710,6 @@ S = {
       // 3) Not cached yet
       this.LoadSound(sfx).then((res) => {
         if (!res) {
-          targetChan.sfx = null;
           return;
         }
 
@@ -946,7 +949,7 @@ S = {
       // Only load sound files when really needed
       if (ch.sfx.state === SFX.STATE.NEW && (ch.left_vol > 0 || ch.right_vol > 0)) {
         ch.sfx.load().catch((err) => {
-          Con.Print(`S.UpdateStaticSounds: failed to lazy load ${ch.sfx.name}, ${error}\n`);
+          Con.Print(`S.UpdateStaticSounds: failed to lazy load ${ch.sfx.name}, ${err.message}\n`);
         });
       }
     }

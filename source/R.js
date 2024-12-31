@@ -1,3 +1,6 @@
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, Q, MSG, SV, SCR, R, Chase, GL, gl, Sys, Def, V, PR, VID */
+
+// eslint-disable-next-line no-global-assign
 R = {};
 
 // efrag
@@ -54,7 +57,7 @@ R.RenderDlights = function() {
   const program = GL.UseProgram('Dlight'); let l; let a;
   gl.bindBuffer(gl.ARRAY_BUFFER, R.dlightvecs);
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 0, 0);
-  for (i = 0; i <= 31; ++i) {
+  for (let i = 0; i <= 31; ++i) {
     l = CL.dlights[i];
     if ((l.die < CL.state.time) || (l.radius === 0.0)) {
       continue;
@@ -302,6 +305,8 @@ R.DrawSpriteModel = function(e) {
   }
 
   GL.Bind(program.tTexture, frame.texturenum, true);
+
+  let r, u;
 
   if (e.model.oriented === true) {
     r = [];
@@ -916,15 +921,8 @@ R.MakeBrushModelDisplayLists = function(m) {
         continue;
       }
       styles[0] = styles[1] = styles[2] = styles[3] = 0.0;
-      switch (surf.styles.length) {
-        case 4:
-          styles[3] = surf.styles[3] * 0.015625 + 0.0078125;
-        case 3:
-          styles[2] = surf.styles[2] * 0.015625 + 0.0078125;
-        case 2:
-          styles[1] = surf.styles[1] * 0.015625 + 0.0078125;
-        case 1:
-          styles[0] = surf.styles[0] * 0.015625 + 0.0078125;
+      for (let l = 0; l < surf.styles.length; l++) {
+        styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
       }
       chain[2] += surf.verts.length;
       for (k = 0; k < surf.verts.length; ++k) {
@@ -1002,15 +1000,8 @@ R.MakeWorldModelDisplayLists = function(m) {
           continue;
         }
         styles[0] = styles[1] = styles[2] = styles[3] = 0.0;
-        switch (surf.styles.length) {
-          case 4:
-            styles[3] = surf.styles[3] * 0.015625 + 0.0078125;
-          case 3:
-            styles[2] = surf.styles[2] * 0.015625 + 0.0078125;
-          case 2:
-            styles[1] = surf.styles[1] * 0.015625 + 0.0078125;
-          case 1:
-            styles[0] = surf.styles[0] * 0.015625 + 0.0078125;
+        for (let l = 0; l < surf.styles.length; l++) {
+          styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
         }
         chain[2] += surf.verts.length;
         for (l = 0; l < surf.verts.length; ++l) {
@@ -2073,6 +2064,7 @@ R.MarkLeaves = function() {
         node.markvisframe = R.visframecount;
       }
     }
+  // eslint-disable-next-line no-constant-condition
   } while (false);
   R.drawsky = false;
   R.RecursiveWorldNode(CL.state.worldmodel.nodes[0]);

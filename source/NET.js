@@ -1,3 +1,6 @@
+/* global Con, Host, CL, Cmd, Cvar, Q, NET, SV, Sys, Loop, WEBS */
+
+// eslint-disable-next-line no-global-assign
 NET = {};
 
 NET.BaseDriver = class BaseDriver {
@@ -11,6 +14,7 @@ NET.BaseDriver = class BaseDriver {
     return false;
   }
 
+  // eslint-disable-next-line no-unused-vars
   Connect(host) {
     return null;
   }
@@ -23,18 +27,22 @@ NET.BaseDriver = class BaseDriver {
     return -1;
   }
 
+  // eslint-disable-next-line no-unused-vars
   GetMessage(qsocket) {
     return 0;
   }
 
+  // eslint-disable-next-line no-unused-vars
   SendMessage(qsocket, data) {
     return -1;
   }
 
+  // eslint-disable-next-line no-unused-vars
   SendUnreliableMessage(qsocket, data) {
     return -1;
   }
 
+  // eslint-disable-next-line no-unused-vars
   CanSendMessage(qsocket) {
     return false;
   }
@@ -321,7 +329,7 @@ NET.Init = function() {
 
 NET.Shutdown = function() {
   NET.time = Sys.FloatTime();
-  for (i = 0; i < NET.activeSockets.length; ++i) {
+  for (let i = 0; i < NET.activeSockets.length; ++i) {
     NET.Close(NET.activeSockets[i]);
   }
 };

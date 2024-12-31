@@ -1,3 +1,6 @@
+/* global Protocol */
+
+// eslint-disable-next-line no-global-assign
 Protocol = {};
 
 Protocol.version = 15;

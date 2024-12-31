@@ -1,3 +1,6 @@
+/* global W, COM, Q, Sys */
+
+// eslint-disable-next-line no-global-assign
 W = {};
 
 W.lumps = [];

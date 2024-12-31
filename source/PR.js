@@ -1,3 +1,6 @@
+/* global Con, PR, COM, Host, Cmd, Cvar, Q, SV, Sys, ED, CRC, PF */
+
+// eslint-disable-next-line no-global-assign
 PR = {};
 
 PR.etype = {
@@ -220,12 +223,13 @@ PR.ValueString = function(type, val, ofs) {
       return 'entity ' + val_int[ofs];
     case PR.etype.ev_function:
       return PR.GetString(PR.functions[val_int[ofs]].name) + '()';
-    case PR.etype.ev_field:
-      const def = ED.FieldAtOfs(val_int[ofs]);
-      if (def != null) {
-        return '.' + PR.GetString(def.name);
+    case PR.etype.ev_field: {
+        const def = ED.FieldAtOfs(val_int[ofs]);
+        if (def != null) {
+          return '.' + PR.GetString(def.name);
+        }
+        return '.';
       }
-      return '.';
     case PR.etype.ev_void:
       return 'void';
     case PR.etype.ev_float:
@@ -251,12 +255,13 @@ PR.UglyValueString = function(type, val, ofs) {
       return val_int[ofs].toString();
     case PR.etype.ev_function:
       return PR.GetString(PR.functions[val_int[ofs]].name);
-    case PR.etype.ev_field:
-      const def = ED.FieldAtOfs(val_int[ofs]);
-      if (def != null) {
-        return PR.GetString(def.name);
+    case PR.etype.ev_field: {
+        const def = ED.FieldAtOfs(val_int[ofs]);
+        if (def != null) {
+          return PR.GetString(def.name);
+        }
+        return '';
       }
-      return '';
     case PR.etype.ev_void:
       return 'void';
     case PR.etype.ev_float:

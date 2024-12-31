@@ -1,3 +1,6 @@
+/* global Vec, Sys */
+
+// eslint-disable-next-line no-global-assign
 Vec = {};
 
 Vec.origin = [0.0, 0.0, 0.0];

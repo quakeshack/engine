@@ -1,3 +1,6 @@
+/* global Con, COM, Host, Sys, Key, VID,  */
+
+// eslint-disable-next-line no-global-assign
 Sys = {};
 
 Sys.events = ['oncontextmenu', 'onfocus', 'onkeydown', 'onkeyup', 'onmousedown', 'onmouseup', 'onmousewheel', 'onunload', 'onwheel'];
@@ -73,19 +76,19 @@ Sys.Init = function() {
   Sys.scantokey[40] = Sys.scantokey[98] = Key.k.downarrow;
   Sys.scantokey[45] = Sys.scantokey[96] = Key.k.ins;
   Sys.scantokey[46] = Sys.scantokey[110] = Key.k.del;
-  for (i = 48; i <= 57; ++i) {
+  for (let i = 48; i <= 57; ++i) {
     Sys.scantokey[i] = i;
   } // 0-9
   Sys.scantokey[59] = Sys.scantokey[186] = 59; // ;
   Sys.scantokey[61] = Sys.scantokey[187] = 61; // =
-  for (i = 65; i <= 90; ++i) {
+  for (let i = 65; i <= 90; ++i) {
     Sys.scantokey[i] = i + 32;
   } // a-z
   Sys.scantokey[106] = 42; // *
   Sys.scantokey[107] = 43; // +
   Sys.scantokey[109] = Sys.scantokey[173] = Sys.scantokey[189] = 45; // -
   Sys.scantokey[111] = Sys.scantokey[191] = 47; // /
-  for (i = 112; i <= 123; ++i) {
+  for (let i = 112; i <= 123; ++i) {
     Sys.scantokey[i] = i - 112 + Key.k.f1;
   } // f1-f12
   Sys.scantokey[188] = 44; // ,
@@ -101,7 +104,7 @@ Sys.Init = function() {
   Sys.Print('Host.Init\n');
   Host.Init();
 
-  for (i = 0; i < Sys.events.length; ++i) {
+  for (let i = 0; i < Sys.events.length; ++i) {
     window[Sys.events[i]] = Sys[Sys.events[i]];
   }
 

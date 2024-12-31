@@ -1,3 +1,5 @@
+/* global Con, COM, Q, Sys, CRC, Buffer */
+
 // Enhanced COM.js replacements
 const fs = require('fs');
 

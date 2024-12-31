@@ -1,4 +1,7 @@
-const {argv, stdout} = require('node:process');
+// eslint-disable-next-line no-unused-vars
+/* global Sys, Con, COM, Host, Cmd, Cvar, NET, __dirname */
+
+const {argv, stdout, exit} = require('node:process');
 const repl = require('repl');
 
 const express = require('express');
@@ -8,6 +11,7 @@ const http = require('http');
 /**
  * System class to manage initialization, quitting, and REPL functionality.
  */
+// eslint-disable-next-line no-global-assign
 Sys = class Sys {
   /**
    * Initializes the low-level system.
@@ -67,7 +71,7 @@ Sys = class Sys {
     }
 
     Host.Shutdown();
-    process.exit(0);
+    exit(0);
   }
 
   /**
