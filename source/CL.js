@@ -497,6 +497,8 @@ CL.SetConnectingStep = function(percentage, message) {
     return;
   }
 
+  SCR.con_current = 0; // force Console to disappear
+
   percentage = Math.round(percentage);
   Con.DPrint(`CL.SetConnectingStep: ${message} (${percentage}%)\n`);
   CL.cls.connecting = {
@@ -508,7 +510,7 @@ CL.SetConnectingStep = function(percentage, message) {
 
 CL.Draw = function() { // FIXME: maybe put that into M?
   if (CL.cls.connecting !== null) {
-    Draw.FadeScreen();
+    Draw.BlackScreen();
     Draw.String(32, 32, "Connecting", 2);
     Draw.StringWhite(32, 64, CL.cls.connecting.message);
 
@@ -665,7 +667,6 @@ CL.SignonReply = function() {
       return;
     case 4:
       CL.SetConnectingStep(null, null);
-      SCR.con_current = 0;
       SCR.EndLoadingPlaque();
       return;
   }

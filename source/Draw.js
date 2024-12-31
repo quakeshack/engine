@@ -196,14 +196,19 @@ Draw.ConsoleBackground = function(lines) {
 };
 
 Draw.Fill = function(x, y, w, h, c) {
-  GL.UseProgram('Fill', true); // const program = GL.UseProgram('Fill', true);
+  GL.UseProgram('Fill', true);
   const color = VID.d_8to24table[c];
   GL.StreamDrawColoredQuad(x, y, w, h, color & 0xff, (color >> 8) & 0xff, color >> 16, 255);
 };
 
 Draw.FadeScreen = function() {
-  GL.UseProgram('Fill', true); // const program = GL.UseProgram('Fill', true);
+  GL.UseProgram('Fill', true);
   GL.StreamDrawColoredQuad(0, 0, VID.width, VID.height, 0, 0, 0, 204);
+};
+
+Draw.BlackScreen = function() {
+  GL.UseProgram('Fill', true);
+  GL.StreamDrawColoredQuad(0, 0, VID.width, VID.height, 0, 0, 0, 255);
 };
 
 Draw.BeginDisc = function() {
