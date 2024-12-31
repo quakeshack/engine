@@ -175,7 +175,7 @@ SCR.Init = function() {
   Cmd.AddCommand('sizedown', SCR.SizeDown_f);
   SCR.net = Draw.PicFromWad('NET');
   SCR.turtle = Draw.PicFromWad('TURTLE');
-  SCR.pause = Draw.CachePic('pause');
+  SCR.pause = Draw.CachePicDeferred('pause');
 };
 
 SCR.count = 0;

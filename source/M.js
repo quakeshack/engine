@@ -950,16 +950,16 @@ M.Init = function() {
   M.sfx_menu2 = S.PrecacheSound('misc/menu2.wav');
   M.sfx_menu3 = S.PrecacheSound('misc/menu3.wav');
 
-  M.box_tl = Draw.CachePic('box_tl');
-  M.box_ml = Draw.CachePic('box_ml');
-  M.box_bl = Draw.CachePic('box_bl');
-  M.box_tm = Draw.CachePic('box_tm');
-  M.box_mm = Draw.CachePic('box_mm');
-  M.box_mm2 = Draw.CachePic('box_mm2');
-  M.box_bm = Draw.CachePic('box_bm');
-  M.box_tr = Draw.CachePic('box_tr');
-  M.box_mr = Draw.CachePic('box_mr');
-  M.box_br = Draw.CachePic('box_br');
+  M.box_tl = Draw.CachePicDeferred('box_tl');
+  M.box_ml = Draw.CachePicDeferred('box_ml');
+  M.box_bl = Draw.CachePicDeferred('box_bl');
+  M.box_tm = Draw.CachePicDeferred('box_tm');
+  M.box_mm = Draw.CachePicDeferred('box_mm');
+  M.box_mm2 = Draw.CachePicDeferred('box_mm2');
+  M.box_bm = Draw.CachePicDeferred('box_bm');
+  M.box_tr = Draw.CachePicDeferred('box_tr');
+  M.box_mr = Draw.CachePicDeferred('box_mr');
+  M.box_br = Draw.CachePicDeferred('box_br');
 
   M.qplaque = Draw.CachePic('qplaque');
 
@@ -975,13 +975,13 @@ M.Init = function() {
   M.ttl_main = Draw.CachePic('ttl_main');
   M.mainmenu = Draw.CachePic('mainmenu');
 
-  M.ttl_sgl = Draw.CachePic('ttl_sgl');
+  M.ttl_sgl = Draw.CachePicDeferred('ttl_sgl');
   M.sp_menu = Draw.CachePic('sp_menu');
   M.p_load = Draw.CachePic('p_load');
   M.p_save = Draw.CachePic('p_save');
 
   M.p_multi = Draw.CachePic('p_multi');
-  M.bigbox = Draw.CachePic('bigbox');
+  M.bigbox = Draw.CachePicDeferred('bigbox');
   M.menuplyr = Draw.CachePic('menuplyr');
   // const buf = COM.LoadFile('gfx/menuplyr.lmp'); ??
   const data = GL.ResampleTexture(M.menuplyr.data, M.menuplyr.width, M.menuplyr.height, 64, 64);
@@ -1003,16 +1003,16 @@ M.Init = function() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-  M.p_option = Draw.CachePic('p_option');
-  M.ttl_cstm = Draw.CachePic('ttl_cstm');
+  M.p_option = Draw.CachePicDeferred('p_option');
+  M.ttl_cstm = Draw.CachePicDeferred('ttl_cstm');
 
   M.help_pages = [
-    Draw.CachePic('help0'),
-    Draw.CachePic('help1'),
-    Draw.CachePic('help2'),
-    Draw.CachePic('help3'),
-    Draw.CachePic('help4'),
-    Draw.CachePic('help5'),
+    Draw.CachePicDeferred('help0'),
+    Draw.CachePicDeferred('help1'),
+    Draw.CachePicDeferred('help2'),
+    Draw.CachePicDeferred('help3'),
+    Draw.CachePicDeferred('help4'),
+    Draw.CachePicDeferred('help5'),
   ];
 };
 

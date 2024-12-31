@@ -9,7 +9,7 @@
 			#end{color:white;font-family:monospace;text-align:center}
 			#end1,#end2{background-color:maroon;white-space:pre;display:none}
 			#error{animation: flash 1s infinite; font-weight: bold;}
-
+			#imprint, #imprint > a{color:#999;}
 			@keyframes flash {
 				0% { color: red; }
 				50% { color: black; }
@@ -19,9 +19,11 @@
 	</head>
 	<body>
 		<div>
-			<p id="progress">Starting Quake… this might take a while</p>
+			<p id="progress">Starting Quake… this might take a while.</p>
 			<ul id="console"></ul>
 			<p id="error"></p>
+			<p id="imprint">Improved with passion by <a href="https://www.chrisnew.eu/" target="_blank">chrisnew.eu</a>. Based on <a href="https://github.com/lrusso/Quake1" target="_blank">lrusso/Quake1</a> and <a href="https://github.com/id-Software/Quake" target="_blank">id-Software/Quake</a>.</p>
+
 			<canvas id="mainwindow"></canvas>
 			<img id="loading" alt="Loading" src="data:image/gif,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
 		</div>

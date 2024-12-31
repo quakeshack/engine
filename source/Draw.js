@@ -110,6 +110,7 @@ Draw.PicFromWad = function(name) {
   p.height = view.getUint32(4, true);
   p.data = new Uint8Array(buf, 8, p.width * p.height);
   p.texnum = GL.LoadPicTexture(p);
+  p.ready = true;
   return p;
 };
 
@@ -125,16 +126,49 @@ Draw.CachePic = function(path) {
   dat.height = view.getUint32(4, true);
   dat.data = new Uint8Array(buf, 8, dat.width * dat.height);
   dat.texnum = GL.LoadPicTexture(dat);
+  dat.ready = true;
+  return dat;
+};
+
+Draw.CachePicDeferred = function(path) {
+  path = 'gfx/' + path + '.lmp';
+
+  const dat = {
+    width: null,
+    height: null,
+    data: null,
+    texnum: null,
+    ready: false
+  };
+
+  COM.LoadFileAsync(path).then((buf) => {
+    const view = new DataView(buf, 0, 8);
+    dat.width = view.getUint32(0, true);
+    dat.height = view.getUint32(4, true);
+    dat.data = new Uint8Array(buf, 8, dat.width * dat.height);
+    dat.texnum = GL.LoadPicTexture(dat);
+    dat.ready = true;
+  }).catch((err) => {
+    Sys.Error(`Draw.CachePic: failed to load ${path}, ${err.message}`);
+  });
   return dat;
 };
 
 Draw.Pic = function(x, y, pic) {
+  if (!pic.ready) {
+    return;
+  }
+
   const program = GL.UseProgram('Pic', true);
   GL.Bind(program.tTexture, pic.texnum, true);
   GL.StreamDrawTexturedQuad(x, y, pic.width, pic.height, 0.0, 0.0, 1.0, 1.0);
 };
 
 Draw.PicTranslate = function(x, y, pic, top, bottom) {
+  if (!pic.ready) {
+    return;
+  }
+
   GL.StreamFlush();
   const program = GL.UseProgram('PicTranslate');
   GL.Bind(program.tTexture, pic.texnum);

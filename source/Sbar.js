@@ -104,10 +104,10 @@ Sbar.Init = function() {
   Sbar.ibar = Draw.PicFromWad('IBAR');
   Sbar.scorebar = Draw.PicFromWad('SCOREBAR');
 
-  Sbar.ranking = Draw.CachePic('ranking');
-  Sbar.complete = Draw.CachePic('complete');
-  Sbar.inter = Draw.CachePic('inter');
-  Sbar.finale = Draw.CachePic('finale');
+  Sbar.ranking = Draw.CachePicDeferred('ranking');
+  Sbar.complete = Draw.CachePicDeferred('complete');
+  Sbar.inter = Draw.CachePicDeferred('inter');
+  Sbar.finale = Draw.CachePicDeferred('finale');
 
   Sbar.disc = Draw.PicFromWad('DISC');
 
