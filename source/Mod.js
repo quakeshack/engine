@@ -1,4 +1,67 @@
+/*global Mod, VID, Sys, gl, COM, R, Q, Host, Vec, GL, Con */
 Mod = {};
+
+/**
+ * Mod.BaseModel
+ * Mod.BrushModel
+ * Mod.SpriteModel
+ * Mod.AliasModel
+ */
+
+class BaseModel {
+  static STATE = {
+    NOT_READY: 'not-ready',
+    LOADING: 'loading',
+    READY: 'ready',
+    FAILED: 'failed',
+  };
+
+  constructor(name) {
+    this.name = name;
+    this.reset();
+  }
+
+  reset() {
+    // private variables
+    this._num_frames = 0;
+    this._num_skins = 0;
+    this._num_tris = 0; // R requires that
+    this._num_verts = 0;
+
+    this._scale = [1.0, 1.0, 1.0];
+    this._scale_origin = [0.0, 0.0, 0.0];
+    this._random = false; // FIXME: read but unused
+
+
+    // public variables
+    this.mins = []; // required by PF, R, CL, SV (on worldmodel)
+    this.maxs = []; // required by PF, R, CL, SV (on worldmodel)
+
+    // public variables just for rendering purposes (IDEA: refactor into ModelRenderer classes)
+    this.cmds = []; // required by R
+  }
+}
+
+class AliasModel extends BaseModel {
+  reset() {
+    super.reset();
+
+    this._skin_width = 0;
+    this._skin_height = 0;
+
+    this._triangles = [];
+    this._stverts = [];
+
+    // public variables
+    this.flags = 0; // CL requires that (together with Mod.flags)
+    this.frames = []; // required by R, Host (only for name and interval)
+
+    // public variables just for rendering purposes (IDEA: refactor into ModelRenderer classes)
+    this.skins = []; // R requires that (to pick the right texture)
+    this.boundingradius = 0; // R requires that
+    this.player = false; // R requires that (to change colors)
+  }
+}
 
 Mod.effects = {
   brightfield: 1,
@@ -30,17 +93,9 @@ Mod.Init = function() {
   for (i = 0; i < 1024; ++i) {
     Mod.novis[i] = 0xff;
   }
-
-  Mod.filledcolor = 0;
-  for (i = 0; i <= 255; ++i) {
-    if (VID.d_8to24table[i] === 0) {
-      Mod.filledcolor = i;
-      break;
-    }
-  }
 };
 
-Mod.PointInLeaf = function(p, model) {
+Mod.PointInLeaf = function(p, model) { // public method, static access? (PF, R, S use it)
   if (model == null) {
     Sys.Error('Mod.PointInLeaf: bad model');
   }
@@ -62,7 +117,7 @@ Mod.PointInLeaf = function(p, model) {
   }
 };
 
-Mod.DecompressVis = function(i, model) {
+Mod.DecompressVis = function(i, model) { // private method
   const decompressed = []; let c; let out; let row = (model.leafs.length + 7) >> 3;
   if (model.visdata == null) {
     for (; row >= 0; --row) {
@@ -91,9 +146,13 @@ Mod.LeafPVS = function(leaf, model) {
 };
 
 Mod.ClearAll = function() {
-  let i; let mod;
-  for (i = 0; i < Mod.known.length; ++i) {
-    mod = Mod.known[i];
+  // TODO: clean out all like this
+  //        - while length > 0, shift
+  //        - model.Free (in turn will call deleteBuffer etc.)
+  //        - keep everything non brush
+
+  for (let i = 0; i < Mod.known.length; ++i) {
+    const mod = Mod.known[i];
     if (mod.type !== Mod.type.brush) {
       continue;
     }
@@ -107,7 +166,7 @@ Mod.ClearAll = function() {
   }
 };
 
-Mod.FindName = function(name) {
+Mod.FindName = function(name) { // private method (refactor into _RegisterModel)
   if (name.length === 0) {
     Sys.Error('Mod.FindName: NULL name');
   }
@@ -130,7 +189,7 @@ Mod.FindName = function(name) {
   return null;
 };
 
-Mod.LoadModel = function(mod, crash) {
+Mod.LoadModel = function(mod, crash) { // private method
   if (mod.needload !== true) {
     return mod;
   }
@@ -141,7 +200,7 @@ Mod.LoadModel = function(mod, crash) {
     }
     return null;
   }
-  Mod.loadmodel = mod;
+  Mod.loadmodel = mod; // TODO: refactor into this
   mod.needload = false;
   switch ((new DataView(buf)).getUint32(0, true)) {
     case 0x4f504449:
@@ -156,7 +215,7 @@ Mod.LoadModel = function(mod, crash) {
   return mod;
 };
 
-Mod.ForName = function(name, crash) {
+Mod.ForName = function(name, crash) { // public method
   return Mod.LoadModel(Mod.FindName(name), crash);
 };
 
@@ -367,7 +426,7 @@ Mod.LoadSubmodels = function(buf) {
 
   let i; const clipnodes = Mod.loadmodel.hulls[0].clipnodes; let out;
   for (i = 1; i < count; ++i) {
-    out = Mod.FindName('*' + i);
+    out = Mod.FindName('*' + i); // TODO: out = new BrushModel('*' + 1), Mod._RegisterModel(out)
     out.needload = false;
     out.type = Mod.type.brush;
     out.submodel = true;
@@ -792,8 +851,8 @@ Mod.TranslatePlayerSkin = function(data, skin) {
     return;
   }
 
-  if ((Mod.loadmodel.skinwidth !== 512) || (Mod.loadmodel.skinheight !== 256)) {
-    data = GL.ResampleTexture(data, Mod.loadmodel.skinwidth, Mod.loadmodel.skinheight, 512, 256);
+  if ((Mod.loadmodel._skin_width !== 512) || (Mod.loadmodel._skin_height !== 256)) {
+    data = GL.ResampleTexture(data, Mod.loadmodel._skin_width, Mod.loadmodel._skin_height, 512, 256);
   }
   const out = new Uint8Array(new ArrayBuffer(524288));
   let i; let original;
@@ -817,12 +876,14 @@ Mod.TranslatePlayerSkin = function(data, skin) {
 
 Mod.FloodFillSkin = function(skin) {
   const fillcolor = skin[0];
-  if (fillcolor === Mod.filledcolor) {
+  const filledcolor = VID.filledColor || 0; // HACK: in dedicated mode this is null
+
+  if (fillcolor === filledcolor) {
     return;
   }
 
-  const width = Mod.loadmodel.skinwidth;
-  const height = Mod.loadmodel.skinheight;
+  const width = Mod.loadmodel._skin_width;
+  const height = Mod.loadmodel._skin_height;
 
   const lifo = [[0, 0]]; let sp; let cur; let x; let y;
 
@@ -830,7 +891,7 @@ Mod.FloodFillSkin = function(skin) {
     cur = lifo[--sp];
     x = cur[0];
     y = cur[1];
-    skin[y * width + x] = Mod.filledcolor;
+    skin[y * width + x] = filledcolor;
     if (x > 0) {
       if (skin[y * width + x - 1] === fillcolor) {
         lifo[sp++] = [x - 1, y];
@@ -858,9 +919,9 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
   Mod.loadmodel.skins = [];
   const model = new DataView(buffer);
   let i; let j; let group; let numskins;
-  const skinsize = Mod.loadmodel.skinwidth * Mod.loadmodel.skinheight;
+  const skinsize = Mod.loadmodel._skin_width * Mod.loadmodel._skin_height;
   let skin;
-  for (i = 0; i < Mod.loadmodel.numskins; ++i) {
+  for (i = 0; i < Mod.loadmodel._num_skins; ++i) {
     inmodel += 4;
     if (model.getUint32(inmodel - 4, true) === 0) {
       skin = new Uint8Array(buffer, inmodel, skinsize);
@@ -868,8 +929,8 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
       Mod.loadmodel.skins[i] = {
         group: false,
         texturenum: !Host.dedicated.value ? GL.LoadTexture(Mod.loadmodel.name + '_' + i,
-            Mod.loadmodel.skinwidth,
-            Mod.loadmodel.skinheight,
+            Mod.loadmodel._skin_width,
+            Mod.loadmodel._skin_height,
             skin) : null,
       };
       if (Mod.loadmodel.player === true) {
@@ -894,8 +955,8 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
         skin = new Uint8Array(buffer, inmodel, skinsize);
         Mod.FloodFillSkin(skin);
         group.skins[j].texturenum = GL.LoadTexture(Mod.loadmodel.name + '_' + i + '_' + j,
-            Mod.loadmodel.skinwidth,
-            Mod.loadmodel.skinheight,
+            Mod.loadmodel._skin_width,
+            Mod.loadmodel._skin_height,
             skin);
         if (Mod.loadmodel.player === true) {
           Mod.TranslatePlayerSkin(new Uint8Array(buffer, inmodel, skinsize), group.skins[j]);
@@ -909,10 +970,11 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
 };
 
 Mod.LoadAllFrames = function(buffer, inmodel) {
+  // TODO: class AliasModelFrame
   Mod.loadmodel.frames = [];
   const model = new DataView(buffer);
   let i; let j; let k; let frame; let group; let numframes;
-  for (i = 0; i < Mod.loadmodel.numframes; ++i) {
+  for (i = 0; i < Mod.loadmodel._frames; ++i) {
     inmodel += 4;
     if (model.getUint32(inmodel - 4, true) === 0) {
       frame = {
@@ -923,7 +985,7 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
         v: [],
       };
       inmodel += 24;
-      for (j = 0; j < Mod.loadmodel.numverts; ++j) {
+      for (j = 0; j < Mod.loadmodel._num_verts; ++j) {
         frame.v[j] = {
           v: [model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)],
           lightnormalindex: model.getUint8(inmodel + 3),
@@ -954,7 +1016,7 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
         frame.name = Q.memstr(new Uint8Array(buffer, inmodel + 8, 16));
         frame.v = [];
         inmodel += 24;
-        for (k = 0; k < Mod.loadmodel.numverts; ++k) {
+        for (k = 0; k < Mod.loadmodel._num_verts; ++k) {
           frame.v[k] = {
             v: [model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)],
             lightnormalindex: model.getUint8(inmodel + 3),
@@ -977,25 +1039,25 @@ Mod.LoadAliasModel = function(buffer) {
   if (version !== Mod.version.alias) {
     Sys.Error(Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.alias + ')');
   }
-  Mod.loadmodel.scale = [model.getFloat32(8, true), model.getFloat32(12, true), model.getFloat32(16, true)];
-  Mod.loadmodel.scale_origin = [model.getFloat32(20, true), model.getFloat32(24, true), model.getFloat32(28, true)];
+  Mod.loadmodel._scale = [model.getFloat32(8, true), model.getFloat32(12, true), model.getFloat32(16, true)];
+  Mod.loadmodel._scale_origin = [model.getFloat32(20, true), model.getFloat32(24, true), model.getFloat32(28, true)];
   Mod.loadmodel.boundingradius = model.getFloat32(32, true);
-  Mod.loadmodel.numskins = model.getUint32(48, true);
-  if (Mod.loadmodel.numskins === 0) {
+  Mod.loadmodel._num_skins = model.getUint32(48, true);
+  if (Mod.loadmodel._num_skins === 0) {
     Sys.Error('model ' + Mod.loadmodel.name + ' has no skins');
   }
-  Mod.loadmodel.skinwidth = model.getUint32(52, true);
-  Mod.loadmodel.skinheight = model.getUint32(56, true);
-  Mod.loadmodel.numverts = model.getUint32(60, true);
-  if (Mod.loadmodel.numverts === 0) {
+  Mod.loadmodel._skin_width = model.getUint32(52, true);
+  Mod.loadmodel._skin_height = model.getUint32(56, true);
+  Mod.loadmodel._num_verts = model.getUint32(60, true);
+  if (Mod.loadmodel._num_verts === 0) {
     Sys.Error('model ' + Mod.loadmodel.name + ' has no vertices');
   }
-  Mod.loadmodel.numtris = model.getUint32(64, true);
-  if (Mod.loadmodel.numtris === 0) {
+  Mod.loadmodel._num_tris = model.getUint32(64, true);
+  if (Mod.loadmodel._num_tris === 0) {
     Sys.Error('model ' + Mod.loadmodel.name + ' has no triangles');
   }
-  Mod.loadmodel.numframes = model.getUint32(68, true);
-  if (Mod.loadmodel.numframes === 0) {
+  Mod.loadmodel._frames = model.getUint32(68, true);
+  if (Mod.loadmodel._frames === 0) {
     Sys.Error('model ' + Mod.loadmodel.name + ' has no frames');
   }
   Mod.loadmodel.random = model.getUint32(72, true) === 1;
@@ -1005,9 +1067,9 @@ Mod.LoadAliasModel = function(buffer) {
 
   let inmodel = Mod.LoadAllSkins(buffer, 84);
 
-  Mod.loadmodel.stverts = [];
-  for (i = 0; i < Mod.loadmodel.numverts; ++i) {
-    Mod.loadmodel.stverts[i] = {
+  Mod.loadmodel._stverts = [];
+  for (i = 0; i < Mod.loadmodel._num_verts; ++i) {
+    Mod.loadmodel._stverts[i] = {
       onseam: model.getUint32(inmodel, true) !== 0,
       s: model.getUint32(inmodel + 4, true),
       t: model.getUint32(inmodel + 8, true),
@@ -1015,9 +1077,9 @@ Mod.LoadAliasModel = function(buffer) {
     inmodel += 12;
   }
 
-  Mod.loadmodel.triangles = [];
-  for (i = 0; i < Mod.loadmodel.numtris; ++i) {
-    Mod.loadmodel.triangles[i] = {
+  Mod.loadmodel._triangles = [];
+  for (i = 0; i < Mod.loadmodel._num_tris; ++i) {
+    Mod.loadmodel._triangles[i] = {
       facesfront: model.getUint32(inmodel, true) !== 0,
       vertindex: [
         model.getUint32(inmodel + 4, true),
@@ -1033,48 +1095,48 @@ Mod.LoadAliasModel = function(buffer) {
   const cmds = [];
 
   let triangle; let vert;
-  for (i = 0; i < Mod.loadmodel.numtris; ++i) {
-    triangle = Mod.loadmodel.triangles[i];
+  for (i = 0; i < Mod.loadmodel._num_tris; ++i) {
+    triangle = Mod.loadmodel._triangles[i];
     if (triangle.facesfront === true) {
-      vert = Mod.loadmodel.stverts[triangle.vertindex[0]];
-      cmds[cmds.length] = (vert.s + 0.5) / Mod.loadmodel.skinwidth;
-      cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel.skinheight;
-      vert = Mod.loadmodel.stverts[triangle.vertindex[1]];
-      cmds[cmds.length] = (vert.s + 0.5) / Mod.loadmodel.skinwidth;
-      cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel.skinheight;
-      vert = Mod.loadmodel.stverts[triangle.vertindex[2]];
-      cmds[cmds.length] = (vert.s + 0.5) / Mod.loadmodel.skinwidth;
-      cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel.skinheight;
+      vert = Mod.loadmodel._stverts[triangle.vertindex[0]];
+      cmds[cmds.length] = (vert.s + 0.5) / Mod.loadmodel._skin_width;
+      cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel._skin_height;
+      vert = Mod.loadmodel._stverts[triangle.vertindex[1]];
+      cmds[cmds.length] = (vert.s + 0.5) / Mod.loadmodel._skin_width;
+      cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel._skin_height;
+      vert = Mod.loadmodel._stverts[triangle.vertindex[2]];
+      cmds[cmds.length] = (vert.s + 0.5) / Mod.loadmodel._skin_width;
+      cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel._skin_height;
       continue;
     }
     for (j = 0; j < 3; ++j) {
-      vert = Mod.loadmodel.stverts[triangle.vertindex[j]];
+      vert = Mod.loadmodel._stverts[triangle.vertindex[j]];
       if (vert.onseam === true) {
-        cmds[cmds.length] = (vert.s + Mod.loadmodel.skinwidth / 2 + 0.5) / Mod.loadmodel.skinwidth;
+        cmds[cmds.length] = (vert.s + Mod.loadmodel._skin_width / 2 + 0.5) / Mod.loadmodel._skin_width;
       } else {
-        cmds[cmds.length] = (vert.s + 0.5) / Mod.loadmodel.skinwidth;
+        cmds[cmds.length] = (vert.s + 0.5) / Mod.loadmodel._skin_width;
       }
-      cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel.skinheight;
+      cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel._skin_height;
     }
   }
 
   let group; let frame;
-  for (i = 0; i < Mod.loadmodel.numframes; ++i) {
+  for (i = 0; i < Mod.loadmodel._frames; ++i) {
     group = Mod.loadmodel.frames[i];
     if (group.group === true) {
       for (j = 0; j < group.frames.length; ++j) {
         frame = group.frames[j];
         frame.cmdofs = cmds.length << 2;
-        for (k = 0; k < Mod.loadmodel.numtris; ++k) {
-          triangle = Mod.loadmodel.triangles[k];
+        for (k = 0; k < Mod.loadmodel._num_tris; ++k) {
+          triangle = Mod.loadmodel._triangles[k];
           for (l = 0; l < 3; ++l) {
             vert = frame.v[triangle.vertindex[l]];
             if (vert.lightnormalindex >= 162) {
               Sys.Error('lightnormalindex >= NUMVERTEXNORMALS');
             }
-            cmds[cmds.length] = vert.v[0] * Mod.loadmodel.scale[0] + Mod.loadmodel.scale_origin[0];
-            cmds[cmds.length] = vert.v[1] * Mod.loadmodel.scale[1] + Mod.loadmodel.scale_origin[1];
-            cmds[cmds.length] = vert.v[2] * Mod.loadmodel.scale[2] + Mod.loadmodel.scale_origin[2];
+            cmds[cmds.length] = vert.v[0] * Mod.loadmodel._scale[0] + Mod.loadmodel._scale_origin[0];
+            cmds[cmds.length] = vert.v[1] * Mod.loadmodel._scale[1] + Mod.loadmodel._scale_origin[1];
+            cmds[cmds.length] = vert.v[2] * Mod.loadmodel._scale[2] + Mod.loadmodel._scale_origin[2];
             cmds[cmds.length] = R.avertexnormals[vert.lightnormalindex][0];
             cmds[cmds.length] = R.avertexnormals[vert.lightnormalindex][1];
             cmds[cmds.length] = R.avertexnormals[vert.lightnormalindex][2];
@@ -1085,16 +1147,16 @@ Mod.LoadAliasModel = function(buffer) {
     }
     frame = group;
     frame.cmdofs = cmds.length << 2;
-    for (j = 0; j < Mod.loadmodel.numtris; ++j) {
-      triangle = Mod.loadmodel.triangles[j];
+    for (j = 0; j < Mod.loadmodel._num_tris; ++j) {
+      triangle = Mod.loadmodel._triangles[j];
       for (k = 0; k < 3; ++k) {
         vert = frame.v[triangle.vertindex[k]];
         if (vert.lightnormalindex >= 162) {
           Sys.Error('lightnormalindex >= NUMVERTEXNORMALS');
         }
-        cmds[cmds.length] = vert.v[0] * Mod.loadmodel.scale[0] + Mod.loadmodel.scale_origin[0];
-        cmds[cmds.length] = vert.v[1] * Mod.loadmodel.scale[1] + Mod.loadmodel.scale_origin[1];
-        cmds[cmds.length] = vert.v[2] * Mod.loadmodel.scale[2] + Mod.loadmodel.scale_origin[2];
+        cmds[cmds.length] = vert.v[0] * Mod.loadmodel._scale[0] + Mod.loadmodel._scale_origin[0];
+        cmds[cmds.length] = vert.v[1] * Mod.loadmodel._scale[1] + Mod.loadmodel._scale_origin[1];
+        cmds[cmds.length] = vert.v[2] * Mod.loadmodel._scale[2] + Mod.loadmodel._scale_origin[2];
         cmds[cmds.length] = R.avertexnormals[vert.lightnormalindex][0];
         cmds[cmds.length] = R.avertexnormals[vert.lightnormalindex][1];
         cmds[cmds.length] = R.avertexnormals[vert.lightnormalindex][2];
@@ -1128,7 +1190,7 @@ Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
   for (i = 0; i < GL.textures.length; ++i) {
     glt = GL.textures[i];
     if (glt.identifier === identifier) {
-      if ((width !== glt.width) || (height !== glt.height)) {
+      if ((frame.width !== glt.width) || (frame.height !== glt.height)) {
         Sys.Error('Mod.LoadSpriteFrame: cache mismatch');
       }
       frame.texturenum = glt.texnum;
@@ -1195,8 +1257,8 @@ Mod.LoadSpriteModel = function(buffer) {
   Mod.loadmodel.boundingradius = model.getFloat32(12, true);
   Mod.loadmodel.width = model.getUint32(16, true);
   Mod.loadmodel.height = model.getUint32(20, true);
-  Mod.loadmodel.numframes = model.getUint32(24, true);
-  if (Mod.loadmodel.numframes === 0) {
+  Mod.loadmodel._frames = model.getUint32(24, true);
+  if (Mod.loadmodel._frames === 0) {
     Sys.Error('model ' + Mod.loadmodel.name + ' has no frames');
   }
   Mod.loadmodel.random = model.getUint32(32, true) === 1;
@@ -1205,7 +1267,7 @@ Mod.LoadSpriteModel = function(buffer) {
 
   Mod.loadmodel.frames = [];
   let inframe = 36; let i; let j; let frame; let group; let numframes;
-  for (i = 0; i < Mod.loadmodel.numframes; ++i) {
+  for (i = 0; i < Mod.loadmodel._frames; ++i) {
     inframe += 4;
     if (model.getUint32(inframe - 4, true) === 0) {
       frame = {group: false};
@@ -1235,8 +1297,7 @@ Mod.LoadSpriteModel = function(buffer) {
 
 Mod.Print = function() {
   Con.Print('Cached models:\n');
-  let i;
-  for (i = 0; i < Mod.known.length; ++i) {
+  for (let i = 0; i < Mod.known.length; ++i) {
     Con.Print(Mod.known[i].name + '\n');
   }
 };

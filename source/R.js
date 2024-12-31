@@ -587,12 +587,12 @@ R.DrawAliasModel = function(e) {
     Vec.DotProduct([-1.0, 0.0, 0.0], up),
   ]);
 
-  R.c_alias_polys += clmodel.numtris;
+  R.c_alias_polys += clmodel._num_tris; // FIXME: private property access
 
   let num; let fullinterval; let targettime;
   const time = CL.state.time + e.syncbase;
   num = e.frame;
-  if ((num >= clmodel.numframes) || (num < 0)) {
+  if ((num >= clmodel.frames.length) || (num < 0)) {
     Con.DPrint('R.DrawAliasModel: no such frame ' + num + '\n');
     num = 0;
   }
@@ -614,7 +614,7 @@ R.DrawAliasModel = function(e) {
   gl.vertexAttribPointer(program.aTexCoord.location, 2, gl.FLOAT, false, 0, 0);
 
   num = e.skinnum;
-  if ((num >= clmodel.numskins) || (num < 0)) {
+  if ((num >= clmodel.skins.length) || (num < 0)) {
     Con.DPrint('R.DrawAliasModel: no such skin # ' + num + '\n');
     num = 0;
   }
@@ -635,7 +635,7 @@ R.DrawAliasModel = function(e) {
     GL.Bind(program.tPlayer, skin.playertexture);
   }
 
-  gl.drawArrays(gl.TRIANGLES, 0, clmodel.numtris * 3);
+  gl.drawArrays(gl.TRIANGLES, 0, clmodel._num_tris * 3); // FIXME: private property access
 };
 
 R.DrawEntitiesOnList = function() {

@@ -797,12 +797,16 @@ S = {
     for (let i = 0; i < this._knownSfx.length; i++) {
       const sfx = this._knownSfx[i];
       let sizeStr = '';
+      const flags = [];
 
       switch (sfx.state) {
         case SFX.STATE.AVAILABLE: {
           const sc = sfx.cache;
           sizeStr = sc.size.toString();
           total += sc.size;
+          if (sc.loopstart !== null) {
+            flags.push('L');
+          }
         }
           break;
         case SFX.STATE.FAILED:
@@ -818,11 +822,7 @@ S = {
           sizeStr = `(${sfx.state})`;
       }
 
-      while (sizeStr.length <= 8) {
-        sizeStr = ` ${sizeStr}`;
-      }
-
-      sizeStr = (sfx.cache?.loopstart !== null) ? `L ${sizeStr}` : `  ${sizeStr}`;
+      sizeStr = `${flags.join('').padEnd(3, ' ')} ${sizeStr.padEnd(8, ' ')}`;
 
       Con.Print(`${sizeStr} : ${sfx.name}\n`);
     }

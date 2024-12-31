@@ -250,7 +250,7 @@ PF.newcheckclient = function(check) {
     ent.v_float[PR.entvars.origin] + ent.v_float[PR.entvars.view_ofs],
     ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.view_ofs1],
     ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.view_ofs2],
-  ], SV.server.worldmodel), SV.server.worldmodel);
+  ], SV.server.worldmodel), SV.server.worldmodel); // FIXME: use ….worldmodel.getPointInLeaf() etc.
   return i;
 };
 
@@ -778,4 +778,9 @@ PF.builtin = [
   PF.precache_sound,
   PF.precache_file,
   PF.setspawnparms,
+
+  // PF.logfrag,
+  // PF.infokey,
+  // PF.stof,
+  // PF.multicast,
 ];

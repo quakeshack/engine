@@ -1,6 +1,8 @@
 VID = {};
 
+// FIXME: make d_8to24table private, expose methods to do a 8-to-24
 VID.d_8to24table = new Uint32Array(new ArrayBuffer(1024));
+VID.filledColor = null;
 
 VID.SetPalette = function() {
   const palette = COM.LoadFile('gfx/palette.lmp');
@@ -8,10 +10,12 @@ VID.SetPalette = function() {
     Sys.Error('Couldn\'t load gfx/palette.lmp');
   }
   const pal = new Uint8Array(palette);
-  let i; let src = 0;
-  for (i = 0; i < 256; ++i) {
-    VID.d_8to24table[i] = pal[src] + (pal[src + 1] << 8) + (pal[src + 2] << 16);
-    src += 3;
+  for (let i = 0, src = 0; i < 256; ++i) {
+    VID.d_8to24table[i] = pal[src++] + (pal[src++] << 8) + (pal[src++] << 16);
+
+    if (VID.d_8to24table[i] === 0) {
+      VID.filledColor = i;
+    }
   }
 };
 

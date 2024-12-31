@@ -817,7 +817,7 @@ SV.SpawnServer = function(server) {
 
   SV.server.sound_precache = [''];
   SV.server.model_precache = ['', SV.server.modelname];
-  for (i = 1; i <= SV.server.worldmodel.submodels.length; ++i) {
+  for (i = 1; i <= SV.server.worldmodel.submodels.length; ++i) { // TODO: do we really need this? (yes we do, PF, CL and Host etc. rely on it)
     SV.server.model_precache[i + 1] = '*' + i;
     SV.server.models[i + 1] = Mod.ForName('*' + i);
   }
