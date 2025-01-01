@@ -79,6 +79,7 @@ Protocol.svc = {
   cutscene: 34,
   updatepings: 35,
   loadsound: 36,
+  chatmsg: 37,
 };
 
 Protocol.clc = {

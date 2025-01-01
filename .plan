@@ -9,6 +9,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] flush messages more often, increase update rate
 * [_] only send message when actually needed, there’s too much idle chatter right now
 * [_] look into that weird sluggish feel when ping is >100 ms (especially on Firefox)
+* [_] introduce a required server/client version level and drop clients with wrong version
 
 ### QuakeC
 
@@ -28,6 +29,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] rewrite `Vec` based on top of `Array`
 * [_] completely switch to JS modules
 * [_] use more await/async when necessary, introduce a shutting down flag to break async processing
+* [_] replace all `>> 1` with `* 2` etc.
 
 ### SVC improvements
 
@@ -35,7 +37,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 ### Random improvements
 
-* [_] IN: touch support (smart phones)
+* [X] IN: touch support (smart phones)
 * [_] Cvar: turn Cvars into proper self-registering classes, add quality of life things like events and more flags (read-only, cheats etc.)
 * [_] UI: textboxes should act more like text boxes
 * [X] UI: show connecting/loading state in a small UI box with progressbar
@@ -43,7 +45,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] fix handling of gl_modes (mipmap vs no mipmap)
 * [_] finished demos trigger a `Host.Error` (lost connection), needs fixing
 * [_] S: still some issues with stopping sound upon a crash (mainly Firefox affected)
-* [_] Sbar: Show recent chatter next to the ranking board
+* [X] Sbar: Show recent chatter next to the ranking board
 
 ### Build pipeline
 
@@ -93,7 +95,8 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 
 ### 2025-01-01
 
-* added initial touchpad support using nipple.js, no longer a high prio
+* added initial touchpad support using nipple.js, no longer a high prio, it’s a crap experience anyway
+* added chatlog next to the ranking in multiplayer games
 
 ### 2024-12-31
 

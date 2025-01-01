@@ -77,6 +77,13 @@ Host.InitLocal = function(dedicated) {
   Host.FindMaxClients();
 };
 
+Host.SendChatMessageToClient = function(client, name, message, direct = false) {
+  MSG.WriteByte(client.message, Protocol.svc.chatmsg);
+  MSG.WriteString(client.message, name);
+  MSG.WriteString(client.message, message);
+  MSG.WriteByte(client.message, direct ? 1 : 0);
+};
+
 Host.ClientPrint = function(string) { // FIXME: Host.client
   MSG.WriteByte(Host.client.message, Protocol.svc.print);
   MSG.WriteString(Host.client.message, string);
@@ -991,30 +998,28 @@ Host.Say = function(teamonly) {
     return;
   }
   const save = Host.client;
-  let p = Cmd.args;
-  if (p.charCodeAt(0) === 34) {
-    p = p.substring(1, p.length - 1);
+  let message = Cmd.args;
+
+  // Remove surrounding double quotes if present
+  if (message.startsWith('"')) {
+    message = message.slice(1, -1);
   }
-  let text = '\1' + SV.GetClientName(save) + ': ';
-  let i = 62 - text.length;
-  if (p.length > i) {
-    p = p.substring(0, i);
+  if (message.length > 140) {
+    message = message.substring(0, 140) + '...';
   }
-  text += p + '\n';
-  let client;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
-    client = SV.svs.clients[i];
+
+  for (let i = 0; i < SV.svs.maxclients; ++i) {
+    const client = SV.svs.clients[i];
     if ((client.active !== true) || (client.spawned !== true)) {
       continue;
     }
     if ((Host.teamplay.value !== 0) && (teamonly === true) && (client.v_float[PR.entvars.team] !== save.v_float[PR.entvars.team])) {
       continue;
     }
-    Host.client = client;
-    Host.ClientPrint(text);
+    Host.SendChatMessageToClient(client, SV.GetClientName(save), message, false);
   }
-  Host.client = save;
-  Sys.Print(text.substring(1));
+
+  Sys.Print(message);
 };
 
 Host.Say_Team_f = function() {
@@ -1029,27 +1034,28 @@ Host.Tell_f = function() {
   if (Cmd.argv.length <= 2) {
     return;
   }
-  let text = SV.GetClientName(Host.client) + ': ';
-  let p = Cmd.args;
-  if (p.charCodeAt(0) === 34) {
-    p = p.substring(1, p.length - 1);
+
+  let message = Cmd.args;
+
+  // Remove surrounding double quotes if present
+  if (message.startsWith('"')) {
+    message = message.slice(1, -1);
   }
-  let i = 62 - text.length;
-  if (p.length > i) {
-    p = p.substring(0, i);
+  if (message.length > 140) {
+    message = message.substring(0, 140) + '...';
   }
-  text += p + '\n';
-  const save = Host.client; let client;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
-    client = SV.svs.clients[i];
+
+  const save = Host.client;
+  for (let i = 0; i < SV.svs.maxclients; ++i) {
+    const client = SV.svs.clients[i];
     if ((client.active !== true) || (client.spawned !== true)) {
       continue;
     }
     if (SV.GetClientName(client).toLowerCase() !== Cmd.argv[1].toLowerCase()) {
       continue;
     }
-    Host.client = client;
-    Host.ClientPrint(text);
+    Host.SendChatMessageToClient(client, SV.GetClientName(save), message, true);
+    Host.SendChatMessageToClient(Host.client, SV.GetClientName(save), message, true);
     break;
   }
   Host.client = save;

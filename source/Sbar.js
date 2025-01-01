@@ -510,6 +510,10 @@ Sbar.Draw = function() {
   if ((VID.width >= 512) && (CL.state.gametype === 1)) {
     Sbar.MiniDeathmatchOverlay();
   }
+
+  if ((VID.width >= 768) && (CL.state.gametype === 1)) {
+    Sbar.ChatterDrawOverlay();
+  }
 };
 
 Sbar.IntermissionNumber = function(x, y, num) {
@@ -555,7 +559,7 @@ Sbar.MiniDeathmatchOverlay = function() {
   Sbar.SortFrags();
   const l = Sbar.scoreboardlines;
   let y = VID.height - Sbar.lines;
-  const numlines = Sbar.lines >> 3;
+  const numlines = Sbar.lines * 8;
   let i;
 
   for (i = 0; i < l; ++i) {
@@ -564,7 +568,7 @@ Sbar.MiniDeathmatchOverlay = function() {
     }
   }
 
-  i = (i === l) ? 0 : i - (numlines >> 1);
+  i = (i === l) ? 0 : i - (numlines * 2);
   if (i > (l - numlines)) {
     i = l - numlines;
   }
@@ -572,8 +576,7 @@ Sbar.MiniDeathmatchOverlay = function() {
     i = 0;
   }
 
-  let k; let s; let num;
-  for (; (i < l) && (y < (VID.height - 8)); ++i) {
+  for (let k, s, num; (i < l) && (y < (VID.height - 8)); ++i) { // 24 chars per column
     k = Sbar.fragsort[i];
     s = CL.state.scores[k];
     if (s.name.length === 0) {
@@ -589,6 +592,20 @@ Sbar.MiniDeathmatchOverlay = function() {
     }
     Draw.String(372, y, s.name);
     y += 8;
+  }
+};
+
+Sbar.ChatterDrawOverlay = function() {
+  const messages = CL.state.chatlog;
+  const x = 372 + 132;
+
+  for (let i = Math.max(0, messages.length - (Sbar.lines / 8)), y = VID.height - Sbar.lines; y < (VID.height) && i < messages.length; y+=8, i++) {
+    const {name, message, direct} = messages[i];
+    if (direct) {
+      Draw.String(x, y, `${name}: ${message}`);
+    } else {
+      Draw.StringWhite(x, y, `${name}: ${message}`);
+    }
   }
 };
 

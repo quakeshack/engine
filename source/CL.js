@@ -575,6 +575,7 @@ CL.ClearState = function() {
     viewent: {num: -1, origin: [0.0, 0.0, 0.0], angles: [0.0, 0.0, 0.0], skinnum: 0},
     cdtrack: 0,
     looptrack: 0,
+    chatlog: [],
   };
 
   CL.cls.message.cursize = 0;
@@ -1369,6 +1370,14 @@ CL.Shownet = function(x) {
   }
 };
 
+CL.AppendChatMessage = function(name, message, direct) {
+  if (CL.state.chatlog.length > 5) {
+    CL.state.chatlog.shift();
+  }
+
+  CL.state.chatlog.push({name, message, direct});
+};
+
 /**
  * as long as we do not have a fully async architecture, we have to cheat
  * processingServerInfoState will hold off parsing and processing any further command
@@ -1446,6 +1455,9 @@ CL.ParseServerMessage = function() {
         continue;
       case Protocol.svc.centerprint:
         SCR.CenterPrint(MSG.ReadString());
+        continue;
+      case Protocol.svc.chatmsg:
+        CL.AppendChatMessage(MSG.ReadString(), MSG.ReadString(), MSG.ReadByte() === 1)
         continue;
       case Protocol.svc.stufftext:
         Cmd.text += MSG.ReadString();

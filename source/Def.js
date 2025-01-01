@@ -3,7 +3,7 @@
 // eslint-disable-next-line no-global-assign
 Def = {};
 
-Def.version = '1.0.8';
+Def.version = '1.0.9';
 
 Def.max_edicts = 600;
 
