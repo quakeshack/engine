@@ -510,13 +510,16 @@ CL.SetConnectingStep = function(percentage, message) {
 
 CL.Draw = function() { // FIXME: maybe put that into M?
   if (CL.cls.connecting !== null) {
+    // const x0 = (VID.width >> 1) - 160 - 68, y0 = (VID.height >> 1) - 100 - 40;
+    // const x0 = (VID.width >> 0) - 360, y0 = (VID.height >> 0) - 104;
+    const x0 = 32, y0 = 32;
     Draw.BlackScreen();
-    Draw.String(32, 32, "Connecting", 2);
-    Draw.StringWhite(32, 64, CL.cls.connecting.message);
+    Draw.String(x0, y0, "Connecting", 2);
+    Draw.StringWhite(x0, y0 + 32, CL.cls.connecting.message);
 
     const len = 30;
     const p = CL.cls.connecting.percentage;
-    Draw.String(32, 80, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p}%`);
+    Draw.String(x0, y0 + 48, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(' ')}%`);
   }
 };
 

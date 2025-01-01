@@ -883,13 +883,15 @@ M.Alert = function(title, message) {
 
 M.Alert_Draw = function() {
   const {title, message} = M.alertMessage;
-  M.DrawTextBox(48, 52, 34, 11);
-  M.Print(64, 68, title.substring(0, 32));
-  M.Print(64, 76, '\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37');
-  M.Print(64, 100, message.substring(0, 32));
-  M.Print(64, 108, message.substring(32, 32+32));
-  M.Print(64, 116, message.substring(32+32, 32+32+32));
-  M.Print(64, 132, 'Press any key to continue.');
+  const x = (320 - 64 * 8) / 2;
+  M.DrawTextBox(x, 52, 64, 11);
+  const x2 = x + 16;
+  M.PrintWhite(x2, 68, title.substring(0, 62));
+  M.Print(x2, 76, '\35' + '\36'.repeat(60) + '\37');
+  M.Print(x2, 100, message.substring(0, 62));
+  M.Print(x2, 108, message.substring(62, 62 * 2));
+  M.Print(x2, 116, message.substring(62 * 2, 62 * 3));
+  M.Print(x2, 132, 'Press enter to continue.');
 };
 
 M.Alert_Key = function(k) {
