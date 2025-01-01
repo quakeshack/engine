@@ -179,12 +179,19 @@ COM.Init = function() {
     });
   }
 
+  COM._abortController = new AbortController();
+
   COM.registered = Cvar.RegisterVariable('registered', '0');
   Cvar.RegisterVariable('cmdline', COM.cmdline, false, true);
   Cmd.AddCommand('path', COM.Path_f);
   COM.InitFilesystem();
   COM.CheckRegistered();
 };
+
+COM.Shutdown = function() {
+  Sys.Print(`COM.Shutdown: signaling outstanding promises to abort\n`);
+
+  COM._abortController.abort('COM.Shutdown');};
 
 COM.searchpaths = [];
 
@@ -358,6 +365,7 @@ COM.LoadFileAsync = async function(filename) {
           // Attempt ranged fetch
           const response = await fetch(pakUrl, {
             headers: {Range: rangeHeader},
+            signal: COM._abortController.signal,
           });
 
           // If the server honors the Range request, check the data
@@ -386,7 +394,9 @@ COM.LoadFileAsync = async function(filename) {
     // 3) Fallback: try direct file
     try {
       const fallbackUrl = `data/${netpath}`;
-      const directResponse = await fetch(fallbackUrl);
+      const directResponse = await fetch(fallbackUrl, {
+        signal: COM._abortController.signal,
+      });
 
       if (directResponse.ok) {
         const textData = await directResponse.text();

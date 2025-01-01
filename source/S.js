@@ -180,7 +180,7 @@ class AudioContextChannel extends SoundBaseChannel {
   }
 
   loadData() {
-    if (!this.sfx || this.sfx.state === SFX.STATE.FAILED) {
+    if (!this._S._started || !this.sfx || this.sfx.state === SFX.STATE.FAILED) {
       this._state = SoundBaseChannel.STATE.NOT_READY;
       return this;
     }
@@ -275,7 +275,7 @@ class AudioElementChannel extends SoundBaseChannel {
   }
 
   loadData() {
-    if (!this.sfx || this.sfx.state === SFX.STATE.FAILED) {
+    if (!this._S._started || !this.sfx || this.sfx.state === SFX.STATE.FAILED) {
       this._state = SoundBaseChannel.STATE.NOT_READY;
       return this;
     }
@@ -444,8 +444,6 @@ S = {
     this._ambientLevel = Cvar.RegisterVariable('ambient_level', '0.3');
     this._ambientFade = Cvar.RegisterVariable('ambient_fade', '100');
 
-    this._started = true;
-
     // Attempt to create an AudioContext
     try {
       this._context = new AudioContext({sampleRate: 22050});
@@ -455,6 +453,8 @@ S = {
       this._context = null;
       this._channelDriver = AudioElementChannel;
     }
+
+    this._started = true;
 
     // Initialize ambient channels
     for (const ambientSfx of ['water1', 'wind2']) {
@@ -481,6 +481,12 @@ S = {
     }
 
     Con.sfx_talk = this.PrecacheSound('misc/talk.wav');
+  },
+
+  Shutdown() {
+    this.StopAllSounds();
+    this._started = false;
+    Con.Print(`S.Shutdown: sound subsystem shut down.\n`);
   },
 
   //
@@ -520,7 +526,7 @@ S = {
    * Actually load sound data and decode it.
    */
   async LoadSound(sfx) {
-    if (this._nosound.value !== 0) {
+    if (!this._started || this._nosound.value !== 0) {
       sfx.state = SFX.STATE.FAILED;
       return false;
     }
@@ -546,7 +552,13 @@ S = {
     const data = await COM.LoadFileAsync(`sound/${sfx.name}`);
 
     if (!data) {
-      Con.Print(`Couldn't load sound/${sfx.name}\n`);
+      Con.Print(`S.LoadSound: Couldn't load ${sfx.name}\n`);
+      sfx.state = SFX.STATE.FAILED;
+      return false;
+    }
+
+    if (!this._started) {
+      Con.Print(`S.LoadSound: Loaded sound ${sfx.name} after sound subsystem shutdown.\n`);
       sfx.state = SFX.STATE.FAILED;
       return false;
     }
@@ -884,6 +896,12 @@ S = {
 
   UpdateAmbientSounds() {
     if (!CL.state.worldmodel) {
+      for (const ch of this._ambientChannels) {
+        ch.right_vol = 0;
+        ch.left_vol = 0;
+        ch.updateVol();
+      }
+
       // no map yet
       return;
     }

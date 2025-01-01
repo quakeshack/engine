@@ -21,8 +21,8 @@ M.state =
   value: 0,
 };
 
-M.DrawCharacter = function(cx, line, num) {
-  Draw.Character(cx + (VID.width >> 1) - 160, line + (VID.height >> 1) - 100, num);
+M.DrawCharacter = function(cx, cy, num) {
+  Draw.Character(cx + (VID.width >> 1) - 160, cy + (VID.height >> 1) - 100, num);
 };
 
 M.Print = function(cx, cy, str) {
@@ -369,7 +369,7 @@ M.Save_Key = function(k) {
 };
 
 // Multiplayer menu
-M.multiplayer_cursor = 0;
+M.multiplayer_cursor = 1;
 M.multiplayer_cursor_table = [56, 72, 96, 120, 156];
 M.multiplayer_joinname = (function() {
   const url = new URL(location.href);
@@ -384,37 +384,42 @@ M.Menu_MultiPlayer_f = function() {
   M.multiplayer_myname = CL.name.string;
   M.multiplayer_top = M.multiplayer_oldtop = CL.color.value >> 4;
   M.multiplayer_bottom = M.multiplayer_oldbottom = CL.color.value & 15;
+  M.multiplayer_cursor = 1;
 };
 
 M.MultiPlayer_Draw = function() {
   M.DrawPic(16, 4, M.qplaque);
   M.DrawPic(160 - (M.p_multi.width >> 1), 4, M.p_multi);
 
-  M.Print(64, 40, 'Join game at:');
-  M.DrawTextBox(72, 48, 22, 1);
-  M.Print(80, 56, M.multiplayer_joinname.substring(M.multiplayer_joinname.length - 21));
+  const y0 = 24;
 
-  M.Print(64, 72, 'Your name');
-  M.DrawTextBox(160, 64, 16, 1);
-  M.Print(168, 72, M.multiplayer_myname);
+  // M.Print(64, 40 - y0, 'Join game at:');
+  // M.DrawTextBox(72, 48 - y0, 22, 1);
+  // M.Print(80, 56 - y0, M.multiplayer_joinname.substring(M.multiplayer_joinname.length - 21));
 
-  M.Print(64, 96, 'Shirt color');
-  M.Print(64, 120, 'Pants color');
+  M.Print(64, 72 - y0, 'Your name');
+  M.DrawTextBox(160, 64 - y0, 16, 1);
+  M.PrintWhite(168, 72 - y0, M.multiplayer_myname);
 
-  M.DrawTextBox(64, 148, 14, 1);
-  M.Print(72, 156, 'Accept Changes');
+  M.Print(64, 96 - y0, 'Shirt color');
+  M.Print(64, 120 - y0, 'Pants color');
 
-  M.DrawPic(160, 80, M.bigbox);
-  M.DrawPicTranslate(172, 88, M.menuplyr,
+  const label = CL.cls.state !== CL.active.connected ? 'Join Game!' : 'Accept Changes';
+
+  M.DrawTextBox(64, 148 - y0, label.length, 1);
+  M.PrintWhite(72, 156 - y0, label);
+
+  M.DrawPic(160, 80 - y0, M.bigbox);
+  M.DrawPicTranslate(172, 88 - y0, M.menuplyr,
       (M.multiplayer_top << 4) + (M.multiplayer_top >= 8 ? 4 : 11),
       (M.multiplayer_bottom << 4) + (M.multiplayer_bottom >= 8 ? 4 : 11));
 
-  M.DrawCharacter(56, M.multiplayer_cursor_table[M.multiplayer_cursor], 12 + ((Host.realtime * 4.0) & 1));
+  M.DrawCharacter(56, M.multiplayer_cursor_table[M.multiplayer_cursor] - y0, 12 + ((Host.realtime * 4.0) & 1));
 
   if (M.multiplayer_cursor === 0) {
-    M.DrawCharacter(M.multiplayer_joinname.length <= 20 ? 80 + (M.multiplayer_joinname.length << 3) : 248, 56, 10 + ((Host.realtime * 4.0) & 1));
+    M.DrawCharacter(M.multiplayer_joinname.length <= 20 ? 80 + (M.multiplayer_joinname.length << 3) : 248, 56 - y0, 10 + ((Host.realtime * 4.0) & 1));
   } else if (M.multiplayer_cursor === 1) {
-    M.DrawCharacter(168 + (M.multiplayer_myname.length << 3), 72, 10 + ((Host.realtime * 4.0) & 1));
+    M.DrawCharacter(168 + (M.multiplayer_myname.length << 3), 72 - y0, 10 + ((Host.realtime * 4.0) & 1));
   }
 };
 
@@ -426,14 +431,14 @@ M.MultiPlayer_Key = function(k) {
   switch (k) {
     case Key.k.uparrow:
       S.LocalSound(M.sfx_menu1);
-      if (--M.multiplayer_cursor < 0) {
+      if (--M.multiplayer_cursor < 1) {
         M.multiplayer_cursor = M.multiplayer_items - 1;
       }
       return;
     case Key.k.downarrow:
       S.LocalSound(M.sfx_menu1);
       if (++M.multiplayer_cursor >= M.multiplayer_items) {
-        M.multiplayer_cursor = 0;
+        M.multiplayer_cursor = 1;
       }
       return;
     case Key.k.leftarrow:
@@ -484,7 +489,19 @@ M.MultiPlayer_Key = function(k) {
             M.multiplayer_oldbottom = M.multiplayer_bottom;
             Cmd.text += 'color ' + M.multiplayer_top + ' ' + M.multiplayer_bottom + '\n';
           }
-          M.entersound = true;
+
+          S.LocalSound(M.sfx_menu2);
+
+          if (CL.cls.state !== CL.active.connected) {
+            Key.dest.value = Key.dest.game;
+            M.state.value = M.state.none;
+            Cmd.text += 'connect "' + M.multiplayer_joinname + '"\n';
+            return;
+          }
+
+          Key.dest.value = Key.dest.game;
+          M.state.value = M.state.none;
+          return;
       }
       return;
     case Key.k.backspace:

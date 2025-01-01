@@ -1,4 +1,4 @@
-/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ, GL */
+/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ, Shack */
 
 // eslint-disable-next-line no-global-assign
 Host = {};
@@ -359,6 +359,7 @@ Host.Init = function(dedicated = false) {
   Mod.Init();
   NET.Init();
   SV.Init();
+  Shack.Init();
 
   if (!dedicated) {
     VID.Init();
@@ -403,7 +404,7 @@ Host.Shutdown = function() {
   Host.isdown = true;
   Host.WriteConfiguration();
   if (!Host.dedicated.value) {
-    S.StopAllSounds();
+    S.Shutdown();
     CDAudio.Stop();
   }
   NET.Shutdown();
@@ -427,6 +428,7 @@ Host.Quit_f = function() {
     Host.ShutdownServer();
   }
 
+  COM.Shutdown();
   Sys.Quit();
 };
 

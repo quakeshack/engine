@@ -44,7 +44,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] S: measure async load time for sounds, do not play them when it’s too late anyway
 * [_] fix handling of gl_modes (mipmap vs no mipmap)
 * [_] finished demos trigger a `Host.Error` (lost connection), needs fixing
-* [_] S: still some issues with stopping sound upon a crash (mainly Firefox affected)
+* [X] S: still some issues with stopping sound upon a crash (mainly Firefox affected)
 * [X] Sbar: Show recent chatter next to the ranking board
 
 ### Build pipeline
@@ -97,6 +97,10 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 
 * added initial touchpad support using nipple.js, no longer a high prio, it’s a crap experience anyway
 * added chatlog next to the ranking in multiplayer games
+* BUG: ambient sounds are not stopped properly from time to time, no clue why
+* changed the multiplayer menu a bit
+* using AbortController to stop all pending network requests
+* also added some `!this._started` safeguards to `S.LoadSound` and a few other places
 
 ### 2024-12-31
 

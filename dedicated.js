@@ -25,5 +25,6 @@ require('./source/Vec.js');
 require('./source/NET.js');
 require('./source/NET_Loop.js');
 require('./source/NET_WEBS.js');
+require('./source/Shack.js');
 
 Sys.Init();

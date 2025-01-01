@@ -56,6 +56,9 @@ COM.LoadFileAsync = async () => {
   throw new Error('NOT IMPLEMENTED');
 }; // TODO
 
+COM.Shutdown = function() {
+};
+
 /**
  * Loads and parses a pack file.
  * @param {string} packfile - The path to the pack file.

@@ -313,6 +313,11 @@ SCR.UpdateScreen = function() {
   }
 
   requestAnimationFrame(() => {
+    // we are already shutting down
+    if (!gl) {
+      return;
+    }
+
     V.RenderView();
     GL.Set2D();
     if (R.dowarp === true) {
