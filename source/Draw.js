@@ -20,13 +20,11 @@ Draw.CharToConback = function(num, dest) {
 Draw.loadingElem = null;
 
 Draw.Init = function() {
-  let i;
-
   Draw.chars = new Uint8Array(W.GetLumpName('CONCHARS'));
 
   const trans = new ArrayBuffer(65536);
   const trans32 = new Uint32Array(trans);
-  for (i = 0; i < 16384; ++i) {
+  for (let i = 0; i < 16384; ++i) {
     if (Draw.chars[i] !== 0) {
       trans32[i] = COM.LittleLong(VID.d_8to24table[Draw.chars[i]] + 0xff000000);
     }
@@ -46,7 +44,7 @@ Draw.Init = function() {
   Draw.conback.height = 200;
   Draw.conback.data = new Uint8Array(cb, 8, 64000);
   const ver = Def.version;
-  for (i = 0; i < ver.length; ++i) {
+  for (let i = 0; i < ver.length; ++i) {
     Draw.CharToConback(ver.charCodeAt(i), 59829 - ((ver.length - i) << 3), 186);
   }
   Draw.conback.texnum = GL.LoadPicTexture(Draw.conback);

@@ -37,7 +37,7 @@ Host.FindMaxClients = function() {
     CL.cls.state = CL.active.disconnected;
     SV.svs.maxclientslimit = 1;
   } else {
-    SV.svs.maxclientslimit = 8;
+    SV.svs.maxclientslimit = 32;
   }
   SV.svs.clients = [];
   for (let i = 0; i < SV.svs.maxclientslimit; i++) {

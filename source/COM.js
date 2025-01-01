@@ -161,15 +161,14 @@ COM.Init = function() {
     if ((document.location.protocol !== 'http:') && (document.location.protocol !== 'https:')) {
       Sys.Error('Protocol is ' + document.location.protocol + ', not http: or https:');
     }
-  } catch (e) {
-    Sys.Print(`COM.Init: document.location check failed (${e.message}), assuming dedicated environment`);
-  }
+  // eslint-disable-next-line no-unused-vars
+  } catch (e) { /* empty */ }
 
   const swaptest = new ArrayBuffer(2);
   const swaptestview = new Uint8Array(swaptest);
   swaptestview[0] = 1;
   swaptestview[1] = 0;
-  if ((new Uint16Array(swaptest))[0] === 1) {
+  if ((new Uint16Array(swaptest))[0] === 1) { // CR: I’m pretty sure this is not useful in JavaScript at all
     COM.LittleLong = (function(l) {
       return l;
     });

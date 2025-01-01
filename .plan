@@ -4,6 +4,11 @@
 
 Grouped by sections and then sorted by priority (more or less).
 
+### Bugs I introduced
+
+* [_] show chatlog also in coop mode
+* [_] DS: show the name of the person’s chat message in console message
+
 ### Network improvements
 
 * [_] flush messages more often, increase update rate
@@ -21,7 +26,7 @@ Grouped by sections and then sorted by priority (more or less).
 ### Code smell
 
 * [_] use more Exceptions and better Exception classes
-* [_] there’s no proper clean up for Sound, sometimes sound gets stuck playing after Quit
+* [X] there’s no proper clean up for Sound, sometimes sound gets stuck playing after Quit
 * [_] completely get rid of `Host.client`
 * [_] refactor that mess in `Mod`
 * [_] refactor `MSG`/`SZ` especially in regards to `NET.message` and `client[…].message`
@@ -33,7 +38,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 ### SVC improvements
 
-* [_] refactor chatting from `svc.print` to `svc.chatmsg`
+* [X] refactor chatting from `svc.print` to `svc.chatmsg`
 
 ### Random improvements
 
@@ -87,6 +92,7 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * more streaming of data, make textures only available when needed
 * voice chat? (not WebRTC based)
 * improve readability of UI, but stick to the Quake charme
+* also rework the UI system to someone better maintainable
 * look into GoldSrc’s StudioModel, just as a coding challenge
 * look into loading of Classic Doom assets, to make a game mash-up of sorts
 * look into things like https://github.com/schteppe/cannon.js and https://github.com/kripken/ammo.js
@@ -101,6 +107,9 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * changed the multiplayer menu a bit
 * using AbortController to stop all pending network requests
 * also added some `!this._started` safeguards to `S.LoadSound` and a few other places
+* calling `S.LoadPendingFiles` to load all new files after connect
+* `SV.svs.maxclientslimit = 32;`
+* added `S.LoadPendingFiles`
 
 ### 2024-12-31
 

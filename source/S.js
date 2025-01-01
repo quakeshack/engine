@@ -494,6 +494,29 @@ S = {
   //
 
   /**
+   * Slowly load all other pending files
+   */
+  LoadPendingFiles() {
+    const pendingSfx = this._knownSfx.filter((sfx) => sfx.state === SFX.STATE.NEW);
+
+    if (pendingSfx.length === 0) {
+      return;
+    }
+
+    const promises = [];
+
+    // load up to four at a time
+    for (let i = 0; i < Math.min(pendingSfx.length, 4); i++) {
+      promises.push(pendingSfx[i].load());
+    }
+
+    // wait for all of them, process next batch
+    Promise.all(promises).then(() => {
+      this.LoadPendingFiles();
+    });
+  },
+
+  /**
    * Precache a sound by name. Optionally load it if precache cvar is set.
    */
   PrecacheSound(name) {

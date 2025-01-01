@@ -672,6 +672,7 @@ CL.SignonReply = function() {
     case 4:
       CL.SetConnectingStep(null, null);
       SCR.EndLoadingPlaque();
+      S.LoadPendingFiles();
       return;
   }
 };
