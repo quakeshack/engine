@@ -1457,7 +1457,8 @@ CL.ParseServerMessage = function() {
         SCR.CenterPrint(MSG.ReadString());
         continue;
       case Protocol.svc.chatmsg:
-        CL.AppendChatMessage(MSG.ReadString(), MSG.ReadString(), MSG.ReadByte() === 1)
+        CL.AppendChatMessage(MSG.ReadString(), MSG.ReadString(), MSG.ReadByte() === 1);
+        S.LocalSound(Con.sfx_talk);
         continue;
       case Protocol.svc.stufftext:
         Cmd.text += MSG.ReadString();
