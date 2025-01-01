@@ -1,11 +1,8 @@
-# Quake JS - JavaScript porting
+# The Quake Shack
 
-![alt screenshot](https://raw.githubusercontent.com/lrusso/Quake1/master/Quake1.png)
+This is my playground to learn more about 3D game engines, modern browser features as well as JavaScript.
 
-## Web:
+## Based on the work of
 
-https://lrusso.github.io/Quake1/Quake1.htm
-
-## Based on the work of:
-
-https://github.com/Triang3l/WebQuake **(Commit April 21, 2019)**
+* https://github.com/lrusso/Quake1 (original port)
+* https://github.com/id-Software/Quake (QuakeWorld)

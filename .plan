@@ -1,0 +1,150 @@
+# The Quake Shack
+
+## Todos
+
+Grouped by sections and then sorted by priority (more or less).
+
+### Network improvements
+
+* [_] flush messages more often, increase update rate
+* [_] only send message when actually needed, there’s too much idle chatter right now
+* [_] look into that weird sluggish feel when ping is >100 ms (especially on Firefox)
+
+### QuakeC
+
+* [_] implement the new syscalls that QuakeWorld introduced
+* [_] improve stack trace / error handling
+* [_] add some better tooling, maybe a transpile progs.dat to JavaScript?
+* [_] prepare structure for JS client/server progs
+
+### Code smell
+
+* [_] use more Exceptions and better Exception classes
+* [_] there’s no proper clean up for Sound, sometimes sound gets stuck playing after Quit
+* [_] completely get rid of `Host.client`
+* [_] refactor that mess in `Mod`
+* [_] refactor `MSG`/`SZ` especially in regards to `NET.message` and `client[…].message`
+* [_] refactor global `SV` states into proper modules
+* [_] rewrite `Vec` based on top of `Array`
+* [_] completely switch to JS modules
+* [_] use more await/async when necessary, introduce a shutting down flag to break async processing
+
+### SVC improvements
+
+* [_] refactor chatting from `svc.print` to `svc.chatmsg`
+
+### Random improvements
+
+* [_] IN: touch support (smart phones)
+* [_] Cvar: turn Cvars into proper self-registering classes, add quality of life things like events and more flags (read-only, cheats etc.)
+* [_] UI: textboxes should act more like text boxes
+* [X] UI: show connecting/loading state in a small UI box with progressbar
+* [X] S: measure async load time for sounds, do not play them when it’s too late anyway
+* [_] fix handling of gl_modes (mipmap vs no mipmap)
+* [_] finished demos trigger a `Host.Error` (lost connection), needs fixing
+* [_] S: still some issues with stopping sound upon a crash (mainly Firefox affected)
+* [_] Sbar: Show recent chatter next to the ranking board
+
+### Build pipeline
+
+* [_] install dependencies, copy over required stuff to libs (like nipple) and deploy
+
+## Ideas
+
+### QuakeWorld improvements
+
+There are a couple of things QuakeWorld improved and introduced, I should take a look at them and decide what’s good and what’s bad.
+
+### Better frontend/backend separation
+
+* I’m unhappy about the whole `Mod.js` and `R.js` clusterfun, it’s too intermingled, I already had to introduce hacks to get the dedicated server running without any frontend
+* Split up Mod into BaseModel, AliasModel, BrushModel, SpriteModel as well as their matching renderer counterparts
+
+### JavaScript instead of QuakeC
+
+* introduce client game code as JavaScript modules
+* introduce server game code as JavaScript modules
+* but keep backward compatibility and have interfaces available
+* would allow to write easier and better custom mods
+
+### More multiplayer features
+
+* have some sort of user registration/tracking
+* collect K/D ratios, accuracy etc.
+* upload avatars for users
+* have multiple servers deployed across regions, connect to the closest ones
+* coop lobbies (will only work once the `SV`/`Host`/`Net` global state clusterfuck is cleaned up)
+* sv_timelimit, sv_maplist
+* idle kick
+* ask player to set a username when they have their default name
+* increase limit to 32 players (like QW)
+* pausable
+
+### Random thoughts, ideas, etc.
+
+* more streaming of data, make textures only available when needed
+* voice chat? (not WebRTC based)
+* improve readability of UI, but stick to the Quake charme
+* look into GoldSrc’s StudioModel, just as a coding challenge
+* look into loading of Classic Doom assets, to make a game mash-up of sorts
+* look into things like https://github.com/schteppe/cannon.js and https://github.com/kripken/ammo.js
+
+## Log
+
+### 2025-01-01
+
+* added initial touchpad support using nipple.js, no longer a high prio
+
+### 2024-12-31
+
+* lots of eslinting, detected some bugs (undefined vars etc.)
+* skip forward or do not play sounds at all when they arrived too late via async loading
+* implemented a loading screen
+* rendering of the loading screen is blocked by blocking IO activities
+* renderer is now utilizing requestAnimationFrame
+* easing up the blocking during entering the game using `CL.processingServerInfoState`
+* introduced Draw.BigChar etc.
+* added `svc.loadsound` to tell the client to load sounds that were not precached
+* added `Draw.CachePicDeferred` for loading things in the background, cut down initial loading times by 200%
+
+### 2024-12-30
+
+* completely rewrote the sound subsystem, it was a mess until now
+* static sounds are lazy loaded
+* most sounds are still being loaded after the game is already ready
+
+### 2024-12-29
+
+* more SV related fixes, don’t crash on full servers
+* reworked frontend error handling, leave a proper error message, clean up WebGL context on a crash
+* loading maps is taking too long, looking into streaming of data when used
+* started adding `*Async` to COM
+
+### 2024-12-28
+
+* added express.js to serve files for the frontend part through the dedicated server
+* reimplemented RCON
+* restructured file structure a bit
+* noticed the sound is a bit broken on Chrome, fixing AudioContext sound subsystem
+* added alert box (`M.Alert`), so that errors can show a proper message box instead of the Console
+
+### 2024-12-27
+
+* starting rewriting low-level networking code
+* added ping, introduced `svc.updatepings`
+* improved `svc.disconnect`: added a reason string
+
+### 2024-12-25
+
+* started working on network driver based on Websockets
+
+### 2024-12-24
+
+* started working on `dedicated.js`
+* introduced node.js replacements for COM and Sys
+
+
+### 2024-12-23
+
+* mainly code clean up, used ESLint
+* cleaned out lots of `var`

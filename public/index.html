@@ -15,6 +15,24 @@
 				50% { color: black; }
 				100% { color: red; }
 			}
+
+			#left-zone {
+				display: none;
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 50%;
+				height: 100%;
+			}
+
+			#right-zone {
+				display: none;
+				position: absolute;
+				right: 0;
+				top: 0;
+				width: 50%;
+				height: 100%;
+			}
 		</style>
 	</head>
 	<body>
@@ -26,9 +44,13 @@
 
 			<canvas id="mainwindow"></canvas>
 			<img id="loading" alt="Loading" src="data:image/gif,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+
+			<div id="left-zone"></div>
+			<div id="right-zone"></div>
 		</div>
 		<div class="gui_download" onclick="downloadSaveGame()"></div>
 
+		<script src='libs/nipplejs.js'></script>
 		<script src='source/V.js'></script>
 		<script src='source/GL.js'></script>
 		<script src='source/ED.js'></script>
