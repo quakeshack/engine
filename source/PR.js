@@ -240,11 +240,14 @@ PR.FunctionProxy = class FunctionProxy {
     this._signature = null;
 
     const f = PR.functions[this.fnc];
+    const name = PR.GetString(f.name);
 
     Object.defineProperty(this, 'name', {
-      value: PR.GetString(f.name),
+      value: name,
       writable: false,
     });
+
+    // this._signature = FunctionProxy.signatures[name] || null;
 
     // // TODO: we can determine the return and arg types by looking at the op codes of that function is going to use (PR.ExecuteProgram can do the return type for us)
 
@@ -1233,3 +1236,22 @@ PR.TempString = function(string) {
   }
   PR.strings[PR.string_temp + string.length] = 0;
 };
+
+// PR.DecompileFunction = function(fnc) {
+//   if (fnc.name === 0) {
+//     throw new Error('NULL function');
+//   }
+
+//   // dummy print for built-ins
+//   if (fnc.first_statement < 0) {
+//     const builtin = PF.builtin[-fnc.first_statement];
+
+//     if (!builtin) {
+//       throw new Error('Invalid builtin function: ' + fnc.first_statement);
+//     }
+
+//     return `function ${builtin.name}(${new Array(fnc.numparms).fill(null).map((_, index) => `arg${index}`).join(', ')}) { /* built-in */ }\n`;
+//   }
+
+
+// };

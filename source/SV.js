@@ -1,4 +1,4 @@
-/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, PF, V, SCR, CANNON */
+/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, V, SCR, CANNON */
 
 // eslint-disable-next-line no-global-assign
 SV = {};
@@ -817,7 +817,7 @@ SV.SpawnServer = function(server) {
   SV.server.lastchecktime = 0.0;
   SV.server.modelname = 'maps/' + server + '.bsp';
   SV.server.worldmodel = Mod.ForName(SV.server.modelname);
-  SV.server.worldvars = new PR.Proxy(null);
+  SV.server.worldvars = new PR.EdictProxy(null);
   if (SV.server.worldmodel == null) {
     Con.Print('Couldn\'t spawn server ' + SV.server.modelname + '\n');
     SV.server.active = false;
@@ -1028,9 +1028,40 @@ SV.movestep = function(ent, move, relink) {
   return 1;
 };
 
+SV.ChangeYaw = function (ent) {
+  const current = Vector.anglemod(ent.v_float[PR.entvars.angles1]);
+  const ideal = ent.v_float[PR.entvars.ideal_yaw];
+
+  if (current === ideal) {
+    return;
+  }
+
+  let move = ideal - current;
+
+  if (ideal > current) {
+    if (move >= 180.0) {
+      move -= 360.0;
+    }
+  } else if (move <= -180.0) {
+    move += 360.0;
+  }
+
+  const speed = ent.v_float[PR.entvars.yaw_speed];
+
+  if (move > 0.0) {
+    if (move > speed) {
+      move = speed;
+    }
+  } else if (move < -speed) {
+    move = -speed;
+  }
+
+  return Vector.anglemod(current + move);
+}
+
 SV.StepDirection = function(ent, yaw, dist) {
   ent.v_float[PR.entvars.ideal_yaw] = yaw;
-  PF.changeyaw();
+  ent.v_float[PR.entvars.angles1] = SV.ChangeYaw(ent);
   yaw *= Math.PI / 180.0;
   const oldorigin = ED.Vector(ent, PR.entvars.origin);
   if (SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], false) === 1) {

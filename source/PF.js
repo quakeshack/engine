@@ -11,19 +11,19 @@ PF.VarString = function(first) {
   return out;
 };
 
-PF.error = function() {
+PF.error = function PF_error() {
   Con.Print('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + PF.VarString(0) + '\n');
   ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
   Host.Error('Program error');
 };
 
-PF.objerror = function() {
+PF.objerror = function PF_objerror() {
   Con.Print('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + PF.VarString(0) + '\n');
   ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
   Host.Error('Program error');
 };
 
-PF.makevectors = function() {
+PF.makevectors = function PF_makevectors() {
   const {forward, right, up} = (new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6])).angleVectors();
   let i;
   for (i = 0; i <= 2; ++i) {
@@ -33,7 +33,7 @@ PF.makevectors = function() {
   }
 };
 
-PF.setorigin = function() {
+PF.setorigin = function PF_setorigin() {
   const e = SV.server.edicts[PR.globals_int[4]];
   e.v_float[PR.entvars.origin] = PR.globals_float[7];
   e.v_float[PR.entvars.origin1] = PR.globals_float[8];
@@ -53,13 +53,13 @@ PF.SetMinMaxSize = function(e, min, max) {
   SV.LinkEdict(e);
 };
 
-PF.setsize = function() {
+PF.setsize = function PF_setsize() {
   PF.SetMinMaxSize(SV.server.edicts[PR.globals_int[4]],
       new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
       new Vector(PR.globals_float[10], PR.globals_float[11], PR.globals_float[12]));
 };
 
-PF.setmodel = function() {
+PF.setmodel = function PF_setmodel() {
   const e = SV.server.edicts[PR.globals_int[4]];
   const m = PR.GetString(PR.globals_int[7]);
   let i;
@@ -82,11 +82,11 @@ PF.setmodel = function() {
   }
 };
 
-PF.bprint = function() {
+PF.bprint = function PF_bprint() {
   Host.BroadcastPrint(PF.VarString(0));
 };
 
-PF.sprint = function() {
+PF.sprint = function PF_sprint() {
   const entnum = PR.globals_int[4];
   if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
     Con.Print('tried to sprint to a non-client\n');
@@ -97,7 +97,7 @@ PF.sprint = function() {
   MSG.WriteString(client.message, PF.VarString(1));
 };
 
-PF.centerprint = function() {
+PF.centerprint = function PF_centerprint() {
   const entnum = PR.globals_int[4];
   if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
     Con.Print('tried to sprint to a non-client\n');
@@ -108,7 +108,7 @@ PF.centerprint = function() {
   MSG.WriteString(client.message, PF.VarString(1));
 };
 
-PF.normalize = function() {
+PF.normalize = function PF_normalize() {
   const newvalue = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
   newvalue.normalize();
   PR.globals_float[1] = newvalue[0];
@@ -116,11 +116,11 @@ PF.normalize = function() {
   PR.globals_float[3] = newvalue[2];
 };
 
-PF.vlen = function() {
+PF.vlen = function PF_vlen() {
   PR.globals_float[1] = Math.sqrt(PR.globals_float[4] * PR.globals_float[4] + PR.globals_float[5] * PR.globals_float[5] + PR.globals_float[6] * PR.globals_float[6]);
 };
 
-PF.vectoyaw = function() {
+PF.vectoyaw = function PF_vectoyaw() {
   const value1 = PR.globals_float[4]; const value2 = PR.globals_float[5];
   if ((value1 === 0.0) && (value2 === 0.0)) {
     PR.globals_float[1] = 0.0;
@@ -133,7 +133,7 @@ PF.vectoyaw = function() {
   PR.globals_float[1] = yaw;
 };
 
-PF.vectoangles = function() {
+PF.vectoangles = function PF_vectoangles() {
   PR.globals_float[3] = 0.0;
   const value1 = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
   if ((value1[0] === 0.0) && (value1[1] === 0.0)) {
@@ -158,17 +158,17 @@ PF.vectoangles = function() {
   PR.globals_float[2] = yaw;
 };
 
-PF.random = function() {
+PF.random = function PF_random() {
   PR.globals_float[1] = Math.random();
 };
 
-PF.particle = function() {
+PF.particle = function PF_particle() {
   SV.StartParticle([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]],
       new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
       PR.globals_float[10] >> 0, PR.globals_float[13] >> 0);
 };
 
-PF.ambientsound = function() {
+PF.ambientsound = function PF_ambientsound() {
   const samp = PR.GetString(PR.globals_int[7]); let i;
   for (i = 0; i < SV.server.sound_precache.length; ++i) {
     if (SV.server.sound_precache[i] === samp) {
@@ -189,7 +189,7 @@ PF.ambientsound = function() {
   MSG.WriteByte(signon, PR.globals_float[13] * 64.0);
 };
 
-PF.sound = function() {
+PF.sound = function PF_sound() {
   SV.StartSound(SV.server.edicts[PR.globals_int[4]],
       PR.globals_float[7] >> 0,
       PR.GetString(PR.globals_int[10]),
@@ -197,11 +197,11 @@ PF.sound = function() {
       PR.globals_float[16]);
 };
 
-PF.breakstatement = function() {
+PF.breakstatement = function PF_breakstatement() {
   Con.Print('break statement\n');
 };
 
-PF.traceline = function() {
+PF.traceline = function PF_traceline() {
   const trace = SV.Move(
     new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]), // start
     Vector.origin, Vector.origin, // min, max
@@ -260,7 +260,7 @@ PF.newcheckclient = function(check) {
   return i;
 };
 
-PF.checkclient = function() {
+PF.checkclient = function PF_checkclient() {
   if ((SV.server.time - SV.server.lastchecktime) >= 0.1) {
     SV.server.lastcheck = PF.newcheckclient(SV.server.lastcheck);
     SV.server.lastchecktime = SV.server.time;
@@ -283,7 +283,7 @@ PF.checkclient = function() {
   PR.globals_int[1] = ent.num;
 };
 
-PF.stuffcmd = function() {
+PF.stuffcmd = function PF_stuffcmd() {
   const entnum = PR.globals_int[4];
   if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
     PR.RunError('Parm 0 not a client');
@@ -293,20 +293,20 @@ PF.stuffcmd = function() {
   MSG.WriteString(client.message, PR.GetString(PR.globals_int[7]));
 };
 
-PF.localcmd = function() {
+PF.localcmd = function PF_localcmd() {
   Cmd.text += PR.GetString(PR.globals_int[4]);
 };
 
-PF.cvar = function() {
+PF.cvar = function PF_cvar() {
   const v = Cvar.FindVar(PR.GetString(PR.globals_int[4]));
   PR.globals_float[1] = v != null ? v.value : 0.0;
 };
 
-PF.cvar_set = function() {
+PF.cvar_set = function PF_cvar_set() {
   Cvar.Set(PR.GetString(PR.globals_int[4]), PR.GetString(PR.globals_int[7]));
 };
 
-PF.findradius = function() {
+PF.findradius = function PF_findradius() {
   let chain = 0;
   const org = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
   const rad = PR.globals_float[7];
@@ -333,11 +333,11 @@ PF.findradius = function() {
   PR.globals_int[1] = chain;
 };
 
-PF.dprint = function() {
+PF.dprint = function PF_dprint() {
   Con.DPrint(PF.VarString(0));
 };
 
-PF.ftos = function() {
+PF.ftos = function PF_ftos() {
   const v = PR.globals_float[4];
   if (v === Math.floor(v)) {
     PR.TempString(v.toString());
@@ -347,26 +347,26 @@ PF.ftos = function() {
   PR.globals_int[1] = PR.string_temp;
 };
 
-PF.fabs = function() {
+PF.fabs = function PF_fabs() {
   PR.globals_float[1] = Math.abs(PR.globals_float[4]);
 };
 
-PF.vtos = function() {
+PF.vtos = function PF_vtos() {
   PR.TempString(PR.globals_float[4].toFixed(1) +
 		' ' + PR.globals_float[5].toFixed(1) +
 		' ' + PR.globals_float[6].toFixed(1));
   PR.globals_int[1] = PR.string_temp;
 };
 
-PF.Spawn = function() {
+PF.Spawn = function PF_Spawn() {
   PR.globals_int[1] = ED.Alloc().num;
 };
 
-PF.Remove = function() {
+PF.Remove = function PF_Remove() {
   ED.Free(SV.server.edicts[PR.globals_int[4]]);
 };
 
-PF.Find = function() {
+PF.Find = function PF_Find() {
   let e = PR.globals_int[4];
   const f = PR.globals_int[7];
   const s = PR.GetString(PR.globals_int[10]);
@@ -384,7 +384,7 @@ PF.Find = function() {
   PR.globals_int[1] = 0;
 };
 
-PF.MoveToGoal = function() {
+PF.MoveToGoal = function PF_MoveToGoal() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
   if ((ent.v_float[PR.entvars.flags] & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
     PR.globals_float[1] = 0.0;
@@ -400,11 +400,11 @@ PF.MoveToGoal = function() {
   }
 };
 
-PF.precache_file = function() {
+PF.precache_file = function PF_precache_file() {
   PR.globals_int[1] = PR.globals_int[4];
 };
 
-PF.precache_sound = function() {
+PF.precache_sound = function PF_precache_sound() {
   const s = PR.GetString(PR.globals_int[4]);
   PR.globals_int[1] = PR.globals_int[4];
   PR.CheckEmptyString(s);
@@ -417,7 +417,7 @@ PF.precache_sound = function() {
   SV.server.sound_precache[i] = s;
 };
 
-PF.precache_model = function() {
+PF.precache_model = function PF_precache_model() {
   if (SV.server.loading !== true) {
     PR.RunError('PF.Precache_*: Precache can only be done in spawn functions');
   }
@@ -434,23 +434,23 @@ PF.precache_model = function() {
   SV.server.models[i] = Mod.ForName(s, true);
 };
 
-PF.coredump = function() {
+PF.coredump = function PF_coredump() {
   ED.PrintEdicts();
 };
 
-PF.traceon = function() {
+PF.traceon = function PF_traceon() {
   PR.trace = true;
 };
 
-PF.traceoff = function() {
+PF.traceoff = function PF_traceoff() {
   PR.trace = false;
 };
 
-PF.eprint = function() {
+PF.eprint = function PF_eprint() {
   ED.Print(SV.server.edicts[PR.globals_float[4]]);
 };
 
-PF.walkmove = function() {
+PF.walkmove = function PF_walkmove() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
   if ((ent.v_float[PR.entvars.flags] & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
     PR.globals_float[1] = 0.0;
@@ -464,7 +464,7 @@ PF.walkmove = function() {
   PR.globals_int[PR.globalvars.self] = ent.num;
 };
 
-PF.droptofloor = function() {
+PF.droptofloor = function PF_droptofloor() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
   const trace = SV.Move(ED.Vector(ent, PR.entvars.origin),
       ED.Vector(ent, PR.entvars.mins), ED.Vector(ent, PR.entvars.maxs),
@@ -480,7 +480,7 @@ PF.droptofloor = function() {
   PR.globals_float[1] = 1.0;
 };
 
-PF.lightstyle = function() {
+PF.lightstyle = function PF_lightstyle() {
   const style = PR.globals_float[4] >> 0;
   const val = PR.GetString(PR.globals_int[7]);
   SV.server.lightstyles[style] = val;
@@ -499,28 +499,28 @@ PF.lightstyle = function() {
   }
 };
 
-PF.rint = function() {
+PF.rint = function PF_rint() {
   const f = PR.globals_float[4];
   PR.globals_float[1] = (f >= 0.0 ? f + 0.5 : f - 0.5) >> 0;
 };
 
-PF.floor = function() {
+PF.floor = function PF_floor() {
   PR.globals_float[1] = Math.floor(PR.globals_float[4]);
 };
 
-PF.ceil = function() {
+PF.ceil = function PF_ceil() {
   PR.globals_float[1] = Math.ceil(PR.globals_float[4]);
 };
 
-PF.checkbottom = function() {
+PF.checkbottom = function PF_checkbottom() {
   PR.globals_float[1] = SV.CheckBottom(SV.server.edicts[PR.globals_int[4]]);
 };
 
-PF.pointcontents = function() {
+PF.pointcontents = function PF_pointcontents() {
   PR.globals_float[1] = SV.PointContents([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]]);
 };
 
-PF.nextent = function() {
+PF.nextent = function PF_nextent() {
   for (let i = PR.globals_int[4] + 1; i < SV.server.num_edicts; ++i) {
     if (SV.server.edicts[i].free !== true) {
       PR.globals_int[1] = i;
@@ -530,7 +530,7 @@ PF.nextent = function() {
   PR.globals_int[1] = 0;
 };
 
-PF.aim = function() {
+PF.aim = function PF_aim() {
   const ent = SV.server.edicts[PR.globals_int[4]];
   const start = new Vector(ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] + 20.0);
   const dir = new Vector(PR.globals_float[PR.globalvars.v_forward], PR.globals_float[PR.globalvars.v_forward1], PR.globals_float[PR.globalvars.v_forward2]);
@@ -596,33 +596,12 @@ PF.aim = function() {
   PR.globals_float[3] = bestdir[2];
 };
 
-PF.changeyaw = function() {
+PF.changeyaw = function PF_changeyaw() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  const current = Vector.anglemod(ent.v_float[PR.entvars.angles1]);
-  const ideal = ent.v_float[PR.entvars.ideal_yaw];
-  if (current === ideal) {
-    return;
-  }
-  let move = ideal - current;
-  if (ideal > current) {
-    if (move >= 180.0) {
-      move -= 360.0;
-    }
-  } else if (move <= -180.0) {
-    move += 360.0;
-  }
-  const speed = ent.v_float[PR.entvars.yaw_speed];
-  if (move > 0.0) {
-    if (move > speed) {
-      move = speed;
-    }
-  } else if (move < -speed) {
-    move = -speed;
-  }
-  ent.v_float[PR.entvars.angles1] = Vector.anglemod(current + move);
+  ent.v_float[PR.entvars.angles1] = SV.ChangeYaw(ent);
 };
 
-PF.WriteDest = function() {
+PF.WriteDest = function PF_WriteDest() {
   switch (PR.globals_float[4] >> 0) {
     case 0: // broadcast
       return SV.server.datagram;
@@ -641,32 +620,32 @@ PF.WriteDest = function() {
   PR.RunError('WriteDest: bad destination');
 };
 
-PF.WriteByte = function() {
+PF.WriteByte = function PF_WriteByte() {
   MSG.WriteByte(PF.WriteDest(), PR.globals_float[7]);
 };
-PF.WriteChar = function() {
+PF.WriteChar = function PF_WriteChar() {
   MSG.WriteChar(PF.WriteDest(), PR.globals_float[7]);
 };
-PF.WriteShort = function() {
+PF.WriteShort = function PF_WriteShort() {
   MSG.WriteShort(PF.WriteDest(), PR.globals_float[7]);
 };
-PF.WriteLong = function() {
+PF.WriteLong = function PF_WriteLong() {
   MSG.WriteLong(PF.WriteDest(), PR.globals_float[7]);
 };
-PF.WriteAngle = function() {
+PF.WriteAngle = function PF_WriteAngle() {
   MSG.WriteAngle(PF.WriteDest(), PR.globals_float[7]);
 };
-PF.WriteCoord = function() {
+PF.WriteCoord = function PF_WriteCoord() {
   MSG.WriteCoord(PF.WriteDest(), PR.globals_float[7]);
 };
-PF.WriteString = function() {
+PF.WriteString = function PF_WriteString() {
   MSG.WriteString(PF.WriteDest(), PR.GetString(PR.globals_int[7]));
 };
-PF.WriteEntity = function() {
+PF.WriteEntity = function PF_WriteEntity() {
   MSG.WriteShort(PF.WriteDest(), PR.globals_int[7]);
 };
 
-PF.makestatic = function() {
+PF.makestatic = function PF_makestatic() {
   const ent = SV.server.edicts[PR.globals_int[4]];
   const message = SV.server.signon;
   MSG.WriteByte(message, Protocol.svc.spawnstatic);
@@ -683,7 +662,7 @@ PF.makestatic = function() {
   ED.Free(ent);
 };
 
-PF.setspawnparms = function() {
+PF.setspawnparms = function PF_setspawnparms() {
   let i = PR.globals_int[4];
   if ((i <= 0) || (i > SV.svs.maxclients)) {
     PR.RunError('Entity is not a client');
@@ -694,7 +673,7 @@ PF.setspawnparms = function() {
   }
 };
 
-PF.changelevel = function() {
+PF.changelevel = function PF_changelevel() {
   if (SV.svs.changelevel_issued === true) {
     return;
   }
@@ -702,7 +681,7 @@ PF.changelevel = function() {
   Cmd.text += 'changelevel ' + PR.GetString(PR.globals_int[4]) + '\n';
 };
 
-PF.Fixme = function() {
+PF.Fixme = function PF_Fixme() {
   PR.RunError('unimplemented builtin');
 };
 

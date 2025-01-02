@@ -20,7 +20,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 * [_] implement the new syscalls that QuakeWorld introduced
 * [_] improve stack trace / error handling
-* [_] add some better tooling, maybe a transpile progs.dat to JavaScript?
+* [_] add some better tooling, maybe a transpile QuakeC to JavaScript?
 * [_] prepare structure for JS client/server progs
 * [_] PR/PF: replace all those `v_int`/`v_float` access through a proxy to improve readability
 * [_] add ability to spawn entities after the server being ready
@@ -33,10 +33,11 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] refactor that mess in `Mod`
 * [_] refactor `MSG`/`SZ` especially in regards to `NET.message` and `client[…].message`
 * [_] refactor global `SV` states into proper modules
-* [_] rewrite `Vec` based on top of `Array`
+* [X] rewrite `Vec` based on top of `Array`
 * [_] completely switch to JS modules
 * [_] use more await/async when necessary, introduce a shutting down flag to break async processing
 * [_] replace all `>> 1` with `* 2` etc.
+* [_] replace all `globals_(float|int)\[([0-9]+)\]` with proper constants use
 
 ### SVC improvements
 
@@ -53,6 +54,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] finished demos trigger a `Host.Error` (lost connection), needs fixing
 * [X] S: still some issues with stopping sound upon a crash (mainly Firefox affected)
 * [X] Sbar: Show recent chatter next to the ranking board
+* [_] M: touch support (how to escape etc)
 
 ### Build pipeline
 
@@ -101,6 +103,18 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 
 ## Log
 
+### 2025-01-03
+
+* found QC files at https://www.doomworld.com/idgames/idstuff/unsup/progs106
+* decompiling from `progs.dat` to JavaScript is getting more complicated due to branching
+* introduced `SV.server.worldvars`
+
+```
+const player = SV.server.edicts.find((ent) => ent.vars.classname === 'player');
+// calls make_bubbles from QuakeC VM, sets self to player
+SV.server.worldvars.make_bubbles.call(player);
+```
+
 ### 2025-01-02
 
 * first experiments with CANNON.js, but I’m seeing weird issues (fall through issues)
@@ -108,6 +122,7 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * introduced first version of proxy classes to ease up interfacing data going in / coming out of QuakeVM
 * added quaternion math to `Vec`
 * ED, PF, PR: in order to have a function call proxy, you need to know the function signature ahead of time unfortunately, I need to move all the proxy stuff from ED to PR
+* `Vec.Copy`’s order of arguments was a fucking trap to deal with
 
 ```
 const global = new ED.Proxy(null);

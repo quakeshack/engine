@@ -368,15 +368,6 @@ Vector = class Vector extends Array {
   }
 
   /**
-   * Create a Vector from a quaternion, converting that quaternion to Euler angles.
-   */
-  static fromQuaternion(quat) {
-    const v = new Vector();
-    v.setQuaternion(quat);
-    return v;
-  }
-
-  /**
    * Convert these Euler angles (this) into a quaternion [w, x, y, z].
    */
   toQuaternion() {
@@ -403,6 +394,15 @@ Vector = class Vector extends Array {
     const z = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw;
 
     return [w, x, y, z];
+  }
+
+  /**
+   * Create a Vector from a quaternion, converting that quaternion to Euler angles.
+   */
+  static fromQuaternion(quat) {
+    const v = new Vector();
+    v.setQuaternion(quat);
+    return v;
   }
 
   toString() {
