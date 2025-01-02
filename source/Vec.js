@@ -5,41 +5,41 @@ Vec = {};
 
 Vec.origin = [0.0, 0.0, 0.0];
 
-Vec.Perpendicular = function(v) {
+Vec.Perpendicular = function(vector) {
   let pos = 0;
   let minelem = 1;
-  if (Math.abs(v[0]) < minelem) {
+  if (Math.abs(vector[0]) < minelem) {
     pos = 0;
-    minelem = Math.abs(v[0]);
+    minelem = Math.abs(vector[0]);
   }
-  if (Math.abs(v[1]) < minelem) {
+  if (Math.abs(vector[1]) < minelem) {
     pos = 1;
-    minelem = Math.abs(v[1]);
+    minelem = Math.abs(vector[1]);
   }
-  if (Math.abs(v[2]) < minelem) {
+  if (Math.abs(vector[2]) < minelem) {
     pos = 2;
-    minelem = Math.abs(v[2]);
+    minelem = Math.abs(vector[2]);
   }
   const tempvec = [0.0, 0.0, 0.0];
   tempvec[pos] = 1.0;
-  const inv_denom = 1.0 / (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-  const d = (tempvec[0] * v[0] + tempvec[1] * v[1] + tempvec[2] * v[2]) * inv_denom;
-  const dst = [
-    tempvec[0] - d * v[0] * inv_denom,
-    tempvec[1] - d * v[1] * inv_denom,
-    tempvec[2] - d * v[2] * inv_denom,
+  const inv_denom = 1.0 / (vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
+  const d = (tempvec[0] * vector[0] + tempvec[1] * vector[1] + tempvec[2] * vector[2]) * inv_denom;
+  const vector_dst = [
+    tempvec[0] - d * vector[0] * inv_denom,
+    tempvec[1] - d * vector[1] * inv_denom,
+    tempvec[2] - d * vector[2] * inv_denom,
   ];
-  Vec.Normalize(dst);
-  return dst;
+  Vec.Normalize(vector_dst);
+  return vector_dst;
 };
 
-Vec.RotatePointAroundVector = function(dir, point, degrees) {
-  const r = Vec.Perpendicular(dir);
-  const up = Vec.CrossProduct(r, dir);
+Vec.RotatePointAroundVector = function(vector_dir, vector_point, degrees) {
+  const vector_r = Vec.Perpendicular(vector_dir);
+  const up = Vec.CrossProduct(vector_r, vector_dir);
   const m = [
-    [r[0], up[0], dir[0]],
-    [r[1], up[1], dir[1]],
-    [r[2], up[2], dir[2]],
+    [vector_r[0], up[0], vector_dir[0]],
+    [vector_r[1], up[1], vector_dir[1]],
+    [vector_r[2], up[2], vector_dir[2]],
   ];
   const im = [
     [m[0][0], m[1][0], m[2][0]],
@@ -49,16 +49,16 @@ Vec.RotatePointAroundVector = function(dir, point, degrees) {
   const s = Math.sin(degrees * Math.PI / 180.0);
   const c = Math.cos(degrees * Math.PI / 180.0);
   const zrot = [[c, s, 0], [-s, c, 0], [0, 0, 1]];
-  const rot = Vec.ConcatRotations(Vec.ConcatRotations(m, zrot), im);
+  const matrix_rot = Vec.ConcatRotations(Vec.ConcatRotations(m, zrot), im);
   return [
-    rot[0][0] * point[0] + rot[0][1] * point[1] + rot[0][2] * point[2],
-    rot[1][0] * point[0] + rot[1][1] * point[1] + rot[1][2] * point[2],
-    rot[2][0] * point[0] + rot[2][1] * point[1] + rot[2][2] * point[2],
+    matrix_rot[0][0] * vector_point[0] + matrix_rot[0][1] * vector_point[1] + matrix_rot[0][2] * vector_point[2],
+    matrix_rot[1][0] * vector_point[0] + matrix_rot[1][1] * vector_point[1] + matrix_rot[1][2] * vector_point[2],
+    matrix_rot[2][0] * vector_point[0] + matrix_rot[2][1] * vector_point[1] + matrix_rot[2][2] * vector_point[2],
   ];
 };
 
-Vec.Anglemod = function(a) {
-  return (a % 360.0 + 360.0) % 360.0;
+Vec.Anglemod = function(angle) {
+  return (angle % 360.0 + 360.0) % 360.0;
 };
 
 Vec.BoxOnPlaneSide = function(emins, emaxs, p) {
@@ -148,83 +148,83 @@ Vec.AngleVectors = function(angles, forward, right, up) {
   }
 };
 
-Vec.DotProduct = function(v1, v2) {
-  return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
+Vec.DotProduct = function(vector_a, vector_b) {
+  return vector_a[0] * vector_b[0] + vector_a[1] * vector_b[1] + vector_a[2] * vector_b[2];
 };
 
-Vec.Copy = function(v1, v2) {
-  v2[0] = v1[0];
-  v2[1] = v1[1];
-  v2[2] = v1[2];
+Vec.Copy = function(vector_src, vector_dest) {
+  vector_dest[0] = vector_src[0];
+  vector_dest[1] = vector_src[1];
+  vector_dest[2] = vector_src[2];
 };
 
-Vec.CrossProduct = function(v1, v2) {
+Vec.CrossProduct = function(vector_a, vector_b) {
   return [
-    v1[1] * v2[2] - v1[2] * v2[1],
-    v1[2] * v2[0] - v1[0] * v2[2],
-    v1[0] * v2[1] - v1[1] * v2[0],
+    vector_a[1] * vector_b[2] - vector_a[2] * vector_b[1],
+    vector_a[2] * vector_b[0] - vector_a[0] * vector_b[2],
+    vector_a[0] * vector_b[1] - vector_a[1] * vector_b[0],
   ];
 };
 
-Vec.Length = function(v) {
-  return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+Vec.Length = function(vector) {
+  return Math.sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
 };
 
-Vec.Normalize = function(v) {
-  const length = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+Vec.Normalize = function(vector) {
+  const length = Math.sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
   if (length === 0.0) {
-    v[0] = v[1] = v[2] = 0.0;
+    vector[0] = vector[1] = vector[2] = 0.0;
     return 0.0;
   }
-  v[0] /= length;
-  v[1] /= length;
-  v[2] /= length;
+  vector[0] /= length;
+  vector[1] /= length;
+  vector[2] /= length;
   return length;
 };
 
-Vec.ConcatRotations = function(m1, m2) {
+Vec.ConcatRotations = function(matrix_a, matrix_b) {
   return [
     [
-      m1[0][0] * m2[0][0] + m1[0][1] * m2[1][0] + m1[0][2] * m2[2][0],
-      m1[0][0] * m2[0][1] + m1[0][1] * m2[1][1] + m1[0][2] * m2[2][1],
-      m1[0][0] * m2[0][2] + m1[0][1] * m2[1][2] + m1[0][2] * m2[2][2],
+      matrix_a[0][0] * matrix_b[0][0] + matrix_a[0][1] * matrix_b[1][0] + matrix_a[0][2] * matrix_b[2][0],
+      matrix_a[0][0] * matrix_b[0][1] + matrix_a[0][1] * matrix_b[1][1] + matrix_a[0][2] * matrix_b[2][1],
+      matrix_a[0][0] * matrix_b[0][2] + matrix_a[0][1] * matrix_b[1][2] + matrix_a[0][2] * matrix_b[2][2],
     ],
     [
-      m1[1][0] * m2[0][0] + m1[1][1] * m2[1][0] + m1[1][2] * m2[2][0],
-      m1[1][0] * m2[0][1] + m1[1][1] * m2[1][1] + m1[1][2] * m2[2][1],
-      m1[1][0] * m2[0][2] + m1[1][1] * m2[1][2] + m1[1][2] * m2[2][2],
+      matrix_a[1][0] * matrix_b[0][0] + matrix_a[1][1] * matrix_b[1][0] + matrix_a[1][2] * matrix_b[2][0],
+      matrix_a[1][0] * matrix_b[0][1] + matrix_a[1][1] * matrix_b[1][1] + matrix_a[1][2] * matrix_b[2][1],
+      matrix_a[1][0] * matrix_b[0][2] + matrix_a[1][1] * matrix_b[1][2] + matrix_a[1][2] * matrix_b[2][2],
     ],
     [
-      m1[2][0] * m2[0][0] + m1[2][1] * m2[1][0] + m1[2][2] * m2[2][0],
-      m1[2][0] * m2[0][1] + m1[2][1] * m2[1][1] + m1[2][2] * m2[2][1],
-      m1[2][0] * m2[0][2] + m1[2][1] * m2[1][2] + m1[2][2] * m2[2][2],
+      matrix_a[2][0] * matrix_b[0][0] + matrix_a[2][1] * matrix_b[1][0] + matrix_a[2][2] * matrix_b[2][0],
+      matrix_a[2][0] * matrix_b[0][1] + matrix_a[2][1] * matrix_b[1][1] + matrix_a[2][2] * matrix_b[2][1],
+      matrix_a[2][0] * matrix_b[0][2] + matrix_a[2][1] * matrix_b[1][2] + matrix_a[2][2] * matrix_b[2][2],
     ],
   ];
 };
 
-Vec.SetQuaternion = function (v, q) {
-  const [w, x, y, z] = q;
+Vec.SetQuaternion = function (vector, quaternion) {
+  const [w, x, y, z] = quaternion;
 
   const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y*y + z*z));
   const pitch = Math.asin(2 * (w * y - z * x));
   const roll = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x*x + y*y));
 
-  v[0] = roll;
-  v[1] = pitch;
-  v[2] = yaw;
+  vector[0] = roll;
+  vector[1] = pitch;
+  vector[2] = yaw;
 };
 
-Vec.FromQuaternion = function (q) {
-  const v = [];
+Vec.FromQuaternion = function (quaternion) {
+  const vector = [];
 
-  Vec.SetQuaternion(v, q);
+  Vec.SetQuaternion(vector, quaternion);
 
-  return v;
+  return vector;
 };
 
-Vec.ToQuaternion = function (v) {
-  const [roll, pitch, yaw] = v; // Euler angles: roll, pitch, yaw
-  const q = [];
+Vec.ToQuaternion = function (vector) {
+  const [roll, pitch, yaw] = vector; // Euler angles: roll, pitch, yaw
+  const quaternion = [];
 
   // Precompute sine and cosine of half angles
   const halfRoll = roll / 2;
@@ -241,10 +241,10 @@ Vec.ToQuaternion = function (v) {
   const cosYaw = Math.cos(halfYaw);
 
   // Compute quaternion
-  q[0] = cosRoll * cosPitch * cosYaw + sinRoll * sinPitch * sinYaw; // w
-  q[1] = sinRoll * cosPitch * cosYaw - cosRoll * sinPitch * sinYaw; // x
-  q[2] = cosRoll * sinPitch * cosYaw + sinRoll * cosPitch * sinYaw; // y
-  q[3] = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw; // z
+  quaternion[0] = cosRoll * cosPitch * cosYaw + sinRoll * sinPitch * sinYaw; // w
+  quaternion[1] = sinRoll * cosPitch * cosYaw - cosRoll * sinPitch * sinYaw; // x
+  quaternion[2] = cosRoll * sinPitch * cosYaw + sinRoll * cosPitch * sinYaw; // y
+  quaternion[3] = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw; // z
 
-  return q;
+  return quaternion;
 };
