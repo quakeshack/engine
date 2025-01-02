@@ -3,6 +3,9 @@
 // eslint-disable-next-line no-global-assign
 PR = {};
 
+/**
+ * PR.fielddefs[].type
+ */
 PR.etype = {
   ev_void: 0,
   ev_string: 1,
@@ -13,6 +16,8 @@ PR.etype = {
   ev_function: 6,
   ev_pointer: 7,
 };
+
+PR.saveglobal = (1<<15);
 
 PR.op = {
   done: 0,
@@ -38,6 +43,7 @@ PR.op = {
 };
 
 PR.version = 6;
+PR.max_parms = 8;
 
 PR.globalvars = {
   self: 28, // edict
@@ -199,7 +205,320 @@ PR.entvars = {
   noise3: 104, // string
 };
 
+PR.ofs = {
+  OFS_NULL: 0,
+  OFS_RETURN: 1,
+  OFS_PARM0: 4, // leave 3 ofs for each parm to hold vectors
+  OFS_PARM1: 7,
+  OFS_PARM2: 10,
+  OFS_PARM3: 13,
+  OFS_PARM4: 16,
+  OFS_PARM5: 19,
+  OFS_PARM6: 22,
+  OFS_PARM7: 25,
+};
+
 PR.progheader_crc = 5927;
+
+// classes
+
+PR.EntityProxy = class EntityProxy {
+  constructor(ent) {
+    this.ent = ent;
+
+    Object.freeze(this);
+  }
+}
+
+/**
+ * FIXME: function proxies need to become cached
+ */
+PR.FunctionProxy = class FunctionProxy {
+  constructor(fnc, ent = null) {
+    this.fnc = fnc;
+    this.ent = ent;
+    this._signature = null;
+
+    const f = PR.functions[this.fnc];
+
+    Object.defineProperty(this, 'name', {
+      value: PR.GetString(f.name),
+      writable: false,
+    });
+
+    // // TODO: we can determine the return and arg types by looking at the op codes of that function is going to use (PR.ExecuteProgram can do the return type for us)
+
+    // // we wait until hit an op code modifying st.a
+    // // there is always a return value stored in OFS_RETURN
+    // let returnType = PR.etype.ev_void;
+    // const argTypes = Array(PR.max_parms).map(() => PR.etype.ev_void);
+
+    // function getParameterPosition(ofs) {
+    //   if (ofs < PR.ofs.OFS_PARM0 || ofs > PR.ofs.OFS_PARM7) {
+    //     return null;
+    //   }
+
+    //   return (ofs - 4) / 3;
+    // }
+
+    // function testForParameterAccess(ofs, type) {
+    //   const pos = getParameterPosition(ofs);
+
+    //   if (!pos) {
+    //     return false;
+    //   }
+
+    //   argTypes[pos] = type;
+
+    //   return true;
+    // }
+
+    // function testForParametersAccess(st, type) {
+    //   testForParameterAccess(st.a, type);
+    //   testForParameterAccess(st.b, type);
+    //   testForParameterAccess(st.c, type);
+    // }
+
+    // for (let s = f.first_statement;; s++) {
+    //   const st = PR.statements[s];
+
+    //   if (!st) {
+    //     break;
+    //   }
+
+    //   switch (st.op) {
+    //     case PR.op.eq_e:
+    //     case PR.op.ne_e:
+    //       break;
+    //     case PR.op.load_ent:
+    //     case PR.op.store_ent:
+    //     case PR.op.storep_ent:
+    //     case PR.op.not_ent:
+    //       testForParametersAccess(st, PR.etype.ev_entity);
+    //       break;
+    //     case PR.op.mul_f:
+    //     case PR.op.div_f:
+    //     case PR.op.add_f:
+    //     case PR.op.sub_f:
+    //     case PR.op.eq_f:
+    //     case PR.op.ne_f:
+    //     case PR.op.load_f:
+    //     case PR.op.store_f:
+    //     case PR.op.storep_f:
+    //     case PR.op.not_f:
+    //       testForParametersAccess(st, PR.etype.ev_float);
+    //       break;
+    //     case PR.op.load_fld:
+    //     case PR.op.store_fld:
+    //     case PR.op.storep_fld:
+    //       testForParametersAccess(st, PR.etype.ev_field);
+    //       break;
+    //     case PR.op.eq_fnc:
+    //     case PR.op.ne_fnc:
+    //     case PR.op.load_fnc:
+    //     case PR.op.store_fnc:
+    //     case PR.op.storep_fnc:
+    //     case PR.op.not_fnc:
+    //       testForParametersAccess(st, PR.etype.ev_function);
+    //       break;
+    //     case PR.op.mul_fv:
+    //       testForParameterAccess(st.a, PR.etype.ev_float);
+    //       testForParameterAccess(st.b, PR.etype.ev_vector);
+    //       testForParameterAccess(st.c, PR.etype.ev_vector);
+    //       break;
+    //     case PR.op.eq_s:
+    //     case PR.op.ne_s:
+    //     case PR.op.load_s:
+    //     case PR.op.store_s:
+    //     case PR.op.storep_s:
+    //     case PR.op.not_s:
+    //       testForParametersAccess(st, PR.etype.ev_string);
+    //       break;
+    //     case PR.op.mul_v:
+    //     case PR.op.add_v:
+    //     case PR.op.sub_v:
+    //     case PR.op.eq_v:
+    //     case PR.op.ne_v:
+    //     case PR.op.load_v:
+    //     case PR.op.store_v:
+    //     case PR.op.storep_v:
+    //     case PR.op.not_v:
+    //       testForParametersAccess(st, PR.etype.ev_vector);
+    //       break;
+    //     case PR.op.mul_vf:
+    //       testForParameterAccess(st.a, PR.etype.ev_vector);
+    //       testForParameterAccess(st.b, PR.etype.ev_float);
+    //       testForParameterAccess(st.c, PR.etype.ev_vector);
+    //       break;
+
+    //     case PR.op.done:
+    //     case PR.op.ret:
+    //     case PR.op.call0:
+    //     case PR.op.call1:
+    //     case PR.op.call2:
+    //     case PR.op.call3:
+    //     case PR.op.call4:
+    //     case PR.op.call5:
+    //     case PR.op.call6:
+    //     case PR.op.call7:
+    //     case PR.op.call8:
+    //       continue;
+    //   }
+    // }
+
+    // this._signature = {
+    //   returnType,
+    //   argTypes,
+    // };
+
+    Object.freeze(this);
+  }
+
+  /**
+   * calls
+   * @param {*} self (optional) the edict for self
+   */
+  call(self, ...args) {
+    PR.globals_int[PR.globalvars.self] = self ? self.num : 0;
+
+    // assume return type void and no args
+    if (!this._signature) {
+      PR.ExecuteProgram(this.fnc);
+      return null;
+    }
+
+    const { returnType, argTypes } = this._signature;
+
+    // TODO: iterate over args and use argTypes to set the values
+
+    PR.ExecuteProgram(this.fnc);
+
+    return PR.Value(returnType, PR.globals, 1); // ret val is at 1
+
+    // we need to know the signature ahead of time to handle args and return
+  }
+}
+
+PR.EdictProxy = class EdictProxy {
+  /**
+   *
+   * @param {*} ed can be null, then it’s global
+   */
+  constructor(ed) {
+    const defs = ed ? PR.fielddefs : PR.globaldefs;
+    for (let i = 1; i < defs.length; i++) {
+      const d = defs[i];
+      const name = PR.GetString(d.name);
+
+      if (name.charCodeAt(name.length - 2) === 95) {
+        continue;
+      }
+
+      const [type, val, ofs] = [d.type & ~PR.saveglobal, ed ? ed.v : PR.globals, d.ofs];
+
+      if (type & PR.saveglobal === 0) {
+        continue;
+      }
+
+      const val_float = new Float32Array(val);
+      const val_int = new Int32Array(val);
+
+      switch (type) {
+        case PR.etype.ev_string:
+          Object.defineProperty(this, name, {
+            get: function() {
+              return val_int[ofs] > 0 ? PR.GetString(val_int[ofs]) : null;
+            },
+            set: function(value) {
+              val_int[ofs] = value !== null ? PR.TempString(value) : 0; // FIXME: NewString?
+            },
+            configurable: true,
+            enumerable: true,
+          });
+          break;
+        case PR.etype.ev_entity:
+          Object.defineProperty(this, name, {
+            get: function() {
+              return val_int[ofs] > 0 ? new PR.EntityProxy(val_int[ofs]) : null;
+            },
+            set: function(value) {
+              if (value === null) {
+                val_int[ofs] = 0;
+                return;
+              }
+              if (!(value instanceof PR.EntityProxy)) {
+                throw new TypeError('Expected EntityProxy');
+              }
+              val_int[ofs] = value.ent;
+            },
+            configurable: true,
+            enumerable: true,
+          });
+          break;
+        case PR.etype.ev_function:
+          Object.defineProperty(this, name, {
+            get: function() {
+              return val_int[ofs] > 0 ? new PR.FunctionProxy(val_int[ofs], ed) : null;
+            },
+            set: function(value) {
+              if (value === null) {
+                val_int[ofs] = 0;
+                return;
+              }
+              if (!(value instanceof PR.FunctionProxy)) {
+                throw new TypeError('Expected FunctionProxy');
+              }
+              val_int[ofs] = value.fnc;
+            },
+            configurable: true,
+            enumerable: true,
+          });
+          break;
+        case PR.etype.ev_pointer:
+        case PR.etype.ev_field:
+          Object.defineProperty(this, name, {
+            get: function() {
+              return val_int[ofs];
+            },
+            set: function(value) {
+              val_int[ofs] = value;
+            },
+            configurable: true,
+            enumerable: true,
+          });
+          break;
+        case PR.etype.ev_float:
+          Object.defineProperty(this, name, {
+            get: function() {
+              return val_float[ofs];
+            },
+            set: function(value) {
+              val_float[ofs] = value;
+            },
+            configurable: true,
+            enumerable: true,
+          });
+          break;
+        case PR.etype.ev_vector: // TODO: Proxy for Vector
+          Object.defineProperty(this, name, {
+            get: function() {
+              return [val_float[ofs], val_float[ofs + 1], val_float[ofs + 2]];
+            },
+            set: function(value) {
+              val_float[ofs] = value[0];
+              val_float[ofs+1] = value[1];
+              val_float[ofs+2] = value[2];
+            },
+            configurable: true,
+            enumerable: true,
+          });
+          break;
+      }
+    }
+
+    Object.freeze(this);
+  }
+};
 
 // cmds
 
@@ -215,7 +534,7 @@ PR.CheckEmptyString = function(s) {
 PR.ValueString = function(type, val, ofs) {
   const val_float = new Float32Array(val);
   const val_int = new Int32Array(val);
-  type &= 0x7fff;
+  type &= ~PR.saveglobal;
   switch (type) {
     case PR.etype.ev_string:
       return PR.GetString(val_int[ofs]);
@@ -244,10 +563,42 @@ PR.ValueString = function(type, val, ofs) {
   return 'bad type ' + type;
 };
 
+PR.Value = function(type, val, ofs) {
+  const val_float = new Float32Array(val);
+  const val_int = new Int32Array(val);
+  type &= ~PR.saveglobal;
+  switch (type) {
+    case PR.etype.ev_string:
+      return PR.GetString(val_int[ofs]);
+    case PR.etype.ev_pointer:
+    case PR.etype.ev_entity:
+    case PR.etype.ev_field:
+      return val_int[ofs];
+      // case PR.etype.ev_field: {
+      //     const def = ED.FieldAtOfs(val_int[ofs]);
+      //     if (def != null) {
+      //       return '.' + PR.GetString(def.name);
+      //     }
+      //     return '.';
+      //   }
+    case PR.etype.ev_function:
+      return PR.GetString(PR.functions[val_int[ofs]].name) + '()';
+    case PR.etype.ev_void:
+      return null;
+    case PR.etype.ev_float:
+      return val_float[ofs];
+    case PR.etype.ev_vector:
+      return [val_float[ofs],
+              val_float[ofs + 1],
+              val_float[ofs + 2]];
+  }
+  throw new TypeError('bad PR etype ' + type);
+};
+
 PR.UglyValueString = function(type, val, ofs) {
   const val_float = new Float32Array(val);
   const val_int = new Int32Array(val);
-  type &= 0x7fff;
+  type &= ~PR.saveglobal;
   switch (type) {
     case PR.etype.ev_string:
       return PR.GetString(val_int[ofs]);
@@ -598,7 +949,7 @@ PR.LeaveFunction = function() {
   return PR.stack[PR.depth][0];
 };
 
-PR.ExecuteProgram = function(fnum) {
+PR.ExecuteProgram = function(fnum, trace = false) {
   if ((fnum === 0) || (fnum >= PR.functions.length)) {
     if (PR.globals_int[PR.globalvars.self] !== 0) {
       ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
@@ -606,7 +957,7 @@ PR.ExecuteProgram = function(fnum) {
     Host.Error('PR.ExecuteProgram: NULL function');
   }
   let runaway = 100000;
-  PR.trace = false;
+  PR.trace = trace;
   const exitdepth = PR.depth;
   let s = PR.EnterFunction(PR.functions[fnum]);
   let st; let ed; let ptr; let newf;
@@ -820,9 +1171,9 @@ PR.ExecuteProgram = function(fnum) {
         continue;
       case PR.op.done:
       case PR.op.ret:
-        PR.globals_int[1] = PR.globals_int[st.a];
-        PR.globals_int[2] = PR.globals_int[st.a + 1];
-        PR.globals_int[3] = PR.globals_int[st.a + 2];
+        PR.globals_int[PR.ofs.OFS_RETURN] = PR.globals_int[st.a];
+        PR.globals_int[PR.ofs.OFS_RETURN + 1] = PR.globals_int[st.a + 1];
+        PR.globals_int[PR.ofs.OFS_RETURN + 2] = PR.globals_int[st.a + 2];
         s = PR.LeaveFunction();
         if (PR.depth === exitdepth) {
           return;

@@ -22,6 +22,8 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] improve stack trace / error handling
 * [_] add some better tooling, maybe a transpile progs.dat to JavaScript?
 * [_] prepare structure for JS client/server progs
+* [_] PR/PF: replace all those `v_int`/`v_float` access through a proxy to improve readability
+* [_] add ability to spawn entities after the server being ready
 
 ### Code smell
 
@@ -98,6 +100,21 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * look into things like https://github.com/schteppe/cannon.js and https://github.com/kripken/ammo.js
 
 ## Log
+
+### 2025-01-02
+
+* first experiments with CANNON.js, but I’m seeing weird issues (fall through issues)
+* added code that generates a triangle mesh based on the BSP structure (being fed into CANNON.js)
+* introduced first version of proxy classes to ease up interfacing data going in / coming out of QuakeVM
+* added quaternion math to `Vec`
+* ED, PF, PR: in order to have a function call proxy, you need to know the function signature ahead of time unfortunately, I need to move all the proxy stuff from ED to PR
+
+```
+const global = new ED.Proxy(null);
+const player = SV.server.edicts.find((ent) => ent.vars.classname === 'player');
+// calls make_bubbles from QuakeC VM, sets self to player
+global.make_bubbles.call(player);
+```
 
 ### 2025-01-01
 

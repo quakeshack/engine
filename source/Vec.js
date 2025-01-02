@@ -201,3 +201,50 @@ Vec.ConcatRotations = function(m1, m2) {
     ],
   ];
 };
+
+Vec.SetQuaternion = function (v, q) {
+  const [w, x, y, z] = q;
+
+  const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y*y + z*z));
+  const pitch = Math.asin(2 * (w * y - z * x));
+  const roll = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x*x + y*y));
+
+  v[0] = roll;
+  v[1] = pitch;
+  v[2] = yaw;
+};
+
+Vec.FromQuaternion = function (q) {
+  const v = [];
+
+  Vec.SetQuaternion(v, q);
+
+  return v;
+};
+
+Vec.ToQuaternion = function (v) {
+  const [roll, pitch, yaw] = v; // Euler angles: roll, pitch, yaw
+  const q = [];
+
+  // Precompute sine and cosine of half angles
+  const halfRoll = roll / 2;
+  const halfPitch = pitch / 2;
+  const halfYaw = yaw / 2;
+
+  const sinRoll = Math.sin(halfRoll);
+  const cosRoll = Math.cos(halfRoll);
+
+  const sinPitch = Math.sin(halfPitch);
+  const cosPitch = Math.cos(halfPitch);
+
+  const sinYaw = Math.sin(halfYaw);
+  const cosYaw = Math.cos(halfYaw);
+
+  // Compute quaternion
+  q[0] = cosRoll * cosPitch * cosYaw + sinRoll * sinPitch * sinYaw; // w
+  q[1] = sinRoll * cosPitch * cosYaw - cosRoll * sinPitch * sinYaw; // x
+  q[2] = cosRoll * sinPitch * cosYaw + sinRoll * cosPitch * sinYaw; // y
+  q[3] = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw; // z
+
+  return q;
+};

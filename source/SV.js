@@ -1,4 +1,4 @@
-/*global SV, Sys, COM,  Q, Host, Vec, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, PF, V, SCR */
+/*global SV, Sys, COM,  Q, Host, Vec, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, PF, V, SCR, CANNON */
 
 // eslint-disable-next-line no-global-assign
 SV = {};
@@ -54,6 +54,7 @@ SV.server = {
   datagram: {data: new ArrayBuffer(1024), cursize: 0},
   reliable_datagram: {data: new ArrayBuffer(1024), cursize: 0},
   signon: {data: new ArrayBuffer(8192), cursize: 0},
+  cannon: null,
 };
 
 SV.svs = {};
@@ -792,9 +793,15 @@ SV.SpawnServer = function(server) {
     ed.area.ent = ed;
     ed.v_float = new Float32Array(ed.v);
     ed.v_int = new Int32Array(ed.v);
+    ed.vars = new PR.EdictProxy(ed);
     SV.server.edicts[i] = ed;
   }
-
+  SV.server.cannon = {
+    world: new CANNON.World(),
+    lastTime: null,
+    active: false,
+  };
+  SV.server.cannon.world.gravity.set(0, 0, -9.82);
   SV.server.datagram.cursize = 0;
   SV.server.reliable_datagram.cursize = 0;
   SV.server.signon.cursize = 0;
@@ -851,6 +858,7 @@ SV.SpawnServer = function(server) {
   SV.server.active = true;
   SV.server.loading = false;
   Host.frametime = 0.1;
+  SV.InitPhysicsEngine();
   SV.Physics();
   SV.Physics();
   SV.CreateBaseline();
@@ -1754,6 +1762,192 @@ SV.Physics_Step = function(ent) {
   SV.CheckWaterTransition(ent);
 };
 
+SV._BuildSurfaceDisplayList = function(currentmodel, fa) { // FIXME: move to Mod?
+  fa.verts = [];
+  if (fa.numedges <= 2) {
+    return;
+  }
+  let i; let index; let vec; let vert; let s; let t;
+  const texinfo = currentmodel.texinfo[fa.texinfo];
+  const texture = currentmodel.textures[texinfo.texture];
+  for (i = 0; i < fa.numedges; ++i) {
+    index = currentmodel.surfedges[fa.firstedge + i];
+    if (index > 0) {
+      vec = currentmodel.vertexes[currentmodel.edges[index][0]];
+    } else {
+      vec = currentmodel.vertexes[currentmodel.edges[-index][1]];
+    }
+    vert = [vec[0], vec[1], vec[2]];
+    if (fa.sky !== true) {
+      s = Vec.DotProduct(vec, texinfo.vecs[0]) + texinfo.vecs[0][3];
+      t = Vec.DotProduct(vec, texinfo.vecs[1]) + texinfo.vecs[1][3];
+      vert[3] = s / texture.width;
+      vert[4] = t / texture.height;
+      if (fa.turbulent !== true) {
+        vert[5] = (s - fa.texturemins[0] + (fa.light_s << 4) + 8.0) / 16384.0;
+        vert[6] = (t - fa.texturemins[1] + (fa.light_t << 4) + 8.0) / 16384.0;
+      }
+    }
+    if (i >= 3) {
+      fa.verts[fa.verts.length] = fa.verts[0];
+      fa.verts[fa.verts.length] = fa.verts[fa.verts.length - 2];
+    }
+    fa.verts[fa.verts.length] = vert;
+  }
+};
+
+SV._CreateTrimeshFromBSP = function(m) { // FIXME: move to Mod?
+  const vertices = [];
+  const indices = [];
+  let vertexCount = 0;
+
+  // Calculate all vertices for surfaces
+  for (let j = 0; j < m.faces.length; ++j) {
+    SV._BuildSurfaceDisplayList(m, m.faces[j]);
+  }
+
+  // Iterate through textures
+  for (let i = 0; i < m.textures.length; ++i) {
+      const texture = m.textures[i];
+
+      // Skip sky and turbulent textures for collision geometry
+      if (texture.sky || texture.turbulent) {
+          continue;
+      }
+
+      // Iterate through leaf nodes
+      for (let j = 0; j < m.leafs.length; ++j) {
+          const leaf = m.leafs[j];
+
+          // Iterate through the surfaces (faces) in the leaf
+          for (let k = 0; k < leaf.nummarksurfaces; ++k) {
+              const surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
+
+              // Skip surfaces with a different texture
+              if (surf.texture !== i) {
+                  continue;
+              }
+
+              // Process the vertices in the surface
+              const faceVertices = [];
+              for (let l = 0; l < surf.verts.length; ++l) {
+                  const vert = surf.verts[l];
+                  // Push vertex data (x, y, z)
+                  vertices.push(vert[0], vert[1], vert[2]);
+                  faceVertices.push(vertexCount++);
+              }
+
+              // Triangulate the face (if needed)
+              if (faceVertices.length > 2) {
+                  for (let l = 1; l < faceVertices.length - 1; ++l) {
+                      indices.push(
+                          faceVertices[0],    // First vertex
+                          faceVertices[l],    // Current vertex
+                          faceVertices[l + 1] // Next vertex
+                      );
+                  }
+              }
+          }
+      }
+  }
+
+  // Create the Trimesh
+  return new CANNON.Trimesh(vertices, indices);
+}
+
+SV.InitPhysicsEngine = function() {
+  // // load world model as static body
+  // const worldmodel = SV.server.worldmodel;
+  // const body = new CANNON.Body({ mass: 0 });
+  // body.addShape(SV._CreateTrimeshFromBSP(worldmodel));
+  // SV.server.cannon.world.addBody(body);
+
+  // for (let i = 0; i < SV.server.num_edicts; ++i) {
+  //   const ent = SV.server.edicts[i];
+
+  //   if (ent.free === true) {
+  //     continue;
+  //   }
+
+  //   SV.PhysicsEngineRegisterEdict(ent);
+  // }
+};
+
+SV.StepPhysicsEngine = function() {
+  if (!SV.server.cannon.active) {
+    return;
+  }
+
+  // if (SV.server.cannon.lastTime) {
+  //   const fixedTimeStep = 1.0 / 60.0; // seconds (FIXME: right resolution?)
+  //   const maxSubSteps = 3;
+  //   const dt = (Host.frametime - SV.server.cannon.lastTime) / 1000;
+
+  //   SV.server.cannon.world.step(fixedTimeStep, dt, maxSubSteps);
+  // }
+
+  // SV.server.cannon.lastTime = Host.frametime;
+};
+
+SV.LinkPhysicsEngine = function() {
+  if (!SV.server.cannon.active) {
+    return;
+  }
+
+  for (let i = 0; i < SV.server.num_edicts; ++i) {
+    const ent = SV.server.edicts[i];
+
+    if (ent.free === true) {
+      continue;
+    }
+
+    if (ent.cannon?.body) {
+      ent.vars.origin = ent.cannon.body.position.toArray();
+      ent.vars.angles = Vec.FromQuaternion(ent.cannon.body.quaternion.toArray());
+      SV.LinkEdict(ent);
+    }
+  }
+};
+
+SV.PhysicsEngineUnregisterEdict = function(ent) {
+  if (ent.cannon?.body) {
+    SV.server.cannon.world.removeBody(ent.cannon.body);
+    ent.cannon.body = null;
+  }
+};
+
+// eslint-disable-next-line no-unused-vars
+SV.PhysicsEngineRegisterEdict = function(ent) {
+
+  // // add simple body to all entities
+  // // for (let i = 0; i < SV.server.num_edicts; ++i) { // TODO: move this to spawn edict
+  // //   const ent = SV.server.edicts[i];
+  // //   if (ent.free === true) {
+  // //     continue;
+  // //   }
+  //   const classname = ent.vars.classname;
+
+  //   ent.cannon = {
+  //     body: null,
+  //   };
+
+  //   if (classname && classname.startsWith('item_')) {
+  //     const body = new CANNON.Body({
+  //       position: new CANNON.Vec3(...ent.vars.origin),
+  //       quaternion: new CANNON.Quaternion(...Vec.ToQuaternion(ent.vars.angles)),
+  //       mass: Q.atof(ent.phys.mass || 0), // kg
+  //     });
+  //     //body.addShape(new CANNON.Box(new CANNON.Vec3(...ent.vars.size)));
+  //     if (ent.vars.model.endsWith('.bsp')) { // use model information instead
+  //       body.addShape(SV._CreateTrimeshFromBSP(Mod.ForName(ent.vars.model)));
+  //     }
+  //     SV.server.cannon.world.addBody(body);
+
+  //     ent.cannon.body = body;
+  //   }
+  // // }
+};
+
 SV.Physics = function() {
   PR.globals_int[PR.globalvars.self] = 0;
   PR.globals_int[PR.globalvars.other] = 0;
@@ -1798,6 +1992,8 @@ SV.Physics = function() {
     --PR.globals_float[PR.globalvars.force_retouch];
   }
   SV.server.time += Host.frametime;
+  SV.StepPhysicsEngine();
+  SV.LinkPhysicsEngine();
 };
 
 // user

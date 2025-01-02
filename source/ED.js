@@ -9,6 +9,7 @@ ED.ClearEdict = function(e) {
     e.v_int[i] = 0;
   }
   e.free = false;
+  SV.PhysicsEngineUnregisterEdict(e);
 };
 
 ED.Alloc = function() {
@@ -25,11 +26,13 @@ ED.Alloc = function() {
   }
   e = SV.server.edicts[SV.server.num_edicts++];
   ED.ClearEdict(e);
+  SV.PhysicsEngineRegisterEdict(e);
   return e;
 };
 
 ED.Free = function(ed) {
   SV.UnlinkEdict(ed);
+  SV.PhysicsEngineUnregisterEdict(ed);
   ed.free = true;
   ed.v_int[PR.entvars.model] = 0;
   ed.v_float[PR.entvars.takedamage] = 0.0;
@@ -91,7 +94,6 @@ ED.FindFunction = function(name) {
 
 ED.Print = function(ed) {
   if (ed.free === true) {
-    Con.Print('FREE\n');
     return;
   }
   Con.Print('\nEDICT ' + ed.num + ':\n');
@@ -104,7 +106,7 @@ ED.Print = function(ed) {
     }
     v = d.ofs;
     if (ed.v_int[v] === 0) {
-      if ((d.type & 0x7fff) === 3) {
+      if ((d.type & ~PR.saveglobal) === 3) {
         if ((ed.v_int[v + 1] === 0) && (ed.v_int[v + 2] === 0)) {
           continue;
         }
@@ -131,6 +133,10 @@ ED.PrintEdicts = function() {
 
 ED.PrintEdict_f = function() {
   if (SV.server.active !== true) {
+    return;
+  }
+  if (Cmd.argv.length < 2) {
+    Con.Print(`USAGE: ${Cmd.argv[0]} <num>\n`);
     return;
   }
   const i = Q.atoi(Cmd.argv[1]);
@@ -216,7 +222,7 @@ ED.ParseEpair = function(base, key, s) {
   let d;
   let v;
 
-  switch (key.type & 0x7fff) {
+  switch (key.type & ~PR.saveglobal) {
     case PR.etype.ev_string:
       // Parse a string and store it
       d_int[key.ofs] = ED.NewString(s);
@@ -360,6 +366,15 @@ ED.LoadFromFile = function(data) {
   let inhibit = 0;
   let ent = null;
   PR.globals_float[PR.globalvars.time] = SV.server.time;
+
+// data += `
+
+// {
+//   "classname" "item_shells"
+//   "origin" "528 720 128"
+//   "phys_mass" "5"
+// }
+//   `;
 
   while (true) {
     data = COM.Parse(data);

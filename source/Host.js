@@ -792,7 +792,7 @@ Host.Savegame_f = function() {
     if ((type & 0x8000) === 0) {
       continue;
     }
-    type &= 0x7fff;
+    type &= ~PR.saveglobal;
     if ((type !== PR.etype.ev_string) && (type !== PR.etype.ev_float) && (type !== PR.etype.entity)) {
       continue;
     }
@@ -813,7 +813,7 @@ Host.Savegame_f = function() {
       if (name.charCodeAt(name.length - 2) === 95) {
         continue;
       }
-      type = def.type & 0x7fff;
+      type = def.type & ~PR.saveglobal;
       v = def.ofs;
       if (ed.v_int[v] === 0) {
         if (type === 3) {
