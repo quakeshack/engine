@@ -1,4 +1,4 @@
-/* global ED, Host, Con, COM, Host, Cmd, Vec, Q, SV, Sys, Def, PR */
+/* global ED, Host, Con, COM, Host, Cmd, Vector, Q, SV, Sys, Def, PR */
 
 // eslint-disable-next-line no-global-assign
 ED = {};
@@ -40,8 +40,8 @@ ED.Free = function(ed) {
   ed.v_float[PR.entvars.colormap] = 0.0;
   ed.v_float[PR.entvars.skin] = 0.0;
   ed.v_float[PR.entvars.frame] = 0.0;
-  ED.SetVector(ed, PR.entvars.origin, Vec.origin);
-  ED.SetVector(ed, PR.entvars.angles, Vec.origin);
+  ED.SetVector(ed, PR.entvars.origin, Vector.origin);
+  ED.SetVector(ed, PR.entvars.angles, Vector.origin);
   ed.v_float[PR.entvars.nextthink] = -1.0;
   ed.v_float[PR.entvars.solid] = 0.0;
   ed.freetime = SV.server.time;
@@ -425,9 +425,14 @@ ED.LoadFromFile = function(data) {
   Con.DPrint(`${inhibit} entities inhibited\n`);
 };
 
-
+/**
+ *
+ * @param {*} e
+ * @param {*} o
+ * @returns {Vector}
+ */
 ED.Vector = function(e, o) {
-  return [e.v_float[o], e.v_float[o + 1], e.v_float[o + 2]];
+  return new Vector(e.v_float[o], e.v_float[o + 1], e.v_float[o + 2]);
 };
 
 ED.SetVector = function(e, o, v) {

@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q */
 
 class SFX {
   static STATE = {
@@ -60,7 +60,7 @@ class SoundBaseChannel {
 
     this.sfx = null;
 
-    this.origin = [0.0, 0.0, 0.0];
+    this.origin = new Vector();
     this.dist_mult = 0;
     this.entnum = null;
     this.entchannel = null;
@@ -361,10 +361,10 @@ S = {
   _knownSfx: [],
 
   // Listener state
-  _listenerOrigin: [0.0, 0.0, 0.0],
-  _listenerForward: [0.0, 0.0, 0.0],
-  _listenerRight: [0.0, 0.0, 0.0],
-  _listenerUp: [0.0, 0.0, 0.0],
+  _listenerOrigin: new Vector(),
+  _listenerForward: new Vector(),
+  _listenerRight: new Vector(),
+  _listenerUp: new Vector(),
 
   _started: false,
   _context: null,
@@ -1066,6 +1066,6 @@ S = {
 
   LocalSound(sound) {
     // Plays a sound at the view entity, entchannel = -1
-    this.StartSound(CL.state.viewentity, -1, sound, Vec.origin, 1.0, 1.0);
+    this.StartSound(CL.state.viewentity, -1, sound, Vector.origin, 1.0, 1.0);
   },
 };

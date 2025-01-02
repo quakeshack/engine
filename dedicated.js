@@ -2,6 +2,7 @@
 CANNON = require('cannon');
 require('./source/Draw_node.js');
 require('./source/Sys_node.js');
+require('./source/Vec.js');
 require('./source/CRC.js');
 require('./source/COM.js');
 require('./source/COM_node.js');
@@ -23,7 +24,6 @@ require('./source/R.js'); // required for avertexnormals and notexture_mip
 require('./source/Q.js');
 require('./source/V.js'); // required for V.CalcRoll
 require('./source/VID.js');
-require('./source/Vec.js');
 require('./source/NET.js');
 require('./source/NET_Loop.js');
 require('./source/NET_WEBS.js');

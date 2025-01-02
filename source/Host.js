@@ -1,4 +1,4 @@
-/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ, Shack */
+/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ, Shack */
 
 // eslint-disable-next-line no-global-assign
 Host = {};
@@ -283,7 +283,7 @@ Host._Frame = function() {
     S.Update(R.refdef.vieworg, R.vpn, R.vright, R.vup);
     CL.DecayLights();
   } else {
-    S.Update(Vec.origin, Vec.origin, Vec.origin, Vec.origin);
+    S.Update(Vector.origin, Vector.origin, Vector.origin, Vector.origin);
   }
   CDAudio.Update();
 
@@ -1106,7 +1106,7 @@ Host.Kill_f = function() {
     return;
   }
   if (SV.player.v_float[PR.entvars.health] <= 0.0) {
-    Host.ClientPrint('Can\'t suicide -- allready dead!\n');
+    Host.ClientPrint('Can\'t suicide -- already dead!\n');
     return;
   }
   PR.globals_float[PR.globalvars.time] = SV.server.time;
@@ -1136,7 +1136,7 @@ Host.PreSpawn_f = function() {
   }
   const client = Host.client;
   if (client.spawned === true) {
-    Con.Print('prespawn not valid -- allready spawned\n');
+    Con.Print('prespawn not valid -- already spawned\n');
     return;
   }
   SZ.Write(client.message, new Uint8Array(SV.server.signon.data), SV.server.signon.cursize);
@@ -1152,7 +1152,7 @@ Host.Spawn_f = function() {
   }
   let client = Host.client;
   if (client.spawned === true) {
-    Con.Print('Spawn not valid -- allready spawned\n');
+    Con.Print('Spawn not valid -- already spawned\n');
     return;
   }
 

@@ -1,4 +1,4 @@
-/* global Con, PR, COM, Host, Cmd, Cvar, Q, SV, Sys, ED, CRC, PF */
+/* global Con, PR, COM, Host, Cmd, Cvar, Q, SV, Sys, ED, CRC, PF, Vector */
 
 // eslint-disable-next-line no-global-assign
 PR = {};
@@ -504,7 +504,7 @@ PR.EdictProxy = class EdictProxy {
         case PR.etype.ev_vector: // TODO: Proxy for Vector
           Object.defineProperty(this, name, {
             get: function() {
-              return [val_float[ofs], val_float[ofs + 1], val_float[ofs + 2]];
+              return new Vector(val_float[ofs], val_float[ofs + 1], val_float[ofs + 2]);
             },
             set: function(value) {
               val_float[ofs] = value[0];

@@ -1,4 +1,4 @@
-/*global Mod, VID, Sys, gl, COM, R, Q, Host, Vec, GL, Con */
+/*global Mod, VID, Sys, gl, COM, R, Q, Host, Vector, GL, Con */
 // eslint-disable-next-line no-global-assign
 Mod = {};
 
@@ -29,8 +29,8 @@ class BaseModel {
     this._num_tris = 0; // R requires that
     this._num_verts = 0;
 
-    this._scale = [1.0, 1.0, 1.0];
-    this._scale_origin = [0.0, 0.0, 0.0];
+    this._scale = new Vector(1.0, 1.0, 1.0);
+    this._scale_origin = new Vector();
     this._random = false; // FIXME: read but unused
 
 
@@ -400,7 +400,7 @@ Mod.LoadVertexes = function(buf) {
   Mod.loadmodel.vertexes = [];
   let i;
   for (i = 0; i < count; ++i) {
-    Mod.loadmodel.vertexes[i] = [view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true)];
+    Mod.loadmodel.vertexes[i] = new Vector(view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true));
     fileofs += 12;
   }
 };
@@ -438,31 +438,31 @@ Mod.LoadSubmodels = function(buf) {
     out.maxs = [view.getFloat32(fileofs + 12, true) + 1.0,
       view.getFloat32(fileofs + 16, true) + 1.0,
       view.getFloat32(fileofs + 20, true) + 1.0];
-    out.origin = [view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true), view.getFloat32(fileofs + 32, true)];
+    out.origin = new Vector(view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true), view.getFloat32(fileofs + 32, true));
     out.hulls = [
       {
         clipnodes: clipnodes,
         firstclipnode: view.getUint32(fileofs + 36, true),
         lastclipnode: Mod.loadmodel.nodes.length - 1,
         planes: Mod.loadmodel.planes,
-        clip_mins: [0.0, 0.0, 0.0],
-        clip_maxs: [0.0, 0.0, 0.0],
+        clip_mins: new Vector(),
+        clip_maxs: new Vector(),
       },
       {
         clipnodes: Mod.loadmodel.clipnodes,
         firstclipnode: view.getUint32(fileofs + 40, true),
         lastclipnode: Mod.loadmodel.clipnodes.length - 1,
         planes: Mod.loadmodel.planes,
-        clip_mins: [-16.0, -16.0, -24.0],
-        clip_maxs: [16.0, 16.0, 32.0],
+        clip_mins: new Vector(-16.0, -16.0, -24.0),
+        clip_maxs: new Vector(16.0, 16.0, 32.0),
       },
       {
         clipnodes: Mod.loadmodel.clipnodes,
         firstclipnode: view.getUint32(fileofs + 44, true),
         lastclipnode: Mod.loadmodel.clipnodes.length - 1,
         planes: Mod.loadmodel.planes,
-        clip_mins: [-32.0, -32.0, -24.0],
-        clip_maxs: [32.0, 32.0, 64.0],
+        clip_mins: new Vector(-32.0, -32.0, -24.0),
+        clip_maxs: new Vector(32.0, 32.0, 64.0),
       },
     ];
     out.textures = Mod.loadmodel.textures;
@@ -567,14 +567,14 @@ Mod.LoadFaces = function(buf) {
       } else {
         v = Mod.loadmodel.vertexes[Mod.loadmodel.edges[-e][1]];
       }
-      val = Vec.DotProduct(v, tex.vecs[0]) + tex.vecs[0][3];
+      val = v.dot(tex.vecs[0]) + tex.vecs[0][3];
       if (val < mins[0]) {
         mins[0] = val;
       }
       if (val > maxs[0]) {
         maxs[0] = val;
       }
-      val = Vec.DotProduct(v, tex.vecs[1]) + tex.vecs[1][3];
+      val = v.dot(tex.vecs[1]) + tex.vecs[1][3];
       if (val < mins[1]) {
         mins[1] = val;
       }
@@ -621,8 +621,8 @@ Mod.LoadNodes = function(buf) {
       contents: 0,
       planenum: view.getUint32(fileofs, true),
       children: [view.getInt16(fileofs + 4, true), view.getInt16(fileofs + 6, true)],
-      mins: [view.getInt16(fileofs + 8, true), view.getInt16(fileofs + 10, true), view.getInt16(fileofs + 12, true)],
-      maxs: [view.getInt16(fileofs + 14, true), view.getInt16(fileofs + 16, true), view.getInt16(fileofs + 18, true)],
+      mins: new Vector(view.getInt16(fileofs + 8, true), view.getInt16(fileofs + 10, true), view.getInt16(fileofs + 12, true)),
+      maxs: new Vector(view.getInt16(fileofs + 14, true), view.getInt16(fileofs + 16, true), view.getInt16(fileofs + 18, true)),
       firstface: view.getUint16(fileofs + 20, true),
       numfaces: view.getUint16(fileofs + 22, true),
       cmds: [],
@@ -661,8 +661,8 @@ Mod.LoadLeafs = function(buf) {
       num: i,
       contents: view.getInt32(fileofs, true),
       visofs: view.getInt32(fileofs + 4, true),
-      mins: [view.getInt16(fileofs + 8, true), view.getInt16(fileofs + 10, true), view.getInt16(fileofs + 12, true)],
-      maxs: [view.getInt16(fileofs + 14, true), view.getInt16(fileofs + 16, true), view.getInt16(fileofs + 18, true)],
+      mins: new Vector(view.getInt16(fileofs + 8, true), view.getInt16(fileofs + 10, true), view.getInt16(fileofs + 12, true)),
+      maxs: new Vector(view.getInt16(fileofs + 14, true), view.getInt16(fileofs + 16, true), view.getInt16(fileofs + 18, true)),
       firstmarksurface: view.getUint16(fileofs + 20, true),
       nummarksurfaces: view.getUint16(fileofs + 22, true),
       ambient_level: [view.getUint8(fileofs + 24), view.getUint8(fileofs + 25), view.getUint8(fileofs + 26), view.getUint8(fileofs + 27)],
@@ -688,16 +688,16 @@ Mod.LoadClipnodes = function(buf) {
     firstclipnode: 0,
     lastclipnode: count - 1,
     planes: Mod.loadmodel.planes,
-    clip_mins: [-16.0, -16.0, -24.0],
-    clip_maxs: [16.0, 16.0, 32.0],
+    clip_mins: new Vector(-16.0, -16.0, -24.0),
+    clip_maxs: new Vector(16.0, 16.0, 32.0),
   };
   Mod.loadmodel.hulls[2] = {
     clipnodes: Mod.loadmodel.clipnodes,
     firstclipnode: 0,
     lastclipnode: count - 1,
     planes: Mod.loadmodel.planes,
-    clip_mins: [-32.0, -32.0, -24.0],
-    clip_maxs: [32.0, 32.0, 64.0],
+    clip_mins: new Vector(-32.0, -32.0, -24.0),
+    clip_maxs: new Vector(32.0, 32.0, 64.0),
   };
   let i;
   for (i = 0; i < count; ++i) {
@@ -715,8 +715,8 @@ Mod.MakeHull0 = function() {
     clipnodes: clipnodes,
     lastclipnode: Mod.loadmodel.nodes.length - 1,
     planes: Mod.loadmodel.planes,
-    clip_mins: [0.0, 0.0, 0.0],
-    clip_maxs: [0.0, 0.0, 0.0],
+    clip_mins: new Vector(),
+    clip_maxs: new Vector(),
   };
   for (i = 0; i < Mod.loadmodel.nodes.length; ++i) {
     node = Mod.loadmodel.nodes[i];
@@ -770,7 +770,7 @@ Mod.LoadPlanes = function(buf) {
   let i; let out;
   for (i = 0; i < count; ++i) {
     out = {
-      normal: [view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true)],
+      normal: new Vector(view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true)),
       dist: view.getFloat32(fileofs + 12, true),
       type: view.getUint32(fileofs + 16, true),
       signbits: 0,
@@ -812,9 +812,9 @@ Mod.LoadBrushModel = function(buffer) {
   Mod.LoadEntities(buffer);
   Mod.LoadSubmodels(buffer);
 
-  let i; let vert; const mins = [0.0, 0.0, 0.0]; const maxs = [0.0, 0.0, 0.0];
-  for (i = 0; i < Mod.loadmodel.vertexes.length; ++i) {
-    vert = Mod.loadmodel.vertexes[i];
+  const mins = new Vector(), maxs = new Vector();
+  for (let i = 0; i < Mod.loadmodel.vertexes.length; ++i) {
+    const vert = Mod.loadmodel.vertexes[i];
     if (vert[0] < mins[0]) {
       mins[0] = vert[0];
     } else if (vert[0] > maxs[0]) {
@@ -833,11 +833,11 @@ Mod.LoadBrushModel = function(buffer) {
       maxs[2] = vert[2];
     }
   };
-  Mod.loadmodel.radius = Vec.Length([
+  Mod.loadmodel.radius = (new Vector(
     Math.abs(mins[0]) > Math.abs(maxs[0]) ? Math.abs(mins[0]) : Math.abs(maxs[0]),
     Math.abs(mins[1]) > Math.abs(maxs[1]) ? Math.abs(mins[1]) : Math.abs(maxs[1]),
     Math.abs(mins[2]) > Math.abs(maxs[2]) ? Math.abs(mins[2]) : Math.abs(maxs[2]),
-  ]);
+  )).len();
 };
 
 /*
@@ -981,15 +981,15 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
     if (model.getUint32(inmodel - 4, true) === 0) {
       frame = {
         group: false,
-        bboxmin: [model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)],
-        bboxmax: [model.getUint8(inmodel + 4), model.getUint8(inmodel + 5), model.getUint8(inmodel + 6)],
+        bboxmin: new Vector(model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)),
+        bboxmax: new Vector(model.getUint8(inmodel + 4), model.getUint8(inmodel + 5), model.getUint8(inmodel + 6)),
         name: Q.memstr(new Uint8Array(buffer, inmodel + 8, 16)),
         v: [],
       };
       inmodel += 24;
       for (j = 0; j < Mod.loadmodel._num_verts; ++j) {
         frame.v[j] = {
-          v: [model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)],
+          v: new Vector(model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)),
           lightnormalindex: model.getUint8(inmodel + 3),
         };
         inmodel += 4;
@@ -998,8 +998,8 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
     } else {
       group = {
         group: true,
-        bboxmin: [model.getUint8(inmodel + 4), model.getUint8(inmodel + 5), model.getUint8(inmodel + 6)],
-        bboxmax: [model.getUint8(inmodel + 8), model.getUint8(inmodel + 9), model.getUint8(inmodel + 10)],
+        bboxmin: new Vector(model.getUint8(inmodel + 4), model.getUint8(inmodel + 5), model.getUint8(inmodel + 6)),
+        bboxmax: new Vector(model.getUint8(inmodel + 8), model.getUint8(inmodel + 9), model.getUint8(inmodel + 10)),
         frames: [],
       };
       numframes = model.getUint32(inmodel, true);
@@ -1013,14 +1013,14 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
       }
       for (j = 0; j < numframes; ++j) {
         frame = group.frames[j];
-        frame.bboxmin = [model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)];
-        frame.bboxmax = [model.getUint8(inmodel + 4), model.getUint8(inmodel + 5), model.getUint8(inmodel + 6)];
+        frame.bboxmin = new Vector(model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2));
+        frame.bboxmax = new Vector(model.getUint8(inmodel + 4), model.getUint8(inmodel + 5), model.getUint8(inmodel + 6));
         frame.name = Q.memstr(new Uint8Array(buffer, inmodel + 8, 16));
         frame.v = [];
         inmodel += 24;
         for (k = 0; k < Mod.loadmodel._num_verts; ++k) {
           frame.v[k] = {
-            v: [model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)],
+            v: new Vector(model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)),
             lightnormalindex: model.getUint8(inmodel + 3),
           };
           inmodel += 4;
@@ -1041,8 +1041,8 @@ Mod.LoadAliasModel = function(buffer) {
   if (version !== Mod.version.alias) {
     Sys.Error(Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.alias + ')');
   }
-  Mod.loadmodel._scale = [model.getFloat32(8, true), model.getFloat32(12, true), model.getFloat32(16, true)];
-  Mod.loadmodel._scale_origin = [model.getFloat32(20, true), model.getFloat32(24, true), model.getFloat32(28, true)];
+  Mod.loadmodel._scale = new Vector(model.getFloat32(8, true), model.getFloat32(12, true), model.getFloat32(16, true));
+  Mod.loadmodel._scale_origin = new Vector(model.getFloat32(20, true), model.getFloat32(24, true), model.getFloat32(28, true));
   Mod.loadmodel.boundingradius = model.getFloat32(32, true);
   Mod.loadmodel._num_skins = model.getUint32(48, true);
   if (Mod.loadmodel._num_skins === 0) {
@@ -1064,8 +1064,8 @@ Mod.LoadAliasModel = function(buffer) {
   }
   Mod.loadmodel.random = model.getUint32(72, true) === 1;
   Mod.loadmodel.flags = model.getUint32(76, true);
-  Mod.loadmodel.mins = [-16.0, -16.0, -16.0];
-  Mod.loadmodel.maxs = [16.0, 16.0, 16.0];
+  Mod.loadmodel.mins = new Vector(-16.0, -16.0, -16.0);
+  Mod.loadmodel.maxs = new Vector(16.0, 16.0, 16.0);
 
   let inmodel = Mod.LoadAllSkins(buffer, 84);
 
@@ -1093,6 +1093,8 @@ Mod.LoadAliasModel = function(buffer) {
   }
 
   Mod.LoadAllFrames(buffer, inmodel);
+
+  // FIXME: cut off here for dedicated
 
   const cmds = [];
 
@@ -1264,8 +1266,8 @@ Mod.LoadSpriteModel = function(buffer) {
     Sys.Error('model ' + Mod.loadmodel.name + ' has no frames');
   }
   Mod.loadmodel.random = model.getUint32(32, true) === 1;
-  Mod.loadmodel.mins = [Mod.loadmodel.width * -0.5, Mod.loadmodel.width * -0.5, Mod.loadmodel.height * -0.5];
-  Mod.loadmodel.maxs = [Mod.loadmodel.width * 0.5, Mod.loadmodel.width * 0.5, Mod.loadmodel.height * 0.5];
+  Mod.loadmodel.mins = new Vector(Mod.loadmodel.width * -0.5, Mod.loadmodel.width * -0.5, Mod.loadmodel.height * -0.5);
+  Mod.loadmodel.maxs = new Vector(Mod.loadmodel.width * 0.5, Mod.loadmodel.width * 0.5, Mod.loadmodel.height * 0.5);
 
   Mod.loadmodel.frames = [];
   let inframe = 36; let i; let j; let frame; let group; let numframes;

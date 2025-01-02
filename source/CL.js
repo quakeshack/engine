@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Draw */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Draw */
 
 // eslint-disable-next-line no-global-assign
 CL = {};
@@ -353,7 +353,7 @@ CL.AdjustAngles = function() {
 
   if ((CL.kbuttons[CL.kbutton.strafe].state & 1) === 0) {
     angles[1] += speed * CL.yawspeed.value * (CL.KeyState(CL.kbutton.left) - CL.KeyState(CL.kbutton.right));
-    angles[1] = Vec.Anglemod(angles[1]);
+    angles[1] = Vector.anglemod(angles[1]);
   }
   if ((CL.kbuttons[CL.kbutton.klook].state & 1) !== 0) {
     V.StopPitchDrift();
@@ -554,11 +554,11 @@ CL.ClearState = function() {
     ],
     faceanimtime: 0.0,
     cshifts: [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]],
-    mviewangles: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-    viewangles: [0.0, 0.0, 0.0],
-    mvelocity: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-    velocity: [0.0, 0.0, 0.0],
-    punchangle: [0.0, 0.0, 0.0],
+    mviewangles: [new Vector(), new Vector()],
+    viewangles: new Vector(),
+    mvelocity: [new Vector(), new Vector()],
+    velocity: new Vector(),
+    punchangle: new Vector(),
     idealpitch: 0.0,
     pitchvel: 0.0,
     driftmove: 0.0,
@@ -572,7 +572,7 @@ CL.ClearState = function() {
     last_received_message: 0.0,
     viewentity: 0,
     num_statics: 0,
-    viewent: {num: -1, origin: [0.0, 0.0, 0.0], angles: [0.0, 0.0, 0.0], skinnum: 0},
+    viewent: {num: -1, origin: new Vector(), angles: new Vector(), skinnum: 0},
     cdtrack: 0,
     looptrack: 0,
     chatlog: [],
@@ -694,23 +694,14 @@ CL.NextDemo = function() {
 };
 
 CL.PrintEntities_f = function() {
-  let i; let ent;
-  for (i = 0; i < CL.entities.length; ++i) {
-    ent = CL.entities[i];
-    if (i <= 9) {
-      Con.Print('  ' + i + ':');
-    } else if (i <= 99) {
-      Con.Print(' ' + i + ':');
-    } else {
-      Con.Print(i + ':');
-    }
+    for (let i = 0; i < CL.entities.length; ++i) {
+    const ent = CL.entities[i];
+
     if (ent.model == null) {
-      Con.Print('EMPTY\n');
       continue;
     }
-    Con.Print(ent.model.name + (ent.frame <= 9 ? ': ' : ':') + ent.frame +
-			'  (' + ent.origin[0].toFixed(1) + ',' + ent.origin[1].toFixed(1) + ',' + ent.origin[2].toFixed(1) +
-			') [' + ent.angles[0].toFixed(1) + ' ' + ent.angles[1].toFixed(1) + ' ' + ent.angles[2].toFixed(1) + ']\n');
+
+    Con.Print(i.toFixed(0).padStart(3, ' ') + ' ' + ent.model.name.padEnd(32) + ' : ' + ent.frame.toFixed().padStart(3) + ' (' + ent.origin + ') [' + ent.angles + ']\n');
   }
 };
 
@@ -735,7 +726,7 @@ CL.AllocDlight = function(key) {
       dl = CL.dlights[0];
     }
   }
-  dl.origin = [0.0, 0.0, 0.0];
+  dl.origin = new Vector();
   dl.radius = 0.0;
   dl.die = 0.0;
   dl.decay = 0.0;
@@ -806,8 +797,8 @@ CL.RelinkEntities = function() {
     }
   }
 
-  const bobjrotate = Vec.Anglemod(100.0 * CL.state.time);
-  let ent; const oldorg = []; let dl;
+  const bobjrotate = Vector.anglemod(100.0 * CL.state.time);
+  let ent; let dl;
   for (i = 1; i < CL.entities.length; ++i) {
     ent = CL.entities[i];
     if (ent.model == null) {
@@ -817,12 +808,10 @@ CL.RelinkEntities = function() {
       ent.model = null;
       continue;
     }
-    oldorg[0] = ent.origin[0];
-    oldorg[1] = ent.origin[1];
-    oldorg[2] = ent.origin[2];
+    const oldorg = ent.origin.copy();
     if (ent.forcelink === true) {
-      Vec.Copy(ent.msg_origins[0], ent.origin);
-      Vec.Copy(ent.msg_angles[0], ent.angles);
+      ent.origin = ent.msg_origins[0].copy();
+      ent.angles = ent.msg_angles[0].copy();
     } else {
       f = frac;
       for (j = 0; j <= 2; ++j) {
@@ -851,26 +840,25 @@ CL.RelinkEntities = function() {
     }
     if ((ent.effects & Mod.effects.muzzleflash) !== 0) {
       dl = CL.AllocDlight(i);
-      const fv = [];
-      Vec.AngleVectors(ent.angles, fv);
-      dl.origin = [
+      const fv = ent.angles.angleVectors().forward;
+      dl.origin = new Vector(
         ent.origin[0] + 18.0 * fv[0],
         ent.origin[1] + 18.0 * fv[1],
         ent.origin[2] + 16.0 + 18.0 * fv[2],
-      ];
+      );
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.minlight = 32.0;
       dl.die = CL.state.time + 0.1;
     }
     if ((ent.effects & Mod.effects.brightlight) !== 0) {
       dl = CL.AllocDlight(i);
-      dl.origin = [ent.origin[0], ent.origin[1], ent.origin[2] + 16.0];
+      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
       dl.radius = 400.0 + Math.random() * 32.0;
       dl.die = CL.state.time + 0.001;
     }
     if ((ent.effects & Mod.effects.dimlight) !== 0) {
       dl = CL.AllocDlight(i);
-      dl.origin = [ent.origin[0], ent.origin[1], ent.origin[2] + 16.0];
+      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.die = CL.state.time + 0.001;
     }
@@ -885,7 +873,7 @@ CL.RelinkEntities = function() {
     } else if ((ent.model.flags & Mod.flags.rocket) !== 0) {
       R.RocketTrail(oldorg, ent.origin, 0);
       dl = CL.AllocDlight(i);
-      dl.origin = [ent.origin[0], ent.origin[1], ent.origin[2]];
+      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2]);
       dl.radius = 200.0;
       dl.die = CL.state.time + 0.01;
     } else if ((ent.model.flags & Mod.flags.grenade) !== 0) {
@@ -1049,8 +1037,8 @@ CL.EntityNum = function(num) {
       num: num,
       update_type: 0,
       baseline: {
-        origin: [0.0, 0.0, 0.0],
-        angles: [0.0, 0.0, 0.0],
+        origin: new Vector(),
+        angles: new Vector(),
         modelindex: 0,
         frame: 0,
         colormap: 0,
@@ -1058,10 +1046,10 @@ CL.EntityNum = function(num) {
         effects: 0,
       },
       msgtime: 0.0,
-      msg_origins: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-      origin: [0.0, 0.0, 0.0],
-      msg_angles: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-      angles: [0.0, 0.0, 0.0],
+      msg_origins: [new Vector(), new Vector()],
+      origin: new Vector(),
+      msg_angles: [new Vector(), new Vector()],
+      angles: new Vector(),
       frame: 0,
       syncbase: 0.0,
       effects: 0,
@@ -1082,7 +1070,7 @@ CL.ParseStartSoundPacket = function() {
   const sound_num = MSG.ReadByte();
   const ent = channel >> 3;
   channel &= 7;
-  const pos = [MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord()];
+  const pos = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
   S.StartSound(ent, channel, CL.state.sound_precache[sound_num], pos, volume / 255.0, attenuation);
 };
 
@@ -1243,8 +1231,8 @@ CL.ParseUpdate = function(bits) {
   ent.skinnum = ((bits & Protocol.u.skin) !== 0) ? MSG.ReadByte() : ent.baseline.skin;
   ent.effects = ((bits & Protocol.u.effects) !== 0) ? MSG.ReadByte() : ent.baseline.effects;
 
-  Vec.Copy(ent.msg_origins[0], ent.msg_origins[1]);
-  Vec.Copy(ent.msg_angles[0], ent.msg_angles[1]);
+  ent.msg_origins[1] = ent.msg_origins[0].copy();
+  ent.msg_angles[1] = ent.msg_angles[0].copy();
   ent.msg_origins[0][0] = ((bits & Protocol.u.origin1) !== 0) ? MSG.ReadCoord() : ent.baseline.origin[0];
   ent.msg_angles[0][0] = ((bits & Protocol.u.angle1) !== 0) ? MSG.ReadAngle() : ent.baseline.angles[0];
   ent.msg_origins[0][1] = ((bits & Protocol.u.origin2) !== 0) ? MSG.ReadCoord() : ent.baseline.origin[1];
@@ -1257,10 +1245,10 @@ CL.ParseUpdate = function(bits) {
   }
 
   if (forcelink === true) {
-    Vec.Copy(ent.msg_origins[0], ent.origin);
-    Vec.Copy(ent.origin, ent.msg_origins[1]);
-    Vec.Copy(ent.msg_angles[0], ent.angles);
-    Vec.Copy(ent.angles, ent.msg_angles[1]);
+    ent.origin = ent.msg_origins[0].copy();
+    ent.msg_origins[1] = ent.origin.copy();
+    ent.angles = ent.msg_angles[0].copy();
+    ent.msg_angles[1] = ent.angles.copy();
     ent.forcelink = true;
   }
 };
@@ -1284,7 +1272,7 @@ CL.ParseClientdata = function(bits) {
   CL.state.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? MSG.ReadChar() : Protocol.default_viewheight;
   CL.state.idealpitch = ((bits & Protocol.su.idealpitch) !== 0) ? MSG.ReadChar() : 0.0;
 
-  CL.state.mvelocity[1] = [CL.state.mvelocity[0][0], CL.state.mvelocity[0][1], CL.state.mvelocity[0][2]];
+  CL.state.mvelocity[1] = CL.state.mvelocity[0].copy();
   for (i = 0; i <= 2; ++i) {
     if ((bits & (Protocol.su.punch1 << i)) !== 0) {
       CL.state.punchangle[i] = MSG.ReadChar();
@@ -1332,10 +1320,10 @@ CL.ParseStatic = function() {
   const ent = {
     num: -1,
     update_type: 0,
-    baseline: {origin: [], angles: []},
+    baseline: {origin: new Vector(), angles: new Vector()},
     msgtime: 0.0,
-    msg_origins: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-    msg_angles: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+    msg_origins: [new Vector(), new Vector()],
+    msg_angles: [new Vector(), new Vector()],
     syncbase: 0.0,
     visframe: 0,
     dlightframe: 0,
@@ -1348,16 +1336,16 @@ CL.ParseStatic = function() {
   ent.frame = ent.baseline.frame;
   ent.skinnum = ent.baseline.skin;
   ent.effects = ent.baseline.effects;
-  ent.origin = [ent.baseline.origin[0], ent.baseline.origin[1], ent.baseline.origin[2]];
-  ent.angles = [ent.baseline.angles[0], ent.baseline.angles[1], ent.baseline.angles[2]];
+  ent.origin = ent.baseline.origin.copy();
+  ent.angles = ent.baseline.angles.copy();
   R.currententity = ent;
-  R.emins = [ent.origin[0] + ent.model.mins[0], ent.origin[1] + ent.model.mins[1], ent.origin[2] + ent.model.mins[2]];
-  R.emaxs = [ent.origin[0] + ent.model.maxs[0], ent.origin[1] + ent.model.maxs[1], ent.origin[2] + ent.model.maxs[2]];
+  R.emins = ent.origin.copy().add(ent.model.mins);
+  R.emaxs = ent.origin.copy().add(ent.model.maxs);
   R.SplitEntityOnNode(CL.state.worldmodel.nodes[0]);
 };
 
 CL.ParseStaticSound = function() {
-  const org = [MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord()];
+  const org = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
   const sound_num = MSG.ReadByte();
   const vol = MSG.ReadByte();
   const atten = MSG.ReadByte();
@@ -1627,7 +1615,7 @@ CL.InitTEnts = function() {
 CL.ParseBeam = function(m) {
   const ent = MSG.ReadShort();
   const start = [MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord()];
-  const end = [MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord()];
+  const end = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
   let i; let b;
   for (i = 0; i <= 23; ++i) {
     b = CL.beams[i];
@@ -1636,8 +1624,8 @@ CL.ParseBeam = function(m) {
     }
     b.model = m;
     b.endtime = CL.state.time + 0.2;
-    b.start = [start[0], start[1], start[2]];
-    b.end = [end[0], end[1], end[2]];
+    b.start = new Vector(start[0], start[1], start[2]);
+    b.end = new Vector(end[0], end[1], end[2]);
     return;
   }
   for (i = 0; i <= 23; ++i) {
@@ -1648,8 +1636,8 @@ CL.ParseBeam = function(m) {
     b.entity = ent;
     b.model = m;
     b.endtime = CL.state.time + 0.2;
-    b.start = [start[0], start[1], start[2]];
-    b.end = [end[0], end[1], end[2]];
+    b.start = new Vector(start[0], start[1], start[2]);
+    b.end = new Vector(end[0], end[1], end[2]);
     return;
   }
   Con.Print('beam list overflow!\n');
@@ -1673,30 +1661,30 @@ CL.ParseTEnt = function() {
       return;
   }
 
-  const pos = [MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord()];
+  const pos = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
   let dl;
   switch (type) {
     case Protocol.te.wizspike:
-      R.RunParticleEffect(pos, Vec.origin, 20, 20);
+      R.RunParticleEffect(pos, Vector.origin, 20, 20);
       S.StartSound(-1, 0, CL.sfx_wizhit, pos, 1.0, 1.0);
       return;
     case Protocol.te.knightspike:
-      R.RunParticleEffect(pos, Vec.origin, 226, 20);
+      R.RunParticleEffect(pos, Vector.origin, 226, 20);
       S.StartSound(-1, 0, CL.sfx_knighthit, pos, 1.0, 1.0);
       return;
     case Protocol.te.spike:
-      R.RunParticleEffect(pos, Vec.origin, 0, 10);
+      R.RunParticleEffect(pos, Vector.origin, 0, 10);
       return;
     case Protocol.te.superspike:
-      R.RunParticleEffect(pos, Vec.origin, 0, 20);
+      R.RunParticleEffect(pos, Vector.origin, 0, 20);
       return;
     case Protocol.te.gunshot:
-      R.RunParticleEffect(pos, Vec.origin, 0, 20);
+      R.RunParticleEffect(pos, Vector.origin, 0, 20);
       return;
     case Protocol.te.explosion:
       R.ParticleExplosion(pos);
       dl = CL.AllocDlight(0);
-      dl.origin = [pos[0], pos[1], pos[2]];
+      dl.origin = pos.copy();
       dl.radius = 350.0;
       dl.die = CL.state.time + 0.5;
       dl.decay = 300.0;
@@ -1717,7 +1705,7 @@ CL.ParseTEnt = function() {
         const colorLength = MSG.ReadByte();
         R.ParticleExplosion2(pos, colorStart, colorLength);
         dl = CL.AllocDlight(0);
-        dl.origin = [pos[0], pos[1], pos[2]];
+        dl.origin = pos.copy();
         dl.radius = 350.0;
         dl.die = CL.state.time + 0.5;
         dl.decay = 300.0;
@@ -1738,18 +1726,16 @@ CL.NewTempEntity = function() {
 
 CL.UpdateTEnts = function() {
   CL.num_temp_entities = 0;
-  let i; let b; const dist = []; let yaw; let pitch; const org = []; let d; let ent;
+  let i; let b; let yaw; let pitch; let ent;
   for (i = 0; i <= 23; ++i) {
     b = CL.beams[i];
     if ((b.model == null) || (b.endtime < CL.state.time)) {
       continue;
     }
     if (b.entity === CL.state.viewentity) {
-      Vec.Copy(CL.entities[CL.state.viewentity].origin, b.start);
+      b.start = CL.entities[CL.state.viewentity].origin.copy();
     }
-    dist[0] = b.end[0] - b.start[0];
-    dist[1] = b.end[1] - b.start[1];
-    dist[2] = b.end[2] - b.start[2];
+    const dist = b.end.copy().substract(b.start);
     if ((dist[0] === 0.0) && (dist[1] === 0.0)) {
       yaw = 0;
       pitch = dist[2] > 0.0 ? 90 : 270;
@@ -1763,20 +1749,16 @@ CL.UpdateTEnts = function() {
         pitch += 360;
       }
     }
-    org[0] = b.start[0];
-    org[1] = b.start[1];
-    org[2] = b.start[2];
-    d = Math.sqrt(dist[0] * dist[0] + dist[1] * dist[1] + dist[2] * dist[2]);
+    const org = b.start.copy();
+    let d = dist.len();
     if (d !== 0.0) {
-      dist[0] /= d;
-      dist[1] /= d;
-      dist[2] /= d;
+      dist.normalize();
     }
     for (; d > 0.0; ) {
       ent = CL.NewTempEntity();
-      ent.origin = [org[0], org[1], org[2]];
+      ent.origin = org.copy();
       ent.model = b.model;
-      ent.angles = [pitch, yaw, Math.random() * 360.0];
+      ent.angles = new Vector(pitch, yaw, Math.random() * 360.0);
       org[0] += dist[0] * 30.0;
       org[1] += dist[1] * 30.0;
       org[2] += dist[2] * 30.0;

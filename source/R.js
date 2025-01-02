@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vec, Q, MSG, SV, SCR, R, Chase, GL, gl, Sys, Def, V, PR, VID */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, Q, MSG, SV, SCR, R, Chase, GL, gl, Sys, Def, V, PR, VID */
 
 // eslint-disable-next-line no-global-assign
 R = {};
@@ -13,7 +13,7 @@ R.SplitEntityOnNode = function(node) {
     R.currententity.leafs[R.currententity.leafs.length] = node.num - 1;
     return;
   }
-  const sides = Vec.BoxOnPlaneSide(R.emins, R.emaxs, node.plane);
+  const sides = Vector.boxOnPlaneSide(R.emins, R.emaxs, node.plane);
   if ((sides & 1) !== 0) {
     R.SplitEntityOnNode(node.children[0]);
   }
@@ -62,7 +62,7 @@ R.RenderDlights = function() {
     if ((l.die < CL.state.time) || (l.radius === 0.0)) {
       continue;
     }
-    if (Vec.Length([l.origin[0] - R.refdef.vieworg[0], l.origin[1] - R.refdef.vieworg[1], l.origin[2] - R.refdef.vieworg[2]]) < (l.radius * 0.35)) {
+    if (l.origin.copy().substract(R.refdef.vieworg).len() < (l.radius * 0.35)) {
       a = l.radius * 0.0003;
       V.blend[3] += a * (1.0 - V.blend[3]);
       a /= V.blend[3];
@@ -180,11 +180,11 @@ R.RecursiveLightPoint = function(node, start, end) {
   }
 
   const frac = front / (front - back);
-  const mid = [
+  const mid = new Vector(
     start[0] + (end[0] - start[0]) * frac,
     start[1] + (end[1] - start[1]) * frac,
     start[2] + (end[2] - start[2]) * frac,
-  ];
+  );
 
   let r = R.RecursiveLightPoint(node.children[side === true ? 1 : 0], start, mid);
   if (r >= 0) {
@@ -203,9 +203,8 @@ R.RecursiveLightPoint = function(node, start, end) {
     }
 
     tex = CL.state.worldmodel.texinfo[surf.texinfo];
-
-    s = Vec.DotProduct(mid, tex.vecs[0]) + tex.vecs[0][3];
-    t = Vec.DotProduct(mid, tex.vecs[1]) + tex.vecs[1][3];
+    s = mid.dot(tex.vecs[0]) + tex.vecs[0][3];
+    t = mid.dot(tex.vecs[1]) + tex.vecs[1][3];
     if ((s < surf.texturemins[0]) || (t < surf.texturemins[1])) {
       continue;
     }
@@ -244,7 +243,7 @@ R.LightPoint = function(p) {
   if (CL.state.worldmodel.lightdata == null) {
     return 255;
   }
-  const r = R.RecursiveLightPoint(CL.state.worldmodel.nodes[0], p, [p[0], p[1], p[2] - 2048.0]);
+  const r = R.RecursiveLightPoint(CL.state.worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
   if (r === -1) {
     return 0;
   }
@@ -257,27 +256,27 @@ R.visframecount = 0;
 
 R.frustum = [{}, {}, {}, {}];
 
-R.vup = [0.0, 0.0, 0.0];
-R.vpn = [0.0, 0.0, 0.0];
-R.vright = [0.0, 0.0, 0.0];
+R.vup = new Vector();
+R.vpn = new Vector();
+R.vright = new Vector();
 
 R.refdef = {
   vrect: {},
-  vieworg: [0.0, 0.0, 0.0],
-  viewangles: [0.0, 0.0, 0.0],
+  vieworg: new Vector(),
+  viewangles: new Vector(),
 };
 
 R.CullBox = function(mins, maxs) {
-  if (Vec.BoxOnPlaneSide(mins, maxs, R.frustum[0]) === 2) {
+  if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[0]) === 2) {
     return true;
   }
-  if (Vec.BoxOnPlaneSide(mins, maxs, R.frustum[1]) === 2) {
+  if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[1]) === 2) {
     return true;
   }
-  if (Vec.BoxOnPlaneSide(mins, maxs, R.frustum[2]) === 2) {
+  if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[2]) === 2) {
     return true;
   }
-  if (Vec.BoxOnPlaneSide(mins, maxs, R.frustum[3]) === 2) {
+  if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[3]) === 2) {
     return true;
   }
 };
@@ -311,7 +310,8 @@ R.DrawSpriteModel = function(e) {
   if (e.model.oriented === true) {
     r = [];
     u = [];
-    Vec.AngleVectors(e.angles, null, r, u);
+    const {right, up} = e.angles.angleVectors();
+    [r, u] = [right, up];
   } else {
     r = R.vright;
     u = R.vup;
@@ -353,186 +353,188 @@ R.DrawSpriteModel = function(e) {
 };
 
 R.avertexnormals = [
-  [-0.525731, 0.0, 0.850651],
-  [-0.442863, 0.238856, 0.864188],
-  [-0.295242, 0.0, 0.955423],
-  [-0.309017, 0.5, 0.809017],
-  [-0.16246, 0.262866, 0.951056],
-  [0.0, 0.0, 1.0],
-  [0.0, 0.850651, 0.525731],
-  [-0.147621, 0.716567, 0.681718],
-  [0.147621, 0.716567, 0.681718],
-  [0.0, 0.525731, 0.850651],
-  [0.309017, 0.5, 0.809017],
-  [0.525731, 0.0, 0.850651],
-  [0.295242, 0.0, 0.955423],
-  [0.442863, 0.238856, 0.864188],
-  [0.16246, 0.262866, 0.951056],
-  [-0.681718, 0.147621, 0.716567],
-  [-0.809017, 0.309017, 0.5],
-  [-0.587785, 0.425325, 0.688191],
-  [-0.850651, 0.525731, 0.0],
-  [-0.864188, 0.442863, 0.238856],
-  [-0.716567, 0.681718, 0.147621],
-  [-0.688191, 0.587785, 0.425325],
-  [-0.5, 0.809017, 0.309017],
-  [-0.238856, 0.864188, 0.442863],
-  [-0.425325, 0.688191, 0.587785],
-  [-0.716567, 0.681718, -0.147621],
-  [-0.5, 0.809017, -0.309017],
-  [-0.525731, 0.850651, 0.0],
-  [0.0, 0.850651, -0.525731],
-  [-0.238856, 0.864188, -0.442863],
-  [0.0, 0.955423, -0.295242],
-  [-0.262866, 0.951056, -0.16246],
-  [0.0, 1.0, 0.0],
-  [0.0, 0.955423, 0.295242],
-  [-0.262866, 0.951056, 0.16246],
-  [0.238856, 0.864188, 0.442863],
-  [0.262866, 0.951056, 0.16246],
-  [0.5, 0.809017, 0.309017],
-  [0.238856, 0.864188, -0.442863],
-  [0.262866, 0.951056, -0.16246],
-  [0.5, 0.809017, -0.309017],
-  [0.850651, 0.525731, 0.0],
-  [0.716567, 0.681718, 0.147621],
-  [0.716567, 0.681718, -0.147621],
-  [0.525731, 0.850651, 0.0],
-  [0.425325, 0.688191, 0.587785],
-  [0.864188, 0.442863, 0.238856],
-  [0.688191, 0.587785, 0.425325],
-  [0.809017, 0.309017, 0.5],
-  [0.681718, 0.147621, 0.716567],
-  [0.587785, 0.425325, 0.688191],
-  [0.955423, 0.295242, 0.0],
-  [1.0, 0.0, 0.0],
-  [0.951056, 0.16246, 0.262866],
-  [0.850651, -0.525731, 0.0],
-  [0.955423, -0.295242, 0.0],
-  [0.864188, -0.442863, 0.238856],
-  [0.951056, -0.16246, 0.262866],
-  [0.809017, -0.309017, 0.5],
-  [0.681718, -0.147621, 0.716567],
-  [0.850651, 0.0, 0.525731],
-  [0.864188, 0.442863, -0.238856],
-  [0.809017, 0.309017, -0.5],
-  [0.951056, 0.16246, -0.262866],
-  [0.525731, 0.0, -0.850651],
-  [0.681718, 0.147621, -0.716567],
-  [0.681718, -0.147621, -0.716567],
-  [0.850651, 0.0, -0.525731],
-  [0.809017, -0.309017, -0.5],
-  [0.864188, -0.442863, -0.238856],
-  [0.951056, -0.16246, -0.262866],
-  [0.147621, 0.716567, -0.681718],
-  [0.309017, 0.5, -0.809017],
-  [0.425325, 0.688191, -0.587785],
-  [0.442863, 0.238856, -0.864188],
-  [0.587785, 0.425325, -0.688191],
-  [0.688191, 0.587785, -0.425325],
-  [-0.147621, 0.716567, -0.681718],
-  [-0.309017, 0.5, -0.809017],
-  [0.0, 0.525731, -0.850651],
-  [-0.525731, 0.0, -0.850651],
-  [-0.442863, 0.238856, -0.864188],
-  [-0.295242, 0.0, -0.955423],
-  [-0.16246, 0.262866, -0.951056],
-  [0.0, 0.0, -1.0],
-  [0.295242, 0.0, -0.955423],
-  [0.16246, 0.262866, -0.951056],
-  [-0.442863, -0.238856, -0.864188],
-  [-0.309017, -0.5, -0.809017],
-  [-0.16246, -0.262866, -0.951056],
-  [0.0, -0.850651, -0.525731],
-  [-0.147621, -0.716567, -0.681718],
-  [0.147621, -0.716567, -0.681718],
-  [0.0, -0.525731, -0.850651],
-  [0.309017, -0.5, -0.809017],
-  [0.442863, -0.238856, -0.864188],
-  [0.16246, -0.262866, -0.951056],
-  [0.238856, -0.864188, -0.442863],
-  [0.5, -0.809017, -0.309017],
-  [0.425325, -0.688191, -0.587785],
-  [0.716567, -0.681718, -0.147621],
-  [0.688191, -0.587785, -0.425325],
-  [0.587785, -0.425325, -0.688191],
-  [0.0, -0.955423, -0.295242],
-  [0.0, -1.0, 0.0],
-  [0.262866, -0.951056, -0.16246],
-  [0.0, -0.850651, 0.525731],
-  [0.0, -0.955423, 0.295242],
-  [0.238856, -0.864188, 0.442863],
-  [0.262866, -0.951056, 0.16246],
-  [0.5, -0.809017, 0.309017],
-  [0.716567, -0.681718, 0.147621],
-  [0.525731, -0.850651, 0.0],
-  [-0.238856, -0.864188, -0.442863],
-  [-0.5, -0.809017, -0.309017],
-  [-0.262866, -0.951056, -0.16246],
-  [-0.850651, -0.525731, 0.0],
-  [-0.716567, -0.681718, -0.147621],
-  [-0.716567, -0.681718, 0.147621],
-  [-0.525731, -0.850651, 0.0],
-  [-0.5, -0.809017, 0.309017],
-  [-0.238856, -0.864188, 0.442863],
-  [-0.262866, -0.951056, 0.16246],
-  [-0.864188, -0.442863, 0.238856],
-  [-0.809017, -0.309017, 0.5],
-  [-0.688191, -0.587785, 0.425325],
-  [-0.681718, -0.147621, 0.716567],
-  [-0.442863, -0.238856, 0.864188],
-  [-0.587785, -0.425325, 0.688191],
-  [-0.309017, -0.5, 0.809017],
-  [-0.147621, -0.716567, 0.681718],
-  [-0.425325, -0.688191, 0.587785],
-  [-0.16246, -0.262866, 0.951056],
-  [0.442863, -0.238856, 0.864188],
-  [0.16246, -0.262866, 0.951056],
-  [0.309017, -0.5, 0.809017],
-  [0.147621, -0.716567, 0.681718],
-  [0.0, -0.525731, 0.850651],
-  [0.425325, -0.688191, 0.587785],
-  [0.587785, -0.425325, 0.688191],
-  [0.688191, -0.587785, 0.425325],
-  [-0.955423, 0.295242, 0.0],
-  [-0.951056, 0.16246, 0.262866],
-  [-1.0, 0.0, 0.0],
-  [-0.850651, 0.0, 0.525731],
-  [-0.955423, -0.295242, 0.0],
-  [-0.951056, -0.16246, 0.262866],
-  [-0.864188, 0.442863, -0.238856],
-  [-0.951056, 0.16246, -0.262866],
-  [-0.809017, 0.309017, -0.5],
-  [-0.864188, -0.442863, -0.238856],
-  [-0.951056, -0.16246, -0.262866],
-  [-0.809017, -0.309017, -0.5],
-  [-0.681718, 0.147621, -0.716567],
-  [-0.681718, -0.147621, -0.716567],
-  [-0.850651, 0.0, -0.525731],
-  [-0.688191, 0.587785, -0.425325],
-  [-0.587785, 0.425325, -0.688191],
-  [-0.425325, 0.688191, -0.587785],
-  [-0.425325, -0.688191, -0.587785],
-  [-0.587785, -0.425325, -0.688191],
-  [-0.688191, -0.587785, -0.425325],
+  new Vector(-0.525731, 0.0, 0.850651),
+  new Vector(-0.442863, 0.238856, 0.864188),
+  new Vector(-0.295242, 0.0, 0.955423),
+  new Vector(-0.309017, 0.5, 0.809017),
+  new Vector(-0.16246, 0.262866, 0.951056),
+  new Vector(0.0, 0.0, 1.0),
+  new Vector(0.0, 0.850651, 0.525731),
+  new Vector(-0.147621, 0.716567, 0.681718),
+  new Vector(0.147621, 0.716567, 0.681718),
+  new Vector(0.0, 0.525731, 0.850651),
+  new Vector(0.309017, 0.5, 0.809017),
+  new Vector(0.525731, 0.0, 0.850651),
+  new Vector(0.295242, 0.0, 0.955423),
+  new Vector(0.442863, 0.238856, 0.864188),
+  new Vector(0.16246, 0.262866, 0.951056),
+  new Vector(-0.681718, 0.147621, 0.716567),
+  new Vector(-0.809017, 0.309017, 0.5),
+  new Vector(-0.587785, 0.425325, 0.688191),
+  new Vector(-0.850651, 0.525731, 0.0),
+  new Vector(-0.864188, 0.442863, 0.238856),
+  new Vector(-0.716567, 0.681718, 0.147621),
+  new Vector(-0.688191, 0.587785, 0.425325),
+  new Vector(-0.5, 0.809017, 0.309017),
+  new Vector(-0.238856, 0.864188, 0.442863),
+  new Vector(-0.425325, 0.688191, 0.587785),
+  new Vector(-0.716567, 0.681718, -0.147621),
+  new Vector(-0.5, 0.809017, -0.309017),
+  new Vector(-0.525731, 0.850651, 0.0),
+  new Vector(0.0, 0.850651, -0.525731),
+  new Vector(-0.238856, 0.864188, -0.442863),
+  new Vector(0.0, 0.955423, -0.295242),
+  new Vector(-0.262866, 0.951056, -0.16246),
+  new Vector(0.0, 1.0, 0.0),
+  new Vector(0.0, 0.955423, 0.295242),
+  new Vector(-0.262866, 0.951056, 0.16246),
+  new Vector(0.238856, 0.864188, 0.442863),
+  new Vector(0.262866, 0.951056, 0.16246),
+  new Vector(0.5, 0.809017, 0.309017),
+  new Vector(0.238856, 0.864188, -0.442863),
+  new Vector(0.262866, 0.951056, -0.16246),
+  new Vector(0.5, 0.809017, -0.309017),
+  new Vector(0.850651, 0.525731, 0.0),
+  new Vector(0.716567, 0.681718, 0.147621),
+  new Vector(0.716567, 0.681718, -0.147621),
+  new Vector(0.525731, 0.850651, 0.0),
+  new Vector(0.425325, 0.688191, 0.587785),
+  new Vector(0.864188, 0.442863, 0.238856),
+  new Vector(0.688191, 0.587785, 0.425325),
+  new Vector(0.809017, 0.309017, 0.5),
+  new Vector(0.681718, 0.147621, 0.716567),
+  new Vector(0.587785, 0.425325, 0.688191),
+  new Vector(0.955423, 0.295242, 0.0),
+  new Vector(1.0, 0.0, 0.0),
+  new Vector(0.951056, 0.16246, 0.262866),
+  new Vector(0.850651, -0.525731, 0.0),
+  new Vector(0.955423, -0.295242, 0.0),
+  new Vector(0.864188, -0.442863, 0.238856),
+  new Vector(0.951056, -0.16246, 0.262866),
+  new Vector(0.809017, -0.309017, 0.5),
+  new Vector(0.681718, -0.147621, 0.716567),
+  new Vector(0.850651, 0.0, 0.525731),
+  new Vector(0.864188, 0.442863, -0.238856),
+  new Vector(0.809017, 0.309017, -0.5),
+  new Vector(0.951056, 0.16246, -0.262866),
+  new Vector(0.525731, 0.0, -0.850651),
+  new Vector(0.681718, 0.147621, -0.716567),
+  new Vector(0.681718, -0.147621, -0.716567),
+  new Vector(0.850651, 0.0, -0.525731),
+  new Vector(0.809017, -0.309017, -0.5),
+  new Vector(0.864188, -0.442863, -0.238856),
+  new Vector(0.951056, -0.16246, -0.262866),
+  new Vector(0.147621, 0.716567, -0.681718),
+  new Vector(0.309017, 0.5, -0.809017),
+  new Vector(0.425325, 0.688191, -0.587785),
+  new Vector(0.442863, 0.238856, -0.864188),
+  new Vector(0.587785, 0.425325, -0.688191),
+  new Vector(0.688191, 0.587785, -0.425325),
+  new Vector(-0.147621, 0.716567, -0.681718),
+  new Vector(-0.309017, 0.5, -0.809017),
+  new Vector(0.0, 0.525731, -0.850651),
+  new Vector(-0.525731, 0.0, -0.850651),
+  new Vector(-0.442863, 0.238856, -0.864188),
+  new Vector(-0.295242, 0.0, -0.955423),
+  new Vector(-0.16246, 0.262866, -0.951056),
+  new Vector(0.0, 0.0, -1.0),
+  new Vector(0.295242, 0.0, -0.955423),
+  new Vector(0.16246, 0.262866, -0.951056),
+  new Vector(-0.442863, -0.238856, -0.864188),
+  new Vector(-0.309017, -0.5, -0.809017),
+  new Vector(-0.16246, -0.262866, -0.951056),
+  new Vector(0.0, -0.850651, -0.525731),
+  new Vector(-0.147621, -0.716567, -0.681718),
+  new Vector(0.147621, -0.716567, -0.681718),
+  new Vector(0.0, -0.525731, -0.850651),
+  new Vector(0.309017, -0.5, -0.809017),
+  new Vector(0.442863, -0.238856, -0.864188),
+  new Vector(0.16246, -0.262866, -0.951056),
+  new Vector(0.238856, -0.864188, -0.442863),
+  new Vector(0.5, -0.809017, -0.309017),
+  new Vector(0.425325, -0.688191, -0.587785),
+  new Vector(0.716567, -0.681718, -0.147621),
+  new Vector(0.688191, -0.587785, -0.425325),
+  new Vector(0.587785, -0.425325, -0.688191),
+  new Vector(0.0, -0.955423, -0.295242),
+  new Vector(0.0, -1.0, 0.0),
+  new Vector(0.262866, -0.951056, -0.16246),
+  new Vector(0.0, -0.850651, 0.525731),
+  new Vector(0.0, -0.955423, 0.295242),
+  new Vector(0.238856, -0.864188, 0.442863),
+  new Vector(0.262866, -0.951056, 0.16246),
+  new Vector(0.5, -0.809017, 0.309017),
+  new Vector(0.716567, -0.681718, 0.147621),
+  new Vector(0.525731, -0.850651, 0.0),
+  new Vector(-0.238856, -0.864188, -0.442863),
+  new Vector(-0.5, -0.809017, -0.309017),
+  new Vector(-0.262866, -0.951056, -0.16246),
+  new Vector(-0.850651, -0.525731, 0.0),
+  new Vector(-0.716567, -0.681718, -0.147621),
+  new Vector(-0.716567, -0.681718, 0.147621),
+  new Vector(-0.525731, -0.850651, 0.0),
+  new Vector(-0.5, -0.809017, 0.309017),
+  new Vector(-0.238856, -0.864188, 0.442863),
+  new Vector(-0.262866, -0.951056, 0.16246),
+  new Vector(-0.864188, -0.442863, 0.238856),
+  new Vector(-0.809017, -0.309017, 0.5),
+  new Vector(-0.688191, -0.587785, 0.425325),
+  new Vector(-0.681718, -0.147621, 0.716567),
+  new Vector(-0.442863, -0.238856, 0.864188),
+  new Vector(-0.587785, -0.425325, 0.688191),
+  new Vector(-0.309017, -0.5, 0.809017),
+  new Vector(-0.147621, -0.716567, 0.681718),
+  new Vector(-0.425325, -0.688191, 0.587785),
+  new Vector(-0.16246, -0.262866, 0.951056),
+  new Vector(0.442863, -0.238856, 0.864188),
+  new Vector(0.16246, -0.262866, 0.951056),
+  new Vector(0.309017, -0.5, 0.809017),
+  new Vector(0.147621, -0.716567, 0.681718),
+  new Vector(0.0, -0.525731, 0.850651),
+  new Vector(0.425325, -0.688191, 0.587785),
+  new Vector(0.587785, -0.425325, 0.688191),
+  new Vector(0.688191, -0.587785, 0.425325),
+  new Vector(-0.955423, 0.295242, 0.0),
+  new Vector(-0.951056, 0.16246, 0.262866),
+  new Vector(-1.0, 0.0, 0.0),
+  new Vector(-0.850651, 0.0, 0.525731),
+  new Vector(-0.955423, -0.295242, 0.0),
+  new Vector(-0.951056, -0.16246, 0.262866),
+  new Vector(-0.864188, 0.442863, -0.238856),
+  new Vector(-0.951056, 0.16246, -0.262866),
+  new Vector(-0.809017, 0.309017, -0.5),
+  new Vector(-0.864188, -0.442863, -0.238856),
+  new Vector(-0.951056, -0.16246, -0.262866),
+  new Vector(-0.809017, -0.309017, -0.5),
+  new Vector(-0.681718, 0.147621, -0.716567),
+  new Vector(-0.681718, -0.147621, -0.716567),
+  new Vector(-0.850651, 0.0, -0.525731),
+  new Vector(-0.688191, 0.587785, -0.425325),
+  new Vector(-0.587785, 0.425325, -0.688191),
+  new Vector(-0.425325, 0.688191, -0.587785),
+  new Vector(-0.425325, -0.688191, -0.587785),
+  new Vector(-0.587785, -0.425325, -0.688191),
+  new Vector(-0.688191, -0.587785, -0.425325),
 ];
 
 R.DrawAliasModel = function(e) {
   const clmodel = e.model;
 
   if (R.CullBox(
-      [
+      new Vector(
         e.origin[0] - clmodel.boundingradius,
         e.origin[1] - clmodel.boundingradius,
         e.origin[2] - clmodel.boundingradius,
-      ],
-      [
+      ),
+      new Vector(
         e.origin[0] + clmodel.boundingradius,
         e.origin[1] + clmodel.boundingradius,
         e.origin[2] + clmodel.boundingradius,
-      ]) === true) {
+  )) === true) {
     return;
   }
+
+  // console.log('R.DrawAliasModel', e.origin, clmodel.name);
 
   let program;
   if ((e.colormap !== 0) && (clmodel.player === true) && (R.nocolors.value === 0)) {
@@ -566,7 +568,8 @@ R.DrawAliasModel = function(e) {
     if (dl.die < CL.state.time) {
       continue;
     }
-    add = dl.radius - Vec.Length([e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1]]);
+    // add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len();
+    add = dl.radius - e.origin.copy().substract(dl.origin).len();
     if (add > 0.0) {
       ambientlight += add;
       shadelight += add;
@@ -584,12 +587,13 @@ R.DrawAliasModel = function(e) {
   gl.uniform1f(program.uAmbientLight, ambientlight * 0.0078125);
   gl.uniform1f(program.uShadeLight, shadelight * 0.0078125);
 
-  const forward = []; const right = []; const up = [];
-  Vec.AngleVectors(e.angles, forward, right, up);
+  const {forward, right, up} = e.angles.angleVectors();
+  const v = new Vector(-1.0, 0.0, 0.0);
+
   gl.uniform3fv(program.uLightVec, [
-    Vec.DotProduct([-1.0, 0.0, 0.0], forward),
-    -Vec.DotProduct([-1.0, 0.0, 0.0], right),
-    Vec.DotProduct([-1.0, 0.0, 0.0], up),
+    forward.dot(v),
+    -right.dot(v),
+    up.dot(v),
   ]);
 
   R.c_alias_polys += clmodel._num_tris; // FIXME: private property access
@@ -763,15 +767,15 @@ R.PolyBlend = function() {
 };
 
 R.SetFrustum = function() {
-  R.frustum[0].normal = Vec.RotatePointAroundVector(R.vup, R.vpn, -(90.0 - R.refdef.fov_x * 0.5));
-  R.frustum[1].normal = Vec.RotatePointAroundVector(R.vup, R.vpn, 90.0 - R.refdef.fov_x * 0.5);
-  R.frustum[2].normal = Vec.RotatePointAroundVector(R.vright, R.vpn, 90.0 - R.refdef.fov_y * 0.5);
-  R.frustum[3].normal = Vec.RotatePointAroundVector(R.vright, R.vpn, -(90.0 - R.refdef.fov_y * 0.5));
+  R.frustum[0].normal = R.vup.rotatePointAroundVector(R.vpn, -(90.0 - R.refdef.fov_x * 0.5));
+  R.frustum[1].normal = R.vup.rotatePointAroundVector(R.vpn, 90.0 - R.refdef.fov_x * 0.5);
+  R.frustum[2].normal = R.vright.rotatePointAroundVector(R.vpn, 90.0 - R.refdef.fov_y * 0.5);
+  R.frustum[3].normal = R.vright.rotatePointAroundVector(R.vpn, -(90.0 - R.refdef.fov_y * 0.5));
   let i; let out;
   for (i = 0; i <= 3; ++i) {
     out = R.frustum[i];
     out.type = 5;
-    out.dist = Vec.DotProduct(R.refdef.vieworg, out.normal);
+    out.dist = R.refdef.vieworg.dot(out.normal);
     out.signbits = 0;
     if (out.normal[0] < 0.0) {
       out.signbits = 1;
@@ -858,7 +862,8 @@ R.RenderScene = function() {
     Cvar.Set('r_fullbright', '0');
   }
   R.AnimateLight();
-  Vec.AngleVectors(R.refdef.viewangles, R.vpn, R.vright, R.vup);
+  const {forward, right, up} = R.refdef.viewangles.angleVectors();
+  [R.vpn, R.vright, R.vup] = [forward, right, up];
   R.viewleaf = Mod.PointInLeaf(R.refdef.vieworg, CL.state.worldmodel);
   V.SetContentsColor(R.viewleaf.contents);
   V.CalcBlend();
@@ -1335,7 +1340,7 @@ R.EntityParticles = function(ent) {
         ent.origin[1] + R.avertexnormals[i][1] * 64.0 + cp * sy * 16.0,
         ent.origin[2] + R.avertexnormals[i][2] * 64.0 + sp * -16.0,
       ],
-      vel: [0.0, 0.0, 0.0],
+      vel: new Vector(),
     };
   }
 };
@@ -1376,16 +1381,16 @@ R.ReadPointFile_f = function() {
       die: 99999.0,
       color: -c & 15,
       type: R.ptype.tracer,
-      vel: [0.0, 0.0, 0.0],
-      org: [Q.atof(org[0]), Q.atof(org[1]), Q.atof(org[2])],
+      vel: new Vector(),
+      org: new Vector(Q.atof(org[0]), Q.atof(org[1]), Q.atof(org[2])),
     };
   }
   Con.Print(c + ' points read\n');
 };
 
 R.ParseParticleEffect = function() {
-  const org = [MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord()];
-  const dir = [MSG.ReadChar() * 0.0625, MSG.ReadChar() * 0.0625, MSG.ReadChar() * 0.0625];
+  const org = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
+  const dir = new Vector(MSG.ReadChar() * 0.0625, MSG.ReadChar() * 0.0625, MSG.ReadChar() * 0.0625);
   const msgcount = MSG.ReadByte();
   const color = MSG.ReadByte();
   if (msgcount === 255) {
@@ -1408,7 +1413,7 @@ R.ParticleExplosion = function(org) {
         org[1] + Math.random() * 32.0 - 16.0,
         org[2] + Math.random() * 32.0 - 16.0,
       ],
-      vel: [Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0],
+      vel: new Vector(Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0),
     };
   }
 };
@@ -1425,7 +1430,7 @@ R.ParticleExplosion2 = function(org, colorStart, colorLength) {
         org[1] + Math.random() * 32.0 - 16.0,
         org[2] + Math.random() * 32.0 - 16.0,
       ],
-      vel: [Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0],
+      vel: new Vector(Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0),
     };
   }
 };
@@ -1447,7 +1452,7 @@ R.BlobExplosion = function(org) {
       org[1] + Math.random() * 32.0 - 16.0,
       org[2] + Math.random() * 32.0 - 16.0,
     ];
-    p.vel = [Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0];
+    p.vel = new Vector(Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0);
   }
 };
 
@@ -1463,16 +1468,15 @@ R.RunParticleEffect = function(org, dir, color, count) {
         org[1] + Math.random() * 16.0 - 8.0,
         org[2] + Math.random() * 16.0 - 8.0,
       ],
-      vel: [dir[0] * 15.0, dir[1] * 15.0, dir[2] * 15.0],
+      vel: new Vector(dir[0] * 15.0, dir[1] * 15.0, dir[2] * 15.0),
     };
   }
 };
 
 R.LavaSplash = function(org) {
-  const allocated = R.AllocParticles(1024); let i; let j; let k = 0; let p;
-  const dir = []; let vel;
-  for (i = -16; i <= 15; ++i) {
-    for (j = -16; j <= 15; ++j) {
+  const allocated = R.AllocParticles(1024); let k = 0; let p;
+  for (let i = -16; i <= 15; ++i) {
+    for (let j = -16; j <= 15; ++j) {
       if (k >= allocated.length) {
         return;
       }
@@ -1480,22 +1484,18 @@ R.LavaSplash = function(org) {
       p.die = CL.state.time + 2.0 + Math.random() * 0.64;
       p.color = 224 + Math.floor(Math.random() * 8.0);
       p.type = R.ptype.slowgrav;
-      dir[0] = (j + Math.random) * 8.0;
-      dir[1] = (i + Math.random) * 8.0;
-      dir[2] = 256.0;
-      p.org = [org[0] + dir[0], org[1] + dir[1], org[2] + Math.random() * 64.0];
-      Vec.Normalize(dir);
-      vel = 50.0 + Math.random() * 64.0;
-      p.vel = [dir[0] * vel, dir[1] * vel, dir[2] * vel];
+      const dir = new Vector((j + Math.random) * 8.0, (i + Math.random) * 8.0, 256.0);
+      p.org = new Vector(org[0] + dir[0], org[1] + dir[1], org[2] + Math.random() * 64.0);
+      dir.normalize();
+      p.vel = dir.multiply(50.0 + Math.random() * 64.0);
     }
   }
 };
 
 R.TeleportSplash = function(org) {
-  const allocated = R.AllocParticles(896); let i; let j; let k; let l = 0; let p;
-  const dir = []; let vel;
-  for (i = -16; i <= 15; i += 4) {
-    for (j = -16; j <= 15; j += 4) {
+  const allocated = R.AllocParticles(896); let k; let l = 0; let p;
+  for (let i = -16; i <= 15; i += 4) {
+    for (let j = -16; j <= 15; j += 4) {
       for (k = -24; k <= 31; k += 4) {
         if (l >= allocated.length) {
           return;
@@ -1504,17 +1504,14 @@ R.TeleportSplash = function(org) {
         p.die = CL.state.time + 0.2 + Math.random() * 0.16;
         p.color = 7 + Math.floor(Math.random() * 8.0);
         p.type = R.ptype.slowgrav;
-        dir[0] = j * 8.0;
-        dir[1] = i * 8.0;
-        dir[2] = k * 8.0;
-        p.org = [
+        const dir = new Vector(j * 8.0, i * 8.0, k * 8.0);
+        p.org = new Vector(
           org[0] + i + Math.random() * 4.0,
           org[1] + j + Math.random() * 4.0,
           org[2] + k + Math.random() * 4.0,
-        ];
-        Vec.Normalize(dir);
-        vel = 50.0 + Math.random() * 64.0;
-        p.vel = [dir[0] * vel, dir[1] * vel, dir[2] * vel];
+        );
+        dir.normalize();
+        p.vel = dir.multiply(50.0 + Math.random() * 64.0);
       }
     }
   }
@@ -1522,12 +1519,15 @@ R.TeleportSplash = function(org) {
 
 R.tracercount = 0;
 R.RocketTrail = function(start, end, type) {
-  let vec = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
-  const len = Math.sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
+  let vec = end.copy().substract(start);
+
+  const len = vec.len();
+
   if (len === 0.0) {
     return;
   }
-  vec = [vec[0] / len, vec[1] / len, vec[2] / len];
+
+  vec.normalize();
 
   let allocated;
   if (type === 4) {
@@ -1539,7 +1539,7 @@ R.RocketTrail = function(start, end, type) {
   let i; let p;
   for (i = 0; i < allocated.length; ++i) {
     p = R.particles[allocated[i]];
-    p.vel = [0.0, 0.0, 0.0];
+    p.vel = new Vector();
     p.die = CL.state.time + 2.0;
     switch (type) {
       case 0:
@@ -1547,20 +1547,20 @@ R.RocketTrail = function(start, end, type) {
         p.ramp = Math.floor(Math.random() * 4.0) + (type << 1);
         p.color = R.ramp3[p.ramp];
         p.type = R.ptype.fire;
-        p.org = [
+        p.org = new Vector(
           start[0] + Math.random() * 6.0 - 3.0,
           start[1] + Math.random() * 6.0 - 3.0,
           start[2] + Math.random() * 6.0 - 3.0,
-        ];
+        );
         break;
       case 2:
         p.type = R.ptype.grav;
         p.color = 67 + Math.floor(Math.random() * 4.0);
-        p.org = [
+        p.org = new Vector(
           start[0] + Math.random() * 6.0 - 3.0,
           start[1] + Math.random() * 6.0 - 3.0,
           start[2] + Math.random() * 6.0 - 3.0,
-        ];
+        );
         break;
       case 3:
       case 5:
@@ -1571,7 +1571,7 @@ R.RocketTrail = function(start, end, type) {
         } else {
           p.color = 230 + ((R.tracercount++ & 4) << 1);
         }
-        p.org = [start[0], start[1], start[2]];
+        p.org = new Vector(start[0], start[1], start[2]);
         if ((R.tracercount & 1) !== 0) {
           p.vel[0] = 30.0 * vec[1];
           p.vel[2] = -30.0 * vec[0];
@@ -1583,25 +1583,23 @@ R.RocketTrail = function(start, end, type) {
       case 4:
         p.type = R.ptype.grav;
         p.color = 67 + Math.floor(Math.random() * 4.0);
-        p.org = [
+        p.org = new Vector(
           start[0] + Math.random() * 6.0 - 3.0,
           start[1] + Math.random() * 6.0 - 3.0,
           start[2] + Math.random() * 6.0 - 3.0,
-        ];
+        );
         break;
       case 6:
         p.color = 152 + Math.floor(Math.random() * 4.0);
         p.type = R.ptype.tracer;
         p.die = CL.state.time + 0.3;
-        p.org = [
+        p.org = new Vector(
           start[0] + Math.random() * 16.0 - 8.0,
           start[1] + Math.random() * 16.0 - 8.0,
           start[2] + Math.random() * 16.0 - 8.0,
-        ];
+        );
     }
-    start[0] += vec[0];
-    start[1] += vec[1];
-    start[2] += vec[2];
+    start.add(vec);
   }
 };
 
@@ -1726,7 +1724,7 @@ R.AddDynamicLights = function(surf) {
   const size = smax * tmax;
   const tex = CL.state.worldmodel.texinfo[surf.texinfo];
   let i; let light; let s; let t;
-  let dist; let rad; let minlight; const impact = []; const local = []; let sd; let td;
+  let dist; let rad; let minlight; const local = []; let sd; let td;
 
   const blocklights = [];
   for (i = 0; i < size; ++i) {
@@ -1738,18 +1736,16 @@ R.AddDynamicLights = function(surf) {
       continue;
     }
     light = CL.dlights[i];
-    dist = Vec.DotProduct(light.origin, surf.plane.normal) - surf.plane.dist;
+    dist = light.origin.dot(surf.plane.normal) - surf.plane.dist;
     rad = light.radius - Math.abs(dist);
     minlight = light.minlight;
     if (rad < minlight) {
       continue;
     }
     minlight = rad - minlight;
-    impact[0] = light.origin[0] - surf.plane.normal[0] * dist;
-    impact[1] = light.origin[1] - surf.plane.normal[1] * dist;
-    impact[2] = light.origin[2] - surf.plane.normal[2] * dist;
-    local[0] = Vec.DotProduct(impact, tex.vecs[0]) + tex.vecs[0][3] - surf.texturemins[0];
-    local[1] = Vec.DotProduct(impact, tex.vecs[1]) + tex.vecs[1][3] - surf.texturemins[1];
+    const impact = light.origin.copy().substract(surf.plane.normal).multiply(dist);
+    local[0] = impact.dot(tex.vecs[0]) + tex.vecs[0][3] - surf.texturemins[0];
+    local[1] = impact.dot(tex.vecs[1]) + tex.vecs[1][3] - surf.texturemins[1];
     for (t = 0; t < tmax; ++t) {
       td = local[1] - (t << 4);
       if (td < 0.0) {
@@ -1851,30 +1847,30 @@ R.DrawBrushModel = function(e) {
 
   if (clmodel.submodel === true) {
     if (R.CullBox(
-        [
+        new Vector(
           e.origin[0] + clmodel.mins[0],
           e.origin[1] + clmodel.mins[1],
           e.origin[2] + clmodel.mins[2],
-        ],
-        [
+        ),
+        new Vector(
           e.origin[0] + clmodel.maxs[0],
           e.origin[1] + clmodel.maxs[1],
           e.origin[2] + clmodel.maxs[2],
-        ]) === true) {
+        )) === true) {
       return;
     }
   } else {
     if (R.CullBox(
-        [
+        new Vector(
           e.origin[0] - clmodel.radius,
           e.origin[1] - clmodel.radius,
           e.origin[2] - clmodel.radius,
-        ],
-        [
+        ),
+        new Vector(
           e.origin[0] + clmodel.radius,
           e.origin[1] + clmodel.radius,
           e.origin[2] + clmodel.radius,
-        ]) === true) {
+        )) === true) {
       return;
     }
   }
@@ -2115,10 +2111,10 @@ R.BuildSurfaceDisplayList = function(fa) {
     } else {
       vec = R.currentmodel.vertexes[R.currentmodel.edges[-index][1]];
     }
-    vert = [vec[0], vec[1], vec[2]];
+    vert = new Vector(vec[0], vec[1], vec[2]);
     if (fa.sky !== true) {
-      s = Vec.DotProduct(vec, texinfo.vecs[0]) + texinfo.vecs[0][3];
-      t = Vec.DotProduct(vec, texinfo.vecs[1]) + texinfo.vecs[1][3];
+      s = vec.dot(texinfo.vecs[0]) + texinfo.vecs[0][3];
+      t = vec.dot(texinfo.vecs[1]) + texinfo.vecs[1][3];
       vert[3] = s / texture.width;
       vert[4] = t / texture.height;
       if (fa.turbulent !== true) {

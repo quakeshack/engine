@@ -1,4 +1,4 @@
-/* global Con, Mod, PR, PF, Host, Cmd, Cvar, Vec, ED, SV, Protocol, MSG */
+/* global Con, Mod, PR, PF, Host, Cmd, Cvar, Vector, ED, SV, Protocol, MSG */
 
 // eslint-disable-next-line no-global-assign
 PF = {};
@@ -24,8 +24,7 @@ PF.objerror = function() {
 };
 
 PF.makevectors = function() {
-  const forward = []; const right = []; const up = [];
-  Vec.AngleVectors([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]], forward, right, up);
+  const {forward, right, up} = (new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6])).angleVectors();
   let i;
   for (i = 0; i <= 2; ++i) {
     PR.globals_float[PR.globalvars.v_forward + i] = forward[i];
@@ -56,8 +55,8 @@ PF.SetMinMaxSize = function(e, min, max) {
 
 PF.setsize = function() {
   PF.SetMinMaxSize(SV.server.edicts[PR.globals_int[4]],
-      [PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]],
-      [PR.globals_float[10], PR.globals_float[11], PR.globals_float[12]]);
+      new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
+      new Vector(PR.globals_float[10], PR.globals_float[11], PR.globals_float[12]));
 };
 
 PF.setmodel = function() {
@@ -79,7 +78,7 @@ PF.setmodel = function() {
   if (mod != null) {
     PF.SetMinMaxSize(e, mod.mins, mod.maxs);
   } else {
-    PF.SetMinMaxSize(e, Vec.origin, Vec.origin);
+    PF.SetMinMaxSize(e, Vector.origin, Vector.origin);
   }
 };
 
@@ -110,8 +109,8 @@ PF.centerprint = function() {
 };
 
 PF.normalize = function() {
-  const newvalue = [PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]];
-  Vec.Normalize(newvalue);
+  const newvalue = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
+  newvalue.normalize();
   PR.globals_float[1] = newvalue[0];
   PR.globals_float[2] = newvalue[1];
   PR.globals_float[3] = newvalue[2];
@@ -136,7 +135,7 @@ PF.vectoyaw = function() {
 
 PF.vectoangles = function() {
   PR.globals_float[3] = 0.0;
-  const value1 = [PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]];
+  const value1 = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
   if ((value1[0] === 0.0) && (value1[1] === 0.0)) {
     if (value1[2] > 0.0) {
       PR.globals_float[1] = 90.0;
@@ -165,7 +164,7 @@ PF.random = function() {
 
 PF.particle = function() {
   SV.StartParticle([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]],
-      [PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]],
+      new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
       PR.globals_float[10] >> 0, PR.globals_float[13] >> 0);
 };
 
@@ -203,9 +202,13 @@ PF.breakstatement = function() {
 };
 
 PF.traceline = function() {
-  const trace = SV.Move([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]],
-      Vec.origin, Vec.origin, [PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]],
-      PR.globals_float[10] >> 0, SV.server.edicts[PR.globals_int[13]]);
+  const trace = SV.Move(
+    new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]), // start
+    Vector.origin, Vector.origin, // min, max
+    new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]), // end
+    PR.globals_float[10] >> 0,
+    SV.server.edicts[PR.globals_int[PR.entvars.oldorigin]]);
+
   PR.globals_float[PR.globalvars.trace_allsolid] = (trace.allsolid === true) ? 1.0 : 0.0;
   PR.globals_float[PR.globalvars.trace_startsolid] = (trace.startsolid === true) ? 1.0 : 0.0;
   PR.globals_float[PR.globalvars.trace_fraction] = trace.fraction;
@@ -305,7 +308,7 @@ PF.cvar_set = function() {
 
 PF.findradius = function() {
   let chain = 0;
-  const org = [PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]]; const eorg = [];
+  const org = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
   const rad = PR.globals_float[7];
   let i; let ent;
   for (i = 1; i < SV.server.num_edicts; ++i) {
@@ -316,10 +319,12 @@ PF.findradius = function() {
     if (ent.v_float[PR.entvars.solid] === SV.solid.not) {
       continue;
     }
-    eorg[0] = org[0] - (ent.v_float[PR.entvars.origin] + (ent.v_float[PR.entvars.mins] + ent.v_float[PR.entvars.maxs]) * 0.5);
-    eorg[1] = org[1] - (ent.v_float[PR.entvars.origin1] + (ent.v_float[PR.entvars.mins1] + ent.v_float[PR.entvars.maxs1]) * 0.5);
-    eorg[2] = org[2] - (ent.v_float[PR.entvars.origin2] + (ent.v_float[PR.entvars.mins2] + ent.v_float[PR.entvars.maxs2]) * 0.5);
-    if (Math.sqrt(eorg[0] * eorg[0] + eorg[1] * eorg[1] + eorg[2] * eorg[2]) > rad) {
+    const eorg = new Vector(
+      org[0] - (ent.v_float[PR.entvars.origin] + (ent.v_float[PR.entvars.mins] + ent.v_float[PR.entvars.maxs]) * 0.5),
+      org[1] - (ent.v_float[PR.entvars.origin1] + (ent.v_float[PR.entvars.mins1] + ent.v_float[PR.entvars.maxs1]) * 0.5),
+      org[2] - (ent.v_float[PR.entvars.origin2] + (ent.v_float[PR.entvars.mins2] + ent.v_float[PR.entvars.maxs2]) * 0.5)
+    );
+    if (eorg.len() > rad) {
       continue;
     }
     ent.v_int[PR.entvars.chain] = chain;
@@ -463,7 +468,7 @@ PF.droptofloor = function() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
   const trace = SV.Move(ED.Vector(ent, PR.entvars.origin),
       ED.Vector(ent, PR.entvars.mins), ED.Vector(ent, PR.entvars.maxs),
-      [ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] - 256.0], 0, ent);
+      new Vector(ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] - 256.0), 0, ent);
   if ((trace.fraction === 1.0) || (trace.allsolid === true)) {
     PR.globals_float[1] = 0.0;
     return;
@@ -516,8 +521,7 @@ PF.pointcontents = function() {
 };
 
 PF.nextent = function() {
-  let i;
-  for (i = PR.globals_int[4] + 1; i < SV.server.num_edicts; ++i) {
+  for (let i = PR.globals_int[4] + 1; i < SV.server.num_edicts; ++i) {
     if (SV.server.edicts[i].free !== true) {
       PR.globals_int[1] = i;
       return;
@@ -528,10 +532,10 @@ PF.nextent = function() {
 
 PF.aim = function() {
   const ent = SV.server.edicts[PR.globals_int[4]];
-  const start = [ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] + 20.0];
-  const dir = [PR.globals_float[PR.globalvars.v_forward], PR.globals_float[PR.globalvars.v_forward1], PR.globals_float[PR.globalvars.v_forward2]];
-  const end = [start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]];
-  let tr = SV.Move(start, Vec.origin, Vec.origin, end, 0, ent);
+  const start = new Vector(ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] + 20.0);
+  const dir = new Vector(PR.globals_float[PR.globalvars.v_forward], PR.globals_float[PR.globalvars.v_forward1], PR.globals_float[PR.globalvars.v_forward2]);
+  const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
+  let tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, ent);
   if (tr.ent != null) {
     if ((tr.ent.v_float[PR.entvars.takedamage] === SV.damage.aim) &&
 			((Host.teamplay.value === 0) || (ent.v_float[PR.entvars.team] <= 0) ||
@@ -542,7 +546,7 @@ PF.aim = function() {
       return;
     }
   }
-  const bestdir = [dir[0], dir[1], dir[2]];
+  const bestdir = new Vector(dir[0], dir[1], dir[2]);
   let bestdist = SV.aim.value;
   let bestent; let i; let check; let dist;
   for (i = 1; i < SV.server.num_edicts; ++i) {
@@ -562,12 +566,12 @@ PF.aim = function() {
     dir[0] = end[0] - start[0];
     dir[1] = end[1] - start[1];
     dir[2] = end[2] - start[2];
-    Vec.Normalize(dir);
+    dir.normalize()
     dist = dir[0] * bestdir[0] + dir[1] * bestdir[1] + dir[2] * bestdir[2];
     if (dist < bestdist) {
       continue;
     }
-    tr = SV.Move(start, Vec.origin, Vec.origin, end, 0, ent);
+    tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, ent);
     if (tr.ent === check) {
       bestdist = dist;
       bestent = check;
@@ -581,7 +585,7 @@ PF.aim = function() {
     end[0] = bestdir[0] * dist;
     end[1] = bestdir[1] * dist;
     end[2] = dir[2];
-    Vec.Normalize(end);
+    end.normalize();
     PR.globals_float[1] = end[0];
     PR.globals_float[2] = end[1];
     PR.globals_float[3] = end[2];
@@ -594,7 +598,7 @@ PF.aim = function() {
 
 PF.changeyaw = function() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  const current = Vec.Anglemod(ent.v_float[PR.entvars.angles1]);
+  const current = Vector.anglemod(ent.v_float[PR.entvars.angles1]);
   const ideal = ent.v_float[PR.entvars.ideal_yaw];
   if (current === ideal) {
     return;
@@ -615,7 +619,7 @@ PF.changeyaw = function() {
   } else if (move < -speed) {
     move = -speed;
   }
-  ent.v_float[PR.entvars.angles1] = Vec.Anglemod(current + move);
+  ent.v_float[PR.entvars.angles1] = Vector.anglemod(current + move);
 };
 
 PF.WriteDest = function() {

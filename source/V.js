@@ -1,4 +1,4 @@
-/* global V, Con, Mod, Host, CL, Cmd, Cvar, Vec, Q, MSG, SCR, R, Chase, Def, V */
+/* global V, Con, Mod, Host, CL, Cmd, Cvar, Vector, Q, MSG, SCR, R, Chase, Def, V */
 
 // eslint-disable-next-line no-global-assign
 V = {};
@@ -6,8 +6,7 @@ V = {};
 V.dmg_time = 0.0;
 
 V.CalcRoll = function(angles, velocity) { // FIXME: this is required for dedicated as well
-  const right = [];
-  Vec.AngleVectors(angles, null, right);
+  const { right } = angles.angleVectors();
   let side = velocity[0] * right[0] + velocity[1] * right[1] + velocity[2] * right[2];
   const sign = side < 0 ? -1 : 1;
   side = Math.abs(side);
@@ -113,8 +112,8 @@ V.ParseDamage = function() {
   const armor = MSG.ReadByte();
   const blood = MSG.ReadByte();
   const ent = CL.entities[CL.state.viewentity];
-  const from = [MSG.ReadCoord() - ent.origin[0], MSG.ReadCoord() - ent.origin[1], MSG.ReadCoord() - ent.origin[2]];
-  Vec.Normalize(from);
+  const from = new Vector(MSG.ReadCoord() - ent.origin[0], MSG.ReadCoord() - ent.origin[1], MSG.ReadCoord() - ent.origin[2]);
+  from.normalize();
   let count = (blood + armor) * 0.5;
   if (count < 10.0) {
     count = 10.0;
@@ -140,8 +139,7 @@ V.ParseDamage = function() {
     cshift[1] = cshift[2] = 0.0;
   }
 
-  const forward = []; const right = [];
-  Vec.AngleVectors(ent.angles, forward, right);
+  const { forward, right } = ent.angles.angleVectors();
   V.dmg_roll = count * (from[0] * right[0] + from[1] * right[1] + from[2] * right[2]) * V.kickroll.value;
   V.dmg_pitch = count * (from[0] * forward[0] + from[1] * forward[1] + from[2] * forward[2]) * V.kickpitch.value;
   V.dmg_time = V.kicktime.value;
@@ -294,8 +292,7 @@ V.CalcRefdef = function() {
   R.refdef.viewangles[1] += iyaw;
   R.refdef.viewangles[2] += iroll;
 
-  const forward = []; const right = []; const up = [];
-  Vec.AngleVectors([-ent.angles[0], ent.angles[1], ent.angles[2]], forward, right, up);
+  const { forward, right, up } = (new Vector(-ent.angles[0], ent.angles[1], ent.angles[2])).angleVectors();
   R.refdef.vieworg[0] += V.ofsx.value * forward[0] + V.ofsy.value * right[0] + V.ofsz.value * up[0];
   R.refdef.vieworg[1] += V.ofsx.value * forward[1] + V.ofsy.value * right[1] + V.ofsz.value * up[1];
   R.refdef.vieworg[2] += V.ofsx.value * forward[2] + V.ofsy.value * right[2] + V.ofsz.value * up[2];
@@ -337,9 +334,7 @@ V.CalcRefdef = function() {
   view.model = CL.state.model_precache[CL.state.stats[Def.stat.weapon]];
   view.frame = CL.state.stats[Def.stat.weaponframe];
 
-  R.refdef.viewangles[0] += CL.state.punchangle[0];
-  R.refdef.viewangles[1] += CL.state.punchangle[1];
-  R.refdef.viewangles[2] += CL.state.punchangle[2];
+  R.refdef.viewangles.add(CL.state.punchangle);
 
   if ((CL.state.onground === true) && ((ent.origin[2] - V.oldz) > 0.0)) {
     let steptime = CL.state.time - CL.state.oldtime;

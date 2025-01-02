@@ -1,4 +1,4 @@
-/*global SV, Sys, COM,  Q, Host, Vec, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, PF, V, SCR, CANNON */
+/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, PF, V, SCR, CANNON */
 
 // eslint-disable-next-line no-global-assign
 SV = {};
@@ -207,7 +207,7 @@ SV.ConnectClient = function(clientnum) {
   client.dropasap = false;
   client.last_message = 0.0;
   client.cmd = {forwardmove: 0.0, sidemove: 0.0, upmove: 0.0};
-  client.wishdir = [0.0, 0.0, 0.0];
+  client.wishdir = new Vector();
   client.message.cursize = 0;
   client.edict = SV.server.edicts[clientnum + 1];
   client.edict.v_int[PR.entvars.netname] = PR.netnames + (clientnum << 5);
@@ -276,7 +276,7 @@ SV.AddToFatPVS = function(org, node) {
       return;
     }
     normal = node.plane.normal;
-    d = org[0] * normal[0] + org[1] * normal[1] + org[2] * normal[2] - node.plane.dist;
+    d = org.dot(normal) - node.plane.dist;
     if (d > 8.0) {
       node = node.children[0];
     } else {
@@ -298,11 +298,11 @@ SV.FatPVS = function(org) {
 };
 
 SV.WriteEntitiesToClient = function(clent, msg) {
-  SV.FatPVS([
+  SV.FatPVS(new Vector(
     clent.v_float[PR.entvars.origin] + clent.v_float[PR.entvars.view_ofs],
     clent.v_float[PR.entvars.origin1] + clent.v_float[PR.entvars.view_ofs1],
     clent.v_float[PR.entvars.origin2] + clent.v_float[PR.entvars.view_ofs2],
-  ]);
+  ));
   const pvs = SV.fatpvs; let ent; let e; let i; let bits; let miss;
   for (e = 1; e < SV.server.num_edicts; ++e) {
     ent = SV.server.edicts[e];
@@ -779,8 +779,8 @@ SV.SpawnServer = function(server) {
       area: {},
       leafnums: [],
       baseline: {
-        origin: [0.0, 0.0, 0.0],
-        angles: [0.0, 0.0, 0.0],
+        origin: new Vector(),
+        angles: new Vector(),
         modelindex: 0,
         frame: 0,
         colormap: 0,
@@ -817,6 +817,7 @@ SV.SpawnServer = function(server) {
   SV.server.lastchecktime = 0.0;
   SV.server.modelname = 'maps/' + server + '.bsp';
   SV.server.worldmodel = Mod.ForName(SV.server.modelname);
+  SV.server.worldvars = new PR.Proxy(null);
   if (SV.server.worldmodel == null) {
     Con.Print('Couldn\'t spawn server ' + SV.server.modelname + '\n');
     SV.server.active = false;
@@ -889,34 +890,34 @@ SV.SetClientName = function(client, name) {
 // move
 
 SV.CheckBottom = function(ent) {
-  const mins = [
+  const mins = new Vector(
     ent.v_float[PR.entvars.origin] + ent.v_float[PR.entvars.mins],
     ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.mins1],
     ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.mins2],
-  ];
-  const maxs = [
+  );
+  const maxs = new Vector(
     ent.v_float[PR.entvars.origin] + ent.v_float[PR.entvars.maxs],
     ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.maxs1],
     ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.maxs2],
-  ];
+  );
   for (;;) {
-    if (SV.PointContents([mins[0], mins[1], mins[2] - 1.0]) !== Mod.contents.solid) {
+    if (SV.PointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) !== Mod.contents.solid) {
       break;
     }
-    if (SV.PointContents([mins[0], maxs[1], mins[2] - 1.0]) !== Mod.contents.solid) {
+    if (SV.PointContents(new Vector(mins[0], maxs[1], mins[2] - 1.0)) !== Mod.contents.solid) {
       break;
     }
-    if (SV.PointContents([maxs[0], mins[1], mins[2] - 1.0]) !== Mod.contents.solid) {
+    if (SV.PointContents(new Vector(maxs[0], mins[1], mins[2] - 1.0)) !== Mod.contents.solid) {
       break;
     }
-    if (SV.PointContents([maxs[0], maxs[1], mins[2] - 1.0]) !== Mod.contents.solid) {
+    if (SV.PointContents(new Vector(maxs[0], maxs[1], mins[2] - 1.0)) !== Mod.contents.solid) {
       break;
     }
     return true;
   }
-  const start = [(mins[0] + maxs[0]) * 0.5, (mins[1] + maxs[1]) * 0.5, mins[2]];
-  const stop = [start[0], start[1], start[2] - 36.0];
-  let trace = SV.Move(start, Vec.origin, Vec.origin, stop, 1, ent);
+  const start = new Vector((mins[0] + maxs[0]) * 0.5, (mins[1] + maxs[1]) * 0.5, mins[2]);
+  const stop = new Vector(start[0], start[1], start[2] - 36.0);
+  let trace = SV.Move(start, Vector.origin, Vector.origin, stop, 1, ent);
   if (trace.fraction === 1.0) {
     return;
   }
@@ -927,7 +928,7 @@ SV.CheckBottom = function(ent) {
     for (y = 0; y <= 1; ++y) {
       start[0] = stop[0] = (x !== 0) ? maxs[0] : mins[0];
       start[1] = stop[1] = (y !== 0) ? maxs[1] : mins[1];
-      trace = SV.Move(start, Vec.origin, Vec.origin, stop, 1, ent);
+      trace = SV.Move(start, Vector.origin, Vector.origin, stop, 1, ent);
       if ((trace.fraction !== 1.0) && (trace.endpos[2] > bottom)) {
         bottom = trace.endpos[2];
       }
@@ -941,7 +942,7 @@ SV.CheckBottom = function(ent) {
 
 SV.movestep = function(ent, move, relink) {
   const oldorg = ED.Vector(ent, PR.entvars.origin);
-  const neworg = [];
+  const neworg = new Vector();
   const mins = ED.Vector(ent, PR.entvars.mins); const maxs = ED.Vector(ent, PR.entvars.maxs);
   let trace;
   if ((ent.v_float[PR.entvars.flags] & (SV.fl.swim + SV.fl.fly)) !== 0) {
@@ -980,7 +981,7 @@ SV.movestep = function(ent, move, relink) {
   neworg[0] = ent.v_float[PR.entvars.origin] + move[0];
   neworg[1] = ent.v_float[PR.entvars.origin1] + move[1];
   neworg[2] = ent.v_float[PR.entvars.origin2] + 18.0;
-  const end = [neworg[0], neworg[1], neworg[2] - 36.0];
+  const end = new Vector(neworg[0], neworg[1], neworg[2] - 36.0);
   trace = SV.Move(neworg, mins, maxs, end, 0, ent);
   if (trace.allsolid === true) {
     return 0;
@@ -1044,8 +1045,8 @@ SV.StepDirection = function(ent, yaw, dist) {
 };
 
 SV.NewChaseDir = function(actor, enemy, dist) {
-  const olddir = Vec.Anglemod(((actor.v_float[PR.entvars.ideal_yaw] / 45.0) >> 0) * 45.0);
-  const turnaround = Vec.Anglemod(olddir - 180.0);
+  const olddir = Vector.anglemod(((actor.v_float[PR.entvars.ideal_yaw] / 45.0) >> 0) * 45.0);
+  const turnaround = Vector.anglemod(olddir - 180.0);
   const deltax = enemy.v_float[PR.entvars.origin] - actor.v_float[PR.entvars.origin];
   const deltay = enemy.v_float[PR.entvars.origin1] - actor.v_float[PR.entvars.origin1];
   let dx; let dy;
@@ -1225,10 +1226,10 @@ SV.FlyMove = function(ent, time) {
   const planes = []; let plane;
   const primal_velocity = ED.Vector(ent, PR.entvars.velocity);
   let original_velocity = ED.Vector(ent, PR.entvars.velocity);
-  const new_velocity = [];
+  const new_velocity = new Vector();
   let i; let j;
   let trace;
-  const end = [];
+  const end = new Vector();
   let time_left = time;
   let blocked = 0;
   for (bumpcount = 0; bumpcount <= 3; ++bumpcount) {
@@ -1242,7 +1243,7 @@ SV.FlyMove = function(ent, time) {
     end[2] = ent.v_float[PR.entvars.origin2] + time_left * ent.v_float[PR.entvars.velocity2];
     trace = SV.Move(ED.Vector(ent, PR.entvars.origin), ED.Vector(ent, PR.entvars.mins), ED.Vector(ent, PR.entvars.maxs), end, 0, ent);
     if (trace.allsolid === true) {
-      ED.SetVector(ent, PR.entvars.velocity, Vec.origin);
+      ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
       return 3;
     }
     if (trace.fraction > 0.0) {
@@ -1272,10 +1273,10 @@ SV.FlyMove = function(ent, time) {
     }
     time_left -= time_left * trace.fraction;
     if (numplanes >= 5) {
-      ED.SetVector(ent, PR.entvars.velocity, Vec.origin);
+      ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
       return 3;
     }
-    planes[numplanes++] = [trace.plane.normal[0], trace.plane.normal[1], trace.plane.normal[2]];
+    planes[numplanes++] = trace.plane.normal.copy();
     for (i = 0; i < numplanes; ++i) {
       SV.ClipVelocity(original_velocity, planes[i], new_velocity, 1.0);
       for (j = 0; j < numplanes; ++j) {
@@ -1294,10 +1295,10 @@ SV.FlyMove = function(ent, time) {
       ED.SetVector(ent, PR.entvars.velocity, new_velocity);
     } else {
       if (numplanes !== 2) {
-        ED.SetVector(ent, PR.entvars.velocity, Vec.origin);
+        ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
         return 7;
       }
-      dir = Vec.CrossProduct(planes[0], planes[1]);
+      dir = planes[0].cross(planes[1]);
       d = dir[0] * ent.v_float[PR.entvars.velocity] +
 				dir[1] * ent.v_float[PR.entvars.velocity1] +
 				dir[2] * ent.v_float[PR.entvars.velocity2];
@@ -1308,7 +1309,7 @@ SV.FlyMove = function(ent, time) {
     if ((ent.v_float[PR.entvars.velocity] * primal_velocity[0] +
 			ent.v_float[PR.entvars.velocity1] * primal_velocity[1] +
 			ent.v_float[PR.entvars.velocity2] * primal_velocity[2]) <= 0.0) {
-      ED.SetVector(ent, PR.entvars.velocity, Vec.origin);
+      ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
       return blocked;
     }
   }
@@ -1326,11 +1327,11 @@ SV.AddGravity = function(ent) {
 };
 
 SV.PushEntity = function(ent, push) {
-  const end = [
+  const end = new Vector(
     ent.v_float[PR.entvars.origin] + push[0],
     ent.v_float[PR.entvars.origin1] + push[1],
     ent.v_float[PR.entvars.origin2] + push[2],
-  ];
+  );
   let nomonsters;
   const solid = ent.v_float[PR.entvars.solid];
   if (ent.v_float[PR.entvars.movetype] === SV.movetype.flymissile) {
@@ -1357,21 +1358,21 @@ SV.PushMove = function(pusher, movetime) {
     pusher.v_float[PR.entvars.ltime] += movetime;
     return;
   }
-  const move = [
+  const move = new Vector(
     pusher.v_float[PR.entvars.velocity] * movetime,
     pusher.v_float[PR.entvars.velocity1] * movetime,
     pusher.v_float[PR.entvars.velocity2] * movetime,
-  ];
-  const mins = [
+  );
+  const mins = new Vector(
     pusher.v_float[PR.entvars.absmin] + move[0],
     pusher.v_float[PR.entvars.absmin1] + move[1],
     pusher.v_float[PR.entvars.absmin2] + move[2],
-  ];
-  const maxs = [
+  );
+  const maxs = new Vector(
     pusher.v_float[PR.entvars.absmax] + move[0],
     pusher.v_float[PR.entvars.absmax1] + move[1],
     pusher.v_float[PR.entvars.absmax2] + move[2],
-  ];
+  );
   const pushorig = ED.Vector(pusher, PR.entvars.origin);
   pusher.v_float[PR.entvars.origin] += move[0];
   pusher.v_float[PR.entvars.origin1] += move[1];
@@ -1510,11 +1511,11 @@ SV.CheckStuck = function(ent) {
 };
 
 SV.CheckWater = function(ent) {
-  const point = [
+  const point = new Vector(
     ent.v_float[PR.entvars.origin],
     ent.v_float[PR.entvars.origin1],
     ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.mins2] + 1.0,
-  ];
+  );
   ent.v_float[PR.entvars.waterlevel] = 0.0;
   ent.v_float[PR.entvars.watertype] = Mod.contents.empty;
   let cont = SV.PointContents(point);
@@ -1537,8 +1538,7 @@ SV.CheckWater = function(ent) {
 };
 
 SV.WallFriction = function(ent, trace) {
-  const forward = [];
-  Vec.AngleVectors(ED.Vector(ent, PR.entvars.v_angle), forward);
+  const { forward } = ED.Vector(ent, PR.entvars.v_angle).angleVectors()
   const normal = trace.plane.normal;
   let d = normal[0] * forward[0] + normal[1] * forward[1] + normal[2] * forward[2] + 0.5;
   if (d >= 0.0) {
@@ -1554,7 +1554,7 @@ SV.WallFriction = function(ent, trace) {
 
 SV.TryUnstick = function(ent, oldvel) {
   const oldorg = ED.Vector(ent, PR.entvars.origin);
-  const dir = [2.0, 0.0, 0.0];
+  const dir = new Vector(2.0, 0.0, 0.0);
   let i; let clip;
   for (i = 0; i <= 7; ++i) {
     switch (i) {
@@ -1577,7 +1577,7 @@ SV.TryUnstick = function(ent, oldvel) {
     }
     ED.SetVector(ent, PR.entvars.origin, oldorg);
   }
-  ED.SetVector(ent, PR.entvars.velocity, Vec.origin);
+  ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
   return 7;
 };
 
@@ -1605,7 +1605,7 @@ SV.WalkMove = function(ent) {
   const nosteporg = ED.Vector(ent, PR.entvars.origin);
   const nostepvel = ED.Vector(ent, PR.entvars.velocity);
   ED.SetVector(ent, PR.entvars.origin, oldorg);
-  SV.PushEntity(ent, [0.0, 0.0, 18.0]);
+  SV.PushEntity(ent, new Vector(0.0, 0.0, 18.0));
   ent.v_float[PR.entvars.velocity] = oldvel[0];
   ent.v_float[PR.entvars.velocity1] = oldvel[1];
   ent.v_float[PR.entvars.velocity2] = 0.0;
@@ -1619,7 +1619,7 @@ SV.WalkMove = function(ent) {
       SV.WallFriction(ent, SV.steptrace);
     }
   }
-  const downtrace = SV.PushEntity(ent, [0.0, 0.0, oldvel[2] * Host.frametime - 18.0]);
+  const downtrace = SV.PushEntity(ent, new Vector(0.0, 0.0, oldvel[2] * Host.frametime - 18.0));
   if (downtrace.plane.normal[2] > 0.7) {
     if (ent.v_float[PR.entvars.solid] === SV.solid.bsp) {
       ent.v_float[PR.entvars.flags] |= SV.fl.onground;
@@ -1733,7 +1733,7 @@ SV.Physics_Toss = function(ent) {
   if ((trace.fraction === 1.0) || (ent.free === true)) {
     return;
   }
-  const velocity = [];
+  const velocity = new Vector();
   SV.ClipVelocity(ED.Vector(ent, PR.entvars.velocity), trace.plane.normal, velocity, (movetype === SV.movetype.bounce) ? 1.5 : 1.0);
   ED.SetVector(ent, PR.entvars.velocity, velocity);
   if (trace.plane.normal[2] > 0.7) {
@@ -1777,10 +1777,10 @@ SV._BuildSurfaceDisplayList = function(currentmodel, fa) { // FIXME: move to Mod
     } else {
       vec = currentmodel.vertexes[currentmodel.edges[-index][1]];
     }
-    vert = [vec[0], vec[1], vec[2]];
+    vert = new Vector(vec[0], vec[1], vec[2]);
     if (fa.sky !== true) {
-      s = Vec.DotProduct(vec, texinfo.vecs[0]) + texinfo.vecs[0][3];
-      t = Vec.DotProduct(vec, texinfo.vecs[1]) + texinfo.vecs[1][3];
+      s = vec.dot(texinfo.vecs[0]) + texinfo.vecs[0][3];
+      t = vec.dot(texinfo.vecs[1]) + texinfo.vecs[1][3];
       vert[3] = s / texture.width;
       vert[4] = t / texture.height;
       if (fa.turbulent !== true) {
@@ -1903,7 +1903,7 @@ SV.LinkPhysicsEngine = function() {
 
     if (ent.cannon?.body) {
       ent.vars.origin = ent.cannon.body.position.toArray();
-      ent.vars.angles = Vec.FromQuaternion(ent.cannon.body.quaternion.toArray());
+      ent.vars.angles = Vector.fromQuaternion(ent.cannon.body.quaternion.toArray());
       SV.LinkEdict(ent);
     }
   }
@@ -1934,7 +1934,7 @@ SV.PhysicsEngineRegisterEdict = function(ent) {
   //   if (classname && classname.startsWith('item_')) {
   //     const body = new CANNON.Body({
   //       position: new CANNON.Vec3(...ent.vars.origin),
-  //       quaternion: new CANNON.Quaternion(...Vec.ToQuaternion(ent.vars.angles)),
+  //       quaternion: new CANNON.Quaternion(...ent.vars.angles.toQuaternion()),
   //       mass: Q.atof(ent.phys.mass || 0), // kg
   //     });
   //     //body.addShape(new CANNON.Box(new CANNON.Vec3(...ent.vars.size)));
@@ -2006,13 +2006,13 @@ SV.SetIdealPitch = function() {
   const angleval = ent.v_float[PR.entvars.angles1] * (Math.PI / 180.0);
   const sinval = Math.sin(angleval);
   const cosval = Math.cos(angleval);
-  const top = [0.0, 0.0, ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.view_ofs2]];
-  const bottom = [0.0, 0.0, top[2] - 160.0];
+  const top = new Vector(0.0, 0.0, ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.view_ofs2]);
+  const bottom = new Vector(0.0, 0.0, top[2] - 160.0);
   let i; let tr; const z = [];
   for (i = 0; i < 6; ++i) {
     top[0] = bottom[0] = ent.v_float[PR.entvars.origin] + cosval * (i + 3) * 12.0;
     top[1] = bottom[1] = ent.v_float[PR.entvars.origin1] + sinval * (i + 3) * 12.0;
-    tr = SV.Move(top, Vec.origin, Vec.origin, bottom, 1, ent);
+    tr = SV.Move(top, Vector.origin, Vector.origin, bottom, 1, ent);
     if ((tr.allsolid === true) || (tr.fraction === 1.0)) {
       return;
     }
@@ -2046,13 +2046,13 @@ SV.UserFriction = function() {
   if (speed === 0.0) {
     return;
   }
-  const start = [
+  const start = new Vector(
     ent.v_float[PR.entvars.origin] + vel0 / speed * 16.0,
     ent.v_float[PR.entvars.origin1] + vel1 / speed * 16.0,
     ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.mins2],
-  ];
+  );
   let friction = SV.friction.value;
-  if (SV.Move(start, Vec.origin, Vec.origin, [start[0], start[1], start[2] - 34.0], 1, ent).fraction === 1.0) {
+  if (SV.Move(start, Vector.origin, Vector.origin, new Vector(start[0], start[1], start[2] - 34.0), 1, ent).fraction === 1.0) {
     friction *= SV.edgefriction.value;
   }
   let newspeed = speed - Host.frametime * (speed < SV.stopspeed.value ? SV.stopspeed.value : speed) * friction;
@@ -2067,8 +2067,8 @@ SV.UserFriction = function() {
 
 SV.Accelerate = function(wishvel, air) {
   const ent = SV.player;
-  const wishdir = [wishvel[0], wishvel[1], wishvel[2]];
-  let wishspeed = Vec.Normalize(wishdir);
+  const wishdir = new Vector(wishvel[0], wishvel[1], wishvel[2]);
+  let wishspeed = wishdir.normalize();
   if ((air === true) && (wishspeed > 30.0)) {
     wishspeed = 30.0;
   }
@@ -2090,25 +2090,22 @@ SV.Accelerate = function(wishvel, air) {
 
 SV.WaterMove = function() {
   const ent = SV.player; const cmd = Host.client.cmd;
-  const forward = []; const right = [];
-  Vec.AngleVectors(ED.Vector(ent, PR.entvars.v_angle), forward, right);
-  const wishvel = [
+  const { forward, right } = ED.Vector(ent, PR.entvars.v_angle).angleVectors();
+  const wishvel = new Vector(
     forward[0] * cmd.forwardmove + right[0] * cmd.sidemove,
     forward[1] * cmd.forwardmove + right[1] * cmd.sidemove,
     forward[2] * cmd.forwardmove + right[2] * cmd.sidemove,
-  ];
+  );
   if ((cmd.forwardmove === 0.0) && (cmd.sidemove === 0.0) && (cmd.upmove === 0.0)) {
     wishvel[2] -= 60.0;
   } else {
     wishvel[2] += cmd.upmove;
   }
-  let wishspeed = Math.sqrt(wishvel[0] * wishvel[0] + wishvel[1] * wishvel[1] + wishvel[2] * wishvel[2]);
+  let wishspeed = wishvel.len();
   let scale;
   if (wishspeed > SV.maxspeed.value) {
     scale = SV.maxspeed.value / wishspeed;
-    wishvel[0] *= scale;
-    wishvel[1] *= scale;
-    wishvel[2] *= scale;
+    wishvel.multiply(scale);
     wishspeed = SV.maxspeed.value;
   }
   wishspeed *= 0.7;
@@ -2157,19 +2154,18 @@ SV.WaterJump = function() {
 SV.AirMove = function() {
   const ent = SV.player;
   const cmd = Host.client.cmd;
-  const forward = []; const right = [];
-  Vec.AngleVectors(ED.Vector(ent, PR.entvars.angles), forward, right);
+  const {forward, right} =   ED.Vector(ent, PR.entvars.angles).angleVectors();
   let fmove = cmd.forwardmove;
   const smove = cmd.sidemove;
   if ((SV.server.time < ent.v_float[PR.entvars.teleport_time]) && (fmove < 0.0)) {
     fmove = 0.0;
   }
-  const wishvel = [
+  const wishvel = new Vector(
     forward[0] * fmove + right[0] * smove,
     forward[1] * fmove + right[1] * smove,
-		((ent.v_float[PR.entvars.movetype] >> 0) !== SV.movetype.walk) ? cmd.upmove : 0.0];
-  const wishdir = [wishvel[0], wishvel[1], wishvel[2]];
-  if (Vec.Normalize(wishdir) > SV.maxspeed.value) {
+		((ent.v_float[PR.entvars.movetype] >> 0) !== SV.movetype.walk) ? cmd.upmove : 0.0);
+  const wishdir = new Vector(wishvel[0], wishvel[1], wishvel[2]);
+  if (wishdir.normalize() > SV.maxspeed.value) {
     wishvel[0] = wishdir[0] * SV.maxspeed.value;
     wishvel[1] = wishdir[1] * SV.maxspeed.value;
     wishvel[2] = wishdir[2] * SV.maxspeed.value;
@@ -2192,7 +2188,7 @@ SV.ClientThink = function() {
   }
 
   const punchangle = ED.Vector(ent, PR.entvars.punchangle);
-  let len = Vec.Normalize(punchangle) - 10.0 * Host.frametime;
+  let len = punchangle.normalize() - 10.0 * Host.frametime;
   if (len < 0.0) {
     len = 0.0;
   }
@@ -2412,13 +2408,13 @@ SV.InitBoxHull = function() {
     plane = {};
     SV.box_planes[i] = plane;
     plane.type = i >> 1;
-    plane.normal = [0.0, 0.0, 0.0];
+    plane.normal = new Vector();
     plane.normal[i >> 1] = 1.0;
     plane.dist = 0.0;
   }
 };
 
-SV.HullForEntity = function(ent, mins, maxs, offset) {
+SV.HullForEntity = function(ent, mins, maxs, out_offset) {
   if (ent.v_float[PR.entvars.solid] !== SV.solid.bsp) {
     SV.box_planes[0].dist = ent.v_float[PR.entvars.maxs] - mins[0];
     SV.box_planes[1].dist = ent.v_float[PR.entvars.mins] - maxs[0];
@@ -2426,9 +2422,9 @@ SV.HullForEntity = function(ent, mins, maxs, offset) {
     SV.box_planes[3].dist = ent.v_float[PR.entvars.mins1] - maxs[1];
     SV.box_planes[4].dist = ent.v_float[PR.entvars.maxs2] - mins[2];
     SV.box_planes[5].dist = ent.v_float[PR.entvars.mins2] - maxs[2];
-    offset[0] = ent.v_float[PR.entvars.origin];
-    offset[1] = ent.v_float[PR.entvars.origin1];
-    offset[2] = ent.v_float[PR.entvars.origin2];
+    out_offset[0] = ent.v_float[PR.entvars.origin];
+    out_offset[1] = ent.v_float[PR.entvars.origin1];
+    out_offset[2] = ent.v_float[PR.entvars.origin2];
     return SV.box_hull;
   }
   if (ent.v_float[PR.entvars.movetype] !== SV.movetype.push) {
@@ -2450,9 +2446,9 @@ SV.HullForEntity = function(ent, mins, maxs, offset) {
   } else {
     hull = model.hulls[2];
   }
-  offset[0] = hull.clip_mins[0] - mins[0] + ent.v_float[PR.entvars.origin];
-  offset[1] = hull.clip_mins[1] - mins[1] + ent.v_float[PR.entvars.origin1];
-  offset[2] = hull.clip_mins[2] - mins[2] + ent.v_float[PR.entvars.origin2];
+  out_offset[0] = hull.clip_mins[0] - mins[0] + ent.v_float[PR.entvars.origin];
+  out_offset[1] = hull.clip_mins[1] - mins[1] + ent.v_float[PR.entvars.origin1];
+  out_offset[2] = hull.clip_mins[2] - mins[2] + ent.v_float[PR.entvars.origin2];
   return hull;
 };
 
@@ -2474,8 +2470,8 @@ SV.CreateAreaNode = function(depth, mins, maxs) {
   anode.axis = (maxs[0] - mins[0]) > (maxs[1] - mins[1]) ? 0 : 1;
   anode.dist = 0.5 * (maxs[anode.axis] + mins[anode.axis]);
 
-  const maxs1 = [maxs[0], maxs[1], maxs[2]];
-  const mins2 = [mins[0], mins[1], mins[2]];
+  const maxs1 = new Vector(maxs[0], maxs[1], maxs[2]);
+  const mins2 = new Vector(mins[0], mins[1], mins[2]);
   maxs1[anode.axis] = mins2[anode.axis] = anode.dist;
   anode.children = [SV.CreateAreaNode(depth + 1, mins2, maxs), SV.CreateAreaNode(depth + 1, mins, maxs1)];
   return anode;
@@ -2543,8 +2539,11 @@ SV.FindTouchedLeafs = function(ent, node) {
     return;
   }
 
-  const sides = Vec.BoxOnPlaneSide([ent.v_float[PR.entvars.absmin], ent.v_float[PR.entvars.absmin1], ent.v_float[PR.entvars.absmin2]],
-      [ent.v_float[PR.entvars.absmax], ent.v_float[PR.entvars.absmax1], ent.v_float[PR.entvars.absmax2]], node.plane);
+  const sides = Vector.boxOnPlaneSide(
+    new Vector(ent.v_float[PR.entvars.absmin], ent.v_float[PR.entvars.absmin1], ent.v_float[PR.entvars.absmin2]),
+    new Vector(ent.v_float[PR.entvars.absmax], ent.v_float[PR.entvars.absmax1], ent.v_float[PR.entvars.absmax2]),
+    node.plane);
+
   if ((sides & 1) !== 0) {
     SV.FindTouchedLeafs(ent, node.children[0]);
   }
@@ -2693,11 +2692,11 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {
   }
 
   let midf = p1f + (p2f - p1f) * frac;
-  const mid = [
+  const mid = new Vector(
     p1[0] + frac * (p2[0] - p1[0]),
     p1[1] + frac * (p2[1] - p1[1]),
     p1[2] + frac * (p2[2] - p1[2]),
-  ];
+  );
   const side = t1 < 0.0 ? 1 : 0;
 
   if (SV.RecursiveHullCheck(hull, node.children[side], p1f, midf, p1, mid, trace) !== true) {
@@ -2713,10 +2712,10 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {
   }
 
   if (side === 0) {
-    trace.plane.normal = [plane.normal[0], plane.normal[1], plane.normal[2]];
+    trace.plane.normal = plane.normal.copy();
     trace.plane.dist = plane.dist;
   } else {
-    trace.plane.normal = [-plane.normal[0], -plane.normal[1], -plane.normal[2]];
+    trace.plane.normal = plane.normal.copy().multiply(-1);
     trace.plane.dist = -plane.dist;
   }
 
@@ -2724,7 +2723,7 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {
     frac -= 0.1;
     if (frac < 0.0) {
       trace.fraction = midf;
-      trace.endpos = [mid[0], mid[1], mid[2]];
+      trace.endpos = mid.copy();
       Con.DPrint('backup past 0\n');
       return;
     }
@@ -2735,25 +2734,21 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {
   }
 
   trace.fraction = midf;
-  trace.endpos = [mid[0], mid[1], mid[2]];
+  trace.endpos = mid.copy();
 };
 
 SV.ClipMoveToEntity = function(ent, start, mins, maxs, end) {
   const trace = {
     fraction: 1.0,
     allsolid: true,
-    endpos: [end[0], end[1], end[2]],
-    plane: {normal: [0.0, 0.0, 0.0], dist: 0.0},
+    endpos: end.copy(),
+    plane: {normal: new Vector(), dist: 0.0},
   };
-  const offset = [];
+  const offset = new Vector();
   const hull = SV.HullForEntity(ent, mins, maxs, offset);
-  SV.RecursiveHullCheck(hull, hull.firstclipnode, 0.0, 1.0,
-      [start[0] - offset[0], start[1] - offset[1], start[2] - offset[2]],
-      [end[0] - offset[0], end[1] - offset[1], end[2] - offset[2]], trace);
+  SV.RecursiveHullCheck(hull, hull.firstclipnode, 0.0, 1.0, start.copy().substract(offset), end.copy().substract(offset), trace);
   if (trace.fraction !== 1.0) {
-    trace.endpos[0] += offset[0];
-    trace.endpos[1] += offset[1];
-    trace.endpos[2] += offset[2];
+    trace.endpos.add(offset);
   }
   if ((trace.fraction < 1.0) || (trace.startsolid === true)) {
     trace.ent = ent;
@@ -2832,15 +2827,15 @@ SV.Move = function(start, mins, maxs, end, type, passedict) {
     maxs: maxs,
     type: type,
     passedict: passedict,
-    boxmins: [],
-    boxmaxs: [],
+    boxmins: new Vector(),
+    boxmaxs: new Vector(),
   };
   if (type === SV.move.missile) {
-    clip.mins2 = [-15.0, -15.0, -15.0];
-    clip.maxs2 = [15.0, 15.0, 15.0];
+    clip.mins2 = new Vector(-15.0, -15.0, -15.0);
+    clip.maxs2 = new Vector(15.0, 15.0, 15.0);
   } else {
-    clip.mins2 = [mins[0], mins[1], mins[2]];
-    clip.maxs2 = [maxs[0], maxs[1], maxs[2]];
+    clip.mins2 = new Vector(mins[0], mins[1], mins[2]);
+    clip.maxs2 = new Vector(maxs[0], maxs[1], maxs[2]);
   }
   let i;
   for (i = 0; i <= 2; ++i) {

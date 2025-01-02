@@ -1,4 +1,4 @@
-/* global Chase, CL, Cvar, Vec, SV, R, Chase */
+/* global Chase, CL, Cvar, SV, R, Chase */
 
 // eslint-disable-next-line no-global-assign
 Chase = {};
@@ -11,8 +11,7 @@ Chase.Init = function() {
 };
 
 Chase.Update = function() {
-  const forward = []; const right = [];
-  Vec.AngleVectors(CL.state.viewangles, forward, right);
+  const {forward, right} = CL.state.viewangles.angleVectors();
   const trace = {plane: {}}; const org = R.refdef.vieworg;
   SV.RecursiveHullCheck(CL.state.worldmodel.hulls[0], 0, 0.0, 1.0, org, [
     org[0] + 4096.0 * forward[0],
