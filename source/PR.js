@@ -378,6 +378,7 @@ PR.FunctionProxy = class FunctionProxy {
    * calls
    * @param {*} self (optional) the edict for self
    */
+  // eslint-disable-next-line no-unused-vars
   call(self, ...args) {
     PR.globals_int[PR.globalvars.self] = self ? self.num : 0;
 
@@ -387,6 +388,7 @@ PR.FunctionProxy = class FunctionProxy {
       return null;
     }
 
+    // eslint-disable-next-line no-unused-vars
     const { returnType, argTypes } = this._signature;
 
     // TODO: iterate over args and use argTypes to set the values
