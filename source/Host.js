@@ -110,9 +110,9 @@ Host.DropClient = function(client, crash, reason) {
 
   if (!crash) {
     if ((client.edict != null) && (client.spawned === true)) {
-      const saveSelf = SV.server.worldvars.self;
-      SV.server.worldvars.ClientDisconnect(client.edict);
-      SV.server.worldvars.self = saveSelf;
+      const saveSelf = SV.server.gameAPI.self;
+      SV.server.gameAPI.ClientDisconnect(client.edict);
+      SV.server.gameAPI.self = saveSelf;
     }
     Sys.Print('Client ' + SV.GetClientName(client) + ' removed\n');
   }
@@ -198,7 +198,7 @@ Host.WriteConfiguration_f = function() {
 };
 
 Host.ServerFrame = function() {
-  SV.server.worldvars.frametime = Host.frametime;
+  SV.server.gameAPI.frametime = Host.frametime;
   SV.server.datagram.cursize = 0;
   SV.CheckForNewClients();
   SV.RunClients();
@@ -444,7 +444,7 @@ Host.Status_f = function() {
   }
   print('host:    ' + NET.hostname.string + '\n');
   print('version: ' + Def.version + '\n');
-  print('map:     ' + SV.server.worldvars.mapname + '\n');
+  print('map:     ' + SV.server.gameAPI.mapname + '\n');
   print('players: ' + NET.activeconnections + ' active (' + SV.svs.maxclients + ' max)\n\n');
   let client; let str; let frags; let hours; let minutes; let seconds;
   for (let i = 0; i < SV.svs.maxclients; ++i) {
@@ -677,7 +677,7 @@ Host.Changelevel_f = function() {
 
 Host.Restart_f = function() {
   if ((SV.server.active === true) && (Host.dedicated.value || (CL.cls.demoplayback !== true) && (Cmd.client !== true))) {
-    SV.SpawnServer(SV.server.worldvars.mapname);
+    SV.SpawnServer(SV.server.gameAPI.mapname);
   }
 };
 
@@ -775,7 +775,7 @@ Host.Savegame_f = function() {
   for (i = 0; i <= 15; ++i) {
     f[f.length] = client.spawn_parms[i].toFixed(6) + '\n';
   }
-  f[f.length] = Host.current_skill + '\n' + SV.server.worldvars.mapname + '\n' + SV.server.time.toFixed(6) + '\n';
+  f[f.length] = Host.current_skill + '\n' + SV.server.gameAPI.mapname + '\n' + SV.server.time.toFixed(6) + '\n';
   for (i = 0; i <= 63; ++i) {
     if (SV.server.lightstyles[i].length !== 0) {
       f[f.length] = SV.server.lightstyles[i] + '\n';
@@ -1108,8 +1108,8 @@ Host.Kill_f = function() {
     Host.ClientPrint('Can\'t suicide -- already dead!\n');
     return;
   }
-  SV.server.worldvars.time = SV.server.time;
-  SV.server.worldvars.ClientKill(SV.player);
+  SV.server.gameAPI.time = SV.server.time;
+  SV.server.gameAPI.ClientKill(SV.player);
 };
 
 Host.Pause_f = function() {
@@ -1169,12 +1169,12 @@ Host.Spawn_f = function() {
     for (i = 0; i <= 15; ++i) {
       PR.globals_float[PR.globalvars.parms + i] = client.spawn_parms[i];
     }
-    SV.server.worldvars.time = SV.server.time;
-    SV.server.worldvars.ClientConnect(ent);
+    SV.server.gameAPI.time = SV.server.time;
+    SV.server.gameAPI.ClientConnect(ent);
     if ((Sys.FloatTime() - client.netconnection.connecttime) <= SV.server.time) {
       Sys.Print(SV.GetClientName(client) + ' entered the game\n');
     }
-    SV.server.worldvars.PutClientInServer(ent);
+    SV.server.gameAPI.PutClientInServer(ent);
   }
 
   const message = client.message;

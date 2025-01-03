@@ -365,7 +365,7 @@ ED.ParseEdict = function(data, ent) {
 ED.LoadFromFile = function(data) {
   let inhibit = 0;
   let ent = null;
-  SV.server.worldvars.time = SV.server.time;
+  SV.server.gameAPI.time = SV.server.time;
 
 // data += `
 
@@ -403,14 +403,14 @@ ED.LoadFromFile = function(data) {
       continue;
     }
 
-    if (!ent.vars.classname) {
+    if (!ent.api.classname) {
       Con.Print('No classname for:\n');
       ED.Print(ent);
       ED.Free(ent);
       continue;
     }
 
-    const func = SV.server.worldvars[ent.vars.classname];
+    const func = SV.server.gameAPI[ent.api.classname];
     if (!func) {
       Con.Print('No spawn function for:\n');
       ED.Print(ent);
@@ -418,7 +418,7 @@ ED.LoadFromFile = function(data) {
       continue;
     }
 
-    SV.server.worldvars[ent.vars.classname](ent);
+    SV.server.gameAPI[ent.api.classname](ent);
   }
 
   Con.DPrint(`${inhibit} entities inhibited\n`);

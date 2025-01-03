@@ -1357,7 +1357,7 @@ R.ReadPointFile_f = function() {
   if (SV.server.active !== true) {
     return;
   }
-  const name = 'maps/' + SV.server.worldvars.mapname + '.pts';
+  const name = 'maps/' + SV.server.gameAPI.mapname + '.pts';
   let f = COM.LoadTextFile(name);
   if (f == null) {
     Con.Print('couldn\'t open ' + name + '\n');

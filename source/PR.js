@@ -274,7 +274,7 @@ PR.FunctionProxy = class FunctionProxy extends Function {
     // assume return type void and no args
     if (!this._signature) {
       PR.ExecuteProgram(this.fnc);
-      return null;
+      return PR.Value(PR.etype.ev_float, PR.globals, 1); // assume float
     }
 
     // eslint-disable-next-line no-unused-vars
@@ -290,24 +290,37 @@ PR.FunctionProxy = class FunctionProxy extends Function {
   }
 }
 
-PR.EdictProxy = class EdictProxy {
+PR.GameInterface = class {}
+
+PR.EdictProxy = class EdictProxy extends PR.GameInterface {
   /**
    *
    * @param {*} ed can be null, then it’s global
    */
   constructor(ed) {
+    super();
     const defs = ed ? PR.fielddefs : PR.globaldefs;
+    const progdefs = PR.progdefs ? (ed ? PR.progdefs.structs.entvars_t : PR.progdefs.structs.globalvars_t) : null;
     for (let i = 1; i < defs.length; i++) {
       const d = defs[i];
       const name = PR.GetString(d.name);
 
       if (name.charCodeAt(name.length - 2) === 95) {
+        // skip _x, _y, _z
         continue;
       }
 
       const [type, val, ofs] = [d.type & ~PR.saveglobal, ed ? ed.v : PR.globals, d.ofs];
 
       if (type & PR.saveglobal === 0) {
+        continue;
+      }
+
+      // check if we have proper definitions
+      if (progdefs) {
+        if (!progdefs[name] && type !== PR.etype.ev_function)
+        // we are not interested in global etc.
+        // however, we need the functions for calling spawn functions
         continue;
       }
 
@@ -537,6 +550,99 @@ PR.GlobalStringNoContents = function(ofs) {
   return line;
 };
 
+PR._LoadProgsdef = function(headerText) {
+  const lines = headerText.split('\n');
+
+  const typeToEtype = {
+    'int': PR.etype.ev_entity,
+    'float': PR.etype.ev_float,
+    'vec3_t': PR.etype.ev_entity,
+    'func_t': PR.etype.ev_function,
+    'string_t': PR.etype.ev_string,
+  };
+
+  let collectingFields = false;
+  let fieldBuffer = [];
+  const structs = {};
+  let progHeaderCRC = null;
+
+  for (let line of lines) {
+    line = line.trim();
+
+    // Skip empty or comment
+    if (!line || line.startsWith('/*') || line.startsWith('//')) {
+      continue;
+    }
+
+    // #define PROGHEADER_CRC
+    if (line.startsWith('#define PROGHEADER_CRC')) {
+      const parts = line.split(/\s+/);
+      if (parts.length >= 3) {
+        progHeaderCRC = parseInt(parts[2]); // e.g. 5927
+      }
+      continue;
+    }
+
+    // Start of struct
+    if (line.startsWith('typedef struct')) {
+      collectingFields = true;
+      fieldBuffer = [];
+      continue;
+    }
+
+    // End of struct with name
+    if (collectingFields && line.match(/^}\s+\w+;/)) {
+      collectingFields = false;
+      const matched = line.match(/^}\s+(\w+);/);
+      const structName = matched[1];
+
+      structs[structName] = {};
+
+      // Move all fields from buffer
+      for (const f of fieldBuffer) {
+        structs[structName][f.name] = f.etype;
+      }
+
+      fieldBuffer = [];
+      continue;
+    }
+
+    // If collecting fields, parse them
+    if (collectingFields) {
+      // Remove trailing semicolon if present
+      if (line.endsWith(';')) {
+        line = line.slice(0, -1).trim();
+      }
+
+      // Attempt to parse lines like:
+      // "<TYPE> <NAME>;" or "<TYPE> <NAME>[number];"
+      // Example: "int self" or "int pad[28]" or "vec3_t v_forward"
+      const fieldMatch = line.match(/^(\w+(?:\s*\[\d+\])?)\s+(\w+(?:\s*\[\d+\])?)$/);
+
+      if (!fieldMatch) {
+        continue;
+      }
+
+      let [, rawType, rawName] = fieldMatch;
+
+      // Skip "pad"
+      if (rawName.startsWith('pad')) {
+        continue;
+      }
+
+      // Remove array from type if any
+      const baseType = rawType.replace(/\[.*\]/, '');
+      // Remove array from name if any
+      const fieldName = rawName.replace(/\[.*\]/, '');
+
+      const etype = typeToEtype[baseType] || null;
+      fieldBuffer.push({ name: fieldName, etype });
+    }
+  }
+
+  return { structs, progHeaderCRC };
+}
+
 PR.LoadProgs = function() {
   const progs = COM.LoadFile('progs.dat');
   if (progs == null) {
@@ -549,6 +655,15 @@ PR.LoadProgs = function() {
   if (i !== PR.version) {
     Sys.Error('progs.dat has wrong version number (' + i + ' should be ' + PR.version + ')');
   }
+
+  const progdefs = COM.LoadTextFile('progdefs.h');
+
+  if (progdefs) {
+    Con.Print('Found progdefs.h, parsing and updating data structure\n');
+    PR.progdefs = PR._LoadProgsdef(progdefs);
+    PR.progheader_crc = PR.progdefs.progHeaderCRC;
+  }
+
   if (view.getUint32(4, true) !== PR.progheader_crc) {
     Sys.Error('progs.dat system vars have been modified, PR.js is out of date');
   }
@@ -662,6 +777,11 @@ PR.LoadProgs = function() {
     const def = ED.FindField(field);
     PR.entvars[field] = (def != null) ? def.ofs : null;
   }
+  // hook up progs.dat with our proxies
+  return {
+    GameAPI: PR.EdictProxy,
+    GameEntityAPI: PR.EdictProxy,
+  };
 };
 
 PR.Init = function() {

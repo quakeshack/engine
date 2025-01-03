@@ -226,9 +226,9 @@ SV.ConnectClient = function(clientnum) {
       client.spawn_parms[i] = spawn_parms[i];
     }
   } else {
-    SV.server.worldvars.SetNewParms(client.edict);
+    SV.server.gameAPI.SetNewParms(client.edict);
     for (i = 0; i <= 15; ++i) {
-      client.spawn_parms[i] = PR.globals_float[PR.globalvars.parms + i]; // TODO: SV.server.worldvars.parms
+      client.spawn_parms[i] = PR.globals_float[PR.globalvars.parms + i]; // TODO: SV.server.gameAPI.parms
     }
   }
   SV.SendServerinfo(client);
@@ -721,7 +721,7 @@ SV.SaveSpawnparms = function() {
     if (Host.client.active !== true) {
       continue;
     }
-    SV.server.worldvars.SetChangeParms(Host.client.edict);
+    SV.server.gameAPI.SetChangeParms(Host.client.edict);
     for (j = 0; j <= 15; ++j) {
       Host.client.spawn_parms[j] = PR.globals_float[PR.globalvars.parms + j];
     }
@@ -767,7 +767,8 @@ SV.SpawnServer = function(server) {
   Con.DPrint('Clearing memory\n');
   Mod.ClearAll();
 
-  PR.LoadProgs();
+  const { GameAPI, GameEntityAPI } = PR.LoadProgs();
+  SV.server.gameAPI = new GameAPI();
 
   SV.server.edicts = [];
   let ed;
@@ -792,7 +793,7 @@ SV.SpawnServer = function(server) {
     ed.area.ent = ed;
     ed.v_float = new Float32Array(ed.v);
     ed.v_int = new Int32Array(ed.v);
-    ed.vars = new PR.EdictProxy(ed);
+    ed.api = new GameEntityAPI(ed);
     SV.server.edicts[i] = ed;
   }
   SV.server.cannon = {
@@ -816,7 +817,6 @@ SV.SpawnServer = function(server) {
   SV.server.lastchecktime = 0.0;
   SV.server.modelname = 'maps/' + server + '.bsp';
   SV.server.worldmodel = Mod.ForName(SV.server.modelname);
-  SV.server.worldvars = new PR.EdictProxy(null);
   if (SV.server.worldmodel == null) {
     Con.Print('Couldn\'t spawn server ' + SV.server.modelname + '\n');
     SV.server.active = false;
@@ -1206,9 +1206,9 @@ SV.RunThink = function(ent) {
     thinktime = SV.server.time;
   }
   ent.v_float[PR.entvars.nextthink] = 0.0;
-  SV.server.worldvars.time = thinktime;
-  SV.server.worldvars.other = null;
-  ent.vars.think(ent);
+  SV.server.gameAPI.time = thinktime;
+  SV.server.gameAPI.other = null;
+  ent.api.think(ent);
   return (ent.free !== true);
 };
 
@@ -1665,8 +1665,8 @@ SV.Physics_Client = function(ent) {
   if (SV.svs.clients[ent.num - 1].active !== true) {
     return;
   }
-  SV.server.worldvars.time = SV.server.time;
-  SV.server.worldvars.PlayerPreThink(ent);
+  SV.server.gameAPI.time = SV.server.time;
+  SV.server.gameAPI.PlayerPreThink(ent);
   SV.CheckVelocity(ent);
   const movetype = ent.v_float[PR.entvars.movetype] >> 0;
   if ((movetype === SV.movetype.toss) || (movetype === SV.movetype.bounce)) {
@@ -1698,8 +1698,8 @@ SV.Physics_Client = function(ent) {
     }
   }
   SV.LinkEdict(ent, true);
-  SV.server.worldvars.time = SV.server.time;
-  SV.server.worldvars.PlayerPostThink(ent);
+  SV.server.gameAPI.time = SV.server.time;
+  SV.server.gameAPI.PlayerPostThink(ent);
 };
 
 SV.Physics_Noclip = function(ent) {
@@ -1930,8 +1930,8 @@ SV.LinkPhysicsEngine = function() {
     }
 
     if (ent.cannon?.body) {
-      ent.vars.origin = ent.cannon.body.position.toArray();
-      ent.vars.angles = Vector.fromQuaternion(ent.cannon.body.quaternion.toArray());
+      ent.api.origin = ent.cannon.body.position.toArray();
+      ent.api.angles = Vector.fromQuaternion(ent.cannon.body.quaternion.toArray());
       SV.LinkEdict(ent);
     }
   }
@@ -1953,7 +1953,7 @@ SV.PhysicsEngineRegisterEdict = function(ent) {
   // //   if (ent.free === true) {
   // //     continue;
   // //   }
-  //   const classname = ent.vars.classname;
+  //   const classname = ent.api.classname;
 
   //   ent.cannon = {
   //     body: null,
@@ -1961,13 +1961,13 @@ SV.PhysicsEngineRegisterEdict = function(ent) {
 
   //   if (classname && classname.startsWith('item_')) {
   //     const body = new CANNON.Body({
-  //       position: new CANNON.Vec3(...ent.vars.origin),
-  //       quaternion: new CANNON.Quaternion(...ent.vars.angles.toQuaternion()),
+  //       position: new CANNON.Vec3(...ent.api.origin),
+  //       quaternion: new CANNON.Quaternion(...ent.api.angles.toQuaternion()),
   //       mass: Q.atof(ent.phys.mass || 0), // kg
   //     });
-  //     //body.addShape(new CANNON.Box(new CANNON.Vec3(...ent.vars.size)));
-  //     if (ent.vars.model.endsWith('.bsp')) { // use model information instead
-  //       body.addShape(SV._CreateTrimeshFromBSP(Mod.ForName(ent.vars.model)));
+  //     //body.addShape(new CANNON.Box(new CANNON.Vec3(...ent.api.size)));
+  //     if (ent.api.model.endsWith('.bsp')) { // use model information instead
+  //       body.addShape(SV._CreateTrimeshFromBSP(Mod.ForName(ent.api.model)));
   //     }
   //     SV.server.cannon.world.addBody(body);
 
@@ -1977,9 +1977,9 @@ SV.PhysicsEngineRegisterEdict = function(ent) {
 };
 
 SV.Physics = function() {
-  SV.server.worldvars.time = SV.server.time;
-  SV.server.worldvars.other = null;
-  SV.server.worldvars.StartFrame(null);
+  SV.server.gameAPI.time = SV.server.time;
+  SV.server.gameAPI.other = null;
+  SV.server.gameAPI.StartFrame(null);
   let i; let ent;
   for (i = 0; i < SV.server.num_edicts; ++i) {
     ent = SV.server.edicts[i];
