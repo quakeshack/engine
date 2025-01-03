@@ -828,6 +828,8 @@ PR.opnames = [
   'BITAND', 'BITOR',
 ];
 
+// PR.executions = [];
+
 PR.PrintStatement = function(s) {
   let text;
   if (s.op < PR.opnames.length) {
@@ -856,6 +858,10 @@ PR.PrintStatement = function(s) {
     }
   }
   Con.Print(text + '\n');
+  // if (PR.executions.length > 50) {
+  //   PR.executions.shift();
+  // }
+  // PR.executions.push(text);
 };
 
 PR.StackTrace = function() {
@@ -954,7 +960,7 @@ PR.LeaveFunction = function() {
   return PR.stack[PR.depth][0];
 };
 
-PR.ExecuteProgram = function(fnum, trace = false) {
+PR.ExecuteProgram = function(fnum) {
   if ((fnum === 0) || (fnum >= PR.functions.length)) {
     if (PR.globals_int[PR.globalvars.self] !== 0) {
       ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
@@ -962,7 +968,6 @@ PR.ExecuteProgram = function(fnum, trace = false) {
     Host.Error('PR.ExecuteProgram: NULL function');
   }
   let runaway = 100000;
-  PR.trace = trace;
   const exitdepth = PR.depth;
   let s = PR.EnterFunction(PR.functions[fnum]);
   let st; let ed; let ptr; let newf;
@@ -975,7 +980,7 @@ PR.ExecuteProgram = function(fnum, trace = false) {
     }
     ++PR.xfunction.profile;
     PR.xstatement = s;
-    if (PR.trace === true) {
+    if (PR.trace) {
       PR.PrintStatement(st);
     }
     switch (st.op) {

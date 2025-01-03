@@ -1029,11 +1029,12 @@ SV.movestep = function(ent, move, relink) {
 };
 
 SV.ChangeYaw = function (ent) {
-  const current = Vector.anglemod(ent.v_float[PR.entvars.angles1]);
+  const angle1 = ent.v_float[PR.entvars.angles1];
+  const current = Vector.anglemod(angle1);
   const ideal = ent.v_float[PR.entvars.ideal_yaw];
 
   if (current === ideal) {
-    return;
+    return angle1;
   }
 
   let move = ideal - current;
