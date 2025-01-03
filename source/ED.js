@@ -190,7 +190,7 @@ ED.ParseGlobals = function(data) {
       Sys.Error('ED.ParseGlobals: closing brace without data');
     }
 
-    const key = ED.FindGlobal(keyname);
+    const key = ED.FindGlobal(keyname); // TODO: change to IsGlobal?
     if (!key) {
       Con.Print(`'${keyname}' is not a global\n`);
       continue;
@@ -202,7 +202,7 @@ ED.ParseGlobals = function(data) {
   }
 };
 
-ED.NewString = function(string) {
+ED.NewString = function(string) { // TODO: make private
   const newstring = []; let i; let c;
   for (i = 0; i < string.length; ++i) {
     c = string.charCodeAt(i);
@@ -216,7 +216,7 @@ ED.NewString = function(string) {
   return PR.NewString(newstring.join(''), string.length + 1);
 };
 
-ED.ParseEpair = function(base, key, s) {
+ED.ParseEpair = function(base, key, s) { // TODO: access through proxy
   const d_float = new Float32Array(base);
   const d_int = new Int32Array(base);
   let d;
@@ -332,7 +332,7 @@ ED.ParseEdict = function(data, ent) {
       continue;
     }
 
-    const key = ED.FindField(keyname);
+    const key = ED.FindField(keyname); // TODO: IsField?
 
     if (key == null) {
       Con.Print(`'${keyname}' is not a field\n`);
@@ -425,15 +425,15 @@ ED.LoadFromFile = function(data) {
 };
 
 /**
- *
- * @param {*} e
- * @param {*} o
- * @returns {Vector}
+ * @deprecated
  */
 ED.Vector = function(e, o) {
   return new Vector(e.v_float[o], e.v_float[o + 1], e.v_float[o + 2]);
 };
 
+/**
+ * @deprecated
+ */
 ED.SetVector = function(e, o, v) {
   e.v_float[o] = v[0];
   e.v_float[o + 1] = v[1];

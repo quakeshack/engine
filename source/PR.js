@@ -370,18 +370,8 @@ PR.EdictProxy = class EdictProxy {
             enumerable: true,
           });
           break;
-        case PR.etype.ev_pointer:
-        case PR.etype.ev_field:
-          Object.defineProperty(this, name, {
-            get: function() {
-              return val_int[ofs];
-            },
-            set: function(value) {
-              val_int[ofs] = value;
-            },
-            configurable: true,
-            enumerable: true,
-          });
+        case PR.etype.ev_pointer: // unused and irrelevant
+        case PR.etype.ev_field: // irrelevant, there is also no nesting
           break;
         case PR.etype.ev_float:
           Object.defineProperty(this, name, {
