@@ -365,7 +365,7 @@ ED.ParseEdict = function(data, ent) {
 ED.LoadFromFile = function(data) {
   let inhibit = 0;
   let ent = null;
-  PR.globals_float[PR.globalvars.time] = SV.server.time;
+  SV.server.worldvars.time = SV.server.time;
 
 // data += `
 
@@ -403,14 +403,14 @@ ED.LoadFromFile = function(data) {
       continue;
     }
 
-    if (!ent.v_int[PR.entvars.classname]) {
+    if (!ent.vars.classname) {
       Con.Print('No classname for:\n');
       ED.Print(ent);
       ED.Free(ent);
       continue;
     }
 
-    const func = ED.FindFunction(PR.GetString(ent.v_int[PR.entvars.classname]));
+    const func = SV.server.worldvars[ent.vars.classname];
     if (!func) {
       Con.Print('No spawn function for:\n');
       ED.Print(ent);
@@ -418,8 +418,7 @@ ED.LoadFromFile = function(data) {
       continue;
     }
 
-    PR.globals_int[PR.globalvars.self] = ent.num;
-    PR.ExecuteProgram(func);
+    SV.server.worldvars[ent.vars.classname](ent);
   }
 
   Con.DPrint(`${inhibit} entities inhibited\n`);

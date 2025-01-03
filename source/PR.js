@@ -233,8 +233,10 @@ PR.EntityProxy = class EntityProxy {
 /**
  * FIXME: function proxies need to become cached
  */
-PR.FunctionProxy = class FunctionProxy {
+PR.FunctionProxy = class FunctionProxy extends Function {
   constructor(fnc, ent = null) {
+    super();
+
     this.fnc = fnc;
     this.ent = ent;
     this._signature = null;
@@ -247,134 +249,18 @@ PR.FunctionProxy = class FunctionProxy {
       writable: false,
     });
 
-    // this._signature = FunctionProxy.signatures[name] || null;
-
-    // // TODO: we can determine the return and arg types by looking at the op codes of that function is going to use (PR.ExecuteProgram can do the return type for us)
-
-    // // we wait until hit an op code modifying st.a
-    // // there is always a return value stored in OFS_RETURN
-    // let returnType = PR.etype.ev_void;
-    // const argTypes = Array(PR.max_parms).map(() => PR.etype.ev_void);
-
-    // function getParameterPosition(ofs) {
-    //   if (ofs < PR.ofs.OFS_PARM0 || ofs > PR.ofs.OFS_PARM7) {
-    //     return null;
-    //   }
-
-    //   return (ofs - 4) / 3;
-    // }
-
-    // function testForParameterAccess(ofs, type) {
-    //   const pos = getParameterPosition(ofs);
-
-    //   if (!pos) {
-    //     return false;
-    //   }
-
-    //   argTypes[pos] = type;
-
-    //   return true;
-    // }
-
-    // function testForParametersAccess(st, type) {
-    //   testForParameterAccess(st.a, type);
-    //   testForParameterAccess(st.b, type);
-    //   testForParameterAccess(st.c, type);
-    // }
-
-    // for (let s = f.first_statement;; s++) {
-    //   const st = PR.statements[s];
-
-    //   if (!st) {
-    //     break;
-    //   }
-
-    //   switch (st.op) {
-    //     case PR.op.eq_e:
-    //     case PR.op.ne_e:
-    //       break;
-    //     case PR.op.load_ent:
-    //     case PR.op.store_ent:
-    //     case PR.op.storep_ent:
-    //     case PR.op.not_ent:
-    //       testForParametersAccess(st, PR.etype.ev_entity);
-    //       break;
-    //     case PR.op.mul_f:
-    //     case PR.op.div_f:
-    //     case PR.op.add_f:
-    //     case PR.op.sub_f:
-    //     case PR.op.eq_f:
-    //     case PR.op.ne_f:
-    //     case PR.op.load_f:
-    //     case PR.op.store_f:
-    //     case PR.op.storep_f:
-    //     case PR.op.not_f:
-    //       testForParametersAccess(st, PR.etype.ev_float);
-    //       break;
-    //     case PR.op.load_fld:
-    //     case PR.op.store_fld:
-    //     case PR.op.storep_fld:
-    //       testForParametersAccess(st, PR.etype.ev_field);
-    //       break;
-    //     case PR.op.eq_fnc:
-    //     case PR.op.ne_fnc:
-    //     case PR.op.load_fnc:
-    //     case PR.op.store_fnc:
-    //     case PR.op.storep_fnc:
-    //     case PR.op.not_fnc:
-    //       testForParametersAccess(st, PR.etype.ev_function);
-    //       break;
-    //     case PR.op.mul_fv:
-    //       testForParameterAccess(st.a, PR.etype.ev_float);
-    //       testForParameterAccess(st.b, PR.etype.ev_vector);
-    //       testForParameterAccess(st.c, PR.etype.ev_vector);
-    //       break;
-    //     case PR.op.eq_s:
-    //     case PR.op.ne_s:
-    //     case PR.op.load_s:
-    //     case PR.op.store_s:
-    //     case PR.op.storep_s:
-    //     case PR.op.not_s:
-    //       testForParametersAccess(st, PR.etype.ev_string);
-    //       break;
-    //     case PR.op.mul_v:
-    //     case PR.op.add_v:
-    //     case PR.op.sub_v:
-    //     case PR.op.eq_v:
-    //     case PR.op.ne_v:
-    //     case PR.op.load_v:
-    //     case PR.op.store_v:
-    //     case PR.op.storep_v:
-    //     case PR.op.not_v:
-    //       testForParametersAccess(st, PR.etype.ev_vector);
-    //       break;
-    //     case PR.op.mul_vf:
-    //       testForParameterAccess(st.a, PR.etype.ev_vector);
-    //       testForParameterAccess(st.b, PR.etype.ev_float);
-    //       testForParameterAccess(st.c, PR.etype.ev_vector);
-    //       break;
-
-    //     case PR.op.done:
-    //     case PR.op.ret:
-    //     case PR.op.call0:
-    //     case PR.op.call1:
-    //     case PR.op.call2:
-    //     case PR.op.call3:
-    //     case PR.op.call4:
-    //     case PR.op.call5:
-    //     case PR.op.call6:
-    //     case PR.op.call7:
-    //     case PR.op.call8:
-    //       continue;
-    //   }
-    // }
-
-    // this._signature = {
-    //   returnType,
-    //   argTypes,
-    // };
-
     Object.freeze(this);
+  }
+
+  static create(...args) {
+    const obj = new PR.FunctionProxy(...args);
+
+    // such an ugly hack to make objects actually callable
+    return new Proxy(obj, {
+      apply(target, thisArg, args) {
+        return obj.call(...args);
+      },
+    });
   }
 
   /**
@@ -382,7 +268,7 @@ PR.FunctionProxy = class FunctionProxy {
    * @param {*} self (optional) the edict for self
    */
   // eslint-disable-next-line no-unused-vars
-  call(self, ...args) {
+  call(self, ...args) { // TODO: args
     PR.globals_int[PR.globalvars.self] = self ? self.num : 0;
 
     // assume return type void and no args
@@ -451,10 +337,15 @@ PR.EdictProxy = class EdictProxy {
                 val_int[ofs] = 0;
                 return;
               }
-              if (!(value instanceof PR.EntityProxy)) {
-                throw new TypeError('Expected EntityProxy');
+              if (value instanceof PR.EntityProxy) {
+                val_int[ofs] = value.ent;
+                return;
               }
-              val_int[ofs] = value.ent;
+              if (typeof(value.num) !== 'undefined') { // TODO: Edict class
+                val_int[ofs];
+                return;
+              }
+              throw new TypeError('Expected EntityProxy or Edict');
             },
             configurable: true,
             enumerable: true,
@@ -463,7 +354,7 @@ PR.EdictProxy = class EdictProxy {
         case PR.etype.ev_function:
           Object.defineProperty(this, name, {
             get: function() {
-              return val_int[ofs] > 0 ? new PR.FunctionProxy(val_int[ofs], ed) : null;
+              return val_int[ofs] > 0 ? PR.FunctionProxy.create(val_int[ofs], ed) : null;
             },
             set: function(value) {
               if (value === null) {

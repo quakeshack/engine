@@ -210,7 +210,7 @@ SV.ConnectClient = function(clientnum) {
   client.wishdir = new Vector();
   client.message.cursize = 0;
   client.edict = SV.server.edicts[clientnum + 1];
-  client.edict.v_int[PR.entvars.netname] = PR.netnames + (clientnum << 5);
+  client.edict.v_int[PR.entvars.netname] = PR.netnames + (clientnum << 5); // TODO: client.edict.vars.netname
   SV.SetClientName(client, 'unconnected');
   client.colors = 0;
   client.ping_times = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -226,9 +226,9 @@ SV.ConnectClient = function(clientnum) {
       client.spawn_parms[i] = spawn_parms[i];
     }
   } else {
-    PR.ExecuteProgram(PR.globals_int[PR.globalvars.SetNewParms]);
+    SV.server.worldvars.SetNewParms(client.edict);
     for (i = 0; i <= 15; ++i) {
-      client.spawn_parms[i] = PR.globals_float[PR.globalvars.parms + i];
+      client.spawn_parms[i] = PR.globals_float[PR.globalvars.parms + i]; // TODO: SV.server.worldvars.parms
     }
   }
   SV.SendServerinfo(client);
@@ -721,8 +721,7 @@ SV.SaveSpawnparms = function() {
     if (Host.client.active !== true) {
       continue;
     }
-    PR.globals_int[PR.globalvars.self] = Host.client.edict.num;
-    PR.ExecuteProgram(PR.globals_int[PR.globalvars.SetChangeParms]);
+    SV.server.worldvars.SetChangeParms(Host.client.edict);
     for (j = 0; j <= 15; ++j) {
       Host.client.spawn_parms[j] = PR.globals_float[PR.globalvars.parms + j];
     }
@@ -773,7 +772,7 @@ SV.SpawnServer = function(server) {
   SV.server.edicts = [];
   let ed;
   for (i = 0; i < Def.max_edicts; ++i) {
-    ed = {
+    ed = { // TODO: Make an Edict class
       num: i,
       free: false,
       area: {},
@@ -1207,10 +1206,9 @@ SV.RunThink = function(ent) {
     thinktime = SV.server.time;
   }
   ent.v_float[PR.entvars.nextthink] = 0.0;
-  PR.globals_float[PR.globalvars.time] = thinktime;
-  PR.globals_int[PR.globalvars.self] = ent.num;
-  PR.globals_int[PR.globalvars.other] = 0;
-  PR.ExecuteProgram(ent.v_int[PR.entvars.think]);
+  SV.server.worldvars.time = thinktime;
+  SV.server.worldvars.other = null;
+  ent.vars.think(ent);
   return (ent.free !== true);
 };
 
@@ -1667,9 +1665,8 @@ SV.Physics_Client = function(ent) {
   if (SV.svs.clients[ent.num - 1].active !== true) {
     return;
   }
-  PR.globals_float[PR.globalvars.time] = SV.server.time;
-  PR.globals_int[PR.globalvars.self] = ent.num;
-  PR.ExecuteProgram(PR.globals_int[PR.globalvars.PlayerPreThink]);
+  SV.server.worldvars.time = SV.server.time;
+  SV.server.worldvars.PlayerPreThink(ent);
   SV.CheckVelocity(ent);
   const movetype = ent.v_float[PR.entvars.movetype] >> 0;
   if ((movetype === SV.movetype.toss) || (movetype === SV.movetype.bounce)) {
@@ -1701,9 +1698,8 @@ SV.Physics_Client = function(ent) {
     }
   }
   SV.LinkEdict(ent, true);
-  PR.globals_float[PR.globalvars.time] = SV.server.time;
-  PR.globals_int[PR.globalvars.self] = ent.num;
-  PR.ExecuteProgram(PR.globals_int[PR.globalvars.PlayerPostThink]);
+  SV.server.worldvars.time = SV.server.time;
+  SV.server.worldvars.PlayerPostThink(ent);
 };
 
 SV.Physics_Noclip = function(ent) {
@@ -1981,10 +1977,9 @@ SV.PhysicsEngineRegisterEdict = function(ent) {
 };
 
 SV.Physics = function() {
-  PR.globals_int[PR.globalvars.self] = 0;
-  PR.globals_int[PR.globalvars.other] = 0;
-  PR.globals_float[PR.globalvars.time] = SV.server.time;
-  PR.ExecuteProgram(PR.globals_int[PR.globalvars.StartFrame]);
+  SV.server.worldvars.time = SV.server.time;
+  SV.server.worldvars.other = null;
+  SV.server.worldvars.StartFrame(null);
   let i; let ent;
   for (i = 0; i < SV.server.num_edicts; ++i) {
     ent = SV.server.edicts[i];
