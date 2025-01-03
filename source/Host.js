@@ -1432,7 +1432,7 @@ Host.FindViewthing = function() {
   if (SV.server.active === true) {
     for (i = 0; i < SV.server.num_edicts; ++i) {
       e = SV.server.edicts[i];
-      if (PR.GetString(e.v_int[PR.entvars.classname]) === 'viewthing') {
+      if (e.api.classname === 'viewthing') {
         return e;
       }
     }

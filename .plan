@@ -8,6 +8,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 * [_] show chatlog also in coop mode
 * [_] DS: show the name of the person’s chat message in console message
+* [_] CL/SV: name change on local game makes the message emit twice
 
 ### Network improvements
 
@@ -79,19 +80,21 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * introduce server game code as JavaScript modules
 * but keep backward compatibility and have interfaces available
 * would allow to write easier and better custom mods
+* there are a few AST modules, using an AST would allow transpiling QC to JS
 
 #### QuakeC VM proxy and its mess
 
 * Added `PR.EntityProxy` to proxy entities from edicts (`PR.etype.ev_entity`): stubbish,
 * Added `PR.EdictProxy` to proxy edicts, accessing strings, floats, vectors, functions
-* There is `SV.server.worldvars` to map `globaldefs`
-* There is `SV.server.edicts[].vars` to map `fielddefs`
+* There is `SV.server.gameAPI` to map `globaldefs`
+* There is `SV.server.edicts[].api` to map `fielddefs`
 * There are too many variables floating around in `progs.dat`, need to parse `progsdef.h` in order to maintain a more strict list
 * Need to restructure things better:
   * there should be a `Progs` class/interface, this is then managing all access and how things are accessed
   * `GameInterface` --> will provide all functions and variables for global things (in PR land: `new EdictProxy(null)`)
   * `EdictInterface` --> will provide all functions and variables for edict/entity things (in PR land: `new EdictProxy(ent)`)
   * `EngineInterface` --> will basically provide `PF.builtin` in a meaningful way (in PR land: that PF mess)
+* ~`PR.NewString` and `PR.TempString`: NewString is leaky, need to think of a better solution~
 
 ### More multiplayer features
 
@@ -125,6 +128,8 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * introduced `SV.server.worldvars`
 * also introduced proper function call proxy to execute PR functions
 * ED/PR: seems like fielddefs are barely used (except save/load and parsing from Edict text)
+* ED/PR: introduced `PR.SetString` able to recycle memory and update in place
+* ED: parsing requires knowledge about the structure in order to set entvars, getting rid of PR reliance is hard
 
 ```
 const player = SV.server.edicts.find((ent) => ent.vars.classname === 'player');

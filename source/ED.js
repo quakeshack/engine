@@ -202,10 +202,10 @@ ED.ParseGlobals = function(data) {
   }
 };
 
-ED.NewString = function(string) { // TODO: make private
-  const newstring = []; let i; let c;
-  for (i = 0; i < string.length; ++i) {
-    c = string.charCodeAt(i);
+ED._NewString = function(string) {
+  const newstring = [];
+  for (let i = 0; i < string.length; ++i) {
+    const c = string.charCodeAt(i);
     if ((c === 92) && (i < (string.length - 1))) {
       ++i;
       newstring[newstring.length] = (string.charCodeAt(i) === 110) ? '\n' : '\\';
@@ -213,19 +213,19 @@ ED.NewString = function(string) { // TODO: make private
       newstring[newstring.length] = String.fromCharCode(c);
     }
   }
-  return PR.NewString(newstring.join(''), string.length + 1);
+  return PR.SetString(null, newstring.join(''));
 };
 
-ED.ParseEpair = function(base, key, s) { // TODO: access through proxy
-  const d_float = new Float32Array(base);
-  const d_int = new Int32Array(base);
+ED.ParseEpair = function(ent, key, s) { // TODO: access through proxy
+  const d_float = new Float32Array(ent.v);
+  const d_int = new Int32Array(ent.v);
   let d;
   let v;
 
   switch (key.type & ~PR.saveglobal) {
     case PR.etype.ev_string:
       // Parse a string and store it
-      d_int[key.ofs] = ED.NewString(s);
+      d_int[key.ofs] = ED._NewString(s);
       return true;
 
     case PR.etype.ev_float:
@@ -343,7 +343,7 @@ ED.ParseEdict = function(data, ent) {
       COM.token = `0 ${COM.token} 0`;
     }
 
-    if (ED.ParseEpair(ent.v, key, COM.token) !== true) {
+    if (ED.ParseEpair(ent, key, COM.token) !== true) {
       Host.Error('ED.ParseEdict: parse error');
     }
 

@@ -334,7 +334,7 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
               return val_int[ofs] > 0 ? PR.GetString(val_int[ofs]) : null;
             },
             set: function(value) {
-              val_int[ofs] = value !== null ? PR.TempString(value) : 0; // FIXME: NewString?
+              val_int[ofs] = value !== null && value !== '' ? PR.SetString(val_int[ofs], value) : 0;
             },
             configurable: true,
             enumerable: true,
@@ -355,7 +355,7 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
                 return;
               }
               if (typeof(value.num) !== 'undefined') { // TODO: Edict class
-                val_int[ofs];
+                val_int[ofs] = value.num;
                 return;
               }
               throw new TypeError('Expected EntityProxy or Edict');
@@ -374,10 +374,23 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
                 val_int[ofs] = 0;
                 return;
               }
-              if (!(value instanceof PR.FunctionProxy)) {
-                throw new TypeError('Expected FunctionProxy');
+              if (value instanceof PR.FunctionProxy) {
+                val_int[ofs] = value.fnc;
+                return;
               }
-              val_int[ofs] = value.fnc;
+              if (typeof(value) === 'string') {
+                const d = ED.FindFunction(value);
+                if (!d) {
+                  throw new TypeError('Invalid function: ' + value);
+                }
+                val_int[ofs] = d;
+                return;
+              }
+              if (typeof(value.fnc) !== 'undefined') { // TODO: Edict class
+                val_int[ofs] = value.fnc;
+                return;
+              }
+              throw new TypeError('Expected FunctionProxy, function name or function ID');
             },
             configurable: true,
             enumerable: true,
@@ -392,6 +405,9 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
               return val_float[ofs];
             },
             set: function(value) {
+              if (value === undefined || isNaN(value)) {
+                throw new TypeError('EdictProxy.' + name + ': invalid value for ev_float passed: ' + value);
+              }
               val_float[ofs] = value;
             },
             configurable: true,
@@ -746,8 +762,11 @@ PR.LoadProgs = function() {
   for (i = 0; i < num; ++i) {
     PR.strings[i] = view.getUint8(ofs + i);
   }
-  PR.string_temp = PR.NewString('', 128);
-  PR.netnames = PR.NewString('', SV.svs.maxclients << 5);
+  PR.string_temp = PR.NewString('', 128); // allocates 128 bytes
+  PR.netnames = PR.NewString('', SV.svs.maxclients << 5); // allocates 32 bytes for each client
+
+  PR.string_heap_start = PR.strings.length + 4;
+  PR.string_heap_current = PR.string_heap_start;
 
   ofs = view.getUint32(48, true);
   num = view.getUint32(52, true);
@@ -1212,6 +1231,45 @@ PR.GetString = function(num) {
   return string.join('');
 };
 
+PR._StringLength = function(ofs) {
+  let len = 0;
+
+  while(PR.strings[ofs+len]) {
+    len++;
+  }
+
+  return len;
+}
+
+PR.SetString = function(ofs, s, length = null) {
+  // shortcut: empty strings are located at 0x0000
+  if (s === '') {
+    return 0;
+  }
+
+  const size = (length !== null ? Math.max(s.length, length || 0) : s.length) + 1;
+
+  // check if it’s going to overwrite a constant (ofs < PR.string_heap_start)
+  // check if we can overwrite in place (s.length < &PR.strings[ofs].length)
+  if (ofs === null || ofs < PR.string_heap_start || PR._StringLength(ofs) <= size) {
+    ofs = PR.string_heap_current;
+    PR.string_heap_current += size;
+  }
+
+  // overwrite found spot with s
+  for (let i = 0; i < s.length; i++) {
+    PR.strings[ofs + i] = s.charCodeAt(i);
+  }
+
+  // add 0-byte string terminator
+  PR.strings[ofs + s.length] = 0;
+
+  return ofs;
+};
+
+/**
+ * @deprecated
+ */
 PR.NewString = function(s, length) {
   const ofs = PR.strings.length;
   let i;

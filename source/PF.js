@@ -41,12 +41,12 @@ PF.setorigin = function PF_setorigin() {
   SV.LinkEdict(e);
 };
 
-PF.SetMinMaxSize = function(e, min, max) {
+PF._SetMinMaxSize = function(e, min, max) {
   if ((min[0] > max[0]) || (min[1] > max[1]) || (min[2] > max[2])) {
     PR.RunError('backwards mins/maxs');
   }
-  ED.SetVector(e, PR.entvars.mins, min);
-  ED.SetVector(e, PR.entvars.maxs, max);
+  e.api.mins = min;
+  e.api.maxs = max;
   e.v_float[PR.entvars.size] = max[0] - min[0];
   e.v_float[PR.entvars.size1] = max[1] - min[1];
   e.v_float[PR.entvars.size2] = max[2] - min[2];
@@ -54,7 +54,7 @@ PF.SetMinMaxSize = function(e, min, max) {
 };
 
 PF.setsize = function PF_setsize() {
-  PF.SetMinMaxSize(SV.server.edicts[PR.globals_int[4]],
+  PF._SetMinMaxSize(SV.server.edicts[PR.globals_int[4]],
       new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
       new Vector(PR.globals_float[10], PR.globals_float[11], PR.globals_float[12]));
 };
@@ -76,9 +76,9 @@ PF.setmodel = function PF_setmodel() {
   e.v_float[PR.entvars.modelindex] = i;
   const mod = SV.server.models[i];
   if (mod != null) {
-    PF.SetMinMaxSize(e, mod.mins, mod.maxs);
+    PF._SetMinMaxSize(e, mod.mins, mod.maxs);
   } else {
-    PF.SetMinMaxSize(e, Vector.origin, Vector.origin);
+    PF._SetMinMaxSize(e, Vector.origin, Vector.origin);
   }
 };
 
@@ -225,7 +225,7 @@ PF.traceline = function PF_traceline() {
   PR.globals_int[PR.globalvars.trace_ent] = (trace.ent != null) ? trace.ent.num : 0;
 };
 
-PF.newcheckclient = function(check) {
+PF._newcheckclient = function(check) {
   if (check <= 0) {
     check = 1;
   } else if (check > SV.svs.maxclients) {
@@ -262,7 +262,7 @@ PF.newcheckclient = function(check) {
 
 PF.checkclient = function PF_checkclient() {
   if ((SV.server.time - SV.server.lastchecktime) >= 0.1) {
-    SV.server.lastcheck = PF.newcheckclient(SV.server.lastcheck);
+    SV.server.lastcheck = PF._newcheckclient(SV.server.lastcheck);
     SV.server.lastchecktime = SV.server.time;
   }
   const ent = SV.server.edicts[SV.server.lastcheck];
@@ -466,14 +466,14 @@ PF.walkmove = function PF_walkmove() {
 
 PF.droptofloor = function PF_droptofloor() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  const trace = SV.Move(ED.Vector(ent, PR.entvars.origin),
-      ED.Vector(ent, PR.entvars.mins), ED.Vector(ent, PR.entvars.maxs),
+  const trace = SV.Move(ent.api.origin,
+      ent.api.mins, ent.api.maxs,
       new Vector(ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] - 256.0), 0, ent);
   if ((trace.fraction === 1.0) || (trace.allsolid === true)) {
     PR.globals_float[1] = 0.0;
     return;
   }
-  ED.SetVector(ent, PR.entvars.origin, trace.endpos);
+  ent.api.origin = trace.endpos;
   SV.LinkEdict(ent);
   ent.v_float[PR.entvars.flags] |= SV.fl.onground;
   ent.v_int[PR.entvars.groundentity] = trace.ent.num;
@@ -649,7 +649,7 @@ PF.makestatic = function PF_makestatic() {
   const ent = SV.server.edicts[PR.globals_int[4]];
   const message = SV.server.signon;
   MSG.WriteByte(message, Protocol.svc.spawnstatic);
-  MSG.WriteByte(message, SV.ModelIndex(PR.GetString(ent.v_int[PR.entvars.model])));
+  MSG.WriteByte(message, SV.ModelIndex(ent.api.model));
   MSG.WriteByte(message, ent.v_float[PR.entvars.frame]);
   MSG.WriteByte(message, ent.v_float[PR.entvars.colormap]);
   MSG.WriteByte(message, ent.v_float[PR.entvars.skin]);

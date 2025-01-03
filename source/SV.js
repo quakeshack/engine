@@ -168,7 +168,7 @@ SV.SendServerinfo = function(client) {
   MSG.WriteLong(message, Protocol.version);
   MSG.WriteByte(message, SV.svs.maxclients);
   MSG.WriteByte(message, ((Host.coop.value === 0) && (Host.deathmatch.value !== 0)) ? 1 : 0);
-  MSG.WriteString(message, PR.GetString(SV.server.edicts[0].v_int[PR.entvars.message]));
+  MSG.WriteString(message, SV.server.edicts[0].api.message);
   let i;
   for (i = 1; i < SV.server.model_precache.length; ++i) {
     MSG.WriteString(message, SV.server.model_precache[i]);
@@ -520,7 +520,7 @@ SV.WriteClientdataToMessage = function(ent, msg) {
   if ((bits & Protocol.su.armor) !== 0) {
     MSG.WriteByte(msg, ent.v_float[PR.entvars.armorvalue]);
   }
-  MSG.WriteByte(msg, SV.ModelIndex(PR.GetString(ent.v_int[PR.entvars.weaponmodel])));
+  MSG.WriteByte(msg, SV.ModelIndex(ent.api.weaponmodel));
   MSG.WriteShort(msg, ent.v_float[PR.entvars.health]);
   MSG.WriteByte(msg, ent.v_float[PR.entvars.currentammo]);
   MSG.WriteByte(msg, ent.v_float[PR.entvars.ammo_shells]);
@@ -696,7 +696,7 @@ SV.CreateBaseline = function() {
       baseline.modelindex = player;
     } else {
       baseline.colormap = 0;
-      baseline.modelindex = SV.ModelIndex(PR.GetString(svent.v_int[PR.entvars.model]));
+      baseline.modelindex = SV.ModelIndex(svent.api.model);
     }
     MSG.WriteByte(signon, Protocol.svc.spawnbaseline);
     MSG.WriteShort(signon, i);
@@ -841,19 +841,19 @@ SV.SpawnServer = function(server) {
   }
 
   const ent = SV.server.edicts[0];
-  ent.v_int[PR.entvars.model] = PR.NewString(SV.server.modelname, 64);
-  ent.v_float[PR.entvars.modelindex] = 1.0;
-  ent.v_float[PR.entvars.solid] = SV.solid.bsp;
-  ent.v_float[PR.entvars.movetype] = SV.movetype.push;
+  ent.api.model = SV.server.modelname;
+  ent.api.modelindex = 1.0;
+  ent.api.solid = SV.solid.bsp;
+  ent.api.movetype = SV.movetype.push;
 
   if (Host.coop.value !== 0) {
-    PR.globals_float[PR.globalvars.coop] = Host.coop.value;
+    ent.api.coop = Host.coop.value;
   } else {
-    PR.globals_float[PR.globalvars.deathmatch] = Host.deathmatch.value;
+    ent.api.deathmatch = Host.deathmatch.value;
   }
 
-  PR.globals_int[PR.globalvars.mapname] = PR.NewString(server, 64);
-  PR.globals_float[PR.globalvars.serverflags] = SV.svs.serverflags;
+  ent.api.mapname = server;
+  ent.api.serverflags = SV.svs.serverflags;
   ED.LoadFromFile(SV.server.worldmodel.entities);
   SV.server.active = true;
   SV.server.loading = false;
@@ -1181,11 +1181,11 @@ SV.CheckVelocity = function(ent) {
   for (i = 0; i <= 2; ++i) {
     velocity = ent.v_float[PR.entvars.velocity + i];
     if (Q.isNaN(velocity) === true) {
-      Con.Print('Got a NaN velocity on ' + PR.GetString(ent.v_int[PR.entvars.classname]) + '\n');
+      Con.Print('Got a NaN velocity on ' + ent.api.classname + '\n');
       velocity = 0.0;
     }
     if (Q.isNaN(ent.v_float[PR.entvars.origin + i]) === true) {
-      Con.Print('Got a NaN origin on ' + PR.GetString(ent.v_int[PR.entvars.classname]) + '\n');
+      Con.Print('Got a NaN origin on ' + ent.api.classname + '\n');
       ent.v_float[PR.entvars.origin + i] = 0.0;
     }
     if (velocity > SV.maxvelocity.value) {
