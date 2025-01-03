@@ -687,8 +687,8 @@ SV.CreateBaseline = function() {
       continue;
     }
     baseline = svent.baseline;
-    baseline.origin = ED.Vector(svent, PR.entvars.origin);
-    baseline.angles = ED.Vector(svent, PR.entvars.angles);
+    baseline.origin = svent.api.origin;
+    baseline.angles = svent.api.angles;
     baseline.frame = svent.v_float[PR.entvars.frame] >> 0;
     baseline.skin = svent.v_float[PR.entvars.skin] >> 0;
     if ((i > 0) && (i <= SV.server.maxclients)) {
@@ -788,11 +788,11 @@ SV.SpawnServer = function(server) {
         effects: 0,
       },
       freetime: 0.0,
-      v: new ArrayBuffer(PR.entityfields << 2),
+      v: new ArrayBuffer(PR.entityfields * 4), // FIXME: private data for PR/PR only (// entityfields times 32 bits)
     };
     ed.area.ent = ed;
-    ed.v_float = new Float32Array(ed.v);
-    ed.v_int = new Int32Array(ed.v);
+    ed.v_float = new Float32Array(ed.v); // FIXME: private data for PR/PR only
+    ed.v_int = new Int32Array(ed.v); // FIXME: private data for PR/PR only
     ed.api = new GameEntityAPI(ed);
     SV.server.edicts[i] = ed;
   }
@@ -940,9 +940,9 @@ SV.CheckBottom = function(ent) {
 };
 
 SV.movestep = function(ent, move, relink) {
-  const oldorg = ED.Vector(ent, PR.entvars.origin);
+  const oldorg = ent.api.origin;
   const neworg = new Vector();
-  const mins = ED.Vector(ent, PR.entvars.mins); const maxs = ED.Vector(ent, PR.entvars.maxs);
+  const mins = ent.api.mins; const maxs = ent.api.maxs;
   let trace;
   if ((ent.v_float[PR.entvars.flags] & (SV.fl.swim + SV.fl.fly)) !== 0) {
     let i; const enemy = ent.v_int[PR.entvars.enemy]; let dz;
@@ -958,7 +958,7 @@ SV.movestep = function(ent, move, relink) {
           neworg[2] += 8.0;
         }
       }
-      trace = SV.Move(ED.Vector(ent, PR.entvars.origin), mins, maxs, neworg, 0, ent);
+      trace = SV.Move(ent.api.origin, mins, maxs, neworg, 0, ent);
       if (trace.fraction === 1.0) {
         if (((ent.v_float[PR.entvars.flags] & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === Mod.contents.empty)) {
           return 0;
@@ -1063,11 +1063,11 @@ SV.StepDirection = function(ent, yaw, dist) {
   ent.v_float[PR.entvars.ideal_yaw] = yaw;
   ent.v_float[PR.entvars.angles1] = SV.ChangeYaw(ent);
   yaw *= Math.PI / 180.0;
-  const oldorigin = ED.Vector(ent, PR.entvars.origin);
+  const oldorigin = ent.api.origin;
   if (SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], false) === 1) {
     const delta = ent.v_float[PR.entvars.angles1] - ent.v_float[PR.entvars.ideal_yaw];
     if ((delta > 45.0) && (delta < 315.0)) {
-      ED.SetVector(ent, PR.entvars.origin, oldorigin);
+      ent.api.origin = oldorigin;
     }
     SV.LinkEdict(ent, true);
     return true;
@@ -1254,8 +1254,8 @@ SV.FlyMove = function(ent, time) {
   let numplanes = 0;
   let dir; let d;
   const planes = []; let plane;
-  const primal_velocity = ED.Vector(ent, PR.entvars.velocity);
-  let original_velocity = ED.Vector(ent, PR.entvars.velocity);
+  const primal_velocity = ent.api.velocity;
+  let original_velocity = ent.api.velocity;
   const new_velocity = new Vector();
   let i; let j;
   let trace;
@@ -1271,14 +1271,14 @@ SV.FlyMove = function(ent, time) {
     end[0] = ent.v_float[PR.entvars.origin] + time_left * ent.v_float[PR.entvars.velocity];
     end[1] = ent.v_float[PR.entvars.origin1] + time_left * ent.v_float[PR.entvars.velocity1];
     end[2] = ent.v_float[PR.entvars.origin2] + time_left * ent.v_float[PR.entvars.velocity2];
-    trace = SV.Move(ED.Vector(ent, PR.entvars.origin), ED.Vector(ent, PR.entvars.mins), ED.Vector(ent, PR.entvars.maxs), end, 0, ent);
+    trace = SV.Move(ent.api.origin, ent.api.mins, ent.api.maxs, end, 0, ent);
     if (trace.allsolid === true) {
-      ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
+      ent.api.velocity = Vector.origin;
       return 3;
     }
     if (trace.fraction > 0.0) {
-      ED.SetVector(ent, PR.entvars.origin, trace.endpos);
-      original_velocity = ED.Vector(ent, PR.entvars.velocity);
+      ent.api.origin = trace.endpos;
+      original_velocity = ent.api.velocity;
       numplanes = 0;
       if (trace.fraction === 1.0) {
         break;
@@ -1303,7 +1303,7 @@ SV.FlyMove = function(ent, time) {
     }
     time_left -= time_left * trace.fraction;
     if (numplanes >= 5) {
-      ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
+      ent.api.velocity = Vector.origin;
       return 3;
     }
     planes[numplanes++] = trace.plane.normal.copy();
@@ -1322,10 +1322,10 @@ SV.FlyMove = function(ent, time) {
       }
     }
     if (i !== numplanes) {
-      ED.SetVector(ent, PR.entvars.velocity, new_velocity);
+      ent.api.velocity = new_velocity;
     } else {
       if (numplanes !== 2) {
-        ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
+        ent.api.velocity = Vector.origin;
         return 7;
       }
       dir = planes[0].cross(planes[1]);
@@ -1339,7 +1339,7 @@ SV.FlyMove = function(ent, time) {
     if ((ent.v_float[PR.entvars.velocity] * primal_velocity[0] +
 			ent.v_float[PR.entvars.velocity1] * primal_velocity[1] +
 			ent.v_float[PR.entvars.velocity2] * primal_velocity[2]) <= 0.0) {
-      ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
+      ent.api.velocity = Vector.origin;
       return blocked;
     }
   }
@@ -1371,9 +1371,9 @@ SV.PushEntity = function(ent, push) {
   } else {
     nomonsters = SV.move.normal;
   }
-  const trace = SV.Move(ED.Vector(ent, PR.entvars.origin), ED.Vector(ent, PR.entvars.mins),
-      ED.Vector(ent, PR.entvars.maxs), end, nomonsters, ent);
-  ED.SetVector(ent, PR.entvars.origin, trace.endpos);
+  const trace = SV.Move(ent.api.origin, ent.api.mins,
+      ent.api.maxs, end, nomonsters, ent);
+  ent.api.origin = trace.endpos;
   SV.LinkEdict(ent, true);
   if (trace.ent != null) {
     SV.Impact(ent, trace.ent);
@@ -1403,7 +1403,7 @@ SV.PushMove = function(pusher, movetime) {
     pusher.v_float[PR.entvars.absmax1] + move[1],
     pusher.v_float[PR.entvars.absmax2] + move[2],
   );
-  const pushorig = ED.Vector(pusher, PR.entvars.origin);
+  const pushorig = pusher.api.origin;
   pusher.v_float[PR.entvars.origin] += move[0];
   pusher.v_float[PR.entvars.origin1] += move[1];
   pusher.v_float[PR.entvars.origin2] += move[2];
@@ -1439,7 +1439,7 @@ SV.PushMove = function(pusher, movetime) {
     if (movetype !== SV.movetype.walk) {
       check.v_float[PR.entvars.flags] &= (~SV.fl.onground) >>> 0;
     }
-    entorig = ED.Vector(check, PR.entvars.origin);
+    entorig = check.api.origin;
     moved[moved.length] = [entorig[0], entorig[1], entorig[2], check];
     pusher.v_float[PR.entvars.solid] = SV.solid.not;
     SV.PushEntity(check, move);
@@ -1512,7 +1512,7 @@ SV.CheckStuck = function(ent) {
     ent.v_float[PR.entvars.oldorigin2] = ent.v_float[PR.entvars.origin2];
     return;
   }
-  const org = ED.Vector(ent, PR.entvars.origin);
+  const org = ent.api.origin;
   ent.v_float[PR.entvars.origin] = ent.v_float[PR.entvars.oldorigin];
   ent.v_float[PR.entvars.origin1] = ent.v_float[PR.entvars.oldorigin1];
   ent.v_float[PR.entvars.origin2] = ent.v_float[PR.entvars.oldorigin2];
@@ -1536,7 +1536,7 @@ SV.CheckStuck = function(ent) {
       }
     }
   }
-  ED.SetVector(ent, PR.entvars.origin, org);
+  ent.api.origin = org;
   Con.DPrint('player is stuck.\n');
 };
 
@@ -1568,7 +1568,7 @@ SV.CheckWater = function(ent) {
 };
 
 SV.WallFriction = function(ent, trace) {
-  const { forward } = ED.Vector(ent, PR.entvars.v_angle).angleVectors()
+  const { forward } = ent.api.v_angle.angleVectors()
   const normal = trace.plane.normal;
   let d = normal[0] * forward[0] + normal[1] * forward[1] + normal[2] * forward[2] + 0.5;
   if (d >= 0.0) {
@@ -1583,7 +1583,7 @@ SV.WallFriction = function(ent, trace) {
 };
 
 SV.TryUnstick = function(ent, oldvel) {
-  const oldorg = ED.Vector(ent, PR.entvars.origin);
+  const oldorg = ent.api.origin;
   const dir = new Vector(2.0, 0.0, 0.0);
   let i; let clip;
   for (i = 0; i <= 7; ++i) {
@@ -1605,17 +1605,17 @@ SV.TryUnstick = function(ent, oldvel) {
 			(Math.abs(oldorg[0] - ent.v_float[PR.entvars.origin]) > 4.0)) {
       return clip;
     }
-    ED.SetVector(ent, PR.entvars.origin, oldorg);
+    ent.api.origin = oldorg;
   }
-  ED.SetVector(ent, PR.entvars.velocity, Vector.origin);
+  ent.api.velocity = Vector.origin;
   return 7;
 };
 
 SV.WalkMove = function(ent) {
   const oldonground = ent.v_float[PR.entvars.flags] & SV.fl.onground;
   ent.v_float[PR.entvars.flags] ^= oldonground;
-  const oldorg = ED.Vector(ent, PR.entvars.origin);
-  const oldvel = ED.Vector(ent, PR.entvars.velocity);
+  const oldorg = ent.api.origin;
+  const oldvel = ent.api.velocity;
   let clip = SV.FlyMove(ent, Host.frametime);
   if ((clip & 2) === 0) {
     return;
@@ -1632,9 +1632,9 @@ SV.WalkMove = function(ent) {
   if ((SV.player.v_float[PR.entvars.flags] & SV.fl.waterjump) !== 0) {
     return;
   }
-  const nosteporg = ED.Vector(ent, PR.entvars.origin);
-  const nostepvel = ED.Vector(ent, PR.entvars.velocity);
-  ED.SetVector(ent, PR.entvars.origin, oldorg);
+  const nosteporg = ent.api.origin;
+  const nostepvel = ent.api.velocity;
+  ent.api.origin = oldorg;
   SV.PushEntity(ent, new Vector(0.0, 0.0, 18.0));
   ent.v_float[PR.entvars.velocity] = oldvel[0];
   ent.v_float[PR.entvars.velocity1] = oldvel[1];
@@ -1657,8 +1657,8 @@ SV.WalkMove = function(ent) {
     }
     return;
   }
-  ED.SetVector(ent, PR.entvars.origin, nosteporg);
-  ED.SetVector(ent, PR.entvars.velocity, nostepvel);
+  ent.api.origin = nosteporg;
+  ent.api.velocity = nostepvel;
 };
 
 SV.Physics_Client = function(ent) {
@@ -1716,7 +1716,7 @@ SV.Physics_Noclip = function(ent) {
 };
 
 SV.CheckWaterTransition = function(ent) {
-  const cont = SV.PointContents(ED.Vector(ent, PR.entvars.origin));
+  const cont = SV.PointContents(ent.api.origin);
   if (ent.v_float[PR.entvars.watertype] === 0.0) {
     ent.v_float[PR.entvars.watertype] = cont;
     ent.v_float[PR.entvars.waterlevel] = 1.0;
@@ -1762,8 +1762,8 @@ SV.Physics_Toss = function(ent) {
     return;
   }
   const velocity = new Vector();
-  SV.ClipVelocity(ED.Vector(ent, PR.entvars.velocity), trace.plane.normal, velocity, (movetype === SV.movetype.bounce) ? 1.5 : 1.0);
-  ED.SetVector(ent, PR.entvars.velocity, velocity);
+  SV.ClipVelocity(ent.api.velocity, trace.plane.normal, velocity, (movetype === SV.movetype.bounce) ? 1.5 : 1.0);
+  ent.api.velocity = velocity;
   if (trace.plane.normal[2] > 0.7) {
     if ((ent.v_float[PR.entvars.velocity2] < 60.0) || (movetype !== SV.movetype.bounce)) {
       ent.v_float[PR.entvars.flags] |= SV.fl.onground;
@@ -2117,7 +2117,7 @@ SV.Accelerate = function(wishvel, air) {
 
 SV.WaterMove = function() {
   const ent = SV.player; const cmd = Host.client.cmd;
-  const { forward, right } = ED.Vector(ent, PR.entvars.v_angle).angleVectors();
+  const { forward, right } = ent.api.v_angle.angleVectors();
   const wishvel = new Vector(
     forward[0] * cmd.forwardmove + right[0] * cmd.sidemove,
     forward[1] * cmd.forwardmove + right[1] * cmd.sidemove,
@@ -2181,7 +2181,7 @@ SV.WaterJump = function() {
 SV.AirMove = function() {
   const ent = SV.player;
   const cmd = Host.client.cmd;
-  const {forward, right} =   ED.Vector(ent, PR.entvars.angles).angleVectors();
+  const {forward, right} =   ent.api.angles.angleVectors();
   let fmove = cmd.forwardmove;
   const smove = cmd.sidemove;
   if ((SV.server.time < ent.v_float[PR.entvars.teleport_time]) && (fmove < 0.0)) {
@@ -2198,7 +2198,7 @@ SV.AirMove = function() {
     wishvel[2] = wishdir[2] * SV.maxspeed.value;
   }
   if (ent.v_float[PR.entvars.movetype] === SV.movetype.noclip) {
-    ED.SetVector(ent, PR.entvars.velocity, wishvel);
+    ent.api.velocity = wishvel;
   } else if ((ent.v_float[PR.entvars.flags] & SV.fl.onground) !== 0) {
     SV.UserFriction(wishvel);
     SV.Accelerate(wishvel);
@@ -2214,7 +2214,7 @@ SV.ClientThink = function() {
     return;
   }
 
-  const punchangle = ED.Vector(ent, PR.entvars.punchangle);
+  const punchangle = ent.api.punchangle;
   let len = punchangle.normalize() - 10.0 * Host.frametime;
   if (len < 0.0) {
     len = 0.0;
@@ -2227,7 +2227,7 @@ SV.ClientThink = function() {
     return;
   }
 
-  ent.v_float[PR.entvars.angles2] = V.CalcRoll(ED.Vector(ent, PR.entvars.angles), ED.Vector(ent, PR.entvars.velocity)) * 4.0;
+  ent.v_float[PR.entvars.angles2] = V.CalcRoll(ent.api.angles, ent.api.velocity) * 4.0;
   if (SV.player.v_float[PR.entvars.fixangle] === 0.0) {
     ent.v_float[PR.entvars.angles] = (ent.v_float[PR.entvars.v_angle] + ent.v_float[PR.entvars.punchangle]) / -3.0;
     ent.v_float[PR.entvars.angles1] = ent.v_float[PR.entvars.v_angle1] + ent.v_float[PR.entvars.punchangle1];
@@ -2669,8 +2669,8 @@ SV.PointContents = function(p) {
 };
 
 SV.TestEntityPosition = function(ent) {
-  const origin = ED.Vector(ent, PR.entvars.origin);
-  return SV.Move(origin, ED.Vector(ent, PR.entvars.mins), ED.Vector(ent, PR.entvars.maxs), origin, 0, ent).startsolid;
+  const origin = ent.api.origin;
+  return SV.Move(origin, ent.api.mins, ent.api.maxs, origin, 0, ent).startsolid;
 };
 
 SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {

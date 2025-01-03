@@ -4,8 +4,8 @@
 ED = {};
 
 ED.ClearEdict = function(e) {
-  let i;
-  for (i = 0; i < PR.entityfields; ++i) {
+  // resetting all vars (FIXME: PR only)
+  for (let i = 0; i < PR.entityfields; ++i) {
     e.v_int[i] = 0;
   }
   e.free = false;
@@ -40,8 +40,8 @@ ED.Free = function(ed) {
   ed.v_float[PR.entvars.colormap] = 0.0;
   ed.v_float[PR.entvars.skin] = 0.0;
   ed.v_float[PR.entvars.frame] = 0.0;
-  ED.SetVector(ed, PR.entvars.origin, Vector.origin);
-  ED.SetVector(ed, PR.entvars.angles, Vector.origin);
+  ed.api.origin = Vector.origin;
+  ed.api.angles = Vector.origin;
   ed.v_float[PR.entvars.nextthink] = -1.0;
   ed.v_float[PR.entvars.solid] = 0.0;
   ed.freetime = SV.server.time;
@@ -422,20 +422,4 @@ ED.LoadFromFile = function(data) {
   }
 
   Con.DPrint(`${inhibit} entities inhibited\n`);
-};
-
-/**
- * @deprecated
- */
-ED.Vector = function(e, o) {
-  return new Vector(e.v_float[o], e.v_float[o + 1], e.v_float[o + 2]);
-};
-
-/**
- * @deprecated
- */
-ED.SetVector = function(e, o, v) {
-  e.v_float[o] = v[0];
-  e.v_float[o + 1] = v[1];
-  e.v_float[o + 2] = v[2];
 };
