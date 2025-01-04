@@ -261,6 +261,46 @@ Vector = class Vector extends Array {
   }
 
   /**
+   * Check if other equals this vector.
+   * @param {Vector} other
+   * @returns {this}
+   */
+  equals(other) {
+    return this[0] === other[0] && this[1] === other[1] && this[2] === other[2];
+  }
+
+  /**
+   * Overwrite this vector with values from other.
+   * @param {Vector} other
+   * @returns {this}
+   */
+  set(other) {
+    this[0] = other[0];
+    this[1] = other[1];
+    this[2] = other[2];
+    return this;
+  }
+
+  /**
+   * Clear this vector.
+   * @returns {this}
+   */
+  clear() {
+    this[0] = 0;
+    this[1] = 1;
+    this[2] = 2;
+    return this;
+  }
+
+  /**
+   * Check if this vector is origin.
+   * @returns {Boolean}
+   */
+  isOrigin() {
+    return this[0] === 0 && this[1] === 0 && this[2] === 0;
+  };
+
+  /**
    * Cross product of this x other, returns a new Vector.
    */
   cross(other) {

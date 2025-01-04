@@ -179,8 +179,8 @@ SV.SendServerinfo = function(client) {
   }
   MSG.WriteByte(message, 0);
   MSG.WriteByte(message, Protocol.svc.cdtrack);
-  MSG.WriteByte(message, SV.server.edicts[0].v_float[PR.entvars.sounds]);
-  MSG.WriteByte(message, SV.server.edicts[0].v_float[PR.entvars.sounds]);
+  MSG.WriteByte(message, SV.server.edicts[0].api.sounds);
+  MSG.WriteByte(message, SV.server.edicts[0].api.sounds);
   MSG.WriteByte(message, Protocol.svc.setview);
   MSG.WriteShort(message, client.edict.num);
   MSG.WriteByte(message, Protocol.svc.signonnum);
@@ -297,16 +297,12 @@ SV.FatPVS = function(org) {
 };
 
 SV.WriteEntitiesToClient = function(clent, msg) {
-  SV.FatPVS(new Vector(
-    clent.v_float[PR.entvars.origin] + clent.v_float[PR.entvars.view_ofs],
-    clent.v_float[PR.entvars.origin1] + clent.v_float[PR.entvars.view_ofs1],
-    clent.v_float[PR.entvars.origin2] + clent.v_float[PR.entvars.view_ofs2],
-  ));
+  SV.FatPVS(clent.api.origin.copy().add(clent.api.view_ofs));
   const pvs = SV.fatpvs; let ent; let e; let i; let bits; let miss;
   for (e = 1; e < SV.server.num_edicts; ++e) {
     ent = SV.server.edicts[e];
     if (ent !== clent) {
-      if ((ent.v_float[PR.entvars.modelindex] === 0.0) || (PR.strings[ent.v_int[PR.entvars.model]] === 0)) {
+      if ((ent.api.modelindex === 0.0) || !ent.api.model) {
         continue;
       }
       for (i = 0; i < ent.leafnums.length; ++i) {
@@ -330,31 +326,32 @@ SV.WriteEntitiesToClient = function(clent, msg) {
         bits += Protocol.u.origin1 << i;
       }
     }
-    if (ent.v_float[PR.entvars.angles] !== ent.baseline.angles[0]) {
+    const angles = ent.api.angles, origin = ent.api.origin;
+    if (angles[0] !== ent.baseline.angles[0]) {
       bits += Protocol.u.angle1;
     }
-    if (ent.v_float[PR.entvars.angles1] !== ent.baseline.angles[1]) {
+    if (angles[1] !== ent.baseline.angles[1]) {
       bits += Protocol.u.angle2;
     }
-    if (ent.v_float[PR.entvars.angles2] !== ent.baseline.angles[2]) {
+    if (angles[2] !== ent.baseline.angles[2]) {
       bits += Protocol.u.angle3;
     }
-    if (ent.v_float[PR.entvars.movetype] === SV.movetype.step) {
+    if (ent.api.movetype === SV.movetype.step) {
       bits += Protocol.u.nolerp;
     }
-    if (ent.baseline.colormap !== ent.v_float[PR.entvars.colormap]) {
+    if (ent.baseline.colormap !== ent.api.colormap) {
       bits += Protocol.u.colormap;
     }
-    if (ent.baseline.skin !== ent.v_float[PR.entvars.skin]) {
+    if (ent.baseline.skin !== ent.api.skin) {
       bits += Protocol.u.skin;
     }
-    if (ent.baseline.frame !== ent.v_float[PR.entvars.frame]) {
+    if (ent.baseline.frame !== ent.api.frame) {
       bits += Protocol.u.frame;
     }
-    if (ent.baseline.effects !== ent.v_float[PR.entvars.effects]) {
+    if (ent.baseline.effects !== ent.api.effects) {
       bits += Protocol.u.effects;
     }
-    if (ent.baseline.modelindex !== ent.v_float[PR.entvars.modelindex]) {
+    if (ent.baseline.modelindex !== ent.api.modelindex) {
       bits += Protocol.u.model;
     }
     if (e >= 256) {
@@ -374,91 +371,88 @@ SV.WriteEntitiesToClient = function(clent, msg) {
       MSG.WriteByte(msg, e);
     }
     if ((bits & Protocol.u.model) !== 0) {
-      MSG.WriteByte(msg, ent.v_float[PR.entvars.modelindex]);
+      MSG.WriteByte(msg, ent.api.modelindex);
     }
     if ((bits & Protocol.u.frame) !== 0) {
-      MSG.WriteByte(msg, ent.v_float[PR.entvars.frame]);
+      MSG.WriteByte(msg, ent.api.frame);
     }
     if ((bits & Protocol.u.colormap) !== 0) {
-      MSG.WriteByte(msg, ent.v_float[PR.entvars.colormap]);
+      MSG.WriteByte(msg, ent.api.colormap);
     }
     if ((bits & Protocol.u.skin) !== 0) {
-      MSG.WriteByte(msg, ent.v_float[PR.entvars.skin]);
+      MSG.WriteByte(msg, ent.api.skin);
     }
     if ((bits & Protocol.u.effects) !== 0) {
-      MSG.WriteByte(msg, ent.v_float[PR.entvars.effects]);
+      MSG.WriteByte(msg, ent.api.effects);
     }
     if ((bits & Protocol.u.origin1) !== 0) {
-      MSG.WriteCoord(msg, ent.v_float[PR.entvars.origin]);
+      MSG.WriteCoord(msg, origin[0]);
     }
     if ((bits & Protocol.u.angle1) !== 0) {
-      MSG.WriteAngle(msg, ent.v_float[PR.entvars.angles]);
+      MSG.WriteAngle(msg, angles[0]);
     }
     if ((bits & Protocol.u.origin2) !== 0) {
-      MSG.WriteCoord(msg, ent.v_float[PR.entvars.origin1]);
+      MSG.WriteCoord(msg, origin[1]);
     }
     if ((bits & Protocol.u.angle2) !== 0) {
-      MSG.WriteAngle(msg, ent.v_float[PR.entvars.angles1]);
+      MSG.WriteAngle(msg, angles[1]);
     }
     if ((bits & Protocol.u.origin3) !== 0) {
-      MSG.WriteCoord(msg, ent.v_float[PR.entvars.origin2]);
+      MSG.WriteCoord(msg, origin[2]);
     }
     if ((bits & Protocol.u.angle3) !== 0) {
-      MSG.WriteAngle(msg, ent.v_float[PR.entvars.angles2]);
+      MSG.WriteAngle(msg, angles[2]);
     }
   }
 };
 
 SV.WriteClientdataToMessage = function(ent, msg) {
-  if ((ent.v_float[PR.entvars.dmg_take] !== 0.0) || (ent.v_float[PR.entvars.dmg_save] !== 0.0)) {
-    const other = SV.server.edicts[ent.v_int[PR.entvars.dmg_inflictor]];
+  if (((ent.api.dmg_take !== 0.0) || (ent.api.dmg_save !== 0.0)) && ent.api.dmg_inflictor) {
+    const other = ent.api.dmg_inflictor;
+    const vec = other.api.origin.copy().add(other.api.mins.copy().add(other.api.maxs).multiply(0.5));
     MSG.WriteByte(msg, Protocol.svc.damage);
-    MSG.WriteByte(msg, ent.v_float[PR.entvars.dmg_save]);
-    MSG.WriteByte(msg, ent.v_float[PR.entvars.dmg_take]);
-    MSG.WriteCoord(msg, other.v_float[PR.entvars.origin] + 0.5 * (other.v_float[PR.entvars.mins] + other.v_float[PR.entvars.maxs]));
-    MSG.WriteCoord(msg, other.v_float[PR.entvars.origin1] + 0.5 * (other.v_float[PR.entvars.mins1] + other.v_float[PR.entvars.maxs1]));
-    MSG.WriteCoord(msg, other.v_float[PR.entvars.origin2] + 0.5 * (other.v_float[PR.entvars.mins2] + other.v_float[PR.entvars.maxs2]));
-    ent.v_float[PR.entvars.dmg_take] = 0.0;
-    ent.v_float[PR.entvars.dmg_save] = 0.0;
+    MSG.WriteByte(msg, ent.api.dmg_save);
+    MSG.WriteByte(msg, ent.api.dmg_take);
+    MSG.WriteCoordVector(msg, vec);
+    ent.api.dmg_take = 0.0;
+    ent.api.dmg_save = 0.0;
   }
 
   SV.SetIdealPitch();
 
-  if (ent.v_float[PR.entvars.fixangle] !== 0.0) {
+  if (ent.api.fixangle !== 0.0) {
     MSG.WriteByte(msg, Protocol.svc.setangle);
-    MSG.WriteAngle(msg, ent.v_float[PR.entvars.angles]);
-    MSG.WriteAngle(msg, ent.v_float[PR.entvars.angles1]);
-    MSG.WriteAngle(msg, ent.v_float[PR.entvars.angles2]);
-    ent.v_float[PR.entvars.fixangle] = 0.0;
+    MSG.WriteAngleVector(msg, ent.api.angles);
+    ent.api.fixangle = 0.0;
   };
 
   let bits = Protocol.su.items + Protocol.su.weapon;
   if (ent.v_float[PR.entvars.view_ofs2] !== Protocol.default_viewheight) {
     bits += Protocol.su.viewheight;
   }
-  if (ent.v_float[PR.entvars.idealpitch] !== 0.0) {
+  if (ent.api.idealpitch !== 0.0) {
     bits += Protocol.su.idealpitch;
   }
 
   const val = PR.entvars.items2; let items;
   if (val != null) {
     if (ent.v_float[val] !== 0.0) {
-      items = (ent.v_float[PR.entvars.items] >> 0) + ((ent.v_float[val] << 23) >>> 0);
+      items = (ent.api.items >> 0) + ((ent.v_float[val] << 23) >>> 0);
     } else {
-      items = (ent.v_float[PR.entvars.items] >> 0) + ((PR.globals_float[PR.globalvars.serverflags] << 28) >>> 0);
+      items = (ent.api.items >> 0) + ((PR.globals_float[PR.globalvars.serverflags] << 28) >>> 0);
     }
   } else {
-    items = (ent.v_float[PR.entvars.items] >> 0) + ((PR.globals_float[PR.globalvars.serverflags] << 28) >>> 0);
+    items = (ent.api.items >> 0) + ((PR.globals_float[PR.globalvars.serverflags] << 28) >>> 0);
   }
 
-  if (ent.v_float[PR.entvars.flags] & SV.fl.onground) {
+  if (ent.api.flags & SV.fl.onground) {
     bits += Protocol.su.onground;
   }
-  if (ent.v_float[PR.entvars.waterlevel] >= 2.0) {
+  if (ent.api.waterlevel >= 2.0) {
     bits += Protocol.su.inwater;
   }
 
-  if (ent.v_float[PR.entvars.punchangle] !== 0.0) {
+  if (ent.api.punchangle !== 0.0) {
     bits += Protocol.su.punch1;
   }
   if (ent.v_float[PR.entvars.velocity] !== 0.0) {
@@ -477,10 +471,10 @@ SV.WriteClientdataToMessage = function(ent, msg) {
     bits += Protocol.su.velocity3;
   }
 
-  if (ent.v_float[PR.entvars.weaponframe] !== 0.0) {
+  if (ent.api.weaponframe !== 0.0) {
     bits += Protocol.su.weaponframe;
   }
-  if (ent.v_float[PR.entvars.armorvalue] !== 0.0) {
+  if (ent.api.armorvalue !== 0.0) {
     bits += Protocol.su.armor;
   }
 
@@ -490,11 +484,11 @@ SV.WriteClientdataToMessage = function(ent, msg) {
     MSG.WriteChar(msg, ent.v_float[PR.entvars.view_ofs2]);
   }
   if ((bits & Protocol.su.idealpitch) !== 0) {
-    MSG.WriteChar(msg, ent.v_float[PR.entvars.idealpitch]);
+    MSG.WriteChar(msg, ent.api.idealpitch);
   }
 
   if ((bits & Protocol.su.punch1) !== 0) {
-    MSG.WriteChar(msg, ent.v_float[PR.entvars.punchangle]);
+    MSG.WriteChar(msg, ent.api.punchangle);
   }
   if ((bits & Protocol.su.velocity1) !== 0) {
     MSG.WriteChar(msg, ent.v_float[PR.entvars.velocity] * 0.0625);
@@ -514,22 +508,22 @@ SV.WriteClientdataToMessage = function(ent, msg) {
 
   MSG.WriteLong(msg, items);
   if ((bits & Protocol.su.weaponframe) !== 0) {
-    MSG.WriteByte(msg, ent.v_float[PR.entvars.weaponframe]);
+    MSG.WriteByte(msg, ent.api.weaponframe);
   }
   if ((bits & Protocol.su.armor) !== 0) {
-    MSG.WriteByte(msg, ent.v_float[PR.entvars.armorvalue]);
+    MSG.WriteByte(msg, ent.api.armorvalue);
   }
   MSG.WriteByte(msg, SV.ModelIndex(ent.api.weaponmodel));
-  MSG.WriteShort(msg, ent.v_float[PR.entvars.health]);
-  MSG.WriteByte(msg, ent.v_float[PR.entvars.currentammo]);
-  MSG.WriteByte(msg, ent.v_float[PR.entvars.ammo_shells]);
-  MSG.WriteByte(msg, ent.v_float[PR.entvars.ammo_nails]);
-  MSG.WriteByte(msg, ent.v_float[PR.entvars.ammo_rockets]);
-  MSG.WriteByte(msg, ent.v_float[PR.entvars.ammo_cells]);
+  MSG.WriteShort(msg, ent.api.health);
+  MSG.WriteByte(msg, ent.api.currentammo);
+  MSG.WriteByte(msg, ent.api.ammo_shells);
+  MSG.WriteByte(msg, ent.api.ammo_nails);
+  MSG.WriteByte(msg, ent.api.ammo_rockets);
+  MSG.WriteByte(msg, ent.api.ammo_cells);
   if (COM.standard_quake === true) {
-    MSG.WriteByte(msg, ent.v_float[PR.entvars.weapon]);
+    MSG.WriteByte(msg, ent.api.weapon);
   } else {
-    let i; const weapon = ent.v_float[PR.entvars.weapon];
+    let i; const weapon = ent.api.weapon;
     for (i = 0; i <= 31; ++i) {
       if ((weapon & (1 << i)) !== 0) {
         MSG.WriteByte(msg, i);
@@ -582,8 +576,8 @@ SV.UpdateToReliableMessages = function() {
 
   for (i = 0; i < SV.svs.maxclients; ++i) {
     Host.client = SV.svs.clients[i];
-    Host.client.edict.v_float[PR.entvars.frags] >>= 0;
-    frags = Host.client.edict.v_float[PR.entvars.frags];
+    Host.client.edict.api.frags >>= 0;
+    frags = Host.client.edict.api.frags;
     if (Host.client.old_frags === frags) {
       continue;
     }
@@ -653,7 +647,7 @@ SV.SendClientMessages = function() {
   }
 
   for (i = 1; i < SV.server.num_edicts; ++i) {
-    SV.server.edicts[i].v_float[PR.entvars.effects] &= (~Mod.effects.muzzleflash >>> 0);
+    SV.server.edicts[i].api.effects &= (~Mod.effects.muzzleflash >>> 0);
   }
 };
 
@@ -682,14 +676,14 @@ SV.CreateBaseline = function() {
     if (svent.free === true) {
       continue;
     }
-    if ((i > SV.svs.maxclients) && (svent.v_int[PR.entvars.modelindex] === 0)) {
+    if ((i > SV.svs.maxclients) && !svent.api.modelindex) {
       continue;
     }
     baseline = svent.baseline;
     baseline.origin = svent.api.origin;
     baseline.angles = svent.api.angles;
-    baseline.frame = svent.v_float[PR.entvars.frame] >> 0;
-    baseline.skin = svent.v_float[PR.entvars.skin] >> 0;
+    baseline.frame = svent.api.frame >> 0;
+    baseline.skin = svent.api.skin >> 0;
     if ((i > 0) && (i <= SV.server.maxclients)) {
       baseline.colormap = i;
       baseline.modelindex = player;
@@ -786,6 +780,9 @@ SV.SpawnServer = function(server) {
         effects: 0,
       },
       freetime: 0.0,
+      equals(other) {
+        this.num === other.num;
+      },
     };
     ed.clear = () => ClearEdictPrivateData(ed);
     ed.clear();
@@ -926,31 +923,30 @@ SV.CheckBottom = function(ent) {
 
 SV.movestep = function(ent, move, relink) {
   const oldorg = ent.api.origin;
-  const neworg = new Vector();
-  const mins = ent.api.mins; const maxs = ent.api.maxs;
-  let trace;
-  if ((ent.v_float[PR.entvars.flags] & (SV.fl.swim + SV.fl.fly)) !== 0) {
-    let i; const enemy = ent.v_int[PR.entvars.enemy]; let dz;
-    for (i = 0; i <= 1; ++i) {
-      neworg[0] = ent.v_float[PR.entvars.origin] + move[0];
-      neworg[1] = ent.v_float[PR.entvars.origin1] + move[1];
-      neworg[2] = ent.v_float[PR.entvars.origin2];
+  const mins = ent.api.mins;
+  const maxs = ent.api.maxs;
+  if ((ent.api.flags & (SV.fl.swim + SV.fl.fly)) !== 0) {
+    const enemy = ent.api.enemy;
+    const neworg = new Vector();
+    for (let i = 0; i <= 1; ++i) {
+      const origin = ent.api.origin.copy();
+      neworg[0] = origin[0] + move[0];
+      neworg[1] = origin[1] + move[1];
+      neworg[2] = origin[2];
       if ((i === 0) && (enemy !== 0)) {
-        dz = ent.v_float[PR.entvars.origin2] - SV.server.edicts[enemy].v_float[PR.entvars.origin2];
+        const dz = ent.v_float[PR.entvars.origin2] - SV.server.edicts[enemy].v_float[PR.entvars.origin2];
         if (dz > 40.0) {
           neworg[2] -= 8.0;
         } else if (dz < 30.0) {
           neworg[2] += 8.0;
         }
       }
-      trace = SV.Move(ent.api.origin, mins, maxs, neworg, 0, ent);
+      const trace = SV.Move(ent.api.origin, mins, maxs, neworg, 0, ent);
       if (trace.fraction === 1.0) {
-        if (((ent.v_float[PR.entvars.flags] & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === Mod.contents.empty)) {
+        if (((ent.api.flags & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === Mod.contents.empty)) {
           return 0;
         }
-        ent.v_float[PR.entvars.origin] = trace.endpos[0];
-        ent.v_float[PR.entvars.origin1] = trace.endpos[1];
-        ent.v_float[PR.entvars.origin2] = trace.endpos[2];
+        ent.api.origin = trace.endpos;
         if (relink === true) {
           SV.LinkEdict(ent, true);
         }
@@ -962,50 +958,50 @@ SV.movestep = function(ent, move, relink) {
     }
     return 0;
   }
-  neworg[0] = ent.v_float[PR.entvars.origin] + move[0];
-  neworg[1] = ent.v_float[PR.entvars.origin1] + move[1];
-  neworg[2] = ent.v_float[PR.entvars.origin2] + 18.0;
-  const end = new Vector(neworg[0], neworg[1], neworg[2] - 36.0);
-  trace = SV.Move(neworg, mins, maxs, end, 0, ent);
+  const neworg = ent.api.origin.copy();
+  neworg[0] += move[0];
+  neworg[1] += move[1];
+  neworg[2] += 18.0;
+  const end = neworg.copy();
+  end[2] -= 36.0;
+  const trace = SV.Move(neworg, mins, maxs, end, 0, ent);
   if (trace.allsolid === true) {
     return 0;
   }
   if (trace.startsolid === true) {
     neworg[2] -= 18.0;
-    trace = SV.Move(neworg, mins, maxs, end, 0, ent);
+    const trace = SV.Move(neworg, mins, maxs, end, 0, ent);
     if ((trace.allsolid === true) || (trace.startsolid === true)) {
       return 0;
     }
   }
   if (trace.fraction === 1.0) {
-    if ((ent.v_float[PR.entvars.flags] & SV.fl.partialground) === 0) {
+    if ((ent.api.flags & SV.fl.partialground) === 0) {
       return 0;
     }
-    ent.v_float[PR.entvars.origin] += move[0];
-    ent.v_float[PR.entvars.origin1] += move[1];
+    const neworg = ent.origin.copy();
+    neworg[0] += move[0];
+    neworg[1] += move[1];
+    ent.api.origin = neworg;
     if (relink === true) {
       SV.LinkEdict(ent, true);
     }
-    ent.v_float[PR.entvars.flags] &= (~SV.fl.onground >>> 0);
+    ent.api.flags &= (~SV.fl.onground >>> 0);
     return 1;
   }
-  ent.v_float[PR.entvars.origin] = trace.endpos[0];
-  ent.v_float[PR.entvars.origin1] = trace.endpos[1];
-  ent.v_float[PR.entvars.origin2] = trace.endpos[2];
+  ent.api.origin = trace.endpos;
   if (SV.CheckBottom(ent) !== true) {
-    if ((ent.v_float[PR.entvars.flags] & SV.fl.partialground) !== 0) {
+    if ((ent.api.flags & SV.fl.partialground) !== 0) {
       if (relink === true) {
         SV.LinkEdict(ent, true);
       }
       return 1;
     }
-    ent.v_float[PR.entvars.origin] = oldorg[0];
-    ent.v_float[PR.entvars.origin1] = oldorg[1];
-    ent.v_float[PR.entvars.origin2] = oldorg[2];
+    ent.api.origin = oldorg;
     return 0;
   }
-  ent.v_float[PR.entvars.flags] &= (~SV.fl.partialground >>> 0);
-  ent.v_int[PR.entvars.groundentity] = trace.ent.num;
+  ent.api.flags &= (~SV.fl.partialground >>> 0);
+  ent.api.groundentity = trace.ent;
   if (relink === true) {
     SV.LinkEdict(ent, true);
   }
@@ -1015,7 +1011,7 @@ SV.movestep = function(ent, move, relink) {
 SV.ChangeYaw = function (ent) {
   const angle1 = ent.v_float[PR.entvars.angles1];
   const current = Vector.anglemod(angle1);
-  const ideal = ent.v_float[PR.entvars.ideal_yaw];
+  const ideal = ent.api.ideal_yaw;
 
   if (current === ideal) {
     return angle1;
@@ -1031,7 +1027,7 @@ SV.ChangeYaw = function (ent) {
     move += 360.0;
   }
 
-  const speed = ent.v_float[PR.entvars.yaw_speed];
+  const speed = ent.api.yaw_speed;
 
   if (move > 0.0) {
     if (move > speed) {
@@ -1045,12 +1041,12 @@ SV.ChangeYaw = function (ent) {
 }
 
 SV.StepDirection = function(ent, yaw, dist) {
-  ent.v_float[PR.entvars.ideal_yaw] = yaw;
+  ent.api.ideal_yaw = yaw;
   ent.v_float[PR.entvars.angles1] = SV.ChangeYaw(ent);
   yaw *= Math.PI / 180.0;
   const oldorigin = ent.api.origin;
   if (SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], false) === 1) {
-    const delta = ent.v_float[PR.entvars.angles1] - ent.v_float[PR.entvars.ideal_yaw];
+    const delta = ent.v_float[PR.entvars.angles1] - ent.api.ideal_yaw;
     if ((delta > 45.0) && (delta < 315.0)) {
       ent.api.origin = oldorigin;
     }
@@ -1061,7 +1057,7 @@ SV.StepDirection = function(ent, yaw, dist) {
 };
 
 SV.NewChaseDir = function(actor, enemy, dist) {
-  const olddir = Vector.anglemod(((actor.v_float[PR.entvars.ideal_yaw] / 45.0) >> 0) * 45.0);
+  const olddir = Vector.anglemod(((actor.api.ideal_yaw / 45.0) >> 0) * 45.0);
   const turnaround = Vector.anglemod(olddir - 180.0);
   const deltax = enemy.v_float[PR.entvars.origin] - actor.v_float[PR.entvars.origin];
   const deltay = enemy.v_float[PR.entvars.origin1] - actor.v_float[PR.entvars.origin1];
@@ -1121,9 +1117,9 @@ SV.NewChaseDir = function(actor, enemy, dist) {
   if ((turnaround !== -1) && (SV.StepDirection(actor, turnaround, dist) === true)) {
     return;
   }
-  actor.v_float[PR.entvars.ideal_yaw] = olddir;
+  actor.api.ideal_yaw = olddir;
   if (SV.CheckBottom(actor) !== true) {
-    actor.v_float[PR.entvars.flags] |= SV.fl.partialground;
+    actor.api.flags |= SV.fl.partialground;
   }
 };
 
@@ -1149,7 +1145,7 @@ SV.CheckAllEnts = function() {
     if (check.free === true) {
       continue;
     }
-    switch (check.v_float[PR.entvars.movetype]) {
+    switch (check.api.movetype) {
       case SV.movetype.push:
       case SV.movetype.none:
       case SV.movetype.noclip:
@@ -1183,17 +1179,17 @@ SV.CheckVelocity = function(ent) {
 };
 
 SV.RunThink = function(ent) {
-  let thinktime = ent.v_float[PR.entvars.nextthink];
+  let thinktime = ent.api.nextthink;
   if ((thinktime <= 0.0) || (thinktime > (SV.server.time + Host.frametime))) {
     return true;
   }
   if (thinktime < SV.server.time) {
     thinktime = SV.server.time;
   }
-  ent.v_float[PR.entvars.nextthink] = 0.0;
+  ent.api.nextthink = 0.0;
   SV.server.gameAPI.time = thinktime;
   SV.server.gameAPI.other = null;
-  ent.api.think(ent);
+  ent.api.think();
   return (ent.free !== true);
 };
 
@@ -1202,15 +1198,15 @@ SV.Impact = function(e1, e2) {
   const old_other = PR.globals_int[PR.globalvars.other];
   PR.globals_float[PR.globalvars.time] = SV.server.time;
 
-  if ((e1.v_int[PR.entvars.touch] !== 0) && (e1.v_float[PR.entvars.solid] !== SV.solid.not)) {
+  if (e1.api.touch && (e1.api.solid !== SV.solid.not)) {
     PR.globals_int[PR.globalvars.self] = e1.num;
     PR.globals_int[PR.globalvars.other] = e2.num;
-    PR.ExecuteProgram(e1.v_int[PR.entvars.touch]);
+    e1.api.touch();
   }
-  if ((e2.v_int[PR.entvars.touch] !== 0) && (e2.v_float[PR.entvars.solid] !== SV.solid.not)) {
+  if (e2.api.touch && (e2.api.solid !== SV.solid.not)) {
     PR.globals_int[PR.globalvars.self] = e2.num;
     PR.globals_int[PR.globalvars.other] = e1.num;
-    PR.ExecuteProgram(e2.v_int[PR.entvars.touch]);
+    e2.api.touch();
   }
 
   PR.globals_int[PR.globalvars.self] = old_self;
@@ -1274,9 +1270,9 @@ SV.FlyMove = function(ent, time) {
     }
     if (trace.plane.normal[2] > 0.7) {
       blocked |= 1;
-      if (trace.ent.v_float[PR.entvars.solid] === SV.solid.bsp) {
-        ent.v_float[PR.entvars.flags] |= SV.fl.onground;
-        ent.v_int[PR.entvars.groundentity] = trace.ent.num;
+      if (trace.ent.api.solid === SV.solid.bsp) {
+        ent.api.flags |= SV.fl.onground;
+        ent.api.groundentity = trace.ent;
       }
     } else if (trace.plane.normal[2] === 0.0) {
       blocked |= 2;
@@ -1342,14 +1338,10 @@ SV.AddGravity = function(ent) {
 };
 
 SV.PushEntity = function(ent, push) {
-  const end = new Vector(
-    ent.v_float[PR.entvars.origin] + push[0],
-    ent.v_float[PR.entvars.origin1] + push[1],
-    ent.v_float[PR.entvars.origin2] + push[2],
-  );
+  const end = ent.api.origin.copy().add(push);
   let nomonsters;
-  const solid = ent.v_float[PR.entvars.solid];
-  if (ent.v_float[PR.entvars.movetype] === SV.movetype.flymissile) {
+  const solid = ent.api.solid;
+  if (ent.api.movetype === SV.movetype.flymissile) {
     nomonsters = SV.move.missile;
   } else if ((solid === SV.solid.trigger) || (solid === SV.solid.not)) {
     nomonsters = SV.move.nomonsters;
@@ -1370,7 +1362,7 @@ SV.PushMove = function(pusher, movetime) {
   if ((pusher.v_float[PR.entvars.velocity] === 0.0) &&
 		(pusher.v_float[PR.entvars.velocity1] === 0.0) &&
 		(pusher.v_float[PR.entvars.velocity2] === 0.0)) {
-    pusher.v_float[PR.entvars.ltime] += movetime;
+    pusher.api.ltime += movetime;
     return;
   }
   const move = new Vector(
@@ -1392,7 +1384,7 @@ SV.PushMove = function(pusher, movetime) {
   pusher.v_float[PR.entvars.origin] += move[0];
   pusher.v_float[PR.entvars.origin1] += move[1];
   pusher.v_float[PR.entvars.origin2] += move[2];
-  pusher.v_float[PR.entvars.ltime] += movetime;
+  pusher.api.ltime += movetime;
   SV.LinkEdict(pusher);
   let e; let check; let movetype;
   let entorig; const moved = []; let moved_edict; let i;
@@ -1401,13 +1393,13 @@ SV.PushMove = function(pusher, movetime) {
     if (check.free === true) {
       continue;
     }
-    movetype = check.v_float[PR.entvars.movetype];
+    movetype = check.api.movetype;
     if ((movetype === SV.movetype.push) ||
 			(movetype === SV.movetype.none) ||
 			(movetype === SV.movetype.noclip)) {
       continue;
     }
-    if (((check.v_float[PR.entvars.flags] & SV.fl.onground) === 0) ||
+    if (((check.api.flags & SV.fl.onground) === 0) ||
 			(check.v_int[PR.entvars.groundentity] !== pusher.num)) {
       if ((check.v_float[PR.entvars.absmin] >= maxs[0]) ||
 				(check.v_float[PR.entvars.absmin1] >= maxs[1]) ||
@@ -1422,18 +1414,18 @@ SV.PushMove = function(pusher, movetime) {
       }
     }
     if (movetype !== SV.movetype.walk) {
-      check.v_float[PR.entvars.flags] &= (~SV.fl.onground) >>> 0;
+      check.api.flags &= (~SV.fl.onground) >>> 0;
     }
     entorig = check.api.origin;
-    moved[moved.length] = [entorig[0], entorig[1], entorig[2], check];
-    pusher.v_float[PR.entvars.solid] = SV.solid.not;
+    moved[moved.length] = [...entorig, check];
+    pusher.api.solid = SV.solid.not;
     SV.PushEntity(check, move);
-    pusher.v_float[PR.entvars.solid] = SV.solid.bsp;
+    pusher.api.solid = SV.solid.bsp;
     if (SV.TestEntityPosition(check) === true) {
       if (check.v_float[PR.entvars.mins] === check.v_float[PR.entvars.maxs]) {
         continue;
       }
-      if ((check.v_float[PR.entvars.solid] === SV.solid.not) || (check.v_float[PR.entvars.solid] === SV.solid.trigger)) {
+      if ((check.api.solid === SV.solid.not) || (check.api.solid === SV.solid.trigger)) {
         check.v_float[PR.entvars.mins] = check.v_float[PR.entvars.maxs] = 0.0;
         check.v_float[PR.entvars.mins1] = check.v_float[PR.entvars.maxs1] = 0.0;
         check.v_float[PR.entvars.maxs2] = check.v_float[PR.entvars.mins2];
@@ -1447,7 +1439,7 @@ SV.PushMove = function(pusher, movetime) {
       pusher.v_float[PR.entvars.origin1] = pushorig[1];
       pusher.v_float[PR.entvars.origin2] = pushorig[2];
       SV.LinkEdict(pusher);
-      pusher.v_float[PR.entvars.ltime] -= movetime;
+      pusher.api.ltime -= movetime;
       if (pusher.v_int[PR.entvars.blocked] !== 0) {
         PR.globals_int[PR.globalvars.self] = pusher.num;
         PR.globals_int[PR.globalvars.other] = check.num;
@@ -1466,8 +1458,8 @@ SV.PushMove = function(pusher, movetime) {
 };
 
 SV.Physics_Pusher = function(ent) {
-  const oldltime = ent.v_float[PR.entvars.ltime];
-  const thinktime = ent.v_float[PR.entvars.nextthink];
+  const oldltime = ent.api.ltime;
+  const thinktime = ent.api.nextthink;
   let movetime;
   if (thinktime < (oldltime + Host.frametime)) {
     movetime = thinktime - oldltime;
@@ -1480,14 +1472,14 @@ SV.Physics_Pusher = function(ent) {
   if (movetime !== 0.0) {
     SV.PushMove(ent, movetime);
   }
-  if ((thinktime <= oldltime) || (thinktime > ent.v_float[PR.entvars.ltime])) {
+  if ((thinktime <= oldltime) || (thinktime > ent.api.ltime)) {
     return;
   }
-  ent.v_float[PR.entvars.nextthink] = 0.0;
+  ent.api.nextthink = 0.0;
   PR.globals_float[PR.globalvars.time] = SV.server.time;
   PR.globals_int[PR.globalvars.self] = ent.num;
   PR.globals_int[PR.globalvars.other] = 0;
-  PR.ExecuteProgram(ent.v_int[PR.entvars.think]);
+  ent.api.think();
 };
 
 SV.CheckStuck = function(ent) {
@@ -1531,25 +1523,25 @@ SV.CheckWater = function(ent) {
     ent.v_float[PR.entvars.origin1],
     ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.mins2] + 1.0,
   );
-  ent.v_float[PR.entvars.waterlevel] = 0.0;
-  ent.v_float[PR.entvars.watertype] = Mod.contents.empty;
+  ent.api.waterlevel = 0.0;
+  ent.api.watertype = Mod.contents.empty;
   let cont = SV.PointContents(point);
   if (cont > Mod.contents.water) {
     return;
   }
-  ent.v_float[PR.entvars.watertype] = cont;
-  ent.v_float[PR.entvars.waterlevel] = 1.0;
+  ent.api.watertype = cont;
+  ent.api.waterlevel = 1.0;
   point[2] = ent.v_float[PR.entvars.origin2] + (ent.v_float[PR.entvars.mins2] + ent.v_float[PR.entvars.maxs2]) * 0.5;
   cont = SV.PointContents(point);
   if (cont <= Mod.contents.water) {
-    ent.v_float[PR.entvars.waterlevel] = 2.0;
+    ent.api.waterlevel = 2.0;
     point[2] = ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.view_ofs2];
     cont = SV.PointContents(point);
     if (cont <= Mod.contents.water) {
-      ent.v_float[PR.entvars.waterlevel] = 3.0;
+      ent.api.waterlevel = 3.0;
     }
   }
-  return ent.v_float[PR.entvars.waterlevel] > 1.0;
+  return ent.api.waterlevel > 1.0;
 };
 
 SV.WallFriction = function(ent, trace) {
@@ -1597,24 +1589,24 @@ SV.TryUnstick = function(ent, oldvel) {
 };
 
 SV.WalkMove = function(ent) {
-  const oldonground = ent.v_float[PR.entvars.flags] & SV.fl.onground;
-  ent.v_float[PR.entvars.flags] ^= oldonground;
+  const oldonground = ent.api.flags & SV.fl.onground;
+  ent.api.flags ^= oldonground;
   const oldorg = ent.api.origin;
   const oldvel = ent.api.velocity;
   let clip = SV.FlyMove(ent, Host.frametime);
   if ((clip & 2) === 0) {
     return;
   }
-  if ((oldonground === 0) && (ent.v_float[PR.entvars.waterlevel] === 0.0)) {
+  if ((oldonground === 0) && (ent.api.waterlevel === 0.0)) {
     return;
   }
-  if (ent.v_float[PR.entvars.movetype] !== SV.movetype.walk) {
+  if (ent.api.movetype !== SV.movetype.walk) {
     return;
   }
   if (SV.nostep.value !== 0) {
     return;
   }
-  if ((SV.player.v_float[PR.entvars.flags] & SV.fl.waterjump) !== 0) {
+  if ((SV.player.api.flags & SV.fl.waterjump) !== 0) {
     return;
   }
   const nosteporg = ent.api.origin;
@@ -1636,9 +1628,9 @@ SV.WalkMove = function(ent) {
   }
   const downtrace = SV.PushEntity(ent, new Vector(0.0, 0.0, oldvel[2] * Host.frametime - 18.0));
   if (downtrace.plane.normal[2] > 0.7) {
-    if (ent.v_float[PR.entvars.solid] === SV.solid.bsp) {
-      ent.v_float[PR.entvars.flags] |= SV.fl.onground;
-      ent.v_int[PR.entvars.groundentity] = downtrace.ent.num;
+    if (ent.api.solid === SV.solid.bsp) {
+      ent.api.flags |= SV.fl.onground;
+      ent.api.groundentity = downtrace.ent;
     }
     return;
   }
@@ -1653,7 +1645,7 @@ SV.Physics_Client = function(ent) {
   SV.server.gameAPI.time = SV.server.time;
   SV.server.gameAPI.PlayerPreThink(ent);
   SV.CheckVelocity(ent);
-  const movetype = ent.v_float[PR.entvars.movetype] >> 0;
+  const movetype = ent.api.movetype >> 0;
   if ((movetype === SV.movetype.toss) || (movetype === SV.movetype.bounce)) {
     SV.Physics_Toss(ent);
   } else {
@@ -1664,7 +1656,7 @@ SV.Physics_Client = function(ent) {
       case SV.movetype.none:
         break;
       case SV.movetype.walk:
-        if ((SV.CheckWater(ent) !== true) && ((ent.v_float[PR.entvars.flags] & SV.fl.waterjump) === 0)) {
+        if ((SV.CheckWater(ent) !== true) && ((ent.api.flags & SV.fl.waterjump) === 0)) {
           SV.AddGravity(ent);
         }
         SV.CheckStuck(ent);
@@ -1702,35 +1694,35 @@ SV.Physics_Noclip = function(ent) {
 
 SV.CheckWaterTransition = function(ent) {
   const cont = SV.PointContents(ent.api.origin);
-  if (ent.v_float[PR.entvars.watertype] === 0.0) {
-    ent.v_float[PR.entvars.watertype] = cont;
-    ent.v_float[PR.entvars.waterlevel] = 1.0;
+  if (ent.api.watertype === 0.0) {
+    ent.api.watertype = cont;
+    ent.api.waterlevel = 1.0;
     return;
   }
   if (cont <= Mod.contents.water) {
-    if (ent.v_float[PR.entvars.watertype] === Mod.contents.empty) {
+    if (ent.api.watertype === Mod.contents.empty) {
       SV.StartSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
     }
-    ent.v_float[PR.entvars.watertype] = cont;
-    ent.v_float[PR.entvars.waterlevel] = 1.0;
+    ent.api.watertype = cont;
+    ent.api.waterlevel = 1.0;
     return;
   }
-  if (ent.v_float[PR.entvars.watertype] !== Mod.contents.empty) {
+  if (ent.api.watertype !== Mod.contents.empty) {
     SV.StartSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
   }
-  ent.v_float[PR.entvars.watertype] = Mod.contents.empty;
-  ent.v_float[PR.entvars.waterlevel] = cont;
+  ent.api.watertype = Mod.contents.empty;
+  ent.api.waterlevel = cont;
 };
 
 SV.Physics_Toss = function(ent) {
   if (SV.RunThink(ent) !== true) {
     return;
   }
-  if ((ent.v_float[PR.entvars.flags] & SV.fl.onground) !== 0) {
+  if ((ent.api.flags & SV.fl.onground) !== 0) {
     return;
   }
   SV.CheckVelocity(ent);
-  const movetype = ent.v_float[PR.entvars.movetype];
+  const movetype = ent.api.movetype;
   if ((movetype !== SV.movetype.fly) && (movetype !== SV.movetype.flymissile)) {
     SV.AddGravity(ent);
   }
@@ -1751,8 +1743,8 @@ SV.Physics_Toss = function(ent) {
   ent.api.velocity = velocity;
   if (trace.plane.normal[2] > 0.7) {
     if ((ent.v_float[PR.entvars.velocity2] < 60.0) || (movetype !== SV.movetype.bounce)) {
-      ent.v_float[PR.entvars.flags] |= SV.fl.onground;
-      ent.v_int[PR.entvars.groundentity] = trace.ent.num;
+      ent.api.flags |= SV.fl.onground;
+      ent.api.groundentity = trace.ent;
       ent.v_float[PR.entvars.velocity] = ent.v_float[PR.entvars.velocity1] = ent.v_float[PR.entvars.velocity2] = 0.0;
       ent.v_float[PR.entvars.avelocity] = ent.v_float[PR.entvars.avelocity1] = ent.v_float[PR.entvars.avelocity2] = 0.0;
     }
@@ -1761,13 +1753,13 @@ SV.Physics_Toss = function(ent) {
 };
 
 SV.Physics_Step = function(ent) {
-  if ((ent.v_float[PR.entvars.flags] & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
+  if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
     const hitsound = (ent.v_float[PR.entvars.velocity2] < (SV.gravity.value * -0.1));
     SV.AddGravity(ent);
     SV.CheckVelocity(ent);
     SV.FlyMove(ent, Host.frametime);
     SV.LinkEdict(ent, true);
-    if (((ent.v_float[PR.entvars.flags] & SV.fl.onground) !== 0) && (hitsound === true)) {
+    if (((ent.api.flags & SV.fl.onground) !== 0) && (hitsound === true)) {
       SV.StartSound(ent, 0, 'demon/dland2.wav', 255, 1.0);
     }
   }
@@ -1978,7 +1970,7 @@ SV.Physics = function() {
       SV.Physics_Client(ent);
       continue;
     }
-    switch (ent.v_float[PR.entvars.movetype]) {
+    switch (ent.api.movetype) {
       case SV.movetype.push:
         SV.Physics_Pusher(ent);
         continue;
@@ -1998,7 +1990,7 @@ SV.Physics = function() {
         SV.Physics_Toss(ent);
         continue;
     }
-    Sys.Error('SV.Physics: bad movetype ' + (ent.v_float[PR.entvars.movetype] >> 0));
+    Sys.Error('SV.Physics: bad movetype ' + (ent.api.movetype >> 0));
   }
   if (PR.globals_float[PR.globalvars.force_retouch] !== 0.0) {
     --PR.globals_float[PR.globalvars.force_retouch];
@@ -2012,7 +2004,7 @@ SV.Physics = function() {
 
 SV.SetIdealPitch = function() {
   const ent = SV.player;
-  if ((ent.v_float[PR.entvars.flags] & SV.fl.onground) === 0) {
+  if ((ent.api.flags & SV.fl.onground) === 0) {
     return;
   }
   const angleval = ent.v_float[PR.entvars.angles1] * (Math.PI / 180.0);
@@ -2043,11 +2035,11 @@ SV.SetIdealPitch = function() {
     dir = step;
   }
   if (dir === 0.0) {
-    ent.v_float[PR.entvars.idealpitch] = 0.0;
+    ent.api.idealpitch = 0.0;
     return;
   }
   if (steps >= 2) {
-    ent.v_float[PR.entvars.idealpitch] = -dir * SV.idealpitchscale.value;
+    ent.api.idealpitch = -dir * SV.idealpitchscale.value;
   }
 };
 
@@ -2155,9 +2147,9 @@ SV.WaterMove = function() {
 
 SV.WaterJump = function() {
   const ent = SV.player;
-  if ((SV.server.time > ent.v_float[PR.entvars.teleport_time]) || (ent.v_float[PR.entvars.waterlevel] === 0.0)) {
-    ent.v_float[PR.entvars.flags] &= (~SV.fl.waterjump >>> 0);
-    ent.v_float[PR.entvars.teleport_time] = 0.0;
+  if ((SV.server.time > ent.api.teleport_time) || (ent.api.waterlevel === 0.0)) {
+    ent.api.flags &= (~SV.fl.waterjump >>> 0);
+    ent.api.teleport_time = 0.0;
   }
   ent.v_float[PR.entvars.velocity] = ent.v_float[PR.entvars.movedir];
   ent.v_float[PR.entvars.velocity1] = ent.v_float[PR.entvars.movedir1];
@@ -2169,22 +2161,22 @@ SV.AirMove = function() {
   const {forward, right} =   ent.api.angles.angleVectors();
   let fmove = cmd.forwardmove;
   const smove = cmd.sidemove;
-  if ((SV.server.time < ent.v_float[PR.entvars.teleport_time]) && (fmove < 0.0)) {
+  if ((SV.server.time < ent.api.teleport_time) && (fmove < 0.0)) {
     fmove = 0.0;
   }
   const wishvel = new Vector(
     forward[0] * fmove + right[0] * smove,
     forward[1] * fmove + right[1] * smove,
-		((ent.v_float[PR.entvars.movetype] >> 0) !== SV.movetype.walk) ? cmd.upmove : 0.0);
+		((ent.api.movetype >> 0) !== SV.movetype.walk) ? cmd.upmove : 0.0);
   const wishdir = new Vector(wishvel[0], wishvel[1], wishvel[2]);
   if (wishdir.normalize() > SV.maxspeed.value) {
     wishvel[0] = wishdir[0] * SV.maxspeed.value;
     wishvel[1] = wishdir[1] * SV.maxspeed.value;
     wishvel[2] = wishdir[2] * SV.maxspeed.value;
   }
-  if (ent.v_float[PR.entvars.movetype] === SV.movetype.noclip) {
+  if (ent.api.movetype === SV.movetype.noclip) {
     ent.api.velocity = wishvel;
-  } else if ((ent.v_float[PR.entvars.flags] & SV.fl.onground) !== 0) {
+  } else if ((ent.api.flags & SV.fl.onground) !== 0) {
     SV.UserFriction(wishvel);
     SV.Accelerate(wishvel);
   } else {
@@ -2195,7 +2187,7 @@ SV.AirMove = function() {
 SV.ClientThink = function() {
   const ent = SV.player;
 
-  if (ent.v_float[PR.entvars.movetype] === SV.movetype.none) {
+  if (ent.api.movetype === SV.movetype.none) {
     return;
   }
 
@@ -2208,19 +2200,19 @@ SV.ClientThink = function() {
   ent.v_float[PR.entvars.punchangle1] = punchangle[1] * len;
   ent.v_float[PR.entvars.punchangle2] = punchangle[2] * len;
 
-  if (ent.v_float[PR.entvars.health] <= 0.0) {
+  if (ent.api.health <= 0.0) {
     return;
   }
 
   ent.v_float[PR.entvars.angles2] = V.CalcRoll(ent.api.angles, ent.api.velocity) * 4.0;
-  if (SV.player.v_float[PR.entvars.fixangle] === 0.0) {
+  if (SV.player.api.fixangle === 0.0) {
     ent.v_float[PR.entvars.angles] = (ent.v_float[PR.entvars.v_angle] + ent.v_float[PR.entvars.punchangle]) / -3.0;
     ent.v_float[PR.entvars.angles1] = ent.v_float[PR.entvars.v_angle1] + ent.v_float[PR.entvars.punchangle1];
   }
 
-  if ((ent.v_float[PR.entvars.flags] & SV.fl.waterjump) !== 0) {
+  if ((ent.api.flags & SV.fl.waterjump) !== 0) {
     SV.WaterJump();
-  } else if ((ent.v_float[PR.entvars.waterlevel] >= 2.0) && (ent.v_float[PR.entvars.movetype] !== SV.movetype.noclip)) {
+  } else if ((ent.api.waterlevel >= 2.0) && (ent.api.movetype !== SV.movetype.noclip)) {
     SV.WaterMove();
   } else {
     SV.AirMove();
@@ -2236,11 +2228,11 @@ SV.ReadClientMove = function(client) {
   client.cmd.sidemove = MSG.ReadShort();
   client.cmd.upmove = MSG.ReadShort();
   let i = MSG.ReadByte();
-  client.edict.v_float[PR.entvars.button0] = i & 1;
+  client.edict.api.button0 = i & 1;
   client.edict.v_float[PR.entvars.button2] = (i & 2) >> 1;
   i = MSG.ReadByte();
   if (i !== 0) {
-    client.edict.v_float[PR.entvars.impulse] = i;
+    client.edict.api.impulse = i;
   }
 };
 
@@ -2427,7 +2419,7 @@ SV.InitBoxHull = function() {
 };
 
 SV.HullForEntity = function(ent, mins, maxs, out_offset) {
-  if (ent.v_float[PR.entvars.solid] !== SV.solid.bsp) {
+  if (ent.api.solid !== SV.solid.bsp) {
     SV.box_planes[0].dist = ent.v_float[PR.entvars.maxs] - mins[0];
     SV.box_planes[1].dist = ent.v_float[PR.entvars.mins] - maxs[0];
     SV.box_planes[2].dist = ent.v_float[PR.entvars.maxs1] - mins[1];
@@ -2439,10 +2431,10 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
     out_offset[2] = ent.v_float[PR.entvars.origin2];
     return SV.box_hull;
   }
-  if (ent.v_float[PR.entvars.movetype] !== SV.movetype.push) {
+  if (ent.api.movetype !== SV.movetype.push) {
     Sys.Error('SOLID_BSP without MOVETYPE_PUSH');
   }
-  const model = SV.server.models[ent.v_float[PR.entvars.modelindex] >> 0];
+  const model = SV.server.models[ent.api.modelindex >> 0];
   if (model == null) {
     Sys.Error('MOVETYPE_PUSH with a non bsp model');
   }
@@ -2507,7 +2499,7 @@ SV.TouchLinks = function(ent, node) {
     if (touch === ent) {
       continue;
     }
-    if ((touch.v_int[PR.entvars.touch] === 0) || (touch.v_float[PR.entvars.solid] !== SV.solid.trigger)) {
+    if (!touch.api.touch || touch.api.solid !== SV.solid.trigger) {
       continue;
     }
     if ((ent.v_float[PR.entvars.absmin] > touch.v_float[PR.entvars.absmax]) ||
@@ -2523,7 +2515,7 @@ SV.TouchLinks = function(ent, node) {
     PR.globals_int[PR.globalvars.self] = touch.num;
     PR.globals_int[PR.globalvars.other] = ent.num;
     PR.globals_float[PR.globalvars.time] = SV.server.time;
-    PR.ExecuteProgram(touch.v_int[PR.entvars.touch]);
+    touch.api.touch();
     PR.globals_int[PR.globalvars.self] = old_self;
     PR.globals_int[PR.globalvars.other] = old_other;
   }
@@ -2578,7 +2570,7 @@ SV.LinkEdict = function(ent, touch_triggers) {
   ent.v_float[PR.entvars.absmax1] = ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.maxs1] + 1.0;
   ent.v_float[PR.entvars.absmax2] = ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.maxs2];
 
-  if ((ent.v_float[PR.entvars.flags] & SV.fl.item) !== 0) {
+  if ((ent.api.flags & SV.fl.item) !== 0) {
     ent.v_float[PR.entvars.absmin] -= 14.0;
     ent.v_float[PR.entvars.absmin1] -= 14.0;
     ent.v_float[PR.entvars.absmax] += 14.0;
@@ -2589,11 +2581,11 @@ SV.LinkEdict = function(ent, touch_triggers) {
   }
 
   ent.leafnums = [];
-  if (ent.v_float[PR.entvars.modelindex] !== 0.0) {
+  if (ent.api.modelindex !== 0.0) {
     SV.FindTouchedLeafs(ent, SV.server.worldmodel.nodes[0]);
   }
 
-  if (ent.v_float[PR.entvars.solid] === SV.solid.not) {
+  if (ent.api.solid === SV.solid.not) {
     return;
   }
 
@@ -2611,7 +2603,7 @@ SV.LinkEdict = function(ent, touch_triggers) {
     }
   }
 
-  const before = (ent.v_float[PR.entvars.solid] === SV.solid.trigger) ? node.trigger_edicts : node.solid_edicts;
+  const before = (ent.api.solid === SV.solid.trigger) ? node.trigger_edicts : node.solid_edicts;
   ent.area.next = before;
   ent.area.prev = before.prev;
   ent.area.prev.next = ent.area;
@@ -2772,7 +2764,7 @@ SV.ClipToLinks = function(node, clip) {
   let l; let touch; let solid; let trace;
   for (l = node.solid_edicts.next; l !== node.solid_edicts; l = l.next) {
     touch = l.ent;
-    solid = touch.v_float[PR.entvars.solid];
+    solid = touch.api.solid;
     if ((solid === SV.solid.not) || (touch === clip.passedict)) {
       continue;
     }
@@ -2806,7 +2798,7 @@ SV.ClipToLinks = function(node, clip) {
         continue;
       }
     }
-    if ((touch.v_float[PR.entvars.flags] & SV.fl.monster) !== 0) {
+    if ((touch.api.flags & SV.fl.monster) !== 0) {
       trace = SV.ClipMoveToEntity(touch, clip.start, clip.mins2, clip.maxs2, clip.end);
     } else {
       trace = SV.ClipMoveToEntity(touch, clip.start, clip.mins, clip.maxs, clip.end);

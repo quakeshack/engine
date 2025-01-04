@@ -34,8 +34,20 @@ MSG.WriteCoord = function(sb, f) {
   MSG.WriteShort(sb, f * 8.0);
 };
 
+MSG.WriteCoordVector = function(sb, vec) {
+  MSG.WriteCoord(sb, vec[0]);
+  MSG.WriteCoord(sb, vec[1]);
+  MSG.WriteCoord(sb, vec[2]);
+};
+
 MSG.WriteAngle = function(sb, f) {
   MSG.WriteByte(sb, ((f >> 0) * (256.0 / 360.0)) & 255);
+};
+
+MSG.WriteAngleVector = function(sb, vec) {
+  MSG.WriteAngle(sb, vec[0]);
+  MSG.WriteAngle(sb, vec[1]);
+  MSG.WriteAngle(sb, vec[2]);
 };
 
 MSG.BeginReading = function() {

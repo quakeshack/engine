@@ -73,7 +73,7 @@ PF.setmodel = function PF_setmodel() {
   }
 
   e.v_int[PR.entvars.model] = PR.globals_int[7];
-  e.v_float[PR.entvars.modelindex] = i;
+  e.api.modelindex = i;
   const mod = SV.server.models[i];
   if (mod != null) {
     PF._SetMinMaxSize(e, mod.mins, mod.maxs);
@@ -247,7 +247,7 @@ PF._newcheckclient = function(check) {
     if (ent.free === true) {
       continue;
     }
-    if ((ent.v_float[PR.entvars.health] <= 0.0) || ((ent.v_float[PR.entvars.flags] & SV.fl.notarget) !== 0)) {
+    if ((ent.api.health <= 0.0) || ((ent.api.flags & SV.fl.notarget) !== 0)) {
       continue;
     }
     break;
@@ -266,7 +266,7 @@ PF.checkclient = function PF_checkclient() {
     SV.server.lastchecktime = SV.server.time;
   }
   const ent = SV.server.edicts[SV.server.lastcheck];
-  if ((ent.free === true) || (ent.v_float[PR.entvars.health] <= 0.0)) {
+  if ((ent.free === true) || (ent.api.health <= 0.0)) {
     PR.globals_int[1] = 0;
     return;
   }
@@ -386,7 +386,7 @@ PF.Find = function PF_Find() {
 
 PF.MoveToGoal = function PF_MoveToGoal() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  if ((ent.v_float[PR.entvars.flags] & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
+  if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
     PR.globals_float[1] = 0.0;
     return;
   }
@@ -395,7 +395,7 @@ PF.MoveToGoal = function PF_MoveToGoal() {
   if ((ent.v_int[PR.entvars.enemy] !== 0) && (SV.CloseEnough(ent, goal, dist) === true)) {
     return;
   }
-  if ((Math.random() >= 0.75) || (SV.StepDirection(ent, ent.v_float[PR.entvars.ideal_yaw], dist) !== true)) {
+  if ((Math.random() >= 0.75) || (SV.StepDirection(ent, ent.api.ideal_yaw, dist) !== true)) {
     SV.NewChaseDir(ent, goal, dist);
   }
 };
@@ -452,7 +452,7 @@ PF.eprint = function PF_eprint() {
 
 PF.walkmove = function PF_walkmove() {
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  if ((ent.v_float[PR.entvars.flags] & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
+  if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
     PR.globals_float[1] = 0.0;
     return;
   }
@@ -475,7 +475,7 @@ PF.droptofloor = function PF_droptofloor() {
   }
   ent.api.origin = trace.endpos;
   SV.LinkEdict(ent);
-  ent.v_float[PR.entvars.flags] |= SV.fl.onground;
+  ent.api.flags |= SV.fl.onground;
   ent.v_int[PR.entvars.groundentity] = trace.ent.num;
   PR.globals_float[1] = 1.0;
 };
@@ -537,9 +537,9 @@ PF.aim = function PF_aim() {
   const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
   let tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, ent);
   if (tr.ent != null) {
-    if ((tr.ent.v_float[PR.entvars.takedamage] === SV.damage.aim) &&
-			((Host.teamplay.value === 0) || (ent.v_float[PR.entvars.team] <= 0) ||
-			(ent.v_float[PR.entvars.team] !== tr.ent.v_float[PR.entvars.team]))) {
+    if ((tr.ent.api.takedamage === SV.damage.aim) &&
+			((Host.teamplay.value === 0) || (ent.api.team <= 0) ||
+			(ent.api.team !== tr.ent.api.team))) {
       PR.globals_float[1] = dir[0];
       PR.globals_float[2] = dir[1];
       PR.globals_float[3] = dir[2];
@@ -551,13 +551,13 @@ PF.aim = function PF_aim() {
   let bestent; let i; let check; let dist;
   for (i = 1; i < SV.server.num_edicts; ++i) {
     check = SV.server.edicts[i];
-    if (check.v_float[PR.entvars.takedamage] !== SV.damage.aim) {
+    if (check.api.takedamage !== SV.damage.aim) {
       continue;
     }
     if (check === ent) {
       continue;
     }
-    if ((Host.teamplay.value !== 0) && (ent.v_float[PR.entvars.team] > 0) && (ent.v_float[PR.entvars.team] === check.v_float[PR.entvars.team])) {
+    if ((Host.teamplay.value !== 0) && (ent.api.team > 0) && (ent.api.team === check.api.team)) {
       continue;
     }
     end[0] = check.v_float[PR.entvars.origin] + 0.5 * (check.v_float[PR.entvars.mins] + check.v_float[PR.entvars.maxs]);
@@ -650,9 +650,9 @@ PF.makestatic = function PF_makestatic() {
   const message = SV.server.signon;
   MSG.WriteByte(message, Protocol.svc.spawnstatic);
   MSG.WriteByte(message, SV.ModelIndex(ent.api.model));
-  MSG.WriteByte(message, ent.v_float[PR.entvars.frame]);
-  MSG.WriteByte(message, ent.v_float[PR.entvars.colormap]);
-  MSG.WriteByte(message, ent.v_float[PR.entvars.skin]);
+  MSG.WriteByte(message, ent.api.frame);
+  MSG.WriteByte(message, ent.api.colormap);
+  MSG.WriteByte(message, ent.api.skin);
   MSG.WriteCoord(message, ent.v_float[PR.entvars.origin]);
   MSG.WriteAngle(message, ent.v_float[PR.entvars.angles]);
   MSG.WriteCoord(message, ent.v_float[PR.entvars.origin1]);

@@ -269,7 +269,7 @@ PR.FunctionProxy = class FunctionProxy extends Function {
    */
   // eslint-disable-next-line no-unused-vars
   call(self, ...args) { // TODO: args
-    PR.globals_int[PR.globalvars.self] = self ? self.num : 0;
+    PR.globals_int[PR.globalvars.self] = self ? self.num : (this.ent ? this.ent.num : 0);
 
     // assume return type void and no args
     if (!this._signature) {
@@ -343,17 +343,29 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
         case PR.etype.ev_entity:
           Object.defineProperty(this, name, {
             get: function() {
-              return val_int[ofs] > 0 ? new PR.EntityProxy(val_int[ofs]) : null;
+              if (!val_int[ofs]) {
+                return null;
+              }
+
+              if (!SV.server?.edicts || !SV.server.edicts[val_int[ofs]]) {
+                return null;
+              }
+
+              return SV.server.edicts[val_int[ofs]];
             },
             set: function(value) {
               if (value === null) {
                 val_int[ofs] = 0;
                 return;
               }
-              if (value instanceof PR.EntityProxy) {
-                val_int[ofs] = value.ent;
+              if (value === 0) { // making fixing stuff easier, though this is a breakpoint trap as well
+                val_int[ofs] = 0;
                 return;
               }
+              // if (value instanceof PR.EntityProxy) {
+              //   val_int[ofs] = value.ent;
+              //   return;
+              // }
               if (typeof(value.num) !== 'undefined') { // TODO: Edict class
                 val_int[ofs] = value.num;
                 return;
@@ -378,7 +390,7 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
                 val_int[ofs] = value.fnc;
                 return;
               }
-              if (typeof(value) === 'string') {
+              if (typeof(value) === 'string') { // this is used by ED.ParseEdict etc. when parsing entities and setting fields
                 const d = ED.FindFunction(value);
                 if (!d) {
                   throw new TypeError('Invalid function: ' + value);
@@ -1222,8 +1234,8 @@ PR.ExecuteProgram = function(fnum) {
         continue;
       case PR.op.state:
         ed = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-        ed.v_float[PR.entvars.nextthink] = PR.globals_float[PR.globalvars.time] + 0.1;
-        ed.v_float[PR.entvars.frame] = PR.globals_float[st.a];
+        ed.api.nextthink = PR.globals_float[PR.globalvars.time] + 0.1;
+        ed.api.frame = PR.globals_float[st.a];
         ed.v_int[PR.entvars.think] = PR.globals_int[st.b];
         continue;
     }

@@ -453,7 +453,7 @@ Host.Status_f = function() {
     if (!client.active) {
       continue;
     }
-    frags = client.edict.v_float[PR.entvars.frags].toFixed(0);
+    frags = client.edict.api.frags.toFixed(0);
     if (frags.length === 1) {
       frags = '  ' + frags;
     } else if (frags.length === 2) {
@@ -503,8 +503,8 @@ Host.God_f = function() {
   if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
     return;
   }
-  SV.player.v_float[PR.entvars.flags] ^= SV.fl.godmode;
-  if ((SV.player.v_float[PR.entvars.flags] & SV.fl.godmode) === 0) {
+  SV.player.api.flags ^= SV.fl.godmode;
+  if ((SV.player.api.flags & SV.fl.godmode) === 0) {
     Host.ClientPrint('godmode OFF\n');
   } else {
     Host.ClientPrint('godmode ON\n');
@@ -519,8 +519,8 @@ Host.Notarget_f = function() {
   if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
     return;
   }
-  SV.player.v_float[PR.entvars.flags] ^= SV.fl.notarget;
-  if ((SV.player.v_float[PR.entvars.flags] & SV.fl.notarget) === 0) {
+  SV.player.api.flags ^= SV.fl.notarget;
+  if ((SV.player.api.flags & SV.fl.notarget) === 0) {
     Host.ClientPrint('notarget OFF\n');
   } else {
     Host.ClientPrint('notarget ON\n');
@@ -535,14 +535,14 @@ Host.Noclip_f = function() {
   if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
     return;
   }
-  if (SV.player.v_float[PR.entvars.movetype] !== SV.movetype.noclip) {
+  if (SV.player.api.movetype !== SV.movetype.noclip) {
     Host.noclip_anglehack = true;
-    SV.player.v_float[PR.entvars.movetype] = SV.movetype.noclip;
+    SV.player.api.movetype = SV.movetype.noclip;
     Host.ClientPrint('noclip ON\n');
     return;
   }
   Host.noclip_anglehack = false;
-  SV.player.v_float[PR.entvars.movetype] = SV.movetype.walk;
+  SV.player.api.movetype = SV.movetype.walk;
   Host.ClientPrint('noclip OFF\n');
 };
 
@@ -554,12 +554,12 @@ Host.Fly_f = function() {
   if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
     return;
   }
-  if (SV.player.v_float[PR.entvars.movetype] !== SV.movetype.fly) {
-    SV.player.v_float[PR.entvars.movetype] = SV.movetype.fly;
+  if (SV.player.api.movetype !== SV.movetype.fly) {
+    SV.player.api.movetype = SV.movetype.fly;
     Host.ClientPrint('flymode ON\n');
     return;
   }
-  SV.player.v_float[PR.entvars.movetype] = SV.movetype.walk;
+  SV.player.api.movetype = SV.movetype.walk;
   Host.ClientPrint('flymode OFF\n');
 };
 
@@ -766,7 +766,7 @@ Host.Savegame_f = function() {
   }
   const client = SV.svs.clients[0];
   if (client.active === true) {
-    if (client.edict.v_float[PR.entvars.health] <= 0.0) {
+    if (client.edict.api.health <= 0.0) {
       Con.Print('Can\'t savegame with a dead player\n');
       return;
     }
@@ -1013,7 +1013,7 @@ Host.Say = function(teamonly) {
     if ((client.active !== true) || (client.spawned !== true)) {
       continue;
     }
-    if ((Host.teamplay.value !== 0) && (teamonly === true) && (client.v_float[PR.entvars.team] !== save.v_float[PR.entvars.team])) {
+    if ((Host.teamplay.value !== 0) && (teamonly === true) && (client.api.team !== save.api.team)) {
       continue;
     }
     Host.SendChatMessageToClient(client, SV.GetClientName(save), message, false);
@@ -1103,7 +1103,7 @@ Host.Kill_f = function() {
     Cmd.ForwardToServer();
     return;
   }
-  if (SV.player.v_float[PR.entvars.health] <= 0.0) {
+  if (SV.player.api.health <= 0.0) {
     Host.ClientPrint('Can\'t suicide -- already dead!\n');
     return;
   }
@@ -1325,45 +1325,45 @@ Host.Give_f = function() {
   if ((t >= 48) && (t <= 57)) {
     if (COM.hipnotic !== true) {
       if (t >= 50) {
-        ent.v_float[PR.entvars.items] |= Def.it.shotgun << (t - 50);
+        ent.api.items |= Def.it.shotgun << (t - 50);
       }
       return;
     }
     if (t === 54) {
       if (Cmd.argv[1].charCodeAt(1) === 97) {
-        ent.v_float[PR.entvars.items] |= Def.hit.proximity_gun;
+        ent.api.items |= Def.hit.proximity_gun;
       } else {
-        ent.v_float[PR.entvars.items] |= Def.it.grenade_launcher;
+        ent.api.items |= Def.it.grenade_launcher;
       }
       return;
     }
     if (t === 57) {
-      ent.v_float[PR.entvars.items] |= Def.hit.laser_cannon;
+      ent.api.items |= Def.hit.laser_cannon;
     } else if (t === 48) {
-      ent.v_float[PR.entvars.items] |= Def.hit.mjolnir;
+      ent.api.items |= Def.hit.mjolnir;
     } else if (t >= 50) {
-      ent.v_float[PR.entvars.items] |= Def.it.shotgun << (t - 50);
+      ent.api.items |= Def.it.shotgun << (t - 50);
     }
     return;
   }
   const v = Q.atoi(Cmd.argv[2]);
   if (t === 104) {
-    ent.v_float[PR.entvars.health] = v;
+    ent.api.health = v;
     return;
   }
   if (COM.rogue !== true) {
     switch (t) {
       case 115:
-        ent.v_float[PR.entvars.ammo_shells] = v;
+        ent.api.ammo_shells = v;
         return;
       case 110:
-        ent.v_float[PR.entvars.ammo_nails] = v;
+        ent.api.ammo_nails = v;
         return;
       case 114:
-        ent.v_float[PR.entvars.ammo_rockets] = v;
+        ent.api.ammo_rockets = v;
         return;
       case 99:
-        ent.v_float[PR.entvars.ammo_cells] = v;
+        ent.api.ammo_cells = v;
     }
     return;
   }
@@ -1372,53 +1372,53 @@ Host.Give_f = function() {
       if (PR.entvars.ammo_shells1 != null) {
         ent.v_float[PR.entvars.ammo_shells1] = v;
       }
-      ent.v_float[PR.entvars.ammo_shells] = v;
+      ent.api.ammo_shells = v;
       return;
     case 110:
       if (PR.entvars.ammo_nails1 != null) {
         ent.v_float[PR.entvars.ammo_nails1] = v;
-        if (ent.v_float[PR.entvars.weapon] <= Def.it.lightning) {
-          ent.v_float[PR.entvars.ammo_nails] = v;
+        if (ent.api.weapon <= Def.it.lightning) {
+          ent.api.ammo_nails = v;
         }
       }
       return;
     case 108:
       if (PR.entvars.ammo_lava_nails != null) {
-        ent.v_float[PR.entvars.ammo_lava_nails] = v;
-        if (ent.v_float[PR.entvars.weapon] > Def.it.lightning) {
-          ent.v_float[PR.entvars.ammo_nails] = v;
+        ent.api.ammo_lava_nails = v;
+        if (ent.api.weapon > Def.it.lightning) {
+          ent.api.ammo_nails = v;
         }
       }
       return;
     case 114:
       if (PR.entvars.ammo_rockets1 != null) {
         ent.v_float[PR.entvars.ammo_rockets1] = v;
-        if (ent.v_float[PR.entvars.weapon] <= Def.it.lightning) {
-          ent.v_float[PR.entvars.ammo_rockets] = v;
+        if (ent.api.weapon <= Def.it.lightning) {
+          ent.api.ammo_rockets = v;
         }
       }
       return;
     case 109:
       if (PR.entvars.ammo_multi_rockets != null) {
-        ent.v_float[PR.entvars.ammo_multi_rockets] = v;
-        if (ent.v_float[PR.entvars.weapon] > Def.it.lightning) {
-          ent.v_float[PR.entvars.ammo_rockets] = v;
+        ent.api.ammo_multi_rockets = v;
+        if (ent.api.weapon > Def.it.lightning) {
+          ent.api.ammo_rockets = v;
         }
       }
       return;
     case 99:
       if (PR.entvars.ammo_cells1 != null) {
         ent.v_float[PR.entvars.ammo_cells1] = v;
-        if (ent.v_float[PR.entvars.weapon] <= Def.it.lightning) {
-          ent.v_float[PR.entvars.ammo_cells] = v;
+        if (ent.api.weapon <= Def.it.lightning) {
+          ent.api.ammo_cells = v;
         }
       }
       return;
     case 112:
       if (PR.entvars.ammo_plasma != null) {
-        ent.v_float[PR.entvars.ammo_plasma] = v;
-        if (ent.v_float[PR.entvars.weapon] > Def.it.lightning) {
-          ent.v_float[PR.entvars.ammo_cells] = v;
+        ent.api.ammo_plasma = v;
+        if (ent.api.weapon > Def.it.lightning) {
+          ent.api.ammo_cells = v;
         }
       }
   }
@@ -1451,8 +1451,8 @@ Host.Viewmodel_f = function() {
     Con.Print('Can\'t load ' + Cmd.argv[1] + '\n');
     return;
   }
-  ent.v_float[PR.entvars.frame] = 0.0;
-  CL.state.model_precache[ent.v_float[PR.entvars.modelindex] >> 0] = m;
+  ent.api.frame = 0.0;
+  CL.state.model_precache[ent.api.modelindex >> 0] = m;
 };
 
 Host.Viewframe_f = function() {
@@ -1460,12 +1460,12 @@ Host.Viewframe_f = function() {
   if (ent == null) {
     return;
   }
-  const m = CL.state.model_precache[ent.v_float[PR.entvars.modelindex] >> 0];
+  const m = CL.state.model_precache[ent.api.modelindex >> 0];
   let f = Q.atoi(Cmd.argv[1]);
   if (f >= m.frames.length) {
     f = m.frames.length - 1;
   }
-  ent.v_float[PR.entvars.frame] = f;
+  ent.api.frame = f;
 };
 
 Host.Viewnext_f = function() {
@@ -1473,12 +1473,12 @@ Host.Viewnext_f = function() {
   if (ent == null) {
     return;
   }
-  const m = CL.state.model_precache[ent.v_float[PR.entvars.modelindex] >> 0];
-  let f = (ent.v_float[PR.entvars.frame] >> 0) + 1;
+  const m = CL.state.model_precache[ent.api.modelindex >> 0];
+  let f = (ent.api.frame >> 0) + 1;
   if (f >= m.frames.length) {
     f = m.frames.length - 1;
   }
-  ent.v_float[PR.entvars.frame] = f;
+  ent.api.frame = f;
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 
@@ -1487,12 +1487,12 @@ Host.Viewprev_f = function() {
   if (ent == null) {
     return;
   }
-  const m = CL.state.model_precache[ent.v_float[PR.entvars.modelindex] >> 0];
-  let f = (ent.v_float[PR.entvars.frame] >> 0) - 1;
+  const m = CL.state.model_precache[ent.api.modelindex >> 0];
+  let f = (ent.api.frame >> 0) - 1;
   if (f < 0) {
     f = 0;
   }
-  ent.v_float[PR.entvars.frame] = f;
+  ent.api.frame = f;
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 

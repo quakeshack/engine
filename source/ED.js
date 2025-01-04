@@ -31,16 +31,16 @@ ED.Free = function(ed) {
   SV.UnlinkEdict(ed);
   SV.PhysicsEngineUnregisterEdict(ed);
   ed.free = true;
-  ed.v_int[PR.entvars.model] = 0;
-  ed.v_float[PR.entvars.takedamage] = 0.0;
-  ed.v_float[PR.entvars.modelindex] = 0.0;
-  ed.v_float[PR.entvars.colormap] = 0.0;
-  ed.v_float[PR.entvars.skin] = 0.0;
-  ed.v_float[PR.entvars.frame] = 0.0;
+  ed.api.model = null;
+  ed.api.takedamage = 0.0;
+  ed.api.modelindex = 0.0;
+  ed.api.colormap = 0.0;
+  ed.api.skin = 0.0;
+  ed.api.frame = 0.0;
   ed.api.origin = Vector.origin;
   ed.api.angles = Vector.origin;
-  ed.v_float[PR.entvars.nextthink] = -1.0;
-  ed.v_float[PR.entvars.solid] = 0.0;
+  ed.api.nextthink = -1.0;
+  ed.api.solid = 0.0;
   ed.freetime = SV.server.time;
 };
 
@@ -153,13 +153,13 @@ ED.Count = function() {
       continue;
     }
     ++active;
-    if (ent.v_float[PR.entvars.solid] !== 0.0) {
+    if (ent.api.solid) {
       ++solid;
     }
-    if (ent.v_int[PR.entvars.model] !== 0) {
+    if (ent.api.model) {
       ++models;
     }
-    if (ent.v_float[PR.entvars.movetype] === SV.movetype.step) {
+    if (ent.api.movetype === SV.movetype.step) {
       ++step;
     }
   }
@@ -384,7 +384,7 @@ ED.LoadFromFile = function(data) {
     ent = ent ? ED.Alloc() : SV.server.edicts[0];
     data = ED.ParseEdict(data, ent);
 
-    const spawnflags = ent.v_float[PR.entvars.spawnflags] | 0;
+    const spawnflags = ent.api.spawnflags | 0;
     if (Host.deathmatch.value !== 0 && (spawnflags & 2048)) {
       ED.Free(ent);
       inhibit++;
