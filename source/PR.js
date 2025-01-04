@@ -659,6 +659,18 @@ PR._LoadProgsdef = function(headerText) {
   return { structs, progHeaderCRC };
 }
 
+PR.ClearEdictPrivateData = function(ed) {
+  if (!ed.v) {
+    ed.v = new ArrayBuffer(PR.entityfields * 4);
+    ed.v_float = new Float32Array(ed.v); // FIXME: private data for PR/PR only
+    ed.v_int = new Int32Array(ed.v); // FIXME: private data for PR/PR only
+  } else {
+    for (let i = 0; i < PR.entityfields; i++) {
+      ed.v_int[i] = 0;
+    }
+  }
+};
+
 PR.LoadProgs = function() {
   const progs = COM.LoadFile('progs.dat');
   if (progs == null) {
@@ -763,8 +775,6 @@ PR.LoadProgs = function() {
     PR.strings[i] = view.getUint8(ofs + i);
   }
   PR.string_temp = PR.NewString('', 128); // allocates 128 bytes
-  PR.netnames = PR.NewString('', SV.svs.maxclients << 5); // allocates 32 bytes for each client
-
   PR.string_heap_start = PR.strings.length + 4;
   PR.string_heap_current = PR.string_heap_start;
 
@@ -800,6 +810,7 @@ PR.LoadProgs = function() {
   return {
     GameAPI: PR.EdictProxy,
     GameEntityAPI: PR.EdictProxy,
+    ClearEdictPrivateData: PR.ClearEdictPrivateData,
   };
 };
 

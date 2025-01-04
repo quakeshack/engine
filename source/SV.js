@@ -210,7 +210,6 @@ SV.ConnectClient = function(clientnum) {
   client.wishdir = new Vector();
   client.message.cursize = 0;
   client.edict = SV.server.edicts[clientnum + 1];
-  client.edict.v_int[PR.entvars.netname] = PR.netnames + (clientnum << 5); // TODO: client.edict.vars.netname
   SV.SetClientName(client, 'unconnected');
   client.colors = 0;
   client.ping_times = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -767,13 +766,12 @@ SV.SpawnServer = function(server) {
   Con.DPrint('Clearing memory\n');
   Mod.ClearAll();
 
-  const { GameAPI, GameEntityAPI } = PR.LoadProgs();
+  const { GameAPI, GameEntityAPI, ClearEdictPrivateData } = PR.LoadProgs();
   SV.server.gameAPI = new GameAPI();
 
   SV.server.edicts = [];
-  let ed;
   for (i = 0; i < Def.max_edicts; ++i) {
-    ed = { // TODO: Make an Edict class
+    const ed = { // TODO: Make an Edict class
       num: i,
       free: false,
       area: {},
@@ -788,11 +786,10 @@ SV.SpawnServer = function(server) {
         effects: 0,
       },
       freetime: 0.0,
-      v: new ArrayBuffer(PR.entityfields * 4), // FIXME: private data for PR/PR only (// entityfields times 32 bits)
     };
+    ed.clear = () => ClearEdictPrivateData(ed);
+    ed.clear();
     ed.area.ent = ed;
-    ed.v_float = new Float32Array(ed.v); // FIXME: private data for PR/PR only
-    ed.v_int = new Int32Array(ed.v); // FIXME: private data for PR/PR only
     ed.api = new GameEntityAPI(ed);
     SV.server.edicts[i] = ed;
   }
@@ -867,7 +864,6 @@ SV.SpawnServer = function(server) {
     if (Host.client.active !== true) {
       continue;
     }
-    Host.client.edict.v_int[PR.entvars.netname] = PR.netnames + (i << 5);
     SV.SendServerinfo(Host.client);
   }
   Con.DPrint('Server spawned.\n');
@@ -875,30 +871,19 @@ SV.SpawnServer = function(server) {
 };
 
 SV.GetClientName = function(client) {
-  return PR.GetString(PR.netnames + (client.num << 5));
+  return client.name;
 };
 
 SV.SetClientName = function(client, name) {
-  const ofs = PR.netnames + (client.num << 5); let i;
-  for (i = 0; i < name.length; ++i) {
-    PR.strings[ofs + i] = name.charCodeAt(i);
-  }
-  PR.strings[ofs + i] = 0;
+  client.name = name;
+  client.edict.api.netname = name; // tell the game the client name too
 };
 
 // move
 
 SV.CheckBottom = function(ent) {
-  const mins = new Vector(
-    ent.v_float[PR.entvars.origin] + ent.v_float[PR.entvars.mins],
-    ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.mins1],
-    ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.mins2],
-  );
-  const maxs = new Vector(
-    ent.v_float[PR.entvars.origin] + ent.v_float[PR.entvars.maxs],
-    ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.maxs1],
-    ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.maxs2],
-  );
+  const mins = ent.api.origin.copy().add(ent.api.mins);
+  const maxs = ent.api.origin.copy().add(ent.api.maxs);
   for (;;) {
     if (SV.PointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) !== Mod.contents.solid) {
       break;

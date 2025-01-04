@@ -8,7 +8,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 * [_] show chatlog also in coop mode
 * [_] DS: show the name of the person’s chat message in console message
-* [_] CL/SV: name change on local game makes the message emit twice
+* [X] CL/SV: name change on local game makes the message emit twice
 
 ### Network improvements
 
@@ -120,6 +120,11 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * look into things like https://github.com/schteppe/cannon.js and https://github.com/kripken/ammo.js
 
 ## Log
+
+### 2025-01-04
+
+* more and more use of `edict.api`, server state is keeping track of the client names, not the game anymore
+* unsure where the border is between `Host` and `SV`, there’s quite a lot of server related state inside of `Host`
 
 ### 2025-01-03
 

@@ -601,6 +601,7 @@ CL.ClearState = function() {
 };
 
 CL.Disconnect = function() {
+  CL.SetConnectingStep(null, null);
   S.StopAllSounds();
   if (CL.cls.demoplayback === true) {
     CL.StopPlayback();
@@ -621,7 +622,6 @@ CL.Disconnect = function() {
   }
   CL.cls.demoplayback = CL.cls.timedemo = false;
   CL.cls.signon = 0;
-  CL.SetConnectingStep(null, null);
 };
 
 CL.Connect = function(sock) {
@@ -651,23 +651,23 @@ CL.SignonReply = function() {
   Con.DPrint('CL.SignonReply: ' + CL.cls.signon + '\n');
   switch (CL.cls.signon) {
     case 1:
+      CL.SetConnectingStep(90, 'About to spawn');
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'prespawn');
-      CL.SetConnectingStep(90, 'About to spawn');
       return;
     case 2:
+      CL.SetConnectingStep(95, 'Setting client state');
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'name "' + CL.name.string + '"\n');
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'color ' + (CL.color.value >> 4) + ' ' + (CL.color.value & 15) + '\n');
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'spawn ' + CL.cls.spawnparms);
-      CL.SetConnectingStep(95, 'Setting client state');
       return;
     case 3:
+      CL.SetConnectingStep(100, 'Joining the game!');
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'begin');
-      CL.SetConnectingStep(100, 'Joining the game!');
       return;
     case 4:
       CL.SetConnectingStep(null, null);

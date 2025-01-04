@@ -48,6 +48,7 @@ Host.FindMaxClients = function() {
       old_frags: 0,
       last_ping_update: 0,
       netconnection: null,
+      name: 'new',
     });
   }
   Cvar.SetValue('deathmatch', 0);
@@ -490,7 +491,7 @@ Host.Status_f = function() {
       str += '0';
     }
     print(str + seconds + '\n');
-    print('   ' + client.netconnection.address + '\n');
+    print('    ' + client.netconnection.address + '\n');
   }
 };
 
@@ -921,9 +922,7 @@ Host.Loadgame_f = function() { // TODO: schedule for next frame, add loading scr
       Sys.Error('Host.Loadgame_f: found ' + COM.token + ' when expecting {');
     }
     ent = SV.server.edicts[entnum++];
-    for (j = 0; j < PR.entityfields; ++j) {
-      ent.v_int[j] = 0;
-    }
+    ent.clear();
     ent.free = false;
     data = ED.ParseEdict(data, ent);
     if (ent.free !== true) {
@@ -942,7 +941,7 @@ Host.Loadgame_f = function() { // TODO: schedule for next frame, add loading scr
   Host.Reconnect_f();
 };
 
-Host.Name_f = function() {
+Host.Name_f = function() { // signon 2, step 1
   if (Cmd.argv.length <= 1) {
     Con.Print('"name" is "' + CL.name.string + '"\n');
     return;
@@ -975,7 +974,7 @@ Host.Name_f = function() {
   }
 
   const name = SV.GetClientName(Host.client);
-  if ((name.length !== 0) && (name !== 'unconnected') && (name !== newName)) {
+  if (Host.dedicated.value && name && (name.length !== 0) && (name !== 'unconnected') && (name !== newName)) {
     Con.Print(name + ' renamed to ' + newName + '\n');
   }
 
@@ -1062,7 +1061,7 @@ Host.Tell_f = function() {
   Host.client = save;
 };
 
-Host.Color_f = function() {
+Host.Color_f = function() { // signon 2, step 2 // FIXME: Host.client
   if (Cmd.argv.length <= 1) {
     Con.Print('"color" is "' + (CL.color.value >> 4) + ' ' + (CL.color.value & 15) + '"\ncolor <0-13> [0-13]\n');
     return;
@@ -1092,7 +1091,7 @@ Host.Color_f = function() {
   }
 
   Host.client.colors = playercolor;
-  Host.client.edict.v_float[PR.entvars.team] = bottom + 1;
+  Host.client.edict.api.team = bottom + 1;
   const msg = SV.server.reliable_datagram;
   MSG.WriteByte(msg, Protocol.svc.updatecolors);
   MSG.WriteByte(msg, Host.client.num);
@@ -1127,7 +1126,7 @@ Host.Pause_f = function() {
   MSG.WriteByte(SV.server.reliable_datagram, SV.server.paused === true ? 1 : 0);
 };
 
-Host.PreSpawn_f = function() {
+Host.PreSpawn_f = function() { // signon 1, step 1
   if (Cmd.client !== true) {
     Con.Print('prespawn is not valid from the console\n');
     return;
@@ -1143,7 +1142,7 @@ Host.PreSpawn_f = function() {
   client.sendsignon = true;
 };
 
-Host.Spawn_f = function() {
+Host.Spawn_f = function() { // signon 2, step 3
   if (Cmd.client !== true) {
     Con.Print('spawn is not valid from the console\n');
     return;
@@ -1160,12 +1159,10 @@ Host.Spawn_f = function() {
   if (SV.server.loadgame === true) {
     SV.server.paused = false;
   } else {
-    for (i = 0; i < PR.entityfields; ++i) {
-      ent.v_int[i] = 0;
-    }
-    ent.v_float[PR.entvars.colormap] = ent.num;
-    ent.v_float[PR.entvars.team] = (client.colors & 15) + 1;
-    ent.v_int[PR.entvars.netname] = PR.netnames + (client.num << 5);
+    ent.clear();
+    ent.api.netname = SV.GetClientName(client);
+    ent.api.colormap = ent.num; // the num, not the entity
+    ent.api.team = (client.colors & 15) + 1;
     for (i = 0; i <= 15; ++i) {
       PR.globals_float[PR.globalvars.parms + i] = client.spawn_parms[i];
     }
@@ -1220,7 +1217,7 @@ Host.Spawn_f = function() {
   Host.client.sendsignon = true;
 };
 
-Host.Begin_f = function() {
+Host.Begin_f = function() {  // signon 3, step 1
   if (Cmd.client !== true) {
     Con.Print('begin is not valid from the console\n');
     return;

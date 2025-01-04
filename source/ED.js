@@ -4,10 +4,7 @@
 ED = {};
 
 ED.ClearEdict = function(e) {
-  // resetting all vars (FIXME: PR only)
-  for (let i = 0; i < PR.entityfields; ++i) {
-    e.v_int[i] = 0;
-  }
+  e.clear();
   e.free = false;
   SV.PhysicsEngineUnregisterEdict(e);
 };
@@ -279,9 +276,7 @@ ED.ParseEpair = function(ent, key, s) { // TODO: access through proxy
 ED.ParseEdict = function(data, ent) {
   // If not the world entity, clear the entity data
   if (ent !== SV.server.edicts[0]) {
-    for (let i = 0; i < PR.entityfields; ++i) {
-      ent.v_int[i] = 0;
-    }
+    ent.clear();
   }
 
   let keyname;
