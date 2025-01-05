@@ -781,9 +781,8 @@ CL.RelinkEntities = function() {
 
   CL.numvisedicts = 0;
 
-  CL.state.velocity[0] = CL.state.mvelocity[1][0] + frac * (CL.state.mvelocity[0][0] - CL.state.mvelocity[1][0]);
-  CL.state.velocity[1] = CL.state.mvelocity[1][1] + frac * (CL.state.mvelocity[0][1] - CL.state.mvelocity[1][1]);
-  CL.state.velocity[2] = CL.state.mvelocity[1][2] + frac * (CL.state.mvelocity[0][2] - CL.state.mvelocity[1][2]);
+  // velo = mvelo[1] + frac * (mvelo[0] - mvelo[1])
+  CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().substract(CL.state.mvelocity[1]).multiply(frac)));
 
   if (CL.cls.demoplayback === true) {
     for (i = 0; i <= 2; ++i) {

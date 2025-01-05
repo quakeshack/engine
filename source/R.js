@@ -534,8 +534,6 @@ R.DrawAliasModel = function(e) {
     return;
   }
 
-  // console.log('R.DrawAliasModel', e.origin, clmodel.name);
-
   let program;
   if ((e.colormap !== 0) && (clmodel.player === true) && (R.nocolors.value === 0)) {
     program = GL.UseProgram('Player');
@@ -1227,26 +1225,23 @@ R.Init = function() {
 
   R.dlightvecs = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, R.dlightvecs);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-    0.0, -1.0, 0.0,
-    0.0, 0.0, 1.0,
-    -0.382683, 0.0, 0.92388,
-    -0.707107, 0.0, 0.707107,
-    -0.92388, 0.0, 0.382683,
-    -1.0, 0.0, 0.0,
-    -0.92388, 0.0, -0.382683,
-    -0.707107, 0.0, -0.707107,
-    -0.382683, 0.0, -0.92388,
-    0.0, 0.0, -1.0,
-    0.382683, 0.0, -0.92388,
-    0.707107, 0.0, -0.707107,
-    0.92388, 0.0, -0.382683,
-    1.0, 0.0, 0.0,
-    0.92388, 0.0, 0.382683,
-    0.707107, 0.0, 0.707107,
-    0.382683, 0.0, 0.92388,
-    0.0, 0.0, 1.0,
-  ]), gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, (() => {
+    const positions = [];
+
+    // 1) The "down" vector
+    positions.push(0, -1, 0);
+
+    // 2) 16 equally spaced vectors around the circle in y=0 plane
+    const numSegments = 16;
+    for (let i = 0; i <= numSegments; i++) {
+      // Angle in radians
+      const angle = (2 * Math.PI * i) / numSegments;
+      // Match the pattern: x = -sin(angle), z = cos(angle)
+      positions.push(-Math.sin(angle), 0, Math.cos(angle));
+    }
+
+    return new Float32Array(positions);
+  }), gl.STATIC_DRAW);
 
   R.MakeSky();
 };
@@ -2185,15 +2180,17 @@ R.WarpScreen = function() {
 // warp
 
 R.MakeSky = function() {
-  const sin = [0.0, 0.19509, 0.382683, 0.55557, 0.707107, 0.831470, 0.92388, 0.980785, 1.0];
+  const sin = Array.from({ length: 9 }, (_, i) =>
+    Number(Math.sin(i * Math.PI / 16).toFixed(6))
+  );
   let vecs = []; let i; let j;
 
   for (i = 0; i < 7; i += 2) {
     vecs = vecs.concat(
         [
           0.0, 0.0, 1.0,
-          sin[i + 2] * 0.19509, sin[6 - i] * 0.19509, 0.980785,
-          sin[i] * 0.19509, sin[8 - i] * 0.19509, 0.980785,
+          sin[i + 2] * sin[1], sin[6 - i] * sin[1], sin[7],
+          sin[i] * sin[1], sin[8 - i] * sin[1], sin[7],
         ]);
     for (j = 0; j < 7; ++j) {
       vecs = vecs.concat(
