@@ -911,7 +911,7 @@ Host.Loadgame_f = function() { // TODO: schedule for next frame, add loading scr
   }
 
   f[f.length] = '';
-  let entnum = 0; let ent; let j;
+  let entnum = 0; let ent;
   let data = f.slice(i).join('\n');
   for (;;) {
     data = COM.Parse(data);

@@ -11,13 +11,13 @@ PF.VarString = function(first) {
   return out;
 };
 
-PF.error = function PF_error() {
+PF.error = function PF_error() { // PR
   Con.Print('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + PF.VarString(0) + '\n');
   ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
   Host.Error('Program error');
 };
 
-PF.objerror = function PF_objerror() {
+PF.objerror = function PF_objerror() { // PR
   Con.Print('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + PF.VarString(0) + '\n');
   ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
   Host.Error('Program error');
@@ -33,7 +33,7 @@ PF.makevectors = function PF_makevectors() {
   }
 };
 
-PF.setorigin = function PF_setorigin() {
+PF.setorigin = function PF_setorigin() { // EngineInterface?
   const e = SV.server.edicts[PR.globals_int[4]];
   e.v_float[PR.entvars.origin] = PR.globals_float[7];
   e.v_float[PR.entvars.origin1] = PR.globals_float[8];
@@ -47,19 +47,17 @@ PF._SetMinMaxSize = function(e, min, max) {
   }
   e.api.mins = min;
   e.api.maxs = max;
-  e.v_float[PR.entvars.size] = max[0] - min[0];
-  e.v_float[PR.entvars.size1] = max[1] - min[1];
-  e.v_float[PR.entvars.size2] = max[2] - min[2];
+  e.api.size = max.copy().substract(min);
   SV.LinkEdict(e);
 };
 
-PF.setsize = function PF_setsize() {
+PF.setsize = function PF_setsize() { // EngineInterface?
   PF._SetMinMaxSize(SV.server.edicts[PR.globals_int[4]],
       new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
       new Vector(PR.globals_float[10], PR.globals_float[11], PR.globals_float[12]));
 };
 
-PF.setmodel = function PF_setmodel() {
+PF.setmodel = function PF_setmodel() { // EngineInterface
   const e = SV.server.edicts[PR.globals_int[4]];
   const m = PR.GetString(PR.globals_int[7]);
   let i;
@@ -82,11 +80,11 @@ PF.setmodel = function PF_setmodel() {
   }
 };
 
-PF.bprint = function PF_bprint() {
+PF.bprint = function PF_bprint() { // EngineInterface
   Host.BroadcastPrint(PF.VarString(0));
 };
 
-PF.sprint = function PF_sprint() {
+PF.sprint = function PF_sprint() { // EngineInterface
   const entnum = PR.globals_int[4];
   if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
     Con.Print('tried to sprint to a non-client\n');
@@ -97,7 +95,7 @@ PF.sprint = function PF_sprint() {
   MSG.WriteString(client.message, PF.VarString(1));
 };
 
-PF.centerprint = function PF_centerprint() {
+PF.centerprint = function PF_centerprint() { // EngineInterface
   const entnum = PR.globals_int[4];
   if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
     Con.Print('tried to sprint to a non-client\n');
@@ -120,7 +118,7 @@ PF.vlen = function PF_vlen() {
   PR.globals_float[1] = Math.sqrt(PR.globals_float[4] * PR.globals_float[4] + PR.globals_float[5] * PR.globals_float[5] + PR.globals_float[6] * PR.globals_float[6]);
 };
 
-PF.vectoyaw = function PF_vectoyaw() {
+PF.vectoyaw = function PF_vectoyaw() { // Vector
   const value1 = PR.globals_float[4]; const value2 = PR.globals_float[5];
   if ((value1 === 0.0) && (value2 === 0.0)) {
     PR.globals_float[1] = 0.0;
@@ -133,7 +131,7 @@ PF.vectoyaw = function PF_vectoyaw() {
   PR.globals_float[1] = yaw;
 };
 
-PF.vectoangles = function PF_vectoangles() {
+PF.vectoangles = function PF_vectoangles() { // Vector
   PR.globals_float[3] = 0.0;
   const value1 = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
   if ((value1[0] === 0.0) && (value1[1] === 0.0)) {
@@ -162,13 +160,13 @@ PF.random = function PF_random() {
   PR.globals_float[1] = Math.random();
 };
 
-PF.particle = function PF_particle() {
+PF.particle = function PF_particle() { // EngineInterface
   SV.StartParticle([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]],
       new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
       PR.globals_float[10] >> 0, PR.globals_float[13] >> 0);
 };
 
-PF.ambientsound = function PF_ambientsound() {
+PF.ambientsound = function PF_ambientsound() { // EngineInterface
   const samp = PR.GetString(PR.globals_int[7]); let i;
   for (i = 0; i < SV.server.sound_precache.length; ++i) {
     if (SV.server.sound_precache[i] === samp) {
@@ -189,7 +187,7 @@ PF.ambientsound = function PF_ambientsound() {
   MSG.WriteByte(signon, PR.globals_float[13] * 64.0);
 };
 
-PF.sound = function PF_sound() {
+PF.sound = function PF_sound() { // EngineInterface
   SV.StartSound(SV.server.edicts[PR.globals_int[4]],
       PR.globals_float[7] >> 0,
       PR.GetString(PR.globals_int[10]),
@@ -201,7 +199,7 @@ PF.breakstatement = function PF_breakstatement() {
   Con.Print('break statement\n');
 };
 
-PF.traceline = function PF_traceline() {
+PF.traceline = function PF_traceline() { // EngineInterface
   const trace = SV.Move(
     new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]), // start
     Vector.origin, Vector.origin, // min, max
@@ -260,7 +258,7 @@ PF._newcheckclient = function(check) {
   return i;
 };
 
-PF.checkclient = function PF_checkclient() {
+PF.checkclient = function PF_checkclient() { // EngineInterface
   if ((SV.server.time - SV.server.lastchecktime) >= 0.1) {
     SV.server.lastcheck = PF._newcheckclient(SV.server.lastcheck);
     SV.server.lastchecktime = SV.server.time;
@@ -283,7 +281,7 @@ PF.checkclient = function PF_checkclient() {
   PR.globals_int[1] = ent.num;
 };
 
-PF.stuffcmd = function PF_stuffcmd() {
+PF.stuffcmd = function PF_stuffcmd() { // EngineInterface
   const entnum = PR.globals_int[4];
   if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
     PR.RunError('Parm 0 not a client');
@@ -293,20 +291,20 @@ PF.stuffcmd = function PF_stuffcmd() {
   MSG.WriteString(client.message, PR.GetString(PR.globals_int[7]));
 };
 
-PF.localcmd = function PF_localcmd() {
+PF.localcmd = function PF_localcmd() { // EngineInterface
   Cmd.text += PR.GetString(PR.globals_int[4]);
 };
 
-PF.cvar = function PF_cvar() {
+PF.cvar = function PF_cvar() { // EngineInterface
   const v = Cvar.FindVar(PR.GetString(PR.globals_int[4]));
   PR.globals_float[1] = v != null ? v.value : 0.0;
 };
 
-PF.cvar_set = function PF_cvar_set() {
+PF.cvar_set = function PF_cvar_set() { // EngineInterface
   Cvar.Set(PR.GetString(PR.globals_int[4]), PR.GetString(PR.globals_int[7]));
 };
 
-PF.findradius = function PF_findradius() {
+PF.findradius = function PF_findradius() { // EngineInterface
   let chain = 0;
   const org = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
   const rad = PR.globals_float[7];
@@ -333,7 +331,7 @@ PF.findradius = function PF_findradius() {
   PR.globals_int[1] = chain;
 };
 
-PF.dprint = function PF_dprint() {
+PF.dprint = function PF_dprint() { // EngineInterface
   Con.DPrint(PF.VarString(0));
 };
 
@@ -358,15 +356,15 @@ PF.vtos = function PF_vtos() {
   PR.globals_int[1] = PR.string_temp;
 };
 
-PF.Spawn = function PF_Spawn() {
+PF.Spawn = function PF_Spawn() { // EngineInterface
   PR.globals_int[1] = ED.Alloc().num;
 };
 
-PF.Remove = function PF_Remove() {
+PF.Remove = function PF_Remove() { // EngineInterface
   ED.Free(SV.server.edicts[PR.globals_int[4]]);
 };
 
-PF.Find = function PF_Find() {
+PF.Find = function PF_Find() { // EngineInterface
   let e = PR.globals_int[4];
   const f = PR.globals_int[7];
   const s = PR.GetString(PR.globals_int[10]);
@@ -384,7 +382,7 @@ PF.Find = function PF_Find() {
   PR.globals_int[1] = 0;
 };
 
-PF.MoveToGoal = function PF_MoveToGoal() {
+PF.MoveToGoal = function PF_MoveToGoal() { // EngineInterface
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
   if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
     PR.globals_float[1] = 0.0;
@@ -400,11 +398,11 @@ PF.MoveToGoal = function PF_MoveToGoal() {
   }
 };
 
-PF.precache_file = function PF_precache_file() {
+PF.precache_file = function PF_precache_file() { // EngineInterface
   PR.globals_int[1] = PR.globals_int[4];
 };
 
-PF.precache_sound = function PF_precache_sound() {
+PF.precache_sound = function PF_precache_sound() { // EngineInterface
   const s = PR.GetString(PR.globals_int[4]);
   PR.globals_int[1] = PR.globals_int[4];
   PR.CheckEmptyString(s);
@@ -417,7 +415,7 @@ PF.precache_sound = function PF_precache_sound() {
   SV.server.sound_precache[i] = s;
 };
 
-PF.precache_model = function PF_precache_model() {
+PF.precache_model = function PF_precache_model() { // EngineInterface
   if (SV.server.loading !== true) {
     PR.RunError('PF.Precache_*: Precache can only be done in spawn functions');
   }
@@ -450,7 +448,7 @@ PF.eprint = function PF_eprint() {
   ED.Print(SV.server.edicts[PR.globals_float[4]]);
 };
 
-PF.walkmove = function PF_walkmove() {
+PF.walkmove = function PF_walkmove() { // EngineInterface
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
   if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
     PR.globals_float[1] = 0.0;
@@ -464,8 +462,8 @@ PF.walkmove = function PF_walkmove() {
   PR.globals_int[PR.globalvars.self] = ent.num;
 };
 
-PF.droptofloor = function PF_droptofloor() {
-  const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
+PF.droptofloor = function PF_droptofloor() { // EngineInterface
+  const ent = SV.server.gameAPI.self;
   const trace = SV.Move(ent.api.origin,
       ent.api.mins, ent.api.maxs,
       new Vector(ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] - 256.0), 0, ent);
@@ -476,11 +474,11 @@ PF.droptofloor = function PF_droptofloor() {
   ent.api.origin = trace.endpos;
   SV.LinkEdict(ent);
   ent.api.flags |= SV.fl.onground;
-  ent.v_int[PR.entvars.groundentity] = trace.ent.num;
+  ent.api.groundentity = trace.ent;
   PR.globals_float[1] = 1.0;
 };
 
-PF.lightstyle = function PF_lightstyle() {
+PF.lightstyle = function PF_lightstyle() { // EngineInterface
   const style = PR.globals_float[4] >> 0;
   const val = PR.GetString(PR.globals_int[7]);
   SV.server.lightstyles[style] = val;
@@ -512,15 +510,15 @@ PF.ceil = function PF_ceil() {
   PR.globals_float[1] = Math.ceil(PR.globals_float[4]);
 };
 
-PF.checkbottom = function PF_checkbottom() {
+PF.checkbottom = function PF_checkbottom() { // EngineInterface
   PR.globals_float[1] = SV.CheckBottom(SV.server.edicts[PR.globals_int[4]]);
 };
 
-PF.pointcontents = function PF_pointcontents() {
+PF.pointcontents = function PF_pointcontents() { // EngineInterface
   PR.globals_float[1] = SV.PointContents([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]]);
 };
 
-PF.nextent = function PF_nextent() {
+PF.nextent = function PF_nextent() { // EngineInterface
   for (let i = PR.globals_int[4] + 1; i < SV.server.num_edicts; ++i) {
     if (SV.server.edicts[i].free !== true) {
       PR.globals_int[1] = i;
@@ -530,7 +528,7 @@ PF.nextent = function PF_nextent() {
   PR.globals_int[1] = 0;
 };
 
-PF.aim = function PF_aim() {
+PF.aim = function PF_aim() { // EngineInterface
   const ent = SV.server.edicts[PR.globals_int[4]];
   const start = new Vector(ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] + 20.0);
   const dir = new Vector(PR.globals_float[PR.globalvars.v_forward], PR.globals_float[PR.globalvars.v_forward1], PR.globals_float[PR.globalvars.v_forward2]);
@@ -596,12 +594,12 @@ PF.aim = function PF_aim() {
   PR.globals_float[3] = bestdir[2];
 };
 
-PF.changeyaw = function PF_changeyaw() {
+PF.changeyaw = function PF_changeyaw() { // EngineInterface
   const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
   ent.v_float[PR.entvars.angles1] = SV.ChangeYaw(ent);
 };
 
-PF.WriteDest = function PF_WriteDest() {
+PF._WriteDest = function PF_WriteDest() {
   switch (PR.globals_float[4] >> 0) {
     case 0: // broadcast
       return SV.server.datagram;
@@ -620,32 +618,32 @@ PF.WriteDest = function PF_WriteDest() {
   PR.RunError('WriteDest: bad destination');
 };
 
-PF.WriteByte = function PF_WriteByte() {
-  MSG.WriteByte(PF.WriteDest(), PR.globals_float[7]);
+PF.WriteByte = function PF_WriteByte() { // EngineInterface
+  MSG.WriteByte(PF._WriteDest(), PR.globals_float[7]);
 };
-PF.WriteChar = function PF_WriteChar() {
-  MSG.WriteChar(PF.WriteDest(), PR.globals_float[7]);
+PF.WriteChar = function PF_WriteChar() { // EngineInterface
+  MSG.WriteChar(PF._WriteDest(), PR.globals_float[7]);
 };
-PF.WriteShort = function PF_WriteShort() {
-  MSG.WriteShort(PF.WriteDest(), PR.globals_float[7]);
+PF.WriteShort = function PF_WriteShort() { // EngineInterface
+  MSG.WriteShort(PF._WriteDest(), PR.globals_float[7]);
 };
-PF.WriteLong = function PF_WriteLong() {
-  MSG.WriteLong(PF.WriteDest(), PR.globals_float[7]);
+PF.WriteLong = function PF_WriteLong() { // EngineInterface
+  MSG.WriteLong(PF._WriteDest(), PR.globals_float[7]);
 };
-PF.WriteAngle = function PF_WriteAngle() {
-  MSG.WriteAngle(PF.WriteDest(), PR.globals_float[7]);
+PF.WriteAngle = function PF_WriteAngle() { // EngineInterface
+  MSG.WriteAngle(PF._WriteDest(), PR.globals_float[7]);
 };
-PF.WriteCoord = function PF_WriteCoord() {
-  MSG.WriteCoord(PF.WriteDest(), PR.globals_float[7]);
+PF.WriteCoord = function PF_WriteCoord() { // EngineInterface
+  MSG.WriteCoord(PF._WriteDest(), PR.globals_float[7]);
 };
-PF.WriteString = function PF_WriteString() {
-  MSG.WriteString(PF.WriteDest(), PR.GetString(PR.globals_int[7]));
+PF.WriteString = function PF_WriteString() { // EngineInterface
+  MSG.WriteString(PF._WriteDest(), PR.GetString(PR.globals_int[7]));
 };
-PF.WriteEntity = function PF_WriteEntity() {
-  MSG.WriteShort(PF.WriteDest(), PR.globals_int[7]);
+PF.WriteEntity = function PF_WriteEntity() { // EngineInterface
+  MSG.WriteShort(PF._WriteDest(), PR.globals_int[7]);
 };
 
-PF.makestatic = function PF_makestatic() {
+PF.makestatic = function PF_makestatic() { // EngineInterface
   const ent = SV.server.edicts[PR.globals_int[4]];
   const message = SV.server.signon;
   MSG.WriteByte(message, Protocol.svc.spawnstatic);
@@ -662,7 +660,7 @@ PF.makestatic = function PF_makestatic() {
   ED.Free(ent);
 };
 
-PF.setspawnparms = function PF_setspawnparms() {
+PF.setspawnparms = function PF_setspawnparms() { // EngineInterface
   let i = PR.globals_int[4];
   if ((i <= 0) || (i > SV.svs.maxclients)) {
     PR.RunError('Entity is not a client');
@@ -673,7 +671,7 @@ PF.setspawnparms = function PF_setspawnparms() {
   }
 };
 
-PF.changelevel = function PF_changelevel() {
+PF.changelevel = function PF_changelevel() { // EngineInterface
   if (SV.svs.changelevel_issued === true) {
     return;
   }

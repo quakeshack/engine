@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, Q, MSG, SV, SCR, R, Chase, GL, gl, Sys, Def, V, PR, VID */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, Q, MSG, SV, SCR, R, Chase, GL, gl, Sys, Def, V, VID */
 
 // eslint-disable-next-line no-global-assign
 R = {};

@@ -97,6 +97,10 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
   * `EngineInterface` --> will basically provide `PF.builtin` in a meaningful way (in PR land: that PF mess)
 * `PR.NewString` and `PR.TempString`: NewString is leaky, need to think of a better solution --> done
 * `PF` needs to be refactored, lots of references to things like `self`, `other`, `goalentity`
+  * some of the methods can be put to `Vector` as well
+* `PR` needs to sit on top of `EngineInterface`:
+  * QuakeC will still communicate a lot over global variables (e.g. `trace` data)
+  * JavaScript game will communicate in a more modern way
 
 ### More multiplayer features
 
@@ -111,6 +115,27 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * increase limit to 32 players (like QW)
 * pausable --> already exists
 
+### Menu rework
+
+* each page has the same set of elements
+ * header
+ * logo on the left (optional)
+ * large items, small items
+ * cursors
+ * sliders, textboxes and buttons
+* some menu things suck though (main menu is one big picture)
+
+```
+class MainMenu extends BaseMenu {
+  constructor() {
+    this._largeCursor = true;
+    this._items = [
+      new MenuButton()
+    ]
+  }
+};
+```
+
 ### Random thoughts, ideas, etc.
 
 * more streaming of data, make textures only available when needed
@@ -121,12 +146,16 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * look into loading of Classic Doom assets, to make a game mash-up of sorts
 * look into things like https://github.com/schteppe/cannon.js and https://github.com/kripken/ammo.js
 * play around with skybox support etc.
+* integrate some debugging tools like a texture and pic browser
+* integrate a model viewer tool
 
 ## Log
 
 ### 2025-01-05
 
 * found some regenerated stuff, I added their generator algorithms next to them
+* some more splitting off `PR` and `SV`
+* should be more careful with replacing things willy-nilly, introduced a nasty bug that took me an hour to track down
 
 ### 2025-01-04
 
@@ -225,7 +254,6 @@ global.make_bubbles.call(player);
 
 * started working on `dedicated.js`
 * introduced node.js replacements for COM and Sys
-
 
 ### 2024-12-23
 

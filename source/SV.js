@@ -407,7 +407,7 @@ SV.WriteEntitiesToClient = function(clent, msg) {
 };
 
 SV.WriteClientdataToMessage = function(ent, msg) {
-  if (((ent.api.dmg_take !== 0.0) || (ent.api.dmg_save !== 0.0)) && ent.api.dmg_inflictor) {
+  if ((ent.api.dmg_take || ent.api.dmg_save) && ent.api.dmg_inflictor) {
     const other = ent.api.dmg_inflictor;
     const vec = other.api.origin.copy().add(other.api.mins.copy().add(other.api.maxs).multiply(0.5));
     MSG.WriteByte(msg, Protocol.svc.damage);
@@ -725,7 +725,7 @@ SV.HasMap = function(mapname) {
   return Mod.ForName('maps/' + mapname + '.bsp') !== null;
 };
 
-SV.SpawnServer = function(server) {
+SV.SpawnServer = function(mapname) {
   let i;
 
   if (NET.hostname.string.length === 0) {
@@ -736,7 +736,7 @@ SV.SpawnServer = function(server) {
     SCR.centertime_off = 0.0;
   }
 
-  Con.DPrint('SpawnServer: ' + server + '\n');
+  Con.DPrint('SpawnServer: ' + mapname + '\n');
   SV.svs.changelevel_issued = false;
 
   if (SV.server.active === true) {
@@ -781,7 +781,7 @@ SV.SpawnServer = function(server) {
       },
       freetime: 0.0,
       equals(other) {
-        this.num === other.num;
+        return other && this.num === other.num;
       },
     };
     ed.clear = () => ClearEdictPrivateData(ed);
@@ -809,7 +809,7 @@ SV.SpawnServer = function(server) {
   SV.server.time = 1.0;
   SV.server.lastcheck = 0;
   SV.server.lastchecktime = 0.0;
-  SV.server.modelname = 'maps/' + server + '.bsp';
+  SV.server.modelname = 'maps/' + mapname + '.bsp';
   SV.server.worldmodel = Mod.ForName(SV.server.modelname);
   if (SV.server.worldmodel == null) {
     Con.Print('Couldn\'t spawn server ' + SV.server.modelname + '\n');
@@ -846,7 +846,7 @@ SV.SpawnServer = function(server) {
     ent.api.deathmatch = Host.deathmatch.value;
   }
 
-  ent.api.mapname = server;
+  ent.api.mapname = mapname;
   ent.api.serverflags = SV.svs.serverflags;
   ED.LoadFromFile(SV.server.worldmodel.entities);
   SV.server.active = true;
@@ -1044,7 +1044,7 @@ SV.StepDirection = function(ent, yaw, dist) {
   ent.api.ideal_yaw = yaw;
   ent.v_float[PR.entvars.angles1] = SV.ChangeYaw(ent);
   yaw *= Math.PI / 180.0;
-  const oldorigin = ent.api.origin;
+  const oldorigin = ent.api.origin.copy();
   if (SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], false) === 1) {
     const delta = ent.v_float[PR.entvars.angles1] - ent.api.ideal_yaw;
     if ((delta > 45.0) && (delta < 315.0)) {
@@ -1239,8 +1239,6 @@ SV.FlyMove = function(ent, time) {
   let original_velocity = ent.api.velocity;
   const new_velocity = new Vector();
   let i; let j;
-  let trace;
-  const end = new Vector();
   let time_left = time;
   let blocked = 0;
   for (bumpcount = 0; bumpcount <= 3; ++bumpcount) {
@@ -1249,10 +1247,8 @@ SV.FlyMove = function(ent, time) {
 			(ent.v_float[PR.entvars.velocity2] === 0.0)) {
       break;
     }
-    end[0] = ent.v_float[PR.entvars.origin] + time_left * ent.v_float[PR.entvars.velocity];
-    end[1] = ent.v_float[PR.entvars.origin1] + time_left * ent.v_float[PR.entvars.velocity1];
-    end[2] = ent.v_float[PR.entvars.origin2] + time_left * ent.v_float[PR.entvars.velocity2];
-    trace = SV.Move(ent.api.origin, ent.api.mins, ent.api.maxs, end, 0, ent);
+    const end = ent.api.origin.copy().add(ent.api.velocity.copy().multiply(time_left));
+    const trace = SV.Move(ent.api.origin, ent.api.mins, ent.api.maxs, end, 0, ent);
     if (trace.allsolid === true) {
       ent.api.velocity = Vector.origin;
       return 3;
@@ -1348,47 +1344,30 @@ SV.PushEntity = function(ent, push) {
   } else {
     nomonsters = SV.move.normal;
   }
-  const trace = SV.Move(ent.api.origin, ent.api.mins,
-      ent.api.maxs, end, nomonsters, ent);
+  const trace = SV.Move(ent.api.origin, ent.api.mins, ent.api.maxs, end, nomonsters, ent);
   ent.api.origin = trace.endpos;
   SV.LinkEdict(ent, true);
-  if (trace.ent != null) {
+  if (trace.ent) {
     SV.Impact(ent, trace.ent);
   }
   return trace;
 };
 
 SV.PushMove = function(pusher, movetime) {
-  if ((pusher.v_float[PR.entvars.velocity] === 0.0) &&
-		(pusher.v_float[PR.entvars.velocity1] === 0.0) &&
-		(pusher.v_float[PR.entvars.velocity2] === 0.0)) {
+  if (pusher.api.velocity.isOrigin()) {
     pusher.api.ltime += movetime;
     return;
   }
-  const move = new Vector(
-    pusher.v_float[PR.entvars.velocity] * movetime,
-    pusher.v_float[PR.entvars.velocity1] * movetime,
-    pusher.v_float[PR.entvars.velocity2] * movetime,
-  );
-  const mins = new Vector(
-    pusher.v_float[PR.entvars.absmin] + move[0],
-    pusher.v_float[PR.entvars.absmin1] + move[1],
-    pusher.v_float[PR.entvars.absmin2] + move[2],
-  );
-  const maxs = new Vector(
-    pusher.v_float[PR.entvars.absmax] + move[0],
-    pusher.v_float[PR.entvars.absmax1] + move[1],
-    pusher.v_float[PR.entvars.absmax2] + move[2],
-  );
-  const pushorig = pusher.api.origin;
-  pusher.v_float[PR.entvars.origin] += move[0];
-  pusher.v_float[PR.entvars.origin1] += move[1];
-  pusher.v_float[PR.entvars.origin2] += move[2];
+  const move = pusher.api.velocity.copy().multiply(movetime);
+  const mins = pusher.api.absmin.copy().add(move);
+  const maxs = pusher.api.absmax.copy().add(move);
+  const pushorig = pusher.api.origin.copy().add(move);
+  pusher.api.origin = pushorig;
   pusher.api.ltime += movetime;
   SV.LinkEdict(pusher);
-  let e; let check; let movetype;
-  let entorig; const moved = []; let moved_edict; let i;
-  for (e = 1; e < SV.server.num_edicts; ++e) {
+  let check; let movetype;
+  const moved = [];
+  for (let e = 1; e < SV.server.num_edicts; ++e) {
     check = SV.server.edicts[e];
     if (check.free === true) {
       continue;
@@ -1399,8 +1378,7 @@ SV.PushMove = function(pusher, movetime) {
 			(movetype === SV.movetype.noclip)) {
       continue;
     }
-    if (((check.api.flags & SV.fl.onground) === 0) ||
-			(check.v_int[PR.entvars.groundentity] !== pusher.num)) {
+    if (((check.api.flags & SV.fl.onground) === 0) || !check.api.groundentity || !check.api.groundentity.equals(pusher)) {
       if ((check.v_float[PR.entvars.absmin] >= maxs[0]) ||
 				(check.v_float[PR.entvars.absmin1] >= maxs[1]) ||
 				(check.v_float[PR.entvars.absmin2] >= maxs[2]) ||
@@ -1416,8 +1394,8 @@ SV.PushMove = function(pusher, movetime) {
     if (movetype !== SV.movetype.walk) {
       check.api.flags &= (~SV.fl.onground) >>> 0;
     }
-    entorig = check.api.origin;
-    moved[moved.length] = [...entorig, check];
+    const entorig = check.api.origin.copy();
+    moved[moved.length] = [entorig, check];
     pusher.api.solid = SV.solid.not;
     SV.PushEntity(check, move);
     pusher.api.solid = SV.solid.bsp;
@@ -1431,26 +1409,20 @@ SV.PushMove = function(pusher, movetime) {
         check.v_float[PR.entvars.maxs2] = check.v_float[PR.entvars.mins2];
         continue;
       }
-      check.v_float[PR.entvars.origin] = entorig[0];
-      check.v_float[PR.entvars.origin1] = entorig[1];
-      check.v_float[PR.entvars.origin2] = entorig[2];
+      check.api.origin = entorig;
       SV.LinkEdict(check, true);
-      pusher.v_float[PR.entvars.origin] = pushorig[0];
-      pusher.v_float[PR.entvars.origin1] = pushorig[1];
-      pusher.v_float[PR.entvars.origin2] = pushorig[2];
+      check.api.origin = pushorig;
       SV.LinkEdict(pusher);
       pusher.api.ltime -= movetime;
-      if (pusher.v_int[PR.entvars.blocked] !== 0) {
+      if (pusher.api.blocked) {
         PR.globals_int[PR.globalvars.self] = pusher.num;
         PR.globals_int[PR.globalvars.other] = check.num;
-        PR.ExecuteProgram(pusher.v_int[PR.entvars.blocked]);
+        pusher.api.blocked();
       }
-      for (i = 0; i < moved.length; ++i) {
-        moved_edict = moved[i];
-        moved_edict[3].v_float[PR.entvars.origin] = moved_edict[0];
-        moved_edict[3].v_float[PR.entvars.origin1] = moved_edict[1];
-        moved_edict[3].v_float[PR.entvars.origin2] = moved_edict[2];
-        SV.LinkEdict(moved_edict[3]);
+      for (let i = 0; i < moved.length; ++i) {
+        const moved_edict = moved[i];
+        moved_edict[1].api.origin = moved_edict[0];
+        SV.LinkEdict(moved_edict[1]);
       }
       return;
     }
@@ -2557,7 +2529,7 @@ SV.FindTouchedLeafs = function(ent, node) {
 };
 
 SV.LinkEdict = function(ent, touch_triggers) {
-  if ((ent === SV.server.edicts[0]) || (ent.free === true)) {
+  if ((ent.equals(SV.server.edicts[0])) || (ent.free === true)) {
     return;
   }
 
@@ -2646,7 +2618,7 @@ SV.PointContents = function(p) {
 };
 
 SV.TestEntityPosition = function(ent) {
-  const origin = ent.api.origin;
+  const origin = ent.api.origin.copy();
   return SV.Move(origin, ent.api.mins, ent.api.maxs, origin, 0, ent).startsolid;
 };
 
@@ -2782,19 +2754,19 @@ SV.ClipToLinks = function(node, clip) {
 			(clip.boxmaxs[2] < touch.v_float[PR.entvars.absmin2])) {
       continue;
     }
-    if (clip.passedict != null) {
-      if ((clip.passedict.v_float[PR.entvars.size] !== 0.0) && (touch.v_float[PR.entvars.size] === 0.0)) {
+    if (clip.passedict) {
+      if (clip.passedict.api.size !== 0.0 && touch.api.size === 0.0) {
         continue;
       }
     }
     if (clip.trace.allsolid === true) {
       return;
     }
-    if (clip.passedict != null) {
-      if (SV.server.edicts[touch.v_int[PR.entvars.owner]] === clip.passedict) {
+    if (clip.passedict) {
+      if (touch.api.owner && touch.api.owner.equals(clip.passedict)) {
         continue;
       }
-      if (SV.server.edicts[clip.passedict.v_int[PR.entvars.owner]] === touch) {
+      if (clip.passedict.api.owner && clip.passedict.api.owner.equals(touch)) {
         continue;
       }
     }

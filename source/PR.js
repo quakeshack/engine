@@ -222,18 +222,12 @@ PR.progheader_crc = 5927;
 
 // classes
 
-PR.EntityProxy = class EntityProxy {
-  constructor(ent) {
-    this.ent = ent;
-
-    Object.freeze(this);
-  }
-}
-
 /**
  * FIXME: function proxies need to become cached
  */
 PR.FunctionProxy = class FunctionProxy extends Function {
+  static proxyCache = [];
+
   constructor(fnc, ent = null) {
     super();
 
@@ -252,15 +246,23 @@ PR.FunctionProxy = class FunctionProxy extends Function {
     Object.freeze(this);
   }
 
-  static create(...args) {
-    const obj = new PR.FunctionProxy(...args);
+  static create(fnc, ent) {
+    const cacheId = `${fnc}-${ent ? ent.num : 'null'}`;
+
+    if (FunctionProxy.proxyCache[cacheId]) {
+      return FunctionProxy.proxyCache[cacheId];
+    }
+
+    const obj = new PR.FunctionProxy(fnc, ent);
 
     // such an ugly hack to make objects actually callable
-    return new Proxy(obj, {
+    FunctionProxy.proxyCache[cacheId] = new Proxy(obj, {
       apply(target, thisArg, args) {
         return obj.call(...args);
       },
     });
+
+    return FunctionProxy.proxyCache[cacheId];
   }
 
   /**
@@ -362,15 +364,11 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
                 val_int[ofs] = 0;
                 return;
               }
-              // if (value instanceof PR.EntityProxy) {
-              //   val_int[ofs] = value.ent;
-              //   return;
-              // }
               if (typeof(value.num) !== 'undefined') { // TODO: Edict class
                 val_int[ofs] = value.num;
                 return;
               }
-              throw new TypeError('Expected EntityProxy or Edict');
+              throw new TypeError('Expected Edict');
             },
             configurable: true,
             enumerable: true,
@@ -426,7 +424,7 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
             enumerable: true,
           });
           break;
-        case PR.etype.ev_vector: // TODO: Proxy for Vector
+        case PR.etype.ev_vector: // TODO: Proxy for Vector?
           Object.defineProperty(this, name, {
             get: function() {
               return new Vector(val_float[ofs], val_float[ofs + 1], val_float[ofs + 2]);
@@ -818,6 +816,7 @@ PR.LoadProgs = function() {
     const def = ED.FindField(field);
     PR.entvars[field] = (def != null) ? def.ofs : null;
   }
+  PR.FunctionProxy.proxyCache = []; // free all cached functions
   // hook up progs.dat with our proxies
   return {
     GameAPI: PR.EdictProxy,
@@ -1234,8 +1233,8 @@ PR.ExecuteProgram = function(fnum) {
         continue;
       case PR.op.state:
         ed = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-        ed.api.nextthink = PR.globals_float[PR.globalvars.time] + 0.1;
-        ed.api.frame = PR.globals_float[st.a];
+        ed.v_float[PR.entvars.nextthink] = PR.globals_float[PR.globalvars.time] + 0.1;
+        ed.v_float[PR.entvars.frame] = PR.globals_float[st.a];
         ed.v_int[PR.entvars.think] = PR.globals_int[st.b];
         continue;
     }

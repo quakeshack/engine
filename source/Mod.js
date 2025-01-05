@@ -415,12 +415,8 @@ Mod.LoadSubmodels = function(buf) {
   }
   Mod.loadmodel.submodels = [];
 
-  Mod.loadmodel.mins = [view.getFloat32(fileofs, true) - 1.0,
-    view.getFloat32(fileofs + 4, true) - 1.0,
-    view.getFloat32(fileofs + 8, true) - 1.0];
-  Mod.loadmodel.maxs = [view.getFloat32(fileofs + 12, true) + 1.0,
-    view.getFloat32(fileofs + 16, true) + 1.0,
-    view.getFloat32(fileofs + 20, true) + 1.0];
+  Mod.loadmodel.mins = new Vector(view.getFloat32(fileofs, true) - 1.0, view.getFloat32(fileofs + 4, true) - 1.0, view.getFloat32(fileofs + 8, true) - 1.0);
+  Mod.loadmodel.maxs = new Vector(view.getFloat32(fileofs + 12, true) + 1.0, view.getFloat32(fileofs + 16, true) + 1.0, view.getFloat32(fileofs + 20, true) + 1.0);
   Mod.loadmodel.hulls[0].firstclipnode = view.getUint32(fileofs + 36, true);
   Mod.loadmodel.hulls[1].firstclipnode = view.getUint32(fileofs + 40, true);
   Mod.loadmodel.hulls[2].firstclipnode = view.getUint32(fileofs + 44, true);
@@ -432,12 +428,8 @@ Mod.LoadSubmodels = function(buf) {
     out.needload = false;
     out.type = Mod.type.brush;
     out.submodel = true;
-    out.mins = [view.getFloat32(fileofs, true) - 1.0,
-      view.getFloat32(fileofs + 4, true) - 1.0,
-      view.getFloat32(fileofs + 8, true) - 1.0];
-    out.maxs = [view.getFloat32(fileofs + 12, true) + 1.0,
-      view.getFloat32(fileofs + 16, true) + 1.0,
-      view.getFloat32(fileofs + 20, true) + 1.0];
+    out.mins = new Vector(view.getFloat32(fileofs, true) - 1.0, view.getFloat32(fileofs + 4, true) - 1.0, view.getFloat32(fileofs + 8, true) - 1.0);
+    out.maxs = new Vector(view.getFloat32(fileofs + 12, true) + 1.0, view.getFloat32(fileofs + 16, true) + 1.0, view.getFloat32(fileofs + 20, true) + 1.0);
     out.origin = new Vector(view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true), view.getFloat32(fileofs + 32, true));
     out.hulls = [
       {
