@@ -7,7 +7,7 @@ Grouped by sections and then sorted by priority (more or less).
 ### Bugs I introduced
 
 * [_] show chatlog also in coop mode
-* [_] DS: show the name of the person’s chat message in console message
+* [X] DS: show the name of the person’s chat message in console message
 * [X] CL/SV: name change on local game makes the message emit twice
 
 ### Network improvements
@@ -59,6 +59,9 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] S: still some issues with stopping sound upon a crash (mainly Firefox affected)
 * [X] Sbar: Show recent chatter next to the ranking board
 * [_] M: touch support (how to escape etc)
+* [_] COM: instead of requesting files by using partial content requests to the webserver, let’s use files instead, leveraging CDNs
+  * [_] DS: make it respond to file requests, map it to PAKs
+  * [_] COM: frontend part should simply ask for the file directly
 
 ### Build pipeline
 
@@ -151,11 +154,20 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-01-06
+
+* `SV.server.gameAPI.mapname` could be part of `SV.server` instead
+* for some reason `SV.svs.maxclientslimit` is always forced to 1 when we are in full-stack mode, unsure if there was a reason behind that
+* `Sbar` is basically everything that would be part of `cl_dll` in GoldSrc
+* `SV.svs.clients[].name` must be an empty string, otherwise `Sbar` is going to bug out
+* fixed a few `null` strings here in there due to some gameAPI vars I forgot to set
+
 ### 2025-01-05
 
 * found some regenerated stuff, I added their generator algorithms next to them
 * some more splitting off `PR` and `SV`
 * should be more careful with replacing things willy-nilly, introduced a nasty bug that took me an hour to track down
+* `PR.FunctionProxy` is now cached (using edict id and function id as key), improved memory and CPU usage drastically
 
 ### 2025-01-04
 

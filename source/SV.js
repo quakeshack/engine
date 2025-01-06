@@ -809,6 +809,7 @@ SV.SpawnServer = function(mapname) {
   SV.server.time = 1.0;
   SV.server.lastcheck = 0;
   SV.server.lastchecktime = 0.0;
+  SV.server.gameAPI.mapname = mapname;
   SV.server.modelname = 'maps/' + mapname + '.bsp';
   SV.server.worldmodel = Mod.ForName(SV.server.modelname);
   if (SV.server.worldmodel == null) {

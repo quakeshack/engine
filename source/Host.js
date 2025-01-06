@@ -33,11 +33,9 @@ Host.Error = function(error) {
 
 Host.FindMaxClients = function() {
   SV.svs.maxclients = 1;
+  SV.svs.maxclientslimit = 32;
   if (!Host.dedicated.value) {
     CL.cls.state = CL.active.disconnected;
-    SV.svs.maxclientslimit = 1;
-  } else {
-    SV.svs.maxclientslimit = 32;
   }
   SV.svs.clients = [];
   for (let i = 0; i < SV.svs.maxclientslimit; i++) {
@@ -48,7 +46,7 @@ Host.FindMaxClients = function() {
       old_frags: 0,
       last_ping_update: 0,
       netconnection: null,
-      name: 'new',
+      name: '', // must be an empty string, otherwise Sbar is going to bug out
     });
   }
   Cvar.SetValue('deathmatch', 0);
@@ -989,7 +987,7 @@ Host.Version_f = function() {
   Con.Print('Version ' + Def.version + '\n');
 };
 
-Host.Say = function(teamonly) {
+Host.Say_f = function(teamonly) {
   if (Cmd.client !== true) {
     Cmd.ForwardToServer();
     return;
@@ -1019,11 +1017,13 @@ Host.Say = function(teamonly) {
     Host.SendChatMessageToClient(client, SV.GetClientName(save), message, false);
   }
 
-  Sys.Print(message);
+  Host.client = save; // unsure whether I removed it or not
+
+  Con.Print(`${SV.GetClientName(save)}: ${message}\n`);
 };
 
 Host.Say_Team_f = function() {
-  Host.Say(true);
+  Host.Say_f(true);
 };
 
 Host.Tell_f = function() {
@@ -1550,7 +1550,7 @@ Host.InitCommands = function() {
   Cmd.AddCommand('name', Host.Name_f);
   Cmd.AddCommand('noclip', Host.Noclip_f);
   Cmd.AddCommand('version', Host.Version_f);
-  Cmd.AddCommand('say', Host.Say);
+  Cmd.AddCommand('say', Host.Say_f);
   Cmd.AddCommand('say_team', Host.Say_Team_f);
   Cmd.AddCommand('tell', Host.Tell_f);
   Cmd.AddCommand('color', Host.Color_f);
