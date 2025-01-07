@@ -175,8 +175,53 @@
 			document.addEventListener("webkitpointerlockchange", mouseChecker, false);
 		</script>
 
-		<script type="x-shader/x-vertex" id="vshAlias">uniform vec3 uOrigin;uniform mat3 uAngles;uniform vec3 uViewOrigin;uniform mat3 uViewAngles;uniform mat4 uPerspective;uniform vec3 uLightVec;attribute vec3 aPosition;attribute vec3 aNormal;attribute vec2 aTexCoord;varying vec2 vTexCoord;varying float vLightDot;void main(void){vec3 position = uViewAngles * (uAngles * aPosition + uOrigin - uViewOrigin);gl_Position = uPerspective * vec4(position.xz, -position.y, 1.0);vTexCoord = aTexCoord;vLightDot = dot(aNormal, uLightVec);}</script>
-		<script type="x-shader/x-fragment" id="fshAlias">precision mediump float;uniform float uGamma;uniform float uAmbientLight;uniform float uShadeLight;uniform sampler2D tTexture;varying vec2 vTexCoord;varying float vLightDot;void main(void){vec4 texture = texture2D(tTexture, vTexCoord);gl_FragColor = vec4(texture.rgb * mix(1.0, vLightDot * uShadeLight + uAmbientLight, texture.a), 1.0);gl_FragColor.r = pow(gl_FragColor.r, uGamma);gl_FragColor.g = pow(gl_FragColor.g, uGamma);gl_FragColor.b = pow(gl_FragColor.b, uGamma);}</script>
+		<script type="x-shader/x-vertex" id="vshAlias">
+			uniform vec3 uOrigin;
+			uniform mat3 uAngles;
+			uniform vec3 uViewOrigin;
+			uniform mat3 uViewAngles;
+			uniform mat4 uPerspective;
+			uniform vec3 uLightVec;
+			uniform float uAlpha;
+
+			attribute vec3 aPositionA;
+			attribute vec3 aPositionB;
+			attribute vec3 aNormal;
+			attribute vec2 aTexCoord;
+
+			varying vec2 vTexCoord;
+			varying float vLightDot;
+
+			void main(void) {
+				vec3 position = uViewAngles * (uAngles * (
+					mix(aPositionA, aPositionB, uAlpha)
+				) + uOrigin - uViewOrigin);
+
+				gl_Position = uPerspective * vec4(position.xz, -position.y, 1.0);
+
+				vTexCoord = aTexCoord;
+				vLightDot = dot(aNormal, uLightVec);
+			}
+		</script>
+		<script type="x-shader/x-fragment" id="fshAlias">
+			precision mediump float;
+
+			uniform float uGamma;
+			uniform float uAmbientLight;
+			uniform float uShadeLight;
+			uniform sampler2D tTexture;
+
+			varying vec2 vTexCoord;
+			varying float vLightDot;
+
+			void main(void){
+				vec4 texture = texture2D(tTexture, vTexCoord);
+				gl_FragColor = vec4(texture.rgb * mix(1.0, vLightDot * uShadeLight + uAmbientLight, texture.a), 1.0);
+				gl_FragColor.r = pow(gl_FragColor.r, uGamma);
+				gl_FragColor.g = pow(gl_FragColor.g, uGamma);
+				gl_FragColor.b = pow(gl_FragColor.b, uGamma);
+			}
+		</script>
 		<script type="x-shader/x-vertex" id="vshBrush">uniform vec3 uOrigin;uniform mat3 uAngles;uniform vec3 uViewOrigin;uniform mat3 uViewAngles;uniform mat4 uPerspective;attribute vec3 aPosition;attribute vec4 aTexCoord;attribute vec4 aLightStyle;varying vec4 vTexCoord;varying vec4 vLightStyle;void main(void){vec3 position = uViewAngles * (uAngles * aPosition + uOrigin - uViewOrigin);gl_Position = uPerspective * vec4(position.xz, -position.y, 1.0);vTexCoord = aTexCoord;vLightStyle = aLightStyle;}</script>
 		<script type="x-shader/x-fragment" id="fshBrush">precision mediump float;uniform float uGamma;uniform sampler2D tTexture;uniform sampler2D tLightmap;uniform sampler2D tDlight;uniform sampler2D tLightStyle;varying vec4 vTexCoord;varying vec4 vLightStyle;void main(void){vec4 texture = texture2D(tTexture, vTexCoord.xy);gl_FragColor = vec4(texture.rgb *mix(1.0, dot(texture2D(tLightmap, vTexCoord.zw), vec4(texture2D(tLightStyle, vec2(vLightStyle.x, 0.0)).a,texture2D(tLightStyle, vec2(vLightStyle.y, 0.0)).a,texture2D(tLightStyle, vec2(vLightStyle.z, 0.0)).a,texture2D(tLightStyle, vec2(vLightStyle.w, 0.0)).a)* 43.828125) + texture2D(tDlight, vTexCoord.zw).a, texture.a), 1.0);gl_FragColor.r = pow(gl_FragColor.r, uGamma);gl_FragColor.g = pow(gl_FragColor.g, uGamma);gl_FragColor.b = pow(gl_FragColor.b, uGamma);}</script>
 		<script type="x-shader/x-vertex" id="vshCharacter">uniform vec2 uCharacter;uniform vec2 uDest;uniform mat4 uOrtho;attribute vec2 aPosition;varying vec2 vTexCoord;void main(void){gl_Position = uOrtho * vec4(aPosition * 8.0 + uDest, 0.0, 1.0);vTexCoord = (aPosition + uCharacter) * 0.0625;}</script>

@@ -1086,7 +1086,10 @@ Mod.LoadAliasModel = function(buffer) {
 
   Mod.LoadAllFrames(buffer, inmodel);
 
-  // FIXME: cut off here for dedicated
+  if (Host.dedicated.value) {
+    // skip frontend-only data
+    return;
+  }
 
   const cmds = [];
 
@@ -1122,7 +1125,7 @@ Mod.LoadAliasModel = function(buffer) {
     if (group.group === true) {
       for (j = 0; j < group.frames.length; ++j) {
         frame = group.frames[j];
-        frame.cmdofs = cmds.length << 2;
+        frame.cmdofs = cmds.length * 4;
         for (k = 0; k < Mod.loadmodel._num_tris; ++k) {
           triangle = Mod.loadmodel._triangles[k];
           for (l = 0; l < 3; ++l) {
@@ -1142,7 +1145,7 @@ Mod.LoadAliasModel = function(buffer) {
       continue;
     }
     frame = group;
-    frame.cmdofs = cmds.length << 2;
+    frame.cmdofs = cmds.length * 4;
     for (j = 0; j < Mod.loadmodel._num_tris; ++j) {
       triangle = Mod.loadmodel._triangles[j];
       for (k = 0; k < 3; ++k) {
@@ -1158,10 +1161,6 @@ Mod.LoadAliasModel = function(buffer) {
         cmds[cmds.length] = R.avertexnormals[vert.lightnormalindex][2];
       }
     }
-  }
-
-  if (Host.dedicated.value) {
-    return;
   }
 
   Mod.loadmodel.cmds = gl.createBuffer();

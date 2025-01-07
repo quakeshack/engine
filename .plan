@@ -42,6 +42,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] use more await/async when necessary, introduce a shutting down flag to break async processing
 * [_] replace all `>> 1` with `* 2` etc.
 * [_] SV: introduce `Edict` class, the current loose object already got `clear` and `equals` to it
+* [_] index.html: reorganize shaders
 
 ### SVC improvements
 
@@ -62,6 +63,10 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] COM: instead of requesting files by using partial content requests to the webserver, let’s use files instead, leveraging CDNs
   * [_] DS: make it respond to file requests, map it to PAKs
   * [_] COM: frontend part should simply ask for the file directly
+
+### Rendering improvements
+
+* [_] improve lighting and materials https://chatgpt.com/share/677d90a2-f364-800d-b077-9a93c9343b54
 
 ### Build pipeline
 
@@ -153,6 +158,10 @@ class MainMenu extends BaseMenu {
 * integrate a model viewer tool
 
 ## Log
+
+### 2025-01-07
+
+* models with grouped frames do have linear interpolation now, done via the vertex shader for alias models
 
 ### 2025-01-06
 

@@ -566,8 +566,8 @@ R.DrawAliasModel = function(e) {
     if (dl.die < CL.state.time) {
       continue;
     }
-    // add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len();
-    add = dl.radius - e.origin.copy().substract(dl.origin).len();
+    add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len();
+    // add = dl.radius - e.origin.copy().substract(dl.origin).len();
     if (add > 0.0) {
       ambientlight += add;
       shadelight += add;
@@ -596,7 +596,7 @@ R.DrawAliasModel = function(e) {
 
   R.c_alias_polys += clmodel._num_tris; // FIXME: private property access
 
-  let num; let fullinterval; let targettime;
+  let num; let fullinterval; let targettime = 0;
   const time = CL.state.time + e.syncbase;
   num = e.frame;
   if ((num >= clmodel.frames.length) || (num < 0)) {
@@ -604,20 +604,26 @@ R.DrawAliasModel = function(e) {
     num = 0;
   }
   let frame = clmodel.frames[num];
+  let frameA = frame, frameB = frame;
   if (frame.group === true) {
     num = frame.frames.length - 1;
     fullinterval = frame.frames[num].interval;
+    frameA = frame.frames[0];
+    frameB = frame.frames[1 % frame.frames.length];
     targettime = time - Math.floor(time / fullinterval) * fullinterval;
     for (i = 0; i < num; ++i) {
       if (frame.frames[i].interval > targettime) {
+        frameA = frame.frames[i];
+        frameB = frame.frames[(i + 1) % frame.frames.length];
         break;
       }
     }
-    frame = frame.frames[i];
   }
+  gl.uniform1f(program.uAlpha, Math.min(1, Math.max(0, targettime)));
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
-  gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 24, frame.cmdofs);
-  gl.vertexAttribPointer(program.aNormal.location, 3, gl.FLOAT, false, 24, frame.cmdofs + 12);
+  gl.vertexAttribPointer(program.aPositionA.location, 3, gl.FLOAT, false, 24, frameA.cmdofs);
+  gl.vertexAttribPointer(program.aPositionB.location, 3, gl.FLOAT, false, 24, frameB.cmdofs);
+  gl.vertexAttribPointer(program.aNormal.location, 3, gl.FLOAT, false, 24, frameA.cmdofs + 12);
   gl.vertexAttribPointer(program.aTexCoord.location, 2, gl.FLOAT, false, 0, 0);
 
   num = e.skinnum;
@@ -1179,8 +1185,13 @@ R.Init = function() {
   R.InitParticles();
 
   GL.CreateProgram('Alias',
-      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight'],
-      [['aPosition', gl.FLOAT, 3], ['aNormal', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
+      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uAlpha'],
+      [
+        ['aPositionA', gl.FLOAT, 3],
+        ['aPositionB', gl.FLOAT, 3],
+        ['aNormal', gl.FLOAT, 3],
+        ['aTexCoord', gl.FLOAT, 2]
+      ],
       ['tTexture']);
   GL.CreateProgram('Brush',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma'],
@@ -1211,7 +1222,7 @@ R.Init = function() {
   R.warptexture = gl.createTexture();
   GL.Bind(0, R.warptexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); // FIXME: mipmap
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); // FIXME: mipmap
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_aFILTER, gl.NEAREST); // FIXME: mipmap
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   R.warprenderbuffer = gl.createRenderbuffer();
