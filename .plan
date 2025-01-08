@@ -162,6 +162,8 @@ class MainMenu extends BaseMenu {
 ### 2025-01-07
 
 * models with grouped frames do have linear interpolation now, done via the vertex shader for alias models
+* added cvar `r_interpolation` to switch on/off interpolation of grouped frames
+* added fade effect between animated textures, also controlable via `r_interpolation`
 
 ### 2025-01-06
 

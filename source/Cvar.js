@@ -1,4 +1,4 @@
-/* global Host, Cmd, Cvar, Q, SV */
+/* global Host, Cmd, Cvar, Q, SV, Con */
 
 // eslint-disable-next-line no-global-assign
 Cvar = class Cvar {
@@ -62,7 +62,7 @@ Cvar = class Cvar {
     }
 
     if (Cmd.argv.length <= 1) {
-      console.log(`"${v.name}" is "${v.string}"\n`);
+      Con.Print(`"${v.name}" is "${v.string}"\n`);
       return true;
     }
 

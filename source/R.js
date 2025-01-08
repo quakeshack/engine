@@ -619,7 +619,7 @@ R.DrawAliasModel = function(e) {
       }
     }
   }
-  gl.uniform1f(program.uAlpha, Math.min(1, Math.max(0, targettime)));
+  gl.uniform1f(program.uAlpha, R.interpolation.value ? Math.min(1, Math.max(0, targettime)) : 0);
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
   gl.vertexAttribPointer(program.aPositionA.location, 3, gl.FLOAT, false, 24, frameA.cmdofs);
   gl.vertexAttribPointer(program.aPositionB.location, 3, gl.FLOAT, false, 24, frameB.cmdofs);
@@ -1181,6 +1181,7 @@ R.Init = function() {
   R.polyblend = Cvar.RegisterVariable('gl_polyblend', '1');
   R.flashblend = Cvar.RegisterVariable('gl_flashblend', '0');
   R.nocolors = Cvar.RegisterVariable('gl_nocolors', '0');
+  R.interpolation = Cvar.RegisterVariable('r_interpolation', '1');
 
   R.InitParticles();
 
@@ -1194,9 +1195,9 @@ R.Init = function() {
       ],
       ['tTexture']);
   GL.CreateProgram('Brush',
-      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma'],
+      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uAlpha'],
       [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 4], ['aLightStyle', gl.FLOAT, 4]],
-      ['tTexture', 'tLightmap', 'tDlight', 'tLightStyle']);
+      ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyle']);
   GL.CreateProgram('Dlight',
       ['uOrigin', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uRadius', 'uGamma'],
       [['aPosition', gl.FLOAT, 3]],
@@ -1840,12 +1841,15 @@ R.TextureAnimation = function(base) {
   }
   let anims = base.anims;
   if (anims == null) {
-    return base;
+    return [base, base];
   }
   if ((R.currententity.frame !== 0) && (base.alternate_anims.length !== 0)) {
     anims = base.alternate_anims;
   }
-  return R.currententity.model.textures[anims[(Math.floor(CL.state.time * 5.0) + frame) % anims.length]];
+  return [
+    R.currententity.model.textures[anims[(Math.floor(CL.state.time * 5.0) + frame) % anims.length]],
+    R.currententity.model.textures[anims[(Math.floor(CL.state.time * 5.0) + frame + 1) % anims.length]],
+  ];
 };
 
 R.DrawBrushModel = function(e) {
@@ -1890,6 +1894,7 @@ R.DrawBrushModel = function(e) {
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 44, 0);
   gl.vertexAttribPointer(program.aTexCoord.location, 4, gl.FLOAT, false, 44, 12);
   gl.vertexAttribPointer(program.aLightStyle.location, 4, gl.FLOAT, false, 44, 28);
+  gl.uniform1f(program.uAlpha, R.interpolation.value ? (CL.state.time % .2) / .2 : 0);
   if ((R.fullbright.value !== 0) || (clmodel.lightdata == null)) {
     GL.Bind(program.tLightmap, R.fullbright_texture);
   } else {
@@ -1897,15 +1902,15 @@ R.DrawBrushModel = function(e) {
   }
   GL.Bind(program.tDlight, ((R.flashblend.value === 0) && (clmodel.submodel === true)) ? R.dlightmap_texture : R.null_texture);
   GL.Bind(program.tLightStyle, R.lightstyle_texture);
-  let i; let chain; let texture;
-  for (i = 0; i < clmodel.chains.length; ++i) {
-    chain = clmodel.chains[i];
-    texture = R.TextureAnimation(clmodel.textures[chain[0]]);
-    if (texture.turbulent === true) {
+  for (let i = 0; i < clmodel.chains.length; ++i) {
+    const chain = clmodel.chains[i];
+    const [textureA, textureB] = R.TextureAnimation(clmodel.textures[chain[0]]);
+    if (textureA.turbulent === true) {
       continue;
     }
     R.c_brush_verts += chain[2];
-    GL.Bind(program.tTexture, texture.texturenum);
+    GL.Bind(program.tTextureA, textureA.texturenum);
+    GL.Bind(program.tTextureB, textureB.texturenum);
     gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
   }
 
@@ -1919,9 +1924,9 @@ R.DrawBrushModel = function(e) {
   gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 20, e.model.waterchain);
   gl.vertexAttribPointer(program.aTexCoord.location, 2, gl.FLOAT, false, 20, e.model.waterchain + 12);
-  for (i = 0; i < clmodel.chains.length; ++i) {
-    chain = clmodel.chains[i];
-    texture = clmodel.textures[chain[0]];
+  for (let i = 0; i < clmodel.chains.length; ++i) {
+    const chain = clmodel.chains[i];
+    const texture = clmodel.textures[chain[0]];
     if (texture.turbulent !== true) {
       continue;
     }
@@ -1983,7 +1988,10 @@ R.DrawWorld = function() {
     for (j = 0; j < leaf.skychain; ++j) {
       cmds = leaf.cmds[j];
       R.c_brush_verts += cmds[2];
-      GL.Bind(program.tTexture, R.TextureAnimation(clmodel.textures[cmds[0]]).texturenum);
+      const [textureA, textureB] = R.TextureAnimation(clmodel.textures[cmds[0]]);
+      gl.uniform1f(program.uAlpha, (CL.state.time % .2) / .2);
+      GL.Bind(program.tTextureA, textureA.texturenum);
+      GL.Bind(program.tTextureB, textureB.texturenum);
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
     }
   }
