@@ -3,7 +3,7 @@
 // eslint-disable-next-line no-global-assign
 Draw = {};
 
-Draw.CharToConback = function(num, dest) {
+Draw._CharToConback = function(num, dest) {
   let source = ((num >> 4) << 10) + ((num & 15) << 3);
   let drawline; let x;
   for (drawline = 0; drawline < 8; ++drawline) {
@@ -14,6 +14,12 @@ Draw.CharToConback = function(num, dest) {
     }
     source += 128;
     dest += 320;
+  }
+};
+
+Draw._StringToConback = function(str, dest, alignRight) {
+  for (let i = 0; i < str.length; ++i) {
+    Draw._CharToConback(str.charCodeAt(i), dest + (alignRight ? ((str.length - i) * -8) : i * 8));
   }
 };
 
@@ -43,10 +49,8 @@ Draw.Init = function() {
   Draw.conback.width = 320;
   Draw.conback.height = 200;
   Draw.conback.data = new Uint8Array(cb, 8, 64000);
-  const ver = Def.version;
-  for (let i = 0; i < ver.length; ++i) {
-    Draw.CharToConback(ver.charCodeAt(i), 59829 - ((ver.length - i) << 3), 186);
-  }
+  Draw._StringToConback(document.title, 320 * 8 + 8, false);
+  Draw._StringToConback(Def.version, 59829, true);
   Draw.conback.texnum = GL.LoadPicTexture(Draw.conback);
 
   Draw.loading = Draw.CachePic('loading');
