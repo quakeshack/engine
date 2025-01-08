@@ -1,19 +1,19 @@
-/* global Shack, Cmd, Host, CL, M */
+/* global Cmd, Host, CL, M */
 
-// eslint-disable-next-line no-global-assign
-Shack = class Shack {
-  static Init() {
+ 
+Shack = {
+  Init() {
 
     if (!Host.dedicated.value) {
-      Shack.InitClientCommands();
+      this.InitClientCommands();
     }
-  }
+  },
 
-  static InitClientCommands() {
-    Cmd.AddCommand('shack_start', Shack.Start_f);
-  }
+  InitClientCommands() {
+    Cmd.AddCommand('shack_start', this.Start_f);
+  },
 
-  static Start_f() {
+  Start_f() {
     if (CL.name.string.toLowerCase() === 'player') {
       M.Menu_MultiPlayer_f();
       return;
