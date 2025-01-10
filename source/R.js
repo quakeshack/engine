@@ -622,7 +622,9 @@ R.DrawAliasModel = function(e) {
   gl.uniform1f(program.uAlpha, R.interpolation.value ? Math.min(1, Math.max(0, targettime)) : 0);
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
   gl.vertexAttribPointer(program.aPositionA.location, 3, gl.FLOAT, false, 24, frameA.cmdofs);
-  gl.vertexAttribPointer(program.aPositionB.location, 3, gl.FLOAT, false, 24, frameB.cmdofs);
+  if (program.aPositionB) {
+    gl.vertexAttribPointer(program.aPositionB.location, 3, gl.FLOAT, false, 24, frameB.cmdofs);
+  }
   gl.vertexAttribPointer(program.aNormal.location, 3, gl.FLOAT, false, 24, frameA.cmdofs + 12);
   gl.vertexAttribPointer(program.aTexCoord.location, 2, gl.FLOAT, false, 0, 0);
 
@@ -1204,7 +1206,7 @@ R.Init = function() {
       []);
   GL.CreateProgram('Player',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uTop', 'uBottom'],
-      [['aPosition', gl.FLOAT, 3], ['aNormal', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
+      [['aPositionA', gl.FLOAT, 3], ['aNormal', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
       ['tTexture', 'tPlayer']);
   GL.CreateProgram('Sprite',
       ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma'],

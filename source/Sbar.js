@@ -166,7 +166,7 @@ Sbar.Init = function() {
 };
 
 Sbar.DrawPic = function(x, y, pic) {
-  if (CL.state.gametype === 1) {
+  if (CL.state.maxclients > 1) {
     Draw.Pic(x, y + VID.height - 24, pic);
   } else {
     Draw.Pic(x + (VID.width >> 1) - 160, y + VID.height - 24, pic);
@@ -174,7 +174,7 @@ Sbar.DrawPic = function(x, y, pic) {
 };
 
 Sbar.DrawCharacter = function(x, y, num) {
-  if (CL.state.gametype === 1) {
+  if (CL.state.maxclients > 1) {
     Draw.Character(x + 4, y + VID.height - 24, num);
   } else {
     Draw.Character(x + (VID.width >> 1) - 156, y + VID.height - 24, num);
@@ -182,7 +182,7 @@ Sbar.DrawCharacter = function(x, y, num) {
 };
 
 Sbar.DrawString = function(x, y, str) {
-  if (CL.state.gametype === 1) {
+  if (CL.state.maxclients > 1) {
     Draw.String(x, y + VID.height - 24, str);
   } else {
     Draw.String(x + (VID.width >> 1) - 160, y + VID.height - 24, str);
@@ -368,7 +368,7 @@ Sbar.DrawFrags = function() {
   Sbar.SortFrags();
   const l = Sbar.scoreboardlines <= 4 ? Sbar.scoreboardlines : 4;
   let x = 23;
-  const xofs = CL.state.gametype === 1 ? 10 : (VID.width >> 1) - 150;
+  const xofs = CL.state.maxclients === 1 ? 10 : (VID.width >> 1) - 150;
   const y = VID.height - 47;
   let i; let k; let s; let num;
   for (i = 0; i < l; ++i) {
@@ -393,7 +393,7 @@ Sbar.DrawFace = function() {
   if ((COM.rogue === true) && (CL.state.maxclients !== 1) && (Host.teamplay.value >= 4) && (Host.teamplay.value <= 6)) {
     const s = CL.state.scores[CL.state.viewentity - 1];
     const top = (s.colors & 0xf0) + 8;
-    const xofs = CL.state.gametype === 1 ? 113 : (VID.width >> 1) - 47;
+    const xofs = CL.state.maxclients === 1 ? 113 : (VID.width >> 1) - 47;
     Sbar.DrawPic(112, 0, Sbar.r_teambord);
     Draw.Fill(xofs, VID.height - 21, 22, 9, top);
     Draw.Fill(xofs, VID.height - 12, 22, 9, ((s.colors & 0xf) << 4) + 8);
@@ -447,7 +447,7 @@ Sbar.Draw = function() {
   if ((Sbar.showscores === true) || (CL.state.stats[Def.stat.health] <= 0)) {
     Sbar.DrawPic(0, 0, Sbar.scorebar);
     Sbar.SoloScoreboard();
-    if (CL.state.gametype === 1) {
+    if (CL.state.maxclients > 1) {
       Sbar.DeathmatchOverlay();
     }
     return;
@@ -507,11 +507,11 @@ Sbar.Draw = function() {
   }
   Sbar.DrawNum(248, 0, CL.state.stats[Def.stat.ammo], 3, CL.state.stats[Def.stat.ammo] <= 10 ? 1 : 0);
 
-  if ((VID.width >= 512) && (CL.state.gametype === 1)) {
+  if ((VID.width >= 512) && (CL.state.maxclients > 1)) {
     Sbar.MiniDeathmatchOverlay();
   }
 
-  if ((VID.width >= 768) && (CL.state.gametype === 1)) {
+  if ((VID.width >= 768) && (CL.state.maxclients > 1)) {
     Sbar.ChatterDrawOverlay();
   }
 };
@@ -610,7 +610,7 @@ Sbar.ChatterDrawOverlay = function() {
 };
 
 Sbar.IntermissionOverlay = function() {
-  if (CL.state.gametype === 1) {
+  if (CL.state.maxclients > 1) {
     Sbar.DeathmatchOverlay();
     return;
   }

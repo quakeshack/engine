@@ -1118,9 +1118,9 @@ CL.KeepaliveMessage = function() {
 CL.ParseServerInfo = function() {
   Con.DPrint('Serverinfo packet received.\n');
   CL.ClearState();
-  let i = MSG.ReadLong();
-  if (i !== Protocol.version) {
-    Con.Print('Server returned version ' + i + ', not ' + Protocol.version + '\n');
+  const version = MSG.ReadLong();
+  if (version !== Protocol.version) {
+    Con.Print('Server returned version ' + version + ', not ' + Protocol.version + '\n');
     return;
   }
   CL.state.maxclients = MSG.ReadByte();
@@ -1130,7 +1130,7 @@ CL.ParseServerInfo = function() {
   }
   CL.SetConnectingStep(15, 'Received server info');
   CL.state.scores = [];
-  for (i = 0; i < CL.state.maxclients; ++i) {
+  for (let i = 0; i < CL.state.maxclients; ++i) {
     CL.state.scores[i] = {
       name: '',
       entertime: 0.0,
@@ -1168,7 +1168,7 @@ CL.ParseServerInfo = function() {
   CL.processingServerInfoState = 1;
 
   (async () => {
-    for (i = 1; i < nummodels; ++i) {
+    for (let i = 1; i < nummodels; ++i) {
       CL.SetConnectingStep(25 + (i / nummodels) * 20, 'Loading model: ' + model_precache[i]);
       CL.state.model_precache[i] = Mod.ForName(model_precache[i]);
       if (CL.state.model_precache[i] == null) {
@@ -1180,7 +1180,7 @@ CL.ParseServerInfo = function() {
       //CL.KeepaliveMessage();
     }
 
-    for (i = 1; i < numsounds; ++i) {
+    for (let i = 1; i < numsounds; ++i) {
       CL.SetConnectingStep(45 + (i / numsounds) * 20, 'Loading sound: ' + sound_precache[i]);
       CL.state.sound_precache[i] = S.PrecacheSound(sound_precache[i]);
 

@@ -6,7 +6,8 @@ Grouped by sections and then sorted by priority (more or less).
 
 ### Bugs I introduced
 
-* [_] show chatlog also in coop mode
+* [X] show chatlog also in coop mode
+* [_] when one player dies in coop mode, all clients will reconnect and telefrag each other upon spawning
 * [X] DS: show the name of the person’s chat message in console message
 * [X] CL/SV: name change on local game makes the message emit twice
 
@@ -158,6 +159,16 @@ class MainMenu extends BaseMenu {
 * integrate a model viewer tool
 
 ## Log
+
+### 2025-01-10
+
+* fixed player rendering bug
+* adjusted Sbar code to have the player list and chatter box back in co-op mode
+* found a new bug: dead players in co-op will lead to a reconnect for all
+
+### 2025-01-09
+
+* played around with smooth texture animations using pixel shaders
 
 ### 2025-01-07
 

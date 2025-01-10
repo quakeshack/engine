@@ -167,8 +167,8 @@ SV.SendServerinfo = function(client) {
   MSG.WriteByte(message, Protocol.svc.serverinfo);
   MSG.WriteLong(message, Protocol.version);
   MSG.WriteByte(message, SV.svs.maxclients);
-  MSG.WriteByte(message, ((Host.coop.value === 0) && (Host.deathmatch.value !== 0)) ? 1 : 0);
-  MSG.WriteString(message, SV.server.edicts[0].api.message);
+  MSG.WriteByte(message, ((Host.coop.value === 0) && (Host.deathmatch.value !== 0)) ? 1 : 0); // gametype (1 deathmatch, 0 coop/singleplayer)
+  MSG.WriteString(message, SV.server.edicts[0].api.message); // levelname
   let i;
   for (i = 1; i < SV.server.model_precache.length; ++i) {
     MSG.WriteString(message, SV.server.model_precache[i]);
