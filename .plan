@@ -7,7 +7,7 @@ Grouped by sections and then sorted by priority (more or less).
 ### Bugs I introduced
 
 * [X] show chatlog also in coop mode
-* [_] when one player dies in coop mode, all clients will reconnect and telefrag each other upon spawning
+* [X] when one player dies in coop mode, all clients will reconnect and telefrag each other upon spawning
 * [X] DS: show the name of the person’s chat message in console message
 * [X] CL/SV: name change on local game makes the message emit twice
 

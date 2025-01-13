@@ -843,8 +843,10 @@ SV.SpawnServer = function(mapname) {
 
   if (Host.coop.value !== 0) {
     ent.api.coop = Host.coop.value;
+    SV.server.gameAPI.coop = Host.coop.value;
   } else {
     ent.api.deathmatch = Host.deathmatch.value;
+    SV.server.gameAPI.deathmatch = Host.deathmatch.value;
   }
 
   ent.api.mapname = mapname;
