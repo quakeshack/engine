@@ -1,3 +1,4 @@
+/* global Sys */
 // eslint-disable-next-line no-unused-vars, no-undef
 CANNON = require('cannon');
 require('./source/Draw_node.js');

@@ -1,7 +1,7 @@
 {
   "name": "Quake1-browser",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dedicated.js",
   "repository": "https://github.com/lrusso/Quake1.git",
   "license": "MIT",
   "private": true,

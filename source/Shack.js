@@ -1,6 +1,5 @@
 /* global Cmd, Host, CL, M */
 
- 
 Shack = {
   Init() {
 
