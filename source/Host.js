@@ -498,7 +498,7 @@ Host.God_f = function() {
     Cmd.ForwardToServer();
     return;
   }
-  if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
+  if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
   SV.player.api.flags ^= SV.fl.godmode;
@@ -514,7 +514,7 @@ Host.Notarget_f = function() {
     Cmd.ForwardToServer();
     return;
   }
-  if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
+  if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
   SV.player.api.flags ^= SV.fl.notarget;
@@ -530,7 +530,7 @@ Host.Noclip_f = function() {
     Cmd.ForwardToServer();
     return;
   }
-  if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
+  if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
   if (SV.player.api.movetype !== SV.movetype.noclip) {
@@ -549,7 +549,7 @@ Host.Fly_f = function() {
     Cmd.ForwardToServer();
     return;
   }
-  if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
+  if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
   if (SV.player.api.movetype !== SV.movetype.fly) {
@@ -704,7 +704,7 @@ Host.Connect_f = function() {
 
   if (Cmd.argv[1] === 'self') {
     const url = new URL(location.href);
-    CL.EstablishConnection(url.host + url.pathname);
+    CL.EstablishConnection(url.host + url.pathname + (!url.pathname.endsWith('/') ? '/' : '') + 'api/');
   } else {
     CL.EstablishConnection(Cmd.argv[1]);
   }
@@ -1164,7 +1164,7 @@ Host.Spawn_f = function() { // signon 2, step 3
     ent.api.colormap = ent.num; // the num, not the entity
     ent.api.team = (client.colors & 15) + 1;
     for (i = 0; i <= 15; ++i) {
-      PR.globals_float[PR.globalvars.parms + i] = client.spawn_parms[i];
+      SV.server.gameAPI[`parm${i + 1}`] = client.spawn_parms[i];
     }
     SV.server.gameAPI.time = SV.server.time;
     SV.server.gameAPI.ClientConnect(ent);
@@ -1197,19 +1197,20 @@ Host.Spawn_f = function() { // signon 2, step 3
   }
   MSG.WriteByte(message, Protocol.svc.updatestat);
   MSG.WriteByte(message, Def.stat.totalsecrets);
-  MSG.WriteLong(message, PR.globals_float[PR.globalvars.total_secrets]);
+  MSG.WriteLong(message, SV.server.gameAPI.total_secrets);
   MSG.WriteByte(message, Protocol.svc.updatestat);
   MSG.WriteByte(message, Def.stat.totalmonsters);
-  MSG.WriteLong(message, PR.globals_float[PR.globalvars.total_monsters]);
+  MSG.WriteLong(message, SV.server.gameAPI.total_monsters);
   MSG.WriteByte(message, Protocol.svc.updatestat);
   MSG.WriteByte(message, Def.stat.secrets);
-  MSG.WriteLong(message, PR.globals_float[PR.globalvars.found_secrets]);
+  MSG.WriteLong(message, SV.server.gameAPI.found_secrets);
   MSG.WriteByte(message, Protocol.svc.updatestat);
   MSG.WriteByte(message, Def.stat.monsters);
-  MSG.WriteLong(message, PR.globals_float[PR.globalvars.killed_monsters]);
+  MSG.WriteLong(message, SV.server.gameAPI.killed_monsters);
   MSG.WriteByte(message, Protocol.svc.setangle);
-  MSG.WriteAngle(message, ent.v_float[PR.entvars.angles]);
-  MSG.WriteAngle(message, ent.v_float[PR.entvars.angles1]);
+  const angles = ent.api.angles;
+  MSG.WriteAngle(message, angles[0]);
+  MSG.WriteAngle(message, angles[1]);
   MSG.WriteAngle(message, 0.0);
   SV.WriteClientdataToMessage(ent, message);
   MSG.WriteByte(message, Protocol.svc.signonnum);
@@ -1231,7 +1232,7 @@ Host.Kick_f = function() { // FIXME: Host.client
       Cmd.ForwardToServer();
       return;
     }
-  } else if (PR.globals_float[PR.globalvars.deathmatch] !== 0.0) {
+  } else if (SV.server.gameAPI.deathmatch !== 0.0) {
     return;
   }
   if (Cmd.argv.length <= 1) {
@@ -1313,7 +1314,7 @@ Host.Give_f = function() {
     Cmd.ForwardToServer();
     return;
   }
-  if (PR.globals_float[PR.globalvars.deathmatch] !== 0) {
+  if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
   if (Cmd.argv.length <= 1) {

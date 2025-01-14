@@ -373,7 +373,7 @@ M.multiplayer_cursor = 1;
 M.multiplayer_cursor_table = [56, 72, 96, 120, 156];
 M.multiplayer_joinname = (function() {
   const url = new URL(location.href);
-  return url.host + url.pathname;
+  return url.host + url.pathname + (!url.pathname.endsWith('/') ? '/' : '') + 'api/';
 })();
 M.multiplayer_items = 5;
 
