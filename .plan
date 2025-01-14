@@ -10,7 +10,9 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] when one player dies in coop mode, all clients will reconnect and telefrag each other upon spawning
 * [X] DS: show the name of the person’s chat message in console message
 * [X] CL/SV: name change on local game makes the message emit twice
-* [ ] IN: input is no longer working properly once a coarse input device has been detected and the virtual joystick is setup
+* [_] IN: input is no longer working properly once a coarse input device has been detected and the virtual joystick is setup
+* [_] S: sometimes there’s still sound playing after the game has shutdown
+* [_] S: make sure all remaining to be lazily loaded sound files are load after the game started
 
 ### QuakeC / QuakeJS
 
