@@ -46,6 +46,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] replace all `>> 1` with `* 2` etc.
 * [_] SV: introduce `Edict` class, the current loose object already got `clear` and `equals` to it
 * [_] index.html: reorganize shaders
+* [_] `CL.state.intermission`/`ExitIntermission`: unsure what happens next on DS
 
 ### Network improvements
 
@@ -80,6 +81,7 @@ Grouped by sections and then sorted by priority (more or less).
 ### Rendering improvements
 
 * [_] improve lighting and materials https://chatgpt.com/share/677d90a2-f364-800d-b077-9a93c9343b54
+* [_] interpolation based on the PR state machine
 
 ### Build pipeline
 
@@ -172,6 +174,12 @@ class MainMenu extends BaseMenu {
 * integrate a model viewer tool
 
 ## Log
+
+### 2025-01-14
+
+* I might have found a way to group frames into animations:
+  * going over functions that start off with `PR.op.state`,
+  * extract this frame, think (next frame)
 
 ### 2025-01-13
 
