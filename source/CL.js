@@ -1169,6 +1169,8 @@ CL.ParseServerInfo = function() {
   CL.processingServerInfoState = 1;
 
   (async () => {
+    let lastYield = Host.realtime;
+
     for (let i = 1; i < nummodels; ++i) {
       CL.SetConnectingStep(25 + (i / nummodels) * 20, 'Loading model: ' + model_precache[i]);
       CL.state.model_precache[i] = Mod.ForName(model_precache[i]);
@@ -1177,16 +1179,20 @@ CL.ParseServerInfo = function() {
         return;
       }
 
-      await Q.yield();
-      //CL.KeepaliveMessage();
+      if (Host.realtime - lastYield > 0.05) {
+        await Q.yield();
+        lastYield = Host.realtime;
+      }
     }
 
     for (let i = 1; i < numsounds; ++i) {
       CL.SetConnectingStep(45 + (i / numsounds) * 20, 'Loading sound: ' + sound_precache[i]);
       CL.state.sound_precache[i] = S.PrecacheSound(sound_precache[i]);
 
-      //CL.KeepaliveMessage();
-      await Q.yield();
+      if (Host.realtime - lastYield > 0.05) {
+        await Q.yield();
+        lastYield = Host.realtime;
+      }
     }
   })().then(() => {
     CL.processingServerInfoState = 2;
