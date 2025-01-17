@@ -500,12 +500,13 @@ CL.SetConnectingStep = function(percentage, message) {
   SCR.con_current = 0; // force Console to disappear
 
   percentage = Math.round(percentage);
-  Con.DPrint(`CL.SetConnectingStep: ${message} (${percentage}%)\n`);
+
   CL.cls.connecting = {
     percentage,
     message
   };
-  SCR.UpdateScreen();
+
+  // SCR.UpdateScreen();
 };
 
 CL.Draw = function() { // FIXME: maybe put that into M?

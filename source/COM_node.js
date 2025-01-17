@@ -2,6 +2,7 @@
 
 // Enhanced COM.js replacements
 const fs = require('fs');
+const fsPromises = fs.promises; // for open, read, access, readFile, etc.
 
 /**
  * Loads a file, searching through registered search paths and packs.
@@ -50,11 +51,77 @@ COM.LoadFile = function(filename) {
   }
 
   Sys.Print(`FindFile: can't find ${filename}\n`);
+  return null;
 };
 
-COM.LoadFileAsync = async () => {
-  throw new Error('NOT IMPLEMENTED');
-}; // TODO
+COM.LoadFileAsync = async function (filename) {
+  filename = filename.toLowerCase();
+
+  // Loop over search paths in reverse
+  for (let i = COM.searchpaths.length - 1; i >= 0; i--) {
+    const search = COM.searchpaths[i];
+    const netpath = search.filename ? `${search.filename}/${filename}` : filename;
+
+    // 1) Search within pack files
+    for (let j = search.pack.length - 1; j >= 0; j--) {
+      const pak = search.pack[j];
+
+      for (const file of pak) {
+        if (file.name !== filename) {
+          continue;
+        }
+
+        // Found a matching file in the PAK metadata
+        if (file.filelen === 0) {
+          // The file length is zero, return an empty buffer
+          return new ArrayBuffer(0);
+        }
+
+        const packPath = `data/${search.filename !== '' ? search.filename + '/' : ''}pak${j}.pak`;
+
+        let fd;
+        try {
+          // Open the .pak file
+          fd = await fsPromises.open(packPath, 'r');
+
+          // Read the bytes
+          const buffer = Buffer.alloc(file.filelen);
+          await fd.read(buffer, 0, file.filelen, file.filepos);
+
+          Sys.Print(`PackFile: ${packPath} : ${filename}\n`);
+          return new Uint8Array(buffer).buffer;
+          // eslint-disable-next-line no-unused-vars
+        } catch (err) {
+          // If we can't open or read from the PAK, just continue searching
+        } finally {
+          if (fd) {
+            await fd.close();
+          }
+        }
+      }
+    }
+
+    // 2) Search directly on the filesystem
+    const directPath = `data/${netpath}`;
+
+    try {
+      // Check if file is accessible
+      await fsPromises.access(directPath, fs.constants.F_OK);
+
+      // If we got here, the file exists—read and return its contents
+      const buffer = await fsPromises.readFile(directPath);
+      Sys.Print(`FindFile: ${netpath}\n`);
+      return new Uint8Array(buffer).buffer;
+      // eslint-disable-next-line no-unused-vars
+    } catch (err) {
+      // Not accessible or doesn't exist—keep searching
+    }
+  }
+
+  // If we exhaust all search paths and files, the file was not found
+  Sys.Print(`FindFile: can't find ${filename}\n`);
+  return null;
+};
 
 COM.Shutdown = function() {
 };

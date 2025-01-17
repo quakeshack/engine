@@ -1,5 +1,5 @@
 // eslint-disable-next-line no-unused-vars
-/* global Sys, Con, COM, Host, Cmd, Cvar, NET, __dirname */
+/* global Sys, Con, COM, Host, Cmd, Cvar, NET, __dirname, Buffer */
 
 const {argv, stdout, exit} = require('node:process');
 const repl = require('repl');
@@ -116,11 +116,11 @@ Sys = class Sys {
   static StartWebserver() {
     const app = express();
 
-    const basepath = COM.GetParm('-basepath');
+    const basepath = COM.GetParm('-basepath') || '';
 
     console.log('basepath', basepath);
 
-    if (basepath) {
+    if (basepath !== '') {
       app.use(basepath, express.static(path.join(__dirname + '/..', 'public')));
       app.use(basepath + '/data', express.static(path.join(__dirname + '/..', 'data')));
       app.use(basepath + '/source', express.static(path.join(__dirname + '/..', 'source')));
@@ -129,6 +129,32 @@ Sys = class Sys {
       app.use('/data', express.static(path.join(__dirname + '/..', 'data')));
       app.use('/source', express.static(path.join(__dirname + '/..', 'source')));
     }
+
+    const skipChars = (basepath + '/quakefs/').length;
+    app.get(basepath + '/quakefs/*', async (req, res) => {
+      try {
+        // Remove the leading "/data/" to get the relative filename
+        // e.g. "/data/id1/progs/player.mdl" -> "id1/progs/player.mdl"
+        const requestedPath = req.path.substring(skipChars);
+
+        const fileData = await COM.LoadFileAsync(requestedPath);
+
+        if (!fileData) {
+          // File not found or empty result
+          return res.status(404).send('File not found');
+        }
+
+        // Set headers and send the file data
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+
+        // Convert ArrayBuffer -> Buffer before sending
+        return res.send(Buffer.from(fileData));
+      } catch (error) {
+        console.error('Error serving file:', error);
+        return res.status(500).send('Internal Server Error');
+      }
+    });
 
     const server = http.createServer(app);
     const port = COM.GetParm('-port') || 3000;

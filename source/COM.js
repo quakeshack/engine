@@ -256,53 +256,53 @@ COM.LoadFile = function(filename) {
       return Q.strmem(localData);
     }
 
-    // 2) Search through any PAK files in this search path
-    for (let j = search.pack.length - 1; j >= 0; j--) {
-      const pak = search.pack[j];
+    // // 2) Search through any PAK files in this search path
+    // for (let j = search.pack.length - 1; j >= 0; j--) {
+    //   const pak = search.pack[j];
 
-      for (let k = 0; k < pak.length; k++) {
-        const file = pak[k];
+    //   for (let k = 0; k < pak.length; k++) {
+    //     const file = pak[k];
 
-        // File name must match exactly
-        if (file.name !== filename) continue;
+    //     // File name must match exactly
+    //     if (file.name !== filename) continue;
 
-        // Empty file?
-        if (file.filelen === 0) {
-          Draw.EndDisc();
-          return new ArrayBuffer(0);
-        }
+    //     // Empty file?
+    //     if (file.filelen === 0) {
+    //       Draw.EndDisc();
+    //       return new ArrayBuffer(0);
+    //     }
 
-        // Perform a synchronous XHR for the appropriate byte range
-        const prefix = (search.filename !== '') ? `${search.filename}/` : '';
-        xhr.open('GET', `data/${prefix}pak${j}.pak`, false);
-        xhr.setRequestHeader(
-            'Range',
-            `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`,
-        );
-        try {
-          xhr.send();
-        } catch (err) {
-          Sys.Error(`COM.LoadFile: failed to load ${filename} from pak, ${err.message}`);
-        }
+    //     // Perform a synchronous XHR for the appropriate byte range
+    //     const prefix = (search.filename !== '') ? `${search.filename}/` : '';
+    //     xhr.open('GET', `data/${prefix}pak${j}.pak`, false);
+    //     xhr.setRequestHeader(
+    //         'Range',
+    //         `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`,
+    //     );
+    //     try {
+    //       xhr.send();
+    //     } catch (err) {
+    //       Sys.Error(`COM.LoadFile: failed to load ${filename} from pak, ${err.message}`);
+    //     }
 
-        // Check status and length
-        if (
-          xhr.status >= 200 &&
-          xhr.status <= 299 &&
-          xhr.responseText.length === file.filelen
-        ) {
-          Sys.Print(`COM.LoadFile: ${prefix}pak${j}.pak : ${filename}\n`);
-          Draw.EndDisc();
-          return Q.strmem(xhr.responseText);
-        }
+    //     // Check status and length
+    //     if (
+    //       xhr.status >= 200 &&
+    //       xhr.status <= 299 &&
+    //       xhr.responseText.length === file.filelen
+    //     ) {
+    //       Sys.Print(`COM.LoadFile: ${prefix}pak${j}.pak : ${filename}\n`);
+    //       Draw.EndDisc();
+    //       return Q.strmem(xhr.responseText);
+    //     }
 
-        // If we got here, it means a failed range request; break out of the pak loop
-        break;
-      }
-    }
+    //     // If we got here, it means a failed range request; break out of the pak loop
+    //     break;
+    //   }
+    // }
 
     // 3) Fallback: try plain files on the filesystem (in data/)
-    xhr.open('GET', `data/${netpath}`, false);
+    xhr.open('GET', `quakefs/${filename}`, false);
     try {
       xhr.send();
     } catch (err) {
@@ -310,7 +310,7 @@ COM.LoadFile = function(filename) {
     }
 
     if (xhr.status >= 200 && xhr.status <= 299) {
-      Sys.Print(`COM.LoadFile: ${netpath}\n`);
+      Sys.Print(`COM.LoadFile: ${filename}\n`);
       Draw.EndDisc();
       return Q.strmem(xhr.responseText);
     }
@@ -340,68 +340,68 @@ COM.LoadFileAsync = async function(filename) {
       return Q.strmem(localData);
     }
 
-    // 2) Check files inside each PAK
-    for (let j = search.pack.length - 1; j >= 0; j--) {
-      const pak = search.pack[j];
+    // // 2) Check files inside each PAK
+    // for (let j = search.pack.length - 1; j >= 0; j--) {
+    //   const pak = search.pack[j];
 
-      for (let k = 0; k < pak.length; k++) {
-        const file = pak[k];
-        if (file.name !== filename) {
-          continue;
-        }
+    //   for (let k = 0; k < pak.length; k++) {
+    //     const file = pak[k];
+    //     if (file.name !== filename) {
+    //       continue;
+    //     }
 
-        // Empty file?
-        if (file.filelen === 0) {
-          Draw.EndDisc();
-          return new ArrayBuffer(0);
-        }
+    //     // Empty file?
+    //     if (file.filelen === 0) {
+    //       Draw.EndDisc();
+    //       return new ArrayBuffer(0);
+    //     }
 
-        const prefix = (search.filename !== '') ? `${search.filename}/` : '';
-        const pakUrl = `data/${prefix}pak${j}.pak`;
-        const rangeHeader = `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`;
+    //     const prefix = (search.filename !== '') ? `${search.filename}/` : '';
+    //     const pakUrl = `data/${prefix}pak${j}.pak`;
+    //     const rangeHeader = `bytes=${file.filepos}-${file.filepos + file.filelen - 1}`;
 
-        try {
-          // Attempt ranged fetch
-          const response = await fetch(pakUrl, {
-            headers: {Range: rangeHeader},
-            signal: COM._abortController.signal,
-          });
+    //     try {
+    //       // Attempt ranged fetch
+    //       const response = await fetch(pakUrl, {
+    //         headers: {Range: rangeHeader},
+    //         signal: COM._abortController.signal,
+    //       });
 
-          // If the server honors the Range request, check the data
-          if (response.ok) {
-            const responseBuffer = await response.arrayBuffer();
+    //       // If the server honors the Range request, check the data
+    //       if (response.ok) {
+    //         const responseBuffer = await response.arrayBuffer();
 
-            // Validate length
-            if (responseBuffer.byteLength === file.filelen) {
-              Sys.Print(`COM.LoadFileAsync: ${prefix}pak${j}.pak : ${filename}\n`);
-              Draw.EndDisc();
-              return responseBuffer;
-            } else {
-              Sys.Print(`COM.LoadFileAsync: ${prefix}pak${j}.pak : ${filename} invalid length received\n`);
-            }
-          }
-        } catch (err) {
-          // Possibly log error, but continue gracefully
-          console.error(err);
-        }
+    //         // Validate length
+    //         if (responseBuffer.byteLength === file.filelen) {
+    //           Sys.Print(`COM.LoadFileAsync: ${prefix}pak${j}.pak : ${filename}\n`);
+    //           Draw.EndDisc();
+    //           return responseBuffer;
+    //         } else {
+    //           Sys.Print(`COM.LoadFileAsync: ${prefix}pak${j}.pak : ${filename} invalid length received\n`);
+    //         }
+    //       }
+    //     } catch (err) {
+    //       // Possibly log error, but continue gracefully
+    //       console.error(err);
+    //     }
 
-        // If the fetch or length check fails, break out of the PAK loop
-        break;
-      }
-    }
+    //     // If the fetch or length check fails, break out of the PAK loop
+    //     break;
+    //   }
+    // }
 
     // 3) Fallback: try direct file
     try {
-      const fallbackUrl = `data/${netpath}`;
+      const fallbackUrl = `quakefs/${filename}`;
       const directResponse = await fetch(fallbackUrl, {
         signal: COM._abortController.signal,
       });
 
       if (directResponse.ok) {
-        const textData = await directResponse.text();
-        Sys.Print(`COM.LoadFileAsync: ${netpath}\n`);
+        const data = await directResponse.arrayBuffer();
+        Sys.Print(`COM.LoadFileAsync: ${filename}\n`);
         Draw.EndDisc();
-        return Q.strmem(textData);
+        return data;
       }
     } catch (err) {
       // If direct fetch failed, continue searching
