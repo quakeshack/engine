@@ -1766,7 +1766,7 @@ R.AddDynamicLights = function(surf) {
       continue;
     }
     minlight = rad - minlight;
-    const impact = light.origin.copy().subtract(surf.plane.normal).multiply(dist);
+    const impact = light.origin.copy().subtract(surf.plane.normal.copy().multiply(dist));
     local[0] = impact.dot(tex.vecs[0]) + tex.vecs[0][3] - surf.texturemins[0];
     local[1] = impact.dot(tex.vecs[1]) + tex.vecs[1][3] - surf.texturemins[1];
     for (t = 0; t < tmax; ++t) {
