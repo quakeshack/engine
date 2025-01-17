@@ -112,7 +112,7 @@ V.ParseDamage = function() {
   const armor = MSG.ReadByte();
   const blood = MSG.ReadByte();
   const ent = CL.entities[CL.state.viewentity];
-  const from = new Vector(MSG.ReadCoord() - ent.origin[0], MSG.ReadCoord() - ent.origin[1], MSG.ReadCoord() - ent.origin[2]);
+  const from = MSG.ReadCoordVector().subtract(ent.origin);
   from.normalize();
   let count = (blood + armor) * 0.5;
   if (count < 10.0) {

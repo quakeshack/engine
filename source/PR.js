@@ -15,6 +15,12 @@ PR.etype = {
   ev_field: 5,
   ev_function: 6,
   ev_pointer: 7,
+
+  ev_strings: 101,
+  ev_integer: 102,
+  ev_string_not_empty: 103,
+  ev_entity_client: 104,
+  ev_bool: 200,
 };
 
 PR.saveglobal = (1<<15);
@@ -292,17 +298,27 @@ PR.FunctionProxy = class FunctionProxy extends Function {
   }
 }
 
-PR.GameInterface = class {}
+PR._stats = {
+  edict: {},
+  global: {},
+};
 
-PR.EdictProxy = class EdictProxy extends PR.GameInterface {
+PR.EdictProxy = class ProgsEntity {
   /**
    *
    * @param {*} ed can be null, then it’s global
    */
   constructor(ed) {
-    super();
+    const stats = ed ? PR._stats.edict : PR._stats.global;
     const defs = ed ? PR.fielddefs : PR.globaldefs;
     const progdefs = PR.progdefs ? (ed ? PR.progdefs.structs.entvars_t : PR.progdefs.structs.globalvars_t) : null;
+
+    if (ed) {
+      this._v = ed.v = new ArrayBuffer(PR.entityfields * 4);
+      ed.v_float = new Float32Array(this._v); // FIXME: private data for PR/PR only, PR.ExecuteProgram is still using it
+      ed.v_int = new Int32Array(this._v); // FIXME: private data for PR/PR only, PR.ExecuteProgram is still using it
+    }
+
     for (let i = 1; i < defs.length; i++) {
       const d = defs[i];
       const name = PR.GetString(d.name);
@@ -329,13 +345,23 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
       const val_float = new Float32Array(val);
       const val_int = new Int32Array(val);
 
+      const s = () => {
+        if (!stats[name]) {
+          stats[name] = { get: 0, set: 0 };
+        }
+
+        return stats[name];
+      };
+
       switch (type) {
         case PR.etype.ev_string:
           Object.defineProperty(this, name, {
             get: function() {
+              s().get++;
               return val_int[ofs] > 0 ? PR.GetString(val_int[ofs]) : null;
             },
             set: function(value) {
+              s().set++;
               val_int[ofs] = value !== null && value !== '' ? PR.SetString(val_int[ofs], value) : 0;
             },
             configurable: true,
@@ -345,9 +371,12 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
         case PR.etype.ev_entity:
           Object.defineProperty(this, name, {
             get: function() {
-              if (!val_int[ofs]) {
-                return null;
-              }
+              s().get++;
+
+              // CR: oh, how I was wrong… it is ALWAYS an entity, 0 = worldspawn.
+              // if (!val_int[ofs]) {
+              //   return null;
+              // }
 
               if (!SV.server?.edicts || !SV.server.edicts[val_int[ofs]]) {
                 return null;
@@ -356,6 +385,7 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
               return SV.server.edicts[val_int[ofs]];
             },
             set: function(value) {
+              s().set++;
               if (value === null) {
                 val_int[ofs] = 0;
                 return;
@@ -377,9 +407,11 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
         case PR.etype.ev_function:
           Object.defineProperty(this, name, {
             get: function() {
+              s().get++;
               return val_int[ofs] > 0 ? PR.FunctionProxy.create(val_int[ofs], ed) : null;
             },
             set: function(value) {
+              s().set++;
               if (value === null) {
                 val_int[ofs] = 0;
                 return;
@@ -412,9 +444,11 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
         case PR.etype.ev_float:
           Object.defineProperty(this, name, {
             get: function() {
+              s().get++;
               return val_float[ofs];
             },
             set: function(value) {
+              s().set++;
               if (value === undefined || isNaN(value)) {
                 throw new TypeError('EdictProxy.' + name + ': invalid value for ev_float passed: ' + value);
               }
@@ -427,9 +461,11 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
         case PR.etype.ev_vector: // TODO: Proxy for Vector?
           Object.defineProperty(this, name, {
             get: function() {
+              s().get++;
               return new Vector(val_float[ofs], val_float[ofs + 1], val_float[ofs + 2]);
             },
             set: function(value) {
+              s().set++;
               val_float[ofs] = value[0];
               val_float[ofs+1] = value[1];
               val_float[ofs+2] = value[2];
@@ -442,6 +478,15 @@ PR.EdictProxy = class EdictProxy extends PR.GameInterface {
     }
 
     Object.freeze(this);
+  }
+
+  clear() {
+    if (this._v) {
+      const int32 = new Int32Array(this._v);
+      for (let i = 0; i < PR.entityfields; i++) {
+        int32[i] = 0;
+      }
+    }
   }
 };
 
@@ -669,18 +714,6 @@ PR._LoadProgsdef = function(headerText) {
   return { structs, progHeaderCRC };
 }
 
-PR.ClearEdictPrivateData = function(ed) {
-  if (!ed.v) {
-    ed.v = new ArrayBuffer(PR.entityfields * 4);
-    ed.v_float = new Float32Array(ed.v); // FIXME: private data for PR/PR only
-    ed.v_int = new Int32Array(ed.v); // FIXME: private data for PR/PR only
-  } else {
-    for (let i = 0; i < PR.entityfields; i++) {
-      ed.v_int[i] = 0;
-    }
-  }
-};
-
 PR.LoadProgs = function() {
   const progs = COM.LoadFile('progs.dat');
   if (progs == null) {
@@ -821,7 +854,6 @@ PR.LoadProgs = function() {
   return {
     GameAPI: PR.EdictProxy,
     GameEntityAPI: PR.EdictProxy,
-    ClearEdictPrivateData: PR.ClearEdictPrivateData,
   };
 };
 
@@ -1216,7 +1248,12 @@ PR.ExecuteProgram = function(fnum) {
           if (ptr >= PF.builtin.length) {
             PR.RunError('Bad builtin call number');
           }
-          PF.builtin[ptr]();
+          // try {
+            PF.builtin[ptr]();
+          // } catch (e) {
+          //   PR.RunError(e.message);
+          //   throw e;
+          // }
           continue;
         }
         s = PR.EnterFunction(newf);
@@ -1322,22 +1359,3 @@ PR.TempString = function(string) {
   }
   PR.strings[PR.string_temp + string.length] = 0;
 };
-
-// PR.DecompileFunction = function(fnc) {
-//   if (fnc.name === 0) {
-//     throw new Error('NULL function');
-//   }
-
-//   // dummy print for built-ins
-//   if (fnc.first_statement < 0) {
-//     const builtin = PF.builtin[-fnc.first_statement];
-
-//     if (!builtin) {
-//       throw new Error('Invalid builtin function: ' + fnc.first_statement);
-//     }
-
-//     return `function ${builtin.name}(${new Array(fnc.numparms).fill(null).map((_, index) => `arg${index}`).join(', ')}) { /* built-in */ }\n`;
-//   }
-
-
-// };

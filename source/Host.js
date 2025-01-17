@@ -39,7 +39,7 @@ Host.FindMaxClients = function() {
   }
   SV.svs.clients = [];
   for (let i = 0; i < SV.svs.maxclientslimit; i++) {
-    SV.svs.clients.push({
+    SV.svs.clients.push({ // TODO: Client class
       num: i,
       message: {data: new ArrayBuffer(8000), cursize: 0, allowoverflow: true},
       colors: 0,
@@ -47,6 +47,21 @@ Host.FindMaxClients = function() {
       last_ping_update: 0,
       netconnection: null,
       name: '', // must be an empty string, otherwise Sbar is going to bug out
+
+      consolePrint(message) {
+        MSG.WriteByte(this.message, Protocol.svc.print);
+        MSG.WriteString(this.message, message);
+      },
+
+      centerPrint(message) {
+        MSG.WriteByte(this.message, Protocol.svc.centerprint);
+        MSG.WriteString(this.message, message);
+      },
+
+      sendConsoleCommands(commandline) {
+        MSG.WriteByte(this.message, Protocol.svc.stufftext);
+        MSG.WriteString(this.message, commandline);
+      }
     });
   }
   Cvar.SetValue('deathmatch', 0);
@@ -1310,119 +1325,125 @@ Host.Kick_f = function() { // FIXME: Host.client
 };
 
 Host.Give_f = function() {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
-    return;
-  }
-  if (SV.server.gameAPI.deathmatch !== 0) {
-    return;
-  }
-  if (Cmd.argv.length <= 1) {
-    return;
-  }
-  const t = Cmd.argv[1].charCodeAt(0);
-  const ent = SV.player;
+  // CR:  commented this out for now, it’s only noise…
+  //      unsure if I want a “give item_shells” approach or
+  //      if I want to push this piece of code into PR/PF and let
+  //      the game handle this instead
 
-  if ((t >= 48) && (t <= 57)) {
-    if (COM.hipnotic !== true) {
-      if (t >= 50) {
-        ent.api.items |= Def.it.shotgun << (t - 50);
-      }
-      return;
-    }
-    if (t === 54) {
-      if (Cmd.argv[1].charCodeAt(1) === 97) {
-        ent.api.items |= Def.hit.proximity_gun;
-      } else {
-        ent.api.items |= Def.it.grenade_launcher;
-      }
-      return;
-    }
-    if (t === 57) {
-      ent.api.items |= Def.hit.laser_cannon;
-    } else if (t === 48) {
-      ent.api.items |= Def.hit.mjolnir;
-    } else if (t >= 50) {
-      ent.api.items |= Def.it.shotgun << (t - 50);
-    }
-    return;
-  }
-  const v = Q.atoi(Cmd.argv[2]);
-  if (t === 104) {
-    ent.api.health = v;
-    return;
-  }
-  if (COM.rogue !== true) {
-    switch (t) {
-      case 115:
-        ent.api.ammo_shells = v;
-        return;
-      case 110:
-        ent.api.ammo_nails = v;
-        return;
-      case 114:
-        ent.api.ammo_rockets = v;
-        return;
-      case 99:
-        ent.api.ammo_cells = v;
-    }
-    return;
-  }
-  switch (t) {
-    case 115:
-      if (PR.entvars.ammo_shells1 != null) {
-        ent.v_float[PR.entvars.ammo_shells1] = v;
-      }
-      ent.api.ammo_shells = v;
-      return;
-    case 110:
-      if (PR.entvars.ammo_nails1 != null) {
-        ent.v_float[PR.entvars.ammo_nails1] = v;
-        if (ent.api.weapon <= Def.it.lightning) {
-          ent.api.ammo_nails = v;
-        }
-      }
-      return;
-    case 108:
-      if (PR.entvars.ammo_lava_nails != null) {
-        ent.api.ammo_lava_nails = v;
-        if (ent.api.weapon > Def.it.lightning) {
-          ent.api.ammo_nails = v;
-        }
-      }
-      return;
-    case 114:
-      if (PR.entvars.ammo_rockets1 != null) {
-        ent.v_float[PR.entvars.ammo_rockets1] = v;
-        if (ent.api.weapon <= Def.it.lightning) {
-          ent.api.ammo_rockets = v;
-        }
-      }
-      return;
-    case 109:
-      if (PR.entvars.ammo_multi_rockets != null) {
-        ent.api.ammo_multi_rockets = v;
-        if (ent.api.weapon > Def.it.lightning) {
-          ent.api.ammo_rockets = v;
-        }
-      }
-      return;
-    case 99:
-      if (PR.entvars.ammo_cells1 != null) {
-        ent.v_float[PR.entvars.ammo_cells1] = v;
-        if (ent.api.weapon <= Def.it.lightning) {
-          ent.api.ammo_cells = v;
-        }
-      }
-      return;
-    case 112:
-      if (PR.entvars.ammo_plasma != null) {
-        ent.api.ammo_plasma = v;
-        if (ent.api.weapon > Def.it.lightning) {
-          ent.api.ammo_cells = v;
-        }
-      }
-  }
+  // if (Cmd.client !== true) {
+  //   Cmd.ForwardToServer();
+  //   return;
+  // }
+  // if (SV.server.gameAPI.deathmatch !== 0) {
+  //   return;
+  // }
+  // if (Cmd.argv.length <= 1) {
+  //   return;
+  // }
+  // const t = Cmd.argv[1].charCodeAt(0);
+  // const ent = SV.player;
+
+  // if ((t >= 48) && (t <= 57)) {
+  //   if (COM.hipnotic !== true) {
+  //     if (t >= 50) {
+  //       ent.api.items |= Def.it.shotgun << (t - 50);
+  //     }
+  //     return;
+  //   }
+  //   if (t === 54) {
+  //     if (Cmd.argv[1].charCodeAt(1) === 97) {
+  //       ent.api.items |= Def.hit.proximity_gun;
+  //     } else {
+  //       ent.api.items |= Def.it.grenade_launcher;
+  //     }
+  //     return;
+  //   }
+  //   if (t === 57) {
+  //     ent.api.items |= Def.hit.laser_cannon;
+  //   } else if (t === 48) {
+  //     ent.api.items |= Def.hit.mjolnir;
+  //   } else if (t >= 50) {
+  //     ent.api.items |= Def.it.shotgun << (t - 50);
+  //   }
+  //   return;
+  // }
+  // const v = Q.atoi(Cmd.argv[2]);
+  // if (t === 104) {
+  //   ent.api.health = v;
+  //   return;
+  // }
+  // if (COM.rogue !== true) {
+  //   switch (t) {
+  //     case 115:
+  //       ent.api.ammo_shells = v;
+  //       return;
+  //     case 110:
+  //       ent.api.ammo_nails = v;
+  //       return;
+  //     case 114:
+  //       ent.api.ammo_rockets = v;
+  //       return;
+  //     case 99:
+  //       ent.api.ammo_cells = v;
+  //   }
+  //   return;
+  // }
+  // switch (t) {
+  //   case 115:
+  //     if (PR.entvars.ammo_shells1 != null) {
+  //       ent.v_float[PR.entvars.ammo_shells1] = v;
+  //       ent.api.ammo_shells1
+  //     }
+  //     ent.api.ammo_shells = v;
+  //     return;
+  //   case 110:
+  //     if (PR.entvars.ammo_nails1 != null) {
+  //       ent.v_float[PR.entvars.ammo_nails1] = v;
+  //       if (ent.api.weapon <= Def.it.lightning) {
+  //         ent.api.ammo_nails = v;
+  //       }
+  //     }
+  //     return;
+  //   case 108:
+  //     if (PR.entvars.ammo_lava_nails != null) {
+  //       ent.api.ammo_lava_nails = v;
+  //       if (ent.api.weapon > Def.it.lightning) {
+  //         ent.api.ammo_nails = v;
+  //       }
+  //     }
+  //     return;
+  //   case 114:
+  //     if (PR.entvars.ammo_rockets1 != null) {
+  //       ent.v_float[PR.entvars.ammo_rockets1] = v;
+  //       if (ent.api.weapon <= Def.it.lightning) {
+  //         ent.api.ammo_rockets = v;
+  //       }
+  //     }
+  //     return;
+  //   case 109:
+  //     if (PR.entvars.ammo_multi_rockets != null) {
+  //       ent.api.ammo_multi_rockets = v;
+  //       if (ent.api.weapon > Def.it.lightning) {
+  //         ent.api.ammo_rockets = v;
+  //       }
+  //     }
+  //     return;
+  //   case 99:
+  //     if (PR.entvars.ammo_cells1 != null) {
+  //       ent.v_float[PR.entvars.ammo_cells1] = v;
+  //       if (ent.api.weapon <= Def.it.lightning) {
+  //         ent.api.ammo_cells = v;
+  //       }
+  //     }
+  //     return;
+  //   case 112:
+  //     if (PR.entvars.ammo_plasma != null) {
+  //       ent.api.ammo_plasma = v;
+  //       if (ent.api.weapon > Def.it.lightning) {
+  //         ent.api.ammo_cells = v;
+  //       }
+  //     }
+  // }
 };
 
 Host.FindViewthing = function() {

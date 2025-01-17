@@ -539,7 +539,7 @@ CL.ClearState = function() {
       sidemove: 0.0,
       upmove: 0.0,
     },
-    stats: [
+    stats: [ // FIXME: increase to 32
       0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0,
@@ -782,7 +782,7 @@ CL.RelinkEntities = function() {
   CL.numvisedicts = 0;
 
   // velo = mvelo[1] + frac * (mvelo[0] - mvelo[1])
-  CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().substract(CL.state.mvelocity[1]).multiply(frac)));
+  CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]).multiply(frac)));
 
   if (CL.cls.demoplayback === true) {
     for (i = 0; i <= 2; ++i) {
@@ -1274,7 +1274,7 @@ CL.ParseClientdata = function(bits) {
   CL.state.mvelocity[1] = CL.state.mvelocity[0].copy();
   for (i = 0; i <= 2; ++i) {
     if ((bits & (Protocol.su.punch1 << i)) !== 0) {
-      CL.state.punchangle[i] = MSG.ReadChar();
+      CL.state.punchangle[i] = MSG.ReadShort() / 90.0;
     } else {
       CL.state.punchangle[i] = 0.0;
     }
@@ -1734,7 +1734,7 @@ CL.UpdateTEnts = function() {
     if (b.entity === CL.state.viewentity) {
       b.start = CL.entities[CL.state.viewentity].origin.copy();
     }
-    const dist = b.end.copy().substract(b.start);
+    const dist = b.end.copy().subtract(b.start);
     if ((dist[0] === 0.0) && (dist[1] === 0.0)) {
       yaw = 0;
       pitch = dist[2] > 0.0 ? 90 : 270;

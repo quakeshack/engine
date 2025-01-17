@@ -6,7 +6,6 @@ ED = {};
 ED.ClearEdict = function(e) {
   e.clear();
   e.free = false;
-  SV.PhysicsEngineUnregisterEdict(e);
 };
 
 ED.Alloc = function() {
@@ -23,13 +22,11 @@ ED.Alloc = function() {
   }
   e = SV.server.edicts[SV.server.num_edicts++];
   ED.ClearEdict(e);
-  SV.PhysicsEngineRegisterEdict(e);
   return e;
 };
 
 ED.Free = function(ed) {
   SV.UnlinkEdict(ed);
-  SV.PhysicsEngineUnregisterEdict(ed);
   ed.free = true;
   ed.api.model = null;
   ed.api.takedamage = 0.0;
@@ -94,28 +91,29 @@ ED.Print = function(ed) {
     return;
   }
   Con.Print('\nEDICT ' + ed.num + ':\n');
-  let i; let d; let name; let v;
-  for (i = 1; i < PR.fielddefs.length; ++i) {
-    d = PR.fielddefs[i];
-    name = PR.GetString(d.name);
-    if (name.charCodeAt(name.length - 2) === 95) {
-      continue;
-    }
-    v = d.ofs;
-    if (ed.v_int[v] === 0) {
-      if ((d.type & ~PR.saveglobal) === 3) {
-        if ((ed.v_int[v + 1] === 0) && (ed.v_int[v + 2] === 0)) {
-          continue;
-        }
-      } else {
-        continue;
-      }
-    }
-    for (; name.length <= 14;) {
-      name += ' ';
-    }
-    Con.Print(name + PR.ValueString(d.type, ed.v, v) + '\n');
-  }
+  // TODO: add this back
+  // let i; let d; let name; let v;
+  // for (i = 1; i < PR.fielddefs.length; ++i) {
+  //   d = PR.fielddefs[i];
+  //   name = PR.GetString(d.name);
+  //   if (name.charCodeAt(name.length - 2) === 95) {
+  //     continue;
+  //   }
+  //   v = d.ofs;
+  //   if (ed.v_int[v] === 0) {
+  //     if ((d.type & ~PR.saveglobal) === 3) {
+  //       if ((ed.v_int[v + 1] === 0) && (ed.v_int[v + 2] === 0)) {
+  //         continue;
+  //       }
+  //     } else {
+  //       continue;
+  //     }
+  //   }
+  //   for (; name.length <= 14;) {
+  //     name += ' ';
+  //   }
+  //   Con.Print(name + PR.ValueString(d.type, ed.v, v) + '\n');
+  // }
 };
 
 ED.PrintEdicts = function() {

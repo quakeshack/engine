@@ -20,7 +20,7 @@ Vector = class Vector extends Array {
    * A convenience "origin" vector. Returns a fresh [0,0,0].
    */
   static get origin() {
-    return new Vector(0.0, 0.0, 0.0);
+    return new Vector(0.0, 0.0, 0.0); // FIXME: instead of creating new, create a read-only one once
   }
 
   /**
@@ -81,9 +81,9 @@ Vector = class Vector extends Array {
 
     // Rotation about Z-axis by `degrees`:
     const zrot = [
-      [c,  s,  0],
-      [-s, c,  0],
-      [0,  0,  1],
+      [c,      s,  0.0],
+      [-s,     c,  0.0],
+      [0.0,  0.0,  1.0],
     ];
 
     // Combine the rotations:
@@ -209,6 +209,49 @@ Vector = class Vector extends Array {
     return { forward, right, up };
   }
 
+  toYaw() {
+    if (!this[0] && !this[1]) {
+      return 0.0;
+    }
+
+    let yaw = (Math.atan2(this[1], this[0]) * 180.0 / Math.PI);
+
+    if (yaw < 0.0) {
+      yaw += 360.0;
+    }
+
+    return yaw;
+  }
+
+  toPitch() {
+    let pitch = (Math.atan2(this[2], Math.sqrt(this[0] * this[0] + this[1] * this[1])) * 180.0 / Math.PI);
+
+    if (pitch < 0.0) {
+      pitch += 360.0;
+    }
+
+    return pitch;
+  }
+
+  toAngles() {
+    const angles = new Vector();
+
+    if (this[0] === 0.0 && this[1] === 0.0) {
+      if (this[2] > 0.0) {
+        angles[0] = 90.0;
+      } else {
+        angles[0] = 270.0;
+      }
+
+      return angles;
+    }
+
+    angles[0] = this.toPitch();
+    angles[1] = this.toYaw();
+
+    return angles;
+  }
+
   /**
    * Dot product of this and other.
    */
@@ -241,7 +284,7 @@ Vector = class Vector extends Array {
    * @param {Vec|Array} other
    * @returns {this}
    */
-  substract(other) {
+  subtract(other) {
     this[0] -= other[0];
     this[1] -= other[1];
     this[2] -= other[2];
@@ -270,6 +313,42 @@ Vector = class Vector extends Array {
   }
 
   /**
+   * Check if this vector is greater than other.
+   * @param {Vector} other
+   * @returns {this}
+   */
+  gt(other) {
+    return this[0] > other[0] && this[1] > other[1] && this[2] > other[2];
+  }
+
+  /**
+   * Check if this vector is greater than or equal to other.
+   * @param {Vector} other
+   * @returns {this}
+   */
+  gte(other) {
+    return this[0] >= other[0] && this[1] >= other[1] && this[2] >= other[2];
+  }
+
+  /**
+   * Check if this vector is less than other.
+   * @param {Vector} other
+   * @returns {this}
+   */
+  lt(other) {
+    return this[0] < other[0] && this[1] < other[1] && this[2] < other[2];
+  }
+
+  /**
+   * Check if this vector is less than or equal to other.
+   * @param {Vector} other
+   * @returns {this}
+   */
+  lte(other) {
+    return this[0] <= other[0] && this[1] <= other[1] && this[2] <= other[2];
+  }
+
+  /**
    * Overwrite this vector with values from other.
    * @param {Vector} other
    * @returns {this}
@@ -286,9 +365,9 @@ Vector = class Vector extends Array {
    * @returns {this}
    */
   clear() {
-    this[0] = 0;
-    this[1] = 1;
-    this[2] = 2;
+    this[0] = 0.0;
+    this[1] = 0.0;
+    this[2] = 0.0;
     return this;
   }
 
@@ -297,7 +376,7 @@ Vector = class Vector extends Array {
    * @returns {Boolean}
    */
   isOrigin() {
-    return this[0] === 0 && this[1] === 0 && this[2] === 0;
+    return this[0] === 0.0 && this[1] === 0.0 && this[2] === 0.0;
   };
 
   /**
@@ -445,7 +524,10 @@ Vector = class Vector extends Array {
     return v;
   }
 
+  /**
+   * Quake-style string representation of a Vector
+   */
   toString() {
-    return `[${this.map((e) => e.toFixed(1)).join(', ')}]`;
+    return `${this.map((e) => e.toFixed(1)).join(' ')}`;
   }
 }

@@ -1,4 +1,4 @@
-/* global MSG, Q, NET, SZ */
+/* global MSG, Q, NET, SZ, Vector */
 
 // eslint-disable-next-line no-global-assign
 MSG = {};
@@ -121,6 +121,14 @@ MSG.ReadCoord = function() {
   return MSG.ReadShort() * 0.125;
 };
 
+MSG.ReadCoordVector = function() {
+  return new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
+};
+
 MSG.ReadAngle = function() {
   return MSG.ReadChar() * 1.40625;
+};
+
+MSG.ReadAngleVector = function() {
+  return new Vector(MSG.ReadAngle(), MSG.ReadAngle(), MSG.ReadAngle());
 };

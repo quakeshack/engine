@@ -57,6 +57,334 @@ SV.server = {
   cannon: null,
 };
 
+SV.Edict = class Edict {
+  constructor(num, progsInterfaces) {
+    this.num = num;
+    this.free = false;
+    this.area = {
+      ent: this,
+    };
+    this.leafnums = [];
+    this.baseline = {
+      origin: new Vector(),
+      angles: new Vector(),
+      modelindex: 0,
+      frame: 0,
+      colormap: 0,
+      skin: 0,
+      effects: 0,
+    };
+    this.freetime = 0.0;
+    this.api = new progsInterfaces.GameEntityAPI(this);
+  }
+
+  clear() {
+    this.api.clear();
+  }
+
+  /**
+   * Gives up this edict and can be reused differently later.
+   */
+  freeEdict() {
+    ED.Free(this);
+  }
+
+  equals(otherEdict) {
+    return otherEdict && this.num === otherEdict.num;
+  }
+
+  setMinMaxSize(min, max) {
+    if (min[0] > max[0] || min[1] > max[1] || min[2] > max[2]) {
+      throw new Error('Edict.setMinMaxSize: backwards mins/maxs');
+    }
+
+    this.api.mins = min.copy();
+    this.api.maxs = max.copy();
+    this.api.size = max.copy().subtract(min);
+    this.linkEdict(true);
+  }
+
+  setOrigin(vec) {
+    this.api.origin = vec;
+    this.linkEdict(false);
+  }
+
+  linkEdict(touchTriggers = false) {
+    SV.LinkEdict(this, touchTriggers);
+  }
+
+  setModel(model) {
+    let i;
+
+    for (i = 0; i < SV.server.model_precache.length; ++i) {
+      if (SV.server.model_precache[i] === model) {
+        break;
+      }
+    }
+
+    if (i === SV.server.model_precache.length) {
+      throw new Error('Edict.setModel: ' + model + ' not precached');
+    }
+
+    this.api.model = model;
+    this.api.modelindex = i;
+
+    const mod = SV.server.models[i];
+
+    if (mod) {
+      this.setMinMaxSize(mod.mins, mod.maxs);
+    } else {
+      this.setMinMaxSize(Vector.origin, Vector.origin);
+    }
+  }
+
+  /**
+   * Moves self in the given direction. Returns success as a boolean.
+   * @param {number} yaw
+   * @param {number} dist
+   */
+  walkMove(yaw, dist) {
+    if ((this.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
+      return false;
+    }
+
+    return SV.movestep(this, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], true) === 1;
+  }
+
+  /**
+   * Makes sure the entity is settled on the ground.
+   * @param {number} [z=-2048.0] maximum distance to look down to check
+   * @returns whether the dropping succeeded
+   */
+  dropToFloor(z = -2048.0) {
+    const end = this.api.origin.copy().add(new Vector(0.0, 0.0, z));
+    const trace = SV.Move(this.api.origin, this.api.mins, this.api.maxs, end, 0, this);
+
+    if (trace.fraction === 1.0 || trace.allsolid) {
+      return false;
+    }
+
+    this.setOrigin(trace.endpos);
+    this.api.flags |= SV.fl.onground;
+    this.api.groundentity = trace.ent;
+
+    return true;
+  }
+
+  /**
+   * Checks if the entity is standing on the ground.
+   */
+  isOnTheFloor() {
+    return SV.CheckBottom(this);
+  }
+
+  /**
+   * It will send a svc_spawnstatic to make clients register a static entity.
+   * Also this will free and release this Edict.
+   */
+  makeStatic() {
+    const message = SV.server.signon;
+    const angles = this.api.angles;
+    const origin = this.api.origin;
+    MSG.WriteByte(message, Protocol.svc.spawnstatic);
+    MSG.WriteByte(message, SV.ModelIndex(this.api.model));
+    MSG.WriteByte(message, this.api.frame);
+    MSG.WriteByte(message, this.api.colormap);
+    MSG.WriteByte(message, this.api.skin);
+    for (let i = 0; i < 3; i++) {
+      MSG.WriteCoord(message, origin[i]);
+      MSG.WriteAngle(message, angles[i]);
+    }
+    this.freeEdict();
+  }
+
+  /**
+   * Returns client (or object that has a client enemy) that would be * a valid target. If there are more than one
+   * valid options, they are cycled each frame. If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
+   * @returns SV.Edict | null
+   */
+  getNextBestClient(){
+    // refresh check cache
+    if (SV.server.time - SV.server.lastchecktime >= 0.1) {
+      let check = SV.server.lastcheck;
+      if (check <= 0) {
+        check = 1;
+      } else if (check > SV.svs.maxclients) {
+        check = SV.svs.maxclients;
+      }
+      let i = 1;
+      if (check !== SV.svs.maxclients) {
+        i += check;
+      }
+      let ent;
+      for (; ; ++i) {
+        if (i === SV.svs.maxclients + 1) {
+          i = 1;
+        }
+        ent = SV.server.edicts[i];
+        if (i === check) {
+          break;
+        }
+        if (ent.free) {
+          continue;
+        }
+        if (ent.api.health <= 0.0 || (ent.api.flags & SV.fl.notarget) !== 0) {
+          continue;
+        }
+        break;
+      }
+      SV.server.lastcheck = i;
+      SV.lastcheckpvs = Mod.LeafPVS(Mod.PointInLeaf(ent.api.origin.copy().add(ent.api.view_ofs), SV.server.worldmodel), SV.server.worldmodel); // FIXME: use ….worldmodel.getPointInLeaf() etc.
+      SV.server.lastchecktime = SV.server.time;
+    }
+
+    const ent = SV.server.edicts[SV.server.lastcheck];
+
+    if (ent.free || ent.api.health <= 0.0) {
+      // not interesting anymore
+      return null;
+    }
+
+    const l = Mod.PointInLeaf(this.api.origin.copy().add(this.api.view_ofs), SV.server.worldmodel).num - 1;
+
+    if (l < 0 || (SV.lastcheckpvs[l >> 3] & (1 << (l & 7))) === 0) {
+      // back side leaf or leaf is not visible according to PVS
+      return null;
+    }
+
+    return ent;
+  }
+
+  /**
+   * Move this entity toward its goal. Used for monsters.
+   * @param {number} dist
+   */
+  moveToGoal(dist) {
+    if ((this.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
+      return false;
+    }
+
+    const goal = this.api.goalentity;
+    const enemy = this.api.enemy;
+
+    if (enemy !== null && !enemy.isWorldspawn() && SV.CloseEnough(this, goal, dist)) {
+      return false;
+    }
+
+    if (Math.random() >= 0.75 || !SV.StepDirection(this, this.api.ideal_yaw, dist)) {
+      SV.NewChaseDir(this, goal, dist);
+
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Returns a vector along which this entity can shoot.
+   * Usually, this entity is a player, and the vector returned is calculated by auto aiming to the closest enemy entity.
+   * @returns {Vector}
+   */
+  aim() {
+    const origin = this.api.origin.copy();
+    const start = origin.add(new Vector(0.0, 0.0, 20.0));
+    const dir = SV.server.gameAPI.v_forward;
+    const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
+    const tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, this);
+    if (tr.ent !== null) {
+      if ((tr.ent.api.takedamage === SV.damage.aim) && (!Host.teamplay.value || this.api.team <= 0 || this.api.team !== tr.ent.api.team)) {
+        return dir;
+      }
+    }
+    const bestdir = dir.copy();
+    let bestdist = SV.aim.value;
+    let bestent = null;
+    for (let i = 1; i < SV.server.num_edicts; ++i) {
+      const check = SV.server.edicts[i];
+      if (check.api.takedamage !== SV.damage.aim) {
+        continue;
+      }
+      if (check.equals(this)) {
+        continue;
+      }
+      if ((Host.teamplay.value !== 0) && (this.api.team > 0) && (this.api.team === check.api.team)) {
+        continue;
+      }
+      const corigin = check.api.origin, cmins = check.api.mins, cmaxs = check.api.maxs;
+      end.set(corigin).add(cmins.copy().add(cmaxs).multiply(0.5));
+      dir.set(end).subtract(start);
+      dir.normalize()
+      let dist = dir.dot(bestdir);
+      if (dist < bestdist) {
+        continue;
+      }
+      const tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, this);
+      if (tr.ent === check) {
+        bestdist = dist;
+        bestent = check;
+      }
+    }
+    if (bestent !== null) {
+      dir.set(bestent.api.origin).subtract(this.api.origin);
+      const dist = dir.dot(bestdir);
+      end[0] = bestdir[0] * dist;
+      end[1] = bestdir[1] * dist;
+      end[2] = dir[2];
+      end.normalize();
+      return end;
+    }
+    return bestdir;
+  }
+
+  /**
+   * Returns entity that is just after this in the entity list.
+   * Useful to browse the list of entities, because it skips the undefined ones.
+   * @returns {SV.Edict | null}
+   */
+  nextEdict() {
+    for (let i = this.num + 1; i < SV.server.num_edicts; ++i) {
+      if (!SV.server.edicts[i].free) {
+        return SV.server.edicts[i];
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Change the horizontal orientation of this entity. Turns towards .ideal_yaw at .yaw_speed. Called every 0.1 sec by monsters.
+   */
+  changeYaw() {
+    const angles = this.api.angles;
+    angles[1] = SV.ChangeYaw(this);
+    this.api.angles = angles;
+
+    return angles[1];
+  }
+
+  /**
+   * returns the corresponding client object
+   * @returns {SV.Client}
+   */
+  getClient() {
+    return SV.svs.clients[this.num - 1] || null;
+  }
+
+  /**
+   * check if edict is a client edict
+   */
+  isClient() {
+    return (this.num > 0) && (this.num <= SV.svs.maxclients);
+  }
+
+  /**
+   * checks if this entity is worldspawn
+   */
+  isWorldspawn() {
+    return this.num === 0;
+  }
+};
+
 SV.svs = {};
 
 SV.Init = function() {
@@ -152,12 +480,7 @@ SV.StartSound = function(entity, channel, sample, volume, attenuation) {
   }
   MSG.WriteShort(datagram, (entity.num << 3) + channel);
   MSG.WriteByte(datagram, i);
-  MSG.WriteCoord(datagram, entity.v_float[PR.entvars.origin] + 0.5 *
-		(entity.v_float[PR.entvars.mins] + entity.v_float[PR.entvars.maxs]));
-  MSG.WriteCoord(datagram, entity.v_float[PR.entvars.origin1] + 0.5 *
-		(entity.v_float[PR.entvars.mins1] + entity.v_float[PR.entvars.maxs1]));
-  MSG.WriteCoord(datagram, entity.v_float[PR.entvars.origin2] + 0.5 *
-		(entity.v_float[PR.entvars.mins2] + entity.v_float[PR.entvars.maxs2]));
+  MSG.WriteCoordVector(datagram, entity.api.origin.copy().add(entity.api.mins.copy().add(entity.api.maxs).multiply(0.5)));
 };
 
 SV.SendServerinfo = function(client) {
@@ -191,14 +514,13 @@ SV.SendServerinfo = function(client) {
 
 SV.ConnectClient = function(clientnum) {
   const client = SV.svs.clients[clientnum];
-  let i; let spawn_parms;
+  const spawn_parms = [];
   if (SV.server.loadgame === true) {
-    spawn_parms = [];
     if (client.spawn_parms == null) {
       client.spawn_parms = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
     }
-    for (i = 0; i <= 15; ++i) {
+    for (let i = 0; i <= 15; ++i) {
       spawn_parms[i] = client.spawn_parms[i];
     }
   }
@@ -221,13 +543,13 @@ SV.ConnectClient = function(clientnum) {
   }
   client.old_frags = 0;
   if (SV.server.loadgame === true) {
-    for (i = 0; i <= 15; ++i) {
+    for (let i = 0; i <= 15; ++i) {
       client.spawn_parms[i] = spawn_parms[i];
     }
   } else {
     SV.server.gameAPI.SetNewParms(client.edict);
-    for (i = 0; i <= 15; ++i) {
-      client.spawn_parms[i] = PR.globals_float[PR.globalvars.parms + i]; // TODO: SV.server.gameAPI.parms
+    for (let i = 0; i <= 15; ++i) {
+      client.spawn_parms[i] = SV.server.gameAPI[`parm${i + 1}`];
     }
   }
   SV.SendServerinfo(client);
@@ -319,14 +641,15 @@ SV.WriteEntitiesToClient = function(clent, msg) {
       return;
     }
 
+    const angles = ent.api.angles, origin = ent.api.origin;
+
     bits = 0;
     for (i = 0; i <= 2; ++i) {
-      miss = ent.v_float[PR.entvars.origin + i] - ent.baseline.origin[i];
+      miss = origin[i] - ent.baseline.origin[i];
       if ((miss < -0.1) || (miss > 0.1)) {
         bits += Protocol.u.origin1 << i;
       }
     }
-    const angles = ent.api.angles, origin = ent.api.origin;
     if (angles[0] !== ent.baseline.angles[0]) {
       bits += Protocol.u.angle1;
     }
@@ -427,22 +750,22 @@ SV.WriteClientdataToMessage = function(ent, msg) {
   };
 
   let bits = Protocol.su.items + Protocol.su.weapon;
-  if (ent.v_float[PR.entvars.view_ofs2] !== Protocol.default_viewheight) {
+  if (ent.api.view_ofs[2] !== Protocol.default_viewheight) {
     bits += Protocol.su.viewheight;
   }
   if (ent.api.idealpitch !== 0.0) {
     bits += Protocol.su.idealpitch;
   }
 
-  const val = PR.entvars.items2; let items;
-  if (val != null) {
-    if (ent.v_float[val] !== 0.0) {
-      items = (ent.api.items >> 0) + ((ent.v_float[val] << 23) >>> 0);
+  let items;
+  if (ent.api.items2 !== undefined) {
+    if (ent.api.items2 !== 0.0) {
+      items = (ent.api.items >> 0) + ((ent.api.items2 << 23) >>> 0);
     } else {
-      items = (ent.api.items >> 0) + ((PR.globals_float[PR.globalvars.serverflags] << 28) >>> 0);
+      items = (ent.api.items >> 0) + ((SV.server.gameAPI.serverflags << 28) >>> 0);
     }
   } else {
-    items = (ent.api.items >> 0) + ((PR.globals_float[PR.globalvars.serverflags] << 28) >>> 0);
+    items = (ent.api.items >> 0) + ((SV.server.gameAPI.serverflags << 28) >>> 0);
   }
 
   if (ent.api.flags & SV.fl.onground) {
@@ -452,22 +775,24 @@ SV.WriteClientdataToMessage = function(ent, msg) {
     bits += Protocol.su.inwater;
   }
 
-  if (ent.api.punchangle !== 0.0) {
+  const velo = ent.api.velocity, punchangle = ent.api.punchangle;
+
+  if (punchangle[0] !== 0.0) {
     bits += Protocol.su.punch1;
   }
-  if (ent.v_float[PR.entvars.velocity] !== 0.0) {
+  if (velo[0] !== 0.0) {
     bits += Protocol.su.velocity1;
   }
-  if (ent.v_float[PR.entvars.punchangle1] !== 0.0) {
+  if (punchangle[1] !== 0.0) {
     bits += Protocol.su.punch2;
   }
-  if (ent.v_float[PR.entvars.velocity1] !== 0.0) {
+  if (velo[1] !== 0.0) {
     bits += Protocol.su.velocity2;
   }
-  if (ent.v_float[PR.entvars.punchangle2] !== 0.0) {
+  if (punchangle[2] !== 0.0) {
     bits += Protocol.su.punch3;
   }
-  if (ent.v_float[PR.entvars.velocity2] !== 0.0) {
+  if (velo[2] !== 0.0) {
     bits += Protocol.su.velocity3;
   }
 
@@ -481,29 +806,29 @@ SV.WriteClientdataToMessage = function(ent, msg) {
   MSG.WriteByte(msg, Protocol.svc.clientdata);
   MSG.WriteShort(msg, bits);
   if ((bits & Protocol.su.viewheight) !== 0) {
-    MSG.WriteChar(msg, ent.v_float[PR.entvars.view_ofs2]);
+    MSG.WriteChar(msg, ent.api.view_ofs[2]);
   }
   if ((bits & Protocol.su.idealpitch) !== 0) {
     MSG.WriteChar(msg, ent.api.idealpitch);
   }
 
   if ((bits & Protocol.su.punch1) !== 0) {
-    MSG.WriteChar(msg, ent.api.punchangle);
+    MSG.WriteShort(msg, punchangle[0] * 90);
   }
   if ((bits & Protocol.su.velocity1) !== 0) {
-    MSG.WriteChar(msg, ent.v_float[PR.entvars.velocity] * 0.0625);
+    MSG.WriteChar(msg, velo[0] * 0.0625);
   }
   if ((bits & Protocol.su.punch2) !== 0) {
-    MSG.WriteChar(msg, ent.v_float[PR.entvars.punchangle1]);
+    MSG.WriteShort(msg, punchangle[1] * 90.0);
   }
   if ((bits & Protocol.su.velocity2) !== 0) {
-    MSG.WriteChar(msg, ent.v_float[PR.entvars.velocity1] * 0.0625);
+    MSG.WriteChar(msg, velo[1] * 0.0625);
   }
   if ((bits & Protocol.su.punch3) !== 0) {
-    MSG.WriteChar(msg, ent.v_float[PR.entvars.punchangle2]);
+    MSG.WriteShort(msg, punchangle[2] * 90.0);
   }
   if ((bits & Protocol.su.velocity3) !== 0) {
-    MSG.WriteChar(msg, ent.v_float[PR.entvars.velocity2] * 0.0625);
+    MSG.WriteChar(msg, velo[2] * 0.0625);
   }
 
   MSG.WriteLong(msg, items);
@@ -523,8 +848,8 @@ SV.WriteClientdataToMessage = function(ent, msg) {
   if (COM.standard_quake === true) {
     MSG.WriteByte(msg, ent.api.weapon);
   } else {
-    let i; const weapon = ent.api.weapon;
-    for (i = 0; i <= 31; ++i) {
+    const weapon = ent.api.weapon;
+    for (let i = 0; i <= 31; ++i) {
       if ((weapon & (1 << i)) !== 0) {
         MSG.WriteByte(msg, i);
         break;
@@ -707,16 +1032,15 @@ SV.CreateBaseline = function() {
 };
 
 SV.SaveSpawnparms = function() {
-  SV.svs.serverflags = PR.globals_float[PR.globalvars.serverflags];
-  let i; let j;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  SV.svs.serverflags = SV.server.gameAPI.serverflags;
+  for (let i = 0; i < SV.svs.maxclients; ++i) {
     Host.client = SV.svs.clients[i];
     if (Host.client.active !== true) {
       continue;
     }
     SV.server.gameAPI.SetChangeParms(Host.client.edict);
-    for (j = 0; j <= 15; ++j) {
-      Host.client.spawn_parms[j] = PR.globals_float[PR.globalvars.parms + j];
+    for (let j = 0; j <= 15; ++j) {
+      Host.client.spawn_parms[j] = SV.server.gameAPI[`parm${j + 1}`];
     }
   }
 };
@@ -760,35 +1084,12 @@ SV.SpawnServer = function(mapname) {
   Con.DPrint('Clearing memory\n');
   Mod.ClearAll();
 
-  const { GameAPI, GameEntityAPI, ClearEdictPrivateData } = PR.LoadProgs();
-  SV.server.gameAPI = new GameAPI();
+  const progsInterfaces = PR.LoadProgs();
+  SV.server.gameAPI = new progsInterfaces.GameAPI();
 
   SV.server.edicts = [];
   for (i = 0; i < Def.max_edicts; ++i) {
-    const ed = { // TODO: Make an Edict class
-      num: i,
-      free: false,
-      area: {},
-      leafnums: [],
-      baseline: {
-        origin: new Vector(),
-        angles: new Vector(),
-        modelindex: 0,
-        frame: 0,
-        colormap: 0,
-        skin: 0,
-        effects: 0,
-      },
-      freetime: 0.0,
-      equals(other) {
-        return other && this.num === other.num;
-      },
-    };
-    ed.clear = () => ClearEdictPrivateData(ed);
-    ed.clear();
-    ed.area.ent = ed;
-    ed.api = new GameEntityAPI(ed);
-    SV.server.edicts[i] = ed;
+    SV.server.edicts[i] = new SV.Edict(i, progsInterfaces);
   }
   SV.server.cannon = {
     world: new CANNON.World(),
@@ -901,9 +1202,9 @@ SV.CheckBottom = function(ent) {
   }
   const start = new Vector((mins[0] + maxs[0]) * 0.5, (mins[1] + maxs[1]) * 0.5, mins[2]);
   const stop = new Vector(start[0], start[1], start[2] - 36.0);
-  let trace = SV.Move(start, Vector.origin, Vector.origin, stop, 1, ent);
+  let trace = SV.Move(start, Vector.origin, Vector.origin, stop, SV.move.nomonsters, ent);
   if (trace.fraction === 1.0) {
-    return;
+    return false;
   }
   let bottom = trace.endpos[2];
   const mid = bottom;
@@ -912,19 +1213,19 @@ SV.CheckBottom = function(ent) {
     for (y = 0; y <= 1; ++y) {
       start[0] = stop[0] = (x !== 0) ? maxs[0] : mins[0];
       start[1] = stop[1] = (y !== 0) ? maxs[1] : mins[1];
-      trace = SV.Move(start, Vector.origin, Vector.origin, stop, 1, ent);
+      trace = SV.Move(start, Vector.origin, Vector.origin, stop, SV.move.nomonsters, ent);
       if ((trace.fraction !== 1.0) && (trace.endpos[2] > bottom)) {
         bottom = trace.endpos[2];
       }
       if ((trace.fraction === 1.0) || ((mid - trace.endpos[2]) > 18.0)) {
-        return;
+        return false;
       }
     }
   }
   return true;
 };
 
-SV.movestep = function(ent, move, relink) {
+SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
   const oldorg = ent.api.origin;
   const mins = ent.api.mins;
   const maxs = ent.api.maxs;
@@ -936,8 +1237,8 @@ SV.movestep = function(ent, move, relink) {
       neworg[0] = origin[0] + move[0];
       neworg[1] = origin[1] + move[1];
       neworg[2] = origin[2];
-      if ((i === 0) && (enemy !== 0)) {
-        const dz = ent.v_float[PR.entvars.origin2] - SV.server.edicts[enemy].v_float[PR.entvars.origin2];
+      if ((i === 0) && (enemy !== null)) {
+        const dz = ent.api.origin[2] - enemy.api.origin[2];
         if (dz > 40.0) {
           neworg[2] -= 8.0;
         } else if (dz < 30.0) {
@@ -955,7 +1256,7 @@ SV.movestep = function(ent, move, relink) {
         }
         return 1;
       }
-      if (enemy === 0) {
+      if (!enemy) {
         return 0;
       }
     }
@@ -982,7 +1283,7 @@ SV.movestep = function(ent, move, relink) {
     if ((ent.api.flags & SV.fl.partialground) === 0) {
       return 0;
     }
-    const neworg = ent.origin.copy();
+    const neworg = ent.api.origin.copy();
     neworg[0] += move[0];
     neworg[1] += move[1];
     ent.api.origin = neworg;
@@ -1011,8 +1312,8 @@ SV.movestep = function(ent, move, relink) {
   return 1;
 };
 
-SV.ChangeYaw = function (ent) {
-  const angle1 = ent.v_float[PR.entvars.angles1];
+SV.ChangeYaw = function (ent) { // Edict
+  const angle1 = ent.api.angles[1];
   const current = Vector.anglemod(angle1);
   const ideal = ent.api.ideal_yaw;
 
@@ -1045,11 +1346,11 @@ SV.ChangeYaw = function (ent) {
 
 SV.StepDirection = function(ent, yaw, dist) {
   ent.api.ideal_yaw = yaw;
-  ent.v_float[PR.entvars.angles1] = SV.ChangeYaw(ent);
+  ent.api.angles = new Vector(ent.api.angles[0], SV.ChangeYaw(ent), ent.api.angles[2]); // CR: I’m not happy about this line
   yaw *= Math.PI / 180.0;
   const oldorigin = ent.api.origin.copy();
   if (SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], false) === 1) {
-    const delta = ent.v_float[PR.entvars.angles1] - ent.api.ideal_yaw;
+    const delta = ent.api.angles[1] - ent.api.ideal_yaw;
     if ((delta > 45.0) && (delta < 315.0)) {
       ent.api.origin = oldorigin;
     }
@@ -1057,13 +1358,14 @@ SV.StepDirection = function(ent, yaw, dist) {
     return true;
   }
   SV.LinkEdict(ent, true);
+  return false;
 };
 
 SV.NewChaseDir = function(actor, enemy, dist) {
   const olddir = Vector.anglemod(((actor.api.ideal_yaw / 45.0) >> 0) * 45.0);
   const turnaround = Vector.anglemod(olddir - 180.0);
-  const deltax = enemy.v_float[PR.entvars.origin] - actor.v_float[PR.entvars.origin];
-  const deltay = enemy.v_float[PR.entvars.origin1] - actor.v_float[PR.entvars.origin1];
+  const deltax = enemy.api.origin[0] - actor.api.origin[0];
+  const deltay = enemy.api.origin[1] - actor.api.origin[1];
   let dx; let dy;
   if (deltax > 10.0) {
     dx = 0.0;
@@ -1086,7 +1388,7 @@ SV.NewChaseDir = function(actor, enemy, dist) {
     } else {
       tdir = (dy === 90.0) ? 135.0 : 215.0;
     }
-    if ((tdir !== turnaround) && (SV.StepDirection(actor, tdir, dist) === true)) {
+    if ((tdir !== turnaround) && SV.StepDirection(actor, tdir, dist)) {
       return;
     }
   }
@@ -1095,45 +1397,46 @@ SV.NewChaseDir = function(actor, enemy, dist) {
     dx = dy;
     dy = tdir;
   }
-  if ((dx !== -1) && (dx !== turnaround) && (SV.StepDirection(actor, dx, dist) === true)) {
+  if ((dx !== -1) && (dx !== turnaround) && SV.StepDirection(actor, dx, dist)) {
     return;
   }
-  if ((dy !== -1) && (dy !== turnaround) && (SV.StepDirection(actor, dy, dist) === true)) {
+  if ((dy !== -1) && (dy !== turnaround) && SV.StepDirection(actor, dy, dist)) {
     return;
   }
-  if ((olddir !== -1) && (SV.StepDirection(actor, olddir, dist) === true)) {
+  if ((olddir !== -1) && SV.StepDirection(actor, olddir, dist)) {
     return;
   }
   if (Math.random() >= 0.5) {
     for (tdir = 0.0; tdir <= 315.0; tdir += 45.0) {
-      if ((tdir !== turnaround) && (SV.StepDirection(actor, tdir, dist) === true)) {
+      if ((tdir !== turnaround) && SV.StepDirection(actor, tdir, dist)) {
         return;
       }
     }
   } else {
     for (tdir = 315.0; tdir >= 0.0; tdir -= 45.0) {
-      if ((tdir !== turnaround) && (SV.StepDirection(actor, tdir, dist) === true)) {
+      if ((tdir !== turnaround) && SV.StepDirection(actor, tdir, dist)) {
         return;
       }
     }
   }
-  if ((turnaround !== -1) && (SV.StepDirection(actor, turnaround, dist) === true)) {
+  if ((turnaround !== -1) && SV.StepDirection(actor, turnaround, dist)) {
     return;
   }
   actor.api.ideal_yaw = olddir;
-  if (SV.CheckBottom(actor) !== true) {
+  if (!SV.CheckBottom(actor)) {
     actor.api.flags |= SV.fl.partialground;
   }
 };
 
-SV.CloseEnough = function(ent, goal, dist) {
-  let i;
-  for (i = 0; i <= 2; ++i) {
-    if (goal.v_float[PR.entvars.absmin + i] > (ent.v_float[PR.entvars.absmax + i] + dist)) {
-      return;
+SV.CloseEnough = function(ent, goal, dist) { // Edict
+  const absmin = ent.api.absmin, absmax = ent.api.absmax;
+  const absminGoal = goal.api.absmin, absmaxGoal = goal.api.absmax;
+  for (let i = 0; i <= 2; ++i) {
+    if (absminGoal[i] > (absmax[i] + dist)) {
+      return false;
     }
-    if (goal.v_float[PR.entvars.absmax + i] < (ent.v_float[PR.entvars.absmin + i] - dist)) {
-      return;
+    if (absmaxGoal[i] < (absmin[i] - dist)) {
+      return false;
     }
   }
   return true;
@@ -1161,24 +1464,26 @@ SV.CheckAllEnts = function() {
 };
 
 SV.CheckVelocity = function(ent) {
-  let i; let velocity;
-  for (i = 0; i <= 2; ++i) {
-    velocity = ent.v_float[PR.entvars.velocity + i];
-    if (Q.isNaN(velocity) === true) {
+  const velo = ent.api.velocity, origin = ent.api.origin;
+  for (let i = 0; i <= 2; ++i) {
+    let component = velo[i];
+    if (Q.isNaN(component)) {
       Con.Print('Got a NaN velocity on ' + ent.api.classname + '\n');
-      velocity = 0.0;
+      component = 0.0;
     }
-    if (Q.isNaN(ent.v_float[PR.entvars.origin + i]) === true) {
+    if (Q.isNaN(origin[i])) {
       Con.Print('Got a NaN origin on ' + ent.api.classname + '\n');
-      ent.v_float[PR.entvars.origin + i] = 0.0;
+      origin[i] = 0.0;
     }
-    if (velocity > SV.maxvelocity.value) {
-      velocity = SV.maxvelocity.value;
-    } else if (velocity < -SV.maxvelocity.value) {
-      velocity = -SV.maxvelocity.value;
+    if (component > SV.maxvelocity.value) {
+      component = SV.maxvelocity.value;
+    } else if (component < -SV.maxvelocity.value) {
+      component = -SV.maxvelocity.value;
     }
-    ent.v_float[PR.entvars.velocity + i] = velocity;
+    velo[i] = component;
   }
+  ent.api.origin = origin;
+  ent.api.velocity = velo;
 };
 
 SV.RunThink = function(ent) {
@@ -1197,23 +1502,23 @@ SV.RunThink = function(ent) {
 };
 
 SV.Impact = function(e1, e2) {
-  const old_self = PR.globals_int[PR.globalvars.self];
-  const old_other = PR.globals_int[PR.globalvars.other];
-  PR.globals_float[PR.globalvars.time] = SV.server.time;
+  const old_self = SV.server.gameAPI.self;
+  const old_other = SV.server.gameAPI.other;
+  SV.server.gameAPI.time = SV.server.time;
 
   if (e1.api.touch && (e1.api.solid !== SV.solid.not)) {
-    PR.globals_int[PR.globalvars.self] = e1.num;
-    PR.globals_int[PR.globalvars.other] = e2.num;
+    SV.server.gameAPI.self = e1;
+    SV.server.gameAPI.other = e2;
     e1.api.touch();
   }
   if (e2.api.touch && (e2.api.solid !== SV.solid.not)) {
-    PR.globals_int[PR.globalvars.self] = e2.num;
-    PR.globals_int[PR.globalvars.other] = e1.num;
+    SV.server.gameAPI.self = e2;
+    SV.server.gameAPI.other = e1;
     e2.api.touch();
   }
 
-  PR.globals_int[PR.globalvars.self] = old_self;
-  PR.globals_int[PR.globalvars.other] = old_other;
+  SV.server.gameAPI.self = old_self;
+  SV.server.gameAPI.other = old_other;
 };
 
 SV.ClipVelocity = function(vec, normal, out, overbounce) {
@@ -1236,7 +1541,7 @@ SV.ClipVelocity = function(vec, normal, out, overbounce) {
 SV.FlyMove = function(ent, time) {
   let bumpcount;
   let numplanes = 0;
-  let dir; let d;
+  let dir;
   const planes = []; let plane;
   const primal_velocity = ent.api.velocity;
   let original_velocity = ent.api.velocity;
@@ -1245,9 +1550,7 @@ SV.FlyMove = function(ent, time) {
   let time_left = time;
   let blocked = 0;
   for (bumpcount = 0; bumpcount <= 3; ++bumpcount) {
-    if ((ent.v_float[PR.entvars.velocity] === 0.0) &&
-			(ent.v_float[PR.entvars.velocity1] === 0.0) &&
-			(ent.v_float[PR.entvars.velocity2] === 0.0)) {
+    if (ent.api.velocity.isOrigin()) {
       break;
     }
     const end = ent.api.origin.copy().add(ent.api.velocity.copy().multiply(time_left));
@@ -1258,7 +1561,7 @@ SV.FlyMove = function(ent, time) {
     }
     if (trace.fraction > 0.0) {
       ent.api.origin = trace.endpos;
-      original_velocity = ent.api.velocity;
+      original_velocity = ent.api.velocity.copy();
       numplanes = 0;
       if (trace.fraction === 1.0) {
         break;
@@ -1292,7 +1595,7 @@ SV.FlyMove = function(ent, time) {
       for (j = 0; j < numplanes; ++j) {
         if (j !== i) {
           plane = planes[j];
-          if ((new_velocity[0] * plane[0] + new_velocity[1] * plane[1] + new_velocity[2] * plane[2]) < 0.0) {
+          if ((new_velocity[0] * plane[0] + new_velocity[1] * plane[1] + new_velocity[2] * plane[2]) < 0.0) { // plane is not a Vector
             break;
           }
         }
@@ -1309,16 +1612,10 @@ SV.FlyMove = function(ent, time) {
         return 7;
       }
       dir = planes[0].cross(planes[1]);
-      d = dir[0] * ent.v_float[PR.entvars.velocity] +
-				dir[1] * ent.v_float[PR.entvars.velocity1] +
-				dir[2] * ent.v_float[PR.entvars.velocity2];
-      ent.v_float[PR.entvars.velocity] = dir[0] * d;
-      ent.v_float[PR.entvars.velocity1] = dir[1] * d;
-      ent.v_float[PR.entvars.velocity2] = dir[2] * d;
+      // scale the velocity by the dot product of velocity and direction
+      ent.api.velocity = dir.multiply(dir.dot(ent.api.velocity));
     }
-    if ((ent.v_float[PR.entvars.velocity] * primal_velocity[0] +
-			ent.v_float[PR.entvars.velocity1] * primal_velocity[1] +
-			ent.v_float[PR.entvars.velocity2] * primal_velocity[2]) <= 0.0) {
+    if (ent.api.velocity.dot(primal_velocity) <= 0.0) {
       ent.api.velocity = Vector.origin;
       return blocked;
     }
@@ -1327,17 +1624,13 @@ SV.FlyMove = function(ent, time) {
 };
 
 SV.AddGravity = function(ent) {
-  const val = PR.entvars.gravity; let ent_gravity;
-  if (val != null) {
-    ent_gravity = (ent.v_float[val] !== 0.0) ? ent.v_float[val] : 1.0;
-  } else {
-    ent_gravity = 1.0;
-  }
-  ent.v_float[PR.entvars.velocity2] -= ent_gravity * SV.gravity.value * Host.frametime;
+  const ent_gravity = ent.api.gravity || 1.0;
+
+  ent.api.velocity = ent.api.velocity.add(new Vector(0.0, 0.0, ent_gravity * SV.gravity.value * Host.frametime * -1.0));
 };
 
-SV.PushEntity = function(ent, push) {
-  const end = ent.api.origin.copy().add(push);
+SV.PushEntity = function(ent, pushVector) {
+  const end = ent.api.origin.copy().add(pushVector);
   let nomonsters;
   const solid = ent.api.solid;
   if (ent.api.movetype === SV.movetype.flymissile) {
@@ -1382,20 +1675,17 @@ SV.PushMove = function(pusher, movetime) {
       continue;
     }
     if (((check.api.flags & SV.fl.onground) === 0) || !check.api.groundentity || !check.api.groundentity.equals(pusher)) {
-      if ((check.v_float[PR.entvars.absmin] >= maxs[0]) ||
-				(check.v_float[PR.entvars.absmin1] >= maxs[1]) ||
-				(check.v_float[PR.entvars.absmin2] >= maxs[2]) ||
-				(check.v_float[PR.entvars.absmax] <= mins[0]) ||
-				(check.v_float[PR.entvars.absmax1] <= mins[1]) ||
-				(check.v_float[PR.entvars.absmax2] <= mins[2])) {
+      if (!check.api.absmin.lt(maxs) || !check.api.absmax.gt(mins)) {
         continue;
       }
-      if (SV.TestEntityPosition(check) !== true) {
+
+      if (!SV.TestEntityPosition(check)) {
         continue;
       }
     }
+    // remove the onground flag for non-players
     if (movetype !== SV.movetype.walk) {
-      check.api.flags &= (~SV.fl.onground) >>> 0;
+      check.api.flags &= ~SV.fl.onground;
     }
     const entorig = check.api.origin.copy();
     moved[moved.length] = [entorig, check];
@@ -1403,13 +1693,16 @@ SV.PushMove = function(pusher, movetime) {
     SV.PushEntity(check, move);
     pusher.api.solid = SV.solid.bsp;
     if (SV.TestEntityPosition(check) === true) {
-      if (check.v_float[PR.entvars.mins] === check.v_float[PR.entvars.maxs]) {
+      const cmins = check.api.mins, cmaxs = check.api.maxs;
+      if (cmins[0] === cmaxs[0]) {
         continue;
       }
-      if ((check.api.solid === SV.solid.not) || (check.api.solid === SV.solid.trigger)) {
-        check.v_float[PR.entvars.mins] = check.v_float[PR.entvars.maxs] = 0.0;
-        check.v_float[PR.entvars.mins1] = check.v_float[PR.entvars.maxs1] = 0.0;
-        check.v_float[PR.entvars.maxs2] = check.v_float[PR.entvars.mins2];
+      if (check.api.solid === SV.solid.not || check.api.solid === SV.solid.trigger) {
+        cmins[0] = cmaxs[0] = 0.0;
+        cmins[1] = cmaxs[1] = 0.0;
+        cmaxs[2] = cmins[2];
+        check.api.mins = cmins;
+        check.api.maxs = cmaxs;
         continue;
       }
       check.api.origin = entorig;
@@ -1418,8 +1711,8 @@ SV.PushMove = function(pusher, movetime) {
       SV.LinkEdict(pusher);
       pusher.api.ltime -= movetime;
       if (pusher.api.blocked) {
-        PR.globals_int[PR.globalvars.self] = pusher.num;
-        PR.globals_int[PR.globalvars.other] = check.num;
+        SV.server.gameAPI.self = pusher;
+        SV.server.gameAPI.other = check;
         pusher.api.blocked();
       }
       for (let i = 0; i < moved.length; ++i) {
@@ -1451,35 +1744,28 @@ SV.Physics_Pusher = function(ent) {
     return;
   }
   ent.api.nextthink = 0.0;
-  PR.globals_float[PR.globalvars.time] = SV.server.time;
-  PR.globals_int[PR.globalvars.self] = ent.num;
-  PR.globals_int[PR.globalvars.other] = 0;
+  SV.server.gameAPI.time = SV.server.time;
+  SV.server.gameAPI.self = ent;
+  SV.server.gameAPI.other = null;
   ent.api.think();
 };
 
 SV.CheckStuck = function(ent) {
   if (SV.TestEntityPosition(ent) !== true) {
-    ent.v_float[PR.entvars.oldorigin] = ent.v_float[PR.entvars.origin];
-    ent.v_float[PR.entvars.oldorigin1] = ent.v_float[PR.entvars.origin1];
-    ent.v_float[PR.entvars.oldorigin2] = ent.v_float[PR.entvars.origin2];
+    ent.api.oldorigin = ent.api.oldorigin.set(ent.api.origin);
     return;
   }
-  const org = ent.api.origin;
-  ent.v_float[PR.entvars.origin] = ent.v_float[PR.entvars.oldorigin];
-  ent.v_float[PR.entvars.origin1] = ent.v_float[PR.entvars.oldorigin1];
-  ent.v_float[PR.entvars.origin2] = ent.v_float[PR.entvars.oldorigin2];
+  ent.api.origin = ent.api.origin.set(ent.api.oldorigin);
   if (SV.TestEntityPosition(ent) !== true) {
     Con.DPrint('Unstuck.\n');
     SV.LinkEdict(ent, true);
     return;
   }
-  let z; let i; let j;
-  for (z = 0.0; z <= 17.0; ++z) {
-    for (i = -1.0; i <= 1.0; ++i) {
-      for (j = -1.0; j <= 1.0; ++j) {
-        ent.v_float[PR.entvars.origin] = org[0] + i;
-        ent.v_float[PR.entvars.origin1] = org[1] + j;
-        ent.v_float[PR.entvars.origin2] = org[2] + z;
+  const norg = ent.api.origin.copy();
+  for (norg[2] = 0.0; norg[2] <= 17.0; ++norg[2]) {
+    for (norg[0] = -1.0; norg[0] <= 1.0; ++norg[0]) {
+      for (norg[1] = -1.0; norg[1] <= 1.0; ++norg[1]) {
+        ent.api.origin = ent.api.origin.set(norg).add(norg);
         if (SV.TestEntityPosition(ent) !== true) {
           Con.DPrint('Unstuck.\n');
           SV.LinkEdict(ent, true);
@@ -1488,29 +1774,25 @@ SV.CheckStuck = function(ent) {
       }
     }
   }
-  ent.api.origin = org;
   Con.DPrint('player is stuck.\n');
 };
 
 SV.CheckWater = function(ent) {
-  const point = new Vector(
-    ent.v_float[PR.entvars.origin],
-    ent.v_float[PR.entvars.origin1],
-    ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.mins2] + 1.0,
-  );
+  const point = ent.api.origin.copy().add(new Vector(0.0, 0.0, ent.api.mins[2] + 1.0));
   ent.api.waterlevel = 0.0;
   ent.api.watertype = Mod.contents.empty;
   let cont = SV.PointContents(point);
   if (cont > Mod.contents.water) {
-    return;
+    return false;
   }
   ent.api.watertype = cont;
   ent.api.waterlevel = 1.0;
-  point[2] = ent.v_float[PR.entvars.origin2] + (ent.v_float[PR.entvars.mins2] + ent.v_float[PR.entvars.maxs2]) * 0.5;
+  const origin = ent.api.origin;
+  point[2] = origin[2] + (ent.api.mins[2] + ent.api.maxs[2]) * 0.5;
   cont = SV.PointContents(point);
   if (cont <= Mod.contents.water) {
     ent.api.waterlevel = 2.0;
-    point[2] = ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.view_ofs2];
+    point[2] = origin[2] + ent.api.view_ofs[2];
     cont = SV.PointContents(point);
     if (cont <= Mod.contents.water) {
       ent.api.waterlevel = 3.0;
@@ -1522,20 +1804,25 @@ SV.CheckWater = function(ent) {
 SV.WallFriction = function(ent, trace) {
   const { forward } = ent.api.v_angle.angleVectors()
   const normal = trace.plane.normal;
-  let d = normal[0] * forward[0] + normal[1] * forward[1] + normal[2] * forward[2] + 0.5;
+  let d = normal.dot(forward) + 0.5;
   if (d >= 0.0) {
     return;
   }
   d += 1.0;
-  const i = normal[0] * ent.v_float[PR.entvars.velocity] +
-		normal[1] * ent.v_float[PR.entvars.velocity1] +
-		normal[2] * ent.v_float[PR.entvars.velocity2];
-  ent.v_float[PR.entvars.velocity] = (ent.v_float[PR.entvars.velocity] - normal[0] * i) * d;
-  ent.v_float[PR.entvars.velocity1] = (ent.v_float[PR.entvars.velocity1] - normal[1] * i) * d;
+  const velo = ent.api.velocity;
+  const i = normal.dot(velo);
+
+  // CR: velo[2] was always 0 when I tested this code substitude
+  // ent.api.velocity = ent.api.velocity.subtract(normal.multiply(i)).multiply(d);
+
+  velo[0] = (velo[0] - normal[0] * i) * d;
+  velo[1] = (velo[1] - normal[1] * i) * d;
+
+  ent.api.velocity = velo;
 };
 
 SV.TryUnstick = function(ent, oldvel) {
-  const oldorg = ent.api.origin;
+  const oldorg = ent.api.origin.copy();
   const dir = new Vector(2.0, 0.0, 0.0);
   let i; let clip;
   for (i = 0; i <= 7; ++i) {
@@ -1549,12 +1836,10 @@ SV.TryUnstick = function(ent, oldvel) {
       case 7: dir[0] = -2.0; dir[1] = -2.0;
     }
     SV.PushEntity(ent, dir);
-    ent.v_float[PR.entvars.velocity] = oldvel[0];
-    ent.v_float[PR.entvars.velocity1] = oldvel[1];
-    ent.v_float[PR.entvars.velocity2] = 0.0;
+    ent.api.velocity = new Vector(oldvel[0], oldvel[1], 0.0);
     clip = SV.FlyMove(ent, 0.1);
-    if ((Math.abs(oldorg[1] - ent.v_float[PR.entvars.origin1]) > 4.0) ||
-			(Math.abs(oldorg[0] - ent.v_float[PR.entvars.origin]) > 4.0)) {
+    const curorg = ent.api.origin;
+    if (Math.abs(oldorg[1] - curorg[1]) > 4.0 || Math.abs(oldorg[0] - curorg[0]) > 4.0) {
       return clip;
     }
     ent.api.origin = oldorg;
@@ -1566,8 +1851,8 @@ SV.TryUnstick = function(ent, oldvel) {
 SV.WalkMove = function(ent) {
   const oldonground = ent.api.flags & SV.fl.onground;
   ent.api.flags ^= oldonground;
-  const oldorg = ent.api.origin;
-  const oldvel = ent.api.velocity;
+  const oldorg = ent.api.origin.copy();
+  const oldvel = ent.api.velocity.copy();
   let clip = SV.FlyMove(ent, Host.frametime);
   if ((clip & 2) === 0) {
     return;
@@ -1584,17 +1869,15 @@ SV.WalkMove = function(ent) {
   if ((SV.player.api.flags & SV.fl.waterjump) !== 0) {
     return;
   }
-  const nosteporg = ent.api.origin;
-  const nostepvel = ent.api.velocity;
+  const nosteporg = ent.api.origin.copy();
+  const nostepvel = ent.api.velocity.copy();
   ent.api.origin = oldorg;
   SV.PushEntity(ent, new Vector(0.0, 0.0, 18.0));
-  ent.v_float[PR.entvars.velocity] = oldvel[0];
-  ent.v_float[PR.entvars.velocity1] = oldvel[1];
-  ent.v_float[PR.entvars.velocity2] = 0.0;
+  ent.api.velocity = new Vector(oldvel[0], oldvel[1], 0.0);
   clip = SV.FlyMove(ent, Host.frametime);
   if (clip !== 0) {
-    if ((Math.abs(oldorg[1] - ent.v_float[PR.entvars.origin1]) < 0.03125) &&
-			(Math.abs(oldorg[0] - ent.v_float[PR.entvars.origin]) < 0.03125)) {
+    const curorg = ent.api.origin;
+    if (Math.abs(oldorg[1] - curorg[1]) < 0.03125 && Math.abs(oldorg[0] - curorg[0]) < 0.03125) {
       clip = SV.TryUnstick(ent, oldvel);
     }
     if ((clip & 2) !== 0) {
@@ -1614,7 +1897,7 @@ SV.WalkMove = function(ent) {
 };
 
 SV.Physics_Client = function(ent) {
-  if (SV.svs.clients[ent.num - 1].active !== true) {
+  if (!ent.getClient().active) {
     return;
   }
   SV.server.gameAPI.time = SV.server.time;
@@ -1624,14 +1907,14 @@ SV.Physics_Client = function(ent) {
   if ((movetype === SV.movetype.toss) || (movetype === SV.movetype.bounce)) {
     SV.Physics_Toss(ent);
   } else {
-    if (SV.RunThink(ent) !== true) {
+    if (!SV.RunThink(ent)) {
       return;
     }
     switch (movetype) {
       case SV.movetype.none:
         break;
       case SV.movetype.walk:
-        if ((SV.CheckWater(ent) !== true) && ((ent.api.flags & SV.fl.waterjump) === 0)) {
+        if (!SV.CheckWater(ent) && (ent.api.flags & SV.fl.waterjump) === 0) {
           SV.AddGravity(ent);
         }
         SV.CheckStuck(ent);
@@ -1641,9 +1924,8 @@ SV.Physics_Client = function(ent) {
         SV.FlyMove(ent, Host.frametime);
         break;
       case SV.movetype.noclip:
-        ent.v_float[PR.entvars.origin] += Host.frametime * ent.v_float[PR.entvars.velocity];
-        ent.v_float[PR.entvars.origin1] += Host.frametime * ent.v_float[PR.entvars.velocity1];
-        ent.v_float[PR.entvars.origin2] += Host.frametime * ent.v_float[PR.entvars.velocity2];
+        ent.api.angles = ent.api.angles.add(ent.api.avelocity.copy().multiply(Host.frametime));
+        ent.api.origin = ent.api.origin.add(ent.api.velocity.copy().multiply(Host.frametime));
         break;
       default:
         Sys.Error('SV.Physics_Client: bad movetype ' + movetype);
@@ -1652,19 +1934,6 @@ SV.Physics_Client = function(ent) {
   SV.LinkEdict(ent, true);
   SV.server.gameAPI.time = SV.server.time;
   SV.server.gameAPI.PlayerPostThink(ent);
-};
-
-SV.Physics_Noclip = function(ent) {
-  if (SV.RunThink(ent) !== true) {
-    return;
-  }
-  ent.v_float[PR.entvars.angles] += Host.frametime * ent.v_float[PR.entvars.avelocity];
-  ent.v_float[PR.entvars.angles1] += Host.frametime * ent.v_float[PR.entvars.avelocity1];
-  ent.v_float[PR.entvars.angles2] += Host.frametime * ent.v_float[PR.entvars.avelocity2];
-  ent.v_float[PR.entvars.origin] += Host.frametime * ent.v_float[PR.entvars.velocity];
-  ent.v_float[PR.entvars.origin1] += Host.frametime * ent.v_float[PR.entvars.velocity1];
-  ent.v_float[PR.entvars.origin2] += Host.frametime * ent.v_float[PR.entvars.velocity2];
-  SV.LinkEdict(ent);
 };
 
 SV.CheckWaterTransition = function(ent) {
@@ -1701,27 +1970,20 @@ SV.Physics_Toss = function(ent) {
   if ((movetype !== SV.movetype.fly) && (movetype !== SV.movetype.flymissile)) {
     SV.AddGravity(ent);
   }
-  ent.v_float[PR.entvars.angles] += Host.frametime * ent.v_float[PR.entvars.avelocity];
-  ent.v_float[PR.entvars.angles1] += Host.frametime * ent.v_float[PR.entvars.avelocity1];
-  ent.v_float[PR.entvars.angles2] += Host.frametime * ent.v_float[PR.entvars.avelocity2];
-  const trace = SV.PushEntity(ent,
-      [
-        ent.v_float[PR.entvars.velocity] * Host.frametime,
-        ent.v_float[PR.entvars.velocity1] * Host.frametime,
-        ent.v_float[PR.entvars.velocity2] * Host.frametime,
-      ]);
-  if ((trace.fraction === 1.0) || (ent.free === true)) {
+  ent.api.angles = ent.api.angles.add(ent.api.avelocity.copy().multiply(Host.frametime));
+  const trace = SV.PushEntity(ent, ent.api.velocity.copy().multiply(Host.frametime));
+  if (trace.fraction === 1.0 || ent.free) {
     return;
   }
   const velocity = new Vector();
   SV.ClipVelocity(ent.api.velocity, trace.plane.normal, velocity, (movetype === SV.movetype.bounce) ? 1.5 : 1.0);
   ent.api.velocity = velocity;
   if (trace.plane.normal[2] > 0.7) {
-    if ((ent.v_float[PR.entvars.velocity2] < 60.0) || (movetype !== SV.movetype.bounce)) {
+    if (ent.api.velocity[2] < 60.0 || movetype !== SV.movetype.bounce) {
       ent.api.flags |= SV.fl.onground;
       ent.api.groundentity = trace.ent;
-      ent.v_float[PR.entvars.velocity] = ent.v_float[PR.entvars.velocity1] = ent.v_float[PR.entvars.velocity2] = 0.0;
-      ent.v_float[PR.entvars.avelocity] = ent.v_float[PR.entvars.avelocity1] = ent.v_float[PR.entvars.avelocity2] = 0.0;
+      ent.api.velocity = Vector.origin;
+      ent.api.avelocity = Vector.origin;
     }
   }
   SV.CheckWaterTransition(ent);
@@ -1729,7 +1991,7 @@ SV.Physics_Toss = function(ent) {
 
 SV.Physics_Step = function(ent) {
   if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
-    const hitsound = (ent.v_float[PR.entvars.velocity2] < (SV.gravity.value * -0.1));
+    const hitsound = (ent.api.velocity[2] < (SV.gravity.value * -0.1));
     SV.AddGravity(ent);
     SV.CheckVelocity(ent);
     SV.FlyMove(ent, Host.frametime);
@@ -1884,7 +2146,7 @@ SV.LinkPhysicsEngine = function() {
     if (ent.cannon?.body) {
       ent.api.origin = ent.cannon.body.position.toArray();
       ent.api.angles = Vector.fromQuaternion(ent.cannon.body.quaternion.toArray());
-      SV.LinkEdict(ent);
+      ent.linkEdict(false);
     }
   }
 };
@@ -1938,10 +2200,10 @@ SV.Physics = function() {
     if (ent.free === true) {
       continue;
     }
-    if (PR.globals_float[PR.globalvars.force_retouch] !== 0.0) {
+    if (SV.server.gameAPI.force_retouch !== 0.0) {
       SV.LinkEdict(ent, true);
     }
-    if ((i > 0) && (i <= SV.svs.maxclients)) {
+    if (ent.isClient()) {
       SV.Physics_Client(ent);
       continue;
     }
@@ -1967,8 +2229,8 @@ SV.Physics = function() {
     }
     Sys.Error('SV.Physics: bad movetype ' + (ent.api.movetype >> 0));
   }
-  if (PR.globals_float[PR.globalvars.force_retouch] !== 0.0) {
-    --PR.globals_float[PR.globalvars.force_retouch];
+  if (SV.server.gameAPI.force_retouch !== 0.0) {
+    --SV.server.gameAPI.force_retouch;
   }
   SV.server.time += Host.frametime;
   SV.StepPhysicsEngine();
@@ -1982,17 +2244,18 @@ SV.SetIdealPitch = function() {
   if ((ent.api.flags & SV.fl.onground) === 0) {
     return;
   }
-  const angleval = ent.v_float[PR.entvars.angles1] * (Math.PI / 180.0);
+  const origin = ent.api.origin;
+  const angleval = ent.api.angles[1] * (Math.PI / 180.0);
   const sinval = Math.sin(angleval);
   const cosval = Math.cos(angleval);
-  const top = new Vector(0.0, 0.0, ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.view_ofs2]);
+  const top = new Vector(0.0, 0.0, origin[2] + ent.api.view_ofs[2]);
   const bottom = new Vector(0.0, 0.0, top[2] - 160.0);
   let i; let tr; const z = [];
   for (i = 0; i < 6; ++i) {
-    top[0] = bottom[0] = ent.v_float[PR.entvars.origin] + cosval * (i + 3) * 12.0;
-    top[1] = bottom[1] = ent.v_float[PR.entvars.origin1] + sinval * (i + 3) * 12.0;
+    top[0] = bottom[0] = origin[0] + cosval * (i + 3) * 12.0;
+    top[1] = bottom[1] = origin[1] + sinval * (i + 3) * 12.0;
     tr = SV.Move(top, Vector.origin, Vector.origin, bottom, 1, ent);
-    if ((tr.allsolid === true) || (tr.fraction === 1.0)) {
+    if (tr.allsolid || tr.fraction === 1.0) {
       return;
     }
     z[i] = top[2] - tr.fraction * 160.0;
@@ -2020,16 +2283,13 @@ SV.SetIdealPitch = function() {
 
 SV.UserFriction = function() {
   const ent = SV.player;
-  const vel0 = ent.v_float[PR.entvars.velocity]; const vel1 = ent.v_float[PR.entvars.velocity1];
-  const speed = Math.sqrt(vel0 * vel0 + vel1 * vel1);
+  const vel = ent.api.velocity;
+  const speed = Math.sqrt(vel[0] * vel[0] + vel[1] * vel[1]);
   if (speed === 0.0) {
     return;
   }
-  const start = new Vector(
-    ent.v_float[PR.entvars.origin] + vel0 / speed * 16.0,
-    ent.v_float[PR.entvars.origin1] + vel1 / speed * 16.0,
-    ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.mins2],
-  );
+  const origin = ent.api.origin;
+  const start = new Vector(origin[0] + vel[0] / speed * 16.0, origin[1] + vel[1] / speed * 16.0, origin[2] + ent.api.mins[2]);
   let friction = SV.friction.value;
   if (SV.Move(start, Vector.origin, Vector.origin, new Vector(start[0], start[1], start[2] - 34.0), 1, ent).fraction === 1.0) {
     friction *= SV.edgefriction.value;
@@ -2039,32 +2299,26 @@ SV.UserFriction = function() {
     newspeed = 0.0;
   }
   newspeed /= speed;
-  ent.v_float[PR.entvars.velocity] *= newspeed;
-  ent.v_float[PR.entvars.velocity1] *= newspeed;
-  ent.v_float[PR.entvars.velocity2] *= newspeed;
+  ent.api.velocity = ent.api.velocity.multiply(newspeed);
 };
 
 SV.Accelerate = function(wishvel, air) {
   const ent = SV.player;
-  const wishdir = new Vector(wishvel[0], wishvel[1], wishvel[2]);
+
+  const wishdir = wishvel.copy(); // new Vector(wishvel[0], wishvel[1], wishvel[2]);
+
   let wishspeed = wishdir.normalize();
-  if ((air === true) && (wishspeed > 30.0)) {
+
+  if (air && wishspeed > 30.0) {
     wishspeed = 30.0;
   }
-  const addspeed = wishspeed - (ent.v_float[PR.entvars.velocity] * wishdir[0] +
-		ent.v_float[PR.entvars.velocity1] * wishdir[1] +
-		ent.v_float[PR.entvars.velocity2] * wishdir[2]
-  );
+
+  const addspeed = wishspeed - ent.api.velocity.dot(wishdir);
   if (addspeed <= 0.0) {
     return;
   }
-  let accelspeed = SV.accelerate.value * Host.frametime * wishspeed;
-  if (accelspeed > addspeed) {
-    accelspeed = addspeed;
-  }
-  ent.v_float[PR.entvars.velocity] += accelspeed * wishdir[0];
-  ent.v_float[PR.entvars.velocity1] += accelspeed * wishdir[1];
-  ent.v_float[PR.entvars.velocity2] += accelspeed * wishdir[2];
+  const accelspeed = Math.min(SV.accelerate.value * Host.frametime * wishspeed, addspeed);
+  ent.api.velocity = ent.api.velocity.add(wishdir.multiply(accelspeed));
 };
 
 SV.WaterMove = function() {
@@ -2088,36 +2342,28 @@ SV.WaterMove = function() {
     wishspeed = SV.maxspeed.value;
   }
   wishspeed *= 0.7;
-  const speed = Math.sqrt(ent.v_float[PR.entvars.velocity] * ent.v_float[PR.entvars.velocity] +
-		ent.v_float[PR.entvars.velocity1] * ent.v_float[PR.entvars.velocity1] +
-		ent.v_float[PR.entvars.velocity2] * ent.v_float[PR.entvars.velocity2],
-  ); let newspeed;
+  const speed = ent.api.velocity.len(); let newspeed;
   if (speed !== 0.0) {
     newspeed = speed - Host.frametime * speed * SV.friction.value;
     if (newspeed < 0.0) {
       newspeed = 0.0;
     }
     scale = newspeed / speed;
-    ent.v_float[PR.entvars.velocity] *= scale;
-    ent.v_float[PR.entvars.velocity1] *= scale;
-    ent.v_float[PR.entvars.velocity2] *= scale;
+    ent.api.velocity = ent.api.velocity.multiply(scale);
   } else {
     newspeed = 0.0;
   }
+
   if (wishspeed === 0.0) {
     return;
   }
+
   const addspeed = wishspeed - newspeed;
   if (addspeed <= 0.0) {
     return;
   }
-  let accelspeed = SV.accelerate.value * wishspeed * Host.frametime;
-  if (accelspeed > addspeed) {
-    accelspeed = addspeed;
-  }
-  ent.v_float[PR.entvars.velocity] += accelspeed * (wishvel[0] / wishspeed);
-  ent.v_float[PR.entvars.velocity1] += accelspeed * (wishvel[1] / wishspeed);
-  ent.v_float[PR.entvars.velocity2] += accelspeed * (wishvel[2] / wishspeed);
+  const accelspeed = Math.min(SV.accelerate.value * wishspeed * Host.frametime, addspeed);
+  ent.api.velocity = ent.api.velocity.add(wishvel.multiply(accelspeed / wishspeed));
 };
 
 SV.WaterJump = function() {
@@ -2126,8 +2372,10 @@ SV.WaterJump = function() {
     ent.api.flags &= (~SV.fl.waterjump >>> 0);
     ent.api.teleport_time = 0.0;
   }
-  ent.v_float[PR.entvars.velocity] = ent.v_float[PR.entvars.movedir];
-  ent.v_float[PR.entvars.velocity1] = ent.v_float[PR.entvars.movedir1];
+
+  const nvelo = ent.api.movedir.copy();
+  nvelo[2] = 0.0;
+  ent.api.velocity = nvelo;
 };
 
 SV.AirMove = function() {
@@ -2166,28 +2414,33 @@ SV.ClientThink = function() {
     return;
   }
 
-  const punchangle = ent.api.punchangle;
+  const punchangle = ent.api.punchangle.copy();
   let len = punchangle.normalize() - 10.0 * Host.frametime;
   if (len < 0.0) {
     len = 0.0;
   }
-  ent.v_float[PR.entvars.punchangle] = punchangle[0] * len;
-  ent.v_float[PR.entvars.punchangle1] = punchangle[1] * len;
-  ent.v_float[PR.entvars.punchangle2] = punchangle[2] * len;
+  ent.api.punchangle = punchangle.multiply(len);
 
   if (ent.api.health <= 0.0) {
     return;
   }
 
-  ent.v_float[PR.entvars.angles2] = V.CalcRoll(ent.api.angles, ent.api.velocity) * 4.0;
-  if (SV.player.api.fixangle === 0.0) {
-    ent.v_float[PR.entvars.angles] = (ent.v_float[PR.entvars.v_angle] + ent.v_float[PR.entvars.punchangle]) / -3.0;
-    ent.v_float[PR.entvars.angles1] = ent.v_float[PR.entvars.v_angle1] + ent.v_float[PR.entvars.punchangle1];
+  const angles = ent.api.angles;
+  const v_angle = ent.api.v_angle.copy().add(punchangle);
+
+  angles[2] = V.CalcRoll(angles, ent.api.velocity) * 4.0;
+
+  if (!SV.player.api.fixangle) {
+    angles[0] = (v_angle[0] + punchangle[0]) / -3.0;
+    angles[1] = v_angle[1] + punchangle[1];
   }
 
-  if ((ent.api.flags & SV.fl.waterjump) !== 0) {
+  ent.api.angles = angles;
+  ent.api.v_angle = v_angle;
+
+  if (ent.api.flags & SV.fl.waterjump) {
     SV.WaterJump();
-  } else if ((ent.api.waterlevel >= 2.0) && (ent.api.movetype !== SV.movetype.noclip)) {
+  } else if (ent.api.waterlevel >= 2.0 && ent.api.movetype !== SV.movetype.noclip) {
     SV.WaterMove();
   } else {
     SV.AirMove();
@@ -2196,15 +2449,13 @@ SV.ClientThink = function() {
 
 SV.ReadClientMove = function(client) {
   client.ping_times[client.num_pings++ & 15] = SV.server.time - MSG.ReadFloat();
-  client.edict.v_float[PR.entvars.v_angle] = MSG.ReadAngle();
-  client.edict.v_float[PR.entvars.v_angle1] = MSG.ReadAngle();
-  client.edict.v_float[PR.entvars.v_angle2] = MSG.ReadAngle();
+  client.edict.api.v_angle = MSG.ReadAngleVector();
   client.cmd.forwardmove = MSG.ReadShort();
   client.cmd.sidemove = MSG.ReadShort();
   client.cmd.upmove = MSG.ReadShort();
   let i = MSG.ReadByte();
   client.edict.api.button0 = i & 1;
-  client.edict.v_float[PR.entvars.button2] = (i & 2) >> 1;
+  client.edict.api.button2 = (i & 2) >> 1;
   i = MSG.ReadByte();
   if (i !== 0) {
     client.edict.api.impulse = i;
@@ -2394,16 +2645,18 @@ SV.InitBoxHull = function() {
 };
 
 SV.HullForEntity = function(ent, mins, maxs, out_offset) {
+  const origin = ent.api.origin;
   if (ent.api.solid !== SV.solid.bsp) {
-    SV.box_planes[0].dist = ent.v_float[PR.entvars.maxs] - mins[0];
-    SV.box_planes[1].dist = ent.v_float[PR.entvars.mins] - maxs[0];
-    SV.box_planes[2].dist = ent.v_float[PR.entvars.maxs1] - mins[1];
-    SV.box_planes[3].dist = ent.v_float[PR.entvars.mins1] - maxs[1];
-    SV.box_planes[4].dist = ent.v_float[PR.entvars.maxs2] - mins[2];
-    SV.box_planes[5].dist = ent.v_float[PR.entvars.mins2] - maxs[2];
-    out_offset[0] = ent.v_float[PR.entvars.origin];
-    out_offset[1] = ent.v_float[PR.entvars.origin1];
-    out_offset[2] = ent.v_float[PR.entvars.origin2];
+    const emaxs = ent.api.maxs, emins = ent.api.mins;
+    SV.box_planes[0].dist = emaxs[0] - mins[0];
+    SV.box_planes[1].dist = emins[0] - maxs[0];
+    SV.box_planes[2].dist = emaxs[1] - mins[1];
+    SV.box_planes[3].dist = emins[1] - maxs[1];
+    SV.box_planes[4].dist = emaxs[2] - mins[2];
+    SV.box_planes[5].dist = emins[2] - maxs[2];
+    out_offset[0] = origin[0];
+    out_offset[1] = origin[1];
+    out_offset[2] = origin[2];
     return SV.box_hull;
   }
   if (ent.api.movetype !== SV.movetype.push) {
@@ -2425,9 +2678,9 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
   } else {
     hull = model.hulls[2];
   }
-  out_offset[0] = hull.clip_mins[0] - mins[0] + ent.v_float[PR.entvars.origin];
-  out_offset[1] = hull.clip_mins[1] - mins[1] + ent.v_float[PR.entvars.origin1];
-  out_offset[2] = hull.clip_mins[2] - mins[2] + ent.v_float[PR.entvars.origin2];
+  out_offset[0] = hull.clip_mins[0] - mins[0] + origin[0];
+  out_offset[1] = hull.clip_mins[1] - mins[1] + origin[1];
+  out_offset[2] = hull.clip_mins[2] - mins[2] + origin[2];
   return hull;
 };
 
@@ -2468,6 +2721,7 @@ SV.UnlinkEdict = function(ent) {
 
 SV.TouchLinks = function(ent, node) {
   let l; let next; let touch; let old_self; let old_other;
+  const absmin = ent.api.absmin, absmax = ent.api.absmax;
   for (l = node.trigger_edicts.next; l !== node.trigger_edicts; l = next) {
     next = l.next;
     touch = l.ent;
@@ -2477,30 +2731,25 @@ SV.TouchLinks = function(ent, node) {
     if (!touch.api.touch || touch.api.solid !== SV.solid.trigger) {
       continue;
     }
-    if ((ent.v_float[PR.entvars.absmin] > touch.v_float[PR.entvars.absmax]) ||
-			(ent.v_float[PR.entvars.absmin1] > touch.v_float[PR.entvars.absmax1]) ||
-			(ent.v_float[PR.entvars.absmin2] > touch.v_float[PR.entvars.absmax2]) ||
-			(ent.v_float[PR.entvars.absmax] < touch.v_float[PR.entvars.absmin]) ||
-			(ent.v_float[PR.entvars.absmax1] < touch.v_float[PR.entvars.absmin1]) ||
-			(ent.v_float[PR.entvars.absmax2] < touch.v_float[PR.entvars.absmin2])) {
+    if (!absmin.lte(touch.api.absmax) || !absmax.gte(touch.api.absmin)) {
       continue;
     }
-    old_self = PR.globals_int[PR.globalvars.self];
-    old_other = PR.globals_int[PR.globalvars.other];
-    PR.globals_int[PR.globalvars.self] = touch.num;
-    PR.globals_int[PR.globalvars.other] = ent.num;
-    PR.globals_float[PR.globalvars.time] = SV.server.time;
+    old_self = SV.server.gameAPI.self;
+    old_other = SV.server.gameAPI.other;
+    SV.server.gameAPI.self = touch;
+    SV.server.gameAPI.other = ent;
+    SV.server.gameAPI.time = SV.server.time;
     touch.api.touch();
-    PR.globals_int[PR.globalvars.self] = old_self;
-    PR.globals_int[PR.globalvars.other] = old_other;
+    SV.server.gameAPI.self = old_self;
+    SV.server.gameAPI.other = old_other;
   }
   if (node.axis === -1) {
     return;
   }
-  if (ent.v_float[PR.entvars.absmax + node.axis] > node.dist) {
+  if (absmax[node.axis] > node.dist) {
     SV.TouchLinks(ent, node.children[0]);
   }
-  if (ent.v_float[PR.entvars.absmin + node.axis] < node.dist) {
+  if (absmax[node.axis] < node.dist) {
     SV.TouchLinks(ent, node.children[1]);
   }
 };
@@ -2518,10 +2767,7 @@ SV.FindTouchedLeafs = function(ent, node) {
     return;
   }
 
-  const sides = Vector.boxOnPlaneSide(
-    new Vector(ent.v_float[PR.entvars.absmin], ent.v_float[PR.entvars.absmin1], ent.v_float[PR.entvars.absmin2]),
-    new Vector(ent.v_float[PR.entvars.absmax], ent.v_float[PR.entvars.absmax1], ent.v_float[PR.entvars.absmax2]),
-    node.plane);
+  const sides = Vector.boxOnPlaneSide(ent.api.absmin, ent.api.absmax, node.plane);
 
   if ((sides & 1) !== 0) {
     SV.FindTouchedLeafs(ent, node.children[0]);
@@ -2531,29 +2777,28 @@ SV.FindTouchedLeafs = function(ent, node) {
   }
 };
 
-SV.LinkEdict = function(ent, touch_triggers) {
+SV.LinkEdict = function(ent, touch_triggers = false) {
   if ((ent.equals(SV.server.edicts[0])) || (ent.free === true)) {
     return;
   }
 
   SV.UnlinkEdict(ent);
 
-  ent.v_float[PR.entvars.absmin] = ent.v_float[PR.entvars.origin] + ent.v_float[PR.entvars.mins] - 1.0;
-  ent.v_float[PR.entvars.absmin1] = ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.mins1] - 1.0;
-  ent.v_float[PR.entvars.absmin2] = ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.mins2];
-  ent.v_float[PR.entvars.absmax] = ent.v_float[PR.entvars.origin] + ent.v_float[PR.entvars.maxs] + 1.0;
-  ent.v_float[PR.entvars.absmax1] = ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.maxs1] + 1.0;
-  ent.v_float[PR.entvars.absmax2] = ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.maxs2];
+  const origin = ent.api.origin;
+  const absmin = origin.copy(), absmax = origin.copy();
+
+  absmin.add(ent.api.mins).add(new Vector(-1.0, -1.0, -1.0));
+  absmax.add(ent.api.maxs).add(new Vector( 1.0,  1.0,  1.0));
 
   if ((ent.api.flags & SV.fl.item) !== 0) {
-    ent.v_float[PR.entvars.absmin] -= 14.0;
-    ent.v_float[PR.entvars.absmin1] -= 14.0;
-    ent.v_float[PR.entvars.absmax] += 14.0;
-    ent.v_float[PR.entvars.absmax1] += 14.0;
-  } else {
-    ent.v_float[PR.entvars.absmin2] -= 1.0;
-    ent.v_float[PR.entvars.absmax2] += 1.0;
+    // the former else-branch would set Z, but we did it two statements before already,
+    // so we need to correct it by subtracting the adjusted Z back.
+    absmin.add(new Vector(-14.0, -14.0,  1.0));
+    absmax.add(new Vector( 14.0,  14.0, -1.0));
   }
+
+  ent.api.absmin = absmin;
+  ent.api.absmax = absmax;
 
   ent.leafnums = [];
   if (ent.api.modelindex !== 0.0) {
@@ -2569,9 +2814,9 @@ SV.LinkEdict = function(ent, touch_triggers) {
     if (node.axis === -1) {
       break;
     }
-    if (ent.v_float[PR.entvars.absmin + node.axis] > node.dist) {
+    if (ent.api.absmin[node.axis] > node.dist) {
       node = node.children[0];
-    } else if (ent.v_float[PR.entvars.absmax + node.axis] < node.dist) {
+    } else if (ent.api.absmax[node.axis] < node.dist) {
       node = node.children[1];
     } else {
       break;
@@ -2722,10 +2967,11 @@ SV.ClipMoveToEntity = function(ent, start, mins, maxs, end) {
     allsolid: true,
     endpos: end.copy(),
     plane: {normal: new Vector(), dist: 0.0},
+    ent: null,
   };
   const offset = new Vector();
   const hull = SV.HullForEntity(ent, mins, maxs, offset);
-  SV.RecursiveHullCheck(hull, hull.firstclipnode, 0.0, 1.0, start.copy().substract(offset), end.copy().substract(offset), trace);
+  SV.RecursiveHullCheck(hull, hull.firstclipnode, 0.0, 1.0, start.copy().subtract(offset), end.copy().subtract(offset), trace);
   if (trace.fraction !== 1.0) {
     trace.endpos.add(offset);
   }
@@ -2746,15 +2992,10 @@ SV.ClipToLinks = function(node, clip) {
     if (solid === SV.solid.trigger) {
       Sys.Error('Trigger in clipping list');
     }
-    if ((clip.type === SV.move.nomonsters) && (solid !== SV.solid.bsp)) {
+    if (clip.type === SV.move.nomonsters && solid !== SV.solid.bsp) {
       continue;
     }
-    if ((clip.boxmins[0] > touch.v_float[PR.entvars.absmax]) ||
-			(clip.boxmins[1] > touch.v_float[PR.entvars.absmax1]) ||
-			(clip.boxmins[2] > touch.v_float[PR.entvars.absmax2]) ||
-			(clip.boxmaxs[0] < touch.v_float[PR.entvars.absmin]) ||
-			(clip.boxmaxs[1] < touch.v_float[PR.entvars.absmin1]) ||
-			(clip.boxmaxs[2] < touch.v_float[PR.entvars.absmin2])) {
+    if (!clip.boxmins.lte(touch.api.absmax) || !clip.boxmaxs.gte(touch.api.absmin)) {
       continue;
     }
     if (clip.passedict) {
@@ -2778,10 +3019,10 @@ SV.ClipToLinks = function(node, clip) {
     } else {
       trace = SV.ClipMoveToEntity(touch, clip.start, clip.mins, clip.maxs, clip.end);
     }
-    if ((trace.allsolid === true) || (trace.startsolid === true) || (trace.fraction < clip.trace.fraction)) {
+    if (trace.allsolid || trace.startsolid || trace.fraction < clip.trace.fraction) {
       trace.ent = touch;
       clip.trace = trace;
-      if (trace.startsolid === true) {
+      if (trace.startsolid) {
         clip.trace.startsolid = true;
       }
     }

@@ -1,339 +1,293 @@
-/* global Con, Mod, PR, PF, Host, Cmd, Cvar, Vector, ED, SV, Protocol, MSG */
+/* global Con, Mod, PR, PF, Host, Cmd, Cvar, Vector, ED, SV, Protocol, MSG, Game */
 
 // eslint-disable-next-line no-global-assign
 PF = {};
 
-PF.VarString = function(first) {
+PF._assertTrue = function _PF_assertTrue(check, message) {
+  if (!check) {
+    throw new Error('Program assert failed: ' + message);
+  }
+};
+
+PF._wrapFunctions = [];
+
+/**
+ * Will generate a function that can be exposed to the QuakeC VM (so called built-in function)
+ *
+ * @param {String} name
+ * @param {Function} func
+ * @param {PR.etype[]} argTypes
+ * @param {PR.etype} returnType
+ * @returns {Function}
+ */
+
+PF._generateBuiltinFunction = function _PF_GenerateBuiltinFunction(func, argTypes = [], returnType = PR.etype.ev_void) {
+  // store the wrapped function, we need to refer to it
+  const name = PF._wrapFunctions.length;
+
+  if (!(func instanceof Function)) {
+    throw new TypeError('func must be a Function!');
+  }
+
+  PF._wrapFunctions[name] = func;
+
+  const args = [];
+  let returnCode = '';
+  const asserts = [];
+
+  for (const argType of argTypes) {
+    const parmNum = args.length;
+    const parmName = `PR.ofs.OFS_PARM${parmNum}`;
+
+    switch (argType) {
+      case PR.etype.ev_entity_client:
+        asserts.push({check: `PR.globals_int[${parmName}] > 0 && PR.globals_int[${parmName}] <= SV.svs.maxclients`, message: 'edict points to a non-client'});
+      // eslint-disable-next-line no-fallthrough
+      case PR.etype.ev_entity:
+        args.push(`SV.server.edicts[PR.globals_int[${parmName}]]`);
+        break;
+
+      case PR.etype.ev_vector:
+        args.push(`new Vector(PR.globals_float[${parmName}], PR.globals_float[${parmName} + 1], PR.globals_float[${parmName} + 2])`);
+        break;
+
+      case PR.etype.ev_float:
+        args.push(`PR.globals_float[${parmName}]`);
+        break;
+
+      case PR.etype.ev_integer:
+        args.push(`PR.globals_float[${parmName}] >> 0`);
+        break;
+
+      case PR.etype.ev_bool:
+        args.push(`!!PR.globals_float[${parmName}]`);
+        break;
+
+      case PR.etype.ev_string_not_empty:
+        asserts.push({check: `PR.globals_int[${parmName}]`, message: 'string must not be empty'});
+        // eslint-disable-next-line no-fallthrough
+      case PR.etype.ev_string:
+        args.push(`PR.GetString(PR.globals_int[${parmName}])`);
+        break;
+
+      case PR.etype.ev_strings:
+        args.push(`PF._VarString(${args.length})`);
+        break;
+
+      case PR.etype.ev_field:
+        args.push(`Object.entries(PR.entvars).find((entry) => entry[1] === PR.globals_int[${parmName}])[0]`);
+        break;
+
+      case PR.etype.ev_void:
+        args.push(null);
+        break;
+
+      default:
+        throw new TypeError('unsupported arg type: ' + argType);
+    }
+  }
+
+  switch (returnType) {
+    case PR.etype.ev_vector:
+      asserts.push({check: `returnValue instanceof Vector`, message: 'returnValue must be a Vector'});
+      asserts.push({check: `!isNaN(returnValue[0])`, message: 'returnValue[0] must not be NaN'});
+      asserts.push({check: `!isNaN(returnValue[1])`, message: 'returnValue[1] must not be NaN'});
+      asserts.push({check: `!isNaN(returnValue[2])`, message: 'returnValue[2] must not be NaN'});
+      returnCode = `
+        PR.globals_float[${PR.ofs.OFS_RETURN + 0}] = returnValue[0];
+        PR.globals_float[${PR.ofs.OFS_RETURN + 1}] = returnValue[1];
+        PR.globals_float[${PR.ofs.OFS_RETURN + 2}] = returnValue[2];
+      `;
+      break;
+
+    case PR.etype.ev_entity_client:
+      asserts.push({check: `returnValue === null || (returnValue.num > 0 && returnValue.num <= SV.svs.maxclients)`, message: 'edict points to a non-client'});
+    // eslint-disable-next-line no-fallthrough
+    case PR.etype.ev_entity:
+      // additional sanity check: the returnValue _must_ be an Edict or null, otherwise chaos will ensue
+      asserts.push({check: `returnValue === null || returnValue instanceof SV.Edict`, message: 'returnValue must be an Edict or null'});
+      returnCode = `PR.globals_int[${PR.ofs.OFS_RETURN}] = returnValue ? returnValue.num : 0;`;
+      break;
+
+    case PR.etype.ev_integer:
+      asserts.push({check: `!isNaN(returnValue)`, message: 'returnValue must not be NaN'});
+      returnCode = `PR.globals_float[${PR.ofs.OFS_RETURN}] = returnValue >> 0;`;
+      break;
+
+    case PR.etype.ev_float:
+      asserts.push({check: `!isNaN(returnValue)`, message: 'returnValue must not be NaN'});
+      returnCode = `PR.globals_float[${PR.ofs.OFS_RETURN}] = returnValue;`;
+      break;
+
+    case PR.etype.ev_bool:
+      asserts.push({check: `typeof(returnValue) === 'boolean'`, message: 'returnValue must be bool'});
+      returnCode = `PR.globals_float[${PR.ofs.OFS_RETURN}] = returnValue;`;
+      break;
+
+    case PR.etype.ev_void:
+      returnCode = `/* no return value */`;
+      break;
+
+    case PR.etype.ev_string_not_empty:
+      asserts.push({check: `returnValue !== null && returnValue !== ''`, message: 'string must not be empty'});
+      // eslint-disable-next-line no-fallthrough
+    case PR.etype.ev_string:
+      returnCode = `PR.globals_int[${PR.ofs.OFS_RETURN}] = PR.TempString(returnValue);`;
+      break;
+
+    default:
+      throw new TypeError('unsupported return type: ' + returnType);
+  }
+
+  const code = `
+    ${args.map((def, index) => `
+      const arg${index} = ${def};
+    `).join('\n')}
+
+    const returnValue = PF._wrapFunctions[${name}](${args.map((_, index) => `arg${index}`).join(', ')});
+
+    ${asserts.map(({check, message}) => `
+      PF._assertTrue(${check}, ${JSON.stringify(message)});
+    `).join('\n')}
+
+    ${returnCode}`;
+
+  return new Function(code);
+};
+
+PF._VarString = function _PF_VarString(first) {
   let i; let out = '';
   for (i = first; i < PR.argc; ++i) {
-    out += PR.GetString(PR.globals_int[4 + i * 3]);
+    out += PR.GetString(PR.globals_int[PR.ofs.OFS_PARM0 + i * 3]);
   }
   return out;
 };
 
-PF.error = function PF_error() { // PR
-  Con.Print('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + PF.VarString(0) + '\n');
-  ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
+PF.error = PF._generateBuiltinFunction(function (str) {
+  Con.Print('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
+  ED.Print(SV.server.gameAPI.self);
   Host.Error('Program error');
-};
+}, [PR.etype.ev_strings]);
 
-PF.objerror = function PF_objerror() { // PR
-  Con.Print('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + PF.VarString(0) + '\n');
-  ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
+PF.objerror = PF._generateBuiltinFunction(function (str) {
+  Con.Print('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
+  ED.Print(SV.server.gameAPI.self);
   Host.Error('Program error');
-};
 
-PF.makevectors = function PF_makevectors() {
-  const {forward, right, up} = (new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6])).angleVectors();
-  let i;
-  for (i = 0; i <= 2; ++i) {
-    PR.globals_float[PR.globalvars.v_forward + i] = forward[i];
-    PR.globals_float[PR.globalvars.v_right + i] = right[i];
-    PR.globals_float[PR.globalvars.v_up + i] = up[i];
-  }
-};
+}, [PR.etype.ev_strings]);
 
-PF.setorigin = function PF_setorigin() { // EngineInterface?
-  const e = SV.server.edicts[PR.globals_int[4]];
-  e.v_float[PR.entvars.origin] = PR.globals_float[7];
-  e.v_float[PR.entvars.origin1] = PR.globals_float[8];
-  e.v_float[PR.entvars.origin2] = PR.globals_float[9];
-  SV.LinkEdict(e);
-};
+PF.makevectors = PF._generateBuiltinFunction(function (vec) {
+  const {forward, right, up} = vec.angleVectors();
+  SV.server.gameAPI.v_forward = forward;
+  SV.server.gameAPI.v_right = right;
+  SV.server.gameAPI.v_up = up;
+}, [PR.etype.ev_vector]);
 
-PF._SetMinMaxSize = function(e, min, max) {
-  if ((min[0] > max[0]) || (min[1] > max[1]) || (min[2] > max[2])) {
-    PR.RunError('backwards mins/maxs');
-  }
-  e.api.mins = min;
-  e.api.maxs = max;
-  e.api.size = max.copy().substract(min);
-  SV.LinkEdict(e);
-};
+PF.setorigin = PF._generateBuiltinFunction((edict, vec)  => edict.setOrigin(vec), [PR.etype.ev_entity, PR.etype.ev_vector], PR.etype.ev_void);
 
-PF.setsize = function PF_setsize() { // EngineInterface?
-  PF._SetMinMaxSize(SV.server.edicts[PR.globals_int[4]],
-      new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
-      new Vector(PR.globals_float[10], PR.globals_float[11], PR.globals_float[12]));
-};
+PF.setsize = PF._generateBuiltinFunction((edict, min, max) => edict.setMinMaxSize(min, max), [PR.etype.ev_entity, PR.etype.ev_vector, PR.etype.ev_vector], PR.etype.ev_void);
 
-PF.setmodel = function PF_setmodel() { // EngineInterface
-  const e = SV.server.edicts[PR.globals_int[4]];
-  const m = PR.GetString(PR.globals_int[7]);
-  let i;
-  for (i = 0; i < SV.server.model_precache.length; ++i) {
-    if (SV.server.model_precache[i] === m) {
-      break;
-    }
-  }
-  if (i === SV.server.model_precache.length) {
-    PR.RunError('no precache: ' + m + '\n');
-  }
+PF.setmodel = PF._generateBuiltinFunction(function(ed, model) {
+  ed.setModel(model);
+}, [PR.etype.ev_entity, PR.etype.ev_string]);
 
-  e.v_int[PR.entvars.model] = PR.globals_int[7];
-  e.api.modelindex = i;
-  const mod = SV.server.models[i];
-  if (mod != null) {
-    PF._SetMinMaxSize(e, mod.mins, mod.maxs);
-  } else {
-    PF._SetMinMaxSize(e, Vector.origin, Vector.origin);
-  }
-};
+PF.bprint = PF._generateBuiltinFunction(Game.EngineInterface.BroadcastPrint, [PR.etype.ev_strings]);
 
-PF.bprint = function PF_bprint() { // EngineInterface
-  Host.BroadcastPrint(PF.VarString(0));
-};
+PF.sprint = PF._generateBuiltinFunction((clientEdict, message) => clientEdict.getClient().consolePrint(message), [PR.etype.ev_entity_client, PR.etype.ev_strings]);
 
-PF.sprint = function PF_sprint() { // EngineInterface
-  const entnum = PR.globals_int[4];
-  if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
-    Con.Print('tried to sprint to a non-client\n');
-    return;
-  }
-  const client = SV.svs.clients[entnum - 1];
-  MSG.WriteByte(client.message, Protocol.svc.print);
-  MSG.WriteString(client.message, PF.VarString(1));
-};
+PF.centerprint = PF._generateBuiltinFunction((clientEdict, message) => clientEdict.getClient().centerPrint(message), [PR.etype.ev_entity_client, PR.etype.ev_strings]);
 
-PF.centerprint = function PF_centerprint() { // EngineInterface
-  const entnum = PR.globals_int[4];
-  if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
-    Con.Print('tried to sprint to a non-client\n');
-    return;
-  }
-  const client = SV.svs.clients[entnum - 1];
-  MSG.WriteByte(client.message, Protocol.svc.centerprint);
-  MSG.WriteString(client.message, PF.VarString(1));
-};
+PF.normalize = PF._generateBuiltinFunction(function (vec) {
+  vec.normalize();
 
-PF.normalize = function PF_normalize() {
-  const newvalue = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
-  newvalue.normalize();
-  PR.globals_float[1] = newvalue[0];
-  PR.globals_float[2] = newvalue[1];
-  PR.globals_float[3] = newvalue[2];
-};
+  return vec;
+}, [PR.etype.ev_vector], PR.etype.ev_vector);
 
-PF.vlen = function PF_vlen() {
-  PR.globals_float[1] = Math.sqrt(PR.globals_float[4] * PR.globals_float[4] + PR.globals_float[5] * PR.globals_float[5] + PR.globals_float[6] * PR.globals_float[6]);
-};
+PF.vlen = PF._generateBuiltinFunction((vec) => vec.len(), [PR.etype.ev_vector], PR.etype.ev_float);
 
-PF.vectoyaw = function PF_vectoyaw() { // Vector
-  const value1 = PR.globals_float[4]; const value2 = PR.globals_float[5];
-  if ((value1 === 0.0) && (value2 === 0.0)) {
-    PR.globals_float[1] = 0.0;
-    return;
-  }
-  let yaw = (Math.atan2(value2, value1) * 180.0 / Math.PI) >> 0;
-  if (yaw < 0) {
-    yaw += 360;
-  }
-  PR.globals_float[1] = yaw;
-};
+PF.vectoyaw = PF._generateBuiltinFunction((vec) => vec.toYaw(), [PR.etype.ev_vector], PR.etype.ev_float);
 
-PF.vectoangles = function PF_vectoangles() { // Vector
-  PR.globals_float[3] = 0.0;
-  const value1 = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
-  if ((value1[0] === 0.0) && (value1[1] === 0.0)) {
-    if (value1[2] > 0.0) {
-      PR.globals_float[1] = 90.0;
-    } else {
-      PR.globals_float[1] = 270.0;
-    }
-    PR.globals_float[2] = 0.0;
-    return;
-  }
+PF.vectoangles = PF._generateBuiltinFunction((vec) => vec.toAngles(), [PR.etype.ev_vector], PR.etype.ev_vector);
 
-  let yaw = (Math.atan2(value1[1], value1[0]) * 180.0 / Math.PI) >> 0;
-  if (yaw < 0) {
-    yaw += 360;
-  }
-  let pitch = (Math.atan2(value1[2], Math.sqrt(value1[0] * value1[0] + value1[1] * value1[1])) * 180.0 / Math.PI) >> 0;
-  if (pitch < 0) {
-    pitch += 360;
-  }
-  PR.globals_float[1] = pitch;
-  PR.globals_float[2] = yaw;
-};
+PF.random = PF._generateBuiltinFunction(Math.random, [], PR.etype.ev_float);
 
-PF.random = function PF_random() {
-  PR.globals_float[1] = Math.random();
-};
+PF.particle = PF._generateBuiltinFunction(Game.EngineInterface.StartParticles, [PR.etype.ev_vector, PR.etype.ev_vector, PR.etype.ev_integer, PR.etype.ev_integer]);
 
-PF.particle = function PF_particle() { // EngineInterface
-  SV.StartParticle([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]],
-      new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]),
-      PR.globals_float[10] >> 0, PR.globals_float[13] >> 0);
-};
+PF.ambientsound = PF._generateBuiltinFunction(Game.EngineInterface.SpawnAmbientSound, [
+  PR.etype.ev_vector,
+  PR.etype.ev_string_not_empty,
+  PR.etype.ev_float,
+  PR.etype.ev_float,
+], PR.etype.ev_bool);
 
-PF.ambientsound = function PF_ambientsound() { // EngineInterface
-  const samp = PR.GetString(PR.globals_int[7]); let i;
-  for (i = 0; i < SV.server.sound_precache.length; ++i) {
-    if (SV.server.sound_precache[i] === samp) {
-      break;
-    }
-  }
-  if (i === SV.server.sound_precache.length) {
-    Con.Print('no precache: ' + samp + '\n');
-    return;
-  }
-  const signon = SV.server.signon;
-  MSG.WriteByte(signon, Protocol.svc.spawnstaticsound);
-  MSG.WriteCoord(signon, PR.globals_float[4]);
-  MSG.WriteCoord(signon, PR.globals_float[5]);
-  MSG.WriteCoord(signon, PR.globals_float[6]);
-  MSG.WriteByte(signon, i);
-  MSG.WriteByte(signon, PR.globals_float[10] * 255.0);
-  MSG.WriteByte(signon, PR.globals_float[13] * 64.0);
-};
+PF.sound = PF._generateBuiltinFunction(Game.EngineInterface.StartSound, [
+  PR.etype.ev_entity,
+  PR.etype.ev_integer,
+  PR.etype.ev_string_not_empty,
+  PR.etype.ev_float,
+  PR.etype.ev_float,
+], PR.etype.ev_bool);
 
-PF.sound = function PF_sound() { // EngineInterface
-  SV.StartSound(SV.server.edicts[PR.globals_int[4]],
-      PR.globals_float[7] >> 0,
-      PR.GetString(PR.globals_int[10]),
-      (PR.globals_float[13] * 255.0) >> 0,
-      PR.globals_float[16]);
-};
-
-PF.breakstatement = function PF_breakstatement() {
+PF.breakstatement = function PF_breakstatement() { // PR
   Con.Print('break statement\n');
 };
 
-PF.traceline = function PF_traceline() { // EngineInterface
-  const trace = SV.Move(
-    new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]), // start
-    Vector.origin, Vector.origin, // min, max
-    new Vector(PR.globals_float[7], PR.globals_float[8], PR.globals_float[9]), // end
-    PR.globals_float[10] >> 0,
-    SV.server.edicts[PR.globals_int[PR.entvars.oldorigin]]);
+PF.traceline = PF._generateBuiltinFunction(function(start, end, noMonsters, passEdict) {
+  const trace = Game.EngineInterface.Traceline(start, end, noMonsters, passEdict);
 
-  PR.globals_float[PR.globalvars.trace_allsolid] = (trace.allsolid === true) ? 1.0 : 0.0;
-  PR.globals_float[PR.globalvars.trace_startsolid] = (trace.startsolid === true) ? 1.0 : 0.0;
-  PR.globals_float[PR.globalvars.trace_fraction] = trace.fraction;
-  PR.globals_float[PR.globalvars.trace_inwater] = (trace.inwater === true) ? 1.0 : 0.0;
-  PR.globals_float[PR.globalvars.trace_inopen] = (trace.inopen === true) ? 1.0 : 0.0;
-  PR.globals_float[PR.globalvars.trace_endpos] = trace.endpos[0];
-  PR.globals_float[PR.globalvars.trace_endpos1] = trace.endpos[1];
-  PR.globals_float[PR.globalvars.trace_endpos2] = trace.endpos[2];
-  const plane = trace.plane;
-  PR.globals_float[PR.globalvars.trace_plane_normal] = plane.normal[0];
-  PR.globals_float[PR.globalvars.trace_plane_normal1] = plane.normal[1];
-  PR.globals_float[PR.globalvars.trace_plane_normal2] = plane.normal[2];
-  PR.globals_float[PR.globalvars.trace_plane_dist] = plane.dist;
-  PR.globals_int[PR.globalvars.trace_ent] = (trace.ent != null) ? trace.ent.num : 0;
-};
+  SV.server.gameAPI.trace_allsolid = (trace.allsolid === true) ? 1.0 : 0.0;
+  SV.server.gameAPI.trace_startsolid = (trace.startsolid === true) ? 1.0 : 0.0;
+  SV.server.gameAPI.trace_fraction = trace.fraction;
+  SV.server.gameAPI.trace_inwater = (trace.inwater === true) ? 1.0 : 0.0;
+  SV.server.gameAPI.trace_inopen = (trace.inopen === true) ? 1.0 : 0.0;
+  SV.server.gameAPI.trace_endpos = trace.endpos;
+  SV.server.gameAPI.trace_plane_normal = trace.plane.normal;
+  SV.server.gameAPI.trace_plane_dist = trace.plane.dist;
+  SV.server.gameAPI.trace_ent = trace.ent || null;
+}, [
+  PR.etype.ev_vector,
+  PR.etype.ev_vector,
+  PR.etype.ev_integer,
+  PR.etype.ev_entity,
+]);
 
-PF._newcheckclient = function(check) {
-  if (check <= 0) {
-    check = 1;
-  } else if (check > SV.svs.maxclients) {
-    check = SV.svs.maxclients;
-  }
-  let i = 1;
-  if (check !== SV.svs.maxclients) {
-    i += check;
-  }
-  let ent;
-  for (; ; ++i) {
-    if (i === SV.svs.maxclients + 1) {
-      i = 1;
-    }
-    ent = SV.server.edicts[i];
-    if (i === check) {
-      break;
-    }
-    if (ent.free === true) {
-      continue;
-    }
-    if ((ent.api.health <= 0.0) || ((ent.api.flags & SV.fl.notarget) !== 0)) {
-      continue;
-    }
-    break;
-  }
-  PF.checkpvs = Mod.LeafPVS(Mod.PointInLeaf([
-    ent.v_float[PR.entvars.origin] + ent.v_float[PR.entvars.view_ofs],
-    ent.v_float[PR.entvars.origin1] + ent.v_float[PR.entvars.view_ofs1],
-    ent.v_float[PR.entvars.origin2] + ent.v_float[PR.entvars.view_ofs2],
-  ], SV.server.worldmodel), SV.server.worldmodel); // FIXME: use ….worldmodel.getPointInLeaf() etc.
-  return i;
-};
+PF.checkclient = PF._generateBuiltinFunction(() => SV.server.gameAPI.self.getNextBestClient(), [], PR.etype.ev_entity_client);
 
-PF.checkclient = function PF_checkclient() { // EngineInterface
-  if ((SV.server.time - SV.server.lastchecktime) >= 0.1) {
-    SV.server.lastcheck = PF._newcheckclient(SV.server.lastcheck);
-    SV.server.lastchecktime = SV.server.time;
-  }
-  const ent = SV.server.edicts[SV.server.lastcheck];
-  if ((ent.free === true) || (ent.api.health <= 0.0)) {
-    PR.globals_int[1] = 0;
-    return;
-  }
-  const self = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  const l = Mod.PointInLeaf([
-    self.v_float[PR.entvars.origin] + self.v_float[PR.entvars.view_ofs],
-    self.v_float[PR.entvars.origin1] + self.v_float[PR.entvars.view_ofs1],
-    self.v_float[PR.entvars.origin2] + self.v_float[PR.entvars.view_ofs2],
-  ], SV.server.worldmodel).num - 1;
-  if ((l < 0) || ((PF.checkpvs[l >> 3] & (1 << (l & 7))) === 0)) {
-    PR.globals_int[1] = 0;
-    return;
-  }
-  PR.globals_int[1] = ent.num;
-};
+PF.stuffcmd = PF._generateBuiltinFunction(function(clientEdict, cmd) {
+  clientEdict.getClient().sendConsoleCommands(cmd);
+}, [PR.etype.ev_entity_client, PR.etype.ev_string]);
 
-PF.stuffcmd = function PF_stuffcmd() { // EngineInterface
-  const entnum = PR.globals_int[4];
-  if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
-    PR.RunError('Parm 0 not a client');
+PF.localcmd = PF._generateBuiltinFunction(function(cmd) {
+  Cmd.text += cmd;
+}, [PR.etype.ev_string]);
+
+PF.cvar = PF._generateBuiltinFunction(function(name) {
+  const cvar = Game.EngineInterface.GetCvar(name);
+  return cvar ? cvar.value : 0.0;
+}, [PR.etype.ev_string], PR.etype.ev_float);
+
+PF.cvar_set = PF._generateBuiltinFunction(Game.EngineInterface.SetCvar, [PR.etype.ev_string, PR.etype.ev_string]);
+
+PF.findradius = PF._generateBuiltinFunction((origin, radius) => {
+  const edicts = Game.EngineInterface.FindInRadius(origin, radius);
+
+  // doing the chain dance
+  let chain = SV.server.edicts[0]; // starts with worldspawn
+
+  // iterate over the list of edicts
+  for (const edict of edicts) {
+    edict.api.chain = chain;
+    chain = edict;
   }
-  const client = SV.svs.clients[entnum - 1];
-  MSG.WriteByte(client.message, Protocol.svc.stufftext);
-  MSG.WriteString(client.message, PR.GetString(PR.globals_int[7]));
-};
 
-PF.localcmd = function PF_localcmd() { // EngineInterface
-  Cmd.text += PR.GetString(PR.globals_int[4]);
-};
-
-PF.cvar = function PF_cvar() { // EngineInterface
-  const v = Cvar.FindVar(PR.GetString(PR.globals_int[4]));
-  PR.globals_float[1] = v != null ? v.value : 0.0;
-};
-
-PF.cvar_set = function PF_cvar_set() { // EngineInterface
-  Cvar.Set(PR.GetString(PR.globals_int[4]), PR.GetString(PR.globals_int[7]));
-};
-
-PF.findradius = function PF_findradius() { // EngineInterface
-  let chain = 0;
-  const org = new Vector(PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]);
-  const rad = PR.globals_float[7];
-  let i; let ent;
-  for (i = 1; i < SV.server.num_edicts; ++i) {
-    ent = SV.server.edicts[i];
-    if (ent.free === true) {
-      continue;
-    }
-    if (ent.v_float[PR.entvars.solid] === SV.solid.not) {
-      continue;
-    }
-    const eorg = new Vector(
-      org[0] - (ent.v_float[PR.entvars.origin] + (ent.v_float[PR.entvars.mins] + ent.v_float[PR.entvars.maxs]) * 0.5),
-      org[1] - (ent.v_float[PR.entvars.origin1] + (ent.v_float[PR.entvars.mins1] + ent.v_float[PR.entvars.maxs1]) * 0.5),
-      org[2] - (ent.v_float[PR.entvars.origin2] + (ent.v_float[PR.entvars.mins2] + ent.v_float[PR.entvars.maxs2]) * 0.5)
-    );
-    if (eorg.len() > rad) {
-      continue;
-    }
-    ent.v_int[PR.entvars.chain] = chain;
-    chain = i;
-  }
-  PR.globals_int[1] = chain;
-};
+  return chain;
+}, [PR.etype.ev_vector, PR.etype.ev_float], PR.etype.ev_entity);
 
 PF.dprint = function PF_dprint() { // EngineInterface
-  Con.DPrint(PF.VarString(0));
+  Con.DPrint(PF._VarString(0));
 };
+
+PF.dprint = PF._generateBuiltinFunction((str) => Game.EngineInterface.DebugPrint(str), [PR.etype.ev_strings]);
 
 PF.ftos = function PF_ftos() {
   const v = PR.globals_float[4];
@@ -345,92 +299,37 @@ PF.ftos = function PF_ftos() {
   PR.globals_int[1] = PR.string_temp;
 };
 
-PF.fabs = function PF_fabs() {
-  PR.globals_float[1] = Math.abs(PR.globals_float[4]);
-};
+PF.fabs = PF._generateBuiltinFunction(Math.abs, [PR.etype.ev_float], PR.etype.ev_float);
 
-PF.vtos = function PF_vtos() {
-  PR.TempString(PR.globals_float[4].toFixed(1) +
-		' ' + PR.globals_float[5].toFixed(1) +
-		' ' + PR.globals_float[6].toFixed(1));
-  PR.globals_int[1] = PR.string_temp;
-};
+PF.vtos = PF._generateBuiltinFunction((vec) => vec.toString(), [PR.etype.ev_vector], PR.etype.ev_string);
 
-PF.Spawn = function PF_Spawn() { // EngineInterface
-  PR.globals_int[1] = ED.Alloc().num;
-};
+PF.Spawn = PF._generateBuiltinFunction(Game.EngineInterface.AllocEdict, [], PR.etype.ev_entity);
 
-PF.Remove = function PF_Remove() { // EngineInterface
-  ED.Free(SV.server.edicts[PR.globals_int[4]]);
-};
+PF.Remove = PF._generateBuiltinFunction((edict) => edict.freeEdict(), [PR.etype.ev_entity]);
 
-PF.Find = function PF_Find() { // EngineInterface
-  let e = PR.globals_int[4];
-  const f = PR.globals_int[7];
-  const s = PR.GetString(PR.globals_int[10]);
-  let ed;
-  for (++e; e < SV.server.num_edicts; ++e) {
-    ed = SV.server.edicts[e];
-    if (ed.free === true) {
-      continue;
-    }
-    if (PR.GetString(ed.v_int[f]) === s) {
-      PR.globals_int[1] = ed.num;
-      return;
-    }
-  }
-  PR.globals_int[1] = 0;
-};
+PF.Find = PF._generateBuiltinFunction((edict, field, value) => {
+  return Game.EngineInterface.FindByFieldAndValue(field, value, edict.num + 1);
+}, [PR.etype.ev_entity, PR.etype.ev_field, PR.etype.ev_string], PR.etype.ev_entity);
 
-PF.MoveToGoal = function PF_MoveToGoal() { // EngineInterface
-  const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
-    PR.globals_float[1] = 0.0;
-    return;
-  }
-  const goal = SV.server.edicts[ent.v_int[PR.entvars.goalentity]];
-  const dist = PR.globals_float[4];
-  if ((ent.v_int[PR.entvars.enemy] !== 0) && (SV.CloseEnough(ent, goal, dist) === true)) {
-    return;
-  }
-  if ((Math.random() >= 0.75) || (SV.StepDirection(ent, ent.api.ideal_yaw, dist) !== true)) {
-    SV.NewChaseDir(ent, goal, dist);
-  }
-};
+PF.MoveToGoal = PF._generateBuiltinFunction((dist) => {
+  return SV.server.gameAPI.self.moveToGoal(dist);
+}, [PR.etype.ev_float], PR.etype.ev_bool);
 
-PF.precache_file = function PF_precache_file() { // EngineInterface
-  PR.globals_int[1] = PR.globals_int[4];
-};
+PF.precache_file = PF._generateBuiltinFunction((integer) => {
+  return integer; // dummy behavior
+}, [PR.etype.ev_integer], PR.etype.ev_integer);
 
-PF.precache_sound = function PF_precache_sound() { // EngineInterface
-  const s = PR.GetString(PR.globals_int[4]);
-  PR.globals_int[1] = PR.globals_int[4];
-  PR.CheckEmptyString(s);
-  let i;
-  for (i = 0; i < SV.server.sound_precache.length; ++i) {
-    if (SV.server.sound_precache[i] === s) {
-      return;
-    }
-  }
-  SV.server.sound_precache[i] = s;
-};
+PF.precache_sound = PF._generateBuiltinFunction((sfxName) => {
+  return Game.EngineInterface.PrecacheSound(sfxName);
+}, [PR.etype.ev_string_not_empty]);
 
-PF.precache_model = function PF_precache_model() { // EngineInterface
+PF.precache_model = PF._generateBuiltinFunction((modelName) => {
   if (SV.server.loading !== true) {
     PR.RunError('PF.Precache_*: Precache can only be done in spawn functions');
   }
-  const s = PR.GetString(PR.globals_int[4]);
-  PR.globals_int[1] = PR.globals_int[4];
-  PR.CheckEmptyString(s);
-  let i;
-  for (i = 0; i < SV.server.model_precache.length; ++i) {
-    if (SV.server.model_precache[i] === s) {
-      return;
-    }
-  }
-  SV.server.model_precache[i] = s;
-  SV.server.models[i] = Mod.ForName(s, true);
-};
+
+  return Game.EngineInterface.PrecacheModel(modelName);
+}, [PR.etype.ev_string_not_empty]);
 
 PF.coredump = function PF_coredump() {
   ED.PrintEdicts();
@@ -448,239 +347,77 @@ PF.eprint = function PF_eprint() {
   ED.Print(SV.server.edicts[PR.globals_float[4]]);
 };
 
-PF.walkmove = function PF_walkmove() { // EngineInterface
-  const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
-    PR.globals_float[1] = 0.0;
-    return;
-  }
-  const yaw = PR.globals_float[4] * Math.PI / 180.0;
-  const dist = PR.globals_float[7];
-  const oldf = PR.xfunction;
-  PR.globals_float[1] = SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], true);
-  PR.xfunction = oldf;
-  PR.globals_int[PR.globalvars.self] = ent.num;
-};
+PF.walkmove = PF._generateBuiltinFunction(function(yaw, dist) {
+  const oldf = PR.xfunction; // ???
+  const res = SV.server.gameAPI.self.walkMove(yaw * Math.PI / 180.0, dist);
+  PR.xfunction = oldf; // ???
 
-PF.droptofloor = function PF_droptofloor() { // EngineInterface
-  const ent = SV.server.gameAPI.self;
-  const trace = SV.Move(ent.api.origin,
-      ent.api.mins, ent.api.maxs,
-      new Vector(ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] - 256.0), 0, ent);
-  if ((trace.fraction === 1.0) || (trace.allsolid === true)) {
-    PR.globals_float[1] = 0.0;
-    return;
-  }
-  ent.api.origin = trace.endpos;
-  SV.LinkEdict(ent);
-  ent.api.flags |= SV.fl.onground;
-  ent.api.groundentity = trace.ent;
-  PR.globals_float[1] = 1.0;
-};
+  return res;
+}, [PR.etype.ev_float, PR.etype.ev_float], PR.etype.ev_bool);
 
-PF.lightstyle = function PF_lightstyle() { // EngineInterface
-  const style = PR.globals_float[4] >> 0;
-  const val = PR.GetString(PR.globals_int[7]);
-  SV.server.lightstyles[style] = val;
-  if (SV.server.loading === true) {
-    return;
-  }
-  let i; let client;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
-    client = SV.svs.clients[i];
-    if ((client.active !== true) && (client.spawned !== true)) {
-      continue;
-    }
-    MSG.WriteByte(client.message, Protocol.svc.lightstyle);
-    MSG.WriteByte(client.message, style);
-    MSG.WriteString(client.message, val);
-  }
-};
+PF.droptofloor = PF._generateBuiltinFunction(() => SV.server.gameAPI.self.dropToFloor(-256.0), [], PR.etype.ev_bool);
 
-PF.rint = function PF_rint() {
-  const f = PR.globals_float[4];
-  PR.globals_float[1] = (f >= 0.0 ? f + 0.5 : f - 0.5) >> 0;
-};
+PF.lightstyle = PF._generateBuiltinFunction(Game.EngineInterface.Lightstyle, [PR.etype.ev_integer, PR.etype.ev_string]);
 
-PF.floor = function PF_floor() {
-  PR.globals_float[1] = Math.floor(PR.globals_float[4]);
-};
+PF.rint = PF._generateBuiltinFunction((f) => (f >= 0.0 ? f + 0.5 : f - 0.5), [PR.etype.ev_float], PR.etype.ev_integer);
 
-PF.ceil = function PF_ceil() {
-  PR.globals_float[1] = Math.ceil(PR.globals_float[4]);
-};
+PF.floor = PF._generateBuiltinFunction(Math.floor, [PR.etype.ev_float], PR.etype.ev_float);
 
-PF.checkbottom = function PF_checkbottom() { // EngineInterface
-  PR.globals_float[1] = SV.CheckBottom(SV.server.edicts[PR.globals_int[4]]);
-};
+PF.ceil = PF._generateBuiltinFunction(Math.ceil, [PR.etype.ev_float], PR.etype.ev_float);
 
-PF.pointcontents = function PF_pointcontents() { // EngineInterface
-  PR.globals_float[1] = SV.PointContents([PR.globals_float[4], PR.globals_float[5], PR.globals_float[6]]);
-};
+PF.checkbottom = PF._generateBuiltinFunction((edict) => edict.isOnTheFloor(), [PR.etype.ev_entity], PR.etype.ev_bool);
 
-PF.nextent = function PF_nextent() { // EngineInterface
-  for (let i = PR.globals_int[4] + 1; i < SV.server.num_edicts; ++i) {
-    if (SV.server.edicts[i].free !== true) {
-      PR.globals_int[1] = i;
-      return;
-    }
-  }
-  PR.globals_int[1] = 0;
-};
+PF.pointcontents = PF._generateBuiltinFunction(Game.EngineInterface.DeterminePointContents, [PR.etype.ev_vector], PR.etype.ev_float);
 
-PF.aim = function PF_aim() { // EngineInterface
-  const ent = SV.server.edicts[PR.globals_int[4]];
-  const start = new Vector(ent.v_float[PR.entvars.origin], ent.v_float[PR.entvars.origin1], ent.v_float[PR.entvars.origin2] + 20.0);
-  const dir = new Vector(PR.globals_float[PR.globalvars.v_forward], PR.globals_float[PR.globalvars.v_forward1], PR.globals_float[PR.globalvars.v_forward2]);
-  const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
-  let tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, ent);
-  if (tr.ent != null) {
-    if ((tr.ent.api.takedamage === SV.damage.aim) &&
-			((Host.teamplay.value === 0) || (ent.api.team <= 0) ||
-			(ent.api.team !== tr.ent.api.team))) {
-      PR.globals_float[1] = dir[0];
-      PR.globals_float[2] = dir[1];
-      PR.globals_float[3] = dir[2];
-      return;
-    }
-  }
-  const bestdir = new Vector(dir[0], dir[1], dir[2]);
-  let bestdist = SV.aim.value;
-  let bestent; let i; let check; let dist;
-  for (i = 1; i < SV.server.num_edicts; ++i) {
-    check = SV.server.edicts[i];
-    if (check.api.takedamage !== SV.damage.aim) {
-      continue;
-    }
-    if (check === ent) {
-      continue;
-    }
-    if ((Host.teamplay.value !== 0) && (ent.api.team > 0) && (ent.api.team === check.api.team)) {
-      continue;
-    }
-    end[0] = check.v_float[PR.entvars.origin] + 0.5 * (check.v_float[PR.entvars.mins] + check.v_float[PR.entvars.maxs]);
-    end[1] = check.v_float[PR.entvars.origin1] + 0.5 * (check.v_float[PR.entvars.mins1] + check.v_float[PR.entvars.maxs1]);
-    end[2] = check.v_float[PR.entvars.origin2] + 0.5 * (check.v_float[PR.entvars.mins2] + check.v_float[PR.entvars.maxs2]);
-    dir[0] = end[0] - start[0];
-    dir[1] = end[1] - start[1];
-    dir[2] = end[2] - start[2];
-    dir.normalize()
-    dist = dir[0] * bestdir[0] + dir[1] * bestdir[1] + dir[2] * bestdir[2];
-    if (dist < bestdist) {
-      continue;
-    }
-    tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, ent);
-    if (tr.ent === check) {
-      bestdist = dist;
-      bestent = check;
-    }
-  }
-  if (bestent != null) {
-    dir[0] = bestent.v_float[PR.entvars.origin] - ent.v_float[PR.entvars.origin];
-    dir[1] = bestent.v_float[PR.entvars.origin1] - ent.v_float[PR.entvars.origin1];
-    dir[2] = bestent.v_float[PR.entvars.origin2] - ent.v_float[PR.entvars.origin2];
-    dist = dir[0] * bestdir[0] + dir[1] * bestdir[1] + dir[2] * bestdir[2];
-    end[0] = bestdir[0] * dist;
-    end[1] = bestdir[1] * dist;
-    end[2] = dir[2];
-    end.normalize();
-    PR.globals_float[1] = end[0];
-    PR.globals_float[2] = end[1];
-    PR.globals_float[3] = end[2];
-    return;
-  }
-  PR.globals_float[1] = bestdir[0];
-  PR.globals_float[2] = bestdir[1];
-  PR.globals_float[3] = bestdir[2];
-};
+PF.nextent = PF._generateBuiltinFunction((edict) => edict.nextEdict(), [PR.etype.ev_entity], PR.etype.ev_entity);
 
-PF.changeyaw = function PF_changeyaw() { // EngineInterface
-  const ent = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-  ent.v_float[PR.entvars.angles1] = SV.ChangeYaw(ent);
-};
+PF.aim = PF._generateBuiltinFunction((edict) => edict.aim(), [PR.etype.ev_entity], PR.etype.ev_vector);
 
-PF._WriteDest = function PF_WriteDest() {
-  switch (PR.globals_float[4] >> 0) {
+PF.changeyaw = PF._generateBuiltinFunction(() => SV.server.gameAPI.self.changeYaw(), []);
+
+PF._WriteDest = function PF_WriteDest(dest) {
+  switch (dest) {
     case 0: // broadcast
       return SV.server.datagram;
     case 1: { // one
-        const entnum = PR.globals_int[PR.globalvars.msg_entity];
-        if ((entnum <= 0) || (entnum > SV.svs.maxclients)) {
-          PR.RunError('WriteDest: not a client');
+        // CR: I’m not happy with the structure of the code, Write* needs to be on Edict as well
+        const msg_entity = SV.server.gameAPI.msg_entity;
+        const entnum = msg_entity.num;
+        if (!msg_entity.isClient()) {
+          throw new Error('PF._WriteDest: not a client ' + entnum);
         }
-        return SV.svs.clients[entnum - 1].message;
+        return msg_entity.getClient().message;
       }
     case 2: // all
       return SV.server.reliable_datagram;
     case 3: // init
       return SV.server.signon;
   }
-  PR.RunError('WriteDest: bad destination');
+  throw new Error('PF._WriteDest: bad destination ' + dest);
 };
 
-PF.WriteByte = function PF_WriteByte() { // EngineInterface
-  MSG.WriteByte(PF._WriteDest(), PR.globals_float[7]);
-};
-PF.WriteChar = function PF_WriteChar() { // EngineInterface
-  MSG.WriteChar(PF._WriteDest(), PR.globals_float[7]);
-};
-PF.WriteShort = function PF_WriteShort() { // EngineInterface
-  MSG.WriteShort(PF._WriteDest(), PR.globals_float[7]);
-};
-PF.WriteLong = function PF_WriteLong() { // EngineInterface
-  MSG.WriteLong(PF._WriteDest(), PR.globals_float[7]);
-};
-PF.WriteAngle = function PF_WriteAngle() { // EngineInterface
-  MSG.WriteAngle(PF._WriteDest(), PR.globals_float[7]);
-};
-PF.WriteCoord = function PF_WriteCoord() { // EngineInterface
-  MSG.WriteCoord(PF._WriteDest(), PR.globals_float[7]);
-};
-PF.WriteString = function PF_WriteString() { // EngineInterface
-  MSG.WriteString(PF._WriteDest(), PR.GetString(PR.globals_int[7]));
-};
-PF.WriteEntity = function PF_WriteEntity() { // EngineInterface
-  MSG.WriteShort(PF._WriteDest(), PR.globals_int[7]);
-};
+for (const fn of ['WriteByte', 'WriteChar', 'WriteShort', 'WriteLong', 'WriteAngle', 'WriteCoord']) {
+  PF[fn] = PF._generateBuiltinFunction((dest, val) => MSG[fn](PF._WriteDest(dest), val), [PR.etype.ev_integer, PR.etype.ev_float]);
+}
 
-PF.makestatic = function PF_makestatic() { // EngineInterface
-  const ent = SV.server.edicts[PR.globals_int[4]];
-  const message = SV.server.signon;
-  MSG.WriteByte(message, Protocol.svc.spawnstatic);
-  MSG.WriteByte(message, SV.ModelIndex(ent.api.model));
-  MSG.WriteByte(message, ent.api.frame);
-  MSG.WriteByte(message, ent.api.colormap);
-  MSG.WriteByte(message, ent.api.skin);
-  MSG.WriteCoord(message, ent.v_float[PR.entvars.origin]);
-  MSG.WriteAngle(message, ent.v_float[PR.entvars.angles]);
-  MSG.WriteCoord(message, ent.v_float[PR.entvars.origin1]);
-  MSG.WriteAngle(message, ent.v_float[PR.entvars.angles1]);
-  MSG.WriteCoord(message, ent.v_float[PR.entvars.origin2]);
-  MSG.WriteAngle(message, ent.v_float[PR.entvars.angles2]);
-  ED.Free(ent);
-};
+PF.WriteString = PF._generateBuiltinFunction((dest, val) => MSG.WriteString(PF._WriteDest(dest), val), [PR.etype.ev_integer, PR.etype.ev_string]);
 
-PF.setspawnparms = function PF_setspawnparms() { // EngineInterface
-  let i = PR.globals_int[4];
-  if ((i <= 0) || (i > SV.svs.maxclients)) {
-    PR.RunError('Entity is not a client');
+PF.WriteEntity = PF._generateBuiltinFunction((dest, val) => MSG.WriteShort(PF._WriteDest(dest), val.num), [PR.etype.ev_integer, PR.etype.ev_entity]);
+
+PF.makestatic = PF._generateBuiltinFunction((edict) => edict.makeStatic(), [PR.etype.ev_entity]);
+
+PF.setspawnparms = PF._generateBuiltinFunction(function (clientEdict) {
+  const spawn_parms = clientEdict.getClient().spawn_parms;
+
+  for (let i = 0; i <= 15; ++i) {
+    SV.server.gameAPI[`parm${i + 1}`] = spawn_parms[i];
   }
-  const spawn_parms = SV.svs.clients[i - 1].spawn_parms;
-  for (i = 0; i <= 15; ++i) {
-    PR.globals_float[PR.globalvars.parms + i] = spawn_parms[i];
-  }
-};
+}, [PR.etype.ev_entity_client]);
 
-PF.changelevel = function PF_changelevel() { // EngineInterface
-  if (SV.svs.changelevel_issued === true) {
-    return;
-  }
-  SV.svs.changelevel_issued = true;
-  Cmd.text += 'changelevel ' + PR.GetString(PR.globals_int[4]) + '\n';
-};
+PF.changelevel = PF._generateBuiltinFunction(Game.EngineInterface.ChangeLevel, [PR.etype.ev_string]);
 
 PF.Fixme = function PF_Fixme() {
-  PR.RunError('unimplemented builtin');
+  throw new Error('unimplemented builtin');
 };
 
 PF.builtin = [

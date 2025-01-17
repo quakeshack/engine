@@ -26,26 +26,31 @@ R.SplitEntityOnNode = function(node) {
 
 R.dlightframecount = 0;
 
-R.lightstylevalue = new Uint8Array(new ArrayBuffer(64));
+R.lightstylevalue_a = new Uint8Array(new ArrayBuffer(64));
+R.lightstylevalue_b = new Uint8Array(new ArrayBuffer(64));
 
 R.AnimateLight = function() {
-  let j;
   if (R.fullbright.value === 0) {
     const i = Math.floor(CL.state.time * 10.0);
-    for (j = 0; j < 64; ++j) {
+    for (let j = 0; j < 64; ++j) {
       if (CL.lightstyle[j].length === 0) {
-        R.lightstylevalue[j] = 12;
+        R.lightstylevalue_a[j] = 12;
+        R.lightstylevalue_b[j] = 12;
         continue;
       }
-      R.lightstylevalue[j] = CL.lightstyle[j].charCodeAt(i % CL.lightstyle[j].length) - 97;
+      R.lightstylevalue_a[j] = CL.lightstyle[j].charCodeAt(i % CL.lightstyle[j].length) - 97;
+      R.lightstylevalue_b[j] = CL.lightstyle[j].charCodeAt((i + 1) % CL.lightstyle[j].length) - 97;
     }
   } else {
-    for (j = 0; j < 64; ++j) {
-      R.lightstylevalue[j] = 12;
+    for (let j = 0; j < 64; ++j) {
+      R.lightstylevalue_a[j] = 12;
+      R.lightstylevalue_b[j] = 12;
     }
   }
-  GL.Bind(0, R.lightstyle_texture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, 64, 1, 0, gl.ALPHA, gl.UNSIGNED_BYTE, R.lightstylevalue);
+  GL.Bind(0, R.lightstyle_texture_a);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, 64, 1, 0, gl.ALPHA, gl.UNSIGNED_BYTE, R.lightstylevalue_a);
+  GL.Bind(0, R.lightstyle_texture_b);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, 64, 1, 0, gl.ALPHA, gl.UNSIGNED_BYTE, R.lightstylevalue_b);
 };
 
 R.RenderDlights = function() {
@@ -62,7 +67,7 @@ R.RenderDlights = function() {
     if ((l.die < CL.state.time) || (l.radius === 0.0)) {
       continue;
     }
-    if (l.origin.copy().substract(R.refdef.vieworg).len() < (l.radius * 0.35)) {
+    if (l.origin.copy().subtract(R.refdef.vieworg).len() < (l.radius * 0.35)) {
       a = l.radius * 0.0003;
       V.blend[3] += a * (1.0 - V.blend[3]);
       a /= V.blend[3];
@@ -230,8 +235,12 @@ R.RecursiveLightPoint = function(node, start, end) {
     lightmap += dt * ((surf.extents[0] >> 4) + 1) + ds;
     r = 0;
     size = ((surf.extents[0] >> 4) + 1) * ((surf.extents[1] >> 4) + 1);
+    const uAlpha = R.interpolation.value ? (CL.state.time % .2) / .2 : 0;
     for (maps = 0; maps < surf.styles.length; ++maps) {
-      r += CL.state.worldmodel.lightdata[lightmap] * R.lightstylevalue[surf.styles[maps]] * 22;
+      r += CL.state.worldmodel.lightdata[lightmap] * (
+        R.lightstylevalue_a[surf.styles[maps]] * (1 - uAlpha) +
+        R.lightstylevalue_b[surf.styles[maps]] * uAlpha
+      ) * 22;
       lightmap += size;
     }
     return r >> 8;
@@ -566,8 +575,8 @@ R.DrawAliasModel = function(e) {
     if (dl.die < CL.state.time) {
       continue;
     }
-    add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len();
-    // add = dl.radius - e.origin.copy().substract(dl.origin).len();
+    add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len(); // [x, y, y]
+    // add = dl.radius - e.origin.copy().subtract(dl.origin).len();
     if (add > 0.0) {
       ambientlight += add;
       shadelight += add;
@@ -1145,8 +1154,13 @@ R.InitTextures = function() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-  R.lightstyle_texture = gl.createTexture();
-  GL.Bind(0, R.lightstyle_texture);
+  R.lightstyle_texture_a = gl.createTexture();
+  GL.Bind(0, R.lightstyle_texture_a);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+  R.lightstyle_texture_b = gl.createTexture();
+  GL.Bind(0, R.lightstyle_texture_b);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
@@ -1199,7 +1213,7 @@ R.Init = function() {
   GL.CreateProgram('Brush',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uAlpha'],
       [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 4], ['aLightStyle', gl.FLOAT, 4]],
-      ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyle']);
+      ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB']);
   GL.CreateProgram('Dlight',
       ['uOrigin', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uRadius', 'uGamma'],
       [['aPosition', gl.FLOAT, 3]],
@@ -1261,15 +1275,15 @@ R.Init = function() {
 };
 
 R.NewMap = function() {
-  let i;
-  for (i = 0; i < 64; ++i) {
-    R.lightstylevalue[i] = 12;
+  for (let i = 0; i < 64; ++i) {
+    R.lightstylevalue_a[i] = 12;
+    R.lightstylevalue_b[i] = 12;
   }
 
   R.ClearParticles();
   R.BuildLightmaps();
 
-  for (i = 0; i <= 1048575; ++i) {
+  for (let i = 0; i <= 1048575; ++i) {
     R.dlightmaps[i] = 0;
   }
   GL.Bind(0, R.dlightmap_texture);
@@ -1528,7 +1542,7 @@ R.TeleportSplash = function(org) {
 
 R.tracercount = 0;
 R.RocketTrail = function(start, end, type) {
-  let vec = end.copy().substract(start);
+  let vec = end.copy().subtract(start);
 
   const len = vec.len();
 
@@ -1752,7 +1766,7 @@ R.AddDynamicLights = function(surf) {
       continue;
     }
     minlight = rad - minlight;
-    const impact = light.origin.copy().substract(surf.plane.normal).multiply(dist);
+    const impact = light.origin.copy().subtract(surf.plane.normal).multiply(dist);
     local[0] = impact.dot(tex.vecs[0]) + tex.vecs[0][3] - surf.texturemins[0];
     local[1] = impact.dot(tex.vecs[1]) + tex.vecs[1][3] - surf.texturemins[1];
     for (t = 0; t < tmax; ++t) {
@@ -1903,7 +1917,8 @@ R.DrawBrushModel = function(e) {
     GL.Bind(program.tLightmap, R.lightmap_texture);
   }
   GL.Bind(program.tDlight, ((R.flashblend.value === 0) && (clmodel.submodel === true)) ? R.dlightmap_texture : R.null_texture);
-  GL.Bind(program.tLightStyle, R.lightstyle_texture);
+  GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
+  GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
   for (let i = 0; i < clmodel.chains.length; ++i) {
     const chain = clmodel.chains[i];
     const [textureA, textureB] = R.TextureAnimation(clmodel.textures[chain[0]]);
@@ -1977,7 +1992,8 @@ R.DrawWorld = function() {
   } else {
     GL.Bind(program.tDlight, R.null_texture);
   }
-  GL.Bind(program.tLightStyle, R.lightstyle_texture);
+  GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
+  GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
   let i; let j; let leaf; let cmds;
   for (i = 0; i < clmodel.leafs.length; ++i) {
     leaf = clmodel.leafs[i];
@@ -1991,7 +2007,7 @@ R.DrawWorld = function() {
       cmds = leaf.cmds[j];
       R.c_brush_verts += cmds[2];
       const [textureA, textureB] = R.TextureAnimation(clmodel.textures[cmds[0]]);
-      gl.uniform1f(program.uAlpha, (CL.state.time % .2) / .2);
+      gl.uniform1f(program.uAlpha, R.interpolation.value ? (CL.state.time % .2) / .2 : 0);
       GL.Bind(program.tTextureA, textureA.texturenum);
       GL.Bind(program.tTextureB, textureB.texturenum);
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
