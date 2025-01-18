@@ -31,4 +31,6 @@ require('./source/NET_Loop.js');
 require('./source/NET_WEBS.js');
 require('./source/Shack.js');
 
-Sys.Init();
+Sys.Init()
+  .then(() => Sys.Print('Dedicated server running!\n'))
+  .catch((err) => Sys.Error('Fatal error during Sys.Init!\n' + err.message));

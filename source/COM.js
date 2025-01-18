@@ -101,9 +101,9 @@ COM.GetParm = function(parm) {
   return null;
 };
 
-COM.CheckRegistered = function() {
-  const h = COM.LoadFile('gfx/pop.lmp');
-  if (h == null) {
+COM.CheckRegistered = async function() {
+  const h = await COM.LoadFileAsync('gfx/pop.lmp');
+  if (h === null) {
     Con.Print('Playing shareware version.\n');
     return;
   }
@@ -156,7 +156,7 @@ COM.InitArgv = function(argv) {
   }
 };
 
-COM.Init = function() {
+COM.Init = async function() {
   try {
     if ((document.location.protocol !== 'http:') && (document.location.protocol !== 'https:')) {
       Sys.Error('Protocol is ' + document.location.protocol + ', not http: or https:');
@@ -183,8 +183,8 @@ COM.Init = function() {
   COM.registered = Cvar.RegisterVariable('registered', '0');
   Cvar.RegisterVariable('cmdline', COM.cmdline, false, true);
   Cmd.AddCommand('path', COM.Path_f);
-  COM.InitFilesystem();
-  COM.CheckRegistered();
+  await COM.InitFilesystem();
+  await COM.CheckRegistered();
 };
 
 COM.Shutdown = function() {
@@ -431,7 +431,7 @@ COM.LoadTextFile = function(filename) {
   return f.join('');
 };
 
-COM.LoadPackFile = function(packfile) {
+COM.LoadPackFile = async function(packfile) { // FIXME: use actual non-blocking IO
   const xhr = new XMLHttpRequest();
   xhr.overrideMimeType('text/plain; charset=x-user-defined');
   xhr.open('GET', 'data/' + packfile, false);
@@ -483,11 +483,11 @@ COM.LoadPackFile = function(packfile) {
   return pack;
 };
 
-COM.AddGameDirectory = function(dir) {
+COM.AddGameDirectory = async function(dir) {
   const search = {filename: dir, pack: []};
   let pak; let i = 0;
   for (;;) {
-    pak = COM.LoadPackFile((dir !== '' ? dir + '/' : '') + 'pak' + i + '.pak');
+    pak = await COM.LoadPackFile((dir !== '' ? dir + '/' : '') + 'pak' + i + '.pak');
     if (pak == null) {
       break;
     }
@@ -497,7 +497,7 @@ COM.AddGameDirectory = function(dir) {
   COM.searchpaths[COM.searchpaths.length] = search;
 };
 
-COM.InitFilesystem = function() {
+COM.InitFilesystem = async function() {
   let i; let search;
 
   i = COM.CheckParm('-basedir');
@@ -505,15 +505,15 @@ COM.InitFilesystem = function() {
     search = COM.argv[i + 1];
   }
   if (search != null) {
-    COM.AddGameDirectory(search);
+    await COM.AddGameDirectory(search);
   } else {
-    COM.AddGameDirectory('id1');
+    await COM.AddGameDirectory('id1');
   }
 
   if (COM.rogue === true) {
-    COM.AddGameDirectory('rogue');
+    await COM.AddGameDirectory('rogue');
   } else if (COM.hipnotic === true) {
-    COM.AddGameDirectory('hipnotic');
+    await COM.AddGameDirectory('hipnotic');
   }
 
   i = COM.CheckParm('-game');
@@ -521,7 +521,7 @@ COM.InitFilesystem = function() {
     search = COM.argv[i + 1];
     if (search != null) {
       COM.modified = true;
-      COM.AddGameDirectory(search);
+      await COM.AddGameDirectory(search);
     }
   }
 

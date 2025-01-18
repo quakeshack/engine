@@ -289,15 +289,7 @@ PF.dprint = function PF_dprint() { // EngineInterface
 
 PF.dprint = PF._generateBuiltinFunction((str) => Game.EngineInterface.DebugPrint(str), [PR.etype.ev_strings]);
 
-PF.ftos = function PF_ftos() {
-  const v = PR.globals_float[4];
-  if (v === Math.floor(v)) {
-    PR.TempString(v.toString());
-  } else {
-    PR.TempString(v.toFixed(1));
-  }
-  PR.globals_int[1] = PR.string_temp;
-};
+PF.ftos = PF._generateBuiltinFunction((f) => f.toFixed(1), [PR.etype.ev_float], PR.etype.ev_string);
 
 PF.fabs = PF._generateBuiltinFunction(Math.abs, [PR.etype.ev_float], PR.etype.ev_float);
 
@@ -324,9 +316,10 @@ PF.precache_sound = PF._generateBuiltinFunction((sfxName) => {
 }, [PR.etype.ev_string_not_empty]);
 
 PF.precache_model = PF._generateBuiltinFunction((modelName) => {
-  if (SV.server.loading !== true) {
-    PR.RunError('PF.Precache_*: Precache can only be done in spawn functions');
-  }
+  // FIXME: handle this more gracefully
+  // if (SV.server.loading !== true) {
+  //   PR.RunError('PF.Precache_*: Precache can only be done in spawn functions');
+  // }
 
   return Game.EngineInterface.PrecacheModel(modelName);
 }, [PR.etype.ev_string_not_empty]);

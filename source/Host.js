@@ -219,6 +219,7 @@ Host.ServerFrame = function() {
   if ((SV.server.paused !== true) && ((SV.svs.maxclients >= 2) || (!Host.dedicated.value && Key.dest.value === Key.dest.game))) {
     SV.Physics();
   }
+  SV.RunScheduledGameCommands();
   SV.SendClientMessages();
 };
 
@@ -349,7 +350,7 @@ Host.Frame = function() {
   Con.Print('serverprofile: ' + (c <= 9 ? ' ' : '') + c + ' clients ' + (m <= 9 ? ' ' : '') + m + ' msec\n');
 };
 
-Host.Init = function(dedicated = false) {
+Host.Init = async function(dedicated) {
   Host.oldrealtime = Sys.FloatTime();
   Cmd.Init();
 
@@ -359,9 +360,10 @@ Host.Init = function(dedicated = false) {
     Chase.Init();
   }
 
-  COM.Init();
+  await COM.Init();
   Host.InitLocal(dedicated);
-  W.LoadWadFile('gfx.wad');
+
+  await W.LoadWadFile('gfx.wad');
 
   if (!dedicated) {
     Key.Init();
@@ -375,12 +377,12 @@ Host.Init = function(dedicated = false) {
   Shack.Init();
 
   if (!dedicated) {
-    VID.Init();
-    Draw.Init();
+    await VID.Init();
+    await Draw.Init();
     SCR.Init();
     R.Init();
     S.Init();
-    M.Init();
+    await M.Init();
     CDAudio.Init();
     Sbar.Init();
     CL.Init();
@@ -1330,18 +1332,45 @@ Host.Give_f = function() {
   //      if I want to push this piece of code into PR/PF and let
   //      the game handle this instead
 
-  // if (Cmd.client !== true) {
-  //   Cmd.ForwardToServer();
-  //   return;
-  // }
-  // if (SV.server.gameAPI.deathmatch !== 0) {
-  //   return;
-  // }
-  // if (Cmd.argv.length <= 1) {
-  //   return;
-  // }
-  // const t = Cmd.argv[1].charCodeAt(0);
-  // const ent = SV.player;
+  if (Cmd.client !== true) {
+    Cmd.ForwardToServer();
+    return;
+  }
+
+  if (SV.server.gameAPI.deathmatch !== 0) {
+    return;
+  }
+
+  if (Cmd.argv.length <= 1) {
+    Host.ClientPrint('give <classname>\n');
+    return;
+  }
+
+  const entityClassname = Cmd.argv[1];
+  const player = SV.player;
+
+  if (!entityClassname.startsWith('item_') && !entityClassname.startsWith('weapon_')) {
+    Host.ClientPrint('Only entity classes item_* and weapon_* are allowed!\n');
+    return;
+  }
+
+  if (!SV.server.gameAPI[entityClassname]) {
+    Host.ClientPrint('Unknown class: ' + entityClassname + '\n');
+    return;
+  }
+
+  // wait for the next server frame
+  SV.ScheduleGameCommand(() => {
+    const { forward } = player.api.v_angle.angleVectors();
+    const origin = forward.multiply(64.0).add(player.api.origin);
+
+    const ent = ED.Alloc();
+    ent.api.origin = origin;
+    ent.api.classname = entityClassname;
+    ent.linkEdict(false);
+
+    SV.server.gameAPI[entityClassname](ent);
+  });
 
   // if ((t >= 48) && (t <= 57)) {
   //   if (COM.hipnotic !== true) {

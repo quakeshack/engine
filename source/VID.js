@@ -7,11 +7,13 @@ VID = {};
 VID.d_8to24table = new Uint32Array(new ArrayBuffer(1024));
 VID.filledColor = null;
 
-VID.SetPalette = function() {
-  const palette = COM.LoadFile('gfx/palette.lmp');
-  if (palette == null) {
+VID.SetPalette = async function() {
+  const palette = await COM.LoadFileAsync('gfx/palette.lmp');
+
+  if (palette === null) {
     Sys.Error('Couldn\'t load gfx/palette.lmp');
   }
+
   const pal = new Uint8Array(palette);
   for (let i = 0, src = 0; i < 256; ++i) {
     VID.d_8to24table[i] = pal[src++] + (pal[src++] << 8) + (pal[src++] << 16);
@@ -22,14 +24,14 @@ VID.SetPalette = function() {
   }
 };
 
-VID.Init = function() {
+VID.Init = async function() {
   const $progress = document.getElementById('progress');
   $progress.parentElement.removeChild($progress);
 
   document.getElementById('console').style.display = 'none';
 
   GL.Init();
-  VID.SetPalette();
+  await VID.SetPalette();
 };
 
 VID.Shutdown = function() {

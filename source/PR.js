@@ -1350,12 +1350,13 @@ PR.NewString = function(s, length) {
 };
 
 PR.TempString = function(string) {
-  let i;
   if (string.length > 127) {
     string = string.substring(0, 127);
   }
-  for (i = 0; i < string.length; ++i) {
+  for (let i = 0; i < string.length; ++i) {
     PR.strings[PR.string_temp + i] = string.charCodeAt(i);
   }
   PR.strings[PR.string_temp + string.length] = 0;
+
+  return PR.string_temp;
 };

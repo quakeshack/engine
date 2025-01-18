@@ -25,7 +25,7 @@ Draw._StringToConback = function(str, dest, alignRight) {
 
 Draw.loadingElem = null;
 
-Draw.Init = function() {
+Draw.Init = async function() {
   Draw.chars = new Uint8Array(W.GetLumpName('CONCHARS'));
 
   const trans = new ArrayBuffer(65536);
@@ -42,8 +42,8 @@ Draw.Init = function() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
   Draw.conback = {};
-  const cb = COM.LoadFile('gfx/conback.lmp');
-  if (cb == null) {
+  const cb = await COM.LoadFileAsync('gfx/conback.lmp');
+  if (cb === null) {
     Sys.Error('Couldn\'t load gfx/conback.lmp');
   }
   Draw.conback.width = 320;
@@ -53,7 +53,7 @@ Draw.Init = function() {
   Draw._StringToConback(Def.version, 59829, true);
   Draw.conback.texnum = GL.LoadPicTexture(Draw.conback);
 
-  Draw.loading = Draw.CachePic('loading');
+  Draw.loading = await Draw.CachePic('loading');
   Draw.loadingElem = document.getElementById('loading');
 
   if (Draw.loadingElem) {
@@ -116,10 +116,10 @@ Draw.PicFromWad = function(name) {
   return p;
 };
 
-Draw.CachePic = function(path) {
+Draw.CachePic = async function(path) {
   path = 'gfx/' + path + '.lmp';
-  const buf = COM.LoadFile(path);
-  if (buf == null) {
+  const buf = await COM.LoadFileAsync(path);
+  if (buf === null) {
     Sys.Error('Draw.CachePic: failed to load ' + path);
   }
   const dat = {};

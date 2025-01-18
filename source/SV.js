@@ -409,6 +409,24 @@ SV.Init = function() {
   SV.InitBoxHull();
 };
 
+SV._scheduledGameCommands = [];
+
+SV.RunScheduledGameCommands = function() {
+  while (SV._scheduledGameCommands.length > 0) {
+    const command = SV._scheduledGameCommands.shift();
+
+    command();
+  }
+};
+
+/**
+ * Schedules a command to be run during the next server frame.
+ * @param {Function} command
+ */
+SV.ScheduleGameCommand = function(command) {
+  SV._scheduledGameCommands.push(command);
+}
+
 SV.StartParticle = function(org, dir, color, count) {
   const datagram = SV.server.datagram;
   if (datagram.cursize >= 1009) {

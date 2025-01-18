@@ -952,7 +952,7 @@ M.Quit_Key = function(k) {
 
 
 // Menu Subsystem
-M.Init = function() {
+M.Init = async function() {
   Cmd.AddCommand('togglemenu', M.ToggleMenu_f);
   Cmd.AddCommand('menu_main', M.Menu_Main_f);
   Cmd.AddCommand('menu_singleplayer', M.Menu_SinglePlayer_f);
@@ -980,29 +980,28 @@ M.Init = function() {
   M.box_mr = Draw.CachePicDeferred('box_mr');
   M.box_br = Draw.CachePicDeferred('box_br');
 
-  M.qplaque = Draw.CachePic('qplaque');
+  M.qplaque = await Draw.CachePic('qplaque');
 
-  M.menudot = [
+  M.menudot = await Promise.all([
     Draw.CachePic('menudot1'),
     Draw.CachePic('menudot2'),
     Draw.CachePic('menudot3'),
     Draw.CachePic('menudot4'),
     Draw.CachePic('menudot5'),
     Draw.CachePic('menudot6'),
-  ];
+  ]);
 
-  M.ttl_main = Draw.CachePic('ttl_main');
-  M.mainmenu = Draw.CachePic('mainmenu');
+  M.ttl_main = await Draw.CachePic('ttl_main');
+  M.mainmenu = await Draw.CachePic('mainmenu');
 
   M.ttl_sgl = Draw.CachePicDeferred('ttl_sgl');
-  M.sp_menu = Draw.CachePic('sp_menu');
-  M.p_load = Draw.CachePic('p_load');
-  M.p_save = Draw.CachePic('p_save');
+  M.sp_menu = await Draw.CachePic('sp_menu');
+  M.p_load = await Draw.CachePic('p_load');
+  M.p_save = await Draw.CachePic('p_save');
 
-  M.p_multi = Draw.CachePic('p_multi');
+  M.p_multi = await Draw.CachePic('p_multi');
   M.bigbox = Draw.CachePicDeferred('bigbox');
-  M.menuplyr = Draw.CachePic('menuplyr');
-  // const buf = COM.LoadFile('gfx/menuplyr.lmp'); ??
+  M.menuplyr = await Draw.CachePic('menuplyr');
   const data = GL.ResampleTexture(M.menuplyr.data, M.menuplyr.width, M.menuplyr.height, 64, 64);
   const trans = new Uint8Array(new ArrayBuffer(16384));
   let i; let p;

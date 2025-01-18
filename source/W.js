@@ -5,11 +5,13 @@ W = {};
 
 W.lumps = [];
 
-W.LoadWadFile = function(filename) {
-  const base = COM.LoadFile(filename);
-  if (base == null) {
+W.LoadWadFile = async function(filename) {
+  const base = await COM.LoadFileAsync(filename);
+
+  if (base === null) {
     Sys.Error('W.LoadWadFile: couldn\'t load ' + filename);
   }
+
   const view = new DataView(base);
   if (view.getUint32(0, true) !== 0x32444157) {
     Sys.Error('Wad file ' + filename + ' doesn\'t have WAD2 id');
@@ -28,8 +30,10 @@ W.LoadWadFile = function(filename) {
 
 W.GetLumpName = function(name) {
   const lump = W.lumps[name];
-  if (lump == null) {
+
+  if (lump === undefined) {
     Sys.Error('W.GetLumpName: ' + name + ' not found');
   }
+
   return lump;
 };

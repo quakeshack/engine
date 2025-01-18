@@ -5,7 +5,7 @@ Sys = {};
 
 Sys.events = ['oncontextmenu', 'onfocus', 'onkeydown', 'onkeyup', 'onmousedown', 'onmouseup', 'onmousewheel', 'onunload', 'onwheel'];
 
-Sys.Init = function() {
+Sys.Init = async function() {
   const cmdline = decodeURIComponent(document.location.search);
   const location = document.location;
   const argv = [location.href.substring(0, location.href.length - location.search.length)];
@@ -102,7 +102,8 @@ Sys.Init = function() {
   Sys.oldtime = Date.now() * 0.001;
 
   Sys.Print('Host.Init\n');
-  Host.Init();
+
+  await Host.Init(false);
 
   for (let i = 0; i < Sys.events.length; ++i) {
     window[Sys.events[i]] = Sys[Sys.events[i]];
@@ -179,7 +180,9 @@ Sys.FloatTime = function() {
 };
 
 window.onload = function() {
-  Sys.Init();
+  Sys.Init()
+    .then(() => Sys.Print('System running!\n'))
+    .catch((err) => Sys.Error('Fatal error during Sys.Init!\n' + err.message));
 };
 
 Sys.oncontextmenu = function(e) {

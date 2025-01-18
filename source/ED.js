@@ -271,7 +271,7 @@ ED.ParseEpair = function(ent, key, s) { // TODO: access through proxy
   }
 };
 
-ED.ParseEdict = function(data, ent) {
+ED.ParseEdict = function(data, ent, initialData = {}) {
   // If not the world entity, clear the entity data
   if (ent !== SV.server.edicts[0]) {
     ent.clear();
@@ -320,7 +320,7 @@ ED.ParseEdict = function(data, ent) {
       Sys.Error('ED.ParseEdict: Closing brace without data');
     }
 
-    if (keyname.charCodeAt(0) === 95) {
+    if (keyname.startsWith('_')) {
       // Ignore keys starting with "_"
       continue;
     }
@@ -335,6 +335,10 @@ ED.ParseEdict = function(data, ent) {
     if (anglehack) {
       COM.token = `0 ${COM.token} 0`;
     }
+
+    initialData[keyname] = (['angles', 'origin'].includes(keyname))
+      ? new Vector(...COM.token.split(' ').map((x) => parseFloat(x)))
+      : COM.token;
 
     if (ED.ParseEpair(ent, key, COM.token) !== true) {
       Host.Error('ED.ParseEdict: parse error');
@@ -379,8 +383,9 @@ ED.LoadFromFile = function(data) {
       Sys.Error(`ED.LoadFromFile: found ${COM.token} when expecting {`);
     }
 
+    const initialData = {};
     ent = ent ? ED.Alloc() : SV.server.edicts[0];
-    data = ED.ParseEdict(data, ent);
+    data = ED.ParseEdict(data, ent, initialData);
 
     const spawnflags = ent.api.spawnflags | 0;
     if (Host.deathmatch.value !== 0 && (spawnflags & 2048)) {
@@ -411,7 +416,7 @@ ED.LoadFromFile = function(data) {
       continue;
     }
 
-    SV.server.gameAPI[ent.api.classname](ent);
+    SV.server.gameAPI[ent.api.classname](ent, initialData);
   }
 
   Con.DPrint(`${inhibit} entities inhibited\n`);

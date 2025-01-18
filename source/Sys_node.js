@@ -16,7 +16,7 @@ Sys = class Sys {
   /**
    * Initializes the low-level system.
    */
-  static Init() {
+  static async Init() {
     // Initialize command-line arguments
     COM.InitArgv(argv);
 
@@ -32,7 +32,7 @@ Sys = class Sys {
     Sys.StartWebserver();
 
     Sys.Print('Host.Init\n');
-    Host.Init(true);
+    await Host.Init(true);
 
     // Start a REPL instance (if stdout is a TTY)
     if (stdout && stdout.isTTY) {

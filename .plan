@@ -14,6 +14,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] S: sometimes there’s still sound playing after the game has shutdown
 * [_] S: make sure all remaining to be lazily loaded sound files are load after the game started
 * [X] R: somewhere dynamic lights are not properly cast
+* [_] PF: need to handle precache more gracefully
 
 ### QuakeC / QuakeJS
 
@@ -83,9 +84,9 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] S: still some issues with stopping sound upon a crash (mainly Firefox affected)
 * [X] Sbar: Show recent chatter next to the ranking board
 * [_] M: touch support (how to escape etc)
-* [_] COM: instead of requesting files by using partial content requests to the webserver, let’s use files instead, leveraging CDNs
-  * [_] DS: make it respond to file requests, map it to PAKs, also set Cache-Control headers properly
-  * [_] COM: frontend part should simply ask for the file directly (e.g. `/data/pak0.pak/progs.dat`)
+* [X] COM: instead of requesting files by using partial content requests to the webserver, let’s use files instead, leveraging CDNs
+  * [X] DS: make it respond to file requests, map it to PAKs, also set Cache-Control headers properly
+  * [X] COM: frontend part should simply ask for the file directly (e.g. `/data/pak0.pak/progs.dat`)
 * [_] Cvar, IN, COM: write archive variables to localStorage immediately
 * [_] Sys: remove onunload hook, it’s deprecated
 * [_] SV, CL: we can ramp up the resolution of things like angles etc.
@@ -207,6 +208,8 @@ class MainMenu extends BaseMenu {
   * colored lightmaps yes/no
   * high precision protocol yes/no
 * PR/PF: I need to add debug features or at least hide some of the asserts and safety checks behind `Host.developer.value`
+* CL: loading maps is like 10x as fast now, found balance between updating the screen and loading/crunching data
+* Host: changed behavior of `give`, it will now accept an entity classname and spawn it in front of the player
 
 ### 2025-01-16
 
