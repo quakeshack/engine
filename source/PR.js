@@ -252,6 +252,10 @@ PR.FunctionProxy = class FunctionProxy extends Function {
     Object.freeze(this);
   }
 
+  toString() {
+    return `${PR.GetString(PR.functions[this.fnc].name)} (PR.FunctionProxy(${this.fnc}))`;
+  }
+
   static create(fnc, ent) {
     const cacheId = `${fnc}-${ent ? ent.num : 'null'}`;
 
@@ -275,26 +279,20 @@ PR.FunctionProxy = class FunctionProxy extends Function {
    * calls
    * @param {*} self (optional) the edict for self
    */
-  // eslint-disable-next-line no-unused-vars
-  call(self, ...args) { // TODO: args
-    PR.globals_int[PR.globalvars.self] = self ? self.num : (this.ent ? this.ent.num : 0);
+  call(self) {
+    if (this.ent) {
+      // in case this is a function bound to an entity, we need to set it to self
+      PR.globals_int[PR.globalvars.self] = this.ent.num;
 
-    // assume return type void and no args
-    if (!this._signature) {
-      PR.ExecuteProgram(this.fnc);
-      return PR.Value(PR.etype.ev_float, PR.globals, 1); // assume float
+      // fun little hack, we always assume self being other if this is called on an ent
+      PR.globals_int[PR.globalvars.other] = self ? self.num : 0;
+    } else if (self) {
+      // in case it’s a global function, we need to set self to the first argument
+      PR.globals_int[PR.globalvars.self] = self.num;
     }
 
-    // eslint-disable-next-line no-unused-vars
-    const { returnType, argTypes } = this._signature;
-
-    // TODO: iterate over args and use argTypes to set the values
-
     PR.ExecuteProgram(this.fnc);
-
-    return PR.Value(returnType, PR.globals, 1); // ret val is at 1
-
-    // we need to know the signature ahead of time to handle args and return
+    return PR.Value(PR.etype.ev_float, PR.globals, 1); // assume float
   }
 }
 
@@ -311,9 +309,9 @@ PR.EdictProxy = class ProgsEntity {
   constructor(ed) {
     const stats = ed ? PR._stats.edict : PR._stats.global;
     const defs = ed ? PR.fielddefs : PR.globaldefs;
-    const progdefs = PR.progdefs ? (ed ? PR.progdefs.structs.entvars_t : PR.progdefs.structs.globalvars_t) : null;
 
     if (ed) {
+      this._edictNum = ed.num;
       this._v = ed.v = new ArrayBuffer(PR.entityfields * 4);
       ed.v_float = new Float32Array(this._v); // FIXME: private data for PR/PR only, PR.ExecuteProgram is still using it
       ed.v_int = new Int32Array(this._v); // FIXME: private data for PR/PR only, PR.ExecuteProgram is still using it
@@ -334,14 +332,6 @@ PR.EdictProxy = class ProgsEntity {
         continue;
       }
 
-      // check if we have proper definitions
-      if (progdefs) {
-        if (!progdefs[name] && type !== PR.etype.ev_function)
-        // we are not interested in global etc.
-        // however, we need the functions for calling spawn functions
-        continue;
-      }
-
       const val_float = new Float32Array(val);
       const val_int = new Int32Array(val);
 
@@ -352,6 +342,8 @@ PR.EdictProxy = class ProgsEntity {
 
         return stats[name];
       };
+
+      const assignedFunctions = [];
 
       switch (type) {
         case PR.etype.ev_string:
@@ -408,12 +400,21 @@ PR.EdictProxy = class ProgsEntity {
           Object.defineProperty(this, name, {
             get: function() {
               s().get++;
-              return val_int[ofs] > 0 ? PR.FunctionProxy.create(val_int[ofs], ed) : null;
+              const id = val_int[ofs];
+              if (id < 0 && assignedFunctions[(-id) - 1] instanceof Function) {
+                return assignedFunctions[(-id) - 1];
+              }
+              return id > 0 ? PR.FunctionProxy.create(id, ed) : null;
             },
             set: function(value) {
               s().set++;
               if (value === null) {
                 val_int[ofs] = 0;
+                return;
+              }
+              if (value instanceof Function) {
+                assignedFunctions.push(value);
+                val_int[ofs] = -assignedFunctions.length;
                 return;
               }
               if (value instanceof PR.FunctionProxy) {
@@ -428,18 +429,35 @@ PR.EdictProxy = class ProgsEntity {
                 val_int[ofs] = d;
                 return;
               }
-              if (typeof(value.fnc) !== 'undefined') { // TODO: Edict class
+              if (typeof(value.fnc) !== 'undefined') {
                 val_int[ofs] = value.fnc;
                 return;
               }
-              throw new TypeError('Expected FunctionProxy, function name or function ID');
+              throw new TypeError('EdictProxy.' + name + ': Expected FunctionProxy, function name or function ID');
             },
             configurable: true,
             enumerable: true,
           });
           break;
         case PR.etype.ev_pointer: // unused and irrelevant
-        case PR.etype.ev_field: // irrelevant, there is also no nesting
+          break;
+        case PR.etype.ev_field:
+          Object.defineProperty(this, name, {
+            get: function() {
+              s().get++;
+              return val_int[ofs];
+            },
+            set: function(value) {
+              s().set++;
+              if (typeof(value.ofs) !== 'undefined') {
+                val_int[ofs] = value.ofs;
+                return;
+              }
+              throw new TypeError('EdictProxy.' + name + ': Expected fields definition');
+            },
+            configurable: true,
+            enumerable: true,
+          });
           break;
         case PR.etype.ev_float:
           Object.defineProperty(this, name, {
@@ -487,6 +505,10 @@ PR.EdictProxy = class ProgsEntity {
         int32[i] = 0;
       }
     }
+  }
+
+  spawn() {
+    SV.server.gameAPI[this.classname]({num: this._edictNum});
   }
 };
 
@@ -621,99 +643,6 @@ PR.GlobalStringNoContents = function(ofs) {
   return line;
 };
 
-PR._LoadProgsdef = function(headerText) {
-  const lines = headerText.split('\n');
-
-  const typeToEtype = {
-    'int': PR.etype.ev_entity,
-    'float': PR.etype.ev_float,
-    'vec3_t': PR.etype.ev_entity,
-    'func_t': PR.etype.ev_function,
-    'string_t': PR.etype.ev_string,
-  };
-
-  let collectingFields = false;
-  let fieldBuffer = [];
-  const structs = {};
-  let progHeaderCRC = null;
-
-  for (let line of lines) {
-    line = line.trim();
-
-    // Skip empty or comment
-    if (!line || line.startsWith('/*') || line.startsWith('//')) {
-      continue;
-    }
-
-    // #define PROGHEADER_CRC
-    if (line.startsWith('#define PROGHEADER_CRC')) {
-      const parts = line.split(/\s+/);
-      if (parts.length >= 3) {
-        progHeaderCRC = parseInt(parts[2]); // e.g. 5927
-      }
-      continue;
-    }
-
-    // Start of struct
-    if (line.startsWith('typedef struct')) {
-      collectingFields = true;
-      fieldBuffer = [];
-      continue;
-    }
-
-    // End of struct with name
-    if (collectingFields && line.match(/^}\s+\w+;/)) {
-      collectingFields = false;
-      const matched = line.match(/^}\s+(\w+);/);
-      const structName = matched[1];
-
-      structs[structName] = {};
-
-      // Move all fields from buffer
-      for (const f of fieldBuffer) {
-        structs[structName][f.name] = f.etype;
-      }
-
-      fieldBuffer = [];
-      continue;
-    }
-
-    // If collecting fields, parse them
-    if (collectingFields) {
-      // Remove trailing semicolon if present
-      if (line.endsWith(';')) {
-        line = line.slice(0, -1).trim();
-      }
-
-      // Attempt to parse lines like:
-      // "<TYPE> <NAME>;" or "<TYPE> <NAME>[number];"
-      // Example: "int self" or "int pad[28]" or "vec3_t v_forward"
-      const fieldMatch = line.match(/^(\w+(?:\s*\[\d+\])?)\s+(\w+(?:\s*\[\d+\])?)$/);
-
-      if (!fieldMatch) {
-        continue;
-      }
-
-      let [, rawType, rawName] = fieldMatch;
-
-      // Skip "pad"
-      if (rawName.startsWith('pad')) {
-        continue;
-      }
-
-      // Remove array from type if any
-      const baseType = rawType.replace(/\[.*\]/, '');
-      // Remove array from name if any
-      const fieldName = rawName.replace(/\[.*\]/, '');
-
-      const etype = typeToEtype[baseType] || null;
-      fieldBuffer.push({ name: fieldName, etype });
-    }
-  }
-
-  return { structs, progHeaderCRC };
-}
-
 PR.LoadProgs = function() {
   const progs = COM.LoadFile('progs.dat');
   if (progs == null) {
@@ -725,14 +654,6 @@ PR.LoadProgs = function() {
   let i = view.getUint32(0, true);
   if (i !== PR.version) {
     Sys.Error('progs.dat has wrong version number (' + i + ' should be ' + PR.version + ')');
-  }
-
-  const progdefs = COM.LoadTextFile('progdefs.h');
-
-  if (progdefs) {
-    Con.Print('Found progdefs.h, parsing and updating data structure\n');
-    PR.progdefs = PR._LoadProgsdef(progdefs);
-    PR.progheader_crc = PR.progdefs.progHeaderCRC;
   }
 
   if (view.getUint32(4, true) !== PR.progheader_crc) {
@@ -853,7 +774,98 @@ PR.LoadProgs = function() {
   // hook up progs.dat with our proxies
   return {
     GameAPI: PR.EdictProxy,
-    GameEntityAPI: PR.EdictProxy,
+
+    prepareEntity(edict, classname, initialData = {}) {
+      if (!edict.api) {
+        edict.api = new PR.EdictProxy(edict);
+      }
+
+      // special case for QuakeC: empty entity
+      if (classname === null) {
+        return true;
+      }
+
+      // another special case for QuakeC: player has no spawn function
+      if (classname === 'player') {
+        return true;
+      }
+
+      if (!SV.server.gameAPI[classname]) {
+        Con.Print(`No spawn function for edict ${edict.num}: ${classname}\n`);
+        return false;
+      }
+
+      initialData.classname = classname;
+
+      for (const [key, value] of Object.entries(initialData)) {
+        const field = ED.FindField(key);
+
+        if (!field) {
+          Con.Print(`'${key}' is not a field\n`);
+          continue;
+        }
+
+        switch (field.type & 0x7fff) {
+          case PR.etype.ev_entity:
+            edict.api[key] = value instanceof SV.Edict ? value : {num: parseInt(value)};
+            break;
+
+          case PR.etype.ev_vector:
+            edict.api[key] = value instanceof Vector ? value : new Vector(...value.split(' ').map((x) => parseFloat(x)));
+            break;
+
+          case PR.etype.ev_field: {
+            const d = ED.FindField(value);
+            if (!d) {
+              Con.Print(`Can't find field: ${value}\n`);
+              break;
+            }
+            edict.api[key] = d;
+            break;
+          }
+
+          case PR.etype.ev_function: {
+            edict.api[key] = {fnc: value};
+            break;
+          }
+
+          default:
+            edict.api[key] = value;
+        }
+      }
+
+      // these are quake specific things happening during loading
+
+      const spawnflags = edict.api.spawnflags | 0;
+
+      if (Host.deathmatch.value !== 0 && (spawnflags & 2048)) {
+        return false;
+      }
+
+      const skillFlags = [256, 512, 1024];
+
+      if (skillFlags.some((flag, idx) => Host.current_skill === idx && (spawnflags & flag))) {
+        return false;
+      }
+
+      return true;
+    },
+
+    spawnEntity(edict) {
+      if (!edict.api) {
+        Con.Print(`PR.LoadProgs.spawnEntity: no entity class instance set\n`);
+        return false;
+      }
+
+      // another special case for QuakeC: player has no spawn function
+      if (edict.api.classname === 'player') {
+        return true;
+      }
+
+      edict.api.spawn();
+
+      return true;
+    }
   };
 };
 
@@ -1242,12 +1254,17 @@ PR.ExecuteProgram = function(fnum) {
         if (PR.globals_int[st.a] === 0) {
           PR.RunError('NULL function');
         }
+        if (PR.globals_int[st.a] < 0) {
+          console.log('special function called');
+          continue;
+        }
         newf = PR.functions[PR.globals_int[st.a]];
         if (newf.first_statement < 0) {
           ptr = -newf.first_statement;
           if (ptr >= PF.builtin.length) {
             PR.RunError('Bad builtin call number');
           }
+          // PF.builtin[ptr];
           // try {
             PF.builtin[ptr]();
           // } catch (e) {

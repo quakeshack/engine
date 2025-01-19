@@ -439,9 +439,9 @@ Sbar.Draw = function() {
 
   if (Sbar.lines > 24) {
     Sbar.DrawInventory();
-    if (CL.state.maxclients !== 1) {
-      Sbar.DrawFrags();
-    }
+    // if (CL.state.maxclients !== 1) {
+    //   Sbar.DrawFrags();
+    // }
   }
 
   if ((Sbar.showscores === true) || (CL.state.stats[Def.stat.health] <= 0)) {
@@ -531,21 +531,22 @@ Sbar.IntermissionNumber = function(x, y, num) {
   }
 };
 
+// draws the score board when pressing down TAB
 Sbar.DeathmatchOverlay = function() {
-  Draw.Pic((VID.width - Sbar.ranking.width) >> 1, 8, Sbar.ranking);
+  Draw.Pic((VID.width - Sbar.ranking.width) / 2, 8, Sbar.ranking);
   Sbar.SortFrags();
 
-  const x = (VID.width >> 1) - 80; let y = 40;
-  let i; let s; let f;
-  for (i = 0; i < Sbar.scoreboardlines; ++i) {
-    s = CL.state.scores[Sbar.fragsort[i]];
+  const x = (VID.width / 2) - 80; let y = 40;
+
+  for (let i = 0; i < Sbar.scoreboardlines; ++i) {
+    const s = CL.state.scores[Sbar.fragsort[i]];
     if (s.name.length === 0) {
       continue;
     }
     Draw.Fill(x, y, 40, 4, (s.colors & 0xf0) + 8);
-    Draw.Fill(x, y + 4, 40, 4, ((s.colors & 0xf) << 4) + 8);
-    f = s.frags.toString();
-    Draw.String(x + 32 - (f.length << 3), y, f);
+    Draw.Fill(x, y + 4, 40, 4, ((s.colors & 0xf) * 16) + 8);
+    const f = s.frags.toString();
+    Draw.String(x + 32 - (f.length * 8), y, f);
     if (Sbar.fragsort[i] === (CL.state.viewentity - 1)) {
       Draw.Character(x - 8, y, 12);
     }
@@ -555,6 +556,7 @@ Sbar.DeathmatchOverlay = function() {
   }
 };
 
+// draws the mini overlay inside the Sbar
 Sbar.MiniDeathmatchOverlay = function() {
   Sbar.SortFrags();
   const l = Sbar.scoreboardlines;

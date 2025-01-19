@@ -18,9 +18,13 @@ ED.Alloc = function() {
     }
   }
   if (i === Def.max_edicts) {
-    Sys.Error('ED.Alloc: no free edicts');
+    Con.Print(`WARNING: ED.Alloc triggered max_edicts (${Def.max_edicts})\n`);
   }
   e = SV.server.edicts[SV.server.num_edicts++];
+  if (!e) {
+    e = new SV.Edict(i);
+    SV.server.edicts.push(e);
+  }
   ED.ClearEdict(e);
   return e;
 };
@@ -28,16 +32,17 @@ ED.Alloc = function() {
 ED.Free = function(ed) {
   SV.UnlinkEdict(ed);
   ed.free = true;
-  ed.api.model = null;
-  ed.api.takedamage = 0.0;
-  ed.api.modelindex = 0.0;
-  ed.api.colormap = 0.0;
-  ed.api.skin = 0.0;
-  ed.api.frame = 0.0;
-  ed.api.origin = Vector.origin;
-  ed.api.angles = Vector.origin;
-  ed.api.nextthink = -1.0;
-  ed.api.solid = 0.0;
+  ed.api = null;
+  // ed.api.model = null;
+  // ed.api.takedamage = 0.0;
+  // ed.api.modelindex = 0.0;
+  // ed.api.colormap = 0.0;
+  // ed.api.skin = 0.0;
+  // ed.api.frame = 0.0;
+  // ed.api.origin = Vector.origin;
+  // ed.api.angles = Vector.origin;
+  // ed.api.nextthink = -1.0;
+  // ed.api.solid = 0.0;
   ed.freetime = SV.server.time;
 };
 
@@ -87,33 +92,21 @@ ED.FindFunction = function(name) {
 };
 
 ED.Print = function(ed) {
-  if (ed.free === true) {
+  if (ed.isFree()) {
     return;
   }
   Con.Print('\nEDICT ' + ed.num + ':\n');
-  // TODO: add this back
-  // let i; let d; let name; let v;
-  // for (i = 1; i < PR.fielddefs.length; ++i) {
-  //   d = PR.fielddefs[i];
-  //   name = PR.GetString(d.name);
-  //   if (name.charCodeAt(name.length - 2) === 95) {
-  //     continue;
-  //   }
-  //   v = d.ofs;
-  //   if (ed.v_int[v] === 0) {
-  //     if ((d.type & ~PR.saveglobal) === 3) {
-  //       if ((ed.v_int[v + 1] === 0) && (ed.v_int[v + 2] === 0)) {
-  //         continue;
-  //       }
-  //     } else {
-  //       continue;
-  //     }
-  //   }
-  //   for (; name.length <= 14;) {
-  //     name += ' ';
-  //   }
-  //   Con.Print(name + PR.ValueString(d.type, ed.v, v) + '\n');
-  // }
+
+  for (let i = 1; i < PR.fielddefs.length; i++) {
+    const d = PR.fielddefs[i];
+    const name = PR.GetString(d.name);
+
+    if (/_[xyz]$/.test(name)) {
+      continue;
+    }
+
+    Con.Print(`${name.padStart(24, '.')}: ${ed.api[name]}\n`);
+  }
 };
 
 ED.PrintEdicts = function() {
@@ -147,7 +140,7 @@ ED.Count = function() {
   let i; let ent; let active = 0; let models = 0; let solid = 0; let step = 0;
   for (i = 0; i < SV.server.num_edicts; ++i) {
     ent = SV.server.edicts[i];
-    if (ent.free === true) {
+    if (ent.isFree() === true) {
       continue;
     }
     ++active;
@@ -169,34 +162,6 @@ ED.Count = function() {
   Con.Print('step      :' + (step <= 9 ? '  ' : (step <= 99 ? ' ' : '')) + step + '\n');
 };
 
-ED.ParseGlobals = function(data) {
-  while (true) {
-    data = COM.Parse(data);
-    if (COM.token === '}') {
-      return;
-    }
-
-    if (!data) Sys.Error('ED.ParseGlobals: EOF without closing brace');
-
-    const keyname = COM.token;
-    data = COM.Parse(data);
-
-    if (!data || COM.token === '}') {
-      Sys.Error('ED.ParseGlobals: closing brace without data');
-    }
-
-    const key = ED.FindGlobal(keyname); // TODO: change to IsGlobal?
-    if (!key) {
-      Con.Print(`'${keyname}' is not a global\n`);
-      continue;
-    }
-
-    if (!ED.ParseEpair(PR.globals, key, COM.token)) {
-      Host.Error('ED.ParseGlobals: parse error');
-    }
-  }
-};
-
 ED._NewString = function(string) {
   const newstring = [];
   for (let i = 0; i < string.length; ++i) {
@@ -211,69 +176,14 @@ ED._NewString = function(string) {
   return PR.SetString(null, newstring.join(''));
 };
 
-ED.ParseEpair = function(ent, key, s) { // TODO: access through proxy
-  const d_float = new Float32Array(ent.v);
-  const d_int = new Int32Array(ent.v);
-  let d;
-  let v;
-
-  switch (key.type & ~PR.saveglobal) {
-    case PR.etype.ev_string:
-      // Parse a string and store it
-      d_int[key.ofs] = ED._NewString(s);
-      return true;
-
-    case PR.etype.ev_float:
-      // Parse a float and store it
-      d_float[key.ofs] = Q.atof(s);
-      return true;
-
-    case PR.etype.ev_vector:
-      // Parse a vector (e.g., "x y z")
-      v = s.split(' ').map(Q.atof);
-      if (v.length !== 3) {
-        Con.Print(`Invalid vector: ${s}\n`);
-        return false;
-      }
-      d_float[key.ofs] = v[0];
-      d_float[key.ofs + 1] = v[1];
-      d_float[key.ofs + 2] = v[2];
-      return true;
-
-    case PR.etype.ev_entity:
-      // Parse an integer (entity index)
-      d_int[key.ofs] = Q.atoi(s);
-      return true;
-
-    case PR.etype.ev_field:
-      // Parse and find a field by name
-      d = ED.FindField(s);
-      if (!d) {
-        Con.Print(`Can't find field: ${s}\n`);
-        return false;
-      }
-      d_int[key.ofs] = d.ofs;
-      return true;
-
-    case PR.etype.ev_function:
-      // Parse and find a function by name
-      d = ED.FindFunction(s);
-      if (!d) {
-        Con.Print(`Can't find function: ${s}\n`);
-        return false;
-      }
-      d_int[key.ofs] = d;
-      return true;
-
-    default:
-      Con.Print(`Unknown key type: ${key.type}\n`);
-      return false;
-  }
+ED.ParseEdict = function() {
+  Host.Error('currently not implemented');
 };
 
 ED.ParseEdict = function(data, ent, initialData = {}) {
   // If not the world entity, clear the entity data
-  if (ent !== SV.server.edicts[0]) {
+  // CR: this is required, otherwise we would overwrite data SV.SpawnServer had set prior
+  if (ent.num > 0) {
     ent.clear();
   }
 
@@ -325,24 +235,11 @@ ED.ParseEdict = function(data, ent, initialData = {}) {
       continue;
     }
 
-    const key = ED.FindField(keyname); // TODO: IsField?
-
-    if (key == null) {
-      Con.Print(`'${keyname}' is not a field\n`);
-      continue;
-    }
-
     if (anglehack) {
       COM.token = `0 ${COM.token} 0`;
     }
 
-    initialData[keyname] = (['angles', 'origin'].includes(keyname))
-      ? new Vector(...COM.token.split(' ').map((x) => parseFloat(x)))
-      : COM.token;
-
-    if (ED.ParseEpair(ent, key, COM.token) !== true) {
-      Host.Error('ED.ParseEdict: parse error');
-    }
+    initialData[keyname] = COM.token;
 
     init = true;
   }
@@ -364,15 +261,6 @@ ED.LoadFromFile = function(data) {
   let ent = null;
   SV.server.gameAPI.time = SV.server.time;
 
-// data += `
-
-// {
-//   "classname" "item_shells"
-//   "origin" "528 720 128"
-//   "phys_mass" "5"
-// }
-//   `;
-
   while (true) {
     data = COM.Parse(data);
     if (!data) {
@@ -387,36 +275,28 @@ ED.LoadFromFile = function(data) {
     ent = ent ? ED.Alloc() : SV.server.edicts[0];
     data = ED.ParseEdict(data, ent, initialData);
 
-    const spawnflags = ent.api.spawnflags | 0;
-    if (Host.deathmatch.value !== 0 && (spawnflags & 2048)) {
+    if (!initialData.classname) {
+      Con.Print(`No classname for edict ${ent.num}\n`);
+      ED.Free(ent);
+      continue;
+    }
+
+    const maySpawn = SV.server.progsInterfaces.prepareEntity(ent, initialData.classname, initialData);
+
+    if (!maySpawn) {
       ED.Free(ent);
       inhibit++;
       continue;
     }
 
-    const skillFlags = [256, 512, 1024];
-    if (skillFlags.some((flag, idx) => Host.current_skill === idx && (spawnflags & flag))) {
-      ED.Free(ent);
-      inhibit++;
-      continue;
-    }
+    const spawned = SV.server.progsInterfaces.spawnEntity(ent);
 
-    if (!ent.api.classname) {
-      Con.Print('No classname for:\n');
+    if (!spawned) {
+      Con.Print(`Could not spawn entity for edict ${ent.num}:\n`);
       ED.Print(ent);
       ED.Free(ent);
       continue;
     }
-
-    const func = SV.server.gameAPI[ent.api.classname];
-    if (!func) {
-      Con.Print('No spawn function for:\n');
-      ED.Print(ent);
-      ED.Free(ent);
-      continue;
-    }
-
-    SV.server.gameAPI[ent.api.classname](ent, initialData);
   }
 
   Con.DPrint(`${inhibit} entities inhibited\n`);

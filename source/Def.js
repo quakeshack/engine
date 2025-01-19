@@ -3,9 +3,10 @@
 // eslint-disable-next-line no-global-assign
 Def = {};
 
-Def.version = '1.0.10';
+Def.version = '1.0.11';
 
 Def.max_edicts = 600;
+Def.max_clients = 32;
 
 Def.stat = {
   health: 0,

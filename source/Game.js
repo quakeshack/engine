@@ -116,7 +116,7 @@ Game.EngineInterface = class EngineInterface {
     for (let i = 1; i < SV.server.num_edicts; i++) {
       const ent = SV.server.edicts[i];
 
-      if (ent.free || ent.api.solid === SV.solid.not) {
+      if (ent.isFree() || ent.api.solid === SV.solid.not) {
         continue;
       }
 
@@ -136,7 +136,7 @@ Game.EngineInterface = class EngineInterface {
     for (let i = startEdictId; i < SV.server.num_edicts; i++) {
       const ent = SV.server.edicts[i];
 
-      if (ent.free) {
+      if (ent.isFree()) {
         continue;
       }
 
@@ -169,8 +169,20 @@ Game.EngineInterface = class EngineInterface {
     Con.DPrint(str);
   }
 
-  static AllocEdict() {
-    return ED.Alloc();
+  static SpawnEntity(classname, initialData = {}) {
+    const edict = ED.Alloc();
+
+    if (!SV.server.progsInterfaces.prepareEntity(edict, classname, initialData)) {
+      edict.freeEdict();
+      return null;
+    }
+
+    if (!SV.server.progsInterfaces.spawnEntity(edict)) {
+      edict.freeEdict();
+      return null;
+    }
+
+    return edict;
   }
 
   // TODO: MSG related methods

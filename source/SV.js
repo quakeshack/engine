@@ -1,4 +1,4 @@
-/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, V, SCR, CANNON */
+/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, V, SCR, CANNON, Game */
 
 // eslint-disable-next-line no-global-assign
 SV = {};
@@ -55,10 +55,11 @@ SV.server = {
   reliable_datagram: {data: new ArrayBuffer(1024), cursize: 0},
   signon: {data: new ArrayBuffer(8192), cursize: 0},
   cannon: null,
+  progsInterfaces: null,
 };
 
 SV.Edict = class Edict {
-  constructor(num, progsInterfaces) {
+  constructor(num) {
     this.num = num;
     this.free = false;
     this.area = {
@@ -75,11 +76,23 @@ SV.Edict = class Edict {
       effects: 0,
     };
     this.freetime = 0.0;
-    this.api = new progsInterfaces.GameEntityAPI(this);
+    this.api = null;
   }
 
   clear() {
-    this.api.clear();
+    this.api = null;
+  }
+
+  isFree() {
+    return this.free || !this.api;
+  }
+
+  toString() {
+    if (this.isFree()) {
+      return `unused (${this.num})`;
+    }
+
+    return `${this.api.classname} (edict ${this.num} at ${this.api.origin})`;
   }
 
   /**
@@ -225,7 +238,7 @@ SV.Edict = class Edict {
         if (i === check) {
           break;
         }
-        if (ent.free) {
+        if (ent.isFree()) {
           continue;
         }
         if (ent.api.health <= 0.0 || (ent.api.flags & SV.fl.notarget) !== 0) {
@@ -240,7 +253,7 @@ SV.Edict = class Edict {
 
     const ent = SV.server.edicts[SV.server.lastcheck];
 
-    if (ent.free || ent.api.health <= 0.0) {
+    if (ent.isFree() || ent.api.health <= 0.0) {
       // not interesting anymore
       return null;
     }
@@ -301,6 +314,9 @@ SV.Edict = class Edict {
     let bestent = null;
     for (let i = 1; i < SV.server.num_edicts; ++i) {
       const check = SV.server.edicts[i];
+      if (check.isFree()) {
+        continue;
+      }
       if (check.api.takedamage !== SV.damage.aim) {
         continue;
       }
@@ -343,7 +359,7 @@ SV.Edict = class Edict {
    */
   nextEdict() {
     for (let i = this.num + 1; i < SV.server.num_edicts; ++i) {
-      if (!SV.server.edicts[i].free) {
+      if (!SV.server.edicts[i].isFree()) {
         return SV.server.edicts[i];
       }
     }
@@ -642,6 +658,9 @@ SV.WriteEntitiesToClient = function(clent, msg) {
   for (e = 1; e < SV.server.num_edicts; ++e) {
     ent = SV.server.edicts[e];
     if (ent !== clent) {
+      if (!ent.api) {
+        continue;
+      }
       if ((ent.api.modelindex === 0.0) || !ent.api.model) {
         continue;
       }
@@ -750,7 +769,7 @@ SV.WriteEntitiesToClient = function(clent, msg) {
 SV.WriteClientdataToMessage = function(ent, msg) {
   if ((ent.api.dmg_take || ent.api.dmg_save) && ent.api.dmg_inflictor) {
     const other = ent.api.dmg_inflictor;
-    const vec = other.api.origin.copy().add(other.api.mins.copy().add(other.api.maxs).multiply(0.5));
+    const vec = !other.isFree() ? other.api.origin.copy().add(other.api.mins.copy().add(other.api.maxs).multiply(0.5)) : ent.api.origin;
     MSG.WriteByte(msg, Protocol.svc.damage);
     MSG.WriteByte(msg, ent.api.dmg_save);
     MSG.WriteByte(msg, ent.api.dmg_take);
@@ -919,14 +938,13 @@ SV.UpdateToReliableMessages = function() {
 
   for (i = 0; i < SV.svs.maxclients; ++i) {
     Host.client = SV.svs.clients[i];
-    Host.client.edict.api.frags >>= 0;
-    frags = Host.client.edict.api.frags;
+    frags = Host.client.edict.api ? Host.client.edict.api.frags | 0 : 0; // force int
     if (Host.client.old_frags === frags) {
       continue;
     }
     for (j = 0; j < SV.svs.maxclients; ++j) {
       client = SV.svs.clients[j];
-      if (client.active !== true) {
+      if (!client.active) {
         continue;
       }
       MSG.WriteByte(client.message, Protocol.svc.updatefrags);
@@ -990,6 +1008,10 @@ SV.SendClientMessages = function() {
   }
 
   for (i = 1; i < SV.server.num_edicts; ++i) {
+    if (!SV.server.edicts[i].api) {
+      continue;
+    }
+
     SV.server.edicts[i].api.effects &= (~Mod.effects.muzzleflash >>> 0);
   }
 };
@@ -1016,7 +1038,7 @@ SV.CreateBaseline = function() {
   const signon = SV.server.signon;
   for (i = 0; i < SV.server.num_edicts; ++i) {
     svent = SV.server.edicts[i];
-    if (svent.free === true) {
+    if (svent.isFree()) {
       continue;
     }
     if ((i > SV.svs.maxclients) && !svent.api.modelindex) {
@@ -1103,11 +1125,15 @@ SV.SpawnServer = function(mapname) {
   Mod.ClearAll();
 
   const progsInterfaces = PR.LoadProgs();
+  SV.server.progsInterfaces = progsInterfaces;
   SV.server.gameAPI = new progsInterfaces.GameAPI();
 
   SV.server.edicts = [];
+  // preallocating up to max_edicts, we can extend that later during runtime
   for (i = 0; i < Def.max_edicts; ++i) {
-    SV.server.edicts[i] = new SV.Edict(i, progsInterfaces);
+    const ent = new SV.Edict(i);
+
+    SV.server.edicts[i] = ent;
   }
   SV.server.cannon = {
     world: new CANNON.World(),
@@ -1118,9 +1144,19 @@ SV.SpawnServer = function(mapname) {
   SV.server.datagram.cursize = 0;
   SV.server.reliable_datagram.cursize = 0;
   SV.server.signon.cursize = 0;
+  // hooking up the edicts reserved for clients
   SV.server.num_edicts = SV.svs.maxclients + 1;
   for (i = 0; i < SV.svs.maxclients; ++i) {
-    SV.svs.clients[i].edict = SV.server.edicts[i + 1];
+    const ent = SV.server.edicts[i + 1];
+
+    // we need to spawn the player entity in those client edict slots
+    if (!progsInterfaces.prepareEntity(ent, 'player')) {
+      Con.Print('Cannot start server: The game does not know what a player entity is.\n');
+      SV.server.active = false;
+      return false;
+    }
+
+    SV.svs.clients[i].edict = ent;
   }
   SV.server.loading = true;
   SV.server.paused = false;
@@ -1131,7 +1167,7 @@ SV.SpawnServer = function(mapname) {
   SV.server.gameAPI.mapname = mapname;
   SV.server.modelname = 'maps/' + mapname + '.bsp';
   SV.server.worldmodel = Mod.ForName(SV.server.modelname);
-  if (SV.server.worldmodel == null) {
+  if (SV.server.worldmodel === null) {
     Con.Print('Couldn\'t spawn server ' + SV.server.modelname + '\n');
     SV.server.active = false;
     return false;
@@ -1144,7 +1180,9 @@ SV.SpawnServer = function(mapname) {
 
   SV.server.sound_precache = [''];
   SV.server.model_precache = ['', SV.server.modelname];
-  for (i = 1; i <= SV.server.worldmodel.submodels.length; ++i) { // TODO: do we really need this? (yes we do, PF, CL and Host etc. rely on it)
+  for (i = 1; i <= SV.server.worldmodel.submodels.length; ++i) {
+    // TODO: do we really need this? (yes we do, PF, CL and Host etc. rely on it)
+    //       also each submodule is a brush connected to an entity (doors etc.)
     SV.server.model_precache[i + 1] = '*' + i;
     SV.server.models[i + 1] = Mod.ForName('*' + i);
   }
@@ -1154,22 +1192,38 @@ SV.SpawnServer = function(mapname) {
     SV.server.lightstyles[i] = '';
   }
 
+  // edict 0 is reserved for worldspawn
   const ent = SV.server.edicts[0];
-  ent.api.model = SV.server.modelname;
-  ent.api.modelindex = 1.0;
-  ent.api.solid = SV.solid.bsp;
-  ent.api.movetype = SV.movetype.push;
+
+  if (Host.coop.value && Host.deathmatch.value) {
+    Con.Print('SV.SpawnServer: you can only set coop to 1 or deathmath to 1, but not both!\n');
+  }
 
   if (Host.coop.value !== 0) {
-    ent.api.coop = Host.coop.value;
     SV.server.gameAPI.coop = Host.coop.value;
   } else {
-    ent.api.deathmatch = Host.deathmatch.value;
     SV.server.gameAPI.deathmatch = Host.deathmatch.value;
   }
 
-  ent.api.mapname = mapname;
-  ent.api.serverflags = SV.svs.serverflags;
+  if (!progsInterfaces.prepareEntity(ent, 'worldspawn', {
+    model: SV.server.modelname,
+    modelindex: 1,
+    solid: SV.solid.bsp,
+    movetype: SV.movetype.push,
+  })) {
+    Con.Print('Cannot start server: The game does not know what a worldspawn entity is.\n');
+    SV.server.active = false;
+    return false;
+  }
+
+  SV.server.gameAPI.serverflags = SV.svs.serverflags;
+  SV.server.gameAPI.mapname = mapname;
+  SV.server.gameAPI.coop = Host.coop.value;
+  SV.server.gameAPI.deathmatch = Host.deathmatch.value;
+
+  // NOTE: not calling ent.api.spawn(); here, it’s done by ED.LoadFromFile
+
+  // populate all edicts by the entities file
   ED.LoadFromFile(SV.server.worldmodel.entities);
   SV.server.active = true;
   SV.server.loading = false;
@@ -1185,9 +1239,34 @@ SV.SpawnServer = function(mapname) {
     }
     SV.SendServerinfo(Host.client);
   }
-  Con.DPrint('Server spawned.\n');
+  Con.Print('Server spawned.\n');
   return true;
 };
+
+SV.ShutdownServer = function (isCrashShutdown) {
+  // make sure all references are dropped
+  SV.server.active = false;
+  SV.server.loading = false;
+  SV.server.progsInterfaces = null;
+  SV.server.cannon = null;
+  SV.server.worldmodel = null;
+
+  // purge out all edicts and clients
+  SV.server.edicts = [];
+  SV.server.num_edicts = 0;
+
+  // unlink all edicts from client structures, reset data
+  for (const client of SV.svs.clients) {
+    client.clear();
+  }
+
+  if (isCrashShutdown) {
+    Con.Print('Server shut down due to a crash!\n');
+    return;
+  }
+
+  Con.Print('Server shut down.\n');
+}
 
 SV.GetClientName = function(client) {
   return client.name;
@@ -1466,7 +1545,7 @@ SV.CheckAllEnts = function() {
   let e; let check;
   for (e = 1; e < SV.server.num_edicts; ++e) {
     check = SV.server.edicts[e];
-    if (check.free === true) {
+    if (check.isFree() === true) {
       continue;
     }
     switch (check.api.movetype) {
@@ -1514,29 +1593,24 @@ SV.RunThink = function(ent) {
   }
   ent.api.nextthink = 0.0;
   SV.server.gameAPI.time = thinktime;
-  SV.server.gameAPI.other = null;
-  ent.api.think();
-  return (ent.free !== true);
+  ent.api.think(null);
+  return (ent.isFree() !== true);
 };
 
 SV.Impact = function(e1, e2) {
-  const old_self = SV.server.gameAPI.self;
-  const old_other = SV.server.gameAPI.other;
+  const old_self = SV.server.gameAPI.self; // QuakeC quirks
+  const old_other = SV.server.gameAPI.other; // QuakeC quirks
   SV.server.gameAPI.time = SV.server.time;
 
   if (e1.api.touch && (e1.api.solid !== SV.solid.not)) {
-    SV.server.gameAPI.self = e1;
-    SV.server.gameAPI.other = e2;
-    e1.api.touch();
+    e1.api.touch(e2);
   }
   if (e2.api.touch && (e2.api.solid !== SV.solid.not)) {
-    SV.server.gameAPI.self = e2;
-    SV.server.gameAPI.other = e1;
-    e2.api.touch();
+    e2.api.touch(e1);
   }
 
-  SV.server.gameAPI.self = old_self;
-  SV.server.gameAPI.other = old_other;
+  SV.server.gameAPI.self = old_self; // QuakeC quirks
+  SV.server.gameAPI.other = old_other; // QuakeC quirks
 };
 
 SV.ClipVelocity = function(vec, normal, out, overbounce) {
@@ -1599,7 +1673,7 @@ SV.FlyMove = function(ent, time) {
       SV.steptrace = trace;
     }
     SV.Impact(ent, trace.ent);
-    if (ent.free === true) {
+    if (ent.isFree()) {
       break;
     }
     time_left -= time_left * trace.fraction;
@@ -1683,7 +1757,7 @@ SV.PushMove = function(pusher, movetime) {
   const moved = [];
   for (let e = 1; e < SV.server.num_edicts; ++e) {
     check = SV.server.edicts[e];
-    if (check.free === true) {
+    if (check.isFree() === true) {
       continue;
     }
     movetype = check.api.movetype;
@@ -1729,9 +1803,7 @@ SV.PushMove = function(pusher, movetime) {
       SV.LinkEdict(pusher);
       pusher.api.ltime -= movetime;
       if (pusher.api.blocked) {
-        SV.server.gameAPI.self = pusher;
-        SV.server.gameAPI.other = check;
-        pusher.api.blocked();
+        pusher.api.blocked(check);
       }
       for (let i = 0; i < moved.length; ++i) {
         const moved_edict = moved[i];
@@ -1763,9 +1835,7 @@ SV.Physics_Pusher = function(ent) {
   }
   ent.api.nextthink = 0.0;
   SV.server.gameAPI.time = SV.server.time;
-  SV.server.gameAPI.self = ent;
-  SV.server.gameAPI.other = null;
-  ent.api.think();
+  ent.api.think(null);
 };
 
 SV.CheckStuck = function(ent) {
@@ -1990,7 +2060,7 @@ SV.Physics_Toss = function(ent) {
   }
   ent.api.angles = ent.api.angles.add(ent.api.avelocity.copy().multiply(Host.frametime));
   const trace = SV.PushEntity(ent, ent.api.velocity.copy().multiply(Host.frametime));
-  if (trace.fraction === 1.0 || ent.free) {
+  if (trace.fraction === 1.0 || ent.isFree()) {
     return;
   }
   const velocity = new Vector();
@@ -2125,7 +2195,7 @@ SV.InitPhysicsEngine = function() {
   // for (let i = 0; i < SV.server.num_edicts; ++i) {
   //   const ent = SV.server.edicts[i];
 
-  //   if (ent.free === true) {
+  //   if (ent.isFree()) {
   //     continue;
   //   }
 
@@ -2157,7 +2227,7 @@ SV.LinkPhysicsEngine = function() {
   for (let i = 0; i < SV.server.num_edicts; ++i) {
     const ent = SV.server.edicts[i];
 
-    if (ent.free === true) {
+    if (ent.isFree()) {
       continue;
     }
 
@@ -2182,7 +2252,7 @@ SV.PhysicsEngineRegisterEdict = function(ent) {
   // // add simple body to all entities
   // // for (let i = 0; i < SV.server.num_edicts; ++i) { // TODO: move this to spawn edict
   // //   const ent = SV.server.edicts[i];
-  // //   if (ent.free === true) {
+  // //   if (ent.isFree() === true) {
   // //     continue;
   // //   }
   //   const classname = ent.api.classname;
@@ -2210,12 +2280,12 @@ SV.PhysicsEngineRegisterEdict = function(ent) {
 
 SV.Physics = function() {
   SV.server.gameAPI.time = SV.server.time;
-  SV.server.gameAPI.other = null;
+  SV.server.gameAPI.other = null; // QuakeC quirks
   SV.server.gameAPI.StartFrame(null);
   let i; let ent;
   for (i = 0; i < SV.server.num_edicts; ++i) {
     ent = SV.server.edicts[i];
-    if (ent.free === true) {
+    if (ent.isFree()) {
       continue;
     }
     if (SV.server.gameAPI.force_retouch !== 0.0) {
@@ -2752,14 +2822,12 @@ SV.TouchLinks = function(ent, node) {
     if (!absmin.lte(touch.api.absmax) || !absmax.gte(touch.api.absmin)) {
       continue;
     }
-    old_self = SV.server.gameAPI.self;
-    old_other = SV.server.gameAPI.other;
-    SV.server.gameAPI.self = touch;
-    SV.server.gameAPI.other = ent;
+    old_self = SV.server.gameAPI.self; // QuakeC quirks
+    old_other = SV.server.gameAPI.other; // QuakeC quirks
     SV.server.gameAPI.time = SV.server.time;
-    touch.api.touch();
-    SV.server.gameAPI.self = old_self;
-    SV.server.gameAPI.other = old_other;
+    touch.api.touch(ent);
+    SV.server.gameAPI.self = old_self; // QuakeC quirks
+    SV.server.gameAPI.other = old_other; // QuakeC quirks
   }
   if (node.axis === -1) {
     return;
@@ -2796,7 +2864,7 @@ SV.FindTouchedLeafs = function(ent, node) {
 };
 
 SV.LinkEdict = function(ent, touch_triggers = false) {
-  if ((ent.equals(SV.server.edicts[0])) || (ent.free === true)) {
+  if (ent.equals(SV.server.edicts[0]) || ent.isFree()) {
     return;
   }
 

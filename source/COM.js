@@ -25,7 +25,7 @@ COM.Parse = function(data) {
   COM.token = '';
   let i = 0; let c;
   if (data.length === 0) {
-    return;
+    return null;
   }
 
   let skipwhite = true;
@@ -80,8 +80,7 @@ COM.Parse = function(data) {
 };
 
 COM.CheckParm = function(parm) {
-  let i;
-  for (i = 1; i < COM.argv.length; ++i) {
+  for (let i = 1; i < COM.argv.length; ++i) {
     if (COM.argv[i] === parm) {
       return i;
     }
@@ -91,8 +90,7 @@ COM.CheckParm = function(parm) {
 };
 
 COM.GetParm = function(parm) {
-  let i;
-  for (i = 1; i < COM.argv.length; ++i) {
+  for (let i = 1; i < COM.argv.length; ++i) {
     if (COM.argv[i] === parm) {
       return COM.argv[i + 1] || null;
     }
@@ -105,7 +103,7 @@ COM.CheckRegistered = async function() {
   const h = await COM.LoadFileAsync('gfx/pop.lmp');
   if (h === null) {
     Con.Print('Playing shareware version.\n');
-    return;
+    return false;
   }
   const check = new Uint8Array(h);
   const pop = [
@@ -126,14 +124,14 @@ COM.CheckRegistered = async function() {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   ];
-  let i;
-  for (i = 0; i < 256; ++i) {
+  for (let i = 0; i < 256; ++i) {
     if (check[i] !== pop[i]) {
       Sys.Error('Corrupted data file.');
     }
   }
   Cvar.Set('registered', '1');
   Con.Print('Playing registered version.\n');
+  return true;
 };
 
 COM.InitArgv = function(argv) {
@@ -190,7 +188,8 @@ COM.Init = async function() {
 COM.Shutdown = function() {
   Sys.Print(`COM.Shutdown: signaling outstanding promises to abort\n`);
 
-  COM._abortController.abort('COM.Shutdown');};
+  COM._abortController.abort('COM.Shutdown');
+};
 
 COM.searchpaths = [];
 
@@ -208,15 +207,15 @@ COM.Path_f = function() {
 
 COM.WriteFile = function(filename, data, len) {
   filename = filename.toLowerCase();
-  const dest = []; let i;
-  for (i = 0; i < len; ++i) {
+  const dest = [];
+  for (let i = 0; i < len; ++i) {
     dest[i] = String.fromCharCode(data[i]);
   }
   try {
     localStorage.setItem('Quake.' + COM.searchpaths[COM.searchpaths.length - 1].filename + '/' + filename, dest.join(''));
   } catch (e) {
     Sys.Print('COM.WriteFile: failed on ' + filename + ', ' + e.message + '\n');
-    return;
+    return false;
   }
   Sys.Print('COM.WriteFile: ' + filename + '\n');
   return true;
@@ -228,7 +227,7 @@ COM.WriteTextFile = function(filename, data) {
     localStorage.setItem('Quake.' + COM.searchpaths[COM.searchpaths.length - 1].filename + '/' + filename, data);
   } catch (e) {
     Sys.Print('COM.WriteTextFile: failed on ' + filename + ', ' + e.message + '\n');
-    return;
+    return false;
   }
   Sys.Print('COM.WriteTextFile: ' + filename + '\n');
   return true;
@@ -418,7 +417,7 @@ COM.LoadFileAsync = async function(filename) {
 COM.LoadTextFile = function(filename) {
   const buf = COM.LoadFile(filename);
   if (buf == null) {
-    return;
+    return null;
   }
   const bufview = new Uint8Array(buf);
   const f = [];
@@ -431,55 +430,114 @@ COM.LoadTextFile = function(filename) {
   return f.join('');
 };
 
-COM.LoadPackFile = async function(packfile) { // FIXME: use actual non-blocking IO
-  const xhr = new XMLHttpRequest();
-  xhr.overrideMimeType('text/plain; charset=x-user-defined');
-  xhr.open('GET', 'data/' + packfile, false);
-  xhr.setRequestHeader('Range', 'bytes=0-11');
+COM.LoadTextFileAsync = async function(filename) {
+  const buf = await COM.LoadFileAsync(filename);
+  if (buf == null) {
+    return null;
+  }
+  const bufview = new Uint8Array(buf);
+  const f = [];
+  for (let i = 0; i < bufview.length; ++i) {
+    if (bufview[i] !== 13) {
+      f[f.length] = String.fromCharCode(bufview[i]);
+    }
+  }
+  return f.join('');
+};
+
+COM.LoadPackFile = async function (packfile) {
+  // Try fetching the header (first 12 bytes).
+  let headerResponse;
   try {
-    xhr.send();
+    headerResponse = await fetch(`data/${packfile}`, {
+      headers: { Range: 'bytes=0-11' }
+    });
   } catch (err) {
     Sys.Error(`COM.LoadPackFile: failed to load ${packfile}, ${err.message}`);
+    return null;
   }
-  if ((xhr.status <= 199) || (xhr.status >= 300) || (xhr.responseText.length !== 12)) {
-    return;
+
+  // If the response is not OK, or we didn't get exactly 12 bytes, bail out.
+  if (!headerResponse.ok) {
+    return null;
   }
-  const header = new DataView(Q.strmem(xhr.responseText));
-  if (header.getUint32(0, true) !== 0x4b434150) {
-    Sys.Error(packfile + ' is not a packfile');
+
+  const headerBuffer = await headerResponse.arrayBuffer();
+  if (headerBuffer.byteLength !== 12) {
+    Sys.Error(`COM.LoadPackFile: expected 12-byte header, got ${headerBuffer.byteLength}`);
+    return null;
   }
-  const dirofs = header.getUint32(4, true);
-  const dirlen = header.getUint32(8, true);
-  const numpackfiles = dirlen >> 6;
+
+  // Parse the pack file header.
+  const headerView = new DataView(headerBuffer);
+  if (headerView.getUint32(0, true) !== 0x4b434150) { // 'PACK'
+    Sys.Error(`${packfile} is not a packfile`);
+    return null;
+  }
+
+  const dirofs = headerView.getUint32(4, true);
+  const dirlen = headerView.getUint32(8, true);
+  const numpackfiles = dirlen >> 6; // dirlen / 64
+
   if (numpackfiles !== 339) {
     COM.modified = true;
   }
-  const pack = [];
-  if (numpackfiles !== 0) {
-    xhr.open('GET', 'data/' + packfile, false);
-    xhr.setRequestHeader('Range', 'bytes=' + dirofs + '-' + (dirofs + dirlen - 1));
-    try {
-      xhr.send();
-    } catch (err) {
-      Sys.Error(`COM.LoadPackFile: failed to load ${packfile}, ${err.message}`);
-    }
-    if ((xhr.status <= 199) || (xhr.status >= 300) || (xhr.responseText.length !== dirlen)) {
-      return;
-    }
-    const info = Q.strmem(xhr.responseText);
-    if (CRC.Block(new Uint8Array(info)) !== 32981) {
-      COM.modified = true;
-    }
-    let i;
-    for (i = 0; i < numpackfiles; ++i) {
-      pack[pack.length] = {
-        name: Q.memstr(new Uint8Array(info, i << 6, 56)).toLowerCase(),
-        filepos: (new DataView(info)).getUint32((i << 6) + 56, true),
-        filelen: (new DataView(info)).getUint32((i << 6) + 60, true),
-      };
-    }
+
+  // If there are no files in the pack, just return an empty array.
+  if (numpackfiles === 0) {
+    Con.Print(`Added packfile ${packfile} (0 files)\n`);
+    return [];
   }
-  Con.Print('Added packfile ' + packfile + ' (' + numpackfiles + ' files)\n');
+
+  // Fetch directory entries using Range for the directory area.
+  let dirResponse;
+  try {
+    dirResponse = await fetch(`data/${packfile}`, {
+      headers: { Range: `bytes=${dirofs}-${dirofs + dirlen - 1}` }
+    });
+  } catch (err) {
+    Sys.Error(`COM.LoadPackFile: failed to load directory of ${packfile}, ${err.message}`);
+    return null;
+  }
+
+  if (!dirResponse.ok) {
+    return null;
+  }
+
+  const dirBuffer = await dirResponse.arrayBuffer();
+  if (dirBuffer.byteLength !== dirlen) {
+    Sys.Error(
+      `COM.LoadPackFile: expected ${dirlen} bytes for directory, got ${dirBuffer.byteLength}`
+    );
+    return null;
+  }
+
+  // Optional CRC check, assuming CRC.Block() still works on a Uint8Array:
+  const dirUint8 = new Uint8Array(dirBuffer);
+  if (CRC.Block(dirUint8) !== 32981) {
+    COM.modified = true;
+  }
+
+  // Parse out the individual file entries in the pack directory.
+  const dirView = new DataView(dirBuffer);
+  const pack = [];
+  for (let i = 0; i < numpackfiles; ++i) {
+    // Each entry is 64 bytes total:
+    //   - 56 bytes: file name (null-padded)
+    //   - 4 bytes:  file position
+    //   - 4 bytes:  file length
+
+    // Convert the "filename" portion to string (using your Q.memstr if needed):
+    const nameBytes = dirUint8.subarray(i * 64, i * 64 + 56);
+    const name = Q.memstr(nameBytes).toLowerCase();
+
+    const filepos = dirView.getUint32(i * 64 + 56, true);
+    const filelen = dirView.getUint32(i * 64 + 60, true);
+
+    pack.push({ name, filepos, filelen });
+  }
+
+  Con.Print(`Added packfile ${packfile} (${numpackfiles} files)\n`);
   return pack;
 };
 

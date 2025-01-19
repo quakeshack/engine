@@ -166,14 +166,13 @@ PF._VarString = function _PF_VarString(first) {
 PF.error = PF._generateBuiltinFunction(function (str) {
   Con.Print('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
   ED.Print(SV.server.gameAPI.self);
-  Host.Error('Program error');
+  Host.Error('Program error: ' + str);
 }, [PR.etype.ev_strings]);
 
 PF.objerror = PF._generateBuiltinFunction(function (str) {
   Con.Print('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
   ED.Print(SV.server.gameAPI.self);
-  Host.Error('Program error');
-
+  Host.Error('Program error: ' + str);
 }, [PR.etype.ev_strings]);
 
 PF.makevectors = PF._generateBuiltinFunction(function (vec) {
@@ -289,13 +288,20 @@ PF.dprint = function PF_dprint() { // EngineInterface
 
 PF.dprint = PF._generateBuiltinFunction((str) => Game.EngineInterface.DebugPrint(str), [PR.etype.ev_strings]);
 
-PF.ftos = PF._generateBuiltinFunction((f) => f.toFixed(1), [PR.etype.ev_float], PR.etype.ev_string);
+PF.ftos = PF._generateBuiltinFunction((f) => parseInt(f) == f ? f.toString() : f.toFixed(1), [PR.etype.ev_float], PR.etype.ev_string);
 
 PF.fabs = PF._generateBuiltinFunction(Math.abs, [PR.etype.ev_float], PR.etype.ev_float);
 
 PF.vtos = PF._generateBuiltinFunction((vec) => vec.toString(), [PR.etype.ev_vector], PR.etype.ev_string);
 
-PF.Spawn = PF._generateBuiltinFunction(Game.EngineInterface.AllocEdict, [], PR.etype.ev_entity);
+PF.Spawn = PF._generateBuiltinFunction(() => {
+  // this is a special null entity we spawn for the QuakeC
+  // it will be automatically populated with an EdictProxy
+  // the JS Game is supposed to use Game.EngineInterface.SpawnEntity
+  const edict = ED.Alloc();
+  SV.server.progsInterfaces.prepareEntity(edict, null, {});
+  return edict;
+}, [], PR.etype.ev_entity);
 
 PF.Remove = PF._generateBuiltinFunction((edict) => edict.freeEdict(), [PR.etype.ev_entity]);
 

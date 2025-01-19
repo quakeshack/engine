@@ -1,4 +1,4 @@
-/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ, Shack */
+/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ, Shack, Game */
 
 // eslint-disable-next-line no-global-assign
 Host = {};
@@ -33,11 +33,11 @@ Host.Error = function(error) {
 
 Host.FindMaxClients = function() {
   SV.svs.maxclients = 1;
-  SV.svs.maxclientslimit = 32;
+  SV.svs.maxclientslimit = Def.max_clients;
+  SV.svs.clients = [];
   if (!Host.dedicated.value) {
     CL.cls.state = CL.active.disconnected;
   }
-  SV.svs.clients = [];
   for (let i = 0; i < SV.svs.maxclientslimit; i++) {
     SV.svs.clients.push({ // TODO: Client class
       num: i,
@@ -47,6 +47,19 @@ Host.FindMaxClients = function() {
       last_ping_update: 0,
       netconnection: null,
       name: '', // must be an empty string, otherwise Sbar is going to bug out
+      edict: null, // connected to an edict upon server spawn
+
+      clear() {
+        this.edict = null;
+        this.netconnection = null;
+        this.message.cursize = 0;
+        this.message.allowoverflow = false;
+        this.colors = 0;
+        this.old_frags = 0;
+        this.last_ping_update = 0;
+        this.active = false;
+        this.name = '';
+      },
 
       consolePrint(message) {
         MSG.WriteByte(this.message, Protocol.svc.print);
@@ -137,6 +150,7 @@ Host.DropClient = function(client, crash, reason) {
   client.active = false;
   SV.SetClientName(client, '');
   client.old_frags = -999999;
+
   --NET.activeconnections;
   let i; const num = client.num;
   for (i = 0; i < SV.svs.maxclients; ++i) {
@@ -160,7 +174,7 @@ Host.DropClient = function(client, crash, reason) {
   }
 };
 
-Host.ShutdownServer = function(crash) {
+Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
   if (SV.server.active !== true) {
     return;
   }
@@ -197,9 +211,10 @@ Host.ShutdownServer = function(crash) {
   for (i = 0; i < SV.svs.maxclients; ++i) {
     const client = SV.svs.clients[i];
     if (client.active) {
-      Host.DropClient(client, crash, 'Server shutting down');
+      Host.DropClient(client, isCrashShutdown, 'Server shutting down');
     }
   }
+  SV.ShutdownServer(isCrashShutdown);
 };
 
 Host.WriteConfiguration = function() {
@@ -618,7 +633,7 @@ Host.Map_f = function() {
     CL.cls.demonum = -1;
     CL.Disconnect();
   }
-  Host.ShutdownServer();
+  Host.ShutdownServer(); // CR: this is the reason why you would need to use changelevel on Counter-Strike 1.6 etc.
   if (!Host.dedicated.value) {
     Key.dest.value = Key.dest.game;
     SCR.BeginLoadingPlaque();
@@ -817,7 +832,7 @@ Host.Savegame_f = function() {
   let ed; let j; let name; let v;
   for (i = 0; i < SV.server.num_edicts; ++i) {
     ed = SV.server.edicts[i];
-    if (ed.free === true) {
+    if (ed.isFree() === true) {
       f[f.length] = '{\n}\n';
       continue;
     }
@@ -940,7 +955,7 @@ Host.Loadgame_f = function() { // TODO: schedule for next frame, add loading scr
     ent.clear();
     ent.free = false;
     data = ED.ParseEdict(data, ent);
-    if (ent.free !== true) {
+    if (ent.isFree() !== true) {
       SV.LinkEdict(ent);
     }
   }
@@ -1176,10 +1191,12 @@ Host.Spawn_f = function() { // signon 2, step 3
   if (SV.server.loadgame === true) {
     SV.server.paused = false;
   } else {
-    ent.clear();
-    ent.api.netname = SV.GetClientName(client);
-    ent.api.colormap = ent.num; // the num, not the entity
-    ent.api.team = (client.colors & 15) + 1;
+    // ent.clear(); // FIXME: there’s a weird edge case
+    SV.server.progsInterfaces.prepareEntity(ent, 'player', {
+      netname: SV.GetClientName(client),
+      colormap: ent.num, // the num, not the entity
+      team: (client.colors & 15) + 1,
+    });
     for (i = 0; i <= 15; ++i) {
       SV.server.gameAPI[`parm${i + 1}`] = client.spawn_parms[i];
     }
@@ -1354,24 +1371,25 @@ Host.Give_f = function() {
     return;
   }
 
-  if (!SV.server.gameAPI[entityClassname]) {
-    Host.ClientPrint('Unknown class: ' + entityClassname + '\n');
-    return;
-  }
-
   // wait for the next server frame
   SV.ScheduleGameCommand(() => {
     const { forward } = player.api.v_angle.angleVectors();
     const origin = forward.multiply(64.0).add(player.api.origin);
 
-    const ent = ED.Alloc();
-    ent.api.origin = origin;
-    ent.api.classname = entityClassname;
-    ent.linkEdict(false);
+    Game.EngineInterface.SpawnEntity(entityClassname, {
+      origin,
+    });
 
-    SV.server.gameAPI[entityClassname](ent);
+    // // playing around with Quake logic:
+    // self.api.nextthink = 0; // disable PlaceItem
+    // self.api.mdl = self.api.model; // so it can be restored on respawn
+    // self.api.flags = 256; // make extra wide
+    // self.api.solid = SV.solid.trigger;
+    // self.api.movetype = SV.movetype.toss;
+    // self.api.velocity = Vector.origin;
+
   });
-
+  // /* old code below */
   // if ((t >= 48) && (t <= 57)) {
   //   if (COM.hipnotic !== true) {
   //     if (t >= 50) {

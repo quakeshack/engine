@@ -146,7 +146,7 @@ Sys = class Sys {
 
         // Set headers and send the file data
         res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader('Cache-Control', Host.developer.value ? 'private, max-age=0' : 'public, max-age=86400');
 
         // Convert ArrayBuffer -> Buffer before sending
         return res.send(Buffer.from(fileData));
