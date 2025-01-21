@@ -210,6 +210,9 @@ class MainMenu extends BaseMenu {
 * there’s no max edict limit anymore
 * removed progsdef logic, I got no need for it anymore
 * integrated webserver denies the browser caching when developer is set to 1
+* temporary entities only have a life on client side
+  * this could be refactored into the client code of QuakeJS
+    * applies to Sbar as well
 
 ### 2025-01-18
 

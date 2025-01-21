@@ -575,8 +575,8 @@ R.DrawAliasModel = function(e) {
     if (dl.die < CL.state.time) {
       continue;
     }
-    add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len(); // [x, y, y]
-    // add = dl.radius - e.origin.copy().subtract(dl.origin).len();
+    // add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len(); // [x, y, y]
+    add = dl.radius - e.origin.copy().subtract(dl.origin).len();
     if (add > 0.0) {
       ambientlight += add;
       shadelight += add;
@@ -1486,12 +1486,12 @@ R.RunParticleEffect = function(org, dir, color, count) {
       die: CL.state.time + 0.6 * Math.random(),
       color: (color & 0xf8) + Math.floor(Math.random() * 8.0),
       type: R.ptype.slowgrav,
-      org: [
+      org: new Vector(
         org[0] + Math.random() * 16.0 - 8.0,
         org[1] + Math.random() * 16.0 - 8.0,
         org[2] + Math.random() * 16.0 - 8.0,
-      ],
-      vel: new Vector(dir[0] * 15.0, dir[1] * 15.0, dir[2] * 15.0),
+      ),
+      vel: dir.copy().multiply(15.0),
     };
   }
 };

@@ -3,6 +3,7 @@
 // eslint-disable-next-line no-global-assign
 Game = {};
 
+// TODO: make it non-static
 Game.EngineInterface = class EngineInterface {
   static BroadcastPrint(str) {
     Host.BroadcastPrint(str);
@@ -165,6 +166,10 @@ Game.EngineInterface = class EngineInterface {
     SV.server.models.push(Mod.ForName(modelName, true));
   }
 
+  static ConsolePrint(str) {
+    Con.Print(str);
+  }
+
   static DebugPrint(str) {
     Con.DPrint(str);
   }
@@ -172,17 +177,21 @@ Game.EngineInterface = class EngineInterface {
   static SpawnEntity(classname, initialData = {}) {
     const edict = ED.Alloc();
 
-    if (!SV.server.progsInterfaces.prepareEntity(edict, classname, initialData)) {
+    if (!SV.server.gameAPI.prepareEntity(edict, classname, initialData)) {
       edict.freeEdict();
       return null;
     }
 
-    if (!SV.server.progsInterfaces.spawnEntity(edict)) {
+    if (!SV.server.gameAPI.spawnEntity(edict)) {
       edict.freeEdict();
       return null;
     }
 
     return edict;
+  }
+
+  static IsLoading() {
+    return SV.server.loading;
   }
 
   // TODO: MSG related methods

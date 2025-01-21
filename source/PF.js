@@ -1,4 +1,4 @@
-/* global Con, Mod, PR, PF, Host, Cmd, Cvar, Vector, ED, SV, Protocol, MSG, Game */
+/* global Con, PR, PF, Host, Cmd, ED, SV, MSG, Game */
 
 // eslint-disable-next-line no-global-assign
 PF = {};
@@ -299,7 +299,7 @@ PF.Spawn = PF._generateBuiltinFunction(() => {
   // it will be automatically populated with an EdictProxy
   // the JS Game is supposed to use Game.EngineInterface.SpawnEntity
   const edict = ED.Alloc();
-  SV.server.progsInterfaces.prepareEntity(edict, null, {});
+  SV.server.gameAPI.prepareEntity(edict, null, {});
   return edict;
 }, [], PR.etype.ev_entity);
 

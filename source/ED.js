@@ -1,4 +1,4 @@
-/* global ED, Host, Con, COM, Host, Cmd, Vector, Q, SV, Sys, Def, PR */
+/* global ED, Host, Con, COM, Host, Cmd, Q, SV, Sys, Def, PR */
 
 // eslint-disable-next-line no-global-assign
 ED = {};
@@ -281,7 +281,7 @@ ED.LoadFromFile = function(data) {
       continue;
     }
 
-    const maySpawn = SV.server.progsInterfaces.prepareEntity(ent, initialData.classname, initialData);
+    const maySpawn = SV.server.gameAPI.prepareEntity(ent, initialData.classname, initialData);
 
     if (!maySpawn) {
       ED.Free(ent);
@@ -289,7 +289,7 @@ ED.LoadFromFile = function(data) {
       continue;
     }
 
-    const spawned = SV.server.progsInterfaces.spawnEntity(ent);
+    const spawned = SV.server.gameAPI.spawnEntity(ent);
 
     if (!spawned) {
       Con.Print(`Could not spawn entity for edict ${ent.num}:\n`);

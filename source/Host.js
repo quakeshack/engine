@@ -385,7 +385,7 @@ Host.Init = async function(dedicated) {
   }
 
   Con.Init();
-  PR.Init();
+  await PR.Init();
   Mod.Init();
   NET.Init();
   SV.Init();
@@ -1192,7 +1192,7 @@ Host.Spawn_f = function() { // signon 2, step 3
     SV.server.paused = false;
   } else {
     // ent.clear(); // FIXME: there’s a weird edge case
-    SV.server.progsInterfaces.prepareEntity(ent, 'player', {
+    SV.server.gameAPI.prepareEntity(ent, 'player', {
       netname: SV.GetClientName(client),
       colormap: ent.num, // the num, not the entity
       team: (client.colors & 15) + 1,

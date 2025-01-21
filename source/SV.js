@@ -1124,9 +1124,7 @@ SV.SpawnServer = function(mapname) {
   Con.DPrint('Clearing memory\n');
   Mod.ClearAll();
 
-  const progsInterfaces = PR.LoadProgs();
-  SV.server.progsInterfaces = progsInterfaces;
-  SV.server.gameAPI = new progsInterfaces.GameAPI();
+  SV.server.gameAPI = PR.QuakeJS ? new PR.QuakeJS.ServerGameAPI(Game.EngineInterface) : PR.LoadProgs();
 
   SV.server.edicts = [];
   // preallocating up to max_edicts, we can extend that later during runtime
@@ -1150,7 +1148,7 @@ SV.SpawnServer = function(mapname) {
     const ent = SV.server.edicts[i + 1];
 
     // we need to spawn the player entity in those client edict slots
-    if (!progsInterfaces.prepareEntity(ent, 'player')) {
+    if (!SV.server.gameAPI.prepareEntity(ent, 'player')) {
       Con.Print('Cannot start server: The game does not know what a player entity is.\n');
       SV.server.active = false;
       return false;
@@ -1205,7 +1203,7 @@ SV.SpawnServer = function(mapname) {
     SV.server.gameAPI.deathmatch = Host.deathmatch.value;
   }
 
-  if (!progsInterfaces.prepareEntity(ent, 'worldspawn', {
+  if (!SV.server.gameAPI.prepareEntity(ent, 'worldspawn', {
     model: SV.server.modelname,
     modelindex: 1,
     solid: SV.solid.bsp,

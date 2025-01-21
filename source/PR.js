@@ -494,8 +494,6 @@ PR.EdictProxy = class ProgsEntity {
           break;
       }
     }
-
-    Object.freeze(this);
   }
 
   clear() {
@@ -508,6 +506,7 @@ PR.EdictProxy = class ProgsEntity {
   }
 
   spawn() {
+    // QuakeC is different, the actual spawn function is called by its classname
     SV.server.gameAPI[this.classname]({num: this._edictNum});
   }
 };
@@ -772,12 +771,12 @@ PR.LoadProgs = function() {
   }
   PR.FunctionProxy.proxyCache = []; // free all cached functions
   // hook up progs.dat with our proxies
-  return {
-    GameAPI: PR.EdictProxy,
 
+  const gameAPI = Object.assign(new PR.EdictProxy(null), {
     prepareEntity(edict, classname, initialData = {}) {
       if (!edict.api) {
         edict.api = new PR.EdictProxy(edict);
+        Object.freeze(edict.api);
       }
 
       // special case for QuakeC: empty entity
@@ -866,10 +865,14 @@ PR.LoadProgs = function() {
 
       return true;
     }
-  };
+  });
+
+  Object.freeze(gameAPI);
+
+  return gameAPI;
 };
 
-PR.Init = function() {
+PR.Init = async function() {
   Cmd.AddCommand('edict', ED.PrintEdict_f);
   Cmd.AddCommand('edicts', ED.PrintEdicts);
   Cmd.AddCommand('edictcount', ED.Count);
@@ -885,6 +888,17 @@ PR.Init = function() {
   Cvar.RegisterVariable('saved2', '0', true);
   Cvar.RegisterVariable('saved3', '0', true);
   Cvar.RegisterVariable('saved4', '0', true);
+
+  try {
+    // try to get the game API
+    PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
+    const identification = PR.QuakeJS.identification;
+    Con.Print('PR.Init: Imported QuakeJS game code:\n');
+    Con.Print(`...author: ${identification.author}\n`);
+    Con.Print(`...version: ${identification.version.join('.')}\n\n${identification.name}\n${'-'.repeat(identification.name.length)}\n\n`);
+  } catch (e) {
+    Con.Print('PR.Init: Unable to load to QuakeJS game code, will fallback to QuakeC: ' + e.message +'\n');
+  }
 };
 
 // exec
