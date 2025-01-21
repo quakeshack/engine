@@ -1,11 +1,12 @@
 
 import { PlayerEntity } from "./entity/Player.mjs";
-import { WorldspawnEntity } from "./entity/Worldspawn.mjs";
+import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
 import { damage, flags, items, moveType, solid } from "./Defs.mjs";
 import * as misc from "./entity/Misc.mjs";
 
 const entityFactories = {
   worldspawn: WorldspawnEntity,
+  bodyque: BodyqueEntity,
   player: PlayerEntity,
 
   info_null: misc.NullEntity,
@@ -29,9 +30,44 @@ export class ServerGameAPI {
    */
   constructor(engineAPI) {
     this.engine = engineAPI; // Game.EngineInterface
+
+    this.coop = 0;
+    this.deathmatch = 0;
+    this.teamplay = 0;
+    this.skill = 0;
+
+    this.force_retouch = 0;
+
+    this.parm1 = 0;
+    this.parm2 = 0;
+    this.parm3 = 0;
+    this.parm4 = 0;
+    this.parm5 = 0;
+    this.parm6 = 0;
+    this.parm7 = 0;
+    this.parm8 = 0;
+    this.parm9 = 0;
+    this.parm10 = 0;
+    this.parm11 = 0;
+    this.parm12 = 0;
+    this.parm13 = 0;
+    this.parm14 = 0;
+    this.parm15 = 0;
+
+    this.serverflags = 0;
+
+    this.time = 0;
+    this.framecount = 0;
+
+    this.other = null; // just a QuakeC engine crutch
+    this.worldspawn = null; // QuakeC: world
+    this.lastworldspawn = null; // QuakeC: lastspawn
   }
 
   StartFrame() {
+    this.teamplay = this.engine.GetCvar('teamplay').value;
+    this.skill = this.engine.GetCvar('skill').value;
+    this.framecount++;
   }
 
   SetNewParms() {
@@ -100,7 +136,7 @@ export class ServerGameAPI {
     return true;
   }
 
-  spawnEntity(edict) {
+  spawnPreparedEntity(edict) {
     if (!edict.api) {
       this.engine.ConsolePrint('Cannot spawn empty edict.');
       return false;

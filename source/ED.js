@@ -289,7 +289,7 @@ ED.LoadFromFile = function(data) {
       continue;
     }
 
-    const spawned = SV.server.gameAPI.spawnEntity(ent);
+    const spawned = SV.server.gameAPI.spawnPreparedEntity(ent);
 
     if (!spawned) {
       Con.Print(`Could not spawn entity for edict ${ent.num}:\n`);

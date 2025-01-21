@@ -174,6 +174,12 @@ Game.EngineInterface = class EngineInterface {
     Con.DPrint(str);
   }
 
+  /**
+   * Spawns a new Entity, not an Edict
+   * @param {string} classname
+   * @param {Object} initialData
+   * @returns
+   */
   static SpawnEntity(classname, initialData = {}) {
     const edict = ED.Alloc();
 
@@ -182,12 +188,12 @@ Game.EngineInterface = class EngineInterface {
       return null;
     }
 
-    if (!SV.server.gameAPI.spawnEntity(edict)) {
+    if (!SV.server.gameAPI.spawnPreparedEntity(edict)) {
       edict.freeEdict();
       return null;
     }
 
-    return edict;
+    return edict.api;
   }
 
   static IsLoading() {

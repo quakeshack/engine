@@ -850,9 +850,9 @@ PR.LoadProgs = function() {
       return true;
     },
 
-    spawnEntity(edict) {
+    spawnPreparedEntity(edict) {
       if (!edict.api) {
-        Con.Print(`PR.LoadProgs.spawnEntity: no entity class instance set\n`);
+        Con.Print(`PR.LoadProgs.spawnPreparedEntity: no entity class instance set\n`);
         return false;
       }
 

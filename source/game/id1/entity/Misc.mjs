@@ -1,4 +1,3 @@
-import { attn } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 
 /**
@@ -9,7 +8,7 @@ export class NullEntity extends BaseEntity {
   classname = 'info_null';
 
   spawn() {
-    this.edict.freeEdict();
+    this.remove();
   }
 };
 
@@ -57,7 +56,7 @@ export class LightEntity extends BaseLightEntity {
 
   spawn() {
     if (!this.targetname) {	// inert light
-      this.edict.freeEdict
+      this.remove();
       return;
     }
 
@@ -113,14 +112,14 @@ export class LightGlobe extends BaseLightEntity {
 
   spawn() {
     this.setModel("progs/s_light.spr");
-    this.edict.makeStatic();
+    this.makeStatic();
   }
 }
 
 class TorchLightEntity extends BaseLightEntity {
   spawn() {
     this.spawnAmbientSound("ambience/fire1.wav");
-    this.edict.makeStatic();
+    this.makeStatic();
   }
 }
 

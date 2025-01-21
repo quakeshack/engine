@@ -34,6 +34,52 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] add some better tooling, maybe a transpile QuakeC to JavaScript?
 * [X] reimplement `ED.Print`
 * [X] reimplement `Host.Give_f`
+* [_] reimplement the Quake game in QuakeJS
+  * [_] abstract model animation state machine
+  * [X] world.qc
+    * [X] worldspawn
+    * [X] bodyque
+    * [_] main (I believe we do not need this)
+  * [_] misc.qc
+    * [X] light entities
+    * [X] info entities
+    * [_] fireball entities
+  * [_] weapons.qc
+    * [X] W_Precache
+    * [_] W_FireAxe
+    * [_] wall_velocity, gibs, etc.
+    * [_] MULTI-DAMAGE
+    * [_] BULLETS
+    * [_] ROCKETS
+    * [_] LIGHTNING
+    * [_] grenades
+    * [_] spikes
+    * [_] PLAYER WEAPON USE
+    * [_] CheatCommand
+    * [_] CycleWeaponCommand
+    * [_] CycleWeaponReverseCommand
+    * [_] ImpulseCommands
+    * [_] W_WeaponFrame, SuperDamageSound
+  * [_] client.qc
+    * [_] info_intermission etc.
+    * [_] SetChangeParms
+    * [_] SetNewParms
+    * [_] DecodeLevelParms
+    * [_] FindIntermission, GotoNextMap, ExitIntermission, IntermissionThink
+    * [_] execute_changelevel, trigger_changelevel entity
+    * [_] PLAYER GAME EDGE FUNCTIONS
+    * [_] ClientKill
+    * [_] SelectSpawnPoint
+    * [#] PutClientInServer
+    * [_] QUAKED FUNCTIONS
+    * [_] RULES, CheckRules etc.
+    * [_] PlayerPreThink
+    * [_] CheckPowerups
+    * [_] PlayerPostThink
+    * [#] ClientConnect
+    * [#] ClientDisconnect
+    * [_] ClientObituary
+
 
 ### Modern JavaScript
 
@@ -200,6 +246,12 @@ class MainMenu extends BaseMenu {
 * integrate a model viewer tool
 
 ## Log
+
+### 2025-01-20
+
+* started reimplementing Quake game logic in QuakeJS
+* changed a few interfaces around
+* I’m again unhappy how I integrated QuakeC VM, it should follow the QuakeJS standard now
 
 ### 2025-01-19
 
