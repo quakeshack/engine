@@ -43,7 +43,14 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] misc.qc
     * [X] light entities
     * [X] info entities
-    * [_] fireball entities
+    * [X] fireball entities
+    * [_] barrel entities
+    * [_] spikeshooter stuff
+    * [_] bubbles
+    * [_] view thing?
+    * [_] SIMPLE BMODELS
+    * [_] ambient sounds
+    * [_] noisemaker
   * [_] weapons.qc
     * [X] W_Precache
     * [_] W_FireAxe
@@ -246,6 +253,20 @@ class MainMenu extends BaseMenu {
 * integrate a model viewer tool
 
 ## Log
+
+### 2025-01-21
+
+* it’s super important that models are set --> physics depend on them
+* this whole edicts have to be there and then you need to split instantiating an entity is super ugly
+* added a QC parser
+  * the structure how I implemented it is not great, needs refactoring
+  * it automatically groups frames into animations by name
+* started adding a state machine to `BaseEntity`
+  * there’s `_initStates` to init states
+  * there’s `_defineState` to add states, similar to what QuakeC has
+* introduced `GameAI` and `EntityAI` to separate logic a bit
+  * GameAI will hold the global state
+  * EntityAI will hold the entity state and provide functions
 
 ### 2025-01-20
 

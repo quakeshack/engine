@@ -36,7 +36,7 @@ export class WorldspawnEntity extends BaseEntity {
   classname = 'worldspawn';
 
   spawn() {
-    this.game.lastworldspawn = this.game.worldspawn;
+    this.game.lastspawn = this.game.worldspawn;
     this.game.worldspawn = this;
 
     InitBodyQue(this.game);

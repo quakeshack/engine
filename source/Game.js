@@ -133,8 +133,8 @@ Game.EngineInterface = class EngineInterface {
     return found;
   }
 
-  static FindByFieldAndValue(field, value, startEdictId = 0) {
-    for (let i = startEdictId; i < SV.server.num_edicts; i++) {
+  static FindByFieldAndValue(field, value, startEdictId = 0) { // FIXME: startEdictId should be edict? not 100% happy about this
+    for (let i = (startEdictId % SV.server.num_edicts); i < SV.server.num_edicts; i++) {
       const ent = SV.server.edicts[i];
 
       if (ent.isFree()) {
@@ -198,6 +198,10 @@ Game.EngineInterface = class EngineInterface {
 
   static IsLoading() {
     return SV.server.loading;
+  }
+
+  static ParseQC(qcContent) {
+    return Mod.ParseQC(qcContent);
   }
 
   // TODO: MSG related methods

@@ -1296,3 +1296,67 @@ Mod.Print = function() {
     Con.Print(Mod.known[i].name + '\n');
   }
 };
+
+Mod.ParseQC = function(qcContent) {
+  const data = {
+    cd: null,
+    origin: new Vector(),
+    base: null,
+    skin: null,
+    frames: [],
+    animations: {},
+  };
+
+  const lines = qcContent.trim().split('\n');
+
+  for (const line of lines) {
+    if (line.trim() === '' || line.startsWith('#')) {
+      continue;
+    }
+
+    const parts = line.split(/\s+/);
+    const [key, value] = [parts.shift(), parts.join(' ')];
+
+    switch (key) {
+      case '$cd':
+        data.cd = value;
+        break;
+
+      case '$origin':
+        data.origin = new Vector(...value.split(/\s+/).map((n) => parseFloat(n)));
+        break;
+
+      case '$base':
+        data.base = value;
+        break;
+
+      case '$skin':
+        data.skin = value;
+        break;
+
+      case '$frame': {
+          const frames = value.split(/\s+/);
+
+          data.frames.push(...frames);
+
+          for (const frame of frames) {
+            const matches = frame.match(/^([^0-9]+)([0-9]+)$/);
+
+            if (matches) {
+              if (!data.animations[matches[1]]) {
+                data.animations[matches[1]] = [];
+              }
+
+              data.animations[matches[1]].push(data.frames.indexOf(matches[0]));
+            }
+          }
+        }
+        break;
+
+      default:
+        Con.Print(`Mod.ParseQC: unknown QC field ${key}\n`);
+    }
+  }
+
+  return data;
+};

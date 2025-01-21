@@ -1,3 +1,6 @@
+/* global Vector */
+
+import { attn, moveType, solid } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 
 /**
@@ -75,10 +78,14 @@ export class LightEntity extends BaseLightEntity {
 export class LightFluoroEntity extends BaseLightEntity {
   classname = 'light_fluoro';
 
+  _precache() {
+    this.engine.PrecacheSound('ambience/fl_hum1.wav');
+  }
+
   spawn() {
     this._defaultStyle();
 
-    this.spawnAmbientSound("ambience/fl_hum1.wav");
+    this.spawnAmbientSound("ambience/fl_hum1.wav", 0.5, attn.ATTN_STATIC);
   }
 }
 
@@ -92,12 +99,16 @@ export class LightFluoroEntity extends BaseLightEntity {
 export class LightFluorosparkEntity extends BaseLightEntity {
   classname = 'light_fluorospark';
 
+  _precache() {
+    this.engine.PrecacheSound('ambience/buzz1.wav');
+  }
+
   spawn() {
     if (!this.style) {
       this.style = 10;
     }
 
-    this.spawnAmbientSound("ambience/buzz1.wav");
+    this.spawnAmbientSound("ambience/buzz1.wav", 0.5, attn.ATTN_STATIC);
   }
 }
 
@@ -110,6 +121,10 @@ export class LightFluorosparkEntity extends BaseLightEntity {
 export class LightGlobe extends BaseLightEntity {
   class = 'light_globe';
 
+  _precache() {
+    this.engine.PrecacheModel('progs/s_light.spr');
+  }
+
   spawn() {
     this.setModel("progs/s_light.spr");
     this.makeStatic();
@@ -117,8 +132,14 @@ export class LightGlobe extends BaseLightEntity {
 }
 
 class TorchLightEntity extends BaseLightEntity {
+  _precache() {
+    this.engine.PrecacheModel('progs/flame.mdl');
+    this.engine.PrecacheModel('progs/flame2.mdl');
+    this.engine.PrecacheSound('ambience/fire1.wav');
+  }
+
   spawn() {
-    this.spawnAmbientSound("ambience/fire1.wav");
+    this.spawnAmbientSound("ambience/fire1.wav", 0.5, attn.ATTN_STATIC);
     this.makeStatic();
   }
 }
@@ -176,5 +197,65 @@ export class WhiteSmallFlameLightEntity extends TorchLightEntity {
   spawn() {
     this.setModel("progs/flame2.mdl");
     super.spawn();
+  }
+}
+
+export class FireballEntity extends BaseEntity {
+  classname = 'fireball';
+
+  _declareFields() {
+    this.speed = 1000;
+  }
+
+  spawn() {
+    this.solid = solid.SOLID_TRIGGER;
+    this.movetype = moveType.MOVETYPE_TOSS;
+    this.velocity = new Vector(
+      (Math.random() * 100) - 50,
+      (Math.random() * 100) - 50,
+      (Math.random() * 200) + this.speed,
+    );
+    this.setModel('progs/lavaball.mdl');
+    this.nextthink = this.game.time + 5.0;
+    this.setSize(Vector.origin, Vector.origin);
+  }
+
+  think() {
+    this.remove();
+  }
+
+  touch(otherEntity) {
+    // TODO: T_Damage(otherEntity, this, this, 20.0)
+    this.engine.ConsolePrint(otherEntity.classname + ' ouch!\n');
+    this.remove();
+  }
+}
+
+/**
+ * QUAKED misc_fireball (0 .5 .8) (-8 -8 -8) (8 8 8)
+ * Lava Balls
+ */
+export class FireballSpawnerEntity extends BaseEntity {
+  classname = 'misc_fireball';
+
+  _declareFields() {
+    this.speed = 1000;
+  }
+
+  _precache() {
+    this.engine.PrecacheModel("progs/lavaball.mdl");
+  }
+
+  spawn() {
+    this.nextthink = this.game.time + Math.random() * 5.0;
+  }
+
+  think() {
+    this.nextthink = this.game.time + Math.random() * 5.0;
+
+    this.engine.SpawnEntity('fireball', {
+      origin: this.origin,
+      speed: this.speed,
+    });
   }
 }

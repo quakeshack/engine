@@ -62,8 +62,8 @@ IN.StartupTouchpad = function() {
     size: 100,             // Diameter of the joystick
     threshold: 0.5,        // Before triggering movement events
     color: 'white',
-    fadeTime: 250          // How quickly the joystick fades out after release
-
+    fadeTime: 250,         // How quickly the joystick fades out after release
+    reset: true,
   });
 
   // Create a semi-joystick in the right zone
@@ -74,6 +74,7 @@ IN.StartupTouchpad = function() {
     threshold: 0.5,
     color: 'white',
     fadeTime: 250,
+    reset: true,
   });
 
   const touchpadData = {
@@ -90,10 +91,10 @@ IN.StartupTouchpad = function() {
   moveJoystick.on('move', (evt, data) => {
     const d = touchpadData.move;
 
-    d.vector[0] += data.vector.x * data.distance;
-    d.vector[1] += data.vector.y * data.distance;
+    d.vector[0] = data.vector.x * data.distance;
+    d.vector[1] = data.vector.y * data.distance;
 
-    // console.log('Left joystick is moving:', data);
+    IN.moveJoystick = data;
   });
 
   moveJoystick.on('end', () => {
@@ -107,10 +108,10 @@ IN.StartupTouchpad = function() {
   lookJoystick.on('move', (evt, data) => {
     const d = touchpadData.look;
 
-    d.vector[0] += data.vector.x * data.distance;
-    d.vector[1] += data.vector.y * data.distance;
+    d.vector[0] = data.vector.x * data.distance;
+    d.vector[1] = data.vector.y * data.distance;
 
-    // console.log('Right joystick is moving:', data);
+    IN.lookJoystick = data;
   });
 
   lookJoystick.on('end', () => {
@@ -130,12 +131,12 @@ IN._TouchpadHandleLook = function() {
   const pitch = CL.m_pitch.value;
   const yaw = CL.m_yaw.value;
 
-  const sensitivity = 1/10; // IN._touchpadData.look.force;
+  const sensitivity = 1.5; // IN._touchpadData.look.force;
   const vector = IN._touchpadData.look.vector;
   const angles = CL.state.viewangles;
 
   angles[0] -= vector[1] * sensitivity * pitch;
-  angles[1] -= vector[0] * sensitivity * yaw;
+  angles[1] -= vector[0] * sensitivity * 2 * yaw;
 
   if (angles[0] > 80.0) {
     angles[0] = 80.0;
@@ -147,7 +148,7 @@ IN._TouchpadHandleLook = function() {
 IN._TouchpadHandleMove = function() {
   const forward = CL.m_forward.value;
   const side = CL.m_side.value;
-  const sensitivity = 1; // IN._touchpadData.look.force;
+  const sensitivity = 10; // IN._touchpadData.look.force;
   const vector = IN._touchpadData.move.vector;
 
   CL.state.cmd.sidemove = side * vector[0] * sensitivity;

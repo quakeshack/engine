@@ -657,7 +657,7 @@ SV.WriteEntitiesToClient = function(clent, msg) {
   const pvs = SV.fatpvs; let ent; let e; let i; let bits; let miss;
   for (e = 1; e < SV.server.num_edicts; ++e) {
     ent = SV.server.edicts[e];
-    if (ent !== clent) {
+    if (!ent.equals(clent)) {
       if (!ent.api) {
         continue;
       }
@@ -780,10 +780,10 @@ SV.WriteClientdataToMessage = function(ent, msg) {
 
   SV.SetIdealPitch();
 
-  if (ent.api.fixangle !== 0.0) {
+  if (ent.api.fixangle) {
     MSG.WriteByte(msg, Protocol.svc.setangle);
     MSG.WriteAngleVector(msg, ent.api.angles);
-    ent.api.fixangle = 0.0;
+    ent.api.fixangle = false;
   };
 
   let bits = Protocol.su.items + Protocol.su.weapon;
@@ -1345,7 +1345,7 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
         if (((ent.api.flags & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === Mod.contents.empty)) {
           return 0;
         }
-        ent.api.origin = trace.endpos;
+        ent.api.origin = ent.api.origin.set(trace.endpos);
         if (relink === true) {
           SV.LinkEdict(ent, true);
         }
@@ -1381,14 +1381,14 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
     const neworg = ent.api.origin.copy();
     neworg[0] += move[0];
     neworg[1] += move[1];
-    ent.api.origin = neworg;
+    ent.api.origin = ent.api.origin.set(neworg);
     if (relink === true) {
       SV.LinkEdict(ent, true);
     }
     ent.api.flags &= (~SV.fl.onground >>> 0);
     return 1;
   }
-  ent.api.origin = trace.endpos;
+  ent.api.origin = ent.api.origin.set(trace.endpos);
   if (SV.CheckBottom(ent) !== true) {
     if ((ent.api.flags & SV.fl.partialground) !== 0) {
       if (relink === true) {
@@ -1396,7 +1396,7 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
       }
       return 1;
     }
-    ent.api.origin = oldorg;
+    ent.api.origin = ent.api.origin.set(oldorg);
     return 0;
   }
   ent.api.flags &= (~SV.fl.partialground >>> 0);
@@ -1447,7 +1447,7 @@ SV.StepDirection = function(ent, yaw, dist) {
   if (SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], false) === 1) {
     const delta = ent.api.angles[1] - ent.api.ideal_yaw;
     if ((delta > 45.0) && (delta < 315.0)) {
-      ent.api.origin = oldorigin;
+      ent.api.origin = ent.api.origin.set(oldorigin);
     }
     SV.LinkEdict(ent, true);
     return true;
@@ -1577,8 +1577,8 @@ SV.CheckVelocity = function(ent) {
     }
     velo[i] = component;
   }
-  ent.api.origin = origin;
-  ent.api.velocity = velo;
+  ent.api.origin = ent.api.origin.set(origin);
+  ent.api.velocity = ent.api.velocity.set(velo);
 };
 
 SV.RunThink = function(ent) {
@@ -1592,7 +1592,7 @@ SV.RunThink = function(ent) {
   ent.api.nextthink = 0.0;
   SV.server.gameAPI.time = thinktime;
   ent.api.think(null);
-  return (ent.isFree() !== true);
+  return !ent.isFree(); // think might have deleted the edict
 };
 
 SV.Impact = function(e1, e2) {
@@ -1650,7 +1650,7 @@ SV.FlyMove = function(ent, time) {
       return 3;
     }
     if (trace.fraction > 0.0) {
-      ent.api.origin = trace.endpos;
+      ent.api.origin = ent.api.origin.set(trace.endpos);
       original_velocity = ent.api.velocity.copy();
       numplanes = 0;
       if (trace.fraction === 1.0) {
@@ -1731,7 +1731,7 @@ SV.PushEntity = function(ent, pushVector) {
     nomonsters = SV.move.normal;
   }
   const trace = SV.Move(ent.api.origin, ent.api.mins, ent.api.maxs, end, nomonsters, ent);
-  ent.api.origin = trace.endpos;
+  ent.api.origin = ent.api.origin.set(trace.endpos);
   SV.LinkEdict(ent, true);
   if (trace.ent) {
     SV.Impact(ent, trace.ent);
@@ -1928,7 +1928,7 @@ SV.TryUnstick = function(ent, oldvel) {
     if (Math.abs(oldorg[1] - curorg[1]) > 4.0 || Math.abs(oldorg[0] - curorg[0]) > 4.0) {
       return clip;
     }
-    ent.api.origin = oldorg;
+    ent.api.origin = ent.api.origin.set(oldorg);
   }
   ent.api.velocity = Vector.origin;
   return 7;
@@ -1957,7 +1957,7 @@ SV.WalkMove = function(ent) {
   }
   const nosteporg = ent.api.origin.copy();
   const nostepvel = ent.api.velocity.copy();
-  ent.api.origin = oldorg;
+  ent.api.origin = ent.api.origin.set(oldorg);
   SV.PushEntity(ent, new Vector(0.0, 0.0, 18.0));
   ent.api.velocity = new Vector(oldvel[0], oldvel[1], 0.0);
   clip = SV.FlyMove(ent, Host.frametime);
@@ -1978,8 +1978,8 @@ SV.WalkMove = function(ent) {
     }
     return;
   }
-  ent.api.origin = nosteporg;
-  ent.api.velocity = nostepvel;
+  ent.api.origin = ent.api.origin.set(nosteporg);
+  ent.api.velocity = ent.api.velocity.set(nostepvel);
 };
 
 SV.Physics_Client = function(ent) {
@@ -2881,8 +2881,8 @@ SV.LinkEdict = function(ent, touch_triggers = false) {
     absmax.add(new Vector( 14.0,  14.0, -1.0));
   }
 
-  ent.api.absmin = absmin;
-  ent.api.absmax = absmax;
+  ent.api.absmin = ent.api.absmin.set(absmin);
+  ent.api.absmax = ent.api.absmax.set(absmax);
 
   ent.leafnums = [];
   if (ent.api.modelindex !== 0.0) {
@@ -2914,7 +2914,7 @@ SV.LinkEdict = function(ent, touch_triggers = false) {
   ent.area.next.prev = ent.area;
   ent.area.ent = ent;
 
-  if (touch_triggers === true) {
+  if (touch_triggers) {
     SV.TouchLinks(ent, SV.areanodes[0]);
   }
 };

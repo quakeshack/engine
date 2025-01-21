@@ -1,8 +1,10 @@
 
-import { PlayerEntity } from "./entity/Player.mjs";
+import { InfoPlayerStart, PlayerEntity } from "./entity/Player.mjs";
 import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
-import { damage, flags, items, moveType, solid } from "./Defs.mjs";
+import { items } from "./Defs.mjs";
 import * as misc from "./entity/Misc.mjs";
+import ArmySoldierMonster from "./entity/monster/Soldier.mjs";
+import { GameAI } from "./helper/AI.mjs";
 
 const entityFactories = {
   worldspawn: WorldspawnEntity,
@@ -11,6 +13,8 @@ const entityFactories = {
 
   info_null: misc.NullEntity,
   info_notnull: misc.InfoNotNullEntity,
+
+  info_player_start: InfoPlayerStart,
 
   viewthing: misc.NullEntity,
 
@@ -21,6 +25,11 @@ const entityFactories = {
   light_flame_large_yellow: misc.YellowLargeFlameLightEntity,
   light_flame_small_yellow: misc.YellowSmallFlameLightEntity,
   light_flame_small_white: misc.WhiteSmallFlameLightEntity,
+
+  misc_fireball: misc.FireballSpawnerEntity,
+  fireball: misc.FireballEntity,
+
+  monster_army: ArmySoldierMonster,
 };
 
 export class ServerGameAPI {
@@ -61,7 +70,45 @@ export class ServerGameAPI {
 
     this.other = null; // just a QuakeC engine crutch
     this.worldspawn = null; // QuakeC: world
-    this.lastworldspawn = null; // QuakeC: lastspawn
+    this.lastspawn = null;
+
+    this.gameAI = new GameAI(this);
+
+    // FIXME: I’m not happy about this, this needs to be next to models
+    this._modelData = {
+      'progs/soldier.mdl': engineAPI.ParseQC(`
+$cd id1/models/soldier3
+$origin 0 -6 24
+$base base
+$skin skin
+
+$frame stand1 stand2 stand3 stand4 stand5 stand6 stand7 stand8
+
+$frame death1 death2 death3 death4 death5 death6 death7 death8
+$frame death9 death10
+
+$frame deathc1 deathc2 deathc3 deathc4 deathc5 deathc6 deathc7 deathc8
+$frame deathc9 deathc10 deathc11
+
+$frame load1 load2 load3 load4 load5 load6 load7 load8 load9 load10 load11
+
+$frame pain1 pain2 pain3 pain4 pain5 pain6
+
+$frame painb1 painb2 painb3 painb4 painb5 painb6 painb7 painb8 painb9 painb10
+$frame painb11 painb12 painb13 painb14
+
+$frame painc1 painc2 painc3 painc4 painc5 painc6 painc7 painc8 painc9 painc10
+$frame painc11 painc12 painc13
+
+$frame run1 run2 run3 run4 run5 run6 run7 run8
+
+$frame shoot1 shoot2 shoot3 shoot4 shoot5 shoot6 shoot7 shoot8 shoot9
+
+$frame prowl_1 prowl_2 prowl_3 prowl_4 prowl_5 prowl_6 prowl_7 prowl_8
+$frame prowl_9 prowl_10 prowl_11 prowl_12 prowl_13 prowl_14 prowl_15 prowl_16
+$frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
+      `),
+    }
   }
 
   StartFrame() {
@@ -104,23 +151,10 @@ export class ServerGameAPI {
   }
 
   PutClientInServer(edict) {
+    // FIXME: move to PlayerEntity
+    const entity = edict.api;
 
-    edict.api.classname = "player";
-    edict.api.health = 100;
-    edict.api.takedamage = damage.DAMAGE_AIM;
-    edict.api.solid = solid.SOLID_SLIDEBOX;
-    edict.api.movetype = moveType.MOVETYPE_WALK;
-    edict.api.show_hostile = 0;
-    edict.api.max_health = 100;
-    edict.api.flags = flags.FL_CLIENT;
-    edict.api.air_finished = this.time + 12;
-    edict.api.dmg = 2;   		// initial water damage
-    edict.api.super_damage_finished = 0;
-    edict.api.radsuit_finished = 0;
-    edict.api.invisible_finished = 0;
-    edict.api.invincible_finished = 0;
-    edict.api.effects = 0;
-    edict.api.invincible_time = 0;
+    entity.putPlayerInServer();
   }
 
   prepareEntity(edict, classname, initialData = {}) {
@@ -129,7 +163,7 @@ export class ServerGameAPI {
       return false;
     }
 
-    const entity = new entityFactories[classname](edict, this);
+    const entity = edict.api?.classname === classname ? edict.api : new entityFactories[classname](edict, this);
 
     entity.assignInitialData(initialData);
 

@@ -1,3 +1,13 @@
+/* global Vector */
+
+export const attackStates = {
+  AS_NONE: 0,
+  AS_STRAIGHT: 1,
+  AS_SLIDING: 2,
+  AS_MELEE: 3,
+  AS_MISSILE: 4,
+};
+
 export const items = {
   IT_AXE:  4096,
   IT_SHOTGUN:  1,
@@ -10,12 +20,38 @@ export const items = {
   IT_EXTRA_WEAPON:  128,
 };
 
+/**
+ * range values
+ */
+export const range = {
+  RANGE_MELEE: 0,
+  RANGE_NEAR: 1,
+  RANGE_MID: 2,
+  RANGE_FAR: 3,
+};
+
+/**
+ * deadflag values
+ */
+export const dead = {
+  DEAD_NO: 0,
+  DEAD_DYING: 1,
+  DEAD_DEAD: 2,
+  DEAD_RESPAWNABLE: 3,
+};
+
+/**
+ * takedamage values
+ */
 export const damage = {
   DAMAGE_NO:  0,
   DAMAGE_YES: 1,
   DAMAGE_AIM: 2,
 };
 
+/**
+ * edict.solid values
+ */
 export const solid = {
   SOLID_NOT:				0,	// no interaction with other objects
   SOLID_TRIGGER:		1,	// touch on edge, but not blocking
@@ -24,6 +60,9 @@ export const solid = {
   SOLID_BSP:				4,	// bsp clip, touch on edge, block
 };
 
+/**
+ * edict.movetype values
+ */
 export const moveType = {
   // edict.movetype values
   MOVETYPE_NONE: 0,	// never moves
@@ -40,6 +79,9 @@ export const moveType = {
   MOVETYPE_BOUNCEMISSILE: 11,	// bounce with extra size
 };
 
+/**
+ * edict.flags
+ */
 export const flags = {
   FL_FLY: 1,
   FL_SWIM: 2,
@@ -60,4 +102,17 @@ export const attn = {
   ATTN_NORM: 1,
   ATTN_IDLE: 2,
   ATTN_STATIC: 3,
+};
+
+export const vec = {
+  /**
+   * @deprecated use Vector.origin directly instead
+   */
+  VEC_ORIGIN: Vector.origin,
+
+  VEC_HULL_MIN: new Vector(-16.0, -16.0, -24.0),
+  VEC_HULL_MAX: new Vector(16.0, 16.0, 32.0),
+
+  VEC_HULL2_MIN: new Vector(-32.0, -32.0, -24.0),
+  VEC_HULL2_MAX: new Vector(32.0, 32.0, 64.0),
 };
