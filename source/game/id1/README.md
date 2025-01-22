@@ -11,13 +11,13 @@ It might not be perfect though, some idiosyncrasis will be sorted out as part of
 
 ### Files
 
-The `main.mjs` file defines the entrypoint of the game. It will export the `GameAPI` class.
+The `main.mjs` file defines the entrypoint of the game. It will export the `ServerGameAPI` class.
 
 ### Edict
 
 The server keeps a list of things in the world in a structure called an Edict.
 
-Edicts will hold information such as position, orientation, velocity etc.
+Edicts will hold information such as baseline of position, orientation, velocity etc. Also keeps track of what part of the map it’s located.
 
 ### Entities
 
@@ -29,6 +29,16 @@ The server has to run every edict and entity
 
 ## Engine Interface
 
-## Game Interface (GameAPI)
+## Game Interface (ServerGameAPI)
+
+* provides game logic
+* provides entities to spawn
+
+## Client Interface (ClientGameAPI)
+
+* draws statusbar/HUD
+* draws overlays
+* provides options for menus
+* configures renderer
 
 

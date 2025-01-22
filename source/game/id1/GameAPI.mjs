@@ -68,7 +68,6 @@ export class ServerGameAPI {
     this.time = 0;
     this.framecount = 0;
 
-    this.other = null; // just a QuakeC engine crutch
     this.worldspawn = null; // QuakeC: world
     this.lastspawn = null;
 

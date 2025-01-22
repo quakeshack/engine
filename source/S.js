@@ -485,7 +485,11 @@ S = {
 
   Shutdown() {
     this.StopAllSounds();
+    setTimeout(() => this.StopAllSounds(), 1000); // poor man’s version of fixing issues
     this._started = false;
+    setTimeout(() => {
+      this._knownSfx = [];
+    }, 1001);
     Con.Print(`S.Shutdown: sound subsystem shut down.\n`);
   },
 
@@ -538,6 +542,10 @@ S = {
         false
       )) {
         this.LoadSound(sfx).catch((error) => {
+          if (!this._started) {
+            return;
+          }
+
           Con.Print(`S.PrecacheSound: async precaching ${name} failed, ${error}\n`);
         });
       }
@@ -575,6 +583,10 @@ S = {
     const data = await COM.LoadFileAsync(`sound/${sfx.name}`);
 
     if (!data) {
+      if (!this._started) {
+        return;
+      }
+
       Con.Print(`S.LoadSound: Couldn't load ${sfx.name}\n`);
       sfx.state = SFX.STATE.FAILED;
       return false;

@@ -115,10 +115,6 @@ Sys.Init = async function() {
 Sys.Quit = function() {
   const $console = document.getElementById('console');
 
-  while ($console.childNodes.length > 0) {
-    $console.removeChild($console.childNodes.item(0));
-  }
-
   if (Sys.frame != null) {
     clearInterval(Sys.frame);
   }
@@ -147,14 +143,26 @@ Sys.Print = function(text) {
   Con.OnLinePrint(text);
 };
 
+Sys.isInError = false;
+
 Sys.Error = function(text) {
+  if (Sys.isInError) {
+    console.warn('Sys.isInError = true', text);
+    // we can end up here multiple times, especially when async functions are also going to throw a tantrum
+    return;
+  }
+
+  Sys.Print('ERROR: ' + text);
+
+  Sys.isInError = true;
+
   // TODO: refactor this in a proper Exception that will be caught and the catch-clause will handle all of this below
-  if (Sys.frame != null) {
+  if (Sys.frame) {
     clearInterval(Sys.frame);
   }
 
-  for (let i = 0; i < Sys.events.length; ++i) {
-    window[Sys.events[i]] = null;
+  for (const event of Sys.events) {
+    window[event] = null;
   }
 
   if (Host.initialized === true) {
@@ -162,9 +170,12 @@ Sys.Error = function(text) {
   }
 
   document.body.style.cursor = 'auto';
+
   if (VID.mainwindow) {
     VID.mainwindow.style.display = 'none';
   }
+
+  document.getElementById('console').style.display = 'block';
 
   const $error = document.getElementById('error');
 

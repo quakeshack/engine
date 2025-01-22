@@ -250,7 +250,7 @@ COM.LoadFile = function(filename) {
     // 1) Try to load from localStorage first
     const localData = localStorage.getItem(`Quake.${netpath}`);
     if (localData !== null) {
-      Sys.Print(`COM.LoadFile: ${netpath}\n`);
+      // Sys.Print(`COM.LoadFile: ${netpath}\n`);
       Draw.EndDisc();
       return Q.strmem(localData);
     }

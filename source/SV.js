@@ -179,7 +179,7 @@ SV.Edict = class Edict {
 
     this.setOrigin(trace.endpos);
     this.api.flags |= SV.fl.onground;
-    this.api.groundentity = trace.ent;
+    this.api.groundentity = trace.ent; // QuakeC quirks
 
     return true;
   }
@@ -466,7 +466,7 @@ SV.StartParticle = function(org, dir, color, count) {
   MSG.WriteByte(datagram, color);
 };
 
-SV.StartSound = function(entity, channel, sample, volume, attenuation) {
+SV.StartSound = function(edict, channel, sample, volume, attenuation) {
   if ((volume < 0) || (volume > 255)) {
     Sys.Error('SV.StartSound: volume = ' + volume);
   }
@@ -512,9 +512,9 @@ SV.StartSound = function(entity, channel, sample, volume, attenuation) {
   if ((field_mask & 2) !== 0) {
     MSG.WriteByte(datagram, Math.floor(attenuation * 64.0));
   }
-  MSG.WriteShort(datagram, (entity.num << 3) + channel);
+  MSG.WriteShort(datagram, (edict.num << 3) + channel);
   MSG.WriteByte(datagram, i);
-  MSG.WriteCoordVector(datagram, entity.api.origin.copy().add(entity.api.mins.copy().add(entity.api.maxs).multiply(0.5)));
+  MSG.WriteCoordVector(datagram, edict.api.origin.copy().add(edict.api.mins.copy().add(edict.api.maxs).multiply(0.5)));
 };
 
 SV.SendServerinfo = function(client) {
@@ -1400,7 +1400,7 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
     return 0;
   }
   ent.api.flags &= (~SV.fl.partialground >>> 0);
-  ent.api.groundentity = trace.ent;
+  ent.api.groundentity = trace.ent; // QuakeC quirks
   if (relink === true) {
     SV.LinkEdict(ent, true);
   }
@@ -1596,19 +1596,14 @@ SV.RunThink = function(ent) {
 };
 
 SV.Impact = function(e1, e2) {
-  const old_self = SV.server.gameAPI.self; // QuakeC quirks
-  const old_other = SV.server.gameAPI.other; // QuakeC quirks
   SV.server.gameAPI.time = SV.server.time;
 
   if (e1.api.touch && (e1.api.solid !== SV.solid.not)) {
-    e1.api.touch(e2);
+    e1.api.touch(e2.api);
   }
   if (e2.api.touch && (e2.api.solid !== SV.solid.not)) {
-    e2.api.touch(e1);
+    e2.api.touch(e1.api);
   }
-
-  SV.server.gameAPI.self = old_self; // QuakeC quirks
-  SV.server.gameAPI.other = old_other; // QuakeC quirks
 };
 
 SV.ClipVelocity = function(vec, normal, out, overbounce) {
@@ -1664,7 +1659,7 @@ SV.FlyMove = function(ent, time) {
       blocked |= 1;
       if (trace.ent.api.solid === SV.solid.bsp) {
         ent.api.flags |= SV.fl.onground;
-        ent.api.groundentity = trace.ent;
+        ent.api.groundentity = trace.ent; // QuakeC quirks
       }
     } else if (trace.plane.normal[2] === 0.0) {
       blocked |= 2;
@@ -1764,7 +1759,7 @@ SV.PushMove = function(pusher, movetime) {
 			(movetype === SV.movetype.noclip)) {
       continue;
     }
-    if (((check.api.flags & SV.fl.onground) === 0) || !check.api.groundentity || !check.api.groundentity.equals(pusher)) {
+    if (((check.api.flags & SV.fl.onground) === 0) || !check.api.groundentity || !check.api.groundentity.equals(pusher)) { // QuakeC quirks
       if (!check.api.absmin.lt(maxs) || !check.api.absmax.gt(mins)) {
         continue;
       }
@@ -1801,7 +1796,7 @@ SV.PushMove = function(pusher, movetime) {
       SV.LinkEdict(pusher);
       pusher.api.ltime -= movetime;
       if (pusher.api.blocked) {
-        pusher.api.blocked(check);
+        pusher.api.blocked(check.api);
       }
       for (let i = 0; i < moved.length; ++i) {
         const moved_edict = moved[i];
@@ -1974,7 +1969,7 @@ SV.WalkMove = function(ent) {
   if (downtrace.plane.normal[2] > 0.7) {
     if (ent.api.solid === SV.solid.bsp) {
       ent.api.flags |= SV.fl.onground;
-      ent.api.groundentity = downtrace.ent;
+      ent.api.groundentity = downtrace.ent; // QuakeC quirks
     }
     return;
   }
@@ -2067,7 +2062,7 @@ SV.Physics_Toss = function(ent) {
   if (trace.plane.normal[2] > 0.7) {
     if (ent.api.velocity[2] < 60.0 || movetype !== SV.movetype.bounce) {
       ent.api.flags |= SV.fl.onground;
-      ent.api.groundentity = trace.ent;
+      ent.api.groundentity = trace.ent; // QuakeC quirks
       ent.api.velocity = Vector.origin;
       ent.api.avelocity = Vector.origin;
     }
@@ -2278,7 +2273,6 @@ SV.PhysicsEngineRegisterEdict = function(ent) {
 
 SV.Physics = function() {
   SV.server.gameAPI.time = SV.server.time;
-  SV.server.gameAPI.other = null; // QuakeC quirks
   SV.server.gameAPI.StartFrame(null);
   let i; let ent;
   for (i = 0; i < SV.server.num_edicts; ++i) {
@@ -2806,11 +2800,10 @@ SV.UnlinkEdict = function(ent) {
 };
 
 SV.TouchLinks = function(ent, node) {
-  let l; let next; let touch; let old_self; let old_other;
   const absmin = ent.api.absmin, absmax = ent.api.absmax;
-  for (l = node.trigger_edicts.next; l !== node.trigger_edicts; l = next) {
+  for (let l = node.trigger_edicts.next, next = null; l !== node.trigger_edicts; l = next) {
     next = l.next;
-    touch = l.ent;
+    const touch = l.ent;
     if (touch === ent) {
       continue;
     }
@@ -2820,12 +2813,8 @@ SV.TouchLinks = function(ent, node) {
     if (!absmin.lte(touch.api.absmax) || !absmax.gte(touch.api.absmin)) {
       continue;
     }
-    old_self = SV.server.gameAPI.self; // QuakeC quirks
-    old_other = SV.server.gameAPI.other; // QuakeC quirks
     SV.server.gameAPI.time = SV.server.time;
-    touch.api.touch(ent);
-    SV.server.gameAPI.self = old_self; // QuakeC quirks
-    SV.server.gameAPI.other = old_other; // QuakeC quirks
+    touch.api.touch(!ent.isFree() ? ent.api : null);
   }
   if (node.axis === -1) {
     return;

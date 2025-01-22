@@ -20,7 +20,9 @@ Host.Error = function(error) {
     Sys.Error('Host.Error: recursively entered');
   }
   Host.inerror = true;
-  SCR.EndLoadingPlaque();
+  if (!Host.dedicated.value) {
+    SCR.EndLoadingPlaque();
+  }
   Con.Print('Host.Error: ' + error + '\n');
   if (SV.server.active === true) {
     Host.ShutdownServer();
@@ -390,6 +392,8 @@ Host.Init = async function(dedicated) {
   NET.Init();
   SV.Init();
   Shack.Init();
+
+  Con.Print (`Exe: ${Def.version}\n`);
 
   if (!dedicated) {
     await VID.Init();

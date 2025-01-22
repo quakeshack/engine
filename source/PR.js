@@ -234,12 +234,13 @@ PR.progheader_crc = 5927;
 PR.FunctionProxy = class FunctionProxy extends Function {
   static proxyCache = [];
 
-  constructor(fnc, ent = null) {
+  constructor(fnc, ent = null, settings = {}) {
     super();
 
     this.fnc = fnc;
     this.ent = ent;
     this._signature = null;
+    this._settings = settings;
 
     const f = PR.functions[this.fnc];
     const name = PR.GetString(f.name);
@@ -256,14 +257,14 @@ PR.FunctionProxy = class FunctionProxy extends Function {
     return `${PR.GetString(PR.functions[this.fnc].name)} (PR.FunctionProxy(${this.fnc}))`;
   }
 
-  static create(fnc, ent) {
+  static create(fnc, ent, settings = {}) {
     const cacheId = `${fnc}-${ent ? ent.num : 'null'}`;
 
     if (FunctionProxy.proxyCache[cacheId]) {
       return FunctionProxy.proxyCache[cacheId];
     }
 
-    const obj = new PR.FunctionProxy(fnc, ent);
+    const obj = new PR.FunctionProxy(fnc, ent, settings);
 
     // such an ugly hack to make objects actually callable
     FunctionProxy.proxyCache[cacheId] = new Proxy(obj, {
@@ -275,23 +276,48 @@ PR.FunctionProxy = class FunctionProxy extends Function {
     return FunctionProxy.proxyCache[cacheId];
   }
 
+  static _getEdictId(ent) {
+    if (!ent) {
+      return 0;
+    }
+
+    if (ent instanceof PR.EdictProxy) {
+      return ent._edictNum;
+    }
+
+    return ent.num;
+  }
+
   /**
    * calls
    * @param {*} self (optional) the edict for self
    */
   call(self) {
-    if (this.ent) {
+    const old_self = PR.globals_int[PR.globalvars.self];
+    const old_other = PR.globals_int[PR.globalvars.other];
+
+    if (this.ent && !this.ent.isFree()) {
       // in case this is a function bound to an entity, we need to set it to self
-      PR.globals_int[PR.globalvars.self] = this.ent.num;
+      PR.globals_int[PR.globalvars.self] = PR.FunctionProxy._getEdictId(this.ent);
 
       // fun little hack, we always assume self being other if this is called on an ent
-      PR.globals_int[PR.globalvars.other] = self ? self.num : 0;
+      PR.globals_int[PR.globalvars.other] = PR.FunctionProxy._getEdictId(self);
     } else if (self) {
       // in case it’s a global function, we need to set self to the first argument
-      PR.globals_int[PR.globalvars.self] = self.num;
+      PR.globals_int[PR.globalvars.self] = PR.FunctionProxy._getEdictId(self);
+    }
+
+    if (this._settings.resetOther) {
+      PR.globals_int[PR.globalvars.other] = 0;
     }
 
     PR.ExecuteProgram(this.fnc);
+
+    if (this._settings.backupSelfAndOther) {
+      PR.globals_int[PR.globalvars.self] = old_self;
+      PR.globals_int[PR.globalvars.other] = old_other;
+    }
+
     return PR.Value(PR.etype.ev_float, PR.globals, 1); // assume float
   }
 }
@@ -312,9 +338,10 @@ PR.EdictProxy = class ProgsEntity {
 
     if (ed) {
       this._edictNum = ed.num;
-      this._v = ed.v = new ArrayBuffer(PR.entityfields * 4);
-      ed.v_float = new Float32Array(this._v); // FIXME: private data for PR/PR only, PR.ExecuteProgram is still using it
-      ed.v_int = new Int32Array(this._v); // FIXME: private data for PR/PR only, PR.ExecuteProgram is still using it
+      this._v = new ArrayBuffer(PR.entityfields * 4);
+      // CR: we need to expose these fields to the edict, because QuakeC loves writing to memory belonging to freed entities
+      ed._v_float = new Float32Array(this._v);
+      ed._v_int = new Int32Array(this._v);
     }
 
     for (let i = 1; i < defs.length; i++) {
@@ -326,7 +353,7 @@ PR.EdictProxy = class ProgsEntity {
         continue;
       }
 
-      const [type, val, ofs] = [d.type & ~PR.saveglobal, ed ? ed.v : PR.globals, d.ofs];
+      const [type, val, ofs] = [d.type & ~PR.saveglobal, ed ? this._v : PR.globals, d.ofs];
 
       if (type & PR.saveglobal === 0) {
         continue;
@@ -360,7 +387,7 @@ PR.EdictProxy = class ProgsEntity {
             enumerable: true,
           });
           break;
-        case PR.etype.ev_entity:
+        case PR.etype.ev_entity: // TODO: actually accept entity instead of edict and vice-versa
           Object.defineProperty(this, name, {
             get: function() {
               s().get++;
@@ -374,7 +401,7 @@ PR.EdictProxy = class ProgsEntity {
                 return null;
               }
 
-              return SV.server.edicts[val_int[ofs]];
+              return SV.server.edicts[val_int[ofs]] || null;
             },
             set: function(value) {
               s().set++;
@@ -404,7 +431,11 @@ PR.EdictProxy = class ProgsEntity {
               if (id < 0 && assignedFunctions[(-id) - 1] instanceof Function) {
                 return assignedFunctions[(-id) - 1];
               }
-              return id > 0 ? PR.FunctionProxy.create(id, ed) : null;
+              return id > 0 ? PR.FunctionProxy.create(id, ed, {
+                // some QuakeC related idiosyncrasis we need to take care of
+                backupSelfAndOther: ['touch'].includes(name),
+                resetOther: ['StartFrame'].includes(name),
+              }) : null;
             },
             set: function(value) {
               s().set++;
@@ -503,6 +534,10 @@ PR.EdictProxy = class ProgsEntity {
         int32[i] = 0;
       }
     }
+  }
+
+  equals(other) {
+    return other && other._edictNum === this._edictNum;
   }
 
   spawn() {
@@ -889,6 +924,7 @@ PR.Init = async function() {
   Cvar.RegisterVariable('saved3', '0', true);
   Cvar.RegisterVariable('saved4', '0', true);
 
+  return;
   try {
     // try to get the game API
     PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
@@ -1212,14 +1248,14 @@ PR.ExecuteProgram = function(fnum) {
       case PR.op.storep_s:
       case PR.op.storep_fnc:
         ptr = PR.globals_int[st.b];
-        SV.server.edicts[Math.floor(ptr / PR.edict_size)].v_int[((ptr % PR.edict_size) - 96) >> 2] = PR.globals_int[st.a];
+        SV.server.edicts[Math.floor(ptr / PR.edict_size)]._v_int[((ptr % PR.edict_size) - 96) >> 2] = PR.globals_int[st.a];
         continue;
       case PR.op.storep_v:
         ed = SV.server.edicts[Math.floor(PR.globals_int[st.b] / PR.edict_size)];
         ptr = ((PR.globals_int[st.b] % PR.edict_size) - 96) >> 2;
-        ed.v_int[ptr] = PR.globals_int[st.a];
-        ed.v_int[ptr + 1] = PR.globals_int[st.a + 1];
-        ed.v_int[ptr + 2] = PR.globals_int[st.a + 2];
+        ed._v_int[ptr] = PR.globals_int[st.a];
+        ed._v_int[ptr + 1] = PR.globals_int[st.a + 1];
+        ed._v_int[ptr + 2] = PR.globals_int[st.a + 2];
         continue;
       case PR.op.address:
         ed = PR.globals_int[st.a];
@@ -1233,14 +1269,14 @@ PR.ExecuteProgram = function(fnum) {
       case PR.op.load_ent:
       case PR.op.load_s:
       case PR.op.load_fnc:
-        PR.globals_int[st.c] = SV.server.edicts[PR.globals_int[st.a]].v_int[PR.globals_int[st.b]];
+        PR.globals_int[st.c] = SV.server.edicts[PR.globals_int[st.a]]._v_int[PR.globals_int[st.b]];
         continue;
       case PR.op.load_v:
         ed = SV.server.edicts[PR.globals_int[st.a]];
         ptr = PR.globals_int[st.b];
-        PR.globals_int[st.c] = ed.v_int[ptr];
-        PR.globals_int[st.c + 1] = ed.v_int[ptr + 1];
-        PR.globals_int[st.c + 2] = ed.v_int[ptr + 2];
+        PR.globals_int[st.c] = ed._v_int[ptr];
+        PR.globals_int[st.c + 1] = ed._v_int[ptr + 1];
+        PR.globals_int[st.c + 2] = ed._v_int[ptr + 2];
         continue;
       case PR.op.jz:
         if (PR.globals_int[st.a] === 0) {
@@ -1301,9 +1337,9 @@ PR.ExecuteProgram = function(fnum) {
         continue;
       case PR.op.state:
         ed = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-        ed.v_float[PR.entvars.nextthink] = PR.globals_float[PR.globalvars.time] + 0.1;
-        ed.v_float[PR.entvars.frame] = PR.globals_float[st.a];
-        ed.v_int[PR.entvars.think] = PR.globals_int[st.b];
+        ed._v_float[PR.entvars.nextthink] = PR.globals_float[PR.globalvars.time] + 0.1;
+        ed._v_float[PR.entvars.frame] = PR.globals_float[st.a];
+        ed._v_int[PR.entvars.think] = PR.globals_int[st.b];
         continue;
     }
     PR.RunError('Bad opcode ' + st.op);

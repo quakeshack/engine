@@ -1,7 +1,7 @@
 /* global Sys, Vector */
 
 // eslint-disable-next-line no-global-assign
-Vector = class Vector extends Array {
+Vector = class Vector extends Float32Array {
   /**
    * Construct a Vector (defaulting to [0,0,0]).
    * Extending Array allows Vector to be used much like a numeric array
@@ -12,6 +12,9 @@ Vector = class Vector extends Array {
     this[0] = x;
     this[1] = y;
     this[2] = z;
+    // if (arguments.length > 3) {
+    //   console.warn('too many arguments for Vector', arguments);
+    // }
     // Ensure correct subclass behavior:
     return this;
   }

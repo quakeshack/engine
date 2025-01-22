@@ -2143,7 +2143,7 @@ R.BuildSurfaceDisplayList = function(fa) {
     } else {
       vec = R.currentmodel.vertexes[R.currentmodel.edges[-index][1]];
     }
-    vert = new Vector(vec[0], vec[1], vec[2]);
+    vert = [vec[0], vec[1], vec[2]];
     if (fa.sky !== true) {
       s = vec.dot(texinfo.vecs[0]) + texinfo.vecs[0][3];
       t = vec.dot(texinfo.vecs[1]) + texinfo.vecs[1][3];
