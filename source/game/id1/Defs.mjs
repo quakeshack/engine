@@ -83,6 +83,7 @@ export const moveType = {
  * edict.flags
  */
 export const flags = {
+  FL_NONE: 0, // CR: used to mark something as “flags here”
   FL_FLY: 1,
   FL_SWIM: 2,
   FL_CLIENT: 8,	// set for all client edicts

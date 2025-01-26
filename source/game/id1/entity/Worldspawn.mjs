@@ -3,7 +3,7 @@ import BaseEntity from "./BaseEntity.mjs";
 import { Precache as WeaponsPrecache } from "./Weapons.mjs";
 
 export class BodyqueEntity extends BaseEntity {
-  classname = 'bodyque';
+  static classname = 'bodyque';
 }
 
 function InitBodyQue(game) {
@@ -33,7 +33,14 @@ export function CopyToBodyQue(game, entity) {
 }
 
 export class WorldspawnEntity extends BaseEntity {
-  classname = 'worldspawn';
+  static classname = 'worldspawn';
+
+  _declareFields() {
+    this.sounds = 0;
+    this.wad = null;
+    this.message = '';
+    this.worldtype = 0; // TODO: explain
+  }
 
   spawn() {
     this.game.lastspawn = this.game.worldspawn;

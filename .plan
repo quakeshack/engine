@@ -34,6 +34,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] add some better tooling, maybe a transpile QuakeC to JavaScript?
 * [X] reimplement `ED.Print`
 * [X] reimplement `Host.Give_f`
+* [_] build something that will take a map from defs and makes sure that some properties must be within that range (for movetype, solid, flags)
 * [_] reimplement the Quake game in QuakeJS
   * [_] abstract model animation state machine
   * [X] world.qc
@@ -69,9 +70,9 @@ Grouped by sections and then sorted by priority (more or less).
     * [_] W_WeaponFrame, SuperDamageSound
   * [_] client.qc
     * [_] info_intermission etc.
-    * [_] SetChangeParms
-    * [_] SetNewParms
-    * [_] DecodeLevelParms
+    * [X] SetChangeParms
+    * [X] SetNewParms
+    * [X] DecodeLevelParms
     * [_] FindIntermission, GotoNextMap, ExitIntermission, IntermissionThink
     * [_] execute_changelevel, trigger_changelevel entity
     * [_] PLAYER GAME EDGE FUNCTIONS
@@ -86,6 +87,11 @@ Grouped by sections and then sorted by priority (more or less).
     * [#] ClientConnect
     * [#] ClientDisconnect
     * [_] ClientObituary
+  * [_] weapons.qc
+    * [X] W_SetCurrentAmmo
+    * [X] W_BestWeapon
+    * [X] W_CheckNoAmmo
+  * [_] subs.qc --> move to helper/Subs.mjs
 
 ### Modern JavaScript
 
@@ -252,6 +258,16 @@ class MainMenu extends BaseMenu {
 * integrate a model viewer tool
 
 ## Log
+
+### 2025-01-25
+
+* Still working on a few structural things in QuakeJS
+* Entities need to have all fields declared
+* Classnames are now static
+
+### 2025-01-24
+
+* ported more QuakeJS features over from QuakeC: weapon handling
 
 ### 2025-01-22
 

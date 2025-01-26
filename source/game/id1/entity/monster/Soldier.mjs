@@ -4,6 +4,8 @@ import { moveType, solid } from "../../Defs.mjs";
 import BaseMonster from "./BaseMonster.mjs";
 
 export default class ArmySoldierMonster extends BaseMonster {
+  static classname = 'monster_army';
+
   _precache() {
     this.engine.PrecacheModel ("progs/soldier.mdl");
     this.engine.PrecacheModel ("progs/h_guard.mdl");

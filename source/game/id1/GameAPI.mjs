@@ -6,31 +6,32 @@ import * as misc from "./entity/Misc.mjs";
 import ArmySoldierMonster from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
 
-const entityFactories = {
-  worldspawn: WorldspawnEntity,
-  bodyque: BodyqueEntity,
-  player: PlayerEntity,
+// put all entity classes here:
+const entityRegistry = [
+  WorldspawnEntity,
+  BodyqueEntity,
+  PlayerEntity,
 
-  info_null: misc.NullEntity,
-  info_notnull: misc.InfoNotNullEntity,
+  misc.NullEntity,
+  misc.InfoNotNullEntity,
 
-  info_player_start: InfoPlayerStart,
+  InfoPlayerStart,
 
-  viewthing: misc.NullEntity,
+  misc.ViewthingEntity,
 
-  light: misc.LightEntity,
-  light_fluorospark: misc.LightFluorosparkEntity,
-  light_fluoro: misc.LightFluoroEntity,
-  light_torch_small_walltorch: misc.SmallWalltorchLightEntity,
-  light_flame_large_yellow: misc.YellowLargeFlameLightEntity,
-  light_flame_small_yellow: misc.YellowSmallFlameLightEntity,
-  light_flame_small_white: misc.WhiteSmallFlameLightEntity,
+  misc.LightEntity,
+  misc.LightFluorosparkEntity,
+  misc.LightFluoroEntity,
+  misc.SmallWalltorchLightEntity,
+  misc.YellowLargeFlameLightEntity,
+  misc.YellowSmallFlameLightEntity,
+  misc.WhiteSmallFlameLightEntity,
 
-  misc_fireball: misc.FireballSpawnerEntity,
-  fireball: misc.FireballEntity,
+  misc.FireballSpawnerEntity,
+  misc.FireballEntity,
 
-  monster_army: ArmySoldierMonster,
-};
+  ArmySoldierMonster,
+];
 
 export class ServerGameAPI {
   /**
@@ -38,6 +39,8 @@ export class ServerGameAPI {
    * @param {Game.EngineInterface} engineAPI
    */
   constructor(engineAPI) {
+    this._loadEntityRegistry();
+
     this.engine = engineAPI; // Game.EngineInterface
 
     this.coop = 0;
@@ -47,6 +50,7 @@ export class ServerGameAPI {
 
     this.force_retouch = 0;
 
+    // checkout Player.decodeLevelParms to understand this
     this.parm1 = 0;
     this.parm2 = 0;
     this.parm3 = 0;
@@ -128,10 +132,22 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
     this.parm9 = 0;
   };
 
+  SetChangeParms(clientEdict) {
+    const clientEntity = clientEdict.api;
+
+    if (!(clientEntity instanceof PlayerEntity)) {
+      throw new Error('SetChangeParms: clientEdict must be a PlayerEntity!');
+    }
+
+    clientEntity.setChangeParms();
+  }
+
+  // eslint-disable-next-line no-unused-vars
   PlayerPreThink(edict) {
 
   }
 
+  // eslint-disable-next-line no-unused-vars
   PlayerPostThink(edict) {
 
   }
@@ -145,24 +161,36 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
     }
   }
 
+  // eslint-disable-next-line no-unused-vars
   ClientDisconnect(clientEdict) {
 
   }
 
   PutClientInServer(edict) {
-    // FIXME: move to PlayerEntity
     const entity = edict.api;
 
     entity.putPlayerInServer();
   }
 
+  /**
+   * simply optimizes the entityRegister into a map for more efficient access
+   */
+  _loadEntityRegistry() {
+    this._entityRegistry = new Map();
+
+    for (const entityClass of entityRegistry) {
+      this._entityRegistry.set(entityClass.classname, entityClass);
+    }
+  }
+
   prepareEntity(edict, classname, initialData = {}) {
-    if (!entityFactories[classname]) {
+    if (!this._entityRegistry.has(classname)) {
       this.engine.ConsolePrint(`ServerGameAPI.prepareEntity: no entity factory for ${classname}!\n`);
       return false;
     }
 
-    const entity = edict.api?.classname === classname ? edict.api : new entityFactories[classname](edict, this);
+    const entityClass = this._entityRegistry.get(classname);
+    const entity = edict.api?.classname === classname ? edict.api : new entityClass(edict, this);
 
     entity.assignInitialData(initialData);
 

@@ -113,8 +113,6 @@ Sys.Init = async function() {
 };
 
 Sys.Quit = function() {
-  const $console = document.getElementById('console');
-
   if (Sys.frame != null) {
     clearInterval(Sys.frame);
   }

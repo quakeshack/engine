@@ -8,7 +8,7 @@ import BaseEntity from "./BaseEntity.mjs";
  * Used as a positional target for spotlights, etc.
  */
 export class NullEntity extends BaseEntity {
-  classname = 'info_null';
+  static classname = 'info_null';
 
   spawn() {
     this.remove();
@@ -20,11 +20,35 @@ export class NullEntity extends BaseEntity {
  * Used as a positional target for lightning.
  */
 export class InfoNotNullEntity extends BaseEntity {
-  classname = 'info_notnull';
+  static classname = 'info_notnull';
+};
+
+/**
+ * QUAKED viewthing (0 .5 .8) (-8 -8 -8) (8 8 8)
+ * Just for the debugging level.  Don't use
+ */
+export class ViewthingEntity extends BaseEntity {
+	static classname = 'viewthing';
+
+  _precache() {
+    this.game.PrecacheModel('progs/player.mdl');
+  }
+
+  spawn() {
+    this.movetype = moveType.MOVETYPE_NONE;
+    this.solid = solid.SOLID_NOT;
+
+    this.setModel('progs/player.mdl');
+  }
 };
 
 class BaseLightEntity extends BaseEntity {
   static START_OFF = 1;
+
+  _declareFields() {
+    this.light_lev = 0;
+    this.style = 0;
+  }
 
   use() {
     if (this.spawnflags & BaseLightEntity.START_OFF) {
@@ -55,7 +79,7 @@ class BaseLightEntity extends BaseEntity {
  * If targeted, it will toggle between on or off.
  */
 export class LightEntity extends BaseLightEntity {
-  classname = 'light';
+  static classname = 'light';
 
   spawn() {
     if (!this.targetname) {	// inert light
@@ -76,7 +100,7 @@ export class LightEntity extends BaseLightEntity {
  * Makes steady fluorescent humming sound
  */
 export class LightFluoroEntity extends BaseLightEntity {
-  classname = 'light_fluoro';
+  static classname = 'light_fluoro';
 
   _precache() {
     this.engine.PrecacheSound('ambience/fl_hum1.wav');
@@ -97,7 +121,7 @@ export class LightFluoroEntity extends BaseLightEntity {
  * Makes sparking, broken fluorescent sound
  */
 export class LightFluorosparkEntity extends BaseLightEntity {
-  classname = 'light_fluorospark';
+  static classname = 'light_fluorospark';
 
   _precache() {
     this.engine.PrecacheSound('ambience/buzz1.wav');
@@ -119,7 +143,7 @@ export class LightFluorosparkEntity extends BaseLightEntity {
  * Default style is 0
  */
 export class LightGlobe extends BaseLightEntity {
-  class = 'light_globe';
+  static class = 'light_globe';
 
   _precache() {
     this.engine.PrecacheModel('progs/s_light.spr');
@@ -151,7 +175,7 @@ class TorchLightEntity extends BaseLightEntity {
  * Default style is 0
  */
 export class SmallWalltorchLightEntity extends TorchLightEntity {
-  classname = 'light_torch_small_walltorch';
+  static classname = 'light_torch_small_walltorch';
 
   spawn() {
     this.setModel("progs/flame.mdl");
@@ -164,7 +188,7 @@ export class SmallWalltorchLightEntity extends TorchLightEntity {
  * Large yellow flame ball
  */
 export class YellowLargeFlameLightEntity extends TorchLightEntity {
-  classname = 'light_flame_large_yellow';
+  static classname = 'light_flame_large_yellow';
 
   spawn() {
     this.setModel("progs/flame2.mdl");
@@ -178,7 +202,7 @@ export class YellowLargeFlameLightEntity extends TorchLightEntity {
  * Small yellow flame ball
  */
 export class YellowSmallFlameLightEntity extends TorchLightEntity {
-  classname = 'light_flame_small_yellow';
+  static classname = 'light_flame_small_yellow';
 
   spawn() {
     this.setModel("progs/flame2.mdl");
@@ -192,7 +216,7 @@ export class YellowSmallFlameLightEntity extends TorchLightEntity {
  * Small white flame ball
  */
 export class WhiteSmallFlameLightEntity extends TorchLightEntity {
-  classname = 'light_flame_small_white';
+  static classname = 'light_flame_small_white';
 
   spawn() {
     this.setModel("progs/flame2.mdl");
@@ -201,7 +225,7 @@ export class WhiteSmallFlameLightEntity extends TorchLightEntity {
 }
 
 export class FireballEntity extends BaseEntity {
-  classname = 'fireball';
+  static classname = 'fireball';
 
   _declareFields() {
     this.speed = 1000;
@@ -236,7 +260,7 @@ export class FireballEntity extends BaseEntity {
  * Lava Balls
  */
 export class FireballSpawnerEntity extends BaseEntity {
-  classname = 'misc_fireball';
+  static classname = 'misc_fireball';
 
   _declareFields() {
     this.speed = 1000;

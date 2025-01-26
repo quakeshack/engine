@@ -1,8 +1,14 @@
 /* global Vector */
 
-import { moveType, solid } from "../Defs.mjs";
+import { damage, dead, flags, moveType, solid } from "../Defs.mjs";
 
 export default class BaseEntity {
+  static classname = null;
+
+  get classname() {
+    return this.constructor.classname;
+  }
+
   constructor(edict, gameAPI) {
     // hooking up the edict and the entity, also the APIs
     this.edict = edict;
@@ -24,6 +30,7 @@ export default class BaseEntity {
     this.avelocity = new Vector();
     this.movetype = moveType.MOVETYPE_NONE;
     this.solid = solid.SOLID_NOT;
+    this.flags = flags.FL_NONE;
 
     // Quake model related
     this.model = null;
@@ -36,8 +43,20 @@ export default class BaseEntity {
     this.keyframe = null;
 
     this.nextthink = 0.0;
-    this.groundentity = null; // this is an edict, not an entity
-    this.chain = null;
+    this.groundentity = null; // FIXME: this is an Edict, not an entity
+    this.chain = null; // this is mainly used by QuakeC, not us
+
+    // relationships between entities
+    this.owner = null; // entity, who launched a missile
+    this.target = null; // entity
+    this.targetname = null; // string
+
+    // attacking and damage related (FIXME: should maybe put this to a different class)
+    this.deadflag = dead.DEAD_NO;
+    this.takedamage = damage.DAMAGE_NO;
+    this.dmg = 0; // CR: find out the values
+    this.show_hostile = 0;
+    this.attack_finished = 0;
 
     this._states = {};
     this._stateNext = null;
@@ -45,6 +64,8 @@ export default class BaseEntity {
 
     this._declareFields();
     this._initStates();
+
+    Object.seal(this);
 
     // this is used to prepopulate fields from ED.LoadFromFile and SV.SpawnServer
     if (this.engine.IsLoading()) {
@@ -139,6 +160,16 @@ export default class BaseEntity {
    */
   assignInitialData(initialData) {
     for (const [key, value] of Object.entries(initialData)) {
+      // special check for classname
+      if (key === 'classname') {
+        if (this.classname !== value) {
+          throw new RangeError('classname from initial data does not match entity classname');
+        }
+
+        // do not set
+        continue;
+      }
+
       switch (true) {
         case this[key] instanceof Vector:
           this[key] = value instanceof Vector ? value.copy() : new Vector(...value.split(' ').map((n) => parseFloat(n)));

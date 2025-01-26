@@ -5,6 +5,9 @@ export default class BaseMonster extends BaseEntity {
   _declareFields() {
     super._declareFields();
 
+    this.pausetime = 0;
+    this.movetarget = null; // entity
+
     this._ai = new EntityAI(this);
   }
 
