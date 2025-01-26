@@ -1,12 +1,75 @@
 /* global Vector */
 
-import { damage, dead, flags, moveType, solid } from "../Defs.mjs";
+import { damage, dead, flags, moveType, solid, content, channel, attn } from "../Defs.mjs";
+
+/**
+ * helper class to deal with flags stored in bits
+ */
+export class Flag {
+  constructor(enumMap, ...values) {
+    this._enum = enumMap;
+    this._value = 0;
+
+    Object.seal(this);
+
+    this.set(...values);
+  }
+
+  toString() {
+    return Object.entries(this._enum)
+      .filter(([, flag]) => (flag > 0 && this._value & flag) === flag)
+      .map(([name]) => name)
+      .join(', ');
+  }
+
+  has(...flags) {
+    for (const flag of flags) {
+      if (this._value & flag === flag) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  set(...flags) {
+    const values = Object.values(this._enum);
+
+    for (const flag of flags) {
+      if (!values.includes(flag)) {
+        throw new TypeError('Unknown flag ' + flag);
+      }
+
+      this._value |= flag;
+    }
+
+    return this;
+  }
+
+  unset(...flags) {
+    for (const flag of flags) {
+      this._value &= ~flag;
+    }
+
+    return this;
+  }
+
+  reset() {
+    this._value = 0;
+
+    return this;
+  }
+}
 
 export default class BaseEntity {
   static classname = null;
 
   get classname() {
     return this.constructor.classname;
+  }
+
+  set classname(_) {
+    throw new TypeError('Cannot set property classname');
   }
 
   constructor(edict, gameAPI) {
@@ -32,6 +95,8 @@ export default class BaseEntity {
     this.solid = solid.SOLID_NOT;
     this.flags = flags.FL_NONE;
     this.spawnflags = 0;
+    this.watertype = content.CONTENT_EMPTY;
+    this.waterlevel = 0;
 
     // Quake model related
     this.model = null;
@@ -53,12 +118,16 @@ export default class BaseEntity {
     this.target = null; // entity
     this.targetname = null; // string
 
+    this.movedir = new Vector(); // mostly for doors, but also used for waterjump
+
     // attacking and damage related (FIXME: should maybe put this to a different class)
     this.deadflag = dead.DEAD_NO;
     this.takedamage = damage.DAMAGE_NO;
     this.dmg = 0; // CR: find out the values
     this.show_hostile = 0;
     this.attack_finished = 0;
+
+    this.message = null; // trigger messages
 
     this._states = {};
     this._stateNext = null;
@@ -181,10 +250,30 @@ export default class BaseEntity {
           this[key] = parseFloat(value);
           break;
 
+        case this[key] instanceof Flag:
+          this[key].reset().set(value);
+          break;
+
         default:
           this[key] = value;
       }
     }
+  }
+
+  /**
+   * QuakeEd only writes a single float for angles (bad idea), so up and down are just constant angles.
+   */
+  _setMovedir() {
+    if (this.angles.equalsTo(0.0, -1.0, 0.0)) {
+      this.movedir.setTo(0.0, 0.0, 1.0);
+    } else if (this.angles.equalsTo(0.0, -2.0, 0.0)) {
+      this.movedir.setTo(0.0, 0.0, -1.0);
+    } else {
+      const { forward } = this.angles.angleVectors();
+      this.movedir.set(forward);
+    }
+
+    this.angles.setTo(0.0, 0.0, 0.0);
   }
 
   setOrigin(origin) {
@@ -197,6 +286,12 @@ export default class BaseEntity {
     }
 
     this.edict.setModel (modelname);
+  }
+
+  unsetModel() {
+    this.modelindex = 0;
+    this.model = null;
+    // FIXME: invoke setModel on edict?
   }
 
   setSize(mins, maxs) {
@@ -240,9 +335,38 @@ export default class BaseEntity {
     this.edict.makeStatic();
   }
 
-  spawnAmbientSound(sfxName, volume, attn) {
-    this.engine.PrecacheSound (sfxName);
-    this.engine.SpawnAmbientSound (this.origin, sfxName, volume, attn);
+  /**
+   * use this in spawn, it will setup an ambient sound
+   * @param {string} sfxName
+   * @param {number} volume
+   * @param {attn} attenuation
+   */
+  spawnAmbientSound(sfxName, volume, attenuation) {
+    this.engine.PrecacheSound(sfxName);
+    this.engine.SpawnAmbientSound (this.origin, sfxName, volume, attenuation);
+  }
+
+  /**
+   * starts a sound bound to an edict
+   * @param {channel} channel
+   * @param {string} sfxName
+   * @param {number} volume
+   * @param {attn} attenuation
+   */
+  startSound(channel, sfxName, volume, attenuation) {
+    this.engine.PrecacheSound(sfxName);
+    this.engine.StartSound(this.edict, channel, sfxName, volume, attenuation)
+  }
+
+  /**
+   * allocated Edict number
+   */
+  get edictId() {
+    return this.edict.num;
+  }
+
+  toString() {
+    return `${this.classname} (Edict ${this.edictId}, ${this.constructor.name})`;
   }
 
   /**
@@ -255,6 +379,9 @@ export default class BaseEntity {
   clear() {
   }
 
+  /**
+   * called upon spawning an entity, sets things like model etc.
+   */
   spawn() {
   }
 
@@ -262,17 +389,41 @@ export default class BaseEntity {
     this._runState();
   }
 
-  // eslint-disable-next-line no-unused-vars
-  use(otherEntity) {
-  }
+  // === Interactions ===
 
+  /**
+   * this object is used (by another player or NPC), invoked by the game code
+   * @param {BaseEntity} touchedByEntity
+   */
   // eslint-disable-next-line no-unused-vars
-  blocked(otherEntity) {
-  }
-
-  touch(otherEntity) {
-    if (otherEntity && otherEntity.classname === 'player') {
-      this.use(otherEntity);
+  use(usedByEntity) {
+    // debug and playing around only
+    if (this.edictId > 0 && usedByEntity.classname === 'player') {
+      usedByEntity.startSound(channel.CHAN_BODY, "misc/talk.wav", 1.0, attn.ATTN_NORM);
+      usedByEntity.centerPrint(
+        `${this}\n\n` +
+        `movetype = ${this.movetype}, ` +
+        `flags = ${new Flag(flags, this.flags)}`);
     }
+  }
+
+  /**
+   * this object is blocked, invoked by the physics engine
+   * @param {BaseEntity} touchedByEntity
+   */
+  // eslint-disable-next-line no-unused-vars
+  blocked(blockedByEntity) {
+  }
+
+  /**
+   * this object is touched, invoked by the physics engine
+   * @param {BaseEntity} touchedByEntity
+   */
+  // eslint-disable-next-line no-unused-vars
+  touch(touchedByEntity) {
+    // // CR: emulating original Quake behavior
+    // if (touchedByEntity && touchedByEntity.classname === 'player') {
+    //   this.use(touchedByEntity);
+    // }
   }
 };

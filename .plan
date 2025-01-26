@@ -16,6 +16,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] R: somewhere dynamic lights are not properly cast
 * [_] PF: need to handle precache more gracefully
 * [_] Host: Load Game and Save Game is now completely broken
+* [X] S/SV/QuakeJS: sounds go crazy, causing insane amount of stress
 
 ### QuakeC / QuakeJS
 
@@ -67,7 +68,7 @@ Grouped by sections and then sorted by priority (more or less).
     * [_] CycleWeaponCommand
     * [_] CycleWeaponReverseCommand
     * [_] ImpulseCommands
-    * [_] W_WeaponFrame, SuperDamageSound
+    * [X] W_WeaponFrame, SuperDamageSound
   * [_] client.qc
     * [_] info_intermission etc.
     * [X] SetChangeParms
@@ -81,9 +82,9 @@ Grouped by sections and then sorted by priority (more or less).
     * [#] PutClientInServer
     * [_] QUAKED FUNCTIONS
     * [_] RULES, CheckRules etc.
-    * [_] PlayerPreThink
+    * [X] PlayerPreThink
     * [_] CheckPowerups
-    * [_] PlayerPostThink
+    * [X] PlayerPostThink
     * [#] ClientConnect
     * [#] ClientDisconnect
     * [_] ClientObituary
@@ -92,6 +93,7 @@ Grouped by sections and then sorted by priority (more or less).
     * [X] W_BestWeapon
     * [X] W_CheckNoAmmo
   * [_] subs.qc --> move to helper/Subs.mjs
+  * [_] player.qc
 
 ### Modern JavaScript
 
@@ -272,6 +274,11 @@ class MainMenu extends BaseMenu {
 * I found `+use`/`-use`, but it’s not fully implemented on the engine side, added it back in
 * Introduced `Host.ScheduleInFuture` for convenient scheduling tasks in the near future
 * Archive Cvars are getting persisted right away
+* Accidentally spammed the sound subsystem by having issues with `watertype` and `waterlevel`
+* View angels are considered for noclip moves now
+* Reimplemented jump
+* Started playing around with `use` and `touch`
+* Started implementing doors
 
 ### 2025-01-25
 

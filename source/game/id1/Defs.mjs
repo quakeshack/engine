@@ -8,18 +8,6 @@ export const attackStates = {
   AS_MISSILE: 4,
 };
 
-export const items = {
-  IT_AXE:  4096,
-  IT_SHOTGUN:  1,
-  IT_SUPER_SHOTGUN:  2,
-  IT_NAILGUN:  4,
-  IT_SUPER_NAILGUN:  8,
-  IT_GRENADE_LAUNCHER:  16,
-  IT_ROCKET_LAUNCHER:  32,
-  IT_LIGHTNING:  64,
-  IT_EXTRA_WEAPON:  128,
-};
-
 /**
  * range values
  */
@@ -98,6 +86,40 @@ export const flags = {
   FL_JUMPRELEASED: 4096,	// for jump debouncing
 };
 
+/**
+ * player items and weapons
+ */
+export const items = {
+  IT_AXE:  4096,
+  IT_SHOTGUN:  1,
+  IT_SUPER_SHOTGUN:  2,
+  IT_NAILGUN:  4,
+  IT_SUPER_NAILGUN:  8,
+  IT_GRENADE_LAUNCHER:  16,
+  IT_ROCKET_LAUNCHER:  32,
+  IT_LIGHTNING:  64,
+  IT_EXTRA_WEAPON:  128,
+
+  IT_KEY1: 131072,
+  IT_KEY2: 262144,
+};
+
+/**
+ * sound channels
+ * channel 0 never willingly overrides
+ * other channels (1-7) always override a playing sound on that channel
+ */
+export const channel = {
+  CHAN_AUTO:		0,
+	CHAN_WEAPON:	1,
+	CHAN_VOICE:		2,
+	CHAN_ITEM:		3,
+	CHAN_BODY:		4,
+};
+
+/**
+ * attenuation
+ */
 export const attn = {
   ATTN_NONE: 0,
   ATTN_NORM: 1,
@@ -116,4 +138,33 @@ export const vec = {
 
   VEC_HULL2_MIN: new Vector(-32.0, -32.0, -24.0),
   VEC_HULL2_MAX: new Vector(32.0, 32.0, 64.0),
+};
+
+/**
+ * point content values
+ */
+export const content = {
+  CONTENT_EMPTY: -1,
+  CONTENT_SOLID: -2,
+  CONTENT_WATER: -3,
+  CONTENT_SLIME: -4,
+  CONTENT_LAVA: -5,
+  CONTENT_SKY: -6,
+};
+
+/**
+ * how the player died
+ */
+export const deathType = {
+  NONE: null,
+  FALLING: 'falling',
+};
+
+/**
+ * worldspawn’s worldtype enum
+ */
+export const worldType = {
+  MEDIEVAL: 0,
+  RUNES: 1,
+  BASE: 2,
 };

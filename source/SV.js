@@ -1977,6 +1977,20 @@ SV.WalkMove = function(ent) {
   ent.api.velocity = ent.api.velocity.set(nostepvel);
 };
 
+SV.NoclipMove = function() {
+  const ent = SV.player, cmd = Host.client.cmd;
+
+  const { forward, right } = ent.api.v_angle.angleVectors();
+
+  const wishvel = new Vector(
+    forward[0] * cmd.forwardmove + right[0] * cmd.sidemove,
+    forward[1] * cmd.forwardmove + right[1] * cmd.sidemove,
+    forward[2] * cmd.forwardmove + right[2] * cmd.sidemove,
+  );
+
+  ent.api.velocity = ent.api.velocity.set(wishvel.multiply(2.0));
+}
+
 SV.Physics_Client = function(ent) {
   if (!ent.getClient().active) {
     return;
@@ -2401,7 +2415,7 @@ SV.Accelerate = function(wishvel, air) {
   ent.api.velocity = ent.api.velocity.add(wishdir.multiply(accelspeed));
 };
 
-SV.WaterMove = function() {
+SV.WaterMove = function() { // Host.client
   const ent = SV.player; const cmd = Host.client.cmd;
   const { forward, right } = ent.api.v_angle.angleVectors();
   const wishvel = new Vector(
@@ -2446,7 +2460,7 @@ SV.WaterMove = function() {
   ent.api.velocity = ent.api.velocity.add(wishvel.multiply(accelspeed / wishspeed));
 };
 
-SV.WaterJump = function() {
+SV.WaterJump = function() { // Host.client
   const ent = SV.player;
   if ((SV.server.time > ent.api.teleport_time) || (ent.api.waterlevel === 0.0)) {
     ent.api.flags &= (~SV.fl.waterjump >>> 0);
@@ -2458,7 +2472,7 @@ SV.WaterJump = function() {
   ent.api.velocity = nvelo;
 };
 
-SV.AirMove = function() {
+SV.AirMove = function() { // Host.client
   const ent = SV.player;
   const cmd = Host.client.cmd;
   const {forward, right} =   ent.api.angles.angleVectors();
@@ -2522,6 +2536,8 @@ SV.ClientThink = function() {
     SV.WaterJump();
   } else if (ent.api.waterlevel >= 2.0 && ent.api.movetype !== SV.movetype.noclip) {
     SV.WaterMove();
+  } else if (ent.api.movetype === SV.movetype.noclip) {
+    SV.NoclipMove();
   } else {
     SV.AirMove();
   }

@@ -3,8 +3,10 @@ import { InfoPlayerStart, PlayerEntity } from "./entity/Player.mjs";
 import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
 import { items } from "./Defs.mjs";
 import * as misc from "./entity/Misc.mjs";
+import * as door from "./entity/props/Doors.mjs";
 import ArmySoldierMonster from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
+import { IntermissionCameraEntity } from "./entity/Client.mjs";
 
 // put all entity classes here:
 const entityRegistry = [
@@ -31,6 +33,10 @@ const entityRegistry = [
   misc.FireballEntity,
 
   ArmySoldierMonster,
+
+  IntermissionCameraEntity,
+
+  door.DoorEntity,
 ];
 
 export class ServerGameAPI {
@@ -75,7 +81,13 @@ export class ServerGameAPI {
     this.worldspawn = null; // QuakeC: world
     this.lastspawn = null;
 
+    this.intermission_running = 0.0;
+    this.intermission_exittime = 0.0;
+
     this.gameAI = new GameAI(this);
+
+    // bodyque ref
+    this.bodyque_head = null;
 
     // FIXME: I’m not happy about this, this needs to be next to models
     this._modelData = {
@@ -111,7 +123,9 @@ $frame prowl_1 prowl_2 prowl_3 prowl_4 prowl_5 prowl_6 prowl_7 prowl_8
 $frame prowl_9 prowl_10 prowl_11 prowl_12 prowl_13 prowl_14 prowl_15 prowl_16
 $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
       `),
-    }
+    };
+
+    Object.seal(this);
   }
 
   StartFrame() {
@@ -132,28 +146,35 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
     this.parm9 = 0;
   };
 
-  SetChangeParms(clientEdict) {
-    const clientEntity = clientEdict.api;
-
+  _assertClientEntityIsPlayerEntity(clientEntity) {
     if (!(clientEntity instanceof PlayerEntity)) {
-      throw new Error('SetChangeParms: clientEdict must be a PlayerEntity!');
+      throw new Error('clientEdict must carry a PlayerEntity!');
     }
-
-    clientEntity.setChangeParms();
   }
 
-  // eslint-disable-next-line no-unused-vars
-  PlayerPreThink(edict) {
-
+  SetChangeParms(clientEdict) {
+    const playerEntity = clientEdict.api;
+    this._assertClientEntityIsPlayerEntity(playerEntity);
+    playerEntity.setChangeParms();
   }
 
-  // eslint-disable-next-line no-unused-vars
-  PlayerPostThink(edict) {
+  PlayerPreThink(clientEdict) {
+    const playerEntity = clientEdict.api;
+    this._assertClientEntityIsPlayerEntity(playerEntity);
+    playerEntity.playerPreThink();
+  }
 
+  PlayerPostThink(clientEdict) {
+    const playerEntity = clientEdict.api;
+    this._assertClientEntityIsPlayerEntity(playerEntity);
+    playerEntity.playerPostThink();
   }
 
   ClientConnect(clientEdict) {
-    this.engine.BroadcastPrint(`${clientEdict.api.netname} entered the game\n`);
+    const playerEntity = clientEdict.api;
+    this._assertClientEntityIsPlayerEntity(playerEntity);
+
+    this.engine.BroadcastPrint(`${playerEntity.netname} entered the game\n`);
 
     // a client connecting during an intermission can cause problems
     if (this.intermissionRunning) {
@@ -161,15 +182,17 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
     }
   }
 
-  // eslint-disable-next-line no-unused-vars
   ClientDisconnect(clientEdict) {
+    const playerEntity = clientEdict.api;
+    this._assertClientEntityIsPlayerEntity(playerEntity);
 
+    // TODO
   }
 
-  PutClientInServer(edict) {
-    const entity = edict.api;
-
-    entity.putPlayerInServer();
+  PutClientInServer(clientEdict) {
+    const playerEntity = clientEdict.api;
+    this._assertClientEntityIsPlayerEntity(playerEntity);
+    playerEntity.putPlayerInServer();
   }
 
   /**

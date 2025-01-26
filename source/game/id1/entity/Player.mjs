@@ -1,7 +1,7 @@
 /* global Vector */
 
-import { damage, dead, flags, items, moveType, solid, vec } from "../Defs.mjs";
-import BaseEntity from "./BaseEntity.mjs";
+import { attn, channel, content, damage, dead, deathType, flags, items, moveType, solid, vec } from "../Defs.mjs";
+import BaseEntity, { Flag } from "./BaseEntity.mjs";
 import { InfoNotNullEntity } from "./Misc.mjs";
 
 /**
@@ -61,11 +61,11 @@ export class PlayerEntity extends BaseEntity {
     // monsters that otherwise would let the player go
     this.show_hostile = 0;
 
-    this.jump_flag = false;		// player jump flag
-    this.swim_flag = false;		// player swimming sound flag
+    this.jump_flag = 0;		// player jump flag (CR: it’s called a flag, but self.jump_flag = self.velocity_z sometimes)
+    this.swim_flag = 0.0;		// player swimming sound flag (CR: it’s called a flag, but it’s a float)
     this.air_finished = 0;	// when time > air_finished, start drowning
     this.bubble_count = 0;	// keeps track of the number of bubbles
-    this.deathtype = null;		// keeps track of how the player died
+    this.deathtype = deathType.NONE;		// keeps track of how the player died
 
     // expiration of items
     this.super_damage_finished = 0;
@@ -73,6 +73,10 @@ export class PlayerEntity extends BaseEntity {
     this.invisible_finished = 0;
     this.invincible_finished = 0;
     this.invincible_time = 0;
+
+    // time related checks
+    this.super_sound = 0; // time for next super attack sound
+    this.use_time = 0;
 
     // multiplayer fun
     this.netname = null;
@@ -93,10 +97,26 @@ export class PlayerEntity extends BaseEntity {
     return this.engine.FindByFieldAndValue('classname', 'info_player_start', this.game.lastspawn ? this.game.lastspawn.edict.num : 0).api;
   }
 
+  /**
+   * prints a centered message
+   * @param {string} message
+   */
+  centerPrint(message) {
+    this.edict.getClient().centerPrint(message);
+  }
+
+  /**
+   * sends a message to the player’s console
+   * @param {string} message
+   */
+  consolePrint(message) {
+    this.edict.getClient().consolePrint(message);
+  }
+
   decodeLevelParms() {
     if (this.game.serverflags) {
       if (this.game.worldspawn.model === "maps/start.bsp") {
-        this.game.SetNewParms ();
+        this.game.SetNewParms();
       }
     }
 
@@ -113,13 +133,13 @@ export class PlayerEntity extends BaseEntity {
 
   setChangeParms() {
     if (this.health <= 0) {
-      this.game.SetNewParms ();
+      this.game.SetNewParms();
       return;
     }
 
     // remove items
     this.items = this.items - (this.items &
-    (items.IT_KEY1 | items.IT_KEY2 | items.IT_INVISIBILITY | items.IT_INVULNERABILITY | items.IT_SUIT | items.IT_QUAD) );
+      (items.IT_KEY1 | items.IT_KEY2 | items.IT_INVISIBILITY | items.IT_INVULNERABILITY | items.IT_SUIT | items.IT_QUAD));
 
     // cap super health
     this.health = Math.max(50, Math.min(100, this.health)); // CR: what about max_health?
@@ -148,7 +168,7 @@ export class PlayerEntity extends BaseEntity {
     // TODO: player_run ();		// get out of any weapon firing states
 
     this.weapon = weapon;
-    this.items = this.items - ( this.items & (items.IT_SHELLS | items.IT_NAILS | items.IT_ROCKETS | items.IT_CELLS) );
+    this.items = this.items - (this.items & (items.IT_SHELLS | items.IT_NAILS | items.IT_ROCKETS | items.IT_CELLS));
 
     const config = weaponConfig.get(this.weapon);
     if (config) {
@@ -188,8 +208,91 @@ export class PlayerEntity extends BaseEntity {
     return bestWeapon;
   };
 
+  /**
+   * QuakeC: self.weapon = W_BestWeapon(); W_SetCurrentAmmo();
+   */
+  selectBestWeapon() {
+    this.setWeapon(this.chooseBestWeapon());
+  }
+
   isOutOfAmmo() {
 
+  }
+
+  handleImpulseCommands() {
+    // TODO
+
+    // if (self.impulse >= 1 && self.impulse <= 8)
+    //   W_ChangeWeapon ();
+
+    // if (self.impulse == 9)
+    //   CheatCommand ();
+    // if (self.impulse == 10)
+    //   CycleWeaponCommand ();
+    // if (self.impulse == 11)
+    //   ServerflagsCommand ();
+    // if (self.impulse == 12)
+    //   CycleWeaponReverseCommand ();
+
+    // if (self.impulse == 255)
+    //   QuadCheat ();
+
+    // self.impulse = 0;
+  }
+
+  _weaponAttack() {
+
+  }
+
+  _weaponFrame() {
+    if (this.game.time < this.attack_finished) {
+      return;
+    }
+
+    this.handleImpulseCommands();
+
+    // check for attack
+    if (this.button0) {
+      this._superDamageSound();
+      this._weaponAttack();
+    }
+  }
+
+  _superDamageSound() {
+    if (this.super_damage_finished > this.game.time && this.super_sound < this.game.time) {
+      this.super_sound = this.game.time + 1.0;
+      this.startSound(channel.CHAN_BODY, "items/damage3.wav", 1, attn.ATTN_NORM);
+    }
+  }
+
+  _useThink() {
+    if (!this.button1) {
+      return;
+    }
+
+    // we only allow every 500ms a use
+    if (this.use_time >= this.game.time) {
+      return;
+    }
+
+    const start = this.origin.copy().add(this.view_ofs);
+    const { forward } = start.angleVectors();
+    const end = start.copy().add(forward.multiply(64.0)); // FIXME: determine best distance
+
+    const mins = new Vector(-64.0, -64.0, -64.0);
+    const maxs = new Vector( 64.0,  64.0,  64.0);
+
+    const trace = this.engine.Traceline(start, end, false, this.edict, mins, maxs);
+
+    // FIXME: handle a proper use entity within reach
+    if (trace.ent && trace.ent.num > 0) {
+      /** @type {BaseEntity} */
+      const entity = trace.ent.api;
+
+      entity.use(this);
+    }
+
+    this.use_time = this.game.time + 0.5;
   }
 
   putPlayerInServer() {
@@ -221,7 +324,7 @@ export class PlayerEntity extends BaseEntity {
     // NOTE: th_pain, th_die set by PlayerEntity
 
     this.deadflag = dead.DEAD_NO;
-    this.pausetime = 0;
+    this.pausetime = 0; // CR: used by teleporters
 
     // TODO: const spot = SelectSpawnPoint()
 
@@ -234,8 +337,151 @@ export class PlayerEntity extends BaseEntity {
 
     this.setSize(vec.VEC_HULL_MIN, vec.VEC_HULL_MAX);
 
-    this.view_ofs = new Vector(0.0, 0.0, 22.0);
+    this.view_ofs.setTo(0.0, 0.0, 22.0);
 
     // TODO: player_stand1, spawn fog, tdeath
+  }
+
+  /**
+   * only called when deadflag is DEAD_DEAD by prethink
+   */
+  _playerDeathThink() {
+    // TODO
+  }
+
+  /**
+   * handles jump pressed down
+   */
+  _playerJump() {
+    if (this.flags & flags.FL_WATERJUMP) {
+      return;
+    }
+
+    if (this.waterlevel >= 2) {
+      if (this.watertype == content.CONTENT_WATER) {
+        this.velocity[2] = 100;
+      } else if (this.watertype == content.CONTENT_SLIME) {
+        this.velocity[2] = 80;
+      } else {
+        this.velocity[2] = 50;
+      }
+
+      // play swiming sound
+      if (this.swim_flag < this.game.time) {
+        this.swim_flag = this.game.time + 1.0;
+        if (Math.random() < 0.5) {
+          this.startSound(this, channel.CHAN_BODY, "misc/water1.wav", 1.0, attn.ATTN_NORM);
+        } else {
+          this.startSound(this, channel.CHAN_BODY, "misc/water2.wav", 1.0, attn.ATTN_NORM);
+        }
+      }
+
+      return;
+    }
+
+    // CR: do not check any flags in noclip mode, make pressing jump move up straight
+    if (this.movetype !== moveType.MOVETYPE_NOCLIP) {
+      if (!(this.flags & flags.FL_ONGROUND)) {
+        return;
+      }
+
+      if (!(this.flags & flags.FL_JUMPRELEASED)) {
+        return;		// don't pogo stick
+      }
+
+      this.flags &= ~flags.FL_JUMPRELEASED;
+      this.flags &= ~flags.FL_ONGROUND;	// don't stairwalk
+
+      this.button2 = 0;
+
+      this.startSound(channel.CHAN_BODY, "player/plyrjmp8.wav", 1.0, attn.ATTN_NORM);
+    }
+
+    this.velocity[2] += 270.0;
+  }
+
+  /**
+   * player thinking before physics,
+   * this is called by the engine per client edict
+   */
+  playerPreThink() {
+    if (this.game.intermission_running) {
+      // TODO: IntermissionThink ();	// otherwise a button could be missed between
+      return;					// the think tics
+    }
+
+    if (this.view_ofs.isOrigin()) {
+      return; // intermission or finale
+    }
+
+    // TODO: CheckRules ();
+    // TODO: WaterMove ();
+
+    if (this.waterlevel === 2) {
+      // TODO: CheckWaterJump ();
+      this.centerPrint('this.waterlevel === 2');
+    }
+
+    if (this.deadflag >= dead.DEAD_DEAD) {
+      this._playerDeathThink();
+      return;
+    }
+
+    if (this.deadflag === dead.DEAD_DYING) {
+      return;	// dying, so do nothing
+    }
+
+    if (this.button2) {
+      this._playerJump();
+    } else {
+      this.flags |= flags.FL_JUMPRELEASED;
+    }
+
+    // teleporters can force a non-moving pause time
+    if (this.game.time < this.pausetime) {
+      this.velocity.clear();
+    }
+
+    if (this.game.time > this.attack_finished && this.currentammo === 0 && this.weapon !== items.IT_AXE) {
+      this.selectBestWeapon();
+    }
+  }
+
+  /**
+   * player thinking after physics,
+   * this is called by the engine per client edict
+   */
+  playerPostThink() {
+    // intermission, finale, or deadish
+    if (this.view_ofs.isOrigin() || this.deadflag !== dead.DEAD_NO) {
+      return;
+    }
+
+    // QuakeShack: handle use requests
+    this._useThink();
+
+    // do weapon stuff
+    this._weaponFrame();
+
+    // check to see if player landed and play landing sound
+    if (this.jump_flag < -300 && (this.flags & flags.FL_ONGROUND) !== 0 && this.health > 0) {
+      if (this.watertype === content.CONTENT_WATER) {
+        this.startSound(channel.CHAN_BODY, "player/h2ojump.wav", 1.0, attn.ATTN_NORM);
+      } else if (this.jump_flag < -650) {
+        // TODO: T_Damage (self, world, world, 5);
+        this.startSound(channel.CHAN_VOICE, "player/land2.wav", 1.0, attn.ATTN_NORM);
+        this.deathtype = deathType.FALLING;
+      } else {
+        this.startSound(channel.CHAN_VOICE, "player/land.wav", 1.0, attn.ATTN_NORM);
+      }
+
+      this.jump_flag = 0;
+    }
+
+    if (!(this.flags & flags.FL_ONGROUND)) {
+      this.jump_flag = this.velocity[2];
+    }
+
+    // TODO: CheckPowerups()
   }
 };

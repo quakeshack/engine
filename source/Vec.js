@@ -3,11 +3,11 @@
 // eslint-disable-next-line no-global-assign
 Vector = class Vector extends Float32Array {
   /**
-   * Construct a Vector (defaulting to [0,0,0]).
+   * Construct a Vector (defaulting to [0.0, 0.0, 0.0]).
    * Extending Array allows Vector to be used much like a numeric array
    * but still benefit from instance methods here.
    */
-  constructor(x = 0, y = 0, z = 0) {
+  constructor(x = 0.0, y = 0.0, z = 0.0) {
     super(3);
     this[0] = x;
     this[1] = y;
@@ -315,6 +315,17 @@ Vector = class Vector extends Float32Array {
   }
 
   /**
+   * Check if [x, y, z] equals this vector.
+   * @param {number} x
+   * @param {number} y
+   * @param {number} z
+   * @returns {boolean}
+   */
+  equalsTo(x, y, z) {
+    return this[0] === x && this[1] === y && this[2] === z;
+  }
+
+  /**
    * Check if this vector is greater than other.
    * @param {Vector|Array} other
    * @returns {this}
@@ -359,6 +370,20 @@ Vector = class Vector extends Float32Array {
     this[0] = other[0];
     this[1] = other[1];
     this[2] = other[2];
+    return this;
+  }
+
+  /**
+   * Sets this vector to [x, y, z].
+   * @param {number} x
+   * @param {number} y
+   * @param {number} z
+   * @returns {this}
+   */
+  setTo(x, y, z) {
+    this[0] = x
+    this[1] = y
+    this[2] = z
     return this;
   }
 
