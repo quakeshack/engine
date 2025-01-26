@@ -1369,9 +1369,8 @@ R.EntityParticles = function(ent) {
 };
 
 R.ClearParticles = function() {
-  let i;
   R.particles = [];
-  for (i = 0; i < R.numparticles; ++i) {
+  for (let i = 0; i < R.numparticles; ++i) {
     R.particles[i] = {die: -1.0};
   }
 };
@@ -1424,8 +1423,8 @@ R.ParseParticleEffect = function() {
 };
 
 R.ParticleExplosion = function(org) {
-  const allocated = R.AllocParticles(1024); let i;
-  for (i = 0; i < allocated.length; ++i) {
+  const allocated = R.AllocParticles(1024);
+  for (let i = 0; i < allocated.length; ++i) {
     R.particles[allocated[i]] = {
       die: CL.state.time + 5.0,
       color: R.ramp1[0],
@@ -1442,8 +1441,9 @@ R.ParticleExplosion = function(org) {
 };
 
 R.ParticleExplosion2 = function(org, colorStart, colorLength) {
-  const allocated = R.AllocParticles(512); let i; let colorMod = 0;
-  for (i = 0; i < allocated.length; ++i) {
+  const allocated = R.AllocParticles(512);
+  let colorMod = 0;
+  for (let i = 0; i < allocated.length; ++i) {
     R.particles[allocated[i]] = {
       die: CL.state.time + 0.3,
       color: colorStart + (colorMod++ % colorLength),
@@ -1459,9 +1459,9 @@ R.ParticleExplosion2 = function(org, colorStart, colorLength) {
 };
 
 R.BlobExplosion = function(org) {
-  const allocated = R.AllocParticles(1024); let i; let p;
-  for (i = 0; i < allocated.length; ++i) {
-    p = R.particles[allocated[i]];
+  const allocated = R.AllocParticles(1024);
+  for (let i = 0; i < allocated.length; ++i) {
+    const p = R.particles[allocated[i]];
     p.die = CL.state.time + 1.0 + Math.random() * 0.4;
     if ((i & 1) !== 0) {
       p.type = R.ptype.blob;
@@ -1497,13 +1497,14 @@ R.RunParticleEffect = function(org, dir, color, count) {
 };
 
 R.LavaSplash = function(org) {
-  const allocated = R.AllocParticles(1024); let k = 0; let p;
+  const allocated = R.AllocParticles(1024);
+  let k = 0;
   for (let i = -16; i <= 15; ++i) {
     for (let j = -16; j <= 15; ++j) {
       if (k >= allocated.length) {
         return;
       }
-      p = R.particles[allocated[k++]];
+      const p = R.particles[allocated[k++]];
       p.die = CL.state.time + 2.0 + Math.random() * 0.64;
       p.color = 224 + Math.floor(Math.random() * 8.0);
       p.type = R.ptype.slowgrav;
@@ -1516,14 +1517,15 @@ R.LavaSplash = function(org) {
 };
 
 R.TeleportSplash = function(org) {
-  const allocated = R.AllocParticles(896); let k; let l = 0; let p;
+  const allocated = R.AllocParticles(896);
+  let l = 0;
   for (let i = -16; i <= 15; i += 4) {
     for (let j = -16; j <= 15; j += 4) {
-      for (k = -24; k <= 31; k += 4) {
+      for (let k = -24; k <= 31; k += 4) {
         if (l >= allocated.length) {
           return;
         }
-        p = R.particles[allocated[l++]];
+        const p = R.particles[allocated[l++]];
         p.die = CL.state.time + 0.2 + Math.random() * 0.16;
         p.color = 7 + Math.floor(Math.random() * 8.0);
         p.type = R.ptype.slowgrav;
@@ -1559,9 +1561,8 @@ R.RocketTrail = function(start, end, type) {
     allocated = R.AllocParticles(Math.floor(len / 3.0));
   }
 
-  let i; let p;
-  for (i = 0; i < allocated.length; ++i) {
-    p = R.particles[allocated[i]];
+  for (let i = 0; i < allocated.length; ++i) {
+    const p = R.particles[allocated[i]];
     p.vel = new Vector();
     p.die = CL.state.time + 2.0;
     switch (type) {

@@ -220,7 +220,10 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
 };
 
 Host.WriteConfiguration = function() {
-  COM.WriteTextFile('config.cfg', (!Host.dedicated.value ? Key.WriteBindings() : '') + Cvar.WriteVariables());
+  Host.ScheduleInFuture('Host.WriteConfiguration', () => {
+    COM.WriteTextFile('config.cfg', (!Host.dedicated.value ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
+    Con.Print('Wrote configuration\n');
+  }, 5.000);
 };
 
 Host.WriteConfiguration_f = function() {
@@ -243,7 +246,25 @@ Host.ServerFrame = function() {
 Host._scheduledForNextFrame = [];
 Host.ScheduleForNextFrame = function(callback) {
   Host._scheduledForNextFrame.push(callback);
-}
+};
+
+Host._scheduleInFuture = new Map();
+Host.ScheduleInFuture = function(name, callback, whenInSeconds) {
+  if (Host.isdown) {
+    // there’s no future when shutting down
+    callback();
+    return;
+  }
+
+  if (Host._scheduleInFuture.has(name)) {
+    return;
+  }
+
+  Host._scheduleInFuture.set(name, {
+    time: Host.realtime + whenInSeconds,
+    callback,
+  });
+};
 
 Host.time3 = 0.0;
 Host._Frame = function() {
@@ -262,9 +283,20 @@ Host._Frame = function() {
     }
   }
 
+  // check all scheduled things for the next frame
   while (Host._scheduledForNextFrame.length > 0) {
     const callback = Host._scheduledForNextFrame.shift();
     callback();
+  }
+
+  // check what’s scheduled in future
+  for (const [name, { time, callback }] of Host._scheduleInFuture.entries()) {
+    if (time > Host.realtime) {
+      continue;
+    }
+
+    callback();
+    Host._scheduleInFuture.delete(name);
   }
 
   if (Host.dedicated.value) {

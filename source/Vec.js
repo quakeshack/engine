@@ -33,6 +33,7 @@ Vector = class Vector extends Float32Array {
   perpendicular() {
     let pos = 0;
     let minelem = 1;
+
     // Find whichever component is the smallest in absolute value:
     for (let i = 0; i < 3; i++) {
       const absVal = Math.abs(this[i]);
@@ -41,8 +42,9 @@ Vector = class Vector extends Float32Array {
         minelem = absVal;
       }
     }
+
     // Construct a temporary vector with 1.0 in that dimension:
-    const temp = new Vector(0.0, 0.0, 0.0);
+    const temp = new Vector();
     temp[pos] = 1.0;
 
     // Compute the projection and subtract it:
@@ -72,6 +74,7 @@ Vector = class Vector extends Float32Array {
       [vectorR[1], up[1], this[1]],
       [vectorR[2], up[2], this[2]],
     ];
+
     const im = [
       [m[0][0], m[1][0], m[2][0]],
       [m[0][1], m[1][1], m[2][1]],
@@ -84,16 +87,13 @@ Vector = class Vector extends Float32Array {
 
     // Rotation about Z-axis by `degrees`:
     const zrot = [
-      [c,      s,  0.0],
-      [-s,     c,  0.0],
+      [  c,    s,  0.0],
+      [ -s,    c,  0.0],
       [0.0,  0.0,  1.0],
     ];
 
     // Combine the rotations:
-    const matrixRot = Vector.concatRotations(
-      Vector.concatRotations(m, zrot),
-      im
-    );
+    const matrixRot = Vector.concatRotations(Vector.concatRotations(m, zrot), im);
 
     // Apply to point:
     const x = matrixRot[0][0] * point[0] + matrixRot[0][1] * point[1] + matrixRot[0][2] * point[2];
@@ -190,19 +190,18 @@ Vector = class Vector extends Float32Array {
     const sr = Math.sin(angle);
     const cr = Math.cos(angle);
 
-    // Forward
     const forward = new Vector(
       cp * cy,
       cp * sy,
       -sp
     );
-    // Right
+
     const right = new Vector(
       cr * sy - sr * sp * cy,
       -sr * sp * sy - cr * cy,
       -sr * cp
     );
-    // Up
+
     const up = new Vector(
       cr * sp * cy + sr * sy,
       cr * sp * sy - sr * cy,
@@ -272,7 +271,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Add other to this vector (component-wise).
-   * @param {Vec|Array} other
+   * @param {Vector|Array} other
    * @returns {this}
    */
   add(other) {
@@ -284,7 +283,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Subtract other from this vector (component-wise).
-   * @param {Vec|Array} other
+   * @param {Vector|Array} other
    * @returns {this}
    */
   subtract(other) {
@@ -308,7 +307,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if other equals this vector.
-   * @param {Vector} other
+   * @param {Vector|Array} other
    * @returns {this}
    */
   equals(other) {
@@ -317,7 +316,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is greater than other.
-   * @param {Vector} other
+   * @param {Vector|Array} other
    * @returns {this}
    */
   gt(other) {
@@ -326,7 +325,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is greater than or equal to other.
-   * @param {Vector} other
+   * @param {Vector|Array} other
    * @returns {this}
    */
   gte(other) {
@@ -335,7 +334,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is less than other.
-   * @param {Vector} other
+   * @param {Vector|Array} other
    * @returns {this}
    */
   lt(other) {
@@ -344,7 +343,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is less than or equal to other.
-   * @param {Vector} other
+   * @param {Vector|Array} other
    * @returns {this}
    */
   lte(other) {
@@ -353,7 +352,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Overwrite this vector with values from other.
-   * @param {Vector} other
+   * @param {Vector|Array} other
    * @returns {this}
    */
   set(other) {

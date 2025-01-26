@@ -29,6 +29,11 @@ Cvar = class Cvar {
       Host.BroadcastPrint(`"${variable.name}" changed to "${variable.string}"\n`);
     }
 
+    // CR: automatically save when an archive Cvar changed
+    if (variable.archive && changed && Host.initialized) {
+      Host.WriteConfiguration();
+    }
+
     return true;
   }
 

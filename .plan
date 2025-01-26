@@ -48,7 +48,7 @@ Grouped by sections and then sorted by priority (more or less).
     * [_] barrel entities
     * [_] spikeshooter stuff
     * [_] bubbles
-    * [_] view thing?
+    * [X] view thing?
     * [_] SIMPLE BMODELS
     * [_] ambient sounds
     * [_] noisemaker
@@ -257,7 +257,21 @@ class MainMenu extends BaseMenu {
 * integrate some debugging tools like a texture and pic browser
 * integrate a model viewer tool
 
+## Resources
+
+* https://quake.fandom.com/wiki/Console_Commands_(Q1)
+* https://quakewiki.org/wiki/Quake_BSP_Format
+  * some insights on the evolution of BSP formats
+* https://www.gamers.org/dEngine/quake/spec/quake-spec34/qkspec_4.htm
+  * mentions the formula on how to calculate light levels
+
 ## Log
+
+### 2025-01-26
+
+* I found `+use`/`-use`, but it’s not fully implemented on the engine side, added it back in
+* Introduced `Host.ScheduleInFuture` for convenient scheduling tasks in the near future
+* Archive Cvars are getting persisted right away
 
 ### 2025-01-25
 

@@ -419,14 +419,22 @@ CL.SendMove = function() {
   MSG.WriteShort(buf, CL.state.cmd.sidemove);
   MSG.WriteShort(buf, CL.state.cmd.upmove);
   let bits = 0;
+
   if ((CL.kbuttons[CL.kbutton.attack].state & 3) !== 0) {
     bits += 1;
   }
   CL.kbuttons[CL.kbutton.attack].state &= 5;
+
   if ((CL.kbuttons[CL.kbutton.jump].state & 3) !== 0) {
     bits += 2;
   }
   CL.kbuttons[CL.kbutton.jump].state &= 5;
+
+  if ((CL.kbuttons[CL.kbutton.use].state & 3) !== 0) {
+    bits += 4;
+  }
+  CL.kbuttons[CL.kbutton.use].state &= 5;
+
   MSG.WriteByte(buf, bits);
   MSG.WriteByte(buf, CL.impulse);
   CL.impulse = 0;

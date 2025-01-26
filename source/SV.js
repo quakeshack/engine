@@ -2533,12 +2533,14 @@ SV.ReadClientMove = function(client) {
   client.cmd.forwardmove = MSG.ReadShort();
   client.cmd.sidemove = MSG.ReadShort();
   client.cmd.upmove = MSG.ReadShort();
+  // CR: we could restructure this a bit and let the ServerGameAPI handle the rest
   let i = MSG.ReadByte();
-  client.edict.api.button0 = i & 1;
-  client.edict.api.button2 = (i & 2) >> 1;
+  client.edict.api.button0 = (i & 1) === 1; // QuakeC
+  client.edict.api.button2 = ((i & 2) >> 1) === 1; // QuakeC
+  client.edict.api.button1 = ((i & 4) >> 2) === 1; // QuakeC
   i = MSG.ReadByte();
   if (i !== 0) {
-    client.edict.api.impulse = i;
+    client.edict.api.impulse = i; // QuakeC
   }
 };
 

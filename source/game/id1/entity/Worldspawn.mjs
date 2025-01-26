@@ -42,20 +42,7 @@ export class WorldspawnEntity extends BaseEntity {
     this.worldtype = 0; // TODO: explain
   }
 
-  spawn() {
-    this.game.lastspawn = this.game.worldspawn;
-    this.game.worldspawn = this;
-
-    InitBodyQue(this.game);
-
-    // custom map attributes
-    this.engine.SetCvar('sv_gravity', this.model === 'maps/e1m8.bsp' ? 100 : 800);
-
-    // QuakeShack: allow maps to set gravity per map
-    if (this.qs_gravity) {
-      this.engine.SetCvar('sv_gravity', this.qs_gravity);
-    }
-
+  _precache() {
     // the area based ambient sounds MUST be the first precache_sounds
 
     // player precaches
@@ -163,6 +150,21 @@ export class WorldspawnEntity extends BaseEntity {
     this.engine.PrecacheModel ("progs/zom_gib.mdl");
 
     this.engine.PrecacheModel ("progs/v_light.mdl");
+  }
+
+  spawn() {
+    this.game.lastspawn = this.game.worldspawn;
+    this.game.worldspawn = this;
+
+    InitBodyQue(this.game);
+
+    // custom map attributes
+    this.engine.SetCvar('sv_gravity', this.model === 'maps/e1m8.bsp' ? 100 : 800);
+
+    // QuakeShack: allow maps to set gravity per map
+    if (this.qs_gravity) {
+      this.engine.SetCvar('sv_gravity', this.qs_gravity);
+    }
 
     //
     // Setup light animation tables. 'a' is total darkness, 'z' is maxbright.

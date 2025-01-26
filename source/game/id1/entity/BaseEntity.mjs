@@ -31,11 +31,13 @@ export default class BaseEntity {
     this.movetype = moveType.MOVETYPE_NONE;
     this.solid = solid.SOLID_NOT;
     this.flags = flags.FL_NONE;
+    this.spawnflags = 0;
 
     // Quake model related
     this.model = null;
     this.modelindex = 0;
     this.frame = 0;
+    this.frame2 = 0;
     this.skin = 0;
     this.effects = 0;
 

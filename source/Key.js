@@ -296,13 +296,12 @@ Key.Bind_f = function() {
 
 Key.WriteBindings = function() {
   const f = [];
-  let i;
-  for (i = 0; i < Key.bindings.length; ++i) {
+  for (let i = 0; i < Key.bindings.length; ++i) {
     if (Key.bindings[i] != null) {
-      f[f.length] = 'bind "' + Key.KeynumToString(i) + '" "' + Key.bindings[i] + '"\n';
+      f.push('bind "' + Key.KeynumToString(i) + '" "' + Key.bindings[i] + '"');
     }
   }
-  return f.join('');
+  return f.join('\n');
 };
 
 Key.Init = function() {
