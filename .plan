@@ -275,6 +275,7 @@ class MainMenu extends BaseMenu {
 * I’m not happy about how to spawn temporarity entities or entities that require another entity they make up on the fly
 * added linking doors / door parts
 * I’m also not happy about these sub_* contraptions, I’m thinking about adding a proper state machine
+* `_precache` is called twice now: in `constructor` and in `assignInitialData`, because some fields will influence precache behavior --> doors work now
 
 ### 2025-01-26
 

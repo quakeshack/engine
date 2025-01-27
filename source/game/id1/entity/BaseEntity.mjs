@@ -273,6 +273,11 @@ export default class BaseEntity {
           this[key] = value;
       }
     }
+
+    // this is used to prepopulate fields from ED.LoadFromFile and SV.SpawnServer
+    if (this.engine.IsLoading()) {
+      this._precache();
+    }
   }
 
   /**

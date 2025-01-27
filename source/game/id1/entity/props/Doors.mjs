@@ -150,7 +150,7 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 
   _doorGoDown() {
-    if (this.state == state.STATE_DOWN) {
+    if (this.state === state.STATE_DOWN) {
       return; // already going up
     }
 
@@ -176,11 +176,11 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 
   _doorGoUp() {
-    if (this.state == state.STATE_UP) {
+    if (this.state === state.STATE_UP) {
       return; // already going up
     }
 
-    if (this.state == state.STATE_TOP) {
+    if (this.state === state.STATE_TOP) {
       // reset top wait time
       this.nextthink = this.ltime + this.wait;
       return;
@@ -215,22 +215,22 @@ export class BaseDoorEntity extends BasePropEntity {
     switch (this.nextstate) {
       case state.STATE_DOWN:
         this._doorGoDown();
-        this.nextstate = state.STATE_NONE;
+        this.nextstate = state.STATE_DONE;
         return;
 
       case state.STATE_BOTTOM:
         this._doorHitBottom();
-        this.nextstate = state.STATE_NONE;
+        this.nextstate = state.STATE_DONE;
         return;
 
       case state.STATE_UP:
         this._doorHitTop();
-        this.nextstate = state.STATE_NONE;
+        this.nextstate = state.STATE_DONE;
         return;
 
       case state.STATE_TOP:
         this._doorHitTop();
-        this.nextstate = state.STATE_NONE;
+        this.nextstate = state.STATE_DONE;
         return;
     }
 
@@ -313,6 +313,7 @@ export class DoorEntity extends BaseDoorEntity {
       default:
         break;
     }
+
     switch(this.sounds) {
       case 1:
         this.engine.PrecacheSound("doors/drclos4.wav");

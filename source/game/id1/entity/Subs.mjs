@@ -21,8 +21,24 @@ export class TriggerBaseEntity extends BaseEntity {
   }
 };
 
+export const triggerFieldFlags = {
+  /** Vanilla Quake behavior */
+  TFF_NONE: 0,
+  /** Dead actors can still trigger the field */
+  TFF_DEAD_ACTORS_TRIGGER: 1,
+  /** Any entity can trigger the field */
+  TFF_ANY_ENTITY_TRIGGERS: 2,
+};
+
+/**
+ * special entity that will trigger a linked entity’s use method when touched, use flags and {triggerFieldFlags} to adjust behavior
+ */
 export class TriggerField extends BaseEntity {
   static classname = 'subs_triggerfield';
+
+  _declareFields() {
+    this.flags = triggerFieldFlags.TFF_NONE;
+  }
 
   spawn() {
     this.movetype = moveType.MOVETYPE_NONE;
@@ -39,12 +55,20 @@ export class TriggerField extends BaseEntity {
   }
 
   touch(otherEntity) {
-    // CR: upon spawn otherEntity might be another TriggerField
-    if (!otherEntity.isActor()) {
+    // CR: upon spawn otherEntity might be another TriggerField, when overlapping
+    if (otherEntity instanceof TriggerField) {
       return;
     }
 
-    if (otherEntity.health <= 0) {
+    if (otherEntity.isWorld()) {
+      return;
+    }
+
+    if (!(this.flags & triggerFieldFlags.TFF_ANY_ENTITY_TRIGGERS) && !otherEntity.isActor()) {
+      return;
+    }
+
+    if (!(this.flags & triggerFieldFlags.TFF_DEAD_BODIES_TRIGGER) && otherEntity.health <= 0) {
       return;
     }
 
@@ -54,7 +78,7 @@ export class TriggerField extends BaseEntity {
 
     this.attack_finished = this.game.time + 1.0;
 
-    // TODO: activator = other; ??
+    // TODO: activator = other; ?? -- copied from QuakeC
 
     this.owner.use(otherEntity);
   }

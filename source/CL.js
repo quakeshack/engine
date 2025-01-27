@@ -1078,7 +1078,7 @@ CL.ParseStartSoundPacket = function() {
   const sound_num = MSG.ReadByte();
   const ent = channel >> 3;
   channel &= 7;
-  const pos = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
+  const pos = MSG.ReadCoordVector();
   S.StartSound(ent, channel, CL.state.sound_precache[sound_num], pos, volume / 255.0, attenuation);
 };
 
