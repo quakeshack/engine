@@ -484,4 +484,8 @@ export class PlayerEntity extends BaseEntity {
 
     // TODO: CheckPowerups()
   }
+
+  isActor() {
+    return true;
+  }
 };

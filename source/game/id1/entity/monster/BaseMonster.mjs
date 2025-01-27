@@ -7,8 +7,13 @@ export default class BaseMonster extends BaseEntity {
 
     this.pausetime = 0;
     this.movetarget = null; // entity
+    this.health = 0;
 
     this._ai = new EntityAI(this);
+  }
+
+  isActor() {
+    return true;
   }
 
   /**

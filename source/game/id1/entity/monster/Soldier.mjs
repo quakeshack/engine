@@ -45,7 +45,7 @@ export default class ArmySoldierMonster extends BaseMonster {
 
     this.setModel("progs/soldier.mdl");
     this.setSize(new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 40.0));
-    self.health = 30;
+    this.health = 30;
 
     // this.walkmonsterStart();
 

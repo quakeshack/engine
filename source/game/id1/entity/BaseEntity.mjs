@@ -129,6 +129,11 @@ export default class BaseEntity {
 
     this.message = null; // trigger messages
 
+    // subs
+    this._moveData = {};
+    this._subReset();
+
+    // states
     this._states = {};
     this._stateNext = null;
     this._stateCurrent = null;
@@ -145,15 +150,20 @@ export default class BaseEntity {
   }
 
   // allows you to define all fields prior to spawn
+  // make sure to prefix private fields with an underscore
   _declareFields() {
+    // this._myPrivateField = 123;
+    // this.weight = 400;
   }
 
-  // allows you to place all Precache* calls
+  // place all Precache* calls here, it’s invoked by the engine indirectly upon loading
   _precache() {
+    // this.engine.PrecacheModel('models/box.mdl');
   }
 
-  // allows you to init all available states
+  // place all animation states and scripted sequences here
   _initStates() {
+    // this._defineState('army_stand1', 'stand1', 'army_stand2', () => this._ai.stand());
   }
 
   /**
@@ -241,6 +251,11 @@ export default class BaseEntity {
         continue;
       }
 
+      if (key[0] === '_') {
+        // do not overwrite private fields
+        continue;
+      }
+
       switch (true) {
         case this[key] instanceof Vector:
           this[key] = value instanceof Vector ? value.copy() : new Vector(...value.split(' ').map((n) => parseFloat(n)));
@@ -302,6 +317,14 @@ export default class BaseEntity {
     return otherEntity ? this.edict.equals(otherEntity.edict) : false;
   }
 
+  isWorld() {
+    return this.edictId === 0;
+  }
+
+  isActor() {
+    return false;
+  }
+
   /**
    * Moves self in the given direction. Returns success as a boolean.
    * @param {number} yaw
@@ -355,7 +378,7 @@ export default class BaseEntity {
    */
   startSound(channel, sfxName, volume, attenuation) {
     this.engine.PrecacheSound(sfxName);
-    this.engine.StartSound(this.edict, channel, sfxName, volume, attenuation)
+    this.engine.StartSound(this.edict, channel, sfxName, volume, attenuation);
   }
 
   /**
@@ -385,7 +408,12 @@ export default class BaseEntity {
   spawn() {
   }
 
+  /**
+   * called when nextthink is reached, invoked by the game engine (server code)
+   * when overriding, make sure to call _subThink() and _runState() yourself.
+   */
   think() {
+    this._subThink();
     this._runState();
   }
 
@@ -425,5 +453,105 @@ export default class BaseEntity {
     // if (touchedByEntity && touchedByEntity.classname === 'player') {
     //   this.use(touchedByEntity);
     // }
+  }
+
+  /**
+   * based on QuakeC’s EntitiesTouching(this, otherEntity)
+   * compares mins and maxs to see if they intersect
+   * @param {BaseEntity} otherEntity
+   */
+  isTouching(otherEntity) {
+    return this.mins.gt(otherEntity.maxs) && this.maxs.lt(otherEntity.mins);
+  }
+
+  /**
+   * searches the next entity matching field equals value
+   * @param {string} field
+   * @param {string} value
+   * @returns {BaseEntity|null}
+   */
+  findNextEntityByFieldAndValue(field, value) {
+    const edict = this.engine.FindByFieldAndValue(field, value, this.edictId + 1);
+    return edict ? edict.api : null;
+  }
+
+  // === Movements etc. ===
+
+  /**
+   * called in think() to handle any sub thinking
+   * @returns returns true, when regular execution is OK
+   */
+  _subThink() {
+    if (this._moveData.active) {
+      if (this._moveData.finalOrigin) {
+        this.setOrigin(this._moveData.finalOrigin);
+        this.velocity.clear();
+      }
+
+      if (this._moveData.finalAngle) {
+        this.angles = this._moveData.finalAngle;
+        this.avelocity.clear();
+      }
+
+      this.nextthink = -1.0;
+      if (this._moveData.callback) {
+        this._moveData.callback();
+      }
+
+      this._moveData.active = false;
+
+      return false;
+    }
+
+    return true;
+  }
+
+  _subReset() {
+    this._moveData.finalAngle = null;
+    this._moveData.finalOrigin = null;
+    this._moveData.callback = null;
+    this._moveData.active = false;
+  }
+
+  _subCalcMove(tdest, tspeed, callback) {
+    if (!tspeed) {
+      throw new TypeError("No speed is defined!");
+    }
+
+    this._moveData.active = true;
+    this._moveData.callback = callback;
+    this._moveData.finalOrigin = tdest;
+
+    // check if we are already in place
+    if (this.origin.equals(tdest)) {
+      this.velocity.clear();
+      this.nextthink = this.ltime + 0.1;
+      return;
+    }
+
+    // set destdelta to the vector needed to move
+    const vdestdelta = tdest.copy().subtract(this.origin);
+
+    const len = vdestdelta.len();
+
+    // divide by speed to get time to reach dest
+    const traveltime = len / tspeed;
+
+    if (traveltime < 0.1) {
+      // too soon
+      this.velocity.clear();
+      this.nextthink = this.ltime + 0.1;
+      return;
+    }
+
+    // set nextthink to trigger a think when dest is reached
+    this.nextthink = this.ltime + traveltime;
+
+    // scale the destdelta vector by the time spent traveling to get velocity
+    this.velocity = vdestdelta.multiply(1.0/traveltime);
+  }
+
+  _subUseTargets() {
+    // TODO: SUB_UseTargets();
   }
 };

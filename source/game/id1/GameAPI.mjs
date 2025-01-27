@@ -7,6 +7,7 @@ import * as door from "./entity/props/Doors.mjs";
 import ArmySoldierMonster from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
 import { IntermissionCameraEntity } from "./entity/Client.mjs";
+import { TriggerField } from "./entity/Subs.mjs";
 
 // put all entity classes here:
 const entityRegistry = [
@@ -37,6 +38,8 @@ const entityRegistry = [
   IntermissionCameraEntity,
 
   door.DoorEntity,
+
+  TriggerField,
 ];
 
 export class ServerGameAPI {

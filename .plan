@@ -269,6 +269,13 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-01-27
+
+* looks like the traceline is bugging out or the sizes are not set properly for things like doors, need some visual representation of their bounding boxes
+* I’m not happy about how to spawn temporarity entities or entities that require another entity they make up on the fly
+* added linking doors / door parts
+* I’m also not happy about these sub_* contraptions, I’m thinking about adding a proper state machine
+
 ### 2025-01-26
 
 * I found `+use`/`-use`, but it’s not fully implemented on the engine side, added it back in
