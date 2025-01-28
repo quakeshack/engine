@@ -28,7 +28,7 @@ export class InfoNotNullEntity extends BaseEntity {
  * Just for the debugging level.  Don't use
  */
 export class ViewthingEntity extends BaseEntity {
-	static classname = 'viewthing';
+  static classname = 'viewthing';
 
   _precache() {
     this.game.PrecacheModel('progs/player.mdl');
@@ -63,7 +63,7 @@ class BaseLightEntity extends BaseEntity {
 
   _defaultStyle() {
     if (this.style >= 32) {
-      if (this.spawnflags & LightEntity.START_OFF)
+      if (this.spawnflags & BaseLightEntity.START_OFF)
         this.engine.Lightstyle(this.style, "a");
       else
         this.engine.Lightstyle(this.style, "m");
@@ -225,7 +225,7 @@ export class WhiteSmallFlameLightEntity extends TorchLightEntity {
 }
 
 export class FireballEntity extends BaseEntity {
-  static classname = 'fireball';
+  static classname = 'misc_fireball_fireball';
 
   _declareFields() {
     this.speed = 1000;
@@ -248,9 +248,9 @@ export class FireballEntity extends BaseEntity {
     this.remove();
   }
 
+  // eslint-disable-next-line no-unused-vars
   touch(otherEntity) {
     // TODO: T_Damage(otherEntity, this, this, 20.0)
-    this.engine.ConsolePrint(otherEntity.classname + ' ouch!\n');
     this.remove();
   }
 }

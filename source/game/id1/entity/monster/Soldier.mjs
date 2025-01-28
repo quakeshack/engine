@@ -7,20 +7,20 @@ export default class ArmySoldierMonster extends BaseMonster {
   static classname = 'monster_army';
 
   _precache() {
-    this.engine.PrecacheModel ("progs/soldier.mdl");
-    this.engine.PrecacheModel ("progs/h_guard.mdl");
-    this.engine.PrecacheModel ("progs/gib1.mdl");
-    this.engine.PrecacheModel ("progs/gib2.mdl");
-    this.engine.PrecacheModel ("progs/gib3.mdl");
+    this.engine.PrecacheModel("progs/soldier.mdl");
+    this.engine.PrecacheModel("progs/h_guard.mdl");
+    this.engine.PrecacheModel("progs/gib1.mdl");
+    this.engine.PrecacheModel("progs/gib2.mdl");
+    this.engine.PrecacheModel("progs/gib3.mdl");
 
-    this.engine.PrecacheSound ("soldier/death1.wav");
-    this.engine.PrecacheSound ("soldier/idle.wav");
-    this.engine.PrecacheSound ("soldier/pain1.wav");
-    this.engine.PrecacheSound ("soldier/pain2.wav");
-    this.engine.PrecacheSound ("soldier/sattck1.wav");
-    this.engine.PrecacheSound ("soldier/sight1.wav");
+    this.engine.PrecacheSound("soldier/death1.wav");
+    this.engine.PrecacheSound("soldier/idle.wav");
+    this.engine.PrecacheSound("soldier/pain1.wav");
+    this.engine.PrecacheSound("soldier/pain2.wav");
+    this.engine.PrecacheSound("soldier/sattck1.wav");
+    this.engine.PrecacheSound("soldier/sight1.wav");
 
-    this.engine.PrecacheSound ("player/udeath.wav");		// gib death
+    this.engine.PrecacheSound("player/udeath.wav");		// gib death
   }
 
   _initStates() {

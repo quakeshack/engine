@@ -74,7 +74,7 @@ export class BaseDoorEntity extends BasePropEntity {
         self._linkedDoor = startEntity; // make the chain a loop
 
         // shootable, fired, or key doors just needed the owner/enemy links,
-		    // they don't spawn a field
+        // they don't spawn a field
 
         const owner = self.owner;
 
@@ -107,7 +107,7 @@ export class BaseDoorEntity extends BasePropEntity {
           }
         }
       }
-    // eslint-disable-next-line no-constant-condition
+      // eslint-disable-next-line no-constant-condition
     } while (true);
   }
 
@@ -168,11 +168,9 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 
   _doorHitBottom() {
-    this.startSound (channel.CHAN_VOICE, this.noise1, 1.0, attn.ATTN_NORM);
+    this.startSound(channel.CHAN_VOICE, this.noise1, 1.0, attn.ATTN_NORM);
     this.state = state.STATE_BOTTOM;
     this._subReset();
-
-    this.engine.ConsolePrint(`BaseDoorEntity._doorHitBottom: ${this}\n`);
   }
 
   _doorGoUp() {
@@ -186,17 +184,15 @@ export class BaseDoorEntity extends BasePropEntity {
       return;
     }
 
-    this.startSound (channel.CHAN_VOICE, this.noise2, 1.0, attn.ATTN_NORM);
+    this.startSound(channel.CHAN_VOICE, this.noise2, 1.0, attn.ATTN_NORM);
     this.state = state.STATE_UP;
 
     this._subCalcMove(this.pos2, this.speed, () => this._doorHitTop());
     this._subUseTargets();
-
-    this.engine.ConsolePrint(`BaseDoorEntity._doorGoUp: ${this}\n`);
   }
 
   _doorHitTop() {
-    this.startSound (channel.CHAN_VOICE, this.noise1, 1.0, attn.ATTN_NORM);
+    this.startSound(channel.CHAN_VOICE, this.noise1, 1.0, attn.ATTN_NORM);
     this.state = state.STATE_TOP;
 
     if (this.spawnflags & flag.DOOR_TOGGLE) {
@@ -314,7 +310,7 @@ export class DoorEntity extends BaseDoorEntity {
         break;
     }
 
-    switch(this.sounds) {
+    switch (this.sounds) {
       case 1:
         this.engine.PrecacheSound("doors/drclos4.wav");
         this.engine.PrecacheSound("doors/doormv1.wav");
@@ -363,7 +359,7 @@ export class DoorEntity extends BaseDoorEntity {
         break;
     }
 
-    switch(this.sounds) {
+    switch (this.sounds) {
       case 1:
         this.noise1 = "doors/drclos4.wav";
         this.noise2 = "doors/doormv1.wav";

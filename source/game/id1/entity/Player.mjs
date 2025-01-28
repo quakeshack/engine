@@ -1,7 +1,7 @@
 /* global Vector */
 
 import { attn, channel, content, damage, dead, deathType, flags, items, moveType, solid, vec } from "../Defs.mjs";
-import BaseEntity, { Flag } from "./BaseEntity.mjs";
+import BaseEntity from "./BaseEntity.mjs";
 import { InfoNotNullEntity } from "./Misc.mjs";
 
 /**
@@ -280,7 +280,7 @@ export class PlayerEntity extends BaseEntity {
     const end = start.copy().add(forward.multiply(64.0)); // FIXME: determine best distance
 
     const mins = new Vector(-64.0, -64.0, -64.0);
-    const maxs = new Vector( 64.0,  64.0,  64.0);
+    const maxs = new Vector(64.0, 64.0, 64.0);
 
     const trace = this.engine.Traceline(start, end, false, this.edict, mins, maxs);
 

@@ -261,7 +261,7 @@ export default class BaseEntity {
           this[key] = value instanceof Vector ? value.copy() : new Vector(...value.split(' ').map((n) => parseFloat(n)));
           break;
 
-        case typeof(this[key]) === 'number':
+        case typeof (this[key]) === 'number':
           this[key] = parseFloat(value);
           break;
 
@@ -302,10 +302,10 @@ export default class BaseEntity {
 
   setModel(modelname) {
     if (this.engine.IsLoading()) {
-      this.engine.PrecacheModel (modelname);
+      this.engine.PrecacheModel(modelname);
     }
 
-    this.edict.setModel (modelname);
+    this.edict.setModel(modelname);
   }
 
   unsetModel() {
@@ -371,7 +371,7 @@ export default class BaseEntity {
    */
   spawnAmbientSound(sfxName, volume, attenuation) {
     this.engine.PrecacheSound(sfxName);
-    this.engine.SpawnAmbientSound (this.origin, sfxName, volume, attenuation);
+    this.engine.SpawnAmbientSound(this.origin, sfxName, volume, attenuation);
   }
 
   /**
@@ -428,7 +428,6 @@ export default class BaseEntity {
    * this object is used (by another player or NPC), invoked by the game code
    * @param {BaseEntity} touchedByEntity
    */
-  // eslint-disable-next-line no-unused-vars
   use(usedByEntity) {
     // debug and playing around only
     if (this.edictId > 0 && usedByEntity.classname === 'player') {
@@ -454,10 +453,6 @@ export default class BaseEntity {
    */
   // eslint-disable-next-line no-unused-vars
   touch(touchedByEntity) {
-    // // CR: emulating original Quake behavior
-    // if (touchedByEntity && touchedByEntity.classname === 'player') {
-    //   this.use(touchedByEntity);
-    // }
   }
 
   /**
@@ -553,7 +548,7 @@ export default class BaseEntity {
     this.nextthink = this.ltime + traveltime;
 
     // scale the destdelta vector by the time spent traveling to get velocity
-    this.velocity = vdestdelta.multiply(1.0/traveltime);
+    this.velocity = vdestdelta.multiply(1.0 / traveltime);
   }
 
   _subUseTargets() {
