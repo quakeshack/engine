@@ -1,5 +1,9 @@
 
 // called by worldspawn
+/**
+ *
+ * @param engine
+ */
 export function Precache(engine) {
 	engine.PrecacheSound("weapons/r_exp3.wav");	// new rocket explosion
 	engine.PrecacheSound("weapons/rocket1i.wav");	// spike gun

@@ -1,3 +1,5 @@
+import BaseEntity from "../entity/BaseEntity.mjs";
+import { ServerGameAPI } from "../GameAPI.mjs";
 
 export class GameAI {
   /**

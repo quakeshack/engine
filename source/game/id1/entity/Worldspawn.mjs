@@ -6,6 +6,10 @@ export class BodyqueEntity extends BaseEntity {
   static classname = 'bodyque';
 }
 
+/**
+ *
+ * @param game
+ */
 function InitBodyQue(game) {
   game.bodyque_head = game.engine.SpawnEntity('bodyque');
 
@@ -18,6 +22,11 @@ function InitBodyQue(game) {
   current.owner = game.bodyque_head;
 }
 
+/**
+ *
+ * @param game
+ * @param entity
+ */
 export function CopyToBodyQue(game, entity) {
   game.bodyque_head.angles = entity.angles;
   game.bodyque_head.model = entity.model;

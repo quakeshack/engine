@@ -1,4 +1,4 @@
-/* global Vector */
+/* global Vector, SV */
 
 import { damage, dead, flags, moveType, solid, content, channel, attn } from "../Defs.mjs";
 
@@ -91,10 +91,14 @@ export default class BaseEntity {
     this.size = new Vector(); // maxs - mins
     this.velocity = new Vector();
     this.avelocity = new Vector();
+    /** @type {moveType} */
     this.movetype = moveType.MOVETYPE_NONE;
+    /** @type {solid} */
     this.solid = solid.SOLID_NOT;
+    /** @type {flags} */
     this.flags = flags.FL_NONE;
     this.spawnflags = 0;
+    /** @type {content} */
     this.watertype = content.CONTENT_EMPTY;
     this.waterlevel = 0;
 
@@ -107,15 +111,21 @@ export default class BaseEntity {
     this.effects = 0;
 
     // QuakeJS model related
+    /** @type {?number} */
     this.keyframe = null;
 
     this.nextthink = 0.0;
+    /** @type {?SV.Edict} set by the phyiscs engine */
     this.groundentity = null; // FIXME: this is an Edict, not an entity
-    this.chain = null; // this is mainly used by QuakeC, not us
+    /** @type {?BaseEntity} this is mainly used by QuakeC, not us */
+    this.chain = null;
 
     // relationships between entities
-    this.owner = null; // entity, who launched a missile
-    this.target = null; // entity
+    /** @type {?BaseEntity} entity, who launched a missile */
+    this.owner = null;
+    /** @type {?BaseEntity} target entity */
+    this.target = null;
+    /** @type {?string} target name */
     this.targetname = null; // string
 
     this.movedir = new Vector(); // mostly for doors, but also used for waterjump
@@ -127,11 +137,12 @@ export default class BaseEntity {
     this.show_hostile = 0;
     this.attack_finished = 0;
 
+    /** @type {?string} message for triggers or map name */
     this.message = null; // trigger messages
 
     // subs
-    this._moveData = {};
-    this._subReset();
+    /** @type {?import('./Subs.mjs').Sub} */
+    this._sub = null; // needs to be initialized optionally
 
     // states
     this._states = {};
@@ -170,8 +181,8 @@ export default class BaseEntity {
    * defines a state for the state machine
    * @param {string} state
    * @param {string} keyframe
-   * @param {string | null} nextState
-   * @param {Function | null} handler
+   * @param {?string} nextState
+   * @param {?Function} handler
    */
   _defineState(state, keyframe, nextState = null, handler = null) {
     this._states[state] = {
@@ -184,8 +195,8 @@ export default class BaseEntity {
   /**
    * will start the state machine at the given state
    * if you leave state null, it will simply continue
-   * @param {string | null} state
-   * @returns
+   * @param {?string} state optional new state
+   * @returns {boolean} whether the state is valid
    */
   _runState(state = null) {
     if (!state) {
@@ -237,7 +248,7 @@ export default class BaseEntity {
 
   /**
    * tries to cast all initialData values (which are strings) to their corresponding types
-   * @param {Object} initialData
+   * @param {object} initialData map of entity fields
    */
   assignInitialData(initialData) {
     for (const [key, value] of Object.entries(initialData)) {
@@ -280,22 +291,6 @@ export default class BaseEntity {
     }
   }
 
-  /**
-   * QuakeEd only writes a single float for angles (bad idea), so up and down are just constant angles.
-   */
-  _setMovedir() {
-    if (this.angles.equalsTo(0.0, -1.0, 0.0)) {
-      this.movedir.setTo(0.0, 0.0, 1.0);
-    } else if (this.angles.equalsTo(0.0, -2.0, 0.0)) {
-      this.movedir.setTo(0.0, 0.0, -1.0);
-    } else {
-      const { forward } = this.angles.angleVectors();
-      this.movedir.set(forward);
-    }
-
-    this.angles.setTo(0.0, 0.0, 0.0);
-  }
-
   setOrigin(origin) {
     this.edict.setOrigin(origin);
   }
@@ -334,6 +329,7 @@ export default class BaseEntity {
    * Moves self in the given direction. Returns success as a boolean.
    * @param {number} yaw
    * @param {number} dist
+   * @returns {number}
    */
   walkMove(yaw, dist) {
     return this.edict.walkMove(yaw, dist);
@@ -341,8 +337,8 @@ export default class BaseEntity {
 
   /**
    * Makes sure the entity is settled on the ground.
-   * @param {number} [z=-2048.0] maximum distance to look down to check
-   * @returns whether the dropping succeeded
+   * @param {number} [z] maximum distance to look down to check
+   * @returns {number} whether the dropping succeeded
    */
   dropToFloor(z = -2048.0) {
     return this.edict.dropToFloor(z);
@@ -350,6 +346,7 @@ export default class BaseEntity {
 
   /**
    * Checks if the entity is standing on the ground.
+   * @returns {boolean} true, if on the ground
    */
   isOnTheFloor() {
     return this.edict.isOnTheFloor();
@@ -365,9 +362,9 @@ export default class BaseEntity {
 
   /**
    * use this in spawn, it will setup an ambient sound
-   * @param {string} sfxName
-   * @param {number} volume
-   * @param {attn} attenuation
+   * @param {string} sfxName e.g. sounds/door1.wav
+   * @param {number} volume [0..1]
+   * @param {attn} attenuation attenuation
    */
   spawnAmbientSound(sfxName, volume, attenuation) {
     this.engine.PrecacheSound(sfxName);
@@ -376,10 +373,10 @@ export default class BaseEntity {
 
   /**
    * starts a sound bound to an edict
-   * @param {channel} channel
-   * @param {string} sfxName
-   * @param {number} volume
-   * @param {attn} attenuation
+   * @param {channel} channel what sound channel to use, it will overwrite currently playing sounds
+   * @param {string} sfxName e.g. sounds/door1.wav
+   * @param {number} volume [0..1]
+   * @param {attn} attenuation attenuation
    */
   startSound(channel, sfxName, volume, attenuation) {
     this.engine.PrecacheSound(sfxName);
@@ -388,6 +385,7 @@ export default class BaseEntity {
 
   /**
    * allocated Edict number
+   * @returns {number} edict Id
    */
   get edictId() {
     return this.edict.num;
@@ -415,10 +413,13 @@ export default class BaseEntity {
 
   /**
    * called when nextthink is reached, invoked by the game engine (server code)
-   * when overriding, make sure to call _subThink() and _runState() yourself.
+   * when overriding, make sure to call this._sub.think() and _runState() yourself.
    */
   think() {
-    this._subThink();
+    if (this._sub) {
+      this._sub.think();
+    }
+
     this._runState();
   }
 
@@ -426,7 +427,7 @@ export default class BaseEntity {
 
   /**
    * this object is used (by another player or NPC), invoked by the game code
-   * @param {BaseEntity} touchedByEntity
+   * @param {BaseEntity} usedByEntity what entity is using this one
    */
   use(usedByEntity) {
     // debug and playing around only
@@ -441,7 +442,7 @@ export default class BaseEntity {
 
   /**
    * this object is blocked, invoked by the physics engine
-   * @param {BaseEntity} touchedByEntity
+   * @param {BaseEntity} blockedByEntity what entity is blocking this one
    */
   // eslint-disable-next-line no-unused-vars
   blocked(blockedByEntity) {
@@ -449,7 +450,7 @@ export default class BaseEntity {
 
   /**
    * this object is touched, invoked by the physics engine
-   * @param {BaseEntity} touchedByEntity
+   * @param {BaseEntity} touchedByEntity what entity is touching this one
    */
   // eslint-disable-next-line no-unused-vars
   touch(touchedByEntity) {
@@ -458,7 +459,8 @@ export default class BaseEntity {
   /**
    * based on QuakeC’s EntitiesTouching(this, otherEntity)
    * compares mins and maxs to see if they intersect
-   * @param {BaseEntity} otherEntity
+   * @param {BaseEntity} otherEntity other entity
+   * @returns {boolean} true if this is touching the other entity
    */
   isTouching(otherEntity) {
     return this.mins.gt(otherEntity.maxs) && this.maxs.lt(otherEntity.mins);
@@ -466,92 +468,12 @@ export default class BaseEntity {
 
   /**
    * searches the next entity matching field equals value
-   * @param {string} field
-   * @param {string} value
-   * @returns {BaseEntity|null}
+   * @param {string} field what field to search
+   * @param {string} value what value to match the value under field
+   * @returns {?BaseEntity} found entity
    */
   findNextEntityByFieldAndValue(field, value) {
     const edict = this.engine.FindByFieldAndValue(field, value, this.edictId + 1);
     return edict ? edict.api : null;
-  }
-
-  // === Movements etc. ===
-
-  /**
-   * called in think() to handle any sub thinking
-   * @returns returns true, when regular execution is OK
-   */
-  _subThink() {
-    if (this._moveData.active) {
-      if (this._moveData.finalOrigin) {
-        this.setOrigin(this._moveData.finalOrigin);
-        this.velocity.clear();
-      }
-
-      if (this._moveData.finalAngle) {
-        this.angles = this._moveData.finalAngle;
-        this.avelocity.clear();
-      }
-
-      this.nextthink = -1.0;
-      if (this._moveData.callback) {
-        this._moveData.callback();
-      }
-
-      this._moveData.active = false;
-
-      return false;
-    }
-
-    return true;
-  }
-
-  _subReset() {
-    this._moveData.finalAngle = null;
-    this._moveData.finalOrigin = null;
-    this._moveData.callback = null;
-    this._moveData.active = false;
-  }
-
-  _subCalcMove(tdest, tspeed, callback) {
-    if (!tspeed) {
-      throw new TypeError("No speed is defined!");
-    }
-
-    this._moveData.active = true;
-    this._moveData.callback = callback;
-    this._moveData.finalOrigin = tdest;
-
-    // check if we are already in place
-    if (this.origin.equals(tdest)) {
-      this.velocity.clear();
-      this.nextthink = this.ltime + 0.1;
-      return;
-    }
-
-    // set destdelta to the vector needed to move
-    const vdestdelta = tdest.copy().subtract(this.origin);
-
-    const len = vdestdelta.len();
-
-    // divide by speed to get time to reach dest
-    const traveltime = len / tspeed;
-
-    if (traveltime < 0.1) {
-      // too soon
-      this.velocity.clear();
-      this.nextthink = this.ltime + 0.1;
-      return;
-    }
-
-    // set nextthink to trigger a think when dest is reached
-    this.nextthink = this.ltime + traveltime;
-
-    // scale the destdelta vector by the time spent traveling to get velocity
-    this.velocity = vdestdelta.multiply(1.0 / traveltime);
-  }
-
-  _subUseTargets() {
-    // TODO: SUB_UseTargets();
   }
 };

@@ -26,6 +26,8 @@ export class BaseDoorEntity extends BasePropEntity {
 
   /**
    * spawns a trigger infront of the door
+   * @param mins
+   * @param maxs
    */
   _spawnTriggerField(mins, maxs) {
     this.engine.SpawnEntity(TriggerField.classname, {
@@ -162,7 +164,7 @@ export class BaseDoorEntity extends BasePropEntity {
       this.health = this.max_health;
     }
 
-    this._subCalcMove(this.pos1, this.speed, () => this._doorHitBottom());
+    this._sub.calcMove(this.pos1, this.speed, () => this._doorHitBottom());
 
     this.engine.ConsolePrint(`BaseDoorEntity._doorGoDown: ${this}\n`);
   }
@@ -170,7 +172,7 @@ export class BaseDoorEntity extends BasePropEntity {
   _doorHitBottom() {
     this.startSound(channel.CHAN_VOICE, this.noise1, 1.0, attn.ATTN_NORM);
     this.state = state.STATE_BOTTOM;
-    this._subReset();
+    this._sub.reset();
   }
 
   _doorGoUp() {
@@ -187,8 +189,8 @@ export class BaseDoorEntity extends BasePropEntity {
     this.startSound(channel.CHAN_VOICE, this.noise2, 1.0, attn.ATTN_NORM);
     this.state = state.STATE_UP;
 
-    this._subCalcMove(this.pos2, this.speed, () => this._doorHitTop());
-    this._subUseTargets();
+    this._sub.calcMove(this.pos2, this.speed, () => this._doorHitTop());
+    this._sub.useTargets();
   }
 
   _doorHitTop() {
@@ -201,7 +203,7 @@ export class BaseDoorEntity extends BasePropEntity {
 
     this.nextstate = state.STATE_DOWN; // self.think = door_go_down; via state machine
     this.nextthink = this.ltime + this.wait;
-    this._subReset();
+    this._sub.reset();
 
     this.engine.ConsolePrint(`BaseDoorEntity._doorHitTop: ${this}\n`);
   }
@@ -231,7 +233,7 @@ export class BaseDoorEntity extends BasePropEntity {
     }
 
     // handles delays for us
-    this._subThink();
+    this._sub.think();
 
     // we need to handle linking doors during think, because we need to wait for all doors to arrive
     this._linkDoors();
@@ -389,7 +391,7 @@ export class DoorEntity extends BaseDoorEntity {
         break;
     }
 
-    this._setMovedir();
+    this._sub.setMovedir();
 
     this.max_health = this.health;
 

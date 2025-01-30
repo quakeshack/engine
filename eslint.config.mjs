@@ -1,6 +1,6 @@
 import globals from "globals";
 import pluginJs from "@eslint/js";
-
+import jsdoc from 'eslint-plugin-jsdoc';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
@@ -19,8 +19,11 @@ export default [
       'no-mixed-spaces-and-tabs': 'off',
       'no-tabs': 'off',
       'camelcase': 'off',
+      'jsdoc/check-types': 'error',       // Ensures types are valid
+      'jsdoc/require-param-description': 'off'
       // 'no-globoal-assign': 'warn',
     },
   },
   pluginJs.configs.recommended,
+  jsdoc.configs["flat/recommended"],
 ];

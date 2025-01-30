@@ -58,7 +58,6 @@ export default class BaseMonster extends BaseEntity {
 
   /**
    * when getting attacked
-   *
    * @param {BaseEntity} attackerEntity
    * @param {number} damage
    */

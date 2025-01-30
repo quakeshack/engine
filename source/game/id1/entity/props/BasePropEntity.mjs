@@ -1,6 +1,7 @@
 /* global Vector */
 
 import BaseEntity from "../BaseEntity.mjs";
+import { Sub } from "../Subs.mjs";
 
 /**
  * used in this.state
@@ -52,6 +53,9 @@ export default class BasePropEntity extends BaseEntity {
 
     this.wait = 0; // time from firing to restarting
     this.delay = 0; // time from activation to firing
+
+    // we need sub for movement stuff
+    this._sub = new Sub(this);
   }
 
   spawn() {

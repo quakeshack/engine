@@ -269,6 +269,14 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-01-30
+
+* spun-off `_sub*` methods into its own class to keep `BaseEntity` a bit more tidy
+* I need more debugging tools from the engine side
+  * such a bbox renderer for entities
+* right now some APIs between game and engine are catering more to the QuakeC world, I want to clean that up once the new game code is ready and I like the structure
+* some cleaning up eslint related stuff, should focus on more static analysis
+
 ### 2025-01-27
 
 * looks like the traceline is bugging out or the sizes are not set properly for things like doors, need some visual representation of their bounding boxes

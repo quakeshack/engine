@@ -1,5 +1,9 @@
 /* global Vector */
 
+/**
+ * @readonly
+ * @enum {number}
+ */
 export const attackStates = {
   AS_NONE: 0,
   AS_STRAIGHT: 1,
@@ -10,6 +14,8 @@ export const attackStates = {
 
 /**
  * range values
+ * @readonly
+ * @enum {number}
  */
 export const range = {
   RANGE_MELEE: 0,
@@ -20,6 +26,8 @@ export const range = {
 
 /**
  * deadflag values
+ * @readonly
+ * @enum {number}
  */
 export const dead = {
   DEAD_NO: 0,
@@ -30,6 +38,8 @@ export const dead = {
 
 /**
  * takedamage values
+ * @readonly
+ * @enum {number}
  */
 export const damage = {
   DAMAGE_NO:  0,
@@ -39,6 +49,8 @@ export const damage = {
 
 /**
  * edict.solid values
+ * @readonly
+ * @enum {number}
  */
 export const solid = {
   SOLID_NOT:				0,	// no interaction with other objects
@@ -50,6 +62,8 @@ export const solid = {
 
 /**
  * edict.movetype values
+ * @readonly
+ * @enum {number}
  */
 export const moveType = {
   // edict.movetype values
@@ -69,6 +83,8 @@ export const moveType = {
 
 /**
  * edict.flags
+ * @readonly
+ * @enum {number}
  */
 export const flags = {
   FL_NONE: 0, // CR: used to mark something as “flags here”
@@ -88,6 +104,8 @@ export const flags = {
 
 /**
  * player items and weapons
+ * @readonly
+ * @enum {number}
  */
 export const items = {
   IT_AXE:  4096,
@@ -108,6 +126,8 @@ export const items = {
  * sound channels
  * channel 0 never willingly overrides
  * other channels (1-7) always override a playing sound on that channel
+ * @readonly
+ * @enum {number}
  */
 export const channel = {
   CHAN_AUTO:		0,
@@ -119,6 +139,8 @@ export const channel = {
 
 /**
  * attenuation
+ * @readonly
+ * @enum {number}
  */
 export const attn = {
   ATTN_NONE: 0,
@@ -127,6 +149,10 @@ export const attn = {
   ATTN_STATIC: 3,
 };
 
+/**
+ * @readonly
+ * @enum {Vector}
+ */
 export const vec = {
   /**
    * @deprecated use Vector.origin directly instead
@@ -141,6 +167,8 @@ export const vec = {
 };
 
 /**
+ * @readonly
+ * @enum {number}
  * point content values
  */
 export const content = {
@@ -153,6 +181,8 @@ export const content = {
 };
 
 /**
+ * @readonly
+ * @enum {?string}
  * how the player died
  */
 export const deathType = {
@@ -161,6 +191,8 @@ export const deathType = {
 };
 
 /**
+ * @readonly
+ * @enum {number}
  * worldspawn’s worldtype enum
  */
 export const worldType = {
