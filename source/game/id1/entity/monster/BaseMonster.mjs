@@ -1,3 +1,5 @@
+/* global Vector */
+
 import { EntityAI } from "../../helper/AI.mjs";
 import BaseEntity from "../BaseEntity.mjs";
 
@@ -9,7 +11,19 @@ export default class BaseMonster extends BaseEntity {
     this.movetarget = null; // entity
     this.health = 0;
 
-    this._ai = new EntityAI(this);
+    this.ideal_yaw = 0.0;
+    this.yaw_speed = 0.0;
+    this.view_ofs = new Vector();
+
+    this._ai = this._newEntityAI();
+  }
+
+  /**
+   * this is used to override a better or more suitable AI for this entity
+   * @returns {EntityAI} responsible entity AI
+   */
+  _newEntityAI() {
+    return new EntityAI(this);
   }
 
   isActor() {
@@ -52,16 +66,28 @@ export default class BaseMonster extends BaseEntity {
   thinkDie() {
   }
 
-  walkmonsterStart() {
-    // TODO
-  }
-
   /**
    * when getting attacked
-   * @param {BaseEntity} attackerEntity
-   * @param {number} damage
+   * @param {BaseEntity} attackerEntity attacker entity
+   * @param {number} damage damage
    */
   // eslint-disable-next-line no-unused-vars
   thinkPain(attackerEntity, damage) {
+  }
+
+  spawn() {
+    this.game.total_monsters++;
+    this.nextthink = this.nextthink + Math.random() * 0.5;
+    this._ai.spawn();
+  }
+
+  think() {
+    super.think();
+    this._ai.think();
+  }
+
+  use(userEntity) {
+    this._ai.use(userEntity);
+    super.use(userEntity);
   }
 }

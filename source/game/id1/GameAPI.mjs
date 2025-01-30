@@ -8,6 +8,7 @@ import ArmySoldierMonster from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
 import { IntermissionCameraEntity } from "./entity/Client.mjs";
 import { TriggerField } from "./entity/Subs.mjs";
+import { ButtonEntity } from "./entity/props/Buttons.mjs";
 
 // put all entity classes here:
 const entityRegistry = [
@@ -21,6 +22,7 @@ const entityRegistry = [
   InfoPlayerStart,
 
   misc.ViewthingEntity,
+  misc.DebugMarkerEntity,
 
   misc.LightEntity,
   misc.LightFluorosparkEntity,
@@ -38,6 +40,7 @@ const entityRegistry = [
   IntermissionCameraEntity,
 
   door.DoorEntity,
+  ButtonEntity,
 
   TriggerField,
 ];
@@ -58,6 +61,9 @@ export class ServerGameAPI {
     this.skill = 0;
 
     this.force_retouch = 0;
+
+    // stats
+    this.total_monsters = 0;
 
     // checkout Player.decodeLevelParms to understand this
     this.parm1 = 0;

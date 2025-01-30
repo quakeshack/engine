@@ -276,6 +276,13 @@ class MainMenu extends BaseMenu {
   * such a bbox renderer for entities
 * right now some APIs between game and engine are catering more to the QuakeC world, I want to clean that up once the new game code is ready and I like the structure
 * some cleaning up eslint related stuff, should focus on more static analysis
+* I found some weird glitches in platforms (the lift on E1M1 is glitching when you are on it going up, also getting stock pushes you to world origin for one frame and then you get unstuck again, both original game bugs)
+* added debug_marker entity to help debugging things
+* fixed a stupid bug in the use handler, invoked `angleVectors` on `origin` instead of `angles`
+* `entity.ltime != game.time`
+* we got this concept of `BaseEntity.isActor` now grouping players and NPCs
+* started porting over code from QuakeC regarding AI
+* I decoupled AI from entity, so in future it might be easier to have a more smart drop-in AI replacement
 
 ### 2025-01-27
 

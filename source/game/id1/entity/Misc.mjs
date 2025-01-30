@@ -2,6 +2,7 @@
 
 import { attn, moveType, solid } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
+import { PlayerEntity } from "./Player.mjs";
 
 /**
  * QUAKED info_null (0 0.5 0) (-4 -4 -4) (4 4 4)
@@ -281,5 +282,38 @@ export class FireballSpawnerEntity extends BaseEntity {
       origin: this.origin,
       speed: this.speed,
     });
+  }
+}
+
+export class DebugMarkerEntity extends BaseLightEntity {
+  static classname = 'debug_marker';
+
+  _precache() {
+    this.engine.PrecacheModel('progs/s_light.spr');
+  }
+
+  spawn() {
+    this.movetype = moveType.MOVETYPE_NONE;
+    this.solid = solid.SOLID_TRIGGER;
+    this.setSize(new Vector(-4.0, -4.0, -4.0), new Vector(4.0, 4.0, 4.0));
+    this.setModel("progs/s_light.spr");
+    this.nextthink = this.game.time + 5.0;
+
+    if (this.owner instanceof PlayerEntity) {
+      this.owner.centerPrint('marker set at ' + this.origin);
+    }
+  }
+
+  /**
+   * @param {BaseEntity} otherEntity user
+   */
+  touch(otherEntity) {
+    if (otherEntity.equals(this.owner)) {
+      this.remove();
+    }
+  }
+
+  think() {
+    this.remove();
   }
 }

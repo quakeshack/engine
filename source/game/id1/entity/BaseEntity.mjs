@@ -1,6 +1,7 @@
 /* global Vector, SV */
 
 import { damage, dead, flags, moveType, solid, content, channel, attn } from "../Defs.mjs";
+import { ServerGameAPI } from "../GameAPI.mjs";
 
 /**
  * helper class to deal with flags stored in bits
@@ -72,6 +73,10 @@ export default class BaseEntity {
     throw new TypeError('Cannot set property classname');
   }
 
+  /**
+   * @param {SV.Edict} edict linked edict
+   * @param {ServerGameAPI} gameAPI server game API
+   */
   constructor(edict, gameAPI) {
     // hooking up the edict and the entity, also the APIs
     this.edict = edict;
@@ -413,7 +418,7 @@ export default class BaseEntity {
 
   /**
    * called when nextthink is reached, invoked by the game engine (server code)
-   * when overriding, make sure to call this._sub.think() and _runState() yourself.
+   * when overriding, make sure to call super.think()
    */
   think() {
     if (this._sub) {

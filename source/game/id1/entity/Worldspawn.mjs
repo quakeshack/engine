@@ -159,6 +159,8 @@ export class WorldspawnEntity extends BaseEntity {
     this.engine.PrecacheModel("progs/zom_gib.mdl");
 
     this.engine.PrecacheModel("progs/v_light.mdl");
+
+    this.engine.PrecacheModel("progs/s_light.spr"); // for debug_marker
   }
 
   spawn() {

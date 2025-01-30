@@ -35,6 +35,8 @@ export const state = {
 
 export default class BasePropEntity extends BaseEntity {
   _declareFields() {
+    super._declareFields();
+
     this.sounds = 0; // either a cd track number or sound number
     this.noise = null; // contains names of wavs to play
     this.noise1 = null; // contains names of wavs to play
@@ -53,6 +55,7 @@ export default class BasePropEntity extends BaseEntity {
 
     this.wait = 0; // time from firing to restarting
     this.delay = 0; // time from activation to firing
+    this.speed = 0;
 
     // we need sub for movement stuff
     this._sub = new Sub(this);

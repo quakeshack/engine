@@ -53,11 +53,16 @@ export const damage = {
  * @enum {number}
  */
 export const solid = {
-  SOLID_NOT:				0,	// no interaction with other objects
-  SOLID_TRIGGER:		1,	// touch on edge, but not blocking
-  SOLID_BBOX:				2,	// touch on edge, block
-  SOLID_SLIDEBOX:		3,	// touch on edge, but not an onground
-  SOLID_BSP:				4,	// bsp clip, touch on edge, block
+  /** no interaction with other objects */
+  SOLID_NOT:				0,
+  /** touch on edge, but not blocking */
+  SOLID_TRIGGER:		1,
+  /** touch on edge, block */
+  SOLID_BBOX:				2,
+  /** touch on edge, but not an onground */
+  SOLID_SLIDEBOX:		3,
+  /** bsp clip, touch on edge, block */
+  SOLID_BSP:				4,
 };
 
 /**
@@ -66,19 +71,25 @@ export const solid = {
  * @enum {number}
  */
 export const moveType = {
-  // edict.movetype values
-  MOVETYPE_NONE: 0,	// never moves
+  /** never moves */
+  MOVETYPE_NONE: 0,
   //float	MOVETYPE_ANGLENOCLIP: 1,
   //float	MOVETYPE_ANGLECLIP: 2,
-  MOVETYPE_WALK: 3,	// players only
-  MOVETYPE_STEP: 4,	// discrete, not real time unless fall
+  /** players only */
+  MOVETYPE_WALK: 3,
+  /** discrete, not real time unless fall */
+  MOVETYPE_STEP: 4,
   MOVETYPE_FLY: 5,
-  MOVETYPE_TOSS: 6,	// gravity
-  MOVETYPE_PUSH: 7,	// no clip to world, push and crush
+  /** gravity */
+  MOVETYPE_TOSS: 6,
+  /** no clip to world, push and crush */
+  MOVETYPE_PUSH: 7,
   MOVETYPE_NOCLIP: 8,
-  MOVETYPE_FLYMISSILE: 9,	// fly with extra size against monsters
+  /** fly with extra size against monsters */
+  MOVETYPE_FLYMISSILE: 9,
   MOVETYPE_BOUNCE: 10,
-  MOVETYPE_BOUNCEMISSILE: 11,	// bounce with extra size
+  /** bounce with extra size */
+  MOVETYPE_BOUNCEMISSILE: 11,
 };
 
 /**
@@ -90,16 +101,25 @@ export const flags = {
   FL_NONE: 0, // CR: used to mark something as “flags here”
   FL_FLY: 1,
   FL_SWIM: 2,
-  FL_CLIENT: 8,	// set for all client edicts
-  FL_INWATER: 16,	// for enter / leave water splash
+  /** set for all client edicts */
+  FL_CLIENT: 8,
+  /** for enter / leave water splash */
+  FL_INWATER: 16,
   FL_MONSTER: 32,
-  FL_GODMODE: 64,	// player cheat
-  FL_NOTARGET: 128,	// player cheat
-  FL_ITEM: 256,	// extra wide size for bonus items
-  FL_ONGROUND: 512,	// standing on something
-  FL_PARTIALGROUND: 1024,	// not all corners are valid
-  FL_WATERJUMP: 2048,	// player jumping out of water
-  FL_JUMPRELEASED: 4096,	// for jump debouncing
+  /** player cheat */
+  FL_GODMODE: 64,
+  /** player cheat */
+  FL_NOTARGET: 128,
+  /** extra wide size for bonus items */
+  FL_ITEM: 256,
+  /** standing on something */
+  FL_ONGROUND: 512,
+  /** not all corners are valid */
+  FL_PARTIALGROUND: 1024,
+  /** player jumping out of water */
+  FL_WATERJUMP: 2048,
+  /** for jump debouncing */
+  FL_JUMPRELEASED: 4096,
 };
 
 /**

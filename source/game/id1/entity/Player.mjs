@@ -276,19 +276,22 @@ export class PlayerEntity extends BaseEntity {
     }
 
     const start = this.origin.copy().add(this.view_ofs);
-    const { forward } = start.angleVectors();
-    const end = start.copy().add(forward.multiply(64.0)); // FIXME: determine best distance
+    const { forward } = this.angles.angleVectors();
+    const end = start.copy().add(forward.multiply(32.0)); // within 32 units of reach
 
-    const mins = new Vector(-64.0, -64.0, -64.0);
-    const maxs = new Vector(64.0, 64.0, 64.0);
+    const mins = new Vector(-8.0, -8.0, -8.0);
+    const maxs = new Vector(8.0, 8.0, 8.0);
 
     const trace = this.engine.Traceline(start, end, false, this.edict, mins, maxs);
 
-    // FIXME: handle a proper use entity within reach
+    // this.engine.SpawnEntity('debug_marker', {
+    //   origin: trace.endpos, // .copy().subtract(forward.multiply(8.0)),
+    //   owner: this,
+    // });
+
     if (trace.ent && trace.ent.num > 0) {
       /** @type {BaseEntity} */
       const entity = trace.ent.api;
-
       entity.use(this);
     }
 

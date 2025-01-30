@@ -1,7 +1,8 @@
 /* global Vector */
 
-import { moveType, solid } from "../Defs.mjs";
+import { attn, channel, moveType, solid } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
+import { PlayerEntity } from "./Player.mjs";
 
 export class TriggerBaseEntity extends BaseEntity {
   spawn() {
@@ -91,12 +92,13 @@ export class TriggerField extends BaseEntity {
  */
 export class Sub {
   /**
-   * @param {BaseEntity} entity
+   * @param {BaseEntity} entity bound entity
    */
   constructor(entity) {
     /** @type {BaseEntity} associated entity */
     this._entity = entity;
     this._moveData = {};
+    this._useData = {};
     Object.seal(this);
 
     this.reset();
@@ -126,11 +128,13 @@ export class Sub {
     this._moveData.finalOrigin = null;
     this._moveData.callback = null;
     this._moveData.active = false;
+
+    this._useData.callback = null;
   }
 
   /**
    * called in think() to handle any sub thinking
-   * @returns returns true, when regular execution is OK
+   * @returns {boolean} returns true, when regular execution is OK
    */
   think() {
     if (this._moveData.active) {
@@ -150,6 +154,15 @@ export class Sub {
       }
 
       this._moveData.active = false;
+      return false;
+    }
+
+    if (this._useData.callback) {
+      if (this._useData.callback instanceof Function) {
+        this._useData.callback.call(this._entity);
+      }
+
+      this._useData.callback = null;
       return false;
     }
 
@@ -200,7 +213,50 @@ export class Sub {
     this._entity.velocity = vdestdelta.multiply(1.0 / traveltime);
   }
 
-  useTargets() {
-    // TODO: SUB_UseTargets();
+  useTargets(activatorEntity) {
+    // if there’s a delay, let’s feed it into the think state machine
+    if (this._entity.delay && !this._useData.callback) {
+      this._useData.callback = () => this.useTargets(activatorEntity);
+      this._entity.nextthink = this._entity.ltime + this._entity.delay;
+      return;
+    }
+
+    // print a message, if activator is a player
+    if (activatorEntity instanceof PlayerEntity && this._entity.message) {
+      activatorEntity.centerPrint(this._entity.message);
+
+      if (!this._entity.noise) {
+        activatorEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav", 1.0, attn.ATTN_NORM);
+      }
+    }
+
+    // remove all killtargets
+    if (this._entity.killtarget) {
+      /** @type {BaseEntity} */
+      let searchEntity = this._entity.game.worldspawn;
+      do {
+        searchEntity = searchEntity.findNextEntityByFieldAndValue("targetname", this._entity.killtarget);
+        if (!searchEntity) {
+          return;
+        }
+        searchEntity.remove();
+      // eslint-disable-next-line no-constant-condition
+      } while(true);
+    }
+
+    // fire targets
+    if (this._entity.target) {
+      /** @type {BaseEntity} */
+      let searchEntity = this._entity.game.worldspawn;
+      do {
+        searchEntity = searchEntity.findNextEntityByFieldAndValue("targetname", this._entity.target);
+        if (!searchEntity) {
+          return;
+        }
+        // CR: this is way more convenient than QuakeC’s version (subs.qc:260)
+        searchEntity.use(activatorEntity);
+      // eslint-disable-next-line no-constant-condition
+      } while(true);
+    }
   }
 };

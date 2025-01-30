@@ -1,6 +1,7 @@
 /* global Vector */
 
 import { attn, channel, damage, items, moveType, solid, worldType } from "../../Defs.mjs";
+import BaseEntity from "../BaseEntity.mjs";
 import { TriggerField } from "../Subs.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
 
@@ -13,7 +14,7 @@ export const flag = {
   DOOR_GOLD_KEY: 8,
   DOOR_SILVER_KEY: 16,
   DOOR_TOGGLE: 32,
-  DOOR_NO_TRIGGER_FIELD: 64, // QuakeShack
+  DOOR_NO_TRIGGER_FIELD: 64, // QuakeShack (it’s broken lol)
 };
 
 export class BaseDoorEntity extends BasePropEntity {
@@ -26,8 +27,8 @@ export class BaseDoorEntity extends BasePropEntity {
 
   /**
    * spawns a trigger infront of the door
-   * @param mins
-   * @param maxs
+   * @param {Vector} mins min size
+   * @param {Vector} maxs max size
    */
   _spawnTriggerField(mins, maxs) {
     this.engine.SpawnEntity(TriggerField.classname, {
@@ -146,9 +147,21 @@ export class BaseDoorEntity extends BasePropEntity {
     } while (!self.equals(this) && !self.isWorld());
   }
 
-  _doorBlocked() {
-    // TODO: door_blocked
-    this.engine.ConsolePrint(`BaseDoorEntity._doorBlocked: ${this}\n`);
+  /**
+   * @param {BaseEntity} blockedByEntity blocking entity
+   */
+  _doorBlocked(blockedByEntity) {
+    // TODO: other = blockedByEntity, T_Damage (other, self, self, self.dmg);
+
+    // if a door has a negative wait, it would never come back if blocked,
+    // so let it just squash the object to death real fast
+    if (this.wait >= 0) {
+      if (this.state === state.STATE_DOWN) {
+        this._doorGoUp();
+      } else {
+        this._doorGoDown();
+      }
+    }
   }
 
   _doorGoDown() {
@@ -165,8 +178,6 @@ export class BaseDoorEntity extends BasePropEntity {
     }
 
     this._sub.calcMove(this.pos1, this.speed, () => this._doorHitBottom());
-
-    this.engine.ConsolePrint(`BaseDoorEntity._doorGoDown: ${this}\n`);
   }
 
   _doorHitBottom() {
@@ -190,7 +201,7 @@ export class BaseDoorEntity extends BasePropEntity {
     this.state = state.STATE_UP;
 
     this._sub.calcMove(this.pos2, this.speed, () => this._doorHitTop());
-    this._sub.useTargets();
+    this._sub.useTargets(null);
   }
 
   _doorHitTop() {
@@ -204,8 +215,6 @@ export class BaseDoorEntity extends BasePropEntity {
     this.nextstate = state.STATE_DOWN; // self.think = door_go_down; via state machine
     this.nextthink = this.ltime + this.wait;
     this._sub.reset();
-
-    this.engine.ConsolePrint(`BaseDoorEntity._doorHitTop: ${this}\n`);
   }
 
   think() {
@@ -281,13 +290,11 @@ export class DoorEntity extends BaseDoorEntity {
     this.message = null;
     this.angle = new Vector();
     this.targetname = null;
-    this.health = 0;
-    this.wait = 0;
-    this.speed = 0;
     this.dmg = 0;
 
     this.items = 0; // e.g. IT_KEY1, IT_KEY2
 
+    this.health = 0;
     this.max_health = 0; // “players maximum health is stored here”
   }
 
@@ -425,9 +432,6 @@ export class DoorEntity extends BaseDoorEntity {
       this.dmg = 2;
     }
 
-    // self.pos1 = self.origin;
-    // self.pos2 = self.pos1 + self.movedir*(fabs(self.movedir*self.size) - self.lip);
-
     this.pos1 = this.origin.copy();
     this.pos2 = this.pos1.copy().add(this.movedir.copy().multiply(Math.abs(this.movedir.dot(this.size)) - this.lip));
 
@@ -456,13 +460,16 @@ export class DoorEntity extends BaseDoorEntity {
     this.nextthink = this.ltime + 0.1;
   }
 
+  /**
+   * @param {BaseEntity} blockedByEntity blocking entity
+   */
   blocked(blockedByEntity) {
-    // TODO
-    this.engine.ConsolePrint(`DoorEntity.blocked: ${this} is blocked by ${blockedByEntity}\n`);
+    this._doorBlocked(blockedByEntity);
+    // this.engine.ConsolePrint(`DoorEntity.blocked: ${this} is blocked by ${blockedByEntity}\n`);
   }
 
+  // eslint-disable-next-line no-unused-vars
   touch(usedByEntity) {
-    // TODO
-    this.engine.ConsolePrint(`DoorEntity.touch: ${this} is touched by ${usedByEntity}\n`);
+    // this.engine.ConsolePrint(`DoorEntity.touch: ${this} is touched by ${usedByEntity}\n`);
   }
 }
