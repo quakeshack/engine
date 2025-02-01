@@ -1,5 +1,3 @@
-/* global Vector */
-
 import { attn, channel, damage, moveType, solid } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
@@ -73,7 +71,7 @@ export class ButtonEntity extends BasePropEntity {
    */
   _buttonWait(userEntity) {
     this.state = state.STATE_TOP;
-    this.nextthink = this.game.time + this.wait;
+    this.nextthink = this.ltime + this.wait;
     this._sub.useTargets(userEntity);
     this.frame = 1; // use alternate textures
   }

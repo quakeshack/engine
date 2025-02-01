@@ -2,65 +2,7 @@
 
 import { damage, dead, flags, moveType, solid, content, channel, attn } from "../Defs.mjs";
 import { ServerGameAPI } from "../GameAPI.mjs";
-
-/**
- * helper class to deal with flags stored in bits
- */
-export class Flag {
-  constructor(enumMap, ...values) {
-    this._enum = enumMap;
-    this._value = 0;
-
-    Object.seal(this);
-
-    this.set(...values);
-  }
-
-  toString() {
-    return Object.entries(this._enum)
-      .filter(([, flag]) => (flag > 0 && this._value & flag) === flag)
-      .map(([name]) => name)
-      .join(', ');
-  }
-
-  has(...flags) {
-    for (const flag of flags) {
-      if (this._value & flag === flag) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  set(...flags) {
-    const values = Object.values(this._enum);
-
-    for (const flag of flags) {
-      if (!values.includes(flag)) {
-        throw new TypeError('Unknown flag ' + flag);
-      }
-
-      this._value |= flag;
-    }
-
-    return this;
-  }
-
-  unset(...flags) {
-    for (const flag of flags) {
-      this._value &= ~flag;
-    }
-
-    return this;
-  }
-
-  reset() {
-    this._value = 0;
-
-    return this;
-  }
-}
+import { Flag } from "../helper/MiscHelpers.mjs";
 
 export default class BaseEntity {
   static classname = null;
@@ -85,7 +27,10 @@ export default class BaseEntity {
     this.game = gameAPI;
 
     // base settings per Entity
-    this.ltime = 0.0; // local time for entity
+    /**
+     * @type {number} This is mostly useful for entities that need precise, smooth movement over time, like doors and platforms. It’s only set on entities with MOVETYPE_PUSHER, also the engine is using this only on SV.PushMove.
+     */
+    this.ltime = 0.0; // local time for entity (NOT time)
     this.origin = new Vector();
     this.oldorigin = new Vector();
     this.angles = new Vector();
@@ -308,16 +253,32 @@ export default class BaseEntity {
     this.edict.setModel(modelname);
   }
 
-  unsetModel() {
+  /**
+   * @param {boolean} resetSize optionally resets mins/max to identity
+   */
+  unsetModel(resetSize = false) {
     this.modelindex = 0;
     this.model = null;
-    // FIXME: invoke setModel on edict?
+
+    if (resetSize) {
+      this.setSize(Vector.origin, Vector.origin);
+    }
   }
 
+  /**
+   *
+   * @param {Vector} mins
+   * @param {Vector} maxs
+   */
   setSize(mins, maxs) {
     this.edict.setMinMaxSize(mins, maxs);
   }
 
+  /**
+   *
+   * @param {BaseEntity} otherEntity other
+   * @returns true, if equal
+   */
   equals(otherEntity) {
     return otherEntity ? this.edict.equals(otherEntity.edict) : false;
   }
@@ -338,6 +299,14 @@ export default class BaseEntity {
    */
   walkMove(yaw, dist) {
     return this.edict.walkMove(yaw, dist);
+  }
+
+  /**
+   * Change the horizontal orientation of this entity. Turns towards .ideal_yaw at .yaw_speed.
+   * @returns {number} new yaw
+   */
+  changeYaw() {
+    return this.edict.changeYaw();
   }
 
   /**
@@ -438,10 +407,13 @@ export default class BaseEntity {
     // debug and playing around only
     if (this.edictId > 0 && usedByEntity.classname === 'player') {
       usedByEntity.startSound(channel.CHAN_BODY, "misc/talk.wav", 1.0, attn.ATTN_NORM);
-      usedByEntity.centerPrint(
-        `${this}\n\n` +
-        `movetype = ${this.movetype}, ` +
-        `flags = ${new Flag(flags, this.flags)}`);
+      usedByEntity.centerPrint(`${this}`);
+      usedByEntity.consolePrint(
+        `movetype = ${this.movetype}\n` +
+        `flags = ${new Flag(flags, this.flags)}\n` +
+        `frame = ${this.frame}\n` +
+        `_stateCurrent = ${this._stateCurrent}\n`);
+      console.log('BaseEntity.use:', this);
     }
   }
 
@@ -480,5 +452,36 @@ export default class BaseEntity {
   findNextEntityByFieldAndValue(field, value) {
     const edict = this.engine.FindByFieldAndValue(field, value, this.edictId + 1);
     return edict ? edict.api : null;
+  }
+
+  /**
+   * Returns client (or object that has a client enemy) that would be * a valid target. If there are more than one
+   * valid options, they are cycled each frame. If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
+   * @returns {?BaseEntity} found client
+   */
+  getNextBestClient() {
+    const edict = this.edict.getNextBestClient();
+    return edict ? edict.api : null;
+  }
+
+  /**
+   * @param {BaseEntity} target target entity
+   * @param {boolean} ignoreMonsters whether to pass through monsters
+   */
+  tracelineToEntity(target, ignoreMonsters) {
+    const start = this.origin.copy().add(this.view_ofs ? this.view_ofs : Vector.origin);
+    const end = target.origin.copy().add(target.view_ofs ? target.view_ofs : Vector.origin);
+
+    return this.engine.Traceline(start, end, ignoreMonsters, this.edict);
+  }
+
+  /**
+   * @param {Vector} target target point
+   * @param {boolean} ignoreMonsters whether to pass through monsters
+   */
+  tracelineToVector(target, ignoreMonsters) {
+    const start = this.origin.copy().add(this.view_ofs ? this.view_ofs : Vector.origin);
+
+    return this.engine.Traceline(start, target, ignoreMonsters, this.edict);
   }
 };

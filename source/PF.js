@@ -232,7 +232,7 @@ PF.breakstatement = function PF_breakstatement() { // PR
 };
 
 PF.traceline = PF._generateBuiltinFunction(function(start, end, noMonsters, passEdict) {
-  const trace = Game.EngineInterface.Traceline(start, end, noMonsters, passEdict);
+  const trace = Game.EngineInterface.TracelineLegacy(start, end, noMonsters, passEdict);
 
   SV.server.gameAPI.trace_allsolid = (trace.allsolid === true) ? 1.0 : 0.0;
   SV.server.gameAPI.trace_startsolid = (trace.startsolid === true) ? 1.0 : 0.0;

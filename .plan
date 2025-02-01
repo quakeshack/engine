@@ -21,7 +21,6 @@ Grouped by sections and then sorted by priority (more or less).
 ### QuakeC / QuakeJS
 
 * [X] prepare structure for JS client/server progs
-* [_] rename `edict.api` to `edict.entity`
 * [X] PR/PF: replace all those `v_int`/`v_float` access through a proxy to improve readability
 * [X] replace all `globals_(float|int)\[([0-9]+)\]` with proper constants use
 * [X] PR/ED: implement missing `PR.etype.ev_field` handling to the EdictProxy
@@ -30,12 +29,9 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] SV+PR: get rid of self, other, etc. use a struct instead FunctionProxy knows how to use
 * [X] PF: add all arguments to each builtin (EngineInterface) and provide wrappers for the QuakeC VM
 * [X] add ability to spawn entities after the server being ready via API
-* [_] implement the new syscalls that QuakeWorld introduced
-* [_] improve stack trace / error handling for QuakeC
-* [_] add some better tooling, maybe a transpile QuakeC to JavaScript?
 * [X] reimplement `ED.Print`
 * [X] reimplement `Host.Give_f`
-* [_] build something that will take a map from defs and makes sure that some properties must be within that range (for movetype, solid, flags)
+* [_] implement a better state machine with scheduler
 * [_] reimplement the Quake game in QuakeJS
   * [_] abstract model animation state machine
   * [X] world.qc
@@ -94,6 +90,10 @@ Grouped by sections and then sorted by priority (more or less).
     * [X] W_CheckNoAmmo
   * [_] subs.qc --> move to helper/Subs.mjs
   * [_] player.qc
+* [_] rename `edict.api` to `edict.entity`
+* [_] implement the new syscalls that QuakeWorld introduced
+* [_] improve stack trace / error handling for QuakeC
+* [_] build something that will take a map from defs and makes sure that some properties must be within that range (for movetype, solid, flags)
 
 ### Modern JavaScript
 
@@ -167,10 +167,6 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Ideas
 
-### QuakeWorld improvements
-
-There are a couple of things QuakeWorld improved and introduced, I should take a look at them and decide what’s good and what’s bad.
-
 ### Better frontend/backend separation
 
 * I’m unhappy about the whole `Mod.js` and `R.js` clusterfun, it’s too intermingled, I already had to introduce hacks to get the dedicated server running without any frontend
@@ -178,11 +174,11 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 
 ### JavaScript instead of QuakeC
 
-* introduce client game code as JavaScript modules
-* introduce server game code as JavaScript modules
-* but keep backward compatibility and have interfaces available
+* introduce client game code as JavaScript modules --> needs specs
+* introduce server game code as JavaScript modules --> in progress
+* but keep backward compatibility and have interfaces available --> in progress
 * would allow to write easier and better custom mods
-* there are a few AST modules, using an AST would allow transpiling QC to JS
+* there are a few AST modules, using an AST would allow transpiling QC to JS --> not going to happen
 
 #### QuakeC VM proxy and its mess
 
@@ -205,7 +201,7 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * clusterfun ahead:
   * I need to decouple all PF/PR into its own isolated object
   * server needs to be decoupled as well and pass it down to the game API engine
-  * game API engine interface needs a clear interface (see progdefs.h)
+  * ~game API engine interface needs a clear interface (see progdefs.h)~ --> not necessary anymore
   * also spawning an entity needs the classname (here we need a crutch for QuakeC, because it doesn’t have that concept of instantiating classes first, it’s a bit loosy goosy)
 
 ### More multiplayer features
@@ -219,7 +215,7 @@ There are a couple of things QuakeWorld improved and introduced, I should take a
 * idle kick
 * ask player to set a username when they have their default name --> done, sort of™
 * increase limit to 32 players (like QW)
-* pausable --> already exists
+* pausable --> already exists, but needs improvement
 
 ### Menu rework
 
@@ -246,8 +242,11 @@ class MainMenu extends BaseMenu {
 
 * more streaming of data, make textures only available when needed
 * voice chat? (not WebRTC based)
-* improve readability of UI, but stick to the Quake charme
-* also rework the UI system to someone better maintainable
+* improve client side of things
+  * improve readability of UI, but stick to the Quake charme
+  * also rework the UI system to someone better maintainable
+  * more flexible statusbar system
+  * have an event based system for bonus flashes, damages etc.
 * look into GoldSrc’s StudioModel or some other format, just as a coding challenge
 * look into colored lights
 * make it Quake2 compatible?
@@ -258,6 +257,8 @@ class MainMenu extends BaseMenu {
 * play around with skybox support etc.
 * integrate some debugging tools like a texture and pic browser
 * integrate a model viewer tool
+* There are a couple of things QuakeWorld improved and introduced, I should take a look at them and decide what’s good and what’s bad.
+* rewrite qbsp, vis, light etc. in TypeScript and use https://github.com/gpujs/gpu.js
 
 ## Resources
 
@@ -266,8 +267,28 @@ class MainMenu extends BaseMenu {
   * some insights on the evolution of BSP formats
 * https://www.gamers.org/dEngine/quake/spec/quake-spec34/qkspec_4.htm
   * mentions the formula on how to calculate light levels
+* https://github.com/gpujs/gpu.js
+  * library to offload calculations to the GPU
+* https://github.com/id-Software/Quake-Tools/tree/master/qutils
+  * Official Quake Utils
 
 ## Log
+
+### 2025-02-01
+
+* over at the engine side of things, there’s too much QuakeC serving structures, I need to clean it up
+* also I should move `Game.EngineInterface` to `PF` maybe for the time being
+* reimplemented weapon switch back, but I also do not like the way I did it, I want some encapsuled weapon handling
+* also I thought about `bf` console command as it being a hack and that we need a better way to push events to the client side
+* random observations:
+  * `SV.RunThink` will reset `nextthink` to 0
+  * `ltime` is not `time`
+
+### 2025-01-31
+
+* there’s a super weird bug where models and entities detach from each other (observed from a dummy monster on a moving platform)
+* I need a better thinker system and state machine, the original QuakeC one doesn’t cut it
+  * I tried to come up with a custom `setTimeout` and async/wait thing, but that would break save/load games
 
 ### 2025-01-30
 

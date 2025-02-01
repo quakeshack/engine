@@ -1,3 +1,4 @@
+/* global Game */
 
 import { InfoPlayerStart, PlayerEntity } from "./entity/Player.mjs";
 import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
@@ -48,7 +49,7 @@ const entityRegistry = [
 export class ServerGameAPI {
   /**
    *
-   * @param {Game.EngineInterface} engineAPI
+   * @param {Game.EngineInterface} engineAPI engine exports
    */
   constructor(engineAPI) {
     this._loadEntityRegistry();

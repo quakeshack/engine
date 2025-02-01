@@ -1456,8 +1456,11 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.print:
         Con.Print(MSG.ReadString());
         continue;
-      case Protocol.svc.centerprint:
-        SCR.CenterPrint(MSG.ReadString());
+      case Protocol.svc.centerprint: {
+          const string = MSG.ReadString()
+          SCR.CenterPrint(string);
+          Con.Print(string + '\n'); // TODO: make it more stand out
+        };
         continue;
       case Protocol.svc.chatmsg:
         CL.AppendChatMessage(MSG.ReadString(), MSG.ReadString(), MSG.ReadByte() === 1);

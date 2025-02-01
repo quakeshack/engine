@@ -8,12 +8,18 @@ export default class BaseMonster extends BaseEntity {
     super._declareFields();
 
     this.pausetime = 0;
+    /** @type {BaseEntity} */
     this.movetarget = null; // entity
     this.health = 0;
 
     this.ideal_yaw = 0.0;
     this.yaw_speed = 0.0;
     this.view_ofs = new Vector();
+
+    /** @type {BaseEntity} */
+    this.enemy = null; // acquired target
+    /** @type {BaseEntity} */
+    this.goalentity = null; // a movetarget or an enemy
 
     this._ai = this._newEntityAI();
   }
@@ -89,5 +95,9 @@ export default class BaseMonster extends BaseEntity {
   use(userEntity) {
     this._ai.use(userEntity);
     super.use(userEntity);
+  }
+
+  sightSound() {
+    // implement: startSound here
   }
 }

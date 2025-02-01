@@ -45,6 +45,38 @@ Game.EngineInterface = class EngineInterface {
 
   static Traceline(start, end, noMonsters, passEdict, mins = null, maxs = null) {
     const nullVec = Vector.origin;
+    const trace = SV.Move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict);
+
+    return {
+      solid: {
+        /** @type {boolean} */
+        all: trace.allsolid,
+        /** @type {boolean} */
+        start: trace.startsolid,
+      },
+      /** @type {number} */
+      fraction: trace.fraction,
+      plane: {
+        /** @type {Vector} */
+        normal: trace.plane.normal,
+        /** @type {number} */
+        distance: trace.plane.dist,
+      },
+      contents: {
+        /** @type {boolean} */
+        inOpen: !!trace.inopen,
+        /** @type {boolean} */
+        inWater: !!trace.inwater,
+      },
+      /** @type {Vector} final position of the line */
+      point: trace.endpos,
+      /** @type {?import('./game/id1/entity/BaseEntity.mjs').default} entity */
+      entity: trace.ent ? trace.ent.api : null,
+    };
+  }
+
+  static TracelineLegacy(start, end, noMonsters, passEdict, mins = null, maxs = null) {
+    const nullVec = Vector.origin;
     return SV.Move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict);
   }
 

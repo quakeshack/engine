@@ -1,6 +1,7 @@
 /* global Vector */
 
 import { attn, channel, content, damage, dead, deathType, flags, items, moveType, solid, vec } from "../Defs.mjs";
+import { Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { InfoNotNullEntity } from "./Misc.mjs";
 
@@ -55,6 +56,7 @@ export class PlayerEntity extends BaseEntity {
     this.currentammo = 0;
     this.weaponmodel = null;
     this.weaponframe = 0;
+    this.impulse = 0; // cycle weapons, cheats, etc.
 
     // set to time+0.2 whenever a client fires a
     // weapon or takes damage.  Used to alert
@@ -99,7 +101,7 @@ export class PlayerEntity extends BaseEntity {
 
   /**
    * prints a centered message
-   * @param {string} message
+   * @param {string} message message
    */
   centerPrint(message) {
     this.edict.getClient().centerPrint(message);
@@ -107,7 +109,7 @@ export class PlayerEntity extends BaseEntity {
 
   /**
    * sends a message to the player’s console
-   * @param {string} message
+   * @param {string} message message
    */
   consolePrint(message) {
     this.edict.getClient().consolePrint(message);
@@ -138,8 +140,7 @@ export class PlayerEntity extends BaseEntity {
     }
 
     // remove items
-    this.items = this.items - (this.items &
-      (items.IT_KEY1 | items.IT_KEY2 | items.IT_INVISIBILITY | items.IT_INVULNERABILITY | items.IT_SUIT | items.IT_QUAD));
+    this.items &= ~(items.IT_KEY1 | items.IT_KEY2 | items.IT_INVISIBILITY | items.IT_INVULNERABILITY | items.IT_SUIT | items.IT_QUAD);
 
     // cap super health
     this.health = Math.max(50, Math.min(100, this.health)); // CR: what about max_health?
@@ -187,7 +188,7 @@ export class PlayerEntity extends BaseEntity {
 
   /**
    * QuakeC: W_BestWeapon
-   * @returns
+   * @returns {number} weapon number
    */
   chooseBestWeapon() {
     const it = this.items;
@@ -219,11 +220,47 @@ export class PlayerEntity extends BaseEntity {
 
   }
 
+  /**
+   * shots a 128 units long trace line and prints what it has hit, useful for debugging entities
+   */
+  _explainEntity() {
+    const start = this.origin.copy().add(this.view_ofs);
+    const { forward } = this.angles.angleVectors();
+    const end = start.copy().add(forward.multiply(128.0)); // within 64 units of reach
+
+    const mins = new Vector(-8.0, -8.0, -8.0);
+    const maxs = new Vector(8.0, 8.0, 8.0);
+
+    const trace = this.engine.Traceline(start, end, false, this.edict, mins, maxs);
+
+    if (trace.entity) {
+      const tracedEntity = trace.entity;
+      this.startSound(channel.CHAN_BODY, "misc/talk.wav", 1.0, attn.ATTN_NORM);
+      this.centerPrint(`${tracedEntity}`);
+      this.consolePrint(
+        `movetype = ${Object.entries(moveType).find(([, val]) => val === tracedEntity.movetype)[0] || 'unknown'}\n` +
+        `solid = ${Object.entries(solid).find(([, val]) => val === tracedEntity.solid)[0] || 'unknown'}\n` +
+        `flags = ${new Flag(flags, tracedEntity.flags)}\n` +
+        `frame = ${tracedEntity.frame}\n` +
+        `nextthink (abs) = ${tracedEntity.nextthink}\n` +
+        `nextthink (rel) = ${tracedEntity.nextthink - this.game.time}\n` +
+        `_stateCurrent = ${tracedEntity._stateCurrent}\n`);
+      console.log('tracedEntity:', tracedEntity);
+    }
+  }
+
   handleImpulseCommands() {
     // TODO
 
-    // if (self.impulse >= 1 && self.impulse <= 8)
-    //   W_ChangeWeapon ();
+    if (this.impulse >= 1 && this.impulse <= 8) {
+      this._weaponChange();
+    }
+
+    switch (this.impulse) {
+      case 66:
+        this._explainEntity();
+        break;
+    }
 
     // if (self.impulse == 9)
     //   CheatCommand ();
@@ -237,11 +274,66 @@ export class PlayerEntity extends BaseEntity {
     // if (self.impulse == 255)
     //   QuadCheat ();
 
-    // self.impulse = 0;
+    this.impulse = 0;
   }
 
   _weaponAttack() {
 
+  }
+
+  _weaponChange() { // W_ChangeWeapon
+    let outOfAmmo = false;
+    let weapon = 0;
+
+    switch (this.impulse) {
+        case 1:
+            weapon = items.IT_AXE;
+            break;
+        case 2:
+            weapon = items.IT_SHOTGUN;
+            if (this.ammo_shells < 1) outOfAmmo = true;
+            break;
+        case 3:
+            weapon = items.IT_SUPER_SHOTGUN;
+            if (this.ammo_shells < 2) outOfAmmo = true;
+            break;
+        case 4:
+            weapon = items.IT_NAILGUN;
+            if (this.ammo_nails < 1) outOfAmmo = true;
+            break;
+        case 5:
+            weapon = items.IT_SUPER_NAILGUN;
+            if (this.ammo_nails < 2) outOfAmmo = true;
+            break;
+        case 6:
+            weapon = items.IT_GRENADE_LAUNCHER;
+            if (this.ammo_rockets < 1) outOfAmmo = true;
+            break;
+        case 7:
+            weapon = items.IT_ROCKET_LAUNCHER;
+            if (this.ammo_rockets < 1) outOfAmmo = true;
+            break;
+        case 8:
+            weapon = items.IT_LIGHTNING;
+            if (this.ammo_cells < 1) outOfAmmo = true;
+            break;
+        default:
+            break;
+    }
+
+    this.impulse = 0;
+
+    if (!(this.items & weapon)) {
+        this.consolePrint("no weapon.\n");
+        return;
+    }
+
+    if (outOfAmmo) {
+        this.consolePrint("not enough ammo.\n");
+        return;
+    }
+
+    this.setWeapon(weapon);
   }
 
   _weaponFrame() {
@@ -289,10 +381,8 @@ export class PlayerEntity extends BaseEntity {
     //   owner: this,
     // });
 
-    if (trace.ent && trace.ent.num > 0) {
-      /** @type {BaseEntity} */
-      const entity = trace.ent.api;
-      entity.use(this);
+    if (trace.entity && !trace.entity.isWorld()) {
+      trace.entity.use(this);
     }
 
     this.use_time = this.game.time + 0.5;

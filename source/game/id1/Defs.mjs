@@ -123,6 +123,16 @@ export const flags = {
 };
 
 /**
+ * entity effects
+ */
+export const effect = {
+  EF_BRIGHTFIEL: 1,
+  EF_MUZZLEFLASH: 2,
+  EF_BRIGHTLIGHT: 4,
+  EF_DIMLIGHT: 8,
+};
+
+/**
  * player items and weapons
  * @readonly
  * @enum {number}
@@ -140,6 +150,11 @@ export const items = {
 
   IT_KEY1: 131072,
   IT_KEY2: 262144,
+
+  IT_INVISIBILITY: 524288,
+  IT_INVULNERABILITY: 1048576,
+  IT_SUIT: 2097152,
+  IT_QUAD: 4194304,
 };
 
 /**

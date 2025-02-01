@@ -141,16 +141,20 @@ export class Sub {
       if (this._moveData.finalOrigin) {
         this._entity.setOrigin(this._moveData.finalOrigin);
         this._entity.velocity.clear();
+        this._moveData.finalOrigin = null;
       }
 
       if (this._moveData.finalAngle) {
         this._entity.angles = this._moveData.finalAngle;
         this._entity.avelocity.clear();
+        this._moveData.finalAngle = null;
       }
 
-      this._entity.nextthink = -1.0;
+      this._entity.nextthink = -23.0; // CR: -23 is chosen to mark a thinktime reset by Sub
+
       if (this._moveData.callback instanceof Function) {
         this._moveData.callback.call(this._entity);
+        this._moveData.callback = null;
       }
 
       this._moveData.active = false;
@@ -160,9 +164,9 @@ export class Sub {
     if (this._useData.callback) {
       if (this._useData.callback instanceof Function) {
         this._useData.callback.call(this._entity);
+        this._useData.callback = null;
       }
 
-      this._useData.callback = null;
       return false;
     }
 
@@ -182,7 +186,7 @@ export class Sub {
 
     this._moveData.active = true;
     this._moveData.callback = callback;
-    this._moveData.finalOrigin = tdest;
+    this._moveData.finalOrigin = tdest.copy();
 
     // check if we are already in place
     if (this._entity.origin.equals(tdest)) {

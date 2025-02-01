@@ -1,6 +1,7 @@
 /* global Vector */
 
 import { attn, channel, moveType, solid } from "../../Defs.mjs";
+import { QuakeEntityAI } from "../../helper/AI.mjs";
 import BaseMonster from "./BaseMonster.mjs";
 
 export default class ArmySoldierMonster extends BaseMonster {
@@ -21,6 +22,15 @@ export default class ArmySoldierMonster extends BaseMonster {
     this.engine.PrecacheSound("soldier/sight1.wav");
 
     this.engine.PrecacheSound("player/udeath.wav");		// gib death
+  }
+
+  _newEntityAI() {
+    return new QuakeEntityAI(this);
+  }
+
+  _declareFields() {
+    super._declareFields();
+    this._aiState = null;
   }
 
   _initStates() {
@@ -79,15 +89,25 @@ export default class ArmySoldierMonster extends BaseMonster {
   }
 
   thinkStand() {
-    this._runState('army_stand1');
+    // if (this._aiState !== 'stand') {
+      this._runState('army_stand1');
+    //   this._aiState = 'stand';
+    // }
   }
 
   thinkWalk() {
-    this._runState('army_walk1');
+    // if (this._aiState !== 'walk') {
+      this._runState('army_walk1');
+    //   this._aiState = 'walk';
+    // }
+
   }
 
   thinkRun() {
-    this._runState('army_run1');
+    // if (this._aiState !== 'run') {
+      this._runState('army_run1');
+    //   this._aiState = 'run';
+    // }
   }
 
   spawn() {
@@ -104,5 +124,9 @@ export default class ArmySoldierMonster extends BaseMonster {
     this.health = 30;
 
     super.spawn();
+  }
+
+  sightSound() {
+    this.startSound(channel.CHAN_VOICE, "soldier/sight1.wav", 1.0, attn.ATTN_NORM);
   }
 }

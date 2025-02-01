@@ -263,7 +263,7 @@ export class BaseDoorEntity extends BasePropEntity {
  *
  * START_OPEN causes the door to move to its destination when spawned, and operate in reverse.  It is used to temporarily or permanently close off an area when triggered (not usefull for touch or takedamage doors).
  *
- * Key doors are allways wait -1.
+ * Key doors are always wait -1.
  *
  * "message"	is printed when the door is touched if it is a trigger door and it hasn't been fired yet
  * "angle"		determines the opening direction
@@ -452,7 +452,7 @@ export class DoorEntity extends BaseDoorEntity {
     }
 
     if (this.items) {
-      this.wait = -1;
+      this.wait = -1.0;
     }
 
     // LinkDoors can't be done until all of the doors have been spawned, so

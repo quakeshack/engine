@@ -83,6 +83,10 @@ SV.Edict = class Edict {
     this.api = null;
   }
 
+  /**
+   * Edict is no longer in use
+   * @returns {boolean} true when freed/unused
+   */
   isFree() {
     return this.free || !this.api;
   }
@@ -102,6 +106,11 @@ SV.Edict = class Edict {
     ED.Free(this);
   }
 
+  /**
+   *
+   * @param {SV.Edict} otherEdict other edict
+   * @returns {boolean} whether it’s equal
+   */
   equals(otherEdict) {
     return otherEdict && this.num === otherEdict.num;
   }
@@ -118,7 +127,7 @@ SV.Edict = class Edict {
   }
 
   setOrigin(vec) {
-    this.api.origin = vec;
+    this.api.origin = vec.copy();
     this.linkEdict(false);
   }
 
@@ -126,6 +135,12 @@ SV.Edict = class Edict {
     SV.LinkEdict(this, touchTriggers);
   }
 
+  /**
+   * Sets the model, also sets mins/maxs when applicable.
+   * Model has to be precached, otherwise an Error is thrown.
+   * @throws {Error} Model not precached.
+   * @param {string} model path to the model, e.g. progs/player.mdl
+   */
   setModel(model) {
     let i;
 
@@ -155,6 +170,7 @@ SV.Edict = class Edict {
    * Moves self in the given direction. Returns success as a boolean.
    * @param {number} yaw
    * @param {number} dist
+   * @returns {boolean} true, when walking was successful
    */
   walkMove(yaw, dist) {
     if ((this.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
@@ -166,8 +182,8 @@ SV.Edict = class Edict {
 
   /**
    * Makes sure the entity is settled on the ground.
-   * @param {number} [z=-2048.0] maximum distance to look down to check
-   * @returns whether the dropping succeeded
+   * @param {number} z maximum distance to look down to check
+   * @returns true, when the dropping succeeded
    */
   dropToFloor(z = -2048.0) {
     const end = this.api.origin.copy().add(new Vector(0.0, 0.0, z));
@@ -186,6 +202,7 @@ SV.Edict = class Edict {
 
   /**
    * Checks if the entity is standing on the ground.
+   * @returns {boolean} true, when edict touches the ground
    */
   isOnTheFloor() {
     return SV.CheckBottom(this);
@@ -214,9 +231,9 @@ SV.Edict = class Edict {
   /**
    * Returns client (or object that has a client enemy) that would be * a valid target. If there are more than one
    * valid options, they are cycled each frame. If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
-   * @returns SV.Edict | null
+   * @returns {?SV.Edict} Edict when client found, null otherwise
    */
-  getNextBestClient(){
+  getNextBestClient(){ // TODO: move to GameAPI, this is not interesting for edicts
     // refresh check cache
     if (SV.server.time - SV.server.lastchecktime >= 0.1) {
       let check = SV.server.lastcheck;
@@ -253,7 +270,7 @@ SV.Edict = class Edict {
 
     const ent = SV.server.edicts[SV.server.lastcheck];
 
-    if (ent.isFree() || ent.api.health <= 0.0) {
+    if (ent.isFree() || ent.api.health <= 0.0) { // TODO: better interface, not health
       // not interesting anymore
       return null;
     }
@@ -271,6 +288,7 @@ SV.Edict = class Edict {
   /**
    * Move this entity toward its goal. Used for monsters.
    * @param {number} dist
+   * @returns {boolean} true, when successful
    */
   moveToGoal(dist) {
     if ((this.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
@@ -296,7 +314,7 @@ SV.Edict = class Edict {
   /**
    * Returns a vector along which this entity can shoot.
    * Usually, this entity is a player, and the vector returned is calculated by auto aiming to the closest enemy entity.
-   * @returns {Vector}
+   * @returns {Vector} aim direction
    */
   aim() {
     const origin = this.api.origin.copy();
@@ -380,7 +398,7 @@ SV.Edict = class Edict {
 
   /**
    * returns the corresponding client object
-   * @returns {SV.Client}
+   * @returns {?SV.Client} client object, if edict is actually a client edict
    */
   getClient() {
     return SV.svs.clients[this.num - 1] || null;
@@ -388,6 +406,7 @@ SV.Edict = class Edict {
 
   /**
    * check if edict is a client edict
+   * @returns {boolean} true, when edict is a client edict
    */
   isClient() {
     return (this.num > 0) && (this.num <= SV.svs.maxclients);
@@ -395,8 +414,18 @@ SV.Edict = class Edict {
 
   /**
    * checks if this entity is worldspawn
+   * @returns {boolean} true, when edict represents world
+   * @deprecated use isWorld instead
    */
   isWorldspawn() {
+    return this.num === 0;
+  }
+
+  /**
+   * checks if this entity is worldspawn
+   * @returns {boolean} true, when edict represents world
+   */
+  isWorld() {
     return this.num === 0;
   }
 };
@@ -1581,6 +1610,10 @@ SV.CheckVelocity = function(ent) {
   ent.api.velocity = ent.api.velocity.set(velo);
 };
 
+/**
+ * @param {SV.Edict} ent edict
+ * @returns {boolean} whether false when an edict got freed
+ */
 SV.RunThink = function(ent) {
   let thinktime = ent.api.nextthink;
   if ((thinktime <= 0.0) || (thinktime > (SV.server.time + Host.frametime))) {
@@ -2003,7 +2036,7 @@ SV.Physics_Client = function(ent) {
     SV.Physics_Toss(ent);
   } else {
     if (!SV.RunThink(ent)) {
-      return;
+      return; // thinking might have freed the edict
     }
     switch (movetype) {
       case SV.movetype.none:
@@ -2054,8 +2087,8 @@ SV.CheckWaterTransition = function(ent) {
 };
 
 SV.Physics_Toss = function(ent) {
-  if (SV.RunThink(ent) !== true) {
-    return;
+  if (!SV.RunThink(ent)) {
+    return; // thinking might have freed the edict
   }
   if ((ent.api.flags & SV.fl.onground) !== 0) {
     return;
@@ -2091,7 +2124,7 @@ SV.Physics_Step = function(ent) {
     SV.CheckVelocity(ent);
     SV.FlyMove(ent, Host.frametime);
     SV.LinkEdict(ent, true);
-    if (((ent.api.flags & SV.fl.onground) !== 0) && (hitsound === true)) {
+    if (((ent.api.flags & SV.fl.onground) !== 0) && (hitsound === true)) { // TODO: game logic
       SV.StartSound(ent, 0, 'demon/dland2.wav', 255, 1.0);
     }
   }
