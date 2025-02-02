@@ -20,6 +20,16 @@ const weaponConfig = new Map([
 ]);
 
 /**
+ * used to emit effects etc. to the client
+ * @enum {string}
+ * @readonly
+ */
+export const playerEvent = {
+  BONUS_FLASH: 'bf',
+  DAMAGE_FLASH: 'dmg',
+};
+
+/**
  * QUAKED info_player_start (1 0 0) (-16 -16 -24) (16 16 24)
  * The normal starting point for a level.
  */
@@ -113,6 +123,18 @@ export class PlayerEntity extends BaseEntity {
    */
   consolePrint(message) {
     this.edict.getClient().consolePrint(message);
+  }
+
+  /**
+   * dispatches a client event to the player’s frontend
+   * @param {playerEvent} plEvent player event
+   * @param {...any} args additional parameters
+   */
+  dispatchEvent(plEvent, ...args) {
+    // TODO: another chapter of fun ahead
+    if (plEvent === playerEvent.BONUS_FLASH) {
+      this.edict.getClient().sendConsoleCommands('bf\n');
+    }
   }
 
   decodeLevelParms() {
@@ -217,7 +239,7 @@ export class PlayerEntity extends BaseEntity {
   }
 
   isOutOfAmmo() {
-
+    // TODO
   }
 
   /**
@@ -249,36 +271,46 @@ export class PlayerEntity extends BaseEntity {
     }
   }
 
-  handleImpulseCommands() {
-    // TODO
-
+  /**
+   * handles impulse commands
+   */
+  _handleImpulseCommands() {
     if (this.impulse >= 1 && this.impulse <= 8) {
       this._weaponChange();
     }
 
     switch (this.impulse) {
       case 66:
+        // TODO: cheat code
         this._explainEntity();
         break;
+
+      case 9:
+        // TODO: CheatCommand ();
+        break;
+
+      case 10:
+        // TODO: CycleWeaponCommand ();
+        break;
+
+      case 11:
+        // TODO: ServerflagsCommand ();
+        break;
+
+      case 12:
+        // TODO: CycleWeaponReverseCommand ();
+        break;
+
+      case 255:
+        // TODO: QuadCheat ();
+        break;
     }
-
-    // if (self.impulse == 9)
-    //   CheatCommand ();
-    // if (self.impulse == 10)
-    //   CycleWeaponCommand ();
-    // if (self.impulse == 11)
-    //   ServerflagsCommand ();
-    // if (self.impulse == 12)
-    //   CycleWeaponReverseCommand ();
-
-    // if (self.impulse == 255)
-    //   QuadCheat ();
 
     this.impulse = 0;
   }
 
   _weaponAttack() {
-
+    // TODO
   }
 
   _weaponChange() { // W_ChangeWeapon
@@ -341,7 +373,7 @@ export class PlayerEntity extends BaseEntity {
       return;
     }
 
-    this.handleImpulseCommands();
+    this._handleImpulseCommands();
 
     // check for attack
     if (this.button0) {
@@ -375,11 +407,6 @@ export class PlayerEntity extends BaseEntity {
     const maxs = new Vector(8.0, 8.0, 8.0);
 
     const trace = this.engine.Traceline(start, end, false, this.edict, mins, maxs);
-
-    // this.engine.SpawnEntity('debug_marker', {
-    //   origin: trace.endpos, // .copy().subtract(forward.multiply(8.0)),
-    //   owner: this,
-    // });
 
     if (trace.entity && !trace.entity.isWorld()) {
       trace.entity.use(this);

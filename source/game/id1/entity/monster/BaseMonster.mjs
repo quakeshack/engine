@@ -16,12 +16,15 @@ export default class BaseMonster extends BaseEntity {
     this.yaw_speed = 0.0;
     this.view_ofs = new Vector();
 
-    /** @type {BaseEntity} */
-    this.enemy = null; // acquired target
-    /** @type {BaseEntity} */
-    this.goalentity = null; // a movetarget or an enemy
+    /** @type {?BaseEntity} acquired target */
+    this.enemy = null;
+    /** @type {BaseEntity} a movetarget or an enemy */
+    this.goalentity = null;
 
     this._ai = this._newEntityAI();
+
+    /** @type {number} refire count for nightmare */
+    this.cnt = 0;
   }
 
   /**
@@ -83,13 +86,9 @@ export default class BaseMonster extends BaseEntity {
 
   spawn() {
     this.game.total_monsters++;
-    this.nextthink = this.nextthink + Math.random() * 0.5;
     this._ai.spawn();
-  }
 
-  think() {
-    super.think();
-    this._ai.think();
+    this._scheduleThink(this.nextthink + Math.random() * 0.5, () => this._ai.think());
   }
 
   use(userEntity) {
@@ -99,5 +98,14 @@ export default class BaseMonster extends BaseEntity {
 
   sightSound() {
     // implement: startSound here
+  }
+
+  attackFinished(normal) {
+    // in nightmare mode, all attack_finished times become 0
+    // some monsters refire twice automatically
+    this.cnt = 0; // refire count for nightmare
+    if (this.game.skill !== 3) {
+      this.attack_finished = this.game.time + normal;
+    }
   }
 }

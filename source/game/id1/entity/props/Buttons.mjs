@@ -41,17 +41,6 @@ export class ButtonEntity extends BasePropEntity {
     }
   }
 
-  think() {
-    switch (this.state) {
-      case state.STATE_TOP:
-        this._buttonReturn();
-        break;
-
-      default:
-        this._sub.think();
-    }
-  }
-
   _buttonDone() {
     this.state = state.STATE_BOTTOM;
   }
@@ -71,9 +60,11 @@ export class ButtonEntity extends BasePropEntity {
    */
   _buttonWait(userEntity) {
     this.state = state.STATE_TOP;
-    this.nextthink = this.ltime + this.wait;
+
     this._sub.useTargets(userEntity);
     this.frame = 1; // use alternate textures
+
+    this._scheduleThink(this.ltime + this.wait, () => this._buttonReturn());
   }
 
   /**

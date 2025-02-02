@@ -212,40 +212,8 @@ export class BaseDoorEntity extends BasePropEntity {
       return;		// don't come down automatically
     }
 
-    this.nextstate = state.STATE_DOWN; // self.think = door_go_down; via state machine
-    this.nextthink = this.ltime + this.wait;
     this._sub.reset();
-  }
-
-  think() {
-    // door state machine, state breaks think
-    switch (this.nextstate) {
-      case state.STATE_DOWN:
-        this._doorGoDown();
-        this.nextstate = state.STATE_DONE;
-        return;
-
-      case state.STATE_BOTTOM:
-        this._doorHitBottom();
-        this.nextstate = state.STATE_DONE;
-        return;
-
-      case state.STATE_UP:
-        this._doorHitTop();
-        this.nextstate = state.STATE_DONE;
-        return;
-
-      case state.STATE_TOP:
-        this._doorHitTop();
-        this.nextstate = state.STATE_DONE;
-        return;
-    }
-
-    // handles delays for us
-    this._sub.think();
-
-    // we need to handle linking doors during think, because we need to wait for all doors to arrive
-    this._linkDoors();
+    this._scheduleThink(this.ltime + this.wait, () => this._doorGoDown());
   }
 
   // eslint-disable-next-line no-unused-vars
@@ -457,7 +425,7 @@ export class DoorEntity extends BaseDoorEntity {
 
     // LinkDoors can't be done until all of the doors have been spawned, so
     // the sizes can be detected properly.
-    this.nextthink = this.ltime + 0.1;
+    this._scheduleThink(this.ltime + 0.1, () => this._linkDoors());
   }
 
   /**

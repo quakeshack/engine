@@ -89,25 +89,71 @@ export default class ArmySoldierMonster extends BaseMonster {
   }
 
   thinkStand() {
-    // if (this._aiState !== 'stand') {
-      this._runState('army_stand1');
-    //   this._aiState = 'stand';
-    // }
+    if (this.edictId === 13) console.log('thinkStand');
+    this._runState('army_stand1');
   }
 
   thinkWalk() {
-    // if (this._aiState !== 'walk') {
-      this._runState('army_walk1');
-    //   this._aiState = 'walk';
-    // }
-
+    if (this.edictId === 13) console.log('thinkWalk');
+    this._runState('army_walk1');
   }
 
   thinkRun() {
-    // if (this._aiState !== 'run') {
-      this._runState('army_run1');
-    //   this._aiState = 'run';
+    if (this.edictId === 13) console.log('thinkRun');
+    this._runState('army_run1');
+  }
+
+  thinkMissile() {
+    this._runState('army_atk1');
+  }
+
+  thinkPain(attackerEntity, damage) {
+    // local float r;
+
+    // if (self.pain_finished > time)
+    //   return;
+
+    // r = random();
+
+    // if (r < 0.2)
+    // {
+    //   self.pain_finished = time + 0.6;
+    //   army_pain1 ();
+    //   sound (self, CHAN_VOICE, "soldier/pain1.wav", 1, ATTN_NORM);
     // }
+    // else if (r < 0.6)
+    // {
+    //   self.pain_finished = time + 1.1;
+    //   army_painb1 ();
+    //   sound (self, CHAN_VOICE, "soldier/pain2.wav", 1, ATTN_NORM);
+    // }
+    // else
+    // {
+    //   self.pain_finished = time + 1.1;
+    //   army_painc1 ();
+    //   sound (self, CHAN_VOICE, "soldier/pain2.wav", 1, ATTN_NORM);
+    // }
+  }
+
+  thinkDie() {
+
+// // check for gib
+// if (self.health < -35)
+// 	{
+// 		sound (self, CHAN_VOICE, "player/udeath.wav", 1, ATTN_NORM);
+// 		ThrowHead ("progs/h_guard.mdl", self.health);
+// 		ThrowGib ("progs/gib1.mdl", self.health);
+// 		ThrowGib ("progs/gib2.mdl", self.health);
+// 		ThrowGib ("progs/gib3.mdl", self.health);
+// 		return;
+// 	}
+
+// // regular death
+// 	sound (self, CHAN_VOICE, "soldier/death1.wav", 1, ATTN_NORM);
+// 	if (random() < 0.5)
+// 		army_die1 ();
+// 	else
+// 		army_cdie1 ();
   }
 
   spawn() {

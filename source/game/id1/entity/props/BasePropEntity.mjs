@@ -49,7 +49,6 @@ export default class BasePropEntity extends BaseEntity {
 
     /** @type {state} */
     this.state = state.STATE_TOP;
-    this.nextstate = state.STATE_DONE;
     this.lip = 0;
     this.height = 0;
 

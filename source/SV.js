@@ -177,7 +177,7 @@ SV.Edict = class Edict {
       return false;
     }
 
-    return SV.movestep(this, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], true) === 1;
+    return SV.movestep(this, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], true);
   }
 
   /**
@@ -295,10 +295,11 @@ SV.Edict = class Edict {
       return false;
     }
 
-    const goal = this.api.goalentity;
-    const enemy = this.api.enemy;
+    // FIXME: interfaces, edict, entity
+    const goal = this.api.goalentity.edict ? this.api.goalentity.edict : this.api.goalentity;
+    const enemy = this.api.enemy.edict ? this.api.enemy.edict : this.api.enemy;
 
-    if (enemy !== null && !enemy.isWorldspawn() && SV.CloseEnough(this, goal, dist)) {
+    if (enemy !== null && !enemy.isWorld() && SV.CloseEnough(this, goal, dist)) {
       return false;
     }
 
@@ -957,7 +958,7 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
   }
   if (NET.SendUnreliableMessage(client.netconnection, msg) === -1) {
     Host.DropClient(client, true, 'Connectivity issues');
-    return;
+    return false;
   }
   return true;
 };
@@ -1074,8 +1075,8 @@ SV.CreateBaseline = function() {
       continue;
     }
     baseline = svent.baseline;
-    baseline.origin = svent.api.origin;
-    baseline.angles = svent.api.angles;
+    baseline.origin = svent.api.origin.copy();
+    baseline.angles = svent.api.angles.copy();
     baseline.frame = svent.api.frame >> 0;
     baseline.skin = svent.api.skin >> 0;
     if ((i > 0) && (i <= SV.server.maxclients)) {
@@ -1307,6 +1308,7 @@ SV.SetClientName = function(client, name) {
 // move
 
 SV.CheckBottom = function(ent) {
+  const STEPSIZE = 18.0;
   const mins = ent.api.origin.copy().add(ent.api.mins);
   const maxs = ent.api.origin.copy().add(ent.api.maxs);
   for (;;) {
@@ -1325,7 +1327,7 @@ SV.CheckBottom = function(ent) {
     return true;
   }
   const start = new Vector((mins[0] + maxs[0]) * 0.5, (mins[1] + maxs[1]) * 0.5, mins[2]);
-  const stop = new Vector(start[0], start[1], start[2] - 36.0);
+  const stop = new Vector(start[0], start[1], start[2] - 2.0 * STEPSIZE);
   let trace = SV.Move(start, Vector.origin, Vector.origin, stop, SV.move.nomonsters, ent);
   if (trace.fraction === 1.0) {
     return false;
@@ -1341,7 +1343,7 @@ SV.CheckBottom = function(ent) {
       if ((trace.fraction !== 1.0) && (trace.endpos[2] > bottom)) {
         bottom = trace.endpos[2];
       }
-      if ((trace.fraction === 1.0) || ((mid - trace.endpos[2]) > 18.0)) {
+      if ((trace.fraction === 1.0) || ((mid - trace.endpos[2]) > STEPSIZE)) {
         return false;
       }
     }
@@ -1349,19 +1351,32 @@ SV.CheckBottom = function(ent) {
   return true;
 };
 
+/**
+ * Called by monster program code.
+ * The move will be adjusted for slopes and stairs, but if the move isn't
+ * possible, no move is done, false is returned, and
+ * pr_global_struct->trace_normal is set to the normal of the blocking wall
+ * @param {SV.Edict} ent edict/entity trying to move
+ * @param {Vector} move move direction
+ * @param {boolean} relink if true, it will call SV.LinkEdict
+ * @returns {boolean} false, if no move is done
+ */
 SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
-  const oldorg = ent.api.origin;
+  const STEPSIZE = 18.0;
+  const oldorg = ent.api.origin.copy();
   const mins = ent.api.mins;
   const maxs = ent.api.maxs;
-  if ((ent.api.flags & (SV.fl.swim + SV.fl.fly)) !== 0) {
+  // flying monsters don't step up
+  if ((ent.api.flags & (SV.fl.swim | SV.fl.fly)) !== 0) {
     const enemy = ent.api.enemy;
     const neworg = new Vector();
+    // try one move with vertical motion, then one without
     for (let i = 0; i <= 1; ++i) {
       const origin = ent.api.origin.copy();
       neworg[0] = origin[0] + move[0];
       neworg[1] = origin[1] + move[1];
       neworg[2] = origin[2];
-      if ((i === 0) && (enemy !== null)) {
+      if (i === 0 && enemy) {
         const dz = ent.api.origin[2] - enemy.api.origin[2];
         if (dz > 40.0) {
           neworg[2] -= 8.0;
@@ -1369,71 +1384,75 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
           neworg[2] += 8.0;
         }
       }
-      const trace = SV.Move(ent.api.origin, mins, maxs, neworg, 0, ent);
+      const trace = SV.Move(ent.api.origin, mins, maxs, neworg, SV.move.normal, ent);
       if (trace.fraction === 1.0) {
         if (((ent.api.flags & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === Mod.contents.empty)) {
-          return 0;
+          return false; // swim monster left water
         }
-        ent.api.origin = ent.api.origin.set(trace.endpos);
-        if (relink === true) {
+        ent.api.origin = trace.endpos.copy();
+        if (relink) {
           SV.LinkEdict(ent, true);
         }
-        return 1;
+        return true;
       }
       if (!enemy) {
-        return 0;
+        return false;
       }
     }
-    return 0;
+    return false;
   }
+  // push down from a step height above the wished position
   const neworg = ent.api.origin.copy();
   neworg[0] += move[0];
   neworg[1] += move[1];
-  neworg[2] += 18.0;
+  neworg[2] += STEPSIZE;
   const end = neworg.copy();
-  end[2] -= 36.0;
-  const trace = SV.Move(neworg, mins, maxs, end, 0, ent);
+  end[2] -= STEPSIZE * 2.0;
+  const trace = SV.Move(neworg, mins, maxs, end, SV.move.normal, ent);
   if (trace.allsolid === true) {
-    return 0;
+    return false;
   }
   if (trace.startsolid === true) {
-    neworg[2] -= 18.0;
-    const trace = SV.Move(neworg, mins, maxs, end, 0, ent);
+    neworg[2] -= STEPSIZE;
+    const trace = SV.Move(neworg, mins, maxs, end, SV.move.normal, ent);
     if ((trace.allsolid === true) || (trace.startsolid === true)) {
-      return 0;
+      return false;
     }
   }
+  // CR: FIXME: there’s a significant difference from WinQuake’s SV_movestep
   if (trace.fraction === 1.0) {
-    if ((ent.api.flags & SV.fl.partialground) === 0) {
-      return 0;
-    }
-    const neworg = ent.api.origin.copy();
-    neworg[0] += move[0];
-    neworg[1] += move[1];
-    ent.api.origin = ent.api.origin.set(neworg);
-    if (relink === true) {
-      SV.LinkEdict(ent, true);
-    }
-    ent.api.flags &= (~SV.fl.onground >>> 0);
-    return 1;
-  }
-  ent.api.origin = ent.api.origin.set(trace.endpos);
-  if (SV.CheckBottom(ent) !== true) {
+    // if monster had the ground pulled out, go ahead and fall
     if ((ent.api.flags & SV.fl.partialground) !== 0) {
-      if (relink === true) {
+      const neworg = ent.api.origin.copy();
+      neworg[0] += move[0];
+      neworg[1] += move[1];
+      ent.api.origin = neworg;
+      if (relink) {
         SV.LinkEdict(ent, true);
       }
-      return 1;
+      ent.api.flags &= (~SV.fl.onground);
+      return true;
+    }
+
+    return false; // walked off an edge
+  }
+  ent.api.origin = trace.endpos.copy();
+  if (!SV.CheckBottom(ent)) {
+    if ((ent.api.flags & SV.fl.partialground) !== 0) {
+      if (relink) {
+        SV.LinkEdict(ent, true);
+      }
+      return true;
     }
     ent.api.origin = ent.api.origin.set(oldorg);
-    return 0;
+    return false;
   }
   ent.api.flags &= (~SV.fl.partialground >>> 0);
   ent.api.groundentity = trace.ent; // QuakeC quirks
-  if (relink === true) {
+  if (relink) {
     SV.LinkEdict(ent, true);
   }
-  return 1;
+  return true;
 };
 
 SV.ChangeYaw = function (ent) { // Edict
@@ -1473,7 +1492,7 @@ SV.StepDirection = function(ent, yaw, dist) {
   ent.api.angles = new Vector(ent.api.angles[0], SV.ChangeYaw(ent), ent.api.angles[2]); // CR: I’m not happy about this line
   yaw *= Math.PI / 180.0;
   const oldorigin = ent.api.origin.copy();
-  if (SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], false) === 1) {
+  if (SV.movestep(ent, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], false)) {
     const delta = ent.api.angles[1] - ent.api.ideal_yaw;
     if ((delta > 45.0) && (delta < 315.0)) {
       ent.api.origin = ent.api.origin.set(oldorigin);
@@ -2118,7 +2137,7 @@ SV.Physics_Toss = function(ent) {
 };
 
 SV.Physics_Step = function(ent) {
-  if ((ent.api.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
+  if ((ent.api.flags & (SV.fl.onground | SV.fl.fly | SV.fl.swim)) === 0) {
     const hitsound = (ent.api.velocity[2] < (SV.gravity.value * -0.1));
     SV.AddGravity(ent);
     SV.CheckVelocity(ent);

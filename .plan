@@ -17,6 +17,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] PF: need to handle precache more gracefully
 * [_] Host: Load Game and Save Game is now completely broken
 * [X] S/SV/QuakeJS: sounds go crazy, causing insane amount of stress
+* [_] Recheck all ref/copy of `(origin|a?velocity|angles)\s*=`
 
 ### QuakeC / QuakeJS
 
@@ -273,6 +274,14 @@ class MainMenu extends BaseMenu {
   * Official Quake Utils
 
 ## Log
+
+### 2025-02-02
+
+* it’s mildly frustrating that if you forget to copy a Vector you’ll get a reference causing all sorts of funny side effects, I need to doublecheck all `(origin|a?velocity|angles)\s*=`
+* AI is making things walk now
+* Added impulse code 66 to get information of the entity in front of you
+* Introduced that scheduled thinker pattern to ease up lots of pain
+  * _scheduleThink will schedule thinking according to timeline, optionally taking an identifier
 
 ### 2025-02-01
 

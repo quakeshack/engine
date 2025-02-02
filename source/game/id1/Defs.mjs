@@ -1,18 +1,6 @@
 /* global Vector */
 
 /**
- * @readonly
- * @enum {number}
- */
-export const attackStates = {
-  AS_NONE: 0,
-  AS_STRAIGHT: 1,
-  AS_SLIDING: 2,
-  AS_MELEE: 3,
-  AS_MISSILE: 4,
-};
-
-/**
  * range values
  * @readonly
  * @enum {number}

@@ -139,6 +139,19 @@ const QAI_STATE = {
 };
 
 /**
+ * @readonly
+ * @enum {number}
+ */
+export const QAI_ATTACK_STATE = {
+  AS_NONE: 0,
+  AS_STRAIGHT: 1,
+  AS_SLIDING: 2,
+  AS_MELEE: 3,
+  AS_MISSILE: 4,
+};
+
+
+/**
  * entity local AI state based on original Quake behavior
  */
 export class QuakeEntityAI extends EntityAI {
@@ -146,6 +159,12 @@ export class QuakeEntityAI extends EntityAI {
     /** @type {?BaseEntity} */
     this._sightEntity = null;
     this._sightEntityTime = 0.0;
+
+    this._searchTime = 0;
+    /** @type {?BaseEntity} previous acquired target, fallback for dead enemy */
+    this._oldEnemy = null;
+
+    this._attackState = QAI_ATTACK_STATE.AS_NONE;
   }
 
   _findTarget() { // QuakeC: ai.qc/FindTarget
@@ -163,7 +182,7 @@ export class QuakeEntityAI extends EntityAI {
       client = this._sightEntity;
 
       if (client.enemy.equals(self)) {
-        return false;
+        return false; // CR: QuakeC introduces undefined behavior here by invoking an empty return, I hope false is okay for now
       }
     } else {
       client = this._checkClient();
@@ -241,11 +260,11 @@ export class QuakeEntityAI extends EntityAI {
 
     self.goalentity = self.enemy;
     self.ideal_yaw = self.enemy.origin.copy().subtract(self.origin).toYaw();
-    self.nextthink = this._game.time + 0.1;
 
-    // TODO: SUB_AttackFinished (1);	// wait a while before first attack
+    self._scheduleThink(this._game.time + 0.1, (entity) => entity.thinkRun());
 
-    // TODO
+    self.attackFinished(1.0);	// wait a while before first attack
+
     console.log('_huntTarget', this._entity);
   }
 
@@ -276,7 +295,10 @@ export class QuakeEntityAI extends EntityAI {
     // TODO
   }
 
-  stand() {
+  /**
+   * The monster is staying in one place for a while, with slight angle turns
+   */
+  stand() { // QuakeC: ai.qc/ai_stand
     if (this._findTarget()) {
       return;
     }
@@ -290,18 +312,88 @@ export class QuakeEntityAI extends EntityAI {
     // CR: no code here in QuakeC
   }
 
-  walk(dist) {
-
-    // console.log('AI walk', this._entity.edictId, this._entity._stateCurrent, dist);
+  walk(dist) { // QuakeC: ai.qc/ai_walk
+    // console.log('AI walk', this._entity.toString(), dist);
     // TODO
   }
 
-  run(dist) {
-    // console.log('AI run', this._entity.edictId, this._entity._stateCurrent, dist);
+  run(dist) { // QuakeC: ai.qc/ai_run
+    const self = this._entity;
+    // console.log('AI run', this._entity.toString(), dist);
     // TODO
+
+    // movedist = dist;
+
+    // see if the enemy is dead
+    if (self.enemy.health <= 0) {
+      self.enemy = this._game.worldspawn;
+      // FIXME: look all around for other targets (original FIXME from QuakeC)
+      if (this._oldenemy?.health > 0) {
+        self.enemy = this._oldenemy;
+        this._huntTarget();
+      } else {
+        if (self.movetarget) {
+          self.thinkWalk();
+        } else {
+          self.thinkStand();
+        }
+        return;
+      }
+    }
+
+    self.show_hostile = this._game.time + 1.0; // wake up other monsters
+
+    const isEnemyVisible = this._isVisible(self.enemy);
+
+    // check knowledge of enemy
+    if (isEnemyVisible) {
+      this._searchTime = this._game.time + 5.0;
+    }
+
+    // look for other coop players
+    if (this._game.coop && this._searchTime < this._game.time) {
+      if (this._findTarget()) {
+        return;
+      }
+    }
+
+    // TODO: enemy_infront = infront(self.enemy);
+    // TODO: enemy_range = range(self.enemy);
+    // TODO: enemy_yaw = vectoyaw(self.enemy.origin - self.origin);
+
+    switch (this._attackState) {
+      case QAI_ATTACK_STATE.AS_MISSILE:
+        // TODO: ai_run_missile ();
+        break;
+
+      case QAI_ATTACK_STATE.AS_MELEE:
+        // TODO: ai_run_melee ();
+        break;
+
+      case QAI_ATTACK_STATE.AS_SLIDING:
+        if (this._checkAnyAttack(isEnemyVisible)) {
+          return; // beginning an attack
+        }
+        // TODO: ai_run_slide ();
+        break;
+
+      default:
+        if (this._checkAnyAttack(isEnemyVisible)) {
+          return; // beginning an attack
+        }
+
+        // head straight in
+        self.moveToGoal(dist);
+        break;
+    }
   }
 
-  turn() {
+  _checkAnyAttack(isEnemyVisible) { // QuakeC: ai.qc/CheckAnyAttack
+    // TODO
+    return false;
+  }
+
+  turn() { // QuakeC: ai.qc/ai_turn
     if (this._findTarget()) {
       return;
     }
@@ -311,15 +403,6 @@ export class QuakeEntityAI extends EntityAI {
 
   use(userEntity) {
     // TODO: monster_use
-  }
-
-  think() {
-    super.think();
-
-    switch(this._state) {
-      case QAI_STATE.RUN:
-
-    }
   }
 
   spawn() {

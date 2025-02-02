@@ -133,10 +133,9 @@ export class Sub {
   }
 
   /**
-   * called in think() to handle any sub thinking
    * @returns {boolean} returns true, when regular execution is OK
    */
-  think() {
+  _think() {
     if (this._moveData.active) {
       if (this._moveData.finalOrigin) {
         this._entity.setOrigin(this._moveData.finalOrigin);
@@ -150,7 +149,7 @@ export class Sub {
         this._moveData.finalAngle = null;
       }
 
-      this._entity.nextthink = -23.0; // CR: -23 is chosen to mark a thinktime reset by Sub
+      // this._entity.nextthink = -23.0; // CR: -23 is chosen to mark a thinktime reset by Sub
 
       if (this._moveData.callback instanceof Function) {
         this._moveData.callback.call(this._entity);
@@ -191,7 +190,7 @@ export class Sub {
     // check if we are already in place
     if (this._entity.origin.equals(tdest)) {
       this._entity.velocity.clear();
-      this._entity.nextthink = this._entity.ltime + 0.1;
+      this._entity._scheduleThink(this._entity.ltime + 0.1, () => this._think());
       return;
     }
 
@@ -206,12 +205,12 @@ export class Sub {
     if (traveltime < 0.1) {
       // too soon
       this._entity.velocity.clear();
-      this._entity.nextthink = this._entity.ltime + 0.1;
+      this._entity._scheduleThink(this._entity.ltime + 0.1, () => this._think());
       return;
     }
 
-    // set nextthink to trigger a think when dest is reached
-    this._entity.nextthink = this._entity.ltime + traveltime;
+    // schedule a think to trigger a think when dest is reached
+    this._entity._scheduleThink(this._entity.ltime + traveltime, () => this._think());
 
     // scale the destdelta vector by the time spent traveling to get velocity
     this._entity.velocity = vdestdelta.multiply(1.0 / traveltime);
@@ -221,7 +220,7 @@ export class Sub {
     // if there’s a delay, let’s feed it into the think state machine
     if (this._entity.delay && !this._useData.callback) {
       this._useData.callback = () => this.useTargets(activatorEntity);
-      this._entity.nextthink = this._entity.ltime + this._entity.delay;
+      this._entity._scheduleThink(this._entity.ltime + this._entity.delay, () => this._think());
       return;
     }
 

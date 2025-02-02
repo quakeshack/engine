@@ -241,12 +241,9 @@ export class FireballEntity extends BaseEntity {
       (Math.random() * 200) + this.speed,
     );
     this.setModel('progs/lavaball.mdl');
-    this.nextthink = this.game.time + 5.0;
     this.setSize(Vector.origin, Vector.origin);
-  }
 
-  think() {
-    this.remove();
+    this._scheduleThink(this.game.time + 5.0, () => this.remove());
   }
 
   // eslint-disable-next-line no-unused-vars
@@ -272,16 +269,16 @@ export class FireballSpawnerEntity extends BaseEntity {
   }
 
   spawn() {
-    this.nextthink = this.game.time + Math.random() * 5.0;
+    this._scheduleThink(this.game.time + Math.random() * 5.0, () => this._fire());
   }
 
-  think() {
-    this.nextthink = this.game.time + Math.random() * 5.0;
-
-    this.engine.SpawnEntity('fireball', {
+  _fire() {
+    this.engine.SpawnEntity('misc_fireball_fireball', {
       origin: this.origin,
       speed: this.speed,
     });
+
+    this._scheduleThink(this.game.time + Math.random() * 5.0, () => this._fire());
   }
 }
 
@@ -297,11 +294,12 @@ export class DebugMarkerEntity extends BaseLightEntity {
     this.solid = solid.SOLID_TRIGGER;
     this.setSize(new Vector(-4.0, -4.0, -4.0), new Vector(4.0, 4.0, 4.0));
     this.setModel("progs/s_light.spr");
-    this.nextthink = this.game.time + 5.0;
 
     if (this.owner instanceof PlayerEntity) {
       this.owner.centerPrint('marker set at ' + this.origin);
     }
+
+    this._scheduleThink(this.game.time + 5.0, () => this.remove());
   }
 
   /**
@@ -311,9 +309,5 @@ export class DebugMarkerEntity extends BaseLightEntity {
     if (otherEntity.equals(this.owner)) {
       this.remove();
     }
-  }
-
-  think() {
-    this.remove();
   }
 }

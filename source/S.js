@@ -79,7 +79,7 @@ class SoundBaseChannel {
   }
 
   withOrigin(origin) {
-    this.origin = [...origin];
+    this.origin = origin.copy();
     this.spatialize();
 
     return this;
@@ -726,7 +726,7 @@ S = {
     const onDataAvailable = (sc) => {
       // Pick or free a channel
       const targetChan = this.PickChannel(entnum, entchannel).withSfx(sfx);
-      targetChan.origin = [...origin];
+      targetChan.origin = origin.copy();
       targetChan.dist_mult = attenuation * 0.001;
       targetChan.master_vol = vol;
       targetChan.entnum = entnum;
@@ -825,7 +825,7 @@ S = {
     }
 
     const ss = this._NewChannel().withSfx(sfx);
-    ss.origin = [...origin];
+    ss.origin = origin.copy();
     ss.master_vol = vol;
     ss.dist_mult = attenuation * 0.000015625;
 

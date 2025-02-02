@@ -1,3 +1,5 @@
+// eslint-disable-next-line no-global-assign
+self = Object.freeze({}); // CR: self is poison
 
 import { ServerGameAPI } from './GameAPI.mjs';
 

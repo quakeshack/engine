@@ -1258,7 +1258,7 @@ CL.ParseUpdate = function(bits) {
     ent.forcelink = true;
   }
 
-  if (forcelink === true) {
+  if (forcelink) {
     ent.origin = ent.msg_origins[0].copy();
     ent.msg_origins[1] = ent.origin.copy();
     ent.angles = ent.msg_angles[0].copy();

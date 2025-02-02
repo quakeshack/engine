@@ -90,14 +90,17 @@ export default class BaseEntity {
     /** @type {?string} message for triggers or map name */
     this.message = null; // trigger messages
 
-    // subs
-    /** @type {?import('./Subs.mjs').Sub} */
+    // states, sub and thinking
+    /** @type {?import('./Subs.mjs').Sub} @protected */
     this._sub = null; // needs to be initialized optionally
-
-    // states
+    /** @private */
     this._states = {};
+    /** @private */
     this._stateNext = null;
+    /** @private */
     this._stateCurrent = null;
+    /** @private */
+    this._scheduledThinks = [];
 
     this._declareFields();
     this._initStates();
@@ -129,6 +132,7 @@ export default class BaseEntity {
 
   /**
    * defines a state for the state machine
+   * @protected
    * @param {string} state
    * @param {string} keyframe
    * @param {?string} nextState
@@ -145,6 +149,7 @@ export default class BaseEntity {
   /**
    * will start the state machine at the given state
    * if you leave state null, it will simply continue
+   * @protected
    * @param {?string} state optional new state
    * @returns {boolean} whether the state is valid
    */
@@ -185,12 +190,70 @@ export default class BaseEntity {
       }
     }
 
-    // schedule next think
-    this.nextthink = this.game.time + 0.1;
+    // create or update the next think for the animation state
+    this._scheduleThink(this.game.time + 0.1, () => this._runState(), 'animation-state-machine');
 
     // call any additional code
     if (data.handler) {
       data.handler.call(this);
+    }
+
+    return true;
+  }
+
+  /**
+   * schedules a think
+   * @protected
+   * @param {number} nextThink when to call back in seconds starting from game.time
+   * @param {Function} callback callback function, thisArg and the first argument is going to be this
+   * @param {?string} identifier optional identifier to overwrite existing scheduled thinks
+   * @param {boolean} isRequired this think needs to be executed, even when it’s overdue
+   */
+  _scheduleThink(nextThink, callback, identifier = null, isRequired = false) {
+    const think = identifier ? this._scheduledThinks.find((think) => think.identifier === identifier) : null;
+
+    if (think) {
+      think.nextThink = nextThink;
+      think.callback = callback;
+      think.isRequired = isRequired;
+    } else {
+      this._scheduledThinks.push({nextThink, callback, identifier, isRequired});
+    }
+
+    this._scheduledThinks.sort((a, b) => a.nextThink - b.nextThink);
+
+    // set next think
+    this.nextthink = this._scheduledThinks[0].nextThink;
+  }
+
+  /**
+   * Runs the next scheduled think and sets nextthink accordingly, if applicable.
+   * @private
+   * @returns {boolean} true, if there was something to execute
+   */
+  _runScheduledThinks() {
+    if (this._scheduledThinks.length === 0) {
+      return false;
+    }
+
+    const { callback } = this._scheduledThinks.shift();
+
+    callback.call(this, this);
+
+    // skip over all passed thinks
+    // FIXME: what’s the alternative to check time against for moveType.MOVETYPE_PUSH?
+    if (this.movetype !== moveType.MOVETYPE_PUSH) {
+      while (this._scheduledThinks.length > 0 && this.game.time > this._scheduledThinks[0].nextThink) {
+        const { callback, isRequired } = this._scheduledThinks.shift();
+
+        if (isRequired) {
+          callback.call(this, this);
+        }
+      }
+    }
+
+    if (this._scheduledThinks.length > 0) {
+      this.nextthink = this._scheduledThinks[0].nextThink;
     }
 
     return true;
@@ -366,7 +429,7 @@ export default class BaseEntity {
   }
 
   toString() {
-    return `${this.classname} (Edict ${this.edictId}, ${this.constructor.name})`;
+    return `Edict ${this.edictId} (${this.classname}, ${this.constructor.name})`;
   }
 
   /**
@@ -377,6 +440,7 @@ export default class BaseEntity {
   }
 
   clear() {
+    // FIXME: unsure if we need this still
   }
 
   /**
@@ -390,11 +454,7 @@ export default class BaseEntity {
    * when overriding, make sure to call super.think()
    */
   think() {
-    if (this._sub) {
-      this._sub.think();
-    }
-
-    this._runState();
+    this._runScheduledThinks();
   }
 
   // === Interactions ===
@@ -403,18 +463,8 @@ export default class BaseEntity {
    * this object is used (by another player or NPC), invoked by the game code
    * @param {BaseEntity} usedByEntity what entity is using this one
    */
+  // eslint-disable-next-line no-unused-vars
   use(usedByEntity) {
-    // debug and playing around only
-    if (this.edictId > 0 && usedByEntity.classname === 'player') {
-      usedByEntity.startSound(channel.CHAN_BODY, "misc/talk.wav", 1.0, attn.ATTN_NORM);
-      usedByEntity.centerPrint(`${this}`);
-      usedByEntity.consolePrint(
-        `movetype = ${this.movetype}\n` +
-        `flags = ${new Flag(flags, this.flags)}\n` +
-        `frame = ${this.frame}\n` +
-        `_stateCurrent = ${this._stateCurrent}\n`);
-      console.log('BaseEntity.use:', this);
-    }
   }
 
   /**
@@ -483,5 +533,14 @@ export default class BaseEntity {
     const start = this.origin.copy().add(this.view_ofs ? this.view_ofs : Vector.origin);
 
     return this.engine.Traceline(start, target, ignoreMonsters, this.edict);
+  }
+
+  /**
+   * Move this entity toward its goal. Used for monsters.
+   * @param {number} distance
+   * @returns {boolean} true, when successful
+   */
+  moveToGoal(distance) {
+    return this.edict.moveToGoal(distance);
   }
 };
