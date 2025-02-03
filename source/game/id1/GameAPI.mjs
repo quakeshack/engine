@@ -1,6 +1,6 @@
 /* global Game */
 
-import { InfoPlayerStart, PlayerEntity } from "./entity/Player.mjs";
+import { GibEntity, InfoPlayerStart, PlayerEntity } from "./entity/Player.mjs";
 import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
 import { items } from "./Defs.mjs";
 import * as misc from "./entity/Misc.mjs";
@@ -22,6 +22,7 @@ const entityRegistry = [
   misc.InfoNotNullEntity,
 
   InfoPlayerStart,
+  GibEntity,
 
   misc.ViewthingEntity,
   misc.DebugMarkerEntity,

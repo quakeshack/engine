@@ -272,8 +272,18 @@ class MainMenu extends BaseMenu {
   * library to offload calculations to the GPU
 * https://github.com/id-Software/Quake-Tools/tree/master/qutils
   * Official Quake Utils
+* https://idtech.space/
+  * https://code.idtech.space/ all id tech related code (without leaks)
 
 ## Log
+
+### 2025-02-03
+
+* mini project idea: reimplement q2048 https://github.com/jhspetersson/q2048/tree/master
+* added gibbing
+  * gibbing turns an actor into a head and spawns three giblets
+  * MOVETYPE_BOUNCE is a hack lol
+* added `resetThinking`
 
 ### 2025-02-02
 

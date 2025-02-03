@@ -1659,7 +1659,7 @@ SV.Impact = function(e1, e2) {
 };
 
 SV.ClipVelocity = function(vec, normal, out, overbounce) {
-  const backoff = (vec[0] * normal[0] + vec[1] * normal[1] + vec[2] * normal[2]) * overbounce;
+  const backoff = vec.dot(normal) * overbounce;
 
   out[0] = vec[0] - normal[0] * backoff;
   if ((out[0] > -0.1) && (out[0] < 0.1)) {

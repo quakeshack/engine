@@ -1,7 +1,7 @@
 /* global Vector */
 
 import { attn, channel, content, damage, dead, deathType, flags, items, moveType, solid, vec } from "../Defs.mjs";
-import { Flag } from "../helper/MiscHelpers.mjs";
+import { crandom, Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { InfoNotNullEntity } from "./Misc.mjs";
 
@@ -27,6 +27,26 @@ const weaponConfig = new Map([
 export const playerEvent = {
   BONUS_FLASH: 'bf',
   DAMAGE_FLASH: 'dmg',
+};
+
+
+/**
+ *
+ * @param {number} damage damage taken
+ * @returns {Vector} velocity vector based on damage
+ */
+function VelocityForDamage(damage) {
+  const v = new Vector(100.0 * crandom(), 100.0 * crandom(), 100.0 * crandom() + 200.0);
+
+	if (damage > -50) {
+    v.multiply(0.7);
+	} else if (damage > -200) {
+    v.multiply(2.0);
+	} else {
+    v.multiply(10.0);
+  }
+
+	return v;
 };
 
 /**
@@ -130,6 +150,7 @@ export class PlayerEntity extends BaseEntity {
    * @param {playerEvent} plEvent player event
    * @param {...any} args additional parameters
    */
+  // eslint-disable-next-line no-unused-vars
   dispatchEvent(plEvent, ...args) {
     // TODO: another chapter of fun ahead
     if (plEvent === playerEvent.BONUS_FLASH) {
@@ -248,7 +269,7 @@ export class PlayerEntity extends BaseEntity {
   _explainEntity() {
     const start = this.origin.copy().add(this.view_ofs);
     const { forward } = this.angles.angleVectors();
-    const end = start.copy().add(forward.multiply(128.0)); // within 64 units of reach
+    const end = start.copy().add(forward.multiply(128.0));
 
     const mins = new Vector(-8.0, -8.0, -8.0);
     const maxs = new Vector(8.0, 8.0, 8.0);
@@ -271,6 +292,21 @@ export class PlayerEntity extends BaseEntity {
     }
   }
 
+  _testStuff() {
+    const start = this.origin.copy().add(this.view_ofs);
+    const { forward } = this.angles.angleVectors();
+    const end = start.copy().add(forward.multiply(128.0));
+
+    const mins = new Vector(-8.0, -8.0, -8.0);
+    const maxs = new Vector(8.0, 8.0, 8.0);
+
+    const trace = this.engine.Traceline(start, end, false, this.edict, mins, maxs);
+
+    if (trace.entity) {
+      GibEntity.gibEntity(trace.entity, "progs/h_player.mdl");
+    }
+  }
+
   /**
    * handles impulse commands
    */
@@ -280,9 +316,12 @@ export class PlayerEntity extends BaseEntity {
     }
 
     switch (this.impulse) {
-      case 66:
-        // TODO: cheat code
+      case 66: // TODO: cheat code
         this._explainEntity();
+        break;
+
+      case 100: // TODO: remove
+        this._testStuff();
         break;
 
       case 9:
@@ -607,5 +646,70 @@ export class PlayerEntity extends BaseEntity {
 
   isActor() {
     return true;
+  }
+};
+
+export class GibEntity extends BaseEntity {
+  static classname = 'misc_gib';
+
+  spawn() {
+    this.setModel(this.model);
+    this.setSize(Vector.origin, Vector.origin);
+    this.movetype = moveType.MOVETYPE_BOUNCE;
+    this.solid = solid.SOLID_NOT;
+    this.avelocity = (new Vector(Math.random(), Math.random(), Math.random())).multiply(600.0);
+    this.ltime = this.game.time;
+    this.frame = 0;
+    this.flags = 0;
+
+    this._scheduleThink(this.ltime + 10.0 + Math.random() * 10.0, () => this.remove());
+  }
+
+  /**
+   *
+   * @param {BaseEntity} entity the entity being gibbed
+   * @param {?number} damage taken damage (negative)
+   */
+  static throwGibs(entity, damage = null) {
+    for (const model of ['progs/gib1.mdl', 'progs/gib2.mdl', 'progs/gib3.mdl']) {
+      entity.engine.SpawnEntity('misc_gib', {
+        origin: entity.origin.copy(),
+        velocity: VelocityForDamage(damage !== null ? damage : entity.health),
+        model,
+      });
+    }
+  }
+
+  /**
+   * turns entity into a head, will spawn random gibs
+   * @param {BaseEntity} entity entity to be gibbed
+   * @param {string} headModel e.g. progs/h_player.mdl
+   * @param {?boolean} playSound plays gibbing sounds, if true
+   */
+  static gibEntity(entity, headModel, playSound = true) {
+    if (!entity.isActor() || entity.health > 0) {
+      return;
+    }
+
+    const damage = entity.health;
+
+    entity.resetThinking();
+    entity.setModel(headModel);
+    entity.frame = 0;
+    entity.movetype = moveType.MOVETYPE_BOUNCE;
+    entity.takedamage = damage.DAMAGE_NO;
+    entity.solid = solid.SOLID_NOT;
+    entity.view_ofs = new Vector(0.0, 0.0, 8.0);
+    entity.setSize(new Vector(-16.0, -16.0, 0.0), new Vector(16.0, 16.0, 56.0));
+    entity.velocity = VelocityForDamage(damage);
+    entity.origin[2] -= 24.0;
+    entity.flags &= ~flags.FL_ONGROUND;
+    entity.avelocity = (new Vector(0.0, 600.0, 0.0)).multiply(crandom());
+
+    GibEntity.throwGibs(entity, damage);
+
+    if (playSound) {
+      entity.startSound(channel.CHAN_VOICE, Math.random() < 0.5 ? "player/gib.wav" : "player/udeath.wav", 1.0, attn.ATTN_NONE);
+    }
   }
 };

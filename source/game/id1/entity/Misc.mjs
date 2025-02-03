@@ -282,7 +282,7 @@ export class FireballSpawnerEntity extends BaseEntity {
   }
 }
 
-export class DebugMarkerEntity extends BaseLightEntity {
+export class DebugMarkerEntity extends BaseEntity {
   static classname = 'debug_marker';
 
   _precache() {

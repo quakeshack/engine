@@ -260,6 +260,14 @@ export default class BaseEntity {
   }
 
   /**
+   * completely resets thinking and purges all scheduled thinks
+   */
+  resetThinking() {
+    this._scheduledThinks = [];
+    this.nextthink = -1.0;
+  }
+
+  /**
    * tries to cast all initialData values (which are strings) to their corresponding types
    * @param {object} initialData map of entity fields
    */

@@ -1,5 +1,13 @@
 
 /**
+ * ported directly from QuakeC (weapons.qc/crandom)
+ * @returns {number} a random number from -1 to 1
+ */
+export function crandom() {
+  return 2.0 * (Math.random() - 0.5);
+}
+
+/**
  * helper class to deal with flags stored in bits
  */
 export class Flag {
