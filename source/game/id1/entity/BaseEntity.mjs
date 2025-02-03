@@ -22,7 +22,7 @@ export default class BaseEntity {
   constructor(edict, gameAPI) {
     // hooking up the edict and the entity, also the APIs
     this.edict = edict;
-    this.edict.api = this;
+    this.edict.entity = this;
     this.engine = gameAPI.engine;
     this.game = gameAPI;
 
@@ -509,7 +509,7 @@ export default class BaseEntity {
    */
   findNextEntityByFieldAndValue(field, value) {
     const edict = this.engine.FindByFieldAndValue(field, value, this.edictId + 1);
-    return edict ? edict.api : null;
+    return edict ? edict.entity : null;
   }
 
   /**
@@ -519,7 +519,7 @@ export default class BaseEntity {
    */
   getNextBestClient() {
     const edict = this.edict.getNextBestClient();
-    return edict ? edict.api : null;
+    return edict ? edict.entity : null;
   }
 
   /**

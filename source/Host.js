@@ -519,7 +519,7 @@ Host.Status_f = function() {
     if (!client.active) {
       continue;
     }
-    frags = client.edict.api.frags.toFixed(0);
+    frags = client.edict.entity.frags.toFixed(0);
     if (frags.length === 1) {
       frags = '  ' + frags;
     } else if (frags.length === 2) {
@@ -569,8 +569,8 @@ Host.God_f = function() {
   if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
-  SV.player.api.flags ^= SV.fl.godmode;
-  if ((SV.player.api.flags & SV.fl.godmode) === 0) {
+  SV.player.entity.flags ^= SV.fl.godmode;
+  if ((SV.player.entity.flags & SV.fl.godmode) === 0) {
     Host.ClientPrint('godmode OFF\n');
   } else {
     Host.ClientPrint('godmode ON\n');
@@ -585,8 +585,8 @@ Host.Notarget_f = function() {
   if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
-  SV.player.api.flags ^= SV.fl.notarget;
-  if ((SV.player.api.flags & SV.fl.notarget) === 0) {
+  SV.player.entity.flags ^= SV.fl.notarget;
+  if ((SV.player.entity.flags & SV.fl.notarget) === 0) {
     Host.ClientPrint('notarget OFF\n');
   } else {
     Host.ClientPrint('notarget ON\n');
@@ -601,14 +601,14 @@ Host.Noclip_f = function() {
   if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
-  if (SV.player.api.movetype !== SV.movetype.noclip) {
+  if (SV.player.entity.movetype !== SV.movetype.noclip) {
     Host.noclip_anglehack = true;
-    SV.player.api.movetype = SV.movetype.noclip;
+    SV.player.entity.movetype = SV.movetype.noclip;
     Host.ClientPrint('noclip ON\n');
     return;
   }
   Host.noclip_anglehack = false;
-  SV.player.api.movetype = SV.movetype.walk;
+  SV.player.entity.movetype = SV.movetype.walk;
   Host.ClientPrint('noclip OFF\n');
 };
 
@@ -620,12 +620,12 @@ Host.Fly_f = function() {
   if (SV.server.gameAPI.deathmatch !== 0) {
     return;
   }
-  if (SV.player.api.movetype !== SV.movetype.fly) {
-    SV.player.api.movetype = SV.movetype.fly;
+  if (SV.player.entity.movetype !== SV.movetype.fly) {
+    SV.player.entity.movetype = SV.movetype.fly;
     Host.ClientPrint('flymode ON\n');
     return;
   }
-  SV.player.api.movetype = SV.movetype.walk;
+  SV.player.entity.movetype = SV.movetype.walk;
   Host.ClientPrint('flymode OFF\n');
 };
 
@@ -832,7 +832,7 @@ Host.Savegame_f = function() {
   }
   const client = SV.svs.clients[0];
   if (client.active === true) {
-    if (client.edict.api.health <= 0.0) {
+    if (client.edict.entity.health <= 0.0) {
       Con.Print('Can\'t savegame with a dead player\n');
       return;
     }
@@ -1079,7 +1079,7 @@ Host.Say_f = function(teamonly) {
     if ((client.active !== true) || (client.spawned !== true)) {
       continue;
     }
-    if ((Host.teamplay.value !== 0) && (teamonly === true) && (client.api.team !== save.api.team)) {
+    if ((Host.teamplay.value !== 0) && (teamonly === true) && (client.entity.team !== save.entity.team)) {
       continue;
     }
     Host.SendChatMessageToClient(client, SV.GetClientName(save), message, false);
@@ -1159,7 +1159,7 @@ Host.Color_f = function() { // signon 2, step 2 // FIXME: Host.client
   }
 
   Host.client.colors = playercolor;
-  Host.client.edict.api.team = bottom + 1;
+  Host.client.edict.entity.team = bottom + 1;
   const msg = SV.server.reliable_datagram;
   MSG.WriteByte(msg, Protocol.svc.updatecolors);
   MSG.WriteByte(msg, Host.client.num);
@@ -1171,7 +1171,7 @@ Host.Kill_f = function() {
     Cmd.ForwardToServer();
     return;
   }
-  if (SV.player.api.health <= 0.0) {
+  if (SV.player.entity.health <= 0.0) {
     Host.ClientPrint('Can\'t suicide -- already dead!\n');
     return;
   }
@@ -1278,7 +1278,7 @@ Host.Spawn_f = function() { // signon 2, step 3
   MSG.WriteByte(message, Def.stat.monsters);
   MSG.WriteLong(message, SV.server.gameAPI.killed_monsters);
   MSG.WriteByte(message, Protocol.svc.setangle);
-  const angles = ent.api.angles;
+  const angles = ent.entity.angles;
   MSG.WriteAngle(message, angles[0]);
   MSG.WriteAngle(message, angles[1]);
   MSG.WriteAngle(message, 0.0);
@@ -1409,65 +1409,65 @@ Host.Give_f = function() {
 
   // wait for the next server frame
   SV.ScheduleGameCommand(() => {
-    const { forward } = player.api.v_angle.angleVectors();
-    const origin = forward.multiply(64.0).add(player.api.origin);
+    const { forward } = player.entity.v_angle.angleVectors();
+    const origin = forward.multiply(64.0).add(player.entity.origin);
 
     Game.EngineInterface.SpawnEntity(entityClassname, {
       origin,
     });
 
     // // playing around with Quake logic:
-    // self.api.nextthink = 0; // disable PlaceItem
-    // self.api.mdl = self.api.model; // so it can be restored on respawn
-    // self.api.flags = 256; // make extra wide
-    // self.api.solid = SV.solid.trigger;
-    // self.api.movetype = SV.movetype.toss;
-    // self.api.velocity = Vector.origin;
+    // self.entity.nextthink = 0; // disable PlaceItem
+    // self.entity.mdl = self.entity.model; // so it can be restored on respawn
+    // self.entity.flags = 256; // make extra wide
+    // self.entity.solid = SV.solid.trigger;
+    // self.entity.movetype = SV.movetype.toss;
+    // self.entity.velocity = Vector.origin;
 
   });
   // /* old code below */
   // if ((t >= 48) && (t <= 57)) {
   //   if (COM.hipnotic !== true) {
   //     if (t >= 50) {
-  //       ent.api.items |= Def.it.shotgun << (t - 50);
+  //       ent.entity.items |= Def.it.shotgun << (t - 50);
   //     }
   //     return;
   //   }
   //   if (t === 54) {
   //     if (Cmd.argv[1].charCodeAt(1) === 97) {
-  //       ent.api.items |= Def.hit.proximity_gun;
+  //       ent.entity.items |= Def.hit.proximity_gun;
   //     } else {
-  //       ent.api.items |= Def.it.grenade_launcher;
+  //       ent.entity.items |= Def.it.grenade_launcher;
   //     }
   //     return;
   //   }
   //   if (t === 57) {
-  //     ent.api.items |= Def.hit.laser_cannon;
+  //     ent.entity.items |= Def.hit.laser_cannon;
   //   } else if (t === 48) {
-  //     ent.api.items |= Def.hit.mjolnir;
+  //     ent.entity.items |= Def.hit.mjolnir;
   //   } else if (t >= 50) {
-  //     ent.api.items |= Def.it.shotgun << (t - 50);
+  //     ent.entity.items |= Def.it.shotgun << (t - 50);
   //   }
   //   return;
   // }
   // const v = Q.atoi(Cmd.argv[2]);
   // if (t === 104) {
-  //   ent.api.health = v;
+  //   ent.entity.health = v;
   //   return;
   // }
   // if (COM.rogue !== true) {
   //   switch (t) {
   //     case 115:
-  //       ent.api.ammo_shells = v;
+  //       ent.entity.ammo_shells = v;
   //       return;
   //     case 110:
-  //       ent.api.ammo_nails = v;
+  //       ent.entity.ammo_nails = v;
   //       return;
   //     case 114:
-  //       ent.api.ammo_rockets = v;
+  //       ent.entity.ammo_rockets = v;
   //       return;
   //     case 99:
-  //       ent.api.ammo_cells = v;
+  //       ent.entity.ammo_cells = v;
   //   }
   //   return;
   // }
@@ -1475,55 +1475,55 @@ Host.Give_f = function() {
   //   case 115:
   //     if (PR.entvars.ammo_shells1 != null) {
   //       ent.v_float[PR.entvars.ammo_shells1] = v;
-  //       ent.api.ammo_shells1
+  //       ent.entity.ammo_shells1
   //     }
-  //     ent.api.ammo_shells = v;
+  //     ent.entity.ammo_shells = v;
   //     return;
   //   case 110:
   //     if (PR.entvars.ammo_nails1 != null) {
   //       ent.v_float[PR.entvars.ammo_nails1] = v;
-  //       if (ent.api.weapon <= Def.it.lightning) {
-  //         ent.api.ammo_nails = v;
+  //       if (ent.entity.weapon <= Def.it.lightning) {
+  //         ent.entity.ammo_nails = v;
   //       }
   //     }
   //     return;
   //   case 108:
   //     if (PR.entvars.ammo_lava_nails != null) {
-  //       ent.api.ammo_lava_nails = v;
-  //       if (ent.api.weapon > Def.it.lightning) {
-  //         ent.api.ammo_nails = v;
+  //       ent.entity.ammo_lava_nails = v;
+  //       if (ent.entity.weapon > Def.it.lightning) {
+  //         ent.entity.ammo_nails = v;
   //       }
   //     }
   //     return;
   //   case 114:
   //     if (PR.entvars.ammo_rockets1 != null) {
   //       ent.v_float[PR.entvars.ammo_rockets1] = v;
-  //       if (ent.api.weapon <= Def.it.lightning) {
-  //         ent.api.ammo_rockets = v;
+  //       if (ent.entity.weapon <= Def.it.lightning) {
+  //         ent.entity.ammo_rockets = v;
   //       }
   //     }
   //     return;
   //   case 109:
   //     if (PR.entvars.ammo_multi_rockets != null) {
-  //       ent.api.ammo_multi_rockets = v;
-  //       if (ent.api.weapon > Def.it.lightning) {
-  //         ent.api.ammo_rockets = v;
+  //       ent.entity.ammo_multi_rockets = v;
+  //       if (ent.entity.weapon > Def.it.lightning) {
+  //         ent.entity.ammo_rockets = v;
   //       }
   //     }
   //     return;
   //   case 99:
   //     if (PR.entvars.ammo_cells1 != null) {
   //       ent.v_float[PR.entvars.ammo_cells1] = v;
-  //       if (ent.api.weapon <= Def.it.lightning) {
-  //         ent.api.ammo_cells = v;
+  //       if (ent.entity.weapon <= Def.it.lightning) {
+  //         ent.entity.ammo_cells = v;
   //       }
   //     }
   //     return;
   //   case 112:
   //     if (PR.entvars.ammo_plasma != null) {
-  //       ent.api.ammo_plasma = v;
-  //       if (ent.api.weapon > Def.it.lightning) {
-  //         ent.api.ammo_cells = v;
+  //       ent.entity.ammo_plasma = v;
+  //       if (ent.entity.weapon > Def.it.lightning) {
+  //         ent.entity.ammo_cells = v;
   //       }
   //     }
   // }
@@ -1534,7 +1534,7 @@ Host.FindViewthing = function() {
   if (SV.server.active === true) {
     for (i = 0; i < SV.server.num_edicts; ++i) {
       e = SV.server.edicts[i];
-      if (e.api.classname === 'viewthing') {
+      if (e.entity.classname === 'viewthing') {
         return e;
       }
     }
@@ -1556,8 +1556,8 @@ Host.Viewmodel_f = function() {
     Con.Print('Can\'t load ' + Cmd.argv[1] + '\n');
     return;
   }
-  ent.api.frame = 0.0;
-  CL.state.model_precache[ent.api.modelindex >> 0] = m;
+  ent.entity.frame = 0.0;
+  CL.state.model_precache[ent.entity.modelindex >> 0] = m;
 };
 
 Host.Viewframe_f = function() {
@@ -1565,12 +1565,12 @@ Host.Viewframe_f = function() {
   if (ent == null) {
     return;
   }
-  const m = CL.state.model_precache[ent.api.modelindex >> 0];
+  const m = CL.state.model_precache[ent.entity.modelindex >> 0];
   let f = Q.atoi(Cmd.argv[1]);
   if (f >= m.frames.length) {
     f = m.frames.length - 1;
   }
-  ent.api.frame = f;
+  ent.entity.frame = f;
 };
 
 Host.Viewnext_f = function() {
@@ -1578,12 +1578,12 @@ Host.Viewnext_f = function() {
   if (ent == null) {
     return;
   }
-  const m = CL.state.model_precache[ent.api.modelindex >> 0];
-  let f = (ent.api.frame >> 0) + 1;
+  const m = CL.state.model_precache[ent.entity.modelindex >> 0];
+  let f = (ent.entity.frame >> 0) + 1;
   if (f >= m.frames.length) {
     f = m.frames.length - 1;
   }
-  ent.api.frame = f;
+  ent.entity.frame = f;
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 
@@ -1592,12 +1592,12 @@ Host.Viewprev_f = function() {
   if (ent == null) {
     return;
   }
-  const m = CL.state.model_precache[ent.api.modelindex >> 0];
-  let f = (ent.api.frame >> 0) - 1;
+  const m = CL.state.model_precache[ent.entity.modelindex >> 0];
+  let f = (ent.entity.frame >> 0) - 1;
   if (f < 0) {
     f = 0;
   }
-  ent.api.frame = f;
+  ent.entity.frame = f;
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 

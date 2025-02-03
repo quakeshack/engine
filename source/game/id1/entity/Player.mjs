@@ -126,7 +126,7 @@ export class PlayerEntity extends BaseEntity {
   _selectSpawnPoint() {
     // FIXME: this needs to be done properly
 
-    return this.engine.FindByFieldAndValue('classname', 'info_player_start', this.game.lastspawn ? this.game.lastspawn.edict.num : 0).api;
+    return this.engine.FindByFieldAndValue('classname', 'info_player_start', this.game.lastspawn ? this.game.lastspawn.edict.num : 0).entity;
   }
 
   /**
@@ -578,7 +578,7 @@ export class PlayerEntity extends BaseEntity {
 
     if (this.waterlevel === 2) {
       // TODO: CheckWaterJump ();
-      this.centerPrint('this.waterlevel === 2');
+      // this.centerPrint('this.waterlevel === 2');
     }
 
     if (this.deadflag >= dead.DEAD_DEAD) {

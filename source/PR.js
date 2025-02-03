@@ -809,9 +809,9 @@ PR.LoadProgs = function() {
 
   const gameAPI = Object.assign(new PR.EdictProxy(null), {
     prepareEntity(edict, classname, initialData = {}) {
-      if (!edict.api) {
-        edict.api = new PR.EdictProxy(edict);
-        Object.freeze(edict.api);
+      if (!edict.entity) {
+        edict.entity = new PR.EdictProxy(edict);
+        Object.freeze(edict.entity);
       }
 
       // special case for QuakeC: empty entity
@@ -841,11 +841,11 @@ PR.LoadProgs = function() {
 
         switch (field.type & 0x7fff) {
           case PR.etype.ev_entity:
-            edict.api[key] = value instanceof SV.Edict ? value : {num: parseInt(value)};
+            edict.entity[key] = value instanceof SV.Edict ? value : {num: parseInt(value)};
             break;
 
           case PR.etype.ev_vector:
-            edict.api[key] = value instanceof Vector ? value : new Vector(...value.split(' ').map((x) => parseFloat(x)));
+            edict.entity[key] = value instanceof Vector ? value : new Vector(...value.split(' ').map((x) => parseFloat(x)));
             break;
 
           case PR.etype.ev_field: {
@@ -854,23 +854,23 @@ PR.LoadProgs = function() {
               Con.Print(`Can't find field: ${value}\n`);
               break;
             }
-            edict.api[key] = d;
+            edict.entity[key] = d;
             break;
           }
 
           case PR.etype.ev_function: {
-            edict.api[key] = {fnc: value};
+            edict.entity[key] = {fnc: value};
             break;
           }
 
           default:
-            edict.api[key] = value;
+            edict.entity[key] = value;
         }
       }
 
       // these are quake specific things happening during loading
 
-      const spawnflags = edict.api.spawnflags | 0;
+      const spawnflags = edict.entity.spawnflags | 0;
 
       if (Host.deathmatch.value !== 0 && (spawnflags & 2048)) {
         return false;
@@ -886,17 +886,17 @@ PR.LoadProgs = function() {
     },
 
     spawnPreparedEntity(edict) {
-      if (!edict.api) {
+      if (!edict.entity) {
         Con.Print(`PR.LoadProgs.spawnPreparedEntity: no entity class instance set\n`);
         return false;
       }
 
       // another special case for QuakeC: player has no spawn function
-      if (edict.api.classname === 'player') {
+      if (edict.entity.classname === 'player') {
         return true;
       }
 
-      edict.api.spawn();
+      edict.entity.spawn();
 
       return true;
     }

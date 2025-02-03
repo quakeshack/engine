@@ -71,7 +71,7 @@ Game.EngineInterface = class EngineInterface {
       /** @type {Vector} final position of the line */
       point: trace.endpos,
       /** @type {?import('./game/id1/entity/BaseEntity.mjs').default} entity */
-      entity: trace.ent ? trace.ent.api : null,
+      entity: trace.ent ? trace.ent.entity : null,
     };
   }
 
@@ -149,11 +149,11 @@ Game.EngineInterface = class EngineInterface {
     for (let i = 1; i < SV.server.num_edicts; i++) {
       const ent = SV.server.edicts[i];
 
-      if (ent.isFree() || ent.api.solid === SV.solid.not) {
+      if (ent.isFree() || ent.entity.solid === SV.solid.not) {
         continue;
       }
 
-      const eorg = origin.copy().subtract(ent.api.origin.copy().add(ent.api.mins.copy().add(ent.api.maxs).multiply(0.5)));
+      const eorg = origin.copy().subtract(ent.entity.origin.copy().add(ent.entity.mins.copy().add(ent.entity.maxs).multiply(0.5)));
 
       if (eorg.len() > radius) {
         continue;
@@ -173,7 +173,7 @@ Game.EngineInterface = class EngineInterface {
         continue;
       }
 
-      if (ent.api[field] === value) {
+      if (ent.entity[field] === value) {
         return ent;
       }
     }
@@ -225,7 +225,7 @@ Game.EngineInterface = class EngineInterface {
       return null;
     }
 
-    return edict.api;
+    return edict.entity;
   }
 
   static IsLoading() {

@@ -91,7 +91,7 @@ Grouped by sections and then sorted by priority (more or less).
     * [X] W_CheckNoAmmo
   * [_] subs.qc --> move to helper/Subs.mjs
   * [_] player.qc
-* [_] rename `edict.api` to `edict.entity`
+* [X] rename `edict.api` to `edict.entity`
 * [_] implement the new syscalls that QuakeWorld introduced
 * [_] improve stack trace / error handling for QuakeC
 * [_] build something that will take a map from defs and makes sure that some properties must be within that range (for movetype, solid, flags)

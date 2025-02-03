@@ -32,17 +32,17 @@ ED.Alloc = function() {
 ED.Free = function(ed) {
   SV.UnlinkEdict(ed);
   ed.free = true;
-  ed.api = null;
-  // ed.api.model = null;
-  // ed.api.takedamage = 0.0;
-  // ed.api.modelindex = 0.0;
-  // ed.api.colormap = 0.0;
-  // ed.api.skin = 0.0;
-  // ed.api.frame = 0.0;
-  // ed.api.origin = Vector.origin;
-  // ed.api.angles = Vector.origin;
-  // ed.api.nextthink = -1.0;
-  // ed.api.solid = 0.0;
+  ed.entity = null;
+  // ed.entity.model = null;
+  // ed.entity.takedamage = 0.0;
+  // ed.entity.modelindex = 0.0;
+  // ed.entity.colormap = 0.0;
+  // ed.entity.skin = 0.0;
+  // ed.entity.frame = 0.0;
+  // ed.entity.origin = Vector.origin;
+  // ed.entity.angles = Vector.origin;
+  // ed.entity.nextthink = -1.0;
+  // ed.entity.solid = 0.0;
   ed.freetime = SV.server.time;
 };
 
@@ -105,7 +105,7 @@ ED.Print = function(ed) {
       continue;
     }
 
-    Con.Print(`${name.padStart(24, '.')}: ${ed.api[name]}\n`);
+    Con.Print(`${name.padStart(24, '.')}: ${ed.entity[name]}\n`);
   }
 };
 
@@ -144,13 +144,13 @@ ED.Count = function() {
       continue;
     }
     ++active;
-    if (ent.api.solid) {
+    if (ent.entity.solid) {
       ++solid;
     }
-    if (ent.api.model) {
+    if (ent.entity.model) {
       ++models;
     }
-    if (ent.api.movetype === SV.movetype.step) {
+    if (ent.entity.movetype === SV.movetype.step) {
       ++step;
     }
   }

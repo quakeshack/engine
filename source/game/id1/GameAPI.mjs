@@ -167,25 +167,25 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
   }
 
   SetChangeParms(clientEdict) {
-    const playerEntity = clientEdict.api;
+    const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
     playerEntity.setChangeParms();
   }
 
   PlayerPreThink(clientEdict) {
-    const playerEntity = clientEdict.api;
+    const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
     playerEntity.playerPreThink();
   }
 
   PlayerPostThink(clientEdict) {
-    const playerEntity = clientEdict.api;
+    const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
     playerEntity.playerPostThink();
   }
 
   ClientConnect(clientEdict) {
-    const playerEntity = clientEdict.api;
+    const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
 
     this.engine.BroadcastPrint(`${playerEntity.netname} entered the game\n`);
@@ -197,14 +197,14 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
   }
 
   ClientDisconnect(clientEdict) {
-    const playerEntity = clientEdict.api;
+    const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
 
     // TODO
   }
 
   PutClientInServer(clientEdict) {
-    const playerEntity = clientEdict.api;
+    const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
     playerEntity.putPlayerInServer();
   }
@@ -227,7 +227,7 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
     }
 
     const entityClass = this._entityRegistry.get(classname);
-    const entity = edict.api?.classname === classname ? edict.api : new entityClass(edict, this);
+    const entity = edict.entity?.classname === classname ? edict.entity : new entityClass(edict, this);
 
     entity.assignInitialData(initialData);
 
@@ -235,12 +235,12 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
   }
 
   spawnPreparedEntity(edict) {
-    if (!edict.api) {
+    if (!edict.entity) {
       this.engine.ConsolePrint('Cannot spawn empty edict.');
       return false;
     }
 
-    edict.api.spawn();
+    edict.entity.spawn();
 
     return true;
   }

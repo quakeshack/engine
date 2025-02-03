@@ -275,7 +275,7 @@ PF.findradius = PF._generateBuiltinFunction((origin, radius) => {
 
   // iterate over the list of edicts
   for (const edict of edicts) {
-    edict.api.chain = chain;
+    edict.entity.chain = chain;
     chain = edict;
   }
 
