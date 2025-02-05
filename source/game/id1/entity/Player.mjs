@@ -278,7 +278,7 @@ export class PlayerEntity extends BaseEntity {
 
     if (trace.entity) {
       const tracedEntity = trace.entity;
-      this.startSound(channel.CHAN_BODY, "misc/talk.wav", 1.0, attn.ATTN_NORM);
+      this.startSound(channel.CHAN_BODY, "misc/talk.wav");
       this.centerPrint(`${tracedEntity}`);
       this.consolePrint(
         `movetype = ${Object.entries(moveType).find(([, val]) => val === tracedEntity.movetype)[0] || 'unknown'}\n` +
@@ -529,9 +529,9 @@ export class PlayerEntity extends BaseEntity {
       if (this.swim_flag < this.game.time) {
         this.swim_flag = this.game.time + 1.0;
         if (Math.random() < 0.5) {
-          this.startSound(this, channel.CHAN_BODY, "misc/water1.wav", 1.0, attn.ATTN_NORM);
+          this.startSound(this, channel.CHAN_BODY, "misc/water1.wav");
         } else {
-          this.startSound(this, channel.CHAN_BODY, "misc/water2.wav", 1.0, attn.ATTN_NORM);
+          this.startSound(this, channel.CHAN_BODY, "misc/water2.wav");
         }
       }
 
@@ -553,7 +553,7 @@ export class PlayerEntity extends BaseEntity {
 
       this.button2 = 0;
 
-      this.startSound(channel.CHAN_BODY, "player/plyrjmp8.wav", 1.0, attn.ATTN_NORM);
+      this.startSound(channel.CHAN_BODY, "player/plyrjmp8.wav");
     }
 
     this.velocity[2] += 270.0;
@@ -617,7 +617,7 @@ export class PlayerEntity extends BaseEntity {
     }
 
     // QuakeShack: handle use requests
-    this._useThink();
+    //this._useThink(); // (CR: disabled for now, it’s not properly considered)
 
     // do weapon stuff
     this._weaponFrame();
@@ -625,13 +625,13 @@ export class PlayerEntity extends BaseEntity {
     // check to see if player landed and play landing sound
     if (this.jump_flag < -300 && (this.flags & flags.FL_ONGROUND) !== 0 && this.health > 0) {
       if (this.watertype === content.CONTENT_WATER) {
-        this.startSound(channel.CHAN_BODY, "player/h2ojump.wav", 1.0, attn.ATTN_NORM);
+        this.startSound(channel.CHAN_BODY, "player/h2ojump.wav");
       } else if (this.jump_flag < -650) {
         // TODO: T_Damage (self, world, world, 5);
-        this.startSound(channel.CHAN_VOICE, "player/land2.wav", 1.0, attn.ATTN_NORM);
+        this.startSound(channel.CHAN_VOICE, "player/land2.wav");
         this.deathtype = deathType.FALLING;
       } else {
-        this.startSound(channel.CHAN_VOICE, "player/land.wav", 1.0, attn.ATTN_NORM);
+        this.startSound(channel.CHAN_VOICE, "player/land.wav");
       }
 
       this.jump_flag = 0;

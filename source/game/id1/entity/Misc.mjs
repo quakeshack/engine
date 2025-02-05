@@ -311,3 +311,171 @@ export class DebugMarkerEntity extends BaseEntity {
     }
   }
 }
+
+class BaseAmbientSound extends BaseEntity {
+  static _sfxName = null;
+  static _volume = 0;
+
+  _precache() {
+    this.engine.PrecacheSound(this.constructor._sfxName);
+  }
+
+  spawn() {
+    this.spawnAmbientSound(this.constructor._sfxName, this.constructor._volume, attn.ATTN_STATIC);
+  }
+};
+
+/**
+ * QUAKED ambient_comp_hum (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientCompHum extends BaseAmbientSound {
+  static classname = 'ambient_comp_hum';
+  static _sfxName = "ambience/comp1.wav";
+  static _volume = 1.0;
+}
+
+/**
+ * QUAKED ambient_drone (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientDrone extends BaseAmbientSound {
+  static classname = 'ambient_drone';
+  static _sfxName = "ambience/drone6.wav";
+  static _volume = 0.5;
+}
+
+/**
+ * QUAKED ambient_suck_wind (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientSuckWind extends BaseAmbientSound {
+  static classname = 'ambient_suck_wind';
+  static _sfxName = "ambience/suck1.wav";
+  static _volume = 1.0;
+}
+
+/**
+ * QUAKED ambient_flouro_buzz (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientFlouroBuzz extends BaseAmbientSound {
+  static classname = 'ambient_flouro_buzz';
+  static _sfxName = "ambience/buzz1.wav";
+  static _volume = 1.0;
+}
+
+/**
+ * QUAKED ambient_drip (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientDrip extends BaseAmbientSound {
+  static classname = 'ambient_drip';
+  static _sfxName = "ambience/drip1.wav";
+  static _volume = 0.5;
+}
+
+/**
+ * QUAKED ambient_thunder (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientThunder extends BaseAmbientSound {
+  static classname = 'ambient_thunder';
+  static _sfxName = "ambience/thunder1.wav";
+  static _volume = 0.5;
+}
+
+/**
+ * QUAKED ambient_light_buzz (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientLightBuzz extends BaseAmbientSound {
+  static classname = 'ambient_light_buzz';
+  static _sfxName = "ambience/fl_hum1.wav";
+  static _volume = 0.5;
+}
+
+/**
+ * QUAKED ambient_swamp1 (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientSwamp1 extends BaseAmbientSound {
+  static classname = 'ambient_swamp1';
+  static _sfxName = "ambience/swamp1.wav";
+  static _volume = 0.5;
+}
+
+/**
+ * QUAKED ambient_swamp2 (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
+ */
+export class AmbientSwamp2 extends BaseAmbientSound {
+  static classname = 'ambient_swamp2';
+  static _sfxName = "ambience/swamp2.wav";
+  static _volume = 0.5;
+}
+
+class BaseWallEntity extends BaseEntity {
+  // eslint-disable-next-line no-unused-vars
+  use(usedByEntity) {
+    this.frame = 1 - this.frame;
+  }
+
+  spawn() {
+    this.angles.clear();
+    this.movetype = moveType.MOVETYPE_PUSH; // so it doesn't get pushed by anything
+    this.solid = solid.SOLID_BSP;
+    this.setModel(this.model);
+  }
+}
+
+/**
+ * QUAKED func_wall (0 .5 .8) ?
+ * This is just a solid wall if not inhibitted
+ */
+export class WallEntity extends BaseWallEntity {
+  static classname = 'func_wall';
+}
+
+/**
+ * QUAKED func_illusionary (0 .5 .8) ?
+ * A simple entity that looks solid but lets you walk through it.
+ */
+export class IllusionaryWallEntity extends BaseWallEntity {
+  static classname = 'func_illusionary';
+
+  // eslint-disable-next-line no-unused-vars
+  use(usedByEntity) {
+    // nothing
+  }
+
+  spawn() {
+    this.setModel(this.model);
+    this.makeStatic();
+  }
+}
+
+/**
+ * QUAKED func_episodegate (0 .5 .8) ? E1 E2 E3 E4
+ * This bmodel will appear if the episode has allready been completed, so players can't reenter it.
+ */
+export class EpisodegateWallEntity extends BaseWallEntity {
+  static classname = 'func_episodegate';
+
+  spawn() {
+    if (!(this.game.serverflags & this.spawnflags)) {
+      this.remove();
+      return; // can still enter episode
+    }
+
+    super.spawn();
+  }
+}
+
+/**
+ * QUAKED func_bossgate (0 .5 .8) ?
+ * This bmodel appears unless players have all of the episode sigils.
+ */
+export class BossgateWallEntity extends BaseWallEntity {
+  static classname = 'func_bossgate';
+
+  spawn() {
+    if ((this.game.serverflags & 15) == 15) {
+      this.remove();
+      return; // all episodes completed
+    }
+
+    super.spawn();
+  }
+}

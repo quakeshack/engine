@@ -229,7 +229,7 @@ export class Sub {
       activatorEntity.centerPrint(this._entity.message);
 
       if (!this._entity.noise) {
-        activatorEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav", 1.0, attn.ATTN_NORM);
+        activatorEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav");
       }
     }
 

@@ -76,7 +76,7 @@ export class ButtonEntity extends BasePropEntity {
       return;
     }
 
-    this.startSound(channel.CHAN_VOICE, this.noise, 1.0, attn.ATTN_NORM);
+    this.startSound(channel.CHAN_VOICE, this.noise);
 
     this.state = state.STATE_UP;
 

@@ -17,7 +17,9 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] PF: need to handle precache more gracefully
 * [_] Host: Load Game and Save Game is now completely broken
 * [X] S/SV/QuakeJS: sounds go crazy, causing insane amount of stress
-* [_] Recheck all ref/copy of `(origin|a?velocity|angles)\s*=`
+* [X] Recheck all ref/copy of `(origin|a?velocity|angles)\s*=`
+* [_] ED: parsing strings from entities text does not unescape strings properly
+* [_] QuakeJS: func_*gate is misbehaving (not getting removed)
 
 ### QuakeC / QuakeJS
 
@@ -32,7 +34,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] add ability to spawn entities after the server being ready via API
 * [X] reimplement `ED.Print`
 * [X] reimplement `Host.Give_f`
-* [_] implement a better state machine with scheduler
+* [X] implement a better state machine with scheduler
 * [_] reimplement the Quake game in QuakeJS
   * [_] abstract model animation state machine
   * [X] world.qc
@@ -92,6 +94,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] subs.qc --> move to helper/Subs.mjs
   * [_] player.qc
 * [X] rename `edict.api` to `edict.entity`
+* [_] put some things behind feature gates, so that the game can tell the engine what things are needed/supported
 * [_] implement the new syscalls that QuakeWorld introduced
 * [_] improve stack trace / error handling for QuakeC
 * [_] build something that will take a map from defs and makes sure that some properties must be within that range (for movetype, solid, flags)
@@ -103,9 +106,11 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] look into worker and multithreading
 * [_] look into bun.sh
 * [_] completely switch to JS modules at some point
+* [_] use more generator functions when possible
 
 ### Code smell
 
+* [_] SV: cleanup the `SV.WriteEntitiesToClient` mess a bit, make it more flexible
 * [_] ED: rewrite that whole parsing mess using regexp
 * [_] `Host.Savegame_f` and `ED` are having duplicate code (parsing entities)
 * [X] there’s no proper clean up for Sound, sometimes sound gets stuck playing after Quit
@@ -204,6 +209,24 @@ Grouped by sections and then sorted by priority (more or less).
   * server needs to be decoupled as well and pass it down to the game API engine
   * ~game API engine interface needs a clear interface (see progdefs.h)~ --> not necessary anymore
   * also spawning an entity needs the classname (here we need a crutch for QuakeC, because it doesn’t have that concept of instantiating classes first, it’s a bit loosy goosy)
+* entity fields that the engine definitely needs
+  * origin
+  * oldorigin
+  * velocity
+  * avelocity
+  * fixangle
+  * frame, modelindex
+  * view_ofs
+  * colormap
+  * skin
+  * effects
+  * dmg_save, dmg_take, dmg_inflictor
+  * idealpitch
+  * items, items2
+  * weaponframe
+  * health
+  * currentammo
+  * ammo_shells
 
 ### More multiplayer features
 
@@ -276,6 +299,16 @@ class MainMenu extends BaseMenu {
   * https://code.idtech.space/ all id tech related code (without leaks)
 
 ## Log
+
+### 2025-02-05
+
+* added ambient sound entities
+* added wall entities
+  * though removing them does not work for whatever reason, have to investigate
+
+### 2025-02-04
+
+* reimplemented secret doors, shooting at them still missing though
 
 ### 2025-02-03
 

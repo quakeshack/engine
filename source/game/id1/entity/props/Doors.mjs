@@ -2,6 +2,7 @@
 
 import { attn, channel, damage, items, moveType, solid, worldType } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
+import { PlayerEntity } from "../Player.mjs";
 import { TriggerField } from "../Subs.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
 
@@ -20,7 +21,7 @@ export const flag = {
 export class BaseDoorEntity extends BasePropEntity {
   _declareFields() {
     super._declareFields();
-    this._linkedDoor = null; // entity
+    this._linkedDoor = null; // entity (QuakeC: enemy)
     this._triggerField = null; // trigger field
     this.noise4 = null;
   }
@@ -120,7 +121,7 @@ export class BaseDoorEntity extends BasePropEntity {
     }
 
     if (this.items) {
-      this.startSound(channel.CHAN_VOICE, this.noise4, 1.0, attn.ATTN_NORM);
+      this.startSound(channel.CHAN_VOICE, this.noise4);
     }
 
     this.message = null;
@@ -169,7 +170,7 @@ export class BaseDoorEntity extends BasePropEntity {
       return; // already going up
     }
 
-    this.startSound(channel.CHAN_VOICE, this.noise2, 1.0, attn.ATTN_NORM);
+    this.startSound(channel.CHAN_VOICE, this.noise2);
     this.state = state.STATE_DOWN;
 
     if (this.max_health) {
@@ -181,7 +182,7 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 
   _doorHitBottom() {
-    this.startSound(channel.CHAN_VOICE, this.noise1, 1.0, attn.ATTN_NORM);
+    this.startSound(channel.CHAN_VOICE, this.noise1);
     this.state = state.STATE_BOTTOM;
     this._sub.reset();
   }
@@ -197,7 +198,7 @@ export class BaseDoorEntity extends BasePropEntity {
       return;
     }
 
-    this.startSound(channel.CHAN_VOICE, this.noise2, 1.0, attn.ATTN_NORM);
+    this.startSound(channel.CHAN_VOICE, this.noise2);
     this.state = state.STATE_UP;
 
     this._sub.calcMove(this.pos2, this.speed, () => this._doorHitTop());
@@ -205,7 +206,7 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 
   _doorHitTop() {
-    this.startSound(channel.CHAN_VOICE, this.noise1, 1.0, attn.ATTN_NORM);
+    this.startSound(channel.CHAN_VOICE, this.noise1);
     this.state = state.STATE_TOP;
 
     if (this.spawnflags & flag.DOOR_TOGGLE) {
@@ -216,8 +217,30 @@ export class BaseDoorEntity extends BasePropEntity {
     this._scheduleThink(this.ltime + this.wait, () => this._doorGoDown());
   }
 
-  // eslint-disable-next-line no-unused-vars
+  _doorKilled() {
+    const owner = this.owner;
+
+    owner.health = owner.max_health;
+    owner.takedamage = damage.DAMAGE_NO;
+    owner.use();
+  }
+
+  /**
+   * @param {BaseEntity} usedByEntity user
+   */
   use(usedByEntity) {
+    if (!usedByEntity.isActor()) {
+      return;
+    }
+
+    this.message = null;
+    if (this.owner) {
+      this.owner.message = null;
+    }
+    if (this._linkedDoor) {
+      this._linkedDoor.message = null;
+    }
+
     this._doorFire();
   }
 };
@@ -264,6 +287,8 @@ export class DoorEntity extends BaseDoorEntity {
 
     this.health = 0;
     this.max_health = 0; // “players maximum health is stored here”
+
+    this._doorKeyUsed = false;
   }
 
   _precache() {
@@ -436,8 +461,278 @@ export class DoorEntity extends BaseDoorEntity {
     // this.engine.ConsolePrint(`DoorEntity.blocked: ${this} is blocked by ${blockedByEntity}\n`);
   }
 
-  // eslint-disable-next-line no-unused-vars
   touch(usedByEntity) {
+    if (!(usedByEntity instanceof PlayerEntity)) {
+      return;
+    }
+
+    if (this._doorKeyUsed) {
+      return;
+    }
+
+    if (this.owner.attack_finished > this.game.time) {
+      return;
+    }
+
+    // make sure to only fire every two seconds at most
+    this.owner.attack_finished = this.game.time + 2.0;
+
+    if (this.owner.message) {
+      usedByEntity.centerPrint(this.owner.message);
+      usedByEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav", 1.0, attn.ATTN_NONE);
+    }
+
+    // key door stuff
+    if (this.items === 0) {
+      return;
+    }
+
+    // FIXME: blink key on player's status bar (CR: TODO: push an event)
+    if ((this.items & usedByEntity.items) !== this.items) {
+      usedByEntity.centerPrint("You need some key to open this door");
+      usedByEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav", 1.0, attn.ATTN_NONE);
+
+      // TODO: messages and sound
+      return;
+    }
+
+    // remove the used key from the inventory
+    usedByEntity &= ~this.items;
+
+    // mark this (and the linked) door used
+    this._doorKeyUsed = true;
+    this._linkedDoor._doorKeyUsed = true;
+
+    this.use(usedByEntity);
+
     // this.engine.ConsolePrint(`DoorEntity.touch: ${this} is touched by ${usedByEntity}\n`);
+  }
+}
+
+export class SecretDoorEntity extends BaseDoorEntity {
+  static classname = 'func_door_secret';
+
+  static SECRET_OPEN_ONCE = 1;		// stays open
+  static SECRET_1ST_LEFT = 2;		// 1st move is left of arrow
+  static SECRET_1ST_DOWN = 4;		// 1st move is down from arrow
+  static SECRET_NO_SHOOT = 8;		// only opened by trigger
+  static SECRET_YES_SHOOT = 16;	// shootable even if targeted
+
+  _declareFields() {
+    super._declareFields();
+    this.mangle = new Vector();
+
+    this.t_width = 0;
+    this.t_length = 0;
+
+    this._dest0 = null;
+    this._dest1 = null;
+    this._dest2 = null;
+  }
+
+  _precache() {
+    switch (this.sounds) {
+      case 1:
+        this.engine.PrecacheSound("doors/latch2.wav");
+        this.engine.PrecacheSound("doors/winch2.wav");
+        this.engine.PrecacheSound("doors/drclos4.wav");
+        break;
+
+      case 2:
+        this.engine.PrecacheSound("doors/airdoor1.wav");
+        this.engine.PrecacheSound("doors/airdoor2.wav");
+        break;
+
+      default: // non-Quake default
+      case 3:
+        this.engine.PrecacheSound("doors/basesec1.wav");
+        this.engine.PrecacheSound("doors/basesec2.wav");
+        break;
+    }
+  }
+
+  spawn() {
+    if (this.sounds === 0) {
+      this.sounds = 3;
+    }
+
+    switch (this.sounds) {
+      case 1:
+        this.noise1 = "doors/latch2.wav";
+        this.noise2 = "doors/winch2.wav";
+        this.noise3 = "doors/drclos4.wav";
+        break;
+
+      case 2:
+        this.noise2 = "doors/airdoor1.wav";
+        this.noise1 = "doors/airdoor2.wav";
+        this.noise3 = "doors/airdoor2.wav";
+        break;
+
+      default: // non-Quake default
+      case 3:
+        this.noise2 = "doors/basesec1.wav";
+        this.noise1 = "doors/basesec2.wav";
+        this.noise3 = "doors/basesec2.wav";
+        break;
+    }
+
+    if (this.dmg === 0) {
+      this.dmg = 2;
+    }
+
+    this.mangle.set(this.angles);
+    this.angles.clear();
+    this.solid = solid.SOLID_BSP;
+    this.movetype = moveType.MOVETYPE_PUSH;
+
+    this.setModel(this.model);
+    this.setOrigin(this.origin);
+
+    this.speed = 50.0;
+
+    // TODO: this
+    // if ( !self.targetname || self.spawnflags&SECRET_YES_SHOOT)
+    //   {
+    //     self.health = 10000;
+    //     self.takedamage = DAMAGE_YES;
+    //     self.th_pain = fd_secret_use;
+    //     self.th_die = fd_secret_use;
+    //   }
+
+    this.oldorigin.set(this.origin);
+
+    if (!this.wait) {
+      this.wait = 5.0;
+    }
+  }
+
+  touch(touchedByEntity) {
+    if (!(touchedByEntity instanceof PlayerEntity)) {
+      return;
+    }
+
+    if (this.attack_finished > this.game.time) {
+      return;
+    }
+
+    this.attack_finished = this.game.time + 2.0;
+
+    if (this.message) {
+      touchedByEntity.centerPrint(this.message);
+      touchedByEntity.startSound(channel.CHAN_BODY, "misc/talk.wav");
+    }
+
+    this.use(touchedByEntity);
+  }
+
+  blocked(blockedByEntity) {
+    if (this.game.time < this.attack_finished) {
+      return;
+    }
+
+    this.attack_finished = this.game.time + 0.5;
+
+    // TODO: T_Damage (blockedByEntity, self, self, self.dmg);
+  }
+
+  use(usedByEntity) {
+    // TODO: this.health = 10000;
+
+    if (!this.origin.equals(this.oldorigin)) {
+      return;
+    }
+
+    this.message = null;
+
+    this._sub.useTargets(usedByEntity); // fire all targets / killtargets
+
+    if (!(this.spawnflags & SecretDoorEntity.SECRET_NO_SHOOT)) {
+      // TODO: self.th_pain = SUB_Null;
+      this.takedamage = damage.DAMAGE_NO;
+    }
+
+    this.velocity.clear();
+
+    // Make a sound, wait a little...
+    this.startSound(channel.CHAN_VOICE, this.noise1);
+
+    const temp = 1 - (this.spawnflags & SecretDoorEntity.SECRET_1ST_LEFT); // 1 or -1
+
+    const { forward, up, right } = this.mangle.angleVectors();
+
+    if (!this.t_width) {
+      if (this.spawnflags & SecretDoorEntity.SECRET_1ST_DOWN) {
+        this.t_width = Math.abs(up.dot(this.size));
+      } else {
+        this.t_width = Math.abs(right.dot(this.size));
+      }
+    }
+
+    if (!this.t_length) {
+      this.t_length = Math.abs(forward.dot(this.size));
+    }
+
+    if (this.spawnflags & SecretDoorEntity.SECRET_1ST_DOWN) {
+      this._dest1 = this.origin.copy().subtract(up.multiply(this.t_width));
+    } else {
+      this._dest1 = this.origin.copy().add(right.multiply(this.t_width * temp));
+    }
+
+    this._dest2 = this._dest1.copy().add(forward.multiply(this.t_length));
+
+    this._sub.calcMove(this._dest1, this.speed, () => this._stepMove(1));
+    this.startSound(channel.CHAN_VOICE, this.noise2);
+  }
+
+  /**
+   * this is the open secret sequence
+   * @param {number} step what step to perform
+   */
+  _stepMove(step) {
+    switch (step) {
+      case 1: // Wait after first movement...
+        this.startSound(channel.CHAN_VOICE, this.noise3);
+        this._scheduleThink(this.ltime + 1.0, () => this._stepMove(2));
+        break;
+
+      case 2: // Start moving sideways w/sound...
+        this.startSound(channel.CHAN_VOICE, this.noise2);
+        this._sub.calcMove(this._dest2, this.speed, () => this._stepMove(3));
+        break;
+
+      case 3: // Wait here until time to go back...
+        this.startSound(channel.CHAN_VOICE, this.noise3);
+        if (!(this.spawnflags & SecretDoorEntity.SECRET_OPEN_ONCE)) {
+          this._scheduleThink(this.ltime + this.wait, () => this._stepMove(4));
+        }
+        break;
+
+      case 4: // Move backward...
+        this.startSound(channel.CHAN_VOICE, this.noise2);
+        this._sub.calcMove(this._dest1, this.speed, () => this._stepMove(5));
+        break;
+
+      case 5: // Wait 1 second...
+        this.startSound(channel.CHAN_VOICE, this.noise3);
+        this._scheduleThink(this.ltime + 1.0, () => this._stepMove(6));
+        break;
+
+      case 6: // Move back in place...
+        this.startSound(channel.CHAN_VOICE, this.noise2);
+        this._sub.calcMove(this.oldorigin, this.speed, () => this._stepMove(7));
+        break;
+
+      case 7:
+        // TODO:
+        // if (!self.targetname || self.spawnflags&SECRET_YES_SHOOT)
+        //   {
+        //     self.health = 10000;
+        //     self.takedamage = DAMAGE_YES;
+        //     self.th_pain = fd_secret_use;
+        //   }
+        this.startSound(channel.CHAN_VOICE, this.noise3);
+        break;
+    }
   }
 }

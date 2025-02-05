@@ -38,11 +38,27 @@ const entityRegistry = [
   misc.FireballSpawnerEntity,
   misc.FireballEntity,
 
+  misc.AmbientCompHum,
+  misc.AmbientDrone,
+  misc.AmbientSuckWind,
+  misc.AmbientFlouroBuzz,
+  misc.AmbientDrip,
+  misc.AmbientThunder,
+  misc.AmbientLightBuzz,
+  misc.AmbientSwamp1,
+  misc.AmbientSwamp2,
+
+  misc.WallEntity,
+  misc.IllusionaryWallEntity,
+  misc.EpisodegateWallEntity,
+  misc.BossgateWallEntity,
+
   ArmySoldierMonster,
 
   IntermissionCameraEntity,
 
   door.DoorEntity,
+  door.SecretDoorEntity,
   ButtonEntity,
 
   TriggerField,
@@ -213,6 +229,7 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
    * simply optimizes the entityRegister into a map for more efficient access
    */
   _loadEntityRegistry() {
+    /** @private */
     this._entityRegistry = new Map();
 
     for (const entityClass of entityRegistry) {

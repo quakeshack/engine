@@ -141,12 +141,11 @@ Game.EngineInterface = class EngineInterface {
    * Finds all edicts around origin in given radius.
    * @param {Vector} origin
    * @param {number} radius
-   * @returns list of edicts
+   * @yields {SV.Edict} matching edict
    */
-  static FindInRadius(origin, radius) {
-    const found = [];
-
+  static *FindInRadius(origin, radius) {
     for (let i = 1; i < SV.server.num_edicts; i++) {
+      /** @type {SV.Edict} */
       const ent = SV.server.edicts[i];
 
       if (ent.isFree() || ent.entity.solid === SV.solid.not) {
@@ -159,10 +158,8 @@ Game.EngineInterface = class EngineInterface {
         continue;
       }
 
-      found.push(ent);
+      yield ent;
     }
-
-    return found;
   }
 
   static FindByFieldAndValue(field, value, startEdictId = 0) { // FIXME: startEdictId should be edict? not 100% happy about this
@@ -174,7 +171,7 @@ Game.EngineInterface = class EngineInterface {
       }
 
       if (ent.entity[field] === value) {
-        return ent;
+        return ent; // FIXME: turn it into yield
       }
     }
 

@@ -423,7 +423,7 @@ export default class BaseEntity {
    * @param {number} volume [0..1]
    * @param {attn} attenuation attenuation
    */
-  startSound(channel, sfxName, volume, attenuation) {
+  startSound(channel, sfxName, volume = 1.0, attenuation = attn.ATTN_NORM) {
     this.engine.PrecacheSound(sfxName);
     this.engine.StartSound(this.edict, channel, sfxName, volume, attenuation);
   }

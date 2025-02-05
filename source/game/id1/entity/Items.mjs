@@ -35,7 +35,7 @@ export class BackpackEntity extends BaseItemEntity {
     const player = otherEntity;
 
     player.consolePrint("You picked up a backpack\n"); // TODO: better text
-    player.startSound(channel.CHAN_ITEM, "weapons/lock4.wav", 1.0, attn.ATTN_NORM);
+    player.startSound(channel.CHAN_ITEM, "weapons/lock4.wav");
     player.dispatchEvent(playerEvent.BONUS_FLASH);
 
     this.remove();
