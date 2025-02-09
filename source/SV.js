@@ -1223,16 +1223,6 @@ SV.SpawnServer = function(mapname) {
   // edict 0 is reserved for worldspawn
   const ent = SV.server.edicts[0];
 
-  if (Host.coop.value && Host.deathmatch.value) {
-    Con.Print('SV.SpawnServer: you can only set coop to 1 or deathmath to 1, but not both!\n');
-  }
-
-  if (Host.coop.value !== 0) {
-    SV.server.gameAPI.coop = Host.coop.value;
-  } else {
-    SV.server.gameAPI.deathmatch = Host.deathmatch.value;
-  }
-
   if (!SV.server.gameAPI.prepareEntity(ent, 'worldspawn', {
     model: SV.server.modelname,
     modelindex: 1,

@@ -1678,7 +1678,7 @@ CL.ParseTEnt = function() {
       return;
   }
 
-  const pos = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
+  const pos = MSG.ReadCoordVector();
   let dl;
   switch (type) {
     case Protocol.te.wizspike:

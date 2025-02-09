@@ -5,12 +5,14 @@ import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
 import { items } from "./Defs.mjs";
 import * as misc from "./entity/Misc.mjs";
 import * as door from "./entity/props/Doors.mjs";
+import * as trigger from "./entity/Triggers.mjs";
 import ArmySoldierMonster from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
 import { IntermissionCameraEntity } from "./entity/Client.mjs";
 import { TriggerField } from "./entity/Subs.mjs";
 import { ButtonEntity } from "./entity/props/Buttons.mjs";
 import { BackpackEntity } from "./entity/Items.mjs";
+import BaseEntity from "./entity/BaseEntity.mjs";
 
 // put all entity classes here:
 const entityRegistry = [
@@ -53,6 +55,8 @@ const entityRegistry = [
   misc.EpisodegateWallEntity,
   misc.BossgateWallEntity,
 
+  trigger.MultipleTriggerEntity,
+
   ArmySoldierMonster,
 
   IntermissionCameraEntity,
@@ -74,6 +78,7 @@ export class ServerGameAPI {
   constructor(engineAPI) {
     this._loadEntityRegistry();
 
+    /** @private */
     this.engine = engineAPI; // Game.EngineInterface
 
     this.coop = 0;
@@ -120,6 +125,7 @@ export class ServerGameAPI {
     this.bodyque_head = null;
 
     // FIXME: I’m not happy about this, this needs to be next to models
+    /** @private */
     this._modelData = {
       'progs/soldier.mdl': engineAPI.ParseQC(`
 $cd id1/models/soldier3
@@ -155,6 +161,9 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
       `),
     };
 
+    /** @private */
+    this._missingEntityClassStats = {};
+
     Object.seal(this);
   }
 
@@ -176,6 +185,10 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
     this.parm9 = 0;
   };
 
+  /**
+   * @param {BaseEntity|PlayerEntity} clientEntity client entity
+   * @private
+   */
   _assertClientEntityIsPlayerEntity(clientEntity) {
     if (!(clientEntity instanceof PlayerEntity)) {
       throw new Error('clientEdict must carry a PlayerEntity!');
@@ -201,6 +214,7 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
   }
 
   ClientConnect(clientEdict) {
+    /** @type {PlayerEntity} */
     const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
 
@@ -209,6 +223,18 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
     // a client connecting during an intermission can cause problems
     if (this.intermissionRunning) {
       // TODO: ExitIntermission()
+    }
+
+    // FIXME: move this to somewhere “server ready” kind of function
+    const stats = Object.entries(this._missingEntityClassStats);
+    if (stats.length > 0) {
+      stats.sort(([, a], [, b]) => b - a);
+
+      this.engine.DebugPrint('Unknown entity classes on this map:\n');
+
+      for (const [name, cnt] of stats) {
+        this.engine.DebugPrint(`${new Number(cnt).toFixed(0).padStart(4, ' ')}x ${name}\n`);
+      }
     }
   }
 
@@ -227,6 +253,7 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
 
   /**
    * simply optimizes the entityRegister into a map for more efficient access
+   * @private
    */
   _loadEntityRegistry() {
     /** @private */
@@ -240,7 +267,28 @@ $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
   prepareEntity(edict, classname, initialData = {}) {
     if (!this._entityRegistry.has(classname)) {
       this.engine.ConsolePrint(`ServerGameAPI.prepareEntity: no entity factory for ${classname}!\n`);
+
+      this._missingEntityClassStats[classname] = (this._missingEntityClassStats[classname] || 0) + 1;
       return false;
+    }
+
+    // spawnflags (control whether to spawn an entity or not)
+    {
+      const spawnflags = initialData.spawnflags || 0;
+
+      if (this.deathmatch && (spawnflags & 2048)) { // no spawn in deathmatch
+        return false;
+      }
+
+      const skillFlags = [
+        256, // do not spawn on easy
+        512, // do not spawn on medium
+        1024, // do not spawn on hard
+      ];
+
+      if (skillFlags.some((flag, idx) => this.skill === idx && (spawnflags & flag))) {
+        return false;
+      }
     }
 
     const entityClass = this._entityRegistry.get(classname);
