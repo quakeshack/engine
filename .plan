@@ -301,9 +301,17 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-02-12
+
+* continue working on porting of items.qc
+* added `item_backpack` entity
+  * there’s infrastructure to let a player consume a backpack of arbitrary items and ammo: `PlayerEntity.applyBackpack`
+* added `item_shells`, `item_rockets`
+* thinking of simplifying the whole precache/model stuff
+
 ### 2025-02-09
 
-* got GtkRadiant working
+* got GtkRadiant working, but textures are bugging out when the map is reloaded
 * found ericwtools to compile maps
 * thought I introduced a bug somewhere in func_wall, turned out, it was the missing spawnflags handling upon preparing entities
 

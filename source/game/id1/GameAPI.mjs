@@ -11,7 +11,7 @@ import { GameAI } from "./helper/AI.mjs";
 import { IntermissionCameraEntity } from "./entity/Client.mjs";
 import { TriggerField } from "./entity/Subs.mjs";
 import { ButtonEntity } from "./entity/props/Buttons.mjs";
-import { BackpackEntity } from "./entity/Items.mjs";
+import { BackpackEntity, ItemRocketsEntity, ItemShellsEntity } from "./entity/Items.mjs";
 import BaseEntity from "./entity/BaseEntity.mjs";
 
 // put all entity classes here:
@@ -68,6 +68,8 @@ const entityRegistry = [
   TriggerField,
 
   BackpackEntity,
+  ItemShellsEntity,
+  ItemRocketsEntity,
 ];
 
 export class ServerGameAPI {

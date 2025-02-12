@@ -57,6 +57,16 @@ export class InfoPlayerStart extends InfoNotNullEntity {
   static classname = 'info_player_start';
 };
 
+export class Backpack {
+  constructor() {
+    this.ammo_shells = 0;
+    this.ammo_nails = 0;
+    this.ammo_rockets = 0;
+    this.ammo_cells = 0;
+    this.items = 0;
+  }
+};
+
 export class PlayerEntity extends BaseEntity {
   static classname = 'player';
 
@@ -257,6 +267,19 @@ export class PlayerEntity extends BaseEntity {
    */
   selectBestWeapon() {
     this.setWeapon(this.chooseBestWeapon());
+  }
+
+  /**
+   * Adds ammo and items found in the Backpack object, will apply caps as well.
+   * This does not emit any sound, message and flash effect. It’s completely silent.
+   * @param {Backpack} backpack set of ammo, can be a BackpackEntity as well
+   */
+  applyBackpack(backpack) {
+    this.ammo_nails = Math.min(200, this.ammo_nails + backpack.ammo_nails);
+    this.ammo_cells = Math.min(100, this.ammo_cells + backpack.ammo_cells);
+    this.ammo_rockets = Math.min(100, this.ammo_rockets + backpack.ammo_rockets);
+    this.ammo_shells = Math.min(100, this.ammo_shells + backpack.ammo_shells);
+    this.items |= backpack.items;
   }
 
   isOutOfAmmo() {
