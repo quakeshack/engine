@@ -5,6 +5,7 @@
  * @param engine
  */
 export function Precache(engine) {
+	// TODO: move “use in c code” precache commands back to the engine
 	engine.PrecacheSound("weapons/r_exp3.wav");	// new rocket explosion
 	engine.PrecacheSound("weapons/rocket1i.wav");	// spike gun
 	engine.PrecacheSound("weapons/sgun1.wav");

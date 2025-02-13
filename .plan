@@ -20,6 +20,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] Recheck all ref/copy of `(origin|a?velocity|angles)\s*=`
 * [_] ED: parsing strings from entities text does not unescape strings properly
 * [_] QuakeJS: func_*gate is misbehaving (not getting removed)
+* [_] QuakeJS/SV: spawning new objects on demand outside the world should unstuck somewhere inside of the world again (trace first)
 
 ### QuakeC / QuakeJS
 
@@ -298,8 +299,25 @@ class MainMenu extends BaseMenu {
   * Official Quake Utils
 * https://idtech.space/
   * https://code.idtech.space/ all id tech related code (without leaks)
+* stuff for building maps
+  * https://github.com/ericwa/ericw-tools – compile maps with q3map2 features
+  * https://developer.valvesoftware.com/wiki/MAP_(file_format) – we are using Valve 220
+  * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-02-13
+
+* ported more over of items, keys and ammo
+  * it’s super easy and convenient to extend items now
+  * should look into making it more flexible on the client side as well (e.g. inventory)
+* netradiant is so much better than GtkRadiant
+* have to use Valve 220 map format, otherwise textures are all over the place
+* looking into porting over hlbsp at some point
+* I tried again hooking up CANNON, since now it’s easier to play around with objects and stuff, but no luck
+* at some point I should look into JavaScript workers (maybe I could let the local server run in the background)
+* I should focus on porting over the core mechanics of Quake so that we can get at least Deathmatch going again, AI and monsters later
+* before I’m going to start implementing BSP2 or HLBSP (v30), I need to refactor loading of models
 
 ### 2025-02-12
 

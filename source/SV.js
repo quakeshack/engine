@@ -2236,42 +2236,11 @@ SV._CreateTrimeshFromBSP = function(m) { // FIXME: move to Mod?
 
 SV.InitPhysicsEngine = function() {
   // // load world model as static body
-  // const worldmodel = SV.server.worldmodel;
-  // const body = new CANNON.Body({ mass: 0 });
-  // body.addShape(SV._CreateTrimeshFromBSP(worldmodel));
-  // SV.server.cannon.world.addBody(body);
-
-  // for (let i = 0; i < SV.server.num_edicts; ++i) {
-  //   const ent = SV.server.edicts[i];
-
-  //   if (ent.isFree()) {
-  //     continue;
-  //   }
-
-  //   SV.PhysicsEngineRegisterEdict(ent);
-  // }
-};
-
-SV.StepPhysicsEngine = function() {
-  if (!SV.server.cannon.active) {
-    return;
-  }
-
-  // if (SV.server.cannon.lastTime) {
-  //   const fixedTimeStep = 1.0 / 60.0; // seconds (FIXME: right resolution?)
-  //   const maxSubSteps = 3;
-  //   const dt = (Host.frametime - SV.server.cannon.lastTime) / 1000;
-
-  //   SV.server.cannon.world.step(fixedTimeStep, dt, maxSubSteps);
-  // }
-
-  // SV.server.cannon.lastTime = Host.frametime;
-};
-
-SV.LinkPhysicsEngine = function() {
-  if (!SV.server.cannon.active) {
-    return;
-  }
+  const worldmodel = SV.server.worldmodel;
+  const body = new CANNON.Body({ mass: 0 });
+  body.addShape(SV._CreateTrimeshFromBSP(worldmodel));
+  // body.addShape(new CANNON.Plane());
+  SV.server.cannon.world.addBody(body);
 
   for (let i = 0; i < SV.server.num_edicts; ++i) {
     const ent = SV.server.edicts[i];
@@ -2280,10 +2249,42 @@ SV.LinkPhysicsEngine = function() {
       continue;
     }
 
-    if (ent.cannon?.body) {
-      ent.entity.origin = ent.cannon.body.position.toArray();
-      ent.entity.angles = Vector.fromQuaternion(ent.cannon.body.quaternion.toArray());
-      ent.linkEdict(false);
+    SV.PhysicsEngineRegisterEdict(ent);
+  }
+};
+
+SV.StepPhysicsEngine = function() {
+  if (!SV.server.cannon.active) {
+    return;
+  }
+
+  if (SV.server.cannon.lastTime) {
+    const fixedTimeStep = 1.0 / 60.0;
+    const maxSubSteps = 10;
+    const dt = (Host.realtime - SV.server.cannon.lastTime);
+
+    SV.server.cannon.world.step(fixedTimeStep, dt, maxSubSteps);
+  }
+
+  SV.server.cannon.lastTime = Host.realtime;
+};
+
+SV.LinkPhysicsEngine = function() {
+  if (!SV.server.cannon.active) {
+    return;
+  }
+
+  for (let i = 0; i < SV.server.num_edicts; ++i) {
+    const edict = SV.server.edicts[i];
+
+    if (edict.isFree()) {
+      continue;
+    }
+
+    if (edict.cannon?.body) {
+      edict.entity.origin.set(edict.cannon.body.position.toArray());
+      edict.entity.angles.set(Vector.fromQuaternion(edict.cannon.body.quaternion.toArray()));
+      edict.linkEdict(false);
     }
   }
 };
@@ -2296,35 +2297,30 @@ SV.PhysicsEngineUnregisterEdict = function(ent) {
 };
 
 // eslint-disable-next-line no-unused-vars
-SV.PhysicsEngineRegisterEdict = function(ent) {
+SV.PhysicsEngineRegisterEdict = function(edict) {
+  const classname = edict.entity.classname;
 
-  // // add simple body to all entities
-  // // for (let i = 0; i < SV.server.num_edicts; ++i) { // TODO: move this to spawn edict
-  // //   const ent = SV.server.edicts[i];
-  // //   if (ent.isFree() === true) {
-  // //     continue;
-  // //   }
-  //   const classname = ent.entity.classname;
+  edict.cannon = {
+    body: null,
+  };
 
-  //   ent.cannon = {
-  //     body: null,
-  //   };
+  if (classname === 'item_shells') {
+    const body = new CANNON.Body({
+      position: new CANNON.Vec3(...edict.entity.origin),
+      quaternion: new CANNON.Quaternion(...edict.entity.angles.toQuaternion()),
+      mass: Q.atof(edict.entity.mass || 5), // kg
+    });
 
-  //   if (classname && classname.startsWith('item_')) {
-  //     const body = new CANNON.Body({
-  //       position: new CANNON.Vec3(...ent.entity.origin),
-  //       quaternion: new CANNON.Quaternion(...ent.entity.angles.toQuaternion()),
-  //       mass: Q.atof(ent.phys.mass || 0), // kg
-  //     });
-  //     //body.addShape(new CANNON.Box(new CANNON.Vec3(...ent.entity.size)));
-  //     if (ent.entity.model.endsWith('.bsp')) { // use model information instead
-  //       body.addShape(SV._CreateTrimeshFromBSP(Mod.ForName(ent.entity.model)));
-  //     }
-  //     SV.server.cannon.world.addBody(body);
+    body.addShape(new CANNON.Box(new CANNON.Vec3(...edict.entity.size)));
 
-  //     ent.cannon.body = body;
-  //   }
-  // // }
+    // if (edict.entity.model.endsWith('.bsp')) { // use model information instead
+    //   body.addShape(SV._CreateTrimeshFromBSP(Mod.ForName(edict.entity.model)));
+    // }
+
+    SV.server.cannon.world.addBody(body);
+
+    edict.cannon.body = body;
+  }
 };
 
 SV.Physics = function() {

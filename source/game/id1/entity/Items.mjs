@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { channel, flags, items, moveType, solid } from "../Defs.mjs";
+import { channel, flags, items, moveType, solid, worldType } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { PlayerEntity, playerEvent } from "./Player.mjs";
 import { Sub } from "./Subs.mjs";
@@ -43,7 +43,7 @@ class BaseItemEntity extends BaseEntity {
     this.solid = solid.SOLID_TRIGGER;
     this.movetype = moveType.MOVETYPE_TOSS;
     this.origin[2] += 6.0;
-    this.dropToFloor();
+    // this.dropToFloor();
   }
 
   _declareFields() {
@@ -63,6 +63,9 @@ class BaseItemEntity extends BaseEntity {
     this._model_original = null;
 
     this._sub = new Sub(this);
+
+    /** @type {string} sfx to play upon picking it up */
+    this.noise = "weapons/lock4.wav";
   }
 
   regenerate() { // QuakeC: SUB_regen
@@ -72,9 +75,20 @@ class BaseItemEntity extends BaseEntity {
     this.setOrigin(this.origin);
   }
 
+  /**
+   * to be overriden, called after healthy player check
+   * @protected
+   * @param {PlayerEntity} playerEntity user
+   * @returns {boolean} whether it’s okay to pick it up
+   */
+  // eslint-disable-next-line no-unused-vars
+  _canPickup(playerEntity) {
+    return true;
+  }
+
   /** @param {BaseEntity} otherEntity other */
   touch(otherEntity) {
-    if (!(otherEntity instanceof PlayerEntity) || otherEntity.health <= 0) {
+    if (!(otherEntity instanceof PlayerEntity) || otherEntity.health <= 0 || !this._canPickup(otherEntity)) {
       return;
     }
 
@@ -113,19 +127,11 @@ class BaseItemEntity extends BaseEntity {
     if (items.length > 0) {
       player.consolePrint(`You got ${items.join(', ')}.\n`);
     } else {
-      player.consolePrint(`You found an empty backpack.\n`);
+      player.consolePrint(`You found an empty item.\n`);
     }
 
-    player.startSound(channel.CHAN_ITEM, "weapons/lock4.wav");
+    player.startSound(channel.CHAN_ITEM, this.noise);
     player.dispatchEvent(playerEvent.BONUS_FLASH);
-
-    const weapon = player.chooseBestWeapon();
-
-    if (!this.game.deathmatch) {
-      player.setWeapon(weapon);
-    } else {
-      // TODO: Deathmatch_Weapon (old, new);
-    }
 
     this._afterTouch(player);
   }
@@ -135,6 +141,14 @@ class BaseItemEntity extends BaseEntity {
    * @param {PlayerEntity} playerEntity user
    */
   _afterTouch(playerEntity) {
+    const weapon = playerEntity.chooseBestWeapon();
+
+    if (!this.game.deathmatch) {
+      playerEntity.setWeapon(weapon);
+    } else {
+      // TODO: Deathmatch_Weapon (old, new);
+    }
+
     if (this.game.deathmatch && this.regeneration_time > 0) {
       this.solid = solid.SOLID_NOT;
       this._model_original = this.model;
@@ -144,9 +158,7 @@ class BaseItemEntity extends BaseEntity {
       this.remove();
     }
 
-    if (this._sub) {
-      this._sub.useTargets(playerEntity);
-    }
+    this._sub.useTargets(playerEntity);
   }
 }
 
@@ -178,64 +190,279 @@ export class BackpackEntity extends BaseItemEntity {
   }
 };
 
-/**
- * QUAKED item_shells (0 .5 .8) (0 0 0) (32 32 32) big
- */
-export class ItemShellsEntity extends BaseItemEntity {
-  static classname = 'item_shells';
+class BaseAmmoEntity extends BaseItemEntity {
+  /** @type {string} model set, when WEAPON_BIG2 is not set */
+  static _model = null;
+  /** @type {string} model set, when WEAPON_BIG2 is set */
+  static _modelBig = null;
+  /** @type {number} ammo given, when WEAPON_BIG2 is not set */
+  static _ammo = 0;
+  /** @type {number} ammo given, when WEAPON_BIG2 is set */
+  static _ammoBig = 0;
+  /** @type {number} preferred weapon slot */
+  static _weapon = 0;
 
   _precache() {
-    if (this.spawnflags & WEAPON_BIG2) {
-      this.engine.PrecacheModel('maps/b_shell1.bsp');
+    if ((this.spawnflags & WEAPON_BIG2) && this.constructor._modelBig) {
+      this.engine.PrecacheModel(this.constructor._modelBig);
     } else {
-      this.engine.PrecacheModel('maps/b_shell0.bsp');
+      this.engine.PrecacheModel(this.constructor._model);
     }
+  }
+
+  /**
+   * sets the corresponding ammo slot with given ammo
+   * @param {number} ammo given ammo
+   */
+  // eslint-disable-next-line no-unused-vars
+  _setAmmo(ammo) {
+    // set the correct slot here
   }
 
   spawn() {
     super.spawn();
 
-    if (this.spawnflags & WEAPON_BIG2) {
-      this.setModel('maps/b_shell1.bsp');
-      this.ammo_shells = 40;
+    if ((this.spawnflags & WEAPON_BIG2) && this.constructor._modelBig) {
+      this.setModel(this.constructor._modelBig);
+      this._setAmmo(this.constructor._ammoBig);
     } else {
-      this.setModel('maps/b_shell0.bsp');
-      this.ammo_shells = 20;
+      this.setModel(this.constructor._model);
+      this._setAmmo(this.constructor._ammo);
     }
 
-    this.weapon = 1;
+    this.weapon = this.constructor._weapon;
 
     this.setSize(Vector.origin, new Vector(32.0, 32.0, 56.0));
+  }
+}
+
+/**
+ * QUAKED item_shells (0 .5 .8) (0 0 0) (32 32 32) big
+ */
+export class ItemShellsEntity extends BaseAmmoEntity {
+  static classname = 'item_shells';
+
+  static _ammo = 20;
+  static _ammoBig = 40;
+  static _model = 'maps/b_shell0.bsp';
+  static _modelBig = 'maps/b_shell1.bsp';
+  static _weapon = 1;
+
+  _setAmmo(ammo) {
+    this.ammo_shells = ammo;
+  }
+};
+
+/**
+ * QUAKED item_spikes (0 .5 .8) (0 0 0) (32 32 32) big
+ */
+export class ItemSpikesEntity extends BaseAmmoEntity {
+  static classname = 'item_spikes';
+
+  static _ammo = 25;
+  static _ammoBig = 50;
+  static _model = 'maps/b_nail0.bsp';
+  static _modelBig = 'maps/b_nail1.bsp';
+  static _weapon = 2;
+
+  _setAmmo(ammo) {
+    this.ammo_nails = ammo;
   }
 };
 
 /**
  * QUAKED item_rockets (0 .5 .8) (0 0 0) (32 32 32) big
  */
-export class ItemRocketsEntity extends BaseItemEntity {
+export class ItemRocketsEntity extends BaseAmmoEntity {
   static classname = 'item_rockets';
 
-  _precache() {
-    if (this.spawnflags & WEAPON_BIG2) {
-      this.engine.PrecacheModel('maps/b_rock1.bsp');
-    } else {
-      this.engine.PrecacheModel('maps/b_rock0.bsp');
+  static _ammo = 5;
+  static _ammoBig = 10;
+  static _model = 'maps/b_rock0.bsp';
+  static _modelBig = 'maps/b_rock1.bsp';
+  static _weapon = 3;
+
+  _setAmmo(ammo) {
+    this.ammo_rockets = ammo;
+  }
+};
+
+/**
+ * QUAKED item_cells (0 .5 .8) (0 0 0) (32 32 32) big
+ */
+export class ItemCellsEntity extends BaseAmmoEntity {
+  static classname = 'item_cells';
+
+  static _ammo = 6;
+  static _ammoBig = 12;
+  static _model = 'maps/b_batt0.bsp';
+  static _modelBig = 'maps/b_batt1.bsp';
+  static _weapon = 4;
+
+  _setAmmo(ammo) {
+    this.ammo_cells = ammo;
+  }
+};
+
+class BaseKeyEntity extends BaseItemEntity {
+  /** @type {items} key flag */
+  static _item = 0;
+
+  static _worldTypeToSound = {
+    [worldType.MEDIEVAL]: "misc/medkey.wav", // fallback
+    [worldType.RUNES]: "misc/runekey.wav",
+    [worldType.BASE]: "misc/basekey.wav",
+  };
+
+  static _worldTypeToNetname = {
+    [worldType.MEDIEVAL]: "base key", // fallback
+    [worldType.RUNES]: "base runekey",
+    [worldType.BASE]: "base keycard",
+  };
+
+  static _worldTypeToModel = {
+    [worldType.MEDIEVAL]: "progs/w_s_key.mdl", // fallback
+    [worldType.RUNES]: "progs/m_s_key.mdl",
+    [worldType.BASE]: "progs/b_s_key.mdl",
+  };
+
+  get noise() {
+    const worldType = this.game.worldspawn.worldtype;
+
+    if (this.constructor._worldTypeToSound[worldType]) {
+      return this.constructor._worldTypeToSound[worldType];
     }
+
+    return this.constructor._worldTypeToSound[worldType.MEDIEVAL];
+  }
+
+  set noise(noise) {
+  }
+
+  get netname() {
+    const worldType = this.game.worldspawn.worldtype;
+
+    if (this.constructor._worldTypeToNetname[worldType]) {
+      return this.constructor._worldTypeToNetname[worldType];
+    }
+
+    return this.constructor._worldTypeToNetname[worldType.MEDIEVAL];
+  }
+
+  set netname(netname) {
+  }
+
+  get model() {
+    const worldType = this.game.worldspawn.worldtype;
+
+    if (this.constructor._worldTypeToModel[worldType]) {
+      return this.constructor._worldTypeToModel[worldType];
+    }
+
+    return this.constructor._worldTypeToModel[worldType.MEDIEVAL];
+  }
+
+  set model(model) {
+  }
+
+  _precache() {
+    this.engine.PrecacheSound(this.noise);
+    this.engine.PrecacheModel(this.model);
   }
 
   spawn() {
     super.spawn();
 
-    if (this.spawnflags & WEAPON_BIG2) {
-      this.setModel('maps/b_rock1.bsp');
-      this.ammo_rockets = 10;
+    this.setModel(this.model);
+    this.setSize(new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0));
+
+    this.items = this.constructor._item;
+  }
+
+  regenerate() {
+    // no action, keys do not regenerate
+  }
+
+  _canPickup(playerEntity) {
+    return (playerEntity.items & this.items) === 0;
+  }
+
+  /**
+   * @protected
+   * @param {PlayerEntity} playerEntity user
+   */
+  _afterTouch(playerEntity) {
+    const weapon = playerEntity.chooseBestWeapon();
+
+    if (!this.game.deathmatch) {
+      playerEntity.setWeapon(weapon);
     } else {
-      this.setModel('maps/b_rock0.bsp');
-      this.ammo_rockets = 5;
+      // TODO: Deathmatch_Weapon (old, new);
     }
 
-    this.weapon = 3;
+    if (!this.game.coop) {
+      this.remove();
+    }
 
-    this.setSize(Vector.origin, new Vector(32.0, 32.0, 56.0));
+    this._sub.useTargets(playerEntity);
   }
+}
+
+/**
+ * QUAKED item_key1 (0 .5 .8) (-16 -16 -24) (16 16 32)
+ * SILVER key
+ * In order for keys to work
+ * you MUST set your maps
+ * worldtype to one of the
+ * following:
+ * 0: medieval
+ * 1: metal
+ * 2: base
+ */
+export class SilverKeyEntity extends BaseKeyEntity {
+  static classname = 'item_key1';
+
+  static _item = items.IT_KEY1;
+
+  static _worldTypeToNetname = {
+    [worldType.MEDIEVAL]: "silver key", // fallback
+    [worldType.RUNES]: "silver runekey",
+    [worldType.BASE]: "silver keycard",
+  };
+
+  static _worldTypeToModel = {
+    [worldType.MEDIEVAL]: "progs/w_s_key.mdl", // fallback
+    [worldType.RUNES]: "progs/m_s_key.mdl",
+    [worldType.BASE]: "progs/b_s_key.mdl",
+  };
 };
+
+/**
+ * QUAKED item_key2 (0 .5 .8) (-16 -16 -24) (16 16 32)
+ * GOLD key
+ * In order for keys to work
+ * you MUST set your maps
+ * worldtype to one of the
+ * following:
+ * 0: medieval
+ * 1: metal
+ * 2: base
+ */
+export class GoldKeyEntity extends BaseKeyEntity {
+  static classname = 'item_key2';
+
+  static _item = items.IT_KEY2;
+
+  static _worldTypeToNetname = {
+    [worldType.MEDIEVAL]: "gold key", // fallback
+    [worldType.RUNES]: "gold runekey",
+    [worldType.BASE]: "gold keycard",
+  };
+
+  static _worldTypeToModel = {
+    [worldType.MEDIEVAL]: "progs/w_g_key.mdl", // fallback
+    [worldType.RUNES]: "progs/m_g_key.mdl",
+    [worldType.BASE]: "progs/b_g_key.mdl",
+  };
+};
+

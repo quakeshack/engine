@@ -7,8 +7,7 @@ export class BodyqueEntity extends BaseEntity {
 }
 
 /**
- *
- * @param game
+ * @param {import("../GameAPI.mjs").ServerGameAPI} game gameAPI
  */
 function InitBodyQue(game) {
   game.bodyque_head = game.engine.SpawnEntity('bodyque');
@@ -23,9 +22,9 @@ function InitBodyQue(game) {
 }
 
 /**
- *
- * @param game
- * @param entity
+ * copies entity to the body que
+ * @param {import("../GameAPI.mjs").ServerGameAPI} game gameAPI
+ * @param {BaseEntity} entity entity to be copied
  */
 export function CopyToBodyQue(game, entity) {
   game.bodyque_head.angles = entity.angles;
@@ -46,9 +45,15 @@ export class WorldspawnEntity extends BaseEntity {
 
   _declareFields() {
     this.sounds = 0;
+
     this.wad = null;
-    this.message = '';
-    this.worldtype = 0; // TODO: explain
+    this.message = null;
+
+    /** @param {number} 0 = medival, 1 = runes, 2 = techbase */
+    this.worldtype = 0;
+
+    /** @param {number} sets gravity */
+    this.qs_gravity = 0;
   }
 
   _precache() {

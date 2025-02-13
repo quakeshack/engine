@@ -11,7 +11,7 @@ import { GameAI } from "./helper/AI.mjs";
 import { IntermissionCameraEntity } from "./entity/Client.mjs";
 import { TriggerField } from "./entity/Subs.mjs";
 import { ButtonEntity } from "./entity/props/Buttons.mjs";
-import { BackpackEntity, ItemRocketsEntity, ItemShellsEntity } from "./entity/Items.mjs";
+import * as item from "./entity/Items.mjs";
 import BaseEntity from "./entity/BaseEntity.mjs";
 
 // put all entity classes here:
@@ -67,9 +67,14 @@ const entityRegistry = [
 
   TriggerField,
 
-  BackpackEntity,
-  ItemShellsEntity,
-  ItemRocketsEntity,
+  item.BackpackEntity,
+  item.ItemShellsEntity,
+  item.ItemSpikesEntity,
+  item.ItemRocketsEntity,
+  item.ItemCellsEntity,
+
+  item.GoldKeyEntity,
+  item.SilverKeyEntity,
 ];
 
 export class ServerGameAPI {
@@ -115,7 +120,10 @@ export class ServerGameAPI {
     this.time = 0;
     this.framecount = 0;
 
-    this.worldspawn = null; // QuakeC: world
+    /** @type {?BaseEntity} QuakeC: world */
+    this.worldspawn = null;
+
+    /** @type {?BaseEntity} the last selected spawn point, used for cycling spawn spots */
     this.lastspawn = null;
 
     this.intermission_running = 0.0;
@@ -123,7 +131,7 @@ export class ServerGameAPI {
 
     this.gameAI = new GameAI(this);
 
-    // bodyque ref
+    /** @type {?BaseEntity} bodyque ref */
     this.bodyque_head = null;
 
     // FIXME: I’m not happy about this, this needs to be next to models

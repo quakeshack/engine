@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { attn, channel, moveType, solid } from "../Defs.mjs";
+import { channel, moveType, solid } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { PlayerEntity } from "./Player.mjs";
 
@@ -79,7 +79,7 @@ export class TriggerField extends BaseEntity {
 
     this.attack_finished = this.game.time + 1.0;
 
-    // TODO: activator = other; ?? -- copied from QuakeC
+    // TODO: activator = other; ?? -- copied from QuakeC (CR: might not be required, since we pass the other entity around)
 
     this.owner.use(otherEntity);
   }
@@ -89,6 +89,7 @@ export class TriggerField extends BaseEntity {
  * helper class to make entities more interactive:
  * - movements
  * - delayed interactions
+ * - optional triggers upon use
  */
 export class Sub {
   /**
