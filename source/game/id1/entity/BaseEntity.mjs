@@ -513,6 +513,17 @@ export default class BaseEntity {
   }
 
   /**
+   * searches the first entity matching field equals value
+   * @param {string} field what field to search
+   * @param {string} value what value to match the value under field
+   * @returns {?BaseEntity} found entity
+   */
+  findFirstEntityByFieldAndValue(field, value) {
+    const edict = this.engine.FindByFieldAndValue(field, value);
+    return edict ? edict.entity : null;
+  }
+
+  /**
    * Returns client (or object that has a client enemy) that would be * a valid target. If there are more than one
    * valid options, they are cycled each frame. If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
    * @returns {?BaseEntity} found client

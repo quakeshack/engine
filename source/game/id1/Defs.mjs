@@ -223,3 +223,23 @@ export const worldType = {
   RUNES: 1,
   BASE: 2,
 };
+
+/**
+ * @readonly
+ * @enum {number}
+ * temporary entity class, let’s the client code render client-only effects and things without causing edict bloat and clogging the client-server infrastructure
+ */
+export const tentType = {
+  TE_SPIKE: 0,
+  TE_SUPERSPIKE: 1,
+  TE_GUNSHOT: 2,
+  TE_EXPLOSION: 3,
+  TE_TAREXPLOSION: 4,
+  TE_LIGHTNING1: 5,
+  TE_LIGHTNING2: 6,
+  TE_WIZSPIKE: 7,
+  TE_KNIGHTSPIKE: 8,
+  TE_LIGHTNING3: 9,
+  TE_LAVASPLASH: 10,
+  TE_TELEPORT: 11,
+};

@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { attn, moveType, solid } from "../Defs.mjs";
+import { attn, channel, moveType, solid, tentType } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { PlayerEntity } from "./Player.mjs";
 
@@ -479,3 +479,24 @@ export class BossgateWallEntity extends BaseWallEntity {
     super.spawn();
   }
 }
+
+/**
+ * ephemeral teleport fog effect
+ */
+export class TeleportEffectEntity extends BaseEntity {
+  static classname = 'misc_tfog';
+
+  /** @protected */
+  _playTeleport() {
+    this.startSound(channel.CHAN_VOICE, `misc/r_tele${Math.ceil(Math.random() * 5).wav}`);
+    this.remove();
+  }
+
+  spawn() {
+    this._scheduleThink(this.game.time + 0.2, () => this._playTeleport());
+
+    this.engine.DispatchTempEntityEvent(tentType.TE_TELEPORT, this.origin);
+  }
+}
+
+

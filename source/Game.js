@@ -95,8 +95,8 @@ Game.EngineInterface = class EngineInterface {
   /**
    * Defines a lightstyle (e.g. aazzaa).
    * It will also send an update to all connected clients.
-   * @param {Number} styleId
-   * @param {String} sequenceString
+   * @param {number} styleId
+   * @param {string} sequenceString
    */
   static Lightstyle(styleId, sequenceString) {
     SV.server.lightstyles[styleId] = sequenceString;
@@ -178,6 +178,20 @@ Game.EngineInterface = class EngineInterface {
     return null;
   }
 
+  static *FindAllByFieldAndValue(field, value, startEdictId = 0) { // FIXME: startEdictId should be edict? not 100% happy about this
+    for (let i = (startEdictId % SV.server.num_edicts); i < SV.server.num_edicts; i++) {
+      const ent = SV.server.edicts[i];
+
+      if (ent.isFree()) {
+        continue;
+      }
+
+      if (ent.entity[field] === value) {
+        yield ent;
+      }
+    }
+  }
+
   static PrecacheSound(sfxName) {
     if (SV.server.sound_precache.includes(sfxName)) {
       return;
@@ -206,7 +220,7 @@ Game.EngineInterface = class EngineInterface {
   /**
    * Spawns a new Entity, not an Edict
    * @param {string} classname
-   * @param {Object} initialData
+   * @param {Map<string,string|number|Vector|null>} initialData
    * @returns
    */
   static SpawnEntity(classname, initialData = {}) {
@@ -231,6 +245,20 @@ Game.EngineInterface = class EngineInterface {
 
   static ParseQC(qcContent) {
     return Mod.ParseQC(qcContent);
+  }
+
+  static DispatchTempEntityEvent(tempEntityId, origin) {
+    MSG.WriteByte(SV.server.datagram, Protocol.svc.temp_entity);
+    MSG.WriteByte(SV.server.datagram, tempEntityId);
+    MSG.WriteCoordVector(SV.server.datagram, origin);
+  }
+
+  static DispatchBeamEvent(beamId, edictId, startOrigin, endOrigin) {
+    MSG.WriteByte(SV.server.datagram, Protocol.svc.temp_entity); // FIXME: unhappy about this
+    MSG.WriteByte(SV.server.datagram, beamId);
+    MSG.WriteShort(SV.server.datagram, edictId);
+    MSG.WriteCoordVector(SV.server.datagram, startOrigin);
+    MSG.WriteCoordVector(SV.server.datagram, endOrigin);
   }
 
   // TODO: MSG related methods

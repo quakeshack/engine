@@ -1631,8 +1631,8 @@ CL.InitTEnts = function() {
 
 CL.ParseBeam = function(m) {
   const ent = MSG.ReadShort();
-  const start = [MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord()];
-  const end = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
+  const start = MSG.ReadCoordVector();
+  const end = MSG.ReadCoordVector();
   let i; let b;
   for (i = 0; i <= 23; ++i) {
     b = CL.beams[i];
@@ -1641,8 +1641,8 @@ CL.ParseBeam = function(m) {
     }
     b.model = m;
     b.endtime = CL.state.time + 0.2;
-    b.start = new Vector(start[0], start[1], start[2]);
-    b.end = new Vector(end[0], end[1], end[2]);
+    b.start = start.copy();
+    b.end = end.copy();
     return;
   }
   for (i = 0; i <= 23; ++i) {
@@ -1653,14 +1653,14 @@ CL.ParseBeam = function(m) {
     b.entity = ent;
     b.model = m;
     b.endtime = CL.state.time + 0.2;
-    b.start = new Vector(start[0], start[1], start[2]);
-    b.end = new Vector(end[0], end[1], end[2]);
+    b.start = start.copy();
+    b.end = end.copy();
     return;
   }
   Con.Print('beam list overflow!\n');
 };
 
-CL.ParseTEnt = function() {
+CL.ParseTEnt = function() { // TODO: move this to ClientAPI
   const type = MSG.ReadByte();
 
   switch (type) {
@@ -1757,11 +1757,11 @@ CL.UpdateTEnts = function() {
       yaw = 0;
       pitch = dist[2] > 0.0 ? 90 : 270;
     } else {
-      yaw = (Math.atan2(dist[1], dist[0]) * 180.0 / Math.PI) >> 0;
+      yaw = (Math.atan2(dist[1], dist[0]) * 180.0 / Math.PI) || 0;
       if (yaw < 0) {
         yaw += 360;
       }
-      pitch = (Math.atan2(dist[2], Math.sqrt(dist[0] * dist[0] + dist[1] * dist[1])) * 180.0 / Math.PI) >> 0;
+      pitch = (Math.atan2(dist[2], Math.sqrt(dist[0] * dist[0] + dist[1] * dist[1])) * 180.0 / Math.PI) || 0;
       if (pitch < 0) {
         pitch += 360;
       }

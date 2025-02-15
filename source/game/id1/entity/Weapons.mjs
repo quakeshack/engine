@@ -1,7 +1,6 @@
 
-// called by worldspawn
 /**
- *
+ * called by worldspawn
  * @param engine
  */
 export function Precache(engine) {
@@ -19,3 +18,5 @@ export function Precache(engine) {
 	engine.PrecacheSound("weapons/bounce.wav");		// grenade bounce
 	engine.PrecacheSound("weapons/shotgn2.wav");	// super shotgun
 };
+
+

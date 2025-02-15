@@ -2759,9 +2759,8 @@ SV.InitBoxHull = function() {
     firstclipnode: 0,
     lastclipnode: 5,
   };
-  let i; let node; let plane;
-  for (i = 0; i <= 5; ++i) {
-    node = {};
+  for (let i = 0; i <= 5; ++i) {
+    const node = {};
     SV.box_clipnodes[i] = node;
     node.planenum = i;
     node.children = [];
@@ -2771,7 +2770,7 @@ SV.InitBoxHull = function() {
     } else {
       node.children[1 - (i & 1)] = Mod.contents.solid;
     }
-    plane = {};
+    const plane = {};
     SV.box_planes[i] = plane;
     plane.type = i >> 1;
     plane.normal = new Vector();

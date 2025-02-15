@@ -306,6 +306,11 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-02-15
+
+* added teleporting stuff
+* added EngineInterface for temporary entities
+
 ### 2025-02-13
 
 * ported more over of items, keys and ammo
