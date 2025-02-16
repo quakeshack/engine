@@ -246,9 +246,8 @@ export class FireballEntity extends BaseEntity {
     this._scheduleThink(this.game.time + 5.0, () => this.remove());
   }
 
-  // eslint-disable-next-line no-unused-vars
   touch(otherEntity) {
-    // TODO: T_Damage(otherEntity, this, this, 20.0)
+    this.damage(otherEntity, 20.0);
     this.remove();
   }
 }

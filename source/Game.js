@@ -261,6 +261,14 @@ Game.EngineInterface = class EngineInterface {
     MSG.WriteCoordVector(SV.server.datagram, endOrigin);
   }
 
+  static BroadcastMonsterKill() {
+    MSG.WriteByte(SV.server.reliable_datagram, Protocol.svc.killedmonster);
+  }
+
+  static BroadcastSecretFound() {
+    MSG.WriteByte(SV.server.reliable_datagram, Protocol.svc.foundsecret);
+  }
+
   // TODO: MSG related methods
 
   // TODO: RegisterCvar, UnregisterCvar

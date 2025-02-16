@@ -2,12 +2,14 @@
 
 import { EntityAI } from "../../helper/AI.mjs";
 import BaseEntity from "../BaseEntity.mjs";
+import { DamageHandler } from "../Weapons.mjs";
 
 export default class BaseMonster extends BaseEntity {
   _declareFields() {
     super._declareFields();
 
     this.pausetime = 0;
+    this.pain_finished = 0;
     /** @type {BaseEntity} */
     this.movetarget = null; // entity
     this.health = 0;
@@ -21,10 +23,13 @@ export default class BaseMonster extends BaseEntity {
     /** @type {BaseEntity} a movetarget or an enemy */
     this.goalentity = null;
 
+    /** @protected */
     this._ai = this._newEntityAI();
 
     /** @type {number} refire count for nightmare */
     this.cnt = 0;
+
+    this._damageHandler = new DamageHandler(this);
   }
 
   /**
@@ -71,8 +76,10 @@ export default class BaseMonster extends BaseEntity {
 
   /**
    * when dying
+   * @param {BaseEntity} attackerEntity attacker entity
    */
-  thinkDie() {
+  // eslint-disable-next-line no-unused-vars
+  thinkDie(attackerEntity) {
   }
 
   /**

@@ -103,6 +103,7 @@ export class ServerGameAPI {
 
     // stats
     this.total_monsters = 0;
+    this.killed_monsters = 0;
 
     // checkout Player.decodeLevelParms to understand this
     this.parm1 = 0;

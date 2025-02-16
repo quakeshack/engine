@@ -170,7 +170,8 @@ export default class ArmySoldierMonster extends BaseMonster {
     // }
   }
 
-  thinkDie() {
+  // eslint-disable-next-line no-unused-vars
+  thinkDie(attackerEntity) {
     if (this.edictId === 13) console.log('thinkDie');
 
 // // check for gib

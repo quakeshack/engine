@@ -4,6 +4,7 @@ import { attn, channel, damage, items, moveType, solid, worldType } from "../../
 import BaseEntity from "../BaseEntity.mjs";
 import { PlayerEntity } from "../Player.mjs";
 import { TriggerField } from "../Subs.mjs";
+import { DamageHandler } from "../Weapons.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
 
 /**
@@ -152,7 +153,7 @@ export class BaseDoorEntity extends BasePropEntity {
    * @param {BaseEntity} blockedByEntity blocking entity
    */
   _doorBlocked(blockedByEntity) {
-    // TODO: other = blockedByEntity, T_Damage (other, self, self, self.dmg);
+    this.damage(blockedByEntity, this.dmg);
 
     // if a door has a negative wait, it would never come back if blocked,
     // so let it just squash the object to death real fast
@@ -288,7 +289,15 @@ export class DoorEntity extends BaseDoorEntity {
     this.health = 0;
     this.max_health = 0; // “players maximum health is stored here”
 
+    /** @protected */
     this._doorKeyUsed = false;
+
+    this._damageHandler = new DamageHandler(this);
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  thinkDie(attackerEntity) {
+    this._doorKilled();
   }
 
   _precache() {
@@ -528,6 +537,10 @@ export class SecretDoorEntity extends BaseDoorEntity {
     this._dest0 = null;
     this._dest1 = null;
     this._dest2 = null;
+
+    this.health = 0;
+
+    this._damageHandler = new DamageHandler(this);
   }
 
   _precache() {
@@ -591,20 +604,25 @@ export class SecretDoorEntity extends BaseDoorEntity {
 
     this.speed = 50.0;
 
-    // TODO: this
-    // if ( !self.targetname || self.spawnflags&SECRET_YES_SHOOT)
-    //   {
-    //     self.health = 10000;
-    //     self.takedamage = DAMAGE_YES;
-    //     self.th_pain = fd_secret_use;
-    //     self.th_die = fd_secret_use;
-    //   }
+    if (!this.targetname || self.spawnflags & SecretDoorEntity.SECRET_YES_SHOOT) {
+      this.health = 10000;
+      this.takedamage = damage.DAMAGE_YES;
+    }
 
     this.oldorigin.set(this.origin);
 
     if (!this.wait) {
       this.wait = 5.0;
     }
+  }
+
+  thinkDie(attackerEntity) {
+    this.use(attackerEntity);
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  thinkPain(attackerEntity, inflictedDamage) {
+    this.use(attackerEntity);
   }
 
   touch(touchedByEntity) {
@@ -622,8 +640,6 @@ export class SecretDoorEntity extends BaseDoorEntity {
       touchedByEntity.centerPrint(this.message);
       touchedByEntity.startSound(channel.CHAN_BODY, "misc/talk.wav");
     }
-
-    this.use(touchedByEntity);
   }
 
   blocked(blockedByEntity) {
@@ -633,7 +649,7 @@ export class SecretDoorEntity extends BaseDoorEntity {
 
     this.attack_finished = this.game.time + 0.5;
 
-    // TODO: T_Damage (blockedByEntity, self, self, self.dmg);
+    this.damage(blockedByEntity, this.dmg);
   }
 
   use(usedByEntity) {

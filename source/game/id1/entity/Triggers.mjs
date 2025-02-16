@@ -1,4 +1,4 @@
-import { attn, damage, moveType, solid } from "../Defs.mjs";
+import { attn, damage, flags, moveType, solid } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { PlayerEntity } from "./Player.mjs";
 import { Sub } from "./Subs.mjs";
@@ -125,7 +125,7 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
     const { forward } = target.angles.angleVectors();
 
     // spawn a tfog flash in front of the destination
-    this.engine.SpawnEntity('misc_tfog', { origin: forward.multiply(32.0).add(target.origin) });
+    this.engine.SpawnEntity('misc_tfog', { origin: forward.copy().multiply(32.0).add(target.origin) });
 
     this.engine.SpawnEntity('misc_teledeath', {
       origin: target.origin,
@@ -133,10 +133,26 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
     });
 
     // move the player and lock him down for a little while
+    if (!touchedByEntity.health) {
+      touchedByEntity.origin.set(target.origin);
+      touchedByEntity.velocity.set(forward.copy().multiply(touchedByEntity.velocity[0]).add(forward.copy().multiply(touchedByEntity.velocity[1])));
+      return;
+    }
 
-    // TODO: the rest properly
     touchedByEntity.setOrigin(target.origin);
-    touchedByEntity.angles = target.angles;
+    touchedByEntity.angles.set(target.angles);
+
+    if (touchedByEntity instanceof PlayerEntity) {
+      touchedByEntity.fixangle = 1;
+      touchedByEntity.teleport_time = this.game.time + 0.7;
+      // CR: there’s some nonsense regarding flags in the original
+      // if (touchedByEntity.flags & flags.FL_ONGROUND) {
+      //   touchedByEntity &= ~flags.FL_ONGROUND;
+      // }
+      touchedByEntity.velocity.set(forward.multiply(300));
+    }
+
+    touchedByEntity &= ~flags.FL_ONGROUND;
   }
 
   spawn() {

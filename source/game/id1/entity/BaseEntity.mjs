@@ -46,11 +46,14 @@ export default class BaseEntity {
     /** @type {solid} */
     this.solid = solid.SOLID_NOT;
     /** @type {flags} */
-    this.flags = flags.FL_NONE;
+    this.flags = flags.FL_NONE; // SV.WriteClientdataToMessage
     this.spawnflags = 0;
     /** @type {content} */
     this.watertype = content.CONTENT_EMPTY;
-    this.waterlevel = 0;
+    /** determines the waterlevel: 0 outside, 1 inside, > 1 different contents */
+    this.waterlevel = 0; // SV.WriteClientdataToMessage
+    /** used by the engine to handle water and air move after a teleportation */
+    this.teleport_time = 0;
 
     // Quake model related
     this.model = null;
@@ -84,6 +87,12 @@ export default class BaseEntity {
     this.deadflag = dead.DEAD_NO;
     this.takedamage = damage.DAMAGE_NO;
     this.dmg = 0; // CR: find out the values
+    this.dmg_take = 0; // SV.WriteClientdataToMessage
+    this.dmg_save = 0; // SV.WriteClientdataToMessage
+    /** @type {?BaseEntity} set by DamageHandler.damage */
+    this.dmg_inflictor = null; // SV.WriteClientdataToMessage
+    /** @type {?BaseEntity} set by DamageHandler.damage */
+    this.dmg_attacker = null;
     this.show_hostile = 0;
     this.attack_finished = 0;
 
@@ -154,11 +163,18 @@ export default class BaseEntity {
    * @returns {boolean} whether the state is valid
    */
   _runState(state = null) {
+    // console.debug('_runState: requested, next, current', state, this._stateNext, this._stateCurrent);
+
     if (!state) {
       state = this._stateNext;
     }
 
-    if (!state || !this._states[state]) {
+    if (!state) {
+      return false;
+    }
+
+    if (!this._states[state]) {
+      // console.warn('_runState: state not defined!', state);
       return false;
     }
 
@@ -255,6 +271,23 @@ export default class BaseEntity {
     if (this._scheduledThinks.length > 0) {
       this.nextthink = this._scheduledThinks[0].nextThink;
     }
+
+    return true;
+  }
+
+  /**
+   * Tries to inflict damage on an entity, depends on the entity having a damage handler
+   * @param {?BaseEntity} otherEntity other entity
+   * @param {number} damage damage points
+   * @param {?BaseEntity} attackerEntity who is attacking, this is already the entity what is attacking, defaults to this
+   * @returns {boolean} true, if entity could receive damage
+   */
+  damage(otherEntity, damage, attackerEntity = this) {
+    if (!otherEntity || !otherEntity._damageHandler) {
+      return false;
+    }
+
+    otherEntity._damageHandler.damage(this, attackerEntity, damage);
 
     return true;
   }
@@ -360,6 +393,17 @@ export default class BaseEntity {
 
   isActor() {
     return false;
+  }
+
+  /**
+   * Returns a vector along which this entity can shoot.
+   * Usually, this entity is a player, and the vector returned is calculated by auto aiming to the closest enemy entity.
+   * NOTE: The original code and unofficial QuakeC reference docs say there’s an argument (speed/misslespeed), but it’s unused.
+   * @param {Vector} direction e.g. forward
+   * @returns {Vector} aim direction
+   */
+  aim(direction) {
+    return this.edict.aim(direction);
   }
 
   /**
@@ -536,6 +580,7 @@ export default class BaseEntity {
   /**
    * @param {BaseEntity} target target entity
    * @param {boolean} ignoreMonsters whether to pass through monsters
+   * @returns {*} trace information
    */
   tracelineToEntity(target, ignoreMonsters) {
     const start = this.origin.copy().add(this.view_ofs ? this.view_ofs : Vector.origin);
@@ -547,11 +592,22 @@ export default class BaseEntity {
   /**
    * @param {Vector} target target point
    * @param {boolean} ignoreMonsters whether to pass through monsters
+   * @returns {*} trace information
    */
   tracelineToVector(target, ignoreMonsters) {
     const start = this.origin.copy().add(this.view_ofs ? this.view_ofs : Vector.origin);
 
     return this.engine.Traceline(start, target, ignoreMonsters, this.edict);
+  }
+
+  /**
+   * @param {Vector} origin starting point
+   * @param {Vector} target ending point
+   * @param {boolean} ignoreMonsters whether to pass through monsters
+   * @returns {*} trace information
+   */
+  traceline(origin, target, ignoreMonsters) {
+    return this.engine.Traceline(origin, target, ignoreMonsters, this.edict);
   }
 
   /**

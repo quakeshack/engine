@@ -315,20 +315,22 @@ SV.Edict = class Edict {
   /**
    * Returns a vector along which this entity can shoot.
    * Usually, this entity is a player, and the vector returned is calculated by auto aiming to the closest enemy entity.
+   * NOTE: The original code and unofficial QuakeC reference docs say there’s an argument (speed/misslespeed), but it’s unused.
+   * @param {Vector} direction e.g. forward
    * @returns {Vector} aim direction
    */
-  aim() {
+  aim(direction) {
     const origin = this.entity.origin.copy();
     const start = origin.add(new Vector(0.0, 0.0, 20.0));
-    const dir = SV.server.gameAPI.v_forward;
-    const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
+
+    const end = new Vector(start[0] + 2048.0 * direction[0], start[1] + 2048.0 * direction[1], start[2] + 2048.0 * direction[2]);
     const tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, this);
     if (tr.ent !== null) {
       if ((tr.ent.entity.takedamage === SV.damage.aim) && (!Host.teamplay.value || this.entity.team <= 0 || this.entity.team !== tr.ent.entity.team)) {
-        return dir;
+        return direction;
       }
     }
-    const bestdir = dir.copy();
+    const bestdir = direction.copy();
     let bestdist = SV.aim.value;
     let bestent = null;
     for (let i = 1; i < SV.server.num_edicts; ++i) {
@@ -347,9 +349,9 @@ SV.Edict = class Edict {
       }
       const corigin = check.entity.origin, cmins = check.entity.mins, cmaxs = check.entity.maxs;
       end.set(corigin).add(cmins.copy().add(cmaxs).multiply(0.5));
-      dir.set(end).subtract(start);
-      dir.normalize()
-      let dist = dir.dot(bestdir);
+      direction.set(end).subtract(start);
+      direction.normalize()
+      let dist = direction.dot(bestdir);
       if (dist < bestdist) {
         continue;
       }
@@ -360,11 +362,11 @@ SV.Edict = class Edict {
       }
     }
     if (bestent !== null) {
-      dir.set(bestent.entity.origin).subtract(this.entity.origin);
-      const dist = dir.dot(bestdir);
+      direction.set(bestent.entity.origin).subtract(this.entity.origin);
+      const dist = direction.dot(bestdir);
       end[0] = bestdir[0] * dist;
       end[1] = bestdir[1] * dist;
-      end[2] = dir[2];
+      end[2] = direction[2];
       end.normalize();
       return end;
     }
@@ -797,8 +799,10 @@ SV.WriteEntitiesToClient = function(clent, msg) {
 };
 
 SV.WriteClientdataToMessage = function(ent, msg) {
+  // FIXME: there is too much hard wired stuff happening here
+  // FIXME: interfaces, edict, entity
   if ((ent.entity.dmg_take || ent.entity.dmg_save) && ent.entity.dmg_inflictor) {
-    const other = ent.entity.dmg_inflictor;
+    const other = ent.entity.dmg_inflictor.edict ? ent.entity.dmg_inflictor.edict : ent.entity.dmg_inflictor; // FIXME: SV.Edict vs BaseEntity
     const vec = !other.isFree() ? other.entity.origin.copy().add(other.entity.mins.copy().add(other.entity.maxs).multiply(0.5)) : ent.entity.origin;
     MSG.WriteByte(msg, Protocol.svc.damage);
     MSG.WriteByte(msg, ent.entity.dmg_save);

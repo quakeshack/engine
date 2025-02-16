@@ -306,6 +306,15 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-02-16
+
+* current plan is to port over player, weapons, items and func stuff first, then we can take care of the monsters and stuff
+* added more player animation states, started adding weapon attacks
+* introduced `DamageHandler`, `BaseEntity.damage` and a few more things to handle damage somewhat conveniently
+* `PF_aim` is supposed to have an argument called speed, but it’s not implemented, not even by vanilla Quake
+* added `direction` to `Edict.aim` as well as `BaseEntity`
+* worked on some TODOs regarding inflicting damage
+
 ### 2025-02-15
 
 * added teleporting stuff

@@ -1,9 +1,10 @@
 /* global Vector */
 
-import { attn, channel, content, damage, dead, deathType, flags, items, moveType, solid, vec } from "../Defs.mjs";
+import { attn, channel, content, damage, dead, deathType, effect, flags, items, moveType, solid, vec } from "../Defs.mjs";
 import { crandom, Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { InfoNotNullEntity } from "./Misc.mjs";
+import { Backpack, DamageHandler, PlayerWeapons } from "./Weapons.mjs";
 
 /**
  * handy map to manage weapon slots
@@ -129,25 +130,18 @@ export class InfoPlayerStart extends InfoNotNullEntity {
   static classname = 'info_player_start';
 };
 
-export class Backpack {
-  constructor() {
-    this.ammo_shells = 0;
-    this.ammo_nails = 0;
-    this.ammo_rockets = 0;
-    this.ammo_cells = 0;
-    this.items = 0;
-  }
-};
-
 export class PlayerEntity extends BaseEntity {
   static classname = 'player';
 
   _declareFields() {
+    /** @protected */
+    this._weapons = new PlayerWeapons(this);
+
     // relevant for view
-    this.view_ofs = new Vector();
-    this.punchangle = new Vector();
+    this.view_ofs = new Vector(); // SV.WriteClientdataToMessage
+    this.punchangle = new Vector(); // SV.WriteClientdataToMessage
     this.v_angle = new Vector();
-    this.fixangle = false;
+    this.fixangle = false; // SV.WriteClientdataToMessage
 
     // interaction states
     this.button0 = false; // fire
@@ -156,18 +150,19 @@ export class PlayerEntity extends BaseEntity {
 
     // backpack and health
     this.items = 0;
+    // this.items2 = 0; // CR: need to investigate this more closely
     this.health = 0;
-    this.armorvalue = 0;
-    this.ammo_shells = 0;
-    this.ammo_nails = 0;
-    this.ammo_rockets = 0;
-    this.ammo_cells = 0;
-    this.weapon = 0;
-    this.armortype = 0;
+    this.armorvalue = 0; // SV.WriteClientdataToMessage
+    this.ammo_shells = 0; // SV.WriteClientdataToMessage
+    this.ammo_nails = 0; // SV.WriteClientdataToMessage
+    this.ammo_rockets = 0; // SV.WriteClientdataToMessage
+    this.ammo_cells = 0; // SV.WriteClientdataToMessage
+    this.weapon = 0; // SV.WriteClientdataToMessage
+    this.armortype = 0; // SV.WriteClientdataToMessage
     this.max_health = 100; // players maximum health is stored here
-    this.currentammo = 0;
-    this.weaponmodel = null;
-    this.weaponframe = 0;
+    this.currentammo = 0; // SV.WriteClientdataToMessage
+    this.weaponmodel = null; // SV.WriteClientdataToMessage
+    this.weaponframe = 0; // SV.WriteClientdataToMessage
     this.impulse = 0; // cycle weapons, cheats, etc.
 
     // set to time+0.2 whenever a client fires a
@@ -175,7 +170,7 @@ export class PlayerEntity extends BaseEntity {
     // monsters that otherwise would let the player go
     this.show_hostile = 0;
 
-    this.jump_flag = 0;		// player jump flag (CR: it’s called a flag, but self.jump_flag = self.velocity_z sometimes)
+    this.jump_flag = 0.0;		// player jump flag (CR: it’s called a flag, but self.jump_flag = self.velocity_z sometimes)
     this.swim_flag = 0.0;		// player swimming sound flag (CR: it’s called a flag, but it’s a float)
     this.air_finished = 0;	// when time > air_finished, start drowning
     this.bubble_count = 0;	// keeps track of the number of bubbles
@@ -190,7 +185,6 @@ export class PlayerEntity extends BaseEntity {
 
     // time related checks
     this.super_sound = 0; // time for next super attack sound
-    this.use_time = 0;
 
     // multiplayer fun
     this.netname = null;
@@ -199,13 +193,148 @@ export class PlayerEntity extends BaseEntity {
 
     // things I’m unsure about:
     this.pausetime = 0;
+
+    this._damageHandler = new DamageHandler(this);
   }
 
   _precache() {
     this.engine.PrecacheModel('progs/player.mdl');
+    this.engine.PrecacheModel('progs/eyes.mdl');
+
+    // TODO: put sounds here
+    this.engine.PrecacheSound('weapons/ax1.wav');
+  }
+
+  /** @protected */
+  _enterRunningState() {
+    if (this.weapon === items.IT_AXE) {
+      this._runState('player_run_axe1');
+      return;
+    }
+
+    this._runState('player_run1');
+  }
+
+  /** @protected */
+  _enterStandingState() {
+    if (this.weapon === items.IT_AXE) {
+      this._runState('player_stand_axe1');
+      return;
+    }
+
+    this._runState('player_stand1');
+  }
+
+  /** @protected */
+  _attackStateDone() {
+    // that replaces the next state player_run with a custom logic
+    this._scheduleThink(this.game.time + 0.1, () => {
+      if (this._stateAssertStanding()) {
+        this._enterStandingState();
+        return;
+      }
+
+      if (this._stateAssertRunning()) {
+        this._enterRunningState();
+        return;
+      }
+
+      // should not happen
+    }, 'animation-state-machine');
+  }
+
+  /**
+   * @protected
+   * @returns {boolean} false, when changed to standing state
+   */
+  _stateAssertRunning() {
+    // fallback to stand state, when not running
+    if (this.velocity[0] === 0.0 && this.velocity[1] === 0.0) { // NOTE: only xy movement
+      this._enterStandingState();
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * @protected
+   * @returns {boolean} false, when changed to running state
+   */
+  _stateAssertStanding() {
+    // fallback to stand state, when not running
+    if (this.velocity[0] !== 0.0 && this.velocity[1] !== 0.0) { // NOTE: only xy movement
+      this._enterRunningState();
+      return false;
+    }
+
+    return true;
   }
 
   _initStates() {
+    // CR:  state machine not only controls animations, but also defines when an axe attack is actually launched
+    //      yet another fun was unrolling the running and standing states to fit it our state machine infrastructure
+
+    this._defineState('player_run1', 'rockrun1', 'player_run2', () => { this._stateAssertRunning(); this.weaponframe = 0; });
+    this._defineState('player_run2', 'rockrun2', 'player_run3', () => { this._stateAssertRunning(); });
+    this._defineState('player_run3', 'rockrun3', 'player_run4', () => { this._stateAssertRunning(); });
+    this._defineState('player_run4', 'rockrun4', 'player_run5', () => { this._stateAssertRunning(); });
+    this._defineState('player_run5', 'rockrun5', 'player_run6', () => { this._stateAssertRunning(); });
+    this._defineState('player_run6', 'rockrun6', 'player_run1', () => { this._stateAssertRunning(); });
+
+    this._defineState('player_run_axe1', 'axrun1', 'player_run_axe2', () => { this._stateAssertRunning(); this.weaponframe = 0; });
+    this._defineState('player_run_axe2', 'axrun2', 'player_run_axe3', () => { this._stateAssertRunning(); });
+    this._defineState('player_run_axe3', 'axrun3', 'player_run_axe4', () => { this._stateAssertRunning(); });
+    this._defineState('player_run_axe4', 'axrun4', 'player_run_axe5', () => { this._stateAssertRunning(); });
+    this._defineState('player_run_axe5', 'axrun5', 'player_run_axe6', () => { this._stateAssertRunning(); });
+    this._defineState('player_run_axe6', 'axrun6', 'player_run_axe1', () => { this._stateAssertRunning(); });
+
+    this._defineState('player_stand1', 'stand1', 'player_stand2', () => { this._stateAssertStanding(); this.weaponframe = 0; });
+    this._defineState('player_stand2', 'stand2', 'player_stand3', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand3', 'stand3', 'player_stand4', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand4', 'stand4', 'player_stand5', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand5', 'stand5', 'player_stand1', () => { this._stateAssertStanding(); });
+
+    this._defineState('player_stand_axe1', 'axstnd1', 'player_stand_axe2', () => { this._stateAssertStanding(); this.weaponframe = 0; });
+    this._defineState('player_stand_axe2', 'axstnd2', 'player_stand_axe3', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe3', 'axstnd3', 'player_stand_axe4', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe4', 'axstnd4', 'player_stand_axe5', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe5', 'axstnd5', 'player_stand_axe6', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe6', 'axstnd6', 'player_stand_axe7', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe7', 'axstnd7', 'player_stand_axe8', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe8', 'axstnd8', 'player_stand_axe9', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe9', 'axstnd9', 'player_stand_axe10', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe10', 'axstnd10', 'player_stand_axe11', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe11', 'axstnd11', 'player_stand_axe12', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe12', 'axstnd12', 'player_stand_axe1', () => { this._stateAssertStanding(); });
+
+    this._defineState('player_shot1', 'shotatt1', 'player_shot2', () => { this.weaponframe = 1; this.effects |= effect.EF_MUZZLEFLASH; });
+    this._defineState('player_shot2', 'shotatt2', 'player_shot3', () => { this.weaponframe = 2; });
+    this._defineState('player_shot3', 'shotatt3', 'player_shot4', () => { this.weaponframe = 3; });
+    this._defineState('player_shot4', 'shotatt4', 'player_shot5', () => { this.weaponframe = 4; });
+    this._defineState('player_shot5', 'shotatt5', 'player_shot6', () => { this.weaponframe = 5; });
+    this._defineState('player_shot6', 'shotatt6', null, () => { this.weaponframe = 6; this._attackStateDone(); });
+
+    this._defineState('player_axe1', 'axatt1', 'player_axe2', () => { this.weaponframe = 1; });
+    this._defineState('player_axe2', 'axatt2', 'player_axe3', () => { this.weaponframe = 2; });
+    this._defineState('player_axe3', 'axatt3', 'player_axe4', () => { this.weaponframe = 3; this._weapons.fireAxe(); });
+    this._defineState('player_axe4', 'axatt4', null, () => { this.weaponframe = 4; this._attackStateDone(); });
+
+    this._defineState('player_axeb1', 'axattb1', 'player_axeb2', () => { this.weaponframe = 5; });
+    this._defineState('player_axeb2', 'axattb2', 'player_axeb3', () => { this.weaponframe = 6; });
+    this._defineState('player_axeb3', 'axattb3', 'player_axeb4', () => { this.weaponframe = 7; this._weapons.fireAxe(); });
+    this._defineState('player_axeb4', 'axattb4', null, () => { this.weaponframe = 8; this._attackStateDone(); });
+
+    this._defineState('player_axec1', 'axattc1', 'player_axec2', () => { this.weaponframe = 1; });
+    this._defineState('player_axec2', 'axattc2', 'player_axec3', () => { this.weaponframe = 2; });
+    this._defineState('player_axec3', 'axattc3', 'player_axec4', () => { this.weaponframe = 3; this._weapons.fireAxe(); });
+    this._defineState('player_axec4', 'axattc4', null, () => { this.weaponframe = 4; this._attackStateDone(); });
+
+    this._defineState('player_axed1', 'axattd1', 'player_axed2', () => { this.weaponframe = 5; });
+    this._defineState('player_axed2', 'axattd2', 'player_axed3', () => { this.weaponframe = 6; });
+    this._defineState('player_axed3', 'axattd3', 'player_axed4', () => { this.weaponframe = 7; this._weapons.fireAxe(); });
+    this._defineState('player_axed4', 'axattd4', null, () => { this.weaponframe = 8; this._attackStateDone(); });
+
   }
 
   _selectSpawnPoint() {
@@ -237,7 +366,7 @@ export class PlayerEntity extends BaseEntity {
    */
   // eslint-disable-next-line no-unused-vars
   dispatchEvent(plEvent, ...args) {
-    // TODO: another chapter of fun ahead
+    // FIXME: another chapter of fun ahead
     if (plEvent === playerEvent.BONUS_FLASH) {
       this.edict.getClient().sendConsoleCommands('bf\n');
     }
@@ -295,8 +424,6 @@ export class PlayerEntity extends BaseEntity {
       throw new RangeError('Weapon not defined in items');
     }
 
-    // TODO: player_run ();		// get out of any weapon firing states
-
     this.weapon = weapon;
     this.items = this.items - (this.items & (items.IT_SHELLS | items.IT_NAILS | items.IT_ROCKETS | items.IT_CELLS));
 
@@ -313,6 +440,8 @@ export class PlayerEntity extends BaseEntity {
       this.weaponmodel = null;
       this.weaponframe = 0;
     }
+
+    this._enterRunningState(); // get out of any weapon firing states
   }
 
   /**
@@ -563,7 +692,8 @@ export class PlayerEntity extends BaseEntity {
    */
   _handleImpulseCommands() {
     if (this.impulse >= 1 && this.impulse <= 8) {
-      this._weaponChange();
+      // CR: in vanilla Quake impulse code represents the weapon slot within this range
+      this._weaponChange(this.impulse);
     }
 
     switch (this.impulse) {
@@ -625,15 +755,51 @@ export class PlayerEntity extends BaseEntity {
 
     this.show_hostile = this.game.time + 1.0; // wake monsters up
 
-    // TODO
+    switch (this.weapon) {
+      case items.IT_AXE: { // CR: we do not call this._weapons.fireAxe here, it will be done down the state machine
+        this.startSound(channel.CHAN_WEAPON, "weapons/ax1.wav");
+        const r = Math.random();
+        if (r < 0.25) {
+          this._runState('player_axe1');
+        } else if (r < 0.5) {
+          this._runState('player_axeb1');
+        } else if (r < 0.75) {
+          this._runState('player_axec1');
+        } else {
+          this._runState('player_axed1');
+        }
+        this.attack_finished = this.game.time + 0.5;
+      }
+        break;
+
+      case items.IT_SHOTGUN:
+        this._runState('player_shot1');
+        this._weapons.fireShotgun();
+        this.attack_finished = this.game.time + 0.5;
+        break;
+
+      case items.IT_SUPER_SHOTGUN:
+        this._runState('player_shot1');
+        this._weapons.fireSuperShotgun();
+        this.attack_finished = this.game.time + 0.7;
+        break;
+
+      default:
+        this.consolePrint(`_weaponAttack: ${this.weapon} not implemented\n`);
+        this.attack_finished = this.game.time + 1.0;
+        break;
+    }
   }
 
-  /** @protected */
-  _weaponChange() { // W_ChangeWeapon
+  /**
+   * @protected
+   * @param {number} slot (selected slot)
+   */
+  _weaponChange(slot) { // W_ChangeWeapon
     let outOfAmmo = false;
     let weapon = 0;
 
-    switch (this.impulse) {
+    switch (slot) {
       case 1:
         weapon = items.IT_AXE;
         break;
@@ -713,25 +879,7 @@ export class PlayerEntity extends BaseEntity {
       return;
     }
 
-    // we only allow every 500ms a use
-    if (this.use_time >= this.game.time) {
-      return;
-    }
-
-    const start = this.origin.copy().add(this.view_ofs);
-    const { forward } = this.angles.angleVectors();
-    const end = start.copy().add(forward.multiply(32.0)); // within 32 units of reach
-
-    const mins = new Vector(-8.0, -8.0, -8.0);
-    const maxs = new Vector(8.0, 8.0, 8.0);
-
-    const trace = this.engine.Traceline(start, end, false, this.edict, mins, maxs);
-
-    if (trace.entity && !trace.entity.isWorld()) {
-      trace.entity.use(this);
-    }
-
-    this.use_time = this.game.time + 0.5;
+    // CR: we can add some Half-Life like logic here (pull/push objects, use buttons etc.)
   }
 
   putPlayerInServer() {
@@ -769,14 +917,14 @@ export class PlayerEntity extends BaseEntity {
     this.angles = spot.angles.copy();
     this.fixangle = true;
 
-    // NOTE: not doing the modelindex_eyes trick
+    // NOTE: not doing the modelindex_eyes trick, we simply gonna use setModel
     this.setModel('progs/player.mdl');
 
     this.setSize(vec.VEC_HULL_MIN, vec.VEC_HULL_MAX);
 
     this.view_ofs.setTo(0.0, 0.0, 22.0);
 
-    this._runState('player_stand1');
+    this._enterStandingState();
 
     if (this.game.deathmatch || this.game.coop) {
       const { forward } = this.angles.angleVectors();
@@ -909,7 +1057,7 @@ export class PlayerEntity extends BaseEntity {
     }
 
     // QuakeShack: handle use requests
-    //this._useThink(); // (CR: disabled for now, it’s not properly considered)
+    this._useThink();
 
     // do weapon stuff
     this._weaponFrame();
@@ -919,7 +1067,7 @@ export class PlayerEntity extends BaseEntity {
       if (this.watertype === content.CONTENT_WATER) {
         this.startSound(channel.CHAN_BODY, "player/h2ojump.wav");
       } else if (this.jump_flag < -650) {
-        // TODO: T_Damage (self, world, world, 5);
+        this._damageHandler.damage(this.game.worldspawn, this.game.worldspawn, 5.0);
         this.startSound(channel.CHAN_VOICE, "player/land2.wav");
         this.deathtype = deathType.FALLING;
       } else {
@@ -934,6 +1082,25 @@ export class PlayerEntity extends BaseEntity {
     }
 
     // TODO: CheckPowerups()
+  }
+
+  /**
+   * when dying
+   * @param {BaseEntity} attackerEntity attacker entity
+   */
+  // eslint-disable-next-line no-unused-vars
+  thinkDie(attackerEntity) {
+    // TODO: PlayerDie
+  }
+
+  /**
+   * when getting attacked
+   * @param {BaseEntity} attackerEntity attacker entity
+   * @param {number} damage damage
+   */
+  // eslint-disable-next-line no-unused-vars
+  thinkPain(attackerEntity, damage) {
+    // TODO: player_pain
   }
 
   isActor() {
@@ -954,15 +1121,15 @@ export class TelefragTriggerEntity extends BaseEntity {
     if (touchedByEntity instanceof PlayerEntity) {
       // TODO: if (other.invincible_finished > time) self.classname = "teledeath2";
 
-      if (!(this.owner instanceof PlayerEntity)) {
+      if (!(this.owner instanceof PlayerEntity) && (this.owner instanceof BaseEntity)) {
         // other monsters explode themselves
-        // TODO: T_Damage (self.owner, self, self, 50000);
+        this.damage(this.owner, 50000.0);
         return;
       }
     }
 
     if (touchedByEntity.health > 0) {
-      // TODO: T_Damage (other, self, self, 50000);
+      this.damage(touchedByEntity, 50000.0);
     }
   }
 

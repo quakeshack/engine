@@ -370,7 +370,11 @@ PF.pointcontents = PF._generateBuiltinFunction(Game.EngineInterface.DeterminePoi
 
 PF.nextent = PF._generateBuiltinFunction((edict) => edict.nextEdict(), [PR.etype.ev_entity], PR.etype.ev_entity);
 
-PF.aim = PF._generateBuiltinFunction((edict) => edict.aim(), [PR.etype.ev_entity], PR.etype.ev_vector);
+PF.aim = PF._generateBuiltinFunction((edict) => {
+  // CR: `makevectors(self.v_angle);` is called in `W_Attack` and propagates all the way down here
+  const dir = SV.server.gameAPI.v_forward;
+  return edict.aim(dir);
+}, [PR.etype.ev_entity], PR.etype.ev_vector);
 
 PF.changeyaw = PF._generateBuiltinFunction(() => SV.server.gameAPI.self.changeYaw(), []);
 
