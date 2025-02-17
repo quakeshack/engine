@@ -1,9 +1,8 @@
 // eslint-disable-next-line no-global-assign
-self = Object.freeze({}); // CR: self is poison
+try { self = Object.freeze({}); } catch (e) { console.debug(e); } // CR: self is poison
 
 import { ServerGameAPI } from './GameAPI.mjs';
-
-const ClientGameAPI = null;
+import { ClientGameAPI } from './client/ClientAPI.mjs';
 
 const identification = {
   name: 'Quake',

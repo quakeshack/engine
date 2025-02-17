@@ -44,6 +44,7 @@ Protocol.su = {
 Protocol.default_viewheight = 22;
 
 Protocol.svc = {
+  null: 0,
   nop: 1,
   disconnect: 2,
   updatestat: 3,
@@ -80,6 +81,7 @@ Protocol.svc = {
   updatepings: 35,
   loadsound: 36,
   chatmsg: 37,
+  obituary: 38,
 };
 
 Protocol.clc = {

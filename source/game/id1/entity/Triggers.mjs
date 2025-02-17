@@ -127,6 +127,7 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
     // spawn a tfog flash in front of the destination
     this.engine.SpawnEntity('misc_tfog', { origin: forward.copy().multiply(32.0).add(target.origin) });
 
+    // spawn an ephemeral telefrag trigger
     this.engine.SpawnEntity('misc_teledeath', {
       origin: target.origin,
       owner: touchedByEntity,

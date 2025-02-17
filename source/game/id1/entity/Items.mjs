@@ -75,6 +75,10 @@ class BaseItemEntity extends BaseEntity {
     this.setOrigin(this.origin);
   }
 
+  toss() {
+    this.velocity.setTo(300.0, -100.0 + Math.random() * 200.0, -100.0 + Math.random() * 200.0);
+  }
+
   /**
    * to be overriden, called after healthy player check
    * @protected
@@ -141,6 +145,7 @@ class BaseItemEntity extends BaseEntity {
    * @param {PlayerEntity} playerEntity user
    */
   _afterTouch(playerEntity) {
+    // TODO: do not annoy the player by switching around weapons unnecessarily
     const weapon = playerEntity.chooseBestWeapon();
 
     if (!this.game.deathmatch) {
@@ -173,8 +178,7 @@ export class BackpackEntity extends BaseItemEntity {
 
   _declareFields() {
     super._declareFields();
-    this.remove_after = 120;
-    this.regeneration_time = 0; // never respawn by default
+    this.remove_after = 0;
   }
 
   spawn() {

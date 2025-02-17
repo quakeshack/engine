@@ -1310,7 +1310,7 @@ Mod.ParseQC = function(qcContent) {
   const lines = qcContent.trim().split('\n');
 
   for (const line of lines) {
-    if (line.trim() === '' || line.startsWith('#')) {
+    if (line.trim() === '' || line.startsWith('#') || line.startsWith('//')) {
       continue;
     }
 

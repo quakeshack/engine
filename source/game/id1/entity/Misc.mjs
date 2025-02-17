@@ -487,7 +487,7 @@ export class TeleportEffectEntity extends BaseEntity {
 
   /** @protected */
   _playTeleport() {
-    this.startSound(channel.CHAN_VOICE, `misc/r_tele${Math.ceil(Math.random() * 5).wav}`);
+    this.startSound(channel.CHAN_VOICE, `misc/r_tele${Math.floor(Math.random() * 5) + 1}.wav`);
     this.remove();
   }
 

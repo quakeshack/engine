@@ -99,6 +99,8 @@ export class ServerGameAPI {
     this.teamplay = 0;
     this.skill = 0;
 
+    this.mapname = null;
+
     this.force_retouch = 0;
 
     // stats
@@ -141,9 +143,8 @@ export class ServerGameAPI {
     /** @type {?BaseEntity} bodyque ref */
     this.bodyque_head = null;
 
-    // FIXME: I’m not happy about this, this needs to be next to models
     /** @private */
-    this._modelData = {
+    this._modelData = { // FIXME: I’m not happy about this, this needs to be next to models
       'progs/soldier.mdl': engineAPI.ParseQC(soldierModelQC),
       'progs/player.mdl': engineAPI.ParseQC(playerModelQC),
     };
@@ -151,12 +152,18 @@ export class ServerGameAPI {
     /** @private */
     this._missingEntityClassStats = {};
 
+    /** cvar cache @private */
+    this._cvars = {
+      skill: engineAPI.GetCvar('skill'),
+      teamplay: engineAPI.GetCvar('teamplay'),
+    };
+
     Object.seal(this);
   }
 
   StartFrame() {
-    this.teamplay = this.engine.GetCvar('teamplay').value;
-    this.skill = this.engine.GetCvar('skill').value;
+    this.skill = this._cvars.skill.value;
+    this.teamplay = this._cvars.teamplay.value;
     this.framecount++;
   }
 
@@ -171,6 +178,18 @@ export class ServerGameAPI {
     this.parm8 = 1;
     this.parm9 = 0;
   };
+
+  /**
+   * Restore the original spawn parameters of a client entity. Doesn’t work if client is not a player.
+   * @param {PlayerEntity} clientEntity client
+   */
+  SetSpawnParms(clientEntity) {
+    const spawnParams = clientEntity.edict.getClient().spawn_parms;
+
+    for (let i = 0; i < spawnParams.length; i++) {
+      this[`parm${i + 1}`] = spawnParams[i];
+    }
+  }
 
   /**
    * @param {BaseEntity|PlayerEntity} clientEntity client entity
@@ -201,16 +220,9 @@ export class ServerGameAPI {
   }
 
   ClientConnect(clientEdict) {
-    /** @type {PlayerEntity} */
     const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
-
-    this.engine.BroadcastPrint(`${playerEntity.netname} entered the game\n`);
-
-    // a client connecting during an intermission can cause problems
-    if (this.intermissionRunning) {
-      // TODO: ExitIntermission()
-    }
+    playerEntity.connected();
 
     // FIXME: move this to somewhere “server ready” kind of function
     const stats = Object.entries(this._missingEntityClassStats);
@@ -228,14 +240,19 @@ export class ServerGameAPI {
   ClientDisconnect(clientEdict) {
     const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
-
-    // TODO
+    playerEntity.disconnected();
   }
 
   PutClientInServer(clientEdict) {
     const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
     playerEntity.putPlayerInServer();
+  }
+
+  ClientKill(clientEdict) {
+    const playerEntity = clientEdict.entity;
+    this._assertClientEntityIsPlayerEntity(playerEntity);
+    playerEntity.suicide();
   }
 
   /**

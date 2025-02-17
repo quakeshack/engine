@@ -604,7 +604,7 @@ export class SecretDoorEntity extends BaseDoorEntity {
 
     this.speed = 50.0;
 
-    if (!this.targetname || self.spawnflags & SecretDoorEntity.SECRET_YES_SHOOT) {
+    if (!this.targetname || this.spawnflags & SecretDoorEntity.SECRET_YES_SHOOT) {
       this.health = 10000;
       this.takedamage = damage.DAMAGE_YES;
     }

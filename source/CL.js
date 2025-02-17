@@ -993,48 +993,12 @@ CL.Init = function() {
   Cmd.AddCommand('playdemo', CL.PlayDemo_f);
   Cmd.AddCommand('timedemo', CL.TimeDemo_f);
   Cmd.AddCommand('rcon', CL.Rcon_f);
+  CL.svc_strings = Object.keys(Protocol.svc);
 };
 
 // parse
 
-CL.svc_strings = [
-  'bad',
-  'nop',
-  'disconnect',
-  'updatestat',
-  'version',
-  'setview',
-  'sound',
-  'time',
-  'print',
-  'stufftext',
-  'setangle',
-  'serverinfo',
-  'lightstyle',
-  'updatename',
-  'updatefrags',
-  'clientdata',
-  'stopsound',
-  'updatecolors',
-  'particle',
-  'damage',
-  'spawnstatic',
-  'OBSOLETE spawnbinary',
-  'spawnbaseline',
-  'temp_entity',
-  'setpause',
-  'signonnum',
-  'centerprint',
-  'killedmonster',
-  'foundsecret',
-  'spawnstaticsound',
-  'intermission',
-  'finale',
-  'cdtrack',
-  'sellscreen',
-  'cutscene',
-  'updatepings',
-];
+CL.svc_strings = [];
 
 CL.EntityNum = function(num) {
   if (num < CL.entities.length) {
@@ -1381,6 +1345,17 @@ CL.AppendChatMessage = function(name, message, direct) {
   CL.state.chatlog.push({name, message, direct});
 };
 
+CL.PublishObituary = function(killerEdictId, victimEdictId, killerWeapon, killerItems) {
+  if (!CL.state.scores[killerEdictId + 1] || !CL.state.scores[victimEdictId + 1]) {
+    return;
+  }
+
+  const killer = CL.state.scores[killerEdictId - 1].name;
+  const victim = CL.state.scores[victimEdictId - 1].name;
+
+  CL.AppendChatMessage(killer, `killed ${victim} using ${killerWeapon} (${killerItems})`, true);
+};
+
 /**
  * as long as we do not have a fully async architecture, we have to cheat
  * processingServerInfoState will hold off parsing and processing any further command
@@ -1465,6 +1440,9 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.chatmsg:
         CL.AppendChatMessage(MSG.ReadString(), MSG.ReadString(), MSG.ReadByte() === 1);
         S.LocalSound(Con.sfx_talk);
+        continue;
+      case Protocol.svc.obituary:
+        CL.PublishObituary(MSG.ReadShort(), MSG.ReadShort(), MSG.ReadLong(), MSG.ReadLong());
         continue;
       case Protocol.svc.stufftext:
         Cmd.text += MSG.ReadString();

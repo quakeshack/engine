@@ -306,6 +306,17 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-02-17
+
+* once I got QuakeJS finished, I might consider add V8 to WinQuake (or a proper modern port) to see if this new game code would work with proper Quake ports as well
+  * providing the Engine Interface should be fairly trivial (mimicking SV.Edict and stuff)
+  * that edict field access must point into structures that the JavaScript engine memory maps directly
+* implemented some obituary logic (`PlayerEntity.thinkDie` does it now)
+* added player’s pain, dying and dead states
+* added suicide to player
+* improved a couple of things that vanilla Quake did in a weird way
+* reorganized connect/disconnect events for players
+
 ### 2025-02-16
 
 * current plan is to port over player, weapons, items and func stuff first, then we can take care of the monsters and stuff

@@ -99,7 +99,7 @@ export class DamageHandler extends EntityWrapper {
       this._engine.BroadcastMonsterKill();
     }
 
-    // TODO: ClientObituary(self, attacker);
+    // CR: ClientObituary(self, attacker); is handled by PlayerEntity.thinkDie now
 
     this.takedamage = damage.DAMAGE_NO;
     // TODO: this._entity.touch = SUB_Null; -- we need to solve this differently
@@ -174,7 +174,7 @@ export class DamageHandler extends EntityWrapper {
     this._entity.health -= take;
 
     if (this._entity.health <= 0) {
-      this._killed();
+      this._killed(attackerEntity);
       return;
     }
 

@@ -870,7 +870,7 @@ PR.LoadProgs = function() {
 
       // these are quake specific things happening during loading
 
-      const spawnflags = edict.entity.spawnflags | 0;
+      const spawnflags = edict.entity.spawnflags || 0;
 
       if (Host.deathmatch.value !== 0 && (spawnflags & 2048)) {
         return false;
@@ -908,6 +908,20 @@ PR.LoadProgs = function() {
 };
 
 PR.Init = async function() {
+  // return;
+  try {
+    // try to get the game API
+    PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
+    const identification = PR.QuakeJS.identification;
+    Con.Print('PR.Init: Imported QuakeJS game code:\n');
+    Con.Print(`...author: ${identification.author}\n`);
+    Con.Print(`...version: ${identification.version.join('.')}\n\n${identification.name}\n${'-'.repeat(identification.name.length)}\n\n`);
+    return;
+  } catch (e) {
+    Con.Print('PR.Init: Unable to load to QuakeJS game code, will fallback to QuakeC: ' + e.message +'\n');
+  }
+
+  // CR: we do not need any of this when running QuakeJS
   Cmd.AddCommand('edict', ED.PrintEdict_f);
   Cmd.AddCommand('edicts', ED.PrintEdicts);
   Cmd.AddCommand('edictcount', ED.Count);
@@ -923,18 +937,6 @@ PR.Init = async function() {
   Cvar.RegisterVariable('saved2', '0', true);
   Cvar.RegisterVariable('saved3', '0', true);
   Cvar.RegisterVariable('saved4', '0', true);
-
-  return;
-  try {
-    // try to get the game API
-    PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
-    const identification = PR.QuakeJS.identification;
-    Con.Print('PR.Init: Imported QuakeJS game code:\n');
-    Con.Print(`...author: ${identification.author}\n`);
-    Con.Print(`...version: ${identification.version.join('.')}\n\n${identification.name}\n${'-'.repeat(identification.name.length)}\n\n`);
-  } catch (e) {
-    Con.Print('PR.Init: Unable to load to QuakeJS game code, will fallback to QuakeC: ' + e.message +'\n');
-  }
 };
 
 // exec

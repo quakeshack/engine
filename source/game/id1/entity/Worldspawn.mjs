@@ -4,6 +4,11 @@ import { Precache as WeaponsPrecache } from "./Weapons.mjs";
 
 export class BodyqueEntity extends BaseEntity {
   static classname = 'bodyque';
+
+  /** @protected */
+  _declareFields() {
+    this.colormap = 0;
+  }
 }
 
 /**
@@ -28,8 +33,7 @@ function InitBodyQue(game) {
  */
 export function CopyToBodyQue(game, entity) {
   game.bodyque_head.angles = entity.angles;
-  game.bodyque_head.model = entity.model;
-  game.bodyque_head.modelindex = entity.modelindex;
+  game.bodyque_head.setModel(entity.model);
   game.bodyque_head.frame = entity.frame;
   game.bodyque_head.colormap = entity.colormap;
   game.bodyque_head.movetype = entity.movetype;

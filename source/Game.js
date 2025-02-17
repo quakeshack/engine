@@ -269,6 +269,14 @@ Game.EngineInterface = class EngineInterface {
     MSG.WriteByte(SV.server.reliable_datagram, Protocol.svc.foundsecret);
   }
 
+  static BroadcastObituary(killerEdictId, victimEdictId, killerWeapon, killerItems) {
+    MSG.WriteByte(SV.server.datagram, Protocol.svc.obituary);
+    MSG.WriteShort(SV.server.datagram, killerEdictId);
+    MSG.WriteShort(SV.server.datagram, victimEdictId);
+    MSG.WriteLong(SV.server.datagram, killerWeapon);
+    MSG.WriteLong(SV.server.datagram, killerItems);
+  }
+
   // TODO: MSG related methods
 
   // TODO: RegisterCvar, UnregisterCvar

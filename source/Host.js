@@ -41,7 +41,7 @@ Host.FindMaxClients = function() {
     CL.cls.state = CL.active.disconnected;
   }
   for (let i = 0; i < SV.svs.maxclientslimit; i++) {
-    SV.svs.clients.push({ // TODO: Client class
+    SV.svs.clients.push({ // TODO: Client (SV.Client) class
       num: i,
       message: {data: new ArrayBuffer(8000), cursize: 0, allowoverflow: true},
       colors: 0,
@@ -50,6 +50,9 @@ Host.FindMaxClients = function() {
       netconnection: null,
       name: '', // must be an empty string, otherwise Sbar is going to bug out
       edict: null, // connected to an edict upon server spawn
+
+      /** spawn parms are carried from level to level */
+      spawn_parms: new Array(16),
 
       clear() {
         this.edict = null;
@@ -1415,15 +1418,6 @@ Host.Give_f = function() {
     Game.EngineInterface.SpawnEntity(entityClassname, {
       origin,
     });
-
-    // // playing around with Quake logic:
-    // self.entity.nextthink = 0; // disable PlaceItem
-    // self.entity.mdl = self.entity.model; // so it can be restored on respawn
-    // self.entity.flags = 256; // make extra wide
-    // self.entity.solid = SV.solid.trigger;
-    // self.entity.movetype = SV.movetype.toss;
-    // self.entity.velocity = Vector.origin;
-
   });
   // /* old code below */
   // if ((t >= 48) && (t <= 57)) {

@@ -5,6 +5,7 @@ import { crandom, Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { InfoNotNullEntity } from "./Misc.mjs";
 import { Backpack, DamageHandler, PlayerWeapons } from "./Weapons.mjs";
+import { CopyToBodyQue } from "./Worldspawn.mjs";
 
 /**
  * handy map to manage weapon slots
@@ -190,6 +191,7 @@ export class PlayerEntity extends BaseEntity {
     this.netname = null;
     this.colormap = 0;
     this.team = 0;
+    this.frags = 0;
 
     // things I’m unsure about:
     this.pausetime = 0;
@@ -223,6 +225,24 @@ export class PlayerEntity extends BaseEntity {
     }
 
     this._runState('player_stand1');
+  }
+
+  /** @protected */
+  _enterPainState() {
+    if (this.weaponframe > 0) {
+      return;
+    }
+
+    if (this.invisible_finished > this.game.time) {
+      return; // eyes don't have pain frames
+    }
+
+    if (this.weapon === items.IT_AXE) {
+      this._runState('player_pain_axe1');
+      return;
+    }
+
+    this._runState('player_pain1');
   }
 
   /** @protected */
@@ -272,8 +292,8 @@ export class PlayerEntity extends BaseEntity {
   }
 
   _initStates() {
-    // CR:  state machine not only controls animations, but also defines when an axe attack is actually launched
-    //      yet another fun was unrolling the running and standing states to fit it our state machine infrastructure
+    // CR:  This state machine not only controls animations, but also defines when an axe attack is actually launched.
+    //      Yet another fun was unrolling the running and standing states to fit it our state machine infrastructure.
 
     this._defineState('player_run1', 'rockrun1', 'player_run2', () => { this._stateAssertRunning(); this.weaponframe = 0; });
     this._defineState('player_run2', 'rockrun2', 'player_run3', () => { this._stateAssertRunning(); });
@@ -335,12 +355,190 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_axed3', 'axattd3', 'player_axed4', () => { this.weaponframe = 7; this._weapons.fireAxe(); });
     this._defineState('player_axed4', 'axattd4', null, () => { this.weaponframe = 8; this._attackStateDone(); });
 
+    this._defineState('player_pain1', 'pain1', 'player_pain2', () => { this.weaponframe = 0; this._painSound() });
+    this._defineState('player_pain2', 'pain2', 'player_pain3');
+    this._defineState('player_pain3', 'pain3', 'player_pain4');
+    this._defineState('player_pain4', 'pain4', 'player_pain5');
+    this._defineState('player_pain5', 'pain5', 'player_pain6');
+    this._defineState('player_pain6', 'pain6', null, () => { this._attackStateDone(); });
+
+    this._defineState('player_pain_axe1', 'axpain1', 'player_pain_axe2', () => { this.weaponframe = 0; this._painSound() });
+    this._defineState('player_pain_axe2', 'axpain2', 'player_pain_axe3');
+    this._defineState('player_pain_axe3', 'axpain3', 'player_pain_axe4');
+    this._defineState('player_pain_axe4', 'axpain4', 'player_pain_axe5');
+    this._defineState('player_pain_axe5', 'axpain5', 'player_pain_axe6');
+    this._defineState('player_pain_axe6', 'axpain6', null, () => { this._attackStateDone(); });
+
+    this._defineState('player_diea1', 'deatha1', 'player_diea2');
+    this._defineState('player_diea2', 'deatha2', 'player_diea3');
+    this._defineState('player_diea3', 'deatha3', 'player_diea4');
+    this._defineState('player_diea4', 'deatha4', 'player_diea5');
+    this._defineState('player_diea5', 'deatha5', 'player_diea6');
+    this._defineState('player_diea6', 'deatha6', 'player_diea7');
+    this._defineState('player_diea7', 'deatha7', 'player_diea8');
+    this._defineState('player_diea8', 'deatha8', 'player_diea9');
+    this._defineState('player_diea9', 'deatha9', 'player_diea10');
+    this._defineState('player_diea10', 'deatha10', 'player_diea11');
+    this._defineState('player_diea11', 'deatha11', null, () => { this._playerDead(); });
+
+    this._defineState('player_dieb1', 'deathb1', 'player_dieb2');
+    this._defineState('player_dieb2', 'deathb2', 'player_dieb3');
+    this._defineState('player_dieb3', 'deathb3', 'player_dieb4');
+    this._defineState('player_dieb4', 'deathb4', 'player_dieb5');
+    this._defineState('player_dieb5', 'deathb5', 'player_dieb6');
+    this._defineState('player_dieb6', 'deathb6', 'player_dieb7');
+    this._defineState('player_dieb7', 'deathb7', 'player_dieb8');
+    this._defineState('player_dieb8', 'deathb8', 'player_dieb9');
+    this._defineState('player_dieb9', 'deathb9', null, () => { this._playerDead(); });
+
+    this._defineState('player_diec1', 'deathc1', 'player_diec2');
+    this._defineState('player_diec2', 'deathc2', 'player_diec3');
+    this._defineState('player_diec3', 'deathc3', 'player_diec4');
+    this._defineState('player_diec4', 'deathc4', 'player_diec5');
+    this._defineState('player_diec5', 'deathc5', 'player_diec6');
+    this._defineState('player_diec6', 'deathc6', 'player_diec7');
+    this._defineState('player_diec7', 'deathc7', 'player_diec8');
+    this._defineState('player_diec8', 'deathc8', 'player_diec9');
+    this._defineState('player_diec9', 'deathc9', 'player_diec10');
+    this._defineState('player_diec10', 'deathc10', 'player_diec11');
+    this._defineState('player_diec11', 'deathc11', 'player_diec12');
+    this._defineState('player_diec12', 'deathc12', 'player_diec13');
+    this._defineState('player_diec13', 'deathc13', 'player_diec14');
+    this._defineState('player_diec14', 'deathc14', 'player_diec15');
+    this._defineState('player_diec15', 'deathc15', null, () => { this._playerDead(); });
+
+    this._defineState('player_died1', 'deathd1', 'player_died2');
+    this._defineState('player_died2', 'deathd2', 'player_died3');
+    this._defineState('player_died3', 'deathd3', 'player_died4');
+    this._defineState('player_died4', 'deathd4', 'player_died5');
+    this._defineState('player_died5', 'deathd5', 'player_died6');
+    this._defineState('player_died6', 'deathd6', 'player_died7');
+    this._defineState('player_died7', 'deathd7', 'player_died8');
+    this._defineState('player_died8', 'deathd8', 'player_died9');
+    this._defineState('player_died9', 'deathd9', null, () => { this._playerDead(); });
+
+    this._defineState('player_diee1', 'deathe1', 'player_diee2');
+    this._defineState('player_diee2', 'deathe2', 'player_diee3');
+    this._defineState('player_diee3', 'deathe3', 'player_diee4');
+    this._defineState('player_diee4', 'deathe4', 'player_diee5');
+    this._defineState('player_diee5', 'deathe5', 'player_diee6');
+    this._defineState('player_diee6', 'deathe6', 'player_diee7');
+    this._defineState('player_diee7', 'deathe7', 'player_diee8');
+    this._defineState('player_diee8', 'deathe8', 'player_diee9');
+    this._defineState('player_diee9', 'deathe9', null, () => { this._playerDead(); });
+
+    this._defineState('player_die_ax1', 'axdeth1', 'player_die_ax2');
+    this._defineState('player_die_ax2', 'axdeth2', 'player_die_ax3');
+    this._defineState('player_die_ax3', 'axdeth3', 'player_die_ax4');
+    this._defineState('player_die_ax4', 'axdeth4', 'player_die_ax5');
+    this._defineState('player_die_ax5', 'axdeth5', 'player_die_ax6');
+    this._defineState('player_die_ax6', 'axdeth6', 'player_die_ax7');
+    this._defineState('player_die_ax7', 'axdeth7', 'player_die_ax8');
+    this._defineState('player_die_ax8', 'axdeth8', 'player_die_ax9');
+    this._defineState('player_die_ax9', 'axdeth9', null, () => { this._playerDead(); });
+
+  }
+
+  /** @protected */
+  _painSound() { // TODO: player.qc/PainSound
+
+    // missing stuff: anything contents
+
+    this.startSound(channel.CHAN_VOICE, `player/pain${Math.floor(Math.random() * 6) + 1}.wav`);
+  }
+
+  /** @protected */
+  _deathSound() { // TODO: player.qc/DeathSound
+    // under water death sound
+    if (this.waterlevel === 3) {
+      // TODO: DeathBubbles(20);
+      this.startSound(channel.CHAN_VOICE, 'player/h2odeath.wav', 1.0, attn.ATTN_NONE);
+      return;
+    }
+
+    // regular death sound
+    this.startSound(channel.CHAN_VOICE, `player/death${Math.floor(Math.random() * 5) + 1}.wav`, 1.0, attn.ATTN_NONE);
   }
 
   _selectSpawnPoint() {
     // TODO: this needs to be done properly
 
-    return this.engine.FindByFieldAndValue('classname', 'info_player_start', this.game.lastspawn ? this.game.lastspawn.edict.num : 0).entity;
+    return this.findFirstEntityByFieldAndValue('classname', 'info_player_start');
+  }
+
+  /** @protected */
+  _dropBackpack() {
+    const backpack = this.engine.SpawnEntity('item_backpack', {
+      origin: this.origin.copy().subtract(new Vector(0.0, 0.0, -24.0)),
+      items: this.weapon,
+      ammo_cells: this.ammo_cells,
+      ammo_nails: this.ammo_nails,
+      ammo_rockets: this.ammo_rockets,
+      ammo_shells: this.ammo_shells,
+      regeneration_time: 0, // do not regenerate
+      remove_after: 120, // remove after 120s
+    });
+
+    // toss it around
+    backpack.toss();
+  }
+
+  /** @protected */
+  _playerDie() { // QuakeC: player.qc/PlayerDie
+    this.items &= ~(items.IT_INVISIBILITY);
+    this.invisible_finished = 0; // don't die as eyes
+    this.invincible_finished = 0;
+    this.super_damage_finished = 0;
+    this.radsuit_finished = 0;
+    this.setModel('progs/player.mdl'); // don't use eyes (FIXME: what about size? it was modelindex only before)
+
+    if (this.game.deathmatch || this.game.coop) {
+      this._dropBackpack();
+    }
+
+    this.weaponmodel = null;
+    this.view_ofs.setTo(0, 0, -8.0);
+    this.deadflag = dead.DEAD_DYING;
+    this.solid = solid.SOLID_NOT;
+    this.flags &= ~(flags.FL_ONGROUND);
+    this.movetype = moveType.MOVETYPE_TOSS;
+
+    if (this.velocity[2] < 10.0) {
+      this.velocity[2] += Math.random() * 300.0;
+    }
+
+    if (this.health < -40.0) {
+      GibEntity.gibEntity(this, 'progs/h_player.mdl', true);
+      this._playerDead();
+      return;
+    }
+
+    this._deathSound();
+
+    this.angles[0] = 0.0;
+    this.angles[2] = 0.0;
+
+    if (this.weapon === items.IT_AXE) {
+      this._runState('player_die_ax1');
+      return;
+    }
+
+    // TODO: temp1 check
+
+    switch(Math.floor(Math.random() * 5)) {
+      case 0: this._runState('player_diea1'); break;
+      case 1: this._runState('player_dieb1'); break;
+      case 2: this._runState('player_diec1'); break;
+      case 3: this._runState('player_died1'); break;
+      case 4: this._runState('player_diee1'); break;
+    }
+  }
+
+  /** @protected */
+  _playerDead() { // QuakeC: player.qc/PlayerDead
+    this.resetThinking();
+    // allow respawn after a certain time
+    this.deadflag = dead.DEAD_DEAD;
   }
 
   /**
@@ -419,7 +617,7 @@ export class PlayerEntity extends BaseEntity {
    * QuakeC: W_SetCurrentAmmo
    * @param {number} weapon (must be in Defs.items)
    */
-  setWeapon(weapon) {
+  setWeapon(weapon = this.weapon) {
     if (!Object.values(items).includes(weapon)) {
       throw new RangeError('Weapon not defined in items');
     }
@@ -485,6 +683,8 @@ export class PlayerEntity extends BaseEntity {
     this.ammo_rockets = Math.min(100, this.ammo_rockets + backpack.ammo_rockets);
     this.ammo_shells = Math.min(100, this.ammo_shells + backpack.ammo_shells);
     this.items |= backpack.items;
+
+    this.setWeapon();
   }
 
   isOutOfAmmo() {
@@ -628,7 +828,7 @@ export class PlayerEntity extends BaseEntity {
       }
 
       if ((this.items & this.weapon) && am === 0) {
-        this.setWeapon(this.weapon);
+        this.setWeapon();
         return;
       }
     }
@@ -679,12 +879,11 @@ export class PlayerEntity extends BaseEntity {
       }
 
       if ((this.items & this.weapon) && am === 0) {
-        this.setWeapon(this.weapon);
+        this.setWeapon();
         return;
       }
     }
   }
-
 
   /**
    * handles impulse commands
@@ -882,6 +1081,9 @@ export class PlayerEntity extends BaseEntity {
     // CR: we can add some Half-Life like logic here (pull/push objects, use buttons etc.)
   }
 
+  /**
+   * called by PutClientInServer
+   */
   putPlayerInServer() {
     const spot = this._selectSpawnPoint();
 
@@ -905,7 +1107,7 @@ export class PlayerEntity extends BaseEntity {
     this.jump_flag = 0;
 
     this.decodeLevelParms();
-    this.setWeapon(this.weapon);
+    this.setWeapon();
 
     this.attack_finished = this.time;
     // NOTE: th_pain, th_die set by PlayerEntity
@@ -913,6 +1115,7 @@ export class PlayerEntity extends BaseEntity {
     this.deadflag = dead.DEAD_NO;
     this.pausetime = 0; // CR: used by teleporters
 
+    this.punchangle.clear();
     this.origin = spot.origin.copy().add(new Vector(0.0, 0.0, 1.0));
     this.angles = spot.angles.copy();
     this.fixangle = true;
@@ -944,7 +1147,36 @@ export class PlayerEntity extends BaseEntity {
    * @protected
    */
   _playerDeathThink() {
-    // TODO
+    if (this.flags & flags.FL_ONGROUND) {
+      const forward = this.velocity.len() - 20.0;
+      if (forward <= 0) {
+        this.velocity.clear();
+      } else {
+        this.velocity.normalize().multiply(forward);
+      }
+    }
+
+    // wait for all buttons released
+    if (this.deadflag === dead.DEAD_DEAD) {
+      if (this.button0 || this.button1 || this.button2) {
+        return;
+      }
+
+      this.deadflag = dead.DEAD_RESPAWNABLE;
+      return;
+    }
+
+    // wait for any button down
+    if (!this.button0 && !this.button1 && !this.button2) {
+      return;
+    }
+
+    // release all buttons
+    this.button0 = false;
+    this.button1 = false;
+    this.button2 = false;
+
+    this._respawn();
   }
 
   /**
@@ -1088,9 +1320,49 @@ export class PlayerEntity extends BaseEntity {
    * when dying
    * @param {BaseEntity} attackerEntity attacker entity
    */
-  // eslint-disable-next-line no-unused-vars
   thinkDie(attackerEntity) {
-    // TODO: PlayerDie
+    this._playerDie();
+
+    // check for self-inflicted damage first
+    if (attackerEntity.equals(this)) {
+      this.engine.BroadcastPrint(`${this.netname} killed himself.\n`);
+      this.frags--;
+
+      return;
+    }
+
+    // try to figure out if there’s a player in the attacker owner chain
+    const actualAttacker = (() => {
+      let current = attackerEntity, attempts = 10;
+      while (current && attempts-- > 0) {
+        if (current instanceof PlayerEntity) {
+          return current;
+        }
+
+        current = current.owner;
+      }
+
+      return attackerEntity;
+    })();
+
+    // determine the actual killer name by an easy logic
+    const name = (() => {
+      // let’s check if netname is holding something meaningful
+      if (actualAttacker.netname) {
+        return actualAttacker.netname;
+      }
+
+      // we have no clue what happened here, let’s throw out a class name instead
+      return actualAttacker.classname;
+    })();
+
+    this.engine.BroadcastPrint(`${name} killed ${this.netname}.\n`); // TODO: ClientObituary needs to be more fun again
+    this.engine.BroadcastObituary(actualAttacker.edictId, this.edictId, actualAttacker.weapon, actualAttacker.items);
+
+    if (actualAttacker instanceof PlayerEntity) {
+      // friendly fire subtracts a frag
+      actualAttacker.frags += this.team > 0 && actualAttacker.team === this.team ? -1 : 1;
+    }
   }
 
   /**
@@ -1101,6 +1373,74 @@ export class PlayerEntity extends BaseEntity {
   // eslint-disable-next-line no-unused-vars
   thinkPain(attackerEntity, damage) {
     // TODO: player_pain
+    this._enterPainState();
+  }
+
+  /**
+   * called by ClientKill (e.g. “kill” command)
+   */
+  suicide() {
+    // CR: vanilla Quake would call set_suicide_frame here, no clue why exactly, so we are simply inflicting damage to ourself instead and use the same damage handling avenue
+    this.damage(this, this.health * 2.5);
+  }
+
+  /**
+   * called by ClientConnect
+   */
+  connected() {
+    this.engine.BroadcastPrint(`${this.netname} entered the game.\n`);
+
+    // a client connecting during an intermission can cause problems
+    if (this.game.intermission_running) {
+      // TODO: ExitIntermission()
+    }
+  }
+
+  /**
+   * called by ClientDisconnect
+   */
+  disconnected() {
+    // TODO: gameover check
+
+    this._playerDie();
+    this._playerDead();
+    this.unsetModel(); // we need to unset the model, because the engine is no longer consider this player able to think once it’s disconnect, thus there’s going to be no progressing the state machine as well
+
+    if (this.game.deathmatch || this.game.coop) {
+      this.engine.SpawnEntity('misc_tfog', { origin: this.origin });
+      this.engine.BroadcastPrint(`${this.netname} left the game.\n`);
+    }
+  }
+
+  /** @protected */
+  _respawn() { // QuakeC: client.qc/respawn
+    // CR: this spawn_params is interesting to say the least
+    if (this.game.coop) {
+      // make a copy of the dead body for appearances sake
+      CopyToBodyQue(this.game, this);
+
+      // get the spawn parms as they were at level start
+      this.game.SetSpawnParms(this);
+
+      // respawn
+      this.putPlayerInServer();
+      return;
+    }
+
+    if (this.game.deathmatch) {
+      // make a copy of the dead body for appearances sake
+      CopyToBodyQue(this.game, this);
+
+      // set default spawn parms
+      this.game.SetNewParms();
+
+      // respawn
+      this.putPlayerInServer();
+      return;
+    }
+
+    // on a singleplayer game let’s simply restart the map
+    this.engine.AppendConsoleText('restart\n');
   }
 
   isActor() {
@@ -1119,8 +1459,6 @@ export class TelefragTriggerEntity extends BaseEntity {
     }
 
     if (touchedByEntity instanceof PlayerEntity) {
-      // TODO: if (other.invincible_finished > time) self.classname = "teledeath2";
-
       if (!(this.owner instanceof PlayerEntity) && (this.owner instanceof BaseEntity)) {
         // other monsters explode themselves
         this.damage(this.owner, 50000.0);
@@ -1209,6 +1547,7 @@ export class GibEntity extends BaseEntity {
     entity.origin[2] -= 24.0;
     entity.flags &= ~flags.FL_ONGROUND;
     entity.avelocity = (new Vector(0.0, 600.0, 0.0)).multiply(crandom());
+    entity.deadflag = dead.DEAD_DEAD;
 
     GibEntity.throwGibs(entity, damage);
 
