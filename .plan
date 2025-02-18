@@ -55,19 +55,19 @@ Grouped by sections and then sorted by priority (more or less).
     * [_] noisemaker
   * [_] weapons.qc
     * [X] W_Precache
-    * [_] W_FireAxe
-    * [_] wall_velocity, gibs, etc.
+    * [X] W_FireAxe
+    * [#] wall_velocity, gibs, etc.
     * [_] MULTI-DAMAGE
     * [_] BULLETS
     * [_] ROCKETS
     * [_] LIGHTNING
     * [_] grenades
     * [_] spikes
-    * [_] PLAYER WEAPON USE
-    * [_] CheatCommand
-    * [_] CycleWeaponCommand
-    * [_] CycleWeaponReverseCommand
-    * [_] ImpulseCommands
+    * [#] PLAYER WEAPON USE
+    * [X] CheatCommand
+    * [X] CycleWeaponCommand
+    * [X] CycleWeaponReverseCommand
+    * [X] ImpulseCommands
     * [X] W_WeaponFrame, SuperDamageSound
   * [_] client.qc
     * [_] info_intermission etc.
@@ -77,23 +77,23 @@ Grouped by sections and then sorted by priority (more or less).
     * [_] FindIntermission, GotoNextMap, ExitIntermission, IntermissionThink
     * [_] execute_changelevel, trigger_changelevel entity
     * [_] PLAYER GAME EDGE FUNCTIONS
-    * [_] ClientKill
-    * [_] SelectSpawnPoint
-    * [#] PutClientInServer
+    * [X] ClientKill
+    * [#] SelectSpawnPoint
+    * [X] PutClientInServer
     * [_] QUAKED FUNCTIONS
     * [_] RULES, CheckRules etc.
     * [X] PlayerPreThink
     * [_] CheckPowerups
     * [X] PlayerPostThink
-    * [#] ClientConnect
-    * [#] ClientDisconnect
-    * [_] ClientObituary
+    * [X] ClientConnect
+    * [X] ClientDisconnect
+    * [X] ClientObituary
   * [_] weapons.qc
     * [X] W_SetCurrentAmmo
     * [X] W_BestWeapon
     * [X] W_CheckNoAmmo
-  * [_] subs.qc --> move to helper/Subs.mjs
-  * [_] player.qc
+  * [X] subs.qc --> move to helper/Subs.mjs
+  * [#] player.qc
 * [X] rename `edict.api` to `edict.entity`
 * [_] put some things behind feature gates, so that the game can tell the engine what things are needed/supported
 * [_] implement the new syscalls that QuakeWorld introduced
@@ -305,6 +305,12 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-02-19
+
+* some documentation clean up
+* added blood particles, a primitive hitbox check, `bloodcolor` etc.
+* implemented some more TODOs here and there
 
 ### 2025-02-17
 

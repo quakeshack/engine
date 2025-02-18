@@ -193,6 +193,9 @@ export class PlayerEntity extends BaseEntity {
     this.team = 0;
     this.frags = 0;
 
+    // relevant for damage etc.
+    this.bloodcolor = 73; // FIXME: hardcoded color code (73)
+
     // things I’m unsure about:
     this.pausetime = 0;
 
@@ -460,6 +463,10 @@ export class PlayerEntity extends BaseEntity {
     this.startSound(channel.CHAN_VOICE, `player/death${Math.floor(Math.random() * 5) + 1}.wav`, 1.0, attn.ATTN_NONE);
   }
 
+  /**
+   * @protected
+   * @returns {BaseEntity} selected spawn point
+   */
   _selectSpawnPoint() {
     // TODO: this needs to be done properly
 
@@ -542,7 +549,7 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /**
-   * prints a centered message
+   * Prints a centered message.
    * @param {string} message message
    */
   centerPrint(message) {
@@ -550,7 +557,7 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /**
-   * sends a message to the player’s console
+   * Sends a message to the player’s console.
    * @param {string} message message
    */
   consolePrint(message) {
@@ -558,7 +565,7 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /**
-   * dispatches a client event to the player’s frontend
+   * Dispatches a client event to the player’s frontend.
    * @param {playerEvent} plEvent player event
    * @param {...any} args additional parameters
    */
@@ -692,8 +699,8 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /**
-   * shots a 128 units long trace line and prints what it has hit, useful for debugging entities
-   * @protected
+   * Shots a 128 units long trace line and prints what it has hit, useful for debugging entities.
+   * @private
    */
   _explainEntity() {
     // if (this.game.deathmatch || this.game.coop) {
@@ -725,8 +732,8 @@ export class PlayerEntity extends BaseEntity {
     }
   }
 
-  /** @protected */
-  _testStuff() {
+  /** @private */
+  _killRay() {
     if (this.game.deathmatch || this.game.coop) {
       return;
     }
@@ -741,11 +748,11 @@ export class PlayerEntity extends BaseEntity {
     const trace = this.engine.Traceline(start, end, false, this.edict, mins, maxs);
 
     if (trace.entity) {
-      GibEntity.gibEntity(trace.entity, "progs/h_player.mdl");
+      this.damage(trace.entity, 50000.0);
     }
   }
 
-  /** @protected */
+  /** @private */
   _cheatCommandGeneric() {
     if (this.game.deathmatch || this.game.coop) {
       return;
@@ -772,7 +779,7 @@ export class PlayerEntity extends BaseEntity {
     this.selectBestWeapon();
   }
 
-  /** @protected */
+  /** @private */
   _cheatCommandQuad() {
     if (this.game.deathmatch || this.game.coop) {
       return;
@@ -783,7 +790,7 @@ export class PlayerEntity extends BaseEntity {
     this.items |= items.IT_QUAD;
   }
 
-  /** @protected */
+  /** @private */
   _cycleWeaponCommand() {
     while (true) {
       let am = 0;
@@ -834,7 +841,7 @@ export class PlayerEntity extends BaseEntity {
     }
   }
 
-  /** @protected */
+  /** @private */
   _cycleWeaponReverseCommand() {
     while (true) {
       let am = 0;
@@ -887,7 +894,7 @@ export class PlayerEntity extends BaseEntity {
 
   /**
    * handles impulse commands
-   * @protected
+   * @private
    */
   _handleImpulseCommands() {
     if (this.impulse >= 1 && this.impulse <= 8) {
@@ -901,7 +908,7 @@ export class PlayerEntity extends BaseEntity {
         break;
 
       case 100:
-        this._testStuff();
+        this._killRay();
         break;
 
       case 9:
@@ -1361,7 +1368,7 @@ export class PlayerEntity extends BaseEntity {
 
     if (actualAttacker instanceof PlayerEntity) {
       // friendly fire subtracts a frag
-      actualAttacker.frags += this.team > 0 && actualAttacker.team === this.team ? -1 : 1;
+      actualAttacker.frags += this.team > 0 && this.game.teamplay > 0 && actualAttacker.team === this.team ? -1 : 1;
     }
   }
 

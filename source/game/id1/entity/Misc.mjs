@@ -271,6 +271,7 @@ export class FireballSpawnerEntity extends BaseEntity {
     this._scheduleThink(this.game.time + Math.random() * 5.0, () => this._fire());
   }
 
+  /** @private */
   _fire() {
     this.engine.SpawnEntity('misc_fireball_fireball', {
       origin: this.origin,
@@ -480,7 +481,7 @@ export class BossgateWallEntity extends BaseWallEntity {
 }
 
 /**
- * ephemeral teleport fog effect
+ * Ephemeral teleport fog effect.
  */
 export class TeleportEffectEntity extends BaseEntity {
   static classname = 'misc_tfog';

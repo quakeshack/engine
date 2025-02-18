@@ -111,6 +111,9 @@ export default class BaseEntity {
     /** @private */
     this._scheduledThinks = [];
 
+    /** @type {?import('./Weapons.mjs').DamageHandler} @public */
+    this._damageHandler = null; // needs to be initialized optionally
+
     this._declareFields();
     this._initStates();
 
@@ -122,30 +125,42 @@ export default class BaseEntity {
     }
   }
 
-  // allows you to define all fields prior to spawn
-  // make sure to prefix private fields with an underscore
+  /**
+   * Allows initialization of fields before the object gets frozen.
+   * @protected
+   */
   _declareFields() {
+    // allows you to define all fields prior to spawn
+    // make sure to prefix private fields with an underscore
+
     // this._myPrivateField = 123;
     // this.weight = 400;
   }
 
-  // place all Precache* calls here, it’s invoked by the engine indirectly upon loading
+  /**
+   * All Precache* calls are placed here, it’s invoked by the engine indirectly upon loading
+   * @protected
+   */
   _precache() {
     // this.engine.PrecacheModel('models/box.mdl');
   }
 
-  // place all animation states and scripted sequences here
+  /**
+   * Configures the state machine.
+   * @protected
+   */
   _initStates() {
+    // place all animation states and scripted sequences here
     // this._defineState('army_stand1', 'stand1', 'army_stand2', () => this._ai.stand());
   }
 
   /**
-   * defines a state for the state machine
+   * Defines a state for the state machine.
    * @protected
-   * @param {string} state
-   * @param {string} keyframe
-   * @param {?string} nextState
-   * @param {?Function} handler
+   * @param {string} state state name
+   * @param {?string} keyframe frame/keyframe name the model should be in
+   * @param {?string} nextState state name of the automatic next state
+   * @param {?Function} handler additional code to be executed
    */
   _defineState(state, keyframe, nextState = null, handler = null) {
     this._states[state] = {
@@ -156,8 +171,8 @@ export default class BaseEntity {
   }
 
   /**
-   * will start the state machine at the given state
-   * if you leave state null, it will simply continue
+   * Will start the state machine at the given state.
+   * If you leave state null, it will simply continue with the next state.
    * @protected
    * @param {?string} state optional new state
    * @returns {boolean} whether the state is valid
@@ -183,13 +198,14 @@ export default class BaseEntity {
     this._stateCurrent = state;
     this._stateNext = data.nextState !== state ? data.nextState : null;
 
-    // simulating PR.op.state
+    // this is simulating QuakeC VM’s PR.op.state opcode
     // - set frame
     // - set nextthink
+    // - execute the rest
 
     const animation = this.game._modelData[this.model];
 
-    if (animation) {
+    if (animation && data.keyframe) {
       const frame = animation.frames.indexOf(data.keyframe);
 
       if (frame) {
@@ -197,13 +213,13 @@ export default class BaseEntity {
         this.keyframe = data.keyframe;
       }
 
-      // set frame2 for linear interpolation between frames
-      if (this._stateNext) {
-        const nextFrame = animation.frames.indexOf(this._states[this._stateNext].keyframe)
-        this.frame2 = nextFrame !== -1 ? nextFrame : null;
-      } else {
-        this.frame2 = null;
-      }
+      // // set frame2 for linear interpolation between frames (CR: not thought out yet)
+      // if (this._stateNext) {
+      //   const nextFrame = animation.frames.indexOf(this._states[this._stateNext].keyframe)
+      //   this.frame2 = nextFrame !== -1 ? nextFrame : null;
+      // } else {
+      //   this.frame2 = null;
+      // }
     }
 
     // create or update the next think for the animation state
@@ -218,7 +234,7 @@ export default class BaseEntity {
   }
 
   /**
-   * schedules a think
+   * Schedules a think.
    * @protected
    * @param {number} nextThink when to call back in seconds starting from game.time
    * @param {Function} callback callback function, thisArg and the first argument is going to be this
@@ -276,24 +292,25 @@ export default class BaseEntity {
   }
 
   /**
-   * Tries to inflict damage on an entity, depends on the entity having a damage handler
-   * @param {?BaseEntity} otherEntity other entity
+   * Tries to inflict damage on an entity, depends on the entity having a damage handler.
+   * @param {BaseEntity | null} victimEntity entity that receives damage
    * @param {number} damage damage points
-   * @param {?BaseEntity} attackerEntity who is attacking, this is already the entity what is attacking, defaults to this
+   * @param {?BaseEntity} attackerEntity entity who is actually orchestrating the attack, this is already the entity what is attacking, defaults to this
+   * @param {?Vector} hitPoint the exact hit position (if nuff, origin will be used)
    * @returns {boolean} true, if entity could receive damage
    */
-  damage(otherEntity, damage, attackerEntity = this) {
-    if (!otherEntity || !otherEntity._damageHandler) {
+  damage(victimEntity, damage, attackerEntity = null, hitPoint = null) {
+    if (!victimEntity || !victimEntity._damageHandler) {
       return false;
     }
 
-    otherEntity._damageHandler.damage(this, attackerEntity, damage);
+    victimEntity._damageHandler.damage(this, attackerEntity || this, damage, hitPoint || victimEntity.origin);
 
     return true;
   }
 
   /**
-   * completely resets thinking and purges all scheduled thinks
+   * Completely resets all thinking and purges all scheduled thinks.
    */
   resetThinking() {
     this._scheduledThinks = [];
@@ -301,7 +318,8 @@ export default class BaseEntity {
   }
 
   /**
-   * tries to cast all initialData values (which are strings) to their corresponding types
+   * Tries to cast all initialData values (which are strings) to their corresponding types.
+   * This is mainly called upon spawn new entities.
    * @param {object} initialData map of entity fields
    */
   assignInitialData(initialData) {
@@ -345,10 +363,19 @@ export default class BaseEntity {
     }
   }
 
+  /**
+   * Sets the origin, the engine will set origin property accordingly and relink the edict to related areas.
+   * @param {Vector} origin position in the world
+   */
   setOrigin(origin) {
     this.edict.setOrigin(origin);
   }
 
+  /**
+   * Sets model, the engine will also set properties model, modelindex as well.
+   * To clear model, use unsetModel().
+   * @param {string} modelname e.g. progs/player.mdl
+   */
   setModel(modelname) {
     if (this.engine.IsLoading()) {
       this.engine.PrecacheModel(modelname);
@@ -358,6 +385,7 @@ export default class BaseEntity {
   }
 
   /**
+   * Clears the entity off a model properly. Optionally, it will reset sizes as well.
    * @param {boolean} resetSize optionally resets mins/max to identity
    */
   unsetModel(resetSize = false) {
@@ -370,29 +398,58 @@ export default class BaseEntity {
   }
 
   /**
-   *
-   * @param {Vector} mins
-   * @param {Vector} maxs
+   * Sets bounding box sizes.
+   * @param {Vector} mins the nearest point
+   * @param {Vector} maxs the farthest point
    */
   setSize(mins, maxs) {
     this.edict.setMinMaxSize(mins, maxs);
   }
 
   /**
-   *
+   * Determines the center point of the entity by looking at the absolute bounding box.
+   * @returns {Vector} center point of the entity
+   */
+  get centerPoint() {
+    return this.absmin.copy().add(this.absmax).multiply(0.5);
+  }
+
+  /**
+   * Tests equality on Entity/Edict level.
    * @param {BaseEntity} otherEntity other
-   * @returns true, if equal
+   * @returns {boolean} true, if equal
    */
   equals(otherEntity) {
     return otherEntity ? this.edict.equals(otherEntity.edict) : false;
   }
 
+  /**
+   * Returns allocated Edict number.
+   * @returns {number} edict Id
+   */
+  get edictId() {
+    return this.edict.num;
+  }
+
+  /**
+   * @returns {boolean} true, if this is worldspawn.
+   */
   isWorld() {
     return this.edictId === 0;
   }
 
+  /**
+   * @returns {boolean} true, if this is considered being an actor.
+   */
   isActor() {
     return false;
+  }
+
+  /**
+   * @returns {string} String representation (not serialization) of this entity.
+   */
+  toString() {
+    return `Edict ${this.edictId} (${this.classname}, ${this.constructor.name})`;
   }
 
   /**
@@ -442,15 +499,15 @@ export default class BaseEntity {
   }
 
   /**
-   * makes this entity static and frees underlying edict
-   * NOTE: once this entity has been made static, there’s no interaction possible anymore
+   * Makes this entity static and frees underlying edict.
+   * NOTE: Once this entity has been made static, there’s no interaction possible anymore.
    */
   makeStatic() {
     this.edict.makeStatic();
   }
 
   /**
-   * use this in spawn, it will setup an ambient sound
+   * Spawn an ambient (looping) sound.
    * @param {string} sfxName e.g. sounds/door1.wav
    * @param {number} volume [0..1]
    * @param {attn} attenuation attenuation
@@ -461,7 +518,7 @@ export default class BaseEntity {
   }
 
   /**
-   * starts a sound bound to an edict
+   * Starts a sound bound to an edict.
    * @param {channel} channel what sound channel to use, it will overwrite currently playing sounds
    * @param {string} sfxName e.g. sounds/door1.wav
    * @param {number} volume [0..1]
@@ -473,37 +530,28 @@ export default class BaseEntity {
   }
 
   /**
-   * allocated Edict number
-   * @returns {number} edict Id
-   */
-  get edictId() {
-    return this.edict.num;
-  }
-
-  toString() {
-    return `Edict ${this.edictId} (${this.classname}, ${this.constructor.name})`;
-  }
-
-  /**
-   * releases this entity and frees underlying edict
+   * Releases this entity and frees underlying edict.
    */
   remove() {
     this.edict.freeEdict();
   }
 
+  /**
+   * Resets this entity.
+   * @deprecated
+   */
   clear() {
-    // FIXME: unsure if we need this still
   }
 
   /**
-   * called upon spawning an entity, sets things like model etc.
+   * Called upon spawning an entity, sets things like model, sizes, move types etc.
    */
   spawn() {
   }
 
   /**
-   * called when nextthink is reached, invoked by the game engine (server code)
-   * when overriding, make sure to call super.think()
+   * Called when nextthink is reached, invoked by the game engine (server code).
+   * When overriding, make sure to call super.think(), otherwise you will loose the scheduled thinking infrastructure.
    */
   think() {
     this._runScheduledThinks();
@@ -512,7 +560,7 @@ export default class BaseEntity {
   // === Interactions ===
 
   /**
-   * this object is used (by another player or NPC), invoked by the game code
+   * This object is used (by another player or NPC), invoked by the game code.
    * @param {BaseEntity} usedByEntity what entity is using this one
    */
   // eslint-disable-next-line no-unused-vars
@@ -520,7 +568,7 @@ export default class BaseEntity {
   }
 
   /**
-   * this object is blocked, invoked by the physics engine
+   * This object is blocked, invoked by the physics engine.
    * @param {BaseEntity} blockedByEntity what entity is blocking this one
    */
   // eslint-disable-next-line no-unused-vars
@@ -528,7 +576,7 @@ export default class BaseEntity {
   }
 
   /**
-   * this object is touched, invoked by the physics engine
+   * This object is touched, invoked by the physics engine.
    * @param {BaseEntity} touchedByEntity what entity is touching this one
    */
   // eslint-disable-next-line no-unused-vars
@@ -536,8 +584,7 @@ export default class BaseEntity {
   }
 
   /**
-   * based on QuakeC’s EntitiesTouching(this, otherEntity)
-   * compares mins and maxs to see if they intersect
+   * Based on QuakeC’s EntitiesTouching(this, otherEntity), compares mins and maxs to see if they intersect.
    * @param {BaseEntity} otherEntity other entity
    * @returns {boolean} true if this is touching the other entity
    */
@@ -546,7 +593,7 @@ export default class BaseEntity {
   }
 
   /**
-   * searches the next entity matching field equals value
+   * Searches the next entity matching field equals value.
    * @param {string} field what field to search
    * @param {string} value what value to match the value under field
    * @returns {?BaseEntity} found entity
@@ -557,7 +604,7 @@ export default class BaseEntity {
   }
 
   /**
-   * searches the first entity matching field equals value
+   * Searches the first entity matching field equals value.
    * @param {string} field what field to search
    * @param {string} value what value to match the value under field
    * @returns {?BaseEntity} found entity
@@ -568,8 +615,9 @@ export default class BaseEntity {
   }
 
   /**
-   * Returns client (or object that has a client enemy) that would be * a valid target. If there are more than one
-   * valid options, they are cycled each frame. If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
+   * Returns client (or object that has a client enemy) that would be * a valid target.
+   * If there are more than one valid options, they are cycled each frame.
+   * If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
    * @returns {?BaseEntity} found client
    */
   getNextBestClient() {
@@ -612,10 +660,10 @@ export default class BaseEntity {
 
   /**
    * Move this entity toward its goal. Used for monsters.
-   * @param {number} distance
+   * @param {number} distance move distance
    * @returns {boolean} true, when successful
    */
   moveToGoal(distance) {
     return this.edict.moveToGoal(distance);
   }
-};
+}

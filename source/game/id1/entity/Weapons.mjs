@@ -60,17 +60,19 @@ export class DamageInflictor extends EntityWrapper {
 }
 
 /**
- * Methods to handle damage, wrapped entity must support:
+ * Methods to handle damage on an entity, wrapped entity must support:
  * - takedamage
  * - dmg_attacker, dmg_inflictor, dmg_take, dmg_save
- * - armortype, armorvalue (optional)
  * - health
- * - thinkPain (optional)
  * - thinkDie
+ * - armortype, armorvalue (optional)
+ * - thinkPain (optional)
  * - pain_finished (optional)
  * - enemy (optional)
+ * - invincible_finished, invincible_sound (optional)
+ * - bloodcolor (optional)
  *
- * `this._damageHandler = new DamageHandler(this);` must be placed last in `_declareFields`
+ * `this._damageHandler = new DamageHandler(this);` must be placed in `_declareFields` last!
  */
 export class DamageHandler extends EntityWrapper {
   /** @protected */
@@ -109,13 +111,23 @@ export class DamageHandler extends EntityWrapper {
   }
 
   /**
+   * Spawns trail of blood.
+   * @param {number} damage inflicted damage in HP
+   * @param {Vector} origin where does the trail of blood come from?
+   */
+  spawnBlood(damage, origin) {
+    this._engine.StartParticles(origin, this._entity.velocity.copy().multiply(0.01 * damage), typeof (this._entity.bloodcolor) === 'number' ? this._entity.bloodcolor : 73, damage * 2); // FIXME: hardcoded color code (73)
+  }
+
+  /**
    * The damage is coming from inflictor, but get mad at attacker
    * This should be the only function that ever reduces health.
    * @param {import('./BaseEntity.mjs').default} inflictorEntity inflictor – what is causing the damage
    * @param {import('./BaseEntity.mjs').default} attackerEntity attacker – who is causing the damage
    * @param {number} inflictedDamage damage caused
+   * @param {Vector} hitPoint exact hit point
    */
-  damage(inflictorEntity, attackerEntity, inflictedDamage) {
+  damage(inflictorEntity, attackerEntity, inflictedDamage, hitPoint) {
     if (this._entity.takedamage === damage.DAMAGE_NO) {
       // this entity cannot take any damage (anymore)
       return;
@@ -127,6 +139,11 @@ export class DamageHandler extends EntityWrapper {
     if (attackerEntity.super_damage_finished > this._game.time) {
       inflictedDamage *= 4.0; // QUAD DAMAGE
     }
+
+    // // CR: here we could ask the entity to assess the damage point (e.g. headshot = 3x the damage), naive calculation below:
+    // if (hitPoint[2] - this._entity.origin[2] > this._entity.view_ofs[2]) {
+    //   inflictedDamage *= 100;
+    // }
 
     // save damage based on the target's armor level
     let save = 0, take = 0;
@@ -156,7 +173,7 @@ export class DamageHandler extends EntityWrapper {
 
     // figure momentum add
     if (!inflictorEntity.isWorld() && this._entity.movetype !== moveType.MOVETYPE_WALK) {
-      const direction = this._entity.origin.copy().subtract(inflictorEntity.absmin.copy().add(inflictorEntity.absmax).multiply(0.5));
+      const direction = this._entity.origin.copy().subtract(inflictorEntity.centerPoint);
       direction.normalize();
       this._entity.velocity.add(direction.multiply(8.0 * inflictedDamage));
     }
@@ -166,11 +183,24 @@ export class DamageHandler extends EntityWrapper {
       return;
     }
 
-    // TODO: powerup
+    // check for invincibility and play protection sounds to indicate invincibility
+    if (this._entity.invincible_finished >= this._game.time) {
+      if (typeof (inflictorEntity.invincible_sound) !== 'undefined') {
+        this.entity.startSound(channel.CHAN_ITEM, 'items/protect3.wav');
+        inflictorEntity.invincible_sound = this._game.time + 2.0;
+        return;
+      }
+    }
 
-    // TODO: friendly fire check
+    // no friendly fire
+    if (this._game.teamplay === 1 && this._entity.team > 0 && this._entity.team === attackerEntity.team) {
+      return;
+    }
 
-    // do the damage
+    // spawn blood
+    this.spawnBlood(inflictedDamage, hitPoint);
+
+    // do the actual damage and check for a kill
     this._entity.health -= take;
 
     if (this._entity.health <= 0) {
@@ -178,10 +208,8 @@ export class DamageHandler extends EntityWrapper {
       return;
     }
 
-    // react to the damage
-
     if ((this._entity.flags & flags.FL_MONSTER) && !attackerEntity.isWorld()) {
-      // TODO
+      // TODO: must bubble down to the AI logic and it’s its job to handle accordingly
     }
 
     if (this._entity.thinkPain) {
@@ -245,9 +273,7 @@ export class PlayerWeapons {
     const origin = trace.point.subtract(forward.copy().multiply(4.0));
 
     if (trace.entity.takedamage !== damage.DAMAGE_NO) {
-      // TODO: axhitme
-      // TODO: SpawnBlood (org, '0 0 0', 20);
-      this._player.damage(trace.entity, 20.0);
+      this._player.damage(trace.entity, 20.0, null, trace.point);
     } else {
       // hit wall
       this._startSound('player/axhit2.wav');

@@ -153,7 +153,7 @@ export class BaseDoorEntity extends BasePropEntity {
    * @param {BaseEntity} blockedByEntity blocking entity
    */
   _doorBlocked(blockedByEntity) {
-    this.damage(blockedByEntity, this.dmg);
+    this.damage(blockedByEntity, this.dmg, null, blockedByEntity.centerPoint);
 
     // if a door has a negative wait, it would never come back if blocked,
     // so let it just squash the object to death real fast
@@ -539,6 +539,7 @@ export class SecretDoorEntity extends BaseDoorEntity {
     this._dest2 = null;
 
     this.health = 0;
+    this.bloodcolor = 0; // FIXME: hardcoded color code (0)
 
     this._damageHandler = new DamageHandler(this);
   }
@@ -649,7 +650,7 @@ export class SecretDoorEntity extends BaseDoorEntity {
 
     this.attack_finished = this.game.time + 0.5;
 
-    this.damage(blockedByEntity, this.dmg);
+    this.damage(blockedByEntity, this.dmg, null, blockedByEntity.centerPoint);
   }
 
   use(usedByEntity) {

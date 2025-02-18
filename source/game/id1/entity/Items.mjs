@@ -163,6 +163,7 @@ class BaseItemEntity extends BaseEntity {
       this.remove();
     }
 
+    // trigger all connected actions
     this._sub.useTargets(playerEntity);
   }
 }
@@ -215,7 +216,8 @@ class BaseAmmoEntity extends BaseItemEntity {
   }
 
   /**
-   * sets the corresponding ammo slot with given ammo
+   * Sets the corresponding ammo slot with given ammo.
+   * @protected
    * @param {number} ammo given ammo
    */
   // eslint-disable-next-line no-unused-vars

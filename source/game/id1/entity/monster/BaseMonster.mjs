@@ -18,6 +18,8 @@ export default class BaseMonster extends BaseEntity {
     this.yaw_speed = 0.0;
     this.view_ofs = new Vector();
 
+    this.bloodcolor = 73; // FIXME: hardcoded color code (73)
+
     /** @type {?BaseEntity} acquired target */
     this.enemy = null;
     /** @type {BaseEntity} a movetarget or an enemy */
