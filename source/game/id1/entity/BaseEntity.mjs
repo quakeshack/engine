@@ -596,11 +596,13 @@ export default class BaseEntity {
    * Searches the next entity matching field equals value.
    * @param {string} field what field to search
    * @param {string} value what value to match the value under field
+   * @param {?BaseEntity} lastEntity last entity to start searching from (default: this)
+   * @param {boolean} loopSearch if true and there is no next entity, start all over once more
    * @returns {?BaseEntity} found entity
    */
-  findNextEntityByFieldAndValue(field, value) {
-    const edict = this.engine.FindByFieldAndValue(field, value, this.edictId + 1);
-    return edict ? edict.entity : null;
+  findNextEntityByFieldAndValue(field, value, lastEntity = this, loopSearch = false) {
+    const edict = this.engine.FindByFieldAndValue(field, value, lastEntity ? lastEntity.edictId + 1 : 0);
+    return edict ? edict.entity : (loopSearch ? this.findFirstEntityByFieldAndValue(field, value) : null);
   }
 
   /**

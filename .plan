@@ -50,15 +50,15 @@ Grouped by sections and then sorted by priority (more or less).
     * [_] spikeshooter stuff
     * [_] bubbles
     * [X] view thing?
-    * [_] SIMPLE BMODELS
-    * [_] ambient sounds
+    * [X] SIMPLE BMODELS
+    * [X] ambient sounds
     * [_] noisemaker
   * [_] weapons.qc
     * [X] W_Precache
     * [X] W_FireAxe
     * [#] wall_velocity, gibs, etc.
-    * [_] MULTI-DAMAGE
-    * [_] BULLETS
+    * [X] MULTI-DAMAGE
+    * [X] BULLETS
     * [_] ROCKETS
     * [_] LIGHTNING
     * [_] grenades
@@ -78,7 +78,7 @@ Grouped by sections and then sorted by priority (more or less).
     * [_] execute_changelevel, trigger_changelevel entity
     * [_] PLAYER GAME EDGE FUNCTIONS
     * [X] ClientKill
-    * [#] SelectSpawnPoint
+    * [X] SelectSpawnPoint
     * [X] PutClientInServer
     * [_] QUAKED FUNCTIONS
     * [_] RULES, CheckRules etc.
@@ -311,6 +311,12 @@ class MainMenu extends BaseMenu {
 * some documentation clean up
 * added blood particles, a primitive hitbox check, `bloodcolor` etc.
 * implemented some more TODOs here and there
+* bmodels own that fantastic trait of their origin being always at `Vector(0, 0, 0)`, you have to use `centerPoint`
+* implemented shotguns and started working on `DamageInflictor` class
+* couple of fixes for finding entities
+* backpacks/items that cannot be consumed won’t disappear anymore
+* 3s pause between being dead and being able to respawn
+* I’m getting very close to have everything except the monsters/AI reimplemented
 
 ### 2025-02-17
 

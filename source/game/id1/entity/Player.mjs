@@ -131,6 +131,22 @@ export class InfoPlayerStart extends InfoNotNullEntity {
   static classname = 'info_player_start';
 };
 
+/**
+ * QUAKED info_player_deathmatch (1 0 1) (-16 -16 -24) (16 16 24)
+ * potential spawning position for deathmatch games
+ */
+export class InfoPlayerStartDeathmatch extends InfoNotNullEntity {
+  static classname = 'info_player_deathmatch';
+};
+
+/**
+ * QUAKED info_player_coop (1 0 1) (-16 -16 -24) (16 16 24)
+ * potential spawning position for coop games
+ */
+export class InfoPlayerStartCoop extends InfoNotNullEntity {
+  static classname = 'info_player_coop';
+};
+
 export class PlayerEntity extends BaseEntity {
   static classname = 'player';
 
@@ -196,7 +212,7 @@ export class PlayerEntity extends BaseEntity {
     // relevant for damage etc.
     this.bloodcolor = 73; // FIXME: hardcoded color code (73)
 
-    // things I’m unsure about:
+    /** @type {number} set by teleporters to keep the player from moving a while, also after death keeping from respawn too early */
     this.pausetime = 0;
 
     this._damageHandler = new DamageHandler(this);
@@ -464,13 +480,48 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /**
+   * In coop try to find a coop spawn spot,
+   * in deathmatch try to find a non occupied deathmatch spawn spot,
+   * in singleplayer try to find player start spawn spot.
    * @protected
    * @returns {BaseEntity} selected spawn point
    */
-  _selectSpawnPoint() {
-    // TODO: this needs to be done properly
+  _selectSpawnPoint() { // QuakeC: client.qc/SelectSpawnPoint
+    if (this.game.coop) {
+      this.game.lastspawn = this.findNextEntityByFieldAndValue('classname', 'info_player_coop', this.game.lastspawn, true);
+
+      if (this.game.lastspawn) {
+        return this.game.lastspawn;
+      }
+    } else if (this.game.deathmatch) {
+      let spot = this.game.lastspawn;
+      let attempts = 32;
+
+      while (attempts-->0) {
+        spot = this.findNextEntityByFieldAndValue('classname', 'info_player_deathmatch', spot, true);
+
+        if (!spot) {
+          this.engine.ConsolePrint('PlayerEntity._selectSpawnPoint: There is no deathmatch spawn point on this map!\n');
+          break;
+        }
+
+        if (!Array.from(this.engine.FindInRadius(spot.origin, 32)).find((entity) => entity instanceof PlayerEntity)) {
+          this.game.lastspawn = spot;
+          return this.game.lastspawn;
+        }
+      }
+    }
+
+    if (this.game.serverflags) { // return with a rune to start
+      const spot = this.findFirstEntityByFieldAndValue('classname', 'info_player_start2');
+
+      if (spot) {
+        return spot;
+      }
+    }
 
     return this.findFirstEntityByFieldAndValue('classname', 'info_player_start');
+    // FIXME: throw error if there is no info_player_start
   }
 
   /** @protected */
@@ -532,7 +583,7 @@ export class PlayerEntity extends BaseEntity {
 
     // TODO: temp1 check
 
-    switch(Math.floor(Math.random() * 5)) {
+    switch (Math.floor(Math.random() * 5)) {
       case 0: this._runState('player_diea1'); break;
       case 1: this._runState('player_dieb1'); break;
       case 2: this._runState('player_diec1'); break;
@@ -545,6 +596,7 @@ export class PlayerEntity extends BaseEntity {
   _playerDead() { // QuakeC: player.qc/PlayerDead
     this.resetThinking();
     // allow respawn after a certain time
+    this.pausetime = this.game.time + 3.0;
     this.deadflag = dead.DEAD_DEAD;
   }
 
@@ -683,15 +735,44 @@ export class PlayerEntity extends BaseEntity {
    * Adds ammo and items found in the Backpack object, will apply caps as well.
    * This does not emit any sound, message and flash effect. It’s completely silent.
    * @param {Backpack} backpack set of ammo, can be a BackpackEntity as well
+   * @returns {boolean} true, if any out of that backpack was taken
    */
   applyBackpack(backpack) {
-    this.ammo_nails = Math.min(200, this.ammo_nails + backpack.ammo_nails);
-    this.ammo_cells = Math.min(100, this.ammo_cells + backpack.ammo_cells);
-    this.ammo_rockets = Math.min(100, this.ammo_rockets + backpack.ammo_rockets);
-    this.ammo_shells = Math.min(100, this.ammo_shells + backpack.ammo_shells);
-    this.items |= backpack.items;
+    let backpackUsed = false;
+
+    const ammo_nails = Math.min(200, this.ammo_nails + backpack.ammo_nails);
+    const ammo_cells = Math.min(100, this.ammo_cells + backpack.ammo_cells);
+    const ammo_rockets = Math.min(100, this.ammo_rockets + backpack.ammo_rockets);
+    const ammo_shells = Math.min(100, this.ammo_shells + backpack.ammo_shells);
+
+    if (ammo_nails !== this.ammo_nails) {
+      this.ammo_nails = ammo_nails;
+      backpackUsed = true;
+    }
+
+    if (ammo_cells !== this.ammo_cells) {
+      this.ammo_cells = ammo_cells;
+      backpackUsed = true;
+    }
+
+    if (ammo_rockets !== this.ammo_rockets) {
+      this.ammo_rockets = ammo_rockets;
+      backpackUsed = true;
+    }
+
+    if (ammo_shells !== this.ammo_shells) {
+      this.ammo_shells = ammo_shells;
+      backpackUsed = true;
+    }
+
+    if ((this.items & backpack.items) !== backpack.items) {
+      this.items |= backpack.items;
+      backpackUsed = true;
+    }
 
     this.setWeapon();
+
+    return backpackUsed;
   }
 
   isOutOfAmmo() {
@@ -1123,6 +1204,8 @@ export class PlayerEntity extends BaseEntity {
     this.pausetime = 0; // CR: used by teleporters
 
     this.punchangle.clear();
+    this.velocity.clear();
+    this.avelocity.clear();
     this.origin = spot.origin.copy().add(new Vector(0.0, 0.0, 1.0));
     this.angles = spot.angles.copy();
     this.fixangle = true;
@@ -1183,7 +1266,10 @@ export class PlayerEntity extends BaseEntity {
     this.button1 = false;
     this.button2 = false;
 
-    this._respawn();
+    // we keep the player dead for a while
+    if (this.pausetime < this.game.time) {
+      this._respawn();
+    }
   }
 
   /**
@@ -1306,7 +1392,7 @@ export class PlayerEntity extends BaseEntity {
       if (this.watertype === content.CONTENT_WATER) {
         this.startSound(channel.CHAN_BODY, "player/h2ojump.wav");
       } else if (this.jump_flag < -650) {
-        this._damageHandler.damage(this.game.worldspawn, this.game.worldspawn, 5.0);
+        this.game.worldspawn.damage(this, 5.0); // CR: lol fixed 5 damage for falling
         this.startSound(channel.CHAN_VOICE, "player/land2.wav");
         this.deathtype = deathType.FALLING;
       } else {

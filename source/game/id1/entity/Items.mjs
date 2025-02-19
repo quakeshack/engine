@@ -99,6 +99,11 @@ class BaseItemEntity extends BaseEntity {
     /** @type {PlayerEntity} */
     const player = otherEntity;
 
+    // let the player consume this backpack
+    if (!player.applyBackpack(this)) {
+      return; // player’s inventory is already full
+    }
+
     const items = [];
 
     // check if this items is new in player’s inventory
@@ -125,8 +130,6 @@ class BaseItemEntity extends BaseEntity {
     if (this.ammo_cells > 0) {
       items.push(`${this.ammo_cells} cells`);
     }
-
-    player.applyBackpack(this); // let the player consume this backpack
 
     if (items.length > 0) {
       player.consolePrint(`You got ${items.join(', ')}.\n`);

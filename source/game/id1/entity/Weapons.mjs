@@ -1,6 +1,8 @@
 /* global Vector */
 
 import { channel, damage, flags, items, moveType, tentType } from '../Defs.mjs';
+import { crandom } from '../helper/MiscHelpers.mjs';
+import BaseEntity from './BaseEntity.mjs';
 
 /**
  * called by worldspawn
@@ -57,6 +59,149 @@ class EntityWrapper {
  * Methods to cause damage to something else, e.g. fire bullets etc.
  */
 export class DamageInflictor extends EntityWrapper {
+  /** @type {BaseEntity} */
+  _multiEntity = null;
+  /** @type {number} */
+  _multiDamage = 0;
+
+  /** @private */
+  _clearMultiDamage() {
+    this._multiEntity = null;
+    this._multiDamage = 0;
+  }
+
+  /** @private */
+  _applyMultiDamage() {
+    if (!this._multiEntity) {
+      return;
+    }
+
+    this._entity.damage(this._multiEntity, this._multiDamage);
+  }
+
+
+  /**
+   * @private
+   * @param {BaseEntity} hitEntity traced entity
+   * @param {number} damage damage points
+   */
+  _addMultiDamage(hitEntity, damage) {
+    if (!hitEntity.equals(this._multiEntity)) {
+      this._applyMultiDamage();
+      this._multiEntity = hitEntity;
+      this._multiDamage = damage;
+    } else {
+      this._multiDamage += damage;
+    }
+  }
+
+  /**
+   * @private
+   * @param {number} damage damage points
+   * @param {Vector} direction shooting direction
+   * @param {*} angleVectors v_angle.angleVectors (forward, right, up)
+   * @param {*} trace traceline result
+   */
+  _traceAttack(damage, direction, angleVectors, trace) {
+    // CR: that velocity thing is out of whack (FIXME)
+
+    // const velocity = direction.copy()
+    //   .add(angleVectors.up.copy().multiply(crandom()))
+    //   .add(angleVectors.right.copy().multiply(crandom()));
+
+    // velocity.normalize();
+    // velocity.add(trace.plane.normal.copy().multiply(2.0)).multiply(40.0);
+
+    const origin = trace.point.subtract(direction.copy().multiply(4.0));
+
+    if (trace.entity && trace.entity.takedamage) {
+      /** @type {DamageHandler} */
+      const damageHandler = trace.entity._damageHandler;
+
+      if (damageHandler) {
+        damageHandler.spawnBlood(damage, origin); // , velocity);
+        this._addMultiDamage(trace.entity, damage);
+      }
+    } else {
+      this.dispatchGunshotEvent(origin);
+    }
+  }
+
+  /**
+   * Fires bullets.
+   * @param {number} shotcount amount of “bullets”
+   * @param {Vector} dir shooting directions
+   * @param {Vector} spread spread
+   */
+  fireBullets(shotcount, dir, spread) {
+    const angleVectors = this._entity.v_angle.angleVectors();
+
+    const start = this._entity.origin.copy().add(angleVectors.forward.copy().multiply(10.0));
+    start[2] = this._entity.absmin[2] + this._entity.size[2] * 0.7;
+
+    this._clearMultiDamage();
+
+    while (shotcount > 0) {
+      const direction = dir.copy()
+        .add(angleVectors.right.copy().multiply(spread[0] * crandom()))
+        .add(angleVectors.up.copy().multiply(spread[1] * crandom()));
+
+      const trace = this._entity.traceline(start, direction.copy().multiply(2048.0).add(start), false);
+
+      if (trace.fraction !== 1.0) {
+        this._traceAttack(4.0, direction, angleVectors, trace);
+      }
+
+      shotcount--;
+    }
+
+    this._applyMultiDamage();
+  }
+
+  /**
+   * Emits gunshot event.
+   * @param {?Vector} origin position (will fallback to player origin)
+   */
+  dispatchGunshotEvent(origin) {
+    this._engine.DispatchTempEntityEvent(tentType.TE_GUNSHOT, origin ? origin : this._entity.origin);
+  }
+
+  /**
+   * @param {*} damage damage points
+   * @param {*} hitPoint exact hit point
+   * @yields {BaseEntity} any entity damaged inflicted on
+   */
+  *blastDamage(damage, attackerEntity, hitPoint) { // QuakeC: combat.qc/T_RadiusDamage
+    // TODO: T_RadiusDamage
+  }
+
+  /**
+   * @param {*} damage damage points
+   * @param {*} hitPoint exact hit point
+   * @yields {BaseEntity} any entity damaged inflicted on
+   */
+  *beamDamage(damage, hitPoint) { // QuakeC: combat.qc/T_BeamDamage
+    for (const victimEdict of this._engine.FindInRadius(this._entity.origin, damage + 40)) {
+      const victim = victimEdict.entity;
+
+      if (!victim.takedamage) {
+        continue;
+      }
+
+      let points = Math.max(0, 0.5 * this._entity.origin.copy().subtract(victim.origin).len());
+
+      points = damage - points;
+
+      if (victim.equals(this._entity)) {
+        points *= 0.5;
+      }
+
+      if (points > 0 && victim._damageHandler && victim._damageHandler.canReceiveDamage(this._entity)) {
+        this._entity.damage(victim, points * victim._damageHandler.receiveDamageFactor.beam, hitPoint);
+        yield victim;
+      }
+    }
+  }
 }
 
 /**
@@ -75,12 +220,23 @@ export class DamageInflictor extends EntityWrapper {
  * `this._damageHandler = new DamageHandler(this);` must be placed in `_declareFields` last!
  */
 export class DamageHandler extends EntityWrapper {
+  /** @type {Map<string, number>} multiplier for damping received damage */
+  receiveDamageFactor = {
+    regular: 1.0,
+    radius: 1.0,
+    beam: 1.0,
+  };
+
   /** @protected */
   _assertEntity() {
     console.assert(this._entity.health !== undefined);
     console.assert(this._entity.thinkDie !== undefined);
   }
 
+  /**
+   * @private
+   * @param {BaseEntity} attackerEntity attacker
+   */
   _killed(attackerEntity) {
     // don't let sbar look bad if a player
     this._entity.health = Math.max(-99, this._entity.health);
@@ -114,9 +270,10 @@ export class DamageHandler extends EntityWrapper {
    * Spawns trail of blood.
    * @param {number} damage inflicted damage in HP
    * @param {Vector} origin where does the trail of blood come from?
+   * @param {?Vector} velocity optionally a custom blood trail velocity
    */
-  spawnBlood(damage, origin) {
-    this._engine.StartParticles(origin, this._entity.velocity.copy().multiply(0.01 * damage), typeof (this._entity.bloodcolor) === 'number' ? this._entity.bloodcolor : 73, damage * 2); // FIXME: hardcoded color code (73)
+  spawnBlood(damage, origin, velocity = null) {
+    this._engine.StartParticles(origin, velocity !== null ? velocity : this._entity.velocity.copy().multiply(0.01 * damage), typeof (this._entity.bloodcolor) === 'number' ? this._entity.bloodcolor : 73, damage * 2); // FIXME: hardcoded color code (73)
   }
 
   /**
@@ -132,6 +289,9 @@ export class DamageHandler extends EntityWrapper {
       // this entity cannot take any damage (anymore)
       return;
     }
+
+    // apply damping factor
+    inflictedDamage *= this.receiveDamageFactor.regular;
 
     // used by buttons and triggers to set activator for target firing
     this._entity.dmg_attacker = attackerEntity;
@@ -221,6 +381,44 @@ export class DamageHandler extends EntityWrapper {
       }
     }
   }
+
+  /**
+   * Returns true if the inflictor can directly damage the target.  Used for explosions and melee attacks.
+   * @param {BaseEntity} inflictorEntity inflictor entity
+   * @returns {boolean} true, if the inflictor can directly damage the target
+   */
+  canReceiveDamage(inflictorEntity) { // QuakeC: combat.qc/CanDamage
+    // bmodels need special checking because their origin is 0,0,0
+    if (this._entity.movetype === moveType.MOVETYPE_PUSH) {
+      const trace = inflictorEntity.tracelineToVector(this._entity.centerPoint, true);
+
+      if (trace.fraction === 1) {
+        return true;
+      }
+
+      if (this._entity.equals(trace.entity)) {
+        return true;
+      }
+
+      return false;
+    }
+
+    for (const offset of [
+      Vector.origin,
+      new Vector(15.0, 15.0, 0.0),
+      new Vector(-15.0, -15.0, 0.0),
+      new Vector(-15.0, 15.0, 0.0),
+      new Vector(15.0, -15.0, 0.0),
+    ]) {
+      const trace = inflictorEntity.tracelineToVector(offset.add(this._entity.origin), true);
+
+      if (trace.fraction === 1) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 }
 
 /**
@@ -229,35 +427,29 @@ export class DamageHandler extends EntityWrapper {
  */
 export class PlayerWeapons {
   /**
-   *
    * @param {import('./Player.mjs').PlayerEntity} playerEntity player
    */
   constructor(playerEntity) {
-    /** @protected */
+    /** @private */
     this._player = playerEntity;
-    /** @protected */
+    /** @private */
     this._game = this._player.game;
-    /** @protected */
+    /** @private */
     this._engine = this._player.engine;
+
+    /** @private */
+    this._damageInflictor = new DamageInflictor(playerEntity);
+
     Object.seal(this);
   }
 
   /**
-   * starts sound on player’s weapon channel
+   * Starts sound on player’s weapon channel.
    * @param {string} sfxName sound
    * @private
    */
   _startSound(sfxName) {
     this._player.startSound(channel.CHAN_WEAPON, sfxName);
-  }
-
-  /**
-   * emits gunshot event
-   * @param {?Vector} origin position (will fallback to player origin)
-   * @private
-   */
-  _dispatchGunshotEvent(origin) {
-    this._engine.DispatchTempEntityEvent(tentType.TE_GUNSHOT, origin ? origin : this._player.origin);
   }
 
   fireAxe() {
@@ -277,7 +469,7 @@ export class PlayerWeapons {
     } else {
       // hit wall
       this._startSound('player/axhit2.wav');
-      this._dispatchGunshotEvent(origin);
+      this._damageInflictor.dispatchGunshotEvent(origin);
     }
   }
 
@@ -289,7 +481,7 @@ export class PlayerWeapons {
     const { forward } = this._player.v_angle.angleVectors();
     const direction = this._player.aim(forward);
 
-    // TODO: FireBullets (6, direction, '0.04 0.04 0');
+    this._damageInflictor.fireBullets(6, direction, new Vector(0.04, 0.04, 0.0));
   }
 
   fireSuperShotgun() {
@@ -305,7 +497,7 @@ export class PlayerWeapons {
     const { forward } = this._player.v_angle.angleVectors();
     const direction = this._player.aim(forward);
 
-    // TODO: FireBullets (14, dir, '0.14 0.08 0');
+    this._damageInflictor.fireBullets(14, direction, new Vector(0.14, 0.08, 0.0));
   }
 }
 
