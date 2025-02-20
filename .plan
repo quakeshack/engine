@@ -306,6 +306,14 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-02-20
+
+* thinking about removing some entity classes from the registry and have a “private” spawn by simply allocating the edict and instantiating the entity class ourselves
+* first I thought, FindInRadius was not working, turns out `trace.fraction === 1.0` is *not* the way how to test if an expected entity has been traced, there must be some floating point voodoo making problems here? it’s always close to 1.0 (off by less than 0.3 off, which is quite big for floating point imprecisions though)
+* implemented blastDamage, added Rocket Launcher, some smaller bug fixes
+* decided to keep `BaseEntity.clear()`, restructured handling `respawn`/`putPlayerInServer`
+* choosing best weapon after picking up a “backpack” is a bit flawed
+
 ### 2025-02-19
 
 * some documentation clean up

@@ -320,17 +320,18 @@ SV.Edict = class Edict {
    * @returns {Vector} aim direction
    */
   aim(direction) {
+    const dir = direction.copy();
     const origin = this.entity.origin.copy();
     const start = origin.add(new Vector(0.0, 0.0, 20.0));
 
-    const end = new Vector(start[0] + 2048.0 * direction[0], start[1] + 2048.0 * direction[1], start[2] + 2048.0 * direction[2]);
+    const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
     const tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, this);
     if (tr.ent !== null) {
       if ((tr.ent.entity.takedamage === SV.damage.aim) && (!Host.teamplay.value || this.entity.team <= 0 || this.entity.team !== tr.ent.entity.team)) {
-        return direction;
+        return dir;
       }
     }
-    const bestdir = direction.copy();
+    const bestdir = dir.copy();
     let bestdist = SV.aim.value;
     let bestent = null;
     for (let i = 1; i < SV.server.num_edicts; ++i) {
@@ -349,9 +350,9 @@ SV.Edict = class Edict {
       }
       const corigin = check.entity.origin, cmins = check.entity.mins, cmaxs = check.entity.maxs;
       end.set(corigin).add(cmins.copy().add(cmaxs).multiply(0.5));
-      direction.set(end).subtract(start);
-      direction.normalize()
-      let dist = direction.dot(bestdir);
+      dir.set(end).subtract(start);
+      dir.normalize();
+      let dist = dir.dot(bestdir);
       if (dist < bestdist) {
         continue;
       }
@@ -362,11 +363,11 @@ SV.Edict = class Edict {
       }
     }
     if (bestent !== null) {
-      direction.set(bestent.entity.origin).subtract(this.entity.origin);
-      const dist = direction.dot(bestdir);
+      dir.set(bestent.entity.origin).subtract(this.entity.origin);
+      const dist = dir.dot(bestdir);
       end[0] = bestdir[0] * dist;
       end[1] = bestdir[1] * dist;
-      end[2] = direction[2];
+      end[2] = dir[2];
       end.normalize();
       return end;
     }
@@ -2008,7 +2009,10 @@ SV.WalkMove = function(ent) {
       clip = SV.TryUnstick(ent, oldvel);
     }
     if ((clip & 2) !== 0) {
-      SV.WallFriction(ent, SV.steptrace);
+      // FIXME: SV.steptrace can be null!
+      if (SV.steptrace) {
+        SV.WallFriction(ent, SV.steptrace);
+      }
     }
   }
   const downtrace = SV.PushEntity(ent, new Vector(0.0, 0.0, oldvel[2] * Host.frametime - 18.0));
@@ -2793,9 +2797,7 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
     SV.box_planes[3].dist = emins[1] - maxs[1];
     SV.box_planes[4].dist = emaxs[2] - mins[2];
     SV.box_planes[5].dist = emins[2] - maxs[2];
-    out_offset[0] = origin[0];
-    out_offset[1] = origin[1];
-    out_offset[2] = origin[2];
+    out_offset.set(origin);
     return SV.box_hull;
   }
   if (ent.entity.movetype !== SV.movetype.push) {
@@ -2817,9 +2819,11 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
   } else {
     hull = model.hulls[2];
   }
-  out_offset[0] = hull.clip_mins[0] - mins[0] + origin[0];
-  out_offset[1] = hull.clip_mins[1] - mins[1] + origin[1];
-  out_offset[2] = hull.clip_mins[2] - mins[2] + origin[2];
+  out_offset.setTo(
+    hull.clip_mins[0] - mins[0] + origin[0],
+    hull.clip_mins[1] - mins[1] + origin[1],
+    hull.clip_mins[2] - mins[2] + origin[2],
+  );
   return hull;
 };
 
@@ -3176,21 +3180,15 @@ SV.Move = function(start, mins, maxs, end, type, passedict) {
     start: start,
     end: end,
     mins: mins,
+    mins2: type === SV.move.missile ? new Vector(-15.0, -15.0, -15.0) : mins,
     maxs: maxs,
+    maxs2: type === SV.move.missile ? new Vector(15.0, 15.0, 15.0) : maxs,
     type: type,
     passedict: passedict,
     boxmins: new Vector(),
     boxmaxs: new Vector(),
   };
-  if (type === SV.move.missile) {
-    clip.mins2 = new Vector(-15.0, -15.0, -15.0);
-    clip.maxs2 = new Vector(15.0, 15.0, 15.0);
-  } else {
-    clip.mins2 = new Vector(mins[0], mins[1], mins[2]);
-    clip.maxs2 = new Vector(maxs[0], maxs[1], maxs[2]);
-  }
-  let i;
-  for (i = 0; i <= 2; ++i) {
+  for (let i = 0; i <= 2; i++) {
     if (end[i] > start[i]) {
       clip.boxmins[i] = start[i] + clip.mins2[i] - 1.0;
       clip.boxmaxs[i] = end[i] + clip.maxs2[i] + 1.0;

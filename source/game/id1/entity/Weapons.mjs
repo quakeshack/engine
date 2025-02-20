@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { channel, damage, flags, items, moveType, tentType } from '../Defs.mjs';
+import { channel, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
 import { crandom } from '../helper/MiscHelpers.mjs';
 import BaseEntity from './BaseEntity.mjs';
 
@@ -103,7 +103,7 @@ export class DamageInflictor extends EntityWrapper {
    * @param {*} trace traceline result
    */
   _traceAttack(damage, direction, angleVectors, trace) {
-    // CR: that velocity thing is out of whack (FIXME)
+    // FIXME: that velocity thing is out of whack
 
     // const velocity = direction.copy()
     //   .add(angleVectors.up.copy().multiply(crandom()))
@@ -168,19 +168,47 @@ export class DamageInflictor extends EntityWrapper {
 
   /**
    * @param {*} damage damage points
+   * @param {?BaseEntity} attackerEntity
    * @param {*} hitPoint exact hit point
-   * @yields {BaseEntity} any entity damaged inflicted on
+   * @param {?BaseEntity} ignore
    */
-  *blastDamage(damage, attackerEntity, hitPoint) { // QuakeC: combat.qc/T_RadiusDamage
+  blastDamage(damage, attackerEntity, hitPoint, ignore = null) { // QuakeC: combat.qc/T_RadiusDamage
     // TODO: T_RadiusDamage
+
+    // this._entity = missile
+    // attackerEntity = missile’s owner (e.g. player)
+
+    for (const victimEdict of this._engine.FindInRadius(this._entity.origin, damage + 40)) {
+      const victim = victimEdict.entity;
+
+      if (!victim.takedamage) {
+        continue;
+      }
+
+      if (victim.equals(ignore)) {
+        continue;
+      }
+
+      const org = victim.origin.copy().add(victim.mins.copy().add(victim.maxs).multiply(0.5));
+      let points = 0.5 * this._entity.origin.copy().subtract(org).len();
+
+      points = damage - points;
+
+      if (victim.equals(attackerEntity)) {
+        points *= 0.5;
+      }
+
+      if (points > 0 && victim._damageHandler && victim._damageHandler.canReceiveDamage(this._entity)) {
+        this._entity.damage(victim, points * victim._damageHandler.receiveDamageFactor.blast, attackerEntity, hitPoint);
+      }
+    }
   }
 
   /**
    * @param {*} damage damage points
    * @param {*} hitPoint exact hit point
-   * @yields {BaseEntity} any entity damaged inflicted on
    */
-  *beamDamage(damage, hitPoint) { // QuakeC: combat.qc/T_BeamDamage
+  beamDamage(damage, hitPoint) { // QuakeC: combat.qc/T_BeamDamage
     for (const victimEdict of this._engine.FindInRadius(this._entity.origin, damage + 40)) {
       const victim = victimEdict.entity;
 
@@ -197,8 +225,7 @@ export class DamageInflictor extends EntityWrapper {
       }
 
       if (points > 0 && victim._damageHandler && victim._damageHandler.canReceiveDamage(this._entity)) {
-        this._entity.damage(victim, points * victim._damageHandler.receiveDamageFactor.beam, hitPoint);
-        yield victim;
+        this._entity.damage(victim, points * victim._damageHandler.receiveDamageFactor.beam, null, hitPoint);
       }
     }
   }
@@ -223,7 +250,7 @@ export class DamageHandler extends EntityWrapper {
   /** @type {Map<string, number>} multiplier for damping received damage */
   receiveDamageFactor = {
     regular: 1.0,
-    radius: 1.0,
+    blast: 1.0,
     beam: 1.0,
   };
 
@@ -319,6 +346,9 @@ export class DamageHandler extends EntityWrapper {
 
       this._entity.armorvalue -= save;
       take = Math.ceil(inflictedDamage - save);
+    } else {
+      // no armor path
+      take = inflictedDamage;
     }
 
     // add to the damage total for clients, which will be sent as a single
@@ -332,7 +362,7 @@ export class DamageHandler extends EntityWrapper {
     }
 
     // figure momentum add
-    if (!inflictorEntity.isWorld() && this._entity.movetype !== moveType.MOVETYPE_WALK) {
+    if (!inflictorEntity.isWorld() && this._entity.movetype === moveType.MOVETYPE_WALK) {
       const direction = this._entity.origin.copy().subtract(inflictorEntity.centerPoint);
       direction.normalize();
       this._entity.velocity.add(direction.multiply(8.0 * inflictedDamage));
@@ -392,17 +422,14 @@ export class DamageHandler extends EntityWrapper {
     if (this._entity.movetype === moveType.MOVETYPE_PUSH) {
       const trace = inflictorEntity.tracelineToVector(this._entity.centerPoint, true);
 
-      if (trace.fraction === 1) {
-        return true;
-      }
-
-      if (this._entity.equals(trace.entity)) {
+      if (trace.fraction === 1.0 || this._entity.equals(trace.entity)) {
         return true;
       }
 
       return false;
     }
 
+    // CR: it’s basically missile measurements
     for (const offset of [
       Vector.origin,
       new Vector(15.0, 15.0, 0.0),
@@ -410,14 +437,141 @@ export class DamageHandler extends EntityWrapper {
       new Vector(-15.0, 15.0, 0.0),
       new Vector(15.0, -15.0, 0.0),
     ]) {
-      const trace = inflictorEntity.tracelineToVector(offset.add(this._entity.origin), true);
+      const point = offset.add(this._entity.origin);
+      const trace = inflictorEntity.traceline(inflictorEntity.origin, point, true);
 
-      if (trace.fraction === 1) {
+      // CR:  trace.fraction is *almost* 1.0, it’s weird and I do not really get it debugged.
+      //      Over in vanilla Quake this seems to work?
+      //      Anyway, added entity checks.
+      if (trace.fraction === 1.0 || this._entity.equals(trace.entity)) {
         return true;
       }
+
+      // console.log('canReceiveDamage', this._entity.edictId, inflictorEntity.edictId, `[${inflictorEntity.origin}]`, `[${point.toString()}]`, trace.fraction, trace.entity.edictId);
     }
 
     return false;
+  }
+}
+
+class BaseProjectile extends BaseEntity {
+  static classname = 'weapon_projectile_abstract';
+
+  _declareFields() {
+    this._damageInflictor = new DamageInflictor(this);
+  }
+
+  _initStates() {
+    this._defineState('s_explode1', 0, 's_explode2');
+    this._defineState('s_explode2', 1, 's_explode3');
+    this._defineState('s_explode3', 2, 's_explode4');
+    this._defineState('s_explode4', 3, 's_explode5');
+    this._defineState('s_explode5', 4, 's_explode6');
+    this._defineState('s_explode6', 5, null, () => this.remove());
+  }
+
+  /** @protected */
+  _becomeExplosion() {
+    this.engine.DispatchTempEntityEvent(tentType.TE_EXPLOSION, this.origin);
+
+    this.movetype = moveType.MOVETYPE_NONE;
+    this.solid = solid.SOLID_NOT; // disables touch handling
+    this.velocity.clear();
+
+    this.setModel('progs/s_explod.spr');
+
+    this._runState('s_explode1');
+  }
+
+  /**
+   * @param {BaseEntity} touchedByEntity impacted entity
+   */
+  touch(touchedByEntity) {
+    if (this.solid === solid.SOLID_NOT) {
+      return;
+    }
+
+    // sky swallows any projectile
+    // CR: DOES NOT WORK, it’s always CONTENT_EMPTY, also does not work in vanilla Quake
+    if (this.engine.DeterminePointContents(this.origin) === content.CONTENT_SKY) {
+      this.remove();
+      return;
+    }
+
+    this._handleImpact(touchedByEntity);
+  }
+
+  /**
+   * @param {BaseEntity} touchedByEntity impacted entity
+   * @protected
+   */
+  // eslint-disable-next-line no-unused-vars
+  _handleImpact(touchedByEntity) {
+    // implement impact here
+  }
+
+  /**
+   * Prepares the projectile by setting velocity (direction only), adjusts origin a bit, adds removal thinker.
+   */
+  spawn() {
+    // direction
+    const { forward } = this.owner.v_angle.angleVectors();
+    this.velocity.set(this.aim(forward));
+    this.angles = this.velocity.toAngles();
+    this.setSize(Vector.origin, Vector.origin);
+
+    // position
+    this.setOrigin(this.owner.origin.copy().add(forward.multiply(8.0)).add(new Vector(0.0, 0.0, 16.0)));
+
+    // remove after 5s
+    this._scheduleThink(this.game.time + 5.0, () => this.remove());
+  }
+}
+
+export class Missile extends BaseProjectile {
+  static classname = 'weapon_projectile_missile';
+
+  /**
+   * @param {BaseEntity} touchedByEntity impacted entity
+   * @protected
+   */
+  _handleImpact(touchedByEntity) {
+    if (this.owner && touchedByEntity.equals(this.owner)) {
+      return; // don't explode on owner
+    }
+
+    const damage = 100 + Math.random() * 20;
+
+    if (touchedByEntity.health > 0) {
+      this.damage(touchedByEntity, damage, this.owner, this.origin); // FIXME: better hitpoint
+    }
+
+    // don't do radius damage to the other, because all the damage
+    // was done in the impact
+    this._damageInflictor.blastDamage(120, this.owner, this.origin, touchedByEntity);
+
+    this.velocity.normalize();
+    this.origin.subtract(this.velocity.multiply(8.0));
+
+    this._becomeExplosion();
+  }
+
+  spawn() {
+    if (!this.owner) {
+      this.engine.DebugPrint(`Missile.spawn: missing owner on ${this}, removing entity\n`);
+      this.remove();
+      return;
+    }
+
+    super.spawn();
+
+    this.velocity.multiply(1000.0); // fast projectile
+
+    this.movetype = moveType.MOVETYPE_FLYMISSILE;
+    this.solid = solid.SOLID_BBOX; // CR: why not SOLID_TRIGGER?
+
+    this.setModel('progs/missile.mdl');
+    this.setSize(Vector.origin, Vector.origin);
   }
 }
 
@@ -498,6 +652,14 @@ export class PlayerWeapons {
     const direction = this._player.aim(forward);
 
     this._damageInflictor.fireBullets(14, direction, new Vector(0.14, 0.08, 0.0));
+  }
+
+  fireRocket() {
+    this._startSound('weapons/sgun1.wav');
+    this._player.currentammo = this._player.ammo_rockets = this._player.ammo_rockets - 1;
+    this._player.punchangle[0] = -2;
+
+    this._engine.SpawnEntity('weapon_projectile_missile', { owner: this._player });
   }
 }
 

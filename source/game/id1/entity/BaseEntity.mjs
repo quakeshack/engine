@@ -158,7 +158,7 @@ export default class BaseEntity {
    * Defines a state for the state machine.
    * @protected
    * @param {string} state state name
-   * @param {?string} keyframe frame/keyframe name the model should be in
+   * @param {?string|number} keyframe frame/keyframe name the model should be in
    * @param {?string} nextState state name of the automatic next state
    * @param {?Function} handler additional code to be executed
    */
@@ -205,7 +205,10 @@ export default class BaseEntity {
 
     const animation = this.game._modelData[this.model];
 
-    if (animation && data.keyframe) {
+    if (typeof (data.keyframe) === 'number') {
+      this.frame = data.keyframe;
+      this.keyframe = data.keyframe;
+    } else if (animation && data.keyframe) {
       const frame = animation.frames.indexOf(data.keyframe);
 
       if (frame) {
@@ -249,7 +252,7 @@ export default class BaseEntity {
       think.callback = callback;
       think.isRequired = isRequired;
     } else {
-      this._scheduledThinks.push({nextThink, callback, identifier, isRequired});
+      this._scheduledThinks.push({ nextThink, callback, identifier, isRequired });
     }
 
     this._scheduledThinks.sort((a, b) => a.nextThink - b.nextThink);
@@ -537,8 +540,7 @@ export default class BaseEntity {
   }
 
   /**
-   * Resets this entity.
-   * @deprecated
+   * Resets this entity. Useful for dealing with respawning players and other entities when required.
    */
   clear() {
   }

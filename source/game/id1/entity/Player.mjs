@@ -354,6 +354,13 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_shot5', 'shotatt5', 'player_shot6', () => { this.weaponframe = 5; });
     this._defineState('player_shot6', 'shotatt6', null, () => { this.weaponframe = 6; this._attackStateDone(); });
 
+    this._defineState('player_rocket1', 'rockatt1', 'player_rocket2', () => { this.weaponframe = 1; this.effects |= effect.EF_MUZZLEFLASH; });
+    this._defineState('player_rocket2', 'rockatt2', 'player_rocket3', () => { this.weaponframe = 2; });
+    this._defineState('player_rocket3', 'rockatt3', 'player_rocket4', () => { this.weaponframe = 3; });
+    this._defineState('player_rocket4', 'rockatt4', 'player_rocket5', () => { this.weaponframe = 4; });
+    this._defineState('player_rocket5', 'rockatt5', 'player_rocket6', () => { this.weaponframe = 5; });
+    this._defineState('player_rocket6', 'rockatt6', null, () => { this.weaponframe = 6; this._attackStateDone(); });
+
     this._defineState('player_axe1', 'axatt1', 'player_axe2', () => { this.weaponframe = 1; });
     this._defineState('player_axe2', 'axatt2', 'player_axe3', () => { this.weaponframe = 2; });
     this._defineState('player_axe3', 'axatt3', 'player_axe4', () => { this.weaponframe = 3; this._weapons.fireAxe(); });
@@ -497,7 +504,7 @@ export class PlayerEntity extends BaseEntity {
       let spot = this.game.lastspawn;
       let attempts = 32;
 
-      while (attempts-->0) {
+      while (attempts-- > 0) {
         spot = this.findNextEntityByFieldAndValue('classname', 'info_player_deathmatch', spot, true);
 
         if (!spot) {
@@ -527,7 +534,7 @@ export class PlayerEntity extends BaseEntity {
   /** @protected */
   _dropBackpack() {
     const backpack = this.engine.SpawnEntity('item_backpack', {
-      origin: this.origin.copy().subtract(new Vector(0.0, 0.0, -24.0)),
+      origin: this.origin.copy().subtract(new Vector(0.0, 0.0, 24.0)),
       items: this.weapon,
       ammo_cells: this.ammo_cells,
       ammo_nails: this.ammo_nails,
@@ -1071,6 +1078,12 @@ export class PlayerEntity extends BaseEntity {
         this.attack_finished = this.game.time + 0.7;
         break;
 
+      case items.IT_ROCKET_LAUNCHER:
+        this._runState('player_rocket1');
+        this._weapons.fireRocket();
+        this.attack_finished = this.game.time + 0.8;
+        break;
+
       default:
         this.consolePrint(`_weaponAttack: ${this.weapon} not implemented\n`);
         this.attack_finished = this.game.time + 1.0;
@@ -1170,11 +1183,9 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /**
-   * called by PutClientInServer
+   * Resets the player state.
    */
-  putPlayerInServer() {
-    const spot = this._selectSpawnPoint();
-
+  clear() {
     this.takedamage = damage.DAMAGE_AIM;
     this.solid = solid.SOLID_SLIDEBOX;
     this.movetype = moveType.MOVETYPE_WALK;
@@ -1191,31 +1202,36 @@ export class PlayerEntity extends BaseEntity {
     this.effects = 0;
     this.invincible_time = 0;
 
-    // CR: fields added by me later
-    this.jump_flag = 0;
-
-    this.decodeLevelParms();
-    this.setWeapon();
-
     this.attack_finished = this.time;
-    // NOTE: th_pain, th_die set by PlayerEntity
-
     this.deadflag = dead.DEAD_NO;
     this.pausetime = 0; // CR: used by teleporters
+
+    // CR: fields added by me later
+    this.jump_flag = 0;
 
     this.punchangle.clear();
     this.velocity.clear();
     this.avelocity.clear();
-    this.origin = spot.origin.copy().add(new Vector(0.0, 0.0, 1.0));
-    this.angles = spot.angles.copy();
     this.fixangle = true;
+    this.view_ofs.setTo(0.0, 0.0, 22.0);
 
     // NOTE: not doing the modelindex_eyes trick, we simply gonna use setModel
     this.setModel('progs/player.mdl');
-
     this.setSize(vec.VEC_HULL_MIN, vec.VEC_HULL_MAX);
 
-    this.view_ofs.setTo(0.0, 0.0, 22.0);
+    this.decodeLevelParms();
+    this.setWeapon();
+  }
+
+  /**
+   * called by PutClientInServer
+   */
+  putPlayerInServer() {
+    this.clear();
+
+    const spot = this._selectSpawnPoint();
+    this.origin = spot.origin.copy().add(new Vector(0.0, 0.0, 1.0));
+    this.angles = spot.angles.copy();
 
     this._enterStandingState();
 

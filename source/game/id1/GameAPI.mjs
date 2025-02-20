@@ -13,6 +13,7 @@ import { TriggerField } from "./entity/Subs.mjs";
 import { ButtonEntity } from "./entity/props/Buttons.mjs";
 import * as item from "./entity/Items.mjs";
 import BaseEntity from "./entity/BaseEntity.mjs";
+import * as weapon from "./entity/Weapons.mjs";
 
 // put all entity classes here:
 const entityRegistry = [
@@ -27,6 +28,8 @@ const entityRegistry = [
   InfoPlayerStartCoop,
   InfoPlayerStartDeathmatch,
   GibEntity,
+
+  weapon.Missile,
 
   misc.ViewthingEntity,
   misc.DebugMarkerEntity,
@@ -149,6 +152,7 @@ export class ServerGameAPI {
     this._modelData = { // FIXME: I’m not happy about this, this needs to be next to models
       'progs/soldier.mdl': engineAPI.ParseQC(soldierModelQC),
       'progs/player.mdl': engineAPI.ParseQC(playerModelQC),
+      // 'progs/s_explod.spr': engineAPI.ParseQC()
     };
 
     /** @private */
