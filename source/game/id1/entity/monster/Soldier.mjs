@@ -1,7 +1,8 @@
 /* global Vector */
 
-import { attn, channel, moveType, solid } from "../../Defs.mjs";
+import { attn, channel, damage, dead, moveType, solid } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
+import { GibEntity } from "../Player.mjs";
 import BaseMonster from "./BaseMonster.mjs";
 
 export const soldierModelQC = `
@@ -172,18 +173,20 @@ export default class ArmySoldierMonster extends BaseMonster {
 
   // eslint-disable-next-line no-unused-vars
   thinkDie(attackerEntity) {
-    if (this.edictId === 13) console.log('thinkDie');
+    console.log('thinkDie');
 
-// // check for gib
-// if (self.health < -35)
-// 	{
-// 		sound (self, CHAN_VOICE, "player/udeath.wav", 1, ATTN_NORM);
-// 		ThrowHead ("progs/h_guard.mdl", self.health);
-// 		ThrowGib ("progs/gib1.mdl", self.health);
-// 		ThrowGib ("progs/gib2.mdl", self.health);
-// 		ThrowGib ("progs/gib3.mdl", self.health);
-// 		return;
-// 	}
+    GibEntity.gibEntity(this, 'progs/h_guard.mdl', true);
+    // TODO
+
+    // this.resetThinking();
+    // this.deadflag = dead.DEAD_DEAD;
+    // this.solid = solid.SOLID_NOT;
+
+    // check for gib
+    if (this.health < -35.0) {
+      GibEntity.gibEntity(this, 'progs/h_guard.mdl', true);
+      return;
+    }
 
 // // regular death
 // 	sound (self, CHAN_VOICE, "soldier/death1.wav", 1, ATTN_NORM);
@@ -205,6 +208,7 @@ export default class ArmySoldierMonster extends BaseMonster {
     this.setModel("progs/soldier.mdl");
     this.setSize(new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 40.0));
     this.health = 30;
+    this.takedamage = damage.DAMAGE_AIM;
 
     super.spawn();
   }

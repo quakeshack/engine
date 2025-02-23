@@ -24,6 +24,20 @@ export function Precache(engine) {
   engine.PrecacheSound("weapons/shotgn2.wav");	// super shotgun
 }
 
+/**
+ * handy map to manage weapon slots
+ */
+export const weaponConfig = new Map([
+  [items.IT_AXE, { currentammo: null, weaponmodel: "progs/v_axe.mdl", priority: 0 }],
+  [items.IT_SHOTGUN, { currentammo: "ammo_shells", weaponmodel: "progs/v_shot.mdl", items: "IT_SHELLS", priority: 1 }],
+  [items.IT_SUPER_SHOTGUN, { currentammo: "ammo_shells", weaponmodel: "progs/v_shot2.mdl", items: "IT_SHELLS", priority: 2 }],
+  [items.IT_NAILGUN, { currentammo: "ammo_nails", weaponmodel: "progs/v_nail.mdl", items: "IT_NAILS", priority: 3 }],
+  [items.IT_SUPER_NAILGUN, { currentammo: "ammo_nails", weaponmodel: "progs/v_nail2.mdl", items: "IT_NAILS", priority: 4 }],
+  [items.IT_GRENADE_LAUNCHER, { currentammo: "ammo_rockets", weaponmodel: "progs/v_rock.mdl", items: "IT_ROCKETS", priority: 5 }],
+  [items.IT_ROCKET_LAUNCHER, { currentammo: "ammo_rockets", weaponmodel: "progs/v_rock2.mdl", items: "IT_ROCKETS", priority: 6 }],
+  [items.IT_LIGHTNING, { currentammo: "ammo_cells", weaponmodel: "progs/v_light.mdl", items: "IT_CELLS", priority: 7 }],
+]);
+
 /** struct holding items and ammo */
 export class Backpack {
   constructor() {
@@ -162,8 +176,18 @@ export class DamageInflictor extends EntityWrapper {
    * Emits gunshot event.
    * @param {?Vector} origin position (will fallback to player origin)
    */
-  dispatchGunshotEvent(origin) {
+  dispatchGunshotEvent(origin = null) {
     this._engine.DispatchTempEntityEvent(tentType.TE_GUNSHOT, origin ? origin : this._entity.origin);
+  }
+
+  /**
+   * Emits a beam event.
+   * @param {number} beamType temporary entity type
+   * @param {Vector} endOrigin end position
+   * @param {?Vector} startOrigin starting position (will fallback to player origin)
+   */
+  dispatchBeamEvent(beamType, endOrigin, startOrigin = null) {
+    this._engine.DispatchBeamEvent(beamType, this._entity.edictId, startOrigin ? startOrigin : this._entity.origin, endOrigin);
   }
 
   /**
@@ -227,6 +251,38 @@ export class DamageInflictor extends EntityWrapper {
       if (points > 0 && victim._damageHandler && victim._damageHandler.canReceiveDamage(this._entity)) {
         this._entity.damage(victim, points * victim._damageHandler.receiveDamageFactor.beam, null, hitPoint);
       }
+    }
+  }
+
+  lightningDamage(startOrigin, endOrigin, damage) {
+    const f = endOrigin.copy().subtract(startOrigin);
+    f.normalize();
+    f[0] = -f[1];
+    f[1] = f[0];
+    f[2] = 0.0;
+    f.multiply(16.0);
+
+    const trace1 = this._entity.traceline(startOrigin, endOrigin, false);
+    if (trace1.entity !== null && trace1.entity.takedamage) {
+      this._engine.StartParticles(trace1.point, new Vector(0.0, 0.0, 100.0), 225, damage * 4); // FIXME: hardcoded color code (225)
+      this._entity.damage(trace1.entity, damage);
+
+      // CR: ported over a fixed version, but commented out for now
+      // if (this._entity.classname === 'player' && trace1.entity.classname === 'player') {
+      //   trace1.entity.velocity[2] += 400.0;
+      // }
+    }
+
+    const trace2 = this._entity.traceline(startOrigin.copy().add(f), endOrigin.copy().add(f), false);
+    if (trace2.entity !== null && !trace2.entity.equals(trace1.entity) && trace2.entity.takedamage) {
+      this._engine.StartParticles(trace2.point, new Vector(0.0, 0.0, 100.0), 225, damage * 4); // FIXME: hardcoded color code (225)
+      this._entity.damage(trace2.entity, damage);
+    }
+
+    const trace3 = this._entity.traceline(startOrigin.copy().subtract(f), endOrigin.copy().subtract(f), false);
+    if (trace3.entity !== null && !trace3.entity.equals(trace1.entity) && !trace3.entity.equals(trace2.entity) && trace3.entity.takedamage) {
+      this._engine.StartParticles(trace3.point, new Vector(0.0, 0.0, 100.0), 225, damage * 4); // FIXME: hardcoded color code (225)
+      this._entity.damage(trace3.entity, damage);
     }
   }
 }
@@ -626,7 +682,6 @@ export class Missile extends BaseProjectile {
 
     this.setModel('progs/missile.mdl');
     this.setSize(Vector.origin, Vector.origin);
-
   }
 }
 
@@ -717,19 +772,47 @@ export class PlayerWeapons {
     /** @private */
     this._damageInflictor = new DamageInflictor(playerEntity);
 
+    /** @private */
+    this._state = {
+      lightningSoundTime: 0,
+    };
+
+    Object.seal(this._state);
     Object.seal(this);
   }
 
   /**
    * Starts sound on player’s weapon channel.
    * @param {string} sfxName sound
+   * @param {?number} chan alternative channel, useful for play multiple sounds in parallel
    * @private
    */
-  _startSound(sfxName) {
-    this._player.startSound(channel.CHAN_WEAPON, sfxName);
+  _startSound(sfxName, chan = channel.CHAN_WEAPON) {
+    this._player.startSound(chan, sfxName);
+  }
+
+  /**
+   * @returns {boolean} true, if the current weapon is okay to use
+   */
+  checkAmmo() { // QuakeC: weapons.qc/W_CheckNoAmmo
+    if (this._player.weapon === items.IT_AXE) {
+      return true;
+    }
+
+    const key = weaponConfig.get(this._player.weapon).currentammo;
+
+    if (key && this._player[key] > 0) {
+      return true;
+    }
+
+    this._player.selectBestWeapon();
+
+    return false;
   }
 
   fireAxe() {
+    // CR: no check ammo, it’s always true
+
     const { forward } = this._player.v_angle.angleVectors();
     const source = this._player.origin.copy().add(new Vector(0.0, 0.0, 16.0));
 
@@ -751,6 +834,10 @@ export class PlayerWeapons {
   }
 
   fireShotgun() {
+    if (!this.checkAmmo()) {
+      return;
+    }
+
     this._startSound('weapons/guncock.wav');
     this._player.currentammo = this._player.ammo_shells = this._player.ammo_shells - 1;
     this._player.punchangle[0] -= 2.0;
@@ -767,6 +854,10 @@ export class PlayerWeapons {
       return;
     }
 
+    if (!this.checkAmmo()) {
+      return;
+    }
+
     this._startSound('weapons/shotgn2.wav');
     this._player.currentammo = this._player.ammo_shells = this._player.ammo_shells - 2;
     this._player.punchangle[0] -= 4.0;
@@ -778,18 +869,21 @@ export class PlayerWeapons {
   }
 
   fireNailgun() {
+    if (!this.checkAmmo() || this._player.weapon !== items.IT_NAILGUN) {
+      return;
+    }
+
     this._startSound('weapons/rocket1i.wav');
     this._player.currentammo = this._player.ammo_nails = this._player.ammo_nails - 1;
     this._player.punchangle[0] -= 0.5;
 
-    this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0 && this._weaponCheckNoAmmo()) { this._weapons.fireNailgun(); } });
+    this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0) { this._weapons.fireNailgun(); } });
 
     this._engine.SpawnEntity('weapon_projectile_spike', { owner: this._player });
   }
 
   fireSuperNailgun() {
-    if (this._player.currentammo === 1) {
-      this.fireNailgun();
+    if (!this.checkAmmo() || this._player.weapon !== items.IT_SUPER_NAILGUN) {
       return;
     }
 
@@ -797,12 +891,20 @@ export class PlayerWeapons {
     this._player.currentammo = this._player.ammo_nails = this._player.ammo_nails - 2;
     this._player.punchangle[0] -= 0.5;
 
-    this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0 && this._weaponCheckNoAmmo()) { this._weapons.fireSuperNailgun(); } });
+    if (this._player.currentammo >= 0) {
+      this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0) { this._weapons.fireSuperNailgun(); } });
 
-    this._engine.SpawnEntity('weapon_projectile_superspike', { owner: this._player });
+      this._engine.SpawnEntity('weapon_projectile_superspike', { owner: this._player });
+    } else {
+      this._engine.SpawnEntity('weapon_projectile_spike', { owner: this._player });
+    }
   }
 
   fireRocket() {
+    if (!this.checkAmmo()) {
+      return;
+    }
+
     this._startSound('weapons/sgun1.wav');
     this._player.currentammo = this._player.ammo_rockets = this._player.ammo_rockets - 1;
     this._player.punchangle[0] = -2;
@@ -811,6 +913,10 @@ export class PlayerWeapons {
   }
 
   fireGrenade() {
+    if (!this.checkAmmo()) {
+      return;
+    }
+
     this._startSound('weapons/grenade.wav');
     this._player.currentammo = this._player.ammo_rockets = this._player.ammo_rockets - 1;
     this._player.punchangle[0] = -2;
@@ -829,6 +935,43 @@ export class PlayerWeapons {
     }
 
     this._engine.SpawnEntity('weapon_projectile_grenade', { owner: this._player, velocity });
+  }
+
+  fireLightning(attackContinuation = false) {
+    if (!attackContinuation) {
+      this._startSound('weapons/lstart.wav', channel.CHAN_AUTO);
+    }
+
+    if (!this.checkAmmo()) {
+      return;
+    }
+
+    // explode if under water
+    if (this._player.waterlevel > 1) {
+      const ammo = this._player.ammo_cells;
+      this._damageInflictor.blastDamage(damage, this._player, ammo * 35);
+      this._player.ammo_cells = ammo;
+      return;
+    }
+
+    if (attackContinuation && this._state.lightningSoundTime < this._game.time) {
+      this._startSound('weapons/lhit.wav');
+      this._state.lightningSoundTime = this._game.time + 0.6;
+    }
+
+    this._player.punchangle[0] -= 1.0;
+
+    this._player.currentammo = this._player.ammo_cells = this._player.ammo_cells - 1;
+
+    const origin = (new Vector(0.0, 0.0, 16.0)).add(this._player.origin);
+    const { forward } = this._player.v_angle.angleVectors();
+
+    const trace = this._player.traceline(origin, forward.multiply(600.0).add(origin), true);
+
+    this._damageInflictor.dispatchBeamEvent(tentType.TE_LIGHTNING2, trace.point, origin);
+    this._damageInflictor.lightningDamage(origin, trace.point.add(forward.multiply(4.0/600.0)), 30);
+
+    this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0) { this._weapons.fireLightning(true); } });
   }
 }
 

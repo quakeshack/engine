@@ -309,6 +309,10 @@ class MainMenu extends BaseMenu {
 ### 2025-02-23
 
 * found the root of discrepancies: equals check with Edicts (fed by the engine) instead of Entities
+* added Lightning gun
+* some more fixes around weapon states
+* simplied some code here and there
+* introduced `sv_cheats`
 
 ### 2025-02-22
 

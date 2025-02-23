@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { channel, flags, items, moveType, solid, worldType } from "../Defs.mjs";
+import { channel, flags, items, moveType, solid, tentType, worldType } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { PlayerEntity, playerEvent } from "./Player.mjs";
 import { Sub } from "./Subs.mjs";
@@ -73,6 +73,7 @@ class BaseItemEntity extends BaseEntity {
     this.solid = solid.SOLID_TRIGGER;
     this.startSound(channel.CHAN_VOICE, "items/itembk2.wav");
     this.setOrigin(this.origin);
+    this.engine.DispatchTempEntityEvent(tentType.TE_TELEPORT, this.centerPoint); // CR: added neat teleport in effect
   }
 
   toss() {

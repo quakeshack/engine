@@ -448,6 +448,7 @@ SV.Init = function() {
   SV.aim = Cvar.RegisterVariable('sv_aim', '0.93');
   SV.nostep = Cvar.RegisterVariable('sv_nostep', '0');
   SV.rcon_password = Cvar.RegisterVariable('sv_rcon_password', '', true, true);
+  SV.cheats = Cvar.RegisterVariable('sv_cheats', '0');
 
   SV.nop = {data: new ArrayBuffer(4), cursize: 1};
   (new Uint8Array(SV.nop.data))[0] = Protocol.svc.nop;
@@ -2340,7 +2341,7 @@ SV.Physics = function() {
     if (ent.isFree()) {
       continue;
     }
-    if (SV.server.gameAPI.force_retouch !== 0.0) {
+    if (SV.server.gameAPI.force_retouch-- > 0) {
       SV.LinkEdict(ent, true);
     }
     if (ent.isClient()) {
@@ -2368,9 +2369,6 @@ SV.Physics = function() {
         continue;
     }
     Sys.Error('SV.Physics: bad movetype ' + (ent.entity.movetype >> 0));
-  }
-  if (SV.server.gameAPI.force_retouch !== 0.0) {
-    --SV.server.gameAPI.force_retouch;
   }
   SV.server.time += Host.frametime;
   SV.StepPhysicsEngine();

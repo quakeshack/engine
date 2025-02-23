@@ -4,22 +4,8 @@ import { attn, channel, content, damage, dead, deathType, effect, flags, items, 
 import { crandom, Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { InfoNotNullEntity } from "./Misc.mjs";
-import { Backpack, DamageHandler, PlayerWeapons } from "./Weapons.mjs";
+import { Backpack, DamageHandler, PlayerWeapons, weaponConfig } from "./Weapons.mjs";
 import { CopyToBodyQue } from "./Worldspawn.mjs";
-
-/**
- * handy map to manage weapon slots
- */
-const weaponConfig = new Map([
-  [items.IT_AXE, { currentammo: null, weaponmodel: "progs/v_axe.mdl", weaponframe: 0, priority: 0 }],
-  [items.IT_SHOTGUN, { currentammo: "ammo_shells", weaponmodel: "progs/v_shot.mdl", weaponframe: 0, items: "IT_SHELLS", priority: 1 }],
-  [items.IT_SUPER_SHOTGUN, { currentammo: "ammo_shells", weaponmodel: "progs/v_shot2.mdl", weaponframe: 0, items: "IT_SHELLS", priority: 2 }],
-  [items.IT_NAILGUN, { currentammo: "ammo_nails", weaponmodel: "progs/v_nail.mdl", weaponframe: 0, items: "IT_NAILS", priority: 3 }],
-  [items.IT_SUPER_NAILGUN, { currentammo: "ammo_nails", weaponmodel: "progs/v_nail2.mdl", weaponframe: 0, items: "IT_NAILS", priority: 4 }],
-  [items.IT_GRENADE_LAUNCHER, { currentammo: "ammo_rockets", weaponmodel: "progs/v_rock.mdl", weaponframe: 0, items: "IT_ROCKETS", priority: 5 }],
-  [items.IT_ROCKET_LAUNCHER, { currentammo: "ammo_rockets", weaponmodel: "progs/v_rock2.mdl", weaponframe: 0, items: "IT_ROCKETS", priority: 6 }],
-  [items.IT_LIGHTNING, { currentammo: "ammo_cells", weaponmodel: "progs/v_light.mdl", weaponframe: 0, items: "IT_CELLS", priority: 7 }],
-]);
 
 /**
  * used to emit effects etc. to the client
@@ -467,6 +453,9 @@ export class PlayerEntity extends BaseEntity {
 
     this._defineState('player_nail1', 'nailatt1', 'player_nail2', () => { this._attackNailState(); } );
     this._defineState('player_nail2', 'nailatt2', 'player_nail1', () => { this._attackNailState(); } );
+
+    this._defineState('player_light1', 'nailatt1', 'player_light2', () => { this._attackLightningState(); } );
+    this._defineState('player_light2', 'nailatt2', 'player_light1', () => { this._attackLightningState(); } );
   }
 
   /** @protected */
@@ -483,6 +472,28 @@ export class PlayerEntity extends BaseEntity {
     }
 
     this.weaponframe++;
+
+    // reset attack finished, otherwise it might be possible to spam impulses in the meantime
+    this.attack_finished = this.game.time + 0.2;
+  }
+
+  /** @protected */
+  _attackLightningState() {
+    this.effects |= effect.EF_MUZZLEFLASH;
+
+    if (!this.button0) {
+      this._attackStateDone();
+      return;
+    }
+
+    if (this.weaponframe < 0 || this.weaponframe >= 4) {
+      this.weaponframe = 0;
+    }
+
+    this.weaponframe++;
+
+    // reset attack finished, otherwise it might be possible to spam impulses in the meantime
+    this.attack_finished = this.game.time + 0.2;
   }
 
   /** @protected */
@@ -803,8 +814,12 @@ export class PlayerEntity extends BaseEntity {
     return backpackUsed;
   }
 
-  isOutOfAmmo() {
-    // TODO
+  /**
+   * Checks ammo situation for the currently selected weapon.
+   * @returns {boolean} true, if the current weapon has ammo
+   */
+  checkAmmo() {
+    return this._weapons.checkAmmo();
   }
 
   /**
@@ -843,7 +858,7 @@ export class PlayerEntity extends BaseEntity {
 
   /** @private */
   _killRay() {
-    if (this.game.deathmatch || this.game.coop) {
+    if (!this._canUseCheats()) {
       return;
     }
 
@@ -863,34 +878,33 @@ export class PlayerEntity extends BaseEntity {
 
   /** @private */
   _cheatCommandGeneric() {
-    if (this.game.deathmatch || this.game.coop) {
+    if (!this._canUseCheats()) {
       return;
     }
 
-    this.ammo_rockets = 100;
-    this.ammo_nails = 200;
-    this.ammo_shells = 100;
-    this.ammo_cells = 200;
-
-    this.items |=
-      items.IT_AXE |
-      items.IT_SHOTGUN |
-      items.IT_SUPER_SHOTGUN |
-      items.IT_NAILGUN |
-      items.IT_SUPER_NAILGUN |
-      items.IT_GRENADE_LAUNCHER |
-      items.IT_ROCKET_LAUNCHER |
-      items.IT_LIGHTNING |
-      items.IT_KEY1 | items.IT_KEY2;
+    this.applyBackpack({
+      items:
+        items.IT_AXE |
+        items.IT_SHOTGUN |
+        items.IT_SUPER_SHOTGUN |
+        items.IT_NAILGUN |
+        items.IT_SUPER_NAILGUN |
+        items.IT_GRENADE_LAUNCHER |
+        items.IT_ROCKET_LAUNCHER |
+        items.IT_LIGHTNING |
+        items.IT_KEY1 | items.IT_KEY2,
+      ammo_rockets: 25,
+      ammo_nails: 100,
+      ammo_shells: 50,
+      ammo_cells: 100,
+    });
 
     this.dispatchEvent(playerEvent.BONUS_FLASH);
-
-    this.selectBestWeapon();
   }
 
   /** @private */
   _cheatCommandQuad() {
-    if (this.game.deathmatch || this.game.coop) {
+    if (!this._canUseCheats()) {
       return;
     }
 
@@ -1002,6 +1016,23 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /**
+   * @private
+   * @returns {boolean} true, when cheats are allowed
+   */
+  _canUseCheats() {
+    if (!this.game.deathmatch && !this.game.coop) {
+      return true;
+    }
+
+    if (!this.engine.GetCvar('sv_cheats').value) {
+      this.consolePrint('Cheats are not enabled on this server.\n');
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * handles impulse commands
    * @private
    */
@@ -1044,27 +1075,9 @@ export class PlayerEntity extends BaseEntity {
     this.impulse = 0;
   }
 
-  /**
-   * @protected
-   * @returns {boolean} true, if the current weapon is okay to use
-   */
-  _weaponCheckNoAmmo() { // QuakeC: weapons.qc/W_CheckNoAmmo
-    if (this.currentammo > 0) {
-      return true;
-    }
-
-    if (this.weapon === items.IT_AXE) {
-      return true;
-    }
-
-    this.selectBestWeapon();
-
-    return false;
-  }
-
   /** @protected */
   _weaponAttack() { // QuakeC: weapons.qc/W_Attack
-    if (!this._weaponCheckNoAmmo()) {
+    if (!this._weapons.checkAmmo()) {
       return;
     }
 
@@ -1123,9 +1136,15 @@ export class PlayerEntity extends BaseEntity {
         this.attack_finished = this.game.time + 0.2;
         break;
 
+      case items.IT_LIGHTNING:
+        this._runState('player_light1');
+        this._weapons.fireLightning();
+        this.attack_finished = this.game.time + 0.1;
+        break;
+
       default:
         this.consolePrint(`_weaponAttack: ${this.weapon} not implemented\n`);
-        this.attack_finished = this.game.time + 1.0;
+        this.attack_finished = this.game.time + 0.1;
         break;
     }
   }
