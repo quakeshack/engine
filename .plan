@@ -313,6 +313,7 @@ class MainMenu extends BaseMenu {
 * some more fixes around weapon states
 * simplied some code here and there
 * introduced `sv_cheats`
+* added artifact items as well as sigils
 
 ### 2025-02-22
 

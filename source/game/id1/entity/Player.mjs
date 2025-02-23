@@ -180,11 +180,14 @@ export class PlayerEntity extends BaseEntity {
     this.deathtype = deathType.NONE;		// keeps track of how the player died
 
     // expiration of items
+    this.super_time = 0;
     this.super_damage_finished = 0;
+    this.rad_time = 0;
     this.radsuit_finished = 0;
+    this.invisible_time = 0;
     this.invisible_finished = 0;
-    this.invincible_finished = 0;
     this.invincible_time = 0;
+    this.invincible_finished = 0;
 
     // time related checks
     this.super_sound = 0; // time for next super attack sound
@@ -1231,6 +1234,13 @@ export class PlayerEntity extends BaseEntity {
     }
   }
 
+  _checkPowerups() { // QuakeC: player.qc/CheckPowerups
+    // TODO
+    if (this.invisible_finished > this.game.time) {
+
+    }
+  }
+
   /** @protected */
   _useThink() {
     if (!this.button1) {
@@ -1285,11 +1295,11 @@ export class PlayerEntity extends BaseEntity {
    * called by PutClientInServer
    */
   putPlayerInServer() {
-    this.clear();
-
     const spot = this._selectSpawnPoint();
     this.origin = spot.origin.copy().add(new Vector(0.0, 0.0, 1.0));
     this.angles = spot.angles.copy();
+
+    this.clear(); // CR: keep clear after setting origin, otherwise setModel will trigger a touch due to relinking after setting mins/maxs
 
     this._enterStandingState();
 
@@ -1480,7 +1490,7 @@ export class PlayerEntity extends BaseEntity {
       this.jump_flag = this.velocity[2];
     }
 
-    // TODO: CheckPowerups()
+    this._checkPowerups();
   }
 
   /**

@@ -367,7 +367,7 @@ export default class BaseEntity {
   }
 
   /**
-   * Sets the origin, the engine will set origin property accordingly and relink the edict to related areas.
+   * Sets the origin, the engine will set origin property accordingly and relink the edict to related areas, but do not trigger touchs.
    * @param {Vector} origin position in the world
    */
   setOrigin(origin) {
@@ -376,6 +376,7 @@ export default class BaseEntity {
 
   /**
    * Sets model, the engine will also set properties model, modelindex as well.
+   * The engine will also set mins/maxs based on the model causing a relink and touch cascade.
    * To clear model, use unsetModel().
    * @param {string} modelname e.g. progs/player.mdl
    */
@@ -402,6 +403,7 @@ export default class BaseEntity {
 
   /**
    * Sets bounding box sizes.
+   * The engine will relink, check collisions and call touch, if applicable.
    * @param {Vector} mins the nearest point
    * @param {Vector} maxs the farthest point
    */

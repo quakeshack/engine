@@ -37,7 +37,7 @@ export const itemNames = {
   [items.IT_KEY2]: "Gold Key",
 };
 
-class BaseItemEntity extends BaseEntity {
+export class BaseItemEntity extends BaseEntity {
   spawn() {
     this.flags = flags.FL_ITEM;
     this.solid = solid.SOLID_TRIGGER;
@@ -100,11 +100,6 @@ class BaseItemEntity extends BaseEntity {
     /** @type {PlayerEntity} */
     const player = otherEntity;
 
-    // let the player consume this backpack
-    if (!player.applyBackpack(this)) {
-      return; // player’s inventory is already full
-    }
-
     const items = [];
 
     // check if this items is new in player’s inventory
@@ -132,8 +127,15 @@ class BaseItemEntity extends BaseEntity {
       items.push(`${this.ammo_cells} cells`);
     }
 
+    // let the player consume this backpack
+    if (items.length > 0 && !player.applyBackpack(this)) {
+      return; // player’s inventory is already full
+    }
+
     if (items.length > 0) {
       player.consolePrint(`You got ${items.join(', ')}.\n`);
+    } else if (this.netname) {
+      player.consolePrint(`You got ${this.netname}!\n`);
     } else {
       player.consolePrint(`You found an empty item.\n`);
     }
@@ -199,7 +201,7 @@ export class BackpackEntity extends BaseItemEntity {
   }
 };
 
-class BaseAmmoEntity extends BaseItemEntity {
+export class BaseAmmoEntity extends BaseItemEntity {
   /** @type {string} model set, when WEAPON_BIG2 is not set */
   static _model = null;
   /** @type {string} model set, when WEAPON_BIG2 is set */
@@ -314,7 +316,7 @@ export class ItemCellsEntity extends BaseAmmoEntity {
   }
 };
 
-class BaseKeyEntity extends BaseItemEntity {
+export class BaseKeyEntity extends BaseItemEntity {
   /** @type {items} key flag */
   static _item = 0;
 
@@ -468,3 +470,215 @@ export class GoldKeyEntity extends BaseKeyEntity {
   };
 };
 
+export class BaseArtifactEntity extends BaseItemEntity {
+  static _item = 0;
+  static _regenerationTime = 60;
+
+  static _model = null;
+  static _noise = null;
+  static _precache = { sounds: [] };
+
+  _precache() {
+    this.engine.PrecacheModel(this.constructor._model);
+    for (const sound of this.constructor._precache.sounds) {
+      this.engine.PrecacheSound(sound);
+    }
+  }
+
+  _declareFields() {
+    super._declareFields();
+    this.regeneration_time = this.constructor._regenerationTime;
+  }
+
+  spawn() {
+    super.spawn();
+
+    this.noise = this.constructor._noise;
+    this.items |= this.constructor._item;
+
+    this.setModel(this.constructor._model);
+    this.setSize(new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0));
+  }
+
+  _afterTouch(playerEntity) {
+    this._updateTimers(playerEntity);
+    super._afterTouch(playerEntity);
+  }
+
+  /**
+   * Called when successfully picked up the artifact.
+   * @param {PlayerEntity} playerEntity player who picked it up
+   * @protected
+   */
+  // eslint-disable-next-line no-unused-vars
+  _updateTimers(playerEntity) {
+    // update timers here, e.g. super_time = 1, super_damage_finished = time + 30 etc.
+  }
+};
+
+/**
+ * QUAKED item_artifact_invulnerability (0 .5 .8) (-16 -16 -24) (16 16 32)
+ * Player is invulnerable for 30 seconds
+ */
+export class InvulnerabilityEntity extends BaseArtifactEntity {
+  static classname = 'item_artifact_invulnerability';
+
+  static _item = items.IT_INVULNERABILITY;
+  static _model = 'progs/invulner.mdl';
+  static _noise = 'items/protect.wav';
+
+  static _regenerationTime = 300; // 5 mins
+
+  static _precache = {
+    sounds: [
+      'items/protect.wav',
+      'items/protect2.wav',
+      'items/protect3.wav',
+    ],
+  };
+
+  _updateTimers(playerEntity) {
+    playerEntity.invincible_time = 1;
+    playerEntity.invincible_finished = this.game.time + 30;
+  }
+};
+
+/**
+ * QUAKED item_artifact_invisibility (0 .5 .8) (-16 -16 -24) (16 16 32)
+ * Player is invisible for 30 seconds
+ */
+export class InvisibilityEntity extends BaseArtifactEntity {
+  static classname = 'item_artifact_invisibility';
+
+  static _item = items.IT_INVISIBILITY;
+  static _model = 'progs/invisibl.mdl';
+  static _noise = 'items/inv1.wav';
+
+  static _regenerationTime = 300; // 5 mins
+
+  static _precache = {
+    sounds: [
+      'items/inv1.wav',
+      'items/inv2.wav',
+      'items/inv3.wav',
+    ],
+  };
+
+  _updateTimers(playerEntity) {
+    playerEntity.invisible_time = 1;
+    playerEntity.invisible_finished = this.game.time + 30;
+  }
+};
+
+/**
+ * QUAKED item_artifact_envirosuit (0 .5 .8) (-16 -16 -24) (16 16 32)
+ * Player takes no damage from water or slime for 30 seconds
+ */
+export class RadsuitEntity extends BaseArtifactEntity {
+  static classname = 'item_artifact_envirosuit';
+
+  static _item = items.IT_SUIT;
+  static _model = 'progs/suit.mdl';
+  static _noise = 'items/suit.wav';
+
+  static _precache = {
+    sounds: [
+      'items/suit.wav',
+      'items/suit2.wav',
+    ],
+  };
+
+  _updateTimers(playerEntity) {
+    playerEntity.rad_time = 1;
+    playerEntity.radsuit_finished = this.game.time + 30;
+  }
+};
+
+/**
+ * QUAKED item_artifact_super_damage (0 .5 .8) (-16 -16 -24) (16 16 32)
+ * The next attack from the player will do 4x damage
+ */
+export class SuperDamageEntity extends BaseArtifactEntity {
+  static classname = 'item_artifact_super_damage';
+
+  static _item = items.IT_QUAD;
+  static _model = 'progs/quaddama.mdl';
+  static _noise = 'items/damage.wav';
+
+  static _precache = {
+    sounds: [
+      'items/damage.wav',
+      'items/damage2.wav',
+      'items/damage3.wav',
+    ],
+  };
+
+  _updateTimers(playerEntity) {
+    playerEntity.super_time = 1;
+    playerEntity.super_damage_finished = this.game.time + 30;
+  }
+};
+
+/**
+ * QUAKED item_sigil (0 .5 .8) (-16 -16 -24) (16 16 32) E1 E2 E3 E4
+ * End of level sigil, pick up to end episode and return to jrstart.
+ */
+export class SigilEntity extends BaseItemEntity {
+  static classname = 'item_sigil';
+
+  static _models = ['progs/end1.mdl', 'progs/end2.mdl', 'progs/end3.mdl', 'progs/end4.mdl'];
+
+  get netname() {
+    return 'the rune';
+  }
+
+  get classname() {
+    // CR: somewhat shitty hack to not break original Quake maps
+    if (this.spawnflags === 15) {
+      return this.constructor.classname + ' (used)';
+    }
+
+    return this.constructor.classname;
+  }
+
+  _precache() {
+    this.engine.PrecacheSound('misc/runekey.wav');
+
+    for (let i = 0; i < 4; i++) {
+      if ((this.spawnflags & (1 << i))) {
+        this.engine.PrecacheModel(this.constructor._models[i]);
+        break;
+      }
+    }
+  }
+
+  _declareFields() {
+    super._declareFields();
+    this.noise = 'misc/runekey.wav';
+  }
+
+  _afterTouch(playerEntity) {
+    this.solid = solid.SOLID_NOT;
+    this.unsetModel();
+
+    this.game.serverflags |= this.spawnflags & 15;
+
+    this.spawnflags = 15;
+
+    // trigger all connected actions
+    this._sub.useTargets(playerEntity);
+  }
+
+  spawn() {
+    super.spawn();
+
+    for (let i = 0; i < 4; i++) {
+      if ((this.spawnflags & (1 << i))) {
+        this.setModel(this.constructor._models[i]);
+        break;
+      }
+    }
+
+    this.setSize(new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0));
+  }
+};

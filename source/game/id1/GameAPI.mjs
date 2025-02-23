@@ -89,6 +89,13 @@ const entityRegistry = [
 
   item.GoldKeyEntity,
   item.SilverKeyEntity,
+
+  item.InvisibilityEntity,
+  item.InvulnerabilityEntity,
+  item.RadsuitEntity,
+  item.SuperDamageEntity,
+
+  item.SigilEntity,
 ];
 
 export class ServerGameAPI {
