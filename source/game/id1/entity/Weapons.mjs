@@ -170,7 +170,7 @@ export class DamageInflictor extends EntityWrapper {
    * @param {*} damage damage points
    * @param {?BaseEntity} attackerEntity
    * @param {*} hitPoint exact hit point
-   * @param {?BaseEntity} ignore
+   * @param {?BaseEntity} (optionally) entity to not hurt
    */
   blastDamage(damage, attackerEntity, hitPoint, ignore = null) { // QuakeC: combat.qc/T_RadiusDamage
     // TODO: T_RadiusDamage
@@ -514,6 +514,8 @@ class BaseProjectile extends BaseEntity {
    * Prepares the projectile by setting velocity (direction only), adjusts origin a bit, adds removal thinker.
    */
   spawn() {
+    this.solid = solid.SOLID_BBOX;
+
     // direction
     const { forward } = this.owner.v_angle.angleVectors();
     this.velocity.set(this.aim(forward));
@@ -525,6 +527,59 @@ class BaseProjectile extends BaseEntity {
 
     // remove after 5s
     this._scheduleThink(this.game.time + 5.0, () => this.remove());
+  }
+}
+
+export class Grenade extends BaseProjectile {
+  static classname = 'weapon_projectile_grenade';
+
+  /** @private */
+  _explode() {
+    this.resetThinking();
+
+    this._damageInflictor.blastDamage(120, this.owner, this.origin);
+
+    this.velocity.normalize();
+    this.origin.subtract(this.velocity.multiply(8.0));
+
+    this._becomeExplosion();
+  }
+
+  touch(touchedByEntity) {
+    if (this.solid === solid.SOLID_NOT) {
+      return;
+    }
+
+    if (this.owner && touchedByEntity.equals(this.owner)) {
+      return; // don't explode on owner
+    }
+
+    if (touchedByEntity.takedamage === damage.DAMAGE_AIM) {
+      this._explode();
+      return;
+    }
+
+    this.startSound(channel.CHAN_WEAPON, "weapons/bounce.wav");
+
+    if (this.velocity.isOrigin()) {
+      this.avelocity.clear();
+    }
+  }
+
+  spawn() {
+    this.solid = solid.SOLID_BBOX;
+    this.movetype = moveType.MOVETYPE_BOUNCE;
+
+    if (this.velocity.len() > 0) {
+      this.avelocity.set(300.0, 300.0, 300.0);
+      this.angles.set(this.velocity.toAngles());
+    }
+
+    this.setModel('progs/grenade.mdl');
+    this.setSize(Vector.origin, Vector.origin);
+    this.setOrigin(this.owner.origin);
+
+    this._scheduleThink(this.game.time + 2.5, () => this._explode());
   }
 }
 
@@ -565,14 +620,82 @@ export class Missile extends BaseProjectile {
 
     super.spawn();
 
-    this.velocity.multiply(1000.0); // fast projectile
-
     this.movetype = moveType.MOVETYPE_FLYMISSILE;
-    this.solid = solid.SOLID_BBOX; // CR: why not SOLID_TRIGGER?
+
+    this.velocity.multiply(1000.0); // fast projectile
 
     this.setModel('progs/missile.mdl');
     this.setSize(Vector.origin, Vector.origin);
+
   }
+}
+
+export class BaseSpike extends BaseProjectile {
+  static _damage = 0;
+  static _tentType = null;
+
+  /**
+   * @param {BaseEntity} touchedByEntity impacted entity
+   * @protected
+   */
+  _handleImpact(touchedByEntity) {
+    if (this.owner && touchedByEntity.equals(this.owner)) {
+      return; // don't explode on owner
+    }
+
+    if (touchedByEntity.solid === solid.SOLID_TRIGGER) {
+      return; // do not trigger fields
+    }
+
+    if (touchedByEntity.health > 0) {
+      this.damage(touchedByEntity, this.constructor._damage, this.owner, this.origin);
+    }
+
+    this.engine.DispatchTempEntityEvent(this.constructor._tentType, this.origin);
+
+    this.remove();
+  }
+
+  spawn() {
+    if (!this.owner) {
+      this.engine.DebugPrint(`BaseSpike.spawn: missing owner on ${this}, removing entity\n`);
+      this.remove();
+      return;
+    }
+
+    super.spawn();
+
+    this.movetype = moveType.MOVETYPE_FLYMISSILE;
+
+    this.velocity.multiply(1000.0); // fast projectile
+
+    this.setModel('progs/s_spike.mdl');
+    this.setSize(Vector.origin, Vector.origin);
+  }
+}
+
+export class Spike extends BaseSpike {
+  static classname = 'weapon_projectile_spike';
+  static _damage = 9;
+  static _tentType = tentType.TE_SPIKE;
+
+  spawn() {
+    super.spawn();
+
+    if (typeof (this.owner.weaponframe) !== 'number') {
+      return;
+    }
+
+    const { right } = this.owner.v_angle.angleVectors();
+    this.origin.add(right.multiply((this.owner.weaponframe % 2) === 1 ? 4.0 : -4.0));
+    this.setOrigin(this.origin);
+  }
+}
+
+export class Superspike extends BaseSpike {
+  static classname = 'weapon_projectile_superspike';
+  static _damage = 18;
+  static _tentType = tentType.TE_SUPERSPIKE;
 }
 
 /**
@@ -654,12 +777,58 @@ export class PlayerWeapons {
     this._damageInflictor.fireBullets(14, direction, new Vector(0.14, 0.08, 0.0));
   }
 
+  fireNailgun() {
+    this._startSound('weapons/rocket1i.wav');
+    this._player.currentammo = this._player.ammo_nails = this._player.ammo_nails - 1;
+    this._player.punchangle[0] -= 0.5;
+
+    this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0 && this._weaponCheckNoAmmo()) { this._weapons.fireNailgun(); } });
+
+    this._engine.SpawnEntity('weapon_projectile_spike', { owner: this._player });
+  }
+
+  fireSuperNailgun() {
+    if (this._player.currentammo === 1) {
+      this.fireNailgun();
+      return;
+    }
+
+    this._startSound('weapons/spike2.wav');
+    this._player.currentammo = this._player.ammo_nails = this._player.ammo_nails - 2;
+    this._player.punchangle[0] -= 0.5;
+
+    this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0 && this._weaponCheckNoAmmo()) { this._weapons.fireSuperNailgun(); } });
+
+    this._engine.SpawnEntity('weapon_projectile_superspike', { owner: this._player });
+  }
+
   fireRocket() {
     this._startSound('weapons/sgun1.wav');
     this._player.currentammo = this._player.ammo_rockets = this._player.ammo_rockets - 1;
     this._player.punchangle[0] = -2;
 
     this._engine.SpawnEntity('weapon_projectile_missile', { owner: this._player });
+  }
+
+  fireGrenade() {
+    this._startSound('weapons/grenade.wav');
+    this._player.currentammo = this._player.ammo_rockets = this._player.ammo_rockets - 1;
+    this._player.punchangle[0] = -2;
+
+    const velocity = new Vector();
+    const { forward, up, right } = this._player.v_angle.angleVectors();
+
+    if (this._player.v_angle[0] !== 0.0) {
+      velocity.add(forward.multiply(600.0));
+      velocity.add(up.copy().multiply(200.0));
+      velocity.add(right.multiply(10.0 * crandom()));
+      velocity.add(up.multiply(10.0 * crandom()));
+    } else {
+      velocity.set(this._player.aim(forward).multiply(600.0));
+      velocity[2] = 200.0;
+    }
+
+    this._engine.SpawnEntity('weapon_projectile_grenade', { owner: this._player, velocity });
   }
 }
 

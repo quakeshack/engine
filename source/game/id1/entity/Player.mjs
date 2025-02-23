@@ -266,6 +266,8 @@ export class PlayerEntity extends BaseEntity {
 
   /** @protected */
   _attackStateDone() {
+    this.weaponframe = 0;
+
     // that replaces the next state player_run with a custom logic
     this._scheduleThink(this.game.time + 0.1, () => {
       if (this._stateAssertStanding()) {
@@ -463,6 +465,24 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_die_ax8', 'axdeth8', 'player_die_ax9');
     this._defineState('player_die_ax9', 'axdeth9', null, () => { this._playerDead(); });
 
+    this._defineState('player_nail1', 'nailatt1', 'player_nail2', () => { this._attackNailState(); } );
+    this._defineState('player_nail2', 'nailatt2', 'player_nail1', () => { this._attackNailState(); } );
+  }
+
+  /** @protected */
+  _attackNailState() {
+    this.effects |= effect.EF_MUZZLEFLASH;
+
+    if (!this.button0) {
+      this._attackStateDone();
+      return;
+    }
+
+    if (this.weaponframe < 0 || this.weaponframe >= 8) {
+      this.weaponframe = 0;
+    }
+
+    this.weaponframe++;
   }
 
   /** @protected */
@@ -562,7 +582,8 @@ export class PlayerEntity extends BaseEntity {
     }
 
     this.weaponmodel = null;
-    this.view_ofs.setTo(0, 0, -8.0);
+    this.weaponframe = 0;
+    this.view_ofs.setTo(0.0, 0.0, -8.0);
     this.deadflag = dead.DEAD_DYING;
     this.solid = solid.SOLID_NOT;
     this.flags &= ~(flags.FL_ONGROUND);
@@ -1082,6 +1103,24 @@ export class PlayerEntity extends BaseEntity {
         this._runState('player_rocket1');
         this._weapons.fireRocket();
         this.attack_finished = this.game.time + 0.8;
+        break;
+
+      case items.IT_GRENADE_LAUNCHER:
+        this._runState('player_rocket1');
+        this._weapons.fireGrenade();
+        this.attack_finished = this.game.time + 0.8;
+        break;
+
+      case items.IT_NAILGUN:
+        this._runState('player_nail1');
+        this._weapons.fireNailgun();
+        this.attack_finished = this.game.time + 0.2;
+        break;
+
+      case items.IT_SUPER_NAILGUN:
+        this._runState('player_nail1');
+        this._weapons.fireSuperNailgun();
+        this.attack_finished = this.game.time + 0.2;
         break;
 
       default:

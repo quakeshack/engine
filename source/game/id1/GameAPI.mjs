@@ -30,6 +30,9 @@ const entityRegistry = [
   GibEntity,
 
   weapon.Missile,
+  weapon.Spike,
+  weapon.Superspike,
+  weapon.Grenade,
 
   misc.ViewthingEntity,
   misc.DebugMarkerEntity,

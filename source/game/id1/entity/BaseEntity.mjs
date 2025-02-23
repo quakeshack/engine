@@ -423,6 +423,8 @@ export default class BaseEntity {
    * @returns {boolean} true, if equal
    */
   equals(otherEntity) {
+    otherEntity = otherEntity !== null && (otherEntity.entity instanceof BaseEntity) ? otherEntity.entity : otherEntity;
+
     return otherEntity ? this.edict.equals(otherEntity.edict) : false;
   }
 

@@ -306,6 +306,20 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-02-23
+
+* found the root of discrepancies: equals check with Edicts (fed by the engine) instead of Entities
+
+### 2025-02-22
+
+* there are some weird discrepancies between vanilla Quake and my Quake
+* fixed some issues with those Nailgun spikes
+
+### 2025-02-21
+
+* there’s a glitch when depleting ammo that I need to investigate
+* added the nailguns (I’m okayish happy how I implemented it)
+
 ### 2025-02-20
 
 * thinking about removing some entity classes from the registry and have a “private” spawn by simply allocating the edict and instantiating the entity class ourselves

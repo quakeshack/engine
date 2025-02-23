@@ -195,7 +195,7 @@ SV.Edict = class Edict {
 
     this.setOrigin(trace.endpos);
     this.entity.flags |= SV.fl.onground;
-    this.entity.groundentity = trace.ent; // QuakeC quirks
+    this.entity.groundentity = trace.ent; // QuakeC quirks, TODO: Edict vs Entity
 
     return true;
   }
@@ -1443,7 +1443,7 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
     return false;
   }
   ent.entity.flags &= (~SV.fl.partialground >>> 0);
-  ent.entity.groundentity = trace.ent; // QuakeC quirks
+  ent.entity.groundentity = trace.ent; // QuakeC quirks, TODO: Edict vs Entity
   if (relink) {
     SV.LinkEdict(ent, true);
   }
@@ -1706,7 +1706,7 @@ SV.FlyMove = function(ent, time) {
       blocked |= 1;
       if (trace.ent.entity.solid === SV.solid.bsp) {
         ent.entity.flags |= SV.fl.onground;
-        ent.entity.groundentity = trace.ent; // QuakeC quirks
+        ent.entity.groundentity = trace.ent; // QuakeC quirks, TODO: Edict vs Entity
       }
     } else if (trace.plane.normal[2] === 0.0) {
       blocked |= 2;
@@ -1806,7 +1806,7 @@ SV.PushMove = function(pusher, movetime) {
 			(movetype === SV.movetype.noclip)) {
       continue;
     }
-    if (((check.entity.flags & SV.fl.onground) === 0) || !check.entity.groundentity || !check.entity.groundentity.equals(pusher)) { // QuakeC quirks
+    if (((check.entity.flags & SV.fl.onground) === 0) || !check.entity.groundentity || !check.entity.groundentity.equals(pusher)) { // QuakeC quirks, TODO: Edict vs Entity
       if (!check.entity.absmin.lt(maxs) || !check.entity.absmax.gt(mins)) {
         continue;
       }
@@ -2019,7 +2019,7 @@ SV.WalkMove = function(ent) {
   if (downtrace.plane.normal[2] > 0.7) {
     if (ent.entity.solid === SV.solid.bsp) {
       ent.entity.flags |= SV.fl.onground;
-      ent.entity.groundentity = downtrace.ent; // QuakeC quirks
+      ent.entity.groundentity = downtrace.ent; // QuakeC quirks, TODO: Edict vs Entity
     }
     return;
   }
@@ -2126,7 +2126,7 @@ SV.Physics_Toss = function(ent) {
   if (trace.plane.normal[2] > 0.7) {
     if (ent.entity.velocity[2] < 60.0 || movetype !== SV.movetype.bounce) {
       ent.entity.flags |= SV.fl.onground;
-      ent.entity.groundentity = trace.ent; // QuakeC quirks
+      ent.entity.groundentity = trace.ent; // QuakeC quirks, TODO: Edict vs Entity
       ent.entity.velocity = Vector.origin;
       ent.entity.avelocity = Vector.origin;
     }
@@ -2803,8 +2803,8 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
   if (ent.entity.movetype !== SV.movetype.push) {
     Sys.Error('SOLID_BSP without MOVETYPE_PUSH');
   }
-  const model = SV.server.models[ent.entity.modelindex >> 0];
-  if (model == null) {
+  const model = SV.server.models[ent.entity.modelindex];
+  if (!model) {
     Sys.Error('MOVETYPE_PUSH with a non bsp model');
   }
   if (model.type !== Mod.type.brush) {
@@ -3143,10 +3143,10 @@ SV.ClipToLinks = function(node, clip) {
       return;
     }
     if (clip.passedict) {
-      if (touch.entity.owner && touch.entity.owner.equals(clip.passedict)) {
+      if (touch.entity.owner && touch.entity.owner.equals(clip.passedict)) { // TODO: Edict vs Entity
         continue;
       }
-      if (clip.passedict.entity.owner && clip.passedict.entity.owner.equals(touch)) {
+      if (clip.passedict.entity.owner && clip.passedict.entity.owner.equals(touch)) { // TODO: Edict vs Entity
         continue;
       }
     }

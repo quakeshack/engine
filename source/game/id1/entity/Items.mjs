@@ -401,14 +401,6 @@ class BaseKeyEntity extends BaseItemEntity {
    * @param {PlayerEntity} playerEntity user
    */
   _afterTouch(playerEntity) {
-    const weapon = playerEntity.chooseBestWeapon();
-
-    if (!this.game.deathmatch) {
-      playerEntity.setWeapon(weapon);
-    } else {
-      // TODO: Deathmatch_Weapon (old, new);
-    }
-
     if (!this.game.coop) {
       this.remove();
     }
