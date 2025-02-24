@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { attn, channel, content, damage, dead, deathType, effect, flags, items, moveType, solid, vec } from "../Defs.mjs";
+import { attn, channel, content, damage, dead, deathType, effect, flags, hull, items, moveType, solid } from "../Defs.mjs";
 import { crandom, Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { InfoNotNullEntity } from "./Misc.mjs";
@@ -155,13 +155,13 @@ export class PlayerEntity extends BaseEntity {
     this.items = 0;
     // this.items2 = 0; // CR: need to investigate this more closely
     this.health = 0;
+    this.armortype = 0; // SV.WriteClientdataToMessage
     this.armorvalue = 0; // SV.WriteClientdataToMessage
     this.ammo_shells = 0; // SV.WriteClientdataToMessage
     this.ammo_nails = 0; // SV.WriteClientdataToMessage
     this.ammo_rockets = 0; // SV.WriteClientdataToMessage
     this.ammo_cells = 0; // SV.WriteClientdataToMessage
     this.weapon = 0; // SV.WriteClientdataToMessage
-    this.armortype = 0; // SV.WriteClientdataToMessage
     this.max_health = 100; // players maximum health is stored here
     this.currentammo = 0; // SV.WriteClientdataToMessage
     this.weaponmodel = null; // SV.WriteClientdataToMessage
@@ -780,7 +780,7 @@ export class PlayerEntity extends BaseEntity {
    * @returns {boolean} true, if any out of that backpack was taken
    */
   applyBackpack(backpack) {
-    let backpackUsed = false;
+    let backpackUsed = false, ammoUsed = false;
 
     const ammo_nails = Math.min(200, this.ammo_nails + backpack.ammo_nails);
     const ammo_cells = Math.min(100, this.ammo_cells + backpack.ammo_cells);
@@ -790,21 +790,25 @@ export class PlayerEntity extends BaseEntity {
     if (ammo_nails !== this.ammo_nails) {
       this.ammo_nails = ammo_nails;
       backpackUsed = true;
+      ammoUsed = true;
     }
 
     if (ammo_cells !== this.ammo_cells) {
       this.ammo_cells = ammo_cells;
       backpackUsed = true;
+      ammoUsed = true;
     }
 
     if (ammo_rockets !== this.ammo_rockets) {
       this.ammo_rockets = ammo_rockets;
       backpackUsed = true;
+      ammoUsed = true;
     }
 
     if (ammo_shells !== this.ammo_shells) {
       this.ammo_shells = ammo_shells;
       backpackUsed = true;
+      ammoUsed = true;
     }
 
     if ((this.items & backpack.items) !== backpack.items) {
@@ -812,9 +816,39 @@ export class PlayerEntity extends BaseEntity {
       backpackUsed = true;
     }
 
-    this.setWeapon();
+    if (ammoUsed) {
+      this.setWeapon();
+    }
 
     return backpackUsed;
+  }
+
+  /**
+   * Heal player.
+   * @param {number} healthpoints how many HPs to heal
+   * @param {?boolean} ignoreLimit optionally ignore max_health, default false
+   * @returns {boolean} true, if health was applied. false, if dead or max_health hit
+   */
+  applyHealth(healthpoints, ignoreLimit = false) {
+    if (this.health <= 0) {
+      return false;
+    }
+
+    if (!ignoreLimit && this.health >= this.max_health) {
+      return false;
+    }
+
+    healthpoints = Math.ceil(healthpoints);
+
+    this.health += healthpoints;
+
+    if (!ignoreLimit && this.health >= this.max_health) {
+      this.health = this.max_health;
+    }
+
+    this.health = Math.min(this.health, 250);
+
+    return true;
   }
 
   /**
@@ -830,9 +864,9 @@ export class PlayerEntity extends BaseEntity {
    * @private
    */
   _explainEntity() {
-    // if (this.game.deathmatch || this.game.coop) {
-    //   return;
-    // }
+    if (!this._canUseCheats()) {
+      return;
+    }
 
     const start = this.origin.copy().add(this.view_ofs);
     const { forward } = this.angles.angleVectors();
@@ -911,7 +945,7 @@ export class PlayerEntity extends BaseEntity {
       return;
     }
 
-    // TODO: this.super_time = 1.0;
+    this.super_time = 1.0;
     this.super_damage_finished = this.game.time + 30.0;
     this.items |= items.IT_QUAD;
   }
@@ -1285,7 +1319,7 @@ export class PlayerEntity extends BaseEntity {
 
     // NOTE: not doing the modelindex_eyes trick, we simply gonna use setModel
     this.setModel('progs/player.mdl');
-    this.setSize(vec.VEC_HULL_MIN, vec.VEC_HULL_MAX);
+    this.setSize(...hull[0]);
 
     this.decodeLevelParms();
     this.setWeapon();
@@ -1557,8 +1591,9 @@ export class PlayerEntity extends BaseEntity {
    * called by ClientKill (e.g. “kill” command)
    */
   suicide() {
-    // CR: vanilla Quake would call set_suicide_frame here, no clue why exactly, so we are simply inflicting damage to ourself instead and use the same damage handling avenue
-    this.damage(this, this.health * 2.5);
+    // CR:  Vanilla Quake would call set_suicide_frame here, no clue why exactly,
+    //      so we are simply inflicting damage to ourself instead and use the same damage handling avenue.
+    this.damage(this, 50000);
   }
 
   /**
@@ -1571,6 +1606,8 @@ export class PlayerEntity extends BaseEntity {
     if (this.game.intermission_running) {
       // TODO: ExitIntermission()
     }
+
+    this.game.sendMissingEntitiesToPlayer(this);
   }
 
   /**
@@ -1685,22 +1722,24 @@ export class GibEntity extends BaseEntity {
   }
 
   /**
-   *
+   * Throws around a few giblets.
    * @param {BaseEntity} entity the entity being gibbed
    * @param {?number} damage taken damage (negative)
    */
   static throwGibs(entity, damage = null) {
-    for (const model of ['progs/gib1.mdl', 'progs/gib2.mdl', 'progs/gib3.mdl']) {
+    const models = ['progs/gib1.mdl', 'progs/gib2.mdl', 'progs/gib3.mdl'];
+
+    for (let i = 0, max = Math.ceil(entity.volume / 16000); i < max; i++) {
       entity.engine.SpawnEntity('misc_gib', {
         origin: entity.origin.copy(),
         velocity: VelocityForDamage(damage !== null ? damage : entity.health),
-        model,
+        model: models[Math.floor(Math.random() * models.length)],
       });
     }
   }
 
   /**
-   * turns entity into a head, will spawn random gibs
+   * Turns entity into a head, will spawn random gibs.
    * @param {BaseEntity} entity entity to be gibbed
    * @param {string} headModel e.g. progs/h_player.mdl
    * @param {?boolean} playSound plays gibbing sounds, if true

@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { attn, channel, damage, dead, moveType, solid } from "../../Defs.mjs";
+import { attn, channel, damage, moveType, solid } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
 import { GibEntity } from "../Player.mjs";
 import BaseMonster from "./BaseMonster.mjs";

@@ -1151,7 +1151,7 @@ CL.ParseServerInfo = function() {
         return;
       }
 
-      if (Host.realtime - lastYield > 0.05) {
+      if (Host.realtime - lastYield > 0.1) {
         await Q.yield();
         lastYield = Host.realtime;
       }
@@ -1159,9 +1159,9 @@ CL.ParseServerInfo = function() {
 
     for (let i = 1; i < numsounds; ++i) {
       CL.SetConnectingStep(45 + (i / numsounds) * 20, 'Loading sound: ' + sound_precache[i]);
-      CL.state.sound_precache[i] = S.PrecacheSound(sound_precache[i]);
+      CL.state.sound_precache[i] = await S.PrecacheSoundAsync(sound_precache[i]);
 
-      if (Host.realtime - lastYield > 0.05) {
+      if (Host.realtime - lastYield > 0.1) {
         await Q.yield();
         lastYield = Host.realtime;
       }

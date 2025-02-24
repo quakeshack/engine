@@ -535,12 +535,7 @@ S = {
     }
     if (this._precache.value !== 0) {
       // we do not need all sounds right away, let’s prioritize them
-      if (sfx.state === SFX.STATE.NEW && (
-        sfx.name.startsWith('weapons/') ||
-        sfx.name.startsWith('player/') ||
-        // sfx.name.startsWith('doors/') ||
-        false
-      )) {
+      if (sfx.state === SFX.STATE.NEW) {
         this.LoadSound(sfx).catch((error) => {
           if (!this._started) {
             return;
@@ -548,6 +543,25 @@ S = {
 
           Con.Print(`S.PrecacheSound: async precaching ${name} failed, ${error}\n`);
         });
+      }
+    }
+    return sfx;
+  },
+
+  async PrecacheSoundAsync(name) {
+    if (this._nosound.value !== 0) {
+      return null;
+    }
+    // Search known list
+    let sfx = this._knownSfx.find((k) => k.name === name);
+    if (!sfx) {
+      sfx = new SFX(name);
+      this._knownSfx.push(sfx);
+    }
+    if (this._precache.value !== 0) {
+      // we do not need all sounds right away, let’s prioritize them
+      if (sfx.state === SFX.STATE.NEW) {
+        await this.LoadSound(sfx);
       }
     }
     return sfx;
@@ -584,7 +598,7 @@ S = {
 
     if (!data) {
       if (!this._started) {
-        return;
+        return false;
       }
 
       Con.Print(`S.LoadSound: Couldn't load ${sfx.name}\n`);
@@ -745,21 +759,6 @@ S = {
 
       // Load channel data
       targetChan.loadData();
-
-      // Adjust play time and check whether it is still worth playing
-      if (sfx.loadtime !== null) {
-        const loadtime = Host.realtime - sfx.loadtime;
-        sfx.loadtime = null; // Once loaded, we do not need this anymore
-
-        if (loadtime < sc.length && sc.length - loadtime < 0.5 && loadtime < 0.2) {
-          // Skip forward, if it still makes sense
-          // We rather accept a delayed play than a chopped off one
-          targetChan.pos = sc.length - loadtime;
-        } else if (loadtime > 3) {
-          // It’s too long time ago for play some meaningful content noww
-          return;
-        }
-      }
 
       // Play immediately
       targetChan.start();

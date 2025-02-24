@@ -96,11 +96,16 @@ const entityRegistry = [
   item.SuperDamageEntity,
 
   item.SigilEntity,
+
+  item.HealthItemEntity,
+  item.HeavyArmorEntity,
+  item.LightArmorEntity,
+  item.StrongArmorEntity,
 ];
 
 export class ServerGameAPI {
   /**
-   *
+   * Invoked by spawning a server or a changelevel. It will initialize the global game state.
    * @param {Game.EngineInterface} engineAPI engine exports
    */
   constructor(engineAPI) {
@@ -109,14 +114,14 @@ export class ServerGameAPI {
     /** @private */
     this.engine = engineAPI; // Game.EngineInterface
 
-    this.coop = 0;
-    this.deathmatch = 0;
-    this.teamplay = 0;
-    this.skill = 0;
+    this.coop = 0; // Engine API
+    this.deathmatch = 0; // Engine API
+    this.teamplay = 0; // Engine API
+    this.skill = 0; // Engine API
 
-    this.mapname = null;
+    this.mapname = null; // Engine API
 
-    this.force_retouch = 0;
+    this.force_retouch = 0; // Engine API
 
     // stats
     this.total_monsters = 0;
@@ -155,7 +160,7 @@ export class ServerGameAPI {
 
     this.gameAI = new GameAI(this);
 
-    /** @type {?BaseEntity} bodyque ref */
+    /** @type {?BaseEntity} holds the dead player body chain */
     this.bodyque_head = null;
 
     /** @private */
@@ -172,6 +177,7 @@ export class ServerGameAPI {
     this._cvars = {
       skill: engineAPI.GetCvar('skill'),
       teamplay: engineAPI.GetCvar('teamplay'),
+      // TODO: deathmatch, coop
     };
 
     Object.seal(this);
@@ -239,18 +245,6 @@ export class ServerGameAPI {
     const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
     playerEntity.connected();
-
-    // FIXME: move this to somewhere “server ready” kind of function
-    const stats = Object.entries(this._missingEntityClassStats);
-    if (stats.length > 0) {
-      stats.sort(([, a], [, b]) => b - a);
-
-      this.engine.DebugPrint('Unknown entity classes on this map:\n');
-
-      for (const [name, cnt] of stats) {
-        this.engine.DebugPrint(`${new Number(cnt).toFixed(0).padStart(4, ' ')}x ${name}\n`);
-      }
-    }
   }
 
   ClientDisconnect(clientEdict) {
@@ -259,16 +253,30 @@ export class ServerGameAPI {
     playerEntity.disconnected();
   }
 
+  ClientKill(clientEdict) {
+    const playerEntity = clientEdict.entity;
+    this._assertClientEntityIsPlayerEntity(playerEntity);
+    playerEntity.suicide();
+  }
+
   PutClientInServer(clientEdict) {
     const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
     playerEntity.putPlayerInServer();
   }
 
-  ClientKill(clientEdict) {
-    const playerEntity = clientEdict.entity;
-    this._assertClientEntityIsPlayerEntity(playerEntity);
-    playerEntity.suicide();
+  /**
+   * @param {PlayerEntity} playerEntity player
+   */
+  sendMissingEntitiesToPlayer(playerEntity) {
+    const stats = Object.entries(this._missingEntityClassStats);
+    if (stats.length > 0) {
+      stats.sort(([, a], [, b]) => b - a);
+      playerEntity.consolePrint('Unknown entity classes on this map:\n');
+      for (const [name, cnt] of stats) {
+        playerEntity.consolePrint(`${new Number(cnt).toFixed(0).padStart(4, ' ')}x ${name}\n`);
+      }
+    }
   }
 
   /**
@@ -321,7 +329,7 @@ export class ServerGameAPI {
 
   spawnPreparedEntity(edict) {
     if (!edict.entity) {
-      this.engine.ConsolePrint('Cannot spawn empty edict.');
+      this.engine.ConsolePrint('Cannot spawn empty edict.\n');
       return false;
     }
 

@@ -14,4 +14,3 @@ export class IntermissionCameraEntity extends BaseEntity {
     this.mangle = new Vector();
   }
 };
-

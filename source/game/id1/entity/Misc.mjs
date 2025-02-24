@@ -43,7 +43,7 @@ export class ViewthingEntity extends BaseEntity {
   }
 };
 
-class BaseLightEntity extends BaseEntity {
+export class BaseLightEntity extends BaseEntity {
   static START_OFF = 1;
 
   _declareFields() {
@@ -156,7 +156,7 @@ export class LightGlobe extends BaseLightEntity {
   }
 }
 
-class TorchLightEntity extends BaseLightEntity {
+export class TorchLightEntity extends BaseLightEntity {
   _precache() {
     this.engine.PrecacheModel('progs/flame.mdl');
     this.engine.PrecacheModel('progs/flame2.mdl');
@@ -312,7 +312,7 @@ export class DebugMarkerEntity extends BaseEntity {
   }
 }
 
-class BaseAmbientSound extends BaseEntity {
+export class BaseAmbientSound extends BaseEntity {
   static _sfxName = null;
   static _volume = 0;
 
@@ -406,7 +406,7 @@ export class AmbientSwamp2 extends BaseAmbientSound {
   static _volume = 0.5;
 }
 
-class BaseWallEntity extends BaseEntity {
+export class BaseWallEntity extends BaseEntity {
   // eslint-disable-next-line no-unused-vars
   use(usedByEntity) {
     this.frame = 1 - this.frame;
@@ -498,5 +498,3 @@ export class TeleportEffectEntity extends BaseEntity {
     this.engine.DispatchTempEntityEvent(tentType.TE_TELEPORT, this.origin);
   }
 }
-
-

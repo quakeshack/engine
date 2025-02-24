@@ -1197,7 +1197,7 @@ R.Init = function() {
   R.polyblend = Cvar.RegisterVariable('gl_polyblend', '1');
   R.flashblend = Cvar.RegisterVariable('gl_flashblend', '0');
   R.nocolors = Cvar.RegisterVariable('gl_nocolors', '0');
-  R.interpolation = Cvar.RegisterVariable('r_interpolation', '1');
+  R.interpolation = Cvar.RegisterVariable('r_interpolation', '0');
 
   R.InitParticles();
 

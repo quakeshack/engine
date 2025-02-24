@@ -178,21 +178,13 @@ export const attn = {
 };
 
 /**
+ * Mins/max of available hulls.
  * @readonly
- * @enum {Vector}
  */
-export const vec = {
-  /**
-   * @deprecated use Vector.origin directly instead
-   */
-  VEC_ORIGIN: Vector.origin,
-
-  VEC_HULL_MIN: new Vector(-16.0, -16.0, -24.0),
-  VEC_HULL_MAX: new Vector(16.0, 16.0, 32.0),
-
-  VEC_HULL2_MIN: new Vector(-32.0, -32.0, -24.0),
-  VEC_HULL2_MAX: new Vector(32.0, 32.0, 64.0),
-};
+export const hull = [
+  [new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0)],
+  [new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 64.0)],
+];
 
 /**
  * @readonly

@@ -125,6 +125,11 @@ export default class BaseEntity {
     }
   }
 
+  /** @returns {number} volume */
+  get volume() {
+    return this.size[0] * this.size[1] * this.size[2];
+  }
+
   /**
    * Allows initialization of fields before the object gets frozen.
    * @protected

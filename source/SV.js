@@ -554,7 +554,7 @@ SV.StartSound = function(edict, channel, sample, volume, attenuation) {
 SV.SendServerinfo = function(client) {
   const message = client.message;
   MSG.WriteByte(message, Protocol.svc.print);
-  MSG.WriteString(message, '\2\nVERSION ' + Def.version + ' SERVER (' + PR.crc + ' CRC)');
+  MSG.WriteString(message, `\x02\nVERSION ${Def.version} SERVER (${(PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`)})`);
   MSG.WriteByte(message, Protocol.svc.serverinfo);
   MSG.WriteLong(message, Protocol.version);
   MSG.WriteByte(message, SV.svs.maxclients);

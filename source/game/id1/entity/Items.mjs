@@ -81,7 +81,7 @@ export class BaseItemEntity extends BaseEntity {
   }
 
   /**
-   * to be overriden, called after healthy player check
+   * To be overriden, called after healthy player check.
    * @protected
    * @param {PlayerEntity} playerEntity user
    * @returns {boolean} whether it’s okay to pick it up
@@ -89,6 +89,16 @@ export class BaseItemEntity extends BaseEntity {
   // eslint-disable-next-line no-unused-vars
   _canPickup(playerEntity) {
     return true;
+  }
+
+  /**
+   * Can be overriden, called after healthy player check
+   * @protected
+   * @param {PlayerEntity} playerEntity user
+   * @returns {boolean} whether it’s okay to pick it up
+   */
+  _pickup(playerEntity) {
+    return playerEntity.applyBackpack(this);
   }
 
   /** @param {BaseEntity} otherEntity other */
@@ -128,7 +138,7 @@ export class BaseItemEntity extends BaseEntity {
     }
 
     // let the player consume this backpack
-    if (items.length > 0 && !player.applyBackpack(this)) {
+    if (!this._pickup(player)) {
       return; // player’s inventory is already full
     }
 
@@ -404,6 +414,7 @@ export class BaseKeyEntity extends BaseItemEntity {
    * @param {PlayerEntity} playerEntity user
    */
   _afterTouch(playerEntity) {
+    // CR: weird that they can be taken in deathmatch
     if (!this.game.coop) {
       this.remove();
     }
@@ -485,16 +496,12 @@ export class BaseArtifactEntity extends BaseItemEntity {
     }
   }
 
-  _declareFields() {
-    super._declareFields();
-    this.regeneration_time = this.constructor._regenerationTime;
-  }
-
   spawn() {
     super.spawn();
 
     this.noise = this.constructor._noise;
     this.items |= this.constructor._item;
+    this.regeneration_time = this.constructor._regenerationTime;
 
     this.setModel(this.constructor._model);
     this.setSize(new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0));
@@ -657,13 +664,17 @@ export class SigilEntity extends BaseItemEntity {
     this.noise = 'misc/runekey.wav';
   }
 
+  // eslint-disable-next-line no-unused-vars
+  _pickup(playerEntity) {
+    this.game.serverflags |= this.spawnflags & 15;
+    this.spawnflags = 15; // used in the classname hack
+
+    return true;
+  }
+
   _afterTouch(playerEntity) {
     this.solid = solid.SOLID_NOT;
     this.unsetModel();
-
-    this.game.serverflags |= this.spawnflags & 15;
-
-    this.spawnflags = 15;
 
     // trigger all connected actions
     this._sub.useTargets(playerEntity);
@@ -681,4 +692,207 @@ export class SigilEntity extends BaseItemEntity {
 
     this.setSize(new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0));
   }
+};
+
+/**
+ * QUAKED item_health (.3 .3 1) (0 0 0) (32 32 32) rotten megahealth
+ * Health box. Normally gives 25 points.
+ * Rotten box heals 5-10 points,
+ * megahealth will add 100 health, then
+ * rot you down to your maximum health limit,
+ * one point per second.
+ */
+export class HealthItemEntity extends BaseItemEntity {
+  static classname = 'item_health';
+
+  static H_NORMAL = 0;
+  static H_ROTTEN = 1;
+  static H_MEGA = 2;
+
+  /** @protected */
+  static _config = {
+    [HealthItemEntity.H_NORMAL]: {
+      model: 'maps/b_bh25.bsp',
+      noise: 'items/health1.wav',
+      healamount: 25,
+      items: 0,
+    },
+    [HealthItemEntity.H_ROTTEN]: {
+      model: 'maps/b_bh10.bsp',
+      noise: 'items/r_item1.wav',
+      healamount: 15,
+      items: 0,
+    },
+    [HealthItemEntity.H_MEGA]: {
+      model: 'maps/b_bh100.bsp',
+      noise: 'items/r_item2.wav',
+      healamount: 100,
+      items: items.IT_SUPERHEALTH,
+    },
+  };
+
+  _declareFields() {
+    super._declareFields();
+    this.healamount = 0;
+  }
+
+  get netname() {
+    return `${this.healamount} health`;
+  }
+
+  /** @protected */
+  get _config() {
+    return HealthItemEntity._config[this.spawnflags & 3];
+  }
+
+  _precache() {
+    this.engine.PrecacheModel(this._config.model);
+    this.engine.PrecacheSound(this._config.noise);
+  }
+
+  _canPickup(playerEntity) {
+    return playerEntity.health < ((this.spawnflags & HealthItemEntity.H_MEGA) !== 0 ? 250 : playerEntity.max_health);
+  }
+
+  _pickup(playerEntity) {
+    if (this.items > 0) {
+      playerEntity.applyBackpack(this);
+    }
+
+    return playerEntity.applyHealth(this.healamount, (this.spawnflags & HealthItemEntity.H_MEGA) !== 0);
+  }
+
+  _takeHealth() {
+    /** @type {PlayerEntity} */
+    const player = this.owner;
+
+    if (player.health > player.max_health) {
+      player.health--;
+      this._scheduleThink(this.game.time + 1.0, () => this._takeHealth());
+      return;
+    }
+
+    player.items &= ~items.IT_SUPERHEALTH;
+
+    this.owner = null;
+
+    if (this.game.deathmatch === 1) {
+      this._scheduleThink(this.game.time + this.regeneration_time, () => this.regenerate());
+      return;
+    }
+
+    this.remove();
+  }
+
+  _afterTouch(playerEntity) {
+    this.solid = solid.SOLID_NOT;
+    this._model_original = this.model;
+    this.model = null;
+    this.owner = playerEntity;
+
+    // chipping away the player’s health when mega is running
+    if (this.spawnflags & HealthItemEntity.H_MEGA) {
+      this._scheduleThink(this.game.time + 5.0, () => this._takeHealth());
+    } else {
+      this.remove();
+    }
+
+    // trigger all connected actions
+    this._sub.useTargets(playerEntity);
+  }
+
+  spawn() {
+    if (![HealthItemEntity.H_NORMAL, HealthItemEntity.H_MEGA, HealthItemEntity.H_ROTTEN].includes(this.spawnflags)) {
+      this.engine.DebugPrint(`${this} removed, nonsense spawnflags (${this.spawnflags}).\n`);
+      this.remove();
+      return;
+    }
+
+    this.regeneration_time = 20;
+    this.noise = this._config.noise;
+    this.setModel(this.model = this._config.model);
+    this.healamount = this._config.healamount;
+    this.items = this._config.items;
+
+    super.spawn();
+  }
+};
+
+export class BaseArmorEntity extends BaseItemEntity {
+  static _armortype = 0;
+  static _armorvalue = 0;
+  static _item = 0;
+  static _skin = 0;
+
+  get netname() {
+    return 'the armor';
+  }
+
+  _pickup(playerEntity) {
+    playerEntity.armortype = this.constructor._armortype;
+    playerEntity.armorvalue = this.constructor._armorvalue;
+
+    playerEntity.items &= ~(items.IT_ARMOR1 | items.IT_ARMOR2 | items.IT_ARMOR3);
+    playerEntity.applyBackpack(this);
+
+    return true;
+  }
+
+  _canPickup(playerEntity) {
+    return playerEntity.armortype * playerEntity.armorvalue < this.constructor._armortype * this.constructor._armorvalue;
+  }
+
+  _precache() {
+    this.engine.PrecacheModel('progs/armor.mdl');
+  }
+
+  spawn() {
+    super.spawn();
+
+    this.skin = this.constructor._skin;
+    this.items = this.constructor._item;
+
+    this.noise = 'items/armor1.wav';
+
+    this.regeneration_time = 20;
+
+    this.setModel('progs/armor.mdl');
+    this.setSize(new Vector(-16.0, -16.0, 0.0), new Vector(16.0, 16.0, 56.0));
+  }
+};
+
+/**
+ * QUAKED item_armor1 (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class LightArmorEntity extends BaseArmorEntity {
+  static classname = 'item_armor1';
+
+  static _armortype = 0.3;
+  static _armorvalue = 100;
+  static _item = items.IT_ARMOR1;
+  static _skin = 0;
+};
+
+/**
+ * QUAKED item_armor2 (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class StrongArmorEntity extends BaseArmorEntity {
+  static classname = 'item_armor2';
+
+  static _armortype = 0.6;
+  static _armorvalue = 150;
+  static _item = items.IT_ARMOR2;
+  static _skin = 2;
+};
+
+/**
+ * QUAKED item_armorInv (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class HeavyArmorEntity extends BaseArmorEntity {
+  static classname = 'item_armorInv';
+
+  static _armortype = 0.8;
+  static _armorvalue = 200;
+  static _item = items.IT_ARMOR3;
+  static _skin = 2;
 };

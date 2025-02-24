@@ -1,4 +1,4 @@
-import { attn, channel, damage, moveType, solid } from "../../Defs.mjs";
+import { channel, damage, moveType, solid } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
 

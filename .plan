@@ -59,10 +59,10 @@ Grouped by sections and then sorted by priority (more or less).
     * [#] wall_velocity, gibs, etc.
     * [X] MULTI-DAMAGE
     * [X] BULLETS
-    * [_] ROCKETS
-    * [_] LIGHTNING
-    * [_] grenades
-    * [_] spikes
+    * [X] ROCKETS
+    * [X] LIGHTNING
+    * [X] grenades
+    * [X] spikes
     * [#] PLAYER WEAPON USE
     * [X] CheatCommand
     * [X] CycleWeaponCommand
@@ -88,12 +88,17 @@ Grouped by sections and then sorted by priority (more or less).
     * [X] ClientConnect
     * [X] ClientDisconnect
     * [X] ClientObituary
-  * [_] weapons.qc
+  * [X] weapons.qc
     * [X] W_SetCurrentAmmo
     * [X] W_BestWeapon
     * [X] W_CheckNoAmmo
   * [X] subs.qc --> move to helper/Subs.mjs
   * [#] player.qc
+  * [X] items.qc
+  * [X] buttons.qc
+  * [X] doors.qc
+  * [X] subs.qc
+  * [_] triggers.qc
 * [X] rename `edict.api` to `edict.entity`
 * [_] put some things behind feature gates, so that the game can tell the engine what things are needed/supported
 * [_] implement the new syscalls that QuakeWorld introduced
@@ -305,6 +310,12 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-02-24
+
+* move some code around
+* made sounds precache upon connect properly, getting away from my lazy load nonsense
+* added health items and armor items, I think items should be complete by now
 
 ### 2025-02-23
 
