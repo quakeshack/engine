@@ -234,6 +234,8 @@ export class Sub {
       }
     }
 
+    // FIXME: replace the while loops below with FindAllByFieldAndValue
+
     // remove all killtargets
     if (this._entity.killtarget) {
       /** @type {BaseEntity} */

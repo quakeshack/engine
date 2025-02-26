@@ -46,7 +46,7 @@ Grouped by sections and then sorted by priority (more or less).
     * [X] light entities
     * [X] info entities
     * [X] fireball entities
-    * [_] barrel entities
+    * [X] barrel entities
     * [_] spikeshooter stuff
     * [_] bubbles
     * [X] view thing?
@@ -311,11 +311,17 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-02-26
+
+* added barrels
+* some small adjustments in Subs
+
 ### 2025-02-24
 
 * move some code around
 * made sounds precache upon connect properly, getting away from my lazy load nonsense
 * added health items and armor items, I think items should be complete by now
+* time to implement all trigger_ next
 
 ### 2025-02-23
 

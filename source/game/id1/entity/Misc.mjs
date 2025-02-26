@@ -1,8 +1,9 @@
 /* global Vector */
 
-import { attn, channel, moveType, solid, tentType } from "../Defs.mjs";
+import { attn, channel, damage, moveType, solid, tentType } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { PlayerEntity } from "./Player.mjs";
+import { DamageHandler, DamageInflictor, Explosions } from "./Weapons.mjs";
 
 /**
  * QUAKED info_null (0 0.5 0) (-4 -4 -4) (4 4 4)
@@ -497,4 +498,72 @@ export class TeleportEffectEntity extends BaseEntity {
 
     this.engine.DispatchTempEntityEvent(tentType.TE_TELEPORT, this.origin);
   }
+}
+
+export class BaseBarrelEntity extends BaseEntity {
+  static _model = null;
+  static _noise = null;
+
+  _precache() {
+    this.engine.PrecacheModel(this.constructor._model);
+    this.engine.PrecacheSound(this.constructor._noise);
+  }
+
+  _declareFields() {
+    this.health = 20;
+
+    this._damageHandler = new DamageHandler(this);
+    this._damageInflictor = new DamageInflictor(this);
+    this._explosion = new Explosions(this);
+  }
+
+  _initStates() {
+    this._explosion.initStates();
+  }
+
+  get netname() {
+    return 'a barrel';
+  }
+
+  thinkDie() {
+    this._damageInflictor.blastDamage(160, this, this.centerPoint, this);
+    this.startSound(channel.CHAN_VOICE, this.constructor._noise);
+    this.engine.StartParticles(this.origin, Vector.origin, 75, 255); // FIXME: hardcoded color code (75)
+
+    this.origin[2] += 32;
+
+    this._explosion.becomeExplosion();
+  }
+
+  spawn() {
+    this.solid = solid.SOLID_BBOX;
+    this.movetype = moveType.MOVETYPE_NONE;
+    this.takedamage = damage.DAMAGE_AIM;
+
+    this.setModel(this.constructor._model);
+
+    this.origin[2] += 2.0;
+    this.dropToFloor();
+  }
+}
+
+/**
+ * QUAKED misc_explobox (0 .5 .8) (0 0 0) (32 32 64)
+ */
+export class BarrelEntity extends BaseBarrelEntity {
+  static classname = 'misc_explobox';
+
+  static _model = 'maps/b_explob.bsp';
+  static _noise = 'weapons/r_exp3.wav';
+}
+
+/**
+ * QUAKED misc_explobox2 (0 .5 .8) (0 0 0) (32 32 64)
+ * Smaller exploding box, REGISTERED ONLY
+ */
+export class SmallBarrelEntity extends BaseBarrelEntity {
+  static classname = 'misc_explobox2';
+
+  static _model = 'maps/b_explob.bsp';
+  static _noise = 'weapons/r_exp3.wav';
 }

@@ -74,3 +74,23 @@ export class Flag {
     return this;
   }
 }
+
+export class EntityWrapper {
+  /**
+   * @param {import('./BaseEntity.mjs').default} entity wrapped entity
+   */
+  constructor(entity) {
+    /** @protected */
+    this._entity = entity;
+    /** @protected */
+    this._game = this._entity.game;
+    /** @protected */
+    this._engine = this._entity.engine;
+
+    this._assertEntity();
+  }
+
+  /** @protected */
+  _assertEntity() {
+  }
+}

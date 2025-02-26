@@ -65,6 +65,9 @@ const entityRegistry = [
 
   misc.TeleportEffectEntity,
 
+  misc.BarrelEntity,
+  misc.SmallBarrelEntity,
+
   trigger.MultipleTriggerEntity,
   trigger.InfoTeleportDestination,
   trigger.TeleportTriggerEntity,

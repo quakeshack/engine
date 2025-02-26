@@ -654,18 +654,17 @@ export class SecretDoorEntity extends BaseDoorEntity {
   }
 
   use(usedByEntity) {
-    // TODO: this.health = 10000;
+    this.health = 10000;
 
     if (!this.origin.equals(this.oldorigin)) {
       return;
     }
 
-    this.message = null;
+    this.message = null; // no more message
 
     this._sub.useTargets(usedByEntity); // fire all targets / killtargets
 
     if (!(this.spawnflags & SecretDoorEntity.SECRET_NO_SHOOT)) {
-      // TODO: self.th_pain = SUB_Null;
       this.takedamage = damage.DAMAGE_NO;
     }
 
@@ -741,13 +740,10 @@ export class SecretDoorEntity extends BaseDoorEntity {
         break;
 
       case 7:
-        // TODO:
-        // if (!self.targetname || self.spawnflags&SECRET_YES_SHOOT)
-        //   {
-        //     self.health = 10000;
-        //     self.takedamage = DAMAGE_YES;
-        //     self.th_pain = fd_secret_use;
-        //   }
+        if (!this.targetname || (this.spawnflags & SecretDoorEntity.SECRET_YES_SHOOT)) {
+          this.health = 10000;
+          this.takedamage = damage.DAMAGE_YES;
+        }
         this.startSound(channel.CHAN_VOICE, this.noise3);
         break;
     }

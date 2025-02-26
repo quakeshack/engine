@@ -1,7 +1,7 @@
 /* global Vector */
 
 import { channel, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
-import { crandom } from '../helper/MiscHelpers.mjs';
+import { crandom, EntityWrapper } from '../helper/MiscHelpers.mjs';
 import BaseEntity from './BaseEntity.mjs';
 
 /**
@@ -49,23 +49,26 @@ export class Backpack {
   }
 }
 
-class EntityWrapper {
-  /**
-   * @param {import('./BaseEntity.mjs').default} entity wrapped entity
-   */
-  constructor(entity) {
-    /** @protected */
-    this._entity = entity;
-    /** @protected */
-    this._game = this._entity.game;
-    /** @protected */
-    this._engine = this._entity.engine;
-
-    this._assertEntity();
+export class Explosions extends EntityWrapper {
+  initStates() {
+    this._entity._defineState('s_explode1', 0, 's_explode2');
+    this._entity._defineState('s_explode2', 1, 's_explode3');
+    this._entity._defineState('s_explode3', 2, 's_explode4');
+    this._entity._defineState('s_explode4', 3, 's_explode5');
+    this._entity._defineState('s_explode5', 4, 's_explode6');
+    this._entity._defineState('s_explode6', 5, null, function () { this.remove(); });
   }
 
-  /** @protected */
-  _assertEntity() {
+  becomeExplosion() {
+    this._engine.DispatchTempEntityEvent(tentType.TE_EXPLOSION, this._entity.origin);
+
+    this._entity.movetype = moveType.MOVETYPE_NONE;
+    this._entity.solid = solid.SOLID_NOT; // disables touch handling
+    this._entity.velocity.clear();
+
+    this._entity.setModel('progs/s_explod.spr');
+
+    this._entity._runState('s_explode1');
   }
 }
 
@@ -499,11 +502,11 @@ export class DamageHandler extends EntityWrapper {
       // CR:  trace.fraction is *almost* 1.0, it’s weird and I do not really get it debugged.
       //      Over in vanilla Quake this seems to work?
       //      Anyway, added entity checks.
+      //      UPDATE: I figured it out, it was the botched Edict/Entity check over in the engine, it works now. Though, I’m keeping the check.
       if (trace.fraction === 1.0 || this._entity.equals(trace.entity)) {
+        // console.log('canReceiveDamage', this._entity.edictId, inflictorEntity.edictId, `[${inflictorEntity.origin}]`, `[${point.toString()}]`, trace.fraction, trace?.entity?.edictId);
         return true;
       }
-
-      // console.log('canReceiveDamage', this._entity.edictId, inflictorEntity.edictId, `[${inflictorEntity.origin}]`, `[${point.toString()}]`, trace.fraction, trace.entity.edictId);
     }
 
     return false;
@@ -515,28 +518,17 @@ class BaseProjectile extends BaseEntity {
 
   _declareFields() {
     this._damageInflictor = new DamageInflictor(this);
+    /** @private */
+    this._explosions = new Explosions(this);
   }
 
   _initStates() {
-    this._defineState('s_explode1', 0, 's_explode2');
-    this._defineState('s_explode2', 1, 's_explode3');
-    this._defineState('s_explode3', 2, 's_explode4');
-    this._defineState('s_explode4', 3, 's_explode5');
-    this._defineState('s_explode5', 4, 's_explode6');
-    this._defineState('s_explode6', 5, null, () => this.remove());
+    this._explosions.initStates();
   }
 
   /** @protected */
   _becomeExplosion() {
-    this.engine.DispatchTempEntityEvent(tentType.TE_EXPLOSION, this.origin);
-
-    this.movetype = moveType.MOVETYPE_NONE;
-    this.solid = solid.SOLID_NOT; // disables touch handling
-    this.velocity.clear();
-
-    this.setModel('progs/s_explod.spr');
-
-    this._runState('s_explode1');
+    this._explosions.becomeExplosion();
   }
 
   /**
@@ -969,7 +961,7 @@ export class PlayerWeapons {
     const trace = this._player.traceline(origin, forward.multiply(600.0).add(origin), true);
 
     this._damageInflictor.dispatchBeamEvent(tentType.TE_LIGHTNING2, trace.point, origin);
-    this._damageInflictor.lightningDamage(origin, trace.point.add(forward.multiply(4.0/600.0)), 30);
+    this._damageInflictor.lightningDamage(origin, trace.point.add(forward.multiply(4.0 / 600.0)), 30);
 
     this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0) { this._weapons.fireLightning(true); } });
   }
