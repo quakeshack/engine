@@ -6,7 +6,7 @@ import BaseEntity from './BaseEntity.mjs';
 
 /**
  * called by worldspawn
- * @param engine
+ * @param {*} engine engine API
  */
 export function Precache(engine) {
   // TODO: move “use in c code” precache commands back to the engine
@@ -46,6 +46,7 @@ export class Backpack {
     this.ammo_rockets = 0;
     this.ammo_cells = 0;
     this.items = 0;
+    this.weapon = 0;
   }
 }
 
@@ -195,13 +196,11 @@ export class DamageInflictor extends EntityWrapper {
 
   /**
    * @param {*} damage damage points
-   * @param {?BaseEntity} attackerEntity
+   * @param {?BaseEntity} attackerEntity attacking entity
    * @param {*} hitPoint exact hit point
-   * @param {?BaseEntity} (optionally) entity to not hurt
+   * @param {?BaseEntity} ignore (optionally) entity to not hurt
    */
   blastDamage(damage, attackerEntity, hitPoint, ignore = null) { // QuakeC: combat.qc/T_RadiusDamage
-    // TODO: T_RadiusDamage
-
     // this._entity = missile
     // attackerEntity = missile’s owner (e.g. player)
 
@@ -346,7 +345,7 @@ export class DamageHandler extends EntityWrapper {
     // CR: ClientObituary(self, attacker); is handled by PlayerEntity.thinkDie now
 
     this.takedamage = damage.DAMAGE_NO;
-    // TODO: this._entity.touch = SUB_Null; -- we need to solve this differently
+    // FIXME: this._entity.touch = SUB_Null; -- we need to solve this differently?
 
     // TODO: monster_death_use();
     this._entity.thinkDie(attackerEntity);
@@ -504,7 +503,6 @@ export class DamageHandler extends EntityWrapper {
       //      Anyway, added entity checks.
       //      UPDATE: I figured it out, it was the botched Edict/Entity check over in the engine, it works now. Though, I’m keeping the check.
       if (trace.fraction === 1.0 || this._entity.equals(trace.entity)) {
-        // console.log('canReceiveDamage', this._entity.edictId, inflictorEntity.edictId, `[${inflictorEntity.origin}]`, `[${point.toString()}]`, trace.fraction, trace?.entity?.edictId);
         return true;
       }
     }
@@ -540,7 +538,8 @@ class BaseProjectile extends BaseEntity {
     }
 
     // sky swallows any projectile
-    // CR: DOES NOT WORK, it’s always CONTENT_EMPTY, also does not work in vanilla Quake
+    // CR:  DOES NOT WORK, it’s always CONTENT_EMPTY, also does not work in vanilla Quake
+    //      UPDATE: IT DOES WORK, it’s the stupid Quake maps having some content info wrong!
     if (this.engine.DeterminePointContents(this.origin) === content.CONTENT_SKY) {
       this.remove();
       return;
@@ -607,6 +606,12 @@ export class Grenade extends BaseProjectile {
       return;
     }
 
+    // CR: in the original the grenade bounces off and makes a splash sound
+    if (this.engine.DeterminePointContents(this.origin) === content.CONTENT_SKY) {
+      this.remove();
+      return;
+    }
+
     this.startSound(channel.CHAN_WEAPON, "weapons/bounce.wav");
 
     if (this.velocity.isOrigin()) {
@@ -660,11 +665,7 @@ export class Missile extends BaseProjectile {
   }
 
   spawn() {
-    if (!this.owner) {
-      this.engine.DebugPrint(`Missile.spawn: missing owner on ${this}, removing entity\n`);
-      this.remove();
-      return;
-    }
+    console.assert(this.owner, 'Needs an owner');
 
     super.spawn();
 
@@ -704,11 +705,7 @@ export class BaseSpike extends BaseProjectile {
   }
 
   spawn() {
-    if (!this.owner) {
-      this.engine.DebugPrint(`BaseSpike.spawn: missing owner on ${this}, removing entity\n`);
-      this.remove();
-      return;
-    }
+    console.assert(this.owner, 'Needs an owner');
 
     super.spawn();
 
@@ -746,8 +743,8 @@ export class Superspike extends BaseSpike {
 }
 
 /**
- * this class outsources all weapon related duties from PlayerEntity in its own separate component
- * ammo, however, is still managed over at PlayerEntity due to some clusterfun entaglement with engine code
+ * This class outsources all weapon related duties from PlayerEntity in its own separate component.
+ * Ammo, however, is still managed over at PlayerEntity due to some clusterfun entaglement with engine code.
  */
 export class PlayerWeapons {
   /**
@@ -941,8 +938,8 @@ export class PlayerWeapons {
     // explode if under water
     if (this._player.waterlevel > 1) {
       const ammo = this._player.ammo_cells;
-      this._damageInflictor.blastDamage(damage, this._player, ammo * 35);
-      this._player.ammo_cells = ammo;
+      this._damageInflictor.blastDamage(ammo * 35, this._player, this._player.centerPoint);
+      this._player.currentammo = this._player.ammo_cells = 0;
       return;
     }
 

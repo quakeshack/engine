@@ -62,6 +62,9 @@ export class BaseItemEntity extends BaseEntity {
     /** @private */
     this._model_original = null;
 
+    /** MAP BUG @private */
+    this.sounds = null;
+
     this._sub = new Sub(this);
 
     /** @type {string} sfx to play upon picking it up */
@@ -161,14 +164,15 @@ export class BaseItemEntity extends BaseEntity {
    * @param {PlayerEntity} playerEntity user
    */
   _afterTouch(playerEntity) {
+    // CR: should be all done by _pickup now
     // TODO: do not annoy the player by switching around weapons unnecessarily
-    const weapon = playerEntity.chooseBestWeapon();
+    // const weapon = playerEntity.chooseBestWeapon();
 
-    if (!this.game.deathmatch) {
-      playerEntity.setWeapon(weapon);
-    } else {
-      // TODO: Deathmatch_Weapon (old, new);
-    }
+    // if (!this.game.deathmatch) {
+    //   playerEntity.setWeapon(weapon);
+    // } else {
+    //   // TODO: Deathmatch_Weapon (old, new);
+    // }
 
     if (this.game.deathmatch && this.regeneration_time > 0) {
       this.solid = solid.SOLID_NOT;
@@ -882,7 +886,7 @@ export class StrongArmorEntity extends BaseArmorEntity {
   static _armortype = 0.6;
   static _armorvalue = 150;
   static _item = items.IT_ARMOR2;
-  static _skin = 2;
+  static _skin = 1;
 };
 
 /**
@@ -895,4 +899,113 @@ export class HeavyArmorEntity extends BaseArmorEntity {
   static _armorvalue = 200;
   static _item = items.IT_ARMOR3;
   static _skin = 2;
+};
+
+export class BaseWeaponEntity extends BaseItemEntity {
+  static _model = null;
+  static _weapon = 0;
+
+  _precache() {
+    this.engine.PrecacheModel(this.constructor._model);
+  }
+
+  spawn() {
+    this.setModel(this.constructor._model);
+    this.items = this.constructor._weapon;
+    this.weapon = this.constructor._weapon;
+    this.regeneration_time = 30.0;
+    this.setSize(new Vector(-16.0, -16.0, 0.0), new Vector(16.0, 16.0, 56.0));
+
+    super.spawn();
+  }
+};
+
+/**
+ * QUAKED weapon_supershotgun (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class WeaponSuperShotgun extends BaseWeaponEntity {
+  static classname = 'weapon_supershotgun';
+
+  static _model = 'progs/g_shot.mdl';
+  static _weapon = items.IT_SUPER_SHOTGUN;
+
+  spawn() {
+    this.ammo_shells = 5;
+    super.spawn();
+  }
+};
+
+/**
+ * QUAKED weapon_nailgun (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class WeaponNailgun extends BaseWeaponEntity {
+  static classname = 'weapon_nailgun';
+
+  static _model = 'progs/g_nail.mdl';
+  static _weapon = items.IT_NAILGUN;
+
+  spawn() {
+    this.ammo_nails = 30;
+    super.spawn();
+  }
+};
+
+/**
+ * QUAKED weapon_supernailgun (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class WeaponSuperNailgun extends BaseWeaponEntity {
+  static classname = 'weapon_supernailgun';
+
+  static _model = 'progs/g_nail2.mdl';
+  static _weapon = items.IT_SUPER_NAILGUN;
+
+  spawn() {
+    this.ammo_nails = 30;
+    super.spawn();
+  }
+};
+
+/**
+ * QUAKED weapon_grenadelauncher (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class WeaponGrenadeLauncher extends BaseWeaponEntity {
+  static classname = 'weapon_grenadelauncher';
+
+  static _model = 'progs/g_rock.mdl';
+  static _weapon = items.IT_GRENADE_LAUNCHER;
+
+  spawn() {
+    this.ammo_rockets = 5;
+    super.spawn();
+  }
+};
+
+/**
+ * QUAKED weapon_rocketlauncher (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class WeaponRocketLauncher extends BaseWeaponEntity {
+  static classname = 'weapon_rocketlauncher';
+
+  static _model = 'progs/g_rock2.mdl';
+  static _weapon = items.IT_ROCKET_LAUNCHER;
+
+  spawn() {
+    this.ammo_rockets = 5;
+    super.spawn();
+  }
+};
+
+/**
+ * QUAKED weapon_lightning (0 .5 .8) (-16 -16 0) (16 16 32)
+ */
+export class WeaponThunderbolt extends BaseWeaponEntity {
+  static classname = 'weapon_lightning';
+
+  static _model = 'progs/g_light.mdl';
+  static _weapon = items.IT_LIGHTNING;
+
+  spawn() {
+    this.ammo_cells = 5;
+    super.spawn();
+  }
 };

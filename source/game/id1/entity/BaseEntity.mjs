@@ -2,7 +2,6 @@
 
 import { damage, dead, flags, moveType, solid, content, channel, attn } from "../Defs.mjs";
 import { ServerGameAPI } from "../GameAPI.mjs";
-import { Flag } from "../helper/MiscHelpers.mjs";
 
 export default class BaseEntity {
   static classname = null;
@@ -68,18 +67,20 @@ export default class BaseEntity {
     this.keyframe = null;
 
     this.nextthink = 0.0;
-    /** @type {?SV.Edict} set by the phyiscs engine */
-    this.groundentity = null; // FIXME: this is an Edict, not an entity
+    /** @type {?BaseEntity} set by the phyiscs engine */
+    this.groundentity = null;
     /** @type {?BaseEntity} this is mainly used by QuakeC, not us */
-    this.chain = null;
+    this.chain = null; // FIXME: consider removing
 
     // relationships between entities
     /** @type {?BaseEntity} entity, who launched a missile */
     this.owner = null;
-    /** @type {?BaseEntity} target entity */
+    /** @type {?string} targets to kill, used by Subs */
+    this.killtarget = null;
+    /** @type {?string} targets to trigger, used by Subs */
     this.target = null;
-    /** @type {?string} target name */
-    this.targetname = null; // string
+    /** @type {?string} target name to be addressed, used by Subs */
+    this.targetname = null;
 
     this.movedir = new Vector(); // mostly for doors, but also used for waterjump
 
@@ -94,7 +95,10 @@ export default class BaseEntity {
     /** @type {?BaseEntity} set by DamageHandler.damage */
     this.dmg_attacker = null;
     this.show_hostile = 0;
+    /** @type {number} can be used for all sorts of repeat next kind of tracking */
     this.attack_finished = 0;
+    /** @type {number} can be used to keep track of when the next pain state is possible */
+    this.pain_finished = 0;
 
     /** @type {?string} message for triggers or map name */
     this.message = null; // trigger messages
@@ -356,10 +360,6 @@ export default class BaseEntity {
           this[key] = parseFloat(value);
           break;
 
-        case this[key] instanceof Flag:
-          this[key].reset().set(value);
-          break;
-
         default:
           this[key] = value;
       }
@@ -600,7 +600,17 @@ export default class BaseEntity {
    * @returns {boolean} true if this is touching the other entity
    */
   isTouching(otherEntity) {
-    return this.mins.gt(otherEntity.maxs) && this.maxs.lt(otherEntity.mins);
+    for (let i = 0; i < 3; i++) {
+      if (this.mins[i] > otherEntity.maxs[i]) {
+        return false;
+      }
+
+      if (this.maxs[i] < otherEntity.mins[i]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /**

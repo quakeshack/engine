@@ -1,5 +1,6 @@
 import { channel, damage, moveType, solid } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
+import { DamageHandler } from "../Weapons.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
 
 /**
@@ -20,6 +21,16 @@ import BasePropEntity, { state } from "./BasePropEntity.mjs";
  */
 export class ButtonEntity extends BasePropEntity {
   static classname = 'func_button';
+
+  _declareFields() {
+    super._declareFields();
+
+    this.health = 0;
+    this.max_health = 0;
+    this.bloodcolor = 0; // FIXME: hardcoded color code (0)
+
+    this._damageHandler = new DamageHandler(this);
+  }
 
   _precache() {
     switch (this.sounds) {
@@ -102,6 +113,13 @@ export class ButtonEntity extends BasePropEntity {
     this._buttonFire(touchedByEntity);
   }
 
+  thinkDie(killedByEntity) {
+    this.health = this.max_health;
+    this.takedamage = damage.DAMAGE_NO;
+
+    this._buttonFire(killedByEntity);
+  }
+
   spawn() {
     switch (this.sounds) {
       case 0:
@@ -129,7 +147,6 @@ export class ButtonEntity extends BasePropEntity {
 
     if (this.health > 0) {
       this.max_health = this.health;
-      // TODO: self.th_die = button_killed;
       this.takedamage = damage.DAMAGE_YES;
     }
 

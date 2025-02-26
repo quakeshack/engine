@@ -8,7 +8,8 @@ export function crandom() {
 }
 
 /**
- * helper class to deal with flags stored in bits
+ * Helper class to deal with flags stored in bits.
+ * @deprecated please do not use.
  */
 export class Flag {
   constructor(enumMap, ...values) {

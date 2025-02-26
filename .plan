@@ -313,6 +313,20 @@ class MainMenu extends BaseMenu {
 
 ### 2025-02-26
 
+* added couple more of trigger entities
+* fixed a stupid bug deep down in linked doors caused by a faulty entities touching check
+* I noticed that some entities set fields that do not exist or are valid on some entities --> might need to go more easy on setting fields
+* doors with a lock will tell the player what key is needed again
+* cleaning up some earlier code I wrote
+* resolved a couple of TODOs
+* I noticed a couple of stuttering when `aim` is called, lots of GC involvement too
+* I need to fix that applyBackpack switch weapon after consuming backpack nonsense
+* added all weapon entities
+* jumping out of water works now, there was a bug over in the engine I introduced weeks ago
+* completed reimplementation of powerups
+
+### 2025-02-25
+
 * added barrels
 * some small adjustments in Subs
 

@@ -8,7 +8,6 @@ import * as door from "./entity/props/Doors.mjs";
 import * as trigger from "./entity/Triggers.mjs";
 import ArmySoldierMonster, { soldierModelQC } from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
-import { IntermissionCameraEntity } from "./entity/Client.mjs";
 import { TriggerField } from "./entity/Subs.mjs";
 import { ButtonEntity } from "./entity/props/Buttons.mjs";
 import * as item from "./entity/Items.mjs";
@@ -23,6 +22,7 @@ const entityRegistry = [
 
   misc.NullEntity,
   misc.InfoNotNullEntity,
+  misc.IntermissionCameraEntity,
 
   InfoPlayerStart,
   InfoPlayerStartCoop,
@@ -71,12 +71,16 @@ const entityRegistry = [
   trigger.MultipleTriggerEntity,
   trigger.InfoTeleportDestination,
   trigger.TeleportTriggerEntity,
+  trigger.SecretTriggerEntity,
+  trigger.OnceTriggerEntity,
+  trigger.RelayTriggerEntity,
+  trigger.CountTriggerEntity,
+  trigger.OnlyRegisteredTriggerEntity,
+  trigger.SetSkillTriggerEntity,
 
   TelefragTriggerEntity,
 
   ArmySoldierMonster,
-
-  IntermissionCameraEntity,
 
   door.DoorEntity,
   door.SecretDoorEntity,
@@ -104,6 +108,13 @@ const entityRegistry = [
   item.HeavyArmorEntity,
   item.LightArmorEntity,
   item.StrongArmorEntity,
+
+  item.WeaponSuperShotgun,
+  item.WeaponGrenadeLauncher,
+  item.WeaponNailgun,
+  item.WeaponSuperNailgun,
+  item.WeaponRocketLauncher,
+  item.WeaponThunderbolt,
 ];
 
 export class ServerGameAPI {
@@ -119,8 +130,6 @@ export class ServerGameAPI {
 
     this.coop = 0; // Engine API
     this.deathmatch = 0; // Engine API
-    this.teamplay = 0; // Engine API
-    this.skill = 0; // Engine API
 
     this.mapname = null; // Engine API
 
@@ -129,6 +138,8 @@ export class ServerGameAPI {
     // stats
     this.total_monsters = 0;
     this.killed_monsters = 0;
+    this.total_secrets = 0;
+    this.found_secrets = 0;
 
     // checkout Player.decodeLevelParms to understand this
     this.parm1 = 0;
@@ -151,6 +162,7 @@ export class ServerGameAPI {
 
     this.time = 0;
     this.framecount = 0;
+    this.frametime = 0;
 
     /** @type {?BaseEntity} QuakeC: world */
     this.worldspawn = null;
@@ -158,6 +170,8 @@ export class ServerGameAPI {
     /** @type {?BaseEntity} the last selected spawn point, used for cycling spawn spots */
     this.lastspawn = null;
 
+    // game state related
+    this.gameover = false;
     this.intermission_running = 0.0;
     this.intermission_exittime = 0.0;
 
@@ -180,15 +194,36 @@ export class ServerGameAPI {
     this._cvars = {
       skill: engineAPI.GetCvar('skill'),
       teamplay: engineAPI.GetCvar('teamplay'),
+      registered: engineAPI.GetCvar('registered'),
+      timelimit: engineAPI.GetCvar('timelimit'),
+      fraglimit: engineAPI.GetCvar('fraglimit'),
       // TODO: deathmatch, coop
     };
 
     Object.seal(this);
   }
 
+  get skill() {
+    return this._cvars.skill.value;
+  }
+
+  get teamplay() {
+    return this._cvars.teamplay.value;
+  }
+
+  get registered() {
+    return this._cvars.registered.value;
+  }
+
+  get timelimit() {
+    return this._cvars.timelimit.value;
+  }
+
+  get fraglimit() {
+    return this._cvars.fraglimit.value;
+  }
+
   StartFrame() {
-    this.skill = this._cvars.skill.value;
-    this.teamplay = this._cvars.teamplay.value;
     this.framecount++;
   }
 
@@ -266,6 +301,34 @@ export class ServerGameAPI {
     const playerEntity = clientEdict.entity;
     this._assertClientEntityIsPlayerEntity(playerEntity);
     playerEntity.putPlayerInServer();
+  }
+
+  nextLevel() {
+    this.engine.ConsolePrint('TODO: ServerGameAPI.nextLevel\n'); // TODO
+  }
+
+  /**
+   * Exit deathmatch games upon conditions.
+   * @param {PlayerEntity} playerEntity player
+   */
+  checkRules(playerEntity) {
+    if (this.gameover) {
+      return; // someone else quit the game already
+    }
+
+    this.gameover = true;
+
+    if (this.timelimit > 0 && this.time >= this.timelimit * 60) {
+      this.engine.BroadcastPrint(`Timelimit reached.\n`);
+      this.nextLevel();
+      return;
+    }
+
+    if (this.fraglimit > 0 && playerEntity.frags > this.fraglimit) {
+      this.engine.BroadcastPrint(`${playerEntity.netname} triggered the fraglimit.\n`);
+      this.nextLevel();
+      return;
+    }
   }
 
   /**

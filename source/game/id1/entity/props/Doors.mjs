@@ -2,6 +2,7 @@
 
 import { attn, channel, damage, items, moveType, solid, worldType } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
+import { itemNames } from "../Items.mjs";
 import { PlayerEntity } from "../Player.mjs";
 import { TriggerField } from "../Subs.mjs";
 import { DamageHandler } from "../Weapons.mjs";
@@ -16,15 +17,20 @@ export const flag = {
   DOOR_GOLD_KEY: 8,
   DOOR_SILVER_KEY: 16,
   DOOR_TOGGLE: 32,
-  DOOR_NO_TRIGGER_FIELD: 64, // QuakeShack (it’s broken lol)
 };
 
 export class BaseDoorEntity extends BasePropEntity {
   _declareFields() {
     super._declareFields();
+    /** @type {?BaseDoorEntity} linked door @protected */
     this._linkedDoor = null; // entity (QuakeC: enemy)
+    /** @type {?TriggerField} trigger field @protected */
     this._triggerField = null; // trigger field
+    /** @type {?string} */
     this.noise4 = null;
+
+    /** used during linking doors for crossing entity classes @readonly @private */
+    this._doormarker = 'door';
   }
 
   /**
@@ -50,54 +56,49 @@ export class BaseDoorEntity extends BasePropEntity {
     }
 
     if (this.spawnflags & flag.DOOR_DONT_LINK) {
-      this._linkedDoor = this.owner = null;
+      this._linkedDoor = this.owner = this;
       return; // don't want to link this door
     }
 
     const cmins = this.mins, cmaxs = this.maxs;
 
-    let startEntity = this, t = this, self = this;
+    let t = this, self = this;
 
     do {
-      self.owner = startEntity;
+      self.owner = this; // master door
 
       if (self.health) {
-        startEntity.health = self.health;
+        this.health = self.health;
       }
 
       if (self.targetname) {
-        startEntity.targetname = self.targetname;
+        this.targetname = self.targetname;
       }
 
-      if (self.message && self.message.trim() !== '') {
-        startEntity.message = self.message;
+      if (self.message) {
+        this.message = self.message;
       }
 
-      // FIXME: might find a way how to deal with this overwritten classname in QuakeC (door)
-      t = t.findNextEntityByFieldAndValue('doormarker', self.classname);
+      t = t.findNextEntityByFieldAndValue('_doormarker', 'door');
       if (!t) {
-        self._linkedDoor = startEntity; // make the chain a loop
+        self._linkedDoor = this; // make the chain a loop
 
         // shootable, fired, or key doors just needed the owner/enemy links,
         // they don't spawn a field
 
-        const owner = self.owner;
+        self = self.owner;
 
-        if (owner.health || owner.targetname || owner.items) {
+        if (self.health || self.targetname || self.items) {
           return;
         }
 
-        if (!(self.flags & flag.DOOR_NO_TRIGGER_FIELD)) { // FIXME: doesn’t work properly, because linked doors behave differently
-          owner._triggerField = self._spawnTriggerField(cmins, cmaxs);
-        }
+        self.owner._triggerField = self._spawnTriggerField(cmins, cmaxs);
 
         return;
       }
 
       if (self.isTouching(t)) {
-        if (t._linkedDoor) {
-          throw new TypeError('cross connected doors');
-        }
+        console.assert(!this._linkedDoor, 'no cross connected doors');
 
         self._linkedDoor = t;
         self = t;
@@ -116,10 +117,9 @@ export class BaseDoorEntity extends BasePropEntity {
     } while (true);
   }
 
-  _doorFire() {
-    if (!this.owner.equals(this)) {
-      throw new TypeError('door_fire: self.owner != self');
-    }
+  _doorFire(usedByEntity) {
+    // CR: triggers on E1M4 for some reason
+    // console.assert(this.owner.equals(this), 'Doors must be linked back to itself');
 
     if (this.items) {
       this.startSound(channel.CHAN_VOICE, this.noise4);
@@ -134,9 +134,9 @@ export class BaseDoorEntity extends BasePropEntity {
       if (this.state === state.STATE_UP || this.state === state.STATE_TOP) {
         let self = this;
         do {
-          self._doorGoDown();
+          self._doorGoDown(usedByEntity);
           self = self._linkedDoor;
-        } while (!self.equals(this) && !self.isWorld());
+        } while (self && !self.equals(this) && !self.isWorld());
         return;
       }
     }
@@ -144,9 +144,9 @@ export class BaseDoorEntity extends BasePropEntity {
     // trigger all paired doors
     let self = this;
     do {
-      self._doorGoUp();
+      self._doorGoUp(usedByEntity);
       self = self._linkedDoor;
-    } while (!self.equals(this) && !self.isWorld());
+    } while (self && !self.equals(this) && !self.isWorld());
   }
 
   /**
@@ -159,14 +159,14 @@ export class BaseDoorEntity extends BasePropEntity {
     // so let it just squash the object to death real fast
     if (this.wait >= 0) {
       if (this.state === state.STATE_DOWN) {
-        this._doorGoUp();
+        this._doorGoUp(blockedByEntity);
       } else {
-        this._doorGoDown();
+        this._doorGoDown(blockedByEntity);
       }
     }
   }
 
-  _doorGoDown() {
+  _doorGoDown(usedByEntity) {
     if (this.state === state.STATE_DOWN) {
       return; // already going up
     }
@@ -180,6 +180,7 @@ export class BaseDoorEntity extends BasePropEntity {
     }
 
     this._sub.calcMove(this.pos1, this.speed, () => this._doorHitBottom());
+    this._sub.useTargets(usedByEntity); // CR: I added this
   }
 
   _doorHitBottom() {
@@ -188,7 +189,7 @@ export class BaseDoorEntity extends BasePropEntity {
     this._sub.reset();
   }
 
-  _doorGoUp() {
+  _doorGoUp(usedByEntity) {
     if (this.state === state.STATE_UP) {
       return; // already going up
     }
@@ -203,7 +204,7 @@ export class BaseDoorEntity extends BasePropEntity {
     this.state = state.STATE_UP;
 
     this._sub.calcMove(this.pos2, this.speed, () => this._doorHitTop());
-    this._sub.useTargets(null);
+    this._sub.useTargets(usedByEntity);
   }
 
   _doorHitTop() {
@@ -218,12 +219,12 @@ export class BaseDoorEntity extends BasePropEntity {
     this._scheduleThink(this.ltime + this.wait, () => this._doorGoDown());
   }
 
-  _doorKilled() {
+  _doorKilled(attackerEntity) {
     const owner = this.owner;
 
     owner.health = owner.max_health;
     owner.takedamage = damage.DAMAGE_NO;
-    owner.use();
+    owner.use(attackerEntity);
   }
 
   /**
@@ -235,14 +236,16 @@ export class BaseDoorEntity extends BasePropEntity {
     }
 
     this.message = null;
+
     if (this.owner) {
       this.owner.message = null;
     }
+
     if (this._linkedDoor) {
       this._linkedDoor.message = null;
     }
 
-    this._doorFire();
+    this._doorFire(usedByEntity);
   }
 };
 
@@ -295,9 +298,8 @@ export class DoorEntity extends BaseDoorEntity {
     this._damageHandler = new DamageHandler(this);
   }
 
-  // eslint-disable-next-line no-unused-vars
   thinkDie(attackerEntity) {
-    this._doorKilled();
+    this._doorKilled(attackerEntity);
   }
 
   _precache() {
@@ -410,8 +412,6 @@ export class DoorEntity extends BaseDoorEntity {
     this.setOrigin(this.origin);
     this.setModel(this.model);
 
-    // FIXME: self.classname = "door"
-
     if (this.spawnflags & flag.DOOR_SILVER_KEY) {
       this.items = items.IT_KEY1;
     } else if (this.spawnflags & flag.DOOR_GOLD_KEY) {
@@ -450,7 +450,6 @@ export class DoorEntity extends BaseDoorEntity {
 
     if (this.health > 0) {
       this.takedamage = damage.DAMAGE_YES;
-      // TODO: this.th_die = door_killed
     }
 
     if (this.items) {
@@ -496,9 +495,13 @@ export class DoorEntity extends BaseDoorEntity {
       return;
     }
 
-    // FIXME: blink key on player's status bar (CR: TODO: push an event)
+    // FIXME: blink key on player's status bar (CR: push an event)
     if ((this.items & usedByEntity.items) !== this.items) {
-      usedByEntity.centerPrint("You need some key to open this door");
+      const requiredKeys = Object.entries(itemNames)
+        .filter(([item]) => (this.items & item) !== 0)
+        .map(([, name]) => name);
+
+      usedByEntity.centerPrint(`You need the ${requiredKeys.join(', ')}`);
       usedByEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav", 1.0, attn.ATTN_NONE);
 
       // TODO: messages and sound
@@ -506,15 +509,13 @@ export class DoorEntity extends BaseDoorEntity {
     }
 
     // remove the used key from the inventory
-    usedByEntity &= ~this.items;
+    usedByEntity.items &= ~this.items;
 
     // mark this (and the linked) door used
     this._doorKeyUsed = true;
     this._linkedDoor._doorKeyUsed = true;
 
     this.use(usedByEntity);
-
-    // this.engine.ConsolePrint(`DoorEntity.touch: ${this} is touched by ${usedByEntity}\n`);
   }
 }
 

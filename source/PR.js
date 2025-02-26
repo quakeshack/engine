@@ -413,6 +413,14 @@ PR.EdictProxy = class ProgsEntity {
                 val_int[ofs] = 0;
                 return;
               }
+              if (typeof(value.edictId) !== 'undefined') { // TODO: Entity class
+                val_int[ofs] = value.edictId;
+                return;
+              }
+              if (typeof(value._edictNum) !== 'undefined') { // TODO: Edict class
+                val_int[ofs] = value.edictId;
+                return;
+              }
               if (typeof(value.num) !== 'undefined') { // TODO: Edict class
                 val_int[ofs] = value.num;
                 return;
@@ -908,8 +916,8 @@ PR.LoadProgs = function() {
 };
 
 PR.Init = async function() {
-  // return;
   try {
+    // throw new Error();
     // try to get the game API
     PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
     const identification = PR.QuakeJS.identification;

@@ -195,7 +195,7 @@ SV.Edict = class Edict {
 
     this.setOrigin(trace.endpos);
     this.entity.flags |= SV.fl.onground;
-    this.entity.groundentity = trace.ent; // QuakeC quirks, TODO: Edict vs Entity
+    this.entity.groundentity = trace.ent.entity;
 
     return true;
   }
@@ -1242,8 +1242,8 @@ SV.SpawnServer = function(mapname) {
 
   SV.server.gameAPI.serverflags = SV.svs.serverflags;
   SV.server.gameAPI.mapname = mapname;
-  SV.server.gameAPI.coop = Host.coop.value;
-  SV.server.gameAPI.deathmatch = Host.deathmatch.value;
+  SV.server.gameAPI.coop = Host.coop.value; // QuakeC quirks
+  SV.server.gameAPI.deathmatch = Host.deathmatch.value; // QuakeC quirks
 
   // NOTE: not calling ent.entity.spawn(); here, it’s done by ED.LoadFromFile
 
@@ -1444,7 +1444,7 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
     return false;
   }
   ent.entity.flags &= (~SV.fl.partialground >>> 0);
-  ent.entity.groundentity = trace.ent; // QuakeC quirks, TODO: Edict vs Entity
+  ent.entity.groundentity = trace.ent.entity;
   if (relink) {
     SV.LinkEdict(ent, true);
   }
@@ -1707,7 +1707,7 @@ SV.FlyMove = function(ent, time) {
       blocked |= 1;
       if (trace.ent.entity.solid === SV.solid.bsp) {
         ent.entity.flags |= SV.fl.onground;
-        ent.entity.groundentity = trace.ent; // QuakeC quirks, TODO: Edict vs Entity
+        ent.entity.groundentity = trace.ent.entity;
       }
     } else if (trace.plane.normal[2] === 0.0) {
       blocked |= 2;
@@ -1807,7 +1807,7 @@ SV.PushMove = function(pusher, movetime) {
 			(movetype === SV.movetype.noclip)) {
       continue;
     }
-    if (((check.entity.flags & SV.fl.onground) === 0) || !check.entity.groundentity || !check.entity.groundentity.equals(pusher)) { // QuakeC quirks, TODO: Edict vs Entity
+    if (((check.entity.flags & SV.fl.onground) === 0) || !check.entity.groundentity || !check.entity.groundentity.equals(pusher)) {
       if (!check.entity.absmin.lt(maxs) || !check.entity.absmax.gt(mins)) {
         continue;
       }
@@ -2020,7 +2020,7 @@ SV.WalkMove = function(ent) {
   if (downtrace.plane.normal[2] > 0.7) {
     if (ent.entity.solid === SV.solid.bsp) {
       ent.entity.flags |= SV.fl.onground;
-      ent.entity.groundentity = downtrace.ent; // QuakeC quirks, TODO: Edict vs Entity
+      ent.entity.groundentity = downtrace.ent.entity;
     }
     return;
   }
@@ -2127,7 +2127,7 @@ SV.Physics_Toss = function(ent) {
   if (trace.plane.normal[2] > 0.7) {
     if (ent.entity.velocity[2] < 60.0 || movetype !== SV.movetype.bounce) {
       ent.entity.flags |= SV.fl.onground;
-      ent.entity.groundentity = trace.ent; // QuakeC quirks, TODO: Edict vs Entity
+      ent.entity.groundentity = trace.ent.entity;
       ent.entity.velocity = Vector.origin;
       ent.entity.avelocity = Vector.origin;
     }
@@ -2512,7 +2512,7 @@ SV.WaterJump = function() { // Host.client
   }
 
   const nvelo = ent.entity.movedir.copy();
-  nvelo[2] = 0.0;
+  nvelo[2] = ent.entity.velocity[2];
   ent.entity.velocity = nvelo;
 };
 

@@ -61,7 +61,6 @@ export default class BasePropEntity extends BaseEntity {
   }
 
   spawn() {
-    this.engine.ConsolePrint(`BasePropEntity: implement me on ${this}, removing entity\n`);
-    this.remove();
+    console.assert(false, 'Missing spawn implementation');
   }
 };

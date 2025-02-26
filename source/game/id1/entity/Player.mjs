@@ -204,6 +204,15 @@ export class PlayerEntity extends BaseEntity {
     /** @type {number} set by teleporters to keep the player from moving a while, also after death keeping from respawn too early */
     this.pausetime = 0;
 
+    /** @protected */
+    this._damageTime = 0;
+
+    /** @protected */
+    this._modelIndex = {
+      player: null,
+      eyes: null,
+    }
+
     this._damageHandler = new DamageHandler(this);
   }
 
@@ -589,7 +598,7 @@ export class PlayerEntity extends BaseEntity {
     this.invincible_finished = 0;
     this.super_damage_finished = 0;
     this.radsuit_finished = 0;
-    this.setModel('progs/player.mdl'); // don't use eyes (FIXME: what about size? it was modelindex only before)
+    this.modelindex = this._modelIndex.player; // don't use eyes
 
     if (this.game.deathmatch || this.game.coop) {
       this._dropBackpack();
@@ -603,8 +612,13 @@ export class PlayerEntity extends BaseEntity {
     this.flags &= ~(flags.FL_ONGROUND);
     this.movetype = moveType.MOVETYPE_TOSS;
 
-    if (this.velocity[2] < 10.0) {
-      this.velocity[2] += Math.random() * 300.0;
+    if (this.flags & flags.FL_INWATER) {
+      // FIXME: if in lava, we can burn it up. if in water, make the dead corpse float up
+      this.velocity.clear();
+    } else {
+      if (this.velocity[2] < 10.0) {
+        this.velocity[2] += Math.random() * 300.0;
+      }
     }
 
     if (this.health < -40.0) {
@@ -724,7 +738,7 @@ export class PlayerEntity extends BaseEntity {
     }
 
     this.weapon = weapon;
-    this.items = this.items - (this.items & (items.IT_SHELLS | items.IT_NAILS | items.IT_ROCKETS | items.IT_CELLS));
+    this.items &= ~(this.items & (items.IT_SHELLS | items.IT_NAILS | items.IT_ROCKETS | items.IT_CELLS));
 
     const config = weaponConfig.get(this.weapon);
     if (config) {
@@ -732,7 +746,7 @@ export class PlayerEntity extends BaseEntity {
       this.weaponmodel = config.weaponmodel;
       this.weaponframe = config.weaponframe;
       if (config.items) {
-        this.items = this.items | items[config.items];
+        this.items |= items[config.items];
       }
     } else {
       this.currentammo = 0;
@@ -816,8 +830,13 @@ export class PlayerEntity extends BaseEntity {
       backpackUsed = true;
     }
 
-    if (ammoUsed) {
-      this.setWeapon();
+    if (ammoUsed && (backpack.items & (
+        items.IT_SHOTGUN | items.IT_SUPER_SHOTGUN |
+        items.IT_NAILGUN | items.IT_SUPER_NAILGUN |
+        items.IT_GRENADE_LAUNCHER | items.IT_ROCKET_LAUNCHER |
+        items.IT_LIGHTNING
+      ))) {
+      this.setWeapon(this.chooseBestWeapon());
     }
 
     return backpackUsed;
@@ -1268,10 +1287,106 @@ export class PlayerEntity extends BaseEntity {
     }
   }
 
-  _checkPowerups() { // QuakeC: player.qc/CheckPowerups
-    // TODO
-    if (this.invisible_finished > this.game.time) {
+  _powerupFrame() { // QuakeC: client.qc/CheckPowerups
+    if (this.health <= 0) {
+      return;
+    }
 
+    // Invisibility
+    if (this.invisible_finished) {
+      if (this.invisible_sound < this.game.time) {
+        this.startSound(channel.CHAN_AUTO, "items/inv3.wav", 0.5, attn.ATTN_IDLE);
+        this.invisible_sound = this.game.time + (Math.random() * 3 + 1);
+      }
+
+      if (this.invisible_finished < this.game.time + 3) {
+        if (this.invisible_time === 1) {
+          this.consolePrint("Ring of Shadows magic is fading\n");
+          this.dispatchEvent(playerEvent.BONUS_FLASH);
+          this.startSound(channel.CHAN_AUTO, "items/inv2.wav");
+          this.invisible_time = this.game.time + 1;
+        }
+        if (this.invisible_time < this.game.time) {
+          this.invisible_time = this.game.time + 1;
+          this.dispatchEvent(playerEvent.BONUS_FLASH);
+        }
+      }
+
+      if (this.invisible_finished < this.game.time) {
+        this.items &= ~items.IT_INVISIBILITY;
+        this.invisible_finished = 0;
+        this.invisible_time = 0;
+        this.modelindex = this._modelIndex.player;
+      } else {
+        this.modelindex = this._modelIndex.eyes;
+        this.frame = 0; // during eyes, keep animation static
+      }
+    }
+
+    // Invincibility
+    if (this.invincible_finished) {
+      if (this.invincible_finished < this.game.time + 3) {
+        if (this.invincible_time === 1) {
+          this.consolePrint("Protection is almost burned out\n");
+          this.dispatchEvent(playerEvent.BONUS_FLASH);
+          this.startSound(channel.CHAN_AUTO, "items/protect2.wav");
+          this.invincible_time = this.game.time + 1;
+        }
+        if (this.invincible_time < this.game.time) {
+          this.invincible_time = this.game.time + 1;
+          this.dispatchEvent(playerEvent.BONUS_FLASH);
+        }
+      }
+      if (this.invincible_finished < this.game.time) {
+        this.items &= ~items.IT_INVULNERABILITY;
+        this.invincible_time = 0;
+        this.invincible_finished = 0;
+      }
+      this.effects = this.invincible_finished > this.game.time ? this.effects | effect.EF_DIMLIGHT : this.effects & ~effect.EF_DIMLIGHT;
+    }
+
+    // Super Damage
+    if (this.super_damage_finished) {
+      if (this.super_damage_finished < this.game.time + 3) {
+        if (this.super_time === 1) {
+          this.consolePrint("Quad Damage is wearing off\n");
+          this.dispatchEvent(playerEvent.BONUS_FLASH);
+          this.startSound(channel.CHAN_AUTO, "items/damage2.wav");
+          this.super_time = this.game.time + 1;
+        }
+        if (this.super_time < this.game.time) {
+          this.super_time = this.game.time + 1;
+          this.dispatchEvent(playerEvent.BONUS_FLASH);
+        }
+      }
+      if (this.super_damage_finished < this.game.time) {
+        this.items &= ~items.IT_QUAD;
+        this.super_damage_finished = 0;
+        this.super_time = 0;
+      }
+      this.effects = this.super_damage_finished > this.game.time ? this.effects | effect.EF_DIMLIGHT : this.effects & ~effect.EF_DIMLIGHT;
+    }
+
+    // Suit
+    if (this.radsuit_finished) {
+      this.air_finished = this.game.time + 12;
+      if (this.radsuit_finished < this.game.time + 3) {
+        if (this.rad_time === 1) {
+          this.consolePrint("Air supply in Biosuit expiring\n");
+          this.dispatchEvent(playerEvent.BONUS_FLASH);
+          this.startSound(channel.CHAN_AUTO, "items/suit2.wav");
+          this.rad_time = this.game.time + 1;
+        }
+        if (this.rad_time < this.game.time) {
+          this.rad_time = this.game.time + 1;
+          this.dispatchEvent(playerEvent.BONUS_FLASH);
+        }
+      }
+      if (this.radsuit_finished < this.game.time) {
+        this.items &= ~items.IT_SUIT;
+        this.rad_time = 0;
+        this.radsuit_finished = 0;
+      }
     }
   }
 
@@ -1317,8 +1432,11 @@ export class PlayerEntity extends BaseEntity {
     this.fixangle = true;
     this.view_ofs.setTo(0.0, 0.0, 22.0);
 
-    // NOTE: not doing the modelindex_eyes trick, we simply gonna use setModel
+    this.setModel('progs/eyes.mdl');
+    this._modelIndex.eyes = this.modelindex;
     this.setModel('progs/player.mdl');
+    this._modelIndex.player = this.modelindex;
+
     this.setSize(...hull[0]);
 
     this.decodeLevelParms();
@@ -1443,6 +1561,117 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /**
+   * @protected
+   */
+  _playerWaterMove() {
+    if (this.movetype === moveType.MOVETYPE_NOCLIP) {
+      return;
+    }
+
+    if (this.health < 0) {
+      return;
+    }
+
+    if (this.waterlevel !== 3) {
+      if (this.air_finished < this.game.time) {
+        this.startSound(channel.CHAN_VOICE, "player/gasp2.wav");
+      } else if (this.air_finished < this.game.time + 9.0) {
+        this.startSound(channel.CHAN_VOICE, "player/gasp1.wav");
+      }
+      this.air_finished = this.game.time + 12.0;
+      this.dmg = 2;
+    } else if (this.air_finished < this.game.time) {
+      // drown!
+      if (this.pain_finished < this.game.time) {
+        this.dmg += 2;
+        if (this.dmg > 15) {
+          this.dmg = 10;
+        }
+        this.damage(this, this.dmg);
+        this.pain_finished = this.game.time + 1.0;
+      }
+    }
+
+    if (!this.waterlevel) {
+      if (this.flags & flags.FL_INWATER) {
+        // play leave water sound
+        this.startSound(channel.CHAN_BODY, "misc/outwater.wav");
+        this.flags &= ~flags.FL_INWATER;
+      }
+      return;
+    }
+
+    if (this.watertype === content.CONTENT_LAVA) {
+      // do damage
+      if (this._damageTime < this.game.time) {
+        if (this.radsuit_finished > this.game.time) {
+          this._damageTime = this.game.time + 1.0;
+        } else {
+          this._damageTime = this.game.time + 0.2;
+        }
+        this.damage(this, 10 * this.waterlevel);
+      }
+    } else if (this.watertype === content.CONTENT_SLIME) {
+      // do damage
+      if (this._damageTime < this.game.time && this.radsuit_finished < this.game.time) {
+        this._damageTime = this.game.time + 1.0;
+        this.damage(this, 4 * this.waterlevel);
+      }
+    }
+
+    if (!(this.flags & flags.FL_INWATER)) {
+      // player enter water sound
+      if (this.watertype === content.CONTENT_LAVA) {
+        this.startSound(channel.CHAN_BODY, "player/inlava.wav");
+      } else if (this.watertype === content.CONTENT_WATER) {
+        this.startSound(channel.CHAN_BODY, "player/inh2o.wav");
+      } else if (this.watertype === content.CONTENT_SLIME) {
+        this.startSound(channel.CHAN_BODY, "player/slimbrn2.wav");
+      }
+
+      this.flags |= flags.FL_INWATER;
+      this._damageTime = 0;
+    }
+
+    if (!(this.flags & flags.FL_WATERJUMP)) {
+      this.velocity = this.velocity.subtract(this.velocity.copy().multiply(0.8 * this.waterlevel * this.game.frametime));
+    }
+  }
+
+  /** @protected */
+  _playerWaterJump() {
+    if (this.waterlevel !== 2) {
+      return;
+    }
+
+    // FIXME: doesn’t work on chris2.map, even in QuakeC
+
+    const start = this.origin.copy();
+    start[2] += 8.0;
+
+    const { forward } = this.angles.angleVectors();
+    forward[2] = 0.0;
+    forward.normalize();
+    forward.multiply(24.0);
+
+    const end = start.copy().add(forward);
+
+    const traceWaist = this.traceline(start, end, true);
+    if (traceWaist.fraction < 1.0) { // solid at waist
+      start[2] += this.maxs[2] - 8.0;
+      end.set(start).add(forward);
+      // this.movedir.set(traceWaist.plane.normal.multiply(-50.0)); // FIXME: CR seems to be unused?
+      const traceEye = this.traceline(start, end, true);
+      if (traceEye.fraction === 1.0) { // open at eye level
+        this.flags |= flags.FL_WATERJUMP;
+        this.velocity[2] = 225.0;
+        this.flags &= ~flags.FL_JUMPRELEASED;
+        this.teleport_time = this.game.time + 2.0; // safety net
+      }
+    }
+  }
+
+  /**
    * player thinking before physics,
    * this is called by the engine per client edict
    */
@@ -1456,13 +1685,10 @@ export class PlayerEntity extends BaseEntity {
       return; // intermission or finale
     }
 
-    // TODO: CheckRules ();
-    // TODO: WaterMove ();
+    this.game.checkRules(this);
 
-    if (this.waterlevel === 2) {
-      // TODO: CheckWaterJump ();
-      // this.centerPrint('this.waterlevel === 2');
-    }
+    this._playerWaterMove();
+    this._playerWaterJump();
 
     if (this.deadflag >= dead.DEAD_DEAD) {
       this._playerDeathThink();
@@ -1524,7 +1750,8 @@ export class PlayerEntity extends BaseEntity {
       this.jump_flag = this.velocity[2];
     }
 
-    this._checkPowerups();
+    // do all powerup stuff last
+    this._powerupFrame();
   }
 
   /**
@@ -1536,7 +1763,27 @@ export class PlayerEntity extends BaseEntity {
 
     // check for self-inflicted damage first
     if (attackerEntity.equals(this)) {
-      this.engine.BroadcastPrint(`${this.netname} killed himself.\n`);
+      if (this.waterlevel > 0) {
+        switch (this.watertype) {
+          case content.CONTENT_WATER:
+            this.engine.BroadcastPrint(`${this.netname} identified as a fish.\n`);
+            break;
+
+          case content.CONTENT_SLIME:
+            this.engine.BroadcastPrint(`${this.netname} got slimed up.\n`);
+            break;
+
+          case content.CONTENT_LAVA:
+            this.engine.BroadcastPrint(`${this.netname} tried to swim in lava.\n`);
+            break;
+
+          default:
+            this.engine.BroadcastPrint(`${this.netname} killed himself in some mysterious liquid.\n`);
+        }
+      } else {
+        this.engine.BroadcastPrint(`${this.netname} killed himself.\n`);
+      }
+
       this.frags--;
 
       return;
@@ -1567,7 +1814,7 @@ export class PlayerEntity extends BaseEntity {
       return actualAttacker.classname;
     })();
 
-    this.engine.BroadcastPrint(`${name} killed ${this.netname}.\n`); // TODO: ClientObituary needs to be more fun again
+    this.engine.BroadcastPrint(`${name} killed ${this.netname}.\n`); // FIXME: ClientObituary needs to be more fun again
     this.engine.BroadcastObituary(actualAttacker.edictId, this.edictId, actualAttacker.weapon, actualAttacker.items);
 
     if (actualAttacker instanceof PlayerEntity) {
@@ -1583,7 +1830,6 @@ export class PlayerEntity extends BaseEntity {
    */
   // eslint-disable-next-line no-unused-vars
   thinkPain(attackerEntity, damage) {
-    // TODO: player_pain
     this._enterPainState();
   }
 
@@ -1686,11 +1932,7 @@ export class TelefragTriggerEntity extends BaseEntity {
   }
 
   spawn() {
-    if (!this.owner) {
-      this.engine.DebugPrint('TelefragTriggerEntity: removed, because no owner had been set.\n');
-      this.remove();
-      return;
-    }
+    console.assert(this.owner, 'Needs an owner');
 
     const oversize = new Vector(1.0, 1.0, 1.0);
     const mins = this.owner.mins.copy().subtract(oversize);

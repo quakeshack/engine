@@ -1,26 +1,9 @@
 /* global Vector */
 
 import { channel, moveType, solid } from "../Defs.mjs";
+import { EntityWrapper } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { PlayerEntity } from "./Player.mjs";
-
-export class TriggerBaseEntity extends BaseEntity {
-  spawn() {
-    super.spawn();
-
-    // trigger angles are used for one-way touches.  An angle of 0 is assumed
-    // to mean no restrictions, so use a yaw of 360 instead.
-
-    if (!this.angles.isOrigin()) {
-      this._sub.setMovedir();
-    }
-
-    this.solid = solid.SOLID_TRIGGER;
-    this.setModel(this.model); // set size and link into world
-    this.movetype = moveType.MOVETYPE_NONE;
-    this.unsetModel();
-  }
-};
 
 export const triggerFieldFlags = {
   /** Vanilla Quake behavior */
@@ -69,7 +52,7 @@ export class TriggerField extends BaseEntity {
       return;
     }
 
-    if (!(this.flags & triggerFieldFlags.TFF_DEAD_BODIES_TRIGGER) && otherEntity.health <= 0) {
+    if (!(this.flags & triggerFieldFlags.TFF_DEAD_ACTORS_TRIGGER) && otherEntity.health <= 0) {
       return;
     }
 
@@ -78,8 +61,6 @@ export class TriggerField extends BaseEntity {
     }
 
     this.attack_finished = this.game.time + 1.0;
-
-    // TODO: activator = other; ?? -- copied from QuakeC (CR: might not be required, since we pass the other entity around)
 
     this.owner.use(otherEntity);
   }
@@ -91,18 +72,23 @@ export class TriggerField extends BaseEntity {
  * - delayed interactions
  * - optional triggers upon use
  */
-export class Sub {
+export class Sub extends EntityWrapper {
   /**
    * @param {BaseEntity} entity bound entity
    */
   constructor(entity) {
-    /** @type {BaseEntity} associated entity */
-    this._entity = entity;
+    super(entity);
+
     this._moveData = {};
     this._useData = {};
-    Object.seal(this);
 
     this.reset();
+  }
+
+  /** @protected */
+  _assertEntity() {
+    console.assert(this._entity.target !== undefined, 'target property required');
+    console.assert(this._entity.killtarget !== undefined, 'killtarget property required');
   }
 
   /**
@@ -180,9 +166,7 @@ export class Sub {
    * @param {?Function} callback will be called once the destination has been reached
    */
   calcMove(tdest, tspeed, callback) {
-    if (!tspeed) {
-      throw new TypeError("No speed is defined!");
-    }
+    console.assert(tspeed, 'desired movement speed provided');
 
     this._moveData.active = true;
     this._moveData.callback = callback;
@@ -191,7 +175,7 @@ export class Sub {
     // check if we are already in place
     if (this._entity.origin.equals(tdest)) {
       this._entity.velocity.clear();
-      this._entity._scheduleThink(this._entity.ltime + 0.1, () => this._think());
+      this._entity._scheduleThink(this._entity.ltime + 0.1, () => this._think()); // FIXME: this scope
       return;
     }
 
@@ -206,12 +190,12 @@ export class Sub {
     if (traveltime < 0.1) {
       // too soon
       this._entity.velocity.clear();
-      this._entity._scheduleThink(this._entity.ltime + 0.1, () => this._think());
+      this._entity._scheduleThink(this._entity.ltime + 0.1, () => this._think()); // FIXME: this scope
       return;
     }
 
     // schedule a think to trigger a think when dest is reached
-    this._entity._scheduleThink(this._entity.ltime + traveltime, () => this._think());
+    this._entity._scheduleThink(this._entity.ltime + traveltime, () => this._think()); // FIXME: this scope
 
     // scale the destdelta vector by the time spent traveling to get velocity
     this._entity.velocity = vdestdelta.multiply(1.0 / traveltime);
@@ -221,7 +205,7 @@ export class Sub {
     // if there’s a delay, let’s feed it into the think state machine
     if (this._entity.delay && !this._useData.callback) {
       this._useData.callback = () => this.useTargets(activatorEntity);
-      this._entity._scheduleThink(this._entity.ltime + this._entity.delay, () => this._think());
+      this._entity._scheduleThink(this._entity.ltime + this._entity.delay, () => this._think()); // FIXME: this scope
       return;
     }
 
@@ -239,7 +223,7 @@ export class Sub {
     // remove all killtargets
     if (this._entity.killtarget) {
       /** @type {BaseEntity} */
-      let searchEntity = this._entity.game.worldspawn;
+      let searchEntity = this._game.worldspawn;
       do {
         searchEntity = searchEntity.findNextEntityByFieldAndValue("targetname", this._entity.killtarget);
         if (!searchEntity) {
@@ -253,7 +237,7 @@ export class Sub {
     // fire targets
     if (this._entity.target) {
       /** @type {BaseEntity} */
-      let searchEntity = this._entity.game.worldspawn;
+      let searchEntity = this._game.worldspawn;
       do {
         searchEntity = searchEntity.findNextEntityByFieldAndValue("targetname", this._entity.target);
         if (!searchEntity) {
