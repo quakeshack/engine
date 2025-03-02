@@ -277,6 +277,20 @@ Game.EngineInterface = class EngineInterface {
     MSG.WriteLong(SV.server.datagram, killerItems);
   }
 
+  static EnterIntermission() {
+    MSG.WriteByte(SV.server.datagram, Protocol.svc.intermission);
+  }
+
+  static EnterFinale() {
+    MSG.WriteByte(SV.server.datagram, Protocol.svc.finale);
+  }
+
+  static PlayTrack(id1, id2) {
+    MSG.WriteByte(SV.server.datagram, Protocol.svc.cdtrack);
+    MSG.WriteByte(SV.server.datagram, id1);
+    MSG.WriteByte(SV.server.datagram, id2);
+  }
+
   // TODO: MSG related methods
 
   // TODO: RegisterCvar, UnregisterCvar

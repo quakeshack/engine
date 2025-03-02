@@ -59,7 +59,7 @@ class BaseTriggerEntity extends BaseEntity {
     this.model = null;
     this.modelindex = 0;
   }
-}
+};
 
 /**
  * QUAKED trigger_relay (.5 .5 .5) (-8 -8 -8) (8 8 8)
@@ -80,7 +80,7 @@ export class RelayTriggerEntity extends BaseTriggerEntity {
   spawn() {
     // set nothing
   }
-}
+};
 
 /**
  * QUAKED trigger_multiple (.5 .5 .5) ? notouch
@@ -202,7 +202,7 @@ export class MultipleTriggerEntity extends BaseTriggerEntity {
       this.setOrigin(this.origin); // make sure it links into the world
     }
   }
-}
+};
 
 /**
  * QUAKED trigger_once (.5 .5 .5) ? notouch
@@ -225,7 +225,7 @@ export class OnceTriggerEntity extends MultipleTriggerEntity {
     this.wait = -1;
     super.spawn();
   }
-}
+};
 
 /**
  * QUAKED trigger_secret (.5 .5 .5) ?
@@ -265,7 +265,7 @@ export class SecretTriggerEntity extends OnceTriggerEntity {
 
     super.spawn();
   }
-}
+};
 
 /**
  * QUAKED trigger_counter (.5 .5 .5) ? nomessage
@@ -309,7 +309,7 @@ export class CountTriggerEntity extends MultipleTriggerEntity {
     this.count = this.count || 2;
     super.spawn();
   }
-}
+};
 
 /**
  * QUAKED trigger_teleport (.5 .5 .5) ? PLAYER_ONLY SILENT
@@ -403,7 +403,7 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
       this.engine.SpawnAmbientSound(origin, 'ambience/hum1.wav', 0.5, attn.ATTN_STATIC);
     }
   }
-}
+};
 
 /**
  * QUAKED info_teleport_destination (.5 .5 .5) (-8 -8 -8) (8 8 32)
@@ -421,7 +421,7 @@ export class InfoTeleportDestination extends BaseEntity {
 
     this.origin[2] += 27.0;
   }
-}
+};
 
 /**
  * QUAKED trigger_onlyregistered (.5 .5 .5) ?
@@ -459,10 +459,10 @@ export class OnlyRegisteredTriggerEntity extends BaseTriggerEntity {
       otherEntity.startSound(channel.CHAN_BODY, 'misc/talk.wav');
     }
   }
-}
+};
 
 /**
- * trigger_setskill (.5 .5 .5) ?
+ * QUAKED trigger_setskill (.5 .5 .5) ?
  * Sets skill level to the value of "message".
  * Only used on start map.
  */
@@ -482,4 +482,56 @@ export class SetSkillTriggerEntity extends BaseTriggerEntity {
 
     super.spawn();
   }
-}
+};
+
+/**
+ * QUAKED trigger_changelevel (0.5 0.5 0.5) ? NO_INTERMISSION
+ * When the player touches this, he gets sent to the map listed in the "map" variable.
+ * Unless the NO_INTERMISSION flag is set, the view will go to the info_intermission spot and display stats.
+ */
+export class ChangeLevelTriggerEntity extends BaseTriggerEntity {
+  static classname = 'trigger_changelevel';
+
+  _declareFields() {
+    /** @type {string} next map name */
+    this.map = null;
+    super._declareFields();
+  }
+
+  touch(otherEntity) {
+    if (!(otherEntity instanceof PlayerEntity)) {
+      return;
+    }
+
+    if (this.engine.GetCvar('noexit').value > 0 && this.game.mapname !== 'start') {
+      this.damage(otherEntity, 50000);
+      return;
+    }
+
+    if (this.game.coop || this.game.deathmatch) {
+      this.engine.BroadcastPrint(`${otherEntity.netname} exited the level\n`);
+    }
+
+    this.game.nextmap = this.map;
+
+    this._sub.useTargets(otherEntity);
+
+    if ((this.spawnflags & 1) && !this.game.deathmatch) {
+      this.game.loadNextMap();
+    }
+
+    this.solid = solid.SOLID_NOT;
+
+    // we can't move people right now, because touch functions are called
+    // in the middle of engine movement code, so set a think time to do it
+    this._scheduleThink(this.game.time + 0.1, () => {
+      this.game.startIntermission();
+    });
+  }
+
+  spawn() {
+    console.assert(this.map, 'map must be set');
+
+    super.spawn();
+  }
+};

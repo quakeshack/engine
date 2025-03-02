@@ -77,6 +77,7 @@ const entityRegistry = [
   trigger.CountTriggerEntity,
   trigger.OnlyRegisteredTriggerEntity,
   trigger.SetSkillTriggerEntity,
+  trigger.ChangeLevelTriggerEntity,
 
   TelefragTriggerEntity,
 
@@ -172,8 +173,12 @@ export class ServerGameAPI {
 
     // game state related
     this.gameover = false;
-    this.intermission_running = 0.0;
+    /** @type {number} intermission state (0 = off) */
+    this.intermission_running = 0;
+    /** @type {number} time when intermission is over */
     this.intermission_exittime = 0.0;
+    /** @type {?string} next map name */
+    this.nextmap = null;
 
     this.gameAI = new GameAI(this);
 
@@ -303,10 +308,6 @@ export class ServerGameAPI {
     playerEntity.putPlayerInServer();
   }
 
-  nextLevel() {
-    this.engine.ConsolePrint('TODO: ServerGameAPI.nextLevel\n'); // TODO
-  }
-
   /**
    * Exit deathmatch games upon conditions.
    * @param {PlayerEntity} playerEntity player
@@ -320,15 +321,28 @@ export class ServerGameAPI {
 
     if (this.timelimit > 0 && this.time >= this.timelimit * 60) {
       this.engine.BroadcastPrint(`Timelimit reached.\n`);
-      this.nextLevel();
+      this.loadNextMap();
       return;
     }
 
     if (this.fraglimit > 0 && playerEntity.frags > this.fraglimit) {
       this.engine.BroadcastPrint(`${playerEntity.netname} triggered the fraglimit.\n`);
-      this.nextLevel();
+      this.loadNextMap();
       return;
     }
+  }
+
+  /**
+   * Will load next map.
+   * @param {?string} nextmap next map (default: this.nextmap)
+   */
+  loadNextMap(nextmap = this.nextmap) {
+    if (!nextmap || this.engine.GetCvar('samelevel').value) {
+      this.engine.ChangeLevel(this.mapname);
+      return;
+    }
+
+    this.engine.ChangeLevel(nextmap);
   }
 
   /**
@@ -343,6 +357,25 @@ export class ServerGameAPI {
         playerEntity.consolePrint(`${new Number(cnt).toFixed(0).padStart(4, ' ')}x ${name}\n`);
       }
     }
+  }
+
+  startIntermission() {
+    if (this.intermission_running) {
+      return;
+    }
+
+    this.intermission_running = 1;
+    this.intermission_exittime = this.time + (this.deathmatch ? 5.0 : 2.0); // 5s for dm games
+
+    this.engine.PlayTrack(3, 3);
+
+    for (const player of this.engine.FindAllByFieldAndValue('classname', PlayerEntity.classname)) {
+      /** @type {PlayerEntity} */
+      const playerEntity = player.entity;
+      playerEntity.startIntermission();
+    }
+
+    this.engine.EnterIntermission();
   }
 
   /**

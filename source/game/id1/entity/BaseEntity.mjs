@@ -526,7 +526,7 @@ export default class BaseEntity {
    */
   spawnAmbientSound(sfxName, volume, attenuation) {
     this.engine.PrecacheSound(sfxName);
-    this.engine.SpawnAmbientSound(this.origin, sfxName, volume, attenuation);
+    this.engine.SpawnAmbientSound(this.centerPoint, sfxName, volume, attenuation);
   }
 
   /**
@@ -638,6 +638,18 @@ export default class BaseEntity {
   }
 
   /**
+   * Searches all entity matching field equals value.
+   * @param {string} field what field to search
+   * @param {string} value what value to match the value under field
+   * @yields {BaseEntity} matching entity
+   */
+  *findAllEntitiesByFieldAndValue(field, value) {
+    for (const edict of this.engine.FindAllByFieldAndValue(field, value)) {
+      yield edict.entity;
+    }
+  }
+
+  /**
    * Returns client (or object that has a client enemy) that would be * a valid target.
    * If there are more than one valid options, they are cycled each frame.
    * If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
@@ -689,4 +701,4 @@ export default class BaseEntity {
   moveToGoal(distance) {
     return this.edict.moveToGoal(distance);
   }
-}
+};

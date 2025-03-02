@@ -3,7 +3,7 @@
 import { attn, channel, content, damage, dead, deathType, effect, flags, hull, items, moveType, solid } from "../Defs.mjs";
 import { crandom, Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
-import { InfoNotNullEntity } from "./Misc.mjs";
+import { InfoNotNullEntity, IntermissionCameraEntity } from "./Misc.mjs";
 import { Backpack, DamageHandler, PlayerWeapons, weaponConfig } from "./Weapons.mjs";
 import { CopyToBodyQue } from "./Worldspawn.mjs";
 
@@ -115,6 +115,22 @@ function VelocityForDamage(damage) {
  */
 export class InfoPlayerStart extends InfoNotNullEntity {
   static classname = 'info_player_start';
+};
+
+/**
+ * QUAKED info_player_start2 (1 0 0) (-16 -16 -24) (16 16 24)
+ * Only used on start map for the return point from an episode.
+ */
+export class InfoPlayerStart2 extends InfoNotNullEntity {
+  static classname = 'info_player_start2';
+};
+
+/**
+ * Saved out by quaked in region mode.
+ * Details: https://quakewiki.org/wiki/testplayerstart
+ */
+export class InfoPlayerStartTest extends InfoNotNullEntity {
+  static classname = 'testplayerstart';
 };
 
 /**
@@ -538,7 +554,7 @@ export class PlayerEntity extends BaseEntity {
    */
   _selectSpawnPoint() { // QuakeC: client.qc/SelectSpawnPoint
     if (this.game.coop) {
-      this.game.lastspawn = this.findNextEntityByFieldAndValue('classname', 'info_player_coop', this.game.lastspawn, true);
+      this.game.lastspawn = this.findNextEntityByFieldAndValue('classname', InfoPlayerStartCoop.classname, this.game.lastspawn, true);
 
       if (this.game.lastspawn) {
         return this.game.lastspawn;
@@ -548,7 +564,7 @@ export class PlayerEntity extends BaseEntity {
       let attempts = 32;
 
       while (attempts-- > 0) {
-        spot = this.findNextEntityByFieldAndValue('classname', 'info_player_deathmatch', spot, true);
+        spot = this.findNextEntityByFieldAndValue('classname', InfoPlayerStartDeathmatch.classname, spot, true);
 
         if (!spot) {
           this.engine.ConsolePrint('PlayerEntity._selectSpawnPoint: There is no deathmatch spawn point on this map!\n');
@@ -563,15 +579,16 @@ export class PlayerEntity extends BaseEntity {
     }
 
     if (this.game.serverflags) { // return with a rune to start
-      const spot = this.findFirstEntityByFieldAndValue('classname', 'info_player_start2');
+      const spot = this.findFirstEntityByFieldAndValue('classname', InfoPlayerStart2.classname);
 
       if (spot) {
         return spot;
       }
     }
 
-    return this.findFirstEntityByFieldAndValue('classname', 'info_player_start');
-    // FIXME: throw error if there is no info_player_start
+    const spot = this.findFirstEntityByFieldAndValue('classname', InfoPlayerStart.classname);
+    console.assert(spot !== null, 'info_player_start last resort');
+    return spot;
   }
 
   /** @protected */
@@ -1407,11 +1424,15 @@ export class PlayerEntity extends BaseEntity {
     this.solid = solid.SOLID_SLIDEBOX;
     this.movetype = moveType.MOVETYPE_WALK;
     this.show_hostile = 0;
+    /** @type {number} regular hp limit */
     this.max_health = 100;
-    this.health = 100; // CR: what about max_health?
+    /** @type {number} current and starting health */
+    this.health = 100;
     this.flags = flags.FL_CLIENT;
+    /** @type {number} time when drowning starts */
     this.air_finished = this.game.time + 12;
-    this.dmg = 2;   		// initial water damage
+    /** @type {number} initial water damage */
+    this.dmg = 2;
     this.super_damage_finished = 0;
     this.radsuit_finished = 0;
     this.invisible_finished = 0;
@@ -1671,14 +1692,84 @@ export class PlayerEntity extends BaseEntity {
     }
   }
 
+  _intermissionThink() { // QuakeC: client.qc/IntermissionThink
+    if (this.game.time < this.game.intermission_exittime) {
+      return;
+    }
+
+    if (!this.button0 && !this.button1 && !this.button2) {
+      return;
+    }
+
+    this._intermissionExit();
+  }
+
+  /**
+   * @returns {IntermissionCameraEntity|BaseEntity} intermission camera spot
+   */
+  _intermissionFindSpot() { // QuakeC: client.qc/FindIntermission
+    const spots = Array.from(this.findAllEntitiesByFieldAndValue('classname', IntermissionCameraEntity.classname));
+
+    // randomly choose an intermission spot
+    if (spots.length > 0) {
+      return spots[Math.floor(Math.random() * spots.length)];
+    }
+
+    // fallback to spawn points
+    return this._selectSpawnPoint();
+  }
+
+  _intermissionExit() { // QuakeC: client.qc/ExitIntermission
+    // skip any text in deathmatch
+    if (this.game.deathmatch) {
+      this.game.loadNextMap();
+      return;
+    }
+
+    this.game.intermission_exittime = this.game.time + 1.0;
+    this.game.intermission_running++;
+
+    // TODO: run some text if at the end of an episode
+
+    if (this.game.intermission_running === 3) {
+      if (!this.game.registered) {
+        // TODO: shareware mode, sell screen
+      }
+
+      if ((this.game.serverflags & 15) === 15) {
+        // TODO: all runes screen
+      }
+    }
+
+    this.game.loadNextMap();
+  }
+
+  startIntermission() {
+    console.assert(this.game.intermission_running > 0, 'must only be called during intermission running');
+
+    // CR: in vanilla Quake, everyone sees the same spot
+    const spot = this._intermissionFindSpot();
+
+    this.view_ofs.clear();
+    this.angles.set(spot.mangle || spot.angles);
+    this.v_angle.set(spot.mangle || spot.angles);
+    this.fixangle = true;
+    // nextthink in 500ms?
+    this.takedamage = damage.DAMAGE_NO;
+    this.solid = solid.SOLID_NOT;
+    this.movetype = moveType.MOVETYPE_NONE;
+    this.unsetModel();
+    this.setOrigin(spot.origin);
+  }
+
   /**
    * player thinking before physics,
    * this is called by the engine per client edict
    */
   playerPreThink() {
     if (this.game.intermission_running) {
-      // TODO: IntermissionThink ();	// otherwise a button could be missed between
-      return;					// the think tics
+      this._intermissionThink(); // otherwise a button could be missed between
+      return; // the think tics
     }
 
     if (this.view_ofs.isOrigin()) {
@@ -1850,7 +1941,7 @@ export class PlayerEntity extends BaseEntity {
 
     // a client connecting during an intermission can cause problems
     if (this.game.intermission_running) {
-      // TODO: ExitIntermission()
+      this._intermissionExit();
     }
 
     this.game.sendMissingEntitiesToPlayer(this);

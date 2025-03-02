@@ -186,7 +186,7 @@ export class BaseItemEntity extends BaseEntity {
     // trigger all connected actions
     this._sub.useTargets(playerEntity);
   }
-}
+};
 
 /**
  * QUAKED item_backpack (0 .5 .8) (-16 -16 0) (16 16 32)
@@ -260,7 +260,7 @@ export class BaseAmmoEntity extends BaseItemEntity {
 
     this.setSize(Vector.origin, new Vector(32.0, 32.0, 56.0));
   }
-}
+};
 
 /**
  * QUAKED item_shells (0 .5 .8) (0 0 0) (32 32 32) big
@@ -425,7 +425,7 @@ export class BaseKeyEntity extends BaseItemEntity {
 
     this._sub.useTargets(playerEntity);
   }
-}
+};
 
 /**
  * QUAKED item_key1 (0 .5 .8) (-16 -16 -24) (16 16 32)
@@ -1005,7 +1005,7 @@ export class WeaponThunderbolt extends BaseWeaponEntity {
   static _weapon = items.IT_LIGHTNING;
 
   spawn() {
-    this.ammo_cells = 5;
+    this.ammo_cells = 15;
     super.spawn();
   }
 };

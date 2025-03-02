@@ -37,11 +37,16 @@ export default class BasePropEntity extends BaseEntity {
   _declareFields() {
     super._declareFields();
 
-    this.sounds = 0; // either a cd track number or sound number
-    this.noise = null; // contains names of wavs to play
-    this.noise1 = null; // contains names of wavs to play
-    this.noise2 = null; // contains names of wavs to play
-    this.noise3 = null; // contains names of wavs to play
+    /** @type {number} either a cd track number or sound number */
+    this.sounds = 0;
+    /** @type {?string} contains filename to play */
+    this.noise = null;
+    /** @type {?string} contains filename to play */
+    this.noise1 = null;
+    /** @type {?string} contains filename to play */
+    this.noise2 = null;
+    /** @type {?string} contains filename to play */
+    this.noise3 = null;
 
     // top and bottom positions
     this.pos1 = new Vector();
@@ -49,11 +54,16 @@ export default class BasePropEntity extends BaseEntity {
 
     /** @type {state} */
     this.state = state.STATE_TOP;
+    /** @type {number} lip size in units */
     this.lip = 0;
+    /** @type {number} height in units */
     this.height = 0;
 
-    this.wait = 0; // time from firing to restarting
-    this.delay = 0; // time from activation to firing
+    /** @type {number} time in seconds from firing to restarting */
+    this.wait = 0;
+    /** @type {number} time in seconds from activation to firing */
+    this.delay = 0;
+    /** @type {number} speed in units */
     this.speed = 0;
 
     // we need sub for movement stuff

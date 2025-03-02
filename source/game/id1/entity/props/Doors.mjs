@@ -249,7 +249,6 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 };
 
-
 /**
  * QUAKED func_door (0 .5 .8) ? START_OPEN x DOOR_DONT_LINK GOLD_KEY SILVER_KEY TOGGLE
  * if two doors touch, they are assumed to be connected and operate as a unit.
@@ -278,6 +277,10 @@ export class BaseDoorEntity extends BasePropEntity {
 export class DoorEntity extends BaseDoorEntity {
   static classname = 'func_door';
 
+  get netname() {
+    return 'a door';
+  }
+
   _declareFields() {
     super._declareFields();
 
@@ -301,6 +304,8 @@ export class DoorEntity extends BaseDoorEntity {
   thinkDie(attackerEntity) {
     this._doorKilled(attackerEntity);
   }
+
+  // FIXME: I should have implemented the sound handling differently such as over at Items.mjs
 
   _precache() {
     switch (this.game.worldspawn.worldtype) {
@@ -517,8 +522,25 @@ export class DoorEntity extends BaseDoorEntity {
 
     this.use(usedByEntity);
   }
-}
+};
 
+/**
+ * QUAKED func_door_secret (0 .5 .8) ? open_once 1st_left 1st_down no_shoot always_shoot
+ * Basic secret door. Slides back, then to the side. Angle determines direction.
+ * wait  = # of seconds before coming back
+ * 1st_left = 1st move is left of arrow
+ * 1st_down = 1st move is down from arrow
+ * always_shoot = even if targeted, keep shootable
+ * t_width = override WIDTH to move back (or height if going down)
+ * t_length = override LENGTH to move sideways
+ * "dmg"		damage to inflict when blocked (2 default)
+ *
+ * If a secret door has a targetname, it will only be opened by it's botton or trigger, not by damage.
+ * "sounds"
+ * 1) medieval
+ * 2) metal
+ * 3) base
+ */
 export class SecretDoorEntity extends BaseDoorEntity {
   static classname = 'func_door_secret';
 
@@ -749,4 +771,4 @@ export class SecretDoorEntity extends BaseDoorEntity {
         break;
     }
   }
-}
+};

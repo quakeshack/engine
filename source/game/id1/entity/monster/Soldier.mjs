@@ -216,4 +216,4 @@ export default class ArmySoldierMonster extends BaseMonster {
   sightSound() {
     this.startSound(channel.CHAN_VOICE, "soldier/sight1.wav");
   }
-}
+};

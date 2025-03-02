@@ -223,7 +223,7 @@ export const worldType = {
 /**
  * @readonly
  * @enum {number}
- * temporary entity class, let’s the client code render client-only effects and things without causing edict bloat and clogging the client-server infrastructure
+ * temporary entity class, lets the client code render client-only effects and things without causing edict bloat and clogging the client-server infrastructure
  */
 export const tentType = {
   TE_SPIKE: 0,

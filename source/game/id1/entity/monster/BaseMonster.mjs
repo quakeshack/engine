@@ -36,6 +36,7 @@ export default class BaseMonster extends BaseEntity {
 
   /**
    * this is used to override a better or more suitable AI for this entity
+   * @protected
    * @returns {EntityAI} responsible entity AI
    */
   _newEntityAI() {
@@ -109,6 +110,26 @@ export default class BaseMonster extends BaseEntity {
     // implement: startSound here
   }
 
+  /**
+   * Currently only called by path_corner when touched and certain checks passed.
+   * @param {import('../Misc.mjs').PathCornerEntity} markerEntity marker entity
+   */
+  moveTargetReached(markerEntity) {
+    // TODO: t_movetarget self logic part
+  //   if (self.classname == "monster_ogre")
+  //     sound (self, CHAN_VOICE, "ogre/ogdrag.wav", 1, ATTN_IDLE);// play chainsaw drag sound
+
+  // //dprint ("t_movetarget\n");
+  //   self.goalentity = self.movetarget = find (world, targetname, other.target);
+  //   self.ideal_yaw = vectoyaw(self.goalentity.origin - self.origin);
+  //   if (!self.movetarget)
+  //   {
+  //     self.pausetime = time + 999999;
+  //     self.th_stand ();
+  //     return;
+  //   }
+  }
+
   attackFinished(normal) {
     // in nightmare mode, all attack_finished times become 0
     // some monsters refire twice automatically
@@ -117,4 +138,4 @@ export default class BaseMonster extends BaseEntity {
       this.attack_finished = this.game.time + normal;
     }
   }
-}
+};

@@ -2,6 +2,7 @@
 
 import { attn, channel, damage, moveType, solid, tentType } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
+import BaseMonster from "./monster/BaseMonster.mjs";
 import { PlayerEntity } from "./Player.mjs";
 import { DamageHandler, DamageInflictor, Explosions } from "./Weapons.mjs";
 
@@ -84,7 +85,7 @@ export class BaseLightEntity extends BaseEntity {
         this.engine.Lightstyle(this.style, "m");
     }
   }
-}
+};
 
 /**
  * QUAKED light (0 1 0) (-8 -8 -8) (8 8 8) START_OFF
@@ -126,7 +127,7 @@ export class LightFluoroEntity extends BaseLightEntity {
 
     this.spawnAmbientSound("ambience/fl_hum1.wav", 0.5, attn.ATTN_STATIC);
   }
-}
+};
 
 /**
  * QUAKED light_fluorospark (0 1 0) (-8 -8 -8) (8 8 8)
@@ -149,7 +150,7 @@ export class LightFluorosparkEntity extends BaseLightEntity {
 
     this.spawnAmbientSound("ambience/buzz1.wav", 0.5, attn.ATTN_STATIC);
   }
-}
+};
 
 /**
  * QUAKED light_globe (0 1 0) (-8 -8 -8) (8 8 8)
@@ -168,7 +169,7 @@ export class LightGlobe extends BaseLightEntity {
     this.setModel("progs/s_light.spr");
     this.makeStatic();
   }
-}
+};
 
 export class TorchLightEntity extends BaseLightEntity {
   _precache() {
@@ -181,7 +182,7 @@ export class TorchLightEntity extends BaseLightEntity {
     this.spawnAmbientSound("ambience/fire1.wav", 0.5, attn.ATTN_STATIC);
     this.makeStatic();
   }
-}
+};
 
 /**
  * QUAKED light_torch_small_walltorch (0 .5 0) (-10 -10 -20) (10 10 20)
@@ -196,7 +197,7 @@ export class SmallWalltorchLightEntity extends TorchLightEntity {
     this.setModel("progs/flame.mdl");
     super.spawn();
   }
-}
+};
 
 /**
  * QUAKED light_flame_large_yellow (0 1 0) (-10 -10 -12) (12 12 18)
@@ -210,7 +211,7 @@ export class YellowLargeFlameLightEntity extends TorchLightEntity {
     this.frame = 1;
     super.spawn();
   }
-}
+};
 
 /**
  * QUAKED light_flame_small_yellow (0 1 0) (-8 -8 -8) (8 8 8) START_OFF
@@ -223,8 +224,7 @@ export class YellowSmallFlameLightEntity extends TorchLightEntity {
     this.setModel("progs/flame2.mdl");
     super.spawn();
   }
-}
-
+};
 
 /**
  * QUAKED light_flame_small_white (0 1 0) (-10 -10 -40) (10 10 40) START_OFF
@@ -237,13 +237,17 @@ export class WhiteSmallFlameLightEntity extends TorchLightEntity {
     this.setModel("progs/flame2.mdl");
     super.spawn();
   }
-}
+};
 
 export class FireballEntity extends BaseEntity {
   static classname = 'misc_fireball_fireball';
 
   _declareFields() {
     this.speed = 1000;
+  }
+
+  get netname() {
+    return 'a fireball';
   }
 
   spawn() {
@@ -264,7 +268,7 @@ export class FireballEntity extends BaseEntity {
     this.damage(otherEntity, 20.0);
     this.remove();
   }
-}
+};
 
 /**
  * QUAKED misc_fireball (0 .5 .8) (-8 -8 -8) (8 8 8)
@@ -294,7 +298,7 @@ export class FireballSpawnerEntity extends BaseEntity {
 
     this._scheduleThink(this.game.time + Math.random() * 5.0, () => this._fire());
   }
-}
+};
 
 export class DebugMarkerEntity extends BaseEntity {
   static classname = 'debug_marker';
@@ -324,7 +328,7 @@ export class DebugMarkerEntity extends BaseEntity {
       this.remove();
     }
   }
-}
+};
 
 export class BaseAmbientSound extends BaseEntity {
   static _sfxName = null;
@@ -346,7 +350,7 @@ export class AmbientCompHum extends BaseAmbientSound {
   static classname = 'ambient_comp_hum';
   static _sfxName = "ambience/comp1.wav";
   static _volume = 1.0;
-}
+};
 
 /**
  * QUAKED ambient_drone (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
@@ -355,7 +359,7 @@ export class AmbientDrone extends BaseAmbientSound {
   static classname = 'ambient_drone';
   static _sfxName = "ambience/drone6.wav";
   static _volume = 0.5;
-}
+};
 
 /**
  * QUAKED ambient_suck_wind (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
@@ -364,7 +368,7 @@ export class AmbientSuckWind extends BaseAmbientSound {
   static classname = 'ambient_suck_wind';
   static _sfxName = "ambience/suck1.wav";
   static _volume = 1.0;
-}
+};
 
 /**
  * QUAKED ambient_flouro_buzz (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
@@ -373,7 +377,7 @@ export class AmbientFlouroBuzz extends BaseAmbientSound {
   static classname = 'ambient_flouro_buzz';
   static _sfxName = "ambience/buzz1.wav";
   static _volume = 1.0;
-}
+};
 
 /**
  * QUAKED ambient_drip (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
@@ -382,7 +386,7 @@ export class AmbientDrip extends BaseAmbientSound {
   static classname = 'ambient_drip';
   static _sfxName = "ambience/drip1.wav";
   static _volume = 0.5;
-}
+};
 
 /**
  * QUAKED ambient_thunder (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
@@ -391,7 +395,7 @@ export class AmbientThunder extends BaseAmbientSound {
   static classname = 'ambient_thunder';
   static _sfxName = "ambience/thunder1.wav";
   static _volume = 0.5;
-}
+};
 
 /**
  * QUAKED ambient_light_buzz (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
@@ -400,7 +404,7 @@ export class AmbientLightBuzz extends BaseAmbientSound {
   static classname = 'ambient_light_buzz';
   static _sfxName = "ambience/fl_hum1.wav";
   static _volume = 0.5;
-}
+};
 
 /**
  * QUAKED ambient_swamp1 (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
@@ -409,7 +413,7 @@ export class AmbientSwamp1 extends BaseAmbientSound {
   static classname = 'ambient_swamp1';
   static _sfxName = "ambience/swamp1.wav";
   static _volume = 0.5;
-}
+};
 
 /**
  * QUAKED ambient_swamp2 (0.3 0.1 0.6) (-10 -10 -8) (10 10 8)
@@ -418,7 +422,7 @@ export class AmbientSwamp2 extends BaseAmbientSound {
   static classname = 'ambient_swamp2';
   static _sfxName = "ambience/swamp2.wav";
   static _volume = 0.5;
-}
+};
 
 export class BaseWallEntity extends BaseEntity {
   // eslint-disable-next-line no-unused-vars
@@ -432,7 +436,7 @@ export class BaseWallEntity extends BaseEntity {
     this.solid = solid.SOLID_BSP;
     this.setModel(this.model);
   }
-}
+};
 
 /**
  * QUAKED func_wall (0 .5 .8) ?
@@ -440,7 +444,7 @@ export class BaseWallEntity extends BaseEntity {
  */
 export class WallEntity extends BaseWallEntity {
   static classname = 'func_wall';
-}
+};
 
 /**
  * QUAKED func_illusionary (0 .5 .8) ?
@@ -458,7 +462,7 @@ export class IllusionaryWallEntity extends BaseWallEntity {
     this.setModel(this.model);
     this.makeStatic();
   }
-}
+};
 
 /**
  * QUAKED func_episodegate (0 .5 .8) ? E1 E2 E3 E4
@@ -475,7 +479,7 @@ export class EpisodegateWallEntity extends BaseWallEntity {
 
     super.spawn();
   }
-}
+};
 
 /**
  * QUAKED func_bossgate (0 .5 .8) ?
@@ -492,7 +496,7 @@ export class BossgateWallEntity extends BaseWallEntity {
 
     super.spawn();
   }
-}
+};
 
 /**
  * Ephemeral teleport fog effect.
@@ -511,7 +515,7 @@ export class TeleportEffectEntity extends BaseEntity {
 
     this.engine.DispatchTempEntityEvent(tentType.TE_TELEPORT, this.origin);
   }
-}
+};
 
 export class BaseBarrelEntity extends BaseEntity {
   static _model = null;
@@ -558,7 +562,7 @@ export class BaseBarrelEntity extends BaseEntity {
     this.origin[2] += 2.0;
     this.dropToFloor();
   }
-}
+};
 
 /**
  * QUAKED misc_explobox (0 .5 .8) (0 0 0) (32 32 64)
@@ -568,7 +572,7 @@ export class BarrelEntity extends BaseBarrelEntity {
 
   static _model = 'maps/b_explob.bsp';
   static _noise = 'weapons/r_exp3.wav';
-}
+};
 
 /**
  * QUAKED misc_explobox2 (0 .5 .8) (0 0 0) (32 32 64)
@@ -579,4 +583,44 @@ export class SmallBarrelEntity extends BaseBarrelEntity {
 
   static _model = 'maps/b_explob.bsp';
   static _noise = 'weapons/r_exp3.wav';
-}
+};
+
+/**
+ * QUAKED path_corner (0.5 0.3 0) (-8 -8 -8) (8 8 8)
+ * Monsters will continue walking towards the next target corner.
+ */
+export class PathCornerEntity extends BaseEntity {
+  static classname = 'path_corner';
+
+  _declareFields() {
+    /** @type {number} The number of seconds to spend standing or bowing for path_stand or path_bow */
+    this.pausetime = 0;
+  }
+
+  /**
+   *
+   * @param {BaseMonster} otherEntity any BaseMonster
+   */
+  touch(otherEntity) {
+    if (!(otherEntity instanceof BaseMonster)) {
+      return;
+    }
+
+    if (!otherEntity.movetarget.equals(this)) {
+      return;
+    }
+
+    if (otherEntity.enemy) {
+      return; // fighting, not following a path
+    }
+
+    otherEntity.moveTargetReached(this);
+  }
+
+  spawn() {
+    console.assert(this.targetname, 'requires targetname to function');
+
+    this.solid = solid.SOLID_TRIGGER;
+    this.setSize(new Vector(-8.0, -8.0, -8.0), new Vector(8.0, 8.0, 8.0));
+  }
+};

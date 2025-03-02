@@ -5,7 +5,7 @@
  */
 export function crandom() {
   return 2.0 * (Math.random() - 0.5);
-}
+};
 
 /**
  * Helper class to deal with flags stored in bits.
@@ -74,7 +74,7 @@ export class Flag {
 
     return this;
   }
-}
+};
 
 export class EntityWrapper {
   /**
@@ -94,4 +94,4 @@ export class EntityWrapper {
   /** @protected */
   _assertEntity() {
   }
-}
+};

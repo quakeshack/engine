@@ -37,68 +37,35 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] reimplement `Host.Give_f`
 * [X] implement a better state machine with scheduler
 * [_] reimplement the Quake game in QuakeJS
-  * [_] abstract model animation state machine
-  * [X] world.qc
-    * [X] worldspawn
-    * [X] bodyque
-    * [_] main (I believe we do not need this)
-  * [_] misc.qc
-    * [X] light entities
-    * [X] info entities
-    * [X] fireball entities
-    * [X] barrel entities
-    * [_] spikeshooter stuff
-    * [_] bubbles
-    * [X] view thing?
-    * [X] SIMPLE BMODELS
-    * [X] ambient sounds
-    * [_] noisemaker
-  * [_] weapons.qc
-    * [X] W_Precache
-    * [X] W_FireAxe
-    * [#] wall_velocity, gibs, etc.
-    * [X] MULTI-DAMAGE
-    * [X] BULLETS
-    * [X] ROCKETS
-    * [X] LIGHTNING
-    * [X] grenades
-    * [X] spikes
-    * [#] PLAYER WEAPON USE
-    * [X] CheatCommand
-    * [X] CycleWeaponCommand
-    * [X] CycleWeaponReverseCommand
-    * [X] ImpulseCommands
-    * [X] W_WeaponFrame, SuperDamageSound
-  * [_] client.qc
-    * [_] info_intermission etc.
-    * [X] SetChangeParms
-    * [X] SetNewParms
-    * [X] DecodeLevelParms
-    * [_] FindIntermission, GotoNextMap, ExitIntermission, IntermissionThink
-    * [_] execute_changelevel, trigger_changelevel entity
-    * [_] PLAYER GAME EDGE FUNCTIONS
-    * [X] ClientKill
-    * [X] SelectSpawnPoint
-    * [X] PutClientInServer
-    * [_] QUAKED FUNCTIONS
-    * [_] RULES, CheckRules etc.
-    * [X] PlayerPreThink
-    * [_] CheckPowerups
-    * [X] PlayerPostThink
-    * [X] ClientConnect
-    * [X] ClientDisconnect
-    * [X] ClientObituary
-  * [X] weapons.qc
-    * [X] W_SetCurrentAmmo
-    * [X] W_BestWeapon
-    * [X] W_CheckNoAmmo
-  * [X] subs.qc --> move to helper/Subs.mjs
-  * [#] player.qc
-  * [X] items.qc
-  * [X] buttons.qc
-  * [X] doors.qc
-  * [X] subs.qc
-  * [_] triggers.qc
+  * [_] air_bubbles
+  * [_] event_lightning
+  * [X] func_door_secret
+  * [_] func_plat
+  * [_] func_train
+  * [X] info_player_start2
+  * [_] misc_teleporttrain
+  * [_] monster_army
+  * [_] monster_boss
+  * [_] monster_demon1
+  * [_] monster_dog
+  * [_] monster_enforcer
+  * [_] monster_fish
+  * [_] monster_hell_knight
+  * [_] monster_knight
+  * [_] monster_ogre
+  * [_] monster_oldone
+  * [_] monster_shalrath
+  * [_] monster_shambler
+  * [_] monster_tarbaby
+  * [_] monster_wizard
+  * [_] monster_zombie
+  * [X] path_corner
+  * [_] trap_shooter
+  * [_] trap_spikeshooter
+  * [X] trigger_changelevel
+  * [_] trigger_hurt
+  * [_] trigger_monsterjump
+  * [_] trigger_push
 * [X] rename `edict.api` to `edict.entity`
 * [_] put some things behind feature gates, so that the game can tell the engine what things are needed/supported
 * [_] implement the new syscalls that QuakeWorld introduced
@@ -310,6 +277,11 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-03-02
+
+* should always add netname to everything that inflicts damage, otherwise we will get gems such as “func_door killed player”
+* intermission stuff
 
 ### 2025-02-26
 

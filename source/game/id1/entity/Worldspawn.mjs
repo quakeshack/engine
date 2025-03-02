@@ -9,7 +9,7 @@ export class BodyqueEntity extends BaseEntity {
   _declareFields() {
     this.colormap = 0;
   }
-}
+};
 
 /**
  * @param {import("../GameAPI.mjs").ServerGameAPI} game gameAPI
@@ -42,7 +42,7 @@ export function CopyToBodyQue(game, entity) {
   game.bodyque_head.setOrigin(entity.origin);
   game.bodyque_head.setSize(entity.mins, entity.maxs);
   game.bodyque_head = game.bodyque_head.owner;
-}
+};
 
 export class WorldspawnEntity extends BaseEntity {
   static classname = 'worldspawn';

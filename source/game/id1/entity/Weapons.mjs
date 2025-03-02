@@ -22,7 +22,7 @@ export function Precache(engine) {
   engine.PrecacheSound("weapons/grenade.wav");	// grenade launcher
   engine.PrecacheSound("weapons/bounce.wav");		// grenade bounce
   engine.PrecacheSound("weapons/shotgn2.wav");	// super shotgun
-}
+};
 
 /**
  * handy map to manage weapon slots
@@ -48,7 +48,7 @@ export class Backpack {
     this.items = 0;
     this.weapon = 0;
   }
-}
+};
 
 export class Explosions extends EntityWrapper {
   initStates() {
@@ -71,7 +71,7 @@ export class Explosions extends EntityWrapper {
 
     this._entity._runState('s_explode1');
   }
-}
+};
 
 /**
  * Methods to cause damage to something else, e.g. fire bullets etc.
@@ -287,7 +287,7 @@ export class DamageInflictor extends EntityWrapper {
       this._entity.damage(trace3.entity, damage);
     }
   }
-}
+};
 
 /**
  * Methods to handle damage on an entity, wrapped entity must support:
@@ -509,9 +509,9 @@ export class DamageHandler extends EntityWrapper {
 
     return false;
   }
-}
+};
 
-class BaseProjectile extends BaseEntity {
+export class BaseProjectile extends BaseEntity {
   static classname = 'weapon_projectile_abstract';
 
   _declareFields() {
@@ -575,7 +575,7 @@ class BaseProjectile extends BaseEntity {
     // remove after 5s
     this._scheduleThink(this.game.time + 5.0, () => this.remove());
   }
-}
+};
 
 export class Grenade extends BaseProjectile {
   static classname = 'weapon_projectile_grenade';
@@ -634,7 +634,7 @@ export class Grenade extends BaseProjectile {
 
     this._scheduleThink(this.game.time + 2.5, () => this._explode());
   }
-}
+};
 
 export class Missile extends BaseProjectile {
   static classname = 'weapon_projectile_missile';
@@ -676,7 +676,7 @@ export class Missile extends BaseProjectile {
     this.setModel('progs/missile.mdl');
     this.setSize(Vector.origin, Vector.origin);
   }
-}
+};
 
 export class BaseSpike extends BaseProjectile {
   static _damage = 0;
@@ -716,7 +716,7 @@ export class BaseSpike extends BaseProjectile {
     this.setModel('progs/s_spike.mdl');
     this.setSize(Vector.origin, Vector.origin);
   }
-}
+};
 
 export class Spike extends BaseSpike {
   static classname = 'weapon_projectile_spike';
@@ -734,13 +734,13 @@ export class Spike extends BaseSpike {
     this.origin.add(right.multiply((this.owner.weaponframe % 2) === 1 ? 4.0 : -4.0));
     this.setOrigin(this.origin);
   }
-}
+};
 
 export class Superspike extends BaseSpike {
   static classname = 'weapon_projectile_superspike';
   static _damage = 18;
   static _tentType = tentType.TE_SUPERSPIKE;
-}
+};
 
 /**
  * This class outsources all weapon related duties from PlayerEntity in its own separate component.
@@ -962,6 +962,4 @@ export class PlayerWeapons {
 
     this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0) { this._weapons.fireLightning(true); } });
   }
-}
-
-
+};
