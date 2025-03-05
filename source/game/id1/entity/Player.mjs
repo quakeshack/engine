@@ -1551,9 +1551,9 @@ export class PlayerEntity extends BaseEntity {
       if (this.swim_flag < this.game.time) {
         this.swim_flag = this.game.time + 1.0;
         if (Math.random() < 0.5) {
-          this.startSound(this, channel.CHAN_BODY, "misc/water1.wav");
+          this.startSound(channel.CHAN_BODY, "misc/water1.wav");
         } else {
-          this.startSound(this, channel.CHAN_BODY, "misc/water2.wav");
+          this.startSound(channel.CHAN_BODY, "misc/water2.wav");
         }
       }
 

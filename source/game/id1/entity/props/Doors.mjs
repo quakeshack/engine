@@ -118,6 +118,8 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 
   _doorFire(usedByEntity) {
+    console.assert(usedByEntity !== null, 'user required');
+
     // CR: triggers on E1M4 for some reason
     // console.assert(this.owner.equals(this), 'Doors must be linked back to itself');
 
@@ -153,6 +155,8 @@ export class BaseDoorEntity extends BasePropEntity {
    * @param {BaseEntity} blockedByEntity blocking entity
    */
   _doorBlocked(blockedByEntity) {
+    console.assert(blockedByEntity !== null, 'blocking entity required');
+
     this.damage(blockedByEntity, this.dmg, null, blockedByEntity.centerPoint);
 
     // if a door has a negative wait, it would never come back if blocked,
@@ -167,6 +171,8 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 
   _doorGoDown(usedByEntity) {
+    console.assert(usedByEntity !== null, 'user required');
+
     if (this.state === state.STATE_DOWN) {
       return; // already going up
     }
@@ -190,6 +196,8 @@ export class BaseDoorEntity extends BasePropEntity {
   }
 
   _doorGoUp(usedByEntity) {
+    console.assert(usedByEntity !== null, 'user required');
+
     if (this.state === state.STATE_UP) {
       return; // already going up
     }
@@ -277,6 +285,20 @@ export class BaseDoorEntity extends BasePropEntity {
 export class DoorEntity extends BaseDoorEntity {
   static classname = 'func_door';
 
+  static _sounds = [
+    ["misc/null.wav", "misc/null.wav"],
+    ["doors/drclos4.wav", "doors/doormv1.wav"],
+    ["doors/hydro2.wav", "doors/hydro1.wav"],
+    ["doors/stndr2.wav", "doors/stndr1.wav"],
+    ["doors/ddoor2.wav", "doors/ddoor1.wav"],
+  ];
+
+  static _lockSounds = {
+    [worldType.MEDIEVAL]: ["doors/medtry.wav", "doors/meduse.wav"],
+    [worldType.RUNES]: ["doors/runetry.wav", "doors/runeuse.wav"],
+    [worldType.BASE]: ["doors/basetry.wav", "doors/baseuse.wav"],
+  }
+
   get netname() {
     return 'a door';
   }
@@ -305,107 +327,38 @@ export class DoorEntity extends BaseDoorEntity {
     this._doorKilled(attackerEntity);
   }
 
-  // FIXME: I should have implemented the sound handling differently such as over at Items.mjs
-
   _precache() {
-    switch (this.game.worldspawn.worldtype) {
-      case worldType.MEDIEVAL:
-        this.engine.PrecacheSound("doors/medtry.wav");
-        this.engine.PrecacheSound("doors/meduse.wav");
-        break;
+    const sounds = [];
 
-      case worldType.RUNES:
-        this.engine.PrecacheSound("doors/runetry.wav");
-        this.engine.PrecacheSound("doors/runeuse.wav");
-        break;
+    sounds.push(...this.constructor._lockSounds[this.game.worldspawn.worldtype]);
+    sounds.push(...this.constructor._sounds[this.sounds]);
 
-      case worldType.BASE:
-        this.engine.PrecacheSound("doors/basetry.wav");
-        this.engine.PrecacheSound("doors/baseuse.wav");
-        break;
+    for (const sfx of new Set(sounds)) {
+      if (!sfx) {
+        continue;
+      }
 
-      default:
-        break;
-    }
-
-    switch (this.sounds) {
-      case 1:
-        this.engine.PrecacheSound("doors/drclos4.wav");
-        this.engine.PrecacheSound("doors/doormv1.wav");
-        break;
-
-      case 2:
-        this.engine.PrecacheSound("doors/hydro1.wav");
-        this.engine.PrecacheSound("doors/hydro2.wav");
-        break;
-
-      case 3:
-        this.engine.PrecacheSound("doors/stndr1.wav");
-        this.engine.PrecacheSound("doors/stndr2.wav");
-        break;
-
-      case 4:
-        this.engine.PrecacheSound("doors/ddoor2.wav");
-        this.engine.PrecacheSound("doors/ddoor1.wav");
-        break;
-
-      default:
-        this.engine.PrecacheSound("misc/null.wav");
-        break;
+      this.engine.PrecacheSound(sfx);
     }
   }
 
   spawn() {
-    switch (this.game.worldspawn.worldtype) {
-      case worldType.MEDIEVAL:
-        this.noise3 = "doors/medtry.wav";
-        this.noise4 = "doors/meduse.wav";
-        break;
+    const lockSounds = this.constructor._lockSounds[this.game.worldspawn.worldtype];
 
-      case worldType.RUNES:
-        this.noise3 = "doors/runetry.wav";
-        this.noise4 = "doors/runeuse.wav";
-        break;
+    console.assert(lockSounds instanceof Array && lockSounds.length === 2, 'exactly two lock sounds for given world type required');
 
-      case worldType.BASE:
-        this.noise3 = "doors/basetry.wav";
-        this.noise4 = "doors/baseuse.wav";
-        break;
+    [this.noise3, this.noise4] = lockSounds;
 
-      default:
-        this.engine.DebugPrint(`DoorEntity: ${this} does not know this world: ${this.game.worldspawn.worldtype}\n`);
-        break;
-    }
+    const sounds = this.constructor._sounds[this.sounds];
 
-    switch (this.sounds) {
-      case 1:
-        this.noise1 = "doors/drclos4.wav";
-        this.noise2 = "doors/doormv1.wav";
-        break;
+    console.assert(sounds instanceof Array && sounds.length === 2, 'exactly two lock sounds for given world type required');
 
-      case 2:
-        this.noise2 = "doors/hydro1.wav";
-        this.noise1 = "doors/hydro2.wav";
-        break;
+    [this.noise1, this.noise2] = sounds;
 
-      case 3:
-        this.noise2 = "doors/stndr1.wav";
-        this.noise1 = "doors/stndr2.wav";
-        break;
-
-      case 4:
-        this.noise1 = "doors/ddoor2.wav";
-        this.noise2 = "doors/ddoor1.wav";
-        break;
-
-      default:
-        this.engine.DebugPrint(`DoorEntity: ${this} has set unknown sound set ${this.sounds}\n`);
-      // eslint-disable-next-line no-fallthrough
-      case 0:
-        this.noise1 = "misc/null.wav";
-        this.noise2 = "misc/null.wav";
-        break;
-    }
+    console.assert(typeof(this.noise1) === 'string', "noise1 must be a string");
+    console.assert(typeof(this.noise2) === 'string', "noise2 must be a string");
+    console.assert(typeof(this.noise3) === 'string', "noise3 must be a string");
+    console.assert(typeof(this.noise4) === 'string', "noise4 must be a string");
 
     this._sub.setMovedir();
 
@@ -550,6 +503,18 @@ export class SecretDoorEntity extends BaseDoorEntity {
   static SECRET_NO_SHOOT = 8;		// only opened by trigger
   static SECRET_YES_SHOOT = 16;	// shootable even if targeted
 
+  /** @protected */
+  static _sounds = [
+    [null, null, null],
+    ["doors/latch2.wav", "doors/winch2.wav", "doors/drclos4.wav"],
+    ["doors/airdoor2.wav", "doors/airdoor1.wav", "doors/airdoor2.wav"],
+    ["doors/basesec2.wav", "doors/basesec1.wav", "doors/basesec2.wav"],
+  ]
+
+  get netname() {
+    return 'a secret door';
+  }
+
   _declareFields() {
     super._declareFields();
     this.mangle = new Vector();
@@ -568,51 +533,29 @@ export class SecretDoorEntity extends BaseDoorEntity {
   }
 
   _precache() {
-    switch (this.sounds) {
-      case 1:
-        this.engine.PrecacheSound("doors/latch2.wav");
-        this.engine.PrecacheSound("doors/winch2.wav");
-        this.engine.PrecacheSound("doors/drclos4.wav");
-        break;
+    const sfxlist = this.constructor._sounds[this.sounds];
 
-      case 2:
-        this.engine.PrecacheSound("doors/airdoor1.wav");
-        this.engine.PrecacheSound("doors/airdoor2.wav");
-        break;
+    for (const sfx of sfxlist) {
+      if (!sfx) {
+        continue;
+      }
 
-      default: // non-Quake default
-      case 3:
-        this.engine.PrecacheSound("doors/basesec1.wav");
-        this.engine.PrecacheSound("doors/basesec2.wav");
-        break;
+      this.engine.PrecacheSound(sfx);
     }
   }
 
   spawn() {
-    if (this.sounds === 0) {
+    if (this.sounds <= 0 || this.sounds >= this.constructor._sounds.length) {
       this.sounds = 3;
     }
 
-    switch (this.sounds) {
-      case 1:
-        this.noise1 = "doors/latch2.wav";
-        this.noise2 = "doors/winch2.wav";
-        this.noise3 = "doors/drclos4.wav";
-        break;
+    console.assert(this.constructor._sounds[this.sounds] !== undefined, 'sounds must be defined in the sounds list');
 
-      case 2:
-        this.noise2 = "doors/airdoor1.wav";
-        this.noise1 = "doors/airdoor2.wav";
-        this.noise3 = "doors/airdoor2.wav";
-        break;
+    [this.noise1, this.noise2, this.noise3] = this.constructor._sounds[this.sounds];
 
-      default: // non-Quake default
-      case 3:
-        this.noise2 = "doors/basesec1.wav";
-        this.noise1 = "doors/basesec2.wav";
-        this.noise3 = "doors/basesec2.wav";
-        break;
-    }
+    console.assert(typeof(this.noise1) === 'string', "noise1 must be a string");
+    console.assert(typeof(this.noise2) === 'string', "noise2 must be a string");
+    console.assert(typeof(this.noise3) === 'string', "noise3 must be a string");
 
     if (this.dmg === 0) {
       this.dmg = 2;

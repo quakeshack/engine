@@ -5,6 +5,7 @@ import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
 import { items } from "./Defs.mjs";
 import * as misc from "./entity/Misc.mjs";
 import * as door from "./entity/props/Doors.mjs";
+import * as platform from "./entity/props/Platforms.mjs";
 import * as trigger from "./entity/Triggers.mjs";
 import ArmySoldierMonster, { soldierModelQC } from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
@@ -78,6 +79,7 @@ const entityRegistry = [
   trigger.OnlyRegisteredTriggerEntity,
   trigger.SetSkillTriggerEntity,
   trigger.ChangeLevelTriggerEntity,
+  trigger.TriggerHurtEntity,
 
   TelefragTriggerEntity,
 
@@ -85,6 +87,10 @@ const entityRegistry = [
 
   door.DoorEntity,
   door.SecretDoorEntity,
+
+  platform.PlatformEntity,
+  platform.PlatformTriggerEntity,
+
   ButtonEntity,
 
   TriggerField,

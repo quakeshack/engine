@@ -193,6 +193,8 @@ Game.EngineInterface = class EngineInterface {
   }
 
   static PrecacheSound(sfxName) {
+    console.assert(typeof(sfxName) === 'string', 'sfxName must be a string');
+
     if (SV.server.sound_precache.includes(sfxName)) {
       return;
     }
@@ -201,6 +203,8 @@ Game.EngineInterface = class EngineInterface {
   }
 
   static PrecacheModel(modelName) {
+    console.assert(typeof(modelName) === 'string', 'modelName must be a string');
+
     if (SV.server.model_precache.includes(modelName)) {
       return;
     }

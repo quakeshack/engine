@@ -202,6 +202,8 @@ export class Sub extends EntityWrapper {
   }
 
   useTargets(activatorEntity) {
+    console.assert(activatorEntity !== null, 'activator is required');
+
     // if there’s a delay, let’s feed it into the think state machine
     if (this._entity.delay && !this._useData.callback) {
       this._useData.callback = () => this.useTargets(activatorEntity);

@@ -63,7 +63,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] trap_shooter
   * [_] trap_spikeshooter
   * [X] trigger_changelevel
-  * [_] trigger_hurt
+  * [X] trigger_hurt
   * [_] trigger_monsterjump
   * [_] trigger_push
 * [X] rename `edict.api` to `edict.entity`
@@ -277,6 +277,13 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-03-05
+
+* triggers needs some clean up, cleaned up code related to doors
+* added some `console.asserts` here and there
+* also those centerPrint sound effects should play locally, right now they are sometimes play on entities
+* started implementing func_plat
 
 ### 2025-03-02
 

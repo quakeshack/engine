@@ -7,6 +7,7 @@ import { DamageHandler } from "./Weapons.mjs";
 class BaseTriggerEntity extends BaseEntity {
   /** @protected */
   static _sounds = [
+    null,
     'misc/secret.wav',
     'misc/talk.wav',
     'misc/trigger1.wav',
@@ -41,13 +42,13 @@ class BaseTriggerEntity extends BaseEntity {
   }
 
   _precache() {
-    if (this.constructor._sounds[this.sound - 1]) {
-      this.engine.PrecacheSound(this.constructor._sounds[this.sound - 1]);
+    if (this.constructor._sounds[this.sounds]) {
+      this.engine.PrecacheSound(this.constructor._sounds[this.sounds]);
     }
   }
 
   spawn() { // QuakeC: subs.qc/InitTrigger
-    this.noise = this.constructor._sounds[this.sound - 1];
+    this.noise = this.constructor._sounds[this.sounds];
 
     if (!this.angles.isOrigin()) {
       this._sub.setMovedir();
@@ -134,7 +135,7 @@ export class MultipleTriggerEntity extends BaseTriggerEntity {
     this._isActive = true;
 
     if (this.noise) {
-      this.startSound(channel.CHAN_VOICE, this.noise);
+      triggeredByEntity.startSound(channel.CHAN_BODY, this.noise);
     }
 
     this.takedamage = damage.DAMAGE_NO;
@@ -531,6 +532,47 @@ export class ChangeLevelTriggerEntity extends BaseTriggerEntity {
 
   spawn() {
     console.assert(this.map, 'map must be set');
+
+    super.spawn();
+  }
+};
+
+/**
+ * QUAKED trigger_hurt (.5 .5 .5) ?
+ * Any object touching this will be hurt
+ * set dmg to damage amount (default: 5)
+ * optional netname
+ */
+export class TriggerHurtEntity extends BaseTriggerEntity {
+  static classname = 'trigger_hurt';
+
+  _declareFields() {
+    /** @type {?string} optional name for player’s obituary */
+    this.netname = null;
+
+    super._declareFields();
+  }
+
+  touch(touchedByEntity) {
+    console.assert(touchedByEntity !== null);
+
+    if (!touchedByEntity.takedamage) {
+      return;
+    }
+
+    if (this.attack_finished > this.game.time) {
+      return;
+    }
+
+    this.attack_finished = this.game.time + 1.0;
+
+    this.damage(touchedByEntity, this.dmg);
+  }
+
+  spawn() {
+    if (!this.dmg) {
+      this.dmg = 5;
+    }
 
     super.spawn();
   }

@@ -22,6 +22,14 @@ import BasePropEntity, { state } from "./BasePropEntity.mjs";
 export class ButtonEntity extends BasePropEntity {
   static classname = 'func_button';
 
+  /** @protected */
+  static _sounds = [
+    "buttons/airbut1.wav",
+    "buttons/switch21.wav",
+    "buttons/switch02.wav",
+    "buttons/switch04.wav",
+  ];
+
   _declareFields() {
     super._declareFields();
 
@@ -33,23 +41,7 @@ export class ButtonEntity extends BasePropEntity {
   }
 
   _precache() {
-    switch (this.sounds) {
-      case 0:
-        this.engine.PrecacheSound("buttons/airbut1.wav");
-        break;
-
-      case 1:
-        this.engine.PrecacheSound("buttons/switch21.wav");
-        break;
-
-      case 2:
-        this.engine.PrecacheSound("buttons/switch02.wav");
-        break;
-
-      case 3:
-        this.engine.PrecacheSound("buttons/switch04.wav");
-        break;
-    }
+    this.engine.PrecacheSound(this.constructor._sounds[this.sounds]);
   }
 
   _buttonDone() {
@@ -70,6 +62,8 @@ export class ButtonEntity extends BasePropEntity {
    * @param {BaseEntity} userEntity user
    */
   _buttonWait(userEntity) {
+    console.assert(userEntity !== null, 'user required');
+
     this.state = state.STATE_TOP;
 
     this._sub.useTargets(userEntity);
@@ -83,6 +77,8 @@ export class ButtonEntity extends BasePropEntity {
    * @param {BaseEntity} userEntity user
    */
   _buttonFire(userEntity) {
+    console.assert(userEntity !== null, 'user required');
+
     if ([state.STATE_UP, state.STATE_TOP].includes(this.state)) {
       return;
     }
@@ -121,23 +117,7 @@ export class ButtonEntity extends BasePropEntity {
   }
 
   spawn() {
-    switch (this.sounds) {
-      case 0:
-        this.noise = "buttons/airbut1.wav";
-        break;
-
-      case 1:
-        this.noise = "buttons/switch21.wav";
-        break;
-
-      case 2:
-        this.noise = "buttons/switch02.wav";
-        break;
-
-      case 3:
-        this.noise = "buttons/switch04.wav";
-        break;
-    }
+    this.noise = this.constructor._sounds[this.sounds];
 
     this._sub.setMovedir();
 

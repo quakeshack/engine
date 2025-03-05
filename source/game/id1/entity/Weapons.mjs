@@ -701,7 +701,8 @@ export class BaseSpike extends BaseProjectile {
 
     this.engine.DispatchTempEntityEvent(this.constructor._tentType, this.origin);
 
-    this.remove();
+    // delay the remove, the projectile might still be needed for some touch evaluations
+    this._scheduleThink(this.game.time + 0.1, () => this.remove());
   }
 
   spawn() {
