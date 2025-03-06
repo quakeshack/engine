@@ -54,6 +54,7 @@ SV.server = {
   datagram: {data: new ArrayBuffer(1024), cursize: 0},
   reliable_datagram: {data: new ArrayBuffer(1024), cursize: 0},
   signon: {data: new ArrayBuffer(8192), cursize: 0},
+  edicts: [],
   cannon: null,
   progsInterfaces: null,
 };
@@ -1276,6 +1277,10 @@ SV.ShutdownServer = function (isCrashShutdown) {
   SV.server.worldmodel = null;
 
   // purge out all edicts and clients
+  for (const edict of SV.server.edicts) {
+    // explicitly tell entities to free memory
+    edict.freeEdict();
+  }
   SV.server.edicts = [];
   SV.server.num_edicts = 0;
 

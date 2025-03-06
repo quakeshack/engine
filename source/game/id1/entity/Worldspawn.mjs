@@ -15,12 +15,12 @@ export class BodyqueEntity extends BaseEntity {
  * @param {import("../GameAPI.mjs").ServerGameAPI} game gameAPI
  */
 function InitBodyQue(game) {
-  game.bodyque_head = game.engine.SpawnEntity('bodyque');
+  game.bodyque_head = game.engine.SpawnEntity(BodyqueEntity.classname);
 
   let current = game.bodyque_head;
 
   for (let i = 0; i < 5; i++, current = current.owner) {
-    current.owner = game.engine.SpawnEntity('bodyque');
+    current.owner = game.engine.SpawnEntity(BodyqueEntity.classname);
   }
 
   current.owner = game.bodyque_head;

@@ -78,17 +78,30 @@ export class Flag {
 
 export class EntityWrapper {
   /**
-   * @param {import('./BaseEntity.mjs').default} entity wrapped entity
+   * @param {import('../entity/BaseEntity.mjs').default} entity wrapped entity
    */
   constructor(entity) {
-    /** @protected */
-    this._entity = entity;
-    /** @protected */
-    this._game = this._entity.game;
-    /** @protected */
-    this._engine = this._entity.engine;
-
+    /** @private */
+    this._entity_wf = new WeakRef(entity);
     this._assertEntity();
+  }
+
+  /**
+   * @returns {import('../entity/BaseEntity.mjs').default} entity
+   * @protected
+   */
+  get _entity() {
+    return this._entity_wf.deref();
+  }
+
+  /** @protected */
+  get _game() {
+    return this._entity.game;
+  }
+
+  /** @protected */
+  get _engine() {
+    return this._entity.engine;
   }
 
   /** @protected */

@@ -461,8 +461,6 @@ export class DoorEntity extends BaseDoorEntity {
 
       usedByEntity.centerPrint(`You need the ${requiredKeys.join(', ')}`);
       usedByEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav", 1.0, attn.ATTN_NONE);
-
-      // TODO: messages and sound
       return;
     }
 

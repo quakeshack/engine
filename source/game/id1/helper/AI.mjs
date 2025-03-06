@@ -4,6 +4,7 @@ import { damage, flags, items, range } from "../Defs.mjs";
 import BaseEntity from "../entity/BaseEntity.mjs";
 import { PlayerEntity } from "../entity/Player.mjs";
 import { ServerGameAPI } from "../GameAPI.mjs";
+import { EntityWrapper } from "./MiscHelpers.mjs";
 
 /**
  * game-wide AI state, used to coordinate AI communication
@@ -20,15 +21,18 @@ export class GameAI {
 /**
  * entity local AI state
  */
-export class EntityAI {
+export class EntityAI extends EntityWrapper {
   /**
    * @param {import('../entity/monster/BaseMonster.mjs').default} entity linked entity
    */
   constructor(entity) {
-    this._entity = entity;
-    this._game = entity.game;
+    super(entity);
     this._initialized = false;
     this._declareFields();
+  }
+
+  clear() {
+    // reset state
   }
 
   _declareFields() {
@@ -167,6 +171,16 @@ export class QuakeEntityAI extends EntityAI {
     this._attackState = QAI_ATTACK_STATE.AS_NONE;
   }
 
+  clear() {
+    super.clear();
+
+    this._sightEntity = null;
+    this._sightEntityTime = 0;
+    this._searchTime = 0;
+    this._oldEnemy = null;
+    this._attackState = QAI_ATTACK_STATE.AS_NONE;
+  }
+
   _findTarget() { // QuakeC: ai.qc/FindTarget
     // if the first spawnflag bit is set, the monster will only wake up on
     // really seeing the player, not another monster getting angry
@@ -240,7 +254,7 @@ export class QuakeEntityAI extends EntityAI {
   _foundTarget() { // QuakeC: ai.qc/FoundTarget
     const self = this._entity;
 
-    console.log('_foundTarget', this._entity.toString(), self.enemy);
+    // console.log('_foundTarget', this._entity.toString(), self.enemy);
 
     if (self.enemy instanceof PlayerEntity) {
       // let other monsters see this monster for a while
@@ -261,11 +275,11 @@ export class QuakeEntityAI extends EntityAI {
     self.goalentity = self.enemy;
     self.ideal_yaw = self.enemy.origin.copy().subtract(self.origin).toYaw();
 
-    self._scheduleThink(this._game.time + 0.1, (entity) => entity.thinkRun());
+    self._scheduleThink(this._game.time + 0.1, self.thinkRun);
 
     self.attackFinished(1.0);	// wait a while before first attack
 
-    console.log('_huntTarget', this._entity);
+    // console.log('_huntTarget', this._entity);
   }
 
   /**

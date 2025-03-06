@@ -174,6 +174,7 @@ export class DamageInflictor extends EntityWrapper {
     }
 
     this._applyMultiDamage();
+    this._clearMultiDamage();
   }
 
   /**
@@ -747,17 +748,12 @@ export class Superspike extends BaseSpike {
  * This class outsources all weapon related duties from PlayerEntity in its own separate component.
  * Ammo, however, is still managed over at PlayerEntity due to some clusterfun entaglement with engine code.
  */
-export class PlayerWeapons {
+export class PlayerWeapons extends EntityWrapper {
   /**
    * @param {import('./Player.mjs').PlayerEntity} playerEntity player
    */
   constructor(playerEntity) {
-    /** @private */
-    this._player = playerEntity;
-    /** @private */
-    this._game = this._player.game;
-    /** @private */
-    this._engine = this._player.engine;
+    super(playerEntity);
 
     /** @private */
     this._damageInflictor = new DamageInflictor(playerEntity);
@@ -769,6 +765,14 @@ export class PlayerWeapons {
 
     Object.seal(this._state);
     Object.seal(this);
+  }
+
+  /**
+   * @private
+   * @returns {import('./Player.mjs').PlayerEntity} player
+   */
+  get _player() {
+    return this._entity;
   }
 
   /**
@@ -869,7 +873,7 @@ export class PlayerWeapons {
 
     this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0) { this._weapons.fireNailgun(); } });
 
-    this._engine.SpawnEntity('weapon_projectile_spike', { owner: this._player });
+    this._engine.SpawnEntity(Spike.classname, { owner: this._player });
   }
 
   fireSuperNailgun() {
@@ -884,9 +888,9 @@ export class PlayerWeapons {
     if (this._player.currentammo >= 0) {
       this._player._scheduleThink(this._game.time + 0.1, function () { if (this.button0) { this._weapons.fireSuperNailgun(); } });
 
-      this._engine.SpawnEntity('weapon_projectile_superspike', { owner: this._player });
+      this._engine.SpawnEntity(Superspike.classname, { owner: this._player });
     } else {
-      this._engine.SpawnEntity('weapon_projectile_spike', { owner: this._player });
+      this._engine.SpawnEntity(Spike.classname, { owner: this._player });
     }
   }
 
@@ -899,7 +903,7 @@ export class PlayerWeapons {
     this._player.currentammo = this._player.ammo_rockets = this._player.ammo_rockets - 1;
     this._player.punchangle[0] = -2;
 
-    this._engine.SpawnEntity('weapon_projectile_missile', { owner: this._player });
+    this._engine.SpawnEntity(Missile.classname, { owner: this._player });
   }
 
   fireGrenade() {
@@ -924,7 +928,7 @@ export class PlayerWeapons {
       velocity[2] = 200.0;
     }
 
-    this._engine.SpawnEntity('weapon_projectile_grenade', { owner: this._player, velocity });
+    this._engine.SpawnEntity(Grenade.classname, { owner: this._player, velocity });
   }
 
   fireLightning(attackContinuation = false) {

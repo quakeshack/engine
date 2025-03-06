@@ -291,7 +291,7 @@ export class FireballSpawnerEntity extends BaseEntity {
 
   /** @private */
   _fire() {
-    this.engine.SpawnEntity('misc_fireball_fireball', {
+    this.engine.SpawnEntity(FireballEntity.classname, {
       origin: this.origin,
       speed: this.speed,
     });

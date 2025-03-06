@@ -10,7 +10,7 @@ export default class BaseMonster extends BaseEntity {
 
     this.pausetime = 0;
     this.pain_finished = 0;
-    /** @type {BaseEntity} */
+    /** @type {?BaseEntity} */
     this.movetarget = null; // entity
     this.health = 0;
 
@@ -22,7 +22,7 @@ export default class BaseMonster extends BaseEntity {
 
     /** @type {?BaseEntity} acquired target */
     this.enemy = null;
-    /** @type {BaseEntity} a movetarget or an enemy */
+    /** @type {?BaseEntity} a movetarget or an enemy */
     this.goalentity = null;
 
     /** @protected */
@@ -45,6 +45,14 @@ export default class BaseMonster extends BaseEntity {
 
   isActor() {
     return true;
+  }
+
+  clear() {
+    super.clear();
+    this.enemy = null;
+    this.goalentity = null;
+    this.movetarget = null;
+    this._ai.clear();
   }
 
   /**

@@ -18,6 +18,7 @@ ED.Alloc = function() {
     }
   }
   if (i === Def.max_edicts) {
+    // TODO: soft limit, hard limit, also allocate directly 200 more in one go
     Con.Print(`WARNING: ED.Alloc triggered max_edicts (${Def.max_edicts})\n`);
   }
   e = SV.server.edicts[SV.server.num_edicts++];
@@ -32,7 +33,10 @@ ED.Alloc = function() {
 ED.Free = function(ed) {
   SV.UnlinkEdict(ed);
   ed.free = true;
-  ed.entity = null;
+  if (ed.entity) {
+    ed.entity.free();
+  }
+  ed.entity = null; // TODO/FIXME: should do this later, we had a couple of issues when entities got removed too early
   // ed.entity.model = null;
   // ed.entity.takedamage = 0.0;
   // ed.entity.modelindex = 0.0;

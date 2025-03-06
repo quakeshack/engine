@@ -544,6 +544,10 @@ PR.EdictProxy = class ProgsEntity {
     }
   }
 
+  free() {
+    this.clear();
+  }
+
   equals(other) {
     return other && other._edictNum === this._edictNum;
   }

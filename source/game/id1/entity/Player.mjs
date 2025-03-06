@@ -3,7 +3,8 @@
 import { attn, channel, content, damage, dead, deathType, effect, flags, hull, items, moveType, solid } from "../Defs.mjs";
 import { crandom, Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
-import { InfoNotNullEntity, IntermissionCameraEntity } from "./Misc.mjs";
+import { BackpackEntity } from "./Items.mjs";
+import { InfoNotNullEntity, IntermissionCameraEntity, TeleportEffectEntity } from "./Misc.mjs";
 import { Backpack, DamageHandler, PlayerWeapons, weaponConfig } from "./Weapons.mjs";
 import { CopyToBodyQue } from "./Worldspawn.mjs";
 
@@ -330,86 +331,86 @@ export class PlayerEntity extends BaseEntity {
     // CR:  This state machine not only controls animations, but also defines when an axe attack is actually launched.
     //      Yet another fun was unrolling the running and standing states to fit it our state machine infrastructure.
 
-    this._defineState('player_run1', 'rockrun1', 'player_run2', () => { this._stateAssertRunning(); this.weaponframe = 0; });
-    this._defineState('player_run2', 'rockrun2', 'player_run3', () => { this._stateAssertRunning(); });
-    this._defineState('player_run3', 'rockrun3', 'player_run4', () => { this._stateAssertRunning(); });
-    this._defineState('player_run4', 'rockrun4', 'player_run5', () => { this._stateAssertRunning(); });
-    this._defineState('player_run5', 'rockrun5', 'player_run6', () => { this._stateAssertRunning(); });
-    this._defineState('player_run6', 'rockrun6', 'player_run1', () => { this._stateAssertRunning(); });
+    this._defineState('player_run1', 'rockrun1', 'player_run2', function()  { this._stateAssertRunning(); this.weaponframe = 0; });
+    this._defineState('player_run2', 'rockrun2', 'player_run3', function()  { this._stateAssertRunning(); });
+    this._defineState('player_run3', 'rockrun3', 'player_run4', function()  { this._stateAssertRunning(); });
+    this._defineState('player_run4', 'rockrun4', 'player_run5', function()  { this._stateAssertRunning(); });
+    this._defineState('player_run5', 'rockrun5', 'player_run6', function()  { this._stateAssertRunning(); });
+    this._defineState('player_run6', 'rockrun6', 'player_run1', function()  { this._stateAssertRunning(); });
 
-    this._defineState('player_run_axe1', 'axrun1', 'player_run_axe2', () => { this._stateAssertRunning(); this.weaponframe = 0; });
-    this._defineState('player_run_axe2', 'axrun2', 'player_run_axe3', () => { this._stateAssertRunning(); });
-    this._defineState('player_run_axe3', 'axrun3', 'player_run_axe4', () => { this._stateAssertRunning(); });
-    this._defineState('player_run_axe4', 'axrun4', 'player_run_axe5', () => { this._stateAssertRunning(); });
-    this._defineState('player_run_axe5', 'axrun5', 'player_run_axe6', () => { this._stateAssertRunning(); });
-    this._defineState('player_run_axe6', 'axrun6', 'player_run_axe1', () => { this._stateAssertRunning(); });
+    this._defineState('player_run_axe1', 'axrun1', 'player_run_axe2', function()  { this._stateAssertRunning(); this.weaponframe = 0; });
+    this._defineState('player_run_axe2', 'axrun2', 'player_run_axe3', function()  { this._stateAssertRunning(); });
+    this._defineState('player_run_axe3', 'axrun3', 'player_run_axe4', function()  { this._stateAssertRunning(); });
+    this._defineState('player_run_axe4', 'axrun4', 'player_run_axe5', function()  { this._stateAssertRunning(); });
+    this._defineState('player_run_axe5', 'axrun5', 'player_run_axe6', function()  { this._stateAssertRunning(); });
+    this._defineState('player_run_axe6', 'axrun6', 'player_run_axe1', function()  { this._stateAssertRunning(); });
 
-    this._defineState('player_stand1', 'stand1', 'player_stand2', () => { this._stateAssertStanding(); this.weaponframe = 0; });
-    this._defineState('player_stand2', 'stand2', 'player_stand3', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand3', 'stand3', 'player_stand4', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand4', 'stand4', 'player_stand5', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand5', 'stand5', 'player_stand1', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand1', 'stand1', 'player_stand2', function()  { this._stateAssertStanding(); this.weaponframe = 0; });
+    this._defineState('player_stand2', 'stand2', 'player_stand3', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand3', 'stand3', 'player_stand4', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand4', 'stand4', 'player_stand5', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand5', 'stand5', 'player_stand1', function()  { this._stateAssertStanding(); });
 
-    this._defineState('player_stand_axe1', 'axstnd1', 'player_stand_axe2', () => { this._stateAssertStanding(); this.weaponframe = 0; });
-    this._defineState('player_stand_axe2', 'axstnd2', 'player_stand_axe3', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe3', 'axstnd3', 'player_stand_axe4', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe4', 'axstnd4', 'player_stand_axe5', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe5', 'axstnd5', 'player_stand_axe6', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe6', 'axstnd6', 'player_stand_axe7', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe7', 'axstnd7', 'player_stand_axe8', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe8', 'axstnd8', 'player_stand_axe9', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe9', 'axstnd9', 'player_stand_axe10', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe10', 'axstnd10', 'player_stand_axe11', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe11', 'axstnd11', 'player_stand_axe12', () => { this._stateAssertStanding(); });
-    this._defineState('player_stand_axe12', 'axstnd12', 'player_stand_axe1', () => { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe1', 'axstnd1', 'player_stand_axe2', function()  { this._stateAssertStanding(); this.weaponframe = 0; });
+    this._defineState('player_stand_axe2', 'axstnd2', 'player_stand_axe3', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe3', 'axstnd3', 'player_stand_axe4', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe4', 'axstnd4', 'player_stand_axe5', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe5', 'axstnd5', 'player_stand_axe6', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe6', 'axstnd6', 'player_stand_axe7', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe7', 'axstnd7', 'player_stand_axe8', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe8', 'axstnd8', 'player_stand_axe9', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe9', 'axstnd9', 'player_stand_axe10', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe10', 'axstnd10', 'player_stand_axe11', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe11', 'axstnd11', 'player_stand_axe12', function()  { this._stateAssertStanding(); });
+    this._defineState('player_stand_axe12', 'axstnd12', 'player_stand_axe1', function()  { this._stateAssertStanding(); });
 
-    this._defineState('player_shot1', 'shotatt1', 'player_shot2', () => { this.weaponframe = 1; this.effects |= effect.EF_MUZZLEFLASH; });
-    this._defineState('player_shot2', 'shotatt2', 'player_shot3', () => { this.weaponframe = 2; });
-    this._defineState('player_shot3', 'shotatt3', 'player_shot4', () => { this.weaponframe = 3; });
-    this._defineState('player_shot4', 'shotatt4', 'player_shot5', () => { this.weaponframe = 4; });
-    this._defineState('player_shot5', 'shotatt5', 'player_shot6', () => { this.weaponframe = 5; });
-    this._defineState('player_shot6', 'shotatt6', null, () => { this.weaponframe = 6; this._attackStateDone(); });
+    this._defineState('player_shot1', 'shotatt1', 'player_shot2', function()  { this.weaponframe = 1; this.effects |= effect.EF_MUZZLEFLASH; });
+    this._defineState('player_shot2', 'shotatt2', 'player_shot3', function()  { this.weaponframe = 2; });
+    this._defineState('player_shot3', 'shotatt3', 'player_shot4', function()  { this.weaponframe = 3; });
+    this._defineState('player_shot4', 'shotatt4', 'player_shot5', function()  { this.weaponframe = 4; });
+    this._defineState('player_shot5', 'shotatt5', 'player_shot6', function()  { this.weaponframe = 5; });
+    this._defineState('player_shot6', 'shotatt6', null, function()  { this.weaponframe = 6; this._attackStateDone(); });
 
-    this._defineState('player_rocket1', 'rockatt1', 'player_rocket2', () => { this.weaponframe = 1; this.effects |= effect.EF_MUZZLEFLASH; });
-    this._defineState('player_rocket2', 'rockatt2', 'player_rocket3', () => { this.weaponframe = 2; });
-    this._defineState('player_rocket3', 'rockatt3', 'player_rocket4', () => { this.weaponframe = 3; });
-    this._defineState('player_rocket4', 'rockatt4', 'player_rocket5', () => { this.weaponframe = 4; });
-    this._defineState('player_rocket5', 'rockatt5', 'player_rocket6', () => { this.weaponframe = 5; });
-    this._defineState('player_rocket6', 'rockatt6', null, () => { this.weaponframe = 6; this._attackStateDone(); });
+    this._defineState('player_rocket1', 'rockatt1', 'player_rocket2', function()  { this.weaponframe = 1; this.effects |= effect.EF_MUZZLEFLASH; });
+    this._defineState('player_rocket2', 'rockatt2', 'player_rocket3', function()  { this.weaponframe = 2; });
+    this._defineState('player_rocket3', 'rockatt3', 'player_rocket4', function()  { this.weaponframe = 3; });
+    this._defineState('player_rocket4', 'rockatt4', 'player_rocket5', function()  { this.weaponframe = 4; });
+    this._defineState('player_rocket5', 'rockatt5', 'player_rocket6', function()  { this.weaponframe = 5; });
+    this._defineState('player_rocket6', 'rockatt6', null, function()  { this.weaponframe = 6; this._attackStateDone(); });
 
-    this._defineState('player_axe1', 'axatt1', 'player_axe2', () => { this.weaponframe = 1; });
-    this._defineState('player_axe2', 'axatt2', 'player_axe3', () => { this.weaponframe = 2; });
-    this._defineState('player_axe3', 'axatt3', 'player_axe4', () => { this.weaponframe = 3; this._weapons.fireAxe(); });
-    this._defineState('player_axe4', 'axatt4', null, () => { this.weaponframe = 4; this._attackStateDone(); });
+    this._defineState('player_axe1', 'axatt1', 'player_axe2', function()  { this.weaponframe = 1; });
+    this._defineState('player_axe2', 'axatt2', 'player_axe3', function()  { this.weaponframe = 2; });
+    this._defineState('player_axe3', 'axatt3', 'player_axe4', function()  { this.weaponframe = 3; this._weapons.fireAxe(); });
+    this._defineState('player_axe4', 'axatt4', null, function()  { this.weaponframe = 4; this._attackStateDone(); });
 
-    this._defineState('player_axeb1', 'axattb1', 'player_axeb2', () => { this.weaponframe = 5; });
-    this._defineState('player_axeb2', 'axattb2', 'player_axeb3', () => { this.weaponframe = 6; });
-    this._defineState('player_axeb3', 'axattb3', 'player_axeb4', () => { this.weaponframe = 7; this._weapons.fireAxe(); });
-    this._defineState('player_axeb4', 'axattb4', null, () => { this.weaponframe = 8; this._attackStateDone(); });
+    this._defineState('player_axeb1', 'axattb1', 'player_axeb2', function()  { this.weaponframe = 5; });
+    this._defineState('player_axeb2', 'axattb2', 'player_axeb3', function()  { this.weaponframe = 6; });
+    this._defineState('player_axeb3', 'axattb3', 'player_axeb4', function()  { this.weaponframe = 7; this._weapons.fireAxe(); });
+    this._defineState('player_axeb4', 'axattb4', null, function()  { this.weaponframe = 8; this._attackStateDone(); });
 
-    this._defineState('player_axec1', 'axattc1', 'player_axec2', () => { this.weaponframe = 1; });
-    this._defineState('player_axec2', 'axattc2', 'player_axec3', () => { this.weaponframe = 2; });
-    this._defineState('player_axec3', 'axattc3', 'player_axec4', () => { this.weaponframe = 3; this._weapons.fireAxe(); });
-    this._defineState('player_axec4', 'axattc4', null, () => { this.weaponframe = 4; this._attackStateDone(); });
+    this._defineState('player_axec1', 'axattc1', 'player_axec2', function()  { this.weaponframe = 1; });
+    this._defineState('player_axec2', 'axattc2', 'player_axec3', function()  { this.weaponframe = 2; });
+    this._defineState('player_axec3', 'axattc3', 'player_axec4', function()  { this.weaponframe = 3; this._weapons.fireAxe(); });
+    this._defineState('player_axec4', 'axattc4', null, function()  { this.weaponframe = 4; this._attackStateDone(); });
 
-    this._defineState('player_axed1', 'axattd1', 'player_axed2', () => { this.weaponframe = 5; });
-    this._defineState('player_axed2', 'axattd2', 'player_axed3', () => { this.weaponframe = 6; });
-    this._defineState('player_axed3', 'axattd3', 'player_axed4', () => { this.weaponframe = 7; this._weapons.fireAxe(); });
-    this._defineState('player_axed4', 'axattd4', null, () => { this.weaponframe = 8; this._attackStateDone(); });
+    this._defineState('player_axed1', 'axattd1', 'player_axed2', function()  { this.weaponframe = 5; });
+    this._defineState('player_axed2', 'axattd2', 'player_axed3', function()  { this.weaponframe = 6; });
+    this._defineState('player_axed3', 'axattd3', 'player_axed4', function()  { this.weaponframe = 7; this._weapons.fireAxe(); });
+    this._defineState('player_axed4', 'axattd4', null, function()  { this.weaponframe = 8; this._attackStateDone(); });
 
-    this._defineState('player_pain1', 'pain1', 'player_pain2', () => { this.weaponframe = 0; this._painSound() });
+    this._defineState('player_pain1', 'pain1', 'player_pain2', function()  { this.weaponframe = 0; this._painSound() });
     this._defineState('player_pain2', 'pain2', 'player_pain3');
     this._defineState('player_pain3', 'pain3', 'player_pain4');
     this._defineState('player_pain4', 'pain4', 'player_pain5');
     this._defineState('player_pain5', 'pain5', 'player_pain6');
-    this._defineState('player_pain6', 'pain6', null, () => { this._attackStateDone(); });
+    this._defineState('player_pain6', 'pain6', null, function()  { this._attackStateDone(); });
 
-    this._defineState('player_pain_axe1', 'axpain1', 'player_pain_axe2', () => { this.weaponframe = 0; this._painSound() });
+    this._defineState('player_pain_axe1', 'axpain1', 'player_pain_axe2', function()  { this.weaponframe = 0; this._painSound() });
     this._defineState('player_pain_axe2', 'axpain2', 'player_pain_axe3');
     this._defineState('player_pain_axe3', 'axpain3', 'player_pain_axe4');
     this._defineState('player_pain_axe4', 'axpain4', 'player_pain_axe5');
     this._defineState('player_pain_axe5', 'axpain5', 'player_pain_axe6');
-    this._defineState('player_pain_axe6', 'axpain6', null, () => { this._attackStateDone(); });
+    this._defineState('player_pain_axe6', 'axpain6', null, function()  { this._attackStateDone(); });
 
     this._defineState('player_diea1', 'deatha1', 'player_diea2');
     this._defineState('player_diea2', 'deatha2', 'player_diea3');
@@ -421,7 +422,7 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_diea8', 'deatha8', 'player_diea9');
     this._defineState('player_diea9', 'deatha9', 'player_diea10');
     this._defineState('player_diea10', 'deatha10', 'player_diea11');
-    this._defineState('player_diea11', 'deatha11', null, () => { this._playerDead(); });
+    this._defineState('player_diea11', 'deatha11', null, function()  { this._playerDead(); });
 
     this._defineState('player_dieb1', 'deathb1', 'player_dieb2');
     this._defineState('player_dieb2', 'deathb2', 'player_dieb3');
@@ -431,7 +432,7 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_dieb6', 'deathb6', 'player_dieb7');
     this._defineState('player_dieb7', 'deathb7', 'player_dieb8');
     this._defineState('player_dieb8', 'deathb8', 'player_dieb9');
-    this._defineState('player_dieb9', 'deathb9', null, () => { this._playerDead(); });
+    this._defineState('player_dieb9', 'deathb9', null, function()  { this._playerDead(); });
 
     this._defineState('player_diec1', 'deathc1', 'player_diec2');
     this._defineState('player_diec2', 'deathc2', 'player_diec3');
@@ -447,7 +448,7 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_diec12', 'deathc12', 'player_diec13');
     this._defineState('player_diec13', 'deathc13', 'player_diec14');
     this._defineState('player_diec14', 'deathc14', 'player_diec15');
-    this._defineState('player_diec15', 'deathc15', null, () => { this._playerDead(); });
+    this._defineState('player_diec15', 'deathc15', null, function()  { this._playerDead(); });
 
     this._defineState('player_died1', 'deathd1', 'player_died2');
     this._defineState('player_died2', 'deathd2', 'player_died3');
@@ -457,7 +458,7 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_died6', 'deathd6', 'player_died7');
     this._defineState('player_died7', 'deathd7', 'player_died8');
     this._defineState('player_died8', 'deathd8', 'player_died9');
-    this._defineState('player_died9', 'deathd9', null, () => { this._playerDead(); });
+    this._defineState('player_died9', 'deathd9', null, function()  { this._playerDead(); });
 
     this._defineState('player_diee1', 'deathe1', 'player_diee2');
     this._defineState('player_diee2', 'deathe2', 'player_diee3');
@@ -467,7 +468,7 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_diee6', 'deathe6', 'player_diee7');
     this._defineState('player_diee7', 'deathe7', 'player_diee8');
     this._defineState('player_diee8', 'deathe8', 'player_diee9');
-    this._defineState('player_diee9', 'deathe9', null, () => { this._playerDead(); });
+    this._defineState('player_diee9', 'deathe9', null, function()  { this._playerDead(); });
 
     this._defineState('player_die_ax1', 'axdeth1', 'player_die_ax2');
     this._defineState('player_die_ax2', 'axdeth2', 'player_die_ax3');
@@ -477,13 +478,13 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_die_ax6', 'axdeth6', 'player_die_ax7');
     this._defineState('player_die_ax7', 'axdeth7', 'player_die_ax8');
     this._defineState('player_die_ax8', 'axdeth8', 'player_die_ax9');
-    this._defineState('player_die_ax9', 'axdeth9', null, () => { this._playerDead(); });
+    this._defineState('player_die_ax9', 'axdeth9', null, function()  { this._playerDead(); });
 
-    this._defineState('player_nail1', 'nailatt1', 'player_nail2', () => { this._attackNailState(); } );
-    this._defineState('player_nail2', 'nailatt2', 'player_nail1', () => { this._attackNailState(); } );
+    this._defineState('player_nail1', 'nailatt1', 'player_nail2', function()  { this._attackNailState(); } );
+    this._defineState('player_nail2', 'nailatt2', 'player_nail1', function()  { this._attackNailState(); } );
 
-    this._defineState('player_light1', 'nailatt1', 'player_light2', () => { this._attackLightningState(); } );
-    this._defineState('player_light2', 'nailatt2', 'player_light1', () => { this._attackLightningState(); } );
+    this._defineState('player_light1', 'nailatt1', 'player_light2', function()  { this._attackLightningState(); } );
+    this._defineState('player_light2', 'nailatt2', 'player_light1', function()  { this._attackLightningState(); } );
   }
 
   /** @protected */
@@ -593,7 +594,7 @@ export class PlayerEntity extends BaseEntity {
 
   /** @protected */
   _dropBackpack() {
-    const backpack = this.engine.SpawnEntity('item_backpack', {
+    const backpack = this.engine.SpawnEntity(BackpackEntity.classname, {
       origin: this.origin.copy().subtract(new Vector(0.0, 0.0, 24.0)),
       items: this.weapon,
       ammo_cells: this.ammo_cells,
@@ -1420,6 +1421,7 @@ export class PlayerEntity extends BaseEntity {
    * Resets the player state.
    */
   clear() {
+    super.clear();
     this.takedamage = damage.DAMAGE_AIM;
     this.solid = solid.SOLID_SLIDEBOX;
     this.movetype = moveType.MOVETYPE_WALK;
@@ -1480,10 +1482,10 @@ export class PlayerEntity extends BaseEntity {
       const { forward } = this.angles.angleVectors();
       const origin = forward.multiply(20.0).add(this.origin);
 
-      this.engine.SpawnEntity('misc_tfog', { origin });
+      this.engine.SpawnEntity(TeleportEffectEntity.classname, { origin });
     }
 
-    this.engine.SpawnEntity('misc_teledeath', {
+    this.engine.SpawnEntity(TelefragTriggerEntity.classname, {
       origin: this.origin,
       owner: this,
     });
@@ -1958,7 +1960,7 @@ export class PlayerEntity extends BaseEntity {
     this.unsetModel(); // we need to unset the model, because the engine is no longer consider this player able to think once it’s disconnect, thus there’s going to be no progressing the state machine as well
 
     if (this.game.deathmatch || this.game.coop) {
-      this.engine.SpawnEntity('misc_tfog', { origin: this.origin });
+      this.engine.SpawnEntity(TeleportEffectEntity.classname, { origin: this.origin });
       this.engine.BroadcastPrint(`${this.netname} left the game.\n`);
     }
   }
@@ -2063,7 +2065,7 @@ export class GibEntity extends BaseEntity {
     const models = ['progs/gib1.mdl', 'progs/gib2.mdl', 'progs/gib3.mdl'];
 
     for (let i = 0, max = Math.ceil(entity.volume / 16000); i < max; i++) {
-      entity.engine.SpawnEntity('misc_gib', {
+      entity.engine.SpawnEntity(GibEntity.classname, {
         origin: entity.origin.copy(),
         velocity: VelocityForDamage(damage !== null ? damage : entity.health),
         model: models[Math.floor(Math.random() * models.length)],

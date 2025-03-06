@@ -284,6 +284,7 @@ class MainMenu extends BaseMenu {
 * added some `console.asserts` here and there
 * also those centerPrint sound effects should play locally, right now they are sometimes play on entities
 * started implementing func_plat
+* absurdly hunt down a garbage collection issue, added some explicit resetting of variables and it turned out that it was the developer console holding references due to some `console.log(this)` statements
 
 ### 2025-03-02
 

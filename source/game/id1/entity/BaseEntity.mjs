@@ -14,13 +14,17 @@ export default class BaseEntity {
     throw new TypeError('Cannot set property classname');
   }
 
+  get edict() {
+    return this.edict_wf.deref();
+  }
+
   /**
    * @param {SV.Edict} edict linked edict
    * @param {ServerGameAPI} gameAPI server game API
    */
   constructor(edict, gameAPI) {
     // hooking up the edict and the entity, also the APIs
-    this.edict = edict;
+    this.edict_wf = new WeakRef(edict);
     this.edict.entity = this;
     this.engine = gameAPI.engine;
     this.game = gameAPI;
@@ -160,7 +164,7 @@ export default class BaseEntity {
    */
   _initStates() {
     // place all animation states and scripted sequences here
-    // this._defineState('army_stand1', 'stand1', 'army_stand2', () => this._ai.stand());
+    // this._defineState('army_stand1', 'stand1', 'army_stand2', function () { this._ai.stand(); });
   }
 
   /**
@@ -235,7 +239,7 @@ export default class BaseEntity {
     }
 
     // create or update the next think for the animation state
-    this._scheduleThink(this.game.time + 0.1, () => this._runState(), 'animation-state-machine');
+    this._scheduleThink(this.game.time + 0.1, function () { this._runState(); }, 'animation-state-machine');
 
     // call any additional code
     if (data.handler) {
@@ -276,13 +280,18 @@ export default class BaseEntity {
    * @returns {boolean} true, if there was something to execute
    */
   _runScheduledThinks() {
-    if (this._scheduledThinks.length === 0) {
+    if (!this._scheduledThinks || this._scheduledThinks.length === 0) {
       return false;
     }
 
     const { callback } = this._scheduledThinks.shift();
 
     callback.call(this, this);
+
+    // freed in the meantime
+    if (!this._scheduledThinks) {
+      return false;
+    }
 
     // skip over all passed thinks
     // FIXME: what’s the alternative to check time against for moveType.MOVETYPE_PUSH?
@@ -292,6 +301,11 @@ export default class BaseEntity {
 
         if (isRequired) {
           callback.call(this, this);
+        }
+
+        // freed in the meantime
+        if (!this._scheduledThinks) {
+          return false;
         }
       }
     }
@@ -552,6 +566,21 @@ export default class BaseEntity {
    * Resets this entity. Useful for dealing with respawning players and other entities when required.
    */
   clear() {
+    this.resetThinking();
+    this.dmg_attacker = null;
+    this.dmg_inflictor = null;
+    this.owner = null;
+    this.chain = null; // FIXME: consider removing
+    this.groundentity = null;
+  }
+
+  /**
+   * Frees this entity, nulls any variable possibly pointing to an object. Afterwards it is meant for being garbage-collected.
+   */
+  free() {
+    for (const prop in this) {
+      this[prop] = null;
+    }
   }
 
   /**

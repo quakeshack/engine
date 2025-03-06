@@ -1,6 +1,7 @@
 import { attn, channel, damage, flags, moveType, solid } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
-import { PlayerEntity } from "./Player.mjs";
+import { TeleportEffectEntity } from "./Misc.mjs";
+import { PlayerEntity, TelefragTriggerEntity } from "./Player.mjs";
 import { Sub } from "./Subs.mjs";
 import { DamageHandler } from "./Weapons.mjs";
 
@@ -349,7 +350,7 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
     this._sub.useTargets(touchedByEntity);
 
     // put a tfog where the player was
-    this.engine.SpawnEntity('misc_tfog', { origin: touchedByEntity.origin });
+    this.engine.SpawnEntity(TeleportEffectEntity.classname, { origin: touchedByEntity.origin });
 
     /** @type {InfoTeleportDestination} */
     const target = this.findFirstEntityByFieldAndValue("targetname", this.target);
@@ -362,10 +363,10 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
     const { forward } = target.angles.angleVectors();
 
     // spawn a tfog flash in front of the destination
-    this.engine.SpawnEntity('misc_tfog', { origin: forward.copy().multiply(32.0).add(target.origin) });
+    this.engine.SpawnEntity(TeleportEffectEntity.classname, { origin: forward.copy().multiply(32.0).add(target.origin) });
 
     // spawn an ephemeral telefrag trigger
-    this.engine.SpawnEntity('misc_teledeath', {
+    this.engine.SpawnEntity(TelefragTriggerEntity.classname, {
       origin: target.origin,
       owner: touchedByEntity,
     });
