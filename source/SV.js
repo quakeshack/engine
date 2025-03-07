@@ -81,7 +81,10 @@ SV.Edict = class Edict {
   }
 
   clear() {
-    this.entity = null;
+    if (this.entity) {
+      this.entity.free();
+      this.entity = null;
+    }
   }
 
   /**
@@ -234,7 +237,7 @@ SV.Edict = class Edict {
    * valid options, they are cycled each frame. If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
    * @returns {?SV.Edict} Edict when client found, null otherwise
    */
-  getNextBestClient(){ // TODO: move to GameAPI, this is not interesting for edicts
+  getNextBestClient() { // TODO: move to GameAPI, this is not interesting for edicts
     // refresh check cache
     if (SV.server.time - SV.server.lastchecktime >= 0.1) {
       let check = SV.server.lastcheck;
@@ -693,7 +696,7 @@ SV.WriteEntitiesToClient = function(clent, msg) {
   for (e = 1; e < SV.server.num_edicts; ++e) {
     ent = SV.server.edicts[e];
     if (!ent.equals(clent)) {
-      if (!ent.entity) {
+      if (ent.isFree()) {
         continue;
       }
       if ((ent.entity.modelindex === 0.0) || !ent.entity.model) {
@@ -1045,7 +1048,7 @@ SV.SendClientMessages = function() {
   }
 
   for (i = 1; i < SV.server.num_edicts; ++i) {
-    if (!SV.server.edicts[i].entity) {
+    if (SV.server.edicts[i].isFree()) {
       continue;
     }
 
@@ -1275,10 +1278,12 @@ SV.ShutdownServer = function (isCrashShutdown) {
   SV.server.progsInterfaces = null;
   SV.server.cannon = null;
   SV.server.worldmodel = null;
+  SV.server.gameAPI = null;
 
   // purge out all edicts and clients
   for (const edict of SV.server.edicts) {
     // explicitly tell entities to free memory
+    edict.clear();
     edict.freeEdict();
   }
   SV.server.edicts = [];

@@ -3,12 +3,16 @@
 // eslint-disable-next-line no-global-assign
 ED = {};
 
-ED.ClearEdict = function(e) {
-  e.clear();
-  e.free = false;
+ED.ClearEdict = function(ed) { // TODO: move to SV.Edict
+  if (ed.entity) {
+    ed.entity.free();
+    ed.entity = null;
+  }
+  ed.clear();
+  ed.free = false;
 };
 
-ED.Alloc = function() {
+ED.Alloc = function() { // TODO: move to SV?
   let i; let e;
   for (i = SV.svs.maxclients + 1; i < SV.server.num_edicts; ++i) {
     e = SV.server.edicts[i];
@@ -30,13 +34,15 @@ ED.Alloc = function() {
   return e;
 };
 
-ED.Free = function(ed) {
+ED.Free = function(ed) { // TODO: move to SV.Edict
   SV.UnlinkEdict(ed);
+  // mark as free, it will be cleared later
   ed.free = true;
   if (ed.entity) {
-    ed.entity.free();
+    // only reset the data, not free the entire entity yet
+    // freeing the entity is done in ED.ClearEdict
+    ed.entity.clear();
   }
-  ed.entity = null; // TODO/FIXME: should do this later, we had a couple of issues when entities got removed too early
   // ed.entity.model = null;
   // ed.entity.takedamage = 0.0;
   // ed.entity.modelindex = 0.0;
@@ -243,7 +249,7 @@ ED.ParseEdict = function(data, ent, initialData = {}) {
       COM.token = `0 ${COM.token} 0`;
     }
 
-    initialData[keyname] = COM.token;
+    initialData[keyname] = COM.token; // TODO: FIXME: I think here we need to parse escape sequences properly
 
     init = true;
   }

@@ -821,7 +821,7 @@ PR.LoadProgs = function() {
 
   const gameAPI = Object.assign(new PR.EdictProxy(null), {
     prepareEntity(edict, classname, initialData = {}) {
-      if (!edict.entity) {
+      if (!edict.entity) { // do not use isFree(), check for unset entity property
         edict.entity = new PR.EdictProxy(edict);
         Object.freeze(edict.entity);
       }

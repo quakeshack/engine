@@ -784,7 +784,7 @@ export class PlayerEntity extends BaseEntity {
     let bestWeapon = items.IT_AXE; // Default weapon
     let maxPriority = 0;
 
-    weaponConfig.forEach((config, weapon) => {
+    for (const [weapon, config] of weaponConfig.entries()) {
       const hasWeapon = it & weapon; // Check if player has this weapon
       const hasAmmo = config.currentammo === 0 || this[config.currentammo] > 0; // Check if ammo is available
       const isUsable = !(weapon === items.IT_LIGHTNING && this.waterlevel > 1); // Lightning unusable in water
@@ -793,7 +793,7 @@ export class PlayerEntity extends BaseEntity {
         bestWeapon = weapon;
         maxPriority = config.priority;
       }
-    });
+    };
 
     return bestWeapon;
   };

@@ -579,7 +579,7 @@ export default class BaseEntity {
    */
   free() {
     for (const prop in this) {
-      this[prop] = null;
+      this[prop] = undefined;
     }
   }
 

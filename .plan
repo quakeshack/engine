@@ -278,6 +278,11 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-03-07
+
+* added back in the delayed unsetting and freeing of `entity`, sometimes we had strange side effects of logic assuming they could still access certain entity data even though the edict got freed already
+* need to restructure ED.js and move logic to `SV.Edict`
+
 ### 2025-03-05
 
 * triggers needs some clean up, cleaned up code related to doors
