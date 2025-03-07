@@ -41,7 +41,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] event_lightning
   * [X] func_door_secret
   * [X] func_plat
-  * [_] func_train
+  * [X] func_train
   * [X] info_player_start2
   * [_] misc_teleporttrain
   * [_] monster_army
@@ -282,6 +282,10 @@ class MainMenu extends BaseMenu {
 
 * added back in the delayed unsetting and freeing of `entity`, sometimes we had strange side effects of logic assuming they could still access certain entity data even though the edict got freed already
 * need to restructure ED.js and move logic to `SV.Edict`
+* implemented `func_train` using VS Code Copilot, it went okayish
+* introduced `BaseEntity.lazyRemove()` to gracefully remove an entity and keep it alive for at least 100ms and up to whatever is configured in `delay`
+* found a nasty bug in `useTargets` causing some scripted sequences to be out of order when delays were used.
+* quite happy about the current memory footprint, though it could be optimized further
 
 ### 2025-03-05
 
