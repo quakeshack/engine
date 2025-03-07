@@ -174,6 +174,9 @@ export class BaseItemEntity extends BaseEntity {
     //   // TODO: Deathmatch_Weapon (old, new);
     // }
 
+    // trigger all connected actions
+    this._sub.useTargets(playerEntity);
+
     if (this.game.deathmatch && this.regeneration_time > 0) {
       this.solid = solid.SOLID_NOT;
       this._model_original = this.model;
@@ -182,9 +185,6 @@ export class BaseItemEntity extends BaseEntity {
     } else {
       this.remove();
     }
-
-    // trigger all connected actions
-    this._sub.useTargets(playerEntity);
   }
 };
 
@@ -418,12 +418,12 @@ export class BaseKeyEntity extends BaseItemEntity {
    * @param {PlayerEntity} playerEntity user
    */
   _afterTouch(playerEntity) {
+    this._sub.useTargets(playerEntity);
+
     // CR: weird that they can be taken in deathmatch
     if (!this.game.coop) {
       this.remove();
     }
-
-    this._sub.useTargets(playerEntity);
   }
 };
 
@@ -794,18 +794,19 @@ export class HealthItemEntity extends BaseItemEntity {
     this.model = null;
     this.owner = playerEntity;
 
+    // trigger all connected actions
+    this._sub.useTargets(playerEntity);
+
     // chipping away the player’s health when mega is running
     if (this.spawnflags & HealthItemEntity.H_MEGA) {
       this._scheduleThink(this.game.time + 5.0, () => this._takeHealth());
     } else {
       this.remove();
     }
-
-    // trigger all connected actions
-    this._sub.useTargets(playerEntity);
   }
 
   spawn() {
+    // TODO: FIXME: turn into assert
     if (![HealthItemEntity.H_NORMAL, HealthItemEntity.H_MEGA, HealthItemEntity.H_ROTTEN].includes(this.spawnflags)) {
       this.engine.DebugPrint(`${this} removed, nonsense spawnflags (${this.spawnflags}).\n`);
       this.remove();

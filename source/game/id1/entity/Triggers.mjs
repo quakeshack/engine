@@ -156,8 +156,8 @@ export class MultipleTriggerEntity extends BaseTriggerEntity {
       return true;
     }
 
-    // remove next
-    this._scheduleThink(this.game.time + 0.1, () => this.remove());
+    // remove the trigger after all invocations
+    this.lazyRemove();
 
     return true;
   }

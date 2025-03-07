@@ -9,7 +9,7 @@ import * as platform from "./entity/props/Platforms.mjs";
 import * as trigger from "./entity/Triggers.mjs";
 import ArmySoldierMonster, { soldierModelQC } from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
-import { TriggerField } from "./entity/Subs.mjs";
+import * as sub from "./entity/Subs.mjs";
 import { ButtonEntity } from "./entity/props/Buttons.mjs";
 import * as item from "./entity/Items.mjs";
 import BaseEntity from "./entity/BaseEntity.mjs";
@@ -64,6 +64,8 @@ const entityRegistry = [
   misc.EpisodegateWallEntity,
   misc.BossgateWallEntity,
 
+  misc.PathCornerEntity,
+
   misc.TeleportEffectEntity,
 
   misc.BarrelEntity,
@@ -90,10 +92,12 @@ const entityRegistry = [
 
   platform.PlatformEntity,
   platform.PlatformTriggerEntity,
+  platform.TrainEntity,
 
   ButtonEntity,
 
-  TriggerField,
+  sub.TriggerFieldEntity,
+  sub.DelayedThinkEntity,
 
   item.BackpackEntity,
   item.ItemShellsEntity,

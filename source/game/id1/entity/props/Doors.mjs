@@ -4,7 +4,7 @@ import { attn, channel, damage, items, moveType, solid, worldType } from "../../
 import BaseEntity from "../BaseEntity.mjs";
 import { itemNames } from "../Items.mjs";
 import { PlayerEntity } from "../Player.mjs";
-import { TriggerField } from "../Subs.mjs";
+import { TriggerFieldEntity } from "../Subs.mjs";
 import { DamageHandler } from "../Weapons.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
 
@@ -24,7 +24,7 @@ export class BaseDoorEntity extends BasePropEntity {
     super._declareFields();
     /** @type {?BaseDoorEntity} linked door @protected */
     this._linkedDoor = null; // entity (QuakeC: enemy)
-    /** @type {?TriggerField} trigger field @protected */
+    /** @type {?TriggerFieldEntity} trigger field @protected */
     this._triggerField = null; // trigger field
     /** @type {?string} */
     this.noise4 = null;
@@ -39,7 +39,7 @@ export class BaseDoorEntity extends BasePropEntity {
    * @param {Vector} maxs max size
    */
   _spawnTriggerField(mins, maxs) {
-    this.engine.SpawnEntity(TriggerField.classname, {
+    this.engine.SpawnEntity(TriggerFieldEntity.classname, {
       owner: this,
       mins,
       maxs,

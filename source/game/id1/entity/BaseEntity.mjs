@@ -556,10 +556,22 @@ export default class BaseEntity {
   }
 
   /**
-   * Releases this entity and frees underlying edict.
+   * Releases this entity and frees underlying edict immediately.
    */
   remove() {
     this.edict.freeEdict();
+  }
+
+  /**
+   * It will make an entity appear to be removed, but it will not free the edict yet.
+   * When to use? During a think, touch or blocked callback, when you want to remove the entity, but you do not want to throw the engine off its track.
+   */
+  lazyRemove() {
+    this.unsetModel(true);
+    this.solid = solid.SOLID_NOT;
+    this.movetype = moveType.MOVETYPE_NONE;
+    this.resetThinking();
+    this._scheduleThink(this.game.time + 0.1 + (this.delay || 0), () => this.remove(), 'remove', true);
   }
 
   /**

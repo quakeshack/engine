@@ -210,3 +210,121 @@ export class PlatformTriggerEntity extends BaseEntity {
     }
   }
 };
+
+/**
+ * QUAKED func_train (0 .5 .8) ?
+ * Trains are moving platforms that players can ride.
+ * The targets origin specifies the min point of the train at each corner.
+ * The train spawns at the first target it is pointing at.
+ * If the train is the target of a button or trigger, it will not begin moving until activated.
+ * speed	default 100
+ * dmg		default	2
+ * sounds
+ * 1) ratchet metal
+ */
+export class TrainEntity extends BasePropEntity { // CR: this beauty is written by VS Code Copilot
+  static classname = 'func_train';
+
+  _declareFields() {
+    super._declareFields();
+
+    this.dmg = 0;
+    this.wait = 0;
+    this.target = null;
+    this.sounds = 0; // default value (0: misc/null.wav, 1: train sounds)
+
+    /** @private */
+    this._isActivated = false;
+  }
+
+  _precache() {
+    if (this.sounds === 0) {
+      this.engine.PrecacheSound('misc/null.wav');
+    } else if (this.sounds === 1) {
+      this.engine.PrecacheSound('plats/train2.wav');
+      this.engine.PrecacheSound('plats/train1.wav');
+    }
+  }
+
+  spawn() {
+    if (!this.speed) {
+      this.speed = 100;
+    }
+
+    console.assert(this.target, 'func_train requires a target');
+
+    if (!this.dmg) {
+      this.dmg = 2;
+    }
+
+    if (this.sounds === 0) {
+      this.noise = 'misc/null.wav';
+      this.noise1 = 'misc/null.wav';
+    } else if (this.sounds === 1) {
+      this.noise = 'plats/train2.wav';
+      this.noise1 = 'plats/train1.wav';
+    }
+
+    this._precache();
+
+    this.solid = solid.SOLID_BSP;
+    this.movetype = moveType.MOVETYPE_PUSH;
+
+    this.setModel(this.model);
+    this.setSize(this.mins, this.maxs);
+    this.setOrigin(this.origin);
+
+    // start by finding the first target once they all have spawned
+    this._scheduleThink(this.ltime + 0.1, () => this._trainFind());
+  }
+
+  _trainFind() {
+    // position the train at the first target's origin (minus our mins for alignment)
+    const targetEntity = this.findFirstEntityByFieldAndValue("targetname", this.target);
+    console.assert(targetEntity, 'func_train: target not found');
+    this.setOrigin(targetEntity.origin.copy().subtract(this.mins));
+    // if not triggered by a use.
+    if (!this.targetname) {
+      this._scheduleThink(this.ltime + 0.1, () => this._trainNext());
+    }
+  }
+
+  _trainNext() {
+    const targetEntity = this.findFirstEntityByFieldAndValue("targetname", this.target);
+    console.assert(targetEntity.target, 'func_train: no next target');
+    this.target = targetEntity.target; // update to point to the next target
+    this.wait = targetEntity.wait ? targetEntity.wait : 0;
+    this.startSound(channel.CHAN_VOICE, this.noise1);
+    // move to the next target position (adjusted by our mins)
+    this._sub.calcMove(targetEntity.origin.copy().subtract(this.mins), this.speed, () => this._trainWait());
+  }
+
+  _trainWait() {
+    if (this.wait) {
+      this.startSound(channel.CHAN_VOICE, this.noise);
+    }
+
+    // schedule the next move after "wait" seconds (defaulting to a minimal delay)
+    const delay = this.wait ? this.wait : 0.1;
+    this._scheduleThink(this.ltime + delay, () => this._trainNext());
+  }
+
+  blocked(blockingEntity) {
+    this.damage(blockingEntity, this.dmg);
+    // impose a short cooldown of 0.5 seconds to avoid repeated blockage processing
+    if (this.nextthink < this.ltime + 0.5) {
+      this.nextthink = this.ltime + 0.5;
+    }
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  use(activatorEntity) {
+    if (this._isActivated) {
+      return;
+    }
+
+    this._isActivated = true;
+
+    this._trainNext();
+  }
+}

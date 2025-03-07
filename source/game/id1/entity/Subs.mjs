@@ -17,7 +17,7 @@ export const triggerFieldFlags = {
 /**
  * special entity that will trigger a linked entity’s use method when touched, use flags and {triggerFieldFlags} to adjust behavior
  */
-export class TriggerField extends BaseEntity {
+export class TriggerFieldEntity extends BaseEntity {
   static classname = 'subs_triggerfield';
 
   _declareFields() {
@@ -40,7 +40,7 @@ export class TriggerField extends BaseEntity {
 
   touch(otherEntity) {
     // CR: upon spawn otherEntity might be another TriggerField, when overlapping
-    if (otherEntity instanceof TriggerField) {
+    if (otherEntity instanceof TriggerFieldEntity) {
       return;
     }
 
@@ -63,6 +63,40 @@ export class TriggerField extends BaseEntity {
     this.attack_finished = this.game.time + 1.0;
 
     this.owner.use(otherEntity);
+  }
+};
+
+/**
+ * Special entity that will trigger a linked entity’s useTargets method after a delay.
+ * You do not have to spawn this yourself, it will be done by useTargets when a delay is set.
+ */
+export class DelayedThinkEntity extends BaseEntity {
+  static classname = 'subs_delayedthink';
+
+  _declareFields() {
+    /** @type {BaseEntity} activator entity */
+    this.activator = null;
+    /** @type {number} delay in seconds */
+    this.delay = 0;
+
+    this._sub = new Sub(this);
+  }
+
+  spawn() {
+    this.message = this.owner.message;
+    this.killtarget = this.owner.killtarget;
+    this.target = this.owner.target;
+
+    console.assert(this.owner instanceof BaseEntity, 'owner must be a BaseEntity');
+    console.assert(this.activator instanceof BaseEntity, 'owner must be a BaseEntity');
+    console.assert(this.delay > 0, 'delay must be greater than 0');
+    console.assert(this.killtarget || this.target, 'must have either killtarget or target');
+
+    this._scheduleThink(this.game.time + this.delay, () => {
+      this.delay = 0; // CR: reset delay to avoid multiple calls
+      this._sub.useTargets(this.activator);
+      this.remove();
+    });
   }
 };
 
@@ -175,7 +209,7 @@ export class Sub extends EntityWrapper {
     // check if we are already in place
     if (this._entity.origin.equals(tdest)) {
       this._entity.velocity.clear();
-      this._entity._scheduleThink(this._entity.ltime + 0.1, () => this._think()); // FIXME: this scope
+      this._entity._scheduleThink(this._entity.ltime + 0.1, function () { this._sub._think(); });
       return;
     }
 
@@ -190,12 +224,12 @@ export class Sub extends EntityWrapper {
     if (traveltime < 0.1) {
       // too soon
       this._entity.velocity.clear();
-      this._entity._scheduleThink(this._entity.ltime + 0.1, () => this._think()); // FIXME: this scope
+      this._entity._scheduleThink(this._entity.ltime + 0.1, function () { this._sub._think(); });
       return;
     }
 
     // schedule a think to trigger a think when dest is reached
-    this._entity._scheduleThink(this._entity.ltime + traveltime, () => this._think()); // FIXME: this scope
+    this._entity._scheduleThink(this._entity.ltime + traveltime, function () { this._sub._think(); });
 
     // scale the destdelta vector by the time spent traveling to get velocity
     this._entity.velocity = vdestdelta.multiply(1.0 / traveltime);
@@ -204,10 +238,13 @@ export class Sub extends EntityWrapper {
   useTargets(activatorEntity) {
     console.assert(activatorEntity !== null, 'activator is required');
 
-    // if there’s a delay, let’s feed it into the think state machine
+    // delayed execution has to be done with a helper entity
     if (this._entity.delay && !this._useData.callback) {
-      this._useData.callback = () => this.useTargets(activatorEntity);
-      this._entity._scheduleThink(this._entity.ltime + this._entity.delay, () => this._think()); // FIXME: this scope
+      this._engine.SpawnEntity(DelayedThinkEntity.classname, {
+        owner: this._entity,
+        delay: this._entity.delay,
+        activator: activatorEntity,
+      });
       return;
     }
 
@@ -232,8 +269,8 @@ export class Sub extends EntityWrapper {
           return;
         }
         searchEntity.remove();
-      // eslint-disable-next-line no-constant-condition
-      } while(true);
+        // eslint-disable-next-line no-constant-condition
+      } while (true);
     }
 
     // fire targets
@@ -247,8 +284,8 @@ export class Sub extends EntityWrapper {
         }
         // CR: this is way more convenient than QuakeC’s version (subs.qc:260)
         searchEntity.use(activatorEntity);
-      // eslint-disable-next-line no-constant-condition
-      } while(true);
+        // eslint-disable-next-line no-constant-condition
+      } while (true);
     }
   }
 };

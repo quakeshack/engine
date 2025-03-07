@@ -595,6 +595,8 @@ export class PathCornerEntity extends BaseEntity {
   _declareFields() {
     /** @type {number} The number of seconds to spend standing or bowing for path_stand or path_bow */
     this.pausetime = 0;
+    /** @type {number} Copied over to enemies or func_train entities */
+    this.wait = 0;
   }
 
   /**
