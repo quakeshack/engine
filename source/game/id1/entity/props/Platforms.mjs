@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { moveType, solid } from "../../Defs.mjs";
+import { channel, moveType, solid } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
 import { PlayerEntity } from "../Player.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
@@ -29,6 +29,16 @@ export class PlatformEntity extends BasePropEntity {
     ['plats/medplat1.wav', 'plats/medplat2.wav'],
   ];
 
+  _precache() {
+    const sounds = this.constructor._sounds[this.sounds || 2];
+
+    for (const sound of sounds) {
+      if (sound) {
+        this.engine.PrecacheSound(sound);
+      }
+    }
+  }
+
   _declareFields() {
     super._declareFields();
 
@@ -44,14 +54,59 @@ export class PlatformEntity extends BasePropEntity {
     this._trigger = new WeakRef(this.engine.SpawnEntity(PlatformTriggerEntity.classname, { owner: this }));
   }
 
-  blocked(blockedByEntity) {
-    // TODO: plat_crush
-    console.debug('plat_crush');
+  _hitBottom() {
+    this.state = state.STATE_BOTTOM;
+    this.startSound(channel.CHAN_VOICE, this.noise1);
   }
 
+  _hitTop() {
+    this.state = state.STATE_TOP;
+    this.startSound(channel.CHAN_VOICE, this.noise1);
+    this._scheduleThink(this.ltime + 3.0, () => this._goDown());
+  }
+
+  _goDown() {
+    this.state = state.STATE_DOWN;
+    this.startSound(channel.CHAN_VOICE, this.noise);
+    this._sub.calcMove(this.pos2, this.speed, () => this._hitBottom());
+  }
+
+  _goUp() {
+    this.state = state.STATE_UP;
+    this.startSound(channel.CHAN_VOICE, this.noise);
+    this._sub.calcMove(this.pos1, this.speed, () => this._hitTop());
+  }
+
+  _keepUp() {
+    // CR: this is a hack, we are prolonging the time the platform is up by tinkering around with nextthink
+    this.nextthink = this.ltime + 1.0;
+  }
+
+  blocked(blockedByEntity) {
+    this.damage(blockedByEntity, 1);
+
+    if (this.state === state.STATE_UP) {
+      this._goDown();
+    } else if (this.state === state.STATE_DOWN) {
+      this._goUp();
+    } else {
+      console.assert(false, 'PlatformEntity.blocked: invalid state');
+    }
+  }
+
+  // eslint-disable-next-line no-unused-vars
   use(usedByEntity) {
-    // TODO: plat_trigger_use
-    console.debug('plat_trigger_use');
+    if (!this.targetname) { // plat_trigger_use path
+      this._goDown();
+      return;
+    }
+
+    // already thinking
+    if (this.nextthink > this.game.time) {
+      return;
+    }
+
+    this._goDown();
   }
 
   spawn() {
@@ -63,12 +118,12 @@ export class PlatformEntity extends BasePropEntity {
       this.t_width = 10;
     }
 
-    if (!this.sounds) {
-      this.sounds = 2;
-    }
-
     if (!this.speed) {
       this.speed = 150;
+    }
+
+    if (!this.sounds) {
+      this.sounds = 2;
     }
 
     [this.noise, this.noise1] = this.constructor._sounds[this.sounds];
@@ -87,7 +142,7 @@ export class PlatformEntity extends BasePropEntity {
     this.pos1.set(this.origin);
     this.pos2.set(this.origin);
 
-    this.pos2[2] = this.origin[2] - (this.height ? this.height : this.size[2] + 8.0);
+    this.pos2[2] = this.origin[2] - (this.height ? this.height : this.size[2] - 8.0);
 
     this._spawnInsideTrigger();
 
@@ -141,6 +196,17 @@ export class PlatformTriggerEntity extends BaseEntity {
       return;
     }
 
-    // TODO: activate
+    /** @type {PlatformEntity} */
+    const platform = this.owner;
+
+    switch (platform.state) {
+      case state.STATE_BOTTOM:
+        platform._goUp();
+        break;
+
+      case state.STATE_TOP:
+        platform._keepUp();
+        break;
+    }
   }
 };

@@ -40,7 +40,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] air_bubbles
   * [_] event_lightning
   * [X] func_door_secret
-  * [_] func_plat
+  * [X] func_plat
   * [_] func_train
   * [X] info_player_start2
   * [_] misc_teleporttrain
