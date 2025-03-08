@@ -2177,8 +2177,8 @@ SV._BuildSurfaceDisplayList = function(currentmodel, fa) { // FIXME: move to Mod
     }
     vert = new Vector(vec[0], vec[1], vec[2]);
     if (fa.sky !== true) {
-      s = vec.dot(texinfo.vecs[0]) + texinfo.vecs[0][3];
-      t = vec.dot(texinfo.vecs[1]) + texinfo.vecs[1][3];
+      s = vec.dot(new Vector(...texinfo.vecs[0])) + texinfo.vecs[0][3];
+      t = vec.dot(new Vector(...texinfo.vecs[1])) + texinfo.vecs[1][3];
       vert[3] = s / texture.width;
       vert[4] = t / texture.height;
       if (fa.turbulent !== true) {

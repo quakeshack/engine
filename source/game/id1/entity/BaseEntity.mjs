@@ -571,7 +571,7 @@ export default class BaseEntity {
     this.solid = solid.SOLID_NOT;
     this.movetype = moveType.MOVETYPE_NONE;
     this.resetThinking();
-    this._scheduleThink(this.game.time + 0.1 + (this.delay || 0), () => this.remove(), 'remove', true);
+    this._scheduleThink(this.game.time + 0.1, () => this.remove(), 'remove', true);
   }
 
   /**

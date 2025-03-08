@@ -673,7 +673,7 @@ export class PlayerEntity extends BaseEntity {
   _playerDead() { // QuakeC: player.qc/PlayerDead
     this.resetThinking();
     // allow respawn after a certain time
-    this.pausetime = this.game.time + 3.0;
+    this.pausetime = this.game.time + 1.0;
     this.deadflag = dead.DEAD_DEAD;
   }
 

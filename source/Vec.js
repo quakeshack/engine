@@ -9,13 +9,10 @@ Vector = class Vector extends Float32Array {
    */
   constructor(x = 0.0, y = 0.0, z = 0.0) {
     super(3);
+    console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
     this[0] = x;
     this[1] = y;
     this[2] = z;
-    // if (arguments.length > 3) {
-    //   console.warn('too many arguments for Vector', arguments);
-    // }
-    // Ensure correct subclass behavior:
     return this;
   }
 
@@ -248,8 +245,7 @@ Vector = class Vector extends Float32Array {
       return angles;
     }
 
-    angles[0] = this.toPitch();
-    angles[1] = this.toYaw();
+    angles.setTo(this.toPitch(), this.toYaw(), 0.0);
 
     return angles;
   }
@@ -258,6 +254,7 @@ Vector = class Vector extends Float32Array {
    * Dot product of this and other.
    */
   dot(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     return this[0] * other[0] + this[1] * other[1] + this[2] * other[2];
   }
 
@@ -275,6 +272,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   add(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     this[0] += other[0];
     this[1] += other[1];
     this[2] += other[2];
@@ -287,6 +285,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   subtract(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     this[0] -= other[0];
     this[1] -= other[1];
     this[2] -= other[2];
@@ -299,6 +298,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   multiply(factor) {
+    console.assert(typeof factor === 'number', 'not a number');
     this[0] *= factor;
     this[1] *= factor;
     this[2] *= factor;
@@ -311,6 +311,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   equals(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     return this[0] === other[0] && this[1] === other[1] && this[2] === other[2];
   }
 
@@ -331,6 +332,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   gt(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     return this[0] > other[0] && this[1] > other[1] && this[2] > other[2];
   }
 
@@ -340,6 +342,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   gte(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     return this[0] >= other[0] && this[1] >= other[1] && this[2] >= other[2];
   }
 
@@ -349,6 +352,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   lt(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     return this[0] < other[0] && this[1] < other[1] && this[2] < other[2];
   }
 
@@ -358,6 +362,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   lte(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     return this[0] <= other[0] && this[1] <= other[1] && this[2] <= other[2];
   }
 
@@ -367,6 +372,7 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   set(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     this[0] = other[0];
     this[1] = other[1];
     this[2] = other[2];
@@ -381,9 +387,10 @@ Vector = class Vector extends Float32Array {
    * @returns {this}
    */
   setTo(x, y, z) {
-    this[0] = x
-    this[1] = y
-    this[2] = z
+    console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
+    this[0] = x;
+    this[1] = y;
+    this[2] = z;
     return this;
   }
 
@@ -410,6 +417,7 @@ Vector = class Vector extends Float32Array {
    * Cross product of this x other, returns a new Vector.
    */
   cross(other) {
+    console.assert(other instanceof Vector, 'not a Vector');
     return new Vector(
       this[1] * other[2] - this[2] * other[1],
       this[2] * other[0] - this[0] * other[2],

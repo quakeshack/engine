@@ -4,7 +4,8 @@ import { attn, channel, damage, moveType, solid, tentType } from "../Defs.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import BaseMonster from "./monster/BaseMonster.mjs";
 import { PlayerEntity } from "./Player.mjs";
-import { DamageHandler, DamageInflictor, Explosions } from "./Weapons.mjs";
+import { Sub } from "./Subs.mjs";
+import { DamageHandler, DamageInflictor, Explosions, Spike, Superspike } from "./Weapons.mjs";
 
 /**
  * QUAKED info_null (0 0.5 0) (-4 -4 -4) (4 4 4)
@@ -624,5 +625,68 @@ export class PathCornerEntity extends BaseEntity {
 
     this.solid = solid.SOLID_TRIGGER;
     this.setSize(new Vector(-8.0, -8.0, -8.0), new Vector(8.0, 8.0, 8.0));
+  }
+};
+
+/**
+ * QUAKED trap_spikeshooter (0 .5 .8) (-8 -8 -8) (8 8 8) superspike laser
+ * When triggered, fires a spike in the direction set in QuakeEd.
+ * Laser is only for REGISTERED.
+ */
+export class TrapSpikeshooterEntity extends BaseEntity {
+  static classname = 'trap_spikeshooter';
+
+  static SPAWNFLAG_SUPERSPIKE = 1;
+  static SPAWNFLAG_LASER = 2;
+
+  _declareFields() {
+    this.wait = 0;
+    this._sub = new Sub(this);
+  }
+
+  _precache() {
+    if (this.spawnflags & TrapSpikeshooterEntity.SPAWNFLAG_LASER) {
+      this.engine.PrecacheModel('progs/laser.mdl');
+      this.engine.PrecacheSound('enforcer/enfire.wav');
+      this.engine.PrecacheSound('enforcer/enfstop.wav');
+    } else {
+      this.engine.PrecacheSound('weapons/spike2.wav');
+    }
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  use(usedByEntity) {
+    if (this.spawnflags & TrapSpikeshooterEntity.SPAWNFLAG_LASER) {
+      // this.startSound(channel.CHAN_VOICE, 'enforcer/enfire.wav'); -- can be put in LaunchLaser
+      // TODO: LaunchLaser
+    } else {
+      this.startSound(channel.CHAN_VOICE, 'weapons/spike2.wav');
+      this.engine.SpawnEntity((this.spawnflags & TrapSpikeshooterEntity.SPAWNFLAG_SUPERSPIKE) ? Superspike.classname : Spike.classname, { owner: this, speed: 500.0 });
+    }
+  }
+
+  spawn() {
+    this._sub.setMovedir();
+  }
+};
+
+/**
+ * QUAKED trap_shooter (0 .5 .8) (-8 -8 -8) (8 8 8) superspike laser
+ * Continuously fires spikes.
+ * "wait" time between spike (1.0 default)
+ * "nextthink" delay before firing first spike, so multiple shooters can be stagered.
+ */
+export class TrapShooterEntity extends TrapSpikeshooterEntity {
+  static classname = 'trap_shooter';
+
+  spawn() {
+    super.spawn();
+
+    if (this.wait === 0) {
+      this.wait = 1;
+    }
+
+    // CR: this is a bit of a hack, but it works
+    this._scheduleThink(this.wait + this.ltime + this.nextthink, function () { this.use(this); });
   }
 };

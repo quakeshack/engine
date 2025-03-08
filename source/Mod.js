@@ -559,14 +559,14 @@ Mod.LoadFaces = function(buf) {
       } else {
         v = Mod.loadmodel.vertexes[Mod.loadmodel.edges[-e][1]];
       }
-      val = v.dot(tex.vecs[0]) + tex.vecs[0][3];
+      val = v.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3];
       if (val < mins[0]) {
         mins[0] = val;
       }
       if (val > maxs[0]) {
         maxs[0] = val;
       }
-      val = v.dot(tex.vecs[1]) + tex.vecs[1][3];
+      val = v.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3];
       if (val < mins[1]) {
         mins[1] = val;
       }

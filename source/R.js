@@ -208,8 +208,8 @@ R.RecursiveLightPoint = function(node, start, end) {
     }
 
     tex = CL.state.worldmodel.texinfo[surf.texinfo];
-    s = mid.dot(tex.vecs[0]) + tex.vecs[0][3];
-    t = mid.dot(tex.vecs[1]) + tex.vecs[1][3];
+    s = mid.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3];
+    t = mid.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3];
     if ((s < surf.texturemins[0]) || (t < surf.texturemins[1])) {
       continue;
     }
@@ -1768,8 +1768,8 @@ R.AddDynamicLights = function(surf) {
     }
     minlight = rad - minlight;
     const impact = light.origin.copy().subtract(surf.plane.normal.copy().multiply(dist));
-    local[0] = impact.dot(tex.vecs[0]) + tex.vecs[0][3] - surf.texturemins[0];
-    local[1] = impact.dot(tex.vecs[1]) + tex.vecs[1][3] - surf.texturemins[1];
+    local[0] = impact.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0];
+    local[1] = impact.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1];
     for (t = 0; t < tmax; ++t) {
       td = local[1] - (t << 4);
       if (td < 0.0) {
@@ -2146,8 +2146,8 @@ R.BuildSurfaceDisplayList = function(fa) {
     }
     vert = [vec[0], vec[1], vec[2]];
     if (fa.sky !== true) {
-      s = vec.dot(texinfo.vecs[0]) + texinfo.vecs[0][3];
-      t = vec.dot(texinfo.vecs[1]) + texinfo.vecs[1][3];
+      s = vec.dot(new Vector(...texinfo.vecs[0])) + texinfo.vecs[0][3];
+      t = vec.dot(new Vector(...texinfo.vecs[1])) + texinfo.vecs[1][3];
       vert[3] = s / texture.width;
       vert[4] = t / texture.height;
       if (fa.turbulent !== true) {

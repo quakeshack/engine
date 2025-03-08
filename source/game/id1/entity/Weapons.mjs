@@ -3,6 +3,7 @@
 import { channel, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
 import { crandom, EntityWrapper } from '../helper/MiscHelpers.mjs';
 import BaseEntity from './BaseEntity.mjs';
+import { PlayerEntity } from './Player.mjs';
 
 /**
  * called by worldspawn
@@ -560,21 +561,28 @@ export class BaseProjectile extends BaseEntity {
 
   /**
    * Prepares the projectile by setting velocity (direction only), adjusts origin a bit, adds removal thinker.
+   * It simplifies the velocity and origin calculation, if the owner is not a PlayerEntity.
    */
   spawn() {
     this.solid = solid.SOLID_BBOX;
 
     // direction
-    const { forward } = this.owner.v_angle.angleVectors();
-    this.velocity.set(this.aim(forward));
+    if (this.owner instanceof PlayerEntity) {
+      const { forward } = this.owner.v_angle.angleVectors();
+      this.velocity.set(this.aim(forward));
+
+      this.setOrigin(this.owner.origin.copy().add(forward.multiply(8.0)).add(new Vector(0.0, 0.0, 16.0)));
+    } else {
+      this.velocity.set(this.owner.movedir);
+
+      this.setOrigin(this.owner.origin);
+    }
+
     this.angles = this.velocity.toAngles();
     this.setSize(Vector.origin, Vector.origin);
 
-    // position
-    this.setOrigin(this.owner.origin.copy().add(forward.multiply(8.0)).add(new Vector(0.0, 0.0, 16.0)));
-
-    // remove after 5s
-    this._scheduleThink(this.game.time + 5.0, () => this.remove());
+    // remove after 6s
+    this._scheduleThink(this.game.time + 6.0, () => this.remove());
   }
 };
 
@@ -625,7 +633,7 @@ export class Grenade extends BaseProjectile {
     this.movetype = moveType.MOVETYPE_BOUNCE;
 
     if (this.velocity.len() > 0) {
-      this.avelocity.set(300.0, 300.0, 300.0);
+      this.avelocity.setTo(300.0, 300.0, 300.0);
       this.angles.set(this.velocity.toAngles());
     }
 
@@ -683,6 +691,13 @@ export class BaseSpike extends BaseProjectile {
   static _damage = 0;
   static _tentType = null;
 
+  _declareFields() {
+    /** @type {number} speed, default: 1000.0 units */
+    this.speed = 0;
+
+    super._declareFields();
+  }
+
   /**
    * @param {BaseEntity} touchedByEntity impacted entity
    * @protected
@@ -703,7 +718,7 @@ export class BaseSpike extends BaseProjectile {
     this.engine.DispatchTempEntityEvent(this.constructor._tentType, this.origin);
 
     // delay the remove, the projectile might still be needed for some touch evaluations
-    this._scheduleThink(this.game.time + 0.1, () => this.remove());
+    this.lazyRemove();
   }
 
   spawn() {
@@ -713,7 +728,7 @@ export class BaseSpike extends BaseProjectile {
 
     this.movetype = moveType.MOVETYPE_FLYMISSILE;
 
-    this.velocity.multiply(1000.0); // fast projectile
+    this.velocity.multiply(this.speed || 1000.0); // fast projectile
 
     this.setModel('progs/s_spike.mdl');
     this.setSize(Vector.origin, Vector.origin);
@@ -728,13 +743,12 @@ export class Spike extends BaseSpike {
   spawn() {
     super.spawn();
 
-    if (typeof (this.owner.weaponframe) !== 'number') {
+    if (!(this.owner instanceof PlayerEntity)) {
       return;
     }
 
     const { right } = this.owner.v_angle.angleVectors();
-    this.origin.add(right.multiply((this.owner.weaponframe % 2) === 1 ? 4.0 : -4.0));
-    this.setOrigin(this.origin);
+    this.setOrigin(this.origin.add(right.multiply((this.owner.weaponframe % 2) === 1 ? 4.0 : -4.0)));
   }
 };
 

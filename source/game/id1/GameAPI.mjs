@@ -71,6 +71,9 @@ const entityRegistry = [
   misc.BarrelEntity,
   misc.SmallBarrelEntity,
 
+  misc.TrapShooterEntity,
+  misc.TrapSpikeshooterEntity,
+
   trigger.MultipleTriggerEntity,
   trigger.InfoTeleportDestination,
   trigger.TeleportTriggerEntity,

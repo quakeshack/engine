@@ -165,7 +165,7 @@ export class Sub extends EntityWrapper {
       }
 
       if (this._moveData.finalAngle) {
-        this._entity.angles = this._moveData.finalAngle;
+        this._entity.angles.set(this._moveData.finalAngle);
         this._entity.avelocity.clear();
         this._moveData.finalAngle = null;
       }
