@@ -43,7 +43,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [X] func_plat
   * [X] func_train
   * [X] info_player_start2
-  * [_] misc_teleporttrain
+  * [X] misc_teleporttrain
   * [_] monster_army
   * [_] monster_boss
   * [_] monster_demon1

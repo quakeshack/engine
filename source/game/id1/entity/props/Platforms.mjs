@@ -328,3 +328,40 @@ export class TrainEntity extends BasePropEntity { // CR: this beauty is written 
     this._trainNext();
   }
 }
+
+/**
+ * QUAKED misc_teleporttrain (0 .5 .8) (-8 -8 -8) (8 8 8)
+ * This is used for the final boss
+ */
+export class TeleportTrainEntity extends TrainEntity {
+  static classname = 'misc_teleporttrain';
+
+  _precache() {
+    this.engine.PrecacheSound('misc/null.wav');
+    this.engine.PrecacheModel('progs/teleport.mdl');
+  }
+
+  spawn() {
+    if (!this.speed) {
+      this.speed = 100;
+    }
+
+    console.assert(this.target, 'func_train requires a target');
+
+    this.solid = solid.SOLID_NOT;
+    this.movetype = moveType.MOVETYPE_PUSH;
+    this.avelocity.set(100, 200, 300);
+
+    this.noise = 'misc/null.wav';
+    this.noise1 = 'misc/null.wav';
+
+    this.setModel('progs/teleport.mdl');
+
+    // Ensure size and origin are set
+    this.setSize(this.mins, this.maxs);
+    this.setOrigin(this.origin);
+
+    // Schedule the initial train find think
+    this._scheduleThink(this.ltime + 0.1, () => this._trainFind());
+  }
+}

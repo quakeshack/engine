@@ -93,6 +93,7 @@ const entityRegistry = [
   platform.PlatformEntity,
   platform.PlatformTriggerEntity,
   platform.TrainEntity,
+  platform.TeleportTrainEntity,
 
   ButtonEntity,
 
