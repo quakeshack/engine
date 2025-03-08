@@ -82,6 +82,8 @@ const entityRegistry = [
   trigger.SetSkillTriggerEntity,
   trigger.ChangeLevelTriggerEntity,
   trigger.TriggerHurtEntity,
+  trigger.TriggerPushEntity,
+  trigger.TriggerMonsterjumpEntity,
 
   TelefragTriggerEntity,
 

@@ -578,3 +578,90 @@ export class TriggerHurtEntity extends BaseTriggerEntity {
     super.spawn();
   }
 };
+
+/**
+ * QUAKED trigger_push (.5 .5 .5) ? PUSH_ONCE
+ * Pushes the player and other objects
+ */
+export class TriggerPushEntity extends BaseTriggerEntity {
+  static classname = 'trigger_push';
+  static FLAG_PUSH_ONCE = 1;
+
+  _declareFields() {
+    /** @type {number} speed of the push */
+    this.speed = 0;
+
+    super._declareFields();
+  }
+
+  _precache() {
+    this.engine.PrecacheSound('ambience/windfly.wav');
+  }
+
+  touch(touchedByEntity) {
+    if (![moveType.MOVETYPE_BOUNCE, moveType.MOVETYPE_WALK, moveType.MOVETYPE_STEP].includes(touchedByEntity.movetype)) {
+      return;
+    }
+
+    touchedByEntity.velocity.set(this.movedir.copy().multiply(this.speed * 10));
+
+    if ((touchedByEntity instanceof PlayerEntity) && touchedByEntity.fly_time < this.game.time) {
+      touchedByEntity.fly_time = this.game.time + 1.5;
+      touchedByEntity.startSound(channel.CHAN_AUTO, 'ambience/windfly.wav');
+    }
+
+    if (this.spawnflags & TriggerPushEntity.FLAG_PUSH_ONCE) {
+      this.remove();
+    }
+  }
+
+  spawn() {
+    this.speed = this.speed || 1000;
+
+    super.spawn();
+  }
+};
+
+/**
+ * QUAKED trigger_monsterjump (.5 .5 .5) ?
+ * Walking monsters that touch this will jump in the direction of the trigger's angle
+ * "speed" default to 200, the speed thrown forward
+ * "height" default to 200, the speed thrown upwards
+ */
+export class TriggerMonsterjumpEntity extends BaseTriggerEntity {
+  static classname = 'trigger_monsterjump';
+
+  _declareFields() {
+    this.speed = 0;
+    this.height = 0;
+    super._declareFields();
+  }
+
+  touch(otherEntity) {
+    if ((otherEntity.flags & (flags.FL_MONSTER | flags.FL_FLY | flags.FL_SWIM)) !== flags.FL_MONSTER) {
+      return;
+    }
+
+    // set XY even if not on ground, so the jump will clear lips
+    const velocity = this.movedir.copy().multiply(this.speed);
+    otherEntity.velocity.setTo(velocity[0], velocity[1], otherEntity.velocity[2]);
+
+    if (!(otherEntity.flags & flags.FL_ONGROUND)) {
+      return;
+    }
+
+    otherEntity.flags &= ~flags.FL_ONGROUND;
+    otherEntity.velocity[2] = this.height;
+  }
+
+  spawn() {
+    this.speed = this.speed || 200;
+    this.height = this.height || 200;
+
+    if (this.angles.isOrigin()) {
+      this.angles.set(0.0, 360.0, 0.0);
+    }
+
+    super.spawn();
+  }
+}

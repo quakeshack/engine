@@ -64,8 +64,8 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] trap_spikeshooter
   * [X] trigger_changelevel
   * [X] trigger_hurt
-  * [_] trigger_monsterjump
-  * [_] trigger_push
+  * [X] trigger_monsterjump
+  * [X] trigger_push
 * [X] rename `edict.api` to `edict.entity`
 * [_] put some things behind feature gates, so that the game can tell the engine what things are needed/supported
 * [_] implement the new syscalls that QuakeWorld introduced
@@ -277,6 +277,12 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-03-08
+
+* all sorts of bugs happen if there is an entity at origin doing special things (vanilla BUG)
+  * for instance, trigger_push at or near origin (0, 0, 0) affects projectiles and other things spawned in
+  * also happens in vanilla Quake
 
 ### 2025-03-07
 

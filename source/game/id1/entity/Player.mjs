@@ -218,6 +218,9 @@ export class PlayerEntity extends BaseEntity {
     // relevant for damage etc.
     this.bloodcolor = 73; // FIXME: hardcoded color code (73)
 
+    /** @type {number} used for forced movement time (e.g. trigger_push) */
+    this.fly_time = 0;
+
     /** @type {number} set by teleporters to keep the player from moving a while, also after death keeping from respawn too early */
     this.pausetime = 0;
 
