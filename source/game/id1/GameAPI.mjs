@@ -67,6 +67,9 @@ const entityRegistry = [
   misc.PathCornerEntity,
 
   misc.TeleportEffectEntity,
+  misc.BubbleEntity,
+  misc.BubbleSpawnerEntity,
+  misc.StaticBubbleSpawnerEntity,
 
   misc.BarrelEntity,
   misc.SmallBarrelEntity,
@@ -145,9 +148,6 @@ export class ServerGameAPI {
     /** @private */
     this.engine = engineAPI; // Game.EngineInterface
 
-    this.coop = 0; // Engine API
-    this.deathmatch = 0; // Engine API
-
     this.mapname = null; // Engine API
 
     this.force_retouch = 0; // Engine API
@@ -211,6 +211,7 @@ export class ServerGameAPI {
     /** @private */
     this._missingEntityClassStats = {};
 
+    // FIXME: I’m not happy about this structure, especially with the getters down below
     /** cvar cache @private */
     this._cvars = {
       skill: engineAPI.GetCvar('skill'),
@@ -218,9 +219,13 @@ export class ServerGameAPI {
       registered: engineAPI.GetCvar('registered'),
       timelimit: engineAPI.GetCvar('timelimit'),
       fraglimit: engineAPI.GetCvar('fraglimit'),
-      // TODO: deathmatch, coop
+      deathmatch: engineAPI.GetCvar('deathmatch'),
+      coop: engineAPI.GetCvar('coop'),
+      samelevel: engineAPI.GetCvar('samelevel'),
+      noexit: engineAPI.GetCvar('noexit'),
     };
 
+    Object.seal(this._cvars);
     Object.seal(this);
   }
 
@@ -242,6 +247,22 @@ export class ServerGameAPI {
 
   get fraglimit() {
     return this._cvars.fraglimit.value;
+  }
+
+  get deathmatch() {
+    return this._cvars.deathmatch.value;
+  }
+
+  get coop() {
+    return this._cvars.coop.value;
+  }
+
+  get samelevel() {
+    return this._cvars.samelevel.value;
+  }
+
+  get noexit() {
+    return this._cvars.noexit.value;
   }
 
   StartFrame() {
@@ -353,7 +374,7 @@ export class ServerGameAPI {
    * @param {?string} nextmap next map (default: this.nextmap)
    */
   loadNextMap(nextmap = this.nextmap) {
-    if (!nextmap || this.engine.GetCvar('samelevel').value) {
+    if (!nextmap || this.engine.samelevel) {
       this.engine.ChangeLevel(this.mapname);
       return;
     }

@@ -1,6 +1,7 @@
 /* global Vector */
 
-import { attn, channel, damage, moveType, solid, tentType } from "../Defs.mjs";
+import { attn, channel, content, damage, moveType, solid, tentType } from "../Defs.mjs";
+import { crandom } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import BaseMonster from "./monster/BaseMonster.mjs";
 import { PlayerEntity } from "./Player.mjs";
@@ -690,3 +691,120 @@ export class TrapShooterEntity extends TrapSpikeshooterEntity {
     this._scheduleThink(this.wait + this.ltime + this.nextthink, function () { this.use(this); });
   }
 };
+
+export class BubbleSpawnerEntity extends BaseEntity {
+  static classname = 'misc_bubble_spawner';
+
+  _declareFields() {
+    this.bubble_count = 0;
+  }
+
+  _precache() {
+    this.engine.PrecacheModel('progs/s_bubble.spr');
+  }
+
+  _spawnBubble() {
+    this.engine.SpawnEntity(BubbleEntity.classname, { owner: this });
+  }
+
+  spawn() {
+    this._scheduleThink(this.game.time + this.bubble_count, function () { this.remove(); });
+
+    while (this.bubble_count > 0) {
+      this._scheduleThink(this.game.time + this.bubble_count-- * 0.1, function () { this._spawnBubble(); });
+    }
+  }
+
+  /**
+   * QuakeC: player.qc/DeathBubbles
+   * @param {BaseEntity} entity originator entity
+   * @param {number} bubbles amount of bubbles to make
+   * @returns {BubbleSpawnerEntity} the bubble spawner entity
+   */
+  static bubble(entity, bubbles) {
+    console.assert(entity instanceof BaseEntity, 'bubble() requires a BaseEntity');
+    console.assert(bubbles > 0, 'bubble() requires a positive number of bubbles');
+    console.assert(bubbles < 50, 'bubble() requires a number of bubbles less than 50');
+
+    return entity.engine.SpawnEntity(BubbleSpawnerEntity.classname, {
+      origin: entity.origin,
+      bubble_count: bubbles,
+    });
+  }
+};
+
+/**
+ * QUAKED air_bubbles (0 .5 .8) (-8 -8 -8) (8 8 8)
+ * testing air bubbles
+ */
+export class StaticBubbleSpawnerEntity extends BubbleSpawnerEntity {
+  static classname = 'air_bubbles';
+
+  _spawnBubble() {
+    super._spawnBubble();
+    this._scheduleThink(this.game.time + Math.random() * 1.0 + 1.0, function () { this._spawnBubble(); });
+  }
+
+  spawn() {
+    this._spawnBubble();
+  }
+};
+
+export class BubbleEntity extends BaseEntity {
+  static classname = 'misc_bubble';
+
+  _precache() {
+    this.engine.PrecacheModel('progs/s_bubble.spr');
+  }
+
+  touch(otherEntity) {
+    if (otherEntity.isWorld()) {
+      this.lazyRemove();
+    }
+  }
+
+  _bubble() {
+    if (this.waterlevel !== 3 || (this.waterlevel === 3 && this.watertype !== content.CONTENT_WATER)) {
+      this.remove();
+      return;
+    }
+
+    if (this.attack_finished < this.game.time) {
+      this.remove();
+      return;
+    }
+
+    this.velocity[0] = crandom() * 2.0;
+    this.velocity[1] = crandom() * 2.0;
+
+    this._scheduleThink(this.game.time + 0.5, function () { this._bubble(); });
+  }
+
+  spawn() {
+    console.assert(this.owner !== null, 'DeathBubbleEntity requires an owner');
+
+    // FIXME: this should be moveType.MOVETYPE_BOUNCE but with buoyancy handled by the engine
+
+    // CR: waterlevel 3 and watertype water makes the engine not play splash sounds
+    this.waterlevel = 3;
+    this.watertype = content.CONTENT_WATER;
+
+    // CR: make sure world touching the bubbles make them go away
+    this.solid = solid.SOLID_TRIGGER;
+
+    // CR: fake buoyancy effect
+    this.movetype = moveType.MOVETYPE_FLY;
+    this.velocity = new Vector(0.0, 0.0, 15.0 + crandom());
+
+    this.origin.set(this.owner.origin);
+    this.origin[2] += 24.0;
+    this.setOrigin(this.origin);
+    this.setSize(new Vector(-8.0, -8.0, -8.0), new Vector(8.0, 8.0, 8.0));
+    this.setModel('progs/s_bubble.spr');
+    this.frame = 0;
+
+    // CR: bubbles only live for up to 10s
+    this.attack_finished = this.game.time + 10.0;
+    this._bubble();
+  }
+}

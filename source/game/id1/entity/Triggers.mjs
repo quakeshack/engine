@@ -23,7 +23,7 @@ class BaseTriggerEntity extends BaseEntity {
     this.health = 0;
     this.max_health = 0;
 
-    /** MAP BUG @private */
+    /** @deprecated MAP BUG @private */
     this.style = null;
 
     this.wait = 0;
@@ -505,7 +505,7 @@ export class ChangeLevelTriggerEntity extends BaseTriggerEntity {
       return;
     }
 
-    if (this.engine.GetCvar('noexit').value > 0 && this.game.mapname !== 'start') {
+    if (this.engine.noexit > 0 && this.game.mapname !== 'start') {
       this.damage(otherEntity, 50000);
       return;
     }

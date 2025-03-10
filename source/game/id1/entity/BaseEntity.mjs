@@ -31,7 +31,7 @@ export default class BaseEntity {
 
     // base settings per Entity
     /**
-     * @type {number} This is mostly useful for entities that need precise, smooth movement over time, like doors and platforms. It’s only set on entities with MOVETYPE_PUSHER, also the engine is using this only on SV.PushMove.
+     * @type {number} This is mostly useful for entities that need precise, smooth movement over time, like doors and platforms. It’s only set on entities with MOVETYPE_PUSHER, also the engine is using this only on SV.PushMove. This value is not the same as `game.time`. @see {@link this.game.time}
      */
     this.ltime = 0.0; // local time for entity (NOT time)
     this.origin = new Vector();

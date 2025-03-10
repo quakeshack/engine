@@ -48,15 +48,15 @@ export class WorldspawnEntity extends BaseEntity {
   static classname = 'worldspawn';
 
   _declareFields() {
-    this.sounds = 0;
-
+    /** @deprecated MAP BUG @private */
+    this.sounds = null;
+    /** @type {string} wad file containing textures, only used by the compiler tools */
     this.wad = null;
+    /** @type {string} proper map name */
     this.message = null;
-
-    /** @param {number} 0 = medival, 1 = runes, 2 = techbase */
+    /** @type {number} 0 = medival, 1 = runes, 2 = techbase */
     this.worldtype = 0;
-
-    /** @param {number} sets gravity */
+    /** @type {number} sets gravity */
     this.qs_gravity = 0;
   }
 

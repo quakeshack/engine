@@ -4,7 +4,7 @@ import { attn, channel, content, damage, dead, deathType, effect, flags, hull, i
 import { crandom, Flag } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { BackpackEntity } from "./Items.mjs";
-import { InfoNotNullEntity, IntermissionCameraEntity, TeleportEffectEntity } from "./Misc.mjs";
+import { BubbleSpawnerEntity, InfoNotNullEntity, IntermissionCameraEntity, TeleportEffectEntity } from "./Misc.mjs";
 import { Backpack, DamageHandler, PlayerWeapons, weaponConfig } from "./Weapons.mjs";
 import { CopyToBodyQue } from "./Worldspawn.mjs";
 
@@ -205,6 +205,8 @@ export class PlayerEntity extends BaseEntity {
     this.invisible_finished = 0;
     this.invincible_time = 0;
     this.invincible_finished = 0;
+    /** @type {Map<number,number>} next invincible sound time per attacking entity */
+    this.invincible_sound_time = {};
 
     // time related checks
     this.super_sound = 0; // time for next super attack sound
@@ -237,11 +239,7 @@ export class PlayerEntity extends BaseEntity {
   }
 
   _precache() {
-    this.engine.PrecacheModel('progs/player.mdl');
-    this.engine.PrecacheModel('progs/eyes.mdl');
-
-    // TODO: put sounds here
-    this.engine.PrecacheSound('weapons/ax1.wav');
+    // CR: Worldspawn is taking care of all the precaches for the player entity.
   }
 
   /** @protected */
@@ -540,7 +538,6 @@ export class PlayerEntity extends BaseEntity {
   _deathSound() { // TODO: player.qc/DeathSound
     // under water death sound
     if (this.waterlevel === 3) {
-      // TODO: DeathBubbles(20);
       this.startSound(channel.CHAN_VOICE, 'player/h2odeath.wav', 1.0, attn.ATTN_NONE);
       return;
     }
@@ -647,6 +644,8 @@ export class PlayerEntity extends BaseEntity {
       this._playerDead();
       return;
     }
+
+    BubbleSpawnerEntity.bubble(this, 20);
 
     this._deathSound();
 
@@ -1353,16 +1352,20 @@ export class PlayerEntity extends BaseEntity {
           this.startSound(channel.CHAN_AUTO, "items/protect2.wav");
           this.invincible_time = this.game.time + 1;
         }
+
         if (this.invincible_time < this.game.time) {
           this.invincible_time = this.game.time + 1;
           this.dispatchEvent(playerEvent.BONUS_FLASH);
         }
       }
+
       if (this.invincible_finished < this.game.time) {
         this.items &= ~items.IT_INVULNERABILITY;
         this.invincible_time = 0;
         this.invincible_finished = 0;
+        this.invincible_sound_time = {};
       }
+
       this.effects = this.invincible_finished > this.game.time ? this.effects | effect.EF_DIMLIGHT : this.effects & ~effect.EF_DIMLIGHT;
     }
 
@@ -1956,11 +1959,16 @@ export class PlayerEntity extends BaseEntity {
    * called by ClientDisconnect
    */
   disconnected() {
-    // TODO: gameover check
+    if (this.game.gameover) {
+      return;
+    }
 
     this._playerDie();
     this._playerDead();
-    this.unsetModel(); // we need to unset the model, because the engine is no longer consider this player able to think once it’s disconnect, thus there’s going to be no progressing the state machine as well
+
+    // We need to unset the model, because the engine is no longer consider this player able to think once it’s disconnect,
+    // thus there’s going to be no progressing the state machine as well. In other words: with a model, there’s going to be a statue.
+    this.unsetModel();
 
     if (this.game.deathmatch || this.game.coop) {
       this.engine.SpawnEntity(TeleportEffectEntity.classname, { origin: this.origin });

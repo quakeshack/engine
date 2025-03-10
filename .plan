@@ -37,7 +37,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] reimplement `Host.Give_f`
 * [X] implement a better state machine with scheduler
 * [_] reimplement the Quake game in QuakeJS
-  * [_] air_bubbles
+  * [X] air_bubbles
   * [_] event_lightning
   * [X] func_door_secret
   * [X] func_plat
@@ -278,6 +278,10 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-03-10
+
+* added death bubbles and fixed the vanilla Quake’s actually air_bubbles bubble spawner logic, though it’s still ugly
 
 ### 2025-03-08
 

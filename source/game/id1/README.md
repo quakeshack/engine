@@ -25,6 +25,19 @@ RFC 2119 applies.
 * The game code must not assume internal structures of the engine.
 * The game code must not use global variables.
 * The game code should not hardcode `classname` when used for spawning entities, the game code should use `ExampleEntity.classname` instead of `'misc_example'`.
+* Entity properties starting with `_` are considered protected and must and will not be set by the map loading code. If you intend to modify these properties outside of the class defining it, you must mark with with jsdoc’s `@public` annotation.
+* Entity properties intended to be read-only must be annotated with jsdoc’s `@readonly` annotation and should be declared throw a getter without a setter.
+* Entities must declare properties in the `_declareFields()` method only.
+* Entities must declare assets to be precached in the `_precache()` method only.
+* Entities must declare states in the `_initStates()` method only.
+* Assets required during run-time must be precached by the `WorldspawnEntity`.
+* Numbers related to map units should be formated like this: `1234.5`.
+
+#### Related Quake Game Porting
+
+* Must use JSDoc `/** @deprecated MAP BUG @private */` for entity properties that have no meaning but are used by some maps.
+* When porting over QuakeC almost verbatim, comments must be copied over as well in order to give context.
+* Settings and/or properties that are considered extensions to the original should be prefixed with `qs_`.
 
 ### Edict
 

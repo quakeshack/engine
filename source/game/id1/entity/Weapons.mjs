@@ -10,7 +10,7 @@ import { PlayerEntity } from './Player.mjs';
  * @param {*} engine engine API
  */
 export function Precache(engine) {
-  // TODO: move “use in c code” precache commands back to the engine
+  // FIXME: move “use in c code” precache commands back to the engine
   engine.PrecacheSound("weapons/r_exp3.wav");	// new rocket explosion
   engine.PrecacheSound("weapons/rocket1i.wav");	// spike gun
   engine.PrecacheSound("weapons/sgun1.wav");
@@ -349,7 +349,6 @@ export class DamageHandler extends EntityWrapper {
     this.takedamage = damage.DAMAGE_NO;
     // FIXME: this._entity.touch = SUB_Null; -- we need to solve this differently?
 
-    // TODO: monster_death_use();
     this._entity.thinkDie(attackerEntity);
   }
 
@@ -428,18 +427,18 @@ export class DamageHandler extends EntityWrapper {
       this._entity.velocity.add(direction.multiply(8.0 * inflictedDamage));
     }
 
-    // check for godmode or invincibility
+    // check for godmode
     if (this._entity.flags & flags.FL_GODMODE) {
       return;
     }
 
     // check for invincibility and play protection sounds to indicate invincibility
     if (this._entity.invincible_finished >= this._game.time) {
-      if (typeof (inflictorEntity.invincible_sound) !== 'undefined') {
-        this.entity.startSound(channel.CHAN_ITEM, 'items/protect3.wav');
-        inflictorEntity.invincible_sound = this._game.time + 2.0;
-        return;
+      if ((this._entity.invincible_sound_time[inflictorEntity.edictId] || 0) < this._game.time) {
+        this._entity.startSound(channel.CHAN_ITEM, 'items/protect3.wav');
+        this._entity.invincible_sound_time[inflictorEntity.edictId] = this._game.time + 2.0;
       }
+      return;
     }
 
     // no friendly fire

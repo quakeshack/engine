@@ -62,7 +62,7 @@ export class BaseItemEntity extends BaseEntity {
     /** @private */
     this._model_original = null;
 
-    /** MAP BUG @private */
+    /** @deprecated MAP BUG @private */
     this.sounds = null;
 
     this._sub = new Sub(this);
@@ -164,16 +164,6 @@ export class BaseItemEntity extends BaseEntity {
    * @param {PlayerEntity} playerEntity user
    */
   _afterTouch(playerEntity) {
-    // CR: should be all done by _pickup now
-    // TODO: do not annoy the player by switching around weapons unnecessarily
-    // const weapon = playerEntity.chooseBestWeapon();
-
-    // if (!this.game.deathmatch) {
-    //   playerEntity.setWeapon(weapon);
-    // } else {
-    //   // TODO: Deathmatch_Weapon (old, new);
-    // }
-
     // trigger all connected actions
     this._sub.useTargets(playerEntity);
 
