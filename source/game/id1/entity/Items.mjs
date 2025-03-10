@@ -806,12 +806,7 @@ export class HealthItemEntity extends BaseItemEntity {
   }
 
   spawn() {
-    // TODO: FIXME: turn into assert
-    if (![HealthItemEntity.H_NORMAL, HealthItemEntity.H_MEGA, HealthItemEntity.H_ROTTEN].includes(this.spawnflags)) {
-      this.engine.DebugPrint(`${this} removed, nonsense spawnflags (${this.spawnflags}).\n`);
-      this.remove();
-      return;
-    }
+    console.assert([HealthItemEntity.H_NORMAL, HealthItemEntity.H_MEGA, HealthItemEntity.H_ROTTEN].includes(this.spawnflags), 'Spawnflags are not set correctly');
 
     this.regeneration_time = 20;
     this.noise = this._config.noise;

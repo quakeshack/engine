@@ -315,7 +315,8 @@ export class CountTriggerEntity extends MultipleTriggerEntity {
 
 /**
  * QUAKED trigger_teleport (.5 .5 .5) ? PLAYER_ONLY SILENT
- * Any object touching this will be transported to the corresponding info_teleport_destination entity. You must set the "target" field, and create an object with a "targetname" field that matches.
+ * Any object touching this will be transported to the corresponding info_teleport_destination entity.
+ * You must set the "target" field, and create an object with a "targetname" field that matches.
  *
  * If the trigger_teleport has a targetname, it will only teleport entities when it has been fired.
  */
@@ -384,10 +385,9 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
     if (touchedByEntity instanceof PlayerEntity) {
       touchedByEntity.fixangle = 1;
       touchedByEntity.teleport_time = this.game.time + 0.7;
-      // CR: there’s some nonsense regarding flags in the original
-      // if (touchedByEntity.flags & flags.FL_ONGROUND) {
-      //   touchedByEntity &= ~flags.FL_ONGROUND;
-      // }
+      if (touchedByEntity.flags & flags.FL_ONGROUND) {
+        touchedByEntity &= ~flags.FL_ONGROUND;
+      }
       touchedByEntity.velocity.set(forward.multiply(300));
     }
 

@@ -60,8 +60,9 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] monster_wizard
   * [_] monster_zombie
   * [X] path_corner
-  * [_] trap_shooter
-  * [_] trap_spikeshooter
+  * [X] trap_shooter
+    * [_] spawnflag: laser
+  * [X] trap_spikeshooter
   * [X] trigger_changelevel
   * [X] trigger_hurt
   * [X] trigger_monsterjump
@@ -283,6 +284,8 @@ class MainMenu extends BaseMenu {
 * all sorts of bugs happen if there is an entity at origin doing special things (vanilla BUG)
   * for instance, trigger_push at or near origin (0, 0, 0) affects projectiles and other things spawned in
   * also happens in vanilla Quake
+  * the root cause is linkEdicts with triggerTouch = true when the model is being set and it brings sizes (causing the forced relink)
+* added plenty of asserts to the Vector class, it’s too easy to confuse `setTo` and `set` causing NaNs when for instance trying to multiply Vector with a number
 
 ### 2025-03-07
 

@@ -2,12 +2,12 @@
 
 In general the game code is completely object-oriented and it has *no global state*, therefore we need to carry around both engine interface as well as game interface. This allows the dedicated server to handle multiple servers at the same time enabling dynamic game lobbies etc. The most global state must be the variables on the `ServerGameAPI` object or on the `WorldspawnEntity`.
 
-This repository should give you
+This repository should give you a good framework to build Quake mods in absolute no time.
 
 ## Game
 
 Right now QuakeJS is a clean reimplementation of the Quake game logic.
-It might not be perfect though, some idiosyncrasis will be sorted out as part of the code restructuring.
+It might not be perfect though, some idiosyncrasis will be sorted out as part of the code restructuring. Some idiosyncrasis will remain due to compatibility.
 
 During the reimplementation I noticed some bugs/issues within the original Quake game logic that I sorted out. Always trying to keep the actual game play unaffected.
 
@@ -37,6 +37,8 @@ Edicts will hold information such as baseline of position, orientation, velocity
 An Entity is sitting on top of an Edict. The Entity class will provide logic and keeps track of states. There are also client entities which are not related to these Entity structures.
 
 Entities have a `classname` apart from the JavaScript class name. This classname will be used by the editor to place entities into the world.
+
+However, the engine reads from a set of must be defined properties. `BaseEntity` is defining all of them.
 
 ### Core Classes
 
@@ -110,4 +112,3 @@ const exampleEntity = this.engine.SpawnEntity(ExampleEntity.classname, {
 exampleEntity.greet();
 ```
 
-###
