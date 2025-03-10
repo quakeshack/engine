@@ -696,7 +696,10 @@ export class BubbleSpawnerEntity extends BaseEntity {
   static classname = 'misc_bubble_spawner';
 
   _declareFields() {
+    /** @type {number} how many bubbles to spawn */
     this.bubble_count = 0;
+    /** @type {number} how many map units to spread them apart upon spawning */
+    this.spread = 0;
   }
 
   _precache() {
@@ -727,8 +730,9 @@ export class BubbleSpawnerEntity extends BaseEntity {
     console.assert(bubbles < 50, 'bubble() requires a number of bubbles less than 50');
 
     return entity.engine.SpawnEntity(BubbleSpawnerEntity.classname, {
-      origin: entity.origin,
+      origin: entity.origin.copy().add(entity.view_ofs || Vector.origin),
       bubble_count: bubbles,
+      spread: 5,
     });
   }
 };
@@ -781,7 +785,7 @@ export class BubbleEntity extends BaseEntity {
   }
 
   spawn() {
-    console.assert(this.owner !== null, 'DeathBubbleEntity requires an owner');
+    console.assert(this.owner instanceof BubbleSpawnerEntity, 'BubbleEntity requires a BubbleSpawnerEntity as owner');
 
     // FIXME: this should be moveType.MOVETYPE_BOUNCE but with buoyancy handled by the engine
 
@@ -797,7 +801,9 @@ export class BubbleEntity extends BaseEntity {
     this.velocity = new Vector(0.0, 0.0, 15.0 + crandom());
 
     this.origin.set(this.owner.origin);
-    this.origin[2] += 24.0;
+    this.origin[0] += crandom() * this.owner.spread;
+    this.origin[1] += crandom() * this.owner.spread;
+    this.origin[2] += crandom() * this.owner.spread;
     this.setOrigin(this.origin);
     this.setSize(new Vector(-8.0, -8.0, -8.0), new Vector(8.0, 8.0, 8.0));
     this.setModel('progs/s_bubble.spr');

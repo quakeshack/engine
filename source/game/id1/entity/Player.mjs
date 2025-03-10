@@ -1617,6 +1617,7 @@ export class PlayerEntity extends BaseEntity {
           this.dmg = 10;
         }
         this.damage(this, this.dmg);
+        BubbleSpawnerEntity.bubble(this, Math.ceil(this.dmg / 4));
         this.pain_finished = this.game.time + 1.0;
       }
     }
