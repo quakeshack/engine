@@ -2101,14 +2101,14 @@ SV.CheckWaterTransition = function(ent) {
   }
   if (cont <= Mod.contents.water) {
     if (ent.entity.watertype === Mod.contents.empty) {
-      SV.StartSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
+      SV.StartSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0); // TODO: move to game logic
     }
     ent.entity.watertype = cont;
     ent.entity.waterlevel = 1.0;
     return;
   }
   if (ent.entity.watertype !== Mod.contents.empty) {
-    SV.StartSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
+    SV.StartSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0); // TODO: move to game logic
   }
   ent.entity.watertype = Mod.contents.empty;
   ent.entity.waterlevel = cont;
@@ -2152,7 +2152,7 @@ SV.Physics_Step = function(ent) {
     SV.CheckVelocity(ent);
     SV.FlyMove(ent, Host.frametime);
     SV.LinkEdict(ent, true);
-    if (((ent.entity.flags & SV.fl.onground) !== 0) && (hitsound === true)) { // TODO: game logic
+    if (((ent.entity.flags & SV.fl.onground) !== 0) && (hitsound === true)) { // TODO: move to game logic
       SV.StartSound(ent, 0, 'demon/dland2.wav', 255, 1.0);
     }
   }

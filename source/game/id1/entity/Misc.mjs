@@ -764,11 +764,14 @@ export class BubbleEntity extends BaseEntity {
   touch(otherEntity) {
     if (otherEntity.isWorld()) {
       this.lazyRemove();
+      return;
     }
   }
 
   _bubble() {
-    if (this.waterlevel !== 3 || (this.waterlevel === 3 && this.watertype !== content.CONTENT_WATER)) {
+    this.watertype = this.engine.DeterminePointContents(this.origin);
+
+    if (this.watertype !== content.CONTENT_WATER) {
       this.remove();
       return;
     }
@@ -781,7 +784,7 @@ export class BubbleEntity extends BaseEntity {
     this.velocity[0] = crandom() * 2.0;
     this.velocity[1] = crandom() * 2.0;
 
-    this._scheduleThink(this.game.time + 0.5, function () { this._bubble(); });
+    this._scheduleThink(this.game.time + 1.0, function () { this._bubble(); });
   }
 
   spawn() {
