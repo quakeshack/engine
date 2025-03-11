@@ -355,11 +355,7 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
 
     /** @type {InfoTeleportDestination} */
     const target = this.findFirstEntityByFieldAndValue("targetname", this.target);
-
-    if (!target) {
-      this.engine.DebugPrint(`TeleportTriggerEntity: target (${this.target}) missing.\n`);
-      return; // FIXME: bitch and complain that the target disappeared
-    }
+    console.assert(!(target instanceof InfoTeleportDestination), 'Target must be an InfoTeleportDestination');
 
     const { forward } = target.angles.angleVectors();
 

@@ -37,6 +37,8 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] reimplement `Host.Give_f`
 * [X] implement a better state machine with scheduler
 * [_] reimplement the Quake game in QuakeJS
+  * [X] player
+    * [_] Finale screens
   * [X] air_bubbles
   * [_] event_lightning
   * [X] func_door_secret

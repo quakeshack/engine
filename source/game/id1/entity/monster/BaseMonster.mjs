@@ -66,6 +66,15 @@ export default class BaseMonster extends BaseEntity {
     return new EntityAI(this);
   }
 
+  /**
+   * Turns this monster into gibs.
+   * @protected
+   * @param {boolean} playSound play sound upon gib
+   */
+  _gib(playSound) {
+    GibEntity.gibEntity(this, this.constructor._modelHead, playSound);
+  }
+
   isActor() {
     return true;
   }
@@ -125,15 +134,6 @@ export default class BaseMonster extends BaseEntity {
   thinkPain(attackerEntity, damage) {
   }
 
-  /**
-   * Turns this monster into gibs.
-   * @protected
-   * @param {boolean} playSound play sound upon gib
-   */
-  _gib(playSound) {
-    GibEntity.gibEntity(this, this.constructor._modelHead, playSound);
-  }
-
   _preSpawn() {
     if (this.game.deathmatch) {
       this.remove();
@@ -170,7 +170,6 @@ export default class BaseMonster extends BaseEntity {
 
   use(userEntity) {
     this._ai.use(userEntity);
-    super.use(userEntity);
   }
 
   painSound() {
@@ -216,10 +215,6 @@ export default class BaseMonster extends BaseEntity {
     if (this.game.skill !== 3) {
       this.attack_finished = this.game.time + normal;
     }
-  }
-
-  monsterWalk() {
-
   }
 };
 

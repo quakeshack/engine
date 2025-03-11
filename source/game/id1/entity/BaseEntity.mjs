@@ -24,6 +24,7 @@ export default class BaseEntity {
    */
   constructor(edict, gameAPI) {
     // hooking up the edict and the entity, also the APIs
+    /** @private */
     this.edict_wf = new WeakRef(edict);
     this.edict.entity = this;
     this.engine = gameAPI.engine;
@@ -37,8 +38,8 @@ export default class BaseEntity {
     this.origin = new Vector();
     this.oldorigin = new Vector();
     this.angles = new Vector();
-    this.mins = new Vector(); // bounding box extents reletive to origin
-    this.maxs = new Vector(); // bounding box extents reletive to origin
+    this.mins = new Vector(); // bounding box extents relative to origin
+    this.maxs = new Vector(); // bounding box extents relative to origin
     this.absmin = new Vector();
     this.absmax = new Vector();
     this.size = new Vector(); // maxs - mins

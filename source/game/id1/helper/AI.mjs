@@ -2,12 +2,13 @@
 
 import { damage, flags, items, range } from "../Defs.mjs";
 import BaseEntity from "../entity/BaseEntity.mjs";
+import BaseMonster from "../entity/monster/BaseMonster.mjs";
 import { PlayerEntity } from "../entity/Player.mjs";
 import { ServerGameAPI } from "../GameAPI.mjs";
 import { EntityWrapper } from "./MiscHelpers.mjs";
 
 /**
- * game-wide AI state, used to coordinate AI communication
+ * Game-wide AI state, used to coordinate AI communication.
  */
 export class GameAI {
   /**
@@ -15,27 +16,113 @@ export class GameAI {
    */
   constructor(game) {
     this._game = game;
+
+    /** @type {?BaseEntity} */
+    this._sightEntity = null;
+    this._sightEntityTime = 0.0;
   }
 };
 
 /**
- * entity local AI state
+ * EntityAI interface.
  */
 export class EntityAI extends EntityWrapper {
-  /**
-   * @param {import('../entity/monster/BaseMonster.mjs').default} entity linked entity
-   */
-  constructor(entity) {
-    super(entity);
-    this._initialized = false;
-    this._declareFields();
+  /** @returns {GameAI} global AI state @protected */
+  get _gameAI() {
+    return this._game.gameAI;
+  }
+
+  /** @returns {BaseMonster} augmented monster @protected */
+  get _entity() {
+    return super._entity;
   }
 
   clear() {
-    // reset state
+    // implement this
   }
 
+  think() {
+    // implement this
+  }
+
+  spawn() {
+    // implement this
+  }
+
+  stand() {
+    // implement this
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  walk(dist) {
+    // implement this
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  run(dist) {
+    // implement this
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  pain(dist) {
+    // implement this
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  charge(dist) {
+    // implement this
+  }
+
+  face() {
+    // implement this
+  }
+};
+
+const QAI_STATE = {
+  STAND: 'stand',
+  RUN: 'run',
+  WALK: 'walk',
+};
+
+/**
+ * @readonly
+ * @enum {number}
+ */
+const QAI_ATTACK_STATE = {
+  AS_NONE: 0,
+  AS_STRAIGHT: 1,
+  AS_SLIDING: 2,
+  AS_MELEE: 3,
+  AS_MISSILE: 4,
+};
+
+/**
+ * entity local AI state based on original Quake behavior
+ */
+export class QuakeEntityAI extends EntityAI {
   _declareFields() {
+    /** @private */
+    this._searchTime = 0;
+    /** @type {?BaseEntity} previous acquired target, fallback for dead enemy @private */
+    this._oldEnemy = null;
+    /** @private */
+    this._attackState = QAI_ATTACK_STATE.AS_NONE;
+    /** @private */
+    this._initialized = false;
+  }
+
+  clear() {
+    super.clear();
+
+    this._searchTime = 0;
+    this._oldEnemy = null;
+    this._attackState = QAI_ATTACK_STATE.AS_NONE;
+  }
+
+  think() {
+    if (!this._initialized) {
+      this._initialize();
+    }
   }
 
   _initialize() {
@@ -112,88 +199,6 @@ export class EntityAI extends EntityWrapper {
     return this._entity.getNextBestClient();
   }
 
-  think() {
-    if (!this._initialized) {
-      this._initialize();
-    }
-  }
-
-  spawn() {
-  }
-
-  stand() {
-    // implement this
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  walk(dist) {
-    // implement this
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  run(dist) {
-    // implement this
-  }
-
-  pain(dist) {
-    // implement this
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  charge(dist) {
-    // implement this
-  }
-
-  face() {
-    // implement this
-  }
-};
-
-const QAI_STATE = {
-  STAND: 'stand',
-  RUN: 'run',
-  WALK: 'walk',
-};
-
-/**
- * @readonly
- * @enum {number}
- */
-export const QAI_ATTACK_STATE = {
-  AS_NONE: 0,
-  AS_STRAIGHT: 1,
-  AS_SLIDING: 2,
-  AS_MELEE: 3,
-  AS_MISSILE: 4,
-};
-
-
-/**
- * entity local AI state based on original Quake behavior
- */
-export class QuakeEntityAI extends EntityAI {
-  _declareFields() {
-    /** @type {?BaseEntity} */
-    this._sightEntity = null;
-    this._sightEntityTime = 0.0;
-
-    this._searchTime = 0;
-    /** @type {?BaseEntity} previous acquired target, fallback for dead enemy */
-    this._oldEnemy = null;
-
-    this._attackState = QAI_ATTACK_STATE.AS_NONE;
-  }
-
-  clear() {
-    super.clear();
-
-    this._sightEntity = null;
-    this._sightEntityTime = 0;
-    this._searchTime = 0;
-    this._oldEnemy = null;
-    this._attackState = QAI_ATTACK_STATE.AS_NONE;
-  }
-
   _findTarget() { // QuakeC: ai.qc/FindTarget
     // if the first spawnflag bit is set, the monster will only wake up on
     // really seeing the player, not another monster getting angry
@@ -205,8 +210,8 @@ export class QuakeEntityAI extends EntityAI {
     // spawnflags & 3 is a big hack, because zombie crucified used the first
     // spawn flag prior to the ambush flag, and I forgot about it, so the second
     // spawn flag works as well
-    if (this._sightEntityTime >= this._game.time - 0.1 && !(self.spawnflags & 3)) {
-      client = this._sightEntity;
+    if (this._gameAI._sightEntityTime >= this._game.time - 0.1 && !(self.spawnflags & 3)) {
+      client = this._gameAI._sightEntity;
 
       if (client.enemy.equals(self)) {
         return false; // CR: QuakeC introduces undefined behavior here by invoking an empty return, I hope false is okay for now
@@ -265,32 +270,29 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   _foundTarget() { // QuakeC: ai.qc/FoundTarget
-    const self = this._entity;
-
     // console.log('_foundTarget', this._entity.toString(), self.enemy);
 
-    if (self.enemy instanceof PlayerEntity) {
+    if (this._entity.enemy instanceof PlayerEntity) {
       // let other monsters see this monster for a while
-      // FIXME: needs to be global
-      this._sightEntity = self;
-      this._sightEntityTime = this._game.time;
+      this._gameAI._sightEntity = this._entity;
+      this._gameAI._sightEntityTime = this._game.time;
     }
 
-    self.show_hostile = this._game.time + 1.0;
+    this._entity.show_hostile = this._game.time + 1.0;
 
     this._entity.sightSound();
     this._huntTarget();
   }
 
   _huntTarget() { // QuakeC: ai.qc/HuntTarget
-    const self = this._entity;
+    console.assert(this._entity.enemy, 'Missing enemy');
 
-    self.goalentity = self.enemy;
-    self.ideal_yaw = self.enemy.origin.copy().subtract(self.origin).toYaw();
+    this._entity.goalentity = this._entity.enemy;
+    this._entity.ideal_yaw = this._entity.enemy.origin.copy().subtract(this._entity.origin).toYaw();
 
-    self._scheduleThink(this._game.time + 0.1, self.thinkRun);
+    this._entity._scheduleThink(this._game.time + 0.1, this._entity.thinkRun);
 
-    self.attackFinished(1.0);	// wait a while before first attack
+    this._entity.attackFinished(1.0);	// wait a while before first attack
 
     // console.log('_huntTarget', this._entity);
   }
@@ -429,7 +431,28 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   use(userEntity) {
-    // TODO: monster_use
+    if (this._entity.enemy) {
+      return;
+    }
+
+    if (this._entity.health <= 0) {
+      return;
+    }
+
+    if (userEntity.items & items.IT_INVISIBILITY) {
+      return;
+    }
+
+    if (userEntity.flags & flags.FL_NOTARGET) {
+      return;
+    }
+
+    if (!(userEntity instanceof PlayerEntity)) {
+      return;
+    }
+
+    this._entity.enemy = userEntity;
+    this._entity._scheduleThink(this._game.time + 0.1, function () { this._ai._foundTarget(); });
   }
 
   spawn() {
