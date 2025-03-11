@@ -176,11 +176,7 @@ export default class BaseEntity {
    * @param {?Function} handler additional code to be executed
    */
   _defineState(state, keyframe, nextState = null, handler = null) {
-    this._states[state] = {
-      keyframe,
-      nextState,
-      handler,
-    };
+    this._states[state] = { keyframe, nextState, handler };
   }
 
   /**
@@ -360,10 +356,12 @@ export default class BaseEntity {
         continue;
       }
 
-      if (key[0] === '_') {
+      if (key[0] === '_' || key[0] === '#') {
         // do not overwrite private fields
         continue;
       }
+
+      console.assert(key in this, `key must be declared first`);
 
       switch (true) {
         case this[key] instanceof Vector:

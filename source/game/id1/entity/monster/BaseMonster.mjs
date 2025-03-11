@@ -1,10 +1,20 @@
 /* global Vector */
 
+import { damage, moveType, solid } from "../../Defs.mjs";
 import { EntityAI } from "../../helper/AI.mjs";
 import BaseEntity from "../BaseEntity.mjs";
+import { GibEntity } from "../Player.mjs";
+import { Sub } from "../Subs.mjs";
 import { DamageHandler } from "../Weapons.mjs";
 
 export default class BaseMonster extends BaseEntity {
+
+  static _health = 0;
+  static _size = [null, null];
+
+  static _modelDefault = null;
+  static _modelHead = 'progs/gib1.mdl';
+
   _declareFields() {
     super._declareFields();
 
@@ -32,6 +42,19 @@ export default class BaseMonster extends BaseEntity {
     this.cnt = 0;
 
     this._damageHandler = new DamageHandler(this);
+    this._sub = new Sub(this);
+  }
+
+  _precache() {
+    // precache monster model
+    this.engine.PrecacheModel(this.constructor._modelDefault);
+    this.engine.PrecacheModel(this.constructor._modelHead);
+
+    // gib assets
+    this.engine.PrecacheModel("progs/gib1.mdl");
+    this.engine.PrecacheModel("progs/gib2.mdl");
+    this.engine.PrecacheModel("progs/gib3.mdl");
+    this.engine.PrecacheSound("player/udeath.wav");
   }
 
   /**
@@ -102,7 +125,43 @@ export default class BaseMonster extends BaseEntity {
   thinkPain(attackerEntity, damage) {
   }
 
+  /**
+   * Turns this monster into gibs.
+   * @protected
+   * @param {boolean} playSound play sound upon gib
+   */
+  _gib(playSound) {
+    GibEntity.gibEntity(this, this.constructor._modelHead, playSound);
+  }
+
+  _preSpawn() {
+    if (this.game.deathmatch) {
+      this.remove();
+      return false;
+    }
+
+    return true;
+  }
+
   spawn() {
+    if (!this._preSpawn()) {
+      return;
+    }
+
+    const [mins, maxs] = this.constructor._size;
+
+    console.assert(this.constructor._modelDefault, 'Monster model not set');
+    console.assert(this.constructor._health > 0, 'Invalid health set');
+    console.assert(mins instanceof Vector && maxs instanceof Vector, 'Invalid size set');
+
+    this.setSize(mins, maxs);
+    this.setModel(this.constructor._modelDefault);
+
+    this.health = this.constructor._health;
+    this.takedamage = damage.DAMAGE_AIM;
+    this.solid = solid.SOLID_SLIDEBOX;
+    this.movetype = moveType.MOVETYPE_STEP;
+
     this.game.total_monsters++;
     this._ai.spawn();
 
@@ -114,7 +173,19 @@ export default class BaseMonster extends BaseEntity {
     super.use(userEntity);
   }
 
+  painSound() {
+    // implement: startSound here
+  }
+
   sightSound() {
+    // implement: startSound here
+  }
+
+  idleSound() {
+    // implement: startSound here
+  }
+
+  attackSound() {
     // implement: startSound here
   }
 
@@ -145,5 +216,39 @@ export default class BaseMonster extends BaseEntity {
     if (this.game.skill !== 3) {
       this.attack_finished = this.game.time + normal;
     }
+  }
+
+  monsterWalk() {
+
+  }
+};
+
+export class WalkMonster extends BaseMonster {
+  _declareFields() {
+    super._declareFields();
+  }
+
+  spawn() {
+    super.spawn();
+  }
+};
+
+export class FlyMonster extends BaseMonster {
+  _declareFields() {
+    super._declareFields();
+  }
+
+  spawn() {
+    super.spawn();
+  }
+};
+
+export class SwimMonster extends BaseMonster {
+  _declareFields() {
+    super._declareFields();
+  }
+
+  spawn() {
+    super.spawn();
   }
 };

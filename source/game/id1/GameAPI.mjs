@@ -1,19 +1,20 @@
 /* global Game */
 
-import { GibEntity, InfoPlayerStart, InfoPlayerStartCoop, InfoPlayerStartDeathmatch, PlayerEntity, playerModelQC, TelefragTriggerEntity } from "./entity/Player.mjs";
+import { GibEntity, InfoPlayerStart, InfoPlayerStartCoop, InfoPlayerStartDeathmatch, PlayerEntity, qc as playerModelQC, TelefragTriggerEntity } from "./entity/Player.mjs";
 import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
 import { items } from "./Defs.mjs";
 import * as misc from "./entity/Misc.mjs";
 import * as door from "./entity/props/Doors.mjs";
 import * as platform from "./entity/props/Platforms.mjs";
 import * as trigger from "./entity/Triggers.mjs";
-import ArmySoldierMonster, { soldierModelQC } from "./entity/monster/Soldier.mjs";
+import ArmySoldierMonster, { qc as soliderModelQC } from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
 import * as sub from "./entity/Subs.mjs";
 import { ButtonEntity } from "./entity/props/Buttons.mjs";
 import * as item from "./entity/Items.mjs";
 import BaseEntity from "./entity/BaseEntity.mjs";
 import * as weapon from "./entity/Weapons.mjs";
+import DogMonsterEntity, { qc as dogModelQC } from "./entity/monster/Dog.mjs";
 
 // put all entity classes here:
 const entityRegistry = [
@@ -94,6 +95,7 @@ const entityRegistry = [
   TelefragTriggerEntity,
 
   ArmySoldierMonster,
+  DogMonsterEntity,
 
   door.DoorEntity,
   door.SecretDoorEntity,
@@ -145,8 +147,8 @@ export class ServerGameAPI {
   constructor(engineAPI) {
     this._loadEntityRegistry();
 
-    /** @private */
-    this.engine = engineAPI; // Game.EngineInterface
+    /** @type {Game.EngineInterface} @private */
+    this.engine = engineAPI;
 
     this.mapname = null; // Engine API
 
@@ -203,9 +205,9 @@ export class ServerGameAPI {
 
     /** @private */
     this._modelData = { // FIXME: I’m not happy about this, this needs to be next to models
-      'progs/soldier.mdl': engineAPI.ParseQC(soldierModelQC),
+      'progs/soldier.mdl': engineAPI.ParseQC(soliderModelQC),
       'progs/player.mdl': engineAPI.ParseQC(playerModelQC),
-      // 'progs/s_explod.spr': engineAPI.ParseQC()
+      'progs/dog.mdl': engineAPI.ParseQC(dogModelQC),
     };
 
     /** @private */

@@ -1,3 +1,4 @@
 node_modules
 data/id1/*.pak
 data/**
+tools/**

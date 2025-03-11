@@ -692,6 +692,11 @@ export class TrapShooterEntity extends TrapSpikeshooterEntity {
   }
 };
 
+/**
+ * Spawns bubbles, used for the death of the player.
+ * Do not place this inside the map, use the static bubble() function instead.
+ * For use inside the map, use air_bubbles instead.
+ */
 export class BubbleSpawnerEntity extends BaseEntity {
   static classname = 'misc_bubble_spawner';
 
@@ -799,10 +804,6 @@ export class BubbleEntity extends BaseEntity {
     // CR: make sure world touching the bubbles make them go away
     this.solid = solid.SOLID_TRIGGER;
 
-    // CR: fake buoyancy effect
-    this.movetype = moveType.MOVETYPE_FLY;
-    this.velocity = new Vector(0.0, 0.0, 15.0 + crandom());
-
     this.origin.set(this.owner.origin);
     this.origin[0] += crandom() * this.owner.spread;
     this.origin[1] += crandom() * this.owner.spread;
@@ -814,6 +815,10 @@ export class BubbleEntity extends BaseEntity {
 
     // CR: bubbles only live for up to 10s
     this.attack_finished = this.game.time + 10.0;
+
+    // CR: enabling fake buoyancy effect and remove when out of water
+    this.movetype = moveType.MOVETYPE_FLY;
+    this.velocity = new Vector(0.0, 0.0, 15.0 + crandom());
     this._bubble();
   }
 }

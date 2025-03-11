@@ -11,15 +11,15 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] DS: show the name of the person’s chat message in console message
 * [X] CL/SV: name change on local game makes the message emit twice
 * [_] IN: input is no longer working properly once a coarse input device has been detected and the virtual joystick is setup
-* [_] S: sometimes there’s still sound playing after the game has shutdown
-* [_] S: make sure all remaining to be lazily loaded sound files are load after the game started
+* [X] S: sometimes there’s still sound playing after the game has shutdown
+* [X] S: make sure all remaining to be lazily loaded sound files are load after the game started
 * [X] R: somewhere dynamic lights are not properly cast
 * [_] PF: need to handle precache more gracefully
 * [_] Host: Load Game and Save Game is now completely broken
 * [X] S/SV/QuakeJS: sounds go crazy, causing insane amount of stress
 * [X] Recheck all ref/copy of `(origin|a?velocity|angles)\s*=`
 * [_] ED: parsing strings from entities text does not unescape strings properly
-* [_] QuakeJS: func_*gate is misbehaving (not getting removed)
+* [X] QuakeJS: func_*gate is misbehaving (not getting removed)
 * [_] QuakeJS/SV: spawning new objects on demand outside the world should unstuck somewhere inside of the world again (trace first)
 
 ### QuakeC / QuakeJS
@@ -103,6 +103,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 ### Network improvements
 
+* [_] port QuakeWorld netcode
 * [_] flush messages more often, increase update rate
 * [_] only send message when actually needed, there’s too much idle chatter right now
 * [_] look into that weird sluggish feel when ping is >100 ms (especially on Firefox)
@@ -278,6 +279,10 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-03-11
+
+* started working on monster_dog and more AI stuff
 
 ### 2025-03-10
 

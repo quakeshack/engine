@@ -134,6 +134,19 @@ export class EntityAI extends EntityWrapper {
   run(dist) {
     // implement this
   }
+
+  pain(dist) {
+    // implement this
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  charge(dist) {
+    // implement this
+  }
+
+  face() {
+    // implement this
+  }
 };
 
 const QAI_STATE = {

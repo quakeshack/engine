@@ -18,7 +18,7 @@ export const playerEvent = {
   DAMAGE_FLASH: 'dmg',
 };
 
-export const playerModelQC = `
+export const qc = `
 
 $cd id1/models/player_4
 $origin 0 -6 24

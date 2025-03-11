@@ -1,11 +1,10 @@
 /* global Vector */
 
-import { attn, channel, damage, moveType, solid } from "../../Defs.mjs";
+import { attn, channel } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
-import { GibEntity } from "../Player.mjs";
-import BaseMonster from "./BaseMonster.mjs";
+import { WalkMonster } from "./BaseMonster.mjs";
 
-export const soldierModelQC = `
+export const qc = `
 $cd id1/models/soldier3
 $origin 0 -6 24
 $base base
@@ -38,15 +37,17 @@ $frame prowl_9 prowl_10 prowl_11 prowl_12 prowl_13 prowl_14 prowl_15 prowl_16
 $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
 `;
 
-export default class ArmySoldierMonster extends BaseMonster {
+export default class ArmySoldierMonster extends WalkMonster {
   static classname = 'monster_army';
 
+  static _health = 30;
+  static _size = [new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 40.0)];
+
+  static _modelDefault = 'progs/soldier.mdl';
+  static _modelHead = 'progs/h_guard.mdl';
+
   _precache() {
-    this.engine.PrecacheModel("progs/soldier.mdl");
-    this.engine.PrecacheModel("progs/h_guard.mdl");
-    this.engine.PrecacheModel("progs/gib1.mdl");
-    this.engine.PrecacheModel("progs/gib2.mdl");
-    this.engine.PrecacheModel("progs/gib3.mdl");
+    super._precache();
 
     this.engine.PrecacheSound("soldier/death1.wav");
     this.engine.PrecacheSound("soldier/idle.wav");
@@ -54,8 +55,6 @@ export default class ArmySoldierMonster extends BaseMonster {
     this.engine.PrecacheSound("soldier/pain2.wav");
     this.engine.PrecacheSound("soldier/sattck1.wav");
     this.engine.PrecacheSound("soldier/sight1.wav");
-
-    this.engine.PrecacheSound("player/udeath.wav");		// gib death
   }
 
   _newEntityAI() {
@@ -77,12 +76,7 @@ export default class ArmySoldierMonster extends BaseMonster {
     this._defineState('army_stand7', 'stand7', 'army_stand8', function () { this._ai.stand(); });
     this._defineState('army_stand8', 'stand8', 'army_stand1', function () { this._ai.stand(); });
 
-    this._defineState('army_walk1', 'prowl_1', 'army_walk2', function () {
-      if (Math.random() < 0.2) {
-        this.startSound(channel.CHAN_VOICE, 'soldier/idle.wav', 1.0, attn.ATTN_IDLE);
-      }
-      this._ai.walk(1);
-    });
+    this._defineState('army_walk1', 'prowl_1', 'army_walk2', function () { this.idleSound(); this._ai.walk(1); });
     this._defineState('army_walk2', 'prowl_2', 'army_walk3', function () { this._ai.walk(1); });
     this._defineState('army_walk3', 'prowl_3', 'army_walk4', function () { this._ai.walk(1); });
     this._defineState('army_walk4', 'prowl_4', 'army_walk5', function () { this._ai.walk(1); });
@@ -107,12 +101,7 @@ export default class ArmySoldierMonster extends BaseMonster {
     this._defineState('army_walk23', 'prowl_23', 'army_walk24', function () { this._ai.walk(1); });
     this._defineState('army_walk24', 'prowl_24', 'army_walk1', function () { this._ai.walk(1); });
 
-    this._defineState('army_run1', 'run1', 'army_run2', function () {
-      if (Math.random() < 0.2) {
-        this.startSound(channel.CHAN_VOICE, 'soldier/idle.wav', 1.0, attn.ATTN_IDLE);
-      }
-      this._ai.run(11);
-    });
+    this._defineState('army_run1', 'run1', 'army_run2', function () { this.idleSound(); this._ai.run(11); });
     this._defineState('army_run2', 'run2', 'army_run3', function () { this._ai.run(15); });
     this._defineState('army_run3', 'run3', 'army_run4', function () { this._ai.run(10); });
     this._defineState('army_run4', 'run4', 'army_run5', function () { this._ai.run(10); });
@@ -175,7 +164,7 @@ export default class ArmySoldierMonster extends BaseMonster {
   thinkDie(attackerEntity) {
     console.log('thinkDie');
 
-    GibEntity.gibEntity(this, 'progs/h_guard.mdl', true);
+    this._gib(true);
     // TODO
 
     // this.resetThinking();
@@ -184,7 +173,7 @@ export default class ArmySoldierMonster extends BaseMonster {
 
     // check for gib
     if (this.health < -35.0) {
-      GibEntity.gibEntity(this, 'progs/h_guard.mdl', true);
+      this._gib(true);
       return;
     }
 
@@ -196,24 +185,27 @@ export default class ArmySoldierMonster extends BaseMonster {
     // 		army_cdie1 ();
   }
 
-  spawn() {
-    if (this.game.deathmatch) {
-      this.remove();
-      return;
+  painSound() {
+    const r = Math.random();
+
+    if (r < 0.2) {
+      this.startSound(channel.CHAN_VOICE, "soldier/pain1.wav");
+    } else {
+      this.startSound(channel.CHAN_VOICE, "soldier/pain2.wav");
     }
-
-    this.solid = solid.SOLID_SLIDEBOX;
-    this.movetype = moveType.MOVETYPE_STEP;
-
-    this.setModel("progs/soldier.mdl");
-    this.setSize(new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 40.0));
-    this.health = 30;
-    this.takedamage = damage.DAMAGE_AIM;
-
-    super.spawn();
   }
 
   sightSound() {
     this.startSound(channel.CHAN_VOICE, "soldier/sight1.wav");
+  }
+
+  idleSound() {
+    if (Math.random() < 0.2) {
+      this.startSound(channel.CHAN_VOICE, 'soldier/idle.wav', 1.0, attn.ATTN_IDLE);
+    }
+  }
+
+  attackSound() {
+    this.startSound(channel.CHAN_WEAPON, 'soldier/sattck1.wav');
   }
 };

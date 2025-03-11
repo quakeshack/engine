@@ -634,7 +634,7 @@ export class SigilEntity extends BaseItemEntity {
   }
 
   get classname() {
-    // CR: somewhat shitty hack to not break original Quake maps
+    // HACK: somewhat shitty hack to not break original Quake maps
     if (this.spawnflags === 15) {
       return this.constructor.classname + ' (used)';
     }
