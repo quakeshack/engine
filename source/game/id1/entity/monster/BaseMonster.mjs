@@ -35,7 +35,7 @@ export default class BaseMonster extends BaseEntity {
     /** @type {?BaseEntity} a movetarget or an enemy */
     this.goalentity = null;
 
-    /** @protected */
+    /** @type {EntityAI} @protected */
     this._ai = this._newEntityAI();
 
     /** @type {number} refire count for nightmare */
@@ -134,6 +134,15 @@ export default class BaseMonster extends BaseEntity {
   thinkPain(attackerEntity, damage) {
   }
 
+  /**
+   * Called by the AI code.
+   * @returns {*} desired attack state
+   */
+  checkAttack() { // QuakeC: fight.qc/CheckAttack
+    // TODO
+    return null;
+  }
+
   _preSpawn() {
     if (this.game.deathmatch) {
       this.remove();
@@ -154,13 +163,13 @@ export default class BaseMonster extends BaseEntity {
     console.assert(this.constructor._health > 0, 'Invalid health set');
     console.assert(mins instanceof Vector && maxs instanceof Vector, 'Invalid size set');
 
-    this.setSize(mins, maxs);
-    this.setModel(this.constructor._modelDefault);
-
     this.health = this.constructor._health;
     this.takedamage = damage.DAMAGE_AIM;
     this.solid = solid.SOLID_SLIDEBOX;
     this.movetype = moveType.MOVETYPE_STEP;
+
+    this.setSize(mins, maxs);
+    this.setModel(this.constructor._modelDefault);
 
     this.game.total_monsters++;
     this._ai.spawn();

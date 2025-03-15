@@ -282,6 +282,11 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-03-16
+
+* continue working on monster_dog and AI stuff, I’m considering tossing the whole structure and to start all over again
+* also considering pause AI for now and focus on network first, implementing more of the QW improvements
+
 ### 2025-03-11
 
 * started working on monster_dog and more AI stuff

@@ -39,56 +39,80 @@ export class EntityAI extends EntityWrapper {
 
   clear() {
     // implement this
+    console.assert(false, 'implement this');
   }
 
   think() {
     // implement this
+    console.assert(false, 'implement this');
   }
 
   spawn() {
     // implement this
+    console.assert(false, 'implement this');
   }
 
   stand() {
     // implement this
+    console.assert(false, 'implement this');
   }
 
   // eslint-disable-next-line no-unused-vars
   walk(dist) {
     // implement this
+    console.assert(false, 'implement this');
   }
 
   // eslint-disable-next-line no-unused-vars
   run(dist) {
     // implement this
+    console.assert(false, 'implement this');
   }
 
   // eslint-disable-next-line no-unused-vars
   pain(dist) {
     // implement this
+    console.assert(false, 'implement this');
   }
 
   // eslint-disable-next-line no-unused-vars
   charge(dist) {
     // implement this
+    console.assert(false, 'implement this');
   }
 
   face() {
     // implement this
+    console.assert(false, 'implement this');
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  use(userEntity) {
+    // implement this
+    console.assert(false, 'implement this');
   }
 };
 
-const QAI_STATE = {
-  STAND: 'stand',
-  RUN: 'run',
-  WALK: 'walk',
-};
+/**
+ * Normalizes an angle to the range [0, 360).
+ * @param {number} v - The angle to normalize.
+ * @returns {number} The normalized angle.
+ */
+function anglemod(v) {
+  while (v >= 360) {
+    v -= 360;
+  }
+  while (v < 0) {
+    v += 360;
+  }
+  return v;
+}
 
 /**
  * @readonly
  * @enum {number}
  */
-const QAI_ATTACK_STATE = {
+export const ATTACK_STATE = {
   AS_NONE: 0,
   AS_STRAIGHT: 1,
   AS_SLIDING: 2,
@@ -100,15 +124,30 @@ const QAI_ATTACK_STATE = {
  * entity local AI state based on original Quake behavior
  */
 export class QuakeEntityAI extends EntityAI {
-  _declareFields() {
+  /**
+   * @param {BaseMonster} entity NPC
+   */
+  constructor(entity) {
+    super(entity);
+
     /** @private */
     this._searchTime = 0;
     /** @type {?BaseEntity} previous acquired target, fallback for dead enemy @private */
     this._oldEnemy = null;
     /** @private */
-    this._attackState = QAI_ATTACK_STATE.AS_NONE;
+    this._attackState = ATTACK_STATE.AS_NONE;
+
+    /** @private */
+    this._enemyMetadata = {
+      infront: false,
+      range: range.RANGE_FAR,
+      yaw: null,
+    };
+
     /** @private */
     this._initialized = false;
+
+    Object.seal(this);
   }
 
   clear() {
@@ -116,7 +155,14 @@ export class QuakeEntityAI extends EntityAI {
 
     this._searchTime = 0;
     this._oldEnemy = null;
-    this._attackState = QAI_ATTACK_STATE.AS_NONE;
+    this._attackState = ATTACK_STATE.AS_NONE;
+    this._enemyMetadata.infront = false;
+    this._enemyMetadata.range = range.RANGE_FAR;
+    this._enemyMetadata.yaw = null;
+  }
+
+  get enemyRange() {
+    return this._enemyMetadata.range;
   }
 
   think() {
@@ -162,10 +208,10 @@ export class QuakeEntityAI extends EntityAI {
 
   /**
    * returns the range catagorization of an entity reletive to self
-   * 0	melee range, will become hostile even if back is turned
-   * 1	visibility and infront, or visibility and show hostile
-   * 2	infront and show hostile
-   * 3	only triggered by damage
+   * 0 melee range, will become hostile even if back is turned
+   * 1 visibility and infront, or visibility and show hostile
+   * 2 infront and show hostile
+   * 3 only triggered by damage
    * @param {BaseEntity} target target to check
    * @returns {range} determined range
    */
@@ -192,6 +238,10 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   _changeYaw() {
+    if (this._enemyMetadata.yaw !== null) {
+      this._entity.ideal_yaw = this._enemyMetadata.yaw;
+    }
+
     return this._entity.changeYaw();
   }
 
@@ -324,6 +374,12 @@ export class QuakeEntityAI extends EntityAI {
     // TODO
   }
 
+  _isFacingIdeal() { // QuakeC: ai.qc/FacingIdeal
+    const delta = anglemod(this._entity.angles[1] - this._entity.ideal_yaw);
+
+    return !(delta > 45 && delta < 315);
+  }
+
   /**
    * The monster is staying in one place for a while, with slight angle turns
    */
@@ -343,6 +399,28 @@ export class QuakeEntityAI extends EntityAI {
 
   walk(dist) { // QuakeC: ai.qc/ai_walk
     // console.log('AI walk', this._entity.toString(), dist);
+    // TODO
+  }
+
+  runMelee(){ // QuakeC: ai.qc/ai_run_melee
+    this._changeYaw();
+
+    if (this._isFacingIdeal()) {
+      this._entity.thinkMelee();
+      this._attackState = ATTACK_STATE.AS_STRAIGHT;
+    }
+  }
+
+  runMissile() { // QuakeC: ai.qc/ai_run_missile
+    this._changeYaw();
+
+    if (this._isFacingIdeal()) {
+      this._entity.thinkMissile();
+      this._attackState = ATTACK_STATE.AS_STRAIGHT;
+    }
+  }
+
+  runSlide() { // QuakeC: ai.qc/ai_run_slide
     // TODO
   }
 
@@ -386,40 +464,42 @@ export class QuakeEntityAI extends EntityAI {
       }
     }
 
-    // TODO: enemy_infront = infront(self.enemy);
-    // TODO: enemy_range = range(self.enemy);
-    // TODO: enemy_yaw = vectoyaw(self.enemy.origin - self.origin);
+    this._enemyMetadata.infront = this._isInFront(self.enemy);
+    this._enemyMetadata.range = this._determineRange(self.enemy);
+    this._enemyMetadata.yaw = self.enemy.origin.copy().subtract(self.origin).toYaw();
 
     switch (this._attackState) {
-      case QAI_ATTACK_STATE.AS_MISSILE:
-        // TODO: ai_run_missile ();
-        break;
+      case ATTACK_STATE.AS_MISSILE:
+        this.runMissile();
+        return;
 
-      case QAI_ATTACK_STATE.AS_MELEE:
-        // TODO: ai_run_melee ();
-        break;
-
-      case QAI_ATTACK_STATE.AS_SLIDING:
-        if (this._checkAnyAttack(isEnemyVisible)) {
-          return; // beginning an attack
-        }
-        // TODO: ai_run_slide ();
-        break;
-
-      default:
-        if (this._checkAnyAttack(isEnemyVisible)) {
-          return; // beginning an attack
-        }
-
-        // head straight in
-        self.moveToGoal(dist);
-        break;
+      case ATTACK_STATE.AS_MELEE:
+        this.runMelee();
+        return;
     }
+
+    const nextAttackState = this._checkAnyAttack(isEnemyVisible);
+
+    if (nextAttackState !== null) {
+      this._attackState = nextAttackState;
+      return; // beginning an attack
+    }
+
+    if (this._attackState === ATTACK_STATE.AS_SLIDING) {
+      this.runSlide();
+      return;
+    }
+
+    // head straight in
+    self.moveToGoal(dist);
   }
 
   _checkAnyAttack(isEnemyVisible) { // QuakeC: ai.qc/CheckAnyAttack
-    // TODO
-    return false;
+    if (!isEnemyVisible) {
+      return;
+    }
+
+    return this._entity.checkAttack();
   }
 
   turn() { // QuakeC: ai.qc/ai_turn
@@ -428,6 +508,16 @@ export class QuakeEntityAI extends EntityAI {
     }
 
     this._changeYaw();
+  }
+
+  charge(dist) {
+    this.face();
+    this._entity.moveToGoal(dist);
+  }
+
+  face() {
+    this._entity.ideal_yaw = this._entity.enemy.origin.copy().subtract(this._entity.origin).toYaw();
+    this._entity.changeYaw();
   }
 
   use(userEntity) {

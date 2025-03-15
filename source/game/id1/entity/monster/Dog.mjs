@@ -1,7 +1,7 @@
 /* global Vector */
 
-import { attn, channel, flags, solid } from "../../Defs.mjs";
-import { QuakeEntityAI } from "../../helper/AI.mjs";
+import { attn, channel, flags, range, solid } from "../../Defs.mjs";
+import { ATTACK_STATE, QuakeEntityAI } from "../../helper/AI.mjs";
 import BaseEntity from "../BaseEntity.mjs";
 import { WalkMonster } from "./BaseMonster.mjs";
 
@@ -36,7 +36,7 @@ export default class DogMonsterEntity extends WalkMonster {
   static classname = 'monster_dog';
 
   static _health = 25;
-  static _size = [new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 40.0)];
+  static _size = [new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 40.0)];
 
   static _modelDefault = 'progs/dog.mdl';
   static _modelHead = 'progs/h_dog.mdl';
@@ -186,7 +186,23 @@ export default class DogMonsterEntity extends WalkMonster {
   }
 
   _bite() {
-    console.log(`_bite(): ${this}`, this.enemy);
+    if (!this.enemy) {
+      return;
+    }
+
+    this._ai.charge(10);
+
+    if (!this.enemy._damageHandler.canReceiveDamage(this)) {
+      return;
+    }
+
+    if (this.enemy.origin.copy().subtract(this.origin).len() > 100) {
+      return;
+    }
+
+    const ldmg = (Math.random() + Math.random() + Math.random()) * 8;
+
+    this.damage(this.enemy, ldmg);
   }
 
   _leap() {
@@ -204,6 +220,10 @@ export default class DogMonsterEntity extends WalkMonster {
   /** @param {BaseEntity} userEntity  */
   use(userEntity) { // FIXME: testing only
     // userEntity.damage(this, 20);
+    if (this.health < 0) {
+      return;
+    }
+
     this.idleSound();
     this._leap();
   }
@@ -255,6 +275,45 @@ export default class DogMonsterEntity extends WalkMonster {
     } else {
       this._runState('dog_dieb1');
     }
+  }
+
+  /** @returns {ATTACK_STATE|null} attack state */
+  checkAttack() {
+    // if close enough for slashing, go for it
+    if (this._checkMelee()) {
+      return ATTACK_STATE.AS_MELEE;
+    }
+
+    if (this._checkJump()) {
+      return ATTACK_STATE.AS_MISSILE;
+    }
+
+    return null;
+  }
+
+  /** @returns {boolean} if true, good to do a melee attack @private */
+  _checkMelee() {
+    return this._ai.enemyRange === range.RANGE_MELEE;
+  }
+
+  /** @private */
+  _checkJump() {
+    console.assert(this.enemy, 'active enemy required');
+
+    if (this.origin[2] + this.mins[2] > this.enemy.origin[2] + this.enemy.mins[2] + 0.75 * this.enemy.size[2]) {
+      return false;
+    }
+
+    if (this.origin[2] + this.maxs[2] < this.enemy.origin[2] + this.enemy.mins[2] + 0.25 * this.enemy.size[2]) {
+      return false;
+    }
+
+    const dist = this.enemy.origin.copy().subtract(this.origin);
+    dist[2] = 0.0;
+
+    const d = dist.len();
+
+    return !(d < 80 || d > 150);
   }
 
   painSound() {
