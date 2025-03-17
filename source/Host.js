@@ -840,73 +840,45 @@ Host.Savegame_f = function() {
       return;
     }
   }
-  const f = ['5\n' + Host.SavegameComment() + '\n'];
-  let i;
-  for (i = 0; i <= 15; ++i) {
-    f[f.length] = client.spawn_parms[i].toFixed(6) + '\n';
-  }
-  f[f.length] = Host.current_skill + '\n' + SV.server.gameAPI.mapname + '\n' + SV.server.time.toFixed(6) + '\n';
-  for (i = 0; i <= 63; ++i) {
-    if (SV.server.lightstyles[i].length !== 0) {
-      f[f.length] = SV.server.lightstyles[i] + '\n';
-    } else {
-      f[f.length] = 'm\n';
-    }
-  }
-  f[f.length] = '{\n';
-  let def; let type;
-  for (i = 0; i < PR.globaldefs.length; ++i) {
-    def = PR.globaldefs[i];
-    type = def.type;
-    if ((type & 0x8000) === 0) {
+
+  const savename = Cmd.argv[1];
+
+  const gamestate = {
+    version: 1,
+    gameversion: SV.server.gameVersion,
+    comment: CL.state.levelname,
+    spawn_parms: client.spawn_parms,
+    current_skill: Host.current_skill,
+    mapname: SV.server.gameAPI.mapname,
+    time: SV.server.time,
+    lightstyles: SV.server.lightstyles,
+    globals: null,
+    edicts: [],
+    num_edicts: SV.server.num_edicts,
+  };
+
+  // IDEA: we could actually compress this by using a list of common fields
+  for (const edict of SV.server.edicts) {
+    if (edict.isFree()) {
+      gamestate.edicts.push(null);
       continue;
     }
-    type &= ~PR.saveglobal;
-    if ((type !== PR.etype.ev_string) && (type !== PR.etype.ev_float) && (type !== PR.etype.entity)) {
-      continue;
-    }
-    f[f.length] = '"' + PR.GetString(def.name) + '" "' + PR.UglyValueString(type, PR.globals, def.ofs) + '"\n';
+
+    gamestate.edicts.push([edict.entity.classname, edict.entity.serialize()]);
   }
-  f[f.length] = '}\n';
-  let ed; let j; let name; let v;
-  for (i = 0; i < SV.server.num_edicts; ++i) {
-    ed = SV.server.edicts[i];
-    if (ed.isFree() === true) {
-      f[f.length] = '{\n}\n';
-      continue;
-    }
-    f[f.length] = '{\n';
-    for (j = 1; j < PR.fielddefs.length; ++j) {
-      def = PR.fielddefs[j];
-      name = PR.GetString(def.name);
-      if (name.charCodeAt(name.length - 2) === 95) {
-        continue;
-      }
-      type = def.type & ~PR.saveglobal;
-      v = def.ofs;
-      if (ed.v_int[v] === 0) {
-        if (type === 3) {
-          if ((ed.v_int[v + 1] === 0) && (ed.v_int[v + 2] === 0)) {
-            continue;
-          }
-        } else {
-          continue;
-        }
-      }
-      f[f.length] = '"' + name + '" "' + PR.UglyValueString(type, ed.v, def.ofs) + '"\n';
-    }
-    f[f.length] = '}\n';
-  }
-  name = COM.DefaultExtension(Cmd.argv[1], '.sav');
+
+  gamestate.globals = SV.server.gameAPI.serialize();
+
+  const name = COM.DefaultExtension(savename, '.json');
   Con.Print('Saving game to ' + name + '...\n');
-  if (COM.WriteTextFile(name, f.join('')) === true) {
+  if (COM.WriteTextFile(name, JSON.stringify(gamestate))) {
     Con.Print('done.\n');
   } else {
     Con.Print('ERROR: couldn\'t open.\n');
   }
 };
 
-Host.Loadgame_f = function() { // TODO: schedule for next frame, add loading screen
+Host.Loadgame_f = function () {
   if (Cmd.client === true) {
     return;
   }
@@ -915,97 +887,66 @@ Host.Loadgame_f = function() { // TODO: schedule for next frame, add loading scr
     return;
   }
   CL.cls.demonum = -1;
-  const name = COM.DefaultExtension(Cmd.argv[1], '.sav');
+  const name = COM.DefaultExtension(Cmd.argv[1], '.json');
   Con.Print('Loading game from ' + name + '...\n');
-  let f = COM.LoadTextFile(name);
-  if (f == null) {
+  const data = COM.LoadTextFile(name);
+  if (data == null) {
     Con.Print('ERROR: couldn\'t open.\n');
     return;
   }
-  f = f.split('\n');
 
-  let i;
+  const gamestate = JSON.parse(data);
 
-  const tfloat = parseFloat(f[0]);
-  if (tfloat !== 5) {
-    Con.Print('Savegame is version ' + tfloat + ', not 5\n');
+  if (gamestate.version !== 1) {
+    Con.Print(`Savegame is version ${gamestate.version}, not 1\n`);
     return;
   }
 
-  const spawn_parms = [];
-  for (i = 0; i <= 15; ++i) {
-    spawn_parms[i] = parseFloat(f[2 + i]);
-  }
-
-  Host.current_skill = (parseFloat(f[18]) + 0.1) >> 0;
+  Host.current_skill = gamestate.current_skill;
   Cvar.SetValue('skill', Host.current_skill);
 
-  const time = parseFloat(f[20]);
   CL.Disconnect();
-  SV.SpawnServer(f[19]);
-  if (SV.server.active !== true) {
+  SV.SpawnServer(gamestate.mapname);
+
+  if (!SV.server.active) {
     if (!Host.dedicated.value) {
       CL.SetConnectingStep(null, null);
     }
-    Con.Print('Couldn\'t load map\n');
+    Con.Print(`Couldn't load map: ${gamestate.mapname}\n`);
     return;
   }
+
+  if (gamestate.gameversion !== SV.server.gameVersion) {
+    SV.ShutdownServer(false);
+    Con.Print(`Game is version ${gamestate.gameversion}, not ${SV.server.gameVersion}\n`);
+    return;
+  }
+
   SV.server.paused = true;
   SV.server.loadgame = true;
 
-  for (i = 0; i <= 63; ++i) {
-    SV.server.lightstyles[i] = f[21 + i];
-  }
+  SV.server.lightstyles = gamestate.lightstyles;
+  SV.server.gameAPI.deserialize(gamestate.globals);
 
-  let token; let keyname; let key;
-
-  if (f[85] !== '{') {
-    Sys.Error('First token isn\'t a brace');
-  }
-  for (i = 86; i < f.length; ++i) {
-    if (f[i] === '}') {
-      ++i;
-      break;
-    }
-    token = f[i].split('"');
-    keyname = token[1];
-    key = ED.FindGlobal(keyname);
-    if (key == null) {
-      Con.Print('\'' + keyname + '\' is not a global\n');
+  SV.server.num_edicts = gamestate.num_edicts;
+  for (let i = 0; i < SV.server.edicts.length; i++) {
+    const edict = SV.server.edicts[i]; // TODO: alloc more
+    if (!gamestate.edicts[i]) { // freed edict
       continue;
     }
-    if (ED.ParseEpair(PR.globals, key, token[3]) !== true) {
-      Host.Error('Host.Loadgame_f: parse error');
+    const [classname, data] = gamestate.edicts[i];
+    console.assert(SV.server.gameAPI.prepareEntity(edict, classname), 'no entity for classname');
+    edict.entity.deserialize(data);
+    if (!edict.isFree()) {
+      edict.linkEdict();
     }
   }
 
-  f[f.length] = '';
-  let entnum = 0; let ent;
-  let data = f.slice(i).join('\n');
-  for (;;) {
-    data = COM.Parse(data);
-    if (data == null) {
-      break;
-    }
-    if (COM.token.charCodeAt(0) !== 123) {
-      Sys.Error('Host.Loadgame_f: found ' + COM.token + ' when expecting {');
-    }
-    ent = SV.server.edicts[entnum++];
-    ent.clear();
-    ent.free = false;
-    data = ED.ParseEdict(data, ent);
-    if (ent.isFree() !== true) {
-      SV.LinkEdict(ent);
-    }
-  }
-  SV.server.num_edicts = entnum;
+  SV.server.time = gamestate.time;
 
-  SV.server.time = time;
   const client = SV.svs.clients[0];
-  client.spawn_parms = [];
-  for (i = 0; i <= 15; ++i) {
-    client.spawn_parms[i] = spawn_parms[i];
-  }
+  client.spawn_parms = gamestate.spawn_parms;
+
   CL.EstablishConnection('local');
   Host.Reconnect_f();
 };

@@ -355,7 +355,7 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
 
     /** @type {InfoTeleportDestination} */
     const target = this.findFirstEntityByFieldAndValue("targetname", this.target);
-    console.assert(!(target instanceof InfoTeleportDestination), 'Target must be an InfoTeleportDestination');
+    console.assert(target instanceof InfoTeleportDestination, 'Target must be an InfoTeleportDestination');
 
     const { forward } = target.angles.angleVectors();
 
@@ -382,12 +382,12 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
       touchedByEntity.fixangle = 1;
       touchedByEntity.teleport_time = this.game.time + 0.7;
       if (touchedByEntity.flags & flags.FL_ONGROUND) {
-        touchedByEntity &= ~flags.FL_ONGROUND;
+        touchedByEntity.flags &= ~flags.FL_ONGROUND;
       }
       touchedByEntity.velocity.set(forward.multiply(300));
     }
 
-    touchedByEntity &= ~flags.FL_ONGROUND;
+    touchedByEntity.flags &= ~flags.FL_ONGROUND;
   }
 
   spawn() {

@@ -286,6 +286,10 @@ class MainMenu extends BaseMenu {
 
 * continue working on monster_dog and AI stuff, I’m considering tossing the whole structure and to start all over again
 * also considering pause AI for now and focus on network first, implementing more of the QW improvements
+* added save/load back to the engine
+  * serialize/deserialize added to the QuakeC VM
+  * meanwhile over in QuakeJS world: TODO and not as straight forward except I’m going to use blackmagic
+* need to have a configuration for QuakeJS/QuakeC, right now I’m commenting out/in a `throw Error`
 
 ### 2025-03-11
 

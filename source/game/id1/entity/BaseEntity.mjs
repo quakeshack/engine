@@ -741,4 +741,13 @@ export default class BaseEntity {
   moveToGoal(distance) {
     return this.edict.moveToGoal(distance);
   }
+
+  serialize() {
+    // TODO
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  deserialize(data) {
+    // TODO
+  }
 };

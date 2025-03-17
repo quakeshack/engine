@@ -475,4 +475,13 @@ export class ServerGameAPI {
 
     return true;
   }
+
+  serialize() {
+    // TODO
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  deserialize(data) {
+    // TODO
+  }
 };

@@ -186,10 +186,6 @@ ED._NewString = function(string) {
   return PR.SetString(null, newstring.join(''));
 };
 
-ED.ParseEdict = function() {
-  Host.Error('currently not implemented');
-};
-
 ED.ParseEdict = function(data, ent, initialData = {}) {
   // If not the world entity, clear the entity data
   // CR: this is required, otherwise we would overwrite data SV.SpawnServer had set prior
@@ -249,7 +245,7 @@ ED.ParseEdict = function(data, ent, initialData = {}) {
       COM.token = `0 ${COM.token} 0`;
     }
 
-    initialData[keyname] = COM.token; // TODO: FIXME: I think here we need to parse escape sequences properly
+    initialData[keyname] = COM.token.replace(/\\n/g, '\n');
 
     init = true;
   }

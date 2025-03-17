@@ -322,18 +322,23 @@ PR.FunctionProxy = class FunctionProxy extends Function {
   }
 }
 
-PR._stats = {
-  edict: {},
-  global: {},
-};
+// PR._stats = {
+//   edict: {},
+//   global: {},
+// };
 
 PR.EdictProxy = class ProgsEntity {
+  static SERIALIZATION_TYPE_EDICT = 'E';
+  static SERIALIZATION_TYPE_FUNCTION = 'F';
+  static SERIALIZATION_TYPE_VECTOR = 'V';
+  static SERIALIZATION_TYPE_PRIMITIVE = 'P';
+
   /**
    *
    * @param {*} ed can be null, then it’s global
    */
   constructor(ed) {
-    const stats = ed ? PR._stats.edict : PR._stats.global;
+    // const stats = ed ? PR._stats.edict : PR._stats.global;
     const defs = ed ? PR.fielddefs : PR.globaldefs;
 
     if (ed) {
@@ -343,6 +348,8 @@ PR.EdictProxy = class ProgsEntity {
       ed._v_float = new Float32Array(this._v);
       ed._v_int = new Int32Array(this._v);
     }
+
+    this._serializableFields = [];
 
     for (let i = 1; i < defs.length; i++) {
       const d = defs[i];
@@ -359,16 +366,22 @@ PR.EdictProxy = class ProgsEntity {
         continue;
       }
 
+      if (!ed && (d.type & PR.saveglobal) !== 0 && [PR.etype.ev_string, PR.etype.ev_float, PR.etype.ev_entity].includes(type)) {
+        this._serializableFields.push(name);
+      } else if (ed) {
+        this._serializableFields.push(name);
+      }
+
       const val_float = new Float32Array(val);
       const val_int = new Int32Array(val);
 
-      const s = () => {
-        if (!stats[name]) {
-          stats[name] = { get: 0, set: 0 };
-        }
+      // const s = () => {
+      //   if (!stats[name]) {
+      //     stats[name] = { get: 0, set: 0 };
+      //   }
 
-        return stats[name];
-      };
+      //   return stats[name];
+      // };
 
       const assignedFunctions = [];
 
@@ -376,11 +389,11 @@ PR.EdictProxy = class ProgsEntity {
         case PR.etype.ev_string:
           Object.defineProperty(this, name, {
             get: function() {
-              s().get++;
+              // s().get++;
               return val_int[ofs] > 0 ? PR.GetString(val_int[ofs]) : null;
             },
             set: function(value) {
-              s().set++;
+              // s().set++;
               val_int[ofs] = value !== null && value !== '' ? PR.SetString(val_int[ofs], value) : 0;
             },
             configurable: true,
@@ -390,7 +403,7 @@ PR.EdictProxy = class ProgsEntity {
         case PR.etype.ev_entity: // TODO: actually accept entity instead of edict and vice-versa
           Object.defineProperty(this, name, {
             get: function() {
-              s().get++;
+              // s().get++;
 
               // CR: oh, how I was wrong… it is ALWAYS an entity, 0 = worldspawn.
               // if (!val_int[ofs]) {
@@ -404,7 +417,7 @@ PR.EdictProxy = class ProgsEntity {
               return SV.server.edicts[val_int[ofs]] || null;
             },
             set: function(value) {
-              s().set++;
+              // s().set++;
               if (value === null) {
                 val_int[ofs] = 0;
                 return;
@@ -434,7 +447,7 @@ PR.EdictProxy = class ProgsEntity {
         case PR.etype.ev_function:
           Object.defineProperty(this, name, {
             get: function() {
-              s().get++;
+              // s().get++;
               const id = val_int[ofs];
               if (id < 0 && assignedFunctions[(-id) - 1] instanceof Function) {
                 return assignedFunctions[(-id) - 1];
@@ -446,7 +459,7 @@ PR.EdictProxy = class ProgsEntity {
               }) : null;
             },
             set: function(value) {
-              s().set++;
+              // s().set++;
               if (value === null) {
                 val_int[ofs] = 0;
                 return;
@@ -483,11 +496,11 @@ PR.EdictProxy = class ProgsEntity {
         case PR.etype.ev_field:
           Object.defineProperty(this, name, {
             get: function() {
-              s().get++;
+              // s().get++;
               return val_int[ofs];
             },
             set: function(value) {
-              s().set++;
+              // s().set++;
               if (typeof(value.ofs) !== 'undefined') {
                 val_int[ofs] = value.ofs;
                 return;
@@ -501,11 +514,11 @@ PR.EdictProxy = class ProgsEntity {
         case PR.etype.ev_float:
           Object.defineProperty(this, name, {
             get: function() {
-              s().get++;
+              // s().get++;
               return val_float[ofs];
             },
             set: function(value) {
-              s().set++;
+              // s().set++;
               if (value === undefined || isNaN(value)) {
                 throw new TypeError('EdictProxy.' + name + ': invalid value for ev_float passed: ' + value);
               }
@@ -518,11 +531,11 @@ PR.EdictProxy = class ProgsEntity {
         case PR.etype.ev_vector: // TODO: Proxy for Vector?
           Object.defineProperty(this, name, {
             get: function() {
-              s().get++;
+              // s().get++;
               return new Vector(val_float[ofs], val_float[ofs + 1], val_float[ofs + 2]);
             },
             set: function(value) {
-              s().set++;
+              // s().set++;
               val_float[ofs] = value[0];
               val_float[ofs+1] = value[1];
               val_float[ofs+2] = value[2];
@@ -533,6 +546,64 @@ PR.EdictProxy = class ProgsEntity {
           break;
       }
     }
+  }
+
+  serialize() {
+    const data = {};
+
+    for (const field of this._serializableFields) {
+      const value = this[field];
+
+      switch (true) {
+        case value instanceof PR.EdictProxy:
+          data[field] = [ProgsEntity.SERIALIZATION_TYPE_EDICT, value._edictNum];
+          break;
+
+        case value instanceof PR.FunctionProxy:
+          data[field] = [ProgsEntity.SERIALIZATION_TYPE_FUNCTION, value.fnc];
+          break;
+
+        case value instanceof Vector:
+          data[field] = [ProgsEntity.SERIALIZATION_TYPE_VECTOR, ...value];
+          break;
+
+        case typeof value === 'number':
+        case typeof value === 'boolean':
+        case typeof value === 'string':
+          data[field] = [ProgsEntity.SERIALIZATION_TYPE_PRIMITIVE, value];
+          break;
+      }
+    }
+
+    return data;
+  }
+
+  deserialize(obj) {
+    for (const [key, value] of Object.entries(obj)) {
+      console.assert(this._serializableFields.includes(key));
+
+      const [type, ...data] = value;
+
+      switch (type) {
+        case ProgsEntity.SERIALIZATION_TYPE_EDICT:
+          this[key] = SV.server.edicts[data[0]];
+          break;
+
+        case ProgsEntity.SERIALIZATION_TYPE_FUNCTION:
+          this[key] = {fnc: data[0]};
+          break;
+
+        case ProgsEntity.SERIALIZATION_TYPE_VECTOR:
+          this[key] = new Vector(...data);
+          break;
+
+        case ProgsEntity.SERIALIZATION_TYPE_PRIMITIVE:
+          this[key] = data[0];
+          break;
+      }
+    }
+
+    return this;
   }
 
   clear() {
@@ -826,6 +897,11 @@ PR.LoadProgs = function() {
         Object.freeze(edict.entity);
       }
 
+      // yet another hack, always be successful during a loadgame
+      if (SV.server.loadgame) {
+        return true;
+      }
+
       // special case for QuakeC: empty entity
       if (classname === null) {
         return true;
@@ -921,7 +997,7 @@ PR.LoadProgs = function() {
 
 PR.Init = async function() {
   try {
-    // throw new Error();
+    throw new Error('testing');
     // try to get the game API
     PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
     const identification = PR.QuakeJS.identification;

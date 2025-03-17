@@ -461,6 +461,11 @@ S = {
       const name = `ambience/${ambientSfx}.wav`;
 
       const sfx = this.PrecacheSound(name);
+
+      if (!sfx) {
+        return;
+      }
+
       const ch = this._NewChannel().withSfx(sfx);
 
       this._ambientChannels.push(ch);

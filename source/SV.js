@@ -558,7 +558,7 @@ SV.StartSound = function(edict, channel, sample, volume, attenuation) {
 SV.SendServerinfo = function(client) {
   const message = client.message;
   MSG.WriteByte(message, Protocol.svc.print);
-  MSG.WriteString(message, `\x02\nVERSION ${Def.version} SERVER (${(PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`)})`);
+  MSG.WriteString(message, `\x02\nVERSION ${Def.version} SERVER (${SV.server.gameVersion})`);
   MSG.WriteByte(message, Protocol.svc.serverinfo);
   MSG.WriteLong(message, Protocol.version);
   MSG.WriteByte(message, SV.svs.maxclients);
@@ -1165,6 +1165,8 @@ SV.SpawnServer = function(mapname) {
   Mod.ClearAll();
 
   SV.server.gameAPI = PR.QuakeJS ? new PR.QuakeJS.ServerGameAPI(Game.EngineInterface) : PR.LoadProgs();
+
+  SV.server.gameVersion = `${(PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`)}`;
 
   SV.server.edicts = [];
   // preallocating up to max_edicts, we can extend that later during runtime
