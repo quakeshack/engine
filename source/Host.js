@@ -929,17 +929,33 @@ Host.Loadgame_f = function () {
   SV.server.gameAPI.deserialize(gamestate.globals);
 
   SV.server.num_edicts = gamestate.num_edicts;
+  console.assert(SV.server.num_edicts <= SV.server.edicts.length, 'resizing edicts not supported yet'); // TODO: alloc more edicts
+
+  // first run through all edicts to make sure the entity structures get initialized
   for (let i = 0; i < SV.server.edicts.length; i++) {
-    const edict = SV.server.edicts[i]; // TODO: alloc more
+    const edict = SV.server.edicts[i];
+
     if (!gamestate.edicts[i]) { // freed edict
+      // FIXME: QuakeC doesn’t like it at all when edicts suddenly disappear, we should offload this code to the GameAPI
+      edict.freeEdict();
       continue;
     }
-    const [classname, data] = gamestate.edicts[i];
+
+    const [classname] = gamestate.edicts[i];
     console.assert(SV.server.gameAPI.prepareEntity(edict, classname), 'no entity for classname');
-    edict.entity.deserialize(data);
-    if (!edict.isFree()) {
-      edict.linkEdict();
+  }
+
+  // second run we can start deserializing
+  for (let i = 0; i < SV.server.edicts.length; i++) {
+    const edict = SV.server.edicts[i];
+
+    if (edict.isFree()) { // freed edict
+      continue;
     }
+
+    const [, data] = gamestate.edicts[i];
+    edict.entity.deserialize(data);
+    edict.linkEdict();
   }
 
   SV.server.time = gamestate.time;

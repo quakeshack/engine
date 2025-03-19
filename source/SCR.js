@@ -362,7 +362,7 @@ SCR.UpdateScreen = function() {
   SCR._requestedAnimationFrames++;
 
   if (SCR.screenshot === true) {
-    Con.Print('SCR.UpdateScreen: not implemented');
+    Con.Print('SCR.UpdateScreen: not implemented\n');
     SCR.screenshot = false;
     // gl.finish();
     // open(VID.mainwindow.toDataURL('image/jpeg'));

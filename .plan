@@ -15,12 +15,15 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] S: make sure all remaining to be lazily loaded sound files are load after the game started
 * [X] R: somewhere dynamic lights are not properly cast
 * [_] PF: need to handle precache more gracefully
-* [_] Host: Load Game and Save Game is now completely broken
+* [X] Host: Load Game and Save Game is now completely broken
+  * [_] QuakeC: fix issues with use-after-free situations
+  * [X] QuakeJS: add serializers to everything
 * [X] S/SV/QuakeJS: sounds go crazy, causing insane amount of stress
 * [X] Recheck all ref/copy of `(origin|a?velocity|angles)\s*=`
 * [_] ED: parsing strings from entities text does not unescape strings properly
 * [X] QuakeJS: func_*gate is misbehaving (not getting removed)
 * [_] QuakeJS/SV: spawning new objects on demand outside the world should unstuck somewhere inside of the world again (trace first)
+* [_] QuakeJS: monsters are 8 units below the floor
 
 ### QuakeC / QuakeJS
 
@@ -281,6 +284,13 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-03-20
+
+* save/load
+  * breaks in QuakeC, writing to entities of which the data structures are not existing yet/anymore
+  * breaks in QuakeJS, when objects get serialized or nested more complicated structures
+* added a magic serializer class
 
 ### 2025-03-16
 

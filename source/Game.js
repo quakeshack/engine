@@ -192,6 +192,14 @@ Game.EngineInterface = class EngineInterface {
     }
   }
 
+  static GetEdictById(edictId) {
+    if (edictId < 0 || edictId >= SV.server.num_edicts) {
+      return null;
+    }
+
+    return SV.server.edicts[edictId];
+  }
+
   static PrecacheSound(sfxName) {
     console.assert(typeof(sfxName) === 'string', 'sfxName must be a string');
 

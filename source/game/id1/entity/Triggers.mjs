@@ -18,6 +18,7 @@ class BaseTriggerEntity extends BaseEntity {
   static SPAWNFLAG_NOMESSAGE = 1;
 
   _declareFields() {
+    this._serializer.startFields();
     this.sounds = 0;
     this.noise = null;
     this.health = 0;
@@ -32,6 +33,8 @@ class BaseTriggerEntity extends BaseEntity {
     this.killtarget = null;
 
     this.takedamage = damage.DAMAGE_NO;
+
+    this._serializer.endFields();
 
     this._sub = new Sub(this);
     this._damageHandler = new DamageHandler(this);
@@ -103,8 +106,13 @@ export class MultipleTriggerEntity extends BaseTriggerEntity {
 
   _declareFields() {
     super._declareFields();
+
+    this._serializer.startFields();
+
     /** @protected */
     this._isActive = false;
+
+    this._serializer.endFields();
   }
 
   /**
@@ -282,7 +290,12 @@ export class CountTriggerEntity extends MultipleTriggerEntity {
 
   _declareFields() {
     super._declareFields();
+
+    this._serializer.startFields();
+
     this.count = 0;
+
+    this._serializer.endFields();
   }
 
   use(usedByEntity) {
@@ -411,7 +424,11 @@ export class InfoTeleportDestination extends BaseEntity {
   static classname = 'info_teleport_destination';
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.targetname = null;
+
+    this._serializer.endFields();
   }
 
   spawn() {
@@ -430,7 +447,11 @@ export class OnlyRegisteredTriggerEntity extends BaseTriggerEntity {
 
   _declareFields() {
     super._declareFields();
+    this._serializer.startFields();
+
     this.wait = 0;
+
+    this._serializer.endFields();
   }
 
   _precache() {
@@ -491,8 +512,12 @@ export class ChangeLevelTriggerEntity extends BaseTriggerEntity {
   static classname = 'trigger_changelevel';
 
   _declareFields() {
+    this._serializer.startFields();
+
     /** @type {string} next map name */
     this.map = null;
+
+    this._serializer.endFields();
     super._declareFields();
   }
 
@@ -544,9 +569,12 @@ export class TriggerHurtEntity extends BaseTriggerEntity {
   static classname = 'trigger_hurt';
 
   _declareFields() {
+    this._serializer.startFields();
+
     /** @type {?string} optional name for player’s obituary */
     this.netname = null;
 
+    this._serializer.endFields();
     super._declareFields();
   }
 
@@ -584,9 +612,12 @@ export class TriggerPushEntity extends BaseTriggerEntity {
   static FLAG_PUSH_ONCE = 1;
 
   _declareFields() {
+    this._serializer.startFields();
+
     /** @type {number} speed of the push */
     this.speed = 0;
 
+    this._serializer.endFields();
     super._declareFields();
   }
 
@@ -628,8 +659,12 @@ export class TriggerMonsterjumpEntity extends BaseTriggerEntity {
   static classname = 'trigger_monsterjump';
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.speed = 0;
     this.height = 0;
+
+    this._serializer.endFields();
     super._declareFields();
   }
 

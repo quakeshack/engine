@@ -42,12 +42,16 @@ export class PlatformEntity extends BasePropEntity {
   _declareFields() {
     super._declareFields();
 
+    this._serializer.startFields();
+
     this.mangle = new Vector();
     this.t_length = 0;
     this.t_width = 0;
 
     /** @type {PlatformTriggerEntity} @private */
     this._trigger = null;
+
+    this._serializer.endFields();
   }
 
   _spawnInsideTrigger() {
@@ -228,6 +232,8 @@ export class TrainEntity extends BasePropEntity { // CR: this beauty is written 
   _declareFields() {
     super._declareFields();
 
+    this._serializer.startFields();
+
     this.dmg = 0;
     this.wait = 0;
     this.target = null;
@@ -235,6 +241,8 @@ export class TrainEntity extends BasePropEntity { // CR: this beauty is written 
 
     /** @private */
     this._isActivated = false;
+
+    this._serializer.endFields();
   }
 
   _precache() {

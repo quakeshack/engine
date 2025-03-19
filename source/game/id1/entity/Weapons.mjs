@@ -347,6 +347,7 @@ export class DamageHandler extends EntityWrapper {
     // CR: ClientObituary(self, attacker); is handled by PlayerEntity.thinkDie now
 
     this.takedamage = damage.DAMAGE_NO;
+    console.assert(this.takedamage !== undefined, 'takedamage undefined');
     // FIXME: this._entity.touch = SUB_Null; -- we need to solve this differently?
 
     this._entity.thinkDie(attackerEntity);
@@ -691,9 +692,12 @@ export class BaseSpike extends BaseProjectile {
   static _tentType = null;
 
   _declareFields() {
+    this._serializer.startFields();
+
     /** @type {number} speed, default: 1000.0 units */
     this.speed = 0;
 
+    this._serializer.endFields();
     super._declareFields();
   }
 

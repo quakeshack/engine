@@ -18,6 +18,8 @@ export default class BaseMonster extends BaseEntity {
   _declareFields() {
     super._declareFields();
 
+    this._serializer.startFields();
+
     this.pausetime = 0;
     this.pain_finished = 0;
     /** @type {?BaseEntity} */
@@ -35,11 +37,13 @@ export default class BaseMonster extends BaseEntity {
     /** @type {?BaseEntity} a movetarget or an enemy */
     this.goalentity = null;
 
+    /** @type {number} refire count for nightmare */
+    this.cnt = 0;
+
     /** @type {EntityAI} @protected */
     this._ai = this._newEntityAI();
 
-    /** @type {number} refire count for nightmare */
-    this.cnt = 0;
+    this._serializer.endFields();
 
     this._damageHandler = new DamageHandler(this);
     this._sub = new Sub(this);

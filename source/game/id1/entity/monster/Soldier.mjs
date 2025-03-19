@@ -63,7 +63,12 @@ export default class ArmySoldierMonster extends WalkMonster {
 
   _declareFields() {
     super._declareFields();
+
+    this._serializer.startFields();
+
     this._aiState = null;
+
+    this._serializer.endFields();
   }
 
   _initStates() {

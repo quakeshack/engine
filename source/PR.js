@@ -555,6 +555,10 @@ PR.EdictProxy = class ProgsEntity {
       const value = this[field];
 
       switch (true) {
+        case value === null:
+          data[field] = [ProgsEntity.SERIALIZATION_TYPE_PRIMITIVE, null];
+          break;
+
         case value instanceof PR.EdictProxy:
           data[field] = [ProgsEntity.SERIALIZATION_TYPE_EDICT, value._edictNum];
           break;
@@ -997,7 +1001,7 @@ PR.LoadProgs = function() {
 
 PR.Init = async function() {
   try {
-    throw new Error('testing');
+    // throw new Error('testing');
     // try to get the game API
     PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
     const identification = PR.QuakeJS.identification;

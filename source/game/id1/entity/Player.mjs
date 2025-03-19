@@ -1,7 +1,7 @@
 /* global Vector */
 
 import { attn, channel, content, damage, dead, deathType, effect, flags, hull, items, moveType, solid } from "../Defs.mjs";
-import { crandom, Flag } from "../helper/MiscHelpers.mjs";
+import { crandom, Flag, Serializer } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { BackpackEntity } from "./Items.mjs";
 import { BubbleSpawnerEntity, InfoNotNullEntity, IntermissionCameraEntity, TeleportEffectEntity } from "./Misc.mjs";
@@ -157,6 +157,8 @@ export class PlayerEntity extends BaseEntity {
     /** @protected */
     this._weapons = new PlayerWeapons(this);
 
+    this._serializer.startFields();
+
     // relevant for view
     this.view_ofs = new Vector(); // SV.WriteClientdataToMessage
     this.punchangle = new Vector(); // SV.WriteClientdataToMessage
@@ -233,7 +235,11 @@ export class PlayerEntity extends BaseEntity {
     this._modelIndex = {
       player: null,
       eyes: null,
-    }
+    };
+
+    Serializer.makeSerializable(this._modelIndex);
+
+    this._serializer.endFields();
 
     this._damageHandler = new DamageHandler(this);
   }
@@ -1448,7 +1454,7 @@ export class PlayerEntity extends BaseEntity {
     this.effects = 0;
     this.invincible_time = 0;
 
-    this.attack_finished = this.time;
+    this.attack_finished = this.game.time;
     this.deadflag = dead.DEAD_NO;
     this.pausetime = 0; // CR: used by teleporters
 
@@ -2096,7 +2102,7 @@ export class GibEntity extends BaseEntity {
       return;
     }
 
-    const damage = entity.health;
+    const damagePoints = entity.health;
 
     entity.resetThinking();
     entity.setModel(headModel);
@@ -2106,13 +2112,13 @@ export class GibEntity extends BaseEntity {
     entity.solid = solid.SOLID_NOT;
     entity.view_ofs = new Vector(0.0, 0.0, 8.0);
     entity.setSize(new Vector(-16.0, -16.0, 0.0), new Vector(16.0, 16.0, 56.0));
-    entity.velocity = VelocityForDamage(damage);
+    entity.velocity = VelocityForDamage(damagePoints);
     entity.origin[2] -= 24.0;
     entity.flags &= ~flags.FL_ONGROUND;
     entity.avelocity = (new Vector(0.0, 600.0, 0.0)).multiply(crandom());
     entity.deadflag = dead.DEAD_DEAD;
 
-    GibEntity.throwGibs(entity, damage);
+    GibEntity.throwGibs(entity, damagePoints);
 
     if (playSound) {
       entity.startSound(channel.CHAN_VOICE, Math.random() < 0.5 ? "player/gib.wav" : "player/udeath.wav", 1.0, attn.ATTN_NONE);

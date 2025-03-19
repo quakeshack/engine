@@ -5,7 +5,7 @@ import BaseEntity from "../entity/BaseEntity.mjs";
 import BaseMonster from "../entity/monster/BaseMonster.mjs";
 import { PlayerEntity } from "../entity/Player.mjs";
 import { ServerGameAPI } from "../GameAPI.mjs";
-import { EntityWrapper } from "./MiscHelpers.mjs";
+import { EntityWrapper, Serializer } from "./MiscHelpers.mjs";
 
 /**
  * Game-wide AI state, used to coordinate AI communication.
@@ -130,6 +130,10 @@ export class QuakeEntityAI extends EntityAI {
   constructor(entity) {
     super(entity);
 
+    this._serializer = new Serializer(this);
+
+    this._serializer.startFields();
+
     /** @private */
     this._searchTime = 0;
     /** @type {?BaseEntity} previous acquired target, fallback for dead enemy @private */
@@ -146,6 +150,8 @@ export class QuakeEntityAI extends EntityAI {
 
     /** @private */
     this._initialized = false;
+
+    this._serializer.endFields();
 
     Object.seal(this);
   }
@@ -496,7 +502,7 @@ export class QuakeEntityAI extends EntityAI {
 
   _checkAnyAttack(isEnemyVisible) { // QuakeC: ai.qc/CheckAnyAttack
     if (!isEnemyVisible) {
-      return;
+      return null;
     }
 
     return this._entity.checkAttack();

@@ -21,7 +21,11 @@ export class TriggerFieldEntity extends BaseEntity {
   static classname = 'subs_triggerfield';
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.flags = triggerFieldFlags.TFF_NONE;
+
+    this._serializer.endFields();
   }
 
   spawn() {
@@ -74,10 +78,14 @@ export class DelayedThinkEntity extends BaseEntity {
   static classname = 'subs_delayedthink';
 
   _declareFields() {
+    this._serializer.startFields();
+
     /** @type {BaseEntity} activator entity */
     this.activator = null;
     /** @type {number} delay in seconds */
     this.delay = 0;
+
+    this._serializer.endFields();
 
     this._sub = new Sub(this);
   }

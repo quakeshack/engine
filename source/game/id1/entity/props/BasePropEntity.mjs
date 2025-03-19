@@ -37,6 +37,8 @@ export default class BasePropEntity extends BaseEntity {
   _declareFields() {
     super._declareFields();
 
+    this._serializer.startFields();
+
     /** @type {number} either a cd track number or sound number */
     this.sounds = 0;
     /** @type {?string} contains filename to play */
@@ -65,6 +67,8 @@ export default class BasePropEntity extends BaseEntity {
     this.delay = 0;
     /** @type {number} speed in units */
     this.speed = 0;
+
+    this._serializer.endFields();
 
     // we need sub for movement stuff
     this._sub = new Sub(this);

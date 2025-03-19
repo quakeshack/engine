@@ -37,7 +37,11 @@ export class IntermissionCameraEntity extends BaseEntity {
   static classname = 'info_intermission';
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.mangle = new Vector();
+
+    this._serializer.endFields();
   }
 };
 
@@ -64,8 +68,12 @@ export class BaseLightEntity extends BaseEntity {
   static START_OFF = 1;
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.light_lev = 0;
     this.style = 0;
+
+    this._serializer.endFields();
   }
 
   use() {
@@ -245,7 +253,11 @@ export class FireballEntity extends BaseEntity {
   static classname = 'misc_fireball_fireball';
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.speed = 1000;
+
+    this._serializer.endFields();
   }
 
   get netname() {
@@ -280,7 +292,11 @@ export class FireballSpawnerEntity extends BaseEntity {
   static classname = 'misc_fireball';
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.speed = 1000;
+
+    this._serializer.endFields();
   }
 
   _precache() {
@@ -529,7 +545,11 @@ export class BaseBarrelEntity extends BaseEntity {
   }
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.health = 20;
+
+    this._serializer.endFields();
 
     this._damageHandler = new DamageHandler(this);
     this._damageInflictor = new DamageInflictor(this);
@@ -595,10 +615,14 @@ export class PathCornerEntity extends BaseEntity {
   static classname = 'path_corner';
 
   _declareFields() {
+    this._serializer.startFields();
+
     /** @type {number} The number of seconds to spend standing or bowing for path_stand or path_bow */
     this.pausetime = 0;
     /** @type {number} Copied over to enemies or func_train entities */
     this.wait = 0;
+
+    this._serializer.endFields();
   }
 
   /**
@@ -610,7 +634,7 @@ export class PathCornerEntity extends BaseEntity {
       return;
     }
 
-    if (!otherEntity.movetarget.equals(this)) {
+    if (!this.equals(otherEntity.movetarget)) {
       return;
     }
 
@@ -641,7 +665,12 @@ export class TrapSpikeshooterEntity extends BaseEntity {
   static SPAWNFLAG_LASER = 2;
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.wait = 0;
+
+    this._serializer.endFields();
+
     this._sub = new Sub(this);
   }
 
@@ -701,10 +730,14 @@ export class BubbleSpawnerEntity extends BaseEntity {
   static classname = 'misc_bubble_spawner';
 
   _declareFields() {
+    this._serializer.startFields();
+
     /** @type {number} how many bubbles to spawn */
     this.bubble_count = 0;
     /** @type {number} how many map units to spread them apart upon spawning */
     this.spread = 0;
+
+    this._serializer.endFields();
   }
 
   _precache() {

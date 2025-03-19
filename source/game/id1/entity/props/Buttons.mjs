@@ -33,9 +33,13 @@ export class ButtonEntity extends BasePropEntity {
   _declareFields() {
     super._declareFields();
 
+    this._serializer.startFields();
+
     this.health = 0;
     this.max_health = 0;
     this.bloodcolor = 0; // FIXME: hardcoded color code (0)
+
+    this._serializer.endFields();
 
     this._damageHandler = new DamageHandler(this);
   }
@@ -53,7 +57,7 @@ export class ButtonEntity extends BasePropEntity {
     this._sub.calcMove(this.pos1, this.speed, () => this._buttonDone());
     this.frame = 0; // use normal textures
     if (this.health) {
-      self.takedamage = damage.DAMAGE_YES; // can be shot again
+      this.takedamage = damage.DAMAGE_YES; // can be shot again
     }
   }
 

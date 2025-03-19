@@ -7,7 +7,11 @@ export class BodyqueEntity extends BaseEntity {
 
   /** @protected */
   _declareFields() {
+    this._serializer.startFields();
+
     this.colormap = 0;
+
+    this._serializer.endFields();
   }
 };
 
@@ -48,6 +52,8 @@ export class WorldspawnEntity extends BaseEntity {
   static classname = 'worldspawn';
 
   _declareFields() {
+    this._serializer.startFields();
+
     /** @deprecated MAP BUG @private */
     this.sounds = null;
     /** @type {string} wad file containing textures, only used by the compiler tools */
@@ -58,6 +64,8 @@ export class WorldspawnEntity extends BaseEntity {
     this.worldtype = 0;
     /** @type {number} sets gravity */
     this.qs_gravity = 0;
+
+    this._serializer.endFields();
   }
 
   _precache() {

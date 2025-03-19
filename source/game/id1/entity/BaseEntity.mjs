@@ -2,6 +2,19 @@
 
 import { damage, dead, flags, moveType, solid, content, channel, attn } from "../Defs.mjs";
 import { ServerGameAPI } from "../GameAPI.mjs";
+import { Serializer } from "../helper/MiscHelpers.mjs";
+
+class ScheduledThink {
+  constructor(nextThink, callback, identifier, isRequired) {
+    this._serializer = new Serializer(this);
+    this._serializer.startFields();
+    this.nextThink = nextThink;
+    this.callback = callback;
+    this.identifier = identifier;
+    this.isRequired = isRequired;
+    this._serializer.endFields();
+  }
+};
 
 export default class BaseEntity {
   static classname = null;
@@ -29,6 +42,9 @@ export default class BaseEntity {
     this.edict.entity = this;
     this.engine = gameAPI.engine;
     this.game = gameAPI;
+
+    this._serializer = new Serializer(this, this.engine);
+    this._serializer.startFields();
 
     // base settings per Entity
     /**
@@ -112,13 +128,16 @@ export default class BaseEntity {
     /** @type {?import('./Subs.mjs').Sub} @protected */
     this._sub = null; // needs to be initialized optionally
     /** @private */
-    this._states = {};
-    /** @private */
     this._stateNext = null;
     /** @private */
     this._stateCurrent = null;
     /** @private */
     this._scheduledThinks = [];
+
+    this._serializer.endFields();
+
+    /** @private */
+    this._states = {};
 
     /** @type {?import('./Weapons.mjs').DamageHandler} @public */
     this._damageHandler = null; // needs to be initialized optionally
@@ -146,9 +165,12 @@ export default class BaseEntity {
   _declareFields() {
     // allows you to define all fields prior to spawn
     // make sure to prefix private fields with an underscore
+    // make sure to call this._serializer.startFields() and this._serializer.endFields(), otherwise these fields won’t be saved
 
+    // this._serializer.startFields();
     // this._myPrivateField = 123;
     // this.weight = 400;
+    // this._serializer.endFields();
   }
 
   /**
@@ -262,7 +284,7 @@ export default class BaseEntity {
       think.callback = callback;
       think.isRequired = isRequired;
     } else {
-      this._scheduledThinks.push({ nextThink, callback, identifier, isRequired });
+      this._scheduledThinks.push(new ScheduledThink(nextThink, callback, identifier, isRequired));
     }
 
     this._scheduledThinks.sort((a, b) => a.nextThink - b.nextThink);
@@ -743,11 +765,10 @@ export default class BaseEntity {
   }
 
   serialize() {
-    // TODO
+    return this._serializer.serialize();
   }
 
-  // eslint-disable-next-line no-unused-vars
   deserialize(data) {
-    // TODO
+    this._serializer.deserialize(data);
   }
 };

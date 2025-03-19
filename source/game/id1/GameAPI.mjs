@@ -15,6 +15,7 @@ import * as item from "./entity/Items.mjs";
 import BaseEntity from "./entity/BaseEntity.mjs";
 import * as weapon from "./entity/Weapons.mjs";
 import DogMonsterEntity, { qc as dogModelQC } from "./entity/monster/Dog.mjs";
+import { Serializer } from "./helper/MiscHelpers.mjs";
 
 // put all entity classes here:
 const entityRegistry = [
@@ -145,10 +146,14 @@ export class ServerGameAPI {
    * @param {Game.EngineInterface} engineAPI engine exports
    */
   constructor(engineAPI) {
+    this._serializer = new Serializer(this, engineAPI);
+
     this._loadEntityRegistry();
 
     /** @type {Game.EngineInterface} @private */
     this.engine = engineAPI;
+
+    this._serializer.startFields();
 
     this.mapname = null; // Engine API
 
@@ -198,6 +203,8 @@ export class ServerGameAPI {
     /** @type {?string} next map name */
     this.nextmap = null;
 
+    this._serializer.endFields();
+
     this.gameAI = new GameAI(this);
 
     /** @type {?BaseEntity} holds the dead player body chain */
@@ -227,6 +234,7 @@ export class ServerGameAPI {
       noexit: engineAPI.GetCvar('noexit'),
     };
 
+    Object.seal(this._modelData);
     Object.seal(this._cvars);
     Object.seal(this);
   }
@@ -477,11 +485,10 @@ export class ServerGameAPI {
   }
 
   serialize() {
-    // TODO
+    return this._serializer.serialize();
   }
 
-  // eslint-disable-next-line no-unused-vars
   deserialize(data) {
-    // TODO
+    this._serializer.deserialize(data);
   }
 };

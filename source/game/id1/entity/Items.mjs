@@ -47,6 +47,8 @@ export class BaseItemEntity extends BaseEntity {
   }
 
   _declareFields() {
+    this._serializer.startFields();
+
     this.ammo_shells = 0;
     this.ammo_nails = 0;
     this.ammo_rockets = 0;
@@ -65,10 +67,12 @@ export class BaseItemEntity extends BaseEntity {
     /** @deprecated MAP BUG @private */
     this.sounds = null;
 
-    this._sub = new Sub(this);
-
     /** @type {string} sfx to play upon picking it up */
     this.noise = "weapons/lock4.wav";
+
+    this._serializer.endFields();
+
+    this._sub = new Sub(this);
   }
 
   regenerate() { // QuakeC: SUB_regen
@@ -189,7 +193,12 @@ export class BackpackEntity extends BaseItemEntity {
 
   _declareFields() {
     super._declareFields();
+
+    this._serializer.startFields();
+
     this.remove_after = 0;
+
+    this._serializer.endFields();
   }
 
   spawn() {
@@ -655,7 +664,11 @@ export class SigilEntity extends BaseItemEntity {
 
   _declareFields() {
     super._declareFields();
+    this._serializer.startFields();
+
     this.noise = 'misc/runekey.wav';
+
+    this._serializer.endFields();
   }
 
   // eslint-disable-next-line no-unused-vars
@@ -727,7 +740,11 @@ export class HealthItemEntity extends BaseItemEntity {
 
   _declareFields() {
     super._declareFields();
+    this._serializer.startFields();
+
     this.healamount = 0;
+
+    this._serializer.endFields();
   }
 
   get netname() {

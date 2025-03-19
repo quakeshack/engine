@@ -47,8 +47,13 @@ export default class DogMonsterEntity extends WalkMonster {
 
   _declareFields() {
     super._declareFields();
+
+    this._serializer.startFields();
+
     /** @private */
     this._isLeaping = false;
+
+    this._serializer.endFields();
   }
 
   _precache() {

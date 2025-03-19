@@ -22,12 +22,17 @@ export const flag = {
 export class BaseDoorEntity extends BasePropEntity {
   _declareFields() {
     super._declareFields();
+
+    this._serializer.startFields();
+
     /** @type {?BaseDoorEntity} linked door @protected */
     this._linkedDoor = null; // entity (QuakeC: enemy)
     /** @type {?TriggerFieldEntity} trigger field @protected */
     this._triggerField = null; // trigger field
     /** @type {?string} */
     this.noise4 = null;
+
+    this._serializer.endFields();
 
     /** used during linking doors for crossing entity classes @readonly @private */
     this._doormarker = 'door';
@@ -37,9 +42,10 @@ export class BaseDoorEntity extends BasePropEntity {
    * spawns a trigger infront of the door
    * @param {Vector} mins min size
    * @param {Vector} maxs max size
+   * @returns {TriggerFieldEntity} trigger field
    */
   _spawnTriggerField(mins, maxs) {
-    this.engine.SpawnEntity(TriggerFieldEntity.classname, {
+    return this.engine.SpawnEntity(TriggerFieldEntity.classname, {
       owner: this,
       mins,
       maxs,
@@ -306,6 +312,8 @@ export class DoorEntity extends BaseDoorEntity {
   _declareFields() {
     super._declareFields();
 
+    this._serializer.startFields();
+
     // defaults set in spawn
     this.message = null;
     this.angle = new Vector();
@@ -319,6 +327,8 @@ export class DoorEntity extends BaseDoorEntity {
 
     /** @protected */
     this._doorKeyUsed = false;
+
+    this._serializer.endFields();
 
     this._damageHandler = new DamageHandler(this);
   }
@@ -515,6 +525,9 @@ export class SecretDoorEntity extends BaseDoorEntity {
 
   _declareFields() {
     super._declareFields();
+
+    this._serializer.startFields();
+
     this.mangle = new Vector();
 
     this.t_width = 0;
@@ -526,6 +539,8 @@ export class SecretDoorEntity extends BaseDoorEntity {
 
     this.health = 0;
     this.bloodcolor = 0; // FIXME: hardcoded color code (0)
+
+    this._serializer.endFields();
 
     this._damageHandler = new DamageHandler(this);
   }
