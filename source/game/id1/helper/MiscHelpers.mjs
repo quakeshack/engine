@@ -215,7 +215,6 @@ export class Serializer {
           return value[1].map((v) => deserialize(v));
 
         case Serializer.TYPE_EDICT:
-          console.warn('serialized edict', value[1]);
           return this._engine.GetEdictById(value[1]).entity;
 
         case Serializer.TYPE_FUNCTION: {

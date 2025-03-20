@@ -46,6 +46,10 @@ export default class ArmySoldierMonster extends WalkMonster {
   static _modelDefault = 'progs/soldier.mdl';
   static _modelHead = 'progs/h_guard.mdl';
 
+  get netname() {
+    return 'an army soldier';
+  }
+
   _precache() {
     super._precache();
 

@@ -172,8 +172,8 @@ export default class BaseMonster extends BaseEntity {
     this.solid = solid.SOLID_SLIDEBOX;
     this.movetype = moveType.MOVETYPE_STEP;
 
-    this.setSize(mins, maxs);
     this.setModel(this.constructor._modelDefault);
+    this.setSize(mins, maxs);
 
     this.game.total_monsters++;
     this._ai.spawn();
@@ -199,6 +199,14 @@ export default class BaseMonster extends BaseEntity {
 
   attackSound() {
     // implement: startSound here
+  }
+
+  walk(dist) {
+    if (this._ai.findTarget()) {
+      return;
+    }
+
+    this.moveToGoal(dist);
   }
 
   /**

@@ -2,6 +2,7 @@
 
 import { damage, flags, items, range } from "../Defs.mjs";
 import BaseEntity from "../entity/BaseEntity.mjs";
+import { PathCornerEntity } from "../entity/Misc.mjs";
 import BaseMonster from "../entity/monster/BaseMonster.mjs";
 import { PlayerEntity } from "../entity/Player.mjs";
 import { ServerGameAPI } from "../GameAPI.mjs";
@@ -86,6 +87,11 @@ export class EntityAI extends EntityWrapper {
     console.assert(false, 'implement this');
   }
 
+  findTarget() {
+    // implement this
+    console.assert(false, 'implement this');
+  }
+
   // eslint-disable-next-line no-unused-vars
   use(userEntity) {
     // implement this
@@ -148,6 +154,14 @@ export class QuakeEntityAI extends EntityAI {
       yaw: null,
     };
 
+    Serializer.makeSerializable(this._enemyMetadata, this._engine);
+
+    /** @private */
+    this._lookingLeft = false; // QuakeC: lefty
+
+    /** @private */
+    this._moveDistance = 0;
+
     /** @private */
     this._initialized = false;
 
@@ -157,10 +171,10 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   clear() {
-    super.clear();
-
     this._searchTime = 0;
     this._oldEnemy = null;
+    this._lookingLeft = false;
+    this._moveDistance = 0;
     this._attackState = ATTACK_STATE.AS_NONE;
     this._enemyMetadata.infront = false;
     this._enemyMetadata.range = range.RANGE_FAR;
@@ -185,7 +199,7 @@ export class QuakeEntityAI extends EntityAI {
 
     // check for stuck enemies
     if (!self.walkMove(0, 0)) {
-      self.engine.debugPrint(`${self} stuck in wall at ${self.origin}\n`);
+      self.engine.DebugPrint(`${self} stuck in wall at ${self.origin}\n`);
     }
 
     self.takedamage = damage.DAMAGE_AIM;
@@ -200,11 +214,22 @@ export class QuakeEntityAI extends EntityAI {
     self.flags |= flags.FL_MONSTER;
 
     if (self.target) {
-      // TODO
-    }
+      const target = this._entity.findFirstEntityByFieldAndValue("targetname", self.target);
+      console.assert(target !== null, 'target must resolve');
 
-    self.pausetime = 99999999;
-    self.thinkStand();
+      self.goalentity = self.movetarget = target;
+      self.ideal_yaw = target.origin.copy().subtract(self.origin).toYaw();
+
+      if (target instanceof PathCornerEntity) {
+        self.thinkWalk();
+      } else {
+        self.pausetime = Infinity;
+        self.thinkStand();
+      }
+    } else {
+      self.pausetime = Infinity;
+      self.thinkStand();
+    }
 
     // spread think times so they don't all happen at same time
     self.nextthink = self.nextthink + Math.random() * 0.5;
@@ -253,6 +278,10 @@ export class QuakeEntityAI extends EntityAI {
 
   _checkClient() {
     return this._entity.getNextBestClient();
+  }
+
+  findTarget() {
+    return this._findTarget();
   }
 
   _findTarget() { // QuakeC: ai.qc/FindTarget
@@ -377,7 +406,7 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   _chooseTurn(dest3) { // QuakeC: ai.qc/ChooseTurn
-    // TODO
+    // NOT TO BE IMPLEMENTED, UNUSED
   }
 
   _isFacingIdeal() { // QuakeC: ai.qc/FacingIdeal
@@ -404,8 +433,10 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   walk(dist) { // QuakeC: ai.qc/ai_walk
-    // console.log('AI walk', this._entity.toString(), dist);
-    // TODO
+    this._moveDistance = dist;
+
+    // passing down the logic to the BaseMonster
+    this._entity.walk(dist);
   }
 
   runMelee(){ // QuakeC: ai.qc/ai_run_melee
@@ -427,15 +458,22 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   runSlide() { // QuakeC: ai.qc/ai_run_slide
-    // TODO
+    this._changeYaw();
+
+    if (this._entity.walkMove(this._entity.ideal_yaw + (this._lookingLeft ? 90 : -90), this._moveDistance)) {
+      return;
+    }
+
+    this._lookingLeft = !this._lookingLeft;
+
+    this._entity.walkMove(this._entity.ideal_yaw + (this._lookingLeft ? 90 : -90), this._moveDistance);
   }
 
   run(dist) { // QuakeC: ai.qc/ai_run
     const self = this._entity;
     // console.log('AI run', this._entity.toString(), dist);
-    // TODO
 
-    // movedist = dist;
+    this._moveDistance = dist;
 
     // see if the enemy is dead
     if (self.enemy.health <= 0) {
@@ -524,6 +562,18 @@ export class QuakeEntityAI extends EntityAI {
   face() {
     this._entity.ideal_yaw = this._entity.enemy.origin.copy().subtract(this._entity.origin).toYaw();
     this._entity.changeYaw();
+  }
+
+  forward(dist) {
+    this._entity.walkMove(this._entity.angles[1] + 180, dist);
+  }
+
+  back(dist) {
+    this._entity.walkMove(this._entity.angles[1], dist);
+  }
+
+  pain(dist) {
+    this.back(dist);
   }
 
   use(userEntity) {

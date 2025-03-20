@@ -41,6 +41,10 @@ export default class DogMonsterEntity extends WalkMonster {
   static _modelDefault = 'progs/dog.mdl';
   static _modelHead = 'progs/h_dog.mdl';
 
+  get netname() {
+    return 'a dog';
+  }
+
   _newEntityAI() {
     return new QuakeEntityAI(this);
   }

@@ -300,8 +300,10 @@ SV.Edict = class Edict {
     }
 
     // FIXME: interfaces, edict, entity
-    const goal = this.entity.goalentity.edict ? this.entity.goalentity.edict : this.entity.goalentity;
-    const enemy = this.entity.enemy.edict ? this.entity.enemy.edict : this.entity.enemy;
+    const goal = this.entity.goalentity?.edict ? this.entity.goalentity.edict : this.entity.goalentity;
+    const enemy = this.entity.enemy?.edict ? this.entity.enemy.edict : this.entity.enemy;
+
+    console.assert(goal !== null, 'must have goal for moveToGoal');
 
     if (enemy !== null && !enemy.isWorld() && SV.CloseEnough(this, goal, dist)) {
       return false;

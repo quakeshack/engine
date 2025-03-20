@@ -291,6 +291,7 @@ class MainMenu extends BaseMenu {
   * breaks in QuakeC, writing to entities of which the data structures are not existing yet/anymore
   * breaks in QuakeJS, when objects get serialized or nested more complicated structures
 * added a magic serializer class
+* more AI related work
 
 ### 2025-03-16
 

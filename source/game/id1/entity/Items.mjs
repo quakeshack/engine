@@ -642,14 +642,15 @@ export class SigilEntity extends BaseItemEntity {
     return 'the rune';
   }
 
-  get classname() {
-    // HACK: somewhat shitty hack to not break original Quake maps
-    if (this.spawnflags === 15) {
-      return this.constructor.classname + ' (used)';
-    }
+  // CR: I’m not sure at all if this logic is actually being used (see QuakeC: items.qc/sigil_touch)
+  // get classname() {
+  //   // HACK: somewhat shitty hack to not break original Quake maps
+  //   if (this.spawnflags === 15) {
+  //     return this.constructor.classname + ' (used)';
+  //   }
 
-    return this.constructor.classname;
-  }
+  //   return this.constructor.classname;
+  // }
 
   _precache() {
     this.engine.PrecacheSound('misc/runekey.wav');
@@ -913,10 +914,10 @@ export class BaseWeaponEntity extends BaseItemEntity {
   }
 
   spawn() {
-    this.setModel(this.constructor._model);
     this.items = this.constructor._weapon;
     this.weapon = this.constructor._weapon;
     this.regeneration_time = 30.0;
+    this.setModel(this.constructor._model);
     this.setSize(new Vector(-16.0, -16.0, 0.0), new Vector(16.0, 16.0, 56.0));
 
     super.spawn();

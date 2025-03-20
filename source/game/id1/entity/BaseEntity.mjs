@@ -23,10 +23,6 @@ export default class BaseEntity {
     return this.constructor.classname;
   }
 
-  set classname(_) {
-    throw new TypeError('Cannot set property classname');
-  }
-
   get edict() {
     return this.edict_wf.deref();
   }
@@ -444,6 +440,7 @@ export default class BaseEntity {
   /**
    * Sets bounding box sizes.
    * The engine will relink, check collisions and call touch, if applicable.
+   * Always use setSize _after_ setModel.
    * @param {Vector} mins the nearest point
    * @param {Vector} maxs the farthest point
    */
