@@ -49,6 +49,9 @@ IN.StartupTouchpad = function() {
     return;
   }
 
+  // disabled for now, we need proper feature selection for this
+  return;
+
   if (!window.matchMedia("(pointer: coarse)").matches) {
     return;
   }

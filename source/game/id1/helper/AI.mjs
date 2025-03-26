@@ -344,7 +344,8 @@ export class QuakeEntityAI extends EntityAI {
     if (!(self.enemy instanceof PlayerEntity)) {
       self.enemy = self.enemy.enemy;
       if (!(self.enemy instanceof PlayerEntity)) {
-        self.enemy = null; // this._game.worldspawn; // CR: unsure about null or worldspawn
+        self.enemy = this._game.worldspawn;
+        // self.enemy = null; // this._game.worldspawn; // CR: unsure about null or worldspawn
         return false;
       }
     }
@@ -413,6 +414,10 @@ export class QuakeEntityAI extends EntityAI {
     const delta = anglemod(this._entity.angles[1] - this._entity.ideal_yaw);
 
     return !(delta > 45 && delta < 315);
+  }
+
+  painforward(dist) { // QuakeC: ai.qc/ai_painforward
+    this._entity.walkMove(this._entity.ideal_yaw, dist);
   }
 
   /**
