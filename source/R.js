@@ -151,7 +151,7 @@ R.PushDlights = function() {
     }
   }
 
-  GL.Bind(0, R.dlightmap_texture);
+  GL.Bind(0, R.dlightmap_rgba_texture);
   for (i = 0; i <= 1023; ++i) {
     if (R.lightmap_modified[i] !== true) {
       continue;
@@ -160,8 +160,7 @@ R.PushDlights = function() {
       if (R.lightmap_modified[j] !== true) {
         continue;
       }
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, i, 1024, j - i + 1, gl.ALPHA, gl.UNSIGNED_BYTE,
-          R.dlightmaps.subarray(i << 10, (j + 1) << 10));
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, i, 1024, j - i + 1, gl.RGBA, gl.UNSIGNED_BYTE, R.dlightmaps_rgba.subarray(i * 1024 * 4, (j + 1) * 1024 * 4));
       break;
     }
     break;
@@ -1154,6 +1153,11 @@ R.InitTextures = function() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
+  R.dlightmap_rgba_texture = gl.createTexture();
+  GL.Bind(0, R.dlightmap_rgba_texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
   R.lightstyle_texture_a = gl.createTexture();
   GL.Bind(0, R.lightstyle_texture_a);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -1283,11 +1287,12 @@ R.NewMap = function() {
   R.ClearParticles();
   R.BuildLightmaps();
 
-  for (let i = 0; i <= 1048575; ++i) {
-    R.dlightmaps[i] = 0;
+  for (let i = 0; i <= R.dlightmaps_rgba.length; ++i) {
+    R.dlightmaps_rgba[i] = 0;
   }
-  GL.Bind(0, R.dlightmap_texture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, 1024, 1024, 0, gl.ALPHA, gl.UNSIGNED_BYTE, null);
+
+  GL.Bind(0, R.dlightmap_rgba_texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1024, 1024, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 };
 
 R.TimeRefresh_f = function() {
@@ -1740,44 +1745,44 @@ R.AllocParticles = function(count) {
 
 R.lightmap_modified = [];
 R.lightmaps = new Uint8Array(new ArrayBuffer(4194304));
-R.dlightmaps = new Uint8Array(new ArrayBuffer(1048576));
+R.dlightmaps_rgba = new Uint8Array(new ArrayBuffer(1048576 * 4));
 
 R.AddDynamicLights = function(surf) {
   const smax = (surf.extents[0] >> 4) + 1;
   const tmax = (surf.extents[1] >> 4) + 1;
   const size = smax * tmax;
-  const tex = CL.state.worldmodel.texinfo[surf.texinfo];
-  let i; let light; let s; let t;
-  let dist; let rad; let minlight; const local = []; let sd; let td;
 
   const blocklights = [];
-  for (i = 0; i < size; ++i) {
+  for (let i = 0; i < size * 3; ++i) {
     blocklights[i] = 0;
   }
 
-  for (i = 0; i <= 31; ++i) {
+  for (let i = 0; i <= 31; ++i) {
     if (((surf.dlightbits >>> i) & 1) === 0) {
       continue;
     }
-    light = CL.dlights[i];
-    dist = light.origin.dot(surf.plane.normal) - surf.plane.dist;
-    rad = light.radius - Math.abs(dist);
-    minlight = light.minlight;
+    const light = CL.dlights[i];
+    let dist = light.origin.dot(surf.plane.normal) - surf.plane.dist;
+    const rad = light.radius - Math.abs(dist);
+    let minlight = light.minlight;
     if (rad < minlight) {
       continue;
     }
     minlight = rad - minlight;
     const impact = light.origin.copy().subtract(surf.plane.normal.copy().multiply(dist));
-    local[0] = impact.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0];
-    local[1] = impact.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1];
-    for (t = 0; t < tmax; ++t) {
-      td = local[1] - (t << 4);
+    const tex = CL.state.worldmodel.texinfo[surf.texinfo];
+    const local = [
+      impact.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0],
+      impact.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1]
+    ];
+    for (let t = 0; t < tmax; ++t) {
+      let td = local[1] - (t << 4);
       if (td < 0.0) {
         td = -td;
       }
       td = Math.floor(td);
-      for (s = 0; s < smax; ++s) {
-        sd = local[0] - (s << 4);
+      for (let s = 0; s < smax; ++s) {
+        let sd = local[0] - (s << 4);
         if (sd < 0) {
           sd = -sd;
         }
@@ -1788,23 +1793,31 @@ R.AddDynamicLights = function(surf) {
           dist = td + (sd >> 1);
         }
         if (dist < minlight) {
-          blocklights[t * smax + s] += Math.floor((rad - dist) * 256.0);
+          const bl = Math.floor((rad - dist) * 256.0);
+          const pos = (t * smax + s) * 3;
+          for (let i = 0; i < 3; i++) {
+            blocklights[pos + i] += bl * light.color[i];
+          }
         }
       }
     }
   }
 
-  i = 0;
-  let dest; let bl;
-  for (t = 0; t < tmax; ++t) {
+  for (let t = 0, i = 0; t < tmax; ++t) {
     R.lightmap_modified[surf.light_t + t] = true;
-    dest = ((surf.light_t + t) << 10) + surf.light_s;
-    for (s = 0; s < smax; ++s) {
-      bl = blocklights[i++] >> 7;
-      if (bl > 255) {
-        bl = 255;
+    const dest = ((surf.light_t + t) << 10) + surf.light_s;
+    for (let s = 0; s < smax; ++s) {
+      const dldest = (dest + s) * 4;
+      const blrgb = [
+        Math.min(Math.floor(blocklights[i * 3] / 128), 255),
+        Math.min(Math.floor(blocklights[i * 3 + 1] / 128), 255),
+        Math.min(Math.floor(blocklights[i * 3 + 2] / 128), 255),
+      ];
+      // console.log(blrgb);
+      i++;
+      for (let i = 0; i < 3; i++) {
+        R.dlightmaps_rgba[dldest + i] = blrgb[i];
       }
-      R.dlightmaps[dest + s] = bl;
     }
   }
 };
@@ -1812,12 +1825,15 @@ R.AddDynamicLights = function(surf) {
 R.RemoveDynamicLights = function(surf) {
   const smax = (surf.extents[0] >> 4) + 1;
   const tmax = (surf.extents[1] >> 4) + 1;
-  let dest; let s; let t;
-  for (t = 0; t < tmax; ++t) {
+  for (let t = 0; t < tmax; ++t) {
     R.lightmap_modified[surf.light_t + t] = true;
-    dest = ((surf.light_t + t) << 10) + surf.light_s;
-    for (s = 0; s < smax; ++s) {
-      R.dlightmaps[dest + s] = 0;
+    const dest = ((surf.light_t + t) << 10) + surf.light_s;
+    for (let s = 0; s < smax; ++s) {
+      const dldest = (dest + s) * 4;
+      for (let i = 0; i < 3; i++) {
+        R.dlightmaps_rgba[dldest + i] = 0;
+      }
+      R.dlightmaps_rgba[dldest + 3] = 255; // fully opaque
     }
   }
 };
@@ -1917,7 +1933,7 @@ R.DrawBrushModel = function(e) {
   } else {
     GL.Bind(program.tLightmap, R.lightmap_texture);
   }
-  GL.Bind(program.tDlight, ((R.flashblend.value === 0) && (clmodel.submodel === true)) ? R.dlightmap_texture : R.null_texture);
+  GL.Bind(program.tDlight, ((R.flashblend.value === 0) && (clmodel.submodel === true)) ? R.dlightmap_rgba_texture : R.null_texture);
   GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
   GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
   for (let i = 0; i < clmodel.chains.length; ++i) {
@@ -1989,7 +2005,7 @@ R.DrawWorld = function() {
     GL.Bind(program.tLightmap, R.lightmap_texture);
   }
   if (R.flashblend.value === 0) {
-    GL.Bind(program.tDlight, R.dlightmap_texture);
+    GL.Bind(program.tDlight, R.dlightmap_rgba_texture);
   } else {
     GL.Bind(program.tDlight, R.null_texture);
   }

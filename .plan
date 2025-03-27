@@ -288,6 +288,7 @@ class MainMenu extends BaseMenu {
 ### 2025-03-27
 
 * fixed the zombie player issue after a disconnect
+* used a three hours plane ride to implement colored dlights
 
 ### 2025-03-20
 

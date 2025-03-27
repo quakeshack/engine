@@ -595,7 +595,7 @@ CL.ClearState = function() {
 
   CL.dlights = [];
   for (i = 0; i <= 31; ++i) {
-    CL.dlights[i] = {radius: 0.0, die: 0.0};
+    CL.dlights[i] = {radius: 0.0, die: 0.0, color: new Vector(1, 1, 1), decay: 0.0, minlight: 0.0, key: 0}; // TODO: Dlight class
   }
 
   CL.lightstyle = [];
@@ -714,8 +714,8 @@ CL.PrintEntities_f = function() {
   }
 };
 
-CL.AllocDlight = function(key) {
-  let i; let dl;
+CL.AllocDlight = function(key) { // TODO: Dlight class
+  let dl, i = 0;
   if (key !== 0) {
     for (i = 0; i <= 31; ++i) {
       if (CL.dlights[i].key === key) {
@@ -857,6 +857,7 @@ CL.RelinkEntities = function() {
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.minlight = 32.0;
       dl.die = CL.state.time + 0.1;
+      // dl.color = new Vector(1.0, 0.95, 0.85);
     }
     if ((ent.effects & Mod.effects.brightlight) !== 0) {
       dl = CL.AllocDlight(i);
@@ -869,6 +870,7 @@ CL.RelinkEntities = function() {
       dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.die = CL.state.time + 0.001;
+      // dl.color = new Vector(0.5, 0.5, 1.0);
     }
     if ((ent.model.flags & Mod.flags.gib) !== 0) {
       R.RocketTrail(oldorg, ent.origin, 2);
