@@ -285,6 +285,10 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-03-27
+
+* fixed the zombie player issue after a disconnect
+
 ### 2025-03-20
 
 * save/load

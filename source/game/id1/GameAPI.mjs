@@ -364,15 +364,15 @@ export class ServerGameAPI {
       return; // someone else quit the game already
     }
 
-    this.gameover = true;
-
     if (this.timelimit > 0 && this.time >= this.timelimit * 60) {
+      this.gameover = true;
       this.engine.BroadcastPrint(`Timelimit reached.\n`);
       this.loadNextMap();
       return;
     }
 
     if (this.fraglimit > 0 && playerEntity.frags > this.fraglimit) {
+      this.gameover = true;
       this.engine.BroadcastPrint(`${playerEntity.netname} triggered the fraglimit.\n`);
       this.loadNextMap();
       return;
