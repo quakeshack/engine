@@ -2319,7 +2319,7 @@ SV.PhysicsEngineUnregisterEdict = function(ent) {
   }
 };
 
-// eslint-disable-next-line no-unused-vars
+ 
 SV.PhysicsEngineRegisterEdict = function(edict) {
   const classname = edict.entity.classname;
 

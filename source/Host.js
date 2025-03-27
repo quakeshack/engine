@@ -1,4 +1,4 @@
-/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, ED, SZ, Shack, Game */
+/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, SZ, Shack, Game */
 
 // eslint-disable-next-line no-global-assign
 Host = {};
@@ -154,7 +154,7 @@ Host.DropClient = function(client, crash, reason) {
   client.netconnection = null;
   client.active = false;
   SV.SetClientName(client, '');
-  client.old_frags = -999999;
+  client.old_frags = -Infinity;
 
   --NET.activeconnections;
   let i; const num = client.num;

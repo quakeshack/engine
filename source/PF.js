@@ -13,8 +13,7 @@ PF._wrapFunctions = [];
 
 /**
  * Will generate a function that can be exposed to the QuakeC VM (so called built-in function)
- *
- * @param {String} name
+ * @param {string} name
  * @param {Function} func
  * @param {PR.etype[]} argTypes
  * @param {PR.etype} returnType

@@ -52,82 +52,82 @@ IN.StartupTouchpad = function() {
   // disabled for now, we need proper feature selection for this
   return;
 
-  if (!window.matchMedia("(pointer: coarse)").matches) {
-    return;
-  }
+  // if (!window.matchMedia("(pointer: coarse)").matches) {
+  //   return;
+  // }
 
-  Con.Print(`IN.StartupTouchpad: detected coarse input, setting up virtual joysticks\n`);
+  // Con.Print(`IN.StartupTouchpad: detected coarse input, setting up virtual joysticks\n`);
 
-  // Create a semi-joystick in the left zone
-  const moveJoystick = nipplejs.create({
-    zone: $leftZone,
-    mode: 'semi',          // 'semi' means the joystick follows your finger in that zone
-    size: 100,             // Diameter of the joystick
-    threshold: 0.5,        // Before triggering movement events
-    color: 'white',
-    fadeTime: 250,         // How quickly the joystick fades out after release
-    reset: true,
-  });
+  // // Create a semi-joystick in the left zone
+  // const moveJoystick = nipplejs.create({
+  //   zone: $leftZone,
+  //   mode: 'semi',          // 'semi' means the joystick follows your finger in that zone
+  //   size: 100,             // Diameter of the joystick
+  //   threshold: 0.5,        // Before triggering movement events
+  //   color: 'white',
+  //   fadeTime: 250,         // How quickly the joystick fades out after release
+  //   reset: true,
+  // });
 
-  // Create a semi-joystick in the right zone
-  const lookJoystick = nipplejs.create({
-    zone: document.getElementById('right-zone'),
-    mode: 'semi',
-    size: 100,
-    threshold: 0.5,
-    color: 'white',
-    fadeTime: 250,
-    reset: true,
-  });
+  // // Create a semi-joystick in the right zone
+  // const lookJoystick = nipplejs.create({
+  //   zone: document.getElementById('right-zone'),
+  //   mode: 'semi',
+  //   size: 100,
+  //   threshold: 0.5,
+  //   color: 'white',
+  //   fadeTime: 250,
+  //   reset: true,
+  // });
 
-  const touchpadData = {
-    move: {
-      vector: [0.0, 0.0],
-      force: 0.0,
-    },
-    look: {
-      vector: [0.0, 0.0],
-      force: 0.0,
-    },
-  };
+  // const touchpadData = {
+  //   move: {
+  //     vector: [0.0, 0.0],
+  //     force: 0.0,
+  //   },
+  //   look: {
+  //     vector: [0.0, 0.0],
+  //     force: 0.0,
+  //   },
+  // };
 
-  moveJoystick.on('move', (evt, data) => {
-    const d = touchpadData.move;
+  // moveJoystick.on('move', (evt, data) => {
+  //   const d = touchpadData.move;
 
-    d.vector[0] = data.vector.x * data.distance;
-    d.vector[1] = data.vector.y * data.distance;
+  //   d.vector[0] = data.vector.x * data.distance;
+  //   d.vector[1] = data.vector.y * data.distance;
 
-    IN.moveJoystick = data;
-  });
+  //   IN.moveJoystick = data;
+  // });
 
-  moveJoystick.on('end', () => {
-    const d = touchpadData.move;
+  // moveJoystick.on('end', () => {
+  //   const d = touchpadData.move;
 
-    d.vector[0] = 0.0;
-    d.vector[1] = 0.0;
-    d.force = 0.0;
-  });
+  //   d.vector[0] = 0.0;
+  //   d.vector[1] = 0.0;
+  //   d.force = 0.0;
+  // });
 
-  lookJoystick.on('move', (evt, data) => {
-    const d = touchpadData.look;
+  // lookJoystick.on('move', (evt, data) => {
+  //   const d = touchpadData.look;
 
-    d.vector[0] = data.vector.x * data.distance;
-    d.vector[1] = data.vector.y * data.distance;
+  //   d.vector[0] = data.vector.x * data.distance;
+  //   d.vector[1] = data.vector.y * data.distance;
 
-    IN.lookJoystick = data;
-  });
+  //   IN.lookJoystick = data;
+  // });
 
-  lookJoystick.on('end', () => {
-    const d = touchpadData.look;
-    d.vector[0] = 0.0;
-    d.vector[1] = 0.0;
-    d.force = 0.0;
-  });
+  // lookJoystick.on('end', () => {
+  //   const d = touchpadData.look;
+  //   d.vector[0] = 0.0;
+  //   d.vector[1] = 0.0;
+  //   d.force = 0.0;
+  // });
 
-  IN._touchpadData = touchpadData;
+  // IN._touchpadData = touchpadData;
 
-  $leftZone.style.display = 'block';
-  $rightZone.style.display = 'block';
+  // $leftZone.style.display = 'block';
+  // $rightZone.style.display = 'block';
 }
 
 IN._TouchpadHandleLook = function() {

@@ -118,7 +118,7 @@ export class DamageInflictor extends EntityWrapper {
    * @private
    * @param {number} damage damage points
    * @param {Vector} direction shooting direction
-   * @param {*} angleVectors v_angle.angleVectors (forward, right, up)
+   * @param {Vector.DirectionalVectors} angleVectors v_angle.angleVectors (forward, right, up)
    * @param {*} trace traceline result
    */
   _traceAttack(damage, direction, angleVectors, trace) {

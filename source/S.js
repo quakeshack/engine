@@ -386,6 +386,8 @@ S = {
   /**
    * Picks or finds an available channel for a new sound to Play on.
    * Possibly kills an older channel from same entnum/entchannel.
+   * @param entnum
+   * @param entchannel
    */
   PickChannel(entnum, entchannel) {
     let i;
@@ -527,6 +529,7 @@ S = {
 
   /**
    * Precache a sound by name. Optionally load it if precache cvar is set.
+   * @param name
    */
   PrecacheSound(name) {
     if (this._nosound.value !== 0) {
@@ -574,6 +577,7 @@ S = {
 
   /**
    * Actually load sound data and decode it.
+   * @param sfx
    */
   async LoadSound(sfx) {
     if (!this._started || this._nosound.value !== 0) {

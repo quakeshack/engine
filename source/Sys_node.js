@@ -107,7 +107,7 @@ Sys = class Sys {
 
   /**
    * Returns the time elapsed since initialization.
-   * @return {number} - Elapsed time in seconds.
+   * @returns {number} - Elapsed time in seconds.
    */
   static FloatTime() {
     return Date.now() * 0.001 - Sys.oldtime;

@@ -406,6 +406,7 @@ export class QuakeEntityAI extends EntityAI {
     return dot > 0.3;
   }
 
+  // eslint-disable-next-line no-unused-vars
   _chooseTurn(dest3) { // QuakeC: ai.qc/ChooseTurn
     // NOT TO BE IMPLEMENTED, UNUSED
   }

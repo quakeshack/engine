@@ -1488,6 +1488,8 @@ PR.SetString = function(ofs, s, length = null) {
 };
 
 /**
+ * @param s
+ * @param length
  * @deprecated
  */
 PR.NewString = function(s, length) {

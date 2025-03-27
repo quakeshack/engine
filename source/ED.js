@@ -1,4 +1,4 @@
-/* global ED, Host, Con, COM, Host, Cmd, Q, SV, Sys, Def, PR */
+/* global ED, Con, COM, Cmd, Q, SV, Sys, Def, PR */
 
 // eslint-disable-next-line no-global-assign
 ED = {};
@@ -59,44 +59,44 @@ ED.Free = function(ed) { // TODO: move to SV.Edict
 /**
  * Retrieves the global definition at the specified offset.
  * @param {number} ofs - The offset to retrieve.
- * @return {Object} - The global definition.
+ * @returns {object} - The global definition.
  */
 ED.GlobalAtOfs = function(ofs) {
   return PR.globaldefs.find((def) => def.ofs === ofs);
 };
 
 /**
-* Retrieves the field definition at the specified offset.
-* @param {number} ofs - The offset to retrieve.
-* @return {Object} - The field definition.
-*/
+ * Retrieves the field definition at the specified offset.
+ * @param {number} ofs - The offset to retrieve.
+ * @returns {object} - The field definition.
+ */
 ED.FieldAtOfs = function(ofs) {
   return PR.fielddefs.find((def) => def.ofs === ofs);
 };
 
 /**
-* Finds a field definition by name.
-* @param {string} name - The field name.
-* @return {Object} - The field definition.
-*/
+ * Finds a field definition by name.
+ * @param {string} name - The field name.
+ * @returns {object} - The field definition.
+ */
 ED.FindField = function(name) {
   return PR.fielddefs.find((def) => PR.GetString(def.name) === name);
 };
 
 /**
-* Finds a global definition by name.
-* @param {string} name - The global name.
-* @return {Object} - The global definition.
-*/
+ * Finds a global definition by name.
+ * @param {string} name - The global name.
+ * @returns {object} - The global definition.
+ */
 ED.FindGlobal = function(name) {
   return PR.globaldefs.find((def) => PR.GetString(def.name) === name);
 };
 
 /**
-* Finds a function definition by name.
-* @param {string} name - The function name.
-* @return {number} - The function index.
-*/
+ * Finds a function definition by name.
+ * @param {string} name - The function name.
+ * @returns {number} - The function index.
+ */
 ED.FindFunction = function(name) {
   return PR.functions.findIndex((func) => PR.GetString(func.name) === name);
 };

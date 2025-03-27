@@ -3,9 +3,29 @@
 // eslint-disable-next-line no-global-assign
 Vector = class Vector extends Float32Array {
   /**
+   * Directional vectors.
+   */
+  static DirectionalVectors = class DirectionalVectors {
+    /**
+     * @param {Vector} forward forward direction
+     * @param {Vector} right right direction
+     * @param {Vector} up up direction
+     */
+    constructor(forward, right, up) {
+      this.forward = forward;
+      this.right = right;
+      this.up = up;
+      Object.seal(this);
+    }
+  };
+
+  /**
    * Construct a Vector (defaulting to [0.0, 0.0, 0.0]).
    * Extending Array allows Vector to be used much like a numeric array
    * but still benefit from instance methods here.
+   * @param {number} x X
+   * @param {number} y Y
+   * @param {number} z Z
    */
   constructor(x = 0.0, y = 0.0, z = 0.0) {
     super(3);
@@ -18,6 +38,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * A convenience "origin" vector. Returns a fresh [0,0,0].
+   * @returns {Vector} [0, 0, 0]
    */
   static get origin() {
     return new Vector(0.0, 0.0, 0.0); // FIXME: instead of creating new, create a read-only one once
@@ -26,6 +47,7 @@ Vector = class Vector extends Float32Array {
   /**
    * Return a perpendicular direction to `this`.
    * (Equivalent to the old Vec.Perpendicular.)
+   * @returns {Vector} perpendicular vector
    */
   perpendicular() {
     let pos = 0;
@@ -61,6 +83,9 @@ Vector = class Vector extends Float32Array {
   /**
    * Rotate a point around the direction `this`.
    * (Equivalent to the old Vec.RotatePointAroundVector(dir, point, degrees).)
+   * @param {Vector} point point to rotate
+   * @param {number} degrees angle
+   * @returns {Vector} new point
    */
   rotatePointAroundVector(point, degrees) {
     const vectorR = this.perpendicular();
@@ -102,6 +127,8 @@ Vector = class Vector extends Float32Array {
   /**
    * Modulo an angle into [0, 360).
    * (Same as the old Vector.anglemod.)
+   * @param {number} angle angle
+   * @returns {number} angle in [0, 360)
    */
   static anglemod(angle) {
     return ((angle % 360.0) + 360.0) % 360.0;
@@ -110,6 +137,10 @@ Vector = class Vector extends Float32Array {
   /**
    * Equivalent to the old Vec.BoxOnPlaneSide(emins, emaxs, p).
    * Kept as a static because it does not revolve around a single vector.
+   * @param {Vector} emins emins
+   * @param {Vector} emaxs emaxs
+   * @param {*} p p
+   * @returns {number} which side
    */
   static boxOnPlaneSide(emins, emaxs, p) {
     if (p.type <= 2) {
@@ -172,6 +203,7 @@ Vector = class Vector extends Float32Array {
    * Equivalent to the old Vec.AngleVectors(angles, forward, right, up),
    * but now it acts on `this` as the angles array.
    * Returns an object containing forward, right, up as Vecs.
+   * @returns {Vector.DirectionalVectors} directional vectors
    */
   angleVectors() {
     const angles = this;
@@ -205,7 +237,7 @@ Vector = class Vector extends Float32Array {
       cr * cp
     );
 
-    return { forward, right, up };
+    return new Vector.DirectionalVectors(forward, right, up);
   }
 
   toYaw() {
@@ -232,6 +264,9 @@ Vector = class Vector extends Float32Array {
     return pitch;
   }
 
+  /**
+   * @returns {Vector} [pitch, yaw, 0]
+   */
   toAngles() {
     const angles = new Vector();
 
@@ -252,6 +287,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Dot product of this and other.
+   * @param {Vector} other other vector
+   * @returns {number} dot product of this and other
    */
   dot(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -261,6 +298,7 @@ Vector = class Vector extends Float32Array {
   /**
    * Create a copy of this vector.
    * (Equivalent to the old Vec.Copy, but now returns a fresh Vector.)
+   * @returns {Vector} copy of this
    */
   copy() {
     return new Vector(this[0], this[1], this[2]);
@@ -268,8 +306,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Add other to this vector (component-wise).
-   * @param {Vector|Array} other
-   * @returns {this}
+   * @param {Vector|Array} other other vector (or vector alike)
+   * @returns {Vector} this
    */
   add(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -281,8 +319,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Subtract other from this vector (component-wise).
-   * @param {Vector|Array} other
-   * @returns {this}
+   * @param {Vector|Array} other other vector (or vector alike)
+   * @returns {Vector} this
    */
   subtract(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -294,8 +332,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Multiply factor to this vector.
-   * @param {Number} other
-   * @returns {this}
+   * @param {number} factor factor for multiplication
+   * @returns {Vector} this
    */
   multiply(factor) {
     console.assert(typeof factor === 'number', 'not a number');
@@ -307,8 +345,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if other equals this vector.
-   * @param {Vector|Array} other
-   * @returns {this}
+   * @param {Vector|Array} other other vector (or vector alike)
+   * @returns {Vector} this
    */
   equals(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -317,10 +355,10 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if [x, y, z] equals this vector.
-   * @param {number} x
-   * @param {number} y
-   * @param {number} z
-   * @returns {boolean}
+   * @param {number} x X
+   * @param {number} y Y
+   * @param {number} z Z
+   * @returns {boolean} true, if all components are equal
    */
   equalsTo(x, y, z) {
     return this[0] === x && this[1] === y && this[2] === z;
@@ -328,8 +366,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is greater than other.
-   * @param {Vector|Array} other
-   * @returns {this}
+   * @param {Vector|Array} other other vector (or vector alike)
+   * @returns {boolean} true, if all components of this vector are greater than the other vector
    */
   gt(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -338,8 +376,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is greater than or equal to other.
-   * @param {Vector|Array} other
-   * @returns {this}
+   * @param {Vector|Array} other other vector (or vector alike)
+   * @returns {boolean} true, if all components of this vector are greater than or equal to the other vector
    */
   gte(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -348,8 +386,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is less than other.
-   * @param {Vector|Array} other
-   * @returns {this}
+   * @param {Vector|Array} other other vector (or vector alike)
+   * @returns {boolean} true, if all components of this vector are less than the other vector
    */
   lt(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -358,8 +396,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is less than or equal to other.
-   * @param {Vector|Array} other
-   * @returns {this}
+   * @param {Vector|Array} other other vector (or vector alike)
+   * @returns {boolean} true, if all components of this vector are less than or equal to the other vector
    */
   lte(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -368,8 +406,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Overwrite this vector with values from other.
-   * @param {Vector|Array} other
-   * @returns {this}
+   * @param {Vector|Array} other other vector
+   * @returns {Vector} this
    */
   set(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -381,10 +419,10 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Sets this vector to [x, y, z].
-   * @param {number} x
-   * @param {number} y
-   * @param {number} z
-   * @returns {this}
+   * @param {number} x X
+   * @param {number} y Y
+   * @param {number} z Z
+   * @returns {Vector} this
    */
   setTo(x, y, z) {
     console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
@@ -396,7 +434,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Clear this vector.
-   * @returns {this}
+   * @returns {Vector} this
    */
   clear() {
     this[0] = 0.0;
@@ -407,7 +445,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Check if this vector is origin.
-   * @returns {Boolean}
+   * @returns {boolean} true, if this is an origin vector
    */
   isOrigin() {
     return this[0] === 0.0 && this[1] === 0.0 && this[2] === 0.0;
@@ -415,6 +453,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Cross product of this x other, returns a new Vector.
+   * @param {Vector} other other vector
+   * @returns {Vector} cross product of this and the other vector
    */
   cross(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -428,6 +468,7 @@ Vector = class Vector extends Float32Array {
   /**
    * Return the length (magnitude) of this vector.
    * (Not using len, because Array.prototype.length exists.)
+   * @returns {number} the length of this vector
    */
   len() {
     return Math.sqrt(
@@ -439,6 +480,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Normalize this vector in place. Returns the original length.
+   * @returns {number} the original length of this vector
    */
   normalize() {
     const len = this.len();
@@ -455,6 +497,9 @@ Vector = class Vector extends Float32Array {
   /**
    * Multiply two 3×3 rotation matrices (used by rotatePointAroundVector).
    * This remains static because it’s operating on matrix arrays, not `this`.
+   * @param {number[][]} matrixA A
+   * @param {number[][]} matrixB B
+   * @returns {number[][]} matrix
    */
   static concatRotations(matrixA, matrixB) {
     return [
@@ -497,6 +542,8 @@ Vector = class Vector extends Float32Array {
   /**
    * Set `this` from a quaternion, interpreting that quaternion as Euler angles.
    * (Equivalent to the old Vec.SetQuaternion, but we store to `this`.)
+   * @param {number[4]} quat quaternion
+   * @returns {Vector} this
    */
   setQuaternion(quat) {
     const [w, x, y, z] = quat;
@@ -523,6 +570,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Convert these Euler angles (this) into a quaternion [w, x, y, z].
+   * @returns {number[]} quaternion
    */
   toQuaternion() {
     // Expecting [roll, pitch, yaw] in `this`
@@ -552,6 +600,8 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Create a Vector from a quaternion, converting that quaternion to Euler angles.
+   * @param {number[4]} quat quaternion
+   * @returns {Vector} rotation vector
    */
   static fromQuaternion(quat) {
     const v = new Vector();
@@ -561,6 +611,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Quake-style string representation of a Vector
+   * @returns {string} Quake-style string of this vector
    */
   toString() {
     return `${this.map((e) => e.toFixed(1)).join(' ')}`;

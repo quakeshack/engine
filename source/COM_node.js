@@ -7,7 +7,7 @@ const fsPromises = fs.promises; // for open, read, access, readFile, etc.
 /**
  * Loads a file, searching through registered search paths and packs.
  * @param {string} filename - The name of the file to load.
- * @return {ArrayBuffer | undefined} - The file content as an ArrayBuffer or undefined if not found.
+ * @returns {ArrayBuffer | undefined} - The file content as an ArrayBuffer or undefined if not found.
  */
 COM.LoadFile = function(filename) {
   filename = filename.toLowerCase();
@@ -129,7 +129,7 @@ COM.Shutdown = function() {
 /**
  * Loads and parses a pack file.
  * @param {string} packfile - The path to the pack file.
- * @return {Array<Object> | undefined} - The parsed pack file entries or undefined if the file doesn't exist.
+ * @returns {Array<object> | undefined} - The parsed pack file entries or undefined if the file doesn't exist.
  */
 COM.LoadPackFile = function(packfile) {
   if (!fs.existsSync(`data/${packfile}`)) {
