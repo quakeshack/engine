@@ -15,7 +15,7 @@ Vector = class Vector extends Float32Array {
       this.forward = forward;
       this.right = right;
       this.up = up;
-      Object.seal(this);
+      Object.freeze(this);
     }
   };
 
