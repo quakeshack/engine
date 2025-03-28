@@ -233,7 +233,7 @@ GL.LoadPicTexture = function(pic) {
   return texnum;
 };
 
-GL.CreateProgram = function(identifier, uniforms, attribs, textures) {
+GL.CreateProgram = async function(identifier, uniforms, attribs, textures) {
   const p = gl.createProgram();
   const program =
   {
@@ -242,18 +242,22 @@ GL.CreateProgram = function(identifier, uniforms, attribs, textures) {
     attribs: [],
   };
 
+  let source = null;
+
   const vsh = gl.createShader(gl.VERTEX_SHADER);
-  gl.shaderSource(vsh, document.getElementById('vsh' + identifier).text);
+  source = await COM.LoadTextFileAsync(`shaders/${identifier}.vert`);
+  gl.shaderSource(vsh, source);
   gl.compileShader(vsh);
   if (gl.getShaderParameter(vsh, gl.COMPILE_STATUS) !== true) {
-    Sys.Error('Error compiling shader: ' + gl.getShaderInfoLog(vsh));
+    throw new Error('Error compiling shader: ' + gl.getShaderInfoLog(vsh));
   }
 
   const fsh = gl.createShader(gl.FRAGMENT_SHADER);
-  gl.shaderSource(fsh, document.getElementById('fsh' + identifier).text);
+  source = await COM.LoadTextFileAsync(`shaders/${identifier}.frag`);
+  gl.shaderSource(fsh, source);
   gl.compileShader(fsh);
   if (gl.getShaderParameter(fsh, gl.COMPILE_STATUS) !== true) {
-    Sys.Error('Error compiling shader: ' + gl.getShaderInfoLog(fsh));
+    throw new Error('Error compiling shader: ' + gl.getShaderInfoLog(fsh));
   }
 
   gl.attachShader(p, vsh);

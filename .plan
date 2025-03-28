@@ -102,7 +102,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] replace all `>> 1` with `* 2` etc.
 * [X] SV: introduce `Edict` class, the current loose object already got `clear` and `equals` to it
 * [_] SV: introduce `Client` class, the current loose object already got a few methods in it
-* [_] index.html: reorganize shaders
+* [X] index.html: reorganize shaders
 * [_] `CL.state.intermission`/`ExitIntermission`: unsure what happens next on DS
 * [_] Sys: remove onunload hook, it’s deprecated
 
@@ -284,6 +284,10 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-03-28
+
+* reorganized shaders
 
 ### 2025-03-27
 

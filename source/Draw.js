@@ -60,15 +60,15 @@ Draw.Init = async function() {
     Draw.loadingElem.src = Draw.PicToDataURL(Draw.loading);
   }
 
-  GL.CreateProgram('Fill',
+  await GL.CreateProgram('fill',
       ['uOrtho'],
       [['aPosition', gl.FLOAT, 2], ['aColor', gl.UNSIGNED_BYTE, 4, true]],
       []);
-  GL.CreateProgram('Pic',
+  await GL.CreateProgram('pic',
       ['uOrtho'],
       [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
       ['tTexture']);
-  GL.CreateProgram('PicTranslate',
+  await GL.CreateProgram('pic-translate',
       ['uOrtho', 'uTop', 'uBottom'],
       [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
       ['tTexture', 'tTrans']);
@@ -81,13 +81,13 @@ Draw.Char = function(x, y, num, scale = 1.0) {
 };
 
 Draw.Character = function(x, y, num, scale = 1.0) {
-  const program = GL.UseProgram('Pic', true);
+  const program = GL.UseProgram('pic', true);
   GL.Bind(program.tTexture, Draw.char_texture, true);
   Draw.Char(x, y, num, scale);
 };
 
 Draw.String = function(x, y, str, scale = 1.0) {
-  const program = GL.UseProgram('Pic', true);
+  const program = GL.UseProgram('pic', true);
   GL.Bind(program.tTexture, Draw.char_texture, true);
   for (let i = 0; i < str.length; ++i) {
     Draw.Char(x, y, str.charCodeAt(i), scale);
@@ -96,7 +96,7 @@ Draw.String = function(x, y, str, scale = 1.0) {
 };
 
 Draw.StringWhite = function(x, y, str, scale = 1.0) {
-  const program = GL.UseProgram('Pic', true);
+  const program = GL.UseProgram('pic', true);
   GL.Bind(program.tTexture, Draw.char_texture, true);
   for (let i = 0; i < str.length; ++i) {
     Draw.Char(x, y, str.charCodeAt(i) + 128, scale);
@@ -165,7 +165,7 @@ Draw.Pic = function(x, y, pic) {
     return;
   }
 
-  const program = GL.UseProgram('Pic', true);
+  const program = GL.UseProgram('pic', true);
   GL.Bind(program.tTexture, pic.texnum, true);
   GL.StreamDrawTexturedQuad(x, y, pic.width, pic.height, 0.0, 0.0, 1.0, 1.0);
 };
@@ -176,7 +176,7 @@ Draw.PicTranslate = function(x, y, pic, top, bottom) {
   }
 
   GL.StreamFlush();
-  const program = GL.UseProgram('PicTranslate');
+  const program = GL.UseProgram('pic-translate');
   GL.Bind(program.tTexture, pic.texnum);
   GL.Bind(program.tTrans, pic.translate);
 
@@ -192,24 +192,24 @@ Draw.PicTranslate = function(x, y, pic, top, bottom) {
 };
 
 Draw.ConsoleBackground = function(lines) {
-  const program = GL.UseProgram('Pic', true);
+  const program = GL.UseProgram('pic', true);
   GL.Bind(program.tTexture, Draw.conback.texnum, true);
   GL.StreamDrawTexturedQuad(0, lines - VID.height, VID.width, VID.height, 0.0, 0.0, 1.0, 1.0);
 };
 
 Draw.Fill = function(x, y, w, h, c) {
-  GL.UseProgram('Fill', true);
+  GL.UseProgram('fill', true);
   const color = VID.d_8to24table[c];
   GL.StreamDrawColoredQuad(x, y, w, h, color & 0xff, (color >> 8) & 0xff, color >> 16, 255);
 };
 
 Draw.FadeScreen = function() {
-  GL.UseProgram('Fill', true);
+  GL.UseProgram('fill', true);
   GL.StreamDrawColoredQuad(0, 0, VID.width, VID.height, 0, 0, 0, 204);
 };
 
 Draw.BlackScreen = function() {
-  GL.UseProgram('Fill', true);
+  GL.UseProgram('fill', true);
   GL.StreamDrawColoredQuad(0, 0, VID.width, VID.height, 0, 0, 0, 255);
 };
 

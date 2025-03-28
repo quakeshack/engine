@@ -233,6 +233,11 @@ COM.WriteTextFile = function(filename, data) {
   return true;
 };
 
+/**
+ * @param {string} filename virtual filename
+ * @returns {ArrayBuffer} binary content
+ * @deprecated use async version instead
+ */
 COM.LoadFile = function(filename) {
   filename = filename.toLowerCase();
 
@@ -321,6 +326,10 @@ COM.LoadFile = function(filename) {
   return null;
 };
 
+/**
+ * @param {string} filename virtual filename
+ * @returns {Promise<ArrayBuffer>} binary content
+ */
 COM.LoadFileAsync = async function(filename) {
   filename = filename.toLowerCase();
 

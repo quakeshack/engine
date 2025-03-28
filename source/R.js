@@ -59,7 +59,7 @@ R.RenderDlights = function() {
   }
   ++R.dlightframecount;
   gl.enable(gl.BLEND);
-  const program = GL.UseProgram('Dlight'); let l; let a;
+  const program = GL.UseProgram('dlight'); let l; let a;
   gl.bindBuffer(gl.ARRAY_BUFFER, R.dlightvecs);
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 0, 0);
   for (let i = 0; i <= 31; ++i) {
@@ -290,7 +290,7 @@ R.CullBox = function(mins, maxs) {
 };
 
 R.DrawSpriteModel = function(e) {
-  const program = GL.UseProgram('Sprite', true);
+  const program = GL.UseProgram('sprite', true);
   let num = e.frame;
   if ((num >= e.model.numframes) || (num < 0)) {
     Con.DPrint('R.DrawSpriteModel: no such frame ' + num + '\n');
@@ -544,7 +544,7 @@ R.DrawAliasModel = function(e) {
 
   let program;
   if ((e.colormap !== 0) && (clmodel.player === true) && (R.nocolors.value === 0)) {
-    program = GL.UseProgram('Player');
+    program = GL.UseProgram('player');
     let top = (CL.state.scores[e.colormap - 1].colors & 0xf0) + 4;
     let bottom = ((CL.state.scores[e.colormap - 1].colors & 0xf) << 4) + 4;
     if (top <= 127) {
@@ -558,7 +558,7 @@ R.DrawAliasModel = function(e) {
     gl.uniform3f(program.uTop, top & 0xff, (top >> 8) & 0xff, top >> 16);
     gl.uniform3f(program.uBottom, bottom & 0xff, (bottom >> 8) & 0xff, bottom >> 16);
   } else {
-    program = GL.UseProgram('Alias');
+    program = GL.UseProgram('alias');
   }
   gl.uniform3fv(program.uOrigin, e.origin);
   gl.uniformMatrix3fv(program.uAngles, false, GL.RotationMatrix(e.angles[0], e.angles[1], e.angles[2]));
@@ -753,7 +753,7 @@ R.DrawViewModel = function() {
   let ymax = 4.0 * Math.tan(SCR.fov.value * 0.82 * Math.PI / 360.0);
   R.perspective[0] = 4.0 / (ymax * R.refdef.vrect.width / R.refdef.vrect.height);
   R.perspective[5] = 4.0 / ymax;
-  let program = GL.UseProgram('Alias');
+  let program = GL.UseProgram('alias');
   gl.uniformMatrix4fv(program.uPerspective, false, R.perspective);
 
   R.DrawAliasModel(CL.state.viewent);
@@ -761,7 +761,7 @@ R.DrawViewModel = function() {
   ymax = 4.0 * Math.tan(R.refdef.fov_y * Math.PI / 360.0);
   R.perspective[0] = 4.0 / (ymax * R.refdef.vrect.width / R.refdef.vrect.height);
   R.perspective[5] = 4.0 / ymax;
-  program = GL.UseProgram('Alias');
+  program = GL.UseProgram('alias');
   gl.uniformMatrix4fv(program.uPerspective, false, R.perspective);
 
   gl.depthRange(0.0, 1.0);
@@ -774,7 +774,7 @@ R.PolyBlend = function() {
   if (V.blend[3] === 0.0) {
     return;
   }
-  GL.UseProgram('Fill', true);
+  GL.UseProgram('fill', true);
   const vrect = R.refdef.vrect;
   GL.StreamDrawColoredQuad(vrect.x, vrect.y, vrect.width, vrect.height,
       V.blend[0], V.blend[1], V.blend[2], V.blend[3] * 255.0);
@@ -1181,7 +1181,7 @@ R.InitTextures = function() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 };
 
-R.Init = function() {
+R.Init = async function() {
   R.InitTextures();
 
   if (Host.dedicated.value) {
@@ -1203,9 +1203,9 @@ R.Init = function() {
   R.nocolors = Cvar.RegisterVariable('gl_nocolors', '0');
   R.interpolation = Cvar.RegisterVariable('r_interpolation', '0');
 
-  R.InitParticles();
+  await R.InitParticles();
 
-  GL.CreateProgram('Alias',
+  await GL.CreateProgram('alias',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uAlpha'],
       [
         ['aPositionA', gl.FLOAT, 3],
@@ -1214,27 +1214,27 @@ R.Init = function() {
         ['aTexCoord', gl.FLOAT, 2]
       ],
       ['tTexture']);
-  GL.CreateProgram('Brush',
+  await GL.CreateProgram('brush',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uAlpha'],
       [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 4], ['aLightStyle', gl.FLOAT, 4]],
       ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB']);
-  GL.CreateProgram('Dlight',
+  await GL.CreateProgram('dlight',
       ['uOrigin', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uRadius', 'uGamma'],
       [['aPosition', gl.FLOAT, 3]],
       []);
-  GL.CreateProgram('Player',
+  await GL.CreateProgram('player',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uTop', 'uBottom'],
       [['aPositionA', gl.FLOAT, 3], ['aNormal', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
       ['tTexture', 'tPlayer']);
-  GL.CreateProgram('Sprite',
+  await GL.CreateProgram('sprite',
       ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma'],
       [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
       ['tTexture']);
-  GL.CreateProgram('Turbulent',
+  await GL.CreateProgram('turbulent',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uTime'],
       [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
       ['tTexture']);
-  GL.CreateProgram('Warp',
+  await GL.CreateProgram('warp',
       ['uOrtho', 'uTime'],
       [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
       ['tTexture']);
@@ -1275,7 +1275,7 @@ R.Init = function() {
     return new Float32Array(positions);
   }), gl.STATIC_DRAW);
 
-  R.MakeSky();
+  await R.MakeSky();
 };
 
 R.NewMap = function() {
@@ -1325,7 +1325,7 @@ R.ramp1 = [0x6f, 0x6d, 0x6b, 0x69, 0x67, 0x65, 0x63, 0x61];
 R.ramp2 = [0x6f, 0x6e, 0x6d, 0x6c, 0x6b, 0x6a, 0x68, 0x66];
 R.ramp3 = [0x6d, 0x6b, 6, 5, 4, 3];
 
-R.InitParticles = function() {
+R.InitParticles = async function() {
   let i = COM.CheckParm('-particles');
   if (i != null) {
     R.numparticles = Q.atoi(COM.argv[i + 1]);
@@ -1341,7 +1341,7 @@ R.InitParticles = function() {
     R.avelocities[i] = [Math.random() * 2.56, Math.random() * 2.56, Math.random() * 2.56];
   }
 
-  GL.CreateProgram('Particle',
+  await GL.CreateProgram('particle',
       ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma'],
       [['aOrigin', gl.FLOAT, 3], ['aCoord', gl.FLOAT, 2], ['aScale', gl.FLOAT, 1], ['aColor', gl.UNSIGNED_BYTE, 3, true]],
       []);
@@ -1635,7 +1635,7 @@ R.RocketTrail = function(start, end, type) {
 R.DrawParticles = function() {
   GL.StreamFlush();
 
-  GL.UseProgram('Particle'); // const program = GL.UseProgram('Particle');
+  GL.UseProgram('particle');
   gl.depthMask(false);
   gl.enable(gl.BLEND);
 
@@ -1921,7 +1921,7 @@ R.DrawBrushModel = function(e) {
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
   const viewMatrix = GL.RotationMatrix(e.angles[0], e.angles[1], e.angles[2]);
 
-  let program = GL.UseProgram('Brush');
+  let program = GL.UseProgram('brush');
   gl.uniform3fv(program.uOrigin, e.origin);
   gl.uniformMatrix3fv(program.uAngles, false, viewMatrix);
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 44, 0);
@@ -1952,7 +1952,7 @@ R.DrawBrushModel = function(e) {
     return;
   }
 
-  program = GL.UseProgram('Turbulent');
+  program = GL.UseProgram('turbulent');
   gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
   gl.uniformMatrix3fv(program.uAngles, false, viewMatrix);
   gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
@@ -1993,7 +1993,7 @@ R.DrawWorld = function() {
   R.currententity = CL.entities[0];
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
 
-  let program = GL.UseProgram('Brush');
+  let program = GL.UseProgram('brush');
   gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
   gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 44, 0);
@@ -2035,7 +2035,7 @@ R.DrawWorld = function() {
     return;
   }
 
-  program = GL.UseProgram('Turbulent');
+  program = GL.UseProgram('turbulent');
   gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
   gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
   gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
@@ -2223,7 +2223,7 @@ R.WarpScreen = function() {
   gl.finish();
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-  const program = GL.UseProgram('Warp');
+  const program = GL.UseProgram('warp');
   GL.Bind(program.tTexture, R.warptexture);
   gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
   const vrect = R.refdef.vrect;
@@ -2233,7 +2233,7 @@ R.WarpScreen = function() {
 
 // warp
 
-R.MakeSky = function() {
+R.MakeSky = async function() {
   const sin = Array.from({ length: 9 }, (_, i) =>
     Number(Math.sin(i * Math.PI / 16).toFixed(6))
   );
@@ -2260,11 +2260,11 @@ R.MakeSky = function() {
     }
   }
 
-  GL.CreateProgram('Sky',
+  await GL.CreateProgram('sky',
       ['uViewAngles', 'uPerspective', 'uScale', 'uGamma', 'uTime'],
       [['aPosition', gl.FLOAT, 3]],
       ['tSolid', 'tAlpha']);
-  GL.CreateProgram('SkyChain',
+  await GL.CreateProgram('sky-chain',
       ['uViewOrigin', 'uViewAngles', 'uPerspective'],
       [['aPosition', gl.FLOAT, 3]],
       []);
@@ -2281,7 +2281,7 @@ R.DrawSkyBox = function() {
 
   gl.colorMask(false, false, false, false);
   const clmodel = CL.state.worldmodel;
-  let program = GL.UseProgram('SkyChain');
+  let program = GL.UseProgram('sky-chain');
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 12, clmodel.skychain);
   let i; let j; let leaf; let cmds;
@@ -2304,7 +2304,7 @@ R.DrawSkyBox = function() {
   gl.depthMask(false);
   gl.disable(gl.CULL_FACE);
 
-  program = GL.UseProgram('Sky');
+  program = GL.UseProgram('sky');
   gl.uniform2f(program.uTime, (Host.realtime * 0.125) % 1.0, (Host.realtime * 0.03125) % 1.0);
   GL.Bind(program.tSolid, R.solidskytexture);
   GL.Bind(program.tAlpha, R.alphaskytexture);

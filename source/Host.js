@@ -434,7 +434,7 @@ Host.Init = async function(dedicated) {
     await VID.Init();
     await Draw.Init();
     SCR.Init();
-    R.Init();
+    await R.Init();
     S.Init();
     await M.Init();
     CDAudio.Init();
@@ -443,7 +443,7 @@ Host.Init = async function(dedicated) {
     IN.Init();
   } else {
     // we need a few frontend things for dedicated
-    R.Init();
+    await R.Init();
   }
 
   Cmd.text = 'exec better-quake.rc\n' + Cmd.text;
