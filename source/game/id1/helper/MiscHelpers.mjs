@@ -235,7 +235,7 @@ export class Serializer {
 
         case Serializer.TYPE_SERIALIZABLE: {
             const object = {};
-            const serializer = Serializer.makeSerializable(object, this._engine)
+            const serializer = Serializer.makeSerializable(object, this._engine);
             serializer.deserialize(value[1]);
             serializer._serializableFields = Object.keys(object);
             return object;

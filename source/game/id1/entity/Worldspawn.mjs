@@ -54,8 +54,6 @@ export class WorldspawnEntity extends BaseEntity {
   _declareFields() {
     this._serializer.startFields();
 
-    /** @deprecated MAP BUG @private */
-    this.sounds = null;
     /** @type {string} wad file containing textures, only used by the compiler tools */
     this.wad = null;
     /** @type {string} proper map name */

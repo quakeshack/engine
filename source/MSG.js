@@ -50,6 +50,12 @@ MSG.WriteAngleVector = function(sb, vec) {
   MSG.WriteAngle(sb, vec[2]);
 };
 
+MSG.WriteColor = function(sb, color) {
+  MSG.WriteByte(sb, Math.round(color[0] * 255));
+  MSG.WriteByte(sb, Math.round(color[1] * 255));
+  MSG.WriteByte(sb, Math.round(color[2] * 255));
+};
+
 MSG.BeginReading = function() {
   MSG.readcount = 0;
   MSG.badread = false;
@@ -131,4 +137,8 @@ MSG.ReadAngle = function() {
 
 MSG.ReadAngleVector = function() {
   return new Vector(MSG.ReadAngle(), MSG.ReadAngle(), MSG.ReadAngle());
+};
+
+MSG.ReadColor = function() {
+  return new Vector(MSG.ReadByte() / 255, MSG.ReadByte() / 255, MSG.ReadByte() / 255);
 };

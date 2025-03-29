@@ -380,7 +380,10 @@ export default class BaseEntity {
         continue;
       }
 
-      console.assert(key in this, `key must be declared first`);
+      if (!(key in this)) {
+        console.warn(`BaseEntity.assignInitialData: invalid key on entity (${this})`, this, key, value);
+        continue;
+      }
 
       switch (true) {
         case this[key] instanceof Vector:

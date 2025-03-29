@@ -35,7 +35,6 @@ RFC 2119 applies.
 
 #### Related Quake Game Porting
 
-* Must use JSDoc `/** @deprecated MAP BUG @private */` for entity properties that have no meaning but are used by some maps.
 * When porting over QuakeC almost verbatim, comments must be copied over as well in order to give context.
 * Settings and/or properties that are considered extensions to the original should be prefixed with `qs_`.
 

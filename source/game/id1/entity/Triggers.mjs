@@ -24,9 +24,6 @@ class BaseTriggerEntity extends BaseEntity {
     this.health = 0;
     this.max_health = 0;
 
-    /** @deprecated MAP BUG @private */
-    this.style = null;
-
     this.wait = 0;
     this.delay = 0;
 
@@ -690,7 +687,7 @@ export class TriggerMonsterjumpEntity extends BaseTriggerEntity {
     this.height = this.height || 200;
 
     if (this.angles.isOrigin()) {
-      this.angles.set(0.0, 360.0, 0.0);
+      this.angles.setTo(0.0, 360.0, 0.0);
     }
 
     super.spawn();

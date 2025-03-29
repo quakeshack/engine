@@ -1434,7 +1434,7 @@ CL.ParseServerMessage = function() {
         Con.Print(MSG.ReadString());
         continue;
       case Protocol.svc.centerprint: {
-          const string = MSG.ReadString()
+          const string = MSG.ReadString();
           SCR.CenterPrint(string);
           Con.Print(string + '\n'); // TODO: make it more stand out
         };
@@ -1517,7 +1517,7 @@ CL.ParseServerMessage = function() {
         }
         CL.state.scores[i].ping = MSG.ReadShort();
         continue;
-      case Protocol.svc.particle:
+      case Protocol.svc.particle: // Client
         R.ParseParticleEffect();
         continue;
       case Protocol.svc.spawnbaseline:
@@ -1526,7 +1526,7 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.spawnstatic:
         CL.ParseStatic();
         continue;
-      case Protocol.svc.temp_entity:
+      case Protocol.svc.temp_entity: // Client
         CL.ParseTEnt();
         continue;
       case Protocol.svc.setpause:
@@ -1558,7 +1558,7 @@ CL.ParseServerMessage = function() {
         }
         CL.state.stats[i] = MSG.ReadLong();
         continue;
-      case Protocol.svc.spawnstaticsound:
+      case Protocol.svc.spawnstaticsound: // Client
         CL.ParseStaticSound();
         continue;
       case Protocol.svc.cdtrack:

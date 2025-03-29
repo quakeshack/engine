@@ -77,6 +77,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] implement the new syscalls that QuakeWorld introduced
 * [_] improve stack trace / error handling for QuakeC
 * [_] build something that will take a map from defs and makes sure that some properties must be within that range (for movetype, solid, flags)
+* [_] applyBackpack: currentammo not updated
 
 ### Modern JavaScript
 
@@ -140,6 +141,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] SV, CL: we can ramp up the resolution of things like angles etc.
 * [_] Mod: lazy load models
 * [_] SV: spawn server should wait for async resources to arrive
+* [_] SV: reimplement recursive hull check iteratively
 
 ### Rendering improvements
 
@@ -284,6 +286,10 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-03-30
+
+* went through a lot of maps and checked what’s going wrong, found a couple of bugs and fixed them
 
 ### 2025-03-28
 

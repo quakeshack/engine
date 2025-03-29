@@ -64,9 +64,6 @@ export class BaseItemEntity extends BaseEntity {
     /** @private */
     this._model_original = null;
 
-    /** @deprecated MAP BUG @private */
-    this.sounds = null;
-
     /** @type {string} sfx to play upon picking it up */
     this.noise = "weapons/lock4.wav";
 
@@ -814,7 +811,7 @@ export class HealthItemEntity extends BaseItemEntity {
   }
 
   spawn() {
-    console.assert([HealthItemEntity.H_NORMAL, HealthItemEntity.H_MEGA, HealthItemEntity.H_ROTTEN].includes(this.spawnflags), 'Spawnflags are not set correctly');
+    console.assert([HealthItemEntity.H_NORMAL, HealthItemEntity.H_MEGA, HealthItemEntity.H_ROTTEN].includes(this.spawnflags & 3), 'Spawnflags are not set correctly');
 
     this.regeneration_time = 20;
     this.noise = this._config.noise;

@@ -565,6 +565,7 @@ export class BaseBarrelEntity extends BaseEntity {
   }
 
   thinkDie() {
+    this._entity.takedamage = damage.DAMAGE_NO; // prevents explosion recursion
     this._damageInflictor.blastDamage(160, this, this.centerPoint, this);
     this.startSound(channel.CHAN_VOICE, this.constructor._noise);
     this.engine.StartParticles(this.origin, Vector.origin, 75, 255); // FIXME: hardcoded color code (75)

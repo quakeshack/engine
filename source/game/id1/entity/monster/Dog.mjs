@@ -214,6 +214,7 @@ export default class DogMonsterEntity extends WalkMonster {
     this.damage(this.enemy, ldmg);
   }
 
+  /** @private */
   _leap() {
     this._isLeaping = true;
 

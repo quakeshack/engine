@@ -66,6 +66,7 @@ export class Explosions extends EntityWrapper {
 
     this._entity.movetype = moveType.MOVETYPE_NONE;
     this._entity.solid = solid.SOLID_NOT; // disables touch handling
+    this._entity.takedamage = damage.DAMAGE_NO; // disables receiving damage
     this._entity.velocity.clear();
 
     this._entity.setModel('progs/s_explod.spr');
