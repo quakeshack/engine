@@ -140,7 +140,7 @@ Vector = class Vector extends Float32Array {
    * @param {Vector} emins emins
    * @param {Vector} emaxs emaxs
    * @param {*} p p
-   * @returns {number} which side
+   * @returns {number|null} which side, null on error
    */
   static boxOnPlaneSide(emins, emaxs, p) {
     if (p.type <= 2) {
@@ -153,6 +153,7 @@ Vector = class Vector extends Float32Array {
       return 3;
     }
     let dist1; let dist2;
+    console.assert(p.signbits >= 0 && p.signbits < 8, 'signbits must be [0, 8)', p.signbits);
     switch (p.signbits) {
       case 0:
         dist1 = p.normal[0] * emaxs[0] + p.normal[1] * emaxs[1] + p.normal[2] * emaxs[2];
@@ -187,7 +188,7 @@ Vector = class Vector extends Float32Array {
         dist2 = p.normal[0] * emaxs[0] + p.normal[1] * emaxs[1] + p.normal[2] * emaxs[2];
         break;
       default:
-        Sys.Error('Vec.BoxOnPlaneSide: Bad signbits');
+        return null;
     }
     let sides = 0;
     if (dist1 >= p.dist) {

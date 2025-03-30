@@ -548,7 +548,7 @@ CL.ClearState = function() {
       sidemove: 0.0,
       upmove: 0.0,
     },
-    stats: [ // FIXME: increase to 32
+    stats: [ // not per player, it’s per stat slot (see Def.stat)
       0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0,
@@ -1205,11 +1205,10 @@ CL.ParseUpdate = function(bits) {
 
   ent.frame = ((bits & Protocol.u.frame) !== 0) ? MSG.ReadByte() : ent.baseline.frame;
   ent.colormap = ((bits & Protocol.u.colormap) !== 0) ? MSG.ReadByte() : ent.baseline.colormap;
-  if (ent.colormap > CL.state.maxclients) {
-    Sys.Error('i >= cl.maxclients');
-  }
   ent.skinnum = ((bits & Protocol.u.skin) !== 0) ? MSG.ReadByte() : ent.baseline.skin;
   ent.effects = ((bits & Protocol.u.effects) !== 0) ? MSG.ReadByte() : ent.baseline.effects;
+
+  console.assert(ent.colormap <= CL.state.maxclients, 'ent.colormap must be in cl.maxclients');
 
   ent.msg_origins[1] = ent.msg_origins[0].copy();
   ent.msg_angles[1] = ent.msg_angles[0].copy();
@@ -1553,9 +1552,7 @@ CL.ParseServerMessage = function() {
         continue;
       case Protocol.svc.updatestat:
         i = MSG.ReadByte();
-        if (i >= 32) {
-          Sys.Error('svc_updatestat: ' + i + ' is invalid');
-        }
+        console.assert(i >= 0 && i < CL.state.stats.length, 'updatestat must be in range');
         CL.state.stats[i] = MSG.ReadLong();
         continue;
       case Protocol.svc.spawnstaticsound: // Client

@@ -290,6 +290,7 @@ class MainMenu extends BaseMenu {
 ### 2025-03-30
 
 * went through a lot of maps and checked what’s going wrong, found a couple of bugs and fixed them
+* a few Sys.Error to console.assert changes
 
 ### 2025-03-28
 

@@ -507,15 +507,9 @@ SV.StartParticle = function(org, dir, color, count) {
 };
 
 SV.StartSound = function(edict, channel, sample, volume, attenuation) {
-  if ((volume < 0) || (volume > 255)) {
-    Sys.Error('SV.StartSound: volume = ' + volume);
-  }
-  if ((attenuation < 0.0) || (attenuation > 4.0)) {
-    Sys.Error('SV.StartSound: attenuation = ' + attenuation);
-  }
-  if ((channel < 0) || (channel > 7)) {
-    Sys.Error('SV.StartSound: channel = ' + channel);
-  }
+  console.assert(volume >= 0 && volume <= 255, 'volume out of range', volume);
+  console.assert(attenuation >= 0.0 && attenuation <= 4.0, 'attenuation out of range', attenuation);
+  console.assert(channel >= 0 && channel <= 7, 'channel out of range', channel);
 
   const datagram = SV.server.datagram;
   if (datagram.cursize >= 1009) {
@@ -1059,34 +1053,30 @@ SV.SendClientMessages = function() {
 };
 
 SV.ModelIndex = function(name) {
-  if (name == null) {
+  if (!name) {
     return 0;
   }
-  if (name.length === 0) {
-    return 0;
-  }
-  let i;
-  for (i = 0; i < SV.server.model_precache.length; ++i) {
+  for (let i = 0; i < SV.server.model_precache.length; ++i) {
     if (SV.server.model_precache[i] === name) {
       return i;
     }
   }
-  Sys.Error('SV.ModelIndex: model ' + name + ' not precached');
+  console.assert(false, 'model must be precached', name);
+  return null;
 };
 
 SV.CreateBaseline = function() {
-  let i; let svent; let baseline;
   const player = SV.ModelIndex('progs/player.mdl');
   const signon = SV.server.signon;
-  for (i = 0; i < SV.server.num_edicts; ++i) {
-    svent = SV.server.edicts[i];
+  for (let i = 0; i < SV.server.num_edicts; ++i) {
+    const svent = SV.server.edicts[i];
     if (svent.isFree()) {
       continue;
     }
     if ((i > SV.svs.maxclients) && !svent.entity.modelindex) {
       continue;
     }
-    baseline = svent.baseline;
+    const baseline = svent.baseline;
     baseline.origin = svent.entity.origin.copy();
     baseline.angles = svent.entity.angles.copy();
     baseline.frame = svent.entity.frame >> 0;
@@ -1714,9 +1704,7 @@ SV.FlyMove = function(ent, time) {
         break;
       }
     }
-    if (trace.ent == null) {
-      Sys.Error('SV.FlyMove: !trace.ent');
-    }
+    console.assert(trace.ent !== null, 'trace.ent must not be null');
     if (trace.plane.normal[2] > 0.7) {
       blocked |= 1;
       if (trace.ent.entity.solid === SV.solid.bsp) {
@@ -2319,7 +2307,7 @@ SV.PhysicsEngineUnregisterEdict = function(ent) {
   }
 };
 
- 
+
 SV.PhysicsEngineRegisterEdict = function(edict) {
   const classname = edict.entity.classname;
 
@@ -2812,16 +2800,9 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
     out_offset.set(origin);
     return SV.box_hull;
   }
-  if (ent.entity.movetype !== SV.movetype.push) {
-    Sys.Error('SOLID_BSP without MOVETYPE_PUSH');
-  }
+  console.assert(ent.entity.movetype !== SV.movetype.none, 'SOLID_BSP with MOVETYPE_NONE');
   const model = SV.server.models[ent.entity.modelindex];
-  if (!model) {
-    Sys.Error('MOVETYPE_PUSH with a non bsp model');
-  }
-  if (model.type !== Mod.type.brush) {
-    Sys.Error('MOVETYPE_PUSH with a non bsp model');
-  }
+  console.assert(model && model.type === Mod.type.brush, 'model is null or not a brush');
   const size = maxs[0] - mins[0];
   let hull;
   if (size < 3.0) {
@@ -2986,9 +2967,7 @@ SV.LinkEdict = function(ent, touch_triggers = false) {
 SV.HullPointContents = function(hull, num, p) {
   let d; let node; let plane;
   for (; num >= 0; ) {
-    if ((num < hull.firstclipnode) || (num > hull.lastclipnode)) {
-      Sys.Error('SV.HullPointContents: bad node number');
-    }
+    console.assert(num >= hull.firstclipnode && num <= hull.lastclipnode, 'valid node number', num);
     node = hull.clipnodes[num];
     plane = hull.planes[node.planenum];
     if (plane.type <= 2) {
@@ -3018,7 +2997,20 @@ SV.TestEntityPosition = function(ent) {
   return SV.Move(origin, ent.entity.mins, ent.entity.maxs, origin, 0, ent).startsolid;
 };
 
-SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {
+/**
+ * Iterative version of SV.RecursiveHullCheck.
+ * It simulates the recursive process via an explicit stack.
+ * @param {object} hull what hull to check against
+ * @param {number} num starting clipnode number (typically hull.firstclipnode)
+ * @param {number} p1f fraction at p1 (usually 0.0)
+ * @param {number} p2f fraction at p2 (usually 1.0)
+ * @param {Vector} p1 start point
+ * @param {Vector} p2 end point
+ * @param {object} trace object to store trace results
+ * @returns {boolean} true means going down, false means going up
+ */
+SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) { // TODO: rewrite to iterative check
+  // check for empty
   if (num < 0) {
     if (num !== Mod.contents.solid) {
       trace.allsolid = false;
@@ -3030,59 +3022,49 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {
     } else {
       trace.startsolid = true;
     }
-    return true;
+    return true; // going down the tree
   }
 
-  if ((num < hull.firstclipnode) || (num > hull.lastclipnode)) {
-    Sys.Error('SV.RecursiveHullCheck: bad node number');
-  }
+  console.assert(num >= hull.firstclipnode && num <= hull.lastclipnode, 'valid node number', num);
 
+  // find the point distances
   const node = hull.clipnodes[num];
   const plane = hull.planes[node.planenum];
-  let t1; let t2;
+  const t1 = (plane.type < 3 ? p1[plane.type] : plane.normal[0] * p1[0] + plane.normal[1] * p1[1] + plane.normal[2] * p1[2]) - plane.dist;
+  const t2 = (plane.type < 3 ? p2[plane.type] : plane.normal[0] * p2[0] + plane.normal[1] * p2[1] + plane.normal[2] * p2[2]) - plane.dist;
 
-  if (plane.type <= 2) {
-    t1 = p1[plane.type] - plane.dist;
-    t2 = p2[plane.type] - plane.dist;
-  } else {
-    t1 = plane.normal[0] * p1[0] + plane.normal[1] * p1[1] + plane.normal[2] * p1[2] - plane.dist;
-    t2 = plane.normal[0] * p2[0] + plane.normal[1] * p2[1] + plane.normal[2] * p2[2] - plane.dist;
-  }
-
-  if ((t1 >= 0.0) && (t2 >= 0.0)) {
+  // checking children on side 1
+  if (t1 >= 0.0 && t2 >= 0.0) {
     return SV.RecursiveHullCheck(hull, node.children[0], p1f, p2f, p1, p2, trace);
   }
-  if ((t1 < 0.0) && (t2 < 0.0)) {
+
+  // checking children on side 2
+  if (t1 < 0.0 && t2 < 0.0) {
     return SV.RecursiveHullCheck(hull, node.children[1], p1f, p2f, p1, p2, trace);
   }
 
-  let frac = (t1 + (t1 < 0.0 ? 0.03125 : -0.03125)) / (t1 - t2);
-  if (frac < 0.0) {
-    frac = 0.0;
-  } else if (frac > 1.0) {
-    frac = 1.0;
-  }
-
+  // put the crosspoint DIST_EPSILON pixels on the near side
+  let frac = Math.max(0.0, Math.min(1.0, (t1 + (t1 < 0.0 ? 0.03125 : -0.03125)) / (t1 - t2))); // epsilon value of 0.03125 = 1/32
   let midf = p1f + (p2f - p1f) * frac;
-  const mid = new Vector(
-    p1[0] + frac * (p2[0] - p1[0]),
-    p1[1] + frac * (p2[1] - p1[1]),
-    p1[2] + frac * (p2[2] - p1[2]),
-  );
+  const mid = new Vector(p1[0] + frac * (p2[0] - p1[0]), p1[1] + frac * (p2[1] - p1[1]), p1[2] + frac * (p2[2] - p1[2]));
   const side = t1 < 0.0 ? 1 : 0;
 
-  if (SV.RecursiveHullCheck(hull, node.children[side], p1f, midf, p1, mid, trace) !== true) {
-    return;
+  // move up to the node
+  if (!SV.RecursiveHullCheck(hull, node.children[side], p1f, midf, p1, mid, trace)) {
+    return false;
   }
 
+  // go past the node
   if (SV.HullPointContents(hull, node.children[1 - side], mid) !== Mod.contents.solid) {
     return SV.RecursiveHullCheck(hull, node.children[1 - side], midf, p2f, mid, p2, trace);
   }
 
-  if (trace.allsolid === true) {
-    return;
+  // never got out of the solid area
+  if (trace.allsolid) {
+    return false;
   }
 
+  // the other side of the node is solid, this is the impact point
   if (side === 0) {
     trace.plane.normal = plane.normal.copy();
     trace.plane.dist = plane.dist;
@@ -3092,6 +3074,7 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {
   }
 
   while (SV.HullPointContents(hull, hull.firstclipnode, mid) === Mod.contents.solid) {
+    // shouldn't really happen, but does occasionally
     frac -= 0.1;
     if (frac < 0.0) {
       trace.fraction = midf;
@@ -3107,6 +3090,8 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) {
 
   trace.fraction = midf;
   trace.endpos = mid.copy();
+
+  return false;
 };
 
 SV.ClipMoveToEntity = function(ent, start, mins, maxs, end) {
@@ -3130,16 +3115,13 @@ SV.ClipMoveToEntity = function(ent, start, mins, maxs, end) {
 };
 
 SV.ClipToLinks = function(node, clip) {
-  let l; let touch; let solid; let trace;
-  for (l = node.solid_edicts.next; l !== node.solid_edicts; l = l.next) {
-    touch = l.ent;
-    solid = touch.entity.solid;
+  for (let l = node.solid_edicts.next; l !== node.solid_edicts; l = l.next) {
+    const touch = l.ent;
+    const solid = touch.entity.solid;
     if ((solid === SV.solid.not) || (touch === clip.passedict)) {
       continue;
     }
-    if (solid === SV.solid.trigger) {
-      Sys.Error('Trigger in clipping list');
-    }
+    console.assert(solid !== SV.solid.trigger, 'trigger not in clipping list');
     if (clip.type === SV.move.nomonsters && solid !== SV.solid.bsp) {
       continue;
     }
@@ -3162,6 +3144,7 @@ SV.ClipToLinks = function(node, clip) {
         continue;
       }
     }
+    let trace;
     if ((touch.entity.flags & SV.fl.monster) !== 0) {
       trace = SV.ClipMoveToEntity(touch, clip.start, clip.mins2, clip.maxs2, clip.end);
     } else {
