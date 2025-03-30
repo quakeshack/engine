@@ -10,20 +10,18 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] when one player dies in coop mode, all clients will reconnect and telefrag each other upon spawning
 * [X] DS: show the name of the person’s chat message in console message
 * [X] CL/SV: name change on local game makes the message emit twice
-* [_] IN: input is no longer working properly once a coarse input device has been detected and the virtual joystick is setup
 * [X] S: sometimes there’s still sound playing after the game has shutdown
 * [X] S: make sure all remaining to be lazily loaded sound files are load after the game started
 * [X] R: somewhere dynamic lights are not properly cast
-* [_] PF: need to handle precache more gracefully
 * [X] Host: Load Game and Save Game is now completely broken
   * [_] QuakeC: fix issues with use-after-free situations
   * [X] QuakeJS: add serializers to everything
 * [X] S/SV/QuakeJS: sounds go crazy, causing insane amount of stress
 * [X] Recheck all ref/copy of `(origin|a?velocity|angles)\s*=`
-* [_] ED: parsing strings from entities text does not unescape strings properly
+* [X] ED: parsing strings from entities text does not unescape strings properly
 * [X] QuakeJS: func_*gate is misbehaving (not getting removed)
 * [_] QuakeJS/SV: spawning new objects on demand outside the world should unstuck somewhere inside of the world again (trace first)
-* [_] QuakeJS: monsters are 8 units below the floor
+* [X] QuakeJS: monsters are 8 units below the floor
 
 ### QuakeC / QuakeJS
 
@@ -82,7 +80,7 @@ Grouped by sections and then sorted by priority (more or less).
 ### Modern JavaScript
 
 * [_] `COM` we need to completely get rid of synchroneously loading files, it’s flagged as deprecated
-* [_] use more Exceptions and better Exception classes
+* [_] use more Exceptions and better Exception classes, also more console.asserts
 * [_] look into worker and multithreading
 * [_] look into bun.sh
 * [_] completely switch to JS modules at some point
@@ -91,8 +89,8 @@ Grouped by sections and then sorted by priority (more or less).
 ### Code smell
 
 * [_] SV: cleanup the `SV.WriteEntitiesToClient` mess a bit, make it more flexible
-* [_] ED: rewrite that whole parsing mess using regexp
-* [_] `Host.Savegame_f` and `ED` are having duplicate code (parsing entities)
+* [_] ED: cleanup `charCodeAt`
+* [X] `Host.Savegame_f` and `ED` are having duplicate code (parsing entities)
 * [X] there’s no proper clean up for Sound, sometimes sound gets stuck playing after Quit
 * [_] completely get rid of `Host.client`
 * [_] refactor that mess in `Mod`, split into loading and rendering parts
@@ -100,7 +98,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] refactor global `SV` states into proper modules
 * [X] rewrite `Vec` based on top of `Array`
 * [_] use more await/async when necessary, introduce a shutting down flag to break async processing
-* [_] replace all `>> 1` with `* 2` etc.
+* [X] replace all `>> 1` with `* 2` etc.
 * [X] SV: introduce `Edict` class, the current loose object already got `clear` and `equals` to it
 * [_] SV: introduce `Client` class, the current loose object already got a few methods in it
 * [X] index.html: reorganize shaders
@@ -124,7 +122,7 @@ Grouped by sections and then sorted by priority (more or less).
 ### Random improvements
 
 * [X] IN: touch support (smart phones)
-* [_] Cvar: turn Cvars into proper self-registering classes, add quality of life things like events and more flags (read-only, cheats etc.)
+* [X] Cvar: turn Cvars into proper self-registering classes, add quality of life things like events and more flags (read-only, cheats etc.)
 * [_] UI: textboxes should act more like text boxes
 * [X] UI: show connecting/loading state in a small UI box with progressbar
 * [X] S: measure async load time for sounds, do not play them when it’s too late anyway
@@ -142,6 +140,8 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] Mod: lazy load models
 * [_] SV: spawn server should wait for async resources to arrive
 * [_] SV: reimplement recursive hull check iteratively
+* [_] IN: proper virtual joystick and keyboard/UI
+* [X] Key: fix empty say spamming
 
 ### Rendering improvements
 
@@ -154,6 +154,25 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] flush CDN cache
 
 ## Ideas
+
+### ClientGameAPI
+
+* getting rid of `Def.it` and `Def.stat`
+* move Sbar code to the client code
+* move M code to the client code
+  * expose some responsibilities through the API (save/load game)
+* move parts of V to the client code
+  * V.CalcBlend
+  * V.ParseDamage
+  * cshift clusterfun
+* R: ask the client code regarding certain things
+  * view model (or delegate the whole rendering down to the client?)
+* CL: everything tents related (CL.ParseTEnt)
+* CL: CL.state.stats, CL.state.scores etc.
+* CL: delegate a few duties from ParseServerMessage to the client code
+* CL: CL.ParseClientdata
+* Particles and beams duties
+  * handle different types and prepare what to be rendered
 
 ### Better frontend/backend separation
 
@@ -291,6 +310,13 @@ class MainMenu extends BaseMenu {
 
 * went through a lot of maps and checked what’s going wrong, found a couple of bugs and fixed them
 * a few Sys.Error to console.assert changes
+* fixed the fact that dogs can trigger buttons
+* load game from menu will use the json files now
+* bunch of a lowhanging fruits todos
+* fixed screenshot (F12)
+* introduced arguments to console commands, removing the access to the `Cmd.argv` global allowing `AsyncFunction` in future
+* introduced `Cvar` class with flags and some more fluff
+* made console disappear instantly after joining the game
 
 ### 2025-03-28
 

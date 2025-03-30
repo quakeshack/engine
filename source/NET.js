@@ -314,8 +314,8 @@ NET.SendToAll = function(data) {
 NET.Init = function() {
   NET.time = Sys.FloatTime();
 
-  NET.messagetimeout = Cvar.RegisterVariable('net_messagetimeout', '5000');
-  NET.hostname = Cvar.RegisterVariable('hostname', 'UNNAMED');
+  NET.messagetimeout = new Cvar('net_messagetimeout', 5000);
+  NET.hostname = new Cvar('hostname', 'UNNAMED', Cvar.FLAG.SERVER, 'Descriptive name of the server.');
 
   Cmd.AddCommand('maxplayers', NET.MaxPlayers_f);
   Cmd.AddCommand('listen', NET.Listen_f);
@@ -342,13 +342,13 @@ NET.Drivers_f = function() {
   }
 };
 
-NET.Listen_f = function() {
-  if (Cmd.argv.length < 2) {
+NET.Listen_f = function(_, isListening) {
+  if (isListening === undefined) {
     Con.Print('"listen" is "' + (NET.listening ? 1 : 0) + '"\n');
     return;
   }
 
-  NET.listening = Q.atoi(Cmd.argv[1]) ? true : false;
+  NET.listening = Q.atoi(isListening) ? true : false;
 
   for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
     if (!NET.drivers[NET.driverlevel].initialized) {
@@ -359,8 +359,8 @@ NET.Listen_f = function() {
   }
 };
 
-NET.MaxPlayers_f = function() {
-  if (Cmd.argv.length < 2) {
+NET.MaxPlayers_f = function(_, maxplayers) {
+  if (maxplayers === undefined) {
     Con.Print('"maxplayers" is "' + SV.svs.maxclients + '"\n');
     return;
   }
@@ -370,7 +370,7 @@ NET.MaxPlayers_f = function() {
     return;
   }
 
-  let n = Q.atoi(Cmd.argv[1]);
+  let n = Q.atoi(maxplayers);
   if (n < 1) {
     n = 1;
   }

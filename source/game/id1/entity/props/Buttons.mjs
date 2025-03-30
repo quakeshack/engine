@@ -1,5 +1,6 @@
 import { channel, damage, moveType, solid } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
+import { PlayerEntity } from "../Player.mjs";
 import { DamageHandler } from "../Weapons.mjs";
 import BasePropEntity, { state } from "./BasePropEntity.mjs";
 
@@ -105,6 +106,10 @@ export class ButtonEntity extends BasePropEntity {
    * @param {BaseEntity} touchedByEntity user
    */
   touch(touchedByEntity) {
+    if (!(touchedByEntity instanceof PlayerEntity)) {
+      return;
+    }
+
     // do not handle touch for buttons supposed to be shot at
     if (this.max_health > 0) {
       return;

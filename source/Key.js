@@ -1,4 +1,4 @@
-/* global Key, Con, CL, Cmd, Cvar, M */
+/* global Key, Con, CL, Cmd, Cvar, M, Host */
 
 // eslint-disable-next-line no-global-assign
 Key = {};
@@ -195,10 +195,12 @@ Key.chat_buffer = '';
 
 Key.Message = function(key) {
   if (key === Key.k.enter) {
-    if (Key.team_message === true) {
-      Cmd.text += 'say_team "' + Key.chat_buffer + '"\n';
-    } else {
-      Cmd.text += 'say "' + Key.chat_buffer + '"\n';
+    if (Key.chat_buffer.trim().length > 0) {
+      if (Key.team_message === true) {
+        Host.Say(true, Key.chat_buffer, 'say');
+      } else {
+        Host.Say(false, Key.chat_buffer, 'say_team');
+      }
     }
     Key.dest.value = Key.dest.game;
     Key.chat_buffer = '';
@@ -229,12 +231,12 @@ Key.StringToKeynum = function(str) {
     return str.charCodeAt(0);
   }
   str = str.toUpperCase();
-  let i;
-  for (i = 0; i < Key.names.length; ++i) {
+  for (let i = 0; i < Key.names.length; ++i) {
     if (Key.names[i].name === str) {
       return Key.names[i].keynum;
     }
   }
+  return null;
 };
 
 Key.KeynumToString = function(keynum) {
@@ -250,14 +252,13 @@ Key.KeynumToString = function(keynum) {
   return '<UNKNOWN KEYNUM>';
 };
 
-Key.Unbind_f = function() {
-  if (Cmd.argv.length !== 2) {
-    Con.Print('unbind <key> : remove commands from a key\n');
-    return;
+Key.Unbind_f = function(_, key) {
+  if (key === undefined) {
+    Con.Print('Usage: unbind <key>\n');
   }
-  const b = Key.StringToKeynum(Cmd.argv[1]);
+  const b = Key.StringToKeynum(key);
   if (b == null) {
-    Con.Print('"' + Cmd.argv[1] + '" isn\'t a valid key\n');
+    Con.Print('"' + key + '" isn\'t a valid key\n');
     return;
   }
   Key.bindings[b] = null;
@@ -267,31 +268,30 @@ Key.Unbindall_f = function() {
   Key.bindings = [];
 };
 
-Key.Bind_f = function() {
-  const c = Cmd.argv.length;
-  if ((c !== 2) && (c !== 3)) {
-    Con.Print('bind <key> [command] : attach a command to a key\n');
+Key.Bind_f = function(_, key, command) {
+  if (key === undefined) {
+    Con.Print('Usage: bind <key> [command]\n');
     return;
   }
-  const b = Key.StringToKeynum(Cmd.argv[1].toLowerCase());
+
+  const b = Key.StringToKeynum(key.toLowerCase());
+
   if (b == null) {
-    Con.Print('"' + Cmd.argv[1] + '" isn\'t a valid key\n');
+    Con.Print('"' + key + '" isn\'t a valid key\n');
     return;
   }
-  if (c === 2) {
+  if (command === undefined) {
     if (Key.bindings[b] != null) {
-      Con.Print('"' + Cmd.argv[1] + '" = "' + Key.bindings[b] + '"\n');
+      Con.Print('"' + key + '" = "' + Key.bindings[b] + '"\n');
     } else {
-      Con.Print('"' + Cmd.argv[1] + '" is not bound\n');
+      Con.Print('"' + key + '" is not bound\n');
     }
     return;
   }
 
-  let i; let cmd = Cmd.argv[2];
-  for (i = 3; i < c; ++i) {
-    cmd += ' ' + Cmd.argv[i];
-  }
-  Key.bindings[b] = cmd;
+  Key.bindings[b] = command;
+
+  Host.WriteConfiguration();
 };
 
 Key.WriteBindings = function() {

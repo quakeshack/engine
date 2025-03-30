@@ -48,7 +48,7 @@ SCR.DrawCenterString = function() {
     let str; let x; let j;
     for (i = 0; i < SCR.centerstring.length; ++i) {
       str = SCR.centerstring[i];
-      x = (VID.width - (str.length << 3)) >> 1;
+      x = (VID.width - (str.length * 8)) / 2;
       for (j = 0; j < str.length; ++j) {
         Draw.Character(x, y, str.charCodeAt(j));
         if ((remaining--) === 0) {
@@ -62,7 +62,7 @@ SCR.DrawCenterString = function() {
   }
 
   for (i = 0; i < SCR.centerstring.length; ++i) {
-    Draw.String((VID.width - (SCR.centerstring[i].length << 3)) >> 1, y, SCR.centerstring[i]);
+    Draw.String((VID.width - (SCR.centerstring[i].length * 8)) / 2, y, SCR.centerstring[i]);
     y += 8;
   }
 };
@@ -107,11 +107,11 @@ SCR.CalcRefdef = function() {
   if (vrect.height > (VID.height - Sbar.lines)) {
     vrect.height = VID.height - Sbar.lines;
   }
-  vrect.x = (VID.width - vrect.width) >> 1;
+  vrect.x = (VID.width - vrect.width) / 2;
   if (full === true) {
     vrect.y = 0;
   } else {
-    vrect.y = (VID.height - Sbar.lines - vrect.height) >> 1;
+    vrect.y = (VID.height - Sbar.lines - vrect.height) / 2;
   }
 
   if (SCR.fov.value < 10) {
@@ -200,7 +200,7 @@ SCR.DrawNet = function() {
 
 SCR.DrawPause = function() {
   if ((SCR.showpause.value !== 0) && (CL.state.paused === true)) {
-    Draw.Pic((VID.width - SCR.pause.width) >> 1, (VID.height - 48 - SCR.pause.height) >> 1, SCR.pause);
+    Draw.Pic((VID.width - SCR.pause.width) / 2, (VID.height - 48 - SCR.pause.height) / 2, SCR.pause);
   }
 };
 
@@ -338,8 +338,8 @@ SCR.UpdateScreen = function() {
       SCR.DrawCenterString();
     } else {
       if (V.crosshair.value !== 0) {
-        Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width >> 1) + V.crossx.value,
-            R.refdef.vrect.y + (R.refdef.vrect.height >> 1) + V.crossy.value, 43);
+        Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width / 2) + V.crossx.value,
+            R.refdef.vrect.y + (R.refdef.vrect.height / 2) + V.crossy.value, 43);
       }
       SCR.DrawNet();
       SCR.DrawTurtle();
@@ -347,10 +347,9 @@ SCR.UpdateScreen = function() {
       SCR.DrawCenterString();
       Sbar.Draw();
       SCR.DrawConsole();
+      CL.Draw();
       M.Draw();
     }
-
-    CL.Draw();
 
     GL.StreamFlush();
 
@@ -362,9 +361,15 @@ SCR.UpdateScreen = function() {
   SCR._requestedAnimationFrames++;
 
   if (SCR.screenshot === true) {
-    Con.Print('SCR.UpdateScreen: not implemented\n');
     SCR.screenshot = false;
-    // gl.finish();
-    // open(VID.mainwindow.toDataURL('image/jpeg'));
+    gl.finish();
+
+    const dataURL = VID.mainwindow.toDataURL('image/jpeg');
+    const link = document.createElement('a');
+    link.href = dataURL;
+    link.download = 'screenshot.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 };

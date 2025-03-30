@@ -104,7 +104,7 @@ Host.InitLocal = function(dedicated) {
   Host.temp1 = Cvar.RegisterVariable('temp1', '0');
 
   // dedicated server settings
-  Host.dedicated = Cvar.RegisterVariable('dedicated', dedicated ? '1' : '0', false, true);
+  Host.dedicated = new Cvar('dedicated', dedicated ? '1' : '0', Cvar.FLAG.READONLY, 'Set to 1, if running in dedicated server mode.');
 
   Host.FindMaxClients();
 };
@@ -501,11 +501,11 @@ Host.Quit_f = function() {
   Sys.Quit();
 };
 
-Host.Status_f = function() {
+Host.Status_f = function(...argv) {
   let print;
   if (Cmd.client !== true) {
     if (SV.server.active !== true) {
-      Cmd.ForwardToServer();
+      Cmd.ForwardToServer(...argv);
       return;
     }
     print = Con.Print;
@@ -564,9 +564,9 @@ Host.Status_f = function() {
   }
 };
 
-Host.God_f = function() {
+Host.God_f = function(...argv) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(...argv);
     return;
   }
   if (SV.server.gameAPI.deathmatch !== 0) {
@@ -580,9 +580,9 @@ Host.God_f = function() {
   }
 };
 
-Host.Notarget_f = function() {
+Host.Notarget_f = function(...argv) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(...argv);
     return;
   }
   if (SV.server.gameAPI.deathmatch !== 0) {
@@ -596,9 +596,9 @@ Host.Notarget_f = function() {
   }
 };
 
-Host.Noclip_f = function() {
+Host.Noclip_f = function(...argv) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(...argv);
     return;
   }
   if (SV.server.gameAPI.deathmatch !== 0) {
@@ -615,9 +615,9 @@ Host.Noclip_f = function() {
   Host.ClientPrint('noclip OFF\n');
 };
 
-Host.Fly_f = function() {
+Host.Fly_f = function(...argv) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(...argv);
     return;
   }
   if (SV.server.gameAPI.deathmatch !== 0) {
@@ -632,9 +632,9 @@ Host.Fly_f = function() {
   Host.ClientPrint('flymode OFF\n');
 };
 
-Host.Ping_f = function() {
+Host.Ping_f = function(...argv) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(...argv);
     return;
   }
   Host.ClientPrint('Client ping times:\n');
@@ -660,12 +660,16 @@ Host.Ping_f = function() {
   }
 };
 
-Host.Map_f = function() {
-  if (Cmd.argv.length <= 1) {
-    Con.Print('USAGE: map <map>\n');
+Host.Map_f = function(_, mapname, ...spawnparms) {
+  if (mapname === undefined) {
+    Con.Print('Usage: map <map>\n');
     return;
   }
   if (Cmd.client === true) {
+    return;
+  }
+  if (!SV.HasMap(mapname)) {
+    Con.Print(`No such map: ${mapname}\n`);
     return;
   }
   if (!Host.dedicated.value) {
@@ -683,13 +687,8 @@ Host.Map_f = function() {
     CL.SetConnectingStep(5, 'Spawning server');
   }
 
-  const mapname = Cmd.argv[1];
-
   if (!Host.dedicated.value) {
-    CL.cls.spawnparms = '';
-    for (let i = 2; i < Cmd.argv.length; ++i) {
-      CL.cls.spawnparms += Cmd.argv[i] + ' ';
-    }
+    CL.cls.spawnparms = spawnparms.join(' ');
   }
 
   Host.ScheduleForNextFrame(() => {
@@ -709,17 +708,16 @@ Host.Map_f = function() {
   });
 };
 
-Host.Changelevel_f = function() {
-  if (Cmd.argv.length !== 2) {
-    Con.Print('changelevel <levelname> : continue game on a new level\n');
+Host.Changelevel_f = function(_, mapname) {
+  if (mapname === undefined) {
+    Con.Print('Usage: changelevel <levelname>\n');
     return;
   }
+
   if ((SV.server.active !== true) || (!Host.dedicated.value && CL.cls.demoplayback === true)) {
     Con.Print('Only the server may changelevel\n');
     return;
   }
-
-  const mapname = Cmd.argv[1];
 
   if (!SV.HasMap(mapname)) {
     Con.Print(`No such map: ${mapname}\n`);
@@ -761,7 +759,13 @@ Host.Reconnect_f = function() {
   CL.cls.signon = 0;
 };
 
-Host.Connect_f = function() {
+Host.Connect_f = function(_, address) {
+  if (address === undefined) {
+    Con.Print('Usage: connect <address>\n');
+    Con.Print(' - <address> can be "self", connecting to the current domain name\n');
+    return;
+  }
+
   if (Host.dedicated.value) {
     Con.Print('cannot connect to another server in dedicated server mode\n');
     return;
@@ -773,44 +777,22 @@ Host.Connect_f = function() {
     CL.Disconnect();
   }
 
-  if (Cmd.argv[1] === 'self') {
+  if (address === 'self') {
     const url = new URL(location.href);
     CL.EstablishConnection(url.host + url.pathname + (!url.pathname.endsWith('/') ? '/' : '') + 'api/');
   } else {
-    CL.EstablishConnection(Cmd.argv[1]);
+    CL.EstablishConnection(address);
   }
 
   CL.cls.signon = 0;
 };
 
-Host.SavegameComment = function() {
-  let text = CL.state.levelname.replace(/\s/gm, '_');
-  let i;
-  for (i = CL.state.levelname.length; i <= 21; ++i) {
-    text += '_';
-  }
-
-  text += 'kills:';
-  let kills = CL.state.stats[Def.stat.monsters].toString();
-  if (kills.length === 2) {
-    text += '_';
-  } else if (kills.length === 1) {
-    text += '__';
-  }
-  text += kills + '/';
-  kills = CL.state.stats[Def.stat.totalmonsters].toString();
-  if (kills.length === 2) {
-    text += '_';
-  } else if (kills.length === 1) {
-    text += '__';
-  }
-  text += kills;
-
-  return text + '____';
-};
-
-Host.Savegame_f = function() {
+Host.Savegame_f = function(_, savename) {
   if (Cmd.client === true) {
+    return;
+  }
+  if (savename === undefined) {
+    Con.Print('Usage: save <savename>\n');
     return;
   }
   if (SV.server.active !== true) {
@@ -825,11 +807,7 @@ Host.Savegame_f = function() {
     Con.Print('Can\'t save multiplayer games.\n');
     return;
   }
-  if (Cmd.argv.length !== 2) {
-    Con.Print('save <savename> : save a game\n');
-    return;
-  }
-  if (Cmd.argv[1].indexOf('..') !== -1) {
+  if (savename.indexOf('..') !== -1) {
     Con.Print('Relative pathnames are not allowed.\n');
     return;
   }
@@ -841,12 +819,10 @@ Host.Savegame_f = function() {
     }
   }
 
-  const savename = Cmd.argv[1];
-
   const gamestate = {
     version: 1,
     gameversion: SV.server.gameVersion,
-    comment: CL.state.levelname,
+    comment: CL.state.levelname, // TODO: ask the game for a comment
     spawn_parms: client.spawn_parms,
     current_skill: Host.current_skill,
     mapname: SV.server.gameAPI.mapname,
@@ -878,16 +854,16 @@ Host.Savegame_f = function() {
   }
 };
 
-Host.Loadgame_f = function () {
+Host.Loadgame_f = function (_, savename) {
   if (Cmd.client === true) {
     return;
   }
-  if (Cmd.argv.length !== 2) {
-    Con.Print('load <savename> : load a game\n');
+  if (savename === undefined) {
+    Con.Print('Usage: load <savename>\n');
     return;
   }
   CL.cls.demonum = -1;
-  const name = COM.DefaultExtension(Cmd.argv[1], '.json');
+  const name = COM.DefaultExtension(savename, '.json');
   Con.Print('Loading game from ' + name + '...\n');
   const data = COM.LoadTextFile(name);
   if (data == null) {
@@ -967,26 +943,18 @@ Host.Loadgame_f = function () {
   Host.Reconnect_f();
 };
 
-Host.Name_f = function() { // signon 2, step 1
-  if (Cmd.argv.length <= 1) {
+Host.Name_f = function(_, ...names) { // signon 2, step 1
+  if (names.length < 1) {
     Con.Print('"name" is "' + CL.name.string + '"\n');
     return;
   }
 
-  let newName;
-
-  if (Cmd.argv.length === 2) {
-    newName = Cmd.argv[1].substring(0, 15);
-  } else {
-    newName = Cmd.args.substring(0, 15);
-  }
-
-  newName = newName.trim();
+  let newName = names.join(' ').trim().substring(0, 15);
 
   if (!Host.dedicated.value && Cmd.client !== true) {
     Cvar.Set('_cl_name', newName);
     if (CL.cls.state === CL.active.connected) {
-      Cmd.ForwardToServer();
+      Cmd.ForwardToServer(_, ...names);
     }
     return;
   }
@@ -1015,21 +983,18 @@ Host.Version_f = function() {
   Con.Print('Version ' + Def.version + '\n');
 };
 
-Host.Say_f = function(teamonly) {
+Host.Say = function(teamonly, message, cmd) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(cmd, message);
     return;
   }
-  if (Cmd.argv.length <= 1) {
-    return;
-  }
-  const save = Host.client;
-  let message = Cmd.args;
 
-  // Remove surrounding double quotes if present
-  if (message.startsWith('"')) {
-    message = message.slice(1, -1);
+  if (!message) {
+    return;
   }
+
+  const save = Host.client;
+
   if (message.length > 140) {
     message = message.substring(0, 140) + '...';
   }
@@ -1050,20 +1015,25 @@ Host.Say_f = function(teamonly) {
   Con.Print(`${SV.GetClientName(save)}: ${message}\n`);
 };
 
-Host.Say_Team_f = function() {
-  Host.Say_f(true);
+Host.Say_Team_f = function(_, ...args) {
+  Host.Say(true, args.join(' ').trim(), _);
 };
 
-Host.Tell_f = function() {
+Host.Say_All_f = function(_, ...args) {
+  Host.Say(false, args.join(' ').trim(), _);
+};
+
+Host.Tell_f = function(_, recipient, ...args) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
-    return;
-  }
-  if (Cmd.argv.length <= 2) {
+    Cmd.ForwardToServer(_, recipient, ...args);
     return;
   }
 
-  let message = Cmd.args;
+  if (args.length < 2) {
+    return;
+  }
+
+  let message = args.join(' ').trim();
 
   // Remove surrounding double quotes if present
   if (message.startsWith('"')) {
@@ -1079,7 +1049,7 @@ Host.Tell_f = function() {
     if ((client.active !== true) || (client.spawned !== true)) {
       continue;
     }
-    if (SV.GetClientName(client).toLowerCase() !== Cmd.argv[1].toLowerCase()) {
+    if (SV.GetClientName(client).toLowerCase() !== recipient.toLowerCase()) {
       continue;
     }
     Host.SendChatMessageToClient(client, SV.GetClientName(save), message, true);
@@ -1089,18 +1059,18 @@ Host.Tell_f = function() {
   Host.client = save;
 };
 
-Host.Color_f = function() { // signon 2, step 2 // FIXME: Host.client
-  if (Cmd.argv.length <= 1) {
+Host.Color_f = function(...argv) { // signon 2, step 2 // FIXME: Host.client
+  if (argv.length <= 1) {
     Con.Print('"color" is "' + (CL.color.value >> 4) + ' ' + (CL.color.value & 15) + '"\ncolor <0-13> [0-13]\n');
     return;
   }
 
   let top; let bottom;
-  if (Cmd.argv.length === 2) {
-    top = bottom = (Q.atoi(Cmd.argv[1]) & 15) >>> 0;
+  if (argv.length === 2) {
+    top = bottom = (Q.atoi(argv[1]) & 15) >>> 0;
   } else {
-    top = (Q.atoi(Cmd.argv[1]) & 15) >>> 0;
-    bottom = (Q.atoi(Cmd.argv[2]) & 15) >>> 0;
+    top = (Q.atoi(argv[1]) & 15) >>> 0;
+    bottom = (Q.atoi(argv[2]) & 15) >>> 0;
   }
   if (top >= 14) {
     top = 13;
@@ -1113,7 +1083,7 @@ Host.Color_f = function() { // signon 2, step 2 // FIXME: Host.client
   if (Cmd.client !== true) {
     Cvar.SetValue('_cl_color', playercolor);
     if (CL.cls.state === CL.active.connected) {
-      Cmd.ForwardToServer();
+      Cmd.ForwardToServer(...argv);
     }
     return;
   }
@@ -1126,9 +1096,9 @@ Host.Color_f = function() { // signon 2, step 2 // FIXME: Host.client
   MSG.WriteByte(msg, playercolor);
 };
 
-Host.Kill_f = function() {
+Host.Kill_f = function(...argv) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(...argv);
     return;
   }
   if (SV.player.entity.health <= 0.0) {
@@ -1139,9 +1109,9 @@ Host.Kill_f = function() {
   SV.server.gameAPI.ClientKill(SV.player);
 };
 
-Host.Pause_f = function() {
+Host.Pause_f = function(...argv) {
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(...argv);
     return;
   }
   if (Host.pausable.value === 0) {
@@ -1256,23 +1226,23 @@ Host.Begin_f = function() {  // signon 3, step 1
   Host.client.spawned = true;
 };
 
-Host.Kick_f = function() { // FIXME: Host.client
+Host.Kick_f = function(...argv) { // FIXME: Host.client
   if (Cmd.client !== true) {
     if (SV.server.active !== true) {
-      Cmd.ForwardToServer();
+      Cmd.ForwardToServer(...argv);
       return;
     }
   } else if (SV.server.gameAPI.deathmatch !== 0.0) {
     return;
   }
-  if (Cmd.argv.length <= 1) {
+  if (argv.length <= 1) {
     return;
   }
   const save = Host.client;
-  const s = Cmd.argv[1].toLowerCase();
+  const s = argv[1].toLowerCase();
   let i; let byNumber;
-  if ((Cmd.argv.length >= 3) && (s === '#')) {
-    i = Q.atoi(Cmd.argv[2]) - 1;
+  if ((argv.length >= 3) && (s === '#')) {
+    i = Q.atoi(argv[2]) - 1;
     if ((i < 0) || (i >= SV.svs.maxclients)) {
       return;
     }
@@ -1313,7 +1283,7 @@ Host.Kick_f = function() { // FIXME: Host.client
     who = SV.GetClientName(save);
   }
   let message;
-  if (Cmd.argv.length >= 3) {
+  if (argv.length >= 3) {
     message = COM.Parse(Cmd.args);
   }
   let dropReason = 'Kicked by ' + who;
@@ -1326,7 +1296,7 @@ Host.Kick_f = function() { // FIXME: Host.client
           break;
         }
       }
-      p += Cmd.argv[2].length;
+      p += argv[2].length;
     }
     for (; p < message.length; ++p) {
       if (message.charCodeAt(p) !== 32) {
@@ -1339,14 +1309,14 @@ Host.Kick_f = function() { // FIXME: Host.client
   Host.client = save;
 };
 
-Host.Give_f = function() {
+Host.Give_f = function(_, classname) {
   // CR:  commented this out for now, it’s only noise…
   //      unsure if I want a “give item_shells” approach or
   //      if I want to push this piece of code into PR/PF and let
   //      the game handle this instead
 
   if (Cmd.client !== true) {
-    Cmd.ForwardToServer();
+    Cmd.ForwardToServer(_, classname);
     return;
   }
 
@@ -1354,15 +1324,14 @@ Host.Give_f = function() {
     return;
   }
 
-  if (Cmd.argv.length <= 1) {
+  if (!classname) {
     Host.ClientPrint('give <classname>\n');
     return;
   }
 
-  const entityClassname = Cmd.argv[1];
   const player = SV.player;
 
-  if (!entityClassname.startsWith('item_') && !entityClassname.startsWith('weapon_')) {
+  if (!classname.startsWith('item_') && !classname.startsWith('weapon_')) {
     Host.ClientPrint('Only entity classes item_* and weapon_* are allowed!\n');
     return;
   }
@@ -1372,7 +1341,7 @@ Host.Give_f = function() {
     const { forward } = player.entity.v_angle.angleVectors();
     const origin = forward.multiply(64.0).add(player.entity.origin);
 
-    Game.EngineInterface.SpawnEntity(entityClassname, {
+    Game.EngineInterface.SpawnEntity(classname, {
       origin,
     });
   });
@@ -1494,30 +1463,35 @@ Host.FindViewthing = function() {
   return null;
 };
 
-Host.Viewmodel_f = function() {
-  if (Cmd.argv.length !== 2) {
+Host.Viewmodel_f = function(_, model) {
+  if (model === undefined) {
+    Con.Print('Usage: viewmodel <model>\n');
     return;
   }
   const ent = Host.FindViewthing();
   if (ent == null) {
     return;
   }
-  const m = Mod.ForName(Cmd.argv[1]);
+  const m = Mod.ForName(model);
   if (m == null) {
-    Con.Print('Can\'t load ' + Cmd.argv[1] + '\n');
+    Con.Print('Can\'t load ' + model + '\n');
     return;
   }
-  ent.entity.frame = 0.0;
-  CL.state.model_precache[ent.entity.modelindex >> 0] = m;
+  ent.entity.frame = 0;
+  CL.state.model_precache[ent.entity.modelindex] = m;
 };
 
-Host.Viewframe_f = function() {
+Host.Viewframe_f = function(_, frame) {
+  if (frame === undefined) {
+    Con.Print('Usage: viewframe <frame>\n');
+    return;
+  }
   const ent = Host.FindViewthing();
   if (ent == null) {
     return;
   }
   const m = CL.state.model_precache[ent.entity.modelindex >> 0];
-  let f = Q.atoi(Cmd.argv[1]);
+  let f = Q.atoi(frame);
   if (f >= m.frames.length) {
     f = m.frames.length - 1;
   }
@@ -1552,18 +1526,17 @@ Host.Viewprev_f = function() {
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 
-Host.Startdemos_f = function() {
+Host.Startdemos_f = function(_, ...demos) {
   if (Host.dedicated.value) {
     Con.Print('cannot play demos in dedicated server mode\n');
     return;
   }
-
-  Con.Print((Cmd.argv.length - 1) + ' demo(s) in loop\n');
-  CL.cls.demos = [];
-  let i;
-  for (i = 1; i < Cmd.argv.length; ++i) {
-    CL.cls.demos[i - 1] = Cmd.argv[i];
+  if (demos.length === 0) {
+    Con.Print('Usage: startdemos <demo1> <demo2> ...\n');
+    return;
   }
+  Con.Print(demos.length + ' demo(s) in loop\n');
+  CL.cls.demos = [...demos];
   if ((CL.cls.demonum !== -1) && (CL.cls.demoplayback !== true)) {
     CL.cls.demonum = 0;
     if (Host.framecount !== 0) {
@@ -1606,7 +1579,7 @@ Host.InitCommands = function() {
   Cmd.AddCommand('name', Host.Name_f);
   Cmd.AddCommand('noclip', Host.Noclip_f);
   Cmd.AddCommand('version', Host.Version_f);
-  Cmd.AddCommand('say', Host.Say_f);
+  Cmd.AddCommand('say', Host.Say_All_f);
   Cmd.AddCommand('say_team', Host.Say_Team_f);
   Cmd.AddCommand('tell', Host.Tell_f);
   Cmd.AddCommand('color', Host.Color_f);

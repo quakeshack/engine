@@ -60,12 +60,11 @@ CDAudio.Resume = function() {
   }
 };
 
-CDAudio.CD_f = function() {
-  if ((CDAudio.initialized !== true) || (Cmd.argv.length <= 1)) {
+CDAudio.CD_f = function(_, command, track) {
+  if (!CDAudio.initialized || !command || !track) {
     return;
   }
-  const command = Cmd.argv[1].toLowerCase();
-  switch (command) {
+  switch (command.toLowerCase()) {
     case 'on':
       CDAudio.enabled = true;
       return;
@@ -74,10 +73,10 @@ CDAudio.CD_f = function() {
       CDAudio.enabled = false;
       return;
     case 'play':
-      CDAudio.Play(Q.atoi(Cmd.argv[2]), false);
+      CDAudio.Play(Q.atoi(track), false);
       return;
     case 'loop':
-      CDAudio.Play(Q.atoi(Cmd.argv[2]), true);
+      CDAudio.Play(Q.atoi(track), true);
       return;
     case 'stop':
       CDAudio.Stop();

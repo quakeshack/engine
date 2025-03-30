@@ -12,16 +12,16 @@ Cmd.Wait_f = function() {
 Cmd.text = '';
 
 Cmd.Execute = function() {
-  let c; let line = ''; let quotes = false;
+  let line = ''; let quotes = false;
   while (Cmd.text.length !== 0) {
-    c = Cmd.text.charCodeAt(0);
+    const c = Cmd.text[0];
     Cmd.text = Cmd.text.substring(1);
-    if (c === 34) {
+    if (c === '"') {
       quotes = !quotes;
-      line += '\42';
+      line += '"';
       continue;
     }
-    if (((quotes === false) && (c === 59)) || (c === 10)) {
+    if (((quotes === false) && (c === ';')) || (c === '\n')) {
       if (line.length === 0) {
         continue;
       }
@@ -33,21 +33,21 @@ Cmd.Execute = function() {
       line = '';
       continue;
     }
-    line += String.fromCharCode(c);
+    line += c;
   }
   Cmd.text = '';
 };
 
 Cmd.StuffCmds_f = function() {
-  let i; let s = false; let build = ''; let c;
-  for (i = 0; i < COM.argv.length; ++i) {
-    c = COM.argv[i].charCodeAt(0);
+  let s = false; let build = '';
+  for (let i = 0; i < COM.argv.length; ++i) {
+    const c = COM.argv[i][0];
     if (s === true) {
       if (c === 43) {
         build += ('\n' + COM.argv[i].substring(1) + ' ');
         continue;
       }
-      if (c === 45) {
+      if (c === '_') {
         s = false;
         build += '\n';
         continue;
@@ -55,7 +55,7 @@ Cmd.StuffCmds_f = function() {
       build += (COM.argv[i] + ' ');
       continue;
     }
-    if (c === 43) {
+    if (c === '+') {
       s = true;
       build += (COM.argv[i].substring(1) + ' ');
     }
@@ -65,52 +65,48 @@ Cmd.StuffCmds_f = function() {
   }
 };
 
-Cmd.Exec_f = function() {
-  if (Cmd.argv.length !== 2) {
+Cmd.Exec_f = function(_, filename) {
+  if (!filename) {
     Con.Print('exec <filename> : execute a script file\n');
     return;
   }
-  const f = COM.LoadTextFile(Cmd.argv[1]);
+  const f = COM.LoadTextFile(filename);
   if (f == null) {
-    Con.Print('couldn\'t exec ' + Cmd.argv[1] + '\n');
+    Con.Print('couldn\'t exec ' + filename + '\n');
     return;
   }
-  Con.Print('execing ' + Cmd.argv[1] + '\n');
+  Con.Print('execing ' + filename + '\n');
   Cmd.text = f + Cmd.text;
 };
 
-Cmd.Echo_f = function() {
-  let i;
-  for (i = 1; i < Cmd.argv.length; ++i) {
-    Con.Print(Cmd.argv[i] + ' ');
-  }
-  Con.Print('\n');
+Cmd.Echo_f = function(_, ...args) {
+  Con.Print(`${args.join(' ')}\n`);
 };
 
-Cmd.Alias_f = function() {
-  let i;
-  if (Cmd.argv.length <= 1) {
+Cmd.Alias_f = function(_, ...argv) {
+  if (argv.length <= 1) {
     Con.Print('Current alias commands:\n');
-    for (i = 0; i < Cmd.alias.length; ++i) {
+    for (let i = 0; i < Cmd.alias.length; ++i) {
       Con.Print(Cmd.alias[i].name + ' : ' + Cmd.alias[i].value + '\n');
     }
   }
-  const s = Cmd.argv[1]; let value = '';
-  for (i = 0; i < Cmd.alias.length; ++i) {
-    if (Cmd.alias[i].name === s) {
+  let value = '';
+  for (let i = 0; i < Cmd.alias.length; ++i) {
+    if (Cmd.alias[i].name === argv[1]) {
       break;
     }
   }
-  let j;
-  for (j = 2; j < Cmd.argv.length; ++j) {
-    value += Cmd.argv[j];
-    if (j !== Cmd.argv.length) {
+  for (let j = 2; j < argv.length; ++j) {
+    value += argv[j];
+    if (j !== argv.length) {
       value += ' ';
     }
   }
-  Cmd.alias[i] = {name: s, value: value + '\n'};
+  Cmd.alias.push({name: argv[1], value: value + '\n'});
 };
 
+/** @deprecated */
+Cmd.args = '';
 Cmd.argv = [];
 Cmd.functions = [];
 
@@ -124,7 +120,7 @@ Cmd.Init = function() {
 };
 
 Cmd.TokenizeString = function(text) {
-  Cmd.argv = [];
+  const argv = [];
   let i; let c;
   for (;;) {
     for (i = 0; i < text.length; ++i) {
@@ -133,18 +129,19 @@ Cmd.TokenizeString = function(text) {
         break;
       }
     }
-    if (Cmd.argv.length === 1) {
+    if (argv.length === 1) {
       Cmd.args = text.substring(i);
     }
     if ((text.charCodeAt(i) === 10) || (i >= text.length)) {
-      return;
+      break;
     }
     text = COM.Parse(text);
     if (text == null) {
-      return;
+      break;
     }
-    Cmd.argv[Cmd.argv.length] = COM.token;
+    argv.push(COM.token);
   }
+  return argv;
 };
 
 Cmd.HasCommand = function(name) {
@@ -158,20 +155,16 @@ Cmd.HasCommand = function(name) {
 };
 
 Cmd.AddCommand = function(name, command) {
-  let i;
-  for (i = 0; i < Cvar.vars.length; ++i) {
-    if (Cvar.vars[i].name === name) {
-      Con.Print('Cmd.AddCommand: ' + name + ' already defined as a var\n');
-      return;
-    }
-  }
-  for (i = 0; i < Cmd.functions.length; ++i) {
+  console.assert(Cvar.FindVar(name) === null, 'command name must not be taken by a cvar', name);
+
+  for (let i = 0; i < Cmd.functions.length; ++i) {
     if (Cmd.functions[i].name === name) {
       Con.Print('Cmd.AddCommand: ' + name + ' already defined\n');
       return;
     }
   }
-  Cmd.functions[Cmd.functions.length] = {name: name, command: command};
+
+  Cmd.functions.push({name: name, command: command});
 };
 
 Cmd.CompleteCommand = function(partial) {
@@ -188,48 +181,48 @@ Cmd.CompleteCommand = function(partial) {
 
 Cmd.ExecuteString = function(text, client = false) {
   Cmd.client = client;
-  Cmd.TokenizeString(text);
+  Cmd.argv = Cmd.TokenizeString(text);
   if (Cmd.argv.length === 0) {
     return;
   }
   const name = Cmd.argv[0].toLowerCase();
-  let i;
-  for (i = 0; i < Cmd.functions.length; ++i) {
+  for (let i = 0; i < Cmd.functions.length; ++i) {
     if (Cmd.functions[i].name === name) {
-      Cmd.functions[i].command();
+      Cmd.functions[i].command(...Cmd.argv);
       return;
     }
   }
-  for (i = 0; i < Cmd.alias.length; ++i) {
+  for (let i = 0; i < Cmd.alias.length; ++i) {
     if (Cmd.alias[i].name === name) {
       Cmd.text = Cmd.alias[i].value + Cmd.text;
       return;
     }
   }
-  if (Cvar.Command() !== true) {
+  if (!Cvar.Command(...Cmd.argv)) {
     Con.Print('Unknown command "' + name + '"\n');
   }
 };
 
-Cmd.ForwardToServer = function() {
+Cmd.ForwardToServer = function(command, ...argv) {
   if (Host.dedicated.value) {
     return;
   }
+  if (command && command.toLowerCase() === 'cmd') {
+    command = argv.shift();
+  }
+  if (command === undefined) {
+    Con.Print('Usage: cmd <command> <args>\n');
+    return;
+  }
   if (CL.cls.state !== CL.active.connected) {
-    Con.Print('Can\'t "' + Cmd.argv[0] + '", not connected\n');
+    Con.Print('Can\'t "' + command + '", not connected\n');
     return;
   }
   if (CL.cls.demoplayback === true) {
     return;
   }
-  let args = String.fromCharCode(Protocol.clc.stringcmd);
-  if (Cmd.argv[0].toLowerCase() !== 'cmd') {
-    args += Cmd.argv[0] + ' ';
-  }
-  if (Cmd.argv.length >= 2) {
-    args += Cmd.args;
-  } else {
-    args += '\n';
-  }
-  MSG.WriteString(CL.cls.message, args);
+  argv.unshift(command);
+  // FIXME: turn into a proper separate message to process
+  MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
+  MSG.WriteString(CL.cls.message, argv.join(' ') + '\n');
 };

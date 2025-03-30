@@ -129,7 +129,7 @@ COM.CheckRegistered = async function() {
       Sys.Error('Corrupted data file.');
     }
   }
-  Cvar.Set('registered', '1');
+  COM.registered.set(true);
   Con.Print('Playing registered version.\n');
   return true;
 };
@@ -178,8 +178,9 @@ COM.Init = async function() {
 
   COM._abortController = new AbortController();
 
-  COM.registered = Cvar.RegisterVariable('registered', '0');
-  Cvar.RegisterVariable('cmdline', COM.cmdline, false, true);
+  COM.registered = new Cvar('registered', '0', Cvar.FLAG.READONLY, 'Set to 1, when not playing shareware.');
+  COM.cmdline = new Cvar('cmdline', COM.cmdline, Cvar.FLAG.READONLY | Cvar.FLAG.SERVER, 'Command line used to start the game.');
+
   Cmd.AddCommand('path', COM.Path_f);
   await COM.InitFilesystem();
   await COM.CheckRegistered();

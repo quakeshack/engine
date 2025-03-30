@@ -904,13 +904,13 @@ S = {
     Con.Print(`Total resident: ${total}\n`);
   },
 
-  Play_f() {
+  Play_f(_, ...samples) {
     if (this._nosound.value !== 0) {
       return;
     }
     // e.g. "play misc/hit1 misc/hit2"
-    for (let i = 1; i < Cmd.argv.length; ++i) {
-      const sfxName = COM.DefaultExtension(Cmd.argv[i], '.wav');
+    for (const sample of samples) {
+      const sfxName = COM.DefaultExtension(sample, '.wav');
       const sfx = this.PrecacheSound(sfxName);
       if (sfx) {
         this.StartSound(CL.state.viewentity, 0, sfx, this._listenerOrigin, 1.0, 1.0);
@@ -918,14 +918,14 @@ S = {
     }
   },
 
-  PlayVol_f() {
+  PlayVol_f(_, ...args) {
     if (this._nosound.value !== 0) {
       return;
     }
     // e.g. "playvol misc/hit1 0.5 misc/hit2 0.2"
-    for (let i = 1; i < Cmd.argv.length; i += 2) {
-      const sfxName = COM.DefaultExtension(Cmd.argv[i], '.wav');
-      const volume = Q.atof(Cmd.argv[i + 1]);
+    for (let i = 0; i < args.length; i += 2) {
+      const sfxName = COM.DefaultExtension(args[i], '.wav');
+      const volume = Q.atof(args[i + 1] || 0);
       const sfx = this.PrecacheSound(sfxName);
       if (sfx) {
         this.StartSound(CL.state.viewentity, 0, sfx, this._listenerOrigin, volume, 1.0);

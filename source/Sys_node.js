@@ -47,7 +47,7 @@ Sys = class Sys {
         completer(line) {
           const completions = [
             ...Cmd.functions.map((fnc) => fnc.name),
-            ...Cvar.vars.map((cvar) => cvar.name),
+            ...Object.keys(Cvar._vars).map((cvar) => cvar),
           ];
 
           const hits = completions.filter((c) => c.startsWith(line));

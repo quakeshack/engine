@@ -145,12 +145,11 @@ V.ParseDamage = function() {
   V.dmg_time = V.kicktime.value;
 };
 
-V.cshift_f = function() {
+V.cshift_f = function(_, ...args) {
   const cshift = V.cshift_empty;
-  cshift[0] = Q.atoi(Cmd.argv[1]);
-  cshift[1] = Q.atoi(Cmd.argv[2]);
-  cshift[2] = Q.atoi(Cmd.argv[3]);
-  cshift[3] = Q.atoi(Cmd.argv[4]);
+  for (let i = 0; i < Math.min(args.length, cshift.length); i++) {
+    cshift[i] = Q.atoi(args[i]);
+  }
 };
 
 V.BonusFlash_f = function() {

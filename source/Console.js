@@ -131,7 +131,7 @@ Con.DrawInput = function() {
     return;
   }
   let text = ']' + Key.edit_line + String.fromCharCode(10 + ((Host.realtime * 4.0) & 1));
-  const width = (VID.width >> 3) - 2;
+  const width = (VID.width / 8) - 2;
   if (text.length >= width) {
     text = text.substring(1 + text.length - width);
   }
@@ -139,7 +139,7 @@ Con.DrawInput = function() {
 };
 
 Con.DrawNotify = function() {
-  const width = (VID.width >> 3) - 2;
+  const width = (VID.width / 8) - 2;
   let i = Con.text.length - 4; let v = 0;
   if (i < 0) {
     i = 0;
@@ -163,7 +163,7 @@ Con.DrawConsole = function(lines) {
   lines = Math.floor(lines * VID.height * 0.005);
   Draw.ConsoleBackground(lines);
   Con.vislines = lines;
-  const width = (VID.width >> 3) - 2;
+  const width = (VID.width / 8) - 2;
   let rows;
   let y = lines - 16;
   let i;

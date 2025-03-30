@@ -22,23 +22,23 @@ M.state =
 };
 
 M.DrawCharacter = function(cx, cy, num) {
-  Draw.Character(cx + (VID.width >> 1) - 160, cy + (VID.height >> 1) - 100, num);
+  Draw.Character(cx + (VID.width / 2) - 160, cy + (VID.height / 2) - 100, num);
 };
 
 M.Print = function(cx, cy, str) {
-  Draw.StringWhite(cx + (VID.width >> 1) - 160, cy + (VID.height >> 1) - 100, str);
+  Draw.StringWhite(cx + (VID.width / 2) - 160, cy + (VID.height / 2) - 100, str);
 };
 
 M.PrintWhite = function(cx, cy, str) {
-  Draw.String(cx + (VID.width >> 1) - 160, cy + (VID.height >> 1) - 100, str);
+  Draw.String(cx + (VID.width / 2) - 160, cy + (VID.height / 2) - 100, str);
 };
 
 M.DrawPic = function(x, y, pic) {
-  Draw.Pic(x + (VID.width >> 1) - 160, y + (VID.height >> 1) - 100, pic);
+  Draw.Pic(x + (VID.width / 2) - 160, y + (VID.height / 2) - 100, pic);
 };
 
 M.DrawPicTranslate = function(x, y, pic, top, bottom) {
-  Draw.PicTranslate(x + (VID.width >> 1) - 160, y + (VID.height >> 1) - 100, pic, top, bottom);
+  Draw.PicTranslate(x + (VID.width / 2) - 160, y + (VID.height / 2) - 100, pic, top, bottom);
 };
 
 M.DrawTextBox = function(x, y, width, lines) {
@@ -107,7 +107,7 @@ M.Menu_Main_f = function() {
 
 M.Main_Draw = function() {
   M.DrawPic(16, 4, M.qplaque);
-  M.DrawPic(160 - (M.ttl_main.width >> 1), 4, M.ttl_main);
+  M.DrawPic(160 - (M.ttl_main.width / 2), 4, M.ttl_main);
   M.DrawPic(72, 32, M.mainmenu);
   M.DrawPic(54, 32 + M.main_cursor * 20, M.menudot[Math.floor(Host.realtime * 10.0) % 6]);
 };
@@ -167,7 +167,7 @@ M.Menu_SinglePlayer_f = function() {
 
 M.SinglePlayer_Draw = function() {
   M.DrawPic(16, 4, M.qplaque);
-  M.DrawPic(160 - (M.ttl_sgl.width >> 1), 4, M.ttl_sgl);
+  M.DrawPic(160 - (M.ttl_sgl.width / 2), 4, M.ttl_sgl);
   M.DrawPic(72, 32, M.sp_menu);
   M.DrawPic(54, 32 + M.singleplayer_cursor * 20, M.menudot[Math.floor(Host.realtime * 10.0) % 6]);
 };
@@ -216,42 +216,21 @@ M.loadable = [];
 M.removable = [];
 
 M.ScanSaves = function() {
-  const searchpaths = COM.searchpaths; let i; const search = 'Quake.' + COM.gamedir[0].filename + '/s'; let f; let version; let name; let j; let c;
+  const searchpaths = COM.searchpaths;
+  const search = 'Quake.' + COM.gamedir[0].filename + '/s';
   COM.searchpaths = COM.gamedir;
-  for (i = 0; i < M.max_savegames; ++i) {
-    f = localStorage.getItem(search + i + '.sav');
-    if (f != null) {
-      M.removable[i] = true;
-    } else {
+  for (let i = 0; i < M.max_savegames; ++i) {
+    const f = localStorage.getItem(search + i + '.json');
+    if (!f) {
+      M.filenames[i] = 'Empty slot';
+      M.loadable[i] = false;
       M.removable[i] = false;
-      f = COM.LoadTextFile('s' + i + '.sav');
-      if (f == null) {
-        M.filenames[i] = '--- UNUSED SLOT ---';
-        M.loadable[i] = false;
-        continue;
-      }
+      continue;
     }
-    for (version = 0; version < f.length; ++version) {
-      c = f.charCodeAt(version);
-      if (c === 10) {
-        ++version;
-        break;
-      }
-    }
-    name = [];
-    for (j = 0; j <= 39; ++j) {
-      c = f.charCodeAt(version + j);
-      if (c === 13) {
-        break;
-      }
-      if (c === 95) {
-        name[j] = ' ';
-      } else {
-        name[j] = String.fromCharCode(c);
-      }
-    }
-    M.filenames[i] = name.join('');
+    const gamestate = JSON.parse(f);
+    M.filenames[i] = gamestate.comment || gamestate.mapname;
     M.loadable[i] = true;
+    M.removable[i] = true;
   }
   COM.searchpaths = searchpaths;
 };
@@ -274,7 +253,7 @@ M.Menu_Save_f = function() {
 };
 
 M.Load_Draw = function() {
-  M.DrawPic(160 - (M.p_load.width >> 1), 4, M.p_load);
+  M.DrawPic(160 - (M.p_load.width / 2), 4, M.p_load);
   let i;
   for (i = 0; i < M.max_savegames; ++i) {
     M.Print(16, 32 + (i << 3), M.filenames[i]);
@@ -283,7 +262,7 @@ M.Load_Draw = function() {
 };
 
 M.Save_Draw = function() {
-  M.DrawPic(160 - (M.p_save.width >> 1), 4, M.p_save);
+  M.DrawPic(160 - (M.p_save.width / 2), 4, M.p_save);
   let i;
   for (i = 0; i < M.max_savegames; ++i) {
     M.Print(16, 32 + (i << 3), M.filenames[i]);
@@ -389,7 +368,7 @@ M.Menu_MultiPlayer_f = function() {
 
 M.MultiPlayer_Draw = function() {
   M.DrawPic(16, 4, M.qplaque);
-  M.DrawPic(160 - (M.p_multi.width >> 1), 4, M.p_multi);
+  M.DrawPic(160 - (M.p_multi.width / 2), 4, M.p_multi);
 
   const y0 = 24;
 
@@ -635,7 +614,7 @@ M.DrawSlider = function(x, y, range) {
 
 M.Options_Draw = function() {
   M.DrawPic(16, 4, M.qplaque);
-  M.DrawPic(160 - (M.p_option.width >> 1), 4, M.p_option);
+  M.DrawPic(160 - (M.p_option.width / 2), 4, M.p_option);
 
   M.Print(48, 32, 'Customize controls');
   M.Print(88, 40, 'Go to console');
@@ -758,7 +737,7 @@ M.UnbindCommand = function(command) {
 };
 
 M.Keys_Draw = function() {
-  M.DrawPic(160 - (M.ttl_cstm.width >> 1), 4, M.ttl_cstm);
+  M.DrawPic(160 - (M.ttl_cstm.width / 2), 4, M.ttl_cstm);
 
   if (M.bind_grab === true) {
     M.Print(12, 32, 'Press a key or button for this action');

@@ -2193,7 +2193,7 @@ R.BuildLightmaps = function() {
     if (R.currentmodel.type !== Mod.type.brush) {
       continue;
     }
-    if (R.currentmodel.name.charCodeAt(0) !== 42) {
+    if (R.currentmodel.name[0] !== '*') {
       for (j = 0; j < R.currentmodel.faces.length; ++j) {
         surf = R.currentmodel.faces[j];
         if ((surf.sky !== true) && (surf.turbulent !== true)) {

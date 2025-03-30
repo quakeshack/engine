@@ -21,9 +21,9 @@ GL.Bind = function(target, texnum, flushStream) {
   }
 };
 
-GL.TextureMode_f = function() {
+GL.TextureMode_f = function(_, name) {
   let i;
-  if (Cmd.argv.length <= 1) {
+  if (name === undefined) {
     for (i = 0; i < GL.modes.length; ++i) {
       if (GL.filter_min === GL.modes[i][1]) {
         Con.Print(GL.modes[i][0] + '\n');
@@ -33,7 +33,7 @@ GL.TextureMode_f = function() {
     Con.Print('current filter is unknown???\n');
     return;
   }
-  const name = Cmd.argv[1].toUpperCase();
+  name = name.toUpperCase();
   for (i = 0; i < GL.modes.length; ++i) {
     if (GL.modes[i][0] === name) {
       break;
@@ -491,8 +491,11 @@ GL.StreamDrawColoredQuad = function(x, y, w, h, r, g, b, a) {
 GL.Init = function() {
   VID.mainwindow = document.getElementById('mainwindow');
   try {
+    const options = {
+      preserveDrawingBuffer: true,
+    };
     // eslint-disable-next-line no-global-assign
-    gl = VID.mainwindow.getContext('webgl') || VID.mainwindow.getContext('experimental-webgl');
+    gl = VID.mainwindow.getContext('webgl', options) || VID.mainwindow.getContext('experimental-webgl', options);
   } catch (e) {
     Sys.Error(`Unable to initialize WebGL. ${e.message}`);
   }

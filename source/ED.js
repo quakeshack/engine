@@ -129,15 +129,15 @@ ED.PrintEdicts = function() {
 };
 
 
-ED.PrintEdict_f = function() {
+ED.PrintEdict_f = function(_, id) {
   if (SV.server.active !== true) {
     return;
   }
-  if (Cmd.argv.length < 2) {
-    Con.Print(`USAGE: ${Cmd.argv[0]} <num>\n`);
+  if (id === undefined) {
+    Con.Print(`Usage: ${_} <num>\n`);
     return;
   }
-  const i = Q.atoi(Cmd.argv[1]);
+  const i = Q.atoi(id);
   if ((i >= 0) && (i < SV.server.num_edicts)) {
     ED.Print(SV.server.edicts[i]);
   }
