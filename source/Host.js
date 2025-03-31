@@ -481,6 +481,8 @@ Host.Shutdown = function() {
     IN.Shutdown();
     VID.Shutdown();
   }
+  Cmd.Shutdown();
+  Cvar.Shutdown();
 };
 
 // Commands

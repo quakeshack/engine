@@ -38,16 +38,19 @@ Cmd.Execute = function() {
   Cmd.text = '';
 };
 
+/**
+ * Executes all console commands passed by the command line.
+ */
 Cmd.StuffCmds_f = function() {
   let s = false; let build = '';
   for (let i = 0; i < COM.argv.length; ++i) {
     const c = COM.argv[i][0];
     if (s === true) {
-      if (c === 43) {
+      if (c === '+') {
         build += ('\n' + COM.argv[i].substring(1) + ' ');
         continue;
       }
-      if (c === '_') {
+      if (c === '-') {
         s = false;
         build += '\n';
         continue;
@@ -111,12 +114,22 @@ Cmd.argv = [];
 Cmd.functions = [];
 
 Cmd.Init = function() {
+  Cmd.args = '';
+  Cmd.argv = [];
+  Cmd.functions = [];
+
   Cmd.AddCommand('stuffcmds', Cmd.StuffCmds_f);
   Cmd.AddCommand('exec', Cmd.Exec_f);
   Cmd.AddCommand('echo', Cmd.Echo_f);
   Cmd.AddCommand('alias', Cmd.Alias_f);
   Cmd.AddCommand('cmd', Cmd.ForwardToServer);
   Cmd.AddCommand('wait', Cmd.Wait_f);
+};
+
+Cmd.Shutdown = function() {
+  Cmd.args = '';
+  Cmd.argv = [];
+  Cmd.functions = [];
 };
 
 Cmd.TokenizeString = function(text) {

@@ -182,6 +182,7 @@ COM.Init = async function() {
   COM.cmdline = new Cvar('cmdline', COM.cmdline, Cvar.FLAG.READONLY | Cvar.FLAG.SERVER, 'Command line used to start the game.');
 
   Cmd.AddCommand('path', COM.Path_f);
+
   await COM.InitFilesystem();
   await COM.CheckRegistered();
 };

@@ -140,4 +140,8 @@ Cvar = class Cvar {
         .map((v) => `${v.name} "${v.string}"\n`)
         .join('');
   }
+
+  static Shutdown() {
+    Cvar._vars = {};
+  }
 };
