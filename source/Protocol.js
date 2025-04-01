@@ -1,4 +1,4 @@
-/* global Protocol */
+/* global Protocol, Vector */
 
 // eslint-disable-next-line no-global-assign
 Protocol = {};
@@ -107,4 +107,33 @@ Protocol.te = {
   teleport: 11,
   explosion2: 12,
   beam: 13,
+};
+
+Protocol.EntityState = class EntityState { // entity_state_t
+  constructor() {
+    /** @type {number} edict index */
+    this.number = 0;
+    /** @type {number} nolerp, etc. */
+    this.flags = 0;
+    this.frame = 0;
+    this.modelindex = 0;
+    this.colormap = 0;
+    this.skinnum = 0;
+    this.effects = 0;
+
+    this.origin = new Vector();
+    this.angles = new Vector();
+  }
+};
+
+Protocol.UserCmd = class UserCmd { // usercmd_t
+  constructor() {
+    this.msec = 0;
+    this.forwardmove = 0;
+    this.sidemove = 0;
+    this.upmove = 0;
+    this.angles = new Vector();
+    this.buttons = 0;
+    this.impulse = 0;
+  }
 };

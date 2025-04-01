@@ -306,6 +306,16 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-04-01
+
+* some more polish on Cvar.js
+* I want to have client prediction, so I started porting over pmove.c from QuakeWorld
+  * PM_RecursiveHullCheck is the same as SV_RecursiveHullCheck
+    * works already on the new structure: `Pmove.Hull.fromDeprecated(Mod.known[0].hulls[1]).pointContents(SV.server.edicts[1].entity.origin)`
+  * playermove_t is going to be implemented encapsulated
+  * hull and plane (somewhere over in Mod) will be replaced by this later
+  * introduced `Hull.fromDeprecated` because I’m going to clean up some old structures as well
+
 ### 2025-03-30
 
 * went through a lot of maps and checked what’s going wrong, found a couple of bugs and fixed them
