@@ -306,6 +306,15 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-04-02
+
+* more Pmove
+  * added a mini testsuite `Pmove.TestServerside()`
+  * `pmovetst.c` is ported
+  * most of `pmove.c` is ported
+* next steps:
+  * replace the old move code in `SV` with the new `Pmove` logic
+
 ### 2025-04-01
 
 * some more polish on Cvar.js

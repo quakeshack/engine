@@ -109,6 +109,12 @@ Protocol.te = {
   beam: 13,
 };
 
+Protocol.button = {
+  attack: 1,
+  jump: 2,
+  use: 4,
+};
+
 Protocol.EntityState = class EntityState { // entity_state_t
   constructor() {
     /** @type {number} edict index */
@@ -128,6 +134,7 @@ Protocol.EntityState = class EntityState { // entity_state_t
 
 Protocol.UserCmd = class UserCmd { // usercmd_t
   constructor() {
+    /** @type {number} uint8_t in QW */
     this.msec = 0;
     this.forwardmove = 0;
     this.sidemove = 0;

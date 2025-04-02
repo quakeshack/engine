@@ -74,6 +74,15 @@ Mod.effects = {
 
 Mod.type = {brush: 0, sprite: 1, alias: 2};
 
+Mod.hull = {
+  /** hull0, point intersection */
+  normal: 0,
+  /** hull1, testing for player (32, 32, 56) */
+  player: 1,
+  /** hull2, testing for large objects (64, 64, 80) */
+  big: 2,
+};
+
 Mod.flags = {
   rocket: 1,
   grenade: 2,

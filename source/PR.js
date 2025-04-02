@@ -631,6 +631,10 @@ PR.EdictProxy = class ProgsEntity {
     // QuakeC is different, the actual spawn function is called by its classname
     SV.server.gameAPI[this.classname]({num: this._edictNum});
   }
+
+  get edictId() {
+    return this._edictNum;
+  }
 };
 
 // cmds

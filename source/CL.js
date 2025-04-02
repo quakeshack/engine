@@ -425,17 +425,17 @@ CL.SendMove = function() {
   let bits = 0;
 
   if ((CL.kbuttons[CL.kbutton.attack].state & 3) !== 0) {
-    bits += 1;
+    bits += Protocol.button.attack;
   }
   CL.kbuttons[CL.kbutton.attack].state &= 5;
 
   if ((CL.kbuttons[CL.kbutton.jump].state & 3) !== 0) {
-    bits += 2;
+    bits += Protocol.button.jump;
   }
   CL.kbuttons[CL.kbutton.jump].state &= 5;
 
   if ((CL.kbuttons[CL.kbutton.use].state & 3) !== 0) {
-    bits += 4;
+    bits += Protocol.button.use;
   }
   CL.kbuttons[CL.kbutton.use].state &= 5;
 
