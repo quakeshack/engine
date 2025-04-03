@@ -306,6 +306,14 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-04-03
+
+* added `Cvar.FLAG.SECRET` to suppress broadcasting sensitive cvar changes
+* started reorganizing client/server code, decided to implement the QW protocol (more or less)
+* started adding Pmove to the client code
+* if you add some `console.assert` here and there, you’ll discover lots of fun quiet bugs
+* started implementing delta updates and only transmitting PVS visible players etc.
+
 ### 2025-04-02
 
 * more Pmove

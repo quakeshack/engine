@@ -1,25 +1,35 @@
-/* global MSG, Q, NET, SZ, Vector */
+/* global MSG, Q, NET, SZ, Vector, Protocol */
 
 // eslint-disable-next-line no-global-assign
 MSG = {};
 
 MSG.WriteChar = function(sb, c) {
+  console.assert(c >= -128 && c <= 127, 'must be signed byte');
+
   (new DataView(sb.data)).setInt8(SZ.GetSpace(sb, 1), c);
 };
 
 MSG.WriteByte = function(sb, c) {
+  console.assert(c >= 0 && c <= 255, 'must be unsigned byte');
+
   (new DataView(sb.data)).setUint8(SZ.GetSpace(sb, 1), c);
 };
 
 MSG.WriteShort = function(sb, c) {
+  console.assert(c >= -32768 && c <= 32767, 'must be signed short');
+
   (new DataView(sb.data)).setInt16(SZ.GetSpace(sb, 2), c, true);
 };
 
 MSG.WriteLong = function(sb, c) {
+  console.assert(c >= -2147483648 && c <= 2147483647, 'must be signed long');
+
   (new DataView(sb.data)).setInt32(SZ.GetSpace(sb, 4), c, true);
 };
 
 MSG.WriteFloat = function(sb, f) {
+  console.assert(typeof f === 'number' && !isNaN(f) && isFinite(f), 'must be a real number, not NaN or Infinity');
+
   (new DataView(sb.data)).setFloat32(SZ.GetSpace(sb, 4), f, true);
 };
 
@@ -50,10 +60,143 @@ MSG.WriteAngleVector = function(sb, vec) {
   MSG.WriteAngle(sb, vec[2]);
 };
 
-MSG.WriteColor = function(sb, color) {
+MSG.WriteRGB = function(sb, color) {
   MSG.WriteByte(sb, Math.round(color[0] * 255));
   MSG.WriteByte(sb, Math.round(color[1] * 255));
   MSG.WriteByte(sb, Math.round(color[2] * 255));
+};
+
+MSG.WriteRGBA = function(sb, color, alpha) {
+  MSG.WriteRGB(sb, color);
+  MSG.WriteByte(sb, Math.round(alpha * 255));
+};
+
+/**
+ * Write a delta usercmd to the message buffer.
+ * @param {*} sb message buffer
+ * @param {Protocol.UserCmd} from previous usercmd
+ * @param {Protocol.UserCmd} to current usercmd
+ */
+MSG.WriteDeltaUsercmd = function(sb, from, to) {
+  let bits = 0;
+
+  if (to.forwardmove !== from.forwardmove) {
+    bits |= Protocol.cm.CM_FORWARD;
+  }
+
+  if (to.sidemove !== from.sidemove) {
+    bits |= Protocol.cm.CM_SIDE;
+  }
+
+  if (to.upmove !== from.upmove) {
+    bits |= Protocol.cm.CM_UP;
+  }
+
+  if (to.angles[0] !== from.angles[0]) {
+    bits |= Protocol.cm.CM_ANGLE1;
+  }
+
+  if (to.angles[1] !== from.angles[1]) {
+    bits |= Protocol.cm.CM_ANGLE2;
+  }
+
+  if (to.angles[2] !== from.angles[2]) {
+    bits |= Protocol.cm.CM_ANGLE3;
+  }
+
+  if (to.buttons !== from.buttons) {
+    bits |= Protocol.cm.CM_BUTTONS;
+  }
+
+  if (to.impulse !== from.impulse) {
+    bits |= Protocol.cm.CM_IMPULSE;
+  }
+
+  MSG.WriteByte(sb, bits);
+
+  if (bits & Protocol.cm.CM_FORWARD) {
+    MSG.WriteShort(sb, to.forwardmove);
+  }
+
+  if (bits & Protocol.cm.CM_SIDE) {
+    MSG.WriteShort(sb, to.sidemove);
+  }
+
+  if (bits & Protocol.cm.CM_UP) {
+    MSG.WriteShort(sb, to.upmove);
+  }
+
+  if (bits & Protocol.cm.CM_ANGLE1) {
+    MSG.WriteAngle(sb, to.angles[0]);
+  }
+
+  if (bits & Protocol.cm.CM_ANGLE2) {
+    MSG.WriteAngle(sb, to.angles[1]);
+  }
+
+  if (bits & Protocol.cm.CM_ANGLE3) {
+    MSG.WriteAngle(sb, to.angles[2]);
+  }
+
+  if (bits & Protocol.cm.CM_BUTTONS) {
+    MSG.WriteByte(sb, to.buttons);
+  }
+
+  if (bits & Protocol.cm.CM_IMPULSE) {
+    MSG.WriteByte(sb, to.impulse);
+  }
+
+  MSG.WriteByte(sb, to.msec);
+};
+
+/**
+ * Read a delta usercmd from the message buffer.
+ * To will be set to from and updated with the new values in-place.
+ * @param {Protocol.UserCmd} from previous usercmd
+ * @returns {Protocol.UserCmd} current usercmd
+ */
+MSG.ReadDeltaUsercmd = function(from) {
+  const to = new Protocol.UserCmd();
+
+  Object.assign(to, from);
+
+  const bits = MSG.ReadByte();
+
+  if (bits & Protocol.cm.CM_FORWARD) {
+    to.forwardmove = MSG.ReadShort();
+  }
+
+  if (bits & Protocol.cm.CM_SIDE) {
+    to.sidemove = MSG.ReadShort();
+  }
+
+  if (bits & Protocol.cm.CM_UP) {
+    to.upmove = MSG.ReadShort();
+  }
+
+  if (bits & Protocol.cm.CM_ANGLE1) {
+    to.angles[0] = MSG.ReadAngle();
+  }
+
+  if (bits & Protocol.cm.CM_ANGLE2) {
+    to.angles[1] = MSG.ReadAngle();
+  }
+
+  if (bits & Protocol.cm.CM_ANGLE3) {
+    to.angles[2] = MSG.ReadAngle();
+  }
+
+  if (bits & Protocol.cm.CM_BUTTONS) {
+    to.buttons = MSG.ReadByte();
+  }
+
+  if (bits & Protocol.cm.CM_IMPULSE) {
+    to.impulse = MSG.ReadByte();
+  }
+
+  to.msec = MSG.ReadByte();
+
+  return to;
 };
 
 MSG.BeginReading = function() {
@@ -139,6 +282,10 @@ MSG.ReadAngleVector = function() {
   return new Vector(MSG.ReadAngle(), MSG.ReadAngle(), MSG.ReadAngle());
 };
 
-MSG.ReadColor = function() {
+MSG.ReadRGB = function() {
   return new Vector(MSG.ReadByte() / 255, MSG.ReadByte() / 255, MSG.ReadByte() / 255);
+};
+
+MSG.ReadRGBA = function() {
+  return [MSG.ReadRGB(), MSG.ReadByte() / 255];
 };

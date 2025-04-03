@@ -1,4 +1,4 @@
-/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, V, SCR, CANNON, Game */
+/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, V, SCR, CANNON, Game, Pmove */
 
 // eslint-disable-next-line no-global-assign
 SV = {};
@@ -290,6 +290,21 @@ SV.Edict = class Edict {
   }
 
   /**
+   * Checks if this entity is in the given PVS.
+   * @param {Uint8Array} pvs PVS to check against
+   * @returns {boolean} true, when this entity is in the PVS
+   */
+  isInPVS(pvs) {
+    for (let i = 0; i < this.leafnums.length; ++i) {
+      if ((pvs[this.leafnums[i] >> 3] & (1 << (this.leafnums[i] & 7))) !== 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Move this entity toward its goal. Used for monsters.
    * @param {number} dist
    * @returns {boolean} true, when successful
@@ -442,19 +457,79 @@ SV.Edict = class Edict {
 
 SV.svs = {};
 
+/**
+ * Simple class hooking up all movevars with corresponding cvars.
+ */
+SV.PmoveCvars = class PlayerMoveCvars extends Pmove.MoveVars {
+  get gravity() { return SV.gravity.value; }
+  get stopspeed() { return SV.stopspeed.value; }
+  get maxspeed() { return SV.maxspeed.value; }
+  get spectatormaxspeed() { return SV.spectatormaxspeed.value; }
+  get accelerate() { return SV.accelerate.value; }
+  get airaccelerate() { return SV.airaccelerate.value; }
+  get wateraccelerate() { return SV.wateraccelerate.value; }
+  get friction() { return SV.friction.value; }
+  get waterfriction() { return SV.waterfriction.value; }
+
+  set gravity(_value) { }
+  set stopspeed(_value) { }
+  set maxspeed(_value) { }
+  set spectatormaxspeed(_value) { }
+  set accelerate(_value) { }
+  set airaccelerate(_value) { }
+  set wateraccelerate(_value) { }
+  set friction(_value) { }
+  set waterfriction(_value) { }
+
+  /**
+   * Writes the movevars to the client.
+   * @param {*} message message stream
+   */
+  sendToClient(message) {
+    MSG.WriteFloat(message, this.gravity);
+    MSG.WriteFloat(message, this.stopspeed);
+    MSG.WriteFloat(message, this.maxspeed);
+    MSG.WriteFloat(message, this.spectatormaxspeed);
+    MSG.WriteFloat(message, this.accelerate);
+    MSG.WriteFloat(message, this.airaccelerate);
+    MSG.WriteFloat(message, this.wateraccelerate);
+    MSG.WriteFloat(message, this.friction);
+    MSG.WriteFloat(message, this.waterfriction);
+    MSG.WriteFloat(message, this.entgravity);
+  }
+
+  // CR: leaving out entgravity, it’s entity specific
+};
+
+/** @type {?Pmove.Pmove} */
+SV.pmove = null;
+
+SV.InitPmove = function() {
+  SV.pmove = new Pmove.Pmove();
+  SV.pmove.movevars = new SV.PmoveCvars();
+};
+
 SV.Init = function() {
-  SV.maxvelocity = Cvar.RegisterVariable('sv_maxvelocity', '2000');
-  SV.gravity = Cvar.RegisterVariable('sv_gravity', '800', false, true);
-  SV.friction = Cvar.RegisterVariable('sv_friction', '4', false, true);
-  SV.edgefriction = Cvar.RegisterVariable('edgefriction', '2');
-  SV.stopspeed = Cvar.RegisterVariable('sv_stopspeed', '100');
-  SV.maxspeed = Cvar.RegisterVariable('sv_maxspeed', '320', false, true);
-  SV.accelerate = Cvar.RegisterVariable('sv_accelerate', '10');
-  SV.idealpitchscale = Cvar.RegisterVariable('sv_idealpitchscale', '0.8');
-  SV.aim = Cvar.RegisterVariable('sv_aim', '0.93');
-  SV.nostep = Cvar.RegisterVariable('sv_nostep', '0');
-  SV.rcon_password = Cvar.RegisterVariable('sv_rcon_password', '', true, true);
-  SV.cheats = Cvar.RegisterVariable('sv_cheats', '0');
+  SV.maxvelocity = new Cvar('sv_maxvelocity', '2000');
+  SV.edgefriction = new Cvar('edgefriction', '2');
+  SV.stopspeed = new Cvar('sv_stopspeed', '100');
+  SV.accelerate = new Cvar('sv_accelerate', '10');
+  SV.idealpitchscale = new Cvar('sv_idealpitchscale', '0.8');
+  SV.aim = new Cvar('sv_aim', '0.93');
+  SV.nostep = new Cvar('sv_nostep', '0');
+  SV.cheats = new Cvar('sv_cheats', '0', Cvar.FLAG.SERVER);
+  SV.gravity = new Cvar('sv_gravity', '800', Cvar.FLAG.SERVER);
+  SV.friction = new Cvar('sv_friction', '4', Cvar.FLAG.SERVER);
+  SV.maxspeed = new Cvar('sv_maxspeed', '320', Cvar.FLAG.SERVER);
+  SV.airaccelerate = new Cvar('sv_airaccelerate', '0.7');
+  SV.wateraccelerate = new Cvar('sv_wateraccelerate', '10');
+  SV.spectatormaxspeed = new Cvar('sv_spectatormaxspeed', '500');
+  SV.waterfriction = new Cvar('sv_waterfriction', '4');
+  SV.rcon_password = new Cvar('sv_rcon_password', '', Cvar.FLAG.SERVER | Cvar.FLAG.SECRET);
+
+  // TODO: we need to observe changes to those pmove vars and resend them to all clients when changed
+
+  SV.InitPmove();
 
   SV.nop = {data: new ArrayBuffer(4), cursize: 1};
   (new Uint8Array(SV.nop.data))[0] = Protocol.svc.nop;
@@ -462,7 +537,7 @@ SV.Init = function() {
   MSG.WriteByte(SV.reconnect, Protocol.svc.stufftext);
   MSG.WriteString(SV.reconnect, 'reconnect\n');
 
-  SV.InitBoxHull();
+  SV.InitBoxHull(); // pmove, remove
 };
 
 SV._scheduledGameCommands = [];
@@ -555,17 +630,19 @@ SV.SendServerinfo = function(client) {
   const message = client.message;
   MSG.WriteByte(message, Protocol.svc.print);
   MSG.WriteString(message, `\x02\nVERSION ${Def.version} SERVER (${SV.server.gameVersion})`);
-  MSG.WriteByte(message, Protocol.svc.serverinfo);
+  MSG.WriteByte(message, Protocol.svc.serverdata);
   MSG.WriteLong(message, Protocol.version);
   MSG.WriteByte(message, SV.svs.maxclients);
   MSG.WriteByte(message, ((Host.coop.value === 0) && (Host.deathmatch.value !== 0)) ? 1 : 0); // gametype (1 deathmatch, 0 coop/singleplayer)
   MSG.WriteString(message, SV.server.edicts[0].entity.message); // levelname
-  let i;
-  for (i = 1; i < SV.server.model_precache.length; ++i) {
+
+  SV.pmove.movevars.sendToClient(message);
+
+  for (let i = 1; i < SV.server.model_precache.length; ++i) {
     MSG.WriteString(message, SV.server.model_precache[i]);
   }
   MSG.WriteByte(message, 0);
-  for (i = 1; i < SV.server.sound_precache.length; ++i) {
+  for (let i = 1; i < SV.server.sound_precache.length; ++i) {
     MSG.WriteString(message, SV.server.sound_precache[i]);
   }
   MSG.WriteByte(message, 0);
@@ -596,7 +673,7 @@ SV.ConnectClient = function(clientnum) {
   client.active = true;
   client.dropasap = false;
   client.last_message = 0.0;
-  client.cmd = {forwardmove: 0.0, sidemove: 0.0, upmove: 0.0};
+  client.cmd = new Protocol.UserCmd();
   client.wishdir = new Vector();
   client.message.cursize = 0;
   client.edict = SV.server.edicts[clientnum + 1];
@@ -684,40 +761,171 @@ SV.FatPVS = function(org) {
     SV.fatpvs[i] = 0;
   }
   SV.AddToFatPVS(org, SV.server.worldmodel.nodes[0]);
+  return SV.fatpvs;
 };
 
-SV.WriteEntitiesToClient = function(clent, msg) {
-  SV.FatPVS(clent.entity.origin.copy().add(clent.entity.view_ofs));
-  const pvs = SV.fatpvs; let ent; let e; let i; let bits; let miss;
-  for (e = 1; e < SV.server.num_edicts; ++e) {
-    ent = SV.server.edicts[e];
-    if (!ent.equals(clent)) {
-      if (ent.isFree()) {
-        continue;
-      }
-      if ((ent.entity.modelindex === 0.0) || !ent.entity.model) {
-        continue;
-      }
-      for (i = 0; i < ent.leafnums.length; ++i) {
-        if ((pvs[ent.leafnums[i] >> 3] & (1 << (ent.leafnums[i] & 7))) !== 0) {
-          break;
-        }
-      }
-      if (i === ent.leafnums.length) {
-        continue;
+/**
+ * Traverses all entities in the PVS of the given origin.
+ * @param {Uint8Array} pvs PVS to check against
+ * @param {number} ignoreEdictId edict id to ignore
+ * @param {number} alwaysIncludeEdictId edict id to always yield
+ * @yields {SV.Edict} edict
+ */
+SV.TraversePVS = function*(pvs, ignoreEdictId = null, alwaysIncludeEdictId = null) {
+  for (let e = 1; e < SV.server.num_edicts; e++) {
+    const ent = SV.server.edicts[e];
+
+    // requested to always include this edict
+    if (e === alwaysIncludeEdictId) {
+      yield ent;
+      continue;
+    }
+
+    // not active
+    if (ent.isFree()) {
+      continue;
+    }
+
+    // ignore this
+    if (e === ignoreEdictId) {
+      continue;
+    }
+
+    // ignore if not touching a PV leaf
+    if (!ent.isInPVS(pvs)) {
+      continue;
+    }
+
+    yield ent;
+  }
+};
+
+SV.nullcmd = new Protocol.UserCmd();
+
+SV.WritePlayersToClient = function(clent, pvs, msg) {
+  for (let i = 0; i < SV.svs.maxclients; ++i) {
+    const cl = SV.svs.clients[i];
+    const playerEntity = cl.edict.entity;
+
+    // ignore unspawned clients
+    if (!cl.spawned) {
+      continue;
+    }
+
+    // only write players that are visible to the client right now
+    if (!clent.equals(cl.edict) && !clent.isInPVS(pvs)) {
+      continue;
+    }
+
+    let pflags = Protocol.pf.PF_MSEC | Protocol.pf.PF_COMMAND;
+
+    // FIXME: we should have this more flexible?
+    if (playerEntity.model !== 'progs/player.mdl') {
+      pflags |= Protocol.pf.PF_MODEL;
+    }
+
+    if (!playerEntity.velocity.isOrigin()) {
+      pflags |= Protocol.pf.PF_VELOCITY;
+    }
+
+    if (playerEntity.effects) {
+      pflags |= Protocol.pf.PF_EFFECTS;
+    }
+
+    if (playerEntity.skin) {
+      pflags |= Protocol.pf.PF_SKINNUM;
+    }
+
+    if (playerEntity.health <= 0) {
+      pflags |= Protocol.pf.PF_DEAD;
+    }
+
+    if (clent.equals(cl.edict)) {
+      pflags &= ~(Protocol.pf.PF_MSEC | Protocol.pf.PF_COMMAND);
+
+      if (playerEntity.weaponframe) {
+        pflags |= Protocol.pf.PF_WEAPONFRAME;
       }
     }
+
+    MSG.WriteByte(msg, Protocol.svc.playerinfo);
+    MSG.WriteByte(msg, i);
+    MSG.WriteShort(msg, pflags);
+
+    MSG.WriteCoordVector(msg, playerEntity.origin);
+    MSG.WriteByte(msg, playerEntity.frame);
+
+    if (pflags & Protocol.pf.PF_MSEC) {
+      const msec = 1000 * (SV.server.time - clent.last_message);
+      MSG.WriteByte(msg, Math.min(msec, 255));
+    }
+
+    if (pflags & Protocol.pf.PF_COMMAND) {
+      const cmd = cl.cmd;
+
+      if (pflags & Protocol.pf.PF_DEAD) {
+        cmd.angles.setTo(0, playerEntity.angles[1], 0);
+      }
+
+      cmd.buttons = 0; // never send buttons
+			cmd.impulse = 0; // never send impulses
+
+      MSG.WriteDeltaUsercmd(msg, SV.nullcmd, cmd);
+    }
+
+    if (pflags & Protocol.pf.PF_VELOCITY) {
+      MSG.WriteCoordVector(msg, playerEntity.velocity);
+    }
+
+    if (pflags & Protocol.pf.PF_MODEL) {
+      MSG.WriteByte(msg, playerEntity.modelindex);
+    }
+
+    if (pflags & Protocol.pf.PF_EFFECTS) {
+      MSG.WriteByte(msg, playerEntity.effects);
+    }
+
+    if (pflags & Protocol.pf.PF_SKINNUM) {
+      MSG.WriteByte(msg, playerEntity.skin);
+    }
+
+    if (pflags & Protocol.pf.PF_WEAPONFRAME) {
+      MSG.WriteByte(msg, playerEntity.weaponframe);
+    }
+  }
+};
+
+/**
+ * Encodes the current state of the world as
+ * a svc_packetentities messages and possibly
+ * a svc_nails message and
+ * svc_playerinfo messages
+ * @param {SV.Edict} clent client edict
+ * @param {*} msg message stream
+ */
+SV.WriteEntitiesToClient = function(clent, msg) {
+  const origin = clent.entity.origin.copy().add(clent.entity.view_ofs);
+  const pvs = SV.FatPVS(origin);
+
+  SV.WritePlayersToClient(clent, pvs, msg);
+
+  for (const ent of SV.TraversePVS(pvs, null, clent.num)) {
     if ((msg.data.byteLength - msg.cursize) < 16) {
       Con.Print('packet overflow\n');
       return;
     }
 
+    // ignore ents without visible models
+    if (!ent.entity.modelindex || !ent.entity.model) {
+      continue;
+    }
+
     const angles = ent.entity.angles, origin = ent.entity.origin;
 
-    bits = 0;
-    for (i = 0; i <= 2; ++i) {
-      miss = origin[i] - ent.baseline.origin[i];
-      if ((miss < -0.1) || (miss > 0.1)) {
+    let bits = 0;
+    for (let i = 0; i <= 2; ++i) {
+      const miss = origin[i] - ent.baseline.origin[i];
+      if (miss < -Pmove.Pmove.STOP_EPSILON || miss > Pmove.Pmove.STOP_EPSILON) {
         bits += Protocol.u.origin1 << i;
       }
     }
@@ -733,7 +941,7 @@ SV.WriteEntitiesToClient = function(clent, msg) {
     if (ent.entity.movetype === SV.movetype.step) {
       bits += Protocol.u.nolerp;
     }
-    if (ent.baseline.colormap !== ent.entity.colormap) {
+    if (ent.baseline.colormap !== (ent.entity.colormap || 0)) {
       bits += Protocol.u.colormap;
     }
     if (ent.baseline.skin !== ent.entity.skin) {
@@ -748,21 +956,23 @@ SV.WriteEntitiesToClient = function(clent, msg) {
     if (ent.baseline.modelindex !== ent.entity.modelindex) {
       bits += Protocol.u.model;
     }
-    if (e >= 256) {
+    if (ent.num >= 256) {
       bits += Protocol.u.longentity;
     }
     if (bits >= 256) {
       bits += Protocol.u.morebits;
     }
 
-    MSG.WriteByte(msg, bits + Protocol.u.signal);
     if ((bits & Protocol.u.morebits) !== 0) {
-      MSG.WriteByte(msg, bits >> 8);
-    }
-    if ((bits & Protocol.u.longentity) !== 0) {
-      MSG.WriteShort(msg, e);
+      MSG.WriteShort(msg, bits + Protocol.u.signal);
     } else {
-      MSG.WriteByte(msg, e);
+      MSG.WriteByte(msg, bits + Protocol.u.signal);
+    }
+
+    if ((bits & Protocol.u.longentity) !== 0) {
+      MSG.WriteShort(msg, ent.num);
+    } else {
+      MSG.WriteByte(msg, ent.num);
     }
     if ((bits & Protocol.u.model) !== 0) {
       MSG.WriteByte(msg, ent.entity.modelindex);
@@ -814,7 +1024,7 @@ SV.WriteClientdataToMessage = function(ent, msg) {
     ent.entity.dmg_save = 0.0;
   }
 
-  SV.SetIdealPitch();
+  SV.SetIdealPitch(); // CR: remove this? QuakeWorld is not doing it
 
   if (ent.entity.fixangle) {
     MSG.WriteByte(msg, Protocol.svc.setangle);
@@ -919,7 +1129,7 @@ SV.WriteClientdataToMessage = function(ent, msg) {
   MSG.WriteByte(msg, ent.entity.ammo_rockets);
   MSG.WriteByte(msg, ent.entity.ammo_cells);
   if (COM.standard_quake === true) {
-    MSG.WriteByte(msg, ent.entity.weapon);
+    MSG.WriteByte(msg, ent.entity.weapon & 0xff);
   } else {
     const weapon = ent.entity.weapon;
     for (let i = 0; i <= 31; ++i) {
@@ -1204,6 +1414,9 @@ SV.SpawnServer = function(mapname) {
     SV.server.active = false;
     return false;
   }
+
+  SV.pmove.setWorldmodel(SV.server.worldmodel);
+
   SV.server.models = [];
   SV.server.models[1] = SV.server.worldmodel;
 
@@ -1308,7 +1521,7 @@ SV.SetClientName = function(client, name) {
 // move
 
 SV.CheckBottom = function(ent) {
-  const STEPSIZE = 18.0;
+  const STEPSIZE = Pmove.Pmove.STEPSIZE;
   const mins = ent.entity.origin.copy().add(ent.entity.mins);
   const maxs = ent.entity.origin.copy().add(ent.entity.maxs);
   for (;;) {
@@ -1362,7 +1575,7 @@ SV.CheckBottom = function(ent) {
  * @returns {boolean} false, if no move is done
  */
 SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
-  const STEPSIZE = 18.0;
+  const STEPSIZE = Pmove.Pmove.STEPSIZE;
   const oldorg = ent.entity.origin.copy();
   const mins = ent.entity.mins;
   const maxs = ent.entity.maxs;
@@ -1630,21 +1843,36 @@ SV.CheckVelocity = function(ent) {
 };
 
 /**
+ * Runs thinking code if time.  There is some play in the exact time the think
+ * function will be called, because it is called before any movement is done
+ * in a frame.  Not used for pushmove objects, because they must be exact.
  * @param {SV.Edict} ent edict
  * @returns {boolean} whether false when an edict got freed
  */
 SV.RunThink = function(ent) {
-  let thinktime = ent.entity.nextthink;
-  if ((thinktime <= 0.0) || (thinktime > (SV.server.time + Host.frametime))) {
-    return true;
+  // CR: turn into an infinite loop to catch up with all thinks (QW)
+  while (true) {
+    let thinktime = ent.entity.nextthink;
+
+    if (thinktime <= 0.0 || thinktime > (SV.server.time + Host.frametime)) {
+      return true;
+    }
+
+    if (thinktime < SV.server.time) {
+      // don't let things stay in the past.
+      // it is possible to start that way
+      // by a trigger with a local time.
+      thinktime = SV.server.time;
+    }
+
+    ent.entity.nextthink = 0.0;
+    SV.server.gameAPI.time = thinktime;
+    ent.entity.think(null);
+
+    if (ent.isFree()) {
+      return false; // think might have deleted the edict
+    }
   }
-  if (thinktime < SV.server.time) {
-    thinktime = SV.server.time;
-  }
-  ent.entity.nextthink = 0.0;
-  SV.server.gameAPI.time = thinktime;
-  ent.entity.think(null);
-  return !ent.isFree(); // think might have deleted the edict
 };
 
 SV.Impact = function(e1, e2) {
@@ -2591,19 +2819,34 @@ SV.ClientThink = function() {
 
 SV.ReadClientMove = function(client) {
   client.ping_times[client.num_pings++ & 15] = SV.server.time - MSG.ReadFloat();
-  client.edict.entity.v_angle = MSG.ReadAngleVector();
+  client.cmd.angles = MSG.ReadAngleVector();
   client.cmd.forwardmove = MSG.ReadShort();
   client.cmd.sidemove = MSG.ReadShort();
   client.cmd.upmove = MSG.ReadShort();
   // CR: we could restructure this a bit and let the ServerGameAPI handle the rest
-  let i = MSG.ReadByte();
-  client.edict.entity.button0 = (i & Protocol.button.attack) === 1; // QuakeC
-  client.edict.entity.button2 = ((i & Protocol.button.jump) >> 1) === 1; // QuakeC
-  client.edict.entity.button1 = ((i & Protocol.button.use) >> 2) === 1; // QuakeC
-  i = MSG.ReadByte();
-  if (i !== 0) {
-    client.edict.entity.impulse = i; // QuakeC
+  client.cmd.buttons = MSG.ReadByte();
+  client.edict.entity.button0 = (client.cmd.buttons & Protocol.button.attack) === 1; // QuakeC
+  client.edict.entity.button1 = ((client.cmd.buttons & Protocol.button.use) >> 2) === 1; // QuakeC
+  client.edict.entity.button2 = ((client.cmd.buttons & Protocol.button.jump) >> 1) === 1; // QuakeC
+  client.edict.entity.v_angle = client.cmd.angles;
+  client.cmd.impulse = MSG.ReadByte();
+  if (client.cmd.impulse !== 0) {
+    client.edict.entity.impulse = client.cmd.impulse; // QuakeC
   }
+
+  // console.log('client.cmd', client.cmd);
+};
+
+SV.ReadClientMoveQW = function(client) {
+  // TODO
+
+  // TODO: 3x MSG_ReadDeltaUsercmd
+
+  // TODO: break if not spawned
+
+  // TODO: SV.PreRunCmd, SV.RunCmd (a few times), SV.PostRunCmd
+
+  // TODO: client.lastcmd = newcmd, client.lastcmd.buttons = 0
 };
 
 SV.HandleRconRequest = function(client) {
@@ -2632,6 +2875,8 @@ SV.HandleRconRequest = function(client) {
 };
 
 SV.ReadClientMessage = function(client) {
+  let qwmove_issued = false;
+
   const commands = [
     'status',
     'god',
@@ -2712,6 +2957,14 @@ SV.ReadClientMessage = function(client) {
 
         case Protocol.clc.move:
           SV.ReadClientMove(client);
+          break;
+
+        case Protocol.clc.qwmove: // TODO
+          if (qwmove_issued) {
+            return false;
+          }
+          qwmove_issued = true;
+          SV.ReadClientMoveQW(client);
           break;
 
         default:

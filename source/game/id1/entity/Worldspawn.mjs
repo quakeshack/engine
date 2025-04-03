@@ -62,6 +62,8 @@ export class WorldspawnEntity extends BaseEntity {
     this.worldtype = 0;
     /** @type {number} sets gravity */
     this.qs_gravity = 0;
+    /** @type {number} cdtrack */
+    this.sounds = 0;
 
     this._serializer.endFields();
   }

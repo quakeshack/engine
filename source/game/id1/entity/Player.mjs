@@ -164,6 +164,7 @@ export class PlayerEntity extends BaseEntity {
     this.punchangle = new Vector(); // SV.WriteClientdataToMessage
     this.v_angle = new Vector();
     this.fixangle = false; // SV.WriteClientdataToMessage
+    this.idealpitch = 0; // SV.WriteClientdataToMessage
 
     // interaction states
     this.button0 = false; // fire
@@ -939,6 +940,11 @@ export class PlayerEntity extends BaseEntity {
   }
 
   /** @private */
+  _testStuff() {
+    this.movetype = moveType.MOVETYPE_BOUNCE;
+  }
+
+  /** @private */
   _killRay() {
     if (!this._canUseCheats()) {
       return;
@@ -1127,6 +1133,10 @@ export class PlayerEntity extends BaseEntity {
     switch (this.impulse) {
       case 66:
         this._explainEntity();
+        break;
+
+      case 101:
+        this._testStuff();
         break;
 
       case 100:
@@ -1581,7 +1591,7 @@ export class PlayerEntity extends BaseEntity {
       }
 
       if (!(this.flags & flags.FL_JUMPRELEASED)) {
-        return;		// don't pogo stick
+        return; // don't pogo stick
       }
 
       this.flags &= ~flags.FL_JUMPRELEASED;
@@ -1792,6 +1802,8 @@ export class PlayerEntity extends BaseEntity {
     }
 
     this.game.checkRules(this);
+
+    // FIXME: the whole player move logic is also happening over at Pmove.js, we need to deduplicate this
 
     this._playerWaterMove();
     this._playerWaterJump();

@@ -16,6 +16,8 @@ Cvar = class Cvar {
     SERVER: 2,
     /** readonly cannot be changed by the user, only through the API */
     READONLY: 4,
+    /** value won’t be shown in broadcast message */
+    SECRET: 8,
   };
 
   /**
@@ -109,7 +111,11 @@ Cvar = class Cvar {
     this.string = new String(value);
 
     if ((this.flags & Cvar.FLAG.SERVER) && changed && SV.server.active) {
-      Host.BroadcastPrint(`"${this.name}" changed to "${this.string}"\n`);
+      if (this.flags & Cvar.FLAG.SECRET) {
+        Host.BroadcastPrint(`"${this.name}" changed\n`);
+      } else {
+        Host.BroadcastPrint(`"${this.name}" changed to "${this.string}"\n`);
+      }
     }
 
     // CR: automatically save when an archive Cvar changed
@@ -199,6 +205,8 @@ Cvar = class Cvar {
         Con.Print(`- ${v.description}\n`);
       }
 
+      Con.Print('\n');
+
       if (v.flags & Cvar.FLAG.READONLY) {
         Con.Print(`- Cannot be changed.\n`);
       }
@@ -209,6 +217,12 @@ Cvar = class Cvar {
 
       if (v.flags & Cvar.FLAG.SERVER) {
         Con.Print(`- Is a server variable.\n`);
+      }
+
+      if (v.flags & Cvar.FLAG.SECRET) {
+        if (v.flags & Cvar.FLAG.SERVER) {
+          Con.Print(`- Changed value will not be broadcasted, sensitive information.\n`);
+        }
       }
 
       return true;

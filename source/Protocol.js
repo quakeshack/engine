@@ -3,7 +3,7 @@
 // eslint-disable-next-line no-global-assign
 Protocol = {};
 
-Protocol.version = 15;
+Protocol.version = 42; // QuakeShack special version
 
 Protocol.u = {
   morebits: 1,
@@ -48,27 +48,28 @@ Protocol.svc = {
   nop: 1,
   disconnect: 2,
   updatestat: 3,
-  version: 4,
+  version: 4, // WinQuake
   setview: 5,
   sound: 6,
-  time: 7,
+  time: 7, // WinQuake
   print: 8,
   stufftext: 9,
   setangle: 10,
-  serverinfo: 11,
+  serverdata: 11, // QuakeWorld: serverdata
   lightstyle: 12,
-  updatename: 13,
+  updatename: 13, // WinQuake
   updatefrags: 14,
-  clientdata: 15,
+  clientdata: 15, // WinQuake
   stopsound: 16,
-  updatecolors: 17,
-  particle: 18,
+  updatecolors: 17, // WinQuake
+  particle: 18, // WinQuake
   damage: 19,
   spawnstatic: 20,
+  spawnbinary: 21, // WinQuake
   spawnbaseline: 22,
   temp_entity: 23,
   setpause: 24,
-  signonnum: 25,
+  signonnum: 25, // WinQuake
   centerprint: 26,
   killedmonster: 27,
   foundsecret: 28,
@@ -77,11 +78,36 @@ Protocol.svc = {
   finale: 31,
   cdtrack: 32,
   sellscreen: 33,
-  cutscene: 34,
-  updatepings: 35,
-  loadsound: 36,
-  chatmsg: 37,
-  obituary: 38,
+  cutscene: 34, // WinQuake
+
+  // introduced in QuakeWorld:
+  smallkick: 34,           // set client punchangle to 2
+  bigkick: 35,             // set client punchangle to 4
+  updateping: 36,          // [byte] [short]
+  updateentertime: 7,      // [byte] [float]
+  updatestatlong: 8,       // [byte] [long]
+  muzzleflash: 39,         // [short] entity
+  updateuserinfo: 0,       // [byte] slot [long] uid [string] userinfo
+  download: 41,            // [short] size [size bytes]
+  playerinfo: 42,          // variable
+  nails: 43,               // [byte] num [48 bits] xyzpy 12 12 12 4 8
+  chokecount: 44,          // [byte] packets choked
+  modellist: 45,           // [strings]
+  soundlist: 46,           // [strings]
+  packetentities: 47,      // [...]
+  deltapacketentities: 48, // [...]
+  maxspeed: 49,            // maxspeed change, for prediction
+  entgravity: 50,          // gravity change, for prediction
+  setinfo: 51,             // setinfo on a client
+  serverinfo: 52,          // serverinfo
+  updatepl: 53,            // [byte] [byte]
+
+  // QuakeShack-only:
+  updatepings: 101,
+  loadsound: 102,
+  chatmsg: 103,
+  obituary: 104,
+  pmovevars: 105,
 };
 
 Protocol.clc = {
@@ -90,6 +116,8 @@ Protocol.clc = {
   move: 3,
   stringcmd: 4,
   rconcmd: 5,
+  delta: 6,
+  qwmove: 7,
 };
 
 Protocol.te = {
@@ -113,6 +141,41 @@ Protocol.button = {
   attack: 1,
   jump: 2,
   use: 4,
+};
+
+/**
+ * Player flags
+ */
+Protocol.pf = {
+  PF_MSEC: (1 << 0),
+  PF_COMMAND: (1 << 1),
+  PF_VELOCITY1: (1 << 2),
+  PF_VELOCITY2: (1 << 3),
+  PF_VELOCITY3: (1 << 4),
+  PF_MODEL: (1 << 5),
+  PF_SKINNUM: (1 << 6),
+  PF_EFFECTS: (1 << 7),
+  /** only sent for view player */
+  PF_WEAPONFRAME: (1 << 8),
+  /** don't block movement any more */
+  PF_DEAD: (1 << 9),
+  /** offset the view height differently */
+  PF_GIB: (1 << 10),
+  /** don't apply gravity for prediction */
+  PF_NOGRAV: (1 << 11),
+  /** QS: complete Vector */
+  PF_VELOCITY: (1 << 12),
+};
+
+Protocol.cm = {
+  CM_ANGLE1: (1<<0),
+  CM_ANGLE3: (1<<1),
+  CM_FORWARD: (1<<2),
+  CM_SIDE: (1<<3),
+  CM_UP: (1<<4),
+  CM_BUTTONS: (1<<5),
+  CM_IMPULSE: (1<<6),
+  CM_ANGLE2: (1<<7),
 };
 
 Protocol.EntityState = class EntityState { // entity_state_t

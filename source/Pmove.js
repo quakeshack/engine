@@ -7,17 +7,20 @@
 // eslint-disable-next-line no-global-assign
 Pmove = {};
 
+/**
+ * Pmove variable defaults.
+ */
 Pmove.MoveVars = class MoveVars { // movevars_t
   constructor() {
-    this.gravity = 0;
-    this.stopspeed = 0;
-    this.maxspeed = 0;
-    this.spectatormaxspeed = 0;
-    this.accelerate = 0;
-    this.airaccelerate = 0;
-    this.wateraccelerate = 0;
-    this.friction = 0;
-    this.waterfriction = 0;
+    this.gravity = 800;
+    this.stopspeed = 100;
+    this.maxspeed = 320;
+    this.spectatormaxspeed = 500;
+    this.accelerate = 10;
+    this.airaccelerate = 0.7;
+    this.wateraccelerate = 10;
+    this.friction = 4;
+    this.waterfriction = 4;
     this.entgravity = 0;
   }
 }
@@ -358,6 +361,9 @@ Pmove.PhysEnt = class PhysEnt { // physent_t
   // CR: we can add getClippingHullCrouch() for BSP30 hulls here later
 };
 
+/**
+ * Standard Quake 1 movement logic.
+ */
 Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
   constructor(pmove) {
     // former global vars
@@ -1031,6 +1037,8 @@ Pmove.Pmove = class PlayerMove { // pmove_t
 
     /** @private */
     this.boxHull = new Pmove.BoxHull();
+
+    this.movevars = new Pmove.MoveVars();
   }
 
   pointContents(point) {
@@ -1133,6 +1141,15 @@ Pmove.Pmove = class PlayerMove { // pmove_t
   }
 
   /**
+   * Clears all entities.
+   * @returns {Pmove.Pmove} this
+   */
+  clearEntities() {
+    this.physents.slice(1, this.physents.length);
+    return this;
+  }
+
+  /**
    * Adds an entity (client or server) to physents.
    * @param {EntityInterface} entity actual entity
    * @param {?Model} model model must be provided when entity is SOLID_BSP
@@ -1166,7 +1183,12 @@ Pmove.Pmove = class PlayerMove { // pmove_t
     return this;
   }
 
+  /**
+   * Returns a new player move engine.
+   * @returns {Pmove.PmovePlayer} player move engine
+   */
   newPlayerMove() {
+    // CR: in future we could make this selectable what kind of player move engine we want
     return new Pmove.PmovePlayer(this);
   }
 };

@@ -326,16 +326,27 @@ Host._Frame = function() {
 
   Cmd.Execute();
 
-  CL.SendCmd();
-  if (SV.server.active === true) {
-    Host.ServerFrame();
-  }
-
   if (CL.cls.state === CL.active.connected) {
     CL.ReadFromServer();
   }
 
-  // TODO: add prediction code for player movements
+  CL.SendCmd();
+
+  if (SV.server.active === true) {
+    Host.ServerFrame();
+  }
+
+  // Set up prediction for other players
+  CL.SetUpPlayerPrediction(false);
+
+  // do client side motion prediction
+  CL.PredictMove();
+
+  // Set up prediction for other players
+  CL.SetUpPlayerPrediction(true);
+
+  // build a refresh entity list
+  CL.EmitEntities();
 
   if (Host.speeds.value !== 0) {
     time1 = Sys.FloatTime();

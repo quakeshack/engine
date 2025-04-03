@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Draw */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Draw, Pmove */
 
 // eslint-disable-next-line no-global-assign
 CL = {};
@@ -15,6 +15,9 @@ CL.active = {
   connecting: 1,
   connected: 2,
 };
+
+/** @type {?Pmove.Pmove} */
+CL.pmove = null;
 
 // demo
 
@@ -411,6 +414,8 @@ CL.BaseMove = function() {
     cmd.upmove *= CL.movespeedkey.value;
   }
 };
+
+CL.impulse = 0;
 
 CL.SendMove = function() {
   const buf = {data: new ArrayBuffer(16), cursize: 0};
@@ -912,11 +917,11 @@ CL.ReadFromServer = function() {
   CL.state.time += Host.frametime;
   let ret;
   while (true) {
-    if (CL.processingServerInfoState === 1) {
+    if (CL.processingServerDataState === 1) {
       return;
     }
-    if (CL.processingServerInfoState === 2) {
-      CL.processingServerInfoState = 3;
+    if (CL.processingServerDataState === 2) {
+      CL.processingServerDataState = 3;
     } else {
       ret = CL.GetMessage();
       if (ret === -1) {
@@ -971,31 +976,38 @@ CL.SendCmd = function() {
   CL.cls.message.cursize = 0;
 };
 
+CL.InitPmove = function() {
+  CL.pmove = new Pmove.Pmove();
+  CL.pmove.movevars = new Pmove.MoveVars();
+};
+
 CL.Init = function() {
   CL.ClearState();
   CL.InitInput();
   CL.InitTEnts();
-  CL.name = Cvar.RegisterVariable('_cl_name', 'player', true);
-  CL.color = Cvar.RegisterVariable('_cl_color', '0', true);
-  CL.upspeed = Cvar.RegisterVariable('cl_upspeed', '200');
-  CL.forwardspeed = Cvar.RegisterVariable('cl_forwardspeed', '400', true);
-  CL.backspeed = Cvar.RegisterVariable('cl_backspeed', '400', true);
-  CL.sidespeed = Cvar.RegisterVariable('cl_sidespeed', '350');
-  CL.movespeedkey = Cvar.RegisterVariable('cl_movespeedkey', '2.0');
-  CL.yawspeed = Cvar.RegisterVariable('cl_yawspeed', '140');
-  CL.pitchspeed = Cvar.RegisterVariable('cl_pitchspeed', '150');
-  CL.anglespeedkey = Cvar.RegisterVariable('cl_anglespeedkey', '1.5');
-  CL.shownet = Cvar.RegisterVariable('cl_shownet', '0');
-  CL.nolerp = Cvar.RegisterVariable('cl_nolerp', '0');
-  CL.lookspring = Cvar.RegisterVariable('lookspring', '0', true);
-  CL.lookstrafe = Cvar.RegisterVariable('lookstrafe', '0', true);
-  CL.sensitivity = Cvar.RegisterVariable('sensitivity', '3', true);
-  CL.m_pitch = Cvar.RegisterVariable('m_pitch', '0.022', true);
-  CL.m_yaw = Cvar.RegisterVariable('m_yaw', '0.022', true);
-  CL.m_forward = Cvar.RegisterVariable('m_forward', '1', true);
-  CL.m_side = Cvar.RegisterVariable('m_side', '0.8', true);
-  CL.rcon_password = Cvar.RegisterVariable('rcon_password', '');
-  CL.rcon_address = Cvar.RegisterVariable('rcon_address', 'deprecated');
+  CL.InitPmove();
+  CL.name = new Cvar('_cl_name', 'player', Cvar.FLAG.ARCHIVE);
+  CL.color = new Cvar('_cl_color', '0', Cvar.FLAG.ARCHIVE);
+  CL.upspeed = new Cvar('cl_upspeed', '200');
+  CL.forwardspeed = new Cvar('cl_forwardspeed', '400', Cvar.FLAG.ARCHIVE);
+  CL.backspeed = new Cvar('cl_backspeed', '400', Cvar.FLAG.ARCHIVE);
+  CL.sidespeed = new Cvar('cl_sidespeed', '350');
+  CL.movespeedkey = new Cvar('cl_movespeedkey', '2.0');
+  CL.yawspeed = new Cvar('cl_yawspeed', '140');
+  CL.pitchspeed = new Cvar('cl_pitchspeed', '150');
+  CL.anglespeedkey = new Cvar('cl_anglespeedkey', '1.5');
+  CL.shownet = new Cvar('cl_shownet', '0');
+  CL.nolerp = new Cvar('cl_nolerp', '0');
+  CL.lookspring = new Cvar('lookspring', '0', Cvar.FLAG.ARCHIVE);
+  CL.lookstrafe = new Cvar('lookstrafe', '0', Cvar.FLAG.ARCHIVE);
+  CL.sensitivity = new Cvar('sensitivity', '3', Cvar.FLAG.ARCHIVE);
+  CL.m_pitch = new Cvar('m_pitch', '0.022', Cvar.FLAG.ARCHIVE);
+  CL.m_yaw = new Cvar('m_yaw', '0.022', Cvar.FLAG.ARCHIVE);
+  CL.m_forward = new Cvar('m_forward', '1', Cvar.FLAG.ARCHIVE);
+  CL.m_side = new Cvar('m_side', '0.8', Cvar.FLAG.ARCHIVE);
+  CL.rcon_password = new Cvar('rcon_password', '');
+  CL.rcon_address = new Cvar('rcon_address', 'deprecated', Cvar.FLAG.READONLY);
+  CL.nopred = new Cvar('cl_nopred', '0', Cvar.FLAG.NONE, 'Enables/disables client-side prediction');
   Cmd.AddCommand('entities', CL.PrintEntities_f);
   Cmd.AddCommand('disconnect', CL.Disconnect);
   Cmd.AddCommand('record', CL.Record_f);
@@ -1098,20 +1110,37 @@ CL.KeepaliveMessage = function() {
   CL.cls.message.cursize = 0;
 };
 
-CL.ParseServerInfo = function() {
-  Con.DPrint('Serverinfo packet received.\n');
+CL.ParsePmovevars = function() {
+  CL.pmove.movevars.gravity            = MSG.ReadFloat();
+  CL.pmove.movevars.stopspeed          = MSG.ReadFloat();
+  CL.pmove.movevars.maxspeed           = MSG.ReadFloat();
+  CL.pmove.movevars.spectatormaxspeed  = MSG.ReadFloat();
+  CL.pmove.movevars.accelerate         = MSG.ReadFloat();
+  CL.pmove.movevars.airaccelerate      = MSG.ReadFloat();
+  CL.pmove.movevars.wateraccelerate    = MSG.ReadFloat();
+  CL.pmove.movevars.friction           = MSG.ReadFloat();
+  CL.pmove.movevars.waterfriction      = MSG.ReadFloat();
+  CL.pmove.movevars.entgravity         = MSG.ReadFloat();
+
+  Con.DPrint('Reconfigured Pmovevars.\n');
+};
+
+CL.ParseServerData = function() {
+  Con.DPrint('Serverdata packet received.\n');
   CL.ClearState();
+
   const version = MSG.ReadLong();
+
   if (version !== Protocol.version) {
     Con.Print('Server returned version ' + version + ', not ' + Protocol.version + '\n');
     return;
   }
+
   CL.state.maxclients = MSG.ReadByte();
-  if ((CL.state.maxclients <= 0) || (CL.state.maxclients > 8)) {
+  if ((CL.state.maxclients <= 0) || (CL.state.maxclients > 32)) {
     Con.Print('Bad maxclients (' + CL.state.maxclients + ') from server\n');
     return;
   }
-  CL.SetConnectingStep(15, 'Received server info');
   CL.state.scores = [];
   for (let i = 0; i < CL.state.maxclients; ++i) {
     CL.state.scores[i] = {
@@ -1122,10 +1151,16 @@ CL.ParseServerInfo = function() {
       ping: 0,
     };
   }
+
   CL.state.gametype = MSG.ReadByte();
   CL.state.levelname = MSG.ReadString();
+
+  CL.ParsePmovevars();
+
   Con.Print('\n\n\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37\n\n');
   Con.Print('\2' + CL.state.levelname + '\n');
+
+  CL.SetConnectingStep(15, 'Received server info');
 
   let str;
   let nummodels; const model_precache = [];
@@ -1148,7 +1183,7 @@ CL.ParseServerInfo = function() {
   CL.state.model_precache = [];
   CL.state.sound_precache = [];
 
-  CL.processingServerInfoState = 1;
+  CL.processingServerDataState = 1;
 
   (async () => {
     let lastYield = Host.realtime;
@@ -1177,7 +1212,7 @@ CL.ParseServerInfo = function() {
       }
     }
   })().then(() => {
-    CL.processingServerInfoState = 2;
+    CL.processingServerDataState = 2;
     CL.state.worldmodel = CL.state.model_precache[1];
     CL.EntityNum(0).model = CL.state.worldmodel;
     CL.SetConnectingStep(66, 'Preparing map');
@@ -1303,6 +1338,111 @@ CL.ParseClientdata = function(bits) {
   }
 };
 
+CL.nullcmd = new Protocol.UserCmd();
+
+CL.Frame = class ClientFrame {
+  constructor() {
+    // -- client side --
+    /** @type {Protocol.UserCmd} cmd that generated the frame */
+    this.cmd = new Protocol.UserCmd();
+    /** time cmd was sent off */
+    this.sentTime = 0.0;
+    /** sequence number to delta from, -1 = full update */
+    this.deltaSequence = 0;
+
+    // -- server side --
+    /** time message was received, or -1 */
+    this.receivedTime = 0.0;
+    /** @type {CL.PlayerState[]} message received that reflects performing the usercmd */
+    this.playerStates = [];
+    /** @type {Protocol.EntityState[]} */
+    this.packetEntities = [];
+    /** true if the packet_entities delta was invalid */
+    this.invalid = false;
+  }
+};
+
+/**
+ * ClientPlayerState is the information needed by a player entity
+ * to do move prediction and to generate a drawable entity
+ */
+CL.PlayerState = class ClientPlayerState extends Protocol.EntityState {
+  constructor() {
+    super();
+    /** @type {Protocol.UserCmd} last command for prediction */
+    this.command = new Protocol.UserCmd();
+
+    /** all player's won't be updated each frame */
+    this.messagenum = 0;
+    /** not the same as the packet time, because player commands come asyncronously */
+    this.stateTime = 0.0;
+
+    this.origin = new Vector();
+    this.velocity = new Vector();
+
+    this.weaponframe = 0;
+
+    this.waterjumptime = 0.0;
+    /** @type {?number} null in air, else pmove entity number */
+    this.onground = null;
+    this.oldbuttons = 0;
+
+    Object.seal(this);
+  }
+
+  readFromMessage() {
+    this.flags = MSG.ReadShort();
+    this.origin.set(MSG.ReadCoordVector());
+    this.frame = MSG.ReadByte();
+
+    if (this.flags & Protocol.pf.PF_MSEC) {
+      this.msec = MSG.ReadByte();
+    }
+
+    // TODO: stateTime, parsecounttime
+
+    if (this.flags & Protocol.pf.PF_COMMAND) {
+      MSG.ReadDeltaUsercmd(CL.nullcmd, this.cmd);
+    }
+
+    if (this.flags & Protocol.pf.PF_VELOCITY) {
+      this.velocity.set(MSG.ReadCoordVector());
+    }
+
+    if (this.flags & Protocol.pf.PF_MODEL) {
+      this.modelindex = MSG.ReadByte();
+    }
+
+    if (this.flags & Protocol.pf.PF_EFFECTS) {
+      this.effects = MSG.ReadByte();
+    }
+
+    if (this.flags & Protocol.pf.PF_SKINNUM) {
+      this.skin = MSG.ReadByte();
+    }
+
+    if (this.flags & Protocol.pf.PF_WEAPONFRAME) {
+      this.weaponframe = MSG.ReadByte();
+    }
+  }
+};
+
+CL.ParsePlayerinfo = function() {
+  const num = MSG.ReadByte();
+
+  if (num > CL.state.maxclients) {
+    Sys.Error('CL.ParsePlayerinfo: num > maxclients');
+  }
+
+  const state = new CL.PlayerState();
+
+  state.readFromMessage();
+
+  state.angles.set(state.command.angles);
+
+  console.log('read playerinfo', state);
+};
+
 CL.ParseStatic = function() {
   const ent = { // TODO: ClientEntity class
     num: -1,
@@ -1378,11 +1518,11 @@ CL.PublishObituary = function(killerEdictId, victimEdictId, killerWeapon, killer
  * as long as we do not have a fully async architecture, we have to cheat
  * processingServerInfoState will hold off parsing and processing any further command
  * 0 - normal operation
- * 1 - we entered parsing serverinfo, holding off any further processing
+ * 1 - we entered parsing serverdata, holding off any further processing
  * 2 - we are done processing, we can continue processing the rest
  * 3 - we need to re-enter the loop, but not reset the MSG pointer
  */
-CL.processingServerInfoState = 0;
+CL.processingServerDataState = 0;
 
 CL.ParseServerMessage = function() {
   if (CL.shownet.value === 1) {
@@ -1393,19 +1533,19 @@ CL.ParseServerMessage = function() {
 
   CL.state.onground = false;
 
-  if (CL.processingServerInfoState === 1) {
+  if (CL.processingServerDataState === 1) {
     return;
   }
 
-  if (CL.processingServerInfoState === 3) {
-    CL.processingServerInfoState = 0;
+  if (CL.processingServerDataState === 3) {
+    CL.processingServerDataState = 0;
   } else {
     MSG.BeginReading();
   }
 
   let cmd; let i;
   while (true) {
-    if (CL.processingServerInfoState > 0) {
+    if (CL.processingServerDataState > 0) {
       return;
     }
 
@@ -1468,8 +1608,8 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.damage: // TODO: Client
         V.ParseDamage();
         continue;
-      case Protocol.svc.serverinfo:
-        CL.ParseServerInfo();
+      case Protocol.svc.serverdata:
+        CL.ParseServerData();
         SCR.recalc_refdef = true;
         continue;
       case Protocol.svc.setangle:
@@ -1603,6 +1743,12 @@ CL.ParseServerMessage = function() {
         continue;
       case Protocol.svc.sellscreen: // TODO: Client
         Cmd.ExecuteString('help');
+        continue;
+      case Protocol.svc.pmovevars:
+        CL.ParsePmovevars();
+        continue;
+      case Protocol.svc.playerinfo:
+        CL.ParsePlayerinfo();
         continue;
     }
     Host.Error(`CL.ParseServerMessage: Illegible server message (${cmd})\n`);
@@ -1777,3 +1923,25 @@ CL.UpdateTEnts = function() {
     }
   }
 };
+
+CL.PredictMove = function() {
+  if (CL.nopred.value !== 0) {
+    return;
+  }
+};
+
+/**
+ * Calculate the new position of players, without other player clipping.
+ * We do this to set up real player prediction.
+ * Players are predicted twice, first without clipping other players,
+ * then with clipping against them.
+ * This sets up the first phase.
+ * @param {boolean} dopred full prediction, if true
+ */
+CL.SetUpPlayerPrediction = function (dopred) {
+
+};
+
+CL.EmitEntities = function() {
+};
+
