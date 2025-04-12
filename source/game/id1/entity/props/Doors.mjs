@@ -434,7 +434,6 @@ export class DoorEntity extends BaseDoorEntity {
    */
   blocked(blockedByEntity) {
     this._doorBlocked(blockedByEntity);
-    // this.engine.ConsolePrint(`DoorEntity.blocked: ${this} is blocked by ${blockedByEntity}\n`);
   }
 
   touch(usedByEntity) {

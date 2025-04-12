@@ -1,4 +1,4 @@
-/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, SZ, Shack, Game */
+/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, W, Shack, Game */
 
 // eslint-disable-next-line no-global-assign
 Host = {};
@@ -6,7 +6,7 @@ Host = {};
 Host.framecount = 0;
 
 Host.EndGame = function(message) {
-  Con.Print('Host.EndGame: ' + message + '\n');
+  Con.PrintSuccess('Host.EndGame: ' + message + '\n');
   if (CL.cls.demonum !== -1) {
     CL.NextDemo();
   } else {
@@ -25,7 +25,7 @@ Host.Error = function(error) {
   if (!Host.dedicated.value) {
     SCR.EndLoadingPlaque();
   }
-  Con.Print('Host.Error: ' + error + '\n');
+  Con.PrintError('Host.Error: ' + error + '\n');
   if (SV.server.active === true) {
     Host.ShutdownServer();
   }
@@ -50,21 +50,20 @@ Host.FindMaxClients = function() {
 
 Host.InitLocal = function(dedicated) {
   Host.InitCommands(dedicated);
-  Host.framerate = Cvar.RegisterVariable('host_framerate', '0');
-  Host.speeds = Cvar.RegisterVariable('host_speeds', '0');
-  Host.ticrate = Cvar.RegisterVariable('sys_ticrate', '0.05');
-  Host.serverprofile = Cvar.RegisterVariable('serverprofile', '0');
-  Host.fraglimit = Cvar.RegisterVariable('fraglimit', '0', false, true);
-  Host.timelimit = Cvar.RegisterVariable('timelimit', '0', false, true);
-  Host.teamplay = Cvar.RegisterVariable('teamplay', '0', false, true);
-  Host.samelevel = Cvar.RegisterVariable('samelevel', '0');
-  Host.noexit = Cvar.RegisterVariable('noexit', '0', false, true);
-  Host.skill = Cvar.RegisterVariable('skill', '1');
-  Host.developer = Cvar.RegisterVariable('developer', '0');
-  Host.deathmatch = Cvar.RegisterVariable('deathmatch', '0');
-  Host.coop = Cvar.RegisterVariable('coop', '0');
-  Host.pausable = Cvar.RegisterVariable('pausable', '1');
-  Host.temp1 = Cvar.RegisterVariable('temp1', '0');
+  Host.framerate = new Cvar('host_framerate', '0');
+  Host.speeds = new Cvar('host_speeds', '0');
+  Host.ticrate = new Cvar('sys_ticrate', '0.05');
+  Host.serverprofile = new Cvar('serverprofile', '0');
+  Host.fraglimit = new Cvar('fraglimit', '0', Cvar.FLAG.SERVER);
+  Host.timelimit = new Cvar('timelimit', '0', Cvar.FLAG.SERVER);
+  Host.teamplay = new Cvar('teamplay', '0', Cvar.FLAG.SERVER);
+  Host.samelevel = new Cvar('samelevel', '0', Cvar.FLAG.SERVER, 'Set to 1 to stay on the same map even the map is over');
+  Host.noexit = new Cvar('noexit', '0', Cvar.FLAG.SERVER);
+  Host.skill = new Cvar('skill', '1');
+  Host.developer = new Cvar('developer', '0');
+  Host.deathmatch = new Cvar('deathmatch', '0', Cvar.FLAG.SERVER);
+  Host.coop = new Cvar('coop', '0', Cvar.FLAG.SERVER);
+  Host.pausable = new Cvar('pausable', '1', Cvar.FLAG.SERVER);
 
   // dedicated server settings
   Host.dedicated = new Cvar('dedicated', dedicated ? '1' : '0', Cvar.FLAG.READONLY, 'Set to 1, if running in dedicated server mode.');
@@ -190,7 +189,7 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
 Host.WriteConfiguration = function() {
   Host.ScheduleInFuture('Host.WriteConfiguration', () => {
     COM.WriteTextFile('config.cfg', (!Host.dedicated.value ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
-    Con.Print('Wrote configuration\n');
+    Con.DPrint('Wrote configuration\n');
   }, 5.000);
 };
 
@@ -382,6 +381,7 @@ Host.Frame = function() {
 Host.Init = async function(dedicated) {
   Host.oldrealtime = Sys.FloatTime();
   Cmd.Init();
+  Cvar.Init();
 
   V.Init(); // required for V.CalcRoll
 
@@ -405,8 +405,6 @@ Host.Init = async function(dedicated) {
   SV.Init();
   Shack.Init();
 
-  Con.Print (`Exe: ${Def.version}\n`);
-
   if (!dedicated) {
     await VID.Init();
     await Draw.Init();
@@ -416,7 +414,7 @@ Host.Init = async function(dedicated) {
     await M.Init();
     CDAudio.Init();
     Sbar.Init();
-    CL.Init();
+    await CL.Init();
     IN.Init();
   } else {
     // we need a few frontend things for dedicated
@@ -480,11 +478,11 @@ Host.Quit_f = function() {
   Sys.Quit();
 };
 
-Host.Status_f = function(...argv) {
+Host.Status_f = function() {
   let print;
-  if (Cmd.client !== true) {
-    if (SV.server.active !== true) {
-      Cmd.ForwardToServer(...argv);
+  if (!this.client) {
+    if (!SV.server.active) {
+      this.forward();
       return;
     }
     print = Con.Print;
@@ -543,9 +541,8 @@ Host.Status_f = function(...argv) {
   }
 };
 
-Host.God_f = function(...argv) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(...argv);
+Host.God_f = function() {
+  if (this.forward()) {
     return;
   }
   if (SV.server.gameAPI.deathmatch !== 0) {
@@ -559,9 +556,8 @@ Host.God_f = function(...argv) {
   }
 };
 
-Host.Notarget_f = function(...argv) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(...argv);
+Host.Notarget_f = function() {
+  if (this.forward()) {
     return;
   }
   if (SV.server.gameAPI.deathmatch !== 0) {
@@ -575,9 +571,8 @@ Host.Notarget_f = function(...argv) {
   }
 };
 
-Host.Noclip_f = function(...argv) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(...argv);
+Host.Noclip_f = function() {
+  if (this.forward()) {
     return;
   }
   if (SV.server.gameAPI.deathmatch !== 0) {
@@ -594,9 +589,8 @@ Host.Noclip_f = function(...argv) {
   Host.ClientPrint('noclip OFF\n');
 };
 
-Host.Fly_f = function(...argv) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(...argv);
+Host.Fly_f = function() {
+  if (this.forward()) {
     return;
   }
   if (SV.server.gameAPI.deathmatch !== 0) {
@@ -611,9 +605,8 @@ Host.Fly_f = function(...argv) {
   Host.ClientPrint('flymode OFF\n');
 };
 
-Host.Ping_f = function(...argv) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(...argv);
+Host.Ping_f = function() {
+  if (this.forward()) {
     return;
   }
   Host.ClientPrint('Client ping times:\n');
@@ -639,12 +632,12 @@ Host.Ping_f = function(...argv) {
   }
 };
 
-Host.Map_f = function(_, mapname, ...spawnparms) {
+Host.Map_f = function(mapname, ...spawnparms) {
   if (mapname === undefined) {
     Con.Print('Usage: map <map>\n');
     return;
   }
-  if (Cmd.client === true) {
+  if (this.client) {
     return;
   }
   if (!SV.HasMap(mapname)) {
@@ -687,7 +680,7 @@ Host.Map_f = function(_, mapname, ...spawnparms) {
   });
 };
 
-Host.Changelevel_f = function(_, mapname) {
+Host.Changelevel_f = function(mapname) {
   if (mapname === undefined) {
     Con.Print('Usage: changelevel <levelname>\n');
     return;
@@ -724,7 +717,7 @@ Host.Changelevel_f = function(_, mapname) {
 
 Host.Restart_f = function() {
   if ((SV.server.active === true) && (Host.dedicated.value || (CL.cls.demoplayback !== true) && (Cmd.client !== true))) {
-    SV.SpawnServer(SV.server.gameAPI.mapname);
+    Cmd.ExecuteString(`map ${SV.server.gameAPI.mapname}`);
   }
 };
 
@@ -738,7 +731,7 @@ Host.Reconnect_f = function() {
   CL.cls.signon = 0;
 };
 
-Host.Connect_f = function(_, address) {
+Host.Connect_f = function(address) {
   if (address === undefined) {
     Con.Print('Usage: connect <address>\n');
     Con.Print(' - <address> can be "self", connecting to the current domain name\n');
@@ -766,8 +759,8 @@ Host.Connect_f = function(_, address) {
   CL.cls.signon = 0;
 };
 
-Host.Savegame_f = function(_, savename) {
-  if (Cmd.client === true) {
+Host.Savegame_f = function(savename) {
+  if (this.client) {
     return;
   }
   if (savename === undefined) {
@@ -775,25 +768,25 @@ Host.Savegame_f = function(_, savename) {
     return;
   }
   if (SV.server.active !== true) {
-    Con.Print('Not playing a local game.\n');
+    Con.PrintWarning('Not playing a local game.\n');
     return;
   }
   if (CL.state.intermission !== 0) {
-    Con.Print('Can\'t save in intermission.\n');
+    Con.PrintWarning('Can\'t save in intermission.\n');
     return;
   }
   if (SV.svs.maxclients !== 1) {
-    Con.Print('Can\'t save multiplayer games.\n');
+    Con.PrintWarning('Can\'t save multiplayer games.\n');
     return;
   }
   if (savename.indexOf('..') !== -1) {
-    Con.Print('Relative pathnames are not allowed.\n');
+    Con.PrintWarning('Relative pathnames are not allowed.\n');
     return;
   }
   const client = SV.svs.clients[0];
   if (client.active === true) {
     if (client.edict.entity.health <= 0.0) {
-      Con.Print('Can\'t savegame with a dead player\n');
+      Con.PrintWarning('Can\'t savegame with a dead player\n');
       return;
     }
   }
@@ -827,18 +820,22 @@ Host.Savegame_f = function(_, savename) {
   const name = COM.DefaultExtension(savename, '.json');
   Con.Print('Saving game to ' + name + '...\n');
   if (COM.WriteTextFile(name, JSON.stringify(gamestate))) {
-    Con.Print('done.\n');
+    Con.PrintSuccess('done.\n');
   } else {
-    Con.Print('ERROR: couldn\'t open.\n');
+    Con.PrintError('ERROR: couldn\'t open.\n');
   }
 };
 
-Host.Loadgame_f = function (_, savename) {
-  if (Cmd.client === true) {
+Host.Loadgame_f = function (savename) {
+  if (this.client) {
     return;
   }
   if (savename === undefined) {
     Con.Print('Usage: load <savename>\n');
+    return;
+  }
+  if (savename.indexOf('..') !== -1) {
+    Con.PrintWarning('Relative pathnames are not allowed.\n');
     return;
   }
   CL.cls.demonum = -1;
@@ -846,14 +843,14 @@ Host.Loadgame_f = function (_, savename) {
   Con.Print('Loading game from ' + name + '...\n');
   const data = COM.LoadTextFile(name);
   if (data == null) {
-    Con.Print('ERROR: couldn\'t open.\n');
+    Con.PrintError('ERROR: couldn\'t open.\n');
     return;
   }
 
   const gamestate = JSON.parse(data);
 
   if (gamestate.version !== 1) {
-    Con.Print(`Savegame is version ${gamestate.version}, not 1\n`);
+    Host.Error(`Savegame is version ${gamestate.version}, not 1\n`);
     return;
   }
 
@@ -867,13 +864,13 @@ Host.Loadgame_f = function (_, savename) {
     if (!Host.dedicated.value) {
       CL.SetConnectingStep(null, null);
     }
-    Con.Print(`Couldn't load map: ${gamestate.mapname}\n`);
+    Host.Error(`Couldn't load map: ${gamestate.mapname}\n`);
     return;
   }
 
   if (gamestate.gameversion !== SV.server.gameVersion) {
     SV.ShutdownServer(false);
-    Con.Print(`Game is version ${gamestate.gameversion}, not ${SV.server.gameVersion}\n`);
+    Host.Error(`Game is version ${gamestate.gameversion}, not ${SV.server.gameVersion}\n`);
     return;
   }
 
@@ -922,7 +919,7 @@ Host.Loadgame_f = function (_, savename) {
   Host.Reconnect_f();
 };
 
-Host.Name_f = function(_, ...names) { // signon 2, step 1
+Host.Name_f = function(...names) { // signon 2, step 1
   if (names.length < 1) {
     Con.Print('"name" is "' + CL.name.string + '"\n');
     return;
@@ -933,7 +930,7 @@ Host.Name_f = function(_, ...names) { // signon 2, step 1
   if (!Host.dedicated.value && Cmd.client !== true) {
     Cvar.Set('_cl_name', newName);
     if (CL.cls.state === CL.active.connected) {
-      Cmd.ForwardToServer(_, ...names);
+      this.forward();
     }
     return;
   }
@@ -962,9 +959,8 @@ Host.Version_f = function() {
   Con.Print('Version ' + Def.version + '\n');
 };
 
-Host.Say = function(teamonly, message, cmd) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(cmd, message);
+Host.Say_f = function(teamonly, message) {
+  if (this.forward()) {
     return;
   }
 
@@ -994,25 +990,25 @@ Host.Say = function(teamonly, message, cmd) {
   Con.Print(`${save.name}: ${message}\n`);
 };
 
-Host.Say_Team_f = function(_, ...args) {
-  Host.Say(true, args.join(' ').trim(), _);
+Host.Say_Team_f = function(message) {
+  Host.Say_f.call(this, true, message);
 };
 
-Host.Say_All_f = function(_, ...args) {
-  Host.Say(false, args.join(' ').trim(), _);
+Host.Say_All_f = function(message) {
+  Host.Say_f.call(this, false, message);
 };
 
-Host.Tell_f = function(_, recipient, ...args) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(_, recipient, ...args);
+Host.Tell_f = function(recipient, message) {
+  if (this.forward()) {
     return;
   }
 
-  if (args.length < 2) {
+  if (!recipient || !message) {
+    Con.Print('Usage: tell <recipient> <message>\n');
     return;
   }
 
-  let message = args.join(' ').trim();
+  message = message.trim();
 
   // Remove surrounding double quotes if present
   if (message.startsWith('"')) {
@@ -1062,7 +1058,7 @@ Host.Color_f = function(...argv) { // signon 2, step 2 // FIXME: Host.client
   if (Cmd.client !== true) {
     Cvar.SetValue('_cl_color', playercolor);
     if (CL.cls.state === CL.active.connected) {
-      Cmd.ForwardToServer(...argv);
+      this.forward();
     }
     return;
   }
@@ -1075,24 +1071,25 @@ Host.Color_f = function(...argv) { // signon 2, step 2 // FIXME: Host.client
   MSG.WriteByte(msg, playercolor);
 };
 
-Host.Kill_f = function(...argv) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(...argv);
+Host.Kill_f = function() {
+  if (this.forward()) {
     return;
   }
+
   if (SV.player.entity.health <= 0.0) {
     Host.ClientPrint('Can\'t suicide -- already dead!\n');
     return;
   }
+
   SV.server.gameAPI.time = SV.server.time;
   SV.server.gameAPI.ClientKill(SV.player);
 };
 
-Host.Pause_f = function(...argv) {
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(...argv);
+Host.Pause_f = function() {
+  if (this.forward()) {
     return;
   }
+
   if (Host.pausable.value === 0) {
     Host.ClientPrint('Pause not allowed.\n');
     return;
@@ -1207,9 +1204,9 @@ Host.Begin_f = function() {  // signon 3, step 1
 };
 
 Host.Kick_f = function(...argv) { // FIXME: Host.client
-  if (Cmd.client !== true) {
-    if (SV.server.active !== true) {
-      Cmd.ForwardToServer(...argv);
+  if (!this.client) {
+    if (!SV.server.active) {
+      this.forward();
       return;
     }
   } else if (SV.server.gameAPI.deathmatch !== 0.0) {
@@ -1289,14 +1286,13 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
   Host.client = save;
 };
 
-Host.Give_f = function(_, classname) {
+Host.Give_f = function(classname) {
   // CR:  commented this out for now, it’s only noise…
   //      unsure if I want a “give item_shells” approach or
   //      if I want to push this piece of code into PR/PF and let
   //      the game handle this instead
 
-  if (Cmd.client !== true) {
-    Cmd.ForwardToServer(_, classname);
+  if (this.forward()) {
     return;
   }
 
@@ -1309,7 +1305,7 @@ Host.Give_f = function(_, classname) {
     return;
   }
 
-  const player = SV.player;
+  const player = this.client.edict;
 
   if (!classname.startsWith('item_') && !classname.startsWith('weapon_')) {
     Host.ClientPrint('Only entity classes item_* and weapon_* are allowed!\n');
@@ -1457,7 +1453,7 @@ Host.FindViewthing = function() {
   return null;
 };
 
-Host.Viewmodel_f = function(_, model) {
+Host.Viewmodel_f = function(model) {
   if (model === undefined) {
     Con.Print('Usage: viewmodel <model>\n');
     return;
@@ -1475,7 +1471,7 @@ Host.Viewmodel_f = function(_, model) {
   CL.state.model_precache[ent.entity.modelindex] = m;
 };
 
-Host.Viewframe_f = function(_, frame) {
+Host.Viewframe_f = function(frame) {
   if (frame === undefined) {
     Con.Print('Usage: viewframe <frame>\n');
     return;
@@ -1520,7 +1516,7 @@ Host.Viewprev_f = function() {
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 
-Host.Startdemos_f = function(_, ...demos) {
+Host.Startdemos_f = function(...demos) {
   if (Host.dedicated.value) {
     Con.Print('cannot play demos in dedicated server mode\n');
     return;

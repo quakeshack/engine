@@ -294,7 +294,6 @@ Pmove.BoxHull = class BoxHull extends Pmove.Hull {
       const side = i & 1;
 
       this.clipNodes[i].children[side] = Mod.contents.empty;
-
       this.clipNodes[i].children[side ^ 1] = i !== 5 ? i + 1 : Mod.contents.solid;
 
       this.planes[i].type = i >> 1;
@@ -586,7 +585,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
       if (contents <= Mod.contents.water) {
         this.waterlevel = 2;
 
-        point[2] = this.origin[2] + 22; // CR: 22 is z component of view_ofs, FIXME
+        point[2] = this.origin[2] + 22; // FIXME: 22 is z component of view_ofs
 
         contents = this._pmove.pointContents(point);
 

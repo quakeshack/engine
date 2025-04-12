@@ -163,13 +163,13 @@ PF._VarString = function _PF_VarString(first) {
 };
 
 PF.error = PF._generateBuiltinFunction(function (str) {
-  Con.Print('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
+  Con.PrintError('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
   ED.Print(SV.server.gameAPI.self);
   Host.Error('Program error: ' + str);
 }, [PR.etype.ev_strings]);
 
 PF.objerror = PF._generateBuiltinFunction(function (str) {
-  Con.Print('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
+  Con.PrintError('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
   ED.Print(SV.server.gameAPI.self);
   Host.Error('Program error: ' + str);
 }, [PR.etype.ev_strings]);
@@ -285,7 +285,7 @@ PF.dprint = function PF_dprint() { // EngineInterface
   Con.DPrint(PF._VarString(0));
 };
 
-PF.dprint = PF._generateBuiltinFunction((str) => Game.EngineInterface.DebugPrint(str), [PR.etype.ev_strings]);
+PF.dprint = PF._generateBuiltinFunction((str) => Game.EngineInterface.ConsoleDebug(str), [PR.etype.ev_strings]);
 
 PF.ftos = PF._generateBuiltinFunction((f) => parseInt(f) == f ? f.toString() : f.toFixed(1), [PR.etype.ev_float], PR.etype.ev_string);
 

@@ -1191,17 +1191,17 @@ R.Init = async function() {
   Cmd.AddCommand('timerefresh', R.TimeRefresh_f);
   Cmd.AddCommand('pointfile', R.ReadPointFile_f);
 
-  R.waterwarp = Cvar.RegisterVariable('r_waterwarp', '1');
-  R.fullbright = Cvar.RegisterVariable('r_fullbright', '0');
-  R.drawentities = Cvar.RegisterVariable('r_drawentities', '1');
-  R.drawviewmodel = Cvar.RegisterVariable('r_drawviewmodel', '1');
-  R.drawturbolents = Cvar.RegisterVariable('r_drawturbolents', '1');
-  R.novis = Cvar.RegisterVariable('r_novis', '0');
-  R.speeds = Cvar.RegisterVariable('r_speeds', '0');
-  R.polyblend = Cvar.RegisterVariable('gl_polyblend', '1');
-  R.flashblend = Cvar.RegisterVariable('gl_flashblend', '0');
-  R.nocolors = Cvar.RegisterVariable('gl_nocolors', '0');
-  R.interpolation = Cvar.RegisterVariable('r_interpolation', '0');
+  R.waterwarp = new Cvar('r_waterwarp', '1');
+  R.fullbright = new Cvar('r_fullbright', '0');
+  R.drawentities = new Cvar('r_drawentities', '1');
+  R.drawviewmodel = new Cvar('r_drawviewmodel', '1');
+  R.drawturbolents = new Cvar('r_drawturbolents', '1');
+  R.novis = new Cvar('r_novis', '0');
+  R.speeds = new Cvar('r_speeds', '0');
+  R.polyblend = new Cvar('gl_polyblend', '1');
+  R.flashblend = new Cvar('gl_flashblend', '0');
+  R.nocolors = new Cvar('gl_nocolors', '0');
+  R.interpolation = new Cvar('r_interpolation', '0');
 
   await R.InitParticles();
 

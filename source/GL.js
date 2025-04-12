@@ -21,7 +21,7 @@ GL.Bind = function(target, texnum, flushStream) {
   }
 };
 
-GL.TextureMode_f = function(_, name) {
+GL.TextureMode_f = function(name) {
   let i;
   if (name === undefined) {
     for (i = 0; i < GL.modes.length; ++i) {
@@ -520,7 +520,7 @@ GL.Init = function() {
   GL.filter_min = gl.LINEAR_MIPMAP_NEAREST;
   GL.filter_max = gl.LINEAR;
 
-  GL.picmip = Cvar.RegisterVariable('gl_picmip', '0');
+  GL.picmip = new Cvar('gl_picmip', '0');
   Cmd.AddCommand('gl_texturemode', GL.TextureMode_f);
 
   GL.streamArray = new ArrayBuffer(8192); // Increasing even a little bit ruins all performance on Mali.

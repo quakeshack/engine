@@ -22,23 +22,23 @@ M.state =
 };
 
 M.DrawCharacter = function(cx, cy, num) {
-  Draw.Character(cx + (VID.width / 2) - 160, cy + (VID.height / 2) - 100, num);
+  Draw.Character(cx + Math.floor(VID.width / 2) - 160, cy + Math.floor(VID.height / 2) - 100, num);
 };
 
 M.Print = function(cx, cy, str) {
-  Draw.StringWhite(cx + (VID.width / 2) - 160, cy + (VID.height / 2) - 100, str);
+  Draw.StringWhite(cx + Math.floor(VID.width / 2) - 160, cy + Math.floor(VID.height / 2) - 100, str);
 };
 
 M.PrintWhite = function(cx, cy, str) {
-  Draw.String(cx + (VID.width / 2) - 160, cy + (VID.height / 2) - 100, str);
+  Draw.String(cx + Math.floor(VID.width / 2) - 160, cy + Math.floor(VID.height / 2) - 100, str);
 };
 
 M.DrawPic = function(x, y, pic) {
-  Draw.Pic(x + (VID.width / 2) - 160, y + (VID.height / 2) - 100, pic);
+  Draw.Pic(x + Math.floor(VID.width / 2) - 160, y + Math.floor(VID.height / 2) - 100, pic);
 };
 
 M.DrawPicTranslate = function(x, y, pic, top, bottom) {
-  Draw.PicTranslate(x + (VID.width / 2) - 160, y + (VID.height / 2) - 100, pic, top, bottom);
+  Draw.PicTranslate(x + Math.floor(VID.width / 2) - 160, y + Math.floor(VID.height / 2) - 100, pic, top, bottom);
 };
 
 M.DrawTextBox = function(x, y, width, lines) {
@@ -879,15 +879,37 @@ M.Alert = function(title, message) {
 
 M.Alert_Draw = function() {
   const {title, message} = M.alertMessage;
-  const x = (320 - 64 * 8) / 2;
-  M.DrawTextBox(x, 52, 64, 11);
-  const x2 = x + 16;
-  M.PrintWhite(x2, 68, title.substring(0, 62));
-  M.Print(x2, 76, '\35' + '\36'.repeat(60) + '\37');
-  M.Print(x2, 100, message.substring(0, 62));
-  M.Print(x2, 108, message.substring(62, 62 * 2));
-  M.Print(x2, 116, message.substring(62 * 2, 62 * 3));
-  M.Print(x2, 132, 'Press enter to continue.');
+  const titleLines = title ? title.split('\n') : [];
+  const messageLines = message ? message.split('\n') : [];
+
+  const lines = [];
+  if (titleLines.length) {
+    lines.push(...titleLines);
+    lines.push('\x1d' + '\x1e'.repeat(60) + '\x1f');
+  }
+
+  lines.push(null);
+
+  if (messageLines.length) {
+    lines.push(...messageLines);
+  }
+
+  lines.push(null);
+  lines.push('Press enter to continue.');
+
+  // Calculate dimensions for the text box
+  const boxWidth = 64;
+  const totalLines = lines.length;
+  const x = (320 - boxWidth * 8) / 2;
+
+  M.DrawTextBox(x, 52, boxWidth, totalLines + 2);
+
+  for (let i = 0, y = 68; i < totalLines; i++, y += 8) {
+    if (lines[i]) {
+      // Limit each line to 62 characters for safe drawing
+      M.PrintWhite(x + 16, y, lines[i].substring(0, 62));
+    }
+  }
 };
 
 M.Alert_Key = function(k) {

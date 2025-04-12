@@ -1,4 +1,4 @@
-/* global IN, COM, Host, CL, Cvar, IN, V, VID, Key, nipplejs, Con */
+/* global IN, COM, Host, CL, Cvar, IN, V, VID, Key, Con */
 
 // eslint-disable-next-line no-global-assign
 IN = {};
@@ -9,8 +9,8 @@ IN.old_mouse_x = 0.0;
 IN.old_mouse_y = 0.0;
 
 IN.StartupMouse = function() {
-  IN.m_filter = Cvar.RegisterVariable('m_filter', '1');
-  if (COM.CheckParm('-nomouse') != null) {
+  IN.m_filter = new Cvar('m_filter', '1', Cvar.FLAG.ARCHIVE);
+  if (COM.CheckParm('-nomouse')) {
     return;
   }
   if (VID.mainwindow.requestPointerLock != null) {

@@ -1,4 +1,4 @@
-/* global Game */
+/* global Game, Cvar */
 
 import { GibEntity, InfoPlayerStart, InfoPlayerStartCoop, InfoPlayerStartDeathmatch, PlayerEntity, qc as playerModelQC, TelefragTriggerEntity } from "./entity/Player.mjs";
 import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
@@ -140,6 +140,14 @@ const entityRegistry = [
   item.WeaponThunderbolt,
 ];
 
+/**
+ * Cvar cache
+ * @type {{[key: string]: Cvar}}
+ */
+const cvars = {
+  nomonster: null,
+};
+
 export class ServerGameAPI {
   /**
    * Invoked by spawning a server or a changelevel. It will initialize the global game state.
@@ -221,7 +229,7 @@ export class ServerGameAPI {
     this._missingEntityClassStats = {};
 
     // FIXME: I’m not happy about this structure, especially with the getters down below
-    /** cvar cache @private */
+    /** cvar cache @type {{[key: string]: Cvar}} @private */
     this._cvars = {
       skill: engineAPI.GetCvar('skill'),
       teamplay: engineAPI.GetCvar('teamplay'),
@@ -273,6 +281,10 @@ export class ServerGameAPI {
 
   get noexit() {
     return this._cvars.noexit.value;
+  }
+
+  get nomonsters() {
+    return cvars.nomonster.value;
   }
 
   StartFrame() {
@@ -440,7 +452,7 @@ export class ServerGameAPI {
 
   prepareEntity(edict, classname, initialData = {}) {
     if (!this._entityRegistry.has(classname)) {
-      this.engine.ConsolePrint(`ServerGameAPI.prepareEntity: no entity factory for ${classname}!\n`);
+      this.engine.ConsoleWarning(`ServerGameAPI.prepareEntity: no entity factory for ${classname}!\n`);
 
       this._missingEntityClassStats[classname] = (this._missingEntityClassStats[classname] || 0) + 1;
       return false;
@@ -475,13 +487,30 @@ export class ServerGameAPI {
 
   spawnPreparedEntity(edict) {
     if (!edict.entity) {
-      this.engine.ConsolePrint('Cannot spawn empty edict.\n');
+      this.engine.ConsoleError('ServerGameAPI.prepareEntity: no entity class instance set!\n');
       return false;
     }
 
     edict.entity.spawn();
 
     return true;
+  }
+
+  init(mapname, serverflags) {
+    this.mapname = mapname;
+    this.serverflags = serverflags;
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  shutdown(isCrashShutdown) {
+  }
+
+  static Init() {
+    cvars.nomonster = Game.EngineInterface.RegisterCvar('nomonster', '0', Cvar.FLAG.DEFERRED, 'Do not spawn monsters.');
+  }
+
+  static Shutdown() {
+    cvars.nomonster.free();
   }
 
   serialize() {

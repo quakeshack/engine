@@ -54,6 +54,7 @@ Protocol.su = {
 
 Protocol.default_viewheight = 22;
 
+/** Server to Client */
 Protocol.svc = {
   null: 0,
   nop: 1,
@@ -119,11 +120,9 @@ Protocol.svc = {
   chatmsg: 103,
   obituary: 104,
   pmovevars: 105,
-
-  /** Protocol.u.signal is using special bit 128 */
-  last_available_command: 127,
 };
 
+/** Client to Server */
 Protocol.clc = {
   nop: 1,
   disconnect: 2,

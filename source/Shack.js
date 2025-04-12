@@ -1,4 +1,4 @@
-/* global Cmd, Host, CL, M */
+/* global Shack, Cmd, Host, CL, M */
 
 Shack = {
   Init() {

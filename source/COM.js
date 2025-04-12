@@ -102,7 +102,7 @@ COM.GetParm = function(parm) {
 COM.CheckRegistered = async function() {
   const h = await COM.LoadFileAsync('gfx/pop.lmp');
   if (h === null) {
-    Con.Print('Playing shareware version.\n');
+    Con.PrintSuccess('Playing shareware version.\n');
     return false;
   }
   const check = new Uint8Array(h);
@@ -130,7 +130,7 @@ COM.CheckRegistered = async function() {
     }
   }
   COM.registered.set(true);
-  Con.Print('Playing registered version.\n');
+  Con.PrintSuccess('Playing registered version.\n');
   return true;
 };
 
@@ -140,15 +140,15 @@ COM.InitArgv = function(argv) {
   for (i = 0; i < argv.length; ++i) {
     COM.argv[i] = argv[i];
   }
-  if (COM.CheckParm('-safe') != null) {
+  if (COM.CheckParm('-safe')) {
     COM.argv[COM.argv.length] = '-nosound';
     COM.argv[COM.argv.length] = '-nocdaudio';
     COM.argv[COM.argv.length] = '-nomouse';
   }
-  if (COM.CheckParm('-rogue') != null) {
+  if (COM.CheckParm('-rogue')) {
     COM.rogue = true;
     COM.standard_quake = false;
-  } else if (COM.CheckParm('-hipnotic') != null) {
+  } else if (COM.CheckParm('-hipnotic')) {
     COM.hipnotic = true;
     COM.standard_quake = false;
   }

@@ -433,18 +433,17 @@ S = {
   //
 
   Init() {
-    Con.Print('\nSound Initialization\n');
     Cmd.AddCommand('play', this.Play_f.bind(this));
     Cmd.AddCommand('playvol', this.PlayVol_f.bind(this));
     Cmd.AddCommand('stopsound', this.StopAllSounds.bind(this));
     Cmd.AddCommand('soundlist', this.SoundList_f.bind(this));
 
-    this._nosound = Cvar.RegisterVariable('nosound', COM.CheckParm('-nosound') != null ? '1' : '0');
-    this.volume = Cvar.RegisterVariable('volume', '0.7', true);
-    this._precache = Cvar.RegisterVariable('precache', '1');
-    this.bgmvolume = Cvar.RegisterVariable('bgmvolume', '1', true);
-    this._ambientLevel = Cvar.RegisterVariable('ambient_level', '0.3');
-    this._ambientFade = Cvar.RegisterVariable('ambient_fade', '100');
+    this._nosound = new Cvar('nosound', COM.CheckParm('-nosound') ? '1' : '0', Cvar.FLAG.READONLY);
+    this.volume = new Cvar('volume', '0.7', Cvar.FLAG.ARCHIVE);
+    this._precache = new Cvar('precache', '1');
+    this.bgmvolume = new Cvar('bgmvolume', '1', Cvar.FLAG.ARCHIVE);
+    this._ambientLevel = new Cvar('ambient_level', '0.3');
+    this._ambientFade = new Cvar('ambient_fade', '100');
 
     // Attempt to create an AudioContext
     try {
@@ -488,6 +487,8 @@ S = {
     }
 
     Con.sfx_talk = this.PrecacheSound('misc/talk.wav');
+
+    Con.Print('Sound subsystem initialized.\n');
   },
 
   Shutdown() {
@@ -908,7 +909,7 @@ S = {
     Con.Print(`Total resident: ${total}\n`);
   },
 
-  Play_f(_, ...samples) {
+  Play_f(...samples) {
     if (this._nosound.value !== 0) {
       return;
     }
@@ -922,7 +923,7 @@ S = {
     }
   },
 
-  PlayVol_f(_, ...args) {
+  PlayVol_f(...args) {
     if (this._nosound.value !== 0) {
       return;
     }

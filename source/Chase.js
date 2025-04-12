@@ -4,10 +4,10 @@
 Chase = {};
 
 Chase.Init = function() {
-  Chase.back = Cvar.RegisterVariable('chase_back', '100');
-  Chase.up = Cvar.RegisterVariable('chase_up', '16');
-  Chase.right = Cvar.RegisterVariable('chase_right', '0');
-  Chase.active = Cvar.RegisterVariable('chase_active', '0');
+  Chase.back = new Cvar('chase_back', '100');
+  Chase.up = new Cvar('chase_up', '16');
+  Chase.right = new Cvar('chase_right', '0');
+  Chase.active = new Cvar('chase_active', '0');
 };
 
 Chase.Update = function() {

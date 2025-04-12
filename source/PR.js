@@ -54,53 +54,7 @@ PR.max_parms = 8;
 PR.globalvars = {
   self: 28, // edict
   other: 29, // edict
-  world: 30, // edict
   time: 31, // float
-  frametime: 32, // float
-  force_retouch: 33, // float
-  mapname: 34, // string
-  deathmatch: 35, // float
-  coop: 36, // float
-  teamplay: 37, // float
-  serverflags: 38, // float
-  total_secrets: 39, // float
-  total_monsters: 40, // float
-  found_secrets: 41, // float
-  killed_monsters: 42, // float
-  parms: 43, // float[16]
-  v_forward: 59, // vec3
-  v_forward1: 60,
-  v_forward2: 61,
-  v_up: 62, // vec3
-  v_up1: 63,
-  v_up2: 64,
-  v_right: 65, // vec3,
-  v_right1: 66,
-  v_right2: 67,
-  trace_allsolid: 68, // float
-  trace_startsolid: 69, // float
-  trace_fraction: 70, // float
-  trace_endpos: 71, // vec3
-  trace_endpos1: 72,
-  trace_endpos2: 73,
-  trace_plane_normal: 74, // vec3
-  trace_plane_normal1: 75,
-  trace_plane_normal2: 76,
-  trace_plane_dist: 77, // float
-  trace_ent: 78, // edict
-  trace_inopen: 79, // float
-  trace_inwater: 80, // float
-  msg_entity: 81, // edict
-  main: 82, // func
-  StartFrame: 83, // func
-  PlayerPreThink: 84, // func
-  PlayerPostThink: 85, // func
-  ClientKill: 86, // func
-  ClientConnect: 87, // func
-  PutClientInServer: 88, // func
-  ClientDisconnect: 89, // func
-  SetNewParms: 90, // func
-  SetChangeParms: 91, // func
 };
 
 PR.entvars = {
@@ -921,7 +875,7 @@ PR.LoadProgs = function() {
       }
 
       if (!SV.server.gameAPI[classname]) {
-        Con.Print(`No spawn function for edict ${edict.num}: ${classname}\n`);
+        Con.PrintWarning(`No spawn function for edict ${edict.num}: ${classname}\n`);
         return false;
       }
 
@@ -931,7 +885,7 @@ PR.LoadProgs = function() {
         const field = ED.FindField(key);
 
         if (!field) {
-          Con.Print(`'${key}' is not a field\n`);
+          Con.PrintWarning(`'${key}' is not a field\n`);
           continue;
         }
 
@@ -947,7 +901,7 @@ PR.LoadProgs = function() {
           case PR.etype.ev_field: {
             const d = ED.FindField(value);
             if (!d) {
-              Con.Print(`Can't find field: ${value}\n`);
+              Con.PrintWarning(`Can't find field: ${value}\n`);
               break;
             }
             edict.entity[key] = d;
@@ -983,7 +937,7 @@ PR.LoadProgs = function() {
 
     spawnPreparedEntity(edict) {
       if (!edict.entity) {
-        Con.Print(`PR.LoadProgs.spawnPreparedEntity: no entity class instance set\n`);
+        Con.PrintError(`PR.LoadProgs.spawnPreparedEntity: no entity class instance set!\n`);
         return false;
       }
 
@@ -995,7 +949,19 @@ PR.LoadProgs = function() {
       edict.entity.spawn();
 
       return true;
-    }
+    },
+
+    init(mapname, serverflags) {
+      this.mapname = mapname;
+      this.serverflags = serverflags;
+
+      this.coop = Host.coop.value;
+      this.deathmatch = Host.deathmatch.value;
+    },
+
+    // eslint-disable-next-line no-unused-vars
+    shutdown(isCrashShutdown) {
+    },
   });
 
   Object.freeze(gameAPI);
@@ -1003,18 +969,23 @@ PR.LoadProgs = function() {
   return gameAPI;
 };
 
+PR._cvars = [];
+
 PR.Init = async function() {
   try {
-    // throw new Error('testing');
+    if (COM.CheckParm('-noquakejs')) {
+      throw new Error('QuakeJS disabled');
+    }
+
     // try to get the game API
     PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
+    PR.QuakeJS.ServerGameAPI.Init();
+
     const identification = PR.QuakeJS.identification;
-    Con.Print('PR.Init: Imported QuakeJS game code:\n');
-    Con.Print(`...author: ${identification.author}\n`);
-    Con.Print(`...version: ${identification.version.join('.')}\n\n${identification.name}\n${'-'.repeat(identification.name.length)}\n\n`);
+    Con.Print(`PR.Init: QuakeJS server code v${identification.version.join('.')} by ${identification.author}.\n`);
     return;
   } catch (e) {
-    Con.Print('PR.Init: Unable to load to QuakeJS game code, will fallback to QuakeC: ' + e.message +'\n');
+    Con.PrintWarning('PR.Init: Falling back to QuakeC, failed to initialize QuakeJS server code: ' + e.message +'.\n');
   }
 
   // CR: we do not need any of this when running QuakeJS
@@ -1022,17 +993,17 @@ PR.Init = async function() {
   Cmd.AddCommand('edicts', ED.PrintEdicts);
   Cmd.AddCommand('edictcount', ED.Count);
   Cmd.AddCommand('profile', PR.Profile_f);
-  Cvar.RegisterVariable('nomonsters', '0');
-  Cvar.RegisterVariable('gamecfg', '0');
-  Cvar.RegisterVariable('scratch1', '0');
-  Cvar.RegisterVariable('scratch2', '0');
-  Cvar.RegisterVariable('scratch3', '0');
-  Cvar.RegisterVariable('scratch4', '0');
-  Cvar.RegisterVariable('savedgamecfg', '0', true);
-  Cvar.RegisterVariable('saved1', '0', true);
-  Cvar.RegisterVariable('saved2', '0', true);
-  Cvar.RegisterVariable('saved3', '0', true);
-  Cvar.RegisterVariable('saved4', '0', true);
+  PR._cvars.push(new Cvar('nomonsters', '0'));
+  PR._cvars.push(new Cvar('gamecfg', '0'));
+  PR._cvars.push(new Cvar('scratch1', '0'));
+  PR._cvars.push(new Cvar('scratch2', '0'));
+  PR._cvars.push(new Cvar('scratch3', '0'));
+  PR._cvars.push(new Cvar('scratch4', '0'));
+  PR._cvars.push(new Cvar('savedgamecfg', '0', true));
+  PR._cvars.push(new Cvar('saved1', '0', true));
+  PR._cvars.push(new Cvar('saved2', '0', true));
+  PR._cvars.push(new Cvar('saved3', '0', true));
+  PR._cvars.push(new Cvar('saved4', '0', true));
 };
 
 // exec
@@ -1153,7 +1124,7 @@ PR.Profile_f = function() {
 PR.RunError = function(error) {
   PR.PrintStatement(PR.statements[PR.xstatement]);
   PR.StackTrace();
-  Con.Print(error + '\n');
+  Con.PrintError(error + '\n');
   Host.Error('Program error');
 };
 

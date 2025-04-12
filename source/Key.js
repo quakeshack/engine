@@ -1,4 +1,4 @@
-/* global Key, Con, CL, Cmd, Cvar, M, Host */
+/* global Key, Con, CL, Cmd, Cvar, M, Host, Vector */
 
 // eslint-disable-next-line no-global-assign
 Key = {};
@@ -108,7 +108,7 @@ Key.names = [
 Key.Console = function(key) {
   if (key === Key.k.enter) {
     Cmd.text += Key.edit_line + '\n';
-    Con.Print(']' + Key.edit_line + '\n');
+    Con.Print(']' + Key.edit_line + '\n', new Vector(0.8, 0.8, 0.8));
     Key.lines[Key.lines.length] = Key.edit_line;
     Key.edit_line = '';
     Key.history_line = Key.lines.length;
@@ -196,10 +196,10 @@ Key.chat_buffer = '';
 Key.Message = function(key) {
   if (key === Key.k.enter) {
     if (Key.chat_buffer.trim().length > 0) {
-      if (Key.team_message === true) {
-        Host.Say(true, Key.chat_buffer, 'say');
+      if (Key.team_message) {
+        Cmd.ExecuteString(`say_team "${Key.chat_buffer}"`);
       } else {
-        Host.Say(false, Key.chat_buffer, 'say_team');
+        Cmd.ExecuteString(`say "${Key.chat_buffer}"`);
       }
     }
     Key.dest.value = Key.dest.game;
@@ -252,7 +252,7 @@ Key.KeynumToString = function(keynum) {
   return '<UNKNOWN KEYNUM>';
 };
 
-Key.Unbind_f = function(_, key) {
+Key.Unbind_f = function(key) {
   if (key === undefined) {
     Con.Print('Usage: unbind <key>\n');
   }
@@ -268,7 +268,7 @@ Key.Unbindall_f = function() {
   Key.bindings = [];
 };
 
-Key.Bind_f = function(_, key, command) {
+Key.Bind_f = function(key, command) {
   if (key === undefined) {
     Con.Print('Usage: bind <key> [command]\n');
     return;

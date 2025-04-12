@@ -1,4 +1,4 @@
-/* global Sys, Vector */
+/* global Vector */
 
 // eslint-disable-next-line no-global-assign
 Vector = class Vector extends Float32Array {

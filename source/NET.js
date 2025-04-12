@@ -1,4 +1,4 @@
-/* global Con, Host, CL, Cmd, Cvar, Q, NET, SV, Sys, Loop, WEBS, SZ */
+/* global Con, Host, CL, Cmd, Cvar, Q, NET, SV, Sys, Loop, WEBS, MSG */
 
 // eslint-disable-next-line no-global-assign
 NET = {};
@@ -60,7 +60,7 @@ NET.FormatIP = function(ip, port) {
 };
 
 NET.activeSockets = [];
-NET.message = new SZ.Buffer(8192);
+NET.message = new MSG.Buffer(8192);
 NET.activeconnections = 0;
 NET.listening = false;
 
@@ -208,7 +208,7 @@ NET.GetMessage = function(sock) {
     return -1;
   }
   if (sock.disconnected === true) {
-    Con.Print('NET.GetMessage: disconnected socket\n');
+    Con.DPrint('NET.GetMessage: disconnected socket\n');
     return -1;
   }
   NET.time = Sys.FloatTime();
@@ -231,7 +231,7 @@ NET.SendMessage = function(sock, data) {
     return -1;
   }
   if (sock.disconnected === true) {
-    Con.Print('NET.SendMessage: disconnected socket\n');
+    Con.DPrint('NET.SendMessage: disconnected socket\n');
     return -1;
   }
   // console.debug(`NET.SendMessage: ${sock.address} ${data.cursize}`, data.toHexString());
@@ -244,7 +244,7 @@ NET.SendUnreliableMessage = function(sock, data) {
     return -1;
   }
   if (sock.disconnected === true) {
-    Con.Print('NET.SendUnreliableMessage: disconnected socket\n');
+    Con.DPrint('NET.SendUnreliableMessage: disconnected socket\n');
     return -1;
   }
   // console.debug(`NET.SendUnreliableMessage: ${sock.address} ${data.cursize}`, data.toHexString());
@@ -344,7 +344,7 @@ NET.Drivers_f = function() {
   }
 };
 
-NET.Listen_f = function(_, isListening) {
+NET.Listen_f = function(isListening) {
   if (isListening === undefined) {
     Con.Print('"listen" is "' + (NET.listening ? 1 : 0) + '"\n');
     return;
@@ -361,7 +361,7 @@ NET.Listen_f = function(_, isListening) {
   }
 };
 
-NET.MaxPlayers_f = function(_, maxplayers) {
+NET.MaxPlayers_f = function(maxplayers) {
   if (maxplayers === undefined) {
     Con.Print('"maxplayers" is "' + SV.svs.maxclients + '"\n');
     return;

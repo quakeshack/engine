@@ -148,7 +148,7 @@ export default class BaseMonster extends BaseEntity {
   }
 
   _preSpawn() {
-    if (this.game.deathmatch) {
+    if (this.game.deathmatch || this.game.nomonsters) {
       this.remove();
       return false;
     }

@@ -1,4 +1,4 @@
-/* global Draw, COM, Sys, Def, VID, W, gl, GL */
+/* global Draw, COM, Sys, Def, VID, W, gl, GL, Vector */
 
 // eslint-disable-next-line no-global-assign
 Draw = {};
@@ -65,7 +65,7 @@ Draw.Init = async function() {
       [['aPosition', gl.FLOAT, 2], ['aColor', gl.UNSIGNED_BYTE, 4, true]],
       []);
   await GL.CreateProgram('pic',
-      ['uOrtho'],
+      ['uOrtho', 'uColor'],
       [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
       ['tTexture']);
   await GL.CreateProgram('pic-translate',
@@ -82,26 +82,32 @@ Draw.Char = function(x, y, num, scale = 1.0) {
 
 Draw.Character = function(x, y, num, scale = 1.0) {
   const program = GL.UseProgram('pic', true);
+  gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
   GL.Bind(program.tTexture, Draw.char_texture, true);
   Draw.Char(x, y, num, scale);
+  GL.StreamFlush();
 };
 
-Draw.String = function(x, y, str, scale = 1.0) {
+Draw.String = function(x, y, str, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)) {
   const program = GL.UseProgram('pic', true);
+  gl.uniform3f(program.uColor, ...color);
   GL.Bind(program.tTexture, Draw.char_texture, true);
   for (let i = 0; i < str.length; ++i) {
-    Draw.Char(x, y, str.charCodeAt(i), scale);
+    Draw.Char(x, y, str.charCodeAt(i), scale, color);
     x += 8 * scale;
   }
+  GL.StreamFlush();
 };
 
 Draw.StringWhite = function(x, y, str, scale = 1.0) {
   const program = GL.UseProgram('pic', true);
+  gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
   GL.Bind(program.tTexture, Draw.char_texture, true);
   for (let i = 0; i < str.length; ++i) {
     Draw.Char(x, y, str.charCodeAt(i) + 128, scale);
     x += 8 * scale;
   }
+  GL.StreamFlush();
 };
 
 Draw.PicFromWad = function(name) {
@@ -166,6 +172,7 @@ Draw.Pic = function(x, y, pic) {
   }
 
   const program = GL.UseProgram('pic', true);
+  gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
   GL.Bind(program.tTexture, pic.texnum, true);
   GL.StreamDrawTexturedQuad(x, y, pic.width, pic.height, 0.0, 0.0, 1.0, 1.0);
 };
@@ -193,8 +200,10 @@ Draw.PicTranslate = function(x, y, pic, top, bottom) {
 
 Draw.ConsoleBackground = function(lines) {
   const program = GL.UseProgram('pic', true);
+  gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
   GL.Bind(program.tTexture, Draw.conback.texnum, true);
   GL.StreamDrawTexturedQuad(0, lines - VID.height, VID.width, VID.height, 0.0, 0.0, 1.0, 1.0);
+  GL.StreamFlush();
 };
 
 Draw.Fill = function(x, y, w, h, c) {

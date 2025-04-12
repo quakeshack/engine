@@ -199,7 +199,7 @@ export class QuakeEntityAI extends EntityAI {
 
     // check for stuck enemies
     if (!self.walkMove(0, 0)) {
-      self.engine.DebugPrint(`${self} stuck in wall at ${self.origin}\n`);
+      self.engine.ConsoleDebug(`${self} stuck in wall at ${self.origin}\n`);
     }
 
     self.takedamage = damage.DAMAGE_AIM;

@@ -10,6 +10,19 @@ export class ClientGameAPI {
     Object.seal(this);
   }
 
+  init() {
+  }
 
+  shutdown() {
+  }
 
+  static Init() {
+  }
+
+  static Shutdown() {
+  }
+
+  static IsServerCompatible(version) {
+    return version[0] === 1 && version[1] === 0 && version[2] === 0;
+  }
 };

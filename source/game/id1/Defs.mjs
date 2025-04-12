@@ -112,12 +112,32 @@ export const flags = {
 
 /**
  * entity effects
+ * @readonly
+ * @enum {number}
  */
 export const effect = {
-  EF_BRIGHTFIEL: 1,
+  EF_NONE: 0,
+  EF_BRIGHTFIELD: 1,
   EF_MUZZLEFLASH: 2,
   EF_BRIGHTLIGHT: 4,
   EF_DIMLIGHT: 8,
+};
+
+/**
+ * model flags
+ * @readonly
+ * @enum {number}
+ */
+export const modelFlags = {
+  MF_NONE: 0,
+  MF_ROCKET: 1,
+  MF_GRENADE: 2,
+  MF_GIB: 4,
+  MF_ROTATE: 8,
+  MF_TRACER: 16,
+  MF_ZOMGIB: 32,
+  MF_TRACER2: 64,
+  MF_TRACER3: 128,
 };
 
 /**

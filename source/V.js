@@ -145,7 +145,7 @@ V.ParseDamage = function() {
   V.dmg_time = V.kicktime.value;
 };
 
-V.cshift_f = function(_, ...args) {
+V.cshift_f = function(...args) {
   const cshift = V.cshift_empty;
   for (let i = 0; i < Math.min(args.length, cshift.length); i++) {
     cshift[i] = Q.atoi(args[i]);
@@ -378,29 +378,29 @@ V.Init = function() {
   Cmd.AddCommand('v_cshift', V.cshift_f);
   Cmd.AddCommand('bf', V.BonusFlash_f);
   Cmd.AddCommand('centerview', V.StartPitchDrift);
-  V.centermove = Cvar.RegisterVariable('v_centermove', '0.15');
-  V.centerspeed = Cvar.RegisterVariable('v_centerspeed', '500');
-  V.iyaw_cycle = Cvar.RegisterVariable('v_iyaw_cycle', '2');
-  V.iroll_cycle = Cvar.RegisterVariable('v_iroll_cycle', '0.5');
-  V.ipitch_cycle = Cvar.RegisterVariable('v_ipitch_cycle', '1');
-  V.iyaw_level = Cvar.RegisterVariable('v_iyaw_level', '0.3');
-  V.iroll_level = Cvar.RegisterVariable('v_iroll_level', '0.1');
-  V.ipitch_level = Cvar.RegisterVariable('v_ipitch_level', '0.3');
-  V.idlescale = Cvar.RegisterVariable('v_idlescale', '0');
-  V.crosshair = Cvar.RegisterVariable('crosshair', '0', true);
-  V.crossx = Cvar.RegisterVariable('cl_crossx', '0');
-  V.crossy = Cvar.RegisterVariable('cl_crossy', '0');
-  V.cshiftpercent = Cvar.RegisterVariable('gl_cshiftpercent', '100');
-  V.ofsx = Cvar.RegisterVariable('scr_ofsx', '0');
-  V.ofsy = Cvar.RegisterVariable('scr_ofsy', '0');
-  V.ofsz = Cvar.RegisterVariable('scr_ofsz', '0');
-  V.rollspeed = Cvar.RegisterVariable('cl_rollspeed', '200');
-  V.rollangle = Cvar.RegisterVariable('cl_rollangle', '2.0');
-  V.bob = Cvar.RegisterVariable('cl_bob', '0.02');
-  V.bobcycle = Cvar.RegisterVariable('cl_bobcycle', '0.6');
-  V.bobup = Cvar.RegisterVariable('cl_bobup', '0.5');
-  V.kicktime = Cvar.RegisterVariable('v_kicktime', '0.5');
-  V.kickroll = Cvar.RegisterVariable('v_kickroll', '0.6');
-  V.kickpitch = Cvar.RegisterVariable('v_kickpitch', '0.6');
-  V.gamma = Cvar.RegisterVariable('gamma', '1', true);
+  V.centermove = new Cvar('v_centermove', '0.15');
+  V.centerspeed = new Cvar('v_centerspeed', '500');
+  V.iyaw_cycle = new Cvar('v_iyaw_cycle', '2');
+  V.iroll_cycle = new Cvar('v_iroll_cycle', '0.5');
+  V.ipitch_cycle = new Cvar('v_ipitch_cycle', '1');
+  V.iyaw_level = new Cvar('v_iyaw_level', '0.3');
+  V.iroll_level = new Cvar('v_iroll_level', '0.1');
+  V.ipitch_level = new Cvar('v_ipitch_level', '0.3');
+  V.idlescale = new Cvar('v_idlescale', '0');
+  V.crosshair = new Cvar('crosshair', '0', Cvar.FLAG.ARCHIVE);
+  V.crossx = new Cvar('cl_crossx', '0');
+  V.crossy = new Cvar('cl_crossy', '0');
+  V.cshiftpercent = new Cvar('gl_cshiftpercent', '100');
+  V.ofsx = new Cvar('scr_ofsx', '0');
+  V.ofsy = new Cvar('scr_ofsy', '0');
+  V.ofsz = new Cvar('scr_ofsz', '0');
+  V.rollspeed = new Cvar('cl_rollspeed', '200');
+  V.rollangle = new Cvar('cl_rollangle', '2.0');
+  V.bob = new Cvar('cl_bob', '0.02');
+  V.bobcycle = new Cvar('cl_bobcycle', '0.6');
+  V.bobup = new Cvar('cl_bobup', '0.5');
+  V.kicktime = new Cvar('v_kicktime', '0.5');
+  V.kickroll = new Cvar('v_kickroll', '0.6');
+  V.kickpitch = new Cvar('v_kickpitch', '0.6');
+  V.gamma = new Cvar('gamma', '0.8', Cvar.FLAG.ARCHIVE); // CR: 1 is too dark
 };

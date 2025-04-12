@@ -1,4 +1,4 @@
-/* global ED, Con, COM, Cmd, Q, SV, Sys, Def, PR */
+/* global ED, Con, COM, Q, SV, Sys, Def, PR */
 
 // eslint-disable-next-line no-global-assign
 ED = {};
@@ -23,7 +23,7 @@ ED.Alloc = function() { // TODO: move to SV?
   }
   if (i === Def.max_edicts) {
     // TODO: soft limit, hard limit, also allocate directly 200 more in one go
-    Con.Print(`WARNING: ED.Alloc triggered max_edicts (${Def.max_edicts})\n`);
+    Con.PrintWarning(`ED.Alloc triggered max_edicts (${Def.max_edicts})\n`);
   }
   e = SV.server.edicts[SV.server.num_edicts++];
   if (!e) {
@@ -129,12 +129,12 @@ ED.PrintEdicts = function() {
 };
 
 
-ED.PrintEdict_f = function(_, id) {
+ED.PrintEdict_f = function(id) {
   if (SV.server.active !== true) {
     return;
   }
   if (id === undefined) {
-    Con.Print(`Usage: ${_} <num>\n`);
+    Con.Print(`Usage: ${this.command} <num>\n`);
     return;
   }
   const i = Q.atoi(id);

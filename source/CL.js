@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Draw, Pmove, SZ */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, IN, Sys, Def, V, CDAudio, Draw, Pmove */
 
 // eslint-disable-next-line no-global-assign
 CL = {};
@@ -123,20 +123,20 @@ CL.Stop_f = function() {
   MSG.WriteString(NET.message, 'CL.Stop_f');
   CL.WriteDemoMessage();
   if (COM.WriteFile(CL.cls.demoname, new Uint8Array(CL.cls.demofile), CL.cls.demoofs) !== true) {
-    Con.Print('ERROR: couldn\'t open.\n');
+    Con.PrintError('ERROR: couldn\'t open.\n');
   }
   CL.cls.demofile = null;
   CL.cls.demorecording = false;
-  Con.Print('Completed demo\n');
+  Con.PrintSuccess('Completed demo\n');
 };
 
-CL.Record_f = function(_, demoname, map, track) {
+CL.Record_f = function(demoname, map, track) {
   if (demoname === undefined) {
     Con.Print('Usage: record <demoname> [<map> [cd track]]\n');
     return;
   }
   if (demoname.indexOf('..') !== -1) {
-    Con.Print('Relative pathnames are not allowed.\n');
+    Con.PrintWarning('Relative pathnames are not allowed.\n');
     return;
   }
   if (map === undefined && (CL.cls.state === CL.active.connected)) {
@@ -153,7 +153,7 @@ CL.Record_f = function(_, demoname, map, track) {
   if (map !== undefined) {
     Cmd.ExecuteString('map ' + map);
   }
-  Con.Print('recording to ' + CL.cls.demoname + '.\n');
+  Con.PrintSuccess('recording to ' + CL.cls.demoname + '.\n');
   CL.cls.demofile = new ArrayBuffer(16384);
   const trackstr = CL.cls.forcetrack.toString() + '\n';
   let i; const dest = new Uint8Array(CL.cls.demofile, 0, trackstr.length);
@@ -164,7 +164,7 @@ CL.Record_f = function(_, demoname, map, track) {
   CL.cls.demorecording = true;
 };
 
-CL.PlayDemo_f = function(_, demoname) {
+CL.PlayDemo_f = function(demoname) {
   if (Cmd.client === true) {
     return;
   }
@@ -177,7 +177,7 @@ CL.PlayDemo_f = function(_, demoname) {
   Con.Print('Playing demo from ' + name + '.\n');
   let demofile = COM.LoadFile(name);
   if (demofile == null) {
-    Con.Print('ERROR: couldn\'t open.\n');
+    Con.PrintError('ERROR: couldn\'t open.\n');
     CL.cls.demonum = -1;
     SCR.disabled_for_loading = false;
     return;
@@ -254,8 +254,8 @@ CL.kbutton = {
 };
 CL.kbuttons = [];
 
-CL.KeyDown_f = function(btn, cmd) {
-  let b = CL.kbutton[btn.substring(1)];
+CL.KeyDown_f = function(cmd) {
+  let b = CL.kbutton[this.command.substring(1)];
   if (b == null) {
     return;
   }
@@ -286,8 +286,8 @@ CL.KeyDown_f = function(btn, cmd) {
   }
 };
 
-CL.KeyUp_f = function(btn, cmd) {
-  let b = CL.kbutton[btn.substring(1)];
+CL.KeyUp_f = function(cmd) {
+  let b = CL.kbutton[this.command.substring(1)];
   if (b == null) {
     return;
   }
@@ -318,14 +318,14 @@ CL.KeyUp_f = function(btn, cmd) {
   }
 };
 
-CL.MLookUp_f = function(...argv) {
-  CL.KeyUp_f(...argv);
+CL.MLookUp_f = function(cmd) {
+  CL.KeyUp_f.call(this, cmd);
   if (((CL.kbuttons[CL.kbutton.mlook].state & 1) === 0) && (CL.lookspring.value !== 0)) {
     V.StartPitchDrift();
   }
 };
 
-CL.Impulse_f = function(_, code) {
+CL.Impulse_f = function(code) {
   if (code === undefined) {
     Con.Print('Usage: impulse <code>\n');
     return;
@@ -418,7 +418,7 @@ CL.BaseMove = function() {
 CL.impulse = 0;
 
 CL.SendMove = function() {
-  const buf = new SZ.Buffer(16);
+  const buf = new MSG.Buffer(16);
   MSG.WriteByte(buf, Protocol.clc.move);
   MSG.WriteFloat(buf, CL.state.mtime[0]);
   MSG.WriteAngle(buf, CL.state.viewangles[0]);
@@ -482,6 +482,8 @@ CL.InitInput = function() {
 
 // main
 
+CL.gameAPI = null;
+
 CL.cls = {
   signon: 0,
   state: 0,
@@ -490,7 +492,7 @@ CL.cls = {
   demoplayback: false,
   demos: [],
   timedemo: false,
-  message: new SZ.Buffer(8192),
+  message: new MSG.Buffer(8192),
   netcon: null,
   connecting: null,
   latency: 0.0,
@@ -513,13 +515,13 @@ CL.Entity = class ClientEntity {
     this.colormap = 0;
     this.effects = 0;
     this.origin = new Vector();
+    /** @type {?Vector} used to keep track of origin changes, unset when no previous origin is known */
+    this.origin_old = null;
     this.angles = new Vector();
-    this.visframe = 0;
+    /** @type {?Vector} used to keep track of angles changes, unset when no previous angles is known */
+    this.angles_old = null;
     this.dlightbits = 0;
     this.dlightframe = 0;
-    this.forcerelink = false;
-    this.syncbase = 0.0;
-    this.update_type = 0;
     /** keeps track of last updates */
     this.msg_time = [0.0, 0.0];
     /** keeps track of origin changes */
@@ -527,27 +529,79 @@ CL.Entity = class ClientEntity {
     /** keeps track of angle changes */
     this.msg_angles = [new Vector(), new Vector()];
     this.leafs = [];
+    /** count of received updates */
     this.updatecount = 0;
+    /** whether is ClientEntity is free */
     this.free = false;
+    this.syncbase = 0.0;
 
     Object.seal(this);
   }
 
-  _lerpFraction() {
-    return 1; // FIXME
+  clear() {
+    this.model = null;
+    this.frame = 0;
+    this.skinnum = 0;
+    this.colormap = 0;
+    this.effects = 0;
+    this.origin.clear();
+    this.origin_old = null;
+    this.angles.clear();
+    this.dlightbits = 0;
+    this.dlightframe = 0;
+    this.msg_time[0] = 0.0;
+    this.msg_time[1] = 0.0;
+    this.msg_origins[0].clear();
+    this.msg_origins[1].clear();
+    this.msg_angles[0].clear();
+    this.msg_angles[1].clear();
+    this.leafs = [];
+    this.updatecount = 0;
+    this.free = false;
   }
 
-  // msgtime_0: 1.23
-  // msgtime_1: 2.34
-  lerpVectors() {
-    this.origin.set(this.msg_origins[0]);
-    this.angles.set(this.msg_angles[0]);
+  updatePosition(doLerp) {
+    if (this.origin_old === null) {
+      this.origin_old = this.msg_origins[0].copy();
+    } else {
+      this.origin_old.set(this.origin);
+    }
 
-    // FIXME: lerp fraction
+    if (this.angles_old === null) {
+      this.angles_old = this.msg_angles[0].copy();
+    } else {
+      this.angles_old.set(this.angles);
+    }
+
+    if (!doLerp) {
+      this.origin.set(this.msg_origins[0]);
+      this.angles.set(this.msg_angles[0]);
+      return;
+    }
+
+    let f = CL.LerpPoint();
+    const delta = new Vector();
+
+    for (let j = 0; j < 3; j++) {
+      delta[j] = this.msg_origins[0][j] - this.origin_old[j];
+      if ((delta[j] > 100.0) || (delta[j] < -100.0)) {
+        f = 1.0;
+      }
+    }
+    for (let j = 0; j < 3; j++) {
+      this.origin[j] = this.origin_old[j] + f * delta[j];
+      let d = this.msg_angles[0][j] - this.angles_old[j];
+      if (d > 180.0) {
+        d -= 360.0;
+      } else if (d < -180.0) {
+        d += 360.0;
+      }
+      this.angles[j] = this.angles_old[j] + f * d;
+    }
   }
 };
 
-CL.Rcon_f = function(_, ...args) {
+CL.Rcon_f = function(...args) {
   if (args.length === 0) {
     Con.Print('Usage: rcon <command>\n');
     return;
@@ -556,13 +610,13 @@ CL.Rcon_f = function(_, ...args) {
   const password = CL.rcon_password.string;
 
   if (!password) {
-    Con.Print('You must set \'rcon_password\' before\nissuing an rcon command.\n');
+    Con.Print('You must set \'rcon_password\' before issuing an rcon command.\n');
     return;
   }
 
   MSG.WriteByte(CL.cls.message, Protocol.clc.rconcmd);
   MSG.WriteString(CL.cls.message, password);
-  MSG.WriteString(CL.cls.message, args.join(' '));
+  MSG.WriteString(CL.cls.message, this.args);
 };
 
 CL.SetConnectingStep = function(percentage, message) {
@@ -604,6 +658,8 @@ CL.ClearState = function() {
   }
 
   CL.SetConnectingStep(null, null);
+
+  CL.gameAPI = null;
 
   CL.state = {
     movemessages: 0,
@@ -650,6 +706,7 @@ CL.ClearState = function() {
     viewheight: 0,
     inwater: false,
     nodrift: false,
+    lerp: null,
   };
 
   CL.cls.message.cursize = 0;
@@ -670,7 +727,7 @@ CL.ClearState = function() {
 
   CL.beams = [];
   for (i = 0; i <= 23; ++i) {
-    CL.beams[i] = {endtime: 0.0};
+    CL.beams[i] = {endtime: 0.0}; // TODO: Beam class
   }
 };
 
@@ -829,12 +886,21 @@ CL.DecayLights = function() {
   }
 };
 
-/** @deprecated */
+/**
+ * Calculates lerp fraction for the current frame.
+ * It also updates CL.state.time.
+ * @returns {number} interval [0.0, 1.0]
+ */
 CL.LerpPoint = function() {
+  if (CL.state.lerp !== null) {
+    return CL.state.lerp;
+  }
+
   let f = CL.state.mtime[0] - CL.state.mtime[1];
   if ((f === 0.0) || (CL.nolerp.value !== 0) || (CL.cls.timedemo === true) || (SV.server.active === true)) {
     CL.state.time = CL.state.mtime[0];
-    return 1.0;
+    CL.state.lerp = 1.0;
+    return CL.state.lerp;
   }
   if (f > 0.1) {
     CL.state.mtime[1] = CL.state.mtime[0] - 0.1;
@@ -845,26 +911,30 @@ CL.LerpPoint = function() {
     if (frac < -0.01) {
       CL.state.time = CL.state.mtime[1];
     }
-    return 0.0;
+    CL.state.lerp = 0.0;
+    return CL.state.lerp;
   }
   if (frac > 1.0) {
     if (frac > 1.01) {
       CL.state.time = CL.state.mtime[0];
     }
-    return 1.0;
+    CL.state.lerp = 1.0;
+    return CL.state.lerp;
   }
+  CL.state.lerp = frac;
   return frac;
 };
 
 /** @deprecated */
 CL.RelinkEntities = function() {
+  debugger;
   let i; let j;
   const frac = CL.LerpPoint(); let f; let d; const delta = [];
 
   CL.numvisedicts = 0;
 
   // velo = mvelo[1] + frac * (mvelo[0] - mvelo[1])
-  CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]).multiply(frac)));
+  // CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]).multiply(frac)));
 
   if (CL.cls.demoplayback === true) {
     for (i = 0; i <= 2; ++i) {
@@ -885,33 +955,33 @@ CL.RelinkEntities = function() {
     if (ent.model == null) {
       continue;
     }
-    if (ent.msgtime !== CL.state.mtime[0]) {
-      ent.model = null;
-      continue;
-    }
+    // if (ent.msgtime !== CL.state.mtime[0]) {
+    //   ent.model = null;
+    //   continue;
+    // }
     const oldorg = ent.origin.copy();
-    if (ent.forcelink === true) {
-      ent.origin = ent.msg_origins[0].copy();
-      ent.angles = ent.msg_angles[0].copy();
-    } else {
-      f = frac;
-      for (j = 0; j <= 2; ++j) {
-        delta[j] = ent.msg_origins[0][j] - ent.msg_origins[1][j];
-        if ((delta[j] > 100.0) || (delta[j] < -100.0)) {
-          f = 1.0;
-        }
-      }
-      for (j = 0; j <= 2; ++j) {
-        ent.origin[j] = ent.msg_origins[1][j] + f * delta[j];
-        d = ent.msg_angles[0][j] - ent.msg_angles[1][j];
-        if (d > 180.0) {
-          d -= 360.0;
-        } else if (d < -180.0) {
-          d += 360.0;
-        }
-        ent.angles[j] = ent.msg_angles[1][j] + f * d;
-      }
-    }
+    // if (ent.forcelink === true) {
+    //   ent.origin = ent.msg_origins[0].copy();
+    //   ent.angles = ent.msg_angles[0].copy();
+    // } else {
+    //   f = frac;
+    //   for (j = 0; j <= 2; ++j) {
+    //     delta[j] = ent.msg_origins[0][j] - ent.msg_origins[1][j];
+    //     if ((delta[j] > 100.0) || (delta[j] < -100.0)) {
+    //       f = 1.0;
+    //     }
+    //   }
+    //   for (j = 0; j <= 2; ++j) {
+    //     ent.origin[j] = ent.msg_origins[1][j] + f * delta[j];
+    //     d = ent.msg_angles[0][j] - ent.msg_angles[1][j];
+    //     if (d > 180.0) {
+    //       d -= 360.0;
+    //     } else if (d < -180.0) {
+    //       d += 360.0;
+    //     }
+    //     ent.angles[j] = ent.msg_angles[1][j] + f * d;
+    //   }
+    // }
 
     if ((ent.model.flags & Mod.flags.rotate) !== 0) {
       ent.angles[1] = bobjrotate;
@@ -965,10 +1035,10 @@ CL.RelinkEntities = function() {
       R.RocketTrail(oldorg, ent.origin, 6);
     }
 
-    ent.forcelink = false;
-    if ((i !== CL.state.viewentity) || (Chase.active.value !== 0)) {
-      CL.visedicts[CL.numvisedicts++] = ent;
-    }
+    // ent.forcelink = false;
+    // if ((i !== CL.state.viewentity) || (Chase.active.value !== 0)) {
+    //   CL.visedicts[CL.numvisedicts++] = ent;
+    // }
   }
 };
 
@@ -1001,8 +1071,11 @@ CL.ReadFromServer = function() {
   if (CL.shownet.value !== 0) {
     Con.Print('\n');
   }
+
+  CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]).multiply(CL.LerpPoint()))); // TODO: this is going to be replaced by Pmove
+
   // CL.RelinkEntities();
-  // CL.UpdateTEnts();
+  CL.UpdateTEnts();
 };
 
 CL.SendCmd = function() {
@@ -1042,7 +1115,7 @@ CL.InitPmove = function() {
   CL.pmove.movevars = new Pmove.MoveVars();
 };
 
-CL.Init = function() {
+CL.Init = async function() {
   CL.ClearState();
   CL.InitInput();
   CL.InitTEnts();
@@ -1058,7 +1131,7 @@ CL.Init = function() {
   CL.pitchspeed = new Cvar('cl_pitchspeed', '150');
   CL.anglespeedkey = new Cvar('cl_anglespeedkey', '1.5');
   CL.shownet = new Cvar('cl_shownet', '0');
-  CL.nolerp = new Cvar('cl_nolerp', '0');
+  CL.nolerp = new Cvar('cl_nolerp', '1'); // CR: set to 1 for the time being, the code is janky as hell
   CL.lookspring = new Cvar('lookspring', '0', Cvar.FLAG.ARCHIVE);
   CL.lookstrafe = new Cvar('lookstrafe', '0', Cvar.FLAG.ARCHIVE);
   CL.sensitivity = new Cvar('sensitivity', '3', Cvar.FLAG.ARCHIVE);
@@ -1076,6 +1149,20 @@ CL.Init = function() {
   Cmd.AddCommand('timedemo', CL.TimeDemo_f);
   Cmd.AddCommand('rcon', CL.Rcon_f);
   CL.svc_strings = Object.keys(Protocol.svc);
+
+  try {
+    if (COM.CheckParm('-noquakejs')) {
+      throw new Error('QuakeJS disabled');
+    }
+
+    CL.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
+    CL.QuakeJS.ClientGameAPI.Init();
+
+    const identification = CL.QuakeJS.identification;
+    Con.Print(`CL.Init: QuakeJS client code v${identification.version.join('.')} by ${identification.author}.\n`);
+  } catch (e) {
+    Con.PrintWarning('CL.Init: Failed to import QuakeJS client code, ' + e.message + '.\n');
+  }
 };
 
 // parse
@@ -1151,16 +1238,16 @@ CL.KeepaliveMessage = function() {
 };
 
 CL.ParsePmovevars = function() {
-  CL.pmove.movevars.gravity            = MSG.ReadFloat();
-  CL.pmove.movevars.stopspeed          = MSG.ReadFloat();
-  CL.pmove.movevars.maxspeed           = MSG.ReadFloat();
-  CL.pmove.movevars.spectatormaxspeed  = MSG.ReadFloat();
-  CL.pmove.movevars.accelerate         = MSG.ReadFloat();
-  CL.pmove.movevars.airaccelerate      = MSG.ReadFloat();
-  CL.pmove.movevars.wateraccelerate    = MSG.ReadFloat();
-  CL.pmove.movevars.friction           = MSG.ReadFloat();
-  CL.pmove.movevars.waterfriction      = MSG.ReadFloat();
-  CL.pmove.movevars.entgravity         = MSG.ReadFloat();
+  CL.pmove.movevars.gravity = MSG.ReadFloat();
+  CL.pmove.movevars.stopspeed = MSG.ReadFloat();
+  CL.pmove.movevars.maxspeed = MSG.ReadFloat();
+  CL.pmove.movevars.spectatormaxspeed = MSG.ReadFloat();
+  CL.pmove.movevars.accelerate = MSG.ReadFloat();
+  CL.pmove.movevars.airaccelerate = MSG.ReadFloat();
+  CL.pmove.movevars.wateraccelerate = MSG.ReadFloat();
+  CL.pmove.movevars.friction = MSG.ReadFloat();
+  CL.pmove.movevars.waterfriction = MSG.ReadFloat();
+  CL.pmove.movevars.entgravity = MSG.ReadFloat();
 
   Con.DPrint('Reconfigured Pmovevars.\n');
 };
@@ -1179,11 +1266,39 @@ CL.ParseServerData = function() {
   Con.DPrint('Serverdata packet received.\n');
   CL.ClearState();
 
-  const version = MSG.ReadLong();
+  const version = MSG.ReadByte();
 
   if (version !== Protocol.version) {
-    Con.Print('Server returned version ' + version + ', not ' + Protocol.version + '\n');
+    Host.Error('Server returned protocol version ' + version + ', not ' + Protocol.version + '\n');
     return;
+  }
+
+  const isHavingClientQuakeJS = MSG.ReadByte() === 1;
+
+  Con.DPrint('Server is running QuakeJS with ClientGameAPI provided.\n');
+
+  // check if client is actually compatible with the server
+  if (isHavingClientQuakeJS) {
+    if (!CL.QuakeJS?.ClientGameAPI) {
+      Host.Error('Server is running QuakeJS with client code provided,\nbut client code is not imported.\nTry clearing your cache and connect again.');
+      return;
+    }
+
+    const name = MSG.ReadString();
+    const author = MSG.ReadString();
+    const version = [MSG.ReadByte(), MSG.ReadByte(), MSG.ReadByte()];
+
+    const identification = CL.QuakeJS.identification;
+
+    if (identification.name !== name || identification.author !== author) {
+      Host.Error(`Cannot connect, because the server is running ${name} by ${author} and you are running ${name} by ${author}.`);
+      return;
+    }
+
+    if (!CL.QuakeJS.ClientGameAPI.IsServerCompatible(version)) {
+      Host.Error(`Server (v${version.join('.')}) is not compatible. You are running v${identification.version.join('.')}.\nTry clearing your cache and connect again.`);
+      return;
+    }
   }
 
   CL.state.maxclients = MSG.ReadByte();
@@ -1202,8 +1317,8 @@ CL.ParseServerData = function() {
 
   CL.ParsePmovevars();
 
-  Con.Print('\n\n\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37\n\n');
-  Con.Print('\2' + CL.state.levelname + '\n');
+  Con.Print('\n\n\x1d\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1f\n\n');
+  Con.Print('\x02' + CL.state.levelname + '\n\n');
 
   CL.SetConnectingStep(15, 'Received server info');
 
@@ -1429,22 +1544,20 @@ CL.ParsePlayerinfo = function() {
   // console.log('read player info', state, state.command);
 };
 
-CL.ParseStatic = function() {
-  // TODO:
-  console.assert(false, 'not implemented');
-  // const ent = new CL.Entity(-1);
-  // CL.static_entities[CL.state.num_statics++] = ent;
-  // CL.ParseBaseline(ent);
-  // ent.model = CL.state.model_precache[ent.baseline.modelindex];
-  // ent.frame = ent.baseline.frame;
-  // ent.skinnum = ent.baseline.skin;
-  // ent.effects = ent.baseline.effects;
-  // ent.origin = ent.baseline.origin.copy();
-  // ent.angles = ent.baseline.angles.copy();
-  // R.currententity = ent;
-  // R.emins = ent.origin.copy().add(ent.model.mins);
-  // R.emaxs = ent.origin.copy().add(ent.model.maxs);
-  // R.SplitEntityOnNode(CL.state.worldmodel.nodes[0]);
+CL.ParseStaticEntity = function() {
+  const ent = new CL.Entity(-1);
+  CL.static_entities[CL.state.num_statics++] = ent;
+  ent.model = CL.state.model_precache[MSG.ReadByte()];
+  ent.frame = MSG.ReadByte();
+  ent.colormap = MSG.ReadByte();
+  ent.skinnum = MSG.ReadByte();
+  ent.msg_angles[0].set(MSG.ReadAngleVector());
+  ent.msg_origins[0].set(MSG.ReadCoordVector());
+  ent.updatePosition(false);
+  R.currententity = ent;
+  R.emins = ent.origin.copy().add(ent.model.mins);
+  R.emaxs = ent.origin.copy().add(ent.model.maxs);
+  R.SplitEntityOnNode(CL.state.worldmodel.nodes[0]);
 };
 
 CL.ParseStaticSound = function() {
@@ -1515,13 +1628,14 @@ CL.ParseServerMessage = function() {
   }
 
   let cmd; let i;
-  while (true) {
+  while (CL.cls.state > CL.active.disconnected) {
     if (CL._processingServerDataState > 0) {
       break;
     }
 
     if (MSG.badread === true) {
       Host.Error('CL.ParseServerMessage: Bad server message');
+      return;
     }
 
     cmd = MSG.ReadByte();
@@ -1542,6 +1656,7 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.time:
         CL.state.mtime[1] = CL.state.mtime[0];
         CL.state.mtime[0] = MSG.ReadFloat();
+        CL.state.lerp = null;
         continue;
       case Protocol.svc.clientdata:
         CL.ParseClientdata(MSG.ReadShort());
@@ -1647,10 +1762,10 @@ CL.ParseServerMessage = function() {
         Con.Print('spawnbaseline no longer implemented\n');
         continue;
       case Protocol.svc.spawnstatic:
-        CL.ParseStatic();
+        CL.ParseStaticEntity();
         continue;
       case Protocol.svc.temp_entity: // TODO: Client
-        CL.ParseTEnt();
+        CL.ParseTemporaryEntity();
         continue;
       case Protocol.svc.setpause:
         CL.state.paused = MSG.ReadByte() !== 0;
@@ -1727,8 +1842,14 @@ CL.ParseServerMessage = function() {
         continue;
     }
     CL._lastServerMessages.pop(); // discard the last added command as it was invalid anyway
-    console.log('CL.ParseServerMessage: Illegible server message (' + cmd + ')', CL._lastServerMessages);
+    if (CL._lastServerMessages.length > 0) {
+      Con.Print('Last server messages:\n');
+      for (const cmd of CL._lastServerMessages) {
+        Con.Print(' ' + cmd + '\n');
+      }
+    }
     Host.Error(`CL.ParseServerMessage: Illegible server message\n`);
+    return;
   }
 
   // CR: this is a hack to make sure we don't get stuck in the signon state
@@ -1786,7 +1907,7 @@ CL.ParseBeam = function(m) {
   Con.Print('beam list overflow!\n');
 };
 
-CL.ParseTEnt = function() { // TODO: move this to ClientAPI
+CL.ParseTemporaryEntity = function() { // TODO: move this to ClientAPI
   const type = MSG.ReadByte();
 
   switch (type) {
@@ -1805,7 +1926,7 @@ CL.ParseTEnt = function() { // TODO: move this to ClientAPI
   }
 
   const pos = MSG.ReadCoordVector();
-  let dl;
+
   switch (type) {
     case Protocol.te.wizspike:
       R.RunParticleEffect(pos, Vector.origin, 20, 20);
@@ -1824,14 +1945,15 @@ CL.ParseTEnt = function() { // TODO: move this to ClientAPI
     case Protocol.te.gunshot:
       R.RunParticleEffect(pos, Vector.origin, 0, 20);
       return;
-    case Protocol.te.explosion:
-      R.ParticleExplosion(pos);
-      dl = CL.AllocDlight(0);
-      dl.origin = pos.copy();
-      dl.radius = 350.0;
-      dl.die = CL.state.time + 0.5;
-      dl.decay = 300.0;
-      S.StartSound(-1, 0, CL.sfx_r_exp3, pos, 1.0, 1.0);
+    case Protocol.te.explosion: {
+        R.ParticleExplosion(pos);
+        const dl = CL.AllocDlight(0);
+        dl.origin = pos.copy();
+        dl.radius = 350.0;
+        dl.die = CL.state.time + 0.5;
+        dl.decay = 300.0;
+        S.StartSound(-1, 0, CL.sfx_r_exp3, pos, 1.0, 1.0);
+      }
       return;
     case Protocol.te.tarexplosion:
       R.BlobExplosion(pos);
@@ -1847,7 +1969,7 @@ CL.ParseTEnt = function() { // TODO: move this to ClientAPI
         const colorStart = MSG.ReadByte();
         const colorLength = MSG.ReadByte();
         R.ParticleExplosion2(pos, colorStart, colorLength);
-        dl = CL.AllocDlight(0);
+        const dl = CL.AllocDlight(0);
         dl.origin = pos.copy();
         dl.radius = 350.0;
         dl.die = CL.state.time + 0.5;
@@ -1867,7 +1989,6 @@ CL.NewTempEntity = function() {
   return ent;
 };
 
-/** @deprecated */
 CL.UpdateTEnts = function() {
   CL.num_temp_entities = 0;
   let i; let b; let yaw; let pitch; let ent;
@@ -1919,7 +2040,7 @@ CL.PredictMove = function() {
     return;
   }
 
-
+  // TODO
 };
 
 /**
@@ -1998,15 +2119,69 @@ CL.EmitEntities = function() {
       continue;
     }
 
-    // apply prediction
-    clent.lerpVectors();
+    const oldorg = clent.origin_old ? clent.origin_old : clent.origin;
+
+    // apply prediction for non-player entities
+    clent.updatePosition(clent.num !== CL.state.viewentity);
 
     // do not render the view entity
     if (i === CL.state.viewentity) {
       continue;
     }
 
-    // TODO: handle special effects
+    const ent = clent;
+
+    if ((ent.model.flags & Mod.flags.rotate) !== 0) {
+      ent.angles[1] = Vector.anglemod(CL.state.time * 100.0);
+    }
+    if ((ent.effects & Mod.effects.brightfield) !== 0) {
+      R.EntityParticles(ent);
+    }
+    if ((ent.effects & Mod.effects.muzzleflash) !== 0) {
+      const dl = CL.AllocDlight(i);
+      const fv = ent.angles.angleVectors().forward;
+      dl.origin = new Vector(
+        ent.origin[0] + 18.0 * fv[0],
+        ent.origin[1] + 18.0 * fv[1],
+        ent.origin[2] + 16.0 + 18.0 * fv[2],
+      );
+      dl.radius = 200.0 + Math.random() * 32.0;
+      dl.minlight = 32.0;
+      dl.die = CL.state.mtime[0] + 0.1;
+      // dl.color = new Vector(1.0, 0.95, 0.85);
+    }
+    if ((ent.effects & Mod.effects.brightlight) !== 0) {
+      const dl = CL.AllocDlight(i);
+      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
+      dl.radius = 400.0 + Math.random() * 32.0;
+      dl.die = CL.state.time + 0.001;
+    }
+    if ((ent.effects & Mod.effects.dimlight) !== 0) {
+      const dl = CL.AllocDlight(i);
+      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
+      dl.radius = 200.0 + Math.random() * 32.0;
+      dl.die = CL.state.time + 0.001;
+      // dl.color = new Vector(0.5, 0.5, 1.0);
+    }
+    if ((ent.model.flags & Mod.flags.gib) !== 0) {
+      R.RocketTrail(oldorg, ent.origin, 2);
+    } else if ((ent.model.flags & Mod.flags.zomgib) !== 0) {
+      R.RocketTrail(oldorg, ent.origin, 4);
+    } else if ((ent.model.flags & Mod.flags.tracer) !== 0) {
+      R.RocketTrail(oldorg, ent.origin, 3);
+    } else if ((ent.model.flags & Mod.flags.tracer2) !== 0) {
+      R.RocketTrail(oldorg, ent.origin, 5);
+    } else if ((ent.model.flags & Mod.flags.rocket) !== 0) {
+      R.RocketTrail(oldorg, ent.origin, 0);
+      const dl = CL.AllocDlight(i);
+      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2]);
+      dl.radius = 200.0;
+      dl.die = CL.state.time + 0.01;
+    } else if ((ent.model.flags & Mod.flags.grenade) !== 0) {
+      R.RocketTrail(oldorg, ent.origin, 1);
+    } else if ((ent.model.flags & Mod.flags.tracer3) !== 0) {
+      R.RocketTrail(oldorg, ent.origin, 6);
+    }
 
     CL.visedicts[CL.numvisedicts++] = clent;
   }
@@ -2035,6 +2210,10 @@ CL.ParsePacketEntities = function(isDeltaUpdate) {
     if (bits & Protocol.u.model) {
       const modelindex = MSG.ReadByte();
       clent.model = CL.state.model_precache[modelindex] || null;
+
+      if (clent.model) {
+        clent.syncbase = clent.model.random ? Math.random() : 0.0;
+      }
     }
 
     if (bits & Protocol.u.frame) {
@@ -2057,18 +2236,20 @@ CL.ParsePacketEntities = function(isDeltaUpdate) {
       MSG.ReadByte(); // TODO: solid
     }
 
-    clent.msg_origins[1].set(clent.msg_origins[0]);
-    clent.msg_angles[1].set(clent.msg_angles[0]);
-
     const origin = clent.msg_origins[0];
     const angles = clent.msg_angles[0];
 
+    const origin1 = clent.msg_origins[1];
+    const angles1 = clent.msg_angles[1];
+
     for (let i = 0; i < 3; i++) {
       if (bits & (Protocol.u.origin1 << i)) {
+        origin1[i] = origin[i];
         origin[i] = MSG.ReadCoord();
       }
 
       if (bits & (Protocol.u.angle1 << i)) {
+        angles1[i] = angles[i];
         angles[i] = MSG.ReadAngle();
       }
     }
@@ -2076,13 +2257,18 @@ CL.ParsePacketEntities = function(isDeltaUpdate) {
     clent.updatecount++;
 
     clent.msg_time[1] = clent.msg_time[0];
-    clent.msg_time[0] = CL.state.time;
+    clent.msg_time[0] = CL.state.mtime[0];
 
     if (!isDeltaUpdate) {
       console.log('not delta');
       clent.msg_origins[1].set(clent.msg_origins[0]);
       clent.msg_angles[1].set(clent.msg_angles[0]);
       clent.msg_time[1] = clent.msg_time[0];
+    }
+
+    if (clent.free) {
+      // make sure that we clear this ClientEntity before we throw it back in
+      clent.clear();
     }
   }
 

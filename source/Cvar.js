@@ -1,4 +1,4 @@
-/* global Host, Cvar, Q, SV, Con */
+/* global Host, Cvar, Q, SV, Con, Cmd */
 
 /**
  * Console Variable
@@ -18,6 +18,10 @@ Cvar = class Cvar {
     READONLY: 4,
     /** value won’t be shown in broadcast message */
     SECRET: 8,
+    /** variable declared by the game code */
+    GAME: 16,
+    /** variable will be changed upon next map */
+    DEFERRED: 32,
   };
 
   /**
@@ -119,6 +123,8 @@ Cvar = class Cvar {
 
     const changed = this.string !== value;
 
+    // TODO: implement Cvar.FLAG.DEFERRED
+
     this.string = value;
 
     if ((this.flags & Cvar.FLAG.SERVER) && changed && SV.server.active) {
@@ -177,50 +183,24 @@ Cvar = class Cvar {
   }
 
   /**
-   * Quake-style API for registering variables.
-   * @deprecated use `new Cvar` instead
-   * @param {string} name name
-   * @param {*} value preset value
-   * @param {boolean} archive whether to archive the variable
-   * @param {boolean} server whether to broadcast the variable to all clients
-   * @returns {Cvar} registered cvar
-   */
-  static RegisterVariable(name, value, archive, server) {
-    console.assert(Cvar._vars[name] === undefined, 'variable must be unique', name);
-
-    let flags = 0;
-
-    if (archive) {
-      flags |= Cvar.FLAG.ARCHIVE;
-    }
-
-    if (server) {
-      flags |= Cvar.FLAG.SERVER;
-    }
-
-    return new Cvar(name, value, flags);
-  }
-
-  /**
    * Command line interface for console variables.
-   * @param  {...any} argv command line arguments
+   * @param {string} name name of the variable
+   * @param {?string} value value to set
    * @returns {boolean} true if the variable handling was executed successfully, false otherwise
    */
-  static Command(...argv) {
-    const v = Cvar.FindVar(argv[0]);
+  static Command_f(name, value) {
+    const v = Cvar.FindVar(name);
 
     if (!v) {
       return false;
     }
 
-    if (argv.length <= 1) {
+    if (value === undefined) {
       Con.Print(`"${v.name}" is "${v.string}"\n`);
 
       if (v.description) {
-        Con.Print(`- ${v.description}\n`);
+        Con.Print(`> ${v.description}\n`);
       }
-
-      Con.Print('\n');
 
       if (v.flags & Cvar.FLAG.READONLY) {
         Con.Print(`- Cannot be changed.\n`);
@@ -234,6 +214,14 @@ Cvar = class Cvar {
         Con.Print(`- Is a server variable.\n`);
       }
 
+      if (v.flags & Cvar.FLAG.GAME) {
+        Con.Print(`- Is a game variable.\n`);
+      }
+
+      if (v.flags & Cvar.FLAG.DEFERRED) {
+        Con.Print(`- New value will be applied on the next map.\n`);
+      }
+
       if (v.flags & Cvar.FLAG.SECRET) {
         if (v.flags & Cvar.FLAG.SERVER) {
           Con.Print(`- Changed value will not be broadcasted, sensitive information.\n`);
@@ -244,11 +232,11 @@ Cvar = class Cvar {
     }
 
     if (v.flags & Cvar.FLAG.READONLY) {
-      Con.Print(`"${v.name}" is read-only\n`);
+      Con.PrintWarning(`"${v.name}" is read-only\n`);
       return true;
     }
 
-    v.set(argv[1]);
+    v.set(value);
 
     return true;
   }
@@ -261,6 +249,57 @@ Cvar = class Cvar {
         .filter((v) => (v.flags & Cvar.FLAG.ARCHIVE) !== 0)
         .map((v) => `${v.name} "${v.string}"\n`)
         .join('');
+  }
+
+  /**
+   * @param {string} name name of the variable
+   * @param {?string} value value to set
+   */
+  static Set_f(name, value) {
+    if (name === undefined) {
+      Con.Print('Usage: set <name> <value>\n');
+      return;
+    }
+
+    if (!Cvar.Command_f.call(this, name, value)) {
+      Con.PrintWarning(`Unknown variable "${name}"\n`);
+    }
+  }
+
+  /**
+   * Toggles a variable between 0 and 1.
+   * @param {string} name name of the variable
+   */
+  static Toggle_f(name) {
+    if (name === undefined) {
+      Con.Print('Usage: toggle <name>\n');
+      return;
+    }
+
+    const variable = Cvar.FindVar(name);
+
+    if (!variable) {
+      Con.PrintWarning(`Unknown variable "${name}"\n`);
+      return;
+    }
+
+    if (variable.flags & Cvar.FLAG.READONLY) {
+      Con.PrintWarning(`"${name}" is read-only\n`);
+      return;
+    }
+
+    variable.set(variable.value === 0 ? 1 : 0);
+
+    Con.Print(`"${name}" toggled to "${variable.string}"\n`);
+  }
+
+  /**
+   * Initializes the Cvar system.
+   */
+  static Init() {
+    Cmd.AddCommand('set', Cvar.Set_f);
+    // TODO: seta
+    Cmd.AddCommand('toggle', Cvar.Toggle_f);
   }
 
   /**

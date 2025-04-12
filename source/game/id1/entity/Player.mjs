@@ -575,7 +575,7 @@ export class PlayerEntity extends BaseEntity {
         spot = this.findNextEntityByFieldAndValue('classname', InfoPlayerStartDeathmatch.classname, spot, true);
 
         if (!spot) {
-          this.engine.ConsolePrint('PlayerEntity._selectSpawnPoint: There is no deathmatch spawn point on this map!\n');
+          this.engine.ConsoleWarning('PlayerEntity._selectSpawnPoint: There is no deathmatch spawn point on this map!\n');
           break;
         }
 

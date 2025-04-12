@@ -1,4 +1,4 @@
-/* global Con, Key, COM, Host, CL, Cmd, Cvar, S, SCR, Draw, VID, M */
+/* global Con, Key, COM, Host, CL, Cmd, Cvar, S, SCR, Draw, VID, M, Vector */
 
 // eslint-disable-next-line no-global-assign
 Con = {};
@@ -16,7 +16,7 @@ Con.ToggleConsole_f = function() {
       return;
     }
     Key.dest.value = Key.dest.game;
-    Key.edit_line = '';
+    // Key.edit_line = ''; // CR: this annoys me otherwise
     Key.history_line = Key.lines.length;
     return;
   }
@@ -50,13 +50,13 @@ Con.MessageMode2_f = function() {
 };
 
 Con.Init = function() {
-  Con.debuglog = (COM.CheckParm('-condebug') != null);
-  if (Con.debuglog === true) {
-    COM.WriteTextFile('qconsole.log', '');
+  if (COM.CheckParm('-condebug')) {
+    Con.Print('NOTE: -condebug parameter is no longer supported. Use Developer Tools instead.\n');
   }
+
   Con.Print('Console initialized.\n');
 
-  Con.notifytime = Cvar.RegisterVariable('con_notifytime', '3');
+  Con.notifytime = new Cvar('con_notifytime', '3', Cvar.FLAG.ARCHIVE, 'How long to display console messages.');
   Cmd.AddCommand('toggleconsole', Con.ToggleConsole_f);
   Cmd.AddCommand('messagemode', Con.MessageMode_f);
   Cmd.AddCommand('messagemode2', Con.MessageMode2_f);
@@ -77,18 +77,7 @@ Con.StopCapture = function() {
 Con.OnLinePrint = function(line) {
 };
 
-Con.Print = function(msg) {
-  if (Con.debuglog === true) {
-    let data = COM.LoadTextFile('qconsole.log');
-    if (data != null) {
-      data += msg;
-      if (data.length >= 32768) {
-        data = data.substring(data.length - 16384);
-      }
-      COM.WriteTextFile('qconsole.log', data);
-    }
-  }
-
+Con.Print = function(msg, color = new Vector(1.0, 1.0, 1.0)) {
   Con.backscroll = 0;
 
   let mask = 0;
@@ -101,8 +90,8 @@ Con.Print = function(msg) {
   }
   let i;
   for (i = 0; i < msg.length; ++i) {
-    if (Con.text[Con.current] == null) {
-      Con.text[Con.current] = {text: '', time: Host.realtime};
+    if (!Con.text[Con.current]) {
+      Con.text[Con.current] = {text: '', time: Host.realtime || 0, color};
     }
     if (msg.charCodeAt(i) === 10) {
       const line = Con.text[Con.current].text;
@@ -122,8 +111,24 @@ Con.Print = function(msg) {
   }
 };
 
-Con.DPrint = function(msg, ...payload) {
-  console.debug(msg, ...payload);
+Con.DPrint = function(msg) {
+  if (Host.developer.value === 0) {
+    return;
+  }
+
+  Con.Print(msg, new Vector(0.7, 0.7, 1.0));
+};
+
+Con.PrintWarning = function(msg) {
+  Con.Print(msg, new Vector(1.0, 1.0, 0.3));
+};
+
+Con.PrintError = function(msg) {
+  Con.Print(msg, new Vector(1.0, 0.3, 0.3));
+};
+
+Con.PrintSuccess = function(msg) {
+  Con.Print(msg, new Vector(0.3, 1.0, 0.3));
 };
 
 Con.DrawInput = function() {
@@ -151,8 +156,11 @@ Con.DrawNotify = function() {
     Draw.String(8, v, Con.text[i].text.substring(0, width));
     v += 8;
   }
+
+  v += 8;
+
   if (Key.dest.value === Key.dest.message) {
-    Draw.String(8, v, 'say: ' + Key.chat_buffer + String.fromCharCode(10 + ((Host.realtime * 4.0) & 1)));
+    Draw.String(8, v, 'say: ' + Key.chat_buffer + String.fromCharCode(10 + ((Host.realtime * 4.0) & 1)), 2.0);
   }
 };
 
@@ -178,16 +186,15 @@ Con.DrawConsole = function(lines) {
       break;
     }
   }
-  let j; let text;
   for (++i; i < Con.text.length - Con.backscroll; ++i) {
-    text = Con.text[i].text;
+    const {text, color} = Con.text[i];
     rows = Math.ceil(text.length / width);
     if (rows === 0) {
       y += 8;
       continue;
     }
-    for (j = 0; j < rows; ++j) {
-      Draw.String(8, y, text.substr(j * width, width));
+    for (let j = 0; j < rows; ++j) {
+      Draw.String(8, y, text.substr(j * width, width), 1.0, color);
       y += 8;
     }
   }

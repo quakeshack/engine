@@ -94,6 +94,12 @@ However, the engine reads from a set of must be defined properties. `BaseEntity`
   * Engine will communicate with the game through `ServerGameAPI` calling methods like `ClientConnect` and `ClientDisconnect`, but also with entities directly through methods such as `touch` and `think`.
   * Game will communicate mainly through the `Game.EngineInterface` object which is augmented by lots of methods declared on `BaseEntity`.
 
+### Loading QuakeJS
+
+`PR.Init` will try to import the server game code. During that, `ServerGameAPI.Init` will be invoked. This gives you the opportunity to register console variables before the game will actually start. Allowing you to define variables. Later when the server is spawned, `ServerGameAPI.init` will be called on a fresh instance of `ServerGameAPI`.
+
+`CL.Init` will do the similar thing, but on `ClientGameAPI.Init` and `ClientGameAPI.init` while connecting to a game session.
+
 ### Game Lifecycle
 
 A game is limited by a map. Every map starts a new game. The engine may prepare the game state by filling `parm0` to `parm15` and calling `SetSpawnParms`.

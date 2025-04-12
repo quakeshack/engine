@@ -93,6 +93,19 @@ Game.EngineInterface = class ServerEngineInterface {
   }
 
   /**
+   * Make sure to free the variable in shutdown().
+   * @see {@link Cvar}
+   * @param {string} name name of the variable
+   * @param {string} value value
+   * @param {?Cvar.FLAG} flags optional flags
+   * @param {?string} description optional description
+   * @returns {Cvar} the created variable
+   */
+  static RegisterCvar(name, value, flags = 0, description = null) {
+    return new Cvar(name, value, flags | Cvar.FLAG.GAME, description);
+  }
+
+  /**
    * Defines a lightstyle (e.g. aazzaa).
    * It will also send an update to all connected clients.
    * @param {number} styleId
@@ -221,11 +234,19 @@ Game.EngineInterface = class ServerEngineInterface {
     SV.server.models.push(Mod.ForName(modelName, true));
   }
 
-  static ConsolePrint(str) {
-    Con.Print(str);
+  static ConsolePrint(msg) {
+    Con.Print(msg);
   }
 
-  static DebugPrint(str) {
+  static ConsoleWarning(msg) {
+    Con.PrintWarning(msg);
+  }
+
+  static ConsoleError(msg) {
+    Con.PrintError(msg);
+  }
+
+  static ConsoleDebug(str) {
     Con.DPrint(str);
   }
 
@@ -304,9 +325,6 @@ Game.EngineInterface = class ServerEngineInterface {
   }
 
   // TODO: MSG related methods
-
-  // TODO: RegisterCvar, UnregisterCvar
-
 };
 
 Game.ClientEngineInterface = class ClientEngineInterface {

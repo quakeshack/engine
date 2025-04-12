@@ -163,13 +163,13 @@ SCR.SizeDown_f = function() {
 };
 
 SCR.Init = function() {
-  SCR.fov = Cvar.RegisterVariable('fov', '90');
-  SCR.viewsize = Cvar.RegisterVariable('viewsize', '100', true);
-  SCR.conspeed = Cvar.RegisterVariable('scr_conspeed', '300');
-  SCR.showturtle = Cvar.RegisterVariable('showturtle', '0');
-  SCR.showpause = Cvar.RegisterVariable('showpause', '1');
-  SCR.centertime = Cvar.RegisterVariable('scr_centertime', '2');
-  SCR.printspeed = Cvar.RegisterVariable('scr_printspeed', '8');
+  SCR.fov = new Cvar('fov', '90');
+  SCR.viewsize = new Cvar('viewsize', '100', Cvar.FLAG.ARCHIVE);
+  SCR.conspeed = new Cvar('scr_conspeed', '300');
+  SCR.showturtle = new Cvar('showturtle', '0');
+  SCR.showpause = new Cvar('showpause', '1');
+  SCR.centertime = new Cvar('scr_centertime', '2');
+  SCR.printspeed = new Cvar('scr_printspeed', '8');
   Cmd.AddCommand('screenshot', SCR.ScreenShot_f);
   Cmd.AddCommand('sizeup', SCR.SizeUp_f);
   Cmd.AddCommand('sizedown', SCR.SizeDown_f);

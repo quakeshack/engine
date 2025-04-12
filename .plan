@@ -308,8 +308,21 @@ class MainMenu extends BaseMenu {
 
 ### 2025-04-12
 
-* decided to ditch lerping entities for now
+* decided to ditch lerping entities for now, it’s in there, but disabled by default
 * focussing on getting networking back on track as well as Client Game stuff
+* merged `SZ` into `MSG`
+* went over `Cmd`, `Cvar` and `Con` once more
+  * added `Con.PrintWarning` to emit warnings
+  * added `Con.PrintError` to emit errors
+  * added `Cvar.FLAG.DEFERRED` (but not finished yet)
+  * introduced `Cvar.FLAG.GAME`, cvars registered by the game code
+* added code to render colored text
+* started wiring up `ClientGameAPI` to `CL` code
+* made `0.8` the default for `gamma`
+* added parameter `-noquakejs` to disable loading of QuakeJS game code
+* M: alert box supports newlines now
+* added a safeguard making the client code check if server QuakeJS is compatible
+* need to reimplement beam and other temporary entities
 
 ### 2025-04-11
 

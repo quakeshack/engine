@@ -1,4 +1,4 @@
-/* global Con, COM, Cmd, Cvar, Host, CL, MSG, Protocol */
+/* global Con, COM, Cmd, Cvar, Host, CL, MSG, Protocol, SV */
 
 // eslint-disable-next-line no-global-assign
 Cmd = {};
@@ -68,7 +68,7 @@ Cmd.StuffCmds_f = function() {
   }
 };
 
-Cmd.Exec_f = function(_, filename) {
+Cmd.Exec_f = function(filename) {
   if (!filename) {
     Con.Print('exec <filename> : execute a script file\n');
     return;
@@ -82,11 +82,11 @@ Cmd.Exec_f = function(_, filename) {
   Cmd.text = f + Cmd.text;
 };
 
-Cmd.Echo_f = function(_, ...args) {
-  Con.Print(`${args.join(' ')}\n`);
+Cmd.Echo_f = function() {
+  Con.Print(`${this.args}\n`);
 };
 
-Cmd.Alias_f = function(_, ...argv) {
+Cmd.Alias_f = function(...argv) {
   if (argv.length <= 1) {
     Con.Print('Current alias commands:\n');
     for (let i = 0; i < Cmd.alias.length; ++i) {
@@ -110,6 +110,7 @@ Cmd.Alias_f = function(_, ...argv) {
 
 /** @deprecated */
 Cmd.args = '';
+/** @deprecated */
 Cmd.argv = [];
 Cmd.functions = [];
 
@@ -192,50 +193,108 @@ Cmd.CompleteCommand = function(partial) {
   }
 };
 
-Cmd.ExecuteString = function(text, client = false) {
-  Cmd.client = client;
+Cmd.Context = class ConsoleCommandContext {
+  constructor() {
+    /** @type {?SV.Client} Invoking server client. Unset, when called locally. */
+    this.client = null;
+    /** @type {string} The name that was used to execute this command. */
+    this.command = null;
+    /** @type {string} Full command line. */
+    this.args = null;
+    /** @type {string[]} Arguments including the name. */
+    this.argv = [];
+
+    Object.seal(this);
+  }
+
+  /**
+   * @returns {boolean} true, if forwarded
+   */
+  forward() {
+    if (this.client !== null) {
+      return false;
+    }
+
+    Cmd.ForwardToServer.call(this);
+    return true;
+  }
+}
+
+Cmd.ExecuteString = function(text, client = null) {
+  /** @deprecated */
+  Cmd.client = client !== null;
+  /** @deprecated */
   Cmd.argv = Cmd.TokenizeString(text);
+
   if (Cmd.argv.length === 0) {
     return;
   }
-  const name = Cmd.argv[0].toLowerCase();
+
+  const cmdname = Cmd.argv[0].toLowerCase();
+  const cmdargs = Cmd.argv.slice(1);
+
+  const ctx = new Cmd.Context();
+  ctx.client = client;
+  ctx.args = text;
+  ctx.command = cmdname;
+  ctx.argv = Cmd.argv;
+
+  // check commands
   for (let i = 0; i < Cmd.functions.length; ++i) {
-    if (Cmd.functions[i].name === name) {
-      Cmd.functions[i].command(...Cmd.argv);
+    if (Cmd.functions[i].name === cmdname) {
+      Cmd.functions[i].command.apply(ctx, cmdargs);
       return;
     }
   }
+
+  // check aliases
   for (let i = 0; i < Cmd.alias.length; ++i) {
-    if (Cmd.alias[i].name === name) {
+    if (Cmd.alias[i].name === cmdname) {
       Cmd.text = Cmd.alias[i].value + Cmd.text;
       return;
     }
   }
-  if (!Cvar.Command(...Cmd.argv)) {
-    Con.Print('Unknown command "' + name + '"\n');
+
+  // ask Cvar, if it knows more
+  if (!Cvar.Command_f.call(ctx, Cmd.argv[0], Cmd.argv[1])) {
+    Con.Print('Unknown command "' + cmdname + '"\n');
   }
 };
 
-Cmd.ForwardToServer = function(command, ...argv) {
+/**
+ * Forwards a console command to the server.
+ * To forward a console command, use `this.forward();`.
+ * NOTE: Forwarded commands must be allowlisted in `SV.ReadClientMessage`.
+ */
+Cmd.ForwardToServer = function() {
   if (Host.dedicated.value) {
     return;
   }
+
+  console.assert(this.client === null, 'must be executed locally');
+
+  const argv = this.argv;
+  let command = this.command;
+
   if (command && command.toLowerCase() === 'cmd') {
     command = argv.shift();
   }
+
   if (command === undefined) {
     Con.Print('Usage: cmd <command> <args>\n');
     return;
   }
+
   if (CL.cls.state !== CL.active.connected) {
     Con.Print('Can\'t "' + command + '", not connected\n');
     return;
   }
+
   if (CL.cls.demoplayback === true) {
     return;
   }
-  argv.unshift(command);
-  // FIXME: turn into a proper separate message to process
+
+  // send command to the server in behalf of the client
   MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
-  MSG.WriteString(CL.cls.message, argv.join(' ') + '\n');
+  MSG.WriteString(CL.cls.message, this.args);
 };

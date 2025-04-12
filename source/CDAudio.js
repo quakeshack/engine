@@ -60,7 +60,7 @@ CDAudio.Resume = function() {
   }
 };
 
-CDAudio.CD_f = function(_, command, track) {
+CDAudio.CD_f = function(command, track) {
   if (!CDAudio.initialized || !command || !track) {
     return;
   }
@@ -119,7 +119,7 @@ CDAudio.Update = function() {
 
 CDAudio.Init = function() {
   Cmd.AddCommand('cd', CDAudio.CD_f);
-  if (COM.CheckParm('-nocdaudio') != null) {
+  if (COM.CheckParm('-nocdaudio')) {
     return;
   }
   let i; let j; let track;
