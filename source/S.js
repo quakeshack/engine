@@ -799,7 +799,11 @@ S = {
     }
 
     // release that channel
-    this.channels.find((ch) => ch && ch.entnum === entnum && ch.entchannel === entchannel).reset();
+    const ch = this._channels.find((ch) => ch && ch.entnum === entnum && ch.entchannel === entchannel)
+
+    console.assert(ch, 'valid channel', entnum, entchannel);
+
+    ch.stop();
   },
 
   StopAllSounds() {

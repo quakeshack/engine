@@ -1933,7 +1933,7 @@ export class PlayerEntity extends BaseEntity {
     })();
 
     this.engine.BroadcastPrint(`${name} killed ${this.netname}.\n`); // FIXME: ClientObituary needs to be more fun again
-    this.engine.BroadcastObituary(actualAttacker.edictId, this.edictId, actualAttacker.weapon, actualAttacker.items);
+    this.engine.BroadcastObituary(actualAttacker.edictId, this.edictId, actualAttacker.weapon || 0, actualAttacker.items || 0);
 
     if (actualAttacker instanceof PlayerEntity) {
       // friendly fire subtracts a frag

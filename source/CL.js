@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Draw, Pmove */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Draw, Pmove, SZ */
 
 // eslint-disable-next-line no-global-assign
 CL = {};
@@ -418,7 +418,7 @@ CL.BaseMove = function() {
 CL.impulse = 0;
 
 CL.SendMove = function() {
-  const buf = {data: new ArrayBuffer(16), cursize: 0};
+  const buf = new SZ.Buffer(16);
   MSG.WriteByte(buf, Protocol.clc.move);
   MSG.WriteFloat(buf, CL.state.mtime[0]);
   MSG.WriteAngle(buf, CL.state.viewangles[0]);
@@ -483,27 +483,80 @@ CL.InitInput = function() {
 // main
 
 CL.cls = {
+  signon: 0,
   state: 0,
   spawnparms: '',
   demonum: 0,
+  demoplayback: false,
   demos: [],
-  message: {data: new ArrayBuffer(8192), cursize: 0},
+  timedemo: false,
+  message: new SZ.Buffer(8192),
+  netcon: null,
   connecting: null,
+  latency: 0.0,
+
+  // used by CL.ParseClientdata
+  oldparsecountmod: 0,
+  parsecountmod: 0,
+  parsecounttime: 0.0,
 };
 
 CL.static_entities = [];
 CL.visedicts = [];
 
-CL.Rcon_f = function(_, ...args) {
-  const password = CL.rcon_password.string;
+CL.Entity = class ClientEntity {
+  constructor(num) {
+    this.num = num;
+    this.model = null;
+    this.frame = 0;
+    this.skinnum = 0;
+    this.colormap = 0;
+    this.effects = 0;
+    this.origin = new Vector();
+    this.angles = new Vector();
+    this.visframe = 0;
+    this.dlightbits = 0;
+    this.dlightframe = 0;
+    this.forcerelink = false;
+    this.syncbase = 0.0;
+    this.update_type = 0;
+    /** keeps track of last updates */
+    this.msg_time = [0.0, 0.0];
+    /** keeps track of origin changes */
+    this.msg_origins = [new Vector(), new Vector()];
+    /** keeps track of angle changes */
+    this.msg_angles = [new Vector(), new Vector()];
+    this.leafs = [];
+    this.updatecount = 0;
+    this.free = false;
 
-  if (password === '') {
-    Con.Print('You must set \'rcon_password\' before\nissuing an rcon command.\n');
+    Object.seal(this);
+  }
+
+  _lerpFraction() {
+    return 1; // FIXME
+  }
+
+  // msgtime_0: 1.23
+  // msgtime_1: 2.34
+  lerpVectors() {
+    this.origin.set(this.msg_origins[0]);
+    this.angles.set(this.msg_angles[0]);
+
+    // FIXME: lerp fraction
+  }
+};
+
+CL.Rcon_f = function(_, ...args) {
+  if (args.length === 0) {
+    Con.Print('Usage: rcon <command>\n');
     return;
   }
 
-  if (args.length === 0) {
-    Con.Print('Usage: rcon <command>\n');
+  const password = CL.rcon_password.string;
+
+  if (!password) {
+    Con.Print('You must set \'rcon_password\' before\nissuing an rcon command.\n');
     return;
   }
 
@@ -554,26 +607,17 @@ CL.ClearState = function() {
 
   CL.state = {
     movemessages: 0,
-    cmd: {
-      forwardmove: 0.0,
-      sidemove: 0.0,
-      upmove: 0.0,
-    },
-    stats: [ // not per player, it’s per stat slot (see Def.stat)
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-    ],
+    cmd: new Protocol.UserCmd(),
+    stats: Object.keys(Def.stat).fill(0),
     items: 0,
-    item_gettime: [
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    ],
+    item_gettime: new Array(32).fill(0.0),
     faceanimtime: 0.0,
-    cshifts: [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]],
+    cshifts: [
+      [0.0, 0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.0, 0.0],
+    ],
     mviewangles: [new Vector(), new Vector()],
     viewangles: new Vector(),
     mvelocity: [new Vector(), new Vector()],
@@ -583,7 +627,6 @@ CL.ClearState = function() {
     pitchvel: 0.0,
     driftmove: 0.0,
     laststop: 0.0,
-    crouch: 0.0,
     intermission: 0,
     completed_time: 0,
     mtime: [0.0, 0.0],
@@ -592,10 +635,21 @@ CL.ClearState = function() {
     last_received_message: 0.0,
     viewentity: 0,
     num_statics: 0,
-    viewent: {num: -1, origin: new Vector(), angles: new Vector(), skinnum: 0},
+    viewent: new CL.Entity(-1),
     cdtrack: 0,
     looptrack: 0,
     chatlog: [],
+    model_precache: [],
+    sound_precache: [],
+    levelname: null,
+    gametype: 0,
+    onground: false,
+    maxclients: 1,
+    scores: [],
+    worldmodel: null,
+    viewheight: 0,
+    inwater: false,
+    nodrift: false,
   };
 
   CL.cls.message.cursize = 0;
@@ -625,6 +679,9 @@ CL.Disconnect = function() {
   S.StopAllSounds();
   if (CL.cls.demoplayback === true) {
     CL.StopPlayback();
+  } else if (CL.cls.state === CL.active.connecting) {
+    CL.cls.state = CL.active.disconnected;
+    CL.cls.message.cursize = 0;
   } else if (CL.cls.state === CL.active.connected) {
     if (CL.cls.demorecording === true) {
       CL.Stop_f();
@@ -689,6 +746,7 @@ CL.SignonReply = function() {
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'begin');
       return;
+    // called when the first entities are received
     case 4:
       CL.SetConnectingStep(null, null);
       SCR.EndLoadingPlaque();
@@ -771,6 +829,7 @@ CL.DecayLights = function() {
   }
 };
 
+/** @deprecated */
 CL.LerpPoint = function() {
   let f = CL.state.mtime[0] - CL.state.mtime[1];
   if ((f === 0.0) || (CL.nolerp.value !== 0) || (CL.cls.timedemo === true) || (SV.server.active === true)) {
@@ -797,6 +856,7 @@ CL.LerpPoint = function() {
   return frac;
 };
 
+/** @deprecated */
 CL.RelinkEntities = function() {
   let i; let j;
   const frac = CL.LerpPoint(); let f; let d; const delta = [];
@@ -917,11 +977,11 @@ CL.ReadFromServer = function() {
   CL.state.time += Host.frametime;
   let ret;
   while (true) {
-    if (CL.processingServerDataState === 1) {
+    if (CL._processingServerDataState === 1) {
       return;
     }
-    if (CL.processingServerDataState === 2) {
-      CL.processingServerDataState = 3;
+    if (CL._processingServerDataState === 2) {
+      CL._processingServerDataState = 3;
     } else {
       ret = CL.GetMessage();
       if (ret === -1) {
@@ -932,6 +992,7 @@ CL.ReadFromServer = function() {
       }
     }
     CL.state.last_received_message = Host.realtime;
+    // console.debug('CL.ReadFromServer: ', NET.message.toHexString());
     CL.ParseServerMessage();
     if (CL.cls.state !== CL.active.connected) {
       break;
@@ -940,8 +1001,8 @@ CL.ReadFromServer = function() {
   if (CL.shownet.value !== 0) {
     Con.Print('\n');
   }
-  CL.RelinkEntities();
-  CL.UpdateTEnts();
+  // CL.RelinkEntities();
+  // CL.UpdateTEnts();
 };
 
 CL.SendCmd = function() {
@@ -1006,7 +1067,6 @@ CL.Init = function() {
   CL.m_forward = new Cvar('m_forward', '1', Cvar.FLAG.ARCHIVE);
   CL.m_side = new Cvar('m_side', '0.8', Cvar.FLAG.ARCHIVE);
   CL.rcon_password = new Cvar('rcon_password', '');
-  CL.rcon_address = new Cvar('rcon_address', 'deprecated', Cvar.FLAG.READONLY);
   CL.nopred = new Cvar('cl_nopred', '0', Cvar.FLAG.NONE, 'Enables/disables client-side prediction');
   Cmd.AddCommand('entities', CL.PrintEntities_f);
   Cmd.AddCommand('disconnect', CL.Disconnect);
@@ -1022,36 +1082,16 @@ CL.Init = function() {
 
 CL.svc_strings = [];
 
+/**
+ * @param {number} num edict Id
+ * @returns {CL.Entity} client entity
+ */
 CL.EntityNum = function(num) {
   if (num < CL.entities.length) {
     return CL.entities[num];
   }
   for (; CL.entities.length <= num; ) {
-    CL.entities[CL.entities.length] = { // TODO: ClienEntity class
-      num: num,
-      update_type: 0,
-      baseline: {
-        origin: new Vector(),
-        angles: new Vector(),
-        modelindex: 0,
-        frame: 0,
-        colormap: 0,
-        skin: 0,
-        effects: 0,
-      },
-      msgtime: 0.0,
-      msg_origins: [new Vector(), new Vector()],
-      origin: new Vector(),
-      msg_angles: [new Vector(), new Vector()],
-      angles: new Vector(),
-      frame: 0,
-      syncbase: 0.0,
-      effects: 0,
-      skinnum: 0,
-      visframe: 0,
-      dlightframe: 0,
-      dlightbits: 0,
-    };
+    CL.entities.push(new CL.Entity(CL.entities.length));
   }
   return CL.entities[num];
 };
@@ -1125,6 +1165,16 @@ CL.ParsePmovevars = function() {
   Con.DPrint('Reconfigured Pmovevars.\n');
 };
 
+CL.ScoreSlot = class ClientScoreSlot {
+  constructor() {
+    this.name = '';
+    this.entertime = 0.0;
+    this.frags = 0;
+    this.colors = 0;
+    this.ping = 0;
+  }
+};
+
 CL.ParseServerData = function() {
   Con.DPrint('Serverdata packet received.\n');
   CL.ClearState();
@@ -1141,18 +1191,13 @@ CL.ParseServerData = function() {
     Con.Print('Bad maxclients (' + CL.state.maxclients + ') from server\n');
     return;
   }
+
   CL.state.scores = [];
   for (let i = 0; i < CL.state.maxclients; ++i) {
-    CL.state.scores[i] = {
-      name: '',
-      entertime: 0.0,
-      frags: 0,
-      colors: 0,
-      ping: 0,
-    };
+    CL.state.scores[i] = new CL.ScoreSlot();
   }
 
-  CL.state.gametype = MSG.ReadByte();
+  CL.state.gametype = MSG.ReadByte(); // CR: unused (set to CL.state, but unused)
   CL.state.levelname = MSG.ReadString();
 
   CL.ParsePmovevars();
@@ -1183,7 +1228,7 @@ CL.ParseServerData = function() {
   CL.state.model_precache = [];
   CL.state.sound_precache = [];
 
-  CL.processingServerDataState = 1;
+  CL._processingServerDataState = 1;
 
   (async () => {
     let lastYield = Host.realtime;
@@ -1212,7 +1257,7 @@ CL.ParseServerData = function() {
       }
     }
   })().then(() => {
-    CL.processingServerDataState = 2;
+    CL._processingServerDataState = 2;
     CL.state.worldmodel = CL.state.model_precache[1];
     CL.EntityNum(0).model = CL.state.worldmodel;
     CL.SetConnectingStep(66, 'Preparing map');
@@ -1221,74 +1266,13 @@ CL.ParseServerData = function() {
   });
 };
 
-CL.ParseUpdate = function(bits) {
-  if (CL.cls.signon === 3) {
-    CL.cls.signon = 4;
-    CL.SignonReply();
-  }
-
-  if ((bits & Protocol.u.morebits) !== 0) {
-    bits += (MSG.ReadByte() << 8);
-  }
-
-  const ent = CL.EntityNum(((bits & Protocol.u.longentity) !== 0) ? MSG.ReadShort() : MSG.ReadByte());
-
-  let forcelink = ent.msgtime !== CL.state.mtime[1];
-  ent.msgtime = CL.state.mtime[0];
-
-  const model = CL.state.model_precache[((bits & Protocol.u.model) !== 0) ? MSG.ReadByte() : ent.baseline.modelindex];
-  if (model !== ent.model) {
-    ent.model = model;
-    if (model != null) {
-      ent.syncbase = (model.random === true) ? Math.random() : 0.0;
-    } else {
-      forcelink = true;
-    }
-  }
-
-  ent.frame = ((bits & Protocol.u.frame) !== 0) ? MSG.ReadByte() : ent.baseline.frame;
-  ent.colormap = ((bits & Protocol.u.colormap) !== 0) ? MSG.ReadByte() : ent.baseline.colormap;
-  ent.skinnum = ((bits & Protocol.u.skin) !== 0) ? MSG.ReadByte() : ent.baseline.skin;
-  ent.effects = ((bits & Protocol.u.effects) !== 0) ? MSG.ReadByte() : ent.baseline.effects;
-
-  console.assert(ent.colormap <= CL.state.maxclients, 'ent.colormap must be in cl.maxclients');
-
-  ent.msg_origins[1] = ent.msg_origins[0].copy();
-  ent.msg_angles[1] = ent.msg_angles[0].copy();
-  ent.msg_origins[0][0] = ((bits & Protocol.u.origin1) !== 0) ? MSG.ReadCoord() : ent.baseline.origin[0];
-  ent.msg_angles[0][0] = ((bits & Protocol.u.angle1) !== 0) ? MSG.ReadAngle() : ent.baseline.angles[0];
-  ent.msg_origins[0][1] = ((bits & Protocol.u.origin2) !== 0) ? MSG.ReadCoord() : ent.baseline.origin[1];
-  ent.msg_angles[0][1] = ((bits & Protocol.u.angle2) !== 0) ? MSG.ReadAngle() : ent.baseline.angles[1];
-  ent.msg_origins[0][2] = ((bits & Protocol.u.origin3) !== 0) ? MSG.ReadCoord() : ent.baseline.origin[2];
-  ent.msg_angles[0][2] = ((bits & Protocol.u.angle3) !== 0) ? MSG.ReadAngle() : ent.baseline.angles[2];
-
-  if ((bits & Protocol.u.nolerp) !== 0) {
-    ent.forcelink = true;
-  }
-
-  if (forcelink) {
-    ent.origin = ent.msg_origins[0].copy();
-    ent.msg_origins[1] = ent.origin.copy();
-    ent.angles = ent.msg_angles[0].copy();
-    ent.msg_angles[1] = ent.angles.copy();
-    ent.forcelink = true;
-  }
-};
-
-CL.ParseBaseline = function(ent) {
-  ent.baseline.modelindex = MSG.ReadByte();
-  ent.baseline.frame = MSG.ReadByte();
-  ent.baseline.colormap = MSG.ReadByte();
-  ent.baseline.skin = MSG.ReadByte();
-  ent.baseline.origin[0] = MSG.ReadCoord();
-  ent.baseline.angles[0] = MSG.ReadAngle();
-  ent.baseline.origin[1] = MSG.ReadCoord();
-  ent.baseline.angles[1] = MSG.ReadAngle();
-  ent.baseline.origin[2] = MSG.ReadCoord();
-  ent.baseline.angles[2] = MSG.ReadAngle();
-};
-
 CL.ParseClientdata = function(bits) {
+  CL.cls.oldparsecountmod = CL.cls.parsecountmod;
+
+  CL.ParseClientdataWinQuake(bits);
+};
+
+CL.ParseClientdataWinQuake = function(bits) {
   let i;
 
   CL.state.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? MSG.ReadChar() : Protocol.default_viewheight;
@@ -1395,14 +1379,17 @@ CL.PlayerState = class ClientPlayerState extends Protocol.EntityState {
     this.origin.set(MSG.ReadCoordVector());
     this.frame = MSG.ReadByte();
 
+    this.stateTime = CL.state.parsecounttime;
+
     if (this.flags & Protocol.pf.PF_MSEC) {
-      this.msec = MSG.ReadByte();
+      const msec = MSG.ReadByte();
+      this.stateTime -= (msec / 1000.0);
     }
 
     // TODO: stateTime, parsecounttime
 
     if (this.flags & Protocol.pf.PF_COMMAND) {
-      MSG.ReadDeltaUsercmd(CL.nullcmd, this.cmd);
+      this.command.set(MSG.ReadDeltaUsercmd(CL.nullcmd));
     }
 
     if (this.flags & Protocol.pf.PF_VELOCITY) {
@@ -1435,56 +1422,37 @@ CL.ParsePlayerinfo = function() {
   }
 
   const state = new CL.PlayerState();
-
+  state.number = num;
   state.readFromMessage();
-
   state.angles.set(state.command.angles);
 
-  console.log('read playerinfo', state);
+  // console.log('read player info', state, state.command);
 };
 
 CL.ParseStatic = function() {
-  const ent = { // TODO: ClientEntity class
-    num: -1,
-    update_type: 0,
-    baseline: {origin: new Vector(), angles: new Vector()},
-    msgtime: 0.0,
-    msg_origins: [new Vector(), new Vector()],
-    msg_angles: [new Vector(), new Vector()],
-    syncbase: 0.0,
-    visframe: 0,
-    dlightframe: 0,
-    dlightbits: 0,
-    leafs: [],
-    model: null,
-    modelindex: 0,
-    frame: 0,
-    skinnum: 0,
-    effects: 0,
-    colormap: 0,
-    origin: new Vector(),
-    angles: new Vector(),
-  };
-  CL.static_entities[CL.state.num_statics++] = ent;
-  CL.ParseBaseline(ent);
-  ent.model = CL.state.model_precache[ent.baseline.modelindex];
-  ent.frame = ent.baseline.frame;
-  ent.skinnum = ent.baseline.skin;
-  ent.effects = ent.baseline.effects;
-  ent.origin = ent.baseline.origin.copy();
-  ent.angles = ent.baseline.angles.copy();
-  R.currententity = ent;
-  R.emins = ent.origin.copy().add(ent.model.mins);
-  R.emaxs = ent.origin.copy().add(ent.model.maxs);
-  R.SplitEntityOnNode(CL.state.worldmodel.nodes[0]);
+  // TODO:
+  console.assert(false, 'not implemented');
+  // const ent = new CL.Entity(-1);
+  // CL.static_entities[CL.state.num_statics++] = ent;
+  // CL.ParseBaseline(ent);
+  // ent.model = CL.state.model_precache[ent.baseline.modelindex];
+  // ent.frame = ent.baseline.frame;
+  // ent.skinnum = ent.baseline.skin;
+  // ent.effects = ent.baseline.effects;
+  // ent.origin = ent.baseline.origin.copy();
+  // ent.angles = ent.baseline.angles.copy();
+  // R.currententity = ent;
+  // R.emins = ent.origin.copy().add(ent.model.mins);
+  // R.emaxs = ent.origin.copy().add(ent.model.maxs);
+  // R.SplitEntityOnNode(CL.state.worldmodel.nodes[0]);
 };
 
 CL.ParseStaticSound = function() {
-  const org = new Vector(MSG.ReadCoord(), MSG.ReadCoord(), MSG.ReadCoord());
-  const sound_num = MSG.ReadByte();
+  const org = MSG.ReadCoordVector();
+  const soundId = MSG.ReadByte();
   const vol = MSG.ReadByte();
-  const atten = MSG.ReadByte();
-  S.StaticSound(CL.state.sound_precache[sound_num], org, vol / 255.0, atten);
+  const attn = MSG.ReadByte();
+  S.StaticSound(CL.state.sound_precache[soundId], org, vol / 255.0, attn);
 };
 
 CL.Shownet = function(x) {
@@ -1522,7 +1490,8 @@ CL.PublishObituary = function(killerEdictId, victimEdictId, killerWeapon, killer
  * 2 - we are done processing, we can continue processing the rest
  * 3 - we need to re-enter the loop, but not reset the MSG pointer
  */
-CL.processingServerDataState = 0;
+CL._processingServerDataState = 0;
+CL._lastServerMessages = [];
 
 CL.ParseServerMessage = function() {
   if (CL.shownet.value === 1) {
@@ -1531,22 +1500,24 @@ CL.ParseServerMessage = function() {
     Con.Print('------------------\n');
   }
 
+  let entitiesReceived = 0
+
   CL.state.onground = false;
 
-  if (CL.processingServerDataState === 1) {
+  if (CL._processingServerDataState === 1) {
     return;
   }
 
-  if (CL.processingServerDataState === 3) {
-    CL.processingServerDataState = 0;
+  if (CL._processingServerDataState === 3) {
+    CL._processingServerDataState = 0;
   } else {
     MSG.BeginReading();
   }
 
   let cmd; let i;
   while (true) {
-    if (CL.processingServerDataState > 0) {
-      return;
+    if (CL._processingServerDataState > 0) {
+      break;
     }
 
     if (MSG.badread === true) {
@@ -1557,16 +1528,14 @@ CL.ParseServerMessage = function() {
 
     if (cmd === -1) {
       CL.Shownet('END OF MESSAGE');
-      return;
-    }
-
-    if ((cmd & 128) !== 0) {
-      CL.Shownet('fast update');
-      CL.ParseUpdate(cmd & 127);
-      continue;
+      break;
     }
 
     CL.Shownet('svc_' + CL.svc_strings[cmd]);
+    CL._lastServerMessages.push(CL.svc_strings[cmd]);
+    if (CL._lastServerMessages.length > 10) {
+      CL._lastServerMessages.shift();
+    }
     switch (cmd) {
       case Protocol.svc.nop:
         continue;
@@ -1613,9 +1582,7 @@ CL.ParseServerMessage = function() {
         SCR.recalc_refdef = true;
         continue;
       case Protocol.svc.setangle:
-        CL.state.viewangles[0] = MSG.ReadAngle();
-        CL.state.viewangles[1] = MSG.ReadAngle();
-        CL.state.viewangles[2] = MSG.ReadAngle();
+        CL.state.viewangles.set(MSG.ReadAngleVector());
         continue;
       case Protocol.svc.setview: // TODO: Client
         CL.state.viewentity = MSG.ReadShort();
@@ -1677,7 +1644,7 @@ CL.ParseServerMessage = function() {
         R.ParseParticleEffect();
         continue;
       case Protocol.svc.spawnbaseline:
-        CL.ParseBaseline(CL.EntityNum(MSG.ReadShort()));
+        Con.Print('spawnbaseline no longer implemented\n');
         continue;
       case Protocol.svc.spawnstatic:
         CL.ParseStatic();
@@ -1750,8 +1717,27 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.playerinfo:
         CL.ParsePlayerinfo();
         continue;
+      case Protocol.svc.packetentities:
+        entitiesReceived++;
+        CL.ParsePacketEntities(false);
+        continue;
+      case Protocol.svc.deltapacketentities:
+        entitiesReceived++;
+        CL.ParsePacketEntities(true);
+        continue;
     }
-    Host.Error(`CL.ParseServerMessage: Illegible server message (${cmd})\n`);
+    CL._lastServerMessages.pop(); // discard the last added command as it was invalid anyway
+    console.log('CL.ParseServerMessage: Illegible server message (' + cmd + ')', CL._lastServerMessages);
+    Host.Error(`CL.ParseServerMessage: Illegible server message\n`);
+  }
+
+  // CR: this is a hack to make sure we don't get stuck in the signon state
+  // TODO: rewrite this signon nonsense
+  if (entitiesReceived > 0) {
+    if (CL.cls.signon === 3) {
+      CL.cls.signon = 4;
+      CL.SignonReply();
+    }
   }
 };
 
@@ -1875,12 +1861,13 @@ CL.ParseTEnt = function() { // TODO: move this to ClientAPI
 };
 
 CL.NewTempEntity = function() {
-  const ent = {frame: 0, syncbase: 0.0, skinnum: 0};
+  const ent = new CL.Entity(-1);
   CL.temp_entities[CL.num_temp_entities++] = ent;
   CL.visedicts[CL.numvisedicts++] = ent;
   return ent;
 };
 
+/** @deprecated */
 CL.UpdateTEnts = function() {
   CL.num_temp_entities = 0;
   let i; let b; let yaw; let pitch; let ent;
@@ -1924,10 +1911,54 @@ CL.UpdateTEnts = function() {
   }
 };
 
+CL.frames = [];
+CL.parsecount = 0;
+
 CL.PredictMove = function() {
   if (CL.nopred.value !== 0) {
     return;
   }
+
+
+};
+
+/**
+ * @param {Pmove.PmovePlayer} pmove pmove for player
+ * @param {CL.PlayerState} from previous state
+ * @param {CL.PlayerState} to current state
+ * @param {Protocol.UserCmd} u player commands
+ */
+CL.PredictUsercmd = function(pmove, from, to, u) {
+  // split long commands
+  if (u.msec > 50) {
+    const temp = new CL.PlayerState();
+    const split = u.copy();
+    split.msec /= 2;
+    CL.PredictUsercmd(from, temp, split);
+    CL.PredictUsercmd(temp, to, split);
+    return;
+  }
+
+  pmove.origin.set(from.origin);
+  pmove.angles.set(u.angles);
+  pmove.velocity.set(from.velocity);
+
+  pmove.oldbuttons = from.oldbuttons;
+  pmove.waterjumptime = from.waterjumptime;
+  pmove.dead = false; // TODO: cl.stats[STAT_HEALTH] <= 0;
+  pmove.spectator = false;
+
+  pmove.cmd.set(u);
+
+  pmove.move();
+
+  to.waterjumptime = pmove.waterjumptime;
+  to.oldbuttons = pmove.cmd.buttons;
+  to.origin.set(pmove.origin);
+  to.velocity.set(pmove.velocity);
+  to.angles.set(pmove.angles);
+  to.onground = pmove.onground;
+  to.weaponframe = from.weaponframe;
 };
 
 /**
@@ -1939,9 +1970,121 @@ CL.PredictMove = function() {
  * @param {boolean} dopred full prediction, if true
  */
 CL.SetUpPlayerPrediction = function (dopred) {
-
+  // const frame = CL.frames[CL.parsecount & Protocol.update_mask];
 };
 
+/**
+ * Builds the visedicts list.
+ * Made up of: clients, packet_entities, nails, and tents.
+ */
 CL.EmitEntities = function() {
+  if (CL.cls.state !== CL.active.connected) {
+    return;
+  }
+
+  // reset all visible entities
+  CL.numvisedicts = 0;
+
+  for (let i = 1; i < CL.entities.length; i++) {
+    const clent = CL.entities[i];
+
+    // freed entity
+    if (clent.free) {
+      continue;
+    }
+
+    // invisible entity
+    if (!clent.model || (clent.effects & Mod.effects.nodraw)) {
+      continue;
+    }
+
+    // apply prediction
+    clent.lerpVectors();
+
+    // do not render the view entity
+    if (i === CL.state.viewentity) {
+      continue;
+    }
+
+    // TODO: handle special effects
+
+    CL.visedicts[CL.numvisedicts++] = clent;
+  }
+
+  // TODO: projectiles
+  // TODO: temporary entities
 };
 
+CL.ParsePacketEntities = function(isDeltaUpdate) {
+  while (true) {
+    const edictNum = MSG.ReadShort();
+
+    if (edictNum === 0) {
+      break;
+    }
+
+    /** @type {CL.Entity} */
+    const clent = CL.EntityNum(edictNum);
+
+    const bits = MSG.ReadShort();
+
+    if (bits & Protocol.u.free) {
+      clent.free = MSG.ReadByte() !== 0;
+    }
+
+    if (bits & Protocol.u.model) {
+      const modelindex = MSG.ReadByte();
+      clent.model = CL.state.model_precache[modelindex] || null;
+    }
+
+    if (bits & Protocol.u.frame) {
+      clent.frame = MSG.ReadByte();
+    }
+
+    if (bits & Protocol.u.colormap) {
+      clent.colormap = MSG.ReadByte();
+    }
+
+    if (bits & Protocol.u.skin) {
+      clent.skinnum = MSG.ReadByte();
+    }
+
+    if (bits & Protocol.u.effects) {
+      clent.effects = MSG.ReadByte();
+    }
+
+    if (bits & Protocol.u.solid) {
+      MSG.ReadByte(); // TODO: solid
+    }
+
+    clent.msg_origins[1].set(clent.msg_origins[0]);
+    clent.msg_angles[1].set(clent.msg_angles[0]);
+
+    const origin = clent.msg_origins[0];
+    const angles = clent.msg_angles[0];
+
+    for (let i = 0; i < 3; i++) {
+      if (bits & (Protocol.u.origin1 << i)) {
+        origin[i] = MSG.ReadCoord();
+      }
+
+      if (bits & (Protocol.u.angle1 << i)) {
+        angles[i] = MSG.ReadAngle();
+      }
+    }
+
+    clent.updatecount++;
+
+    clent.msg_time[1] = clent.msg_time[0];
+    clent.msg_time[0] = CL.state.time;
+
+    if (!isDeltaUpdate) {
+      console.log('not delta');
+      clent.msg_origins[1].set(clent.msg_origins[0]);
+      clent.msg_angles[1].set(clent.msg_angles[0]);
+      clent.msg_time[1] = clent.msg_time[0];
+    }
+  }
+
+  // TODO: send an acknowledge command back
+};

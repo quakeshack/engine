@@ -4,38 +4,38 @@
 MSG = {};
 
 MSG.WriteChar = function(sb, c) {
-  console.assert(c >= -128 && c <= 127, 'must be signed byte');
+  console.assert(c >= -128 && c <= 127, 'must be signed byte', c);
 
-  (new DataView(sb.data)).setInt8(SZ.GetSpace(sb, 1), c);
+  (new DataView(sb.data)).setInt8(sb.allocate(1), c);
 };
 
 MSG.WriteByte = function(sb, c) {
-  console.assert(c >= 0 && c <= 255, 'must be unsigned byte');
+  console.assert(c >= 0 && c <= 255, 'must be unsigned byte', c);
 
-  (new DataView(sb.data)).setUint8(SZ.GetSpace(sb, 1), c);
+  (new DataView(sb.data)).setUint8(sb.allocate(1), c);
 };
 
 MSG.WriteShort = function(sb, c) {
-  console.assert(c >= -32768 && c <= 32767, 'must be signed short');
+  console.assert(c >= -32768 && c <= 32767, 'must be signed short', c);
 
-  (new DataView(sb.data)).setInt16(SZ.GetSpace(sb, 2), c, true);
+  (new DataView(sb.data)).setInt16(sb.allocate(2), c, true);
 };
 
 MSG.WriteLong = function(sb, c) {
-  console.assert(c >= -2147483648 && c <= 2147483647, 'must be signed long');
+  console.assert(c >= -2147483648 && c <= 2147483647, 'must be signed long', c);
 
-  (new DataView(sb.data)).setInt32(SZ.GetSpace(sb, 4), c, true);
+  (new DataView(sb.data)).setInt32(sb.allocate(4), c, true);
 };
 
 MSG.WriteFloat = function(sb, f) {
-  console.assert(typeof f === 'number' && !isNaN(f) && isFinite(f), 'must be a real number, not NaN or Infinity');
+  console.assert(typeof f === 'number' && !isNaN(f) && isFinite(f), 'must be a real number, not NaN or Infinity',);
 
-  (new DataView(sb.data)).setFloat32(SZ.GetSpace(sb, 4), f, true);
+  (new DataView(sb.data)).setFloat32(sb.allocate(4), f, true);
 };
 
 MSG.WriteString = function(sb, s) {
   if (s != null) {
-    SZ.Write(sb, new Uint8Array(Q.strmem(s)), s.length);
+    sb.write(new Uint8Array(Q.strmem(s)), s.length);
   }
   MSG.WriteChar(sb, 0);
 };
@@ -149,6 +149,8 @@ MSG.WriteDeltaUsercmd = function(sb, from, to) {
   MSG.WriteByte(sb, to.msec);
 };
 
+
+
 /**
  * Read a delta usercmd from the message buffer.
  * To will be set to from and updated with the new values in-place.
@@ -158,7 +160,7 @@ MSG.WriteDeltaUsercmd = function(sb, from, to) {
 MSG.ReadDeltaUsercmd = function(from) {
   const to = new Protocol.UserCmd();
 
-  Object.assign(to, from);
+  to.set(from);
 
   const bits = MSG.ReadByte();
 

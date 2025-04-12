@@ -70,6 +70,8 @@ Mod.effects = {
   muzzleflash: 2,
   brightlight: 4,
   dimlight: 8,
+
+  nodraw: 128,
 };
 
 Mod.type = {brush: 0, sprite: 1, alias: 2};

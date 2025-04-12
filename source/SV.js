@@ -1,4 +1,4 @@
-/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, V, SCR, CANNON, Game, Pmove */
+/*global SV, Sys, COM,  Q, Host, Vector, Con, Cvar, Protocol, MSG, Def, NET, PR, Mod, ED, Cmd, SZ, V, SCR, Game, Pmove */
 
 // eslint-disable-next-line no-global-assign
 SV = {};
@@ -51,12 +51,147 @@ SV.fl = {
 
 SV.server = {
   num_edicts: 0,
-  datagram: {data: new ArrayBuffer(1024), cursize: 0},
-  reliable_datagram: {data: new ArrayBuffer(1024), cursize: 0},
-  signon: {data: new ArrayBuffer(8192), cursize: 0},
+  datagram: new SZ.Buffer(1024),
+  reliable_datagram: new SZ.Buffer(1024),
+  /** sent during client prespawn */
+  signon: new SZ.Buffer(8192),
   edicts: [],
-  cannon: null,
   progsInterfaces: null,
+};
+
+SV.EntityState = class ServerEntityState {
+  constructor(num = null) {
+    this.num = num;
+    this.flags = 0;
+    this.origin = new Vector();
+    this.angles = new Vector();
+    this.modelindex = 0;
+    this.frame = 0;
+    this.colormap = 0;
+    this.skin = 0;
+    this.effects = 0;
+    this.solid = 0;
+    this.free = false;
+  }
+
+  set(other) {
+    this.num = other.num;
+    this.flags = other.flags;
+    this.origin.set(other.origin);
+    this.angles.set(other.angles);
+    this.modelindex = other.modelindex;
+    this.frame = other.frame;
+    this.colormap = other.colormap;
+    this.skin = other.skin;
+    this.effects = other.effects;
+    this.solid = other.solid;
+    this.free = other.free;
+  }
+};
+
+SV.Client = class ServerClient {
+  static STATE = {
+    /** can be reused for a new connection */
+    FREE: 0,
+    /** client has been disconnected, but don’t reuse connection for a couple seconds */
+    ZOMBIE: 1,
+    /** has been assigned to a client, but not in game yet */
+    CONNECTED: 2,
+    /** client is fully in game */
+    SPAWNED: 3
+  };
+
+  constructor(num) {
+    this.state = ServerClient.STATE.FREE;
+    this.num = num;
+    this.message = new SZ.Buffer(8000);
+    this.message.allowoverflow = true;
+    this.colors = 0;
+    this.old_frags = 0;
+    this.last_message = 0;
+    this.last_ping_update = 0;
+    this.netconnection = null;
+
+    /** spawn parms are carried from level to level */
+    this.spawn_parms = new Array(16);
+
+    this.lastcmd = new Protocol.UserCmd();
+    this.frames = [];
+
+    /** @type {Map<number,SV.EntityState>} olds entity states for this player only @private */
+    this._entityStates = new Map();
+  }
+
+  /** @type {SV.Edict} */
+  get edict() {
+    // clients are mapped to edicts with ids from 1 to maxclients
+    return SV.server.edicts[this.num + 1];
+  }
+
+  clear() {
+    this.state = ServerClient.STATE.FREE;
+    this.netconnection = null;
+    this.message.cursize = 0;
+    this.message.allowoverflow = false;
+    this.colors = 0;
+    this.old_frags = 0;
+    this.last_ping_update = 0;
+    this.active = false;
+    this.last_message = 0;
+    this._entityStates = new Map();
+  }
+
+  /**
+   * @param {number} num edict Id
+   * @returns {SV.EntityState} entity state
+   */
+  getEntityState(num) {
+    const key = num.toString();
+
+    if (!this._entityStates.has(key)) {
+      this._entityStates.set(key, new SV.EntityState(num));
+    }
+
+    return this._entityStates.get(key);
+  }
+
+  /**
+   * @param {string} name name
+   */
+  set name(name) {
+    this.edict.entity.netname = name;
+  }
+
+  get name() {
+    if (!this.active) {
+      return '';
+    }
+
+    return this.edict.entity.netname || '';
+  }
+
+  saveSpawnparms() {
+    SV.server.gameAPI.SetChangeParms(this.edict);
+
+    for (let i = 0; i < this.spawn_parms.length; i++) {
+      this.spawn_parms[i] =  SV.server.gameAPI[`parm${i + 1}`];
+    }
+  }
+
+  consolePrint(message) {
+    MSG.WriteByte(this.message, Protocol.svc.print);
+    MSG.WriteString(this.message, message);
+  }
+
+  centerPrint(message) {
+    MSG.WriteByte(this.message, Protocol.svc.centerprint);
+    MSG.WriteString(this.message, message);
+  }
+
+  sendConsoleCommands(commandline) {
+    MSG.WriteByte(this.message, Protocol.svc.stufftext);
+    MSG.WriteString(this.message, commandline);
+  }
 };
 
 SV.Edict = class Edict {
@@ -67,15 +202,6 @@ SV.Edict = class Edict {
       ent: this,
     };
     this.leafnums = [];
-    this.baseline = {
-      origin: new Vector(),
-      angles: new Vector(),
-      modelindex: 0,
-      frame: 0,
-      colormap: 0,
-      skin: 0,
-      effects: 0,
-    };
     this.freetime = 0.0;
     this.entity = null;
   }
@@ -100,7 +226,7 @@ SV.Edict = class Edict {
       return `unused (${this.num})`;
     }
 
-    return `${this.entity.classname} (edict ${this.num} at ${this.entity.origin})`;
+    return `Edict (${this.entity.classname}, num: ${this.num}, origin: ${this.entity.origin})`;
   }
 
   /**
@@ -213,7 +339,7 @@ SV.Edict = class Edict {
   }
 
   /**
-   * It will send a svc_spawnstatic to make clients register a static entity.
+   * It will send a svc_spawnstatic upon signon to make clients register a static entity.
    * Also this will free and release this Edict.
    */
   makeStatic() {
@@ -222,9 +348,9 @@ SV.Edict = class Edict {
     const origin = this.entity.origin;
     MSG.WriteByte(message, Protocol.svc.spawnstatic);
     MSG.WriteByte(message, SV.ModelIndex(this.entity.model));
-    MSG.WriteByte(message, this.entity.frame);
-    MSG.WriteByte(message, this.entity.colormap);
-    MSG.WriteByte(message, this.entity.skin);
+    MSG.WriteByte(message, this.entity.frame || 0);
+    MSG.WriteByte(message, this.entity.colormap || 0);
+    MSG.WriteByte(message, this.entity.skin || 0);
     for (let i = 0; i < 3; i++) {
       MSG.WriteCoord(message, origin[i]);
       MSG.WriteAngle(message, angles[i]);
@@ -531,9 +657,11 @@ SV.Init = function() {
 
   SV.InitPmove();
 
-  SV.nop = {data: new ArrayBuffer(4), cursize: 1};
-  (new Uint8Array(SV.nop.data))[0] = Protocol.svc.nop;
-  SV.reconnect = {data: new ArrayBuffer(128), cursize: 0};
+  SV.nop = new SZ.Buffer(4);
+  SV.cursize = 1;
+  MSG.WriteByte(SV.nop, Protocol.svc.nop);
+
+  SV.reconnect = new SZ.Buffer(128);
   MSG.WriteByte(SV.reconnect, Protocol.svc.stufftext);
   MSG.WriteString(SV.reconnect, 'reconnect\n');
 
@@ -552,7 +680,7 @@ SV.RunScheduledGameCommands = function() {
 
 /**
  * Schedules a command to be run during the next server frame.
- * @param {Function} command
+ * @param {Function} command to be executed command
  */
 SV.ScheduleGameCommand = function(command) {
   SV._scheduledGameCommands.push(command);
@@ -577,7 +705,7 @@ SV.StartParticle = function(org, dir, color, count) {
     }
     MSG.WriteChar(datagram, v);
   }
-  MSG.WriteByte(datagram, count);
+  MSG.WriteByte(datagram, Math.min(count, 255));
   MSG.WriteByte(datagram, color);
 };
 
@@ -626,6 +754,9 @@ SV.StartSound = function(edict, channel, sample, volume, attenuation) {
   MSG.WriteCoordVector(datagram, edict.entity.origin.copy().add(edict.entity.mins.copy().add(edict.entity.maxs).multiply(0.5)));
 };
 
+/**
+ * @param {SV.Client} client client
+ */
 SV.SendServerinfo = function(client) {
   const message = client.message;
   MSG.WriteByte(message, Protocol.svc.print);
@@ -676,8 +807,7 @@ SV.ConnectClient = function(clientnum) {
   client.cmd = new Protocol.UserCmd();
   client.wishdir = new Vector();
   client.message.cursize = 0;
-  client.edict = SV.server.edicts[clientnum + 1];
-  SV.SetClientName(client, 'unconnected');
+  client.name = 'unconnected';
   client.colors = 0;
   client.ping_times = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
@@ -716,7 +846,7 @@ SV.CheckForNewClients = function() {
     }
     if (i === SV.svs.maxclients) {
       Con.Print('SV.CheckForNewClients: Server is full\n');
-      const message = {data: new ArrayBuffer(32), cursize: 0};
+      const message = new SZ.Buffer(32);
       MSG.WriteByte(message, Protocol.svc.disconnect);
       MSG.WriteString(message, 'Server is full');
       NET.SendUnreliableMessage(ret, message);
@@ -767,27 +897,28 @@ SV.FatPVS = function(org) {
 /**
  * Traverses all entities in the PVS of the given origin.
  * @param {Uint8Array} pvs PVS to check against
- * @param {number} ignoreEdictId edict id to ignore
- * @param {number} alwaysIncludeEdictId edict id to always yield
+ * @param {number[]} ignoreEdictIds edict ids to ignore
+ * @param {number[]} alwaysIncludeEdictIds edict ids to always yield
+ * @param {boolean} includeFree whether to include free edicts
  * @yields {SV.Edict} edict
  */
-SV.TraversePVS = function*(pvs, ignoreEdictId = null, alwaysIncludeEdictId = null) {
+SV.TraversePVS = function*(pvs, ignoreEdictIds = [], alwaysIncludeEdictIds = [], includeFree = false) {
   for (let e = 1; e < SV.server.num_edicts; e++) {
     const ent = SV.server.edicts[e];
 
     // requested to always include this edict
-    if (e === alwaysIncludeEdictId) {
+    if (alwaysIncludeEdictIds.includes(e)) {
       yield ent;
       continue;
     }
 
     // not active
-    if (ent.isFree()) {
+    if (!includeFree && ent.isFree()) {
       continue;
     }
 
     // ignore this
-    if (e === ignoreEdictId) {
+    if (ignoreEdictIds.includes(e)) {
       continue;
     }
 
@@ -856,11 +987,12 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
     MSG.WriteByte(msg, playerEntity.frame);
 
     if (pflags & Protocol.pf.PF_MSEC) {
-      const msec = 1000 * (SV.server.time - clent.last_message);
-      MSG.WriteByte(msg, Math.min(msec, 255));
+      const msec = 1000 * (SV.server.time - cl.last_message);
+      MSG.WriteByte(msg, Math.max(0, Math.min(msec, 255)));
     }
 
     if (pflags & Protocol.pf.PF_COMMAND) {
+      /** @type {SV.Client} */
       const cmd = cl.cmd;
 
       if (pflags & Protocol.pf.PF_DEAD) {
@@ -896,169 +1028,226 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
 };
 
 /**
- * Encodes the current state of the world as
- * a svc_packetentities messages and possibly
- * a svc_nails message and
- * svc_playerinfo messages
- * @param {SV.Edict} clent client edict
+ * Writes a delta entity to the message stream.
  * @param {*} msg message stream
+ * @param {SV.EntityState} from last known state
+ * @param {SV.EntityState} to new state
  */
-SV.WriteEntitiesToClient = function(clent, msg) {
-  const origin = clent.entity.origin.copy().add(clent.entity.view_ofs);
-  const pvs = SV.FatPVS(origin);
+SV.WriteDeltaEntity = function(msg, from, to) {
+  const EPSILON = 0.1;
 
-  SV.WritePlayersToClient(clent, pvs, msg);
+  let bits = 0;
 
-  for (const ent of SV.TraversePVS(pvs, null, clent.num)) {
-    if ((msg.data.byteLength - msg.cursize) < 16) {
-      Con.Print('packet overflow\n');
-      return;
-    }
+  if (from.free !== to.free) {
+    bits |= Protocol.u.free;
+  }
 
-    // ignore ents without visible models
-    if (!ent.entity.modelindex || !ent.entity.model) {
-      continue;
-    }
+  if (from.modelindex !== to.modelindex) {
+    bits |= Protocol.u.model;
+  }
 
-    const angles = ent.entity.angles, origin = ent.entity.origin;
+  if (from.frame !== to.frame) {
+    bits |= Protocol.u.frame;
+  }
 
-    let bits = 0;
-    for (let i = 0; i <= 2; ++i) {
-      const miss = origin[i] - ent.baseline.origin[i];
-      if (miss < -Pmove.Pmove.STOP_EPSILON || miss > Pmove.Pmove.STOP_EPSILON) {
-        bits += Protocol.u.origin1 << i;
-      }
-    }
-    if (angles[0] !== ent.baseline.angles[0]) {
-      bits += Protocol.u.angle1;
-    }
-    if (angles[1] !== ent.baseline.angles[1]) {
-      bits += Protocol.u.angle2;
-    }
-    if (angles[2] !== ent.baseline.angles[2]) {
-      bits += Protocol.u.angle3;
-    }
-    if (ent.entity.movetype === SV.movetype.step) {
-      bits += Protocol.u.nolerp;
-    }
-    if (ent.baseline.colormap !== (ent.entity.colormap || 0)) {
-      bits += Protocol.u.colormap;
-    }
-    if (ent.baseline.skin !== ent.entity.skin) {
-      bits += Protocol.u.skin;
-    }
-    if (ent.baseline.frame !== ent.entity.frame) {
-      bits += Protocol.u.frame;
-    }
-    if (ent.baseline.effects !== ent.entity.effects) {
-      bits += Protocol.u.effects;
-    }
-    if (ent.baseline.modelindex !== ent.entity.modelindex) {
-      bits += Protocol.u.model;
-    }
-    if (ent.num >= 256) {
-      bits += Protocol.u.longentity;
-    }
-    if (bits >= 256) {
-      bits += Protocol.u.morebits;
+  // not all entities have colormap as a property
+  if ((from.colormap || 0) !== (to.colormap || 0)) {
+    bits |= Protocol.u.colormap;
+  }
+
+  if (from.skin !== to.skin) {
+    bits |= Protocol.u.skin;
+  }
+
+  if (from.effects !== to.effects) {
+    bits |= Protocol.u.effects;
+  }
+
+  if (from.solid !== to.solid) {
+    bits |= Protocol.u.solid;
+  }
+
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(from.origin[i] - to.origin[i]) > EPSILON) {
+      bits |= Protocol.u.origin1 << i;
     }
 
-    if ((bits & Protocol.u.morebits) !== 0) {
-      MSG.WriteShort(msg, bits + Protocol.u.signal);
-    } else {
-      MSG.WriteByte(msg, bits + Protocol.u.signal);
+    if (Math.abs(from.angles[i] - to.angles[i]) > 0.0) { // no epsilon check for angles?
+      bits |= Protocol.u.angle1 << i;
+    }
+  }
+
+  if (bits === 0) {
+    // nothing changed
+    return;
+  }
+
+  console.assert(to.num > 0, 'valid entity num', to.num);
+
+  MSG.WriteShort(msg, to.num);
+  MSG.WriteShort(msg, bits);
+
+  if (bits & Protocol.u.free) {
+    MSG.WriteByte(msg, to.free ? 1 : 0);
+  }
+
+  if (bits & Protocol.u.model) {
+    MSG.WriteByte(msg, to.modelindex);
+  }
+
+  if (bits & Protocol.u.frame) {
+    MSG.WriteByte(msg, to.frame);
+  }
+
+  if (bits & Protocol.u.colormap) {
+    MSG.WriteByte(msg, to.colormap);
+  }
+
+  if (bits & Protocol.u.skin) {
+    MSG.WriteByte(msg, to.skin);
+  }
+
+  if (bits & Protocol.u.effects) {
+    MSG.WriteByte(msg, to.effects);
+  }
+
+  if (bits & Protocol.u.solid) {
+    MSG.WriteByte(msg, to.solid);
+  }
+
+  for (let i = 0; i < 3; i++) {
+    if (bits & (Protocol.u.origin1 << i)) {
+      MSG.WriteCoord(msg, to.origin[i]);
     }
 
-    if ((bits & Protocol.u.longentity) !== 0) {
-      MSG.WriteShort(msg, ent.num);
-    } else {
-      MSG.WriteByte(msg, ent.num);
-    }
-    if ((bits & Protocol.u.model) !== 0) {
-      MSG.WriteByte(msg, ent.entity.modelindex);
-    }
-    if ((bits & Protocol.u.frame) !== 0) {
-      MSG.WriteByte(msg, ent.entity.frame);
-    }
-    if ((bits & Protocol.u.colormap) !== 0) {
-      MSG.WriteByte(msg, ent.entity.colormap);
-    }
-    if ((bits & Protocol.u.skin) !== 0) {
-      MSG.WriteByte(msg, ent.entity.skin);
-    }
-    if ((bits & Protocol.u.effects) !== 0) {
-      MSG.WriteByte(msg, ent.entity.effects);
-    }
-    if ((bits & Protocol.u.origin1) !== 0) {
-      MSG.WriteCoord(msg, origin[0]);
-    }
-    if ((bits & Protocol.u.angle1) !== 0) {
-      MSG.WriteAngle(msg, angles[0]);
-    }
-    if ((bits & Protocol.u.origin2) !== 0) {
-      MSG.WriteCoord(msg, origin[1]);
-    }
-    if ((bits & Protocol.u.angle2) !== 0) {
-      MSG.WriteAngle(msg, angles[1]);
-    }
-    if ((bits & Protocol.u.origin3) !== 0) {
-      MSG.WriteCoord(msg, origin[2]);
-    }
-    if ((bits & Protocol.u.angle3) !== 0) {
-      MSG.WriteAngle(msg, angles[2]);
+    if (bits & (Protocol.u.angle1 << i)) {
+      MSG.WriteAngle(msg, to.angles[i]);
     }
   }
 };
 
-SV.WriteClientdataToMessage = function(ent, msg) {
+/**
+ * Encodes the current state of the world as
+ * a svc_packetentities messages and possibly
+ * a svc_nails message and
+ * svc_playerinfo messages
+ * @param {SV.Edict} clientEdict client edict
+ * @param {*} msg message stream
+ */
+SV.WriteEntitiesToClient = function(clientEdict, msg) {
+  const origin = clientEdict.entity.origin.copy().add(clientEdict.entity.view_ofs);
+  const pvs = SV.FatPVS(origin);
+
+  SV.WritePlayersToClient(clientEdict, pvs, msg);
+
+  /** @type {SV.Client} */
+  const cl = SV.svs.clients[clientEdict.num - 1];
+
+  MSG.WriteByte(msg, Protocol.svc.deltapacketentities);
+
+  const visedicts = [];
+
+  for (const ent of SV.TraversePVS(pvs, [], [clientEdict.num])) {
+    if ((msg.data.byteLength - msg.cursize) < 16) {
+      Con.Print('packet overflow\n');
+      break;
+    }
+
+    const toState = new SV.EntityState(ent.num);
+    toState.modelindex = ent.entity.model ? ent.entity.modelindex : 0;
+    toState.frame = ent.entity.frame;
+    toState.colormap = ent.entity.colormap;
+    toState.skin = ent.entity.skin;
+    toState.origin.set(ent.entity.origin);
+    toState.angles.set(ent.entity.angles);
+    toState.effects = ent.entity.effects;
+    toState.free = false;
+
+    /** @type {SV.EntityState} */
+    const fromState = cl.getEntityState(ent.num);
+
+    SV.WriteDeltaEntity(msg, fromState, toState);
+
+    // TODO: wait for a confirmation by the client
+    fromState.set(toState);
+
+    visedicts.push(ent.num);
+  }
+
+  // pretent all other entities are free
+  for (let i = 1; i < SV.server.num_edicts; ++i) {
+    const ent = SV.server.edicts[i];
+
+    if (visedicts.includes(ent.num)) {
+      // visible and already written
+      continue;
+    }
+
+    /** @type {SV.EntityState} */
+    const fromState = cl.getEntityState(ent.num);
+    const toState = new SV.EntityState(ent.num);
+    toState.free = true;
+
+    SV.WriteDeltaEntity(msg, fromState, toState);
+
+    // TODO: wait for a confirmation by the client
+    fromState.set(toState);
+  }
+
+  MSG.WriteShort(msg, 0); // end of list
+};
+
+SV.WriteClientdataToMessage = function(clientEdict, msg) {
   // FIXME: there is too much hard wired stuff happening here
   // FIXME: interfaces, edict, entity
-  if ((ent.entity.dmg_take || ent.entity.dmg_save) && ent.entity.dmg_inflictor) {
-    const other = ent.entity.dmg_inflictor.edict ? ent.entity.dmg_inflictor.edict : ent.entity.dmg_inflictor; // FIXME: SV.Edict vs BaseEntity
-    const vec = !other.isFree() ? other.entity.origin.copy().add(other.entity.mins.copy().add(other.entity.maxs).multiply(0.5)) : ent.entity.origin;
+  if ((clientEdict.entity.dmg_take || clientEdict.entity.dmg_save) && clientEdict.entity.dmg_inflictor) {
+    const other = clientEdict.entity.dmg_inflictor.edict ? clientEdict.entity.dmg_inflictor.edict : clientEdict.entity.dmg_inflictor; // FIXME: SV.Edict vs BaseEntity
+    const vec = !other.isFree() ? other.entity.origin.copy().add(other.entity.mins.copy().add(other.entity.maxs).multiply(0.5)) : clientEdict.entity.origin;
     MSG.WriteByte(msg, Protocol.svc.damage);
-    MSG.WriteByte(msg, ent.entity.dmg_save);
-    MSG.WriteByte(msg, ent.entity.dmg_take);
+    MSG.WriteByte(msg, Math.min(255, clientEdict.entity.dmg_save));
+    MSG.WriteByte(msg, Math.min(255, clientEdict.entity.dmg_take));
     MSG.WriteCoordVector(msg, vec);
-    ent.entity.dmg_take = 0.0;
-    ent.entity.dmg_save = 0.0;
+    clientEdict.entity.dmg_take = 0.0;
+    clientEdict.entity.dmg_save = 0.0;
   }
 
   SV.SetIdealPitch(); // CR: remove this? QuakeWorld is not doing it
 
-  if (ent.entity.fixangle) {
+  if (clientEdict.entity.fixangle) {
     MSG.WriteByte(msg, Protocol.svc.setangle);
-    MSG.WriteAngleVector(msg, ent.entity.angles);
-    ent.entity.fixangle = false;
+    MSG.WriteAngleVector(msg, clientEdict.entity.angles);
+    clientEdict.entity.fixangle = false;
   };
 
+  // DELETE ALL FROM UP HERE
+
   let bits = Protocol.su.items + Protocol.su.weapon;
-  if (ent.entity.view_ofs[2] !== Protocol.default_viewheight) {
+  if (clientEdict.entity.view_ofs[2] !== Protocol.default_viewheight) {
     bits += Protocol.su.viewheight;
   }
-  if (ent.entity.idealpitch !== 0.0) {
+  if (clientEdict.entity.idealpitch !== 0.0) {
     bits += Protocol.su.idealpitch;
   }
 
   let items;
-  if (ent.entity.items2 !== undefined) {
-    if (ent.entity.items2 !== 0.0) {
-      items = (ent.entity.items >> 0) + ((ent.entity.items2 << 23) >>> 0);
+  if (clientEdict.entity.items2 !== undefined) {
+    if (clientEdict.entity.items2 !== 0.0) {
+      items = (clientEdict.entity.items >> 0) + ((clientEdict.entity.items2 << 23) >>> 0);
     } else {
-      items = (ent.entity.items >> 0) + ((SV.server.gameAPI.serverflags << 28) >>> 0);
+      items = (clientEdict.entity.items >> 0) + ((SV.server.gameAPI.serverflags << 28) >>> 0);
     }
   } else {
-    items = (ent.entity.items >> 0) + ((SV.server.gameAPI.serverflags << 28) >>> 0);
+    items = (clientEdict.entity.items >> 0) + ((SV.server.gameAPI.serverflags << 28) >>> 0);
   }
 
-  if (ent.entity.flags & SV.fl.onground) {
+  if (clientEdict.entity.flags & SV.fl.onground) {
     bits += Protocol.su.onground;
   }
-  if (ent.entity.waterlevel >= 2.0) {
+  if (clientEdict.entity.waterlevel >= 2.0) {
     bits += Protocol.su.inwater;
   }
 
-  const velo = ent.entity.velocity, punchangle = ent.entity.punchangle;
+  const velo = clientEdict.entity.velocity, punchangle = clientEdict.entity.punchangle;
 
   if (punchangle[0] !== 0.0) {
     bits += Protocol.su.punch1;
@@ -1079,20 +1268,20 @@ SV.WriteClientdataToMessage = function(ent, msg) {
     bits += Protocol.su.velocity3;
   }
 
-  if (ent.entity.weaponframe !== 0.0) {
+  if (clientEdict.entity.weaponframe !== 0.0) {
     bits += Protocol.su.weaponframe;
   }
-  if (ent.entity.armorvalue !== 0.0) {
+  if (clientEdict.entity.armorvalue !== 0.0) {
     bits += Protocol.su.armor;
   }
 
   MSG.WriteByte(msg, Protocol.svc.clientdata);
   MSG.WriteShort(msg, bits);
   if ((bits & Protocol.su.viewheight) !== 0) {
-    MSG.WriteChar(msg, ent.entity.view_ofs[2]);
+    MSG.WriteChar(msg, clientEdict.entity.view_ofs[2]);
   }
   if ((bits & Protocol.su.idealpitch) !== 0) {
-    MSG.WriteChar(msg, ent.entity.idealpitch);
+    MSG.WriteChar(msg, clientEdict.entity.idealpitch);
   }
 
   if ((bits & Protocol.su.punch1) !== 0) {
@@ -1116,22 +1305,22 @@ SV.WriteClientdataToMessage = function(ent, msg) {
 
   MSG.WriteLong(msg, items);
   if ((bits & Protocol.su.weaponframe) !== 0) {
-    MSG.WriteByte(msg, ent.entity.weaponframe);
+    MSG.WriteByte(msg, clientEdict.entity.weaponframe);
   }
   if ((bits & Protocol.su.armor) !== 0) {
-    MSG.WriteByte(msg, ent.entity.armorvalue);
+    MSG.WriteByte(msg, clientEdict.entity.armorvalue);
   }
-  MSG.WriteByte(msg, SV.ModelIndex(ent.entity.weaponmodel));
-  MSG.WriteShort(msg, ent.entity.health);
-  MSG.WriteByte(msg, ent.entity.currentammo);
-  MSG.WriteByte(msg, ent.entity.ammo_shells);
-  MSG.WriteByte(msg, ent.entity.ammo_nails);
-  MSG.WriteByte(msg, ent.entity.ammo_rockets);
-  MSG.WriteByte(msg, ent.entity.ammo_cells);
+  MSG.WriteByte(msg, SV.ModelIndex(clientEdict.entity.weaponmodel));
+  MSG.WriteShort(msg, clientEdict.entity.health);
+  MSG.WriteByte(msg, clientEdict.entity.currentammo);
+  MSG.WriteByte(msg, clientEdict.entity.ammo_shells);
+  MSG.WriteByte(msg, clientEdict.entity.ammo_nails);
+  MSG.WriteByte(msg, clientEdict.entity.ammo_rockets);
+  MSG.WriteByte(msg, clientEdict.entity.ammo_cells);
   if (COM.standard_quake === true) {
-    MSG.WriteByte(msg, ent.entity.weapon & 0xff);
+    MSG.WriteByte(msg, clientEdict.entity.weapon & 0xff);
   } else {
-    const weapon = ent.entity.weapon;
+    const weapon = clientEdict.entity.weapon;
     for (let i = 0; i <= 31; ++i) {
       if ((weapon & (1 << i)) !== 0) {
         MSG.WriteByte(msg, i);
@@ -1141,7 +1330,7 @@ SV.WriteClientdataToMessage = function(ent, msg) {
   }
 };
 
-SV.clientdatagram = {data: new ArrayBuffer(1024), cursize: 0};
+SV.clientdatagram = new SZ.Buffer(1024);
 SV.SendClientDatagram = function() { // FIXME: Host.client
   const client = Host.client;
   const msg = SV.clientdatagram;
@@ -1161,7 +1350,7 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
       const ping = Math.round((pingClient.ping_times.reduce((sum, elem) => sum + elem) / pingClient.ping_times.length) * 1000);
       MSG.WriteByte(msg, Protocol.svc.updatepings);
       MSG.WriteByte(msg, i);
-      MSG.WriteShort(msg, ping);
+      MSG.WriteShort(msg, ping || 0);
     }
 
     client.last_ping_update = Host.realtime;
@@ -1170,7 +1359,7 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
   SV.WriteClientdataToMessage(client.edict, msg);
   SV.WriteEntitiesToClient(client.edict, msg);
   if ((msg.cursize + SV.server.datagram.cursize) < msg.data.byteLength) {
-    SZ.Write(msg, new Uint8Array(SV.server.datagram.data), SV.server.datagram.cursize);
+    msg.write(new Uint8Array(SV.server.datagram.data), SV.server.datagram.cursize);
   }
   if (NET.SendUnreliableMessage(client.netconnection, msg) === -1) {
     Host.DropClient(client, true, 'Connectivity issues');
@@ -1202,8 +1391,8 @@ SV.UpdateToReliableMessages = function() {
 
   for (i = 0; i < SV.svs.maxclients; ++i) {
     client = SV.svs.clients[i];
-    if (client.active === true) {
-      SZ.Write(client.message, new Uint8Array(SV.server.reliable_datagram.data), SV.server.reliable_datagram.cursize);
+    if (client.active) {
+      client.message.write(new Uint8Array(SV.server.reliable_datagram.data), SV.server.reliable_datagram.cursize);
     }
   }
 
@@ -1212,17 +1401,17 @@ SV.UpdateToReliableMessages = function() {
 
 SV.SendClientMessages = function() {
   SV.UpdateToReliableMessages();
-  let i; let client;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
-    Host.client = client = SV.svs.clients[i]; // FIXME: Host.client
-    if (client.active !== true) {
+  for (let i = 0; i < SV.svs.maxclients; ++i) {
+    const client = SV.svs.clients[i]; // FIXME: Host.client
+    Host.client = client;
+    if (!client.active) {
       continue;
     }
-    if (client.spawned === true) {
-      if (SV.SendClientDatagram() !== true) {
+    if (client.spawned) {
+      if (!SV.SendClientDatagram()) {
         continue;
       }
-    } else if (client.sendsignon !== true) {
+    } else if (!client.sendsignon) {
       if ((Host.realtime - client.last_message) > 5.0) {
         if (NET.SendUnreliableMessage(client.netconnection, SV.nop) === -1) {
           Host.DropClient(client, true, 'Connectivity issues');
@@ -1231,17 +1420,17 @@ SV.SendClientMessages = function() {
       }
       continue;
     }
-    if (client.message.overflowed === true) {
+    if (client.message.overflowed) {
       Host.DropClient(client, true, 'Connectivity issues, too many messages');
       client.message.overflowed = false;
       continue;
     }
-    if (client.dropasap === true) {
-      if (NET.CanSendMessage(client.netconnection) === true) {
+    if (client.dropasap) {
+      if (NET.CanSendMessage(client.netconnection)) {
         Host.DropClient(client, false, 'Connectivity issues, ASAP drop requested');
       }
     } else if (client.message.cursize !== 0) {
-      if (NET.CanSendMessage(client.netconnection) !== true) {
+      if (!NET.CanSendMessage(client.netconnection)) {
         continue;
       }
       if (NET.SendMessage(client.netconnection, client.message) === -1) {
@@ -1253,12 +1442,12 @@ SV.SendClientMessages = function() {
     }
   }
 
-  for (i = 1; i < SV.server.num_edicts; ++i) {
+  for (let i = 1; i < SV.server.num_edicts; ++i) {
     if (SV.server.edicts[i].isFree()) {
       continue;
     }
 
-    SV.server.edicts[i].entity.effects &= (~Mod.effects.muzzleflash >>> 0);
+    SV.server.edicts[i].entity.effects &= ~Mod.effects.muzzleflash;
   }
 };
 
@@ -1276,54 +1465,50 @@ SV.ModelIndex = function(name) {
 };
 
 SV.CreateBaseline = function() {
-  const player = SV.ModelIndex('progs/player.mdl');
+  return; // TODO: we need to create a base line from state and write them to each client to clear to as well otherwise freed/hidden entities will show up for new clients
+
   const signon = SV.server.signon;
-  for (let i = 0; i < SV.server.num_edicts; ++i) {
-    const svent = SV.server.edicts[i];
-    if (svent.isFree()) {
+
+  MSG.WriteByte(signon, Protocol.svc.packetentities);
+
+  for (let i = 1; i < SV.server.num_edicts; ++i) {
+    const ent = SV.server.edicts[i];
+
+    if (ent.isFree()) {
       continue;
     }
-    if ((i > SV.svs.maxclients) && !svent.entity.modelindex) {
+
+    if ((i > SV.svs.maxclients) && (!ent.entity.modelindex || !ent.entity.model)) {
       continue;
     }
-    const baseline = svent.baseline;
-    baseline.origin = svent.entity.origin.copy();
-    baseline.angles = svent.entity.angles.copy();
-    baseline.frame = svent.entity.frame >> 0;
-    baseline.skin = svent.entity.skin >> 0;
-    if ((i > 0) && (i <= SV.server.maxclients)) {
-      baseline.colormap = i;
-      baseline.modelindex = player;
-    } else {
-      baseline.colormap = 0;
-      baseline.modelindex = SV.ModelIndex(svent.entity.model);
-    }
-    MSG.WriteByte(signon, Protocol.svc.spawnbaseline);
-    MSG.WriteShort(signon, i);
-    MSG.WriteByte(signon, baseline.modelindex);
-    MSG.WriteByte(signon, baseline.frame);
-    MSG.WriteByte(signon, baseline.colormap);
-    MSG.WriteByte(signon, baseline.skin);
-    MSG.WriteCoord(signon, baseline.origin[0]);
-    MSG.WriteAngle(signon, baseline.angles[0]);
-    MSG.WriteCoord(signon, baseline.origin[1]);
-    MSG.WriteAngle(signon, baseline.angles[1]);
-    MSG.WriteCoord(signon, baseline.origin[2]);
-    MSG.WriteAngle(signon, baseline.angles[2]);
+
+    const fromState = new SV.EntityState(ent.num);
+
+    const toState = new SV.EntityState(ent.num);
+    toState.modelindex = ent.entity.modelindex;
+    toState.frame = ent.entity.frame;
+    toState.colormap = ent.entity.colormap;
+    toState.skin = ent.entity.skin;
+    toState.origin.set(ent.entity.origin);
+    toState.angles.set(ent.entity.angles);
+    toState.effects = ent.entity.effects;
+
+    SV.WriteDeltaEntity(signon, fromState, toState);
   }
+
+  MSG.WriteShort(signon, 0); // end of list
 };
 
 SV.SaveSpawnparms = function() {
   SV.svs.serverflags = SV.server.gameAPI.serverflags;
-  for (let i = 0; i < SV.svs.maxclients; ++i) {
-    Host.client = SV.svs.clients[i];
-    if (Host.client.active !== true) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
+    const client = SV.svs.clients[i];
+
+    if (!client.active) {
       continue;
     }
-    SV.server.gameAPI.SetChangeParms(Host.client.edict);
-    for (let j = 0; j <= 15; ++j) {
-      Host.client.spawn_parms[j] = SV.server.gameAPI[`parm${j + 1}`];
-    }
+
+    client.saveSpawnparms();
   }
 };
 
@@ -1334,8 +1519,8 @@ SV.HasMap = function(mapname) {
 SV.SpawnServer = function(mapname) {
   let i;
 
-  if (NET.hostname.string.length === 0) {
-    Cvar.Set('hostname', 'UNNAMED');
+  if (!NET.hostname.string) {
+    NET.hostname.set('UNNAMED');
   }
 
   if (!Host.dedicated.value) {
@@ -1377,12 +1562,6 @@ SV.SpawnServer = function(mapname) {
 
     SV.server.edicts[i] = ent;
   }
-  SV.server.cannon = {
-    world: new CANNON.World(),
-    lastTime: null,
-    active: false,
-  };
-  SV.server.cannon.world.gravity.set(0, 0, -9.82);
   SV.server.datagram.cursize = 0;
   SV.server.reliable_datagram.cursize = 0;
   SV.server.signon.cursize = 0;
@@ -1463,7 +1642,6 @@ SV.SpawnServer = function(mapname) {
   SV.server.active = true;
   SV.server.loading = false;
   Host.frametime = 0.1;
-  SV.InitPhysicsEngine();
   SV.Physics();
   SV.Physics();
   SV.CreateBaseline();
@@ -1483,7 +1661,6 @@ SV.ShutdownServer = function (isCrashShutdown) {
   SV.server.active = false;
   SV.server.loading = false;
   SV.server.progsInterfaces = null;
-  SV.server.cannon = null;
   SV.server.worldmodel = null;
   SV.server.gameAPI = null;
 
@@ -1508,15 +1685,6 @@ SV.ShutdownServer = function (isCrashShutdown) {
 
   Con.Print('Server shut down.\n');
 }
-
-SV.GetClientName = function(client) {
-  return client.name;
-};
-
-SV.SetClientName = function(client, name) {
-  client.name = name;
-  client.edict.entity.netname = name; // tell the game the client name too
-};
 
 // move
 
@@ -2414,152 +2582,29 @@ SV._BuildSurfaceDisplayList = function(currentmodel, fa) { // FIXME: move to Mod
   }
 };
 
-SV._CreateTrimeshFromBSP = function(m) { // FIXME: move to Mod?
-  const vertices = [];
-  const indices = [];
-  let vertexCount = 0;
-
-  // Calculate all vertices for surfaces
-  for (let j = 0; j < m.faces.length; ++j) {
-    SV._BuildSurfaceDisplayList(m, m.faces[j]);
-  }
-
-  // Iterate through textures
-  for (let i = 0; i < m.textures.length; ++i) {
-      const texture = m.textures[i];
-
-      // Skip sky and turbulent textures for collision geometry
-      if (texture.sky || texture.turbulent) {
-          continue;
-      }
-
-      // Iterate through leaf nodes
-      for (let j = 0; j < m.leafs.length; ++j) {
-          const leaf = m.leafs[j];
-
-          // Iterate through the surfaces (faces) in the leaf
-          for (let k = 0; k < leaf.nummarksurfaces; ++k) {
-              const surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
-
-              // Skip surfaces with a different texture
-              if (surf.texture !== i) {
-                  continue;
-              }
-
-              // Process the vertices in the surface
-              const faceVertices = [];
-              for (let l = 0; l < surf.verts.length; ++l) {
-                  const vert = surf.verts[l];
-                  // Push vertex data (x, y, z)
-                  vertices.push(vert[0], vert[1], vert[2]);
-                  faceVertices.push(vertexCount++);
-              }
-
-              // Triangulate the face (if needed)
-              if (faceVertices.length > 2) {
-                  for (let l = 1; l < faceVertices.length - 1; ++l) {
-                      indices.push(
-                          faceVertices[0],    // First vertex
-                          faceVertices[l],    // Current vertex
-                          faceVertices[l + 1] // Next vertex
-                      );
-                  }
-              }
-          }
-      }
-  }
-
-  // Create the Trimesh
-  return new CANNON.Trimesh(vertices, indices);
-}
-
+/** @deprecated */
 SV.InitPhysicsEngine = function() {
-  // // load world model as static body
-  const worldmodel = SV.server.worldmodel;
-  const body = new CANNON.Body({ mass: 0 });
-  body.addShape(SV._CreateTrimeshFromBSP(worldmodel));
-  // body.addShape(new CANNON.Plane());
-  SV.server.cannon.world.addBody(body);
-
-  for (let i = 0; i < SV.server.num_edicts; ++i) {
-    const ent = SV.server.edicts[i];
-
-    if (ent.isFree()) {
-      continue;
-    }
-
-    SV.PhysicsEngineRegisterEdict(ent);
-  }
+  debugger;
 };
 
+/** @deprecated */
 SV.StepPhysicsEngine = function() {
-  if (!SV.server.cannon.active) {
-    return;
-  }
-
-  if (SV.server.cannon.lastTime) {
-    const fixedTimeStep = 1.0 / 60.0;
-    const maxSubSteps = 10;
-    const dt = (Host.realtime - SV.server.cannon.lastTime);
-
-    SV.server.cannon.world.step(fixedTimeStep, dt, maxSubSteps);
-  }
-
-  SV.server.cannon.lastTime = Host.realtime;
+  debugger;
 };
 
+/** @deprecated */
 SV.LinkPhysicsEngine = function() {
-  if (!SV.server.cannon.active) {
-    return;
-  }
-
-  for (let i = 0; i < SV.server.num_edicts; ++i) {
-    const edict = SV.server.edicts[i];
-
-    if (edict.isFree()) {
-      continue;
-    }
-
-    if (edict.cannon?.body) {
-      edict.entity.origin.set(edict.cannon.body.position.toArray());
-      edict.entity.angles.set(Vector.fromQuaternion(edict.cannon.body.quaternion.toArray()));
-      edict.linkEdict(false);
-    }
-  }
+  debugger;
 };
 
-SV.PhysicsEngineUnregisterEdict = function(ent) {
-  if (ent.cannon?.body) {
-    SV.server.cannon.world.removeBody(ent.cannon.body);
-    ent.cannon.body = null;
-  }
+/** @deprecated */
+SV.PhysicsEngineUnregisterEdict = function(edict) {
+  debugger;
 };
 
-
+/** @deprecated */
 SV.PhysicsEngineRegisterEdict = function(edict) {
-  const classname = edict.entity.classname;
-
-  edict.cannon = {
-    body: null,
-  };
-
-  if (classname === 'item_shells') {
-    const body = new CANNON.Body({
-      position: new CANNON.Vec3(...edict.entity.origin),
-      quaternion: new CANNON.Quaternion(...edict.entity.angles.toQuaternion()),
-      mass: Q.atof(edict.entity.mass || 5), // kg
-    });
-
-    body.addShape(new CANNON.Box(new CANNON.Vec3(...edict.entity.size)));
-
-    // if (edict.entity.model.endsWith('.bsp')) { // use model information instead
-    //   body.addShape(SV._CreateTrimeshFromBSP(Mod.ForName(edict.entity.model)));
-    // }
-
-    SV.server.cannon.world.addBody(body);
-
-    edict.cannon.body = body;
-  }
+  debugger;
 };
 
 SV.Physics = function() {
@@ -2601,8 +2646,6 @@ SV.Physics = function() {
     Sys.Error('SV.Physics: bad movetype ' + (ent.entity.movetype >> 0));
   }
   SV.server.time += Host.frametime;
-  SV.StepPhysicsEngine();
-  SV.LinkPhysicsEngine();
 };
 
 // user
@@ -2860,11 +2903,11 @@ SV.HandleRconRequest = function(client) {
   if (rconPassword === '' || rconPassword !== password) {
     MSG.WriteByte(message, Protocol.svc.print);
     MSG.WriteString(message, 'Wrong rcon password!');
-    Con.Print(`SV.HandleRconRequest: rcon attempted by ${SV.GetClientName(client)} from ${client.netconnection.address}: ${cmd}\n`);
+    Con.Print(`SV.HandleRconRequest: rcon attempted by ${client.name} from ${client.netconnection.address}: ${cmd}\n`);
     return;
   }
 
-  Con.Print(`SV.HandleRconRequest: rcon by ${SV.GetClientName(client)} from ${client.netconnection.address}: ${cmd}\n`);
+  Con.Print(`SV.HandleRconRequest: rcon by ${client.name} from ${client.netconnection.address}: ${cmd}\n`);
 
   Con.StartCapture();
   Cmd.ExecuteString(cmd);
@@ -2943,7 +2986,7 @@ SV.ReadClientMessage = function(client) {
           if (matchedCommand) {
             Cmd.ExecuteString(input, true);
           } else {
-            Con.DPrint(`${SV.GetClientName(client)} tried to ${input}`);
+            Con.DPrint(`${client.name} tried to ${input}`);
           }
           break;
         }
@@ -3000,7 +3043,7 @@ SV.RunClients = function() { // FIXME: Host.client
 SV.FindClientByName = function(name) {
   return SV.svs.clients
       .filter((client) => client.active)
-      .find((client) => SV.GetClientName(client) === name);
+      .find((client) => client.name === name);
 };
 
 // world

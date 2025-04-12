@@ -5,6 +5,7 @@ require('./source/Draw_node.js');
 require('./source/Sys_node.js');
 require('./source/Vec.js');
 require('./source/CRC.js');
+require('./source/SZ.js');
 require('./source/COM.js');
 require('./source/COM_node.js');
 require('./source/Console.js');
@@ -18,7 +19,6 @@ require('./source/Game.js');
 require('./source/PR.js');
 require('./source/PF.js');
 require('./source/MSG.js');
-require('./source/SZ.js');
 require('./source/Def.js');
 require('./source/Cmd.js');
 require('./source/Cvar.js');
@@ -33,5 +33,5 @@ require('./source/NET_WEBS.js');
 require('./source/Shack.js');
 
 Sys.Init()
-  .then(() => Sys.Print('Dedicated server running!\n'))
-  .catch((err) => Sys.Error('Fatal error during Sys.Init!\n' + err.message));
+  .then(() => Sys.Print('Dedicated server running!\n'));
+//  .catch((err) => Sys.Error('Fatal error during Sys.Init!\n' + err.message));

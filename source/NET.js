@@ -1,4 +1,4 @@
-/* global Con, Host, CL, Cmd, Cvar, Q, NET, SV, Sys, Loop, WEBS */
+/* global Con, Host, CL, Cmd, Cvar, Q, NET, SV, Sys, Loop, WEBS, SZ */
 
 // eslint-disable-next-line no-global-assign
 NET = {};
@@ -60,7 +60,7 @@ NET.FormatIP = function(ip, port) {
 };
 
 NET.activeSockets = [];
-NET.message = {data: new ArrayBuffer(8192), cursize: 0};
+NET.message = new SZ.Buffer(8192);
 NET.activeconnections = 0;
 NET.listening = false;
 
@@ -234,6 +234,7 @@ NET.SendMessage = function(sock, data) {
     Con.Print('NET.SendMessage: disconnected socket\n');
     return -1;
   }
+  // console.debug(`NET.SendMessage: ${sock.address} ${data.cursize}`, data.toHexString());
   NET.time = Sys.FloatTime();
   return sock.SendMessage(data);
 };
@@ -246,6 +247,7 @@ NET.SendUnreliableMessage = function(sock, data) {
     Con.Print('NET.SendUnreliableMessage: disconnected socket\n');
     return -1;
   }
+  // console.debug(`NET.SendUnreliableMessage: ${sock.address} ${data.cursize}`, data.toHexString());
   NET.time = Sys.FloatTime();
   return sock.SendUnreliableMessage(data);
 };

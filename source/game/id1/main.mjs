@@ -8,6 +8,7 @@ const identification = {
   name: 'Quake',
   author: 'chrisnew',
   version: [1, 0, 0],
+  capabilities: [],
 };
 
 export {

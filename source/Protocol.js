@@ -5,7 +5,11 @@ Protocol = {};
 
 Protocol.version = 42; // QuakeShack special version
 
+Protocol.update_backup = 64; // power of 2
+Protocol.update_mask = Protocol.update_backup - 1;
+
 Protocol.u = {
+  /** @deprecated */
   morebits: 1,
   origin1: 1 << 1,
   origin2: 1 << 2,
@@ -13,7 +17,10 @@ Protocol.u = {
   angle2: 1 << 4,
   nolerp: 1 << 5,
   frame: 1 << 6,
+
+  /** @deprecated */
   signal: 1 << 7,
+  free: 1 << 7,
 
   angle1: 1 << 8,
   angle3: 1 << 9,
@@ -21,7 +28,11 @@ Protocol.u = {
   colormap: 1 << 11,
   skin: 1 << 12,
   effects: 1 << 13,
+
+  /** @deprecated */
   longentity: 1 << 14,
+
+  solid: 1 << 15,
 };
 
 Protocol.su = {
@@ -108,6 +119,9 @@ Protocol.svc = {
   chatmsg: 103,
   obituary: 104,
   pmovevars: 105,
+
+  /** Protocol.u.signal is using special bit 128 */
+  last_available_command: 127,
 };
 
 Protocol.clc = {
@@ -197,7 +211,7 @@ Protocol.EntityState = class EntityState { // entity_state_t
 
 Protocol.UserCmd = class UserCmd { // usercmd_t
   constructor() {
-    /** @type {number} uint8_t in QW */
+    /** @type {number} maximum 255 */
     this.msec = 0;
     this.forwardmove = 0;
     this.sidemove = 0;
@@ -205,5 +219,37 @@ Protocol.UserCmd = class UserCmd { // usercmd_t
     this.angles = new Vector();
     this.buttons = 0;
     this.impulse = 0;
+  }
+
+  /**
+   * Copies the usercmd.
+   * @returns {Protocol.UserCmd} copied usercmd
+   */
+  copy() {
+    const cmd = new Protocol.UserCmd();
+    cmd.msec = this.msec;
+    cmd.forwardmove = this.forwardmove;
+    cmd.sidemove = this.sidemove;
+    cmd.upmove = this.upmove;
+    cmd.angles.set(this.angles);
+    cmd.buttons = this.buttons;
+    cmd.impulse = this.impulse;
+    return cmd;
+  }
+
+  /**
+   * Sets this to the value of other.
+   * @param {Protocol.UserCmd} other usercmd
+   * @returns {Protocol.UserCmd} this
+   */
+  set(other) {
+    this.msec = other.msec;
+    this.forwardmove = other.forwardmove;
+    this.sidemove = other.sidemove;
+    this.upmove = other.upmove;
+    this.angles.set(other.angles);
+    this.buttons = other.buttons;
+    this.impulse = other.impulse;
+    return this;
   }
 };

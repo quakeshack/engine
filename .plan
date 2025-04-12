@@ -306,6 +306,45 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-04-12
+
+* decided to ditch lerping entities for now
+* focussing on getting networking back on track as well as Client Game stuff
+
+### 2025-04-11
+
+* some cleanup
+  * introduced proper `SzBuffer` class
+  * cleaning more in `SV`, merging functions into new classes
+* I’m considering completely rewriting Host, SV and CL
+
+### 2025-04-08
+
+* `Cvar.set` didn’t do anything lol, fixed
+
+### 2025-04-07
+
+* all entities are pushed via delta updates per client now
+
+### 2025-04-05
+
+* there are a couple of objects that only get their properties sometime during the running process, this leads to interesting situations (me getting confused all the time)
+* trying to stick to a convention for `toString`: always name `this.constructor.name` first
+* introduced `SV.Client` class
+  * also got rid of a few C-style setters/getters
+* introduced flag `Mod.effects.nodraw` to make entities hidden via `effects`
+* started implementing usercmd delta packages
+* small fix in `S.StopSound`
+* introduced `SV.EntityState` class to track written delta package on a per player basis
+* added `console.assert` to `MSG.Write*` to make sure things are not getting out of bound
+  * found a couple of silent bugs that way
+* added `SV.TraversePVS` making it easier to go over PVS
+* seems like I’m half way through rewriting the netcode based on QW improvements
+* next up:
+  * getting the entities back in place using delta updates
+  * proper delta updates on clientdata
+  * pmove predicted client moves
+
 ### 2025-04-03
 
 * added `Cvar.FLAG.SECRET` to suppress broadcasting sensitive cvar changes

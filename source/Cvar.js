@@ -30,7 +30,7 @@ Cvar = class Cvar {
     /** @type {string} @private */
     this.name = name;
     /** @type {string} @private */
-    this.string = new String(value);
+    this.string = value;
     /** @type {Cvar.FLAGS} @private */
     this.flags = flags;
     /** @type {?string} @private */
@@ -100,15 +100,26 @@ Cvar = class Cvar {
    * @returns {Cvar} this
    */
   set(value) {
-    console.assert(typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean', 'value must be a string, number or boolean', value);
+    // turning everything into a string
+    switch (typeof value) {
+      case 'boolean':
+        value = value ? '1' : '0';
+        break;
+      case 'string':
+        value = value.trim();
+        break;
+      case 'number':
+        value = value.toString();
+        break;
 
-    if (typeof value === 'boolean') {
-      value = value ? '1' : '0';
-    }
+      default:
+        console.assert(false, 'invalid type of value', value);
+        value = '';
+      }
 
     const changed = this.string !== value;
 
-    this.string = new String(value);
+    this.string = value;
 
     if ((this.flags & Cvar.FLAG.SERVER) && changed && SV.server.active) {
       if (this.flags & Cvar.FLAG.SECRET) {
@@ -129,10 +140,12 @@ Cvar = class Cvar {
   /**
    * Sets the value of the console variable to a floating-point number.
    * @param {number} value new value
+   * @deprecated use set instead
+   * @see {@link Cvar#set}
    * @returns {Cvar} this
    */
   setValue(value) {
-    return this.set(value.toFixed(6));
+    return this.set(value);
   }
 
   /**
@@ -155,10 +168,12 @@ Cvar = class Cvar {
    * Sets the value of the console variable to a floating-point number.
    * @param {string} name name of the variable
    * @param {number} value new value
+   * @deprecated use Set instead
+   * @see {@link Cvar#Set}
    * @returns {Cvar} variable
    */
   static SetValue(name, value) {
-    return Cvar.Set(name, value.toFixed(6));
+    return Cvar.Set(name, value);
   }
 
   /**
@@ -233,7 +248,8 @@ Cvar = class Cvar {
       return true;
     }
 
-    Cvar.Set(v.name, argv[1]);
+    v.set(argv[1]);
+
     return true;
   }
 

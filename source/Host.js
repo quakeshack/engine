@@ -16,6 +16,8 @@ Host.EndGame = function(message) {
 };
 
 Host.Error = function(error) {
+  debugger;
+
   if (Host.inerror === true) {
     Sys.Error('Host.Error: recursively entered');
   }
@@ -41,52 +43,13 @@ Host.FindMaxClients = function() {
     CL.cls.state = CL.active.disconnected;
   }
   for (let i = 0; i < SV.svs.maxclientslimit; i++) {
-    SV.svs.clients.push({ // TODO: Client (SV.Client) class
-      num: i,
-      message: {data: new ArrayBuffer(8000), cursize: 0, allowoverflow: true},
-      colors: 0,
-      old_frags: 0,
-      last_ping_update: 0,
-      netconnection: null,
-      name: '', // must be an empty string, otherwise Sbar is going to bug out
-      edict: null, // connected to an edict upon server spawn
-
-      /** spawn parms are carried from level to level */
-      spawn_parms: new Array(16),
-
-      clear() {
-        this.edict = null;
-        this.netconnection = null;
-        this.message.cursize = 0;
-        this.message.allowoverflow = false;
-        this.colors = 0;
-        this.old_frags = 0;
-        this.last_ping_update = 0;
-        this.active = false;
-        this.name = '';
-      },
-
-      consolePrint(message) {
-        MSG.WriteByte(this.message, Protocol.svc.print);
-        MSG.WriteString(this.message, message);
-      },
-
-      centerPrint(message) {
-        MSG.WriteByte(this.message, Protocol.svc.centerprint);
-        MSG.WriteString(this.message, message);
-      },
-
-      sendConsoleCommands(commandline) {
-        MSG.WriteByte(this.message, Protocol.svc.stufftext);
-        MSG.WriteString(this.message, commandline);
-      }
-    });
+    SV.svs.clients.push(new SV.Client(i));
   }
   Cvar.SetValue('deathmatch', 0);
 };
 
 Host.InitLocal = function(dedicated) {
-  Host.InitCommands();
+  Host.InitCommands(dedicated);
   Host.framerate = Cvar.RegisterVariable('host_framerate', '0');
   Host.speeds = Cvar.RegisterVariable('host_speeds', '0');
   Host.ticrate = Cvar.RegisterVariable('sys_ticrate', '0.05');
@@ -122,10 +85,9 @@ Host.ClientPrint = function(string) { // FIXME: Host.client
 };
 
 Host.BroadcastPrint = function(string) {
-  let i; let client;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
-    client = SV.svs.clients[i];
-    if ((client.active !== true) || (client.spawned !== true)) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
+    const client = SV.svs.clients[i];
+    if (!client.active || !client.spawned) {
       continue;
     }
     MSG.WriteByte(client.message, Protocol.svc.print);
@@ -133,6 +95,12 @@ Host.BroadcastPrint = function(string) {
   }
 };
 
+/**
+ *
+ * @param {SV.ServerClient} client
+ * @param {boolean} crash
+ * @param {string} reason
+ */
 Host.DropClient = function(client, crash, reason) {
   if (NET.CanSendMessage(client.netconnection) === true) {
     MSG.WriteByte(client.message, Protocol.svc.disconnect);
@@ -146,15 +114,12 @@ Host.DropClient = function(client, crash, reason) {
       SV.server.gameAPI.ClientDisconnect(client.edict);
       SV.server.gameAPI.self = saveSelf;
     }
-    Sys.Print('Client ' + SV.GetClientName(client) + ' removed\n');
+    Sys.Print('Client ' + client.name + ' removed\n');
   }
 
   NET.Close(client.netconnection);
 
-  client.netconnection = null;
-  client.active = false;
-  SV.SetClientName(client, '');
-  client.old_frags = -Infinity;
+  client.clear();
 
   --NET.activeconnections;
   let i; const num = client.num;
@@ -234,7 +199,7 @@ Host.WriteConfiguration_f = function() {
   Host.WriteConfiguration();
 };
 
-Host.ServerFrame = function() {
+Host.ServerFrame = function() { // TODO: SV duties
   SV.server.gameAPI.frametime = Host.frametime;
   SV.server.datagram.cursize = 0;
   SV.CheckForNewClients();
@@ -326,14 +291,14 @@ Host._Frame = function() {
 
   Cmd.Execute();
 
-  if (CL.cls.state === CL.active.connected) {
-    CL.ReadFromServer();
-  }
-
   CL.SendCmd();
 
   if (SV.server.active === true) {
     Host.ServerFrame();
+  }
+
+  if (CL.cls.state === CL.active.connected) {
+    CL.ReadFromServer();
   }
 
   // Set up prediction for other players
@@ -352,6 +317,7 @@ Host._Frame = function() {
     time1 = Sys.FloatTime();
   }
   SCR.UpdateScreen();
+  // FIXME: time2 is no longer accurrate, because SCR.UpdateScreen uses requestAnimationFrame to render at the next best opportunity
   if (Host.speeds.value !== 0) {
     time2 = Sys.FloatTime();
   }
@@ -556,7 +522,7 @@ Host.Status_f = function(...argv) {
     if (i <= 8) {
       str += ' ';
     }
-    str += SV.GetClientName(client);
+    str += client.name;
     for (; str.length <= 21; ) {
       str += ' ';
     }
@@ -669,7 +635,7 @@ Host.Ping_f = function(...argv) {
     } else if (total.length === 3) {
       total = ' ' + total;
     }
-    Host.ClientPrint(total + ' ' + SV.GetClientName(client) + '\n');
+    Host.ClientPrint(total + ' ' + client.name + '\n');
   }
 };
 
@@ -980,12 +946,12 @@ Host.Name_f = function(_, ...names) { // signon 2, step 1
     newName = `${initialNewName}${newNameCounter++}`;
   }
 
-  const name = SV.GetClientName(Host.client);
+  const name = Host.client.name;
   if (Host.dedicated.value && name && (name.length !== 0) && (name !== 'unconnected') && (name !== newName)) {
     Con.Print(name + ' renamed to ' + newName + '\n');
   }
 
-  SV.SetClientName(Host.client, newName);
+  Host.client.name = newName;
   const msg = SV.server.reliable_datagram;
   MSG.WriteByte(msg, Protocol.svc.updatename);
   MSG.WriteByte(msg, Host.client.num);
@@ -1020,12 +986,12 @@ Host.Say = function(teamonly, message, cmd) {
     if ((Host.teamplay.value !== 0) && (teamonly === true) && (client.entity.team !== save.entity.team)) {
       continue;
     }
-    Host.SendChatMessageToClient(client, SV.GetClientName(save), message, false);
+    Host.SendChatMessageToClient(client, save.name, message, false);
   }
 
   Host.client = save; // unsure whether I removed it or not
 
-  Con.Print(`${SV.GetClientName(save)}: ${message}\n`);
+  Con.Print(`${save.name}: ${message}\n`);
 };
 
 Host.Say_Team_f = function(_, ...args) {
@@ -1062,11 +1028,11 @@ Host.Tell_f = function(_, recipient, ...args) {
     if ((client.active !== true) || (client.spawned !== true)) {
       continue;
     }
-    if (SV.GetClientName(client).toLowerCase() !== recipient.toLowerCase()) {
+    if (client.name.toLowerCase() !== recipient.toLowerCase()) {
       continue;
     }
-    Host.SendChatMessageToClient(client, SV.GetClientName(save), message, true);
-    Host.SendChatMessageToClient(Host.client, SV.GetClientName(save), message, true);
+    Host.SendChatMessageToClient(client, save.name, message, true);
+    Host.SendChatMessageToClient(Host.client, save.name, message, true);
     break;
   }
   Host.client = save;
@@ -1132,7 +1098,7 @@ Host.Pause_f = function(...argv) {
     return;
   }
   SV.server.paused = !SV.server.paused;
-  Host.BroadcastPrint(SV.GetClientName(Host.client) + (SV.server.paused === true ? ' paused the game\n' : ' unpaused the game\n'));
+  Host.BroadcastPrint(Host.client.name + (SV.server.paused === true ? ' paused the game\n' : ' unpaused the game\n'));
   MSG.WriteByte(SV.server.reliable_datagram, Protocol.svc.setpause);
   MSG.WriteByte(SV.server.reliable_datagram, SV.server.paused === true ? 1 : 0);
 };
@@ -1147,7 +1113,8 @@ Host.PreSpawn_f = function() { // signon 1, step 1
     Con.Print('prespawn not valid -- already spawned\n');
     return;
   }
-  SZ.Write(client.message, new Uint8Array(SV.server.signon.data), SV.server.signon.cursize);
+  // CR: SV.server.signon is a special buffer that is used to send the signon messages (make static as well as baseline information)
+  client.message.write(new Uint8Array(SV.server.signon.data), SV.server.signon.cursize);
   MSG.WriteByte(client.message, Protocol.svc.signonnum);
   MSG.WriteByte(client.message, 2);
   client.sendsignon = true;
@@ -1172,7 +1139,7 @@ Host.Spawn_f = function() { // signon 2, step 3
   } else {
     // ent.clear(); // FIXME: there’s a weird edge case
     SV.server.gameAPI.prepareEntity(ent, 'player', {
-      netname: SV.GetClientName(client),
+      netname: client.name,
       colormap: ent.num, // the num, not the entity
       team: (client.colors & 15) + 1,
     });
@@ -1182,7 +1149,7 @@ Host.Spawn_f = function() { // signon 2, step 3
     SV.server.gameAPI.time = SV.server.time;
     SV.server.gameAPI.ClientConnect(ent);
     if ((Sys.FloatTime() - client.netconnection.connecttime) <= SV.server.time) {
-      Sys.Print(SV.GetClientName(client) + ' entered the game\n');
+      Sys.Print(client.name + ' entered the game\n');
     }
     SV.server.gameAPI.PutClientInServer(ent);
   }
@@ -1195,7 +1162,7 @@ Host.Spawn_f = function() { // signon 2, step 3
     client = SV.svs.clients[i];
     MSG.WriteByte(message, Protocol.svc.updatename);
     MSG.WriteByte(message, i);
-    MSG.WriteString(message, SV.GetClientName(client));
+    MSG.WriteString(message, client.name);
     MSG.WriteByte(message, Protocol.svc.updatefrags);
     MSG.WriteByte(message, i);
     MSG.WriteShort(message, client.old_frags);
@@ -1270,7 +1237,7 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
       if (Host.client.active !== true) {
         continue;
       }
-      if (SV.GetClientName(Host.client).toLowerCase() === s) {
+      if (Host.client.name.toLowerCase() === s) {
         break;
       }
     }
@@ -1293,7 +1260,7 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
     if (Host.client === save) {
       return;
     }
-    who = SV.GetClientName(save);
+    who = save.name;
   }
   let message;
   if (argv.length >= 3) {
@@ -1352,13 +1319,27 @@ Host.Give_f = function(_, classname) {
   // wait for the next server frame
   SV.ScheduleGameCommand(() => {
     const { forward } = player.entity.v_angle.angleVectors();
-    const origin = forward.multiply(64.0).add(player.entity.origin);
+
+    const start = player.entity.origin;
+    const end = forward.copy().multiply(64.0).add(start);
+
+    const mins = new Vector(-16.0, -16.0, -24.0);
+    const maxs = new Vector(16.0, 16.0, 32.0);
+
+    const trace = Game.EngineInterface.Traceline(start, end, false, player, mins, maxs);
+
+    const origin = trace.point.subtract(forward.multiply(16.0)).add(new Vector(0.0, 0.0, 16.0));
+
+    if (![Mod.contents.empty, Mod.contents.water].includes(Game.EngineInterface.DeterminePointContents(origin))) {
+      Host.ClientPrint('Item would spawn out of world!\n');
+      return;
+    }
 
     Game.EngineInterface.SpawnEntity(classname, {
       origin,
     });
   });
-  // /* old code below */
+  // /* old code below, should be handled by either the server game or client game */
   // if ((t >= 48) && (t <= 57)) {
   //   if (COM.hipnotic !== true) {
   //     if (t >= 50) {
@@ -1578,7 +1559,13 @@ Host.Stopdemo_f = function() {
   CL.Disconnect();
 };
 
-Host.InitCommands = function() {
+Host.InitCommands = function(dedicated) {
+  if (dedicated) { // TODO: move this to a dedicated stub for IN
+    Cmd.AddCommand('bind', () => {});
+    Cmd.AddCommand('unbind', () => {});
+    Cmd.AddCommand('unbindall', () => {});
+  }
+
   Cmd.AddCommand('status', Host.Status_f);
   Cmd.AddCommand('quit', Host.Quit_f);
   Cmd.AddCommand('god', Host.God_f);

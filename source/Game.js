@@ -4,7 +4,7 @@
 Game = {};
 
 // TODO: make it non-static
-Game.EngineInterface = class EngineInterface {
+Game.EngineInterface = class ServerEngineInterface {
   static BroadcastPrint(str) {
     Host.BroadcastPrint(str);
   }
@@ -309,3 +309,6 @@ Game.EngineInterface = class EngineInterface {
 
 };
 
+Game.ClientEngineInterface = class ClientEngineInterface {
+
+};
