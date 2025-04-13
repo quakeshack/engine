@@ -872,9 +872,6 @@ R.SetupGL = function() {
 };
 
 R.RenderScene = function() {
-  if (CL.state.maxclients >= 2) {
-    Cvar.Set('r_fullbright', '0');
-  }
   R.AnimateLight();
   const {forward, right, up} = R.refdef.viewangles.angleVectors();
   [R.vpn, R.vright, R.vup] = [forward, right, up];
@@ -1192,16 +1189,16 @@ R.Init = async function() {
   Cmd.AddCommand('pointfile', R.ReadPointFile_f);
 
   R.waterwarp = new Cvar('r_waterwarp', '1');
-  R.fullbright = new Cvar('r_fullbright', '0');
-  R.drawentities = new Cvar('r_drawentities', '1');
+  R.fullbright = new Cvar('r_fullbright', '0', Cvar.FLAG.CHEAT);
+  R.drawentities = new Cvar('r_drawentities', '1', Cvar.FLAG.CHEAT);
   R.drawviewmodel = new Cvar('r_drawviewmodel', '1');
-  R.drawturbolents = new Cvar('r_drawturbolents', '1');
-  R.novis = new Cvar('r_novis', '0');
+  R.drawturbolents = new Cvar('r_drawturbolents', '1', Cvar.FLAG.CHEAT);
+  R.novis = new Cvar('r_novis', '0', Cvar.FLAG.CHEAT);
   R.speeds = new Cvar('r_speeds', '0');
   R.polyblend = new Cvar('gl_polyblend', '1');
   R.flashblend = new Cvar('gl_flashblend', '0');
   R.nocolors = new Cvar('gl_nocolors', '0');
-  R.interpolation = new Cvar('r_interpolation', '0');
+  R.interpolation = new Cvar('r_interpolation', '0', Cvar.FLAG.ARCHIVE, 'Interpolation of textures and animation groups, 0 - off, 1 - on');
 
   await R.InitParticles();
 
@@ -1273,7 +1270,7 @@ R.Init = async function() {
     }
 
     return new Float32Array(positions);
-  }), gl.STATIC_DRAW);
+  })(), gl.STATIC_DRAW);
 
   await R.MakeSky();
 };
@@ -1348,17 +1345,17 @@ R.InitParticles = async function() {
 };
 
 R.EntityParticles = function(ent) {
-  const allocated = R.AllocParticles(162); let i;
-  let angle; let sp; let sy; let cp; let cy;
-  for (i = 0; i < allocated.length; ++i) {
-    angle = CL.state.time * R.avelocities[i][0];
-    sp = Math.sin(angle);
-    cp = Math.cos(angle);
-    angle = CL.state.time * R.avelocities[i][1];
-    sy = Math.sin(angle);
-    cy = Math.cos(angle);
+  const allocated = R.AllocParticles(162);
 
-    R.particles[allocated[i]] = {
+  for (let i = 0; i < allocated.length; ++i) {
+    const angleP = CL.state.time * R.avelocities[i][0];
+    const sp = Math.sin(angleP);
+    const cp = Math.cos(angleP);
+    const angleY = CL.state.time * R.avelocities[i][1];
+    const sy = Math.sin(angleY);
+    const cy = Math.cos(angleY);
+
+    R.particles[allocated[i]] = { // TODO: Particle Class
       die: CL.state.time + 0.01,
       color: 0x6f,
       ramp: 0.0,

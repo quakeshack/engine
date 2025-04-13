@@ -489,55 +489,44 @@ Host.Status_f = function() {
   } else {
     print = Host.ClientPrint;
   }
-  print('host:    ' + NET.hostname.string + '\n');
-  print('version: ' + Def.version + '\n');
-  print('map:     ' + SV.server.gameAPI.mapname + '\n');
-  print('players: ' + NET.activeconnections + ' active (' + SV.svs.maxclients + ' max)\n\n');
-  let client; let str; let frags; let hours; let minutes; let seconds;
+  print('hostname: ' + NET.hostname.string + '\n');
+  print('version : ' + Def.version + '\n');
+  print('map     : ' + SV.server.gameAPI.mapname + '\n');
+  print('edicts  : ' + SV.server.num_edicts + ' used of ' + SV.server.edicts.length + ' max\n');
+  print('players : ' + NET.activeconnections + ' active (' + SV.svs.maxclients + ' max)\n\n');
+
+  print('# userid name                uniqueid            connected ping loss state  adr\n');
+
   for (let i = 0; i < SV.svs.maxclients; ++i) {
-    client = SV.svs.clients[i];
+    const client = SV.svs.clients[i];
     if (!client.active) {
       continue;
     }
-    frags = client.edict.entity.frags.toFixed(0);
-    if (frags.length === 1) {
-      frags = '  ' + frags;
-    } else if (frags.length === 2) {
-      frags = ' ' + frags;
-    }
-    seconds = (NET.time - client.netconnection.connecttime) >> 0;
-    minutes = (seconds / 60) >> 0;
-    if (minutes !== 0) {
+
+    let seconds = Math.floor(NET.time - client.netconnection.connecttime);
+    let minutes = Math.floor(seconds / 60);
+    let hours = 0;
+    if (minutes > 0) {
       seconds -= minutes * 60;
-      hours = (minutes / 60) >> 0;
+      hours = Math.floor(minutes / 60);
       if (hours !== 0) {
         minutes -= hours * 60;
       }
-    } else {
-      hours = 0;
     }
-    str = '#' + (i + 1) + ' ';
-    if (i <= 8) {
-      str += ' ';
-    }
-    str += client.name;
-    for (; str.length <= 21; ) {
-      str += ' ';
-    }
-    str += frags + '  ';
-    if (hours <= 9) {
-      str += ' ';
-    }
-    str += hours + ':';
-    if (minutes <= 9) {
-      str += '0';
-    }
-    str += minutes + ':';
-    if (seconds <= 9) {
-      str += '0';
-    }
-    print(str + seconds + '\n');
-    print('    ' + client.netconnection.address + '\n');
+
+    const parts = [
+      '#',
+      client.num.toString().padStart(6),
+      client.name.substring(0, 19).padEnd(19),
+      client.uniqueId.substring(0, 19).padEnd(19),
+      `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`.padEnd(9),
+      client.ping.toString().padStart(4),
+      '0   ',
+      'active',
+      client.netconnection.address,
+    ];
+
+    print(parts.join(' ') + '\n');
   }
 };
 

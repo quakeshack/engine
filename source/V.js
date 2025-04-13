@@ -402,5 +402,5 @@ V.Init = function() {
   V.kicktime = new Cvar('v_kicktime', '0.5');
   V.kickroll = new Cvar('v_kickroll', '0.6');
   V.kickpitch = new Cvar('v_kickpitch', '0.6');
-  V.gamma = new Cvar('gamma', '0.8', Cvar.FLAG.ARCHIVE); // CR: 1 is too dark
+  V.gamma = new Cvar('gamma', '0.8', Cvar.FLAG.ARCHIVE | Cvar.FLAG.CHEAT); // CR: 1 is too dark
 };

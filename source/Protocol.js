@@ -9,30 +9,21 @@ Protocol.update_backup = 64; // power of 2
 Protocol.update_mask = Protocol.update_backup - 1;
 
 Protocol.u = {
-  /** @deprecated */
-  morebits: 1,
+  classname: 1 << 0,
   origin1: 1 << 1,
   origin2: 1 << 2,
   origin3: 1 << 3,
   angle2: 1 << 4,
   nolerp: 1 << 5,
   frame: 1 << 6,
-
-  /** @deprecated */
-  signal: 1 << 7,
   free: 1 << 7,
-
   angle1: 1 << 8,
   angle3: 1 << 9,
   model: 1 << 10,
   colormap: 1 << 11,
   skin: 1 << 12,
   effects: 1 << 13,
-
-  /** @deprecated */
-  longentity: 1 << 14,
-
-  solid: 1 << 15,
+  solid: 1 << 14,
 };
 
 Protocol.su = {
@@ -120,6 +111,7 @@ Protocol.svc = {
   chatmsg: 103,
   obituary: 104,
   pmovevars: 105,
+  cvar: 106,
 };
 
 /** Client to Server */

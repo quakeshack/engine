@@ -185,7 +185,7 @@ PR.progheader_crc = 5927;
 /**
  * FIXME: function proxies need to become cached
  */
-PR.FunctionProxy = class FunctionProxy extends Function {
+PR.FunctionProxy = class ProgsFunctionProxy extends Function {
   static proxyCache = [];
 
   constructor(fnc, ent = null, settings = {}) {
@@ -214,20 +214,20 @@ PR.FunctionProxy = class FunctionProxy extends Function {
   static create(fnc, ent, settings = {}) {
     const cacheId = `${fnc}-${ent ? ent.num : 'null'}`;
 
-    if (FunctionProxy.proxyCache[cacheId]) {
-      return FunctionProxy.proxyCache[cacheId];
+    if (ProgsFunctionProxy.proxyCache[cacheId]) {
+      return ProgsFunctionProxy.proxyCache[cacheId];
     }
 
     const obj = new PR.FunctionProxy(fnc, ent, settings);
 
     // such an ugly hack to make objects actually callable
-    FunctionProxy.proxyCache[cacheId] = new Proxy(obj, {
+    ProgsFunctionProxy.proxyCache[cacheId] = new Proxy(obj, {
       apply(target, thisArg, args) {
         return obj.call(...args);
       },
     });
 
-    return FunctionProxy.proxyCache[cacheId];
+    return ProgsFunctionProxy.proxyCache[cacheId];
   }
 
   static _getEdictId(ent) {
@@ -428,7 +428,7 @@ PR.EdictProxy = class ProgsEntity {
                 return;
               }
               if (typeof(value) === 'string') { // this is used by ED.ParseEdict etc. when parsing entities and setting fields
-                const d = ED.FindFunction(value);
+                const d = PR.FindFunction(value);
                 if (!d) {
                   throw new TypeError('Invalid function: ' + value);
                 }
@@ -602,6 +602,65 @@ PR.CheckEmptyString = function(s) {
 
 // edict
 
+PR._NewString = function(string) {
+  const newstring = [];
+  for (let i = 0; i < string.length; ++i) {
+    const c = string.charCodeAt(i);
+    if ((c === 92) && (i < (string.length - 1))) {
+      ++i;
+      newstring[newstring.length] = (string.charCodeAt(i) === 110) ? '\n' : '\\';
+    } else {
+      newstring[newstring.length] = String.fromCharCode(c);
+    }
+  }
+  return PR.SetString(null, newstring.join(''));
+};
+
+/**
+ * Retrieves the global definition at the specified offset.
+ * @param {number} ofs - The offset to retrieve.
+ * @returns {object} - The global definition.
+ */
+PR.GlobalAtOfs = function(ofs) {
+  return PR.globaldefs.find((def) => def.ofs === ofs);
+};
+
+/**
+ * Retrieves the field definition at the specified offset.
+ * @param {number} ofs - The offset to retrieve.
+ * @returns {object} - The field definition.
+ */
+PR.FieldAtOfs = function(ofs) {
+  return PR.fielddefs.find((def) => def.ofs === ofs);
+};
+
+/**
+ * Finds a field definition by name.
+ * @param {string} name - The field name.
+ * @returns {object} - The field definition.
+ */
+PR.FindField = function(name) {
+  return PR.fielddefs.find((def) => PR.GetString(def.name) === name);
+};
+
+/**
+ * Finds a global definition by name.
+ * @param {string} name - The global name.
+ * @returns {object} - The global definition.
+ */
+PR.FindGlobal = function(name) {
+  return PR.globaldefs.find((def) => PR.GetString(def.name) === name);
+};
+
+/**
+ * Finds a function definition by name.
+ * @param {string} name - The function name.
+ * @returns {number} - The function index.
+ */
+PR.FindFunction = function(name) {
+  return PR.functions.findIndex((func) => PR.GetString(func.name) === name);
+};
+
 PR.ValueString = function(type, val, ofs) {
   const val_float = new Float32Array(val);
   const val_int = new Int32Array(val);
@@ -614,7 +673,7 @@ PR.ValueString = function(type, val, ofs) {
     case PR.etype.ev_function:
       return PR.GetString(PR.functions[val_int[ofs]].name) + '()';
     case PR.etype.ev_field: {
-        const def = ED.FieldAtOfs(val_int[ofs]);
+        const def = PR.FieldAtOfs(val_int[ofs]);
         if (def != null) {
           return '.' + PR.GetString(def.name);
         }
@@ -646,7 +705,7 @@ PR.Value = function(type, val, ofs) {
     case PR.etype.ev_field:
       return val_int[ofs];
       // case PR.etype.ev_field: {
-      //     const def = ED.FieldAtOfs(val_int[ofs]);
+      //     const def = PR.FieldAtOfs(val_int[ofs]);
       //     if (def != null) {
       //       return '.' + PR.GetString(def.name);
       //     }
@@ -678,7 +737,7 @@ PR.UglyValueString = function(type, val, ofs) {
     case PR.etype.ev_function:
       return PR.GetString(PR.functions[val_int[ofs]].name);
     case PR.etype.ev_field: {
-        const def = ED.FieldAtOfs(val_int[ofs]);
+        const def = PR.FieldAtOfs(val_int[ofs]);
         if (def != null) {
           return PR.GetString(def.name);
         }
@@ -697,7 +756,7 @@ PR.UglyValueString = function(type, val, ofs) {
 };
 
 PR.GlobalString = function(ofs) {
-  const def = ED.GlobalAtOfs(ofs); let line;
+  const def = PR.GlobalAtOfs(ofs); let line;
   if (def != null) {
     line = ofs + '(' + PR.GetString(def.name) + ')' + PR.ValueString(def.type, PR.globals, ofs);
   } else {
@@ -710,7 +769,7 @@ PR.GlobalString = function(ofs) {
 };
 
 PR.GlobalStringNoContents = function(ofs) {
-  const def = ED.GlobalAtOfs(ofs); let line;
+  const def = PR.GlobalAtOfs(ofs); let line;
   if (def != null) {
     line = ofs + '(' + PR.GetString(def.name) + ')';
   } else {
@@ -846,7 +905,7 @@ PR.LoadProgs = function() {
   ];
   for (i = 0; i < fields.length; ++i) {
     const field = fields[i];
-    const def = ED.FindField(field);
+    const def = PR.FindField(field);
     PR.entvars[field] = (def != null) ? def.ofs : null;
   }
   PR.FunctionProxy.proxyCache = []; // free all cached functions
@@ -882,7 +941,7 @@ PR.LoadProgs = function() {
       initialData.classname = classname;
 
       for (const [key, value] of Object.entries(initialData)) {
-        const field = ED.FindField(key);
+        const field = PR.FindField(key);
 
         if (!field) {
           Con.PrintWarning(`'${key}' is not a field\n`);
@@ -899,7 +958,7 @@ PR.LoadProgs = function() {
             break;
 
           case PR.etype.ev_field: {
-            const d = ED.FindField(value);
+            const d = PR.FindField(value);
             if (!d) {
               Con.PrintWarning(`Can't find field: ${value}\n`);
               break;
@@ -982,10 +1041,12 @@ PR.Init = async function() {
     PR.QuakeJS.ServerGameAPI.Init();
 
     const identification = PR.QuakeJS.identification;
-    Con.Print(`PR.Init: QuakeJS server code v${identification.version.join('.')} by ${identification.author}.\n`);
+    Con.Print(`PR.Init: ${identification.name} v${identification.version.join('.')} by ${identification.author} loaded.\n`);
     return;
   } catch (e) {
     Con.PrintWarning('PR.Init: Falling back to QuakeC, failed to initialize QuakeJS server code: ' + e.message +'.\n');
+
+    PR.QuakeJS = null;
   }
 
   // CR: we do not need any of this when running QuakeJS

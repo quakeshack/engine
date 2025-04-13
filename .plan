@@ -306,6 +306,16 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-04-13
+
+* moved `PR` related stuff from `ED` to `PR`
+* considering rewriting ClientEntity into ClientEdict and allow the game code to put entities on top of it, reflecting the server side structure
+* some more `Cvar` improvements
+  * implemented `Cvar.FLAG.CHEAT`
+  * server is sending server cvars as serverinfo
+* there’s still lots of chatter going on even though it’s not required
+  * if there is no input update or anything, we do not need to send every frame
+
 ### 2025-04-12
 
 * decided to ditch lerping entities for now, it’s in there, but disabled by default

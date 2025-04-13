@@ -358,7 +358,7 @@ export class TeleportTrainEntity extends TrainEntity {
 
     this.solid = solid.SOLID_NOT;
     this.movetype = moveType.MOVETYPE_PUSH;
-    this.avelocity.set(100, 200, 300);
+    this.avelocity.setTo(100, 200, 300);
 
     this.noise = 'misc/null.wav';
     this.noise1 = 'misc/null.wav';

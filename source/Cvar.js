@@ -1,4 +1,4 @@
-/* global Host, Cvar, Q, SV, Con, Cmd */
+/* global Host, Cvar, Q, CL, SV, Con, Cmd */
 
 /**
  * Console Variable
@@ -21,7 +21,9 @@ Cvar = class Cvar {
     /** variable declared by the game code */
     GAME: 16,
     /** variable will be changed upon next map */
-    DEFERRED: 32,
+    DEFERRED: 32, // TODO: implement
+    /** variable cannot be changed unless sv_cheats is set to 1 */
+    CHEAT: 64,
   };
 
   /**
@@ -35,6 +37,8 @@ Cvar = class Cvar {
     this.name = name;
     /** @type {string} @private */
     this.string = value;
+    /** @type {string} @private */
+    this.original = value;
     /** @type {Cvar.FLAGS} @private */
     this.flags = flags;
     /** @type {?string} @private */
@@ -127,18 +131,25 @@ Cvar = class Cvar {
 
     this.string = value;
 
+    // Tell the server about the change
     if ((this.flags & Cvar.FLAG.SERVER) && changed && SV.server.active) {
-      if (this.flags & Cvar.FLAG.SECRET) {
-        Host.BroadcastPrint(`"${this.name}" changed\n`);
-      } else {
-        Host.BroadcastPrint(`"${this.name}" changed to "${this.string}"\n`);
-      }
+      SV.CvarChanged(this);
     }
 
-    // CR: automatically save when an archive Cvar changed
+    // Automatically save when an archive Cvar changed
     if ((this.flags & Cvar.FLAG.ARCHIVE) && changed && Host.initialized) {
       Host.WriteConfiguration();
     }
+
+    return this;
+  }
+
+  /**
+   * Resets the console variable to its original value.
+   * @returns {Cvar} this
+   */
+  reset() {
+    this.set(this.original);
 
     return this;
   }
@@ -222,6 +233,10 @@ Cvar = class Cvar {
         Con.Print(`- New value will be applied on the next map.\n`);
       }
 
+      if (v.flags & Cvar.FLAG.CHEAT) {
+        Con.Print(`- Cheat.\n`);
+      }
+
       if (v.flags & Cvar.FLAG.SECRET) {
         if (v.flags & Cvar.FLAG.SERVER) {
           Con.Print(`- Changed value will not be broadcasted, sensitive information.\n`);
@@ -236,6 +251,11 @@ Cvar = class Cvar {
       return true;
     }
 
+    if ((v.flags & Cvar.FLAG.CHEAT) && Host.dedicated.value === 0 && CL.cls.serverInfo?.sv_cheats !== '1') {
+      Con.Print('Cheats are not enabled on this server.\n');
+      return true;
+    }
+
     v.set(value);
 
     return true;
@@ -247,8 +267,21 @@ Cvar = class Cvar {
   static WriteVariables() {
     return Object.values(Cvar._vars)
         .filter((v) => (v.flags & Cvar.FLAG.ARCHIVE) !== 0)
-        .map((v) => `${v.name} "${v.string}"\n`)
+        .map((v) => `seta "${v.name}" "${v.string}"\n`)
         .join('');
+  }
+
+  /**
+   * Filter all variables by a function.
+   * @param {Function} compareFn function to compare the variable, first argument will be a Cvar
+   * @yields {Cvar} variable
+   */
+  static *Filter(compareFn) {
+    for (const variable of Object.values(Cvar._vars)) {
+      if (compareFn(variable)) {
+        yield variable;
+      }
+    }
   }
 
   /**
@@ -259,6 +292,33 @@ Cvar = class Cvar {
     if (name === undefined) {
       Con.Print('Usage: set <name> <value>\n');
       return;
+    }
+
+    if (!Cvar.Command_f.call(this, name, value)) {
+      Con.PrintWarning(`Unknown variable "${name}"\n`);
+    }
+  }
+
+  /**
+   * @param {string} name name of the variable
+   * @param {?string} value value to set
+   */
+  static Seta_f(name, value) {
+    if (name === undefined) {
+      Con.Print('Usage: seta <name> <value>\n');
+      return;
+    }
+
+    const variable = Cvar.FindVar(name);
+
+    if (!variable) {
+      Con.PrintWarning(`Unknown variable "${name}"\n`);
+      return;
+    }
+
+    if (!(variable.flags & Cvar.FLAG.ARCHIVE)) {
+      variable.flags |= Cvar.FLAG.ARCHIVE;
+      Con.DPrint(`"${name}" flagged as archive variable\n`);
     }
 
     if (!Cvar.Command_f.call(this, name, value)) {
@@ -298,7 +358,7 @@ Cvar = class Cvar {
    */
   static Init() {
     Cmd.AddCommand('set', Cvar.Set_f);
-    // TODO: seta
+    Cmd.AddCommand('seta', Cvar.Seta_f);
     Cmd.AddCommand('toggle', Cvar.Toggle_f);
   }
 

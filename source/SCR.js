@@ -163,7 +163,7 @@ SCR.SizeDown_f = function() {
 };
 
 SCR.Init = function() {
-  SCR.fov = new Cvar('fov', '90');
+  SCR.fov = new Cvar('fov', '90', Cvar.FLAG.CHEAT);
   SCR.viewsize = new Cvar('viewsize', '100', Cvar.FLAG.ARCHIVE);
   SCR.conspeed = new Cvar('scr_conspeed', '300');
   SCR.showturtle = new Cvar('showturtle', '0');

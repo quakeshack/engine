@@ -43,62 +43,7 @@ ED.Free = function(ed) { // TODO: move to SV.Edict
     // freeing the entity is done in ED.ClearEdict
     ed.entity.clear();
   }
-  // ed.entity.model = null;
-  // ed.entity.takedamage = 0.0;
-  // ed.entity.modelindex = 0.0;
-  // ed.entity.colormap = 0.0;
-  // ed.entity.skin = 0.0;
-  // ed.entity.frame = 0.0;
-  // ed.entity.origin = Vector.origin;
-  // ed.entity.angles = Vector.origin;
-  // ed.entity.nextthink = -1.0;
-  // ed.entity.solid = 0.0;
   ed.freetime = SV.server.time;
-};
-
-/**
- * Retrieves the global definition at the specified offset.
- * @param {number} ofs - The offset to retrieve.
- * @returns {object} - The global definition.
- */
-ED.GlobalAtOfs = function(ofs) {
-  return PR.globaldefs.find((def) => def.ofs === ofs);
-};
-
-/**
- * Retrieves the field definition at the specified offset.
- * @param {number} ofs - The offset to retrieve.
- * @returns {object} - The field definition.
- */
-ED.FieldAtOfs = function(ofs) {
-  return PR.fielddefs.find((def) => def.ofs === ofs);
-};
-
-/**
- * Finds a field definition by name.
- * @param {string} name - The field name.
- * @returns {object} - The field definition.
- */
-ED.FindField = function(name) {
-  return PR.fielddefs.find((def) => PR.GetString(def.name) === name);
-};
-
-/**
- * Finds a global definition by name.
- * @param {string} name - The global name.
- * @returns {object} - The global definition.
- */
-ED.FindGlobal = function(name) {
-  return PR.globaldefs.find((def) => PR.GetString(def.name) === name);
-};
-
-/**
- * Finds a function definition by name.
- * @param {string} name - The function name.
- * @returns {number} - The function index.
- */
-ED.FindFunction = function(name) {
-  return PR.functions.findIndex((func) => PR.GetString(func.name) === name);
 };
 
 ED.Print = function(ed) {
@@ -170,20 +115,6 @@ ED.Count = function() {
   Con.Print('view      :' + (models <= 9 ? '  ' : (models <= 99 ? ' ' : '')) + models + '\n');
   Con.Print('touch     :' + (solid <= 9 ? '  ' : (solid <= 99 ? ' ' : '')) + solid + '\n');
   Con.Print('step      :' + (step <= 9 ? '  ' : (step <= 99 ? ' ' : '')) + step + '\n');
-};
-
-ED._NewString = function(string) {
-  const newstring = [];
-  for (let i = 0; i < string.length; ++i) {
-    const c = string.charCodeAt(i);
-    if ((c === 92) && (i < (string.length - 1))) {
-      ++i;
-      newstring[newstring.length] = (string.charCodeAt(i) === 110) ? '\n' : '\\';
-    } else {
-      newstring[newstring.length] = String.fromCharCode(c);
-    }
-  }
-  return PR.SetString(null, newstring.join(''));
 };
 
 ED.ParseEdict = function(data, ent, initialData = {}) {

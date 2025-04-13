@@ -51,8 +51,8 @@ SV.fl = {
 
 SV.server = {
   num_edicts: 0,
-  datagram: new MSG.Buffer(1024),
-  reliable_datagram: new MSG.Buffer(1024),
+  datagram: new MSG.Buffer(2048),
+  reliable_datagram: new MSG.Buffer(2048),
   /** sent during client prespawn */
   signon: new MSG.Buffer(8192),
   edicts: [],
@@ -73,6 +73,7 @@ SV.EntityState = class ServerEntityState {
     this.effects = 0;
     this.solid = 0;
     this.free = false;
+    this.classname = null;
   }
 
   set(other) {
@@ -87,6 +88,7 @@ SV.EntityState = class ServerEntityState {
     this.effects = other.effects;
     this.solid = other.solid;
     this.free = other.free;
+    this.classname = other.classname;
   }
 };
 
@@ -109,6 +111,7 @@ SV.Client = class ServerClient {
     this.message.allowoverflow = true;
     this.colors = 0;
     this.old_frags = 0;
+    this.last_update = 0;
     this.last_message = 0;
     this.last_ping_update = 0;
     this.netconnection = null;
@@ -175,6 +178,14 @@ SV.Client = class ServerClient {
     return this.edict.entity.netname || '';
   }
 
+  get uniqueId() {
+    return 'pending'; // TODO
+  }
+
+  get ping() {
+    return Math.round((this.ping_times.reduce((sum, elem) => sum + elem) / this.ping_times.length) * 1000) || 0;
+  }
+
   saveSpawnparms() {
     SV.server.gameAPI.SetChangeParms(this.edict);
 
@@ -199,7 +210,7 @@ SV.Client = class ServerClient {
   }
 };
 
-SV.Edict = class Edict {
+SV.Edict = class ServerEdict {
   constructor(num) {
     this.num = num;
     this.free = false;
@@ -652,7 +663,7 @@ SV.Init = function() {
   SV.wateraccelerate = new Cvar('sv_wateraccelerate', '10');
   SV.spectatormaxspeed = new Cvar('sv_spectatormaxspeed', '500');
   SV.waterfriction = new Cvar('sv_waterfriction', '4');
-  SV.rcon_password = new Cvar('sv_rcon_password', '', Cvar.FLAG.SERVER | Cvar.FLAG.SECRET);
+  SV.rcon_password = new Cvar('sv_rcon_password', '', Cvar.FLAG.ARCHIVE);
 
   // TODO: we need to observe changes to those pmove vars and resend them to all clients when changed
 
@@ -802,6 +813,15 @@ SV.SendServerinfo = function(client) {
 
   MSG.WriteByte(message, Protocol.svc.setview);
   MSG.WriteShort(message, client.edict.num);
+
+  const serverCvars = Array.from(Cvar.Filter((cvar) => (cvar.flags & Cvar.FLAG.SERVER) !== 0));
+  if (serverCvars.length > 0) {
+    MSG.WriteByte(client.message, Protocol.svc.cvar);
+    MSG.WriteByte(client.message, serverCvars.length);
+    for (const serverCvar of serverCvars) {
+      SV.WriteCvar(client.message, serverCvar);
+    }
+  }
 
   MSG.WriteByte(message, Protocol.svc.signonnum);
   MSG.WriteByte(message, 1);
@@ -956,6 +976,8 @@ SV.TraversePVS = function*(pvs, ignoreEdictIds = [], alwaysIncludeEdictIds = [],
 SV.nullcmd = new Protocol.UserCmd();
 
 SV.WritePlayersToClient = function(clent, pvs, msg) {
+  let changes = false;
+
   for (let i = 0; i < SV.svs.maxclients; ++i) {
     const cl = SV.svs.clients[i];
     const playerEntity = cl.edict.entity;
@@ -1046,7 +1068,11 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
     if (pflags & Protocol.pf.PF_WEAPONFRAME) {
       MSG.WriteByte(msg, playerEntity.weaponframe);
     }
+
+    changes = true;
   }
+
+  return changes;
 };
 
 /**
@@ -1059,6 +1085,11 @@ SV.WriteDeltaEntity = function(msg, from, to) {
   const EPSILON = 0.1;
 
   let bits = 0;
+
+  // TODO: also ask the entity is it has a corresponding client entity
+  if (from.classname !== to.classname) {
+    bits |= Protocol.u.classname;
+  }
 
   if (from.free !== to.free) {
     bits |= Protocol.u.free;
@@ -1108,6 +1139,10 @@ SV.WriteDeltaEntity = function(msg, from, to) {
 
   MSG.WriteShort(msg, to.num);
   MSG.WriteShort(msg, bits);
+
+  if (bits & Protocol.u.classname) {
+    MSG.WriteString(msg, to.classname);
+  }
 
   if (bits & Protocol.u.free) {
     MSG.WriteByte(msg, to.free ? 1 : 0);
@@ -1160,7 +1195,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
   const origin = clientEdict.entity.origin.copy().add(clientEdict.entity.view_ofs);
   const pvs = SV.FatPVS(origin);
 
-  SV.WritePlayersToClient(clientEdict, pvs, msg);
+  let changes = SV.WritePlayersToClient(clientEdict, pvs, msg);
 
   /** @type {SV.Client} */
   const cl = SV.svs.clients[clientEdict.num - 1];
@@ -1176,6 +1211,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     }
 
     const toState = new SV.EntityState(ent.num);
+    toState.classname = ent.entity.classname;
     toState.modelindex = ent.entity.model ? ent.entity.modelindex : 0;
     toState.frame = ent.entity.frame;
     toState.colormap = ent.entity.colormap;
@@ -1194,6 +1230,8 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     fromState.set(toState);
 
     visedicts.push(ent.num);
+
+    changes = true;
   }
 
   // pretent all other entities are free
@@ -1214,9 +1252,13 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
 
     // TODO: wait for a confirmation by the client
     fromState.set(toState);
+
+    changes = true;
   }
 
   MSG.WriteShort(msg, 0); // end of list
+
+  return changes;
 };
 
 SV.WriteClientdataToMessage = function(clientEdict, msg) {
@@ -1233,7 +1275,7 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
     clientEdict.entity.dmg_save = 0.0;
   }
 
-  SV.SetIdealPitch(); // CR: remove this? QuakeWorld is not doing it
+  // SV.SetIdealPitch(); // CR: remove this? QuakeWorld is not doing it
 
   if (clientEdict.entity.fixangle) {
     MSG.WriteByte(msg, Protocol.svc.setangle);
@@ -1350,15 +1392,17 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
       }
     }
   }
+
+  return false; // FIXME
 };
 
-SV.clientdatagram = new MSG.Buffer(1024);
 SV.SendClientDatagram = function() { // FIXME: Host.client
   const client = Host.client;
-  const msg = SV.clientdatagram;
-  msg.cursize = 0;
+  const msg = new MSG.Buffer(2048);
   MSG.WriteByte(msg, Protocol.svc.time);
   MSG.WriteFloat(msg, SV.server.time);
+
+  let changes = false;
 
   // Send ping times to all clients every second
   if (Host.realtime - client.last_ping_update >= 1) {
@@ -1369,17 +1413,26 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
         continue;
       }
 
-      const ping = Math.round((pingClient.ping_times.reduce((sum, elem) => sum + elem) / pingClient.ping_times.length) * 1000);
       MSG.WriteByte(msg, Protocol.svc.updatepings);
       MSG.WriteByte(msg, i);
-      MSG.WriteShort(msg, ping || 0);
+      MSG.WriteShort(msg, Math.max(0, Math.min(Math.round(pingClient.ping * 10), 30000)));
+
+      changes |= true;
     }
 
     client.last_ping_update = Host.realtime;
   }
 
-  SV.WriteClientdataToMessage(client.edict, msg);
-  SV.WriteEntitiesToClient(client.edict, msg);
+  changes |= SV.WriteClientdataToMessage(client.edict, msg);
+  changes |= SV.WriteEntitiesToClient(client.edict, msg);
+
+  if (!changes && SV.server.time - client.last_update < 0.1) {
+    // nothing to send
+    return true;
+  }
+
+  client.last_update = SV.server.time;
+
   if ((msg.cursize + SV.server.datagram.cursize) < msg.data.byteLength) {
     msg.write(new Uint8Array(SV.server.datagram.data), SV.server.datagram.cursize);
   }
@@ -1574,7 +1627,6 @@ SV.SpawnServer = function(mapname) {
   Mod.ClearAll();
 
   SV.server.gameAPI = PR.QuakeJS ? new PR.QuakeJS.ServerGameAPI(Game.EngineInterface) : PR.LoadProgs();
-
   SV.server.gameVersion = `${(PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`)}`;
 
   SV.server.edicts = [];
@@ -1706,6 +1758,29 @@ SV.ShutdownServer = function (isCrashShutdown) {
   Con.Print('Server shut down.\n');
 }
 
+SV.WriteCvar = function(msg, cvar) {
+  if (cvar.flags & Cvar.FLAG.SECRET) {
+    MSG.WriteString(msg, cvar.name);
+    MSG.WriteString(msg, cvar.string ? 'REDACTED' : '');
+  } else {
+    MSG.WriteString(msg, cvar.name);
+    MSG.WriteString(msg, cvar.string);
+  }
+};
+
+SV.CvarChanged = function(cvar) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
+    const client = SV.svs.clients[i];
+    if (!client.active || !client.spawned) {
+      continue;
+    }
+
+    MSG.WriteByte(client.message, Protocol.svc.cvar);
+    MSG.WriteByte(client.message, 1);
+    SV.WriteCvar(client.message, cvar);
+  }
+};
+
 // move
 
 SV.CheckBottom = function(ent) {
@@ -1735,9 +1810,8 @@ SV.CheckBottom = function(ent) {
   }
   let bottom = trace.endpos[2];
   const mid = bottom;
-  let x; let y;
-  for (x = 0; x <= 1; ++x) {
-    for (y = 0; y <= 1; ++y) {
+  for (let x = 0; x <= 1; ++x) {
+    for (let y = 0; y <= 1; ++y) {
       start[0] = stop[0] = (x !== 0) ? maxs[0] : mins[0];
       start[1] = stop[1] = (y !== 0) ? maxs[1] : mins[1];
       trace = SV.Move(start, Vector.origin, Vector.origin, stop, SV.move.nomonsters, ent);

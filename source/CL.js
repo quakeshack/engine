@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, IN, Sys, Def, V, CDAudio, Draw, Pmove */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, IN, Sys, Def, V, CDAudio, Draw, Pmove, PR */
 
 // eslint-disable-next-line no-global-assign
 CL = {};
@@ -496,6 +496,7 @@ CL.cls = {
   netcon: null,
   connecting: null,
   latency: 0.0,
+  serverInfo: {},
 
   // used by CL.ParseClientdata
   oldparsecountmod: 0,
@@ -506,8 +507,9 @@ CL.cls = {
 CL.static_entities = [];
 CL.visedicts = [];
 
-CL.Entity = class ClientEntity {
+CL.Entity = class ClientEdict {
   constructor(num) {
+    this.classname = null;
     this.num = num;
     this.model = null;
     this.frame = 0;
@@ -538,7 +540,12 @@ CL.Entity = class ClientEntity {
     Object.seal(this);
   }
 
-  clear() {
+  equals(other) {
+    // CR: playing with fire here
+    return this === other || (this.num !== -1 && this.num === other.num);
+  }
+
+  freeEdict() {
     this.model = null;
     this.frame = 0;
     this.skinnum = 0;
@@ -547,6 +554,7 @@ CL.Entity = class ClientEntity {
     this.origin.clear();
     this.origin_old = null;
     this.angles.clear();
+    this.angles_old = null;
     this.dlightbits = 0;
     this.dlightframe = 0;
     this.msg_time[0] = 0.0;
@@ -560,6 +568,10 @@ CL.Entity = class ClientEntity {
     this.free = false;
   }
 
+  /**
+   * Sets origin and angles according to the current message.
+   * @param {boolean} doLerp whether to do a point lerp
+   */
   updatePosition(doLerp) {
     if (this.origin_old === null) {
       this.origin_old = this.msg_origins[0].copy();
@@ -598,6 +610,14 @@ CL.Entity = class ClientEntity {
       }
       this.angles[j] = this.angles_old[j] + f * d;
     }
+  }
+
+  emit() {
+    return true;
+  }
+
+  think() {
+
   }
 };
 
@@ -729,6 +749,14 @@ CL.ClearState = function() {
   for (i = 0; i <= 23; ++i) {
     CL.beams[i] = {endtime: 0.0}; // TODO: Beam class
   }
+
+  CL.cls.serverInfo = {};
+};
+
+CL.ResetCheatCvars = function() {
+  for (const cvar of Cvar.Filter((cvar) => (cvar.flags & Cvar.FLAG.CHEAT) !== 0)) {
+    cvar.reset();
+  }
 };
 
 CL.Disconnect = function() {
@@ -756,6 +784,7 @@ CL.Disconnect = function() {
   }
   CL.cls.demoplayback = CL.cls.timedemo = false;
   CL.cls.signon = 0;
+  CL.ResetCheatCvars();
 };
 
 CL.Connect = function(sock) {
@@ -1110,6 +1139,17 @@ CL.SendCmd = function() {
   CL.cls.message.cursize = 0;
 };
 
+CL.ServerInfo_f = function() {
+  if (CL.cls.state !== CL.active.connected) {
+    Con.Print(`Can't "${this.command}", not connected\n`);
+    return;
+  }
+
+  for (const [key, value] of Object.entries(CL.cls.serverInfo)) {
+    Con.Print(`${key}: ${value}\n`);
+  }
+};
+
 CL.InitPmove = function() {
   CL.pmove = new Pmove.Pmove();
   CL.pmove.movevars = new Pmove.MoveVars();
@@ -1148,20 +1188,21 @@ CL.Init = async function() {
   Cmd.AddCommand('playdemo', CL.PlayDemo_f);
   Cmd.AddCommand('timedemo', CL.TimeDemo_f);
   Cmd.AddCommand('rcon', CL.Rcon_f);
+  Cmd.AddCommand('serverinfo', CL.ServerInfo_f);
   CL.svc_strings = Object.keys(Protocol.svc);
+
+  if (!PR.QuakeJS?.ClientGameAPI) {
+    return;
+  }
 
   try {
     if (COM.CheckParm('-noquakejs')) {
       throw new Error('QuakeJS disabled');
     }
 
-    CL.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
-    CL.QuakeJS.ClientGameAPI.Init();
-
-    const identification = CL.QuakeJS.identification;
-    Con.Print(`CL.Init: QuakeJS client code v${identification.version.join('.')} by ${identification.author}.\n`);
+    PR.QuakeJS.ClientGameAPI.Init();
   } catch (e) {
-    Con.PrintWarning('CL.Init: Failed to import QuakeJS client code, ' + e.message + '.\n');
+    Con.PrintError('CL.Init: Failed to import QuakeJS client code, ' + e.message + '.\n');
   }
 };
 
@@ -1279,7 +1320,7 @@ CL.ParseServerData = function() {
 
   // check if client is actually compatible with the server
   if (isHavingClientQuakeJS) {
-    if (!CL.QuakeJS?.ClientGameAPI) {
+    if (!PR.QuakeJS?.ClientGameAPI) {
       Host.Error('Server is running QuakeJS with client code provided,\nbut client code is not imported.\nTry clearing your cache and connect again.');
       return;
     }
@@ -1288,14 +1329,14 @@ CL.ParseServerData = function() {
     const author = MSG.ReadString();
     const version = [MSG.ReadByte(), MSG.ReadByte(), MSG.ReadByte()];
 
-    const identification = CL.QuakeJS.identification;
+    const identification = PR.QuakeJS.identification;
 
     if (identification.name !== name || identification.author !== author) {
       Host.Error(`Cannot connect, because the server is running ${name} by ${author} and you are running ${name} by ${author}.`);
       return;
     }
 
-    if (!CL.QuakeJS.ClientGameAPI.IsServerCompatible(version)) {
+    if (!PR.QuakeJS.ClientGameAPI.IsServerCompatible(version)) {
       Host.Error(`Server (v${version.join('.')}) is not compatible. You are running v${identification.version.join('.')}.\nTry clearing your cache and connect again.`);
       return;
     }
@@ -1594,6 +1635,26 @@ CL.PublishObituary = function(killerEdictId, victimEdictId, killerWeapon, killer
   CL.AppendChatMessage(killer, `killed ${victim} using ${killerWeapon} (${killerItems})`, true);
 };
 
+CL.ParseServerCvars = function () {
+  let count = MSG.ReadByte();
+
+  while(count-- > 0) {
+    const name = MSG.ReadString();
+    const value = MSG.ReadString();
+
+    CL.cls.serverInfo[name] = value;
+
+    if (CL.cls.signon === 4) {
+      Con.Print(`"${name}" changed to "${value}"\n`);
+    }
+
+    // special handling for cheats
+    if (name === 'sv_cheats' && value === '0') {
+      CL.ResetCheatCvars();
+    }
+  }
+};
+
 /**
  * @type {number}
  * as long as we do not have a fully async architecture, we have to cheat
@@ -1753,7 +1814,7 @@ CL.ParseServerMessage = function() {
         if (i >= CL.state.maxclients) {
           Host.Error('CL.ParseServerMessage: svc_updatepings > MAX_SCOREBOARD');
         }
-        CL.state.scores[i].ping = MSG.ReadShort();
+        CL.state.scores[i].ping = MSG.ReadShort() / 10;
         continue;
       case Protocol.svc.particle: // TODO: Client
         R.ParseParticleEffect();
@@ -1839,6 +1900,9 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.deltapacketentities:
         entitiesReceived++;
         CL.ParsePacketEntities(true);
+        continue;
+      case Protocol.svc.cvar:
+        CL.ParseServerCvars();
         continue;
     }
     CL._lastServerMessages.pop(); // discard the last added command as it was invalid anyway
@@ -2129,58 +2193,60 @@ CL.EmitEntities = function() {
       continue;
     }
 
-    const ent = clent;
+    // TODO: clent.emit()
 
-    if ((ent.model.flags & Mod.flags.rotate) !== 0) {
-      ent.angles[1] = Vector.anglemod(CL.state.time * 100.0);
+    clent.emit();
+
+    if ((clent.model.flags & Mod.flags.rotate) !== 0) {
+      clent.angles[1] = Vector.anglemod(CL.state.time * 100.0);
     }
-    if ((ent.effects & Mod.effects.brightfield) !== 0) {
-      R.EntityParticles(ent);
+    if ((clent.effects & Mod.effects.brightfield) !== 0) {
+      R.EntityParticles(clent);
     }
-    if ((ent.effects & Mod.effects.muzzleflash) !== 0) {
+    if ((clent.effects & Mod.effects.muzzleflash) !== 0) {
       const dl = CL.AllocDlight(i);
-      const fv = ent.angles.angleVectors().forward;
+      const fv = clent.angles.angleVectors().forward;
       dl.origin = new Vector(
-        ent.origin[0] + 18.0 * fv[0],
-        ent.origin[1] + 18.0 * fv[1],
-        ent.origin[2] + 16.0 + 18.0 * fv[2],
+        clent.origin[0] + 18.0 * fv[0],
+        clent.origin[1] + 18.0 * fv[1],
+        clent.origin[2] + 16.0 + 18.0 * fv[2],
       );
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.minlight = 32.0;
       dl.die = CL.state.mtime[0] + 0.1;
       // dl.color = new Vector(1.0, 0.95, 0.85);
     }
-    if ((ent.effects & Mod.effects.brightlight) !== 0) {
+    if ((clent.effects & Mod.effects.brightlight) !== 0) {
       const dl = CL.AllocDlight(i);
-      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
+      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
       dl.radius = 400.0 + Math.random() * 32.0;
       dl.die = CL.state.time + 0.001;
     }
-    if ((ent.effects & Mod.effects.dimlight) !== 0) {
+    if ((clent.effects & Mod.effects.dimlight) !== 0) {
       const dl = CL.AllocDlight(i);
-      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
+      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.die = CL.state.time + 0.001;
       // dl.color = new Vector(0.5, 0.5, 1.0);
     }
-    if ((ent.model.flags & Mod.flags.gib) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 2);
-    } else if ((ent.model.flags & Mod.flags.zomgib) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 4);
-    } else if ((ent.model.flags & Mod.flags.tracer) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 3);
-    } else if ((ent.model.flags & Mod.flags.tracer2) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 5);
-    } else if ((ent.model.flags & Mod.flags.rocket) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 0);
+    if ((clent.model.flags & Mod.flags.gib) !== 0) {
+      R.RocketTrail(oldorg, clent.origin, 2);
+    } else if ((clent.model.flags & Mod.flags.zomgib) !== 0) {
+      R.RocketTrail(oldorg, clent.origin, 4);
+    } else if ((clent.model.flags & Mod.flags.tracer) !== 0) {
+      R.RocketTrail(oldorg, clent.origin, 3);
+    } else if ((clent.model.flags & Mod.flags.tracer2) !== 0) {
+      R.RocketTrail(oldorg, clent.origin, 5);
+    } else if ((clent.model.flags & Mod.flags.rocket) !== 0) {
+      R.RocketTrail(oldorg, clent.origin, 0);
       const dl = CL.AllocDlight(i);
-      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2]);
+      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2]);
       dl.radius = 200.0;
       dl.die = CL.state.time + 0.01;
-    } else if ((ent.model.flags & Mod.flags.grenade) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 1);
-    } else if ((ent.model.flags & Mod.flags.tracer3) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 6);
+    } else if ((clent.model.flags & Mod.flags.grenade) !== 0) {
+      R.RocketTrail(oldorg, clent.origin, 1);
+    } else if ((clent.model.flags & Mod.flags.tracer3) !== 0) {
+      R.RocketTrail(oldorg, clent.origin, 6);
     }
 
     CL.visedicts[CL.numvisedicts++] = clent;
@@ -2202,6 +2268,11 @@ CL.ParsePacketEntities = function(isDeltaUpdate) {
     const clent = CL.EntityNum(edictNum);
 
     const bits = MSG.ReadShort();
+
+    if (bits & Protocol.u.classname) {
+      // TODO: initialize the right client entity class here
+      clent.classname = MSG.ReadString();
+    }
 
     if (bits & Protocol.u.free) {
       clent.free = MSG.ReadByte() !== 0;
@@ -2260,7 +2331,6 @@ CL.ParsePacketEntities = function(isDeltaUpdate) {
     clent.msg_time[0] = CL.state.mtime[0];
 
     if (!isDeltaUpdate) {
-      console.log('not delta');
       clent.msg_origins[1].set(clent.msg_origins[0]);
       clent.msg_angles[1].set(clent.msg_angles[0]);
       clent.msg_time[1] = clent.msg_time[0];
@@ -2268,7 +2338,7 @@ CL.ParsePacketEntities = function(isDeltaUpdate) {
 
     if (clent.free) {
       // make sure that we clear this ClientEntity before we throw it back in
-      clent.clear();
+      clent.freeEdict();
     }
   }
 
