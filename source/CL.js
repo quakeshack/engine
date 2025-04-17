@@ -111,14 +111,14 @@ CL.GetMessage = function() {
 };
 
 CL.Stop_f = function() {
-  if (Cmd.client === true) {
+  if (this.client) {
     return;
   }
   if (CL.cls.demorecording !== true) {
     Con.Print('Not recording a demo.\n');
     return;
   }
-  NET.message.cursize = 0;
+  NET.message.clear();
   MSG.WriteByte(NET.message, Protocol.svc.disconnect);
   MSG.WriteString(NET.message, 'CL.Stop_f');
   CL.WriteDemoMessage();
@@ -165,7 +165,7 @@ CL.Record_f = function(demoname, map, track) {
 };
 
 CL.PlayDemo_f = function(demoname) {
-  if (Cmd.client === true) {
+  if (this.client) {
     return;
   }
   if (demoname === undefined) {
@@ -217,7 +217,7 @@ CL.FinishTimeDemo = function() {
 };
 
 CL.TimeDemo_f = function(demoname) {
-  if (Cmd.client === true) {
+  if (this.client) {
     return;
   }
   if (demoname === undefined) {
@@ -413,46 +413,55 @@ CL.BaseMove = function() {
     cmd.sidemove *= CL.movespeedkey.value;
     cmd.upmove *= CL.movespeedkey.value;
   }
+
+  cmd.impulse = CL.impulse;
+  cmd.angles.set(CL.state.viewangles);
+  // TODO: cmd.msec =
+
+  CL.impulse = 0;
 };
 
 CL.impulse = 0;
 
 CL.SendMove = function() {
-  const buf = new MSG.Buffer(16);
-  MSG.WriteByte(buf, Protocol.clc.move);
-  MSG.WriteFloat(buf, CL.state.mtime[0]);
-  MSG.WriteAngle(buf, CL.state.viewangles[0]);
-  MSG.WriteAngle(buf, CL.state.viewangles[1]);
-  MSG.WriteAngle(buf, CL.state.viewangles[2]);
-  MSG.WriteShort(buf, CL.state.cmd.forwardmove);
-  MSG.WriteShort(buf, CL.state.cmd.sidemove);
-  MSG.WriteShort(buf, CL.state.cmd.upmove);
-  let bits = 0;
+  CL.state.cmd.buttons = 0;
 
   if ((CL.kbuttons[CL.kbutton.attack].state & 3) !== 0) {
-    bits += Protocol.button.attack;
+    CL.state.cmd.buttons |= Protocol.button.attack;
   }
   CL.kbuttons[CL.kbutton.attack].state &= 5;
 
   if ((CL.kbuttons[CL.kbutton.jump].state & 3) !== 0) {
-    bits += Protocol.button.jump;
+    CL.state.cmd.buttons |= Protocol.button.jump;
   }
   CL.kbuttons[CL.kbutton.jump].state &= 5;
 
   if ((CL.kbuttons[CL.kbutton.use].state & 3) !== 0) {
-    bits += Protocol.button.use;
+    CL.state.cmd.buttons |= Protocol.button.use;
   }
   CL.kbuttons[CL.kbutton.use].state &= 5;
 
-  MSG.WriteByte(buf, bits);
-  MSG.WriteByte(buf, CL.impulse);
-  CL.impulse = 0;
+  if (CL.state.cmd.equals(CL.state.lastcmd)) {
+    return; // nothing new happened
+  }
+
+  const buf = new MSG.Buffer(16);
+  MSG.WriteByte(buf, Protocol.clc.move);
+  MSG.WriteFloat(buf, CL.state.mtime[0]);
+  MSG.WriteAngleVector(buf, CL.state.cmd.angles);
+  MSG.WriteShort(buf, CL.state.cmd.forwardmove);
+  MSG.WriteShort(buf, CL.state.cmd.sidemove);
+  MSG.WriteShort(buf, CL.state.cmd.upmove);
+  MSG.WriteByte(buf, CL.state.cmd.buttons);
+  MSG.WriteByte(buf, CL.state.cmd.impulse);
+
   if (CL.cls.demoplayback === true) {
     return;
   }
   if (++CL.state.movemessages <= 2) {
     return;
   }
+  CL.state.lastcmd.set(CL.state.cmd);
   if (NET.SendUnreliableMessage(CL.cls.netcon, buf) === -1) {
     Con.Print('CL.SendMove: lost server connection\n');
     Host.Error('lost server connection');
@@ -492,7 +501,7 @@ CL.cls = {
   demoplayback: false,
   demos: [],
   timedemo: false,
-  message: new MSG.Buffer(8192),
+  message: new MSG.Buffer(8192, 'CL.cls.message'),
   netcon: null,
   connecting: null,
   latency: 0.0,
@@ -502,6 +511,8 @@ CL.cls = {
   oldparsecountmod: 0,
   parsecountmod: 0,
   parsecounttime: 0.0,
+
+  lastcmdsent: 0,
 };
 
 CL.static_entities = [];
@@ -645,6 +656,8 @@ CL.SetConnectingStep = function(percentage, message) {
     return;
   }
 
+  Con.DPrint(`${percentage.toFixed(0).padStart(3, ' ')}% ${message}\n`);
+
   SCR.con_current = 0; // force Console to disappear
 
   percentage = Math.round(percentage);
@@ -684,6 +697,7 @@ CL.ClearState = function() {
   CL.state = {
     movemessages: 0,
     cmd: new Protocol.UserCmd(),
+    lastcmd: new Protocol.UserCmd(),
     stats: Object.keys(Def.stat).fill(0),
     items: 0,
     item_gettime: new Array(32).fill(0.0),
@@ -729,7 +743,9 @@ CL.ClearState = function() {
     lerp: null,
   };
 
-  CL.cls.message.cursize = 0;
+  CL.cls.message.clear();
+  CL.cls.serverInfo = {};
+  CL.cls.lastcmdsent = 0;
 
   CL.entities = [];
 
@@ -750,7 +766,6 @@ CL.ClearState = function() {
     CL.beams[i] = {endtime: 0.0}; // TODO: Beam class
   }
 
-  CL.cls.serverInfo = {};
 };
 
 CL.ResetCheatCvars = function() {
@@ -766,16 +781,16 @@ CL.Disconnect = function() {
     CL.StopPlayback();
   } else if (CL.cls.state === CL.active.connecting) {
     CL.cls.state = CL.active.disconnected;
-    CL.cls.message.cursize = 0;
+    CL.cls.message.clear();
   } else if (CL.cls.state === CL.active.connected) {
     if (CL.cls.demorecording === true) {
       CL.Stop_f();
     }
     Con.DPrint('Sending clc_disconnect\n');
-    CL.cls.message.cursize = 0;
+    CL.cls.message.clear();
     MSG.WriteByte(CL.cls.message, Protocol.clc.disconnect);
     NET.SendUnreliableMessage(CL.cls.netcon, CL.cls.message);
-    CL.cls.message.cursize = 0;
+    CL.cls.message.clear();
     NET.Close(CL.cls.netcon);
     CL.cls.state = CL.active.disconnected;
     if (SV.server.active === true) {
@@ -1084,6 +1099,9 @@ CL.ReadFromServer = function() {
     } else {
       ret = CL.GetMessage();
       if (ret === -1) {
+        if (CL._processingServerDataState === 0 && CL.cls.signon < 4) {
+          break;
+        }
         Host.Error('CL.ReadFromServer: lost server connection');
       }
       if (ret === 0) {
@@ -1116,10 +1134,15 @@ CL.SendCmd = function() {
     CL.BaseMove();
     IN.Move();
     CL.SendMove();
+
+    // send a no-op if we haven't sent anything in a while
+    if (Host.realtime - CL.cls.lastcmdsent > 10) {
+      MSG.WriteByte(CL.cls.message, Protocol.clc.nop);
+    }
   }
 
   if (CL.cls.demoplayback === true) {
-    CL.cls.message.cursize = 0;
+    CL.cls.message.clear();
     return;
   }
 
@@ -1136,7 +1159,10 @@ CL.SendCmd = function() {
     Host.Error('CL.SendCmd: lost server connection');
   }
 
-  CL.cls.message.cursize = 0;
+  // Con.DPrint('CL.SendCmd: sent ' + CL.cls.message.cursize + ' bytes, clearing\n');
+  CL.cls.message.clear(); // CR: this clear during a local connect will break everything, make sure to only send an clear after signon 4
+
+  CL.cls.lastcmdsent = Host.realtime;
 };
 
 CL.ServerInfo_f = function() {
@@ -1275,7 +1301,7 @@ CL.KeepaliveMessage = function() {
   Con.Print('--> client to server keepalive\n');
   MSG.WriteByte(CL.cls.message, Protocol.clc.nop);
   NET.SendMessage(CL.cls.netcon, CL.cls.message);
-  CL.cls.message.cursize = 0;
+  CL.cls.message.clear();
 };
 
 CL.ParsePmovevars = function() {
@@ -1655,6 +1681,15 @@ CL.ParseServerCvars = function () {
   }
 };
 
+CL.PrintLastServerMessages = function() {
+  if (CL._lastServerMessages.length > 0) {
+    Con.Print('Last server messages:\n');
+    for (const cmd of CL._lastServerMessages) {
+      Con.Print(' ' + cmd + '\n');
+    }
+  }
+}
+
 /**
  * @type {number}
  * as long as we do not have a fully async architecture, we have to cheat
@@ -1685,21 +1720,25 @@ CL.ParseServerMessage = function() {
   if (CL._processingServerDataState === 3) {
     CL._processingServerDataState = 0;
   } else {
+    CL._lastServerMessages = [];
     MSG.BeginReading();
+    // Con.DPrint('CL.ParseServerMessage: reading server message\n' + NET.message.toHexString() + '\n');
   }
 
-  let cmd; let i;
+  let i;
   while (CL.cls.state > CL.active.disconnected) {
     if (CL._processingServerDataState > 0) {
       break;
     }
 
     if (MSG.badread === true) {
+      CL.PrintLastServerMessages();
+      MSG.PrintLastRead();
       Host.Error('CL.ParseServerMessage: Bad server message');
       return;
     }
 
-    cmd = MSG.ReadByte();
+    const cmd = MSG.ReadByte();
 
     if (cmd === -1) {
       CL.Shownet('END OF MESSAGE');
@@ -1711,6 +1750,7 @@ CL.ParseServerMessage = function() {
     if (CL._lastServerMessages.length > 10) {
       CL._lastServerMessages.shift();
     }
+    // Con.DPrint('CL.ParseServerMessage: parsing ' + CL.svc_strings[cmd] + ' ' + cmd + '\n');
     switch (cmd) {
       case Protocol.svc.nop:
         continue;
@@ -1738,7 +1778,7 @@ CL.ParseServerMessage = function() {
           const string = MSG.ReadString();
           SCR.CenterPrint(string);
           Con.Print(string + '\n'); // TODO: make it more stand out
-        };
+        }
         continue;
       case Protocol.svc.chatmsg: // TODO: Client
         CL.AppendChatMessage(MSG.ReadString(), MSG.ReadString(), MSG.ReadByte() === 1);
@@ -1756,6 +1796,12 @@ CL.ParseServerMessage = function() {
       case Protocol.svc.serverdata:
         CL.ParseServerData();
         SCR.recalc_refdef = true;
+        continue;
+      case Protocol.svc.changelevel: {
+          const mapname = MSG.ReadString();
+          CL.SetConnectingStep(5, 'Changing level to ' + mapname);
+          CL.cls.signon = 0;
+        }
         continue;
       case Protocol.svc.setangle:
         CL.state.viewangles.set(MSG.ReadAngleVector());
@@ -1906,12 +1952,7 @@ CL.ParseServerMessage = function() {
         continue;
     }
     CL._lastServerMessages.pop(); // discard the last added command as it was invalid anyway
-    if (CL._lastServerMessages.length > 0) {
-      Con.Print('Last server messages:\n');
-      for (const cmd of CL._lastServerMessages) {
-        Con.Print(' ' + cmd + '\n');
-      }
-    }
+    CL.PrintLastServerMessages();
     Host.Error(`CL.ParseServerMessage: Illegible server message\n`);
     return;
   }

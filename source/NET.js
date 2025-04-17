@@ -60,7 +60,7 @@ NET.FormatIP = function(ip, port) {
 };
 
 NET.activeSockets = [];
-NET.message = new MSG.Buffer(8192);
+NET.message = new MSG.Buffer(8192, 'NET.message');
 NET.activeconnections = 0;
 NET.listening = false;
 
@@ -77,6 +77,10 @@ NET.QSocket = (class QSocket {
 
     this.sendMessage = new Uint8Array(new ArrayBuffer(8192));
     this.sendMessageLength = 0;
+  }
+
+  toString() {
+    return `QSocket(${this.address})`;
   }
 
   _getDriver() {

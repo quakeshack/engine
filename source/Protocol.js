@@ -112,6 +112,7 @@ Protocol.svc = {
   obituary: 104,
   pmovevars: 105,
   cvar: 106,
+  changelevel: 107,
 };
 
 /** Client to Server */
@@ -242,5 +243,35 @@ Protocol.UserCmd = class UserCmd { // usercmd_t
     this.buttons = other.buttons;
     this.impulse = other.impulse;
     return this;
+  }
+
+  /**
+   * Reset command.
+   * @returns {Protocol.UserCmd} this
+   */
+  reset() {
+    this.msec = 0;
+    this.forwardmove = 0;
+    this.sidemove = 0;
+    this.upmove = 0;
+    this.angles.clear();
+    this.buttons = 0;
+    this.impulse = 0;
+    return this;
+  }
+
+  /**
+   * Tests for equality.
+   * @param {Protocol.UserCmd} other other
+   * @returns {boolean} true, if equal
+   */
+  equals(other) {
+    return this.msec === other.msec &&
+      this.forwardmove === other.forwardmove &&
+      this.sidemove === other.sidemove &&
+      this.upmove === other.upmove &&
+      this.angles.equals(other.angles) && // FIXME: use epsilon?
+      this.buttons === other.buttons &&
+      this.impulse === other.impulse;
   }
 };

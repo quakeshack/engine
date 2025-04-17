@@ -1202,7 +1202,8 @@ R.Init = async function() {
 
   await R.InitParticles();
 
-  await GL.CreateProgram('alias',
+  await Promise.all([
+    GL.CreateProgram('alias',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uAlpha'],
       [
         ['aPositionA', gl.FLOAT, 3],
@@ -1210,31 +1211,32 @@ R.Init = async function() {
         ['aNormal', gl.FLOAT, 3],
         ['aTexCoord', gl.FLOAT, 2]
       ],
-      ['tTexture']);
-  await GL.CreateProgram('brush',
+      ['tTexture']),
+  GL.CreateProgram('brush',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uAlpha'],
       [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 4], ['aLightStyle', gl.FLOAT, 4]],
-      ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB']);
-  await GL.CreateProgram('dlight',
+      ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB']),
+  GL.CreateProgram('dlight',
       ['uOrigin', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uRadius', 'uGamma'],
       [['aPosition', gl.FLOAT, 3]],
-      []);
-  await GL.CreateProgram('player',
+      []),
+  GL.CreateProgram('player',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uTop', 'uBottom'],
       [['aPositionA', gl.FLOAT, 3], ['aNormal', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
-      ['tTexture', 'tPlayer']);
-  await GL.CreateProgram('sprite',
+      ['tTexture', 'tPlayer']),
+  GL.CreateProgram('sprite',
       ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma'],
       [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
-      ['tTexture']);
-  await GL.CreateProgram('turbulent',
+      ['tTexture']),
+  GL.CreateProgram('turbulent',
       ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uTime'],
       [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
-      ['tTexture']);
-  await GL.CreateProgram('warp',
+      ['tTexture']),
+  GL.CreateProgram('warp',
       ['uOrtho', 'uTime'],
       [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
-      ['tTexture']);
+      ['tTexture']),
+  ]);
 
   R.warpbuffer = gl.createFramebuffer();
   R.warptexture = gl.createTexture();
@@ -2257,14 +2259,16 @@ R.MakeSky = async function() {
     }
   }
 
-  await GL.CreateProgram('sky',
+  await Promise.all([
+    GL.CreateProgram('sky',
       ['uViewAngles', 'uPerspective', 'uScale', 'uGamma', 'uTime'],
       [['aPosition', gl.FLOAT, 3]],
-      ['tSolid', 'tAlpha']);
-  await GL.CreateProgram('sky-chain',
+      ['tSolid', 'tAlpha']),
+    GL.CreateProgram('sky-chain',
       ['uViewOrigin', 'uViewAngles', 'uPerspective'],
       [['aPosition', gl.FLOAT, 3]],
-      []);
+      []),
+  ]);
 
   R.skyvecs = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, R.skyvecs);

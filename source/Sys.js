@@ -6,35 +6,21 @@ Sys = {};
 Sys.events = ['oncontextmenu', 'onfocus', 'onkeydown', 'onkeyup', 'onmousedown', 'onmouseup', 'onmousewheel', 'onunload', 'onwheel'];
 
 Sys.Init = async function() {
-  const cmdline = decodeURIComponent(document.location.search);
   const location = document.location;
-  const argv = [location.href.substring(0, location.href.length - location.search.length)];
-  if (cmdline.charCodeAt(0) === 63) {
-    let text = '';
-    let quotes = false;
-    let c;
-    for (let i = 1; i < cmdline.length; ++i) {
-      c = cmdline.charCodeAt(i);
-      if ((c < 32) || (c > 127)) {
-        continue;
+  const argv = [location.hostname];
+  if (location.search && location.search.length > 1) {
+    const qs = location.search.substring(1);
+    qs.split('&').forEach(param => {
+      if (param.trim() === '') return;
+      const [key, value] = param.split('=');
+      const decodedKey = decodeURIComponent(key);
+      const decodedValue = value ? decodeURIComponent(value) : '';
+      if (decodedValue === '' || decodedValue.toLowerCase() === 'true') {
+        argv.push('-' + decodedKey);
+      } else {
+        argv.push('-' + decodedKey, decodedValue);
       }
-      if (c === 34) {
-        quotes = !quotes;
-        continue;
-      }
-      if ((quotes === false) && (c === 32)) {
-        if (text.length === 0) {
-          continue;
-        }
-        argv[argv.length] = text;
-        text = '';
-        continue;
-      }
-      text += cmdline.charAt(i);
-    }
-    if (text.length !== 0) {
-      argv[argv.length] = text;
-    }
+    });
   }
   COM.InitArgv(argv);
 

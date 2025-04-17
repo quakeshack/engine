@@ -4,7 +4,8 @@
 MSG = {};
 
 MSG.Buffer = class SzBuffer {
-  constructor(size) {
+  constructor(size, name = 'anonymous') {
+    this.name = name;
     this.data = new ArrayBuffer(size);
     this.cursize = 0;
     /** if false, overflow will cause a crash */
@@ -33,8 +34,11 @@ MSG.Buffer = class SzBuffer {
       }
 
       this.overflowed = true;
-      Con.Print('SzBuffer.allocate: overflow\n');
       this.cursize = 0;
+
+      Con.Print('SzBuffer.allocate: overflow\n');
+      // eslint-disable-next-line no-debugger
+      debugger;
     }
 
     const cursize = this.cursize;
@@ -44,7 +48,6 @@ MSG.Buffer = class SzBuffer {
 
   write(data, length) {
     const u = new Uint8Array(this.data, this.allocate(length), length);
-
     u.set(data.subarray(0, length));
   }
 
@@ -87,6 +90,73 @@ MSG.Buffer = class SzBuffer {
       output += line + "\n";
     }
     return output;
+  }
+
+  toString() {
+    return `SzBuffer: (${this.name}) ${this.cursize} bytes of ${this.maxsize} bytes used, overflowed? ${this.overflowed ? 'yes' : 'no'}`;
+  }
+
+  writeChar(c) {
+    console.assert(c >= -128 && c <= 127, 'must be signed byte', c);
+    new DataView(this.data).setInt8(this.allocate(1), c);
+  }
+
+  writeByte(c) {
+    console.assert(c >= 0 && c <= 255, 'must be unsigned byte', c);
+    new DataView(this.data).setUint8(this.allocate(1), c);
+  }
+
+  writeShort(c) {
+    console.assert(c >= -32768 && c <= 32767, 'must be signed short', c);
+    new DataView(this.data).setInt16(this.allocate(2), c, true);
+  }
+
+  writeLong(c) {
+    console.assert(c >= -2147483648 && c <= 2147483647, 'must be signed long', c);
+    new DataView(this.data).setInt32(this.allocate(4), c, true);
+  }
+
+  writeFloat(f) {
+    console.assert(typeof f === 'number' && !isNaN(f) && isFinite(f), 'must be a real number, not NaN or Infinity');
+    new DataView(this.data).setFloat32(this.allocate(4), f, true);
+  }
+
+  writeString(s) {
+    if (s) {
+      this.write(new Uint8Array(Q.strmem(s)), s.length);
+    }
+    this.writeChar(0);
+  }
+
+  writeCoord(f) {
+    this.writeShort(f * 8.0);
+  }
+
+  writeCoordVector(vec) {
+    this.writeCoord(vec[0]);
+    this.writeCoord(vec[1]);
+    this.writeCoord(vec[2]);
+  }
+
+  writeAngle(f) {
+    this.writeByte((f * (256.0 / 360.0)) & 255);
+  }
+
+  writeAngleVector(vec) {
+    this.writeAngle(vec[0]);
+    this.writeAngle(vec[1]);
+    this.writeAngle(vec[2]);
+  }
+
+  writeRGB(color) {
+    this.writeByte(Math.round(color[0] * 255));
+    this.writeByte(Math.round(color[1] * 255));
+    this.writeByte(Math.round(color[2] * 255));
+  }
+
+  writeRGBA(color, alpha) {
+    this.writeRGB(color);
+    this.writeByte(Math.round(alpha * 255));
   }
 };
 
@@ -288,58 +358,77 @@ MSG.ReadDeltaUsercmd = function(from) {
   return to;
 };
 
+// MSG._messageLog = [];
+
 MSG.BeginReading = function() {
+  // MSG._messageLog = [];
   MSG.readcount = 0;
   MSG.badread = false;
+};
+
+MSG.PrintLastRead = function() {
+  for (const {type, value} of MSG._messageLog) {
+    Con.Print(`"${value}" (${type})\n`);
+  }
 };
 
 MSG.ReadChar = function() {
   if (MSG.readcount >= NET.message.cursize) {
     MSG.badread = true;
+    // debugger;
     return -1;
   }
   const c = (new Int8Array(NET.message.data, MSG.readcount, 1))[0];
   ++MSG.readcount;
+  // MSG._messageLog.push({type: 'char', value: c});
   return c;
 };
 
 MSG.ReadByte = function() {
   if (MSG.readcount >= NET.message.cursize) {
     MSG.badread = true;
+    // debugger;
     return -1;
   }
   const c = (new Uint8Array(NET.message.data, MSG.readcount, 1))[0];
   ++MSG.readcount;
+  // MSG._messageLog.push({type: 'byte', value: c});
   return c;
 };
 
 MSG.ReadShort = function() {
   if ((MSG.readcount + 2) > NET.message.cursize) {
     MSG.badread = true;
+    // debugger;
     return -1;
   }
   const c = (new DataView(NET.message.data)).getInt16(MSG.readcount, true);
   MSG.readcount += 2;
+  // MSG._messageLog.push({type: 'short', value: c});
   return c;
 };
 
 MSG.ReadLong = function() {
   if ((MSG.readcount + 4) > NET.message.cursize) {
     MSG.badread = true;
+    // debugger;
     return -1;
   }
   const c = (new DataView(NET.message.data)).getInt32(MSG.readcount, true);
   MSG.readcount += 4;
+  // MSG._messageLog.push({type: 'long', value: c});
   return c;
 };
 
 MSG.ReadFloat = function() {
   if ((MSG.readcount + 4) > NET.message.cursize) {
     MSG.badread = true;
+    // debugger;
     return -1;
   }
   const f = (new DataView(NET.message.data)).getFloat32(MSG.readcount, true);
   MSG.readcount += 4;
+  // MSG._messageLog.push({type: 'float', value: f});
   return f;
 };
 
@@ -352,7 +441,9 @@ MSG.ReadString = function() {
     }
     string[l] = String.fromCharCode(c);
   }
-  return string.join('');
+  const s = string.join('');
+  // MSG._messageLog.push({type: 'string', value: s});
+  return s;
 };
 
 MSG.ReadCoord = function() {

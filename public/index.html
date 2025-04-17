@@ -4,12 +4,15 @@
 		<meta charset="UTF-8">
 		<title>The Quake Shack</title>
 		<style>
+			body{background: #222; color:#ddd; font-family:monospace; font-size:12px; }
 			canvas{position:fixed;left:0;top:0;display:none}
 			#loading{display:none;position:fixed}
 			#end{color:white;font-family:monospace;text-align:center}
-			#end1,#end2{background-color:maroon;white-space:pre;display:none}
+			#end1,#end2{background-color:rgb(65, 41, 41);white-space:pre;display:none}
 			#error{animation: flash 1s infinite; font-weight: bold;}
 			#imprint, #imprint > a{color:#999;}
+			#console { padding: 0; }
+			#console li { list-style-type: none; white-space: pre; }
 			@keyframes flash {
 				0% { color: red; }
 				50% { color: black; }

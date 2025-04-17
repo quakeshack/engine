@@ -51,10 +51,10 @@ SV.fl = {
 
 SV.server = {
   num_edicts: 0,
-  datagram: new MSG.Buffer(2048),
-  reliable_datagram: new MSG.Buffer(2048),
+  datagram: new MSG.Buffer(2048, 'SV.server.datagram'),
+  reliable_datagram: new MSG.Buffer(2048, 'SV.server.reliable_datagram'),
   /** sent during client prespawn */
-  signon: new MSG.Buffer(8192),
+  signon: new MSG.Buffer(2048, 'SV.server.signon'),
   edicts: [],
   mapname: null,
   worldmodel: null,
@@ -107,23 +107,40 @@ SV.Client = class ServerClient {
   constructor(num) {
     this.state = ServerClient.STATE.FREE;
     this.num = num;
-    this.message = new MSG.Buffer(8000);
+    this.message = new MSG.Buffer(8000, 'ServerClient ' + num);
     this.message.allowoverflow = true;
     this.colors = 0;
     this.old_frags = 0;
     this.last_update = 0;
     this.last_message = 0;
     this.last_ping_update = 0;
+    this.ping_times = new Array(16);
+    this.num_pings = 0;
+    /** @type {?NET.QSocket} */
     this.netconnection = null;
 
     /** spawn parms are carried from level to level */
     this.spawn_parms = new Array(16);
 
+    this.cmd = new Protocol.UserCmd();
     this.lastcmd = new Protocol.UserCmd();
     this.frames = [];
 
     /** @type {Map<number,SV.EntityState>} olds entity states for this player only @private */
     this._entityStates = new Map();
+
+    this.active = false;
+    this.dropasap = false;
+    this.spawned = false;
+    this.sendsignon = false;
+
+    this.wishdir = new Vector();
+
+    // Object.seal(this);
+  }
+
+  toString() {
+    return `ServerClient (${this.num}, ${this.netconnection})`;
   }
 
   /** @type {SV.Edict} */
@@ -139,14 +156,22 @@ SV.Client = class ServerClient {
   clear() {
     this.state = ServerClient.STATE.FREE;
     this.netconnection = null;
-    this.message.cursize = 0;
-    this.message.allowoverflow = false;
+    this.message.clear();
+    this.wishdir.clear();
     this.colors = 0;
     this.old_frags = 0;
-    this.last_ping_update = 0;
-    this.active = false;
-    this.last_message = 0;
+    this.last_ping_update = 0.0;
+    this.ping_times.fill(0);
+    this.spawn_parms.fill(0);
+    this.cmd.reset();
+    this.lastcmd.reset();
+    this.last_message = 0.0;
+    this.num_pings = 0;
     this._entityStates = new Map();
+    this.active = false;
+    this.dropasap = false;
+    this.spawned = false;
+    this.sendsignon = false;
   }
 
   /**
@@ -673,10 +698,6 @@ SV.Init = function() {
   SV.cursize = 1;
   MSG.WriteByte(SV.nop, Protocol.svc.nop);
 
-  SV.reconnect = new MSG.Buffer(128);
-  MSG.WriteByte(SV.reconnect, Protocol.svc.stufftext);
-  MSG.WriteString(SV.reconnect, 'reconnect\n');
-
   SV.InitBoxHull(); // pmove, remove
 };
 
@@ -770,7 +791,7 @@ SV.StartSound = function(edict, channel, sample, volume, attenuation) {
  * Sends the server info to the client when connecting.
  * @param {SV.Client} client client
  */
-SV.SendServerinfo = function(client) {
+SV.SendServerData = function(client) {
   const message = client.message;
 
   // first message is always a print message, this is safe to do no matter what version is running
@@ -830,46 +851,33 @@ SV.SendServerinfo = function(client) {
   client.spawned = false;
 };
 
-SV.ConnectClient = function(clientnum) {
-  const client = SV.svs.clients[clientnum];
-  const spawn_parms = [];
-  if (SV.server.loadgame === true) {
-    if (client.spawn_parms == null) {
-      client.spawn_parms = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-    }
-    for (let i = 0; i <= 15; ++i) {
+SV.ConnectClient = function(client, netconnection) {
+  Con.DPrint('Client ' + netconnection.address + ' connected\n');
+
+  const spawn_parms = new Array(client.spawn_parms.length);
+  if (SV.server.loadgame) {
+    for (let i = 0; i < client.spawn_parms.length; i++) {
       spawn_parms[i] = client.spawn_parms[i];
     }
   }
-  Con.DPrint('Client ' + client.netconnection.address + ' connected\n');
-  client.active = true;
-  client.dropasap = false;
-  client.last_message = 0.0;
-  client.cmd = new Protocol.UserCmd();
-  client.wishdir = new Vector();
-  client.message.cursize = 0;
+
+  client.clear();
   client.name = 'unconnected';
-  client.colors = 0;
-  client.ping_times = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-  client.num_pings = 0;
-  if (SV.server.loadgame !== true) {
-    client.spawn_parms = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-  }
-  client.old_frags = 0;
-  if (SV.server.loadgame === true) {
-    for (let i = 0; i <= 15; ++i) {
+  client.netconnection = netconnection;
+  client.active = true;
+
+  if (SV.server.loadgame) {
+    for (let i = 0; i < client.spawn_parms.length; i++) {
       client.spawn_parms[i] = spawn_parms[i];
     }
   } else {
     SV.server.gameAPI.SetNewParms(client.edict);
-    for (let i = 0; i <= 15; ++i) {
+    for (let i = 0; i < client.spawn_parms.length; i++) {
       client.spawn_parms[i] = SV.server.gameAPI[`parm${i + 1}`];
     }
   }
-  SV.SendServerinfo(client);
+
+  SV.SendServerData(client);
 };
 
 SV.fatpvs = [];
@@ -882,7 +890,7 @@ SV.CheckForNewClients = function() {
       return;
     }
     for (i = 0; i < SV.svs.maxclients; ++i) {
-      if (SV.svs.clients[i].active !== true) {
+      if (!SV.svs.clients[i].active) {
         break;
       }
     }
@@ -895,9 +903,8 @@ SV.CheckForNewClients = function() {
       NET.Close(ret);
       return;
     }
-    SV.svs.clients[i].netconnection = ret;
-    SV.ConnectClient(i);
-    ++NET.activeconnections;
+    SV.ConnectClient(SV.svs.clients[i], ret);
+    NET.activeconnections++;
   }
 };
 
@@ -1031,7 +1038,7 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
     MSG.WriteByte(msg, playerEntity.frame);
 
     if (pflags & Protocol.pf.PF_MSEC) {
-      const msec = 1000 * (SV.server.time - cl.last_message);
+      const msec = 1000 * (SV.server.time - cl.last_update); // FIXME: right value?
       MSG.WriteByte(msg, Math.max(0, Math.min(msec, 255)));
     }
 
@@ -1080,6 +1087,7 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
  * @param {*} msg message stream
  * @param {SV.EntityState} from last known state
  * @param {SV.EntityState} to new state
+ * @returns {boolean} true, when to differs from from
  */
 SV.WriteDeltaEntity = function(msg, from, to) {
   const EPSILON = 0.1;
@@ -1132,7 +1140,7 @@ SV.WriteDeltaEntity = function(msg, from, to) {
 
   if (bits === 0) {
     // nothing changed
-    return;
+    return false;
   }
 
   console.assert(to.num > 0, 'valid entity num', to.num);
@@ -1181,6 +1189,8 @@ SV.WriteDeltaEntity = function(msg, from, to) {
       MSG.WriteAngle(msg, to.angles[i]);
     }
   }
+
+  return true;
 };
 
 /**
@@ -1224,14 +1234,12 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     /** @type {SV.EntityState} */
     const fromState = cl.getEntityState(ent.num);
 
-    SV.WriteDeltaEntity(msg, fromState, toState);
+    changes |= SV.WriteDeltaEntity(msg, fromState, toState);
 
     // TODO: wait for a confirmation by the client
     fromState.set(toState);
 
     visedicts.push(ent.num);
-
-    changes = true;
   }
 
   // pretent all other entities are free
@@ -1248,12 +1256,10 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     const toState = new SV.EntityState(ent.num);
     toState.free = true;
 
-    SV.WriteDeltaEntity(msg, fromState, toState);
+    changes |= SV.WriteDeltaEntity(msg, fromState, toState);
 
     // TODO: wait for a confirmation by the client
     fromState.set(toState);
-
-    changes = true;
   }
 
   MSG.WriteShort(msg, 0); // end of list
@@ -1393,12 +1399,12 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
     }
   }
 
-  return false; // FIXME
+  return true; // TODO: changes
 };
 
 SV.SendClientDatagram = function() { // FIXME: Host.client
   const client = Host.client;
-  const msg = new MSG.Buffer(2048);
+  const msg = new MSG.Buffer(2048, 'SV.SendClientDatagram');
   MSG.WriteByte(msg, Protocol.svc.time);
   MSG.WriteFloat(msg, SV.server.time);
 
@@ -1426,8 +1432,9 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
   changes |= SV.WriteClientdataToMessage(client.edict, msg);
   changes |= SV.WriteEntitiesToClient(client.edict, msg);
 
-  if (!changes && SV.server.time - client.last_update < 0.1) {
+  if (!changes && client.spawned) {
     // nothing to send
+    Con.DPrint('SV.SendClientDatagram: no changes\n');
     return true;
   }
 
@@ -1436,6 +1443,7 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
   if ((msg.cursize + SV.server.datagram.cursize) < msg.data.byteLength) {
     msg.write(new Uint8Array(SV.server.datagram.data), SV.server.datagram.cursize);
   }
+  // Con.DPrint('SV.SendClientDatagram: sending\n' + msg.toHexString() + '\n');
   if (NET.SendUnreliableMessage(client.netconnection, msg) === -1) {
     Host.DropClient(client, true, 'Connectivity issues');
     return false;
@@ -1471,7 +1479,7 @@ SV.UpdateToReliableMessages = function() {
     }
   }
 
-  SV.server.reliable_datagram.cursize = 0;
+  SV.server.reliable_datagram.clear();
 };
 
 SV.SendClientMessages = function() {
@@ -1511,7 +1519,7 @@ SV.SendClientMessages = function() {
       if (NET.SendMessage(client.netconnection, client.message) === -1) {
         Host.DropClient(client, true, 'Connectivity issues, failed to send message');
       }
-      client.message.cursize = 0;
+      client.message.clear();
       client.last_message = Host.realtime;
       client.sendsignon = false;
     }
@@ -1605,11 +1613,11 @@ SV.SpawnServer = function(mapname) {
   Con.DPrint('SpawnServer: ' + mapname + '\n');
   SV.svs.changelevel_issued = false;
 
-  if (SV.server.active === true) {
-    NET.SendToAll(SV.reconnect);
-    if (!Host.dedicated.value) {
-      Cmd.ExecuteString('reconnect\n');
-    }
+  if (SV.server.active) {
+    const reconnect = new MSG.Buffer(128);
+    reconnect.writeByte(Protocol.svc.changelevel);
+    reconnect.writeString(mapname);
+    NET.SendToAll(reconnect);
   }
 
   if (Host.coop.value !== 0) {
@@ -1636,9 +1644,9 @@ SV.SpawnServer = function(mapname) {
 
     SV.server.edicts[i] = ent;
   }
-  SV.server.datagram.cursize = 0;
-  SV.server.reliable_datagram.cursize = 0;
-  SV.server.signon.cursize = 0;
+  SV.server.datagram.clear();
+  SV.server.reliable_datagram.clear();
+  SV.server.signon.clear();
   // hooking up the edicts reserved for clients
   SV.server.num_edicts = SV.svs.maxclients + 1;
   for (i = 0; i < SV.svs.maxclients; ++i) {
@@ -1714,12 +1722,13 @@ SV.SpawnServer = function(mapname) {
   SV.Physics();
   SV.Physics();
   SV.CreateBaseline();
+  // sending to all clients that we are on a new map
   for (i = 0; i < SV.svs.maxclients; ++i) {
     Host.client = SV.svs.clients[i];
-    if (Host.client.active !== true) {
+    if (!Host.client.active) {
       continue;
     }
-    SV.SendServerinfo(Host.client);
+    SV.SendServerData(Host.client);
   }
   Con.PrintSuccess('Server spawned.\n');
   return true;
@@ -2929,8 +2938,11 @@ SV.ClientThink = function() {
   }
 };
 
+/**
+ * @param {SV.Client} client client
+ */
 SV.ReadClientMove = function(client) {
-  client.ping_times[client.num_pings++ & 15] = SV.server.time - MSG.ReadFloat();
+  client.cmd.msec = MSG.ReadFloat();
   client.cmd.angles = MSG.ReadAngleVector();
   client.cmd.forwardmove = MSG.ReadShort();
   client.cmd.sidemove = MSG.ReadShort();
@@ -2945,6 +2957,8 @@ SV.ReadClientMove = function(client) {
   if (client.cmd.impulse !== 0) {
     client.edict.entity.impulse = client.cmd.impulse; // QuakeC
   }
+
+  client.ping_times[client.num_pings++ % client.ping_times.length] = SV.server.time - client.cmd.msec;
 
   // console.log('client.cmd', client.cmd);
 };
@@ -2972,16 +2986,17 @@ SV.HandleRconRequest = function(client) {
   if (rconPassword === '' || rconPassword !== password) {
     MSG.WriteByte(message, Protocol.svc.print);
     MSG.WriteString(message, 'Wrong rcon password!');
-    Con.Print(`SV.HandleRconRequest: rcon attempted by ${client.name} from ${client.netconnection.address}: ${cmd}\n`);
+    if (rconPassword === '') {
+      Con.Print(`SV.HandleRconRequest: rcon attempted by ${client.name} from ${client.netconnection.address}: ${cmd}\n`);
+    }
     return;
   }
 
   Con.Print(`SV.HandleRconRequest: rcon by ${client.name} from ${client.netconnection.address}: ${cmd}\n`);
 
-  Con.StartCapture();
+  Con.StartCapturing();
   Cmd.ExecuteString(cmd);
-  const response = Con.StopCapture();
-
+  const response = Con.StopCapturing();
   MSG.WriteByte(message, Protocol.svc.print);
   MSG.WriteString(message, response);
 };
@@ -3106,11 +3121,10 @@ SV.RunClients = function() { // FIXME: Host.client
       continue;
     }
     if (!client.spawned) {
-      client.cmd.forwardmove = 0.0;
-      client.cmd.sidemove = 0.0;
-      client.cmd.upmove = 0.0;
+      client.cmd.reset();
       continue;
     }
+    // TODO: drop clients without an update
     SV.ClientThink(); // FIXME: SV.player
   }
 };

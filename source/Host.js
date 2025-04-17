@@ -101,19 +101,21 @@ Host.BroadcastPrint = function(string) {
  * @param {string} reason
  */
 Host.DropClient = function(client, crash, reason) {
-  if (NET.CanSendMessage(client.netconnection) === true) {
+  if (NET.CanSendMessage(client.netconnection)) {
     MSG.WriteByte(client.message, Protocol.svc.disconnect);
     MSG.WriteString(client.message, reason);
     NET.SendMessage(client.netconnection, client.message);
   }
 
   if (!crash) {
-    if ((client.edict != null) && (client.spawned === true)) {
+    if (client.edict && client.spawned) {
       const saveSelf = SV.server.gameAPI.self;
       SV.server.gameAPI.ClientDisconnect(client.edict);
       SV.server.gameAPI.self = saveSelf;
     }
     Sys.Print('Client ' + client.name + ' removed\n');
+  } else {
+    client.dropasap = true;
   }
 
   NET.Close(client.netconnection);
@@ -161,7 +163,7 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
       }
       if (NET.CanSendMessage(Host.client.netconnection) === true) {
         NET.SendMessage(Host.client.netconnection, Host.client.message);
-        Host.client.message.cursize = 0;
+        Host.client.message.clear();
         continue;
       }
       NET.GetMessage(Host.client.netconnection);
@@ -200,7 +202,7 @@ Host.WriteConfiguration_f = function() {
 
 Host.ServerFrame = function() { // TODO: SV duties
   SV.server.gameAPI.frametime = Host.frametime;
-  SV.server.datagram.cursize = 0;
+  SV.server.datagram.clear();
   SV.CheckForNewClients();
   SV.RunClients();
   if ((SV.server.paused !== true) && ((SV.svs.maxclients >= 2) || (!Host.dedicated.value && Key.dest.value === Key.dest.game))) {
@@ -290,14 +292,14 @@ Host._Frame = function() {
 
   Cmd.Execute();
 
+  if (CL.cls.state === CL.active.connected) {
+    CL.ReadFromServer();
+  }
+
   CL.SendCmd();
 
   if (SV.server.active === true) {
     Host.ServerFrame();
-  }
-
-  if (CL.cls.state === CL.active.connected) {
-    CL.ReadFromServer();
   }
 
   // Set up prediction for other players
@@ -406,15 +408,15 @@ Host.Init = async function(dedicated) {
   Shack.Init();
 
   if (!dedicated) {
+    S.Init();
     await VID.Init();
     await Draw.Init();
-    SCR.Init();
     await R.Init();
-    S.Init();
     await M.Init();
+    await CL.Init();
+    SCR.Init();
     CDAudio.Init();
     Sbar.Init();
-    await CL.Init();
     IN.Init();
   } else {
     // we need a few frontend things for dedicated
@@ -675,7 +677,7 @@ Host.Changelevel_f = function(mapname) {
     return;
   }
 
-  if ((SV.server.active !== true) || (!Host.dedicated.value && CL.cls.demoplayback === true)) {
+  if (!SV.server.active || (!Host.dedicated.value && CL.cls.demoplayback)) {
     Con.Print('Only the server may changelevel\n');
     return;
   }
@@ -685,14 +687,13 @@ Host.Changelevel_f = function(mapname) {
     return;
   }
 
-  if (SV.svs.maxclients > 1) {
-    Host.BroadcastPrint(`Changing level to ${mapname}!\n`);
-  }
-
-  if (!Host.dedicated.value) {
-    CL.SetConnectingStep(5, `Changing level to ${mapname}`);
-  } else {
-    Con.Print(`Changing level to ${mapname}!\n`);
+  for (let i = 0; i < SV.svs.maxclients; i++) {
+    const client = SV.svs.clients[i];
+    if (!client.active || !client.spawned) {
+      continue;
+    }
+    MSG.WriteByte(client.message, Protocol.svc.changelevel);
+    MSG.WriteString(client.message, mapname);
   }
 
   Host.ScheduleForNextFrame(() => {
@@ -705,7 +706,7 @@ Host.Changelevel_f = function(mapname) {
 };
 
 Host.Restart_f = function() {
-  if ((SV.server.active === true) && (Host.dedicated.value || (CL.cls.demoplayback !== true) && (Cmd.client !== true))) {
+  if ((SV.server.active) && (Host.dedicated.value || !CL.cls.demoplayback && !this.client)) {
     Cmd.ExecuteString(`map ${SV.server.gameAPI.mapname}`);
   }
 };
@@ -716,8 +717,7 @@ Host.Reconnect_f = function() {
     return;
   }
 
-  SCR.BeginLoadingPlaque();
-  CL.cls.signon = 0;
+  Con.PrintWarning('NOT IMPLEMENTED: reconnect\n'); // TODO: reimplement reconnect here
 };
 
 Host.Connect_f = function(address) {
@@ -909,6 +909,7 @@ Host.Loadgame_f = function (savename) {
 };
 
 Host.Name_f = function(...names) { // signon 2, step 1
+  Con.DPrint(`Host.Name_f: ${this.client}\n`);
   if (names.length < 1) {
     Con.Print('"name" is "' + CL.name.string + '"\n');
     return;
@@ -916,7 +917,7 @@ Host.Name_f = function(...names) { // signon 2, step 1
 
   let newName = names.join(' ').trim().substring(0, 15);
 
-  if (!Host.dedicated.value && Cmd.client !== true) {
+  if (!Host.dedicated.value && !this.client) {
     Cvar.Set('_cl_name', newName);
     if (CL.cls.state === CL.active.connected) {
       this.forward();
@@ -1024,6 +1025,7 @@ Host.Tell_f = function(recipient, message) {
 };
 
 Host.Color_f = function(...argv) { // signon 2, step 2 // FIXME: Host.client
+  Con.DPrint(`Host.Color_f: ${this.client}\n`);
   if (argv.length <= 1) {
     Con.Print('"color" is "' + (CL.color.value >> 4) + ' ' + (CL.color.value & 15) + '"\ncolor <0-13> [0-13]\n');
     return;
@@ -1044,7 +1046,7 @@ Host.Color_f = function(...argv) { // signon 2, step 2 // FIXME: Host.client
   }
   const playercolor = (top << 4) + bottom;
 
-  if (Cmd.client !== true) {
+  if (!this.client) {
     Cvar.SetValue('_cl_color', playercolor);
     if (CL.cls.state === CL.active.connected) {
       this.forward();
@@ -1090,12 +1092,13 @@ Host.Pause_f = function() {
 };
 
 Host.PreSpawn_f = function() { // signon 1, step 1
-  if (Cmd.client !== true) {
+  Con.DPrint(`Host.PreSpawn_f: ${this.client}\n`);
+  if (!this.client) {
     Con.Print('prespawn is not valid from the console\n');
     return;
   }
   const client = Host.client;
-  if (client.spawned === true) {
+  if (client.spawned) {
     Con.Print('prespawn not valid -- already spawned\n');
     return;
   }
@@ -1107,12 +1110,13 @@ Host.PreSpawn_f = function() { // signon 1, step 1
 };
 
 Host.Spawn_f = function() { // signon 2, step 3
-  if (Cmd.client !== true) {
+  Con.DPrint(`Host.Spawn_f: ${this.client}\n`);
+  if (!this.client) {
     Con.Print('spawn is not valid from the console\n');
     return;
   }
   let client = Host.client;
-  if (client.spawned === true) {
+  if (client.spawned) {
     Con.Print('Spawn not valid -- already spawned\n');
     return;
   }
@@ -1141,7 +1145,7 @@ Host.Spawn_f = function() { // signon 2, step 3
   }
 
   const message = client.message;
-  message.cursize = 0;
+  message.clear();
   MSG.WriteByte(message, Protocol.svc.time);
   MSG.WriteFloat(message, SV.server.time);
   for (i = 0; i < SV.svs.maxclients; ++i) {
@@ -1185,11 +1189,12 @@ Host.Spawn_f = function() { // signon 2, step 3
 };
 
 Host.Begin_f = function() {  // signon 3, step 1
-  if (Cmd.client !== true) {
+  Con.DPrint(`Host.Begin_f: ${this.client}\n`);
+  if (!this.client) {
     Con.Print('begin is not valid from the console\n');
     return;
   }
-  Host.client.spawned = true;
+  this.client.spawned = true;
 };
 
 Host.Kick_f = function(...argv) { // FIXME: Host.client
@@ -1236,7 +1241,7 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
     return;
   }
   let who;
-  if (Cmd.client !== true) {
+  if (!this.client) {
     if (Host.dedicated.value) {
       who = NET.hostname.string;
     } else {
@@ -1250,7 +1255,7 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
   }
   let message;
   if (argv.length >= 3) {
-    message = COM.Parse(Cmd.args);
+    message = COM.Parse(this.args);
   }
   let dropReason = 'Kicked by ' + who;
   if (message != null) {
@@ -1429,11 +1434,10 @@ Host.Give_f = function(classname) {
 };
 
 Host.FindViewthing = function() {
-  let i; let e;
-  if (SV.server.active === true) {
-    for (i = 0; i < SV.server.num_edicts; ++i) {
-      e = SV.server.edicts[i];
-      if (e.entity.classname === 'viewthing') {
+  if (SV.server.active) {
+    for (let i = 0; i < SV.server.num_edicts; ++i) {
+      const e = SV.server.edicts[i];
+      if (!e.isFree() && e.entity.classname === 'viewthing') {
         return e;
       }
     }

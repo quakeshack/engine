@@ -258,7 +258,9 @@ V.CalcIntermissionRefdef = function() {
 
 V.oldz = 0.0;
 V.CalcRefdef = function() {
-  V.DriftPitch();
+  if (V.pitchdrift.value) {
+    V.DriftPitch();
+  }
 
   const ent = CL.entities[CL.state.viewentity];
   ent.angles[1] = CL.state.viewangles[1];
@@ -274,7 +276,7 @@ V.CalcRefdef = function() {
   R.refdef.viewangles[2] = CL.state.viewangles[2] + V.CalcRoll(CL.entities[CL.state.viewentity].angles, CL.state.velocity);
 
   if (V.dmg_time > 0.0) {
-    if (V.kicktime.value !== 0.0) {
+    if (V.kicktime.value) {
       R.refdef.viewangles[2] += (V.dmg_time / V.kicktime.value) * V.dmg_roll;
       R.refdef.viewangles[0] -= (V.dmg_time / V.kicktime.value) * V.dmg_pitch;
     }
@@ -351,7 +353,7 @@ V.CalcRefdef = function() {
   } else {
     V.oldz = ent.origin[2];
   }
-  if (Chase.active.value !== 0) {
+  if (Chase.active.value) {
     Chase.Update();
   }
 };
@@ -365,9 +367,9 @@ V.RenderView = function() {
     Cvar.Set('scr_ofsy', '0');
     Cvar.Set('scr_ofsz', '0');
   }
-  if (CL.state.intermission !== 0) {
+  if (CL.state.intermission) {
     V.CalcIntermissionRefdef();
-  } else if (CL.state.paused !== true) {
+  } else if (!CL.state.paused) {
     V.CalcRefdef();
   }
   R.PushDlights();
@@ -403,4 +405,5 @@ V.Init = function() {
   V.kickroll = new Cvar('v_kickroll', '0.6');
   V.kickpitch = new Cvar('v_kickpitch', '0.6');
   V.gamma = new Cvar('gamma', '0.8', Cvar.FLAG.ARCHIVE | Cvar.FLAG.CHEAT); // CR: 1 is too dark
+  V.pitchdrift = new Cvar('v_pitchdrift', '1', Cvar.FLAG.ARCHIVE, 'Vanilla Quake drift pitch when moving forward.');
 };

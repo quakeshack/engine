@@ -306,6 +306,20 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-04-17
+
+* fixed an absolutely dumb bug in my rewrite breaking spawning a local map after 10s
+* location.search will now properly map to command line like this: `?noquakejs=true` --> `-noquakejs`
+* added some `await Promise.all([…])` to speed up loading
+
+### 2025-04-15
+
+* continued working on usercmds and update messages
+  * there’s still unnecessary update chatter every 16ms from the server side
+  * client is only sending whenever there is an update and every 10 seconds
+  * there’s logic missing killing off players that are no longer sending pings
+* I need to look into reliable and unreliable messages, unsure if they are still needed over WebSocket
+
 ### 2025-04-13
 
 * moved `PR` related stuff from `ED` to `PR`

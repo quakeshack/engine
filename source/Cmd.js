@@ -110,13 +110,10 @@ Cmd.Alias_f = function(...argv) {
 
 /** @deprecated */
 Cmd.args = '';
-/** @deprecated */
-Cmd.argv = [];
 Cmd.functions = [];
 
 Cmd.Init = function() {
   Cmd.args = '';
-  Cmd.argv = [];
   Cmd.functions = [];
 
   Cmd.AddCommand('stuffcmds', Cmd.StuffCmds_f);
@@ -129,7 +126,6 @@ Cmd.Init = function() {
 
 Cmd.Shutdown = function() {
   Cmd.args = '';
-  Cmd.argv = [];
   Cmd.functions = [];
 };
 
@@ -182,12 +178,12 @@ Cmd.AddCommand = function(name, command) {
 };
 
 Cmd.CompleteCommand = function(partial) {
-  if (partial.length === 0) {
+  if (!partial) {
     return;
   }
-  let i;
-  for (i = 0; i < Cmd.functions.length; ++i) {
-    if (Cmd.functions[i].name.substring(0, partial.length) === partial) {
+
+  for (let i = 0; i < Cmd.functions.length; i++) {
+    if (Cmd.functions[i].name.startsWith(partial)) {
       return Cmd.functions[i].name;
     }
   }
@@ -221,23 +217,20 @@ Cmd.Context = class ConsoleCommandContext {
 }
 
 Cmd.ExecuteString = function(text, client = null) {
-  /** @deprecated */
-  Cmd.client = client !== null;
-  /** @deprecated */
-  Cmd.argv = Cmd.TokenizeString(text);
+  const argv = Cmd.TokenizeString(text);
 
-  if (Cmd.argv.length === 0) {
+  if (argv.length === 0) {
     return;
   }
 
-  const cmdname = Cmd.argv[0].toLowerCase();
-  const cmdargs = Cmd.argv.slice(1);
+  const cmdname = argv[0].toLowerCase();
+  const cmdargs = argv.slice(1);
 
   const ctx = new Cmd.Context();
   ctx.client = client;
   ctx.args = text;
   ctx.command = cmdname;
-  ctx.argv = Cmd.argv;
+  ctx.argv = argv;
 
   // check commands
   for (let i = 0; i < Cmd.functions.length; ++i) {
@@ -256,7 +249,7 @@ Cmd.ExecuteString = function(text, client = null) {
   }
 
   // ask Cvar, if it knows more
-  if (!Cvar.Command_f.call(ctx, Cmd.argv[0], Cmd.argv[1])) {
+  if (!Cvar.Command_f.call(ctx, argv[0], argv[1])) {
     Con.Print('Unknown command "' + cmdname + '"\n');
   }
 };

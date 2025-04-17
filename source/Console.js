@@ -63,11 +63,11 @@ Con.Init = function() {
   Cmd.AddCommand('clear', Con.Clear_f);
 };
 
-Con.StartCapture = function() {
+Con.StartCapturing = function() {
   Con.captureBuffer = [];
 };
 
-Con.StopCapture = function() {
+Con.StopCapturing = function() {
   const data = Con.captureBuffer.join('\n') + '\n';
   Con.captureBuffer = null;
   return data;
@@ -95,7 +95,7 @@ Con.Print = function(msg, color = new Vector(1.0, 1.0, 1.0)) {
     }
     if (msg.charCodeAt(i) === 10) {
       const line = Con.text[Con.current].text;
-      if (Con.captureBuffer) {
+      if (Con.captureBuffer !== null) {
         Con.captureBuffer.push(line);
       }
       Con.OnLinePrint(line);

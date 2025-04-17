@@ -60,18 +60,20 @@ Draw.Init = async function() {
     Draw.loadingElem.src = Draw.PicToDataURL(Draw.loading);
   }
 
-  await GL.CreateProgram('fill',
+  await Promise.all([
+    GL.CreateProgram('fill',
       ['uOrtho'],
       [['aPosition', gl.FLOAT, 2], ['aColor', gl.UNSIGNED_BYTE, 4, true]],
-      []);
-  await GL.CreateProgram('pic',
+      []),
+    GL.CreateProgram('pic',
       ['uOrtho', 'uColor'],
       [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
-      ['tTexture']);
-  await GL.CreateProgram('pic-translate',
+      ['tTexture']),
+    GL.CreateProgram('pic-translate',
       ['uOrtho', 'uTop', 'uBottom'],
       [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
-      ['tTexture', 'tTrans']);
+      ['tTexture', 'tTrans']),
+  ]);
 };
 
 Draw.Char = function(x, y, num, scale = 1.0) {
