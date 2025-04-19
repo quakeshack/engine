@@ -23,6 +23,26 @@ MSG.Buffer = class SzBuffer {
     this.overflowed = false;
   }
 
+  copy() {
+    const copy = new SzBuffer(this.maxsize, this.name);
+    copy.cursize = this.cursize;
+    copy.overflowed = this.overflowed;
+    const u8 = new Uint8Array(this.data);
+    const u8copy = new Uint8Array(copy.data);
+    u8copy.set(u8);
+    return copy;
+  }
+
+  set(other) {
+    this.name = other.name;
+    this.data = new ArrayBuffer(other.maxsize);
+    new Uint8Array(this.data).set(new Uint8Array(other.data));
+    this.cursize = other.cursize;
+    this.allowoverflow = other.allowoverflow;
+    this.overflowed = other.overflowed;
+    return this;
+  }
+
   allocate(size) {
     if (this.cursize + size > this.maxsize) {
       if (this.allowoverflow !== true) {
@@ -157,6 +177,101 @@ MSG.Buffer = class SzBuffer {
   writeRGBA(color, alpha) {
     this.writeRGB(color);
     this.writeByte(Math.round(alpha * 255));
+  }
+
+  beginReading() {
+    this.readcount = 0;
+    this.badread = false;
+  }
+
+  readChar() {
+    if (this.readcount >= this.cursize) {
+      this.badread = true;
+      return -1;
+    }
+    const c = new Int8Array(this.data, this.readcount, 1)[0];
+    this.readcount++;
+    return c;
+  }
+
+  readByte() {
+    if (this.readcount >= this.cursize) {
+      this.badread = true;
+      return -1;
+    }
+    const c = new Uint8Array(this.data, this.readcount, 1)[0];
+    this.readcount++;
+    return c;
+  }
+
+  readShort() {
+    if ((this.readcount + 2) > this.cursize) {
+      this.badread = true;
+      return -1;
+    }
+    const num = new DataView(this.data).getInt16(this.readcount, true);
+    this.readcount += 2;
+    return num;
+  }
+
+  readLong() {
+    if ((this.readcount + 4) > this.cursize) {
+      this.badread = true;
+      return -1;
+    }
+    const num = new DataView(this.data).getInt32(this.readcount, true);
+    this.readcount += 4;
+    return num;
+  }
+
+  readFloat() {
+    if ((this.readcount + 4) > this.cursize) {
+      this.badread = true;
+      return -1;
+    }
+    const num = new DataView(this.data).getFloat32(this.readcount, true);
+    this.readcount += 4;
+    return num;
+  }
+
+  readString() {
+    const chars = [];
+    for (let i = 0; i < 2048; ++i) {
+      const c = this.readByte();
+      if (c <= 0) {
+        break;
+      }
+      chars.push(String.fromCharCode(c));
+    }
+    return chars.join('');
+  }
+
+  readCoord() {
+    return this.readShort() * 0.125;
+  }
+
+  readCoordVector() {
+    return new Vector(this.readCoord(), this.readCoord(), this.readCoord());
+  }
+
+  readAngle() {
+    return this.readChar() * 1.40625;
+  }
+
+  readAngleVector() {
+    return new Vector(this.readAngle(), this.readAngle(), this.readAngle());
+  }
+
+  readRGB() {
+    return new Vector(
+      this.readByte() / 255,
+      this.readByte() / 255,
+      this.readByte() / 255
+    );
+  }
+
+  readRGBA() {
+    return [this.readRGB(), this.readByte() / 255];
   }
 };
 

@@ -55,8 +55,7 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
 
     sock.driverdata.qsocket = sock;
 
-    sock.disconnected = false; // we silently assume a connection
-    sock.disconnecting = false;
+    sock.state = NET.QSocket.STATE_CONNECTING;
 
     return sock;
   }
@@ -70,9 +69,8 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
     // check if we have collected new data
     if (qsocket.receiveMessage.length === 0) {
       // finished message buffer draining due to a disconnect
-      if (qsocket.disconnecting) {
-        qsocket.disconnecting = false;
-        qsocket.disconnected = true;
+      if (qsocket.state === NET.QSocket.STATE_DISCONNECTING) {
+        qsocket.state === NET.QSocket.STATE_DISCONNECTED;
       }
 
       return 0;
@@ -152,13 +150,13 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
       qsocket.driverdata.close(1000);
     }
 
-    qsocket.disconnected = true;
+    qsocket.state = NET.QSocket.STATE_DISCONNECTED;
   }
 
   // eslint-disable-next-line no-unused-vars
   _OnErrorClient(error) {
     Con.Print(`WebSocketDriver._OnErrorClient: lost connection to ${this.qsocket.address}\n`);
-    NET.Close(this.qsocket);
+    this.qsocket.state = NET.QSocket.STATE_DISCONNECTED; // instant disconnect
   }
 
   _OnMessageClient(message) {
@@ -172,11 +170,16 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
   }
 
   _OnOpenClient() {
+    this.qsocket.state = NET.QSocket.STATE_CONNECTED;
   }
 
   _OnCloseClient() {
+    if (this.qsocket.state !== NET.QSocket.STATE_CONNECTED) {
+      return;
+    }
+
     Con.Print(`WebSocketDriver._OnCloseClient: connection closed.\n`);
-    this.qsocket.disconnecting = true; // mark it as disconnecting, so that we can peacefully process any buffered messages
+    this.qsocket.state = NET.QSocket.STATE_DISCONNECTING; // mark it as disconnecting, so that we can peacefully process any buffered messages
   }
 
   _OnConnectionServer(ws, req) {
@@ -200,16 +203,16 @@ WEBS.Driver = (class WebSocketDriver extends NET.BaseDriver {
     sock.receiveMessageLength = null;
     sock.sendMessage = [];
     sock.sendMessageLength = null;
-    sock.disconnected = false;
+    sock.state = NET.QSocket.STATE_CONNECTED;
 
     ws.on('close', () => {
       Con.DPrint(`WebSocketDriver._OnConnectionServer.disconnect: client disconnected\n`);
-      sock.disconnected = true;
+      sock.state = NET.QSocket.STATE_DISCONNECTED;
     });
 
     ws.on('error', () => {
       Con.DPrint(`WebSocketDriver._OnConnectionServer.disconnect: client errored out\n`);
-      sock.disconnected = true;
+      sock.state = NET.QSocket.STATE_DISCONNECTED;
     });
 
     ws.on('message', (data) => {

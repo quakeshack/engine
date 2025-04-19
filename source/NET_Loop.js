@@ -63,11 +63,11 @@ Loop.Driver = (class LoopDriver extends NET.BaseDriver {
 
     this._client.receiveMessageLength = 0;
     this._client.canSend = true;
-    this._client.disconnected = false;
+    this._client.state = NET.QSocket.STATE_CONNECTED;
 
     this._server.receiveMessageLength = 0;
     this._server.canSend = true;
-    this._server.disconnected = false;
+    this._server.state = NET.QSocket.STATE_CONNECTED;
 
     return this._client;
   }
@@ -144,7 +144,7 @@ Loop.Driver = (class LoopDriver extends NET.BaseDriver {
     } else {
       this._client = null;
     }
-    sock.disconnected = true;
+    sock.state = NET.QSocket.STATE_DISCONNECTED;
   }
 
   Listen() {

@@ -306,6 +306,12 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-04-19
+
+* added back chase cam
+* started cleaning up `MSG`, added read and write methods to `SzBuffer`
+* started auditing `CL` in more detail, it’s time to refactor the code considering legacy game and QuakeJS features
+
 ### 2025-04-17
 
 * fixed an absolutely dumb bug in my rewrite breaking spawning a local map after 10s

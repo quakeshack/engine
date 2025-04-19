@@ -155,17 +155,6 @@ Cvar = class Cvar {
   }
 
   /**
-   * Sets the value of the console variable to a floating-point number.
-   * @param {number} value new value
-   * @deprecated use set instead
-   * @see {@link Cvar#set}
-   * @returns {Cvar} this
-   */
-  setValue(value) {
-    return this.set(value);
-  }
-
-  /**
    * Sets the value of the console variable.
    * @param {string} name name of the variable
    * @param {number|string|boolean} value new value

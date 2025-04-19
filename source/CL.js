@@ -1,4 +1,4 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, IN, Sys, Def, V, CDAudio, Draw, Pmove, PR */
+/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, IN, Sys, Def, V, CDAudio, Draw, Pmove, PR, Chase */
 
 // eslint-disable-next-line no-global-assign
 CL = {};
@@ -21,7 +21,7 @@ CL.pmove = null;
 
 // demo
 
-CL.StopPlayback = function() {
+CL.StopPlayback = function() { // public, by Host.js
   if (CL.cls.demoplayback !== true) {
     return;
   }
@@ -33,7 +33,7 @@ CL.StopPlayback = function() {
   }
 };
 
-CL.WriteDemoMessage = function() {
+CL.WriteDemoMessage = function() { // private
   const len = CL.cls.demoofs + 16 + NET.message.cursize;
   if (CL.cls.demofile.byteLength < len) {
     const src = new Uint8Array(CL.cls.demofile, 0, CL.cls.demoofs);
@@ -49,7 +49,7 @@ CL.WriteDemoMessage = function() {
   CL.cls.demoofs = len;
 };
 
-CL.GetMessage = function() {
+CL.GetMessage = function() { // private
   if (CL.cls.demoplayback === true) {
     if (CL.cls.signon === 4) {
       if (CL.cls.timedemo === true) {
@@ -110,7 +110,7 @@ CL.GetMessage = function() {
   return r;
 };
 
-CL.Stop_f = function() {
+CL.Stop_f = function() { // private
   if (this.client) {
     return;
   }
@@ -130,7 +130,7 @@ CL.Stop_f = function() {
   Con.PrintSuccess('Completed demo\n');
 };
 
-CL.Record_f = function(demoname, map, track) {
+CL.Record_f = function(demoname, map, track) { // private
   if (demoname === undefined) {
     Con.Print('Usage: record <demoname> [<map> [cd track]]\n');
     return;
@@ -164,7 +164,7 @@ CL.Record_f = function(demoname, map, track) {
   CL.cls.demorecording = true;
 };
 
-CL.PlayDemo_f = function(demoname) {
+CL.PlayDemo_f = function(demoname) { // private
   if (this.client) {
     return;
   }
@@ -206,7 +206,7 @@ CL.PlayDemo_f = function(demoname) {
   CL.cls.demoofs = i + 1;
 };
 
-CL.FinishTimeDemo = function() {
+CL.FinishTimeDemo = function() { // private
   CL.cls.timedemo = false;
   const frames = Host.framecount - CL.cls.td_startframe - 1;
   let time = Host.realtime - CL.cls.td_starttime;
@@ -216,7 +216,7 @@ CL.FinishTimeDemo = function() {
   Con.Print(frames + ' frames ' + time.toFixed(1) + ' seconds ' + (frames / time).toFixed(1) + ' fps\n');
 };
 
-CL.TimeDemo_f = function(demoname) {
+CL.TimeDemo_f = function(demoname) { // private
   if (this.client) {
     return;
   }
@@ -254,7 +254,7 @@ CL.kbutton = {
 };
 CL.kbuttons = [];
 
-CL.KeyDown_f = function(cmd) {
+CL.KeyDown_f = function(cmd) { // private
   let b = CL.kbutton[this.command.substring(1)];
   if (b == null) {
     return;
@@ -286,7 +286,7 @@ CL.KeyDown_f = function(cmd) {
   }
 };
 
-CL.KeyUp_f = function(cmd) {
+CL.KeyUp_f = function(cmd) { // private
   let b = CL.kbutton[this.command.substring(1)];
   if (b == null) {
     return;
@@ -318,14 +318,14 @@ CL.KeyUp_f = function(cmd) {
   }
 };
 
-CL.MLookUp_f = function(cmd) {
+CL.MLookUp_f = function(cmd) { // private
   CL.KeyUp_f.call(this, cmd);
   if (((CL.kbuttons[CL.kbutton.mlook].state & 1) === 0) && (CL.lookspring.value !== 0)) {
     V.StartPitchDrift();
   }
 };
 
-CL.Impulse_f = function(code) {
+CL.Impulse_f = function(code) { // private
   if (code === undefined) {
     Con.Print('Usage: impulse <code>\n');
     return;
@@ -334,7 +334,7 @@ CL.Impulse_f = function(code) {
   CL.impulse = Q.atoi(code);
 };
 
-CL.KeyState = function(key) {
+CL.KeyState = function(key) { // private
   key = CL.kbuttons[key];
   const down = key.state & 1;
   key.state &= 1;
@@ -350,7 +350,7 @@ CL.KeyState = function(key) {
   return (down !== 0) ? 1.0 : 0.0;
 };
 
-CL.AdjustAngles = function() {
+CL.AdjustAngles = function() { // private
   let speed = Host.frametime;
   if ((CL.kbuttons[CL.kbutton.speed].state & 1) !== 0) {
     speed *= CL.anglespeedkey.value;
@@ -386,7 +386,7 @@ CL.AdjustAngles = function() {
   }
 };
 
-CL.BaseMove = function() {
+CL.BaseMove = function() { // private
   if (CL.cls.signon !== 4) {
     return;
   }
@@ -423,7 +423,7 @@ CL.BaseMove = function() {
 
 CL.impulse = 0;
 
-CL.SendMove = function() {
+CL.SendMove = function() { // private
   CL.state.cmd.buttons = 0;
 
   if ((CL.kbuttons[CL.kbutton.attack].state & 3) !== 0) {
@@ -468,7 +468,7 @@ CL.SendMove = function() {
   }
 };
 
-CL.InitInput = function() {
+CL.InitInput = function() { // private
   let i;
 
   const commands = ['moveup', 'movedown', 'left', 'right',
@@ -632,7 +632,7 @@ CL.Entity = class ClientEdict {
   }
 };
 
-CL.Rcon_f = function(...args) {
+CL.Rcon_f = function(...args) { // private
   if (args.length === 0) {
     Con.Print('Usage: rcon <command>\n');
     return;
@@ -650,7 +650,7 @@ CL.Rcon_f = function(...args) {
   MSG.WriteString(CL.cls.message, this.args);
 };
 
-CL.SetConnectingStep = function(percentage, message) {
+CL.SetConnectingStep = function(percentage, message) { // public, by Host.js, probably cleaning up required
   if (percentage === null && message === null) {
     CL.cls.connecting = null;
     return;
@@ -670,7 +670,7 @@ CL.SetConnectingStep = function(percentage, message) {
   // SCR.UpdateScreen();
 };
 
-CL.Draw = function() { // FIXME: maybe put that into M?
+CL.Draw = function() { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR
   if (CL.cls.connecting !== null) {
     const x0 = 32, y0 = 32;
     Draw.BlackScreen();
@@ -683,7 +683,7 @@ CL.Draw = function() { // FIXME: maybe put that into M?
   }
 };
 
-CL.ClearState = function() {
+CL.ClearState = function() { // private
   if (SV.server.active !== true) {
     Con.DPrint('Clearing memory\n');
     Mod.ClearAll();
@@ -694,6 +694,7 @@ CL.ClearState = function() {
 
   CL.gameAPI = null;
 
+  /** state across a map / connection */
   CL.state = {
     movemessages: 0,
     cmd: new Protocol.UserCmd(),
@@ -768,13 +769,13 @@ CL.ClearState = function() {
 
 };
 
-CL.ResetCheatCvars = function() {
+CL.ResetCheatCvars = function() { // private
   for (const cvar of Cvar.Filter((cvar) => (cvar.flags & Cvar.FLAG.CHEAT) !== 0)) {
     cvar.reset();
   }
 };
 
-CL.Disconnect = function() {
+CL.Disconnect = function() { // public, by Host.js
   CL.SetConnectingStep(null, null);
   S.StopAllSounds();
   if (CL.cls.demoplayback === true) {
@@ -802,22 +803,21 @@ CL.Disconnect = function() {
   CL.ResetCheatCvars();
 };
 
-CL.Connect = function(sock) {
+CL.Connect = function(sock) { // public, by NET.js, deprecated
   CL.cls.netcon = sock;
-  Con.DPrint('CL.Connect: connected to ' + CL.host + '\n');
+  Con.DPrint('CL.Connect: connected to ' + sock.address + '\n');
   CL.cls.demonum = -1;
   CL.cls.state = CL.active.connected;
   CL.cls.signon = 0;
-  CL.SetConnectingStep(10, 'Connected to ' + CL.host);
+  CL.SetConnectingStep(10, 'Connected to ' + sock.address);
 };
 
-CL.EstablishConnection = function(host) {
+CL.EstablishConnection = function(host) { // public, by Host.js
   if (CL.cls.demoplayback === true) {
     return;
   }
   CL.Disconnect();
-  CL.host = host;
-  CL.SetConnectingStep(5, 'Connecting to ' + CL.host);
+  CL.SetConnectingStep(5, 'Connecting to ' + host);
   const sock = NET.Connect(host);
   if (sock == null) {
     Host.Error('CL.EstablishConnection: connect failed\n');
@@ -825,11 +825,11 @@ CL.EstablishConnection = function(host) {
   CL.Connect(sock);
 };
 
-CL.SignonReply = function() {
+CL.SignonReply = function() { // private
   Con.DPrint('CL.SignonReply: ' + CL.cls.signon + '\n');
   switch (CL.cls.signon) {
     case 1:
-      CL.SetConnectingStep(90, 'About to spawn');
+      CL.SetConnectingStep(90, 'Waiting for server data');
       MSG.WriteByte(CL.cls.message, Protocol.clc.stringcmd);
       MSG.WriteString(CL.cls.message, 'prespawn');
       return;
@@ -858,7 +858,7 @@ CL.SignonReply = function() {
   }
 };
 
-CL.NextDemo = function() {
+CL.NextDemo = function() { // public, by Host.js, M.js
   if (CL.cls.demonum === -1) {
     return;
   }
@@ -874,7 +874,7 @@ CL.NextDemo = function() {
   Cmd.text = 'playdemo ' + CL.cls.demos[CL.cls.demonum++] + '\n' + Cmd.text;
 };
 
-CL.PrintEntities_f = function() {
+CL.PrintEntities_f = function() { // private
     for (let i = 0; i < CL.entities.length; ++i) {
     const ent = CL.entities[i];
 
@@ -886,7 +886,7 @@ CL.PrintEntities_f = function() {
   }
 };
 
-CL.AllocDlight = function(key) { // TODO: Dlight class
+CL.AllocDlight = function(key) { // private // TODO: Dlight class
   let dl, i = 0;
   if (key !== 0) {
     for (i = 0; i <= 31; ++i) {
@@ -916,7 +916,7 @@ CL.AllocDlight = function(key) { // TODO: Dlight class
   return dl;
 };
 
-CL.DecayLights = function() {
+CL.DecayLights = function() { // public, by Host.js
   let i; let dl; const time = CL.state.time - CL.state.oldtime;
   for (i = 0; i <= 31; ++i) {
     dl = CL.dlights[i];
@@ -935,7 +935,7 @@ CL.DecayLights = function() {
  * It also updates CL.state.time.
  * @returns {number} interval [0.0, 1.0]
  */
-CL.LerpPoint = function() {
+CL.LerpPoint = function() { // private
   if (CL.state.lerp !== null) {
     return CL.state.lerp;
   }
@@ -970,7 +970,7 @@ CL.LerpPoint = function() {
 };
 
 /** @deprecated */
-CL.RelinkEntities = function() {
+CL.RelinkEntities = function() { // private
   debugger;
   let i; let j;
   const frac = CL.LerpPoint(); let f; let d; const delta = [];
@@ -1086,7 +1086,7 @@ CL.RelinkEntities = function() {
   }
 };
 
-CL.ReadFromServer = function() {
+CL.ReadFromServer = function() { // public, by Host.js
   CL.state.oldtime = CL.state.time;
   CL.state.time += Host.frametime;
   let ret;
@@ -1125,7 +1125,7 @@ CL.ReadFromServer = function() {
   CL.UpdateTEnts();
 };
 
-CL.SendCmd = function() {
+CL.SendCmd = function() { // public, by Host.js
   if (CL.cls.state !== CL.active.connected) {
     return;
   }
@@ -1165,7 +1165,7 @@ CL.SendCmd = function() {
   CL.cls.lastcmdsent = Host.realtime;
 };
 
-CL.ServerInfo_f = function() {
+CL.ServerInfo_f = function() { // private
   if (CL.cls.state !== CL.active.connected) {
     Con.Print(`Can't "${this.command}", not connected\n`);
     return;
@@ -1176,12 +1176,12 @@ CL.ServerInfo_f = function() {
   }
 };
 
-CL.InitPmove = function() {
+CL.InitPmove = function() { // private
   CL.pmove = new Pmove.Pmove();
   CL.pmove.movevars = new Pmove.MoveVars();
 };
 
-CL.Init = async function() {
+CL.Init = async function() { // public, by Host.js
   CL.ClearState();
   CL.InitInput();
   CL.InitTEnts();
@@ -1215,7 +1215,7 @@ CL.Init = async function() {
   Cmd.AddCommand('timedemo', CL.TimeDemo_f);
   Cmd.AddCommand('rcon', CL.Rcon_f);
   Cmd.AddCommand('serverinfo', CL.ServerInfo_f);
-  CL.svc_strings = Object.keys(Protocol.svc);
+  CL.svc_strings = Object.keys(Protocol.svc); // FIXME: turn into a map
 
   if (!PR.QuakeJS?.ClientGameAPI) {
     return;
@@ -1240,7 +1240,7 @@ CL.svc_strings = [];
  * @param {number} num edict Id
  * @returns {CL.Entity} client entity
  */
-CL.EntityNum = function(num) {
+CL.EntityNum = function(num) { // private
   if (num < CL.entities.length) {
     return CL.entities[num];
   }
@@ -1250,7 +1250,7 @@ CL.EntityNum = function(num) {
   return CL.entities[num];
 };
 
-CL.ParseStartSoundPacket = function() {
+CL.ParseStartSoundPacket = function() { // private
   const field_mask = MSG.ReadByte();
   const volume = ((field_mask & 1) !== 0) ? MSG.ReadByte() : 255;
   const attenuation = ((field_mask & 2) !== 0) ? MSG.ReadByte() * 0.015625 : 1.0;
@@ -1262,49 +1262,7 @@ CL.ParseStartSoundPacket = function() {
   S.StartSound(ent, channel, CL.state.sound_precache[sound_num], pos, volume / 255.0, attenuation);
 };
 
-CL.lastmsg = 0.0;
-CL.KeepaliveMessage = function() {
-  if ((SV.server.active === true) || (CL.cls.demoplayback === true)) {
-    return;
-  }
-  const oldsize = NET.message.cursize;
-  const olddata = new Uint8Array(8192);
-  olddata.set(new Uint8Array(NET.message.data, 0, oldsize));
-  let ret;
-  for (;;) {
-    ret = CL.GetMessage();
-    switch (ret) {
-      case 0:
-        break;
-      case 1:
-        Host.Error('CL.KeepaliveMessage: received a message');
-        break;
-      case 2:
-        if (MSG.ReadByte() !== Protocol.svc.nop) {
-          Host.Error('CL.KeepaliveMessage: datagram wasn\'t a nop');
-        }
-        break;
-      default:
-        Host.Error('CL.KeepaliveMessage: CL.GetMessage failed');
-    }
-    if (ret === 0) {
-      break;
-    }
-  }
-  NET.message.cursize = oldsize;
-  (new Uint8Array(NET.message.data, 0, oldsize)).set(olddata.subarray(0, oldsize));
-  const time = Sys.FloatTime();
-  if ((time - CL.lastmsg) < 5.0) {
-    return;
-  }
-  CL.lastmsg = time;
-  Con.Print('--> client to server keepalive\n');
-  MSG.WriteByte(CL.cls.message, Protocol.clc.nop);
-  NET.SendMessage(CL.cls.netcon, CL.cls.message);
-  CL.cls.message.clear();
-};
-
-CL.ParsePmovevars = function() {
+CL.ParsePmovevars = function() { // private
   CL.pmove.movevars.gravity = MSG.ReadFloat();
   CL.pmove.movevars.stopspeed = MSG.ReadFloat();
   CL.pmove.movevars.maxspeed = MSG.ReadFloat();
@@ -1329,7 +1287,7 @@ CL.ScoreSlot = class ClientScoreSlot {
   }
 };
 
-CL.ParseServerData = function() {
+CL.ParseServerData = function() { // private
   Con.DPrint('Serverdata packet received.\n');
   CL.ClearState();
 
@@ -1448,13 +1406,13 @@ CL.ParseServerData = function() {
   });
 };
 
-CL.ParseClientdata = function(bits) {
+CL.ParseClientdata = function(bits) { // private
   CL.cls.oldparsecountmod = CL.cls.parsecountmod;
 
   CL.ParseClientdataWinQuake(bits);
 };
 
-CL.ParseClientdataWinQuake = function(bits) {
+CL.ParseClientdataWinQuake = function(bits) { // private
   let i;
 
   CL.state.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? MSG.ReadChar() : Protocol.default_viewheight;
@@ -1596,7 +1554,7 @@ CL.PlayerState = class ClientPlayerState extends Protocol.EntityState {
   }
 };
 
-CL.ParsePlayerinfo = function() {
+CL.ParsePlayerinfo = function() { // private
   const num = MSG.ReadByte();
 
   if (num > CL.state.maxclients) {
@@ -1611,7 +1569,7 @@ CL.ParsePlayerinfo = function() {
   // console.log('read player info', state, state.command);
 };
 
-CL.ParseStaticEntity = function() {
+CL.ParseStaticEntity = function() { // private
   const ent = new CL.Entity(-1);
   CL.static_entities[CL.state.num_statics++] = ent;
   ent.model = CL.state.model_precache[MSG.ReadByte()];
@@ -1627,7 +1585,7 @@ CL.ParseStaticEntity = function() {
   R.SplitEntityOnNode(CL.state.worldmodel.nodes[0]);
 };
 
-CL.ParseStaticSound = function() {
+CL.ParseStaticSound = function() { // private
   const org = MSG.ReadCoordVector();
   const soundId = MSG.ReadByte();
   const vol = MSG.ReadByte();
@@ -1635,14 +1593,14 @@ CL.ParseStaticSound = function() {
   S.StaticSound(CL.state.sound_precache[soundId], org, vol / 255.0, attn);
 };
 
-CL.Shownet = function(x) {
+CL.Shownet = function(x) { // private
   if (CL.shownet.value === 2) {
     Con.Print((MSG.readcount <= 99 ? (MSG.readcount <= 9 ? '  ' : ' ') : '') +
 			(MSG.readcount - 1) + ':' + x + '\n');
   }
 };
 
-CL.AppendChatMessage = function(name, message, direct) { // TODO: Client
+CL.AppendChatMessage = function(name, message, direct) { // private // TODO: Client
   if (CL.state.chatlog.length > 5) {
     CL.state.chatlog.shift();
   }
@@ -1650,7 +1608,7 @@ CL.AppendChatMessage = function(name, message, direct) { // TODO: Client
   CL.state.chatlog.push({name, message, direct});
 };
 
-CL.PublishObituary = function(killerEdictId, victimEdictId, killerWeapon, killerItems) { // TODO: Client
+CL.PublishObituary = function(killerEdictId, victimEdictId, killerWeapon, killerItems) { // private // TODO: Client
   if (!CL.state.scores[killerEdictId + 1] || !CL.state.scores[victimEdictId + 1]) {
     return;
   }
@@ -1661,7 +1619,7 @@ CL.PublishObituary = function(killerEdictId, victimEdictId, killerWeapon, killer
   CL.AppendChatMessage(killer, `killed ${victim} using ${killerWeapon} (${killerItems})`, true);
 };
 
-CL.ParseServerCvars = function () {
+CL.ParseServerCvars = function () { // private
   let count = MSG.ReadByte();
 
   while(count-- > 0) {
@@ -1681,7 +1639,7 @@ CL.ParseServerCvars = function () {
   }
 };
 
-CL.PrintLastServerMessages = function() {
+CL.PrintLastServerMessages = function() { // private
   if (CL._lastServerMessages.length > 0) {
     Con.Print('Last server messages:\n');
     for (const cmd of CL._lastServerMessages) {
@@ -1702,7 +1660,7 @@ CL.PrintLastServerMessages = function() {
 CL._processingServerDataState = 0;
 CL._lastServerMessages = [];
 
-CL.ParseServerMessage = function() {
+CL.ParseServerMessage = function() { // private
   if (CL.shownet.value === 1) {
     Con.Print(NET.message.cursize + ' ');
   } else if (CL.shownet.value === 2) {
@@ -1971,7 +1929,7 @@ CL.ParseServerMessage = function() {
 
 CL.temp_entities = [];
 
-CL.InitTEnts = function() {
+CL.InitTEnts = function() { // private
   CL.sfx_wizhit = S.PrecacheSound('wizard/hit.wav');
   CL.sfx_knighthit = S.PrecacheSound('hknight/hit.wav');
   CL.sfx_tink1 = S.PrecacheSound('weapons/tink1.wav');
@@ -1981,7 +1939,7 @@ CL.InitTEnts = function() {
   CL.sfx_r_exp3 = S.PrecacheSound('weapons/r_exp3.wav');
 };
 
-CL.ParseBeam = function(m) {
+CL.ParseBeam = function(m) { // private
   const ent = MSG.ReadShort();
   const start = MSG.ReadCoordVector();
   const end = MSG.ReadCoordVector();
@@ -2012,7 +1970,7 @@ CL.ParseBeam = function(m) {
   Con.Print('beam list overflow!\n');
 };
 
-CL.ParseTemporaryEntity = function() { // TODO: move this to ClientAPI
+CL.ParseTemporaryEntity = function() { // private // TODO: move this to ClientAPI
   const type = MSG.ReadByte();
 
   switch (type) {
@@ -2087,14 +2045,14 @@ CL.ParseTemporaryEntity = function() { // TODO: move this to ClientAPI
   Sys.Error(`CL.ParseTEnt: bad type ${type}`);
 };
 
-CL.NewTempEntity = function() {
+CL.NewTempEntity = function() { // private
   const ent = new CL.Entity(-1);
   CL.temp_entities[CL.num_temp_entities++] = ent;
   CL.visedicts[CL.numvisedicts++] = ent;
   return ent;
 };
 
-CL.UpdateTEnts = function() {
+CL.UpdateTEnts = function() { // private
   CL.num_temp_entities = 0;
   let i; let b; let yaw; let pitch; let ent;
   for (i = 0; i <= 23; ++i) {
@@ -2140,7 +2098,7 @@ CL.UpdateTEnts = function() {
 CL.frames = [];
 CL.parsecount = 0;
 
-CL.PredictMove = function() {
+CL.PredictMove = function() { // public, by Host.js
   if (CL.nopred.value !== 0) {
     return;
   }
@@ -2154,7 +2112,7 @@ CL.PredictMove = function() {
  * @param {CL.PlayerState} to current state
  * @param {Protocol.UserCmd} u player commands
  */
-CL.PredictUsercmd = function(pmove, from, to, u) {
+CL.PredictUsercmd = function(pmove, from, to, u) { // private
   // split long commands
   if (u.msec > 50) {
     const temp = new CL.PlayerState();
@@ -2195,7 +2153,7 @@ CL.PredictUsercmd = function(pmove, from, to, u) {
  * This sets up the first phase.
  * @param {boolean} dopred full prediction, if true
  */
-CL.SetUpPlayerPrediction = function (dopred) {
+CL.SetUpPlayerPrediction = function (dopred) { // public, by Host.js
   // const frame = CL.frames[CL.parsecount & Protocol.update_mask];
 };
 
@@ -2203,7 +2161,7 @@ CL.SetUpPlayerPrediction = function (dopred) {
  * Builds the visedicts list.
  * Made up of: clients, packet_entities, nails, and tents.
  */
-CL.EmitEntities = function() {
+CL.EmitEntities = function() { // public, by Host.js
   if (CL.cls.state !== CL.active.connected) {
     return;
   }
@@ -2229,8 +2187,8 @@ CL.EmitEntities = function() {
     // apply prediction for non-player entities
     clent.updatePosition(clent.num !== CL.state.viewentity);
 
-    // do not render the view entity
-    if (i === CL.state.viewentity) {
+    // do not render the view entity, unless we are in chase cam mode
+    if (i === CL.state.viewentity && !Chase.active.value) {
       continue;
     }
 
@@ -2297,7 +2255,7 @@ CL.EmitEntities = function() {
   // TODO: temporary entities
 };
 
-CL.ParsePacketEntities = function(isDeltaUpdate) {
+CL.ParsePacketEntities = function(isDeltaUpdate) { // private
   while (true) {
     const edictNum = MSG.ReadShort();
 

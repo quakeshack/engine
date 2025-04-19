@@ -48,7 +48,7 @@ NET.BaseDriver = class BaseDriver {
   }
 
   Close(qsocket) {
-    qsocket.disconnected = true;
+    qsocket.state = NET.QSocket.STATE_DISCONNECTED;
   }
 
   Listen() {
@@ -65,12 +65,18 @@ NET.activeconnections = 0;
 NET.listening = false;
 
 NET.QSocket = (class QSocket {
+  static STATE_NEW = 'new';
+  static STATE_CONNECTING = 'connecting';
+  static STATE_CONNECTED = 'connected';
+  static STATE_DISCONNECTING = 'disconnecting';
+  static STATE_DISCONNECTED = 'disconnected';
+
   constructor(time, driver) {
     this.connecttime = time;
     this.lastMessageTime = time;
     this.driver = driver;
     this.address = null;
-    this.disconnected = true;
+    this.state = QSocket.STATE_NEW;
 
     this.receiveMessage = new Uint8Array(new ArrayBuffer(8192));
     this.receiveMessageLength = 0;
@@ -80,7 +86,7 @@ NET.QSocket = (class QSocket {
   }
 
   toString() {
-    return `QSocket(${this.address})`;
+    return `QSocket(${this.address}, ${this.state})`;
   }
 
   _getDriver() {
@@ -88,7 +94,7 @@ NET.QSocket = (class QSocket {
       throw new Error('This QSocket has no valid driver anymore!');
     }
 
-    return NET.drivers[this.driver]; // FIXME: global reliance
+    return NET.drivers[this.driver]; // FIXME: global ref
   }
 
   GetMessage() {
@@ -115,7 +121,7 @@ NET.QSocket = (class QSocket {
 NET.NewQSocket = function() {
   let i;
   for (i = 0; i < NET.activeSockets.length; ++i) {
-    if (NET.activeSockets[i].disconnected === true) {
+    if (NET.activeSockets[i].state === NET.QSocket.STATE_DISCONNECTED) {
       break;
     }
   }
@@ -168,10 +174,10 @@ NET.CheckForResend = function() {
   }
   const ret = dfunc.CheckForResend();
   if (ret === 1) {
-    NET.newsocket.disconnected = false;
+    // NET.newsocket.disconnected = false;
     CL.Connect(NET.newsocket);
   } else if (ret === -1) {
-    NET.newsocket.disconnected = false;
+    // NET.newsocket.disconnected = false;
     NET.Close(NET.newsocket);
     CL.cls.state = CL.active.disconnected;
     Con.Print('Network Error\n');
@@ -200,7 +206,7 @@ NET.Close = function(sock) {
   if (sock == null) {
     return;
   }
-  if (sock.disconnected === true) {
+  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
     return;
   }
   NET.time = Sys.FloatTime();
@@ -211,7 +217,7 @@ NET.GetMessage = function(sock) {
   if (sock == null) {
     return -1;
   }
-  if (sock.disconnected === true) {
+  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
     Con.DPrint('NET.GetMessage: disconnected socket\n');
     return -1;
   }
@@ -234,7 +240,7 @@ NET.SendMessage = function(sock, data) {
   if (sock == null) {
     return -1;
   }
-  if (sock.disconnected === true) {
+  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
     Con.DPrint('NET.SendMessage: disconnected socket\n');
     return -1;
   }
@@ -247,7 +253,7 @@ NET.SendUnreliableMessage = function(sock, data) {
   if (sock == null) {
     return -1;
   }
-  if (sock.disconnected === true) {
+  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
     Con.DPrint('NET.SendUnreliableMessage: disconnected socket\n');
     return -1;
   }
@@ -260,7 +266,7 @@ NET.CanSendMessage = function(sock) {
   if (sock == null) {
     return;
   }
-  if (sock.disconnected === true) {
+  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
     return;
   }
   NET.time = Sys.FloatTime();
