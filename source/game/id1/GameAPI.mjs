@@ -16,6 +16,8 @@ import BaseEntity from "./entity/BaseEntity.mjs";
 import * as weapon from "./entity/Weapons.mjs";
 import DogMonsterEntity, { qc as dogModelQC } from "./entity/monster/Dog.mjs";
 import { Serializer } from "./helper/MiscHelpers.mjs";
+import DemonMonster, { qc as demonModelQC } from "./entity/monster/Demon.mjs";
+import { MeatSprayEntity } from "./entity/monster/BaseMonster.mjs";
 
 // put all entity classes here:
 const entityRegistry = [
@@ -31,6 +33,7 @@ const entityRegistry = [
   InfoPlayerStartCoop,
   InfoPlayerStartDeathmatch,
   GibEntity,
+  MeatSprayEntity,
 
   weapon.Missile,
   weapon.Spike,
@@ -97,6 +100,7 @@ const entityRegistry = [
 
   ArmySoldierMonster,
   DogMonsterEntity,
+  DemonMonster,
 
   door.DoorEntity,
   door.SecretDoorEntity,
@@ -223,6 +227,7 @@ export class ServerGameAPI {
       'progs/soldier.mdl': engineAPI.ParseQC(soliderModelQC),
       'progs/player.mdl': engineAPI.ParseQC(playerModelQC),
       'progs/dog.mdl': engineAPI.ParseQC(dogModelQC),
+      'progs/demon.mdl': engineAPI.ParseQC(demonModelQC),
     };
 
     /** @private */

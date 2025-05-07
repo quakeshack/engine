@@ -90,7 +90,7 @@ export default class DogMonsterEntity extends WalkMonster {
     this._defineState('dog_walk7', 'walk7', 'dog_walk8', function () { this._ai.walk(8); });
     this._defineState('dog_walk8', 'walk8', 'dog_walk1', function () { this._ai.walk(8); });
 
-    this._defineState('dog_run1', 'run1', 'dog_run2', function () { this.idleSound(); this._ai.run(16); });
+    this._defineState('dog_run1', 'run1', 'dog_run2', function () { this._isLeaping = false; this.idleSound(); this._ai.run(16); });
     this._defineState('dog_run2', 'run2', 'dog_run3', function () { this._ai.run(32); });
     this._defineState('dog_run3', 'run3', 'dog_run4', function () { this._ai.run(32); });
     this._defineState('dog_run4', 'run4', 'dog_run5', function () { this._ai.run(20); });
@@ -120,7 +120,7 @@ export default class DogMonsterEntity extends WalkMonster {
     this._defineState('dog_leap6', 'leap6', 'dog_leap7', function () { });
     this._defineState('dog_leap7', 'leap7', 'dog_leap8', function () { });
     this._defineState('dog_leap8', 'leap8', 'dog_leap9', function () { });
-    this._defineState('dog_leap9', 'leap9', 'dog_leap9', function () { });
+    this._defineState('dog_leap9', 'leap9', 'dog_run1', function () { });
 
     this._defineState('dog_pain1', 'pain1', 'dog_pain2', function () { });
     this._defineState('dog_pain2', 'pain2', 'dog_pain3', function () { });
@@ -168,28 +168,19 @@ export default class DogMonsterEntity extends WalkMonster {
   }
 
   touch(otherEntity) {
-    if (!this._isLeaping) {
+    if (!this._isLeaping || this.health < 0) {
       return;
     }
-
-    if (this.health < 0) {
-      return;
-    }
-
+    // apply damage on impact
     if (otherEntity.takedamage && this.velocity.len() > 300) {
       const damage = 10 + Math.random() * 10;
       this.damage(otherEntity, damage);
     }
-
+    // if still airborne, wait to land
     if (!this.isOnTheFloor()) {
-      if (this.flags & flags.FL_ONGROUND) {
-        // jump randomly to not get hung up
-        this._isLeaping = false;
-        this._runState('dog_leap1');
-      }
       return;
     }
-
+    // landed: resume running
     this._isLeaping = false;
     this._runState('dog_run1');
   }
@@ -201,7 +192,7 @@ export default class DogMonsterEntity extends WalkMonster {
 
     this._ai.charge(10);
 
-    if (!this.enemy._damageHandler.canReceiveDamage(this)) {
+    if (!this.enemy.canReceiveDamage(this)) {
       return;
     }
 
@@ -217,18 +208,22 @@ export default class DogMonsterEntity extends WalkMonster {
   /** @private */
   _leap() {
     this._isLeaping = true;
-
     const { forward } = this.angles.angleVectors();
+    // perform leap: move up and forward
     this.origin[2]++;
-    this.velocity.set(forward.multiply(300.0).add(new Vector(0.0, 0.0, -200.0)));
-
-    if (this.flags & flags.FL_ONGROUND) {
-      this.flags &= ~flags.FL_ONGROUND;
-    }
+    // forward speed 300 and upward speed 200
+    this.velocity.set(forward.multiply(300.0).add(new Vector(0.0, 0.0, 200.0)));
+    // clear onground flag to allow falling
+    this.flags &= ~flags.FL_ONGROUND;
   }
 
-  /** @param {BaseEntity} userEntity  */
-  use(userEntity) { // FIXME: testing only
+  /**
+   * Testing command to perform a leap.
+   * @param {BaseEntity} userEntity entity invoking the use
+   * @returns {void}
+   */
+  // eslint-disable-next-line no-unused-vars
+  use(userEntity) {
     // userEntity.damage(this, 20);
     if (this.health < 0) {
       return;
@@ -277,7 +272,7 @@ export default class DogMonsterEntity extends WalkMonster {
       return;
     }
 
-    this.startSound(channel.CHAN_VOICE, 'dog/ddeath.wav');
+    this.deathSound();
     this.solid = solid.SOLID_NOT;
 
     if (Math.random() > 0.5) {
@@ -326,6 +321,10 @@ export default class DogMonsterEntity extends WalkMonster {
     return !(d < 80 || d > 150);
   }
 
+  deathSound() {
+    this.startSound(channel.CHAN_VOICE, 'dog/ddeath.wav');
+  }
+
   painSound() {
     this.startSound(channel.CHAN_VOICE, 'dog/dpain1.wav');
   }
@@ -335,12 +334,18 @@ export default class DogMonsterEntity extends WalkMonster {
   }
 
   idleSound() {
-    if (Math.random() < 0.2) {
-      this.startSound(channel.CHAN_VOICE, 'dog/idle.wav', 1.0, attn.ATTN_IDLE);
+    if (Math.random() >= 0.2) {
+      return;
     }
+
+    this.startSound(channel.CHAN_VOICE, 'dog/idle.wav', 1.0, attn.ATTN_IDLE);
   }
 
   attackSound() {
     this.startSound(channel.CHAN_VOICE, 'dog/dattack1.wav');
+  }
+
+  hasMeleeAttack() {
+    return true;
   }
 };

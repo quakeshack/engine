@@ -1,7 +1,8 @@
 /* global Vector */
 
-import { attn, channel } from "../../Defs.mjs";
+import { attn, channel, flags, solid } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
+import { DamageInflictor } from "../Weapons.mjs";
 import { WalkMonster } from "./BaseMonster.mjs";
 
 export const qc = `
@@ -71,6 +72,7 @@ export default class ArmySoldierMonster extends WalkMonster {
     this._serializer.startFields();
 
     this._aiState = null;
+    this._damageInflictor = new DamageInflictor(this);
 
     this._serializer.endFields();
   }
@@ -118,86 +120,152 @@ export default class ArmySoldierMonster extends WalkMonster {
     this._defineState('army_run6', 'run6', 'army_run7', function () { this._ai.run(15); });
     this._defineState('army_run7', 'run7', 'army_run8', function () { this._ai.run(10); });
     this._defineState('army_run8', 'run8', 'army_run1', function () { this._ai.run(8); });
+
+    this._defineState('army_atk1', 'shoot1', 'army_atk2', function () { this._ai.face(); });
+    this._defineState('army_atk2', 'shoot2', 'army_atk3', function () { this._ai.face(); });
+    this._defineState('army_atk3', 'shoot3', 'army_atk4', function () { this._ai.face(); });
+    this._defineState('army_atk4', 'shoot4', 'army_atk5', function () { this._ai.face(); this._fire(); this.effects |= flags.EF_MUZZLEFLASH; });
+    this._defineState('army_atk5', 'shoot5', 'army_atk6', function () { this._ai.face(); });
+    this._defineState('army_atk6', 'shoot6', 'army_atk7', function () { this._ai.face(); });
+    this._defineState('army_atk7', 'shoot7', 'army_atk8', function () { this._ai.face(); });
+    this._defineState('army_atk8', 'shoot8', 'army_atk9', function () { this._ai.face(); });
+    this._defineState('army_atk9', 'shoot9', 'army_run1', function () { this._ai.face(); });
+
+    this._defineState('army_pain1', 'pain1', 'army_pain2', function () {});
+    this._defineState('army_pain2', 'pain2', 'army_pain3', function () {});
+    this._defineState('army_pain3', 'pain3', 'army_pain4', function () {});
+    this._defineState('army_pain4', 'pain4', 'army_pain5', function () {});
+    this._defineState('army_pain5', 'pain5', 'army_pain6', function () {});
+    this._defineState('army_pain6', 'pain6', 'army_run1', function () { this._ai.pain(1); });
+
+    this._defineState('army_painb1', 'painb1', 'army_painb2', function () {});
+    this._defineState('army_painb2', 'painb2', 'army_painb3', function () { this._ai.painforward(13); });
+    this._defineState('army_painb3', 'painb3', 'army_painb4', function () { this._ai.painforward(9); });
+    this._defineState('army_painb4', 'painb4', 'army_painb5', function () {});
+    this._defineState('army_painb5', 'painb5', 'army_painb6', function () {});
+    this._defineState('army_painb6', 'painb6', 'army_painb7', function () {});
+    this._defineState('army_painb7', 'painb7', 'army_painb8', function () { this._ai.pain(4); });
+    this._defineState('army_painb8', 'painb8', 'army_painb9', function () {});
+    this._defineState('army_painb9', 'painb9', 'army_painb10', function () { this._ai.pain(10); });
+    this._defineState('army_painb10','painb10','army_painb11',function () {});
+    this._defineState('army_painb11','painb11','army_painb12',function () {});
+    this._defineState('army_painb12','painb12','army_painb13',function () { this._ai.pain(2); });
+    this._defineState('army_painb13','painb13','army_painb14',function () {});
+    this._defineState('army_painb14','painb14','army_run1', function () {});
+
+    this._defineState('army_painc1', 'painc1', 'army_painc2', function () {});
+    this._defineState('army_painc2', 'painc2', 'army_painc3', function () { this._ai.pain(1); });
+    this._defineState('army_painc3', 'painc3', 'army_painc4', function () { this._ai.painforward(1); });
+    this._defineState('army_painc4', 'painc4', 'army_painc5', function () { this._ai.painforward(1); });
+    this._defineState('army_painc5', 'painc5', 'army_painc6', function () {});
+    this._defineState('army_painc6', 'painc6', 'army_painc7', function () { this._ai.pain(1); });
+    this._defineState('army_painc7', 'painc7', 'army_painc8', function () { this._ai.painforward(4); });
+    this._defineState('army_painc8', 'painc8', 'army_painc9', function () { this._ai.painforward(3); });
+    this._defineState('army_painc9', 'painc9', 'army_painc10',function () { this._ai.painforward(6); });
+    this._defineState('army_painc10','painc10','army_painc11',function () { this._ai.painforward(8); });
+    this._defineState('army_painc11','painc11','army_painc12',function () {});
+    this._defineState('army_painc12','painc12','army_painc13',function () {});
+    this._defineState('army_painc13','painc13','army_run1',function () {});
+
+    this._defineState('army_die1','death1','army_die2',function () {});
+    this._defineState('army_die2','death2','army_die3',function () {});
+    this._defineState('army_die3','death3','army_die4',function () { this.solid = solid.SOLID_NOT; this._dropBackpack(); });
+    this._defineState('army_die4','death4','army_die5',function () {});
+    this._defineState('army_die5','death5','army_die6',function () {});
+    this._defineState('army_die6','death6','army_die7',function () {});
+    this._defineState('army_die7','death7','army_die8',function () {});
+    this._defineState('army_die8','death8','army_die9',function () {});
+    this._defineState('army_die9','death9','army_die10',function () {});
+    this._defineState('army_die10','death10','army_die10',function () {});
+
+    this._defineState('army_cdie1','deathc1','army_cdie2',function () {});
+    this._defineState('army_cdie2','deathc2','army_cdie3',function () { this._ai.back(5); });
+    this._defineState('army_cdie3','deathc3','army_cdie4',function () { this.solid = solid.SOLID_NOT; this._dropBackpack(); this._ai.back(4); });
+    this._defineState('army_cdie4','deathc4','army_cdie5',function () { this._ai.back(13); });
+    this._defineState('army_cdie5','deathc5','army_cdie6',function () { this._ai.back(3); });
+    this._defineState('army_cdie6','deathc6','army_cdie7',function () { this._ai.back(4); });
+    this._defineState('army_cdie7','deathc7','army_cdie8',function () {});
+    this._defineState('army_cdie8','deathc8','army_cdie9',function () {});
+    this._defineState('army_cdie9','deathc9','army_cdie10',function () {});
+    this._defineState('army_cdie10','deathc10','army_cdie11',function () {});
+    this._defineState('army_cdie11','deathc11','army_cdie11',function () {});
   }
 
   thinkStand() {
-    if (this.edictId === 13) console.log('thinkStand');
     this._runState('army_stand1');
   }
 
   thinkWalk() {
-    if (this.edictId === 13) console.log('thinkWalk');
     this._runState('army_walk1');
   }
 
   thinkRun() {
-    if (this.edictId === 13) console.log('thinkRun');
     this._runState('army_run1');
   }
 
   thinkMissile() {
-    if (this.edictId === 13) console.log('thinkMissile');
     this._runState('army_atk1');
   }
 
-  thinkPain(attackerEntity, damage) {
-    if (this.edictId === 13) console.log('thinkPain');
-    // local float r;
-
-    // if (self.pain_finished > time)
-    //   return;
-
-    // r = random();
-
-    // if (r < 0.2)
-    // {
-    //   self.pain_finished = time + 0.6;
-    //   army_pain1 ();
-    //   sound (self, CHAN_VOICE, "soldier/pain1.wav", 1, ATTN_NORM);
-    // }
-    // else if (r < 0.6)
-    // {
-    //   self.pain_finished = time + 1.1;
-    //   army_painb1 ();
-    //   sound (self, CHAN_VOICE, "soldier/pain2.wav", 1, ATTN_NORM);
-    // }
-    // else
-    // {
-    //   self.pain_finished = time + 1.1;
-    //   army_painc1 ();
-    //   sound (self, CHAN_VOICE, "soldier/pain2.wav", 1, ATTN_NORM);
-    // }
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  thinkDie(attackerEntity) {
-    console.log('thinkDie');
-
-    this._gib(true);
-    // TODO
-
-    // this.resetThinking();
-    // this.deadflag = dead.DEAD_DEAD;
-    // this.solid = solid.SOLID_NOT;
-
-    // check for gib
-    if (this.health < -35.0) {
-      this._gib(true);
+  thinkPain() {
+    if (this.pain_finished > this.game.time) {
       return;
     }
 
-    // // regular death
-    // 	sound (self, CHAN_VOICE, "soldier/death1.wav", 1, ATTN_NORM);
-    // 	if (random() < 0.5)
-    // 		army_die1 ();
-    // 	else
-    // 		army_cdie1 ();
+    const r = Math.random();
+    if (r < 0.2) {
+      this.pain_finished = this.game.time + 0.6;
+      this._runState('army_pain1');
+    } else if (r < 0.6) {
+      this.pain_finished = this.game.time + 1.1;
+      this._runState('army_painb1');
+    } else {
+      this.pain_finished = this.game.time + 1.1;
+      this._runState('army_painc1');
+    }
+
+    this.painSound();
+  }
+
+  thinkDie(attackerEntity) {
+    this._sub.useTargets(attackerEntity);
+    if (this.health < -35) {
+      this._gib(true);
+      return;
+    }
+    this.deathSound();
+    this.solid = solid.SOLID_NOT;
+    if (Math.random() < 0.5) {
+      this._runState('army_die1');
+    } else {
+      this._runState('army_cdie1');
+    }
+  }
+
+  _fire() { // QuakeC: soldier.qc/army_fire
+    this._ai.face();
+    this.attackSound();
+
+    if (!this.enemy) {
+      return;
+    }
+
+    const direction = this.enemy.origin.copy().subtract(this.enemy.velocity.copy().multiply(0.2)).subtract(this.origin);
+    direction.normalize();
+
+    this._damageInflictor.fireBullets(4, direction, new Vector(0.1, 0.1, 0));
+  }
+
+  _dropBackpack() {
+    super._dropBackpack({ ammo_shells: 5 });
+  }
+
+  deathSound() {
+    this.startSound(channel.CHAN_VOICE, 'soldier/death1.wav');
   }
 
   painSound() {
-    const r = Math.random();
-
-    if (r < 0.2) {
+    if (Math.random() < 0.2) {
       this.startSound(channel.CHAN_VOICE, "soldier/pain1.wav");
     } else {
       this.startSound(channel.CHAN_VOICE, "soldier/pain2.wav");
@@ -209,12 +277,18 @@ export default class ArmySoldierMonster extends WalkMonster {
   }
 
   idleSound() {
-    if (Math.random() < 0.2) {
-      this.startSound(channel.CHAN_VOICE, 'soldier/idle.wav', 1.0, attn.ATTN_IDLE);
+    if (Math.random() >= 0.2) {
+      return;
     }
+
+    this.startSound(channel.CHAN_VOICE, 'soldier/idle.wav', 1.0, attn.ATTN_IDLE);
   }
 
   attackSound() {
     this.startSound(channel.CHAN_WEAPON, 'soldier/sattck1.wav');
+  }
+
+  hasMissileAttack() {
+    return true;
   }
 };

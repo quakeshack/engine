@@ -1,8 +1,9 @@
 /* global Vector */
 
-import { damage, moveType, solid } from "../../Defs.mjs";
-import { EntityAI } from "../../helper/AI.mjs";
+import { damage, moveType, solid, range } from "../../Defs.mjs";
+import { EntityAI, ATTACK_STATE } from "../../helper/AI.mjs";
 import BaseEntity from "../BaseEntity.mjs";
+import { BackpackEntity } from "../Items.mjs";
 import { GibEntity } from "../Player.mjs";
 import { Sub } from "../Subs.mjs";
 import { DamageHandler } from "../Weapons.mjs";
@@ -47,6 +48,10 @@ export default class BaseMonster extends BaseEntity {
 
     this._damageHandler = new DamageHandler(this);
     this._sub = new Sub(this);
+  }
+
+  get v_angle() {
+    return this.angles;
   }
 
   _precache() {
@@ -143,8 +148,53 @@ export default class BaseMonster extends BaseEntity {
    * @returns {*} desired attack state
    */
   checkAttack() { // QuakeC: fight.qc/CheckAttack
-    // TODO
+    const target = this.enemy;
+    if (!target) return null;
+    // clear shot check
+    const trace = this.tracelineToEntity(target, false);
+    if (trace.entity !== target) return null;
+    if (trace.contents.inOpen && trace.contents.inWater) return null;
+    const enemyRange = this._ai.enemyRange;
+    // melee attack if supported
+    if (enemyRange === range.RANGE_MELEE && this.hasMeleeAttack()) {
+      return ATTACK_STATE.AS_MELEE;
+    }
+    // missile attack only if supported
+    if (!this.hasMissileAttack()) return null;
+    if (this.game.time < this.attack_finished) return null;
+    if (enemyRange === range.RANGE_FAR) return null;
+    let chance = 0;
+    if (enemyRange === range.RANGE_MELEE) {
+      chance = 0.9;
+      this.attackFinished(0);
+    } else if (enemyRange === range.RANGE_NEAR) {
+      chance = this.hasMeleeAttack() ? 0.2 : 0.4;
+    } else if (enemyRange === range.RANGE_MID) {
+      chance = this.hasMeleeAttack() ? 0.05 : 0.1;
+    }
+    if (Math.random() < chance) {
+      this.attackFinished(2 * Math.random());
+      return ATTACK_STATE.AS_MISSILE;
+    }
     return null;
+  }
+
+  /**
+   * Whether this monster supports melee attacks.
+   * @protected
+   * @returns {boolean} true, if supported
+   */
+  hasMeleeAttack() {
+    return false;
+  }
+
+  /**
+   * Whether this monster supports long-range attacks such as missiles or hit scanning.
+   * @protected
+   * @returns {boolean} true, if supported
+   */
+  hasMissileAttack() {
+    return false;
   }
 
   _preSpawn() {
@@ -185,6 +235,10 @@ export default class BaseMonster extends BaseEntity {
     this._ai.use(userEntity);
   }
 
+  deathSound() {
+    // implement: startSound here
+  }
+
   painSound() {
     // implement: startSound here
   }
@@ -213,6 +267,7 @@ export default class BaseMonster extends BaseEntity {
    * Currently only called by path_corner when touched and certain checks passed.
    * @param {import('../Misc.mjs').PathCornerEntity} markerEntity marker entity
    */
+  // eslint-disable-next-line no-unused-vars
   moveTargetReached(markerEntity) {
     // TODO: t_movetarget self logic part
   //   if (self.classname == "monster_ogre")
@@ -236,6 +291,18 @@ export default class BaseMonster extends BaseEntity {
     if (this.game.skill !== 3) {
       this.attack_finished = this.game.time + normal;
     }
+  }
+
+  _dropBackpack(backpackParameters) {
+    const backpack = this.engine.SpawnEntity(BackpackEntity.classname, {
+      origin: this.origin.copy(),
+      regeneration_time: 0, // do not regenerate
+      remove_after: 120, // remove after 2 minutes
+      ...backpackParameters,
+    });
+
+    // toss it around
+    backpack.toss();
   }
 };
 
@@ -268,3 +335,50 @@ export class SwimMonster extends BaseMonster {
     super.spawn();
   }
 };
+
+export class MeatSprayEntity extends BaseEntity {
+  static classname = 'misc_gib_meatspray';
+
+  spawn() {
+    this.movetype = moveType.MOVETYPE_BOUNCE;
+    this.solid = solid.SOLID_NOT;
+    this.velocity[2] += 250 + 50 * Math.random();
+    this.avelocity = new Vector(3000, 1000, 2000);
+    this.ltime = this.game.time;
+    this.frame = 0;
+    this.flags = 0;
+
+    this.setModel('progs/zom_gib.mdl');
+    this.setSize(Vector.origin, Vector.origin);
+    this.setOrigin(this.origin);
+
+    this._scheduleThink(this.ltime + 1.0, () => this.remove());
+  }
+
+  /**
+   * Tosses around a piece of meat.
+   * @param {BaseEntity} entity owner entity
+   * @param {Vector?} origin optional origin, if not set, will be calculated
+   * @param {Vector?} velocity optional velocity, if not set, it will be randomized
+   */
+  static sprayMeat(entity, origin = null, velocity = null) {
+    // TODO: offload this to the client entity side
+    if (!origin || !velocity) {
+      const { forward, right } = entity.angles.angleVectors();
+
+      if (!origin) {
+        origin = entity.origin.copy().add(forward.multiply(16));
+      }
+
+      if (!velocity) {
+        velocity = entity.velocity.copy().add(right.multiply(Math.random() * 100));
+      }
+    }
+
+    entity.engine.SpawnEntity(MeatSprayEntity.classname, {
+      owner: entity,
+      velocity,
+      origin,
+    });
+  }
+}

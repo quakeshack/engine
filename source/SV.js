@@ -1358,19 +1358,19 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
     MSG.WriteShort(msg, punchangle[0] * 90);
   }
   if ((bits & Protocol.su.velocity1) !== 0) {
-    MSG.WriteChar(msg, velo[0] * 0.0625);
+    MSG.WriteShort(msg, velo[0] * 0.0625);
   }
   if ((bits & Protocol.su.punch2) !== 0) {
     MSG.WriteShort(msg, punchangle[1] * 90.0);
   }
   if ((bits & Protocol.su.velocity2) !== 0) {
-    MSG.WriteChar(msg, velo[1] * 0.0625);
+    MSG.WriteShort(msg, velo[1] * 0.0625);
   }
   if ((bits & Protocol.su.punch3) !== 0) {
     MSG.WriteShort(msg, punchangle[2] * 90.0);
   }
   if ((bits & Protocol.su.velocity3) !== 0) {
-    MSG.WriteChar(msg, velo[2] * 0.0625);
+    MSG.WriteShort(msg, velo[2] * 0.0625);
   }
 
   MSG.WriteLong(msg, items);

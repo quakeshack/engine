@@ -1,6 +1,4 @@
 /* global Sys */
-// eslint-disable-next-line no-unused-vars, no-undef
-CANNON = require('cannon');
 require('./source/Draw_node.js');
 require('./source/Sys_node.js');
 require('./source/Vec.js');
@@ -31,6 +29,4 @@ require('./source/NET_Loop.js');
 require('./source/NET_WEBS.js');
 require('./source/Shack.js');
 
-Sys.Init()
-  .then(() => Sys.Print('Dedicated server running!\n'));
-//  .catch((err) => Sys.Error('Fatal error during Sys.Init!\n' + err.message));
+Sys.Init().then(() => Sys.Print('Dedicated server initialized!\n'));

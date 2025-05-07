@@ -5,6 +5,7 @@ import { crandom, Flag, Serializer } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import { BackpackEntity } from "./Items.mjs";
 import { BubbleSpawnerEntity, InfoNotNullEntity, IntermissionCameraEntity, TeleportEffectEntity } from "./Misc.mjs";
+import { MeatSprayEntity } from "./monster/BaseMonster.mjs";
 import { Backpack, DamageHandler, PlayerWeapons, weaponConfig } from "./Weapons.mjs";
 import { CopyToBodyQue } from "./Worldspawn.mjs";
 
@@ -941,7 +942,7 @@ export class PlayerEntity extends BaseEntity {
 
   /** @private */
   _testStuff() {
-    this.movetype = moveType.MOVETYPE_BOUNCE;
+    MeatSprayEntity.sprayMeat(this);
   }
 
   /** @private */
@@ -2092,6 +2093,7 @@ export class GibEntity extends BaseEntity {
    * @param {?number} damage taken damage (negative)
    */
   static throwGibs(entity, damage = null) {
+    // TODO: offload this to the client entity side
     const models = ['progs/gib1.mdl', 'progs/gib2.mdl', 'progs/gib3.mdl'];
 
     for (let i = 0, max = Math.ceil(entity.volume / 16000); i < max; i++) {

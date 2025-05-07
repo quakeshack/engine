@@ -249,9 +249,11 @@ Cmd.ExecuteString = function(text, client = null) {
   }
 
   // ask Cvar, if it knows more
-  if (!Cvar.Command_f.call(ctx, argv[0], argv[1])) {
-    Con.Print('Unknown command "' + cmdname + '"\n');
+  if (Cvar.Command_f.call(ctx, argv[0], argv[1])) {
+    return;
   }
+
+  Con.Print('Unknown command "' + cmdname + '"\n');
 };
 
 /**

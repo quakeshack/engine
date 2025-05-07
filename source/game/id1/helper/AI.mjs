@@ -123,6 +123,7 @@ export const ATTACK_STATE = {
   AS_STRAIGHT: 1,
   AS_SLIDING: 2,
   AS_MELEE: 3,
+  /** any long-range attack, can be missiles or hit scanning */
   AS_MISSILE: 4,
 };
 

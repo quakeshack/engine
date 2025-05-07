@@ -1426,7 +1426,7 @@ CL.ParseClientdataWinQuake = function(bits) { // private
       CL.state.punchangle[i] = 0.0;
     }
     if ((bits & (Protocol.su.velocity1 << i)) !== 0) {
-      CL.state.mvelocity[0][i] = MSG.ReadChar() * 16.0;
+      CL.state.mvelocity[0][i] = MSG.ReadShort() * 16.0;
     } else {
       CL.state.mvelocity[0][i] = 0.0;
     }

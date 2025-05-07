@@ -351,6 +351,19 @@ export default class BaseEntity {
   }
 
   /**
+   * Checks if this entity can receive damage from a given attacker.
+   * @param {BaseEntity} attackerEntity entity who is attacking/inflicting
+   * @returns {boolean} true, if this entity can receive damage
+   */
+  canReceiveDamage(attackerEntity) {
+    if (!this._damageHandler) {
+      return false;
+    }
+
+    return this._damageHandler.canReceiveDamage(attackerEntity);
+  }
+
+  /**
    * Completely resets all thinking and purges all scheduled thinks.
    */
   resetThinking() {

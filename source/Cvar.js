@@ -44,6 +44,9 @@ Cvar = class Cvar {
     /** @type {?string} @private */
     this.description = description;
 
+    console.assert(name.length > 0, 'Cvar name must be at least 1 character long', name);
+    console.assert(!Cvar._vars[name], 'Cvar name must not be used already', name);
+
     Cvar._vars[name] = this;
   }
 

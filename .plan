@@ -47,10 +47,10 @@ Grouped by sections and then sorted by priority (more or less).
   * [X] func_train
   * [X] info_player_start2
   * [X] misc_teleporttrain
-  * [_] monster_army
+  * [X] monster_army
   * [_] monster_boss
-  * [_] monster_demon1
-  * [_] monster_dog
+  * [X] monster_demon1
+  * [X] monster_dog
   * [_] monster_enforcer
   * [_] monster_fish
   * [_] monster_hell_knight
@@ -305,6 +305,26 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-05-08
+
+* added monster_demon1
+* added misc_gib_meatspray
+* added `canReceiveDamage` to `BaseEntity`
+* tried VS Code’s Agentic AI to port some logic, it went just so-so
+  * it forgot to port important parts of the original logic
+  * it assumed some APIs wrongly
+
+### 2025-04-28
+
+* need to rethink the AI code structure a bit, I ran into a few problems such as:
+  * able to do a missile attack is also used to indicate being a hitscanner
+
+### 2025-04-26
+
+* added monster_army
+* a few fixes here and there
+* monster_dog is not getting stuck in leap state anymore
 
 ### 2025-04-19
 
