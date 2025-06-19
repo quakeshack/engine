@@ -4,8 +4,8 @@
 Q = {};
 
 Q.memstr = function(src) {
-  const dest = []; let i;
-  for (i = 0; i < src.length; ++i) {
+  const dest = [];
+  for (let i = 0; i < src.length; i++) {
     if (src[i] === 0) {
       break;
     }
@@ -17,8 +17,7 @@ Q.memstr = function(src) {
 Q.strmem = function(src) {
   const buf = new ArrayBuffer(src.length);
   const dest = new Uint8Array(buf);
-  let i;
-  for (i = 0; i < src.length; ++i) {
+  for (let i = 0; i < src.length; i++) {
     dest[i] = src.charCodeAt(i) & 255;
   }
   return buf;

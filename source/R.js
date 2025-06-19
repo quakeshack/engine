@@ -838,9 +838,8 @@ R.Perspective = function() {
   }
 
   GL.UnbindProgram();
-  let i; let program;
-  for (i = 0; i < GL.programs.length; ++i) {
-    program = GL.programs[i];
+  for (let i = 0; i < GL.programs.length; ++i) {
+    const program = GL.programs[i];
     gl.useProgram(program.program);
     if (program.uViewOrigin != null) {
       gl.uniform3fv(program.uViewOrigin, R.refdef.vieworg);

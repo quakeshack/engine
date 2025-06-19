@@ -314,6 +314,7 @@ export class QuakeEntityAI extends EntityAI {
       return false;
     }
 
+    // client got invisibility or has notarget set
     if ((client.flags & flags.FL_NOTARGET) || client.items & items.IT_INVISIBILITY) {
       return false;
     }
@@ -477,31 +478,30 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   run(dist) { // QuakeC: ai.qc/ai_run
-    const self = this._entity;
     // console.log('AI run', this._entity.toString(), dist);
 
     this._moveDistance = dist;
 
     // see if the enemy is dead
-    if (self.enemy.health <= 0) {
-      self.enemy = this._game.worldspawn;
+    if (this._entity.enemy?.health <= 0) {
+      this._entity.enemy = null;
       // FIXME: look all around for other targets (original FIXME from QuakeC)
       if (this._oldenemy?.health > 0) {
-        self.enemy = this._oldenemy;
+        this._entity.enemy = this._oldenemy;
         this._huntTarget();
       } else {
-        if (self.movetarget) {
-          self.thinkWalk();
+        if (this._entity.movetarget) {
+          this._entity.thinkWalk();
         } else {
-          self.thinkStand();
+          this._entity.thinkStand();
         }
         return;
       }
     }
 
-    self.show_hostile = this._game.time + 1.0; // wake up other monsters
+    this._entity.show_hostile = this._game.time + 1.0; // wake up other monsters
 
-    const isEnemyVisible = this._isVisible(self.enemy);
+    const isEnemyVisible = this._entity.enemy ? this._isVisible(this._entity.enemy) : false;
 
     // check knowledge of enemy
     if (isEnemyVisible) {
@@ -515,9 +515,11 @@ export class QuakeEntityAI extends EntityAI {
       }
     }
 
-    this._enemyMetadata.infront = this._isInFront(self.enemy);
-    this._enemyMetadata.range = this._determineRange(self.enemy);
-    this._enemyMetadata.yaw = self.enemy.origin.copy().subtract(self.origin).toYaw();
+    if (this._entity.enemy) {
+      this._enemyMetadata.infront = this._isInFront(this._entity.enemy);
+      this._enemyMetadata.range = this._determineRange(this._entity.enemy);
+      this._enemyMetadata.yaw = this._entity.enemy.origin.copy().subtract(this._entity.origin).toYaw();
+    }
 
     switch (this._attackState) {
       case ATTACK_STATE.AS_MISSILE:
@@ -542,7 +544,9 @@ export class QuakeEntityAI extends EntityAI {
     }
 
     // head straight in
-    self.moveToGoal(dist);
+    if (this._entity.goalentity) {
+      this._entity.moveToGoal(dist);
+    }
   }
 
   _checkAnyAttack(isEnemyVisible) { // QuakeC: ai.qc/CheckAnyAttack
@@ -561,12 +565,63 @@ export class QuakeEntityAI extends EntityAI {
     this._changeYaw();
   }
 
-  charge(dist) {
+  charge(dist) { // QuakeC: ai.qc/ai_charge
     this.face();
     this._entity.moveToGoal(dist);
   }
 
+  chargeSide() { // QuakeC: ai.qc/ai_charge_side
+    const self = this._entity;
+
+    // Aim to the left of the enemy for a flyby
+    self.ideal_yaw = self.enemy.origin.copy().subtract(self.origin).toYaw();
+    self.changeYaw();
+
+    const { right } = self.angles.angleVectors();
+    const dtemp = self.enemy.origin.copy().subtract(right.multiply(30));
+    const heading = dtemp.copy().subtract(self.origin).toYaw();
+
+    self.walkMove(heading, 20);
+  }
+
+  melee() { // QuakeC: ai.qc/ai_melee
+    if (!this._entity.enemy) {
+      return; // removed before stroke
+    }
+
+    const delta = this._entity.enemy.origin.copy().subtract(this._entity.origin);
+
+    if (delta.len() > 60) {
+      return;
+    }
+
+    const ldmg = (Math.random() + Math.random() + Math.random()) * 3;
+    this._entity.damage(this._entity.enemy, ldmg);
+  }
+
+  meleeSide() { // QuakeC: ai.qc/ai_melee_side
+    if (!this._entity.enemy) {
+      return; // removed before stroke
+    }
+
+    this.chargeSide();
+
+    const delta = this._entity.enemy.origin.copy().subtract(this._entity.origin);
+
+    if (delta.len() > 60) {
+      return;
+    }
+
+    if (!this._entity.enemy.canReceiveDamage(this._entity)) {
+      return;
+    }
+
+    const ldmg = (Math.random() + Math.random() + Math.random()) * 3;
+    this._entity.damage(this._entity.enemy, ldmg);
+  }
+
   face() {
+    console.assert(this._entity.enemy instanceof BaseEntity, 'valid enemy required');
     this._entity.ideal_yaw = this._entity.enemy.origin.copy().subtract(this._entity.origin).toYaw();
     this._entity.changeYaw();
   }

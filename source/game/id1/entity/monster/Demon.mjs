@@ -113,26 +113,26 @@ export default class DemonMonster extends WalkMonster {
     this._defineState('demon1_jump7', 'leap7', 'demon1_jump8', function() {});
     this._defineState('demon1_jump8', 'leap8', 'demon1_jump9', function() {});
     this._defineState('demon1_jump9', 'leap9', 'demon1_jump10', function() {});
-    this._defineState('demon1_jump10', 'leap10', 'demon1_jump1', function() { this.nextthink = this.game.time + 3; /* HACK */ });
+    this._defineState('demon1_jump10', 'leap10', 'demon1_jump1', function() { this.nextthink = this.game.time + 3; /* HACK: if three seconds pass, assume demon is stuck and jump again */ });
     this._defineState('demon1_jump11', 'leap11', 'demon1_jump12', function() {});
     this._defineState('demon1_jump12', 'leap12', 'demon1_run1', function() {});
 
     // attack states
-    this._defineState('demon1_atta1', 'attacka1', 'demon1_atta2', function() { this._ai.charge(2); });
-    this._defineState('demon1_atta2', 'attacka2', 'demon1_atta3', function() { this._ai.charge(4); });
-    this._defineState('demon1_atta3', 'attacka3', 'demon1_atta4', function() { this._ai.charge(6); });
-    this._defineState('demon1_atta4', 'attacka4', 'demon1_atta5', function() { this._ai.charge(8); });
-    this._defineState('demon1_atta5', 'attacka5', 'demon1_atta6', function() { this._ai.charge(10); this._meleeAttack(200); });
-    this._defineState('demon1_atta6', 'attacka6', 'demon1_atta7', function() { this._ai.charge(12); });
-    this._defineState('demon1_atta7', 'attacka7', 'demon1_atta8', function() { this._ai.charge(14); });
-    this._defineState('demon1_atta8', 'attacka8', 'demon1_atta9', function() { this._ai.charge(16); });
-    this._defineState('demon1_atta9', 'attacka9', 'demon1_atta10', function() { this._ai.charge(18); });
-    this._defineState('demon1_atta10', 'attacka10', 'demon1_atta11', function() { this._ai.charge(20); });
-    this._defineState('demon1_atta11', 'attacka11', 'demon1_atta12', function() { this._ai.charge(22); this._meleeAttack(-200); });
-    this._defineState('demon1_atta12', 'attacka12', 'demon1_atta13', function() { this._ai.charge(24); });
-    this._defineState('demon1_atta13', 'attacka13', 'demon1_atta14', function() { this._ai.charge(26); });
-    this._defineState('demon1_atta14', 'attacka14', 'demon1_atta15', function() { this._ai.charge(28); });
-    this._defineState('demon1_atta15', 'attacka15', 'demon1_run1', function() { this._ai.charge(30); });
+    this._defineState('demon1_atta1', 'attacka1', 'demon1_atta2', function() { this._ai.charge(4); });
+    this._defineState('demon1_atta2', 'attacka2', 'demon1_atta3', function() { this._ai.charge(0); });
+    this._defineState('demon1_atta3', 'attacka3', 'demon1_atta4', function() { this._ai.charge(0); });
+    this._defineState('demon1_atta4', 'attacka4', 'demon1_atta5', function() { this._ai.charge(1); });
+    this._defineState('demon1_atta5', 'attacka5', 'demon1_atta6', function() { this._ai.charge(2); this._meleeAttack(200); });
+    this._defineState('demon1_atta6', 'attacka6', 'demon1_atta7', function() { this._ai.charge(1); });
+    this._defineState('demon1_atta7', 'attacka7', 'demon1_atta8', function() { this._ai.charge(6); });
+    this._defineState('demon1_atta8', 'attacka8', 'demon1_atta9', function() { this._ai.charge(8); });
+    this._defineState('demon1_atta9', 'attacka9', 'demon1_atta10', function() { this._ai.charge(4); });
+    this._defineState('demon1_atta10', 'attacka10', 'demon1_atta11', function() { this._ai.charge(2); });
+    this._defineState('demon1_atta11', 'attacka11', 'demon1_atta12', function() { this._meleeAttack(-200); });
+    this._defineState('demon1_atta12', 'attacka12', 'demon1_atta13', function() { this._ai.charge(5); });
+    this._defineState('demon1_atta13', 'attacka13', 'demon1_atta14', function() { this._ai.charge(8); });
+    this._defineState('demon1_atta14', 'attacka14', 'demon1_atta15', function() { this._ai.charge(4); });
+    this._defineState('demon1_atta15', 'attacka15', 'demon1_run1', function() { this._ai.charge(4); });
 
     // pain states
     this._defineState('demon1_pain1', 'pain1', 'demon1_pain2', function() {});

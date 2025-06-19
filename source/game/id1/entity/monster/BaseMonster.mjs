@@ -149,20 +149,32 @@ export default class BaseMonster extends BaseEntity {
    */
   checkAttack() { // QuakeC: fight.qc/CheckAttack
     const target = this.enemy;
-    if (!target) return null;
+    if (!target) {
+      return null;
+    }
     // clear shot check
     const trace = this.tracelineToEntity(target, false);
-    if (trace.entity !== target) return null;
-    if (trace.contents.inOpen && trace.contents.inWater) return null;
+    if (trace.entity !== target) {
+      return null;
+    }
+    if (trace.contents.inOpen && trace.contents.inWater) {
+      return null;
+    }
     const enemyRange = this._ai.enemyRange;
     // melee attack if supported
     if (enemyRange === range.RANGE_MELEE && this.hasMeleeAttack()) {
       return ATTACK_STATE.AS_MELEE;
     }
     // missile attack only if supported
-    if (!this.hasMissileAttack()) return null;
-    if (this.game.time < this.attack_finished) return null;
-    if (enemyRange === range.RANGE_FAR) return null;
+    if (!this.hasMissileAttack()) {
+      return null;
+    }
+    if (this.game.time < this.attack_finished)  {
+      return null;
+    }
+    if (enemyRange === range.RANGE_FAR) {
+      return null;
+    }
     let chance = 0;
     if (enemyRange === range.RANGE_MELEE) {
       chance = 0.9;
@@ -206,6 +218,13 @@ export default class BaseMonster extends BaseEntity {
     return true;
   }
 
+  _postSpawn() {
+    this.game.total_monsters++;
+    this._ai.spawn();
+
+    this._scheduleThink(this.nextthink + Math.random() * 0.5, () => this._ai.think());
+  }
+
   spawn() {
     if (!this._preSpawn()) {
       return;
@@ -225,10 +244,7 @@ export default class BaseMonster extends BaseEntity {
     this.setModel(this.constructor._modelDefault);
     this.setSize(mins, maxs);
 
-    this.game.total_monsters++;
-    this._ai.spawn();
-
-    this._scheduleThink(this.nextthink + Math.random() * 0.5, () => this._ai.think());
+    this._postSpawn();
   }
 
   use(userEntity) {

@@ -38,6 +38,9 @@ $frame prowl_9 prowl_10 prowl_11 prowl_12 prowl_13 prowl_14 prowl_15 prowl_16
 $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
 `;
 
+/**
+ * QUAKED monster_army (1 0 0) (-16 -16 -24) (16 16 40) Ambush
+ */
 export default class ArmySoldierMonster extends WalkMonster {
   static classname = 'monster_army';
 

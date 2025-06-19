@@ -18,6 +18,13 @@ import DogMonsterEntity, { qc as dogModelQC } from "./entity/monster/Dog.mjs";
 import { Serializer } from "./helper/MiscHelpers.mjs";
 import DemonMonster, { qc as demonModelQC } from "./entity/monster/Demon.mjs";
 import { MeatSprayEntity } from "./entity/monster/BaseMonster.mjs";
+import ZombieMonster, { ZombieGibGrenade, qc as zombieModelQC } from "./entity/monster/Zombie.mjs";
+import { KnightMonster, HellKnightMonster, qc as knightModelQCs } from "./entity/monster/Knights.mjs";
+
+const featureFlags = [
+  'zombie-ballistic-grenades', // enables zombie gib grenade trajectory fix
+
+];
 
 // put all entity classes here:
 const entityRegistry = [
@@ -101,6 +108,10 @@ const entityRegistry = [
   ArmySoldierMonster,
   DogMonsterEntity,
   DemonMonster,
+  ZombieMonster,
+  ZombieGibGrenade,
+  KnightMonster,
+  HellKnightMonster,
 
   door.DoorEntity,
   door.SecretDoorEntity,
@@ -228,6 +239,9 @@ export class ServerGameAPI {
       'progs/player.mdl': engineAPI.ParseQC(playerModelQC),
       'progs/dog.mdl': engineAPI.ParseQC(dogModelQC),
       'progs/demon.mdl': engineAPI.ParseQC(demonModelQC),
+      'progs/zombie.mdl': engineAPI.ParseQC(zombieModelQC),
+      'progs/knight.mdl': engineAPI.ParseQC(knightModelQCs.knight),
+      'progs/kknight.mdl': engineAPI.ParseQC(knightModelQCs.hellKnight),
     };
 
     /** @private */
@@ -245,6 +259,7 @@ export class ServerGameAPI {
       coop: engineAPI.GetCvar('coop'),
       samelevel: engineAPI.GetCvar('samelevel'),
       noexit: engineAPI.GetCvar('noexit'),
+      gravity: engineAPI.GetCvar('sv_gravity'),
     };
 
     Object.seal(this._modelData);
@@ -290,6 +305,14 @@ export class ServerGameAPI {
 
   get nomonsters() {
     return cvars.nomonster.value;
+  }
+
+  get gravity() {
+    return this._cvars.gravity.value;
+  }
+
+  hasFeature(feature) {
+    return featureFlags.includes(feature);
   }
 
   StartFrame() {

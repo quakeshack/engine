@@ -54,7 +54,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] monster_enforcer
   * [_] monster_fish
   * [_] monster_hell_knight
-  * [_] monster_knight
+  * [X] monster_knight
   * [_] monster_ogre
   * [_] monster_oldone
   * [_] monster_shalrath
@@ -111,7 +111,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] flush messages more often, increase update rate
 * [_] only send message when actually needed, there’s too much idle chatter right now
 * [_] look into that weird sluggish feel when ping is >100 ms (especially on Firefox)
-* [_] introduce a required server/client version level and drop clients with wrong version
+* [X] introduce a required server/client version level and drop clients with wrong version
 * [X] automatically connect to /api/ instead of /
 * [_] ability to specify listen address/interface
 
@@ -135,8 +135,8 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] COM: instead of requesting files by using partial content requests to the webserver, let’s use files instead, leveraging CDNs
   * [X] DS: make it respond to file requests, map it to PAKs, also set Cache-Control headers properly
   * [X] COM: frontend part should simply ask for the file directly (e.g. `/data/pak0.pak/progs.dat`)
-* [_] Cvar, IN, COM: write archive variables to localStorage immediately
-* [_] SV, CL: we can ramp up the resolution of things like angles etc.
+* [X] Cvar, IN, COM: write archive variables to localStorage immediately
+* [X] SV, CL: we can ramp up the resolution of things like angles etc.
 * [_] Mod: lazy load models
 * [_] SV: spawn server should wait for async resources to arrive
 * [_] SV: reimplement recursive hull check iteratively
@@ -305,6 +305,13 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-06-19
+
+* fixed a few AI related bugs and added more logic
+* fixed monster_zombie, added giblets
+* fixed monster_demon1
+* added monster_knight and parts of monster_hell_knight
 
 ### 2025-05-08
 

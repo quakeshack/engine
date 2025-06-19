@@ -108,12 +108,9 @@ Cmd.Alias_f = function(...argv) {
   Cmd.alias.push({name: argv[1], value: value + '\n'});
 };
 
-/** @deprecated */
-Cmd.args = '';
 Cmd.functions = [];
 
 Cmd.Init = function() {
-  Cmd.args = '';
   Cmd.functions = [];
 
   Cmd.AddCommand('stuffcmds', Cmd.StuffCmds_f);
@@ -125,7 +122,6 @@ Cmd.Init = function() {
 };
 
 Cmd.Shutdown = function() {
-  Cmd.args = '';
   Cmd.functions = [];
 };
 
@@ -138,9 +134,6 @@ Cmd.TokenizeString = function(text) {
       if ((c > 32) || (c === 10)) {
         break;
       }
-    }
-    if (argv.length === 1) {
-      Cmd.args = text.substring(i);
     }
     if ((text.charCodeAt(i) === 10) || (i >= text.length)) {
       break;

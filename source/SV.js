@@ -1731,6 +1731,7 @@ SV.SpawnServer = function(mapname) {
     SV.SendServerData(Host.client);
   }
   Con.PrintSuccess('Server spawned.\n');
+  Cmd.ExecuteString('status\n');
   return true;
 };
 
@@ -2260,7 +2261,9 @@ SV.FlyMove = function(ent, time) {
 SV.AddGravity = function(ent) {
   const ent_gravity = ent.entity.gravity || 1.0;
 
-  ent.entity.velocity = ent.entity.velocity.add(new Vector(0.0, 0.0, ent_gravity * SV.gravity.value * Host.frametime * -1.0));
+  const velocity = ent.entity.velocity;
+  velocity[2] += ent_gravity * SV.gravity.value * Host.frametime * -1.0;
+  ent.entity.velocity = velocity;
 };
 
 SV.PushEntity = function(ent, pushVector) {
