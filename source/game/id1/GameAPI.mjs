@@ -242,7 +242,7 @@ export class ServerGameAPI {
       'progs/demon.mdl': engineAPI.ParseQC(demonModelQC),
       'progs/zombie.mdl': engineAPI.ParseQC(zombieModelQC),
       'progs/knight.mdl': engineAPI.ParseQC(knightModelQCs.knight),
-      'progs/kknight.mdl': engineAPI.ParseQC(knightModelQCs.hellKnight),
+      'progs/hknight.mdl': engineAPI.ParseQC(knightModelQCs.hellKnight),
     };
 
     /** @private */

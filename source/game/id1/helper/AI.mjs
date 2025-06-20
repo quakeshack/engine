@@ -150,9 +150,10 @@ export class QuakeEntityAI extends EntityAI {
 
     /** @private */
     this._enemyMetadata = {
-      infront: false,
-      range: range.RANGE_FAR,
-      yaw: null,
+      isVisible: false, // QuakeC: enemy_vis
+      infront: false, // QuakeC: enemy_infront
+      range: range.RANGE_FAR, // QuakeC: enemy_range
+      yaw: null, // QuakeC: enemy_yaw
     };
 
     Serializer.makeSerializable(this._enemyMetadata, this._engine);
@@ -177,13 +178,24 @@ export class QuakeEntityAI extends EntityAI {
     this._lookingLeft = false;
     this._moveDistance = 0;
     this._attackState = ATTACK_STATE.AS_NONE;
+    this._enemyMetadata.isVisible = false;
     this._enemyMetadata.infront = false;
     this._enemyMetadata.range = range.RANGE_FAR;
     this._enemyMetadata.yaw = null;
   }
 
+  /**
+   * @returns {range} the determined range of the enemy
+   */
   get enemyRange() {
     return this._enemyMetadata.range;
+  }
+
+  /**
+   * @returns {boolean} true if the enemy is visible
+   */
+  get enemyIsVisible() {
+    return this._enemyMetadata.isVisible;
   }
 
   think() {
@@ -516,9 +528,12 @@ export class QuakeEntityAI extends EntityAI {
     }
 
     if (this._entity.enemy) {
+      this._enemyMetadata.isVisible = isEnemyVisible;
       this._enemyMetadata.infront = this._isInFront(this._entity.enemy);
       this._enemyMetadata.range = this._determineRange(this._entity.enemy);
       this._enemyMetadata.yaw = this._entity.enemy.origin.copy().subtract(this._entity.origin).toYaw();
+    } else {
+      this._enemyMetadata.isVisible = false;
     }
 
     switch (this._attackState) {

@@ -562,7 +562,7 @@ export class BaseProjectile extends BaseEntity {
 
   /**
    * Prepares the projectile by setting velocity (direction only), adjusts origin a bit, adds removal thinker.
-   * It simplifies the velocity and origin calculation, if the owner is not a PlayerEntity.
+   * It simplifies the velocity and origin calculation, if the owner is not a PlayerEntity. It will use the movedir property to set the velocity.
    */
   spawn() {
     this.solid = solid.SOLID_BBOX;

@@ -253,6 +253,8 @@ export default class BaseEntity {
       // }
     }
 
+    // console.debug('_runState: requested, next, current', state, this._stateNext, this._stateCurrent, this.frame, this.keyframe);
+
     // create or update the next think for the animation state
     this._scheduleThink(this.game.time + 0.1, function () { this._runState(); }, 'animation-state-machine');
 

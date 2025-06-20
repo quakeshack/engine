@@ -2,7 +2,7 @@
 
 import { channel, solid, tentType } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
-import { BaseSpike } from "../Weapons.mjs";
+import { BaseSpike, Spike } from "../Weapons.mjs";
 import { WalkMonster } from "./BaseMonster.mjs";
 
 export const qc = {
@@ -351,5 +351,383 @@ export class HellKnightMonster extends KnightMonster {
     return 'a hell knight';
   }
 
+  _precache() {
+    super._precache();
 
+    this.engine.PrecacheModel("progs/k_spike.mdl");
+    this.engine.PrecacheSound("hknight/attack1.wav");
+    this.engine.PrecacheSound("hknight/death1.wav");
+    this.engine.PrecacheSound("hknight/pain1.wav");
+    this.engine.PrecacheSound("hknight/sight1.wav");
+    this.engine.PrecacheSound("hknight/hit.wav");
+    this.engine.PrecacheSound("hknight/slash1.wav");
+    this.engine.PrecacheSound("hknight/idle.wav");
+    this.engine.PrecacheSound("hknight/grunt.wav");
+    this.engine.PrecacheSound("knight/sword1.wav");
+    this.engine.PrecacheSound("knight/sword2.wav");
+  }
+
+  _initStates() {
+    // Standing states
+    this._defineState('hknight_stand1', 'stand1', 'hknight_stand2', function () { this._ai.stand(); });
+    this._defineState('hknight_stand2', 'stand2', 'hknight_stand3', function () { this._ai.stand(); });
+    this._defineState('hknight_stand3', 'stand3', 'hknight_stand4', function () { this._ai.stand(); });
+    this._defineState('hknight_stand4', 'stand4', 'hknight_stand5', function () { this._ai.stand(); });
+    this._defineState('hknight_stand5', 'stand5', 'hknight_stand6', function () { this._ai.stand(); });
+    this._defineState('hknight_stand6', 'stand6', 'hknight_stand7', function () { this._ai.stand(); });
+    this._defineState('hknight_stand7', 'stand7', 'hknight_stand8', function () { this._ai.stand(); });
+    this._defineState('hknight_stand8', 'stand8', 'hknight_stand9', function () { this._ai.stand(); });
+    this._defineState('hknight_stand9', 'stand9', 'hknight_stand1', function () { this._ai.stand(); });
+
+    // Walking states
+    this._defineState('hknight_walk1', 'walk1', 'hknight_walk2', function () { this.idleSound(); this._ai.walk(2); });
+    this._defineState('hknight_walk2', 'walk2', 'hknight_walk3', function () { this._ai.walk(5); });
+    this._defineState('hknight_walk3', 'walk3', 'hknight_walk4', function () { this._ai.walk(5); });
+    this._defineState('hknight_walk4', 'walk4', 'hknight_walk5', function () { this._ai.walk(4); });
+    this._defineState('hknight_walk5', 'walk5', 'hknight_walk6', function () { this._ai.walk(4); });
+    this._defineState('hknight_walk6', 'walk6', 'hknight_walk7', function () { this._ai.walk(2); });
+    this._defineState('hknight_walk7', 'walk7', 'hknight_walk8', function () { this._ai.walk(2); });
+    this._defineState('hknight_walk8', 'walk8', 'hknight_walk9', function () { this._ai.walk(3); });
+    this._defineState('hknight_walk9', 'walk9', 'hknight_walk10', function () { this._ai.walk(3); });
+    this._defineState('hknight_walk10', 'walk10', 'hknight_walk11', function () { this._ai.walk(4); });
+    this._defineState('hknight_walk11', 'walk11', 'hknight_walk12', function () { this._ai.walk(3); });
+    this._defineState('hknight_walk12', 'walk12', 'hknight_walk13', function () { this._ai.walk(4); });
+    this._defineState('hknight_walk13', 'walk13', 'hknight_walk14', function () { this._ai.walk(6); });
+    this._defineState('hknight_walk14', 'walk14', 'hknight_walk15', function () { this._ai.walk(2); });
+    this._defineState('hknight_walk15', 'walk15', 'hknight_walk16', function () { this._ai.walk(2); });
+    this._defineState('hknight_walk16', 'walk16', 'hknight_walk17', function () { this._ai.walk(4); });
+    this._defineState('hknight_walk17', 'walk17', 'hknight_walk18', function () { this._ai.walk(3); });
+    this._defineState('hknight_walk18', 'walk18', 'hknight_walk19', function () { this._ai.walk(3); });
+    this._defineState('hknight_walk19', 'walk19', 'hknight_walk20', function () { this._ai.walk(3); });
+    this._defineState('hknight_walk20', 'walk20', 'hknight_walk1', function () { this._ai.walk(2); });
+
+    // Running states
+    this._defineState('hknight_run1', 'run1', 'hknight_run2', function () { this.idleSound(); this._ai.run(20); this._checkForCharge(); });
+    this._defineState('hknight_run2', 'run2', 'hknight_run3', function () { this._ai.run(25); });
+    this._defineState('hknight_run3', 'run3', 'hknight_run4', function () { this._ai.run(18); });
+    this._defineState('hknight_run4', 'run4', 'hknight_run5', function () { this._ai.run(16); });
+    this._defineState('hknight_run5', 'run5', 'hknight_run6', function () { this._ai.run(14); });
+    this._defineState('hknight_run6', 'run6', 'hknight_run7', function () { this._ai.run(25); });
+    this._defineState('hknight_run7', 'run7', 'hknight_run8', function () { this._ai.run(21); });
+    this._defineState('hknight_run8', 'run8', 'hknight_run1', function () { this._ai.run(13); });
+
+    // Pain states
+    this._defineState('hknight_pain1', 'pain1', 'hknight_pain2', function () { this.painSound(); });
+    this._defineState('hknight_pain2', 'pain2', 'hknight_pain3', function () { });
+    this._defineState('hknight_pain3', 'pain3', 'hknight_pain4', function () { });
+    this._defineState('hknight_pain4', 'pain4', 'hknight_pain5', function () { });
+    this._defineState('hknight_pain5', 'pain5', 'hknight_run1', function () { });
+
+    // Death states
+    this._defineState('hknight_die1', 'death1', 'hknight_die2', function () { this._ai.forward(10); });
+    this._defineState('hknight_die2', 'death2', 'hknight_die3', function () { this._ai.forward(8); });
+    this._defineState('hknight_die3', 'death3', 'hknight_die4', function () { this.solid = solid.SOLID_NOT; this._ai.forward(7); });
+    this._defineState('hknight_die4', 'death4', 'hknight_die5', function () { });
+    this._defineState('hknight_die5', 'death5', 'hknight_die6', function () { });
+    this._defineState('hknight_die6', 'death6', 'hknight_die7', function () { });
+    this._defineState('hknight_die7', 'death7', 'hknight_die8', function () { });
+    this._defineState('hknight_die8', 'death8', 'hknight_die9', function () { this._ai.forward(10); });
+    this._defineState('hknight_die9', 'death9', 'hknight_die10', function () { this._ai.forward(11); });
+    this._defineState('hknight_die10', 'death10', 'hknight_die11', function () { });
+    this._defineState('hknight_die11', 'death11', 'hknight_die12', function () { });
+    this._defineState('hknight_die12', 'death12', 'hknight_die12', function () { });
+
+    this._defineState('hknight_dieb1', 'deathb1', 'hknight_dieb2', function () { });
+    this._defineState('hknight_dieb2', 'deathb2', 'hknight_dieb3', function () { });
+    this._defineState('hknight_dieb3', 'deathb3', 'hknight_dieb4', function () { this.solid = solid.SOLID_NOT; });
+    this._defineState('hknight_dieb4', 'deathb4', 'hknight_dieb5', function () { });
+    this._defineState('hknight_dieb5', 'deathb5', 'hknight_dieb6', function () { });
+    this._defineState('hknight_dieb6', 'deathb6', 'hknight_dieb7', function () { });
+    this._defineState('hknight_dieb7', 'deathb7', 'hknight_dieb8', function () { });
+    this._defineState('hknight_dieb8', 'deathb8', 'hknight_dieb9', function () { });
+    this._defineState('hknight_dieb9', 'deathb9', 'hknight_dieb9', function () { });
+
+    // Magic attack A states
+    this._defineState('hknight_magica1', 'magica1', 'hknight_magica2', function () { this._ai.face(); });
+    this._defineState('hknight_magica2', 'magica2', 'hknight_magica3', function () { this._ai.face(); });
+    this._defineState('hknight_magica3', 'magica3', 'hknight_magica4', function () { this._ai.face(); });
+    this._defineState('hknight_magica4', 'magica4', 'hknight_magica5', function () { this._ai.face(); });
+    this._defineState('hknight_magica5', 'magica5', 'hknight_magica6', function () { this._ai.face(); });
+    this._defineState('hknight_magica6', 'magica6', 'hknight_magica7', function () { this._ai.face(); });
+    this._defineState('hknight_magica7', 'magica7', 'hknight_magica8', function () { this.attackShot(-2); });
+    this._defineState('hknight_magica8', 'magica8', 'hknight_magica9', function () { this.attackShot(-1); });
+    this._defineState('hknight_magica9', 'magica9', 'hknight_magica10', function () { this.attackShot(0); });
+    this._defineState('hknight_magica10', 'magica10', 'hknight_magica11', function () { this.attackShot(1); });
+    this._defineState('hknight_magica11', 'magica11', 'hknight_magica12', function () { this.attackShot(2); });
+    this._defineState('hknight_magica12', 'magica12', 'hknight_magica13', function () { this.attackShot(3); });
+    this._defineState('hknight_magica13', 'magica13', 'hknight_magica14', function () { this._ai.face(); });
+    this._defineState('hknight_magica14', 'magica14', 'hknight_run1', function () { this._ai.face(); });
+
+    // Magic attack B states
+    this._defineState('hknight_magicb1', 'magicb1', 'hknight_magicb2', function () { this._ai.face(); });
+    this._defineState('hknight_magicb2', 'magicb2', 'hknight_magicb3', function () { this._ai.face(); });
+    this._defineState('hknight_magicb3', 'magicb3', 'hknight_magicb4', function () { this._ai.face(); });
+    this._defineState('hknight_magicb4', 'magicb4', 'hknight_magicb5', function () { this._ai.face(); });
+    this._defineState('hknight_magicb5', 'magicb5', 'hknight_magicb6', function () { this._ai.face(); });
+    this._defineState('hknight_magicb6', 'magicb6', 'hknight_magicb7', function () { this._ai.face(); });
+    this._defineState('hknight_magicb7', 'magicb7', 'hknight_magicb8', function () { this.attackShot(-2); });
+    this._defineState('hknight_magicb8', 'magicb8', 'hknight_magicb9', function () { this.attackShot(-1); });
+    this._defineState('hknight_magicb9', 'magicb9', 'hknight_magicb10', function () { this.attackShot(0); });
+    this._defineState('hknight_magicb10', 'magicb10', 'hknight_magicb11', function () { this.attackShot(1); });
+    this._defineState('hknight_magicb11', 'magicb11', 'hknight_magicb12', function () { this.attackShot(2); });
+    this._defineState('hknight_magicb12', 'magicb12', 'hknight_magicb13', function () { this.attackShot(3); });
+    this._defineState('hknight_magicb13', 'magicb13', 'hknight_run1', function () { this._ai.face(); });
+
+    // Magic attack C states
+    this._defineState('hknight_magicc1', 'magicc1', 'hknight_magicc2', function () { this._ai.face(); });
+    this._defineState('hknight_magicc2', 'magicc2', 'hknight_magicc3', function () { this._ai.face(); });
+    this._defineState('hknight_magicc3', 'magicc3', 'hknight_magicc4', function () { this._ai.face(); });
+    this._defineState('hknight_magicc4', 'magicc4', 'hknight_magicc5', function () { this._ai.face(); });
+    this._defineState('hknight_magicc5', 'magicc5', 'hknight_magicc6', function () { this._ai.face(); });
+    this._defineState('hknight_magicc6', 'magicc6', 'hknight_magicc7', function () { this.attackShot(-2); });
+    this._defineState('hknight_magicc7', 'magicc7', 'hknight_magicc8', function () { this.attackShot(-1); });
+    this._defineState('hknight_magicc8', 'magicc8', 'hknight_magicc9', function () { this.attackShot(0); });
+    this._defineState('hknight_magicc9', 'magicc9', 'hknight_magicc10', function () { this.attackShot(1); });
+    this._defineState('hknight_magicc10', 'magicc10', 'hknight_magicc11', function () { this.attackShot(2); });
+    this._defineState('hknight_magicc11', 'magicc11', 'hknight_run1', function () { this.attackShot(3); });
+
+    // Charge attack A states
+    this._defineState('hknight_char_a1', 'char_a1', 'hknight_char_a2', function () { this._ai.charge(20); });
+    this._defineState('hknight_char_a2', 'char_a2', 'hknight_char_a3', function () { this._ai.charge(25); });
+    this._defineState('hknight_char_a3', 'char_a3', 'hknight_char_a4', function () { this._ai.charge(18); });
+    this._defineState('hknight_char_a4', 'char_a4', 'hknight_char_a5', function () { this._ai.charge(16); });
+    this._defineState('hknight_char_a5', 'char_a5', 'hknight_char_a6', function () { this._ai.charge(14); });
+    this._defineState('hknight_char_a6', 'char_a6', 'hknight_char_a7', function () { this._ai.charge(20); this._ai.melee(); });
+    this._defineState('hknight_char_a7', 'char_a7', 'hknight_char_a8', function () { this._ai.charge(21); this._ai.melee(); });
+    this._defineState('hknight_char_a8', 'char_a8', 'hknight_char_a9', function () { this._ai.charge(13); this._ai.melee(); });
+    this._defineState('hknight_char_a9', 'char_a9', 'hknight_char_a10', function () { this._ai.charge(20); this._ai.melee(); });
+    this._defineState('hknight_char_a10', 'char_a10', 'hknight_char_a11', function () { this._ai.charge(20); this._ai.melee(); });
+    this._defineState('hknight_char_a11', 'char_a11', 'hknight_char_a12', function () { this._ai.charge(18); this._ai.melee(); });
+    this._defineState('hknight_char_a12', 'char_a12', 'hknight_char_a13', function () { this._ai.charge(16); });
+    this._defineState('hknight_char_a13', 'char_a13', 'hknight_char_a14', function () { this._ai.charge(14); });
+    this._defineState('hknight_char_a14', 'char_a14', 'hknight_char_a15', function () { this._ai.charge(25); });
+    this._defineState('hknight_char_a15', 'char_a15', 'hknight_char_a16', function () { this._ai.charge(21); });
+    this._defineState('hknight_char_a16', 'char_a16', 'hknight_run1', function () { this._ai.charge(13); });
+
+    // Charge attack B states
+    this._defineState('hknight_char_b1', 'char_b1', 'hknight_char_b2', function () { this._checkContinueCharge(); this._ai.charge(23); this._ai.melee(); });
+    this._defineState('hknight_char_b2', 'char_b2', 'hknight_char_b3', function () { this._ai.charge(17); this._ai.melee(); });
+    this._defineState('hknight_char_b3', 'char_b3', 'hknight_char_b4', function () { this._ai.charge(12); this._ai.melee(); });
+    this._defineState('hknight_char_b4', 'char_b4', 'hknight_char_b5', function () { this._ai.charge(22); this._ai.melee(); });
+    this._defineState('hknight_char_b5', 'char_b5', 'hknight_char_b6', function () { this._ai.charge(18); this._ai.melee(); });
+    this._defineState('hknight_char_b6', 'char_b6', 'hknight_char_b1', function () { this._ai.charge(8); this._ai.melee(); });
+
+    // Slice attack states
+    this._defineState('hknight_slice1', 'slice1', 'hknight_slice2', function () { this._ai.charge(9); });
+    this._defineState('hknight_slice2', 'slice2', 'hknight_slice3', function () { this._ai.charge(6); });
+    this._defineState('hknight_slice3', 'slice3', 'hknight_slice4', function () { this._ai.charge(13); });
+    this._defineState('hknight_slice4', 'slice4', 'hknight_slice5', function () { this._ai.charge(4); });
+    this._defineState('hknight_slice5', 'slice5', 'hknight_slice6', function () { this._ai.charge(7); this._ai.melee(); });
+    this._defineState('hknight_slice6', 'slice6', 'hknight_slice7', function () { this._ai.charge(15); this._ai.melee(); });
+    this._defineState('hknight_slice7', 'slice7', 'hknight_slice8', function () { this._ai.charge(8); this._ai.melee(); });
+    this._defineState('hknight_slice8', 'slice8', 'hknight_slice9', function () { this._ai.charge(2); this._ai.melee(); });
+    this._defineState('hknight_slice9', 'slice9', 'hknight_slice10', function () { this._ai.melee(); });
+    this._defineState('hknight_slice10', 'slice10', 'hknight_run1', function () { this._ai.charge(3); });
+
+    // Smash attack states
+    this._defineState('hknight_smash1', 'smash1', 'hknight_smash2', function () { this._ai.charge(1); });
+    this._defineState('hknight_smash2', 'smash2', 'hknight_smash3', function () { this._ai.charge(13); });
+    this._defineState('hknight_smash3', 'smash3', 'hknight_smash4', function () { this._ai.charge(9); });
+    this._defineState('hknight_smash4', 'smash4', 'hknight_smash5', function () { this._ai.charge(11); });
+    this._defineState('hknight_smash5', 'smash5', 'hknight_smash6', function () { this._ai.charge(10); this._ai.melee(); });
+    this._defineState('hknight_smash6', 'smash6', 'hknight_smash7', function () { this._ai.charge(7); this._ai.melee(); });
+    this._defineState('hknight_smash7', 'smash7', 'hknight_smash8', function () { this._ai.charge(12); this._ai.melee(); });
+    this._defineState('hknight_smash8', 'smash8', 'hknight_smash9', function () { this._ai.charge(2); this._ai.melee(); });
+    this._defineState('hknight_smash9', 'smash9', 'hknight_smash10', function () { this._ai.charge(3); this._ai.melee(); });
+    this._defineState('hknight_smash10', 'smash10', 'hknight_smash11', function () { this._ai.charge(0); });
+    this._defineState('hknight_smash11', 'smash11', 'hknight_run1', function () { this._ai.charge(0); });
+
+    // W attack states
+    this._defineState('hknight_watk1', 'w_attack1', 'hknight_watk2', function () { this._ai.charge(2); });
+    this._defineState('hknight_watk2', 'w_attack2', 'hknight_watk3', function () { this._ai.charge(0); });
+    this._defineState('hknight_watk3', 'w_attack3', 'hknight_watk4', function () { this._ai.charge(0); });
+    this._defineState('hknight_watk4', 'w_attack4', 'hknight_watk5', function () { this._ai.melee(); });
+    this._defineState('hknight_watk5', 'w_attack5', 'hknight_watk6', function () { this._ai.melee(); });
+    this._defineState('hknight_watk6', 'w_attack6', 'hknight_watk7', function () { this._ai.melee(); });
+    this._defineState('hknight_watk7', 'w_attack7', 'hknight_watk8', function () { this._ai.charge(1); });
+    this._defineState('hknight_watk8', 'w_attack8', 'hknight_watk9', function () { this._ai.charge(4); });
+    this._defineState('hknight_watk9', 'w_attack9', 'hknight_watk10', function () { this._ai.charge(5); });
+    this._defineState('hknight_watk10', 'w_attack10', 'hknight_watk11', function () { this._ai.charge(3); this._ai.melee(); });
+    this._defineState('hknight_watk11', 'w_attack11', 'hknight_watk12', function () { this._ai.charge(2); this._ai.melee(); });
+    this._defineState('hknight_watk12', 'w_attack12', 'hknight_watk13', function () { this._ai.charge(2); this._ai.melee(); });
+    this._defineState('hknight_watk13', 'w_attack13', 'hknight_watk14', function () { this._ai.charge(0); });
+    this._defineState('hknight_watk14', 'w_attack14', 'hknight_watk15', function () { this._ai.charge(0); });
+    this._defineState('hknight_watk15', 'w_attack15', 'hknight_watk16', function () { this._ai.charge(0); });
+    this._defineState('hknight_watk16', 'w_attack16', 'hknight_watk17', function () { this._ai.charge(1); });
+    this._defineState('hknight_watk17', 'w_attack17', 'hknight_watk18', function () { this._ai.charge(1); this._ai.melee(); });
+    this._defineState('hknight_watk18', 'w_attack18', 'hknight_watk19', function () { this._ai.charge(3); this._ai.melee(); });
+    this._defineState('hknight_watk19', 'w_attack19', 'hknight_watk20', function () { this._ai.charge(4); this._ai.melee(); });
+    this._defineState('hknight_watk20', 'w_attack20', 'hknight_watk21', function () { this._ai.charge(6); });
+    this._defineState('hknight_watk21', 'w_attack21', 'hknight_watk22', function () { this._ai.charge(7); });
+    this._defineState('hknight_watk22', 'w_attack22', 'hknight_run1', function () { this._ai.charge(3); });
+  }
+
+  attackShot(offsetY) { // QuakeC: hknight.qc/hknight_shot
+    const offang = this.enemy.origin.copy().subtract(this.origin).toAngles();
+
+    offang[1] += offsetY * 6; // offsetY is in -3..3 range
+
+    const { forward } = offang.angleVectors();
+
+    // const org = this.origin.copy().add(this.mins).add(this.size.copy().multiply(0.5)).add(forward.multiply(20.0));
+
+    forward.normalize();
+
+    forward[2] = -forward[2] + (Math.random() - 0.5) * 0.1;
+
+    this.movedir.set(forward);
+
+    this.engine.SpawnEntity(KnightSpike.classname, {
+      speed: 300,
+      owner: this,
+      // CR: the original code uses a precalcuated origin offset (see: org)
+    });
+
+    // this.engine.SpawnEntity(Spike.classname, { owner: this });
+
+    this.startSound(channel.CHAN_WEAPON, "hknight/attack1.wav");
+  }
+
+  thinkMelee() { // QuakeC: hknight.qc/hknight_melee
+    // CR: the original code cycles through the attack animations globally
+
+    const r = Math.random();
+
+    this.startSound(channel.CHAN_WEAPON, "hknight/slash1.wav");
+
+    if (r < 0.33) {
+      this._runState('hknight_slice1');
+    } else if (r < 0.66) {
+      this._runState('hknight_smash1');
+    } else {
+      this._runState('hknight_watk1');
+    }
+  }
+
+  _checkForCharge() { // QuakeC: hknight.qc/CheckForCharge
+    console.log('check for charge', this);
+
+    if (!this._ai.enemyIsVisible) {
+      return;
+    }
+
+    if (this.game.time < this.attack_finished) {
+      return;
+    }
+
+    if (Math.abs(this.origin[2] - this.enemy.origin[2]) > 20) {
+      return;
+    }
+
+    if (this.origin.copy().subtract(this.enemy.origin).len() < 80) {
+      return;
+    }
+
+    // charge
+    this.attackFinished(2.0);
+    this._runState('hknight_char_a1');
+  }
+
+  _checkContinueCharge() { // QuakeC: hknight.qc/CheckContinueCharge
+    console.log('check continue charge', this);
+
+    if (this.game.time > this.attack_finished) {
+      this.attackFinished(3.0);
+      this._runState('hknight_run1');
+      return; // done charging
+    }
+
+    if (Math.random() > 0.5) {
+      this.startSound(channel.CHAN_WEAPON, "knight/sword2.wav");
+    } else {
+      this.startSound(channel.CHAN_WEAPON, "knight/sword1.wav");
+    }
+  }
+
+  thinkPain(attackerEntity, damage) {
+    if (this.pain_finished > this.game.time) {
+      return;
+    }
+
+    this.painSound();
+
+    if (this.game.time - this.pain_finished > 5) {
+      this._runState('hknight_pain1');
+      this.pain_finished = this.game.time + 1;
+      return;
+    }
+
+    if (Math.random() * 30 > damage) {
+      return;
+    }
+
+    this.pain_finished = this.game.time + 1;
+    this._runState('hknight_pain1');
+  }
+
+  thinkStand() {
+    this._runState('hknight_stand1');
+  }
+
+  thinkWalk() {
+    this._runState('hknight_walk1');
+  }
+
+  thinkRun() {
+    this._runState('hknight_run1');
+  }
+
+  thinkMissile() {
+    this._runState('hknight_magicc1');
+  }
+
+  thinkDie(attackerEntity) {
+    this._sub.useTargets(attackerEntity);
+    if (this.health < -40) {
+      this.startSound(channel.CHAN_VOICE, "player/udeath.wav");
+      this._gib(true);
+      return;
+    }
+    this.deathSound();
+    this.solid = solid.SOLID_NOT;
+    if (Math.random() > 0.5) {
+      this._runState('hknight_die1');
+    } else {
+      this._runState('hknight_dieb1');
+    }
+  }
+
+  idleSound() {
+    if (Math.random() < 0.2) {
+      this.startSound(channel.CHAN_VOICE, "hknight/idle.wav");
+    }
+  }
+
+  attackSound() {
+    if (Math.random() > 0.5) {
+      this.startSound(channel.CHAN_WEAPON, "knight/sword2.wav");
+    } else {
+      this.startSound(channel.CHAN_WEAPON, "knight/sword1.wav");
+    }
+  }
+
+  painSound() {
+    this.startSound(channel.CHAN_VOICE, "hknight/pain1.wav");
+  }
+
+  sightSound() {
+    this.startSound(channel.CHAN_VOICE, "hknight/sight1.wav");
+  }
+
+  deathSound() {
+    this.startSound(channel.CHAN_VOICE, "hknight/death1.wav");
+  }
+
+  hasMeleeAttack() {
+    return true;
+  }
+
+  hasMissileAttack() {
+    return true;
+  }
 };
