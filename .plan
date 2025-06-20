@@ -306,6 +306,10 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-06-20
+
+* fixed rcon command
+
 ### 2025-06-19
 
 * fixed a few AI related bugs and added more logic

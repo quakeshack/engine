@@ -691,6 +691,7 @@ export class Missile extends BaseProjectile {
 export class BaseSpike extends BaseProjectile {
   static _damage = 0;
   static _tentType = null;
+  static _model = 'progs/s_spike.mdl';
 
   _declareFields() {
     this._serializer.startFields();
@@ -734,7 +735,7 @@ export class BaseSpike extends BaseProjectile {
 
     this.velocity.multiply(this.speed || 1000.0); // fast projectile
 
-    this.setModel('progs/s_spike.mdl');
+    this.setModel(this.constructor._model);
     this.setSize(Vector.origin, Vector.origin);
   }
 };

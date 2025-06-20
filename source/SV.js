@@ -2988,7 +2988,7 @@ SV.HandleRconRequest = function(client) {
 
   if (rconPassword === '' || rconPassword !== password) {
     MSG.WriteByte(message, Protocol.svc.print);
-    MSG.WriteString(message, 'Wrong rcon password!');
+    MSG.WriteString(message, 'Wrong rcon password!\n');
     if (rconPassword === '') {
       Con.Print(`SV.HandleRconRequest: rcon attempted by ${client.name} from ${client.netconnection.address}: ${cmd}\n`);
     }

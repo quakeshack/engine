@@ -452,7 +452,7 @@ export default class ZombieMonster extends WalkMonster {
 };
 
 export class ZombieGibGrenade extends BaseEntity {
-  static _classname = 'monster_zombie_giblet';
+  static classname = 'monster_zombie_giblet';
 
   _declareFields() {
     this._damageInflictor = new DamageInflictor(this);

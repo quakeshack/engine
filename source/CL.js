@@ -647,7 +647,7 @@ CL.Rcon_f = function(...args) { // private
 
   MSG.WriteByte(CL.cls.message, Protocol.clc.rconcmd);
   MSG.WriteString(CL.cls.message, password);
-  MSG.WriteString(CL.cls.message, this.args);
+  MSG.WriteString(CL.cls.message, this.args.substring(5));
 };
 
 CL.SetConnectingStep = function(percentage, message) { // public, by Host.js, probably cleaning up required

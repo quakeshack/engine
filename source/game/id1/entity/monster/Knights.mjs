@@ -1,7 +1,8 @@
 /* global Vector */
 
-import { channel, solid } from "../../Defs.mjs";
+import { channel, solid, tentType } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
+import { BaseSpike } from "../Weapons.mjs";
 import { WalkMonster } from "./BaseMonster.mjs";
 
 export const qc = {
@@ -294,8 +295,14 @@ export class KnightMonster extends WalkMonster {
     if (this.pain_finished > this.game.time) {
       return;
     }
-    // Use knight_pain1 as default, or alternate with knight_painb1 if you want variety
-    this._runState('knight_pain1');
+
+    if (Math.random() < 0.85) {
+      this._runState('knight_pain1');
+      return;
+    } else {
+      this._runState('knight_painb1');
+    }
+
     this.pain_finished = this.game.time + 1;
     this.painSound();
   }
@@ -303,7 +310,6 @@ export class KnightMonster extends WalkMonster {
   thinkDie(attackerEntity) {
     this._sub.useTargets(attackerEntity);
     if (this.health < -40) {
-      // this.deathSound();
       this.startSound(channel.CHAN_VOICE, "player/udeath.wav");
       this._gib(true);
       return;
@@ -322,6 +328,14 @@ export class KnightMonster extends WalkMonster {
   }
 };
 
+export class KnightSpike extends BaseSpike {
+  static classname = 'knightspike';
+
+  static _damage = 9;
+  static _tentType = tentType.TE_SPIKE;
+  static _model = 'progs/k_spike.mdl';
+};
+
 /**
  * QUAKED monster_hell_knight (1 0 0) (-16 -16 -24) (16 16 40) Ambush
  */
@@ -336,5 +350,6 @@ export class HellKnightMonster extends KnightMonster {
   get netname() {
     return 'a hell knight';
   }
+
 
 };
