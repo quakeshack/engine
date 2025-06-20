@@ -1138,11 +1138,6 @@ SV.WriteDeltaEntity = function(msg, from, to) {
     }
   }
 
-  if (bits === 0) {
-    // nothing changed
-    return false;
-  }
-
   console.assert(to.num > 0, 'valid entity num', to.num);
 
   MSG.WriteShort(msg, to.num);
@@ -1548,38 +1543,7 @@ SV.ModelIndex = function(name) {
 };
 
 SV.CreateBaseline = function() {
-  return; // TODO: we need to create a base line from state and write them to each client to clear to as well otherwise freed/hidden entities will show up for new clients
-
-  const signon = SV.server.signon;
-
-  MSG.WriteByte(signon, Protocol.svc.packetentities);
-
-  for (let i = 1; i < SV.server.num_edicts; ++i) {
-    const ent = SV.server.edicts[i];
-
-    if (ent.isFree()) {
-      continue;
-    }
-
-    if ((i > SV.svs.maxclients) && (!ent.entity.modelindex || !ent.entity.model)) {
-      continue;
-    }
-
-    const fromState = new SV.EntityState(ent.num);
-
-    const toState = new SV.EntityState(ent.num);
-    toState.modelindex = ent.entity.modelindex;
-    toState.frame = ent.entity.frame;
-    toState.colormap = ent.entity.colormap;
-    toState.skin = ent.entity.skin;
-    toState.origin.set(ent.entity.origin);
-    toState.angles.set(ent.entity.angles);
-    toState.effects = ent.entity.effects;
-
-    SV.WriteDeltaEntity(signon, fromState, toState);
-  }
-
-  MSG.WriteShort(signon, 0); // end of list
+  // CR: baseline is stored in SV.server.signon, currently unused
 };
 
 SV.SaveSpawnparms = function() {

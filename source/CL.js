@@ -518,6 +518,40 @@ CL.cls = {
 CL.static_entities = [];
 CL.visedicts = [];
 
+CL.LerpPoint = function() {
+  let f = CL.state.mtime[0] - CL.state.mtime[1];
+
+  if (f <= 0) {
+    CL.state.time = CL.state.mtime[0];
+    return 1;
+  }
+
+  if (f > 0.1) {
+    CL.state.mtime[1] = CL.state.mtime[0] - 0.1;
+    f = 0.1;
+  }
+
+  let frac = (CL.state.time - CL.state.mtime[1]) / f;
+
+  if (frac < 0) {
+    if (frac < -0.01) {
+      CL.state.time = CL.state.mtime[1];
+    }
+    frac = 0;
+  } else if (frac > 1) {
+    if (frac > 1.01) {
+      CL.state.time = CL.state.mtime[0];
+    }
+    frac = 1;
+  }
+
+  if (CL.nolerp.value) {
+    return 1;
+  }
+
+  return frac;
+};
+
 CL.Entity = class ClientEdict {
   constructor(num) {
     this.classname = null;
@@ -527,19 +561,19 @@ CL.Entity = class ClientEdict {
     this.skinnum = 0;
     this.colormap = 0;
     this.effects = 0;
-    this.origin = new Vector();
     /** @type {?Vector} used to keep track of origin changes, unset when no previous origin is known */
-    this.origin_old = null;
-    this.angles = new Vector();
+    this.originPrevious = null;
+    this.origin = new Vector();
     /** @type {?Vector} used to keep track of angles changes, unset when no previous angles is known */
-    this.angles_old = null;
+    this.anglesPrevious = null;
+    this.angles = new Vector();
     this.dlightbits = 0;
     this.dlightframe = 0;
-    /** keeps track of last updates */
+    /** keeps track of last updates @private */
     this.msg_time = [0.0, 0.0];
-    /** keeps track of origin changes */
+    /** keeps track of origin changes @private */
     this.msg_origins = [new Vector(), new Vector()];
-    /** keeps track of angle changes */
+    /** keeps track of angle changes @private */
     this.msg_angles = [new Vector(), new Vector()];
     this.leafs = [];
     /** count of received updates */
@@ -548,6 +582,41 @@ CL.Entity = class ClientEdict {
     this.free = false;
     this.syncbase = 0.0;
 
+    const that = this;
+
+    /**
+     * holds lerped origin and angles for rendering purposes
+     */
+    this.lerp = {
+      get origin() {
+        if (that.originPrevious === null || CL.nolerp.value) {
+          return that.origin;
+        }
+        const f = CL.LerpPoint();
+        const o0 = that.origin;
+        const o1 = that.originPrevious;
+        return new Vector(
+          o1[0] + (o0[0] - o1[0]) * f,
+          o1[1] + (o0[1] - o1[1]) * f,
+          o1[2] + (o0[2] - o1[2]) * f,
+        );
+      },
+      get angles() {
+        if (that.anglesPrevious === null || CL.nolerp.value) {
+          return that.angles;
+        }
+        const f = CL.LerpPoint();
+        const a0 = that.angles;
+        const a1 = that.anglesPrevious;
+        return new Vector(
+          a1[0] + (a0[0] - a1[0]) * f,
+          a1[1] + (a0[1] - a1[1]) * f,
+          a1[2] + (a0[2] - a1[2]) * f,
+        );
+      }
+    };
+
+    Object.freeze(this.lerp);
     Object.seal(this);
   }
 
@@ -563,9 +632,7 @@ CL.Entity = class ClientEdict {
     this.colormap = 0;
     this.effects = 0;
     this.origin.clear();
-    this.origin_old = null;
     this.angles.clear();
-    this.angles_old = null;
     this.dlightbits = 0;
     this.dlightframe = 0;
     this.msg_time[0] = 0.0;
@@ -584,42 +651,48 @@ CL.Entity = class ClientEdict {
    * @param {boolean} doLerp whether to do a point lerp
    */
   updatePosition(doLerp) {
-    if (this.origin_old === null) {
-      this.origin_old = this.msg_origins[0].copy();
-    } else {
-      this.origin_old.set(this.origin);
-    }
-
-    if (this.angles_old === null) {
-      this.angles_old = this.msg_angles[0].copy();
-    } else {
-      this.angles_old.set(this.angles);
-    }
-
     if (!doLerp) {
       this.origin.set(this.msg_origins[0]);
       this.angles.set(this.msg_angles[0]);
       return;
     }
 
+    const origin_old = this.msg_origins[0].copy();
+    const angles_old = this.msg_angles[0].copy();
+
     let f = CL.LerpPoint();
+
     const delta = new Vector();
 
+    if (this.originPrevious === null) {
+      this.originPrevious = this.origin.copy();
+    } else {
+      this.originPrevious.set(this.origin);
+    }
+
+    if (this.anglesPrevious === null) {
+      this.anglesPrevious = this.angles.copy();
+    } else {
+      this.anglesPrevious.set(this.angles);
+    }
+
+    // clamp sudden origin changes and don’t lerp here
     for (let j = 0; j < 3; j++) {
-      delta[j] = this.msg_origins[0][j] - this.origin_old[j];
+      delta[j] = this.msg_origins[0][j] - origin_old[j];
       if ((delta[j] > 100.0) || (delta[j] < -100.0)) {
         f = 1.0;
       }
     }
+
     for (let j = 0; j < 3; j++) {
-      this.origin[j] = this.origin_old[j] + f * delta[j];
-      let d = this.msg_angles[0][j] - this.angles_old[j];
+      this.origin[j] = origin_old[j] + f * delta[j];
+      let d = this.msg_angles[0][j] - angles_old[j];
       if (d > 180.0) {
         d -= 360.0;
       } else if (d < -180.0) {
         d += 360.0;
       }
-      this.angles[j] = this.angles_old[j] + f * d;
+      this.angles[j] = angles_old[j] + f * d;
     }
   }
 
@@ -875,14 +948,17 @@ CL.NextDemo = function() { // public, by Host.js, M.js
 };
 
 CL.PrintEntities_f = function() { // private
-    for (let i = 0; i < CL.entities.length; ++i) {
+  Con.Print(`CL.state.mtime: ${CL.state.mtime.join(', ')}\n\n`);
+  for (let i = 0; i < CL.entities.length; ++i) {
     const ent = CL.entities[i];
 
     if (ent.model == null) {
       continue;
     }
 
-    Con.Print(i.toFixed(0).padStart(3, ' ') + ' ' + ent.model.name.padEnd(32) + ' : ' + ent.frame.toFixed().padStart(3) + ' (' + ent.origin + ') [' + ent.angles + ']\n');
+    Con.Print(`${i.toFixed(0).padStart(3, ' ')} ${ent.model.name.padEnd(16)}: ${ent.msg_time.join(', ')}\n`);
+
+    // Con.Print(i.toFixed(0).padStart(3, ' ') + ' ' + ent.model.name.padEnd(32) + ' : ' + ent.frame.toFixed().padStart(3) + ' (' + ent.origin + ') [' + ent.angles + ']\n');
   }
 };
 
@@ -930,162 +1006,6 @@ CL.DecayLights = function() { // public, by Host.js
   }
 };
 
-/**
- * Calculates lerp fraction for the current frame.
- * It also updates CL.state.time.
- * @returns {number} interval [0.0, 1.0]
- */
-CL.LerpPoint = function() { // private
-  if (CL.state.lerp !== null) {
-    return CL.state.lerp;
-  }
-
-  let f = CL.state.mtime[0] - CL.state.mtime[1];
-  if ((f === 0.0) || (CL.nolerp.value !== 0) || (CL.cls.timedemo === true) || (SV.server.active === true)) {
-    CL.state.time = CL.state.mtime[0];
-    CL.state.lerp = 1.0;
-    return CL.state.lerp;
-  }
-  if (f > 0.1) {
-    CL.state.mtime[1] = CL.state.mtime[0] - 0.1;
-    f = 0.1;
-  }
-  const frac = (CL.state.time - CL.state.mtime[1]) / f;
-  if (frac < 0.0) {
-    if (frac < -0.01) {
-      CL.state.time = CL.state.mtime[1];
-    }
-    CL.state.lerp = 0.0;
-    return CL.state.lerp;
-  }
-  if (frac > 1.0) {
-    if (frac > 1.01) {
-      CL.state.time = CL.state.mtime[0];
-    }
-    CL.state.lerp = 1.0;
-    return CL.state.lerp;
-  }
-  CL.state.lerp = frac;
-  return frac;
-};
-
-/** @deprecated */
-CL.RelinkEntities = function() { // private
-  debugger;
-  let i; let j;
-  const frac = CL.LerpPoint(); let f; let d; const delta = [];
-
-  CL.numvisedicts = 0;
-
-  // velo = mvelo[1] + frac * (mvelo[0] - mvelo[1])
-  // CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]).multiply(frac)));
-
-  if (CL.cls.demoplayback === true) {
-    for (i = 0; i <= 2; ++i) {
-      d = CL.state.mviewangles[0][i] - CL.state.mviewangles[1][i];
-      if (d > 180.0) {
-        d -= 360.0;
-      } else if (d < -180.0) {
-        d += 360.0;
-      }
-      CL.state.viewangles[i] = CL.state.mviewangles[1][i] + frac * d;
-    }
-  }
-
-  const bobjrotate = Vector.anglemod(100.0 * CL.state.time);
-  let ent; let dl;
-  for (i = 1; i < CL.entities.length; ++i) {
-    ent = CL.entities[i];
-    if (ent.model == null) {
-      continue;
-    }
-    // if (ent.msgtime !== CL.state.mtime[0]) {
-    //   ent.model = null;
-    //   continue;
-    // }
-    const oldorg = ent.origin.copy();
-    // if (ent.forcelink === true) {
-    //   ent.origin = ent.msg_origins[0].copy();
-    //   ent.angles = ent.msg_angles[0].copy();
-    // } else {
-    //   f = frac;
-    //   for (j = 0; j <= 2; ++j) {
-    //     delta[j] = ent.msg_origins[0][j] - ent.msg_origins[1][j];
-    //     if ((delta[j] > 100.0) || (delta[j] < -100.0)) {
-    //       f = 1.0;
-    //     }
-    //   }
-    //   for (j = 0; j <= 2; ++j) {
-    //     ent.origin[j] = ent.msg_origins[1][j] + f * delta[j];
-    //     d = ent.msg_angles[0][j] - ent.msg_angles[1][j];
-    //     if (d > 180.0) {
-    //       d -= 360.0;
-    //     } else if (d < -180.0) {
-    //       d += 360.0;
-    //     }
-    //     ent.angles[j] = ent.msg_angles[1][j] + f * d;
-    //   }
-    // }
-
-    if ((ent.model.flags & Mod.flags.rotate) !== 0) {
-      ent.angles[1] = bobjrotate;
-    }
-    if ((ent.effects & Mod.effects.brightfield) !== 0) {
-      R.EntityParticles(ent);
-    }
-    if ((ent.effects & Mod.effects.muzzleflash) !== 0) {
-      dl = CL.AllocDlight(i);
-      const fv = ent.angles.angleVectors().forward;
-      dl.origin = new Vector(
-        ent.origin[0] + 18.0 * fv[0],
-        ent.origin[1] + 18.0 * fv[1],
-        ent.origin[2] + 16.0 + 18.0 * fv[2],
-      );
-      dl.radius = 200.0 + Math.random() * 32.0;
-      dl.minlight = 32.0;
-      dl.die = CL.state.time + 0.1;
-      // dl.color = new Vector(1.0, 0.95, 0.85);
-    }
-    if ((ent.effects & Mod.effects.brightlight) !== 0) {
-      dl = CL.AllocDlight(i);
-      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
-      dl.radius = 400.0 + Math.random() * 32.0;
-      dl.die = CL.state.time + 0.001;
-    }
-    if ((ent.effects & Mod.effects.dimlight) !== 0) {
-      dl = CL.AllocDlight(i);
-      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2] + 16.0);
-      dl.radius = 200.0 + Math.random() * 32.0;
-      dl.die = CL.state.time + 0.001;
-      // dl.color = new Vector(0.5, 0.5, 1.0);
-    }
-    if ((ent.model.flags & Mod.flags.gib) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 2);
-    } else if ((ent.model.flags & Mod.flags.zomgib) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 4);
-    } else if ((ent.model.flags & Mod.flags.tracer) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 3);
-    } else if ((ent.model.flags & Mod.flags.tracer2) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 5);
-    } else if ((ent.model.flags & Mod.flags.rocket) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 0);
-      dl = CL.AllocDlight(i);
-      dl.origin = new Vector(ent.origin[0], ent.origin[1], ent.origin[2]);
-      dl.radius = 200.0;
-      dl.die = CL.state.time + 0.01;
-    } else if ((ent.model.flags & Mod.flags.grenade) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 1);
-    } else if ((ent.model.flags & Mod.flags.tracer3) !== 0) {
-      R.RocketTrail(oldorg, ent.origin, 6);
-    }
-
-    // ent.forcelink = false;
-    // if ((i !== CL.state.viewentity) || (Chase.active.value !== 0)) {
-    //   CL.visedicts[CL.numvisedicts++] = ent;
-    // }
-  }
-};
-
 CL.ReadFromServer = function() { // public, by Host.js
   CL.state.oldtime = CL.state.time;
   CL.state.time += Host.frametime;
@@ -1119,7 +1039,7 @@ CL.ReadFromServer = function() { // public, by Host.js
     Con.Print('\n');
   }
 
-  CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]).multiply(CL.LerpPoint()))); // TODO: this is going to be replaced by Pmove
+  CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]))); // TODO: this is going to be replaced by Pmove
 
   // CL.RelinkEntities();
   CL.UpdateTEnts();
@@ -1197,7 +1117,7 @@ CL.Init = async function() { // public, by Host.js
   CL.pitchspeed = new Cvar('cl_pitchspeed', '150');
   CL.anglespeedkey = new Cvar('cl_anglespeedkey', '1.5');
   CL.shownet = new Cvar('cl_shownet', '0');
-  CL.nolerp = new Cvar('cl_nolerp', '1'); // CR: set to 1 for the time being, the code is janky as hell
+  CL.nolerp = new Cvar('cl_nolerp', '0', Cvar.FLAG.ARCHIVE);
   CL.lookspring = new Cvar('lookspring', '0', Cvar.FLAG.ARCHIVE);
   CL.lookstrafe = new Cvar('lookstrafe', '0', Cvar.FLAG.ARCHIVE);
   CL.sensitivity = new Cvar('sensitivity', '3', Cvar.FLAG.ARCHIVE);
@@ -1715,7 +1635,6 @@ CL.ParseServerMessage = function() { // private
       case Protocol.svc.time:
         CL.state.mtime[1] = CL.state.mtime[0];
         CL.state.mtime[0] = MSG.ReadFloat();
-        CL.state.lerp = null;
         continue;
       case Protocol.svc.clientdata:
         CL.ParseClientdata(MSG.ReadShort());
@@ -1897,13 +1816,9 @@ CL.ParseServerMessage = function() { // private
       case Protocol.svc.playerinfo:
         CL.ParsePlayerinfo();
         continue;
-      case Protocol.svc.packetentities:
-        entitiesReceived++;
-        CL.ParsePacketEntities(false);
-        continue;
       case Protocol.svc.deltapacketentities:
         entitiesReceived++;
-        CL.ParsePacketEntities(true);
+        CL.ParsePacketEntities();
         continue;
       case Protocol.svc.cvar:
         CL.ParseServerCvars();
@@ -2170,6 +2085,7 @@ CL.EmitEntities = function() { // public, by Host.js
   CL.numvisedicts = 0;
 
   for (let i = 1; i < CL.entities.length; i++) {
+    /** @type {CL.Entity} */
     const clent = CL.entities[i];
 
     // freed entity
@@ -2255,7 +2171,7 @@ CL.EmitEntities = function() { // public, by Host.js
   // TODO: temporary entities
 };
 
-CL.ParsePacketEntities = function(isDeltaUpdate) { // private
+CL.ParsePacketEntities = function() { // private
   while (true) {
     const edictNum = MSG.ReadShort();
 
@@ -2309,17 +2225,12 @@ CL.ParsePacketEntities = function(isDeltaUpdate) { // private
     const origin = clent.msg_origins[0];
     const angles = clent.msg_angles[0];
 
-    const origin1 = clent.msg_origins[1];
-    const angles1 = clent.msg_angles[1];
-
     for (let i = 0; i < 3; i++) {
       if (bits & (Protocol.u.origin1 << i)) {
-        origin1[i] = origin[i];
         origin[i] = MSG.ReadCoord();
       }
 
       if (bits & (Protocol.u.angle1 << i)) {
-        angles1[i] = angles[i];
         angles[i] = MSG.ReadAngle();
       }
     }
@@ -2329,11 +2240,8 @@ CL.ParsePacketEntities = function(isDeltaUpdate) { // private
     clent.msg_time[1] = clent.msg_time[0];
     clent.msg_time[0] = CL.state.mtime[0];
 
-    if (!isDeltaUpdate) {
-      clent.msg_origins[1].set(clent.msg_origins[0]);
-      clent.msg_angles[1].set(clent.msg_angles[0]);
-      clent.msg_time[1] = clent.msg_time[0];
-    }
+    clent.msg_origins[1].set(clent.msg_origins[0]);
+    clent.msg_angles[1].set(clent.msg_angles[0]);
 
     if (clent.free) {
       // make sure that we clear this ClientEntity before we throw it back in

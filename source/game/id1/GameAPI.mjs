@@ -340,6 +340,7 @@ export class ServerGameAPI {
     const spawnParams = clientEntity.edict.getClient().spawn_parms;
 
     for (let i = 0; i < spawnParams.length; i++) {
+      // FIXME: Exception has occurred: TypeError: Cannot add property parm16, object is not extensible
       this[`parm${i + 1}`] = spawnParams[i];
     }
   }

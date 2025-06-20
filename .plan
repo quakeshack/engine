@@ -48,12 +48,9 @@ Grouped by sections and then sorted by priority (more or less).
   * [X] info_player_start2
   * [X] misc_teleporttrain
   * [X] monster_army
-  * [_] monster_boss
   * [X] monster_demon1
   * [X] monster_dog
-  * [_] monster_enforcer
-  * [_] monster_fish
-  * [_] monster_hell_knight
+  * [X] monster_hell_knight
   * [X] monster_knight
   * [_] monster_ogre
   * [_] monster_oldone
@@ -61,7 +58,10 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] monster_shambler
   * [_] monster_tarbaby
   * [_] monster_wizard
-  * [_] monster_zombie
+  * [_] monster_boss
+  * [_] monster_enforcer
+  * [_] monster_fish
+  * [X] monster_zombie
   * [X] path_corner
   * [X] trap_shooter
     * [_] spawnflag: laser
@@ -306,9 +306,16 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-06-21
+
+* fixed the lerp stuff
+
 ### 2025-06-20
 
 * fixed rcon command
+* small knight fix
+* added monster_hell_knight
+* small AI improvements
 
 ### 2025-06-19
 

@@ -560,10 +560,10 @@ R.DrawAliasModel = function(e) {
   } else {
     program = GL.UseProgram('alias');
   }
-  gl.uniform3fv(program.uOrigin, e.origin);
-  gl.uniformMatrix3fv(program.uAngles, false, GL.RotationMatrix(e.angles[0], e.angles[1], e.angles[2]));
+  gl.uniform3fv(program.uOrigin, e.lerp.origin);
+  gl.uniformMatrix3fv(program.uAngles, false, GL.RotationMatrix(...e.lerp.angles));
 
-  let ambientlight = R.LightPoint(e.origin);
+  let ambientlight = R.LightPoint(e.lerp.origin);
   let shadelight = ambientlight;
   if ((e === CL.state.viewent) && (ambientlight < 24.0)) {
     ambientlight = shadelight = 24.0;
@@ -575,7 +575,7 @@ R.DrawAliasModel = function(e) {
       continue;
     }
     // add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len(); // [x, y, y]
-    add = dl.radius - e.origin.copy().subtract(dl.origin).len();
+    add = dl.radius - e.lerp.origin.copy().subtract(dl.origin).len();
     if (add > 0.0) {
       ambientlight += add;
       shadelight += add;

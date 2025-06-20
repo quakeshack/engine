@@ -1309,6 +1309,8 @@ Mod.Print = function() {
 };
 
 Mod.ParseQC = function(qcContent) {
+  console.assert(typeof qcContent === 'string', 'qcContent must be a string');
+
   const data = {
     cd: null,
     origin: new Vector(),

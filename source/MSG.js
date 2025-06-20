@@ -282,25 +282,25 @@ MSG.WriteChar = function(sb, c) {
 };
 
 MSG.WriteByte = function(sb, c) {
-  console.assert(c >= 0 && c <= 255, 'must be unsigned byte', c);
+  // console.assert(c >= 0 && c <= 255, 'must be unsigned byte', c);
 
   (new DataView(sb.data)).setUint8(sb.allocate(1), c);
 };
 
 MSG.WriteShort = function(sb, c) {
-  console.assert(c >= -32768 && c <= 32767, 'must be signed short', c);
+  // console.assert(c >= -32768 && c <= 32767, 'must be signed short', c);
 
   (new DataView(sb.data)).setInt16(sb.allocate(2), c, true);
 };
 
 MSG.WriteLong = function(sb, c) {
-  console.assert(c >= -2147483648 && c <= 2147483647, 'must be signed long', c);
+  // console.assert(c >= -2147483648 && c <= 2147483647, 'must be signed long', c);
 
   (new DataView(sb.data)).setInt32(sb.allocate(4), c, true);
 };
 
 MSG.WriteFloat = function(sb, f) {
-  console.assert(typeof f === 'number' && !isNaN(f) && isFinite(f), 'must be a real number, not NaN or Infinity',);
+  // console.assert(typeof f === 'number' && !isNaN(f) && isFinite(f), 'must be a real number, not NaN or Infinity',);
 
   (new DataView(sb.data)).setFloat32(sb.allocate(4), f, true);
 };
