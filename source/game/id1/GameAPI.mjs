@@ -19,7 +19,7 @@ import { Serializer } from "./helper/MiscHelpers.mjs";
 import DemonMonster, { qc as demonModelQC } from "./entity/monster/Demon.mjs";
 import { MeatSprayEntity } from "./entity/monster/BaseMonster.mjs";
 import ZombieMonster, { ZombieGibGrenade, qc as zombieModelQC } from "./entity/monster/Zombie.mjs";
-import { KnightMonster, HellKnightMonster, qc as knightModelQCs } from "./entity/monster/Knights.mjs";
+import { KnightMonster, HellKnightMonster, qc as knightModelQCs, KnightSpike } from "./entity/monster/Knights.mjs";
 
 const featureFlags = [
   'zombie-ballistic-grenades', // enables zombie gib grenade trajectory fix
@@ -112,6 +112,7 @@ const entityRegistry = [
   ZombieGibGrenade,
   KnightMonster,
   HellKnightMonster,
+  KnightSpike,
 
   door.DoorEntity,
   door.SecretDoorEntity,
