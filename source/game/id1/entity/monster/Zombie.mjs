@@ -93,7 +93,7 @@ export default class ZombieMonster extends WalkMonster {
   }
 
   get netname() {
-    return 'a zombie';
+    return 'a Zombie';
   }
 
   _newEntityAI() {

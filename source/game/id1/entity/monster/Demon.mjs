@@ -40,7 +40,7 @@ export default class DemonMonster extends WalkMonster {
   static _modelHead = 'progs/h_demon.mdl';
 
   get netname() {
-    return 'an evil demon';
+    return 'a Fiend';
   }
 
   _newEntityAI() {

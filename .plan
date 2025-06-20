@@ -309,6 +309,7 @@ class MainMenu extends BaseMenu {
 ### 2025-06-21
 
 * fixed the lerp stuff
+* changed NPC names to their proper names (QuakeC: client.qc/ClientObituary)
 
 ### 2025-06-20
 

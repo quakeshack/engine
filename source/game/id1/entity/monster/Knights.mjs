@@ -107,7 +107,7 @@ export class KnightMonster extends WalkMonster {
   static _modelHead = 'progs/h_knight.mdl';
 
   get netname() {
-    return 'a knight';
+    return 'a Knight';
   }
 
   _newEntityAI() {
@@ -348,7 +348,7 @@ export class HellKnightMonster extends KnightMonster {
   static _modelHead = 'progs/h_hellkn.mdl';
 
   get netname() {
-    return 'a hell knight';
+    return 'a Death Knight';
   }
 
   _precache() {

@@ -42,7 +42,7 @@ export default class DogMonsterEntity extends WalkMonster {
   static _modelHead = 'progs/h_dog.mdl';
 
   get netname() {
-    return 'a dog';
+    return 'a Rottweiler';
   }
 
   _newEntityAI() {
