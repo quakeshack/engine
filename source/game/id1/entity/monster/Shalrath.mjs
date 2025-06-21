@@ -208,6 +208,7 @@ export class ShalrathMissileEntity extends BaseProjectile {
       return; // don't explode on owner
     }
 
+    // zombies get a special treatment, because they are more resistant to damage
     if (touchedByEntity instanceof ZombieMonster) {
       this.damage(touchedByEntity, 110, this.owner, this.origin);
     }
