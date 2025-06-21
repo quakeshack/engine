@@ -160,18 +160,16 @@ export default class DemonMonster extends WalkMonster {
   thinkMissile() { this._runState('demon1_jump1'); }
   thinkMelee() { this._runState('demon1_atta1'); }
 
-  thinkPain(_attacker, damage) {
+  thinkPain(attackerEntity, damage) {
     if (this._isLeaping) {
-      return;
-    }
-
-    if (this.health <= 0) {
       return;
     }
 
     if (this.pain_finished > this.game.time) {
       return;
     }
+
+    this._ai.foundTarget(attackerEntity);
 
     this.pain_finished = this.game.time + 1;
     this.painSound();
@@ -184,7 +182,8 @@ export default class DemonMonster extends WalkMonster {
   }
 
   // eslint-disable-next-line no-unused-vars
-  thinkDie(_attacker) {
+  thinkDie(attackerEntity) {
+    this._sub.useTargets(attackerEntity);
     if (this.health < -80) {
       this._gib(true);
       return;

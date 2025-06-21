@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { channel, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
+import { channel, colors, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
 import { crandom, EntityWrapper } from '../helper/MiscHelpers.mjs';
 import BaseEntity from './BaseEntity.mjs';
 import { PlayerEntity } from './Player.mjs';
@@ -269,7 +269,7 @@ export class DamageInflictor extends EntityWrapper {
 
     const trace1 = this._entity.traceline(startOrigin, endOrigin, false);
     if (trace1.entity !== null && trace1.entity.takedamage) {
-      this._engine.StartParticles(trace1.point, new Vector(0.0, 0.0, 100.0), 225, damage * 4); // FIXME: hardcoded color code (225)
+      this._engine.StartParticles(trace1.point, new Vector(0.0, 0.0, 100.0), colors.SPARK, damage * 4);
       this._entity.damage(trace1.entity, damage);
 
       // CR: ported over a fixed version, but commented out for now
@@ -280,13 +280,13 @@ export class DamageInflictor extends EntityWrapper {
 
     const trace2 = this._entity.traceline(startOrigin.copy().add(f), endOrigin.copy().add(f), false);
     if (trace2.entity !== null && !trace2.entity.equals(trace1.entity) && trace2.entity.takedamage) {
-      this._engine.StartParticles(trace2.point, new Vector(0.0, 0.0, 100.0), 225, damage * 4); // FIXME: hardcoded color code (225)
+      this._engine.StartParticles(trace2.point, new Vector(0.0, 0.0, 100.0), colors.SPARK, damage * 4);
       this._entity.damage(trace2.entity, damage);
     }
 
     const trace3 = this._entity.traceline(startOrigin.copy().subtract(f), endOrigin.copy().subtract(f), false);
     if (trace3.entity !== null && !trace3.entity.equals(trace1.entity) && !trace3.entity.equals(trace2.entity) && trace3.entity.takedamage) {
-      this._engine.StartParticles(trace3.point, new Vector(0.0, 0.0, 100.0), 225, damage * 4); // FIXME: hardcoded color code (225)
+      this._engine.StartParticles(trace3.point, new Vector(0.0, 0.0, 100.0), colors.SPARK, damage * 4);
       this._entity.damage(trace3.entity, damage);
     }
   }
@@ -361,7 +361,7 @@ export class DamageHandler extends EntityWrapper {
    * @param {?Vector} velocity optionally a custom blood trail velocity
    */
   spawnBlood(damage, origin, velocity = null) {
-    this._engine.StartParticles(origin, velocity !== null ? velocity : this._entity.velocity.copy().multiply(0.01 * damage), typeof (this._entity.bloodcolor) === 'number' ? this._entity.bloodcolor : 73, damage * 2); // FIXME: hardcoded color code (73)
+    this._engine.StartParticles(origin, velocity !== null ? velocity : this._entity.velocity.copy().multiply(0.01 * damage), typeof (this._entity.bloodcolor) === 'number' ? this._entity.bloodcolor : colors.BLOOD, damage * 2);
   }
 
   /**
@@ -454,13 +454,10 @@ export class DamageHandler extends EntityWrapper {
     // do the actual damage and check for a kill
     this._entity.health -= take;
 
+    // negative health is a kill
     if (this._entity.health <= 0) {
       this._killed(attackerEntity);
       return;
-    }
-
-    if ((this._entity.flags & flags.FL_MONSTER) && !attackerEntity.isWorld()) {
-      // TODO: must bubble down to the AI logic and it’s its job to handle accordingly
     }
 
     if (this._entity.thinkPain) {
@@ -594,7 +591,10 @@ export class Grenade extends BaseProjectile {
   _explode() {
     this.resetThinking();
 
-    this._damageInflictor.blastDamage(120, this.owner, this.origin);
+    // nerfing grenade damage for NPCs
+    const damage = this.owner instanceof PlayerEntity ? 120 : 40;
+
+    this._damageInflictor.blastDamage(damage, this.owner, this.origin);
 
     this.velocity.normalize();
     this.origin.subtract(this.velocity.multiply(8.0));

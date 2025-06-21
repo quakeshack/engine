@@ -52,7 +52,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [X] monster_dog
   * [X] monster_hell_knight
   * [X] monster_knight
-  * [_] monster_ogre
+  * [X] monster_ogre
   * [_] monster_oldone
   * [_] monster_shalrath
   * [_] monster_shambler
@@ -310,6 +310,8 @@ class MainMenu extends BaseMenu {
 
 * fixed the lerp stuff
 * changed NPC names to their proper names (QuakeC: client.qc/ClientObituary)
+* added monster_ogre
+* fixed AI logic to switch from target to enemy when received damage
 
 ### 2025-06-20
 

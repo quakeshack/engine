@@ -378,38 +378,57 @@ export default class ZombieMonster extends WalkMonster {
   }
 
   // pain reaction
-  thinkPain(attackerEntity, take) {
+  thinkPain(attackerEntity, damage) {
+    this._ai.foundTarget(attackerEntity);
+
     // always reset health to max
     this.health = this.constructor._health;
+
     // ignore small hits
-    if (take < 9) return;
+    if (damage < 9) {
+      return;
+    }
+
     // already knocked down
-    if (this.inpain === 2) return;
+    if (this.inpain === 2) {
+      return;
+    }
+
     // big hit knocks to ground
-    if (take >= 25) {
+    if (damage >= 25) {
       this.inpain = 2;
       this._runState('zombie_paine1');
       return;
     }
+
     // extend pain window if in quick pain
     if (this.inpain === 1) {
       this.pain_finished = this.engine.time + 3;
       return;
     }
+
     // second hit within window also knock down
     if (this.pain_finished > this.engine.time) {
       this.inpain = 2;
       this._runState('zombie_paine1');
       return;
     }
+
     // enter quick pain sequence
     this.inpain = 1;
     this.pain_finished = this.engine.time + 3;
+
     const r = Math.random();
-    if (r < 0.25) this._runState('zombie_paina1');
-    else if (r < 0.5) this._runState('zombie_painb1');
-    else if (r < 0.75) this._runState('zombie_painc1');
-    else this._runState('zombie_paind1');
+
+    if (r < 0.25) {
+      this._runState('zombie_paina1');
+    } else if (r < 0.5) {
+      this._runState('zombie_painb1');
+    } else if (r < 0.75) {
+      this._runState('zombie_painc1');
+    } else {
+      this._runState('zombie_paind1');
+    }
   }
 
   // death reaction
@@ -505,32 +524,7 @@ export class ZombieGibGrenade extends BaseEntity {
       .add(right.multiply(st[1]))
       .add(up.multiply(st[2] - 24.0));
 
-    if (this.game.hasFeature('zombie-ballistic-grenades')) {
-      // Calculate a proper ballistic trajectory to hit the enemy's view position
-      const gravity = this.game.gravity;
-      // Target is enemy origin plus view offset
-      const target = this.owner.enemy.origin.copy().add(this.owner.enemy.view_ofs ?? Vector.origin);
-      const displacement = target.copy().subtract(origin);
-      // Choose a reasonable time of flight (in seconds)
-      let t = 0.9;
-      // Calculate horizontal velocity (x, y)
-      const velocity = displacement.copy();
-      velocity[2] = 0; // zero out vertical for horizontal calculation
-      velocity.multiply(1 / t);
-      // Calculate vertical velocity (z)
-      const dz = displacement[2];
-      velocity[2] = (dz + 0.5 * gravity * t * t) / t;
-      velocity.add(new Vector(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiply(10.0)); // add some random noise
-      this.velocity.set(velocity);
-    } else {
-      // CR: this is an approximation where to toss the giblet at, original Quake behavior
-      const velocity = this.owner.enemy.origin.copy().subtract(origin);
-      velocity.normalize();
-      velocity.multiply(600.0);
-      velocity[2] = 200.0;
-      this.velocity.set(velocity);
-    }
-
+    this.velocity.set(this.owner.calculateTrajectoryVelocity(this.owner.enemy, origin));
     this.avelocity.setTo(3000.0, 1000.0, 2000.0);
 
     // missile duration

@@ -1,4 +1,4 @@
-import { channel, damage, moveType, solid } from "../../Defs.mjs";
+import { channel, colors, damage, moveType, solid } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
 import { PlayerEntity } from "../Player.mjs";
 import { DamageHandler } from "../Weapons.mjs";
@@ -38,7 +38,7 @@ export class ButtonEntity extends BasePropEntity {
 
     this.health = 0;
     this.max_health = 0;
-    this.bloodcolor = 0; // FIXME: hardcoded color code (0)
+    this.bloodcolor = colors.DUST;
 
     this._serializer.endFields();
 

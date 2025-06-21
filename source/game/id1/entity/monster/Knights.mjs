@@ -291,10 +291,13 @@ export class KnightMonster extends WalkMonster {
     this._runState('knight_atk1');
   }
 
-  thinkPain() {
+  // eslint-disable-next-line no-unused-vars
+  thinkPain(attackerEntity, damage) {
     if (this.pain_finished > this.game.time) {
       return;
     }
+
+    this._ai.foundTarget(attackerEntity);
 
     if (Math.random() < 0.85) {
       this._runState('knight_pain1');
@@ -645,6 +648,8 @@ export class HellKnightMonster extends KnightMonster {
   }
 
   thinkPain(attackerEntity, damage) {
+    this._ai.foundTarget(attackerEntity);
+
     if (this.pain_finished > this.game.time) {
       return;
     }

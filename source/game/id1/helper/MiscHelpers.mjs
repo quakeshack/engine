@@ -270,5 +270,4 @@ export class Serializer {
 
     return serializer;
   }
-
 };

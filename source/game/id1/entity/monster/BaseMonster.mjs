@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { damage, moveType, solid, range } from "../../Defs.mjs";
+import { damage, moveType, solid, range, colors } from "../../Defs.mjs";
 import { EntityAI, ATTACK_STATE } from "../../helper/AI.mjs";
 import BaseEntity from "../BaseEntity.mjs";
 import { BackpackEntity } from "../Items.mjs";
@@ -31,7 +31,7 @@ export default class BaseMonster extends BaseEntity {
     this.yaw_speed = 0.0;
     this.view_ofs = new Vector();
 
-    this.bloodcolor = 73; // FIXME: hardcoded color code (73)
+    this.bloodcolor = colors.BLOOD;
 
     /** @type {?BaseEntity} acquired target */
     this.enemy = null;
@@ -141,6 +141,7 @@ export default class BaseMonster extends BaseEntity {
    */
   // eslint-disable-next-line no-unused-vars
   thinkPain(attackerEntity, damage) {
+    this._ai.foundTarget(attackerEntity);
   }
 
   /**
@@ -319,6 +320,38 @@ export default class BaseMonster extends BaseEntity {
 
     // toss it around
     backpack.toss();
+  }
+
+  /**
+   * Calculates a trajectory to the target entity.
+   * @param {BaseEntity} targetEntity target entity to calculate trajectory to
+   * @param {Vector?} origin optional origin, if not set, will be calculated from this monster's origin
+   * @param {number} travelTime travel time in seconds, default is 0.9
+   * @returns {Vector} trajectory vector (use as velocity value)
+   */
+  calculateTrajectoryVelocity(targetEntity, origin = null, travelTime = 0.9) {
+    if (!origin) {
+      origin = this.origin.copy();
+    }
+
+    if (!this.game.hasFeature('correct-ballistic-grenades')) {
+      // CR: this is the Quake way of calculating the trajectory
+      const velocity = targetEntity.origin.copy().subtract(origin);
+      velocity.normalize();
+      velocity.multiply(600.0);
+      velocity[2] = 200.0;
+      return velocity;
+    }
+
+    const gravity = this.game.gravity;
+    const target = targetEntity.view_ofs ? targetEntity.origin.copy().add(targetEntity.view_ofs) : targetEntity.centerPoint;
+    const displacement = target.copy().subtract(origin);
+    const velocity = displacement.copy();
+    velocity.multiply(1 / travelTime);
+    velocity[2] = (displacement[2] + 0.5 * gravity * travelTime * travelTime) / travelTime;
+    velocity.add(new Vector(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiply(10.0));
+
+    return velocity;
   }
 };
 

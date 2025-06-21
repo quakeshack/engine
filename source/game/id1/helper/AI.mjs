@@ -87,7 +87,20 @@ export class EntityAI extends EntityWrapper {
     console.assert(false, 'implement this');
   }
 
+  /**
+   * Finds a target entity for the AI to interact with.
+   */
   findTarget() {
+    // implement this
+    console.assert(false, 'implement this');
+  }
+
+  /**
+   * Signalizes that a target entity has been found.
+   * @param {BaseEntity} targetEntity entity to focus on
+   */
+  // eslint-disable-next-line no-unused-vars
+  foundTarget(targetEntity) {
     // implement this
     console.assert(false, 'implement this');
   }
@@ -293,11 +306,7 @@ export class QuakeEntityAI extends EntityAI {
     return this._entity.getNextBestClient();
   }
 
-  findTarget() {
-    return this._findTarget();
-  }
-
-  _findTarget() { // QuakeC: ai.qc/FindTarget
+  findTarget() { // QuakeC: ai.qc/FindTarget
     // if the first spawnflag bit is set, the monster will only wake up on
     // really seeing the player, not another monster getting angry
 
@@ -351,9 +360,7 @@ export class QuakeEntityAI extends EntityAI {
       }
     }
 
-    //
-    // got one
-    //
+    // got one, trying to resolve the enemy chain first
     self.enemy = client;
     if (!(self.enemy instanceof PlayerEntity)) {
       self.enemy = self.enemy.enemy;
@@ -364,13 +371,13 @@ export class QuakeEntityAI extends EntityAI {
       }
     }
 
-    this._foundTarget();
+    this.foundTarget(self.enemy);
 
     return true;
   }
 
-  _foundTarget() { // QuakeC: ai.qc/FoundTarget
-    // console.log('_foundTarget', this._entity.toString(), self.enemy);
+  foundTarget(targetEntity) { // QuakeC: ai.qc/FoundTarget
+    this._entity.enemy = targetEntity;
 
     if (this._entity.enemy instanceof PlayerEntity) {
       // let other monsters see this monster for a while
@@ -439,7 +446,7 @@ export class QuakeEntityAI extends EntityAI {
    * The monster is staying in one place for a while, with slight angle turns
    */
   stand() { // QuakeC: ai.qc/ai_stand
-    if (this._findTarget()) {
+    if (this.findTarget()) {
       return;
     }
 
@@ -522,7 +529,7 @@ export class QuakeEntityAI extends EntityAI {
 
     // look for other coop players
     if (this._game.coop && this._searchTime < this._game.time) {
-      if (this._findTarget()) {
+      if (this.findTarget()) {
         return;
       }
     }
@@ -573,7 +580,7 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   turn() { // QuakeC: ai.qc/ai_turn
-    if (this._findTarget()) {
+    if (this.findTarget()) {
       return;
     }
 
@@ -674,8 +681,8 @@ export class QuakeEntityAI extends EntityAI {
       return;
     }
 
-    this._entity.enemy = userEntity;
-    this._entity._scheduleThink(this._game.time + 0.1, function () { this._ai._foundTarget(); });
+    this._entity.enemy = userEntity; // we need this in the next think and we cannot pass it along via the scope due to possible serialization
+    this._entity._scheduleThink(this._game.time + 0.1, function () { this._ai.foundTarget(this._entity.enemy); });
   }
 
   spawn() {

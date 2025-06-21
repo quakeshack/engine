@@ -259,3 +259,15 @@ export const tentType = {
   TE_LAVASPLASH: 10,
   TE_TELEPORT: 11,
 };
+
+/**
+ * @readonly
+ * @enum {number}
+ * color codes for blood and gore, should match palette.lmp colors
+ */
+export const colors = {
+  DUST: 0,
+  BLOOD: 73,
+  FIRE: 75,
+  SPARK: 225,
+};

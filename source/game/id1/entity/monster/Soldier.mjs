@@ -210,7 +210,10 @@ export default class ArmySoldierMonster extends WalkMonster {
     this._runState('army_atk1');
   }
 
-  thinkPain() {
+  // eslint-disable-next-line no-unused-vars
+  thinkPain(attackerEntity, damage) {
+    this._ai.foundTarget(attackerEntity);
+
     if (this.pain_finished > this.game.time) {
       return;
     }

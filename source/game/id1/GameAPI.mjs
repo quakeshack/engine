@@ -20,10 +20,10 @@ import DemonMonster, { qc as demonModelQC } from "./entity/monster/Demon.mjs";
 import { MeatSprayEntity } from "./entity/monster/BaseMonster.mjs";
 import ZombieMonster, { ZombieGibGrenade, qc as zombieModelQC } from "./entity/monster/Zombie.mjs";
 import { KnightMonster, HellKnightMonster, qc as knightModelQCs, KnightSpike } from "./entity/monster/Knights.mjs";
+import OgreMonsterEntity, { qc as ogreModelQC } from "./entity/monster/Ogre.mjs";
 
 const featureFlags = [
-  'zombie-ballistic-grenades', // enables zombie gib grenade trajectory fix
-
+  'correct-ballistic-grenades', // enables zombie gib and ogre grenade trajectory fix
 ];
 
 // put all entity classes here:
@@ -113,6 +113,7 @@ const entityRegistry = [
   KnightMonster,
   HellKnightMonster,
   KnightSpike,
+  OgreMonsterEntity,
 
   door.DoorEntity,
   door.SecretDoorEntity,
@@ -205,6 +206,7 @@ export class ServerGameAPI {
     this.parm13 = 0;
     this.parm14 = 0;
     this.parm15 = 0;
+    this.parm16 = 0;
 
     this.serverflags = 0;
 
@@ -243,6 +245,7 @@ export class ServerGameAPI {
       'progs/zombie.mdl': engineAPI.ParseQC(zombieModelQC),
       'progs/knight.mdl': engineAPI.ParseQC(knightModelQCs.knight),
       'progs/hknight.mdl': engineAPI.ParseQC(knightModelQCs.hellKnight),
+      'progs/ogre.mdl': engineAPI.ParseQC(ogreModelQC),
     };
 
     /** @private */
@@ -340,7 +343,7 @@ export class ServerGameAPI {
     const spawnParams = clientEntity.edict.getClient().spawn_parms;
 
     for (let i = 0; i < spawnParams.length; i++) {
-      // FIXME: Exception has occurred: TypeError: Cannot add property parm16, object is not extensible
+      console.assert(`parm${i + 1}` in this);
       this[`parm${i + 1}`] = spawnParams[i];
     }
   }

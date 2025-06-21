@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { attn, channel, content, damage, moveType, solid, tentType } from "../Defs.mjs";
+import { attn, channel, colors, content, damage, moveType, solid, tentType } from "../Defs.mjs";
 import { crandom } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import BaseMonster from "./monster/BaseMonster.mjs";
@@ -568,7 +568,7 @@ export class BaseBarrelEntity extends BaseEntity {
     this.takedamage = damage.DAMAGE_NO; // prevents explosion recursion
     this._damageInflictor.blastDamage(160, this, this.centerPoint, this);
     this.startSound(channel.CHAN_VOICE, this.constructor._noise);
-    this.engine.StartParticles(this.origin, Vector.origin, 75, 255); // FIXME: hardcoded color code (75)
+    this.engine.StartParticles(this.origin, Vector.origin, colors.FIRE, 255);
 
     this.origin[2] += 32;
 

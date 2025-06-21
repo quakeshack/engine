@@ -2106,6 +2106,20 @@ export class GibEntity extends BaseEntity {
   }
 
   /**
+   * Throws around a meat giblets.
+   * @param {BaseEntity} entity the entity being gibbed
+   * @param {Vector} velocity velocity of the giblet
+   * @param {?Vector} origin origin of the giblet, defaults to entity.origin
+   */
+  static throwMeatGib(entity, velocity, origin = entity.origin) {
+    entity.engine.SpawnEntity(GibEntity.classname, {
+      origin: origin.copy(),
+      velocity,
+      model: 'progs/zom_gib.mdl', // zombie giblet
+    });
+  }
+
+  /**
    * Turns entity into a head, will spawn random gibs.
    * @param {BaseEntity} entity entity to be gibbed
    * @param {string} headModel e.g. progs/h_player.mdl

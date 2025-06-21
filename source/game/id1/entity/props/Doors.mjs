@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { attn, channel, damage, items, moveType, solid, worldType } from "../../Defs.mjs";
+import { attn, channel, colors, damage, items, moveType, solid, worldType } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";
 import { itemNames } from "../Items.mjs";
 import { PlayerEntity } from "../Player.mjs";
@@ -537,7 +537,7 @@ export class SecretDoorEntity extends BaseDoorEntity {
     this._dest2 = null;
 
     this.health = 0;
-    this.bloodcolor = 0; // FIXME: hardcoded color code (0)
+    this.bloodcolor = colors.DUST;
 
     this._serializer.endFields();
 
@@ -600,7 +600,7 @@ export class SecretDoorEntity extends BaseDoorEntity {
   }
 
   // eslint-disable-next-line no-unused-vars
-  thinkPain(attackerEntity, inflictedDamage) {
+  thinkPain(attackerEntity, damage) {
     this.use(attackerEntity);
   }
 
