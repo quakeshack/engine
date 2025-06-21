@@ -54,7 +54,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [X] monster_knight
   * [X] monster_ogre
   * [_] monster_oldone
-  * [_] monster_shalrath
+  * [X] monster_shalrath
   * [_] monster_shambler
   * [_] monster_tarbaby
   * [_] monster_wizard
@@ -72,10 +72,10 @@ Grouped by sections and then sorted by priority (more or less).
   * [X] trigger_push
 * [X] rename `edict.api` to `edict.entity`
 * [_] put some things behind feature gates, so that the game can tell the engine what things are needed/supported
-* [_] implement the new syscalls that QuakeWorld introduced
 * [_] improve stack trace / error handling for QuakeC
 * [_] build something that will take a map from defs and makes sure that some properties must be within that range (for movetype, solid, flags)
 * [_] applyBackpack: currentammo not updated
+* [_] cvars: move game related cvars to PR and QuakeJS game
 
 ### Modern JavaScript
 
@@ -312,6 +312,9 @@ class MainMenu extends BaseMenu {
 * changed NPC names to their proper names (QuakeC: client.qc/ClientObituary)
 * added monster_ogre
 * fixed AI logic to switch from target to enemy when received damage
+* removed some hardcoded magic values (color codes)
+* added monster_shalrath
+* fixed/changed some logic regarding stepping forward in the state machine
 
 ### 2025-06-20
 

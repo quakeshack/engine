@@ -181,7 +181,6 @@ export default class DemonMonster extends WalkMonster {
     this._runState('demon1_pain1');
   }
 
-  // eslint-disable-next-line no-unused-vars
   thinkDie(attackerEntity) {
     this._sub.useTargets(attackerEntity);
     if (this.health < -80) {

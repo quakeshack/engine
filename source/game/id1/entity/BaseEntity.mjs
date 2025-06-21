@@ -224,7 +224,9 @@ export default class BaseEntity {
     const data = this._states[state];
 
     this._stateCurrent = state;
-    this._stateNext = data.nextState !== state ? data.nextState : null;
+    // CR: for some reason I spent an hour to figure out why the nextState is not set, and it was because of this line:
+    // this._stateNext = data.nextState !== state ? data.nextState : null;
+    this._stateNext = data.nextState || null;
 
     // this is simulating QuakeC VM’s PR.op.state opcode
     // - set frame
