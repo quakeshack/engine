@@ -59,12 +59,12 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] monster_tarbaby
   * [_] monster_wizard
   * [_] monster_boss
-  * [_] monster_enforcer
+  * [X] monster_enforcer
   * [_] monster_fish
   * [X] monster_zombie
   * [X] path_corner
   * [X] trap_shooter
-    * [_] spawnflag: laser
+    * [X] spawnflag: laser
   * [X] trap_spikeshooter
   * [X] trigger_changelevel
   * [X] trigger_hurt
@@ -315,6 +315,9 @@ class MainMenu extends BaseMenu {
 * removed some hardcoded magic values (color codes)
 * added monster_shalrath
 * fixed/changed some logic regarding stepping forward in the state machine
+* added laser traps
+* added monster_enforcer
+* added refire check logic (unsure if it actually works lol)
 
 ### 2025-06-20
 

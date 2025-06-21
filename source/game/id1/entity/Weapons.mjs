@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { channel, colors, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
+import { attn, channel, colors, content, damage, effect, flags, items, moveType, solid, tentType } from '../Defs.mjs';
 import { crandom, EntityWrapper } from '../helper/MiscHelpers.mjs';
 import BaseEntity from './BaseEntity.mjs';
 import { PlayerEntity } from './Player.mjs';
@@ -761,6 +761,25 @@ export class Superspike extends BaseSpike {
   static classname = 'weapon_projectile_superspike';
   static _damage = 18;
   static _tentType = tentType.TE_SUPERSPIKE;
+};
+
+export class Laser extends BaseSpike {
+  static classname = 'weapon_projectile_laser';
+  static _damage = 15;
+  static _tentType = tentType.TE_GUNSHOT;
+  static _model = 'progs/laser.mdl';
+
+  _handleImpact(touchedByEntity) {
+    super._handleImpact(touchedByEntity);
+
+    this.startSound(channel.CHAN_WEAPON, 'enforcer/enfstop.wav', 1.0, attn.ATTN_STATIC);
+  }
+
+  spawn() {
+    super.spawn();
+
+    this.owner.startSound(channel.CHAN_WEAPON, 'enforcer/enfire.wav');
+  }
 };
 
 /**

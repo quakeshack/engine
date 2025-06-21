@@ -1,12 +1,12 @@
 /* global Vector */
 
-import { attn, channel, colors, content, damage, moveType, solid, tentType } from "../Defs.mjs";
+import { attn, channel, colors, content, damage, effect, moveType, solid, tentType } from "../Defs.mjs";
 import { crandom } from "../helper/MiscHelpers.mjs";
 import BaseEntity from "./BaseEntity.mjs";
 import BaseMonster from "./monster/BaseMonster.mjs";
 import { PlayerEntity } from "./Player.mjs";
 import { Sub } from "./Subs.mjs";
-import { DamageHandler, DamageInflictor, Explosions, Spike, Superspike } from "./Weapons.mjs";
+import { DamageHandler, DamageInflictor, Explosions, Laser, Spike, Superspike } from "./Weapons.mjs";
 
 /**
  * QUAKED info_null (0 0.5 0) (-4 -4 -4) (4 4 4)
@@ -688,8 +688,8 @@ export class TrapSpikeshooterEntity extends BaseEntity {
   // eslint-disable-next-line no-unused-vars
   use(usedByEntity) {
     if (this.spawnflags & TrapSpikeshooterEntity.SPAWNFLAG_LASER) {
-      // this.startSound(channel.CHAN_VOICE, 'enforcer/enfire.wav'); -- can be put in LaunchLaser
-      // TODO: LaunchLaser
+      const laser = this.engine.SpawnEntity(Laser.classname, { owner: this, origin: this.origin });
+      laser.effects |= effect.EF_MUZZLEFLASH;
     } else {
       this.startSound(channel.CHAN_VOICE, 'weapons/spike2.wav');
       this.engine.SpawnEntity((this.spawnflags & TrapSpikeshooterEntity.SPAWNFLAG_SUPERSPIKE) ? Superspike.classname : Spike.classname, { owner: this, speed: 500.0 });

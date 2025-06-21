@@ -7,7 +7,7 @@ import * as misc from "./entity/Misc.mjs";
 import * as door from "./entity/props/Doors.mjs";
 import * as platform from "./entity/props/Platforms.mjs";
 import * as trigger from "./entity/Triggers.mjs";
-import ArmySoldierMonster, { qc as soliderModelQC } from "./entity/monster/Soldier.mjs";
+import { ArmySoldierMonster, ArmyEnforcerMonster, qc as soldierModelQCs } from "./entity/monster/Soldier.mjs";
 import { GameAI } from "./helper/AI.mjs";
 import * as sub from "./entity/Subs.mjs";
 import { ButtonEntity } from "./entity/props/Buttons.mjs";
@@ -47,6 +47,7 @@ const entityRegistry = [
   weapon.Spike,
   weapon.Superspike,
   weapon.Grenade,
+  weapon.Laser,
 
   misc.ViewthingEntity,
   misc.DebugMarkerEntity,
@@ -107,6 +108,7 @@ const entityRegistry = [
   TelefragTriggerEntity,
 
   ArmySoldierMonster,
+  ArmyEnforcerMonster,
   DogMonsterEntity,
   DemonMonster,
   ZombieMonster,
@@ -117,6 +119,7 @@ const entityRegistry = [
   OgreMonsterEntity,
   ShalrathMonsterEntity,
   ShalrathMissileEntity,
+  ArmyEnforcerMonster,
 
   door.DoorEntity,
   door.SecretDoorEntity,
@@ -241,7 +244,8 @@ export class ServerGameAPI {
 
     /** @private */
     this._modelData = { // FIXME: I’m not happy about this, this needs to be next to models
-      'progs/soldier.mdl': engineAPI.ParseQC(soliderModelQC),
+      'progs/soldier.mdl': engineAPI.ParseQC(soldierModelQCs.solider),
+      'progs/enforcer.mdl': engineAPI.ParseQC(soldierModelQCs.enforcer),
       'progs/player.mdl': engineAPI.ParseQC(playerModelQC),
       'progs/dog.mdl': engineAPI.ParseQC(dogModelQC),
       'progs/demon.mdl': engineAPI.ParseQC(demonModelQC),

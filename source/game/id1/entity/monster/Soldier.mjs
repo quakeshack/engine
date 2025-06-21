@@ -2,10 +2,11 @@
 
 import { attn, channel, flags, solid } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
-import { DamageInflictor } from "../Weapons.mjs";
+import { DamageInflictor, Laser } from "../Weapons.mjs";
 import { WalkMonster } from "./BaseMonster.mjs";
 
-export const qc = `
+export const qc = {
+  solider:`
 $cd id1/models/soldier3
 $origin 0 -6 24
 $base base
@@ -36,12 +37,44 @@ $frame shoot1 shoot2 shoot3 shoot4 shoot5 shoot6 shoot7 shoot8 shoot9
 $frame prowl_1 prowl_2 prowl_3 prowl_4 prowl_5 prowl_6 prowl_7 prowl_8
 $frame prowl_9 prowl_10 prowl_11 prowl_12 prowl_13 prowl_14 prowl_15 prowl_16
 $frame prowl_17 prowl_18 prowl_19 prowl_20 prowl_21 prowl_22 prowl_23 prowl_24
-`;
+`,
+  enforcer: `
+$cd id1/models/enforcer
+$origin 0 -6 24
+$base base
+$skin skin
+
+$frame stand1 stand2 stand3 stand4 stand5 stand6 stand7
+
+$frame walk1 walk2 walk3 walk4 walk5 walk6 walk7 walk8 walk9 walk10
+$frame walk11 walk12 walk13 walk14 walk15 walk16
+
+$frame run1 run2 run3 run4 run5 run6 run7 run8
+
+$frame attack1 attack2 attack3 attack4 attack5 attack6
+$frame attack7 attack8 attack9 attack10
+
+$frame death1 death2 death3 death4 death5 death6 death7 death8
+$frame death9 death10 death11 death12 death13 death14
+
+$frame fdeath1 fdeath2 fdeath3 fdeath4 fdeath5 fdeath6 fdeath7 fdeath8
+$frame fdeath9 fdeath10 fdeath11
+
+$frame paina1 paina2 paina3 paina4
+
+$frame painb1 painb2 painb3 painb4 painb5
+
+$frame painc1 painc2 painc3 painc4 painc5 painc6 painc7 painc8
+
+$frame paind1 paind2 paind3 paind4 paind5 paind6 paind7 paind8
+$frame paind9 paind10 paind11 paind12 paind13 paind14 paind15 paind16
+$frame paind17 paind18 paind19
+`};
 
 /**
  * QUAKED monster_army (1 0 0) (-16 -16 -24) (16 16 40) Ambush
  */
-export default class ArmySoldierMonster extends WalkMonster {
+export class ArmySoldierMonster extends WalkMonster {
   static classname = 'monster_army';
 
   static _health = 30;
@@ -130,7 +163,7 @@ export default class ArmySoldierMonster extends WalkMonster {
     this._defineState('army_atk4', 'shoot4', 'army_atk5', function () { this._ai.face(); this._fire(); this.effects |= flags.EF_MUZZLEFLASH; });
     this._defineState('army_atk5', 'shoot5', 'army_atk6', function () { this._ai.face(); });
     this._defineState('army_atk6', 'shoot6', 'army_atk7', function () { this._ai.face(); });
-    this._defineState('army_atk7', 'shoot7', 'army_atk8', function () { this._ai.face(); });
+    this._defineState('army_atk7', 'shoot7', 'army_atk8', function () { this._ai.face(); this._refire('army_atk1'); });
     this._defineState('army_atk8', 'shoot8', 'army_atk9', function () { this._ai.face(); });
     this._defineState('army_atk9', 'shoot9', 'army_run1', function () { this._ai.face(); });
 
@@ -292,6 +325,276 @@ export default class ArmySoldierMonster extends WalkMonster {
 
   attackSound() {
     this.startSound(channel.CHAN_WEAPON, 'soldier/sattck1.wav');
+  }
+
+  hasMissileAttack() {
+    return true;
+  }
+};
+
+/**
+ * QUAKED monster_enforcer (1 0 0) (-16 -16 -24) (16 16 40) Ambush
+ */
+export class ArmyEnforcerMonster extends WalkMonster {
+  static classname = 'monster_enforcer';
+
+  static _health = 80;
+  static _size = [new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 40.0)];
+
+  static _modelDefault = 'progs/enforcer.mdl';
+  static _modelHead = 'progs/h_mega.mdl';
+
+  get netname() {
+    return 'an Enforcer';
+  }
+
+  _newEntityAI() {
+    return new QuakeEntityAI(this);
+  }
+
+  _precache() {
+    super._precache();
+
+    this.engine.PrecacheModel("progs/laser.mdl");
+    this.engine.PrecacheSound("enforcer/death1.wav");
+    this.engine.PrecacheSound("enforcer/enfire.wav");
+    this.engine.PrecacheSound("enforcer/enfstop.wav");
+    this.engine.PrecacheSound("enforcer/idle1.wav");
+    this.engine.PrecacheSound("enforcer/pain1.wav");
+    this.engine.PrecacheSound("enforcer/pain2.wav");
+    this.engine.PrecacheSound("enforcer/sight1.wav");
+    this.engine.PrecacheSound("enforcer/sight2.wav");
+    this.engine.PrecacheSound("enforcer/sight3.wav");
+    this.engine.PrecacheSound("enforcer/sight4.wav");
+  }
+
+  _initStates() {
+    this._defineState('enf_stand1', 'stand1', 'enf_stand2', function () { this._ai.stand(); });
+    this._defineState('enf_stand2', 'stand2', 'enf_stand3', function () { this._ai.stand(); });
+    this._defineState('enf_stand3', 'stand3', 'enf_stand4', function () { this._ai.stand(); });
+    this._defineState('enf_stand4', 'stand4', 'enf_stand5', function () { this._ai.stand(); });
+    this._defineState('enf_stand5', 'stand5', 'enf_stand6', function () { this._ai.stand(); });
+    this._defineState('enf_stand6', 'stand6', 'enf_stand7', function () { this._ai.stand(); });
+    this._defineState('enf_stand7', 'stand7', 'enf_stand1', function () { this._ai.stand(); });
+
+    // Walk states
+    this._defineState('enf_walk1', 'walk1', 'enf_walk2', function () { this.idleSound(); this._ai.walk(2); });
+    this._defineState('enf_walk2', 'walk2', 'enf_walk3', function () { this._ai.walk(4); });
+    this._defineState('enf_walk3', 'walk3', 'enf_walk4', function () { this._ai.walk(4); });
+    this._defineState('enf_walk4', 'walk4', 'enf_walk5', function () { this._ai.walk(3); });
+    this._defineState('enf_walk5', 'walk5', 'enf_walk6', function () { this._ai.walk(1); });
+    this._defineState('enf_walk6', 'walk6', 'enf_walk7', function () { this._ai.walk(2); });
+    this._defineState('enf_walk7', 'walk7', 'enf_walk8', function () { this._ai.walk(2); });
+    this._defineState('enf_walk8', 'walk8', 'enf_walk9', function () { this._ai.walk(1); });
+    this._defineState('enf_walk9', 'walk9', 'enf_walk10', function () { this._ai.walk(2); });
+    this._defineState('enf_walk10', 'walk10', 'enf_walk11', function () { this._ai.walk(4); });
+    this._defineState('enf_walk11', 'walk11', 'enf_walk12', function () { this._ai.walk(4); });
+    this._defineState('enf_walk12', 'walk12', 'enf_walk13', function () { this._ai.walk(1); });
+    this._defineState('enf_walk13', 'walk13', 'enf_walk14', function () { this._ai.walk(2); });
+    this._defineState('enf_walk14', 'walk14', 'enf_walk15', function () { this._ai.walk(3); });
+    this._defineState('enf_walk15', 'walk15', 'enf_walk16', function () { this._ai.walk(4); });
+    this._defineState('enf_walk16', 'walk16', 'enf_walk1', function () { this._ai.walk(2); });
+
+    // Run states
+    this._defineState('enf_run1', 'run1', 'enf_run2', function () { this.idleSound(); this._ai.run(18); });
+    this._defineState('enf_run2', 'run2', 'enf_run3', function () { this._ai.run(14); });
+    this._defineState('enf_run3', 'run3', 'enf_run4', function () { this._ai.run(7); });
+    this._defineState('enf_run4', 'run4', 'enf_run5', function () { this._ai.run(12); });
+    this._defineState('enf_run5', 'run5', 'enf_run6', function () { this._ai.run(14); });
+    this._defineState('enf_run6', 'run6', 'enf_run7', function () { this._ai.run(14); });
+    this._defineState('enf_run7', 'run7', 'enf_run8', function () { this._ai.run(7); });
+    this._defineState('enf_run8', 'run8', 'enf_run1', function () { this._ai.run(11); });
+
+    // Attack states
+    this._defineState('enf_atk1', 'attack1', 'enf_atk2', function () { this._ai.face(); });
+    this._defineState('enf_atk2', 'attack2', 'enf_atk3', function () { this._ai.face(); });
+    this._defineState('enf_atk3', 'attack3', 'enf_atk4', function () { this._ai.face(); });
+    this._defineState('enf_atk4', 'attack4', 'enf_atk5', function () { this._ai.face(); });
+    this._defineState('enf_atk5', 'attack5', 'enf_atk6', function () { this._ai.face(); });
+    this._defineState('enf_atk6', 'attack6', 'enf_atk7', function () { this.fire(); });
+    this._defineState('enf_atk7', 'attack7', 'enf_atk8', function () { this._ai.face(); });
+    this._defineState('enf_atk8', 'attack8', 'enf_atk9', function () { this._ai.face(); });
+    this._defineState('enf_atk9', 'attack5', 'enf_atk10', function () { this._ai.face(); });
+    this._defineState('enf_atk10', 'attack6', 'enf_atk11', function () { this.fire(); });
+    this._defineState('enf_atk11', 'attack7', 'enf_atk12', function () { this._ai.face(); });
+    this._defineState('enf_atk12', 'attack8', 'enf_atk13', function () { this._ai.face(); });
+    this._defineState('enf_atk13', 'attack9', 'enf_atk14', function () { this._ai.face(); });
+    this._defineState('enf_atk14', 'attack10', 'enf_run1', function () { this._ai.face(); this._refire('enf_atk1'); });
+
+    // Pain states
+    this._defineState('enf_paina1', 'paina1', 'enf_paina2', function () {});
+    this._defineState('enf_paina2', 'paina2', 'enf_paina3', function () {});
+    this._defineState('enf_paina3', 'paina3', 'enf_paina4', function () {});
+    this._defineState('enf_paina4', 'paina4', 'enf_run1', function () {});
+
+    this._defineState('enf_painb1', 'painb1', 'enf_painb2', function () {});
+    this._defineState('enf_painb2', 'painb2', 'enf_painb3', function () {});
+    this._defineState('enf_painb3', 'painb3', 'enf_painb4', function () {});
+    this._defineState('enf_painb4', 'painb4', 'enf_painb5', function () {});
+    this._defineState('enf_painb5', 'painb5', 'enf_run1', function () {});
+
+    this._defineState('enf_painc1', 'painc1', 'enf_painc2', function () {});
+    this._defineState('enf_painc2', 'painc2', 'enf_painc3', function () {});
+    this._defineState('enf_painc3', 'painc3', 'enf_painc4', function () {});
+    this._defineState('enf_painc4', 'painc4', 'enf_painc5', function () {});
+    this._defineState('enf_painc5', 'painc5', 'enf_painc6', function () {});
+    this._defineState('enf_painc6', 'painc6', 'enf_painc7', function () {});
+    this._defineState('enf_painc7', 'painc7', 'enf_painc8', function () {});
+    this._defineState('enf_painc8', 'painc8', 'enf_run1', function () {});
+
+    this._defineState('enf_paind1', 'paind1', 'enf_paind2', function () {});
+    this._defineState('enf_paind2', 'paind2', 'enf_paind3', function () {});
+    this._defineState('enf_paind3', 'paind3', 'enf_paind4', function () {});
+    this._defineState('enf_paind4', 'paind4', 'enf_paind5', function () { this._ai.painforward(2); });
+    this._defineState('enf_paind5', 'paind5', 'enf_paind6', function () { this._ai.painforward(1); });
+    this._defineState('enf_paind6', 'paind6', 'enf_paind7', function () {});
+    this._defineState('enf_paind7', 'paind7', 'enf_paind8', function () {});
+    this._defineState('enf_paind8', 'paind8', 'enf_paind9', function () {});
+    this._defineState('enf_paind9', 'paind9', 'enf_paind10', function () {});
+    this._defineState('enf_paind10', 'paind10', 'enf_paind11', function () {});
+    this._defineState('enf_paind11', 'paind11', 'enf_paind12', function () { this._ai.painforward(1); });
+    this._defineState('enf_paind12', 'paind12', 'enf_paind13', function () { this._ai.painforward(1); });
+    this._defineState('enf_paind13', 'paind13', 'enf_paind14', function () { this._ai.painforward(1); });
+    this._defineState('enf_paind14', 'paind14', 'enf_paind15', function () {});
+    this._defineState('enf_paind15', 'paind15', 'enf_paind16', function () {});
+    this._defineState('enf_paind16', 'paind16', 'enf_paind17', function () { this._ai.pain(1); });
+    this._defineState('enf_paind17', 'paind17', 'enf_paind18', function () { this._ai.pain(1); });
+    this._defineState('enf_paind18', 'paind18', 'enf_paind19', function () {});
+    this._defineState('enf_paind19', 'paind19', 'enf_run1', function () {});
+
+    // Death states
+    this._defineState('enf_die1', 'death1', 'enf_die2', function () {});
+    this._defineState('enf_die2', 'death2', 'enf_die3', function () {});
+    this._defineState('enf_die3', 'death3', 'enf_die4', function () { this.solid = solid.SOLID_NOT; this._dropBackpack({ ammo_cells: 5 }); });
+    this._defineState('enf_die4', 'death4', 'enf_die5', function () { this._ai.forward(14); });
+    this._defineState('enf_die5', 'death5', 'enf_die6', function () { this._ai.forward(2); });
+    this._defineState('enf_die6', 'death6', 'enf_die7', function () {});
+    this._defineState('enf_die7', 'death7', 'enf_die8', function () {});
+    this._defineState('enf_die8', 'death8', 'enf_die9', function () {});
+    this._defineState('enf_die9', 'death9', 'enf_die10', function () { this._ai.forward(3); });
+    this._defineState('enf_die10', 'death10', 'enf_die11', function () { this._ai.forward(5); });
+    this._defineState('enf_die11', 'death11', 'enf_die12', function () { this._ai.forward(5); });
+    this._defineState('enf_die12', 'death12', 'enf_die13', function () { this._ai.forward(5); });
+    this._defineState('enf_die13', 'death13', 'enf_die14', function () {});
+    this._defineState('enf_die14', 'death14', 'enf_die14', function () {});
+
+    this._defineState('enf_fdie1', 'fdeath1', 'enf_fdie2', function () {});
+    this._defineState('enf_fdie2', 'fdeath2', 'enf_fdie3', function () {});
+    this._defineState('enf_fdie3', 'fdeath3', 'enf_fdie4', function () { this.solid = solid.SOLID_NOT; this._dropBackpack({ ammo_cells: 5 }); });
+    this._defineState('enf_fdie4', 'fdeath4', 'enf_fdie5', function () {});
+    this._defineState('enf_fdie5', 'fdeath5', 'enf_fdie6', function () {});
+    this._defineState('enf_fdie6', 'fdeath6', 'enf_fdie7', function () {});
+    this._defineState('enf_fdie7', 'fdeath7', 'enf_fdie8', function () {});
+    this._defineState('enf_fdie8', 'fdeath8', 'enf_fdie9', function () {});
+    this._defineState('enf_fdie9', 'fdeath9', 'enf_fdie10', function () {});
+    this._defineState('enf_fdie10', 'fdeath10', 'enf_fdie11', function () {});
+    this._defineState('enf_fdie11', 'fdeath11', 'enf_fdie11', function () {});
+  }
+
+  fire() { // QuakeC: enforcer.qc/enforcer_fire
+    this.effects |= flags.EF_MUZZLEFLASH;
+
+    const { forward, right } = this.angles.angleVectors();
+
+    const org = this.origin.copy().add(forward.multiply(30.0)).add(right.multiply(8.5)).add(new Vector(0.0, 0.0, 16.0));
+
+    const movedir = this.enemy.origin.copy().subtract(this.origin);
+    movedir.normalize();
+
+    this.movedir.set(movedir);
+
+    const laser = this.engine.SpawnEntity(Laser.classname, { owner: this });
+    laser.setOrigin(org);
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  thinkPain(attackerEntity, damage) {
+    this._ai.foundTarget(attackerEntity);
+
+    if (this.pain_finished > this.game.time) {
+      return;
+    }
+
+    const r = Math.random();
+
+    this.pain_finished = this.game.time + 1.0;
+
+    if (r < 0.2) {
+      this._runState('enf_paina1');
+    } else if (r < 0.4) {
+      this._runState('enf_painb1');
+    } else if (r < 0.7) {
+      this._runState('enf_painc1');
+    } else {
+      this.pain_finished = this.game.time + 1.0;
+      this._runState('enf_paind1');
+    }
+
+    this.painSound();
+  }
+
+  thinkDie(attackerEntity) {
+    this._sub.useTargets(attackerEntity);
+
+    if (this.health < -35) {
+      this._gib(true);
+      return;
+    }
+
+    this.deathSound();
+
+    if (Math.random() < 0.5) {
+      this._runState('enf_die1');
+    } else {
+      this._runState('enf_fdie1');
+    }
+  }
+
+  thinkStand() {
+    this._runState('enf_stand1');
+  }
+
+  thinkWalk() {
+    this._runState('enf_walk1');
+  }
+
+  thinkRun() {
+    this._runState('enf_run1');
+  }
+
+  thinkMissile() {
+    this._runState('enf_atk1');
+  }
+
+  idleSound() {
+    if (Math.random() < 0.2) {
+      this.startSound(channel.CHAN_VOICE, "enforcer/idle1.wav");
+    }
+  }
+
+  painSound() {
+    if (Math.random() < 0.5) {
+      this.startSound(channel.CHAN_VOICE, "enforcer/pain1.wav");
+    } else {
+      this.startSound(channel.CHAN_VOICE, "enforcer/pain2.wav");
+    }
+  }
+
+  deathSound() {
+    this.startSound(channel.CHAN_VOICE, "enforcer/death1.wav");
+  }
+
+  sightSound() {
+    const r = Math.random();
+    if (r < 0.25) {
+      this.startSound(channel.CHAN_VOICE, "enforcer/sight1.wav");
+    } else if (r < 0.5) {
+      this.startSound(channel.CHAN_VOICE, "enforcer/sight2.wav");
+    } else if (r < 0.75) {
+      this.startSound(channel.CHAN_VOICE, "enforcer/sight3.wav");
+    } else {
+      this.startSound(channel.CHAN_VOICE, "enforcer/sight4.wav");
+    }
   }
 
   hasMissileAttack() {

@@ -353,6 +353,24 @@ export default class BaseMonster extends BaseEntity {
 
     return velocity;
   }
+
+  _refire(nextState) { // QuakeC: subs.qc/SUB_CheckRefire
+    if (this.game.skill !== 3) {
+      return;
+    }
+
+    if (this.cnt === 1) {
+      return;
+    }
+
+    if (!this.enemy || !this._ai.enemyIsVisible) {
+      return;
+    }
+
+    this.cnt = 1;
+
+    this._runState(nextState);
+  }
 };
 
 export class WalkMonster extends BaseMonster {
