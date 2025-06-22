@@ -2,7 +2,7 @@
 
 import { channel, solid, tentType } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
-import { BaseSpike, Spike } from "../Weapons.mjs";
+import { BaseSpike } from "../Weapons.mjs";
 import { WalkMonster } from "./BaseMonster.mjs";
 
 export const qc = {

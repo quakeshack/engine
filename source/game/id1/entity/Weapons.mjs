@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { attn, channel, colors, content, damage, effect, flags, items, moveType, solid, tentType } from '../Defs.mjs';
+import { attn, channel, colors, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
 import { crandom, EntityWrapper } from '../helper/MiscHelpers.mjs';
 import BaseEntity from './BaseEntity.mjs';
 import { PlayerEntity } from './Player.mjs';

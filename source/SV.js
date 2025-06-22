@@ -2930,6 +2930,7 @@ SV.ReadClientMove = function(client) {
   // console.log('client.cmd', client.cmd);
 };
 
+// eslint-disable-next-line no-unused-vars
 SV.ReadClientMoveQW = function(client) {
   // TODO
 

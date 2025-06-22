@@ -682,7 +682,7 @@ export class QuakeEntityAI extends EntityAI {
     }
 
     this._entity.enemy = userEntity; // we need this in the next think and we cannot pass it along via the scope due to possible serialization
-    this._entity._scheduleThink(this._game.time + 0.1, function () { this._ai.foundTarget(this._entity.enemy); });
+    this._entity._scheduleThink(this._game.time + 0.1, function () { this._ai.foundTarget(this.enemy); });
   }
 
   spawn() {

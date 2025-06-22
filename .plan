@@ -306,6 +306,11 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-06-22
+
+* I need to double check the AI/NPC logic, the knights are glitching around when attacking
+* some code cleanup
+
 ### 2025-06-21
 
 * fixed the lerp stuff
