@@ -41,7 +41,6 @@ Grouped by sections and then sorted by priority (more or less).
   * [X] player
     * [_] Finale screens
   * [X] air_bubbles
-  * [_] event_lightning
   * [X] func_door_secret
   * [X] func_plat
   * [X] func_train
@@ -59,6 +58,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [_] monster_tarbaby
   * [_] monster_wizard
   * [_] monster_boss
+    * [_] event_lightning
   * [X] monster_enforcer
   * [_] monster_fish
   * [X] monster_zombie
@@ -104,6 +104,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [X] index.html: reorganize shaders
 * [_] `CL.state.intermission`/`ExitIntermission`: unsure what happens next on DS
 * [_] Sys: remove onunload hook, it’s deprecated
+* [X] add a `distanceTo()` to `Vec` for an optimized distance calculation (instead of doing `x.copy().subtract(y).len()`)
 
 ### Network improvements
 
@@ -309,6 +310,9 @@ class MainMenu extends BaseMenu {
 ### 2025-06-22
 
 * I need to double check the AI/NPC logic, the knights are glitching around when attacking
+  * fixed it, `ServerEdict.walkMove` didn’t convert degrees into radians lol
+* fixed NPC enemy sight check bug
+* implemented `BaseMonster.moveTargetReached` properly
 * some code cleanup
 
 ### 2025-06-21

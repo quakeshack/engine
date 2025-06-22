@@ -219,7 +219,7 @@ export class DamageInflictor extends EntityWrapper {
       }
 
       const org = victim.origin.copy().add(victim.mins.copy().add(victim.maxs).multiply(0.5));
-      let points = 0.5 * this._entity.origin.copy().subtract(org).len();
+      let points = 0.5 * this._entity.origin.distanceTo(org);
 
       points = damage - points;
 
@@ -245,7 +245,7 @@ export class DamageInflictor extends EntityWrapper {
         continue;
       }
 
-      let points = Math.max(0, 0.5 * this._entity.origin.copy().subtract(victim.origin).len());
+      let points = Math.max(0, 0.5 * this._entity.origin.distanceTo(victim.origin));
 
       points = damage - points;
 
@@ -331,6 +331,7 @@ export class DamageHandler extends EntityWrapper {
 
     // doors, triggers, etc.
     if ([moveType.MOVETYPE_PUSH, moveType.MOVETYPE_NONE].includes(this._entity.movetype)) {
+      this._entity.takedamage = damage.DAMAGE_NO; // CR: not Quake vanilla behavior here
       this._entity.thinkDie(attackerEntity);
       return;
     }
@@ -347,8 +348,7 @@ export class DamageHandler extends EntityWrapper {
 
     // CR: ClientObituary(self, attacker); is handled by PlayerEntity.thinkDie now
 
-    this.takedamage = damage.DAMAGE_NO;
-    console.assert(this.takedamage !== undefined, 'takedamage undefined');
+    this._entity.takedamage = damage.DAMAGE_NO;
     // FIXME: this._entity.touch = SUB_Null; -- we need to solve this differently?
 
     this._entity.thinkDie(attackerEntity);

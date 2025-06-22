@@ -168,7 +168,7 @@ export class LightFluorosparkEntity extends BaseLightEntity {
  * Default light value is 300
  * Default style is 0
  */
-export class LightGlobe extends BaseLightEntity {
+export class LightGlobeEntity extends BaseLightEntity {
   static class = 'light_globe';
 
   _precache() {
@@ -178,6 +178,25 @@ export class LightGlobe extends BaseLightEntity {
   spawn() {
     this.setModel("progs/s_light.spr");
     this.makeStatic();
+  }
+};
+
+/**
+ * Disappears after 700 ms.
+ * TODO: This could be a client-side effect instead of an entity.
+ */
+export class LightGlobeDynamicEntity extends BaseLightEntity {
+  static classname = 'light_globe_dynamic';
+
+  _precache() {
+    this.engine.PrecacheModel('progs/s_light.spr');
+  }
+
+  spawn() {
+    this.setModel("progs/s_light.spr");
+    this._scheduleThink(this.game.time + 0.1, () => { this.frame = 1; });
+    this._scheduleThink(this.game.time + 0.2, () => { this.frame = 2; });
+    this._scheduleThink(this.game.time + 0.7, () => { this.remove(); });
   }
 };
 

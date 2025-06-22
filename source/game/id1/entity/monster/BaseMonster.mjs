@@ -283,22 +283,29 @@ export default class BaseMonster extends BaseEntity {
   /**
    * Currently only called by path_corner when touched and certain checks passed.
    * @param {import('../Misc.mjs').PathCornerEntity} markerEntity marker entity
+   * @returns {boolean} true, if next target was found
    */
-  // eslint-disable-next-line no-unused-vars
   moveTargetReached(markerEntity) {
-    // TODO: t_movetarget self logic part
-  //   if (self.classname == "monster_ogre")
-  //     sound (self, CHAN_VOICE, "ogre/ogdrag.wav", 1, ATTN_IDLE);// play chainsaw drag sound
+    if (!markerEntity.target) {
+      this.goalentity = null;
+      this.movetarget = null;
+      this.pausetime = Infinity;
+      this.thinkStand();
+      return false;
+    }
 
-  // //dprint ("t_movetarget\n");
-  //   self.goalentity = self.movetarget = find (world, targetname, other.target);
-  //   self.ideal_yaw = vectoyaw(self.goalentity.origin - self.origin);
-  //   if (!self.movetarget)
-  //   {
-  //     self.pausetime = time + 999999;
-  //     self.th_stand ();
-  //     return;
-  //   }
+    this.goalentity = this.movetarget = this.findFirstEntityByFieldAndValue("targetname", markerEntity.target);
+
+    if (!this.goalentity) {
+      this.engine.ConsoleWarning(`${markerEntity} got invalid target ("${markerEntity.target}")\n`);
+      this.pausetime = Infinity;
+      this.thinkStand();
+      return false;
+    }
+
+    this.ideal_yaw = this.goalentity.origin.copy().subtract(this.origin).toYaw();
+
+    return true;
   }
 
   attackFinished(normal) {

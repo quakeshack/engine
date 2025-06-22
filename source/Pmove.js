@@ -695,10 +695,10 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
       this.origin.set(stepTrace.endpos);
     }
 
-    const upPos = this.origin.copy();
+    const upPos = this.origin;
 
-    const downDist = downPos.copy().subtract(originalOrigin).len();
-    const upDist = upPos.copy().subtract(originalOrigin).len();
+    const downDist = downPos.distanceTo(originalOrigin);
+    const upDist = upPos.distanceTo(originalOrigin);
 
     // sliding down
     if (downDist > upDist) {

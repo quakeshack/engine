@@ -480,6 +480,19 @@ Vector = class Vector extends Float32Array {
   }
 
   /**
+   * Determines the distance from this to other.
+   * @param {Vector} other other vector
+   * @returns {number} the distance between this and other
+   */
+  distanceTo(other) {
+    return Math.sqrt(
+      (other[0] - this[0]) * (other[0] - this[0]) +
+      (other[1] - this[1]) * (other[1] - this[1]) +
+      (other[2] - this[2]) * (other[2] - this[2])
+    );
+  }
+
+  /**
    * Normalize this vector in place. Returns the original length.
    * @returns {number} the original length of this vector
    */

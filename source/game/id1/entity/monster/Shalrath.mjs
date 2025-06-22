@@ -21,8 +21,8 @@ $frame pain1 pain2 pain3 pain4 pain5
 
 $frame death1 death2 death3 death4 death5 death6 death7
 
-$frame	walk1 walk2 walk3 walk4 walk5 walk6 walk7 walk8 walk9 walk10
-$frame	walk11 walk12
+$frame walk1 walk2 walk3 walk4 walk5 walk6 walk7 walk8 walk9 walk10
+$frame walk11 walk12
 `;
 
 /**
@@ -248,7 +248,7 @@ export class ShalrathMissileEntity extends BaseProjectile {
     this.setModel('progs/v_spike.mdl');
     this.setSize(Vector.origin, Vector.origin);
 
-    const dist = this.origin.copy().subtract(this.owner.enemy.origin).len();
+    const dist = this.origin.distanceTo(this.owner.enemy.origin);
     this._scheduleThink(this.game.time + Math.max(0.1, dist * 0.002), () => this.home());
   }
 };

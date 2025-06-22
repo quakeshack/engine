@@ -622,7 +622,7 @@ export class HellKnightMonster extends KnightMonster {
       return;
     }
 
-    if (this.origin.copy().subtract(this.enemy.origin).len() < 80) {
+    if (this.origin.distanceTo(this.enemy.origin) < 80) {
       return;
     }
 

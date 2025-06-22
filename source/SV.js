@@ -348,6 +348,8 @@ SV.Edict = class ServerEdict {
       return false;
     }
 
+    yaw *= (Math.PI / 180.0);
+
     return SV.movestep(this, [Math.cos(yaw) * dist, Math.sin(yaw) * dist], true);
   }
 

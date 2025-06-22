@@ -288,9 +288,7 @@ export default class DemonMonster extends WalkMonster {
       return;
     }
 
-    const delta = this.enemy.origin.copy().subtract(this.origin);
-
-    if (delta.len() > 100) {
+    if (this.enemy.origin.distanceTo(this.origin) > 100) {
       return;
     }
 

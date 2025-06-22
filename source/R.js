@@ -575,7 +575,7 @@ R.DrawAliasModel = function(e) {
       continue;
     }
     // add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len(); // [x, y, y]
-    add = dl.radius - e.lerp.origin.copy().subtract(dl.origin).len();
+    add = dl.radius - e.lerp.origin.distanceTo(dl.origin);
     if (add > 0.0) {
       ambientlight += add;
       shadelight += add;

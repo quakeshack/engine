@@ -1,6 +1,6 @@
 /* global Vector */
 
-import { channel, solid } from "../../Defs.mjs";
+import { attn, channel, solid } from "../../Defs.mjs";
 import { QuakeEntityAI } from "../../helper/AI.mjs";
 import { GibEntity } from "../Player.mjs";
 import { Grenade } from "../Weapons.mjs";
@@ -256,9 +256,7 @@ export default class OgreMonsterEntity extends WalkMonster {
 
     this._ai.charge(10);
 
-    const delta = this.enemy.origin.copy().subtract(this.origin);
-
-    if (delta.len() > 100) {
+    if (this.origin.distanceTo(this.enemy.origin) > 100) {
       return;
     }
 
@@ -352,6 +350,11 @@ export default class OgreMonsterEntity extends WalkMonster {
 
   thinkRun() {
     this._runState('ogre_run1');
+  }
+
+  moveTargetReached(markerEntity) {
+    this.startSound(channel.CHAN_VOICE, "ogre/ogdrag.wav", 1.0, attn.ATTN_IDLE);
+    return super.moveTargetReached(markerEntity);
   }
 
   attackSound() {

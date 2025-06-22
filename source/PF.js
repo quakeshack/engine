@@ -347,7 +347,7 @@ PF.eprint = function PF_eprint() {
 
 PF.walkmove = PF._generateBuiltinFunction(function(yaw, dist) {
   const oldf = PR.xfunction; // ???
-  const res = SV.server.gameAPI.self.walkMove(yaw * Math.PI / 180.0, dist);
+  const res = SV.server.gameAPI.self.walkMove(yaw, dist);
   PR.xfunction = oldf; // ???
 
   return res;

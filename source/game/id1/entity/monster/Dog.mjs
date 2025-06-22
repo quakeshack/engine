@@ -196,7 +196,7 @@ export default class DogMonsterEntity extends WalkMonster {
       return;
     }
 
-    if (this.enemy.origin.copy().subtract(this.origin).len() > 100) {
+    if (this.enemy.origin.distanceTo(this.origin) > 100) {
       return;
     }
 

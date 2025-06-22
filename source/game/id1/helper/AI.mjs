@@ -273,11 +273,10 @@ export class QuakeEntityAI extends EntityAI {
    * @returns {range} determined range
    */
   _determineRange(target) { // QuakeC: ai.qc/range
-    const self = this._entity;
-    const spot1 = self.origin.copy().add(self.view_ofs);
+    const spot1 = this._entity.origin.copy().add(this._entity.view_ofs);
     const spot2 = target.origin.copy().add(target.view_ofs);
 
-    const r = spot1.subtract(spot2).len();
+    const r = spot1.distanceTo(spot2);
 
     if (r < 120) {
       return range.RANGE_MELEE;
@@ -331,6 +330,7 @@ export class QuakeEntityAI extends EntityAI {
       }
     }
 
+    // already found that one
     if (client.equals(self.enemy)) {
       return false;
     }
@@ -379,6 +379,8 @@ export class QuakeEntityAI extends EntityAI {
   foundTarget(targetEntity) { // QuakeC: ai.qc/FoundTarget
     this._entity.enemy = targetEntity;
 
+    // console.log('NPC found target', this._entity, targetEntity);
+
     if (this._entity.enemy instanceof PlayerEntity) {
       // let other monsters see this monster for a while
       this._gameAI._sightEntity = this._entity;
@@ -422,9 +424,9 @@ export class QuakeEntityAI extends EntityAI {
     const { forward } = this._entity.angles.angleVectors();
 
     const vec = target.origin.copy().subtract(this._entity.origin);
-    const dot = vec.dot(forward);
+    vec.normalize();
 
-    return dot > 0.3;
+    return vec.dot(forward) > 0.3;
   }
 
   // eslint-disable-next-line no-unused-vars
@@ -592,7 +594,7 @@ export class QuakeEntityAI extends EntityAI {
     this._entity.moveToGoal(dist);
   }
 
-  chargeSide() { // QuakeC: ai.qc/ai_charge_side
+  chargeSide() { // QuakeC: fight.qc/ai_charge_side
     const self = this._entity;
 
     // Aim to the left of the enemy for a flyby
@@ -601,12 +603,12 @@ export class QuakeEntityAI extends EntityAI {
 
     const { right } = self.angles.angleVectors();
     const dtemp = self.enemy.origin.copy().subtract(right.multiply(30));
-    const heading = dtemp.copy().subtract(self.origin).toYaw();
+    const heading = dtemp.subtract(self.origin).toYaw();
 
     self.walkMove(heading, 20);
   }
 
-  melee() { // QuakeC: ai.qc/ai_melee
+  melee() { // QuakeC: fight.qc/ai_melee
     if (!this._entity.enemy) {
       return; // removed before stroke
     }
@@ -621,7 +623,7 @@ export class QuakeEntityAI extends EntityAI {
     this._entity.damage(this._entity.enemy, ldmg);
   }
 
-  meleeSide() { // QuakeC: ai.qc/ai_melee_side
+  meleeSide() { // QuakeC: fight.qc/ai_melee_side
     if (!this._entity.enemy) {
       return; // removed before stroke
     }
