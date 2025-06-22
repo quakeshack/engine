@@ -576,7 +576,7 @@ export class BaseProjectile extends BaseEntity {
       this.setOrigin(this.owner.origin);
     }
 
-    this.angles = this.velocity.toAngles();
+    this.angles.set(this.velocity.toAngles());
     this.setSize(Vector.origin, Vector.origin);
 
     // remove after 6s

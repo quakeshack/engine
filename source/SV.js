@@ -2889,12 +2889,11 @@ SV.ClientThink = function() {
   angles[2] = V.CalcRoll(angles, ent.entity.velocity) * 4.0;
 
   if (!SV.player.entity.fixangle) {
-    angles[0] = (v_angle[0] + punchangle[0]) / -3.0;
-    angles[1] = v_angle[1] + punchangle[1];
+    angles[0] = v_angle[0] / -3.0;
+    angles[1] = v_angle[1];
   }
 
   ent.entity.angles = angles;
-  ent.entity.v_angle = v_angle;
 
   if (ent.entity.flags & SV.fl.waterjump) {
     SV.WaterJump();

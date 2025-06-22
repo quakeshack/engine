@@ -314,6 +314,7 @@ class MainMenu extends BaseMenu {
 * fixed NPC enemy sight check bug
 * implemented `BaseMonster.moveTargetReached` properly
 * some code cleanup
+* found some bugs (set v_angle to angles) I definitely introduced while not focused
 
 ### 2025-06-21
 
