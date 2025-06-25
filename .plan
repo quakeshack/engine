@@ -1,5 +1,14 @@
 # The Quake Shack
 
+## Roadmap
+
+* [_] Porting over the remaining stuff from QuakeC to QuakeJS
+* [_] A proper polish of QuakeJS stuff, cleaning redundant code, fixing some structural shortcomings
+* [_] Fix up the current netcode, implement proper client-side predicition and movement
+* [_] Spin off game code into its own repositories and structure (for easier mod making)
+* [_] Remove QuakeC VM from the engine and make it a QuakeJS mod allowing to load a progs.dat
+* [_] Client game code stuff, allowing mods to handle client stuff (tents, sbar, etc.)
+
 ## Todos
 
 Grouped by sections and then sorted by priority (more or less).
@@ -54,7 +63,7 @@ Grouped by sections and then sorted by priority (more or less).
   * [X] monster_ogre
   * [_] monster_oldone
   * [X] monster_shalrath
-  * [_] monster_shambler
+  * [X] monster_shambler
   * [_] monster_tarbaby
   * [_] monster_wizard
   * [_] monster_boss
@@ -306,6 +315,11 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-06-25
+
+* added monster_shambler
+* a couple of changes
 
 ### 2025-06-22
 

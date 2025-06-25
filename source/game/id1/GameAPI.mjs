@@ -22,7 +22,7 @@ import ZombieMonster, { ZombieGibGrenade, qc as zombieModelQC } from "./entity/m
 import { KnightMonster, HellKnightMonster, qc as knightModelQCs, KnightSpike } from "./entity/monster/Knights.mjs";
 import OgreMonsterEntity, { qc as ogreModelQC } from "./entity/monster/Ogre.mjs";
 import ShalrathMonsterEntity, { ShalrathMissileEntity, qc as shalrathModelQC } from "./entity/monster/Shalrath.mjs";
-import ShamblerMonsterEntity from "./entity/monster/Shambler.mjs";
+import ShamblerMonsterEntity, { qc as shamblerModelQC } from "./entity/monster/Shambler.mjs";
 
 const featureFlags = [
   'correct-ballistic-grenades', // enables zombie gib and ogre grenade trajectory fix
@@ -258,6 +258,7 @@ export class ServerGameAPI {
       'progs/hknight.mdl': engineAPI.ParseQC(knightModelQCs.hellKnight),
       'progs/ogre.mdl': engineAPI.ParseQC(ogreModelQC),
       'progs/shalrath.mdl': engineAPI.ParseQC(shalrathModelQC),
+      'progs/shambler.mdl': engineAPI.ParseQC(shamblerModelQC),
     };
 
     /** @private */

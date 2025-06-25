@@ -282,11 +282,11 @@ export default class OgreMonsterEntity extends WalkMonster {
 
   // eslint-disable-next-line no-unused-vars
   thinkPain(attackerEntity, damage) {
-    this._ai.foundTarget(attackerEntity);
-
     if (this.pain_finished > this.game.time) {
       return;
     }
+
+    this._ai.foundTarget(attackerEntity);
 
     this.painSound();
 

@@ -648,11 +648,11 @@ export class HellKnightMonster extends KnightMonster {
   }
 
   thinkPain(attackerEntity, damage) {
-    this._ai.foundTarget(attackerEntity);
-
     if (this.pain_finished > this.game.time) {
       return;
     }
+
+    this._ai.foundTarget(attackerEntity);
 
     this.painSound();
 

@@ -376,6 +376,11 @@ export class QuakeEntityAI extends EntityAI {
     return true;
   }
 
+  /**
+   * Signalizes that a target entity has been found.
+   * Important: When called from thinkPain, make sure you want to break the current attack!
+   * @param {BaseEntity} targetEntity enemy
+   */
   foundTarget(targetEntity) { // QuakeC: ai.qc/FoundTarget
     this._entity.enemy = targetEntity;
 

@@ -189,14 +189,14 @@ export class LightGlobeDynamicEntity extends BaseLightEntity {
   static classname = 'light_globe_dynamic';
 
   _precache() {
-    this.engine.PrecacheModel('progs/s_light.spr');
+    this.engine.PrecacheModel('progs/s_light.mdl');
   }
 
   spawn() {
-    this.setModel("progs/s_light.spr");
-    this._scheduleThink(this.game.time + 0.1, () => { this.frame = 1; });
-    this._scheduleThink(this.game.time + 0.2, () => { this.frame = 2; });
-    this._scheduleThink(this.game.time + 0.7, () => { this.remove(); });
+    this.setModel("progs/s_light.mdl");
+    this._scheduleThink(this.game.time + 0.2, () => { this.frame = 1; });
+    this._scheduleThink(this.game.time + 0.3, () => { this.frame = 2; });
+    this._scheduleThink(this.game.time + 0.4, () => { this.remove(); });
   }
 };
 

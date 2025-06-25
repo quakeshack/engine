@@ -124,19 +124,19 @@ export default class ZombieMonster extends WalkMonster {
       this.startSound(channel.CHAN_VOICE, "zombie/idle_w2.wav", 1.0, attn.ATTN_STATIC);
     });
     this._defineState('zombie_cruc2', 'cruc_2', 'zombie_cruc3', function () {
-      this.nextthink = this.engine.time + 0.1 + Math.random() * 0.1;
+      this.nextthink = this.game.time + 0.1 + Math.random() * 0.1;
     });
     this._defineState('zombie_cruc3', 'cruc_3', 'zombie_cruc4', function () {
-      this.nextthink = this.engine.time + 0.1 + Math.random() * 0.1;
+      this.nextthink = this.game.time + 0.1 + Math.random() * 0.1;
     });
     this._defineState('zombie_cruc4', 'cruc_4', 'zombie_cruc5', function () {
-      this.nextthink = this.engine.time + 0.1 + Math.random() * 0.1;
+      this.nextthink = this.game.time + 0.1 + Math.random() * 0.1;
     });
     this._defineState('zombie_cruc5', 'cruc_5', 'zombie_cruc6', function () {
-      this.nextthink = this.engine.time + 0.1 + Math.random() * 0.1;
+      this.nextthink = this.game.time + 0.1 + Math.random() * 0.1;
     });
     this._defineState('zombie_cruc6', 'cruc_6', 'zombie_cruc1', function () {
-      this.nextthink = this.engine.time + 0.1 + Math.random() * 0.1;
+      this.nextthink = this.game.time + 0.1 + Math.random() * 0.1;
     });
 
     // walk states
@@ -379,8 +379,6 @@ export default class ZombieMonster extends WalkMonster {
 
   // pain reaction
   thinkPain(attackerEntity, damage) {
-    this._ai.foundTarget(attackerEntity);
-
     // always reset health to max
     this.health = this.constructor._health;
 
@@ -394,6 +392,8 @@ export default class ZombieMonster extends WalkMonster {
       return;
     }
 
+    this._ai.foundTarget(attackerEntity);
+
     // big hit knocks to ground
     if (damage >= 25) {
       this.inpain = 2;
@@ -403,12 +403,12 @@ export default class ZombieMonster extends WalkMonster {
 
     // extend pain window if in quick pain
     if (this.inpain === 1) {
-      this.pain_finished = this.engine.time + 3;
+      this.pain_finished = this.game.time + 3;
       return;
     }
 
     // second hit within window also knock down
-    if (this.pain_finished > this.engine.time) {
+    if (this.pain_finished > this.game.time) {
       this.inpain = 2;
       this._runState('zombie_paine1');
       return;
@@ -416,7 +416,7 @@ export default class ZombieMonster extends WalkMonster {
 
     // enter quick pain sequence
     this.inpain = 1;
-    this.pain_finished = this.engine.time + 3;
+    this.pain_finished = this.game.time + 3;
 
     const r = Math.random();
 

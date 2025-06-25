@@ -131,15 +131,15 @@ export default class ShalrathMonsterEntity extends WalkMonster {
 
   // eslint-disable-next-line no-unused-vars
   thinkPain(attackerEntity, damage) {
-    this._ai.foundTarget(attackerEntity);
-
-    if (this.pain_finished > this.engine.time) {
+    if (this.pain_finished > this.game.time) {
       return;
     }
 
+    this._ai.foundTarget(attackerEntity);
+
     this.painSound();
     this._runState('shal_pain1');
-    this.pain_finished = this.engine.time + 3.0;
+    this.pain_finished = this.game.time + 3.0;
   }
 
   thinkStand() {
