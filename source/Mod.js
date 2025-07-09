@@ -81,8 +81,10 @@ Mod.hull = {
   normal: 0,
   /** hull1, testing for player (32, 32, 56) */
   player: 1,
-  /** hull2, testing for large objects (64, 64, 80) */
+  /** hull2, testing for large objects (64, 64, 88) */
   big: 2,
+  /** hull3, only used by BSP30 for crouching etc. (32, 32, 36) */
+  crouch: 3,
 };
 
 Mod.flags = {
@@ -301,9 +303,11 @@ Mod.LoadTextures = function(buf) {
         R.skytexturenum = i;
         tx.sky = true;
       // } else if (tx.name === 'sfloor3_2') { // CR: testing out loading WAD3 texture files
-      //   const floortex = Mod.testwad.getLumpMipmap('LAB1_FLOOR3', 0);
+      //   const floortex = Mod.hlwad.getLumpMipmap('LAB1_FLOOR3', 0);
       //   const glt = GL.LoadTexture32('LAB1_FLOOR3', floortex.width, floortex.height, floortex.data);
       //   tx.texturenum = glt.texnum;
+      // } else if (tx.name === 'lgmetal') { // CR: testing out loading any texture files
+      //   tx.texturenum = Mod.wall1tex;
       } else {
         glt = GL.LoadTexture(tx.name, tx.width, tx.height, new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), tx.width * tx.height));
         tx.texturenum = glt.texnum;
@@ -1214,17 +1218,11 @@ Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
     data = GL.ResampleTexture(data, frame.width, frame.height, scaledWidth, scaledHeight);
   }
 
-  const trans = new ArrayBuffer(size << 2);
-  const trans32 = new Uint32Array(trans);
-  for (i = 0; i < size; ++i) {
-    if (data[i] !== 255) {
-      trans32[i] = COM.LittleLong(VID.d_8to24table[data[i]] + 0xff000000);
-    }
-  }
+  data = VID.TranslateIndexToRGBA(data, scaledWidth, scaledHeight, VID.d_8to24table_u8, 255);
 
   glt = {texnum: gl.createTexture(), identifier: identifier, width: frame.width, height: frame.height};
   GL.Bind(0, glt.texnum);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
   gl.generateMipmap(gl.TEXTURE_2D);
   gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
   gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);

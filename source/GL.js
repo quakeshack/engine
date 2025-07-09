@@ -140,17 +140,9 @@ GL.Upload = function(data, width, height) {
     data = GL.ResampleTexture(data, width, height, scaledWidth, scaledHeight);
   }
 
-  const trans = new ArrayBuffer((scaledWidth * scaledHeight) << 2);
-  const trans32 = new Uint32Array(trans);
+  data = VID.TranslateIndexToRGBA(data, scaledWidth, scaledHeight, VID.d_8to24table_u8, 255);
 
-  for (let i = scaledWidth * scaledHeight - 1; i >= 0; i--) {
-    trans32[i] = COM.LittleLong(VID.d_8to24table[data[i]] + 0xff000000);
-    if (data[i] >= 224) {
-      trans32[i] &= 0xffffff;
-    }
-  }
-
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
   gl.generateMipmap(gl.TEXTURE_2D);
   gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
   gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);
@@ -237,7 +229,7 @@ GL.LoadTexture32 = function(identifier, width, height, data) {
   return glt;
 };
 
-/** @deprecated */
+/** @deprecated use WadFileInterface.getLumpMipmap() instead */
 GL.LoadPicTexture = function(pic) {
   const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(pic.width, pic.height);
 
@@ -247,18 +239,36 @@ GL.LoadPicTexture = function(pic) {
     data = GL.ResampleTexture(data, pic.width, pic.height, scaledWidth, scaledHeight);
   }
 
+  data = VID.TranslateIndexToRGBA(data, scaledWidth, scaledHeight, VID.d_8to24table_u8, 255);
+
   const texnum = gl.createTexture();
   GL.Bind(0, texnum);
-  const trans = new ArrayBuffer((scaledWidth * scaledHeight) << 2);
-  const trans32 = new Uint32Array(trans);
-  for (let i = scaledWidth * scaledHeight - 1; i >= 0; i--) {
-    if (data[i] !== 255) {
-      trans32[i] = COM.LittleLong(VID.d_8to24table[data[i]] + 0xff000000);
-    }
-  }
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return texnum;
+};
+
+/**
+ * Loads any image file as a texture.
+ * @param {string} filename image filename
+ * @returns {WebGLTexture|null} texture number, null if the image could not be loaded
+ */
+GL.LoadImageTexture = async function(filename) {
+  const data = await COM.LoadFileAsync(filename);
+
+  if (data === null) {
+    Con.DPrint(`GL.LoadImageTexture: Could not load image: ${filename}\n`);
+    return null;
+  }
+
+  const imgblob = new Blob([data]);
+
+  const texnum = gl.createTexture();
+  GL.Bind(0, texnum);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, await createImageBitmap(imgblob));
+  gl.generateMipmap(gl.TEXTURE_2D);
+
   return texnum;
 };
 

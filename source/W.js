@@ -40,37 +40,6 @@ W.WadFileInterface = class WadFileInterface {
     console.assert(null, 'WadFileInterface.getLumpMipmap: not implemented');
     return new ArrayBuffer(0);
   }
-
-  /**
-   * Helper function to convert indexed 8-bit data to RGBA format.
-   * @param {Uint8Array} uint8data indexed 8-bit data, each byte is an index to the palette
-   * @param {number} width width
-   * @param {number} height height
-   * @param {Uint8Array} palette palette data, 256 colors, each color is 3 bytes (RGB)
-   * @param {?number} transparentColor optional color index to treat as transparent (default is null, no transparency)
-   * @returns {Uint8Array} RGBA data, each pixel is 4 bytes (R, G, B, A)
-   */
-  _indexToRGB(uint8data, width, height, palette, transparentColor = null) {
-    const rgba = new Uint8Array(width * height * 4);
-
-    for (let i = 0; i < width * height; i++) {
-      const colorIndex = uint8data[i];
-      if (transparentColor !== null && colorIndex === transparentColor) {
-        rgba[i * 4 + 0] = 0;
-        rgba[i * 4 + 1] = 0;
-        rgba[i * 4 + 2] = 0;
-        rgba[i * 4 + 3] = 0;
-        continue;
-      }
-      // lookup the color in the palette
-      rgba[i * 4 + 0] = palette[colorIndex * 3];
-      rgba[i * 4 + 1] = palette[colorIndex * 3 + 1];
-      rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
-      rgba[i * 4 + 3] = 255;
-    }
-
-    return rgba;
-  }
 };
 
 /**
@@ -163,7 +132,7 @@ W.Wad2File = class Wad2File extends W.WadFileInterface {
 
     // TODO: handle different types of lumps, right now it’s only supports pichead_t
 
-    const rgba = this._indexToRGB(new Uint8Array(data, 8, width * height), width, height, this.palette, 255);
+    const rgba = VID.TranslateIndexToRGBA(new Uint8Array(data, 8, width * height), width, height, this.palette, 255);
 
     return new W.WadLumpTexture(name, width, height, rgba);
   }
@@ -226,7 +195,7 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
     );
 
     const uint8data = new Uint8Array(data, 8, width * height);
-    const rgba = this._indexToRGB(uint8data, width, height, palette, 255);
+    const rgba = VID.TranslateIndexToRGBA(uint8data, width, height, palette, 255);
 
     return new W.WadLumpTexture(name, width, height, rgba);
   }
@@ -264,7 +233,7 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
       768 // 768 = 256 colors * 3 bytes (RGB)
     );
 
-    const rgba = this._indexToRGB(uint8data, swidth, sheight, palette, 255);
+    const rgba = VID.TranslateIndexToRGBA(uint8data, swidth, sheight, palette, 255);
 
     return new W.WadLumpTexture(texName, swidth, sheight, rgba);
   }

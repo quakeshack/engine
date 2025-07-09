@@ -28,6 +28,37 @@ VID.LoadPalette = async function() {
   }
 };
 
+/**
+ * Helper function to convert indexed 8-bit data to RGBA format.
+ * @param {Uint8Array} uint8data indexed 8-bit data, each byte is an index to the palette
+ * @param {number} width width
+ * @param {number} height height
+ * @param {?Uint8Array} palette palette data, 256 colors, each color is 3 bytes (RGB), default is VID.d_8to24table_u8
+ * @param {?number} transparentColor optional color index to treat as transparent (default is null, no transparency)
+ * @returns {Uint8Array} RGBA data, each pixel is 4 bytes (R, G, B, A)
+ */
+VID.TranslateIndexToRGBA = function(uint8data, width, height, palette = VID.d_8to24table_u8, transparentColor = null) {
+  const rgba = new Uint8Array(width * height * 4);
+
+  for (let i = 0; i < width * height; i++) {
+    const colorIndex = uint8data[i];
+    if (transparentColor !== null && colorIndex === transparentColor) {
+      rgba[i * 4 + 0] = 0;
+      rgba[i * 4 + 1] = 0;
+      rgba[i * 4 + 2] = 0;
+      rgba[i * 4 + 3] = 0;
+      continue;
+    }
+    // lookup the color in the palette
+    rgba[i * 4 + 0] = palette[colorIndex * 3];
+    rgba[i * 4 + 1] = palette[colorIndex * 3 + 1];
+    rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
+    rgba[i * 4 + 3] = 255;
+  }
+
+  return rgba;
+};
+
 VID.Init = async function() {
   const $progress = document.getElementById('progress');
   $progress.parentElement.removeChild($progress);

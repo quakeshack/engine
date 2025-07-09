@@ -1520,7 +1520,7 @@ SV.SendClientMessages = function() {
         // }
         client.last_message = Host.realtime;
       }
-      continue;
+      //continue;
     }
     if (client.message.overflowed) {
       Host.DropClient(client, true, 'Connectivity issues, too many messages');

@@ -513,6 +513,9 @@ CL.cls = {
   parsecounttime: 0.0,
 
   lastcmdsent: 0,
+
+  /** interval to simulate movement */
+  movearound: null,
 };
 
 CL.static_entities = [];
@@ -819,11 +822,29 @@ CL.ClearState = function() { // private
     inwater: false,
     nodrift: false,
     lerp: null,
+    /** @type {CL.PlayerState[]} */
+    players: [],
+    get playernum() {
+      return CL.state.viewentity - 1;
+    },
+    /** @type {CL.PlayerState} */
+    get playerstate() {
+      return CL.state.players[CL.state.playernum];
+    },
+    /** @type {CL.Entity} */
+    get playerentity() {
+      return CL.entities[CL.state.viewentity];
+    }
   };
 
   CL.cls.message.clear();
   CL.cls.serverInfo = {};
   CL.cls.lastcmdsent = 0;
+
+  if (CL.cls.movearound) {
+    clearInterval(CL.cls.movearound);
+    CL.cls.movearound = null;
+  }
 
   CL.entities = [];
 
@@ -1100,6 +1121,52 @@ CL.ServerInfo_f = function() { // private
   }
 };
 
+CL.MoveAround_f = function() { // private
+  if (CL.cls.state !== CL.active.connected) {
+    Con.Print(`Can't "${this.command}", not connected\n`);
+    return;
+  }
+
+  if (CL.cls.signon !== 4) {
+    Con.Print('You must wait for the server to send you the map before moving around.\n');
+    return;
+  }
+
+  if (CL.cls.movearound !== null) {
+    clearInterval(CL.cls.movearound);
+    CL.cls.movearound = null;
+    Con.Print('Stopped moving around.\n');
+    return;
+  }
+
+  CL.cls.movearound = setInterval(() => {
+    if (CL.cls.state !== CL.active.connected) {
+      Con.Print('No longer connected, stopped moving around.\n');
+      clearInterval(CL.cls.movearound);
+      CL.cls.movearound = null;
+      return;
+    }
+
+    if (Math.random() < 0.1) {
+      if (Math.random() < 0.5) {
+        Cmd.text += '+back; wait; -back;\n';
+      } else {
+        Cmd.text += '+forward; wait; -forward;\n';
+      }
+    }
+
+    if (Math.random() < 0.5) {
+      Cmd.text += '+jump; wait; -jump;\n';
+    }
+
+    if (Math.random() < 0.2) {
+      Cmd.text += '+attack; wait; -attack;\n';
+    }
+  }, 1000);
+
+  Con.Print('Started moving around.\n');s
+};
+
 CL.InitPmove = function() { // private
   CL.pmove = new Pmove.Pmove();
   CL.pmove.movevars = new Pmove.MoveVars();
@@ -1139,6 +1206,7 @@ CL.Init = async function() { // public, by Host.js
   Cmd.AddCommand('timedemo', CL.TimeDemo_f);
   Cmd.AddCommand('rcon', CL.Rcon_f);
   Cmd.AddCommand('serverinfo', CL.ServerInfo_f);
+  Cmd.AddCommand('movearound', CL.MoveAround_f);
   CL.svc_strings = Object.keys(Protocol.svc); // FIXME: turn into a map
 
   if (!PR.QuakeJS?.ClientGameAPI) {
@@ -1257,8 +1325,11 @@ CL.ParseServerData = function() { // private
   }
 
   CL.state.scores = [];
+  CL.state.players = [];
+
   for (let i = 0; i < CL.state.maxclients; ++i) {
     CL.state.scores[i] = new CL.ScoreSlot();
+    CL.state.players[i] = null; // CR: will be filled later by playerinfo updates
   }
 
   CL.state.gametype = MSG.ReadByte(); // CR: unused (set to CL.state, but unused)
@@ -1444,7 +1515,7 @@ CL.PlayerState = class ClientPlayerState extends Protocol.EntityState {
     this.origin.set(MSG.ReadCoordVector());
     this.frame = MSG.ReadByte();
 
-    this.stateTime = CL.state.parsecounttime;
+    this.stateTime = CL.state.time; // TODO: CL.state.parsecounttime?;
 
     if (this.flags & Protocol.pf.PF_MSEC) {
       const msec = MSG.ReadByte();
@@ -1491,9 +1562,9 @@ CL.ParsePlayerinfo = function() { // private
   state.readFromMessage();
   state.angles.set(state.command.angles);
 
-  CL.pmstate = state;
+  CL.state.players[num] = state;
 
-  console.log('read player info', CL.time, state, state.command);
+  // console.log('read player info', CL.time, state, state.command);
 };
 
 CL.ParseStaticEntity = function() { // private
@@ -1635,7 +1706,7 @@ CL.ParseServerMessage = function() { // private
     if (CL._lastServerMessages.length > 10) {
       CL._lastServerMessages.shift();
     }
-    // Con.DPrint('CL.ParseServerMessage: parsing ' + CL.svc_strings[cmd] + ' ' + cmd + '\n');
+    Con.DPrint('CL.ParseServerMessage: parsing ' + CL.svc_strings[cmd] + ' ' + cmd + '\n');
     switch (cmd) {
       case Protocol.svc.nop:
         continue;
@@ -1985,7 +2056,7 @@ CL.UpdateTEnts = function() { // private
       continue;
     }
     if (b.entity === CL.state.viewentity) {
-      b.start = CL.entities[CL.state.viewentity].origin.copy();
+      b.start = CL.state.playerentity.origin.copy();
     }
     const dist = b.end.copy().subtract(b.start);
     if ((dist[0] === 0.0) && (dist[1] === 0.0)) {
@@ -2027,23 +2098,32 @@ CL.PredictMove = function() { // public, by Host.js
     return;
   }
 
-  if (!CL.pmstate) {
+  const playerEntity = CL.state.playerentity;
+  if (!playerEntity) { // no player entity, nothing to predict
     return;
   }
 
-  const playerEntity = CL.entities[CL.state.viewentity];
-  const pmove = CL.pmove.newPlayerMove();
-
-  const newstate = new CL.PlayerState();
-
-  // TODO
-  CL.PredictUsercmd(pmove, CL.pmstate, newstate, CL.state.cmd);
-
-  if (!playerEntity.origin.equals(newstate.origin)) {
-    console.log('CL.PredictMove', newstate.origin, playerEntity.origin);
+  const from = CL.state.playerstate;
+  if (!from) { // no player state, nothing to predict
+    return;
   }
 
-  playerEntity.origin.set(newstate.origin);
+  const pmove = CL.pmove.newPlayerMove();
+
+  const to = new CL.PlayerState();
+
+  // TODO
+  CL.PredictUsercmd(pmove, from, to, from.command);
+
+  const f = Math.max(0, Math.min(1, ((CL.state.time - from.stateTime) / (to.stateTime - from.stateTime))));
+
+  console.log('f', f);
+
+  if (!playerEntity.origin.equals(to.origin)) {
+    // console.log('CL.PredictMove', newstate.origin, playerEntity.origin);
+  }
+
+  playerEntity.origin.set(to.origin);
 };
 
 /**
@@ -2097,7 +2177,7 @@ CL.PredictUsercmd = function(pmove, from, to, u) { // private
 CL.SetUpPlayerPrediction = function (dopred) { // public, by Host.js
   // const frame = CL.frames[CL.parsecount & Protocol.update_mask];
 
-  const playerEntity = CL.entities[CL.state.viewentity];
+  const playerEntity = CL.state.playerentity;
 
 
 };

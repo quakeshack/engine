@@ -34,30 +34,28 @@ Draw._StringToConback = function(str, dest, alignRight) {
 Draw.Init = async function() {
   Draw._gfxWad = await W.LoadFile('gfx.wad');
   Draw._chars = new Uint8Array(Draw._gfxWad.getLump('CONCHARS'));
-
-  const trans = new ArrayBuffer(65536);
-  const trans32 = new Uint32Array(trans);
-  for (let i = 0; i < 16384; ++i) {
-    if (Draw._chars[i] !== 0) {
-      trans32[i] = COM.LittleLong(VID.d_8to24table[Draw._chars[i]] + 0xff000000);
-    }
-  }
   Draw._charTexture = gl.createTexture();
   GL.Bind(0, Draw._charTexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, VID.TranslateIndexToRGBA(Draw._chars, 128, 128, VID.d_8to24table_u8, 0));
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-  const cb = await COM.LoadFileAsync('gfx/conback.lmp');
-  if (cb === null) {
-    Sys.Error('Couldn\'t load gfx/conback.lmp');
+  const modernConback = await GL.LoadImageTexture('gfx/conback.webp');
+
+  if (modernConback) {
+    Draw._conback.texnum = modernConback;
+  } else {
+    const cb = await COM.LoadFileAsync('gfx/conback.lmp');
+    if (cb === null) {
+      Sys.Error('Couldn\'t load gfx/conback.lmp');
+    }
+    Draw._conback.width = 320;
+    Draw._conback.height = 200;
+    Draw._conback.data = new Uint8Array(cb, 8, Draw._conback.width * Draw._conback.height);
+    Draw._StringToConback(document.title, Draw._conback.width * 8 + 8, false);
+    Draw._StringToConback(Def.version, 59829, true);
+    Draw._conback.texnum = GL.LoadPicTexture(Draw._conback);
   }
-  Draw._conback.width = 320;
-  Draw._conback.height = 200;
-  Draw._conback.data = new Uint8Array(cb, 8, Draw._conback.width * Draw._conback.height);
-  Draw._StringToConback(document.title, Draw._conback.width * 8 + 8, false);
-  Draw._StringToConback(Def.version, 59829, true);
-  Draw._conback.texnum = GL.LoadPicTexture(Draw._conback);
 
   Draw._loading = await Draw.CachePic('loading');
   Draw._loadingElem = document.getElementById('loading');

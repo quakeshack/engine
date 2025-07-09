@@ -321,6 +321,12 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-09
+
+* continued cleaning up loading textures stuff, paved the way to load any modern image as texture
+* if there’s `gfx/conback.webp`, it will use that as conback
+* it’s time to completely rewrite CL.js, it’s a huge mess based on the old JS port, some modern stuff I introduced and some stuff I played around with
+
 ### 2025-07-06
 
 * worked more on client-side prediction stuff (unfinished yet)

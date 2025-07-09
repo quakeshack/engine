@@ -111,7 +111,7 @@ V.blend = [0.0, 0.0, 0.0, 0.0];
 V.ParseDamage = function() {
   const armor = MSG.ReadByte();
   const blood = MSG.ReadByte();
-  const ent = CL.entities[CL.state.viewentity];
+  const ent = CL.state.playerentity;
   const from = MSG.ReadCoordVector().subtract(ent.origin);
   from.normalize();
   let count = (blood + armor) * 0.5;
@@ -246,7 +246,7 @@ V.CalcBlend = function() {
 };
 
 V.CalcIntermissionRefdef = function() {
-  const ent = CL.entities[CL.state.viewentity];
+  const ent = CL.state.playerentity;
   R.refdef.vieworg[0] = ent.origin[0];
   R.refdef.vieworg[1] = ent.origin[1];
   R.refdef.vieworg[2] = ent.origin[2];
@@ -262,7 +262,7 @@ V.CalcRefdef = function() { // TODO: Client
     V.DriftPitch();
   }
 
-  const ent = CL.entities[CL.state.viewentity];
+  const ent = CL.state.playerentity;
   ent.angles[1] = CL.state.viewangles[1];
   ent.angles[0] = -CL.state.viewangles[0];
   const bob = V.CalcBob();
@@ -273,7 +273,7 @@ V.CalcRefdef = function() { // TODO: Client
 
   R.refdef.viewangles[0] = CL.state.viewangles[0];
   R.refdef.viewangles[1] = CL.state.viewangles[1];
-  R.refdef.viewangles[2] = CL.state.viewangles[2] + V.CalcRoll(CL.entities[CL.state.viewentity]/*lerp*/.angles, CL.state.velocity);
+  R.refdef.viewangles[2] = CL.state.viewangles[2] + V.CalcRoll(CL.state.playerentity/*lerp*/.angles, CL.state.velocity);
 
   if (V.dmg_time > 0.0) {
     if (V.kicktime.value) {
