@@ -581,6 +581,8 @@ CL.Entity = class ClientEdict {
     /** whether is ClientEntity is free */
     this.free = false;
     this.syncbase = 0.0;
+    this.maxs = new Vector();
+    this.mins = new Vector();
 
     const that = this;
 
@@ -644,6 +646,8 @@ CL.Entity = class ClientEdict {
     this.leafs = [];
     this.updatecount = 0;
     this.free = false;
+    this.maxs.clear();
+    this.mins.clear();
   }
 
   /**
@@ -1319,6 +1323,7 @@ CL.ParseServerData = function() { // private
   })().then(() => {
     CL._processingServerDataState = 2;
     CL.state.worldmodel = CL.state.model_precache[1];
+    CL.pmove.setWorldmodel(CL.state.worldmodel);
     CL.EntityNum(0).model = CL.state.worldmodel;
     CL.SetConnectingStep(66, 'Preparing map');
     R.NewMap();
@@ -1486,7 +1491,9 @@ CL.ParsePlayerinfo = function() { // private
   state.readFromMessage();
   state.angles.set(state.command.angles);
 
-  // console.log('read player info', state, state.command);
+  CL.pmstate = state;
+
+  console.log('read player info', CL.time, state, state.command);
 };
 
 CL.ParseStaticEntity = function() { // private
@@ -1838,6 +1845,8 @@ CL.ParseServerMessage = function() { // private
       CL.SignonReply();
     }
   }
+
+  CL.SetSolidEntities();
 };
 
 // tent
@@ -1970,7 +1979,7 @@ CL.NewTempEntity = function() { // private
 CL.UpdateTEnts = function() { // private
   CL.num_temp_entities = 0;
   let i; let b; let yaw; let pitch; let ent;
-  for (i = 0; i <= 23; ++i) {
+  for (i = 0; i <= 23; ++i) { // FIXME: hardcoded limit
     b = CL.beams[i];
     if ((b.model == null) || (b.endtime < CL.state.time)) {
       continue;
@@ -2018,7 +2027,23 @@ CL.PredictMove = function() { // public, by Host.js
     return;
   }
 
+  if (!CL.pmstate) {
+    return;
+  }
+
+  const playerEntity = CL.entities[CL.state.viewentity];
+  const pmove = CL.pmove.newPlayerMove();
+
+  const newstate = new CL.PlayerState();
+
   // TODO
+  CL.PredictUsercmd(pmove, CL.pmstate, newstate, CL.state.cmd);
+
+  if (!playerEntity.origin.equals(newstate.origin)) {
+    console.log('CL.PredictMove', newstate.origin, playerEntity.origin);
+  }
+
+  playerEntity.origin.set(newstate.origin);
 };
 
 /**
@@ -2030,11 +2055,12 @@ CL.PredictMove = function() { // public, by Host.js
 CL.PredictUsercmd = function(pmove, from, to, u) { // private
   // split long commands
   if (u.msec > 50) {
-    const temp = new CL.PlayerState();
+    debugger;
+    const mid = new CL.PlayerState();
     const split = u.copy();
     split.msec /= 2;
-    CL.PredictUsercmd(from, temp, split);
-    CL.PredictUsercmd(temp, to, split);
+    CL.PredictUsercmd(from, mid, split);
+    CL.PredictUsercmd(mid, to, split);
     return;
   }
 
@@ -2070,6 +2096,10 @@ CL.PredictUsercmd = function(pmove, from, to, u) { // private
  */
 CL.SetUpPlayerPrediction = function (dopred) { // public, by Host.js
   // const frame = CL.frames[CL.parsecount & Protocol.update_mask];
+
+  const playerEntity = CL.entities[CL.state.viewentity];
+
+
 };
 
 /**
@@ -2235,6 +2265,11 @@ CL.ParsePacketEntities = function() { // private
       }
     }
 
+    if (bits & Protocol.u.size) {
+      clent.maxs.set(MSG.ReadCoordVector());
+      clent.mins.set(MSG.ReadCoordVector());
+    }
+
     clent.updatecount++;
 
     clent.msg_time[1] = clent.msg_time[0];
@@ -2250,4 +2285,19 @@ CL.ParsePacketEntities = function() { // private
   }
 
   // TODO: send an acknowledge command back
+};
+
+CL.SetSolidEntities = function () {
+  CL.pmove.clearEntities();
+
+  for (let i = 1; i < CL.entities.length; i++) {
+    /** @type {CL.Entity} */
+    const clent = CL.entities[i];
+
+    if (!clent.model) {
+      continue;
+    }
+
+    CL.pmove.addEntity(clent, clent.solid ? clent.model : null);
+  }
 };

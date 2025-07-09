@@ -257,7 +257,7 @@ V.CalcIntermissionRefdef = function() {
 };
 
 V.oldz = 0.0;
-V.CalcRefdef = function() {
+V.CalcRefdef = function() { // TODO: Client
   if (V.pitchdrift.value) {
     V.DriftPitch();
   }
@@ -267,13 +267,13 @@ V.CalcRefdef = function() {
   ent.angles[0] = -CL.state.viewangles[0];
   const bob = V.CalcBob();
 
-  R.refdef.vieworg[0] = ent.origin[0] + 0.03125;
-  R.refdef.vieworg[1] = ent.origin[1] + 0.03125;
-  R.refdef.vieworg[2] = ent.origin[2] + CL.state.viewheight + bob + 0.03125;
+  R.refdef.vieworg[0] = ent/*lerp*/.origin[0] + 0.03125;
+  R.refdef.vieworg[1] = ent/*lerp*/.origin[1] + 0.03125;
+  R.refdef.vieworg[2] = ent/*lerp*/.origin[2] + CL.state.viewheight + bob + 0.03125;
 
   R.refdef.viewangles[0] = CL.state.viewangles[0];
   R.refdef.viewangles[1] = CL.state.viewangles[1];
-  R.refdef.viewangles[2] = CL.state.viewangles[2] + V.CalcRoll(CL.entities[CL.state.viewentity].angles, CL.state.velocity);
+  R.refdef.viewangles[2] = CL.state.viewangles[2] + V.CalcRoll(CL.entities[CL.state.viewentity]/*lerp*/.angles, CL.state.velocity);
 
   if (V.dmg_time > 0.0) {
     if (V.kicktime.value) {
@@ -293,34 +293,34 @@ V.CalcRefdef = function() {
   R.refdef.viewangles[1] += iyaw;
   R.refdef.viewangles[2] += iroll;
 
-  const { forward, right, up } = (new Vector(-ent.angles[0], ent.angles[1], ent.angles[2])).angleVectors();
+  const { forward, right, up } = (new Vector(-ent/*lerp*/.angles[0], ent/*lerp*/.angles[1], ent/*lerp*/.angles[2])).angleVectors();
   R.refdef.vieworg[0] += V.ofsx.value * forward[0] + V.ofsy.value * right[0] + V.ofsz.value * up[0];
   R.refdef.vieworg[1] += V.ofsx.value * forward[1] + V.ofsy.value * right[1] + V.ofsz.value * up[1];
   R.refdef.vieworg[2] += V.ofsx.value * forward[2] + V.ofsy.value * right[2] + V.ofsz.value * up[2];
 
-  if (R.refdef.vieworg[0] < (ent.origin[0] - 14.0)) {
-    R.refdef.vieworg[0] = ent.origin[0] - 14.0;
-  } else if (R.refdef.vieworg[0] > (ent.origin[0] + 14.0)) {
-    R.refdef.vieworg[0] = ent.origin[0] + 14.0;
+  if (R.refdef.vieworg[0] < (ent/*lerp*/.origin[0] - 14.0)) {
+    R.refdef.vieworg[0] = ent/*lerp*/.origin[0] - 14.0;
+  } else if (R.refdef.vieworg[0] > (ent/*lerp*/.origin[0] + 14.0)) {
+    R.refdef.vieworg[0] = ent/*lerp*/.origin[0] + 14.0;
   }
-  if (R.refdef.vieworg[1] < (ent.origin[1] - 14.0)) {
-    R.refdef.vieworg[1] = ent.origin[1] - 14.0;
-  } else if (R.refdef.vieworg[1] > (ent.origin[1] + 14.0)) {
-    R.refdef.vieworg[1] = ent.origin[1] + 14.0;
+  if (R.refdef.vieworg[1] < (ent/*lerp*/.origin[1] - 14.0)) {
+    R.refdef.vieworg[1] = ent/*lerp*/.origin[1] - 14.0;
+  } else if (R.refdef.vieworg[1] > (ent/*lerp*/.origin[1] + 14.0)) {
+    R.refdef.vieworg[1] = ent/*lerp*/.origin[1] + 14.0;
   }
-  if (R.refdef.vieworg[2] < (ent.origin[2] - 22.0)) {
-    R.refdef.vieworg[2] = ent.origin[2] - 22.0;
-  } else if (R.refdef.vieworg[2] > (ent.origin[2] + 30.0)) {
-    R.refdef.vieworg[2] = ent.origin[2] + 30.0;
+  if (R.refdef.vieworg[2] < (ent/*lerp*/.origin[2] - 22.0)) {
+    R.refdef.vieworg[2] = ent/*lerp*/.origin[2] - 22.0;
+  } else if (R.refdef.vieworg[2] > (ent/*lerp*/.origin[2] + 30.0)) {
+    R.refdef.vieworg[2] = ent/*lerp*/.origin[2] + 30.0;
   }
 
   const view = CL.state.viewent;
   view.angles[0] = -R.refdef.viewangles[0] - ipitch;
   view.angles[1] = R.refdef.viewangles[1] - iyaw;
   view.angles[2] = CL.state.viewangles[2] - iroll;
-  view.origin[0] = ent.origin[0] + forward[0] * bob * 0.4;
-  view.origin[1] = ent.origin[1] + forward[1] * bob * 0.4;
-  view.origin[2] = ent.origin[2] + CL.state.viewheight + forward[2] * bob * 0.4 + bob;
+  view.origin[0] = ent/*lerp*/.origin[0] + forward[0] * bob * 0.4;
+  view.origin[1] = ent/*lerp*/.origin[1] + forward[1] * bob * 0.4;
+  view.origin[2] = ent/*lerp*/.origin[2] + CL.state.viewheight + forward[2] * bob * 0.4 + bob;
   switch (SCR.viewsize.value) {
     case 110:
     case 90:
@@ -337,21 +337,21 @@ V.CalcRefdef = function() {
 
   R.refdef.viewangles.add(CL.state.punchangle);
 
-  if ((CL.state.onground === true) && ((ent.origin[2] - V.oldz) > 0.0)) {
+  if ((CL.state.onground === true) && ((ent/*lerp*/.origin[2] - V.oldz) > 0.0)) {
     let steptime = CL.state.time - CL.state.oldtime;
     if (steptime < 0.0) {
       steptime = 0.0;
     }
     V.oldz += steptime * 80.0;
-    if (V.oldz > ent.origin[2]) {
-      V.oldz = ent.origin[2];
-    } else if ((ent.origin[2] - V.oldz) > 12.0) {
-      V.oldz = ent.origin[2] - 12.0;
+    if (V.oldz > ent/*lerp*/.origin[2]) {
+      V.oldz = ent/*lerp*/.origin[2];
+    } else if ((ent/*lerp*/.origin[2] - V.oldz) > 12.0) {
+      V.oldz = ent/*lerp*/.origin[2] - 12.0;
     }
-    R.refdef.vieworg[2] += V.oldz - ent.origin[2];
-    view.origin[2] += V.oldz - ent.origin[2];
+    R.refdef.vieworg[2] += V.oldz - ent/*lerp*/.origin[2];
+    view.origin[2] += V.oldz - ent/*lerp*/.origin[2];
   } else {
-    V.oldz = ent.origin[2];
+    V.oldz = ent/*lerp*/.origin[2];
   }
   if (Chase.active.value) {
     Chase.Update();
@@ -390,8 +390,8 @@ V.Init = function() {
   V.ipitch_level = new Cvar('v_ipitch_level', '0.3');
   V.idlescale = new Cvar('v_idlescale', '0');
   V.crosshair = new Cvar('crosshair', '0', Cvar.FLAG.ARCHIVE);
-  V.crossx = new Cvar('cl_crossx', '0');
-  V.crossy = new Cvar('cl_crossy', '0');
+  V.crossx = new Cvar('cl_crossx', '0', Cvar.FLAG.ARCHIVE);
+  V.crossy = new Cvar('cl_crossy', '0', Cvar.FLAG.ARCHIVE);
   V.cshiftpercent = new Cvar('gl_cshiftpercent', '100');
   V.ofsx = new Cvar('scr_ofsx', '0');
   V.ofsy = new Cvar('scr_ofsy', '0');

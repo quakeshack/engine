@@ -5,60 +5,60 @@
  * @readonly
  * @enum {number}
  */
-export const range = {
+export const range = Object.freeze({
   RANGE_MELEE: 0,
   RANGE_NEAR: 1,
   RANGE_MID: 2,
   RANGE_FAR: 3,
-};
+});
 
 /**
  * deadflag values
  * @readonly
  * @enum {number}
  */
-export const dead = {
+export const dead = Object.freeze({
   DEAD_NO: 0,
   DEAD_DYING: 1,
   DEAD_DEAD: 2,
   DEAD_RESPAWNABLE: 3,
-};
+});
 
 /**
  * takedamage values
  * @readonly
  * @enum {number}
  */
-export const damage = {
+export const damage = Object.freeze({
   DAMAGE_NO:  0,
   DAMAGE_YES: 1,
   DAMAGE_AIM: 2,
-};
+});
 
 /**
  * edict.solid values
  * @readonly
  * @enum {number}
  */
-export const solid = {
+export const solid = Object.freeze({
   /** no interaction with other objects */
-  SOLID_NOT:				0,
+  SOLID_NOT: 0,
   /** touch on edge, but not blocking */
-  SOLID_TRIGGER:		1,
+  SOLID_TRIGGER: 1,
   /** touch on edge, block */
-  SOLID_BBOX:				2,
+  SOLID_BBOX: 2,
   /** touch on edge, but not an onground */
-  SOLID_SLIDEBOX:		3,
+  SOLID_SLIDEBOX: 3,
   /** bsp clip, touch on edge, block */
-  SOLID_BSP:				4,
-};
+  SOLID_BSP: 4,
+});
 
 /**
  * edict.movetype values
  * @readonly
  * @enum {number}
  */
-export const moveType = {
+export const moveType = Object.freeze({
   /** never moves */
   MOVETYPE_NONE: 0,
   //float	MOVETYPE_ANGLENOCLIP: 1,
@@ -78,14 +78,14 @@ export const moveType = {
   MOVETYPE_BOUNCE: 10,
   /** bounce with extra size */
   MOVETYPE_BOUNCEMISSILE: 11,
-};
+});
 
 /**
  * edict.flags
  * @readonly
  * @enum {number}
  */
-export const flags = {
+export const flags = Object.freeze({
   FL_NONE: 0, // CR: used to mark something as “flags here”
   FL_FLY: 1,
   FL_SWIM: 2,
@@ -108,27 +108,27 @@ export const flags = {
   FL_WATERJUMP: 2048,
   /** for jump debouncing */
   FL_JUMPRELEASED: 4096,
-};
+});
 
 /**
  * entity effects
  * @readonly
  * @enum {number}
  */
-export const effect = {
+export const effect = Object.freeze({
   EF_NONE: 0,
   EF_BRIGHTFIELD: 1,
   EF_MUZZLEFLASH: 2,
   EF_BRIGHTLIGHT: 4,
   EF_DIMLIGHT: 8,
-};
+});
 
 /**
  * model flags
  * @readonly
  * @enum {number}
  */
-export const modelFlags = {
+export const modelFlags = Object.freeze({
   MF_NONE: 0,
   MF_ROCKET: 1,
   MF_GRENADE: 2,
@@ -138,14 +138,14 @@ export const modelFlags = {
   MF_ZOMGIB: 32,
   MF_TRACER2: 64,
   MF_TRACER3: 128,
-};
+});
 
 /**
  * player items and weapons
  * @readonly
  * @enum {number}
  */
-export const items = {
+export const items = Object.freeze({
   IT_AXE:  4096,
   IT_SHOTGUN:  1,
   IT_SUPER_SHOTGUN:  2,
@@ -167,7 +167,7 @@ export const items = {
   IT_ARMOR2: 16384,
   IT_ARMOR3: 32768,
   IT_SUPERHEALTH: 65536,
-};
+});
 
 /**
  * sound channels
@@ -176,33 +176,33 @@ export const items = {
  * @readonly
  * @enum {number}
  */
-export const channel = {
-  CHAN_AUTO:		0,
-	CHAN_WEAPON:	1,
-	CHAN_VOICE:		2,
-	CHAN_ITEM:		3,
-	CHAN_BODY:		4,
-};
+export const channel = Object.freeze({
+  CHAN_AUTO: 0,
+  CHAN_WEAPON: 1,
+  CHAN_VOICE: 2,
+  CHAN_ITEM: 3,
+  CHAN_BODY: 4,
+});
 
 /**
  * attenuation
  * @readonly
  * @enum {number}
  */
-export const attn = {
+export const attn = Object.freeze({
   ATTN_NONE: 0,
   ATTN_NORM: 1,
   ATTN_IDLE: 2,
   ATTN_STATIC: 3,
-};
+});
 
 /**
  * Mins/max of available hulls.
  * @readonly
  */
 export const hull = [
-  [new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0)],
-  [new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 64.0)],
+  [new Vector(-16.0, -16.0, -24.0).freeze(), new Vector(16.0, 16.0, 32.0).freeze()],
+  [new Vector(-32.0, -32.0, -24.0).freeze(), new Vector(32.0, 32.0, 64.0).freeze()],
 ];
 
 /**
@@ -210,42 +210,42 @@ export const hull = [
  * @enum {number}
  * point content values
  */
-export const content = {
+export const content = Object.freeze({
   CONTENT_EMPTY: -1,
   CONTENT_SOLID: -2,
   CONTENT_WATER: -3,
   CONTENT_SLIME: -4,
   CONTENT_LAVA: -5,
   CONTENT_SKY: -6,
-};
+});
 
 /**
  * @readonly
  * @enum {?string}
  * how the player died
  */
-export const deathType = {
+export const deathType = Object.freeze({
   NONE: null,
   FALLING: 'falling',
-};
+});
 
 /**
  * @readonly
  * @enum {number}
  * worldspawn’s worldtype enum
  */
-export const worldType = {
+export const worldType = Object.freeze({
   MEDIEVAL: 0,
   RUNES: 1,
   BASE: 2,
-};
+});
 
 /**
  * @readonly
  * @enum {number}
  * temporary entity class, lets the client code render client-only effects and things without causing edict bloat and clogging the client-server infrastructure
  */
-export const tentType = {
+export const tentType = Object.freeze({
   TE_SPIKE: 0,
   TE_SUPERSPIKE: 1,
   TE_GUNSHOT: 2,
@@ -258,16 +258,27 @@ export const tentType = {
   TE_LIGHTNING3: 9,
   TE_LAVASPLASH: 10,
   TE_TELEPORT: 11,
-};
+});
 
 /**
  * @readonly
  * @enum {number}
  * color codes for blood and gore, should match palette.lmp colors
  */
-export const colors = {
+export const colors = Object.freeze({
   DUST: 0,
   BLOOD: 73,
   FIRE: 75,
   SPARK: 225,
-};
+});
+
+/**
+ * @readonly
+ * @enum {number}
+ */
+export const spawnflags = Object.freeze({
+  SPAWNFLAG_NOT_EASY: 256,
+  SPAWNFLAG_NOT_MEDIUM: 512,
+  SPAWNFLAG_NOT_HARD: 1024,
+  SPAWNFLAG_NOT_DEATHMATCH: 2048,
+});

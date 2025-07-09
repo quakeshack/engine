@@ -75,6 +75,48 @@ GL.Set2D = function() {
   gl.enable(gl.BLEND);
 };
 
+/**
+ * Determines the scaled dimensions of a texture based on the input width and height.
+ * @param {number} width input texture width
+ * @param {number} height input texture height
+ * @returns {{scaledWidth: number, scaledHeight: number, resampleRequired: boolean}} new dimensions and whether resampling is required
+ */
+GL.ScaleTextureDimensions = function(width, height) {
+  let scaledWidth = width;
+  let scaledHeight = height;
+
+  if (((width & (width - 1)) !== 0) || ((height & (height - 1)) !== 0)) {
+    --scaledWidth;
+    scaledWidth |= (scaledWidth >> 1);
+    scaledWidth |= (scaledWidth >> 2);
+    scaledWidth |= (scaledWidth >> 4);
+    scaledWidth |= (scaledWidth >> 8);
+    scaledWidth |= (scaledWidth >> 16);
+    ++scaledWidth;
+    --scaledHeight;
+    scaledHeight |= (scaledHeight >> 1);
+    scaledHeight |= (scaledHeight >> 2);
+    scaledHeight |= (scaledHeight >> 4);
+    scaledHeight |= (scaledHeight >> 8);
+    scaledHeight |= (scaledHeight >> 16);
+    ++scaledHeight;
+  }
+
+  if (scaledWidth > GL.maxtexturesize) {
+    scaledWidth = GL.maxtexturesize;
+  }
+
+  if (scaledHeight > GL.maxtexturesize) {
+    scaledHeight = GL.maxtexturesize;
+  }
+
+  return {
+    scaledWidth: scaledWidth,
+    scaledHeight: scaledHeight,
+    resampleRequired: (scaledWidth !== width) || (scaledHeight !== height),
+  };
+};
+
 GL.ResampleTexture = function(data, inwidth, inheight, outwidth, outheight) {
   const outdata = new ArrayBuffer(outwidth * outheight);
   const out = new Uint8Array(outdata);
@@ -92,42 +134,56 @@ GL.ResampleTexture = function(data, inwidth, inheight, outwidth, outheight) {
 };
 
 GL.Upload = function(data, width, height) {
-  let scaled_width = width; let scaled_height = height;
-  if (((width & (width - 1)) !== 0) || ((height & (height - 1)) !== 0)) {
-    --scaled_width;
-    scaled_width |= (scaled_width >> 1);
-    scaled_width |= (scaled_width >> 2);
-    scaled_width |= (scaled_width >> 4);
-    scaled_width |= (scaled_width >> 8);
-    scaled_width |= (scaled_width >> 16);
-    ++scaled_width;
-    --scaled_height;
-    scaled_height |= (scaled_height >> 1);
-    scaled_height |= (scaled_height >> 2);
-    scaled_height |= (scaled_height >> 4);
-    scaled_height |= (scaled_height >> 8);
-    scaled_height |= (scaled_height >> 16);
-    ++scaled_height;
+  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(width, height);
+
+  if (resampleRequired) {
+    data = GL.ResampleTexture(data, width, height, scaledWidth, scaledHeight);
   }
-  if (scaled_width > GL.maxtexturesize) {
-    scaled_width = GL.maxtexturesize;
-  }
-  if (scaled_height > GL.maxtexturesize) {
-    scaled_height = GL.maxtexturesize;
-  }
-  if ((scaled_width !== width) || (scaled_height !== height)) {
-    data = GL.ResampleTexture(data, width, height, scaled_width, scaled_height);
-  }
-  const trans = new ArrayBuffer((scaled_width * scaled_height) << 2);
+
+  const trans = new ArrayBuffer((scaledWidth * scaledHeight) << 2);
   const trans32 = new Uint32Array(trans);
-  let i;
-  for (i = scaled_width * scaled_height - 1; i >= 0; --i) {
+
+  for (let i = scaledWidth * scaledHeight - 1; i >= 0; i--) {
     trans32[i] = COM.LittleLong(VID.d_8to24table[data[i]] + 0xff000000);
     if (data[i] >= 224) {
       trans32[i] &= 0xffffff;
     }
   }
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaled_width, scaled_height, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
+
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
+  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);
+};
+
+GL.ResampleTexture32 = function(data, inwidth, inheight, outwidth, outheight) {
+  const outdata = new ArrayBuffer(outwidth * outheight * 4);
+  const out = new Uint8Array(outdata);
+  const xstep = inwidth / outwidth;
+  const ystep = inheight / outheight;
+  for (let i = 0; i < outheight; i++) {
+    const src_y = Math.floor(i * ystep);
+    for (let j = 0; j < outwidth; j++) {
+      const src_x = Math.floor(j * xstep);
+      const srcIndex = (src_y * inwidth + src_x) * 4;
+      const destIndex = (i * outwidth + j) * 4;
+      out[destIndex + 0] = data[srcIndex + 0];
+      out[destIndex + 1] = data[srcIndex + 1];
+      out[destIndex + 2] = data[srcIndex + 2];
+      out[destIndex + 3] = data[srcIndex + 3];
+    }
+  }
+  return out;
+};
+
+GL.Upload32 = function(data, width, height) {
+  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(width, height);
+
+  if (resampleRequired) {
+    data = GL.ResampleTexture32(data, width, height, scaledWidth, scaledHeight);
+  }
+
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
   gl.generateMipmap(gl.TEXTURE_2D);
   gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
   gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);
@@ -147,87 +203,60 @@ GL.LoadTexture = function(identifier, width, height, data) {
     }
   }
 
-  let scaled_width = width; let scaled_height = height;
-  if (((width & (width - 1)) !== 0) || ((height & (height - 1)) !== 0)) {
-    --scaled_width;
-    scaled_width |= (scaled_width >> 1);
-    scaled_width |= (scaled_width >> 2);
-    scaled_width |= (scaled_width >> 4);
-    scaled_width |= (scaled_width >> 8);
-    scaled_width |= (scaled_width >> 16);
-    ++scaled_width;
-    --scaled_height;
-    scaled_height |= (scaled_height >> 1);
-    scaled_height |= (scaled_height >> 2);
-    scaled_height |= (scaled_height >> 4);
-    scaled_height |= (scaled_height >> 8);
-    scaled_height |= (scaled_height >> 16);
-    ++scaled_height;
-  }
-  if (scaled_width > GL.maxtexturesize) {
-    scaled_width = GL.maxtexturesize;
-  }
-  if (scaled_height > GL.maxtexturesize) {
-    scaled_height = GL.maxtexturesize;
-  }
-  scaled_width >>= GL.picmip.value;
-  if (scaled_width === 0) {
-    scaled_width = 1;
-  }
-  scaled_height >>= GL.picmip.value;
-  if (scaled_height === 0) {
-    scaled_height = 1;
-  }
-  if ((scaled_width !== width) || (scaled_height !== height)) {
-    data = GL.ResampleTexture(data, width, height, scaled_width, scaled_height);
+  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(width, height);
+
+  if (resampleRequired) {
+    data = GL.ResampleTexture(data, width, height, scaledWidth, scaledHeight);
   }
 
-  glt = {texnum: gl.createTexture(), identifier: identifier, width: width, height: height};
+  glt = { texnum: gl.createTexture(), identifier: identifier, width: width, height: height, ready: true };
   GL.Bind(0, glt.texnum);
-  GL.Upload(data, scaled_width, scaled_height);
+  GL.Upload(data, scaledWidth, scaledHeight);
   GL.textures[GL.textures.length] = glt;
   return glt;
 };
 
+GL.LoadTexture32 = function(identifier, width, height, data) {
+  let glt; let i;
+  if (identifier.length !== 0) {
+    for (i = 0; i < GL.textures.length; ++i) {
+      glt = GL.textures[i];
+      if (glt.identifier === identifier) {
+        if ((width !== glt.width) || (height !== glt.height)) {
+          Sys.Error('GL.LoadTexture: cache mismatch');
+        }
+        return glt;
+      }
+    }
+  }
+
+  glt = { texnum: gl.createTexture(), identifier: identifier, width: width, height: height, ready: true };
+  GL.Bind(0, glt.texnum);
+  GL.Upload32(data, width, height);
+  GL.textures[GL.textures.length] = glt;
+  return glt;
+};
+
+/** @deprecated */
 GL.LoadPicTexture = function(pic) {
-  let data = pic.data; let scaled_width = pic.width; let scaled_height = pic.height;
-  if (((pic.width & (pic.width - 1)) !== 0) || ((pic.height & (pic.height - 1)) !== 0)) {
-    --scaled_width;
-    scaled_width |= (scaled_width >> 1);
-    scaled_width |= (scaled_width >> 2);
-    scaled_width |= (scaled_width >> 4);
-    scaled_width |= (scaled_width >> 8);
-    scaled_width |= (scaled_width >> 16);
-    ++scaled_width;
-    --scaled_height;
-    scaled_height |= (scaled_height >> 1);
-    scaled_height |= (scaled_height >> 2);
-    scaled_height |= (scaled_height >> 4);
-    scaled_height |= (scaled_height >> 8);
-    scaled_height |= (scaled_height >> 16);
-    ++scaled_height;
-  }
-  if (scaled_width > GL.maxtexturesize) {
-    scaled_width = GL.maxtexturesize;
-  }
-  if (scaled_height > GL.maxtexturesize) {
-    scaled_height = GL.maxtexturesize;
-  }
-  if ((scaled_width !== pic.width) || (scaled_height !== pic.height)) {
-    data = GL.ResampleTexture(data, pic.width, pic.height, scaled_width, scaled_height);
+  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(pic.width, pic.height);
+
+  let data = pic.data;
+
+  if (resampleRequired) {
+    data = GL.ResampleTexture(data, pic.width, pic.height, scaledWidth, scaledHeight);
   }
 
   const texnum = gl.createTexture();
   GL.Bind(0, texnum);
-  const trans = new ArrayBuffer((scaled_width * scaled_height) << 2);
+  const trans = new ArrayBuffer((scaledWidth * scaledHeight) << 2);
   const trans32 = new Uint32Array(trans);
-  let i;
-  for (i = scaled_width * scaled_height - 1; i >= 0; --i) {
+  for (let i = scaledWidth * scaledHeight - 1; i >= 0; i--) {
     if (data[i] !== 255) {
       trans32[i] = COM.LittleLong(VID.d_8to24table[data[i]] + 0xff000000);
     }
   }
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaled_width, scaled_height, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   return texnum;
@@ -534,7 +563,7 @@ GL.Init = function() {
   GL.streamBufferPosition = 0;
 
   VID.mainwindow.style.display = 'inline-block';
-  VID.mainwindow.style.backgroundImage = 'url("' + Draw.PicToDataURL(Draw.PicFromWad('BACKTILE')) + '")';
+  // VID.mainwindow.style.backgroundImage = 'url("' + Draw.PicToDataURL(Draw.PicFromWad('BACKTILE')) + '")';
 };
 
 GL.Shutdown = function() {

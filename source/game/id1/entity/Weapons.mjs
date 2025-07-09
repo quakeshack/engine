@@ -198,12 +198,12 @@ export class DamageInflictor extends EntityWrapper {
   }
 
   /**
-   * @param {*} damage damage points
+   * @param {number} damage damage points
    * @param {?BaseEntity} attackerEntity attacking entity
-   * @param {*} hitPoint exact hit point
+   * @param {?Vector} hitPoint exact hit point (defaults to attacker’s origin)
    * @param {?BaseEntity} ignore (optionally) entity to not hurt
    */
-  blastDamage(damage, attackerEntity, hitPoint, ignore = null) { // QuakeC: combat.qc/T_RadiusDamage
+  blastDamage(damage, attackerEntity, hitPoint = attackerEntity.origin, ignore = null) { // QuakeC: combat.qc/T_RadiusDamage
     // this._entity = missile
     // attackerEntity = missile’s owner (e.g. player)
 
@@ -489,7 +489,7 @@ export class DamageHandler extends EntityWrapper {
 
     // CR: it’s basically missile measurements
     for (const offset of [
-      Vector.origin,
+      new Vector(0.0, 0.0, 0.0),
       new Vector(15.0, 15.0, 0.0),
       new Vector(-15.0, -15.0, 0.0),
       new Vector(-15.0, 15.0, 0.0),

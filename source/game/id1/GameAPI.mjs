@@ -2,7 +2,7 @@
 
 import { GibEntity, InfoPlayerStart, InfoPlayerStartCoop, InfoPlayerStartDeathmatch, PlayerEntity, qc as playerModelQC, TelefragTriggerEntity } from "./entity/Player.mjs";
 import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
-import { items } from "./Defs.mjs";
+import { items, spawnflags } from "./Defs.mjs";
 import * as misc from "./entity/Misc.mjs";
 import * as door from "./entity/props/Doors.mjs";
 import * as platform from "./entity/props/Platforms.mjs";
@@ -23,6 +23,7 @@ import { KnightMonster, HellKnightMonster, qc as knightModelQCs, KnightSpike } f
 import OgreMonsterEntity, { qc as ogreModelQC } from "./entity/monster/Ogre.mjs";
 import ShalrathMonsterEntity, { ShalrathMissileEntity, qc as shalrathModelQC } from "./entity/monster/Shalrath.mjs";
 import ShamblerMonsterEntity, { qc as shamblerModelQC } from "./entity/monster/Shambler.mjs";
+import TarbabyMonsterEntity, { qc as tbabyModelQC } from "./entity/monster/Tarbaby.mjs";
 
 const featureFlags = [
   'correct-ballistic-grenades', // enables zombie gib and ogre grenade trajectory fix
@@ -124,6 +125,7 @@ const entityRegistry = [
   ShalrathMissileEntity,
   ArmyEnforcerMonster,
   ShamblerMonsterEntity,
+  TarbabyMonsterEntity,
 
   door.DoorEntity,
   door.SecretDoorEntity,
@@ -259,6 +261,7 @@ export class ServerGameAPI {
       'progs/ogre.mdl': engineAPI.ParseQC(ogreModelQC),
       'progs/shalrath.mdl': engineAPI.ParseQC(shalrathModelQC),
       'progs/shambler.mdl': engineAPI.ParseQC(shamblerModelQC),
+      'progs/tarbaby.mdl': engineAPI.ParseQC(tbabyModelQC),
     };
 
     /** @private */
@@ -506,19 +509,21 @@ export class ServerGameAPI {
 
     // spawnflags (control whether to spawn an entity or not)
     {
-      const spawnflags = initialData.spawnflags || 0;
+      const sflags = initialData.spawnflags || 0;
 
-      if (this.deathmatch && (spawnflags & 2048)) { // no spawn in deathmatch
+      if (this.deathmatch && (sflags & spawnflags.SPAWNFLAG_NOT_DEATHMATCH)) { // no spawn in deathmatch
         return false;
       }
 
-      const skillFlags = [
-        256, // do not spawn on easy
-        512, // do not spawn on medium
-        1024, // do not spawn on hard
-      ];
+      if (this.skill === 0 && (sflags & spawnflags.SPAWNFLAG_NOT_EASY)) {
+        return false;
+      }
 
-      if (skillFlags.some((flag, idx) => this.skill === idx && (spawnflags & flag))) {
+      if (this.skill === 1 && (sflags & spawnflags.SPAWNFLAG_NOT_MEDIUM)) {
+        return false;
+      }
+
+      if (this.skill >= 2 && (sflags & spawnflags.SPAWNFLAG_NOT_HARD)) {
         return false;
       }
     }

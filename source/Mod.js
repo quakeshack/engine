@@ -101,11 +101,8 @@ Mod.version = {brush: 29, sprite: 1, alias: 6};
 Mod.known = [];
 
 Mod.Init = function() {
-  Mod.novis = [];
-  let i;
-  for (i = 0; i < 1024; ++i) {
-    Mod.novis[i] = 0xff;
-  }
+  Mod.novis = new Array(1024);
+  Mod.novis.fill(0xff);
 };
 
 Mod.PointInLeaf = function(p, model) { // public method, static access? (PF, R, S use it)
@@ -303,10 +300,14 @@ Mod.LoadTextures = function(buf) {
         tx.texturenum = R.solidskytexture;
         R.skytexturenum = i;
         tx.sky = true;
+      // } else if (tx.name === 'sfloor3_2') { // CR: testing out loading WAD3 texture files
+      //   const floortex = Mod.testwad.getLumpMipmap('LAB1_FLOOR3', 0);
+      //   const glt = GL.LoadTexture32('LAB1_FLOOR3', floortex.width, floortex.height, floortex.data);
+      //   tx.texturenum = glt.texnum;
       } else {
         glt = GL.LoadTexture(tx.name, tx.width, tx.height, new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), tx.width * tx.height));
         tx.texturenum = glt.texnum;
-        if (tx.name.charCodeAt(0) === 42) {
+        if (tx.name[0] === '*') {
           tx.turbulent = true;
         }
       }
@@ -317,10 +318,10 @@ Mod.LoadTextures = function(buf) {
   let j; let tx2; let num; let name;
   for (i = 0; i < nummiptex; ++i) {
     tx = Mod.loadmodel.textures[i];
-    if (tx.name.charCodeAt(0) !== 43) {
+    if (tx.name[0] !== '+') {
       continue;
     }
-    if (tx.name.charCodeAt(1) !== 48) {
+    if (tx.name[1] !== '0') {
       continue;
     }
     name = tx.name.substring(2);
@@ -328,7 +329,7 @@ Mod.LoadTextures = function(buf) {
     tx.alternate_anims = [];
     for (j = 0; j < nummiptex; ++j) {
       tx2 = Mod.loadmodel.textures[j];
-      if (tx2.name.charCodeAt(0) !== 43) {
+      if (tx2.name[0] !== '+') {
         continue;
       }
       if (tx2.name.substring(2) !== name) {
@@ -1205,32 +1206,12 @@ Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
   }
 
   let data = new Uint8Array(buffer, inframe + 16, size);
-  let scaled_width = frame.width; let scaled_height = frame.height;
-  if (((frame.width & (frame.width - 1)) !== 0) || ((frame.height & (frame.height - 1)) !== 0)) {
-    --scaled_width;
-    scaled_width |= (scaled_width >> 1);
-    scaled_width |= (scaled_width >> 2);
-    scaled_width |= (scaled_width >> 4);
-    scaled_width |= (scaled_width >> 8);
-    scaled_width |= (scaled_width >> 16);
-    ++scaled_width;
-    --scaled_height;
-    scaled_height |= (scaled_height >> 1);
-    scaled_height |= (scaled_height >> 2);
-    scaled_height |= (scaled_height >> 4);
-    scaled_height |= (scaled_height >> 8);
-    scaled_height |= (scaled_height >> 16);
-    ++scaled_height;
-  }
-  if (scaled_width > GL.maxtexturesize) {
-    scaled_width = GL.maxtexturesize;
-  }
-  if (scaled_height > GL.maxtexturesize) {
-    scaled_height = GL.maxtexturesize;
-  }
-  if ((scaled_width !== frame.width) || (scaled_height !== frame.height)) {
-    size = scaled_width * scaled_height;
-    data = GL.ResampleTexture(data, frame.width, frame.height, scaled_width, scaled_height);
+
+  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(frame.width, frame.height);
+
+  if (resampleRequired) {
+    size = scaledWidth * scaledHeight;
+    data = GL.ResampleTexture(data, frame.width, frame.height, scaledWidth, scaledHeight);
   }
 
   const trans = new ArrayBuffer(size << 2);
@@ -1243,7 +1224,7 @@ Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
 
   glt = {texnum: gl.createTexture(), identifier: identifier, width: frame.width, height: frame.height};
   GL.Bind(0, glt.texnum);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaled_width, scaled_height, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
   gl.generateMipmap(gl.TEXTURE_2D);
   gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
   gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);

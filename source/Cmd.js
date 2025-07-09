@@ -5,11 +5,13 @@ Cmd = {};
 
 Cmd.alias = [];
 
+Cmd.functions = [];
+
+Cmd.text = '';
+
 Cmd.Wait_f = function() {
   Cmd.wait = true;
 };
-
-Cmd.text = '';
 
 Cmd.Execute = function() {
   let line = ''; let quotes = false;
@@ -107,8 +109,6 @@ Cmd.Alias_f = function(...argv) {
   }
   Cmd.alias.push({name: argv[1], value: value + '\n'});
 };
-
-Cmd.functions = [];
 
 Cmd.Init = function() {
   Cmd.functions = [];

@@ -8,7 +8,7 @@ Def.version = '1.1.0';
 Def.max_edicts = 600;
 Def.max_clients = 32;
 
-Def.stat = {
+Def.stat = Object.freeze({
   health: 0,
   frags: 1,
   weapon: 2,
@@ -24,9 +24,9 @@ Def.stat = {
   totalmonsters: 12,
   secrets: 13,
   monsters: 14,
-};
+});
 
-Def.it = {
+Def.it = Object.freeze({
   shotgun: 1,
   super_shotgun: 2,
   nailgun: 4,
@@ -50,9 +50,9 @@ Def.it = {
   invulnerability: 1048576,
   suit: 2097152,
   quad: 4194304,
-};
+});
 
-Def.rit = {
+Def.rit = Object.freeze({
   shells: 128,
   nails: 256,
   rockets: 512,
@@ -72,9 +72,9 @@ Def.rit = {
   shield: 536870912,
   antigrav: 1073741824,
   superhealth: 2147483648,
-};
+});
 
-Def.hit = {
+Def.hit = Object.freeze({
   proximity_gun_bit: 16,
   mjolnir_bit: 7,
   laser_cannon_bit: 23,
@@ -83,4 +83,6 @@ Def.hit = {
   laser_cannon: 8388608,
   wetsuit: 33554432,
   empathy_shields: 67108864,
-};
+});
+
+Object.freeze(Def);

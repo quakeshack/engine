@@ -74,6 +74,8 @@ SV.EntityState = class ServerEntityState {
     this.solid = 0;
     this.free = false;
     this.classname = null;
+    this.mins = new Vector();
+    this.maxs = new Vector();
   }
 
   set(other) {
@@ -89,6 +91,8 @@ SV.EntityState = class ServerEntityState {
     this.solid = other.solid;
     this.free = other.free;
     this.classname = other.classname;
+    this.mins.set(other.mins);
+    this.maxs.set(other.maxs);
   }
 };
 
@@ -111,7 +115,9 @@ SV.Client = class ServerClient {
     this.message.allowoverflow = true;
     this.colors = 0;
     this.old_frags = 0;
+    /** @type {number} last update sent to the client */
     this.last_update = 0;
+    /** @type {number} last message received from the client */
     this.last_message = 0;
     this.last_ping_update = 0;
     this.ping_times = new Array(16);
@@ -165,6 +171,7 @@ SV.Client = class ServerClient {
     this.spawn_parms.fill(0);
     this.cmd.reset();
     this.lastcmd.reset();
+    this.last_update = 0.0;
     this.last_message = 0.0;
     this.num_pings = 0;
     this._entityStates = new Map();
@@ -211,7 +218,7 @@ SV.Client = class ServerClient {
     return Math.round((this.ping_times.reduce((sum, elem) => sum + elem) / this.ping_times.length) * 1000) || 0;
   }
 
-  saveSpawnparms() {
+  saveSpawnparms() { // FIXME: should game handle this?
     SV.server.gameAPI.SetChangeParms(this.edict);
 
     for (let i = 0; i < this.spawn_parms.length; i++) {
@@ -287,6 +294,7 @@ SV.Edict = class ServerEdict {
   }
 
   setMinMaxSize(min, max) {
+    // FIXME: console.assert this check
     if (min[0] > max[0] || min[1] > max[1] || min[2] > max[2]) {
       throw new Error('Edict.setMinMaxSize: backwards mins/maxs');
     }
@@ -339,8 +347,8 @@ SV.Edict = class ServerEdict {
 
   /**
    * Moves self in the given direction. Returns success as a boolean.
-   * @param {number} yaw
-   * @param {number} dist
+   * @param {number} yaw yaw in degrees
+   * @param {number} dist distance to move
    * @returns {boolean} true, when walking was successful
    */
   walkMove(yaw, dist) {
@@ -356,7 +364,7 @@ SV.Edict = class ServerEdict {
   /**
    * Makes sure the entity is settled on the ground.
    * @param {number} z maximum distance to look down to check
-   * @returns true, when the dropping succeeded
+   * @returns {boolean} true, when the dropping succeeded
    */
   dropToFloor(z = -2048.0) {
     const end = this.entity.origin.copy().add(new Vector(0.0, 0.0, z));
@@ -471,7 +479,7 @@ SV.Edict = class ServerEdict {
 
   /**
    * Move this entity toward its goal. Used for monsters.
-   * @param {number} dist
+   * @param {number} dist distance to move
    * @returns {boolean} true, when successful
    */
   moveToGoal(dist) {
@@ -563,7 +571,7 @@ SV.Edict = class ServerEdict {
   /**
    * Returns entity that is just after this in the entity list.
    * Useful to browse the list of entities, because it skips the undefined ones.
-   * @returns {SV.Edict | null}
+   * @returns {SV.Edict | null} next edict, or null if there are no more entities
    */
   nextEdict() {
     for (let i = this.num + 1; i < SV.server.num_edicts; ++i) {
@@ -577,6 +585,7 @@ SV.Edict = class ServerEdict {
 
   /**
    * Change the horizontal orientation of this entity. Turns towards .ideal_yaw at .yaw_speed. Called every 0.1 sec by monsters.
+   * @returns {number} new yaw angle
    */
   changeYaw() {
     const angles = this.entity.angles;
@@ -600,15 +609,6 @@ SV.Edict = class ServerEdict {
    */
   isClient() {
     return (this.num > 0) && (this.num <= SV.svs.maxclients);
-  }
-
-  /**
-   * checks if this entity is worldspawn
-   * @returns {boolean} true, when edict represents world
-   * @deprecated use isWorld instead
-   */
-  isWorldspawn() {
-    return this.num === 0;
   }
 
   /**
@@ -696,9 +696,9 @@ SV.Init = function() {
 
   SV.InitPmove();
 
-  SV.nop = new MSG.Buffer(4);
-  SV.cursize = 1;
-  MSG.WriteByte(SV.nop, Protocol.svc.nop);
+  // SV.nop = new MSG.Buffer(4);
+  // SV.cursize = 1;
+  // MSG.WriteByte(SV.nop, Protocol.svc.nop);
 
   SV.InitBoxHull(); // pmove, remove
 };
@@ -1140,6 +1140,14 @@ SV.WriteDeltaEntity = function(msg, from, to) {
     }
   }
 
+  if (!from.maxs.equals(to.maxs)) {
+    bits |= Protocol.u.size;
+  }
+
+  if (!from.mins.equals(to.mins)) {
+    bits |= Protocol.u.size;
+  }
+
   console.assert(to.num > 0, 'valid entity num', to.num);
 
   MSG.WriteShort(msg, to.num);
@@ -1187,6 +1195,11 @@ SV.WriteDeltaEntity = function(msg, from, to) {
     }
   }
 
+  if (bits & Protocol.u.size) {
+    MSG.WriteCoordVector(msg, to.maxs);
+    MSG.WriteCoordVector(msg, to.mins);
+  }
+
   return true;
 };
 
@@ -1196,7 +1209,8 @@ SV.WriteDeltaEntity = function(msg, from, to) {
  * a svc_nails message and
  * svc_playerinfo messages
  * @param {SV.Edict} clientEdict client edict
- * @param {*} msg message stream
+ * @param {MSG.Buffer} msg message stream
+ * @returns {boolean} true, when there were changes written to the message
  */
 SV.WriteEntitiesToClient = function(clientEdict, msg) {
   const origin = clientEdict.entity.origin.copy().add(clientEdict.entity.view_ofs);
@@ -1213,7 +1227,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
 
   for (const ent of SV.TraversePVS(pvs, [], [clientEdict.num])) {
     if ((msg.data.byteLength - msg.cursize) < 16) {
-      Con.Print('packet overflow\n');
+      Con.PrintWarning('SV.WriteEntitiesToClient: packet overflow, not writing more entities\n');
       break;
     }
 
@@ -1227,6 +1241,8 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     toState.angles.set(ent.entity.angles);
     toState.effects = ent.entity.effects;
     toState.free = false;
+    toState.maxs.set(ent.entity.maxs);
+    toState.mins.set(ent.entity.mins);
 
     /** @type {SV.EntityState} */
     const fromState = cl.getEntityState(ent.num);
@@ -1264,6 +1280,11 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
   return changes;
 };
 
+/**
+ * @param {SV.Edict} clientEdict client edict
+ * @param {MSG.Buffer} msg message stream
+ * @returns {boolean} true, when there were changes written to the message
+ */
 SV.WriteClientdataToMessage = function(clientEdict, msg) {
   // FIXME: there is too much hard wired stuff happening here
   // FIXME: interfaces, edict, entity
@@ -1491,11 +1512,12 @@ SV.SendClientMessages = function() {
       if (!SV.SendClientDatagram()) {
         continue;
       }
-    } else if (!client.sendsignon) {
-      if ((Host.realtime - client.last_message) > 5.0) {
-        if (NET.SendUnreliableMessage(client.netconnection, SV.nop) === -1) {
+    }
+    if (!client.sendsignon) {
+      if ((Host.realtime - client.last_message) > 30.0) {
+        // if (NET.SendUnreliableMessage(client.netconnection, SV.nop) === -1) {
           Host.DropClient(client, true, 'Connectivity issues');
-        }
+        // }
         client.last_message = Host.realtime;
       }
       continue;
@@ -1531,6 +1553,11 @@ SV.SendClientMessages = function() {
   }
 };
 
+/**
+ * Returns the model index of the given model name when precached.
+ * @param {string} name model name
+ * @returns {number} model index
+ */
 SV.ModelIndex = function(name) {
   if (!name) {
     return 0;
@@ -1565,6 +1592,12 @@ SV.HasMap = function(mapname) {
   return Mod.ForName('maps/' + mapname + '.bsp') !== null;
 };
 
+/**
+ * Resets the server and spawns a new map.
+ * This will clear all memory, load the map and spawn the player entities.
+ * @param {string} mapname map name
+ * @returns {boolean} true, when the server was spawned successfully
+ */
 SV.SpawnServer = function(mapname) {
   let i;
 
@@ -1734,6 +1767,12 @@ SV.ShutdownServer = function (isCrashShutdown) {
   Con.Print('Server shut down.\n');
 }
 
+/**
+ * Sends a cvar update to the message stream.
+ * It won’t send the cvar value if it is marked as secret.
+ * @param {MSG.Buffer} msg message stream
+ * @param {Cvar} cvar cvar to write
+ */
 SV.WriteCvar = function(msg, cvar) {
   if (cvar.flags & Cvar.FLAG.SECRET) {
     MSG.WriteString(msg, cvar.name);
@@ -1744,6 +1783,13 @@ SV.WriteCvar = function(msg, cvar) {
   }
 };
 
+/**
+ * Sends a cvar change to all clients.
+ * This is used to notify clients about cvar changes.
+ * It will write the cvar name and value to the message stream.
+ * If the cvar is marked as secret, it will write 'REDACTED' instead of the value.
+ * @param {Cvar} cvar cvar change to write
+ */
 SV.CvarChanged = function(cvar) {
   for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
@@ -2159,7 +2205,7 @@ SV.FlyMove = function(ent, time) {
     const end = ent.entity.origin.copy().add(ent.entity.velocity.copy().multiply(time_left));
     const trace = SV.Move(ent.entity.origin, ent.entity.mins, ent.entity.maxs, end, 0, ent);
     if (trace.allsolid === true) {
-      ent.entity.velocity = Vector.origin;
+      ent.entity.velocity = new Vector();
       return 3;
     }
     if (trace.fraction > 0.0) {
@@ -2187,7 +2233,7 @@ SV.FlyMove = function(ent, time) {
     }
     time_left -= time_left * trace.fraction;
     if (numplanes >= 5) {
-      ent.entity.velocity = Vector.origin;
+      ent.entity.velocity = new Vector();
       return 3;
     }
     planes[numplanes++] = trace.plane.normal.copy();
@@ -2209,7 +2255,7 @@ SV.FlyMove = function(ent, time) {
       ent.entity.velocity = new_velocity;
     } else {
       if (numplanes !== 2) {
-        ent.entity.velocity = Vector.origin;
+        ent.entity.velocity = new Vector();
         return 7;
       }
       dir = planes[0].cross(planes[1]);
@@ -2217,7 +2263,7 @@ SV.FlyMove = function(ent, time) {
       ent.entity.velocity = dir.multiply(dir.dot(ent.entity.velocity));
     }
     if (ent.entity.velocity.dot(primal_velocity) <= 0.0) {
-      ent.entity.velocity = Vector.origin;
+      ent.entity.velocity = new Vector();
       return blocked;
     }
   }
@@ -2443,7 +2489,7 @@ SV.TryUnstick = function(ent, oldvel) {
     }
     ent.entity.origin = ent.entity.origin.set(oldorg);
   }
-  ent.entity.velocity = Vector.origin;
+  ent.entity.velocity = new Vector();
   return 7;
 };
 
@@ -2598,8 +2644,8 @@ SV.Physics_Toss = function(ent) {
     if (ent.entity.velocity[2] < 60.0 || movetype !== SV.movetype.bounce) {
       ent.entity.flags |= SV.fl.onground;
       ent.entity.groundentity = trace.ent.entity;
-      ent.entity.velocity = Vector.origin;
-      ent.entity.avelocity = Vector.origin;
+      ent.entity.velocity = new Vector();
+      ent.entity.avelocity = new Vector();
     }
   }
   SV.CheckWaterTransition(ent);
@@ -3024,6 +3070,9 @@ SV.ReadClientMessage = function(client) {
         Sys.Print('SV.ReadClientMessage: badread\n');
         return false;
       }
+
+      client.last_message = Host.realtime;
+      client.ping_times[client.num_pings++ % client.ping_times.length] = Host.realtime - client.last_message;
 
       const cmd = MSG.ReadChar();
 

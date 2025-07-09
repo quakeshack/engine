@@ -116,6 +116,7 @@ Host.DropClient = function(client, crash, reason) {
     Sys.Print('Client ' + client.name + ' removed\n');
   } else {
     client.dropasap = true;
+    Sys.Print('Client ' + client.name + ' dropped\n');
   }
 
   NET.Close(client.netconnection);
@@ -393,8 +394,6 @@ Host.Init = async function(dedicated) {
 
   await COM.Init();
   Host.InitLocal(dedicated);
-
-  await W.LoadWadFile('gfx.wad');
 
   if (!dedicated) {
     Key.Init();

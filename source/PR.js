@@ -985,9 +985,9 @@ PR.LoadProgs = function() {
         return false;
       }
 
-      const skillFlags = [256, 512, 1024];
+      const skillFlags = [256, 512, 1024, 1024];
 
-      if (skillFlags.some((flag, idx) => Host.current_skill === idx && (spawnflags & flag))) {
+      if (spawnflags & skillFlags[Math.max(0, Math.min(skillFlags.length, Host.current_skill))]) {
         return false;
       }
 

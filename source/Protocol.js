@@ -24,6 +24,7 @@ Protocol.u = {
   skin: 1 << 12,
   effects: 1 << 13,
   solid: 1 << 14,
+  size: 1 << 15,
 };
 
 Protocol.su = {

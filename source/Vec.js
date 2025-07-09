@@ -1,7 +1,68 @@
 /* global Vector */
 
 // eslint-disable-next-line no-global-assign
-Vector = class Vector extends Float32Array {
+Vector = class Vector extends Array {
+  /** Vector origin constant */
+  static origin = (new Vector()).freeze();
+
+  static Quaternion = class Quaternion extends Array {
+    constructor(x = 0.0, y = 0.0, z = 0.0, w = 0.0) {
+      super(4);
+      console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number' && typeof w === 'number', 'not a number');
+      this[0] = x;
+      this[1] = y;
+      this[2] = z;
+      this[3] = w;
+    }
+
+    /**
+     * Creates Quaternion from Vector.
+     * @param {Vector} vector vector
+     * @returns {Vector.Quaternion} the resulting quaternion
+     */
+    fromVector(vector) {
+      return vector.toQuaternion();
+    }
+
+    /**
+     * Compares this Quaternion to the other quaternion.
+     * @param {Vector.Quaternion} other other quaternion
+     * @returns {boolean} true, if equal
+     */
+    equals(other) {
+      return this[0] === other[0] && this[1] === other[1] && this[2] === other[2] && this[3] === other[3];
+    }
+
+    /**
+     * Compares this Quaternion’s component to x, y, z, w.
+     * @param {number} x x
+     * @param {number} y y
+     * @param {number} z z
+     * @param {number} w omega
+     * @returns {boolean} true, if equal
+     */
+    equalsTo(x, y, z, w) {
+      return this[0] === x && this[1] === y && this[2] === z && this[3] === w;
+    }
+
+    /**
+     * Freezes this Quaternion.
+     * @returns {Vector.Quaternion} this
+     */
+    freeze() {
+      Object.freeze(this);
+      return this;
+    }
+
+    /**
+     * Quake-style string representation of a Quaternion
+     * @returns {string} Quake-style string of this quaternion
+     */
+    toString() {
+      return `${this.map((e) => e.toFixed(1)).join(' ')}`;
+    }
+  };
+
   /**
    * Directional vectors.
    */
@@ -34,14 +95,6 @@ Vector = class Vector extends Float32Array {
     this[1] = y;
     this[2] = z;
     return this;
-  }
-
-  /**
-   * A convenience "origin" vector. Returns a fresh [0,0,0].
-   * @returns {Vector} [0, 0, 0]
-   */
-  static get origin() {
-    return new Vector(0.0, 0.0, 0.0); // FIXME: instead of creating new, create a read-only one once
   }
 
   /**
@@ -139,7 +192,7 @@ Vector = class Vector extends Float32Array {
    * Kept as a static because it does not revolve around a single vector.
    * @param {Vector} emins emins
    * @param {Vector} emaxs emaxs
-   * @param {*} p p
+   * @param {*} p plane
    * @returns {number|null} which side, null on error
    */
   static boxOnPlaneSide(emins, emaxs, p) {
@@ -485,11 +538,10 @@ Vector = class Vector extends Float32Array {
    * @returns {number} the distance between this and other
    */
   distanceTo(other) {
-    return Math.sqrt(
-      (other[0] - this[0]) * (other[0] - this[0]) +
-      (other[1] - this[1]) * (other[1] - this[1]) +
-      (other[2] - this[2]) * (other[2] - this[2])
-    );
+    const x = this[0] - other[0];
+    const y = this[1] - other[1];
+    const z = this[2] - other[2];
+    return Math.sqrt(x * x + y * y + z * z);
   }
 
   /**
@@ -556,7 +608,7 @@ Vector = class Vector extends Float32Array {
   /**
    * Set `this` from a quaternion, interpreting that quaternion as Euler angles.
    * (Equivalent to the old Vec.SetQuaternion, but we store to `this`.)
-   * @param {number[4]} quat quaternion
+   * @param {Vector.Quaternion} quat quaternion
    * @returns {Vector} this
    */
   setQuaternion(quat) {
@@ -584,7 +636,7 @@ Vector = class Vector extends Float32Array {
 
   /**
    * Convert these Euler angles (this) into a quaternion [w, x, y, z].
-   * @returns {number[]} quaternion
+   * @returns {Vector.Quaternion} quaternion
    */
   toQuaternion() {
     // Expecting [roll, pitch, yaw] in `this`
@@ -609,7 +661,7 @@ Vector = class Vector extends Float32Array {
     const y = cosRoll * sinPitch * cosYaw + sinRoll * cosPitch * sinYaw;
     const z = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw;
 
-    return [w, x, y, z];
+    return new Vector.Quaternion(w, x, y, z);
   }
 
   /**
@@ -621,6 +673,15 @@ Vector = class Vector extends Float32Array {
     const v = new Vector();
     v.setQuaternion(quat);
     return v;
+  }
+
+  /**
+   * Freezes this Vector.
+   * @returns {Vector} this
+   */
+  freeze() {
+    Object.freeze(this);
+    return this;
   }
 
   /**

@@ -382,8 +382,8 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
     this.spectator = 0;
     this.dead = false;
 
-    /** @type {?Protocol.UserCmd} */
-    this.cmd = null;
+    /** @type {Protocol.UserCmd} */
+    this.cmd = new Protocol.UserCmd();
 
     /** @type {number[]} list of touched edict numbers */
     this.touchindices = [];
@@ -546,7 +546,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
     } else {
       const trace = this._pmove.clipPlayerMove(this.origin, point);
 
-      if (trace.plane.normal[2] < 0.7) {
+      if (trace.plane.normal[2] < 0.7) { // 0.7 ~ 45 degrees
         this.onground = null; // too steep
       } else {
         this.onground = trace.ent;
@@ -585,7 +585,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
       if (contents <= Mod.contents.water) {
         this.waterlevel = 2;
 
-        point[2] = this.origin[2] + 22; // FIXME: 22 is z component of view_ofs
+        point[2] = this.origin[2] + Protocol.default_viewheight; // FIXME: this should be more dynamic
 
         contents = this._pmove.pointContents(point);
 
@@ -1144,7 +1144,7 @@ Pmove.Pmove = class PlayerMove { // pmove_t
    * @returns {Pmove.Pmove} this
    */
   clearEntities() {
-    this.physents.slice(1, this.physents.length);
+    this.physents.length = 1;
     return this;
   }
 

@@ -307,7 +307,10 @@ SCR.UpdateScreen = function() {
 
   SCR.SetUpToDrawConsole();
 
-  if (SCR._requestedAnimationFrames > 3) {
+  if (SCR._requestedAnimationFrames > 0) {
+    if (SCR._requestedAnimationFrames > 1) {
+      console.warning('SCR.UpdateScreen: too many rendering requests active');
+    }
     // too many rendering requests active
     return;
   }
