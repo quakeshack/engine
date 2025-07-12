@@ -177,7 +177,7 @@ Sys.FloatTime = function() {
 window.onload = function() {
   Sys.Init()
     .then(() => Sys.Print('System running!\n'))
-    .catch((err) => Sys.Error('Fatal error during Sys.Init!\n' + err.message));
+    // .catch((err) => Sys.Error('Fatal error during Sys.Init!\n' + err.message));
 };
 
 Sys.oncontextmenu = function(e) {
@@ -193,19 +193,35 @@ Sys.onfocus = function() {
 };
 
 Sys.onkeydown = function(e) {
-  const key = Sys.scantokey[e.keyCode];
+  // Try modern key mapping first
+  let key = Sys.getModernKey(e);
+
+  // Fall back to legacy scantokey mapping
+  if (key == null) {
+    key = Sys.scantokey[e.keyCode];
+  }
+
   if (key == null) {
     return;
   }
+
   Key.Event(key, true);
   e.preventDefault();
 };
 
 Sys.onkeyup = function(e) {
-  const key = Sys.scantokey[e.keyCode];
+  // Try modern key mapping first
+  let key = Sys.getModernKey(e);
+
+  // Fall back to legacy scantokey mapping
+  if (key == null) {
+    key = Sys.scantokey[e.keyCode];
+  }
+
   if (key == null) {
     return;
   }
+
   Key.Event(key);
   e.preventDefault();
 };
@@ -264,4 +280,70 @@ Sys.onwheel = function(e) {
   Key.Event(key, true);
   Key.Event(key);
   e.preventDefault();
+};
+
+Sys.getModernKey = function(event) {
+  // Physical key mappings - maintain WASD regardless of layout
+  const physicalKeys = {
+    'KeyW': Key.k.w || 119,
+    'KeyA': Key.k.a || 97,
+    'KeyS': Key.k.s || 115,
+    'KeyD': Key.k.d || 100,
+    'Space': Key.k.space,
+    'ShiftLeft': Key.k.shift,
+    'ShiftRight': Key.k.shift,
+    'ControlLeft': Key.k.ctrl,
+    'ControlRight': Key.k.ctrl,
+    'AltLeft': Key.k.alt,
+    'AltRight': Key.k.alt,
+    'ArrowUp': Key.k.uparrow,
+    'ArrowDown': Key.k.downarrow,
+    'ArrowLeft': Key.k.leftarrow,
+    'ArrowRight': Key.k.rightarrow,
+    'F1': Key.k.f1,
+    'F2': Key.k.f2,
+    'F3': Key.k.f3,
+    'F4': Key.k.f4,
+    'F5': Key.k.f5,
+    'F6': Key.k.f6,
+    'F7': Key.k.f7,
+    'F8': Key.k.f8,
+    'F9': Key.k.f9,
+    'F10': Key.k.f10,
+    'F11': Key.k.f11,
+    'F12': Key.k.f12
+  };
+
+  // Logical key mappings - use actual key value
+  const logicalKeys = {
+    'Enter': Key.k.enter,
+    'Backspace': Key.k.backspace,
+    'Tab': Key.k.tab,
+    'Escape': Key.k.escape,
+    'Pause': Key.k.pause,
+    'PageUp': Key.k.pgup,
+    'PageDown': Key.k.pgdn,
+    'End': Key.k.end,
+    'Home': Key.k.home,
+    'Insert': Key.k.ins,
+    'Delete': Key.k.del
+  };
+
+  // Check physical mapping first for game controls
+  if (event.code && physicalKeys[event.code]) {
+    return physicalKeys[event.code];
+  }
+
+  // Check logical mapping for special keys
+  if (logicalKeys[event.key]) {
+    return logicalKeys[event.key];
+  }
+
+  // Handle printable characters (for console input)
+  if (event.key && event.key.length === 1) {
+    const char = event.key.toLowerCase();
+    return char.charCodeAt(0);
+  }
+
+  return null;
 };

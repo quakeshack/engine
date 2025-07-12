@@ -321,6 +321,10 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-12
+
+* I asked Claude Sonnet 4 to improve the Key input mess (especially when using a non-us keyboard layout)
+
 ### 2025-07-09
 
 * continued cleaning up loading textures stuff, paved the way to load any modern image as texture

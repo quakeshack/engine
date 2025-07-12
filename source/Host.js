@@ -1091,11 +1091,11 @@ Host.Pause_f = function() {
 };
 
 Host.PreSpawn_f = function() { // signon 1, step 1
-  Con.DPrint(`Host.PreSpawn_f: ${this.client}\n`);
   if (!this.client) {
     Con.Print('prespawn is not valid from the console\n');
     return;
   }
+  Con.DPrint(`Host.PreSpawn_f: ${this.client}\n`);
   const client = Host.client;
   if (client.spawned) {
     Con.Print('prespawn not valid -- already spawned\n');
