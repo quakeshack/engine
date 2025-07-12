@@ -9,11 +9,11 @@ Cmd.functions = [];
 
 Cmd.text = '';
 
-Cmd.Wait_f = function() {
+Cmd.Wait_f = function () {
   Cmd.wait = true;
 };
 
-Cmd.Execute = function() {
+Cmd.Execute = function () {
   let line = ''; let quotes = false;
   while (Cmd.text.length !== 0) {
     const c = Cmd.text[0];
@@ -43,7 +43,7 @@ Cmd.Execute = function() {
 /**
  * Executes all console commands passed by the command line.
  */
-Cmd.StuffCmds_f = function() {
+Cmd.StuffCmds_f = function () {
   let s = false; let build = '';
   for (let i = 0; i < COM.argv.length; ++i) {
     const c = COM.argv[i][0];
@@ -70,7 +70,7 @@ Cmd.StuffCmds_f = function() {
   }
 };
 
-Cmd.Exec_f = function(filename) {
+Cmd.Exec_f = function (filename) {
   if (!filename) {
     Con.Print('exec <filename> : execute a script file\n');
     return;
@@ -84,11 +84,11 @@ Cmd.Exec_f = function(filename) {
   Cmd.text = f + Cmd.text;
 };
 
-Cmd.Echo_f = function() {
+Cmd.Echo_f = function () {
   Con.Print(`${this.args}\n`);
 };
 
-Cmd.Alias_f = function(...argv) {
+Cmd.Alias_f = function (...argv) {
   if (argv.length <= 1) {
     Con.Print('Current alias commands:\n');
     for (let i = 0; i < Cmd.alias.length; ++i) {
@@ -107,10 +107,10 @@ Cmd.Alias_f = function(...argv) {
       value += ' ';
     }
   }
-  Cmd.alias.push({name: argv[1], value: value + '\n'});
+  Cmd.alias.push({ name: argv[1], value: value + '\n' });
 };
 
-Cmd.Init = function() {
+Cmd.Init = function () {
   Cmd.functions = [];
 
   Cmd.AddCommand('stuffcmds', Cmd.StuffCmds_f);
@@ -121,14 +121,14 @@ Cmd.Init = function() {
   Cmd.AddCommand('wait', Cmd.Wait_f);
 };
 
-Cmd.Shutdown = function() {
+Cmd.Shutdown = function () {
   Cmd.functions = [];
 };
 
-Cmd.TokenizeString = function(text) {
+Cmd.TokenizeString = function (text) {
   const argv = [];
   let i; let c;
-  for (;;) {
+  for (; ;) {
     for (i = 0; i < text.length; ++i) {
       c = text.charCodeAt(i);
       if ((c > 32) || (c === 10)) {
@@ -147,7 +147,7 @@ Cmd.TokenizeString = function(text) {
   return argv;
 };
 
-Cmd.HasCommand = function(name) {
+Cmd.HasCommand = function (name) {
   for (let i = 0; i < Cmd.functions.length; ++i) {
     if (Cmd.functions[i].name === name) {
       return true;
@@ -157,7 +157,7 @@ Cmd.HasCommand = function(name) {
   return false;
 };
 
-Cmd.AddCommand = function(name, command) {
+Cmd.AddCommand = function (name, command) {
   console.assert(Cvar.FindVar(name) === null, 'command name must not be taken by a cvar', name);
 
   for (let i = 0; i < Cmd.functions.length; ++i) {
@@ -167,10 +167,10 @@ Cmd.AddCommand = function(name, command) {
     }
   }
 
-  Cmd.functions.push({name: name, command: command});
+  Cmd.functions.push({ name: name, command: command });
 };
 
-Cmd.CompleteCommand = function(partial) {
+Cmd.CompleteCommand = function (partial) {
   if (!partial) {
     return;
   }
@@ -207,9 +207,9 @@ Cmd.Context = class ConsoleCommandContext {
     Cmd.ForwardToServer.call(this);
     return true;
   }
-}
+};
 
-Cmd.ExecuteString = function(text, client = null) {
+Cmd.ExecuteString = function (text, client = null) {
   const argv = Cmd.TokenizeString(text);
 
   if (argv.length === 0) {
@@ -254,7 +254,7 @@ Cmd.ExecuteString = function(text, client = null) {
  * To forward a console command, use `this.forward();`.
  * NOTE: Forwarded commands must be allowlisted in `SV.ReadClientMessage`.
  */
-Cmd.ForwardToServer = function() {
+Cmd.ForwardToServer = function () {
   if (Host.dedicated.value) {
     return;
   }
