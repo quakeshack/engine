@@ -85,7 +85,7 @@ Sys.Init = async function() {
   Sys.scantokey[221] = 93; // ]
   Sys.scantokey[222] = 39; // '
 
-  Sys.oldtime = Date.now() * 0.001;
+  Sys.#oldtime = Date.now() * 0.001;
 
   Sys.Print('Host.Init\n');
 
@@ -171,7 +171,7 @@ Sys.Error = function(text) {
 };
 
 Sys.FloatTime = function() {
-  return Date.now() * 0.001 - Sys.oldtime;
+  return Date.now() * 0.001 - Sys.#oldtime;
 };
 
 window.onload = function() {

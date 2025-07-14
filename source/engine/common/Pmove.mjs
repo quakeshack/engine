@@ -1,16 +1,22 @@
-/* global Mod, Pmove, Protocol, SV, Vector */
 
-/**
+/*
  * Pmove is a reimplementation of the QuakeWorld’s player movement code.
  * Original sources are: pmove.c, pmovetst.c
  */
-// eslint-disable-next-line no-global-assign
-Pmove = {};
+
+import { registry } from '../registry.mjs';
+import Vector, { DirectionalVectors } from './Vector.mjs';
+import * as Protocol from '../network/Protocol.mjs';
+
+
+export const DIST_EPSILON = 0.03125;
+export const STOP_EPSILON = 0.1;
+export const STEPSIZE = 18.0;
 
 /**
  * Pmove variable defaults.
  */
-Pmove.MoveVars = class MoveVars { // movevars_t
+export class MoveVars { // movevars_t
   constructor() {
     this.gravity = 800;
     this.stopspeed = 100;
@@ -23,9 +29,20 @@ Pmove.MoveVars = class MoveVars { // movevars_t
     this.waterfriction = 4;
     this.entgravity = 0;
   }
-}
+};
 
-Pmove.Trace = class Trace { // pmtrace_t
+export class Plane { // mplane_t
+  constructor() {
+    this.normal = new Vector();
+    this.dist = 0;
+    /** @type {number} for texture axis selection and fast side tests */
+    this.type = 0;
+    /** @type {number} signx + signy<<1 + signz<<1 */
+    this.signBits = 0;
+  }
+};
+
+export class Trace { // pmtrace_t
   constructor() {
     /** if true, plane is not valid */
     this.allsolid = true;
@@ -36,7 +53,7 @@ Pmove.Trace = class Trace { // pmtrace_t
     /** final position */
     this.endpos = new Vector();
     /** surface normal at impact */
-    this.plane = new Pmove.Plane();
+    this.plane = new Plane();
     /** @type {?number} edict number the surface is on, if applicable */
     this.ent = null;
     /** true if the surface is in a open area */
@@ -47,11 +64,11 @@ Pmove.Trace = class Trace { // pmtrace_t
 
   /**
    * Sets this trace to the other trace.
-   * @param {Pmove.Trace} other other trace
-   * @returns {Pmove.Trace} this
+   * @param {Trace} other other trace
+   * @returns {Trace} this
    */
   set(other) {
-    console.assert(other instanceof Pmove.Trace, 'other must be a Trace');
+    console.assert(other instanceof Trace, 'other must be a Trace');
 
     this.allsolid = other.allsolid;
     this.startsolid = other.startsolid;
@@ -68,59 +85,48 @@ Pmove.Trace = class Trace { // pmtrace_t
 
   /**
    * Creates a copy.
-   * @returns {Pmove.Trace} copy of this trace
+   * @returns {Trace} copy of this trace
    */
   copy() {
-    const trace = new Pmove.Trace();
+    const trace = new Trace();
     trace.set(this);
     return trace;
   }
 };
 
-Pmove.ClipNode = class ClipNode { // dclipnode_t
+export class ClipNode { // dclipnode_t
   constructor(planeNum = 0) {
     this.planeNum = planeNum;
     this.children = [0, 0];
   }
 };
 
-Pmove.Plane = class Plane { // mplane_t
-  constructor() {
-    this.normal = new Vector();
-    this.dist = 0;
-    /** @type {number} for texture axis selection and fast side tests */
-    this.type = 0;
-    /** @type {number} signx + signy<<1 + signz<<1 */
-    this.signBits = 0;
-  }
-};
-
-Pmove.Hull = class Hull { // hull_t
+export class Hull { // hull_t
   constructor() {
     this.clipMins = new Vector();
     this.clipMaxs = new Vector();
     this.firstClipNode = 0;
     this.lastClipNode = 0;
-    /** @type {Pmove.ClipNode[]} */
+    /** @type {ClipNode[]} */
     this.clipNodes = [];
-    /** @type {Pmove.Plane[]} */
+    /** @type {Plane[]} */
     this.planes = [];
   }
 
   static fromModelHull(hull) {
-    const newHull = new Pmove.Hull();
+    const newHull = new Hull();
     newHull.clipMins = hull.clip_mins.copy();
     newHull.clipMaxs = hull.clip_maxs.copy();
     newHull.firstClipNode = hull.firstclipnode;
     newHull.lastClipNode = hull.lastclipnode;
     newHull.clipNodes = hull.clipnodes.map((clipnode) => {
-      const node = new Pmove.ClipNode(clipnode.planenum);
+      const node = new ClipNode(clipnode.planenum);
       node.children[0] = clipnode.children[0];
       node.children[1] = clipnode.children[1];
       return node;
     });
     newHull.planes = hull.planes.map((plane) => {
-      const newPlane = new Pmove.Plane();
+      const newPlane = new Plane();
       newPlane.normal = plane.normal.copy();
       newPlane.dist = plane.dist;
       newPlane.type = plane.type;
@@ -173,6 +179,8 @@ Pmove.Hull = class Hull { // hull_t
    * @returns {boolean} true means going down, false means going up
    */
   check(p1f, p2f, p1, p2, trace, num = this.firstClipNode) {
+    const Mod = registry.Mod;
+
     // check for empty
     if (num < 0) {
       if (num !== Mod.contents.solid) {
@@ -207,7 +215,7 @@ Pmove.Hull = class Hull { // hull_t
     }
 
     // put the crosspoint DIST_EPSILON pixels on the near side
-    let frac = Math.max(0.0, Math.min(1.0, (t1 + (t1 < 0.0 ? Pmove.Pmove.DIST_EPSILON : -Pmove.Pmove.DIST_EPSILON)) / (t1 - t2))); // epsilon value of 0.03125 = 1/32
+    let frac = Math.max(0.0, Math.min(1.0, (t1 + (t1 < 0.0 ? DIST_EPSILON : -DIST_EPSILON)) / (t1 - t2))); // epsilon value of 0.03125 = 1/32
     let midf = p1f + (p2f - p1f) * frac;
     const mid = new Vector(p1[0] + frac * (p2[0] - p1[0]), p1[1] + frac * (p2[1] - p1[1]), p1[2] + frac * (p2[2] - p1[2]));
     const side = t1 < 0.0 ? 1 : 0;
@@ -265,29 +273,29 @@ Pmove.Hull = class Hull { // hull_t
  * BSP trees instead of being compared directly.
  * Use setSize() to set the box size.
  */
-Pmove.BoxHull = class BoxHull extends Pmove.Hull {
+export class BoxHull extends Hull {
   constructor() {
     super();
 
     this.clipNodes = [
-      new Pmove.ClipNode(0),
-      new Pmove.ClipNode(1),
-      new Pmove.ClipNode(2),
-      new Pmove.ClipNode(3),
-      new Pmove.ClipNode(4),
-      new Pmove.ClipNode(5),
+      new ClipNode(0),
+      new ClipNode(1),
+      new ClipNode(2),
+      new ClipNode(3),
+      new ClipNode(4),
+      new ClipNode(5),
     ];
 
     this.firstClipNode = 0;
     this.lastClipNode = 5;
 
     this.planes = [
-      new Pmove.Plane(), // 0
-      new Pmove.Plane(), // 1
-      new Pmove.Plane(), // 2
-      new Pmove.Plane(), // 3
-      new Pmove.Plane(), // 4
-      new Pmove.Plane(), // 5
+      new Plane(), // 0
+      new Plane(), // 1
+      new Plane(), // 2
+      new Plane(), // 3
+      new Plane(), // 4
+      new Plane(), // 5
     ];
 
     for (let i = 0; i < 6; i++) {
@@ -304,7 +312,7 @@ Pmove.BoxHull = class BoxHull extends Pmove.Hull {
   /**
    * @param {Vector} mins mins
    * @param {Vector} maxs maxs
-   * @returns {Pmove.BoxHull} this
+   * @returns {BoxHull} this
    */
   setSize(mins, maxs) {
     console.assert(mins instanceof Vector, 'mins must be a Vector');
@@ -316,12 +324,12 @@ Pmove.BoxHull = class BoxHull extends Pmove.Hull {
 
     return this;
   }
-}
+};
 
-Pmove.PhysEnt = class PhysEnt { // physent_t
-  /** @type {Pmove.Pmove} */
+export class PhysEnt { // physent_t
+  /** @type {Pmove} */
   constructor(pmove) {
-    /** only for bsp models @type {Pmove.Hulls[]} */
+    /** only for bsp models @type {Hull[]} */
     this.hulls = [];
     /** origin */
     this.origin = new Vector();
@@ -332,11 +340,11 @@ Pmove.PhysEnt = class PhysEnt { // physent_t
     /** actual edict index, used to map back to edicts @type {?number} */
     this.edictId = null;
 
-    /** @private */
+    /** @type {WeakRef<Pmove>} @private */
     this._pmove_wf = new WeakRef(pmove);
   }
 
-  /** @returns {Pmove.Pmove} pmove @private */
+  /** @returns {Pmove} pmove @private */
   get _pmove() {
     return this._pmove_wf.deref();
   }
@@ -344,15 +352,15 @@ Pmove.PhysEnt = class PhysEnt { // physent_t
   /**
    * Returns clipping hull for this entity.
    * NOTE: This is not async/wait safe, since it will modify pmove’s boxHull in-place.
-   * @returns {Pmove.Hull} hull
+   * @returns {Hull} hull
    */
   getClippingHull() {
     if (this.hulls.length > 0) {
       return this.hulls[Mod.hull.player];
     }
 
-    const mins = this.mins.copy().subtract(Pmove.Pmove.PLAYER_MAXS);
-    const maxs = this.maxs.copy().subtract(Pmove.Pmove.PLAYER_MINS);
+    const mins = this.mins.copy().subtract(Pmove.PLAYER_MAXS);
+    const maxs = this.maxs.copy().subtract(Pmove.PLAYER_MINS);
 
     return this._pmove.boxHull.setSize(mins, maxs);
   }
@@ -363,7 +371,7 @@ Pmove.PhysEnt = class PhysEnt { // physent_t
 /**
  * Standard Quake 1 movement logic.
  */
-Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
+export class PmovePlayer { // pmove_t (player state only)
   constructor(pmove) {
     // former global vars
     this.frametime = 0;
@@ -388,14 +396,14 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
     /** @type {number[]} list of touched edict numbers */
     this.touchindices = [];
 
-    /** @type {Vector.DirectionalVectors} @private */
+    /** @type {DirectionalVectors} @private */
     this._angleVectors = null;
 
-    /** @private */
+    /** @type {WeakRef<Pmove>} @private */
     this._pmove_wf = new WeakRef(pmove);
   }
 
-  /** @returns {Pmove.Pmove} pmove @private */
+  /** @returns {Pmove} pmove @private */
   get _pmove() {
     return this._pmove_wf.deref();
   }
@@ -420,7 +428,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
     // set onground, watertype, and waterlevel
     this._categorizePosition();
 
-    if (this.waterlevel == 2) {
+    if (this.waterlevel === 2) {
       this._checkWaterJump();
     }
 
@@ -570,7 +578,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
     this.waterlevel = 0;
     this.watertype = Mod.contents.empty;
 
-    point[2] = this.origin[2] + Pmove.Pmove.PLAYER_MINS[2] + 1.0;
+    point[2] = this.origin[2] + Pmove.PLAYER_MINS[2] + 1.0;
 
     let contents = this._pmove.pointContents(point);
 
@@ -578,7 +586,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
       this.watertype = contents;
       this.waterlevel = 1;
 
-      point[2] = this.origin[2] + (Pmove.Pmove.PLAYER_MINS[2] + Pmove.Pmove.PLAYER_MAXS[2]) / 2.0;
+      point[2] = this.origin[2] + (Pmove.PLAYER_MINS[2] + Pmove.PLAYER_MAXS[2]) / 2.0;
 
       contents = this._pmove.pointContents(point);
 
@@ -665,7 +673,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
 
     // move up a step
     dest.set(this.origin);
-    dest[2] += Pmove.Pmove.STEPSIZE;
+    dest[2] += STEPSIZE;
 
     const upTrace = this._pmove.clipPlayerMove(this.origin, dest);
 
@@ -679,7 +687,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
 
     // correct step height
     dest.set(this.origin);
-    dest[2] -= Pmove.Pmove.STEPSIZE;
+    dest[2] -= STEPSIZE;
 
     const stepTrace = this._pmove.clipPlayerMove(this.origin, dest);
 
@@ -732,7 +740,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
       const end = new Vector();
       start[0] = end[0] = this.origin[0] + this.velocity[0] / speed * 16;
       start[1] = end[1] = this.origin[1] + this.velocity[1] / speed * 16;
-      start[2] = this.origin[2] + Pmove.Pmove.PLAYER_MINS[2];
+      start[2] = this.origin[2] + Pmove.PLAYER_MINS[2];
       stop[2] = start[2] - 34; // CR: absolutely no clue where 34 is coming from
 
       const trace = this._pmove.clipPlayerMove(start, end);
@@ -773,7 +781,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
     for (let i = 0; i < 3; i++) {
       change = normal[i] * backoff;
       veloOut[i] = veloIn[i] - change;
-      if (Math.abs(veloOut[i]) < Pmove.Pmove.STOP_EPSILON) { // CR: inaccurate porting
+      if (Math.abs(veloOut[i]) < STOP_EPSILON) { // CR: inaccurate porting
         veloOut[i] = 0;
       }
     }
@@ -869,7 +877,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
 
       timeLeft -= timeLeft * trace.fraction;
 
-      if (planes.length >= Pmove.Pmove.MAX_CLIP_PLANES) {
+      if (planes.length >= Pmove.MAX_CLIP_PLANES) {
         console.warn('PlayerMovePlayer._flyMove: exceeded max planes', planes.length);
         this.velocity.clear();
         break; // too many planes
@@ -954,7 +962,7 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
     const dest = this.velocity.copy().multiply(this.frametime).add(this.origin);
     const start = dest.copy();
 
-    start[2] += Pmove.Pmove.STEPSIZE + 1;
+    start[2] += STEPSIZE + 1;
 
     const trace = this._pmove.clipPlayerMove(start, dest);
 
@@ -1010,17 +1018,20 @@ Pmove.PmovePlayer = class PlayerMovePlayer { // pmove_t (player state only)
   _spectatorMove() { // pmove.c/SpectatorMove
     // TODO
   }
-}
+};
 
 /**
  * PlayerMove class.
  * This class is used to move the player in the world and also predict movement on the client side.
  */
-Pmove.Pmove = class PlayerMove { // pmove_t
-  static DIST_EPSILON = 0.03125;
-  static STOP_EPSILON = 0.1;
+export class Pmove { // pmove_t
+  /** @deprecated import DIST_EPSILON instead */
+  static DIST_EPSILON = DIST_EPSILON;
+  /** @deprecated import STOP_EPSILON instead */
+  static STOP_EPSILON = STOP_EPSILON;
 
-  static STEPSIZE = 18.0;
+  /** @deprecated import STEPSIZE instead */
+  static STEPSIZE = STEPSIZE;
 
   static MAX_CLIP_PLANES = 5;
 
@@ -1029,22 +1040,16 @@ Pmove.Pmove = class PlayerMove { // pmove_t
 
   static MAX_PHYSENTS = 32;
 
-  constructor() {
-    // world state
-    /** @type {Pmove.PhysEnt[]} 0 - world */
-    this.physents = [];
-
-    /** @private */
-    this.boxHull = new Pmove.BoxHull();
-
-    this.movevars = new Pmove.MoveVars();
-  }
+  /** @type {PhysEnt[]} 0 - world */
+  physents = [];
+  boxHull = new BoxHull();
+  movevars = new MoveVars();
 
   pointContents(point) {
-    console.assert(this.physents[0] instanceof Pmove.PhysEnt, 'world physent');
+    console.assert(this.physents[0] instanceof PhysEnt, 'world physent');
 
     const hull = this.physents[0].hulls[Mod.hull.normal]; // world
-    console.assert(hull instanceof Pmove.Hull, 'world hull');
+    console.assert(hull instanceof Hull, 'world hull');
 
     return hull.pointContents(point);
   }
@@ -1056,7 +1061,7 @@ Pmove.Pmove = class PlayerMove { // pmove_t
   isValidPlayerPosition(position) {
     for (const pe of this.physents) {
       const hull = pe.getClippingHull();
-      console.assert(hull instanceof Pmove.Hull, 'physent hull');
+      console.assert(hull instanceof Hull, 'physent hull');
 
       const test = position.copy().subtract(pe.origin);
 
@@ -1072,17 +1077,17 @@ Pmove.Pmove = class PlayerMove { // pmove_t
    * Attempts to move the player from start to end.
    * @param {Vector} start starting point
    * @param {Vector} end end point (e.g. start + velocity * frametime)
-   * @returns {Pmove.Trace} trace object
+   * @returns {Trace} trace object
    */
   clipPlayerMove(start, end) {
-    const totalTrace = new Pmove.Trace();
+    const totalTrace = new Trace();
 
     totalTrace.endpos.set(end);
 
     for (let i = 0; i < this.physents.length; i++) {
       const pe = this.physents[i];
       const hull = pe.getClippingHull();
-      console.assert(hull instanceof Pmove.Hull, 'physent hull');
+      console.assert(hull instanceof Hull, 'physent hull');
 
       const offset = pe.origin.copy();
 
@@ -1090,7 +1095,7 @@ Pmove.Pmove = class PlayerMove { // pmove_t
       const end_l = end.copy().subtract(offset);
 
       // fill in a default trace
-      const trace = new Pmove.Trace();
+      const trace = new Trace();
       trace.endpos.set(end);
 
       // trace a line through the apropriate clipping hull
@@ -1120,7 +1125,7 @@ Pmove.Pmove = class PlayerMove { // pmove_t
    * Sets worldmodel.
    * This will automatically reset all physents.
    * @param {*} model worldmodel
-   * @returns {Pmove.Pmove} this
+   * @returns {Pmove} this
    */
   setWorldmodel(model) {
     console.assert(model, 'model');
@@ -1128,10 +1133,10 @@ Pmove.Pmove = class PlayerMove { // pmove_t
 
     this.physents = [];
 
-    const pe = new Pmove.PhysEnt(this);
+    const pe = new PhysEnt(this);
 
     for (const modelHull of model.hulls) {
-      pe.hulls.push(Pmove.Hull.fromModelHull(modelHull));
+      pe.hulls.push(Hull.fromModelHull(modelHull));
     }
 
     this.physents.push(pe);
@@ -1141,7 +1146,7 @@ Pmove.Pmove = class PlayerMove { // pmove_t
 
   /**
    * Clears all entities.
-   * @returns {Pmove.Pmove} this
+   * @returns {Pmove} this
    */
   clearEntities() {
     this.physents.length = 1;
@@ -1152,10 +1157,10 @@ Pmove.Pmove = class PlayerMove { // pmove_t
    * Adds an entity (client or server) to physents.
    * @param {EntityInterface} entity actual entity
    * @param {?Model} model model must be provided when entity is SOLID_BSP
-   * @returns {Pmove.Pmove} this
+   * @returns {Pmove} this
    */
   addEntity(entity, model = null) {
-    const pe = new Pmove.PhysEnt(this);
+    const pe = new PhysEnt(this);
 
     console.assert(entity.origin instanceof Vector, 'valid entity origin', entity.origin);
 
@@ -1163,7 +1168,7 @@ Pmove.Pmove = class PlayerMove { // pmove_t
 
     if (model !== null) {
       for (const modelHull of model.hulls) {
-        pe.hulls.push(Pmove.Hull.fromModelHull(modelHull));
+        pe.hulls.push(Hull.fromModelHull(modelHull));
       }
     } else {
       console.assert(entity.mins instanceof Vector, 'valid entity mins', entity.mins);
@@ -1184,20 +1189,26 @@ Pmove.Pmove = class PlayerMove { // pmove_t
 
   /**
    * Returns a new player move engine.
-   * @returns {Pmove.PmovePlayer} player move engine
+   * @returns {PmovePlayer} player move engine
    */
   newPlayerMove() {
     // CR: in future we could make this selectable what kind of player move engine we want
-    return new Pmove.PmovePlayer(this);
+    return new PmovePlayer(this);
   }
 };
 
-Pmove.TestServerside = function() {
-  const pm = new Pmove.Pmove();
+/**
+ * Test function for serverside Pmove.
+ * @returns {Pmove} movevars
+ */
+export function TestServerside() {
+  const { SV } = registry.SV;
+
+  const pm = new Pmove();
 
   pm.setWorldmodel(SV.server.worldmodel);
 
-  console.assert(pm.physents[0] instanceof Pmove.PhysEnt, 'world physent is present');
+  console.assert(pm.physents[0] instanceof PhysEnt, 'world physent is present');
   console.assert(pm.physents[0].hulls.length === SV.server.worldmodel.hulls.length, 'all hulls copied');
 
   // we add entities and check if they have been added properly
@@ -1218,13 +1229,13 @@ Pmove.TestServerside = function() {
 
   // Test PlayerMove 64 units into the void
   const playerMoveTraceIntoSpace = pm.clipPlayerMove(origin, new Vector(origin[0], origin[1], 999999));
-  console.assert(playerMoveTraceIntoSpace instanceof Pmove.Trace, 'playerMoveTrace is a Trace');
+  console.assert(playerMoveTraceIntoSpace instanceof Trace, 'playerMoveTrace is a Trace');
   console.assert(playerMoveTraceIntoSpace.ent === 0, 'trace stopped at world');
   console.assert(playerMoveTraceIntoSpace.fraction < 1.0, 'fraction cannot be 1.0');
 
   // Test PlayerMove 64 units above the player
   const playerMoveTraceHigher = pm.clipPlayerMove(origin, new Vector(origin[0], origin[1], origin[2] + 64.0));
-  console.assert(playerMoveTraceHigher instanceof Pmove.Trace, 'playerMoveTrace is a Trace');
+  console.assert(playerMoveTraceHigher instanceof Trace, 'playerMoveTrace is a Trace');
   console.assert(playerMoveTraceHigher.ent === null, 'trace stopped in air');
   console.assert(playerMoveTraceHigher.fraction === 1.0, 'fraction must be 1.0');
 

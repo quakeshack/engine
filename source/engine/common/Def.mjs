@@ -1,14 +1,10 @@
-/* global Def */
 
-// eslint-disable-next-line no-global-assign
-Def = {};
+export const version = '1.1.0';
 
-Def.version = '1.1.0';
+export const max_edicts = 600;
+export const max_clients = 32;
 
-Def.max_edicts = 600;
-Def.max_clients = 32;
-
-Def.stat = Object.freeze({
+export const stat = Object.freeze({
   health: 0,
   frags: 1,
   weapon: 2,
@@ -26,7 +22,7 @@ Def.stat = Object.freeze({
   monsters: 14,
 });
 
-Def.it = Object.freeze({
+export const it = Object.freeze({
   shotgun: 1,
   super_shotgun: 2,
   nailgun: 4,
@@ -52,7 +48,7 @@ Def.it = Object.freeze({
   quad: 4194304,
 });
 
-Def.rit = Object.freeze({
+export const rit = Object.freeze({
   shells: 128,
   nails: 256,
   rockets: 512,
@@ -74,7 +70,7 @@ Def.rit = Object.freeze({
   superhealth: 2147483648,
 });
 
-Def.hit = Object.freeze({
+export const hit = Object.freeze({
   proximity_gun_bit: 16,
   mjolnir_bit: 7,
   laser_cannon_bit: 23,
@@ -85,4 +81,3 @@ Def.hit = Object.freeze({
   empathy_shields: 67108864,
 });
 
-Object.freeze(Def);

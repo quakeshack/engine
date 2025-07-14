@@ -1,131 +1,30 @@
-/* global Con, Host, CL, Cmd, Cvar, Q, NET, SV, Sys, Loop, WEBS, MSG */
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import Q from '../common/Q.mjs';
+import { SzBuffer } from './MSG.mjs';
+import { LoopDriver, QSocket, WebSocketDriver } from './NetworkDrivers.mjs';
 
-// eslint-disable-next-line no-global-assign
-NET = {};
+const NET = {};
 
-NET.BaseDriver = class BaseDriver {
-  constructor() {
-    this.initialized = false;
-    this.driverlevel = null;
-  }
-
-  Init(driverlevel) {
-    this.driverlevel = driverlevel;
-    return false;
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  Connect(host) {
-    return null;
-  }
-
-  CheckNewConnections() {
-    return null;
-  }
-
-  CheckForResend() {
-    return -1;
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  GetMessage(qsocket) {
-    return 0;
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  SendMessage(qsocket, data) {
-    return -1;
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  SendUnreliableMessage(qsocket, data) {
-    return -1;
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  CanSendMessage(qsocket) {
-    return false;
-  }
-
-  Close(qsocket) {
-    qsocket.state = NET.QSocket.STATE_DISCONNECTED;
-  }
-
-  Listen() {
-  }
-};
+export default NET;
 
 NET.FormatIP = function(ip, port) {
   return ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;
 };
 
 NET.activeSockets = [];
-NET.message = new MSG.Buffer(8192, 'NET.message');
+NET.message = new SzBuffer(8192, 'NET.message');
 NET.activeconnections = 0;
 NET.listening = false;
-
-NET.QSocket = (class QSocket {
-  static STATE_NEW = 'new';
-  static STATE_CONNECTING = 'connecting';
-  static STATE_CONNECTED = 'connected';
-  static STATE_DISCONNECTING = 'disconnecting';
-  static STATE_DISCONNECTED = 'disconnected';
-
-  constructor(time, driver) {
-    this.connecttime = time;
-    this.lastMessageTime = time;
-    this.driver = driver;
-    this.address = null;
-    this.state = QSocket.STATE_NEW;
-
-    this.receiveMessage = new Uint8Array(new ArrayBuffer(8192));
-    this.receiveMessageLength = 0;
-
-    this.sendMessage = new Uint8Array(new ArrayBuffer(8192));
-    this.sendMessageLength = 0;
-  }
-
-  toString() {
-    return `QSocket(${this.address}, ${this.state})`;
-  }
-
-  _getDriver() {
-    if (!NET.drivers[this.driver]) {
-      throw new Error('This QSocket has no valid driver anymore!');
-    }
-
-    return NET.drivers[this.driver]; // FIXME: global ref
-  }
-
-  GetMessage() {
-    return this._getDriver().GetMessage(this);
-  }
-
-  SendMessage(data) {
-    return this._getDriver().SendMessage(this, data);
-  }
-
-  SendUnreliableMessage(data) {
-    return this._getDriver().SendUnreliableMessage(this, data);
-  }
-
-  CanSendMessage() {
-    return this._getDriver().CanSendMessage(this);
-  }
-
-  Close() {
-    return this._getDriver().Close(this);
-  }
-});
 
 NET.NewQSocket = function() {
   let i;
   for (i = 0; i < NET.activeSockets.length; ++i) {
-    if (NET.activeSockets[i].state === NET.QSocket.STATE_DISCONNECTED) {
+    if (NET.activeSockets[i].state === QSocket.STATE_DISCONNECTED) {
       break;
     }
   }
-  NET.activeSockets[i] = new NET.QSocket(NET.time, NET.driverlevel);
+  NET.activeSockets[i] = new QSocket(NET.time, NET.driverlevel);
   return NET.activeSockets[i];
 };
 
@@ -206,7 +105,7 @@ NET.Close = function(sock) {
   if (sock == null) {
     return;
   }
-  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
+  if (sock.state === QSocket.STATE_DISCONNECTED) {
     return;
   }
   NET.time = Sys.FloatTime();
@@ -217,7 +116,7 @@ NET.GetMessage = function(sock) {
   if (sock == null) {
     return -1;
   }
-  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
+  if (sock.state === QSocket.STATE_DISCONNECTED) {
     Con.DPrint('NET.GetMessage: disconnected socket\n');
     return -1;
   }
@@ -240,7 +139,7 @@ NET.SendMessage = function(sock, data) {
   if (sock == null) {
     return -1;
   }
-  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
+  if (sock.state === QSocket.STATE_DISCONNECTED) {
     Con.DPrint('NET.SendMessage: disconnected socket\n');
     return -1;
   }
@@ -253,7 +152,7 @@ NET.SendUnreliableMessage = function(sock, data) {
   if (sock == null) {
     return -1;
   }
-  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
+  if (sock.state === QSocket.STATE_DISCONNECTED) {
     Con.DPrint('NET.SendUnreliableMessage: disconnected socket\n');
     return -1;
   }
@@ -266,7 +165,7 @@ NET.CanSendMessage = function(sock) {
   if (sock == null) {
     return;
   }
-  if (sock.state === NET.QSocket.STATE_DISCONNECTED) {
+  if (sock.state === QSocket.STATE_DISCONNECTED) {
     return;
   }
   NET.time = Sys.FloatTime();
@@ -326,14 +225,14 @@ NET.SendToAll = function(data) {
 NET.Init = function() {
   NET.time = Sys.FloatTime();
 
-  NET.messagetimeout = new Cvar('net_messagetimeout', 5000);
+  NET.messagetimeout = new Cvar('net_messagetimeout', '5000');
   NET.hostname = new Cvar('hostname', 'UNNAMED', Cvar.FLAG.SERVER, 'Descriptive name of the server.');
 
   Cmd.AddCommand('maxplayers', NET.MaxPlayers_f);
   Cmd.AddCommand('listen', NET.Listen_f);
   Cmd.AddCommand('net_drivers', NET.Drivers_f);
 
-  NET.drivers = [new Loop.Driver(), new WEBS.Driver()];
+  NET.drivers = [new LoopDriver(), new WebSocketDriver()];
   for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
     NET.drivers[NET.driverlevel].Init(NET.driverlevel);
   }
@@ -360,7 +259,7 @@ NET.Listen_f = function(isListening) {
     return;
   }
 
-  NET.listening = Q.atoi(isListening) ? true : false;
+  NET.listening = isListening ? true : false;
 
   for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
     if (!NET.drivers[NET.driverlevel].initialized) {

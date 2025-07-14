@@ -1,11 +1,14 @@
-/* global V, Con, Mod, Host, CL, Cmd, Cvar, Vector, Q, MSG, SCR, R, Chase, Def, V */
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import * as Def from '../common/Def.mjs';
 
-// eslint-disable-next-line no-global-assign
-V = {};
+const V = {};
+
+export default V;
 
 V.dmg_time = 0.0;
 
-V.CalcRoll = function(angles, velocity) { // FIXME: this is required for dedicated as well
+V.CalcRoll = function (angles, velocity) { // FIXME: this is required for dedicated as well
   const { right } = angles.angleVectors();
   let side = velocity[0] * right[0] + velocity[1] * right[1] + velocity[2] * right[2];
   const sign = side < 0 ? -1 : 1;
@@ -16,12 +19,12 @@ V.CalcRoll = function(angles, velocity) { // FIXME: this is required for dedicat
   return V.rollangle.value * sign;
 };
 
-V.CalcBob = function() {
+V.CalcBob = function () {
   if ((V.bobcycle.value <= 0.0) ||
-		(V.bobcycle.value >= 1.0) ||
-		(V.bobup.value <= 0.0) ||
-		(V.bobup.value >= 1.0) ||
-		(V.bob.value === 0.0)) {
+    (V.bobcycle.value >= 1.0) ||
+    (V.bobup.value <= 0.0) ||
+    (V.bobup.value >= 1.0) ||
+    (V.bob.value === 0.0)) {
     return 0.0;
   }
 
@@ -41,7 +44,7 @@ V.CalcBob = function() {
   return bob;
 };
 
-V.StartPitchDrift = function() {
+V.StartPitchDrift = function () {
   if (CL.state.laststop === CL.state.time) {
     return;
   }
@@ -52,13 +55,13 @@ V.StartPitchDrift = function() {
   }
 };
 
-V.StopPitchDrift = function() {
+V.StopPitchDrift = function () {
   CL.state.laststop = CL.state.time;
   CL.state.nodrift = true;
   CL.state.pitchvel = 0.0;
 };
 
-V.DriftPitch = function() {
+V.DriftPitch = function () {
   if ((Host.noclip_anglehack === true) || (CL.state.onground !== true) || (CL.cls.demoplayback === true)) {
     CL.state.driftmove = 0.0;
     CL.state.pitchvel = 0.0;
@@ -108,7 +111,7 @@ V.cshift_lava = [255.0, 80.0, 0.0, 150.0];
 
 V.blend = [0.0, 0.0, 0.0, 0.0];
 
-V.ParseDamage = function() {
+V.ParseDamage = function () {
   const armor = MSG.ReadByte();
   const blood = MSG.ReadByte();
   const ent = CL.state.playerentity;
@@ -145,14 +148,14 @@ V.ParseDamage = function() {
   V.dmg_time = V.kicktime.value;
 };
 
-V.cshift_f = function(...args) {
+V.cshift_f = function (...args) {
   const cshift = V.cshift_empty;
   for (let i = 0; i < Math.min(args.length, cshift.length); i++) {
     cshift[i] = Q.atoi(args[i]);
   }
 };
 
-V.BonusFlash_f = function() {
+V.BonusFlash_f = function () {
   const cshift = CL.state.cshifts[CL.cshift.bonus];
   cshift[0] = 215.0;
   cshift[1] = 186.0;
@@ -160,7 +163,7 @@ V.BonusFlash_f = function() {
   cshift[3] = 50.0;
 };
 
-V.SetContentsColor = function(contents) {
+V.SetContentsColor = function (contents) {
   switch (contents) {
     case Mod.contents.empty:
     case Mod.contents.solid:
@@ -176,7 +179,7 @@ V.SetContentsColor = function(contents) {
   CL.state.cshifts[CL.cshift.contents] = V.cshift_water;
 };
 
-V.CalcBlend = function() {
+V.CalcBlend = function () {
   let cshift = CL.state.cshifts[CL.cshift.powerup];
   if ((CL.state.items & Def.it.quad) !== 0) {
     cshift[0] = 0.0;
@@ -245,7 +248,7 @@ V.CalcBlend = function() {
   }
 };
 
-V.CalcIntermissionRefdef = function() {
+V.CalcIntermissionRefdef = function () {
   const ent = CL.state.playerentity;
   R.refdef.vieworg[0] = ent.origin[0];
   R.refdef.vieworg[1] = ent.origin[1];
@@ -257,7 +260,7 @@ V.CalcIntermissionRefdef = function() {
 };
 
 V.oldz = 0.0;
-V.CalcRefdef = function() { // TODO: Client
+V.CalcRefdef = function () { // TODO: Client
   if (V.pitchdrift.value) {
     V.DriftPitch();
   }
@@ -358,7 +361,7 @@ V.CalcRefdef = function() { // TODO: Client
   }
 };
 
-V.RenderView = function() {
+V.RenderView = function () {
   if (Con.forcedup === true) {
     return;
   }
@@ -376,7 +379,7 @@ V.RenderView = function() {
   R.RenderView();
 };
 
-V.Init = function() {
+V.Init = function () {
   Cmd.AddCommand('v_cshift', V.cshift_f);
   Cmd.AddCommand('bf', V.BonusFlash_f);
   Cmd.AddCommand('centerview', V.StartPitchDrift);

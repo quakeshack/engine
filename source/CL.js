@@ -744,10 +744,8 @@ CL.SetConnectingStep = function(percentage, message) { // public, by Host.js, pr
 
   CL.cls.connecting = {
     percentage,
-    message
+    message,
   };
-
-  // SCR.UpdateScreen();
 };
 
 CL.Draw = function() { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR

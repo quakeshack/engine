@@ -130,22 +130,24 @@ ED.ParseEdict = function(data, ent, initialData = {}) {
 
   // Parse until closing brace
   while (true) {
-    data = COM.Parse(data);
+    const parsed = COM.Parse(data);
 
-    if (COM.token.charCodeAt(0) === 125) {
+    data = parsed.data;
+
+    if (parsed.token.charCodeAt(0) === 125) {
       // Closing brace found
       break;
     }
 
-    if (data == null) {
+    if (data === null) {
       Sys.Error('ED.ParseEdict: EOF without closing brace');
     }
 
-    if (COM.token === 'angle') {
+    if (parsed.token === 'angle') {
       keyname = 'angles';
       anglehack = true;
     } else {
-      keyname = COM.token;
+      keyname = parsed.token;
       anglehack = false;
 
       if (keyname === 'light') {
@@ -159,11 +161,11 @@ ED.ParseEdict = function(data, ent, initialData = {}) {
     // Parse the value
     data = COM.Parse(data);
 
-    if (data == null) {
+    if (data === null) {
       Sys.Error('ED.ParseEdict: EOF without closing brace');
     }
 
-    if (COM.token.charCodeAt(0) === 125) {
+    if (parsed.token.charCodeAt(0) === 125) {
       Sys.Error('ED.ParseEdict: Closing brace without data');
     }
 
@@ -173,10 +175,10 @@ ED.ParseEdict = function(data, ent, initialData = {}) {
     }
 
     if (anglehack) {
-      COM.token = `0 ${COM.token} 0`;
+      parsed.token = `0 ${parsed.token} 0`;
     }
 
-    initialData[keyname] = COM.token.replace(/\\n/g, '\n');
+    initialData[keyname] = parsed.token.replace(/\\n/g, '\n');
 
     init = true;
   }
@@ -199,13 +201,16 @@ ED.LoadFromFile = function(data) {
   SV.server.gameAPI.time = SV.server.time;
 
   while (true) {
-    data = COM.Parse(data);
-    if (!data) {
+    const parsed = COM.Parse(data);
+
+    if (!parsed.data) {
       break;
     }
 
-    if (COM.token !== '{') {
-      Sys.Error(`ED.LoadFromFile: found ${COM.token} when expecting {`);
+    data = parsed.data;
+
+    if (parsed.token !== '{') {
+      Sys.Error(`ED.LoadFromFile: found ${parsed.token} when expecting {`);
     }
 
     const initialData = {};

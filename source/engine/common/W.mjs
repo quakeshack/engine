@@ -1,17 +1,37 @@
-/* global W, COM, Q, VID, Sys */
 
-// eslint-disable-next-line no-global-assign
-W = {};
+import { eventBus, registry } from '../registry.mjs';
+import { CorruptedResourceError, MissingResourceError } from './Errors.mjs';
+import Q from './Q.mjs';
 
-/** @private */
-W._handlers = [];
+/**
+ * WAD lump texture representation.
+ */
+export class WadLumpTexture {
+  /**
+   * @param {string} name internal texture name
+   * @param {number} width width
+   * @param {number} height height
+   * @param {Uint8Array} data RGBA texture data
+   */
+  constructor(name, width, height, data) {
+    this.name = name; // lump name
+    this.width = width; // texture width
+    this.height = height; // texture height
+    this.data = data; // texture data (Uint8Array)
 
-/** @private */
-W.WadFileInterface = class WadFileInterface {
-  constructor() {
-    /** @private */
-    this._lumps = {};
+    Object.freeze(this);
   }
+
+  toString() {
+    return `WadLumpTexture(${this.name}, ${this.width} x ${this.height} pixels, ${this.data.length} bytes)`;
+  }
+};
+
+class WadFileInterface {
+  static MAGIC = 0; // magic number, to be defined in subclasses
+
+  /** @protected */
+  _lumps = {};
 
   // eslint-disable-next-line no-unused-vars
   load(view) {
@@ -33,55 +53,131 @@ W.WadFileInterface = class WadFileInterface {
    * This will return the palette translated data for the given name.
    * @param {string} name identifer of the lump to retrieve
    * @param {?number} mipmapLevel mipmap level to retrieve, will always take the most available mipmap level
-   * @returns {W._WadLumpTexture} the decoded texture data
+   * @returns {WadLumpTexture} the decoded texture data
    */
   // eslint-disable-next-line no-unused-vars
   getLumpMipmap(name, mipmapLevel) {
     console.assert(null, 'WadFileInterface.getLumpMipmap: not implemented');
-    return new ArrayBuffer(0);
+    return null;
   }
 };
 
-/**
- * WAD lump texture representation.
- * @private
- */
-W.WadLumpTexture = class WadLumpTexture {
+export default class W {
+  /** @type {Array<typeof WadFileInterface>} */
+  static _handlers = [];
+
+  /** Current palette in 32 bit words. */
+  static d_8to24table = new Uint32Array(new ArrayBuffer(1024));
+
+  /** Current palette in 256 8 bit tuples for RGB. */
+  static d_8to24table_u8 = new Uint8Array(768);
+
+  /** @type {number} Fill color index */
+  static filledColor = null;
+
   /**
-   * @param {string} name internal texture name
-   * @param {number} width width
-   * @param {number} height height
-   * @param {Uint8Array} data RGBA texture data
+   * Loads given WAD file. Supports multiple WAD formats (WAD2, WAD3).
+   * @param {string} filename wad file path
+   * @returns {Promise<WadFileInterface>} the loaded WAD file or null if not found
    */
-  constructor(name, width, height, data) {
-    this.name = name; // lump name
-    this.width = width; // texture width
-    this.height = height; // texture height
-    this.data = data; // texture data (Uint8Array)
+  static async LoadFile(filename) {
+    const COM = registry.COM;
 
-    Object.freeze(this);
+    const base = await COM.LoadFileAsync(filename);
+
+    if (!base) {
+      throw new MissingResourceError(filename);
+    }
+
+    const view = new DataView(base);
+    const magic = view.getUint32(0, true);
+    const handler = W._handlers.find((h) => h.MAGIC === magic);
+
+    if (!handler) {
+      throw new CorruptedResourceError(filename);
+      // Sys.Error('W.LoadFile: ' + filename + ' is not a valid WAD file');
+    }
+
+    const wadFile = new handler();
+    wadFile.load(base);
+    return wadFile;
+  };
+
+  /**
+   * Loads the default palette from the given file. Used for all Quake resources.
+   * A palette is a 256 color palette, each color is 3 bytes (RGB). 768 bytes in total.
+   * @param {string} filename palette file path, e.g. 'gfx/palette.lmp'
+   */
+  static async LoadPalette(filename) {
+    const COM = registry.COM;
+
+    const palette = await COM.LoadFileAsync(filename);
+
+    if (palette === null) {
+      throw new MissingResourceError(filename);
+    }
+
+    W.d_8to24table_u8 = new Uint8Array(palette);
+
+    for (let i = 0, src = 0; i < 256; i++) {
+      const pal = W.d_8to24table_u8;
+
+      W.d_8to24table[i] = pal[src++] + (pal[src++] << 8) + (pal[src++] << 16);
+
+      if (W.d_8to24table[i] === 0) {
+        W.filledColor = i;
+      }
+    }
+
+    eventBus.publish('wad.palette.loaded');
+  };
+};
+
+/**
+ * Helper function to convert indexed 8-bit data to RGBA format.
+ * @param {Uint8Array} uint8data indexed 8-bit data, each byte is an index to the palette
+ * @param {number} width width
+ * @param {number} height height
+ * @param {?Uint8Array} palette palette data, 256 colors, each color is 3 bytes (RGB), default is W.d_8to24table_u8
+ * @param {?number} transparentColor optional color index to treat as transparent (default is null, no transparency)
+ * @returns {Uint8Array} RGBA data, each pixel is 4 bytes (R, G, B, A)
+ */
+export function TranslateIndexToRGBA(uint8data, width, height, palette = W.d_8to24table_u8, transparentColor = null) {
+  const rgba = new Uint8Array(width * height * 4);
+
+  for (let i = 0; i < width * height; i++) {
+    const colorIndex = uint8data[i];
+    if (transparentColor !== null && colorIndex === transparentColor) {
+      rgba[i * 4 + 0] = 0;
+      rgba[i * 4 + 1] = 0;
+      rgba[i * 4 + 2] = 0;
+      rgba[i * 4 + 3] = 0;
+      continue;
+    }
+    // lookup the color in the palette
+    rgba[i * 4 + 0] = palette[colorIndex * 3];
+    rgba[i * 4 + 1] = palette[colorIndex * 3 + 1];
+    rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
+    rgba[i * 4 + 3] = 255;
   }
 
-  toString() {
-    return `WadLumpTexture(${this.name}, ${this.width} x ${this.height} pixels, ${this.data.length} bytes)`;
-  }
+  return rgba;
 };
 
 /**
  * Quake 1 WAD file format handler.
- * @private
  */
-W.Wad2File = class Wad2File extends W.WadFileInterface {
+class Wad2File extends WadFileInterface {
   static MAGIC = 0x32444157; // 'WAD2'
 
   constructor() {
     super();
-    this.palette = VID.d_8to24table_u8; // use the palette from VID
+    this.palette = W.d_8to24table_u8; // use the palette from VID
   }
 
   load(base) {
     const view = new DataView(base);
-    console.assert(view.getUint32(0, true) === this.constructor.MAGIC, 'magic number');
+    console.assert(view.getUint32(0, true) === Wad2File.MAGIC, 'magic number');
     const numlumps = view.getUint32(4, true);
     let infotableofs = view.getUint32(8, true);
     for (let i = 0; i < numlumps; ++i) {
@@ -109,8 +205,7 @@ W.Wad2File = class Wad2File extends W.WadFileInterface {
     const lump = this._lumps[name.toUpperCase()];
 
     if (!lump) {
-      Sys.Error('Wad2File.getLump: ' + name + ' not found');
-      return null;
+      throw new MissingResourceError(name);
     }
 
     return lump.data;
@@ -120,7 +215,7 @@ W.Wad2File = class Wad2File extends W.WadFileInterface {
    * This will return the palette translated data for the given name.
    * @param {string} name identifer of the lump to retrieve
    * @param {?number} mipmapLevel always 0, WAD2 does not support mipmaps
-   * @returns {W._WadLumpTexture} the decoded texture data
+   * @returns {WadLumpTexture} the decoded texture data
    */
   // eslint-disable-next-line no-unused-vars
   getLumpMipmap(name, mipmapLevel = 0) {
@@ -132,24 +227,23 @@ W.Wad2File = class Wad2File extends W.WadFileInterface {
 
     // TODO: handle different types of lumps, right now it’s only supports pichead_t
 
-    const rgba = VID.TranslateIndexToRGBA(new Uint8Array(data, 8, width * height), width, height, this.palette, 255);
+    const rgba = TranslateIndexToRGBA(new Uint8Array(data, 8, width * height), width, height, this.palette, 255);
 
-    return new W.WadLumpTexture(name, width, height, rgba);
+    return new WadLumpTexture(name, width, height, rgba);
   }
 };
 
-W._handlers.push(W.Wad2File);
+W._handlers.push(Wad2File);
 
 /**
  * GoldSrc WAD3 file format handler.
- * @private
  */
-W.Wad3File = class Wad3File extends W.WadFileInterface {
+class Wad3File extends WadFileInterface {
   static MAGIC = 0x33444157; // 'WAD3'
 
   load(base) {
     const view = new DataView(base);
-    console.assert(view.getUint32(0, true) === this.constructor.MAGIC, 'magic number');
+    console.assert(view.getUint32(0, true) === Wad3File.MAGIC, 'magic number');
     const numlumps = view.getUint32(4, true);
     let infotableofs = view.getUint32(8, true);
 
@@ -166,7 +260,7 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
         (new Uint8Array(lump)).set(new Uint8Array(base, filepos, disksize));
       } else { // Compressed
         const compressedData = new Uint8Array(base, filepos, disksize);
-        const decompressed = this.constructor._decompressLZ(compressedData, size);
+        const decompressed = Wad3File._decompressLZ(compressedData, size);
         (new Uint8Array(lump)).set(decompressed);
       }
 
@@ -191,13 +285,13 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
       8 + // 8 = header
       width * height + // pixel data
       2, // how many colors being used for palette in short
-      768 // 768 = 256 colors * 3 bytes (RGB)
+      768, // 768 = 256 colors * 3 bytes (RGB)
     );
 
     const uint8data = new Uint8Array(data, 8, width * height);
-    const rgba = VID.TranslateIndexToRGBA(uint8data, width, height, palette, 255);
+    const rgba = TranslateIndexToRGBA(uint8data, width, height, palette, 255);
 
-    return new W.WadLumpTexture(name, width, height, rgba);
+    return new WadLumpTexture(name, width, height, rgba);
   }
 
   _parseMiptexLump(name, data, mipmapLevel) {
@@ -230,12 +324,12 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
       width / 4 * height / 4 + // mipmap level 2
       width / 8 * height / 8 + // mipmap level 3
       2, // how many colors being used for palette in short
-      768 // 768 = 256 colors * 3 bytes (RGB)
+      768, // 768 = 256 colors * 3 bytes (RGB)
     );
 
-    const rgba = VID.TranslateIndexToRGBA(uint8data, swidth, sheight, palette, 255);
+    const rgba = TranslateIndexToRGBA(uint8data, swidth, sheight, palette, 255);
 
-    return new W.WadLumpTexture(texName, swidth, sheight, rgba);
+    return new WadLumpTexture(texName, swidth, sheight, rgba);
   }
 
   /**
@@ -247,8 +341,7 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
     const lump = this._lumps[name.toUpperCase()];
 
     if (!lump) {
-      Sys.Error('Wad2File.getLump: ' + name + ' not found');
-      return null;
+      throw new MissingResourceError(name);
     }
 
     return lump;
@@ -258,14 +351,13 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
    * This will return the palette translated data for the given name.
    * @param {string} name name of the lump to retrieve
    * @param {number} mipmapLevel 0..3, 0 is the base level
-   * @returns {W._WadLumpTexture} the decoded texture data
+   * @returns {WadLumpTexture} the decoded texture data
    */
   getLumpMipmap(name, mipmapLevel = 0) {
     const lumpInfo = this._lumps[name.toUpperCase()];
 
     if (!lumpInfo) {
-      Sys.Error('Wad3File.getLump: ' + name + ' not found');
-      return null;
+      throw new MissingResourceError(name);
     }
 
     switch (lumpInfo.type) {
@@ -281,8 +373,8 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
         return null; // TODO: implement font handling
     }
 
-    Sys.Error('Wad3File.getLumpMipmap: ' + name + ' has not a valid lump type (' + lumpInfo.type + ')');
-    return null;
+    throw new CorruptedResourceError(name);
+    // Sys.Error('Wad3File.getLumpMipmap: ' + name + ' has not a valid lump type (' + lumpInfo.type + ')');
   }
 
   /**
@@ -337,31 +429,5 @@ W.Wad3File = class Wad3File extends W.WadFileInterface {
   };
 };
 
-W._handlers.push(W.Wad3File);
+W._handlers.push(Wad3File);
 
-/**
- * Loads given WAD file. Supports multiple WAD formats (WAD2, WAD3).
- * @param {string} filename wad file path
- * @returns {W.WadFileInterface|null} the loaded WAD file or null if not found
- */
-W.LoadFile = async function(filename) {
-  const base = await COM.LoadFileAsync(filename);
-
-  if (!base) {
-    Sys.Error('W.LoadFile: ' + filename + ' not found');
-    return null;
-  }
-
-  const view = new DataView(base);
-  const magic = view.getUint32(0, true);
-  const handler = W._handlers.find((h) => h.MAGIC === magic);
-
-  if (!handler) {
-    Sys.Error('W.LoadFile: ' + filename + ' is not a valid WAD file');
-    return null;
-  }
-
-  const wadFile = new handler();
-  wadFile.load(base);
-  return wadFile;
-};

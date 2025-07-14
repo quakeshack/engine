@@ -1,14 +1,14 @@
-/* global Host, Cvar, Q, CL, SV, Con, Cmd */
+import { registry, eventBus } from '../registry.mjs';
+import Q from './Q.mjs';
 
 /**
  * Console Variable
  */
-// eslint-disable-next-line no-global-assign
-Cvar = class Cvar {
-  /** @type {Map<string,Cvar>} @private */
+export default class Cvar {
+  /** @type {Record<string, Cvar>} @private */
   static _vars = {};
 
-  static FLAG = {
+  static FLAG = Object.freeze({
     NONE: 0,
     /** archive will make the engine write the modified variable to local storage or file (dedicated only) */
     ARCHIVE: 1,
@@ -24,24 +24,24 @@ Cvar = class Cvar {
     DEFERRED: 32, // TODO: implement
     /** variable cannot be changed unless sv_cheats is set to 1 */
     CHEAT: 64,
-  };
+  });
 
   /**
    * @param {string} name name of the variable
    * @param {string} value preset value of the variable
-   * @param {Cvar.FLAG} flags optional flags for the variable
+   * @param {number} flags optional flags for the variable
    * @param {?string} description optional description of the variable
    */
-  constructor(name, value, flags = 0, description = null) {
-    /** @type {string} @private */
+  constructor(name, value, flags = Cvar.FLAG.NONE, description = null) {
+    /** @type {string} @readonly */
     this.name = name;
-    /** @type {string} @private */
+    /** @type {string} */
     this.string = value;
     /** @type {string} @private */
     this.original = value;
-    /** @type {Cvar.FLAGS} @private */
+    /** @type {number} @see Cvar.FLAG */
     this.flags = flags;
-    /** @type {?string} @private */
+    /** @type {?string} @readonly */
     this.description = description;
 
     console.assert(name.length > 0, 'Cvar name must be at least 1 character long', name);
@@ -134,15 +134,19 @@ Cvar = class Cvar {
 
     this.string = value;
 
-    // Tell the server about the change
-    if ((this.flags & Cvar.FLAG.SERVER) && changed && SV.server.active) {
-      SV.CvarChanged(this);
+    if (changed) {
+      eventBus.publish('cvar.changed', this.name);
     }
 
-    // Automatically save when an archive Cvar changed
-    if ((this.flags & Cvar.FLAG.ARCHIVE) && changed && Host.initialized) {
-      Host.WriteConfiguration();
-    }
+    // // Tell the server about the change
+    // if ((this.flags & Cvar.FLAG.SERVER) && changed && SV.server.active) {
+    //   SV.CvarChanged(this);
+    // }
+
+    // // Automatically save when an archive Cvar changed
+    // if ((this.flags & Cvar.FLAG.ARCHIVE) && changed && Host.initialized) {
+    //   Host.WriteConfiguration();
+    // }
 
     return this;
   }
@@ -198,6 +202,8 @@ Cvar = class Cvar {
       return false;
     }
 
+    const Con = registry.Con;
+
     if (value === undefined) {
       Con.Print(`"${v.name}" is "${v.string}"\n`);
 
@@ -206,32 +212,32 @@ Cvar = class Cvar {
       }
 
       if (v.flags & Cvar.FLAG.READONLY) {
-        Con.Print(`- Cannot be changed.\n`);
+        Con.Print('- Cannot be changed.\n');
       }
 
       if (v.flags & Cvar.FLAG.ARCHIVE) {
-        Con.Print(`- Will be saved to the configuration file.\n`);
+        Con.Print('- Will be saved to the configuration file.\n');
       }
 
       if (v.flags & Cvar.FLAG.SERVER) {
-        Con.Print(`- Is a server variable.\n`);
+        Con.Print('- Is a server variable.\n');
       }
 
       if (v.flags & Cvar.FLAG.GAME) {
-        Con.Print(`- Is a game variable.\n`);
+        Con.Print('- Is a game variable.\n');
       }
 
       if (v.flags & Cvar.FLAG.DEFERRED) {
-        Con.Print(`- New value will be applied on the next map.\n`);
+        Con.Print('- New value will be applied on the next map.\n');
       }
 
       if (v.flags & Cvar.FLAG.CHEAT) {
-        Con.Print(`- Cheat.\n`);
+        Con.Print('- Cheat.\n');
       }
 
       if (v.flags & Cvar.FLAG.SECRET) {
         if (v.flags & Cvar.FLAG.SERVER) {
-          Con.Print(`- Changed value will not be broadcasted, sensitive information.\n`);
+          Con.Print('- Changed value will not be broadcasted, sensitive information.\n');
         }
       }
 
@@ -243,7 +249,7 @@ Cvar = class Cvar {
       return true;
     }
 
-    if ((v.flags & Cvar.FLAG.CHEAT) && Host.dedicated.value === 0 && CL.cls.serverInfo?.sv_cheats !== '1') {
+    if ((v.flags & Cvar.FLAG.CHEAT) && !registry.isDedicatedServer && registry.CL.cls.serverInfo?.sv_cheats !== '1') {
       Con.Print('Cheats are not enabled on this server.\n');
       return true;
     }
@@ -281,6 +287,8 @@ Cvar = class Cvar {
    * @param {?string} value value to set
    */
   static Set_f(name, value) {
+    const Con = registry.Con;
+
     if (name === undefined) {
       Con.Print('Usage: set <name> <value>\n');
       return;
@@ -296,6 +304,8 @@ Cvar = class Cvar {
    * @param {?string} value value to set
    */
   static Seta_f(name, value) {
+    const Con = registry.Con;
+
     if (name === undefined) {
       Con.Print('Usage: seta <name> <value>\n');
       return;
@@ -323,6 +333,8 @@ Cvar = class Cvar {
    * @param {string} name name of the variable
    */
   static Toggle_f(name) {
+    const Con = registry.Con;
+
     if (name === undefined) {
       Con.Print('Usage: toggle <name>\n');
       return;
@@ -349,6 +361,7 @@ Cvar = class Cvar {
    * Initializes the Cvar system.
    */
   static Init() {
+    const Cmd = registry.Cmd;
     Cmd.AddCommand('set', Cvar.Set_f);
     Cmd.AddCommand('seta', Cvar.Seta_f);
     Cmd.AddCommand('toggle', Cvar.Toggle_f);

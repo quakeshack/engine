@@ -1,14 +1,11 @@
-/* global Protocol, Vector */
+import Vector from '../common/Vector.mjs';
 
-// eslint-disable-next-line no-global-assign
-Protocol = {};
+export const version = 42; // QuakeShack special version
 
-Protocol.version = 42; // QuakeShack special version
+export const update_backup = 64; // power of 2
+export const update_mask = update_backup - 1;
 
-Protocol.update_backup = 64; // power of 2
-Protocol.update_mask = Protocol.update_backup - 1;
-
-Protocol.u = {
+export const u = Object.freeze({
   classname: 1 << 0,
   origin1: 1 << 1,
   origin2: 1 << 2,
@@ -25,9 +22,9 @@ Protocol.u = {
   effects: 1 << 13,
   solid: 1 << 14,
   size: 1 << 15,
-};
+});
 
-Protocol.su = {
+export const su = Object.freeze({
   viewheight: 1,
   idealpitch: 1 << 1,
   punch1: 1 << 2,
@@ -42,12 +39,12 @@ Protocol.su = {
   weaponframe: 1 << 12,
   armor: 1 << 13,
   weapon: 1 << 14,
-};
+});
 
-Protocol.default_viewheight = 22;
+export const default_viewheight = 22;
 
 /** Server to Client */
-Protocol.svc = {
+export const svc = Object.freeze({
   null: 0,
   nop: 1,
   disconnect: 2,
@@ -114,10 +111,10 @@ Protocol.svc = {
   pmovevars: 105,
   cvar: 106,
   changelevel: 107,
-};
+});
 
 /** Client to Server */
-Protocol.clc = {
+export const clc = Object.freeze({
   nop: 1,
   disconnect: 2,
   move: 3,
@@ -125,9 +122,9 @@ Protocol.clc = {
   rconcmd: 5,
   delta: 6,
   qwmove: 7,
-};
+});
 
-Protocol.te = {
+export const te = Object.freeze({
   spike: 0,
   superspike: 1,
   gunshot: 2,
@@ -142,18 +139,18 @@ Protocol.te = {
   teleport: 11,
   explosion2: 12,
   beam: 13,
-};
+});
 
-Protocol.button = {
+export const button = Object.freeze({
   attack: 1,
   jump: 2,
   use: 4,
-};
+});
 
 /**
  * Player flags
  */
-Protocol.pf = {
+export const pf = Object.freeze({
   PF_MSEC: (1 << 0),
   PF_COMMAND: (1 << 1),
   PF_VELOCITY1: (1 << 2),
@@ -172,9 +169,9 @@ Protocol.pf = {
   PF_NOGRAV: (1 << 11),
   /** QS: complete Vector */
   PF_VELOCITY: (1 << 12),
-};
+});
 
-Protocol.cm = {
+export const cm = Object.freeze({
   CM_ANGLE1: (1<<0),
   CM_ANGLE3: (1<<1),
   CM_FORWARD: (1<<2),
@@ -183,9 +180,9 @@ Protocol.cm = {
   CM_BUTTONS: (1<<5),
   CM_IMPULSE: (1<<6),
   CM_ANGLE2: (1<<7),
-};
+});
 
-Protocol.EntityState = class EntityState { // entity_state_t
+export class EntityState { // entity_state_t
   constructor() {
     /** @type {number} edict index */
     this.number = 0;
@@ -202,7 +199,7 @@ Protocol.EntityState = class EntityState { // entity_state_t
   }
 };
 
-Protocol.UserCmd = class UserCmd { // usercmd_t
+export class UserCmd { // usercmd_t
   constructor() {
     /** @type {number} maximum 255 */
     this.msec = 0;
@@ -216,10 +213,10 @@ Protocol.UserCmd = class UserCmd { // usercmd_t
 
   /**
    * Copies the usercmd.
-   * @returns {Protocol.UserCmd} copied usercmd
+   * @returns {UserCmd} copied usercmd
    */
   copy() {
-    const cmd = new Protocol.UserCmd();
+    const cmd = new UserCmd();
     cmd.msec = this.msec;
     cmd.forwardmove = this.forwardmove;
     cmd.sidemove = this.sidemove;
@@ -232,8 +229,8 @@ Protocol.UserCmd = class UserCmd { // usercmd_t
 
   /**
    * Sets this to the value of other.
-   * @param {Protocol.UserCmd} other usercmd
-   * @returns {Protocol.UserCmd} this
+   * @param {UserCmd} other usercmd
+   * @returns {UserCmd} this
    */
   set(other) {
     this.msec = other.msec;
@@ -248,7 +245,7 @@ Protocol.UserCmd = class UserCmd { // usercmd_t
 
   /**
    * Reset command.
-   * @returns {Protocol.UserCmd} this
+   * @returns {UserCmd} this
    */
   reset() {
     this.msec = 0;
@@ -263,7 +260,7 @@ Protocol.UserCmd = class UserCmd { // usercmd_t
 
   /**
    * Tests for equality.
-   * @param {Protocol.UserCmd} other other
+   * @param {UserCmd} other other
    * @returns {boolean} true, if equal
    */
   equals(other) {

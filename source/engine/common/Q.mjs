@@ -1,7 +1,5 @@
-/* global Q */
 
-// eslint-disable-next-line no-global-assign
-Q = {};
+const Q = {};
 
 Q.memstr = function(src) {
   const dest = [];
@@ -48,3 +46,5 @@ Q.btoa = function(src) {
 
 Q.yield = () => new Promise(resolve => setTimeout(resolve, 0));
 Q.sleep = (msec) => new Promise(resolve => setTimeout(resolve, msec));
+
+export default Q;

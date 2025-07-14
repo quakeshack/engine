@@ -1,8 +1,8 @@
 {
-  "name": "Quake1-browser",
+  "name": "quakeshack",
   "version": "1.0.0",
-  "main": "dedicated.js",
-  "repository": "https://github.com/lrusso/Quake1.git",
+  "main": "quakeshack-dedicated.mjs",
+  "repository": "https://github.com/chrisnew/quakeshack",
   "license": "MIT",
   "private": true,
   "devDependencies": {
@@ -11,6 +11,7 @@
     "eslint-config-google": "^0.14.0",
     "eslint-plugin-jsdoc": "^50.6.3",
     "eslint-plugin-types": "^1.0.2",
+    "eslint-plugin-sort-class-members": "^1.21.0",
     "globals": "^15.14.0"
   },
   "dependencies": {
@@ -19,5 +20,10 @@
     "express": "^4.21.2",
     "nipplejs": "^0.10.2",
     "ws": "^8.18.0"
+  },
+  "scripts": {
+    "lint": "eslint source",
+    "lint-fix": "eslint --fix source",
+    "start": "node quakeshack-dedicated.mjs"
   }
 }

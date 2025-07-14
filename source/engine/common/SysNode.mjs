@@ -1,32 +1,41 @@
-// eslint-disable-next-line no-unused-vars
-/* global Sys, Con, COM, Host, Cmd, Cvar, NET, __dirname, Buffer */
+/* global Buffer */
 
-const {argv, stdout, exit} = require('node:process');
-const repl = require('repl');
+import { argv, stdout, exit } from 'node:process';
+import { start } from 'repl';
 
-const express = require('express');
-const path = require('path');
-const http = require('http');
+import express from 'express';
+import { join } from 'path';
+import { createServer } from 'http';
+
+import { registry, eventBus } from '../registry.mjs';
+import Cvar from './Cvar.mjs';
+import { REPLServer } from 'node:repl';
 
 /**
  * System class to manage initialization, quitting, and REPL functionality.
  */
-// eslint-disable-next-line no-global-assign
-Sys = class Sys {
+export default class Sys {
+  static #oldtime = 0;
+  static #frame = null;
+
+  /** @type {REPLServer} */
+  static #repl = null;
+
   /**
    * Initializes the low-level system.
    */
   static async Init() {
+    const { COM, Host, Cmd } = registry;
+
     // Initialize command-line arguments
     COM.InitArgv(argv);
 
-    // Configure Console output
-    Con.OnLinePrint = function(line) {
+    eventBus.subscribe('console.print-line', (line) => {
       console.info(line);
-    };
+    });
 
     // Record the initial time
-    Sys.oldtime = Date.now() * 0.001;
+    Sys.#oldtime = Date.now() * 0.001;
 
     // Start webserver
     Sys.StartWebserver();
@@ -36,7 +45,7 @@ Sys = class Sys {
 
     // Start a REPL instance (if stdout is a TTY)
     if (stdout && stdout.isTTY) {
-      Sys.repl = repl.start({
+      Sys.#repl = start({
         prompt: '] ',
         eval(command, context, filename, callback) {
           this.clearBufferedCommand();
@@ -47,7 +56,7 @@ Sys = class Sys {
         completer(line) {
           const completions = [
             ...Cmd.functions.map((fnc) => fnc.name),
-            ...Object.keys(Cvar._vars).map((cvar) => cvar),
+            ...Object.keys(Cvar._vars).map((cvar) => cvar), // FIXME: Cvar._vars is private, should not be accessed directly
           ];
 
           const hits = completions.filter((c) => c.startsWith(line));
@@ -55,22 +64,22 @@ Sys = class Sys {
         },
       });
 
-      Sys.repl.on('exit', () => Sys.Quit());
+      Sys.#repl.on('exit', () => Sys.Quit());
     }
 
     // Set up a frame interval for the main loop
-    Sys.frame = setInterval(Host.Frame, 1000.0 / 60.0);
+    Sys.#frame = setInterval(Host.Frame, 1000.0 / 60.0);
   }
 
   /**
    * Handles quitting the system gracefully.
    */
   static Quit() {
-    if (Sys.frame != null) {
-      clearInterval(Sys.frame);
+    if (Sys.#frame !== null) {
+      clearInterval(Sys.#frame);
     }
 
-    Host.Shutdown();
+    registry.Host.Shutdown();
     exit(0);
   }
 
@@ -83,51 +92,30 @@ Sys = class Sys {
   }
 
   /**
-   * Handles errors, shuts down the host, and exits the process.
-   * @param {string} text - The error message.
-   */
-  static Error(text) {
-    if (Sys.frame != null) {
-      clearInterval(Sys.frame);
-    }
-
-    if (Host.initialized === true) {
-      Host.Shutdown();
-    }
-
-    // Print all console text
-    for (const line of Con.text) {
-      console.info(line.text);
-    }
-
-    console.error(text);
-
-    throw new Error(text);
-  }
-
-  /**
    * Returns the time elapsed since initialization.
    * @returns {number} - Elapsed time in seconds.
    */
   static FloatTime() {
-    return Date.now() * 0.001 - Sys.oldtime;
+    return Date.now() * 0.001 - Sys.#oldtime;
   }
 
+  /** @private */
   static StartWebserver() {
+    const { COM, Host, NET } = registry;
     const app = express();
 
     const basepath = COM.GetParm('-basepath') || '';
 
-    console.log('basepath', basepath);
+    const __dirname = import.meta.dirname;
 
     if (basepath !== '') {
-      app.use(basepath, express.static(path.join(__dirname + '/..', 'public')));
-      app.use(basepath + '/data', express.static(path.join(__dirname + '/..', 'data')));
-      app.use(basepath + '/source', express.static(path.join(__dirname + '/..', 'source')));
+      app.use(basepath, express.static(join(__dirname + '/..', 'public')));
+      app.use(basepath + '/data', express.static(join(__dirname + '/..', 'data')));
+      app.use(basepath + '/source', express.static(join(__dirname + '/..', 'source')));
     } else {
-      app.use(express.static(path.join(__dirname + '/..', 'public')));
-      app.use('/data', express.static(path.join(__dirname + '/..', 'data')));
-      app.use('/source', express.static(path.join(__dirname + '/..', 'source')));
+      app.use(express.static(join(__dirname + '/..', 'public')));
+      app.use('/data', express.static(join(__dirname + '/..', 'data')));
+      app.use('/source', express.static(join(__dirname + '/..', 'source')));
     }
 
     const skipChars = (basepath + '/quakefs/').length;
@@ -156,7 +144,7 @@ Sys = class Sys {
       }
     });
 
-    const server = http.createServer(app);
+    const server = createServer(app);
     const port = COM.GetParm('-port') || 3000;
 
     server.listen(port, () => {

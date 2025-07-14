@@ -1,84 +1,85 @@
-/* global Vector */
 
-// eslint-disable-next-line no-global-assign
-Vector = class Vector extends Array {
-  /** Vector origin constant */
-  static origin = (new Vector()).freeze();
+/**
+ * Directional vectors.
+ */
+export class DirectionalVectors {
+  /**
+   * @param {Vector} forward forward direction
+   * @param {Vector} right right direction
+   * @param {Vector} up up direction
+   */
+  constructor(forward, right, up) {
+    this.forward = forward;
+    this.right = right;
+    this.up = up;
+    Object.freeze(this);
+  }
+};
 
-  static Quaternion = class Quaternion extends Array {
-    constructor(x = 0.0, y = 0.0, z = 0.0, w = 0.0) {
-      super(4);
-      console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number' && typeof w === 'number', 'not a number');
-      this[0] = x;
-      this[1] = y;
-      this[2] = z;
-      this[3] = w;
-    }
-
-    /**
-     * Creates Quaternion from Vector.
-     * @param {Vector} vector vector
-     * @returns {Vector.Quaternion} the resulting quaternion
-     */
-    fromVector(vector) {
-      return vector.toQuaternion();
-    }
-
-    /**
-     * Compares this Quaternion to the other quaternion.
-     * @param {Vector.Quaternion} other other quaternion
-     * @returns {boolean} true, if equal
-     */
-    equals(other) {
-      return this[0] === other[0] && this[1] === other[1] && this[2] === other[2] && this[3] === other[3];
-    }
-
-    /**
-     * Compares this Quaternion’s component to x, y, z, w.
-     * @param {number} x x
-     * @param {number} y y
-     * @param {number} z z
-     * @param {number} w omega
-     * @returns {boolean} true, if equal
-     */
-    equalsTo(x, y, z, w) {
-      return this[0] === x && this[1] === y && this[2] === z && this[3] === w;
-    }
-
-    /**
-     * Freezes this Quaternion.
-     * @returns {Vector.Quaternion} this
-     */
-    freeze() {
-      Object.freeze(this);
-      return this;
-    }
-
-    /**
-     * Quake-style string representation of a Quaternion
-     * @returns {string} Quake-style string of this quaternion
-     */
-    toString() {
-      return `${this.map((e) => e.toFixed(1)).join(' ')}`;
-    }
-  };
+/**
+ * Quaternion.
+ */
+export class Quaternion extends Array {
+  constructor(x = 0.0, y = 0.0, z = 0.0, w = 0.0) {
+    super(4);
+    console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number' && typeof w === 'number', 'not a number');
+    this[0] = x;
+    this[1] = y;
+    this[2] = z;
+    this[3] = w;
+  }
 
   /**
-   * Directional vectors.
+   * Creates Quaternion from Vector.
+   * @param {Vector} vector vector
+   * @returns {Quaternion} the resulting quaternion
    */
-  static DirectionalVectors = class DirectionalVectors {
-    /**
-     * @param {Vector} forward forward direction
-     * @param {Vector} right right direction
-     * @param {Vector} up up direction
-     */
-    constructor(forward, right, up) {
-      this.forward = forward;
-      this.right = right;
-      this.up = up;
-      Object.freeze(this);
-    }
-  };
+  fromVector(vector) {
+    return vector.toQuaternion();
+  }
+
+  /**
+   * Compares this Quaternion to the other quaternion.
+   * @param {Quaternion} other other quaternion
+   * @returns {boolean} true, if equal
+   */
+  equals(other) {
+    return this[0] === other[0] && this[1] === other[1] && this[2] === other[2] && this[3] === other[3];
+  }
+
+  /**
+   * Compares this Quaternion’s component to x, y, z, w.
+   * @param {number} x x
+   * @param {number} y y
+   * @param {number} z z
+   * @param {number} w omega
+   * @returns {boolean} true, if equal
+   */
+  equalsTo(x, y, z, w) {
+    return this[0] === x && this[1] === y && this[2] === z && this[3] === w;
+  }
+
+  /**
+   * Freezes this Quaternion.
+   * @returns {Quaternion} this
+   */
+  freeze() {
+    Object.freeze(this);
+    return this;
+  }
+
+  /**
+   * Quake-style string representation of a Quaternion
+   * @returns {string} Quake-style string of this quaternion
+   */
+  toString() {
+    return `${this.map((e) => e.toFixed(1)).join(' ')}`;
+  }
+};
+
+export default class Vector extends Array {
+  /** Vector origin constant */
+  static origin = (new Vector()).freeze();
 
   /**
    * Construct a Vector (defaulting to [0.0, 0.0, 0.0]).
@@ -125,7 +126,7 @@ Vector = class Vector extends Array {
     const perpendicularVec = new Vector(
       temp[0] - d * this[0] * invDenom,
       temp[1] - d * this[1] * invDenom,
-      temp[2] - d * this[2] * invDenom
+      temp[2] - d * this[2] * invDenom,
     );
 
     // Normalize the result and return:
@@ -162,9 +163,9 @@ Vector = class Vector extends Array {
 
     // Rotation about Z-axis by `degrees`:
     const zrot = [
-      [  c,    s,  0.0],
-      [ -s,    c,  0.0],
-      [0.0,  0.0,  1.0],
+      [c, s, 0.0],
+      [-s, c, 0.0],
+      [0.0, 0.0, 1.0],
     ];
 
     // Combine the rotations:
@@ -257,7 +258,7 @@ Vector = class Vector extends Array {
    * Equivalent to the old Vec.AngleVectors(angles, forward, right, up),
    * but now it acts on `this` as the angles array.
    * Returns an object containing forward, right, up as Vecs.
-   * @returns {Vector.DirectionalVectors} directional vectors
+   * @returns {DirectionalVectors} directional vectors
    */
   angleVectors() {
     const angles = this;
@@ -276,22 +277,22 @@ Vector = class Vector extends Array {
     const forward = new Vector(
       cp * cy,
       cp * sy,
-      -sp
+      -sp,
     );
 
     const right = new Vector(
       cr * sy - sr * sp * cy,
       -sr * sp * sy - cr * cy,
-      -sr * cp
+      -sr * cp,
     );
 
     const up = new Vector(
       cr * sp * cy + sr * sy,
       cr * sp * sy - sr * cy,
-      cr * cp
+      cr * cp,
     );
 
-    return new Vector.DirectionalVectors(forward, right, up);
+    return new DirectionalVectors(forward, right, up);
   }
 
   toYaw() {
@@ -400,7 +401,7 @@ Vector = class Vector extends Array {
   /**
    * Check if other equals this vector.
    * @param {Vector|Array} other other vector (or vector alike)
-   * @returns {Vector} this
+   * @returns {boolean} true, if all components are equal
    */
   equals(other) {
     console.assert(other instanceof Vector, 'not a Vector');
@@ -515,7 +516,7 @@ Vector = class Vector extends Array {
     return new Vector(
       this[1] * other[2] - this[2] * other[1],
       this[2] * other[0] - this[0] * other[2],
-      this[0] * other[1] - this[1] * other[0]
+      this[0] * other[1] - this[1] * other[0],
     );
   }
 
@@ -528,7 +529,7 @@ Vector = class Vector extends Array {
     return Math.sqrt(
       this[0] * this[0] +
       this[1] * this[1] +
-      this[2] * this[2]
+      this[2] * this[2],
     );
   }
 
@@ -571,36 +572,36 @@ Vector = class Vector extends Array {
     return [
       [
         matrixA[0][0] * matrixB[0][0] +
-          matrixA[0][1] * matrixB[1][0] +
-          matrixA[0][2] * matrixB[2][0],
+        matrixA[0][1] * matrixB[1][0] +
+        matrixA[0][2] * matrixB[2][0],
         matrixA[0][0] * matrixB[0][1] +
-          matrixA[0][1] * matrixB[1][1] +
-          matrixA[0][2] * matrixB[2][1],
+        matrixA[0][1] * matrixB[1][1] +
+        matrixA[0][2] * matrixB[2][1],
         matrixA[0][0] * matrixB[0][2] +
-          matrixA[0][1] * matrixB[1][2] +
-          matrixA[0][2] * matrixB[2][2],
+        matrixA[0][1] * matrixB[1][2] +
+        matrixA[0][2] * matrixB[2][2],
       ],
       [
         matrixA[1][0] * matrixB[0][0] +
-          matrixA[1][1] * matrixB[1][0] +
-          matrixA[1][2] * matrixB[2][0],
+        matrixA[1][1] * matrixB[1][0] +
+        matrixA[1][2] * matrixB[2][0],
         matrixA[1][0] * matrixB[0][1] +
-          matrixA[1][1] * matrixB[1][1] +
-          matrixA[1][2] * matrixB[2][1],
+        matrixA[1][1] * matrixB[1][1] +
+        matrixA[1][2] * matrixB[2][1],
         matrixA[1][0] * matrixB[0][2] +
-          matrixA[1][1] * matrixB[1][2] +
-          matrixA[1][2] * matrixB[2][2],
+        matrixA[1][1] * matrixB[1][2] +
+        matrixA[1][2] * matrixB[2][2],
       ],
       [
         matrixA[2][0] * matrixB[0][0] +
-          matrixA[2][1] * matrixB[1][0] +
-          matrixA[2][2] * matrixB[2][0],
+        matrixA[2][1] * matrixB[1][0] +
+        matrixA[2][2] * matrixB[2][0],
         matrixA[2][0] * matrixB[0][1] +
-          matrixA[2][1] * matrixB[1][1] +
-          matrixA[2][2] * matrixB[2][1],
+        matrixA[2][1] * matrixB[1][1] +
+        matrixA[2][2] * matrixB[2][1],
         matrixA[2][0] * matrixB[0][2] +
-          matrixA[2][1] * matrixB[1][2] +
-          matrixA[2][2] * matrixB[2][2],
+        matrixA[2][1] * matrixB[1][2] +
+        matrixA[2][2] * matrixB[2][2],
       ],
     ];
   }
@@ -608,7 +609,7 @@ Vector = class Vector extends Array {
   /**
    * Set `this` from a quaternion, interpreting that quaternion as Euler angles.
    * (Equivalent to the old Vec.SetQuaternion, but we store to `this`.)
-   * @param {Vector.Quaternion} quat quaternion
+   * @param {Quaternion} quat quaternion
    * @returns {Vector} this
    */
   setQuaternion(quat) {
@@ -617,14 +618,14 @@ Vector = class Vector extends Array {
     // Derived via standard quaternion->Euler formula
     const yaw = Math.atan2(
       2 * (w * z + x * y),
-      1 - 2 * (y * y + z * z)
+      1 - 2 * (y * y + z * z),
     );
     const pitch = Math.asin(
-      2 * (w * y - z * x)
+      2 * (w * y - z * x),
     );
     const roll = Math.atan2(
       2 * (w * x + y * z),
-      1 - 2 * (x * x + y * y)
+      1 - 2 * (x * x + y * y),
     );
 
     // Store angles in this vector.  (Roll, Pitch, Yaw)
@@ -636,7 +637,7 @@ Vector = class Vector extends Array {
 
   /**
    * Convert these Euler angles (this) into a quaternion [w, x, y, z].
-   * @returns {Vector.Quaternion} quaternion
+   * @returns {Quaternion} quaternion
    */
   toQuaternion() {
     // Expecting [roll, pitch, yaw] in `this`
@@ -661,12 +662,12 @@ Vector = class Vector extends Array {
     const y = cosRoll * sinPitch * cosYaw + sinRoll * cosPitch * sinYaw;
     const z = cosRoll * cosPitch * sinYaw - sinRoll * sinPitch * cosYaw;
 
-    return new Vector.Quaternion(w, x, y, z);
+    return new Quaternion(w, x, y, z);
   }
 
   /**
    * Create a Vector from a quaternion, converting that quaternion to Euler angles.
-   * @param {number[4]} quat quaternion
+   * @param {Quaternion} quat quaternion
    * @returns {Vector} rotation vector
    */
   static fromQuaternion(quat) {
@@ -691,4 +692,4 @@ Vector = class Vector extends Array {
   toString() {
     return `${this.map((e) => e.toFixed(1)).join(' ')}`;
   }
-}
+};

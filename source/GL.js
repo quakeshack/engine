@@ -1,4 +1,4 @@
-/* global GL, gl, Con, COM, Cmd, Cvar, SCR, Sys, Draw, VID */
+/* global GL, gl, Con, COM, Cmd, Cvar, SCR, Sys, VID */
 
 // eslint-disable-next-line no-global-assign
 GL = {};

@@ -1,7 +1,15 @@
-/* global Host, Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, Chase, IN, Sys, Def, V, CDAudio, Sbar, Draw, VID, M, PR, Key, Shack, Game */
+import Cvar from './Cvar.mjs';
+import * as Protocol from '../network/Protocol.mjs';
+import * as Def from './Def.mjs';
+import Cmd from './Cmd.mjs';
+import { registry } from '../registry.mjs';
+import MSG from '../network/MSG.mjs';
+import Vector from './Vector.mjs';
+import Q from './Q.mjs';
 
-// eslint-disable-next-line no-global-assign
-Host = {};
+const Host = {};
+
+export default Host;
 
 Host.framecount = 0;
 
@@ -22,7 +30,7 @@ Host.Error = function(error) {
     Sys.Error('Host.Error: recursively entered');
   }
   Host.inerror = true;
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     SCR.EndLoadingPlaque();
   }
   Con.PrintError('Host.Error: ' + error + '\n');
@@ -36,10 +44,11 @@ Host.Error = function(error) {
 };
 
 Host.FindMaxClients = function() {
+  const SV = registry.SV;
   SV.svs.maxclients = 1;
   SV.svs.maxclientslimit = Def.max_clients;
   SV.svs.clients = [];
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     CL.cls.state = CL.active.disconnected;
   }
   for (let i = 0; i < SV.svs.maxclientslimit; i++) {
@@ -151,7 +160,7 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
     return;
   }
   SV.server.active = false;
-  if (!Host.dedicated.value && CL.cls.state === CL.active.connected) {
+  if (!registry.isDedicatedServer && CL.cls.state === CL.active.connected) {
     CL.Disconnect();
   }
   const start = Sys.FloatTime(); let count; let i;
@@ -191,7 +200,7 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
 
 Host.WriteConfiguration = function() {
   Host.ScheduleInFuture('Host.WriteConfiguration', () => {
-    COM.WriteTextFile('config.cfg', (!Host.dedicated.value ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
+    COM.WriteTextFile('config.cfg', (!registry.isDedicatedServer ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
     Con.DPrint('Wrote configuration\n');
   }, 5.000);
 };
@@ -206,7 +215,7 @@ Host.ServerFrame = function() { // TODO: SV duties
   SV.server.datagram.clear();
   SV.CheckForNewClients();
   SV.RunClients();
-  if ((SV.server.paused !== true) && ((SV.svs.maxclients >= 2) || (!Host.dedicated.value && Key.dest.value === Key.dest.game))) {
+  if ((SV.server.paused !== true) && ((SV.svs.maxclients >= 2) || (!registry.isDedicatedServer && Key.dest.value === Key.dest.game))) {
     SV.Physics();
   }
   SV.RunScheduledGameCommands();
@@ -269,7 +278,7 @@ Host._Frame = function() {
     Host._scheduleInFuture.delete(name);
   }
 
-  if (Host.dedicated.value) {
+  if (registry.isDedicatedServer) {
     Cmd.Execute();
 
     if (SV.server.active === true) {
@@ -382,6 +391,7 @@ Host.Frame = function() {
 };
 
 Host.Init = async function(dedicated) {
+  const { Sys, Con, COM, V, Chase } = registry;
   Host.oldrealtime = Sys.FloatTime();
   Cmd.Init();
   Cvar.Init();
@@ -404,7 +414,6 @@ Host.Init = async function(dedicated) {
   Mod.Init();
   NET.Init();
   SV.Init();
-  Shack.Init();
 
   if (!dedicated) {
     S.Init();
@@ -426,19 +435,6 @@ Host.Init = async function(dedicated) {
 
   Host.initialized = true;
   Sys.Print('========Quake Initialized=========\n');
-
-  if (dedicated) {
-    return;
-  }
-
-  try {
-    if (parent.saveGameToUpload!=null) {
-      const name = COM.DefaultExtension('s0', '.sav');
-      COM.WriteTextFile(name, parent.saveGameToUpload);
-    }
-  } catch (err) {
-    Con.DPrint(err);
-  }
 };
 
 Host.Shutdown = function() {
@@ -448,12 +444,12 @@ Host.Shutdown = function() {
   }
   Host.isdown = true;
   Host.WriteConfiguration();
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     S.Shutdown();
     CDAudio.Stop();
   }
   NET.Shutdown();
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     IN.Shutdown();
     VID.Shutdown();
   }
@@ -464,7 +460,7 @@ Host.Shutdown = function() {
 // Commands
 
 Host.Quit_f = function() {
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     if (Key.dest.value !== Key.dest.console) {
       M.Menu_Quit_f();
       return;
@@ -634,29 +630,29 @@ Host.Map_f = function(mapname, ...spawnparms) {
     Con.Print(`No such map: ${mapname}\n`);
     return;
   }
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     CL.cls.demonum = -1;
     CL.Disconnect();
   }
   Host.ShutdownServer(); // CR: this is the reason why you would need to use changelevel on Counter-Strike 1.6 etc.
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     Key.dest.value = Key.dest.game;
     SCR.BeginLoadingPlaque();
   }
   SV.svs.serverflags = 0;
 
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     CL.SetConnectingStep(5, 'Spawning server');
   }
 
-  if (!Host.dedicated.value) {
+  if (!registry.isDedicatedServer) {
     CL.cls.spawnparms = spawnparms.join(' ');
   }
 
   Host.ScheduleForNextFrame(() => {
     SV.SpawnServer(mapname);
 
-    if (!Host.dedicated.value) {
+    if (!registry.isDedicatedServer) {
       CL.SetConnectingStep(null, null);
     }
 
@@ -664,7 +660,7 @@ Host.Map_f = function(mapname, ...spawnparms) {
       return;
     }
 
-    if (!Host.dedicated.value) {
+    if (!registry.isDedicatedServer) {
       Cmd.ExecuteString('connect local');
     }
   });
@@ -676,7 +672,7 @@ Host.Changelevel_f = function(mapname) {
     return;
   }
 
-  if (!SV.server.active || (!Host.dedicated.value && CL.cls.demoplayback)) {
+  if (!SV.server.active || (!registry.isDedicatedServer && CL.cls.demoplayback)) {
     Con.Print('Only the server may changelevel\n');
     return;
   }
@@ -698,20 +694,20 @@ Host.Changelevel_f = function(mapname) {
   Host.ScheduleForNextFrame(() => {
     SV.SaveSpawnparms();
     SV.SpawnServer(mapname);
-    if (!Host.dedicated.value) {
+    if (!registry.isDedicatedServer) {
       CL.SetConnectingStep(null, null);
     }
   });
 };
 
 Host.Restart_f = function() {
-  if ((SV.server.active) && (Host.dedicated.value || !CL.cls.demoplayback && !this.client)) {
+  if ((SV.server.active) && (registry.isDedicatedServer || !CL.cls.demoplayback && !this.client)) {
     Cmd.ExecuteString(`map ${SV.server.gameAPI.mapname}`);
   }
 };
 
 Host.Reconnect_f = function() {
-  if (Host.dedicated.value) {
+  if (registry.isDedicatedServer) {
     Con.Print('cannot reconnect in dedicated server mode\n');
     return;
   }
@@ -726,7 +722,7 @@ Host.Connect_f = function(address) {
     return;
   }
 
-  if (Host.dedicated.value) {
+  if (registry.isDedicatedServer) {
     Con.Print('cannot connect to another server in dedicated server mode\n');
     return;
   }
@@ -849,7 +845,7 @@ Host.Loadgame_f = function (savename) {
   SV.SpawnServer(gamestate.mapname);
 
   if (!SV.server.active) {
-    if (!Host.dedicated.value) {
+    if (!registry.isDedicatedServer) {
       CL.SetConnectingStep(null, null);
     }
     Host.Error(`Couldn't load map: ${gamestate.mapname}\n`);
@@ -916,7 +912,7 @@ Host.Name_f = function(...names) { // signon 2, step 1
 
   let newName = names.join(' ').trim().substring(0, 15);
 
-  if (!Host.dedicated.value && !this.client) {
+  if (!registry.isDedicatedServer && !this.client) {
     Cvar.Set('_cl_name', newName);
     if (CL.cls.state === CL.active.connected) {
       this.forward();
@@ -933,7 +929,7 @@ Host.Name_f = function(...names) { // signon 2, step 1
   }
 
   const name = Host.client.name;
-  if (Host.dedicated.value && name && (name.length !== 0) && (name !== 'unconnected') && (name !== newName)) {
+  if (registry.isDedicatedServer && name && (name.length !== 0) && (name !== 'unconnected') && (name !== newName)) {
     Con.Print(name + ' renamed to ' + newName + '\n');
   }
 
@@ -1241,7 +1237,7 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
   }
   let who;
   if (!this.client) {
-    if (Host.dedicated.value) {
+    if (registry.isDedicatedServer) {
       who = NET.hostname.string;
     } else {
       who = CL.name.string;
@@ -1257,7 +1253,7 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
     message = COM.Parse(this.args);
   }
   let dropReason = 'Kicked by ' + who;
-  if (message != null) {
+  if (message !== null) {
     let p = 0;
     if (byNumber === true) {
       ++p;
@@ -1509,7 +1505,7 @@ Host.Viewprev_f = function() {
 };
 
 Host.Startdemos_f = function(...demos) {
-  if (Host.dedicated.value) {
+  if (registry.isDedicatedServer) {
     Con.Print('cannot play demos in dedicated server mode\n');
     return;
   }
@@ -1588,6 +1584,6 @@ Host.InitCommands = function(dedicated) {
   Cmd.AddCommand('viewframe', Host.Viewframe_f);
   Cmd.AddCommand('viewnext', Host.Viewnext_f);
   Cmd.AddCommand('viewprev', Host.Viewprev_f);
-  Cmd.AddCommand('mcache', Mod.Print);
+  // Cmd.AddCommand('mcache', Mod.Print);
   Cmd.AddCommand('writeconfig', Host.WriteConfiguration_f);
 };

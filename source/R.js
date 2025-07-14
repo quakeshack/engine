@@ -1324,18 +1324,18 @@ R.ramp2 = [0x6f, 0x6e, 0x6d, 0x6c, 0x6b, 0x6a, 0x68, 0x66];
 R.ramp3 = [0x6d, 0x6b, 6, 5, 4, 3];
 
 R.InitParticles = async function() {
-  let i = COM.CheckParm('-particles');
-  if (i != null) {
-    R.numparticles = Q.atoi(COM.argv[i + 1]);
-    if (R.numparticles < 512) {
-      R.numparticles = 512;
-    }
-  } else {
+  // let i = COM.CheckParm('-particles');
+  // if (i != null) {
+  //   R.numparticles = Q.atoi(COM.argv[i + 1]);
+  //   if (R.numparticles < 512) {
+  //     R.numparticles = 512;
+  //   }
+  // } else {
     R.numparticles = 2048;
-  }
+  // }
 
   R.avelocities = [];
-  for (i = 0; i <= 161; ++i) {
+  for (let i = 0; i <= 161; i++) {
     R.avelocities[i] = [Math.random() * 2.56, Math.random() * 2.56, Math.random() * 2.56];
   }
 

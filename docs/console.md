@@ -57,7 +57,7 @@ Cmd.AddCommand('map', Host.Map_f);
 
 **NOTE**: Make sure to always suffix the functions that are supposed to be console command handlers with `_f`.
 
-We no longer support `Cmd.argv`, `Cmd.client` etc. In order to allow parallel servers and asynchroneous processing of commands, we provide context for console commands in `this`, it will be a `ConsoleCommandContext` instance.
+We no longer support `Cmd.argv`, `Cmd.client` etc. In order to allow parallel servers and asynchroneous processing of commands, we provide context for console commands in `this`, it will be a `ConsoleCommand` instance.
 
 The following should give you the idea on the console command structure:
 
@@ -94,3 +94,22 @@ Host.Fly_f = function() {
 ```
 
 A call to `this.forward()` will return true, when the command has been forwarded.
+
+It’s also possible to register a console command handler class based on `ConsoleCommand`. You then have to override `run()`.
+
+For example:
+
+
+```js
+class EchoConsoleCommand extends ConsoleCommand {
+  run() {
+    Con.Print(`${this.args}\n`);
+  }
+};
+
+/* … */
+
+Cmd.AddCommand('echo', EchoConsoleCommand);
+```
+
+This is useful when a set of commands share a common prolog or logic.
