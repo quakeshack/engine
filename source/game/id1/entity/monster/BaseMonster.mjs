@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
 import { damage, moveType, solid, range, colors } from "../../Defs.mjs";
 import { EntityAI, ATTACK_STATE } from "../../helper/AI.mjs";

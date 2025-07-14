@@ -361,7 +361,7 @@ export default class Vector extends Array {
 
   /**
    * Add other to this vector (component-wise).
-   * @param {Vector|Array} other other vector (or vector alike)
+   * @param {Vector|Array<number>} other other vector (or vector alike)
    * @returns {Vector} this
    */
   add(other) {
@@ -374,7 +374,7 @@ export default class Vector extends Array {
 
   /**
    * Subtract other from this vector (component-wise).
-   * @param {Vector|Array} other other vector (or vector alike)
+   * @param {Vector|Array<number>} other other vector (or vector alike)
    * @returns {Vector} this
    */
   subtract(other) {
@@ -400,7 +400,7 @@ export default class Vector extends Array {
 
   /**
    * Check if other equals this vector.
-   * @param {Vector|Array} other other vector (or vector alike)
+   * @param {Vector|Array<number>} other other vector (or vector alike)
    * @returns {boolean} true, if all components are equal
    */
   equals(other) {
@@ -421,7 +421,7 @@ export default class Vector extends Array {
 
   /**
    * Check if this vector is greater than other.
-   * @param {Vector|Array} other other vector (or vector alike)
+   * @param {Vector|Array<number>} other other vector (or vector alike)
    * @returns {boolean} true, if all components of this vector are greater than the other vector
    */
   gt(other) {
@@ -431,7 +431,7 @@ export default class Vector extends Array {
 
   /**
    * Check if this vector is greater than or equal to other.
-   * @param {Vector|Array} other other vector (or vector alike)
+   * @param {Vector|Array<number>} other other vector (or vector alike)
    * @returns {boolean} true, if all components of this vector are greater than or equal to the other vector
    */
   gte(other) {
@@ -441,7 +441,7 @@ export default class Vector extends Array {
 
   /**
    * Check if this vector is less than other.
-   * @param {Vector|Array} other other vector (or vector alike)
+   * @param {Vector|Array<number>} other other vector (or vector alike)
    * @returns {boolean} true, if all components of this vector are less than the other vector
    */
   lt(other) {
@@ -451,7 +451,7 @@ export default class Vector extends Array {
 
   /**
    * Check if this vector is less than or equal to other.
-   * @param {Vector|Array} other other vector (or vector alike)
+   * @param {Vector|Array<number>} other other vector (or vector alike)
    * @returns {boolean} true, if all components of this vector are less than or equal to the other vector
    */
   lte(other) {
@@ -461,7 +461,7 @@ export default class Vector extends Array {
 
   /**
    * Overwrite this vector with values from other.
-   * @param {Vector|Array} other other vector
+   * @param {Vector|Array<number>} other other vector
    * @returns {Vector} this
    */
   set(other) {

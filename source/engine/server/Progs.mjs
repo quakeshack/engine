@@ -1,12 +1,21 @@
-/* global Con, PR, COM, Host, Cmd, Cvar, Q, SV, Sys, ED, CRC, PF, Vector */
+import Cmd from '../common/Cmd.mjs';
+import { CRC16CCITT } from '../common/CRC.mjs';
+import Cvar from '../common/Cvar.mjs';
+import { MissingResourceError } from '../common/Errors.mjs';
+import Q from '../common/Q.mjs';
+import Vector from '../../shared/Vector.mjs';
+import { registry } from '../registry.mjs';
+import { ED } from './Edict.mjs';
+import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 
-// eslint-disable-next-line no-global-assign
-PR = {};
+const PR = {};
+
+export default PR;
 
 /**
  * PR.fielddefs[].type
  */
-PR.etype = {
+PR.etype = Object.freeze({
   ev_void: 0,
   ev_string: 1,
   ev_float: 2,
@@ -21,11 +30,11 @@ PR.etype = {
   ev_string_not_empty: 103,
   ev_entity_client: 104,
   ev_bool: 200,
-};
+});
 
 PR.saveglobal = (1<<15);
 
-PR.op = {
+PR.op = Object.freeze({
   done: 0,
   mul_f: 1, mul_v: 2, mul_fv: 3, mul_vf: 4,
   div_f: 5,
@@ -46,18 +55,18 @@ PR.op = {
   jump: 61,
   and: 62, or: 63,
   bitand: 64, bitor: 65,
-};
+});
 
 PR.version = 6;
 PR.max_parms = 8;
 
-PR.globalvars = {
+PR.globalvars = Object.freeze({
   self: 28, // edict
   other: 29, // edict
   time: 31, // float
-};
+});
 
-PR.entvars = {
+PR.entvars = Object.freeze({
   modelindex: 0, // float
   absmin: 1, // vec3
   absmin1: 2,
@@ -163,9 +172,9 @@ PR.entvars = {
   noise1: 102, // string
   noise2: 103, // string
   noise3: 104, // string
-};
+});
 
-PR.ofs = {
+PR.ofs = Object.freeze({
   OFS_NULL: 0,
   OFS_RETURN: 1,
   OFS_PARM0: 4, // leave 3 ofs for each parm to hold vectors
@@ -176,7 +185,7 @@ PR.ofs = {
   OFS_PARM5: 19,
   OFS_PARM6: 22,
   OFS_PARM7: 25,
-};
+});
 
 PR.progheader_crc = 5927;
 
@@ -274,7 +283,7 @@ PR.FunctionProxy = class ProgsFunctionProxy extends Function {
 
     return PR.Value(PR.etype.ev_float, PR.globals, 1); // assume float
   }
-}
+};
 
 // PR._stats = {
 //   edict: {},
@@ -783,22 +792,22 @@ PR.GlobalStringNoContents = function(ofs) {
 
 PR.LoadProgs = function() {
   const progs = COM.LoadFile('progs.dat');
-  if (progs == null) {
-    Sys.Error('PR.LoadProgs: couldn\'t load progs.dat');
+  if (progs === null) {
+    throw new MissingResourceError('progs.dat');
   }
   Con.DPrint('Programs occupy ' + (progs.byteLength >> 10) + 'K.\n');
   const view = new DataView(progs);
 
   let i = view.getUint32(0, true);
   if (i !== PR.version) {
-    Sys.Error('progs.dat has wrong version number (' + i + ' should be ' + PR.version + ')');
+    throw new Error('progs.dat has wrong version number (' + i + ' should be ' + PR.version + ')');
   }
 
   if (view.getUint32(4, true) !== PR.progheader_crc) {
-    Sys.Error('progs.dat system vars have been modified, PR.js is out of date');
+    throw new Error('progs.dat system vars have been modified, PR.js is out of date');
   }
 
-  PR.crc = CRC.Block(new Uint8Array(progs));
+  PR.crc = CRC16CCITT.Block(new Uint8Array(progs));
 
   PR.stack = [];
   PR.depth = 0;
@@ -906,7 +915,7 @@ PR.LoadProgs = function() {
   for (i = 0; i < fields.length; ++i) {
     const field = fields[i];
     const def = PR.FindField(field);
-    PR.entvars[field] = (def != null) ? def.ofs : null;
+    PR.entvars[field] = (def !== null) ? def.ofs : null;
   }
   PR.FunctionProxy.proxyCache = []; // free all cached functions
   // hook up progs.dat with our proxies
@@ -996,7 +1005,7 @@ PR.LoadProgs = function() {
 
     spawnPreparedEntity(edict) {
       if (!edict.entity) {
-        Con.PrintError(`PR.LoadProgs.spawnPreparedEntity: no entity class instance set!\n`);
+        Con.PrintError('PR.LoadProgs.spawnPreparedEntity: no entity class instance set!\n');
         return false;
       }
 
@@ -1028,22 +1037,29 @@ PR.LoadProgs = function() {
   return gameAPI;
 };
 
+/** @type {Cvar[]} */
 PR._cvars = [];
 
 PR.Init = async function() {
+  const { COM, Con } = registry;
+
   try {
     if (COM.CheckParm('-noquakejs')) {
       throw new Error('QuakeJS disabled');
     }
 
     // try to get the game API
-    PR.QuakeJS = await import('./game/' + COM.gamedir[0].filename + '/main.mjs');
-    PR.QuakeJS.ServerGameAPI.Init();
+    PR.QuakeJS = await import('../../game/' + COM.gamedir[0].filename + '/main.mjs');
+    PR.QuakeJS.ServerGameAPI.Init(ServerEngineAPI);
 
     const identification = PR.QuakeJS.identification;
     Con.Print(`PR.Init: ${identification.name} v${identification.version.join('.')} by ${identification.author} loaded.\n`);
     return;
   } catch (e) {
+    if (e.code !== 'ERR_MODULE_NOT_FOUND') { // only catch module not found errors
+      throw e;
+    }
+
     Con.PrintWarning('PR.Init: Falling back to QuakeC, failed to initialize QuakeJS server code: ' + e.message +'.\n');
 
     PR.QuakeJS = null;
@@ -1060,11 +1076,11 @@ PR.Init = async function() {
   PR._cvars.push(new Cvar('scratch2', '0'));
   PR._cvars.push(new Cvar('scratch3', '0'));
   PR._cvars.push(new Cvar('scratch4', '0'));
-  PR._cvars.push(new Cvar('savedgamecfg', '0', true));
-  PR._cvars.push(new Cvar('saved1', '0', true));
-  PR._cvars.push(new Cvar('saved2', '0', true));
-  PR._cvars.push(new Cvar('saved3', '0', true));
-  PR._cvars.push(new Cvar('saved4', '0', true));
+  PR._cvars.push(new Cvar('savedgamecfg', '0', Cvar.FLAG.ARCHIVE));
+  PR._cvars.push(new Cvar('saved1', '0', Cvar.FLAG.ARCHIVE));
+  PR._cvars.push(new Cvar('saved2', '0', Cvar.FLAG.ARCHIVE));
+  PR._cvars.push(new Cvar('saved3', '0', Cvar.FLAG.ARCHIVE));
+  PR._cvars.push(new Cvar('saved4', '0', Cvar.FLAG.ARCHIVE));
 };
 
 // exec
@@ -1495,7 +1511,7 @@ PR._StringLength = function(ofs) {
   }
 
   return len;
-}
+};
 
 PR.SetString = function(ofs, s, length = null) {
   // shortcut: empty strings are located at 0x0000

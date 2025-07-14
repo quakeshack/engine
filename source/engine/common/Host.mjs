@@ -4,8 +4,9 @@ import * as Def from './Def.mjs';
 import Cmd from './Cmd.mjs';
 import { registry } from '../registry.mjs';
 import MSG from '../network/MSG.mjs';
-import Vector from './Vector.mjs';
+import Vector from '../../shared/Vector.mjs';
 import Q from './Q.mjs';
+import { ServerClient } from '../server/Client.mjs';
 
 const Host = {};
 
@@ -52,7 +53,7 @@ Host.FindMaxClients = function() {
     CL.cls.state = CL.active.disconnected;
   }
   for (let i = 0; i < SV.svs.maxclientslimit; i++) {
-    SV.svs.clients.push(new SV.Client(i));
+    SV.svs.clients.push(new ServerClient(i));
   }
   Cvar.SetValue('deathmatch', 0);
 };
@@ -248,6 +249,7 @@ Host.ScheduleInFuture = function(name, callback, whenInSeconds) {
 Host.time3 = 0.0;
 Host._Frame = function() {
   // Math.random();
+  const { SV, Sys } = registry;
 
   Host.realtime = Sys.FloatTime();
   Host.frametime = Host.realtime - Host.oldrealtime;
@@ -391,7 +393,7 @@ Host.Frame = function() {
 };
 
 Host.Init = async function(dedicated) {
-  const { Sys, Con, COM, V, Chase } = registry;
+  const { Sys, Con, COM, V, Chase, PR, Mod, NET, SV } = registry;
   Host.oldrealtime = Sys.FloatTime();
   Cmd.Init();
   Cvar.Init();
@@ -428,7 +430,7 @@ Host.Init = async function(dedicated) {
     IN.Init();
   } else {
     // we need a few frontend things for dedicated
-    await R.Init();
+    // await R.Init();
   }
 
   Cmd.text = 'exec better-quake.rc\n' + Cmd.text;
@@ -619,6 +621,8 @@ Host.Ping_f = function() {
 };
 
 Host.Map_f = function(mapname, ...spawnparms) {
+  const { Con, SV, CL } = registry;
+
   if (mapname === undefined) {
     Con.Print('Usage: map <map>\n');
     return;
@@ -716,6 +720,8 @@ Host.Reconnect_f = function() {
 };
 
 Host.Connect_f = function(address) {
+  const { CL, Con } = registry;
+
   if (address === undefined) {
     Con.Print('Usage: connect <address>\n');
     Con.Print(' - <address> can be "self", connecting to the current domain name\n');

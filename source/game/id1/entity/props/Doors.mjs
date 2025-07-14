@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
 import { attn, channel, colors, damage, items, moveType, solid, worldType } from "../../Defs.mjs";
 import BaseEntity from "../BaseEntity.mjs";

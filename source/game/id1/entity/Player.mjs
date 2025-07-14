@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../../shared/Vector.mjs';
 
 import { attn, channel, content, damage, dead, deathType, effect, flags, hull, items, moveType, solid } from "../Defs.mjs";
 import { crandom, Flag, Serializer } from "../helper/MiscHelpers.mjs";

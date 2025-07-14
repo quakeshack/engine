@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../shared/Vector.mjs';
 
 /**
  * range values

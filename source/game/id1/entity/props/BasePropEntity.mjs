@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
 import BaseEntity from "../BaseEntity.mjs";
 import { Sub } from "../Subs.mjs";

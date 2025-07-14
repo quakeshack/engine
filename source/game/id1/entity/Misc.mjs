@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../../shared/Vector.mjs';
 
 import { attn, channel, colors, content, damage, effect, moveType, solid, tentType } from "../Defs.mjs";
 import { crandom } from "../helper/MiscHelpers.mjs";

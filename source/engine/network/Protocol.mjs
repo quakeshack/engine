@@ -1,4 +1,4 @@
-import Vector from '../common/Vector.mjs';
+import Vector from '../../shared/Vector.mjs';
 
 export const version = 42; // QuakeShack special version
 

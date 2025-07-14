@@ -1,12 +1,15 @@
 import Cvar from '../common/Cvar.mjs';
 import { DIST_EPSILON, MoveVars, Pmove, STEPSIZE } from '../common/Pmove.mjs';
-import Vector from '../common/Vector.mjs';
-import MSG, { SzBuffer } from './MSG.mjs';
-import { QSocket } from './NetworkDrivers.mjs';
-import * as Protocol from './Protocol.mjs';
+import Vector from '../../shared/Vector.mjs';
+import MSG, { SzBuffer } from '../network/MSG.mjs';
+import * as Protocol from '../network/Protocol.mjs';
 import * as Def from './../common/Def.mjs';
 import Cmd from '../common/Cmd.mjs';
 import Q from '../common/Q.mjs';
+import { ED, ServerEdict } from './Edict.mjs';
+import { registry } from '../registry.mjs';
+
+/** @typedef {import('./Client.mjs').ServerClient} ServerClient */
 
 const SV = {};
 
@@ -69,7 +72,7 @@ SV.server = {
   worldmodel: null,
 };
 
-SV.EntityState = class ServerEntityState {
+export class ServerEntityState {
   constructor(num = null) {
     this.num = num;
     this.flags = 0;
@@ -105,529 +108,7 @@ SV.EntityState = class ServerEntityState {
   }
 };
 
-SV.Client = class ServerClient {
-  static STATE = {
-    /** can be reused for a new connection */
-    FREE: 0,
-    /** client has been disconnected, but don’t reuse connection for a couple seconds */
-    ZOMBIE: 1,
-    /** has been assigned to a client, but not in game yet */
-    CONNECTED: 2,
-    /** client is fully in game */
-    SPAWNED: 3,
-  };
-
-  constructor(num) {
-    this.state = ServerClient.STATE.FREE;
-    this.num = num;
-    this.message = new SzBuffer(8000, 'ServerClient ' + num);
-    this.message.allowoverflow = true;
-    this.colors = 0;
-    this.old_frags = 0;
-    /** @type {number} last update sent to the client */
-    this.last_update = 0;
-    /** @type {number} last message received from the client */
-    this.last_message = 0;
-    this.last_ping_update = 0;
-    this.ping_times = new Array(16);
-    this.num_pings = 0;
-    /** @type {?QSocket} */
-    this.netconnection = null;
-
-    /** spawn parms are carried from level to level */
-    this.spawn_parms = new Array(16);
-
-    this.cmd = new Protocol.UserCmd();
-    this.lastcmd = new Protocol.UserCmd();
-    this.frames = [];
-
-    /** @type {Map<string,SV.EntityState>} olds entity states for this player only @private */
-    this._entityStates = new Map();
-
-    this.active = false;
-    this.dropasap = false;
-    this.spawned = false;
-    this.sendsignon = false;
-
-    this.wishdir = new Vector();
-
-    // Object.seal(this);
-  }
-
-  toString() {
-    return `ServerClient (${this.num}, ${this.netconnection})`;
-  }
-
-  /** @type {SV.Edict} */
-  get edict() {
-    // clients are mapped to edicts with ids from 1 to maxclients
-    return SV.server.edicts[this.num + 1];
-  }
-
-  get entity() {
-    return this.edict.entity;
-  }
-
-  clear() {
-    this.state = ServerClient.STATE.FREE;
-    this.netconnection = null;
-    this.message.clear();
-    this.wishdir.clear();
-    this.colors = 0;
-    this.old_frags = 0;
-    this.last_ping_update = 0.0;
-    this.ping_times.fill(0);
-    this.spawn_parms.fill(0);
-    this.cmd.reset();
-    this.lastcmd.reset();
-    this.last_update = 0.0;
-    this.last_message = 0.0;
-    this.num_pings = 0;
-    this._entityStates = new Map();
-    this.active = false;
-    this.dropasap = false;
-    this.spawned = false;
-    this.sendsignon = false;
-  }
-
-  /**
-   * @param {number} num edict Id
-   * @returns {SV.EntityState} entity state
-   */
-  getEntityState(num) {
-    const key = num.toString();
-
-    if (!this._entityStates.has(key)) {
-      this._entityStates.set(key, new SV.EntityState(num));
-    }
-
-    return this._entityStates.get(key);
-  }
-
-  /**
-   * @param {string} name name
-   */
-  set name(name) {
-    this.edict.entity.netname = name;
-  }
-
-  get name() {
-    if (!this.active) {
-      return '';
-    }
-
-    return this.edict.entity.netname || '';
-  }
-
-  get uniqueId() {
-    return 'pending'; // TODO
-  }
-
-  get ping() {
-    return Math.round((this.ping_times.reduce((sum, elem) => sum + elem) / this.ping_times.length) * 1000) || 0;
-  }
-
-  saveSpawnparms() { // FIXME: should game handle this?
-    SV.server.gameAPI.SetChangeParms(this.edict);
-
-    for (let i = 0; i < this.spawn_parms.length; i++) {
-      this.spawn_parms[i] =  SV.server.gameAPI[`parm${i + 1}`];
-    }
-  }
-
-  consolePrint(message) {
-    MSG.WriteByte(this.message, Protocol.svc.print);
-    MSG.WriteString(this.message, message);
-  }
-
-  centerPrint(message) {
-    MSG.WriteByte(this.message, Protocol.svc.centerprint);
-    MSG.WriteString(this.message, message);
-  }
-
-  sendConsoleCommands(commandline) {
-    MSG.WriteByte(this.message, Protocol.svc.stufftext);
-    MSG.WriteString(this.message, commandline);
-  }
-};
-
-SV.Edict = class ServerEdict {
-  constructor(num) {
-    this.num = num;
-    this.free = false;
-    this.area = {
-      ent: this,
-    };
-    this.leafnums = [];
-    this.freetime = 0.0;
-    this.entity = null;
-  }
-
-  clear() {
-    if (this.entity) {
-      this.entity.free();
-      this.entity = null;
-    }
-  }
-
-  /**
-   * Edict is no longer in use
-   * @returns {boolean} true when freed/unused
-   */
-  isFree() {
-    return this.free || !this.entity;
-  }
-
-  toString() {
-    if (this.isFree()) {
-      return `unused (${this.num})`;
-    }
-
-    return `Edict (${this.entity.classname}, num: ${this.num}, origin: ${this.entity.origin})`;
-  }
-
-  /**
-   * Gives up this edict and can be reused differently later.
-   */
-  freeEdict() {
-    ED.Free(this);
-  }
-
-  /**
-   *
-   * @param {SV.Edict} otherEdict other edict
-   * @returns {boolean} whether it’s equal
-   */
-  equals(otherEdict) {
-    return otherEdict && this.num === otherEdict.num;
-  }
-
-  setMinMaxSize(min, max) {
-    // FIXME: console.assert this check
-    if (min[0] > max[0] || min[1] > max[1] || min[2] > max[2]) {
-      throw new Error('Edict.setMinMaxSize: backwards mins/maxs');
-    }
-
-    this.entity.mins = min.copy();
-    this.entity.maxs = max.copy();
-    this.entity.size = max.copy().subtract(min);
-    this.linkEdict(true);
-  }
-
-  setOrigin(vec) {
-    this.entity.origin = vec.copy();
-    this.linkEdict(false);
-  }
-
-  linkEdict(touchTriggers = false) {
-    SV.LinkEdict(this, touchTriggers);
-  }
-
-  /**
-   * Sets the model, also sets mins/maxs when applicable.
-   * Model has to be precached, otherwise an Error is thrown.
-   * @throws {Error} Model not precached.
-   * @param {string} model path to the model, e.g. progs/player.mdl
-   */
-  setModel(model) {
-    let i;
-
-    for (i = 0; i < SV.server.model_precache.length; ++i) {
-      if (SV.server.model_precache[i] === model) {
-        break;
-      }
-    }
-
-    if (i === SV.server.model_precache.length) {
-      throw new Error('Edict.setModel: ' + model + ' not precached');
-    }
-
-    this.entity.model = model;
-    this.entity.modelindex = i;
-
-    const mod = SV.server.models[i];
-
-    if (mod) {
-      this.setMinMaxSize(mod.mins, mod.maxs);
-    } else {
-      this.setMinMaxSize(Vector.origin, Vector.origin);
-    }
-  }
-
-  /**
-   * Moves self in the given direction. Returns success as a boolean.
-   * @param {number} yaw yaw in degrees
-   * @param {number} dist distance to move
-   * @returns {boolean} true, when walking was successful
-   */
-  walkMove(yaw, dist) {
-    if ((this.entity.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
-      return false;
-    }
-
-    yaw *= (Math.PI / 180.0);
-
-    return SV.movestep(this, new Vector(Math.cos(yaw) * dist, Math.sin(yaw) * dist, 0.0), true);
-  }
-
-  /**
-   * Makes sure the entity is settled on the ground.
-   * @param {number} z maximum distance to look down to check
-   * @returns {boolean} true, when the dropping succeeded
-   */
-  dropToFloor(z = -2048.0) {
-    const end = this.entity.origin.copy().add(new Vector(0.0, 0.0, z));
-    const trace = SV.Move(this.entity.origin, this.entity.mins, this.entity.maxs, end, 0, this);
-
-    if (trace.fraction === 1.0 || trace.allsolid) {
-      return false;
-    }
-
-    this.setOrigin(trace.endpos);
-    this.entity.flags |= SV.fl.onground;
-    this.entity.groundentity = trace.ent.entity;
-
-    return true;
-  }
-
-  /**
-   * Checks if the entity is standing on the ground.
-   * @returns {boolean} true, when edict touches the ground
-   */
-  isOnTheFloor() {
-    return SV.CheckBottom(this);
-  }
-
-  /**
-   * It will send a svc_spawnstatic upon signon to make clients register a static entity.
-   * Also this will free and release this Edict.
-   */
-  makeStatic() {
-    const message = SV.server.signon;
-    MSG.WriteByte(message, Protocol.svc.spawnstatic);
-    MSG.WriteByte(message, SV.ModelIndex(this.entity.model));
-    MSG.WriteByte(message, this.entity.frame || 0);
-    MSG.WriteByte(message, this.entity.colormap || 0);
-    MSG.WriteByte(message, this.entity.skin || 0);
-    MSG.WriteAngleVector(message, this.entity.angles);
-    MSG.WriteCoordVector(message, this.entity.origin);
-    this.freeEdict();
-  }
-
-  /**
-   * Returns client (or object that has a client enemy) that would be * a valid target. If there are more than one
-   * valid options, they are cycled each frame. If (self.origin + self.viewofs) is not in the PVS of the target, null is returned.
-   * @returns {?SV.Edict} Edict when client found, null otherwise
-   */
-  getNextBestClient() { // TODO: move to GameAPI, this is not interesting for edicts
-    // refresh check cache
-    if (SV.server.time - SV.server.lastchecktime >= 0.1) {
-      let check = SV.server.lastcheck;
-      if (check <= 0) {
-        check = 1;
-      } else if (check > SV.svs.maxclients) {
-        check = SV.svs.maxclients;
-      }
-      let i = 1;
-      if (check !== SV.svs.maxclients) {
-        i += check;
-      }
-      let ent;
-      for (; ; ++i) {
-        if (i === SV.svs.maxclients + 1) {
-          i = 1;
-        }
-        ent = SV.server.edicts[i];
-        if (i === check) {
-          break;
-        }
-        if (ent.isFree()) {
-          continue;
-        }
-        if (ent.entity.health <= 0.0 || (ent.entity.flags & SV.fl.notarget) !== 0) {
-          continue;
-        }
-        break;
-      }
-      SV.server.lastcheck = i;
-      SV.lastcheckpvs = Mod.LeafPVS(Mod.PointInLeaf(ent.entity.origin.copy().add(ent.entity.view_ofs), SV.server.worldmodel), SV.server.worldmodel); // FIXME: use ….worldmodel.getPointInLeaf() etc.
-      SV.server.lastchecktime = SV.server.time;
-    }
-
-    const ent = SV.server.edicts[SV.server.lastcheck];
-
-    if (ent.isFree() || ent.entity.health <= 0.0) { // TODO: better interface, not health
-      // not interesting anymore
-      return null;
-    }
-
-    const l = Mod.PointInLeaf(this.entity.origin.copy().add(this.entity.view_ofs), SV.server.worldmodel).num - 1;
-
-    if (l < 0 || (SV.lastcheckpvs[l >> 3] & (1 << (l & 7))) === 0) {
-      // back side leaf or leaf is not visible according to PVS
-      return null;
-    }
-
-    return ent;
-  }
-
-  /**
-   * Checks if this entity is in the given PVS.
-   * @param {Uint8Array} pvs PVS to check against
-   * @returns {boolean} true, when this entity is in the PVS
-   */
-  isInPVS(pvs) {
-    for (let i = 0; i < this.leafnums.length; ++i) {
-      if ((pvs[this.leafnums[i] >> 3] & (1 << (this.leafnums[i] & 7))) !== 0) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Move this entity toward its goal. Used for monsters.
-   * @param {number} dist distance to move
-   * @returns {boolean} true, when successful
-   */
-  moveToGoal(dist) {
-    if ((this.entity.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
-      return false;
-    }
-
-    // FIXME: interfaces, edict, entity
-    const goal = this.entity.goalentity?.edict ? this.entity.goalentity.edict : this.entity.goalentity;
-    const enemy = this.entity.enemy?.edict ? this.entity.enemy.edict : this.entity.enemy;
-
-    console.assert(goal !== null, 'must have goal for moveToGoal');
-
-    if (enemy !== null && !enemy.isWorld() && SV.CloseEnough(this, goal, dist)) {
-      return false;
-    }
-
-    if (Math.random() >= 0.75 || !SV.StepDirection(this, this.entity.ideal_yaw, dist)) {
-      SV.NewChaseDir(this, goal, dist);
-
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Returns a vector along which this entity can shoot.
-   * Usually, this entity is a player, and the vector returned is calculated by auto aiming to the closest enemy entity.
-   * NOTE: The original code and unofficial QuakeC reference docs say there’s an argument (speed/misslespeed), but it’s unused.
-   * @param {Vector} direction e.g. forward
-   * @returns {Vector} aim direction
-   */
-  aim(direction) {
-    const dir = direction.copy();
-    const origin = this.entity.origin.copy();
-    const start = origin.add(new Vector(0.0, 0.0, 20.0));
-
-    const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
-    const tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, this);
-    if (tr.ent !== null) {
-      if ((tr.ent.entity.takedamage === SV.damage.aim) && (!Host.teamplay.value || this.entity.team <= 0 || this.entity.team !== tr.ent.entity.team)) {
-        return dir;
-      }
-    }
-    const bestdir = dir.copy();
-    let bestdist = SV.aim.value;
-    let bestent = null;
-    for (let i = 1; i < SV.server.num_edicts; ++i) {
-      const check = SV.server.edicts[i];
-      if (check.isFree()) {
-        continue;
-      }
-      if (check.entity.takedamage !== SV.damage.aim) {
-        continue;
-      }
-      if (check.equals(this)) {
-        continue;
-      }
-      if ((Host.teamplay.value !== 0) && (this.entity.team > 0) && (this.entity.team === check.entity.team)) {
-        continue;
-      }
-      const corigin = check.entity.origin, cmins = check.entity.mins, cmaxs = check.entity.maxs;
-      end.set(corigin).add(cmins.copy().add(cmaxs).multiply(0.5));
-      dir.set(end).subtract(start);
-      dir.normalize();
-      let dist = dir.dot(bestdir);
-      if (dist < bestdist) {
-        continue;
-      }
-      const tr = SV.Move(start, Vector.origin, Vector.origin, end, 0, this);
-      if (tr.ent === check) {
-        bestdist = dist;
-        bestent = check;
-      }
-    }
-    if (bestent !== null) {
-      dir.set(bestent.entity.origin).subtract(this.entity.origin);
-      const dist = dir.dot(bestdir);
-      end[0] = bestdir[0] * dist;
-      end[1] = bestdir[1] * dist;
-      end[2] = dir[2];
-      end.normalize();
-      return end;
-    }
-    return bestdir;
-  }
-
-  /**
-   * Returns entity that is just after this in the entity list.
-   * Useful to browse the list of entities, because it skips the undefined ones.
-   * @returns {SV.Edict | null} next edict, or null if there are no more entities
-   */
-  nextEdict() {
-    for (let i = this.num + 1; i < SV.server.num_edicts; ++i) {
-      if (!SV.server.edicts[i].isFree()) {
-        return SV.server.edicts[i];
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Change the horizontal orientation of this entity. Turns towards .ideal_yaw at .yaw_speed. Called every 0.1 sec by monsters.
-   * @returns {number} new yaw angle
-   */
-  changeYaw() {
-    const angles = this.entity.angles;
-    angles[1] = SV.ChangeYaw(this);
-    this.entity.angles = angles;
-
-    return angles[1];
-  }
-
-  /**
-   * returns the corresponding client object
-   * @returns {?SV.Client} client object, if edict is actually a client edict
-   */
-  getClient() {
-    return SV.svs.clients[this.num - 1] || null;
-  }
-
-  /**
-   * check if edict is a client edict
-   * @returns {boolean} true, when edict is a client edict
-   */
-  isClient() {
-    return (this.num > 0) && (this.num <= SV.svs.maxclients);
-  }
-
-  /**
-   * checks if this entity is worldspawn
-   * @returns {boolean} true, when edict represents world
-   */
-  isWorld() {
-    return this.num === 0;
-  }
-};
+SV.EntityState = ServerEntityState;
 
 SV.svs = {};
 
@@ -763,6 +244,8 @@ SV.StartParticle = function(org, dir, color, count) {
 };
 
 SV.StartSound = function(edict, channel, sample, volume, attenuation) {
+  const { Con } = registry;
+
   console.assert(volume >= 0 && volume <= 255, 'volume out of range', volume);
   console.assert(attenuation >= 0.0 && attenuation <= 4.0, 'attenuation out of range', attenuation);
   console.assert(channel >= 0 && channel <= 7, 'channel out of range', channel);
@@ -809,9 +292,11 @@ SV.StartSound = function(edict, channel, sample, volume, attenuation) {
 
 /**
  * Sends the server info to the client when connecting.
- * @param {SV.Client} client client
+ * @param {ServerClient} client client
  */
 SV.SendServerData = function(client) {
+  const { PR, Host } = registry;
+
   const message = client.message;
 
   // first message is always a print message, this is safe to do no matter what version is running
@@ -873,6 +358,8 @@ SV.SendServerData = function(client) {
 };
 
 SV.ConnectClient = function(client, netconnection) {
+  const { Con } = registry;
+
   Con.DPrint('Client ' + netconnection.address + ' connected\n');
 
   const spawn_parms = new Array(client.spawn_parms.length);
@@ -904,10 +391,12 @@ SV.ConnectClient = function(client, netconnection) {
 SV.fatpvs = [];
 
 SV.CheckForNewClients = function() {
+  const { NET, Con } = registry;
+
   let ret; let i;
   for (;;) {
     ret = NET.CheckNewConnections();
-    if (ret == null) {
+    if (ret === null) {
       return;
     }
     for (i = 0; i < SV.svs.maxclients; ++i) {
@@ -930,6 +419,8 @@ SV.CheckForNewClients = function() {
 };
 
 SV.AddToFatPVS = function(org, node) {
+  const { Mod } = registry;
+
   let pvs; let i; let normal; let d;
   for (;;) {
     if (node.contents < 0) {
@@ -970,7 +461,7 @@ SV.FatPVS = function(org) {
  * @param {number[]} ignoreEdictIds edict ids to ignore
  * @param {number[]} alwaysIncludeEdictIds edict ids to always yield
  * @param {boolean} includeFree whether to include free edicts
- * @yields {SV.Edict} edict
+ * @yields {ServerEdict} edict
  */
 SV.TraversePVS = function*(pvs, ignoreEdictIds = [], alwaysIncludeEdictIds = [], includeFree = false) {
   for (let e = 1; e < SV.server.num_edicts; e++) {
@@ -1105,9 +596,9 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
 
 /**
  * Writes a delta entity to the message stream.
- * @param {*} msg message stream
- * @param {SV.EntityState} from last known state
- * @param {SV.EntityState} to new state
+ * @param {SzBuffer} msg message stream
+ * @param {ServerEntityState} from last known state
+ * @param {ServerEntityState} to new state
  * @returns {boolean} true, when to differs from from
  */
 SV.WriteDeltaEntity = function(msg, from, to) {
@@ -1227,17 +718,19 @@ SV.WriteDeltaEntity = function(msg, from, to) {
  * a svc_packetentities messages and possibly
  * a svc_nails message and
  * svc_playerinfo messages
- * @param {SV.Edict} clientEdict client edict
+ * @param {ServerEdict} clientEdict client edict
  * @param {SzBuffer} msg message stream
  * @returns {boolean} true, when there were changes written to the message
  */
 SV.WriteEntitiesToClient = function(clientEdict, msg) {
+  const { Con } = registry;
+
   const origin = clientEdict.entity.origin.copy().add(clientEdict.entity.view_ofs);
   const pvs = SV.FatPVS(origin);
 
   let changes = SV.WritePlayersToClient(clientEdict, pvs, msg) ? 1 : 0;
 
-  /** @type {SV.Client} */
+  /** @type {ServerClient} */
   const cl = SV.svs.clients[clientEdict.num - 1];
 
   MSG.WriteByte(msg, Protocol.svc.deltapacketentities);
@@ -1263,7 +756,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     toState.maxs.set(ent.entity.maxs);
     toState.mins.set(ent.entity.mins);
 
-    /** @type {SV.EntityState} */
+    /** @type {ServerEntityState} */
     const fromState = cl.getEntityState(ent.num);
 
     changes |= SV.WriteDeltaEntity(msg, fromState, toState) ? 1 : 0;
@@ -1283,7 +776,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
       continue;
     }
 
-    /** @type {SV.EntityState} */
+    /** @type {ServerEntityState} */
     const fromState = cl.getEntityState(ent.num);
     const toState = new SV.EntityState(ent.num);
     toState.free = true;
@@ -1300,7 +793,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
 };
 
 /**
- * @param {SV.Edict} clientEdict client edict
+ * @param {ServerEdict} clientEdict client edict
  * @param {SzBuffer} msg message stream
  * @returns {boolean} true, when there were changes written to the message
  */
@@ -1308,7 +801,7 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
   // FIXME: there is too much hard wired stuff happening here
   // FIXME: interfaces, edict, entity
   if ((clientEdict.entity.dmg_take || clientEdict.entity.dmg_save) && clientEdict.entity.dmg_inflictor) {
-    const other = clientEdict.entity.dmg_inflictor.edict ? clientEdict.entity.dmg_inflictor.edict : clientEdict.entity.dmg_inflictor; // FIXME: SV.Edict vs BaseEntity
+    const other = clientEdict.entity.dmg_inflictor.edict ? clientEdict.entity.dmg_inflictor.edict : clientEdict.entity.dmg_inflictor; // FIXME: ServerEdict vs BaseEntity
     const vec = !other.isFree() ? other.entity.origin.copy().add(other.entity.mins.copy().add(other.entity.maxs).multiply(0.5)) : clientEdict.entity.origin;
     MSG.WriteByte(msg, Protocol.svc.damage);
     MSG.WriteByte(msg, Math.min(255, clientEdict.entity.dmg_save));
@@ -1424,11 +917,11 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
   MSG.WriteByte(msg, clientEdict.entity.ammo_nails);
   MSG.WriteByte(msg, clientEdict.entity.ammo_rockets);
   MSG.WriteByte(msg, clientEdict.entity.ammo_cells);
-  if (COM.standard_quake === true) {
+  if (registry.COM.standard_quake === true) {
     MSG.WriteByte(msg, clientEdict.entity.weapon & 0xff);
   } else {
     const weapon = clientEdict.entity.weapon;
-    for (let i = 0; i <= 31; ++i) {
+    for (let i = 0; i <= 31; i++) {
       if ((weapon & (1 << i)) !== 0) {
         MSG.WriteByte(msg, i);
         break;
@@ -1440,6 +933,8 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
 };
 
 SV.SendClientDatagram = function() { // FIXME: Host.client
+  const { Con, Host, NET } = registry;
+
   const client = Host.client;
   const msg = new SzBuffer(2048, 'SV.SendClientDatagram');
   MSG.WriteByte(msg, Protocol.svc.time);
@@ -1489,16 +984,16 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
 };
 
 SV.UpdateToReliableMessages = function() {
-  let i; let frags; let j; let client;
+  const { Host } = registry;
 
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
     Host.client = SV.svs.clients[i];
-    frags = Host.client.edict.entity ? Host.client.edict.entity.frags | 0 : 0; // force int
+    const frags = Host.client.edict.entity ? Host.client.edict.entity.frags | 0 : 0; // force int
     if (Host.client.old_frags === frags) {
       continue;
     }
-    for (j = 0; j < SV.svs.maxclients; ++j) {
-      client = SV.svs.clients[j];
+    for (let j = 0; j < SV.svs.maxclients; j++) {
+      const client = SV.svs.clients[j];
       if (!client.active) {
         continue;
       }
@@ -1509,8 +1004,8 @@ SV.UpdateToReliableMessages = function() {
     Host.client.old_frags = frags;
   }
 
-  for (i = 0; i < SV.svs.maxclients; ++i) {
-    client = SV.svs.clients[i];
+  for (let i = 0; i < SV.svs.maxclients; i++) {
+    const client = SV.svs.clients[i];
     if (client.active) {
       client.message.write(new Uint8Array(SV.server.reliable_datagram.data), SV.server.reliable_datagram.cursize);
     }
@@ -1520,8 +1015,10 @@ SV.UpdateToReliableMessages = function() {
 };
 
 SV.SendClientMessages = function() {
+  const { Host, NET, Mod } = registry;
+
   SV.UpdateToReliableMessages();
-  for (let i = 0; i < SV.svs.maxclients; ++i) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i]; // FIXME: Host.client
     Host.client = client;
     if (!client.active) {
@@ -1608,6 +1105,8 @@ SV.SaveSpawnparms = function() {
 };
 
 SV.HasMap = function(mapname) {
+  const { Mod } = registry;
+
   return Mod.ForName('maps/' + mapname + '.bsp') !== null;
 };
 
@@ -1618,6 +1117,8 @@ SV.HasMap = function(mapname) {
  * @returns {boolean} true, when the server was spawned successfully
  */
 SV.SpawnServer = function(mapname) {
+  const { Con, Host, NET, Mod, PR, Game } = registry;
+
   let i;
 
   if (!NET.hostname.string) {
@@ -1658,7 +1159,7 @@ SV.SpawnServer = function(mapname) {
   SV.server.edicts = [];
   // preallocating up to max_edicts, we can extend that later during runtime
   for (i = 0; i < Def.max_edicts; ++i) {
-    const ent = new SV.Edict(i);
+    const ent = new ServerEdict(i);
 
     SV.server.edicts[i] = ent;
   }
@@ -1754,6 +1255,8 @@ SV.SpawnServer = function(mapname) {
 };
 
 SV.ShutdownServer = function (isCrashShutdown) {
+  const { Con } = registry;
+
   // tell the game we are shutting down the game
   SV.server.gameAPI.shutdown(isCrashShutdown);
 
@@ -1825,6 +1328,8 @@ SV.CvarChanged = function(cvar) {
 // move
 
 SV.CheckBottom = function(ent) {
+  const { Mod } = registry;
+
   const mins = ent.entity.origin.copy().add(ent.entity.mins);
   const maxs = ent.entity.origin.copy().add(ent.entity.maxs);
   for (;;) {
@@ -1871,7 +1376,7 @@ SV.CheckBottom = function(ent) {
  * The move will be adjusted for slopes and stairs, but if the move isn't
  * possible, no move is done, false is returned, and
  * pr_global_struct->trace_normal is set to the normal of the blocking wall
- * @param {SV.Edict} ent edict/entity trying to move
+ * @param {ServerEdict} ent edict/entity trying to move
  * @param {Vector} move move direction
  * @param {boolean} relink if true, it will call SV.LinkEdict
  * @returns {boolean} false, if no move is done
@@ -1900,7 +1405,7 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
       }
       const trace = SV.Move(ent.entity.origin, mins, maxs, neworg, SV.move.normal, ent);
       if (trace.fraction === 1.0) {
-        if (((ent.entity.flags & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === Mod.contents.empty)) {
+        if (((ent.entity.flags & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === registry.Mod.contents.empty)) {
           return false; // swim monster left water
         }
         ent.entity.origin = trace.endpos.copy();
@@ -2102,6 +1607,8 @@ SV.CloseEnough = function(ent, goal, dist) { // Edict
 // phys
 
 SV.CheckAllEnts = function() {
+  const { Con } = registry;
+
   let e; let check;
   for (e = 1; e < SV.server.num_edicts; ++e) {
     check = SV.server.edicts[e];
@@ -2125,11 +1632,11 @@ SV.CheckVelocity = function(ent) {
   for (let i = 0; i <= 2; ++i) {
     let component = velo[i];
     if (Q.isNaN(component)) {
-      Con.Print('Got a NaN velocity on ' + ent.entity.classname + '\n');
+      registry.Con.Print('Got a NaN velocity on ' + ent.entity.classname + '\n');
       component = 0.0;
     }
     if (Q.isNaN(origin[i])) {
-      Con.Print('Got a NaN origin on ' + ent.entity.classname + '\n');
+      registry.Con.Print('Got a NaN origin on ' + ent.entity.classname + '\n');
       origin[i] = 0.0;
     }
     if (component > SV.maxvelocity.value) {
@@ -2147,10 +1654,12 @@ SV.CheckVelocity = function(ent) {
  * Runs thinking code if time.  There is some play in the exact time the think
  * function will be called, because it is called before any movement is done
  * in a frame.  Not used for pushmove objects, because they must be exact.
- * @param {SV.Edict} ent edict
+ * @param {ServerEdict} ent edict
  * @returns {boolean} whether false when an edict got freed
  */
 SV.RunThink = function(ent) {
+  const { Host } = registry;
+
   // CR: turn into an infinite loop to catch up with all thinks (QW)
   while (true) {
     let thinktime = ent.entity.nextthink;
@@ -2291,7 +1800,7 @@ SV.AddGravity = function(ent) {
   const ent_gravity = ent.entity.gravity || 1.0;
 
   const velocity = ent.entity.velocity;
-  velocity[2] += ent_gravity * SV.gravity.value * Host.frametime * -1.0;
+  velocity[2] += ent_gravity * SV.gravity.value * registry.Host.frametime * -1.0;
   ent.entity.velocity = velocity;
 };
 
@@ -2390,6 +1899,8 @@ SV.PushMove = function(pusher, movetime) {
 };
 
 SV.Physics_Pusher = function(ent) {
+  const { Host } = registry;
+
   const oldltime = ent.entity.ltime;
   const thinktime = ent.entity.nextthink;
   let movetime;
@@ -2413,6 +1924,8 @@ SV.Physics_Pusher = function(ent) {
 };
 
 SV.CheckStuck = function(ent) {
+  const { Con } = registry;
+
   if (SV.TestEntityPosition(ent) !== true) {
     ent.entity.oldorigin = ent.entity.oldorigin.set(ent.entity.origin);
     return;
@@ -2440,6 +1953,8 @@ SV.CheckStuck = function(ent) {
 };
 
 SV.CheckWater = function(ent) {
+  const { Mod } = registry;
+
   const point = ent.entity.origin.copy().add(new Vector(0.0, 0.0, ent.entity.mins[2] + 1.0));
   ent.entity.waterlevel = 0.0;
   ent.entity.watertype = Mod.contents.empty;
@@ -2511,6 +2026,8 @@ SV.TryUnstick = function(ent, oldvel) {
 };
 
 SV.WalkMove = function(ent) {
+  const { Host } = registry;
+
   const oldonground = ent.entity.flags & SV.fl.onground;
   ent.entity.flags ^= oldonground;
   const oldorg = ent.entity.origin.copy();
@@ -2562,6 +2079,8 @@ SV.WalkMove = function(ent) {
 };
 
 SV.NoclipMove = function() {
+  const { Host } = registry;
+
   const ent = SV.player, cmd = Host.client.cmd;
 
   const { forward, right } = ent.entity.v_angle.angleVectors();
@@ -2579,6 +2098,9 @@ SV.Physics_Client = function(ent) {
   if (!ent.getClient().active) {
     return;
   }
+
+  const { Host } = registry;
+
   SV.server.gameAPI.time = SV.server.time;
   SV.server.gameAPI.PlayerPreThink(ent);
   SV.CheckVelocity(ent);
@@ -2607,7 +2129,7 @@ SV.Physics_Client = function(ent) {
         ent.entity.origin = ent.entity.origin.add(ent.entity.velocity.copy().multiply(Host.frametime));
         break;
       default:
-        Sys.Error('SV.Physics_Client: bad movetype ' + movetype);
+        throw new Error('SV.Physics_Client: bad movetype ' + movetype);
     }
   }
   SV.LinkEdict(ent, true);
@@ -2617,11 +2139,15 @@ SV.Physics_Client = function(ent) {
 
 SV.CheckWaterTransition = function(ent) {
   const cont = SV.PointContents(ent.entity.origin);
+
   if (ent.entity.watertype === 0.0) {
     ent.entity.watertype = cont;
     ent.entity.waterlevel = 1.0;
     return;
   }
+
+  const { Mod } = registry;
+
   if (cont <= Mod.contents.water) {
     if (ent.entity.watertype === Mod.contents.empty) {
       SV.StartSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0); // TODO: move to game logic
@@ -2644,6 +2170,9 @@ SV.Physics_Toss = function(ent) {
   if ((ent.entity.flags & SV.fl.onground) !== 0) {
     return;
   }
+
+  const { Host } = registry;
+
   SV.CheckVelocity(ent);
   const movetype = ent.entity.movetype;
   if ((movetype !== SV.movetype.fly) && (movetype !== SV.movetype.flymissile)) {
@@ -2669,6 +2198,8 @@ SV.Physics_Toss = function(ent) {
 };
 
 SV.Physics_Step = function(ent) {
+  const { Host } = registry;
+
   if ((ent.entity.flags & (SV.fl.onground | SV.fl.fly | SV.fl.swim)) === 0) {
     const hitsound = (ent.entity.velocity[2] < (SV.gravity.value * -0.1));
     SV.AddGravity(ent);
@@ -2720,9 +2251,8 @@ SV._BuildSurfaceDisplayList = function(currentmodel, fa) { // FIXME: move to Mod
 SV.Physics = function() {
   SV.server.gameAPI.time = SV.server.time;
   SV.server.gameAPI.StartFrame(null);
-  let i; let ent;
-  for (i = 0; i < SV.server.num_edicts; ++i) {
-    ent = SV.server.edicts[i];
+  for (let i = 0; i < SV.server.num_edicts; i++) {
+    const ent = SV.server.edicts[i];
     if (ent.isFree()) {
       continue;
     }
@@ -2753,9 +2283,9 @@ SV.Physics = function() {
         SV.Physics_Toss(ent);
         continue;
     }
-    Sys.Error('SV.Physics: bad movetype ' + (ent.entity.movetype >> 0));
+    throw new Error('SV.Physics: bad movetype ' + (ent.entity.movetype >> 0));
   }
-  SV.server.time += Host.frametime;
+  SV.server.time += registry.Host.frametime;
 };
 
 // user
@@ -2815,7 +2345,7 @@ SV.UserFriction = function() {
   if (SV.Move(start, Vector.origin, Vector.origin, new Vector(start[0], start[1], start[2] - 34.0), 1, ent).fraction === 1.0) {
     friction *= SV.edgefriction.value;
   }
-  let newspeed = speed - Host.frametime * (speed < SV.stopspeed.value ? SV.stopspeed.value : speed) * friction;
+  let newspeed = speed - registry.Host.frametime * (speed < SV.stopspeed.value ? SV.stopspeed.value : speed) * friction;
   if (newspeed < 0.0) {
     newspeed = 0.0;
   }
@@ -2838,11 +2368,12 @@ SV.Accelerate = function(wishvel, air) {
   if (addspeed <= 0.0) {
     return;
   }
-  const accelspeed = Math.min(SV.accelerate.value * Host.frametime * wishspeed, addspeed);
+  const accelspeed = Math.min(SV.accelerate.value * registry.Host.frametime * wishspeed, addspeed);
   ent.entity.velocity = ent.entity.velocity.add(wishdir.multiply(accelspeed));
 };
 
 SV.WaterMove = function() { // Host.client
+  const { Host } = registry;
   const ent = SV.player; const cmd = Host.client.cmd;
   const { forward, right } = ent.entity.v_angle.angleVectors();
   const wishvel = new Vector(
@@ -2901,7 +2432,7 @@ SV.WaterJump = function() { // Host.client
 
 SV.AirMove = function() { // Host.client
   const ent = SV.player;
-  const cmd = Host.client.cmd;
+  const cmd = registry.Host.client.cmd;
   const {forward, right} =   ent.entity.angles.angleVectors();
   let fmove = cmd.forwardmove;
   const smove = cmd.sidemove;
@@ -2921,7 +2452,7 @@ SV.AirMove = function() { // Host.client
   if (ent.entity.movetype === SV.movetype.noclip) {
     ent.entity.velocity = wishvel;
   } else if ((ent.entity.flags & SV.fl.onground) !== 0) {
-    SV.UserFriction(wishvel);
+    SV.UserFriction();
     SV.Accelerate(wishvel);
   } else {
     SV.Accelerate(wishvel, true);
@@ -2936,7 +2467,7 @@ SV.ClientThink = function() {
   }
 
   const punchangle = ent.entity.punchangle.copy();
-  let len = punchangle.normalize() - 10.0 * Host.frametime;
+  let len = punchangle.normalize() - 10.0 * registry.Host.frametime;
   if (len < 0.0) {
     len = 0.0;
   }
@@ -2949,7 +2480,7 @@ SV.ClientThink = function() {
   const angles = ent.entity.angles;
   const v_angle = ent.entity.v_angle.copy().add(punchangle);
 
-  angles[2] = V.CalcRoll(angles, ent.entity.velocity) * 4.0;
+  angles[2] = registry.V.CalcRoll(angles, ent.entity.velocity) * 4.0;
 
   if (!SV.player.entity.fixangle) {
     angles[0] = v_angle[0] / -3.0;
@@ -2970,7 +2501,7 @@ SV.ClientThink = function() {
 };
 
 /**
- * @param {SV.Client} client client
+ * @param {ServerClient} client client
  */
 SV.ReadClientMove = function(client) {
   client.cmd.msec = MSG.ReadFloat();
@@ -3008,6 +2539,8 @@ SV.ReadClientMoveQW = function(client) {
 };
 
 SV.HandleRconRequest = function(client) {
+  const { Con } = registry;
+
   const message = client.message;
 
   const password = MSG.ReadString();
@@ -3035,10 +2568,12 @@ SV.HandleRconRequest = function(client) {
 
 /**
  * Reads client message.
- * @param {SV.Client} client client
+ * @param {ServerClient} client client
  * @returns {boolean} true, if everything was processed successfully
  */
 SV.ReadClientMessage = function(client) {
+  const { Con, Host, NET } = registry;
+
   let qwmove_issued = false;
 
   /** commands that may be pushed by Cmd.ForwardToServer */
@@ -3068,7 +2603,7 @@ SV.ReadClientMessage = function(client) {
     const ret = NET.GetMessage(client.netconnection);
 
     if (ret === -1) {
-      Sys.Print('SV.ReadClientMessage: NET.GetMessage failed\n');
+      Con.Print('SV.ReadClientMessage: NET.GetMessage failed\n');
       return false;
     }
 
@@ -3084,7 +2619,7 @@ SV.ReadClientMessage = function(client) {
       }
 
       if (MSG.badread) {
-        Sys.Print('SV.ReadClientMessage: badread\n');
+        Con.Print('SV.ReadClientMessage: badread\n');
         return false;
       }
 
@@ -3135,7 +2670,7 @@ SV.ReadClientMessage = function(client) {
           break;
 
         default:
-          Sys.Print(`SV.ReadClientMessage: unknown command ${cmd}\n`);
+          Con.Print(`SV.ReadClientMessage: unknown command ${cmd}\n`);
           return false;
       }
     }
@@ -3143,13 +2678,15 @@ SV.ReadClientMessage = function(client) {
 };
 
 SV.RunClients = function() { // FIXME: Host.client
+  const { Host } = registry;
+
   for (let i = 0; i < SV.svs.maxclients; ++i) {
     const client = SV.svs.clients[i];
     if (!client.active) {
       continue;
     }
     Host.client = client;
-    /** @type {SV.Edict} @deprecated */
+    /** @type {ServerEdict} @deprecated */
     SV.player = client.edict; // FIXME: SV.player
     if (!SV.ReadClientMessage(client)) {
       Host.DropClient(client, false, 'Connectivity issues, failed to read message');
@@ -3179,6 +2716,8 @@ SV.move = {
 };
 
 SV.InitBoxHull = function() {
+  const { Mod } = registry;
+
   SV.box_clipnodes = [];
   SV.box_planes = [];
   SV.box_hull = {
@@ -3222,7 +2761,7 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
   }
   console.assert(ent.entity.movetype !== SV.movetype.none, 'SOLID_BSP with MOVETYPE_NONE');
   const model = SV.server.models[ent.entity.modelindex];
-  console.assert(model && model.type === Mod.type.brush, 'model is null or not a brush');
+  console.assert(model && model.type === registry.Mod.type.brush, 'model is null or not a brush');
   const size = maxs[0] - mins[0];
   let hull;
   if (size < 3.0) {
@@ -3266,10 +2805,10 @@ SV.CreateAreaNode = function(depth, mins, maxs) {
 };
 
 SV.UnlinkEdict = function(ent) {
-  if (ent.area.prev != null) {
+  if (ent.area.prev !== null) {
     ent.area.prev.next = ent.area.next;
   }
-  if (ent.area.next != null) {
+  if (ent.area.next !== null) {
     ent.area.next.prev = ent.area.prev;
   }
   ent.area.prev = ent.area.next = null;
@@ -3304,7 +2843,7 @@ SV.TouchLinks = function(ent, node) {
 };
 
 SV.FindTouchedLeafs = function(ent, node) {
-  if (node.contents === Mod.contents.solid) {
+  if (node.contents === registry.Mod.contents.solid) {
     return;
   }
 
@@ -3405,6 +2944,8 @@ SV.HullPointContents = function(hull, num, p) {
 };
 
 SV.PointContents = function(p) {
+  const { Mod } = registry;
+
   const cont = SV.HullPointContents(SV.server.worldmodel.hulls[0], 0, p);
   if ((cont <= Mod.contents.current_0) && (cont >= Mod.contents.current_down)) {
     return Mod.contents.water;
@@ -3430,6 +2971,8 @@ SV.TestEntityPosition = function(ent) {
  * @returns {boolean} true means going down, false means going up
  */
 SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) { // TODO: rewrite to iterative check
+  const { Con, Mod } = registry;
+
   // check for empty
   if (num < 0) {
     if (num !== Mod.contents.solid) {

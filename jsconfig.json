@@ -10,6 +10,6 @@
     "./source/engine/**/*.mjs",
     "./source/engine/**/*.d.ts",
     "./source/game/**/*.mjs",
-    "./source/game/**/*.d.ts"
+    "./source/shared/**/*.mjs"
   ]
 }

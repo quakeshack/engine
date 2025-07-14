@@ -1,4 +1,3 @@
-/* global Game, Cvar */
 
 import { GibEntity, InfoPlayerStart, InfoPlayerStartCoop, InfoPlayerStartDeathmatch, PlayerEntity, qc as playerModelQC, TelefragTriggerEntity } from "./entity/Player.mjs";
 import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
@@ -24,6 +23,9 @@ import OgreMonsterEntity, { qc as ogreModelQC } from "./entity/monster/Ogre.mjs"
 import ShalrathMonsterEntity, { ShalrathMissileEntity, qc as shalrathModelQC } from "./entity/monster/Shalrath.mjs";
 import ShamblerMonsterEntity, { qc as shamblerModelQC } from "./entity/monster/Shambler.mjs";
 import TarbabyMonsterEntity, { qc as tbabyModelQC } from "./entity/monster/Tarbaby.mjs";
+
+/** @typedef {import("source/engine/common/GameAPIs.mjs").ServerEngineAPI} ServerEngineAPI */
+/** @typedef {import("source/engine/common/Cvar.mjs").default} Cvar */
 
 const featureFlags = [
   'correct-ballistic-grenades', // enables zombie gib and ogre grenade trajectory fix
@@ -180,14 +182,14 @@ const cvars = {
 export class ServerGameAPI {
   /**
    * Invoked by spawning a server or a changelevel. It will initialize the global game state.
-   * @param {Game.EngineInterface} engineAPI engine exports
+   * @param {ServerEngineAPI} engineAPI engine exports
    */
   constructor(engineAPI) {
     this._serializer = new Serializer(this, engineAPI);
 
     this._loadEntityRegistry();
 
-    /** @type {Game.EngineInterface} @private */
+    /** @type {ServerEngineAPI} @private */
     this.engine = engineAPI;
 
     this._serializer.startFields();
@@ -556,8 +558,8 @@ export class ServerGameAPI {
   shutdown(isCrashShutdown) {
   }
 
-  static Init() {
-    cvars.nomonster = Game.EngineInterface.RegisterCvar('nomonster', '0', Cvar.FLAG.DEFERRED, 'Do not spawn monsters.');
+  static Init(EngineInterface) {
+    cvars.nomonster = EngineInterface.RegisterCvar('nomonster', '0', /* Cvar.FLAG.DEFERRED */ 0, 'Do not spawn monsters.');
   }
 
   static Shutdown() {

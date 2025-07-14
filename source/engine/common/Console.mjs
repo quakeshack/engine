@@ -2,7 +2,7 @@
 
 import { eventBus, registry } from '../registry.mjs';
 import Cvar from './Cvar.mjs';
-import Vector from './Vector.mjs';
+import Vector from '../../shared/Vector.mjs';
 
 export default class Con {
   static backscroll = 0;

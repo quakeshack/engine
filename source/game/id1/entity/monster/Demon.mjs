@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
 import { MeatSprayEntity, WalkMonster } from "./BaseMonster.mjs";
 import { attn, channel, flags, range, solid } from "../../Defs.mjs";

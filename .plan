@@ -329,6 +329,8 @@ class MainMenu extends BaseMenu {
 ### 2025-07-14
 
 * tightened jsconfig and eslint config a bit to enforce a stricter standard, it already detected some silent bugs
+* game code is now properly sharing stuff with the engine
+* reorganized a bit the engine<->game API naming convention
 
 ### 2025-07-12
 

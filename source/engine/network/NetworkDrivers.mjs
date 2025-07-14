@@ -1,3 +1,4 @@
+import { registry } from "../registry.mjs";
 
 export class QSocket {
   static STATE_NEW = 'new';
@@ -130,7 +131,7 @@ export class LoopDriver extends BaseDriver {
     // we will return only one new client ever
     this.localconnectpending = true;
 
-    if (this._server == null) {
+    if (this._server === null) {
       this._server = NET.NewQSocket();
       this._server.driver = this.driverlevel;
       this._server.address = 'local server';
@@ -139,7 +140,7 @@ export class LoopDriver extends BaseDriver {
     this._server.receiveMessageLength = 0;
     this._server.canSend = true;
 
-    if (this._client == null) {
+    if (this._client === null) {
       this._client = NET.NewQSocket();
       this._client.driver = this.driverlevel;
       this._client.address = 'local client';
@@ -488,9 +489,9 @@ export class WebSocketDriver extends BaseDriver {
       return;
     }
 
-    const WebSocket = require('ws');
+    const { WebSocket, NET } = registry;
 
-    this.wss = new WebSocket.Server({server: NET.server});
+    this.wss = new WebSocket.WebSocketServer({server: NET.server});
     this.wss.on('connection', this._OnConnectionServer.bind(this));
     this.newConnections = [];
   }

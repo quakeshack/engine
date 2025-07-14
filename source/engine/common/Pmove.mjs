@@ -5,7 +5,7 @@
  */
 
 import { registry } from '../registry.mjs';
-import Vector, { DirectionalVectors } from './Vector.mjs';
+import Vector, { DirectionalVectors } from '../../shared/Vector.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 
 
@@ -297,6 +297,8 @@ export class BoxHull extends Hull {
       new Plane(), // 4
       new Plane(), // 5
     ];
+
+    const Mod = registry.Mod;
 
     for (let i = 0; i < 6; i++) {
       const side = i & 1;

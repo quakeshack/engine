@@ -1,4 +1,6 @@
-/* global Vector, SV */
+/* global SV */
+
+import Vector from '../../../shared/Vector.mjs';
 
 import { damage, dead, flags, moveType, solid, content, channel, attn } from "../Defs.mjs";
 import { ServerGameAPI } from "../GameAPI.mjs";
@@ -19,7 +21,9 @@ class ScheduledThink {
 export default class BaseEntity {
   static classname = null;
 
+  /** @returns {string} entity classname */
   get classname() {
+    // @ts-ignore
     return this.constructor.classname;
   }
 

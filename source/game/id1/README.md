@@ -92,7 +92,7 @@ However, the engine reads from a set of must be defined properties. `BaseEntity`
   * Engine will read from things like `origin`, `angles` etc.
 * Access through methods
   * Engine will communicate with the game through `ServerGameAPI` calling methods like `ClientConnect` and `ClientDisconnect`, but also with entities directly through methods such as `touch` and `think`.
-  * Game will communicate mainly through the `Game.EngineInterface` object which is augmented by lots of methods declared on `BaseEntity`.
+  * Game will communicate mainly through the `ServerEngineAPI` object which is augmented by lots of methods declared on `BaseEntity`.
 
 ### Loading QuakeJS
 

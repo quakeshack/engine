@@ -1,6 +1,7 @@
-/*global Mod, VID, Sys, gl, COM, R, Q, Host, Vector, GL, Con */
-// eslint-disable-next-line no-global-assign
-Mod = {};
+
+const Mod = {};
+
+export default Mod;
 
 /**
  * Mod.BaseModel

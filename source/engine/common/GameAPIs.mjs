@@ -1,10 +1,11 @@
-/* global Game, Host, SV, Con, Protocol, MSG, Cmd, Cvar, Vector, ED, Mod */
+import Vector from '../../shared/Vector.mjs';
+import MSG from '../network/MSG.mjs';
+import * as Protocol from '../network/Protocol.mjs';
+import { ED, ServerEdict } from '../server/Edict.mjs';
+import Cmd from './Cmd.mjs';
+import Cvar from './Cvar.mjs';
 
-// eslint-disable-next-line no-global-assign
-Game = {};
-
-// TODO: make it non-static
-Game.EngineInterface = class ServerEngineInterface {
+export class ServerEngineAPI {
   static BroadcastPrint(str) {
     Host.BroadcastPrint(str);
   }
@@ -70,7 +71,7 @@ Game.EngineInterface = class ServerEngineInterface {
       },
       /** @type {Vector} final position of the line */
       point: trace.endpos,
-      /** @type {?import('./game/id1/entity/BaseEntity.mjs').default} entity */
+      /** @type {?import('../../game/id1/entity/BaseEntity.mjs').default} entity */
       entity: trace.ent ? trace.ent.entity : null,
     };
   }
@@ -97,7 +98,7 @@ Game.EngineInterface = class ServerEngineInterface {
    * @see {@link Cvar}
    * @param {string} name name of the variable
    * @param {string} value value
-   * @param {?Cvar.FLAG} flags optional flags
+   * @param {number} flags optional flags
    * @param {?string} description optional description
    * @returns {Cvar} the created variable
    */
@@ -158,7 +159,7 @@ Game.EngineInterface = class ServerEngineInterface {
    */
   static *FindInRadius(origin, radius) {
     for (let i = 1; i < SV.server.num_edicts; i++) {
-      /** @type {SV.Edict} */
+      /** @type {ServerEdict} */
       const ent = SV.server.edicts[i];
 
       if (ent.isFree() || ent.entity.solid === SV.solid.not) {
@@ -327,6 +328,6 @@ Game.EngineInterface = class ServerEngineInterface {
   // TODO: MSG related methods
 };
 
-Game.ClientEngineInterface = class ClientEngineInterface {
+export class ClientEngineAPI {
 
 };

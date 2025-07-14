@@ -1,6 +1,7 @@
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import Q from '../common/Q.mjs';
+import { registry } from '../registry.mjs';
 import { SzBuffer } from './MSG.mjs';
 import { LoopDriver, QSocket, WebSocketDriver } from './NetworkDrivers.mjs';
 
@@ -223,7 +224,7 @@ NET.SendToAll = function(data) {
 };
 
 NET.Init = function() {
-  NET.time = Sys.FloatTime();
+  NET.time = registry.Sys.FloatTime();
 
   NET.messagetimeout = new Cvar('net_messagetimeout', '5000');
   NET.hostname = new Cvar('hostname', 'UNNAMED', Cvar.FLAG.SERVER, 'Descriptive name of the server.');
@@ -271,6 +272,8 @@ NET.Listen_f = function(isListening) {
 };
 
 NET.MaxPlayers_f = function(maxplayers) {
+  const { SV, Con } = registry;
+
   if (maxplayers === undefined) {
     Con.Print('"maxplayers" is "' + SV.svs.maxclients + '"\n');
     return;
@@ -290,7 +293,7 @@ NET.MaxPlayers_f = function(maxplayers) {
     Con.Print('"maxplayers" set to "' + n + '"\n');
   }
 
-  if ((n == 1) && NET.listening) {
+  if ((n === 1) && NET.listening) {
     Cmd.ExecuteString('listen 0');
   }
 
@@ -299,7 +302,7 @@ NET.MaxPlayers_f = function(maxplayers) {
   }
 
   SV.svs.maxclients = n;
-  if (n == 1) {
+  if (n === 1) {
     Cvar.Set('deathmatch', '0');
   } else {
     Cvar.Set('deathmatch', '1');

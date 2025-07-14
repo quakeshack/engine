@@ -1,9 +1,7 @@
 import Q from '../common/Q.mjs';
-import Vector from '../common/Vector.mjs';
+import Vector from '../../shared/Vector.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import { registry } from '../registry.mjs';
-
-// TODO: Add imports for NET and Con when fixing imports
 
 export class SzBuffer {
   /**

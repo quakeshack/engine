@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
 import { attn, channel, flags, range, solid } from "../../Defs.mjs";
 import { ATTACK_STATE, QuakeEntityAI } from "../../helper/AI.mjs";
