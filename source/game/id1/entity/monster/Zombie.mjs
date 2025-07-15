@@ -456,6 +456,7 @@ export default class ZombieMonster extends WalkMonster {
   // firing grenade
   _fireGrenade(offset) {
     this.startSound(channel.CHAN_WEAPON, 'zombie/z_shot1.wav');
+    // eslint-disable-next-line no-use-before-define
     ZombieGibGrenade.Throw(this, offset);
   }
 

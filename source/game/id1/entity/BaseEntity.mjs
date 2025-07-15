@@ -1,5 +1,3 @@
-/* global SV */
-
 import Vector from '../../../shared/Vector.mjs';
 
 import { damage, dead, flags, moveType, solid, content, channel, attn } from '../Defs.mjs';

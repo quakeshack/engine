@@ -87,6 +87,7 @@ export class DelayedThinkEntity extends BaseEntity {
 
     this._serializer.endFields();
 
+    // eslint-disable-next-line no-use-before-define
     this._sub = new Sub(this);
   }
 

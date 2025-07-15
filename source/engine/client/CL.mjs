@@ -208,7 +208,7 @@ CL.PlayDemo_f = function(demoname) { // private
   const name = COM.DefaultExtension(demoname, '.dem');
   Con.Print('Playing demo from ' + name + '.\n');
   let demofile = COM.LoadFile(name);
-  if (demofile == null) {
+  if (demofile === null) {
     Con.PrintError('ERROR: couldn\'t open.\n');
     CL.cls.demonum = -1;
     SCR.disabled_for_loading = false;

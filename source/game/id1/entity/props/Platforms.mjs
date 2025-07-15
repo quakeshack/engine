@@ -55,7 +55,8 @@ export class PlatformEntity extends BasePropEntity {
   }
 
   _spawnInsideTrigger() {
-    this._trigger = new WeakRef(this.engine.SpawnEntity(PlatformTriggerEntity.classname, { owner: this }));
+    // eslint-disable-next-line no-use-before-define
+    this._trigger = this.engine.SpawnEntity(PlatformTriggerEntity.classname, { owner: this });
   }
 
   _hitBottom() {

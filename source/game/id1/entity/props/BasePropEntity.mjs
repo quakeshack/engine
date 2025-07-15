@@ -54,7 +54,7 @@ export default class BasePropEntity extends BaseEntity {
     this.pos1 = new Vector();
     this.pos2 = new Vector();
 
-    /** @type {state} */
+    /** @type {number} @see {state} */
     this.state = state.STATE_TOP;
     /** @type {number} lip size in units */
     this.lip = 0;

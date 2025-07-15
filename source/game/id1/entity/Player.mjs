@@ -648,6 +648,7 @@ export class PlayerEntity extends BaseEntity {
     }
 
     if (this.health < -40.0) {
+      // eslint-disable-next-line no-use-before-define
       GibEntity.gibEntity(this, 'progs/h_player.mdl', true);
       this._playerDead();
       return;
@@ -1509,6 +1510,7 @@ export class PlayerEntity extends BaseEntity {
       this.engine.SpawnEntity(TeleportEffectEntity.classname, { origin });
     }
 
+    // eslint-disable-next-line no-use-before-define
     this.engine.SpawnEntity(TelefragTriggerEntity.classname, {
       origin: this.origin,
       owner: this,
