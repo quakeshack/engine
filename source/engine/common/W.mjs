@@ -3,6 +3,12 @@ import { eventBus, registry } from '../registry.mjs';
 import { CorruptedResourceError, MissingResourceError } from './Errors.mjs';
 import Q from './Q.mjs';
 
+let { COM } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  COM = registry.COM;
+});
+
 /**
  * WAD lump texture representation.
  */
@@ -81,8 +87,6 @@ export default class W {
    * @returns {Promise<WadFileInterface>} the loaded WAD file or null if not found
    */
   static async LoadFile(filename) {
-    const COM = registry.COM;
-
     const base = await COM.LoadFileAsync(filename);
 
     if (!base) {
@@ -109,8 +113,6 @@ export default class W {
    * @param {string} filename palette file path, e.g. 'gfx/palette.lmp'
    */
   static async LoadPalette(filename) {
-    const COM = registry.COM;
-
     const palette = await COM.LoadFileAsync(filename);
 
     if (palette === null) {

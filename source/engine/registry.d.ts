@@ -6,6 +6,7 @@ import type HostClass from './common/Host.mjs';
 import type VClass from './frontend/V.mjs';
 import type NETClass from './network/Network.mjs';
 import type SVClass from './server/Server.mjs';
+import type PFClass from './server/ProgsAPI.mjs';
 import type PRClass from './server/Progs.mjs';
 import type ModClass from './common/Mod.mjs';
 
@@ -19,6 +20,7 @@ type Host = typeof HostClass;
 type V = typeof VClass;
 type NET = typeof NETClass;
 type SV = typeof SVClass;
+type PF = typeof PFClass;
 type PR = typeof PRClass;
 type Mod = typeof ModClass;
 type WebSocket = typeof WebSocketClass;
@@ -36,6 +38,7 @@ interface Registry {
   PR: PR | null;
   NET: NET | null;
   Mod: Mod | null;
+  PF: PF | null;
   CL: any;
   GL: any;
   SCR: any;
@@ -48,6 +51,7 @@ interface Registry {
   IN: any;
   Sbar: any;
   S: any;
+  M: any;
 
   WebSocket: WebSocket | null;
 };

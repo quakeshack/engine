@@ -7,20 +7,34 @@ import MSG from '../network/MSG.mjs';
 import Vector from '../../shared/Vector.mjs';
 import Q from './Q.mjs';
 import { ServerClient } from '../server/Client.mjs';
+import { ServerEngineAPI } from './GameAPIs.mjs';
 
 const Host = {};
 
 export default Host;
 
-let { SV, Mod, Con, COM, Sys, NET } = registry;
+let { CDAudio, CL, COM, Chase, Con, Draw, IN, Key, M, Mod, NET, PR, R, S, SCR, SV, Sbar, Sys, V } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  SV = registry.SV;
-  Mod = registry.Mod;
-  Con = registry.Con;
+  CDAudio = registry.CDAudio;
+  CL = registry.CL;
   COM = registry.COM;
-  Sys = registry.Sys;
+  Chase = registry.Chase;
+  Con = registry.Con;
+  Draw = registry.Draw;
+  IN = registry.IN;
+  Key = registry.Key;
+  M = registry.M;
+  Mod = registry.Mod;
   NET = registry.NET;
+  PR = registry.PR;
+  R = registry.R;
+  S = registry.S;
+  SCR = registry.SCR;
+  SV = registry.SV;
+  Sbar = registry.Sbar;
+  Sys = registry.Sys;
+  V = registry.V;
 });
 
 Host.framecount = 0;
@@ -56,7 +70,6 @@ Host.Error = function(error) {
 };
 
 Host.FindMaxClients = function() {
-  const SV = registry.SV;
   SV.svs.maxclients = 1;
   SV.svs.maxclientslimit = Def.max_clients;
   SV.svs.clients = [];
@@ -177,7 +190,6 @@ Host.DropClient = function(client, crash, reason) {
 };
 
 Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
-  const { SV, CL, Sys, NET } = registry;
   if (SV.server.active !== true) {
     return;
   }
@@ -224,7 +236,7 @@ Host.WriteConfiguration = function() {
   Host.ScheduleInFuture('Host.WriteConfiguration', () => {
     // COM.WriteTextFile('config.cfg', (!registry.isDedicatedServer ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
     // Con.DPrint('Wrote configuration\n');
-    registry.Con.DPrint('TODO: Write configuration\n'); // TODO
+    Con.DPrint('TODO: Write configuration\n'); // TODO
   }, 5.000);
 };
 
@@ -234,7 +246,6 @@ Host.WriteConfiguration_f = function() {
 };
 
 Host.ServerFrame = function() { // TODO: SV duties
-  const { SV, Key } = registry;
   SV.server.gameAPI.frametime = Host.frametime;
   SV.server.datagram.clear();
   SV.CheckForNewClients();
@@ -272,8 +283,6 @@ Host.ScheduleInFuture = function(name, callback, whenInSeconds) {
 Host.time3 = 0.0;
 Host._Frame = function() {
   // Math.random();
-  const { SV, Sys } = registry;
-
   Host.realtime = Sys.FloatTime();
   Host.frametime = Host.realtime - Host.oldrealtime;
   Host.oldrealtime = Host.realtime;
@@ -416,7 +425,6 @@ Host.Frame = function() {
 };
 
 Host.Init = async function() {
-  const { Sys, Con, COM, V, Chase, PR, Mod, NET, SV } = registry;
   Host.oldrealtime = Sys.FloatTime();
   Cmd.Init();
   Cvar.Init();
@@ -501,8 +509,6 @@ Host.Quit_f = function() {
 };
 
 Host.Status_f = function() {
-  const { SV, NET, Con } = registry;
-
   /** @type {Function} */
   let print;
   if (!this.client) {
@@ -651,8 +657,6 @@ Host.Ping_f = function() {
 };
 
 Host.Map_f = function(mapname, ...spawnparms) {
-  const { Con, SV, CL } = registry;
-
   if (mapname === undefined) {
     Con.Print('Usage: map <map>\n');
     return;
@@ -750,8 +754,6 @@ Host.Reconnect_f = function() {
 };
 
 Host.Connect_f = function(address) {
-  const { CL, Con } = registry;
-
   if (address === undefined) {
     Con.Print('Usage: connect <address>\n');
     Con.Print(' - <address> can be "self", connecting to the current domain name\n');
@@ -1312,8 +1314,7 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
 };
 
 Host.Give_f = function(classname) {
-  // CR:  commented this out for now, it’s only noise…
-  //      unsure if I want a “give item_shells” approach or
+  // CR:  unsure if I want a “give item_shells” approach or
   //      if I want to push this piece of code into PR/PF and let
   //      the game handle this instead
 
@@ -1347,121 +1348,19 @@ Host.Give_f = function(classname) {
     const mins = new Vector(-16.0, -16.0, -24.0);
     const maxs = new Vector(16.0, 16.0, 32.0);
 
-    const trace = Game.EngineInterface.Traceline(start, end, false, player, mins, maxs);
+    const trace = ServerEngineAPI.Traceline(start, end, false, player, mins, maxs);
 
     const origin = trace.point.subtract(forward.multiply(16.0)).add(new Vector(0.0, 0.0, 16.0));
 
-    if (![Mod.contents.empty, Mod.contents.water].includes(Game.EngineInterface.DeterminePointContents(origin))) {
+    if (![Mod.contents.empty, Mod.contents.water].includes(ServerEngineAPI.DeterminePointContents(origin))) {
       Host.ClientPrint('Item would spawn out of world!\n');
       return;
     }
 
-    Game.EngineInterface.SpawnEntity(classname, {
+    ServerEngineAPI.SpawnEntity(classname, {
       origin,
     });
   });
-  // /* old code below, should be handled by either the server game or client game */
-  // if ((t >= 48) && (t <= 57)) {
-  //   if (COM.hipnotic !== true) {
-  //     if (t >= 50) {
-  //       ent.entity.items |= Def.it.shotgun << (t - 50);
-  //     }
-  //     return;
-  //   }
-  //   if (t === 54) {
-  //     if (Cmd.argv[1].charCodeAt(1) === 97) {
-  //       ent.entity.items |= Def.hit.proximity_gun;
-  //     } else {
-  //       ent.entity.items |= Def.it.grenade_launcher;
-  //     }
-  //     return;
-  //   }
-  //   if (t === 57) {
-  //     ent.entity.items |= Def.hit.laser_cannon;
-  //   } else if (t === 48) {
-  //     ent.entity.items |= Def.hit.mjolnir;
-  //   } else if (t >= 50) {
-  //     ent.entity.items |= Def.it.shotgun << (t - 50);
-  //   }
-  //   return;
-  // }
-  // const v = Q.atoi(Cmd.argv[2]);
-  // if (t === 104) {
-  //   ent.entity.health = v;
-  //   return;
-  // }
-  // if (COM.rogue !== true) {
-  //   switch (t) {
-  //     case 115:
-  //       ent.entity.ammo_shells = v;
-  //       return;
-  //     case 110:
-  //       ent.entity.ammo_nails = v;
-  //       return;
-  //     case 114:
-  //       ent.entity.ammo_rockets = v;
-  //       return;
-  //     case 99:
-  //       ent.entity.ammo_cells = v;
-  //   }
-  //   return;
-  // }
-  // switch (t) {
-  //   case 115:
-  //     if (PR.entvars.ammo_shells1 != null) {
-  //       ent.v_float[PR.entvars.ammo_shells1] = v;
-  //       ent.entity.ammo_shells1
-  //     }
-  //     ent.entity.ammo_shells = v;
-  //     return;
-  //   case 110:
-  //     if (PR.entvars.ammo_nails1 != null) {
-  //       ent.v_float[PR.entvars.ammo_nails1] = v;
-  //       if (ent.entity.weapon <= Def.it.lightning) {
-  //         ent.entity.ammo_nails = v;
-  //       }
-  //     }
-  //     return;
-  //   case 108:
-  //     if (PR.entvars.ammo_lava_nails != null) {
-  //       ent.entity.ammo_lava_nails = v;
-  //       if (ent.entity.weapon > Def.it.lightning) {
-  //         ent.entity.ammo_nails = v;
-  //       }
-  //     }
-  //     return;
-  //   case 114:
-  //     if (PR.entvars.ammo_rockets1 != null) {
-  //       ent.v_float[PR.entvars.ammo_rockets1] = v;
-  //       if (ent.entity.weapon <= Def.it.lightning) {
-  //         ent.entity.ammo_rockets = v;
-  //       }
-  //     }
-  //     return;
-  //   case 109:
-  //     if (PR.entvars.ammo_multi_rockets != null) {
-  //       ent.entity.ammo_multi_rockets = v;
-  //       if (ent.entity.weapon > Def.it.lightning) {
-  //         ent.entity.ammo_rockets = v;
-  //       }
-  //     }
-  //     return;
-  //   case 99:
-  //     if (PR.entvars.ammo_cells1 != null) {
-  //       ent.v_float[PR.entvars.ammo_cells1] = v;
-  //       if (ent.entity.weapon <= Def.it.lightning) {
-  //         ent.entity.ammo_cells = v;
-  //       }
-  //     }
-  //     return;
-  //   case 112:
-  //     if (PR.entvars.ammo_plasma != null) {
-  //       ent.entity.ammo_plasma = v;
-  //       if (ent.entity.weapon > Def.it.lightning) {
-  //         ent.entity.ammo_cells = v;
-  //       }
-  //     }
-  // }
 };
 
 Host.FindViewthing = function() {

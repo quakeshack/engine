@@ -1,5 +1,13 @@
 import { registry, eventBus } from '../registry.mjs';
+import Cmd from './Cmd.mjs';
 import Q from './Q.mjs';
+
+let { CL, Con } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  Con = registry.Con;
+});
 
 /**
  * Console Variable
@@ -192,8 +200,6 @@ export default class Cvar {
       return false;
     }
 
-    const Con = registry.Con;
-
     if (value === undefined) {
       Con.Print(`"${v.name}" is "${v.string}"\n`);
 
@@ -239,7 +245,7 @@ export default class Cvar {
       return true;
     }
 
-    if ((v.flags & Cvar.FLAG.CHEAT) && !registry.isDedicatedServer && registry.CL.cls.serverInfo?.sv_cheats !== '1') {
+    if ((v.flags & Cvar.FLAG.CHEAT) && !registry.isDedicatedServer && CL.cls.serverInfo?.sv_cheats !== '1') {
       Con.Print('Cheats are not enabled on this server.\n');
       return true;
     }
@@ -277,8 +283,6 @@ export default class Cvar {
    * @param {?string} value value to set
    */
   static Set_f(name, value) {
-    const Con = registry.Con;
-
     if (name === undefined) {
       Con.Print('Usage: set <name> <value>\n');
       return;
@@ -294,8 +298,6 @@ export default class Cvar {
    * @param {?string} value value to set
    */
   static Seta_f(name, value) {
-    const Con = registry.Con;
-
     if (name === undefined) {
       Con.Print('Usage: seta <name> <value>\n');
       return;
@@ -323,8 +325,6 @@ export default class Cvar {
    * @param {string} name name of the variable
    */
   static Toggle_f(name) {
-    const Con = registry.Con;
-
     if (name === undefined) {
       Con.Print('Usage: toggle <name>\n');
       return;
@@ -351,7 +351,6 @@ export default class Cvar {
    * Initializes the Cvar system.
    */
   static Init() {
-    const Cmd = registry.Cmd;
     Cmd.AddCommand('set', Cvar.Set_f);
     Cmd.AddCommand('seta', Cvar.Seta_f);
     Cmd.AddCommand('toggle', Cvar.Toggle_f);

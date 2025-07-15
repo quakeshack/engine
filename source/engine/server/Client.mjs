@@ -2,7 +2,13 @@ import Vector from '../../shared/Vector.mjs';
 import MSG, { SzBuffer } from '../network/MSG.mjs';
 import { QSocket } from '../network/NetworkDrivers.mjs';
 import * as Protocol from '../network/Protocol.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
+
+let { SV } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  SV = registry.SV;
+});
 
 /** @typedef {import('./Edict.mjs').ServerEdict} ServerEdict */
 /** @typedef {import('./Server.mjs').ServerEntityState} ServerEntityState */
@@ -66,7 +72,7 @@ export class ServerClient {
   /** @type {ServerEdict} */
   get edict() {
     // clients are mapped to edicts with ids from 1 to maxclients
-    return registry.SV.server.edicts[this.num + 1];
+    return SV.server.edicts[this.num + 1];
   }
 
   get entity() {
@@ -103,7 +109,7 @@ export class ServerClient {
     const key = num.toString();
 
     if (!this._entityStates.has(key)) {
-      this._entityStates.set(key, new registry.SV.EntityState(num));
+      this._entityStates.set(key, new SV.EntityState(num));
     }
 
     return this._entityStates.get(key);
@@ -133,8 +139,6 @@ export class ServerClient {
   }
 
   saveSpawnparms() { // FIXME: should game handle this?
-    const SV = registry.SV;
-
     SV.server.gameAPI.SetChangeParms(this.edict);
 
     for (let i = 0; i < this.spawn_parms.length; i++) {

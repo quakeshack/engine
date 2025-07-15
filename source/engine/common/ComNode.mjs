@@ -8,8 +8,15 @@ import Q from './Q.mjs';
 import { CRC16CCITT as CRC } from './CRC.mjs';
 import COM from './Com.mjs';
 
-import { registry } from '../registry.mjs';
 import { CorruptedResourceError } from './Errors.mjs';
+import { registry, eventBus } from '../registry.mjs';
+
+let { Con, Sys } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  Con = registry.Con;
+  Sys = registry.Sys;
+});
 
 export default class NodeCOM extends COM {
 
@@ -19,8 +26,6 @@ export default class NodeCOM extends COM {
    * @returns {ArrayBuffer | undefined} - The file content as an ArrayBuffer or undefined if not found.
    */
   static LoadFile(filename) {
-    const Sys = registry.Sys;
-
     filename = filename.toLowerCase();
 
     for (let i = this.searchpaths.length - 1; i >= 0; i--) {
@@ -66,8 +71,6 @@ export default class NodeCOM extends COM {
   };
 
   static async LoadFileAsync(filename) {
-    const Sys = registry.Sys;
-
     filename = filename.toLowerCase();
 
     // Loop over search paths in reverse
@@ -148,8 +151,6 @@ export default class NodeCOM extends COM {
     if (!existsSync(`data/${packfile}`)) {
       return null;
     }
-
-    const Con = registry.Con;
 
     const fd = openSync(`data/${packfile}`, 'r');
 

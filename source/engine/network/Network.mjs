@@ -9,13 +9,14 @@ const NET = {};
 
 export default NET;
 
-let { SV, Con, Sys, Host } = registry;
+let { CL, Con, Host, SV, Sys } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  SV = registry.SV;
+  CL = registry.CL;
   Con = registry.Con;
-  Sys = registry.Sys;
   Host = registry.Host;
+  SV = registry.SV;
+  Sys = registry.Sys;
 });
 
 NET.FormatIP = function(ip, port) {
@@ -97,7 +98,7 @@ NET.CheckForResend = function() {
 };
 
 NET.CheckNewConnections = function() {
-  NET.time = registry.Sys.FloatTime();
+  NET.time = Sys.FloatTime();
   let dfunc; let ret;
   for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
     dfunc = NET.drivers[NET.driverlevel];
@@ -233,7 +234,7 @@ NET.SendToAll = function(data) {
 };
 
 NET.Init = function() {
-  NET.time = registry.Sys.FloatTime();
+  NET.time = Sys.FloatTime();
 
   NET.messagetimeout = new Cvar('net_messagetimeout', '5000');
   NET.hostname = new Cvar('hostname', 'UNNAMED', Cvar.FLAG.SERVER, 'Descriptive name of the server.');
@@ -281,8 +282,6 @@ NET.Listen_f = function(isListening) {
 };
 
 NET.MaxPlayers_f = function(maxplayers) {
-  const { SV, Con } = registry;
-
   if (maxplayers === undefined) {
     Con.Print('"maxplayers" is "' + SV.svs.maxclients + '"\n');
     return;

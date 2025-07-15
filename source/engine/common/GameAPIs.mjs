@@ -1,23 +1,30 @@
 import Vector from '../../shared/Vector.mjs';
 import MSG from '../network/MSG.mjs';
 import * as Protocol from '../network/Protocol.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from '../server/Edict.mjs';
 import Cmd from './Cmd.mjs';
 import Cvar from './Cvar.mjs';
 
+let { Con, Host, Mod, SV } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  Con = registry.Con;
+  Host = registry.Host;
+  Mod = registry.Mod;
+  SV = registry.SV;
+});
+
 export class ServerEngineAPI {
   static BroadcastPrint(str) {
-    registry.Host.BroadcastPrint(str);
+    Host.BroadcastPrint(str);
   }
 
   static StartParticles(origin, direction, color, count) {
-    registry.SV.StartParticle(origin, direction, color, count);
+    SV.StartParticle(origin, direction, color, count);
   }
 
   static SpawnAmbientSound(origin, sfxName, volume, attenuation) {
-    const { SV, Con } = registry;
-
     let i = 0;
 
     for (; i < SV.server.sound_precache.length; ++i) {
@@ -42,14 +49,14 @@ export class ServerEngineAPI {
   }
 
   static StartSound(edict, channel, sfxName, volume, attenuation) {
-    registry.SV.StartSound(edict, channel, sfxName, volume * 255.0, attenuation);
+    SV.StartSound(edict, channel, sfxName, volume * 255.0, attenuation);
 
     return true;
   }
 
   static Traceline(start, end, noMonsters, passEdict, mins = null, maxs = null) {
     const nullVec = Vector.origin;
-    const trace = registry.SV.Move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict);
+    const trace = SV.Move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict);
 
     return {
       solid: {
@@ -81,7 +88,7 @@ export class ServerEngineAPI {
 
   static TracelineLegacy(start, end, noMonsters, passEdict, mins = null, maxs = null) {
     const nullVec = Vector.origin;
-    return registry.SV.Move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict);
+    return SV.Move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict);
   }
 
   static AppendConsoleText(text) {
@@ -116,8 +123,6 @@ export class ServerEngineAPI {
    * @param {string} sequenceString
    */
   static Lightstyle(styleId, sequenceString) {
-    const { SV } = registry;
-
     SV.server.lightstyles[styleId] = sequenceString;
 
     if (SV.server.loading) {
@@ -143,12 +148,10 @@ export class ServerEngineAPI {
    * @returns contents
    */
   static DeterminePointContents(origin) {
-    return registry.SV.PointContents(origin);
+    return SV.PointContents(origin);
   }
 
   static ChangeLevel(mapname) {
-    const { SV } = registry;
-
     if (SV.svs.changelevel_issued) {
       return;
     }
@@ -165,8 +168,6 @@ export class ServerEngineAPI {
    * @yields {SV.Edict} matching edict
    */
   static *FindInRadius(origin, radius) {
-    const { SV } = registry;
-
     for (let i = 1; i < SV.server.num_edicts; i++) {
       /** @type {ServerEdict} */
       const ent = SV.server.edicts[i];
@@ -186,8 +187,6 @@ export class ServerEngineAPI {
   }
 
   static FindByFieldAndValue(field, value, startEdictId = 0) { // FIXME: startEdictId should be edict? not 100% happy about this
-    const { SV } = registry;
-
     for (let i = (startEdictId % SV.server.num_edicts); i < SV.server.num_edicts; i++) {
       const ent = SV.server.edicts[i];
 
@@ -204,8 +203,6 @@ export class ServerEngineAPI {
   }
 
   static *FindAllByFieldAndValue(field, value, startEdictId = 0) { // FIXME: startEdictId should be edict? not 100% happy about this
-    const { SV } = registry;
-
     for (let i = (startEdictId % SV.server.num_edicts); i < SV.server.num_edicts; i++) {
       const ent = SV.server.edicts[i];
 
@@ -220,8 +217,6 @@ export class ServerEngineAPI {
   }
 
   static GetEdictById(edictId) {
-    const { SV } = registry;
-
     if (edictId < 0 || edictId >= SV.server.num_edicts) {
       return null;
     }
@@ -230,8 +225,6 @@ export class ServerEngineAPI {
   }
 
   static PrecacheSound(sfxName) {
-    const { SV } = registry;
-
     console.assert(typeof(sfxName) === 'string', 'sfxName must be a string');
 
     if (SV.server.sound_precache.includes(sfxName)) {
@@ -242,8 +235,6 @@ export class ServerEngineAPI {
   }
 
   static PrecacheModel(modelName) {
-    const { SV, Mod } = registry;
-
     console.assert(typeof(modelName) === 'string', 'modelName must be a string');
 
     if (SV.server.model_precache.includes(modelName)) {
@@ -255,19 +246,19 @@ export class ServerEngineAPI {
   }
 
   static ConsolePrint(msg) {
-    registry.Con.Print(msg);
+    Con.Print(msg);
   }
 
   static ConsoleWarning(msg) {
-    registry.Con.PrintWarning(msg);
+    Con.PrintWarning(msg);
   }
 
   static ConsoleError(msg) {
-    registry.Con.PrintError(msg);
+    Con.PrintError(msg);
   }
 
   static ConsoleDebug(str) {
-    registry.Con.DPrint(str);
+    Con.DPrint(str);
   }
 
   /**
@@ -277,8 +268,6 @@ export class ServerEngineAPI {
    * @returns
    */
   static SpawnEntity(classname, initialData = {}) {
-    const { SV } = registry;
-
     const edict = ED.Alloc();
 
     if (!SV.server.gameAPI.prepareEntity(edict, classname, initialData)) {
@@ -295,24 +284,20 @@ export class ServerEngineAPI {
   }
 
   static IsLoading() {
-    return registry.SV.server.loading;
+    return SV.server.loading;
   }
 
   static ParseQC(qcContent) {
-    return registry.Mod.ParseQC(qcContent);
+    return Mod.ParseQC(qcContent);
   }
 
   static DispatchTempEntityEvent(tempEntityId, origin) {
-    const { SV } = registry;
-
     MSG.WriteByte(SV.server.datagram, Protocol.svc.temp_entity);
     MSG.WriteByte(SV.server.datagram, tempEntityId);
     MSG.WriteCoordVector(SV.server.datagram, origin);
   }
 
   static DispatchBeamEvent(beamId, edictId, startOrigin, endOrigin) {
-    const { SV } = registry;
-
     MSG.WriteByte(SV.server.datagram, Protocol.svc.temp_entity); // FIXME: unhappy about this
     MSG.WriteByte(SV.server.datagram, beamId);
     MSG.WriteShort(SV.server.datagram, edictId);
@@ -321,20 +306,14 @@ export class ServerEngineAPI {
   }
 
   static BroadcastMonsterKill() {
-    const { SV } = registry;
-
     MSG.WriteByte(SV.server.reliable_datagram, Protocol.svc.killedmonster);
   }
 
   static BroadcastSecretFound() {
-    const { SV } = registry;
-
     MSG.WriteByte(SV.server.reliable_datagram, Protocol.svc.foundsecret);
   }
 
   static BroadcastObituary(killerEdictId, victimEdictId, killerWeapon, killerItems) {
-    const { SV } = registry;
-
     MSG.WriteByte(SV.server.datagram, Protocol.svc.obituary);
     MSG.WriteShort(SV.server.datagram, killerEdictId);
     MSG.WriteShort(SV.server.datagram, victimEdictId);
@@ -343,20 +322,14 @@ export class ServerEngineAPI {
   }
 
   static EnterIntermission() {
-    const { SV } = registry;
-
     MSG.WriteByte(SV.server.datagram, Protocol.svc.intermission);
   }
 
   static EnterFinale() {
-    const { SV } = registry;
-
     MSG.WriteByte(SV.server.datagram, Protocol.svc.finale);
   }
 
   static PlayTrack(id1, id2) {
-    const { SV } = registry;
-
     MSG.WriteByte(SV.server.datagram, Protocol.svc.cdtrack);
     MSG.WriteByte(SV.server.datagram, id1);
     MSG.WriteByte(SV.server.datagram, id2);

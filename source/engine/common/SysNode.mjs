@@ -10,6 +10,15 @@ import { createServer } from 'http';
 import { registry, eventBus } from '../registry.mjs';
 import Cvar from './Cvar.mjs';
 import { REPLServer } from 'node:repl';
+import Cmd from './Cmd.mjs';
+
+let { COM, Host, NET } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  COM = registry.COM;
+  Host = registry.Host;
+  NET = registry.NET;
+});
 
 /**
  * System class to manage initialization, quitting, and REPL functionality.
@@ -25,8 +34,6 @@ export default class Sys {
    * Initializes the low-level system.
    */
   static async Init() {
-    const { COM, Host, Cmd } = registry;
-
     // Initialize command-line arguments
     COM.InitArgv(argv);
 
@@ -79,7 +86,7 @@ export default class Sys {
       clearInterval(Sys.#frame);
     }
 
-    registry.Host.Shutdown();
+    Host.Shutdown();
     exit(0);
   }
 
@@ -101,7 +108,6 @@ export default class Sys {
 
   /** @private */
   static StartWebserver() {
-    const { COM, Host, NET } = registry;
     const app = express();
 
     const basepath = COM.GetParm('-basepath') || '';

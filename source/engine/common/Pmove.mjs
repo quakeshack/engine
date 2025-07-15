@@ -4,10 +4,16 @@
  * Original sources are: pmove.c, pmovetst.c
  */
 
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import Vector, { DirectionalVectors } from '../../shared/Vector.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 
+let { Mod, SV } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  Mod = registry.Mod;
+  SV = registry.SV;
+});
 
 export const DIST_EPSILON = 0.03125;
 export const STOP_EPSILON = 0.1;
@@ -179,8 +185,6 @@ export class Hull { // hull_t
    * @returns {boolean} true means going down, false means going up
    */
   check(p1f, p2f, p1, p2, trace, num = this.firstClipNode) {
-    const Mod = registry.Mod;
-
     // check for empty
     if (num < 0) {
       if (num !== Mod.contents.solid) {
@@ -297,8 +301,6 @@ export class BoxHull extends Hull {
       new Plane(), // 4
       new Plane(), // 5
     ];
-
-    const Mod = registry.Mod;
 
     for (let i = 0; i < 6; i++) {
       const side = i & 1;
@@ -1204,8 +1206,6 @@ export class Pmove { // pmove_t
  * @returns {Pmove} movevars
  */
 export function TestServerside() {
-  const { SV } = registry.SV;
-
   const pm = new Pmove();
 
   pm.setWorldmodel(SV.server.worldmodel);

@@ -1,10 +1,26 @@
+import Vector from '../../shared/Vector.mjs';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import * as Def from '../common/Def.mjs';
+import Q from '../common/Q.mjs';
+import { eventBus, registry } from '../registry.mjs';
+import MSG from '../network/MSG.mjs';
 
 const V = {};
 
 export default V;
+
+let { CL, Chase, Con, Host, Mod, R, SCR } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  Chase = registry.Chase;
+  Con = registry.Con;
+  Host = registry.Host;
+  Mod = registry.Mod;
+  R = registry.R;
+  SCR = registry.SCR;
+});
 
 V.dmg_time = 0.0;
 

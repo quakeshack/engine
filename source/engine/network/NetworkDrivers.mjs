@@ -1,4 +1,12 @@
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
+
+let { Con, NET, Sys } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  Con = registry.Con;
+  NET = registry.NET;
+  Sys = registry.Sys;
+});
 
 export class QSocket {
   static STATE_NEW = 'new';
@@ -489,7 +497,7 @@ export class WebSocketDriver extends BaseDriver {
       return;
     }
 
-    const { WebSocket, NET } = registry;
+    const { WebSocket } = registry;
 
     this.wss = new WebSocket.WebSocketServer({server: NET.server});
     this.wss.on('connection', this._OnConnectionServer.bind(this));

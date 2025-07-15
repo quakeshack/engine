@@ -1,8 +1,21 @@
+import Cmd from '../common/Cmd.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
-import { registry } from '../registry.mjs';
+import MSG from '../network/MSG.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import { ED } from './Edict.mjs';
 
-PF = {};
+const PF = {};
+
+export default PF;
+
+let { Con, Host, PR, SV } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  Con = registry.Con;
+  Host = registry.Host;
+  PR = registry.PR;
+  SV = registry.SV;
+});
 
 PF._assertTrue = function _PF_assertTrue(check, message) {
   if (!check) {
@@ -232,7 +245,6 @@ PF.breakstatement = function PF_breakstatement() { // PR
 };
 
 PF.traceline = PF._generateBuiltinFunction(function(start, end, noMonsters, passEdict) {
-  const SV = registry.SV;
   const trace = ServerEngineAPI.TracelineLegacy(start, end, noMonsters, passEdict);
 
   SV.server.gameAPI.trace_allsolid = (trace.allsolid === true) ? 1.0 : 0.0;

@@ -10,6 +10,19 @@ import { ED, ServerEdict } from './Edict.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 
+let { COM, Con, Host, Mod, NET, PR, SCR, V } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  COM = registry.COM;
+  Con = registry.Con;
+  Host = registry.Host;
+  Mod = registry.Mod;
+  NET = registry.NET;
+  PR = registry.PR;
+  SCR = registry.SCR;
+  V = registry.V;
+});
+
 /** @typedef {import('./Client.mjs').ServerClient} ServerClient */
 
 const SV = {};
@@ -253,8 +266,6 @@ SV.StartParticle = function(org, dir, color, count) {
 };
 
 SV.StartSound = function(edict, channel, sample, volume, attenuation) {
-  const { Con } = registry;
-
   console.assert(volume >= 0 && volume <= 255, 'volume out of range', volume);
   console.assert(attenuation >= 0.0 && attenuation <= 4.0, 'attenuation out of range', attenuation);
   console.assert(channel >= 0 && channel <= 7, 'channel out of range', channel);
@@ -304,8 +315,6 @@ SV.StartSound = function(edict, channel, sample, volume, attenuation) {
  * @param {ServerClient} client client
  */
 SV.SendServerData = function(client) {
-  const { PR, Host } = registry;
-
   const message = client.message;
 
   // first message is always a print message, this is safe to do no matter what version is running
@@ -367,8 +376,6 @@ SV.SendServerData = function(client) {
 };
 
 SV.ConnectClient = function(client, netconnection) {
-  const { Con } = registry;
-
   Con.DPrint('Client ' + netconnection.address + ' connected\n');
 
   const spawn_parms = new Array(client.spawn_parms.length);
@@ -400,8 +407,6 @@ SV.ConnectClient = function(client, netconnection) {
 SV.fatpvs = [];
 
 SV.CheckForNewClients = function() {
-  const { NET, Con } = registry;
-
   let ret; let i;
   for (;;) {
     ret = NET.CheckNewConnections();
@@ -428,8 +433,6 @@ SV.CheckForNewClients = function() {
 };
 
 SV.AddToFatPVS = function(org, node) {
-  const { Mod } = registry;
-
   let pvs; let i; let normal; let d;
   for (;;) {
     if (node.contents < 0) {
@@ -732,8 +735,6 @@ SV.WriteDeltaEntity = function(msg, from, to) {
  * @returns {boolean} true, when there were changes written to the message
  */
 SV.WriteEntitiesToClient = function(clientEdict, msg) {
-  const { Con } = registry;
-
   const origin = clientEdict.entity.origin.copy().add(clientEdict.entity.view_ofs);
   const pvs = SV.FatPVS(origin);
 
@@ -926,7 +927,7 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
   MSG.WriteByte(msg, clientEdict.entity.ammo_nails);
   MSG.WriteByte(msg, clientEdict.entity.ammo_rockets);
   MSG.WriteByte(msg, clientEdict.entity.ammo_cells);
-  if (registry.COM.standard_quake === true) {
+  if (COM.standard_quake === true) {
     MSG.WriteByte(msg, clientEdict.entity.weapon & 0xff);
   } else {
     const weapon = clientEdict.entity.weapon;
@@ -942,8 +943,6 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
 };
 
 SV.SendClientDatagram = function() { // FIXME: Host.client
-  const { Con, Host, NET } = registry;
-
   const client = Host.client;
   const msg = new SzBuffer(2048, 'SV.SendClientDatagram');
   MSG.WriteByte(msg, Protocol.svc.time);
@@ -993,8 +992,6 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
 };
 
 SV.UpdateToReliableMessages = function() {
-  const { Host } = registry;
-
   for (let i = 0; i < SV.svs.maxclients; i++) {
     Host.client = SV.svs.clients[i];
     const frags = Host.client.edict.entity ? Host.client.edict.entity.frags | 0 : 0; // force int
@@ -1024,8 +1021,6 @@ SV.UpdateToReliableMessages = function() {
 };
 
 SV.SendClientMessages = function() {
-  const { Host, NET, Mod } = registry;
-
   SV.UpdateToReliableMessages();
   for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i]; // FIXME: Host.client
@@ -1114,8 +1109,6 @@ SV.SaveSpawnparms = function() {
 };
 
 SV.HasMap = function(mapname) {
-  const { Mod } = registry;
-
   return Mod.ForName('maps/' + mapname + '.bsp') !== null;
 };
 
@@ -1126,8 +1119,6 @@ SV.HasMap = function(mapname) {
  * @returns {boolean} true, when the server was spawned successfully
  */
 SV.SpawnServer = function(mapname) {
-  const { Con, Host, NET, Mod, PR } = registry;
-
   let i;
 
   if (!NET.hostname.string) {
@@ -1262,8 +1253,6 @@ SV.SpawnServer = function(mapname) {
 };
 
 SV.ShutdownServer = function (isCrashShutdown) {
-  const { Con } = registry;
-
   // tell the game we are shutting down the game
   SV.server.gameAPI.shutdown(isCrashShutdown);
 
@@ -1320,7 +1309,7 @@ SV.WriteCvar = function(msg, cvar) {
  * @param {Cvar} cvar cvar change to write
  */
 SV.CvarChanged = function(cvar) {
-  registry.Con.Print(`"${cvar.name}" changed to "${cvar.string}"\n`);
+  Con.Print(`"${cvar.name}" changed to "${cvar.string}"\n`);
 
   for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
@@ -1337,8 +1326,6 @@ SV.CvarChanged = function(cvar) {
 // move
 
 SV.CheckBottom = function(ent) {
-  const { Mod } = registry;
-
   const mins = ent.entity.origin.copy().add(ent.entity.mins);
   const maxs = ent.entity.origin.copy().add(ent.entity.maxs);
   for (;;) {
@@ -1414,7 +1401,7 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
       }
       const trace = SV.Move(ent.entity.origin, mins, maxs, neworg, SV.move.normal, ent);
       if (trace.fraction === 1.0) {
-        if (((ent.entity.flags & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === registry.Mod.contents.empty)) {
+        if (((ent.entity.flags & SV.fl.swim) !== 0) && (SV.PointContents(trace.endpos) === Mod.contents.empty)) {
           return false; // swim monster left water
         }
         ent.entity.origin = trace.endpos.copy();
@@ -1616,8 +1603,6 @@ SV.CloseEnough = function(ent, goal, dist) { // Edict
 // phys
 
 SV.CheckAllEnts = function() {
-  const { Con } = registry;
-
   let e; let check;
   for (e = 1; e < SV.server.num_edicts; ++e) {
     check = SV.server.edicts[e];
@@ -1641,11 +1626,11 @@ SV.CheckVelocity = function(ent) {
   for (let i = 0; i <= 2; ++i) {
     let component = velo[i];
     if (Q.isNaN(component)) {
-      registry.Con.Print('Got a NaN velocity on ' + ent.entity.classname + '\n');
+      Con.Print('Got a NaN velocity on ' + ent.entity.classname + '\n');
       component = 0.0;
     }
     if (Q.isNaN(origin[i])) {
-      registry.Con.Print('Got a NaN origin on ' + ent.entity.classname + '\n');
+      Con.Print('Got a NaN origin on ' + ent.entity.classname + '\n');
       origin[i] = 0.0;
     }
     if (component > SV.maxvelocity.value) {
@@ -1667,8 +1652,6 @@ SV.CheckVelocity = function(ent) {
  * @returns {boolean} whether false when an edict got freed
  */
 SV.RunThink = function(ent) {
-  const { Host } = registry;
-
   // CR: turn into an infinite loop to catch up with all thinks (QW)
   while (true) {
     let thinktime = ent.entity.nextthink;
@@ -1809,7 +1792,7 @@ SV.AddGravity = function(ent) {
   const ent_gravity = ent.entity.gravity || 1.0;
 
   const velocity = ent.entity.velocity;
-  velocity[2] += ent_gravity * SV.gravity.value * registry.Host.frametime * -1.0;
+  velocity[2] += ent_gravity * SV.gravity.value * Host.frametime * -1.0;
   ent.entity.velocity = velocity;
 };
 
@@ -1908,8 +1891,6 @@ SV.PushMove = function(pusher, movetime) {
 };
 
 SV.Physics_Pusher = function(ent) {
-  const { Host } = registry;
-
   const oldltime = ent.entity.ltime;
   const thinktime = ent.entity.nextthink;
   let movetime;
@@ -1933,8 +1914,6 @@ SV.Physics_Pusher = function(ent) {
 };
 
 SV.CheckStuck = function(ent) {
-  const { Con } = registry;
-
   if (SV.TestEntityPosition(ent) !== true) {
     ent.entity.oldorigin = ent.entity.oldorigin.set(ent.entity.origin);
     return;
@@ -1962,8 +1941,6 @@ SV.CheckStuck = function(ent) {
 };
 
 SV.CheckWater = function(ent) {
-  const { Mod } = registry;
-
   const point = ent.entity.origin.copy().add(new Vector(0.0, 0.0, ent.entity.mins[2] + 1.0));
   ent.entity.waterlevel = 0.0;
   ent.entity.watertype = Mod.contents.empty;
@@ -2035,8 +2012,6 @@ SV.TryUnstick = function(ent, oldvel) {
 };
 
 SV.WalkMove = function(ent) {
-  const { Host } = registry;
-
   const oldonground = ent.entity.flags & SV.fl.onground;
   ent.entity.flags ^= oldonground;
   const oldorg = ent.entity.origin.copy();
@@ -2088,8 +2063,6 @@ SV.WalkMove = function(ent) {
 };
 
 SV.NoclipMove = function() {
-  const { Host } = registry;
-
   const ent = SV.player, cmd = Host.client.cmd;
 
   const { forward, right } = ent.entity.v_angle.angleVectors();
@@ -2107,8 +2080,6 @@ SV.Physics_Client = function(ent) {
   if (!ent.getClient().active) {
     return;
   }
-
-  const { Host } = registry;
 
   SV.server.gameAPI.time = SV.server.time;
   SV.server.gameAPI.PlayerPreThink(ent);
@@ -2155,8 +2126,6 @@ SV.CheckWaterTransition = function(ent) {
     return;
   }
 
-  const { Mod } = registry;
-
   if (cont <= Mod.contents.water) {
     if (ent.entity.watertype === Mod.contents.empty) {
       SV.StartSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0); // TODO: move to game logic
@@ -2179,8 +2148,6 @@ SV.Physics_Toss = function(ent) {
   if ((ent.entity.flags & SV.fl.onground) !== 0) {
     return;
   }
-
-  const { Host } = registry;
 
   SV.CheckVelocity(ent);
   const movetype = ent.entity.movetype;
@@ -2207,8 +2174,6 @@ SV.Physics_Toss = function(ent) {
 };
 
 SV.Physics_Step = function(ent) {
-  const { Host } = registry;
-
   if ((ent.entity.flags & (SV.fl.onground | SV.fl.fly | SV.fl.swim)) === 0) {
     const hitsound = (ent.entity.velocity[2] < (SV.gravity.value * -0.1));
     SV.AddGravity(ent);
@@ -2294,7 +2259,7 @@ SV.Physics = function() {
     }
     throw new Error('SV.Physics: bad movetype ' + (ent.entity.movetype >> 0));
   }
-  SV.server.time += registry.Host.frametime;
+  SV.server.time += Host.frametime;
 };
 
 // user
@@ -2354,7 +2319,7 @@ SV.UserFriction = function() {
   if (SV.Move(start, Vector.origin, Vector.origin, new Vector(start[0], start[1], start[2] - 34.0), 1, ent).fraction === 1.0) {
     friction *= SV.edgefriction.value;
   }
-  let newspeed = speed - registry.Host.frametime * (speed < SV.stopspeed.value ? SV.stopspeed.value : speed) * friction;
+  let newspeed = speed - Host.frametime * (speed < SV.stopspeed.value ? SV.stopspeed.value : speed) * friction;
   if (newspeed < 0.0) {
     newspeed = 0.0;
   }
@@ -2377,12 +2342,11 @@ SV.Accelerate = function(wishvel, air) {
   if (addspeed <= 0.0) {
     return;
   }
-  const accelspeed = Math.min(SV.accelerate.value * registry.Host.frametime * wishspeed, addspeed);
+  const accelspeed = Math.min(SV.accelerate.value * Host.frametime * wishspeed, addspeed);
   ent.entity.velocity = ent.entity.velocity.add(wishdir.multiply(accelspeed));
 };
 
 SV.WaterMove = function() { // Host.client
-  const { Host } = registry;
   const ent = SV.player; const cmd = Host.client.cmd;
   const { forward, right } = ent.entity.v_angle.angleVectors();
   const wishvel = new Vector(
@@ -2441,7 +2405,7 @@ SV.WaterJump = function() { // Host.client
 
 SV.AirMove = function() { // Host.client
   const ent = SV.player;
-  const cmd = registry.Host.client.cmd;
+  const cmd = Host.client.cmd;
   const {forward, right} =   ent.entity.angles.angleVectors();
   let fmove = cmd.forwardmove;
   const smove = cmd.sidemove;
@@ -2476,7 +2440,7 @@ SV.ClientThink = function() {
   }
 
   const punchangle = ent.entity.punchangle.copy();
-  let len = punchangle.normalize() - 10.0 * registry.Host.frametime;
+  let len = punchangle.normalize() - 10.0 * Host.frametime;
   if (len < 0.0) {
     len = 0.0;
   }
@@ -2489,7 +2453,7 @@ SV.ClientThink = function() {
   const angles = ent.entity.angles;
   const v_angle = ent.entity.v_angle.copy().add(punchangle);
 
-  angles[2] = registry.V.CalcRoll(angles, ent.entity.velocity) * 4.0;
+  angles[2] = V.CalcRoll(angles, ent.entity.velocity) * 4.0;
 
   if (!SV.player.entity.fixangle) {
     angles[0] = v_angle[0] / -3.0;
@@ -2548,8 +2512,6 @@ SV.ReadClientMoveQW = function(client) {
 };
 
 SV.HandleRconRequest = function(client) {
-  const { Con } = registry;
-
   const message = client.message;
 
   const password = MSG.ReadString();
@@ -2581,8 +2543,6 @@ SV.HandleRconRequest = function(client) {
  * @returns {boolean} true, if everything was processed successfully
  */
 SV.ReadClientMessage = function(client) {
-  const { Con, Host, NET } = registry;
-
   let qwmove_issued = false;
 
   /** commands that may be pushed by Cmd.ForwardToServer */
@@ -2687,8 +2647,6 @@ SV.ReadClientMessage = function(client) {
 };
 
 SV.RunClients = function() { // FIXME: Host.client
-  const { Host } = registry;
-
   for (let i = 0; i < SV.svs.maxclients; ++i) {
     const client = SV.svs.clients[i];
     if (!client.active) {
@@ -2725,8 +2683,6 @@ SV.move = {
 };
 
 SV.InitBoxHull = function() {
-  const { Mod } = registry;
-
   SV.box_clipnodes = [];
   SV.box_planes = [];
   SV.box_hull = {
@@ -2770,7 +2726,7 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
   }
   console.assert(ent.entity.movetype !== SV.movetype.none, 'SOLID_BSP with MOVETYPE_NONE');
   const model = SV.server.models[ent.entity.modelindex];
-  console.assert(model && model.type === registry.Mod.type.brush, 'model is null or not a brush');
+  console.assert(model && model.type === Mod.type.brush, 'model is null or not a brush');
   const size = maxs[0] - mins[0];
   let hull;
   if (size < 3.0) {
@@ -2852,7 +2808,7 @@ SV.TouchLinks = function(ent, node) {
 };
 
 SV.FindTouchedLeafs = function(ent, node) {
-  if (node.contents === registry.Mod.contents.solid) {
+  if (node.contents === Mod.contents.solid) {
     return;
   }
 
@@ -2953,8 +2909,6 @@ SV.HullPointContents = function(hull, num, p) {
 };
 
 SV.PointContents = function(p) {
-  const { Mod } = registry;
-
   const cont = SV.HullPointContents(SV.server.worldmodel.hulls[0], 0, p);
   if ((cont <= Mod.contents.current_0) && (cont >= Mod.contents.current_down)) {
     return Mod.contents.water;
@@ -2980,8 +2934,6 @@ SV.TestEntityPosition = function(ent) {
  * @returns {boolean} true means going down, false means going up
  */
 SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) { // TODO: rewrite to iterative check
-  const { Con, Mod } = registry;
-
   // check for empty
   if (num < 0) {
     if (num !== Mod.contents.solid) {

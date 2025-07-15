@@ -2,9 +2,20 @@ import Vector from '../../shared/Vector.mjs';
 import MSG from '../network/MSG.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import * as Def from '../common/Def.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import Q from '../common/Q.mjs';
 import { ConsoleCommand } from '../common/Cmd.mjs';
+
+let { COM, Con, Host, Mod, PR, SV } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  COM = registry.COM;
+  Con = registry.Con;
+  Host = registry.Host;
+  Mod = registry.Mod;
+  PR = registry.PR;
+  SV = registry.SV;
+});
 
 /** @typedef {import('./Client.mjs').ServerClient} ServerClient */
 
@@ -20,7 +31,6 @@ export class ED {
   }
 
   static Alloc() { // TODO: move to SV?
-    const { SV, Con } = registry;
     let i;
     /** @type {ServerEdict} */
     let e;
@@ -46,8 +56,6 @@ export class ED {
 
   /** @param {ServerEdict} ed edict */
   static Free(ed) { // TODO: move to SV.Edict
-    const { SV } = registry;
-
     SV.UnlinkEdict(ed);
     // mark as free, it will be cleared later
     ed.free = true;
@@ -61,8 +69,6 @@ export class ED {
 
   /** @param {ServerEdict} ed edict */
   static Print(ed) {
-    const { PR, Con } = registry;
-
     if (ed.isFree()) {
       return;
     }
@@ -81,8 +87,6 @@ export class ED {
   }
 
   static PrintEdicts() {
-    const { SV, Con } = registry;
-
     if (!SV.server.active) {
       return;
     }
@@ -93,8 +97,6 @@ export class ED {
 
   static PrintEdict_f = class extends ConsoleCommand {
     run(id) {
-      const { SV, Con } = registry;
-
       if (SV.server.active !== true) {
         return;
       }
@@ -110,8 +112,6 @@ export class ED {
   };
 
   static Count() {
-    const { SV, Con } = registry;
-
     if (SV.server.active !== true) {
       return;
     }
@@ -141,8 +141,6 @@ export class ED {
   }
 
   static ParseEdict(data, ent, initialData = {}) {
-    const { COM } = registry;
-
     // If not the world entity, clear the entity data
     // CR: this is required, otherwise we would overwrite data SV.SpawnServer had set prior
     if (ent.num > 0) {
@@ -223,8 +221,6 @@ export class ED {
    * @param {string} data - The data to load.
    */
   static LoadFromFile(data) {
-    const { SV, Con, COM } = registry;
-
     let inhibit = 0;
     let ent = null;
     SV.server.gameAPI.time = SV.server.time;
@@ -353,7 +349,7 @@ export class ServerEdict {
   }
 
   linkEdict(touchTriggers = false) {
-    registry.SV.LinkEdict(this, touchTriggers);
+    SV.LinkEdict(this, touchTriggers);
   }
 
   /**
@@ -363,8 +359,6 @@ export class ServerEdict {
    * @param {string} model path to the model, e.g. progs/player.mdl
    */
   setModel(model) {
-    const SV = registry.SV;
-
     let i;
 
     for (i = 0; i < SV.server.model_precache.length; ++i) {
@@ -396,8 +390,6 @@ export class ServerEdict {
    * @returns {boolean} true, when walking was successful
    */
   walkMove(yaw, dist) {
-    const SV = registry.SV;
-
     if ((this.entity.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
       return false;
     }
@@ -413,8 +405,6 @@ export class ServerEdict {
    * @returns {boolean} true, when the dropping succeeded
    */
   dropToFloor(z = -2048.0) {
-    const SV = registry.SV;
-
     const end = this.entity.origin.copy().add(new Vector(0.0, 0.0, z));
     const trace = SV.Move(this.entity.origin, this.entity.mins, this.entity.maxs, end, 0, this);
 
@@ -434,7 +424,6 @@ export class ServerEdict {
    * @returns {boolean} true, when edict touches the ground
    */
   isOnTheFloor() {
-    const SV = registry.SV;
     return SV.CheckBottom(this);
   }
 
@@ -443,7 +432,6 @@ export class ServerEdict {
    * Also this will free and release this Edict.
    */
   makeStatic() {
-    const SV = registry.SV;
     const message = SV.server.signon;
     MSG.WriteByte(message, Protocol.svc.spawnstatic);
     MSG.WriteByte(message, SV.ModelIndex(this.entity.model));
@@ -461,7 +449,6 @@ export class ServerEdict {
    * @returns {ServerEdict} Edict when client found, null otherwise
    */
   getNextBestClient() { // TODO: move to GameAPI, this is not interesting for edicts
-    const { SV, Mod } = registry;
     // refresh check cache
     if (SV.server.time - SV.server.lastchecktime >= 0.1) {
       let check = SV.server.lastcheck;
@@ -534,8 +521,6 @@ export class ServerEdict {
    * @returns {boolean} true, when successful
    */
   moveToGoal(dist) {
-    const SV = registry.SV;
-
     if ((this.entity.flags & (SV.fl.onground + SV.fl.fly + SV.fl.swim)) === 0) {
       return false;
     }
@@ -567,8 +552,6 @@ export class ServerEdict {
    * @returns {Vector} aim direction
    */
   aim(direction) {
-    const { SV, Host } = registry;
-
     const dir = direction.copy();
     const origin = this.entity.origin.copy();
     const start = origin.add(new Vector(0.0, 0.0, 20.0));
@@ -629,8 +612,6 @@ export class ServerEdict {
    * @returns {ServerEdict | null} next edict, or null if there are no more entities
    */
   nextEdict() {
-    const SV = registry.SV;
-
     for (let i = this.num + 1; i < SV.server.num_edicts; i++) {
       if (!SV.server.edicts[i].isFree()) {
         return SV.server.edicts[i];
@@ -645,8 +626,6 @@ export class ServerEdict {
    * @returns {number} new yaw angle
    */
   changeYaw() {
-    const SV = registry.SV;
-
     const angles = this.entity.angles;
     angles[1] = SV.ChangeYaw(this);
     this.entity.angles = angles;
@@ -659,8 +638,6 @@ export class ServerEdict {
    * @returns {ServerClient | null} client object, if edict is actually a client edict
    */
   getClient() {
-    const SV = registry.SV;
-
     return SV.svs.clients[this.num - 1] || null;
   }
 
@@ -669,8 +646,6 @@ export class ServerEdict {
    * @returns {boolean} true, when edict is a client edict
    */
   isClient() {
-    const SV = registry.SV;
-
     return (this.num > 0) && (this.num <= SV.svs.maxclients);
   }
 

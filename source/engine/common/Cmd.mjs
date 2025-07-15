@@ -1,13 +1,21 @@
 import MSG from '../network/MSG.mjs';
 import * as Protocol from '../network/Protocol.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import Cvar from './Cvar.mjs';
+
+let { CL, COM, Con } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  COM = registry.COM;
+  Con = registry.Con;
+});
 
 /**
  * Console Command.
  */
 export class ConsoleCommand {
-  /** @type {?SV.Client} Invoking server client. Unset, when called locally. */
+  /** @type {?import('../server/Edict.mjs').ServerClient} Invoking server client. Unset, when called locally. */
   client = null;
   /** @type {string} The name that was used to execute this command. */
   command = null;
@@ -35,8 +43,6 @@ export class ConsoleCommand {
       return true;
     }
 
-    const Con = registry.Con;
-
     console.assert(this.client === null, 'must be executed locally');
 
     const argv = this.argv;
@@ -50,8 +56,6 @@ export class ConsoleCommand {
       Con.Print('Usage: cmd <command> <args>\n');
       return true;
     }
-
-    const CL = registry.CL;
 
     console.assert(CL !== null, 'CL must be available');
 
@@ -132,9 +136,8 @@ export default class Cmd {
    * Executes all console commands passed by the command line.
    */
   static StuffCmds_f() {
-    const COM = registry.COM;
     let s = false; let build = '';
-    for (let i = 0; i < COM.argv.length; ++i) {
+    for (let i = 0; i < COM.argv.length; i++) {
       const c = COM.argv[i][0];
       if (s === true) {
         if (c === '+') {
@@ -160,7 +163,6 @@ export default class Cmd {
   }
 
   static Exec_f(filename) {
-    const { Con, COM } = registry;
     if (!filename) {
       Con.Print('exec <filename> : execute a script file\n');
       return;
@@ -176,15 +178,11 @@ export default class Cmd {
 
   static Echo_f = class EchoConsoleCommand extends ConsoleCommand {
     run() {
-      const Con = registry.Con;
-
       Con.Print(`${this.args}\n`);
     }
   };
 
   static Alias_f(...argv) {
-    const Con = registry.Con;
-
     if (argv.length <= 1) {
       Con.Print('Current alias commands:\n');
       for (let i = 0; i < Cmd.alias.length; ++i) {
@@ -234,7 +232,7 @@ export default class Cmd {
       if ((text.charCodeAt(i) === 10) || (i >= text.length)) {
         break;
       }
-      const parsed = registry.COM.Parse(text);
+      const parsed = COM.Parse(text);
       if (parsed.data === null) {
         break;
       }
@@ -255,8 +253,6 @@ export default class Cmd {
   }
 
   static AddCommand(name, command) {
-    const Con = registry.Con;
-
     console.assert(Cvar.FindVar(name) === null, 'command name must not be taken by a cvar', name);
 
     for (let i = 0; i < Cmd.functions.length; ++i) {
@@ -290,8 +286,6 @@ export default class Cmd {
   }
 
   static ExecuteString(text, client = null) {
-    const Con = registry.Con;
-
     const argv = Cmd.TokenizeString(text);
 
     if (argv.length === 0) {

@@ -7,6 +7,14 @@ import { CorruptedResourceError, MissingResourceError } from './Errors.mjs';
 
 import Cvar from './Cvar.mjs';
 import W from './W.mjs';
+import Cmd from './Cmd.mjs';
+
+let { Con, Sys } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  Con = registry.Con;
+  Sys = registry.Sys;
+});
 
 /** @typedef {{ name: string; filepos: number; filelen: number;}[]} PackFile */
 /** @typedef {{filename: any; pack: PackFile[];}} SearchPath */
@@ -135,7 +143,6 @@ export default class COM {
   };
 
   static async CheckRegistered() {
-    const Con = registry.Con;
     const h = await this.LoadFileAsync('gfx/pop.lmp');
     if (h === null) {
       Con.PrintSuccess('Playing shareware version.\n');
@@ -194,7 +201,6 @@ export default class COM {
   }
 
   static async Init() {
-    const Cmd = registry.Cmd;
     const swaptest = new ArrayBuffer(2);
     const swaptestview = new Uint8Array(swaptest);
     swaptestview[0] = 1;
@@ -226,16 +232,12 @@ export default class COM {
   }
 
   static Shutdown() {
-    const Sys = registry.Sys;
-
     Sys.Print('COM.Shutdown: signaling outstanding promises to abort\n');
 
     this.abortController.abort('this.Shutdown');
   }
 
   static Path_f() {
-    const Con = registry.Con;
-
     Con.Print('Current search path:\n');
     let i = this.searchpaths.length; let j; let s;
     for (i = this.searchpaths.length - 1; i >= 0; --i) {
@@ -248,8 +250,6 @@ export default class COM {
   }
 
   static WriteFile(filename, data, len) {
-    const Sys = registry.Sys;
-
     filename = filename.toLowerCase();
     const dest = [];
     for (let i = 0; i < len; ++i) {
@@ -266,8 +266,6 @@ export default class COM {
   };
 
   static WriteTextFile(filename, data) {
-    const Sys = registry.Sys;
-
     filename = filename.toLowerCase();
     try {
       localStorage.setItem('Quake.' + this.searchpaths[this.searchpaths.length - 1].filename + '/' + filename, data);
@@ -285,8 +283,6 @@ export default class COM {
    * @deprecated use async version instead
    */
   static LoadFile(filename) {
-    const Sys = registry.Sys;
-
     filename = filename.toLowerCase();
 
     const xhr = new XMLHttpRequest();
@@ -382,7 +378,6 @@ export default class COM {
    * @returns {Promise<ArrayBuffer>} binary content
    */
   static async LoadFileAsync(filename) {
-    const Sys = registry.Sys;
     filename = filename.toLowerCase();
 
     // Draw.BeginDisc();
@@ -521,8 +516,6 @@ export default class COM {
   };
 
   static async LoadPackFile(packfile) {
-    const { Con } = registry;
-
     // Try fetching the header (first 12 bytes).
     let headerResponse;
     try {

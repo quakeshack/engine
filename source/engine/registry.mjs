@@ -17,6 +17,7 @@ export const registry = {
   CL: null,
   SV: null,
   Mod: null,
+  PF: null,
   PR: null,
   GL: null,
   R: null,
@@ -27,6 +28,7 @@ export const registry = {
   IN: null,
   Sbar: null,
   S: null,
+  M: null,
 
   WebSocket: null,
 

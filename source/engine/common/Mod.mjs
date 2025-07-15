@@ -1,5 +1,5 @@
 import Vector from '../../shared/Vector.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import { MissingResourceError } from './Errors.mjs';
 import Q from './Q.mjs';
 import W from './W.mjs';
@@ -7,6 +7,14 @@ import W from './W.mjs';
 const Mod = {};
 
 export default Mod;
+
+let { COM, Con, R } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  COM = registry.COM;
+  Con = registry.Con;
+  R = registry.R;
+});
 
 const notexture_mip = {name: 'notexture', width: 16, height: 16, texturenum: null};
 
@@ -210,7 +218,6 @@ Mod.FindName = function(name) { // private method (refactor into _RegisterModel)
 };
 
 Mod.LoadModel = function(mod, crash) { // private method
-  const { COM } = registry;
   if (mod.needload !== true) {
     return mod;
   }
@@ -935,7 +942,6 @@ Mod.FloodFillSkin = function(skin) {
 };
 
 Mod.LoadAllSkins = function(buffer, inmodel) {
-  const { GL } = registry;
   Mod.loadmodel.skins = [];
   const model = new DataView(buffer);
   let i; let j; let group; let numskins;
@@ -1367,7 +1373,7 @@ Mod.ParseQC = function(qcContent) {
         break;
 
       default:
-        registry.Con.Print(`Mod.ParseQC: unknown QC field ${key}\n`);
+        Con.Print(`Mod.ParseQC: unknown QC field ${key}\n`);
     }
   }
 

@@ -1,7 +1,14 @@
 import Q from '../common/Q.mjs';
 import Vector from '../../shared/Vector.mjs';
 import * as Protocol from '../network/Protocol.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
+
+let { Con, NET } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  Con = registry.Con;
+  NET = registry.NET;
+});
 
 export class SzBuffer {
   /**
@@ -48,8 +55,6 @@ export class SzBuffer {
   }
 
   allocate(size) {
-    const Con = registry.Con;
-
     if (this.cursize + size > this.maxsize) {
       if (this.allowoverflow !== true) {
         throw RangeError('SzBuffer.allocate: overflow without allowoverflow set');
@@ -447,14 +452,12 @@ export default class MSG {
   }
 
   static PrintLastRead() {
-    const Con = registry.Con;
     for (const { type, value } of MSG._messageLog) {
       Con.Print(`"${value}" (${type})\n`);
     }
   }
 
   static ReadChar() {
-    const NET = registry.NET;
     if (MSG.readcount >= NET.message.cursize) {
       MSG.badread = true;
       // debugger;
@@ -467,7 +470,6 @@ export default class MSG {
   }
 
   static ReadByte() {
-    const NET = registry.NET;
     if (MSG.readcount >= NET.message.cursize) {
       MSG.badread = true;
       // debugger;
@@ -480,7 +482,6 @@ export default class MSG {
   }
 
   static ReadShort() {
-    const NET = registry.NET;
     if ((MSG.readcount + 2) > NET.message.cursize) {
       MSG.badread = true;
       // debugger;
@@ -493,7 +494,6 @@ export default class MSG {
   }
 
   static ReadLong() {
-    const NET = registry.NET;
     if ((MSG.readcount + 4) > NET.message.cursize) {
       MSG.badread = true;
       // debugger;
@@ -506,7 +506,6 @@ export default class MSG {
   }
 
   static ReadFloat() {
-    const NET = registry.NET;
     if ((MSG.readcount + 4) > NET.message.cursize) {
       MSG.badread = true;
       // debugger;

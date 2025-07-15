@@ -12,15 +12,14 @@ const PR = {};
 
 export default PR;
 
-let { SV, Mod, Con, COM, Sys, NET } = registry;
+let { COM, Con, Host, PF, SV } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  SV = registry.SV;
-  Mod = registry.Mod;
-  Con = registry.Con;
   COM = registry.COM;
-  Sys = registry.Sys;
-  NET = registry.NET;
+  Con = registry.Con;
+  Host = registry.Host;
+  PF = registry.PF;
+  SV = registry.SV;
 });
 
 /**
@@ -312,8 +311,6 @@ PR.EdictProxy = class ProgsEntity {
    * @param {*} ed can be null, then it’s global
    */
   constructor(ed) {
-    const { SV } = registry;
-
     // const stats = ed ? PR._stats.edict : PR._stats.global;
     const defs = ed ? PR.fielddefs : PR.globaldefs;
 
@@ -566,7 +563,7 @@ PR.EdictProxy = class ProgsEntity {
 
       switch (type) {
         case ProgsEntity.SERIALIZATION_TYPE_EDICT:
-          this[key] = registry.SV.server.edicts[data[0]];
+          this[key] = SV.server.edicts[data[0]];
           break;
 
         case ProgsEntity.SERIALIZATION_TYPE_FUNCTION:
@@ -605,7 +602,7 @@ PR.EdictProxy = class ProgsEntity {
 
   spawn() {
     // QuakeC is different, the actual spawn function is called by its classname
-    registry.SV.server.gameAPI[this.classname]({num: this._edictNum});
+    SV.server.gameAPI[this.classname]({num: this._edictNum});
   }
 
   get edictId() {
@@ -804,7 +801,6 @@ PR.GlobalStringNoContents = function(ofs) {
 };
 
 PR.LoadProgs = function() {
-  const { COM, Con, SV, Host } = registry;
   const progs = COM.LoadFile('progs.dat');
   if (progs === null) {
     throw new MissingResourceError('progs.dat');
@@ -1055,8 +1051,6 @@ PR.LoadProgs = function() {
 PR._cvars = [];
 
 PR.Init = async function() {
-  const { COM, Con } = registry;
-
   try {
     if (COM.CheckParm('-noquakejs')) {
       throw new Error('QuakeJS disabled');
@@ -1127,7 +1121,6 @@ PR.opnames = [
 // PR.executions = [];
 
 PR.PrintStatement = function(s) {
-  const { Con } = registry;
   let text;
   if (s.op < PR.opnames.length) {
     text = PR.opnames[s.op] + ' ';
@@ -1162,7 +1155,6 @@ PR.PrintStatement = function(s) {
 };
 
 PR.StackTrace = function() {
-  const { Con } = registry;
   if (PR.depth === 0) {
     Con.Print('<NO STACK>\n');
     return;
@@ -1185,7 +1177,6 @@ PR.StackTrace = function() {
 };
 
 PR.Profile_f = function() {
-  const { SV, Con } = registry;
   if (SV.server.active !== true) {
     return;
   }
@@ -1216,7 +1207,6 @@ PR.Profile_f = function() {
 };
 
 PR.RunError = function(error) {
-  const { Con, Host } = registry;
   PR.PrintStatement(PR.statements[PR.xstatement]);
   PR.StackTrace();
   Con.PrintError(error + '\n');
@@ -1261,7 +1251,6 @@ PR.LeaveFunction = function() {
 };
 
 PR.ExecuteProgram = function(fnum) {
-  const { Host, SV } = registry;
   if ((fnum === 0) || (fnum >= PR.functions.length)) {
     if (PR.globals_int[PR.globalvars.self] !== 0) {
       ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);

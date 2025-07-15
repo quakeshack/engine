@@ -3,6 +3,19 @@
 import { eventBus, registry } from '../registry.mjs';
 import Cvar from './Cvar.mjs';
 import Vector from '../../shared/Vector.mjs';
+import Cmd from './Cmd.mjs';
+
+let { CL, Draw, Host, Key, M, S, SCR } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  Draw = registry.Draw;
+  Host = registry.Host;
+  Key = registry.Key;
+  M = registry.M;
+  S = registry.S;
+  SCR = registry.SCR;
+});
 
 export default class Con {
   static backscroll = 0;
@@ -50,8 +63,6 @@ export default class Con {
   }
 
   static Init() {
-    const Cmd = registry.Cmd;
-
     Con.Print('Console initialized.\n');
 
     Con.notifytime = new Cvar('con_notifytime', '3', Cvar.FLAG.ARCHIVE, 'How long to display console messages.');
@@ -87,7 +98,7 @@ export default class Con {
     }
     for (let i = 0; i < msg.length; i++) {
       if (!Con.text[Con.current]) {
-        Con.text[Con.current] = { text: '', time: registry.Host.realtime || 0, color };
+        Con.text[Con.current] = { text: '', time: Host.realtime || 0, color };
       }
       if (msg.charCodeAt(i) === 10) {
         const line = Con.text[Con.current].text;
@@ -108,7 +119,7 @@ export default class Con {
   }
 
   static DPrint(msg) {
-    if (registry.Host.developer.value === 0) {
+    if (Host.developer.value === 0) {
       return;
     }
 
