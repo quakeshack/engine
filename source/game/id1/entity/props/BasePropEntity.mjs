@@ -1,7 +1,7 @@
 import Vector from '../../../../shared/Vector.mjs';
 
-import BaseEntity from "../BaseEntity.mjs";
-import { Sub } from "../Subs.mjs";
+import BaseEntity from '../BaseEntity.mjs';
+import { Sub } from '../Subs.mjs';
 
 /**
  * used in this.state
@@ -30,7 +30,7 @@ export const state = {
   /**
    * no action taken in think
    */
-  STATE_DONE: -1
+  STATE_DONE: -1,
 };
 
 export default class BasePropEntity extends BaseEntity {

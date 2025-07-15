@@ -1,4 +1,4 @@
-import { registry } from "../registry.mjs";
+import { registry } from '../registry.mjs';
 
 export class QSocket {
   static STATE_NEW = 'new';

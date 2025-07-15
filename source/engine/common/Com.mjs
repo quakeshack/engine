@@ -521,7 +521,7 @@ export default class COM {
   };
 
   static async LoadPackFile(packfile) {
-    const { Sys, Con } = registry;
+    const { Con } = registry;
 
     // Try fetching the header (first 12 bytes).
     let headerResponse;
@@ -541,15 +541,13 @@ export default class COM {
 
     const headerBuffer = await headerResponse.arrayBuffer();
     if (headerBuffer.byteLength !== 12) {
-      Sys.Error(`COM.LoadPackFile: expected 12-byte header, got ${headerBuffer.byteLength}`);
-      return null;
+      throw new Error(`COM.LoadPackFile: expected 12-byte header, got ${headerBuffer.byteLength}`);
     }
 
     // Parse the pack file header.
     const headerView = new DataView(headerBuffer);
     if (headerView.getUint32(0, true) !== 0x4b434150) { // 'PACK'
-      Sys.Error(`${packfile} is not a packfile`);
-      return null;
+      throw new Error(`${packfile} is not a packfile`);
     }
 
     const dirofs = headerView.getUint32(4, true);
@@ -573,8 +571,7 @@ export default class COM {
         headers: { Range: `bytes=${dirofs}-${dirofs + dirlen - 1}` },
       });
     } catch (err) {
-      Sys.Error(`COM.LoadPackFile: failed to load directory of ${packfile}, ${err.message}`);
-      return null;
+      throw new Error(`COM.LoadPackFile: failed to load directory of ${packfile}, ${err.message}`);
     }
 
     if (!dirResponse.ok) {
@@ -583,10 +580,9 @@ export default class COM {
 
     const dirBuffer = await dirResponse.arrayBuffer();
     if (dirBuffer.byteLength !== dirlen) {
-      Sys.Error(
+      throw new Error(
         `COM.LoadPackFile: expected ${dirlen} bytes for directory, got ${dirBuffer.byteLength}`,
       );
-      return null;
     }
 
     // Optional CRC check, assuming CRC.Block() still works on a Uint8Array:

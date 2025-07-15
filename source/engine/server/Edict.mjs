@@ -184,7 +184,9 @@ export class ED {
       keyname = keyname.trimEnd();
 
       // Parse the value
-      data = COM.Parse(data);
+      const parsedValue = COM.Parse(data);
+
+      data = parsedValue.data;
 
       if (data === null) {
         throw new Error('ED.ParseEdict: EOF without closing brace');

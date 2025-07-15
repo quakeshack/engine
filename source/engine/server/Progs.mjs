@@ -4,13 +4,24 @@ import Cvar from '../common/Cvar.mjs';
 import { MissingResourceError } from '../common/Errors.mjs';
 import Q from '../common/Q.mjs';
 import Vector from '../../shared/Vector.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import { ED } from './Edict.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 
 const PR = {};
 
 export default PR;
+
+let { SV, Mod, Con, COM, Sys, NET } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  SV = registry.SV;
+  Mod = registry.Mod;
+  Con = registry.Con;
+  COM = registry.COM;
+  Sys = registry.Sys;
+  NET = registry.NET;
+});
 
 /**
  * PR.fielddefs[].type
@@ -232,7 +243,7 @@ PR.FunctionProxy = class ProgsFunctionProxy extends Function {
     // such an ugly hack to make objects actually callable
     ProgsFunctionProxy.proxyCache[cacheId] = new Proxy(obj, {
       apply(target, thisArg, args) {
-        return obj.call(...args);
+        return obj.call.apply(obj, args);
       },
     });
 
@@ -301,6 +312,8 @@ PR.EdictProxy = class ProgsEntity {
    * @param {*} ed can be null, then it’s global
    */
   constructor(ed) {
+    const { SV } = registry;
+
     // const stats = ed ? PR._stats.edict : PR._stats.global;
     const defs = ed ? PR.fielddefs : PR.globaldefs;
 
@@ -553,7 +566,7 @@ PR.EdictProxy = class ProgsEntity {
 
       switch (type) {
         case ProgsEntity.SERIALIZATION_TYPE_EDICT:
-          this[key] = SV.server.edicts[data[0]];
+          this[key] = registry.SV.server.edicts[data[0]];
           break;
 
         case ProgsEntity.SERIALIZATION_TYPE_FUNCTION:
@@ -592,7 +605,7 @@ PR.EdictProxy = class ProgsEntity {
 
   spawn() {
     // QuakeC is different, the actual spawn function is called by its classname
-    SV.server.gameAPI[this.classname]({num: this._edictNum});
+    registry.SV.server.gameAPI[this.classname]({num: this._edictNum});
   }
 
   get edictId() {
@@ -628,37 +641,37 @@ PR._NewString = function(string) {
 /**
  * Retrieves the global definition at the specified offset.
  * @param {number} ofs - The offset to retrieve.
- * @returns {object} - The global definition.
+ * @returns {object|null} - The global definition.
  */
 PR.GlobalAtOfs = function(ofs) {
-  return PR.globaldefs.find((def) => def.ofs === ofs);
+  return PR.globaldefs.find((def) => def.ofs === ofs) || null;
 };
 
 /**
  * Retrieves the field definition at the specified offset.
  * @param {number} ofs - The offset to retrieve.
- * @returns {object} - The field definition.
+ * @returns {object|null} - The field definition.
  */
 PR.FieldAtOfs = function(ofs) {
-  return PR.fielddefs.find((def) => def.ofs === ofs);
+  return PR.fielddefs.find((def) => def.ofs === ofs) || null;
 };
 
 /**
  * Finds a field definition by name.
  * @param {string} name - The field name.
- * @returns {object} - The field definition.
+ * @returns {object|null} - The field definition.
  */
 PR.FindField = function(name) {
-  return PR.fielddefs.find((def) => PR.GetString(def.name) === name);
+  return PR.fielddefs.find((def) => PR.GetString(def.name) === name) || null;
 };
 
 /**
  * Finds a global definition by name.
  * @param {string} name - The global name.
- * @returns {object} - The global definition.
+ * @returns {object|null} - The global definition.
  */
 PR.FindGlobal = function(name) {
-  return PR.globaldefs.find((def) => PR.GetString(def.name) === name);
+  return PR.globaldefs.find((def) => PR.GetString(def.name) === name) || null;
 };
 
 /**
@@ -683,7 +696,7 @@ PR.ValueString = function(type, val, ofs) {
       return PR.GetString(PR.functions[val_int[ofs]].name) + '()';
     case PR.etype.ev_field: {
         const def = PR.FieldAtOfs(val_int[ofs]);
-        if (def != null) {
+        if (def !== null) {
           return '.' + PR.GetString(def.name);
         }
         return '.';
@@ -747,7 +760,7 @@ PR.UglyValueString = function(type, val, ofs) {
       return PR.GetString(PR.functions[val_int[ofs]].name);
     case PR.etype.ev_field: {
         const def = PR.FieldAtOfs(val_int[ofs]);
-        if (def != null) {
+        if (def !== null) {
           return PR.GetString(def.name);
         }
         return '';
@@ -766,7 +779,7 @@ PR.UglyValueString = function(type, val, ofs) {
 
 PR.GlobalString = function(ofs) {
   const def = PR.GlobalAtOfs(ofs); let line;
-  if (def != null) {
+  if (def !== null) {
     line = ofs + '(' + PR.GetString(def.name) + ')' + PR.ValueString(def.type, PR.globals, ofs);
   } else {
     line = ofs + '(???)';
@@ -779,7 +792,7 @@ PR.GlobalString = function(ofs) {
 
 PR.GlobalStringNoContents = function(ofs) {
   const def = PR.GlobalAtOfs(ofs); let line;
-  if (def != null) {
+  if (def !== null) {
     line = ofs + '(' + PR.GetString(def.name) + ')';
   } else {
     line = ofs + '(???)';
@@ -791,6 +804,7 @@ PR.GlobalStringNoContents = function(ofs) {
 };
 
 PR.LoadProgs = function() {
+  const { COM, Con, SV, Host } = registry;
   const progs = COM.LoadFile('progs.dat');
   if (progs === null) {
     throw new MissingResourceError('progs.dat');
@@ -1113,6 +1127,7 @@ PR.opnames = [
 // PR.executions = [];
 
 PR.PrintStatement = function(s) {
+  const { Con } = registry;
   let text;
   if (s.op < PR.opnames.length) {
     text = PR.opnames[s.op] + ' ';
@@ -1147,6 +1162,7 @@ PR.PrintStatement = function(s) {
 };
 
 PR.StackTrace = function() {
+  const { Con } = registry;
   if (PR.depth === 0) {
     Con.Print('<NO STACK>\n');
     return;
@@ -1155,7 +1171,7 @@ PR.StackTrace = function() {
   let f; let file;
   for (; PR.depth >= 0; --PR.depth) {
     f = PR.stack[PR.depth][1];
-    if (f == null) {
+    if (!f) {
       Con.Print('<NO FUNCTION>\n');
       continue;
     }
@@ -1169,6 +1185,7 @@ PR.StackTrace = function() {
 };
 
 PR.Profile_f = function() {
+  const { SV, Con } = registry;
   if (SV.server.active !== true) {
     return;
   }
@@ -1183,7 +1200,7 @@ PR.Profile_f = function() {
         best = f;
       }
     }
-    if (best == null) {
+    if (best === null) {
       return;
     }
     if (num < 10) {
@@ -1199,6 +1216,7 @@ PR.Profile_f = function() {
 };
 
 PR.RunError = function(error) {
+  const { Con, Host } = registry;
   PR.PrintStatement(PR.statements[PR.xstatement]);
   PR.StackTrace();
   Con.PrintError(error + '\n');
@@ -1228,7 +1246,7 @@ PR.EnterFunction = function(f) {
 
 PR.LeaveFunction = function() {
   if (PR.depth <= 0) {
-    Sys.Error('prog stack underflow');
+    throw new Error('prog stack underflow');
   }
   let c = PR.xfunction.locals;
   PR.localstack_used -= c;
@@ -1243,6 +1261,7 @@ PR.LeaveFunction = function() {
 };
 
 PR.ExecuteProgram = function(fnum) {
+  const { Host, SV } = registry;
   if ((fnum === 0) || (fnum >= PR.functions.length)) {
     if (PR.globals_int[PR.globalvars.self] !== 0) {
       ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);

@@ -1,7 +1,14 @@
+import Vector from '../../shared/Vector.mjs';
+import { registry } from '../registry.mjs';
+import { MissingResourceError } from './Errors.mjs';
+import Q from './Q.mjs';
+import W from './W.mjs';
 
 const Mod = {};
 
 export default Mod;
+
+const notexture_mip = {name: 'notexture', width: 16, height: 16, texturenum: null};
 
 /**
  * Mod.BaseModel
@@ -110,10 +117,10 @@ Mod.Init = function() {
 
 Mod.PointInLeaf = function(p, model) { // public method, static access? (PF, R, S use it)
   if (model == null) {
-    Sys.Error('Mod.PointInLeaf: bad model');
+    throw new Error('Mod.PointInLeaf: bad model');
   }
   if (model.nodes == null) {
-    Sys.Error('Mod.PointInLeaf: bad model');
+    throw new Error('Mod.PointInLeaf: bad model');
   }
   let node = model.nodes[0];
   let normal;
@@ -181,7 +188,7 @@ Mod.ClearAll = function() {
 
 Mod.FindName = function(name) { // private method (refactor into _RegisterModel)
   if (name.length === 0) {
-    Sys.Error('Mod.FindName: NULL name');
+    throw new Error('Mod.FindName: NULL name');
   }
   let i;
   for (i = 0; i < Mod.known.length; ++i) {
@@ -203,13 +210,14 @@ Mod.FindName = function(name) { // private method (refactor into _RegisterModel)
 };
 
 Mod.LoadModel = function(mod, crash) { // private method
+  const { COM } = registry;
   if (mod.needload !== true) {
     return mod;
   }
   const buf = COM.LoadFile(mod.name);
-  if (buf == null) {
+  if (buf === null) {
     if (crash === true) {
-      Sys.Error('Mod.LoadModel: ' + mod.name + ' not found');
+      throw new MissingResourceError(mod.name);
     }
     return null;
   }
@@ -288,7 +296,7 @@ Mod.LoadTextures = function(buf) {
     miptexofs = view.getInt32(dataofs, true);
     dataofs += 4;
     if (miptexofs === -1) {
-      Mod.loadmodel.textures[i] = R.notexture_mip;
+      Mod.loadmodel.textures[i] = notexture_mip;
       continue;
     }
     miptexofs += fileofs;
@@ -297,7 +305,7 @@ Mod.LoadTextures = function(buf) {
       width: view.getUint32(miptexofs + 16, true),
       height: view.getUint32(miptexofs + 20, true),
     };
-    if (!Host.dedicated.value) {
+    if (!registry.isDedicatedServer) {
       if (tx.name.substring(0, 3).toLowerCase() === 'sky') {
         R.InitSky(new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), 32768));
         tx.texturenum = R.solidskytexture;
@@ -359,22 +367,22 @@ Mod.LoadTextures = function(buf) {
         tx2.anim_frame = num - 65;
         continue;
       }
-      Sys.Error('Bad animating texture ' + tx.name);
+      throw new Error('Bad animating texture ' + tx.name);
     }
     for (j = 0; j < tx.anims.length; ++j) {
       if (tx.anims[j] == null) {
-        Sys.Error('Missing frame ' + j + ' of ' + tx.name);
+        throw new Error('Missing frame ' + j + ' of ' + tx.name);
       }
     }
     for (j = 0; j < tx.alternate_anims.length; ++j) {
       if (tx.alternate_anims[j] == null) {
-        Sys.Error('Missing frame ' + j + ' of ' + tx.name);
+        throw new Error('Missing frame ' + j + ' of ' + tx.name);
       }
     }
     Mod.loadmodel.textures[i] = tx;
   }
 
-  Mod.loadmodel.textures[Mod.loadmodel.textures.length] = R.notexture_mip;
+  Mod.loadmodel.textures[Mod.loadmodel.textures.length] = notexture_mip;
 };
 
 Mod.LoadLighting = function(buf) {
@@ -411,7 +419,7 @@ Mod.LoadVertexes = function(buf) {
   let fileofs = view.getUint32((Mod.lump.vertexes << 3) + 4, true);
   const filelen = view.getUint32((Mod.lump.vertexes << 3) + 8, true);
   if ((filelen % 12) !== 0) {
-    Sys.Error('Mod.LoadVisibility: funny lump size in ' + Mod.loadmodel.name);
+    throw new Error('Mod.LoadVisibility: funny lump size in ' + Mod.loadmodel.name);
   }
   const count = filelen / 12;
   Mod.loadmodel.vertexes = [];
@@ -428,7 +436,7 @@ Mod.LoadSubmodels = function(buf) {
   const filelen = view.getUint32((Mod.lump.models << 3) + 8, true);
   const count = filelen >> 6;
   if (count === 0) {
-    Sys.Error('Mod.LoadSubmodels: funny lump size in ' + Mod.loadmodel.name);
+    throw new Error('Mod.LoadSubmodels: funny lump size in ' + Mod.loadmodel.name);
   }
   Mod.loadmodel.submodels = [];
 
@@ -489,7 +497,7 @@ Mod.LoadEdges = function(buf) {
   let fileofs = view.getUint32((Mod.lump.edges << 3) + 4, true);
   const filelen = view.getUint32((Mod.lump.edges << 3) + 8, true);
   if ((filelen & 3) !== 0) {
-    Sys.Error('Mod.LoadEdges: funny lump size in ' + Mod.loadmodel.name);
+    throw new Error('Mod.LoadEdges: funny lump size in ' + Mod.loadmodel.name);
   }
   const count = filelen >> 2;
   Mod.loadmodel.edges = [];
@@ -505,7 +513,7 @@ Mod.LoadTexinfo = function(buf) {
   let fileofs = view.getUint32((Mod.lump.texinfo << 3) + 4, true);
   const filelen = view.getUint32((Mod.lump.texinfo << 3) + 8, true);
   if ((filelen % 40) !== 0) {
-    Sys.Error('Mod.LoadTexinfo: funny lump size in ' + Mod.loadmodel.name);
+    throw new Error('Mod.LoadTexinfo: funny lump size in ' + Mod.loadmodel.name);
   }
   const count = filelen / 40;
   Mod.loadmodel.texinfo = [];
@@ -533,7 +541,7 @@ Mod.LoadFaces = function(buf) {
   let fileofs = view.getUint32((Mod.lump.faces << 3) + 4, true);
   const filelen = view.getUint32((Mod.lump.faces << 3) + 8, true);
   if ((filelen % 20) !== 0) {
-    Sys.Error('Mod.LoadFaces: funny lump size in ' + Mod.loadmodel.name);
+    throw new Error('Mod.LoadFaces: funny lump size in ' + Mod.loadmodel.name);
   }
   const count = filelen / 20;
   Mod.loadmodel.firstface = 0;
@@ -619,7 +627,7 @@ Mod.LoadNodes = function(buf) {
   let fileofs = view.getUint32((Mod.lump.nodes << 3) + 4, true);
   const filelen = view.getUint32((Mod.lump.nodes << 3) + 8, true);
   if ((filelen === 0) || ((filelen % 24) !== 0)) {
-    Sys.Error('Mod.LoadNodes: funny lump size in ' + Mod.loadmodel.name);
+    throw new Error('Mod.LoadNodes: funny lump size in ' + Mod.loadmodel.name);
   }
   const count = filelen / 24;
   Mod.loadmodel.nodes = [];
@@ -660,7 +668,7 @@ Mod.LoadLeafs = function(buf) {
   let fileofs = view.getUint32((Mod.lump.leafs << 3) + 4, true);
   const filelen = view.getUint32((Mod.lump.leafs << 3) + 8, true);
   if ((filelen % 28) !== 0) {
-    Sys.Error('Mod.LoadLeafs: funny lump size in ' + Mod.loadmodel.name);
+    throw new Error('Mod.LoadLeafs: funny lump size in ' + Mod.loadmodel.name);
   }
   const count = filelen / 28;
   Mod.loadmodel.leafs = [];
@@ -749,7 +757,7 @@ Mod.LoadMarksurfaces = function(buf) {
   for (i = 0; i < count; ++i) {
     j = view.getUint16(fileofs + (i << 1), true);
     if (j > Mod.loadmodel.faces.length) {
-      Sys.Error('Mod.LoadMarksurfaces: bad surface number');
+      throw new Error('Mod.LoadMarksurfaces: bad surface number');
     }
     Mod.loadmodel.marksurfaces[i] = j;
   }
@@ -772,7 +780,7 @@ Mod.LoadPlanes = function(buf) {
   let fileofs = view.getUint32((Mod.lump.planes << 3) + 4, true);
   const filelen = view.getUint32((Mod.lump.planes << 3) + 8, true);
   if ((filelen % 20) !== 0) {
-    Sys.Error('Mod.LoadPlanes: funny lump size in ' + Mod.loadmodel.name);
+    throw new Error('Mod.LoadPlanes: funny lump size in ' + Mod.loadmodel.name);
   }
   const count = filelen / 20;
   Mod.loadmodel.planes = [];
@@ -802,7 +810,7 @@ Mod.LoadBrushModel = function(buffer) {
   Mod.loadmodel.type = Mod.type.brush;
   const version = (new DataView(buffer)).getUint32(0, true);
   if (version !== Mod.version.brush) {
-    Sys.Error('Mod.LoadBrushModel: ' + Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.brush + ')');
+    throw new Error('Mod.LoadBrushModel: ' + Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.brush + ')');
   }
   Mod.LoadVertexes(buffer);
   Mod.LoadEdges(buffer);
@@ -858,7 +866,7 @@ ALIAS MODELS
 */
 
 Mod.TranslatePlayerSkin = function(data, skin) {
-  if (Host.dedicated.value) {
+  if (registry.isDedicatedServer) {
     return;
   }
 
@@ -887,7 +895,7 @@ Mod.TranslatePlayerSkin = function(data, skin) {
 
 Mod.FloodFillSkin = function(skin) {
   const fillcolor = skin[0];
-  const filledcolor = VID.filledColor || 0; // HACK: in dedicated mode this is null
+  const filledcolor = W.filledColor;
 
   if (fillcolor === filledcolor) {
     return;
@@ -927,6 +935,7 @@ Mod.FloodFillSkin = function(skin) {
 };
 
 Mod.LoadAllSkins = function(buffer, inmodel) {
+  const { GL } = registry;
   Mod.loadmodel.skins = [];
   const model = new DataView(buffer);
   let i; let j; let group; let numskins;
@@ -939,7 +948,7 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
       Mod.FloodFillSkin(skin);
       Mod.loadmodel.skins[i] = {
         group: false,
-        texturenum: !Host.dedicated.value ? GL.LoadTexture(Mod.loadmodel.name + '_' + i,
+        texturenum: !registry.isDedicatedServer ? GL.LoadTexture(Mod.loadmodel.name + '_' + i,
             Mod.loadmodel._skin_width,
             Mod.loadmodel._skin_height,
             skin) : null,
@@ -958,7 +967,7 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
       for (j = 0; j < numskins; ++j) {
         group.skins[j] = {interval: model.getFloat32(inmodel, true)};
         if (group.skins[j].interval <= 0.0) {
-          Sys.Error('Mod.LoadAllSkins: interval<=0');
+          throw new Error('Mod.LoadAllSkins: interval<=0');
         }
         inmodel += 4;
       }
@@ -1016,7 +1025,7 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
       for (j = 0; j < numframes; ++j) {
         group.frames[j] = {interval: model.getFloat32(inmodel, true)};
         if (group.frames[j].interval <= 0.0) {
-          Sys.Error('Mod.LoadAllFrames: interval<=0');
+          throw new Error('Mod.LoadAllFrames: interval<=0');
         }
         inmodel += 4;
       }
@@ -1048,28 +1057,28 @@ Mod.LoadAliasModel = function(buffer) {
   const model = new DataView(buffer);
   const version = model.getUint32(4, true);
   if (version !== Mod.version.alias) {
-    Sys.Error(Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.alias + ')');
+    throw new Error(Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.alias + ')');
   }
   Mod.loadmodel._scale = new Vector(model.getFloat32(8, true), model.getFloat32(12, true), model.getFloat32(16, true));
   Mod.loadmodel._scale_origin = new Vector(model.getFloat32(20, true), model.getFloat32(24, true), model.getFloat32(28, true));
   Mod.loadmodel.boundingradius = model.getFloat32(32, true);
   Mod.loadmodel._num_skins = model.getUint32(48, true);
   if (Mod.loadmodel._num_skins === 0) {
-    Sys.Error('model ' + Mod.loadmodel.name + ' has no skins');
+    throw new Error('model ' + Mod.loadmodel.name + ' has no skins');
   }
   Mod.loadmodel._skin_width = model.getUint32(52, true);
   Mod.loadmodel._skin_height = model.getUint32(56, true);
   Mod.loadmodel._num_verts = model.getUint32(60, true);
   if (Mod.loadmodel._num_verts === 0) {
-    Sys.Error('model ' + Mod.loadmodel.name + ' has no vertices');
+    throw new Error('model ' + Mod.loadmodel.name + ' has no vertices');
   }
   Mod.loadmodel._num_tris = model.getUint32(64, true);
   if (Mod.loadmodel._num_tris === 0) {
-    Sys.Error('model ' + Mod.loadmodel.name + ' has no triangles');
+    throw new Error('model ' + Mod.loadmodel.name + ' has no triangles');
   }
   Mod.loadmodel._frames = model.getUint32(68, true);
   if (Mod.loadmodel._frames === 0) {
-    Sys.Error('model ' + Mod.loadmodel.name + ' has no frames');
+    throw new Error('model ' + Mod.loadmodel.name + ' has no frames');
   }
   Mod.loadmodel.random = model.getUint32(72, true) === 1;
   Mod.loadmodel.flags = model.getUint32(76, true);
@@ -1103,7 +1112,7 @@ Mod.LoadAliasModel = function(buffer) {
 
   Mod.LoadAllFrames(buffer, inmodel);
 
-  if (Host.dedicated.value) {
+  if (registry.isDedicatedServer) {
     // skip frontend-only data
     return;
   }
@@ -1148,7 +1157,7 @@ Mod.LoadAliasModel = function(buffer) {
           for (l = 0; l < 3; ++l) {
             vert = frame.v[triangle.vertindex[l]];
             if (vert.lightnormalindex >= 162) {
-              Sys.Error('lightnormalindex >= NUMVERTEXNORMALS');
+              throw new Error('lightnormalindex >= NUMVERTEXNORMALS');
             }
             cmds[cmds.length] = vert.v[0] * Mod.loadmodel._scale[0] + Mod.loadmodel._scale_origin[0];
             cmds[cmds.length] = vert.v[1] * Mod.loadmodel._scale[1] + Mod.loadmodel._scale_origin[1];
@@ -1168,7 +1177,7 @@ Mod.LoadAliasModel = function(buffer) {
       for (k = 0; k < 3; ++k) {
         vert = frame.v[triangle.vertindex[k]];
         if (vert.lightnormalindex >= 162) {
-          Sys.Error('lightnormalindex >= NUMVERTEXNORMALS');
+          throw new Error('lightnormalindex >= NUMVERTEXNORMALS');
         }
         cmds[cmds.length] = vert.v[0] * Mod.loadmodel._scale[0] + Mod.loadmodel._scale_origin[0];
         cmds[cmds.length] = vert.v[1] * Mod.loadmodel._scale[1] + Mod.loadmodel._scale_origin[1];
@@ -1186,7 +1195,7 @@ Mod.LoadAliasModel = function(buffer) {
 };
 
 Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
-  if (Host.dedicated.value) {
+  if (registry.isDedicatedServer) {
     return null;
   }
 
@@ -1203,7 +1212,7 @@ Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
     glt = GL.textures[i];
     if (glt.identifier === identifier) {
       if ((frame.width !== glt.width) || (frame.height !== glt.height)) {
-        Sys.Error('Mod.LoadSpriteFrame: cache mismatch');
+        throw new Error('Mod.LoadSpriteFrame: cache mismatch');
       }
       frame.texturenum = glt.texnum;
       return inframe + 16 + frame.width * frame.height;
@@ -1237,7 +1246,7 @@ Mod.LoadSpriteModel = function(buffer) {
   const model = new DataView(buffer);
   const version = model.getUint32(4, true);
   if (version !== Mod.version.sprite) {
-    Sys.Error(Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.sprite + ')');
+    throw new Error(Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.sprite + ')');
   }
   Mod.loadmodel.oriented = model.getUint32(8, true) === 3;
   Mod.loadmodel.boundingradius = model.getFloat32(12, true);
@@ -1245,7 +1254,7 @@ Mod.LoadSpriteModel = function(buffer) {
   Mod.loadmodel.height = model.getUint32(20, true);
   Mod.loadmodel._frames = model.getUint32(24, true);
   if (Mod.loadmodel._frames === 0) {
-    Sys.Error('model ' + Mod.loadmodel.name + ' has no frames');
+    throw new Error('model ' + Mod.loadmodel.name + ' has no frames');
   }
   Mod.loadmodel.random = model.getUint32(32, true) === 1;
   Mod.loadmodel.mins = new Vector(Mod.loadmodel.width * -0.5, Mod.loadmodel.width * -0.5, Mod.loadmodel.height * -0.5);
@@ -1270,7 +1279,7 @@ Mod.LoadSpriteModel = function(buffer) {
       for (j = 0; j < numframes; ++j) {
         group.frames[j] = {interval: model.getFloat32(inframe, true)};
         if (group.frames[j].interval <= 0.0) {
-          Sys.Error('Mod.LoadSpriteModel: interval<=0');
+          throw new Error('Mod.LoadSpriteModel: interval<=0');
         }
         inframe += 4;
       }
@@ -1292,12 +1301,19 @@ Mod.ParseQC = function(qcContent) {
   console.assert(typeof qcContent === 'string', 'qcContent must be a string');
 
   const data = {
+    /** @type {string} */
     cd: null,
     origin: new Vector(),
+    /** @type {string} */
     base: null,
+    /** @type {string} */
     skin: null,
+    /** @type {string[]} */
     frames: [],
+    /** @type {{[key: string]: number[]}} */
     animations: {},
+    /** @type {number} */
+    scale: 1.0,
   };
 
   const lines = qcContent.trim().split('\n');
@@ -1327,6 +1343,10 @@ Mod.ParseQC = function(qcContent) {
         data.skin = value;
         break;
 
+      case '$scale':
+        data.scale = Q.atof(value);
+        break;
+
       case '$frame': {
           const frames = value.split(/\s+/);
 
@@ -1347,7 +1367,7 @@ Mod.ParseQC = function(qcContent) {
         break;
 
       default:
-        Con.Print(`Mod.ParseQC: unknown QC field ${key}\n`);
+        registry.Con.Print(`Mod.ParseQC: unknown QC field ${key}\n`);
     }
   }
 

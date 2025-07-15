@@ -1,12 +1,12 @@
 import Vector from '../../../../shared/Vector.mjs';
 
-import { attn, channel, colors, damage, items, moveType, solid, worldType } from "../../Defs.mjs";
-import BaseEntity from "../BaseEntity.mjs";
-import { itemNames } from "../Items.mjs";
-import { PlayerEntity } from "../Player.mjs";
-import { TriggerFieldEntity } from "../Subs.mjs";
-import { DamageHandler } from "../Weapons.mjs";
-import BasePropEntity, { state } from "./BasePropEntity.mjs";
+import { attn, channel, colors, damage, items, moveType, solid, worldType } from '../../Defs.mjs';
+import BaseEntity from '../BaseEntity.mjs';
+import { itemNames } from '../Items.mjs';
+import { PlayerEntity } from '../Player.mjs';
+import { TriggerFieldEntity } from '../Subs.mjs';
+import { DamageHandler } from '../Weapons.mjs';
+import BasePropEntity, { state } from './BasePropEntity.mjs';
 
 /**
  * door flags (used in spawnflags)
@@ -292,18 +292,18 @@ export class DoorEntity extends BaseDoorEntity {
   static classname = 'func_door';
 
   static _sounds = [
-    ["misc/null.wav", "misc/null.wav"],
-    ["doors/drclos4.wav", "doors/doormv1.wav"],
-    ["doors/hydro2.wav", "doors/hydro1.wav"],
-    ["doors/stndr2.wav", "doors/stndr1.wav"],
-    ["doors/ddoor2.wav", "doors/ddoor1.wav"],
+    ['misc/null.wav', 'misc/null.wav'],
+    ['doors/drclos4.wav', 'doors/doormv1.wav'],
+    ['doors/hydro2.wav', 'doors/hydro1.wav'],
+    ['doors/stndr2.wav', 'doors/stndr1.wav'],
+    ['doors/ddoor2.wav', 'doors/ddoor1.wav'],
   ];
 
   static _lockSounds = {
-    [worldType.MEDIEVAL]: ["doors/medtry.wav", "doors/meduse.wav"],
-    [worldType.RUNES]: ["doors/runetry.wav", "doors/runeuse.wav"],
-    [worldType.BASE]: ["doors/basetry.wav", "doors/baseuse.wav"],
-  }
+    [worldType.MEDIEVAL]: ['doors/medtry.wav', 'doors/meduse.wav'],
+    [worldType.RUNES]: ['doors/runetry.wav', 'doors/runeuse.wav'],
+    [worldType.BASE]: ['doors/basetry.wav', 'doors/baseuse.wav'],
+  };
 
   get netname() {
     return 'a door';
@@ -365,10 +365,10 @@ export class DoorEntity extends BaseDoorEntity {
 
     [this.noise1, this.noise2] = sounds;
 
-    console.assert(typeof(this.noise1) === 'string', "noise1 must be a string");
-    console.assert(typeof(this.noise2) === 'string', "noise2 must be a string");
-    console.assert(typeof(this.noise3) === 'string', "noise3 must be a string");
-    console.assert(typeof(this.noise4) === 'string', "noise4 must be a string");
+    console.assert(typeof(this.noise1) === 'string', 'noise1 must be a string');
+    console.assert(typeof(this.noise2) === 'string', 'noise2 must be a string');
+    console.assert(typeof(this.noise3) === 'string', 'noise3 must be a string');
+    console.assert(typeof(this.noise4) === 'string', 'noise4 must be a string');
 
     this._sub.setMovedir();
 
@@ -454,7 +454,7 @@ export class DoorEntity extends BaseDoorEntity {
 
     if (this.owner.message) {
       usedByEntity.centerPrint(this.owner.message);
-      usedByEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav", 1.0, attn.ATTN_NONE);
+      usedByEntity.startSound(channel.CHAN_VOICE, 'misc/talk.wav', 1.0, attn.ATTN_NONE);
     }
 
     // key door stuff
@@ -469,7 +469,7 @@ export class DoorEntity extends BaseDoorEntity {
         .map(([, name]) => name);
 
       usedByEntity.centerPrint(`You need the ${requiredKeys.join(', ')}`);
-      usedByEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav", 1.0, attn.ATTN_NONE);
+      usedByEntity.startSound(channel.CHAN_VOICE, 'misc/talk.wav', 1.0, attn.ATTN_NONE);
       return;
     }
 
@@ -513,10 +513,10 @@ export class SecretDoorEntity extends BaseDoorEntity {
   /** @protected */
   static _sounds = [
     [null, null, null],
-    ["doors/latch2.wav", "doors/winch2.wav", "doors/drclos4.wav"],
-    ["doors/airdoor2.wav", "doors/airdoor1.wav", "doors/airdoor2.wav"],
-    ["doors/basesec2.wav", "doors/basesec1.wav", "doors/basesec2.wav"],
-  ]
+    ['doors/latch2.wav', 'doors/winch2.wav', 'doors/drclos4.wav'],
+    ['doors/airdoor2.wav', 'doors/airdoor1.wav', 'doors/airdoor2.wav'],
+    ['doors/basesec2.wav', 'doors/basesec1.wav', 'doors/basesec2.wav'],
+  ];
 
   get netname() {
     return 'a secret door';
@@ -565,9 +565,9 @@ export class SecretDoorEntity extends BaseDoorEntity {
 
     [this.noise1, this.noise2, this.noise3] = this.constructor._sounds[this.sounds];
 
-    console.assert(typeof(this.noise1) === 'string', "noise1 must be a string");
-    console.assert(typeof(this.noise2) === 'string', "noise2 must be a string");
-    console.assert(typeof(this.noise3) === 'string', "noise3 must be a string");
+    console.assert(typeof(this.noise1) === 'string', 'noise1 must be a string');
+    console.assert(typeof(this.noise2) === 'string', 'noise2 must be a string');
+    console.assert(typeof(this.noise3) === 'string', 'noise3 must be a string');
 
     if (this.dmg === 0) {
       this.dmg = 2;
@@ -617,7 +617,7 @@ export class SecretDoorEntity extends BaseDoorEntity {
 
     if (this.message) {
       touchedByEntity.centerPrint(this.message);
-      touchedByEntity.startSound(channel.CHAN_BODY, "misc/talk.wav");
+      touchedByEntity.startSound(channel.CHAN_BODY, 'misc/talk.wav');
     }
   }
 

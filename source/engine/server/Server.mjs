@@ -7,7 +7,8 @@ import * as Def from './../common/Def.mjs';
 import Cmd from '../common/Cmd.mjs';
 import Q from '../common/Q.mjs';
 import { ED, ServerEdict } from './Edict.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
+import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 
 /** @typedef {import('./Client.mjs').ServerClient} ServerClient */
 
@@ -190,6 +191,14 @@ SV.Init = function() {
   SV.spectatormaxspeed = new Cvar('sv_spectatormaxspeed', '500');
   SV.waterfriction = new Cvar('sv_waterfriction', '4');
   SV.rcon_password = new Cvar('sv_rcon_password', '', Cvar.FLAG.ARCHIVE);
+
+  eventBus.subscribe('cvar.changed', (name) => {
+    const cvar = Cvar.FindVar(name);
+
+    if ((cvar.flags & Cvar.FLAG.SERVER) && SV.server.active) {
+      SV.CvarChanged(cvar);
+    }
+  });
 
   // TODO: we need to observe changes to those pmove vars and resend them to all clients when changed
 
@@ -396,7 +405,7 @@ SV.CheckForNewClients = function() {
   let ret; let i;
   for (;;) {
     ret = NET.CheckNewConnections();
-    if (ret === null) {
+    if (!ret) {
       return;
     }
     for (i = 0; i < SV.svs.maxclients; ++i) {
@@ -1117,7 +1126,7 @@ SV.HasMap = function(mapname) {
  * @returns {boolean} true, when the server was spawned successfully
  */
 SV.SpawnServer = function(mapname) {
-  const { Con, Host, NET, Mod, PR, Game } = registry;
+  const { Con, Host, NET, Mod, PR } = registry;
 
   let i;
 
@@ -1153,7 +1162,7 @@ SV.SpawnServer = function(mapname) {
   Con.DPrint('Clearing memory\n');
   Mod.ClearAll();
 
-  SV.server.gameAPI = PR.QuakeJS ? new PR.QuakeJS.ServerGameAPI(Game.EngineInterface) : PR.LoadProgs();
+  SV.server.gameAPI = PR.QuakeJS ? new PR.QuakeJS.ServerGameAPI(ServerEngineAPI) : PR.LoadProgs();
   SV.server.gameVersion = `${(PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`)}`;
 
   SV.server.edicts = [];
@@ -1177,8 +1186,6 @@ SV.SpawnServer = function(mapname) {
       SV.server.active = false;
       return false;
     }
-
-    SV.svs.clients[i].edict = ent;
   }
   SV.server.loading = true;
   SV.server.paused = false;
@@ -1313,6 +1320,8 @@ SV.WriteCvar = function(msg, cvar) {
  * @param {Cvar} cvar cvar change to write
  */
 SV.CvarChanged = function(cvar) {
+  registry.Con.Print(`"${cvar.name}" changed to "${cvar.string}"\n`);
+
   for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
     if (!client.active || !client.spawned) {
@@ -2805,10 +2814,10 @@ SV.CreateAreaNode = function(depth, mins, maxs) {
 };
 
 SV.UnlinkEdict = function(ent) {
-  if (ent.area.prev !== null) {
+  if (ent.area.prev) {
     ent.area.prev.next = ent.area.next;
   }
-  if (ent.area.next !== null) {
+  if (ent.area.next) {
     ent.area.next.prev = ent.area.prev;
   }
   ent.area.prev = ent.area.next = null;

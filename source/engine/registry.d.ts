@@ -5,7 +5,7 @@ import type SysClass from './common/Sys.mjs';
 import type HostClass from './common/Host.mjs';
 import type VClass from './frontend/V.mjs';
 import type NETClass from './network/Network.mjs';
-import type SVClass from './network/Server.mjs';
+import type SVClass from './server/Server.mjs';
 import type PRClass from './server/Progs.mjs';
 import type ModClass from './common/Mod.mjs';
 
@@ -24,20 +24,32 @@ type Mod = typeof ModClass;
 type WebSocket = typeof WebSocketClass;
 
 interface Registry {
+  isDedicatedServer: boolean | null;
+
   COM: Com | null;
   Con: Con | null;
   Host: Host | null;
   Cmd: Cmd | null;
   Sys: Sys | null;
   V: V | null;
-  CL: any;
   SV: SV | null;
   PR: PR | null;
   NET: NET | null;
   Mod: Mod | null;
+  CL: any;
+  GL: any;
+  SCR: any;
+  R: any;
   Draw: any;
-  isDedicatedServer: boolean | null;
+  Key: any;
+  Chase: any;
+  CDAudio: any;
+  Key: any;
+  IN: any;
+  Sbar: any;
+  S: any;
+
   WebSocket: WebSocket | null;
-}
+};
 
 export const registry: Registry;

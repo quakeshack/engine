@@ -1,13 +1,22 @@
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import Q from '../common/Q.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import { SzBuffer } from './MSG.mjs';
 import { LoopDriver, QSocket, WebSocketDriver } from './NetworkDrivers.mjs';
 
 const NET = {};
 
 export default NET;
+
+let { SV, Con, Sys, Host } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  SV = registry.SV;
+  Con = registry.Con;
+  Sys = registry.Sys;
+  Host = registry.Host;
+});
 
 NET.FormatIP = function(ip, port) {
   return ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;
@@ -88,7 +97,7 @@ NET.CheckForResend = function() {
 };
 
 NET.CheckNewConnections = function() {
-  NET.time = Sys.FloatTime();
+  NET.time = registry.Sys.FloatTime();
   let dfunc; let ret;
   for (NET.driverlevel = 0; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
     dfunc = NET.drivers[NET.driverlevel];

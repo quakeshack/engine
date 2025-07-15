@@ -2,7 +2,7 @@ import Cvar from './Cvar.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import * as Def from './Def.mjs';
 import Cmd from './Cmd.mjs';
-import { registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.mjs';
 import MSG from '../network/MSG.mjs';
 import Vector from '../../shared/Vector.mjs';
 import Q from './Q.mjs';
@@ -11,6 +11,17 @@ import { ServerClient } from '../server/Client.mjs';
 const Host = {};
 
 export default Host;
+
+let { SV, Mod, Con, COM, Sys, NET } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  SV = registry.SV;
+  Mod = registry.Mod;
+  Con = registry.Con;
+  COM = registry.COM;
+  Sys = registry.Sys;
+  NET = registry.NET;
+});
 
 Host.framecount = 0;
 
@@ -58,8 +69,8 @@ Host.FindMaxClients = function() {
   Cvar.SetValue('deathmatch', 0);
 };
 
-Host.InitLocal = function(dedicated) {
-  Host.InitCommands(dedicated);
+Host.InitLocal = function() {
+  Host.InitCommands();
   Host.framerate = new Cvar('host_framerate', '0');
   Host.speeds = new Cvar('host_speeds', '0');
   Host.ticrate = new Cvar('sys_ticrate', '0.05');
@@ -76,7 +87,16 @@ Host.InitLocal = function(dedicated) {
   Host.pausable = new Cvar('pausable', '1', Cvar.FLAG.SERVER);
 
   // dedicated server settings
-  Host.dedicated = new Cvar('dedicated', dedicated ? '1' : '0', Cvar.FLAG.READONLY, 'Set to 1, if running in dedicated server mode.');
+  Host.dedicated = new Cvar('dedicated', registry.isDedicatedServer ? '1' : '0', Cvar.FLAG.READONLY, 'Set to 1, if running in dedicated server mode.');
+
+  eventBus.subscribe('cvar.changed', (name) => {
+    const cvar = Cvar.FindVar(name);
+
+    // Automatically save when an archive Cvar changed
+    if ((cvar.flags & Cvar.FLAG.ARCHIVE) && Host.initialized) {
+      Host.WriteConfiguration();
+    }
+  });
 
   Host.FindMaxClients();
 };
@@ -133,9 +153,9 @@ Host.DropClient = function(client, crash, reason) {
 
   client.clear();
 
-  --NET.activeconnections;
+  NET.activeconnections--;
   let i; const num = client.num;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (i = 0; i < SV.svs.maxclients; i++) {
     client = SV.svs.clients[i];
     if (!client.active) {
       continue;
@@ -157,6 +177,7 @@ Host.DropClient = function(client, crash, reason) {
 };
 
 Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
+  const { SV, CL, Sys, NET } = registry;
   if (SV.server.active !== true) {
     return;
   }
@@ -201,8 +222,9 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
 
 Host.WriteConfiguration = function() {
   Host.ScheduleInFuture('Host.WriteConfiguration', () => {
-    COM.WriteTextFile('config.cfg', (!registry.isDedicatedServer ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
-    Con.DPrint('Wrote configuration\n');
+    // COM.WriteTextFile('config.cfg', (!registry.isDedicatedServer ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
+    // Con.DPrint('Wrote configuration\n');
+    registry.Con.DPrint('TODO: Write configuration\n'); // TODO
   }, 5.000);
 };
 
@@ -212,6 +234,7 @@ Host.WriteConfiguration_f = function() {
 };
 
 Host.ServerFrame = function() { // TODO: SV duties
+  const { SV, Key } = registry;
   SV.server.gameAPI.frametime = Host.frametime;
   SV.server.datagram.clear();
   SV.CheckForNewClients();
@@ -289,7 +312,7 @@ Host._Frame = function() {
 
     // TODO: add times
 
-    ++Host.framecount;
+    Host.framecount++;
 
     return;
   }
@@ -392,7 +415,7 @@ Host.Frame = function() {
   Con.Print('serverprofile: ' + (c <= 9 ? ' ' : '') + c + ' clients ' + (m <= 9 ? ' ' : '') + m + ' msec\n');
 };
 
-Host.Init = async function(dedicated) {
+Host.Init = async function() {
   const { Sys, Con, COM, V, Chase, PR, Mod, NET, SV } = registry;
   Host.oldrealtime = Sys.FloatTime();
   Cmd.Init();
@@ -400,14 +423,14 @@ Host.Init = async function(dedicated) {
 
   V.Init(); // required for V.CalcRoll
 
-  if (!dedicated) {
+  if (!registry.isDedicatedServer) {
     Chase.Init();
   }
 
   await COM.Init();
-  Host.InitLocal(dedicated);
+  Host.InitLocal();
 
-  if (!dedicated) {
+  if (!registry.isDedicatedServer) {
     Key.Init();
   }
 
@@ -417,7 +440,7 @@ Host.Init = async function(dedicated) {
   NET.Init();
   SV.Init();
 
-  if (!dedicated) {
+  if (!registry.isDedicatedServer) {
     S.Init();
     await VID.Init();
     await Draw.Init();
@@ -478,9 +501,16 @@ Host.Quit_f = function() {
 };
 
 Host.Status_f = function() {
+  const { SV, NET, Con } = registry;
+
+  /** @type {Function} */
   let print;
   if (!this.client) {
     if (!SV.server.active) {
+      if (registry.isDedicatedServer) {
+        Con.Print('No active server\n');
+        return;
+      }
       this.forward();
       return;
     }
@@ -1549,8 +1579,8 @@ Host.Stopdemo_f = function() {
   CL.Disconnect();
 };
 
-Host.InitCommands = function(dedicated) {
-  if (dedicated) { // TODO: move this to a dedicated stub for IN
+Host.InitCommands = function() {
+  if (registry.isDedicatedServer) { // TODO: move this to a dedicated stub for IN
     Cmd.AddCommand('bind', () => {});
     Cmd.AddCommand('unbind', () => {});
     Cmd.AddCommand('unbindall', () => {});

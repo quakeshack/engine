@@ -1,9 +1,9 @@
 import Vector from '../../../shared/Vector.mjs';
 
-import { channel, flags, items, moveType, solid, tentType, worldType } from "../Defs.mjs";
-import BaseEntity from "./BaseEntity.mjs";
-import { PlayerEntity, playerEvent } from "./Player.mjs";
-import { Sub } from "./Subs.mjs";
+import { channel, flags, items, moveType, solid, tentType, worldType } from '../Defs.mjs';
+import BaseEntity from './BaseEntity.mjs';
+import { PlayerEntity, playerEvent } from './Player.mjs';
+import { Sub } from './Subs.mjs';
 
 // respawn times
 // - backpack: never
@@ -19,22 +19,22 @@ const WEAPON_BIG2 = 1;
  * maps item to a string
  */
 export const itemNames = {
-  [items.IT_AXE]: "Axe",
-  [items.IT_SHOTGUN]: "Shotgun",
-  [items.IT_SUPER_SHOTGUN]: "Double-barrelled Shotgun",
-  [items.IT_NAILGUN]: "Nailgun",
-  [items.IT_SUPER_NAILGUN]: "Super Nailgun",
-  [items.IT_GRENADE_LAUNCHER]: "Grenade Launcher",
-  [items.IT_ROCKET_LAUNCHER]: "Rocket Launcher",
-  [items.IT_LIGHTNING]: "Thunderbolt",
+  [items.IT_AXE]: 'Axe',
+  [items.IT_SHOTGUN]: 'Shotgun',
+  [items.IT_SUPER_SHOTGUN]: 'Double-barrelled Shotgun',
+  [items.IT_NAILGUN]: 'Nailgun',
+  [items.IT_SUPER_NAILGUN]: 'Super Nailgun',
+  [items.IT_GRENADE_LAUNCHER]: 'Grenade Launcher',
+  [items.IT_ROCKET_LAUNCHER]: 'Rocket Launcher',
+  [items.IT_LIGHTNING]: 'Thunderbolt',
 
-  [items.IT_INVISIBILITY]: "Ring of Shadows",
-  [items.IT_SUIT]: "Biosuit",
-  [items.IT_INVULNERABILITY]: "Pentagram of Protection",
-  [items.IT_QUAD]: "Quad Damage",
+  [items.IT_INVISIBILITY]: 'Ring of Shadows',
+  [items.IT_SUIT]: 'Biosuit',
+  [items.IT_INVULNERABILITY]: 'Pentagram of Protection',
+  [items.IT_QUAD]: 'Quad Damage',
 
-  [items.IT_KEY1]: "Silver Key",
-  [items.IT_KEY2]: "Gold Key",
+  [items.IT_KEY1]: 'Silver Key',
+  [items.IT_KEY2]: 'Gold Key',
 };
 
 export class BaseItemEntity extends BaseEntity {
@@ -65,7 +65,7 @@ export class BaseItemEntity extends BaseEntity {
     this._model_original = null;
 
     /** @type {string} sfx to play upon picking it up */
-    this.noise = "weapons/lock4.wav";
+    this.noise = 'weapons/lock4.wav';
 
     this._serializer.endFields();
 
@@ -75,7 +75,7 @@ export class BaseItemEntity extends BaseEntity {
   regenerate() { // QuakeC: SUB_regen
     this.model = this._model_original;
     this.solid = solid.SOLID_TRIGGER;
-    this.startSound(channel.CHAN_VOICE, "items/itembk2.wav");
+    this.startSound(channel.CHAN_VOICE, 'items/itembk2.wav');
     this.setOrigin(this.origin);
     this.engine.DispatchTempEntityEvent(tentType.TE_TELEPORT, this.centerPoint); // CR: added neat teleport in effect
   }
@@ -151,7 +151,7 @@ export class BaseItemEntity extends BaseEntity {
     } else if (this.netname) {
       player.consolePrint(`You got ${this.netname}!\n`);
     } else {
-      player.consolePrint(`You found an empty item.\n`);
+      player.consolePrint('You found an empty item.\n');
     }
 
     player.startSound(channel.CHAN_ITEM, this.noise);
@@ -331,21 +331,21 @@ export class BaseKeyEntity extends BaseItemEntity {
   static _item = 0;
 
   static _worldTypeToSound = {
-    [worldType.MEDIEVAL]: "misc/medkey.wav", // fallback
-    [worldType.RUNES]: "misc/runekey.wav",
-    [worldType.BASE]: "misc/basekey.wav",
+    [worldType.MEDIEVAL]: 'misc/medkey.wav', // fallback
+    [worldType.RUNES]: 'misc/runekey.wav',
+    [worldType.BASE]: 'misc/basekey.wav',
   };
 
   static _worldTypeToNetname = {
-    [worldType.MEDIEVAL]: "base key", // fallback
-    [worldType.RUNES]: "base runekey",
-    [worldType.BASE]: "base keycard",
+    [worldType.MEDIEVAL]: 'base key', // fallback
+    [worldType.RUNES]: 'base runekey',
+    [worldType.BASE]: 'base keycard',
   };
 
   static _worldTypeToModel = {
-    [worldType.MEDIEVAL]: "progs/w_s_key.mdl", // fallback
-    [worldType.RUNES]: "progs/m_s_key.mdl",
-    [worldType.BASE]: "progs/b_s_key.mdl",
+    [worldType.MEDIEVAL]: 'progs/w_s_key.mdl', // fallback
+    [worldType.RUNES]: 'progs/m_s_key.mdl',
+    [worldType.BASE]: 'progs/b_s_key.mdl',
   };
 
   get noise() {
@@ -440,15 +440,15 @@ export class SilverKeyEntity extends BaseKeyEntity {
   static _item = items.IT_KEY1;
 
   static _worldTypeToNetname = {
-    [worldType.MEDIEVAL]: "silver key", // fallback
-    [worldType.RUNES]: "silver runekey",
-    [worldType.BASE]: "silver keycard",
+    [worldType.MEDIEVAL]: 'silver key', // fallback
+    [worldType.RUNES]: 'silver runekey',
+    [worldType.BASE]: 'silver keycard',
   };
 
   static _worldTypeToModel = {
-    [worldType.MEDIEVAL]: "progs/w_s_key.mdl", // fallback
-    [worldType.RUNES]: "progs/m_s_key.mdl",
-    [worldType.BASE]: "progs/b_s_key.mdl",
+    [worldType.MEDIEVAL]: 'progs/w_s_key.mdl', // fallback
+    [worldType.RUNES]: 'progs/m_s_key.mdl',
+    [worldType.BASE]: 'progs/b_s_key.mdl',
   };
 };
 
@@ -469,15 +469,15 @@ export class GoldKeyEntity extends BaseKeyEntity {
   static _item = items.IT_KEY2;
 
   static _worldTypeToNetname = {
-    [worldType.MEDIEVAL]: "gold key", // fallback
-    [worldType.RUNES]: "gold runekey",
-    [worldType.BASE]: "gold keycard",
+    [worldType.MEDIEVAL]: 'gold key', // fallback
+    [worldType.RUNES]: 'gold runekey',
+    [worldType.BASE]: 'gold keycard',
   };
 
   static _worldTypeToModel = {
-    [worldType.MEDIEVAL]: "progs/w_g_key.mdl", // fallback
-    [worldType.RUNES]: "progs/m_g_key.mdl",
-    [worldType.BASE]: "progs/b_g_key.mdl",
+    [worldType.MEDIEVAL]: 'progs/w_g_key.mdl', // fallback
+    [worldType.RUNES]: 'progs/m_g_key.mdl',
+    [worldType.BASE]: 'progs/b_g_key.mdl',
   };
 };
 

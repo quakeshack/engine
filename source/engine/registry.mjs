@@ -18,6 +18,15 @@ export const registry = {
   SV: null,
   Mod: null,
   PR: null,
+  GL: null,
+  R: null,
+  SCR: null,
+  Key: null,
+  Chase: null,
+  CDAudio: null,
+  IN: null,
+  Sbar: null,
+  S: null,
 
   WebSocket: null,
 
@@ -25,7 +34,8 @@ export const registry = {
   isDedicatedServer: null,
 };
 
-Object.seal(registry); // Prevent adding new properties outside of this file
+// make sure the registry is not extensible beyond the defined properties
+Object.seal(registry);
 
 export class EventBus {
   /** @type {Map<string, Set<Function>>} */
@@ -84,3 +94,13 @@ export class EventBus {
 
 /** Engine’s main event bus. */
 export const eventBus = new EventBus('engine');
+
+/**
+ * Freezes the registry to prevent further modifications.
+ * It will also call all registered change observers.
+ */
+export function freeze() {
+  Object.freeze(registry);
+
+  eventBus.publish('registry.frozen', registry);
+};

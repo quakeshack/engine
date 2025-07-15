@@ -1,8 +1,8 @@
 import Vector from '../../../../shared/Vector.mjs';
 
-import { MeatSprayEntity, WalkMonster } from "./BaseMonster.mjs";
-import { attn, channel, flags, range, solid } from "../../Defs.mjs";
-import { ATTACK_STATE, QuakeEntityAI } from "../../helper/AI.mjs";
+import { MeatSprayEntity, WalkMonster } from './BaseMonster.mjs';
+import { attn, channel, flags, range, solid } from '../../Defs.mjs';
+import { ATTACK_STATE, QuakeEntityAI } from '../../helper/AI.mjs';
 
 export const qc = `
 $cd id1/models/demon3

@@ -15,7 +15,10 @@ export default class Sys {
     throw new NotImplementedError('Sys.Print must be implemented in a subclass');
   }
 
+  /** @returns {number} uptime in seconds */
   static FloatTime() {
     throw new NotImplementedError('Sys.GetTime must be implemented in a subclass');
+    // eslint-disable-next-line no-unreachable
+    return 0;
   }
 };

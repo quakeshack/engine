@@ -37,7 +37,7 @@ export default class Cvar {
     this.name = name;
     /** @type {string} */
     this.string = value;
-    /** @type {string} @private */
+    /** @type {string} @readonly @private */
     this.original = value;
     /** @type {number} @see Cvar.FLAG */
     this.flags = flags;
@@ -137,16 +137,6 @@ export default class Cvar {
     if (changed) {
       eventBus.publish('cvar.changed', this.name);
     }
-
-    // // Tell the server about the change
-    // if ((this.flags & Cvar.FLAG.SERVER) && changed && SV.server.active) {
-    //   SV.CvarChanged(this);
-    // }
-
-    // // Automatically save when an archive Cvar changed
-    // if ((this.flags & Cvar.FLAG.ARCHIVE) && changed && Host.initialized) {
-    //   Host.WriteConfiguration();
-    // }
 
     return this;
   }

@@ -1,10 +1,10 @@
 import Vector from '../../../../shared/Vector.mjs';
 
-import { channel, effect, solid, tentType } from "../../Defs.mjs";
-import { QuakeEntityAI } from "../../helper/AI.mjs";
-import { LightGlobeDynamicEntity } from "../Misc.mjs";
-import { DamageInflictor } from "../Weapons.mjs";
-import { MeatSprayEntity, WalkMonster } from "./BaseMonster.mjs";
+import { channel, effect, solid, tentType } from '../../Defs.mjs';
+import { QuakeEntityAI } from '../../helper/AI.mjs';
+import { LightGlobeDynamicEntity } from '../Misc.mjs';
+import { DamageInflictor } from '../Weapons.mjs';
+import { MeatSprayEntity, WalkMonster } from './BaseMonster.mjs';
 
 export const qc = `
 $cd id1/models/shams
@@ -65,17 +65,17 @@ export default class ShamblerMonsterEntity extends WalkMonster {
   _precache() {
     super._precache();
 
-    this.engine.PrecacheModel("progs/s_light.mdl");
-    this.engine.PrecacheModel("progs/bolt.mdl");
-    this.engine.PrecacheSound("shambler/sattck1.wav");
-    this.engine.PrecacheSound("shambler/sboom.wav");
-    this.engine.PrecacheSound("shambler/sdeath.wav");
-    this.engine.PrecacheSound("shambler/shurt2.wav");
-    this.engine.PrecacheSound("shambler/sidle.wav");
-    this.engine.PrecacheSound("shambler/ssight.wav");
-    this.engine.PrecacheSound("shambler/melee1.wav");
-    this.engine.PrecacheSound("shambler/melee2.wav");
-    this.engine.PrecacheSound("shambler/smack.wav");
+    this.engine.PrecacheModel('progs/s_light.mdl');
+    this.engine.PrecacheModel('progs/bolt.mdl');
+    this.engine.PrecacheSound('shambler/sattck1.wav');
+    this.engine.PrecacheSound('shambler/sboom.wav');
+    this.engine.PrecacheSound('shambler/sdeath.wav');
+    this.engine.PrecacheSound('shambler/shurt2.wav');
+    this.engine.PrecacheSound('shambler/sidle.wav');
+    this.engine.PrecacheSound('shambler/ssight.wav');
+    this.engine.PrecacheSound('shambler/melee1.wav');
+    this.engine.PrecacheSound('shambler/melee2.wav');
+    this.engine.PrecacheSound('shambler/smack.wav');
   }
 
   _initStates() {
@@ -121,7 +121,7 @@ export default class ShamblerMonsterEntity extends WalkMonster {
     this._defineState('sham_run6', 'run6', 'sham_run1', () => { this._ai.run(20); this.idleSound(); });
 
     // Smash states
-    this._defineState('sham_smash1', 'smash1', 'sham_smash2', () => { this.startSound(channel.CHAN_VOICE, "shambler/melee1.wav"); this._ai.charge(2); });
+    this._defineState('sham_smash1', 'smash1', 'sham_smash2', () => { this.startSound(channel.CHAN_VOICE, 'shambler/melee1.wav'); this._ai.charge(2); });
     this._defineState('sham_smash2', 'smash2', 'sham_smash3', () => { this._ai.charge(6); });
     this._defineState('sham_smash3', 'smash3', 'sham_smash4', () => { this._ai.charge(6); });
     this._defineState('sham_smash4', 'smash4', 'sham_smash5', () => { this._ai.charge(5); });
@@ -135,7 +135,7 @@ export default class ShamblerMonsterEntity extends WalkMonster {
     this._defineState('sham_smash12', 'smash12', 'sham_run1', () => { this._ai.charge(4); });
 
     // Swing left states
-    this._defineState('sham_swingl1', 'swingl1', 'sham_swingl2', () => { this.startSound(channel.CHAN_VOICE, "shambler/melee2.wav"); this._ai.charge(5); });
+    this._defineState('sham_swingl1', 'swingl1', 'sham_swingl2', () => { this.startSound(channel.CHAN_VOICE, 'shambler/melee2.wav'); this._ai.charge(5); });
     this._defineState('sham_swingl2', 'swingl2', 'sham_swingl3', () => { this._ai.charge(3); });
     this._defineState('sham_swingl3', 'swingl3', 'sham_swingl4', () => { this._ai.charge(7); });
     this._defineState('sham_swingl4', 'swingl4', 'sham_swingl5', () => { this._ai.charge(3); });
@@ -146,7 +146,7 @@ export default class ShamblerMonsterEntity extends WalkMonster {
     this._defineState('sham_swingl9', 'swingl9', 'sham_run1', () => { this._ai.charge(8); if (Math.random() < 0.5) this._runState('sham_swingr1'); });
 
     // Swing right states
-    this._defineState('sham_swingr1', 'swingr1', 'sham_swingr2', () => { this.startSound(channel.CHAN_VOICE, "shambler/melee1.wav"); this._ai.charge(1); });
+    this._defineState('sham_swingr1', 'swingr1', 'sham_swingr2', () => { this.startSound(channel.CHAN_VOICE, 'shambler/melee1.wav'); this._ai.charge(1); });
     this._defineState('sham_swingr2', 'swingr2', 'sham_swingr3', () => { this._ai.charge(8); });
     this._defineState('sham_swingr3', 'swingr3', 'sham_swingr4', () => { this._ai.charge(14); });
     this._defineState('sham_swingr4', 'swingr4', 'sham_swingr5', () => { this._ai.charge(7); });
@@ -218,7 +218,7 @@ export default class ShamblerMonsterEntity extends WalkMonster {
       return;
     }
 
-    this.startSound(channel.CHAN_WEAPON, "shambler/sboom.wav");
+    this.startSound(channel.CHAN_WEAPON, 'shambler/sboom.wav');
 
     this._ai.face();
 
@@ -332,29 +332,29 @@ export default class ShamblerMonsterEntity extends WalkMonster {
   }
 
   painSound() {
-    this.startSound(channel.CHAN_VOICE, "shambler/shurt2.wav");
+    this.startSound(channel.CHAN_VOICE, 'shambler/shurt2.wav');
   }
 
   deathSound() {
-    this.startSound(channel.CHAN_VOICE, "shambler/sdeath.wav");
+    this.startSound(channel.CHAN_VOICE, 'shambler/sdeath.wav');
   }
 
   idleSound() {
     if (Math.random() < 0.2) {
-      this.startSound(channel.CHAN_VOICE, "shambler/sidle.wav");
+      this.startSound(channel.CHAN_VOICE, 'shambler/sidle.wav');
     }
   }
 
   sightSound() {
-    this.startSound(channel.CHAN_VOICE, "shambler/ssight.wav");
+    this.startSound(channel.CHAN_VOICE, 'shambler/ssight.wav');
   }
 
   smackSound() {
-    this.startSound(channel.CHAN_VOICE, "shambler/smack.wav");
+    this.startSound(channel.CHAN_VOICE, 'shambler/smack.wav');
   }
 
   attackSound() {
-    this.startSound(channel.CHAN_VOICE, "shambler/sattck1.wav");
+    this.startSound(channel.CHAN_VOICE, 'shambler/sattck1.wav');
   }
 
   hasMeleeAttack() {

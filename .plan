@@ -326,6 +326,11 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-15
+
+* got the dedicated server spawn a map again, but got only that far, more cleaning and wiring up required
+* decided to go the lazy (and no longer immutable) route regarding registry, but it should also have no more lookup performance penalty
+
 ### 2025-07-14
 
 * tightened jsconfig and eslint config a bit to enforce a stricter standard, it already detected some silent bugs

@@ -108,7 +108,7 @@ export default class Con {
   }
 
   static DPrint(msg) {
-    if (Host.developer.value === 0) {
+    if (registry.Host.developer.value === 0) {
       return;
     }
 

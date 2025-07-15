@@ -2,9 +2,11 @@
 
 import Vector from '../../../shared/Vector.mjs';
 
-import { damage, dead, flags, moveType, solid, content, channel, attn } from "../Defs.mjs";
-import { ServerGameAPI } from "../GameAPI.mjs";
-import { Serializer } from "../helper/MiscHelpers.mjs";
+import { damage, dead, flags, moveType, solid, content, channel, attn } from '../Defs.mjs';
+import { ServerGameAPI } from '../GameAPI.mjs';
+import { Serializer } from '../helper/MiscHelpers.mjs';
+
+/** @typedef {import('../../../engine/server/Edict.mjs').ServerEdict} ServerEdict */
 
 class ScheduledThink {
   constructor(nextThink, callback, identifier, isRequired) {
@@ -32,7 +34,7 @@ export default class BaseEntity {
   }
 
   /**
-   * @param {SV.Edict} edict linked edict
+   * @param {ServerEdict} edict linked edict
    * @param {ServerGameAPI} gameAPI server game API
    */
   constructor(edict, gameAPI) {
@@ -106,7 +108,9 @@ export default class BaseEntity {
     this.movedir = new Vector(); // mostly for doors, but also used for waterjump
 
     // attacking and damage related (FIXME: should maybe put this to a different class)
+    /** @type {number} */
     this.deadflag = dead.DEAD_NO;
+    /** @type {number} */
     this.takedamage = damage.DAMAGE_NO;
     this.dmg = 0; // CR: find out the values
     this.dmg_take = 0; // SV.WriteClientdataToMessage
@@ -482,12 +486,14 @@ export default class BaseEntity {
 
   /**
    * Tests equality on Entity/Edict level.
-   * @param {BaseEntity} otherEntity other
+   * @param {BaseEntity|ServerEdict} otherEntity other
    * @returns {boolean} true, if equal
    */
   equals(otherEntity) {
+    // @ts-ignore
     otherEntity = otherEntity !== null && (otherEntity.entity instanceof BaseEntity) ? otherEntity.entity : otherEntity;
 
+    // @ts-ignore
     return otherEntity ? this.edict.equals(otherEntity.edict) : false;
   }
 

@@ -1,30 +1,30 @@
 
-import { GibEntity, InfoPlayerStart, InfoPlayerStartCoop, InfoPlayerStartDeathmatch, PlayerEntity, qc as playerModelQC, TelefragTriggerEntity } from "./entity/Player.mjs";
-import { BodyqueEntity, WorldspawnEntity } from "./entity/Worldspawn.mjs";
-import { items, spawnflags } from "./Defs.mjs";
-import * as misc from "./entity/Misc.mjs";
-import * as door from "./entity/props/Doors.mjs";
-import * as platform from "./entity/props/Platforms.mjs";
-import * as trigger from "./entity/Triggers.mjs";
-import { ArmySoldierMonster, ArmyEnforcerMonster, qc as soldierModelQCs } from "./entity/monster/Soldier.mjs";
-import { GameAI } from "./helper/AI.mjs";
-import * as sub from "./entity/Subs.mjs";
-import { ButtonEntity } from "./entity/props/Buttons.mjs";
-import * as item from "./entity/Items.mjs";
-import BaseEntity from "./entity/BaseEntity.mjs";
-import * as weapon from "./entity/Weapons.mjs";
-import DogMonsterEntity, { qc as dogModelQC } from "./entity/monster/Dog.mjs";
-import { Serializer } from "./helper/MiscHelpers.mjs";
-import DemonMonster, { qc as demonModelQC } from "./entity/monster/Demon.mjs";
-import { MeatSprayEntity } from "./entity/monster/BaseMonster.mjs";
-import ZombieMonster, { ZombieGibGrenade, qc as zombieModelQC } from "./entity/monster/Zombie.mjs";
-import { KnightMonster, HellKnightMonster, qc as knightModelQCs, KnightSpike } from "./entity/monster/Knights.mjs";
-import OgreMonsterEntity, { qc as ogreModelQC } from "./entity/monster/Ogre.mjs";
-import ShalrathMonsterEntity, { ShalrathMissileEntity, qc as shalrathModelQC } from "./entity/monster/Shalrath.mjs";
-import ShamblerMonsterEntity, { qc as shamblerModelQC } from "./entity/monster/Shambler.mjs";
-import TarbabyMonsterEntity, { qc as tbabyModelQC } from "./entity/monster/Tarbaby.mjs";
+import { GibEntity, InfoPlayerStart, InfoPlayerStartCoop, InfoPlayerStartDeathmatch, PlayerEntity, qc as playerModelQC, TelefragTriggerEntity } from './entity/Player.mjs';
+import { BodyqueEntity, WorldspawnEntity } from './entity/Worldspawn.mjs';
+import { items, spawnflags } from './Defs.mjs';
+import * as misc from './entity/Misc.mjs';
+import * as door from './entity/props/Doors.mjs';
+import * as platform from './entity/props/Platforms.mjs';
+import * as trigger from './entity/Triggers.mjs';
+import { ArmySoldierMonster, ArmyEnforcerMonster, qc as soldierModelQCs } from './entity/monster/Soldier.mjs';
+import { GameAI } from './helper/AI.mjs';
+import * as sub from './entity/Subs.mjs';
+import { ButtonEntity } from './entity/props/Buttons.mjs';
+import * as item from './entity/Items.mjs';
+import BaseEntity from './entity/BaseEntity.mjs';
+import * as weapon from './entity/Weapons.mjs';
+import DogMonsterEntity, { qc as dogModelQC } from './entity/monster/Dog.mjs';
+import { Serializer } from './helper/MiscHelpers.mjs';
+import DemonMonster, { qc as demonModelQC } from './entity/monster/Demon.mjs';
+import { MeatSprayEntity } from './entity/monster/BaseMonster.mjs';
+import ZombieMonster, { ZombieGibGrenade, qc as zombieModelQC } from './entity/monster/Zombie.mjs';
+import { KnightMonster, HellKnightMonster, qc as knightModelQCs, KnightSpike } from './entity/monster/Knights.mjs';
+import OgreMonsterEntity, { qc as ogreModelQC } from './entity/monster/Ogre.mjs';
+import ShalrathMonsterEntity, { ShalrathMissileEntity, qc as shalrathModelQC } from './entity/monster/Shalrath.mjs';
+import ShamblerMonsterEntity, { qc as shamblerModelQC } from './entity/monster/Shambler.mjs';
+import TarbabyMonsterEntity, { qc as tbabyModelQC } from './entity/monster/Tarbaby.mjs';
 
-/** @typedef {import("source/engine/common/GameAPIs.mjs").ServerEngineAPI} ServerEngineAPI */
+/** @typedef {typeof import("source/engine/common/GameAPIs.mjs").ServerEngineAPI} ServerEngineAPI */
 /** @typedef {import("source/engine/common/Cvar.mjs").default} Cvar */
 
 const featureFlags = [
@@ -189,7 +189,7 @@ export class ServerGameAPI {
 
     this._loadEntityRegistry();
 
-    /** @type {ServerEngineAPI} @private */
+    /** @type {ServerEngineAPI} */
     this.engine = engineAPI;
 
     this._serializer.startFields();
@@ -429,7 +429,7 @@ export class ServerGameAPI {
 
     if (this.timelimit > 0 && this.time >= this.timelimit * 60) {
       this.gameover = true;
-      this.engine.BroadcastPrint(`Timelimit reached.\n`);
+      this.engine.BroadcastPrint('Timelimit reached.\n');
       this.loadNextMap();
       return;
     }
@@ -447,7 +447,7 @@ export class ServerGameAPI {
    * @param {?string} nextmap next map (default: this.nextmap)
    */
   loadNextMap(nextmap = this.nextmap) {
-    if (!nextmap || this.engine.samelevel) {
+    if (!nextmap || this.samelevel) {
       this.engine.ChangeLevel(this.mapname);
       return;
     }

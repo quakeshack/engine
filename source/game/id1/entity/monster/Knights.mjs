@@ -1,9 +1,9 @@
 import Vector from '../../../../shared/Vector.mjs';
 
-import { channel, solid, tentType } from "../../Defs.mjs";
-import { QuakeEntityAI } from "../../helper/AI.mjs";
-import { BaseSpike } from "../Weapons.mjs";
-import { WalkMonster } from "./BaseMonster.mjs";
+import { channel, solid, tentType } from '../../Defs.mjs';
+import { QuakeEntityAI } from '../../helper/AI.mjs';
+import { BaseSpike } from '../Weapons.mjs';
+import { WalkMonster } from './BaseMonster.mjs';
 
 export const qc = {
   knight:`
@@ -91,7 +91,7 @@ $frame w_attack21 w_attack22
 
 $frame magicc1 magicc2 magicc3 magicc4 magicc5 magicc6 magicc7 magicc8
 $frame magicc9 magicc10 magicc11
-`
+`,
 };
 
 /**
@@ -116,12 +116,12 @@ export class KnightMonster extends WalkMonster {
 
   _precache() {
     super._precache();
-    this.engine.PrecacheSound("knight/kdeath.wav");
-    this.engine.PrecacheSound("knight/khurt.wav");
-    this.engine.PrecacheSound("knight/ksight.wav");
-    this.engine.PrecacheSound("knight/sword1.wav");
-    this.engine.PrecacheSound("knight/sword2.wav");
-    this.engine.PrecacheSound("knight/idle.wav");
+    this.engine.PrecacheSound('knight/kdeath.wav');
+    this.engine.PrecacheSound('knight/khurt.wav');
+    this.engine.PrecacheSound('knight/ksight.wav');
+    this.engine.PrecacheSound('knight/sword1.wav');
+    this.engine.PrecacheSound('knight/sword2.wav');
+    this.engine.PrecacheSound('knight/idle.wav');
   }
 
   _initStates() {
@@ -243,24 +243,24 @@ export class KnightMonster extends WalkMonster {
 
   idleSound() {
     if (Math.random() < 0.2) {
-      this.startSound(channel.CHAN_VOICE, "knight/idle.wav");
+      this.startSound(channel.CHAN_VOICE, 'knight/idle.wav');
     }
   }
 
   attackSound() {
     if (Math.random() > 0.5) {
-      this.startSound(channel.CHAN_WEAPON, "knight/sword2.wav");
+      this.startSound(channel.CHAN_WEAPON, 'knight/sword2.wav');
     } else {
-      this.startSound(channel.CHAN_WEAPON, "knight/sword1.wav");
+      this.startSound(channel.CHAN_WEAPON, 'knight/sword1.wav');
     }
   }
 
   painSound() {
-    this.startSound(channel.CHAN_VOICE, "knight/khurt.wav");
+    this.startSound(channel.CHAN_VOICE, 'knight/khurt.wav');
   }
 
   sightSound() {
-    this.startSound(channel.CHAN_VOICE, "knight/ksight.wav");
+    this.startSound(channel.CHAN_VOICE, 'knight/ksight.wav');
   }
 
   thinkStand() {
@@ -313,7 +313,7 @@ export class KnightMonster extends WalkMonster {
   thinkDie(attackerEntity) {
     this._sub.useTargets(attackerEntity);
     if (this.health < -40) {
-      this.startSound(channel.CHAN_VOICE, "player/udeath.wav");
+      this.startSound(channel.CHAN_VOICE, 'player/udeath.wav');
       this._gib(true);
       return;
     }
@@ -357,17 +357,17 @@ export class HellKnightMonster extends KnightMonster {
   _precache() {
     super._precache();
 
-    this.engine.PrecacheModel("progs/k_spike.mdl");
-    this.engine.PrecacheSound("hknight/attack1.wav");
-    this.engine.PrecacheSound("hknight/death1.wav");
-    this.engine.PrecacheSound("hknight/pain1.wav");
-    this.engine.PrecacheSound("hknight/sight1.wav");
-    this.engine.PrecacheSound("hknight/hit.wav");
-    this.engine.PrecacheSound("hknight/slash1.wav");
-    this.engine.PrecacheSound("hknight/idle.wav");
-    this.engine.PrecacheSound("hknight/grunt.wav");
-    this.engine.PrecacheSound("knight/sword1.wav");
-    this.engine.PrecacheSound("knight/sword2.wav");
+    this.engine.PrecacheModel('progs/k_spike.mdl');
+    this.engine.PrecacheSound('hknight/attack1.wav');
+    this.engine.PrecacheSound('hknight/death1.wav');
+    this.engine.PrecacheSound('hknight/pain1.wav');
+    this.engine.PrecacheSound('hknight/sight1.wav');
+    this.engine.PrecacheSound('hknight/hit.wav');
+    this.engine.PrecacheSound('hknight/slash1.wav');
+    this.engine.PrecacheSound('hknight/idle.wav');
+    this.engine.PrecacheSound('hknight/grunt.wav');
+    this.engine.PrecacheSound('knight/sword1.wav');
+    this.engine.PrecacheSound('knight/sword2.wav');
   }
 
   _initStates() {
@@ -588,7 +588,7 @@ export class HellKnightMonster extends KnightMonster {
 
     // this.engine.SpawnEntity(Spike.classname, { owner: this });
 
-    this.startSound(channel.CHAN_WEAPON, "hknight/attack1.wav");
+    this.startSound(channel.CHAN_WEAPON, 'hknight/attack1.wav');
   }
 
   thinkMelee() { // QuakeC: hknight.qc/hknight_melee
@@ -596,7 +596,7 @@ export class HellKnightMonster extends KnightMonster {
 
     const r = Math.random();
 
-    this.startSound(channel.CHAN_WEAPON, "hknight/slash1.wav");
+    this.startSound(channel.CHAN_WEAPON, 'hknight/slash1.wav');
 
     if (r < 0.33) {
       this._runState('hknight_slice1');
@@ -641,9 +641,9 @@ export class HellKnightMonster extends KnightMonster {
     }
 
     if (Math.random() > 0.5) {
-      this.startSound(channel.CHAN_WEAPON, "knight/sword2.wav");
+      this.startSound(channel.CHAN_WEAPON, 'knight/sword2.wav');
     } else {
-      this.startSound(channel.CHAN_WEAPON, "knight/sword1.wav");
+      this.startSound(channel.CHAN_WEAPON, 'knight/sword1.wav');
     }
   }
 
@@ -689,7 +689,7 @@ export class HellKnightMonster extends KnightMonster {
   thinkDie(attackerEntity) {
     this._sub.useTargets(attackerEntity);
     if (this.health < -40) {
-      this.startSound(channel.CHAN_VOICE, "player/udeath.wav");
+      this.startSound(channel.CHAN_VOICE, 'player/udeath.wav');
       this._gib(true);
       return;
     }
@@ -704,28 +704,28 @@ export class HellKnightMonster extends KnightMonster {
 
   idleSound() {
     if (Math.random() < 0.2) {
-      this.startSound(channel.CHAN_VOICE, "hknight/idle.wav");
+      this.startSound(channel.CHAN_VOICE, 'hknight/idle.wav');
     }
   }
 
   attackSound() {
     if (Math.random() > 0.5) {
-      this.startSound(channel.CHAN_WEAPON, "knight/sword2.wav");
+      this.startSound(channel.CHAN_WEAPON, 'knight/sword2.wav');
     } else {
-      this.startSound(channel.CHAN_WEAPON, "knight/sword1.wav");
+      this.startSound(channel.CHAN_WEAPON, 'knight/sword1.wav');
     }
   }
 
   painSound() {
-    this.startSound(channel.CHAN_VOICE, "hknight/pain1.wav");
+    this.startSound(channel.CHAN_VOICE, 'hknight/pain1.wav');
   }
 
   sightSound() {
-    this.startSound(channel.CHAN_VOICE, "hknight/sight1.wav");
+    this.startSound(channel.CHAN_VOICE, 'hknight/sight1.wav');
   }
 
   deathSound() {
-    this.startSound(channel.CHAN_VOICE, "hknight/death1.wav");
+    this.startSound(channel.CHAN_VOICE, 'hknight/death1.wav');
   }
 
   hasMeleeAttack() {

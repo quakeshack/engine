@@ -1,12 +1,12 @@
 import Vector from '../../../shared/Vector.mjs';
 
-import { damage, flags, items, range } from "../Defs.mjs";
-import BaseEntity from "../entity/BaseEntity.mjs";
-import { PathCornerEntity } from "../entity/Misc.mjs";
-import BaseMonster from "../entity/monster/BaseMonster.mjs";
-import { PlayerEntity } from "../entity/Player.mjs";
-import { ServerGameAPI } from "../GameAPI.mjs";
-import { EntityWrapper, Serializer } from "./MiscHelpers.mjs";
+import { damage, flags, items, range } from '../Defs.mjs';
+import BaseEntity from '../entity/BaseEntity.mjs';
+import { PathCornerEntity } from '../entity/Misc.mjs';
+import BaseMonster from '../entity/monster/BaseMonster.mjs';
+import { PlayerEntity } from '../entity/Player.mjs';
+import { ServerGameAPI } from '../GameAPI.mjs';
+import { EntityWrapper, Serializer } from './MiscHelpers.mjs';
 
 /**
  * Game-wide AI state, used to coordinate AI communication.
@@ -240,7 +240,7 @@ export class QuakeEntityAI extends EntityAI {
     self.flags |= flags.FL_MONSTER;
 
     if (self.target) {
-      const target = this._entity.findFirstEntityByFieldAndValue("targetname", self.target);
+      const target = this._entity.findFirstEntityByFieldAndValue('targetname', self.target);
       console.assert(target !== null, 'target must resolve');
 
       self.goalentity = self.movetarget = target;

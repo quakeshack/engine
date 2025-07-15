@@ -1,5 +1,5 @@
 
-import { registry } from './registry.mjs';
+import { registry, freeze as registryFreeze } from './registry.mjs';
 
 import Sys from './common/SysNode.mjs';
 import NodeCOM from './common/ComNode.mjs';
@@ -17,6 +17,7 @@ export default class EngineLauncher {
   static async Launch() {
     console.log('Launching engine as dedicated server...');
 
+    // set the registry flag
     registry.isDedicatedServer = true;
 
     // inject some external dependencies
@@ -33,6 +34,9 @@ export default class EngineLauncher {
     registry.SV = SV;
     registry.PR = PR;
     registry.Mod = Mod;
+
+    // registry is ready
+    registryFreeze();
 
     try {
       await Sys.Init();
