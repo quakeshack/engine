@@ -330,6 +330,8 @@ class MainMenu extends BaseMenu {
 
 * got the dedicated server spawn a map again, but got only that far, more cleaning and wiring up required
 * decided to go the lazy (and no longer immutable) route regarding registry, but it should also have no more lookup performance penalty
+* moved everything from js to mjs, still lots of work to do, so much legacy code I want to get rid of
+* fixed a logic flaw in `QuakeEntityAI._huntTarget` which caused unkillable ghosts hunting you down
 
 ### 2025-07-14
 

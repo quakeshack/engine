@@ -399,6 +399,10 @@ export class QuakeEntityAI extends EntityAI {
   }
 
   _huntTarget() { // QuakeC: ai.qc/HuntTarget
+    if (this._entity.health <= 0) {
+      return;
+    }
+
     console.assert(this._entity.enemy, 'Missing enemy');
 
     this._entity.goalentity = this._entity.enemy;
