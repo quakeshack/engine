@@ -1,7 +1,40 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, Q, MSG, SV, SCR, R, Chase, GL, gl, Sys, Def, V, VID */
+import Vector from '../../shared/Vector.mjs';
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import Q from '../common/Q.mjs';
+import * as Def from '../common/Def.mjs';
 
-// eslint-disable-next-line no-global-assign
-R = {};
+import { eventBus, registry } from '../registry.mjs';
+import Chase from './Chase.mjs';
+import MSG from '../network/MSG.mjs';
+import W from '../common/W.mjs';
+import VID from './VID.mjs';
+
+let { CL, COM, Con, GL, Host, Mod, SCR, SV, Sys, V  } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  COM = registry.COM;
+  Con = registry.Con;
+  GL = registry.GL;
+  Host = registry.Host;
+  Mod = registry.Mod;
+  SCR = registry.SCR;
+  SV = registry.SV;
+  Sys = registry.Sys;
+  V = registry.V;
+});
+
+/** @type {WebGL2RenderingContext} */
+let gl = null;
+
+eventBus.subscribe('gl.ready', () => {
+  gl = GL.gl;
+});
+
+const R = {};
+
+export default R;
 
 // efrag
 
@@ -553,8 +586,8 @@ R.DrawAliasModel = function(e) {
     if (bottom <= 127) {
       bottom += 7;
     }
-    top = VID.d_8to24table[top];
-    bottom = VID.d_8to24table[bottom];
+    top = W.d_8to24table[top];
+    bottom = W.d_8to24table[bottom];
     gl.uniform3f(program.uTop, top & 0xff, (top >> 8) & 0xff, top >> 16);
     gl.uniform3f(program.uBottom, bottom & 0xff, (bottom >> 8) & 0xff, bottom >> 16);
   } else {
@@ -1180,7 +1213,8 @@ R.InitTextures = function() {
 R.Init = async function() {
   R.InitTextures();
 
-  if (Host.dedicated.value) {
+  if (registry.isDedicatedServer) {
+    console.assert(false, 'R.Init called on dedicated server');
     return;
   }
 
@@ -1208,7 +1242,7 @@ R.Init = async function() {
         ['aPositionA', gl.FLOAT, 3],
         ['aPositionB', gl.FLOAT, 3],
         ['aNormal', gl.FLOAT, 3],
-        ['aTexCoord', gl.FLOAT, 2]
+        ['aTexCoord', gl.FLOAT, 2],
       ],
       ['tTexture']),
   GL.CreateProgram('brush',
@@ -1649,7 +1683,7 @@ R.DrawParticles = function() {
       continue;
     }
 
-    const color = VID.d_8to24table[p.color];
+    const color = W.d_8to24table[p.color];
     scale = (p.org[0] - R.refdef.vieworg[0]) * R.vpn[0] +
 			(p.org[1] - R.refdef.vieworg[1]) * R.vpn[1] +
 			(p.org[2] - R.refdef.vieworg[2]) * R.vpn[2];
@@ -1771,7 +1805,7 @@ R.AddDynamicLights = function(surf) {
     const tex = CL.state.worldmodel.texinfo[surf.texinfo];
     const local = [
       impact.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0],
-      impact.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1]
+      impact.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1],
     ];
     for (let t = 0; t < tmax; ++t) {
       let td = local[1] - (t << 4);
@@ -2133,7 +2167,7 @@ R.AllocBlock = function(surf) {
   }
   best += h;
   if (best > 1024) {
-    Sys.Error('AllocBlock: full');
+    throw new Error('R.AllocBlock: full');
   }
   for (i = 0; i < w; ++i) {
     R.allocated[x + i] = best;
@@ -2233,7 +2267,7 @@ R.WarpScreen = function() {
 
 R.MakeSky = async function() {
   const sin = Array.from({ length: 9 }, (_, i) =>
-    Number(Math.sin(i * Math.PI / 16).toFixed(6))
+    Number(Math.sin(i * Math.PI / 16).toFixed(6)),
   );
   let vecs = []; let i; let j;
 
@@ -2343,7 +2377,7 @@ R.InitSky = function(src) {
 
   for (i = 0; i < 128; ++i) {
     for (j = 0; j < 128; ++j) {
-      trans32[(i << 7) + j] = COM.LittleLong(VID.d_8to24table[src[(i << 8) + j + 128]] + 0xff000000);
+      trans32[(i << 7) + j] = COM.LittleLong(W.d_8to24table[src[(i << 8) + j + 128]] + 0xff000000);
     }
   }
   GL.Bind(0, R.solidskytexture);
@@ -2354,7 +2388,7 @@ R.InitSky = function(src) {
     for (j = 0; j < 128; ++j) {
       p = (i << 8) + j;
       if (src[p] !== 0) {
-        trans32[(i << 7) + j] = COM.LittleLong(VID.d_8to24table[src[p]] + 0xff000000);
+        trans32[(i << 7) + j] = COM.LittleLong(W.d_8to24table[src[p]] + 0xff000000);
       } else {
         trans32[(i << 7) + j] = 0;
       }

@@ -8,9 +8,9 @@ import { join } from 'path';
 import { createServer } from 'http';
 
 import { registry, eventBus } from '../registry.mjs';
-import Cvar from './Cvar.mjs';
+import Cvar from '../common/Cvar.mjs';
 import { REPLServer } from 'node:repl';
-import Cmd from './Cmd.mjs';
+import Cmd from '../common/Cmd.mjs';
 
 let { COM, Host, NET } = registry;
 
@@ -112,7 +112,7 @@ export default class Sys {
 
     const basepath = COM.GetParm('-basepath') || '';
 
-    const __dirname = import.meta.dirname;
+    const __dirname = import.meta.dirname + '/../..';
 
     if (basepath !== '') {
       app.use(basepath, express.static(join(__dirname + '/..', 'public')));

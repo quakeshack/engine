@@ -33,7 +33,7 @@ export class WadLumpTexture {
   }
 };
 
-class WadFileInterface {
+export class WadFileInterface {
   static MAGIC = 0; // magic number, to be defined in subclasses
 
   /** @protected */
@@ -144,7 +144,7 @@ export default class W {
  * @param {?number} transparentColor optional color index to treat as transparent (default is null, no transparency)
  * @returns {Uint8Array} RGBA data, each pixel is 4 bytes (R, G, B, A)
  */
-export function TranslateIndexToRGBA(uint8data, width, height, palette = W.d_8to24table_u8, transparentColor = null) {
+export function translateIndexToRGBA(uint8data, width, height, palette = W.d_8to24table_u8, transparentColor = null) {
   const rgba = new Uint8Array(width * height * 4);
 
   for (let i = 0; i < width * height; i++) {
@@ -229,7 +229,7 @@ class Wad2File extends WadFileInterface {
 
     // TODO: handle different types of lumps, right now it’s only supports pichead_t
 
-    const rgba = TranslateIndexToRGBA(new Uint8Array(data, 8, width * height), width, height, this.palette, 255);
+    const rgba = translateIndexToRGBA(new Uint8Array(data, 8, width * height), width, height, this.palette, 255);
 
     return new WadLumpTexture(name, width, height, rgba);
   }
@@ -291,7 +291,7 @@ class Wad3File extends WadFileInterface {
     );
 
     const uint8data = new Uint8Array(data, 8, width * height);
-    const rgba = TranslateIndexToRGBA(uint8data, width, height, palette, 255);
+    const rgba = translateIndexToRGBA(uint8data, width, height, palette, 255);
 
     return new WadLumpTexture(name, width, height, rgba);
   }
@@ -329,7 +329,7 @@ class Wad3File extends WadFileInterface {
       768, // 768 = 256 colors * 3 bytes (RGB)
     );
 
-    const rgba = TranslateIndexToRGBA(uint8data, swidth, sheight, palette, 255);
+    const rgba = translateIndexToRGBA(uint8data, swidth, sheight, palette, 255);
 
     return new WadLumpTexture(texName, swidth, sheight, rgba);
   }

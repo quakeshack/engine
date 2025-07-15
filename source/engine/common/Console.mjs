@@ -4,6 +4,7 @@ import { eventBus, registry } from '../registry.mjs';
 import Cvar from './Cvar.mjs';
 import Vector from '../../shared/Vector.mjs';
 import Cmd from './Cmd.mjs';
+import VID from '../client/VID.mjs';
 
 let { CL, Draw, Host, Key, M, S, SCR } = registry;
 
@@ -207,4 +208,8 @@ export default class Con {
     }
     Con.DrawInput();
   }
-};
+}
+
+/** @deprecated */ // TODO: remove, refactor to use eventBus
+Con.OnLinePrint = undefined;
+;

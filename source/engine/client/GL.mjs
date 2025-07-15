@@ -1,7 +1,25 @@
-/* global GL, gl, Con, COM, Cmd, Cvar, SCR, Sys, VID */
+/* globalss gl, Con, COM, Cmd, Cvar, SCR, Sys, VID */
 
-// eslint-disable-next-line no-global-assign
-GL = {};
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import W, { translateIndexToRGBA } from '../common/W.mjs';
+import { eventBus, registry } from '../registry.mjs';
+import VID from './VID.mjs';
+
+const GL = {};
+
+export default GL;
+
+let { COM, Con, SCR } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  COM = registry.COM;
+  Con = registry.Con;
+  SCR = registry.SCR;
+});
+
+/** @type {WebGL2RenderingContext} */
+let gl = null;
 
 GL.textures = [];
 GL.currenttextures = [];
@@ -140,7 +158,7 @@ GL.Upload = function(data, width, height) {
     data = GL.ResampleTexture(data, width, height, scaledWidth, scaledHeight);
   }
 
-  data = VID.TranslateIndexToRGBA(data, scaledWidth, scaledHeight, VID.d_8to24table_u8, 255);
+  data = translateIndexToRGBA(data, scaledWidth, scaledHeight, W.d_8to24table_u8, 255);
 
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
   gl.generateMipmap(gl.TEXTURE_2D);
@@ -188,7 +206,7 @@ GL.LoadTexture = function(identifier, width, height, data) {
       glt = GL.textures[i];
       if (glt.identifier === identifier) {
         if ((width !== glt.width) || (height !== glt.height)) {
-          Sys.Error('GL.LoadTexture: cache mismatch');
+          throw new Error('GL.LoadTexture: cache mismatch');
         }
         return glt;
       }
@@ -215,7 +233,7 @@ GL.LoadTexture32 = function(identifier, width, height, data) {
       glt = GL.textures[i];
       if (glt.identifier === identifier) {
         if ((width !== glt.width) || (height !== glt.height)) {
-          Sys.Error('GL.LoadTexture: cache mismatch');
+          throw new Error('GL.LoadTexture: cache mismatch');
         }
         return glt;
       }
@@ -229,7 +247,10 @@ GL.LoadTexture32 = function(identifier, width, height, data) {
   return glt;
 };
 
-/** @deprecated use WadFileInterface.getLumpMipmap() instead */
+/**
+ * @param pic
+ * @deprecated use WadFileInterface.getLumpMipmap() instead
+ */
 GL.LoadPicTexture = function(pic) {
   const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(pic.width, pic.height);
 
@@ -239,7 +260,7 @@ GL.LoadPicTexture = function(pic) {
     data = GL.ResampleTexture(data, pic.width, pic.height, scaledWidth, scaledHeight);
   }
 
-  data = VID.TranslateIndexToRGBA(data, scaledWidth, scaledHeight, VID.d_8to24table_u8, 255);
+  data = translateIndexToRGBA(data, scaledWidth, scaledHeight, W.d_8to24table_u8, 255);
 
   const texnum = gl.createTexture();
   GL.Bind(0, texnum);
@@ -252,7 +273,7 @@ GL.LoadPicTexture = function(pic) {
 /**
  * Loads any image file as a texture.
  * @param {string} filename image filename
- * @returns {WebGLTexture|null} texture number, null if the image could not be loaded
+ * @returns {Promise<WebGLTexture|null>} texture number, null if the image could not be loaded
  */
 GL.LoadImageTexture = async function(filename) {
   const data = await COM.LoadFileAsync(filename);
@@ -304,7 +325,7 @@ GL.CreateProgram = async function(identifier, uniforms, attribs, textures) {
 
   gl.linkProgram(p);
   if (gl.getProgramParameter(p, gl.LINK_STATUS) !== true) {
-    Sys.Error('Error linking program: ' + gl.getProgramInfoLog(p));
+    throw new Error('Error linking program: ' + gl.getProgramInfoLog(p));
   }
 
   gl.useProgram(p);
@@ -333,7 +354,7 @@ GL.CreateProgram = async function(identifier, uniforms, attribs, textures) {
     } else if (attrib.type === gl.BYTE || attrib.type === gl.UNSIGNED_BYTE) {
       program.vertexSize += 4;
     } else {
-      Sys.Error('Unknown vertex attribute type');
+      throw new Error('Unknown vertex attribute type');
     }
     program.attribBits |= 1 << attrib.location;
   }
@@ -528,18 +549,17 @@ GL.StreamDrawColoredQuad = function(x, y, w, h, r, g, b, a) {
 };
 
 GL.Init = function() {
-  VID.mainwindow = document.getElementById('mainwindow');
   try {
     const options = {
       preserveDrawingBuffer: true,
     };
-    // eslint-disable-next-line no-global-assign
+
     gl = VID.mainwindow.getContext('webgl', options) || VID.mainwindow.getContext('experimental-webgl', options);
   } catch (e) {
-    Sys.Error(`Unable to initialize WebGL. ${e.message}`);
+    throw new Error(`Unable to initialize WebGL. ${e.message}`);
   }
   if (gl == null) {
-    Sys.Error('Unable to initialize WebGL. Your browser may not support it.');
+    throw new Error('Unable to initialize WebGL. Your browser may not support it.');
   }
 
   GL.maxtexturesize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
@@ -574,10 +594,13 @@ GL.Init = function() {
 
   VID.mainwindow.style.display = 'inline-block';
   // VID.mainwindow.style.backgroundImage = 'url("' + Draw.PicToDataURL(Draw.PicFromWad('BACKTILE')) + '")';
+
+  GL.gl = gl;
+  eventBus.publish('gl.ready');
 };
 
 GL.Shutdown = function() {
-  // eslint-disable-next-line no-global-assign
+
   gl = null;
   VID.mainwindow.style.display = 'none';
 };

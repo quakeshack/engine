@@ -1,7 +1,19 @@
-/* global CDAudio, Con, COM, Cmd, Cvar, S, Q */
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import Q from '../common/Q.mjs';
+import { eventBus, registry } from '../registry.mjs';
 
-// eslint-disable-next-line no-global-assign
-CDAudio = {};
+const CDAudio = {};
+
+export default CDAudio;
+
+let { COM, Con, S } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  COM = registry.COM;
+  Con = registry.Con;
+  S = registry.S;
+});
 
 CDAudio.known = [];
 

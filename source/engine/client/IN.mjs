@@ -1,7 +1,21 @@
-/* global IN, COM, Host, CL, Cvar, IN, V, VID, Key, Con */
+import Cvar from '../common/Cvar.mjs';
+import { eventBus, registry } from '../registry.mjs';
+import VID from './VID.mjs';
 
-// eslint-disable-next-line no-global-assign
-IN = {};
+let { CL, COM, Con, Host, Key, V } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  COM = registry.COM;
+  Con = registry.Con;
+  Host = registry.Host;
+  Key = registry.Key;
+  V = registry.V;
+});
+
+const IN = {};
+
+export default IN;
 
 IN.mouse_x = 0.0;
 IN.mouse_y = 0.0;
@@ -45,7 +59,7 @@ IN.StartupTouchpad = function() {
   const $rightZone = document.getElementById('right-zone');
 
   if (!$leftZone || !$rightZone) {
-    Con.Print(`IN.StartupTouchpad: virtual joystick zones missing\n`);
+    Con.Print('IN.StartupTouchpad: virtual joystick zones missing\n');
     return;
   }
 
@@ -128,7 +142,7 @@ IN.StartupTouchpad = function() {
 
   // $leftZone.style.display = 'block';
   // $rightZone.style.display = 'block';
-}
+};
 
 IN._TouchpadHandleLook = function() {
   const pitch = CL.m_pitch.value;
@@ -163,7 +177,7 @@ IN.TouchpadMove = function() {
     IN._TouchpadHandleLook();
     IN._TouchpadHandleMove();
   }
-}
+};
 
 IN.Init = function() {
   IN.StartupMouse();

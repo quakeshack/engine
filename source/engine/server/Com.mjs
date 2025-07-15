@@ -1,14 +1,12 @@
 /* global Buffer */
 
-// Enhanced COM.js replacements
-import { promises, openSync, readSync, closeSync, existsSync, readFileSync, constants } from 'fs';
-const fsPromises = promises; // for open, read, access, readFile, etc.
+import { promises as fsPromises, openSync, readSync, closeSync, existsSync, readFileSync, constants } from 'fs';
 
-import Q from './Q.mjs';
-import { CRC16CCITT as CRC } from './CRC.mjs';
-import COM from './Com.mjs';
+import Q from '../common/Q.mjs';
+import { CRC16CCITT as CRC } from '../common/CRC.mjs';
+import COM from '../common/Com.mjs';
 
-import { CorruptedResourceError } from './Errors.mjs';
+import { CorruptedResourceError } from '../common/Errors.mjs';
 import { registry, eventBus } from '../registry.mjs';
 
 let { Con, Sys } = registry;
@@ -18,6 +16,7 @@ eventBus.subscribe('registry.frozen', () => {
   Sys = registry.Sys;
 });
 
+// @ts-ignore
 export default class NodeCOM extends COM {
 
   /**

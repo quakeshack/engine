@@ -1,9 +1,22 @@
-/* global Key, Con, CL, Cmd, Cvar, M, Host, Vector */
+import Vector from '../../shared/Vector.mjs';
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import { registry, eventBus } from '../registry.mjs';
 
-// eslint-disable-next-line no-global-assign
-Key = {};
+const Key = {};
 
-Key.k = {
+export default Key;
+
+let { CL, Con, Host, M } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  Con = registry.Con;
+  Host = registry.Host;
+  M = registry.M;
+});
+
+Key.k = Object.freeze({
   tab: 9,
   enter: 13,
   escape: 27,
@@ -45,20 +58,20 @@ Key.k = {
 
   mwheelup: 239,
   mwheeldown: 240,
-};
+});
 
 Key.lines = [''];
 Key.edit_line = '';
 Key.history_line = 1;
 
-Key.dest = {
+Key.dest = /*Object.freeze*/({
   game: 0,
   console: 1,
   message: 2,
   menu: 3,
 
   value: 0,
-};
+});
 
 Key.bindings = [];
 Key.consolekeys = [];

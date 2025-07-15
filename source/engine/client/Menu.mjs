@@ -1,7 +1,34 @@
-/* global M, Con, COM, Host, CL, Cmd, Cvar, S, SV, SCR, V, Key, Draw, GL, gl, VID */
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import { eventBus, registry } from '../registry.mjs';
+import VID from './VID.mjs';
 
-// eslint-disable-next-line no-global-assign
-M = {};
+let { CL, COM, Con, Draw, GL, Host, Key, S, SCR, SV, V } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  COM = registry.COM;
+  Con = registry.Con;
+  Draw = registry.Draw;
+  GL = registry.GL;
+  Host = registry.Host;
+  Key = registry.Key;
+  S = registry.S;
+  SCR = registry.SCR;
+  SV = registry.SV;
+  V = registry.V;
+});
+
+/** @type {WebGL2RenderingContext} */
+let gl = null;
+
+eventBus.subscribe('gl.ready', () => {
+  gl = GL.gl;
+});
+
+const M = {};
+
+export default M;
 
 M.state =
 {

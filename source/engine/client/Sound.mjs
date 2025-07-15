@@ -1,6 +1,20 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q */
+import Vector from '../../shared/Vector.mjs';
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import Q from '../common/Q.mjs';
+import { eventBus, registry } from '../registry.mjs';
 
-class SFX {
+let { CL, COM, Con, Host, Mod } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  COM = registry.COM;
+  Con = registry.Con;
+  Host = registry.Host;
+  Mod = registry.Mod;
+});
+
+export class SFX {
   static STATE = {
     NEW: 'new',
     LOADING: 'loading',
@@ -39,6 +53,7 @@ class SFX {
       return;
     }
 
+    // eslint-disable-next-line no-use-before-define
     return await S.LoadSound(this);
   }
 }
@@ -124,6 +139,7 @@ class SoundBaseChannel {
    * (Re)computes left_vol and right_vol for a channel based on the listener position/orientation.
    */
   spatialize() {
+    // eslint-disable-next-line no-use-before-define
     this._S = S;
 
     // If channel is from the player's own gun, full volume in both ears
@@ -170,6 +186,7 @@ class SoundBaseChannel {
 
 class AudioContextChannel extends SoundBaseChannel {
   static async decodeAudioData(rawData) {
+    // eslint-disable-next-line no-use-before-define
     return await S._context.decodeAudioData(rawData);
   }
 
@@ -177,6 +194,8 @@ class AudioContextChannel extends SoundBaseChannel {
     super.reset();
 
     this._nodes = null;
+
+    return this;
   }
 
   loadData() {
@@ -353,8 +372,7 @@ class AudioElementChannel extends SoundBaseChannel {
   }
 }
 
-// eslint-disable-next-line no-global-assign
-S = {
+const S = {
   _channels: [],
   _staticChannels: [],
   _ambientChannels: [],
@@ -498,7 +516,7 @@ S = {
     setTimeout(() => {
       this._knownSfx = [];
     }, 1001);
-    Con.Print(`S.Shutdown: sound subsystem shut down.\n`);
+    Con.Print('S.Shutdown: sound subsystem shut down.\n');
   },
 
   //
@@ -686,20 +704,20 @@ S = {
       sfx.state = SFX.STATE.FAILED;
       return false;
     }
-    if (dataOfs == null) {
+    if (dataOfs === null) {
       Con.Print(`S.LoadSound: ${sfx.name} is missing the data chunk\n`);
       sfx.state = SFX.STATE.FAILED;
       return false;
     }
 
     // Convert loopstart from "samples" to "seconds" if we have it
-    if (loopstart != null) {
+    if (loopstart !== null) {
       sc.loopstart = loopstart * fmt.blockAlign / fmt.samplesPerSec;
     } else {
       sc.loopstart = null;
     }
 
-    if (totalSamples != null) {
+    if (totalSamples !== null) {
       sc.length = totalSamples / fmt.samplesPerSec;
     } else {
       sc.length = dataLen / fmt.avgBytesPerSec;
@@ -800,7 +818,7 @@ S = {
     }
 
     // release that channel
-    const ch = this._channels.find((ch) => ch && ch.entnum === entnum && ch.entchannel === entchannel)
+    const ch = this._channels.find((ch) => ch && ch.entnum === entnum && ch.entchannel === entchannel);
 
     console.assert(ch, 'valid channel', entnum, entchannel);
 
@@ -1094,3 +1112,5 @@ S = {
     this.StartSound(CL.state.viewentity, -1, sound, Vector.origin, 1.0, 1.0);
   },
 };
+
+export default S;

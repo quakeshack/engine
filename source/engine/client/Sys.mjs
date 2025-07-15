@@ -1,7 +1,18 @@
-/* global Con, COM, Host, Sys, Key, VID,  */
+import { eventBus, registry } from '../registry.mjs';
+import VID from './VID.mjs';
 
-// eslint-disable-next-line no-global-assign
-Sys = {};
+const Sys = {};
+
+export default Sys;
+
+let { Con, COM, Host, Key } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  COM = registry.COM;
+  Con = registry.Con;
+  Host = registry.Host;
+  Key = registry.Key;
+});
 
 Sys.events = ['oncontextmenu', 'onfocus', 'onkeydown', 'onkeyup', 'onmousedown', 'onmouseup', 'onmousewheel', 'onunload', 'onwheel'];
 
@@ -85,7 +96,7 @@ Sys.Init = async function() {
   Sys.scantokey[221] = 93; // ]
   Sys.scantokey[222] = 39; // '
 
-  Sys.#oldtime = Date.now() * 0.001;
+  Sys.oldtime = Date.now() * 0.001;
 
   Sys.Print('Host.Init\n');
 
@@ -171,12 +182,12 @@ Sys.Error = function(text) {
 };
 
 Sys.FloatTime = function() {
-  return Date.now() * 0.001 - Sys.#oldtime;
+  return Date.now() * 0.001 - Sys.oldtime;
 };
 
 window.onload = function() {
   Sys.Init()
-    .then(() => Sys.Print('System running!\n'))
+    .then(() => Sys.Print('System running!\n'));
     // .catch((err) => Sys.Error('Fatal error during Sys.Init!\n' + err.message));
 };
 
@@ -311,7 +322,7 @@ Sys.getModernKey = function(event) {
     'F9': Key.k.f9,
     'F10': Key.k.f10,
     'F11': Key.k.f11,
-    'F12': Key.k.f12
+    'F12': Key.k.f12,
   };
 
   // Logical key mappings - use actual key value
@@ -326,7 +337,7 @@ Sys.getModernKey = function(event) {
     'End': Key.k.end,
     'Home': Key.k.home,
     'Insert': Key.k.ins,
-    'Delete': Key.k.del
+    'Delete': Key.k.del,
   };
 
   // Check physical mapping first for game controls

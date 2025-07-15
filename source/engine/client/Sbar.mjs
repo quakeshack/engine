@@ -1,7 +1,23 @@
-/* global Sbar Draw, COM, Host, CL, Cmd, SCR, Def, VID */
+/* globalx Sbar Draw, COM, Host, CL, Cmd, SCR, Def, VID */
 
-// eslint-disable-next-line no-global-assign
-Sbar = {};
+import Cmd from '../common/Cmd.mjs';
+import { eventBus, registry } from '../registry.mjs';
+import VID from './VID.mjs';
+import * as Def from '../common/Def.mjs';
+
+const Sbar = {};
+
+export default Sbar;
+
+let { CL, COM, Draw, Host, SCR } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
+  COM = registry.COM;
+  Draw = registry.Draw;
+  Host = registry.Host;
+  SCR = registry.SCR;
+});
 
 Sbar.ShowScores = function() {
   Sbar.showscores = true;
@@ -397,7 +413,7 @@ Sbar.DrawFace = function() {
     Sbar.DrawPic(112, 0, Sbar.r_teambord);
     Draw.Fill(xofs, VID.height - 21, 22, 9, top);
     Draw.Fill(xofs, VID.height - 12, 22, 9, ((s.colors & 0xf) << 4) + 8);
-    let num = (top === 8 ? '\076\076\076' : '   ') + s.frags;
+    let num = (top === 8 ? '\x3e\x3e\x3e' : '   ') + s.frags;
     if (num.length > 3) {
       num = num.substring(num.length - 3);
     }

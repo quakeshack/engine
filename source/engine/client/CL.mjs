@@ -1,7 +1,39 @@
-/* global Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, IN, Sys, Def, V, CDAudio, Draw, Pmove, PR, Chase */
+/* gxlobal Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, IN, Sys, Def, V, CDAudio, Draw, Pmove, PR, Chase */
 
-// eslint-disable-next-line no-global-assign
-CL = {};
+import MSG from '../network/MSG.mjs';
+import Q from '../common/Q.mjs';
+import * as Def from '../common/Def.mjs';
+import * as Protocol from '../network/Protocol.mjs';
+import Vector from '../../shared/Vector.mjs';
+import Chase from './Chase.mjs';
+import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.mjs';
+import { MoveVars, Pmove } from '../common/Pmove.mjs';
+import { eventBus, registry } from '../registry.mjs';
+
+const CL = {};
+
+export default CL;
+
+let { CDAudio, COM, Con, Draw, Host, IN, Mod, NET, PR, R, S, SCR, SV, Sys, V } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  CDAudio = registry.CDAudio;
+  COM = registry.COM;
+  Con = registry.Con;
+  Draw = registry.Draw;
+  Host = registry.Host;
+  IN = registry.IN;
+  Mod = registry.Mod;
+  NET = registry.NET;
+  PR = registry.PR;
+  R = registry.R;
+  S = registry.S;
+  SCR = registry.SCR;
+  SV = registry.SV;
+  Sys = registry.Sys;
+  V = registry.V;
+});
 
 CL.cshift = {
   contents: 0,
@@ -16,7 +48,7 @@ CL.active = {
   connected: 2,
 };
 
-/** @type {?Pmove.Pmove} */
+/** @type {?Pmove} */
 CL.pmove = null;
 
 // demo
@@ -618,7 +650,7 @@ CL.Entity = class ClientEdict {
           a1[1] + (a0[1] - a1[1]) * f,
           a1[2] + (a0[2] - a1[2]) * f,
         );
-      }
+      },
     };
 
     Object.freeze(this.lerp);
@@ -752,7 +784,7 @@ CL.Draw = function() { // public, called by SCR.js // FIXME: maybe put that into
   if (CL.cls.connecting !== null) {
     const x0 = 32, y0 = 32;
     Draw.BlackScreen();
-    Draw.String(x0, y0, "Connecting", 2);
+    Draw.String(x0, y0, 'Connecting', 2);
     Draw.StringWhite(x0, y0 + 32, CL.cls.connecting.message);
 
     const len = 30;
@@ -832,7 +864,7 @@ CL.ClearState = function() { // private
     /** @type {CL.Entity} */
     get playerentity() {
       return CL.entities[CL.state.viewentity];
-    }
+    },
   };
 
   CL.cls.message.clear();
@@ -1162,12 +1194,12 @@ CL.MoveAround_f = function() { // private
     }
   }, 1000);
 
-  Con.Print('Started moving around.\n');s
+  Con.Print('Started moving around.\n');
 };
 
 CL.InitPmove = function() { // private
-  CL.pmove = new Pmove.Pmove();
-  CL.pmove.movevars = new Pmove.MoveVars();
+  CL.pmove = new Pmove();
+  CL.pmove.movevars = new MoveVars();
 };
 
 CL.Init = async function() { // public, by Host.js
@@ -1642,7 +1674,7 @@ CL.PrintLastServerMessages = function() { // private
       Con.Print(' ' + cmd + '\n');
     }
   }
-}
+};
 
 /**
  * @type {number}
@@ -1663,7 +1695,7 @@ CL.ParseServerMessage = function() { // private
     Con.Print('------------------\n');
   }
 
-  let entitiesReceived = 0
+  let entitiesReceived = 0;
 
   CL.state.onground = false;
 
@@ -1902,7 +1934,7 @@ CL.ParseServerMessage = function() { // private
     }
     CL._lastServerMessages.pop(); // discard the last added command as it was invalid anyway
     CL.PrintLastServerMessages();
-    Host.Error(`CL.ParseServerMessage: Illegible server message\n`);
+    Host.Error('CL.ParseServerMessage: Illegible server message\n');
     return;
   }
 

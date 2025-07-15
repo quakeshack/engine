@@ -8,18 +8,19 @@ import Vector from '../../shared/Vector.mjs';
 import Q from './Q.mjs';
 import { ServerClient } from '../server/Client.mjs';
 import { ServerEngineAPI } from './GameAPIs.mjs';
+import Chase from '../client/Chase.mjs';
+import VID from '../client/VID.mjs';
 
 const Host = {};
 
 export default Host;
 
-let { CDAudio, CL, COM, Chase, Con, Draw, IN, Key, M, Mod, NET, PR, R, S, SCR, SV, Sbar, Sys, V } = registry;
+let { CDAudio, CL, COM, Con, Draw, IN, Key, M, Mod, NET, PR, R, S, SCR, SV, Sbar, Sys, V } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   CDAudio = registry.CDAudio;
   CL = registry.CL;
   COM = registry.COM;
-  Chase = registry.Chase;
   Con = registry.Con;
   Draw = registry.Draw;
   IN = registry.IN;
@@ -53,7 +54,7 @@ Host.Error = function(error) {
   debugger;
 
   if (Host.inerror === true) {
-    Sys.Error('Host.Error: recursively entered');
+    throw new Error('Host.Error: recursively entered');
   }
   Host.inerror = true;
   if (!registry.isDedicatedServer) {
@@ -139,7 +140,7 @@ Host.BroadcastPrint = function(string) {
 
 /**
  *
- * @param {SV.ServerClient} client
+ * @param {ServerClient} client
  * @param {boolean} crash
  * @param {string} reason
  */
@@ -154,7 +155,9 @@ Host.DropClient = function(client, crash, reason) {
     if (client.edict && client.spawned) {
       const saveSelf = SV.server.gameAPI.self;
       SV.server.gameAPI.ClientDisconnect(client.edict);
-      SV.server.gameAPI.self = saveSelf;
+      if (saveSelf !== undefined) {
+        SV.server.gameAPI.self = saveSelf;
+      }
     }
     Sys.Print('Client ' + client.name + ' removed\n');
   } else {

@@ -55,44 +55,16 @@
 		<div class="gui_download" onclick="downloadSaveGame()"></div>
 
 		<script src='libs/nipplejs.js'></script>
-		<script src='source/Vec.js'></script>
-		<script src='source/V.js'></script>
-		<script src='source/GL.js'></script>
-		<script src='source/ED.js'></script>
-		<script src='source/Key.js'></script>
-		<script src='source/R.js'></script>
-		<script src='source/Def.js'></script>
-		<script src='source/Host.js'></script>
-		<script src='source/CDAudio.js'></script>
-		<script src='source/Chase.js'></script>
-		<script src='source/COM.js'></script>
-		<script src='source/CRC.js'></script>
-		<script src='source/M.js'></script>
-		<script src='source/Protocol.js'></script>
-		<script src='source/VID.js'></script>
-		<script src='source/Console.js'></script>
-		<script src='source/MSG.js'></script>
-		<script src='source/Sbar.js'></script>
-		<script src='source/Draw.js'></script>
-		<script src='source/NET.js'></script>
-		<script src='source/NET_Loop.js'></script>
-		<script src='source/NET_WEBS.js'></script>
-		<script src='source/W.js'></script>
-		<script src='source/PR.js'></script>
-		<script src='source/Cvar.js'></script>
-		<script src='source/Sys.js'></script>
-		<script src='source/Mod.js'></script>
-		<script src='source/S.js'></script>
-		<script src='source/Cmd.js'></script>
-		<script src='source/IN.js'></script>
-		<script src='source/Q.js'></script>
-		<script src='source/SCR.js'></script>
-		<script src='source/Game.js'></script>
-		<script src='source/PF.js'></script>
-		<script src='source/Pmove.js'></script>
-		<script src='source/CL.js'></script>
-		<script src='source/SV.js'></script>
-		<script src='source/Shack.js'></script>
+
+		<script>
+			import('/source/engine/main-browser.mjs').then((module) => {
+				const EngineLauncher = module.default;
+				EngineLauncher.Launch();
+			}).catch((error) => {
+				console.error('Error loading the engine:', error);
+				document.getElementById('error').textContent = 'Failed to load the engine. Check the console for details.';
+			});
+		</script>
 
 		<script>
 

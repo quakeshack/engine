@@ -2,18 +2,26 @@ import Vector from '../../shared/Vector.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { MissingResourceError } from './Errors.mjs';
 import Q from './Q.mjs';
-import W from './W.mjs';
+import W, { translateIndexToRGBA } from './W.mjs';
 
 const Mod = {};
 
 export default Mod;
 
-let { COM, Con, R } = registry;
+let { COM, Con, R, GL } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   COM = registry.COM;
   Con = registry.Con;
   R = registry.R;
+  GL = registry.GL;
+});
+
+/** @type {WebGL2RenderingContext} */
+let gl = null;
+
+eventBus.subscribe('gl.ready', () => {
+  gl = GL.gl;
 });
 
 const notexture_mip = {name: 'notexture', width: 16, height: 16, texturenum: null};
@@ -1234,7 +1242,7 @@ Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
     data = GL.ResampleTexture(data, frame.width, frame.height, scaledWidth, scaledHeight);
   }
 
-  data = VID.TranslateIndexToRGBA(data, scaledWidth, scaledHeight, VID.d_8to24table_u8, 255);
+  data = translateIndexToRGBA(data, scaledWidth, scaledHeight, W.d_8to24table_u8, 255);
 
   glt = {texnum: gl.createTexture(), identifier: identifier, width: frame.width, height: frame.height};
   GL.Bind(0, glt.texnum);

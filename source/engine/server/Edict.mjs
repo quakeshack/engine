@@ -153,11 +153,11 @@ export class ED {
 
     // Parse until closing brace
     while (true) {
-      const parsed = COM.Parse(data);
+      const parsedKey = COM.Parse(data);
 
-      data = parsed.data;
+      data = parsedKey.data;
 
-      if (parsed.token.charCodeAt(0) === 125) {
+      if (parsedKey.token.charCodeAt(0) === 125) {
         // Closing brace found
         break;
       }
@@ -166,11 +166,11 @@ export class ED {
         throw new Error('ED.ParseEdict: EOF without closing brace');
       }
 
-      if (parsed.token === 'angle') {
+      if (parsedKey.token === 'angle') {
         keyname = 'angles';
         anglehack = true;
       } else {
-        keyname = parsed.token;
+        keyname = parsedKey.token;
         anglehack = false;
 
         if (keyname === 'light') {
@@ -190,7 +190,7 @@ export class ED {
         throw new Error('ED.ParseEdict: EOF without closing brace');
       }
 
-      if (parsed.token.charCodeAt(0) === 125) {
+      if (parsedValue.token.charCodeAt(0) === 125) {
         throw new Error('ED.ParseEdict: Closing brace without data');
       }
 
@@ -200,10 +200,10 @@ export class ED {
       }
 
       if (anglehack) {
-        parsed.token = `0 ${parsed.token} 0`;
+        parsedValue.token = `0 ${parsedValue.token} 0`;
       }
 
-      initialData[keyname] = parsed.token.replace(/\\n/g, '\n');
+      initialData[keyname] = parsedValue.token.replace(/\\n/g, '\n');
 
       init = true;
     }

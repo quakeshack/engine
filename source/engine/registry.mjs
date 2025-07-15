@@ -23,7 +23,6 @@ export const registry = {
   R: null,
   SCR: null,
   Key: null,
-  Chase: null,
   CDAudio: null,
   IN: null,
   Sbar: null,

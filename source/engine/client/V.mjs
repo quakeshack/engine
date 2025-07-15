@@ -5,16 +5,16 @@ import * as Def from '../common/Def.mjs';
 import Q from '../common/Q.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import MSG from '../network/MSG.mjs';
+import Chase from './Chase.mjs';
 
 const V = {};
 
 export default V;
 
-let { CL, Chase, Con, Host, Mod, R, SCR } = registry;
+let { CL, Con, Host, Mod, R, SCR } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
-  Chase = registry.Chase;
   Con = registry.Con;
   Host = registry.Host;
   Mod = registry.Mod;
