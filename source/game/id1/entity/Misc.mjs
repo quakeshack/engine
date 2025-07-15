@@ -1,12 +1,12 @@
-/* global Vector */
+import Vector from '../../../shared/Vector.mjs';
 
-import { attn, channel, colors, content, damage, effect, moveType, solid, tentType } from "../Defs.mjs";
-import { crandom } from "../helper/MiscHelpers.mjs";
-import BaseEntity from "./BaseEntity.mjs";
-import BaseMonster from "./monster/BaseMonster.mjs";
-import { PlayerEntity } from "./Player.mjs";
-import { Sub } from "./Subs.mjs";
-import { DamageHandler, DamageInflictor, Explosions, Laser, Spike, Superspike } from "./Weapons.mjs";
+import { attn, channel, colors, content, damage, effect, moveType, solid, tentType } from '../Defs.mjs';
+import { crandom } from '../helper/MiscHelpers.mjs';
+import BaseEntity from './BaseEntity.mjs';
+import BaseMonster from './monster/BaseMonster.mjs';
+import { PlayerEntity } from './Player.mjs';
+import { Sub } from './Subs.mjs';
+import { DamageHandler, DamageInflictor, Explosions, Laser, Spike, Superspike } from './Weapons.mjs';
 
 /**
  * QUAKED info_null (0 0.5 0) (-4 -4 -4) (4 4 4)
@@ -78,11 +78,11 @@ export class BaseLightEntity extends BaseEntity {
 
   use() {
     if (this.spawnflags & BaseLightEntity.START_OFF) {
-      this.engine.Lightstyle(this.style, "m");
+      this.engine.Lightstyle(this.style, 'm');
       this.spawnflags = this.spawnflags - BaseLightEntity.START_OFF;
     }
     else {
-      this.engine.Lightstyle(this.style, "a");
+      this.engine.Lightstyle(this.style, 'a');
       this.spawnflags = this.spawnflags + BaseLightEntity.START_OFF;
     }
   }
@@ -90,9 +90,9 @@ export class BaseLightEntity extends BaseEntity {
   _defaultStyle() {
     if (this.style >= 32) {
       if (this.spawnflags & BaseLightEntity.START_OFF)
-        this.engine.Lightstyle(this.style, "a");
+        this.engine.Lightstyle(this.style, 'a');
       else
-        this.engine.Lightstyle(this.style, "m");
+        this.engine.Lightstyle(this.style, 'm');
     }
   }
 };
@@ -135,7 +135,7 @@ export class LightFluoroEntity extends BaseLightEntity {
   spawn() {
     this._defaultStyle();
 
-    this.spawnAmbientSound("ambience/fl_hum1.wav", 0.5, attn.ATTN_STATIC);
+    this.spawnAmbientSound('ambience/fl_hum1.wav', 0.5, attn.ATTN_STATIC);
   }
 };
 
@@ -158,7 +158,7 @@ export class LightFluorosparkEntity extends BaseLightEntity {
       this.style = 10;
     }
 
-    this.spawnAmbientSound("ambience/buzz1.wav", 0.5, attn.ATTN_STATIC);
+    this.spawnAmbientSound('ambience/buzz1.wav', 0.5, attn.ATTN_STATIC);
   }
 };
 
@@ -176,7 +176,7 @@ export class LightGlobeEntity extends BaseLightEntity {
   }
 
   spawn() {
-    this.setModel("progs/s_light.spr");
+    this.setModel('progs/s_light.spr');
     this.makeStatic();
   }
 };
@@ -193,7 +193,7 @@ export class LightGlobeDynamicEntity extends BaseLightEntity {
   }
 
   spawn() {
-    this.setModel("progs/s_light.mdl");
+    this.setModel('progs/s_light.mdl');
     this._scheduleThink(this.game.time + 0.2, () => { this.frame = 1; });
     this._scheduleThink(this.game.time + 0.3, () => { this.frame = 2; });
     this._scheduleThink(this.game.time + 0.4, () => { this.remove(); });
@@ -208,7 +208,7 @@ export class TorchLightEntity extends BaseLightEntity {
   }
 
   spawn() {
-    this.spawnAmbientSound("ambience/fire1.wav", 0.5, attn.ATTN_STATIC);
+    this.spawnAmbientSound('ambience/fire1.wav', 0.5, attn.ATTN_STATIC);
     this.makeStatic();
   }
 };
@@ -223,7 +223,7 @@ export class SmallWalltorchLightEntity extends TorchLightEntity {
   static classname = 'light_torch_small_walltorch';
 
   spawn() {
-    this.setModel("progs/flame.mdl");
+    this.setModel('progs/flame.mdl');
     super.spawn();
   }
 };
@@ -236,7 +236,7 @@ export class YellowLargeFlameLightEntity extends TorchLightEntity {
   static classname = 'light_flame_large_yellow';
 
   spawn() {
-    this.setModel("progs/flame2.mdl");
+    this.setModel('progs/flame2.mdl');
     this.frame = 1;
     super.spawn();
   }
@@ -250,7 +250,7 @@ export class YellowSmallFlameLightEntity extends TorchLightEntity {
   static classname = 'light_flame_small_yellow';
 
   spawn() {
-    this.setModel("progs/flame2.mdl");
+    this.setModel('progs/flame2.mdl');
     super.spawn();
   }
 };
@@ -263,7 +263,7 @@ export class WhiteSmallFlameLightEntity extends TorchLightEntity {
   static classname = 'light_flame_small_white';
 
   spawn() {
-    this.setModel("progs/flame2.mdl");
+    this.setModel('progs/flame2.mdl');
     super.spawn();
   }
 };
@@ -319,7 +319,7 @@ export class FireballSpawnerEntity extends BaseEntity {
   }
 
   _precache() {
-    this.engine.PrecacheModel("progs/lavaball.mdl");
+    this.engine.PrecacheModel('progs/lavaball.mdl');
   }
 
   spawn() {
@@ -348,7 +348,7 @@ export class DebugMarkerEntity extends BaseEntity {
     this.movetype = moveType.MOVETYPE_NONE;
     this.solid = solid.SOLID_TRIGGER;
     this.setSize(new Vector(-4.0, -4.0, -4.0), new Vector(4.0, 4.0, 4.0));
-    this.setModel("progs/s_light.spr");
+    this.setModel('progs/s_light.spr');
 
     if (this.owner instanceof PlayerEntity) {
       this.owner.centerPrint('marker set at ' + this.origin);
@@ -385,7 +385,7 @@ export class BaseAmbientSound extends BaseEntity {
  */
 export class AmbientCompHum extends BaseAmbientSound {
   static classname = 'ambient_comp_hum';
-  static _sfxName = "ambience/comp1.wav";
+  static _sfxName = 'ambience/comp1.wav';
   static _volume = 1.0;
 };
 
@@ -394,7 +394,7 @@ export class AmbientCompHum extends BaseAmbientSound {
  */
 export class AmbientDrone extends BaseAmbientSound {
   static classname = 'ambient_drone';
-  static _sfxName = "ambience/drone6.wav";
+  static _sfxName = 'ambience/drone6.wav';
   static _volume = 0.5;
 };
 
@@ -403,7 +403,7 @@ export class AmbientDrone extends BaseAmbientSound {
  */
 export class AmbientSuckWind extends BaseAmbientSound {
   static classname = 'ambient_suck_wind';
-  static _sfxName = "ambience/suck1.wav";
+  static _sfxName = 'ambience/suck1.wav';
   static _volume = 1.0;
 };
 
@@ -412,7 +412,7 @@ export class AmbientSuckWind extends BaseAmbientSound {
  */
 export class AmbientFlouroBuzz extends BaseAmbientSound {
   static classname = 'ambient_flouro_buzz';
-  static _sfxName = "ambience/buzz1.wav";
+  static _sfxName = 'ambience/buzz1.wav';
   static _volume = 1.0;
 };
 
@@ -421,7 +421,7 @@ export class AmbientFlouroBuzz extends BaseAmbientSound {
  */
 export class AmbientDrip extends BaseAmbientSound {
   static classname = 'ambient_drip';
-  static _sfxName = "ambience/drip1.wav";
+  static _sfxName = 'ambience/drip1.wav';
   static _volume = 0.5;
 };
 
@@ -430,7 +430,7 @@ export class AmbientDrip extends BaseAmbientSound {
  */
 export class AmbientThunder extends BaseAmbientSound {
   static classname = 'ambient_thunder';
-  static _sfxName = "ambience/thunder1.wav";
+  static _sfxName = 'ambience/thunder1.wav';
   static _volume = 0.5;
 };
 
@@ -439,7 +439,7 @@ export class AmbientThunder extends BaseAmbientSound {
  */
 export class AmbientLightBuzz extends BaseAmbientSound {
   static classname = 'ambient_light_buzz';
-  static _sfxName = "ambience/fl_hum1.wav";
+  static _sfxName = 'ambience/fl_hum1.wav';
   static _volume = 0.5;
 };
 
@@ -448,7 +448,7 @@ export class AmbientLightBuzz extends BaseAmbientSound {
  */
 export class AmbientSwamp1 extends BaseAmbientSound {
   static classname = 'ambient_swamp1';
-  static _sfxName = "ambience/swamp1.wav";
+  static _sfxName = 'ambience/swamp1.wav';
   static _volume = 0.5;
 };
 
@@ -457,7 +457,7 @@ export class AmbientSwamp1 extends BaseAmbientSound {
  */
 export class AmbientSwamp2 extends BaseAmbientSound {
   static classname = 'ambient_swamp2';
-  static _sfxName = "ambience/swamp2.wav";
+  static _sfxName = 'ambience/swamp2.wav';
   static _volume = 0.5;
 };
 
@@ -526,7 +526,7 @@ export class BossgateWallEntity extends BaseWallEntity {
   static classname = 'func_bossgate';
 
   spawn() {
-    if ((this.game.serverflags & 15) == 15) {
+    if ((this.game.serverflags & 15) === 15) {
       this.remove();
       return; // all episodes completed
     }
@@ -765,6 +765,7 @@ export class BubbleSpawnerEntity extends BaseEntity {
   }
 
   _spawnBubble() {
+    // eslint-disable-next-line no-use-before-define
     this.engine.SpawnEntity(BubbleEntity.classname, { owner: this });
   }
 

@@ -18,7 +18,7 @@
       "skipFiles": [
         "<node_internals>/**"
       ],
-      "program": "${workspaceFolder}/dedicated.js",
+      "program": "${workspaceFolder}/dedicated.mjs",
       "args": [
         "+exec", "server.cfg",
       ],

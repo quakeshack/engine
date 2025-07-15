@@ -1,9 +1,9 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
-import { channel, moveType, solid } from "../../Defs.mjs";
-import BaseEntity from "../BaseEntity.mjs";
-import { PlayerEntity } from "../Player.mjs";
-import BasePropEntity, { state } from "./BasePropEntity.mjs";
+import { channel, moveType, solid } from '../../Defs.mjs';
+import BaseEntity from '../BaseEntity.mjs';
+import { PlayerEntity } from '../Player.mjs';
+import BasePropEntity, { state } from './BasePropEntity.mjs';
 
 /**
  * QUAKED func_plat (0 .5 .8) ? PLAT_LOW_TRIGGER
@@ -55,7 +55,8 @@ export class PlatformEntity extends BasePropEntity {
   }
 
   _spawnInsideTrigger() {
-    this._trigger = new WeakRef(this.engine.SpawnEntity(PlatformTriggerEntity.classname, { owner: this }));
+    // eslint-disable-next-line no-use-before-define
+    this._trigger = this.engine.SpawnEntity(PlatformTriggerEntity.classname, { owner: this });
   }
 
   _hitBottom() {
@@ -288,7 +289,7 @@ export class TrainEntity extends BasePropEntity { // CR: this beauty is written 
 
   _trainFind() {
     // position the train at the first target's origin (minus our mins for alignment)
-    const targetEntity = this.findFirstEntityByFieldAndValue("targetname", this.target);
+    const targetEntity = this.findFirstEntityByFieldAndValue('targetname', this.target);
     console.assert(targetEntity, 'func_train: target not found');
     this.setOrigin(targetEntity.origin.copy().subtract(this.mins));
     // if not triggered by a use.
@@ -298,7 +299,7 @@ export class TrainEntity extends BasePropEntity { // CR: this beauty is written 
   }
 
   _trainNext() {
-    const targetEntity = this.findFirstEntityByFieldAndValue("targetname", this.target);
+    const targetEntity = this.findFirstEntityByFieldAndValue('targetname', this.target);
     console.assert(targetEntity.target, 'func_train: no next target');
     this.target = targetEntity.target; // update to point to the next target
     this.wait = targetEntity.wait ? targetEntity.wait : 0;

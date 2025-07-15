@@ -96,6 +96,11 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] completely switch to JS modules at some point
 * [_] use more generator functions when possible
 
+#### Event Bus Todo List
+
+* [_] SV and Host: listening to cvar changes
+* [_] Draw: listen to filesystem being/end disc
+
 ### Code smell
 
 * [_] SV: cleanup the `SV.WriteEntitiesToClient` mess a bit, make it more flexible
@@ -320,6 +325,34 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-07-15
+
+* got the dedicated server spawn a map again, but got only that far, more cleaning and wiring up required
+* decided to go the lazy (and no longer immutable) route regarding registry, but it should also have no more lookup performance penalty
+* moved everything from js to mjs, still lots of work to do, so much legacy code I want to get rid of
+* fixed a logic flaw in `QuakeEntityAI._huntTarget` which caused unkillable ghosts hunting you down
+
+### 2025-07-14
+
+* tightened jsconfig and eslint config a bit to enforce a stricter standard, it already detected some silent bugs
+* game code is now properly sharing stuff with the engine
+* reorganized a bit the engine<->game API naming convention
+
+### 2025-07-12
+
+* I asked Claude Sonnet 4 to improve the Key input mess (especially when using a non-us keyboard layout)
+* I started to refactor the engine code:
+  * completely moving to ESM
+  * throwing out unused code
+  * breaking larger files into smaller better managable ones
+  * introduced a registry to hold references to singletons (workaround to avoid circular dependencies)
+* next steps I’m planning on the engine side:
+  * decouple tightly decoupled components
+  * implement an eventbus that can be accessed by the regular code and worker
+  * reduce reliance on the registry to an absolute minimum
+  * make stuff async as much as possible
+    * uploading textures and building VBA in workers
 
 ### 2025-07-09
 

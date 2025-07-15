@@ -1,8 +1,8 @@
-import { channel, colors, damage, moveType, solid } from "../../Defs.mjs";
-import BaseEntity from "../BaseEntity.mjs";
-import { PlayerEntity } from "../Player.mjs";
-import { DamageHandler } from "../Weapons.mjs";
-import BasePropEntity, { state } from "./BasePropEntity.mjs";
+import { channel, colors, damage, moveType, solid } from '../../Defs.mjs';
+import BaseEntity from '../BaseEntity.mjs';
+import { PlayerEntity } from '../Player.mjs';
+import { DamageHandler } from '../Weapons.mjs';
+import BasePropEntity, { state } from './BasePropEntity.mjs';
 
 /**
  * QUAKED func_button (0 .5 .8) ?
@@ -25,10 +25,10 @@ export class ButtonEntity extends BasePropEntity {
 
   /** @protected */
   static _sounds = [
-    "buttons/airbut1.wav",
-    "buttons/switch21.wav",
-    "buttons/switch02.wav",
-    "buttons/switch04.wav",
+    'buttons/airbut1.wav',
+    'buttons/switch21.wav',
+    'buttons/switch02.wav',
+    'buttons/switch04.wav',
   ];
 
   _declareFields() {

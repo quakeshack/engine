@@ -1,9 +1,9 @@
-/* global Vector */
+import Vector from '../../../shared/Vector.mjs';
 
-import { channel, moveType, solid } from "../Defs.mjs";
-import { EntityWrapper } from "../helper/MiscHelpers.mjs";
-import BaseEntity from "./BaseEntity.mjs";
-import { PlayerEntity } from "./Player.mjs";
+import { channel, moveType, solid } from '../Defs.mjs';
+import { EntityWrapper } from '../helper/MiscHelpers.mjs';
+import BaseEntity from './BaseEntity.mjs';
+import { PlayerEntity } from './Player.mjs';
 
 export const triggerFieldFlags = {
   /** Vanilla Quake behavior */
@@ -87,6 +87,7 @@ export class DelayedThinkEntity extends BaseEntity {
 
     this._serializer.endFields();
 
+    // eslint-disable-next-line no-use-before-define
     this._sub = new Sub(this);
   }
 
@@ -261,7 +262,7 @@ export class Sub extends EntityWrapper {
       activatorEntity.centerPrint(this._entity.message);
 
       if (!this._entity.noise) {
-        activatorEntity.startSound(channel.CHAN_VOICE, "misc/talk.wav");
+        activatorEntity.startSound(channel.CHAN_VOICE, 'misc/talk.wav');
       }
     }
 
@@ -272,7 +273,7 @@ export class Sub extends EntityWrapper {
       /** @type {BaseEntity} */
       let searchEntity = this._game.worldspawn;
       do {
-        searchEntity = searchEntity.findNextEntityByFieldAndValue("targetname", this._entity.killtarget);
+        searchEntity = searchEntity.findNextEntityByFieldAndValue('targetname', this._entity.killtarget);
         if (!searchEntity) {
           return;
         }
@@ -286,7 +287,7 @@ export class Sub extends EntityWrapper {
       /** @type {BaseEntity} */
       let searchEntity = this._game.worldspawn;
       do {
-        searchEntity = searchEntity.findNextEntityByFieldAndValue("targetname", this._entity.target);
+        searchEntity = searchEntity.findNextEntityByFieldAndValue('targetname', this._entity.target);
         if (!searchEntity) {
           return;
         }

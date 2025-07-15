@@ -1,10 +1,10 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
-import { attn, channel, damage, moveType, solid } from "../../Defs.mjs";
-import { QuakeEntityAI } from "../../helper/AI.mjs";
-import BaseEntity from "../BaseEntity.mjs";
-import { DamageInflictor } from "../Weapons.mjs";
-import { WalkMonster } from "./BaseMonster.mjs";
+import { attn, channel, damage, moveType, solid } from '../../Defs.mjs';
+import { QuakeEntityAI } from '../../helper/AI.mjs';
+import BaseEntity from '../BaseEntity.mjs';
+import { DamageInflictor } from '../Weapons.mjs';
+import { WalkMonster } from './BaseMonster.mjs';
 
 export const qc = `
 $cd id1/models/zombie
@@ -79,17 +79,17 @@ export default class ZombieMonster extends WalkMonster {
 
   _precache() {
     super._precache();
-    this.engine.PrecacheModel("progs/zom_gib.mdl");
-    this.engine.PrecacheSound("zombie/z_idle.wav");
-    this.engine.PrecacheSound("zombie/z_idle1.wav");
-    this.engine.PrecacheSound("zombie/z_shot1.wav");
-    this.engine.PrecacheSound("zombie/z_gib.wav");
-    this.engine.PrecacheSound("zombie/z_pain.wav");
-    this.engine.PrecacheSound("zombie/z_pain1.wav");
-    this.engine.PrecacheSound("zombie/z_fall.wav");
-    this.engine.PrecacheSound("zombie/z_miss.wav");
-    this.engine.PrecacheSound("zombie/z_hit.wav");
-    this.engine.PrecacheSound("zombie/idle_w2.wav");
+    this.engine.PrecacheModel('progs/zom_gib.mdl');
+    this.engine.PrecacheSound('zombie/z_idle.wav');
+    this.engine.PrecacheSound('zombie/z_idle1.wav');
+    this.engine.PrecacheSound('zombie/z_shot1.wav');
+    this.engine.PrecacheSound('zombie/z_gib.wav');
+    this.engine.PrecacheSound('zombie/z_pain.wav');
+    this.engine.PrecacheSound('zombie/z_pain1.wav');
+    this.engine.PrecacheSound('zombie/z_fall.wav');
+    this.engine.PrecacheSound('zombie/z_miss.wav');
+    this.engine.PrecacheSound('zombie/z_hit.wav');
+    this.engine.PrecacheSound('zombie/idle_w2.wav');
   }
 
   get netname() {
@@ -121,7 +121,7 @@ export default class ZombieMonster extends WalkMonster {
       if (Math.random() >= 0.1) {
         return;
       }
-      this.startSound(channel.CHAN_VOICE, "zombie/idle_w2.wav", 1.0, attn.ATTN_STATIC);
+      this.startSound(channel.CHAN_VOICE, 'zombie/idle_w2.wav', 1.0, attn.ATTN_STATIC);
     });
     this._defineState('zombie_cruc2', 'cruc_2', 'zombie_cruc3', function () {
       this.nextthink = this.game.time + 0.1 + Math.random() * 0.1;
@@ -456,6 +456,7 @@ export default class ZombieMonster extends WalkMonster {
   // firing grenade
   _fireGrenade(offset) {
     this.startSound(channel.CHAN_WEAPON, 'zombie/z_shot1.wav');
+    // eslint-disable-next-line no-use-before-define
     ZombieGibGrenade.Throw(this, offset);
   }
 
@@ -495,12 +496,12 @@ export class ZombieGibGrenade extends BaseEntity {
 
     if (other.takedamage) {
       this.damage(other, 10, this.owner);
-      this.startSound(channel.CHAN_WEAPON, "zombie/z_hit.wav");
+      this.startSound(channel.CHAN_WEAPON, 'zombie/z_hit.wav');
       this.remove();
       return;
     }
 
-    this.startSound(channel.CHAN_WEAPON, "zombie/z_miss.wav");
+    this.startSound(channel.CHAN_WEAPON, 'zombie/z_miss.wav');
 
     this.velocity.clear();
     this.avelocity.clear();
