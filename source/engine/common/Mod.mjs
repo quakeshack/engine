@@ -1315,24 +1315,26 @@ Mod.Print = function() {
   }
 };
 
+export class ParsedQC {
+  /** @type {string} */
+  cd = null;
+  origin = new Vector();
+  /** @type {string} */
+  base = null;
+  /** @type {string} */
+  skin = null;
+  /** @type {string[]} */
+  frames = [];
+  /** @type {{[key: string]: number[]}} */
+  animations = {};
+  /** @type {number} */
+  scale = 1.0;
+};
+
 Mod.ParseQC = function(qcContent) {
   console.assert(typeof qcContent === 'string', 'qcContent must be a string');
 
-  const data = {
-    /** @type {string} */
-    cd: null,
-    origin: new Vector(),
-    /** @type {string} */
-    base: null,
-    /** @type {string} */
-    skin: null,
-    /** @type {string[]} */
-    frames: [],
-    /** @type {{[key: string]: number[]}} */
-    animations: {},
-    /** @type {number} */
-    scale: 1.0,
-  };
+  const data = new ParsedQC();
 
   const lines = qcContent.trim().split('\n');
 

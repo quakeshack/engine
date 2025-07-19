@@ -39,6 +39,10 @@ export class WadFileInterface {
   /** @protected */
   _lumps = {};
 
+  getLumpNames() {
+    return Object.keys(this._lumps);
+  }
+
   // eslint-disable-next-line no-unused-vars
   load(view) {
     console.assert(null, 'WadFileInterface.load: not implemented');
@@ -224,6 +228,14 @@ class Wad2File extends WadFileInterface {
     const data = this.getLump(name);
     const view = new DataView(data);
 
+    // The font lump is a special case, it has a different format
+    if (name === 'CONCHARS') {
+      const width = 16 * 8; // 16 characters, each 8 pixels wide
+      const height = 16 * 8; // 16 characters, each 8 pixels high
+      const rgba = translateIndexToRGBA(new Uint8Array(data, 0, width * height), width, height, this.palette, 0);
+      return new WadLumpTexture(name, width, height, rgba);
+    }
+
     const width = view.getUint32(0, true);
     const height = view.getUint32(4, true);
 
@@ -329,7 +341,8 @@ class Wad3File extends WadFileInterface {
       768, // 768 = 256 colors * 3 bytes (RGB)
     );
 
-    const rgba = translateIndexToRGBA(uint8data, swidth, sheight, palette, 255);
+    // Textures with a name starting with '{' are transparent, so we set the transparent color to 255
+    const rgba = translateIndexToRGBA(uint8data, swidth, sheight, palette, texName[0] === '{' ? 255 : null);
 
     return new WadLumpTexture(texName, swidth, sheight, rgba);
   }

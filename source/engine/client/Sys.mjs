@@ -1,5 +1,6 @@
 import Q from '../common/Q.mjs';
 import { eventBus, registry } from '../registry.mjs';
+import Tools from './Tools.mjs';
 
 let { COM, Host, Key } = registry;
 
@@ -233,6 +234,8 @@ export default class Sys {
       window.addEventListener(event.substring(2), eventHandlers[event]);
     }
 
+    await Tools.Init();
+
     Sys.#isRunning = true;
 
     while (Sys.#isRunning) {
@@ -251,6 +254,7 @@ export default class Sys {
       window.removeEventListener(event.substring(2), eventHandlers[event]);
     }
 
+    Tools.Shutdown();
     Host.Shutdown();
 
     document.body.style.cursor = 'auto';

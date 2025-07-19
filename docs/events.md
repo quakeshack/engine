@@ -47,6 +47,7 @@ The engine has an event bus.
 | Event | Arguments | Description |
 | - | - | - |
 | host.crash | 1. Error | Emitted when there was an uncaught exception during the main loop. |
+| host.ready | - | The engine is initialized and ready to roll. |
 
 ### Server
 

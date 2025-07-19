@@ -10,15 +10,15 @@ import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { MoveVars, Pmove, PmovePlayer } from '../common/Pmove.mjs';
 import { eventBus, registry } from '../registry.mjs';
+import { ClientEngineAPI } from '../common/GameAPIs.mjs';
 
 const CL = {};
 
 export default CL;
 
-let { CDAudio, COM, Con, Draw, Host, IN, Mod, NET, PR, R, S, SCR, SV, V } = registry;
+let { COM, Con, Draw, Host, IN, Mod, NET, PR, R, S, SCR, SV, V } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  CDAudio = registry.CDAudio;
   COM = registry.COM;
   Con = registry.Con;
   Draw = registry.Draw;
@@ -1246,7 +1246,7 @@ CL.Init = async function() { // public, by Host.js
       throw new Error('QuakeJS disabled');
     }
 
-    PR.QuakeJS.ClientGameAPI.Init();
+    PR.QuakeJS.ClientGameAPI.Init(ClientEngineAPI);
   } catch (e) {
     Con.PrintError('CL.Init: Failed to import QuakeJS client code, ' + e.message + '.\n');
   }

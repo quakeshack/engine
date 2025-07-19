@@ -3,7 +3,7 @@
  * Registry for engine components.
  * Unfortunately, the engine components are too tightly coupled, that’s why we need a registry for the time being.
  * NOTE: Before adding more components here, consider refactoring the code to use ES6 modules and imports.
- * @type {import("./registry").Registry}
+ * @type {import('./registry').Registry}
  */
 export const registry = {
   COM: null,
@@ -36,6 +36,7 @@ export const registry = {
 // make sure the registry is not extensible beyond the defined properties
 Object.seal(registry);
 
+/** @type {import('../shared/EventBus').EventBus} */
 export class EventBus {
   /** @type {Map<string, Set<Function>>} */
   #listeners = new Map();

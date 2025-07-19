@@ -500,6 +500,8 @@ Host.Init = async function() {
 
   Host.initialized = true;
   Sys.Print('========Quake Initialized=========\n');
+
+  eventBus.publish('host.ready');
 };
 
 Host.Shutdown = function() {

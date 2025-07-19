@@ -333,6 +333,9 @@ class MainMenu extends BaseMenu {
 * there’s a bug in playing back demos, sometimes it won’t clear the client state after having finished
   * seems to be more convoluted with the way the client state is handled
 * replaced frame interval with an async main loop, makes it easier to handle fatal errors
+* fixed a bug regarding transparency in the Wad3 texture loader
+* added a toolbox class to explore wad files
+* started working on `ClientGameAPI`
 
 ### 2025-07-15
 

@@ -1,8 +1,8 @@
-/* global Game */
+/** @typedef {typeof import('../../../engine/common/GameAPIs.mjs').ClientEngineAPI} ClientEngineAPI */
 
 export class ClientGameAPI {
   /**
-   * @param {Game.ClientEngineInterface} engineAPI client engine API
+   * @param {ClientEngineAPI} engineAPI client engine API
    */
   constructor(engineAPI) {
     this.engine = engineAPI;
@@ -16,7 +16,15 @@ export class ClientGameAPI {
   shutdown() {
   }
 
-  static Init() {
+  /**
+   * @param {ClientEngineAPI} engineAPI client engine API
+   */
+  static Init(engineAPI) {
+    const eventBus = engineAPI.eventBus;
+
+    eventBus.subscribe('host.ready', () => {
+      console.log('engine ready', engineAPI.gameFlavors);
+    });
   }
 
   static Shutdown() {

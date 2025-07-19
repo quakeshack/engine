@@ -335,7 +335,7 @@ PR.EdictProxy = class ProgsEntity {
 
       const [type, val, ofs] = [d.type & ~PR.saveglobal, ed ? this._v : PR.globals, d.ofs];
 
-      if (type & PR.saveglobal === 0) {
+      if ((type & PR.saveglobal) === 0) {
         continue;
       }
 

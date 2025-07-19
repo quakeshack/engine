@@ -5,17 +5,106 @@ import { eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from '../server/Edict.mjs';
 import Cmd from './Cmd.mjs';
 import Cvar from './Cvar.mjs';
+import Mod, { ParsedQC } from './Mod.mjs';
 
-let { Con, Host, Mod, SV } = registry;
+let { Con, Host, SV } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   Con = registry.Con;
   Host = registry.Host;
-  Mod = registry.Mod;
   SV = registry.SV;
 });
 
-export class ServerEngineAPI {
+eventBus.subscribe('com.ready', () => {
+  const COM = registry.COM;
+
+  if (COM.hipnotic) {
+    // eslint-disable-next-line no-use-before-define
+    EngineAPI.gameFlavors.push(GameFlavors.hipnotic);
+  }
+
+  if (COM.rogue) {
+    // eslint-disable-next-line no-use-before-define
+    EngineAPI.gameFlavors.push(GameFlavors.rogue);
+  }
+});
+
+/** @enum {string} */
+export const GameFlavors = Object.freeze({
+  hipnotic: 'hipnotic',
+  rogue: 'rogue',
+});
+
+export class EngineAPI {
+  /** Engine’s main event bus. */
+  static eventBus = eventBus;
+
+  /** @type {GameFlavors[]} */
+  static gameFlavors = [];
+
+  static AppendConsoleText(text) {
+    Cmd.text += text;
+  }
+
+  /**
+   * Gets a cvar by name.
+   * @param {string} name name of the variable
+   * @returns {Cvar} the variable
+   */
+  static GetCvar(name) {
+    return Cvar.FindVar(name);
+  }
+
+  /**
+   * Changes the value of a cvar.
+   * @param {string} name name of the variable
+   * @param {string} value value
+   * @returns {Cvar} the modified variable
+   */
+  static SetCvar(name, value) {
+    return Cvar.Set(name, value);
+  }
+
+  /**
+   * Make sure to free the variable in shutdown().
+   * @see {@link Cvar}
+   * @param {string} name name of the variable
+   * @param {string} value value
+   * @param {number} flags optional flags
+   * @param {?string} description optional description
+   * @returns {Cvar} the created variable
+   */
+  static RegisterCvar(name, value, flags = 0, description = null) {
+    return new Cvar(name, value, flags | Cvar.FLAG.GAME, description);
+  }
+
+  static ConsolePrint(msg) {
+    Con.Print(msg);
+  }
+
+  static ConsoleWarning(msg) {
+    Con.PrintWarning(msg);
+  }
+
+  static ConsoleError(msg) {
+    Con.PrintError(msg);
+  }
+
+  static ConsoleDebug(str) {
+    Con.DPrint(str);
+  }
+
+  /**
+   * Parses QuakeC for model animation information.
+   * @param {string} qcContent qc content
+   * @returns {ParsedQC} parsed QC content
+   */
+  static ParseQC(qcContent) {
+    return Mod.ParseQC(qcContent);
+  }
+};
+
+export class ServerEngineAPI extends EngineAPI {
   static BroadcastPrint(str) {
     Host.BroadcastPrint(str);
   }
@@ -89,31 +178,6 @@ export class ServerEngineAPI {
   static TracelineLegacy(start, end, noMonsters, passEdict, mins = null, maxs = null) {
     const nullVec = Vector.origin;
     return SV.Move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict);
-  }
-
-  static AppendConsoleText(text) {
-    Cmd.text += text;
-  }
-
-  static GetCvar(name) {
-    return Cvar.FindVar(name);
-  }
-
-  static SetCvar(name, value) {
-    Cvar.Set(name, value);
-  }
-
-  /**
-   * Make sure to free the variable in shutdown().
-   * @see {@link Cvar}
-   * @param {string} name name of the variable
-   * @param {string} value value
-   * @param {number} flags optional flags
-   * @param {?string} description optional description
-   * @returns {Cvar} the created variable
-   */
-  static RegisterCvar(name, value, flags = 0, description = null) {
-    return new Cvar(name, value, flags | Cvar.FLAG.GAME, description);
   }
 
   /**
@@ -245,22 +309,6 @@ export class ServerEngineAPI {
     SV.server.models.push(Mod.ForName(modelName, true));
   }
 
-  static ConsolePrint(msg) {
-    Con.Print(msg);
-  }
-
-  static ConsoleWarning(msg) {
-    Con.PrintWarning(msg);
-  }
-
-  static ConsoleError(msg) {
-    Con.PrintError(msg);
-  }
-
-  static ConsoleDebug(str) {
-    Con.DPrint(str);
-  }
-
   /**
    * Spawns a new Entity, not an Edict
    * @param {string} classname
@@ -285,10 +333,6 @@ export class ServerEngineAPI {
 
   static IsLoading() {
     return SV.server.loading;
-  }
-
-  static ParseQC(qcContent) {
-    return Mod.ParseQC(qcContent);
   }
 
   static DispatchTempEntityEvent(tempEntityId, origin) {
@@ -338,6 +382,17 @@ export class ServerEngineAPI {
   // TODO: MSG related methods
 };
 
-export class ClientEngineAPI {
+export class ClientEngineAPI extends EngineAPI {
+  /**
+   * @param {string} name command name
+   * @param {Function} callback callback function
+   */
+  RegisterCommand(name, callback) {
+    Cmd.AddCommand(name, callback);
+  }
+
+  UnregisterCommand(name) {
+    // TODO: implement
+  }
 
 };

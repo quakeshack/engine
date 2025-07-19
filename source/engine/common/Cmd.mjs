@@ -299,12 +299,13 @@ export default class Cmd {
     // check commands
     for (let i = 0; i < Cmd.functions.length; ++i) {
       if (Cmd.functions[i].name === cmdname) {
+        /** @type {ConsoleCommand} */
         const handler = new Cmd.functions[i].command();
         handler.client = client;
         handler.args = text;
         handler.command = cmdname;
         handler.argv = argv;
-        handler.run(...cmdargs);
+        handler.run.apply(handler, cmdargs);
         return;
       }
     }
