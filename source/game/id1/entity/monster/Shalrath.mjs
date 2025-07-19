@@ -1,11 +1,11 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
-import { channel, moveType, solid } from "../../Defs.mjs";
-import { QuakeEntityAI } from "../../helper/AI.mjs";
-import BaseEntity from "../BaseEntity.mjs";
-import { BaseProjectile } from "../Weapons.mjs";
-import { WalkMonster } from "./BaseMonster.mjs";
-import ZombieMonster from "./Zombie.mjs";
+import { channel, moveType, solid } from '../../Defs.mjs';
+import { QuakeEntityAI } from '../../helper/AI.mjs';
+import BaseEntity from '../BaseEntity.mjs';
+import { BaseProjectile } from '../Weapons.mjs';
+import { WalkMonster } from './BaseMonster.mjs';
+import ZombieMonster from './Zombie.mjs';
 
 export const qc = `
 $cd id1/models/shalrath
@@ -110,12 +110,12 @@ export default class ShalrathMonsterEntity extends WalkMonster {
 
     this.engine.PrecacheModel('progs/v_spike.mdl');
 
-    this.engine.PrecacheSound("shalrath/attack.wav");
-    this.engine.PrecacheSound("shalrath/attack2.wav");
-    this.engine.PrecacheSound("shalrath/death.wav");
-    this.engine.PrecacheSound("shalrath/idle.wav");
-    this.engine.PrecacheSound("shalrath/pain.wav");
-    this.engine.PrecacheSound("shalrath/sight.wav");
+    this.engine.PrecacheSound('shalrath/attack.wav');
+    this.engine.PrecacheSound('shalrath/attack2.wav');
+    this.engine.PrecacheSound('shalrath/death.wav');
+    this.engine.PrecacheSound('shalrath/idle.wav');
+    this.engine.PrecacheSound('shalrath/pain.wav');
+    this.engine.PrecacheSound('shalrath/sight.wav');
   }
 
   thinkDie() {
@@ -169,6 +169,7 @@ export default class ShalrathMonsterEntity extends WalkMonster {
     movedir.normalize();
     this.movedir.set(movedir);
 
+    // eslint-disable-next-line no-use-before-define
     this.engine.SpawnEntity(ShalrathMissileEntity.classname, {
       owner: this,
     });
@@ -176,20 +177,20 @@ export default class ShalrathMonsterEntity extends WalkMonster {
 
   idleSound() {
     if (Math.random() < 0.2) {
-      this.startSound(channel.CHAN_VOICE, "shalrath/idle.wav");
+      this.startSound(channel.CHAN_VOICE, 'shalrath/idle.wav');
     }
   }
 
   attackSound() {
-    this.startSound(channel.CHAN_VOICE, "shalrath/attack.wav");
+    this.startSound(channel.CHAN_VOICE, 'shalrath/attack.wav');
   }
 
   painSound() {
-    this.startSound(channel.CHAN_VOICE, "shalrath/pain.wav");
+    this.startSound(channel.CHAN_VOICE, 'shalrath/pain.wav');
   }
 
   deathSound() {
-    this.startSound(channel.CHAN_VOICE, "shalrath/death.wav");
+    this.startSound(channel.CHAN_VOICE, 'shalrath/death.wav');
   }
 
   hasMissileAttack() {

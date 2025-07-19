@@ -2,6 +2,8 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8">
+		<link rel="modulepreload" href="/source/engine/main-browser.mjs">
+		<link rel="modulepreload" href="/source/game/id1/main.mjs">
 		<title>The Quake Shack</title>
 		<style>
 			body{background: #222; color:#ddd; font-family:monospace; font-size:12px; }
@@ -15,7 +17,7 @@
 			#console li { list-style-type: none; white-space: pre; }
 			@keyframes flash {
 				0% { color: red; }
-				50% { color: black; }
+				50% { color: #ddd; }
 				100% { color: red; }
 			}
 
@@ -40,143 +42,32 @@
 	</head>
 	<body>
 		<div>
-			<p id="progress">Starting Quake… this might take a while.</p>
+			<p id="progress">Launching… this might take a while.</p>
 			<p id="error"></p>
 			<ul id="console"></ul>
 			<p id="imprint">Improved with passion by <a href="https://www.chrisnew.eu/" target="_blank">chrisnew.eu</a>. Source code available on <a href="https://github.com/chrisnew/quakeshack" target="_blank">github.com/chrisnew/quakeshack</a>.</p>
 
+			<!-- WebGL target -->
 			<canvas id="mainwindow"></canvas>
 
 			<img id="loading" alt="Loading" src="data:image/gif,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
 
+			<!-- for virtual joysticks -->
 			<div id="left-zone"></div>
 			<div id="right-zone"></div>
 		</div>
 		<div class="gui_download" onclick="downloadSaveGame()"></div>
 
 		<script src='libs/nipplejs.js'></script>
-		<script src='source/Vec.js'></script>
-		<script src='source/V.js'></script>
-		<script src='source/GL.js'></script>
-		<script src='source/ED.js'></script>
-		<script src='source/Key.js'></script>
-		<script src='source/R.js'></script>
-		<script src='source/Def.js'></script>
-		<script src='source/Host.js'></script>
-		<script src='source/CDAudio.js'></script>
-		<script src='source/Chase.js'></script>
-		<script src='source/COM.js'></script>
-		<script src='source/CRC.js'></script>
-		<script src='source/M.js'></script>
-		<script src='source/Protocol.js'></script>
-		<script src='source/VID.js'></script>
-		<script src='source/Console.js'></script>
-		<script src='source/MSG.js'></script>
-		<script src='source/Sbar.js'></script>
-		<script src='source/Draw.js'></script>
-		<script src='source/NET.js'></script>
-		<script src='source/NET_Loop.js'></script>
-		<script src='source/NET_WEBS.js'></script>
-		<script src='source/W.js'></script>
-		<script src='source/PR.js'></script>
-		<script src='source/Cvar.js'></script>
-		<script src='source/Sys.js'></script>
-		<script src='source/Mod.js'></script>
-		<script src='source/S.js'></script>
-		<script src='source/Cmd.js'></script>
-		<script src='source/IN.js'></script>
-		<script src='source/Q.js'></script>
-		<script src='source/SCR.js'></script>
-		<script src='source/Game.js'></script>
-		<script src='source/PF.js'></script>
-		<script src='source/Pmove.js'></script>
-		<script src='source/CL.js'></script>
-		<script src='source/SV.js'></script>
-		<script src='source/Shack.js'></script>
 
 		<script>
-
-			var CTRLS_IDLE = 0;
-
-			function mouseChecker()
-				{
-				if(document.pointerLockElement==null)
-					{
-					goBackButtonResetIncrement();
-					}
-					else
-					{
-					goBackButtonTimerIncrement();
-					}
-				}
-
-			function goBackButtonResetIncrement()
-				{
-				try
-					{
-					CTRLS_IDLE = 0;
-					// SHOWS THE DOWNLOAD BUTTON
-					document.getElementsByClassName("gui_download")[0].style.display = "block";
-					}
-					catch(err)
-					{
-					}
-				}
-
-			function goBackButtonTimerIncrement()
-				{
-				try
-					{
-					CTRLS_IDLE = CTRLS_IDLE + 1;
-					if (CTRLS_IDLE >= 3)
-						{
-						// HIDES THE DOWNLOAD BUTTON
-						document.getElementsByClassName("gui_download")[0].style.display = "none";
-						}
-					}
-					catch(err)
-					{
-					}
-				}
-
-			function downloadSaveGame()
-				{
-				try
-					{
-					var name = COM.DefaultExtension("s0", ".sav");
-					var rawReading = COM.LoadTextFile(name);
-					if (rawReading.length>100)
-						{
-						saveString(rawReading,"s0.sav")
-						}
-					}
-					catch(err)
-					{
-					}
-				}
-
-			function saveString(text, filename)
-				{
-				save(new Blob([text], {type:"text/plain"}), filename);
-				}
-
-			function save(blob, filename)
-				{
-				var link = document.createElement("a");
-				link.style.display = "none";
-				document.body.appendChild(link);
-				link.href = URL.createObjectURL(blob);
-				link.download = filename || "data.json";
-				link.click();
-				}
-
-			setInterval(goBackButtonTimerIncrement, 1000);
-			document.addEventListener("click", mouseChecker, false);
-			document.addEventListener("dblclick", mouseChecker, false);
-			document.addEventListener("mousemove", mouseChecker, false);
-			document.addEventListener("pointerlockchange", mouseChecker, false);
-			document.addEventListener("mozpointerlockchange", mouseChecker, false);
-			document.addEventListener("webkitpointerlockchange", mouseChecker, false);
+			import('/source/engine/main-browser.mjs').then((module) => {
+				return module.default.Launch();
+			}).catch((error) => {
+				console.error(error);
+				document.getElementById('progress').style.display = 'none';
+				document.getElementById('error').textContent = error.name + ': ' + error.message;
+			});
 		</script>
 	</body>
 </html>

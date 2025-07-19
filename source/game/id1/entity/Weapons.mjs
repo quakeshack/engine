@@ -1,4 +1,4 @@
-/* global Vector */
+import Vector from '../../../shared/Vector.mjs';
 
 import { attn, channel, colors, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
 import { crandom, EntityWrapper } from '../helper/MiscHelpers.mjs';
@@ -11,32 +11,32 @@ import { PlayerEntity } from './Player.mjs';
  */
 export function Precache(engine) {
   // FIXME: move “use in c code” precache commands back to the engine
-  engine.PrecacheSound("weapons/r_exp3.wav");	// new rocket explosion
-  engine.PrecacheSound("weapons/rocket1i.wav");	// spike gun
-  engine.PrecacheSound("weapons/sgun1.wav");
-  engine.PrecacheSound("weapons/guncock.wav");	// player shotgun
-  engine.PrecacheSound("weapons/ric1.wav");	// ricochet (used in c code)
-  engine.PrecacheSound("weapons/ric2.wav");	// ricochet (used in c code)
-  engine.PrecacheSound("weapons/ric3.wav");	// ricochet (used in c code)
-  engine.PrecacheSound("weapons/spike2.wav");	// super spikes
-  engine.PrecacheSound("weapons/tink1.wav");	// spikes tink (used in c code)
-  engine.PrecacheSound("weapons/grenade.wav");	// grenade launcher
-  engine.PrecacheSound("weapons/bounce.wav");		// grenade bounce
-  engine.PrecacheSound("weapons/shotgn2.wav");	// super shotgun
+  engine.PrecacheSound('weapons/r_exp3.wav');	// new rocket explosion
+  engine.PrecacheSound('weapons/rocket1i.wav');	// spike gun
+  engine.PrecacheSound('weapons/sgun1.wav');
+  engine.PrecacheSound('weapons/guncock.wav');	// player shotgun
+  engine.PrecacheSound('weapons/ric1.wav');	// ricochet (used in c code)
+  engine.PrecacheSound('weapons/ric2.wav');	// ricochet (used in c code)
+  engine.PrecacheSound('weapons/ric3.wav');	// ricochet (used in c code)
+  engine.PrecacheSound('weapons/spike2.wav');	// super spikes
+  engine.PrecacheSound('weapons/tink1.wav');	// spikes tink (used in c code)
+  engine.PrecacheSound('weapons/grenade.wav');	// grenade launcher
+  engine.PrecacheSound('weapons/bounce.wav');		// grenade bounce
+  engine.PrecacheSound('weapons/shotgn2.wav');	// super shotgun
 };
 
 /**
  * handy map to manage weapon slots
  */
 export const weaponConfig = new Map([
-  [items.IT_AXE, { currentammo: null, weaponmodel: "progs/v_axe.mdl", priority: 0 }],
-  [items.IT_SHOTGUN, { currentammo: "ammo_shells", weaponmodel: "progs/v_shot.mdl", items: "IT_SHELLS", priority: 1 }],
-  [items.IT_SUPER_SHOTGUN, { currentammo: "ammo_shells", weaponmodel: "progs/v_shot2.mdl", items: "IT_SHELLS", priority: 2 }],
-  [items.IT_NAILGUN, { currentammo: "ammo_nails", weaponmodel: "progs/v_nail.mdl", items: "IT_NAILS", priority: 3 }],
-  [items.IT_SUPER_NAILGUN, { currentammo: "ammo_nails", weaponmodel: "progs/v_nail2.mdl", items: "IT_NAILS", priority: 4 }],
-  [items.IT_GRENADE_LAUNCHER, { currentammo: "ammo_rockets", weaponmodel: "progs/v_rock.mdl", items: "IT_ROCKETS", priority: 5 }],
-  [items.IT_ROCKET_LAUNCHER, { currentammo: "ammo_rockets", weaponmodel: "progs/v_rock2.mdl", items: "IT_ROCKETS", priority: 6 }],
-  [items.IT_LIGHTNING, { currentammo: "ammo_cells", weaponmodel: "progs/v_light.mdl", items: "IT_CELLS", priority: 7 }],
+  [items.IT_AXE, { currentammo: null, weaponmodel: 'progs/v_axe.mdl', priority: 0, weaponframe: 0 }],
+  [items.IT_SHOTGUN, { currentammo: 'ammo_shells', weaponmodel: 'progs/v_shot.mdl', items: 'IT_SHELLS', priority: 1, weaponframe: 0 }],
+  [items.IT_SUPER_SHOTGUN, { currentammo: 'ammo_shells', weaponmodel: 'progs/v_shot2.mdl', items: 'IT_SHELLS', priority: 2, weaponframe: 0 }],
+  [items.IT_NAILGUN, { currentammo: 'ammo_nails', weaponmodel: 'progs/v_nail.mdl', items: 'IT_NAILS', priority: 3, weaponframe: 0 }],
+  [items.IT_SUPER_NAILGUN, { currentammo: 'ammo_nails', weaponmodel: 'progs/v_nail2.mdl', items: 'IT_NAILS', priority: 4, weaponframe: 0 }],
+  [items.IT_GRENADE_LAUNCHER, { currentammo: 'ammo_rockets', weaponmodel: 'progs/v_rock.mdl', items: 'IT_ROCKETS', priority: 5, weaponframe: 0 }],
+  [items.IT_ROCKET_LAUNCHER, { currentammo: 'ammo_rockets', weaponmodel: 'progs/v_rock2.mdl', items: 'IT_ROCKETS', priority: 6, weaponframe: 0 }],
+  [items.IT_LIGHTNING, { currentammo: 'ammo_cells', weaponmodel: 'progs/v_light.mdl', items: 'IT_CELLS', priority: 7, weaponframe: 0 }],
 ]);
 
 /** struct holding items and ammo */
@@ -622,7 +622,7 @@ export class Grenade extends BaseProjectile {
       return;
     }
 
-    this.startSound(channel.CHAN_WEAPON, "weapons/bounce.wav");
+    this.startSound(channel.CHAN_WEAPON, 'weapons/bounce.wav');
 
     if (this.velocity.isOrigin()) {
       this.avelocity.clear();

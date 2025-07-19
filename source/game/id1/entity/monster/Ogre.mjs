@@ -1,10 +1,10 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
-import { attn, channel, solid } from "../../Defs.mjs";
-import { QuakeEntityAI } from "../../helper/AI.mjs";
-import { GibEntity } from "../Player.mjs";
-import { Grenade } from "../Weapons.mjs";
-import { WalkMonster } from "./BaseMonster.mjs";
+import { attn, channel, solid } from '../../Defs.mjs';
+import { QuakeEntityAI } from '../../helper/AI.mjs';
+import { GibEntity } from '../Player.mjs';
+import { Grenade } from '../Weapons.mjs';
+import { WalkMonster } from './BaseMonster.mjs';
 
 export const qc = `
 $cd id1/models/ogre_c
@@ -225,14 +225,14 @@ export default class OgreMonsterEntity extends WalkMonster {
   }
 
   _precache() {
-    this.engine.PrecacheModel("progs/grenade.mdl");
-    this.engine.PrecacheSound("ogre/ogdrag.wav");
-    this.engine.PrecacheSound("ogre/ogdth.wav");
-    this.engine.PrecacheSound("ogre/ogidle.wav");
-    this.engine.PrecacheSound("ogre/ogidle2.wav");
-    this.engine.PrecacheSound("ogre/ogpain1.wav");
-    this.engine.PrecacheSound("ogre/ogsawatk.wav");
-    this.engine.PrecacheSound("ogre/ogwake.wav");
+    this.engine.PrecacheModel('progs/grenade.mdl');
+    this.engine.PrecacheSound('ogre/ogdrag.wav');
+    this.engine.PrecacheSound('ogre/ogdth.wav');
+    this.engine.PrecacheSound('ogre/ogidle.wav');
+    this.engine.PrecacheSound('ogre/ogidle2.wav');
+    this.engine.PrecacheSound('ogre/ogpain1.wav');
+    this.engine.PrecacheSound('ogre/ogsawatk.wav');
+    this.engine.PrecacheSound('ogre/ogwake.wav');
   }
 
   _fireGrenade() {
@@ -313,12 +313,12 @@ export default class OgreMonsterEntity extends WalkMonster {
     this._sub.useTargets(attackerEntity);
 
     if (this.health < -80) {
-      this.startSound(channel.CHAN_VOICE, "player/udeath.wav");
+      this.startSound(channel.CHAN_VOICE, 'player/udeath.wav');
       this._gib(false);
       return;
     }
 
-    this.startSound(channel.CHAN_VOICE, "ogre/ogdth.wav");
+    this.startSound(channel.CHAN_VOICE, 'ogre/ogdth.wav');
 
     if (Math.random() < 0.5) {
       this._runState('ogre_die1');
@@ -353,12 +353,12 @@ export default class OgreMonsterEntity extends WalkMonster {
   }
 
   moveTargetReached(markerEntity) {
-    this.startSound(channel.CHAN_VOICE, "ogre/ogdrag.wav", 1.0, attn.ATTN_IDLE);
+    this.startSound(channel.CHAN_VOICE, 'ogre/ogdrag.wav', 1.0, attn.ATTN_IDLE);
     return super.moveTargetReached(markerEntity);
   }
 
   attackSound() {
-    this.startSound(channel.CHAN_WEAPON, "ogre/ogsawatk.wav");
+    this.startSound(channel.CHAN_WEAPON, 'ogre/ogsawatk.wav');
   }
 
   idleSound() {
@@ -367,9 +367,9 @@ export default class OgreMonsterEntity extends WalkMonster {
     }
 
     if (Math.random() < 0.5) {
-      this.startSound(channel.CHAN_VOICE, "ogre/ogidle.wav");
+      this.startSound(channel.CHAN_VOICE, 'ogre/ogidle.wav');
     } else {
-      this.startSound(channel.CHAN_VOICE, "ogre/ogidle2.wav");
+      this.startSound(channel.CHAN_VOICE, 'ogre/ogidle2.wav');
     }
   }
 
@@ -378,11 +378,11 @@ export default class OgreMonsterEntity extends WalkMonster {
       return;
     }
 
-    this.startSound(channel.CHAN_VOICE, "ogre/ogdrag.wav");
+    this.startSound(channel.CHAN_VOICE, 'ogre/ogdrag.wav');
   }
 
   painSound() {
-    this.startSound(channel.CHAN_VOICE, "ogre/ogpain1.wav");
+    this.startSound(channel.CHAN_VOICE, 'ogre/ogpain1.wav');
   }
 
   hasMeleeAttack() {

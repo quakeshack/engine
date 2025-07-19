@@ -1,4 +1,6 @@
-/* global Vector */
+// TODO: move to shared
+
+import Vector from '../../shared/Vector.mjs';
 
 /**
  * range values
@@ -162,6 +164,11 @@ export const items = Object.freeze({
   IT_INVULNERABILITY: 1048576,
   IT_SUIT: 2097152,
   IT_QUAD: 4194304,
+
+  IT_SHELLS: 256,
+  IT_NAILS: 512,
+  IT_ROCKETS: 1024,
+  IT_CELLS: 2048,
 
   IT_ARMOR1: 8192,
   IT_ARMOR2: 16384,

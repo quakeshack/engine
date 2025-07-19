@@ -1,9 +1,9 @@
-import { attn, channel, damage, flags, moveType, solid } from "../Defs.mjs";
-import BaseEntity from "./BaseEntity.mjs";
-import { TeleportEffectEntity } from "./Misc.mjs";
-import { PlayerEntity, TelefragTriggerEntity } from "./Player.mjs";
-import { Sub } from "./Subs.mjs";
-import { DamageHandler } from "./Weapons.mjs";
+import { attn, channel, damage, flags, moveType, solid } from '../Defs.mjs';
+import BaseEntity from './BaseEntity.mjs';
+import { TeleportEffectEntity } from './Misc.mjs';
+import { PlayerEntity, TelefragTriggerEntity } from './Player.mjs';
+import { Sub } from './Subs.mjs';
+import { DamageHandler } from './Weapons.mjs';
 
 class BaseTriggerEntity extends BaseEntity {
   /** @protected */
@@ -364,7 +364,7 @@ export class TeleportTriggerEntity extends BaseTriggerEntity {
     this.engine.SpawnEntity(TeleportEffectEntity.classname, { origin: touchedByEntity.origin });
 
     /** @type {InfoTeleportDestination} */
-    const target = this.findFirstEntityByFieldAndValue("targetname", this.target);
+    const target = this.findFirstEntityByFieldAndValue('targetname', this.target);
     console.assert(target instanceof InfoTeleportDestination, 'Target must be an InfoTeleportDestination');
 
     const { forward } = target.angles.angleVectors();
@@ -490,7 +490,7 @@ export class SetSkillTriggerEntity extends BaseTriggerEntity {
       return;
     }
 
-    this.engine.SetCvar("skill", this.message);
+    this.engine.SetCvar('skill', this.message);
   }
 
   spawn() {

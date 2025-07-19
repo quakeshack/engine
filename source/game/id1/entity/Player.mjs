@@ -1,13 +1,13 @@
-/* global Vector */
+import Vector from '../../../shared/Vector.mjs';
 
-import { attn, channel, content, damage, dead, deathType, effect, flags, hull, items, moveType, solid } from "../Defs.mjs";
-import { crandom, Flag, Serializer } from "../helper/MiscHelpers.mjs";
-import BaseEntity from "./BaseEntity.mjs";
-import { BackpackEntity } from "./Items.mjs";
-import { BubbleSpawnerEntity, InfoNotNullEntity, IntermissionCameraEntity, TeleportEffectEntity } from "./Misc.mjs";
-import { MeatSprayEntity } from "./monster/BaseMonster.mjs";
-import { Backpack, DamageHandler, PlayerWeapons, weaponConfig } from "./Weapons.mjs";
-import { CopyToBodyQue } from "./Worldspawn.mjs";
+import { attn, channel, content, damage, dead, deathType, effect, flags, hull, items, moveType, solid } from '../Defs.mjs';
+import { crandom, Flag, Serializer } from '../helper/MiscHelpers.mjs';
+import BaseEntity from './BaseEntity.mjs';
+import { BackpackEntity } from './Items.mjs';
+import { BubbleSpawnerEntity, InfoNotNullEntity, IntermissionCameraEntity, TeleportEffectEntity } from './Misc.mjs';
+import { MeatSprayEntity } from './monster/BaseMonster.mjs';
+import { Backpack, DamageHandler, PlayerWeapons, weaponConfig } from './Weapons.mjs';
+import { CopyToBodyQue } from './Worldspawn.mjs';
 
 /**
  * used to emit effects etc. to the client
@@ -209,7 +209,7 @@ export class PlayerEntity extends BaseEntity {
     this.invisible_finished = 0;
     this.invincible_time = 0;
     this.invincible_finished = 0;
-    /** @type {Map<number,number>} next invincible sound time per attacking entity */
+    /** @type {{[key: number]: number}} next invincible sound time per attacking entity */
     this.invincible_sound_time = {};
 
     // time related checks
@@ -407,14 +407,14 @@ export class PlayerEntity extends BaseEntity {
     this._defineState('player_axed3', 'axattd3', 'player_axed4', function () { this.weaponframe = 7; this._weapons.fireAxe(); });
     this._defineState('player_axed4', 'axattd4', null, function () { this.weaponframe = 8; this._attackStateDone(); });
 
-    this._defineState('player_pain1', 'pain1', 'player_pain2', function () { this.weaponframe = 0; this._painSound() });
+    this._defineState('player_pain1', 'pain1', 'player_pain2', function () { this.weaponframe = 0; this._painSound(); });
     this._defineState('player_pain2', 'pain2', 'player_pain3');
     this._defineState('player_pain3', 'pain3', 'player_pain4');
     this._defineState('player_pain4', 'pain4', 'player_pain5');
     this._defineState('player_pain5', 'pain5', 'player_pain6');
     this._defineState('player_pain6', 'pain6', null, function () { this._attackStateDone(); });
 
-    this._defineState('player_pain_axe1', 'axpain1', 'player_pain_axe2', function () { this.weaponframe = 0; this._painSound() });
+    this._defineState('player_pain_axe1', 'axpain1', 'player_pain_axe2', function () { this.weaponframe = 0; this._painSound(); });
     this._defineState('player_pain_axe2', 'axpain2', 'player_pain_axe3');
     this._defineState('player_pain_axe3', 'axpain3', 'player_pain_axe4');
     this._defineState('player_pain_axe4', 'axpain4', 'player_pain_axe5');
@@ -648,6 +648,7 @@ export class PlayerEntity extends BaseEntity {
     }
 
     if (this.health < -40.0) {
+      // eslint-disable-next-line no-use-before-define
       GibEntity.gibEntity(this, 'progs/h_player.mdl', true);
       this._playerDead();
       return;
@@ -716,7 +717,7 @@ export class PlayerEntity extends BaseEntity {
   decodeLevelParms() {
     if (this.game.serverflags) {
       // HACK: maps/start.bsp
-      if (this.game.worldspawn.model === "maps/start.bsp") {
+      if (this.game.worldspawn.model === 'maps/start.bsp') {
         this.game.SetNewParms();
       }
     }
@@ -926,7 +927,7 @@ export class PlayerEntity extends BaseEntity {
 
     if (trace.entity) {
       const tracedEntity = trace.entity;
-      this.startSound(channel.CHAN_BODY, "misc/talk.wav");
+      this.startSound(channel.CHAN_BODY, 'misc/talk.wav');
       this.centerPrint(`${tracedEntity}`);
       this.consolePrint(
         `movetype = ${Object.entries(moveType).find(([, val]) => val === tracedEntity.movetype)[0] || 'unknown'}\n` +
@@ -972,6 +973,7 @@ export class PlayerEntity extends BaseEntity {
     }
 
     this.applyBackpack({
+      weapon: 0,
       items:
         items.IT_AXE |
         items.IT_SHOTGUN |
@@ -1153,7 +1155,7 @@ export class PlayerEntity extends BaseEntity {
         break;
 
       case 11:
-        this.consolePrint("Not implemented.\n");
+        this.consolePrint('Not implemented.\n');
         break;
 
       case 12:
@@ -1178,7 +1180,7 @@ export class PlayerEntity extends BaseEntity {
 
     switch (this.weapon) {
       case items.IT_AXE: { // CR: we do not call this._weapons.fireAxe here, it will be done down the state machine
-        this.startSound(channel.CHAN_WEAPON, "weapons/ax1.wav");
+        this.startSound(channel.CHAN_WEAPON, 'weapons/ax1.wav');
         const r = Math.random();
         if (r < 0.25) {
           this._runState('player_axe1');
@@ -1289,12 +1291,12 @@ export class PlayerEntity extends BaseEntity {
     this.impulse = 0;
 
     if (!(this.items & weapon)) {
-      this.consolePrint("no weapon.\n");
+      this.consolePrint('no weapon.\n');
       return;
     }
 
     if (outOfAmmo) {
-      this.consolePrint("not enough ammo.\n");
+      this.consolePrint('not enough ammo.\n');
       return;
     }
 
@@ -1320,7 +1322,7 @@ export class PlayerEntity extends BaseEntity {
   _superDamageSound() {
     if (this.super_damage_finished > this.game.time && this.super_sound < this.game.time) {
       this.super_sound = this.game.time + 1.0;
-      this.startSound(channel.CHAN_BODY, "items/damage3.wav", 1, attn.ATTN_NORM);
+      this.startSound(channel.CHAN_BODY, 'items/damage3.wav', 1, attn.ATTN_NORM);
     }
   }
 
@@ -1332,15 +1334,15 @@ export class PlayerEntity extends BaseEntity {
     // Invisibility
     if (this.invisible_finished) {
       if (this.invisible_sound < this.game.time) {
-        this.startSound(channel.CHAN_AUTO, "items/inv3.wav", 0.5, attn.ATTN_IDLE);
+        this.startSound(channel.CHAN_AUTO, 'items/inv3.wav', 0.5, attn.ATTN_IDLE);
         this.invisible_sound = this.game.time + (Math.random() * 3 + 1);
       }
 
       if (this.invisible_finished < this.game.time + 3) {
         if (this.invisible_time === 1) {
-          this.consolePrint("Ring of Shadows magic is fading\n");
+          this.consolePrint('Ring of Shadows magic is fading\n');
           this.dispatchEvent(playerEvent.BONUS_FLASH);
-          this.startSound(channel.CHAN_AUTO, "items/inv2.wav");
+          this.startSound(channel.CHAN_AUTO, 'items/inv2.wav');
           this.invisible_time = this.game.time + 1;
         }
         if (this.invisible_time < this.game.time) {
@@ -1364,9 +1366,9 @@ export class PlayerEntity extends BaseEntity {
     if (this.invincible_finished) {
       if (this.invincible_finished < this.game.time + 3) {
         if (this.invincible_time === 1) {
-          this.consolePrint("Protection is almost burned out\n");
+          this.consolePrint('Protection is almost burned out\n');
           this.dispatchEvent(playerEvent.BONUS_FLASH);
-          this.startSound(channel.CHAN_AUTO, "items/protect2.wav");
+          this.startSound(channel.CHAN_AUTO, 'items/protect2.wav');
           this.invincible_time = this.game.time + 1;
         }
 
@@ -1390,9 +1392,9 @@ export class PlayerEntity extends BaseEntity {
     if (this.super_damage_finished) {
       if (this.super_damage_finished < this.game.time + 3) {
         if (this.super_time === 1) {
-          this.consolePrint("Quad Damage is wearing off\n");
+          this.consolePrint('Quad Damage is wearing off\n');
           this.dispatchEvent(playerEvent.BONUS_FLASH);
-          this.startSound(channel.CHAN_AUTO, "items/damage2.wav");
+          this.startSound(channel.CHAN_AUTO, 'items/damage2.wav');
           this.super_time = this.game.time + 1;
         }
         if (this.super_time < this.game.time) {
@@ -1413,9 +1415,9 @@ export class PlayerEntity extends BaseEntity {
       this.air_finished = this.game.time + 12;
       if (this.radsuit_finished < this.game.time + 3) {
         if (this.rad_time === 1) {
-          this.consolePrint("Air supply in Biosuit expiring\n");
+          this.consolePrint('Air supply in Biosuit expiring\n');
           this.dispatchEvent(playerEvent.BONUS_FLASH);
-          this.startSound(channel.CHAN_AUTO, "items/suit2.wav");
+          this.startSound(channel.CHAN_AUTO, 'items/suit2.wav');
           this.rad_time = this.game.time + 1;
         }
         if (this.rad_time < this.game.time) {
@@ -1483,7 +1485,7 @@ export class PlayerEntity extends BaseEntity {
     this.setModel('progs/player.mdl');
     this._modelIndex.player = this.modelindex;
 
-    this.setSize(...hull[0]);
+    this.setSize(hull[0][0], hull[0][1]);
 
     this.decodeLevelParms();
     this.setWeapon();
@@ -1508,6 +1510,7 @@ export class PlayerEntity extends BaseEntity {
       this.engine.SpawnEntity(TeleportEffectEntity.classname, { origin });
     }
 
+    // eslint-disable-next-line no-use-before-define
     this.engine.SpawnEntity(TelefragTriggerEntity.classname, {
       origin: this.origin,
       owner: this,
@@ -1524,7 +1527,8 @@ export class PlayerEntity extends BaseEntity {
       if (forward <= 0) {
         this.velocity.clear();
       } else {
-        this.velocity.normalize().multiply(forward);
+        this.velocity.normalize();
+        this.velocity.multiply(forward);
       }
     }
 
@@ -1564,9 +1568,9 @@ export class PlayerEntity extends BaseEntity {
     }
 
     if (this.waterlevel >= 2) {
-      if (this.watertype == content.CONTENT_WATER) {
+      if (this.watertype === content.CONTENT_WATER) {
         this.velocity[2] = 100;
-      } else if (this.watertype == content.CONTENT_SLIME) {
+      } else if (this.watertype === content.CONTENT_SLIME) {
         this.velocity[2] = 80;
       } else {
         this.velocity[2] = 50;
@@ -1576,9 +1580,9 @@ export class PlayerEntity extends BaseEntity {
       if (this.swim_flag < this.game.time) {
         this.swim_flag = this.game.time + 1.0;
         if (Math.random() < 0.5) {
-          this.startSound(channel.CHAN_BODY, "misc/water1.wav");
+          this.startSound(channel.CHAN_BODY, 'misc/water1.wav');
         } else {
-          this.startSound(channel.CHAN_BODY, "misc/water2.wav");
+          this.startSound(channel.CHAN_BODY, 'misc/water2.wav');
         }
       }
 
@@ -1600,7 +1604,7 @@ export class PlayerEntity extends BaseEntity {
 
       this.button2 = 0;
 
-      this.startSound(channel.CHAN_BODY, "player/plyrjmp8.wav");
+      this.startSound(channel.CHAN_BODY, 'player/plyrjmp8.wav');
     }
 
     this.velocity[2] += 270.0;
@@ -1620,9 +1624,9 @@ export class PlayerEntity extends BaseEntity {
 
     if (this.waterlevel !== 3) {
       if (this.air_finished < this.game.time) {
-        this.startSound(channel.CHAN_VOICE, "player/gasp2.wav");
+        this.startSound(channel.CHAN_VOICE, 'player/gasp2.wav');
       } else if (this.air_finished < this.game.time + 9.0) {
-        this.startSound(channel.CHAN_VOICE, "player/gasp1.wav");
+        this.startSound(channel.CHAN_VOICE, 'player/gasp1.wav');
       }
       this.air_finished = this.game.time + 12.0;
       this.dmg = 2;
@@ -1642,7 +1646,7 @@ export class PlayerEntity extends BaseEntity {
     if (!this.waterlevel) {
       if (this.flags & flags.FL_INWATER) {
         // play leave water sound
-        this.startSound(channel.CHAN_BODY, "misc/outwater.wav");
+        this.startSound(channel.CHAN_BODY, 'misc/outwater.wav');
         this.flags &= ~flags.FL_INWATER;
       }
       return;
@@ -1669,11 +1673,11 @@ export class PlayerEntity extends BaseEntity {
     if (!(this.flags & flags.FL_INWATER)) {
       // player enter water sound
       if (this.watertype === content.CONTENT_LAVA) {
-        this.startSound(channel.CHAN_BODY, "player/inlava.wav");
+        this.startSound(channel.CHAN_BODY, 'player/inlava.wav');
       } else if (this.watertype === content.CONTENT_WATER) {
-        this.startSound(channel.CHAN_BODY, "player/inh2o.wav");
+        this.startSound(channel.CHAN_BODY, 'player/inh2o.wav');
       } else if (this.watertype === content.CONTENT_SLIME) {
-        this.startSound(channel.CHAN_BODY, "player/slimbrn2.wav");
+        this.startSound(channel.CHAN_BODY, 'player/slimbrn2.wav');
       }
 
       this.flags |= flags.FL_INWATER;
@@ -1853,13 +1857,13 @@ export class PlayerEntity extends BaseEntity {
     // check to see if player landed and play landing sound
     if (this.jump_flag < -300 && (this.flags & flags.FL_ONGROUND) !== 0 && this.health > 0) {
       if (this.watertype === content.CONTENT_WATER) {
-        this.startSound(channel.CHAN_BODY, "player/h2ojump.wav");
+        this.startSound(channel.CHAN_BODY, 'player/h2ojump.wav');
       } else if (this.jump_flag < -650) {
         this.game.worldspawn.damage(this, 5.0); // CR: lol fixed 5 damage for falling
-        this.startSound(channel.CHAN_VOICE, "player/land2.wav");
+        this.startSound(channel.CHAN_VOICE, 'player/land2.wav');
         this.deathtype = deathType.FALLING;
       } else {
-        this.startSound(channel.CHAN_VOICE, "player/land.wav");
+        this.startSound(channel.CHAN_VOICE, 'player/land.wav');
       }
 
       this.jump_flag = 0;
@@ -2149,7 +2153,7 @@ export class GibEntity extends BaseEntity {
     GibEntity.throwGibs(entity, damagePoints);
 
     if (playSound) {
-      entity.startSound(channel.CHAN_VOICE, Math.random() < 0.5 ? "player/gib.wav" : "player/udeath.wav", 1.0, attn.ATTN_NONE);
+      entity.startSound(channel.CHAN_VOICE, Math.random() < 0.5 ? 'player/gib.wav' : 'player/udeath.wav', 1.0, attn.ATTN_NONE);
     }
   }
 };

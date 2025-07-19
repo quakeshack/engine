@@ -1,9 +1,9 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
-import { attn, channel, flags, solid } from "../../Defs.mjs";
-import { QuakeEntityAI } from "../../helper/AI.mjs";
-import { DamageInflictor, Laser } from "../Weapons.mjs";
-import { WalkMonster } from "./BaseMonster.mjs";
+import { attn, channel, flags, solid } from '../../Defs.mjs';
+import { QuakeEntityAI } from '../../helper/AI.mjs';
+import { DamageInflictor, Laser } from '../Weapons.mjs';
+import { WalkMonster } from './BaseMonster.mjs';
 
 export const qc = {
   solider:`
@@ -90,12 +90,12 @@ export class ArmySoldierMonster extends WalkMonster {
   _precache() {
     super._precache();
 
-    this.engine.PrecacheSound("soldier/death1.wav");
-    this.engine.PrecacheSound("soldier/idle.wav");
-    this.engine.PrecacheSound("soldier/pain1.wav");
-    this.engine.PrecacheSound("soldier/pain2.wav");
-    this.engine.PrecacheSound("soldier/sattck1.wav");
-    this.engine.PrecacheSound("soldier/sight1.wav");
+    this.engine.PrecacheSound('soldier/death1.wav');
+    this.engine.PrecacheSound('soldier/idle.wav');
+    this.engine.PrecacheSound('soldier/pain1.wav');
+    this.engine.PrecacheSound('soldier/pain2.wav');
+    this.engine.PrecacheSound('soldier/sattck1.wav');
+    this.engine.PrecacheSound('soldier/sight1.wav');
   }
 
   _newEntityAI() {
@@ -305,14 +305,14 @@ export class ArmySoldierMonster extends WalkMonster {
 
   painSound() {
     if (Math.random() < 0.2) {
-      this.startSound(channel.CHAN_VOICE, "soldier/pain1.wav");
+      this.startSound(channel.CHAN_VOICE, 'soldier/pain1.wav');
     } else {
-      this.startSound(channel.CHAN_VOICE, "soldier/pain2.wav");
+      this.startSound(channel.CHAN_VOICE, 'soldier/pain2.wav');
     }
   }
 
   sightSound() {
-    this.startSound(channel.CHAN_VOICE, "soldier/sight1.wav");
+    this.startSound(channel.CHAN_VOICE, 'soldier/sight1.wav');
   }
 
   idleSound() {
@@ -355,17 +355,17 @@ export class ArmyEnforcerMonster extends WalkMonster {
   _precache() {
     super._precache();
 
-    this.engine.PrecacheModel("progs/laser.mdl");
-    this.engine.PrecacheSound("enforcer/death1.wav");
-    this.engine.PrecacheSound("enforcer/enfire.wav");
-    this.engine.PrecacheSound("enforcer/enfstop.wav");
-    this.engine.PrecacheSound("enforcer/idle1.wav");
-    this.engine.PrecacheSound("enforcer/pain1.wav");
-    this.engine.PrecacheSound("enforcer/pain2.wav");
-    this.engine.PrecacheSound("enforcer/sight1.wav");
-    this.engine.PrecacheSound("enforcer/sight2.wav");
-    this.engine.PrecacheSound("enforcer/sight3.wav");
-    this.engine.PrecacheSound("enforcer/sight4.wav");
+    this.engine.PrecacheModel('progs/laser.mdl');
+    this.engine.PrecacheSound('enforcer/death1.wav');
+    this.engine.PrecacheSound('enforcer/enfire.wav');
+    this.engine.PrecacheSound('enforcer/enfstop.wav');
+    this.engine.PrecacheSound('enforcer/idle1.wav');
+    this.engine.PrecacheSound('enforcer/pain1.wav');
+    this.engine.PrecacheSound('enforcer/pain2.wav');
+    this.engine.PrecacheSound('enforcer/sight1.wav');
+    this.engine.PrecacheSound('enforcer/sight2.wav');
+    this.engine.PrecacheSound('enforcer/sight3.wav');
+    this.engine.PrecacheSound('enforcer/sight4.wav');
   }
 
   _initStates() {
@@ -568,32 +568,32 @@ export class ArmyEnforcerMonster extends WalkMonster {
 
   idleSound() {
     if (Math.random() < 0.2) {
-      this.startSound(channel.CHAN_VOICE, "enforcer/idle1.wav");
+      this.startSound(channel.CHAN_VOICE, 'enforcer/idle1.wav');
     }
   }
 
   painSound() {
     if (Math.random() < 0.5) {
-      this.startSound(channel.CHAN_VOICE, "enforcer/pain1.wav");
+      this.startSound(channel.CHAN_VOICE, 'enforcer/pain1.wav');
     } else {
-      this.startSound(channel.CHAN_VOICE, "enforcer/pain2.wav");
+      this.startSound(channel.CHAN_VOICE, 'enforcer/pain2.wav');
     }
   }
 
   deathSound() {
-    this.startSound(channel.CHAN_VOICE, "enforcer/death1.wav");
+    this.startSound(channel.CHAN_VOICE, 'enforcer/death1.wav');
   }
 
   sightSound() {
     const r = Math.random();
     if (r < 0.25) {
-      this.startSound(channel.CHAN_VOICE, "enforcer/sight1.wav");
+      this.startSound(channel.CHAN_VOICE, 'enforcer/sight1.wav');
     } else if (r < 0.5) {
-      this.startSound(channel.CHAN_VOICE, "enforcer/sight2.wav");
+      this.startSound(channel.CHAN_VOICE, 'enforcer/sight2.wav');
     } else if (r < 0.75) {
-      this.startSound(channel.CHAN_VOICE, "enforcer/sight3.wav");
+      this.startSound(channel.CHAN_VOICE, 'enforcer/sight3.wav');
     } else {
-      this.startSound(channel.CHAN_VOICE, "enforcer/sight4.wav");
+      this.startSound(channel.CHAN_VOICE, 'enforcer/sight4.wav');
     }
   }
 

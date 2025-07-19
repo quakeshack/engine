@@ -1,12 +1,12 @@
-/* global Vector */
+import Vector from '../../../../shared/Vector.mjs';
 
-import { damage, moveType, solid, range, colors } from "../../Defs.mjs";
-import { EntityAI, ATTACK_STATE } from "../../helper/AI.mjs";
-import BaseEntity from "../BaseEntity.mjs";
-import { BackpackEntity } from "../Items.mjs";
-import { GibEntity } from "../Player.mjs";
-import { Sub } from "../Subs.mjs";
-import { DamageHandler } from "../Weapons.mjs";
+import { damage, moveType, solid, range, colors } from '../../Defs.mjs';
+import { EntityAI, ATTACK_STATE } from '../../helper/AI.mjs';
+import BaseEntity from '../BaseEntity.mjs';
+import { BackpackEntity } from '../Items.mjs';
+import { GibEntity } from '../Player.mjs';
+import { Sub } from '../Subs.mjs';
+import { DamageHandler } from '../Weapons.mjs';
 
 export default class BaseMonster extends BaseEntity {
 
@@ -60,10 +60,10 @@ export default class BaseMonster extends BaseEntity {
     this.engine.PrecacheModel(this.constructor._modelHead);
 
     // gib assets
-    this.engine.PrecacheModel("progs/gib1.mdl");
-    this.engine.PrecacheModel("progs/gib2.mdl");
-    this.engine.PrecacheModel("progs/gib3.mdl");
-    this.engine.PrecacheSound("player/udeath.wav");
+    this.engine.PrecacheModel('progs/gib1.mdl');
+    this.engine.PrecacheModel('progs/gib2.mdl');
+    this.engine.PrecacheModel('progs/gib3.mdl');
+    this.engine.PrecacheSound('player/udeath.wav');
   }
 
   /**
@@ -294,7 +294,7 @@ export default class BaseMonster extends BaseEntity {
       return false;
     }
 
-    this.goalentity = this.movetarget = this.findFirstEntityByFieldAndValue("targetname", markerEntity.target);
+    this.goalentity = this.movetarget = this.findFirstEntityByFieldAndValue('targetname', markerEntity.target);
 
     if (!this.goalentity) {
       this.engine.ConsoleWarning(`${markerEntity} got invalid target ("${markerEntity.target}")\n`);

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "es2024",
+    "checkJs": true,
+    "baseUrl": ".",
+  },
+  "exclude": ["node_modules"],
+  "include": [
+    "./source/engine/**/*.mjs",
+    "./source/engine/**/*.d.ts",
+    "./source/game/**/*.mjs",
+    "./source/shared/**/*.mjs"
+  ]
+}
