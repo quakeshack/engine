@@ -50,7 +50,6 @@ export default class EngineLauncher {
     registry.R = R;
     registry.M = M;
     registry.SCR = SCR;
-    registry.CDAudio = CDAudio;
     registry.Sbar = Sbar;
     registry.IN = IN;
 

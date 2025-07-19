@@ -287,7 +287,6 @@ SCR.ScreenShot_f = function() {
 };
 
 SCR.BeginLoadingPlaque = function() {
-  Draw.BeginDisc();
   S.StopAllSounds();
   if ((CL.cls.state !== CL.active.connected) || (CL.cls.signon !== 4)) {
     return;
@@ -328,10 +327,7 @@ SCR.UpdateScreen = function() {
   SCR.SetUpToDrawConsole();
 
   if (SCR._requestedAnimationFrames > 0) {
-    if (SCR._requestedAnimationFrames > 1) {
-      console.warn('SCR.UpdateScreen: too many rendering requests active');
-    }
-    // too many rendering requests active
+    console.assert(SCR._requestedAnimationFrames === 1, 'SCR.UpdateScreen: too many rendering requests active');
     return;
   }
 

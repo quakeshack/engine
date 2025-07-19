@@ -11,15 +11,15 @@ import { ServerEngineAPI } from './GameAPIs.mjs';
 import Chase from '../client/Chase.mjs';
 import VID from '../client/VID.mjs';
 import { SysError } from './Errors.mjs';
+import CDAudio from '../client/CDAudio.mjs';
 
 const Host = {};
 
 export default Host;
 
-let { CDAudio, CL, COM, Con, Draw, IN, Key, M, Mod, NET, PR, R, S, SCR, SV, Sbar, Sys, V } = registry;
+let { CL, COM, Con, Draw, IN, Key, M, Mod, NET, PR, R, S, SCR, SV, Sbar, Sys, V } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  CDAudio = registry.CDAudio;
   CL = registry.CL;
   COM = registry.COM;
   Con = registry.Con;
@@ -405,6 +405,7 @@ Host._Frame = function() {
 
 let inHandleCrash = false;
 
+// TODO: Sys.Init can handle a crash now since we are main looping without setInterval
 Host.HandleCrash = function(e) {
   if (inHandleCrash) {
     console.error(e);
@@ -487,7 +488,7 @@ Host.Init = async function() {
     await M.Init();
     await CL.Init();
     SCR.Init();
-    CDAudio.Init();
+    await CDAudio.Init();
     Sbar.Init();
     IN.Init();
   } else {
@@ -510,7 +511,7 @@ Host.Shutdown = function() {
   Host.WriteConfiguration();
   if (!registry.isDedicatedServer) {
     S.Shutdown();
-    CDAudio.Stop();
+    CDAudio.Shutdown();
   }
   NET.Shutdown();
   if (!registry.isDedicatedServer) {

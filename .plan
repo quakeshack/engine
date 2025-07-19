@@ -330,6 +330,9 @@ class MainMenu extends BaseMenu {
 
 * started unentangling components
 * improved error handling (no more Sys.Error)
+* there’s a bug in playing back demos, sometimes it won’t clear the client state after having finished
+  * seems to be more convoluted with the way the client state is handled
+* replaced frame interval with an async main loop, makes it easier to handle fatal errors
 
 ### 2025-07-15
 

@@ -1,3 +1,4 @@
+import Q from '../common/Q.mjs';
 import { eventBus, registry } from '../registry.mjs';
 
 let { COM, Host, Key } = registry;
@@ -180,7 +181,7 @@ const eventHandlers = {
 
 export default class Sys {
   static #oldtime = 0;
-  static #frame = null;
+  static #isRunning = false;
 
   static async Init() {
     // @ts-ignore
@@ -232,13 +233,19 @@ export default class Sys {
       window.addEventListener(event.substring(2), eventHandlers[event]);
     }
 
-    Sys.#frame = setInterval(Host.Frame, 1000.0 / 60.0);
+    Sys.#isRunning = true;
+
+    while (Sys.#isRunning) {
+      const startTime = Date.now();
+
+      Host.Frame();
+
+      await Q.sleep(Math.max(0, 1000.0 / 60.0 - (Date.now() - startTime)));
+    }
   }
 
   static Quit() {
-    if (Sys.#frame !== null) {
-      clearInterval(Sys.#frame);
-    }
+    Sys.#isRunning = false;
 
     for (const event of Object.keys(eventHandlers)) {
       window.removeEventListener(event.substring(2), eventHandlers[event]);

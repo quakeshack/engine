@@ -14,6 +14,14 @@ The engine has an event bus.
 | com.fs.being | 1. filename | Started working on given filename. |
 | com.fs.end | 1. filename | Finished working on given filename. |
 
+### Client
+
+| Event | Arguments | Description |
+| - | - | - |
+| client.paused | | Game has been paused. |
+| client.unpaused | | Game has been unpaused. |
+| client.cdtrack | 1. track number | CD track for background music requested. |
+
 ### Console
 
 | Event | Arguments | Description |

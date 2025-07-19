@@ -104,8 +104,7 @@ CL.GetMessage = function() { // private
     if (NET.message.cursize > 8000) {
       throw new Error('Demo message > MAX_MSGLEN');
     }
-    CL.state.mviewangles[1] = CL.state.mviewangles[0];
-    CL.state.mviewangles[0] = [view.getFloat32(CL.cls.demoofs + 4, true), view.getFloat32(CL.cls.demoofs + 8, true), view.getFloat32(CL.cls.demoofs + 12, true)];
+    CL.state.viewangles = new Vector(view.getFloat32(CL.cls.demoofs + 4, true), view.getFloat32(CL.cls.demoofs + 8, true), view.getFloat32(CL.cls.demoofs + 12, true));
     CL.cls.demoofs += 16;
     if ((CL.cls.demoofs + NET.message.cursize) > CL.cls.demosize) {
       CL.StopPlayback();
@@ -1861,9 +1860,9 @@ CL.ParseServerMessage = function() { // private
       case Protocol.svc.setpause:
         CL.state.paused = MSG.ReadByte() !== 0;
         if (CL.state.paused === true) {
-          CDAudio.Pause();
+          eventBus.publish('client.paused');
         } else {
-          CDAudio.Resume();
+          eventBus.publish('client.unpaused');
         }
         continue;
       case Protocol.svc.signonnum:
@@ -1892,9 +1891,9 @@ CL.ParseServerMessage = function() { // private
         CL.state.cdtrack = MSG.ReadByte();
         MSG.ReadByte();
         if (((CL.cls.demoplayback === true) || (CL.cls.demorecording === true)) && (CL.cls.forcetrack !== -1)) {
-          CDAudio.Play(CL.cls.forcetrack, true);
+          eventBus.publish('client.cdtrack', CL.cls.forcetrack);
         } else {
-          CDAudio.Play(CL.state.cdtrack, true);
+          eventBus.publish('client.cdtrack', CL.state.cdtrack);
         }
         continue;
       case Protocol.svc.intermission: // TODO: Client

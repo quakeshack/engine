@@ -253,20 +253,40 @@ Draw.BlackScreen = function() {
   GL.StreamDrawColoredQuad(0, 0, VID.width, VID.height, 0, 0, 0, 255);
 };
 
+let loadingCounter = 0;
+
 Draw.BeginDisc = function() {
+  loadingCounter++;
+
   if (Draw._loadingElem === null) {
     return;
   }
-  Draw._loadingElem.style.left = ((VID.width - Draw._loading.width)) + 'px';
-  Draw._loadingElem.style.top = ((VID.height - Draw._loading.height)) + 'px';
+
+  Draw.UpdateDiscPosition();
   Draw._loadingElem.style.display = 'inline-block';
 };
 
 Draw.EndDisc = function() {
-  if (Draw._loadingElem !== null) {
-    Draw._loadingElem.style.display = 'none';
+  if (--loadingCounter > 0) {
+    return;
   }
+  if (Draw._loadingElem === null) {
+    return;
+  }
+
+  Draw._loadingElem.style.display = 'none';
 };
+
+Draw.UpdateDiscPosition = function() {
+  if (Draw._loadingElem === null) {
+    return;
+  }
+
+  Draw._loadingElem.style.left = ((VID.width - Draw._loading.width)) + 'px';
+  Draw._loadingElem.style.top = ((VID.height - Draw._loading.height)) + 'px';
+};
+
+eventBus.subscribe('vid.resize', () => Draw.UpdateDiscPosition());
 
 Draw.PicToDataURL = function(pic) {
   const canvas = document.createElement('canvas');

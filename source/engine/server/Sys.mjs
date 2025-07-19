@@ -11,6 +11,7 @@ import { registry, eventBus } from '../registry.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { REPLServer } from 'node:repl';
 import Cmd from '../common/Cmd.mjs';
+import Q from '../common/Q.mjs';
 
 let { COM, Host, NET } = registry;
 
@@ -30,7 +31,7 @@ eventBus.subscribe('host.crash', (e) => {
  */
 export default class Sys {
   static #oldtime = 0;
-  static #frame = null;
+  static #isRunning = false;
 
   /** @type {REPLServer} */
   static #repl = null;
@@ -61,9 +62,8 @@ export default class Sys {
         prompt: '] ',
         eval(command, context, filename, callback) {
           this.clearBufferedCommand();
-          Cmd.ExecuteString(command);
-          this.displayPrompt();
-          callback();
+          Cmd.text += command;
+          setTimeout(() => callback(null), 20); // we have to wait at least one frame before expecting a result
         },
         completer(line) {
           const completions = [
@@ -79,17 +79,29 @@ export default class Sys {
       Sys.#repl.on('exit', () => Sys.Quit());
     }
 
-    // Set up a frame interval for the main loop
-    Sys.#frame = setInterval(Host.Frame, 1000.0 / 60.0);
+    Sys.#isRunning = true;
+
+    // Main loop
+    while (Sys.#isRunning) {
+      const startTime = Date.now();
+
+      Host.Frame();
+
+      const dtime = Date.now() - startTime;
+
+      if ((Date.now() - startTime) > 100) {
+        Sys.Print(`Host.Frame took too long: ${dtime}ms\n`);
+      }
+
+      await Q.sleep(Math.max(0, 1000.0 / 60.0 - dtime));
+    }
   }
 
   /**
    * Handles quitting the system gracefully.
    */
   static Quit() {
-    if (Sys.#frame !== null) {
-      clearInterval(Sys.#frame);
-    }
+    Sys.#isRunning = false;
 
     Host.Shutdown();
     Sys.Print('Sys.Quit: exitting process\n');
