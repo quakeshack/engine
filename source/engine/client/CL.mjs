@@ -522,8 +522,6 @@ CL.InitInput = function() { // private
 
 // main
 
-CL.gameAPI = null;
-
 CL.cls = {
   signon: 0,
   state: 0,
@@ -790,6 +788,10 @@ CL.Draw = function() { // public, called by SCR.js // FIXME: maybe put that into
     const p = CL.cls.connecting.percentage;
     Draw.String(x0, y0 + 48, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(' ')}%`);
   }
+
+  if (CL.state.gameAPI) { // TODO: move somewhere else
+    CL.state.gameAPI.draw();
+  }
 };
 
 CL.ClearState = function() { // private
@@ -800,8 +802,6 @@ CL.ClearState = function() { // private
   }
 
   CL.SetConnectingStep(null, null);
-
-  CL.gameAPI = null;
 
   /** state across a map / connection */
   CL.state = {
@@ -864,6 +864,7 @@ CL.ClearState = function() { // private
     get playerentity() {
       return CL.entities[CL.state.viewentity];
     },
+    gameAPI: null,
   };
 
   CL.cls.message.clear();
@@ -905,6 +906,9 @@ CL.ResetCheatCvars = function() { // private
 CL.Disconnect = function() { // public, by Host.js
   CL.SetConnectingStep(null, null);
   S.StopAllSounds();
+  if (CL.state.gameAPI) {
+    CL.state.gameAPI.shutdown();
+  }
   if (CL.cls.demoplayback === true) {
     CL.StopPlayback();
   } else if (CL.cls.state === CL.active.connecting) {
@@ -1428,6 +1432,10 @@ CL.ParseServerData = function() { // private
     CL.SetConnectingStep(66, 'Preparing map');
     R.NewMap();
     Host.noclip_anglehack = false;
+    if (PR.QuakeJS?.ClientGameAPI) {
+      CL.state.gameAPI = new PR.QuakeJS.ClientGameAPI(ClientEngineAPI);
+      CL.state.gameAPI.init();
+    }
   });
 };
 

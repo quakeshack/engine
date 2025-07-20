@@ -213,9 +213,9 @@ SCR.Init = async function() {
   Cmd.AddCommand('screenshot', SCR.ScreenShot_f);
   Cmd.AddCommand('sizeup', SCR.SizeUp_f);
   Cmd.AddCommand('sizedown', SCR.SizeDown_f);
-  SCR.net = Draw.PicFromWad('NET');
-  SCR.turtle = Draw.PicFromWad('TURTLE');
-  SCR.pause = await Draw.CachePic('pause');
+  SCR.net = Draw.LoadPicFromWad('NET');
+  SCR.turtle = Draw.LoadPicFromWad('TURTLE');
+  SCR.pause = await Draw.LoadPicFromFile('gfx/pause.png');
 };
 
 SCR.count = 0;

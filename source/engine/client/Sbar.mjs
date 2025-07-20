@@ -32,151 +32,151 @@ Sbar.Init = async function() {
 
   Sbar.nums = [[], []];
   for (i = 0; i < 10; ++i) {
-    Sbar.nums[0][i] = Draw.PicFromWad('NUM_' + i);
-    Sbar.nums[1][i] = Draw.PicFromWad('ANUM_' + i);
+    Sbar.nums[0][i] = Draw.LoadPicFromWad('NUM_' + i);
+    Sbar.nums[1][i] = Draw.LoadPicFromWad('ANUM_' + i);
   }
-  Sbar.nums[0][10] = Draw.PicFromWad('NUM_MINUS');
-  Sbar.nums[1][10] = Draw.PicFromWad('ANUM_MINUS');
-  Sbar.colon = Draw.PicFromWad('NUM_COLON');
-  Sbar.slash = Draw.PicFromWad('NUM_SLASH');
+  Sbar.nums[0][10] = Draw.LoadPicFromWad('NUM_MINUS');
+  Sbar.nums[1][10] = Draw.LoadPicFromWad('ANUM_MINUS');
+  Sbar.colon = Draw.LoadPicFromWad('NUM_COLON');
+  Sbar.slash = Draw.LoadPicFromWad('NUM_SLASH');
 
   Sbar.weapons = [
     [
-      Draw.PicFromWad('INV_SHOTGUN'),
-      Draw.PicFromWad('INV_SSHOTGUN'),
-      Draw.PicFromWad('INV_NAILGUN'),
-      Draw.PicFromWad('INV_SNAILGUN'),
-      Draw.PicFromWad('INV_RLAUNCH'),
-      Draw.PicFromWad('INV_SRLAUNCH'),
-      Draw.PicFromWad('INV_LIGHTNG'),
+      Draw.LoadPicFromWad('INV_SHOTGUN'),
+      Draw.LoadPicFromWad('INV_SSHOTGUN'),
+      Draw.LoadPicFromWad('INV_NAILGUN'),
+      Draw.LoadPicFromWad('INV_SNAILGUN'),
+      Draw.LoadPicFromWad('INV_RLAUNCH'),
+      Draw.LoadPicFromWad('INV_SRLAUNCH'),
+      Draw.LoadPicFromWad('INV_LIGHTNG'),
     ],
     [
-      Draw.PicFromWad('INV2_SHOTGUN'),
-      Draw.PicFromWad('INV2_SSHOTGUN'),
-      Draw.PicFromWad('INV2_NAILGUN'),
-      Draw.PicFromWad('INV2_SNAILGUN'),
-      Draw.PicFromWad('INV2_RLAUNCH'),
-      Draw.PicFromWad('INV2_SRLAUNCH'),
-      Draw.PicFromWad('INV2_LIGHTNG'),
+      Draw.LoadPicFromWad('INV2_SHOTGUN'),
+      Draw.LoadPicFromWad('INV2_SSHOTGUN'),
+      Draw.LoadPicFromWad('INV2_NAILGUN'),
+      Draw.LoadPicFromWad('INV2_SNAILGUN'),
+      Draw.LoadPicFromWad('INV2_RLAUNCH'),
+      Draw.LoadPicFromWad('INV2_SRLAUNCH'),
+      Draw.LoadPicFromWad('INV2_LIGHTNG'),
     ],
   ];
   for (i = 0; i <= 4; ++i) {
     Sbar.weapons[2 + i] = [
-      Draw.PicFromWad('INVA' + (i + 1) + '_SHOTGUN'),
-      Draw.PicFromWad('INVA' + (i + 1) + '_SSHOTGUN'),
-      Draw.PicFromWad('INVA' + (i + 1) + '_NAILGUN'),
-      Draw.PicFromWad('INVA' + (i + 1) + '_SNAILGUN'),
-      Draw.PicFromWad('INVA' + (i + 1) + '_RLAUNCH'),
-      Draw.PicFromWad('INVA' + (i + 1) + '_SRLAUNCH'),
-      Draw.PicFromWad('INVA' + (i + 1) + '_LIGHTNG'),
+      Draw.LoadPicFromWad('INVA' + (i + 1) + '_SHOTGUN'),
+      Draw.LoadPicFromWad('INVA' + (i + 1) + '_SSHOTGUN'),
+      Draw.LoadPicFromWad('INVA' + (i + 1) + '_NAILGUN'),
+      Draw.LoadPicFromWad('INVA' + (i + 1) + '_SNAILGUN'),
+      Draw.LoadPicFromWad('INVA' + (i + 1) + '_RLAUNCH'),
+      Draw.LoadPicFromWad('INVA' + (i + 1) + '_SRLAUNCH'),
+      Draw.LoadPicFromWad('INVA' + (i + 1) + '_LIGHTNG'),
     ];
   }
 
   Sbar.ammo = [
-    Draw.PicFromWad('SB_SHELLS'),
-    Draw.PicFromWad('SB_NAILS'),
-    Draw.PicFromWad('SB_ROCKET'),
-    Draw.PicFromWad('SB_CELLS'),
+    Draw.LoadPicFromWad('SB_SHELLS'),
+    Draw.LoadPicFromWad('SB_NAILS'),
+    Draw.LoadPicFromWad('SB_ROCKET'),
+    Draw.LoadPicFromWad('SB_CELLS'),
   ];
 
   Sbar.armor = [
-    Draw.PicFromWad('SB_ARMOR1'),
-    Draw.PicFromWad('SB_ARMOR2'),
-    Draw.PicFromWad('SB_ARMOR3'),
+    Draw.LoadPicFromWad('SB_ARMOR1'),
+    Draw.LoadPicFromWad('SB_ARMOR2'),
+    Draw.LoadPicFromWad('SB_ARMOR3'),
   ];
 
   Sbar.items = [
-    Draw.PicFromWad('SB_KEY1'),
-    Draw.PicFromWad('SB_KEY2'),
-    Draw.PicFromWad('SB_INVIS'),
-    Draw.PicFromWad('SB_INVULN'),
-    Draw.PicFromWad('SB_SUIT'),
-    Draw.PicFromWad('SB_QUAD'),
+    Draw.LoadPicFromWad('SB_KEY1'),
+    Draw.LoadPicFromWad('SB_KEY2'),
+    Draw.LoadPicFromWad('SB_INVIS'),
+    Draw.LoadPicFromWad('SB_INVULN'),
+    Draw.LoadPicFromWad('SB_SUIT'),
+    Draw.LoadPicFromWad('SB_QUAD'),
   ];
 
   Sbar.sigil = [
-    Draw.PicFromWad('SB_SIGIL1'),
-    Draw.PicFromWad('SB_SIGIL2'),
-    Draw.PicFromWad('SB_SIGIL3'),
-    Draw.PicFromWad('SB_SIGIL4'),
+    Draw.LoadPicFromWad('SB_SIGIL1'),
+    Draw.LoadPicFromWad('SB_SIGIL2'),
+    Draw.LoadPicFromWad('SB_SIGIL3'),
+    Draw.LoadPicFromWad('SB_SIGIL4'),
   ];
 
   Sbar.faces = [];
   for (i = 0; i <= 4; ++i) {
     Sbar.faces[i] = [
-      Draw.PicFromWad('FACE' + (5 - i)),
-      Draw.PicFromWad('FACE_P' + (5 - i)),
+      Draw.LoadPicFromWad('FACE' + (5 - i)),
+      Draw.LoadPicFromWad('FACE_P' + (5 - i)),
     ];
   }
-  Sbar.face_invis = Draw.PicFromWad('FACE_INVIS');
-  Sbar.face_invuln = Draw.PicFromWad('FACE_INVUL2');
-  Sbar.face_invis_invuln = Draw.PicFromWad('FACE_INV2');
-  Sbar.face_quad = Draw.PicFromWad('FACE_QUAD');
+  Sbar.face_invis = Draw.LoadPicFromWad('FACE_INVIS');
+  Sbar.face_invuln = Draw.LoadPicFromWad('FACE_INVUL2');
+  Sbar.face_invis_invuln = Draw.LoadPicFromWad('FACE_INV2');
+  Sbar.face_quad = Draw.LoadPicFromWad('FACE_QUAD');
 
   Cmd.AddCommand('+showscores', Sbar.ShowScores);
   Cmd.AddCommand('-showscores', Sbar.DontShowScores);
 
-  Sbar.sbar = Draw.PicFromWad('SBAR');
-  Sbar.ibar = Draw.PicFromWad('IBAR');
-  Sbar.scorebar = Draw.PicFromWad('SCOREBAR');
+  Sbar.sbar = Draw.LoadPicFromWad('SBAR');
+  Sbar.ibar = Draw.LoadPicFromWad('IBAR');
+  Sbar.scorebar = Draw.LoadPicFromWad('SCOREBAR');
 
-  Sbar.ranking = await Draw.CachePic('ranking');
-  Sbar.complete = await Draw.CachePic('complete');
-  Sbar.inter = await Draw.CachePic('inter');
-  Sbar.finale = await Draw.CachePic('finale');
+  Sbar.ranking = await Draw.LoadPicFromLump('ranking');
+  Sbar.complete = await Draw.LoadPicFromLump('complete');
+  Sbar.inter = await Draw.LoadPicFromLump('inter');
+  Sbar.finale = await Draw.LoadPicFromLump('finale');
 
-  Sbar.disc = Draw.PicFromWad('DISC');
+  Sbar.disc = Draw.LoadPicFromWad('DISC');
 
   if (COM.hipnotic === true) {
     Sbar.h_weapons = [[
-      Draw.PicFromWad('INV_LASER'),
-      Draw.PicFromWad('INV_MJOLNIR'),
-      Draw.PicFromWad('INV_GREN_PROX'),
-      Draw.PicFromWad('INV_PROX_GREN'),
-      Draw.PicFromWad('INV_PROX'),
+      Draw.LoadPicFromWad('INV_LASER'),
+      Draw.LoadPicFromWad('INV_MJOLNIR'),
+      Draw.LoadPicFromWad('INV_GREN_PROX'),
+      Draw.LoadPicFromWad('INV_PROX_GREN'),
+      Draw.LoadPicFromWad('INV_PROX'),
     ],
     [
-      Draw.PicFromWad('INV2_LASER'),
-      Draw.PicFromWad('INV2_MJOLNIR'),
-      Draw.PicFromWad('INV2_GREN_PROX'),
-      Draw.PicFromWad('INV2_PROX_GREN'),
-      Draw.PicFromWad('INV2_PROX'),
+      Draw.LoadPicFromWad('INV2_LASER'),
+      Draw.LoadPicFromWad('INV2_MJOLNIR'),
+      Draw.LoadPicFromWad('INV2_GREN_PROX'),
+      Draw.LoadPicFromWad('INV2_PROX_GREN'),
+      Draw.LoadPicFromWad('INV2_PROX'),
     ]];
     for (i = 0; i <= 4; ++i) {
       Sbar.h_weapons[2 + i] = [
-        Draw.PicFromWad('INVA' + (i + 1) + '_LASER'),
-        Draw.PicFromWad('INVA' + (i + 1) + '_MJOLNIR'),
-        Draw.PicFromWad('INVA' + (i + 1) + '_GREN_PROX'),
-        Draw.PicFromWad('INVA' + (i + 1) + '_PROX_GREN'),
-        Draw.PicFromWad('INVA' + (i + 1) + '_PROX'),
+        Draw.LoadPicFromWad('INVA' + (i + 1) + '_LASER'),
+        Draw.LoadPicFromWad('INVA' + (i + 1) + '_MJOLNIR'),
+        Draw.LoadPicFromWad('INVA' + (i + 1) + '_GREN_PROX'),
+        Draw.LoadPicFromWad('INVA' + (i + 1) + '_PROX_GREN'),
+        Draw.LoadPicFromWad('INVA' + (i + 1) + '_PROX'),
       ];
     }
     Sbar.hipweapons = [Def.hit.laser_cannon_bit, Def.hit.mjolnir_bit, 4, Def.hit.proximity_gun_bit];
     Sbar.h_items = [
-      Draw.PicFromWad('SB_WSUIT'),
-      Draw.PicFromWad('SB_ESHLD'),
+      Draw.LoadPicFromWad('SB_WSUIT'),
+      Draw.LoadPicFromWad('SB_ESHLD'),
     ];
   } else if (COM.rogue === true) {
     Sbar.r_invbar = [
-      Draw.PicFromWad('R_INVBAR1'),
-      Draw.PicFromWad('R_INVBAR2'),
+      Draw.LoadPicFromWad('R_INVBAR1'),
+      Draw.LoadPicFromWad('R_INVBAR2'),
     ];
     Sbar.r_weapons = [
-      Draw.PicFromWad('R_LAVA'),
-      Draw.PicFromWad('R_SUPERLAVA'),
-      Draw.PicFromWad('R_GREN'),
-      Draw.PicFromWad('R_MULTIROCK'),
-      Draw.PicFromWad('R_PLASMA'),
+      Draw.LoadPicFromWad('R_LAVA'),
+      Draw.LoadPicFromWad('R_SUPERLAVA'),
+      Draw.LoadPicFromWad('R_GREN'),
+      Draw.LoadPicFromWad('R_MULTIROCK'),
+      Draw.LoadPicFromWad('R_PLASMA'),
     ];
     Sbar.r_items = [
-      Draw.PicFromWad('R_SHIELD1'),
-      Draw.PicFromWad('R_AGRAV1'),
+      Draw.LoadPicFromWad('R_SHIELD1'),
+      Draw.LoadPicFromWad('R_AGRAV1'),
     ];
-    Sbar.r_teambord = Draw.PicFromWad('R_TEAMBORD');
+    Sbar.r_teambord = Draw.LoadPicFromWad('R_TEAMBORD');
     Sbar.r_ammo = [
-      Draw.PicFromWad('R_AMMOLAVA'),
-      Draw.PicFromWad('R_AMMOMULTI'),
-      Draw.PicFromWad('R_AMMOPLASMA'),
+      Draw.LoadPicFromWad('R_AMMOLAVA'),
+      Draw.LoadPicFromWad('R_AMMOMULTI'),
+      Draw.LoadPicFromWad('R_AMMOPLASMA'),
     ];
   }
 };
@@ -393,8 +393,8 @@ Sbar.DrawFrags = function() {
     if (s.name.length === 0) {
       continue;
     }
-    Draw.Fill(xofs + (x << 3), y, 28, 4, (s.colors & 0xf0) + 8);
-    Draw.Fill(xofs + (x << 3), y + 4, 28, 3, ((s.colors & 0xf) << 4) + 8);
+    Draw.FillIndexed(xofs + (x << 3), y, 28, 4, (s.colors & 0xf0) + 8);
+    Draw.FillIndexed(xofs + (x << 3), y + 4, 28, 3, ((s.colors & 0xf) << 4) + 8);
     num = s.frags.toString();
     Sbar.DrawString(((x - num.length) << 3) + 36, -24, num);
     if (k === (CL.state.viewentity - 1)) {
@@ -411,8 +411,8 @@ Sbar.DrawFace = function() {
     const top = (s.colors & 0xf0) + 8;
     const xofs = CL.state.maxclients === 1 ? 113 : (VID.width >> 1) - 47;
     Sbar.DrawPic(112, 0, Sbar.r_teambord);
-    Draw.Fill(xofs, VID.height - 21, 22, 9, top);
-    Draw.Fill(xofs, VID.height - 12, 22, 9, ((s.colors & 0xf) << 4) + 8);
+    Draw.FillIndexed(xofs, VID.height - 21, 22, 9, top);
+    Draw.FillIndexed(xofs, VID.height - 12, 22, 9, ((s.colors & 0xf) << 4) + 8);
     let num = (top === 8 ? '\x3e\x3e\x3e' : '   ') + s.frags;
     if (num.length > 3) {
       num = num.substring(num.length - 3);
@@ -559,8 +559,8 @@ Sbar.DeathmatchOverlay = function() {
     if (s.name.length === 0) {
       continue;
     }
-    Draw.Fill(x, y, 40, 4, (s.colors & 0xf0) + 8);
-    Draw.Fill(x, y + 4, 40, 4, ((s.colors & 0xf) * 16) + 8);
+    Draw.FillIndexed(x, y, 40, 4, (s.colors & 0xf0) + 8);
+    Draw.FillIndexed(x, y + 4, 40, 4, ((s.colors & 0xf) * 16) + 8);
     const f = s.frags.toString();
     Draw.String(x + 32 - (f.length * 8), y, f);
     if (Sbar.fragsort[i] === (CL.state.viewentity - 1)) {
@@ -600,8 +600,8 @@ Sbar.MiniDeathmatchOverlay = function() {
     if (s.name.length === 0) {
       continue;
     }
-    Draw.Fill(324, y + 1, 40, 3, (s.colors & 0xf0) + 8);
-    Draw.Fill(324, y + 4, 40, 4, ((s.colors & 0xf) << 4) + 8);
+    Draw.FillIndexed(324, y + 1, 40, 3, (s.colors & 0xf0) + 8);
+    Draw.FillIndexed(324, y + 4, 40, 4, ((s.colors & 0xf) << 4) + 8);
     num = s.frags.toString();
     Draw.String(356 - (num.length << 3), y, num);
     if (k === (CL.state.viewentity - 1)) {

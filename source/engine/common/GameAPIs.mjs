@@ -1,5 +1,7 @@
 import { solid } from '../../shared/Defs.mjs';
 import Vector from '../../shared/Vector.mjs';
+import { GLTexture } from '../client/GL.mjs';
+import VID from '../client/VID.mjs';
 import MSG from '../network/MSG.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import { eventBus, registry } from '../registry.mjs';
@@ -7,11 +9,14 @@ import { ED, ServerEdict } from '../server/Edict.mjs';
 import Cmd from './Cmd.mjs';
 import Cvar from './Cvar.mjs';
 import Mod, { ParsedQC } from './Mod.mjs';
+import { Pmove } from './Pmove.mjs';
 
-let { Con, Host, SV } = registry;
+let { CL, Con, Host, SV, Draw } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
   Con = registry.Con;
+  Draw = registry.Draw;
   Host = registry.Host;
   SV = registry.SV;
 });
@@ -382,8 +387,6 @@ export class ServerEngineAPI extends EngineAPI {
 };
 
 export class ClientEngineAPI extends EngineAPI {
-
-
   /**
    * @param {string} name command name
    * @param {Function} callback callback function
@@ -396,5 +399,81 @@ export class ClientEngineAPI extends EngineAPI {
   static UnregisterCommand(name) {
     // TODO: implement
   }
+
+  static LoadPicFromLump(name) {
+    return Draw.LoadPicFromLumpDeferred(name);
+  }
+
+  static LoadPicFromWad(name) {
+    return Draw.LoadPicFromWad(name);
+  }
+
+  static LoadPicFromFile(filename) {
+    return Draw.LoadPicFromFileDeferred(filename);
+  }
+
+  /**
+   * Draws a picture at the specified position.
+   * @param {number} x x position
+   * @param {number} y y position
+   * @param {GLTexture} pic pic texture to draw
+   */
+  static DrawPic(x, y, pic) {
+    Draw.Pic(x, y, pic);
+  }
+
+  /**
+   * Draws a string on the screen at the specified position.
+   * @param {number} x x position
+   * @param {number} y y position
+   * @param {string} str string
+   * @param {number} scale optional scale (default: 1.0)
+   * @param {Vector} color optional color in RGB format (default: white)
+   */
+  static DrawString(x, y, str, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)) {
+    Draw.String(x, y, str, scale, color);
+  }
+
+  /**
+   * Fills a rectangle with a solid color.
+   * @param {number} x The x position.
+   * @param {number} y The y position.
+   * @param {number} w The width of the rectangle.
+   * @param {number} h The height of the rectangle.
+   * @param {Vector} c The color index.
+   * @param {number} a Optional alpha value (default is 1.0).
+   */
+  static DrawRect(x, y, w, h, c, a = 1.0) {
+    Draw.Fill(x, y, w, h, c, a);
+  }
+
+  /**
+   * @param {Vector} start
+   * @param {Vector} end
+   * @returns
+   */
+  static Traceline(start, end) {
+    /** @type {Pmove} */
+    const pmove = CL.pmove;
+
+    return pmove.clipPlayerMove(start, end);
+  }
+
+  static CL = {
+    /** @returns {Vector} */
+    get viewangles() {
+      return CL.state.viewangles.copy();
+    },
+    /** @returns {Vector} */
+    get vieworigin() {
+      return CL.state.viewent.origin.copy();
+    },
+  };
+
+  static VID = {
+    get width() { return VID.width; },
+    get height() { return VID.height; },
+    get pixelRatio() { return VID.pixelRatio; },
+  };
 
 };

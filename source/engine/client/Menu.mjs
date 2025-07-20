@@ -990,39 +990,39 @@ M.Init = async function() {
   M.sfx_menu2 = S.PrecacheSound('misc/menu2.wav');
   M.sfx_menu3 = S.PrecacheSound('misc/menu3.wav');
 
-  M.box_tl = await Draw.CachePic('box_tl');
-  M.box_ml = await Draw.CachePic('box_ml');
-  M.box_bl = await Draw.CachePic('box_bl');
-  M.box_tm = await Draw.CachePic('box_tm');
-  M.box_mm = await Draw.CachePic('box_mm');
-  M.box_mm2 = await Draw.CachePic('box_mm2');
-  M.box_bm = await Draw.CachePic('box_bm');
-  M.box_tr = await Draw.CachePic('box_tr');
-  M.box_mr = await Draw.CachePic('box_mr');
-  M.box_br = await Draw.CachePic('box_br');
+  M.box_tl = Draw.LoadPicFromLumpDeferred('box_tl');
+  M.box_ml = Draw.LoadPicFromLumpDeferred('box_ml');
+  M.box_bl = Draw.LoadPicFromLumpDeferred('box_bl');
+  M.box_tm = Draw.LoadPicFromLumpDeferred('box_tm');
+  M.box_mm = Draw.LoadPicFromLumpDeferred('box_mm');
+  M.box_mm2 = Draw.LoadPicFromLumpDeferred('box_mm2');
+  M.box_bm = Draw.LoadPicFromLumpDeferred('box_bm');
+  M.box_tr = Draw.LoadPicFromLumpDeferred('box_tr');
+  M.box_mr = Draw.LoadPicFromLumpDeferred('box_mr');
+  M.box_br = Draw.LoadPicFromLumpDeferred('box_br');
 
-  M.qplaque = await Draw.CachePic('qplaque');
+  M.qplaque = Draw.LoadPicFromLumpDeferred('qplaque');
 
   M.menudot = await Promise.all([
-    Draw.CachePic('menudot1'),
-    Draw.CachePic('menudot2'),
-    Draw.CachePic('menudot3'),
-    Draw.CachePic('menudot4'),
-    Draw.CachePic('menudot5'),
-    Draw.CachePic('menudot6'),
+    Draw.LoadPicFromLump('menudot1'),
+    Draw.LoadPicFromLump('menudot2'),
+    Draw.LoadPicFromLump('menudot3'),
+    Draw.LoadPicFromLump('menudot4'),
+    Draw.LoadPicFromLump('menudot5'),
+    Draw.LoadPicFromLump('menudot6'),
   ]);
 
-  M.ttl_main = await Draw.CachePic('ttl_main');
-  M.mainmenu = await Draw.CachePic('mainmenu');
+  M.ttl_main = await Draw.LoadPicFromLump('ttl_main');
+  M.mainmenu = await Draw.LoadPicFromLump('mainmenu');
 
-  M.ttl_sgl = await Draw.CachePic('ttl_sgl');
-  M.sp_menu = await Draw.CachePic('sp_menu');
-  M.p_load = await Draw.CachePic('p_load');
-  M.p_save = await Draw.CachePic('p_save');
+  M.ttl_sgl = Draw.LoadPicFromLumpDeferred('ttl_sgl');
+  M.sp_menu = Draw.LoadPicFromLumpDeferred('sp_menu');
+  M.p_load = Draw.LoadPicFromLumpDeferred('p_load');
+  M.p_save = Draw.LoadPicFromLumpDeferred('p_save');
 
-  M.p_multi = await Draw.CachePic('p_multi');
-  M.bigbox = await Draw.CachePic('bigbox');
-  M.menuplyr = await Draw.CachePic('menuplyr');
+  M.p_multi = Draw.LoadPicFromLumpDeferred('p_multi');
+  M.bigbox = Draw.LoadPicFromLumpDeferred('bigbox');
+  M.menuplyr = Draw.LoadPicFromLumpDeferred('menuplyr');
 
   // FIXME: I really don’t like this, but it’s the only way to get the player picture translation right for now
   {
@@ -1049,17 +1049,17 @@ M.Init = async function() {
     M.menuplyr.translate = GLTexture.Allocate('menuplyr_translate', width, height, trans);
   }
 
-  M.p_option = await Draw.CachePic('p_option');
-  M.ttl_cstm = await Draw.CachePic('ttl_cstm');
+  M.p_option = Draw.LoadPicFromLumpDeferred('p_option');
+  M.ttl_cstm = Draw.LoadPicFromLumpDeferred('ttl_cstm');
 
-  M.help_pages = await Promise.all([
-    Draw.CachePic('help0'),
-    Draw.CachePic('help1'),
-    Draw.CachePic('help2'),
-    Draw.CachePic('help3'),
-    Draw.CachePic('help4'),
-    Draw.CachePic('help5'),
-  ]);
+  M.help_pages = [
+    Draw.LoadPicFromLumpDeferred('help0'),
+    Draw.LoadPicFromLumpDeferred('help1'),
+    Draw.LoadPicFromLumpDeferred('help2'),
+    Draw.LoadPicFromLumpDeferred('help3'),
+    Draw.LoadPicFromLumpDeferred('help4'),
+    Draw.LoadPicFromLumpDeferred('help5'),
+  ];
 };
 
 M.Draw = function() {

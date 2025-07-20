@@ -334,6 +334,7 @@ class MainMenu extends BaseMenu {
 * played around with warp pixel shader
 * cleaned up the Defs more
 * fixed a bug regarding loading a game (AI having no valid goal)
+* worked on `ClientGameAPI`, reorganized `Draw`
 
 ### 2025-07-19
 
