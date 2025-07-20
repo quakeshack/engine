@@ -1,6 +1,7 @@
 import Vector from '../../shared/Vector.mjs';
+import GL, { GLTexture, resampleTexture8 } from '../client/GL.mjs';
 import { eventBus, registry } from '../registry.mjs';
-import { MissingResourceError } from './Errors.mjs';
+import { CorruptedResourceError, MissingResourceError } from './Errors.mjs';
 import Q from './Q.mjs';
 import W, { translateIndexToRGBA } from './W.mjs';
 
@@ -8,13 +9,12 @@ const Mod = {};
 
 export default Mod;
 
-let { COM, Con, R, GL } = registry;
+let { COM, Con, R } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   COM = registry.COM;
   Con = registry.Con;
   R = registry.R;
-  GL = registry.GL;
 });
 
 /** @type {WebGL2RenderingContext} */
@@ -93,15 +93,6 @@ class AliasModel extends BaseModel {
   }
 }
 
-Mod.effects = {
-  brightfield: 1,
-  muzzleflash: 2,
-  brightlight: 4,
-  dimlight: 8,
-
-  nodraw: 128,
-};
-
 Mod.type = {brush: 0, sprite: 1, alias: 2};
 
 Mod.hull = {
@@ -113,17 +104,6 @@ Mod.hull = {
   big: 2,
   /** hull3, only used by BSP30 for crouching etc. (32, 32, 36) */
   crouch: 3,
-};
-
-Mod.flags = {
-  rocket: 1,
-  grenade: 2,
-  gib: 4,
-  rotate: 8,
-  tracer: 16,
-  zomgib: 32,
-  tracer2: 64,
-  tracer3: 128,
 };
 
 Mod.version = {brush: 29, sprite: 1, alias: 6};
@@ -158,7 +138,7 @@ Mod.PointInLeaf = function(p, model) { // public method, static access? (PF, R, 
 };
 
 Mod.DecompressVis = function(i, model) { // private method
-  const decompressed = []; let c; let out; let row = (model.leafs.length + 7) >> 3;
+  const decompressed = []; let c; let out = 0; let row = (model.leafs.length + 7) >> 3;
   if (model.visdata == null) {
     for (; row >= 0; --row) {
       decompressed[out++] = 0xff;
@@ -310,7 +290,7 @@ Mod.LoadTextures = function(buf) {
   Mod.loadmodel.textures = [];
   const nummiptex = view.getUint32(fileofs, true);
   let dataofs = fileofs + 4;
-  let i; let miptexofs; let tx; let glt;
+  let i; let miptexofs;
   for (i = 0; i < nummiptex; ++i) {
     miptexofs = view.getInt32(dataofs, true);
     dataofs += 4;
@@ -319,10 +299,13 @@ Mod.LoadTextures = function(buf) {
       continue;
     }
     miptexofs += fileofs;
-    tx = {
+    const tx = {
       name: Q.memstr(new Uint8Array(buf, miptexofs, 16)),
       width: view.getUint32(miptexofs + 16, true),
       height: view.getUint32(miptexofs + 20, true),
+      glt: null,
+      sky: false,
+      turbulent: false,
     };
     if (!registry.isDedicatedServer) {
       if (tx.name.substring(0, 3).toLowerCase() === 'sky') {
@@ -330,15 +313,8 @@ Mod.LoadTextures = function(buf) {
         tx.texturenum = R.solidskytexture;
         R.skytexturenum = i;
         tx.sky = true;
-      // } else if (tx.name === 'sfloor3_2') { // CR: testing out loading WAD3 texture files
-      //   const floortex = Mod.hlwad.getLumpMipmap('LAB1_FLOOR3', 0);
-      //   const glt = GL.LoadTexture32('LAB1_FLOOR3', floortex.width, floortex.height, floortex.data);
-      //   tx.texturenum = glt.texnum;
-      // } else if (tx.name === 'lgmetal') { // CR: testing out loading any texture files
-      //   tx.texturenum = Mod.wall1tex;
       } else {
-        glt = GL.LoadTexture(tx.name, tx.width, tx.height, new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), tx.width * tx.height));
-        tx.texturenum = glt.texnum;
+        tx.glt = GLTexture.Allocate(tx.name, tx.width, tx.height, translateIndexToRGBA(new Uint8Array(buf, miptexofs + view.getUint32(miptexofs + 24, true), tx.width * tx.height), tx.width, tx.height));
         if (tx.name[0] === '*') {
           tx.turbulent = true;
         }
@@ -349,7 +325,7 @@ Mod.LoadTextures = function(buf) {
 
   let j; let tx2; let num; let name;
   for (i = 0; i < nummiptex; ++i) {
-    tx = Mod.loadmodel.textures[i];
+    const tx = Mod.loadmodel.textures[i];
     if (tx.name[0] !== '+') {
       continue;
     }
@@ -829,7 +805,7 @@ Mod.LoadBrushModel = function(buffer) {
   Mod.loadmodel.type = Mod.type.brush;
   const version = (new DataView(buffer)).getUint32(0, true);
   if (version !== Mod.version.brush) {
-    throw new Error('Mod.LoadBrushModel: ' + Mod.loadmodel.name + ' has wrong version number (' + version + ' should be ' + Mod.version.brush + ')');
+    throw new CorruptedResourceError(Mod.loadmodel.name, 'wrong version number (' + version + ' should be ' + Mod.version.brush + ')');
   }
   Mod.LoadVertexes(buffer);
   Mod.LoadEdges(buffer);
@@ -890,12 +866,13 @@ Mod.TranslatePlayerSkin = function(data, skin) {
   }
 
   if ((Mod.loadmodel._skin_width !== 512) || (Mod.loadmodel._skin_height !== 256)) {
-    data = GL.ResampleTexture(data, Mod.loadmodel._skin_width, Mod.loadmodel._skin_height, 512, 256);
+    data = resampleTexture8(data, Mod.loadmodel._skin_width, Mod.loadmodel._skin_height, 512, 256);
   }
+
   const out = new Uint8Array(new ArrayBuffer(524288));
-  let i; let original;
-  for (i = 0; i < 131072; ++i) {
-    original = data[i];
+
+  for (let i = 0; i < 131072; i++) {
+    const original = data[i];
     if ((original >> 4) === 1) {
       out[i << 2] = (original & 15) * 17;
       out[(i << 2) + 1] = 255;
@@ -904,12 +881,8 @@ Mod.TranslatePlayerSkin = function(data, skin) {
       out[(i << 2) + 3] = 255;
     }
   }
-  skin.playertexture = gl.createTexture();
-  GL.Bind(0, skin.playertexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, out);
-  gl.generateMipmap(gl.TEXTURE_2D);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);
+
+  skin.playertexture = GLTexture.Allocate(Mod.loadmodel.name + '_playerskin', 512, 256, out);
 };
 
 Mod.FloodFillSkin = function(skin) {
@@ -964,12 +937,10 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
     if (model.getUint32(inmodel - 4, true) === 0) {
       skin = new Uint8Array(buffer, inmodel, skinsize);
       Mod.FloodFillSkin(skin);
+      const rgba = translateIndexToRGBA(skin, Mod.loadmodel._skin_width, Mod.loadmodel._skin_height);
       Mod.loadmodel.skins[i] = {
         group: false,
-        texturenum: !registry.isDedicatedServer ? GL.LoadTexture(Mod.loadmodel.name + '_' + i,
-            Mod.loadmodel._skin_width,
-            Mod.loadmodel._skin_height,
-            skin) : null,
+        texturenum: !registry.isDedicatedServer ? GLTexture.Allocate(Mod.loadmodel.name + '_' + i, Mod.loadmodel._skin_width, Mod.loadmodel._skin_height, rgba) : null,
       };
       if (Mod.loadmodel.player === true) {
         Mod.TranslatePlayerSkin(new Uint8Array(buffer, inmodel, skinsize), Mod.loadmodel.skins[i]);
@@ -992,10 +963,8 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
       for (j = 0; j < numskins; ++j) {
         skin = new Uint8Array(buffer, inmodel, skinsize);
         Mod.FloodFillSkin(skin);
-        group.skins[j].texturenum = GL.LoadTexture(Mod.loadmodel.name + '_' + i + '_' + j,
-            Mod.loadmodel._skin_width,
-            Mod.loadmodel._skin_height,
-            skin);
+        const rgba = translateIndexToRGBA(skin, Mod.loadmodel._skin_width, Mod.loadmodel._skin_height);
+        group.skins[j].texturenum = !registry.isDedicatedServer ? GLTexture.Allocate(Mod.loadmodel.name + '_' + i + '_' + j, Mod.loadmodel._skin_width, Mod.loadmodel._skin_height, rgba) : null;
         if (Mod.loadmodel.player === true) {
           Mod.TranslatePlayerSkin(new Uint8Array(buffer, inmodel, skinsize), group.skins[j]);
         }
@@ -1217,44 +1186,17 @@ Mod.LoadSpriteFrame = function(identifier, buffer, inframe, frame) {
     return null;
   }
 
-  let i;
-
   const model = new DataView(buffer);
   frame.origin = [model.getInt32(inframe, true), -model.getInt32(inframe + 4, true)];
   frame.width = model.getUint32(inframe + 8, true);
   frame.height = model.getUint32(inframe + 12, true);
-  let size = frame.width * frame.height;
 
-  let glt;
-  for (i = 0; i < GL.textures.length; ++i) {
-    glt = GL.textures[i];
-    if (glt.identifier === identifier) {
-      if ((frame.width !== glt.width) || (frame.height !== glt.height)) {
-        throw new Error('Mod.LoadSpriteFrame: cache mismatch');
-      }
-      frame.texturenum = glt.texnum;
-      return inframe + 16 + frame.width * frame.height;
-    }
-  }
+  const data = new Uint8Array(buffer, inframe + 16, frame.width * frame.height);
 
-  let data = new Uint8Array(buffer, inframe + 16, size);
+  const rgba = translateIndexToRGBA(data, frame.width, frame.height, W.d_8to24table_u8, 255);
+  const glt = GLTexture.Allocate(identifier, frame.width, frame.height, rgba);
 
-  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(frame.width, frame.height);
-
-  if (resampleRequired) {
-    size = scaledWidth * scaledHeight;
-    data = GL.ResampleTexture(data, frame.width, frame.height, scaledWidth, scaledHeight);
-  }
-
-  data = translateIndexToRGBA(data, scaledWidth, scaledHeight, W.d_8to24table_u8, 255);
-
-  glt = {texnum: gl.createTexture(), identifier: identifier, width: frame.width, height: frame.height};
-  GL.Bind(0, glt.texnum);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-  gl.generateMipmap(gl.TEXTURE_2D);
-  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
-  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);
-  GL.textures[GL.textures.length] = glt;
+  frame.glt = glt;
   frame.texturenum = glt.texnum;
   return inframe + 16 + frame.width * frame.height;
 };
@@ -1285,7 +1227,7 @@ Mod.LoadSpriteModel = function(buffer) {
     if (model.getUint32(inframe - 4, true) === 0) {
       frame = {group: false};
       Mod.loadmodel.frames[i] = frame;
-      inframe = Mod.LoadSpriteFrame(Mod.loadmodel.name + '_' + i + '_' + j, buffer, inframe, frame);
+      inframe = Mod.LoadSpriteFrame(Mod.loadmodel.name + '_' + i, buffer, inframe, frame);
     } else {
       group = {
         group: true,

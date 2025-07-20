@@ -160,8 +160,7 @@ export default class NodeCOM extends COM {
 
       const header = new DataView(new Uint8Array(headerBuffer).buffer);
       if (header.getUint32(0, true) !== 0x4b434150) { // "PACK" magic number
-        // Sys.Error(`${packfile} is not a packfile`);
-        throw new CorruptedResourceError(packfile);
+        throw new CorruptedResourceError(packfile, 'not a valid pack file');
       }
 
       const dirofs = header.getUint32(4, true);

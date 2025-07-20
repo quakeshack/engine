@@ -765,7 +765,6 @@ export class BubbleSpawnerEntity extends BaseEntity {
   }
 
   _spawnBubble() {
-    // eslint-disable-next-line no-use-before-define
     this.engine.SpawnEntity(BubbleEntity.classname, { owner: this });
   }
 

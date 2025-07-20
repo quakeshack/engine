@@ -11,6 +11,7 @@ import Cvar from '../common/Cvar.mjs';
 import { MoveVars, Pmove, PmovePlayer } from '../common/Pmove.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
+import { effect, modelFlags } from '../../shared/Defs.mjs';
 
 const CL = {};
 
@@ -1621,8 +1622,7 @@ CL.ParseStaticSound = function() { // private
 
 CL.Shownet = function(x) { // private
   if (CL.shownet.value === 2) {
-    Con.Print((MSG.readcount <= 99 ? (MSG.readcount <= 9 ? '  ' : ' ') : '') +
-			(MSG.readcount - 1) + ':' + x + '\n');
+    Con.Print((MSG.readcount <= 99 ? (MSG.readcount <= 9 ? '  ' : ' ') : '') + (MSG.readcount - 1) + ':' + x + '\n');
   }
 };
 
@@ -2232,11 +2232,11 @@ CL.EmitEntities = function() { // public, by Host.js
     }
 
     // invisible entity
-    if (!clent.model || (clent.effects & Mod.effects.nodraw)) {
+    if (!clent.model || (clent.effects & effect.EF_NODRAW)) {
       continue;
     }
 
-    const oldorg = clent.origin_old ? clent.origin_old : clent.origin;
+    const oldorg = clent.originPrevious ? clent.originPrevious : clent.origin;
 
     // apply prediction for non-player entities
     clent.updatePosition(clent.num !== CL.state.viewentity);
@@ -2250,13 +2250,13 @@ CL.EmitEntities = function() { // public, by Host.js
 
     clent.emit();
 
-    if ((clent.model.flags & Mod.flags.rotate) !== 0) {
+    if ((clent.model.flags & modelFlags.MF_ROTATE) !== 0) {
       clent.angles[1] = Vector.anglemod(CL.state.time * 100.0);
     }
-    if ((clent.effects & Mod.effects.brightfield) !== 0) {
+    if ((clent.effects & effect.EF_BRIGHTFIELD) !== 0) {
       R.EntityParticles(clent);
     }
-    if ((clent.effects & Mod.effects.muzzleflash) !== 0) {
+    if ((clent.effects & effect.EF_MUZZLEFLASH) !== 0) {
       const dl = CL.AllocDlight(i);
       const fv = clent.angles.angleVectors().forward;
       dl.origin = new Vector(
@@ -2269,36 +2269,36 @@ CL.EmitEntities = function() { // public, by Host.js
       dl.die = CL.state.mtime[0] + 0.1;
       // dl.color = new Vector(1.0, 0.95, 0.85);
     }
-    if ((clent.effects & Mod.effects.brightlight) !== 0) {
+    if ((clent.effects & effect.EF_BRIGHTLIGHT) !== 0) {
       const dl = CL.AllocDlight(i);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
       dl.radius = 400.0 + Math.random() * 32.0;
       dl.die = CL.state.time + 0.001;
     }
-    if ((clent.effects & Mod.effects.dimlight) !== 0) {
+    if ((clent.effects & effect.EF_DIMLIGHT) !== 0) {
       const dl = CL.AllocDlight(i);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.die = CL.state.time + 0.001;
       // dl.color = new Vector(0.5, 0.5, 1.0);
     }
-    if ((clent.model.flags & Mod.flags.gib) !== 0) {
+    if ((clent.model.flags & modelFlags.MF_GIB) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 2);
-    } else if ((clent.model.flags & Mod.flags.zomgib) !== 0) {
+    } else if ((clent.model.flags & modelFlags.MF_ZOMGIB) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 4);
-    } else if ((clent.model.flags & Mod.flags.tracer) !== 0) {
+    } else if ((clent.model.flags & modelFlags.MF_TRACER) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 3);
-    } else if ((clent.model.flags & Mod.flags.tracer2) !== 0) {
+    } else if ((clent.model.flags & modelFlags.MF_TRACER2) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 5);
-    } else if ((clent.model.flags & Mod.flags.rocket) !== 0) {
+    } else if ((clent.model.flags & modelFlags.MF_ROCKET) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 0);
       const dl = CL.AllocDlight(i);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2]);
       dl.radius = 200.0;
       dl.die = CL.state.time + 0.01;
-    } else if ((clent.model.flags & Mod.flags.grenade) !== 0) {
+    } else if ((clent.model.flags & modelFlags.MF_GRENADE) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 1);
-    } else if ((clent.model.flags & Mod.flags.tracer3) !== 0) {
+    } else if ((clent.model.flags & modelFlags.MF_TRACER3) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 6);
     }
 

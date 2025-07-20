@@ -1,16 +1,16 @@
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { eventBus, registry } from '../registry.mjs';
+import { GLTexture } from './GL.mjs';
 import VID from './VID.mjs';
 
-let { CL, COM, Con, Draw, GL, Host, Key, S, SCR, SV, V } = registry;
+let { CL, COM, Con, Draw, Host, Key, S, SCR, SV, V } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
   COM = registry.COM;
   Con = registry.Con;
   Draw = registry.Draw;
-  GL = registry.GL;
   Host = registry.Host;
   Key = registry.Key;
   S = registry.S;
@@ -990,16 +990,16 @@ M.Init = async function() {
   M.sfx_menu2 = S.PrecacheSound('misc/menu2.wav');
   M.sfx_menu3 = S.PrecacheSound('misc/menu3.wav');
 
-  M.box_tl = Draw.CachePicDeferred('box_tl');
-  M.box_ml = Draw.CachePicDeferred('box_ml');
-  M.box_bl = Draw.CachePicDeferred('box_bl');
-  M.box_tm = Draw.CachePicDeferred('box_tm');
-  M.box_mm = Draw.CachePicDeferred('box_mm');
-  M.box_mm2 = Draw.CachePicDeferred('box_mm2');
-  M.box_bm = Draw.CachePicDeferred('box_bm');
-  M.box_tr = Draw.CachePicDeferred('box_tr');
-  M.box_mr = Draw.CachePicDeferred('box_mr');
-  M.box_br = Draw.CachePicDeferred('box_br');
+  M.box_tl = await Draw.CachePic('box_tl');
+  M.box_ml = await Draw.CachePic('box_ml');
+  M.box_bl = await Draw.CachePic('box_bl');
+  M.box_tm = await Draw.CachePic('box_tm');
+  M.box_mm = await Draw.CachePic('box_mm');
+  M.box_mm2 = await Draw.CachePic('box_mm2');
+  M.box_bm = await Draw.CachePic('box_bm');
+  M.box_tr = await Draw.CachePic('box_tr');
+  M.box_mr = await Draw.CachePic('box_mr');
+  M.box_br = await Draw.CachePic('box_br');
 
   M.qplaque = await Draw.CachePic('qplaque');
 
@@ -1015,41 +1015,51 @@ M.Init = async function() {
   M.ttl_main = await Draw.CachePic('ttl_main');
   M.mainmenu = await Draw.CachePic('mainmenu');
 
-  M.ttl_sgl = Draw.CachePicDeferred('ttl_sgl');
+  M.ttl_sgl = await Draw.CachePic('ttl_sgl');
   M.sp_menu = await Draw.CachePic('sp_menu');
   M.p_load = await Draw.CachePic('p_load');
   M.p_save = await Draw.CachePic('p_save');
 
   M.p_multi = await Draw.CachePic('p_multi');
-  M.bigbox = Draw.CachePicDeferred('bigbox');
+  M.bigbox = await Draw.CachePic('bigbox');
   M.menuplyr = await Draw.CachePic('menuplyr');
-  const data = GL.ResampleTexture(M.menuplyr.data, M.menuplyr.width, M.menuplyr.height, 64, 64);
-  const trans = new Uint8Array(new ArrayBuffer(16384));
-  let i; let p;
-  for (i = 0; i < 4096; ++i) {
-    p = data[i];
-    if ((p >> 4) === 1) {
-      trans[i << 2] = (p & 15) * 17;
-      trans[(i << 2) + 1] = 255;
-    } else if ((p >> 4) === 6) {
-      trans[(i << 2) + 2] = (p & 15) * 17;
-      trans[(i << 2) + 3] = 255;
+
+  // FIXME: I really don’t like this, but it’s the only way to get the player picture translation right for now
+  {
+    const lmpfile = await COM.LoadFileAsync('gfx/menuplyr.lmp');
+
+    const view = new DataView(lmpfile, 0, 8);
+    const width = view.getUint32(0, true);
+    const height = view.getUint32(4, true);
+    const data = new Uint8Array(lmpfile, 8, width * height);
+
+    const trans = new Uint8Array(new ArrayBuffer(width * height * 4));
+
+    for (let i = 0; i < 4096; i++) {
+      const p = data[i];
+      if ((p >> 4) === 1) {
+        trans[i << 2] = (p & 15) * 17;
+        trans[(i << 2) + 1] = 255;
+      } else if ((p >> 4) === 6) {
+        trans[(i << 2) + 2] = (p & 15) * 17;
+        trans[(i << 2) + 3] = 255;
+      }
     }
+
+    M.menuplyr.translate = GLTexture.Allocate('menuplyr_translate', width, height, trans);
   }
 
-  M.menuplyr.translate = GL.LoadTexture32('menuplyr', 64, 64, trans).texnum;
+  M.p_option = await Draw.CachePic('p_option');
+  M.ttl_cstm = await Draw.CachePic('ttl_cstm');
 
-  M.p_option = Draw.CachePicDeferred('p_option');
-  M.ttl_cstm = Draw.CachePicDeferred('ttl_cstm');
-
-  M.help_pages = [
-    Draw.CachePicDeferred('help0'),
-    Draw.CachePicDeferred('help1'),
-    Draw.CachePicDeferred('help2'),
-    Draw.CachePicDeferred('help3'),
-    Draw.CachePicDeferred('help4'),
-    Draw.CachePicDeferred('help5'),
-  ];
+  M.help_pages = await Promise.all([
+    Draw.CachePic('help0'),
+    Draw.CachePic('help1'),
+    Draw.CachePic('help2'),
+    Draw.CachePic('help3'),
+    Draw.CachePic('help4'),
+    Draw.CachePic('help5'),
+  ]);
 };
 
 M.Draw = function() {

@@ -1,19 +1,12 @@
 /* globaxl Draw, COM, Sys, Def, VID, W, gl, GL, Vector */
 import Vector from '../../shared/Vector.mjs';
-import { version } from '../common/Def.mjs';
 import { MissingResourceError } from '../common/Errors.mjs';
 
 import VID from './VID.mjs';
-import W, { translateIndexToRGBA, WadFileInterface } from '../common/W.mjs';
+import W, { WadFileInterface, WadLumpTexture } from '../common/W.mjs';
 
-import { eventBus, registry } from '../registry.mjs';
-
-let { COM, GL } = registry;
-
-eventBus.subscribe('registry.frozen', () => {
-  COM = registry.COM;
-  GL = registry.GL;
-});
+import { eventBus } from '../registry.mjs';
+import GL, { GLTexture } from './GL.mjs';
 
 /** @type {WebGL2RenderingContext} */
 let gl = null;
@@ -33,62 +26,41 @@ export default Draw;
 Draw._loadingElem = null;
 /** @type {WadFileInterface} */
 Draw._gfxWad = null;
+/** @type {GLTexture} */
 Draw._chars = null;
-Draw._charTexture = null;
+/** @type {WadLumpTexture} */
 Draw._loading = null;
-Draw._conback = {width: 0, height: 0, data: null, texnum: null};
-
-Draw._CharToConback = function(num, dest) {
-  let source = ((num >> 4) << 10) + ((num & 15) << 3);
-  let drawline; let x;
-  for (drawline = 0; drawline < 8; ++drawline) {
-    for (x = 0; x < 8; ++x) {
-      if (Draw._chars[source + x] !== 0) {
-        Draw._conback.data[dest + x] = 0x60 + Draw._chars[source + x];
-      }
-    }
-    source += 128;
-    dest += 320;
-  }
-};
-
-Draw._StringToConback = function(str, dest, alignRight) {
-  for (let i = 0; i < str.length; ++i) {
-    Draw._CharToConback(str.charCodeAt(i), dest + (alignRight ? ((str.length - i) * -8) : i * 8));
-  }
-};
+/** @type {GLTexture} */
+Draw._conback = null;
 
 Draw.Init = async function() {
   Draw._gfxWad = await W.LoadFile('gfx.wad');
-  Draw._chars = new Uint8Array(Draw._gfxWad.getLump('CONCHARS'));
-  Draw._charTexture = gl.createTexture();
-  GL.Bind(0, Draw._charTexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, translateIndexToRGBA(Draw._chars, 128, 128, W.d_8to24table_u8, 0));
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-  const modernConback = await GL.LoadImageTexture('gfx/conback.webp');
+  const conchars = Draw._gfxWad.getLumpMipmap('CONCHARS', 0);
 
-  if (modernConback) {
-    Draw._conback.texnum = modernConback;
-  } else {
-    const cb = await COM.LoadFileAsync('gfx/conback.lmp');
-    if (cb === null) {
-      throw new MissingResourceError('gfx/conback.lmp');
+  Draw._chars = GLTexture.FromLumpTexture(conchars).lockTextureMode('GL_NEAREST');
+
+  Draw._conback = await (async() => {
+    try {
+      return await GLTexture.FromImageFile('gfx/conback.webp');
+    } catch (err) {
+      // fallback to the old conback.lmp
+      if (err instanceof MissingResourceError) {
+        const lump = await W.LoadLump('gfx/conback.lmp');
+        if (lump === null) {
+          throw new MissingResourceError('gfx/conback.lmp');
+        }
+        return GLTexture.FromLumpTexture(lump).lockTextureMode('GL_NEAREST');
+      }
+      throw err;
     }
-    Draw._conback.width = 320;
-    Draw._conback.height = 200;
-    Draw._conback.data = new Uint8Array(cb, 8, Draw._conback.width * Draw._conback.height);
-    Draw._StringToConback(document.title, Draw._conback.width * 8 + 8, false);
-    Draw._StringToConback(version, 59829, true);
-    Draw._conback.texnum = GL.LoadPicTexture(Draw._conback);
-  }
+  })();
 
-  Draw._loading = await Draw.CachePic('loading');
+  Draw._loading = await W.LoadLump('gfx/loading.lmp');
   Draw._loadingElem = document.getElementById('loading');
 
   if (Draw._loadingElem) {
-    Draw._loadingElem.src = Draw.PicToDataURL(Draw._loading);
+    Draw._loadingElem.src = Draw._loading.toDataURL();
   }
 
   await Promise.all([
@@ -109,7 +81,7 @@ Draw.Init = async function() {
   eventBus.subscribe('com.fs.being', Draw.BeginDisc);
   eventBus.subscribe('com.fs.end', Draw.EndDisc);
 
-  VID.mainwindow.style.backgroundImage = 'url("' + Draw.Pic32ToDataURL(Draw._gfxWad.getLumpMipmap('BACKTILE', 0)) + '")';
+  VID.mainwindow.style.backgroundImage = 'url("' + Draw._gfxWad.getLumpMipmap('BACKTILE', 0).toDataURL() + '")';
 };
 
 Draw.Char = function(x, y, num, scale = 1.0) {
@@ -121,7 +93,7 @@ Draw.Char = function(x, y, num, scale = 1.0) {
 Draw.Character = function(x, y, num, scale = 1.0) {
   const program = GL.UseProgram('pic', true);
   gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
-  GL.Bind(program.tTexture, Draw._charTexture, true);
+  Draw._chars.bind(program.tTexture, true);
   Draw.Char(x, y, num, scale);
   GL.StreamFlush();
 };
@@ -129,7 +101,7 @@ Draw.Character = function(x, y, num, scale = 1.0) {
 Draw.String = function(x, y, str, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)) {
   const program = GL.UseProgram('pic', true);
   gl.uniform3f(program.uColor, color[0], color[1], color[2]);
-  GL.Bind(program.tTexture, Draw._charTexture, true);
+  Draw._chars.bind(program.tTexture, true);
   for (let i = 0; i < str.length; ++i) {
     Draw.Char(x, y, str.charCodeAt(i), scale);
     x += 8 * scale;
@@ -140,7 +112,7 @@ Draw.String = function(x, y, str, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)
 Draw.StringWhite = function(x, y, str, scale = 1.0) {
   const program = GL.UseProgram('pic', true);
   gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
-  GL.Bind(program.tTexture, Draw._charTexture, true);
+  Draw._chars.bind(program.tTexture);
   for (let i = 0; i < str.length; ++i) {
     Draw.Char(x, y, str.charCodeAt(i) + 128, scale);
     x += 8 * scale;
@@ -150,51 +122,12 @@ Draw.StringWhite = function(x, y, str, scale = 1.0) {
 
 Draw.PicFromWad = function(name) {
   const texdata = Draw._gfxWad.getLumpMipmap(name, 0);
-  return GL.LoadTexture32(texdata.name, texdata.width, texdata.height, texdata.data);
+
+  return GLTexture.FromLumpTexture(texdata).lockTextureMode('GL_NEAREST');
 };
 
-Draw.CachePic = async function(path) {
-  path = 'gfx/' + path + '.lmp';
-  const buf = await COM.LoadFileAsync(path);
-  if (buf === null) {
-    throw new MissingResourceError(path);
-  }
-  const dat = {};
-  const view = new DataView(buf, 0, 8);
-  dat.width = view.getUint32(0, true);
-  dat.height = view.getUint32(4, true);
-  dat.data = new Uint8Array(buf, 8, dat.width * dat.height);
-  dat.texnum = GL.LoadPicTexture(dat);
-  dat.ready = true;
-  return dat;
-};
-
-Draw.CachePicDeferred = function(path) {
-  path = 'gfx/' + path + '.lmp';
-
-  const dat = {
-    width: null,
-    height: null,
-    data: null,
-    texnum: null,
-    ready: false,
-  };
-
-  COM.LoadFileAsync(path).then((buf) => {
-    if (buf === null) {
-      throw new Error('buf == null');
-    }
-
-    const view = new DataView(buf, 0, 8);
-    dat.width = view.getUint32(0, true);
-    dat.height = view.getUint32(4, true);
-    dat.data = new Uint8Array(buf, 8, dat.width * dat.height);
-    dat.texnum = GL.LoadPicTexture(dat);
-    dat.ready = true;
-  }).catch((err) => {
-    throw new MissingResourceError(path, err);
-  });
-  return dat;
+Draw.CachePic = async function(name) {
+  return GLTexture.FromLumpTexture(await W.LoadLump('gfx/' + name + '.lmp')).lockTextureMode('GL_NEAREST');
 };
 
 Draw.Pic = function(x, y, pic) {
@@ -204,7 +137,7 @@ Draw.Pic = function(x, y, pic) {
 
   const program = GL.UseProgram('pic', true);
   gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
-  GL.Bind(program.tTexture, pic.texnum, true);
+  pic.bind(program.tTexture, true);
   GL.StreamDrawTexturedQuad(x, y, pic.width, pic.height, 0.0, 0.0, 1.0, 1.0);
 };
 
@@ -215,8 +148,10 @@ Draw.PicTranslate = function(x, y, pic, top, bottom) {
 
   GL.StreamFlush();
   const program = GL.UseProgram('pic-translate');
-  GL.Bind(program.tTexture, pic.texnum);
-  GL.Bind(program.tTrans, pic.translate);
+
+  pic.bind(program.tTexture);
+  console.assert(pic.translate !== null, 'pic.translate must not be null');
+  pic.translate.bind(program.tTrans);
 
   let p = W.d_8to24table[top];
   const scale = 1.0 / 191.25;
@@ -232,7 +167,7 @@ Draw.PicTranslate = function(x, y, pic, top, bottom) {
 Draw.ConsoleBackground = function(lines) {
   const program = GL.UseProgram('pic', true);
   gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
-  GL.Bind(program.tTexture, Draw._conback.texnum, true);
+  Draw._conback.bind(program.tTexture, true);
   GL.StreamDrawTexturedQuad(0, lines - VID.height, VID.width, VID.height, 0.0, 0.0, 1.0, 1.0);
   GL.StreamFlush();
 };
@@ -287,30 +222,3 @@ Draw.UpdateDiscPosition = function() {
 };
 
 eventBus.subscribe('vid.resize', () => Draw.UpdateDiscPosition());
-
-Draw.PicToDataURL = function(pic) {
-  const canvas = document.createElement('canvas');
-  canvas.width = pic.width;
-  canvas.height = pic.height;
-  const ctx = canvas.getContext('2d');
-  const data = ctx.createImageData(pic.width, pic.height);
-  const trans = new ArrayBuffer(data.data.length);
-  const trans32 = new Uint32Array(trans);
-  for (let i = 0; i < pic.data.length; ++i) {
-    trans32[i] = COM.LittleLong(W.d_8to24table[pic.data[i]] + 0xff000000);
-  }
-  data.data.set(new Uint8Array(trans));
-  ctx.putImageData(data, 0, 0);
-  return canvas.toDataURL();
-};
-
-Draw.Pic32ToDataURL = function(pic) {
-  const canvas = document.createElement('canvas');
-  canvas.width = pic.width;
-  canvas.height = pic.height;
-  const ctx = canvas.getContext('2d');
-  const data = ctx.createImageData(pic.width, pic.height);
-  data.data.set(new Uint8Array(pic.data));
-  ctx.putImageData(data, 0, 0);
-  return canvas.toDataURL();
-};

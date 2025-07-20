@@ -40,7 +40,11 @@ The engine has an event bus.
 | - | - | - |
 | gl.ready | 1. gl | WebGL rendering context is available now. |
 | gl.shutdown |  | WebGL rendering context is no longer available now. |
+| gl.texturemode | 1. name, 2. min, 3. max | Texture mode has changed. |
+| gl.texture.ready | 1. identifier | Texture has been uploaded and is ready to be used. |
 | vid.resize | 1. width, 2. height, 3. pixelRatio | Dimensions of the rendering canvas have changed. |
+| vid.ready | | Viewport is ready. |
+| vid.shutdown | | Viewport is gone. |
 
 ### Host
 

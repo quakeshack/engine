@@ -93,13 +93,13 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] use more Exceptions and better Exception classes, also more console.asserts
 * [_] look into worker and multithreading
 * [_] look into bun.sh
-* [_] completely switch to JS modules at some point
+* [X] completely switch to JS modules at some point
 * [_] use more generator functions when possible
 
 #### Event Bus Todo List
 
-* [_] SV and Host: listening to cvar changes
-* [_] Draw: listen to filesystem being/end disc
+* [X] SV and Host: listening to cvar changes
+* [X] Draw: listen to filesystem being/end disc
 
 ### Code smell
 
@@ -112,16 +112,16 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] refactor `MSG`/`SZ` especially in regards to `NET.message` and `client[…].message`
 * [_] refactor global `SV` states into proper modules
 * [X] rewrite `Vec` based on top of `Array`
-* [_] use more await/async when necessary, introduce a shutting down flag to break async processing
+* [X] use more await/async when necessary, introduce a shutting down flag to break async processing
 * [X] replace all `>> 1` with `* 2` etc.
 * [X] SV: introduce `Edict` class, the current loose object already got `clear` and `equals` to it
 * [_] SV: introduce `Client` class, the current loose object already got a few methods in it
 * [X] index.html: reorganize shaders
 * [_] `CL.state.intermission`/`ExitIntermission`: unsure what happens next on DS
-* [_] Sys: remove onunload hook, it’s deprecated
+* [X] Sys: remove onunload hook, it’s deprecated
 * [X] add a `distanceTo()` to `Vec` for an optimized distance calculation (instead of doing `x.copy().subtract(y).len()`)
 * [X] GL/Mod: clear up duplicate code regarding resampling textures (upscaling to the nearest power of two)
-* [_] GL/Mod: clear up duplicate code regarding 8-to-24 bit conversion
+* [X] GL/Mod: clear up duplicate code regarding 8-to-24 bit conversion
 
 ### Network improvements
 
@@ -144,7 +144,7 @@ Grouped by sections and then sorted by priority (more or less).
 * [_] UI: textboxes should act more like text boxes
 * [X] UI: show connecting/loading state in a small UI box with progressbar
 * [X] S: measure async load time for sounds, do not play them when it’s too late anyway
-* [_] fix handling of gl_modes (mipmap vs no mipmap)
+* [X] fix handling of gl_modes (mipmap vs no mipmap)
 * [_] finished demos trigger a `Host.Error` (lost connection), needs fixing
 * [_] M: introduce a password required dialog to join password protected servers
 * [X] S: still some issues with stopping sound upon a crash (mainly Firefox affected)
@@ -165,7 +165,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 * [_] improve lighting and materials https://chatgpt.com/share/677d90a2-f364-800d-b077-9a93c9343b54
 * [_] frame interpolation based on the PR state machine
-* [_] rewrite everything to use GL.Upload32 etc., index to RGBA is done on a pic/texture loading level now
+* [X] rewrite everything to use GL.Upload32 etc., index to RGBA is done on a pic/texture loading level now
 * [_] use precalculated mipmaps (e.g. from WAD3), when uploading textures
 
 ### Build pipeline
@@ -258,7 +258,7 @@ Grouped by sections and then sorted by priority (more or less).
 * coop lobbies (will only work once the `SV`/`Host`/`Net` global state clusterfuck is cleaned up)
 * sv_timelimit, sv_maplist
 * idle kick
-* ask player to set a username when they have their default name --> done, sort of™
+* ask player to set a username when they have their default name
 * increase limit to 32 players (like QW)
 * pausable --> already exists, but needs improvement
 
@@ -294,13 +294,15 @@ class MainMenu extends BaseMenu {
   * have an event based system for bonus flashes, damages etc.
 * look into GoldSrc’s StudioModel or some other format, just as a coding challenge
 * look into colored lights
+  * dynamic lights can already have color
+  * static lights are still grayscale
 * make it Quake2 compatible?
   * not that trivial, since Quake2 game code is ia32/native
   * we could port over features though
 * look into loading of Classic Doom assets, to make a game mash-up of sorts
 * look into things like https://github.com/schteppe/cannon.js and https://github.com/kripken/ammo.js
 * play around with skybox support etc.
-* integrate some debugging tools like a texture and pic browser
+* integrate some debugging tools like a texture and pic browser --> done
 * integrate a model viewer tool
 * There are a couple of things QuakeWorld improved and introduced, I should take a look at them and decide what’s good and what’s bad.
 * rewrite qbsp, vis, light etc. in TypeScript and use https://github.com/gpujs/gpu.js
@@ -325,6 +327,13 @@ class MainMenu extends BaseMenu {
   * https://netradiant.gitlab.io/ – pretty good fork of GtkRadiant
 
 ## Log
+
+### 2025-07-20
+
+* restructured texture handling
+* played around with warp pixel shader
+* cleaned up the Defs more
+* fixed a bug regarding loading a game (AI having no valid goal)
 
 ### 2025-07-19
 

@@ -277,6 +277,11 @@ export default class BaseMonster extends BaseEntity {
       return;
     }
 
+    // TODO: double check logic here, I added this only to prevent errors upon loading a game --CR
+    if (!this.goalentity && !this.enemy) {
+      return;
+    }
+
     this.moveToGoal(dist);
   }
 

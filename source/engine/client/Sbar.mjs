@@ -27,7 +27,7 @@ Sbar.DontShowScores = function() {
   Sbar.showscores = false;
 };
 
-Sbar.Init = function() {
+Sbar.Init = async function() {
   let i;
 
   Sbar.nums = [[], []];
@@ -120,10 +120,10 @@ Sbar.Init = function() {
   Sbar.ibar = Draw.PicFromWad('IBAR');
   Sbar.scorebar = Draw.PicFromWad('SCOREBAR');
 
-  Sbar.ranking = Draw.CachePicDeferred('ranking');
-  Sbar.complete = Draw.CachePicDeferred('complete');
-  Sbar.inter = Draw.CachePicDeferred('inter');
-  Sbar.finale = Draw.CachePicDeferred('finale');
+  Sbar.ranking = await Draw.CachePic('ranking');
+  Sbar.complete = await Draw.CachePic('complete');
+  Sbar.inter = await Draw.CachePic('inter');
+  Sbar.finale = await Draw.CachePic('finale');
 
   Sbar.disc = Draw.PicFromWad('DISC');
 

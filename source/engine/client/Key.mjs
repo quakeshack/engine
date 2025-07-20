@@ -426,8 +426,8 @@ Key.Event = function(key, down) {
   }
 
   if (((Key.dest.value === Key.dest.menu) && ((key === Key.k.escape) || ((key >= Key.k.f1) && (key <= Key.k.f12)))) ||
-		((Key.dest.value === Key.dest.console) && (Key.consolekeys[key] !== true)) ||
-		((Key.dest.value === Key.dest.game) && ((Con.forcedup !== true) || (Key.consolekeys[key] !== true)))) {
+    ((Key.dest.value === Key.dest.console) && (Key.consolekeys[key] !== true)) ||
+    ((Key.dest.value === Key.dest.game) && ((Con.forcedup !== true) || (Key.consolekeys[key] !== true)))) {
     kb = Key.bindings[key];
     if (kb != null) {
       if (kb.charCodeAt(0) === 43) {

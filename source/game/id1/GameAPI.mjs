@@ -250,7 +250,6 @@ export class ServerGameAPI {
     /** @type {?BaseEntity} holds the dead player body chain */
     this.bodyque_head = null;
 
-    /** @private */
     this._modelData = { // FIXME: I’m not happy about this, this needs to be next to models
       'progs/soldier.mdl': engineAPI.ParseQC(soldierModelQCs.solider),
       'progs/enforcer.mdl': engineAPI.ParseQC(soldierModelQCs.enforcer),

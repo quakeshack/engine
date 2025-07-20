@@ -1,6 +1,6 @@
 import Vector from '../../../shared/Vector.mjs';
 
-import { damage, dead, flags, moveType, solid, content, channel, attn } from '../Defs.mjs';
+import { damage, dead, flags, moveType, solid, content, attn } from '../Defs.mjs';
 import { ServerGameAPI } from '../GameAPI.mjs';
 import { Serializer } from '../helper/MiscHelpers.mjs';
 
@@ -61,14 +61,14 @@ export default class BaseEntity {
     this.size = new Vector(); // maxs - mins
     this.velocity = new Vector();
     this.avelocity = new Vector();
-    /** @type {moveType} */
+    /** @type {number} @see {moveType} */
     this.movetype = moveType.MOVETYPE_NONE;
-    /** @type {solid} */
+    /** @type {number} @see {solid} */
     this.solid = solid.SOLID_NOT;
-    /** @type {flags} */
+    /** @type {number} @see {flags} */
     this.flags = flags.FL_NONE; // SV.WriteClientdataToMessage
     this.spawnflags = 0;
-    /** @type {content} */
+    /** @type {number} @see {content} */
     this.watertype = content.CONTENT_EMPTY;
     /** determines the waterlevel: 0 outside, 1 inside, > 1 different contents */
     this.waterlevel = 0; // SV.WriteClientdataToMessage
@@ -194,7 +194,6 @@ export default class BaseEntity {
 
   /**
    * Defines a state for the state machine.
-   * @protected
    * @param {string} state state name
    * @param {?string|number} keyframe frame/keyframe name the model should be in
    * @param {?string} nextState state name of the automatic next state
@@ -207,7 +206,6 @@ export default class BaseEntity {
   /**
    * Will start the state machine at the given state.
    * If you leave state null, it will simply continue with the next state.
-   * @protected
    * @param {?string} state optional new state
    * @returns {boolean} whether the state is valid
    */
@@ -539,7 +537,7 @@ export default class BaseEntity {
    * Moves self in the given direction. Returns success as a boolean.
    * @param {number} yaw
    * @param {number} dist
-   * @returns {number}
+   * @returns {boolean} true, if the move was successful
    */
   walkMove(yaw, dist) {
     return this.edict.walkMove(yaw, dist);
@@ -556,7 +554,7 @@ export default class BaseEntity {
   /**
    * Makes sure the entity is settled on the ground.
    * @param {number} [z] maximum distance to look down to check
-   * @returns {number} whether the dropping succeeded
+   * @returns {boolean} true, if the dropping succeeded
    */
   dropToFloor(z = -2048.0) {
     return this.edict.dropToFloor(z);
@@ -591,10 +589,10 @@ export default class BaseEntity {
 
   /**
    * Starts a sound bound to an edict.
-   * @param {channel} channel what sound channel to use, it will overwrite currently playing sounds
+   * @param {number} channel what sound channel to use, it will overwrite currently playing sounds
    * @param {string} sfxName e.g. sounds/door1.wav
    * @param {number} volume [0..1]
-   * @param {attn} attenuation attenuation
+   * @param {number} attenuation attenuation
    */
   startSound(channel, sfxName, volume = 1.0, attenuation = attn.ATTN_NORM) {
     this.engine.PrecacheSound(sfxName);

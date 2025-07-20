@@ -1,11 +1,10 @@
 import { eventBus, registry } from '../registry.mjs';
 
-let { Con, NET, Sys } = registry;
+let { Con, NET } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   Con = registry.Con;
   NET = registry.NET;
-  Sys = registry.Sys;
 });
 
 export class QSocket {

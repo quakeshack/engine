@@ -11,6 +11,7 @@ eventBus.subscribe('registry.frozen', () => {
 
 /**
  * WAD lump texture representation.
+ * Contains only data, not uploaded to the GPU or anything.
  */
 export class WadLumpTexture {
   /**
@@ -26,6 +27,17 @@ export class WadLumpTexture {
     this.data = data; // texture data (Uint8Array)
 
     Object.freeze(this);
+  }
+
+  toDataURL() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.width;
+    canvas.height = this.height;
+    const ctx = canvas.getContext('2d');
+    const data = ctx.createImageData(canvas.width, canvas.height);
+    data.data.set(new Uint8Array(this.data));
+    ctx.putImageData(data, 0, 0);
+    return canvas.toDataURL();
   }
 
   toString() {
@@ -102,8 +114,7 @@ export default class W {
     const handler = W._handlers.find((h) => h.MAGIC === magic);
 
     if (!handler) {
-      throw new CorruptedResourceError(filename);
-      // Sys.Error('W.LoadFile: ' + filename + ' is not a valid WAD file');
+      throw new CorruptedResourceError(filename, 'not a valid WAD file');
     }
 
     const wadFile = new handler();
@@ -137,37 +148,26 @@ export default class W {
 
     eventBus.publish('wad.palette.loaded');
   };
-};
 
-/**
- * Helper function to convert indexed 8-bit data to RGBA format.
- * @param {Uint8Array} uint8data indexed 8-bit data, each byte is an index to the palette
- * @param {number} width width
- * @param {number} height height
- * @param {?Uint8Array} palette palette data, 256 colors, each color is 3 bytes (RGB), default is W.d_8to24table_u8
- * @param {?number} transparentColor optional color index to treat as transparent (default is null, no transparency)
- * @returns {Uint8Array} RGBA data, each pixel is 4 bytes (R, G, B, A)
- */
-export function translateIndexToRGBA(uint8data, width, height, palette = W.d_8to24table_u8, transparentColor = null) {
-  const rgba = new Uint8Array(width * height * 4);
+  /**
+   * Loads a lump from the filesystem as texture.
+   * @param {string} filename lump file path
+   * @returns {Promise<WadLumpTexture>} the loaded lump texture
+   */
+  static async LoadLump(filename) { // TODO: this should take a type parameter to specify the type of the lump
+    const buf = await COM.LoadFileAsync(filename);
 
-  for (let i = 0; i < width * height; i++) {
-    const colorIndex = uint8data[i];
-    if (transparentColor !== null && colorIndex === transparentColor) {
-      rgba[i * 4 + 0] = 0;
-      rgba[i * 4 + 1] = 0;
-      rgba[i * 4 + 2] = 0;
-      rgba[i * 4 + 3] = 0;
-      continue;
+    if (buf === null) {
+      throw new MissingResourceError(filename);
     }
-    // lookup the color in the palette
-    rgba[i * 4 + 0] = palette[colorIndex * 3];
-    rgba[i * 4 + 1] = palette[colorIndex * 3 + 1];
-    rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
-    rgba[i * 4 + 3] = 255;
-  }
 
-  return rgba;
+    const view = new DataView(buf, 0, 8);
+    const width = view.getUint32(0, true);
+    const height = view.getUint32(4, true);
+    const data = new Uint8Array(buf, 8, width * height);
+
+    return new WadLumpTexture(filename, width, height, translateIndexToRGBA(data, width, height, W.d_8to24table_u8, 255));
+  }
 };
 
 /**
@@ -388,8 +388,7 @@ class Wad3File extends WadFileInterface {
         return null; // TODO: implement font handling
     }
 
-    throw new CorruptedResourceError(name);
-    // Sys.Error('Wad3File.getLumpMipmap: ' + name + ' has not a valid lump type (' + lumpInfo.type + ')');
+    throw new CorruptedResourceError(name, 'not a valid lump type (' + lumpInfo.type + ')');
   }
 
   /**
@@ -446,3 +445,33 @@ class Wad3File extends WadFileInterface {
 
 W._handlers.push(Wad3File);
 
+/**
+ * Helper function to convert indexed 8-bit data to RGBA format.
+ * @param {Uint8Array} uint8data indexed 8-bit data, each byte is an index to the palette
+ * @param {number} width width
+ * @param {number} height height
+ * @param {?Uint8Array} palette palette data, 256 colors, each color is 3 bytes (RGB), default is W.d_8to24table_u8
+ * @param {?number} transparentColor optional color index to treat as transparent (default is null, no transparency)
+ * @returns {Uint8Array} RGBA data, each pixel is 4 bytes (R, G, B, A)
+ */
+export function translateIndexToRGBA(uint8data, width, height, palette = W.d_8to24table_u8, transparentColor = null) {
+  const rgba = new Uint8Array(width * height * 4);
+
+  for (let i = 0; i < width * height; i++) {
+    const colorIndex = uint8data[i];
+    if (transparentColor !== null && colorIndex === transparentColor) {
+      rgba[i * 4 + 0] = 0;
+      rgba[i * 4 + 1] = 0;
+      rgba[i * 4 + 2] = 0;
+      rgba[i * 4 + 3] = 0;
+      continue;
+    }
+    // lookup the color in the palette
+    rgba[i * 4 + 0] = palette[colorIndex * 3];
+    rgba[i * 4 + 1] = palette[colorIndex * 3 + 1];
+    rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
+    rgba[i * 4 + 3] = 255;
+  }
+
+  return rgba;
+};

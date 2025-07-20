@@ -168,10 +168,6 @@ const eventHandlers = {
     e.preventDefault();
   },
 
-  onunload() {
-    Host.Shutdown();
-  },
-
   onwheel(e) {
     const key = e.deltaY < 0 ? Key.k.mwheelup : Key.k.mwheeldown;
     Key.Event(key, true);

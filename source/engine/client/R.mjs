@@ -7,16 +7,27 @@ import * as Def from '../common/Def.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import Chase from './Chase.mjs';
 import MSG from '../network/MSG.mjs';
-import W from '../common/W.mjs';
+import W, { translateIndexToRGBA } from '../common/W.mjs';
 import VID from './VID.mjs';
+import GL, { GLTexture } from './GL.mjs';
 
-let { CL, COM, Con, GL, Host, Mod, SCR, SV, Sys, V  } = registry;
+let { CL, COM, Con, Host, Mod, SCR, SV, Sys, V  } = registry;
+
+/**
+ * @typedef {{
+    name: string;
+    width: number;
+    height: number;
+    glt: import('./GL.mjs').GLTexture;
+    sky: boolean;
+    turbulent: boolean;
+}} BrushModelTexture
+ */
 
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
   COM = registry.COM;
   Con = registry.Con;
-  GL = registry.GL;
   Host = registry.Host;
   Mod = registry.Mod;
   SCR = registry.SCR;
@@ -598,7 +609,7 @@ R.DrawAliasModel = function(e) {
     program = GL.UseProgram('alias');
   }
   gl.uniform3fv(program.uOrigin, e.lerp.origin);
-  gl.uniformMatrix3fv(program.uAngles, false, GL.RotationMatrix(...e.lerp.angles));
+  gl.uniformMatrix3fv(program.uAngles, false, e.lerp.angles.toRotationMatrix());
 
   let ambientlight = R.LightPoint(e.lerp.origin);
   let shadelight = ambientlight;
@@ -690,9 +701,9 @@ R.DrawAliasModel = function(e) {
     }
     skin = skin.skins[i];
   }
-  GL.Bind(program.tTexture, skin.texturenum.texnum);
+  skin.texturenum.bind(program.tTexture);
   if (clmodel.player === true) {
-    GL.Bind(program.tPlayer, skin.playertexture);
+    skin.playertexture.bind(program.tPlayer);
   }
 
   gl.drawArrays(gl.TRIANGLES, 0, clmodel._num_tris * 3); // FIXME: private property access
@@ -1147,6 +1158,9 @@ R.MakeWorldModelDisplayLists = function(m) {
 
 // misc
 
+const solidskytexture = new GLTexture('r_solidsky', 128, 128);
+const alphaskytexture = new GLTexture('r_alphasky', 128, 128);
+
 R.InitTextures = function() {
   R.notexture_mip = {name: 'notexture', width: 16, height: 16, texturenum: null};
 
@@ -1163,18 +1177,13 @@ R.InitTextures = function() {
     }
   }
 
-  R.notexture_mip.texturenum = gl.createTexture();
-  GL.Bind(0, R.notexture_mip.texturenum);
-  GL.Upload(data, 16, 16);
+  const notexture = GLTexture.Allocate('r_notexture', 16, 16, translateIndexToRGBA(data, 16, 16));
 
-  R.solidskytexture = gl.createTexture();
-  GL.Bind(0, R.solidskytexture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  R.alphaskytexture = gl.createTexture();
-  GL.Bind(0, R.alphaskytexture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  R.notexture_mip.texturenum = notexture.texnum;
+
+  // CR: this combination of texture modes make the sky look more crisp
+  alphaskytexture.lockTextureMode('GL_NEAREST');
+  solidskytexture.lockTextureMode('GL_LINEAR');
 
   R.lightmap_texture = gl.createTexture();
   GL.Bind(0, R.lightmap_texture);
@@ -1663,6 +1672,9 @@ R.RocketTrail = function(start, end, type) {
           start[1] + Math.random() * 16.0 - 8.0,
           start[2] + Math.random() * 16.0 - 8.0,
         );
+        break;
+      default:
+        console.assert(false, 'Unknown particle type: ' + type);
     }
     start.add(vec);
   }
@@ -1688,9 +1700,7 @@ R.DrawParticles = function() {
     }
 
     const color = W.d_8to24table[p.color];
-    scale = (p.org[0] - R.refdef.vieworg[0]) * R.vpn[0] +
-			(p.org[1] - R.refdef.vieworg[1]) * R.vpn[1] +
-			(p.org[2] - R.refdef.vieworg[2]) * R.vpn[2];
+    scale = (p.org[0] - R.refdef.vieworg[0]) * R.vpn[0] + (p.org[1] - R.refdef.vieworg[1]) * R.vpn[1] + (p.org[2] - R.refdef.vieworg[2]) * R.vpn[2];
     if (scale < 20.0) {
       scale = 0.375;
     } else {
@@ -1902,6 +1912,9 @@ R.BuildLightMap = function(surf) {
   }
 };
 
+/**
+ * @returns {[BrushModelTexture, BrushModelTexture]}
+ */
 R.TextureAnimation = function(base) {
   let frame = 0;
   if (base.anim_base != null) {
@@ -1955,7 +1968,7 @@ R.DrawBrushModel = function(e) {
   }
 
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
-  const viewMatrix = GL.RotationMatrix(e.angles[0], e.angles[1], e.angles[2]);
+  const viewMatrix = e.angles.toRotationMatrix();
 
   let program = GL.UseProgram('brush');
   gl.uniform3fv(program.uOrigin, e.origin);
@@ -1979,8 +1992,8 @@ R.DrawBrushModel = function(e) {
       continue;
     }
     R.c_brush_verts += chain[2];
-    GL.Bind(program.tTextureA, textureA.texturenum);
-    GL.Bind(program.tTextureB, textureB.texturenum);
+    textureA.glt.bind(program.tTextureA);
+    textureB.glt.bind(program.tTextureB);
     gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
   }
 
@@ -2061,8 +2074,8 @@ R.DrawWorld = function() {
       R.c_brush_verts += cmds[2];
       const [textureA, textureB] = R.TextureAnimation(clmodel.textures[cmds[0]]);
       gl.uniform1f(program.uAlpha, R.interpolation.value ? (CL.state.time % .2) / .2 : 0);
-      GL.Bind(program.tTextureA, textureA.texturenum);
-      GL.Bind(program.tTextureB, textureB.texturenum);
+      textureA.glt.bind(program.tTextureA);
+      textureB.glt.bind(program.tTextureB);
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
     }
   }
@@ -2088,7 +2101,7 @@ R.DrawWorld = function() {
     for (j = leaf.waterchain; j < leaf.cmds.length; ++j) {
       cmds = leaf.cmds[j];
       R.c_brush_verts += cmds[2];
-      GL.Bind(program.tTexture, clmodel.textures[cmds[0]].texturenum);
+      clmodel.textures[cmds[0]].glt.bind(program.tTexture);
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
     }
   }
@@ -2344,8 +2357,8 @@ R.DrawSkyBox = function() {
 
   program = GL.UseProgram('sky');
   gl.uniform2f(program.uTime, (Host.realtime * 0.125) % 1.0, (Host.realtime * 0.03125) % 1.0);
-  GL.Bind(program.tSolid, R.solidskytexture);
-  GL.Bind(program.tAlpha, R.alphaskytexture);
+  solidskytexture.bind(program.tSolid);
+  alphaskytexture.bind(program.tAlpha);
   gl.bindBuffer(gl.ARRAY_BUFFER, R.skyvecs);
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 12, 0);
 
@@ -2375,22 +2388,20 @@ R.DrawSkyBox = function() {
 };
 
 R.InitSky = function(src) {
-  let i; let j; let p;
   const trans = new ArrayBuffer(65536);
   const trans32 = new Uint32Array(trans);
 
-  for (i = 0; i < 128; ++i) {
-    for (j = 0; j < 128; ++j) {
+  for (let i = 0; i < 128; i++) {
+    for (let j = 0; j < 128; j++) {
       trans32[(i << 7) + j] = COM.LittleLong(W.d_8to24table[src[(i << 8) + j + 128]] + 0xff000000);
     }
   }
-  GL.Bind(0, R.solidskytexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
-  gl.generateMipmap(gl.TEXTURE_2D);
 
-  for (i = 0; i < 128; ++i) {
-    for (j = 0; j < 128; ++j) {
-      p = (i << 8) + j;
+  solidskytexture.upload(new Uint8Array(trans));
+
+  for (let i = 0; i < 128; i++) {
+    for (let j = 0; j < 128; j++) {
+      const p = (i << 8) + j;
       if (src[p] !== 0) {
         trans32[(i << 7) + j] = COM.LittleLong(W.d_8to24table[src[p]] + 0xff000000);
       } else {
@@ -2398,7 +2409,6 @@ R.InitSky = function(src) {
       }
     }
   }
-  GL.Bind(0, R.alphaskytexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(trans));
-  gl.generateMipmap(gl.TEXTURE_2D);
+
+  alphaskytexture.upload(new Uint8Array(trans));
 };

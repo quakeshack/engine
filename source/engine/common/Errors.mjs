@@ -39,11 +39,13 @@ export class MissingResourceError extends ResourceError {
 export class CorruptedResourceError extends ResourceError {
   /**
    * @param {string} resource filename
+   * @param {string} reason optional reason why the resource is considered corrupted
    */
-  constructor(resource) {
-    super(`${resource} is corrupted`);
+  constructor(resource, reason) {
+    super(`${resource} is corrupted: ${reason}`);
     this.resource = resource;
     this.error = null;
+    this.reason = reason;
     this.name = 'CorruptedResourceError';
   }
 };

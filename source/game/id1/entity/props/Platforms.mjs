@@ -55,7 +55,6 @@ export class PlatformEntity extends BasePropEntity {
   }
 
   _spawnInsideTrigger() {
-    // eslint-disable-next-line no-use-before-define
     this._trigger = this.engine.SpawnEntity(PlatformTriggerEntity.classname, { owner: this });
   }
 

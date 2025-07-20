@@ -487,9 +487,9 @@ Host.Init = async function() {
     await R.Init();
     await M.Init();
     await CL.Init();
-    SCR.Init();
+    await SCR.Init();
     await CDAudio.Init();
-    Sbar.Init();
+    await Sbar.Init();
     IN.Init();
   } else {
     // we need a few frontend things for dedicated

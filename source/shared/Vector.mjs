@@ -341,6 +341,28 @@ export default class Vector extends Array {
   }
 
   /**
+   * Assumes in this Vector is [roll, pitch, yaw] and generates a 3x3 rotation matrix.
+   * @returns {number[]} 3x3 rotation matrix
+   */
+  toRotationMatrix() {
+    let [pitch, yaw, roll] = this;
+    pitch *= Math.PI / -180.0;
+    yaw *= Math.PI / 180.0;
+    roll *= Math.PI / 180.0;
+    const sp = Math.sin(pitch);
+    const cp = Math.cos(pitch);
+    const sy = Math.sin(yaw);
+    const cy = Math.cos(yaw);
+    const sr = Math.sin(roll);
+    const cr = Math.cos(roll);
+    return [
+      cy * cp, sy * cp, -sp,
+      -sy * cr + cy * sp * sr, cy * cr + sy * sp * sr, cp * sr,
+      -sy * -sr + cy * sp * cr, cy * -sr + sy * sp * cr, cp * cr,
+    ];
+  }
+
+  /**
    * Dot product of this and other.
    * @param {Vector} other other vector
    * @returns {number} dot product of this and other

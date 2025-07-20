@@ -1,8 +1,7 @@
-/* globalss gl, Con, COM, Cmd, Cvar, SCR, Sys, VID */
-
-import Cmd from '../common/Cmd.mjs';
+import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
-import W, { translateIndexToRGBA } from '../common/W.mjs';
+import { MissingResourceError } from '../common/Errors.mjs';
+import W, { translateIndexToRGBA, WadLumpTexture } from '../common/W.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import VID from './VID.mjs';
 
@@ -20,56 +19,13 @@ eventBus.subscribe('registry.frozen', () => {
 /** @type {WebGL2RenderingContext} */
 let gl = null;
 
-GL.textures = [];
-GL.currenttextures = [];
-GL.programs = [];
+/** @type {{[key: string]: {min: number, max: number}}} */
+const textureModes = {};
 
-GL.Bind = function(target, texnum, flushStream) {
-  if (GL.currenttextures[target] !== texnum) {
-    if (flushStream === true) {
-      GL.StreamFlush();
-    }
-    if (GL.activetexture !== target) {
-      GL.activetexture = target;
-      gl.activeTexture(gl.TEXTURE0 + target);
-    }
-    GL.currenttextures[target] = texnum;
-    gl.bindTexture(gl.TEXTURE_2D, texnum);
-  }
-};
+/** @type {string} */
+let currentTextureMode = 'GL_LINEAR';
 
-GL.TextureMode_f = function(name) {
-  let i;
-  if (name === undefined) {
-    for (i = 0; i < GL.modes.length; ++i) {
-      if (GL.filter_min === GL.modes[i][1]) {
-        Con.Print(GL.modes[i][0] + '\n');
-        return;
-      }
-    }
-    Con.Print('current filter is unknown???\n');
-    return;
-  }
-  name = name.toUpperCase();
-  for (i = 0; i < GL.modes.length; ++i) {
-    if (GL.modes[i][0] === name) {
-      break;
-    }
-  }
-  if (i === GL.modes.length) {
-    Con.Print('bad filter name\n');
-    return;
-  }
-  GL.filter_min = GL.modes[i][1];
-  GL.filter_max = GL.modes[i][2];
-  for (i = 0; i < GL.textures.length; ++i) {
-    GL.Bind(0, GL.textures[i].texnum);
-    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
-    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);
-  }
-};
-
-GL.ortho = [
+const ortho = [
   0.0, 0.0, 0.0, 0.0,
   0.0, 0.0, 0.0, 0.0,
   0.0, 0.0, -1.0, 0.0,
@@ -78,22 +34,405 @@ GL.ortho = [
 
 // recalculate the ortho matrix when the video size changes
 eventBus.subscribe('vid.resize', ({width, height}) => {
-  GL.ortho[0] = 2.0 / width;
-  GL.ortho[5] = -2.0 / height;
+  ortho[0] = 2.0 / width;
+  ortho[5] = -2.0 / height;
 });
 
+/** @type {Map<string, GLTexture>} */
+const textureCache = new Map();
+
+class TextureListCommand extends ConsoleCommand {
+  run() {
+    for (const [identifier, texture] of textureCache.entries()) {
+      if (!texture.ready) {
+        Con.Print(`${identifier} - NOT ready\n`);
+        continue;
+      }
+
+      Con.Print(`${identifier} (${texture.width} x ${texture.height})\n`);
+    }
+  }
+};
+
+/** @type {WebGLTexture[]} each index maps to a texture target and points to the texture being bound */
+const currentTextureTargets = [];
+
+/** @type {number} */
+let currentTextureTarget = null;
+
+export class GLTexture {
+  /** @type {string} */
+  identifier = null;
+
+  /** @type {number} */
+  width = 0;
+
+  /** @type {number} */
+  height = 0;
+
+  /** @type {WebGLTexture|null} */
+  #texnum = null;
+
+  /** @type {string} */
+  #textureMode = null;
+
+  /** @type {Function} */
+  #textureModeListener = null;
+
+  /** @type {'repeat' | 'clamp'} */
+  #textureWrap = 'repeat';
+
+  /** @deprecated */
+  get texnum() {
+    return this.#texnum;
+  }
+
+  get ready() {
+    return this.#texnum !== null;
+  }
+
+  /**
+   * @param {string} identifier unique name of the texture
+   * @param {number} width width
+   * @param {number} height height
+   * @param {Uint8Array|ImageBitmap|null} data optional texture data in RGBA format
+   */
+  constructor(identifier, width, height, data = null) {
+    this.identifier = identifier;
+    this.width = width;
+    this.height = height;
+    this.#texnum = null;
+    this.#textureMode = currentTextureMode;
+
+    console.assert(this.width > 0 && this.height > 0, 'Texture width and height must be greater than zero');
+    console.assert(textureCache.has(identifier) === false, 'Texture must not already exist in the cache');
+
+    textureCache.set(identifier, this);
+
+    if (data !== null) {
+      this.upload(data);
+    }
+
+    this.#textureModeListener = eventBus.subscribe('gl.texturemode', (name) => {
+      if (this.#textureMode !== name) {
+        this._setTextureMode(name);
+      }
+    });
+  }
+
+  /**
+   * Allocates a new texture or returns an existing one from the cache.
+   * @param {string} identifier unique name of the texture
+   * @param {number} width width
+   * @param {number} height height
+   * @param {Uint8Array|ImageBitmap|null} data optional texture data in RGBA format or as ImageBitmap
+   * @returns {GLTexture} texture instance
+   */
+  static Allocate(identifier, width, height, data = null) {
+    if (textureCache.has(identifier)) {
+      const texture = textureCache.get(identifier);
+
+      console.assert(texture.width !== null && texture.width === width && texture.height !== null && texture.height === height, 'Texture dimensions must match');
+
+      return texture;
+    }
+
+    return new GLTexture(identifier, width, height, data);
+  }
+
+  /**
+   * Returns an existing texture from the cache.
+   * @param {string} identifier unique name of the texture
+   * @param {number} width width
+   * @param {number} height height
+   * @returns {GLTexture} texture instance
+   */
+  static FromCache(identifier, width, height) {
+    if (!textureCache.has(identifier)) {
+      return null;
+    }
+
+    const texture = textureCache.get(identifier);
+
+    console.assert(texture.width !== null && texture.width === width && texture.height !== null && texture.height === height, 'Texture dimensions must match');
+
+    return texture;
+  }
+
+  /**
+   * Allocates a new texture from a lump or returns an existing one from the cache.
+   * @param {WadLumpTexture} lump lump containing texture data
+   * @returns {GLTexture} texture instance
+   */
+  static FromLumpTexture(lump) {
+    return this.Allocate(lump.name, lump.width, lump.height, lump.data);
+  }
+
+  /**
+   * Allocates a new texture from an image file or returns an existing one from the cache.
+   * @param {string} filename filename an any image
+   * @returns {Promise<GLTexture>} texture instance
+   */
+  static async FromImageFile(filename) {
+    // shortcut if the texture is already cached, ignore texture dimensions check
+    if (textureCache.has(filename)) {
+      return textureCache.get(filename);
+    }
+
+    const data = await COM.LoadFileAsync(filename);
+
+    if (data === null) {
+      throw new MissingResourceError(filename);
+    }
+
+    const image = await createImageBitmap(new Blob([data]));
+
+    return this.Allocate(filename, image.width, image.height, image);
+  }
+
+  /**
+   * @protected
+   * @param {string} name texture mode
+   */
+  _setTextureMode(name) {
+    this.#textureMode = name;
+
+    if (!this.ready) {
+      return;
+    }
+
+    const { min, max } = textureModes[this.#textureMode];
+    this.bind(0);
+    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, min);
+    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, max);
+
+    switch (this.#textureWrap) {
+    case 'clamp':
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      break;
+
+    case 'repeat':
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      break;
+    }
+  }
+
+  /**
+   * Will lock the texture mode to the specified name.
+   * @param {string} name texture mode name
+   * @returns {GLTexture} this
+   */
+  lockTextureMode(name) {
+    console.assert(textureModes[name] !== undefined, 'Valid texture mode required');
+
+    this.#textureModeListener();
+    this.#textureModeListener = null;
+
+    if (this.#textureMode !== name) {
+      this._setTextureMode(name);
+    }
+
+    return this;
+  }
+
+  wrapClamped() {
+    this.#textureWrap = 'clamp';
+
+    if (this.ready) {
+      this._setTextureMode(this.#textureMode);
+    }
+
+    return this;
+  }
+
+  wrapRepeat() {
+    this.#textureWrap = 'repeat';
+
+    if (this.ready) {
+      this._setTextureMode(this.#textureMode);
+    }
+
+    return this;
+  }
+
+  resize(width, height) {
+    console.assert(width > 0 && height > 0, 'Texture width and height must be greater than zero');
+
+    this.width = width;
+    this.height = height;
+
+    this.upload(null);
+
+    return this;
+  }
+
+  /**
+   * Binds the texture.
+   * @param {number} target texture target (0-7)
+   * @param {boolean} flushStream flush the stream before binding
+   * @returns {GLTexture} this
+   */
+  bind(target = 0, flushStream = false) {
+    if (!this.ready) {
+      missingPicTexture.bind(target, flushStream);
+      return this;
+    }
+
+    if (currentTextureTargets[target] === this.#texnum) {
+      // already bound
+      return this;
+    }
+
+    if (flushStream) {
+      GL.StreamFlush();
+    }
+
+    if (currentTextureTarget !== target) {
+      currentTextureTarget = target;
+      gl.activeTexture(gl.TEXTURE0 + target);
+    }
+
+    currentTextureTargets[target] = this.#texnum;
+    gl.bindTexture(gl.TEXTURE_2D, this.#texnum);
+
+    return this;
+  }
+
+  /**
+   * Uploads texture data.
+   * @param {Uint8Array|ImageBitmap|null} data texture data in RGBA format or as ImageBitmap
+   * @returns {GLTexture} this
+   */
+  upload(data) {
+    if (this.#texnum === null) {
+      this.#texnum = gl.createTexture();
+    }
+
+    this.bind(0);
+
+    if (data instanceof ImageBitmap) {
+      this.width = data.width;
+      this.height = data.height;
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    } else if (data instanceof Uint8Array) {
+      console.assert(data.length === this.width * this.height * 4, 'Texture data length must match width and height');
+
+      const { scaledWidth, scaledHeight, resampleRequired } = scaleTextureDimensions(this.width, this.height);
+
+      if (resampleRequired) {
+        data = resampleTexture32(data, this.width, this.height, scaledWidth, scaledHeight);
+      }
+
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      gl.generateMipmap(gl.TEXTURE_2D);
+    } else if (data === null) {
+      const { scaledWidth, scaledHeight } = scaleTextureDimensions(this.width, this.height);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    }
+
+    this._setTextureMode(this.#textureMode);
+
+    eventBus.publish('gl.texture.ready', this.identifier);
+
+    return this;
+  }
+
+  free() {
+    if (this.#textureModeListener !== null) {
+      this.#textureModeListener();
+      this.#textureModeListener = null;
+    }
+
+    if (this.#texnum !== null) {
+      gl.deleteTexture(this.#texnum);
+      this.#texnum = null;
+    }
+
+    textureCache.delete(this.identifier);
+  }
+
+  [Symbol.dispose]() {
+    this.free();
+  }
+
+  toString() {
+    return `${this.identifier} (${this.width} x ${this.height}, ${this.ready ? 'ready' : 'not ready'})`;
+  }
+};
+
+/** @type {GLTexture} */
+const missingPicTexture = GLTexture.Allocate('gl_missingpic', 32, 32);
+
+GL.programs = [];
+
+/**
+ * @param target
+ * @param texnum
+ * @param flushStream
+ * @deprecated
+ */
+GL.Bind = function(target, texnum, flushStream) {
+  if (currentTextureTargets[target] === texnum) {
+    // already bound
+    return;
+  }
+
+  if (flushStream) {
+    GL.StreamFlush();
+  }
+
+  if (currentTextureTarget !== target) {
+    currentTextureTarget = target;
+    gl.activeTexture(gl.TEXTURE0 + target);
+  }
+
+  currentTextureTargets[target] = texnum;
+  gl.bindTexture(gl.TEXTURE_2D, texnum);
+};
+
+class TextureModeCommand extends ConsoleCommand  {
+  /** @param {string} name texture filter mode name */
+  // @ts-ignore
+  run(name) {
+    console.assert(currentTextureMode !== null, 'GL.TextureMode_f: currentTextureMode must be set');
+
+    if (name === undefined) {
+      Con.Print('Current texture mode: ' + currentTextureMode + '\n');
+      return;
+    }
+
+    name = name.toUpperCase();
+
+    if (textureModes[name] === undefined) {
+      Con.Print('Unknown texture mode: ' + name + '\n');
+      return;
+    }
+
+    currentTextureMode = name;
+
+    const { min, max } = textureModes[currentTextureMode];
+
+    eventBus.publish('gl.texturemode', name, { min, max });
+
+    Con.Print('Texture mode set to: ' + name + '\n');
+  }
+};
+
 GL.Set2D = function() {
-  gl.viewport(0, 0, (VID.width * VID.pixelRatio) >> 0, (VID.height * VID.pixelRatio) >> 0);
+  gl.viewport(0, 0, Math.floor(VID.width * VID.pixelRatio), Math.floor(VID.height * VID.pixelRatio));
   GL.UnbindProgram();
-  let i; let program;
-  for (i = 0; i < GL.programs.length; ++i) {
-    program = GL.programs[i];
-    if (program.uOrtho == null) {
+
+  for (const { program, uOrtho } of GL.programs) {
+    if (!uOrtho) {
       continue;
     }
-    gl.useProgram(program.program);
-    gl.uniformMatrix4fv(program.uOrtho, false, GL.ortho);
+
+    gl.useProgram(program);
+    gl.uniformMatrix4fv(uOrtho, false, ortho);
   }
+
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
 };
@@ -104,7 +443,7 @@ GL.Set2D = function() {
  * @param {number} height input texture height
  * @returns {{scaledWidth: number, scaledHeight: number, resampleRequired: boolean}} new dimensions and whether resampling is required
  */
-GL.ScaleTextureDimensions = function(width, height) {
+function scaleTextureDimensions(width, height) {
   let scaledWidth = width;
   let scaledHeight = height;
 
@@ -140,7 +479,15 @@ GL.ScaleTextureDimensions = function(width, height) {
   };
 };
 
-GL.ResampleTexture = function(data, inwidth, inheight, outwidth, outheight) {
+/**
+ * @param {Uint8Array} data 8-bit texture data
+ * @param {number} inwidth source texture width
+ * @param {number} inheight source texture height
+ * @param {number} outwidth target texture width
+ * @param {number} outheight target texture height
+ * @returns {Uint8Array} resampled texture data
+ */
+export function resampleTexture8(data, inwidth, inheight, outwidth, outheight) {
   const outdata = new ArrayBuffer(outwidth * outheight);
   const out = new Uint8Array(outdata);
   const xstep = inwidth / outwidth; const ystep = inheight / outheight;
@@ -156,21 +503,6 @@ GL.ResampleTexture = function(data, inwidth, inheight, outwidth, outheight) {
   return out;
 };
 
-GL.Upload = function(data, width, height) {
-  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(width, height);
-
-  if (resampleRequired) {
-    data = GL.ResampleTexture(data, width, height, scaledWidth, scaledHeight);
-  }
-
-  data = translateIndexToRGBA(data, scaledWidth, scaledHeight, W.d_8to24table_u8, 255);
-
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-  gl.generateMipmap(gl.TEXTURE_2D);
-  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
-  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);
-};
-
 /**
  * @param {Uint8Array} data RGBA texture data
  * @param {number} inwidth source texture width
@@ -179,7 +511,7 @@ GL.Upload = function(data, width, height) {
  * @param {number} outheight target texture height
  * @returns {Uint8Array} resampled texture data
  */
-function resampleTexture32(data, inwidth, inheight, outwidth, outheight) {
+export function resampleTexture32(data, inwidth, inheight, outwidth, outheight) {
   const outdata = new ArrayBuffer(outwidth * outheight * 4);
   const out = new Uint8Array(outdata);
   const xstep = inwidth / outwidth;
@@ -197,113 +529,6 @@ function resampleTexture32(data, inwidth, inheight, outwidth, outheight) {
     }
   }
   return out;
-};
-
-GL.Upload32 = function(data, width, height) {
-  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(width, height);
-
-  if (resampleRequired) {
-    data = resampleTexture32(data, width, height, scaledWidth, scaledHeight);
-  }
-
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-  gl.generateMipmap(gl.TEXTURE_2D);
-  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, GL.filter_min);
-  gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, GL.filter_max);
-};
-
-GL.LoadTexture = function(identifier, width, height, data) {
-  let glt; let i;
-  if (identifier.length !== 0) {
-    for (i = 0; i < GL.textures.length; ++i) {
-      glt = GL.textures[i];
-      if (glt.identifier === identifier) {
-        if ((width !== glt.width) || (height !== glt.height)) {
-          throw new Error('GL.LoadTexture: cache mismatch');
-        }
-        return glt;
-      }
-    }
-  }
-
-  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(width, height);
-
-  if (resampleRequired) {
-    data = GL.ResampleTexture(data, width, height, scaledWidth, scaledHeight);
-  }
-
-  glt = { texnum: gl.createTexture(), identifier: identifier, width: width, height: height, ready: true };
-  GL.Bind(0, glt.texnum);
-  GL.Upload(data, scaledWidth, scaledHeight);
-  GL.textures[GL.textures.length] = glt;
-  return glt;
-};
-
-GL.LoadTexture32 = function(identifier, width, height, data) {
-  let glt; let i;
-  if (identifier.length !== 0) {
-    for (i = 0; i < GL.textures.length; ++i) {
-      glt = GL.textures[i];
-      if (glt.identifier === identifier) {
-        if ((width !== glt.width) || (height !== glt.height)) {
-          throw new Error('GL.LoadTexture: cache mismatch');
-        }
-        return glt;
-      }
-    }
-  }
-
-  glt = { texnum: gl.createTexture(), identifier: identifier, width: width, height: height, ready: true };
-  GL.Bind(0, glt.texnum);
-  GL.Upload32(data, width, height);
-  GL.textures[GL.textures.length] = glt;
-  return glt;
-};
-
-/**
- * @param pic
- * @deprecated use WadFileInterface.getLumpMipmap() instead
- */
-GL.LoadPicTexture = function(pic) {
-  const { scaledWidth, scaledHeight, resampleRequired } = GL.ScaleTextureDimensions(pic.width, pic.height);
-
-  let data = pic.data;
-
-  if (resampleRequired) {
-    data = GL.ResampleTexture(data, pic.width, pic.height, scaledWidth, scaledHeight);
-  }
-
-  data = translateIndexToRGBA(data, scaledWidth, scaledHeight, W.d_8to24table_u8, 255);
-
-  const texnum = gl.createTexture();
-  GL.Bind(0, texnum);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, scaledWidth, scaledHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  return texnum;
-};
-
-/**
- * Loads any image file as a texture.
- * @param {string} filename image filename
- * @returns {Promise<WebGLTexture|null>} texture number, null if the image could not be loaded
- */
-GL.LoadImageTexture = async function(filename) {
-  const data = await COM.LoadFileAsync(filename);
-
-  if (data === null) {
-    Con.DPrint(`GL.LoadImageTexture: Could not load image: ${filename}\n`);
-    return null;
-  }
-
-  const imgblob = new Blob([data]);
-
-  const texnum = gl.createTexture();
-  GL.Bind(0, texnum);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, await createImageBitmap(imgblob));
-  gl.generateMipmap(gl.TEXTURE_2D);
-
-  return texnum;
 };
 
 GL.CreateProgram = async function(identifier, uniforms, attribs, textures) {
@@ -438,23 +663,6 @@ GL.UnbindProgram = function() {
 
 GL.identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
-GL.RotationMatrix = function(pitch, yaw, roll) {
-  pitch *= Math.PI / -180.0;
-  yaw *= Math.PI / 180.0;
-  roll *= Math.PI / 180.0;
-  const sp = Math.sin(pitch);
-  const cp = Math.cos(pitch);
-  const sy = Math.sin(yaw);
-  const cy = Math.cos(yaw);
-  const sr = Math.sin(roll);
-  const cr = Math.cos(roll);
-  return [
-    cy * cp,					sy * cp,					-sp,
-    -sy * cr + cy * sp * sr,	cy * cr + sy * sp * sr,		cp * sr,
-    -sy * -sr + cy * sp * cr,	cy * -sr + sy * sp * cr,	cp * cr,
-  ];
-};
-
 GL.StreamFlush = function() {
   if (GL.streamArrayVertexCount === 0) {
     return;
@@ -561,7 +769,10 @@ GL.StreamDrawColoredQuad = function(x, y, w, h, r, g, b, a) {
   GL.StreamWriteUByte4(r, g, b, a);
 };
 
-GL.Init = function() {
+/**
+ * Initializes the WebGL context and sets up the default state.
+ */
+function GL_Init() {
   try {
     const options = {
       preserveDrawingBuffer: true,
@@ -582,19 +793,18 @@ GL.Init = function() {
   gl.cullFace(gl.FRONT);
   gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
-  GL.modes = [
-    ['GL_NEAREST', gl.NEAREST, gl.NEAREST],
-    ['GL_LINEAR', gl.LINEAR, gl.LINEAR],
-    ['GL_NEAREST_MIPMAP_NEAREST', gl.NEAREST_MIPMAP_NEAREST, gl.NEAREST],
-    ['GL_LINEAR_MIPMAP_NEAREST', gl.LINEAR_MIPMAP_NEAREST, gl.LINEAR],
-    ['GL_NEAREST_MIPMAP_LINEAR', gl.NEAREST_MIPMAP_LINEAR, gl.NEAREST],
-    ['GL_LINEAR_MIPMAP_LINEAR', gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR],
-  ];
-  GL.filter_min = gl.LINEAR_MIPMAP_NEAREST;
-  GL.filter_max = gl.LINEAR;
+  textureModes['GL_NEAREST'] = { min: gl.NEAREST, max: gl.NEAREST },
+  textureModes['GL_LINEAR'] = { min: gl.LINEAR, max: gl.LINEAR },
+  textureModes['GL_NEAREST_MIPMAP_NEAREST'] = { min: gl.NEAREST_MIPMAP_NEAREST, max: gl.NEAREST },
+  textureModes['GL_LINEAR_MIPMAP_NEAREST'] = { min: gl.LINEAR_MIPMAP_NEAREST, max: gl.LINEAR },
+  textureModes['GL_NEAREST_MIPMAP_LINEAR'] = { min: gl.NEAREST_MIPMAP_LINEAR, max: gl.NEAREST },
+  textureModes['GL_LINEAR_MIPMAP_LINEAR'] = { min: gl.LINEAR_MIPMAP_LINEAR, max: gl.LINEAR },
+
+  currentTextureMode = 'GL_LINEAR_MIPMAP_LINEAR';
 
   GL.picmip = new Cvar('gl_picmip', '0');
-  Cmd.AddCommand('gl_texturemode', GL.TextureMode_f);
+  Cmd.AddCommand('gl_texturemode', TextureModeCommand);
+  Cmd.AddCommand('gl_texturelist', TextureListCommand);
 
   GL.streamArray = new ArrayBuffer(8192); // Increasing even a little bit ruins all performance on Mali.
   GL.streamArrayBytes = new Uint8Array(GL.streamArray);
@@ -606,12 +816,47 @@ GL.Init = function() {
   gl.bufferData(gl.ARRAY_BUFFER, GL.streamArray.byteLength, gl.DYNAMIC_DRAW);
   GL.streamBufferPosition = 0;
 
+  // upload a checkerboard (red/black) texture for missing pics
+  missingPicTexture.upload((() => {
+    const l = 32;
+    const data = new Uint8Array(l * l * 4);
+    for (let i = 0; i < data.length; i += 4) {
+      const unevenRow = Math.floor(i / (l * 4)) % 2 === 1;
+      data[i] = ((unevenRow ? 1 : 0) + Math.floor(i / 4)) % 2 === 0 ? 255 : 0;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+      data[i + 3] = 255;
+    }
+    return data;
+  })());
+
   GL.gl = gl;
   eventBus.publish('gl.ready', gl);
 };
 
-GL.Shutdown = function() {
-  // FIXME: release all textures and programs
+/**
+ * Cleans up the WebGL context and releases resources.
+ */
+function GL_Shutdown() {
+  for (const { program } of GL.programs) {
+    gl.deleteProgram(program);
+  }
+
+  currentTextureTargets.length = 0;
+  currentTextureTarget = null;
+
+  for (const texture of textureCache.values()) {
+    texture.free();
+  }
+
+  textureCache.clear();
+
+  GL.programs = [];
+  GL.currentProgram = null;
+
   gl = null;
   eventBus.publish('gl.shutdown');
 };
+
+eventBus.subscribe('vid.ready', () => GL_Init());
+eventBus.subscribe('vid.shutdown', () => GL_Shutdown());

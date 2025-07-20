@@ -7,6 +7,7 @@
 import { eventBus, registry } from '../registry.mjs';
 import Vector, { DirectionalVectors } from '../../shared/Vector.mjs';
 import * as Protocol from '../network/Protocol.mjs';
+import { solid } from '../../shared/Defs.mjs';
 
 let { Mod, SV } = registry;
 
@@ -1217,7 +1218,7 @@ export function TestServerside() {
   for (let i = 1; i < SV.server.num_edicts; i++) {
     const entity = SV.server.edicts[i].entity;
 
-    pm.addEntity(entity, entity.solid === SV.solid.bsp ? SV.server.models[entity.modelindex] : null);
+    pm.addEntity(entity, entity.solid === solid.SOLID_BSP ? SV.server.models[entity.modelindex] : null);
 
     console.assert(pm.physents[i].origin.equals(entity.origin), 'origin must match');
     console.assert(pm.physents[i].edictId === i, 'edictId must match');

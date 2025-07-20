@@ -1,3 +1,4 @@
+import { solid } from '../../shared/Defs.mjs';
 import Vector from '../../shared/Vector.mjs';
 import MSG from '../network/MSG.mjs';
 import * as Protocol from '../network/Protocol.mjs';
@@ -19,12 +20,10 @@ eventBus.subscribe('com.ready', () => {
   const COM = registry.COM;
 
   if (COM.hipnotic) {
-    // eslint-disable-next-line no-use-before-define
     EngineAPI.gameFlavors.push(GameFlavors.hipnotic);
   }
 
   if (COM.rogue) {
-    // eslint-disable-next-line no-use-before-define
     EngineAPI.gameFlavors.push(GameFlavors.rogue);
   }
 });
@@ -236,7 +235,7 @@ export class ServerEngineAPI extends EngineAPI {
       /** @type {ServerEdict} */
       const ent = SV.server.edicts[i];
 
-      if (ent.isFree() || ent.entity.solid === SV.solid.not) {
+      if (ent.isFree() || ent.entity.solid === solid.SOLID_NOT) {
         continue;
       }
 
@@ -383,15 +382,18 @@ export class ServerEngineAPI extends EngineAPI {
 };
 
 export class ClientEngineAPI extends EngineAPI {
+
+
   /**
    * @param {string} name command name
    * @param {Function} callback callback function
    */
-  RegisterCommand(name, callback) {
+  static RegisterCommand(name, callback) {
     Cmd.AddCommand(name, callback);
   }
 
-  UnregisterCommand(name) {
+  // eslint-disable-next-line no-unused-vars
+  static UnregisterCommand(name) {
     // TODO: implement
   }
 

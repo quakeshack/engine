@@ -1,4 +1,4 @@
-import Vector from '../../../shared/Vector.mjs';
+import Vector, { DirectionalVectors } from '../../../shared/Vector.mjs';
 
 import { attn, channel, colors, content, damage, flags, items, moveType, solid, tentType } from '../Defs.mjs';
 import { crandom, EntityWrapper } from '../helper/MiscHelpers.mjs';
@@ -119,7 +119,7 @@ export class DamageInflictor extends EntityWrapper {
    * @private
    * @param {number} damage damage points
    * @param {Vector} direction shooting direction
-   * @param {Vector.DirectionalVectors} angleVectors v_angle.angleVectors (forward, right, up)
+   * @param {DirectionalVectors} angleVectors v_angle.angleVectors (forward, right, up)
    * @param {*} trace traceline result
    */
   _traceAttack(damage, direction, angleVectors, trace) {
@@ -308,7 +308,7 @@ export class DamageInflictor extends EntityWrapper {
  * `this._damageHandler = new DamageHandler(this);` must be placed in `_declareFields` last!
  */
 export class DamageHandler extends EntityWrapper {
-  /** @type {Map<string, number>} multiplier for damping received damage */
+  /** @type {{[key: string]: number}} multiplier for damping received damage */
   receiveDamageFactor = {
     regular: 1.0,
     blast: 1.0,

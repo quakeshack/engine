@@ -3,15 +3,15 @@
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { eventBus, registry } from '../registry.mjs';
+import GL from './GL.mjs';
 import VID from './VID.mjs';
 
-let { CL, Con, Draw, GL, Host, Key, M, R, S, Sbar, V } = registry;
+let { CL, Con, Draw, Host, Key, M, R, S, Sbar, V } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
   Con = registry.Con;
   Draw = registry.Draw;
-  GL = registry.GL;
   Host = registry.Host;
   Key = registry.Key;
   M = registry.M;
@@ -202,8 +202,8 @@ SCR.SizeDown_f = function() {
   SCR.recalc_refdef = true;
 };
 
-SCR.Init = function() {
-  SCR.fov = new Cvar('fov', '90', Cvar.FLAG.CHEAT);
+SCR.Init = async function() {
+  SCR.fov = new Cvar('fov', '90', Cvar.FLAG.CHEAT); // TODO: move to R?
   SCR.viewsize = new Cvar('viewsize', '100', Cvar.FLAG.ARCHIVE);
   SCR.conspeed = new Cvar('scr_conspeed', '300');
   SCR.showturtle = new Cvar('showturtle', '0');
@@ -215,7 +215,7 @@ SCR.Init = function() {
   Cmd.AddCommand('sizedown', SCR.SizeDown_f);
   SCR.net = Draw.PicFromWad('NET');
   SCR.turtle = Draw.PicFromWad('TURTLE');
-  SCR.pause = Draw.CachePicDeferred('pause');
+  SCR.pause = await Draw.CachePic('pause');
 };
 
 SCR.count = 0;
@@ -245,7 +245,7 @@ SCR.DrawPause = function() {
 };
 
 SCR.SetUpToDrawConsole = function() {
-  Con.forcedup = (CL.state.worldmodel == null) || (CL.cls.signon !== 4);
+  Con.forcedup = (!CL.state.worldmodel) || (CL.cls.signon !== 4);
 
   if (Con.forcedup === true) {
     SCR.con_current = 200;

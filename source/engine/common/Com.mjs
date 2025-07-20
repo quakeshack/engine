@@ -170,7 +170,7 @@ export default class COM {
     ];
     for (let i = 0; i < 256; ++i) {
       if (check[i] !== pop[i]) {
-        throw new CorruptedResourceError('gfx/pop.lmp');
+        throw new CorruptedResourceError('gfx/pop.lmp', 'not genuine registered version');
       }
     }
     this.registered.set(true);

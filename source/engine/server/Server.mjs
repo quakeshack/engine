@@ -9,6 +9,7 @@ import Q from '../common/Q.mjs';
 import { ED, ServerEdict } from './Edict.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
+import * as Defs from '../../shared/Defs.mjs';
 
 let { COM, Con, Host, Mod, NET, PR, V } = registry;
 
@@ -1068,7 +1069,7 @@ SV.SendClientMessages = function() {
       continue;
     }
 
-    SV.server.edicts[i].entity.effects &= ~Mod.effects.muzzleflash;
+    SV.server.edicts[i].entity.effects &= ~Defs.effect.EF_MUZZLEFLASH;
   }
 };
 

@@ -1,10 +1,4 @@
-import { eventBus, registry } from '../registry.mjs';
-
-let { GL } = registry;
-
-eventBus.subscribe('registry.frozen', () => {
-  GL = registry.GL;
-});
+import { eventBus } from '../registry.mjs';
 
 export default class VID {
   /** @type {number} */
@@ -61,18 +55,19 @@ export default class VID {
 
     document.getElementById('console').style.display = 'none';
 
-    VID.Resize();
-    GL.Init();
+    VID.Resize(); // trigger once since we are ready now
 
     window.addEventListener('resize', VID.Resize);
+
+    eventBus.publish('vid.ready');
   };
 
   static async Shutdown() {
-    GL.Shutdown();
-
     document.getElementById('console').style.display = 'block';
     VID.mainwindow.style.display = 'none';
 
     window.removeEventListener('resize', VID.Resize);
+
+    eventBus.publish('vid.shutdown');
   }
 };

@@ -169,7 +169,6 @@ export default class ShalrathMonsterEntity extends WalkMonster {
     movedir.normalize();
     this.movedir.set(movedir);
 
-    // eslint-disable-next-line no-use-before-define
     this.engine.SpawnEntity(ShalrathMissileEntity.classname, {
       owner: this,
     });

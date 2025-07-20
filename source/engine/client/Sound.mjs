@@ -53,7 +53,6 @@ export class SFX {
       return;
     }
 
-    // eslint-disable-next-line no-use-before-define
     return await S.LoadSound(this);
   }
 }
@@ -139,7 +138,6 @@ class SoundBaseChannel {
    * (Re)computes left_vol and right_vol for a channel based on the listener position/orientation.
    */
   spatialize() {
-    // eslint-disable-next-line no-use-before-define
     this._S = S;
 
     // If channel is from the player's own gun, full volume in both ears
@@ -186,7 +184,6 @@ class SoundBaseChannel {
 
 class AudioContextChannel extends SoundBaseChannel {
   static async decodeAudioData(rawData) {
-    // eslint-disable-next-line no-use-before-define
     return await S._context.decodeAudioData(rawData);
   }
 

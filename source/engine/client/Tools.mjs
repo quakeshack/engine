@@ -2,11 +2,10 @@ import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import W, { WadFileInterface } from '../common/W.mjs';
 import { eventBus, registry } from '../registry.mjs';
 
-let { Con, Draw } = registry;
+let { Con } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   Con = registry.Con;
-  Draw = registry.Draw;
 });
 
 class GfxTool {
@@ -27,8 +26,17 @@ class GfxTool {
     }
   }
 
+  showEntry(entry) {
+    const win = window.open('about: blank', '_blank');
+    const $document = win.document;
+    const $img = $document.createElement('img');
+    $img.src = this.wad.getLumpMipmap(entry, 0).toDataURL();
+    $document.body.appendChild($img);
+    $document.title = `Image - ${entry} (${this.filename})`;
+  }
+
   showEntries() {
-    const win = window.open('about: blank', '_blank', 'width=800,height=600');
+    const win = window.open('about: blank', '_blank');
     const $document = win.document;
 
     const $table = $document.createElement('table');
@@ -44,7 +52,7 @@ class GfxTool {
       const $tdImage = $document.createElement('td');
       try {
         const $img = $document.createElement('img');
-        $img.src = Draw.Pic32ToDataURL(this.wad.getLumpMipmap(entry, 0));
+        $img.src = this.wad.getLumpMipmap(entry, 0).toDataURL();
         $tdImage.appendChild($img);
       } catch (e) {
         $tdImage.textContent = `Error loading image: ${e.message}`;
@@ -61,6 +69,11 @@ class GfxTool {
 
 class GfxToolCommand extends ConsoleCommand {
   async run(wad, command = null) {
+    if (!wad) {
+      Con.Print('Usage: gfx <wadfile> [list|show-all|show]\n');
+      return;
+    }
+
     const tool = new GfxTool(wad);
 
     await tool.load();
@@ -70,13 +83,25 @@ class GfxToolCommand extends ConsoleCommand {
         tool.printEntries();
         break;
 
+      case 'show-all':
+          tool.showEntries();
+        break;
+
       case 'show':
-        tool.showEntries();
+        if (this.argv.length < 3) {
+          Con.Print('Usage: gfx <wadfile> show <entry>\n');
+          return;
+        }
+        try {
+          tool.showEntry(this.argv[3]);
+        } catch(e) {
+          Con.PrintError(`Error showing entries: ${e.message}\n`);
+        }
         break;
 
       default:
         Con.Print(`Unknown command: ${command}\n`);
-        Con.Print('Usage: gfx <wadfile> [list]\n');
+        Con.Print('Usage: gfx <wadfile> [list|show-all|show]\n');
         break;
     }
   }
