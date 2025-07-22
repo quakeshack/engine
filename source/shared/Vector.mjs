@@ -22,7 +22,7 @@ export class DirectionalVectors {
 export class Quaternion extends Array {
   constructor(x = 0.0, y = 0.0, z = 0.0, w = 0.0) {
     super(4);
-    console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number' && typeof w === 'number', 'not a number');
+    // console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number' && typeof w === 'number', 'not a number');
     this[0] = x;
     this[1] = y;
     this[2] = z;
@@ -90,12 +90,8 @@ export default class Vector extends Array {
    * @param {number} z Z
    */
   constructor(x = 0.0, y = 0.0, z = 0.0) {
-    super(3);
-    console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
-    this[0] = x;
-    this[1] = y;
-    this[2] = z;
-    return this;
+    // console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
+    super(x, y, z);
   }
 
   /**
@@ -207,7 +203,7 @@ export default class Vector extends Array {
       return 3;
     }
     let dist1; let dist2;
-    console.assert(p.signbits >= 0 && p.signbits < 8, 'signbits must be [0, 8)', p.signbits);
+    // console.assert(p.signbits >= 0 && p.signbits < 8, 'signbits must be [0, 8)', p.signbits);
     switch (p.signbits) {
       case 0:
         dist1 = p.normal[0] * emaxs[0] + p.normal[1] * emaxs[1] + p.normal[2] * emaxs[2];
@@ -368,7 +364,7 @@ export default class Vector extends Array {
    * @returns {number} dot product of this and other
    */
   dot(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     return this[0] * other[0] + this[1] * other[1] + this[2] * other[2];
   }
 
@@ -387,7 +383,7 @@ export default class Vector extends Array {
    * @returns {Vector} this
    */
   add(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     this[0] += other[0];
     this[1] += other[1];
     this[2] += other[2];
@@ -400,7 +396,7 @@ export default class Vector extends Array {
    * @returns {Vector} this
    */
   subtract(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     this[0] -= other[0];
     this[1] -= other[1];
     this[2] -= other[2];
@@ -413,7 +409,7 @@ export default class Vector extends Array {
    * @returns {Vector} this
    */
   multiply(factor) {
-    console.assert(typeof factor === 'number', 'not a number');
+    // console.assert(typeof factor === 'number', 'not a number');
     this[0] *= factor;
     this[1] *= factor;
     this[2] *= factor;
@@ -426,7 +422,7 @@ export default class Vector extends Array {
    * @returns {boolean} true, if all components are equal
    */
   equals(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     return this[0] === other[0] && this[1] === other[1] && this[2] === other[2];
   }
 
@@ -447,7 +443,7 @@ export default class Vector extends Array {
    * @returns {boolean} true, if all components of this vector are greater than the other vector
    */
   gt(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     return this[0] > other[0] && this[1] > other[1] && this[2] > other[2];
   }
 
@@ -457,7 +453,7 @@ export default class Vector extends Array {
    * @returns {boolean} true, if all components of this vector are greater than or equal to the other vector
    */
   gte(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     return this[0] >= other[0] && this[1] >= other[1] && this[2] >= other[2];
   }
 
@@ -467,7 +463,7 @@ export default class Vector extends Array {
    * @returns {boolean} true, if all components of this vector are less than the other vector
    */
   lt(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     return this[0] < other[0] && this[1] < other[1] && this[2] < other[2];
   }
 
@@ -477,7 +473,7 @@ export default class Vector extends Array {
    * @returns {boolean} true, if all components of this vector are less than or equal to the other vector
    */
   lte(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     return this[0] <= other[0] && this[1] <= other[1] && this[2] <= other[2];
   }
 
@@ -487,7 +483,7 @@ export default class Vector extends Array {
    * @returns {Vector} this
    */
   set(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     this[0] = other[0];
     this[1] = other[1];
     this[2] = other[2];
@@ -502,7 +498,7 @@ export default class Vector extends Array {
    * @returns {Vector} this
    */
   setTo(x, y, z) {
-    console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
+    // console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
     this[0] = x;
     this[1] = y;
     this[2] = z;
@@ -534,7 +530,7 @@ export default class Vector extends Array {
    * @returns {Vector} cross product of this and the other vector
    */
   cross(other) {
-    console.assert(other instanceof Vector, 'not a Vector');
+    // console.assert(other instanceof Vector, 'not a Vector');
     return new Vector(
       this[1] * other[2] - this[2] * other[1],
       this[2] * other[0] - this[0] * other[2],

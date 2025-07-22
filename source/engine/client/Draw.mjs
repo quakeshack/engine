@@ -106,7 +106,6 @@ export default class Draw {
     gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
     Draw.#chars.bind(program.tTexture, true);
     Draw.Char(x, y, num, scale);
-    GL.StreamFlush();
   }
 
   /**
@@ -143,7 +142,6 @@ export default class Draw {
       Draw.Char(x, y, str.charCodeAt(i) + 128, scale);
       x += 8 * scale;
     }
-    GL.StreamFlush();
   }
 
   /**
@@ -266,7 +264,6 @@ export default class Draw {
     gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
     Draw.#conback.bind(program.tTexture, true);
     GL.StreamDrawTexturedQuad(0, lines - VID.height, VID.width, VID.height, 0.0, 0.0, 1.0, 1.0);
-    GL.StreamFlush();
   }
 
   /**

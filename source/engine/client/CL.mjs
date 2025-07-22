@@ -446,40 +446,99 @@ export default class CL {
 
     return r;
   }
-};
 
-CL.LerpPoint = function() {
-  let f = CL.state.mtime[0] - CL.state.mtime[1];
+  static LerpPoint() {
+    let f = this.state.mtime[0] - this.state.mtime[1];
 
-  if (f <= 0) {
-    CL.state.time = CL.state.mtime[0];
-    return 1;
-  }
-
-  if (f > 0.1) {
-    CL.state.mtime[1] = CL.state.mtime[0] - 0.1;
-    f = 0.1;
-  }
-
-  let frac = (CL.state.time - CL.state.mtime[1]) / f;
-
-  if (frac < 0) {
-    if (frac < -0.01) {
-      CL.state.time = CL.state.mtime[1];
+    if (f <= 0) {
+      this.state.time = this.state.mtime[0];
+      return 1;
     }
-    frac = 0;
-  } else if (frac > 1) {
-    if (frac > 1.01) {
-      CL.state.time = CL.state.mtime[0];
+
+    if (f > 0.1) {
+      this.state.mtime[1] = this.state.mtime[0] - 0.1;
+      f = 0.1;
     }
-    frac = 1;
+
+    let frac = (this.state.time - this.state.mtime[1]) / f;
+
+    if (frac < 0) {
+      if (frac < -0.01) {
+        this.state.time = this.state.mtime[1];
+      }
+      frac = 0;
+    } else if (frac > 1) {
+      if (frac > 1.01) {
+        this.state.time = this.state.mtime[0];
+      }
+      frac = 1;
+    }
+
+    if (this.nolerp.value) {
+      return 1;
+    }
+
+    return frac;
   }
 
-  if (CL.nolerp.value) {
-    return 1;
+  /**
+   * @param {number} percentage percentage of the connection step
+   * @param {string} message loading message
+   */
+  static SetConnectingStep(percentage, message) { // public, by Host.js, probably cleaning up required
+    if (percentage === null && message === null) {
+      this.cls.connecting = null;
+      return;
+    }
+
+    Con.DPrint(`${percentage.toFixed(0).padStart(3, ' ')}% ${message}\n`);
+
+    SCR.con_current = 0; // force Console to disappear
+
+    percentage = Math.round(percentage);
+
+    this.cls.connecting = {
+      percentage,
+      message,
+    };
   }
 
-  return frac;
+  static Rcon_f = class extends ConsoleCommand {
+    run(...args) { // private
+      if (args.length === 0) {
+        Con.Print('Usage: rcon <command>\n');
+        return;
+      }
+
+      const password = CL.rcon_password.string;
+
+      if (!password) {
+        Con.Print('You must set \'rcon_password\' before issuing an rcon command.\n');
+        return;
+      }
+
+      MSG.WriteByte(CL.cls.message, Protocol.clc.rconcmd);
+      MSG.WriteString(CL.cls.message, password);
+      MSG.WriteString(CL.cls.message, this.args.substring(5));
+    }
+  };
+
+  static Draw() { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR
+    if (this.cls.connecting !== null) {
+      const x0 = 32, y0 = 32;
+      Draw.BlackScreen();
+      Draw.String(x0, y0, 'Connecting', 2);
+      Draw.StringWhite(x0, y0 + 32, this.cls.connecting.message);
+
+      const len = 30;
+      const p = this.cls.connecting.percentage;
+      Draw.String(x0, y0 + 48, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(0, ' ')}%`);
+    }
+
+    if (this.state.gameAPI) { // TODO: move somewhere else?
+      this.state.gameAPI.draw();
+    }
+  }
 };
 
 class ClientEdict {
@@ -644,59 +703,6 @@ class ClientEdict {
 
   }
 }
-
-CL.Rcon_f = function(...args) { // private
-  if (args.length === 0) {
-    Con.Print('Usage: rcon <command>\n');
-    return;
-  }
-
-  const password = CL.rcon_password.string;
-
-  if (!password) {
-    Con.Print('You must set \'rcon_password\' before issuing an rcon command.\n');
-    return;
-  }
-
-  MSG.WriteByte(CL.cls.message, Protocol.clc.rconcmd);
-  MSG.WriteString(CL.cls.message, password);
-  MSG.WriteString(CL.cls.message, this.args.substring(5));
-};
-
-CL.SetConnectingStep = function(percentage, message) { // public, by Host.js, probably cleaning up required
-  if (percentage === null && message === null) {
-    CL.cls.connecting = null;
-    return;
-  }
-
-  Con.DPrint(`${percentage.toFixed(0).padStart(3, ' ')}% ${message}\n`);
-
-  SCR.con_current = 0; // force Console to disappear
-
-  percentage = Math.round(percentage);
-
-  CL.cls.connecting = {
-    percentage,
-    message,
-  };
-};
-
-CL.Draw = function() { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR
-  if (CL.cls.connecting !== null) {
-    const x0 = 32, y0 = 32;
-    Draw.BlackScreen();
-    Draw.String(x0, y0, 'Connecting', 2);
-    Draw.StringWhite(x0, y0 + 32, CL.cls.connecting.message);
-
-    const len = 30;
-    const p = CL.cls.connecting.percentage;
-    Draw.String(x0, y0 + 48, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(0, ' ')}%`);
-  }
-
-  if (CL.state.gameAPI) { // TODO: move somewhere else
-    CL.state.gameAPI.draw();
-  }
-};
 
 CL.ClearState = function() { // private
   if (SV.server.active !== true) {

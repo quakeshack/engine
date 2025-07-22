@@ -70,7 +70,7 @@ Key.dest = /*Object.freeze*/({
   message: 2,
   menu: 3,
 
-  value: 1, // FIXME
+  value: 0, // FIXME
 });
 
 Key.bindings = [];

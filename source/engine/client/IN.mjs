@@ -244,6 +244,11 @@ IN.MouseMove = function() {
 };
 
 IN.Move = function() {
+  // do not interpret input during demo playback
+  if (CL.cls.demoplayback) {
+    return;
+  }
+
   IN.MouseMove();
   IN.TouchpadMove();
 };

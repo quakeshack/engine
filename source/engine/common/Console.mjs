@@ -95,7 +95,7 @@ export default class Con {
       // if (msg.charCodeAt(0) === 1) {
       //   S.LocalSound(Con.sfx_talk);
       // }
-      // msg = msg.substring(1);
+      msg = msg.substring(1);
     }
     for (let i = 0; i < msg.length; i++) {
       if (!Con.text[Con.current]) {
