@@ -333,6 +333,7 @@ class MainMenu extends BaseMenu {
 * I should be more careful with things per frame, always to deep-copy hulls on each frame completely made the FPS crumble
 * had to redo some work over at the QuakeVM, because since I deglobalized lots of objects, I had to find another way how to inject private objects
 * emitting temporary entities again
+* breaking up CL into components, making code better maintainable
 
 ### 2025-07-21
 
