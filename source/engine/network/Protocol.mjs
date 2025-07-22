@@ -68,17 +68,17 @@ export const svc = Object.freeze({
   spawnstatic: 20,
   spawnbinary: 21, // WinQuake
   spawnbaseline: 22,
-  temp_entity: 23,
+  temp_entity: 23, // required by QC
   setpause: 24,
   signonnum: 25, // WinQuake
   centerprint: 26,
-  killedmonster: 27,
-  foundsecret: 28,
+  killedmonster: 27, // required by QC
+  foundsecret: 28, // required by QC
   spawnstaticsound: 29,
-  intermission: 30,
-  finale: 31,
-  cdtrack: 32,
-  sellscreen: 33,
+  intermission: 30, // required by QC
+  finale: 31, // required by QC
+  cdtrack: 32, // required by QC
+  sellscreen: 33, // required by QC
   cutscene: 34, // WinQuake
 
   // introduced in QuakeWorld:

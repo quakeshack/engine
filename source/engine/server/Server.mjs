@@ -575,7 +575,7 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
       }
 
       cmd.buttons = 0; // never send buttons
-			cmd.impulse = 0; // never send impulses
+      cmd.impulse = 0; // never send impulses
 
       MSG.WriteDeltaUsercmd(msg, SV.nullcmd, cmd);
     }
@@ -759,6 +759,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     toState.frame = ent.entity.frame;
     toState.colormap = ent.entity.colormap;
     toState.skin = ent.entity.skin;
+    toState.solid = ent.entity.solid;
     toState.origin.set(ent.entity.origin);
     toState.angles.set(ent.entity.angles);
     toState.effects = ent.entity.effects;
@@ -1157,8 +1158,8 @@ SV.SpawnServer = function(mapname) {
   SV.server.gameVersion = `${(PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`)}`;
 
   SV.server.edicts = [];
-  // preallocating up to max_edicts, we can extend that later during runtime
-  for (i = 0; i < Def.max_edicts; ++i) {
+  // preallocating up to Def.limits.edicts, we can extend that later during runtime
+  for (i = 0; i < Def.limits.edicts; ++i) {
     const ent = new ServerEdict(i);
 
     SV.server.edicts[i] = ent;

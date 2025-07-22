@@ -557,8 +557,9 @@ export class ServerGameAPI {
   shutdown(isCrashShutdown) {
   }
 
-  static Init(EngineInterface) {
-    cvars.nomonster = EngineInterface.RegisterCvar('nomonster', '0', /* Cvar.FLAG.DEFERRED */ 0, 'Do not spawn monsters.');
+  /** @param {ServerEngineAPI} ServerEngineAPI */
+  static Init(ServerEngineAPI) {
+    cvars.nomonster = ServerEngineAPI.RegisterCvar('nomonster', '0', /* Cvar.FLAG.DEFERRED */ 0, 'Do not spawn monsters.');
   }
 
   static Shutdown() {

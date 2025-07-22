@@ -328,6 +328,22 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-22
+
+* I should be more careful with things per frame, always to deep-copy hulls on each frame completely made the FPS crumble
+* had to redo some work over at the QuakeVM, because since I deglobalized lots of objects, I had to find another way how to inject private objects
+* emitting temporary entities again
+
+### 2025-07-21
+
+* started restructuring the messy client code, here are the parts I identified
+  * demos
+  * input
+  * parsing messages
+  * static and temporary entities
+  * prediction code
+  * state handling
+
 ### 2025-07-20
 
 * restructured texture handling

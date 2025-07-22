@@ -1,9 +1,19 @@
 
 export const version = '1.1.0';
 
-export const max_edicts = 600;
-export const max_clients = 32;
+export const limits = Object.freeze({
+  edicts: 600,
+  clients: 32,
+  dlights: 32,
+  lightstyles: 64,
+  beams: 24,
+  entities: 1024,
+});
 
+/**
+ * @enum {number}
+ * @readonly
+ */
 export const stat = Object.freeze({
   health: 0,
   frags: 1,
@@ -22,6 +32,10 @@ export const stat = Object.freeze({
   monsters: 14,
 });
 
+/**
+ * @enum {number}
+ * @readonly
+ */
 export const it = Object.freeze({
   shotgun: 1,
   super_shotgun: 2,
@@ -48,6 +62,10 @@ export const it = Object.freeze({
   quad: 4194304,
 });
 
+/**
+ * @enum {number}
+ * @readonly
+ */
 export const rit = Object.freeze({
   shells: 128,
   nails: 256,
@@ -70,6 +88,10 @@ export const rit = Object.freeze({
   superhealth: 2147483648,
 });
 
+/**
+ * @enum {number}
+ * @readonly
+ */
 export const hit = Object.freeze({
   proximity_gun_bit: 16,
   mjolnir_bit: 7,
@@ -81,3 +103,23 @@ export const hit = Object.freeze({
   empathy_shields: 67108864,
 });
 
+/**
+ * @enum {number}
+ * @readonly
+ */
+export const contentShift = Object.freeze({
+  contents: 0,
+  damage: 1,
+  bonus: 2,
+  powerup: 3,
+});
+
+/**
+ * @enum {number}
+ * @readonly
+ */
+export const clientConnectionState = {
+  disconnected: 0,
+  connecting: 1,
+  connected: 2,
+};

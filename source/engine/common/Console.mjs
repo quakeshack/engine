@@ -92,10 +92,10 @@ export default class Con {
     let mask = 0;
     if (msg.charCodeAt(0) <= 2) {
       mask = 128;
-      if (msg.charCodeAt(0) === 1) {
-        S.LocalSound(Con.sfx_talk);
-      }
-      msg = msg.substring(1);
+      // if (msg.charCodeAt(0) === 1) {
+      //   S.LocalSound(Con.sfx_talk);
+      // }
+      // msg = msg.substring(1);
     }
     for (let i = 0; i < msg.length; i++) {
       if (!Con.text[Con.current]) {

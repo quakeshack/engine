@@ -7,39 +7,19 @@ import Vector from '../../shared/Vector.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ED } from './Edict.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
+import PF, { etype, ofs } from './ProgsAPI.mjs';
 
 const PR = {};
 
 export default PR;
 
-let { COM, Con, Host, PF, SV } = registry;
+let { COM, Con, Host, SV } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   COM = registry.COM;
   Con = registry.Con;
   Host = registry.Host;
-  PF = registry.PF;
   SV = registry.SV;
-});
-
-/**
- * PR.fielddefs[].type
- */
-PR.etype = Object.freeze({
-  ev_void: 0,
-  ev_string: 1,
-  ev_float: 2,
-  ev_vector: 3,
-  ev_entity: 4,
-  ev_field: 5,
-  ev_function: 6,
-  ev_pointer: 7,
-
-  ev_strings: 101,
-  ev_integer: 102,
-  ev_string_not_empty: 103,
-  ev_entity_client: 104,
-  ev_bool: 200,
 });
 
 PR.saveglobal = (1<<15);
@@ -76,7 +56,7 @@ PR.globalvars = Object.freeze({
   time: 31, // float
 });
 
-PR.entvars = Object.freeze({
+PR.entvars = {
   modelindex: 0, // float
   absmin: 1, // vec3
   absmin1: 2,
@@ -182,20 +162,9 @@ PR.entvars = Object.freeze({
   noise1: 102, // string
   noise2: 103, // string
   noise3: 104, // string
-});
+};
 
-PR.ofs = Object.freeze({
-  OFS_NULL: 0,
-  OFS_RETURN: 1,
-  OFS_PARM0: 4, // leave 3 ofs for each parm to hold vectors
-  OFS_PARM1: 7,
-  OFS_PARM2: 10,
-  OFS_PARM3: 13,
-  OFS_PARM4: 16,
-  OFS_PARM5: 19,
-  OFS_PARM6: 22,
-  OFS_PARM7: 25,
-});
+PR.ofs = ofs;
 
 PR.progheader_crc = 5927;
 
@@ -204,7 +173,7 @@ PR.progheader_crc = 5927;
 /**
  * FIXME: function proxies need to become cached
  */
-PR.FunctionProxy = class ProgsFunctionProxy extends Function {
+class ProgsFunctionProxy extends Function {
   static proxyCache = [];
 
   constructor(fnc, ent = null, settings = {}) {
@@ -227,7 +196,7 @@ PR.FunctionProxy = class ProgsFunctionProxy extends Function {
   }
 
   toString() {
-    return `${PR.GetString(PR.functions[this.fnc].name)} (PR.FunctionProxy(${this.fnc}))`;
+    return `${PR.GetString(PR.functions[this.fnc].name)} (ProgsFunctionProxy(${this.fnc}))`;
   }
 
   static create(fnc, ent, settings = {}) {
@@ -237,7 +206,7 @@ PR.FunctionProxy = class ProgsFunctionProxy extends Function {
       return ProgsFunctionProxy.proxyCache[cacheId];
     }
 
-    const obj = new PR.FunctionProxy(fnc, ent, settings);
+    const obj = new ProgsFunctionProxy(fnc, ent, settings);
 
     // such an ugly hack to make objects actually callable
     ProgsFunctionProxy.proxyCache[cacheId] = new Proxy(obj, {
@@ -254,7 +223,7 @@ PR.FunctionProxy = class ProgsFunctionProxy extends Function {
       return 0;
     }
 
-    if (ent instanceof PR.EdictProxy) {
+    if (ent instanceof ProgsEntity) {
       return ent._edictNum;
     }
 
@@ -271,13 +240,13 @@ PR.FunctionProxy = class ProgsFunctionProxy extends Function {
 
     if (this.ent && !this.ent.isFree()) {
       // in case this is a function bound to an entity, we need to set it to self
-      PR.globals_int[PR.globalvars.self] = PR.FunctionProxy._getEdictId(this.ent);
+      PR.globals_int[PR.globalvars.self] = ProgsFunctionProxy._getEdictId(this.ent);
 
       // fun little hack, we always assume self being other if this is called on an ent
-      PR.globals_int[PR.globalvars.other] = PR.FunctionProxy._getEdictId(self);
+      PR.globals_int[PR.globalvars.other] = ProgsFunctionProxy._getEdictId(self);
     } else if (self) {
       // in case it’s a global function, we need to set self to the first argument
-      PR.globals_int[PR.globalvars.self] = PR.FunctionProxy._getEdictId(self);
+      PR.globals_int[PR.globalvars.self] = ProgsFunctionProxy._getEdictId(self);
     }
 
     if (this._settings.resetOther) {
@@ -291,7 +260,7 @@ PR.FunctionProxy = class ProgsFunctionProxy extends Function {
       PR.globals_int[PR.globalvars.other] = old_other;
     }
 
-    return PR.Value(PR.etype.ev_float, PR.globals, 1); // assume float
+    return PR.Value(etype.ev_float, PR.globals, 1); // assume float
   }
 };
 
@@ -300,7 +269,7 @@ PR.FunctionProxy = class ProgsFunctionProxy extends Function {
 //   global: {},
 // };
 
-PR.EdictProxy = class ProgsEntity {
+class ProgsEntity {
   static SERIALIZATION_TYPE_EDICT = 'E';
   static SERIALIZATION_TYPE_FUNCTION = 'F';
   static SERIALIZATION_TYPE_VECTOR = 'V';
@@ -335,11 +304,11 @@ PR.EdictProxy = class ProgsEntity {
 
       const [type, val, ofs] = [d.type & ~PR.saveglobal, ed ? this._v : PR.globals, d.ofs];
 
-      if ((type & PR.saveglobal) === 0) {
+      if ((type & ~PR.saveglobal) === 0) {
         continue;
       }
 
-      if (!ed && (d.type & PR.saveglobal) !== 0 && [PR.etype.ev_string, PR.etype.ev_float, PR.etype.ev_entity].includes(type)) {
+      if (!ed && (d.type & ~PR.saveglobal) !== 0 && [etype.ev_string, etype.ev_float, etype.ev_entity].includes(type)) {
         this._serializableFields.push(name);
       } else if (ed) {
         this._serializableFields.push(name);
@@ -359,7 +328,7 @@ PR.EdictProxy = class ProgsEntity {
       const assignedFunctions = [];
 
       switch (type) {
-        case PR.etype.ev_string:
+        case etype.ev_string:
           Object.defineProperty(this, name, {
             get: function() {
               // s().get++;
@@ -373,7 +342,7 @@ PR.EdictProxy = class ProgsEntity {
             enumerable: true,
           });
           break;
-        case PR.etype.ev_entity: // TODO: actually accept entity instead of edict and vice-versa
+        case etype.ev_entity: // TODO: actually accept entity instead of edict and vice-versa
           Object.defineProperty(this, name, {
             get: function() {
               // s().get++;
@@ -417,7 +386,7 @@ PR.EdictProxy = class ProgsEntity {
             enumerable: true,
           });
           break;
-        case PR.etype.ev_function:
+        case etype.ev_function:
           Object.defineProperty(this, name, {
             get: function() {
               // s().get++;
@@ -425,7 +394,7 @@ PR.EdictProxy = class ProgsEntity {
               if (id < 0 && assignedFunctions[(-id) - 1] instanceof Function) {
                 return assignedFunctions[(-id) - 1];
               }
-              return id > 0 ? PR.FunctionProxy.create(id, ed, {
+              return id > 0 ? ProgsFunctionProxy.create(id, ed, {
                 // some QuakeC related idiosyncrasis we need to take care of
                 backupSelfAndOther: ['touch'].includes(name),
                 resetOther: ['StartFrame'].includes(name),
@@ -442,7 +411,7 @@ PR.EdictProxy = class ProgsEntity {
                 val_int[ofs] = -assignedFunctions.length;
                 return;
               }
-              if (value instanceof PR.FunctionProxy) {
+              if (value instanceof ProgsFunctionProxy) {
                 val_int[ofs] = value.fnc;
                 return;
               }
@@ -464,9 +433,9 @@ PR.EdictProxy = class ProgsEntity {
             enumerable: true,
           });
           break;
-        case PR.etype.ev_pointer: // unused and irrelevant
+        case etype.ev_pointer: // unused and irrelevant
           break;
-        case PR.etype.ev_field:
+        case etype.ev_field:
           Object.defineProperty(this, name, {
             get: function() {
               // s().get++;
@@ -484,7 +453,7 @@ PR.EdictProxy = class ProgsEntity {
             enumerable: true,
           });
           break;
-        case PR.etype.ev_float:
+        case etype.ev_float:
           Object.defineProperty(this, name, {
             get: function() {
               // s().get++;
@@ -501,7 +470,7 @@ PR.EdictProxy = class ProgsEntity {
             enumerable: true,
           });
           break;
-        case PR.etype.ev_vector: // TODO: Proxy for Vector?
+        case etype.ev_vector: // TODO: Proxy for Vector?
           Object.defineProperty(this, name, {
             get: function() {
               // s().get++;
@@ -532,11 +501,11 @@ PR.EdictProxy = class ProgsEntity {
           data[field] = [ProgsEntity.SERIALIZATION_TYPE_PRIMITIVE, null];
           break;
 
-        case value instanceof PR.EdictProxy:
+        case value instanceof ProgsEntity:
           data[field] = [ProgsEntity.SERIALIZATION_TYPE_EDICT, value._edictNum];
           break;
 
-        case value instanceof PR.FunctionProxy:
+        case value instanceof ProgsFunctionProxy:
           data[field] = [ProgsEntity.SERIALIZATION_TYPE_FUNCTION, value.fnc];
           break;
 
@@ -685,28 +654,28 @@ PR.ValueString = function(type, val, ofs) {
   const val_int = new Int32Array(val);
   type &= ~PR.saveglobal;
   switch (type) {
-    case PR.etype.ev_string:
+    case etype.ev_string:
       return PR.GetString(val_int[ofs]);
-    case PR.etype.ev_entity:
+    case etype.ev_entity:
       return 'entity ' + val_int[ofs];
-    case PR.etype.ev_function:
+    case etype.ev_function:
       return PR.GetString(PR.functions[val_int[ofs]].name) + '()';
-    case PR.etype.ev_field: {
+    case etype.ev_field: {
         const def = PR.FieldAtOfs(val_int[ofs]);
         if (def !== null) {
           return '.' + PR.GetString(def.name);
         }
         return '.';
       }
-    case PR.etype.ev_void:
+    case etype.ev_void:
       return 'void';
-    case PR.etype.ev_float:
+    case etype.ev_float:
       return val_float[ofs].toFixed(1);
-    case PR.etype.ev_vector:
+    case etype.ev_vector:
       return '\'' + val_float[ofs].toFixed(1) +
               ' ' + val_float[ofs + 1].toFixed(1) +
               ' ' + val_float[ofs + 2].toFixed(1) + '\'';
-    case PR.etype.ev_pointer:
+    case etype.ev_pointer:
       return 'pointer';
   }
   return 'bad type ' + type;
@@ -717,26 +686,26 @@ PR.Value = function(type, val, ofs) {
   const val_int = new Int32Array(val);
   type &= ~PR.saveglobal;
   switch (type) {
-    case PR.etype.ev_string:
+    case etype.ev_string:
       return PR.GetString(val_int[ofs]);
-    case PR.etype.ev_pointer:
-    case PR.etype.ev_entity:
-    case PR.etype.ev_field:
+    case etype.ev_pointer:
+    case etype.ev_entity:
+    case etype.ev_field:
       return val_int[ofs];
-      // case PR.etype.ev_field: {
+      // case etype.ev_field: {
       //     const def = PR.FieldAtOfs(val_int[ofs]);
       //     if (def != null) {
       //       return '.' + PR.GetString(def.name);
       //     }
       //     return '.';
       //   }
-    case PR.etype.ev_function:
+    case etype.ev_function:
       return PR.GetString(PR.functions[val_int[ofs]].name) + '()';
-    case PR.etype.ev_void:
+    case etype.ev_void:
       return null;
-    case PR.etype.ev_float:
+    case etype.ev_float:
       return val_float[ofs];
-    case PR.etype.ev_vector:
+    case etype.ev_vector:
       return [val_float[ofs],
               val_float[ofs + 1],
               val_float[ofs + 2]];
@@ -749,24 +718,24 @@ PR.UglyValueString = function(type, val, ofs) {
   const val_int = new Int32Array(val);
   type &= ~PR.saveglobal;
   switch (type) {
-    case PR.etype.ev_string:
+    case etype.ev_string:
       return PR.GetString(val_int[ofs]);
-    case PR.etype.ev_entity:
+    case etype.ev_entity:
       return val_int[ofs].toString();
-    case PR.etype.ev_function:
+    case etype.ev_function:
       return PR.GetString(PR.functions[val_int[ofs]].name);
-    case PR.etype.ev_field: {
+    case etype.ev_field: {
         const def = PR.FieldAtOfs(val_int[ofs]);
         if (def !== null) {
           return PR.GetString(def.name);
         }
         return '';
       }
-    case PR.etype.ev_void:
+    case etype.ev_void:
       return 'void';
-    case PR.etype.ev_float:
+    case etype.ev_float:
       return val_float[ofs].toFixed(6);
-    case PR.etype.ev_vector:
+    case etype.ev_vector:
       return val_float[ofs].toFixed(6) +
     ' ' + val_float[ofs + 1].toFixed(6) +
     ' ' + val_float[ofs + 2].toFixed(6);
@@ -927,13 +896,13 @@ PR.LoadProgs = function() {
     const def = PR.FindField(field);
     PR.entvars[field] = (def !== null) ? def.ofs : null;
   }
-  PR.FunctionProxy.proxyCache = []; // free all cached functions
+  ProgsFunctionProxy.proxyCache = []; // free all cached functions
   // hook up progs.dat with our proxies
 
-  const gameAPI = Object.assign(new PR.EdictProxy(null), {
+  const gameAPI = Object.assign(new ProgsEntity(null), {
     prepareEntity(edict, classname, initialData = {}) {
       if (!edict.entity) { // do not use isFree(), check for unset entity property
-        edict.entity = new PR.EdictProxy(edict);
+        edict.entity = new ProgsEntity(edict);
         Object.freeze(edict.entity);
       }
 
@@ -968,15 +937,15 @@ PR.LoadProgs = function() {
         }
 
         switch (field.type & 0x7fff) {
-          case PR.etype.ev_entity:
+          case etype.ev_entity:
             edict.entity[key] = value instanceof SV.Edict ? value : {num: parseInt(value)};
             break;
 
-          case PR.etype.ev_vector:
+          case etype.ev_vector:
             edict.entity[key] = value instanceof Vector ? value : new Vector(...value.split(' ').map((x) => parseFloat(x)));
             break;
 
-          case PR.etype.ev_field: {
+          case etype.ev_field: {
             const d = PR.FindField(value);
             if (!d) {
               Con.PrintWarning(`Can't find field: ${value}\n`);
@@ -986,7 +955,7 @@ PR.LoadProgs = function() {
             break;
           }
 
-          case PR.etype.ev_function: {
+          case etype.ev_function: {
             edict.entity[key] = {fnc: value};
             break;
           }
@@ -1030,11 +999,11 @@ PR.LoadProgs = function() {
     },
 
     init(mapname, serverflags) {
-      this.mapname = mapname;
-      this.serverflags = serverflags;
+      gameAPI.mapname = mapname;
+      gameAPI.serverflags = serverflags;
 
-      this.coop = Host.coop.value;
-      this.deathmatch = Host.deathmatch.value;
+      gameAPI.coop = Host.coop.value;
+      gameAPI.deathmatch = Host.deathmatch.value;
     },
 
     // eslint-disable-next-line no-unused-vars

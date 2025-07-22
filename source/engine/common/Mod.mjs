@@ -235,7 +235,12 @@ Mod.LoadModel = function(mod, crash) { // private method
   return mod;
 };
 
-Mod.ForName = function(name, crash) { // public method
+/**
+ * @param {string} name filename
+ * @param {boolean} crash whether to throw an error if the model is not found
+ * @returns {BaseModel} the loaded model or null if not found
+ */
+Mod.ForName = function(name, crash = false) { // public method
   return Mod.LoadModel(Mod.FindName(name), crash);
 };
 

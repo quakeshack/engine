@@ -1,6 +1,6 @@
 import Vector from '../../../shared/Vector.mjs';
 
-import { damage, dead, flags, moveType, solid, content, attn } from '../Defs.mjs';
+import { damage, dead, flags, moveType, solid, content, attn, channel } from '../Defs.mjs';
 import { ServerGameAPI } from '../GameAPI.mjs';
 import { Serializer } from '../helper/MiscHelpers.mjs';
 
@@ -580,7 +580,7 @@ export default class BaseEntity {
    * Spawn an ambient (looping) sound.
    * @param {string} sfxName e.g. sounds/door1.wav
    * @param {number} volume [0..1]
-   * @param {attn} attenuation attenuation
+   * @param {number} attenuation attenuation (see {@link attn})
    */
   spawnAmbientSound(sfxName, volume, attenuation) {
     this.engine.PrecacheSound(sfxName);
@@ -589,10 +589,10 @@ export default class BaseEntity {
 
   /**
    * Starts a sound bound to an edict.
-   * @param {number} channel what sound channel to use, it will overwrite currently playing sounds
+   * @param {number} channel what sound channel to use, it will overwrite currently playing sounds (see {@link channel})
    * @param {string} sfxName e.g. sounds/door1.wav
    * @param {number} volume [0..1]
-   * @param {number} attenuation attenuation
+   * @param {number} attenuation attenuation (see {@link attn})
    */
   startSound(channel, sfxName, volume = 1.0, attenuation = attn.ATTN_NORM) {
     this.engine.PrecacheSound(sfxName);

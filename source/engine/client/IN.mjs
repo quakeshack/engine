@@ -1,5 +1,6 @@
 import Cvar from '../common/Cvar.mjs';
 import { eventBus, registry } from '../registry.mjs';
+import { kbutton, kbuttons } from './ClientInput.mjs';
 import VID from './VID.mjs';
 
 let { CL, COM, Con, Host, Key, V } = registry;
@@ -210,8 +211,8 @@ IN.MouseMove = function() {
   mouse_x *= CL.sensitivity.value;
   mouse_y *= CL.sensitivity.value;
 
-  const strafe = CL.kbuttons[CL.kbutton.strafe].state & 1;
-  const mlook = CL.kbuttons[CL.kbutton.mlook].state & 1;
+  const strafe = kbuttons[kbutton.strafe].state & 1;
+  const mlook = kbuttons[kbutton.mlook].state & 1;
   const angles = CL.state.viewangles;
 
   if ((strafe !== 0) || ((CL.lookstrafe.value !== 0) && (mlook !== 0))) {

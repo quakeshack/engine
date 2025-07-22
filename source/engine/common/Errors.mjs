@@ -12,6 +12,17 @@ export class SysError extends Error {
 };
 
 /**
+ * Causes a Host.Error.
+ * Breaks the current frame, instantly stops the game and displays the error message.
+ */
+export class HostError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'HostError';
+  }
+};
+
+/**
  * NOTE: Use subclasses of SysError to provide more context about the error.
  */
 export class ResourceError extends SysError {

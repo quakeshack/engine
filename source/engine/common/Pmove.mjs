@@ -7,12 +7,11 @@
 import { eventBus, registry } from '../registry.mjs';
 import Vector, { DirectionalVectors } from '../../shared/Vector.mjs';
 import * as Protocol from '../network/Protocol.mjs';
-import { solid } from '../../shared/Defs.mjs';
+import { content, solid } from '../../shared/Defs.mjs';
 
-let { Mod, SV } = registry;
+let { SV } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  Mod = registry.Mod;
   SV = registry.SV;
 });
 
@@ -188,9 +187,9 @@ export class Hull { // hull_t
   check(p1f, p2f, p1, p2, trace, num = this.firstClipNode) {
     // check for empty
     if (num < 0) {
-      if (num !== Mod.contents.solid) {
+      if (num !== content.CONTENT_SOLID) {
         trace.allsolid = false;
-        if (num === Mod.contents.empty) {
+        if (num === content.CONTENT_EMPTY) {
           trace.inopen = true;
         } else {
           trace.inwater = true;
@@ -231,7 +230,7 @@ export class Hull { // hull_t
     }
 
     // go past the node
-    if (this.pointContents(mid, node.children[1 - side]) !== Mod.contents.solid) {
+    if (this.pointContents(mid, node.children[1 - side]) !== content.CONTENT_SOLID) {
       return this.check(midf, p2f, mid, p2, trace, node.children[1 - side]);
     }
 
@@ -249,7 +248,7 @@ export class Hull { // hull_t
       trace.plane.dist = -plane.dist;
     }
 
-    while (this.pointContents(mid) === Mod.contents.solid) {
+    while (this.pointContents(mid) === content.CONTENT_SOLID) {
       // shouldn't really happen, but does occasionally
       frac -= 0.1;
       if (frac < 0.0) {
@@ -306,8 +305,8 @@ export class BoxHull extends Hull {
     for (let i = 0; i < 6; i++) {
       const side = i & 1;
 
-      this.clipNodes[i].children[side] = Mod.contents.empty;
-      this.clipNodes[i].children[side ^ 1] = i !== 5 ? i + 1 : Mod.contents.solid;
+      this.clipNodes[i].children[side] = content.CONTENT_EMPTY;
+      this.clipNodes[i].children[side ^ 1] = i !== 5 ? i + 1 : content.CONTENT_SOLID;
 
       this.planes[i].type = i >> 1;
       this.planes[i].normal = new Vector(1, 1, 1);
@@ -361,7 +360,7 @@ export class PhysEnt { // physent_t
    */
   getClippingHull() {
     if (this.hulls.length > 0) {
-      return this.hulls[Mod.hull.player];
+      return this.hulls[1]; // player hull
     }
 
     const mins = this.mins.copy().subtract(Pmove.PLAYER_MAXS);
@@ -392,7 +391,7 @@ export class PmovePlayer { // pmove_t (player state only)
     this.angles = new Vector();
     this.oldbuttons = 0;
     this.waterjumptime = 0.0;
-    this.spectator = 0;
+    this.spectator = false;
     this.dead = false;
 
     /** @type {Protocol.UserCmd} */
@@ -479,11 +478,11 @@ export class PmovePlayer { // pmove_t (player state only)
       this.onground = null;
 
       switch (this.watertype) {
-        case Mod.contents.water:
+        case content.CONTENT_WATER:
           this.velocity[2] = 100;
           break;
 
-        case Mod.contents.slime:
+        case content.CONTENT_SLIME:
           this.velocity[2] = 80;
           break;
 
@@ -526,7 +525,7 @@ export class PmovePlayer { // pmove_t (player state only)
 
     let contents = this._pmove.pointContents(spot);
 
-    if (contents !== Mod.contents.solid) {
+    if (contents !== content.CONTENT_SOLID) {
       return;
     }
 
@@ -534,7 +533,7 @@ export class PmovePlayer { // pmove_t (player state only)
 
     contents = this._pmove.pointContents(spot);
 
-    if (contents !== Mod.contents.empty) {
+    if (contents !== content.CONTENT_EMPTY) {
       return;
     }
 
@@ -581,13 +580,13 @@ export class PmovePlayer { // pmove_t (player state only)
     // determine water level
 
     this.waterlevel = 0;
-    this.watertype = Mod.contents.empty;
+    this.watertype = content.CONTENT_EMPTY;
 
     point[2] = this.origin[2] + Pmove.PLAYER_MINS[2] + 1.0;
 
     let contents = this._pmove.pointContents(point);
 
-    if (contents <= Mod.contents.water) {
+    if (contents <= content.CONTENT_WATER) {
       this.watertype = contents;
       this.waterlevel = 1;
 
@@ -595,14 +594,14 @@ export class PmovePlayer { // pmove_t (player state only)
 
       contents = this._pmove.pointContents(point);
 
-      if (contents <= Mod.contents.water) {
+      if (contents <= content.CONTENT_WATER) {
         this.waterlevel = 2;
 
         point[2] = this.origin[2] + Protocol.default_viewheight; // FIXME: this should be more dynamic
 
         contents = this._pmove.pointContents(point);
 
-        if (contents <= Mod.contents.water) {
+        if (contents <= content.CONTENT_WATER) {
           this.waterlevel = 3;
         }
       }
@@ -1050,10 +1049,13 @@ export class Pmove { // pmove_t
   boxHull = new BoxHull();
   movevars = new MoveVars();
 
+  /** @type {Map<string, Hull[]>} cache for pm hulls from mod hulls */
+  #modelHullsCache = new Map();
+
   pointContents(point) {
     console.assert(this.physents[0] instanceof PhysEnt, 'world physent');
 
-    const hull = this.physents[0].hulls[Mod.hull.normal]; // world
+    const hull = this.physents[0].hulls[0]; // world
     console.assert(hull instanceof Hull, 'world hull');
 
     return hull.pointContents(point);
@@ -1070,7 +1072,7 @@ export class Pmove { // pmove_t
 
       const test = position.copy().subtract(pe.origin);
 
-      if (hull.pointContents(test) === Mod.contents.solid) {
+      if (hull.pointContents(test) === content.CONTENT_SOLID) {
         return false;
       }
     }
@@ -1136,7 +1138,7 @@ export class Pmove { // pmove_t
     console.assert(model, 'model');
     console.assert(model.hulls instanceof Array, 'model hulls');
 
-    this.physents = [];
+    this.physents.length = 0;
 
     const pe = new PhysEnt(this);
 
@@ -1172,8 +1174,14 @@ export class Pmove { // pmove_t
     pe.origin.set(entity.origin);
 
     if (model !== null) {
-      for (const modelHull of model.hulls) {
-        pe.hulls.push(Hull.fromModelHull(modelHull));
+      // use cached hulls, generating pm hulls from mod hulls is quite expensive (~3ms per model)
+      if (this.#modelHullsCache.has(model.name)) {
+        pe.hulls = this.#modelHullsCache.get(model.name);
+      } else {
+        for (const modelHull of model.hulls) {
+          pe.hulls.push(Hull.fromModelHull(modelHull));
+        }
+        this.#modelHullsCache.set(model.name, pe.hulls);
       }
     } else {
       console.assert(entity.mins instanceof Vector, 'valid entity mins', entity.mins);

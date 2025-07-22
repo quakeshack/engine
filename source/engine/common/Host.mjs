@@ -10,7 +10,7 @@ import { ServerClient } from '../server/Client.mjs';
 import { ServerEngineAPI } from './GameAPIs.mjs';
 import Chase from '../client/Chase.mjs';
 import VID from '../client/VID.mjs';
-import { SysError } from './Errors.mjs';
+import { HostError, SysError } from './Errors.mjs';
 import CDAudio from '../client/CDAudio.mjs';
 
 const Host = {};
@@ -47,13 +47,12 @@ Host.EndGame = function(message) {
     CL.NextDemo();
   } else {
     CL.Disconnect();
+    M.Alert('Host.EndGame', message);
   }
-  M.Alert('Host.EndGame', message);
 };
 
 Host.Error = function(error) {
   debugger;
-
   if (Host.inerror === true) {
     throw new Error('Host.Error: recursively entered');
   }
@@ -61,19 +60,19 @@ Host.Error = function(error) {
   if (!registry.isDedicatedServer) {
     SCR.EndLoadingPlaque();
   }
-  Con.PrintError('Host.Error: ' + error + '\n');
+  Con.PrintError('Host Error: ' + error + '\n');
   if (SV.server.active === true) {
     Host.ShutdownServer();
   }
   CL.Disconnect();
   CL.cls.demonum = -1;
   Host.inerror = false;
-  M.Alert('Host.Error', error);
+  M.Alert('Host Error', error);
 };
 
 Host.FindMaxClients = function() {
   SV.svs.maxclients = 1;
-  SV.svs.maxclientslimit = Def.max_clients;
+  SV.svs.maxclientslimit = Def.limits.clients;
   SV.svs.clients = [];
   if (!registry.isDedicatedServer) {
     CL.cls.state = CL.active.disconnected;
@@ -395,11 +394,6 @@ Host._Frame = function() {
 			Math.floor(pass3) + ' snd\n');
   }
 
-  if (Host.startdemos === true) {
-    CL.NextDemo();
-    Host.startdemos = false;
-  }
-
   ++Host.framecount;
 };
 
@@ -407,6 +401,10 @@ let inHandleCrash = false;
 
 // TODO: Sys.Init can handle a crash now since we are main looping without setInterval
 Host.HandleCrash = function(e) {
+  if (e instanceof HostError) {
+    Host.Error(e.message);
+    return;
+  }
   if (inHandleCrash) {
     console.error(e);
     // eslint-disable-next-line no-debugger
@@ -1325,23 +1323,23 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
     message = COM.Parse(this.args);
   }
   let dropReason = 'Kicked by ' + who;
-  if (message !== null) {
+  if (message.data !== null) {
     let p = 0;
     if (byNumber === true) {
       ++p;
-      for (; p < message.length; ++p) {
-        if (message.charCodeAt(p) !== 32) {
+      for (; p < message.data.length; ++p) {
+        if (message.data.charCodeAt(p) !== 32) {
           break;
         }
       }
       p += argv[2].length;
     }
-    for (; p < message.length; ++p) {
-      if (message.charCodeAt(p) !== 32) {
+    for (; p < message.data.length; ++p) {
+      if (message.data.charCodeAt(p) !== 32) {
         break;
       }
     }
-    dropReason = 'Kicked by ' + who + ': ' + message.substring(p);
+    dropReason = 'Kicked by ' + who + ': ' + message.data.substring(p);
   }
   Host.DropClient(Host.client, false, dropReason);
   Host.client = save;
@@ -1473,45 +1471,6 @@ Host.Viewprev_f = function() {
   Con.Print('frame ' + f + ': ' + m.frames[f].name + '\n');
 };
 
-Host.Startdemos_f = function(...demos) {
-  if (registry.isDedicatedServer) {
-    Con.Print('cannot play demos in dedicated server mode\n');
-    return;
-  }
-  if (demos.length === 0) {
-    Con.Print('Usage: startdemos <demo1> <demo2> ...\n');
-    return;
-  }
-  Con.Print(demos.length + ' demo(s) in loop\n');
-  CL.cls.demos = [...demos];
-  if ((CL.cls.demonum !== -1) && (CL.cls.demoplayback !== true)) {
-    CL.cls.demonum = 0;
-    if (Host.framecount !== 0) {
-      CL.NextDemo();
-    } else {
-      Host.startdemos = true;
-    }
-  } else {
-    CL.cls.demonum = -1;
-  }
-};
-
-Host.Demos_f = function() {
-  if (CL.cls.demonum === -1) {
-    CL.cls.demonum = 1;
-  }
-  CL.Disconnect();
-  CL.NextDemo();
-};
-
-Host.Stopdemo_f = function() {
-  if (CL.cls.demoplayback !== true) {
-    return;
-  }
-  CL.StopPlayback();
-  CL.Disconnect();
-};
-
 Host.InitCommands = function() {
   if (registry.isDedicatedServer) { // TODO: move this to a dedicated stub for IN
     Cmd.AddCommand('bind', () => {});
@@ -1546,9 +1505,6 @@ Host.InitCommands = function() {
   Cmd.AddCommand('load', Host.Loadgame_f);
   Cmd.AddCommand('save', Host.Savegame_f);
   Cmd.AddCommand('give', Host.Give_f);
-  Cmd.AddCommand('startdemos', Host.Startdemos_f);
-  Cmd.AddCommand('demos', Host.Demos_f);
-  Cmd.AddCommand('stopdemo', Host.Stopdemo_f);
   Cmd.AddCommand('viewmodel', Host.Viewmodel_f);
   Cmd.AddCommand('viewframe', Host.Viewframe_f);
   Cmd.AddCommand('viewnext', Host.Viewnext_f);
@@ -1558,7 +1514,7 @@ Host.InitCommands = function() {
 
   Cmd.AddCommand('error', class extends ConsoleCommand {
     run(message) {
-      throw new SysError(message);
+      throw new HostError(message);
     }
   });
 };

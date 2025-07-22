@@ -293,38 +293,59 @@ export default class MSG {
   /** @type {{ type: string, value: number | string }[]} */
   static _messageLog = [];
 
-  /** @deprecated import and use SzBuffer directly instead. */
-  static Buffer = SzBuffer;
-
   // ============================================================================
   // WRITE METHODS (Static - take buffer as first parameter)
   // ============================================================================
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {number} c signed byte value (-128 to 127)
+   */
   static WriteChar(sb, c) {
     console.assert(c >= -128 && c <= 127, 'must be signed byte', c);
     (new DataView(sb.data)).setInt8(sb.allocate(1), c);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {number} c unsigned byte value (0 to 255)
+   */
   static WriteByte(sb, c) {
     // console.assert(c >= 0 && c <= 255, 'must be unsigned byte', c);
     (new DataView(sb.data)).setUint8(sb.allocate(1), c);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {number} c short value (-32768 to 32767)
+   */
   static WriteShort(sb, c) {
     // console.assert(c >= -32768 && c <= 32767, 'must be signed short', c);
     (new DataView(sb.data)).setInt16(sb.allocate(2), c, true);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {number} c signed long value (-2147483648 to 2147483647)
+   */
   static WriteLong(sb, c) {
     // console.assert(c >= -2147483648 && c <= 2147483647, 'must be signed long', c);
     (new DataView(sb.data)).setInt32(sb.allocate(4), c, true);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {number} f floating point value (32-bit)
+   */
   static WriteFloat(sb, f) {
     // console.assert(typeof f === 'number' && !isNaN(f) && isFinite(f), 'must be a real number, not NaN or Infinity',);
     (new DataView(sb.data)).setFloat32(sb.allocate(4), f, true);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {string} s string
+   */
   static WriteString(sb, s) {
     if (s !== null) {
       sb.write(new Uint8Array(Q.strmem(s)), s.length);
@@ -332,32 +353,57 @@ export default class MSG {
     MSG.WriteChar(sb, 0);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {number} f coordinate
+   */
   static WriteCoord(sb, f) {
     MSG.WriteShort(sb, f * 8.0);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {Vector} vec position vector
+   */
   static WriteCoordVector(sb, vec) {
     MSG.WriteCoord(sb, vec[0]);
     MSG.WriteCoord(sb, vec[1]);
     MSG.WriteCoord(sb, vec[2]);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {number} f angle in degrees (0 to 360)
+   */
   static WriteAngle(sb, f) {
     MSG.WriteByte(sb, ((f >> 0) * (256.0 / 360.0)) & 255);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {Vector} vec angles vector
+   */
   static WriteAngleVector(sb, vec) {
     MSG.WriteAngle(sb, vec[0]);
     MSG.WriteAngle(sb, vec[1]);
     MSG.WriteAngle(sb, vec[2]);
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {Vector} color color RGB vector (0.0 to 1.0)
+   */
   static WriteRGB(sb, color) {
     MSG.WriteByte(sb, Math.round(color[0] * 255));
     MSG.WriteByte(sb, Math.round(color[1] * 255));
     MSG.WriteByte(sb, Math.round(color[2] * 255));
   }
 
+  /**
+   * @param {SzBuffer} sb message buffer
+   * @param {Vector} color color RGB vector (0.0 to 1.0)
+   * @param {number} alpha alpha value (0.0 to 1.0)
+   */
   static WriteRGBA(sb, color, alpha) {
     MSG.WriteRGB(sb, color);
     MSG.WriteByte(sb, Math.round(alpha * 255));

@@ -602,7 +602,7 @@ export class PlayerEntity extends BaseEntity {
 
   /** @protected */
   _dropBackpack() {
-    const backpack = this.engine.SpawnEntity(BackpackEntity.classname, {
+    const backpack = /** @type {BackpackEntity} */ (this.engine.SpawnEntity(BackpackEntity.classname, {
       origin: this.origin.copy().subtract(new Vector(0.0, 0.0, 24.0)),
       items: this.weapon,
       ammo_cells: this.ammo_cells,
@@ -611,7 +611,7 @@ export class PlayerEntity extends BaseEntity {
       ammo_shells: this.ammo_shells,
       regeneration_time: 0, // do not regenerate
       remove_after: 120, // remove after 120s
-    });
+    }));
 
     // toss it around
     backpack.toss();

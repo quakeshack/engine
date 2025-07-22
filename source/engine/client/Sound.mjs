@@ -501,8 +501,6 @@ const S = {
       }
     }
 
-    Con.sfx_talk = this.PrecacheSound('misc/talk.wav');
-
     Con.Print('Sound subsystem initialized.\n');
   },
 

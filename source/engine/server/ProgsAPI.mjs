@@ -1,8 +1,9 @@
+import Vector from '../../shared/Vector.mjs';
 import Cmd from '../common/Cmd.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import MSG from '../network/MSG.mjs';
 import { eventBus, registry } from '../registry.mjs';
-import { ED } from './Edict.mjs';
+import { ED, ServerEdict } from './Edict.mjs';
 
 const PF = {};
 
@@ -23,26 +24,57 @@ PF._assertTrue = function _PF_assertTrue(check, message) {
   }
 };
 
-PF._wrapFunctions = [];
+/**
+ * PR.fielddefs[].type
+ * @enum {number}
+ * @readonly
+ */
+export const etype = Object.freeze({
+  ev_void: 0,
+  ev_string: 1,
+  ev_float: 2,
+  ev_vector: 3,
+  ev_entity: 4,
+  ev_field: 5,
+  ev_function: 6,
+  ev_pointer: 7,
+
+  ev_strings: 101,
+  ev_integer: 102,
+  ev_string_not_empty: 103,
+  ev_entity_client: 104,
+  ev_bool: 200,
+});
+
+/**
+ * @enum {number}
+ * @readonly
+ */
+export const ofs = Object.freeze({
+  OFS_NULL: 0,
+  OFS_RETURN: 1,
+  OFS_PARM0: 4, // leave 3 ofs for each parm to hold vectors
+  OFS_PARM1: 7,
+  OFS_PARM2: 10,
+  OFS_PARM3: 13,
+  OFS_PARM4: 16,
+  OFS_PARM5: 19,
+  OFS_PARM6: 22,
+  OFS_PARM7: 25,
+});
 
 /**
  * Will generate a function that can be exposed to the QuakeC VM (so called built-in function)
  * @param {string} name
  * @param {Function} func
- * @param {PR.etype[]} argTypes
- * @param {PR.etype} returnType
+ * @param {etype[]} argTypes
+ * @param {etype} returnType
  * @returns {Function}
  */
-
-PF._generateBuiltinFunction = function _PF_GenerateBuiltinFunction(func, argTypes = [], returnType = PR.etype.ev_void) {
-  // store the wrapped function, we need to refer to it
-  const name = PF._wrapFunctions.length;
-
+function _PF_GenerateBuiltinFunction(name, func, argTypes = [], returnType = etype.ev_void) {
   if (!(func instanceof Function)) {
     throw new TypeError('func must be a Function!');
   }
-
-  PF._wrapFunctions[name] = func;
 
   const args = [];
   let returnCode = '';
@@ -53,45 +85,45 @@ PF._generateBuiltinFunction = function _PF_GenerateBuiltinFunction(func, argType
     const parmName = `PR.ofs.OFS_PARM${parmNum}`;
 
     switch (argType) {
-      case PR.etype.ev_entity_client:
+      case etype.ev_entity_client:
         asserts.push({check: `PR.globals_int[${parmName}] > 0 && PR.globals_int[${parmName}] <= SV.svs.maxclients`, message: 'edict points to a non-client'});
       // eslint-disable-next-line no-fallthrough
-      case PR.etype.ev_entity:
+      case etype.ev_entity:
         args.push(`SV.server.edicts[PR.globals_int[${parmName}]]`);
         break;
 
-      case PR.etype.ev_vector:
+      case etype.ev_vector:
         args.push(`new Vector(PR.globals_float[${parmName}], PR.globals_float[${parmName} + 1], PR.globals_float[${parmName} + 2])`);
         break;
 
-      case PR.etype.ev_float:
+      case etype.ev_float:
         args.push(`PR.globals_float[${parmName}]`);
         break;
 
-      case PR.etype.ev_integer:
+      case etype.ev_integer:
         args.push(`PR.globals_float[${parmName}] >> 0`);
         break;
 
-      case PR.etype.ev_bool:
+      case etype.ev_bool:
         args.push(`!!PR.globals_float[${parmName}]`);
         break;
 
-      case PR.etype.ev_string_not_empty:
+      case etype.ev_string_not_empty:
         asserts.push({check: `PR.globals_int[${parmName}]`, message: 'string must not be empty'});
         // eslint-disable-next-line no-fallthrough
-      case PR.etype.ev_string:
+      case etype.ev_string:
         args.push(`PR.GetString(PR.globals_int[${parmName}])`);
         break;
 
-      case PR.etype.ev_strings:
+      case etype.ev_strings:
         args.push(`PF._VarString(${args.length})`);
         break;
 
-      case PR.etype.ev_field:
+      case etype.ev_field:
         args.push(`Object.entries(PR.entvars).find((entry) => entry[1] === PR.globals_int[${parmName}])[0]`);
         break;
 
-      case PR.etype.ev_void:
+      case etype.ev_void:
         args.push(null);
         break;
 
@@ -101,150 +133,149 @@ PF._generateBuiltinFunction = function _PF_GenerateBuiltinFunction(func, argType
   }
 
   switch (returnType) {
-    case PR.etype.ev_vector:
+    case etype.ev_vector:
       asserts.push({check: 'returnValue instanceof Vector', message: 'returnValue must be a Vector'});
       asserts.push({check: '!isNaN(returnValue[0])', message: 'returnValue[0] must not be NaN'});
       asserts.push({check: '!isNaN(returnValue[1])', message: 'returnValue[1] must not be NaN'});
       asserts.push({check: '!isNaN(returnValue[2])', message: 'returnValue[2] must not be NaN'});
       returnCode = `
-        PR.globals_float[${PR.ofs.OFS_RETURN + 0}] = returnValue[0];
-        PR.globals_float[${PR.ofs.OFS_RETURN + 1}] = returnValue[1];
-        PR.globals_float[${PR.ofs.OFS_RETURN + 2}] = returnValue[2];
+        PR.globals_float[${ofs.OFS_RETURN + 0}] = returnValue[0];
+        PR.globals_float[${ofs.OFS_RETURN + 1}] = returnValue[1];
+        PR.globals_float[${ofs.OFS_RETURN + 2}] = returnValue[2];
       `;
       break;
 
-    case PR.etype.ev_entity_client:
+    case etype.ev_entity_client:
       asserts.push({check: 'returnValue === null || (returnValue.num > 0 && returnValue.num <= SV.svs.maxclients)', message: 'edict points to a non-client'});
     // eslint-disable-next-line no-fallthrough
-    case PR.etype.ev_entity:
+    case etype.ev_entity:
       // additional sanity check: the returnValue _must_ be an Edict or null, otherwise chaos will ensue
-      asserts.push({check: 'returnValue === null || returnValue instanceof SV.Edict', message: 'returnValue must be an Edict or null'});
-      returnCode = `PR.globals_int[${PR.ofs.OFS_RETURN}] = returnValue ? returnValue.num : 0;`;
+      asserts.push({check: 'returnValue === null || returnValue instanceof ServerEdict', message: 'returnValue must be an Edict or null'});
+      returnCode = `PR.globals_int[${ofs.OFS_RETURN}] = returnValue ? returnValue.num : 0;`;
       break;
 
-    case PR.etype.ev_integer:
+    case etype.ev_integer:
       asserts.push({check: '!isNaN(returnValue)', message: 'returnValue must not be NaN'});
-      returnCode = `PR.globals_float[${PR.ofs.OFS_RETURN}] = returnValue >> 0;`;
+      returnCode = `PR.globals_float[${ofs.OFS_RETURN}] = returnValue >> 0;`;
       break;
 
-    case PR.etype.ev_float:
+    case etype.ev_float:
       asserts.push({check: '!isNaN(returnValue)', message: 'returnValue must not be NaN'});
-      returnCode = `PR.globals_float[${PR.ofs.OFS_RETURN}] = returnValue;`;
+      returnCode = `PR.globals_float[${ofs.OFS_RETURN}] = returnValue;`;
       break;
 
-    case PR.etype.ev_bool:
+    case etype.ev_bool:
       asserts.push({check: 'typeof(returnValue) === \'boolean\'', message: 'returnValue must be bool'});
-      returnCode = `PR.globals_float[${PR.ofs.OFS_RETURN}] = returnValue;`;
+      returnCode = `PR.globals_float[${ofs.OFS_RETURN}] = returnValue;`;
       break;
 
-    case PR.etype.ev_void:
+    case etype.ev_void:
       returnCode = '/* no return value */';
       break;
 
-    case PR.etype.ev_string_not_empty:
+    case etype.ev_string_not_empty:
       asserts.push({check: 'returnValue !== null && returnValue !== \'\'', message: 'string must not be empty'});
       // eslint-disable-next-line no-fallthrough
-    case PR.etype.ev_string:
-      returnCode = `PR.globals_int[${PR.ofs.OFS_RETURN}] = PR.TempString(returnValue);`;
+    case etype.ev_string:
+      returnCode = `PR.globals_int[${ofs.OFS_RETURN}] = PR.TempString(returnValue);`;
       break;
 
     default:
       throw new TypeError('unsupported return type: ' + returnType);
   }
 
-  const code = `
-    ${args.map((def, index) => `
-      const arg${index} = ${def};
-    `).join('\n')}
+  const code = `return function ${name}() {
+  const { PR, SV } = registry;
 
-    const returnValue = PF._wrapFunctions[${name}](${args.map((_, index) => `arg${index}`).join(', ')});
+  ${args.map((def, index) => `  const arg${index} = ${def};`).join('\n')}
 
-    ${asserts.map(({check, message}) => `
-      PF._assertTrue(${check}, ${JSON.stringify(message)});
-    `).join('\n')}
+  const returnValue = _${name}(${args.map((_, index) => `arg${index}`).join(', ')});
 
-    ${returnCode}`;
+  ${asserts.map(({check, message}) => `  PF._assertTrue(${check}, ${JSON.stringify(message)});`).join('\n')}
 
-  return new Function(code);
+  ${returnCode}
+}`;
+
+  return (new Function('ED', 'MSG', 'PF', 'ServerEdict', 'Vector', 'registry', '_' + name, code))(ED, MSG, PF, ServerEdict, Vector, registry, func);
 };
 
 PF._VarString = function _PF_VarString(first) {
   let i; let out = '';
   for (i = first; i < PR.argc; ++i) {
-    out += PR.GetString(PR.globals_int[PR.ofs.OFS_PARM0 + i * 3]);
+    out += PR.GetString(PR.globals_int[ofs.OFS_PARM0 + i * 3]);
   }
   return out;
 };
 
-PF.error = PF._generateBuiltinFunction(function (str) {
+PF.error = _PF_GenerateBuiltinFunction('error', function (str) {
   Con.PrintError('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
   ED.Print(SV.server.gameAPI.self);
   Host.Error('Program error: ' + str);
-}, [PR.etype.ev_strings]);
+}, [etype.ev_strings]);
 
-PF.objerror = PF._generateBuiltinFunction(function (str) {
+PF.objerror = _PF_GenerateBuiltinFunction('objerror', function (str) {
   Con.PrintError('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
   ED.Print(SV.server.gameAPI.self);
   Host.Error('Program error: ' + str);
-}, [PR.etype.ev_strings]);
+}, [etype.ev_strings]);
 
-PF.makevectors = PF._generateBuiltinFunction(function (vec) {
+PF.makevectors = _PF_GenerateBuiltinFunction('makevectors', function (vec) {
   const {forward, right, up} = vec.angleVectors();
   SV.server.gameAPI.v_forward = forward;
   SV.server.gameAPI.v_right = right;
   SV.server.gameAPI.v_up = up;
-}, [PR.etype.ev_vector]);
+}, [etype.ev_vector]);
 
-PF.setorigin = PF._generateBuiltinFunction((edict, vec)  => edict.setOrigin(vec), [PR.etype.ev_entity, PR.etype.ev_vector], PR.etype.ev_void);
+PF.setorigin = _PF_GenerateBuiltinFunction('setorigin', (edict, vec)  => edict.setOrigin(vec), [etype.ev_entity, etype.ev_vector], etype.ev_void);
 
-PF.setsize = PF._generateBuiltinFunction((edict, min, max) => edict.setMinMaxSize(min, max), [PR.etype.ev_entity, PR.etype.ev_vector, PR.etype.ev_vector], PR.etype.ev_void);
+PF.setsize = _PF_GenerateBuiltinFunction('setsize', (edict, min, max) => edict.setMinMaxSize(min, max), [etype.ev_entity, etype.ev_vector, etype.ev_vector], etype.ev_void);
 
-PF.setmodel = PF._generateBuiltinFunction(function(ed, model) {
+PF.setmodel = _PF_GenerateBuiltinFunction('setmodel', function(ed, model) {
   ed.setModel(model);
-}, [PR.etype.ev_entity, PR.etype.ev_string]);
+}, [etype.ev_entity, etype.ev_string]);
 
-PF.bprint = PF._generateBuiltinFunction(ServerEngineAPI.BroadcastPrint, [PR.etype.ev_strings]);
+PF.bprint = _PF_GenerateBuiltinFunction('bprint', ServerEngineAPI.BroadcastPrint, [etype.ev_strings]);
 
-PF.sprint = PF._generateBuiltinFunction((clientEdict, message) => clientEdict.getClient().consolePrint(message), [PR.etype.ev_entity_client, PR.etype.ev_strings]);
+PF.sprint = _PF_GenerateBuiltinFunction('sprint', (clientEdict, message) => clientEdict.getClient().consolePrint(message), [etype.ev_entity_client, etype.ev_strings]);
 
-PF.centerprint = PF._generateBuiltinFunction((clientEdict, message) => clientEdict.getClient().centerPrint(message), [PR.etype.ev_entity_client, PR.etype.ev_strings]);
+PF.centerprint = _PF_GenerateBuiltinFunction('centerprint', (clientEdict, message) => clientEdict.getClient().centerPrint(message), [etype.ev_entity_client, etype.ev_strings]);
 
-PF.normalize = PF._generateBuiltinFunction(function (vec) {
+PF.normalize = _PF_GenerateBuiltinFunction('normalize', function (vec) {
   vec.normalize();
 
   return vec;
-}, [PR.etype.ev_vector], PR.etype.ev_vector);
+}, [etype.ev_vector], etype.ev_vector);
 
-PF.vlen = PF._generateBuiltinFunction((vec) => vec.len(), [PR.etype.ev_vector], PR.etype.ev_float);
+PF.vlen = _PF_GenerateBuiltinFunction('vlen', (vec) => vec.len(), [etype.ev_vector], etype.ev_float);
 
-PF.vectoyaw = PF._generateBuiltinFunction((vec) => vec.toYaw(), [PR.etype.ev_vector], PR.etype.ev_float);
+PF.vectoyaw = _PF_GenerateBuiltinFunction('vectoyaw', (vec) => vec.toYaw(), [etype.ev_vector], etype.ev_float);
 
-PF.vectoangles = PF._generateBuiltinFunction((vec) => vec.toAngles(), [PR.etype.ev_vector], PR.etype.ev_vector);
+PF.vectoangles = _PF_GenerateBuiltinFunction('vectoangles', (vec) => vec.toAngles(), [etype.ev_vector], etype.ev_vector);
 
-PF.random = PF._generateBuiltinFunction(Math.random, [], PR.etype.ev_float);
+PF.random = _PF_GenerateBuiltinFunction('random', Math.random, [], etype.ev_float);
 
-PF.particle = PF._generateBuiltinFunction(ServerEngineAPI.StartParticles, [PR.etype.ev_vector, PR.etype.ev_vector, PR.etype.ev_integer, PR.etype.ev_integer]);
+PF.particle = _PF_GenerateBuiltinFunction('particle', ServerEngineAPI.StartParticles, [etype.ev_vector, etype.ev_vector, etype.ev_integer, etype.ev_integer]);
 
-PF.ambientsound = PF._generateBuiltinFunction(ServerEngineAPI.SpawnAmbientSound, [
-  PR.etype.ev_vector,
-  PR.etype.ev_string_not_empty,
-  PR.etype.ev_float,
-  PR.etype.ev_float,
-], PR.etype.ev_bool);
+PF.ambientsound = _PF_GenerateBuiltinFunction('ambientsound', ServerEngineAPI.SpawnAmbientSound, [
+  etype.ev_vector,
+  etype.ev_string_not_empty,
+  etype.ev_float,
+  etype.ev_float,
+], etype.ev_bool);
 
-PF.sound = PF._generateBuiltinFunction(ServerEngineAPI.StartSound, [
-  PR.etype.ev_entity,
-  PR.etype.ev_integer,
-  PR.etype.ev_string_not_empty,
-  PR.etype.ev_float,
-  PR.etype.ev_float,
-], PR.etype.ev_bool);
+PF.sound = _PF_GenerateBuiltinFunction('sound', ServerEngineAPI.StartSound, [
+  etype.ev_entity,
+  etype.ev_integer,
+  etype.ev_string_not_empty,
+  etype.ev_float,
+  etype.ev_float,
+], etype.ev_bool);
 
-PF.breakstatement = function PF_breakstatement() { // PR
+PF.breakstatement = function breakstatement() { // PR
   Con.Print('break statement\n');
 };
 
-PF.traceline = PF._generateBuiltinFunction(function(start, end, noMonsters, passEdict) {
+PF.traceline = _PF_GenerateBuiltinFunction('traceline', function(start, end, noMonsters, passEdict) {
   const trace = ServerEngineAPI.TracelineLegacy(start, end, noMonsters, passEdict);
 
   SV.server.gameAPI.trace_allsolid = (trace.allsolid === true) ? 1.0 : 0.0;
@@ -257,30 +288,30 @@ PF.traceline = PF._generateBuiltinFunction(function(start, end, noMonsters, pass
   SV.server.gameAPI.trace_plane_dist = trace.plane.dist;
   SV.server.gameAPI.trace_ent = trace.ent || null;
 }, [
-  PR.etype.ev_vector,
-  PR.etype.ev_vector,
-  PR.etype.ev_integer,
-  PR.etype.ev_entity,
+  etype.ev_vector,
+  etype.ev_vector,
+  etype.ev_integer,
+  etype.ev_entity,
 ]);
 
-PF.checkclient = PF._generateBuiltinFunction(() => SV.server.gameAPI.self.getNextBestClient(), [], PR.etype.ev_entity_client);
+PF.checkclient = _PF_GenerateBuiltinFunction('checkclient', () => SV.server.gameAPI.self.getNextBestClient(), [], etype.ev_entity_client);
 
-PF.stuffcmd = PF._generateBuiltinFunction(function(clientEdict, cmd) {
+PF.stuffcmd = _PF_GenerateBuiltinFunction('stuffcmd', function(clientEdict, cmd) {
   clientEdict.getClient().sendConsoleCommands(cmd);
-}, [PR.etype.ev_entity_client, PR.etype.ev_string]);
+}, [etype.ev_entity_client, etype.ev_string]);
 
-PF.localcmd = PF._generateBuiltinFunction(function(cmd) {
+PF.localcmd = _PF_GenerateBuiltinFunction('localcmd', function(cmd) {
   Cmd.text += cmd;
-}, [PR.etype.ev_string]);
+}, [etype.ev_string]);
 
-PF.cvar = PF._generateBuiltinFunction(function(name) {
+PF.cvar = _PF_GenerateBuiltinFunction('cvar', function(name) {
   const cvar = ServerEngineAPI.GetCvar(name);
   return cvar ? cvar.value : 0.0;
-}, [PR.etype.ev_string], PR.etype.ev_float);
+}, [etype.ev_string], etype.ev_float);
 
-PF.cvar_set = PF._generateBuiltinFunction(ServerEngineAPI.SetCvar, [PR.etype.ev_string, PR.etype.ev_string]);
+PF.cvar_set = _PF_GenerateBuiltinFunction('cvar_set', ServerEngineAPI.SetCvar, [etype.ev_string, etype.ev_string]);
 
-PF.findradius = PF._generateBuiltinFunction((origin, radius) => {
+PF.findradius = _PF_GenerateBuiltinFunction('findradius', (origin, radius) => {
   const edicts = ServerEngineAPI.FindInRadius(origin, radius);
 
   // doing the chain dance
@@ -293,105 +324,106 @@ PF.findradius = PF._generateBuiltinFunction((origin, radius) => {
   }
 
   return chain;
-}, [PR.etype.ev_vector, PR.etype.ev_float], PR.etype.ev_entity);
+}, [etype.ev_vector, etype.ev_float], etype.ev_entity);
 
 PF.dprint = function PF_dprint() { // EngineInterface
   Con.DPrint(PF._VarString(0));
 };
 
-PF.dprint = PF._generateBuiltinFunction((str) => ServerEngineAPI.ConsoleDebug(str), [PR.etype.ev_strings]);
+PF.dprint = _PF_GenerateBuiltinFunction('dprint', (str) => ServerEngineAPI.ConsoleDebug(str), [etype.ev_strings]);
 
-PF.ftos = PF._generateBuiltinFunction((f) => parseInt(f) == f ? f.toString() : f.toFixed(1), [PR.etype.ev_float], PR.etype.ev_string);
+PF.ftos = _PF_GenerateBuiltinFunction('ftos', (f) => parseInt(f) == f ? f.toString() : f.toFixed(1), [etype.ev_float], etype.ev_string);
 
-PF.fabs = PF._generateBuiltinFunction(Math.abs, [PR.etype.ev_float], PR.etype.ev_float);
+PF.fabs = _PF_GenerateBuiltinFunction('fabs', Math.abs, [etype.ev_float], etype.ev_float);
 
-PF.vtos = PF._generateBuiltinFunction((vec) => vec.toString(), [PR.etype.ev_vector], PR.etype.ev_string);
+PF.vtos = _PF_GenerateBuiltinFunction('vtos', (vec) => vec.toString(), [etype.ev_vector], etype.ev_string);
 
-PF.Spawn = PF._generateBuiltinFunction(() => {
+PF.Spawn = _PF_GenerateBuiltinFunction('Spawn', () => {
   // this is a special null entity we spawn for the QuakeC
   // it will be automatically populated with an EdictProxy
   // the JS Game is supposed to use ServerEngineAPI.SpawnEntity
   const edict = ED.Alloc();
   SV.server.gameAPI.prepareEntity(edict, null, {});
   return edict;
-}, [], PR.etype.ev_entity);
+}, [], etype.ev_entity);
 
-PF.Remove = PF._generateBuiltinFunction((edict) => edict.freeEdict(), [PR.etype.ev_entity]);
+PF.Remove = _PF_GenerateBuiltinFunction('Remove', (edict) => edict.freeEdict(), [etype.ev_entity]);
 
-PF.Find = PF._generateBuiltinFunction((edict, field, value) => {
+PF.Find = _PF_GenerateBuiltinFunction('Find', (edict, field, value) => {
   return ServerEngineAPI.FindByFieldAndValue(field, value, edict.num + 1);
-}, [PR.etype.ev_entity, PR.etype.ev_field, PR.etype.ev_string], PR.etype.ev_entity);
+}, [etype.ev_entity, etype.ev_field, etype.ev_string], etype.ev_entity);
 
-PF.MoveToGoal = PF._generateBuiltinFunction((dist) => {
+PF.MoveToGoal = _PF_GenerateBuiltinFunction('MoveToGoal', (dist) => {
   return SV.server.gameAPI.self.moveToGoal(dist);
-}, [PR.etype.ev_float], PR.etype.ev_bool);
+}, [etype.ev_float], etype.ev_bool);
 
-PF.precache_file = PF._generateBuiltinFunction((integer) => {
+PF.precache_file = _PF_GenerateBuiltinFunction('precache_file', (integer) => {
   return integer; // dummy behavior
-}, [PR.etype.ev_integer], PR.etype.ev_integer);
+}, [etype.ev_integer], etype.ev_integer);
 
-PF.precache_sound = PF._generateBuiltinFunction((sfxName) => {
+PF.precache_sound = _PF_GenerateBuiltinFunction('precache_sound', (sfxName) => {
   return ServerEngineAPI.PrecacheSound(sfxName);
-}, [PR.etype.ev_string_not_empty]);
+}, [etype.ev_string_not_empty]);
 
-PF.precache_model = PF._generateBuiltinFunction((modelName) => {
+PF.precache_model = _PF_GenerateBuiltinFunction('precache_model', (modelName) => {
   // FIXME: handle this more gracefully
   // if (SV.server.loading !== true) {
   //   PR.RunError('PF.Precache_*: Precache can only be done in spawn functions');
   // }
 
   return ServerEngineAPI.PrecacheModel(modelName);
-}, [PR.etype.ev_string_not_empty]);
+}, [etype.ev_string_not_empty]);
 
-PF.coredump = function PF_coredump() {
+PF.coredump = function coredump() {
   ED.PrintEdicts();
 };
 
-PF.traceon = function PF_traceon() {
+PF.traceon = function traceon() {
   PR.trace = true;
 };
 
-PF.traceoff = function PF_traceoff() {
+PF.traceoff = function traceoff() {
   PR.trace = false;
 };
 
-PF.eprint = function PF_eprint() {
+PF.eprint = function eprint() {
   ED.Print(SV.server.edicts[PR.globals_float[4]]);
 };
 
-PF.walkmove = PF._generateBuiltinFunction(function(yaw, dist) {
+PF.walkmove = _PF_GenerateBuiltinFunction('walkmove', function(yaw, dist) {
   const oldf = PR.xfunction; // ???
   const res = SV.server.gameAPI.self.walkMove(yaw, dist);
   PR.xfunction = oldf; // ???
 
   return res;
-}, [PR.etype.ev_float, PR.etype.ev_float], PR.etype.ev_bool);
+}, [etype.ev_float, etype.ev_float], etype.ev_bool);
 
-PF.droptofloor = PF._generateBuiltinFunction(() => SV.server.gameAPI.self.dropToFloor(-256.0), [], PR.etype.ev_bool);
+PF.droptofloor = _PF_GenerateBuiltinFunction('droptofloor', () => SV.server.gameAPI.self.dropToFloor(-256.0), [], etype.ev_bool);
 
-PF.lightstyle = PF._generateBuiltinFunction(ServerEngineAPI.Lightstyle, [PR.etype.ev_integer, PR.etype.ev_string]);
+PF.lightstyle = _PF_GenerateBuiltinFunction('lightstyle', ServerEngineAPI.Lightstyle, [etype.ev_integer, etype.ev_string]);
 
-PF.rint = PF._generateBuiltinFunction((f) => (f >= 0.0 ? f + 0.5 : f - 0.5), [PR.etype.ev_float], PR.etype.ev_integer);
+PF.rint = _PF_GenerateBuiltinFunction('rint', (f) => (f >= 0.0 ? f + 0.5 : f - 0.5), [etype.ev_float], etype.ev_integer);
 
-PF.floor = PF._generateBuiltinFunction(Math.floor, [PR.etype.ev_float], PR.etype.ev_float);
+PF.floor = _PF_GenerateBuiltinFunction('floor', Math.floor, [etype.ev_float], etype.ev_float);
 
-PF.ceil = PF._generateBuiltinFunction(Math.ceil, [PR.etype.ev_float], PR.etype.ev_float);
+PF.ceil = _PF_GenerateBuiltinFunction('ceil', Math.ceil, [etype.ev_float], etype.ev_float);
 
-PF.checkbottom = PF._generateBuiltinFunction((edict) => edict.isOnTheFloor(), [PR.etype.ev_entity], PR.etype.ev_bool);
+PF.checkbottom = _PF_GenerateBuiltinFunction('checkbottom', (edict) => edict.isOnTheFloor(), [etype.ev_entity], etype.ev_bool);
 
-PF.pointcontents = PF._generateBuiltinFunction(ServerEngineAPI.DeterminePointContents, [PR.etype.ev_vector], PR.etype.ev_float);
+PF.pointcontents = _PF_GenerateBuiltinFunction('pointcontents', ServerEngineAPI.DeterminePointContents, [etype.ev_vector], etype.ev_float);
 
-PF.nextent = PF._generateBuiltinFunction((edict) => edict.nextEdict(), [PR.etype.ev_entity], PR.etype.ev_entity);
+PF.nextent = _PF_GenerateBuiltinFunction('nextent', (edict) => edict.nextEdict(), [etype.ev_entity], etype.ev_entity);
 
-PF.aim = PF._generateBuiltinFunction((edict) => {
+PF.aim = _PF_GenerateBuiltinFunction('aim', (edict) => {
   // CR: `makevectors(self.v_angle);` is called in `W_Attack` and propagates all the way down here
   const dir = SV.server.gameAPI.v_forward;
   return edict.aim(dir);
-}, [PR.etype.ev_entity], PR.etype.ev_vector);
+}, [etype.ev_entity], etype.ev_vector);
 
-PF.changeyaw = PF._generateBuiltinFunction(() => SV.server.gameAPI.self.changeYaw(), []);
+PF.changeyaw = _PF_GenerateBuiltinFunction('changeyaw', () => SV.server.gameAPI.self.changeYaw(), []);
 
-PF._WriteDest = function PF_WriteDest(dest) {
+// eslint-disable-next-line jsdoc/require-jsdoc
+function WriteGeneric(dest) {
   switch (dest) {
     case 0: // broadcast
       return SV.server.datagram;
@@ -400,7 +432,7 @@ PF._WriteDest = function PF_WriteDest(dest) {
         const msg_entity = SV.server.gameAPI.msg_entity;
         const entnum = msg_entity.num;
         if (!msg_entity.isClient()) {
-          throw new Error('PF._WriteDest: not a client ' + entnum);
+          throw new Error('WriteGeneric: not a client ' + entnum);
         }
         return msg_entity.getClient().message;
       }
@@ -409,30 +441,30 @@ PF._WriteDest = function PF_WriteDest(dest) {
     case 3: // init
       return SV.server.signon;
   }
-  throw new Error('PF._WriteDest: bad destination ' + dest);
+  throw new Error('WriteGeneric: bad destination ' + dest);
 };
 
 for (const fn of ['WriteByte', 'WriteChar', 'WriteShort', 'WriteLong', 'WriteAngle', 'WriteCoord']) {
-  PF[fn] = PF._generateBuiltinFunction((dest, val) => MSG[fn](PF._WriteDest(dest), val), [PR.etype.ev_integer, PR.etype.ev_float]);
+  PF[fn] = _PF_GenerateBuiltinFunction(fn, (dest, val) => MSG[fn](WriteGeneric(dest), val), [etype.ev_integer, etype.ev_float]);
 }
 
-PF.WriteString = PF._generateBuiltinFunction((dest, val) => MSG.WriteString(PF._WriteDest(dest), val), [PR.etype.ev_integer, PR.etype.ev_string]);
+PF.WriteString = _PF_GenerateBuiltinFunction('WriteString', (dest, val) => MSG.WriteString(WriteGeneric(dest), val), [etype.ev_integer, etype.ev_string]);
 
-PF.WriteEntity = PF._generateBuiltinFunction((dest, val) => MSG.WriteShort(PF._WriteDest(dest), val.num), [PR.etype.ev_integer, PR.etype.ev_entity]);
+PF.WriteEntity = _PF_GenerateBuiltinFunction('WriteEntity', (dest, val) => MSG.WriteShort(WriteGeneric(dest), val.num), [etype.ev_integer, etype.ev_entity]);
 
-PF.makestatic = PF._generateBuiltinFunction((edict) => edict.makeStatic(), [PR.etype.ev_entity]);
+PF.makestatic = _PF_GenerateBuiltinFunction('makestatic', (edict) => edict.makeStatic(), [etype.ev_entity]);
 
-PF.setspawnparms = PF._generateBuiltinFunction(function (clientEdict) {
+PF.setspawnparms = _PF_GenerateBuiltinFunction('setspawnparms', function (clientEdict) {
   const spawn_parms = clientEdict.getClient().spawn_parms;
 
   for (let i = 0; i <= 15; ++i) {
     SV.server.gameAPI[`parm${i + 1}`] = spawn_parms[i];
   }
-}, [PR.etype.ev_entity_client]);
+}, [etype.ev_entity_client]);
 
-PF.changelevel = PF._generateBuiltinFunction(ServerEngineAPI.ChangeLevel, [PR.etype.ev_string]);
+PF.changelevel = _PF_GenerateBuiltinFunction('changelevel', ServerEngineAPI.ChangeLevel, [etype.ev_string]);
 
-PF.Fixme = function PF_Fixme() {
+PF.Fixme = function Fixme() {
   throw new Error('unimplemented builtin');
 };
 
@@ -522,3 +554,5 @@ PF.builtin = [
   PF.Fixme, // PF.stof,
   PF.Fixme, // PF.multicast,
 ];
+
+console.log('PF.builtin', PF.builtin);

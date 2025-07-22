@@ -53,7 +53,7 @@ export class ViewthingEntity extends BaseEntity {
   static classname = 'viewthing';
 
   _precache() {
-    this.game.PrecacheModel('progs/player.mdl');
+    this.engine.PrecacheModel('progs/player.mdl');
   }
 
   spawn() {

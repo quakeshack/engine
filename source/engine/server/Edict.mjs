@@ -41,9 +41,9 @@ export class ED {
         return e;
       }
     }
-    if (i === Def.max_edicts) {
+    if (i === Def.limits.edicts) {
       // TODO: soft limit, hard limit, also allocate directly 200 more in one go
-      Con.PrintWarning(`ED.Alloc triggered max_edicts (${Def.max_edicts})\n`);
+      Con.PrintWarning(`ED.Alloc triggered Def.limits.edicts (${Def.limits.edicts})\n`);
     }
     e = SV.server.edicts[SV.server.num_edicts++];
     if (!e) {
@@ -439,6 +439,8 @@ export class ServerEdict {
     MSG.WriteByte(message, this.entity.frame || 0);
     MSG.WriteByte(message, this.entity.colormap || 0);
     MSG.WriteByte(message, this.entity.skin || 0);
+    MSG.WriteByte(message, this.entity.effects || 0);
+    MSG.WriteByte(message, this.entity.solid || 0);
     MSG.WriteAngleVector(message, this.entity.angles);
     MSG.WriteCoordVector(message, this.entity.origin);
     this.freeEdict();

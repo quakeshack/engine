@@ -1,21 +1,20 @@
-/* gxlobal Con, Mod, COM, Host, CL, Cmd, Cvar, Vector, S, Q, NET, MSG, Protocol, SV, SCR, R, IN, Sys, Def, V, CDAudio, Draw, Pmove, PR, Chase */
-
-import MSG from '../network/MSG.mjs';
+import MSG, { SzBuffer } from '../network/MSG.mjs';
 import Q from '../common/Q.mjs';
 import * as Def from '../common/Def.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import Vector from '../../shared/Vector.mjs';
 import Chase from './Chase.mjs';
-import Cmd from '../common/Cmd.mjs';
+import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { MoveVars, Pmove, PmovePlayer } from '../common/Pmove.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
-import { effect, modelFlags } from '../../shared/Defs.mjs';
+import { effect, modelFlags, solid } from '../../shared/Defs.mjs';
+import { QSocket } from '../network/NetworkDrivers.mjs';
+import ClientDemos from './ClientDemos.mjs';
+import ClientInput from './ClientInput.mjs';
 
-const CL = {};
-
-export default CL;
+/** @typedef {import('./Sound.mjs').SFX} SFX */
 
 let { COM, Con, Draw, Host, IN, Mod, NET, PR, R, S, SCR, SV, V } = registry;
 
@@ -35,520 +34,419 @@ eventBus.subscribe('registry.frozen', () => {
   V = registry.V;
 });
 
-CL.cshift = {
-  contents: 0,
-  damage: 1,
-  bonus: 2,
-  powerup: 3,
-};
+export default class CL {
+  /** @deprecated */
+  static cshift = Def.contentShift;
 
-CL.active = {
-  disconnected: 0,
-  connecting: 1,
-  connected: 2,
-};
+  /** @deprecated */
+  static active = Def.clientConnectionState;
 
-/** @type {?Pmove} */
-CL.pmove = null;
+  /** @type {Pmove} */
+  static pmove = new Pmove();
 
-// demo
+  static #clientDemos = new ClientDemos();
 
-CL.StopPlayback = function() { // public, by Host.js
-  if (CL.cls.demoplayback !== true) {
-    return;
-  }
-  CL.cls.demoplayback = false;
-  CL.cls.demofile = null;
-  CL.cls.state = CL.active.disconnected;
-  if (CL.cls.timedemo === true) {
-    CL.FinishTimeDemo();
-  }
-};
+  /** Client Static State – everything here persists across multiple maps or are not directly game related */
+  static cls = class ClientStaticState { // forced to be a class to make eslint/tslint scream about issues
+    /**
+     * Connection signon state:
+     * - 0 = when connecting, waiting for server data, precache, cvars
+     * - 1 = connected, received things to load the map, prespawn
+     * - 2 = received prespawn (statics, baseline), sending name, color
+     * - 3 = spawning the player in game, sending stats
+     * - 4 = connected, in game, ready to play
+     * @type {0|1|2|3|4}
+     */
+    static signon = 0;
+    static state = 0;
+    static spawnparms = '';
 
-CL.WriteDemoMessage = function() { // private
-  const len = CL.cls.demoofs + 16 + NET.message.cursize;
-  if (CL.cls.demofile.byteLength < len) {
-    const src = new Uint8Array(CL.cls.demofile, 0, CL.cls.demoofs);
-    CL.cls.demofile = new ArrayBuffer(CL.cls.demofile.byteLength + 16384);
-    (new Uint8Array(CL.cls.demofile)).set(src);
-  }
-  const f = new DataView(CL.cls.demofile, CL.cls.demoofs, 16);
-  f.setInt32(0, NET.message.cursize, true);
-  f.setFloat32(4, CL.state.viewangles[0], true);
-  f.setFloat32(8, CL.state.viewangles[1], true);
-  f.setFloat32(12, CL.state.viewangles[2], true);
-  (new Uint8Array(CL.cls.demofile)).set(new Uint8Array(NET.message.data, 0, NET.message.cursize), CL.cls.demoofs + 16);
-  CL.cls.demoofs = len;
-};
+    /** @type {SzBuffer} outgoing client messages */
+    static message = new SzBuffer(8192, 'CL.cls.message');
+    /** @type {QSocket} current connection */
+    static netcon = null;
+    /** @type {{ message: string, percentage: number }?} */
+    static connecting = null;
+    static latency = 0.0;
+    /** @type {{[key: string]: string}} keeps track of Server Cvars (sv_cheats, etc.) */
+    static serverInfo = {};
 
-CL.GetMessage = function() { // private
-  if (CL.cls.demoplayback === true) {
-    if (CL.cls.signon === 4) {
-      if (CL.cls.timedemo === true) {
-        if (Host.framecount === CL.cls.td_lastframe) {
-          return 0;
-        }
-        CL.cls.td_lastframe = Host.framecount;
-        if (Host.framecount === (CL.cls.td_startframe + 1)) {
-          CL.cls.td_starttime = Host.realtime;
-        }
-      } else if (CL.state.time <= CL.state.mtime[0]) {
-        return 0;
+    // used by CL.ParseClientdata
+    static oldparsecountmod = 0;
+    static parsecountmod = 0;
+    static parsecounttime = 0.0;
+
+    static lastcmdsent = 0;
+
+    /** interval to simulate movement */
+    static movearound = null;
+
+    static get demoplayback() {
+      return CL.#clientDemos.demoplayback;
+    }
+
+    static get demorecording() {
+      return CL.#clientDemos.demorecording;
+    }
+
+    static get demonum() {
+      return CL.#clientDemos.demonum;
+    }
+
+    static set demonum(value) {
+      CL.#clientDemos.demonum = value;
+    }
+
+    static clear() {
+      this.message.clear();
+      this.serverInfo = {};
+      this.lastcmdsent = 0;
+
+      if (this.movearound) {
+        clearInterval(this.movearound);
+        this.movearound = null;
       }
     }
-    if ((CL.cls.demoofs + 16) >= CL.cls.demosize) {
-      CL.StopPlayback();
-      return 0;
-    }
-    const view = new DataView(CL.cls.demofile);
-    NET.message.cursize = view.getUint32(CL.cls.demoofs, true);
-    if (NET.message.cursize > 8000) {
-      throw new Error('Demo message > MAX_MSGLEN');
-    }
-    CL.state.viewangles = new Vector(view.getFloat32(CL.cls.demoofs + 4, true), view.getFloat32(CL.cls.demoofs + 8, true), view.getFloat32(CL.cls.demoofs + 12, true));
-    CL.cls.demoofs += 16;
-    if ((CL.cls.demoofs + NET.message.cursize) > CL.cls.demosize) {
-      CL.StopPlayback();
-      return 0;
-    }
-    const src = new Uint8Array(CL.cls.demofile, CL.cls.demoofs, NET.message.cursize);
-    const dest = new Uint8Array(NET.message.data, 0, NET.message.cursize);
-    let i;
-    for (i = 0; i < NET.message.cursize; ++i) {
-      dest[i] = src[i];
-    }
-    CL.cls.demoofs += NET.message.cursize;
-    return 1;
   };
 
-  let r;
-  for (;;) {
-    r = NET.GetMessage(CL.cls.netcon);
-    if ((r !== 1) && (r !== 2)) {
-      return r;
+  static state = class ClientState {
+    static movemessages = 0;
+    static cmd = new Protocol.UserCmd();
+    static lastcmd = new Protocol.UserCmd();
+    /** @type {number[]} */
+    static stats = Object.values(Def.stat).fill(0);
+    static items = 0;
+    static item_gettime = new Array(32).fill(0.0);
+    static faceanimtime = 0.0;
+    static cshifts = [
+      [0.0, 0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.0, 0.0],
+    ];
+    static mviewangles = [new Vector(), new Vector()];
+    static viewangles = new Vector();
+    static mvelocity = [new Vector(), new Vector()];
+    static velocity = new Vector();
+    static punchangle = new Vector();
+    static idealpitch = 0.0;
+    static pitchvel = 0.0;
+    static driftmove = 0.0;
+    static laststop = 0.0;
+    static intermission = 0;
+    static completed_time = 0;
+    static mtime = [0.0, 0.0];
+    static time = 0.0;
+    static oldtime = 0.0;
+    static last_received_message = 0.0;
+    static viewentity = 0;
+    static num_statics = 0;
+    /** @type {ClientEdict} */
+    static viewent = null;
+    static cdtrack = 0;
+    static looptrack = 0;
+    static chatlog = [];
+    static model_precache = [];
+    static sound_precache = [];
+    static levelname = null;
+    static gametype = 0;
+    static onground = false;
+    static maxclients = 1;
+    /** @type {CL.ScoreSlot[]} */
+    static scores = [];
+    static worldmodel = null;
+    static viewheight = 0;
+    static inwater = false;
+    static nodrift = false;
+    static lerp = null;
+    /** @type {CL.PlayerState[]} */
+    static players = [];
+    static get playernum() {
+      return this.viewentity - 1;
     }
-    if ((NET.message.cursize === 1) && ((new Uint8Array(NET.message.data, 0, 1))[0] === Protocol.svc.nop)) {
-      Con.Print('<-- server to client keepalive\n');
-    } else {
-      break;
+    /** @type {CL.PlayerState} */
+    static get playerstate() {
+      return this.players[CL.state.playernum];
     }
-  }
-
-  if (CL.cls.demorecording === true) {
-    CL.WriteDemoMessage();
-  }
-
-  return r;
-};
-
-CL.Stop_f = function() { // private
-  if (this.client) {
-    return;
-  }
-  if (CL.cls.demorecording !== true) {
-    Con.Print('Not recording a demo.\n');
-    return;
-  }
-  NET.message.clear();
-  MSG.WriteByte(NET.message, Protocol.svc.disconnect);
-  MSG.WriteString(NET.message, 'CL.Stop_f');
-  CL.WriteDemoMessage();
-  if (COM.WriteFile(CL.cls.demoname, new Uint8Array(CL.cls.demofile), CL.cls.demoofs) !== true) {
-    Con.PrintError('ERROR: couldn\'t open.\n');
-  }
-  CL.cls.demofile = null;
-  CL.cls.demorecording = false;
-  Con.PrintSuccess('Completed demo\n');
-};
-
-CL.Record_f = function(demoname, map, track) { // private
-  if (demoname === undefined) {
-    Con.Print('Usage: record <demoname> [<map> [cd track]]\n');
-    return;
-  }
-  if (demoname.indexOf('..') !== -1) {
-    Con.PrintWarning('Relative pathnames are not allowed.\n');
-    return;
-  }
-  if (map === undefined && (CL.cls.state === CL.active.connected)) {
-    Con.Print('Can not record - already connected to server\nClient demo recording must be started before connecting\n');
-    return;
-  }
-  if (track !== undefined) {
-    CL.cls.forcetrack = Q.atoi(track);
-    Con.Print('Forcing CD track to ' + CL.cls.forcetrack);
-  } else {
-    CL.cls.forcetrack = -1;
-  }
-  CL.cls.demoname = COM.DefaultExtension(demoname, '.dem');
-  if (map !== undefined) {
-    Cmd.ExecuteString('map ' + map);
-  }
-  Con.PrintSuccess('recording to ' + CL.cls.demoname + '.\n');
-  CL.cls.demofile = new ArrayBuffer(16384);
-  const trackstr = CL.cls.forcetrack.toString() + '\n';
-  let i; const dest = new Uint8Array(CL.cls.demofile, 0, trackstr.length);
-  for (i = 0; i < trackstr.length; ++i) {
-    dest[i] = trackstr.charCodeAt(i);
-  }
-  CL.cls.demoofs = trackstr.length;
-  CL.cls.demorecording = true;
-};
-
-CL.PlayDemo_f = function(demoname) { // private
-  if (this.client) {
-    return;
-  }
-  if (demoname === undefined) {
-    Con.Print('Usage: playdemo <demoname>\n');
-    return;
-  }
-  CL.Disconnect();
-  const name = COM.DefaultExtension(demoname, '.dem');
-  Con.Print('Playing demo from ' + name + '.\n');
-  let demofile = COM.LoadFile(name);
-  if (demofile === null) {
-    Con.PrintError('ERROR: couldn\'t open.\n');
-    CL.cls.demonum = -1;
-    SCR.disabled_for_loading = false;
-    return;
-  }
-  CL.cls.demofile = demofile;
-  demofile = new Uint8Array(demofile);
-  CL.cls.demosize = demofile.length;
-  CL.cls.demoplayback = true;
-  CL.cls.state = CL.active.connected;
-  CL.cls.forcetrack = 0;
-  let i; let c; let neg;
-  for (i = 0; i < demofile.length; ++i) {
-    c = demofile[i];
-    if (c === 10) {
-      break;
+    /** @type {ClientEdict} */
+    static get playerentity() {
+      return CL.entities[CL.state.viewentity];
     }
-    if (c === 45) {
-      neg = true;
-    } else {
-      CL.cls.forcetrack = CL.cls.forcetrack * 10 + c - 48;
+    static gameAPI = null;
+    static paused = false;
+
+    static clear() {
+      this.movemessages = 0;
+      this.cmd = new Protocol.UserCmd();
+      this.lastcmd = new Protocol.UserCmd();
+      this.stats = Object.values(Def.stat).map(() => 0);
+      this.items = 0;
+      this.item_gettime.fill(0.0);
+      this.faceanimtime = 0.0;
+      this.cshifts = [
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+      ];
+      this.mviewangles = [new Vector(), new Vector()];
+      this.viewangles = new Vector();
+      this.mvelocity = [new Vector(), new Vector()];
+      this.velocity = new Vector();
+      this.punchangle = new Vector();
+      this.idealpitch = 0.0;
+      this.pitchvel = 0.0;
+      this.driftmove = 0.0;
+      this.laststop = 0.0;
+      this.intermission = 0;
+      this.completed_time = 0;
+      this.mtime.fill(0.0);
+      this.time = 0.0;
+      this.oldtime = 0.0;
+      this.last_received_message = 0.0;
+      this.viewentity = 0;
+      this.num_statics = 0;
+      this.viewent = new ClientEdict(-1);
+      this.cdtrack = 0;
+      this.looptrack = 0;
+      this.chatlog.length = 0;
+      this.model_precache.length = 0;
+      this.sound_precache.length = 0;
+      this.levelname = null;
+      this.gametype = 0;
+      this.onground = false;
+      this.maxclients = 1;
+      this.scores.length = 0;
+      this.worldmodel = null;
+      this.viewheight = 0;
+      this.inwater = false;
+      this.nodrift = false;
+      this.lerp = null;
+      this.players.length = 0;
+      this.paused = false;
     }
-  }
-  if (neg === true) {
-    CL.cls.forcetrack = -CL.cls.forcetrack;
-  }
-  CL.cls.demoofs = i + 1;
-};
+  };
 
-CL.FinishTimeDemo = function() { // private
-  CL.cls.timedemo = false;
-  const frames = Host.framecount - CL.cls.td_startframe - 1;
-  let time = Host.realtime - CL.cls.td_starttime;
-  if (time === 0.0) {
-    time = 1.0;
-  }
-  Con.Print(frames + ' frames ' + time.toFixed(1) + ' seconds ' + (frames / time).toFixed(1) + ' fps\n');
-};
+  /** @type {ClientEdict[]} static entities */
+  static static_entities = [];
 
-CL.TimeDemo_f = function(demoname) { // private
-  if (this.client) {
-    return;
-  }
-  if (demoname === undefined) {
-    Con.Print('Usage: timedemo <demoname>\n');
-    return;
-  }
-  CL.PlayDemo_f();
-  CL.cls.timedemo = true;
-  CL.cls.td_startframe = Host.framecount;
-  CL.cls.td_lastframe = -1;
-};
+  /** @type {ClientEdict[]} visible entities */
+  static visedicts = [];
 
-// input
+  /** @type {ClientEdict[]} all entities */
+  static entities = [];
 
-CL.kbutton = {
-  mlook: 0,
-  klook: 1,
-  left: 2,
-  right: 3,
-  forward: 4,
-  back: 5,
-  lookup: 6,
-  lookdown: 7,
-  moveleft: 8,
-  moveright: 9,
-  strafe: 10,
-  speed: 11,
-  use: 12,
-  jump: 13,
-  attack: 14,
-  moveup: 15,
-  movedown: 16,
-  num: 17,
-};
-CL.kbuttons = [];
+  /** @type {ClientEdict[]} all temporary entities */
+  static temp_entities = [];
 
-CL.KeyDown_f = function(cmd) { // private
-  let b = CL.kbutton[this.command.substring(1)];
-  if (b == null) {
-    return;
-  }
-  b = CL.kbuttons[b];
+  static dlights = [];
+  static lightstyle = [];
+  static beams = [];
 
-  let k;
-  if (cmd !== undefined) {
-    k = Q.atoi(cmd);
-  } else {
-    k = -1;
+  static num_temp_entities = 0;
+  static numvisedicts = 0;
+
+  /** @type {Cvar} */ static nolerp = null;
+  /** @type {Cvar} */ static rcon_password = null;
+  /** @type {Cvar} */ static shownet = null;
+  /** @type {Cvar} */ static name = null;
+  /** @type {Cvar} */ static color = null;
+  /** @type {Cvar} */ static upspeed = null;
+  /** @type {Cvar} */ static forwardspeed = null;
+  /** @type {Cvar} */ static backspeed = null;
+  /** @type {Cvar} */ static sidespeed = null;
+  /** @type {Cvar} */ static movespeedkey = null;
+  /** @type {Cvar} */ static yawspeed = null;
+  /** @type {Cvar} */ static pitchspeed = null;
+  /** @type {Cvar} */ static anglespeedkey = null;
+  /** @type {Cvar} */ static lookspring = null;
+  /** @type {Cvar} */ static lookstrafe = null;
+  /** @type {Cvar} */ static sensitivity = null;
+  /** @type {Cvar} */ static m_pitch = null;
+  /** @type {Cvar} */ static m_yaw = null;
+  /** @type {Cvar} */ static m_forward = null;
+  /** @type {Cvar} */ static m_side = null;
+  /** @type {Cvar} */ static nopred = null;
+
+  /** @type {SFX} */ static sfx_wizhit = null;
+  /** @type {SFX} */ static sfx_knighthit = null;
+  /** @type {SFX} */ static sfx_tink1 = null;
+  /** @type {SFX} */ static sfx_ric1 = null;
+  /** @type {SFX} */ static sfx_ric2 = null;
+  /** @type {SFX} */ static sfx_ric3 = null;
+  /** @type {SFX} */ static sfx_r_exp3 = null;
+  /** @type {SFX} */ static sfx_talk = null;
+
+  static StartDemos(demos) {
+    this.#clientDemos.startDemos(demos);
   }
 
-  if ((k === b.down[0]) || (k === b.down[1])) {
-    return;
+  static StartPlayback(demoname, timedemo = false) {
+    this.#clientDemos.startPlayback(demoname, timedemo);
   }
 
-  if (b.down[0] === 0) {
-    b.down[0] = k;
-  } else if (b.down[1] === 0) {
-    b.down[1] = k;
-  } else {
-    Con.Print('Three keys down for a button!\n');
-    return;
+  static StopPlayback() { // public, by Host.js
+    this.#clientDemos.stopPlayback();
   }
 
-  if ((b.state & 1) === 0) {
-    b.state |= 3;
-  }
-};
-
-CL.KeyUp_f = function(cmd) { // private
-  let b = CL.kbutton[this.command.substring(1)];
-  if (b == null) {
-    return;
-  }
-  b = CL.kbuttons[b];
-
-  let k;
-  if (cmd !== undefined) {
-    k = Q.atoi(cmd);
-  } else {
-    b.down[0] = b.down[1] = 0;
-    b.state = 4;
-    return;
+  static StartRecording(demoname, forcetrack = -1) {
+    this.#clientDemos.startRecording(demoname, forcetrack);
   }
 
-  if (b.down[0] === k) {
-    b.down[0] = 0;
-  } else if (b.down[1] === k) {
-    b.down[1] = 0;
-  } else {
-    return;
-  }
-  if ((b.down[0] !== 0) || (b.down[1] !== 0)) {
-    return;
+  static StopRecording() {
+    this.#clientDemos.stopRecording();
   }
 
-  if ((b.state & 1) !== 0) {
-    b.state = (b.state - 1) | 4;
-  }
-};
+  static NextDemo() { // public, by Host.js, M.js
+    this.#clientDemos.playNext();
+  };
 
-CL.MLookUp_f = function(cmd) { // private
-  CL.KeyUp_f.call(this, cmd);
-  if (((CL.kbuttons[CL.kbutton.mlook].state & 1) === 0) && (CL.lookspring.value !== 0)) {
-    V.StartPitchDrift();
-  }
-};
+  static Stop_f = class StopRecordingCommand extends ConsoleCommand { // private
+    run() {
+      if (this.client) {
+        return;
+      }
 
-CL.Impulse_f = function(code) { // private
-  if (code === undefined) {
-    Con.Print('Usage: impulse <code>\n');
-    return;
-  }
-
-  CL.impulse = Q.atoi(code);
-};
-
-CL.KeyState = function(key) { // private
-  key = CL.kbuttons[key];
-  const down = key.state & 1;
-  key.state &= 1;
-  if ((key.state & 2) !== 0) {
-    if ((key.state & 4) !== 0) {
-      return (down !== 0) ? 0.75 : 0.25;
+      CL.StopRecording();
     }
-    return (down !== 0) ? 0.5 : 0.0;
-  }
-  if ((key.state & 4) !== 0) {
-    return 0.0;
-  }
-  return (down !== 0) ? 1.0 : 0.0;
-};
+  };
 
-CL.AdjustAngles = function() { // private
-  let speed = Host.frametime;
-  if ((CL.kbuttons[CL.kbutton.speed].state & 1) !== 0) {
-    speed *= CL.anglespeedkey.value;
-  }
+  static Record_f = class StartRecordingCommand extends ConsoleCommand { // private
+    run(demoname, map, track) {
+      if (this.client) {
+        return;
+      }
 
-  const angles = CL.state.viewangles;
+      if (demoname === undefined) {
+        Con.Print('Usage: record <demoname> [<map> [cd track]]\n');
+        return;
+      }
 
-  if ((CL.kbuttons[CL.kbutton.strafe].state & 1) === 0) {
-    angles[1] += speed * CL.yawspeed.value * (CL.KeyState(CL.kbutton.left) - CL.KeyState(CL.kbutton.right));
-    angles[1] = Vector.anglemod(angles[1]);
-  }
-  if ((CL.kbuttons[CL.kbutton.klook].state & 1) !== 0) {
-    V.StopPitchDrift();
-    angles[0] += speed * CL.pitchspeed.value * (CL.KeyState(CL.kbutton.back) - CL.KeyState(CL.kbutton.forward));
-  }
+      if (demoname.indexOf('..') !== -1) {
+        Con.PrintWarning('Relative pathnames are not allowed.\n');
+        return;
+      }
 
-  const up = CL.KeyState(CL.kbutton.lookup); const down = CL.KeyState(CL.kbutton.lookdown);
-  if ((up !== 0.0) || (down !== 0.0)) {
-    angles[0] += speed * CL.pitchspeed.value * (down - up);
-    V.StopPitchDrift();
-  }
+      if (map === undefined && CL.cls.state === Def.clientConnectionState.connected) {
+        Con.PrintWarning('Can not record - already connected to server\nClient demo recording must be started before connecting\n');
+        return;
+      }
 
-  if (angles[0] > 80.0) {
-    angles[0] = 80.0;
-  } else if (angles[0] < -70.0) {
-    angles[0] = -70.0;
-  }
+      Cmd.ExecuteString('map ' + map);
 
-  if (angles[2] > 50.0) {
-    angles[2] = 50.0;
-  } else if (angles[2] < -50.0) {
-    angles[2] = -50.0;
-  }
-};
+      CL.StartRecording(demoname, Q.atoi(track));
+    }
+  };
 
-CL.BaseMove = function() { // private
-  if (CL.cls.signon !== 4) {
-    return;
-  }
+  static StartDemos_f = class StartDemosCommand extends ConsoleCommand {
+    run(...demos) {
+      if (this.client) {
+        return;
+      }
 
-  CL.AdjustAngles();
+      if (demos.length === 0) {
+        Con.Print('Usage: startdemos <demoname1> [<demoname2> ...]\n');
+        return;
+      }
 
-  const cmd = CL.state.cmd;
+      Con.Print(demos.length + ' demo(s) in loop\n');
 
-  cmd.sidemove = CL.sidespeed.value * (CL.KeyState(CL.kbutton.moveright) - CL.KeyState(CL.kbutton.moveleft));
-  if ((CL.kbuttons[CL.kbutton.strafe].state & 1) !== 0) {
-    cmd.sidemove += CL.sidespeed.value * (CL.KeyState(CL.kbutton.right) - CL.KeyState(CL.kbutton.left));
-  }
+      Host.ScheduleForNextFrame(() => {
+        CL.StartDemos(demos);
+      });
+    }
+  };
 
-  cmd.upmove = CL.upspeed.value * (CL.KeyState(CL.kbutton.moveup) - CL.KeyState(CL.kbutton.movedown));
+  static Demos_f = class NextDemoCommand extends ConsoleCommand {
+    run() {
+      if (CL.#clientDemos.demonum === -1) {
+        CL.#clientDemos.demonum = 1;
+      }
 
-  if ((CL.kbuttons[CL.kbutton.klook].state & 1) === 0) {
-    cmd.forwardmove = CL.forwardspeed.value * CL.KeyState(CL.kbutton.forward) - CL.backspeed.value * CL.KeyState(CL.kbutton.back);
-  } else {
-    cmd.forwardmove = 0.0;
-  }
+      CL.Disconnect();
+      CL.#clientDemos.playNext();
+    }
+  };
 
-  if ((CL.kbuttons[CL.kbutton.speed].state & 1) !== 0) {
-    cmd.forwardmove *= CL.movespeedkey.value;
-    cmd.sidemove *= CL.movespeedkey.value;
-    cmd.upmove *= CL.movespeedkey.value;
-  }
+  static StopDemo_f = class StopPlaybackCommand extends ConsoleCommand {
+    run() {
+      if (this.client) {
+        return;
+      }
 
-  cmd.impulse = CL.impulse;
-  cmd.angles.set(CL.state.viewangles);
-  // TODO: cmd.msec =
+      if (!CL.#clientDemos.demoplayback) {
+        return;
+      }
 
-  CL.impulse = 0;
-};
+      CL.StopPlayback();
+    }
+  };
 
-CL.impulse = 0;
+  static PlayDemo_f = class StartPlaybackCommand extends ConsoleCommand {
+    run(demoname) {
+      if (this.client) {
+        return;
+      }
 
-CL.SendMove = function() { // private
-  CL.state.cmd.buttons = 0;
+      if (demoname === undefined) {
+        Con.Print('Usage: playdemo <demoname>\n');
+        return;
+      }
 
-  if ((CL.kbuttons[CL.kbutton.attack].state & 3) !== 0) {
-    CL.state.cmd.buttons |= Protocol.button.attack;
-  }
-  CL.kbuttons[CL.kbutton.attack].state &= 5;
+      CL.Disconnect();
+      CL.StartPlayback(demoname);
+    }
+  };
 
-  if ((CL.kbuttons[CL.kbutton.jump].state & 3) !== 0) {
-    CL.state.cmd.buttons |= Protocol.button.jump;
-  }
-  CL.kbuttons[CL.kbutton.jump].state &= 5;
+  static TimeDemo_f = class TimeDemoCommand extends ConsoleCommand { // private
+    run(demoname) {
+      if (this.client) {
+        return;
+      }
 
-  if ((CL.kbuttons[CL.kbutton.use].state & 3) !== 0) {
-    CL.state.cmd.buttons |= Protocol.button.use;
-  }
-  CL.kbuttons[CL.kbutton.use].state &= 5;
+      if (demoname === undefined) {
+        Con.Print('Usage: timedemo <demoname>\n');
+        return;
+      }
 
-  if (CL.state.cmd.equals(CL.state.lastcmd)) {
-    return; // nothing new happened
-  }
+      CL.Disconnect();
+      CL.StartPlayback(demoname, true);
+    }
+  };
 
-  const buf = new MSG.Buffer(16);
-  MSG.WriteByte(buf, Protocol.clc.move);
-  MSG.WriteFloat(buf, CL.state.mtime[0]);
-  MSG.WriteAngleVector(buf, CL.state.cmd.angles);
-  MSG.WriteShort(buf, CL.state.cmd.forwardmove);
-  MSG.WriteShort(buf, CL.state.cmd.sidemove);
-  MSG.WriteShort(buf, CL.state.cmd.upmove);
-  MSG.WriteByte(buf, CL.state.cmd.buttons);
-  MSG.WriteByte(buf, CL.state.cmd.impulse);
+  /**
+   * @private
+   * @returns {number}
+   */
+  static GetMessage() { // private
+    // demos are basically recorded server messages
+    if (this.#clientDemos.demoplayback === true) {
+      return this.#clientDemos.getMessage();
+    };
 
-  if (CL.cls.demoplayback === true) {
-    return;
-  }
-  if (++CL.state.movemessages <= 2) {
-    return;
-  }
-  CL.state.lastcmd.set(CL.state.cmd);
-  if (NET.SendUnreliableMessage(CL.cls.netcon, buf) === -1) {
-    Con.Print('CL.SendMove: lost server connection\n');
-    Host.Error('lost server connection');
-  }
-};
+    let r = null;
 
-CL.InitInput = function() { // private
-  let i;
+    while (true) {
+      r = NET.GetMessage(CL.cls.netcon);
 
-  const commands = ['moveup', 'movedown', 'left', 'right',
-    'forward', 'back', 'lookup', 'lookdown',
-    'strafe', 'moveleft', 'moveright', 'speed',
-    'attack', 'use', 'jump', 'klook',
-  ];
-  for (i = 0; i < commands.length; ++i) {
-    Cmd.AddCommand('+' + commands[i], CL.KeyDown_f);
-    Cmd.AddCommand('-' + commands[i], CL.KeyUp_f);
-  }
-  Cmd.AddCommand('impulse', CL.Impulse_f);
-  Cmd.AddCommand('+mlook', CL.KeyDown_f);
-  Cmd.AddCommand('-mlook', CL.MLookUp_f);
+      if (r !== 1 && r !== 2) {
+        return r;
+      }
 
-  for (i = 0; i < CL.kbutton.num; ++i) {
-    CL.kbuttons[i] = {down: [0, 0], state: 0};
+      if (NET.message.cursize === 1 && (new Uint8Array(NET.message.data, 0, 1))[0] === Protocol.svc.nop) {
+        Con.Print('<-- server to client keepalive\n');
+      } else {
+        break;
+      }
+    }
+
+    if (this.#clientDemos.demorecording) {
+      this.#clientDemos.writeDemoMessage();
+    }
+
+    return r;
   }
 };
-
-// main
-
-CL.cls = {
-  signon: 0,
-  state: 0,
-  spawnparms: '',
-  demonum: 0,
-  demoplayback: false,
-  demos: [],
-  timedemo: false,
-  message: new MSG.Buffer(8192, 'CL.cls.message'),
-  netcon: null,
-  connecting: null,
-  latency: 0.0,
-  serverInfo: {},
-
-  // used by CL.ParseClientdata
-  oldparsecountmod: 0,
-  parsecountmod: 0,
-  parsecounttime: 0.0,
-
-  lastcmdsent: 0,
-
-  /** interval to simulate movement */
-  movearound: null,
-};
-
-CL.static_entities = [];
-CL.visedicts = [];
 
 CL.LerpPoint = function() {
   let f = CL.state.mtime[0] - CL.state.mtime[1];
@@ -584,7 +482,7 @@ CL.LerpPoint = function() {
   return frac;
 };
 
-CL.Entity = class ClientEdict {
+class ClientEdict {
   constructor(num) {
     this.classname = null;
     this.num = num;
@@ -593,6 +491,7 @@ CL.Entity = class ClientEdict {
     this.skinnum = 0;
     this.colormap = 0;
     this.effects = 0;
+    this.solid = 0;
     /** @type {?Vector} used to keep track of origin changes, unset when no previous origin is known */
     this.originPrevious = null;
     this.origin = new Vector();
@@ -601,11 +500,11 @@ CL.Entity = class ClientEdict {
     this.angles = new Vector();
     this.dlightbits = 0;
     this.dlightframe = 0;
-    /** keeps track of last updates @private */
+    /** keeps track of last updates */
     this.msg_time = [0.0, 0.0];
-    /** keeps track of origin changes @private */
+    /** keeps track of origin changes */
     this.msg_origins = [new Vector(), new Vector()];
-    /** keeps track of angle changes @private */
+    /** keeps track of angle changes */
     this.msg_angles = [new Vector(), new Vector()];
     this.leafs = [];
     /** count of received updates */
@@ -629,6 +528,9 @@ CL.Entity = class ClientEdict {
         const f = CL.LerpPoint();
         const o0 = that.origin;
         const o1 = that.originPrevious;
+        if (o0.distanceTo(o1) > 100.0) {
+          return o0; // clamp sudden origin changes
+        }
         return new Vector(
           o1[0] + (o0[0] - o1[0]) * f,
           o1[1] + (o0[1] - o1[1]) * f,
@@ -675,11 +577,13 @@ CL.Entity = class ClientEdict {
     this.msg_origins[1].clear();
     this.msg_angles[0].clear();
     this.msg_angles[1].clear();
-    this.leafs = [];
+    this.leafs.length = 0;
     this.updatecount = 0;
     this.free = false;
     this.maxs.clear();
     this.mins.clear();
+    this.originPrevious = null;
+    this.anglesPrevious = null;
   }
 
   /**
@@ -739,7 +643,7 @@ CL.Entity = class ClientEdict {
   think() {
 
   }
-};
+}
 
 CL.Rcon_f = function(...args) { // private
   if (args.length === 0) {
@@ -786,7 +690,7 @@ CL.Draw = function() { // public, called by SCR.js // FIXME: maybe put that into
 
     const len = 30;
     const p = CL.cls.connecting.percentage;
-    Draw.String(x0, y0 + 48, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(' ')}%`);
+    Draw.String(x0, y0 + 48, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(0, ' ')}%`);
   }
 
   if (CL.state.gameAPI) { // TODO: move somewhere else
@@ -803,98 +707,25 @@ CL.ClearState = function() { // private
 
   CL.SetConnectingStep(null, null);
 
-  /** state across a map / connection */
-  CL.state = {
-    movemessages: 0,
-    cmd: new Protocol.UserCmd(),
-    lastcmd: new Protocol.UserCmd(),
-    stats: Object.values(Def.stat).fill(0),
-    items: 0,
-    item_gettime: new Array(32).fill(0.0),
-    faceanimtime: 0.0,
-    cshifts: [
-      [0.0, 0.0, 0.0, 0.0],
-      [0.0, 0.0, 0.0, 0.0],
-      [0.0, 0.0, 0.0, 0.0],
-      [0.0, 0.0, 0.0, 0.0],
-    ],
-    mviewangles: [new Vector(), new Vector()],
-    viewangles: new Vector(),
-    mvelocity: [new Vector(), new Vector()],
-    velocity: new Vector(),
-    punchangle: new Vector(),
-    idealpitch: 0.0,
-    pitchvel: 0.0,
-    driftmove: 0.0,
-    laststop: 0.0,
-    intermission: 0,
-    completed_time: 0,
-    mtime: [0.0, 0.0],
-    time: 0.0,
-    oldtime: 0.0,
-    last_received_message: 0.0,
-    viewentity: 0,
-    num_statics: 0,
-    viewent: new CL.Entity(-1),
-    cdtrack: 0,
-    looptrack: 0,
-    chatlog: [],
-    model_precache: [],
-    sound_precache: [],
-    levelname: null,
-    gametype: 0,
-    onground: false,
-    maxclients: 1,
-    scores: [],
-    worldmodel: null,
-    viewheight: 0,
-    inwater: false,
-    nodrift: false,
-    lerp: null,
-    /** @type {CL.PlayerState[]} */
-    players: [],
-    get playernum() {
-      return CL.state.viewentity - 1;
-    },
-    /** @type {CL.PlayerState} */
-    get playerstate() {
-      return CL.state.players[CL.state.playernum];
-    },
-    /** @type {CL.Entity} */
-    get playerentity() {
-      return CL.entities[CL.state.viewentity];
-    },
-    gameAPI: null,
-  };
+  CL.state.clear();
+  CL.cls.clear();
 
-  CL.cls.message.clear();
-  CL.cls.serverInfo = {};
-  CL.cls.lastcmdsent = 0;
+  CL.entities.length = 0;
 
-  if (CL.cls.movearound) {
-    clearInterval(CL.cls.movearound);
-    CL.cls.movearound = null;
-  }
-
-  CL.entities = [];
-
-  let i;
-
-  CL.dlights = [];
-  for (i = 0; i <= 31; ++i) {
+  CL.dlights.length = 0;
+  for (let i = 0; i < Def.limits.dlights; i++) {
     CL.dlights[i] = {radius: 0.0, die: 0.0, color: new Vector(1, 1, 1), decay: 0.0, minlight: 0.0, key: 0}; // TODO: Dlight class
   }
 
-  CL.lightstyle = [];
-  for (i = 0; i <= 63; ++i) {
+  CL.lightstyle.length = 0;
+  for (let i = 0; i < Def.limits.lightstyles; i++) {
     CL.lightstyle[i] = '';
   }
 
-  CL.beams = [];
-  for (i = 0; i <= 23; ++i) {
+  CL.beams.length = 0;
+  for (let i = 0; i < Def.limits.beams; i++) {
     CL.beams[i] = {endtime: 0.0}; // TODO: Beam class
   }
-
 };
 
 CL.ResetCheatCvars = function() { // private
@@ -916,7 +747,7 @@ CL.Disconnect = function() { // public, by Host.js
     CL.cls.message.clear();
   } else if (CL.cls.state === CL.active.connected) {
     if (CL.cls.demorecording === true) {
-      CL.Stop_f();
+      Cmd.ExecuteString('stopdemo\n');
     }
     Con.DPrint('Sending clc_disconnect\n');
     CL.cls.message.clear();
@@ -929,7 +760,7 @@ CL.Disconnect = function() { // public, by Host.js
       Host.ShutdownServer();
     }
   }
-  CL.cls.demoplayback = CL.cls.timedemo = false;
+  // CL.cls.demoplayback = CL.cls.timedemo = false;
   CL.cls.signon = 0;
   CL.ResetCheatCvars();
 };
@@ -989,39 +820,20 @@ CL.SignonReply = function() { // private
   }
 };
 
-CL.NextDemo = function() { // public, by Host.js, M.js
-  if (CL.cls.demonum === -1) {
-    return;
-  }
-  SCR.BeginLoadingPlaque();
-  if (CL.cls.demonum >= CL.cls.demos.length) {
-    if (CL.cls.demos.length === 0) {
-      Con.Print('No demos listed with startdemos\n');
-      CL.cls.demonum = -1;
-      return;
-    }
-    CL.cls.demonum = 0;
-  }
-  Cmd.text = 'playdemo ' + CL.cls.demos[CL.cls.demonum++] + '\n' + Cmd.text;
-};
-
 CL.PrintEntities_f = function() { // private
-  Con.Print(`CL.state.mtime: ${CL.state.mtime.join(', ')}\n\n`);
-  for (let i = 0; i < CL.entities.length; ++i) {
+  for (let i = 0; i < CL.entities.length; i++) {
     const ent = CL.entities[i];
 
-    if (ent.model == null) {
+    if (ent.model === null) {
       continue;
     }
 
-    Con.Print(`${i.toFixed(0).padStart(3, ' ')} ${ent.model.name.padEnd(16)}: ${ent.msg_time.join(', ')}\n`);
-
-    // Con.Print(i.toFixed(0).padStart(3, ' ') + ' ' + ent.model.name.padEnd(32) + ' : ' + ent.frame.toFixed().padStart(3) + ' (' + ent.origin + ') [' + ent.angles + ']\n');
+    Con.Print(`${i.toFixed(0).padStart(3, ' ')} ${ent.model.name.padEnd(32)}: ${ent.origin}, ${ent.angles}\n`);
   }
 };
 
 CL.AllocDlight = function(key) { // private // TODO: Dlight class
-  let dl, i = 0;
+  let dl = null, i = 0;
   if (key !== 0) {
     for (i = 0; i <= 31; ++i) {
       if (CL.dlights[i].key === key) {
@@ -1030,14 +842,14 @@ CL.AllocDlight = function(key) { // private // TODO: Dlight class
       }
     }
   }
-  if (dl == null) {
+  if (dl === null) {
     for (i = 0; i <= 31; ++i) {
       if (CL.dlights[i].die < CL.state.time) {
         dl = CL.dlights[i];
         break;
       }
     }
-    if (dl == null) {
+    if (dl === null) {
       dl = CL.dlights[0];
     }
   }
@@ -1109,9 +921,9 @@ CL.SendCmd = function() { // public, by Host.js
   }
 
   if (CL.cls.signon === 4) {
-    CL.BaseMove();
+    ClientInput.BaseMove();
     IN.Move();
-    CL.SendMove();
+    ClientInput.SendMove();
 
     // send a no-op if we haven't sent anything in a while
     if (Host.realtime - CL.cls.lastcmdsent > 10) {
@@ -1207,7 +1019,7 @@ CL.InitPmove = function() { // private
 
 CL.Init = async function() { // public, by Host.js
   CL.ClearState();
-  CL.InitInput();
+  ClientInput.Init();
   CL.InitTEnts();
   CL.InitPmove();
   CL.name = new Cvar('_cl_name', 'player', Cvar.FLAG.ARCHIVE);
@@ -1237,10 +1049,15 @@ CL.Init = async function() { // public, by Host.js
   Cmd.AddCommand('stop', CL.Stop_f);
   Cmd.AddCommand('playdemo', CL.PlayDemo_f);
   Cmd.AddCommand('timedemo', CL.TimeDemo_f);
+  Cmd.AddCommand('startdemos', CL.StartDemos_f);
+  Cmd.AddCommand('demos', CL.Demos_f);
+  Cmd.AddCommand('stopdemo', CL.StopDemo_f);
   Cmd.AddCommand('rcon', CL.Rcon_f);
   Cmd.AddCommand('serverinfo', CL.ServerInfo_f);
   Cmd.AddCommand('movearound', CL.MoveAround_f);
   CL.svc_strings = Object.keys(Protocol.svc); // FIXME: turn into a map
+
+  CL.sfx_talk = S.PrecacheSound('misc/talk.wav');
 
   if (!PR.QuakeJS?.ClientGameAPI) {
     return;
@@ -1263,14 +1080,14 @@ CL.svc_strings = [];
 
 /**
  * @param {number} num edict Id
- * @returns {CL.Entity} client entity
+ * @returns {ClientEdict} client entity
  */
 CL.EntityNum = function(num) { // private
   if (num < CL.entities.length) {
     return CL.entities[num];
   }
   for (; CL.entities.length <= num; ) {
-    CL.entities.push(new CL.Entity(CL.entities.length));
+    CL.entities.push(new ClientEdict(CL.entities.length));
   }
   return CL.entities[num];
 };
@@ -1357,8 +1174,8 @@ CL.ParseServerData = function() { // private
     return;
   }
 
-  CL.state.scores = [];
-  CL.state.players = [];
+  CL.state.scores.length = 0;
+  CL.state.players.length = 0;
 
   for (let i = 0; i < CL.state.maxclients; ++i) {
     CL.state.scores[i] = new CL.ScoreSlot();
@@ -1393,8 +1210,8 @@ CL.ParseServerData = function() { // private
     sound_precache[numsounds] = str;
   }
 
-  CL.state.model_precache = [];
-  CL.state.sound_precache = [];
+  CL.state.model_precache.length = 0;
+  CL.state.sound_precache.length = 0;
 
   CL._processingServerDataState = 1;
 
@@ -1605,12 +1422,14 @@ CL.ParsePlayerinfo = function() { // private
 };
 
 CL.ParseStaticEntity = function() { // private
-  const ent = new CL.Entity(-1);
+  const ent = new ClientEdict(-1);
   CL.static_entities[CL.state.num_statics++] = ent;
   ent.model = CL.state.model_precache[MSG.ReadByte()];
   ent.frame = MSG.ReadByte();
   ent.colormap = MSG.ReadByte();
   ent.skinnum = MSG.ReadByte();
+  ent.effects = MSG.ReadByte();
+  ent.solid = MSG.ReadByte();
   ent.msg_angles[0].set(MSG.ReadAngleVector());
   ent.msg_origins[0].set(MSG.ReadCoordVector());
   ent.updatePosition(false);
@@ -1683,13 +1502,13 @@ CL.PrintLastServerMessages = function() { // private
 };
 
 /**
- * @type {number}
  * as long as we do not have a fully async architecture, we have to cheat
  * processingServerInfoState will hold off parsing and processing any further command
- * 0 - normal operation
- * 1 - we entered parsing serverdata, holding off any further processing
- * 2 - we are done processing, we can continue processing the rest
- * 3 - we need to re-enter the loop, but not reset the MSG pointer
+ * - 0 = normal operation
+ * - 1 = we entered parsing serverdata, holding off any further processing
+ * - 2 = we are done processing, we can continue processing the rest
+ * - 3 = we need to re-enter the loop, but not reset the MSG pointer
+ * @type {number}
  */
 CL._processingServerDataState = 0;
 CL._lastServerMessages = [];
@@ -1773,7 +1592,7 @@ CL.ParseServerMessage = function() { // private
         continue;
       case Protocol.svc.chatmsg: // TODO: Client
         CL.AppendChatMessage(MSG.ReadString(), MSG.ReadString(), MSG.ReadByte() === 1);
-        S.LocalSound(Con.sfx_talk);
+        S.LocalSound(CL.sfx_talk);
         continue;
       case Protocol.svc.obituary: // TODO: Client
         CL.PublishObituary(MSG.ReadShort(), MSG.ReadShort(), MSG.ReadLong(), MSG.ReadLong());
@@ -1832,7 +1651,7 @@ CL.ParseServerMessage = function() { // private
           CL.state.scores[i].name = newName;
         }
         continue;
-      case Protocol.svc.updatefrags: // TODO: Client
+      case Protocol.svc.updatefrags: // TODO: Client Legacy
         i = MSG.ReadByte();
         if (i >= CL.state.maxclients) {
           Host.Error('CL.ParseServerMessage: svc_updatefrags > MAX_SCOREBOARD');
@@ -1862,7 +1681,7 @@ CL.ParseServerMessage = function() { // private
       case Protocol.svc.spawnstatic:
         CL.ParseStaticEntity();
         continue;
-      case Protocol.svc.temp_entity: // TODO: Client
+      case Protocol.svc.temp_entity: // TODO: Client Legacy
         CL.ParseTemporaryEntity();
         continue;
       case Protocol.svc.setpause:
@@ -1878,7 +1697,8 @@ CL.ParseServerMessage = function() { // private
         if (i <= CL.cls.signon) {
           Host.Error('Received signon ' + i + ' when at ' + CL.cls.signon);
         }
-        CL.cls.signon = i;
+        console.assert(i >= 0 && i <= 4, 'signon must be in range 0-4');
+        CL.cls.signon = /** @type {0|1|2|3|4} */(i);
         CL.SignonReply();
         continue;
       case Protocol.svc.killedmonster: // TODO: Client
@@ -1958,8 +1778,6 @@ CL.ParseServerMessage = function() { // private
 
 // tent
 
-CL.temp_entities = [];
-
 CL.InitTEnts = function() { // private
   CL.sfx_wizhit = S.PrecacheSound('wizard/hit.wav');
   CL.sfx_knighthit = S.PrecacheSound('hknight/hit.wav');
@@ -1974,9 +1792,8 @@ CL.ParseBeam = function(m) { // private
   const ent = MSG.ReadShort();
   const start = MSG.ReadCoordVector();
   const end = MSG.ReadCoordVector();
-  let i; let b;
-  for (i = 0; i <= 23; ++i) {
-    b = CL.beams[i];
+  for (let i = 0; i < Def.limits.beams; i++) {
+    const b = CL.beams[i];
     if (b.entity !== ent) {
       continue;
     }
@@ -1986,8 +1803,8 @@ CL.ParseBeam = function(m) { // private
     b.end = end.copy();
     return;
   }
-  for (i = 0; i <= 23; ++i) {
-    b = CL.beams[i];
+  for (let i = 0; i < Def.limits.beams; i++) {
+    const b = CL.beams[i];
     if ((b.model != null) && (b.endtime >= CL.state.time)) {
       continue;
     }
@@ -2077,7 +1894,7 @@ CL.ParseTemporaryEntity = function() { // private // TODO: move this to ClientAP
 };
 
 CL.NewTempEntity = function() { // private
-  const ent = new CL.Entity(-1);
+  const ent = new ClientEdict(-1);
   CL.temp_entities[CL.num_temp_entities++] = ent;
   CL.visedicts[CL.numvisedicts++] = ent;
   return ent;
@@ -2085,10 +1902,10 @@ CL.NewTempEntity = function() { // private
 
 CL.UpdateTEnts = function() { // private
   CL.num_temp_entities = 0;
-  let i; let b; let yaw; let pitch; let ent;
-  for (i = 0; i <= 23; ++i) { // FIXME: hardcoded limit
-    b = CL.beams[i];
-    if ((b.model == null) || (b.endtime < CL.state.time)) {
+  for (let i = 0; i < Def.limits.beams; i++) { // FIXME: hardcoded limit
+    let yaw; let pitch;
+    const b = CL.beams[i];
+    if (!b.model || b.endtime < CL.state.time) {
       continue;
     }
     if (b.entity === CL.state.viewentity) {
@@ -2114,7 +1931,7 @@ CL.UpdateTEnts = function() { // private
       dist.normalize();
     }
     for (; d > 0.0; ) {
-      ent = CL.NewTempEntity();
+      const ent = CL.NewTempEntity();
       ent.origin = org.copy();
       ent.model = b.model;
       ent.angles = new Vector(pitch, yaw, Math.random() * 360.0);
@@ -2125,9 +1942,6 @@ CL.UpdateTEnts = function() { // private
     }
   }
 };
-
-CL.frames = [];
-CL.parsecount = 0;
 
 CL.PredictMove = function() { // public, by Host.js
   if (CL.nopred.value !== 0) {
@@ -2211,8 +2025,6 @@ CL.PredictUsercmd = function(pmove, from, to, u) { // private
  * @param {boolean} dopred full prediction, if true
  */
 CL.SetUpPlayerPrediction = function (dopred) { // public, by Host.js
-  // const frame = CL.frames[CL.parsecount & Protocol.update_mask];
-
   const playerEntity = CL.state.playerentity;
 
 
@@ -2231,7 +2043,7 @@ CL.EmitEntities = function() { // public, by Host.js
   CL.numvisedicts = 0;
 
   for (let i = 1; i < CL.entities.length; i++) {
-    /** @type {CL.Entity} */
+    /** @type {ClientEdict} */
     const clent = CL.entities[i];
 
     // freed entity
@@ -2253,8 +2065,6 @@ CL.EmitEntities = function() { // public, by Host.js
     if (i === CL.state.viewentity && !Chase.active.value) {
       continue;
     }
-
-    // TODO: clent.emit()
 
     clent.emit();
 
@@ -2314,7 +2124,15 @@ CL.EmitEntities = function() { // public, by Host.js
   }
 
   // TODO: projectiles
-  // TODO: temporary entities
+
+  for (let i = 0; i < CL.num_temp_entities; i++) {
+    const ent = CL.temp_entities[i];
+    if (!ent.model || ent.free) {
+      continue;
+    }
+    ent.emit();
+    CL.visedicts[CL.numvisedicts++] = ent;
+  }
 };
 
 CL.ParsePacketEntities = function() { // private
@@ -2325,7 +2143,7 @@ CL.ParsePacketEntities = function() { // private
       break;
     }
 
-    /** @type {CL.Entity} */
+    /** @type {ClientEdict} */
     const clent = CL.EntityNum(edictNum);
 
     const bits = MSG.ReadShort();
@@ -2365,7 +2183,7 @@ CL.ParsePacketEntities = function() { // private
     }
 
     if (bits & Protocol.u.solid) {
-      MSG.ReadByte(); // TODO: solid
+      clent.solid = MSG.ReadByte();
     }
 
     const origin = clent.msg_origins[0];
@@ -2407,13 +2225,13 @@ CL.SetSolidEntities = function () {
   CL.pmove.clearEntities();
 
   for (let i = 1; i < CL.entities.length; i++) {
-    /** @type {CL.Entity} */
+    /** @type {ClientEdict} */
     const clent = CL.entities[i];
 
     if (!clent.model) {
       continue;
     }
 
-    CL.pmove.addEntity(clent, clent.solid ? clent.model : null);
+    CL.pmove.addEntity(clent, clent.solid === solid.SOLID_BSP ? clent.model : null);
   }
 };
