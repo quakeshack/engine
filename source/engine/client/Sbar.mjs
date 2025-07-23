@@ -230,6 +230,7 @@ Sbar.SortFrags = function() {
       Sbar.fragsort[Sbar.scoreboardlines++] = i;
     }
   }
+  // CR: this could have been one .sort() call…
   for (i = 0; i < Sbar.scoreboardlines; ++i) {
     for (j = 0; j < (Sbar.scoreboardlines - 1 - i); ++j) {
       if (CL.state.scores[Sbar.fragsort[j]].frags < CL.state.scores[Sbar.fragsort[j + 1]].frags) {

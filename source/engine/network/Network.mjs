@@ -1,9 +1,10 @@
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
+import { HostError } from '../common/Errors.mjs';
 import Q from '../common/Q.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { SzBuffer } from './MSG.mjs';
-import { LoopDriver, QSocket, WebSocketDriver } from './NetworkDrivers.mjs';
+import { BaseDriver, LoopDriver, QSocket, WebSocketDriver } from './NetworkDrivers.mjs';
 
 const NET = {};
 
@@ -47,9 +48,9 @@ NET.Connect = function(host) {
     return NET.drivers[NET.driverlevel].Connect(host);
   }
 
-  let dfunc; let ret;
+  let dfunc; let ret = null;
   for (NET.driverlevel = 1; NET.driverlevel < NET.drivers.length; ++NET.driverlevel) {
-    dfunc = NET.drivers[NET.driverlevel];
+    dfunc = /** @type {BaseDriver} */ (NET.drivers[NET.driverlevel]);
     if (dfunc.initialized !== true) {
       continue;
     }
@@ -64,6 +65,7 @@ NET.Connect = function(host) {
       return ret;
     }
   }
+  return null;
 };
 
 NET.CheckForResend = function() {
@@ -79,7 +81,7 @@ NET.CheckForResend = function() {
       NET.Close(NET.newsocket);
       CL.cls.state = CL.active.disconnected;
       Con.Print('No Response\n');
-      Host.Error('NET.CheckForResend: connect failed\n');
+      throw new HostError('NET.CheckForResend: connect failed\n');
     }
   }
   const ret = dfunc.CheckForResend();
@@ -91,7 +93,7 @@ NET.CheckForResend = function() {
     NET.Close(NET.newsocket);
     CL.cls.state = CL.active.disconnected;
     Con.Print('Network Error\n');
-    Host.Error('NET.CheckForResend: connect failed\n');
+    throw new HostError('NET.CheckForResend: connect failed\n');
   }
 
   Con.DPrint(`NET.CheckForResend: invalid CheckForResend response ${ret} by ${dfunc.constructor.name}`);

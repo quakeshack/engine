@@ -1,5 +1,6 @@
 import Vector from '../../shared/Vector.mjs';
 import Cmd from '../common/Cmd.mjs';
+import { HostError } from '../common/Errors.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import MSG from '../network/MSG.mjs';
 import { eventBus, registry } from '../registry.mjs';
@@ -9,11 +10,10 @@ const PF = {};
 
 export default PF;
 
-let { Con, Host, PR, SV } = registry;
+let { Con, PR, SV } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   Con = registry.Con;
-  Host = registry.Host;
   PR = registry.PR;
   SV = registry.SV;
 });
@@ -210,13 +210,13 @@ PF._VarString = function _PF_VarString(first) {
 PF.error = _PF_GenerateBuiltinFunction('error', function (str) {
   Con.PrintError('======SERVER ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
   ED.Print(SV.server.gameAPI.self);
-  Host.Error('Program error: ' + str);
+  throw new HostError('Program error: ' + str);
 }, [etype.ev_strings]);
 
 PF.objerror = _PF_GenerateBuiltinFunction('objerror', function (str) {
   Con.PrintError('======OBJECT ERROR in ' + PR.GetString(PR.xfunction.name) + '\n' + str + '\n');
   ED.Print(SV.server.gameAPI.self);
-  Host.Error('Program error: ' + str);
+  throw new HostError('Program error: ' + str);
 }, [etype.ev_strings]);
 
 PF.makevectors = _PF_GenerateBuiltinFunction('makevectors', function (vec) {

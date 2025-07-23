@@ -4,6 +4,7 @@ import Q from '../common/Q.mjs';
 import MSG, { SzBuffer } from '../network/MSG.mjs';
 import Cmd from '../common/Cmd.mjs';
 import { eventBus, registry } from '../registry.mjs';
+import { HostError } from '../common/Errors.mjs';
 
 let { Con, CL, Host, NET, V } = registry;
 
@@ -256,7 +257,7 @@ export default class ClientInput {
     CL.state.lastcmd.set(CL.state.cmd);
     if (NET.SendUnreliableMessage(CL.cls.netcon, buf) === -1) {
       Con.Print('CL.SendMove: lost server connection\n');
-      Host.Error('lost server connection');
+      throw new HostError('lost server connection');
     }
   }
 

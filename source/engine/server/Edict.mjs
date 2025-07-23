@@ -435,6 +435,7 @@ export class ServerEdict {
   makeStatic() {
     const message = SV.server.signon;
     MSG.WriteByte(message, Protocol.svc.spawnstatic);
+    MSG.WriteString(message, this.entity.classname); // FIXME: compress this, it’s ballooning the signon buffer.
     MSG.WriteByte(message, SV.ModelIndex(this.entity.model));
     MSG.WriteByte(message, this.entity.frame || 0);
     MSG.WriteByte(message, this.entity.colormap || 0);

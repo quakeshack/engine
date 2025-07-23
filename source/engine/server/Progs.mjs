@@ -1,7 +1,7 @@
 import Cmd from '../common/Cmd.mjs';
 import { CRC16CCITT } from '../common/CRC.mjs';
 import Cvar from '../common/Cvar.mjs';
-import { MissingResourceError } from '../common/Errors.mjs';
+import { HostError, MissingResourceError } from '../common/Errors.mjs';
 import Q from '../common/Q.mjs';
 import Vector from '../../shared/Vector.mjs';
 import { eventBus, registry } from '../registry.mjs';
@@ -1180,7 +1180,7 @@ PR.RunError = function(error) {
   PR.PrintStatement(PR.statements[PR.xstatement]);
   PR.StackTrace();
   Con.PrintError(error + '\n');
-  Host.Error('Program error');
+  throw new HostError('Program error');
 };
 
 PR.EnterFunction = function(f) {
@@ -1225,7 +1225,7 @@ PR.ExecuteProgram = function(fnum) {
     if (PR.globals_int[PR.globalvars.self] !== 0) {
       ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
     }
-    Host.Error('PR.ExecuteProgram: NULL function');
+    throw new HostError('PR.ExecuteProgram: NULL function');
   }
   let runaway = 100000;
   const exitdepth = PR.depth;

@@ -81,13 +81,14 @@ R.AnimateLight = function() {
   if (R.fullbright.value === 0) {
     const i = Math.floor(CL.state.time * 10.0);
     for (let j = 0; j < 64; ++j) {
-      if (CL.lightstyle[j].length === 0) {
+      const ls = CL.state.clientEntities.lightstyle[j];
+      if (ls.length === 0) {
         R.lightstylevalue_a[j] = 12;
         R.lightstylevalue_b[j] = 12;
         continue;
       }
-      R.lightstylevalue_a[j] = CL.lightstyle[j].charCodeAt(i % CL.lightstyle[j].length) - 97;
-      R.lightstylevalue_b[j] = CL.lightstyle[j].charCodeAt((i + 1) % CL.lightstyle[j].length) - 97;
+      R.lightstylevalue_a[j] = ls.charCodeAt(i % ls.length) - 97;
+      R.lightstylevalue_b[j] = ls.charCodeAt((i + 1) % ls.length) - 97;
     }
   } else {
     for (let j = 0; j < 64; ++j) {
@@ -107,11 +108,11 @@ R.RenderDlights = function() {
   }
   ++R.dlightframecount;
   gl.enable(gl.BLEND);
-  const program = GL.UseProgram('dlight'); let l; let a;
+  const program = GL.UseProgram('dlight'); let a;
   gl.bindBuffer(gl.ARRAY_BUFFER, R.dlightvecs);
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 0, 0);
-  for (let i = 0; i <= 31; ++i) {
-    l = CL.dlights[i];
+  for (let i = 0; i < Def.limits.dlights; i++) {
+    const l = CL.state.clientEntities.dlights[i];
     if ((l.die < CL.state.time) || (l.radius === 0.0)) {
       continue;
     }
@@ -165,19 +166,19 @@ R.PushDlights = function() {
   if (R.flashblend.value !== 0) {
     return;
   }
-  let i;
-  for (i = 0; i <= 1023; ++i) {
+  for (let i = 0; i <= 1023; ++i) {
     R.lightmap_modified[i] = false;
   }
 
-  let l; let bit = 1; let j; let ent;
-  for (i = 0; i <= 31; ++i) {
-    l = CL.dlights[i];
-    if ((l.die >= CL.state.time) && (l.radius !== 0.0)) {
+  let bit = 1; let j;
+
+  for (let i = 0; i < Def.limits.dlights; i++) {
+    const l = CL.state.clientEntities.dlights[i];
+
+    if (!l.isFree()) {
       R.MarkLights(l, bit, CL.state.worldmodel.nodes[0]);
-      for (j = 0; j < CL.numvisedicts; ++j) {
-        ent = CL.visedicts[j];
-        if (ent.model == null) {
+      for (const ent of CL.state.clientEntities.getVisibleEntities()) {
+        if (ent.model === null) {
           continue;
         }
         if ((ent.model.type !== Mod.type.brush) || (ent.model.submodel !== true)) {
@@ -190,7 +191,7 @@ R.PushDlights = function() {
   }
 
   let surf;
-  for (i = 0; i < CL.state.worldmodel.faces.length; ++i) {
+  for (let i = 0; i < CL.state.worldmodel.faces.length; ++i) {
     surf = CL.state.worldmodel.faces[i];
     if (surf.dlightframe === R.dlightframecount) {
       R.RemoveDynamicLights(surf);
@@ -200,7 +201,7 @@ R.PushDlights = function() {
   }
 
   GL.Bind(0, R.dlightmap_rgba_texture);
-  for (i = 0; i <= 1023; ++i) {
+  for (let i = 0; i <= 1023; ++i) {
     if (R.lightmap_modified[i] !== true) {
       continue;
     }
@@ -317,7 +318,10 @@ R.vpn = new Vector();
 R.vright = new Vector();
 
 R.refdef = {
-  vrect: {},
+  vrect: {
+    width: 0,
+    height: 0,
+  },
   vieworg: new Vector(),
   viewangles: new Vector(),
 };
@@ -616,10 +620,12 @@ R.DrawAliasModel = function(e) {
   if ((e === CL.state.viewent) && (ambientlight < 24.0)) {
     ambientlight = shadelight = 24.0;
   }
-  let i; let dl; let add;
-  for (i = 0; i <= 31; ++i) {
-    dl = CL.dlights[i];
-    if (dl.die < CL.state.time) {
+  let i; let add;
+
+  for (let i = 0; i < Def.limits.dlights; i++) {
+    const dl = CL.state.clientEntities.dlights[i];
+
+    if (dl.isFree()) {
       continue;
     }
     // add = dl.radius - (new Vector(e.origin[0] - dl.origin[0], e.origin[1] - dl.origin[1], e.origin[1] - dl.origin[1])).len(); // [x, y, y]
@@ -714,10 +720,10 @@ R.DrawEntitiesOnList = function() {
     return;
   }
   const vis = (R.novis.value !== 0) ? Mod.novis : Mod.LeafPVS(R.viewleaf, CL.state.worldmodel);
-  let i; let j; let leaf;
-  for (i = 0; i < CL.state.num_statics; ++i) {
-    R.currententity = CL.static_entities[i];
-    if (R.currententity.model == null) {
+  let j; let leaf;
+  for (const currententity of CL.state.clientEntities.getStaticEntities()) {
+    R.currententity = currententity;
+    if (R.currententity.model === null) {
       continue;
     }
     for (j = 0; j < R.currententity.leafs.length; ++j) {
@@ -737,9 +743,9 @@ R.DrawEntitiesOnList = function() {
         R.DrawBrushModel(R.currententity);
     }
   }
-  for (i = 0; i < CL.numvisedicts; ++i) {
-    R.currententity = CL.visedicts[i];
-    if (R.currententity.model == null) {
+  for (const currententity of CL.state.clientEntities.getVisibleEntities()) {
+    R.currententity = currententity;
+    if (R.currententity.model === null) {
       continue;
     }
     switch (R.currententity.model.type) {
@@ -753,18 +759,18 @@ R.DrawEntitiesOnList = function() {
   GL.StreamFlush();
   gl.depthMask(false);
   gl.enable(gl.BLEND);
-  for (i = 0; i < CL.state.num_statics; ++i) {
-    R.currententity = CL.static_entities[i];
-    if (R.currententity.model == null) {
+  for (const currententity of CL.state.clientEntities.getStaticEntities()) {
+    R.currententity = currententity;
+    if (R.currententity.model === null) {
       continue;
     }
     if (R.currententity.model.type === Mod.type.sprite) {
       R.DrawSpriteModel(R.currententity);
     }
   }
-  for (i = 0; i < CL.numvisedicts; ++i) {
-    R.currententity = CL.visedicts[i];
-    if (R.currententity.model == null) {
+  for (const currententity of CL.state.clientEntities.getVisibleEntities()) {
+    R.currententity = currententity;
+    if (R.currententity.model === null) {
       continue;
     }
     if (R.currententity.model.type === Mod.type.sprite) {
@@ -854,6 +860,74 @@ R.SetFrustum = function() {
   }
 };
 
+R.viewMatrix = null;
+R.projectionMatrix = null;
+
+// eslint-disable-next-line jsdoc/require-jsdoc
+function multiplyMatrixVec4(m, v) {
+  return [
+    m[0]*v[0] + m[4]*v[1] + m[8]*v[2] + m[12]*v[3],
+    m[1]*v[0] + m[5]*v[1] + m[9]*v[2] + m[13]*v[3],
+    m[2]*v[0] + m[6]*v[1] + m[10]*v[2] + m[14]*v[3],
+    m[3]*v[0] + m[7]*v[1] + m[11]*v[2] + m[15]*v[3],
+  ];
+}
+
+/**
+ *
+ * @param {Vector} origin position in the world
+ * @returns {{x: number, y: number, z: number, visible: boolean}|null} screen coordinates and visibility
+ */
+R.WorldToScreen = function(origin) {
+  const result = { x: 0, y: 0, z: 0, visible: false };
+  const projectionMatrix = R.projectionMatrix;
+  const viewMatrix = R.viewMatrix; // This is uViewAngles — rotation only
+
+  // world-space delta from camera
+  const delta = [
+    origin[0] - R.refdef.vieworg[0],
+    origin[1] - R.refdef.vieworg[1],
+    origin[2] - R.refdef.vieworg[2],
+  ];
+
+  // Apply view rotation
+  const x =
+    viewMatrix[0] * delta[0] +
+    viewMatrix[4] * delta[1] +
+    viewMatrix[8] * delta[2];
+  const y =
+    viewMatrix[1] * delta[0] +
+    viewMatrix[5] * delta[1] +
+    viewMatrix[9] * delta[2];
+  const z =
+    viewMatrix[2] * delta[0] +
+    viewMatrix[6] * delta[1] +
+    viewMatrix[10] * delta[2];
+
+  // Mimic gl_Position = projection * vec4(xz, -y, 1.0)
+  const posVec = [x, z, -y, 1.0]; // Swizzle + flip Y
+
+  const clip = multiplyMatrixVec4(projectionMatrix, posVec);
+
+  // If the clip space W coordinate is zero, we can't convert to NDC
+  if (clip[3] === 0) {
+    return result;
+  }
+
+  const ndc = [
+    clip[0] / clip[3],
+    clip[1] / clip[3],
+    clip[2] / clip[3],
+  ];
+
+  result.x = R.refdef.vrect.x + (ndc[0] + 1) * 0.5 * R.refdef.vrect.width;
+  result.y = R.refdef.vrect.y + (1 - ndc[1]) * 0.5 * R.refdef.vrect.height;
+  result.z = ndc[2];
+  result.visible = clip[3] > 0 && ndc[0] >= -1 && ndc[0] <= 1 && ndc[1] >= -1 && ndc[1] <= 1 && ndc[2] >= 0 && ndc[2] <= 1;
+
+  return result;
+};
+
 R.perspective = [
   0.0, 0.0, 0.0, 0.0,
   0.0, 0.0, 0.0, 0.0,
@@ -878,6 +952,15 @@ R.Perspective = function() {
     cr * -sy + sr * sp * cy,	cp * cy,	-sr * -sy + cr * sp * cy,
     sr * cp,					-sp,		cr * cp,
   ];
+
+  R.viewMatrix = [
+    viewMatrix[0], viewMatrix[1], viewMatrix[2], 0.0,
+    viewMatrix[3], viewMatrix[4], viewMatrix[5], 0.0,
+    viewMatrix[6], viewMatrix[7], viewMatrix[8], 0.0,
+    0.0,           0.0,           0.0,           1.0,
+  ];
+
+  R.projectionMatrix = R.perspective;
 
   if (V.gamma.value < 0.5) {
     V.gamma.set(0.5);
@@ -1558,7 +1641,7 @@ R.LavaSplash = function(org) {
       p.die = CL.state.time + 2.0 + Math.random() * 0.64;
       p.color = 224 + Math.floor(Math.random() * 8.0);
       p.type = R.ptype.slowgrav;
-      const dir = new Vector((j + Math.random) * 8.0, (i + Math.random) * 8.0, 256.0);
+      const dir = new Vector((j + Math.random()) * 8.0, (i + Math.random()) * 8.0, 256.0);
       p.org = new Vector(org[0] + dir[0], org[1] + dir[1], org[2] + Math.random() * 64.0);
       dir.normalize();
       p.vel = dir.multiply(50.0 + Math.random() * 64.0);
@@ -1803,11 +1886,11 @@ R.AddDynamicLights = function(surf) {
     blocklights[i] = 0;
   }
 
-  for (let i = 0; i <= 31; ++i) {
+  for (let i = 0; i < Def.limits.dlights; i++) {
     if (((surf.dlightbits >>> i) & 1) === 0) {
       continue;
     }
-    const light = CL.dlights[i];
+    const light = CL.state.clientEntities.dlights[i];
     let dist = light.origin.dot(surf.plane.normal) - surf.plane.dist;
     const rad = light.radius - Math.abs(dist);
     let minlight = light.minlight;
@@ -1913,6 +1996,7 @@ R.BuildLightMap = function(surf) {
 };
 
 /**
+ * @param base
  * @returns {[BrushModelTexture, BrushModelTexture]}
  */
 R.TextureAnimation = function(base) {
@@ -2039,7 +2123,7 @@ R.RecursiveWorldNode = function(node) {
 
 R.DrawWorld = function() {
   const clmodel = CL.state.worldmodel;
-  R.currententity = CL.entities[0];
+  R.currententity = CL.state.clientEntities.entities[0];
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
 
   let program = GL.UseProgram('brush');

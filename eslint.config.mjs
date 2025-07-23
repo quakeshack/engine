@@ -30,7 +30,7 @@ export default [
       'quotes': ['error', 'single', { 'avoidEscape': true }],
       // "no-magic-numbers": ["warn", { "ignore": [0,1], "ignoreArrayIndexes": true }],
       // "no-plusplus": ["error", { "allowForLoopAfterthoughts": true }],
-      'eqeqeq': ['error', 'always'],
+      'eqeqeq': ['warn', 'always'],
       'no-undef': 'error',
       'no-unused-vars': 'error',
       'jsdoc/check-types': 'error',       // Ensures types are valid

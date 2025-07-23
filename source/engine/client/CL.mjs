@@ -3,16 +3,17 @@ import Q from '../common/Q.mjs';
 import * as Def from '../common/Def.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import Vector from '../../shared/Vector.mjs';
-import Chase from './Chase.mjs';
 import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { MoveVars, Pmove, PmovePlayer } from '../common/Pmove.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
-import { effect, modelFlags, solid } from '../../shared/Defs.mjs';
+import { solid } from '../../shared/Defs.mjs';
 import { QSocket } from '../network/NetworkDrivers.mjs';
 import ClientDemos from './ClientDemos.mjs';
 import ClientInput from './ClientInput.mjs';
+import { HostError } from '../common/Errors.mjs';
+import ClientEntities, { ClientDlight, ClientEdict } from './ClientEntities.mjs';
 
 /** @typedef {import('./Sound.mjs').SFX} SFX */
 
@@ -35,10 +36,10 @@ eventBus.subscribe('registry.frozen', () => {
 });
 
 export default class CL {
-  /** @deprecated */
+  /** @deprecated – use Def */
   static cshift = Def.contentShift;
 
-  /** @deprecated */
+  /** @deprecated – use Def */
   static active = Def.clientConnectionState;
 
   /** @type {Pmove} */
@@ -110,6 +111,7 @@ export default class CL {
   };
 
   static state = class ClientState {
+    static clientEntities = new ClientEntities();
     static movemessages = 0;
     static cmd = new Protocol.UserCmd();
     static lastcmd = new Protocol.UserCmd();
@@ -134,23 +136,29 @@ export default class CL {
     static driftmove = 0.0;
     static laststop = 0.0;
     static intermission = 0;
+    /** @type {number} time when the level was completed */
     static completed_time = 0;
     static mtime = [0.0, 0.0];
+    /** @type {number} current time */
     static time = 0.0;
     static oldtime = 0.0;
+    /** @type {number} last received message from server time */
     static last_received_message = 0.0;
     static viewentity = 0;
-    static num_statics = 0;
     /** @type {ClientEdict} */
     static viewent = null;
     static cdtrack = 0;
     static looptrack = 0;
+    /** @type {{name: string, message: string, direct: boolean}[]} chat messages */
     static chatlog = [];
+    /** @type {string[]} */
     static model_precache = [];
+    /** @type {SFX[]} */
     static sound_precache = [];
     static levelname = null;
     static gametype = 0;
     static onground = false;
+    /** @type {number} maxplayers of the current game */
     static maxclients = 1;
     /** @type {CL.ScoreSlot[]} */
     static scores = [];
@@ -170,12 +178,13 @@ export default class CL {
     }
     /** @type {ClientEdict} */
     static get playerentity() {
-      return CL.entities[CL.state.viewentity];
+      return this.clientEntities.entities[CL.state.viewentity];
     }
     static gameAPI = null;
     static paused = false;
 
     static clear() {
+      this.clientEntities.clear();
       this.movemessages = 0;
       this.cmd = new Protocol.UserCmd();
       this.lastcmd = new Protocol.UserCmd();
@@ -205,7 +214,6 @@ export default class CL {
       this.oldtime = 0.0;
       this.last_received_message = 0.0;
       this.viewentity = 0;
-      this.num_statics = 0;
       this.viewent = new ClientEdict(-1);
       this.cdtrack = 0;
       this.looptrack = 0;
@@ -226,25 +234,6 @@ export default class CL {
       this.paused = false;
     }
   };
-
-  /** @type {ClientEdict[]} static entities */
-  static static_entities = [];
-
-  /** @type {ClientEdict[]} visible entities */
-  static visedicts = [];
-
-  /** @type {ClientEdict[]} all entities */
-  static entities = [];
-
-  /** @type {ClientEdict[]} all temporary entities */
-  static temp_entities = [];
-
-  static dlights = [];
-  static lightstyle = [];
-  static beams = [];
-
-  static num_temp_entities = 0;
-  static numvisedicts = 0;
 
   /** @type {Cvar} */ static nolerp = null;
   /** @type {Cvar} */ static rcon_password = null;
@@ -539,204 +528,87 @@ export default class CL {
       this.state.gameAPI.draw();
     }
   }
-};
 
-class ClientEdict {
-  constructor(num) {
-    this.classname = null;
-    this.num = num;
-    this.model = null;
-    this.frame = 0;
-    this.skinnum = 0;
-    this.colormap = 0;
-    this.effects = 0;
-    this.solid = 0;
-    /** @type {?Vector} used to keep track of origin changes, unset when no previous origin is known */
-    this.originPrevious = null;
-    this.origin = new Vector();
-    /** @type {?Vector} used to keep track of angles changes, unset when no previous angles is known */
-    this.anglesPrevious = null;
-    this.angles = new Vector();
-    this.dlightbits = 0;
-    this.dlightframe = 0;
-    /** keeps track of last updates */
-    this.msg_time = [0.0, 0.0];
-    /** keeps track of origin changes */
-    this.msg_origins = [new Vector(), new Vector()];
-    /** keeps track of angle changes */
-    this.msg_angles = [new Vector(), new Vector()];
-    this.leafs = [];
-    /** count of received updates */
-    this.updatecount = 0;
-    /** whether is ClientEntity is free */
-    this.free = false;
-    this.syncbase = 0.0;
-    this.maxs = new Vector();
-    this.mins = new Vector();
-
-    const that = this;
-
-    /**
-     * holds lerped origin and angles for rendering purposes
-     */
-    this.lerp = {
-      get origin() {
-        if (that.originPrevious === null || CL.nolerp.value) {
-          return that.origin;
-        }
-        const f = CL.LerpPoint();
-        const o0 = that.origin;
-        const o1 = that.originPrevious;
-        if (o0.distanceTo(o1) > 100.0) {
-          return o0; // clamp sudden origin changes
-        }
-        return new Vector(
-          o1[0] + (o0[0] - o1[0]) * f,
-          o1[1] + (o0[1] - o1[1]) * f,
-          o1[2] + (o0[2] - o1[2]) * f,
-        );
-      },
-      get angles() {
-        if (that.anglesPrevious === null || CL.nolerp.value) {
-          return that.angles;
-        }
-        const f = CL.LerpPoint();
-        const a0 = that.angles;
-        const a1 = that.anglesPrevious;
-        return new Vector(
-          a1[0] + (a0[0] - a1[0]) * f,
-          a1[1] + (a0[1] - a1[1]) * f,
-          a1[2] + (a0[2] - a1[2]) * f,
-        );
-      },
-    };
-
-    Object.freeze(this.lerp);
-    Object.seal(this);
+  static RunThink() {
+    this.state.clientEntities.think();
   }
 
-  equals(other) {
-    // CR: playing with fire here
-    return this === other || (this.num !== -1 && this.num === other.num);
+  static ResetCheatCvars() { // private
+    for (const cvar of Cvar.Filter((/** @type {Cvar} */cvar) => (cvar.flags & Cvar.FLAG.CHEAT) !== 0)) {
+      cvar.reset();
+    }
+  };
+
+  static ClearState() { // private
+    if (!SV.server.active) {
+      Con.DPrint('Clearing memory\n');
+      Mod.ClearAll();
+      this.cls.signon = 0;
+    }
+
+    CL.SetConnectingStep(null, null);
+
+    this.state.clear();
+    this.cls.clear();
   }
 
-  freeEdict() {
-    this.model = null;
-    this.frame = 0;
-    this.skinnum = 0;
-    this.colormap = 0;
-    this.effects = 0;
-    this.origin.clear();
-    this.angles.clear();
-    this.dlightbits = 0;
-    this.dlightframe = 0;
-    this.msg_time[0] = 0.0;
-    this.msg_time[1] = 0.0;
-    this.msg_origins[0].clear();
-    this.msg_origins[1].clear();
-    this.msg_angles[0].clear();
-    this.msg_angles[1].clear();
-    this.leafs.length = 0;
-    this.updatecount = 0;
-    this.free = false;
-    this.maxs.clear();
-    this.mins.clear();
-    this.originPrevious = null;
-    this.anglesPrevious = null;
+  static ParseLightstylePacket() { // private
+    const i = MSG.ReadByte();
+    if (i >= Def.limits.lightstyles) {
+      throw new HostError('svc_lightstyle > MAX_LIGHTSTYLES');
+    }
+
+    this.state.clientEntities.setLightstyle(i, MSG.ReadString());
   }
 
   /**
-   * Sets origin and angles according to the current message.
-   * @param {boolean} doLerp whether to do a point lerp
+   * Will get the client entity by its edict number.
+   * If it’s not found, it will return a new ClientEdict with the given number.
+   * @param {number} num edict Id
+   * @returns {ClientEdict} client entity
    */
-  updatePosition(doLerp) {
-    if (!doLerp) {
-      this.origin.set(this.msg_origins[0]);
-      this.angles.set(this.msg_angles[0]);
+  static EntityNum(num) {
+    return this.state.clientEntities.getEntity(num);
+  };
+
+  /**
+   * Allocates a dynamic light for the given entity Id.
+   * @param {number} num edict Id, can be 0
+   * @returns {ClientDlight} dynamic light
+   */
+  static AllocDlight(num) {
+    return this.state.clientEntities.allocateDynamicLight(num);
+  }
+
+  static NewTempEntity() { // private
+    return this.state.clientEntities.allocateTempEntity();
+  }
+
+  /**
+   * Builds the visedicts list.
+   * Made up of: clients, packet_entities, nails, and tents.
+   */
+  static EmitEntities() { // public, by Host.js
+    if (this.cls.state !== Def.clientConnectionState.connected) {
       return;
     }
 
-    const origin_old = this.msg_origins[0].copy();
-    const angles_old = this.msg_angles[0].copy();
+    this.state.clientEntities.emit();
+  }
 
-    let f = CL.LerpPoint();
+  static SetSolidEntities() {
+    this.pmove.clearEntities();
 
-    const delta = new Vector();
+    for (let i = 1; i < this.state.clientEntities.entities.length; i++) {
+      /** @type {ClientEdict} */
+      const clent = this.state.clientEntities.entities[i];
 
-    if (this.originPrevious === null) {
-      this.originPrevious = this.origin.copy();
-    } else {
-      this.originPrevious.set(this.origin);
-    }
-
-    if (this.anglesPrevious === null) {
-      this.anglesPrevious = this.angles.copy();
-    } else {
-      this.anglesPrevious.set(this.angles);
-    }
-
-    // clamp sudden origin changes and don’t lerp here
-    for (let j = 0; j < 3; j++) {
-      delta[j] = this.msg_origins[0][j] - origin_old[j];
-      if ((delta[j] > 100.0) || (delta[j] < -100.0)) {
-        f = 1.0;
+      if (!clent.model) {
+        continue;
       }
+
+      CL.pmove.addEntity(clent, clent.solid === solid.SOLID_BSP ? clent.model : null);
     }
-
-    for (let j = 0; j < 3; j++) {
-      this.origin[j] = origin_old[j] + f * delta[j];
-      let d = this.msg_angles[0][j] - angles_old[j];
-      if (d > 180.0) {
-        d -= 360.0;
-      } else if (d < -180.0) {
-        d += 360.0;
-      }
-      this.angles[j] = angles_old[j] + f * d;
-    }
-  }
-
-  emit() {
-    return true;
-  }
-
-  think() {
-
-  }
-}
-
-CL.ClearState = function() { // private
-  if (SV.server.active !== true) {
-    Con.DPrint('Clearing memory\n');
-    Mod.ClearAll();
-    CL.cls.signon = 0;
-  }
-
-  CL.SetConnectingStep(null, null);
-
-  CL.state.clear();
-  CL.cls.clear();
-
-  CL.entities.length = 0;
-
-  CL.dlights.length = 0;
-  for (let i = 0; i < Def.limits.dlights; i++) {
-    CL.dlights[i] = {radius: 0.0, die: 0.0, color: new Vector(1, 1, 1), decay: 0.0, minlight: 0.0, key: 0}; // TODO: Dlight class
-  }
-
-  CL.lightstyle.length = 0;
-  for (let i = 0; i < Def.limits.lightstyles; i++) {
-    CL.lightstyle[i] = '';
-  }
-
-  CL.beams.length = 0;
-  for (let i = 0; i < Def.limits.beams; i++) {
-    CL.beams[i] = {endtime: 0.0}; // TODO: Beam class
-  }
-};
-
-CL.ResetCheatCvars = function() { // private
-  for (const cvar of Cvar.Filter((cvar) => (cvar.flags & Cvar.FLAG.CHEAT) !== 0)) {
-    cvar.reset();
   }
 };
 
@@ -786,10 +658,13 @@ CL.EstablishConnection = function(host) { // public, by Host.js
   }
   CL.Disconnect();
   CL.SetConnectingStep(5, 'Connecting to ' + host);
+
   const sock = NET.Connect(host);
-  if (sock == null) {
-    Host.Error('CL.EstablishConnection: connect failed\n');
+
+  if (sock === null) {
+    throw new HostError('CL.EstablishConnection: connect failed\n');
   }
+
   CL.Connect(sock);
 };
 
@@ -827,58 +702,22 @@ CL.SignonReply = function() { // private
 };
 
 CL.PrintEntities_f = function() { // private
-  for (let i = 0; i < CL.entities.length; i++) {
-    const ent = CL.entities[i];
-
+  Con.Print('Entities:\n');
+  for (const ent of CL.state.clientEntities.getEntities()) {
     if (ent.model === null) {
       continue;
     }
 
-    Con.Print(`${i.toFixed(0).padStart(3, ' ')} ${ent.model.name.padEnd(32)}: ${ent.origin}, ${ent.angles}\n`);
+    Con.Print(`${ent}\n`);
   }
-};
 
-CL.AllocDlight = function(key) { // private // TODO: Dlight class
-  let dl = null, i = 0;
-  if (key !== 0) {
-    for (i = 0; i <= 31; ++i) {
-      if (CL.dlights[i].key === key) {
-        dl = CL.dlights[i];
-        break;
-      }
-    }
-  }
-  if (dl === null) {
-    for (i = 0; i <= 31; ++i) {
-      if (CL.dlights[i].die < CL.state.time) {
-        dl = CL.dlights[i];
-        break;
-      }
-    }
-    if (dl === null) {
-      dl = CL.dlights[0];
-    }
-  }
-  dl.origin = new Vector();
-  dl.radius = 0.0;
-  dl.die = 0.0;
-  dl.decay = 0.0;
-  dl.minlight = 0.0;
-  dl.key = key;
-  return dl;
-};
-
-CL.DecayLights = function() { // public, by Host.js
-  let i; let dl; const time = CL.state.time - CL.state.oldtime;
-  for (i = 0; i <= 31; ++i) {
-    dl = CL.dlights[i];
-    if ((dl.die < CL.state.time) || (dl.radius === 0.0)) {
+  Con.Print('\nStatic Entities:\n');
+  for (const ent of CL.state.clientEntities.getStaticEntities()) {
+    if (ent.model === null) {
       continue;
     }
-    dl.radius -= time * dl.decay;
-    if (dl.radius < 0.0) {
-      dl.radius = 0.0;
-    }
+
+    Con.Print(`${ent}\n`);
   }
 };
 
@@ -898,7 +737,7 @@ CL.ReadFromServer = function() { // public, by Host.js
         if (CL._processingServerDataState === 0 && CL.cls.signon < 4) {
           break;
         }
-        Host.Error('CL.ReadFromServer: lost server connection');
+        throw new HostError('CL.ReadFromServer: lost server connection');
       }
       if (ret === 0) {
         break;
@@ -937,7 +776,7 @@ CL.SendCmd = function() { // public, by Host.js
     }
   }
 
-  if (CL.cls.demoplayback === true) {
+  if (CL.cls.demoplayback) {
     CL.cls.message.clear();
     return;
   }
@@ -952,7 +791,7 @@ CL.SendCmd = function() { // public, by Host.js
   }
 
   if (NET.SendMessage(CL.cls.netcon, CL.cls.message) === -1) {
-    Host.Error('CL.SendCmd: lost server connection');
+    throw new HostError('CL.SendCmd: lost server connection');
   }
 
   // Con.DPrint('CL.SendCmd: sent ' + CL.cls.message.cursize + ' bytes, clearing\n');
@@ -1084,20 +923,6 @@ CL.Init = async function() { // public, by Host.js
 
 CL.svc_strings = [];
 
-/**
- * @param {number} num edict Id
- * @returns {ClientEdict} client entity
- */
-CL.EntityNum = function(num) { // private
-  if (num < CL.entities.length) {
-    return CL.entities[num];
-  }
-  for (; CL.entities.length <= num; ) {
-    CL.entities.push(new ClientEdict(CL.entities.length));
-  }
-  return CL.entities[num];
-};
-
 CL.ParseStartSoundPacket = function() { // private
   const field_mask = MSG.ReadByte();
   const volume = ((field_mask & 1) !== 0) ? MSG.ReadByte() : 255;
@@ -1142,19 +967,17 @@ CL.ParseServerData = function() { // private
   const version = MSG.ReadByte();
 
   if (version !== Protocol.version) {
-    Host.Error('Server returned protocol version ' + version + ', not ' + Protocol.version + '\n');
-    return;
+    throw new HostError('Server returned protocol version ' + version + ', not ' + Protocol.version + '\n');
   }
 
   const isHavingClientQuakeJS = MSG.ReadByte() === 1;
 
-  Con.DPrint('Server is running QuakeJS with ClientGameAPI provided.\n');
-
   // check if client is actually compatible with the server
   if (isHavingClientQuakeJS) {
+    Con.DPrint('Server is running QuakeJS with ClientGameAPI provided.\n');
+
     if (!PR.QuakeJS?.ClientGameAPI) {
-      Host.Error('Server is running QuakeJS with client code provided,\nbut client code is not imported.\nTry clearing your cache and connect again.');
-      return;
+      throw new HostError('Server is running QuakeJS with client code provided,\nbut client code is not imported.\nTry clearing your cache and connect again.');
     }
 
     const name = MSG.ReadString();
@@ -1164,26 +987,26 @@ CL.ParseServerData = function() { // private
     const identification = PR.QuakeJS.identification;
 
     if (identification.name !== name || identification.author !== author) {
-      Host.Error(`Cannot connect, because the server is running ${name} by ${author} and you are running ${name} by ${author}.`);
-      return;
+      throw new HostError(`Cannot connect, because the server is running ${name} by ${author} and you are running ${name} by ${author}.`);
     }
 
     if (!PR.QuakeJS.ClientGameAPI.IsServerCompatible(version)) {
-      Host.Error(`Server (v${version.join('.')}) is not compatible. You are running v${identification.version.join('.')}.\nTry clearing your cache and connect again.`);
-      return;
+      // TODO: show different message for demo playback
+      throw new HostError(`Server (v${version.join('.')}) is not compatible. You are running v${identification.version.join('.')}.\nTry clearing your cache and connect again.`);
     }
+
+    CL.state.gameAPI = new PR.QuakeJS.ClientGameAPI(ClientEngineAPI);
   }
 
   CL.state.maxclients = MSG.ReadByte();
   if ((CL.state.maxclients <= 0) || (CL.state.maxclients > 32)) {
-    Con.Print('Bad maxclients (' + CL.state.maxclients + ') from server\n');
-    return;
+    throw new HostError('Bad maxclients (' + CL.state.maxclients + ') from server!');
   }
 
   CL.state.scores.length = 0;
   CL.state.players.length = 0;
 
-  for (let i = 0; i < CL.state.maxclients; ++i) {
+  for (let i = 0; i < CL.state.maxclients; i++) {
     CL.state.scores[i] = new CL.ScoreSlot();
     CL.state.players[i] = null; // CR: will be filled later by playerinfo updates
   }
@@ -1227,7 +1050,7 @@ CL.ParseServerData = function() { // private
     for (let i = 1; i < nummodels; ++i) {
       CL.SetConnectingStep(25 + (i / nummodels) * 20, 'Loading model: ' + model_precache[i]);
       CL.state.model_precache[i] = Mod.ForName(model_precache[i]);
-      if (CL.state.model_precache[i] == null) {
+      if (CL.state.model_precache[i] === null) {
         Con.Print('Model ' + model_precache[i] + ' not found\n');
         return;
       }
@@ -1255,8 +1078,7 @@ CL.ParseServerData = function() { // private
     CL.SetConnectingStep(66, 'Preparing map');
     R.NewMap();
     Host.noclip_anglehack = false;
-    if (PR.QuakeJS?.ClientGameAPI) {
-      CL.state.gameAPI = new PR.QuakeJS.ClientGameAPI(ClientEngineAPI);
+    if (CL.state.gameAPI) {
       CL.state.gameAPI.init();
     }
   });
@@ -1429,7 +1251,9 @@ CL.ParsePlayerinfo = function() { // private
 
 CL.ParseStaticEntity = function() { // private
   const ent = new ClientEdict(-1);
-  CL.static_entities[CL.state.num_statics++] = ent;
+  CL.state.clientEntities.makeStatic(ent);
+  ent.classname = MSG.ReadString();
+  ent.loadHandler();
   ent.model = CL.state.model_precache[MSG.ReadByte()];
   ent.frame = MSG.ReadByte();
   ent.colormap = MSG.ReadByte();
@@ -1443,6 +1267,7 @@ CL.ParseStaticEntity = function() { // private
   R.emins = ent.origin.copy().add(ent.model.mins);
   R.emaxs = ent.origin.copy().add(ent.model.maxs);
   R.SplitEntityOnNode(CL.state.worldmodel.nodes[0]);
+  ent.spawn();
 };
 
 CL.ParseStaticSound = function() { // private
@@ -1451,12 +1276,6 @@ CL.ParseStaticSound = function() { // private
   const vol = MSG.ReadByte();
   const attn = MSG.ReadByte();
   S.StaticSound(CL.state.sound_precache[soundId], org, vol / 255.0, attn);
-};
-
-CL.Shownet = function(x) { // private
-  if (CL.shownet.value === 2) {
-    Con.Print((MSG.readcount <= 99 ? (MSG.readcount <= 9 ? '  ' : ' ') : '') + (MSG.readcount - 1) + ':' + x + '\n');
-  }
 };
 
 CL.AppendChatMessage = function(name, message, direct) { // private // TODO: Client
@@ -1551,23 +1370,23 @@ CL.ParseServerMessage = function() { // private
     if (MSG.badread === true) {
       CL.PrintLastServerMessages();
       MSG.PrintLastRead();
-      Host.Error('CL.ParseServerMessage: Bad server message');
-      return;
+      throw new HostError('CL.ParseServerMessage: Bad server message');
     }
 
     const cmd = MSG.ReadByte();
 
     if (cmd === -1) {
-      CL.Shownet('END OF MESSAGE');
+      // End of message
       break;
     }
 
-    CL.Shownet('svc_' + CL.svc_strings[cmd]);
     CL._lastServerMessages.push(CL.svc_strings[cmd]);
     if (CL._lastServerMessages.length > 10) {
       CL._lastServerMessages.shift();
     }
+
     Con.DPrint('CL.ParseServerMessage: parsing ' + CL.svc_strings[cmd] + ' ' + cmd + '\n');
+
     switch (cmd) {
       case Protocol.svc.nop:
         continue;
@@ -1581,7 +1400,7 @@ CL.ParseServerMessage = function() { // private
       case Protocol.svc.version:
         i = MSG.ReadLong();
         if (i !== Protocol.version) {
-          Host.Error('CL.ParseServerMessage: Server is protocol ' + i + ' instead of ' + Protocol.version + '\n');
+          throw new HostError('CL.ParseServerMessage: Server is protocol ' + i + ' instead of ' + Protocol.version + '\n');
         }
         continue;
       case Protocol.svc.disconnect:
@@ -1626,11 +1445,7 @@ CL.ParseServerMessage = function() { // private
         CL.state.viewentity = MSG.ReadShort();
         continue;
       case Protocol.svc.lightstyle:
-        i = MSG.ReadByte();
-        if (i >= 64) {
-          throw new Error('svc_lightstyle > MAX_LIGHTSTYLES');
-        }
-        CL.lightstyle[i] = MSG.ReadString();
+        CL.ParseLightstylePacket();
         continue;
       case Protocol.svc.sound:
         CL.ParseStartSoundPacket();
@@ -1647,7 +1462,7 @@ CL.ParseServerMessage = function() { // private
       case Protocol.svc.updatename: { // TODO: Client
           i = MSG.ReadByte();
           if (i >= CL.state.maxclients) {
-            Host.Error('CL.ParseServerMessage: svc_updatename > MAX_SCOREBOARD');
+            throw new HostError('CL.ParseServerMessage: svc_updatename > MAX_SCOREBOARD');
           }
           const newName = MSG.ReadString();
           // make sure the current player is aware of name changes
@@ -1660,21 +1475,21 @@ CL.ParseServerMessage = function() { // private
       case Protocol.svc.updatefrags: // TODO: Client Legacy
         i = MSG.ReadByte();
         if (i >= CL.state.maxclients) {
-          Host.Error('CL.ParseServerMessage: svc_updatefrags > MAX_SCOREBOARD');
+          throw new HostError('CL.ParseServerMessage: svc_updatefrags > MAX_SCOREBOARD');
         }
         CL.state.scores[i].frags = MSG.ReadShort();
         continue;
       case Protocol.svc.updatecolors: // TODO: Client
         i = MSG.ReadByte();
         if (i >= CL.state.maxclients) {
-          Host.Error('CL.ParseServerMessage: svc_updatecolors > MAX_SCOREBOARD');
+          throw new HostError('CL.ParseServerMessage: svc_updatecolors > MAX_SCOREBOARD');
         }
         CL.state.scores[i].colors = MSG.ReadByte();
         continue;
       case Protocol.svc.updatepings: // TODO: Client?
         i = MSG.ReadByte();
         if (i >= CL.state.maxclients) {
-          Host.Error('CL.ParseServerMessage: svc_updatepings > MAX_SCOREBOARD');
+          throw new HostError('CL.ParseServerMessage: svc_updatepings > MAX_SCOREBOARD');
         }
         CL.state.scores[i].ping = MSG.ReadShort() / 10;
         continue;
@@ -1692,7 +1507,7 @@ CL.ParseServerMessage = function() { // private
         continue;
       case Protocol.svc.setpause:
         CL.state.paused = MSG.ReadByte() !== 0;
-        if (CL.state.paused === true) {
+        if (CL.state.paused) {
           eventBus.publish('client.paused');
         } else {
           eventBus.publish('client.unpaused');
@@ -1701,7 +1516,7 @@ CL.ParseServerMessage = function() { // private
       case Protocol.svc.signonnum:
         i = MSG.ReadByte();
         if (i <= CL.cls.signon) {
-          Host.Error('Received signon ' + i + ' when at ' + CL.cls.signon);
+          throw new HostError('Received signon ' + i + ' when at ' + CL.cls.signon);
         }
         console.assert(i >= 0 && i <= 4, 'signon must be in range 0-4');
         CL.cls.signon = /** @type {0|1|2|3|4} */(i);
@@ -1766,8 +1581,7 @@ CL.ParseServerMessage = function() { // private
     }
     CL._lastServerMessages.pop(); // discard the last added command as it was invalid anyway
     CL.PrintLastServerMessages();
-    Host.Error('CL.ParseServerMessage: Illegible server message\n');
-    return;
+    throw new HostError('CL.ParseServerMessage: Illegible server message\n');
   }
 
   // CR: this is a hack to make sure we don't get stuck in the signon state
@@ -1799,7 +1613,7 @@ CL.ParseBeam = function(m) { // private
   const start = MSG.ReadCoordVector();
   const end = MSG.ReadCoordVector();
   for (let i = 0; i < Def.limits.beams; i++) {
-    const b = CL.beams[i];
+    const b = CL.state.clientEntities.beams[i];
     if (b.entity !== ent) {
       continue;
     }
@@ -1810,8 +1624,8 @@ CL.ParseBeam = function(m) { // private
     return;
   }
   for (let i = 0; i < Def.limits.beams; i++) {
-    const b = CL.beams[i];
-    if ((b.model != null) && (b.endtime >= CL.state.time)) {
+    const b = CL.state.clientEntities.beams[i];
+    if ((b.model !== null) && (b.endtime >= CL.state.time)) {
       continue;
     }
     b.entity = ent;
@@ -1899,54 +1713,8 @@ CL.ParseTemporaryEntity = function() { // private // TODO: move this to ClientAP
   throw new Error(`CL.ParseTEnt: bad type ${type}`);
 };
 
-CL.NewTempEntity = function() { // private
-  const ent = new ClientEdict(-1);
-  CL.temp_entities[CL.num_temp_entities++] = ent;
-  CL.visedicts[CL.numvisedicts++] = ent;
-  return ent;
-};
-
 CL.UpdateTEnts = function() { // private
-  CL.num_temp_entities = 0;
-  for (let i = 0; i < Def.limits.beams; i++) { // FIXME: hardcoded limit
-    let yaw; let pitch;
-    const b = CL.beams[i];
-    if (!b.model || b.endtime < CL.state.time) {
-      continue;
-    }
-    if (b.entity === CL.state.viewentity) {
-      b.start = CL.state.playerentity.origin.copy();
-    }
-    const dist = b.end.copy().subtract(b.start);
-    if ((dist[0] === 0.0) && (dist[1] === 0.0)) {
-      yaw = 0;
-      pitch = dist[2] > 0.0 ? 90 : 270;
-    } else {
-      yaw = (Math.atan2(dist[1], dist[0]) * 180.0 / Math.PI) || 0;
-      if (yaw < 0) {
-        yaw += 360;
-      }
-      pitch = (Math.atan2(dist[2], Math.sqrt(dist[0] * dist[0] + dist[1] * dist[1])) * 180.0 / Math.PI) || 0;
-      if (pitch < 0) {
-        pitch += 360;
-      }
-    }
-    const org = b.start.copy();
-    let d = dist.len();
-    if (d !== 0.0) {
-      dist.normalize();
-    }
-    for (; d > 0.0; ) {
-      const ent = CL.NewTempEntity();
-      ent.origin = org.copy();
-      ent.model = b.model;
-      ent.angles = new Vector(pitch, yaw, Math.random() * 360.0);
-      org[0] += dist[0] * 30.0;
-      org[1] += dist[1] * 30.0;
-      org[2] += dist[2] * 30.0;
-      d -= 30.0;
-    }
-  }
+  // TODO: remove this
 };
 
 CL.PredictMove = function() { // public, by Host.js
@@ -2036,111 +1804,6 @@ CL.SetUpPlayerPrediction = function (dopred) { // public, by Host.js
 
 };
 
-/**
- * Builds the visedicts list.
- * Made up of: clients, packet_entities, nails, and tents.
- */
-CL.EmitEntities = function() { // public, by Host.js
-  if (CL.cls.state !== CL.active.connected) {
-    return;
-  }
-
-  // reset all visible entities
-  CL.numvisedicts = 0;
-
-  for (let i = 1; i < CL.entities.length; i++) {
-    /** @type {ClientEdict} */
-    const clent = CL.entities[i];
-
-    // freed entity
-    if (clent.free) {
-      continue;
-    }
-
-    // invisible entity
-    if (!clent.model || (clent.effects & effect.EF_NODRAW)) {
-      continue;
-    }
-
-    const oldorg = clent.originPrevious ? clent.originPrevious : clent.origin;
-
-    // apply prediction for non-player entities
-    clent.updatePosition(clent.num !== CL.state.viewentity);
-
-    // do not render the view entity, unless we are in chase cam mode
-    if (i === CL.state.viewentity && !Chase.active.value) {
-      continue;
-    }
-
-    clent.emit();
-
-    if ((clent.model.flags & modelFlags.MF_ROTATE) !== 0) {
-      clent.angles[1] = Vector.anglemod(CL.state.time * 100.0);
-    }
-    if ((clent.effects & effect.EF_BRIGHTFIELD) !== 0) {
-      R.EntityParticles(clent);
-    }
-    if ((clent.effects & effect.EF_MUZZLEFLASH) !== 0) {
-      const dl = CL.AllocDlight(i);
-      const fv = clent.angles.angleVectors().forward;
-      dl.origin = new Vector(
-        clent.origin[0] + 18.0 * fv[0],
-        clent.origin[1] + 18.0 * fv[1],
-        clent.origin[2] + 16.0 + 18.0 * fv[2],
-      );
-      dl.radius = 200.0 + Math.random() * 32.0;
-      dl.minlight = 32.0;
-      dl.die = CL.state.mtime[0] + 0.1;
-      // dl.color = new Vector(1.0, 0.95, 0.85);
-    }
-    if ((clent.effects & effect.EF_BRIGHTLIGHT) !== 0) {
-      const dl = CL.AllocDlight(i);
-      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
-      dl.radius = 400.0 + Math.random() * 32.0;
-      dl.die = CL.state.time + 0.001;
-    }
-    if ((clent.effects & effect.EF_DIMLIGHT) !== 0) {
-      const dl = CL.AllocDlight(i);
-      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
-      dl.radius = 200.0 + Math.random() * 32.0;
-      dl.die = CL.state.time + 0.001;
-      // dl.color = new Vector(0.5, 0.5, 1.0);
-    }
-    if ((clent.model.flags & modelFlags.MF_GIB) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 2);
-    } else if ((clent.model.flags & modelFlags.MF_ZOMGIB) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 4);
-    } else if ((clent.model.flags & modelFlags.MF_TRACER) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 3);
-    } else if ((clent.model.flags & modelFlags.MF_TRACER2) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 5);
-    } else if ((clent.model.flags & modelFlags.MF_ROCKET) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 0);
-      const dl = CL.AllocDlight(i);
-      dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2]);
-      dl.radius = 200.0;
-      dl.die = CL.state.time + 0.01;
-    } else if ((clent.model.flags & modelFlags.MF_GRENADE) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 1);
-    } else if ((clent.model.flags & modelFlags.MF_TRACER3) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 6);
-    }
-
-    CL.visedicts[CL.numvisedicts++] = clent;
-  }
-
-  // TODO: projectiles
-
-  for (let i = 0; i < CL.num_temp_entities; i++) {
-    const ent = CL.temp_entities[i];
-    if (!ent.model || ent.free) {
-      continue;
-    }
-    ent.emit();
-    CL.visedicts[CL.numvisedicts++] = ent;
-  }
-};
-
 CL.ParsePacketEntities = function() { // private
   while (true) {
     const edictNum = MSG.ReadShort();
@@ -2155,8 +1818,9 @@ CL.ParsePacketEntities = function() { // private
     const bits = MSG.ReadShort();
 
     if (bits & Protocol.u.classname) {
-      // TODO: initialize the right client entity class here
       clent.classname = MSG.ReadString();
+      clent.loadHandler();
+      clent.spawn(); // changing the classname also means we need to spawn the entity again
     }
 
     if (bits & Protocol.u.free) {
@@ -2225,19 +1889,4 @@ CL.ParsePacketEntities = function() { // private
   }
 
   // TODO: send an acknowledge command back
-};
-
-CL.SetSolidEntities = function () {
-  CL.pmove.clearEntities();
-
-  for (let i = 1; i < CL.entities.length; i++) {
-    /** @type {ClientEdict} */
-    const clent = CL.entities[i];
-
-    if (!clent.model) {
-      continue;
-    }
-
-    CL.pmove.addEntity(clent, clent.solid === solid.SOLID_BSP ? clent.model : null);
-  }
 };

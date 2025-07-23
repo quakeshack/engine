@@ -59,7 +59,7 @@ export class QSocket {
   }
 };
 
-class BaseDriver {
+export class BaseDriver {
   constructor() {
     this.initialized = false;
     this.driverlevel = null;

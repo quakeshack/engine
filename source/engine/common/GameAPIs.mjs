@@ -1,5 +1,6 @@
 import { solid } from '../../shared/Defs.mjs';
 import Vector from '../../shared/Vector.mjs';
+import { ClientDlight } from '../client/ClientEntities.mjs';
 import { GLTexture } from '../client/GL.mjs';
 import VID from '../client/VID.mjs';
 import MSG from '../network/MSG.mjs';
@@ -9,15 +10,18 @@ import { ED, ServerEdict } from '../server/Edict.mjs';
 import Cmd from './Cmd.mjs';
 import Cvar from './Cvar.mjs';
 import Mod, { ParsedQC } from './Mod.mjs';
-import { Pmove } from './Pmove.mjs';
+import { Pmove, Trace } from './Pmove.mjs';
 
-let { CL, Con, Host, SV, Draw } = registry;
+/** @typedef {import('../client/ClientEntities.mjs').ClientEdict} ClientEdict */
+
+let { CL, Con, Draw, Host, R, SV } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
   Con = registry.Con;
   Draw = registry.Draw;
   Host = registry.Host;
+  R = registry.R;
   SV = registry.SV;
 });
 
@@ -448,9 +452,34 @@ export class ClientEngineAPI extends EngineAPI {
   }
 
   /**
-   * @param {Vector} start
-   * @param {Vector} end
-   * @returns
+   * Translates world coordinates to screen coordinates.
+   * @param {Vector} origin position in world coordinates
+   * @returns {{x: number, y: number, z: number, visible: boolean}} position in screen coordinates and visibility flag
+   */
+  static WorldToScreen(origin) {
+    return R.WorldToScreen(origin);
+  }
+
+  /**
+   * Gets all entities in the game.
+   * @param {boolean} onlyVisible only visible entities
+   * @yields {ClientEdict} entity
+   */
+  static *GetEntities(onlyVisible = false) {
+    for (const entity of CL.state.clientEntities.entities) {
+      if (onlyVisible && !entity.model) {
+        continue;
+      }
+
+      yield entity;
+    }
+  }
+
+  /**
+   * Performs a trace line in the game world.
+   * @param {Vector} start start position
+   * @param {Vector} end end position
+   * @returns {Trace} trace result
    */
   static Traceline(start, end) {
     /** @type {Pmove} */
@@ -459,14 +488,34 @@ export class ClientEngineAPI extends EngineAPI {
     return pmove.clipPlayerMove(start, end);
   }
 
+  /**
+   * Allocates a dynamic light for the given entity Id.
+   * @param {number} entityId entity Id, can be 0
+   * @returns {ClientDlight} dynamic light instance
+   */
+  static AllocDlight(entityId) {
+    return CL.AllocDlight(entityId);
+  }
+
+  /**
+   * Spawns a rocket trail effect from start to end
+   * @param {Vector} start e.g. previous origin
+   * @param {Vector} end e.g. current origin
+   * @param {number} type type of the trail
+   */
+  static RocketTrail(start, end, type) {
+    R.RocketTrail(start, end, type);
+  }
+
   static CL = {
-    /** @returns {Vector} */
     get viewangles() {
       return CL.state.viewangles.copy();
     },
-    /** @returns {Vector} */
     get vieworigin() {
       return CL.state.viewent.origin.copy();
+    },
+    get time() {
+      return CL.state.time;
     },
   };
 
@@ -475,5 +524,4 @@ export class ClientEngineAPI extends EngineAPI {
     get height() { return VID.height; },
     get pixelRatio() { return VID.pixelRatio; },
   };
-
 };

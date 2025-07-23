@@ -328,6 +328,14 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-23
+
+* reorganized the whole client entity structure
+  * client entities can have handlers as well, providing `spawn`, `emit` and `think`
+  * I’m not happy about the naming convention yet, but things work as I like
+  * would be nice if I could merge those client and server entities into one class, but have different methods
+* `ServerEdict.makeStatic` needs compression for class names now, it’s ballooning the signon buffer
+
 ### 2025-07-22
 
 * I should be more careful with things per frame, always to deep-copy hulls on each frame completely made the FPS crumble

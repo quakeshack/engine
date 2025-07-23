@@ -10,7 +10,7 @@ import { ServerClient } from '../server/Client.mjs';
 import { ServerEngineAPI } from './GameAPIs.mjs';
 import Chase from '../client/Chase.mjs';
 import VID from '../client/VID.mjs';
-import { HostError, SysError } from './Errors.mjs';
+import { HostError } from './Errors.mjs';
 import CDAudio from '../client/CDAudio.mjs';
 
 const Host = {};
@@ -54,7 +54,7 @@ Host.EndGame = function(message) {
 Host.Error = function(error) {
   debugger;
   if (Host.inerror === true) {
-    throw new Error('Host.Error: recursively entered');
+    throw new Error('throw new HostError: recursively entered');
   }
   Host.inerror = true;
   if (!registry.isDedicatedServer) {
@@ -372,7 +372,7 @@ Host._Frame = function() {
 
   if (CL.cls.signon === 4) {
     S.Update(R.refdef.vieworg, R.vpn, R.vright, R.vup);
-    CL.DecayLights();
+    CL.RunThink();
   } else {
     S.Update(Vector.origin, Vector.origin, Vector.origin, Vector.origin);
   }
@@ -904,7 +904,7 @@ Host.Loadgame_f = function (savename) {
   const gamestate = JSON.parse(data);
 
   if (gamestate.version !== 1) {
-    Host.Error(`Savegame is version ${gamestate.version}, not 1\n`);
+    throw new HostError(`Savegame is version ${gamestate.version}, not 1\n`);
     return;
   }
 
@@ -918,13 +918,13 @@ Host.Loadgame_f = function (savename) {
     if (!registry.isDedicatedServer) {
       CL.SetConnectingStep(null, null);
     }
-    Host.Error(`Couldn't load map: ${gamestate.mapname}\n`);
+    throw new HostError(`Couldn't load map: ${gamestate.mapname}\n`);
     return;
   }
 
   if (gamestate.gameversion !== SV.server.gameVersion) {
     SV.ShutdownServer(false);
-    Host.Error(`Game is version ${gamestate.gameversion}, not ${SV.server.gameVersion}\n`);
+    throw new HostError(`Game is version ${gamestate.gameversion}, not ${SV.server.gameVersion}\n`);
     return;
   }
 

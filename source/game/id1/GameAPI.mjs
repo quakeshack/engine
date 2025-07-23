@@ -24,8 +24,8 @@ import ShalrathMonsterEntity, { ShalrathMissileEntity, qc as shalrathModelQC } f
 import ShamblerMonsterEntity, { qc as shamblerModelQC } from './entity/monster/Shambler.mjs';
 import TarbabyMonsterEntity, { qc as tbabyModelQC } from './entity/monster/Tarbaby.mjs';
 
-/** @typedef {typeof import("source/engine/common/GameAPIs.mjs").ServerEngineAPI} ServerEngineAPI */
-/** @typedef {import("source/engine/common/Cvar.mjs").default} Cvar */
+/** @typedef {typeof import("../../engine/common/GameAPIs.mjs").ServerEngineAPI} ServerEngineAPI */
+/** @typedef {import("../../engine/common/Cvar.mjs").default} Cvar */
 
 const featureFlags = [
   'correct-ballistic-grenades', // enables zombie gib and ogre grenade trajectory fix

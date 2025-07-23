@@ -77,10 +77,10 @@ SV.fl = {
 
 SV.server = {
   num_edicts: 0,
-  datagram: new SzBuffer(2048, 'SV.server.datagram'),
-  reliable_datagram: new SzBuffer(2048, 'SV.server.reliable_datagram'),
+  datagram: new SzBuffer(4096, 'SV.server.datagram'),
+  reliable_datagram: new SzBuffer(4096, 'SV.server.reliable_datagram'),
   /** sent during client prespawn */
-  signon: new SzBuffer(2048, 'SV.server.signon'),
+  signon: new SzBuffer(4096, 'SV.server.signon'),
   edicts: [],
   mapname: null,
   worldmodel: null,
