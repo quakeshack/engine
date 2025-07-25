@@ -425,6 +425,7 @@ export default class ClientEntities {
     dl.decay = 0.0;
     dl.minlight = 0.0;
     dl.entity = entityId;
+    dl.color.setTo(1.0, 1.0, 1.0);
     return dl;
   }
 
@@ -522,9 +523,17 @@ export default class ClientEntities {
       }
 
       while (d > 0.0) {
+        // non-vanilla feature: colors and fullbright beam (TODO: feature flag)
+        const dl = CL.AllocDlight(0);
+        dl.origin = org.copy();
+        dl.radius = 50;
+        dl.die = CL.state.time + 0.1;
+        dl.color.setTo(0.7, 0.7, 1.0);
+
         const ent = this.allocateTempEntity();
         ent.origin = org.copy();
         ent.model = b.model;
+        ent.effects |= effect.EF_FULLBRIGHT; // <<< this too
         ent.angles = new Vector(pitch, yaw, Math.random() * 360.0);
         org[0] += dist[0] * 30.0;
         org[1] += dist[1] * 30.0;

@@ -364,7 +364,7 @@ SCR.UpdateScreen = function() {
       SCR.DrawTurtle();
       SCR.DrawPause();
       SCR.DrawCenterString();
-      Sbar.Draw();
+      CL.DrawHUD();
       SCR.DrawConsole();
       CL.Draw();
       M.Draw();

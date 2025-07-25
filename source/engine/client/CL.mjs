@@ -18,7 +18,7 @@ import { ClientMessages, ClientPlayerState } from './ClientMessages.mjs';
 
 /** @typedef {import('./Sound.mjs').SFX} SFX */
 
-let { COM, Con, Draw, Host, IN, Mod, NET, PR, R, S, SCR, SV, V } = registry;
+let { COM, Con, Draw, Host, IN, Mod, NET, PR, R, S, SCR, SV, Sbar, V } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   COM = registry.COM;
@@ -33,6 +33,7 @@ eventBus.subscribe('registry.frozen', () => {
   S = registry.S;
   SCR = registry.SCR;
   SV = registry.SV;
+  Sbar = registry.Sbar;
   V = registry.V;
 });
 
@@ -472,7 +473,7 @@ export default class CL {
   };
 
   static Draw() { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR
-    if (this.cls.connecting !== null) {
+    if (this.cls.connecting !== null && this.cls.state !== Def.clientConnectionState.disconnected) {
       const x0 = 32, y0 = 32;
       Draw.BlackScreen();
       Draw.String(x0, y0, 'Connecting', 2);
@@ -482,10 +483,14 @@ export default class CL {
       const p = this.cls.connecting.percentage;
       Draw.String(x0, y0 + 48, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(0, ' ')}%`);
     }
+  }
 
-    if (this.state.gameAPI) { // TODO: move somewhere else?
+  static DrawHUD() {
+    if (this.state.gameAPI) {
       this.state.gameAPI.draw();
     }
+
+    Sbar.Draw(); // TODO: let Client decide whether it wants to draw the statusbar or not
   }
 
   static RunThink() {
@@ -1661,9 +1666,9 @@ CL.ParsePacketEntities = function() { // private
       }
     }
 
-    if ((bits & (Protocol.u.origin1 | Protocol.u.origin2 | Protocol.u.origin3)) && clent.classname === 'player') {
-      console.log('CL.ParsePacketEntities: receiving origin', clent.num, origin.toString());
-    }
+    // if ((bits & (Protocol.u.origin1 | Protocol.u.origin2 | Protocol.u.origin3)) && clent.classname === 'player') {
+    //   console.log('CL.ParsePacketEntities: receiving origin', clent.num, origin.toString());
+    // }
 
     if (bits & Protocol.u.size) {
       clent.maxs.set(MSG.ReadCoordVector());

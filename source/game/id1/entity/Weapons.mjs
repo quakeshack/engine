@@ -626,6 +626,8 @@ export class Grenade extends BaseProjectile {
 
     if (this.velocity.isOrigin()) {
       this.avelocity.clear();
+    } else {
+      this.avelocity.set(this.velocity);
     }
   }
 
@@ -634,7 +636,6 @@ export class Grenade extends BaseProjectile {
     this.movetype = moveType.MOVETYPE_BOUNCE;
 
     if (this.velocity.len() > 0) {
-      this.avelocity.setTo(300.0, 300.0, 300.0);
       this.angles.set(this.velocity.toAngles());
     }
 

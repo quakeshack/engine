@@ -18,6 +18,9 @@ class ScheduledThink {
   }
 };
 
+/**
+ * @access package
+ */
 export default class BaseEntity {
   static classname = null;
 
@@ -194,6 +197,7 @@ export default class BaseEntity {
 
   /**
    * Defines a state for the state machine.
+   * @protected
    * @param {string} state state name
    * @param {?string|number} keyframe frame/keyframe name the model should be in
    * @param {?string} nextState state name of the automatic next state
@@ -274,7 +278,7 @@ export default class BaseEntity {
 
   /**
    * Schedules a think.
-   * @protected
+   * @package
    * @param {number} nextThink when to call back in seconds starting from game.time
    * @param {Function} callback callback function, thisArg and the first argument is going to be this
    * @param {?string} identifier optional identifier to overwrite existing scheduled thinks

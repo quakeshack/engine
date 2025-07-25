@@ -91,6 +91,9 @@ export const effect = Object.freeze({
   EF_BRIGHTLIGHT: 4,
   EF_DIMLIGHT: 8,
 
+  /** makes sure that the model is always rendered fullbright */
+  EF_FULLBRIGHT: 16,
+
   EF_NODRAW: 128,
 });
 

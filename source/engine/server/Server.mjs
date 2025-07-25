@@ -11,6 +11,7 @@ import { eventBus, registry } from '../registry.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import * as Defs from '../../shared/Defs.mjs';
 import { QSocket } from '../network/NetworkDrivers.mjs';
+import { HostError } from '../common/Errors.mjs';
 
 let { COM, Con, Host, Mod, NET, PR, V } = registry;
 
@@ -73,6 +74,20 @@ SV.fl = {
   waterjump: 2048,
   jumpreleased: 4096,
 };
+
+/**
+ * @typedef {{
+      fraction: number;
+      allsolid: boolean;
+      startsolid: boolean;
+      endpos: any;
+      plane: {
+          normal: Vector;
+          dist: number;
+      };
+      ent: any;
+  }} Trace
+ */
 
 // main
 
@@ -1588,7 +1603,7 @@ SV.NewChaseDir = function(actor, enemy, dist) {
 SV.CloseEnough = function(ent, goal, dist) { // Edict
   const absmin = ent.entity.absmin, absmax = ent.entity.absmax;
   const absminGoal = goal.entity.absmin, absmaxGoal = goal.entity.absmax;
-  for (let i = 0; i <= 2; ++i) {
+  for (let i = 0; i < 3; i++) {
     if (absminGoal[i] > (absmax[i] + dist)) {
       return false;
     }
@@ -1602,9 +1617,8 @@ SV.CloseEnough = function(ent, goal, dist) { // Edict
 // phys
 
 SV.CheckAllEnts = function() {
-  let e; let check;
-  for (e = 1; e < SV.server.num_edicts; ++e) {
-    check = SV.server.edicts[e];
+  for (let e = 1; e < SV.server.num_edicts; e++) {
+    const check = SV.server.edicts[e];
     if (check.isFree() === true) {
       continue;
     }
@@ -1620,9 +1634,12 @@ SV.CheckAllEnts = function() {
   }
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.CheckVelocity = function(ent) {
   const velo = ent.entity.velocity, origin = ent.entity.origin;
-  for (let i = 0; i <= 2; ++i) {
+  for (let i = 0; i < 3; i++) {
     let component = velo[i];
     if (Q.isNaN(component)) {
       Con.Print('Got a NaN velocity on ' + ent.entity.classname + '\n');
@@ -1676,6 +1693,11 @@ SV.RunThink = function(ent) {
   }
 };
 
+/**
+ * who touched whom? (depends on solid type not being not)
+ * @param {ServerEdict} e1 edict
+ * @param {ServerEdict} e2 edict
+ */
 SV.Impact = function(e1, e2) {
   SV.server.gameAPI.time = SV.server.time;
 
@@ -1704,6 +1726,11 @@ SV.ClipVelocity = function(vec, normal, out, overbounce) {
   }
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ * @param {number} time time to move
+ * @returns {number} blocked flags (0, 1, 2, 3, 7)
+ */
 SV.FlyMove = function(ent, time) {
   let bumpcount;
   let numplanes = 0;
@@ -1787,6 +1814,9 @@ SV.FlyMove = function(ent, time) {
   return blocked;
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.AddGravity = function(ent) {
   const ent_gravity = ent.entity.gravity || 1.0;
 
@@ -1795,6 +1825,11 @@ SV.AddGravity = function(ent) {
   ent.entity.velocity = velocity;
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ * @param {Vector} pushVector vector to push the entity
+ * @returns {Trace} trace result
+ */
 SV.PushEntity = function(ent, pushVector) {
   const end = ent.entity.origin.copy().add(pushVector);
   let nomonsters;
@@ -1815,6 +1850,10 @@ SV.PushEntity = function(ent, pushVector) {
   return trace;
 };
 
+/**
+ * @param {ServerEdict} pusher edict
+ * @param {number} movetime time to move
+ */
 SV.PushMove = function(pusher, movetime) {
   if (pusher.entity.velocity.isOrigin()) {
     pusher.entity.ltime += movetime;
@@ -1835,9 +1874,7 @@ SV.PushMove = function(pusher, movetime) {
       continue;
     }
     movetype = check.entity.movetype;
-    if ((movetype === SV.movetype.push) ||
-			(movetype === SV.movetype.none) ||
-			(movetype === SV.movetype.noclip)) {
+    if ((movetype === SV.movetype.push) || (movetype === SV.movetype.none) || (movetype === SV.movetype.noclip)) {
       continue;
     }
     if (((check.entity.flags & SV.fl.onground) === 0) || !check.entity.groundentity || !check.entity.groundentity.equals(pusher)) {
@@ -1854,7 +1891,7 @@ SV.PushMove = function(pusher, movetime) {
       check.entity.flags &= ~SV.fl.onground;
     }
     const entorig = check.entity.origin.copy();
-    moved[moved.length] = [entorig, check];
+    moved[moved.length] = [entorig, check]; // CR: dear reader, do not use moved.push(…) here
     pusher.entity.solid = SV.solid.not;
     SV.PushEntity(check, move);
     pusher.entity.solid = SV.solid.bsp;
@@ -1889,6 +1926,9 @@ SV.PushMove = function(pusher, movetime) {
   }
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.Physics_Pusher = function(ent) {
   const oldltime = ent.entity.ltime;
   const thinktime = ent.entity.nextthink;
@@ -1901,10 +1941,10 @@ SV.Physics_Pusher = function(ent) {
   } else {
     movetime = Host.frametime;
   }
-  if (movetime !== 0.0) {
+  if (movetime > 0.0) {
     SV.PushMove(ent, movetime);
   }
-  if ((thinktime <= oldltime) || (thinktime > ent.entity.ltime)) {
+  if (thinktime <= oldltime || thinktime > ent.entity.ltime) {
     return;
   }
   ent.entity.nextthink = 0.0;
@@ -1912,13 +1952,16 @@ SV.Physics_Pusher = function(ent) {
   ent.entity.think(null);
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.CheckStuck = function(ent) {
-  if (SV.TestEntityPosition(ent) !== true) {
+  if (!SV.TestEntityPosition(ent)) {
     ent.entity.oldorigin = ent.entity.oldorigin.set(ent.entity.origin);
     return;
   }
   ent.entity.origin = ent.entity.origin.set(ent.entity.oldorigin);
-  if (SV.TestEntityPosition(ent) !== true) {
+  if (SV.TestEntityPosition(ent)) {
     Con.DPrint('Unstuck.\n');
     SV.LinkEdict(ent, true);
     return;
@@ -1939,6 +1982,10 @@ SV.CheckStuck = function(ent) {
   Con.DPrint('player is stuck.\n');
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ * @returns {boolean} true if the entity is in water
+ */
 SV.CheckWater = function(ent) {
   const point = ent.entity.origin.copy().add(new Vector(0.0, 0.0, ent.entity.mins[2] + 1.0));
   ent.entity.waterlevel = 0.0;
@@ -1963,6 +2010,10 @@ SV.CheckWater = function(ent) {
   return ent.entity.waterlevel > 1.0;
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ * @param {Trace} trace trace of the wall hit
+ */
 SV.WallFriction = function(ent, trace) {
   const { forward } = ent.entity.v_angle.angleVectors();
   const normal = trace.plane.normal;
@@ -1983,11 +2034,15 @@ SV.WallFriction = function(ent, trace) {
   ent.entity.velocity = velo;
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ * @param {Vector} oldvel old velocity of the entity
+ * @returns {number} clip value, 7 if stuck, otherwise the clip value returned by SV.FlyMove
+ */
 SV.TryUnstick = function(ent, oldvel) {
   const oldorg = ent.entity.origin.copy();
   const dir = new Vector(2.0, 0.0, 0.0);
-  let i; let clip;
-  for (i = 0; i <= 7; ++i) {
+  for (let i = 0; i <= 7; i++) {
     switch (i) {
       case 1: dir[0] = 0.0; dir[1] = 2.0; break;
       case 2: dir[0] = -2.0; dir[1] = 0.0; break;
@@ -1995,11 +2050,11 @@ SV.TryUnstick = function(ent, oldvel) {
       case 4: dir[0] = 2.0; dir[1] = 2.0; break;
       case 5: dir[0] = -2.0; dir[1] = 2.0; break;
       case 6: dir[0] = 2.0; dir[1] = -2.0; break;
-      case 7: dir[0] = -2.0; dir[1] = -2.0;
+      case 7: dir[0] = -2.0; dir[1] = -2.0; break;
     }
     SV.PushEntity(ent, dir);
     ent.entity.velocity = new Vector(oldvel[0], oldvel[1], 0.0);
-    clip = SV.FlyMove(ent, 0.1);
+    const clip = SV.FlyMove(ent, 0.1);
     const curorg = ent.entity.origin;
     if (Math.abs(oldorg[1] - curorg[1]) > 4.0 || Math.abs(oldorg[0] - curorg[0]) > 4.0) {
       return clip;
@@ -2010,6 +2065,9 @@ SV.TryUnstick = function(ent, oldvel) {
   return 7;
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.WalkMove = function(ent) {
   const oldonground = ent.entity.flags & SV.fl.onground;
   ent.entity.flags ^= oldonground;
@@ -2075,6 +2133,9 @@ SV.NoclipMove = function() {
   ent.entity.velocity = ent.entity.velocity.set(wishvel.multiply(2.0));
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.Physics_Client = function(ent) {
   if (!ent.getClient().active) {
     return;
@@ -2116,6 +2177,9 @@ SV.Physics_Client = function(ent) {
   SV.server.gameAPI.PlayerPostThink(ent);
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.CheckWaterTransition = function(ent) {
   const cont = SV.PointContents(ent.entity.origin);
 
@@ -2140,6 +2204,9 @@ SV.CheckWaterTransition = function(ent) {
   ent.entity.waterlevel = cont;
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.Physics_Toss = function(ent) {
   if (!SV.RunThink(ent)) {
     return; // thinking might have freed the edict
@@ -2172,6 +2239,9 @@ SV.Physics_Toss = function(ent) {
   SV.CheckWaterTransition(ent);
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ */
 SV.Physics_Step = function(ent) {
   if ((ent.entity.flags & (SV.fl.onground | SV.fl.fly | SV.fl.swim)) === 0) {
     const hitsound = (ent.entity.velocity[2] < (SV.gravity.value * -0.1));
@@ -2187,44 +2257,11 @@ SV.Physics_Step = function(ent) {
   SV.CheckWaterTransition(ent);
 };
 
-SV._BuildSurfaceDisplayList = function(currentmodel, fa) { // FIXME: move to Mod?
-  fa.verts = [];
-  if (fa.numedges <= 2) {
-    return;
-  }
-  let i; let index; let vec; let vert; let s; let t;
-  const texinfo = currentmodel.texinfo[fa.texinfo];
-  const texture = currentmodel.textures[texinfo.texture];
-  for (i = 0; i < fa.numedges; ++i) {
-    index = currentmodel.surfedges[fa.firstedge + i];
-    if (index > 0) {
-      vec = currentmodel.vertexes[currentmodel.edges[index][0]];
-    } else {
-      vec = currentmodel.vertexes[currentmodel.edges[-index][1]];
-    }
-    vert = new Vector(vec[0], vec[1], vec[2]);
-    if (fa.sky !== true) {
-      s = vec.dot(new Vector(...texinfo.vecs[0])) + texinfo.vecs[0][3];
-      t = vec.dot(new Vector(...texinfo.vecs[1])) + texinfo.vecs[1][3];
-      vert[3] = s / texture.width;
-      vert[4] = t / texture.height;
-      if (fa.turbulent !== true) {
-        vert[5] = (s - fa.texturemins[0] + (fa.light_s << 4) + 8.0) / 16384.0;
-        vert[6] = (t - fa.texturemins[1] + (fa.light_t << 4) + 8.0) / 16384.0;
-      }
-    }
-    if (i >= 3) {
-      fa.verts[fa.verts.length] = fa.verts[0];
-      fa.verts[fa.verts.length] = fa.verts[fa.verts.length - 2];
-    }
-    fa.verts[fa.verts.length] = vert;
-  }
-};
-
 SV.Physics = function() {
   SV.server.gameAPI.time = SV.server.time;
   SV.server.gameAPI.StartFrame(null);
   for (let i = 0; i < SV.server.num_edicts; i++) {
+    /** @type {ServerEdict} */
     const ent = SV.server.edicts[i];
     if (ent.isFree()) {
       continue;
@@ -2256,7 +2293,7 @@ SV.Physics = function() {
         SV.Physics_Toss(ent);
         continue;
     }
-    throw new Error('SV.Physics: bad movetype ' + (ent.entity.movetype >> 0));
+    throw new HostError('SV.Physics: bad movetype ' + (ent.entity.movetype >> 0));
   }
   SV.server.time += Host.frametime;
 };
@@ -2723,7 +2760,7 @@ SV.HullForEntity = function(ent, mins, maxs, out_offset) {
     out_offset.set(origin);
     return SV.box_hull;
   }
-  console.assert(ent.entity.movetype !== SV.movetype.none, 'SOLID_BSP with MOVETYPE_NONE');
+  console.assert(ent.entity.movetype !== SV.movetype.none, 'requires SOLID_BSP with MOVETYPE_NONE');
   const model = SV.server.models[ent.entity.modelindex];
   console.assert(model && model.type === Mod.type.brush, 'model is null or not a brush');
   const size = maxs[0] - mins[0];
@@ -2761,8 +2798,8 @@ SV.CreateAreaNode = function(depth, mins, maxs) {
   anode.axis = (maxs[0] - mins[0]) > (maxs[1] - mins[1]) ? 0 : 1;
   anode.dist = 0.5 * (maxs[anode.axis] + mins[anode.axis]);
 
-  const maxs1 = new Vector(maxs[0], maxs[1], maxs[2]);
-  const mins2 = new Vector(mins[0], mins[1], mins[2]);
+  const maxs1 = maxs.copy();
+  const mins2 = mins.copy();
   maxs1[anode.axis] = mins2[anode.axis] = anode.dist;
   anode.children = [SV.CreateAreaNode(depth + 1, mins2, maxs), SV.CreateAreaNode(depth + 1, mins, maxs1)];
   return anode;
@@ -2929,7 +2966,7 @@ SV.TestEntityPosition = function(ent) {
  * @param {number} p2f fraction at p2 (usually 1.0)
  * @param {Vector} p1 start point
  * @param {Vector} p2 end point
- * @param {object} trace object to store trace results
+ * @param {Trace} trace object to store trace results
  * @returns {boolean} true means going down, false means going up
  */
 SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) { // TODO: rewrite to iterative check
@@ -3017,7 +3054,16 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) { // TODO: 
   return false;
 };
 
+/**
+ * @param {ServerEdict} ent edict
+ * @param {Vector} start start vector
+ * @param {Vector} mins mins vector
+ * @param {Vector} maxs maxs vector
+ * @param {Vector} end end vector
+ * @returns {Trace} trace result
+ */
 SV.ClipMoveToEntity = function(ent, start, mins, maxs, end) {
+  /** @type {Trace} */
   const trace = {
     fraction: 1.0,
     allsolid: true,
@@ -3092,6 +3138,15 @@ SV.ClipToLinks = function(node, clip) {
   }
 };
 
+/**
+ * @param {Vector} start start vector
+ * @param {Vector} mins mins vector
+ * @param {Vector} maxs maxs vector
+ * @param {Vector} end end vector
+ * @param {number} type move type, one of SV.move.*
+ * @param {ServerEdict} passedict what edict to pass
+ * @returns {Trace} trace result
+ */
 SV.Move = function(start, mins, maxs, end, type, passedict) {
   const clip = {
     trace: SV.ClipMoveToEntity(SV.server.edicts[0], start, mins, maxs, end),
@@ -3106,7 +3161,7 @@ SV.Move = function(start, mins, maxs, end, type, passedict) {
     boxmins: new Vector(),
     boxmaxs: new Vector(),
   };
-  for (let i = 0; i <= 2; i++) {
+  for (let i = 0; i < 3; i++) {
     if (end[i] > start[i]) {
       clip.boxmins[i] = start[i] + clip.mins2[i] - 1.0;
       clip.boxmaxs[i] = end[i] + clip.maxs2[i] + 1.0;

@@ -328,6 +328,14 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-25
+
+* again hunting down the living dead (stupid racy scheduled thinks issue)
+* more client stuff:
+  * trying to break apart more client code
+  * played around with some effects here and there
+* definitely getting an idea how I want to have the client API later
+
 ### 2025-07-24
 
 * more client stuff:

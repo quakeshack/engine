@@ -208,6 +208,7 @@ export class TorchLightEntity extends BaseLightEntity {
   }
 
   spawn() {
+    this.effects |= effect.EF_FULLBRIGHT; // always lit
     this.spawnAmbientSound('ambience/fire1.wav', 0.5, attn.ATTN_STATIC);
     this.makeStatic();
   }
@@ -286,6 +287,7 @@ export class FireballEntity extends BaseEntity {
   spawn() {
     this.solid = solid.SOLID_TRIGGER;
     this.movetype = moveType.MOVETYPE_TOSS;
+    this.effects |= effect.EF_FULLBRIGHT; // always lit
     this.velocity = new Vector(
       (Math.random() * 100) - 50,
       (Math.random() * 100) - 50,

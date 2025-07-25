@@ -225,7 +225,7 @@ export default class OgreMonsterEntity extends WalkMonster {
   }
 
   _precache() {
-    this.engine.PrecacheModel('progs/grenade.mdl');
+    super._precache();
     this.engine.PrecacheSound('ogre/ogdrag.wav');
     this.engine.PrecacheSound('ogre/ogdth.wav');
     this.engine.PrecacheSound('ogre/ogidle.wav');

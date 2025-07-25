@@ -223,12 +223,14 @@ export class ShalrathMissileEntity extends BaseProjectile {
   }
 
   home() {
-    if (!this.owner.enemy || this.owner.enemy.health < 1) {
+    const enemy = (/** @type {ShalrathMonsterEntity} */ (this.owner)).enemy;
+
+    if (!enemy || enemy.health < 1) {
       this.remove();
       return;
     }
 
-    const dir = this.owner.enemy.origin.copy().add(new Vector(0.0, 0.0, 10.0)).subtract(this.origin);
+    const dir = enemy.origin.copy().add(new Vector(0.0, 0.0, 10.0)).subtract(this.origin);
     dir.normalize();
     dir.multiply(this.game.skill === 3 ? 350 : 250);
     this.velocity.set(dir);
@@ -248,7 +250,8 @@ export class ShalrathMissileEntity extends BaseProjectile {
     this.setModel('progs/v_spike.mdl');
     this.setSize(Vector.origin, Vector.origin);
 
-    const dist = this.origin.distanceTo(this.owner.enemy.origin);
+    const enemy = (/** @type {ShalrathMonsterEntity} */ (this.owner)).enemy;
+    const dist = this.origin.distanceTo(enemy.origin);
     this._scheduleThink(this.game.time + Math.max(0.1, dist * 0.002), () => this.home());
   }
 };

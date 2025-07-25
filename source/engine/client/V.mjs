@@ -264,6 +264,10 @@ V.CalcBlend = function () {
   }
 };
 
+/**
+ *
+ * @param value
+ */
 function finiteOrZero(value) {
   return isFinite(value) ? value : 0.0;
 }
@@ -305,7 +309,7 @@ V.CalcRefdef = function () { // TODO: Client
     }
     V.dmg_time -= Host.frametime;
   }
-  if (CL.state.stats[Def.stat.health] <= 0) {
+  if (CL.state.stats[Def.stat.health] <= 0) { // Legacy
     R.refdef.viewangles[2] = 80.0;
   }
 
@@ -355,7 +359,7 @@ V.CalcRefdef = function () { // TODO: Client
     case 80:
       view.origin[2] += 0.5;
   }
-  view.model = CL.state.model_precache[CL.state.stats[Def.stat.weapon]];
+  view.model = CL.state.model_precache[CL.state.stats[Def.stat.weapon]]; // Legacy
   view.frame = CL.state.stats[Def.stat.weaponframe];
 
   R.refdef.viewangles.add(CL.state.punchangle);

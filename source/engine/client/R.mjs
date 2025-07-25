@@ -10,6 +10,8 @@ import MSG from '../network/MSG.mjs';
 import W, { translateIndexToRGBA } from '../common/W.mjs';
 import VID from './VID.mjs';
 import GL, { GLTexture } from './GL.mjs';
+import { effect } from '../../shared/Defs.mjs';
+import { ClientEdict } from './ClientEntities.mjs';
 
 let { CL, COM, Con, Host, Mod, SCR, SV, Sys, V  } = registry;
 
@@ -577,6 +579,10 @@ R.avertexnormals = [
   new Vector(-0.688191, -0.587785, -0.425325),
 ];
 
+/**
+ *
+ * @param {ClientEdict} e entity
+ */
 R.DrawAliasModel = function(e) {
   const clmodel = e.model;
 
@@ -644,6 +650,12 @@ R.DrawAliasModel = function(e) {
   if ((e.num >= 1) && (e.num <= CL.state.maxclients) && (ambientlight < 8.0)) {
     ambientlight = shadelight = 8.0;
   }
+
+  if (e.effects & effect.EF_FULLBRIGHT) {
+    ambientlight = 255.0;
+    shadelight = 255.0;
+  }
+
   gl.uniform1f(program.uAmbientLight, ambientlight * 0.0078125);
   gl.uniform1f(program.uShadeLight, shadelight * 0.0078125);
 
@@ -759,13 +771,13 @@ R.DrawViewModel = function() {
   if (R.drawentities.value === 0) {
     return;
   }
-  if ((CL.state.items & Def.it.invisibility) !== 0) {
+  if ((CL.state.items & Def.it.invisibility) !== 0) { // Legacy
     return;
   }
-  if (CL.state.stats[Def.stat.health] <= 0) {
+  if (CL.state.stats[Def.stat.health] <= 0) { // Legacy
     return;
   }
-  if (CL.state.viewent.model == null) {
+  if (!CL.state.viewent.model) {
     return;
   }
 
@@ -987,6 +999,7 @@ R.RenderScene = function() {
   R.DrawViewModel();
   R.DrawWorld();
   R.DrawEntitiesOnList();
+  R.DrawWorldTurbolents();
   gl.disable(gl.CULL_FACE);
   R.RenderDlights();
   R.DrawParticles();
@@ -2132,32 +2145,40 @@ R.DrawWorld = function() {
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
     }
   }
+};
 
-  if (!R.drawturbolents.value) {
+R.DrawWorldTurbolents = function() {
+  if (R.drawturbolents.value === 0) {
     return;
   }
 
-  program = GL.UseProgram('turbulent');
+  const clmodel = CL.state.worldmodel;
+  R.currententity = CL.state.clientEntities.getEntity(0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
+
+  gl.enable(gl.BLEND);
+  const program = GL.UseProgram('turbulent');
   gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
   gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
   gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 20, clmodel.waterchain);
   gl.vertexAttribPointer(program.aTexCoord.location, 2, gl.FLOAT, false, 20, clmodel.waterchain + 12);
-  for (i = 0; i < clmodel.leafs.length; ++i) {
-    leaf = clmodel.leafs[i];
+  for (let i = 0; i < clmodel.leafs.length; ++i) {
+    const leaf = clmodel.leafs[i];
     if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
       continue;
     }
     if (R.CullBox(leaf.mins, leaf.maxs) === true) {
       continue;
     }
-    for (j = leaf.waterchain; j < leaf.cmds.length; ++j) {
-      cmds = leaf.cmds[j];
+    for (let j = leaf.waterchain; j < leaf.cmds.length; ++j) {
+      const cmds = leaf.cmds[j];
       R.c_brush_verts += cmds[2];
       clmodel.textures[cmds[0]].glt.bind(program.tTexture);
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
     }
   }
+  gl.disable(gl.BLEND);
 };
 
 R.MarkLeaves = function() {

@@ -35,7 +35,7 @@ export class EntityAI extends EntityWrapper {
 
   /** @returns {BaseMonster} augmented monster @protected */
   get _entity() {
-    return super._entity;
+    return /** @type {BaseMonster}*/(super._entity);
   }
 
   clear() {
@@ -408,9 +408,10 @@ export class QuakeEntityAI extends EntityAI {
     this._entity.goalentity = this._entity.enemy;
     this._entity.ideal_yaw = this._entity.enemy.origin.copy().subtract(this._entity.origin).toYaw();
 
-    this._entity._scheduleThink(this._game.time + 0.1, this._entity.thinkRun);
+    // NOTE: keep it at 50 ms otherwise there will be a racy condition with the animation thinker causing dead monsters attacking the player
+    this._entity._scheduleThink(this._game.time + 0.05, this._entity.thinkRun);
 
-    this._entity.attackFinished(1.0);	// wait a while before first attack
+    this._entity.attackFinished(1.0); // wait a while before first attack
 
     // console.log('_huntTarget', this._entity);
   }
