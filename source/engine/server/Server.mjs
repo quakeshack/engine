@@ -90,8 +90,8 @@ export class ServerEntityState {
   constructor(num = null) {
     this.num = num;
     this.flags = 0;
-    this.origin = new Vector();
-    this.angles = new Vector();
+    this.origin = new Vector(Infinity, Infinity, Infinity);
+    this.angles = new Vector(Infinity, Infinity, Infinity);
     this.modelindex = 0;
     this.frame = 0;
     this.colormap = 0;
@@ -469,7 +469,7 @@ SV.FatPVS = function(org) {
 
 /**
  * Traverses all entities in the PVS of the given origin.
- * @param {Uint8Array} pvs PVS to check against
+ * @param {number[]} pvs PVS to check against
  * @param {number[]} ignoreEdictIds edict ids to ignore
  * @param {number[]} alwaysIncludeEdictIds edict ids to always yield
  * @param {boolean} includeFree whether to include free edicts
@@ -477,6 +477,7 @@ SV.FatPVS = function(org) {
  */
 SV.TraversePVS = function*(pvs, ignoreEdictIds = [], alwaysIncludeEdictIds = [], includeFree = false) {
   for (let e = 1; e < SV.server.num_edicts; e++) {
+    /** @type {ServerEdict} */
     const ent = SV.server.edicts[e];
 
     // requested to always include this edict
@@ -510,6 +511,7 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
   let changes = false;
 
   for (let i = 0; i < SV.svs.maxclients; ++i) {
+    /** @type {ServerClient} */
     const cl = SV.svs.clients[i];
     const playerEntity = cl.edict.entity;
 
@@ -562,8 +564,8 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
     MSG.WriteByte(msg, playerEntity.frame);
 
     if (pflags & Protocol.pf.PF_MSEC) {
-      const msec = 1000 * (SV.server.time - cl.last_update); // FIXME: right value?
-      MSG.WriteByte(msg, Math.max(0, Math.min(msec, 255)));
+      const msec = 1000 * (SV.server.time - cl.local_time);
+      MSG.WriteByte(msg, Math.max(0, Math.min(msec, 255))); // msec is capped at 255 (QW)
     }
 
     if (pflags & Protocol.pf.PF_COMMAND) {
@@ -571,6 +573,7 @@ SV.WritePlayersToClient = function(clent, pvs, msg) {
       const cmd = cl.cmd;
 
       if (pflags & Protocol.pf.PF_DEAD) {
+        // don’t show the corpse looking around
         cmd.angles.setTo(0, playerEntity.angles[1], 0);
       }
 
@@ -653,11 +656,11 @@ SV.WriteDeltaEntity = function(msg, from, to) {
   }
 
   for (let i = 0; i < 3; i++) {
-    if (Math.abs(from.origin[i] - to.origin[i]) > EPSILON) {
+    if (isFinite(to.origin[i]) && Math.abs(from.origin[i] - to.origin[i]) > EPSILON) {
       bits |= Protocol.u.origin1 << i;
     }
 
-    if (Math.abs(from.angles[i] - to.angles[i]) > 0.0) { // no epsilon check for angles?
+    if (isFinite(to.angles[i]) && Math.abs(from.angles[i] - to.angles[i]) > 0.0) { // no epsilon check for angles?
       bits |= Protocol.u.angle1 << i;
     }
   }
@@ -717,6 +720,13 @@ SV.WriteDeltaEntity = function(msg, from, to) {
     }
   }
 
+  // if (bits & (Protocol.u.origin1 | Protocol.u.origin2 | Protocol.u.origin3)) {
+  //   console.log('SV.WriteDeltaEntity: sending origin', to.num, to.origin.toString());
+  //   if (to.origin.isOrigin()) {
+  //     debugger;
+  //   }
+  // }
+
   if (bits & Protocol.u.size) {
     MSG.WriteCoordVector(msg, to.maxs);
     MSG.WriteCoordVector(msg, to.mins);
@@ -757,7 +767,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     toState.classname = ent.entity.classname;
     toState.modelindex = ent.entity.model ? ent.entity.modelindex : 0;
     toState.frame = ent.entity.frame;
-    toState.colormap = ent.entity.colormap;
+    toState.colormap = ent.entity?.colormap || 0;
     toState.skin = ent.entity.skin;
     toState.solid = ent.entity.solid;
     toState.origin.set(ent.entity.origin);
@@ -984,6 +994,7 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
   if ((msg.cursize + SV.server.datagram.cursize) < msg.data.byteLength) {
     msg.write(new Uint8Array(SV.server.datagram.data), SV.server.datagram.cursize);
   }
+
   // Con.DPrint('SV.SendClientDatagram: sending\n' + msg.toHexString() + '\n');
   if (NET.SendUnreliableMessage(client.netconnection, msg) === -1) {
     Host.DropClient(client, true, 'Connectivity issues');
@@ -1090,10 +1101,6 @@ SV.ModelIndex = function(name) {
   }
   console.assert(false, 'model must be precached', name);
   return null;
-};
-
-SV.CreateBaseline = function() {
-  // CR: baseline is stored in SV.server.signon, currently unused
 };
 
 SV.SaveSpawnparms = function() {
@@ -1239,7 +1246,6 @@ SV.SpawnServer = function(mapname) {
   Host.frametime = 0.1;
   SV.Physics();
   SV.Physics();
-  SV.CreateBaseline();
   // sending to all clients that we are on a new map
   for (i = 0; i < SV.svs.maxclients; ++i) {
     Host.client = SV.svs.clients[i];
@@ -2598,6 +2604,7 @@ SV.ReadClientMessage = function(client) {
 
       client.last_message = Host.realtime;
       client.ping_times[client.num_pings++ % client.ping_times.length] = Host.realtime - client.last_message;
+      client.local_time = SV.server.time;
 
       const cmd = MSG.ReadChar();
 

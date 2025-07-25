@@ -201,7 +201,7 @@ export class EntityState { // entity_state_t
 
 export class UserCmd { // usercmd_t
   constructor() {
-    /** @type {number} maximum 255 */
+    /** @type {number} the CL.state.mtime[0] when this command was sent */
     this.msec = 0;
     this.forwardmove = 0;
     this.sidemove = 0;

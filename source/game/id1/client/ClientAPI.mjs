@@ -10,7 +10,7 @@ const clientEdictHandlers = {
 
       dl.color = new Vector(1, 0.75, 0.25);
       dl.origin = this.clientEdict.origin.copy();
-      dl.radius = 275 + Math.random() * 50;
+      dl.radius = 285 + Math.random() * 15;
       dl.die = this.engine.CL.time + 0.1;
 
       this.engine.RocketTrail(this.clientEdict.originPrevious, this.clientEdict.origin, 1);
@@ -70,7 +70,7 @@ export class ClientGameAPI {
     }
   }
 
-  // eslint-disable-next-line no-unused-vars
+
   static GetClientEdictHandler(classname) {
     return clientEdictHandlers[classname] || null;
   }

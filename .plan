@@ -328,6 +328,13 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-24
+
+* more client stuff:
+  * static entities are now client-side entities with their own logic
+  * wired up pmove on the client side, but it’s still janky af
+  * time to rewrite parsing and prediction of entities
+
 ### 2025-07-23
 
 * reorganized the whole client entity structure

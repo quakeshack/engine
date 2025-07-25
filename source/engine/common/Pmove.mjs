@@ -376,6 +376,9 @@ export class PhysEnt { // physent_t
  * Standard Quake 1 movement logic.
  */
 export class PmovePlayer { // pmove_t (player state only)
+  /**
+   * @param {Pmove} pmove pmove instance
+   */
   constructor(pmove) {
     // former global vars
     this.frametime = 0;

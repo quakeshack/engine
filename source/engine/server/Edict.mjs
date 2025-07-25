@@ -506,7 +506,7 @@ export class ServerEdict {
 
   /**
    * Checks if this entity is in the given PVS.
-   * @param {Uint8Array} pvs PVS to check against
+   * @param {number[]} pvs PVS to check against
    * @returns {boolean} true, when this entity is in the PVS
    */
   isInPVS(pvs) {

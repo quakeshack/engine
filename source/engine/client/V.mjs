@@ -264,14 +264,18 @@ V.CalcBlend = function () {
   }
 };
 
+function finiteOrZero(value) {
+  return isFinite(value) ? value : 0.0;
+}
+
 V.CalcIntermissionRefdef = function () {
   const ent = CL.state.playerentity;
-  R.refdef.vieworg[0] = ent.origin[0];
-  R.refdef.vieworg[1] = ent.origin[1];
-  R.refdef.vieworg[2] = ent.origin[2];
-  R.refdef.viewangles[0] = ent.angles[0] + Math.sin(CL.state.time * V.ipitch_cycle.value) * V.ipitch_level.value;
-  R.refdef.viewangles[1] = ent.angles[1] + Math.sin(CL.state.time * V.iyaw_cycle.value) * V.iyaw_level.value;
-  R.refdef.viewangles[2] = ent.angles[2] + Math.sin(CL.state.time * V.iroll_cycle.value) * V.iroll_level.value;
+  R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]);
+  R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]);
+  R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]);
+  R.refdef.viewangles[0] = finiteOrZero(ent.angles[0]) + Math.sin(CL.state.time * V.ipitch_cycle.value) * V.ipitch_level.value;
+  R.refdef.viewangles[1] = finiteOrZero(ent.angles[1]) + Math.sin(CL.state.time * V.iyaw_cycle.value) * V.iyaw_level.value;
+  R.refdef.viewangles[2] = finiteOrZero(ent.angles[2]) + Math.sin(CL.state.time * V.iroll_cycle.value) * V.iroll_level.value;
   CL.state.viewent.model = null;
 };
 
@@ -286,9 +290,9 @@ V.CalcRefdef = function () { // TODO: Client
   ent.angles[0] = -CL.state.viewangles[0];
   const bob = V.CalcBob();
 
-  R.refdef.vieworg[0] = ent/*lerp*/.origin[0] + 0.03125;
-  R.refdef.vieworg[1] = ent/*lerp*/.origin[1] + 0.03125;
-  R.refdef.vieworg[2] = ent/*lerp*/.origin[2] + CL.state.viewheight + bob + 0.03125;
+  R.refdef.vieworg[0] = finiteOrZero(ent/*lerp*/.origin[0]) + 0.03125;
+  R.refdef.vieworg[1] = finiteOrZero(ent/*lerp*/.origin[1]) + 0.03125;
+  R.refdef.vieworg[2] = finiteOrZero(ent/*lerp*/.origin[2]) + CL.state.viewheight + bob + 0.03125;
 
   R.refdef.viewangles[0] = CL.state.viewangles[0];
   R.refdef.viewangles[1] = CL.state.viewangles[1];
@@ -312,34 +316,34 @@ V.CalcRefdef = function () { // TODO: Client
   R.refdef.viewangles[1] += iyaw;
   R.refdef.viewangles[2] += iroll;
 
-  const { forward, right, up } = (new Vector(-ent/*lerp*/.angles[0], ent/*lerp*/.angles[1], ent/*lerp*/.angles[2])).angleVectors();
+  const { forward, right, up } = (new Vector(finiteOrZero(-ent/*lerp*/.angles[0]), finiteOrZero(ent/*lerp*/.angles[1]), finiteOrZero(ent/*lerp*/.angles[2]))).angleVectors();
   R.refdef.vieworg[0] += V.ofsx.value * forward[0] + V.ofsy.value * right[0] + V.ofsz.value * up[0];
   R.refdef.vieworg[1] += V.ofsx.value * forward[1] + V.ofsy.value * right[1] + V.ofsz.value * up[1];
   R.refdef.vieworg[2] += V.ofsx.value * forward[2] + V.ofsy.value * right[2] + V.ofsz.value * up[2];
 
   if (R.refdef.vieworg[0] < (ent/*lerp*/.origin[0] - 14.0)) {
-    R.refdef.vieworg[0] = ent/*lerp*/.origin[0] - 14.0;
+    R.refdef.vieworg[0] = finiteOrZero(ent/*lerp*/.origin[0]) - 14.0;
   } else if (R.refdef.vieworg[0] > (ent/*lerp*/.origin[0] + 14.0)) {
-    R.refdef.vieworg[0] = ent/*lerp*/.origin[0] + 14.0;
+    R.refdef.vieworg[0] = finiteOrZero(ent/*lerp*/.origin[0]) + 14.0;
   }
   if (R.refdef.vieworg[1] < (ent/*lerp*/.origin[1] - 14.0)) {
-    R.refdef.vieworg[1] = ent/*lerp*/.origin[1] - 14.0;
+    R.refdef.vieworg[1] = finiteOrZero(ent/*lerp*/.origin[1]) - 14.0;
   } else if (R.refdef.vieworg[1] > (ent/*lerp*/.origin[1] + 14.0)) {
-    R.refdef.vieworg[1] = ent/*lerp*/.origin[1] + 14.0;
+    R.refdef.vieworg[1] = finiteOrZero(ent/*lerp*/.origin[1]) + 14.0;
   }
   if (R.refdef.vieworg[2] < (ent/*lerp*/.origin[2] - 22.0)) {
-    R.refdef.vieworg[2] = ent/*lerp*/.origin[2] - 22.0;
+    R.refdef.vieworg[2] = finiteOrZero(ent/*lerp*/.origin[2]) - 22.0;
   } else if (R.refdef.vieworg[2] > (ent/*lerp*/.origin[2] + 30.0)) {
-    R.refdef.vieworg[2] = ent/*lerp*/.origin[2] + 30.0;
+    R.refdef.vieworg[2] = finiteOrZero(ent/*lerp*/.origin[2]) + 30.0;
   }
 
   const view = CL.state.viewent;
   view.angles[0] = -R.refdef.viewangles[0] - ipitch;
   view.angles[1] = R.refdef.viewangles[1] - iyaw;
   view.angles[2] = CL.state.viewangles[2] - iroll;
-  view.origin[0] = ent/*lerp*/.origin[0] + forward[0] * bob * 0.4;
-  view.origin[1] = ent/*lerp*/.origin[1] + forward[1] * bob * 0.4;
-  view.origin[2] = ent/*lerp*/.origin[2] + CL.state.viewheight + forward[2] * bob * 0.4 + bob;
+  view.origin[0] = finiteOrZero(ent/*lerp*/.origin[0]) + forward[0] * bob * 0.4;
+  view.origin[1] = finiteOrZero(ent/*lerp*/.origin[1]) + forward[1] * bob * 0.4;
+  view.origin[2] = finiteOrZero(ent/*lerp*/.origin[2]) + CL.state.viewheight + forward[2] * bob * 0.4 + bob;
   switch (SCR.viewsize.value) {
     case 110:
     case 90:
@@ -363,14 +367,14 @@ V.CalcRefdef = function () { // TODO: Client
     }
     V.oldz += steptime * 80.0;
     if (V.oldz > ent/*lerp*/.origin[2]) {
-      V.oldz = ent/*lerp*/.origin[2];
+      V.oldz = finiteOrZero(ent/*lerp*/.origin[2]);
     } else if ((ent/*lerp*/.origin[2] - V.oldz) > 12.0) {
-      V.oldz = ent/*lerp*/.origin[2] - 12.0;
+      V.oldz = finiteOrZero(ent/*lerp*/.origin[2]) - 12.0;
     }
-    R.refdef.vieworg[2] += V.oldz - ent/*lerp*/.origin[2];
-    view.origin[2] += V.oldz - ent/*lerp*/.origin[2];
+    R.refdef.vieworg[2] += V.oldz - finiteOrZero(ent/*lerp*/.origin[2]);
+    view.origin[2] += V.oldz - finiteOrZero(ent/*lerp*/.origin[2]);
   } else {
-    V.oldz = ent/*lerp*/.origin[2];
+    V.oldz = finiteOrZero(ent/*lerp*/.origin[2]);
   }
   if (Chase.active.value) {
     Chase.Update();

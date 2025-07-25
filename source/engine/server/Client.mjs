@@ -45,6 +45,9 @@ export class ServerClient {
     /** @type {?QSocket} */
     this.netconnection = null;
 
+    /** @type {number} the SV.server.time when the last command was processed */
+    this.local_time = 0.0;
+
     /** spawn parms are carried from level to level */
     this.spawn_parms = new Array(16);
 

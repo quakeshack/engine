@@ -161,8 +161,14 @@ NET.SendMessage = function(sock, data) {
   return sock.SendMessage(data);
 };
 
+/**
+ *
+ * @param {QSocket} sock socket
+ * @param {SzBuffer} data message
+ * @returns
+ */
 NET.SendUnreliableMessage = function(sock, data) {
-  if (sock == null) {
+  if (sock === null) {
     return -1;
   }
   if (sock.state === QSocket.STATE_DISCONNECTED) {

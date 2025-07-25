@@ -461,12 +461,12 @@ export class ClientEngineAPI extends EngineAPI {
   }
 
   /**
-   * Gets all entities in the game.
+   * Gets all entities in the game. Both client-only and server entities.
    * @param {boolean} onlyVisible only visible entities
    * @yields {ClientEdict} entity
    */
   static *GetEntities(onlyVisible = false) {
-    for (const entity of CL.state.clientEntities.entities) {
+    for (const entity of CL.state.clientEntities.getEntities()) {
       if (onlyVisible && !entity.model) {
         continue;
       }
@@ -495,6 +495,17 @@ export class ClientEngineAPI extends EngineAPI {
    */
   static AllocDlight(entityId) {
     return CL.AllocDlight(entityId);
+  }
+
+  /**
+   * Allocates a new client entity.
+   * This is a client-side entity, not a server-side edict.
+   * Make sure to invoke spawn() when ready.
+   * Make sure to use setOrigin() to set the position of the entity.
+   * @returns {ClientEdict} a new client entity
+   */
+  static AllocEntity() {
+    return CL.state.clientEntities.allocateClientEntity();
   }
 
   /**

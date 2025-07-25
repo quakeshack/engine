@@ -719,30 +719,6 @@ R.DrawEntitiesOnList = function() {
   if (R.drawentities.value === 0) {
     return;
   }
-  const vis = (R.novis.value !== 0) ? Mod.novis : Mod.LeafPVS(R.viewleaf, CL.state.worldmodel);
-  let j; let leaf;
-  for (const currententity of CL.state.clientEntities.getStaticEntities()) {
-    R.currententity = currententity;
-    if (R.currententity.model === null) {
-      continue;
-    }
-    for (j = 0; j < R.currententity.leafs.length; ++j) {
-      leaf = R.currententity.leafs[j];
-      if ((leaf < 0) || ((vis[leaf >> 3] & (1 << (leaf & 7))) !== 0)) {
-        break;
-      }
-    }
-    if (j === R.currententity.leafs.length) {
-      continue;
-    }
-    switch (R.currententity.model.type) {
-      case Mod.type.alias:
-        R.DrawAliasModel(R.currententity);
-        continue;
-      case Mod.type.brush:
-        R.DrawBrushModel(R.currententity);
-    }
-  }
   for (const currententity of CL.state.clientEntities.getVisibleEntities()) {
     R.currententity = currententity;
     if (R.currententity.model === null) {
@@ -759,15 +735,6 @@ R.DrawEntitiesOnList = function() {
   GL.StreamFlush();
   gl.depthMask(false);
   gl.enable(gl.BLEND);
-  for (const currententity of CL.state.clientEntities.getStaticEntities()) {
-    R.currententity = currententity;
-    if (R.currententity.model === null) {
-      continue;
-    }
-    if (R.currententity.model.type === Mod.type.sprite) {
-      R.DrawSpriteModel(R.currententity);
-    }
-  }
   for (const currententity of CL.state.clientEntities.getVisibleEntities()) {
     R.currententity = currententity;
     if (R.currententity.model === null) {
@@ -1000,6 +967,8 @@ R.SetupGL = function() {
   R.Perspective();
   gl.enable(gl.DEPTH_TEST);
 };
+
+R.viewleaf = null;
 
 R.RenderScene = function() {
   R.AnimateLight();
@@ -2123,7 +2092,7 @@ R.RecursiveWorldNode = function(node) {
 
 R.DrawWorld = function() {
   const clmodel = CL.state.worldmodel;
-  R.currententity = CL.state.clientEntities.entities[0];
+  R.currententity = CL.state.clientEntities.getEntity(0);
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
 
   let program = GL.UseProgram('brush');

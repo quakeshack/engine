@@ -211,7 +211,7 @@ export default class ClientInput {
 
     cmd.impulse = ClientInput.impulse;
     cmd.angles.set(CL.state.viewangles);
-    // TODO: cmd.msec =
+    cmd.msec = CL.state.mtime[0];
 
     ClientInput.impulse = 0;
   }

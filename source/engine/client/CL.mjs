@@ -178,7 +178,7 @@ export default class CL {
     }
     /** @type {ClientEdict} */
     static get playerentity() {
-      return this.clientEntities.entities[CL.state.viewentity];
+      return this.clientEntities.getEntity(CL.state.viewentity);
     }
     static gameAPI = null;
     static paused = false;
@@ -436,6 +436,10 @@ export default class CL {
     return r;
   }
 
+  /**
+   * Calculates the lerp fraction, also sets the @link {CL.state.time}.
+   * @returns {number} fraction of the lerp, from 0 to 1
+   */
   static LerpPoint() {
     let f = this.state.mtime[0] - this.state.mtime[1];
 
@@ -564,6 +568,7 @@ export default class CL {
   /**
    * Will get the client entity by its edict number.
    * If it’s not found, it will return a new ClientEdict with the given number.
+   * This should never be called to allocate entities explictly, use `ClientEntities.allocateClientEntity` instead.
    * @param {number} num edict Id
    * @returns {ClientEdict} client entity
    */
@@ -578,10 +583,6 @@ export default class CL {
    */
   static AllocDlight(num) {
     return this.state.clientEntities.allocateDynamicLight(num);
-  }
-
-  static NewTempEntity() { // private
-    return this.state.clientEntities.allocateTempEntity();
   }
 
   /**
@@ -599,11 +600,10 @@ export default class CL {
   static SetSolidEntities() {
     this.pmove.clearEntities();
 
-    for (let i = 1; i < this.state.clientEntities.entities.length; i++) {
-      /** @type {ClientEdict} */
-      const clent = this.state.clientEntities.entities[i];
+    // NOTE: not adding world, it’s already in pmove AND we are not adding static entities, they are never affecting the game play
 
-      if (!clent.model) {
+    for (const clent of this.state.clientEntities.getEntities()) {
+      if (clent.num === 0 || !clent.model) {
         continue;
       }
 
@@ -710,15 +710,6 @@ CL.PrintEntities_f = function() { // private
 
     Con.Print(`${ent}\n`);
   }
-
-  Con.Print('\nStatic Entities:\n');
-  for (const ent of CL.state.clientEntities.getStaticEntities()) {
-    if (ent.model === null) {
-      continue;
-    }
-
-    Con.Print(`${ent}\n`);
-  }
 };
 
 CL.ReadFromServer = function() { // public, by Host.js
@@ -757,7 +748,7 @@ CL.ReadFromServer = function() { // public, by Host.js
   CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]))); // TODO: this is going to be replaced by Pmove
 
   // CL.RelinkEntities();
-  CL.UpdateTEnts();
+  // CL.UpdateTEnts();
 };
 
 CL.SendCmd = function() { // public, by Host.js
@@ -1074,7 +1065,11 @@ CL.ParseServerData = function() { // private
     CL._processingServerDataState = 2;
     CL.state.worldmodel = CL.state.model_precache[1];
     CL.pmove.setWorldmodel(CL.state.worldmodel);
-    CL.EntityNum(0).model = CL.state.worldmodel;
+    const ent = CL.EntityNum(0);
+    ent.classname = 'worldspawn';
+    ent.loadHandler();
+    ent.model = CL.state.worldmodel;
+    ent.spawn();
     CL.SetConnectingStep(66, 'Preparing map');
     R.NewMap();
     Host.noclip_anglehack = false;
@@ -1111,9 +1106,8 @@ CL.ParseClientdataWinQuake = function(bits) { // private
   }
 
   i = MSG.ReadLong();
-  let j;
   if (CL.state.items !== i) {
-    for (j = 0; j <= 31; ++j) {
+    for (let j = 0; j < CL.state.item_gettime.length; j++) {
       if ((((i >>> j) & 1) !== 0) && (((CL.state.items >>> j) & 1) === 0)) {
         CL.state.item_gettime[j] = CL.state.time;
       }
@@ -1189,6 +1183,8 @@ CL.PlayerState = class ClientPlayerState extends Protocol.EntityState {
     this.onground = null;
     this.oldbuttons = 0;
 
+    this.pmove = CL.pmove.newPlayerMove();
+
     Object.seal(this);
   }
 
@@ -1245,28 +1241,18 @@ CL.ParsePlayerinfo = function() { // private
   state.angles.set(state.command.angles);
 
   CL.state.players[num] = state;
-
-  // console.log('read player info', CL.time, state, state.command);
 };
 
 CL.ParseStaticEntity = function() { // private
-  const ent = new ClientEdict(-1);
-  CL.state.clientEntities.makeStatic(ent);
-  ent.classname = MSG.ReadString();
-  ent.loadHandler();
+  const ent = CL.state.clientEntities.allocateClientEntity(MSG.ReadString());
   ent.model = CL.state.model_precache[MSG.ReadByte()];
   ent.frame = MSG.ReadByte();
   ent.colormap = MSG.ReadByte();
   ent.skinnum = MSG.ReadByte();
   ent.effects = MSG.ReadByte();
   ent.solid = MSG.ReadByte();
-  ent.msg_angles[0].set(MSG.ReadAngleVector());
-  ent.msg_origins[0].set(MSG.ReadCoordVector());
-  ent.updatePosition(false);
-  R.currententity = ent;
-  R.emins = ent.origin.copy().add(ent.model.mins);
-  R.emaxs = ent.origin.copy().add(ent.model.maxs);
-  R.SplitEntityOnNode(CL.state.worldmodel.nodes[0]);
+  ent.angles.set(MSG.ReadAngleVector());
+  ent.setOrigin(MSG.ReadCoordVector());
   ent.spawn();
 };
 
@@ -1598,7 +1584,7 @@ CL.ParseServerMessage = function() { // private
 
 // tent
 
-CL.InitTEnts = function() { // private
+CL.InitTEnts = function() { // private // TODO: move this to ClientAPI / ClientLegacy
   CL.sfx_wizhit = S.PrecacheSound('wizard/hit.wav');
   CL.sfx_knighthit = S.PrecacheSound('hknight/hit.wav');
   CL.sfx_tink1 = S.PrecacheSound('weapons/tink1.wav');
@@ -1608,7 +1594,7 @@ CL.InitTEnts = function() { // private
   CL.sfx_r_exp3 = S.PrecacheSound('weapons/r_exp3.wav');
 };
 
-CL.ParseBeam = function(m) { // private
+CL.ParseBeam = function(m) { // private // TODO: move this to ClientAPI / ClientLegacy
   const ent = MSG.ReadShort();
   const start = MSG.ReadCoordVector();
   const end = MSG.ReadCoordVector();
@@ -1638,7 +1624,7 @@ CL.ParseBeam = function(m) { // private
   Con.Print('beam list overflow!\n');
 };
 
-CL.ParseTemporaryEntity = function() { // private // TODO: move this to ClientAPI
+CL.ParseTemporaryEntity = function() { // private // TODO: move this to ClientAPI / ClientLegacy
   const type = MSG.ReadByte();
 
   switch (type) {
@@ -1713,10 +1699,6 @@ CL.ParseTemporaryEntity = function() { // private // TODO: move this to ClientAP
   throw new Error(`CL.ParseTEnt: bad type ${type}`);
 };
 
-CL.UpdateTEnts = function() { // private
-  // TODO: remove this
-};
-
 CL.PredictMove = function() { // public, by Host.js
   if (CL.nopred.value !== 0) {
     return;
@@ -1732,22 +1714,31 @@ CL.PredictMove = function() { // public, by Host.js
     return;
   }
 
-  const pmove = CL.pmove.newPlayerMove();
-
   const to = new CL.PlayerState();
 
-  // TODO
-  CL.PredictUsercmd(pmove, from, to, from.command);
+  CL.PredictUsercmd(from.pmove, from, to, CL.state.cmd);
 
   const f = Math.max(0, Math.min(1, ((CL.state.time - from.stateTime) / (to.stateTime - from.stateTime))));
 
-  // console.log('f', f);
+  // // console.log('f', f);
 
-  if (!playerEntity.origin.equals(to.origin)) {
-    // console.log('CL.PredictMove', newstate.origin, playerEntity.origin);
-  }
+  // if (playerEntity.origin.distanceTo(to.origin) > 100) {
+  //   Con.PrintWarning('CL.PredictMove: player origin too far away from predicted origin\n');
+  //   return;
+  // }
+
+  // const f = CL.LerpPoint();
+  const o0 = playerEntity.origin;
+  const o1 = to.origin;
+
+  playerEntity.origin.setTo(
+    o1[0] + (o0[0] - o1[0]) * f,
+    o1[1] + (o0[1] - o1[1]) * f,
+    o1[2] + (o0[2] - o1[2]) * f,
+  );
 
   playerEntity.origin.set(to.origin);
+  playerEntity.angles.set(to.angles);
 };
 
 /**
@@ -1759,12 +1750,11 @@ CL.PredictMove = function() { // public, by Host.js
 CL.PredictUsercmd = function(pmove, from, to, u) { // private
   // split long commands
   if (u.msec > 50) {
-    debugger;
     const mid = new CL.PlayerState();
     const split = u.copy();
     split.msec /= 2;
-    CL.PredictUsercmd(from, mid, split);
-    CL.PredictUsercmd(mid, to, split);
+    CL.PredictUsercmd(pmove, from, mid, split);
+    CL.PredictUsercmd(pmove, mid, to, split);
     return;
   }
 
@@ -1817,6 +1807,8 @@ CL.ParsePacketEntities = function() { // private
 
     const bits = MSG.ReadShort();
 
+    // CR:  this step is important, it will initialize the client-side code for the entity
+    //      if there’s no classname, the client entity will be remain pretty dumb, since it wont’t have a handler
     if (bits & Protocol.u.classname) {
       clent.classname = MSG.ReadString();
       clent.loadHandler();
@@ -1868,6 +1860,13 @@ CL.ParsePacketEntities = function() { // private
         angles[i] = MSG.ReadAngle();
       }
     }
+
+    // if (bits & (Protocol.u.origin1 | Protocol.u.origin2 | Protocol.u.origin3)) {
+    //   console.log('CL.ParsePacketEntities: receiving origin', clent.num, origin.toString());
+    //   if (origin.isOrigin()) {
+    //     debugger;
+    //   }
+    // }
 
     if (bits & Protocol.u.size) {
       clent.maxs.set(MSG.ReadCoordVector());

@@ -1,3 +1,4 @@
+import { HostError } from '../common/Errors.mjs';
 import { eventBus, registry } from '../registry.mjs';
 
 let { Con, NET } = registry;
@@ -32,6 +33,10 @@ export class QSocket {
     return `QSocket(${this.address}, ${this.state})`;
   }
 
+  /**
+   *
+   * @returns {BaseDriver} the driver for this socket
+   */
   _getDriver() {
     console.assert(NET.drivers[this.driver], 'QSocket needs a valid driver');
 
@@ -85,7 +90,7 @@ export class BaseDriver {
 
   // eslint-disable-next-line no-unused-vars
   GetMessage(qsocket) {
-    return 0;
+    return -1;
   }
 
   // eslint-disable-next-line no-unused-vars
@@ -187,7 +192,7 @@ export class LoopDriver extends BaseDriver {
     const ret = sock.receiveMessage[0];
     const length = sock.receiveMessage[1] + (sock.receiveMessage[2] << 8);
     if (length > NET.message.data.byteLength) {
-      throw new Error('Loop.GetMessage: overflow');
+      throw new HostError('Loop.GetMessage: overflow');
     }
     NET.message.cursize = length;
     new Uint8Array(NET.message.data).set(sock.receiveMessage.subarray(3, length + 3));
@@ -199,6 +204,9 @@ export class LoopDriver extends BaseDriver {
     if (sock.driverdata && ret === 1) {
       sock.driverdata.canSend = true;
     }
+    if (sock.state === QSocket.STATE_DISCONNECTED) {
+      return -1;
+    }
     return ret;
   }
 
@@ -209,7 +217,7 @@ export class LoopDriver extends BaseDriver {
     const bufferLength = sock.driverdata.receiveMessageLength;
     sock.driverdata.receiveMessageLength += data.cursize + 3;
     if (sock.driverdata.receiveMessageLength > 8192) {
-      throw new Error('LoopDriver.SendMessage: overflow');
+      throw new HostError('LoopDriver.SendMessage: overflow');
     }
     const buffer = sock.driverdata.receiveMessage;
     buffer[bufferLength] = 1;
@@ -227,7 +235,7 @@ export class LoopDriver extends BaseDriver {
     const bufferLength = sock.driverdata.receiveMessageLength;
     sock.driverdata.receiveMessageLength += data.cursize + 3;
     if (sock.driverdata.receiveMessageLength > 8192) {
-      throw new Error('LoopDriver.SendUnreliableMessage: overflow');
+      throw new HostError('LoopDriver.SendUnreliableMessage: overflow');
     }
     const buffer = sock.driverdata.receiveMessage;
     buffer[bufferLength] = 2;
@@ -324,9 +332,13 @@ export class WebSocketDriver extends BaseDriver {
   GetMessage(qsocket) {
     // check if we have collected new data
     if (qsocket.receiveMessage.length === 0) {
+      if (qsocket.state === QSocket.STATE_DISCONNECTED) {
+        return -1;
+      }
+
       // finished message buffer draining due to a disconnect
       if (qsocket.state === QSocket.STATE_DISCONNECTING) {
-        qsocket.state === QSocket.STATE_DISCONNECTED;
+        qsocket.state = QSocket.STATE_DISCONNECTED;
       }
 
       return 0;
@@ -363,7 +375,16 @@ export class WebSocketDriver extends BaseDriver {
     while (qsocket.sendMessage.length > 0) {
       const message = qsocket.sendMessage.shift();
 
-      qsocket.driverdata.send(message);
+      (qsocket.driverdata).send(message);
+
+      // setTimeout(() => {
+      //   /** @type {WebSocket} */(qsocket.driverdata).send(message);
+
+      //   // failed to send? immediately mark it as disconnected
+      //   if (qsocket.driverdata.readyState > 1) {
+      //     qsocket.state = QSocket.STATE_DISCONNECTED;
+      //   }
+      // }, Math.random() * 50 + 50);
     }
 
     return true;
@@ -377,7 +398,7 @@ export class WebSocketDriver extends BaseDriver {
     this._FlushSendBuffer(qsocket);
 
     // we always assume it worked
-    return 1;
+    return qsocket.state !== QSocket.STATE_DISCONNECTED ? 1 : -1;
   }
 
   SendMessage(qsocket, data) {
