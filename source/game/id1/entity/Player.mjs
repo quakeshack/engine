@@ -1257,31 +1257,31 @@ export class PlayerEntity extends BaseEntity {
         break;
       case 2:
         weapon = items.IT_SHOTGUN;
-        if (this.ammo_shells < 1) outOfAmmo = true;
+        if (this.ammo_shells < 1) {outOfAmmo = true;}
         break;
       case 3:
         weapon = items.IT_SUPER_SHOTGUN;
-        if (this.ammo_shells < 2) outOfAmmo = true;
+        if (this.ammo_shells < 2) {outOfAmmo = true;}
         break;
       case 4:
         weapon = items.IT_NAILGUN;
-        if (this.ammo_nails < 1) outOfAmmo = true;
+        if (this.ammo_nails < 1) {outOfAmmo = true;}
         break;
       case 5:
         weapon = items.IT_SUPER_NAILGUN;
-        if (this.ammo_nails < 2) outOfAmmo = true;
+        if (this.ammo_nails < 2) {outOfAmmo = true;}
         break;
       case 6:
         weapon = items.IT_GRENADE_LAUNCHER;
-        if (this.ammo_rockets < 1) outOfAmmo = true;
+        if (this.ammo_rockets < 1) {outOfAmmo = true;}
         break;
       case 7:
         weapon = items.IT_ROCKET_LAUNCHER;
-        if (this.ammo_rockets < 1) outOfAmmo = true;
+        if (this.ammo_rockets < 1) {outOfAmmo = true;}
         break;
       case 8:
         weapon = items.IT_LIGHTNING;
-        if (this.ammo_cells < 1) outOfAmmo = true;
+        if (this.ammo_cells < 1) {outOfAmmo = true;}
         break;
       default:
         break;

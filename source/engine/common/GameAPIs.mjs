@@ -124,7 +124,7 @@ export class ServerEngineAPI extends EngineAPI {
   static SpawnAmbientSound(origin, sfxName, volume, attenuation) {
     let i = 0;
 
-    for (; i < SV.server.sound_precache.length; ++i) {
+    for (; i < SV.server.sound_precache.length; i++) {
       if (SV.server.sound_precache[i] === sfxName) {
         break;
       }
@@ -201,7 +201,7 @@ export class ServerEngineAPI extends EngineAPI {
       return;
     }
 
-    for (let i = 0; i < SV.svs.maxclients; ++i) {
+    for (let i = 0; i < SV.svs.maxclients; i++) {
       const client = SV.svs.clients[i];
 
       if (!client.active && !client.spawned) {

@@ -82,7 +82,7 @@ R.lightstylevalue_b = new Uint8Array(new ArrayBuffer(64));
 R.AnimateLight = function() {
   if (R.fullbright.value === 0) {
     const i = Math.floor(CL.state.time * 10.0);
-    for (let j = 0; j < 64; ++j) {
+    for (let j = 0; j < 64; j++) {
       const ls = CL.state.clientEntities.lightstyle[j];
       if (ls.length === 0) {
         R.lightstylevalue_a[j] = 12;
@@ -93,7 +93,7 @@ R.AnimateLight = function() {
       R.lightstylevalue_b[j] = ls.charCodeAt((i + 1) % ls.length) - 97;
     }
   } else {
-    for (let j = 0; j < 64; ++j) {
+    for (let j = 0; j < 64; j++) {
       R.lightstylevalue_a[j] = 12;
       R.lightstylevalue_b[j] = 12;
     }
@@ -149,7 +149,7 @@ R.MarkLights = function(light, bit, node) {
     return;
   }
   let i; let surf;
-  for (i = 0; i < node.numfaces; ++i) {
+  for (i = 0; i < node.numfaces; i++) {
     surf = CL.state.worldmodel.faces[node.firstface + i];
     if ((surf.sky === true) || (surf.turbulent === true)) {
       continue;
@@ -168,7 +168,7 @@ R.PushDlights = function() {
   if (R.flashblend.value !== 0) {
     return;
   }
-  for (let i = 0; i <= 1023; ++i) {
+  for (let i = 0; i <= 1023; i++) {
     R.lightmap_modified[i] = false;
   }
 
@@ -193,7 +193,7 @@ R.PushDlights = function() {
   }
 
   let surf;
-  for (let i = 0; i < CL.state.worldmodel.faces.length; ++i) {
+  for (let i = 0; i < CL.state.worldmodel.faces.length; i++) {
     surf = CL.state.worldmodel.faces[i];
     if (surf.dlightframe === R.dlightframecount) {
       R.RemoveDynamicLights(surf);
@@ -203,7 +203,7 @@ R.PushDlights = function() {
   }
 
   GL.Bind(0, R.dlightmap_rgba_texture);
-  for (let i = 0; i <= 1023; ++i) {
+  for (let i = 0; i <= 1023; i++) {
     if (R.lightmap_modified[i] !== true) {
       continue;
     }
@@ -251,7 +251,7 @@ R.RecursiveLightPoint = function(node, start, end) {
   }
 
   let i; let surf; let tex; let s; let t; let ds; let dt; let lightmap; let size; let maps;
-  for (i = 0; i < node.numfaces; ++i) {
+  for (i = 0; i < node.numfaces; i++) {
     surf = CL.state.worldmodel.faces[node.firstface + i];
     if ((surf.sky === true) || (surf.turbulent === true)) {
       continue;
@@ -341,6 +341,7 @@ R.CullBox = function(mins, maxs) {
   if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[3]) === 2) {
     return true;
   }
+  return false;
 };
 
 R.DrawSpriteModel = function(e) {
@@ -357,7 +358,7 @@ R.DrawSpriteModel = function(e) {
     num = frame.frames.length - 1;
     const fullinterval = frame.frames[num].interval;
     const targettime = time - Math.floor(time / fullinterval) * fullinterval;
-    for (i = 0; i < num; ++i) {
+    for (i = 0; i < num; i++) {
       if (frame.frames[i].interval > targettime) {
         break;
       }
@@ -685,7 +686,7 @@ R.DrawAliasModel = function(e) {
     frameA = frame.frames[0];
     frameB = frame.frames[1 % frame.frames.length];
     targettime = time - Math.floor(time / fullinterval) * fullinterval;
-    for (i = 0; i < num; ++i) {
+    for (i = 0; i < num; i++) {
       if (frame.frames[i].interval > targettime) {
         frameA = frame.frames[i];
         frameB = frame.frames[(i + 1) % frame.frames.length];
@@ -712,7 +713,7 @@ R.DrawAliasModel = function(e) {
     num = skin.skins.length - 1;
     fullinterval = skin.skins[num].interval;
     targettime = time - Math.floor(time / fullinterval) * fullinterval;
-    for (i = 0; i < num; ++i) {
+    for (i = 0; i < num; i++) {
       if (skin.skins[i].interval > targettime) {
         break;
       }
@@ -819,7 +820,7 @@ R.SetFrustum = function() {
   R.frustum[2].normal = R.vright.rotatePointAroundVector(R.vpn, 90.0 - R.refdef.fov_y * 0.5);
   R.frustum[3].normal = R.vright.rotatePointAroundVector(R.vpn, -(90.0 - R.refdef.fov_y * 0.5));
   let i; let out;
-  for (i = 0; i <= 3; ++i) {
+  for (i = 0; i <= 3; i++) {
     out = R.frustum[i];
     out.type = 5;
     out.dist = R.refdef.vieworg.dot(out.normal);
@@ -948,7 +949,7 @@ R.Perspective = function() {
   }
 
   GL.UnbindProgram();
-  for (let i = 0; i < GL.programs.length; ++i) {
+  for (let i = 0; i < GL.programs.length; i++) {
     const program = GL.programs[i];
     gl.useProgram(program.program);
     if (program.uViewOrigin != null) {
@@ -1037,13 +1038,13 @@ R.MakeBrushModelDisplayLists = function(m) {
   let texture; let chain; let surf; let vert; const styles = [0.0, 0.0, 0.0, 0.0];
   let verts = 0;
   m.chains = [];
-  for (i = 0; i < m.textures.length; ++i) {
+  for (i = 0; i < m.textures.length; i++) {
     texture = m.textures[i];
     if ((texture.sky === true) || (texture.turbulent === true)) {
       continue;
     }
     chain = [i, verts, 0];
-    for (j = 0; j < m.numfaces; ++j) {
+    for (j = 0; j < m.numfaces; j++) {
       surf = m.faces[m.firstface + j];
       if (surf.texture !== i) {
         continue;
@@ -1053,7 +1054,7 @@ R.MakeBrushModelDisplayLists = function(m) {
         styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
       }
       chain[2] += surf.verts.length;
-      for (k = 0; k < surf.verts.length; ++k) {
+      for (k = 0; k < surf.verts.length; k++) {
         vert = surf.verts[k];
         cmds[cmds.length] = vert[0];
         cmds[cmds.length] = vert[1];
@@ -1075,19 +1076,19 @@ R.MakeBrushModelDisplayLists = function(m) {
   }
   m.waterchain = verts * 44;
   verts = 0;
-  for (i = 0; i < m.textures.length; ++i) {
+  for (i = 0; i < m.textures.length; i++) {
     texture = m.textures[i];
     if (texture.turbulent !== true) {
       continue;
     }
     chain = [i, verts, 0];
-    for (j = 0; j < m.numfaces; ++j) {
+    for (j = 0; j < m.numfaces; j++) {
       surf = m.faces[m.firstface + j];
       if (surf.texture !== i) {
         continue;
       }
       chain[2] += surf.verts.length;
-      for (k = 0; k < surf.verts.length; ++k) {
+      for (k = 0; k < surf.verts.length; k++) {
         vert = surf.verts[k];
         cmds[cmds.length] = vert[0];
         cmds[cmds.length] = vert[1];
@@ -1114,15 +1115,15 @@ R.MakeWorldModelDisplayLists = function(m) {
   const cmds = [];
   let texture; let leaf; let chain; let surf; let vert; const styles = [0.0, 0.0, 0.0, 0.0];
   let verts = 0;
-  for (i = 0; i < m.textures.length; ++i) {
+  for (i = 0; i < m.textures.length; i++) {
     texture = m.textures[i];
     if ((texture.sky === true) || (texture.turbulent === true)) {
       continue;
     }
-    for (j = 0; j < m.leafs.length; ++j) {
+    for (j = 0; j < m.leafs.length; j++) {
       leaf = m.leafs[j];
       chain = [i, verts, 0];
-      for (k = 0; k < leaf.nummarksurfaces; ++k) {
+      for (k = 0; k < leaf.nummarksurfaces; k++) {
         surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
         if (surf.texture !== i) {
           continue;
@@ -1132,7 +1133,7 @@ R.MakeWorldModelDisplayLists = function(m) {
           styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
         }
         chain[2] += surf.verts.length;
-        for (l = 0; l < surf.verts.length; ++l) {
+        for (l = 0; l < surf.verts.length; l++) {
           vert = surf.verts[l];
           cmds[cmds.length] = vert[0];
           cmds[cmds.length] = vert[1];
@@ -1149,29 +1150,29 @@ R.MakeWorldModelDisplayLists = function(m) {
       }
       if (chain[2] !== 0) {
         leaf.cmds[leaf.cmds.length] = chain;
-        ++leaf.skychain;
-        ++leaf.waterchain;
+        leaf.skychain++;
+        leaf.waterchain++;
         verts += chain[2];
       }
     }
   }
   m.skychain = verts * 44;
   verts = 0;
-  for (i = 0; i < m.textures.length; ++i) {
+  for (i = 0; i < m.textures.length; i++) {
     texture = m.textures[i];
     if (texture.sky !== true) {
       continue;
     }
-    for (j = 0; j < m.leafs.length; ++j) {
+    for (j = 0; j < m.leafs.length; j++) {
       leaf = m.leafs[j];
       chain = [verts, 0];
-      for (k = 0; k < leaf.nummarksurfaces; ++k) {
+      for (k = 0; k < leaf.nummarksurfaces; k++) {
         surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
         if (surf.texture !== i) {
           continue;
         }
         chain[1] += surf.verts.length;
-        for (l = 0; l < surf.verts.length; ++l) {
+        for (l = 0; l < surf.verts.length; l++) {
           vert = surf.verts[l];
           cmds[cmds.length] = vert[0];
           cmds[cmds.length] = vert[1];
@@ -1180,28 +1181,28 @@ R.MakeWorldModelDisplayLists = function(m) {
       }
       if (chain[1] !== 0) {
         leaf.cmds[leaf.cmds.length] = chain;
-        ++leaf.waterchain;
+        leaf.waterchain++;
         verts += chain[1];
       }
     }
   }
   m.waterchain = m.skychain + verts * 12;
   verts = 0;
-  for (i = 0; i < m.textures.length; ++i) {
+  for (i = 0; i < m.textures.length; i++) {
     texture = m.textures[i];
     if (texture.turbulent !== true) {
       continue;
     }
-    for (j = 0; j < m.leafs.length; ++j) {
+    for (j = 0; j < m.leafs.length; j++) {
       leaf = m.leafs[j];
       chain = [i, verts, 0];
-      for (k = 0; k < leaf.nummarksurfaces; ++k) {
+      for (k = 0; k < leaf.nummarksurfaces; k++) {
         surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
         if (surf.texture !== i) {
           continue;
         }
         chain[2] += surf.verts.length;
-        for (l = 0; l < surf.verts.length; ++l) {
+        for (l = 0; l < surf.verts.length; l++) {
           vert = surf.verts[l];
           cmds[cmds.length] = vert[0];
           cmds[cmds.length] = vert[1];
@@ -1235,8 +1236,8 @@ R.InitTextures = function() {
 
   const data = new Uint8Array(new ArrayBuffer(256));
 
-  for (let i = 0; i < 8; ++i) {
-    for (let j = 0; j < 8; ++j) {
+  for (let i = 0; i < 8; i++) {
+    for (let j = 0; j < 8; j++) {
       data[(i << 4) + j] = data[136 + (i << 4) + j] = 255;
       data[8 + (i << 4) + j] = data[128 + (i << 4) + j] = 0;
     }
@@ -1389,7 +1390,7 @@ R.Init = async function() {
 };
 
 R.NewMap = function() {
-  for (let i = 0; i < 64; ++i) {
+  for (let i = 0; i < 64; i++) {
     R.lightstylevalue_a[i] = 12;
     R.lightstylevalue_b[i] = 12;
   }
@@ -1397,7 +1398,7 @@ R.NewMap = function() {
   R.ClearParticles();
   R.BuildLightmaps();
 
-  for (let i = 0; i <= R.dlightmaps_rgba.length; ++i) {
+  for (let i = 0; i <= R.dlightmaps_rgba.length; i++) {
     R.dlightmaps_rgba[i] = 0;
   }
 
@@ -1409,7 +1410,7 @@ R.TimeRefresh_f = function() {
   gl.finish();
   let i;
   const start = Sys.FloatTime();
-  for (i = 0; i <= 127; ++i) {
+  for (i = 0; i <= 127; i++) {
     R.refdef.viewangles[1] = i * 2.8125;
     R.RenderView();
   }
@@ -1460,7 +1461,7 @@ R.InitParticles = async function() {
 R.EntityParticles = function(ent) {
   const allocated = R.AllocParticles(162);
 
-  for (let i = 0; i < allocated.length; ++i) {
+  for (let i = 0; i < allocated.length; i++) {
     const angleP = CL.state.time * R.avelocities[i][0];
     const sp = Math.sin(angleP);
     const cp = Math.cos(angleP);
@@ -1485,7 +1486,7 @@ R.EntityParticles = function(ent) {
 
 R.ClearParticles = function() {
   R.particles = [];
-  for (let i = 0; i < R.numparticles; ++i) {
+  for (let i = 0; i < R.numparticles; i++) {
     R.particles[i] = {die: -1.0};
   }
 };
@@ -1539,7 +1540,7 @@ R.ParseParticleEffect = function() {
 
 R.ParticleExplosion = function(org) {
   const allocated = R.AllocParticles(1024);
-  for (let i = 0; i < allocated.length; ++i) {
+  for (let i = 0; i < allocated.length; i++) {
     R.particles[allocated[i]] = {
       die: CL.state.time + 5.0,
       color: R.ramp1[0],
@@ -1558,7 +1559,7 @@ R.ParticleExplosion = function(org) {
 R.ParticleExplosion2 = function(org, colorStart, colorLength) {
   const allocated = R.AllocParticles(512);
   let colorMod = 0;
-  for (let i = 0; i < allocated.length; ++i) {
+  for (let i = 0; i < allocated.length; i++) {
     R.particles[allocated[i]] = {
       die: CL.state.time + 0.3,
       color: colorStart + (colorMod++ % colorLength),
@@ -1575,7 +1576,7 @@ R.ParticleExplosion2 = function(org, colorStart, colorLength) {
 
 R.BlobExplosion = function(org) {
   const allocated = R.AllocParticles(1024);
-  for (let i = 0; i < allocated.length; ++i) {
+  for (let i = 0; i < allocated.length; i++) {
     const p = R.particles[allocated[i]];
     p.die = CL.state.time + 1.0 + Math.random() * 0.4;
     if ((i & 1) !== 0) {
@@ -1596,7 +1597,7 @@ R.BlobExplosion = function(org) {
 
 R.RunParticleEffect = function(org, dir, color, count) {
   const allocated = R.AllocParticles(count); let i;
-  for (i = 0; i < allocated.length; ++i) {
+  for (i = 0; i < allocated.length; i++) {
     R.particles[allocated[i]] = {
       die: CL.state.time + 0.6 * Math.random(),
       color: (color & 0xf8) + Math.floor(Math.random() * 8.0),
@@ -1614,8 +1615,8 @@ R.RunParticleEffect = function(org, dir, color, count) {
 R.LavaSplash = function(org) {
   const allocated = R.AllocParticles(1024);
   let k = 0;
-  for (let i = -16; i <= 15; ++i) {
-    for (let j = -16; j <= 15; ++j) {
+  for (let i = -16; i <= 15; i++) {
+    for (let j = -16; j <= 15; j++) {
       if (k >= allocated.length) {
         return;
       }
@@ -1676,7 +1677,7 @@ R.RocketTrail = function(start, end, type) {
     allocated = R.AllocParticles(Math.floor(len / 3.0));
   }
 
-  for (let i = 0; i < allocated.length; ++i) {
+  for (let i = 0; i < allocated.length; i++) {
     const p = R.particles[allocated[i]];
     p.vel = new Vector();
     p.die = CL.state.time + 2.0;
@@ -1758,7 +1759,7 @@ R.DrawParticles = function() {
   let scale;
 
   const coords = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
-  for (let i = 0; i < R.numparticles; ++i) {
+  for (let i = 0; i < R.numparticles; i++) {
     const p = R.particles[i];
     if (p.die < CL.state.time) {
       continue;
@@ -1773,7 +1774,7 @@ R.DrawParticles = function() {
     }
 
     GL.StreamGetSpace(6);
-    for (let j = 0; j < 6; ++j) {
+    for (let j = 0; j < 6; j++) {
       GL.StreamWriteFloat3(p.org[0], p.org[1], p.org[2]);
       GL.StreamWriteFloat2(coords[j * 2], coords[j * 2 + 1]);
       GL.StreamWriteFloat(scale);
@@ -1840,7 +1841,7 @@ R.DrawParticles = function() {
 
 R.AllocParticles = function(count) {
   const allocated = []; let i;
-  for (i = 0; i < R.numparticles; ++i) {
+  for (i = 0; i < R.numparticles; i++) {
     if (count === 0) {
       return allocated;
     }
@@ -1864,7 +1865,7 @@ R.AddDynamicLights = function(surf) {
   const size = smax * tmax;
 
   const blocklights = [];
-  for (let i = 0; i < size * 3; ++i) {
+  for (let i = 0; i < size * 3; i++) {
     blocklights[i] = 0;
   }
 
@@ -1958,8 +1959,8 @@ R.BuildLightMap = function(surf) {
   let maps;
   for (maps = 0; maps < surf.styles.length; ++maps) {
     dest = (surf.light_t << 12) + (surf.light_s << 2) + maps;
-    for (i = 0; i < tmax; ++i) {
-      for (j = 0; j < smax; ++j) {
+    for (i = 0; i < tmax; i++) {
+      for (j = 0; j < smax; j++) {
         R.lightmaps[dest + (j << 2)] = R.currentmodel.lightdata[lightmap + j];
       }
       lightmap += smax;
@@ -1968,8 +1969,8 @@ R.BuildLightMap = function(surf) {
   }
   for (; maps <= 3; ++maps) {
     dest = (surf.light_t << 12) + (surf.light_s << 2) + maps;
-    for (i = 0; i < tmax; ++i) {
-      for (j = 0; j < smax; ++j) {
+    for (i = 0; i < tmax; i++) {
+      for (j = 0; j < smax; j++) {
         R.lightmaps[dest + (j << 2)] = 0;
       }
       dest += 4096;
@@ -2051,7 +2052,7 @@ R.DrawBrushModel = function(e) {
   GL.Bind(program.tDlight, ((R.flashblend.value === 0) && (clmodel.submodel === true)) ? R.dlightmap_rgba_texture : R.null_texture);
   GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
   GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
-  for (let i = 0; i < clmodel.chains.length; ++i) {
+  for (let i = 0; i < clmodel.chains.length; i++) {
     const chain = clmodel.chains[i];
     const [textureA, textureB] = R.TextureAnimation(clmodel.textures[chain[0]]);
     if (textureA.turbulent === true) {
@@ -2073,7 +2074,7 @@ R.DrawBrushModel = function(e) {
   gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 20, e.model.waterchain);
   gl.vertexAttribPointer(program.aTexCoord.location, 2, gl.FLOAT, false, 20, e.model.waterchain + 12);
-  for (let i = 0; i < clmodel.chains.length; ++i) {
+  for (let i = 0; i < clmodel.chains.length; i++) {
     const chain = clmodel.chains[i];
     const texture = clmodel.textures[chain[0]];
     if (texture.turbulent !== true) {
@@ -2127,7 +2128,7 @@ R.DrawWorld = function() {
   GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
   GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
   let i; let j; let leaf; let cmds;
-  for (i = 0; i < clmodel.leafs.length; ++i) {
+  for (i = 0; i < clmodel.leafs.length; i++) {
     leaf = clmodel.leafs[i];
     if ((leaf.visframe !== R.visframecount) || (leaf.skychain === 0)) {
       continue;
@@ -2135,7 +2136,7 @@ R.DrawWorld = function() {
     if (R.CullBox(leaf.mins, leaf.maxs) === true) {
       continue;
     }
-    for (j = 0; j < leaf.skychain; ++j) {
+    for (j = 0; j < leaf.skychain; j++) {
       cmds = leaf.cmds[j];
       R.c_brush_verts += cmds[2];
       const [textureA, textureB] = R.TextureAnimation(clmodel.textures[cmds[0]]);
@@ -2163,7 +2164,7 @@ R.DrawWorldTurbolents = function() {
   gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 20, clmodel.waterchain);
   gl.vertexAttribPointer(program.aTexCoord.location, 2, gl.FLOAT, false, 20, clmodel.waterchain + 12);
-  for (let i = 0; i < clmodel.leafs.length; ++i) {
+  for (let i = 0; i < clmodel.leafs.length; i++) {
     const leaf = clmodel.leafs[i];
     if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
       continue;
@@ -2171,7 +2172,7 @@ R.DrawWorldTurbolents = function() {
     if (R.CullBox(leaf.mins, leaf.maxs) === true) {
       continue;
     }
-    for (let j = leaf.waterchain; j < leaf.cmds.length; ++j) {
+    for (let j = leaf.waterchain; j < leaf.cmds.length; j++) {
       const cmds = leaf.cmds[j];
       R.c_brush_verts += cmds[2];
       clmodel.textures[cmds[0]].glt.bind(program.tTexture);
@@ -2189,7 +2190,7 @@ R.MarkLeaves = function() {
   R.oldviewleaf = R.viewleaf;
   let vis = (R.novis.value !== 0) ? Mod.novis : Mod.LeafPVS(R.viewleaf, CL.state.worldmodel);
   let i; let node;
-  for (i = 0; i < CL.state.worldmodel.leafs.length; ++i) {
+  for (i = 0; i < CL.state.worldmodel.leafs.length; i++) {
     if ((vis[i >> 3] & (1 << (i & 7))) === 0) {
       continue;
     }
@@ -2221,7 +2222,7 @@ R.MarkLeaves = function() {
       break;
     }
     vis = Mod.LeafPVS(leaf, CL.state.worldmodel);
-    for (i = 0; i < CL.state.worldmodel.leafs.length; ++i) {
+    for (i = 0; i < CL.state.worldmodel.leafs.length; i++) {
       if ((vis[i >> 3] & (1 << (i & 7))) === 0) {
         continue;
       }
@@ -2241,9 +2242,9 @@ R.MarkLeaves = function() {
 R.AllocBlock = function(surf) {
   const w = (surf.extents[0] >> 4) + 1; const h = (surf.extents[1] >> 4) + 1;
   let x; let y; let i; let j; let best = 1024; let best2;
-  for (i = 0; i < (1024 - w); ++i) {
+  for (i = 0; i < (1024 - w); i++) {
     best2 = 0;
-    for (j = 0; j < w; ++j) {
+    for (j = 0; j < w; j++) {
       if (R.allocated[i + j] >= best) {
         break;
       }
@@ -2260,7 +2261,7 @@ R.AllocBlock = function(surf) {
   if (best > 1024) {
     throw new Error('R.AllocBlock: full');
   }
-  for (i = 0; i < w; ++i) {
+  for (i = 0; i < w; i++) {
     R.allocated[x + i] = best;
   }
   surf.light_s = x;
@@ -2276,7 +2277,7 @@ R.BuildSurfaceDisplayList = function(fa) {
   let i; let index; let vec; let vert; let s; let t;
   const texinfo = R.currentmodel.texinfo[fa.texinfo];
   const texture = R.currentmodel.textures[texinfo.texture];
-  for (i = 0; i < fa.numedges; ++i) {
+  for (i = 0; i < fa.numedges; i++) {
     index = R.currentmodel.surfedges[fa.firstedge + i];
     if (index > 0) {
       vec = R.currentmodel.vertexes[R.currentmodel.edges[index][0]];
@@ -2306,18 +2307,18 @@ R.BuildLightmaps = function() {
   let i; let j;
 
   R.allocated = [];
-  for (i = 0; i < 1024; ++i) {
+  for (i = 0; i < 1024; i++) {
     R.allocated[i] = 0;
   }
 
   let surf;
-  for (i = 1; i < CL.state.model_precache.length; ++i) {
+  for (i = 1; i < CL.state.model_precache.length; i++) {
     R.currentmodel = CL.state.model_precache[i];
     if (R.currentmodel.type !== Mod.type.brush) {
       continue;
     }
     if (R.currentmodel.name[0] !== '*') {
-      for (j = 0; j < R.currentmodel.faces.length; ++j) {
+      for (j = 0; j < R.currentmodel.faces.length; j++) {
         surf = R.currentmodel.faces[j];
         if ((surf.sky !== true) && (surf.turbulent !== true)) {
           R.AllocBlock(surf);
@@ -2369,7 +2370,7 @@ R.MakeSky = async function() {
           sin[i + 2] * sin[1], sin[6 - i] * sin[1], sin[7],
           sin[i] * sin[1], sin[8 - i] * sin[1], sin[7],
         ]);
-    for (j = 0; j < 7; ++j) {
+    for (j = 0; j < 7; j++) {
       vecs = vecs.concat(
           [
             sin[i] * sin[8 - j], sin[8 - i] * sin[8 - j], sin[j],
@@ -2410,7 +2411,7 @@ R.DrawSkyBox = function() {
   gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
   gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 12, clmodel.skychain);
   let i; let j; let leaf; let cmds;
-  for (i = 0; i < clmodel.leafs.length; ++i) {
+  for (i = 0; i < clmodel.leafs.length; i++) {
     leaf = clmodel.leafs[i];
     if ((leaf.visframe !== R.visframecount) || (leaf.skychain === leaf.waterchain)) {
       continue;
@@ -2418,7 +2419,7 @@ R.DrawSkyBox = function() {
     if (R.CullBox(leaf.mins, leaf.maxs) === true) {
       continue;
     }
-    for (j = leaf.skychain; j < leaf.waterchain; ++j) {
+    for (j = leaf.skychain; j < leaf.waterchain; j++) {
       cmds = leaf.cmds[j];
       gl.drawArrays(gl.TRIANGLES, cmds[0], cmds[1]);
     }

@@ -54,7 +54,7 @@ SCR._requestedAnimationFrames = 0;
 SCR.CenterPrint = function(str) {
   SCR.centerstring = [];
   let i; let start = 0; let next;
-  for (i = 0; i < str.length; ++i) {
+  for (i = 0; i < str.length; i++) {
     if (str.charCodeAt(i) === 10) {
       next = i + 1;
     } else if ((i - start) >= 40) {
@@ -87,10 +87,10 @@ SCR.DrawCenterString = function() {
   if (CL.state.intermission) {
     let remaining = Math.floor(SCR.printspeed.value * (CL.state.time - SCR.centertime_start));
     let str; let x; let j;
-    for (i = 0; i < SCR.centerstring.length; ++i) {
+    for (i = 0; i < SCR.centerstring.length; i++) {
       str = SCR.centerstring[i];
       x = (VID.width - (str.length * 8)) / 2;
-      for (j = 0; j < str.length; ++j) {
+      for (j = 0; j < str.length; j++) {
         Draw.Character(x, y, str.charCodeAt(j));
         if ((remaining--) === 0) {
           return;
@@ -102,7 +102,7 @@ SCR.DrawCenterString = function() {
     return;
   }
 
-  for (i = 0; i < SCR.centerstring.length; ++i) {
+  for (i = 0; i < SCR.centerstring.length; i++) {
     Draw.String((VID.width - (SCR.centerstring[i].length * 8)) / 2, y, SCR.centerstring[i]);
     y += 8;
   }
@@ -215,7 +215,7 @@ SCR.Init = async function() {
   Cmd.AddCommand('sizedown', SCR.SizeDown_f);
   SCR.net = Draw.LoadPicFromWad('NET');
   SCR.turtle = Draw.LoadPicFromWad('TURTLE');
-  SCR.pause = await Draw.LoadPicFromFile('gfx/pause.png');
+  SCR.pause = Draw.LoadPicFromLumpDeferred('pause');
 };
 
 SCR.count = 0;

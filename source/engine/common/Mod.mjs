@@ -171,7 +171,7 @@ Mod.ClearAll = function() {
   //        - model.Free (in turn will call deleteBuffer etc.)
   //        - keep everything non brush
 
-  for (let i = 0; i < Mod.known.length; ++i) {
+  for (let i = 0; i < Mod.known.length; i++) {
     const mod = Mod.known[i];
     if (mod.type !== Mod.type.brush) {
       continue;
@@ -191,7 +191,7 @@ Mod.FindName = function(name) { // private method (refactor into _RegisterModel)
     throw new Error('Mod.FindName: NULL name');
   }
   let i;
-  for (i = 0; i < Mod.known.length; ++i) {
+  for (i = 0; i < Mod.known.length; i++) {
     if (Mod.known[i] == null) {
       continue;
     }
@@ -199,7 +199,7 @@ Mod.FindName = function(name) { // private method (refactor into _RegisterModel)
       return Mod.known[i];
     }
   }
-  for (i = 0; i <= Mod.known.length; ++i) {
+  for (i = 0; i <= Mod.known.length; i++) {
     if (Mod.known[i] != null) {
       continue;
     }
@@ -296,7 +296,7 @@ Mod.LoadTextures = function(buf) {
   const nummiptex = view.getUint32(fileofs, true);
   let dataofs = fileofs + 4;
   let i; let miptexofs;
-  for (i = 0; i < nummiptex; ++i) {
+  for (i = 0; i < nummiptex; i++) {
     miptexofs = view.getInt32(dataofs, true);
     dataofs += 4;
     if (miptexofs === -1) {
@@ -329,7 +329,7 @@ Mod.LoadTextures = function(buf) {
   }
 
   let j; let tx2; let num; let name;
-  for (i = 0; i < nummiptex; ++i) {
+  for (i = 0; i < nummiptex; i++) {
     const tx = Mod.loadmodel.textures[i];
     if (tx.name[0] !== '+') {
       continue;
@@ -340,7 +340,7 @@ Mod.LoadTextures = function(buf) {
     name = tx.name.substring(2);
     tx.anims = [i];
     tx.alternate_anims = [];
-    for (j = 0; j < nummiptex; ++j) {
+    for (j = 0; j < nummiptex; j++) {
       tx2 = Mod.loadmodel.textures[j];
       if (tx2.name[0] !== '+') {
         continue;
@@ -369,12 +369,12 @@ Mod.LoadTextures = function(buf) {
       }
       throw new Error('Bad animating texture ' + tx.name);
     }
-    for (j = 0; j < tx.anims.length; ++j) {
+    for (j = 0; j < tx.anims.length; j++) {
       if (tx.anims[j] == null) {
         throw new Error('Missing frame ' + j + ' of ' + tx.name);
       }
     }
-    for (j = 0; j < tx.alternate_anims.length; ++j) {
+    for (j = 0; j < tx.alternate_anims.length; j++) {
       if (tx.alternate_anims[j] == null) {
         throw new Error('Missing frame ' + j + ' of ' + tx.name);
       }
@@ -424,7 +424,7 @@ Mod.LoadVertexes = function(buf) {
   const count = filelen / 12;
   Mod.loadmodel.vertexes = [];
   let i;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     Mod.loadmodel.vertexes[i] = new Vector(view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true));
     fileofs += 12;
   }
@@ -448,7 +448,7 @@ Mod.LoadSubmodels = function(buf) {
   fileofs += 64;
 
   let i; const clipnodes = Mod.loadmodel.hulls[0].clipnodes; let out;
-  for (i = 1; i < count; ++i) {
+  for (i = 1; i < count; i++) {
     out = Mod.FindName('*' + i); // TODO: out = new BrushModel('*' + 1), Mod._RegisterModel(out)
     out.needload = false;
     out.type = Mod.type.brush;
@@ -502,7 +502,7 @@ Mod.LoadEdges = function(buf) {
   const count = filelen >> 2;
   Mod.loadmodel.edges = [];
   let i;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     Mod.loadmodel.edges[i] = [view.getUint16(fileofs, true), view.getUint16(fileofs + 2, true)];
     fileofs += 4;
   }
@@ -518,7 +518,7 @@ Mod.LoadTexinfo = function(buf) {
   const count = filelen / 40;
   Mod.loadmodel.texinfo = [];
   let i; let out;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     out = {
       vecs: [
         [view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true), view.getFloat32(fileofs + 12, true)],
@@ -549,7 +549,7 @@ Mod.LoadFaces = function(buf) {
   Mod.loadmodel.faces = [];
   let i; let styles; let out;
   let mins; let maxs; let j; let e; let tex; let v; let val;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     styles = new Uint8Array(buf, fileofs + 12, 4);
     out =
     {
@@ -577,7 +577,7 @@ Mod.LoadFaces = function(buf) {
     maxs = [-99999, -99999];
     tex = Mod.loadmodel.texinfo[out.texinfo];
     out.texture = tex.texture;
-    for (j = 0; j < out.numedges; ++j) {
+    for (j = 0; j < out.numedges; j++) {
       e = Mod.loadmodel.surfedges[out.firstedge + j];
       if (e >= 0) {
         v = Mod.loadmodel.vertexes[Mod.loadmodel.edges[e][0]];
@@ -632,7 +632,7 @@ Mod.LoadNodes = function(buf) {
   const count = filelen / 24;
   Mod.loadmodel.nodes = [];
   let i; let out;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     Mod.loadmodel.nodes[i] = {
       num: i,
       contents: 0,
@@ -646,7 +646,7 @@ Mod.LoadNodes = function(buf) {
     };
     fileofs += 24;
   }
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     out = Mod.loadmodel.nodes[i];
     out.plane = Mod.loadmodel.planes[out.planenum];
     if (out.children[0] >= 0) {
@@ -673,7 +673,7 @@ Mod.LoadLeafs = function(buf) {
   const count = filelen / 28;
   Mod.loadmodel.leafs = [];
   let i; let out;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     out = {
       num: i,
       contents: view.getInt32(fileofs, true),
@@ -717,7 +717,7 @@ Mod.LoadClipnodes = function(buf) {
     clip_maxs: new Vector(32.0, 32.0, 64.0),
   };
   let i;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     Mod.loadmodel.clipnodes[i] = {
       planenum: view.getUint32(fileofs, true),
       children: [view.getInt16(fileofs + 4, true), view.getInt16(fileofs + 6, true)],
@@ -735,7 +735,7 @@ Mod.MakeHull0 = function() {
     clip_mins: new Vector(),
     clip_maxs: new Vector(),
   };
-  for (i = 0; i < Mod.loadmodel.nodes.length; ++i) {
+  for (i = 0; i < Mod.loadmodel.nodes.length; i++) {
     node = Mod.loadmodel.nodes[i];
     out = {planenum: node.planenum, children: []};
     child = node.children[0];
@@ -754,7 +754,7 @@ Mod.LoadMarksurfaces = function(buf) {
   const count = filelen >> 1;
   Mod.loadmodel.marksurfaces = [];
   let i; let j;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     j = view.getUint16(fileofs + (i << 1), true);
     if (j > Mod.loadmodel.faces.length) {
       throw new Error('Mod.LoadMarksurfaces: bad surface number');
@@ -770,7 +770,7 @@ Mod.LoadSurfedges = function(buf) {
   const count = filelen >> 2;
   Mod.loadmodel.surfedges = [];
   let i;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     Mod.loadmodel.surfedges[i] = view.getInt32(fileofs + (i << 2), true);
   }
 };
@@ -785,7 +785,7 @@ Mod.LoadPlanes = function(buf) {
   const count = filelen / 20;
   Mod.loadmodel.planes = [];
   let i; let out;
-  for (i = 0; i < count; ++i) {
+  for (i = 0; i < count; i++) {
     out = {
       normal: new Vector(view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true)),
       dist: view.getFloat32(fileofs + 12, true),
@@ -830,7 +830,7 @@ Mod.LoadBrushModel = function(buffer) {
   Mod.LoadSubmodels(buffer);
 
   const mins = new Vector(), maxs = new Vector();
-  for (let i = 0; i < Mod.loadmodel.vertexes.length; ++i) {
+  for (let i = 0; i < Mod.loadmodel.vertexes.length; i++) {
     const vert = Mod.loadmodel.vertexes[i];
     if (vert[0] < mins[0]) {
       mins[0] = vert[0];
@@ -937,7 +937,7 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
   let i; let j; let group; let numskins;
   const skinsize = Mod.loadmodel._skin_width * Mod.loadmodel._skin_height;
   let skin;
-  for (i = 0; i < Mod.loadmodel._num_skins; ++i) {
+  for (i = 0; i < Mod.loadmodel._num_skins; i++) {
     inmodel += 4;
     if (model.getUint32(inmodel - 4, true) === 0) {
       skin = new Uint8Array(buffer, inmodel, skinsize);
@@ -958,14 +958,14 @@ Mod.LoadAllSkins = function(buffer, inmodel) {
       };
       numskins = model.getUint32(inmodel, true);
       inmodel += 4;
-      for (j = 0; j < numskins; ++j) {
+      for (j = 0; j < numskins; j++) {
         group.skins[j] = {interval: model.getFloat32(inmodel, true)};
         if (group.skins[j].interval <= 0.0) {
           throw new Error('Mod.LoadAllSkins: interval<=0');
         }
         inmodel += 4;
       }
-      for (j = 0; j < numskins; ++j) {
+      for (j = 0; j < numskins; j++) {
         skin = new Uint8Array(buffer, inmodel, skinsize);
         Mod.FloodFillSkin(skin);
         const rgba = translateIndexToRGBA(skin, Mod.loadmodel._skin_width, Mod.loadmodel._skin_height);
@@ -986,7 +986,7 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
   Mod.loadmodel.frames = [];
   const model = new DataView(buffer);
   let i; let j; let k; let frame; let group; let numframes;
-  for (i = 0; i < Mod.loadmodel._frames; ++i) {
+  for (i = 0; i < Mod.loadmodel._frames; i++) {
     inmodel += 4;
     if (model.getUint32(inmodel - 4, true) === 0) {
       frame = {
@@ -997,7 +997,7 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
         v: [],
       };
       inmodel += 24;
-      for (j = 0; j < Mod.loadmodel._num_verts; ++j) {
+      for (j = 0; j < Mod.loadmodel._num_verts; j++) {
         frame.v[j] = {
           v: new Vector(model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)),
           lightnormalindex: model.getUint8(inmodel + 3),
@@ -1014,21 +1014,21 @@ Mod.LoadAllFrames = function(buffer, inmodel) {
       };
       numframes = model.getUint32(inmodel, true);
       inmodel += 12;
-      for (j = 0; j < numframes; ++j) {
+      for (j = 0; j < numframes; j++) {
         group.frames[j] = {interval: model.getFloat32(inmodel, true)};
         if (group.frames[j].interval <= 0.0) {
           throw new Error('Mod.LoadAllFrames: interval<=0');
         }
         inmodel += 4;
       }
-      for (j = 0; j < numframes; ++j) {
+      for (j = 0; j < numframes; j++) {
         frame = group.frames[j];
         frame.bboxmin = new Vector(model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2));
         frame.bboxmax = new Vector(model.getUint8(inmodel + 4), model.getUint8(inmodel + 5), model.getUint8(inmodel + 6));
         frame.name = Q.memstr(new Uint8Array(buffer, inmodel + 8, 16));
         frame.v = [];
         inmodel += 24;
-        for (k = 0; k < Mod.loadmodel._num_verts; ++k) {
+        for (k = 0; k < Mod.loadmodel._num_verts; k++) {
           frame.v[k] = {
             v: new Vector(model.getUint8(inmodel), model.getUint8(inmodel + 1), model.getUint8(inmodel + 2)),
             lightnormalindex: model.getUint8(inmodel + 3),
@@ -1080,7 +1080,7 @@ Mod.LoadAliasModel = function(buffer) {
   let inmodel = Mod.LoadAllSkins(buffer, 84);
 
   Mod.loadmodel._stverts = [];
-  for (i = 0; i < Mod.loadmodel._num_verts; ++i) {
+  for (i = 0; i < Mod.loadmodel._num_verts; i++) {
     Mod.loadmodel._stverts[i] = {
       onseam: model.getUint32(inmodel, true) !== 0,
       s: model.getUint32(inmodel + 4, true),
@@ -1090,7 +1090,7 @@ Mod.LoadAliasModel = function(buffer) {
   }
 
   Mod.loadmodel._triangles = [];
-  for (i = 0; i < Mod.loadmodel._num_tris; ++i) {
+  for (i = 0; i < Mod.loadmodel._num_tris; i++) {
     Mod.loadmodel._triangles[i] = {
       facesfront: model.getUint32(inmodel, true) !== 0,
       vertindex: [
@@ -1112,7 +1112,7 @@ Mod.LoadAliasModel = function(buffer) {
   const cmds = [];
 
   let triangle; let vert;
-  for (i = 0; i < Mod.loadmodel._num_tris; ++i) {
+  for (i = 0; i < Mod.loadmodel._num_tris; i++) {
     triangle = Mod.loadmodel._triangles[i];
     if (triangle.facesfront === true) {
       vert = Mod.loadmodel._stverts[triangle.vertindex[0]];
@@ -1126,7 +1126,7 @@ Mod.LoadAliasModel = function(buffer) {
       cmds[cmds.length] = (vert.t + 0.5) / Mod.loadmodel._skin_height;
       continue;
     }
-    for (j = 0; j < 3; ++j) {
+    for (j = 0; j < 3; j++) {
       vert = Mod.loadmodel._stverts[triangle.vertindex[j]];
       if (vert.onseam === true) {
         cmds[cmds.length] = (vert.s + Mod.loadmodel._skin_width / 2 + 0.5) / Mod.loadmodel._skin_width;
@@ -1138,15 +1138,15 @@ Mod.LoadAliasModel = function(buffer) {
   }
 
   let group; let frame;
-  for (i = 0; i < Mod.loadmodel._frames; ++i) {
+  for (i = 0; i < Mod.loadmodel._frames; i++) {
     group = Mod.loadmodel.frames[i];
     if (group.group === true) {
-      for (j = 0; j < group.frames.length; ++j) {
+      for (j = 0; j < group.frames.length; j++) {
         frame = group.frames[j];
         frame.cmdofs = cmds.length * 4;
-        for (k = 0; k < Mod.loadmodel._num_tris; ++k) {
+        for (k = 0; k < Mod.loadmodel._num_tris; k++) {
           triangle = Mod.loadmodel._triangles[k];
-          for (l = 0; l < 3; ++l) {
+          for (l = 0; l < 3; l++) {
             vert = frame.v[triangle.vertindex[l]];
             if (vert.lightnormalindex >= 162) {
               throw new Error('lightnormalindex >= NUMVERTEXNORMALS');
@@ -1164,9 +1164,9 @@ Mod.LoadAliasModel = function(buffer) {
     }
     frame = group;
     frame.cmdofs = cmds.length * 4;
-    for (j = 0; j < Mod.loadmodel._num_tris; ++j) {
+    for (j = 0; j < Mod.loadmodel._num_tris; j++) {
       triangle = Mod.loadmodel._triangles[j];
-      for (k = 0; k < 3; ++k) {
+      for (k = 0; k < 3; k++) {
         vert = frame.v[triangle.vertindex[k]];
         if (vert.lightnormalindex >= 162) {
           throw new Error('lightnormalindex >= NUMVERTEXNORMALS');
@@ -1227,7 +1227,7 @@ Mod.LoadSpriteModel = function(buffer) {
 
   Mod.loadmodel.frames = [];
   let inframe = 36; let i; let j; let frame; let group; let numframes;
-  for (i = 0; i < Mod.loadmodel._frames; ++i) {
+  for (i = 0; i < Mod.loadmodel._frames; i++) {
     inframe += 4;
     if (model.getUint32(inframe - 4, true) === 0) {
       frame = {group: false};
@@ -1241,14 +1241,14 @@ Mod.LoadSpriteModel = function(buffer) {
       Mod.loadmodel.frames[i] = group;
       numframes = model.getUint32(inframe, true);
       inframe += 4;
-      for (j = 0; j < numframes; ++j) {
+      for (j = 0; j < numframes; j++) {
         group.frames[j] = {interval: model.getFloat32(inframe, true)};
         if (group.frames[j].interval <= 0.0) {
           throw new Error('Mod.LoadSpriteModel: interval<=0');
         }
         inframe += 4;
       }
-      for (j = 0; j < numframes; ++j) {
+      for (j = 0; j < numframes; j++) {
         inframe = Mod.LoadSpriteFrame(Mod.loadmodel.name + '_' + i + '_' + j, buffer, inframe, group.frames[j]);
       }
     }
@@ -1257,7 +1257,7 @@ Mod.LoadSpriteModel = function(buffer) {
 
 Mod.Print = function() {
   Con.Print('Cached models:\n');
-  for (let i = 0; i < Mod.known.length; ++i) {
+  for (let i = 0; i < Mod.known.length; i++) {
     Con.Print(Mod.known[i].name + '\n');
   }
 };

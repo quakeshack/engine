@@ -186,7 +186,7 @@ class Wad2File extends WadFileInterface {
     console.assert(view.getUint32(0, true) === Wad2File.MAGIC, 'magic number');
     const numlumps = view.getUint32(4, true);
     let infotableofs = view.getUint32(8, true);
-    for (let i = 0; i < numlumps; ++i) {
+    for (let i = 0; i < numlumps; i++) {
       const size = view.getUint32(infotableofs + 4, true);
       const type = view.getUint8(infotableofs + 12);
       const lump = new ArrayBuffer(size);
@@ -261,7 +261,7 @@ class Wad3File extends WadFileInterface {
     const numlumps = view.getUint32(4, true);
     let infotableofs = view.getUint32(8, true);
 
-    for (let i = 0; i < numlumps; ++i) {
+    for (let i = 0; i < numlumps; i++) {
       const filepos = view.getUint32(infotableofs, true);
       const disksize = view.getUint32(infotableofs + 4, true);
       const size = view.getUint32(infotableofs + 8, true); // uncompressed size
@@ -412,7 +412,9 @@ class Wad3File extends WadFileInterface {
           output[outPos++] = compressed[inPos++];
         } else {
           // Back-reference - extract offset and length
-          if (inPos + 1 >= compressed.length) break;
+          if (inPos + 1 >= compressed.length) {
+            break;
+          }
 
           const byte1 = compressed[inPos++];
           const byte2 = compressed[inPos++];

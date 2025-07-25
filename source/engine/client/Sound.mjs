@@ -50,7 +50,7 @@ export class SFX {
 
   async load() {
     if (this.state !== SFX.STATE.NEW) {
-      return;
+      return false;
     }
 
     return await S.LoadSound(this);
@@ -145,7 +145,7 @@ class SoundBaseChannel {
       this.left_vol = this.master_vol;
       this.right_vol = this.master_vol;
       this.updateVol();
-      return;
+      return this;
     }
 
     // Calculate distance from the listener
@@ -411,7 +411,7 @@ const S = {
     // If entchannel != 0, see if there is an existing channel with the same
     // entnum and entchannel. If so, kill it.
     if (entchannel !== 0) {
-      for (i = 0; i < this._channels.length; ++i) {
+      for (i = 0; i < this._channels.length; i++) {
         channel = this._channels[i];
         if (!channel) {
           continue;
@@ -428,7 +428,7 @@ const S = {
 
     // If entchannel == 0 or we never found a free channel, pick a free or new channel.
     if ((entchannel === 0) || (i === this._channels.length)) {
-      for (i = 0; i < this._channels.length; ++i) {
+      for (i = 0; i < this._channels.length; i++) {
         channel = this._channels[i];
         if (!channel || !channel.sfx) {
           break;
@@ -692,7 +692,9 @@ const S = {
           break;
       }
       p += (chunkSize + 8);
-      if (p & 1) p += 1; // pad if needed
+      if (p & 1) { // pad if needed
+        p += 1;
+      }
     }
 
     if (!fmt) {
@@ -745,6 +747,7 @@ const S = {
     new Uint8Array(out, 44, dataLen).set(new Uint8Array(data, dataOfs, dataLen));
 
     sc.data = await this._channelDriver.decodeAudioData(out);
+    // eslint-disable-next-line require-atomic-updates
     sfx.cache = sc;
     sfx.makeAvailable();
 

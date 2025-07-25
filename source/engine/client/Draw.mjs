@@ -120,7 +120,7 @@ export default class Draw {
     const program = GL.UseProgram('pic', true);
     gl.uniform3f(program.uColor, color[0], color[1], color[2]);
     Draw.#chars.bind(program.tTexture, true);
-    for (let i = 0; i < str.length; ++i) {
+    for (let i = 0; i < str.length; i++) {
       Draw.Char(x, y, str.charCodeAt(i), scale);
       x += 8 * scale;
     }
@@ -138,7 +138,7 @@ export default class Draw {
     const program = GL.UseProgram('pic', true);
     gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
     Draw.#chars.bind(program.tTexture);
-    for (let i = 0; i < str.length; ++i) {
+    for (let i = 0; i < str.length; i++) {
       Draw.Char(x, y, str.charCodeAt(i) + 128, scale);
       x += 8 * scale;
     }

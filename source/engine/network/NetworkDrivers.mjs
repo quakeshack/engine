@@ -377,17 +377,16 @@ export class WebSocketDriver extends BaseDriver {
 
       if (NET.delay_send.value === 0) {
         (qsocket.driverdata).send(message);
-        return;
+      } else {
+        setTimeout(() => {
+          /** @type {WebSocket} */(qsocket.driverdata).send(message);
+
+          // failed to send? immediately mark it as disconnected
+          if (qsocket.driverdata.readyState > 1) {
+            qsocket.state = QSocket.STATE_DISCONNECTED;
+          }
+        }, NET.delay_send.value + (Math.random() - 0.5) * NET.delay_send_jitter.value);
       }
-
-      setTimeout(() => {
-        /** @type {WebSocket} */(qsocket.driverdata).send(message);
-
-        // failed to send? immediately mark it as disconnected
-        if (qsocket.driverdata.readyState > 1) {
-          qsocket.state = QSocket.STATE_DISCONNECTED;
-        }
-      }, NET.delay_send.value + (Math.random() - 0.5) * NET.delay_send_jitter.value);
     }
 
     return true;

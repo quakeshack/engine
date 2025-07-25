@@ -31,7 +31,7 @@ Sbar.Init = async function() {
   let i;
 
   Sbar.nums = [[], []];
-  for (i = 0; i < 10; ++i) {
+  for (i = 0; i < 10; i++) {
     Sbar.nums[0][i] = Draw.LoadPicFromWad('NUM_' + i);
     Sbar.nums[1][i] = Draw.LoadPicFromWad('ANUM_' + i);
   }
@@ -60,7 +60,7 @@ Sbar.Init = async function() {
       Draw.LoadPicFromWad('INV2_LIGHTNG'),
     ],
   ];
-  for (i = 0; i <= 4; ++i) {
+  for (i = 0; i <= 4; i++) {
     Sbar.weapons[2 + i] = [
       Draw.LoadPicFromWad('INVA' + (i + 1) + '_SHOTGUN'),
       Draw.LoadPicFromWad('INVA' + (i + 1) + '_SSHOTGUN'),
@@ -102,7 +102,7 @@ Sbar.Init = async function() {
   ];
 
   Sbar.faces = [];
-  for (i = 0; i <= 4; ++i) {
+  for (i = 0; i <= 4; i++) {
     Sbar.faces[i] = [
       Draw.LoadPicFromWad('FACE' + (5 - i)),
       Draw.LoadPicFromWad('FACE_P' + (5 - i)),
@@ -142,7 +142,7 @@ Sbar.Init = async function() {
       Draw.LoadPicFromWad('INV2_PROX_GREN'),
       Draw.LoadPicFromWad('INV2_PROX'),
     ]];
-    for (i = 0; i <= 4; ++i) {
+    for (i = 0; i <= 4; i++) {
       Sbar.h_weapons[2 + i] = [
         Draw.LoadPicFromWad('INVA' + (i + 1) + '_LASER'),
         Draw.LoadPicFromWad('INVA' + (i + 1) + '_MJOLNIR'),
@@ -213,7 +213,7 @@ Sbar.DrawNum = function(x, y, num, digits, color) {
     x += (digits - str.length) * 24;
   }
   let i; let frame;
-  for (i = 0; i < str.length; ++i) {
+  for (i = 0; i < str.length; i++) {
     frame = str.charCodeAt(i);
     Sbar.DrawPic(x, y, Sbar.nums[color][frame === 45 ? 10 : frame - 48]);
     x += 24;
@@ -225,14 +225,14 @@ Sbar.fragsort = [];
 Sbar.SortFrags = function() {
   Sbar.scoreboardlines = 0;
   let i; let j; let k;
-  for (i = 0; i < CL.state.maxclients; ++i) {
+  for (i = 0; i < CL.state.maxclients; i++) {
     if (CL.state.scores[i].name.length !== 0) {
       Sbar.fragsort[Sbar.scoreboardlines++] = i;
     }
   }
   // CR: this could have been one .sort() call…
-  for (i = 0; i < Sbar.scoreboardlines; ++i) {
-    for (j = 0; j < (Sbar.scoreboardlines - 1 - i); ++j) {
+  for (i = 0; i < Sbar.scoreboardlines; i++) {
+    for (j = 0; j < (Sbar.scoreboardlines - 1 - i); j++) {
       if (CL.state.scores[Sbar.fragsort[j]].frags < CL.state.scores[Sbar.fragsort[j + 1]].frags) {
         k = Sbar.fragsort[j];
         Sbar.fragsort[j] = Sbar.fragsort[j + 1];
@@ -278,7 +278,7 @@ Sbar.DrawInventory = function() {
   }
 
   let flashon;
-  for (i = 0; i <= 6; ++i) {
+  for (i = 0; i <= 6; i++) {
     if ((CL.state.items & (Def.it.shotgun << i)) === 0) {
       continue;
     }
@@ -292,7 +292,7 @@ Sbar.DrawInventory = function() {
   }
   if (COM.hipnotic === true) {
     let grenadeflashing = false;
-    for (i = 0; i <= 3; ++i) {
+    for (i = 0; i <= 3; i++) {
       if ((CL.state.items & (1 << Sbar.hipweapons[i])) !== 0) {
         flashon = Math.floor((CL.state.time - CL.state.item_gettime[i]) * 10.0);
         if (flashon >= 10) {
@@ -321,7 +321,7 @@ Sbar.DrawInventory = function() {
     }
   } else if (COM.rogue === true) {
     if (CL.state.stats[Def.stat.activeweapon] >= Def.rit.lava_nailgun) {
-      for (i = 0; i <= 4; ++i) {
+      for (i = 0; i <= 4; i++) {
         if (CL.state.stats[Def.stat.activeweapon] === (Def.rit.lava_nailgun << i)) {
           Sbar.DrawPic((i + 2) * 24, -16, Sbar.r_weapons[i]);
         }
@@ -329,7 +329,7 @@ Sbar.DrawInventory = function() {
     }
   }
 
-  for (i = 0; i <= 3; ++i) {
+  for (i = 0; i <= 3; i++) {
     const num = CL.state.stats[Def.stat.shells + i].toString();
     switch (num.length) {
       case 1:
@@ -347,7 +347,7 @@ Sbar.DrawInventory = function() {
   }
 
   if (COM.hipnotic === true) {
-    for (i = 2; i <= 5; ++i) {
+    for (i = 2; i <= 5; i++) {
       if ((CL.state.items & (1 << (17 + i))) !== 0) {
         Sbar.DrawPic(192 + (i << 4), -16, Sbar.items[i]);
       }
@@ -359,7 +359,7 @@ Sbar.DrawInventory = function() {
       Sbar.DrawPic(304, -16, Sbar.h_items[1]);
     }
   } else {
-    for (i = 0; i <= 5; ++i) {
+    for (i = 0; i <= 5; i++) {
       if ((CL.state.items & (1 << (17 + i))) !== 0) {
         Sbar.DrawPic(192 + (i << 4), -16, Sbar.items[i]);
       }
@@ -372,7 +372,7 @@ Sbar.DrawInventory = function() {
         Sbar.DrawPic(304, -16, Sbar.r_items[1]);
       }
     } else {
-      for (i = 0; i <= 3; ++i) {
+      for (i = 0; i <= 3; i++) {
         if (((CL.state.items >>> (28 + i)) & 1) !== 0) {
           Sbar.DrawPic(288 + (i << 3), -16, Sbar.sigil[i]);
         }
@@ -388,7 +388,7 @@ Sbar.DrawFrags = function() {
   const xofs = CL.state.maxclients === 1 ? 10 : (VID.width >> 1) - 150;
   const y = VID.height - 47;
   let i; let k; let s; let num;
-  for (i = 0; i < l; ++i) {
+  for (i = 0; i < l; i++) {
     k = Sbar.fragsort[i];
     s = CL.state.scores[k];
     if (s.name.length === 0) {
@@ -541,7 +541,7 @@ Sbar.IntermissionNumber = function(x, y, num) {
     x += (3 - str.length) * 24;
   }
   let i; let frame;
-  for (i = 0; i < str.length; ++i) {
+  for (i = 0; i < str.length; i++) {
     frame = str.charCodeAt(i);
     Draw.Pic(x, y, Sbar.nums[0][frame === 45 ? 10 : frame - 48]);
     x += 24;
@@ -555,7 +555,7 @@ Sbar.DeathmatchOverlay = function() {
 
   const x = (VID.width / 2) - 80; let y = 40;
 
-  for (let i = 0; i < Sbar.scoreboardlines; ++i) {
+  for (let i = 0; i < Sbar.scoreboardlines; i++) {
     const s = CL.state.scores[Sbar.fragsort[i]];
     if (s.name.length === 0) {
       continue;
@@ -581,7 +581,7 @@ Sbar.MiniDeathmatchOverlay = function() {
   const numlines = Sbar.lines * 8;
   let i;
 
-  for (i = 0; i < l; ++i) {
+  for (i = 0; i < l; i++) {
     if (Sbar.fragsort[i] === (CL.state.viewentity - 1)) {
       break;
     }
@@ -595,7 +595,7 @@ Sbar.MiniDeathmatchOverlay = function() {
     i = 0;
   }
 
-  for (let k, s, num; (i < l) && (y < (VID.height - 8)); ++i) { // 24 chars per column
+  for (let k, s, num; (i < l) && (y < (VID.height - 8)); i++) { // 24 chars per column
     k = Sbar.fragsort[i];
     s = CL.state.scores[k];
     if (s.name.length === 0) {

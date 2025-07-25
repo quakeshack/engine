@@ -991,7 +991,7 @@ CL.ParseServerData = function() { // private
   (async () => {
     let lastYield = Host.realtime;
 
-    for (let i = 1; i < nummodels; ++i) {
+    for (let i = 1; i < nummodels; i++) {
       CL.SetConnectingStep(25 + (i / nummodels) * 20, 'Loading model: ' + model_precache[i]);
       CL.state.model_precache[i] = Mod.ForName(model_precache[i]);
       if (CL.state.model_precache[i] === null) {
@@ -1005,8 +1005,9 @@ CL.ParseServerData = function() { // private
       }
     }
 
-    for (let i = 1; i < numsounds; ++i) {
+    for (let i = 1; i < numsounds; i++) {
       CL.SetConnectingStep(45 + (i / numsounds) * 20, 'Loading sound: ' + sound_precache[i]);
+      // eslint-disable-next-line require-atomic-updates
       CL.state.sound_precache[i] = await S.PrecacheSoundAsync(sound_precache[i]);
 
       if (Host.realtime - lastYield > 0.1) {

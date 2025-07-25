@@ -1,7 +1,7 @@
 import globals from 'globals';
 import pluginJs from '@eslint/js';
 import jsdoc from 'eslint-plugin-jsdoc';
-import sortClassMembers from 'eslint-plugin-sort-class-members';
+// import sortClassMembers from 'eslint-plugin-sort-class-members';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
@@ -19,7 +19,24 @@ export default [
       'max-len': 'off',
       'new-cap': 'off',
       'no-mixed-spaces-and-tabs': 'warn',
-      'no-tabs': 'warn',
+      // 'no-tabs': 'warn',
+      'array-callback-return': 'error',
+      'no-constructor-return': 'error',
+      'no-duplicate-imports': 'error',
+      'no-inner-declarations': 'error',
+      'no-self-compare': 'error',
+      'no-template-curly-in-string': 'warn',
+      'no-unmodified-loop-condition': 'error',
+      'no-unreachable-loop': 'warn',
+      'curly': 'error',
+      'consistent-return': 'error',
+      'consistent-this': ['error', 'that'],
+      'func-name-matching': 'error',
+      'yoda': 'error',
+      'arrow-body-style': ['error', 'as-needed'],
+      'prefer-numeric-literals': 'error',
+      // 'no-useless-assignment': 'error', -- too janky
+      'require-atomic-updates': 'error',
       'camelcase': 'off',
       'no-use-before-define': 'off',
       'require-yield': 'error',
@@ -28,14 +45,14 @@ export default [
       'comma-dangle': ['error', 'always-multiline'],
       'eol-last': ['error', 'always'],
       'quotes': ['error', 'single', { 'avoidEscape': true }],
-      // "no-magic-numbers": ["warn", { "ignore": [0,1], "ignoreArrayIndexes": true }],
+      // 'no-magic-numbers': ['warn', { 'ignore': [0,1,2], 'ignoreArrayIndexes': true }],
       // "no-plusplus": ["error", { "allowForLoopAfterthoughts": true }],
       'eqeqeq': ['warn', 'always'],
       'no-undef': 'error',
       'no-unused-vars': 'error',
       'jsdoc/check-types': 'error',       // Ensures types are valid
       'jsdoc/require-param-description': 'off',
-      // 'no-globoal-assign': 'warn',
+      'no-global-assign': 'warn',
       // "sort-class-members/sort-class-members": ["error", {
       //   "order": [
       //     "[static-properties]",

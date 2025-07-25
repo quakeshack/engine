@@ -255,7 +255,7 @@ export class Hull { // hull_t
         trace.fraction = midf;
         trace.endpos = mid.copy();
         console.warn('fraction < 0.0', frac, trace);
-        return;
+        return false;
       }
       midf = p1f + (p2f - p1f) * frac;
       mid[0] = p1[0] + frac * (p2[0] - p1[0]);
@@ -918,7 +918,7 @@ export class PmovePlayer { // pmove_t (player state only)
         // go along the crease
         if (planes.length !== 2) {
           this.velocity.clear();
-          return;
+          return blocked; // TODO: double check this, it was an empty return here
         }
       }
 

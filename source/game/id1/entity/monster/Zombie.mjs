@@ -157,8 +157,8 @@ export default class ZombieMonster extends WalkMonster {
     this._defineState('zombie_walk15', 'walk15', 'zombie_walk16', () => { this._ai.walk(0); });
     this._defineState('zombie_walk16', 'walk16', 'zombie_walk17', () => { this._ai.walk(0); });
     this._defineState('zombie_walk17', 'walk17', 'zombie_walk18', () => { this._ai.walk(0); });
-    this._defineState('zombie_walk18', 'walk18', 'zombie_walk19', () => { this._ai.walk(0); if (Math.random() < 0.2) this.startSound(channel.CHAN_VOICE, 'zombie/z_idle.wav', 1.0, attn.ATTN_IDLE); });
-    this._defineState('zombie_walk19', 'walk19', 'zombie_walk1', () => { this._ai.walk(0); if (Math.random() < 0.2) this.startSound(channel.CHAN_VOICE, 'zombie/z_idle.wav', 1.0, attn.ATTN_IDLE); });
+    this._defineState('zombie_walk18', 'walk18', 'zombie_walk19', () => { this._ai.walk(0); if (Math.random() < 0.2) {this.startSound(channel.CHAN_VOICE, 'zombie/z_idle.wav', 1.0, attn.ATTN_IDLE);} });
+    this._defineState('zombie_walk19', 'walk19', 'zombie_walk1', () => { this._ai.walk(0); if (Math.random() < 0.2) {this.startSound(channel.CHAN_VOICE, 'zombie/z_idle.wav', 1.0, attn.ATTN_IDLE);} });
 
     // run states
     this._defineState('zombie_run1', 'run1', 'zombie_run2', () => { this._ai.run(1); this.inpain = 0; });
@@ -178,7 +178,7 @@ export default class ZombieMonster extends WalkMonster {
     this._defineState('zombie_run15', 'run15', 'zombie_run16', () => { this._ai.run(6); });
     this._defineState('zombie_run16', 'run16', 'zombie_run17', () => { this._ai.run(7); });
     this._defineState('zombie_run17', 'run17', 'zombie_run18', () => { this._ai.run(3); });
-    this._defineState('zombie_run18', 'run18', 'zombie_run1', () => { this._ai.run(8); if (Math.random() < 0.2) this.startSound(channel.CHAN_VOICE, 'zombie/z_idle.wav', 1.0, attn.ATTN_IDLE); if (Math.random() > 0.8) this.startSound(channel.CHAN_VOICE, 'zombie/z_idle1.wav', 1.0, attn.ATTN_IDLE); });
+    this._defineState('zombie_run18', 'run18', 'zombie_run1', () => { this._ai.run(8); if (Math.random() < 0.2) {this.startSound(channel.CHAN_VOICE, 'zombie/z_idle.wav', 1.0, attn.ATTN_IDLE);} if (Math.random() > 0.8) {this.startSound(channel.CHAN_VOICE, 'zombie/z_idle1.wav', 1.0, attn.ATTN_IDLE);} });
 
     // attack sequences (prefix atta, attb, attc)
     this._defineState('zombie_atta1', 'atta1', 'zombie_atta2', () => { this._ai.face(); });
@@ -350,9 +350,9 @@ export default class ZombieMonster extends WalkMonster {
   thinkMissile() {
     // randomly choose grenade attack variant
     const r = Math.random();
-    if (r < 0.3) this._runState('zombie_atta1');
-    else if (r < 0.6) this._runState('zombie_attb1');
-    else this._runState('zombie_attc1');
+    if (r < 0.3) {this._runState('zombie_atta1');}
+    else if (r < 0.6) {this._runState('zombie_attb1');}
+    else {this._runState('zombie_attc1');}
   }
 
   hasMeleeAttack() {
@@ -465,7 +465,7 @@ export default class ZombieMonster extends WalkMonster {
   }
 
   idleSound() {
-    if (Math.random() < 0.1) return;
+    if (Math.random() < 0.1) {return;}
     this.startSound(channel.CHAN_VOICE, 'zombie/z_idle.wav', 1.0, attn.ATTN_IDLE);
   }
 };

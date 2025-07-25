@@ -143,7 +143,7 @@ export default class ShamblerMonsterEntity extends WalkMonster {
     this._defineState('sham_swingl6', 'swingl6', 'sham_swingl7', () => { this._ai.charge(9); });
     this._defineState('sham_swingl7', 'swingl7', 'sham_swingl8', () => { this._ai.charge(5); this.shamClaw(250); });
     this._defineState('sham_swingl8', 'swingl8', 'sham_swingl9', () => { this._ai.charge(4); });
-    this._defineState('sham_swingl9', 'swingl9', 'sham_run1', () => { this._ai.charge(8); if (Math.random() < 0.5) this._runState('sham_swingr1'); });
+    this._defineState('sham_swingl9', 'swingl9', 'sham_run1', () => { this._ai.charge(8); if (Math.random() < 0.5) {this._runState('sham_swingr1');} });
 
     // Swing right states
     this._defineState('sham_swingr1', 'swingr1', 'sham_swingr2', () => { this.startSound(channel.CHAN_VOICE, 'shambler/melee1.wav'); this._ai.charge(1); });
@@ -154,7 +154,7 @@ export default class ShamblerMonsterEntity extends WalkMonster {
     this._defineState('sham_swingr6', 'swingr6', 'sham_swingr7', () => { this._ai.charge(6); });
     this._defineState('sham_swingr7', 'swingr7', 'sham_swingr8', () => { this._ai.charge(6); this.shamClaw(-250); });
     this._defineState('sham_swingr8', 'swingr8', 'sham_swingr9', () => { this._ai.charge(3); });
-    this._defineState('sham_swingr9', 'swingr9', 'sham_run1', () => { this._ai.charge(1); this._ai.charge(10); if (Math.random() < 0.5) this._runState('sham_swingl1'); });
+    this._defineState('sham_swingr9', 'swingr9', 'sham_run1', () => { this._ai.charge(1); this._ai.charge(10); if (Math.random() < 0.5) {this._runState('sham_swingl1');} });
 
     // Death states
     this._defineState('sham_death1', 'death1', 'sham_death2');
@@ -187,7 +187,7 @@ export default class ShamblerMonsterEntity extends WalkMonster {
     // magic7, magic8 are missing
     this._defineState('sham_magic9', 'magic9', 'sham_magic10', () => { this.castLightning(); });
     this._defineState('sham_magic10', 'magic10', 'sham_magic11', () => { this.castLightning(); });
-    this._defineState('sham_magic11', 'magic11', 'sham_magic12', () => { if (this.game.skill === 3) this.castLightning(); });
+    this._defineState('sham_magic11', 'magic11', 'sham_magic12', () => { if (this.game.skill === 3) {this.castLightning();} });
     this._defineState('sham_magic12', 'magic12', 'sham_run1');
   }
 

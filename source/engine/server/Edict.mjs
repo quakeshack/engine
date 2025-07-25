@@ -116,7 +116,7 @@ export class ED {
       return;
     }
     let i; let ent; let active = 0; let models = 0; let solid = 0; let step = 0;
-    for (i = 0; i < SV.server.num_edicts; ++i) {
+    for (i = 0; i < SV.server.num_edicts; i++) {
       ent = SV.server.edicts[i];
       if (ent.isFree() === true) {
         continue;
@@ -362,7 +362,7 @@ export class ServerEdict {
   setModel(model) {
     let i;
 
-    for (i = 0; i < SV.server.model_precache.length; ++i) {
+    for (i = 0; i < SV.server.model_precache.length; i++) {
       if (SV.server.model_precache[i] === model) {
         break;
       }
@@ -466,7 +466,7 @@ export class ServerEdict {
         i += check;
       }
       let ent;
-      for (; ; ++i) {
+      for (; ; i++) {
         if (i === SV.svs.maxclients + 1) {
           i = 1;
         }
@@ -510,7 +510,7 @@ export class ServerEdict {
    * @returns {boolean} true, when this entity is in the PVS
    */
   isInPVS(pvs) {
-    for (let i = 0; i < this.leafnums.length; ++i) {
+    for (let i = 0; i < this.leafnums.length; i++) {
       if ((pvs[this.leafnums[i] >> 3] & (1 << (this.leafnums[i] & 7))) !== 0) {
         return true;
       }
@@ -570,7 +570,7 @@ export class ServerEdict {
     const bestdir = dir.copy();
     let bestdist = SV.aim.value;
     let bestent = null;
-    for (let i = 1; i < SV.server.num_edicts; ++i) {
+    for (let i = 1; i < SV.server.num_edicts; i++) {
       const check = SV.server.edicts[i];
       if (check.isFree()) {
         continue;

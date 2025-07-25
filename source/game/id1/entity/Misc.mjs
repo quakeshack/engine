@@ -89,10 +89,11 @@ export class BaseLightEntity extends BaseEntity {
 
   _defaultStyle() {
     if (this.style >= 32) {
-      if (this.spawnflags & BaseLightEntity.START_OFF)
+      if (this.spawnflags & BaseLightEntity.START_OFF) {
         this.engine.Lightstyle(this.style, 'a');
-      else
+      } else {
         this.engine.Lightstyle(this.style, 'm');
+      }
     }
   }
 };

@@ -269,9 +269,8 @@ SV.StartParticle = function(org, dir, color, count) {
   MSG.WriteCoord(datagram, org[0]);
   MSG.WriteCoord(datagram, org[1]);
   MSG.WriteCoord(datagram, org[2]);
-  let i; let v;
-  for (i = 0; i <= 2; ++i) {
-    v = (dir[i] * 16.0) >> 0;
+  for (let i = 0; i <= 2; i++) {
+    let v = (dir[i] * 16.0) >> 0;
     if (v > 127) {
       v = 127;
     } else if (v < -128) {
@@ -294,7 +293,7 @@ SV.StartSound = function(edict, channel, sample, volume, attenuation) {
   }
 
   let i;
-  for (i = 1; i < SV.server.sound_precache.length; ++i) {
+  for (i = 1; i < SV.server.sound_precache.length; i++) {
     if (sample === SV.server.sound_precache[i]) {
       break;
     }
@@ -361,11 +360,11 @@ SV.SendServerData = function(client) {
   MSG.WriteString(message, SV.server.edicts[0].entity.message || SV.server.mapname); // levelname
   // @ts-ignore
   SV.pmove.movevars.sendToClient(message);
-  for (let i = 1; i < SV.server.model_precache.length; ++i) {
+  for (let i = 1; i < SV.server.model_precache.length; i++) {
     MSG.WriteString(message, SV.server.model_precache[i]);
   }
   MSG.WriteByte(message, 0);
-  for (let i = 1; i < SV.server.sound_precache.length; ++i) {
+  for (let i = 1; i < SV.server.sound_precache.length; i++) {
     MSG.WriteString(message, SV.server.sound_precache[i]);
   }
   MSG.WriteByte(message, 0);
@@ -437,7 +436,7 @@ SV.CheckForNewClients = function() {
     if (!ret) {
       return;
     }
-    for (i = 0; i < SV.svs.maxclients; ++i) {
+    for (i = 0; i < SV.svs.maxclients; i++) {
       if (!SV.svs.clients[i].active) {
         break;
       }
@@ -462,7 +461,7 @@ SV.AddToFatPVS = function(org, node) {
     if (node.contents < 0) {
       if (node.contents !== Mod.contents.solid) {
         pvs = Mod.LeafPVS(node, SV.server.worldmodel);
-        for (i = 0; i < SV.fatbytes; ++i) {
+        for (i = 0; i < SV.fatbytes; i++) {
           SV.fatpvs[i] |= pvs[i];
         }
       }
@@ -484,7 +483,7 @@ SV.AddToFatPVS = function(org, node) {
 SV.FatPVS = function(org) {
   SV.fatbytes = (SV.server.worldmodel.leafs.length + 31) >> 3;
   let i;
-  for (i = 0; i < SV.fatbytes; ++i) {
+  for (i = 0; i < SV.fatbytes; i++) {
     SV.fatpvs[i] = 0;
   }
   SV.AddToFatPVS(org, SV.server.worldmodel.nodes[0]);
@@ -534,7 +533,7 @@ SV.nullcmd = new Protocol.UserCmd();
 SV.WritePlayersToClient = function(clent, pvs, msg) {
   let changes = false;
 
-  for (let i = 0; i < SV.svs.maxclients; ++i) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
     /** @type {ServerClient} */
     const cl = SV.svs.clients[i];
     const playerEntity = cl.edict.entity;
@@ -819,7 +818,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
   }
 
   // pretent all other entities are free
-  for (let i = 1; i < SV.server.num_edicts; ++i) {
+  for (let i = 1; i < SV.server.num_edicts; i++) {
     const ent = SV.server.edicts[i];
 
     if (visedicts.includes(ent.num)) {
@@ -1080,7 +1079,7 @@ SV.SendClientMessages = function() {
     }
   }
 
-  for (let i = 1; i < SV.server.num_edicts; ++i) {
+  for (let i = 1; i < SV.server.num_edicts; i++) {
     if (SV.server.edicts[i].isFree()) {
       continue;
     }
@@ -1098,7 +1097,7 @@ SV.ModelIndex = function(name) {
   if (!name) {
     return 0;
   }
-  for (let i = 0; i < SV.server.model_precache.length; ++i) {
+  for (let i = 0; i < SV.server.model_precache.length; i++) {
     if (SV.server.model_precache[i] === name) {
       return i;
     }
@@ -1170,7 +1169,7 @@ SV.SpawnServer = function(mapname) {
 
   SV.server.edicts = [];
   // preallocating up to Def.limits.edicts, we can extend that later during runtime
-  for (i = 0; i < Def.limits.edicts; ++i) {
+  for (i = 0; i < Def.limits.edicts; i++) {
     const ent = new ServerEdict(i);
 
     SV.server.edicts[i] = ent;
@@ -1180,7 +1179,7 @@ SV.SpawnServer = function(mapname) {
   SV.server.signon.clear();
   // hooking up the edicts reserved for clients
   SV.server.num_edicts = SV.svs.maxclients + 1;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (i = 0; i < SV.svs.maxclients; i++) {
     const ent = SV.server.edicts[i + 1];
 
     // we need to spawn the player entity in those client edict slots
@@ -1214,7 +1213,7 @@ SV.SpawnServer = function(mapname) {
 
   SV.server.sound_precache = [''];
   SV.server.model_precache = ['', SV.server.worldmodel.name];
-  for (i = 1; i <= SV.server.worldmodel.submodels.length; ++i) {
+  for (i = 1; i <= SV.server.worldmodel.submodels.length; i++) {
     // TODO: do we really need this? (yes we do, PF, CL and Host etc. rely on it)
     //       also each submodule is a brush connected to an entity (doors etc.)
     SV.server.model_precache[i + 1] = '*' + i;
@@ -1222,7 +1221,7 @@ SV.SpawnServer = function(mapname) {
   }
 
   SV.server.lightstyles = [];
-  for (i = 0; i <= 63; ++i) {
+  for (i = 0; i <= Def.limits.lightstyles; i++) {
     SV.server.lightstyles[i] = '';
   }
 
@@ -1251,7 +1250,7 @@ SV.SpawnServer = function(mapname) {
   SV.Physics();
   SV.Physics();
   // sending to all clients that we are on a new map
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (i = 0; i < SV.svs.maxclients; i++) {
     Host.client = SV.svs.clients[i];
     if (!Host.client.active) {
       continue;
@@ -1342,7 +1341,8 @@ SV.CvarChanged = function(cvar) {
 SV.CheckBottom = function(ent) {
   const mins = ent.entity.origin.copy().add(ent.entity.mins);
   const maxs = ent.entity.origin.copy().add(ent.entity.maxs);
-  for (;;) {
+  // eslint-disable-next-line no-unreachable-loop
+  while (true) {
     if (SV.PointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) !== Mod.contents.solid) {
       break;
     }
@@ -1400,7 +1400,7 @@ SV.movestep = function(ent, move, relink) { // FIXME: return type = boolean
     const enemy = ent.entity.enemy;
     const neworg = new Vector();
     // try one move with vertical motion, then one without
-    for (let i = 0; i <= 1; ++i) {
+    for (let i = 0; i <= 1; i++) {
       const origin = ent.entity.origin.copy();
       neworg[0] = origin[0] + move[0];
       neworg[1] = origin[1] + move[1];
@@ -1781,9 +1781,9 @@ SV.FlyMove = function(ent, time) {
       return 3;
     }
     planes[numplanes++] = trace.plane.normal.copy();
-    for (i = 0; i < numplanes; ++i) {
+    for (i = 0; i < numplanes; i++) {
       SV.ClipVelocity(original_velocity, planes[i], new_velocity, 1.0);
-      for (j = 0; j < numplanes; ++j) {
+      for (j = 0; j < numplanes; j++) {
         if (j !== i) {
           plane = planes[j];
           if ((new_velocity[0] * plane[0] + new_velocity[1] * plane[1] + new_velocity[2] * plane[2]) < 0.0) { // plane is not a Vector
@@ -1916,7 +1916,7 @@ SV.PushMove = function(pusher, movetime) {
       if (pusher.entity.blocked) {
         pusher.entity.blocked(check.entity);
       }
-      for (let i = 0; i < moved.length; ++i) {
+      for (let i = 0; i < moved.length; i++) {
         const moved_edict = moved[i];
         moved_edict[1].entity.origin = moved_edict[0];
         SV.LinkEdict(moved_edict[1]);
@@ -2312,7 +2312,7 @@ SV.SetIdealPitch = function() {
   const top = new Vector(0.0, 0.0, origin[2] + ent.entity.view_ofs[2]);
   const bottom = new Vector(0.0, 0.0, top[2] - 160.0);
   let i; let tr; const z = [];
-  for (i = 0; i < 6; ++i) {
+  for (i = 0; i < 6; i++) {
     top[0] = bottom[0] = origin[0] + cosval * (i + 3) * 12.0;
     top[1] = bottom[1] = origin[1] + sinval * (i + 3) * 12.0;
     tr = SV.Move(top, Vector.origin, Vector.origin, bottom, 1, ent);
@@ -2322,7 +2322,7 @@ SV.SetIdealPitch = function() {
     z[i] = top[2] - tr.fraction * 160.0;
   }
   let dir = 0.0; let step; let steps = 0;
-  for (i = 1; i < 6; ++i) {
+  for (i = 1; i < 6; i++) {
     step = z[i] - z[i - 1];
     if ((step > -0.1) && (step < 0.1)) {
       continue;
@@ -2683,7 +2683,7 @@ SV.ReadClientMessage = function(client) {
 };
 
 SV.RunClients = function() { // FIXME: Host.client
-  for (let i = 0; i < SV.svs.maxclients; ++i) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
     if (!client.active) {
       continue;
@@ -2727,7 +2727,7 @@ SV.InitBoxHull = function() {
     firstclipnode: 0,
     lastclipnode: 5,
   };
-  for (let i = 0; i <= 5; ++i) {
+  for (let i = 0; i <= 5; i++) {
     const node = {};
     SV.box_clipnodes[i] = node;
     node.planenum = i;
@@ -3040,7 +3040,7 @@ SV.RecursiveHullCheck = function(hull, num, p1f, p2f, p1, p2, trace) { // TODO: 
       trace.fraction = midf;
       trace.endpos = mid.copy();
       Con.DPrint('backup past 0\n');
-      return;
+      return false;
     }
     midf = p1f + (p2f - p1f) * frac;
     mid[0] = p1[0] + frac * (p2[0] - p1[0]);

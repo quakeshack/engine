@@ -18,7 +18,7 @@ eventBus.subscribe('registry.frozen', () => {
   SV = registry.SV;
 });
 
-PF._assertTrue = function _PF_assertTrue(check, message) {
+PF._assertTrue = function _assertTrue(check, message) {
   if (!check) {
     throw new Error('Program assert failed: ' + message);
   }
@@ -77,7 +77,6 @@ function _PF_GenerateBuiltinFunction(name, func, argTypes = [], returnType = ety
   }
 
   const args = [];
-  let returnCode = '';
   const asserts = [];
 
   for (const argType of argTypes) {
@@ -131,6 +130,8 @@ function _PF_GenerateBuiltinFunction(name, func, argTypes = [], returnType = ety
         throw new TypeError('unsupported arg type: ' + argType);
     }
   }
+
+  let returnCode = '';
 
   switch (returnType) {
     case etype.ev_vector:
@@ -199,9 +200,9 @@ function _PF_GenerateBuiltinFunction(name, func, argTypes = [], returnType = ety
   return (new Function('ED', 'MSG', 'PF', 'ServerEdict', 'Vector', 'registry', '_' + name, code))(ED, MSG, PF, ServerEdict, Vector, registry, func);
 };
 
-PF._VarString = function _PF_VarString(first) {
+PF._VarString = function _VarString(first) {
   let i; let out = '';
-  for (i = first; i < PR.argc; ++i) {
+  for (i = first; i < PR.argc; i++) {
     out += PR.GetString(PR.globals_int[ofs.OFS_PARM0 + i * 3]);
   }
   return out;
@@ -326,13 +327,13 @@ PF.findradius = _PF_GenerateBuiltinFunction('findradius', (origin, radius) => {
   return chain;
 }, [etype.ev_vector, etype.ev_float], etype.ev_entity);
 
-PF.dprint = function PF_dprint() { // EngineInterface
+PF.dprint = function dprint() { // EngineInterface
   Con.DPrint(PF._VarString(0));
 };
 
 PF.dprint = _PF_GenerateBuiltinFunction('dprint', (str) => ServerEngineAPI.ConsoleDebug(str), [etype.ev_strings]);
 
-PF.ftos = _PF_GenerateBuiltinFunction('ftos', (f) => parseInt(f) == f ? f.toString() : f.toFixed(1), [etype.ev_float], etype.ev_string);
+PF.ftos = _PF_GenerateBuiltinFunction('ftos', (f) => parseInt(f) === f ? f.toString() : f.toFixed(1), [etype.ev_float], etype.ev_string);
 
 PF.fabs = _PF_GenerateBuiltinFunction('fabs', Math.abs, [etype.ev_float], etype.ev_float);
 
@@ -349,30 +350,24 @@ PF.Spawn = _PF_GenerateBuiltinFunction('Spawn', () => {
 
 PF.Remove = _PF_GenerateBuiltinFunction('Remove', (edict) => edict.freeEdict(), [etype.ev_entity]);
 
-PF.Find = _PF_GenerateBuiltinFunction('Find', (edict, field, value) => {
-  return ServerEngineAPI.FindByFieldAndValue(field, value, edict.num + 1);
-}, [etype.ev_entity, etype.ev_field, etype.ev_string], etype.ev_entity);
+PF.Find = _PF_GenerateBuiltinFunction('Find', (edict, field, value) => ServerEngineAPI.FindByFieldAndValue(field, value, edict.num + 1), [etype.ev_entity, etype.ev_field, etype.ev_string], etype.ev_entity);
 
-PF.MoveToGoal = _PF_GenerateBuiltinFunction('MoveToGoal', (dist) => {
-  return SV.server.gameAPI.self.moveToGoal(dist);
-}, [etype.ev_float], etype.ev_bool);
+PF.MoveToGoal = _PF_GenerateBuiltinFunction('MoveToGoal', (dist) => SV.server.gameAPI.self.moveToGoal(dist), [etype.ev_float], etype.ev_bool);
 
-PF.precache_file = _PF_GenerateBuiltinFunction('precache_file', (integer) => {
-  return integer; // dummy behavior
-}, [etype.ev_integer], etype.ev_integer);
+PF.precache_file = _PF_GenerateBuiltinFunction('precache_file', (integer) => 
+   integer // dummy behavior
+, [etype.ev_integer], etype.ev_integer);
 
-PF.precache_sound = _PF_GenerateBuiltinFunction('precache_sound', (sfxName) => {
-  return ServerEngineAPI.PrecacheSound(sfxName);
-}, [etype.ev_string_not_empty]);
+PF.precache_sound = _PF_GenerateBuiltinFunction('precache_sound', (sfxName) => ServerEngineAPI.PrecacheSound(sfxName), [etype.ev_string_not_empty]);
 
-PF.precache_model = _PF_GenerateBuiltinFunction('precache_model', (modelName) => {
+PF.precache_model = _PF_GenerateBuiltinFunction('precache_model', (modelName) => 
   // FIXME: handle this more gracefully
   // if (SV.server.loading !== true) {
   //   PR.RunError('PF.Precache_*: Precache can only be done in spawn functions');
   // }
 
-  return ServerEngineAPI.PrecacheModel(modelName);
-}, [etype.ev_string_not_empty]);
+   ServerEngineAPI.PrecacheModel(modelName)
+, [etype.ev_string_not_empty]);
 
 PF.coredump = function coredump() {
   ED.PrintEdicts();
@@ -457,7 +452,7 @@ PF.makestatic = _PF_GenerateBuiltinFunction('makestatic', (edict) => edict.makeS
 PF.setspawnparms = _PF_GenerateBuiltinFunction('setspawnparms', function (clientEdict) {
   const spawn_parms = clientEdict.getClient().spawn_parms;
 
-  for (let i = 0; i <= 15; ++i) {
+  for (let i = 0; i <= 15; i++) {
     SV.server.gameAPI[`parm${i + 1}`] = spawn_parms[i];
   }
 }, [etype.ev_entity_client]);

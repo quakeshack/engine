@@ -40,7 +40,7 @@ export class Flag {
 
   has(...flags) {
     for (const flag of flags) {
-      if (this._value & flag === flag) {
+      if ((this._value & flag) === flag) {
         return true;
       }
     }
@@ -161,9 +161,7 @@ export class Serializer {
 
   /** Stops recording added fields. */
   endFields() {
-    this._serializableFields.push(...Object.keys(this._object).filter((key) => {
-      return !this._markerStart.includes(key);
-    }));
+    this._serializableFields.push(...Object.keys(this._object).filter((key) => !this._markerStart.includes(key)));
 
     this._markerStart = null;
   }
@@ -194,6 +192,7 @@ export class Serializer {
         case value._serializer instanceof Serializer:
           return [Serializer.TYPE_SERIALIZABLE, value._serializer.serialize()];
       }
+      throw new TypeError('Unknown type for serialization: ' + typeof value);
     };
 
     for (const field of this._serializableFields) {
@@ -241,6 +240,7 @@ export class Serializer {
             return object;
           };
       }
+      throw new TypeError('Unknown type for deserialization: ' + value[0]);
     };
 
     // we purposefully ignore the _serializableFields in order to do the TYPE_SERIALIZABLE trick

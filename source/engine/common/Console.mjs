@@ -6,7 +6,7 @@ import Vector from '../../shared/Vector.mjs';
 import Cmd from './Cmd.mjs';
 import VID from '../client/VID.mjs';
 
-let { CL, Draw, Host, Key, M, S, SCR } = registry;
+let { CL, Draw, Host, Key, M, SCR } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
@@ -14,7 +14,6 @@ eventBus.subscribe('registry.frozen', () => {
   Host = registry.Host;
   Key = registry.Key;
   M = registry.M;
-  S = registry.S;
   SCR = registry.SCR;
 });
 
@@ -157,7 +156,7 @@ export default class Con {
     if (i < 0) {
       i = 0;
     }
-    for (; i < Con.text.length; ++i) {
+    for (; i < Con.text.length; i++) {
       if ((Host.realtime - Con.text[i].time) > Con.notifytime.value) {
         continue;
       }
@@ -194,14 +193,14 @@ export default class Con {
         break;
       }
     }
-    for (++i; i < Con.text.length - Con.backscroll; ++i) {
+    for (i++; i < Con.text.length - Con.backscroll; i++) {
       const { text, color } = Con.text[i];
       rows = Math.ceil(text.length / width);
       if (rows === 0) {
         y += 8;
         continue;
       }
-      for (let j = 0; j < rows; ++j) {
+      for (let j = 0; j < rows; j++) {
         Draw.String(8, y, text.substr(j * width, width), 1.0, color);
         y += 8;
       }

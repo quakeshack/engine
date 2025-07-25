@@ -85,24 +85,24 @@ export default class COM {
         if (c > 32) {
           break;
         }
-        ++i;
+        i++;
       }
       if ((c === 47) && (data.charCodeAt(i + 1) === 47)) {
         for (; ;) {
           if ((i >= data.length) || (data.charCodeAt(i) === 10)) {
             break;
           }
-          ++i;
+          i++;
         }
         skipwhite = true;
       }
     }
 
     if (c === 34) {
-      ++i;
+      i++;
       for (; ;) {
         c = data.charCodeAt(i);
-        ++i;
+        i++;
         if ((i >= data.length) || (c === 34)) {
           return { token, data: data.substring(i) };
         }
@@ -115,7 +115,7 @@ export default class COM {
         break;
       }
       token += String.fromCharCode(c);
-      ++i;
+      i++;
       c = data.charCodeAt(i);
     }
 
@@ -168,7 +168,7 @@ export default class COM {
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ];
-    for (let i = 0; i < 256; ++i) {
+    for (let i = 0; i < 256; i++) {
       if (check[i] !== pop[i]) {
         throw new CorruptedResourceError('gfx/pop.lmp', 'not genuine registered version');
       }
@@ -254,7 +254,7 @@ export default class COM {
   static WriteFile(filename, data, len) {
     filename = filename.toLowerCase();
     const dest = [];
-    for (let i = 0; i < len; ++i) {
+    for (let i = 0; i < len; i++) {
       dest[i] = String.fromCharCode(data[i]);
     }
     try {
@@ -590,7 +590,7 @@ export default class COM {
     const dirView = new DataView(dirBuffer);
     /** @type {PackFile} */
     const pack = [];
-    for (let i = 0; i < numpackfiles; ++i) {
+    for (let i = 0; i < numpackfiles; i++) {
       // Each entry is 64 bytes total:
       //   - 56 bytes: file name (null-padded)
       //   - 4 bytes:  file position

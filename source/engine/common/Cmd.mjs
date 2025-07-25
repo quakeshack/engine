@@ -185,17 +185,17 @@ export default class Cmd {
   static Alias_f(...argv) {
     if (argv.length <= 1) {
       Con.Print('Current alias commands:\n');
-      for (let i = 0; i < Cmd.alias.length; ++i) {
+      for (let i = 0; i < Cmd.alias.length; i++) {
         Con.Print(Cmd.alias[i].name + ' : ' + Cmd.alias[i].value + '\n');
       }
     }
     let value = '';
-    for (let i = 0; i < Cmd.alias.length; ++i) {
+    for (let i = 0; i < Cmd.alias.length; i++) {
       if (Cmd.alias[i].name === argv[1]) {
         break;
       }
     }
-    for (let j = 2; j < argv.length; ++j) {
+    for (let j = 2; j < argv.length; j++) {
       value += argv[j];
       if (j !== argv.length) {
         value += ' ';
@@ -223,7 +223,7 @@ export default class Cmd {
     const argv = [];
     let i; let c;
     for (; ;) {
-      for (i = 0; i < text.length; ++i) {
+      for (i = 0; i < text.length; i++) {
         c = text.charCodeAt(i);
         if ((c > 32) || (c === 10)) {
           break;
@@ -243,7 +243,7 @@ export default class Cmd {
   }
 
   static HasCommand(name) {
-    for (let i = 0; i < Cmd.functions.length; ++i) {
+    for (let i = 0; i < Cmd.functions.length; i++) {
       if (Cmd.functions[i].name === name) {
         return true;
       }
@@ -255,7 +255,7 @@ export default class Cmd {
   static AddCommand(name, command) {
     console.assert(Cvar.FindVar(name) === null, 'command name must not be taken by a cvar', name);
 
-    for (let i = 0; i < Cmd.functions.length; ++i) {
+    for (let i = 0; i < Cmd.functions.length; i++) {
       if (Cmd.functions[i].name === name) {
         Con.Print('Cmd.AddCommand: ' + name + ' already defined\n');
         return;
@@ -276,7 +276,7 @@ export default class Cmd {
 
   static CompleteCommand(partial) {
     if (!partial) {
-      return;
+      return null;
     }
 
     for (let i = 0; i < Cmd.functions.length; i++) {
@@ -284,6 +284,8 @@ export default class Cmd {
         return Cmd.functions[i].name;
       }
     }
+
+    return null;
   }
 
   static ExecuteString(text, client = null) {
@@ -297,7 +299,7 @@ export default class Cmd {
     const cmdargs = argv.slice(1);
 
     // check commands
-    for (let i = 0; i < Cmd.functions.length; ++i) {
+    for (let i = 0; i < Cmd.functions.length; i++) {
       if (Cmd.functions[i].name === cmdname) {
         /** @type {ConsoleCommand} */
         const handler = new Cmd.functions[i].command();
@@ -311,7 +313,7 @@ export default class Cmd {
     }
 
     // check aliases
-    for (let i = 0; i < Cmd.alias.length; ++i) {
+    for (let i = 0; i < Cmd.alias.length; i++) {
       if (Cmd.alias[i].name === cmdname) {
         Cmd.text = Cmd.alias[i].value + Cmd.text;
         return;

@@ -94,7 +94,7 @@ export class SzBuffer {
     } else {
       dest = this.allocate(data.length);
     }
-    for (let i = 0; i < data.length; ++i) {
+    for (let i = 0; i < data.length; i++) {
       buf[dest + i] = data.charCodeAt(i);
     }
   }
@@ -247,7 +247,7 @@ export class SzBuffer {
 
   readString() {
     const chars = [];
-    for (let i = 0; i < 2048; ++i) {
+    for (let i = 0; i < this.cursize; i++) {
       const c = this.readByte();
       if (c <= 0) {
         break;
@@ -564,13 +564,13 @@ export default class MSG {
   }
 
   static ReadString() {
-    const string = []; let l; let c;
-    for (l = 0; l < 2048; ++l) {
-      c = MSG.ReadByte();
+    const string = [];
+    for (let l = 0; l < NET.message.cursize; l++) {
+      const c = MSG.ReadByte();
       if (c <= 0) {
         break;
       }
-      string[l] = String.fromCharCode(c);
+      string.push(String.fromCharCode(c));
     }
     const s = string.join('');
     // MSG._messageLog.push({type: 'string', value: s});

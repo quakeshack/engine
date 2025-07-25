@@ -239,7 +239,7 @@ M.ScanSaves = function() {
   const searchpaths = COM.searchpaths;
   const search = 'Quake.' + COM.gamedir[0].filename + '/s';
   COM.searchpaths = COM.gamedir;
-  for (let i = 0; i < M.max_savegames; ++i) {
+  for (let i = 0; i < M.max_savegames; i++) {
     const f = localStorage.getItem(search + i + '.json');
     if (!f) {
       M.filenames[i] = 'Empty slot';
@@ -275,7 +275,7 @@ M.Menu_Save_f = function() {
 M.Load_Draw = function() {
   M.DrawPic(160 - (M.p_load.width / 2), 4, M.p_load);
   let i;
-  for (i = 0; i < M.max_savegames; ++i) {
+  for (i = 0; i < M.max_savegames; i++) {
     M.Print(16, 32 + (i << 3), M.filenames[i]);
   }
   M.DrawCharacter(8, 32 + (M.load_cursor << 3), 12 + ((Host.realtime * 4.0) & 1));
@@ -284,7 +284,7 @@ M.Load_Draw = function() {
 M.Save_Draw = function() {
   M.DrawPic(160 - (M.p_save.width / 2), 4, M.p_save);
   let i;
-  for (i = 0; i < M.max_savegames; ++i) {
+  for (i = 0; i < M.max_savegames; i++) {
     M.Print(16, 32 + (i << 3), M.filenames[i]);
   }
   M.DrawCharacter(8, 32 + (M.load_cursor << 3), 12 + ((Host.realtime * 4.0) & 1));
@@ -736,7 +736,7 @@ M.Menu_Keys_f = function() {
 
 M.FindKeysForCommand = function(command) {
   const twokeys = []; let i;
-  for (i = 0; i < Key.bindings.length; ++i) {
+  for (i = 0; i < Key.bindings.length; i++) {
     if (Key.bindings[i] === command) {
       twokeys[twokeys.length] = i;
       if (twokeys.length === 2) {
@@ -749,7 +749,7 @@ M.FindKeysForCommand = function(command) {
 
 M.UnbindCommand = function(command) {
   let i;
-  for (i = 0; i < Key.bindings.length; ++i) {
+  for (i = 0; i < Key.bindings.length; i++) {
     if (Key.bindings[i] === command) {
       delete Key.bindings[i];
     }
@@ -768,7 +768,7 @@ M.Keys_Draw = function() {
   }
 
   let i; let y = 48; let keys; let name;
-  for (i = 0; i < M.bindnames.length; ++i) {
+  for (i = 0; i < M.bindnames.length; i++) {
     M.Print(16, y, M.bindnames[i][1]);
     keys = M.FindKeysForCommand(M.bindnames[i][0]);
     if (keys[0] == null) {

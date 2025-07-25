@@ -257,16 +257,15 @@ export default class Vector extends Array {
    * @returns {DirectionalVectors} directional vectors
    */
   angleVectors() {
-    const angles = this;
-    let angle = angles[0] * Math.PI / 180.0;
+    let angle = this[0] * Math.PI / 180.0;
     const sp = Math.sin(angle);
     const cp = Math.cos(angle);
 
-    angle = angles[1] * Math.PI / 180.0;
+    angle = this[1] * Math.PI / 180.0;
     const sy = Math.sin(angle);
     const cy = Math.cos(angle);
 
-    angle = angles[2] * Math.PI / 180.0;
+    angle = this[2] * Math.PI / 180.0;
     const sr = Math.sin(angle);
     const cr = Math.cos(angle);
 

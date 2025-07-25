@@ -203,7 +203,7 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
   const start = Sys.FloatTime(); let count; let i;
   do {
     count = 0;
-    for (i = 0; i < SV.svs.maxclients; ++i) {
+    for (i = 0; i < SV.svs.maxclients; i++) {
       Host.client = SV.svs.clients[i];
       if ((Host.client.active !== true) || (Host.client.message.cursize === 0)) {
         continue;
@@ -226,7 +226,7 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
   // if (count !== 0) {
   //   Con.Print('Host.ShutdownServer: NET.SendToAll failed for ' + count + ' clients\n');
   // }
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
     if (client.active) {
       Host.DropClient(client, isCrashShutdown, 'Server shutting down');
@@ -446,7 +446,7 @@ Host.Frame = function() {
   Host.timecount = 0;
   Host.timetotal = 0.0;
   let i; let c = 0;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (i = 0; i < SV.svs.maxclients; i++) {
     if (SV.svs.clients[i].active === true) {
       ++c;
     }
@@ -496,6 +496,7 @@ Host.Init = async function() {
 
   Cmd.text = 'exec better-quake.rc\n' + Cmd.text;
 
+  // eslint-disable-next-line require-atomic-updates
   Host.initialized = true;
   Sys.Print('========Quake Initialized=========\n');
 
@@ -564,7 +565,7 @@ Host.Status_f = function() {
 
   print('# userid name                uniqueid            connected ping loss state  adr\n');
 
-  for (let i = 0; i < SV.svs.maxclients; ++i) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
     if (!client.active) {
       continue;
@@ -667,13 +668,13 @@ Host.Ping_f = function() {
   }
   Host.ClientPrint('Client ping times:\n');
   let i; let client; let total; let j;
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (i = 0; i < SV.svs.maxclients; i++) {
     client = SV.svs.clients[i];
     if (client.active !== true) {
       continue;
     }
     total = 0;
-    for (j = 0; j <= 15; ++j) {
+    for (j = 0; j <= 15; j++) {
       total += client.ping_times[j];
     }
     total = (total * 62.5).toFixed(0);
@@ -905,7 +906,6 @@ Host.Loadgame_f = function (savename) {
 
   if (gamestate.version !== 1) {
     throw new HostError(`Savegame is version ${gamestate.version}, not 1\n`);
-    return;
   }
 
   Host.current_skill = gamestate.current_skill;
@@ -919,13 +919,11 @@ Host.Loadgame_f = function (savename) {
       CL.SetConnectingStep(null, null);
     }
     throw new HostError(`Couldn't load map: ${gamestate.mapname}\n`);
-    return;
   }
 
   if (gamestate.gameversion !== SV.server.gameVersion) {
     SV.ShutdownServer(false);
     throw new HostError(`Game is version ${gamestate.gameversion}, not ${SV.server.gameVersion}\n`);
-    return;
   }
 
   SV.server.paused = true;
@@ -1029,7 +1027,7 @@ Host.Say_f = function(teamonly, message) {
     message = message.substring(0, 140) + '...';
   }
 
-  for (let i = 0; i < SV.svs.maxclients; ++i) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
     if ((client.active !== true) || (client.spawned !== true)) {
       continue;
@@ -1074,7 +1072,7 @@ Host.Tell_f = function(recipient, message) {
   }
 
   const save = Host.client;
-  for (let i = 0; i < SV.svs.maxclients; ++i) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
     if ((client.active !== true) || (client.spawned !== true)) {
       continue;
@@ -1198,7 +1196,7 @@ Host.Spawn_f = function() { // signon 2, step 3
       colormap: ent.num, // the num, not the entity
       team: (client.colors & 15) + 1,
     });
-    for (i = 0; i <= 15; ++i) {
+    for (i = 0; i <= 15; i++) {
       SV.server.gameAPI[`parm${i + 1}`] = client.spawn_parms[i];
     }
     SV.server.gameAPI.time = SV.server.time;
@@ -1213,7 +1211,7 @@ Host.Spawn_f = function() { // signon 2, step 3
   message.clear();
   MSG.WriteByte(message, Protocol.svc.time);
   MSG.WriteFloat(message, SV.server.time);
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (i = 0; i < SV.svs.maxclients; i++) {
     client = SV.svs.clients[i];
     MSG.WriteByte(message, Protocol.svc.updatename);
     MSG.WriteByte(message, i);
@@ -1225,7 +1223,7 @@ Host.Spawn_f = function() { // signon 2, step 3
     MSG.WriteByte(message, i);
     MSG.WriteByte(message, client.colors);
   }
-  for (i = 0; i <= 63; ++i) {
+  for (i = 0; i < Def.limits.lightstyles; i++) {
     MSG.WriteByte(message, Protocol.svc.lightstyle);
     MSG.WriteByte(message, i);
     MSG.WriteString(message, SV.server.lightstyles[i]);
@@ -1288,7 +1286,7 @@ Host.Kick_f = function(...argv) { // FIXME: Host.client
     Host.client = SV.svs.clients[i];
     byNumber = true;
   } else {
-    for (i = 0; i < SV.svs.maxclients; ++i) {
+    for (i = 0; i < SV.svs.maxclients; i++) {
       Host.client = SV.svs.clients[i];
       if (Host.client.active !== true) {
         continue;
@@ -1397,7 +1395,7 @@ Host.Give_f = function(classname) {
 
 Host.FindViewthing = function() {
   if (SV.server.active) {
-    for (let i = 0; i < SV.server.num_edicts; ++i) {
+    for (let i = 0; i < SV.server.num_edicts; i++) {
       const e = SV.server.edicts[i];
       if (!e.isFree() && e.entity.classname === 'viewthing') {
         return e;

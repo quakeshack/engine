@@ -244,7 +244,7 @@ Key.StringToKeynum = function(str) {
     return str.charCodeAt(0);
   }
   str = str.toUpperCase();
-  for (let i = 0; i < Key.names.length; ++i) {
+  for (let i = 0; i < Key.names.length; i++) {
     if (Key.names[i].name === str) {
       return Key.names[i].keynum;
     }
@@ -257,7 +257,7 @@ Key.KeynumToString = function(keynum) {
     return String.fromCharCode(keynum);
   }
   let i;
-  for (i = 0; i < Key.names.length; ++i) {
+  for (i = 0; i < Key.names.length; i++) {
     if (Key.names[i].keynum === keynum) {
       return Key.names[i].name;
     }
@@ -309,7 +309,7 @@ Key.Bind_f = function(key, command) {
 
 Key.WriteBindings = function() {
   const f = [];
-  for (let i = 0; i < Key.bindings.length; ++i) {
+  for (let i = 0; i < Key.bindings.length; i++) {
     if (Key.bindings[i] != null) {
       f.push('bind "' + Key.KeynumToString(i) + '" "' + Key.bindings[i] + '"');
     }
@@ -320,7 +320,7 @@ Key.WriteBindings = function() {
 Key.Init = function() {
   let i;
 
-  for (i = 32; i < 128; ++i) {
+  for (i = 32; i < 128; i++) {
     Key.consolekeys[i] = true;
   }
   Key.consolekeys[Key.k.enter] = true;
@@ -338,10 +338,10 @@ Key.Init = function() {
   Key.consolekeys[96] = false;
   Key.consolekeys[126] = false;
 
-  for (i = 0; i < 256; ++i) {
+  for (i = 0; i < 256; i++) {
     Key.shift[i] = i;
   }
-  for (i = 97; i <= 122; ++i) {
+  for (i = 97; i <= 122; i++) {
     Key.shift[i] = i - 32;
   }
   Key.shift[49] = 33;

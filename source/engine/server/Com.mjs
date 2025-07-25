@@ -36,7 +36,9 @@ export default class NodeCOM extends COM {
         const pak = search.pack[j];
 
         for (const file of pak) {
-          if (file.name !== filename) continue;
+          if (file.name !== filename) {
+            continue;
+          }
 
           if (file.filelen === 0) {
             return new ArrayBuffer(0);

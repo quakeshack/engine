@@ -592,10 +592,10 @@ PR.CheckEmptyString = function(s) {
 
 PR._NewString = function(string) {
   const newstring = [];
-  for (let i = 0; i < string.length; ++i) {
+  for (let i = 0; i < string.length; i++) {
     const c = string.charCodeAt(i);
     if ((c === 92) && (i < (string.length - 1))) {
-      ++i;
+      i++;
       newstring[newstring.length] = (string.charCodeAt(i) === 110) ? '\n' : '\\';
     } else {
       newstring[newstring.length] = String.fromCharCode(c);
@@ -792,7 +792,7 @@ PR.LoadProgs = function() {
   PR.depth = 0;
 
   PR.localstack = [];
-  for (i = 0; i < PR.localstack_size; ++i) {
+  for (i = 0; i < PR.localstack_size; i++) {
     PR.localstack[i] = 0;
   }
   PR.localstack_used = 0;
@@ -802,7 +802,7 @@ PR.LoadProgs = function() {
   ofs = view.getUint32(8, true);
   num = view.getUint32(12, true);
   PR.statements = [];
-  for (i = 0; i < num; ++i) {
+  for (i = 0; i < num; i++) {
     PR.statements[i] = {
       op: view.getUint16(ofs, true),
       a: view.getInt16(ofs + 2, true),
@@ -815,7 +815,7 @@ PR.LoadProgs = function() {
   ofs = view.getUint32(16, true);
   num = view.getUint32(20, true);
   PR.globaldefs = [];
-  for (i = 0; i < num; ++i) {
+  for (i = 0; i < num; i++) {
     PR.globaldefs[i] = {
       type: view.getUint16(ofs, true),
       ofs: view.getUint16(ofs + 2, true),
@@ -827,7 +827,7 @@ PR.LoadProgs = function() {
   ofs = view.getUint32(24, true);
   num = view.getUint32(28, true);
   PR.fielddefs = [];
-  for (i = 0; i < num; ++i) {
+  for (i = 0; i < num; i++) {
     PR.fielddefs[i] = {
       type: view.getUint16(ofs, true),
       ofs: view.getUint16(ofs + 2, true),
@@ -839,7 +839,7 @@ PR.LoadProgs = function() {
   ofs = view.getUint32(32, true);
   num = view.getUint32(36, true);
   PR.functions = [];
-  for (i = 0; i < num; ++i) {
+  for (i = 0; i < num; i++) {
     PR.functions[i] = {
       first_statement: view.getInt32(ofs, true),
       parm_start: view.getUint32(ofs + 4, true),
@@ -861,7 +861,7 @@ PR.LoadProgs = function() {
   ofs = view.getUint32(40, true);
   num = view.getUint32(44, true);
   PR.strings = [];
-  for (i = 0; i < num; ++i) {
+  for (i = 0; i < num; i++) {
     PR.strings[i] = view.getUint8(ofs + i);
   }
   PR.string_temp = PR.NewString('', 128); // allocates 128 bytes
@@ -873,7 +873,7 @@ PR.LoadProgs = function() {
   PR.globals = new ArrayBuffer(num << 2);
   PR.globals_float = new Float32Array(PR.globals);
   PR.globals_int = new Int32Array(PR.globals);
-  for (i = 0; i < num; ++i) {
+  for (i = 0; i < num; i++) {
     PR.globals_int[i] = view.getInt32(ofs + (i << 2), true);
   }
 
@@ -891,7 +891,7 @@ PR.LoadProgs = function() {
     'gravity',
     'items2',
   ];
-  for (i = 0; i < fields.length; ++i) {
+  for (i = 0; i < fields.length; i++) {
     const field = fields[i];
     const def = PR.FindField(field);
     PR.entvars[field] = (def !== null) ? def.ofs : null;
@@ -1154,7 +1154,7 @@ PR.Profile_f = function() {
   for (;;) {
     max = 0;
     best = null;
-    for (i = 0; i < PR.functions.length; ++i) {
+    for (i = 0; i < PR.functions.length; i++) {
       f = PR.functions[i];
       if (f.profile > max) {
         max = f.profile;
@@ -1190,13 +1190,13 @@ PR.EnterFunction = function(f) {
     PR.RunError('PR.EnterFunction: locals stack overflow\n');
   }
   let i;
-  for (i = 0; i < c; ++i) {
+  for (i = 0; i < c; i++) {
     PR.localstack[PR.localstack_used + i] = PR.globals_int[f.parm_start + i];
   }
   PR.localstack_used += c;
   let o = f.parm_start; let j;
-  for (i = 0; i < f.numparms; ++i) {
-    for (j = 0; j < f.parm_size[i]; ++j) {
+  for (i = 0; i < f.numparms; i++) {
+    for (j = 0; j < f.parm_size[i]; j++) {
       PR.globals_int[o++] = PR.globals_int[4 + i * 3 + j];
     }
   }
@@ -1526,17 +1526,17 @@ PR.NewString = function(s, length) {
   const ofs = PR.strings.length;
   let i;
   if (s.length >= length) {
-    for (i = 0; i < (length - 1); ++i) {
+    for (i = 0; i < (length - 1); i++) {
       PR.strings[PR.strings.length] = s.charCodeAt(i);
     }
     PR.strings[PR.strings.length] = 0;
     return ofs;
   }
-  for (i = 0; i < s.length; ++i) {
+  for (i = 0; i < s.length; i++) {
     PR.strings[PR.strings.length] = s.charCodeAt(i);
   }
   length -= s.length;
-  for (i = 0; i < length; ++i) {
+  for (i = 0; i < length; i++) {
     PR.strings[PR.strings.length] = 0;
   }
   return ofs;
@@ -1546,7 +1546,7 @@ PR.TempString = function(string) {
   if (string.length > 127) {
     string = string.substring(0, 127);
   }
-  for (let i = 0; i < string.length; ++i) {
+  for (let i = 0; i < string.length; i++) {
     PR.strings[PR.string_temp + i] = string.charCodeAt(i);
   }
   PR.strings[PR.string_temp + string.length] = 0;

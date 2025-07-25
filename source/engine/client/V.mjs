@@ -236,7 +236,7 @@ V.CalcBlend = function () {
   }
 
   let r = 0.0; let g = 0.0; let b = 0.0; let a = 0.0; let a2; let i;
-  for (i = 0; i <= 3; ++i) {
+  for (i = 0; i <= 3; i++) {
     cshift = CL.state.cshifts[i];
     a2 = cshift[3] * V.cshiftpercent.value / 25500.0;
     if (a2 === 0.0) {

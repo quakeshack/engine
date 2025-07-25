@@ -31,7 +31,7 @@ NET.listening = false;
 
 NET.NewQSocket = function() {
   let i;
-  for (i = 0; i < NET.activeSockets.length; ++i) {
+  for (i = 0; i < NET.activeSockets.length; i++) {
     if (NET.activeSockets[i].state === QSocket.STATE_DISCONNECTED) {
       break;
     }
@@ -112,6 +112,7 @@ NET.CheckNewConnections = function() {
       return ret;
     }
   }
+  return null;
 };
 
 NET.Close = function(sock) {
@@ -182,10 +183,10 @@ NET.SendUnreliableMessage = function(sock, data) {
 
 NET.CanSendMessage = function(sock) {
   if (sock == null) {
-    return;
+    return null;
   }
   if (sock.state === QSocket.STATE_DISCONNECTED) {
-    return;
+    return null;
   }
   NET.time = Sys.FloatTime();
   return sock.CanSendMessage();
@@ -193,7 +194,7 @@ NET.CanSendMessage = function(sock) {
 
 NET.SendToAll = function(data) {
   let i; let count = 0; const state1 = []; const state2 = [];
-  for (i = 0; i < SV.svs.maxclients; ++i) {
+  for (i = 0; i < SV.svs.maxclients; i++) {
     Host.client = SV.svs.clients[i];
     if (Host.client.netconnection == null) {
       continue;
@@ -213,7 +214,7 @@ NET.SendToAll = function(data) {
   const start = Sys.FloatTime();
   for (; count !== 0; ) {
     count = 0;
-    for (i = 0; i < SV.svs.maxclients; ++i) {
+    for (i = 0; i < SV.svs.maxclients; i++) {
       Host.client = SV.svs.clients[i];
       if (state1[i] !== true) {
         if (NET.CanSendMessage(Host.client.netconnection)) {
@@ -265,7 +266,7 @@ NET.Init = function() {
 
 NET.Shutdown = function() {
   NET.time = Sys.FloatTime();
-  for (let i = 0; i < NET.activeSockets.length; ++i) {
+  for (let i = 0; i < NET.activeSockets.length; i++) {
     NET.Close(NET.activeSockets[i]);
   }
 };
