@@ -14,6 +14,7 @@ import ClientDemos from './ClientDemos.mjs';
 import ClientInput from './ClientInput.mjs';
 import { HostError } from '../common/Errors.mjs';
 import ClientEntities, { ClientDlight, ClientEdict } from './ClientEntities.mjs';
+import { ClientMessages, ClientPlayerState } from './ClientMessages.mjs';
 
 /** @typedef {import('./Sound.mjs').SFX} SFX */
 
@@ -68,14 +69,9 @@ export default class CL {
     static netcon = null;
     /** @type {{ message: string, percentage: number }?} */
     static connecting = null;
-    static latency = 0.0;
+
     /** @type {{[key: string]: string}} keeps track of Server Cvars (sv_cheats, etc.) */
     static serverInfo = {};
-
-    // used by CL.ParseClientdata
-    static oldparsecountmod = 0;
-    static parsecountmod = 0;
-    static parsecounttime = 0.0;
 
     static lastcmdsent = 0;
 
@@ -98,6 +94,10 @@ export default class CL {
       CL.#clientDemos.demonum = value;
     }
 
+    static get latency() {
+      return CL.state.scores[CL.state.playernum].ping;
+    }
+
     static clear() {
       this.message.clear();
       this.serverInfo = {};
@@ -112,6 +112,7 @@ export default class CL {
 
   static state = class ClientState {
     static clientEntities = new ClientEntities();
+    static clientMessages = new ClientMessages();
     static movemessages = 0;
     static cmd = new Protocol.UserCmd();
     static lastcmd = new Protocol.UserCmd();
@@ -126,10 +127,9 @@ export default class CL {
       [0.0, 0.0, 0.0, 0.0],
       [0.0, 0.0, 0.0, 0.0],
     ];
-    static mviewangles = [new Vector(), new Vector()];
     static viewangles = new Vector();
-    static mvelocity = [new Vector(), new Vector()];
-    static velocity = new Vector();
+    // static velocity = new Vector();
+    static get velocity() { return this.playerentity.velocity; }
     static punchangle = new Vector();
     static idealpitch = 0.0;
     static pitchvel = 0.0;
@@ -141,7 +141,8 @@ export default class CL {
     static mtime = [0.0, 0.0];
     /** @type {number} current time */
     static time = 0.0;
-    static oldtime = 0.0;
+    /** @type {number} latency */
+    static latency = 0.0;
     /** @type {number} last received message from server time */
     static last_received_message = 0.0;
     static viewentity = 0;
@@ -166,15 +167,12 @@ export default class CL {
     static viewheight = 0;
     static inwater = false;
     static nodrift = false;
-    static lerp = null;
-    /** @type {CL.PlayerState[]} */
-    static players = [];
     static get playernum() {
       return this.viewentity - 1;
     }
-    /** @type {CL.PlayerState} */
+    /** @type {ClientPlayerState} */
     static get playerstate() {
-      return this.players[CL.state.playernum];
+      return this.clientMessages.playerstates[CL.state.playernum];
     }
     /** @type {ClientEdict} */
     static get playerentity() {
@@ -184,6 +182,7 @@ export default class CL {
     static paused = false;
 
     static clear() {
+      this.clientMessages.clear();
       this.clientEntities.clear();
       this.movemessages = 0;
       this.cmd = new Protocol.UserCmd();
@@ -198,10 +197,7 @@ export default class CL {
         [0.0, 0.0, 0.0, 0.0],
         [0.0, 0.0, 0.0, 0.0],
       ];
-      this.mviewangles = [new Vector(), new Vector()];
       this.viewangles = new Vector();
-      this.mvelocity = [new Vector(), new Vector()];
-      this.velocity = new Vector();
       this.punchangle = new Vector();
       this.idealpitch = 0.0;
       this.pitchvel = 0.0;
@@ -211,7 +207,6 @@ export default class CL {
       this.completed_time = 0;
       this.mtime.fill(0.0);
       this.time = 0.0;
-      this.oldtime = 0.0;
       this.last_received_message = 0.0;
       this.viewentity = 0;
       this.viewent = new ClientEdict(-1);
@@ -229,8 +224,6 @@ export default class CL {
       this.viewheight = 0;
       this.inwater = false;
       this.nodrift = false;
-      this.lerp = null;
-      this.players.length = 0;
       this.paused = false;
     }
   };
@@ -434,44 +427,6 @@ export default class CL {
     }
 
     return r;
-  }
-
-  /**
-   * Calculates the lerp fraction, also sets the @link {CL.state.time}.
-   * @returns {number} fraction of the lerp, from 0 to 1
-   */
-  static LerpPoint() {
-    let f = this.state.mtime[0] - this.state.mtime[1];
-
-    if (f <= 0) {
-      this.state.time = this.state.mtime[0];
-      return 1;
-    }
-
-    if (f > 0.1) {
-      this.state.mtime[1] = this.state.mtime[0] - 0.1;
-      f = 0.1;
-    }
-
-    let frac = (this.state.time - this.state.mtime[1]) / f;
-
-    if (frac < 0) {
-      if (frac < -0.01) {
-        this.state.time = this.state.mtime[1];
-      }
-      frac = 0;
-    } else if (frac > 1) {
-      if (frac > 1.01) {
-        this.state.time = this.state.mtime[0];
-      }
-      frac = 1;
-    }
-
-    if (this.nolerp.value) {
-      return 1;
-    }
-
-    return frac;
   }
 
   /**
@@ -713,8 +668,6 @@ CL.PrintEntities_f = function() { // private
 };
 
 CL.ReadFromServer = function() { // public, by Host.js
-  CL.state.oldtime = CL.state.time;
-  CL.state.time += Host.frametime;
   let ret;
   while (true) {
     if (CL._processingServerDataState === 1) {
@@ -745,8 +698,6 @@ CL.ReadFromServer = function() { // public, by Host.js
     Con.Print('\n');
   }
 
-  CL.state.velocity.set(CL.state.mvelocity[1].copy().add(CL.state.mvelocity[0].copy().subtract(CL.state.mvelocity[1]))); // TODO: this is going to be replaced by Pmove
-
   // CL.RelinkEntities();
   // CL.UpdateTEnts();
 };
@@ -761,10 +712,9 @@ CL.SendCmd = function() { // public, by Host.js
     IN.Move();
     ClientInput.SendMove();
 
-    // send a no-op if we haven't sent anything in a while
-    if (Host.realtime - CL.cls.lastcmdsent > 10) {
-      MSG.WriteByte(CL.cls.message, Protocol.clc.nop);
-    }
+    // always include a read back of the time
+    MSG.WriteByte(CL.cls.message, Protocol.clc.sync);
+    MSG.WriteFloat(CL.cls.message, CL.state.clientMessages.mtime[0]);
   }
 
   if (CL.cls.demoplayback) {
@@ -995,11 +945,9 @@ CL.ParseServerData = function() { // private
   }
 
   CL.state.scores.length = 0;
-  CL.state.players.length = 0;
 
   for (let i = 0; i < CL.state.maxclients; i++) {
     CL.state.scores[i] = new CL.ScoreSlot();
-    CL.state.players[i] = null; // CR: will be filled later by playerinfo updates
   }
 
   CL.state.gametype = MSG.ReadByte(); // CR: unused (set to CL.state, but unused)
@@ -1079,169 +1027,7 @@ CL.ParseServerData = function() { // private
   });
 };
 
-CL.ParseClientdata = function(bits) { // private
-  CL.cls.oldparsecountmod = CL.cls.parsecountmod;
-
-  CL.ParseClientdataWinQuake(bits);
-};
-
-CL.ParseClientdataWinQuake = function(bits) { // private
-  let i;
-
-  CL.state.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? MSG.ReadChar() : Protocol.default_viewheight;
-  CL.state.idealpitch = ((bits & Protocol.su.idealpitch) !== 0) ? MSG.ReadChar() : 0.0;
-
-  CL.state.mvelocity[1] = CL.state.mvelocity[0].copy();
-  for (i = 0; i <= 2; ++i) {
-    if ((bits & (Protocol.su.punch1 << i)) !== 0) {
-      CL.state.punchangle[i] = MSG.ReadShort() / 90.0;
-    } else {
-      CL.state.punchangle[i] = 0.0;
-    }
-    if ((bits & (Protocol.su.velocity1 << i)) !== 0) {
-      CL.state.mvelocity[0][i] = MSG.ReadShort() * 16.0;
-    } else {
-      CL.state.mvelocity[0][i] = 0.0;
-    }
-  }
-
-  i = MSG.ReadLong();
-  if (CL.state.items !== i) {
-    for (let j = 0; j < CL.state.item_gettime.length; j++) {
-      if ((((i >>> j) & 1) !== 0) && (((CL.state.items >>> j) & 1) === 0)) {
-        CL.state.item_gettime[j] = CL.state.time;
-      }
-    }
-    CL.state.items = i;
-  }
-
-  CL.state.onground = (bits & Protocol.su.onground) !== 0;
-  CL.state.inwater = (bits & Protocol.su.inwater) !== 0;
-
-  CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? MSG.ReadByte() : 0;
-  CL.state.stats[Def.stat.armor] = ((bits & Protocol.su.armor) !== 0) ? MSG.ReadByte() : 0;
-  CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? MSG.ReadByte() : 0;
-  CL.state.stats[Def.stat.health] = MSG.ReadShort();
-  CL.state.stats[Def.stat.ammo] = MSG.ReadByte();
-  CL.state.stats[Def.stat.shells] = MSG.ReadByte();
-  CL.state.stats[Def.stat.nails] = MSG.ReadByte();
-  CL.state.stats[Def.stat.rockets] = MSG.ReadByte();
-  CL.state.stats[Def.stat.cells] = MSG.ReadByte();
-  if (COM.standard_quake === true) {
-    CL.state.stats[Def.stat.activeweapon] = MSG.ReadByte();
-  } else {
-    CL.state.stats[Def.stat.activeweapon] = 1 << MSG.ReadByte();
-  }
-};
-
 CL.nullcmd = new Protocol.UserCmd();
-
-CL.Frame = class ClientFrame {
-  constructor() {
-    // -- client side --
-    /** @type {Protocol.UserCmd} cmd that generated the frame */
-    this.cmd = new Protocol.UserCmd();
-    /** time cmd was sent off */
-    this.sentTime = 0.0;
-    /** sequence number to delta from, -1 = full update */
-    this.deltaSequence = 0;
-
-    // -- server side --
-    /** time message was received, or -1 */
-    this.receivedTime = 0.0;
-    /** @type {CL.PlayerState[]} message received that reflects performing the usercmd */
-    this.playerStates = [];
-    /** @type {Protocol.EntityState[]} */
-    this.packetEntities = [];
-    /** true if the packet_entities delta was invalid */
-    this.invalid = false;
-  }
-};
-
-/**
- * ClientPlayerState is the information needed by a player entity
- * to do move prediction and to generate a drawable entity
- */
-CL.PlayerState = class ClientPlayerState extends Protocol.EntityState {
-  constructor() {
-    super();
-    /** @type {Protocol.UserCmd} last command for prediction */
-    this.command = new Protocol.UserCmd();
-
-    /** all player's won't be updated each frame */
-    this.messagenum = 0;
-    /** not the same as the packet time, because player commands come asyncronously */
-    this.stateTime = 0.0;
-
-    this.origin = new Vector();
-    this.velocity = new Vector();
-
-    this.weaponframe = 0;
-
-    this.waterjumptime = 0.0;
-    /** @type {?number} null in air, else pmove entity number */
-    this.onground = null;
-    this.oldbuttons = 0;
-
-    this.pmove = CL.pmove.newPlayerMove();
-
-    Object.seal(this);
-  }
-
-  readFromMessage() {
-    this.flags = MSG.ReadShort();
-    this.origin.set(MSG.ReadCoordVector());
-    this.frame = MSG.ReadByte();
-
-    this.stateTime = CL.state.time; // TODO: CL.state.parsecounttime?;
-
-    if (this.flags & Protocol.pf.PF_MSEC) {
-      const msec = MSG.ReadByte();
-      this.stateTime -= (msec / 1000.0);
-    }
-
-    // TODO: stateTime, parsecounttime
-
-    if (this.flags & Protocol.pf.PF_COMMAND) {
-      this.command.set(MSG.ReadDeltaUsercmd(CL.nullcmd));
-    }
-
-    if (this.flags & Protocol.pf.PF_VELOCITY) {
-      this.velocity.set(MSG.ReadCoordVector());
-    }
-
-    if (this.flags & Protocol.pf.PF_MODEL) {
-      this.modelindex = MSG.ReadByte();
-    }
-
-    if (this.flags & Protocol.pf.PF_EFFECTS) {
-      this.effects = MSG.ReadByte();
-    }
-
-    if (this.flags & Protocol.pf.PF_SKINNUM) {
-      this.skin = MSG.ReadByte();
-    }
-
-    if (this.flags & Protocol.pf.PF_WEAPONFRAME) {
-      this.weaponframe = MSG.ReadByte();
-    }
-  }
-};
-
-CL.ParsePlayerinfo = function() { // private
-  const num = MSG.ReadByte();
-
-  if (num > CL.state.maxclients) {
-    throw new Error('CL.ParsePlayerinfo: num > maxclients');
-  }
-
-  const state = new CL.PlayerState();
-  state.number = num;
-  state.readFromMessage();
-  state.angles.set(state.command.angles);
-
-  CL.state.players[num] = state;
-};
 
 CL.ParseStaticEntity = function() { // private
   const ent = CL.state.clientEntities.allocateClientEntity(MSG.ReadString());
@@ -1373,15 +1159,16 @@ CL.ParseServerMessage = function() { // private
 
     Con.DPrint('CL.ParseServerMessage: parsing ' + CL.svc_strings[cmd] + ' ' + cmd + '\n');
 
+    const parser = CL.state.clientMessages;
+
     switch (cmd) {
       case Protocol.svc.nop:
         continue;
       case Protocol.svc.time:
-        CL.state.mtime[1] = CL.state.mtime[0];
-        CL.state.mtime[0] = MSG.ReadFloat();
+        parser.parseTime();
         continue;
       case Protocol.svc.clientdata:
-        CL.ParseClientdata(MSG.ReadShort());
+        parser.parseClient();
         continue;
       case Protocol.svc.version:
         i = MSG.ReadLong();
@@ -1555,7 +1342,8 @@ CL.ParseServerMessage = function() { // private
         CL.ParsePmovevars();
         continue;
       case Protocol.svc.playerinfo:
-        CL.ParsePlayerinfo();
+        parser.parsePlayer();
+        // CL.ParsePlayerinfo();
         continue;
       case Protocol.svc.deltapacketentities:
         entitiesReceived++;
@@ -1700,57 +1488,67 @@ CL.ParseTemporaryEntity = function() { // private // TODO: move this to ClientAP
 };
 
 CL.PredictMove = function() { // public, by Host.js
+  CL.state.time = Host.realtime - CL.state.latency;
+
   if (CL.nopred.value !== 0) {
     return;
   }
 
-  const playerEntity = CL.state.playerentity;
-  if (!playerEntity) { // no player entity, nothing to predict
-    return;
-  }
+  // const playerEntity = CL.state.playerentity;
+  // if (!playerEntity) { // no player entity, nothing to predict
+  //   return;
+  // }
 
-  const from = CL.state.playerstate;
-  if (!from) { // no player state, nothing to predict
-    return;
-  }
+  // const from = CL.state.playerstate;
+  // if (!from) { // no player state, nothing to predict
+  //   return;
+  // }
 
-  const to = new CL.PlayerState();
+  // from.origin.set(playerEntity.origin);
+  // from.angles.set(playerEntity.angles);
+  // from.velocity.set(playerEntity.velocity);
 
-  CL.PredictUsercmd(from.pmove, from, to, CL.state.cmd);
+  // const to = new ClientPlayerState(from.pmove);
 
-  const f = Math.max(0, Math.min(1, ((CL.state.time - from.stateTime) / (to.stateTime - from.stateTime))));
+  // to.origin.set(playerEntity.msg_origins[0]);
+  // to.angles.set(playerEntity.msg_angles[0]);
+  // to.velocity.set(playerEntity.msg_velocity[0]);
+
+  // CL.PredictUsercmd(from.pmove, from, to, CL.state.cmd);
+
+  // const f = 1;
 
   // // console.log('f', f);
 
   // if (playerEntity.origin.distanceTo(to.origin) > 100) {
-  //   Con.PrintWarning('CL.PredictMove: player origin too far away from predicted origin\n');
-  //   return;
+  //   Con.PrintWarning(`CL.PredictMove: player origin too far away from predicted origin: ${to.origin.toString()}, ${playerEntity.origin.toString()}\n`);
+  //   // return;
   // }
 
-  // const f = CL.LerpPoint();
-  const o0 = playerEntity.origin;
-  const o1 = to.origin;
+  // const o0 = playerEntity.origin;
+  // const o1 = to.origin;
 
-  playerEntity.origin.setTo(
-    o1[0] + (o0[0] - o1[0]) * f,
-    o1[1] + (o0[1] - o1[1]) * f,
-    o1[2] + (o0[2] - o1[2]) * f,
-  );
+  // playerEntity.origin.setTo(
+  //   o1[0] + (o0[0] - o1[0]) * f,
+  //   o1[1] + (o0[1] - o1[1]) * f,
+  //   o1[2] + (o0[2] - o1[2]) * f,
+  // );
 
-  playerEntity.origin.set(to.origin);
-  playerEntity.angles.set(to.angles);
+  // playerEntity.origin.set(to.origin);
+  // playerEntity.angles.set(to.angles);
+  // playerEntity.velocity.set(to.velocity);
 };
 
 /**
  * @param {PmovePlayer} pmove pmove for player
- * @param {CL.PlayerState} from previous state
- * @param {CL.PlayerState} to current state
+ * @param {ClientPlayerState} from previous state
+ * @param {ClientPlayerState} to current state
  * @param {Protocol.UserCmd} u player commands
  */
 CL.PredictUsercmd = function(pmove, from, to, u) { // private
   // split long commands
   if (u.msec > 50) {
-    const mid = new CL.PlayerState();
+    const mid = new ClientPlayerState(pmove);
     const split = u.copy();
     split.msec /= 2;
     CL.PredictUsercmd(pmove, from, mid, split);
@@ -1850,6 +1648,7 @@ CL.ParsePacketEntities = function() { // private
 
     const origin = clent.msg_origins[0];
     const angles = clent.msg_angles[0];
+    const velocity = clent.msg_velocity[0];
 
     for (let i = 0; i < 3; i++) {
       if (bits & (Protocol.u.origin1 << i)) {
@@ -1858,15 +1657,13 @@ CL.ParsePacketEntities = function() { // private
 
       if (bits & (Protocol.u.angle1 << i)) {
         angles[i] = MSG.ReadAngle();
+        velocity[i] = MSG.ReadCoord();
       }
     }
 
-    // if (bits & (Protocol.u.origin1 | Protocol.u.origin2 | Protocol.u.origin3)) {
-    //   console.log('CL.ParsePacketEntities: receiving origin', clent.num, origin.toString());
-    //   if (origin.isOrigin()) {
-    //     debugger;
-    //   }
-    // }
+    if ((bits & (Protocol.u.origin1 | Protocol.u.origin2 | Protocol.u.origin3)) && clent.classname === 'player') {
+      console.log('CL.ParsePacketEntities: receiving origin', clent.num, origin.toString());
+    }
 
     if (bits & Protocol.u.size) {
       clent.maxs.set(MSG.ReadCoordVector());
@@ -1880,6 +1677,7 @@ CL.ParsePacketEntities = function() { // private
 
     clent.msg_origins[1].set(clent.msg_origins[0]);
     clent.msg_angles[1].set(clent.msg_angles[0]);
+    clent.msg_velocity[1].set(clent.msg_velocity[0]);
 
     if (clent.free) {
       // make sure that we clear this ClientEntity before we throw it back in

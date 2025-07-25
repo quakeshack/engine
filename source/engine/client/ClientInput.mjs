@@ -211,7 +211,7 @@ export default class ClientInput {
 
     cmd.impulse = ClientInput.impulse;
     cmd.angles.set(CL.state.viewangles);
-    cmd.msec = CL.state.mtime[0];
+    cmd.msec = CL.state.time;
 
     ClientInput.impulse = 0;
   }
@@ -240,7 +240,7 @@ export default class ClientInput {
 
     const buf = new SzBuffer(16);
     MSG.WriteByte(buf, Protocol.clc.move);
-    MSG.WriteFloat(buf, CL.state.mtime[0]);
+    MSG.WriteByte(buf, Math.round(Math.max(100, Host.frametime * 1000.0)));
     MSG.WriteAngleVector(buf, CL.state.cmd.angles);
     MSG.WriteShort(buf, CL.state.cmd.forwardmove);
     MSG.WriteShort(buf, CL.state.cmd.sidemove);

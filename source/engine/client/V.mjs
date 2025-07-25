@@ -361,7 +361,7 @@ V.CalcRefdef = function () { // TODO: Client
   R.refdef.viewangles.add(CL.state.punchangle);
 
   if ((CL.state.onground === true) && ((ent/*lerp*/.origin[2] - V.oldz) > 0.0)) {
-    let steptime = CL.state.time - CL.state.oldtime;
+    let steptime = Host.frametime;
     if (steptime < 0.0) {
       steptime = 0.0;
     }

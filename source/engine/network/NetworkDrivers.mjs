@@ -375,16 +375,19 @@ export class WebSocketDriver extends BaseDriver {
     while (qsocket.sendMessage.length > 0) {
       const message = qsocket.sendMessage.shift();
 
-      (qsocket.driverdata).send(message);
+      if (NET.delay_send.value === 0) {
+        (qsocket.driverdata).send(message);
+        return;
+      }
 
-      // setTimeout(() => {
-      //   /** @type {WebSocket} */(qsocket.driverdata).send(message);
+      setTimeout(() => {
+        /** @type {WebSocket} */(qsocket.driverdata).send(message);
 
-      //   // failed to send? immediately mark it as disconnected
-      //   if (qsocket.driverdata.readyState > 1) {
-      //     qsocket.state = QSocket.STATE_DISCONNECTED;
-      //   }
-      // }, Math.random() * 50 + 50);
+        // failed to send? immediately mark it as disconnected
+        if (qsocket.driverdata.readyState > 1) {
+          qsocket.state = QSocket.STATE_DISCONNECTED;
+        }
+      }, NET.delay_send.value + (Math.random() - 0.5) * NET.delay_send_jitter.value);
     }
 
     return true;
@@ -443,7 +446,14 @@ export class WebSocketDriver extends BaseDriver {
       return;
     }
 
-    this.qsocket.receiveMessage.push(new Uint8Array(data));
+    if (NET.delay_receive.value === 0) {
+      this.qsocket.receiveMessage.push(new Uint8Array(data));
+      return;
+    }
+
+    setTimeout(() => {
+      this.qsocket.receiveMessage.push(new Uint8Array(data));
+    }, NET.delay_receive.value + (Math.random() - 0.5) * NET.delay_receive_jitter.value);
   }
 
   _OnOpenClient() {

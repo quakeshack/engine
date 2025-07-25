@@ -10,6 +10,7 @@ import { ED, ServerEdict } from './Edict.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import * as Defs from '../../shared/Defs.mjs';
+import { QSocket } from '../network/NetworkDrivers.mjs';
 
 let { COM, Con, Host, Mod, NET, PR, V } = registry;
 
@@ -102,6 +103,7 @@ export class ServerEntityState {
     this.classname = null;
     this.mins = new Vector();
     this.maxs = new Vector();
+    this.velocity = new Vector(0, 0, 0);
   }
 
   set(other) {
@@ -109,6 +111,7 @@ export class ServerEntityState {
     this.flags = other.flags;
     this.origin.set(other.origin);
     this.angles.set(other.angles);
+    this.velocity.set(other.velocity);
     this.modelindex = other.modelindex;
     this.frame = other.frame;
     this.colormap = other.colormap;
@@ -375,6 +378,10 @@ SV.SendServerData = function(client) {
   client.spawned = false;
 };
 
+/**
+ * @param {ServerClient} client client
+ * @param {QSocket} netconnection connection
+ */
 SV.ConnectClient = function(client, netconnection) {
   Con.DPrint('Client ' + netconnection.address + ' connected\n');
 
@@ -389,6 +396,8 @@ SV.ConnectClient = function(client, netconnection) {
   client.name = 'unconnected';
   client.netconnection = netconnection;
   client.active = true;
+
+  client.old_frags = Infinity; // trigger a update frags
 
   if (SV.server.loadgame) {
     for (let i = 0; i < client.spawn_parms.length; i++) {
@@ -663,6 +672,10 @@ SV.WriteDeltaEntity = function(msg, from, to) {
     if (isFinite(to.angles[i]) && Math.abs(from.angles[i] - to.angles[i]) > 0.0) { // no epsilon check for angles?
       bits |= Protocol.u.angle1 << i;
     }
+
+    if (isFinite(to.velocity[i]) && Math.abs(from.velocity[i] - to.velocity[i]) > EPSILON) {
+      bits |= Protocol.u.angle1 << i; // we smuggle velocity on angle bits
+    }
   }
 
   if (!from.maxs.equals(to.maxs)) {
@@ -717,6 +730,7 @@ SV.WriteDeltaEntity = function(msg, from, to) {
 
     if (bits & (Protocol.u.angle1 << i)) {
       MSG.WriteAngle(msg, to.angles[i]);
+      MSG.WriteCoord(msg, to.velocity[i]); // smuggle velocity on angle bits
     }
   }
 
@@ -772,6 +786,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
     toState.solid = ent.entity.solid;
     toState.origin.set(ent.entity.origin);
     toState.angles.set(ent.entity.angles);
+    toState.velocity.set(ent.entity.velocity);
     toState.effects = ent.entity.effects;
     toState.free = false;
     toState.maxs.set(ent.entity.maxs);
@@ -868,25 +883,16 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
     bits += Protocol.su.inwater;
   }
 
-  const velo = clientEdict.entity.velocity, punchangle = clientEdict.entity.punchangle;
+  const punchangle = clientEdict.entity.punchangle;
 
   if (punchangle[0] !== 0.0) {
     bits += Protocol.su.punch1;
   }
-  if (velo[0] !== 0.0) {
-    bits += Protocol.su.velocity1;
-  }
   if (punchangle[1] !== 0.0) {
     bits += Protocol.su.punch2;
   }
-  if (velo[1] !== 0.0) {
-    bits += Protocol.su.velocity2;
-  }
   if (punchangle[2] !== 0.0) {
     bits += Protocol.su.punch3;
-  }
-  if (velo[2] !== 0.0) {
-    bits += Protocol.su.velocity3;
   }
 
   if (clientEdict.entity.weaponframe !== 0.0) {
@@ -908,20 +914,11 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
   if ((bits & Protocol.su.punch1) !== 0) {
     MSG.WriteShort(msg, punchangle[0] * 90);
   }
-  if ((bits & Protocol.su.velocity1) !== 0) {
-    MSG.WriteShort(msg, velo[0] * 0.0625);
-  }
   if ((bits & Protocol.su.punch2) !== 0) {
     MSG.WriteShort(msg, punchangle[1] * 90.0);
   }
-  if ((bits & Protocol.su.velocity2) !== 0) {
-    MSG.WriteShort(msg, velo[1] * 0.0625);
-  }
   if ((bits & Protocol.su.punch3) !== 0) {
     MSG.WriteShort(msg, punchangle[2] * 90.0);
-  }
-  if ((bits & Protocol.su.velocity3) !== 0) {
-    MSG.WriteShort(msg, velo[2] * 0.0625);
   }
 
   MSG.WriteLong(msg, items);
@@ -964,6 +961,7 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
   // Send ping times to all clients every second
   if (Host.realtime - client.last_ping_update >= 1) {
     for (let i = 0; i < SV.svs.clients.length; i++) {
+      /** @type {ServerClient} */
       const pingClient = SV.svs.clients[i];
 
       if (!pingClient.active) {
@@ -1035,6 +1033,7 @@ SV.UpdateToReliableMessages = function() {
 SV.SendClientMessages = function() {
   SV.UpdateToReliableMessages();
   for (let i = 0; i < SV.svs.maxclients; i++) {
+    /** @type {ServerClient} */
     const client = SV.svs.clients[i]; // FIXME: Host.client
     Host.client = client;
     if (!client.active) {
@@ -1044,15 +1043,6 @@ SV.SendClientMessages = function() {
       if (!SV.SendClientDatagram()) {
         continue;
       }
-    }
-    if (!client.sendsignon) {
-      if ((Host.realtime - client.last_message) > 30.0) {
-        // if (NET.SendUnreliableMessage(client.netconnection, SV.nop) === -1) {
-          Host.DropClient(client, true, 'Connectivity issues');
-        // }
-        client.last_message = Host.realtime;
-      }
-      //continue;
     }
     if (client.message.overflowed) {
       Host.DropClient(client, true, 'Connectivity issues, too many messages');
@@ -1071,7 +1061,6 @@ SV.SendClientMessages = function() {
         Host.DropClient(client, true, 'Connectivity issues, failed to send message');
       }
       client.message.clear();
-      client.last_message = Host.realtime;
       client.sendsignon = false;
     }
   }
@@ -2487,7 +2476,7 @@ SV.ClientThink = function() {
  * @param {ServerClient} client client
  */
 SV.ReadClientMove = function(client) {
-  client.cmd.msec = MSG.ReadFloat();
+  client.cmd.msec = MSG.ReadByte();
   client.cmd.angles = MSG.ReadAngleVector();
   client.cmd.forwardmove = MSG.ReadShort();
   client.cmd.sidemove = MSG.ReadShort();
@@ -2502,9 +2491,6 @@ SV.ReadClientMove = function(client) {
   if (client.cmd.impulse !== 0) {
     client.edict.entity.impulse = client.cmd.impulse; // QuakeC
   }
-
-  client.ping_times[client.num_pings++ % client.ping_times.length] = SV.server.time - client.cmd.msec;
-
   // console.log('client.cmd', client.cmd);
 };
 
@@ -2602,9 +2588,7 @@ SV.ReadClientMessage = function(client) {
         return false;
       }
 
-      client.last_message = Host.realtime;
-      client.ping_times[client.num_pings++ % client.ping_times.length] = Host.realtime - client.last_message;
-      client.local_time = SV.server.time;
+      client.ping_times[client.num_pings++ % client.ping_times.length] = SV.server.time - client.sync_time;
 
       const cmd = MSG.ReadChar();
 
@@ -2629,6 +2613,10 @@ SV.ReadClientMessage = function(client) {
           }
           break;
         }
+
+        case Protocol.clc.sync:
+          client.sync_time = MSG.ReadFloat();
+          break;
 
         case Protocol.clc.rconcmd:
           SV.HandleRconRequest(client);

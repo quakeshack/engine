@@ -462,12 +462,27 @@ export class ClientEngineAPI extends EngineAPI {
 
   /**
    * Gets all entities in the game. Both client-only and server entities.
-   * @param {boolean} onlyVisible only visible entities
+   * @param {(ent: ClientEdict) => boolean} filter filter function, if provided, will be used to filter entities
    * @yields {ClientEdict} entity
    */
-  static *GetEntities(onlyVisible = false) {
+  static *GetEntities(filter = null) {
     for (const entity of CL.state.clientEntities.getEntities()) {
-      if (onlyVisible && !entity.model) {
+      if (filter && !filter(entity)) {
+        continue;
+      }
+
+      yield entity;
+    }
+  }
+
+  /**
+   * Gets all entities staged for rendering. Both client-only and server entities.
+   * @param {(ent: ClientEdict) => boolean} filter filter function, if provided, will be used to filter entities
+   * @yields {ClientEdict} entity
+   */
+  static *GetVisibleEntities(filter = null) {
+    for (const entity of CL.state.clientEntities.getVisibleEntities()) {
+      if (filter && !filter(entity)) {
         continue;
       }
 

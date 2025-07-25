@@ -1739,7 +1739,7 @@ R.DrawParticles = function() {
   gl.depthMask(false);
   gl.enable(gl.BLEND);
 
-  const frametime = CL.state.time - CL.state.oldtime;
+  const frametime = Host.frametime;
   const grav = frametime * SV.gravity.value * 0.05;
   const dvel = frametime * 4.0;
   let scale;

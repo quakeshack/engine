@@ -7,15 +7,19 @@ export const update_mask = update_backup - 1;
 
 export const u = Object.freeze({
   classname: 1 << 0,
+
   origin1: 1 << 1,
   origin2: 1 << 2,
   origin3: 1 << 3,
-  angle2: 1 << 4,
-  nolerp: 1 << 5,
-  frame: 1 << 6,
-  free: 1 << 7,
-  angle1: 1 << 8,
-  angle3: 1 << 9,
+
+  angle1: 1 << 4,
+  angle2: 1 << 5,
+  angle3: 1 << 6,
+
+  nolerp: 1 << 7,
+
+  frame: 1 << 8,
+  free: 1 << 9,
   model: 1 << 10,
   colormap: 1 << 11,
   skin: 1 << 12,
@@ -122,6 +126,7 @@ export const clc = Object.freeze({
   rconcmd: 5,
   delta: 6,
   qwmove: 7,
+  sync: 8,
 });
 
 export const te = Object.freeze({
@@ -201,7 +206,6 @@ export class EntityState { // entity_state_t
 
 export class UserCmd { // usercmd_t
   constructor() {
-    /** @type {number} the CL.state.mtime[0] when this command was sent */
     this.msec = 0;
     this.forwardmove = 0;
     this.sidemove = 0;
@@ -248,6 +252,7 @@ export class UserCmd { // usercmd_t
    * @returns {UserCmd} this
    */
   reset() {
+    /** @type {number} 0..255, how long the frame took to process on the client  */
     this.msec = 0;
     this.forwardmove = 0;
     this.sidemove = 0;

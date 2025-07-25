@@ -244,8 +244,14 @@ NET.SendToAll = function(data) {
 NET.Init = function() {
   NET.time = Sys.FloatTime();
 
-  NET.messagetimeout = new Cvar('net_messagetimeout', '5000');
+  NET.messagetimeout = new Cvar('net_messagetimeout', '60');
   NET.hostname = new Cvar('hostname', 'UNNAMED', Cvar.FLAG.SERVER, 'Descriptive name of the server.');
+
+  NET.delay_send = new Cvar('net_delay_send', '0', Cvar.FLAG.NONE, 'Delay sending messages to the network. Useful for debugging.');
+  NET.delay_send_jitter = new Cvar('net_delay_send_jitter', '0', Cvar.FLAG.NONE, 'Jitter for the delay sending messages to the network. Useful for debugging.');
+
+  NET.delay_receive = new Cvar('net_delay_receive', '0', Cvar.FLAG.NONE, 'Delay receiving messages from the network. Useful for debugging.');
+  NET.delay_receive_jitter = new Cvar('net_delay_receive_jitter', '0', Cvar.FLAG.NONE, 'Jitter for the delay receiving messages from the network. Useful for debugging.');
 
   Cmd.AddCommand('maxplayers', NET.MaxPlayers_f);
   Cmd.AddCommand('listen', NET.Listen_f);

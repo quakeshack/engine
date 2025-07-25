@@ -37,8 +37,7 @@ export class ServerClient {
     this.old_frags = 0;
     /** @type {number} last update sent to the client */
     this.last_update = 0;
-    /** @type {number} last message received from the client */
-    this.last_message = 0;
+    /** @type {number} last Host.realtime when all ping times have been sent */
     this.last_ping_update = 0;
     this.ping_times = new Array(16);
     this.num_pings = 0;
@@ -47,6 +46,9 @@ export class ServerClient {
 
     /** @type {number} the SV.server.time when the last command was processed */
     this.local_time = 0.0;
+
+    /** @type {number} SV.server.time read back from the client */
+    this.sync_time = 0.0;
 
     /** spawn parms are carried from level to level */
     this.spawn_parms = new Array(16);
@@ -90,13 +92,13 @@ export class ServerClient {
     this.colors = 0;
     this.old_frags = 0;
     this.last_ping_update = 0.0;
+    this.num_pings = 0;
     this.ping_times.fill(0);
     this.spawn_parms.fill(0);
     this.cmd.reset();
     this.lastcmd.reset();
     this.last_update = 0.0;
-    this.last_message = 0.0;
-    this.num_pings = 0;
+    this.sync_time = 0;
     this._entityStates = new Map();
     this.active = false;
     this.dropasap = false;

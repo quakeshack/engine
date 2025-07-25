@@ -54,9 +54,7 @@ export class ClientDlight {
   }
 
   think() {
-    const time = CL.state.time - CL.state.oldtime;
-
-    this.radius -= this.decay * time;
+    this.radius -= this.decay * CL.state.time;
 
     if (this.radius < 0.0) {
       this.radius = 0;
@@ -103,6 +101,7 @@ export class ClientEdict {
     /** @type {?Vector} used to keep track of angles changes, unset when no previous angles is known */
     this.anglesPrevious = null;
     this.angles = new Vector(Infinity, Infinity, Infinity);
+    this.velocity = new Vector();
     this.dlightbits = 0;
     this.dlightframe = 0;
     /** keeps track of last updates */
@@ -111,6 +110,8 @@ export class ClientEdict {
     this.msg_origins = [new Vector(), new Vector()];
     /** keeps track of angle changes */
     this.msg_angles = [new Vector(), new Vector()];
+    /** keeps track of velocity changes */
+    this.msg_velocity = [new Vector(), new Vector()];
     this.leafs = [];
     /** count of received updates */
     this.updatecount = 0;
@@ -128,33 +129,33 @@ export class ClientEdict {
      */
     this.lerp = {
       get origin() {
-        if (that.originPrevious === null || CL.nolerp.value) {
+        // if (that.originPrevious === null || CL.nolerp.value) {
           return that.origin;
-        }
-        const f = CL.LerpPoint();
-        const o0 = that.origin;
-        const o1 = that.originPrevious;
-        if (o0.distanceTo(o1) > 100.0) {
-          return o0; // clamp sudden origin changes
-        }
-        return new Vector(
-          o1[0] + (o0[0] - o1[0]) * f,
-          o1[1] + (o0[1] - o1[1]) * f,
-          o1[2] + (o0[2] - o1[2]) * f,
-        );
+        // }
+        // const f = 1; // CL.LerpPoint();
+        // const o0 = that.origin;
+        // const o1 = that.originPrevious;
+        // if (o0.distanceTo(o1) > 100.0) {
+        //   return o0; // clamp sudden origin changes
+        // }
+        // return new Vector(
+        //   o1[0] + (o0[0] - o1[0]) * f,
+        //   o1[1] + (o0[1] - o1[1]) * f,
+        //   o1[2] + (o0[2] - o1[2]) * f,
+        // );
       },
       get angles() {
-        if (that.anglesPrevious === null || CL.nolerp.value) {
+        // if (that.anglesPrevious === null || CL.nolerp.value) {
           return that.angles;
-        }
-        const f = CL.LerpPoint();
-        const a0 = that.angles;
-        const a1 = that.anglesPrevious;
-        return new Vector(
-          a1[0] + (a0[0] - a1[0]) * f,
-          a1[1] + (a0[1] - a1[1]) * f,
-          a1[2] + (a0[2] - a1[2]) * f,
-        );
+        // }
+        // const f = 1; // CL.LerpPoint();
+        // const a0 = that.angles;
+        // const a1 = that.anglesPrevious;
+        // return new Vector(
+        //   a1[0] + (a0[0] - a1[0]) * f,
+        //   a1[1] + (a0[1] - a1[1]) * f,
+        //   a1[2] + (a0[2] - a1[2]) * f,
+        // );
       },
     };
 
@@ -250,10 +251,11 @@ export class ClientEdict {
     if (!doLerp) {
       this.origin.set(this.msg_origins[0]);
       this.angles.set(this.msg_angles[0]);
+      this.velocity.set(this.msg_velocity[0]);
       return;
     }
 
-    if (this.num === 1) {
+    if (this.classname === 'player') {
       console.log('updatePosition', this.num, this.classname, this.origin, this.angles);
     }
 
@@ -272,7 +274,7 @@ export class ClientEdict {
     const origin_old = this.msg_origins[0].copy();
     const angles_old = this.msg_angles[0].copy();
 
-    let f = CL.LerpPoint();
+    let f = 1; // CL.LerpPoint();
 
     const delta = new Vector();
 
@@ -572,7 +574,9 @@ export default class ClientEntities {
       // const oldorg = clent.originPrevious ? clent.originPrevious : clent.origin;
 
       // apply prediction for non-player entities
-      clent.updatePosition(clent.num !== CL.state.viewentity);
+      // if (clent.classname !== 'player') {
+        clent.updatePosition(clent.num !== CL.state.viewentity);
+      // }
 
       // do not render the player entity, unless we are in chase cam mode
       if (i === CL.state.viewentity && !Chase.active.value) {

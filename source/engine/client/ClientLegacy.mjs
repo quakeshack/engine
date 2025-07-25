@@ -42,7 +42,7 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       );
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.minlight = 32.0;
-      dl.die = CL.state.mtime[0] + 0.1;
+      dl.die = CL.state.time + 0.1;
       // dl.color = new Vector(1.0, 0.95, 0.85);
     }
     if ((clent.effects & effect.EF_BRIGHTLIGHT) !== 0) {

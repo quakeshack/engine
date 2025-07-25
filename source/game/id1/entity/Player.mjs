@@ -1969,6 +1969,10 @@ export class PlayerEntity extends BaseEntity {
   connected() {
     this.engine.BroadcastPrint(`${this.netname} entered the game.\n`);
 
+    // make sure the player gets a clean player, including no score (frags, etc.)
+    this.clear();
+    this.frags = 0;
+
     // a client connecting during an intermission can cause problems
     if (this.game.intermission_running) {
       this._intermissionExit();
