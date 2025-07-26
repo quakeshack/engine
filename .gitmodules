@@ -1,0 +1,3 @@
+[submodule "source/game/id1"]
+	path = source/game/id1
+	url = git@github.com:quakeshack/game.git
