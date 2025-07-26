@@ -1,7 +1,7 @@
 import globals from 'globals';
 import pluginJs from '@eslint/js';
 import jsdoc from 'eslint-plugin-jsdoc';
-// import sortClassMembers from 'eslint-plugin-sort-class-members';
+import stylistic from '@stylistic/eslint-plugin';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
@@ -10,16 +10,17 @@ export default [
     languageOptions: {
       globals: globals.browser,
       parserOptions: {
-        // 'latest' is recognized by ESLint 9. You can also use a numeric version like 2022 or 2023.
         ecmaVersion: 'latest',
-        sourceType: 'module', // If you are using ES Modules (import/export).
+        sourceType: 'module',
       },
+    },
+    plugins: {
+      '@stylistic': stylistic,
     },
     rules: {
       'max-len': 'off',
       'new-cap': 'off',
       'no-mixed-spaces-and-tabs': 'warn',
-      // 'no-tabs': 'warn',
       'array-callback-return': 'error',
       'no-constructor-return': 'error',
       'no-duplicate-imports': 'error',
@@ -36,7 +37,7 @@ export default [
       'arrow-body-style': ['error', 'as-needed'],
       'prefer-numeric-literals': 'error',
       // 'no-useless-assignment': 'error', -- too janky
-      'require-atomic-updates': 'error',
+      'require-atomic-updates': 'warn',
       'camelcase': 'off',
       'no-use-before-define': 'off',
       'require-yield': 'error',
@@ -44,33 +45,18 @@ export default [
       'semi': ['error', 'always'],
       'comma-dangle': ['error', 'always-multiline'],
       'eol-last': ['error', 'always'],
-      'quotes': ['error', 'single', { 'avoidEscape': true }],
+      'quotes': ['error', 'single', { avoidEscape: true }],
       // 'no-magic-numbers': ['warn', { 'ignore': [0,1,2], 'ignoreArrayIndexes': true }],
       // "no-plusplus": ["error", { "allowForLoopAfterthoughts": true }],
       'eqeqeq': ['warn', 'always'],
       'no-undef': 'error',
       'no-unused-vars': 'error',
-      'jsdoc/check-types': 'error',       // Ensures types are valid
+      'jsdoc/check-types': 'error', // Ensures types are valid
       'jsdoc/require-param-description': 'off',
       'no-global-assign': 'warn',
-      // "sort-class-members/sort-class-members": ["error", {
-      //   "order": [
-      //     "[static-properties]",
-      //     "[instance-properties]",
-      //     "[static-methods]",
-      //     "[instance-methods]"
-      //   ],
-      //   "groups": {
-      //     "static-properties": [{ "type": "property", "static": true }],
-      //     "instance-properties": [{ "type": "property", "static": false }],
-      //     "static-methods": [{ "type": "method", "static": true }],
-      //     "instance-methods": [{ "type": "method", "static": false }]
-      //   },
-      //   "accessorPairPositioning": "getThenSet"
-      // }],
+      "no-param-reassign": ["warn", { "props": true }],
     },
   },
   pluginJs.configs.recommended,
   jsdoc.configs['flat/recommended'],
-  // sortClassMembers.configs['flat/recommended'],
 ];

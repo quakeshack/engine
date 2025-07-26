@@ -493,9 +493,9 @@ export function resampleTexture8(data, inwidth, inheight, outwidth, outheight) {
   const xstep = inwidth / outwidth; const ystep = inheight / outheight;
   let src; let dest = 0;
   let i; let j;
-  for (i = 0; i < outheight; ++i) {
+  for (i = 0; i < outheight; i++) {
     src = Math.floor(i * ystep) * inwidth;
-    for (j = 0; j < outwidth; ++j) {
+    for (j = 0; j < outwidth; j++) {
       out[dest + j] = data[src + Math.floor(j * xstep)];
     }
     dest += outwidth;
@@ -568,13 +568,13 @@ GL.CreateProgram = async function(identifier, uniforms, attribs, textures) {
 
   gl.useProgram(p);
 
-  for (let i = 0; i < uniforms.length; ++i) {
+  for (let i = 0; i < uniforms.length; i++) {
     program[uniforms[i]] = gl.getUniformLocation(p, uniforms[i]);
   }
 
   program.vertexSize = 0;
   program.attribBits = 0;
-  for (let i = 0; i < attribs.length; ++i) {
+  for (let i = 0; i < attribs.length; i++) {
     const attribParameters = attribs[i];
     const attrib =
     {
@@ -597,7 +597,7 @@ GL.CreateProgram = async function(identifier, uniforms, attribs, textures) {
     program.attribBits |= 1 << attrib.location;
   }
 
-  for (let i = 0; i < textures.length; ++i) {
+  for (let i = 0; i < textures.length; i++) {
     program[textures[i]] = i;
     gl.uniform1i(gl.getUniformLocation(p, textures[i]), i);
   }
@@ -618,7 +618,7 @@ GL.UseProgram = function(identifier, flushStream) {
   }
 
   let program = null;
-  for (let i = 0; i < GL.programs.length; ++i) {
+  for (let i = 0; i < GL.programs.length; i++) {
     if (GL.programs[i].identifier === identifier) {
       program = GL.programs[i];
       break;
@@ -655,7 +655,7 @@ GL.UnbindProgram = function() {
   }
   GL.StreamFlush();
   let i;
-  for (i = 0; i < GL.currentProgram.attribs.length; ++i) {
+  for (i = 0; i < GL.currentProgram.attribs.length; i++) {
     gl.disableVertexAttribArray(GL.currentProgram.attribs[i].location);
   }
   GL.currentProgram = null;
@@ -673,7 +673,7 @@ GL.StreamFlush = function() {
     gl.bufferSubData(gl.ARRAY_BUFFER, GL.streamBufferPosition,
         GL.streamArrayBytes.subarray(0, GL.streamArrayPosition));
     const attribs = program.attribs;
-    for (let i = 0; i < attribs.length; ++i) {
+    for (let i = 0; i < attribs.length; i++) {
       const attrib = attribs[i];
       gl.vertexAttribPointer(attrib.location,
           attrib.components, attrib.type, attrib.normalized,

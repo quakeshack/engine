@@ -7,11 +7,12 @@
   "private": true,
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@stylistic/eslint-plugin": "^5.2.2",
     "eslint": "^9.19.0",
     "eslint-config-google": "^0.14.0",
     "eslint-plugin-jsdoc": "^50.6.3",
-    "eslint-plugin-types": "^1.0.2",
     "eslint-plugin-sort-class-members": "^1.21.0",
+    "eslint-plugin-types": "^1.0.2",
     "globals": "^15.14.0"
   },
   "dependencies": {
