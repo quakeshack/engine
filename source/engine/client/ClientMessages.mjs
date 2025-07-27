@@ -162,6 +162,43 @@ export class ClientMessages {
     }
   }
 
+  parseClientEvent() {
+    const eventCode = MSG.ReadByte();
+
+    /** @type {(import('../../shared/GameInterfaces').ClientEventArgument)[]} */
+    const args = [];
+
+    while (true) {
+      const dataType = MSG.ReadByte();
+
+      if (dataType === Protocol.clientEventDataTypes.none) {
+        break;
+      }
+
+      switch (dataType) {
+        case Protocol.clientEventDataTypes.number:
+          args.push(MSG.ReadLong());
+          break;
+        case Protocol.clientEventDataTypes.vector:
+          args.push(MSG.ReadCoordVector());
+          break;
+        case Protocol.clientEventDataTypes.string:
+          args.push(MSG.ReadString());
+          break;
+        case Protocol.clientEventDataTypes.entity:
+          args.push(CL.state.clientEntities.getEntity(MSG.ReadShort()));
+          break;
+        case Protocol.clientEventDataTypes.boolean:
+          args.push(MSG.ReadByte() !== 0);
+          break;
+        default:
+          throw new HostError(`Unknown client event data type: ${dataType}`);
+      }
+    }
+
+    CL.state.gameAPI.handleClientEvent(eventCode, ...args);
+  }
+
   /**
    * Parses Protocol.svc.clientdata message.
    */

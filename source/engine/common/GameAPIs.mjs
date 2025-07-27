@@ -1,6 +1,6 @@
 import { solid } from '../../shared/Defs.mjs';
 import Vector from '../../shared/Vector.mjs';
-import { ClientDlight } from '../client/ClientEntities.mjs';
+import { ClientDlight, ClientEdict } from '../client/ClientEntities.mjs';
 import { GLTexture } from '../client/GL.mjs';
 import VID from '../client/VID.mjs';
 import MSG from '../network/MSG.mjs';
@@ -28,12 +28,16 @@ eventBus.subscribe('registry.frozen', () => {
 eventBus.subscribe('com.ready', () => {
   const COM = registry.COM;
 
+  if (!COM.registered) {
+    CommonEngineAPI.gameFlavors.push(GameFlavors.shareware);
+  }
+
   if (COM.hipnotic) {
-    EngineAPI.gameFlavors.push(GameFlavors.hipnotic);
+    CommonEngineAPI.gameFlavors.push(GameFlavors.hipnotic);
   }
 
   if (COM.rogue) {
-    EngineAPI.gameFlavors.push(GameFlavors.rogue);
+    CommonEngineAPI.gameFlavors.push(GameFlavors.rogue);
   }
 });
 
@@ -41,9 +45,10 @@ eventBus.subscribe('com.ready', () => {
 export const GameFlavors = Object.freeze({
   hipnotic: 'hipnotic',
   rogue: 'rogue',
+  shareware: 'shareware',
 });
 
-export class EngineAPI {
+export class CommonEngineAPI {
   /** Engine’s main event bus. */
   static eventBus = eventBus;
 
@@ -112,7 +117,7 @@ export class EngineAPI {
   }
 };
 
-export class ServerEngineAPI extends EngineAPI {
+export class ServerEngineAPI extends CommonEngineAPI {
   static BroadcastPrint(str) {
     Host.BroadcastPrint(str);
   }
@@ -387,10 +392,57 @@ export class ServerEngineAPI extends EngineAPI {
     MSG.WriteByte(SV.server.datagram, id2);
   }
 
-  // TODO: MSG related methods
+  /**
+   * Dispatches a client event to the specified receiver.
+   * NOTE: Events are written to the datagram AFTER an entity update, so referring to an entity that will be removed in the same frame will not work!
+   * @param {number} eventCode event code, must be understood by the client
+   * @param {ServerEdict?} receiverPlayerEdict receiver edict, can be null to broadcast to all clients
+   * @param  {...import('../../shared/GameInterfaces').ClientEventArgument} args any arguments to pass to the client event, will be serialized
+   */
+  static DispatchClientEvent(eventCode, receiverPlayerEdict, ...args) {
+    console.assert(typeof eventCode === 'number', 'eventCode must be a number');
+    console.assert(receiverPlayerEdict instanceof ServerEdict || receiverPlayerEdict === null, 'emitterEdict must be a ServerEdict or null');
+
+    // TODO: have an optional priority queue for events, so that these get sent before the entity updates will be written to the datagram
+    const destination = receiverPlayerEdict ? /** @type {ServerEdict} */(receiverPlayerEdict).getClient().message : SV.server.datagram;
+
+    MSG.WriteByte(destination, Protocol.svc.clientevent);
+    MSG.WriteByte(destination, eventCode);
+
+    // TODO: compress args better
+    for (const arg of args) {
+      switch (true) {
+        case typeof arg === 'string':
+          MSG.WriteByte(destination, Protocol.clientEventDataTypes.string);
+          MSG.WriteString(destination, arg);
+          break;
+        case typeof arg === 'number':
+          MSG.WriteByte(destination, Protocol.clientEventDataTypes.number);
+          MSG.WriteLong(destination, arg);
+          break;
+        case typeof arg === 'boolean':
+          MSG.WriteByte(destination, Protocol.clientEventDataTypes.boolean);
+          MSG.WriteByte(destination, arg ? 1 : 0);
+          break;
+        case arg instanceof Vector:
+          MSG.WriteByte(destination, Protocol.clientEventDataTypes.vector);
+          MSG.WriteCoordVector(destination, arg);
+          break;
+        case arg instanceof ServerEdict:
+          MSG.WriteByte(destination, Protocol.clientEventDataTypes.entity);
+          MSG.WriteShort(destination, arg.num);
+          break;
+        default:
+          throw new TypeError(`Unsupported argument type: ${typeof arg}`);
+      }
+    }
+
+    // end of event data
+    MSG.WriteByte(destination, Protocol.clientEventDataTypes.none);
+  }
 };
 
-export class ClientEngineAPI extends EngineAPI {
+export class ClientEngineAPI extends CommonEngineAPI {
   /**
    * @param {string} name command name
    * @param {Function} callback callback function

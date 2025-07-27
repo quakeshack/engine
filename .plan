@@ -328,6 +328,13 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-28
+
+* started adding server messages to streamline server to client events
+  * these will be handled by the client code
+  * however, it’s not done yet, I want to differentiate by expedited (sent out before entities get written), normal and reliable (to be sent on the reliable channel)
+* added identifiers and checks for the current active game
+
 ### 2025-07-27
 
 * restructured the repos

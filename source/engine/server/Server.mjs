@@ -100,6 +100,10 @@ SV.server = {
   edicts: [],
   mapname: null,
   worldmodel: null,
+  /** @type {import('source/shared/GameInterfaces').ServerGameInterface} */
+  gameAPI: null,
+  /** @type {string?} game version string */
+  gameVersion: null,
 };
 
 export class ServerEntityState {
@@ -353,6 +357,7 @@ SV.SendServerData = function(client) {
   } else {
     // if we are in legacy mode, we do not need to send much here
     MSG.WriteByte(message, 0);
+    MSG.WriteString(message, COM.game);
   }
 
   MSG.WriteByte(message, SV.svs.maxclients);
@@ -1166,6 +1171,7 @@ SV.SpawnServer = function(mapname) {
 
   SV.server.gameAPI = PR.QuakeJS ? new PR.QuakeJS.ServerGameAPI(ServerEngineAPI) : PR.LoadProgs();
   SV.server.gameVersion = `${(PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`)}`;
+  SV.server.gameName = PR.QuakeJS ? PR.QuakeJS.identification.name : COM.game;
 
   SV.server.edicts = [];
   // preallocating up to Def.limits.edicts, we can extend that later during runtime

@@ -46,6 +46,9 @@ export default class COM {
   /** @type {SearchPath[]} */
   static gamedir = null;
 
+  /** @type {string} mod name */
+  static game = 'id1';
+
   static DefaultExtension(path, extension) {
     for (let i = path.length - 1; i >= 0; i--) {
       const src = path.charCodeAt(i);
@@ -647,6 +650,7 @@ export default class COM {
       search = this.argv[i + 1];
       if (search !== undefined) {
         this.modified = true;
+        this.game = search;
         await this.AddGameDirectory(search);
       }
     }

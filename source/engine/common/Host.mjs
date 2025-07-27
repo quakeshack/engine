@@ -558,8 +558,9 @@ Host.Status_f = function() {
     print = Host.ClientPrint;
   }
   print('hostname: ' + NET.hostname.string + '\n');
-  print('version : ' + Def.version + '\n');
+  print('version : ' + Def.version + ' (' + SV.server.gameVersion + ')\n');
   print('map     : ' + SV.server.gameAPI.mapname + '\n');
+  print('game    : ' + SV.server.gameName + '\n');
   print('edicts  : ' + SV.server.num_edicts + ' used of ' + SV.server.edicts.length + ' max\n');
   print('players : ' + NET.activeconnections + ' active (' + SV.svs.maxclients + ' max)\n\n');
 

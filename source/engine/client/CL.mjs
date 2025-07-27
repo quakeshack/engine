@@ -179,6 +179,7 @@ export default class CL {
     static get playerentity() {
       return this.clientEntities.getEntity(CL.state.viewentity);
     }
+    /** @type {import('../../shared/GameInterfaces').ClientGameInterface} */
     static gameAPI = null;
     static paused = false;
 
@@ -933,7 +934,7 @@ CL.ParseServerData = function() { // private
     const identification = PR.QuakeJS.identification;
 
     if (identification.name !== name || identification.author !== author) {
-      throw new HostError(`Cannot connect, because the server is running ${name} by ${author} and you are running ${name} by ${author}.`);
+      throw new HostError(`Cannot connect, game mismatch.\nThe server is running ${name}\nand you are running ${identification.name}.`);
     }
 
     if (!PR.QuakeJS.ClientGameAPI.IsServerCompatible(version)) {
@@ -942,6 +943,12 @@ CL.ParseServerData = function() { // private
     }
 
     CL.state.gameAPI = new PR.QuakeJS.ClientGameAPI(ClientEngineAPI);
+  } else {
+    const game = MSG.ReadString();
+
+    if (game !== COM.game) {
+      throw new HostError('Server is running game ' + game + ', not ' + COM.game + '\n');
+    }
   }
 
   CL.state.maxclients = MSG.ReadByte();
@@ -1357,6 +1364,10 @@ CL.ParseServerMessage = function() { // private
         continue;
       case Protocol.svc.cvar:
         CL.ParseServerCvars();
+        continue;
+      case Protocol.svc.clientevent:
+        console.assert(CL.state.gameAPI, 'ClientGameAPI required');
+        CL.state.clientMessages.parseClientEvent();
         continue;
     }
     CL._lastServerMessages.pop(); // discard the last added command as it was invalid anyway

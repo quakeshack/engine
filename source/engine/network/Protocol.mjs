@@ -115,6 +115,9 @@ export const svc = Object.freeze({
   pmovevars: 105,
   cvar: 106,
   changelevel: 107,
+  clientevent: 108,
+  gamestateupdate: 109,
+  clientstateupdate: 110,
 });
 
 /** Client to Server */
@@ -127,6 +130,15 @@ export const clc = Object.freeze({
   delta: 6,
   qwmove: 7,
   sync: 8,
+});
+
+export const clientEventDataTypes = Object.freeze({
+  none: 0,
+  number: 1,
+  vector: 2,
+  string: 3,
+  entity: 4,
+  boolean: 5,
 });
 
 export const te = Object.freeze({

@@ -5,7 +5,6 @@ import Cvar from './Cvar.mjs';
 import Vector from '../../shared/Vector.mjs';
 import Cmd from './Cmd.mjs';
 import VID from '../client/VID.mjs';
-import { version } from './Def.mjs';
 
 let { CL, Draw, Host, Key, M, SCR } = registry;
 
