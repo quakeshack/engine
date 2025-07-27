@@ -6,6 +6,7 @@ import W, { WadFileInterface, WadLumpTexture } from '../common/W.mjs';
 
 import { eventBus } from '../registry.mjs';
 import GL, { GLTexture } from './GL.mjs';
+import { version } from '../common/Def.mjs';
 
 /** @type {WebGL2RenderingContext} */
 let gl = null;
@@ -17,6 +18,29 @@ eventBus.subscribe('gl.ready', () => {
 eventBus.subscribe('gl.shutdown', () => {
   gl = null;
 });
+
+/**
+ * Based on the old Draw.CharToConback function but in 32 bit, this function places conchars into the conback texture data.
+ * @param {Uint8Array} conback conback texture data
+ * @param {Uint8Array} chars chars texture data
+ * @param {number} num character code ASCII
+ * @param {number} dest destination offset in conback
+ */
+function charToConback(conback, chars, num, dest) {
+  let source = ((num >> 4) << 10) + ((num & 15) << 3);
+  for (let drawline = 0; drawline < 8; drawline++) {
+    for (let x = 0; x < 8; x++) {
+      if (chars[(source + x) * 4 + 3] > 0) {
+        conback[(dest + x) * 4 + 0] = chars[(source + x) * 4 + 0];
+        conback[(dest + x) * 4 + 1] = chars[(source + x) * 4 + 1];
+        conback[(dest + x) * 4 + 2] = chars[(source + x) * 4 + 2];
+        conback[(dest + x) * 4 + 3] = chars[(source + x) * 4 + 3];
+      }
+    }
+    source += 128;
+    dest += 320;
+  }
+}
 
 /**
  * Draw class provides static methods and properties for rendering UI elements and graphics.
@@ -41,7 +65,9 @@ export default class Draw {
    */
   static async Init() {
     Draw.#gfxWad = await W.LoadFile('gfx.wad');
-    Draw.#chars = GLTexture.FromLumpTexture(Draw.#gfxWad.getLumpMipmap('CONCHARS', 0)).lockTextureMode('GL_NEAREST');
+    const conchars = Draw.#gfxWad.getLumpMipmap('CONCHARS', 0);
+    Draw.#chars = GLTexture.FromLumpTexture(conchars).lockTextureMode('GL_NEAREST');
+    // eslint-disable-next-line require-atomic-updates
     Draw.#conback = await (async () => {
       try {
         return await GLTexture.FromImageFile('gfx/conback.webp');
@@ -51,6 +77,12 @@ export default class Draw {
           if (lump === null) {
             throw new MissingResourceError('gfx/conback.lmp');
           }
+
+          // we are writing the version into the conback texture
+          for (let i = 0; i < version.length; i++) {
+            charToConback(lump.data, conchars.data, version.charCodeAt(i), 59829 - ((version.length - i) * 8));
+          }
+
           return GLTexture.FromLumpTexture(lump).lockTextureMode('GL_NEAREST');
         }
         throw err;
@@ -225,6 +257,7 @@ export default class Draw {
     gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
     pic.bind(program.tTexture, true);
     GL.StreamDrawTexturedQuad(x, y, pic.width, pic.height, 0.0, 0.0, 1.0, 1.0);
+    GL.StreamFlush();
   }
 
   /**

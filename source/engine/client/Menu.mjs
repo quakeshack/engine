@@ -114,6 +114,7 @@ M.ToggleMenu_f = function() {
 // Main menu
 M.main_cursor = 0;
 M.main_items = 5;
+M.save_demonum = 0; // THIS IS THE REASON WHY I HATE UNINITIALIZED PROPERTIES, this line was missing and it quietly caused some NaNs deep in the demo code…
 
 M.Menu_Main_f = function() {
   if (Key.dest.value !== Key.dest.menu) {

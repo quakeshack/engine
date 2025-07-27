@@ -5,6 +5,7 @@ import Cvar from './Cvar.mjs';
 import Vector from '../../shared/Vector.mjs';
 import Cmd from './Cmd.mjs';
 import VID from '../client/VID.mjs';
+import { version } from './Def.mjs';
 
 let { CL, Draw, Host, Key, M, SCR } = registry;
 
@@ -24,6 +25,12 @@ export default class Con {
   static captureBuffer = null;
   /** @type {Cvar} */
   static notifytime = null;
+
+  /** used by the client to force the console to be up */
+  static forcedup = false;
+
+  /** used by the client to determine how many lines to draw */
+  static vislines = 0;
 
   static ToggleConsole_f() {
     SCR.EndLoadingPlaque();
@@ -208,7 +215,3 @@ export default class Con {
     Con.DrawInput();
   }
 }
-
-/** @deprecated */ // TODO: remove, refactor to use eventBus
-Con.OnLinePrint = undefined;
-;

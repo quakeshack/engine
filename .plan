@@ -328,6 +328,12 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-27
+
+* restructured the repos
+* fixed a rendering glitch I introduced
+* added build stuff
+
 ### 2025-07-25
 
 * again hunting down the living dead (stupid racy scheduled thinks issue)

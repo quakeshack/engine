@@ -237,9 +237,8 @@ Host.ShutdownServer = function(isCrashShutdown) { // TODO: SV duties
 
 Host.WriteConfiguration = function() {
   Host.ScheduleInFuture('Host.WriteConfiguration', () => {
-    // COM.WriteTextFile('config.cfg', (!registry.isDedicatedServer ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
-    // Con.DPrint('Wrote configuration\n');
-    Con.DPrint('TODO: Write configuration\n'); // TODO
+    COM.WriteTextFile('config.cfg', (!registry.isDedicatedServer ? Key.WriteBindings() + '\n\n\n': '') + Cvar.WriteVariables());
+    Con.DPrint('Wrote configuration\n');
   }, 5.000);
 };
 
@@ -343,6 +342,8 @@ Host._Frame = function() {
     CL.ReadFromServer();
   }
 
+  CL.RunThink();
+
   CL.SendCmd();
 
   if (SV.server.active === true) {
@@ -372,7 +373,6 @@ Host._Frame = function() {
 
   if (CL.cls.signon === 4) {
     S.Update(R.refdef.vieworg, R.vpn, R.vright, R.vup);
-    CL.RunThink();
   } else {
     S.Update(Vector.origin, Vector.origin, Vector.origin, Vector.origin);
   }

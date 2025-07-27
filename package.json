@@ -1,7 +1,7 @@
 {
   "name": "quakeshack",
   "version": "1.0.0",
-  "main": "quakeshack-dedicated.mjs",
+  "main": "dedicated.mjs",
   "repository": "https://github.com/chrisnew/quakeshack",
   "license": "GPL-2.0-only",
   "private": true,
@@ -25,6 +25,6 @@
   "scripts": {
     "lint": "eslint source",
     "lint-fix": "eslint --fix source",
-    "start": "node quakeshack-dedicated.mjs"
+    "start": "node ./dedicated.mjs +exec server.cfg"
   }
 }

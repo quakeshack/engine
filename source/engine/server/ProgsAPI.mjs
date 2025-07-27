@@ -354,13 +354,13 @@ PF.Find = _PF_GenerateBuiltinFunction('Find', (edict, field, value) => ServerEng
 
 PF.MoveToGoal = _PF_GenerateBuiltinFunction('MoveToGoal', (dist) => SV.server.gameAPI.self.moveToGoal(dist), [etype.ev_float], etype.ev_bool);
 
-PF.precache_file = _PF_GenerateBuiltinFunction('precache_file', (integer) => 
+PF.precache_file = _PF_GenerateBuiltinFunction('precache_file', (integer) =>
    integer // dummy behavior
 , [etype.ev_integer], etype.ev_integer);
 
 PF.precache_sound = _PF_GenerateBuiltinFunction('precache_sound', (sfxName) => ServerEngineAPI.PrecacheSound(sfxName), [etype.ev_string_not_empty]);
 
-PF.precache_model = _PF_GenerateBuiltinFunction('precache_model', (modelName) => 
+PF.precache_model = _PF_GenerateBuiltinFunction('precache_model', (modelName) =>
   // FIXME: handle this more gracefully
   // if (SV.server.loading !== true) {
   //   PR.RunError('PF.Precache_*: Precache can only be done in spawn functions');
@@ -549,5 +549,3 @@ PF.builtin = [
   PF.Fixme, // PF.stof,
   PF.Fixme, // PF.multicast,
 ];
-
-console.log('PF.builtin', PF.builtin);
