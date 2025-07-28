@@ -1,9 +1,9 @@
 import { solid } from '../../shared/Defs.mjs';
 import Vector from '../../shared/Vector.mjs';
-import { ClientDlight, ClientEdict } from '../client/ClientEntities.mjs';
+import { ClientDlight } from '../client/ClientEntities.mjs';
 import { GLTexture } from '../client/GL.mjs';
 import VID from '../client/VID.mjs';
-import MSG from '../network/MSG.mjs';
+import MSG, { SzBuffer } from '../network/MSG.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from '../server/Edict.mjs';
@@ -14,7 +14,7 @@ import { Pmove, Trace } from './Pmove.mjs';
 
 /** @typedef {import('../client/ClientEntities.mjs').ClientEdict} ClientEdict */
 
-let { CL, Con, Draw, Host, R, SV } = registry;
+let { CL, Con, Draw, Host, R, SCR, SV } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
@@ -22,6 +22,7 @@ eventBus.subscribe('registry.frozen', () => {
   Draw = registry.Draw;
   Host = registry.Host;
   R = registry.R;
+  SCR = registry.SCR;
   SV = registry.SV;
 });
 
@@ -362,10 +363,12 @@ export class ServerEngineAPI extends CommonEngineAPI {
     MSG.WriteCoordVector(SV.server.datagram, endOrigin);
   }
 
+  /** @deprecated use client events instead */
   static BroadcastMonsterKill() {
     MSG.WriteByte(SV.server.reliable_datagram, Protocol.svc.killedmonster);
   }
 
+  /** @deprecated use client events instead */
   static BroadcastSecretFound() {
     MSG.WriteByte(SV.server.reliable_datagram, Protocol.svc.foundsecret);
   }
@@ -395,16 +398,13 @@ export class ServerEngineAPI extends CommonEngineAPI {
   /**
    * Dispatches a client event to the specified receiver.
    * NOTE: Events are written to the datagram AFTER an entity update, so referring to an entity that will be removed in the same frame will not work!
+   * @param {SzBuffer} destination destination to write the event to, can be SV.server.datagram or a client message buffer
    * @param {number} eventCode event code, must be understood by the client
-   * @param {ServerEdict?} receiverPlayerEdict receiver edict, can be null to broadcast to all clients
-   * @param  {...import('../../shared/GameInterfaces').ClientEventArgument} args any arguments to pass to the client event, will be serialized
+   * @param  {...import('../../shared/GameInterfaces').SerializableType} args any arguments to pass to the client event, will be serialized
+   * @private
    */
-  static DispatchClientEvent(eventCode, receiverPlayerEdict, ...args) {
+  static DispatchClientEventOnDestination(destination, eventCode, ...args) {
     console.assert(typeof eventCode === 'number', 'eventCode must be a number');
-    console.assert(receiverPlayerEdict instanceof ServerEdict || receiverPlayerEdict === null, 'emitterEdict must be a ServerEdict or null');
-
-    // TODO: have an optional priority queue for events, so that these get sent before the entity updates will be written to the datagram
-    const destination = receiverPlayerEdict ? /** @type {ServerEdict} */(receiverPlayerEdict).getClient().message : SV.server.datagram;
 
     MSG.WriteByte(destination, Protocol.svc.clientevent);
     MSG.WriteByte(destination, eventCode);
@@ -439,6 +439,31 @@ export class ServerEngineAPI extends CommonEngineAPI {
 
     // end of event data
     MSG.WriteByte(destination, Protocol.clientEventDataTypes.none);
+  }
+
+  /**
+   * Dispatches a client event to everyone
+   * @param {boolean} expedited if true, the event will be sent before the next entity update, otherwise it will be sent after the next entity update
+   * @param {number} eventCode event code, must be understood by the client
+   * @param  {...import('../../shared/GameInterfaces').SerializableType} args any arguments to pass to the client event, will be serialized
+   */
+  static BroadcastClientEvent(expedited, eventCode, ...args) {
+    this.DispatchClientEventOnDestination(expedited ? SV.server.datagram : SV.server.expedited_datagram, eventCode, ...args);
+  }
+
+  /**
+   * Dispatches a client event to the specified receiver.
+   * @param {ServerEdict} receiverPlayerEdict the edict of the player to send the event to
+   * @param {boolean} expedited if true, the event will be sent before the next entity update, otherwise it will be sent after the next entity update
+   * @param {number} eventCode event code, must be understood by the client
+   * @param  {...import('../../shared/GameInterfaces').SerializableType} args any arguments to pass to the client event, will be serialized
+   */
+  static DispatchClientEvent(receiverPlayerEdict, expedited, eventCode, ...args) {
+    console.assert(receiverPlayerEdict instanceof ServerEdict && receiverPlayerEdict.isClient(), 'emitterEdict must be a ServerEdict connected to a client');
+
+    const destination = expedited ? receiverPlayerEdict.getClient().expedited_message : receiverPlayerEdict.getClient().message;
+
+    this.DispatchClientEventOnDestination(destination, eventCode, ...args);
   }
 };
 
@@ -601,5 +626,9 @@ export class ClientEngineAPI extends CommonEngineAPI {
     get width() { return VID.width; },
     get height() { return VID.height; },
     get pixelRatio() { return VID.pixelRatio; },
+  };
+
+  static SCR = {
+    get viewsize() { return /** @type {number} */ (SCR.viewsize.value); },
   };
 };

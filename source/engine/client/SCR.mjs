@@ -1,5 +1,6 @@
 /* global  */
 
+import { gameCapabilities } from '../../shared/Defs.mjs';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { eventBus, registry } from '../registry.mjs';
@@ -202,6 +203,8 @@ SCR.SizeDown_f = function() {
   SCR.recalc_refdef = true;
 };
 
+SCR.disableCrosshair = false;
+
 SCR.Init = async function() {
   SCR.fov = new Cvar('fov', '90', Cvar.FLAG.CHEAT); // TODO: move to R?
   SCR.viewsize = new Cvar('viewsize', '100', Cvar.FLAG.ARCHIVE);
@@ -216,6 +219,10 @@ SCR.Init = async function() {
   SCR.net = Draw.LoadPicFromWad('NET');
   SCR.turtle = Draw.LoadPicFromWad('TURTLE');
   SCR.pause = Draw.LoadPicFromLumpDeferred('pause');
+  SCR.crosshair = new Cvar('crosshair', '0', Cvar.FLAG.ARCHIVE);
+  SCR.crossx = new Cvar('cl_crossx', '0', Cvar.FLAG.ARCHIVE);
+  SCR.crossy = new Cvar('cl_crossy', '0', Cvar.FLAG.ARCHIVE);
+  SCR.disableCrosshair = CL.gameCapabilities.includes(gameCapabilities.CAP_HUD_INCLUDES_CROSSHAIR);
 };
 
 SCR.count = 0;
@@ -356,9 +363,9 @@ SCR.UpdateScreen = function() {
     } else if ((CL.state.intermission === 3) && (Key.dest.value === Key.dest.game)) {
       SCR.DrawCenterString();
     } else {
-      if (V.crosshair.value !== 0) {
-        Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width / 2) + V.crossx.value,
-            R.refdef.vrect.y + (R.refdef.vrect.height / 2) + V.crossy.value, 43);
+      if (!SCR.disableCrosshair && SCR.crosshair.value !== 0) {
+        Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width / 2) + SCR.crossx.value,
+            R.refdef.vrect.y + (R.refdef.vrect.height / 2) + SCR.crossy.value, 43);
       }
       SCR.DrawNet();
       SCR.DrawTurtle();

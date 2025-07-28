@@ -5,6 +5,7 @@ import { eventBus, registry } from '../registry.mjs';
 import { HostError } from '../common/Errors.mjs';
 import Vector from '../../shared/Vector.mjs';
 import { PmovePlayer } from '../common/Pmove.mjs';
+import { gameCapabilities } from '../../shared/Defs.mjs';
 
 let { CL, COM } = registry;
 
@@ -136,36 +137,42 @@ export class ClientMessages {
    * @param {number} bits
    */
   #parseClientLegacy(bits) {
-    const item = MSG.ReadLong();
-    if (CL.state.items !== item) {
-      for (let j = 0; j < CL.state.item_gettime.length; j++) {
-        if ((((item >>> j) & 1) !== 0) && (((CL.state.items >>> j) & 1) === 0)) {
-          CL.state.item_gettime[j] = CL.state.time;
+    if (CL.gameCapabilities.includes(gameCapabilities.CAP_LEGACY_CLIENTDATA)) {
+      const item = MSG.ReadLong();
+      if (CL.state.items !== item) {
+        for (let j = 0; j < CL.state.item_gettime.length; j++) {
+          if ((((item >>> j) & 1) !== 0) && (((CL.state.items >>> j) & 1) === 0)) {
+            CL.state.item_gettime[j] = CL.state.time;
+          }
         }
+        CL.state.items = item;
       }
-      CL.state.items = item;
-    }
 
-    CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? MSG.ReadByte() : 0;
-    CL.state.stats[Def.stat.armor] = ((bits & Protocol.su.armor) !== 0) ? MSG.ReadByte() : 0;
-    CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? MSG.ReadByte() : 0;
-    CL.state.stats[Def.stat.health] = MSG.ReadShort();
-    CL.state.stats[Def.stat.ammo] = MSG.ReadByte();
-    CL.state.stats[Def.stat.shells] = MSG.ReadByte();
-    CL.state.stats[Def.stat.nails] = MSG.ReadByte();
-    CL.state.stats[Def.stat.rockets] = MSG.ReadByte();
-    CL.state.stats[Def.stat.cells] = MSG.ReadByte();
-    if (COM.standard_quake === true) {
-      CL.state.stats[Def.stat.activeweapon] = MSG.ReadByte();
+      CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? MSG.ReadByte() : 0;
+      CL.state.stats[Def.stat.armor] = ((bits & Protocol.su.armor) !== 0) ? MSG.ReadByte() : 0;
+      CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? MSG.ReadByte() : 0;
+      CL.state.stats[Def.stat.health] = MSG.ReadShort();
+      CL.state.stats[Def.stat.ammo] = MSG.ReadByte();
+      CL.state.stats[Def.stat.shells] = MSG.ReadByte();
+      CL.state.stats[Def.stat.nails] = MSG.ReadByte();
+      CL.state.stats[Def.stat.rockets] = MSG.ReadByte();
+      CL.state.stats[Def.stat.cells] = MSG.ReadByte();
+      if (COM.standard_quake === true) {
+        CL.state.stats[Def.stat.activeweapon] = MSG.ReadByte();
+      } else {
+        CL.state.stats[Def.stat.activeweapon] = 1 << MSG.ReadByte();
+      }
     } else {
-      CL.state.stats[Def.stat.activeweapon] = 1 << MSG.ReadByte();
+      CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? MSG.ReadByte() : 0;
+      CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? MSG.ReadByte() : 0;
+      CL.state.stats[Def.stat.health] = MSG.ReadShort();
     }
   }
 
   parseClientEvent() {
     const eventCode = MSG.ReadByte();
 
-    /** @type {(import('../../shared/GameInterfaces').ClientEventArgument)[]} */
+    /** @type {(import('../../shared/GameInterfaces').SerializableType)[]} */
     const args = [];
 
     while (true) {

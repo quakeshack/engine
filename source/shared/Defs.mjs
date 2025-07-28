@@ -165,3 +165,18 @@ export const content = Object.freeze({
   CONTENT_SKY: -6,
 });
 
+/**
+ * @readonly
+ * @enum {string}
+ * feature flags
+ */
+export const gameCapabilities = Object.freeze({
+  /** this will read total_secrets, total_monsters, found_secrets, killed_monsters being sent via updatestat and let the client write them to CL.state.stat */
+  CAP_LEGACY_UPDATESTAT: 'CAP_REQUIRES_UPDATESTAT',
+  /** this will add items and ammo information to clientdata messages */
+  CAP_LEGACY_CLIENTDATA: 'CAP_LEGACY_CLIENTDATA',
+  /** the client game code brings its own status bar, in other words: no Sbar required! */
+  CAP_HUD_INCLUDES_SBAR: 'CAP_HUD_INCLUDES_SBAR',
+  /** the client game code takes care of rendering crosshairs, in other words: V is not required to draw one! */
+  CAP_HUD_INCLUDES_CROSSHAIR: 'CAP_HUD_INCLUDES_CROSSHAIR',
+});

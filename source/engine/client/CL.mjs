@@ -8,7 +8,7 @@ import Cvar from '../common/Cvar.mjs';
 import { MoveVars, Pmove, PmovePlayer } from '../common/Pmove.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
-import { solid } from '../../shared/Defs.mjs';
+import { gameCapabilities, solid } from '../../shared/Defs.mjs';
 import { QSocket } from '../network/NetworkDrivers.mjs';
 import ClientDemos from './ClientDemos.mjs';
 import ClientInput from './ClientInput.mjs';
@@ -48,6 +48,12 @@ export default class CL {
   static pmove = new Pmove();
 
   static #clientDemos = new ClientDemos();
+
+  /** @type {gameCapabilities[]} */
+  static gameCapabilities = [];
+
+  /** @type {boolean} */
+  static sbarDisabled = false;
 
   /** Client Static State – everything here persists across multiple maps or are not directly game related */
   static cls = class ClientStaticState { // forced to be a class to make eslint/tslint scream about issues
@@ -491,7 +497,9 @@ export default class CL {
       this.state.gameAPI.draw();
     }
 
-    Sbar.Draw(); // TODO: let Client decide whether it wants to draw the statusbar or not
+    if (!this.sbarDisabled) {
+      Sbar.Draw();
+    }
   }
 
   static RunThink() {
@@ -809,6 +817,26 @@ CL.InitPmove = function() { // private
   CL.pmove.movevars = new MoveVars();
 };
 
+CL.InitGame = function() { // private
+  // always assume legacy game code first
+  CL.gameCapabilities = PR.capabilities;
+
+  if (!PR.QuakeJS?.ClientGameAPI) {
+    return;
+  }
+
+  try {
+    if (COM.CheckParm('-noquakejs')) {
+      throw new Error('QuakeJS disabled');
+    }
+
+    PR.QuakeJS.ClientGameAPI.Init(ClientEngineAPI);
+    CL.gameCapabilities = PR.QuakeJS.identification.capabilities;
+  } catch (e) {
+    Con.PrintError('CL.InitGame: Failed to import QuakeJS client code, ' + e.message + '.\n');
+  }
+};
+
 CL.Init = async function() { // public, by Host.js
   CL.ClearState();
   ClientInput.Init();
@@ -851,19 +879,9 @@ CL.Init = async function() { // public, by Host.js
 
   CL.sfx_talk = S.PrecacheSound('misc/talk.wav');
 
-  if (!PR.QuakeJS?.ClientGameAPI) {
-    return;
-  }
+  CL.InitGame();
 
-  try {
-    if (COM.CheckParm('-noquakejs')) {
-      throw new Error('QuakeJS disabled');
-    }
-
-    PR.QuakeJS.ClientGameAPI.Init(ClientEngineAPI);
-  } catch (e) {
-    Con.PrintError('CL.Init: Failed to import QuakeJS client code, ' + e.message + '.\n');
-  }
+  CL.sbarDisabled = this.gameCapabilities.includes(gameCapabilities.CAP_HUD_INCLUDES_SBAR);
 };
 
 // parse
@@ -1308,13 +1326,16 @@ CL.ParseServerMessage = function() { // private
         CL.cls.signon = /** @type {0|1|2|3|4} */(i);
         CL.SignonReply();
         continue;
-      case Protocol.svc.killedmonster: // TODO: Client
-        ++CL.state.stats[Def.stat.monsters];
+      case Protocol.svc.killedmonster:
+        console.assert(SV.server.gameCapabilities.includes(gameCapabilities.CAP_LEGACY_UPDATESTAT), 'killedmonster requires CAP_LEGACY_UPDATESTAT');
+        CL.state.stats[Def.stat.monsters]++;
         continue;
-      case Protocol.svc.foundsecret: // TODO: Client
-        ++CL.state.stats[Def.stat.secrets];
+      case Protocol.svc.foundsecret:
+        console.assert(SV.server.gameCapabilities.includes(gameCapabilities.CAP_LEGACY_UPDATESTAT), 'foundsecret requires CAP_LEGACY_UPDATESTAT');
+        CL.state.stats[Def.stat.secrets]++;
         continue;
-      case Protocol.svc.updatestat: // TODO: Client
+      case Protocol.svc.updatestat:
+        console.assert(SV.server.gameCapabilities.includes(gameCapabilities.CAP_LEGACY_UPDATESTAT), 'updatestat requires CAP_LEGACY_UPDATESTAT');
         i = MSG.ReadByte();
         console.assert(i >= 0 && i < CL.state.stats.length, 'updatestat must be in range');
         CL.state.stats[i] = MSG.ReadLong();

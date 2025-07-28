@@ -12,6 +12,7 @@ import Chase from '../client/Chase.mjs';
 import VID from '../client/VID.mjs';
 import { HostError } from './Errors.mjs';
 import CDAudio from '../client/CDAudio.mjs';
+import { gameCapabilities } from '../../shared/Defs.mjs';
 
 const Host = {};
 
@@ -250,6 +251,7 @@ Host.WriteConfiguration_f = function() {
 Host.ServerFrame = function() { // TODO: SV duties
   SV.server.gameAPI.frametime = Host.frametime;
   SV.server.datagram.clear();
+  SV.server.expedited_datagram.clear();
   SV.CheckForNewClients();
   SV.RunClients();
   if ((SV.server.paused !== true) && ((SV.svs.maxclients >= 2) || (!registry.isDedicatedServer && Key.dest.value === Key.dest.game))) {
@@ -487,7 +489,11 @@ Host.Init = async function() {
     await CL.Init();
     await SCR.Init();
     await CDAudio.Init();
-    await Sbar.Init();
+
+    if (!CL.gameCapabilities.includes(gameCapabilities.CAP_HUD_INCLUDES_SBAR)) {
+      await Sbar.Init();
+    }
+
     IN.Init();
   } else {
     // we need a few frontend things for dedicated
@@ -1185,7 +1191,11 @@ Host.Spawn_f = function() { // signon 2, step 3
     return;
   }
 
-  let i;
+  const message = client.message;
+  message.clear();
+
+  MSG.WriteByte(message, Protocol.svc.time);
+  MSG.WriteFloat(message, SV.server.time);
 
   const ent = client.edict;
   if (SV.server.loadgame === true) {
@@ -1197,7 +1207,7 @@ Host.Spawn_f = function() { // signon 2, step 3
       colormap: ent.num, // the num, not the entity
       team: (client.colors & 15) + 1,
     });
-    for (i = 0; i <= 15; i++) {
+    for (let i = 0; i <= 15; i++) {
       SV.server.gameAPI[`parm${i + 1}`] = client.spawn_parms[i];
     }
     SV.server.gameAPI.time = SV.server.time;
@@ -1208,11 +1218,7 @@ Host.Spawn_f = function() { // signon 2, step 3
     SV.server.gameAPI.PutClientInServer(ent);
   }
 
-  const message = client.message;
-  message.clear();
-  MSG.WriteByte(message, Protocol.svc.time);
-  MSG.WriteFloat(message, SV.server.time);
-  for (i = 0; i < SV.svs.maxclients; i++) {
+  for (let i = 0; i < SV.svs.maxclients; i++) {
     client = SV.svs.clients[i];
     MSG.WriteByte(message, Protocol.svc.updatename);
     MSG.WriteByte(message, i);
@@ -1224,29 +1230,36 @@ Host.Spawn_f = function() { // signon 2, step 3
     MSG.WriteByte(message, i);
     MSG.WriteByte(message, client.colors);
   }
-  for (i = 0; i < Def.limits.lightstyles; i++) {
+
+  for (let i = 0; i < Def.limits.lightstyles; i++) {
     MSG.WriteByte(message, Protocol.svc.lightstyle);
     MSG.WriteByte(message, i);
     MSG.WriteString(message, SV.server.lightstyles[i]);
   }
-  MSG.WriteByte(message, Protocol.svc.updatestat);
-  MSG.WriteByte(message, Def.stat.totalsecrets);
-  MSG.WriteLong(message, SV.server.gameAPI.total_secrets);
-  MSG.WriteByte(message, Protocol.svc.updatestat);
-  MSG.WriteByte(message, Def.stat.totalmonsters);
-  MSG.WriteLong(message, SV.server.gameAPI.total_monsters);
-  MSG.WriteByte(message, Protocol.svc.updatestat);
-  MSG.WriteByte(message, Def.stat.secrets);
-  MSG.WriteLong(message, SV.server.gameAPI.found_secrets);
-  MSG.WriteByte(message, Protocol.svc.updatestat);
-  MSG.WriteByte(message, Def.stat.monsters);
-  MSG.WriteLong(message, SV.server.gameAPI.killed_monsters);
-  MSG.WriteByte(message, Protocol.svc.setangle);
+
+  if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_LEGACY_UPDATESTAT)) {
+    MSG.WriteByte(message, Protocol.svc.updatestat);
+    MSG.WriteByte(message, Def.stat.totalsecrets);
+    MSG.WriteLong(message, SV.server.gameAPI.total_secrets);
+    MSG.WriteByte(message, Protocol.svc.updatestat);
+    MSG.WriteByte(message, Def.stat.totalmonsters);
+    MSG.WriteLong(message, SV.server.gameAPI.total_monsters);
+    MSG.WriteByte(message, Protocol.svc.updatestat);
+    MSG.WriteByte(message, Def.stat.secrets);
+    MSG.WriteLong(message, SV.server.gameAPI.found_secrets);
+    MSG.WriteByte(message, Protocol.svc.updatestat);
+    MSG.WriteByte(message, Def.stat.monsters);
+    MSG.WriteLong(message, SV.server.gameAPI.killed_monsters);
+  }
+
   const angles = ent.entity.angles;
+  MSG.WriteByte(message, Protocol.svc.setangle);
   MSG.WriteAngle(message, angles[0]);
   MSG.WriteAngle(message, angles[1]);
   MSG.WriteAngle(message, 0.0);
+
   SV.WriteClientdataToMessage(ent, message);
+
   MSG.WriteByte(message, Protocol.svc.signonnum);
   MSG.WriteByte(message, 3);
   Host.client.sendsignon = true;

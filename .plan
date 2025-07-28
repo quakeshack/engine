@@ -328,6 +328,14 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-29
+
+* moved crosshair duties from V to SCR
+* started making use of game capabilities to switch between some legacy code and new code
+* introduced the expedited datagram to write messages before the big entity delta update run
+* started making use of dispatching and handling client events
+* next up: work on transmitting stats/inventory to the client using events
+
 ### 2025-07-28
 
 * started adding server messages to streamline server to client events

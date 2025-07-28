@@ -16,7 +16,6 @@ export const registry = {
   CL: null,
   SV: null,
   Mod: null,
-  PF: null,
   PR: null,
   R: null,
   SCR: null,

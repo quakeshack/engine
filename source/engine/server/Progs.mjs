@@ -8,6 +8,7 @@ import { eventBus, registry } from '../registry.mjs';
 import { ED } from './Edict.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import PF, { etype, ofs } from './ProgsAPI.mjs';
+import { gameCapabilities } from '../../shared/Defs.mjs';
 
 const PR = {};
 
@@ -1553,3 +1554,8 @@ PR.TempString = function(string) {
 
   return PR.string_temp;
 };
+
+PR.capabilities = [
+  gameCapabilities.CAP_LEGACY_UPDATESTAT,
+  gameCapabilities.CAP_LEGACY_CLIENTDATA,
+];

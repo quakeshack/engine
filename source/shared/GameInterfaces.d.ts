@@ -2,14 +2,14 @@ import { BaseClientEdictHandler } from "./ClientEdict.mjs";
 import { ClientEngineAPI, ServerEngineAPI } from "../engine/common/GameAPIs.mjs";
 import { ServerEdict } from "../engine/server/Edict.mjs";
 
-export type ClientEventArgument = (string | number | boolean | Vector);
+export type SerializableType = (string | number | boolean | Vector);
 
 export interface ClientGameInterface {
   init(): void;
   shutdown(): void;
   draw(): void;
 
-  handleClientEvent(code: number, ...args: ClientEventArgument[]): void;
+  handleClientEvent(code: number, ...args: SerializableType[]): void;
 
   static GetClientEdictHandler(classname: string): BaseClientEdictHandler
 

@@ -89,11 +89,14 @@ SV.fl = {
   }} Trace
  */
 
+/** @typedef {import('source/shared/GameInterfaces').SerializableType} SerializableType */
+
 // main
 
 SV.server = {
   num_edicts: 0,
   datagram: new SzBuffer(4096, 'SV.server.datagram'),
+  expedited_datagram: new SzBuffer(4096, 'SV.server.expedited_datagram'),
   reliable_datagram: new SzBuffer(4096, 'SV.server.reliable_datagram'),
   /** sent during client prespawn */
   signon: new SzBuffer(4096, 'SV.server.signon'),
@@ -104,6 +107,10 @@ SV.server = {
   gameAPI: null,
   /** @type {string?} game version string */
   gameVersion: null,
+  /** @type {string?} game identification (e.g. Quake) */
+  gameName: null,
+  /** @type {Defs.gameCapabilities[]} game capability flags */
+  gameCapabilities: [],
 };
 
 export class ServerEntityState {
@@ -123,8 +130,12 @@ export class ServerEntityState {
     this.mins = new Vector();
     this.maxs = new Vector();
     this.velocity = new Vector(0, 0, 0);
+
+    /** @type {{[key: string]: SerializableType}} */
+    this.extended = {};
   }
 
+  /** @param {ServerEntityState} other other state to copy */
   set(other) {
     this.num = other.num;
     this.flags = other.flags;
@@ -141,6 +152,10 @@ export class ServerEntityState {
     this.classname = other.classname;
     this.mins.set(other.mins);
     this.maxs.set(other.maxs);
+
+    for (const [key, value] of Object.entries(other.extended)) {
+      this.extended[key] = value;
+    }
   }
 };
 
@@ -848,6 +863,7 @@ SV.WriteEntitiesToClient = function(clientEdict, msg) {
 };
 
 /**
+ * LEGACY
  * @param {ServerEdict} clientEdict client edict
  * @param {SzBuffer} msg message stream
  * @returns {boolean} true, when there were changes written to the message
@@ -940,36 +956,47 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
     MSG.WriteShort(msg, punchangle[2] * 90.0);
   }
 
-  MSG.WriteLong(msg, items);
-  if ((bits & Protocol.su.weaponframe) !== 0) {
-    MSG.WriteByte(msg, clientEdict.entity.weaponframe);
-  }
-  if ((bits & Protocol.su.armor) !== 0) {
-    MSG.WriteByte(msg, clientEdict.entity.armorvalue);
-  }
-  MSG.WriteByte(msg, SV.ModelIndex(clientEdict.entity.weaponmodel));
-  MSG.WriteShort(msg, clientEdict.entity.health);
-  MSG.WriteByte(msg, clientEdict.entity.currentammo);
-  MSG.WriteByte(msg, clientEdict.entity.ammo_shells);
-  MSG.WriteByte(msg, clientEdict.entity.ammo_nails);
-  MSG.WriteByte(msg, clientEdict.entity.ammo_rockets);
-  MSG.WriteByte(msg, clientEdict.entity.ammo_cells);
-  if (COM.standard_quake === true) {
-    MSG.WriteByte(msg, clientEdict.entity.weapon & 0xff);
-  } else {
-    const weapon = clientEdict.entity.weapon;
-    for (let i = 0; i <= 31; i++) {
-      if ((weapon & (1 << i)) !== 0) {
-        MSG.WriteByte(msg, i);
-        break;
+  if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_LEGACY_CLIENTDATA)) {
+    MSG.WriteLong(msg, items);
+    if ((bits & Protocol.su.weaponframe) !== 0) {
+      MSG.WriteByte(msg, clientEdict.entity.weaponframe);
+    }
+    if ((bits & Protocol.su.armor) !== 0) {
+      MSG.WriteByte(msg, clientEdict.entity.armorvalue);
+    }
+    MSG.WriteByte(msg, SV.ModelIndex(clientEdict.entity.weaponmodel));
+    MSG.WriteShort(msg, clientEdict.entity.health);
+    MSG.WriteByte(msg, clientEdict.entity.currentammo);
+    MSG.WriteByte(msg, clientEdict.entity.ammo_shells);
+    MSG.WriteByte(msg, clientEdict.entity.ammo_nails);
+    MSG.WriteByte(msg, clientEdict.entity.ammo_rockets);
+    MSG.WriteByte(msg, clientEdict.entity.ammo_cells);
+    if (COM.standard_quake === true) {
+      MSG.WriteByte(msg, clientEdict.entity.weapon & 0xff);
+    } else {
+      const weapon = clientEdict.entity.weapon;
+      for (let i = 0; i <= 31; i++) {
+        if ((weapon & (1 << i)) !== 0) {
+          MSG.WriteByte(msg, i);
+          break;
+        }
       }
     }
+  } else {
+    if ((bits & Protocol.su.weapon) !== 0) {
+      MSG.WriteByte(msg, SV.ModelIndex(clientEdict.entity.weaponmodel));
+    }
+    if ((bits & Protocol.su.weaponframe) !== 0) {
+      MSG.WriteByte(msg, clientEdict.entity.weaponframe);
+    }
+    MSG.WriteShort(msg, clientEdict.entity.health);
   }
 
   return true; // TODO: changes
 };
 
 SV.SendClientDatagram = function() { // FIXME: Host.client
+  /** @type {ServerClient} */
   const client = Host.client;
   const msg = new SzBuffer(2048, 'SV.SendClientDatagram');
   MSG.WriteByte(msg, Protocol.svc.time);
@@ -997,13 +1024,30 @@ SV.SendClientDatagram = function() { // FIXME: Host.client
     client.last_ping_update = Host.realtime;
   }
 
+  // writing expedited messages first
+  if (client.expedited_message.cursize > 0 && (msg.cursize + client.expedited_message.cursize) < msg.data.byteLength) {
+    msg.write(new Uint8Array(client.expedited_message.data), client.expedited_message.cursize);
+    client.expedited_message.clear();
+    changes |= 1;
+  }
+
+  // writing expedited broadcast messages next
+  if ((msg.cursize + SV.server.expedited_datagram.cursize) < msg.data.byteLength) {
+    msg.write(new Uint8Array(SV.server.expedited_datagram.data), SV.server.expedited_datagram.cursize);
+    changes |= 1;
+  }
+
   changes |= SV.WriteClientdataToMessage(client.edict, msg) ? 1 : 0;
   changes |= SV.WriteEntitiesToClient(client.edict, msg) ? 1 : 0;
 
-  if (!changes && client.spawned) {
-    // nothing to send
-    Con.DPrint('SV.SendClientDatagram: no changes\n');
+  if (!client.spawned) {
+    Con.DPrint('SV.SendClientDatagram: not spawned\n');
     return true;
+  }
+
+  if (!changes) {
+    Con.DPrint('SV.SendClientDatagram: no changes for client ' + client.num + '\n');
+    // TODO: what about changes?
   }
 
   client.last_update = SV.server.time;
@@ -1172,6 +1216,7 @@ SV.SpawnServer = function(mapname) {
   SV.server.gameAPI = PR.QuakeJS ? new PR.QuakeJS.ServerGameAPI(ServerEngineAPI) : PR.LoadProgs();
   SV.server.gameVersion = `${(PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`)}`;
   SV.server.gameName = PR.QuakeJS ? PR.QuakeJS.identification.name : COM.game;
+  SV.server.gameCapabilities = PR.QuakeJS ? PR.QuakeJS.identification.capabilities : PR.capabilities;
 
   SV.server.edicts = [];
   // preallocating up to Def.limits.edicts, we can extend that later during runtime

@@ -31,8 +31,12 @@ export class ServerClient {
   constructor(num) {
     this.state = ServerClient.STATE.FREE;
     this.num = num;
+    /** @type {SzBuffer} messages sent after an entity update run */
     this.message = new SzBuffer(8000, 'ServerClient ' + num);
     this.message.allowoverflow = true;
+    /** @type {SzBuffer} messages sent before an entity update run */
+    this.expedited_message = new SzBuffer(2000, 'ServerClient expedited ' + num);
+    this.expedited_message.allowoverflow = true;
     this.colors = 0;
     this.old_frags = 0;
     /** @type {number} last update sent to the client */
