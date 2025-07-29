@@ -521,7 +521,16 @@ export default class Vector extends Array {
    */
   isOrigin() {
     return this[0] === 0.0 && this[1] === 0.0 && this[2] === 0.0;
-  };
+  }
+
+  /**
+   * Check if this vector is infinite.
+   * @returns {boolean} true, if this is an infinite vector
+   */
+  isInfinite() {
+    return  this[0] === Infinity || this[1] === Infinity || this[2] === Infinity ||
+            this[0] === -Infinity || this[1] === -Infinity || this[2] === -Infinity;
+  }
 
   /**
    * Cross product of this x other, returns a new Vector.

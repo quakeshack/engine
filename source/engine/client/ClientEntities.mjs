@@ -115,7 +115,7 @@ export class ClientEdict {
     this.leafs = [];
     /** count of received updates */
     this.updatecount = 0;
-    /** whether is ClientEntity is about to get freed */
+    /** whether is ClientEntity is ready to be recycled */
     this.free = false;
     this.syncbase = 0.0;
     this.maxs = new Vector();
@@ -178,8 +178,10 @@ export class ClientEdict {
     this.skinnum = 0;
     this.colormap = 0;
     this.effects = 0;
+    this.solid = 0;
     this.origin.setTo(Infinity, Infinity, Infinity);
     this.angles.setTo(Infinity, Infinity, Infinity);
+    this.velocity.clear();
     this.dlightbits = 0;
     this.dlightframe = 0;
     this.msg_time[0] = 0.0;
@@ -457,12 +459,22 @@ export default class ClientEntities {
   allocateClientEntity(classname = null) {
     const ent = new ClientEdict(-1);
 
-    this.static_entities.push(ent);
-
     if (classname !== null) {
       ent.classname = classname;
       ent.loadHandler();
     }
+
+    ent.free = false;
+
+    // find a free static entity slot
+    for (let i = 0; i < this.static_entities.length; i++) {
+      if (this.static_entities[i].free) {
+        this.static_entities[i] = ent;
+        return ent;
+      }
+    }
+
+    this.static_entities.push(ent);
 
     return ent;
   }

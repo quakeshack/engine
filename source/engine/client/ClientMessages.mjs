@@ -6,6 +6,7 @@ import { HostError } from '../common/Errors.mjs';
 import Vector from '../../shared/Vector.mjs';
 import { PmovePlayer } from '../common/Pmove.mjs';
 import { gameCapabilities } from '../../shared/Defs.mjs';
+import { ClientEdict } from './ClientEntities.mjs';
 
 let { CL, COM } = registry;
 
@@ -137,35 +138,117 @@ export class ClientMessages {
    * @param {number} bits
    */
   #parseClientLegacy(bits) {
-    if (CL.gameCapabilities.includes(gameCapabilities.CAP_LEGACY_CLIENTDATA)) {
-      const item = MSG.ReadLong();
-      if (CL.state.items !== item) {
-        for (let j = 0; j < CL.state.item_gettime.length; j++) {
-          if ((((item >>> j) & 1) !== 0) && (((CL.state.items >>> j) & 1) === 0)) {
-            CL.state.item_gettime[j] = CL.state.time;
-          }
+    const item = MSG.ReadLong();
+    if (CL.state.items !== item) {
+      for (let j = 0; j < CL.state.item_gettime.length; j++) {
+        if ((((item >>> j) & 1) !== 0) && (((CL.state.items >>> j) & 1) === 0)) {
+          CL.state.item_gettime[j] = CL.state.time;
         }
-        CL.state.items = item;
+      }
+      CL.state.items = item;
+    }
+
+    CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? MSG.ReadByte() : 0;
+    CL.state.stats[Def.stat.armor] = ((bits & Protocol.su.armor) !== 0) ? MSG.ReadByte() : 0;
+    CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? MSG.ReadByte() : 0;
+    CL.state.stats[Def.stat.health] = MSG.ReadShort();
+    CL.state.stats[Def.stat.ammo] = MSG.ReadByte();
+    CL.state.stats[Def.stat.shells] = MSG.ReadByte();
+    CL.state.stats[Def.stat.nails] = MSG.ReadByte();
+    CL.state.stats[Def.stat.rockets] = MSG.ReadByte();
+    CL.state.stats[Def.stat.cells] = MSG.ReadByte();
+    if (COM.standard_quake === true) {
+      CL.state.stats[Def.stat.activeweapon] = MSG.ReadByte();
+    } else {
+      CL.state.stats[Def.stat.activeweapon] = 1 << MSG.ReadByte();
+    }
+  }
+
+  /**
+   * Client data parsing for QuakeJS based games.
+   */
+  #parseClientdata(bits) {
+    CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? MSG.ReadByte() : 0;
+    CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? MSG.ReadByte() : 0;
+    CL.state.stats[Def.stat.health] = MSG.ReadShort();
+
+    const fieldbits = CL.state.clientdataFields.length > 8 ? MSG.ReadShort() : MSG.ReadByte();
+
+    const fields = [];
+    const fieldsToNull = [];
+
+    for (let i = 0; i < CL.state.clientdataFields.length; i++) {
+      const field = CL.state.clientdataFields[i];
+
+      if ((fieldbits & (1 << i)) !== 0) {
+        fields.push(field);
+      } else {
+        fieldsToNull.push(field);
+      }
+    }
+
+    let counter = 0;
+
+    // we are writing directly into clientdata object
+    const clientdata = CL.state.gameAPI.clientdata;
+
+    while (true) {
+      const dataType = MSG.ReadByte();
+
+      if (dataType === Protocol.serializableTypes.none) {
+        break;
       }
 
-      CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? MSG.ReadByte() : 0;
-      CL.state.stats[Def.stat.armor] = ((bits & Protocol.su.armor) !== 0) ? MSG.ReadByte() : 0;
-      CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? MSG.ReadByte() : 0;
-      CL.state.stats[Def.stat.health] = MSG.ReadShort();
-      CL.state.stats[Def.stat.ammo] = MSG.ReadByte();
-      CL.state.stats[Def.stat.shells] = MSG.ReadByte();
-      CL.state.stats[Def.stat.nails] = MSG.ReadByte();
-      CL.state.stats[Def.stat.rockets] = MSG.ReadByte();
-      CL.state.stats[Def.stat.cells] = MSG.ReadByte();
-      if (COM.standard_quake === true) {
-        CL.state.stats[Def.stat.activeweapon] = MSG.ReadByte();
-      } else {
-        CL.state.stats[Def.stat.activeweapon] = 1 << MSG.ReadByte();
+      const field = fields[counter++];
+
+      console.assert(field !== undefined, `Unknown clientdata field index ${counter - 1} for data type ${dataType}`);
+      console.assert(clientdata[field] !== undefined, `Unknown clientdata field ${field} for data type ${dataType}`);
+
+      switch (dataType) {
+        case Protocol.serializableTypes.number:
+          clientdata[field] = MSG.ReadLong();
+          break;
+        case Protocol.serializableTypes.vector:
+          clientdata[field] = MSG.ReadCoordVector();
+          break;
+        case Protocol.serializableTypes.string:
+          clientdata[field] = MSG.ReadString();
+          break;
+        case Protocol.serializableTypes.entity:
+          clientdata[field] = CL.state.clientEntities.getEntity(MSG.ReadShort());
+          break;
+        case Protocol.serializableTypes.boolean:
+          clientdata[field] = MSG.ReadByte() !== 0;
+          break;
+        default:
+          throw new HostError(`Unknown client event data type: ${dataType}`);
       }
-    } else {
-      CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? MSG.ReadByte() : 0;
-      CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? MSG.ReadByte() : 0;
-      CL.state.stats[Def.stat.health] = MSG.ReadShort();
+    }
+
+    for (const field of fieldsToNull) { // TODO: remove this once the server only pushes updated fields and no longer non-null/non-zero fields
+      const value = clientdata[field];
+      switch (true) {
+        case value === null:
+          // already null, do nothing
+          break;
+        case value instanceof Vector:
+          value.clear();
+          break;
+        case value instanceof ClientEdict:
+        case typeof value === 'string':
+          clientdata[field] = null;
+          break;
+        case typeof value === 'number':
+          clientdata[field] = 0;
+          break;
+        case typeof value === 'boolean':
+          clientdata[field] = false;
+          break;
+        default:
+          throw new HostError(`Unknown client event data type for field ${field}: ${typeof value}`);
+      }
+
+      // TODO: trigger a client event for a changed field
     }
   }
 
@@ -178,24 +261,24 @@ export class ClientMessages {
     while (true) {
       const dataType = MSG.ReadByte();
 
-      if (dataType === Protocol.clientEventDataTypes.none) {
+      if (dataType === Protocol.serializableTypes.none) {
         break;
       }
 
       switch (dataType) {
-        case Protocol.clientEventDataTypes.number:
+        case Protocol.serializableTypes.number:
           args.push(MSG.ReadLong());
           break;
-        case Protocol.clientEventDataTypes.vector:
+        case Protocol.serializableTypes.vector:
           args.push(MSG.ReadCoordVector());
           break;
-        case Protocol.clientEventDataTypes.string:
+        case Protocol.serializableTypes.string:
           args.push(MSG.ReadString());
           break;
-        case Protocol.clientEventDataTypes.entity:
+        case Protocol.serializableTypes.entity:
           args.push(CL.state.clientEntities.getEntity(MSG.ReadShort()));
           break;
-        case Protocol.clientEventDataTypes.boolean:
+        case Protocol.serializableTypes.boolean:
           args.push(MSG.ReadByte() !== 0);
           break;
         default:
@@ -213,7 +296,12 @@ export class ClientMessages {
     const bits = MSG.ReadShort();
 
     this.#parseClientGeneral(bits);
-    this.#parseClientLegacy(bits);
+
+    if (CL.gameCapabilities.includes(gameCapabilities.CAP_LEGACY_CLIENTDATA)) {
+      this.#parseClientLegacy(bits);
+    } else {
+      this.#parseClientdata(bits);
+    }
   }
 
   parsePlayer() {

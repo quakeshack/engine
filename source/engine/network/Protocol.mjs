@@ -132,7 +132,7 @@ export const clc = Object.freeze({
   sync: 8,
 });
 
-export const clientEventDataTypes = Object.freeze({
+export const serializableTypes = Object.freeze({
   none: 0,
   number: 1,
   vector: 2,

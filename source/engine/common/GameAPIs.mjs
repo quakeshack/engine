@@ -9,6 +9,7 @@ import { eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from '../server/Edict.mjs';
 import Cmd from './Cmd.mjs';
 import Cvar from './Cvar.mjs';
+import { HostError } from './Errors.mjs';
 import Mod, { ParsedQC } from './Mod.mjs';
 import { Pmove, Trace } from './Pmove.mjs';
 
@@ -413,23 +414,23 @@ export class ServerEngineAPI extends CommonEngineAPI {
     for (const arg of args) {
       switch (true) {
         case typeof arg === 'string':
-          MSG.WriteByte(destination, Protocol.clientEventDataTypes.string);
+          MSG.WriteByte(destination, Protocol.serializableTypes.string);
           MSG.WriteString(destination, arg);
           break;
         case typeof arg === 'number':
-          MSG.WriteByte(destination, Protocol.clientEventDataTypes.number);
+          MSG.WriteByte(destination, Protocol.serializableTypes.number);
           MSG.WriteLong(destination, arg);
           break;
         case typeof arg === 'boolean':
-          MSG.WriteByte(destination, Protocol.clientEventDataTypes.boolean);
+          MSG.WriteByte(destination, Protocol.serializableTypes.boolean);
           MSG.WriteByte(destination, arg ? 1 : 0);
           break;
         case arg instanceof Vector:
-          MSG.WriteByte(destination, Protocol.clientEventDataTypes.vector);
+          MSG.WriteByte(destination, Protocol.serializableTypes.vector);
           MSG.WriteCoordVector(destination, arg);
           break;
         case arg instanceof ServerEdict:
-          MSG.WriteByte(destination, Protocol.clientEventDataTypes.entity);
+          MSG.WriteByte(destination, Protocol.serializableTypes.entity);
           MSG.WriteShort(destination, arg.num);
           break;
         default:
@@ -438,7 +439,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
     }
 
     // end of event data
-    MSG.WriteByte(destination, Protocol.clientEventDataTypes.none);
+    MSG.WriteByte(destination, Protocol.serializableTypes.none);
   }
 
   /**
@@ -479,6 +480,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
   // eslint-disable-next-line no-unused-vars
   static UnregisterCommand(name) {
     // TODO: implement
+    console.assert(false, 'UnregisterCommand is not implemented yet');
   }
 
   static LoadPicFromLump(name) {
@@ -610,6 +612,33 @@ export class ClientEngineAPI extends CommonEngineAPI {
     R.RocketTrail(start, end, type);
   }
 
+  /**
+   * Gets model by name. Must be precached first.
+   * @param {string} modelName model name
+   * @returns {BaseModel} model index
+   */
+  static ModForName(modelName) {
+    console.assert(typeof modelName === 'string', 'modelName must be a string');
+
+    for (let i = 1; i < CL.state.model_precache.length; i++) {
+      if (CL.state.model_precache[i].name === modelName) {
+        return CL.state.model_precache[i];
+      }
+    }
+
+    throw new HostError(`ClientEngineAPI.ModForName: ${modelName} not precached`);
+  }
+
+  static ModById(id) {
+    console.assert(typeof id === 'number' && id > 0, 'id must be a number and greater than 0');
+
+    if (CL.state.model_precache[id]) {
+      return CL.state.model_precache[id];
+    }
+
+    throw new HostError(`ClientEngineAPI.ModById: ${id} not found`);
+  }
+
   static CL = {
     get viewangles() {
       return CL.state.viewangles.copy();
@@ -619,6 +648,9 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
     get time() {
       return CL.state.time;
+    },
+    stats(index) {
+      return CL.state.stats[index] || null;
     },
   };
 

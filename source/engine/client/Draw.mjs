@@ -248,15 +248,16 @@ export default class Draw {
    * @param {number} x The x position.
    * @param {number} y The y position.
    * @param {GLTexture} pic The texture to draw.
+   * @param {number} [scale=1.0] The scale factor for the picture.
    */
-  static Pic(x, y, pic) {
+  static Pic(x, y, pic, scale = 1.0) {
     if (!pic.ready) {
       return;
     }
     const program = GL.UseProgram('pic', true);
     gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
     pic.bind(program.tTexture, true);
-    GL.StreamDrawTexturedQuad(x, y, pic.width, pic.height, 0.0, 0.0, 1.0, 1.0);
+    GL.StreamDrawTexturedQuad(x, y, pic.width * scale, pic.height * scale, 0.0, 0.0, 1.0, 1.0);
     GL.StreamFlush();
   }
 
@@ -267,8 +268,9 @@ export default class Draw {
    * @param {GLTexture} pic The texture to draw.
    * @param {number} top The top color index.
    * @param {number} bottom The bottom color index.
+   * @param {number} [scale=1.0] The scale factor for the picture.
    */
-  static PicTranslate(x, y, pic, top, bottom) {
+  static PicTranslate(x, y, pic, top, bottom, scale = 1.0) {
     if (!pic.ready) {
       return;
     }
@@ -280,11 +282,11 @@ export default class Draw {
     // @ts-ignore: translate may be dynamically added
     pic.translate && pic.translate.bind(program.tTrans);
     let p = W.d_8to24table[top];
-    const scale = 1.0 / 191.25;
-    gl.uniform3f(program.uTop, (p & 0xff) * scale, ((p >> 8) & 0xff) * scale, (p >> 16) * scale);
+    const uvscale = 1.0 / 191.25;
+    gl.uniform3f(program.uTop, (p & 0xff) * uvscale, ((p >> 8) & 0xff) * uvscale, (p >> 16) * uvscale);
     p = W.d_8to24table[bottom];
-    gl.uniform3f(program.uBottom, (p & 0xff) * scale, ((p >> 8) & 0xff) * scale, (p >> 16) * scale);
-    GL.StreamDrawTexturedQuad(x, y, pic.width, pic.height, 0.0, 0.0, 1.0, 1.0);
+    gl.uniform3f(program.uBottom, (p & 0xff) * uvscale, ((p >> 8) & 0xff) * uvscale, (p >> 16) * uvscale);
+    GL.StreamDrawTexturedQuad(x, y, pic.width * scale, pic.height * scale, 0.0, 0.0, 1.0, 1.0);
     GL.StreamFlush();
   }
 

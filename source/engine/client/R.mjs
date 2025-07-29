@@ -10,7 +10,7 @@ import MSG from '../network/MSG.mjs';
 import W, { translateIndexToRGBA } from '../common/W.mjs';
 import VID from './VID.mjs';
 import GL, { GLTexture } from './GL.mjs';
-import { effect } from '../../shared/Defs.mjs';
+import { effect, gameCapabilities } from '../../shared/Defs.mjs';
 import { ClientEdict } from './ClientEntities.mjs';
 
 let { CL, COM, Con, Host, Mod, SCR, SV, Sys, V  } = registry;
@@ -772,14 +772,27 @@ R.DrawViewModel = function() {
   if (R.drawentities.value === 0) {
     return;
   }
-  if ((CL.state.items & Def.it.invisibility) !== 0) { // Legacy
-    return;
-  }
-  if (CL.state.stats[Def.stat.health] <= 0) { // Legacy
-    return;
-  }
-  if (!CL.state.viewent.model) {
-    return;
+
+  if (!CL.gameCapabilities.includes(gameCapabilities.CAP_VIEWMODEL_MANAGED)) {
+    if ((CL.state.items & Def.it.invisibility) !== 0) { // Legacy
+      return;
+    }
+    if (CL.state.stats[Def.stat.health] <= 0) { // Legacy
+      return;
+    }
+    if (!CL.state.viewent.model) {
+      return;
+    }
+  } else if (CL.state.gameAPI) {
+    const viewmodel = CL.state.gameAPI.viewmodel;
+
+    if (!viewmodel.visible) {
+      return; // game says to not draw the view model
+    }
+
+    if (!viewmodel.model) {
+      return; // no model to draw
+    }
   }
 
   gl.depthRange(0.0, 0.3);

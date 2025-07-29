@@ -89,7 +89,7 @@ SV.fl = {
   }} Trace
  */
 
-/** @typedef {import('source/shared/GameInterfaces').SerializableType} SerializableType */
+/** @typedef {import('../../shared/GameInterfaces').SerializableType} SerializableType */
 
 // main
 
@@ -103,7 +103,7 @@ SV.server = {
   edicts: [],
   mapname: null,
   worldmodel: null,
-  /** @type {import('source/shared/GameInterfaces').ServerGameInterface} */
+  /** @type {import('../../shared/GameInterfaces').ServerGameInterface} */
   gameAPI: null,
   /** @type {string?} game version string */
   gameVersion: null,
@@ -388,6 +388,16 @@ SV.SendServerData = function(client) {
     MSG.WriteString(message, SV.server.sound_precache[i]);
   }
   MSG.WriteByte(message, 0);
+
+  // write the clientdata fields to the client, so it can build the compression table
+  if (!SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_LEGACY_UPDATESTAT)) {
+    const fields = SV.server.edicts[1].entity.clientdataFields;
+    for (const field of fields) {
+      console.assert(SV.server.edicts[1].entity[field] !== undefined, `Undefined clientdata field ${field}`);
+      MSG.WriteString(message, field);
+    }
+    MSG.WriteByte(message, 0);
+  }
 
   MSG.WriteByte(message, Protocol.svc.cdtrack);
   MSG.WriteByte(message, SV.server.edicts[0].entity.sounds);
@@ -890,8 +900,6 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
     clientEdict.entity.fixangle = false;
   };
 
-  // DELETE ALL FROM UP HERE
-
   let bits = Protocol.su.items + Protocol.su.weapon;
   if (clientEdict.entity.view_ofs[2] !== Protocol.default_viewheight) {
     bits += Protocol.su.viewheight;
@@ -990,6 +998,61 @@ SV.WriteClientdataToMessage = function(clientEdict, msg) {
       MSG.WriteByte(msg, clientEdict.entity.weaponframe);
     }
     MSG.WriteShort(msg, clientEdict.entity.health);
+
+    const destination = msg;
+
+    let fieldbits = 0;
+    const values = [];
+
+    for (let i = 0; i < clientEdict.entity.clientdataFields.length; i++) {
+      const field = clientEdict.entity.clientdataFields[i];
+      const value = clientEdict.entity[field];
+
+      if (!value) { // TODO: compare old value and new values
+        continue;
+      }
+
+      fieldbits |= (1 << i);
+      values.push(value);
+    }
+
+    if (clientEdict.entity.clientdataFields.length > 8) {
+      MSG.WriteShort(destination, fieldbits);
+    } else {
+      MSG.WriteByte(destination, fieldbits);
+    }
+
+    console.log('values', values, fieldbits);
+
+    for (const field of values) {
+      switch (true) {
+        case typeof field === 'string':
+          MSG.WriteByte(destination, Protocol.serializableTypes.string);
+          MSG.WriteString(destination, field);
+          break;
+        case typeof field === 'number':
+          MSG.WriteByte(destination, Protocol.serializableTypes.number);
+          MSG.WriteLong(destination, field);
+          break;
+        case typeof field === 'boolean':
+          MSG.WriteByte(destination, Protocol.serializableTypes.boolean);
+          MSG.WriteByte(destination, field ? 1 : 0);
+          break;
+        case field instanceof Vector:
+          MSG.WriteByte(destination, Protocol.serializableTypes.vector);
+          MSG.WriteCoordVector(destination, field);
+          break;
+        case field instanceof ServerEdict:
+          MSG.WriteByte(destination, Protocol.serializableTypes.entity);
+          MSG.WriteShort(destination, field.num);
+          break;
+        default:
+          throw new TypeError(`Unsupported argument type: ${typeof field}`);
+      }
+    }
+
+    // end of event data
+    MSG.WriteByte(destination, Protocol.serializableTypes.none);
   }
 
   return true; // TODO: changes

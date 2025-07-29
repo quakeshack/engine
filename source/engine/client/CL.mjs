@@ -120,10 +120,14 @@ export default class CL {
   static state = class ClientState {
     static clientEntities = new ClientEntities();
     static clientMessages = new ClientMessages();
+    /** @type {string[]} additional private player fields whose values are getting updated each frame */
+    static clientdataFields = [];
+    /** @type {{[key: string]: import('../../shared/GameInterfaces').SerializableType}} */
+    static clientdata = {};
     static movemessages = 0;
     static cmd = new Protocol.UserCmd();
     static lastcmd = new Protocol.UserCmd();
-    /** @type {number[]} */
+    /** @type {number[]} TODO: rename, indicate it’s some lean local player info */
     static stats = Object.values(Def.stat).fill(0);
     static items = 0;
     static item_gettime = new Array(32).fill(0.0);
@@ -159,7 +163,7 @@ export default class CL {
     static looptrack = 0;
     /** @type {{name: string, message: string, direct: boolean}[]} chat messages */
     static chatlog = [];
-    /** @type {string[]} */
+    /** @type {{name: string, type: number}[]} */
     static model_precache = [];
     /** @type {SFX[]} */
     static sound_precache = [];
@@ -502,7 +506,15 @@ export default class CL {
     }
   }
 
-  static RunThink() {
+  static ClientFrame() {
+    if (this.cls.signon !== 4) {
+      return; // not ready yet
+    }
+
+    if (this.state.gameAPI) {
+      this.state.gameAPI.startFrame();
+    }
+
     this.state.clientEntities.think();
   }
 
@@ -837,6 +849,8 @@ CL.InitGame = function() { // private
   }
 };
 
+// TODO: CL.Shutdown, CL.ShutdownGame, etc.
+
 CL.Init = async function() { // public, by Host.js
   CL.ClearState();
   ClientInput.Init();
@@ -992,7 +1006,7 @@ CL.ParseServerData = function() { // private
 
   let str;
   let nummodels; const model_precache = [];
-  for (nummodels = 1; ; ++nummodels) {
+  for (nummodels = 1; ; nummodels++) {
     str = MSG.ReadString();
     if (str.length === 0) {
       break;
@@ -1000,12 +1014,24 @@ CL.ParseServerData = function() { // private
     model_precache[nummodels] = str;
   }
   let numsounds; const sound_precache = [];
-  for (numsounds = 1; ; ++numsounds) {
+  for (numsounds = 1; ; numsounds++) {
     str = MSG.ReadString();
     if (str.length === 0) {
       break;
     }
     sound_precache[numsounds] = str;
+  }
+
+  if (!CL.gameCapabilities.includes(gameCapabilities.CAP_LEGACY_UPDATESTAT)) {
+    CL.state.clientdataFields.length = 0;
+
+    while (true) {
+      const fields = MSG.ReadString();
+      if (fields === '') {
+        break;
+      }
+      CL.state.clientdataFields.push(fields);
+    }
   }
 
   CL.state.model_precache.length = 0;
@@ -1054,6 +1080,9 @@ CL.ParseServerData = function() { // private
     Host.noclip_anglehack = false;
     if (CL.state.gameAPI) {
       CL.state.gameAPI.init();
+
+      // TODO: feature flag required for clientdata support
+      // console.assert(typeof CL.state.gameAPI.clientdata === 'object', 'clientdata must be an object');
     }
   });
 };

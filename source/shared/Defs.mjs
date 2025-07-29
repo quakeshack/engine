@@ -167,6 +167,18 @@ export const content = Object.freeze({
 
 /**
  * @readonly
+ * @enum {number}
+ * @deprecated I’m thinking of a more extensible way to handle this
+ * thin client information and legacy updatestat values
+ */
+export const clientStat = Object.freeze({
+  STAT_HEALTH: 0,
+  STAT_WEAPON: 2,
+  STAT_WEAPONFRAME: 5,
+});
+
+/**
+ * @readonly
  * @enum {string}
  * feature flags
  */
@@ -179,4 +191,6 @@ export const gameCapabilities = Object.freeze({
   CAP_HUD_INCLUDES_SBAR: 'CAP_HUD_INCLUDES_SBAR',
   /** the client game code takes care of rendering crosshairs, in other words: V is not required to draw one! */
   CAP_HUD_INCLUDES_CROSSHAIR: 'CAP_HUD_INCLUDES_CROSSHAIR',
+  /** the client game manages the view model now, no longer the game code */
+  CAP_VIEWMODEL_MANAGED: 'CAP_VIEWMODEL_MANAGED',
 });

@@ -6,6 +6,7 @@ import Q from '../common/Q.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import MSG from '../network/MSG.mjs';
 import Chase from './Chase.mjs';
+import { gameCapabilities } from '../../shared/Defs.mjs';
 
 const V = {};
 
@@ -359,8 +360,16 @@ V.CalcRefdef = function () { // TODO: Client
     case 80:
       view.origin[2] += 0.5;
   }
-  view.model = CL.state.model_precache[CL.state.stats[Def.stat.weapon]]; // Legacy
-  view.frame = CL.state.stats[Def.stat.weaponframe];
+
+  if (CL.gameCapabilities.includes(gameCapabilities.CAP_VIEWMODEL_MANAGED) && CL.state.gameAPI) {
+    const viewmodel = CL.state.gameAPI.viewmodel;
+    view.model = viewmodel.model;
+    view.frame = viewmodel.frame;
+    // visibility is considered by R.DrawViewModel
+  } else {
+    view.model = CL.state.model_precache[CL.state.stats[Def.stat.weapon]];
+    view.frame = CL.state.stats[Def.stat.weaponframe];
+  }
 
   R.refdef.viewangles.add(CL.state.punchangle);
 

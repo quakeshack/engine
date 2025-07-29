@@ -248,7 +248,7 @@ Host.WriteConfiguration_f = function() {
   Host.WriteConfiguration();
 };
 
-Host.ServerFrame = function() { // TODO: SV duties
+Host.ServerFrame = function() { // TODO: move to SV.ServerFrame
   SV.server.gameAPI.frametime = Host.frametime;
   SV.server.datagram.clear();
   SV.server.expedited_datagram.clear();
@@ -344,7 +344,7 @@ Host._Frame = function() {
     CL.ReadFromServer();
   }
 
-  CL.RunThink();
+  CL.ClientFrame();
 
   CL.SendCmd();
 

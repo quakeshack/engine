@@ -328,6 +328,22 @@ class MainMenu extends BaseMenu {
 
 ## Log
 
+### 2025-07-30
+
+* I need to think about releasing client entities, maybe similar to server edicts with the free flag
+  * right now free can be set by the server but will immediately trigger a freeEdict
+  * there should also be a freeEdict path for the client code to release client-only entities
+* prototyped a more flexible way on how to push client data (no longer stats)
+  * works great so far
+  * a bit copypasta, needs a cleanup
+  * I need to change the logic a bit so that only updates will be pushed
+  * there are three things that are required by the engine elsewhere:
+    * health (V’s roll changes, also skips rendering of the view model)
+    * weapon (the view model ID)
+    * weaponframe (what frame of the view model to render)
+  * I should introduce a feature flag for the new clientdata structure, so that updatestat and this can co-exist
+* I need to document the new game capabilities, some of them come with sudden loss of convenience features
+
 ### 2025-07-29
 
 * moved crosshair duties from V to SCR

@@ -4,10 +4,26 @@ import { ServerEdict } from "../engine/server/Edict.mjs";
 
 export type SerializableType = (string | number | boolean | Vector);
 
+export type GLTexture = import("../engine/client/GL.mjs").GLTexture;
+
+export type ClientdataMap = {
+  [key: string]: SerializableType;
+};
+
+export type ViewmodelConfig = {
+  visible: boolean;
+  model: BaseModel;
+  frame: number;
+};
+
 export interface ClientGameInterface {
+  clientdata: ClientdataMap | null;
+  viewmodel: ViewmodelConfig | null;
+
   init(): void;
   shutdown(): void;
   draw(): void;
+  startFrame(): void;
 
   handleClientEvent(code: number, ...args: SerializableType[]): void;
 
