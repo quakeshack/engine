@@ -39,7 +39,7 @@ Grouped by sections and then sorted by priority (more or less).
 - [_] `CL.state.intermission`/`ExitIntermission`: unsure what happens next on DS
 - [_] remove C style code that is almost verbatim from Quake
 - [X] Mod.ForName and bmodel/submodels smells a bit funny, should be a bit more streamlined with the Async stuff
-- [_] reorganize shaders
+- [X] reorganize shaders
 
 ### Network improvements
 
@@ -53,10 +53,10 @@ Grouped by sections and then sorted by priority (more or less).
 ### Rendering improvements
 
 - [X] lerp view model animations
-- [_] water transparency should be configured through other means such as worldspawnInfo (wateralpha, lavaalpha, telealpha, slimealpha)
+- [X] water transparency should be configured through other means such as worldspawnInfo (wateralpha, lavaalpha, telealpha, slimealpha)
 - [X] texture cache can return wrong textures when they share the same name across maps but are actually different
 - [_] more interesting warp: https://www.shadertoy.com/view/ctXyW8
-- [_] fix lightmap datastructure, right now it’s eating up ~200 MiB
+- [X] fix lightmap datastructure, right now it’s eating up ~200 MiB
 - [X] double check the fullbright texture rendering of alias ~and sprite~ models
 - [_] proper func_fog functionality so that game code can change fog parameters
 - [_] lod considering fog

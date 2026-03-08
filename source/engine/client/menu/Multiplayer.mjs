@@ -1,3 +1,4 @@
+import { K } from '../../../shared/Keys.mjs';
 import Cmd from '../../common/Cmd.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import { Action, Label, Spacer } from './MenuItem.mjs';
@@ -53,21 +54,31 @@ export default class MultiplayerMainMenu extends MenuPage {
     //   this.items.push(action);
     // }
 
-    this.items.push(new Action({
-      label: 'Start deathmatch',
-      action() {
-        M.CloseMenu();
-        Cmd.ExecuteString('exec dm.cfg');
-      },
-    }));
+    if (registry.urls?.signalingURL) {
+      this.items.push(new Action({
+        label: 'Start deathmatch',
+        action() {
+          M.CloseMenu();
+          Cmd.ExecuteString('exec dm.cfg');
+        },
+      }));
 
-    this.items.push(new Action({
-      label: 'Start co-op game',
-      action() {
-        M.CloseMenu();
-        Cmd.ExecuteString('exec coop.cfg');
-      },
-    }));
+      this.items.push(new Action({
+        label: 'Start co-op game',
+        action() {
+          M.CloseMenu();
+          Cmd.ExecuteString('exec coop.cfg');
+        },
+      }));
+    } else {
+      this.items.push(new Action({
+        label: 'Join local game',
+        action() {
+          M.CloseMenu();
+          Cmd.ExecuteString('connect self');
+        },
+      }));
+    }
 
     this.items.push(new Spacer());
 
@@ -147,7 +158,13 @@ export default class MultiplayerMainMenu extends MenuPage {
     }
   }
 
-  constructor() {
+  /** @type {import('./MenuStack.mjs').MenuStack} */
+  menuStack;
+
+  /**
+   * @param {import('./MenuStack.mjs').MenuStack} menuStack - Navigation stack
+   */
+  constructor(menuStack) {
     const layout = new VerticalLayout({
       startY: 40,
       spacing: 8,
@@ -159,5 +176,19 @@ export default class MultiplayerMainMenu extends MenuPage {
     super({
       layout,
     });
+    this.menuStack = menuStack;
+  }
+
+  /**
+   * @param {number} key - Key code
+   * @returns {boolean} True if handled
+   */
+  handleInput(key) {
+    if (key === K.ESCAPE) {
+      this.deactivate();
+      M.CloseMenu();
+      return true;
+    }
+    return super.handleInput(key);
   }
 };
