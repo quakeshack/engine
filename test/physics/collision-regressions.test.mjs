@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
 import { content, flags, moveType, solid } from '../../source/shared/Defs.mjs';
-import { BrushModel } from '../../source/engine/common/model/BSP.mjs';
-import { BrushTrace, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
+import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
+import { BrushTrace, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { UserCmd } from '../../source/engine/network/Protocol.mjs';
+import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';
 
@@ -18,13 +20,14 @@ test('PmovePlayer.DEBUG is disabled before Pmove.Init()', () => {
  * @param {number[]} normalComponents plane normal components
  * @param {number} dist plane distance from origin
  * @param {number} type axial plane type
- * @returns {{normal: Vector, dist: number, type: number}} plane fixture
+ * @returns {{normal: Vector, dist: number, type: number, signbits: 0}} plane fixture
  */
 function createAxisPlane(normalComponents, dist, type) {
   return {
     normal: new Vector(...normalComponents),
     dist,
     type,
+    signbits: 0,
   };
 }
 
@@ -53,19 +56,21 @@ function createBoxBrushModel({ center = [0, 0, 0], halfExtents, name = '*test', 
     createAxisPlane([0, 0, -1], halfExtents[2] - centerZ, 2),
   ];
 
-  model.brushsides = model.planes.map((plane, index) => ({
-    planenum: index,
-    plane,
-  }));
+  model.brushsides = model.planes.map((plane, index) => {
+    const side = new BrushSide(model);
+    side.planenum = index;
+    side.texinfo = 0;
+    return side;
+  });
 
-  model.brushes = [{
-    firstside: 0,
-    numsides: 6,
-    contents: content.CONTENT_SOLID,
-    mins: new Vector(centerX - halfExtents[0], centerY - halfExtents[1], centerZ - halfExtents[2]),
-    maxs: new Vector(centerX + halfExtents[0], centerY + halfExtents[1], centerZ + halfExtents[2]),
-    _brushTraceCheck: 0,
-  }];
+  const brush = new Brush(model);
+  brush.firstside = 0;
+  brush.numsides = 6;
+  brush.contents = content.CONTENT_SOLID;
+  brush.mins = new Vector(centerX - halfExtents[0], centerY - halfExtents[1], centerZ - halfExtents[2]);
+  brush.maxs = new Vector(centerX + halfExtents[0], centerY + halfExtents[1], centerZ + halfExtents[2]);
+  brush._brushTraceCheck = 0;
+  model.brushes = [brush];
 
   return model;
 }
@@ -81,29 +86,29 @@ function createBrushWorldModel({ axis = 0, center = [64, 0, 0], halfExtents }) {
   axisNormal[axis] = 1;
   const roomMins = new Vector(-2048, -2048, -2048);
   const roomMaxs = new Vector(2048, 2048, 2048);
-  const frontLeaf = {
+  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
     contents: content.CONTENT_EMPTY,
     firstleafbrush: 0,
     numleafbrushes: 1,
-  };
-  const backLeaf = {
+  });
+  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
     contents: content.CONTENT_EMPTY,
     firstleafbrush: 1,
     numleafbrushes: 0,
-  };
+  });
 
-  model.nodes = [{
+  model.nodes = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([{
     contents: 0,
     plane: createAxisPlane(axisNormal, 0, axis),
     children: [frontLeaf, backLeaf],
-  }];
-  model.leafs = [frontLeaf, backLeaf];
+  }]);
+  model.leafs = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([frontLeaf, backLeaf]);
   model.leafbrushes = [0];
-  model.hulls = [
+  model.hulls = /** @type {BrushModel['hulls']} */ ([
     createRoomHullFromBounds(roomMins, roomMaxs),
     createRoomHullFromBounds(roomMins, roomMaxs),
     createRoomHullFromBounds(roomMins, roomMaxs),
-  ];
+  ]);
 
   return model;
 }
@@ -125,17 +130,17 @@ function assertNear(actual, expected, epsilon = 0.05) {
  * Build a room hull whose interior is empty and whose exterior is solid.
  * @param {Vector} mins room mins
  * @param {Vector} maxs room maxs
- * @returns {{clip_mins: Vector, clip_maxs: Vector, firstclipnode: number, lastclipnode: number, clipnodes: {planenum: number, children: number[]}[], planes: {normal: Vector, dist: number, type: number, signbits: number}[]}} model hull fixture
+ * @returns {{clip_mins: Vector, clip_maxs: Vector, firstclipnode: number, lastclipnode: number, clipnodes: {planenum: number, children: number[]}[], planes: {normal: Vector, dist: number, type: number, signbits: 0}[]}} model hull fixture
  */
 function createRoomHullFromBounds(mins, maxs) {
-  const planes = [
-    { normal: new Vector(1, 0, 0), dist: maxs[0], type: 0, signbits: 0 },
-    { normal: new Vector(1, 0, 0), dist: mins[0], type: 0, signbits: 0 },
-    { normal: new Vector(0, 1, 0), dist: maxs[1], type: 1, signbits: 0 },
-    { normal: new Vector(0, 1, 0), dist: mins[1], type: 1, signbits: 0 },
-    { normal: new Vector(0, 0, 1), dist: maxs[2], type: 2, signbits: 0 },
-    { normal: new Vector(0, 0, 1), dist: mins[2], type: 2, signbits: 0 },
-  ];
+  const planes = /** @type {{normal: Vector, dist: number, type: number, signbits: 0}[]} */ ([
+    createAxisPlane([1, 0, 0], maxs[0], 0),
+    createAxisPlane([1, 0, 0], mins[0], 0),
+    createAxisPlane([0, 1, 0], maxs[1], 1),
+    createAxisPlane([0, 1, 0], mins[1], 1),
+    createAxisPlane([0, 0, 1], maxs[2], 2),
+    createAxisPlane([0, 0, 1], mins[2], 2),
+  ]);
 
   return {
     clip_mins: mins.copy(),
@@ -163,13 +168,27 @@ function createRoomHullFromBounds(mins, maxs) {
 function createLegacyWorldModel(mins, maxs) {
   const model = new BrushModel();
   model.name = 'test-world';
-  model.hulls = [
+  model.hulls = /** @type {BrushModel['hulls']} */ ([
     createRoomHullFromBounds(mins, maxs),
     createRoomHullFromBounds(mins, maxs),
     createRoomHullFromBounds(mins, maxs),
-  ];
+  ]);
 
   return model;
+}
+
+/**
+ * Build a minimal boxed entity fixture for Pmove physents.
+ * @param {{origin: Vector, mins: Vector, maxs: Vector, num?: number}} options entity options
+ * @returns {ClientEdict} pmove entity fixture
+ */
+function createPmoveBoxEntity({ origin, mins, maxs, num = 0 }) {
+  const entity = new ClientEdict(num);
+  entity.origin.set(origin);
+  entity.mins.set(mins);
+  entity.maxs.set(maxs);
+  entity.angles.clear();
+  return entity;
 }
 
 /**
@@ -204,6 +223,8 @@ function createMockEntity({
     owner: null,
     blocked: null,
     touch: null,
+    think() {},
+    nextthink: 0,
     size: maxs.copy().subtract(mins),
     absmin: origin.copy().add(mins),
     absmax: origin.copy().add(maxs),
@@ -216,12 +237,16 @@ function createMockEntity({
 /**
  * Create a minimal server edict wrapper.
  * @param {object} entity underlying entity
- * @returns {{entity: object, isFree: () => boolean, equals: (other: object) => boolean}} mock edict
+ * @returns {{entity: object, num: number, isFree: () => boolean, isClient: () => boolean, equals: (other: object) => boolean}} mock edict
  */
 function createMockEdict(entity) {
   return {
     entity,
+    num: entity.num ?? 0,
     isFree() {
+      return false;
+    },
+    isClient() {
       return false;
     },
     equals(other) {
@@ -231,13 +256,35 @@ function createMockEdict(entity) {
 }
 
 /**
+ * Run a callback with mocked registry values.
+ * @param {{Con: object, Host: object, SV: object}} mockedRegistry registry replacements
+ * @param {() => void} callback test callback
+ */
+function withMockRegistry(mockedRegistry, callback) {
+  const previousCon = registry.Con;
+  const previousHost = registry.Host;
+  const previousSV = registry.SV;
+
+  registry.Con = mockedRegistry.Con;
+  registry.Host = mockedRegistry.Host;
+  registry.SV = mockedRegistry.SV;
+  eventBus.publish('registry.frozen');
+
+  try {
+    callback();
+  } finally {
+    registry.Con = previousCon;
+    registry.Host = previousHost;
+    registry.SV = previousSV;
+    eventBus.publish('registry.frozen');
+  }
+}
+
+/**
  * Run a callback with a minimal mocked server registry for ServerPhysics tests.
  * @param {(context: { serverPhysics: ServerPhysics, pusherEdict: object, riderEdict: object, linkCalls: object[], moveCalls: object[], testCalls: object[], blockedCalls: object[] }) => void} callback test callback
  */
 function withMockServerPhysics(callback) {
-  const previousCon = registry.Con;
-  const previousHost = registry.Host;
-  const previousSV = registry.SV;
   const linkCalls = [];
   const moveCalls = [];
   const testCalls = [];
@@ -278,14 +325,15 @@ function withMockServerPhysics(callback) {
     linkCalls.push(edict);
   };
 
-  registry.Con = {
-    Print() {},
-    DPrint() {},
-  };
-  registry.Host = {
-    frametime: 0.1,
-  };
-  registry.SV = {
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: {
+      frametime: 0.1,
+    },
+    SV: {
     maxvelocity: { value: 2000 },
     area: {
       linkEdict,
@@ -312,10 +360,8 @@ function withMockServerPhysics(callback) {
       edicts: [worldEdict, pusherEdict, riderEdict],
       gameAPI: { time: 0 },
     },
-  };
-  eventBus.publish('registry.frozen');
-
-  try {
+  },
+  }, () => {
     callback({
       serverPhysics: new ServerPhysics(),
       pusherEdict,
@@ -325,12 +371,7 @@ function withMockServerPhysics(callback) {
       testCalls,
       blockedCalls,
     });
-  } finally {
-    registry.Con = previousCon;
-    registry.Host = previousHost;
-    registry.SV = previousSV;
-    eventBus.publish('registry.frozen');
-  }
+  });
 }
 
 test('BrushTrace.transformedTestPosition keeps exact face contact walkable', () => {
@@ -383,6 +424,42 @@ test('BrushTrace.transformedBoxTrace returns world-space impact points', () => {
   assertNear(trace.endpos[2], 0);
 });
 
+test('BrushTrace transformed tests honor rotated entity angles', () => {
+  const model = createBoxBrushModel({ halfExtents: [8, 32, 16] });
+  const point = new Vector(20, 0, 0);
+
+  assert.equal(
+    BrushTrace.transformedTestPosition(model, point, new Vector(), new Vector(), Vector.origin, Vector.origin),
+    true,
+  );
+  assert.equal(
+    BrushTrace.transformedTestPosition(model, point, new Vector(), new Vector(), Vector.origin, new Vector(0, 90, 0)),
+    false,
+  );
+
+  const unrotatedTrace = BrushTrace.transformedBoxTrace(
+    model,
+    new Vector(-40, 0, 0),
+    new Vector(40, 0, 0),
+    new Vector(),
+    new Vector(),
+    Vector.origin,
+    Vector.origin,
+  );
+  const rotatedTrace = BrushTrace.transformedBoxTrace(
+    model,
+    new Vector(-40, 0, 0),
+    new Vector(40, 0, 0),
+    new Vector(),
+    new Vector(),
+    Vector.origin,
+    new Vector(0, 90, 0),
+  );
+
+  assert.ok(rotatedTrace.fraction < unrotatedTrace.fraction);
+  assert.ok(rotatedTrace.endpos[0] < unrotatedTrace.endpos[0] - 20);
+});
+
 test('BrushTrace.boxTrace traverses world brush lists through BSP nodes', () => {
   const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
   const trace = BrushTrace.boxTrace(
@@ -430,11 +507,11 @@ test('BrushTrace.testPosition traverses world brush lists through BSP nodes', ()
 test('Pmove.clipPlayerMove keeps startsolid end positions in world space', () => {
   const pmove = new Pmove();
 
-  pmove.addEntity({
+  pmove.addEntity(createPmoveBoxEntity({
     origin: new Vector(),
     mins: new Vector(-32, -32, -32),
     maxs: new Vector(32, 32, 32),
-  });
+  }));
 
   const start = new Vector();
   const end = new Vector(128, 0, 0);
@@ -448,11 +525,11 @@ test('Pmove.clipPlayerMove keeps startsolid end positions in world space', () =>
 test('Pmove.clipPlayerMove reports hull hits in world coordinates', () => {
   const pmove = new Pmove();
 
-  pmove.addEntity({
+  pmove.addEntity(createPmoveBoxEntity({
     origin: new Vector(64, 0, 0),
     mins: new Vector(-16, -16, -16),
     maxs: new Vector(16, 16, 16),
-  });
+  }));
 
   const trace = pmove.clipPlayerMove(new Vector(0, 0, 0), new Vector(100, 0, 0));
 
@@ -469,12 +546,12 @@ test('Pmove server-style smoke setup mirrors TestServerside assertions', () => {
     new Vector(256, 256, 128),
   );
   const pmove = new Pmove();
-  const entity = {
+  const entity = createPmoveBoxEntity({
     origin: new Vector(128, 0, 0),
     mins: new Vector(-16, -16, -16),
     maxs: new Vector(16, 16, 16),
     num: 1,
-  };
+  });
 
   pmove.setWorldmodel(worldModel);
 
@@ -504,12 +581,12 @@ test('Pmove server-style smoke setup mirrors TestServerside assertions', () => {
 test('Pmove brush-list world path supports server-style vertical smoke checks', () => {
   const worldModel = createBrushWorldModel({ axis: 2, center: [0, 0, 144], halfExtents: [512, 512, 16] });
   const pmove = new Pmove();
-  const entity = {
+  const entity = createPmoveBoxEntity({
     origin: new Vector(128, 0, 0),
     mins: new Vector(-16, -16, -16),
     maxs: new Vector(16, 16, 16),
     num: 1,
-  };
+  });
 
   pmove.setWorldmodel(worldModel);
   pmove.addEntity(entity);
@@ -527,6 +604,29 @@ test('Pmove brush-list world path supports server-style vertical smoke checks', 
   assert.equal(playerMoveTraceHigher instanceof Trace, true);
   assert.equal(playerMoveTraceHigher.ent, null);
   assert.equal(playerMoveTraceHigher.fraction, 1.0);
+});
+
+test('PmovePlayer.move integrates one grounded movement frame against a world model', () => {
+  const worldModel = createBrushWorldModel({ axis: 2, center: [0, 0, -40], halfExtents: [512, 512, 16] });
+  const pmove = new Pmove();
+  const player = pmove.newPlayerMove();
+
+  pmove.setWorldmodel(worldModel);
+
+  player.origin.setTo(0, 0, 0);
+  player.velocity.clear();
+  player.angles.clear();
+  player.cmd = new UserCmd();
+  player.cmd.msec = 100;
+  player.cmd.forwardmove = 200;
+
+  player.move();
+
+  assert.equal((player.pmFlags & PMF.ON_GROUND) !== 0, true);
+  assert.equal(player.onground, 0);
+  assert.ok(player.origin[0] > 0.5);
+  assertNear(player.origin[2], 0, 0.125);
+  assert.ok(player.velocity[0] > 0);
 });
 
 test('ServerCollision stationary brush tests preserve exact resting contact', () => {
@@ -582,5 +682,95 @@ test('ServerPhysics.pushMove rolls back and calls blocked() when rider remains s
     assert.equal(blockedCalls.length, 1);
     assert.equal(blockedCalls[0], riderEdict.entity);
     assert.equal(pusherEdict.entity.ltime, 0);
+  });
+});
+
+test('ServerPhysics.physics applies gravity and toss movement for one frame', () => {
+  const linkCalls = [];
+  const moveCalls = [];
+  let startFrameCount = 0;
+  const worldEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NONE }));
+  const tossEntity = createMockEntity({
+    origin: new Vector(0, 0, 100),
+    mins: new Vector(-16, -16, -16),
+    maxs: new Vector(16, 16, 16),
+    velocity: new Vector(10, 0, 0),
+    avelocity: new Vector(),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_TOSS,
+    solidType: solid.SOLID_BBOX,
+  });
+  tossEntity.nextthink = 0;
+  tossEntity.gravity = 1.0;
+  tossEntity.watertype = 0;
+  tossEntity.waterlevel = 0;
+  tossEntity.view_ofs = new Vector(0, 0, 22);
+  tossEntity.oldorigin = tossEntity.origin.copy();
+  const tossEdict = createMockEdict(tossEntity);
+  tossEdict.num = 1;
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: {
+      frametime: 0.1,
+    },
+    SV: {
+      gravity: { value: 800 },
+      maxvelocity: { value: 2000 },
+      area: {
+        linkEdict(edict) {
+          edict.entity.absmin = edict.entity.origin.copy().add(edict.entity.mins);
+          edict.entity.absmax = edict.entity.origin.copy().add(edict.entity.maxs);
+          linkCalls.push(edict);
+        },
+      },
+      collision: {
+        move(start, mins, maxs, end) {
+          moveCalls.push({ start: start.copy(), mins: mins.copy(), maxs: maxs.copy(), end: end.copy() });
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 1.0,
+            endpos: end.copy(),
+            ent: null,
+            plane: { normal: new Vector(), dist: 0.0 },
+          };
+        },
+        pointContents() {
+          return content.CONTENT_EMPTY;
+        },
+      },
+      messages: {
+        startSound() {},
+      },
+      clientPhysics: {
+        physicsClient() {},
+      },
+      server: {
+        time: 0,
+        num_edicts: 2,
+        edicts: [worldEdict, tossEdict],
+        gameAPI: {
+          time: 0,
+          force_retouch: 0,
+          startFrame() {
+            startFrameCount += 1;
+          },
+        },
+      },
+    },
+  }, () => {
+    const serverPhysics = new ServerPhysics();
+    serverPhysics.physics();
+
+    assert.equal(startFrameCount, 1);
+    assert.equal(moveCalls.length, 1);
+    assert.deepEqual([...moveCalls[0].end], [1, 0, 92]);
+    assert.deepEqual([...tossEntity.origin], [1, 0, 92]);
+    assert.deepEqual([...tossEntity.velocity], [10, 0, -80]);
+    assert.equal(linkCalls.length, 1);
   });
 });
