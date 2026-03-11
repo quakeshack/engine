@@ -15,6 +15,7 @@
     "./source/shared/**/*.d.ts",
     "./source/cloudflare/**/*.mjs",
     "./source/cloudflare/**/*.d.ts",
+    "./test/**/*.mjs",
     "./*.mjs"
   ]
 }

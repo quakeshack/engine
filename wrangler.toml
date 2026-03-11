@@ -5,6 +5,9 @@ compatibility_date = "2025-01-01"
 workers_dev = false
 preview_urls = false
 
+[build]
+command = "npm run build:wrangler"
+
 [assets]
 directory = "dist/browser"
 binding = "ASSETS"

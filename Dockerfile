@@ -18,6 +18,7 @@ COPY vite.config.dedicated.mjs ./vite.config.dedicated.mjs
 COPY jsconfig.json ./jsconfig.json
 COPY source ./source
 COPY public ./public
+COPY test ./test
 
 ENV WORKERS_CI_COMMIT_SHA=${GIT_COMMIT_SHA}
 ENV VITE_SIGNALING_URL=${VITE_SIGNALING_URL}
@@ -26,6 +27,11 @@ ENV VITE_GAME_DIR=${VITE_GAME_DIR}
 
 RUN npm run build:production && \
     npm run dedicated:build:production
+
+# Test stage — keeps dev dependencies and test sources so CI can run regressions
+FROM builder AS test
+
+CMD ["npm", "run", "test:physics"]
 
 # Production stage — dedicated server + web client host
 FROM node:24-alpine

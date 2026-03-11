@@ -1,7 +1,7 @@
 import Vector from '../../../shared/Vector.mjs';
 import * as Defs from '../../../shared/Defs.mjs';
-import Mod from '../../common/Mod.mjs';
-import { DIST_EPSILON } from '../../common/Pmove.mjs';
+import Mod, { BrushModel } from '../../common/Mod.mjs';
+import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 
 let { Con, SV } = registry;
@@ -27,9 +27,179 @@ eventBus.subscribe('registry.frozen', () => {
 
 /**
  * Handles collision detection and tracing for entities in the world.
- * Manages hull-based collision tests and world traces.
+ * Uses shared brush tracing for BSP models when brush data is available,
+ * falling back to legacy hull traces otherwise.
  */
 export class ServerCollision {
+  /**
+   * Resolve the shared brush collision inputs for an entity.
+   * @param {ServerEdict} ent entity being tested
+   * @returns {{model: BrushModel, origin: Vector, angles: Vector}|null} brush collision inputs, if available
+   */
+  _getBrushCollisionState(ent) {
+    const model = ent === SV.server.edicts[0]
+      ? SV.server.worldmodel
+      : SV.server.models[ent.entity.modelindex];
+
+    if (!(model instanceof BrushModel) || !model.hasBrushData) {
+      return null;
+    }
+
+    return {
+      model,
+      origin: ent.entity.origin,
+      angles: ent.entity.angles,
+    };
+  }
+
+  /**
+   * Convert a shared brush trace result into the server collision trace shape.
+   * @param {import('../../common/Pmove.mjs').Trace} brushTrace shared brush trace result
+   * @param {ServerEdict} ent entity that owns the brush model
+   * @returns {Trace} server collision trace
+   */
+  _toServerTrace(brushTrace, ent) {
+    const trace = {
+      fraction: brushTrace.fraction,
+      allsolid: brushTrace.allsolid,
+      startsolid: brushTrace.startsolid,
+      endpos: brushTrace.endpos.copy(),
+      plane: {
+        normal: brushTrace.plane.normal.copy(),
+        dist: brushTrace.plane.dist,
+      },
+      ent: null,
+      inopen: brushTrace.inopen,
+      inwater: brushTrace.inwater,
+    };
+
+    if (trace.allsolid) {
+      trace.startsolid = true;
+    }
+
+    if (trace.fraction < 1.0 || trace.startsolid) {
+      trace.ent = ent;
+    }
+
+    return trace;
+  }
+
+  /**
+   * Run the shared brush trace path for a BSP entity, including zero-length
+   * position tests that must avoid swept-trace startsolid artifacts.
+   * @param {BrushModel} model brush collision model
+   * @param {Vector} start world-space start position
+   * @param {Vector} mins box mins
+   * @param {Vector} maxs box maxs
+   * @param {Vector} end world-space end position
+   * @param {Vector} origin entity origin
+   * @param {Vector} angles entity angles
+   * @returns {SharedTrace} shared trace result
+   */
+  _traceBrushModel(model, start, mins, maxs, end, origin, angles) {
+    if (start.equals(end)) {
+      const blocked = !BrushTrace.transformedTestPosition(
+        model,
+        start,
+        mins,
+        maxs,
+        origin,
+        angles,
+      );
+
+      const trace = new SharedTrace();
+      trace.allsolid = blocked;
+      trace.startsolid = blocked;
+      trace.fraction = blocked ? 0.0 : 1.0;
+      trace.endpos.set(start);
+      trace.plane.normal.clear();
+      trace.plane.dist = 0.0;
+      trace.inopen = false;
+      trace.inwater = false;
+      return trace;
+    }
+
+    return BrushTrace.transformedBoxTrace(
+      model,
+      start,
+      end,
+      mins,
+      maxs,
+      origin,
+      angles,
+    );
+  }
+
+  /**
+   * Attempt a shared brush trace against a BSP model.
+   * Returns null when the entity should use legacy hull collision.
+   * @param {ServerEdict} ent entity to collide with
+   * @param {Vector} start world-space start position
+   * @param {Vector} mins minimum extents of the moving box
+   * @param {Vector} maxs maximum extents of the moving box
+   * @param {Vector} end world-space end position
+   * @returns {Trace|null} collision result, or null to fall back to hull tracing
+   */
+  _clipMoveToBrushEntity(ent, start, mins, maxs, end) {
+    if (ent.entity.solid !== Defs.solid.SOLID_BSP) {
+      return null;
+    }
+
+    const brushState = this._getBrushCollisionState(ent);
+    if (brushState === null) {
+      return null;
+    }
+
+    const brushTrace = this._traceBrushModel(
+      brushState.model,
+      start,
+      mins,
+      maxs,
+      end,
+      brushState.origin,
+      brushState.angles,
+    );
+
+    return this._toServerTrace(brushTrace, ent);
+  }
+
+  /**
+   * Trace against an entity through the legacy hull path.
+   * @param {ServerEdict} ent entity to collide with
+   * @param {Vector} start world-space start position
+   * @param {Vector} mins minimum extents of the moving box
+   * @param {Vector} maxs maximum extents of the moving box
+   * @param {Vector} end world-space end position
+   * @returns {Trace} collision result
+   */
+  _clipMoveToHullEntity(ent, start, mins, maxs, end) {
+    const trace = {
+      fraction: 1.0,
+      allsolid: true,
+      startsolid: false,
+      endpos: end.copy(),
+      plane: { normal: new Vector(), dist: 0.0 },
+      ent: null,
+    };
+
+    const offset = new Vector();
+    const hull = SV.area.hullForEntity(ent, mins, maxs, offset);
+    const startLocal = start.copy().subtract(offset);
+    const endLocal = end.copy().subtract(offset);
+
+    this.recursiveHullCheck(hull, hull.firstclipnode, 0.0, 1.0, startLocal, endLocal, trace);
+
+    if (trace.fraction !== 1.0) {
+      trace.endpos.add(offset);
+    }
+
+    if (trace.fraction < 1.0 || trace.startsolid) {
+      trace.ent = ent;
+    }
+
+    return trace;
+  }
+
   /**
    * Determines the contents inside a hull by descending the clipnode tree.
    * @param {*} hull hull data to test against
@@ -381,31 +551,13 @@ export class ServerCollision {
       return this.clipMoveToMesh(ent, start, mins, maxs, end);
     }
 
-    const trace = {
-      fraction: 1.0,
-      allsolid: true,
-      startsolid: false,
-      endpos: end.copy(),
-      plane: { normal: new Vector(), dist: 0.0 },
-      ent: null,
-    };
+    const brushTrace = this._clipMoveToBrushEntity(ent, start, mins, maxs, end);
 
-    const offset = new Vector();
-    const hull = SV.area.hullForEntity(ent, mins, maxs, offset);
-    const start_l = start.copy().subtract(offset);
-    const end_l = end.copy().subtract(offset);
-    this.recursiveHullCheck(hull, hull.firstclipnode, 0.0, 1.0, start_l, end_l, trace);
-
-    // fix trace up by the offset
-    if (trace.fraction !== 1.0) {
-      trace.endpos.add(offset);
+    if (brushTrace !== null) {
+      return brushTrace;
     }
 
-    if ((trace.fraction < 1.0) || trace.startsolid === true) {
-      trace.ent = ent;
-    }
-
-    return trace;
+    return this._clipMoveToHullEntity(ent, start, mins, maxs, end);
   }
 
   /**

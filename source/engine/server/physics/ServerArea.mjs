@@ -19,6 +19,59 @@ export class ServerArea {
   }
 
   /**
+   * Compute entity world bounds, expanding rotated BSP bounds into a world AABB.
+   * @param {import('../Edict.mjs').ServerEdict} ent entity being linked
+   * @param {Vector} absmin output minimum bounds
+   * @param {Vector} absmax output maximum bounds
+   */
+  _computeEntityBounds(ent, absmin, absmax) {
+    const origin = ent.entity.origin;
+    const mins = ent.entity.mins;
+    const maxs = ent.entity.maxs;
+    const model = SV.server.models[ent.entity.modelindex];
+
+    if (ent.entity.solid === Defs.solid.SOLID_BSP
+      && model instanceof BrushModel
+      && !ent.entity.angles.isOrigin()) {
+      const basis = ent.entity.angles.toRotationMatrix();
+      const forward = new Vector(basis[0], basis[1], basis[2]);
+      const right = new Vector(basis[3], basis[4], basis[5]);
+      const up = new Vector(basis[6], basis[7], basis[8]);
+
+      const centerX = (mins[0] + maxs[0]) * 0.5;
+      const centerY = (mins[1] + maxs[1]) * 0.5;
+      const centerZ = (mins[2] + maxs[2]) * 0.5;
+      const extentsX = (maxs[0] - mins[0]) * 0.5;
+      const extentsY = (maxs[1] - mins[1]) * 0.5;
+      const extentsZ = (maxs[2] - mins[2]) * 0.5;
+
+      const worldCenter = origin.copy()
+        .add(forward.copy().multiply(centerX))
+        .add(right.copy().multiply(centerY))
+        .add(up.copy().multiply(centerZ));
+
+      const worldExtentX = Math.abs(forward[0]) * extentsX + Math.abs(right[0]) * extentsY + Math.abs(up[0]) * extentsZ;
+      const worldExtentY = Math.abs(forward[1]) * extentsX + Math.abs(right[1]) * extentsY + Math.abs(up[1]) * extentsZ;
+      const worldExtentZ = Math.abs(forward[2]) * extentsX + Math.abs(right[2]) * extentsY + Math.abs(up[2]) * extentsZ;
+
+      absmin.setTo(
+        worldCenter[0] - worldExtentX,
+        worldCenter[1] - worldExtentY,
+        worldCenter[2] - worldExtentZ,
+      );
+      absmax.setTo(
+        worldCenter[0] + worldExtentX,
+        worldCenter[1] + worldExtentY,
+        worldCenter[2] + worldExtentZ,
+      );
+      return;
+    }
+
+    absmin.set(origin).add(mins);
+    absmax.set(origin).add(maxs);
+  }
+
+  /**
    * Initializes the temporary hull data used for axis-aligned clipping.
    */
   initBoxHull() {
@@ -203,12 +256,10 @@ export class ServerArea {
     SV.server.navigation.relinkEdict(ent);
     this.unlinkEdict(ent);
 
-    const origin = ent.entity.origin;
-    const absmin = origin.copy();
-    const absmax = origin.copy();
+    const absmin = new Vector();
+    const absmax = new Vector();
 
-    absmin.add(ent.entity.mins);
-    absmax.add(ent.entity.maxs);
+    this._computeEntityBounds(ent, absmin, absmax);
 
     if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK)) {
       absmin.add(new Vector(-1.0, -1.0, -1.0));

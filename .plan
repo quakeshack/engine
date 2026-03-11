@@ -156,6 +156,10 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-03-12
+
+- introducing unit tests
+
 ### 2026-03-08
 
 - played around with dynamic shadows

@@ -4,7 +4,8 @@
  *
  * Inspired by Quake 2’s pmove.c with structural elements from QuakeWorld.
  *
- * There are profiles to switch between QuakeWorld and Quake 2 parameters.
+    const localPosition = this.toHullSpace(position);
+    return hull.pointContents(localPosition) !== content.CONTENT_SOLID;
  *
  * Original sources: pmove.c, pmovetst.c (Q2), pmove.c (Q1).
  */
@@ -237,10 +238,10 @@ export class Hull { // hull_t
     while (num >= 0) {
       console.assert(num >= this.firstClipNode && num <= this.lastClipNode, 'valid hull node', num);
 
-      console.assert(this.clipNodes[num], 'valid hull node', num);
+      console.assert(!!this.clipNodes[num], 'valid hull node', num);
       const node = this.clipNodes[num];
 
-      console.assert(this.planes[node.planeNum], 'valid hull plane', node.planeNum);
+      console.assert(!!this.planes[node.planeNum], 'valid hull plane', node.planeNum);
       const plane = this.planes[node.planeNum];
 
       let d = 0;
@@ -457,6 +458,117 @@ export class BoxHull extends Hull {
 export class BrushTrace {
   /** @type {number} monotonically increasing counter to avoid testing the same brush twice */
   static _checkCount = 0;
+
+  /**
+   * Resolve the head node for world-model BSP traversal.
+   * @param {BrushModel} model - brush model to inspect
+   * @returns {number} clipnode index used as the trace root
+   */
+  static _getHeadNode(model) {
+    return model.hulls[0]?.firstclipnode ?? 0;
+  }
+
+  /**
+   * Dispatch a brush trace against either a submodel brush range or a world BSP.
+   * @param {BrushModel} model - world model or submodel owning the brush data
+   * @param {Vector} start - local-space trace start
+   * @param {Vector} end - local-space trace end
+   * @param {Vector} mins - box mins
+   * @param {Vector} maxs - box maxs
+   * @returns {Trace} trace result
+   */
+  static _traceModel(model, start, end, mins, maxs) {
+    return model.submodel
+      ? BrushTrace.boxTraceModel(model, start, end, mins, maxs)
+      : BrushTrace.boxTrace(model, BrushTrace._getHeadNode(model), start, end, mins, maxs);
+  }
+
+  /**
+   * Dispatch a position test against either a submodel brush range or a world BSP.
+   * @param {BrushModel} model - world model or submodel owning the brush data
+   * @param {Vector} position - local-space position to test
+   * @param {Vector} mins - box mins
+   * @param {Vector} maxs - box maxs
+   * @returns {boolean} true if position is valid (not in solid)
+   */
+  static _testModelPosition(model, position, mins, maxs) {
+    return model.submodel
+      ? BrushTrace.testPositionModel(model, position, mins, maxs)
+      : BrushTrace.testPosition(model, BrushTrace._getHeadNode(model), position, mins, maxs);
+  }
+
+  /**
+   * Convert a world-space point into local model space for an entity transform.
+   * @param {Vector} point - world-space point
+   * @param {Vector} origin - entity origin
+   * @param {number[]|null} basis - optional 3x3 rotation matrix
+   * @returns {Vector} transformed local-space point
+   */
+  static _toLocalPoint(point, origin, basis) {
+    if (basis !== null) {
+      return BrushTrace._transformPointToLocal(point, origin, basis);
+    }
+
+    if (!origin.isOrigin()) {
+      return point.copy().subtract(origin);
+    }
+
+    return point;
+  }
+
+  /**
+   * Trace a box against a brush model with entity transform applied.
+   * Equivalent to Quake 2's transformed box trace helpers.
+   * @param {BrushModel} model - world model or submodel owning the brush data
+   * @param {Vector} start - world-space trace start
+   * @param {Vector} end - world-space trace end
+   * @param {Vector} mins - box mins
+   * @param {Vector} maxs - box maxs
+   * @param {Vector} origin - entity origin
+   * @param {Vector} angles - entity angles
+   * @returns {Trace} world-space trace result
+   */
+  static transformedBoxTrace(model, start, end, mins, maxs, origin = Vector.origin, angles = Vector.origin) {
+    const hasTranslation = !origin.isOrigin();
+    const hasRotation = !angles.isOrigin();
+
+    if (!hasTranslation && !hasRotation) {
+      return BrushTrace._traceModel(model, start, end, mins, maxs);
+    }
+
+    const basis = hasRotation ? angles.toRotationMatrix() : null;
+    const localStart = BrushTrace._toLocalPoint(start, origin, basis);
+    const localEnd = BrushTrace._toLocalPoint(end, origin, basis);
+    const localTrace = BrushTrace._traceModel(model, localStart, localEnd, mins, maxs);
+
+    return BrushTrace._transformTraceToWorld(localTrace, origin, basis);
+  }
+
+  /**
+   * Test if a box at the given world-space position overlaps a brush model
+   * after applying entity translation and rotation.
+   * Equivalent to Quake 2's transformed position test helpers.
+   * @param {BrushModel} model - world model or submodel owning the brush data
+   * @param {Vector} position - world-space position to test
+   * @param {Vector} mins - box mins
+   * @param {Vector} maxs - box maxs
+   * @param {Vector} origin - entity origin
+   * @param {Vector} angles - entity angles
+   * @returns {boolean} true if position is valid (not in solid)
+   */
+  static transformedTestPosition(model, position, mins, maxs, origin = Vector.origin, angles = Vector.origin) {
+    const hasTranslation = !origin.isOrigin();
+    const hasRotation = !angles.isOrigin();
+
+    if (!hasTranslation && !hasRotation) {
+      return BrushTrace._testModelPosition(model, position, mins, maxs);
+    }
+
+    const basis = hasRotation ? angles.toRotationMatrix() : null;
+    const localPosition = BrushTrace._toLocalPoint(position, origin, basis);
+
+    return BrushTrace._testModelPosition(model, localPosition, mins, maxs);
+  }
 
   /**
    * Trace a box from start to end through the BSP tree, testing individual brushes.
@@ -809,8 +921,10 @@ export class BrushTrace {
 
       const d1 = plane.normal.dot(position) - dist;
 
-      // If completely in front of any face, not inside
-      if (d1 > 0) {
+      // Exact face contact must remain walkable. Classifying d1 === 0 as
+      // inside turns resting contact on brush-based movers into a false stuck
+      // state, which can make pushers think the player is blocking them.
+      if (d1 >= 0) {
         return false;
       }
     }
@@ -902,7 +1016,7 @@ export class BrushTrace {
       BrushTrace._mid2Pool.push(new Vector());
     }
 
-    console.assert(depth === 128, 'hull check went quite deep');
+    console.assert(depth !== 128, 'hull check went quite deep');
     console.assert(depth < 256, 'hull check went really deep');
 
     // Move up to the node
@@ -1015,11 +1129,11 @@ export class BrushTrace {
       const d1 = plane.normal.dot(ctx.start) - dist;
       const d2 = plane.normal.dot(ctx.end) - dist;
 
-      if (d2 > 0) { getout = true; }
-      if (d1 > 0) { startout = true; }
+      if (d2 >= 0) { getout = true; }
+      if (d1 >= 0) { startout = true; }
 
       // If completely in front of face, no intersection with this brush
-      if (d1 > 0 && d2 >= d1) {
+      if (d1 >= 0 && d2 >= d1) {
         return;
       }
 
@@ -1066,6 +1180,83 @@ export class BrushTrace {
       }
     }
   }
+
+  /**
+   * Convert a world-space point into local model space using the inverse of a
+   * rigid transform represented by origin plus orthonormal basis rows.
+   * @param {Vector} point - world-space point
+   * @param {Vector} origin - transform origin
+   * @param {number[]} basis - 3x3 rotation matrix from Vector.toRotationMatrix()
+   * @returns {Vector} point in local space
+   */
+  static _transformPointToLocal(point, origin, basis) {
+    const delta = point.copy().subtract(origin);
+    const forward = new Vector(basis[0], basis[1], basis[2]);
+    const right = new Vector(basis[3], basis[4], basis[5]);
+    const up = new Vector(basis[6], basis[7], basis[8]);
+
+    return new Vector(
+      delta.dot(forward),
+      delta.dot(right),
+      delta.dot(up),
+    );
+  }
+
+  /**
+   * Convert a local-space point into world space using origin plus basis rows.
+   * @param {Vector} point - local-space point
+   * @param {Vector} origin - transform origin
+   * @param {number[]} basis - 3x3 rotation matrix from Vector.toRotationMatrix()
+   * @returns {Vector} point in world space
+   */
+  static _transformPointToWorld(point, origin, basis) {
+    const forward = new Vector(basis[0], basis[1], basis[2]);
+    const right = new Vector(basis[3], basis[4], basis[5]);
+    const up = new Vector(basis[6], basis[7], basis[8]);
+
+    return origin.copy()
+      .add(forward.multiply(point[0]))
+      .add(right.multiply(point[1]))
+      .add(up.multiply(point[2]));
+  }
+
+  /**
+   * Rotate a local-space plane normal into world space.
+   * @param {Vector} normal - local-space normal
+   * @param {number[]} basis - 3x3 rotation matrix from Vector.toRotationMatrix()
+   * @returns {Vector} world-space normal
+   */
+  static _transformNormalToWorld(normal, basis) {
+    const forward = new Vector(basis[0], basis[1], basis[2]);
+    const right = new Vector(basis[3], basis[4], basis[5]);
+    const up = new Vector(basis[6], basis[7], basis[8]);
+
+    return forward.multiply(normal[0])
+      .add(right.multiply(normal[1]))
+      .add(up.multiply(normal[2]));
+  }
+
+  /**
+   * Convert a local-space trace result back into world space.
+   * @param {Trace} localTrace - local-space trace result
+   * @param {Vector} origin - transform origin
+   * @param {number[]|null} basis - 3x3 rotation matrix or null for translation-only
+   * @returns {Trace} world-space trace result
+   */
+  static _transformTraceToWorld(localTrace, origin, basis) {
+    const trace = localTrace.copy();
+
+    if (basis !== null) {
+      trace.endpos = BrushTrace._transformPointToWorld(localTrace.endpos, origin, basis);
+      trace.plane.normal = BrushTrace._transformNormalToWorld(localTrace.plane.normal, basis);
+      trace.plane.dist = localTrace.plane.dist + trace.plane.normal.dot(origin);
+    } else {
+      trace.endpos.add(origin);
+      trace.plane.dist += trace.plane.normal.dot(origin);
+    }
+
+    return trace;
+  }
 }
 
 /**
@@ -1094,6 +1285,8 @@ export class PhysEnt { // physent_t
     this.hulls = [];
     /** origin */
     this.origin = new Vector();
+    /** angles for transformed brush collision */
+    this.angles = new Vector();
     /** only for non-bsp models */
     this.mins = new Vector();
     /** only for non-bsp models */
@@ -1145,6 +1338,63 @@ export class PhysEnt { // physent_t
     return this.brushWorldModel !== null && this.brushWorldModel.hasBrushData;
   }
 
+  /**
+   * Active brush collision model: submodels use their own brush range, world uses the world model.
+   * @returns {BrushModel} brush model to trace against
+   */
+  get brushCollisionModel() {
+    return this.brushModel ?? this.brushWorldModel;
+  }
+
+  /**
+   * Legacy hull comparisons are only meaningful for axis-aligned brush traces.
+   * @returns {boolean} true if brush-vs-hull debug comparison is valid
+   */
+  get canCompareBrushAgainstHull() {
+    return this.hulls.length > 0 && this.angles.isOrigin();
+  }
+
+  /**
+   * Convert a point into this physent's legacy hull space.
+   * @param {Vector} point point in world space
+   * @param {Vector|null} scratch scratch vector to reuse, or null to allocate
+   * @returns {Vector} point in local hull space
+   */
+  toHullSpace(point, scratch = null) {
+    const localPoint = scratch ?? point.copy();
+    return localPoint.set(point).subtract(this.origin);
+  }
+
+  /**
+   * Convert a point into the collision space expected by this physent.
+   * Brush traces operate in world space; legacy hull traces use local space.
+   * @param {Vector} point point in world space
+   * @param {Vector|null} scratch scratch vector to reuse for hull traces
+   * @returns {Vector} point in the collision space expected by the active path
+   */
+  toCollisionSpace(point, scratch = null) {
+    if (this.usesBrushTracing) {
+      return point;
+    }
+
+    return this.toHullSpace(point, scratch);
+  }
+
+  /**
+   * Convert a point from this physent's collision space back to world space.
+   * @param {Vector} point point in collision space
+   * @param {Vector|null} scratch scratch vector to reuse for hull traces
+   * @returns {Vector} point in world space
+   */
+  toWorldSpace(point, scratch = null) {
+    if (this.usesBrushTracing) {
+      return point;
+    }
+
+    const worldPoint = scratch ?? point.copy();
+    return worldPoint.set(point).add(this.origin);
+  }
+
   #hullMinsScratch = new Vector();
   #hullMaxsScratch = new Vector();
 
@@ -1168,41 +1418,33 @@ export class PhysEnt { // physent_t
    * Trace a player-sized box from start to end using the appropriate collision method.
    * For brush-based entities, uses Q2-style brush tracing.
    * For hull-based entities, uses Q1-style hull tracing.
-   * @param {Vector} start start position (local to entity)
-   * @param {Vector} end end position (local to entity)
-   * @returns {Trace} trace result (positions local to entity)
+   * @param {Vector} start world-space start position
+   * @param {Vector} end world-space end position
+   * @returns {Trace} trace result
    */
   tracePlayerMove(start, end) {
-    if (this.usesBrushTracing) {
-      let brushTrace;
+    const traceStart = this.toCollisionSpace(start);
+    const traceEnd = this.toCollisionSpace(end);
 
-      // Submodel entities: brute-force test the submodel's brush range
-      if (this.brushModel !== null) {
-        brushTrace = BrushTrace.boxTraceModel(
-          this.brushModel,
-          start,
-          end,
-          Pmove.PLAYER_MINS,
-          Pmove.PLAYER_MAXS,
-        );
-      } else {
-        // World entity: walk the BSP tree via leafbrush index
-        brushTrace = BrushTrace.boxTrace(
-          this.brushWorldModel,
-          this.brushHeadNode,
-          start,
-          end,
-          Pmove.PLAYER_MINS,
-          Pmove.PLAYER_MAXS,
-        );
-      }
+    if (this.usesBrushTracing) {
+      const brushTrace = BrushTrace.transformedBoxTrace(
+        this.brushCollisionModel,
+        traceStart,
+        traceEnd,
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+        this.origin,
+        this.angles,
+      );
 
       // DEBUG: compare brush result with hull result when pm_debug is on
-      if (PmovePlayer.DEBUG && this.hulls.length > 0) {
+      if (PmovePlayer.DEBUG && this.canCompareBrushAgainstHull) {
         const hull = this.getClippingHull();
         const hullTrace = new Trace();
-        hullTrace.endpos.set(end);
-        hull.check(0.0, 1.0, start, end, hullTrace);
+        const startLocal = this.toHullSpace(start);
+        const endLocal = this.toHullSpace(end);
+        hullTrace.endpos.set(endLocal);
+        hull.check(0.0, 1.0, startLocal, endLocal, hullTrace);
 
         const brushBlocks = brushTrace.fraction < 1.0 || brushTrace.startsolid || brushTrace.allsolid;
         const hullBlocks = hullTrace.fraction < 1.0 || hullTrace.startsolid || hullTrace.allsolid;
@@ -1239,43 +1481,33 @@ export class PhysEnt { // physent_t
     // Legacy hull-based trace
     const hull = this.getClippingHull();
     const trace = new Trace();
-    trace.endpos.set(end);
-    hull.check(0.0, 1.0, start, end, trace);
+    trace.endpos.set(traceEnd);
+    hull.check(0.0, 1.0, traceStart, traceEnd, trace);
+    trace.endpos = this.toWorldSpace(trace.endpos, trace.endpos);
     return trace;
   }
 
   /**
    * Test if a player-sized box at position is inside solid.
-   * @param {Vector} position position to test (local to entity)
+   * @param {Vector} position world-space position to test
    * @returns {boolean} true if position is valid (not in solid)
    */
   testPlayerPosition(position) {
     if (this.usesBrushTracing) {
-      let brushResult;
-
-      // Submodel entities: brute-force test the submodel's brush range
-      if (this.brushModel !== null) {
-        brushResult = BrushTrace.testPositionModel(
-          this.brushModel,
-          position,
-          Pmove.PLAYER_MINS,
-          Pmove.PLAYER_MAXS,
-        );
-      } else {
-        // World entity: walk the BSP tree via leafbrush index
-        brushResult = BrushTrace.testPosition(
-          this.brushWorldModel,
-          this.brushHeadNode,
-          position,
-          Pmove.PLAYER_MINS,
-          Pmove.PLAYER_MAXS,
-        );
-      }
+      const brushResult = BrushTrace.transformedTestPosition(
+        this.brushCollisionModel,
+        position,
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+        this.origin,
+        this.angles,
+      );
 
       // DEBUG: compare with hull result when pm_debug is on
-      if (PmovePlayer.DEBUG && this.hulls.length > 0) {
+      if (PmovePlayer.DEBUG && this.canCompareBrushAgainstHull) {
         const hull = this.getClippingHull();
-        const hullResult = hull.pointContents(position) !== content.CONTENT_SOLID;
+        const localPosition = this.toHullSpace(position);
+        const hullResult = hull.pointContents(localPosition) !== content.CONTENT_SOLID;
 
         if (brushResult !== hullResult) {
           const model = this.brushModel;
@@ -1326,7 +1558,7 @@ export class PhysEnt { // physent_t
 
     // Legacy hull-based point test
     const hull = this.getClippingHull();
-    return hull.pointContents(position) !== content.CONTENT_SOLID;
+    return hull.pointContents(this.toHullSpace(position)) !== content.CONTENT_SOLID;
   }
 
   // CR: we can add getClippingHullCrouch() for BSP30 hulls here later
@@ -1362,7 +1594,7 @@ export class PhysEnt { // physent_t
 export class PmovePlayer { // pmove_t (player state only)
   /** @type {boolean} enables verbose movement debugging */
   static get DEBUG() {
-    return Pmove.debug?.value !== 0;
+    return (Pmove.debug?.value ?? 0) !== 0;
   }
 
   /**
@@ -1852,7 +2084,7 @@ export class PmovePlayer { // pmove_t (player state only)
   /** Apply ground and water friction. */
   _friction() { // Q2: PM_Friction
     const vel = this.velocity;
-    const speed = Math.sqrt(vel[0] * vel[0] + vel[1] * vel[1] + vel[2] * vel[2]);
+    const speed = Math.hypot(vel[0], vel[1], vel[2]);
 
     if (speed < 1) {
       vel[0] = 0;
@@ -2642,10 +2874,10 @@ export class Pmove { // pmove_t
   isValidPlayerPosition(position) {
     for (let i = 0; i < this.physents.length; i++) {
       const pe = this.physents[i];
-      const test = this.#validPosTestScratch.set(position).subtract(pe.origin);
 
-      if (!pe.testPlayerPosition(test)) {
+      if (!pe.testPlayerPosition(position)) {
         if (PmovePlayer.DEBUG) {
+          const test = pe.toCollisionSpace(position, this.#validPosTestScratch);
           console.warn(
             `[isValidPlayerPosition] BLOCKED by physent[${i}]`,
             `edictId=${pe.edictId}`,
@@ -2662,10 +2894,6 @@ export class Pmove { // pmove_t
 
     return true;
   }
-
-  #clipOffsetScratch = new Vector();
-  #clipStartLScratch = new Vector();
-  #clipEndLScratch = new Vector();
 
   /**
    * Attempts to move the player from start to end.
@@ -2689,13 +2917,7 @@ export class Pmove { // pmove_t
       console.assert(!Number.isNaN(pe.origin[1]), 'NaN origin y');
       console.assert(!Number.isNaN(pe.origin[2]), 'NaN origin z');
 
-      const offset = this.#clipOffsetScratch.set(pe.origin);
-
-      const start_l = this.#clipStartLScratch.set(start).subtract(offset);
-      const end_l = this.#clipEndLScratch.set(end).subtract(offset);
-
-      // trace a line through the appropriate collision path (brush or hull)
-      const trace = pe.tracePlayerMove(start_l, end_l);
+      const trace = pe.tracePlayerMove(start, end);
 
       console.assert(!Number.isNaN(trace.endpos[0]), 'NaN x');
       console.assert(!Number.isNaN(trace.endpos[1]), 'NaN y');
@@ -2712,7 +2934,7 @@ export class Pmove { // pmove_t
         // (and boxTrace) leave endpos at the trace end (computed when
         // fraction was still 1.0), causing _stepSlideMove to teleport the
         // player into wrong locations and eventually producing NaN origins.
-        trace.endpos.set(start_l);
+        trace.endpos.set(start);
         if (PmovePlayer.DEBUG) {
           console.warn(`[clipPlayerMove] startsolid at physent ${i} (edictId=${pe.edictId}), mode=${pe.usesBrushTracing ? 'brush' : 'hull'}`);
         }
@@ -2720,8 +2942,6 @@ export class Pmove { // pmove_t
 
       // did we clip the move?
       if (trace.fraction < totalTrace.fraction) {
-        // fix trace up by the offset
-        trace.endpos.add(offset);
         totalTrace.set(trace);
         totalTrace.ent = i;
       }
@@ -2786,6 +3006,10 @@ export class Pmove { // pmove_t
     console.assert(entity.origin instanceof Vector, 'valid entity origin', entity.origin);
 
     pe.origin.set(entity.origin);
+
+    if ('angles' in entity && entity.angles instanceof Vector) {
+      pe.angles.set(entity.angles);
+    }
 
     if (model !== null) {
       // Check if the world model has brush data and this entity should use it
