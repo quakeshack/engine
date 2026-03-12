@@ -75,7 +75,7 @@ export default class Sys {
     WorkerManager.Init(workerFactories);
 
     // Start webserver
-    Sys.StartWebserver();
+    await Sys.StartWebserver();
 
     Sys.Print('Host.Init\n');
     await Host.Init();
@@ -167,7 +167,7 @@ export default class Sys {
   }
 
   /** @private */
-  static StartWebserver() {
+  static async StartWebserver() {
     if (COM.CheckParm('-noserver')) {
       Sys.Print('Webserver disabled via -noserver\n');
       return;
@@ -227,13 +227,25 @@ export default class Sys {
 
     const server = createServer(app);
 
-    server.listen({
-      port: listenPort,
-      host: listenAddress || undefined,
-    }, () => {
-      Sys.Print(`Webserver listening on port ${listenPort} (${listenAddress || 'all interfaces'})\n`);
+    await new Promise((resolve, reject) => {
+      server.once('error', (error) => {
+        if ('code' in error && error.code === 'EADDRINUSE') {
+          reject(new Error(`Webserver failed to start: port ${listenPort} is already in use`, { cause: error }));
+          return;
+        }
 
-      NET.server = server;
+        reject(new Error('Webserver failed to start', { cause: error }));
+      });
+
+      server.listen({
+        port: listenPort,
+        host: listenAddress || undefined,
+      }, () => {
+        Sys.Print(`Webserver listening on port ${listenPort} (${listenAddress || 'all interfaces'})\n`);
+
+        NET.server = server;
+        resolve();
+      });
     });
   }
 };
