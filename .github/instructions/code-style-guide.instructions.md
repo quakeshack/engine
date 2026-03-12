@@ -197,6 +197,7 @@ class GL {
 - **Use `for...of` loops** over `forEach`.
 - **Avoid unnecessary array copying**; use in-place modifications when possible.
 - **Use `{}` over `Map` for small key-value pairs** when keys are strings and not dynamically added/removed.
+- **Consider using scrap variables** for temporary values in very hot paths instead of creating new objects.
 
 ## Dangling Resources
 
@@ -210,3 +211,7 @@ class GL {
 - **Use `let` or `const`**, never `var`.
 - Clean up WebGL resources.
 - Validate array indices.
+
+## Random Tips
+
+- **Prefer `Math.hypot(x, y)`** over `Math.sqrt(x*x + y*y)` in not so hot paths and when range is not critical.

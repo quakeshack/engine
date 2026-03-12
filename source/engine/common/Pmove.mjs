@@ -30,6 +30,9 @@ export const MIN_STEP_NORMAL = 0.7;
 /** Maximum number of planes to clip against during slide moves */
 export const MAX_CLIP_PLANES = 5;
 
+/** Near-parallel planes from zero-progress brush re-clips are treated as duplicates */
+export const ZERO_PROGRESS_DUPLICATE_DOT = 0.985;
+
 /**
  * Player movement flags (pmove-specific, separate from entity flags).
  * These travel with the player state and are used for prediction.
@@ -463,6 +466,37 @@ export class BrushTrace {
   static _checkCount = 0;
 
   /**
+   * Walkable non-axial planes should win over nearly simultaneous axial bevels.
+   * BSPX BRUSHLIST brushes infer axial bounds planes from mins/maxs; at ramp
+   * edges those bevels can land within epsilon of the actual sloped face and
+   * would otherwise stall horizontal ramp climbs.
+   * @param {import('./model/BaseModel.mjs').Plane|null} currentPlane currently selected clip plane
+   * @param {number} currentFraction currently selected enter fraction
+   * @param {import('./model/BaseModel.mjs').Plane} candidatePlane newly intersected plane
+   * @param {number} candidateFraction newly intersected enter fraction
+   * @param {number} fractionEpsilon move-distance-scaled tie threshold
+   * @returns {boolean} true when the candidate plane should replace the current one
+   */
+  static _shouldPreferClipPlane(currentPlane, currentFraction, candidatePlane, candidateFraction, fractionEpsilon) {
+    if (currentPlane === null) {
+      return true;
+    }
+
+    if (candidateFraction > currentFraction + fractionEpsilon) {
+      return true;
+    }
+
+    if (Math.abs(candidateFraction - currentFraction) > fractionEpsilon) {
+      return false;
+    }
+
+    const candidateIsWalkableSlope = candidatePlane.type >= 3 && candidatePlane.normal[2] >= MIN_STEP_NORMAL;
+    const currentIsAxialWall = currentPlane.type < 3 && Math.abs(currentPlane.normal[2]) <= DIST_EPSILON;
+
+    return candidateIsWalkableSlope && currentIsAxialWall;
+  }
+
+  /**
    * Resolve the head node for world-model BSP traversal.
    * @param {BrushModel} model - brush model to inspect
    * @returns {number} clipnode index used as the trace root
@@ -597,6 +631,12 @@ export class BrushTrace {
    */
   static boxTrace(worldModel, headNode, start, end, mins, maxs) {
     const trace = new Trace();
+
+    // Brush traces must derive allsolid from brush overlap, not from the
+    // legacy BSP leaf contents encountered during traversal. A tangent
+    // fraction-0 clip can happen in a solid-side leaf without the player box
+    // being embedded in brush geometry.
+    trace.allsolid = false;
 
     console.assert(!Number.isNaN(start[0]) && !Number.isNaN(start[1]) && !Number.isNaN(start[2]), 'NaN start');
     console.assert(!Number.isNaN(end[0]) && !Number.isNaN(end[1]) && !Number.isNaN(end[2]), 'NaN end');
@@ -1126,6 +1166,11 @@ export class BrushTrace {
   static _clipBoxToBrush(ctx, brush) {
     const brushsides = ctx.worldModel.brushsides;
     const planes = ctx.worldModel.planes;
+    const moveDeltaX = ctx.end[0] - ctx.start[0];
+    const moveDeltaY = ctx.end[1] - ctx.start[1];
+    const moveDeltaZ = ctx.end[2] - ctx.start[2];
+    const moveDistance = Math.sqrt(moveDeltaX * moveDeltaX + moveDeltaY * moveDeltaY + moveDeltaZ * moveDeltaZ);
+    const fractionEpsilon = moveDistance > DIST_EPSILON ? DIST_EPSILON / moveDistance : 1.0;
 
     let enterfrac = -1;
     let leavefrac = 1;
@@ -1156,8 +1201,8 @@ export class BrushTrace {
       const d2 = plane.normal.dot(ctx.end) - dist;
 
       const nonAxialContact = plane.type >= 3;
-      const nearStart = nonAxialContact && d1 >= -DIST_EPSILON;
-      const nearEnd = nonAxialContact && d2 >= -DIST_EPSILON;
+      const nearStart = nonAxialContact && Math.abs(d1) <= DIST_EPSILON;
+      const nearEnd = nonAxialContact && Math.abs(d2) <= DIST_EPSILON;
 
       if (d2 >= 0 || nearEnd) { getout = true; }
       if (d1 >= 0 || nearStart) { startout = true; }
@@ -1188,7 +1233,7 @@ export class BrushTrace {
       if (d1 > d2) {
         // Enter
         const f = (d1 - DIST_EPSILON) / (d1 - d2);
-        if (f > enterfrac) {
+        if (BrushTrace._shouldPreferClipPlane(clipplane, enterfrac, plane, f, fractionEpsilon)) {
           enterfrac = f;
           clipplane = plane;
         }
@@ -2408,6 +2453,28 @@ export class PmovePlayer { // pmove_t (player state only)
   #slidePlanes = Array.from({ length: MAX_CLIP_PLANES }, () => new Vector());
 
   /**
+   * Brush bevels can report a second zero-progress hit whose normal only
+   * differs slightly from the wall we already clipped against. Treat that as a
+   * duplicate plane so we keep sliding instead of manufacturing a bogus crease.
+   * @param {Vector} normal candidate collision plane normal
+   * @param {number} planeCount number of existing clip planes
+   * @param {Vector[]} planes existing clip planes
+   * @param {number} fraction trace fraction for the candidate hit
+   * @returns {boolean} true when the candidate plane should be collapsed into an existing one
+   */
+  _isDuplicateSlidePlane(normal, planeCount, planes, fraction) {
+    const duplicateDot = fraction === 0.0 ? ZERO_PROGRESS_DUPLICATE_DOT : 0.99;
+
+    for (let i = 0; i < planeCount; i++) {
+      if (normal.dot(planes[i]) > duplicateDot) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * The basic solid body movement clip that slides along multiple planes.
    * This is the inner loop, it does NOT attempt step-up.
    */
@@ -2480,18 +2547,11 @@ export class PmovePlayer { // pmove_t (player state only)
       // cross-product to be ~zero, zeroing velocity and sticking the
       // player. This check is standard in Q1 source ports (QS, FTEQW).
       const traceNormal = trace.plane.normal;
-      let nearDuplicate = false;
-      for (let k = 0; k < numplanes; k++) {
-        if (traceNormal.dot(planes[k]) > 0.99) {
-          // Nudge velocity away from the surface to help the next trace
-          this.velocity[0] += traceNormal[0];
-          this.velocity[1] += traceNormal[1];
-          this.velocity[2] += traceNormal[2];
-          nearDuplicate = true;
-          break;
-        }
-      }
-      if (nearDuplicate) {
+      if (this._isDuplicateSlidePlane(traceNormal, numplanes, planes, trace.fraction)) {
+        // Nudge velocity away from the surface to help the next trace
+        this.velocity[0] += traceNormal[0];
+        this.velocity[1] += traceNormal[1];
+        this.velocity[2] += traceNormal[2];
         continue;
       }
 

@@ -1,10 +1,14 @@
+import fs from 'node:fs/promises';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import COMClass from '../../source/engine/common/Com.mjs';
+import Mod from '../../source/engine/common/Mod.mjs';
 import Vector from '../../source/shared/Vector.mjs';
 import { content } from '../../source/shared/Defs.mjs';
 import { DIST_EPSILON, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
 import { UserCmd } from '../../source/engine/network/Protocol.mjs';
+import { eventBus, registry } from '../../source/engine/registry.mjs';
 
 import {
   assertNear,
@@ -76,6 +80,185 @@ function createTrace({
   return trace;
 }
 
+/** @typedef {{ origin: Vector, moved: Vector, velocity: Vector, onground: number|null }} MapPmoveFrame */
+
+/**
+ * Parse the BSP entity lump using the engine token parser.
+ * @param {string} text entity lump text
+ * @returns {Record<string, string>[]} parsed entities
+ */
+function parseMapEntities(text) {
+  /** @type {Record<string, string>[]} */
+  const entities = [];
+  let data = text;
+
+  while (data !== null) {
+    let parsed = COMClass.Parse(data);
+    data = parsed.data;
+
+    if (parsed.token.length === 0) {
+      break;
+    }
+
+    if (parsed.token !== '{') {
+      continue;
+    }
+
+    /** @type {Record<string, string>} */
+    const entity = {};
+
+    while (true) {
+      parsed = COMClass.Parse(data);
+      data = parsed.data;
+
+      if (parsed.token === '}') {
+        entities.push(entity);
+        break;
+      }
+
+      const key = parsed.token;
+      parsed = COMClass.Parse(data);
+      data = parsed.data;
+      entity[key] = parsed.token;
+    }
+  }
+
+  return entities;
+}
+
+/**
+ * Convert a Quake origin string into a Vector.
+ * @param {string} origin entity origin string
+ * @returns {Vector} parsed vector
+ */
+function parseMapOrigin(origin) {
+  const components = origin.split(/\s+/).map(Number);
+  return new Vector(components[0], components[1], components[2]);
+}
+
+/**
+ * Resolve the first entity matching the predicate.
+ * @param {Record<string, string>[]} entities parsed entity list
+ * @param {(entity: Record<string, string>) => boolean} predicate entity predicate
+ * @param {string} label entity description for error messages
+ * @returns {Record<string, string>} matching entity
+ */
+function requireMapEntity(entities, predicate, label) {
+  const entity = entities.find(predicate);
+
+  if (entity === undefined) {
+    throw new Error(`Could not find ${label} in entity lump`);
+  }
+
+  return entity;
+}
+
+/**
+ * Run a real BSP-backed forward movement probe for a fixed number of frames.
+ * @param {string} mapName map path relative to data/id1
+ * @param {number} frames number of frames to simulate
+ * @returns {Promise<MapPmoveFrame[]>} per-frame movement snapshots
+ */
+async function runMapForwardFrames(mapName, frames) {
+  const baseUrl = new URL('../../data/id1/', import.meta.url);
+  const previousRegistry = {
+    COM: registry.COM,
+    Con: registry.Con,
+    Mod: registry.Mod,
+    isDedicatedServer: registry.isDedicatedServer,
+  };
+  const knownKeysBefore = new Set(Object.keys(Mod.known));
+
+  registry.isDedicatedServer = true;
+  registry.Con = /** @type {typeof import('../../source/engine/common/Console.mjs').default} */ ({
+    Print() {},
+    DPrint() {},
+    PrintWarning() {},
+    PrintError(...args) {
+      console.error(...args);
+    },
+    PrintSuccess() {},
+  });
+  registry.Mod = Mod;
+  registry.COM = /** @type {typeof import('../../source/engine/common/Com.mjs').default} */ ({
+    Parse: COMClass.Parse,
+    async LoadFile(name) {
+      try {
+        const data = await fs.readFile(new URL(name, baseUrl));
+        return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+      } catch {
+        return null;
+      }
+    },
+    async LoadTextFile(name) {
+      try {
+        return await fs.readFile(new URL(name, baseUrl), 'utf8');
+      } catch {
+        return null;
+      }
+    },
+  });
+  eventBus.publish('registry.frozen');
+  Mod.Init();
+
+  try {
+    const model = /** @type {import('../../source/engine/common/model/BSP.mjs').BrushModel} */ (await Mod.ForNameAsync(mapName, true));
+    const entities = parseMapEntities(model.entities);
+    const spawn = requireMapEntity(entities, (entity) => entity.classname === 'info_player_start', 'spawn entity classname=info_player_start');
+    const orientation = requireMapEntity(entities, (entity) => entity.targetname === 'direction', 'orientation entity targetname=direction');
+
+    const spawnOrigin = parseMapOrigin(spawn.origin);
+    const orientationOrigin = parseMapOrigin(orientation.origin);
+    const forward = orientationOrigin.copy().subtract(spawnOrigin);
+    forward.normalize();
+    const yaw = Math.atan2(forward[1], forward[0]) * 180 / Math.PI;
+
+    const pmove = new Pmove();
+    pmove.setWorldmodel(model);
+
+    const player = pmove.newPlayerMove();
+    player.origin.set(spawnOrigin);
+    player.velocity.clear();
+    player.angles.setTo(0, yaw, 0);
+    player.pmFlags = PMF.ON_GROUND;
+    player.onground = 0;
+
+    /** @type {MapPmoveFrame[]} */
+    const rows = [];
+
+    for (let frame = 0; frame < frames; frame++) {
+      const before = player.origin.copy();
+      const cmd = new UserCmd();
+      cmd.msec = 50;
+      cmd.forwardmove = 320;
+      cmd.angles = player.angles.copy();
+      player.cmd = cmd;
+      player.move();
+
+      rows.push({
+        origin: player.origin.copy(),
+        moved: player.origin.copy().subtract(before),
+        velocity: player.velocity.copy(),
+        onground: player.onground,
+      });
+    }
+
+    return rows;
+  } finally {
+    for (const name of Object.keys(Mod.known)) {
+      if (!knownKeysBefore.has(name)) {
+        delete Mod.known[name];
+      }
+    }
+
+    registry.COM = previousRegistry.COM;
+    registry.Con = previousRegistry.Con;
+    registry.Mod = previousRegistry.Mod;
+    registry.isDedicatedServer = previousRegistry.isDedicatedServer;
+    eventBus.publish('registry.frozen');
+  }
+}
+
 describe('PmovePlayer', () => {
   test('DEBUG is disabled before Pmove.Init()', () => {
     assert.equal(PmovePlayer.DEBUG, false);
@@ -133,6 +316,26 @@ describe('PmovePlayer', () => {
     assertNear(player.velocity[0], 498.25, 0.001);
     assertNear(player.velocity[1], 0.0);
     assertNear(player.velocity[2], 41.5, 0.001);
+  });
+
+  test('matches the hull slope climb shape on the brush-backed slope regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_slope.bsp', 24);
+    const hullFrames = await runMapForwardFrames('maps/test_slope_hull.bsp', 24);
+
+    const firstRampFrame = 13;
+    const lastRampFrame = 20;
+
+    assert.ok(brushFrames[firstRampFrame].moved[0] > 5.0);
+    assert.ok(brushFrames[firstRampFrame].moved[0] < 8.0);
+    assert.ok(brushFrames[firstRampFrame].moved[2] > 5.0);
+    assert.ok(brushFrames[firstRampFrame].moved[2] < 8.0);
+
+    for (let frame = firstRampFrame; frame <= lastRampFrame; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.25);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.25);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.25);
+      assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.25);
+    }
   });
 
   describe('_checkDuck', () => {
@@ -437,6 +640,54 @@ describe('PmovePlayer', () => {
       assert.equal(continuedTrace.allsolid, false);
       assert.equal(continuedTrace.fraction, 1.0);
       assert.deepEqual([...continuedTrace.endpos], [0, 144, 0]);
+    });
+
+    test('treats zero-progress near-parallel brush re-clips as a single slide plane', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(100, 100, 0);
+      player.frametime = 1.0;
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        if (traceCalls === 1) {
+          assert.deepEqual([...start], [0, 0, 0]);
+          assert.deepEqual([...end], [100, 100, 0]);
+          return createTrace({
+            endpos: new Vector(50, 50, 0),
+            fraction: 0.5,
+            normal: new Vector(-1, 0, 0),
+            ent: 1,
+          });
+        }
+
+        if (traceCalls === 2) {
+          assert.deepEqual([...start], [50, 50, 0]);
+          return createTrace({
+            endpos: new Vector(50, 50, 0),
+            fraction: 0.0,
+            normal: new Vector(-0.9876883625984192, -0.15643446147441864, 0),
+            ent: 1,
+          });
+        }
+
+        return createTrace({
+          endpos: end.copy(),
+          fraction: 1.0,
+        });
+      };
+
+      player._slideMove();
+
+      assert.equal(traceCalls, 3);
+      assert.ok(player.origin[0] > 48.5);
+      assert.ok(player.origin[1] > 99.0);
+      assert.ok(Math.abs(player.velocity[0]) < 2.0);
+      assert.ok(player.velocity[1] > 99.0);
     });
   });
 });

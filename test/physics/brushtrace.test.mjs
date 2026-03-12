@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
 import { BrushTrace, Pmove } from '../../source/engine/common/Pmove.mjs';
+import { BrushSide } from '../../source/engine/common/model/BSP.mjs';
+import { content } from '../../source/shared/Defs.mjs';
 
 import {
   assertNear,
+  createAxisPlane,
   createBoxBrushModel,
   createBrushWorldModel,
 } from './fixtures.mjs';
@@ -33,6 +36,31 @@ function createTwoBoxBrushModel() {
   secondBrush._brushTraceCheck = 0;
   model.brushes.push(secondBrush);
   model.numBrushes = model.brushes.length;
+
+  return model;
+}
+
+/**
+ * Build a wedge brush whose inferred axial bounds bevel competes with a
+ * walkable ramp face at almost the same enter fraction.
+ * @returns {import('../../source/engine/common/model/BSP.mjs').BrushModel} brush model fixture
+ */
+function createRampBevelBrushModel() {
+  const model = createBoxBrushModel({ center: [0, 0, 0], halfExtents: [32, 16, 32] });
+  const normal = new Vector(-1, 0, 1);
+  normal.normalize();
+  const rampPlane = {
+    ...createAxisPlane([...normal], -22.627416610717773, 3),
+    signbits: /** @type {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7} */ (1),
+  };
+
+  model.planes.push(rampPlane);
+
+  const side = new BrushSide(model);
+  side.planenum = model.planes.length - 1;
+  side.texinfo = 0;
+  model.brushsides.push(side);
+  model.brushes[0].numsides += 1;
 
   return model;
 }
@@ -157,6 +185,26 @@ describe('BrushTrace', () => {
       assert.equal(trace.fraction, 1.0);
       assert.deepEqual([...trace.endpos], [...end]);
       assert.deepEqual([...trace.plane.normal], [0, 0, 0]);
+    });
+
+    test('prefers a walkable ramp face over a nearly simultaneous axial bevel', () => {
+      const model = createRampBevelBrushModel();
+      const trace = BrushTrace.transformedBoxTrace(
+        model,
+        new Vector(-48.375, 16, -40),
+        new Vector(-34.875, 16, -40),
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+        Vector.origin,
+        Vector.origin,
+      );
+
+      assert.equal(trace.startsolid, false);
+      assert.equal(trace.allsolid, false);
+      assert.ok(trace.fraction > 0.0);
+      assertNear(trace.plane.normal[0], -Math.SQRT1_2, 0.001);
+      assertNear(trace.plane.normal[1], 0.0);
+      assertNear(trace.plane.normal[2], Math.SQRT1_2, 0.001);
     });
 
     test('treats zero-extent submodel traces as point traces', () => {
@@ -323,6 +371,37 @@ describe('BrushTrace', () => {
         BrushTrace.testPosition(worldModel, 0, new Vector(0, 0, 15.9), new Vector(), new Vector()),
         false,
       );
+    });
+
+    test('does not inherit allsolid from solid BSP leaves on tangent brush clips', () => {
+      const worldModel = createBoxBrushModel({ center: [0, 0, 0], halfExtents: [16, 16, 16], submodel: false });
+      const solidLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+        contents: content.CONTENT_SOLID,
+        firstleafbrush: 0,
+        numleafbrushes: 1,
+      });
+
+      worldModel.nodes = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([solidLeaf]);
+      worldModel.leafs = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([solidLeaf]);
+      worldModel.leafbrushes = [0];
+      worldModel.hulls = /** @type {typeof worldModel.hulls} */ ([{ firstclipnode: 0 }]);
+
+      const trace = BrushTrace.boxTrace(
+        worldModel,
+        0,
+        new Vector(0, 0, 40),
+        new Vector(0, 0, 39),
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+      );
+
+      assert.equal(trace.startsolid, false);
+      assert.equal(trace.allsolid, false);
+      assert.equal(trace.fraction, 0.0);
+      assertNear(trace.plane.normal[0], 0.0);
+      assertNear(trace.plane.normal[1], 0.0);
+      assertNear(trace.plane.normal[2], 1.0);
+      assert.deepEqual([...trace.endpos], [0, 0, 40]);
     });
   });
 });
