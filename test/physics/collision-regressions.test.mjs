@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.mjs';
 import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.mjs';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
-import { BrushTrace, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
+import { BrushTrace, Hull, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { UserCmd } from '../../source/engine/network/Protocol.mjs';
@@ -406,6 +406,108 @@ test('BrushTrace.transformedTestPosition keeps exact face contact walkable', () 
     ),
     false,
   );
+});
+
+test('BrushTrace.transformedTestPosition keeps non-axial clip-brush edge contact walkable for player boxes', () => {
+  const model = createBoxBrushModel({ center: [304, -124, 36], halfExtents: [8, 4, 36] });
+  const slopedPlaneIndex = model.planes.length;
+
+  model.planes.push({
+    normal: new Vector(-0.4472135954999579, 0.8944271909999159, 0.0),
+    dist: -246.8615612366939,
+    type: 4,
+    signbits: 1,
+  });
+
+  const slopedSide = new BrushSide(model);
+  slopedSide.planenum = slopedPlaneIndex;
+  slopedSide.texinfo = 0;
+  model.brushsides.push(slopedSide);
+
+  model.brushes[0].numsides += 1;
+  model.brushes[0].contents = content.CONTENT_CLIP;
+
+  assert.equal(
+    BrushTrace.transformedTestPosition(
+      model,
+      new Vector(280, -112, 25),
+      Pmove.PLAYER_MINS,
+      Pmove.PLAYER_MAXS,
+      Vector.origin,
+      Vector.origin,
+    ),
+    true,
+  );
+});
+
+test('BrushTrace.transformedTestPosition keeps single non-axial clip-brush face contact walkable for player boxes', () => {
+  const model = createBoxBrushModel({ center: [336, -124, 36], halfExtents: [8, 4, 36] });
+  const slopedPlaneIndex = model.planes.length;
+
+  model.planes.push({
+    normal: new Vector(0.4472135954999579, 0.8944271909999159, 0.0),
+    dist: 39.310072314871135,
+    type: 4,
+    signbits: 0,
+  });
+
+  const slopedSide = new BrushSide(model);
+  slopedSide.planenum = slopedPlaneIndex;
+  slopedSide.texinfo = 0;
+  model.brushsides.push(slopedSide);
+
+  model.brushes[0].numsides += 1;
+  model.brushes[0].contents = content.CONTENT_CLIP;
+
+  assert.equal(
+    BrushTrace.transformedTestPosition(
+      model,
+      new Vector(353.5, -108.80000305175781, 25),
+      Pmove.PLAYER_MINS,
+      Pmove.PLAYER_MAXS,
+      Vector.origin,
+      Vector.origin,
+    ),
+    true,
+  );
+});
+
+test('BrushTrace.transformedBoxTrace clips tangent sloped clip-brush starts without startsolid', () => {
+  const model = createBoxBrushModel({ center: [336, -124, 36], halfExtents: [8, 4, 36] });
+  const slopedPlaneIndex = model.planes.length;
+
+  model.planes.push({
+    normal: new Vector(0.4472135954999579, 0.8944271909999159, 0.0),
+    dist: 39.310072314871135,
+    type: 4,
+    signbits: 0,
+  });
+
+  const slopedSide = new BrushSide(model);
+  slopedSide.planenum = slopedPlaneIndex;
+  slopedSide.texinfo = 0;
+  model.brushsides.push(slopedSide);
+
+  model.brushes[0].numsides += 1;
+  model.brushes[0].contents = content.CONTENT_CLIP;
+
+  const trace = BrushTrace.transformedBoxTrace(
+    model,
+    new Vector(353.5, -108.80000305175781, 25),
+    new Vector(349.20001220703125, -108.80000305175781, 25),
+    Pmove.PLAYER_MINS,
+    Pmove.PLAYER_MAXS,
+    Vector.origin,
+    Vector.origin,
+  );
+
+  assert.equal(trace.startsolid, false);
+  assert.equal(trace.allsolid, false);
+  assert.equal(trace.fraction, 0.0);
+  assertNear(trace.plane.normal[0], 0.4472135954999579, 0.001);
+  assertNear(trace.plane.normal[1], 0.8944271909999159, 0.001);
+  assertNear(trace.plane.normal[2], 0.0, 0.001);
+  assert.deepEqual([...trace.endpos], [353.5, -108.80000305175781, 25]);
 });
 
 test('BrushTrace.transformedBoxTrace returns world-space impact points', () => {
@@ -920,6 +1022,62 @@ test('BSP29Loader builds legacy clipnode masks from a model headnode subtree', (
   assert.equal(loader._buildAllowedClipnodeMask(clipnodes, 99), null);
 });
 
+test('BSP29Loader inserts BRUSHLIST brushes into both leaves when they touch a BSP split plane', () => {
+  const loader = new BSP29Loader();
+  const loadmodel = new BrushModel();
+  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+    contents: content.CONTENT_EMPTY,
+    firstleafbrush: 0,
+    numleafbrushes: 0,
+  });
+  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+    contents: content.CONTENT_EMPTY,
+    firstleafbrush: 0,
+    numleafbrushes: 0,
+  });
+
+  loadmodel.planes = [createAxisPlane([1, 0, 0], 0, 0)];
+  loadmodel.nodes = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([{
+    contents: 0,
+    plane: loadmodel.planes[0],
+    children: [frontLeaf, backLeaf],
+  }]);
+  loadmodel.leafs = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([frontLeaf, backLeaf]);
+  loadmodel.bspxlumps = {
+    BRUSHLIST: {
+      fileofs: 0,
+      filelen: 44,
+    },
+  };
+
+  const buffer = new ArrayBuffer(44);
+  const view = new DataView(buffer);
+  view.setUint32(0, 1, true); // version
+  view.setUint32(4, 0, true); // modelnum
+  view.setUint32(8, 1, true); // numbrushes
+  view.setUint32(12, 0, true); // numplanes
+  view.setFloat32(16, 0, true); // mins.x touches the split plane exactly
+  view.setFloat32(20, -16, true);
+  view.setFloat32(24, -16, true);
+  view.setFloat32(28, 16, true);
+  view.setFloat32(32, 16, true);
+  view.setFloat32(36, 16, true);
+  view.setInt16(40, content.CONTENT_CLIP, true);
+  view.setUint16(42, 0, true);
+
+  withMockRegistry({
+    Con: { Print() {}, DPrint() {} },
+    Host: { frametime: 0.1 },
+    SV: {},
+  }, () => {
+    loader._loadBrushList(loadmodel, buffer);
+  });
+
+  assert.equal(loadmodel.leafs[0].numleafbrushes, 1);
+  assert.equal(loadmodel.leafs[1].numleafbrushes, 1);
+  assert.deepEqual(loadmodel.leafbrushes, [0, 0]);
+});
+
 test('ServerCollision.hullPointContents treats masked foreign clipnodes as empty space', () => {
   const collision = new ServerCollision();
   const hull = {
@@ -942,6 +1100,36 @@ test('ServerCollision.hullPointContents treats masked foreign clipnodes as empty
     collision.hullPointContents(hull, hull.firstclipnode, new Vector(100, 0, 0)),
     content.CONTENT_EMPTY,
   );
+});
+
+test('Hull respects allowed clipnode masks in point and sweep tests', () => {
+  const hull = Hull.fromModelHull({
+    clip_mins: new Vector(),
+    clip_maxs: new Vector(),
+    firstclipnode: 0,
+    lastclipnode: 1,
+    allowedClipNodes: Uint8Array.from([1, 0]),
+    planes: [
+      createAxisPlane([1, 0, 0], 50, 0),
+      createAxisPlane([1, 0, 0], 0, 0),
+    ],
+    clipnodes: [
+      { planenum: 0, children: [1, content.CONTENT_EMPTY] },
+      { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
+    ],
+  });
+  const trace = new Trace();
+  const start = new Vector(100, 0, 0);
+  const end = new Vector(110, 0, 0);
+
+  trace.endpos.set(end);
+  hull.check(0.0, 1.0, start, end, trace);
+
+  assert.equal(hull.pointContents(start), content.CONTENT_EMPTY);
+  assert.equal(trace.startsolid, false);
+  assert.equal(trace.allsolid, false);
+  assert.equal(trace.fraction, 1.0);
+  assert.deepEqual([...trace.endpos], [...end]);
 });
 
 test('ServerCollision.pointContents respects world hull ownership masks', () => {

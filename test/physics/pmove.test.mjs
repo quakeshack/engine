@@ -3,15 +3,53 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
 import { content } from '../../source/shared/Defs.mjs';
-import { PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
+import { DIST_EPSILON, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
 import { UserCmd } from '../../source/engine/network/Protocol.mjs';
 
 import {
   assertNear,
+  createBoxBrushModel,
   createBrushWorldModel,
   createLegacyWorldModel,
   createPmoveBoxEntity,
 } from './fixtures.mjs';
+
+/**
+ * Build a brush-backed world where a solid wall continues as a clip brush.
+ * The seam at y=0 should remain slideable when the player is already tangent
+ * to the shared x face of both brushes.
+ * @returns {import('../../source/engine/common/model/BSP.mjs').BrushModel} world model fixture
+ */
+function createWallClipSeamWorldModel() {
+  const model = createBrushWorldModel({ axis: 0, center: [24, -32, 0], halfExtents: [8, 32, 64] });
+  const clipModel = createBoxBrushModel({ center: [24, 32, 0], halfExtents: [8, 32, 64], submodel: false });
+  const planeOffset = model.planes.length;
+  const sideOffset = model.brushsides.length;
+
+  model.planes.push(...clipModel.planes);
+
+  for (const side of clipModel.brushsides) {
+    side.planenum += planeOffset;
+  }
+
+  model.brushsides.push(...clipModel.brushsides);
+
+  const clipBrush = clipModel.brushes[0];
+  clipBrush.firstside += sideOffset;
+  clipBrush.contents = content.CONTENT_CLIP;
+  clipBrush._brushTraceCheck = 0;
+
+  model.brushes.push(clipBrush);
+  model.numBrushes = model.brushes.length;
+
+  model.leafbrushes = [0, 1];
+  model.leafs[0].firstleafbrush = 0;
+  model.leafs[0].numleafbrushes = 2;
+  model.leafs[1].firstleafbrush = 2;
+  model.leafs[1].numleafbrushes = 0;
+
+  return model;
+}
 
 /**
  * Build a trace fixture with the requested observable fields.
@@ -161,6 +199,80 @@ describe('PmovePlayer', () => {
     });
   });
 
+  describe('_categorizePosition', () => {
+    test('keeps grounded state on a walkable slope while climbing quickly', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+
+      pmove.clipPlayerMove = (start, end) => {
+        void start;
+        return createTrace({
+          endpos: end.copy(),
+          normal: new Vector(0.0, 0.0, 0.75),
+          ent: 0,
+        });
+      };
+      pmove.staticWorldContents = () => content.CONTENT_EMPTY;
+
+      player.origin.setTo(0, 0, 64);
+      player.velocity.setTo(200, 0, 181);
+      player.onground = 0;
+      player.pmFlags = PMF.ON_GROUND;
+
+      player._categorizePosition();
+
+      assert.equal(player.onground, 0);
+      assert.equal((player.pmFlags & PMF.ON_GROUND) !== 0, true);
+      assert.deepEqual(player.touchindices, [0]);
+    });
+
+    test('still drops ground while moving upward fast after leaving the floor', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      pmove.clipPlayerMove = () => {
+        traceCalls += 1;
+        throw new Error('airborne upward guard should skip ground tracing');
+      };
+      pmove.staticWorldContents = () => content.CONTENT_EMPTY;
+
+      player.origin.setTo(0, 0, 64);
+      player.velocity.setTo(200, 0, 181);
+      player.onground = null;
+      player.pmFlags = 0;
+
+      player._categorizePosition();
+
+      assert.equal(player.onground, null);
+      assert.equal((player.pmFlags & PMF.ON_GROUND) !== 0, false);
+      assert.equal(traceCalls, 0);
+    });
+
+    test('ignores a stale grounded flag while moving upward fast', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      pmove.clipPlayerMove = () => {
+        traceCalls += 1;
+        throw new Error('stale PMF.ON_GROUND should not preserve a ground trace');
+      };
+      pmove.staticWorldContents = () => content.CONTENT_EMPTY;
+
+      player.origin.setTo(0, 0, 64);
+      player.velocity.setTo(0, 0, 181);
+      player.onground = null;
+      player.pmFlags = PMF.ON_GROUND;
+
+      player._categorizePosition();
+
+      assert.equal(player.onground, null);
+      assert.equal((player.pmFlags & PMF.ON_GROUND) !== 0, false);
+      assert.equal(traceCalls, 0);
+    });
+  });
+
   describe('waterjump movement', () => {
     test('applies gravity and clears waterjump once the upward boost turns downward', () => {
       const pmove = new Pmove();
@@ -249,6 +361,82 @@ describe('PmovePlayer', () => {
       assert.deepEqual([...player.origin], [8, 0, 0]);
       assert.deepEqual([...player.velocity], [20, 0, 0]);
       assert.deepEqual(player.touchindices, [3, 4]);
+    });
+
+    test('skips the stair retry when the first slide already follows a walkable slope', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let slideCalls = 0;
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(30, 0, 0);
+      player.onground = 0;
+      player._slideMove = () => {
+        slideCalls += 1;
+        player.origin.setTo(8, 0, 4);
+        player.velocity.setTo(20, 0, 3);
+      };
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        assert.deepEqual([...start], [8, 0, 4]);
+        assert.deepEqual([...end], [8, 0, -14]);
+
+        return createTrace({
+          endpos: new Vector(8, 0, 3.5),
+          fraction: 0.03,
+          normal: new Vector(0, 0.75, 0.75),
+          ent: 5,
+        });
+      };
+
+      player._stepSlideMove();
+
+      assert.equal(slideCalls, 1);
+      assert.equal(traceCalls, 1);
+      assert.deepEqual([...player.origin], [8, 0, 3.5]);
+      assert.deepEqual([...player.velocity], [20, 0, 3]);
+      assert.deepEqual(player.touchindices, [5]);
+    });
+  });
+
+  describe('_slideMove', () => {
+    test('slides past a wall-to-clip seam and snap keeps the seam walkable', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+
+      pmove.setWorldmodel(createWallClipSeamWorldModel());
+
+      // Approach the wall diagonally so the first bump clips into the wall,
+      // then the remaining movement has to continue across the solid-to-clip seam.
+      player.origin.setTo(-8, -48, 0);
+      player.velocity.setTo(32, 96, 0);
+      player.frametime = 1.0;
+
+      player._slideMove();
+
+      // Raw brush traces keep the player DIST_EPSILON on the near side of the
+      // expanded face. The gameplay path snaps this back to the exact seam.
+      assertNear(player.origin[0], -DIST_EPSILON, 0.001);
+      assertNear(player.origin[1], 48.0, 0.001);
+      assertNear(player.origin[2], 0.0, 0.001);
+      assertNear(player.velocity[0], 0.0, 0.001);
+      assertNear(player.velocity[1], 96.0, 0.001);
+      assertNear(player.velocity[2], 0.0, 0.001);
+
+      player._snapPosition();
+
+      assertNear(player.origin[0], 0.0, 0.001);
+      assertNear(player.origin[1], 48.0, 0.001);
+      assert.equal(pmove.isValidPlayerPosition(player.origin), true);
+
+      const continuedTrace = pmove.clipPlayerMove(player.origin, new Vector(0, 144, 0));
+      assert.equal(continuedTrace.startsolid, false);
+      assert.equal(continuedTrace.allsolid, false);
+      assert.equal(continuedTrace.fraction, 1.0);
+      assert.deepEqual([...continuedTrace.endpos], [0, 144, 0]);
     });
   });
 });

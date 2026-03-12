@@ -4,7 +4,7 @@
 
 You are working on QuakeShack, a modern JavaScript port of the Quake 1 engine integrated with Cloudflare services.
 
-Be a good boy scout, whenever touching something, make sure it’s cleaner than before. Refactor and improve code quality, readability, and maintainability whenever possible. Follow the coding conventions and architectural rules outlined in the documentation and instruction files.
+Be a good boy scout, whenever touching something, make sure it’s cleaner than before. Refactor and improve code quality, readability, and maintainability whenever possible. Follow the coding conventions and architectural rules outlined in the documentation and instruction files. Also write unit tests for things you work on, and make sure all existing tests pass.
 
 ## Project Structure & Architecture
 

@@ -187,6 +187,8 @@ export class Hull { // hull_t
     this.clipMaxs = new Vector();
     this.firstClipNode = 0;
     this.lastClipNode = 0;
+    /** @type {Uint8Array|null} */
+    this.allowedClipNodes = null;
     /** @type {ClipNode[]} */
     this.clipNodes = [];
     /** @type {Plane[]} */
@@ -199,6 +201,7 @@ export class Hull { // hull_t
     newHull.clipMaxs = hull.clip_maxs.copy();
     newHull.firstClipNode = hull.firstclipnode;
     newHull.lastClipNode = hull.lastclipnode;
+    newHull.allowedClipNodes = hull.allowedClipNodes ?? null;
     newHull.clipNodes = hull.clipnodes.map((clipnode) => {
       const node = new ClipNode(clipnode.planenum);
       node.children[0] = clipnode.children[0];
@@ -226,6 +229,10 @@ export class Hull { // hull_t
   pointContents(point, num = this.firstClipNode) {
     // as long as num is a valid node, keep going down the tree
     while (num >= 0) {
+      if (this.allowedClipNodes !== null && this.allowedClipNodes[num] !== 1) {
+        return content.CONTENT_EMPTY;
+      }
+
       console.assert(num >= this.firstClipNode && num <= this.lastClipNode, 'valid hull node', num);
 
       console.assert(!!this.clipNodes[num], 'valid hull node', num);
@@ -279,6 +286,12 @@ export class Hull { // hull_t
         trace.startsolid = true;
       }
       return true; // going down the tree
+    }
+
+    if (this.allowedClipNodes !== null && this.allowedClipNodes[num] !== 1) {
+      trace.allsolid = false;
+      trace.inopen = true;
+      return true;
     }
 
     console.assert(num >= this.firstClipNode && num <= this.lastClipNode, 'valid node number', num);
@@ -927,6 +940,13 @@ export class BrushTrace {
 
       const d1 = plane.normal.dot(position) - dist;
 
+      if (plane.type >= 3) {
+        if (d1 >= -DIST_EPSILON) {
+          return false;
+        }
+        continue;
+      }
+
       // Exact face contact must remain walkable. Classifying d1 === 0 as
       // inside turns resting contact on brush-based movers into a false stuck
       // state, which can make pushers think the player is blocking them.
@@ -1135,12 +1155,26 @@ export class BrushTrace {
       const d1 = plane.normal.dot(ctx.start) - dist;
       const d2 = plane.normal.dot(ctx.end) - dist;
 
-      if (d2 >= 0) { getout = true; }
-      if (d1 >= 0) { startout = true; }
+      const nonAxialContact = plane.type >= 3;
+      const nearStart = nonAxialContact && d1 >= -DIST_EPSILON;
+      const nearEnd = nonAxialContact && d2 >= -DIST_EPSILON;
+
+      if (d2 >= 0 || nearEnd) { getout = true; }
+      if (d1 >= 0 || nearStart) { startout = true; }
 
       // If completely in front of face, no intersection with this brush
       if (d1 >= 0 && d2 >= d1) {
         return;
+      }
+
+      // Starting tangent to a non-axial plane and moving deeper into the brush
+      // should produce an immediate clip plane, not a startsolid classification.
+      if (nearStart && d2 < -DIST_EPSILON) {
+        if (enterfrac < 0) {
+          enterfrac = 0;
+          clipplane = plane;
+        }
+        continue;
       }
 
       // Exact face contact must remain a walkable contact. Treat only
@@ -1358,11 +1392,129 @@ export class PhysEnt { // physent_t
   }
 
   /**
+   * Emit nearby blocking brushes around a debug position when brush and hull comparisons disagree.
+   * @param {Vector} position world-space position to inspect
+   * @param {string} label debug label for the sampled position
+   */
+  _debugLogNearbyBlockingBrushes(position, label) {
+    const model = this.brushCollisionModel;
+    const brushes = model?.brushes;
+    const planes = model?.planes;
+    const brushsides = model?.brushsides;
+
+    if (!model || !brushes || !planes || !brushsides) {
+      return;
+    }
+
+    const firstBrush = model.firstBrush ?? 0;
+    const lastBrush = firstBrush + (model.numBrushes ?? brushes.length);
+    /** @type {{ index: number, contents: number, numsides: number, nearestPlaneDistance: number, touchingPlanes: number, mins: Vector, maxs: Vector, sideSummaries: string[] }[]} */
+    const candidates = [];
+
+    for (let brushIndex = firstBrush; brushIndex < lastBrush; brushIndex++) {
+      const brush = brushes[brushIndex];
+      if (!brush || brush.numsides === 0) {
+        continue;
+      }
+      if (brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_CLIP) {
+        continue;
+      }
+
+      const expandedMinX = brush.mins[0] - Pmove.PLAYER_MAXS[0] - DIST_EPSILON;
+      const expandedMinY = brush.mins[1] - Pmove.PLAYER_MAXS[1] - DIST_EPSILON;
+      const expandedMinZ = brush.mins[2] - Pmove.PLAYER_MAXS[2] - DIST_EPSILON;
+      const expandedMaxX = brush.maxs[0] - Pmove.PLAYER_MINS[0] + DIST_EPSILON;
+      const expandedMaxY = brush.maxs[1] - Pmove.PLAYER_MINS[1] + DIST_EPSILON;
+      const expandedMaxZ = brush.maxs[2] - Pmove.PLAYER_MINS[2] + DIST_EPSILON;
+
+      if (position[0] < expandedMinX || position[0] > expandedMaxX
+        || position[1] < expandedMinY || position[1] > expandedMaxY
+        || position[2] < expandedMinZ || position[2] > expandedMaxZ) {
+        continue;
+      }
+
+      let nearestPlaneDistance = Number.POSITIVE_INFINITY;
+      let touchingPlanes = 0;
+      /** @type {{ distance: number, summary: string }[]} */
+      const sideSummaries = [];
+
+      for (let sideIndex = 0; sideIndex < brush.numsides; sideIndex++) {
+        const side = brushsides[brush.firstside + sideIndex];
+        const plane = planes[side.planenum];
+        let dist = plane.dist;
+
+        for (let axis = 0; axis < 3; axis++) {
+          dist -= (plane.normal[axis] < 0 ? Pmove.PLAYER_MAXS[axis] : Pmove.PLAYER_MINS[axis]) * plane.normal[axis];
+        }
+
+        const planeDistance = plane.normal.dot(position) - dist;
+        nearestPlaneDistance = Math.min(nearestPlaneDistance, Math.abs(planeDistance));
+        if (Math.abs(planeDistance) <= DIST_EPSILON) {
+          touchingPlanes += 1;
+        }
+
+        sideSummaries.push({
+          distance: Math.abs(planeDistance),
+          summary: `side=${sideIndex} normal=(${plane.normal[0].toFixed(3)},${plane.normal[1].toFixed(3)},${plane.normal[2].toFixed(3)}) planeDist=${plane.dist.toFixed(3)} adjusted=${dist.toFixed(3)} delta=${planeDistance.toFixed(5)}`,
+        });
+      }
+
+      sideSummaries.sort((left, right) => left.distance - right.distance);
+
+      candidates.push({
+        index: brushIndex,
+        contents: brush.contents,
+        numsides: brush.numsides,
+        nearestPlaneDistance,
+        touchingPlanes,
+        mins: brush.mins,
+        maxs: brush.maxs,
+        sideSummaries: sideSummaries.slice(0, 4).map((entry) => entry.summary),
+      });
+    }
+
+    candidates.sort((left, right) => left.nearestPlaneDistance - right.nearestPlaneDistance);
+
+    if (candidates.length === 0) {
+      console.warn(`  ${label}: no nearby solid/clip brushes in expanded bounds`);
+      return;
+    }
+
+    for (const candidate of candidates.slice(0, 8)) {
+      console.warn(
+        `  ${label}: brush[${candidate.index}] contents=${candidate.contents}`,
+        `numsides=${candidate.numsides}`,
+        `nearestPlaneDistance=${candidate.nearestPlaneDistance.toFixed(5)}`,
+        `touchingPlanes=${candidate.touchingPlanes}`,
+        `mins=${candidate.mins} maxs=${candidate.maxs}`,
+      );
+      for (const sideSummary of candidate.sideSummaries) {
+        console.warn(`    ${sideSummary}`);
+      }
+    }
+  }
+
+  /**
    * Legacy hull comparisons are only meaningful for axis-aligned brush traces.
    * @returns {boolean} true if brush-vs-hull debug comparison is valid
    */
   get canCompareBrushAgainstHull() {
     return this.hulls.length > 0 && this.angles.isOrigin();
+  }
+
+  /**
+   * Legacy hull comparisons are only meaningful for axial contact planes.
+   * @param {Vector} normal candidate contact normal
+   * @returns {boolean} true when the normal is axis-aligned
+   */
+  static _isAxialNormal(normal) {
+    const ax = Math.abs(normal[0]);
+    const ay = Math.abs(normal[1]);
+    const az = Math.abs(normal[2]);
+
+    return (Math.abs(ax - 1.0) <= DIST_EPSILON && ay <= DIST_EPSILON && az <= DIST_EPSILON)
+      || (ax <= DIST_EPSILON && Math.abs(ay - 1.0) <= DIST_EPSILON && az <= DIST_EPSILON)
+      || (ax <= DIST_EPSILON && ay <= DIST_EPSILON && Math.abs(az - 1.0) <= DIST_EPSILON);
   }
 
   /**
@@ -1459,8 +1611,10 @@ export class PhysEnt { // physent_t
 
         const brushBlocks = brushTrace.fraction < 1.0 || brushTrace.startsolid || brushTrace.allsolid;
         const hullBlocks = hullTrace.fraction < 1.0 || hullTrace.startsolid || hullTrace.allsolid;
+        const comparableContact = PhysEnt._isAxialNormal(brushTrace.plane.normal)
+          || PhysEnt._isAxialNormal(hullTrace.plane.normal);
 
-        if (brushBlocks !== hullBlocks) {
+        if (brushBlocks !== hullBlocks && comparableContact) {
           const model = this.brushModel;
           console.warn(
             `[Pmove MISMATCH] edictId=${this.edictId} model=${model?.name ?? 'world'}`,
@@ -1469,6 +1623,11 @@ export class PhysEnt { // physent_t
             `\n  start=${start} end=${end}`,
             model ? `\n  brushRange: first=${model.firstBrush} num=${model.numBrushes}` : '',
           );
+
+          if (!brushBlocks && hullBlocks) {
+            this._debugLogNearbyBlockingBrushes(start, 'start-nearby');
+            this._debugLogNearbyBlockingBrushes(end, 'end-nearby');
+          }
 
           if (brushBlocks && !hullBlocks && model) {
             // Brush blocks but hull doesn't — log which specific brush is the culprit
@@ -1529,6 +1688,10 @@ export class PhysEnt { // physent_t
             `\n  position=${position}`,
             model ? `\n  brushRange: first=${model.firstBrush} num=${model.numBrushes}` : '',
           );
+
+          if (brushResult && !hullResult) {
+            this._debugLogNearbyBlockingBrushes(position, 'position-nearby');
+          }
 
           if (!brushResult && hullResult && model) {
             // Brush says solid, hull says valid — log culprit brush
@@ -1860,12 +2023,20 @@ export class PmovePlayer { // pmove_t (player state only)
     // --- Ground check ---
     const point = this.origin.copy();
     point[2] -= this._pmove.configuration.groundCheckDepth;
+    const _dbg = PmovePlayer.DEBUG;
+    const hadGroundContact = this.onground !== null;
 
-    if (this.velocity[2] > 180) {
+    if (this.velocity[2] > 180 && !hadGroundContact) {
       // moving up fast enough, not on ground
+      if (_dbg) {
+        console.log(`[_categorizePosition] skip ground trace: vz=${this.velocity[2].toFixed(3)} priorGround=${hadGroundContact}`);
+      }
       this.pmFlags &= ~PMF.ON_GROUND;
       this.onground = null;
     } else {
+      if (_dbg && this.velocity[2] > 180 && hadGroundContact) {
+        console.log(`[_categorizePosition] preserve ground trace: vz=${this.velocity[2].toFixed(3)} priorGround=${hadGroundContact}`);
+      }
       const trace = this._pmove.clipPlayerMove(this.origin, point);
 
       if (!trace.ent && trace.ent !== 0) {
@@ -2414,6 +2585,7 @@ export class PmovePlayer { // pmove_t (player state only)
     const startOrigin = this.#stepStartOrigin.set(this.origin);
     const startVelocity = this.#stepStartVelocity.set(this.velocity);
     const wasOnGround = this.onground !== null;
+    let slopeContactTrace = null;
 
     // try sliding at current height first
     this._slideMove();
@@ -2435,12 +2607,25 @@ export class PmovePlayer { // pmove_t (player state only)
       if (!stickTrace.allsolid && stickTrace.fraction < 1.0
           && stickTrace.plane.normal[2] >= MIN_STEP_NORMAL
           && stickTrace.plane.normal[2] < 1.0 // slope, not flat stair surface
-          && stickTrace.endpos[2] < this.origin[2] - DIST_EPSILON) {
-        this.origin.set(stickTrace.endpos);
+      ) {
+        if (stickTrace.endpos[2] < this.origin[2] - DIST_EPSILON) {
+          this.origin.set(stickTrace.endpos);
+        }
         if (stickTrace.ent !== null) {
           this.touchindices.push(stickTrace.ent);
         }
+        slopeContactTrace = stickTrace;
       }
+    }
+
+    // A walkable non-flat slope is already handled by the slide path above.
+    // Running the stair step-up retry on the same frame can alternate between
+    // two nearly equivalent positions and cause jitter on steep ramps.
+    if (slopeContactTrace !== null) {
+      if (PmovePlayer.DEBUG) {
+        console.log(`[_stepSlideMove] skip step-up: slope normal=${slopeContactTrace.plane.normal} ent=${slopeContactTrace.ent}`);
+      }
+      return;
     }
 
     const downOrigin = this.#stepDownOrigin.set(this.origin);

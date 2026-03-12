@@ -2344,7 +2344,11 @@ export class BSP29Loader extends ModelLoader {
       if (d1 >= 0) {
         insertBrushRecursive(node.children[0], brushIdx, brush);
       }
-      if (d2 < 0) {
+      // Brushes that touch the split plane on their back-most extent must be
+      // inserted into both leaves. Otherwise exact-boundary player positions
+      // can miss a clip brush in one leaf and hit it only after a tiny move
+      // into the adjacent leaf, producing false stuck/allsolid behavior.
+      if (d2 <= 0) {
         insertBrushRecursive(node.children[1], brushIdx, brush);
       }
     };
