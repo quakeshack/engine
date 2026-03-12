@@ -6,6 +6,9 @@
   "repository": "https://github.com/chrisnew/quakeshack",
   "license": "GPL-2.0-only",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@stylistic/eslint-plugin": "^5.2.2",

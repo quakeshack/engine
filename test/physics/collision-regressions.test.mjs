@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
@@ -1402,7 +1402,8 @@ test('ServerCollision.traceWorldLine keeps legacy world hull traces out of forei
   });
 });
 
-test('ServerCollision.move keeps outer legacy hull split points stable across deeper recursion', () => {
+describe('ServerCollision.move legacy hull recursion regressions', () => {
+  test('keeps outer legacy hull split points stable across deeper recursion', () => {
   const collision = new ServerCollision();
   const worldHull = {
     clip_mins: new Vector(),
@@ -1432,44 +1433,45 @@ test('ServerCollision.move keeps outer legacy hull split points stable across de
   });
   const worldEdict = createMockEdict(worldEntity);
 
-  withMockRegistry({
-    Con: {
-      Print() {},
-      DPrint() {},
-    },
-    Host: { frametime: 0.1 },
-    SV: {
-      area: {
-        hullForEntity() {
-          return worldHull;
-        },
-        tree: {
-          queryAABB() {
-            return [];
+    withMockRegistry({
+      Con: {
+        Print() {},
+        DPrint() {},
+      },
+      Host: { frametime: 0.1 },
+      SV: {
+        area: {
+          hullForEntity() {
+            return worldHull;
+          },
+          tree: {
+            queryAABB() {
+              return [];
+            },
           },
         },
+        server: {
+          edicts: [worldEdict],
+          worldmodel: worldModel,
+        },
       },
-      server: {
-        edicts: [worldEdict],
-        worldmodel: worldModel,
-      },
-    },
-  }, () => {
-    const trace = collision.move(
-      new Vector(0, 0, 0),
-      Vector.origin,
-      Vector.origin,
-      new Vector(100, 0, 0),
-      0,
-      null,
-    );
+    }, () => {
+      const trace = collision.move(
+        new Vector(0, 0, 0),
+        Vector.origin,
+        Vector.origin,
+        new Vector(100, 0, 0),
+        0,
+        null,
+      );
 
-    assert.equal(trace.startsolid, false);
-    assert.equal(trace.ent, worldEdict);
-    assertNear(trace.fraction, 0.0996875, 0.000001);
-    assertNear(trace.endpos[0], 9.96875, 0.000001);
-    assertNear(trace.endpos[1], 0);
-    assertNear(trace.endpos[2], 0);
+      assert.equal(trace.startsolid, false);
+      assert.equal(trace.ent, worldEdict);
+      assertNear(trace.fraction, 0.0996875, 0.000001);
+      assertNear(trace.endpos[0], 9.96875, 0.000001);
+      assertNear(trace.endpos[1], 0);
+      assertNear(trace.endpos[2], 0);
+    });
   });
 
   test('ServerCollision.move ignores zero-volume touched entities for boxed movers', () => {
@@ -1622,7 +1624,7 @@ test('ServerCollision.move keeps outer legacy hull split points stable across de
 
       const malformedTraceAssertions = assertions.filter((entry) =>
         entry.condition === false
-        && entry.args[0] === 'ServerCollision._traceTouch produced malformed trace'
+        && entry.args[0] === 'ServerCollision._traceTouch produced malformed trace',
       );
 
       assert.equal(malformedTraceAssertions.length, 1);
