@@ -508,7 +508,7 @@ export class Navigation {
    * @returns {number} fraction of unobstructed trace, 0 = completely blocked, 1 = fully clear
    */
   #testTraceStatic(startpos, endpos, hullNum) {
-    const trace = SV.collision.traceWorldLine(startpos.copy(), endpos.copy(), hullNum);
+    const trace = SV.collision.traceStaticWorldLine(startpos.copy(), endpos.copy(), hullNum);
     endpos.set(trace.endpos);
     if (trace.allsolid) {
       return -1;
