@@ -163,20 +163,8 @@ R.GetDynamicLightSurfaceImpact = function(light, surf) {
  * @returns {boolean} True when the light has line of sight to the surface.
  */
 R.IsDynamicLightSurfaceVisible = function(light, surf, impact) {
-  const trace = {
-    fraction: 1.0,
-    allsolid: true,
-    startsolid: false,
-    endpos: impact,
-    plane: {
-      normal: Vector.origin.copy(),
-      dist: 0.0,
-    },
-    ent: null,
-  };
   const end = impact.copy().add(surf.normal.copy().multiply(1.0));
-
-  SV.collision.recursiveHullCheck(CL.state.worldmodel.hulls[0], 0, 0.0, 1.0, light.origin, end, trace);
+  const trace = SV.collision.traceStaticWorldLine(light.origin, end);
 
   return !trace.startsolid && !trace.allsolid && trace.fraction === 1.0;
 };
@@ -2068,10 +2056,7 @@ R.InitDecals = function() {
     const vectors = CL.state.viewangles.angleVectors();
     const forward = vectors.forward;
     const end = start.copy().add(forward.copy().multiply(8192));
-
-    const trace = { plane: {} };
-
-    SV.collision.recursiveHullCheck(CL.state.worldmodel.hulls[0], 0, 0.0, 1.0, start, end, trace);
+    const trace = SV.collision.traceStaticWorldLine(start, end);
 
     if (trace.allsolid || trace.startsolid || trace.fraction === 1.0) {
       return;

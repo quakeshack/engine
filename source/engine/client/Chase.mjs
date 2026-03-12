@@ -30,12 +30,11 @@ export default class Chase {
   static Update2() { // side scroller style
     const { forward, right } = CL.state.viewangles.angleVectors();
     const back = forward.copy().subtract(new Vector(0.0, 128.0, 0.0));
-    const trace = { plane: {} };
     const org = R.refdef.vieworg;
-    SV.collision.recursiveHullCheck(CL.state.worldmodel.hulls[0], 0, 0.0, 1.0, org, new Vector(
+    const trace = SV.collision.traceWorldLine(org, new Vector(
       org[0] + 4096.0 * right[0],
       org[1] + 4096.0 * right[1],
-      org[2] + 4096.0 * right[2]), trace);
+      org[2] + 4096.0 * right[2]));
     const stop = trace.endpos;
     stop[2] -= org[2];
     const dist = Math.max(1.0, (stop[0] - org[0]) * right[0] + (stop[1] - org[1]) * right[1] + stop[2] * right[2]);
@@ -49,11 +48,11 @@ export default class Chase {
 
   static Update() {
     const { forward, right } = CL.state.viewangles.angleVectors();
-    const trace = { plane: {} }; const org = R.refdef.vieworg;
-    SV.collision.recursiveHullCheck(CL.state.worldmodel.hulls[0], 0, 0.0, 1.0, org, new Vector(
+    const org = R.refdef.vieworg;
+    const trace = SV.collision.traceWorldLine(org, new Vector(
       org[0] + 4096.0 * forward[0],
       org[1] + 4096.0 * forward[1],
-      org[2] + 4096.0 * forward[2]), trace);
+      org[2] + 4096.0 * forward[2]));
     const stop = trace.endpos;
     stop[2] -= org[2];
     let dist = (stop[0] - org[0]) * forward[0] + (stop[1] - org[1]) * forward[1] + stop[2] * forward[2];
@@ -65,8 +64,7 @@ export default class Chase {
     org2[0] -= forward[0] * Chase.back.value + right[0] * Chase.right.value;
     org2[1] -= forward[1] * Chase.back.value + right[1] * Chase.right.value;
     org2[2] += Chase.up.value;
-    const trace2 = { plane: {} };
-    SV.collision.recursiveHullCheck(CL.state.worldmodel.hulls[0], 0, 0.0, 1.0, org, org2, trace2);
+    const trace2 = SV.collision.traceWorldLine(org, org2);
     if (trace2.endpos) {
       org.set(trace2.endpos);
     } else {

@@ -749,12 +749,9 @@ export default class ShadowMap {
    * @returns {boolean} `true` if the line is unobstructed
    */
   static _traceVisible(start, end) {
-    const trace = { plane: {} };
-    SV.collision.recursiveHullCheck(
-      CL.state.worldmodel.hulls[0], 0, 0.0, 1.0,
+    const trace = SV.collision.traceStaticWorldLine(
       new Vector(start[0], start[1], start[2]),
       new Vector(end[0], end[1], end[2]),
-      trace,
     );
     return trace.fraction === 1.0 && !trace.allsolid && !trace.startsolid;
   }

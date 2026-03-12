@@ -5,6 +5,7 @@ import Vector from '../../source/shared/Vector.mjs';
 import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.mjs';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
 import { BrushTrace, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
+import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { UserCmd } from '../../source/engine/network/Protocol.mjs';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
@@ -426,6 +427,31 @@ test('BrushTrace.transformedBoxTrace returns world-space impact points', () => {
   assertNear(trace.endpos[2], 0);
 });
 
+test('BrushTrace.transformedBoxTrace keeps exact floor contact out of startsolid', () => {
+  const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
+  const origin = new Vector(100, 0, 0);
+  const start = new Vector(100, 0, 40);
+  const end = new Vector(100, 0, 39);
+
+  const trace = BrushTrace.transformedBoxTrace(
+    model,
+    start,
+    end,
+    Pmove.PLAYER_MINS,
+    Pmove.PLAYER_MAXS,
+    origin,
+    Vector.origin,
+  );
+
+  assert.equal(trace.startsolid, false);
+  assert.equal(trace.allsolid, false);
+  assert.equal(trace.fraction, 0.0);
+  assertNear(trace.plane.normal[0], 0.0);
+  assertNear(trace.plane.normal[1], 0.0);
+  assertNear(trace.plane.normal[2], 1.0);
+  assert.deepEqual([...trace.endpos], [...start]);
+});
+
 test('BrushTrace transformed tests honor rotated entity angles', () => {
   const model = createBoxBrushModel({ halfExtents: [8, 32, 16] });
   const point = new Vector(20, 0, 0);
@@ -580,6 +606,30 @@ test('Pmove server-style smoke setup mirrors TestServerside assertions', () => {
   assert.equal(playerMoveTraceHigher.fraction, 1.0);
 });
 
+test('Pmove.traceStaticWorldPlayerMove traces world only and ignores dynamic physents', () => {
+  const worldModel = createLegacyWorldModel(
+    new Vector(-256, -256, -128),
+    new Vector(256, 256, 128),
+  );
+  const pmove = new Pmove();
+
+  pmove.setWorldmodel(worldModel);
+  pmove.addEntity(createPmoveBoxEntity({
+    origin: new Vector(64, 0, 0),
+    mins: new Vector(-16, -16, -16),
+    maxs: new Vector(16, 16, 16),
+    num: 1,
+  }));
+
+  const staticWorldTrace = pmove.traceStaticWorldPlayerMove(new Vector(0, 0, 0), new Vector(100, 0, 0));
+  const aggregateTrace = pmove.clipPlayerMove(new Vector(0, 0, 0), new Vector(100, 0, 0));
+
+  assert.equal(staticWorldTrace.fraction, 1.0);
+  assert.deepEqual([...staticWorldTrace.endpos], [100, 0, 0]);
+  assert.ok(aggregateTrace.fraction < 1.0);
+  assertNear(aggregateTrace.endpos[0], 31.96875, 0.001);
+});
+
 test('Pmove brush-list world path supports server-style vertical smoke checks', () => {
   const worldModel = createBrushWorldModel({ axis: 2, center: [0, 0, 144], halfExtents: [512, 512, 16] });
   const pmove = new Pmove();
@@ -606,6 +656,29 @@ test('Pmove brush-list world path supports server-style vertical smoke checks', 
   assert.equal(playerMoveTraceHigher instanceof Trace, true);
   assert.equal(playerMoveTraceHigher.ent, null);
   assert.equal(playerMoveTraceHigher.fraction, 1.0);
+});
+
+test('Pmove.staticWorldContents uses brush-backed world solids before leaf contents', () => {
+  const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
+  const pmove = new Pmove();
+
+  worldModel.leafs[0].contents = content.CONTENT_WATER;
+
+  pmove.setWorldmodel(worldModel);
+
+  assert.equal(pmove.staticWorldContents(new Vector(64, 0, 0)), content.CONTENT_SOLID);
+  assert.equal(pmove.staticWorldContents(new Vector(8, 0, 0)), content.CONTENT_WATER);
+});
+
+test('Pmove.staticWorldContents normalizes brush-backed current leaves to water', () => {
+  const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
+  const pmove = new Pmove();
+
+  worldModel.leafs[0].contents = content.CONTENT_CURRENT_UP;
+
+  pmove.setWorldmodel(worldModel);
+
+  assert.equal(pmove.staticWorldContents(new Vector(8, 0, 0)), content.CONTENT_WATER);
 });
 
 test('PmovePlayer.move integrates one grounded movement frame against a world model', () => {
@@ -671,6 +744,10 @@ test('ServerCollision.move traces world brush sweeps through shared brush state'
     Host: { frametime: 0.1 },
     SV: {
       area: {
+        hullForEntity(_ent, _mins, _maxs, offset) {
+          offset.clear();
+          return worldModel.hulls[0];
+        },
         tree: {
           queryAABB() {
             return [];
@@ -698,6 +775,633 @@ test('ServerCollision.move traces world brush sweeps through shared brush state'
     assertNear(trace.endpos[0], 47.96875, 0.001);
     assertNear(trace.endpos[1], 0);
     assertNear(trace.endpos[2], 0);
+  });
+});
+
+test('ServerCollision.move prefers a later legacy hull hit over an earlier world brush point hit', () => {
+  const collision = new ServerCollision();
+  const worldModel = createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush' });
+  const worldEntity = createMockEntity({
+    origin: new Vector(),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_NONE,
+    solidType: solid.SOLID_BSP,
+  });
+  const worldEdict = createMockEdict(worldEntity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict],
+        worldmodel: worldModel,
+      },
+    },
+  }, () => {
+    collision._traceBrushModel = () => ({
+      fraction: 0.25,
+      allsolid: false,
+      startsolid: false,
+      endpos: new Vector(25, 0, 0),
+      plane: { normal: new Vector(-1, 0, 0), dist: -25 },
+      inopen: true,
+      inwater: false,
+    });
+
+    collision._clipMoveToHullState = (state, start, mins, maxs, end) => {
+      if (state.ent !== worldEdict) {
+        return {
+          fraction: 1.0,
+          allsolid: false,
+          startsolid: false,
+          endpos: end.copy(),
+          plane: { normal: new Vector(), dist: 0.0 },
+          ent: null,
+          inopen: false,
+          inwater: false,
+        };
+      }
+
+      return {
+        fraction: 0.5,
+        allsolid: false,
+        startsolid: false,
+        endpos: new Vector(50, 0, 0),
+        plane: { normal: new Vector(-1, 0, 0), dist: -50 },
+        ent: worldEdict,
+        inopen: true,
+        inwater: false,
+      };
+    };
+
+    const trace = collision.move(
+      new Vector(0, 0, 0),
+      Vector.origin,
+      Vector.origin,
+      new Vector(100, 0, 0),
+      0,
+      null,
+    );
+
+    assert.equal(trace.fraction, 0.5);
+    assert.equal(trace.ent, worldEdict);
+    assert.deepEqual([...trace.endpos], [50, 0, 0]);
+  });
+});
+
+test('BSP29Loader builds legacy clipnode masks from a model headnode subtree', () => {
+  const loader = new BSP29Loader();
+  const clipnodes = [
+    { planenum: 0, children: [1, 2] },
+    { planenum: 1, children: [content.CONTENT_EMPTY, 3] },
+    { planenum: 2, children: [4, content.CONTENT_SOLID] },
+    { planenum: 3, children: [content.CONTENT_SOLID, content.CONTENT_EMPTY] },
+    { planenum: 4, children: [content.CONTENT_EMPTY, content.CONTENT_SOLID] },
+  ];
+
+  const worldMask = loader._buildAllowedClipnodeMask(clipnodes, 0);
+  const submodelMask = loader._buildAllowedClipnodeMask(clipnodes, 2);
+
+  assert.deepEqual(Array.from(worldMask), [1, 1, 1, 1, 1]);
+  assert.deepEqual(Array.from(submodelMask), [0, 0, 1, 0, 1]);
+  assert.equal(loader._buildAllowedClipnodeMask(clipnodes, -1), null);
+  assert.equal(loader._buildAllowedClipnodeMask(clipnodes, 99), null);
+});
+
+test('ServerCollision.hullPointContents treats masked foreign clipnodes as empty space', () => {
+  const collision = new ServerCollision();
+  const hull = {
+    clip_mins: new Vector(),
+    clip_maxs: new Vector(),
+    firstclipnode: 0,
+    lastclipnode: 1,
+    allowedClipNodes: Uint8Array.from([1, 0]),
+    planes: [
+      createAxisPlane([1, 0, 0], 50, 0),
+      createAxisPlane([1, 0, 0], 0, 0),
+    ],
+    clipnodes: [
+      { planenum: 0, children: [1, content.CONTENT_EMPTY] },
+      { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
+    ],
+  };
+
+  assert.equal(
+    collision.hullPointContents(hull, hull.firstclipnode, new Vector(100, 0, 0)),
+    content.CONTENT_EMPTY,
+  );
+});
+
+test('ServerCollision.pointContents respects world hull ownership masks', () => {
+  const collision = new ServerCollision();
+  const worldHull = {
+    clip_mins: new Vector(),
+    clip_maxs: new Vector(),
+    firstclipnode: 0,
+    lastclipnode: 1,
+    allowedClipNodes: Uint8Array.from([1, 0]),
+    planes: [
+      createAxisPlane([1, 0, 0], 50, 0),
+      createAxisPlane([1, 0, 0], 0, 0),
+    ],
+    clipnodes: [
+      { planenum: 0, children: [1, content.CONTENT_WATER] },
+      { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
+    ],
+  };
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }))],
+        worldmodel: { hulls: [worldHull] },
+      },
+    },
+  }, () => {
+    assert.equal(collision.staticWorldContents(new Vector(100, 0, 0)), content.CONTENT_EMPTY);
+    assert.equal(collision.staticWorldContents(new Vector(-100, 0, 0)), content.CONTENT_WATER);
+  });
+});
+
+test('ServerCollision.staticWorldContents uses brush-backed world solids before leaf contents', () => {
+  const collision = new ServerCollision();
+  const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
+  const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict],
+        worldmodel: worldModel,
+      },
+    },
+  }, () => {
+    assert.equal(collision.staticWorldContents(new Vector(64, 0, 0)), content.CONTENT_SOLID);
+    assert.equal(collision.staticWorldContents(new Vector(-100, 0, 0)), content.CONTENT_EMPTY);
+  });
+});
+
+test('ServerCollision.staticWorldContents normalizes brush-backed current leaves to water', () => {
+  const collision = new ServerCollision();
+  const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
+  worldModel.leafs[1].contents = content.CONTENT_CURRENT_DOWN;
+  const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict],
+        worldmodel: worldModel,
+      },
+    },
+  }, () => {
+    assert.equal(collision.staticWorldContents(new Vector(-100, 0, 0)), content.CONTENT_WATER);
+  });
+});
+
+test('ServerCollision.traceStaticWorldLine uses brush tracing for brush-backed world hull 0', () => {
+  const collision = new ServerCollision();
+  const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
+  const worldEdict = createMockEdict(createMockEntity({
+    origin: new Vector(),
+    angles: new Vector(),
+    solidType: solid.SOLID_BSP,
+  }));
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict],
+        worldmodel: worldModel,
+      },
+    },
+  }, () => {
+    const trace = collision.traceStaticWorldLine(new Vector(0, 0, 0), new Vector(100, 0, 0));
+
+    assert.equal(trace.startsolid, false);
+    assert.equal(trace.ent, worldEdict);
+    assert.ok(trace.fraction < 1.0);
+    assertNear(trace.endpos[0], 47.96875, 0.001);
+  });
+});
+
+test('ServerCollision.move keeps legacy world hull traces out of foreign clipnode subtrees', () => {
+  const collision = new ServerCollision();
+  const worldHull = {
+    clip_mins: new Vector(),
+    clip_maxs: new Vector(),
+    firstclipnode: 0,
+    lastclipnode: 1,
+    allowedClipNodes: Uint8Array.from([1, 0]),
+    planes: [
+      createAxisPlane([1, 0, 0], 50, 0),
+      createAxisPlane([1, 0, 0], 0, 0),
+    ],
+    clipnodes: [
+      { planenum: 0, children: [1, content.CONTENT_EMPTY] },
+      { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
+    ],
+  };
+  const worldModel = new BrushModel();
+  worldModel.name = 'legacy-world';
+  worldModel.hulls = [worldHull, worldHull, worldHull];
+
+  const worldEntity = createMockEntity({
+    origin: new Vector(),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_NONE,
+    solidType: solid.SOLID_BSP,
+  });
+  const worldEdict = createMockEdict(worldEntity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        hullForEntity() {
+          return worldHull;
+        },
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict],
+        worldmodel: worldModel,
+      },
+    },
+  }, () => {
+    const trace = collision.move(
+      new Vector(0, 0, 0),
+      Vector.origin,
+      Vector.origin,
+      new Vector(100, 0, 0),
+      0,
+      null,
+    );
+
+    assert.equal(trace.fraction, 1.0);
+    assert.equal(trace.startsolid, false);
+    assert.equal(trace.ent, null);
+    assert.deepEqual([...trace.endpos], [100, 0, 0]);
+  });
+});
+
+test('ServerCollision.traceWorldLine keeps legacy world hull traces out of foreign clipnode subtrees', () => {
+  const collision = new ServerCollision();
+  const worldHull = {
+    clip_mins: new Vector(),
+    clip_maxs: new Vector(),
+    firstclipnode: 0,
+    lastclipnode: 1,
+    allowedClipNodes: Uint8Array.from([1, 0]),
+    planes: [
+      createAxisPlane([1, 0, 0], 50, 0),
+      createAxisPlane([1, 0, 0], 0, 0),
+    ],
+    clipnodes: [
+      { planenum: 0, children: [1, content.CONTENT_EMPTY] },
+      { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
+    ],
+  };
+  const worldModel = new BrushModel();
+  worldModel.name = 'legacy-world-line';
+  worldModel.hulls = [worldHull, worldHull, worldHull];
+
+  const worldEntity = createMockEntity({
+    origin: new Vector(),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_NONE,
+    solidType: solid.SOLID_BSP,
+  });
+  const worldEdict = createMockEdict(worldEntity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        hullForEntity() {
+          return worldHull;
+        },
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict],
+        worldmodel: worldModel,
+      },
+    },
+  }, () => {
+    const trace = collision.traceStaticWorldLine(new Vector(0, 0, 0), new Vector(100, 0, 0));
+
+    assert.equal(trace.fraction, 1.0);
+    assert.equal(trace.startsolid, false);
+    assert.equal(trace.ent, null);
+    assert.deepEqual([...trace.endpos], [100, 0, 0]);
+  });
+});
+
+test('ServerCollision.move keeps outer legacy hull split points stable across deeper recursion', () => {
+  const collision = new ServerCollision();
+  const worldHull = {
+    clip_mins: new Vector(),
+    clip_maxs: new Vector(),
+    firstclipnode: 0,
+    lastclipnode: 2,
+    planes: [
+      createAxisPlane([1, 0, 0], 10, 0),
+      createAxisPlane([1, 0, 0], 5, 0),
+      createAxisPlane([1, 0, 0], 8, 0),
+    ],
+    clipnodes: [
+      { planenum: 0, children: [2, 1] },
+      { planenum: 1, children: [content.CONTENT_EMPTY, content.CONTENT_EMPTY] },
+      { planenum: 2, children: [content.CONTENT_SOLID, content.CONTENT_EMPTY] },
+    ],
+  };
+  const worldModel = new BrushModel();
+  worldModel.name = 'legacy-midpoint-world';
+  worldModel.hulls = [worldHull, worldHull, worldHull];
+
+  const worldEntity = createMockEntity({
+    origin: new Vector(),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_NONE,
+    solidType: solid.SOLID_BSP,
+  });
+  const worldEdict = createMockEdict(worldEntity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        hullForEntity() {
+          return worldHull;
+        },
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict],
+        worldmodel: worldModel,
+      },
+    },
+  }, () => {
+    const trace = collision.move(
+      new Vector(0, 0, 0),
+      Vector.origin,
+      Vector.origin,
+      new Vector(100, 0, 0),
+      0,
+      null,
+    );
+
+    assert.equal(trace.startsolid, false);
+    assert.equal(trace.ent, worldEdict);
+    assertNear(trace.fraction, 0.0996875, 0.000001);
+    assertNear(trace.endpos[0], 9.96875, 0.000001);
+    assertNear(trace.endpos[1], 0);
+    assertNear(trace.endpos[2], 0);
+  });
+});
+
+test('ServerCollision.move prefers a later legacy hull hit over an earlier unrotated BSP entity brush point hit', () => {
+  const collision = new ServerCollision();
+  const worldModel = createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush', submodel: false });
+  const entityModel = createBoxBrushModel({ halfExtents: [8, 8, 8], name: '*clip-brush' });
+  const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
+  const bspEntity = createMockEntity({
+    origin: new Vector(64, 0, 0),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_PUSH,
+    solidType: solid.SOLID_BSP,
+  });
+  bspEntity.modelindex = 1;
+  const bspEdict = createMockEdict(bspEntity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB() {
+            return [bspEdict];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict, bspEdict],
+        worldmodel: worldModel,
+        models: [null, entityModel],
+      },
+    },
+  }, () => {
+    collision._traceBrushModel = (model, _start, _mins, _maxs, end) => {
+      if (model === entityModel) {
+        return {
+          fraction: 0.25,
+          allsolid: false,
+          startsolid: false,
+          endpos: new Vector(25, 0, 0),
+          plane: { normal: new Vector(-1, 0, 0), dist: -25 },
+          inopen: true,
+          inwater: false,
+        };
+      }
+
+      return {
+        fraction: 1.0,
+        allsolid: false,
+        startsolid: false,
+        endpos: end.copy(),
+        plane: { normal: new Vector(), dist: 0.0 },
+        inopen: true,
+        inwater: false,
+      };
+    };
+
+    collision._clipMoveToHullState = (state, _start, _mins, _maxs, end) => {
+      if (state.ent !== bspEdict) {
+        return {
+          fraction: 1.0,
+          allsolid: false,
+          startsolid: false,
+          endpos: end.copy(),
+          plane: { normal: new Vector(), dist: 0.0 },
+          ent: null,
+          inopen: false,
+          inwater: false,
+        };
+      }
+
+      return {
+        fraction: 0.5,
+        allsolid: false,
+        startsolid: false,
+        endpos: new Vector(50, 0, 0),
+        plane: { normal: new Vector(-1, 0, 0), dist: -50 },
+        ent: bspEdict,
+        inopen: true,
+        inwater: false,
+      };
+    };
+
+    const trace = collision.move(
+      new Vector(0, 0, 0),
+      Vector.origin,
+      Vector.origin,
+      new Vector(100, 0, 0),
+      0,
+      null,
+    );
+
+    assert.equal(trace.fraction, 0.5);
+    assert.equal(trace.ent, bspEdict);
+    assert.deepEqual([...trace.endpos], [50, 0, 0]);
+  });
+});
+
+test('ServerCollision.clipMoveToEntity keeps rotated BSP point traces on the brush path', () => {
+  const collision = new ServerCollision();
+  const entityModel = createBoxBrushModel({ halfExtents: [8, 8, 8], name: '*rotating-brush' });
+  const bspEntity = createMockEntity({
+    origin: new Vector(32, 0, 0),
+    angles: new Vector(0, 90, 0),
+    movetype: moveType.MOVETYPE_PUSH,
+    solidType: solid.SOLID_BSP,
+  });
+  bspEntity.modelindex = 1;
+  const bspEdict = createMockEdict(bspEntity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }))],
+        worldmodel: createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush', submodel: false }),
+        models: [null, entityModel],
+      },
+    },
+  }, () => {
+    collision._traceBrushModel = () => ({
+      fraction: 0.25,
+      allsolid: false,
+      startsolid: false,
+      endpos: new Vector(25, 0, 0),
+      plane: { normal: new Vector(-1, 0, 0), dist: -25 },
+      inopen: true,
+      inwater: false,
+    });
+
+    collision._clipMoveToHullState = () => {
+      throw new Error('rotated BSP point traces should not use legacy hull fallback');
+    };
+
+    const trace = collision.clipMoveToEntity(
+      bspEdict,
+      new Vector(0, 0, 0),
+      Vector.origin,
+      Vector.origin,
+      new Vector(100, 0, 0),
+    );
+
+    assert.equal(trace.fraction, 0.25);
+    assert.equal(trace.ent, bspEdict);
+    assert.deepEqual([...trace.endpos], [25, 0, 0]);
   });
 });
 

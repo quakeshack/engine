@@ -508,22 +508,7 @@ export class Navigation {
    * @returns {number} fraction of unobstructed trace, 0 = completely blocked, 1 = fully clear
    */
   #testTraceStatic(startpos, endpos, hullNum) {
-    const trace = {
-      fraction: 1.0,
-      allsolid: true,
-      startsolid: false,
-      endpos,
-      plane: { normal: new Vector(), dist: 0.0 },
-      ent: null,
-    };
-    SV.collision.recursiveHullCheck(
-      SV.server.worldmodel.hulls[hullNum],
-      SV.server.worldmodel.hulls[hullNum].firstclipnode,
-      0.0, 1.0,
-      startpos.copy(),
-      endpos.copy(),
-      trace,
-    );
+    const trace = SV.collision.traceWorldLine(startpos.copy(), endpos.copy(), hullNum);
     endpos.set(trace.endpos);
     if (trace.allsolid) {
       return -1;

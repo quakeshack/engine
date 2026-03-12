@@ -1492,7 +1492,7 @@ Host.Give_f = class extends HostConsoleCommand { // TODO: move to game
 
       const origin = trace.point.subtract(forward.multiply(16.0)).add(new Vector(0.0, 0.0, 16.0));
 
-      if (![content.CONTENT_EMPTY, content.CONTENT_WATER].includes(ServerEngineAPI.DeterminePointContents(origin))) {
+      if (![content.CONTENT_EMPTY, content.CONTENT_WATER].includes(ServerEngineAPI.DetermineStaticWorldContents(origin))) {
         Host.ClientPrint('Item would spawn out of world!\n');
         return;
       }

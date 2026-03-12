@@ -253,12 +253,31 @@ export class ServerEngineAPI extends CommonEngineAPI {
   }
 
   /**
+   * Finds out what contents the given point is in, using the active world
+   * collision backend.
+   * @param {Vector} origin point in space
+   * @returns {number} contents
+   */
+  static DetermineStaticWorldContents(origin) {
+    return SV.collision.staticWorldContents(origin);
+  }
+
+  /**
+   * Compatibility alias for DetermineStaticWorldContents.
+   * @param {Vector} origin point in space
+   * @returns {number} contents
+   */
+  static DetermineWorldContents(origin) {
+    return this.DetermineStaticWorldContents(origin);
+  }
+
+  /**
    * Finds out what contents the given point is in.
    * @param {Vector} origin point in space
    * @returns {number} contents
    */
   static DeterminePointContents(origin) {
-    return SV.collision.pointContents(origin);
+    return this.DetermineStaticWorldContents(origin);
   }
 
   /**
@@ -785,17 +804,17 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
-   * Performs a trace line in the game world against hull 0.
+   * Performs a trace line in the client game world.
+   * Currently this traces static world geometry only.
+   * Keep this legacy entry point aligned with the server-side Traceline name so
+   * client tracing can grow into entity-aware behavior later without another API
+   * rename.
    * @param {Vector} start start position
    * @param {Vector} end end position
    * @returns {Trace} trace result
    */
   static Traceline(start, end) {
-    const trace = /** @type {Trace} */ ({ plane: {} });
-
-    SV.collision.recursiveHullCheck(CL.state.worldmodel.hulls[0], 0, 0.0, 1.0, start, end, trace);
-
-    return internalTraceToGameTrace(trace);
+    return internalTraceToGameTrace(SV.collision.traceWorldLine(start, end));
   }
 
   /**

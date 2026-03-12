@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "module": "esnext",
+    "moduleResolution": "bundler",
     "target": "es2024",
     "checkJs": true,
     "baseUrl": ".",

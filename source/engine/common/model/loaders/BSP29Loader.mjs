@@ -1877,6 +1877,60 @@ export class BSP29Loader extends ModelLoader {
   }
 
   /**
+   * Build a reachability mask for the clipnodes owned by a model headnode.
+   * Legacy BSP29 clipnode arrays are shared across worldspawn and inline
+   * submodels, so traces must stay within the owning subtree.
+   * @protected
+   * @param {import('../BSP.mjs').Clipnode[]} clipnodes clipnode array backing the hull
+   * @param {number} firstclipnode root clipnode for the owning model
+   * @returns {Uint8Array|null} mask with 1 for reachable clipnodes, or null when unavailable
+   */
+  _buildAllowedClipnodeMask(clipnodes, firstclipnode) {
+    if (!clipnodes || clipnodes.length === 0 || firstclipnode < 0 || firstclipnode >= clipnodes.length) {
+      return null;
+    }
+
+    const allowedClipNodes = new Uint8Array(clipnodes.length);
+    const stack = [firstclipnode];
+
+    while (stack.length > 0) {
+      const nodeIndex = /** @type {number} */ (stack.pop());
+
+      if (nodeIndex < 0 || nodeIndex >= clipnodes.length || allowedClipNodes[nodeIndex] === 1) {
+        continue;
+      }
+
+      allowedClipNodes[nodeIndex] = 1;
+
+      const node = clipnodes[nodeIndex];
+      if (!node) {
+        continue;
+      }
+
+      for (const childIndex of node.children) {
+        if (childIndex >= 0) {
+          stack.push(childIndex);
+        }
+      }
+    }
+
+    return allowedClipNodes;
+  }
+
+  /**
+   * Attach the owning subtree mask to a legacy hull.
+   * @protected
+   * @param {{clipnodes: import('../BSP.mjs').Clipnode[], firstclipnode: number, allowedClipNodes?: Uint8Array|null}|undefined} hull legacy hull descriptor
+   */
+  _assignAllowedClipnodeMask(hull) {
+    if (!hull) {
+      return;
+    }
+
+    hull.allowedClipNodes = this._buildAllowedClipnodeMask(hull.clipnodes, hull.firstclipnode);
+  }
+
+  /**
    * Load marksurfaces (face indices visible from each leaf)
    * @protected
    * @param {BrushModel} loadmodel - The model being loaded
@@ -1924,6 +1978,9 @@ export class BSP29Loader extends ModelLoader {
     loadmodel.hulls[0].firstclipnode = view.getUint32(fileofs + 36, true);
     loadmodel.hulls[1].firstclipnode = view.getUint32(fileofs + 40, true);
     loadmodel.hulls[2].firstclipnode = view.getUint32(fileofs + 44, true);
+    this._assignAllowedClipnodeMask(loadmodel.hulls[0]);
+    this._assignAllowedClipnodeMask(loadmodel.hulls[1]);
+    this._assignAllowedClipnodeMask(loadmodel.hulls[2]);
     fileofs += 64;
 
     const clipnodes = loadmodel.hulls[0].clipnodes;
@@ -1959,6 +2016,9 @@ export class BSP29Loader extends ModelLoader {
           clip_maxs: new Vector(32.0, 32.0, 64.0),
         },
       ];
+      this._assignAllowedClipnodeMask(out.hulls[0]);
+      this._assignAllowedClipnodeMask(out.hulls[1]);
+      this._assignAllowedClipnodeMask(out.hulls[2]);
       out.textures = loadmodel.textures;
       out.lightdata = loadmodel.lightdata;
       out.lightdata_rgb = loadmodel.lightdata_rgb;

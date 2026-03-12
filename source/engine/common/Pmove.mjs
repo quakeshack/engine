@@ -1138,8 +1138,10 @@ export class BrushTrace {
         return;
       }
 
-      // Both behind this face - continue to next face
-      if (d1 <= 0 && d2 <= 0) {
+      // Exact face contact must remain a walkable contact. Treat only
+      // strictly negative distances as being behind the expanded face so
+      // resting floor traces do not flip into startsolid/allsolid.
+      if (d1 < 0 && d2 < 0) {
         continue;
       }
 
@@ -1908,7 +1910,7 @@ export class PmovePlayer { // pmove_t (player state only)
     point[1] = this.origin[1];
     point[2] = this.origin[2] + Pmove.PLAYER_MINS[2] + 1.0;
 
-    let contents = this._pmove.pointContents(point);
+    let contents = this._pmove.staticWorldContents(point);
 
     if (contents <= content.CONTENT_WATER) {
       this.watertype = contents;
@@ -1916,14 +1918,14 @@ export class PmovePlayer { // pmove_t (player state only)
 
       // half-way point
       point[2] = this.origin[2] + (Pmove.PLAYER_MINS[2] + Pmove.PLAYER_MAXS[2]) / 2.0;
-      contents = this._pmove.pointContents(point);
+      contents = this._pmove.staticWorldContents(point);
 
       if (contents <= content.CONTENT_WATER) {
         this.waterlevel = 2;
 
         // eye level
         point[2] = this.origin[2] + this.viewheight;
-        contents = this._pmove.pointContents(point);
+        contents = this._pmove.staticWorldContents(point);
 
         if (contents <= content.CONTENT_WATER) {
           this.waterlevel = 3;
@@ -1954,7 +1956,7 @@ export class PmovePlayer { // pmove_t (player state only)
     if (trace.fraction < 1) {
       // Q2 checks trace.contents & CONTENTS_LADDER, we use content type
       const ladderPoint = trace.endpos.copy().add(flatforward.copy().multiply(0.5));
-      const ladderContents = this._pmove.pointContents(ladderPoint);
+      const ladderContents = this._pmove.staticWorldContents(ladderPoint);
       // In Q1 BSP, there is no CONTENTS_LADDER. Ladder detection should
       // be implemented via trigger_ladder entities or texture flags.
       // For now this is a placeholder, ladder support requires map support.
@@ -1976,13 +1978,13 @@ export class PmovePlayer { // pmove_t (player state only)
     const wjspot = this.origin.copy().add(flatforward.copy().multiply(this._pmove.configuration.forwardProbe));
     wjspot[2] += this._pmove.configuration.wallcheckZ;
 
-    let cont = this._pmove.pointContents(wjspot);
+    let cont = this._pmove.staticWorldContents(wjspot);
     if (cont !== content.CONTENT_SOLID) {
       return;
     }
 
     wjspot[2] += this._pmove.configuration.emptycheckZ;
-    cont = this._pmove.pointContents(wjspot);
+    cont = this._pmove.staticWorldContents(wjspot);
     if (cont !== content.CONTENT_EMPTY) {
       return;
     }
@@ -2860,13 +2862,127 @@ export class Pmove { // pmove_t
   /** @type {Map<string, Hull[]>} cache for pm hulls from mod hulls */
   #modelHullsCache = new Map();
 
-  pointContents(point) {
+  /**
+   * Normalize static-world contents values so current volumes behave like water.
+   * @param {number} contents raw contents value
+   * @returns {number} normalized static-world contents value
+   */
+  _normalizeStaticWorldContents(contents) {
+    if ((contents <= content.CONTENT_CURRENT_0) && (contents >= content.CONTENT_CURRENT_DOWN)) {
+      return content.CONTENT_WATER;
+    }
+
+    return contents;
+  }
+
+  /**
+   * Sample brush-backed static-world contents without exposing BSP details to callers.
+   * @param {PhysEnt} worldPhysEnt world physent
+   * @param {Vector} point position to sample
+   * @returns {number} static-world contents value
+   */
+  _pointContentsBrushStaticWorld(worldPhysEnt, point) {
+    console.assert(worldPhysEnt.brushWorldModel instanceof BrushModel, 'world brush model');
+
+    if (!BrushTrace.transformedTestPosition(
+      worldPhysEnt.brushWorldModel,
+      point,
+      Vector.origin,
+      Vector.origin,
+      Vector.origin,
+      Vector.origin,
+    )) {
+      return content.CONTENT_SOLID;
+    }
+
+    return this._normalizeStaticWorldContents(worldPhysEnt.brushWorldModel.getLeafForPoint(point).contents);
+  }
+
+  /**
+   * Sample static-world contents using the active world collision backend.
+   * This queries the world physent only; dynamic entities and BSP submodels are
+   * not included here.
+   * @param {Vector} point position to sample
+   * @returns {number} static-world contents value
+   */
+  staticWorldContents(point) {
     console.assert(this.physents[0] instanceof PhysEnt, 'world physent');
 
-    const hull = this.physents[0].hulls[0]; // world
+    const worldPhysEnt = this.physents[0];
+
+    if (worldPhysEnt.brushWorldModel !== null) {
+      return this._pointContentsBrushStaticWorld(worldPhysEnt, point);
+    }
+
+    const hull = worldPhysEnt.hulls[0]; // world
     console.assert(hull instanceof Hull, 'world hull');
 
-    return hull.pointContents(point);
+    return this._normalizeStaticWorldContents(hull.pointContents(point));
+  }
+
+  /**
+   * Compatibility alias for staticWorldContents.
+   * @param {Vector} point position to sample
+   * @returns {number} static-world contents value
+   */
+  worldContents(point) {
+    return this.staticWorldContents(point);
+  }
+
+  /**
+   * Compatibility alias for staticWorldContents.
+   * @param {Vector} point position to sample
+   * @returns {number} static-world contents value
+   */
+  pointContents(point) {
+    return this.staticWorldContents(point);
+  }
+
+  /**
+   * Normalize a player-move trace so startsolid results stop at the start point.
+   * @param {Trace} trace trace to normalize
+   * @param {Vector} start trace start position
+   * @param {number} physEntIndex physent index for debug logging
+   * @param {PhysEnt} physEnt physent that produced the trace
+   * @returns {Trace} normalized trace
+   */
+  _finalizePlayerMoveTrace(trace, start, physEntIndex, physEnt) {
+    if (trace.allsolid) {
+      trace.startsolid = true;
+    }
+
+    if (trace.startsolid) {
+      trace.fraction = 0.0;
+      trace.endpos.set(start);
+      if (PmovePlayer.DEBUG) {
+        console.warn(`[clipPlayerMove] startsolid at physent ${physEntIndex} (edictId=${physEnt.edictId}), mode=${physEnt.usesBrushTracing ? 'brush' : 'hull'}`);
+      }
+    }
+
+    return trace;
+  }
+
+  /**
+   * Trace a player-sized move against the static world only.
+   * Dynamic entities and BSP submodels owned by separate physents are not
+   * included here.
+   * @param {Vector} start starting point
+   * @param {Vector} end end point (e.g. start + velocity * frametime)
+   * @returns {Trace} trace object against the world physent only
+   */
+  traceStaticWorldPlayerMove(start, end) {
+    console.assert(!Number.isNaN(start[0]) && !Number.isNaN(start[1]) && !Number.isNaN(start[2]), 'NaN start');
+    console.assert(!Number.isNaN(end[0]) && !Number.isNaN(end[1]) && !Number.isNaN(end[2]), 'NaN end');
+    console.assert(this.physents[0] instanceof PhysEnt, 'world physent');
+
+    const worldPhysEnt = this.physents[0];
+    const trace = worldPhysEnt.tracePlayerMove(start, end);
+
+    console.assert(!Number.isNaN(trace.endpos[0]), 'NaN x');
+    console.assert(!Number.isNaN(trace.endpos[1]), 'NaN y');
+    console.assert(!Number.isNaN(trace.endpos[2]), 'NaN z');
+
+    return this._finalizePlayerMoveTrace(trace, start, 0, worldPhysEnt);
   }
 
   #validPosTestScratch = new Vector();
@@ -2927,22 +3043,7 @@ export class Pmove { // pmove_t
       console.assert(!Number.isNaN(trace.endpos[1]), 'NaN y');
       console.assert(!Number.isNaN(trace.endpos[2]), 'NaN z');
 
-      if (trace.allsolid) {
-        trace.startsolid = true;
-      }
-
-      if (trace.startsolid) {
-        trace.fraction = 0.0;
-        // When startsolid forces fraction to 0, endpos must match: the
-        // player stays at the start position. Without this, boxTraceModel
-        // (and boxTrace) leave endpos at the trace end (computed when
-        // fraction was still 1.0), causing _stepSlideMove to teleport the
-        // player into wrong locations and eventually producing NaN origins.
-        trace.endpos.set(start);
-        if (PmovePlayer.DEBUG) {
-          console.warn(`[clipPlayerMove] startsolid at physent ${i} (edictId=${pe.edictId}), mode=${pe.usesBrushTracing ? 'brush' : 'hull'}`);
-        }
-      }
+      this._finalizePlayerMoveTrace(trace, start, i, pe);
 
       // did we clip the move?
       if (trace.fraction < totalTrace.fraction) {
@@ -2972,7 +3073,7 @@ export class Pmove { // pmove_t
 
     const pe = new PhysEnt(this);
 
-    // Always set up hulls (hull0 needed for pointContents regardless of mode)
+    // Always set up hulls (hull0 needed for staticWorldContents fallback regardless of mode)
     for (const modelHull of model.hulls) {
       pe.hulls.push(Hull.fromModelHull(modelHull));
     }
