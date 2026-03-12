@@ -449,6 +449,7 @@ export class SimpleSkyBox extends SkyRenderer {
     gl.uniform3f(program.uShadeLight, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uLightVec, 0.0, 0.0, 1.0);
+    gl.uniform1f(program.uAlpha, 1.0);
 
     if (program.tShadowMap0 !== undefined && R.shadow_textures?.[0]) {
       GL.Bind(program.tShadowMap0, R.shadow_textures[0]);

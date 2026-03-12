@@ -1013,11 +1013,14 @@ class GLError extends Error {
   }
 }
 
+/**
+ * Update the default framebuffer clear color used for full-frame clears.
+ */
 function initClear() {
   if (GL.clear.value) {
     gl.clearColor(1.0, 0.0, 1.0, 1.0); // CR: magenta clear color to easily identify unrendered areas
   } else {
-    gl.clearColor(0.0, 0.0, 0.0, 0.0); // CR: transparent black clear color
+    gl.clearColor(0.0, 0.0, 0.0, 1.0); // CR: opaque black clear color
   }
 }
 
@@ -1027,6 +1030,7 @@ function initClear() {
 function GL_Init() {
   try {
     const options = {
+      alpha: false,
       preserveDrawingBuffer: true,
     };
 
@@ -1053,7 +1057,7 @@ function GL_Init() {
   currentTextureMode = 'GL_LINEAR_MIPMAP_LINEAR';
 
   GL.picmip = new Cvar('gl_picmip', '0');
-  GL.clear = new Cvar('gl_clear', '0', Cvar.FLAG.ARCHIVE, '1 = clear with magenta color, 0 = clear transparent black');
+  GL.clear = new Cvar('gl_clear', '0', Cvar.FLAG.ARCHIVE, '1 = clear with magenta color, 0 = clear black');
   Cmd.AddCommand('gl_texturemode', TextureModeCommand);
   Cmd.AddCommand('gl_texturelist', TextureListCommand);
 
