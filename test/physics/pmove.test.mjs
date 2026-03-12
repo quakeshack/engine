@@ -747,6 +747,78 @@ describe('Pmove', () => {
       assertNear(trace.endpos[1], 0);
       assertNear(trace.endpos[2], 0);
     });
+
+    test('preserves later startsolid when an earlier equal-fraction clip already won', () => {
+      const pmove = new Pmove();
+      const start = new Vector(0, 0, 0);
+      const end = new Vector(100, 0, 0);
+      const worldModel = createLegacyWorldModel(
+        new Vector(-256, -256, -128),
+        new Vector(256, 256, 128),
+      );
+
+      pmove.setWorldmodel(worldModel);
+      pmove.addEntity(createPmoveBoxEntity({
+        origin: new Vector(64, 0, 0),
+        mins: new Vector(-16, -16, -16),
+        maxs: new Vector(16, 16, 16),
+        num: 1,
+      }));
+
+      pmove.physents[0].tracePlayerMove = () => createTrace({
+        endpos: start.copy(),
+        fraction: 0.0,
+        normal: new Vector(-1, 0, 0),
+      });
+      pmove.physents[1].tracePlayerMove = () => createTrace({
+        endpos: end.copy(),
+        startsolid: true,
+        allsolid: false,
+      });
+
+      const trace = pmove.clipPlayerMove(start, end);
+
+      assert.equal(trace.fraction, 0.0);
+      assert.equal(trace.startsolid, true);
+      assert.equal(trace.allsolid, false);
+      assert.deepEqual([...trace.endpos], [...start]);
+    });
+
+    test('ands allsolid across equal-fraction startsolid physents', () => {
+      const pmove = new Pmove();
+      const start = new Vector(0, 0, 0);
+      const end = new Vector(100, 0, 0);
+      const worldModel = createLegacyWorldModel(
+        new Vector(-256, -256, -128),
+        new Vector(256, 256, 128),
+      );
+
+      pmove.setWorldmodel(worldModel);
+      pmove.addEntity(createPmoveBoxEntity({
+        origin: new Vector(64, 0, 0),
+        mins: new Vector(-16, -16, -16),
+        maxs: new Vector(16, 16, 16),
+        num: 1,
+      }));
+
+      pmove.physents[0].tracePlayerMove = () => createTrace({
+        endpos: end.copy(),
+        startsolid: true,
+        allsolid: true,
+      });
+      pmove.physents[1].tracePlayerMove = () => createTrace({
+        endpos: end.copy(),
+        startsolid: true,
+        allsolid: false,
+      });
+
+      const trace = pmove.clipPlayerMove(start, end);
+
+      assert.equal(trace.fraction, 0.0);
+      assert.equal(trace.startsolid, true);
+      assert.equal(trace.allsolid, false);
+      assert.deepEqual([...trace.endpos], [...start]);
+    });
   });
 
   test('server-style smoke setup mirrors TestServerside assertions', () => {

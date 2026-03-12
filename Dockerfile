@@ -31,6 +31,9 @@ RUN npm run build:production && \
 # Test stage — keeps dev dependencies and test sources so CI can run regressions
 FROM builder AS test
 
+# adding test maps
+COPY data/id1/maps/test_*.bsp ./data/id1/maps/
+
 CMD ["npm", "run", "test:physics"]
 
 # Production stage — dedicated server + web client host

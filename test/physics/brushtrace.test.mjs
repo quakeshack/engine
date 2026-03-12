@@ -65,6 +65,59 @@ function createRampBevelBrushModel() {
   return model;
 }
 
+/**
+ * Build a world model with one nearby brush and one distant child leaf whose
+ * bounds do not intersect the current sweep.
+ * @returns {import('../../source/engine/common/model/BSP.mjs').BrushModel} world model fixture
+ */
+function createPrunedLeafWorldModel() {
+  const model = createBoxBrushModel({ center: [64, -16, 0], halfExtents: [16, 16, 16], name: 'test-pruned-world', submodel: false });
+  const secondModel = createBoxBrushModel({ center: [224, 16, 0], halfExtents: [16, 16, 16], submodel: false });
+  const planeOffset = model.planes.length;
+  const sideOffset = model.brushsides.length;
+
+  model.planes.push(...secondModel.planes);
+
+  for (const side of secondModel.brushsides) {
+    side.planenum += planeOffset;
+  }
+
+  model.brushsides.push(...secondModel.brushsides);
+
+  const distantBrush = secondModel.brushes[0];
+  distantBrush.firstside += sideOffset;
+  distantBrush._brushTraceCheck = 0;
+  model.brushes.push(distantBrush);
+  model.numBrushes = model.brushes.length;
+
+  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+    contents: content.CONTENT_EMPTY,
+    firstleafbrush: 0,
+    numleafbrushes: 1,
+    mins: new Vector(192, 0, -32),
+    maxs: new Vector(256, 32, 32),
+  });
+  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+    contents: content.CONTENT_EMPTY,
+    firstleafbrush: 1,
+    numleafbrushes: 1,
+    mins: new Vector(32, -32, -32),
+    maxs: new Vector(96, 0, 32),
+  });
+
+  model.nodes = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([{
+    contents: 0,
+    plane: createAxisPlane([0, 1, 0], 0, 1),
+    children: [frontLeaf, backLeaf],
+    mins: new Vector(32, -32, -32),
+    maxs: new Vector(256, 32, 32),
+  }]);
+  model.leafs = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([frontLeaf, backLeaf]);
+  model.leafbrushes = [1, 0];
+
+  return model;
+}
+
 describe('BrushTrace', () => {
   describe('transformedTestPosition', () => {
     test('keeps exact face contact walkable', () => {
@@ -165,6 +218,34 @@ describe('BrushTrace', () => {
       assertNear(trace.plane.normal[0], -1.0);
       assertNear(trace.plane.normal[1], 0.0);
       assertNear(trace.plane.normal[2], 0.0);
+    });
+
+    test('skips submodel brushes whose cached bounds miss the swept move', () => {
+      const model = createTwoBoxBrushModel();
+      const originalClipBoxToBrush = BrushTrace._clipBoxToBrush;
+      /** @type {number[]} */
+      const testedBrushSides = [];
+
+      BrushTrace._clipBoxToBrush = (ctx, brush) => {
+        testedBrushSides.push(brush.firstside);
+        return originalClipBoxToBrush.call(BrushTrace, ctx, brush);
+      };
+
+      try {
+        BrushTrace.transformedBoxTrace(
+          model,
+          new Vector(-100, 0, 0),
+          new Vector(-40, 0, 0),
+          new Vector(),
+          new Vector(),
+          Vector.origin,
+          Vector.origin,
+        );
+      } finally {
+        BrushTrace._clipBoxToBrush = originalClipBoxToBrush;
+      }
+
+      assert.deepEqual(testedBrushSides, [0]);
     });
 
     test('does not falsely clip edge-on brush sweeps', () => {
@@ -402,6 +483,39 @@ describe('BrushTrace', () => {
       assertNear(trace.plane.normal[1], 0.0);
       assertNear(trace.plane.normal[2], 1.0);
       assert.deepEqual([...trace.endpos], [0, 0, 40]);
+    });
+
+    test('prunes BSP child bounds that miss a straddled world sweep', () => {
+      const worldModel = createPrunedLeafWorldModel();
+      const originalTraceToLeaf = BrushTrace._traceToLeaf;
+      /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */
+      const visitedLeafs = [];
+
+      BrushTrace._traceToLeaf = (ctx, leaf) => {
+        visitedLeafs.push(leaf);
+        return originalTraceToLeaf.call(BrushTrace, ctx, leaf);
+      };
+
+      try {
+        const trace = BrushTrace.boxTrace(
+          worldModel,
+          0,
+          new Vector(0, 0, 0),
+          new Vector(128, 0, 0),
+          Pmove.PLAYER_MINS,
+          Pmove.PLAYER_MAXS,
+        );
+
+        assert.equal(trace.startsolid, false);
+        assert.ok(trace.fraction < 1.0);
+        assertNear(trace.endpos[0], 31.96875, 0.001);
+        assertNear(trace.endpos[1], 0.0, 0.001);
+      } finally {
+        BrushTrace._traceToLeaf = originalTraceToLeaf;
+      }
+
+      assert.equal(visitedLeafs.length, 1);
+      assert.equal(visitedLeafs[0].firstleafbrush, 1);
     });
   });
 });

@@ -467,6 +467,152 @@ export class BrushTrace {
   static _checkCount = 0;
 
   /**
+   * Test whether two axis-aligned bounding boxes overlap.
+   * @param {Vector} mins1 first box minimum
+   * @param {Vector} maxs1 first box maximum
+   * @param {Vector} mins2 second box minimum
+   * @param {Vector} maxs2 second box maximum
+   * @returns {boolean} true when the boxes overlap or touch
+   */
+  static _boundsOverlap(mins1, maxs1, mins2, maxs2) {
+    return mins1[0] <= maxs2[0] && mins1[1] <= maxs2[1] && mins1[2] <= maxs2[2]
+      && maxs1[0] >= mins2[0] && maxs1[1] >= mins2[1] && maxs1[2] >= mins2[2];
+  }
+
+  /**
+   * Compute the swept world-space bounds of a point or box move.
+   * @param {Vector} start trace start
+   * @param {Vector} end trace end
+   * @param {Vector} mins box mins
+   * @param {Vector} maxs box maxs
+   * @returns {{mins: Vector, maxs: Vector}} swept bounds
+   */
+  static _computeSweepBounds(start, end, mins, maxs) {
+    return {
+      mins: new Vector(
+        Math.min(start[0] + mins[0], end[0] + mins[0]),
+        Math.min(start[1] + mins[1], end[1] + mins[1]),
+        Math.min(start[2] + mins[2], end[2] + mins[2]),
+      ),
+      maxs: new Vector(
+        Math.max(start[0] + maxs[0], end[0] + maxs[0]),
+        Math.max(start[1] + maxs[1], end[1] + maxs[1]),
+        Math.max(start[2] + maxs[2], end[2] + maxs[2]),
+      ),
+    };
+  }
+
+  /**
+   * Compute the world-space bounds of a point or box at a fixed position.
+   * @param {Vector} position position to test
+   * @param {Vector} mins box mins
+   * @param {Vector} maxs box maxs
+   * @returns {{mins: Vector, maxs: Vector}} world-space bounds
+   */
+  static _computePositionBounds(position, mins, maxs) {
+    return {
+      mins: new Vector(position[0] + mins[0], position[1] + mins[1], position[2] + mins[2]),
+      maxs: new Vector(position[0] + maxs[0], position[1] + maxs[1], position[2] + maxs[2]),
+    };
+  }
+
+  /**
+   * Check whether a brush AABB can possibly overlap the current swept move.
+   * @param {BrushTraceContext} ctx trace context
+   * @param {import('./model/BSP.mjs').Brush} brush brush candidate
+   * @returns {boolean} true when the brush could affect the move
+   */
+  static _brushMayAffectTrace(ctx, brush) {
+    if (brush.mins === null || brush.mins === undefined || brush.maxs === null || brush.maxs === undefined) {
+      return true;
+    }
+
+    return BrushTrace._boundsOverlap(ctx.sweepMins, ctx.sweepMaxs, brush.mins, brush.maxs);
+  }
+
+  /**
+   * Check whether a brush AABB can possibly overlap the current position test.
+   * @param {import('./model/BSP.mjs').Brush} brush brush candidate
+   * @param {Vector} boundsMins position-test bounds minimum
+   * @param {Vector} boundsMaxs position-test bounds maximum
+   * @returns {boolean} true when the brush could affect the test
+   */
+  static _brushMayAffectPosition(brush, boundsMins, boundsMaxs) {
+    if (brush.mins === null || brush.mins === undefined || brush.maxs === null || brush.maxs === undefined) {
+      return true;
+    }
+
+    return BrushTrace._boundsOverlap(boundsMins, boundsMaxs, brush.mins, brush.maxs);
+  }
+
+  /**
+   * Estimate the earliest global trace fraction where a swept point/box can
+   * enter a node's bounds. Used only for pruning; false negatives are avoided
+   * by falling back when bounds are missing.
+   * @param {BrushTraceContext} ctx trace context
+   * @param {import('./model/BSP.mjs').Node} node BSP node or leaf
+   * @returns {number} earliest possible entry fraction, or Infinity when unreachable
+   */
+  static _estimateNodeEntryFraction(ctx, node) {
+    if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
+      return 0;
+    }
+
+    let enter = 0;
+    let leave = 1;
+
+    for (let axis = 0; axis < 3; axis++) {
+      const expandedMin = node.mins[axis] - ctx.extents[axis];
+      const expandedMax = node.maxs[axis] + ctx.extents[axis];
+      const start = ctx.start[axis];
+      const delta = ctx.totalMove[axis];
+
+      if (Math.abs(delta) <= Number.EPSILON) {
+        if (start < expandedMin || start > expandedMax) {
+          return Infinity;
+        }
+        continue;
+      }
+
+      let axisEnter = (expandedMin - start) / delta;
+      let axisLeave = (expandedMax - start) / delta;
+
+      if (axisEnter > axisLeave) {
+        const temp = axisEnter;
+        axisEnter = axisLeave;
+        axisLeave = temp;
+      }
+
+      enter = Math.max(enter, axisEnter);
+      leave = Math.min(leave, axisLeave);
+
+      if (enter > leave) {
+        return Infinity;
+      }
+    }
+
+    return Math.max(0, enter);
+  }
+
+  /**
+   * Check whether a node can still affect the current trace.
+   * @param {BrushTraceContext} ctx trace context
+   * @param {import('./model/BSP.mjs').Node} node BSP node or leaf
+   * @returns {boolean} true when traversal should continue into the node
+   */
+  static _nodeMayAffectTrace(ctx, node) {
+    if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
+      return true;
+    }
+
+    if (!BrushTrace._boundsOverlap(ctx.sweepMins, ctx.sweepMaxs, node.mins, node.maxs)) {
+      return false;
+    }
+
+    return BrushTrace._estimateNodeEntryFraction(ctx, node) <= ctx.trace.fraction;
+  }
+
+  /**
    * Nearly simultaneous non-axial planes should win over axial bevels.
    * Walkable ramps need this to avoid horizontal climb stalls, and corner
    * slides need it so a real diagonal face can beat an inferred axial wall
@@ -689,8 +835,24 @@ export class BrushTrace {
 
     const checkCount = ++BrushTrace._checkCount;
 
+    const totalMove = end.copy().subtract(start);
+    const sweepBounds = BrushTrace._computeSweepBounds(start, end, mins, maxs);
+
     /** @type {BrushTraceContext} */
-    const ctx = { worldModel, trace, mins, maxs, isPoint, extents, start, end, checkCount };
+    const ctx = {
+      worldModel,
+      trace,
+      mins,
+      maxs,
+      isPoint,
+      extents,
+      start,
+      end,
+      totalMove,
+      sweepMins: sweepBounds.mins,
+      sweepMaxs: sweepBounds.maxs,
+      checkCount,
+    };
 
     const rootNode = worldModel.nodes[headNode];
 
@@ -752,8 +914,10 @@ export class BrushTrace {
     // splitting plane so we visit ALL leaves the player box overlaps.
     // The old code only walked to a single leaf using the center point,
     // which missed brushes in adjacent leaves that the box extends into.
+    const positionBounds = BrushTrace._computePositionBounds(position, mins, maxs);
+
     return !BrushTrace._testPositionRecursive(
-      worldModel, rootNode, position, mins, maxs, extents, isPoint, checkCount,
+      worldModel, rootNode, position, mins, maxs, positionBounds.mins, positionBounds.maxs, extents, isPoint, checkCount,
     );
   }
 
@@ -765,15 +929,22 @@ export class BrushTrace {
    * @param {Vector} position - test position
    * @param {Vector} mins - box mins
    * @param {Vector} maxs - box maxs
+   * @param {Vector} boundsMins - world-space test bounds minimum
+   * @param {Vector} boundsMaxs - world-space test bounds maximum
    * @param {Vector} extents - absolute half-extents
    * @param {boolean} isPoint - true if point trace
    * @param {number} checkCount - dedup counter
    * @returns {boolean} true if solid overlap found
    */
-  static _testPositionRecursive(worldModel, node, position, mins, maxs, extents, isPoint, checkCount) {
+  static _testPositionRecursive(worldModel, node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount) {
+    if (node.mins !== null && node.mins !== undefined && node.maxs !== null && node.maxs !== undefined
+      && !BrushTrace._boundsOverlap(boundsMins, boundsMaxs, node.mins, node.maxs)) {
+      return false;
+    }
+
     // Leaf node: test all brushes in this leaf
     if (node.contents < 0) {
-      return BrushTrace._testLeafSolid(worldModel, node, position, mins, maxs, checkCount);
+      return BrushTrace._testLeafSolid(worldModel, node, position, mins, maxs, boundsMins, boundsMaxs, checkCount);
     }
 
     // Internal node: test which side(s) of the splitting plane the box is on
@@ -797,26 +968,26 @@ export class BrushTrace {
     // Entirely on front side
     if (d >= offset) {
       return BrushTrace._testPositionRecursive(
-        worldModel, node.children[0], position, mins, maxs, extents, isPoint, checkCount,
+        worldModel, node.children[0], position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
       );
     }
 
     // Entirely on back side
     if (d < -offset) {
       return BrushTrace._testPositionRecursive(
-        worldModel, node.children[1], position, mins, maxs, extents, isPoint, checkCount,
+        worldModel, node.children[1], position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
       );
     }
 
     // Box straddles the plane: test both sides
     if (BrushTrace._testPositionRecursive(
-      worldModel, node.children[0], position, mins, maxs, extents, isPoint, checkCount,
+      worldModel, node.children[0], position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
     )) {
       return true;
     }
 
     return BrushTrace._testPositionRecursive(
-      worldModel, node.children[1], position, mins, maxs, extents, isPoint, checkCount,
+      worldModel, node.children[1], position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
     );
   }
 
@@ -857,8 +1028,24 @@ export class BrushTrace {
 
     const checkCount = ++BrushTrace._checkCount;
 
+    const totalMove = end.copy().subtract(start);
+    const sweepBounds = BrushTrace._computeSweepBounds(start, end, mins, maxs);
+
     /** @type {BrushTraceContext} */
-    const ctx = { worldModel: model, trace, mins, maxs, isPoint, extents, start, end, checkCount };
+    const ctx = {
+      worldModel: model,
+      trace,
+      mins,
+      maxs,
+      isPoint,
+      extents,
+      start,
+      end,
+      totalMove,
+      sweepMins: sweepBounds.mins,
+      sweepMaxs: sweepBounds.maxs,
+      checkCount,
+    };
 
     const brushes = model.brushes;
     const lastBrush = model.firstBrush + model.numBrushes;
@@ -873,6 +1060,10 @@ export class BrushTrace {
       // Only collide with solid/clip brushes
       if (brush.contents !== content.CONTENT_SOLID
         && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
+        continue;
+      }
+
+      if (!BrushTrace._brushMayAffectTrace(ctx, brush)) {
         continue;
       }
 
@@ -915,6 +1106,7 @@ export class BrushTrace {
 
     const isPoint = (mins[0] === 0 && mins[1] === 0 && mins[2] === 0
                   && maxs[0] === 0 && maxs[1] === 0 && maxs[2] === 0);
+    const positionBounds = BrushTrace._computePositionBounds(position, mins, maxs);
 
     const brushes = model.brushes;
     const lastBrush = model.firstBrush + model.numBrushes;
@@ -928,6 +1120,10 @@ export class BrushTrace {
 
       if (brush.contents !== content.CONTENT_SOLID
         && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
+        continue;
+      }
+
+      if (!BrushTrace._brushMayAffectPosition(brush, positionBounds.mins, positionBounds.maxs)) {
         continue;
       }
 
@@ -946,10 +1142,12 @@ export class BrushTrace {
    * @param {Vector} position - position to test
    * @param {Vector} mins - box mins
    * @param {Vector} maxs - box maxs
+   * @param {Vector} boundsMins - world-space test bounds minimum
+   * @param {Vector} boundsMaxs - world-space test bounds maximum
    * @param {number} checkCount - dedup counter
    * @returns {boolean} true if solid overlap found
    */
-  static _testLeafSolid(worldModel, leaf, position, mins, maxs, checkCount) {
+  static _testLeafSolid(worldModel, leaf, position, mins, maxs, boundsMins, boundsMaxs, checkCount) {
     const brushes = worldModel.brushes;
     const leafbrushes = worldModel.leafbrushes;
 
@@ -976,6 +1174,10 @@ export class BrushTrace {
       // CONTENT_CLIP blocks entities with size (non-zero mins/maxs)
       if (brush.contents !== content.CONTENT_SOLID
         && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
+        continue;
+      }
+
+      if (!BrushTrace._brushMayAffectPosition(brush, boundsMins, boundsMaxs)) {
         continue;
       }
 
@@ -1048,6 +1250,10 @@ export class BrushTrace {
    * @param {number} depth - recursion depth
    */
   static _recursiveHullCheck(ctx, node, p1f, p2f, p1, p2, depth = 0) {
+    if (!BrushTrace._nodeMayAffectTrace(ctx, node)) {
+      return;
+    }
+
     if (ctx.trace.fraction <= p1f) {
       return; // already hit something nearer
     }
@@ -1178,6 +1384,10 @@ export class BrushTrace {
       // CONTENT_CLIP blocks entities with size but not point traces.
       if (brush.contents !== content.CONTENT_SOLID
         && (brush.contents !== content.CONTENT_CLIP || ctx.isPoint)) {
+        continue;
+      }
+
+      if (!BrushTrace._brushMayAffectTrace(ctx, brush)) {
         continue;
       }
 
@@ -1387,6 +1597,9 @@ export class BrushTrace {
  * @property {Vector} extents - absolute half-extents of the player box
  * @property {Vector} start - trace start position
  * @property {Vector} end - trace end position
+ * @property {Vector} totalMove - end minus start
+ * @property {Vector} sweepMins - swept move bounding box minimum
+ * @property {Vector} sweepMaxs - swept move bounding box maximum
  * @property {number} checkCount - dedup counter for brush testing
  */
 
@@ -3410,7 +3623,8 @@ export class Pmove { // pmove_t
     console.assert(!Number.isNaN(end[0]) && !Number.isNaN(end[1]) && !Number.isNaN(end[2]), 'NaN end');
 
     const totalTrace = new Trace();
-    totalTrace.allsolid = false; // QW compat: total trace starts non-solid; individual checks mark it solid
+    let sawStartsolid = false;
+    let aggregateAllsolid = true;
 
     totalTrace.endpos.set(end);
 
@@ -3429,11 +3643,22 @@ export class Pmove { // pmove_t
 
       this._finalizePlayerMoveTrace(trace, start, i, pe);
 
+      sawStartsolid ||= trace.startsolid;
+      aggregateAllsolid &&= trace.allsolid;
+
       // did we clip the move?
       if (trace.fraction < totalTrace.fraction) {
         totalTrace.set(trace);
         totalTrace.ent = i;
       }
+    }
+
+    totalTrace.startsolid = sawStartsolid;
+    totalTrace.allsolid = sawStartsolid && aggregateAllsolid;
+
+    if (totalTrace.startsolid) {
+      totalTrace.fraction = 0.0;
+      totalTrace.endpos.set(start);
     }
 
     console.assert(!Number.isNaN(totalTrace.endpos[0]), 'NaN x');
