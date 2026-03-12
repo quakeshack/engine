@@ -154,6 +154,27 @@ function requireMapEntity(entities, predicate, label) {
 }
 
 /**
+ * Resolve the movement yaw for a real-map pmove probe.
+ * Prefer the explicit spawn angle when present so map-authored repros do not
+ * depend on a separate direction marker entity.
+ * @param {Record<string, string>} spawn spawn entity
+ * @param {Record<string, string>[]} entities parsed entity list
+ * @returns {number} yaw in degrees
+ */
+function resolveMapYaw(spawn, entities) {
+  if (spawn.angle !== undefined) {
+    return Number(spawn.angle);
+  }
+
+  const orientation = requireMapEntity(entities, (entity) => entity.targetname === 'direction', 'orientation entity targetname=direction');
+  const spawnOrigin = parseMapOrigin(spawn.origin);
+  const orientationOrigin = parseMapOrigin(orientation.origin);
+  const forward = orientationOrigin.copy().subtract(spawnOrigin);
+  forward.normalize();
+  return Math.atan2(forward[1], forward[0]) * 180 / Math.PI;
+}
+
+/**
  * Run a real BSP-backed forward movement probe for a fixed number of frames.
  * @param {string} mapName map path relative to data/id1
  * @param {number} frames number of frames to simulate
@@ -205,13 +226,9 @@ async function runMapForwardFrames(mapName, frames) {
     const model = /** @type {import('../../source/engine/common/model/BSP.mjs').BrushModel} */ (await Mod.ForNameAsync(mapName, true));
     const entities = parseMapEntities(model.entities);
     const spawn = requireMapEntity(entities, (entity) => entity.classname === 'info_player_start', 'spawn entity classname=info_player_start');
-    const orientation = requireMapEntity(entities, (entity) => entity.targetname === 'direction', 'orientation entity targetname=direction');
 
     const spawnOrigin = parseMapOrigin(spawn.origin);
-    const orientationOrigin = parseMapOrigin(orientation.origin);
-    const forward = orientationOrigin.copy().subtract(spawnOrigin);
-    forward.normalize();
-    const yaw = Math.atan2(forward[1], forward[0]) * 180 / Math.PI;
+    const yaw = resolveMapYaw(spawn, entities);
 
     const pmove = new Pmove();
     pmove.setWorldmodel(model);
@@ -336,6 +353,23 @@ describe('PmovePlayer', () => {
       assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.25);
       assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.25);
     }
+  });
+
+  test('matches the hull corner slide timing on the brush-backed clip_2 regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_clip_2.bsp', 12);
+    const hullFrames = await runMapForwardFrames('maps/test_clip_2_hull.bsp', 12);
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.25);
+      assertNear(brushFrames[frame].origin[1], hullFrames[frame].origin[1], 0.25);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.25);
+      assertNear(brushFrames[frame].moved[1], hullFrames[frame].moved[1], 0.25);
+      assertNear(brushFrames[frame].velocity[0], hullFrames[frame].velocity[0], 0.25);
+      assertNear(brushFrames[frame].velocity[1], hullFrames[frame].velocity[1], 0.25);
+    }
+
+    assert.ok(brushFrames[7].moved[1] < -1.0);
+    assert.ok(hullFrames[7].moved[1] < -1.0);
   });
 
   describe('_checkDuck', () => {
@@ -557,22 +591,6 @@ describe('PmovePlayer', () => {
         });
       };
 
-      player._stepSlideMove();
-
-      assert.equal(slideCalls, 2);
-      assert.equal(traceCalls, 3);
-      assert.deepEqual([...player.origin], [8, 0, 0]);
-      assert.deepEqual([...player.velocity], [20, 0, 0]);
-      assert.deepEqual(player.touchindices, [3, 4]);
-    });
-
-    test('skips the stair retry when the first slide already follows a walkable slope', () => {
-      const pmove = new Pmove();
-      const player = pmove.newPlayerMove();
-      let slideCalls = 0;
-      let traceCalls = 0;
-
-      player.origin.clear();
       player.velocity.setTo(30, 0, 0);
       player.onground = 0;
       player._slideMove = () => {

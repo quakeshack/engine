@@ -15,6 +15,7 @@ import Cvar from './Cvar.mjs';
 import { PmoveConfiguration } from '../../shared/Pmove.mjs';
 
 /** @typedef {import('../../shared/Vector.mjs').DirectionalVectors} DirectionalVectors */
+/** @typedef {{ normal: Vector, type: number }} BrushTracePlaneLike */
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -466,13 +467,13 @@ export class BrushTrace {
   static _checkCount = 0;
 
   /**
-   * Walkable non-axial planes should win over nearly simultaneous axial bevels.
-   * BSPX BRUSHLIST brushes infer axial bounds planes from mins/maxs; at ramp
-   * edges those bevels can land within epsilon of the actual sloped face and
-   * would otherwise stall horizontal ramp climbs.
-   * @param {import('./model/BaseModel.mjs').Plane|null} currentPlane currently selected clip plane
+   * Nearly simultaneous non-axial planes should win over axial bevels.
+   * Walkable ramps need this to avoid horizontal climb stalls, and corner
+   * slides need it so a real diagonal face can beat an inferred axial wall
+   * from the same brush when both land within epsilon.
+   * @param {BrushTracePlaneLike|null} currentPlane currently selected clip plane
    * @param {number} currentFraction currently selected enter fraction
-   * @param {import('./model/BaseModel.mjs').Plane} candidatePlane newly intersected plane
+   * @param {BrushTracePlaneLike} candidatePlane newly intersected plane
    * @param {number} candidateFraction newly intersected enter fraction
    * @param {number} fractionEpsilon move-distance-scaled tie threshold
    * @returns {boolean} true when the candidate plane should replace the current one
@@ -490,10 +491,41 @@ export class BrushTrace {
       return false;
     }
 
-    const candidateIsWalkableSlope = candidatePlane.type >= 3 && candidatePlane.normal[2] >= MIN_STEP_NORMAL;
+    const candidateIsNonAxial = candidatePlane.type >= 3;
     const currentIsAxialWall = currentPlane.type < 3 && Math.abs(currentPlane.normal[2]) <= DIST_EPSILON;
 
-    return candidateIsWalkableSlope && currentIsAxialWall;
+    return candidateIsNonAxial && currentIsAxialWall;
+  }
+
+  /**
+   * Earlier trace hits win globally, but nearly simultaneous hits can still
+   * benefit from plane preference. This lets a real non-axial face replace an
+   * exact-tangent axial wall from another brush in the same leaf.
+   * @param {BrushTracePlaneLike|null} currentPlane currently selected trace plane
+   * @param {number} currentFraction currently selected trace fraction
+   * @param {BrushTracePlaneLike} candidatePlane newly intersected trace plane
+   * @param {number} candidateFraction newly intersected trace fraction
+   * @param {number} fractionEpsilon move-distance-scaled tie threshold
+   * @returns {boolean} true when the candidate trace hit should replace the current hit
+   */
+  static _shouldPreferTraceHit(currentPlane, currentFraction, candidatePlane, candidateFraction, fractionEpsilon) {
+    if (currentPlane === null) {
+      return true;
+    }
+
+    if (candidateFraction < currentFraction - fractionEpsilon) {
+      return true;
+    }
+
+    if (candidateFraction > currentFraction + fractionEpsilon) {
+      return false;
+    }
+
+    const candidateIsNonAxial = candidatePlane.type >= 3;
+    const currentIsAxialWall = currentPlane.type < 3 && Math.abs(currentPlane.normal[2]) <= DIST_EPSILON;
+    const candidateIsWalkableSlope = candidateIsNonAxial && candidatePlane.normal[2] >= MIN_STEP_NORMAL;
+
+    return candidateIsWalkableSlope || (candidateIsNonAxial && currentIsAxialWall);
   }
 
   /**
@@ -1150,10 +1182,6 @@ export class BrushTrace {
       }
 
       BrushTrace._clipBoxToBrush(ctx, brush);
-
-      if (ctx.trace.fraction === 0) {
-        return;
-      }
     }
   }
 
@@ -1203,7 +1231,6 @@ export class BrushTrace {
       const nonAxialContact = plane.type >= 3;
       const nearStart = nonAxialContact && Math.abs(d1) <= DIST_EPSILON;
       const nearEnd = nonAxialContact && Math.abs(d2) <= DIST_EPSILON;
-
       if (d2 >= 0 || nearEnd) { getout = true; }
       if (d1 >= 0 || nearStart) { startout = true; }
 
@@ -1257,7 +1284,8 @@ export class BrushTrace {
     }
 
     if (enterfrac < leavefrac) {
-      if (enterfrac > -1 && enterfrac < ctx.trace.fraction) {
+      const currentPlane = ctx.trace.fraction < 1.0 ? ctx.trace.plane : null;
+      if (enterfrac > -1 && BrushTrace._shouldPreferTraceHit(currentPlane, ctx.trace.fraction, clipplane, enterfrac, fractionEpsilon)) {
         if (enterfrac < 0) {
           enterfrac = 0;
         }
@@ -1540,6 +1568,92 @@ export class PhysEnt { // physent_t
   }
 
   /**
+   * Detect positions that are only considered valid by brush tracing because
+   * they sit exactly tangent to an axial wall plane. Legacy BSP hull point
+   * contents treats that pose as solid, which causes the tiny separating nudge
+   * seen in hull-backed maps before movement begins.
+   * @param {Vector} position world-space position to inspect
+   * @returns {boolean} true when the position would become solid if axial wall tangency counted as overlap
+   */
+  _brushPositionNeedsHullTangentFallback(position) {
+    const model = this.brushCollisionModel;
+    const brushes = model?.brushes;
+    const planes = model?.planes;
+    const brushsides = model?.brushsides;
+
+    if (!model || !brushes || !planes || !brushsides) {
+      return false;
+    }
+
+    const firstBrush = model.firstBrush ?? 0;
+    const lastBrush = firstBrush + (model.numBrushes ?? brushes.length);
+
+    for (let brushIndex = firstBrush; brushIndex < lastBrush; brushIndex++) {
+      const brush = brushes[brushIndex];
+
+      if (!brush || brush.numsides === 0) {
+        continue;
+      }
+      if (brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_CLIP) {
+        continue;
+      }
+
+      const expandedMinX = brush.mins[0] - Pmove.PLAYER_MAXS[0] - DIST_EPSILON;
+      const expandedMinY = brush.mins[1] - Pmove.PLAYER_MAXS[1] - DIST_EPSILON;
+      const expandedMinZ = brush.mins[2] - Pmove.PLAYER_MAXS[2] - DIST_EPSILON;
+      const expandedMaxX = brush.maxs[0] - Pmove.PLAYER_MINS[0] + DIST_EPSILON;
+      const expandedMaxY = brush.maxs[1] - Pmove.PLAYER_MINS[1] + DIST_EPSILON;
+      const expandedMaxZ = brush.maxs[2] - Pmove.PLAYER_MINS[2] + DIST_EPSILON;
+
+      if (position[0] < expandedMinX || position[0] > expandedMaxX
+        || position[1] < expandedMinY || position[1] > expandedMaxY
+        || position[2] < expandedMinZ || position[2] > expandedMaxZ) {
+        continue;
+      }
+
+      let touchingAxialWall = false;
+      let inside = true;
+
+      for (let sideIndex = 0; sideIndex < brush.numsides; sideIndex++) {
+        const side = brushsides[brush.firstside + sideIndex];
+        const plane = planes[side.planenum];
+        let dist = plane.dist;
+
+        for (let axis = 0; axis < 3; axis++) {
+          dist -= (plane.normal[axis] < 0 ? Pmove.PLAYER_MAXS[axis] : Pmove.PLAYER_MINS[axis]) * plane.normal[axis];
+        }
+
+        const planeDistance = plane.normal.dot(position) - dist;
+        const axialWall = plane.type < 3 && Math.abs(plane.normal[2]) <= DIST_EPSILON;
+
+        if (axialWall && Math.abs(planeDistance) <= DIST_EPSILON) {
+          touchingAxialWall = true;
+          continue;
+        }
+
+        if (plane.type >= 3) {
+          if (planeDistance >= -DIST_EPSILON) {
+            inside = false;
+            break;
+          }
+          continue;
+        }
+
+        if (planeDistance >= 0) {
+          inside = false;
+          break;
+        }
+      }
+
+      if (inside && touchingAxialWall) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Legacy hull comparisons are only meaningful for axis-aligned brush traces.
    * @returns {boolean} true if brush-vs-hull debug comparison is valid
    */
@@ -1718,12 +1832,32 @@ export class PhysEnt { // physent_t
         this.angles,
       );
 
-      // DEBUG: compare with hull result when pm_debug is on
-      if (PmovePlayer.DEBUG && this.canCompareBrushAgainstHull) {
+      let hullResult = true;
+      let usedHullTangentFallback = false;
+
+      if (this.canCompareBrushAgainstHull) {
         const hull = this.getClippingHull();
         const localPosition = this.toHullSpace(position);
-        const hullResult = hull.pointContents(localPosition) !== content.CONTENT_SOLID;
+        hullResult = hull.pointContents(localPosition) !== content.CONTENT_SOLID;
 
+        if (brushResult && !hullResult && this._brushPositionNeedsHullTangentFallback(position)) {
+          usedHullTangentFallback = true;
+        }
+      }
+
+      if (usedHullTangentFallback) {
+        if (PmovePlayer.DEBUG) {
+          console.warn(
+            `[Pmove POS HULL TANGENT FALLBACK] edictId=${this.edictId} model=${this.brushModel?.name ?? 'world'}`,
+            '\n  using hull-style invalid position for exact axial wall tangency',
+            `\n  position=${position}`,
+          );
+        }
+        return false;
+      }
+
+      // DEBUG: compare with hull result when pm_debug is on
+      if (PmovePlayer.DEBUG && this.canCompareBrushAgainstHull) {
         if (brushResult !== hullResult) {
           const model = this.brushModel;
           console.warn(

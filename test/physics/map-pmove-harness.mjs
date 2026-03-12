@@ -96,6 +96,43 @@ function requireEntity(entities, predicate, label) {
 }
 
 /**
+ * Resolve the movement yaw for the harness.
+ * Prefer the explicit spawn angle when present so authored repro maps can
+ * encode the exact forward vector directly on the spawn.
+ * @param {EntityKV} spawn spawn entity
+ * @param {EntityKV[]} entities parsed entity list
+ * @param {string} orientationTargetname targetname used for legacy direction markers
+ * @returns {{ yaw: number, orientationOrigin: Vector|null, forward: Vector }} yaw and derived forward vector
+ */
+function resolveYaw(spawn, entities, orientationTargetname) {
+  if (spawn.angle !== undefined) {
+    const yaw = Number(spawn.angle);
+    const radians = yaw * Math.PI / 180;
+    return {
+      yaw,
+      orientationOrigin: null,
+      forward: new Vector(Math.cos(radians), Math.sin(radians), 0),
+    };
+  }
+
+  const orientation = requireEntity(
+    entities,
+    (entity) => entity.targetname === orientationTargetname,
+    `orientation entity targetname=${orientationTargetname}`,
+  );
+  const spawnOrigin = parseOrigin(spawn.origin);
+  const orientationOrigin = parseOrigin(orientation.origin);
+  const forward = orientationOrigin.copy().subtract(spawnOrigin);
+  forward.normalize();
+
+  return {
+    yaw: Math.atan2(forward[1], forward[0]) * 180 / Math.PI,
+    orientationOrigin,
+    forward,
+  };
+}
+
+/**
  * Parse simple `--name=value` command line options.
  * @returns {HarnessOptions} normalized harness options
  */
@@ -221,17 +258,9 @@ const spawn = requireEntity(
   (entity) => entity.classname === options.spawnClassname,
   `spawn entity classname=${options.spawnClassname}`,
 );
-const orientation = requireEntity(
-  entities,
-  (entity) => entity.targetname === options.orientationTargetname,
-  `orientation entity targetname=${options.orientationTargetname}`,
-);
 
 const spawnOrigin = parseOrigin(spawn.origin);
-const orientationOrigin = parseOrigin(orientation.origin);
-const forward = orientationOrigin.copy().subtract(spawnOrigin);
-forward.normalize();
-const yaw = Math.atan2(forward[1], forward[0]) * 180 / Math.PI;
+const { yaw, orientationOrigin, forward } = resolveYaw(spawn, entities, options.orientationTargetname);
 
 const pmove = new Pmove();
 pmove.setWorldmodel(model);
@@ -249,7 +278,7 @@ console.log(JSON.stringify({
   brushes: model.numBrushes,
   leafbrushes: model.leafbrushes?.length ?? 0,
   spawn: [spawnOrigin[0], spawnOrigin[1], spawnOrigin[2]],
-  orientationTarget: [orientationOrigin[0], orientationOrigin[1], orientationOrigin[2]],
+  orientationTarget: orientationOrigin === null ? null : [orientationOrigin[0], orientationOrigin[1], orientationOrigin[2]],
   yaw: round(yaw),
   forward: [forward[0], forward[1], forward[2]].map(round),
 }, null, 2));
