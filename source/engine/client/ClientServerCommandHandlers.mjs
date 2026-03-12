@@ -5,6 +5,7 @@ import { HostError } from '../common/Errors.mjs';
 import { gameCapabilities } from '../../shared/Defs.mjs';
 import Vector from '../../shared/Vector.mjs';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
+import { sharedCollisionModelSource } from '../common/CollisionModelSource.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ScoreSlot } from './ClientState.mjs';
 
@@ -17,6 +18,11 @@ let { CL, Con, SCR, S, R, V, Host, SV, NET, Mod, PR, COM } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
   ({ CL, Con, SCR, S, R, V, Host, SV, NET, Mod, PR, COM } = registry);
+});
+
+sharedCollisionModelSource.configureClient({
+  getWorldModel: () => CL?.state?.worldmodel ?? null,
+  getModels: () => CL?.state?.model_precache ?? null,
 });
 
 /** Tracks entity updates during message parsing */

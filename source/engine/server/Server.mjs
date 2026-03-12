@@ -16,6 +16,7 @@ import { ServerMessages } from './ServerMessages.mjs';
 import { ServerMovement } from './physics/ServerMovement.mjs';
 import { ServerArea } from './physics/ServerArea.mjs';
 import { ServerCollision } from './physics/ServerCollision.mjs';
+import { sharedCollisionModelSource } from '../common/CollisionModelSource.mjs';
 import { BrushModel } from '../common/Mod.mjs';
 import { ServerClient } from './Client.mjs';
 
@@ -206,8 +207,8 @@ export default class SV {
   static clientPhysics = new ServerClientPhysics();
   static messages = new ServerMessages();
   static movement = new ServerMovement();
-  static area = new ServerArea();
-  static collision = new ServerCollision();
+  static area = new ServerArea(sharedCollisionModelSource);
+  static collision = new ServerCollision(sharedCollisionModelSource);
 
   /** @type {?Pmove} shared player-move collision context */
   static pmove = null;
@@ -1148,3 +1149,9 @@ class PlayerMoveCvars extends MoveVars {
 
   // CR: leaving out entgravity, it's entity specific
 }
+
+sharedCollisionModelSource.configureServer({
+  getWorldEntity: () => SV.server?.edicts?.[0] ?? null,
+  getWorldModel: () => SV.server?.worldmodel ?? null,
+  getModels: () => SV.server?.models ?? null,
+});

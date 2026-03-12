@@ -7,6 +7,7 @@ import { BrushModel } from '../../source/engine/common/model/BSP.mjs';
 import { BrushTrace, Pmove } from '../../source/engine/common/Pmove.mjs';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.mjs';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
+import { ServerArea } from '../../source/engine/server/physics/ServerArea.mjs';
 
 import {
   assertNear,
@@ -951,6 +952,42 @@ describe('ServerCollision', () => {
         assert.equal(trace.ent, null);
         assert.deepEqual([...trace.endpos], [100, 0, 0]);
       });
+    });
+  });
+});
+
+describe('ServerArea', () => {
+  test('resolves BSP hulls from the client model precache when the local server model table is empty', () => {
+    const area = new ServerArea();
+    area.initBoxHull();
+
+    const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
+    const movingEntity = createMockEntity({
+      origin: new Vector(),
+      angles: new Vector(),
+      modelindex: 1,
+      movetype: moveType.MOVETYPE_PUSH,
+      solidType: solid.SOLID_BSP,
+    });
+    const movingEdict = createMockEdict(movingEntity);
+    const offset = new Vector(1, 1, 1);
+
+    withMockRegistry(defaultMockRegistry({
+      server: {
+        edicts: [],
+        models: [],
+        worldmodel: null,
+      },
+    }, {
+      state: {
+        model_precache: [null, worldModel],
+        worldmodel: worldModel,
+      },
+    }), () => {
+      const hull = area.hullForEntity(movingEdict, Vector.origin, Vector.origin, offset);
+
+      assert.equal(hull, worldModel.hulls[0]);
+      assert.deepEqual([...offset], [...worldModel.hulls[0].clip_mins]);
     });
   });
 });

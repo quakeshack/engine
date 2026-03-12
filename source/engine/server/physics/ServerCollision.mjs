@@ -1,5 +1,6 @@
 import Vector from '../../../shared/Vector.mjs';
 import * as Defs from '../../../shared/Defs.mjs';
+import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
 import Mod, { BrushModel } from '../../common/Mod.mjs';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.mjs';
 import { eventBus, registry } from '../../registry.mjs';
@@ -19,14 +20,13 @@ import {
   recursiveHullCheck as legacyRecursiveHullCheck,
 } from './ServerLegacyHullCollision.mjs';
 
-let { CL, Con, SV } = registry;
+let { Con, SV } = registry;
 
 /** @typedef {import('../Client.mjs').ServerEdict} ServerEdict */
 
 /** @typedef {import('../../common/Pmove.mjs').Trace} SharedBrushTrace */
 
 eventBus.subscribe('registry.frozen', () => {
-  CL = registry.CL;
   Con = registry.Con;
   SV = registry.SV;
 });
@@ -41,16 +41,33 @@ export class ServerCollision {
   static MISSILE_MAXS = new Vector(15.0, 15.0, 15.0);
 
   /**
+   * @param {CollisionModelSource} [modelSource] runtime model resolver
+   */
+  constructor(modelSource = createRegistryCollisionModelSource()) {
+    this._modelSource = modelSource;
+  }
+
+  /**
+   * Resolve a collision model by model index from either the active server or
+   * the client precache populated by server signon data.
+   * @param {number} modelIndex precached model index
+   * @returns {BrushModel|object|null} resolved model, if any
+   */
+  _getModelByIndex(modelIndex) {
+    return this._modelSource.getModelByIndex(modelIndex);
+  }
+
+  /**
    * Resolve the model used by an entity for collision.
    * @param {ServerEdict} ent entity being tested
    * @returns {BrushModel|object|null} collision model, if any
    */
   _getEntityModel(ent) {
     if (ent === SV.server?.edicts?.[0]) {
-      return SV.server.worldmodel;
+      return this._getStaticWorldSource().worldModel;
     }
 
-    return SV.server.models?.[ent.entity.modelindex] ?? null;
+    return this._getModelByIndex(ent.entity.modelindex);
   }
 
   /**
@@ -95,8 +112,8 @@ export class ServerCollision {
    */
   _getStaticWorldSource() {
     return {
-      worldEntity: SV.server?.edicts?.[0] ?? null,
-      worldModel: SV.server?.worldmodel ?? CL?.state?.worldmodel ?? null,
+      worldEntity: this._modelSource.getWorldEntity(),
+      worldModel: this._modelSource.getWorldModel(),
     };
   }
 
@@ -606,7 +623,7 @@ export class ServerCollision {
    * @returns {MeshTraceContext|null} mesh tracing context, or null when mesh tracing is not available
    */
   _createMeshTraceContext(ent, start, mins, maxs, end) {
-    const model = SV.server.models[ent.entity.modelindex];
+    const model = this._getEntityModel(ent);
     if (!model || model.type !== Mod.type.mesh) {
       return null;
     }

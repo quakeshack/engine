@@ -2,6 +2,7 @@ import Vector from '../../../shared/Vector.mjs';
 import * as Defs from '../../../shared/Defs.mjs';
 import { Octree } from '../../../shared/Octree.mjs';
 import { eventBus, registry } from '../../registry.mjs';
+import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
 import { BrushModel } from '../../../engine/common/Mod.mjs';
 
 let { SV } = registry;
@@ -15,7 +16,21 @@ eventBus.subscribe('registry.frozen', () => {
  * Handles the area node BSP tree used for spatial queries.
  */
 export class ServerArea {
-  constructor() {
+  /**
+   * @param {CollisionModelSource} [modelSource] runtime model resolver
+   */
+  constructor(modelSource = createRegistryCollisionModelSource()) {
+    this._modelSource = modelSource;
+  }
+
+  /**
+   * Resolve a collision model by model index from either the active server or
+   * the client precache populated during signon.
+   * @param {number} modelIndex precached model index
+   * @returns {BrushModel|object|null} resolved model, if any
+   */
+  _getModelByIndex(modelIndex) {
+    return this._modelSource.getModelByIndex(modelIndex);
   }
 
   /**
@@ -28,7 +43,7 @@ export class ServerArea {
     const origin = ent.entity.origin;
     const mins = ent.entity.mins;
     const maxs = ent.entity.maxs;
-    const model = SV.server.models[ent.entity.modelindex];
+    const model = this._getModelByIndex(ent.entity.modelindex);
 
     if (ent.entity.solid === Defs.solid.SOLID_BSP
       && model instanceof BrushModel
@@ -114,7 +129,7 @@ export class ServerArea {
    * @returns {*} the hull structure used for collision tests
    */
   hullForEntity(ent, mins, maxs, out_offset) {
-    const model = SV.server.models[ent.entity.modelindex];
+    const model = this._getModelByIndex(ent.entity.modelindex);
     const origin = ent.entity.origin;
 
     if (ent.entity.solid !== Defs.solid.SOLID_BSP || !(model instanceof BrushModel)) { // CR: don’t ask

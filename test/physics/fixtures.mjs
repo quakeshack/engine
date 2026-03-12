@@ -18,6 +18,7 @@ import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.
  * @property {Vector} velocity
  * @property {Vector} avelocity
  * @property {Vector} angles
+ * @property {number} modelindex
  * @property {number} movetype
  * @property {number} solid
  * @property {number} flags
@@ -28,6 +29,7 @@ import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.
  * @property {Function|null} touch
  * @property {Function} think
  * @property {number} nextthink
+ * @property {number} num
  * @property {Vector} size
  * @property {Vector} absmin
  * @property {Vector} absmax
@@ -220,7 +222,7 @@ export function createPmoveBoxEntity({ origin, mins, maxs, num = 0 }) {
 
 /**
  * Create a minimal entity object for server physics tests.
- * @param {{origin?: Vector, mins?: Vector, maxs?: Vector, velocity?: Vector, avelocity?: Vector, angles?: Vector, movetype?: number, solidType?: number, flagsValue?: number, groundentity?: object|null}} options entity options
+ * @param {{origin?: Vector, mins?: Vector, maxs?: Vector, velocity?: Vector, avelocity?: Vector, angles?: Vector, modelindex?: number, movetype?: number, solidType?: number, flagsValue?: number, groundentity?: object|null, num?: number}} options entity options
  * @returns {MockEntity} mock entity
  */
 export function createMockEntity({
@@ -230,10 +232,12 @@ export function createMockEntity({
   velocity = new Vector(),
   avelocity = new Vector(),
   angles = new Vector(),
+  modelindex = 0,
   movetype = moveType.MOVETYPE_NONE,
   solidType = solid.SOLID_NOT,
   flagsValue = 0,
   groundentity = null,
+  num = 0,
 } = {}) {
   return {
     origin,
@@ -242,6 +246,7 @@ export function createMockEntity({
     velocity,
     avelocity,
     angles,
+    modelindex,
     movetype,
     solid: solidType,
     flags: flagsValue,
@@ -252,6 +257,7 @@ export function createMockEntity({
     touch: null,
     think() {},
     nextthink: 0,
+    num,
     size: maxs.copy().subtract(mins),
     absmin: origin.copy().add(mins),
     absmax: origin.copy().add(maxs),

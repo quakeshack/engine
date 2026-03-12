@@ -40,6 +40,7 @@ Grouped by sections and then sorted by priority (more or less).
 - [_] remove C style code that is almost verbatim from Quake
 - [X] Mod.ForName and bmodel/submodels smells a bit funny, should be a bit more streamlined with the Async stuff
 - [X] reorganize shaders
+- [_] reorganize physics code to be usable on both client and server
 
 ### Network improvements
 
@@ -155,6 +156,11 @@ Grouped by sections and then sorted by priority (more or less).
 - https://mus1n.github.io/Quake-3-Skybox/ 360 to skybox
 
 ## Log
+
+### 2026-03-13
+
+- fixed some nasty bugs regarding brushsides after lots of experimentation and reading FTEQW source
+- I’m not happy about the physics code being server-only since the client makes use of it too
 
 ### 2026-03-12
 
