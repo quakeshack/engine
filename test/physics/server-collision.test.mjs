@@ -869,6 +869,36 @@ describe('ServerCollision', () => {
       });
     });
 
+    test('uses the client worldmodel when no local server worldspawn exists', () => {
+      const collision = new ServerCollision();
+      const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
+
+      withMockRegistry(defaultMockRegistry({
+        area: {
+          tree: {
+            queryAABB() {
+              return [];
+            },
+          },
+        },
+        server: {
+          edicts: [],
+          worldmodel: null,
+        },
+      }, {
+        state: {
+          worldmodel: worldModel,
+        },
+      }), () => {
+        const trace = collision.traceStaticWorldLine(new Vector(0, 0, 0), new Vector(100, 0, 0));
+
+        assert.equal(trace.startsolid, false);
+        assert.equal(trace.ent, null);
+        assert.ok(trace.fraction < 1.0);
+        assertNear(trace.endpos[0], 47.96875, 0.001);
+      });
+    });
+
     test('keeps legacy world hull traces out of foreign clipnode subtrees', () => {
       const collision = new ServerCollision();
       const worldHull = {

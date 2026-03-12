@@ -19,13 +19,14 @@ import {
   recursiveHullCheck as legacyRecursiveHullCheck,
 } from './ServerLegacyHullCollision.mjs';
 
-let { Con, SV } = registry;
+let { CL, Con, SV } = registry;
 
 /** @typedef {import('../Client.mjs').ServerEdict} ServerEdict */
 
 /** @typedef {import('../../common/Pmove.mjs').Trace} SharedBrushTrace */
 
 eventBus.subscribe('registry.frozen', () => {
+  CL = registry.CL;
   Con = registry.Con;
   SV = registry.SV;
 });
@@ -45,7 +46,7 @@ export class ServerCollision {
    * @returns {BrushModel|object|null} collision model, if any
    */
   _getEntityModel(ent) {
-    if (ent === SV.server.edicts[0]) {
+    if (ent === SV.server?.edicts?.[0]) {
       return SV.server.worldmodel;
     }
 
@@ -85,6 +86,18 @@ export class ServerCollision {
    */
   _getHullFallbackState(ent) {
     return new HullCollisionState(ent);
+  }
+
+  /**
+   * Resolve the active static-world model for traces that can run on either a
+   * local server or a pure client connection.
+   * @returns {{ worldEntity: ServerEdict|null, worldModel: BrushModel|null }} static world source
+   */
+  _getStaticWorldSource() {
+    return {
+      worldEntity: SV.server?.edicts?.[0] ?? null,
+      worldModel: SV.server?.worldmodel ?? CL?.state?.worldmodel ?? null,
+    };
   }
 
   /**
@@ -177,7 +190,7 @@ export class ServerCollision {
       return false;
     }
 
-    if (state.ent === SV.server.edicts[0]) {
+    if (state.ent === SV.server?.edicts?.[0]) {
       return true;
     }
 
@@ -378,7 +391,11 @@ export class ServerCollision {
    * @returns {number} static-world contents value
    */
   staticWorldContents(point, hullNum = 0) {
-    const worldModel = SV.server.worldmodel;
+    const { worldModel } = this._getStaticWorldSource();
+
+    if (worldModel === null) {
+      return Defs.content.CONTENT_EMPTY;
+    }
 
     if (hullNum === 0 && worldModel instanceof BrushModel && worldModel.hasBrushData) {
       return this._pointContentsBrushStaticWorld(worldModel, point);
@@ -420,17 +437,28 @@ export class ServerCollision {
    * @returns {CollisionTrace} collision result against static world geometry
    */
   traceStaticWorld(start, mins, maxs, end, hullNum = 0) {
-    const worldEntity = SV.server.edicts[0];
-    const worldModel = SV.server.worldmodel;
+    const { worldEntity, worldModel } = this._getStaticWorldSource();
+
+    if (worldModel === null) {
+      return CollisionTrace.empty(end);
+    }
 
     if (hullNum === 0 && worldModel instanceof BrushModel && worldModel.hasBrushData) {
       return this._toServerTrace(
         this._traceBrushModel(worldModel, start, mins, maxs, end, Vector.origin, Vector.origin),
-        worldEntity,
+        worldEntity ?? /** @type {ServerEdict} */ (null),
       );
     }
 
     if (hullNum === 0) {
+      if (worldEntity === null) {
+        if (!this._isPointTrace(mins, maxs)) {
+          return CollisionTrace.empty(end);
+        }
+
+        return this._traceLegacyHullLine(worldModel.hulls[0], start, end);
+      }
+
       return this._clipMoveToHullState(this._getHullFallbackState(worldEntity), start, mins, maxs, end);
     }
 

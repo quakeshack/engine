@@ -45,6 +45,7 @@ import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.
 
 /**
  * @typedef MockRegistryConfig
+ * @property {object|null} [CL]
  * @property {{ Print: Function, DPrint: Function }} Con
  * @property {{ frametime: number }} Host
  * @property {object} SV
@@ -289,8 +290,9 @@ export function createMockEdict(entity) {
  * @param {object} [sv] SV overrides
  * @returns {MockRegistryConfig} registry config
  */
-export function defaultMockRegistry(sv = {}) {
+export function defaultMockRegistry(sv = {}, cl = null) {
   return {
+    CL: cl,
     Con: { Print() {}, DPrint() {} },
     Host: { frametime: 0.1 },
     SV: sv,
@@ -303,10 +305,12 @@ export function defaultMockRegistry(sv = {}) {
  * @param {() => void} callback test callback
  */
 export function withMockRegistry(mockedRegistry, callback) {
+  const previousCL = registry.CL;
   const previousCon = registry.Con;
   const previousHost = registry.Host;
   const previousSV = registry.SV;
 
+  registry.CL = mockedRegistry.CL ?? null;
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
   registry.SV = mockedRegistry.SV;
@@ -315,6 +319,7 @@ export function withMockRegistry(mockedRegistry, callback) {
   try {
     callback();
   } finally {
+    registry.CL = previousCL;
     registry.Con = previousCon;
     registry.Host = previousHost;
     registry.SV = previousSV;
