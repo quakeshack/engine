@@ -4,27 +4,17 @@
  *
  * Inspired by Quake 2’s pmove.c with structural elements from QuakeWorld.
  *
-    const localPosition = this.toHullSpace(position);
-    return hull.pointContents(localPosition) !== content.CONTENT_SOLID;
- *
  * Original sources: pmove.c, pmovetst.c (Q2), pmove.c (Q1).
  */
 
-import { eventBus, registry } from '../registry.mjs';
 import Vector from '../../shared/Vector.mjs';
 import * as Protocol from '../network/Protocol.mjs';
-import { content, solid } from '../../shared/Defs.mjs';
+import { content } from '../../shared/Defs.mjs';
 import { BrushModel } from './Mod.mjs';
 import Cvar from './Cvar.mjs';
 import { PmoveConfiguration } from '../../shared/Pmove.mjs';
 
 /** @typedef {import('../../shared/Vector.mjs').DirectionalVectors} DirectionalVectors */
-
-let { SV } = registry;
-
-eventBus.subscribe('registry.frozen', () => {
-  SV = registry.SV;
-});
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -498,22 +488,37 @@ export class BrushTrace {
   }
 
   /**
+   * Resolve the entity transform used by shared brush collision helpers.
+   * @param {Vector} origin - entity origin
+   * @param {Vector} angles - entity angles
+   * @returns {{origin: Vector, basis: number[]|null}|null} transform context, or null when identity
+   */
+  static _getTransformContext(origin, angles) {
+    const basis = angles.isOrigin() ? null : angles.toRotationMatrix();
+
+    if (basis === null && origin.isOrigin()) {
+      return null;
+    }
+
+    return { origin, basis };
+  }
+
+  /**
    * Convert a world-space point into local model space for an entity transform.
    * @param {Vector} point - world-space point
-   * @param {Vector} origin - entity origin
-   * @param {number[]|null} basis - optional 3x3 rotation matrix
+   * @param {{origin: Vector, basis: number[]|null}|null} transform - entity transform context
    * @returns {Vector} transformed local-space point
    */
-  static _toLocalPoint(point, origin, basis) {
-    if (basis !== null) {
-      return BrushTrace._transformPointToLocal(point, origin, basis);
+  static _toLocalPoint(point, transform) {
+    if (transform === null) {
+      return point;
     }
 
-    if (!origin.isOrigin()) {
-      return point.copy().subtract(origin);
+    if (transform.basis !== null) {
+      return BrushTrace._transformPointToLocal(point, transform.origin, transform.basis);
     }
 
-    return point;
+    return point.copy().subtract(transform.origin);
   }
 
   /**
@@ -529,19 +534,17 @@ export class BrushTrace {
    * @returns {Trace} world-space trace result
    */
   static transformedBoxTrace(model, start, end, mins, maxs, origin = Vector.origin, angles = Vector.origin) {
-    const hasTranslation = !origin.isOrigin();
-    const hasRotation = !angles.isOrigin();
+    const transform = BrushTrace._getTransformContext(origin, angles);
 
-    if (!hasTranslation && !hasRotation) {
+    if (transform === null) {
       return BrushTrace._traceModel(model, start, end, mins, maxs);
     }
 
-    const basis = hasRotation ? angles.toRotationMatrix() : null;
-    const localStart = BrushTrace._toLocalPoint(start, origin, basis);
-    const localEnd = BrushTrace._toLocalPoint(end, origin, basis);
+    const localStart = BrushTrace._toLocalPoint(start, transform);
+    const localEnd = BrushTrace._toLocalPoint(end, transform);
     const localTrace = BrushTrace._traceModel(model, localStart, localEnd, mins, maxs);
 
-    return BrushTrace._transformTraceToWorld(localTrace, origin, basis);
+    return BrushTrace._transformTraceToWorld(localTrace, transform);
   }
 
   /**
@@ -557,15 +560,13 @@ export class BrushTrace {
    * @returns {boolean} true if position is valid (not in solid)
    */
   static transformedTestPosition(model, position, mins, maxs, origin = Vector.origin, angles = Vector.origin) {
-    const hasTranslation = !origin.isOrigin();
-    const hasRotation = !angles.isOrigin();
+    const transform = BrushTrace._getTransformContext(origin, angles);
 
-    if (!hasTranslation && !hasRotation) {
+    if (transform === null) {
       return BrushTrace._testModelPosition(model, position, mins, maxs);
     }
 
-    const basis = hasRotation ? angles.toRotationMatrix() : null;
-    const localPosition = BrushTrace._toLocalPoint(position, origin, basis);
+    const localPosition = BrushTrace._toLocalPoint(position, transform);
 
     return BrushTrace._testModelPosition(model, localPosition, mins, maxs);
   }
@@ -1239,20 +1240,23 @@ export class BrushTrace {
   /**
    * Convert a local-space trace result back into world space.
    * @param {Trace} localTrace - local-space trace result
-   * @param {Vector} origin - transform origin
-   * @param {number[]|null} basis - 3x3 rotation matrix or null for translation-only
+   * @param {{origin: Vector, basis: number[]|null}|null} transform - entity transform context
    * @returns {Trace} world-space trace result
    */
-  static _transformTraceToWorld(localTrace, origin, basis) {
+  static _transformTraceToWorld(localTrace, transform) {
+    if (transform === null) {
+      return localTrace;
+    }
+
     const trace = localTrace.copy();
 
-    if (basis !== null) {
-      trace.endpos = BrushTrace._transformPointToWorld(localTrace.endpos, origin, basis);
-      trace.plane.normal = BrushTrace._transformNormalToWorld(localTrace.plane.normal, basis);
-      trace.plane.dist = localTrace.plane.dist + trace.plane.normal.dot(origin);
+    if (transform.basis !== null) {
+      trace.endpos = BrushTrace._transformPointToWorld(localTrace.endpos, transform.origin, transform.basis);
+      trace.plane.normal = BrushTrace._transformNormalToWorld(localTrace.plane.normal, transform.basis);
+      trace.plane.dist = localTrace.plane.dist + trace.plane.normal.dot(transform.origin);
     } else {
-      trace.endpos.add(origin);
-      trace.plane.dist += trace.plane.normal.dot(origin);
+      trace.endpos.add(transform.origin);
+      trace.plane.dist += trace.plane.normal.dot(transform.origin);
     }
 
     return trace;
@@ -3064,51 +3068,4 @@ export class Pmove { // pmove_t
   newPlayerMove() {
     return new PmovePlayer(this);
   }
-};
-
-// ---------------------------------------------------------------------------
-// Test function
-// ---------------------------------------------------------------------------
-
-/**
- * Test function for serverside Pmove.
- * @returns {Pmove} movevars
- */
-export function TestServerside() {
-  const pm = new Pmove();
-
-  pm.setWorldmodel(SV.server.worldmodel);
-
-  console.assert(pm.physents[0] instanceof PhysEnt, 'world physent is present');
-  console.assert(pm.physents[0].hulls.length === SV.server.worldmodel.hulls.length, 'all hulls copied');
-
-  // we add entities and check if they have been added properly
-  for (let i = 1; i < SV.server.num_edicts; i++) {
-    const entity = SV.server.edicts[i].entity;
-
-    pm.addEntity(entity, entity.solid === solid.SOLID_BSP ? /** @type {BrushModel} */ (SV.server.models[entity.modelindex]) : null);
-
-    console.assert(pm.physents[i].origin.equals(entity.origin), 'origin must match');
-    console.assert(pm.physents[i].edictId === i, 'edictId must match');
-  }
-
-  // we added all entities (for testing purposes)
-  console.assert(pm.physents.length === SV.server.num_edicts, 'all entities plus world are added');
-
-  const origin = SV.server.edicts[1].entity.origin;
-  console.assert(pm.isValidPlayerPosition(origin), 'current player position must be asserted as valid');
-
-  // Test PlayerMove 64 units into the void
-  const playerMoveTraceIntoSpace = pm.clipPlayerMove(origin, new Vector(origin[0], origin[1], 999999));
-  console.assert(playerMoveTraceIntoSpace instanceof Trace, 'playerMoveTrace is a Trace');
-  console.assert(playerMoveTraceIntoSpace.ent === 0, 'trace stopped at world');
-  console.assert(playerMoveTraceIntoSpace.fraction < 1.0, 'fraction cannot be 1.0');
-
-  // Test PlayerMove 64 units above the player
-  const playerMoveTraceHigher = pm.clipPlayerMove(origin, new Vector(origin[0], origin[1], origin[2] + 64.0));
-  console.assert(playerMoveTraceHigher instanceof Trace, 'playerMoveTrace is a Trace');
-  console.assert(playerMoveTraceHigher.ent === null, 'trace stopped in air');
-  console.assert(playerMoveTraceHigher.fraction === 1.0, 'fraction must be 1.0');
-
-  return pm;
 };

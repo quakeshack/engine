@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
-import { content, flags, moveType, solid } from '../../source/shared/Defs.mjs';
+import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.mjs';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
 import { BrushTrace, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
@@ -10,6 +10,8 @@ import { UserCmd } from '../../source/engine/network/Protocol.mjs';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';
+import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.mjs';
+import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.mjs';
 
 test('PmovePlayer.DEBUG is disabled before Pmove.Init()', () => {
   assert.equal(PmovePlayer.DEBUG, false);
@@ -650,6 +652,1031 @@ test('ServerCollision stationary brush tests preserve exact resting contact', ()
   assert.deepEqual([...trace.endpos], [...position]);
 });
 
+test('ServerCollision.move traces world brush sweeps through shared brush state', () => {
+  const collision = new ServerCollision();
+  const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
+  const worldEntity = createMockEntity({
+    origin: new Vector(),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_NONE,
+    solidType: solid.SOLID_BSP,
+  });
+  const worldEdict = createMockEdict(worldEntity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB() {
+            return [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict],
+        worldmodel: worldModel,
+      },
+    },
+  }, () => {
+    const trace = collision.move(
+      new Vector(0, 0, 0),
+      new Vector(),
+      new Vector(),
+      new Vector(100, 0, 0),
+      0,
+      null,
+    );
+
+    assert.equal(trace.startsolid, false);
+    assert.ok(trace.fraction < 1.0);
+    assert.equal(trace.ent, worldEdict);
+    assertNear(trace.endpos[0], 47.96875, 0.001);
+    assertNear(trace.endpos[1], 0);
+    assertNear(trace.endpos[2], 0);
+  });
+});
+
+test('ServerCollision.move expands missile traces for monster broadphase and narrowphase', () => {
+  const collision = new ServerCollision();
+  const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
+  const monsterEntity = createMockEntity({
+    origin: new Vector(50, 12, 0),
+    mins: new Vector(-8, -8, -8),
+    maxs: new Vector(8, 8, 8),
+    movetype: moveType.MOVETYPE_WALK,
+    solidType: solid.SOLID_BBOX,
+    flagsValue: flags.FL_MONSTER,
+  });
+  monsterEntity.absmin = monsterEntity.origin.copy().add(monsterEntity.mins);
+  monsterEntity.absmax = monsterEntity.origin.copy().add(monsterEntity.maxs);
+  const monsterEdict = createMockEdict(monsterEntity);
+  monsterEdict.num = 1;
+
+  /** @type {{ boxmins: Vector, boxmaxs: Vector }[]} */
+  const queryCalls = [];
+  /** @type {{ ent: object, mins: Vector, maxs: Vector, end: Vector }[]} */
+  const traceCalls = [];
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        tree: {
+          queryAABB(boxmins, boxmaxs) {
+            queryCalls.push({ boxmins: boxmins.copy(), boxmaxs: boxmaxs.copy() });
+
+            const overlapsMonster = !(
+              boxmins[0] > monsterEntity.absmax[0]
+              || boxmins[1] > monsterEntity.absmax[1]
+              || boxmins[2] > monsterEntity.absmax[2]
+              || boxmaxs[0] < monsterEntity.absmin[0]
+              || boxmaxs[1] < monsterEntity.absmin[1]
+              || boxmaxs[2] < monsterEntity.absmin[2]
+            );
+
+            return overlapsMonster ? [monsterEdict] : [];
+          },
+        },
+      },
+      server: {
+        edicts: [worldEdict, monsterEdict],
+        worldmodel: null,
+      },
+    },
+  }, () => {
+    collision._clipMoveToEntityWithState = (state, start, mins, maxs, end) => {
+      traceCalls.push({ ent: state.ent, mins: mins.copy(), maxs: maxs.copy(), end: end.copy() });
+
+      if (state.ent === worldEdict) {
+        return {
+          fraction: 1.0,
+          allsolid: false,
+          startsolid: false,
+          endpos: end.copy(),
+          plane: { normal: new Vector(), dist: 0.0 },
+          ent: null,
+        };
+      }
+
+      return {
+        fraction: 0.25,
+        allsolid: false,
+        startsolid: false,
+        endpos: new Vector(25, 0, 0),
+        plane: { normal: new Vector(-1, 0, 0), dist: 0.0 },
+        ent: monsterEdict,
+      };
+    };
+
+    const start = new Vector(0, 0, 0);
+    const end = new Vector(100, 0, 0);
+
+    const normalTrace = collision.move(start, Vector.origin, Vector.origin, end, moveTypes.MOVE_NORMAL, null);
+    const normalQuery = queryCalls[0];
+    const normalMonsterTrace = traceCalls.find((call) => call.ent === monsterEdict);
+
+    assert.equal(normalTrace.fraction, 1.0);
+    assert.equal(normalTrace.ent, null);
+    assert.equal(normalMonsterTrace, undefined);
+    assert.ok(normalQuery.boxmaxs[1] < monsterEntity.absmin[1]);
+
+    queryCalls.length = 0;
+    traceCalls.length = 0;
+
+    const missileTrace = collision.move(start, Vector.origin, Vector.origin, end, moveTypes.MOVE_MISSILE, null);
+    const missileQuery = queryCalls[0];
+    const missileMonsterTrace = traceCalls.find((call) => call.ent === monsterEdict);
+
+    assert.ok(missileQuery.boxmaxs[1] >= monsterEntity.absmin[1]);
+    assert.notEqual(missileMonsterTrace, undefined);
+    assert.deepEqual([...missileMonsterTrace.mins], [...ServerCollision.MISSILE_MINS]);
+    assert.deepEqual([...missileMonsterTrace.maxs], [...ServerCollision.MISSILE_MAXS]);
+    assert.equal(missileTrace.ent, monsterEdict);
+    assert.equal(missileTrace.fraction, 0.25);
+  });
+});
+
+test('ServerPhysics.checkVelocity clears NaNs and clamps to maxvelocity', () => {
+  const serverPhysics = new ServerPhysics();
+  const prints = [];
+  const entity = createMockEntity({
+    origin: new Vector(1, 2, 3),
+    velocity: new Vector(5000, -5000, 1),
+  });
+  entity.origin[0] = Number.NaN;
+  entity.velocity[2] = Number.NaN;
+  entity.classname = 'test_entity';
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print(message) {
+        prints.push(message);
+      },
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      maxvelocity: { value: 2000 },
+    },
+  }, () => {
+    serverPhysics.checkVelocity(edict);
+  });
+
+  assert.deepEqual([...edict.entity.velocity], [2000, -2000, 0]);
+  assert.deepEqual([...edict.entity.origin], [0, 2, 3]);
+  assert.equal(prints.length, 2);
+  assert.equal(prints[0], 'Got a NaN origin on test_entity\n');
+  assert.equal(prints[1], 'Got a NaN velocity on test_entity\n');
+});
+
+test('ServerPhysics.pushEntity uses MOVE_MISSILE and preserves origin on allsolid', () => {
+  const serverPhysics = new ServerPhysics();
+  const linkCalls = [];
+  const moveCalls = [];
+  const entity = createMockEntity({
+    origin: new Vector(10, 20, 30),
+    mins: new Vector(-1, -1, -1),
+    maxs: new Vector(1, 1, 1),
+    movetype: moveType.MOVETYPE_FLYMISSILE,
+    solidType: solid.SOLID_BBOX,
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        linkEdict(linkedEdict) {
+          linkCalls.push(linkedEdict);
+        },
+      },
+      collision: {
+        move(start, mins, maxs, end, type, passedict) {
+          moveCalls.push({
+            start: start.copy(),
+            mins: mins.copy(),
+            maxs: maxs.copy(),
+            end: end.copy(),
+            type,
+            passedict,
+          });
+          return {
+            allsolid: true,
+            startsolid: true,
+            fraction: 0.0,
+            endpos: new Vector(999, 999, 999),
+            ent: null,
+          };
+        },
+      },
+      server: {
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    const trace = serverPhysics.pushEntity(edict, new Vector(5, 0, 0));
+
+    assert.equal(trace.allsolid, true);
+  });
+
+  assert.equal(moveCalls.length, 1);
+  assert.equal(moveCalls[0].type, moveTypes.MOVE_MISSILE);
+  assert.equal(moveCalls[0].passedict, edict);
+  assert.deepEqual([...edict.entity.origin], [10, 20, 30]);
+  assert.equal(linkCalls.length, 1);
+  assert.equal(linkCalls[0], edict);
+});
+
+test('ServerMovement.checkBottom returns early when all four corners are solid', () => {
+  const movement = new ServerMovement();
+  const moveCalls = [];
+  const cornerChecks = [];
+  const entity = createMockEntity({
+    origin: new Vector(64, 64, 32),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      collision: {
+        pointContents(point) {
+          cornerChecks.push(point.copy());
+          return content.CONTENT_SOLID;
+        },
+        move(...args) {
+          moveCalls.push(args);
+          return null;
+        },
+      },
+    },
+  }, () => {
+    assert.equal(movement.checkBottom(edict), true);
+  });
+
+  assert.equal(cornerChecks.length, 4);
+  assert.equal(moveCalls.length, 0);
+});
+
+test('ServerMovement.movestep preserves horizontal progress on partial ground fallback', () => {
+  const movement = new ServerMovement();
+  const linkCalls = [];
+  const moveCalls = [];
+  const entity = createMockEntity({
+    origin: new Vector(10, 20, 30),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+    flagsValue: flags.FL_PARTIALGROUND | flags.FL_ONGROUND,
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        linkEdict(linkedEdict, touchTriggers) {
+          linkCalls.push({ linkedEdict, touchTriggers });
+        },
+      },
+      collision: {
+        move(start, mins, maxs, end, type, passedict) {
+          moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 1.0,
+            endpos: end.copy(),
+            ent: null,
+          };
+        },
+      },
+    },
+  }, () => {
+    const moved = movement.movestep(edict, new Vector(4, -6, 0), true);
+    assert.equal(moved, true);
+  });
+
+  assert.equal(moveCalls.length, 1);
+  assert.deepEqual([...edict.entity.origin], [14, 14, 30]);
+  assert.equal((edict.entity.flags & flags.FL_ONGROUND) !== 0, false);
+  assert.equal((edict.entity.flags & flags.FL_PARTIALGROUND) !== 0, true);
+  assert.equal(linkCalls.length, 1);
+  assert.equal(linkCalls[0].linkedEdict, edict);
+  assert.equal(linkCalls[0].touchTriggers, true);
+});
+
+test('ServerPhysics.flyMove clips against a wall and records steptrace', () => {
+  const serverPhysics = new ServerPhysics();
+  const moveCalls = [];
+  const impacts = [];
+  const blocker = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
+  const entity = createMockEntity({
+    origin: new Vector(0, 0, 0),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+    velocity: new Vector(10, 0, 0),
+    solidType: solid.SOLID_BBOX,
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      collision: {
+        move(start, mins, maxs, end, type, passedict) {
+          moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 0.5,
+            endpos: new Vector(5, 0, 0),
+            plane: { normal: new Vector(-1, 0, 0), dist: 5 },
+            ent: blocker,
+          };
+        },
+      },
+      server: {
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    serverPhysics.impact = (e1, e2, pushVector) => {
+      impacts.push({ e1, e2, pushVector: pushVector.copy() });
+    };
+
+    const result = serverPhysics.flyMove(edict, 1.0);
+
+    assert.equal(result.blocked, BlockedFlags.WALL);
+    assert.equal(result.steptrace?.ent, blocker);
+  });
+
+  assert.equal(moveCalls.length, 1);
+  assert.deepEqual([...edict.entity.origin], [5, 0, 0]);
+  assert.deepEqual([...edict.entity.velocity], [0, 0, 0]);
+  assert.equal(impacts.length, 1);
+  assert.deepEqual([...impacts[0].pushVector], [10, 0, 0]);
+});
+
+test('ServerPhysics.flyMove stops in a two-plane crease', () => {
+  const serverPhysics = new ServerPhysics();
+  let moveCallCount = 0;
+  const blockerA = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
+  const blockerB = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
+  const entity = createMockEntity({
+    origin: new Vector(0, 0, 0),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+    velocity: new Vector(10, 10, 0),
+    solidType: solid.SOLID_BBOX,
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      collision: {
+        move() {
+          moveCallCount += 1;
+
+          if (moveCallCount === 1) {
+            return {
+              allsolid: false,
+              startsolid: false,
+              fraction: 0.0,
+              endpos: new Vector(0, 0, 0),
+              plane: { normal: new Vector(-1, 0, 0), dist: 0 },
+              ent: blockerA,
+            };
+          }
+
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 0.0,
+            endpos: new Vector(0, 0, 0),
+            plane: { normal: new Vector(0, -1, 0), dist: 0 },
+            ent: blockerB,
+          };
+        },
+      },
+      server: {
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    serverPhysics.impact = () => {};
+
+    const result = serverPhysics.flyMove(edict, 1.0);
+
+    assert.equal(result.blocked, BlockedFlags.WALL);
+    assert.equal(result.steptrace?.ent, blockerB);
+  });
+
+  assert.equal(moveCallCount, 2);
+  assert.deepEqual([...edict.entity.origin], [0, 0, 0]);
+  assert.deepEqual([...edict.entity.velocity], [0, 0, 0]);
+});
+
+test('ServerPhysics.flyMove dead-stops when clipped by three non-coplanar planes', () => {
+  const serverPhysics = new ServerPhysics();
+  let moveCallCount = 0;
+  const blockerA = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
+  const blockerB = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
+  const blockerC = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
+  const entity = createMockEntity({
+    origin: new Vector(0, 0, 0),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+    velocity: new Vector(10, 10, 10),
+    solidType: solid.SOLID_BBOX,
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      collision: {
+        move() {
+          moveCallCount += 1;
+
+          if (moveCallCount === 1) {
+            return {
+              allsolid: false,
+              startsolid: false,
+              fraction: 0.0,
+              endpos: new Vector(0, 0, 0),
+              plane: { normal: new Vector(-1, 0, 0), dist: 0 },
+              ent: blockerA,
+            };
+          }
+
+          if (moveCallCount === 2) {
+            return {
+              allsolid: false,
+              startsolid: false,
+              fraction: 0.0,
+              endpos: new Vector(0, 0, 0),
+              plane: { normal: new Vector(0, -1, 0), dist: 0 },
+              ent: blockerB,
+            };
+          }
+
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 0.0,
+            endpos: new Vector(0, 0, 0),
+            plane: { normal: new Vector(0, 0, -1), dist: 0 },
+            ent: blockerC,
+          };
+        },
+      },
+      server: {
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    serverPhysics.impact = () => {};
+
+    const result = serverPhysics.flyMove(edict, 1.0);
+
+    assert.equal(result.blocked, 7);
+    assert.equal(result.steptrace?.ent, blockerB);
+  });
+
+  assert.equal(moveCallCount, 3);
+  assert.deepEqual([...edict.entity.origin], [0, 0, 0]);
+  assert.deepEqual([...edict.entity.velocity], [0, 0, 0]);
+});
+
+test('ServerPhysics.flyMove keeps state finite when a degenerate wall normal repeats', () => {
+  const serverPhysics = new ServerPhysics();
+  let moveCallCount = 0;
+  const impacts = [];
+  const blocker = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
+  const entity = createMockEntity({
+    origin: new Vector(5, 6, 7),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+    velocity: new Vector(3, 4, 0),
+    solidType: solid.SOLID_BBOX,
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      collision: {
+        move() {
+          moveCallCount += 1;
+
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 0.0,
+            endpos: new Vector(5, 6, 7),
+            plane: { normal: new Vector(0, 0, 0), dist: 0 },
+            ent: blocker,
+          };
+        },
+      },
+      server: {
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    serverPhysics.impact = (_e1, _e2, pushVector) => {
+      impacts.push(pushVector.copy());
+    };
+
+    const result = serverPhysics.flyMove(edict, 1.0);
+
+    assert.equal(result.blocked, BlockedFlags.WALL);
+    assert.equal(result.steptrace?.ent, blocker);
+  });
+
+  assert.equal(moveCallCount, MAX_BUMP_COUNT);
+  assert.equal(impacts.length, MAX_BUMP_COUNT);
+  assert.deepEqual([...edict.entity.origin], [5, 6, 7]);
+  assert.deepEqual([...edict.entity.velocity], [3, 4, 0]);
+  for (const value of edict.entity.velocity) {
+    assert.equal(Number.isFinite(value), true);
+  }
+});
+
+test('ServerMovement.stepDirection restores origin when yaw delta stays too large', () => {
+  const movement = new ServerMovement();
+  const linkCalls = [];
+  const entity = createMockEntity({
+    origin: new Vector(10, 20, 30),
+    angles: new Vector(0, 200, 0),
+  });
+  entity.yaw_speed = 0;
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        linkEdict(linkedEdict, touchTriggers) {
+          linkCalls.push({ linkedEdict, touchTriggers });
+        },
+      },
+    },
+  }, () => {
+    movement.movestep = (ent, move) => {
+      ent.entity.origin = ent.entity.origin.copy().add(move);
+      return true;
+    };
+
+    const stepped = movement.stepDirection(edict, 0, 8);
+    assert.equal(stepped, true);
+  });
+
+  assert.deepEqual([...edict.entity.origin], [10, 20, 30]);
+  assert.equal(edict.entity.ideal_yaw, 0);
+  assert.equal(edict.entity.angles[1], 200);
+  assert.equal(linkCalls.length, 1);
+  assert.equal(linkCalls[0].linkedEdict, edict);
+  assert.equal(linkCalls[0].touchTriggers, true);
+});
+
+test('ServerPhysics.pushEntity uses MOVE_NOMONSTERS for trigger and non-solid entities', () => {
+  const serverPhysics = new ServerPhysics();
+  const moveCalls = [];
+  const touchCalls = [];
+
+  const touchedEntity = createMockEntity({ solidType: solid.SOLID_BBOX });
+  touchedEntity.touch = (other) => {
+    touchCalls.push(['target', other]);
+  };
+  const touchedEdict = createMockEdict(touchedEntity);
+
+  /** @param {number} solidType */
+  const runCase = (solidType) => {
+    const entity = createMockEntity({
+      origin: new Vector(1, 2, 3),
+      mins: new Vector(-1, -1, -1),
+      maxs: new Vector(1, 1, 1),
+      solidType,
+    });
+    entity.touch = (other) => {
+      touchCalls.push([solidType, other]);
+    };
+    const edict = createMockEdict(entity);
+
+    withMockRegistry({
+      Con: {
+        Print() {},
+        DPrint() {},
+      },
+      Host: { frametime: 0.1 },
+      SV: {
+        area: {
+          linkEdict() {},
+        },
+        collision: {
+          move(start, mins, maxs, end, type, passedict) {
+            moveCalls.push({ solidType, type, passedict, end: end.copy() });
+            return {
+              allsolid: false,
+              startsolid: false,
+              fraction: 1.0,
+              endpos: end.copy(),
+              plane: { normal: new Vector(), dist: 0.0 },
+              ent: touchedEdict,
+            };
+          },
+        },
+        server: {
+          gameAPI: { time: 0 },
+        },
+      },
+    }, () => {
+      serverPhysics.pushEntity(edict, new Vector(4, 0, 0));
+    });
+  };
+
+  runCase(solid.SOLID_TRIGGER);
+  runCase(solid.SOLID_NOT);
+
+  assert.equal(moveCalls.length, 2);
+  assert.equal(moveCalls[0].type, moveTypes.MOVE_NOMONSTERS);
+  assert.equal(moveCalls[1].type, moveTypes.MOVE_NOMONSTERS);
+  assert.equal(touchCalls.length, 3);
+  assert.equal(touchCalls[0][0], solid.SOLID_TRIGGER);
+  assert.equal(touchCalls[1][0], 'target');
+  assert.equal(touchCalls[2][0], 'target');
+});
+
+test('ServerPhysics.checkAllEnts skips static entities and reports invalid dynamic positions', () => {
+  const serverPhysics = new ServerPhysics();
+  const prints = [];
+  const tested = [];
+
+  const worldEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NONE }));
+  const freeEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_WALK }));
+  freeEdict.isFree = () => true;
+  const pushEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_PUSH }));
+  const noneEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NONE }));
+  const noclipEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NOCLIP }));
+  const walkEntity = createMockEntity({ movetype: moveType.MOVETYPE_WALK });
+  const walkEdict = createMockEdict(walkEntity);
+  walkEdict.num = 5;
+
+  withMockRegistry({
+    Con: {
+      Print(message) {
+        prints.push(message);
+      },
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      collision: {
+        testEntityPosition(edict) {
+          tested.push(edict);
+          return edict === walkEdict;
+        },
+      },
+      server: {
+        num_edicts: 6,
+        edicts: [worldEdict, freeEdict, pushEdict, noneEdict, noclipEdict, walkEdict],
+      },
+    },
+  }, () => {
+    serverPhysics.checkAllEnts();
+  });
+
+  assert.deepEqual(tested, [walkEdict]);
+  assert.deepEqual(prints, ['entity in invalid position\n']);
+});
+
+test('ServerMovement.moveToGoal returns false when already close enough to a non-world enemy goal', () => {
+  const movement = new ServerMovement();
+  const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
+  const goal = createMockEdict(createMockEntity());
+  const enemy = createMockEdict(createMockEntity());
+  enemy.isWorld = () => false;
+
+  actor.entity.goalentity = { edict: goal };
+  actor.entity.enemy = { edict: enemy };
+
+  movement.closeEnough = () => true;
+  movement.stepDirection = () => {
+    throw new Error('stepDirection should not run when already close enough');
+  };
+  movement.newChaseDir = () => {
+    throw new Error('newChaseDir should not run when already close enough');
+  };
+
+  assert.equal(movement.moveToGoal(actor, 16), false);
+});
+
+test('ServerMovement.moveToGoal falls back to newChaseDir when stepDirection fails', () => {
+  const movement = new ServerMovement();
+  const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
+  const goal = createMockEdict(createMockEntity({ origin: new Vector(100, 50, 0) }));
+  const explicitTarget = new Vector(12, 34, 56);
+  const originalRandom = Math.random;
+  const calls = [];
+
+  actor.entity.goalentity = { edict: goal };
+  actor.entity.enemy = null;
+  actor.entity.ideal_yaw = 90;
+
+  movement.stepDirection = (ent, yaw, dist) => {
+    calls.push({ kind: 'step', ent, yaw, dist });
+    return false;
+  };
+  movement.newChaseDir = (ent, target, dist) => {
+    calls.push({ kind: 'chase', ent, target: target.copy(), dist });
+  };
+
+  Math.random = () => 0.0;
+  try {
+    assert.equal(movement.moveToGoal(actor, 24, explicitTarget), true);
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].kind, 'step');
+  assert.equal(calls[0].yaw, 90);
+  assert.equal(calls[0].dist, 24);
+  assert.equal(calls[1].kind, 'chase');
+  assert.deepEqual([...calls[1].target], [...explicitTarget]);
+  assert.equal(calls[1].dist, 24);
+});
+
+test('ServerMovement.newChaseDir restores old yaw and marks partial ground when every direction fails', () => {
+  const movement = new ServerMovement();
+  const actor = createMockEdict(createMockEntity({
+    origin: new Vector(0, 0, 0),
+    flagsValue: flags.FL_ONGROUND,
+  }));
+  const attemptedDirs = [];
+  const originalRandom = Math.random;
+
+  actor.entity.ideal_yaw = 90;
+
+  movement.stepDirection = (_actor, dir) => {
+    attemptedDirs.push(dir);
+    return false;
+  };
+  movement.checkBottom = () => false;
+
+  let randomCall = 0;
+  Math.random = () => {
+    randomCall += 1;
+    return 0.0;
+  };
+  try {
+    movement.newChaseDir(actor, new Vector(100, 100, 0), 12);
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  assert.equal(randomCall, 2);
+  assert.equal(actor.entity.ideal_yaw, 90);
+  assert.equal((actor.entity.flags & flags.FL_PARTIALGROUND) !== 0, true);
+  assert.deepEqual(attemptedDirs, [45, 0, 90, 90, 315, 225, 180, 135, 90, 45, 0, 270]);
+});
+
+test('ServerMovement.walkMove returns false when entity is not grounded, flying, or swimming', () => {
+  const movement = new ServerMovement();
+  const actor = createMockEdict(createMockEntity({ flagsValue: 0 }));
+
+  movement.movestep = () => {
+    throw new Error('movestep should not run when walkMove gating fails');
+  };
+
+  assert.equal(movement.walkMove(actor, 90, 16), false);
+});
+
+test('ServerMovement.changeYaw wraps and clamps using the shortest turn direction', () => {
+  const movement = new ServerMovement();
+  const actor = createMockEdict(createMockEntity({ angles: new Vector(0, 350, 0) }));
+  actor.entity.yaw_speed = 5;
+  actor.entity.ideal_yaw = 10;
+
+  assert.equal(movement.changeYaw(actor), 355);
+
+  actor.entity.angles[1] = 10;
+  actor.entity.ideal_yaw = 350;
+
+  assert.equal(movement.changeYaw(actor), 5);
+});
+
+test('ServerPhysics.runThink returns false when the entity frees itself during think', () => {
+  const serverPhysics = new ServerPhysics();
+  let freed = false;
+  let thinkCalls = 0;
+  const entity = createMockEntity();
+  entity.nextthink = 0.5;
+  entity.think = () => {
+    thinkCalls += 1;
+    freed = true;
+  };
+  const edict = createMockEdict(entity);
+  edict.isFree = () => freed;
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      server: {
+        time: 1.0,
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    const result = serverPhysics.runThink(edict);
+
+    assert.equal(result, false);
+    assert.equal(registry.SV.server.gameAPI.time, 1.0);
+  });
+
+  assert.equal(thinkCalls, 1);
+  assert.equal(entity.nextthink, 0.0);
+});
+
+test('ServerPhysics.runThink executes multiple thinks that become due within one frame', () => {
+  const serverPhysics = new ServerPhysics();
+  const thinkTimes = [];
+  const entity = createMockEntity();
+  entity.nextthink = 1.05;
+  entity.think = () => {
+    thinkTimes.push(registry.SV.server.gameAPI.time);
+    entity.nextthink = thinkTimes.length === 1 ? 1.15 : 0.0;
+  };
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.2 },
+    SV: {
+      server: {
+        time: 1.0,
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    const result = serverPhysics.runThink(edict);
+
+    assert.equal(result, true);
+    assert.equal(registry.SV.server.gameAPI.time, 1.15);
+  });
+
+  assert.deepEqual(thinkTimes, [1.05, 1.15]);
+  assert.equal(entity.nextthink, 0.0);
+});
+
+test('ServerMovement.checkBottom rejects support when a corner drops more than step size', () => {
+  const movement = new ServerMovement();
+  const moveCalls = [];
+  let pointContentCalls = 0;
+  const entity = createMockEntity({
+    origin: new Vector(64, 64, 32),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      collision: {
+        pointContents() {
+          pointContentCalls += 1;
+          return content.CONTENT_EMPTY;
+        },
+        move(start, mins, maxs, end, type, passedict) {
+          moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
+
+          if (moveCalls.length === 1) {
+            return {
+              fraction: 0.5,
+              endpos: new Vector(start[0], start[1], 0),
+            };
+          }
+
+          return {
+            fraction: 0.5,
+            endpos: new Vector(start[0], start[1], -19),
+          };
+        },
+      },
+    },
+  }, () => {
+    assert.equal(movement.checkBottom(edict), false);
+  });
+
+  assert.equal(pointContentCalls, 1);
+  assert.equal(moveCalls.length, 2);
+});
+
+test('ServerMovement.movestep returns false when both the raised trace and retry stay startsolid', () => {
+  const movement = new ServerMovement();
+  const linkCalls = [];
+  const moveCalls = [];
+  const entity = createMockEntity({
+    origin: new Vector(10, 20, 30),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+    flagsValue: flags.FL_ONGROUND,
+  });
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        linkEdict(linkedEdict, touchTriggers) {
+          linkCalls.push({ linkedEdict, touchTriggers });
+        },
+      },
+      collision: {
+        move(start, mins, maxs, end, type, passedict) {
+          moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
+
+          return {
+            allsolid: false,
+            startsolid: true,
+            fraction: 0.0,
+            endpos: end.copy(),
+            ent: null,
+          };
+        },
+      },
+    },
+  }, () => {
+    assert.equal(movement.movestep(edict, new Vector(4, -6, 0), true), false);
+  });
+
+  assert.equal(moveCalls.length, 2);
+  assert.deepEqual([...edict.entity.origin], [10, 20, 30]);
+  assert.equal(linkCalls.length, 0);
+});
+
 test('ServerPhysics.pushMove carries a grounded rider upward without blocked()', () => {
   withMockServerPhysics(({ serverPhysics, pusherEdict, riderEdict, moveCalls, testCalls, blockedCalls }) => {
     serverPhysics.pushMove(pusherEdict, 0.1);
@@ -683,6 +1710,675 @@ test('ServerPhysics.pushMove rolls back and calls blocked() when rider remains s
     assert.equal(blockedCalls[0], riderEdict.entity);
     assert.equal(pusherEdict.entity.ltime, 0);
   });
+});
+
+test('ServerPhysics.pushMove restores earlier riders when a later rider blocks the push', () => {
+  const linkCalls = [];
+  const blockedCalls = [];
+
+  const pusherEntity = createMockEntity({
+    origin: new Vector(0, 0, 0),
+    mins: new Vector(-64, -64, -16),
+    maxs: new Vector(64, 64, 16),
+    velocity: new Vector(0, 0, 100),
+    movetype: moveType.MOVETYPE_PUSH,
+    solidType: solid.SOLID_BSP,
+  });
+  pusherEntity.blocked = (blockingEntity) => {
+    blockedCalls.push(blockingEntity);
+  };
+
+  const riderAEntity = createMockEntity({
+    origin: new Vector(0, 0, 32),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+    movetype: moveType.MOVETYPE_WALK,
+    solidType: solid.SOLID_BBOX,
+    flagsValue: flags.FL_ONGROUND,
+    groundentity: pusherEntity,
+  });
+  const riderBEntity = createMockEntity({
+    origin: new Vector(24, 0, 32),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+    movetype: moveType.MOVETYPE_WALK,
+    solidType: solid.SOLID_BBOX,
+    flagsValue: flags.FL_ONGROUND,
+    groundentity: pusherEntity,
+  });
+
+  const worldEdict = createMockEdict(createMockEntity());
+  const pusherEdict = createMockEdict(pusherEntity);
+  const riderAEdict = createMockEdict(riderAEntity);
+  riderAEdict.num = 2;
+  const riderBEdict = createMockEdict(riderBEntity);
+  riderBEdict.num = 3;
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      maxvelocity: { value: 2000 },
+      area: {
+        linkEdict(edict) {
+          edict.entity.absmin = edict.entity.origin.copy().add(edict.entity.mins);
+          edict.entity.absmax = edict.entity.origin.copy().add(edict.entity.maxs);
+          linkCalls.push(edict);
+        },
+      },
+      collision: {
+        move(start, mins, maxs, end) {
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 1.0,
+            endpos: end.copy(),
+            ent: null,
+          };
+        },
+        testEntityPosition(edict) {
+          return edict === riderBEdict;
+        },
+      },
+      server: {
+        time: 0,
+        num_edicts: 4,
+        edicts: [worldEdict, pusherEdict, riderAEdict, riderBEdict],
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    const serverPhysics = new ServerPhysics();
+    serverPhysics.pushMove(pusherEdict, 0.1);
+  });
+
+  assert.deepEqual([...pusherEdict.entity.origin], [0, 0, 0]);
+  assert.deepEqual([...riderAEdict.entity.origin], [0, 0, 32]);
+  assert.deepEqual([...riderBEdict.entity.origin], [24, 0, 32]);
+  assert.equal(blockedCalls.length, 1);
+  assert.equal(blockedCalls[0], riderBEdict.entity);
+  assert.equal(pusherEdict.entity.ltime, 0);
+  assert.ok(linkCalls.length >= 5);
+});
+
+test('ServerPhysics.pushMove collapses trigger bounds instead of rolling back the pusher', () => {
+  const blockedCalls = [];
+
+  const pusherEntity = createMockEntity({
+    origin: new Vector(0, 0, 0),
+    mins: new Vector(-64, -64, -16),
+    maxs: new Vector(64, 64, 16),
+    velocity: new Vector(0, 0, 100),
+    movetype: moveType.MOVETYPE_PUSH,
+    solidType: solid.SOLID_BSP,
+  });
+  pusherEntity.blocked = (blockingEntity) => {
+    blockedCalls.push(blockingEntity);
+  };
+
+  const triggerEntity = createMockEntity({
+    origin: new Vector(0, 0, 32),
+    mins: new Vector(-8, -8, -8),
+    maxs: new Vector(8, 8, 8),
+    movetype: moveType.MOVETYPE_STEP,
+    solidType: solid.SOLID_TRIGGER,
+    flagsValue: flags.FL_ONGROUND,
+    groundentity: pusherEntity,
+  });
+
+  const worldEdict = createMockEdict(createMockEntity());
+  const pusherEdict = createMockEdict(pusherEntity);
+  const triggerEdict = createMockEdict(triggerEntity);
+  triggerEdict.num = 2;
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      maxvelocity: { value: 2000 },
+      area: {
+        linkEdict(edict) {
+          edict.entity.absmin = edict.entity.origin.copy().add(edict.entity.mins);
+          edict.entity.absmax = edict.entity.origin.copy().add(edict.entity.maxs);
+        },
+      },
+      collision: {
+        move(start, mins, maxs, end) {
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 1.0,
+            endpos: end.copy(),
+            ent: null,
+          };
+        },
+        testEntityPosition(edict) {
+          return edict === triggerEdict;
+        },
+      },
+      server: {
+        time: 0,
+        num_edicts: 3,
+        edicts: [worldEdict, pusherEdict, triggerEdict],
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    const serverPhysics = new ServerPhysics();
+    serverPhysics.pushMove(pusherEdict, 0.1);
+  });
+
+  assert.deepEqual([...pusherEdict.entity.origin], [0, 0, 10]);
+  assert.deepEqual([...triggerEdict.entity.origin], [0, 0, 42]);
+  assert.deepEqual([...triggerEdict.entity.mins], [0, 0, -8]);
+  assert.deepEqual([...triggerEdict.entity.maxs], [0, 0, -8]);
+  assert.equal(blockedCalls.length, 0);
+  assert.equal(pusherEdict.entity.ltime, 0.1);
+});
+
+test('ServerPhysics.pushMove rotates grounded riders around the pusher yaw axis', () => {
+  withMockServerPhysics(({ serverPhysics, pusherEdict, riderEdict, moveCalls, testCalls, blockedCalls }) => {
+    pusherEdict.entity.velocity.clear();
+    pusherEdict.entity.avelocity = new Vector(0, 900, 0);
+    riderEdict.entity.origin = new Vector(32, 0, 32);
+    riderEdict.entity.angles = new Vector(0, 0, 0);
+    riderEdict.entity.absmin = riderEdict.entity.origin.copy().add(riderEdict.entity.mins);
+    riderEdict.entity.absmax = riderEdict.entity.origin.copy().add(riderEdict.entity.maxs);
+
+    const rotatedOffset = new Vector(0, 0, 1).rotatePointAroundVector(new Vector(32, 0, 32), 90);
+    const expectedOrigin = rotatedOffset;
+
+    serverPhysics.pushMove(pusherEdict, 0.1);
+
+    assert.equal(moveCalls.length, 1);
+    assertNear(moveCalls[0].end[0], expectedOrigin[0], 1e-9);
+    assertNear(moveCalls[0].end[1], expectedOrigin[1], 1e-9);
+    assertNear(moveCalls[0].end[2], expectedOrigin[2], 1e-9);
+    assertNear(riderEdict.entity.origin[0], expectedOrigin[0], 1e-9);
+    assertNear(riderEdict.entity.origin[1], expectedOrigin[1], 1e-9);
+    assertNear(riderEdict.entity.origin[2], expectedOrigin[2], 1e-9);
+    assert.deepEqual([...riderEdict.entity.angles], [0, 90, 0]);
+    assert.deepEqual([...pusherEdict.entity.angles], [0, 90, 0]);
+    assert.equal(testCalls.length, 1);
+    assert.equal(testCalls[0], riderEdict);
+    assert.equal(blockedCalls.length, 0);
+  });
+});
+
+test('ServerPhysics.physicsPusher limits movement to nextthink and then runs think', () => {
+  const serverPhysics = new ServerPhysics();
+  const moveTimes = [];
+  let observedGameTime = -1;
+  let thinkCalls = 0;
+  const entity = createMockEntity({
+    movetype: moveType.MOVETYPE_PUSH,
+    solidType: solid.SOLID_BSP,
+  });
+  entity.ltime = 1.0;
+  entity.nextthink = 1.05;
+  entity.think = () => {
+    thinkCalls += 1;
+  };
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      server: {
+        time: 7.0,
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    serverPhysics.pushMove = (pusher, movetime) => {
+      moveTimes.push(movetime);
+      pusher.entity.ltime += movetime;
+    };
+
+    serverPhysics.physicsPusher(edict);
+
+    observedGameTime = registry.SV.server.gameAPI.time;
+  });
+
+  assert.equal(moveTimes.length, 1);
+  assertNear(moveTimes[0], 0.05, 1e-9);
+  assert.equal(entity.ltime, 1.05);
+  assert.equal(entity.nextthink, 0.0);
+  assert.equal(thinkCalls, 1);
+  assert.equal(observedGameTime, 7.0);
+});
+
+test('ServerPhysics.physicsPusher keeps think deferred when nextthink is beyond this frame', () => {
+  const serverPhysics = new ServerPhysics();
+  const moveTimes = [];
+  let observedGameTime = -1;
+  let thinkCalls = 0;
+  const entity = createMockEntity({
+    movetype: moveType.MOVETYPE_PUSH,
+    solidType: solid.SOLID_BSP,
+  });
+  entity.ltime = 1.0;
+  entity.nextthink = 1.3;
+  entity.think = () => {
+    thinkCalls += 1;
+  };
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      server: {
+        time: 8.0,
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    serverPhysics.pushMove = (pusher, movetime) => {
+      moveTimes.push(movetime);
+      pusher.entity.ltime += movetime;
+    };
+
+    serverPhysics.physicsPusher(edict);
+
+    observedGameTime = registry.SV.server.gameAPI.time;
+  });
+
+  assert.equal(moveTimes.length, 1);
+  assertNear(moveTimes[0], 0.1, 1e-9);
+  assertNear(entity.ltime, 1.1, 1e-9);
+  assert.equal(entity.nextthink, 1.3);
+  assert.equal(thinkCalls, 0);
+  assert.equal(observedGameTime, 0);
+});
+
+test('ServerPhysics.checkStuck restores oldorigin when the saved position is clear', () => {
+  const serverPhysics = new ServerPhysics();
+  const prints = [];
+  const linkCalls = [];
+  let testCallCount = 0;
+  const entity = createMockEntity({
+    origin: new Vector(10, 20, 30),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+  });
+  entity.oldorigin = new Vector(1, 2, 3);
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint(message) {
+        prints.push(message);
+      },
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        linkEdict(linkedEdict, touchTriggers) {
+          linkCalls.push({ linkedEdict, touchTriggers });
+        },
+      },
+      collision: {
+        testEntityPosition() {
+          testCallCount += 1;
+          return testCallCount === 1;
+        },
+      },
+    },
+  }, () => {
+    serverPhysics.checkStuck(edict);
+  });
+
+  assert.equal(testCallCount, 2);
+  assert.deepEqual([...edict.entity.origin], [1, 2, 3]);
+  assert.deepEqual(prints, ['Unstuck.\n']);
+  assert.equal(linkCalls.length, 1);
+  assert.equal(linkCalls[0].linkedEdict, edict);
+  assert.equal(linkCalls[0].touchTriggers, true);
+});
+
+test('ServerPhysics.checkStuck reports failure after exhausting all nudges', () => {
+  const serverPhysics = new ServerPhysics();
+  const prints = [];
+  const linkCalls = [];
+  let testCallCount = 0;
+  const entity = createMockEntity({
+    origin: new Vector(10, 20, 30),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+  });
+  entity.oldorigin = new Vector(1, 2, 3);
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint(message) {
+        prints.push(message);
+      },
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      area: {
+        linkEdict(linkedEdict, touchTriggers) {
+          linkCalls.push({ linkedEdict, touchTriggers });
+        },
+      },
+      collision: {
+        testEntityPosition() {
+          testCallCount += 1;
+          return true;
+        },
+      },
+    },
+  }, () => {
+    serverPhysics.checkStuck(edict);
+  });
+
+  assert.equal(testCallCount, 164);
+  assert.deepEqual(prints, ['player is stuck.\n']);
+  assert.equal(linkCalls.length, 0);
+  assert.deepEqual([...edict.entity.oldorigin], [1, 2, 3]);
+});
+
+test('ServerPhysics.checkWater leaves entities dry when feet probe is not water', () => {
+  const serverPhysics = new ServerPhysics();
+  const probes = [];
+  const entity = createMockEntity({
+    origin: new Vector(10, 20, 30),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+  });
+  entity.view_ofs = new Vector(0, 0, 22);
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      collision: {
+        pointContents(point) {
+          probes.push(point.copy());
+          return content.CONTENT_EMPTY;
+        },
+      },
+    },
+  }, () => {
+    assert.equal(serverPhysics.checkWater(edict), false);
+  });
+
+  assert.equal(entity.waterlevel, 0);
+  assert.equal(entity.watertype, content.CONTENT_EMPTY);
+  assert.equal(probes.length, 1);
+  assert.deepEqual([...probes[0]], [10, 20, 7]);
+});
+
+test('ServerPhysics.checkWater distinguishes feet waist and head submersion', () => {
+  const serverPhysics = new ServerPhysics();
+  const feetEntity = createMockEntity({
+    origin: new Vector(0, 0, 40),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+  });
+  feetEntity.view_ofs = new Vector(0, 0, 22);
+  const waistEntity = createMockEntity({
+    origin: new Vector(0, 0, 40),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+  });
+  waistEntity.view_ofs = new Vector(0, 0, 22);
+  const headEntity = createMockEntity({
+    origin: new Vector(0, 0, 40),
+    mins: new Vector(-16, -16, -24),
+    maxs: new Vector(16, 16, 32),
+  });
+  headEntity.view_ofs = new Vector(0, 0, 22);
+
+  const runCase = (entity, contents) => {
+    let probeIndex = 0;
+
+    withMockRegistry({
+      Con: {
+        Print() {},
+        DPrint() {},
+      },
+      Host: { frametime: 0.1 },
+      SV: {
+        collision: {
+          pointContents() {
+            const result = contents[probeIndex];
+            probeIndex += 1;
+            return result;
+          },
+        },
+      },
+    }, () => {
+      serverPhysics.checkWater(createMockEdict(entity));
+    });
+  };
+
+  runCase(feetEntity, [content.CONTENT_WATER, content.CONTENT_EMPTY]);
+  runCase(waistEntity, [content.CONTENT_WATER, content.CONTENT_WATER, content.CONTENT_EMPTY]);
+  const headResult = (() => {
+    let result;
+
+    withMockRegistry({
+      Con: {
+        Print() {},
+        DPrint() {},
+      },
+      Host: { frametime: 0.1 },
+      SV: {
+        collision: {
+          pointContents() {
+            return content.CONTENT_WATER;
+          },
+        },
+      },
+    }, () => {
+      result = serverPhysics.checkWater(createMockEdict(headEntity));
+    });
+
+    return result;
+  })();
+
+  assert.equal(feetEntity.waterlevel, 1);
+  assert.equal(feetEntity.watertype, content.CONTENT_WATER);
+  assert.equal(waistEntity.waterlevel, 2);
+  assert.equal(waistEntity.watertype, content.CONTENT_WATER);
+  assert.equal(headEntity.waterlevel, 3);
+  assert.equal(headEntity.watertype, content.CONTENT_WATER);
+  assert.equal(headResult, true);
+});
+
+test('ServerPhysics.addGravity and addBoyancy accumulate using entity gravity and frametime', () => {
+  const serverPhysics = new ServerPhysics();
+  const entity = createMockEntity({
+    velocity: new Vector(0, 0, 10),
+  });
+  entity.gravity = 0.5;
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.25 },
+    SV: {
+      gravity: { value: 800 },
+    },
+  }, () => {
+    serverPhysics.addGravity(edict);
+    serverPhysics.addBoyancy(edict);
+  });
+
+  assert.deepEqual([...entity.velocity], [0, 0, -88]);
+});
+
+test('ServerPhysics.clipVelocity zeroes tiny residuals after clipping against an angled plane', () => {
+  const serverPhysics = new ServerPhysics();
+  const out = new Vector();
+
+  serverPhysics.clipVelocity(
+    new Vector(1, -1, 0.05),
+    new Vector(0, 1, 0),
+    out,
+    1.0,
+  );
+
+  assertNear(out[0], 1.0, 1e-9);
+  assert.equal(out[1], 0.0);
+  assert.equal(out[2], 0.0);
+});
+
+test('ServerPhysics.physicsToss keeps a bounce entity moving after a hard floor impact', () => {
+  const serverPhysics = new ServerPhysics();
+  const entity = createMockEntity({
+    origin: new Vector(0, 0, 64),
+    mins: new Vector(-16, -16, -16),
+    maxs: new Vector(16, 16, 16),
+    velocity: new Vector(0, 0, -200),
+    avelocity: new Vector(0, 0, 90),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_BOUNCE,
+    solidType: solid.SOLID_BBOX,
+  });
+  entity.gravity = 1.0;
+  entity.nextthink = 0.0;
+  entity.watertype = content.CONTENT_EMPTY;
+  entity.waterlevel = 0;
+  const floorEntity = createMockEntity({ solidType: solid.SOLID_BSP });
+  const floorEdict = createMockEdict(floorEntity);
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      gravity: { value: 800 },
+      maxvelocity: { value: 2000 },
+      area: {
+        linkEdict() {},
+      },
+      collision: {
+        move(_start, _mins, _maxs, end) {
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 0.5,
+            endpos: end.copy(),
+            ent: floorEdict,
+            plane: { normal: new Vector(0, 0, 1), dist: 0.0 },
+          };
+        },
+        pointContents() {
+          return content.CONTENT_EMPTY;
+        },
+      },
+      messages: {
+        startSound() {},
+      },
+      server: {
+        time: 0,
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    serverPhysics.physicsToss(edict);
+  });
+
+  assert.equal((entity.flags & flags.FL_ONGROUND) !== 0, false);
+  assert.equal(entity.groundentity, null);
+  assert.deepEqual([...entity.velocity], [0, 0, 140]);
+  assert.deepEqual([...entity.avelocity], [0, 0, 90]);
+  assert.deepEqual([...entity.angles], [0, 0, 9]);
+});
+
+test('ServerPhysics.physicsToss settles non-bounce tosses on walkable ground', () => {
+  const serverPhysics = new ServerPhysics();
+  const entity = createMockEntity({
+    origin: new Vector(0, 0, 64),
+    mins: new Vector(-16, -16, -16),
+    maxs: new Vector(16, 16, 16),
+    velocity: new Vector(0, 0, -20),
+    avelocity: new Vector(0, 10, 0),
+    angles: new Vector(),
+    movetype: moveType.MOVETYPE_TOSS,
+    solidType: solid.SOLID_BBOX,
+  });
+  entity.gravity = 1.0;
+  entity.nextthink = 0.0;
+  entity.watertype = content.CONTENT_EMPTY;
+  entity.waterlevel = 0;
+  const floorEntity = createMockEntity({ solidType: solid.SOLID_BSP });
+  const floorEdict = createMockEdict(floorEntity);
+  const edict = createMockEdict(entity);
+
+  withMockRegistry({
+    Con: {
+      Print() {},
+      DPrint() {},
+    },
+    Host: { frametime: 0.1 },
+    SV: {
+      gravity: { value: 800 },
+      maxvelocity: { value: 2000 },
+      area: {
+        linkEdict() {},
+      },
+      collision: {
+        move(_start, _mins, _maxs, end) {
+          return {
+            allsolid: false,
+            startsolid: false,
+            fraction: 0.5,
+            endpos: end.copy(),
+            ent: floorEdict,
+            plane: { normal: new Vector(0, 0, 1), dist: 0.0 },
+          };
+        },
+        pointContents() {
+          return content.CONTENT_EMPTY;
+        },
+      },
+      messages: {
+        startSound() {},
+      },
+      server: {
+        time: 0,
+        gameAPI: { time: 0 },
+      },
+    },
+  }, () => {
+    serverPhysics.physicsToss(edict);
+  });
+
+  assert.equal((entity.flags & flags.FL_ONGROUND) !== 0, true);
+  assert.equal(entity.groundentity, floorEntity);
+  assert.deepEqual([...entity.velocity], [0, 0, 0]);
+  assert.deepEqual([...entity.avelocity], [0, 0, 0]);
+  assert.deepEqual([...entity.angles], [0, 1, 0]);
 });
 
 test('ServerPhysics.physics applies gravity and toss movement for one frame', () => {

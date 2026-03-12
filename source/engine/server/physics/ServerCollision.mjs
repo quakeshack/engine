@@ -31,25 +31,55 @@ eventBus.subscribe('registry.frozen', () => {
  * falling back to legacy hull traces otherwise.
  */
 export class ServerCollision {
+  static MISSILE_MINS = new Vector(-15.0, -15.0, -15.0);
+  static MISSILE_MAXS = new Vector(15.0, 15.0, 15.0);
+  static _midPool = Array.from({ length: 96 }, () => new Vector());
+
+  #hullOffsetScratch = new Vector();
+  #hullStartScratch = new Vector();
+  #hullEndScratch = new Vector();
+
   /**
-   * Resolve the shared brush collision inputs for an entity.
+   * Resolve the model used by an entity for collision.
    * @param {ServerEdict} ent entity being tested
-   * @returns {{model: BrushModel, origin: Vector, angles: Vector}|null} brush collision inputs, if available
+   * @returns {BrushModel|object|null} collision model, if any
    */
-  _getBrushCollisionState(ent) {
-    const model = ent === SV.server.edicts[0]
+  _getEntityModel(ent) {
+    return ent === SV.server.edicts[0]
       ? SV.server.worldmodel
       : SV.server.models[ent.entity.modelindex];
+  }
 
-    if (!(model instanceof BrushModel) || !model.hasBrushData) {
-      return null;
+  /**
+   * Resolve the collision state used by an entity during tracing.
+   * @param {ServerEdict} ent entity being tested
+   * @returns {{kind: 'mesh'|'brush'|'hull', ent: ServerEdict, model?: object, origin?: Vector, angles?: Vector}|null} collision state
+   */
+  _getEntityCollisionState(ent) {
+    if (ent.entity.solid === Defs.solid.SOLID_MESH) {
+      const model = this._getEntityModel(ent);
+      return model === null || model === undefined
+        ? null
+        : { kind: 'mesh', ent, model };
     }
 
-    return {
-      model,
-      origin: ent.entity.origin,
-      angles: ent.entity.angles,
-    };
+    if (ent.entity.solid === Defs.solid.SOLID_BSP) {
+      const model = this._getEntityModel(ent);
+
+      if (!(model instanceof BrushModel) || !model.hasBrushData) {
+        return { kind: 'hull', ent };
+      }
+
+      return {
+        kind: 'brush',
+        ent,
+        model,
+        origin: ent.entity.origin,
+        angles: ent.entity.angles,
+      };
+    }
+
+    return { kind: 'hull', ent };
   }
 
   /**
@@ -131,48 +161,38 @@ export class ServerCollision {
   }
 
   /**
-   * Attempt a shared brush trace against a BSP model.
-   * Returns null when the entity should use legacy hull collision.
-   * @param {ServerEdict} ent entity to collide with
-   * @param {Vector} start world-space start position
-   * @param {Vector} mins minimum extents of the moving box
-   * @param {Vector} maxs maximum extents of the moving box
-   * @param {Vector} end world-space end position
-   * @returns {Trace|null} collision result, or null to fall back to hull tracing
-   */
-  _clipMoveToBrushEntity(ent, start, mins, maxs, end) {
-    if (ent.entity.solid !== Defs.solid.SOLID_BSP) {
-      return null;
-    }
-
-    const brushState = this._getBrushCollisionState(ent);
-    if (brushState === null) {
-      return null;
-    }
-
-    const brushTrace = this._traceBrushModel(
-      brushState.model,
-      start,
-      mins,
-      maxs,
-      end,
-      brushState.origin,
-      brushState.angles,
-    );
-
-    return this._toServerTrace(brushTrace, ent);
-  }
-
-  /**
-   * Trace against an entity through the legacy hull path.
-   * @param {ServerEdict} ent entity to collide with
+   * Trace against an entity through the shared brush path.
+   * @param {{kind: 'brush', ent: ServerEdict, model: BrushModel, origin: Vector, angles: Vector}} state brush collision state
    * @param {Vector} start world-space start position
    * @param {Vector} mins minimum extents of the moving box
    * @param {Vector} maxs maximum extents of the moving box
    * @param {Vector} end world-space end position
    * @returns {Trace} collision result
    */
-  _clipMoveToHullEntity(ent, start, mins, maxs, end) {
+  _clipMoveToBrushState(state, start, mins, maxs, end) {
+    const brushTrace = this._traceBrushModel(
+      state.model,
+      start,
+      mins,
+      maxs,
+      end,
+      state.origin,
+      state.angles,
+    );
+
+    return this._toServerTrace(brushTrace, state.ent);
+  }
+
+  /**
+   * Trace against an entity through the legacy hull path.
+   * @param {{kind: 'hull', ent: ServerEdict}} state hull collision state
+   * @param {Vector} start world-space start position
+   * @param {Vector} mins minimum extents of the moving box
+   * @param {Vector} maxs maximum extents of the moving box
+   * @param {Vector} end world-space end position
+   * @returns {Trace} collision result
+   */
+  _clipMoveToHullState(state, start, mins, maxs, end) {
     const trace = {
       fraction: 1.0,
       allsolid: true,
@@ -182,10 +202,10 @@ export class ServerCollision {
       ent: null,
     };
 
-    const offset = new Vector();
-    const hull = SV.area.hullForEntity(ent, mins, maxs, offset);
-    const startLocal = start.copy().subtract(offset);
-    const endLocal = end.copy().subtract(offset);
+    const offset = this.#hullOffsetScratch.clear();
+    const hull = SV.area.hullForEntity(state.ent, mins, maxs, offset);
+    const startLocal = this.#hullStartScratch.set(start).subtract(offset);
+    const endLocal = this.#hullEndScratch.set(end).subtract(offset);
 
     this.recursiveHullCheck(hull, hull.firstclipnode, 0.0, 1.0, startLocal, endLocal, trace);
 
@@ -194,7 +214,7 @@ export class ServerCollision {
     }
 
     if (trace.fraction < 1.0 || trace.startsolid) {
-      trace.ent = ent;
+      trace.ent = state.ent;
     }
 
     return trace;
@@ -254,9 +274,10 @@ export class ServerCollision {
    * @param {Vector} p1 start point
    * @param {Vector} p2 end point
    * @param {Trace} trace trace accumulator
+   * @param {number} [depth] recursion depth for scratch-vector reuse
    * @returns {boolean} true if traversal should continue downward
    */
-  recursiveHullCheck(hull, num, p1f, p2f, p1, p2, trace) {
+  recursiveHullCheck(hull, num, p1f, p2f, p1, p2, trace, depth = 0) {
     // check for early exit - already hit something nearer
     if (trace.fraction <= p1f) {
       return false;
@@ -295,19 +316,20 @@ export class ServerCollision {
 
     let frac = Math.max(0.0, Math.min(1.0, (t1 + (t1 < 0.0 ? DIST_EPSILON : -DIST_EPSILON)) / (t1 - t2)));
     let midf = p1f + (p2f - p1f) * frac;
-    const mid = new Vector(
+    const mid = ServerCollision._midPool[depth] ?? new Vector();
+    mid.setTo(
       p1[0] + frac * (p2[0] - p1[0]),
       p1[1] + frac * (p2[1] - p1[1]),
       p1[2] + frac * (p2[2] - p1[2]),
     );
     const side = t1 < 0.0 ? 1 : 0;
 
-    if (!this.recursiveHullCheck(hull, node.children[side], p1f, midf, p1, mid, trace)) {
+    if (!this.recursiveHullCheck(hull, node.children[side], p1f, midf, p1, mid, trace, depth + 1)) {
       return false;
     }
 
     if (this.hullPointContents(hull, node.children[side ^ 1], mid) !== Defs.content.CONTENT_SOLID) {
-      return this.recursiveHullCheck(hull, node.children[side ^ 1], midf, p2f, mid, p2, trace);
+      return this.recursiveHullCheck(hull, node.children[side ^ 1], midf, p2f, mid, p2, trace, depth + 1);
     }
 
     if (trace.allsolid) {
@@ -547,17 +569,45 @@ export class ServerCollision {
    * @returns {Trace} collision result
    */
   clipMoveToEntity(ent, start, mins, maxs, end) {
-    if (ent.entity.solid === Defs.solid.SOLID_MESH) {
-      return this.clipMoveToMesh(ent, start, mins, maxs, end);
+    const state = this._getEntityCollisionState(ent);
+
+    if (state === null) {
+      return this._clipMoveToHullState({ kind: 'hull', ent }, start, mins, maxs, end);
     }
 
-    const brushTrace = this._clipMoveToBrushEntity(ent, start, mins, maxs, end);
+    return this._clipMoveToEntityWithState(state, start, mins, maxs, end);
+  }
 
-    if (brushTrace !== null) {
-      return brushTrace;
+  /**
+   * Trace against a target entity using its pre-resolved collision state.
+   * @param {{kind: 'mesh'|'brush'|'hull', ent: ServerEdict, model?: object, origin?: Vector, angles?: Vector}} state collision state
+   * @param {Vector} start start position
+   * @param {Vector} mins minimum extents of the moving box
+   * @param {Vector} maxs maximum extents of the moving box
+   * @param {Vector} end end position
+   * @returns {Trace} collision result
+   */
+  _clipMoveToEntityWithState(state, start, mins, maxs, end) {
+    switch (state.kind) {
+      case 'mesh':
+        return this.clipMoveToMesh(state.ent, start, mins, maxs, end);
+      case 'brush':
+        return this._clipMoveToBrushState(
+          /** @type {{kind: 'brush', ent: ServerEdict, model: BrushModel, origin: Vector, angles: Vector}} */ (state),
+          start,
+          mins,
+          maxs,
+          end,
+        );
+      default:
+        return this._clipMoveToHullState(
+          /** @type {{kind: 'hull', ent: ServerEdict}} */ (state),
+          start,
+          mins,
+          maxs,
+          end,
+        );
     }
-
-    return this._clipMoveToHullEntity(ent, start, mins, maxs, end);
   }
 
   /**
@@ -610,9 +660,10 @@ export class ServerCollision {
         }
       }
 
+      const touchState = this._getEntityCollisionState(touch);
       const trace = (touch.entity.flags & Defs.flags.FL_MONSTER) !== 0
-        ? this.clipMoveToEntity(touch, clip.start, clip.mins2, clip.maxs2, clip.end)
-        : this.clipMoveToEntity(touch, clip.start, clip.mins, clip.maxs, clip.end);
+        ? this._clipMoveToEntityWithState(touchState ?? { kind: 'hull', ent: touch }, clip.start, clip.mins2, clip.maxs2, clip.end)
+        : this._clipMoveToEntityWithState(touchState ?? { kind: 'hull', ent: touch }, clip.start, clip.mins, clip.maxs, clip.end);
 
       if (trace.allsolid || trace.startsolid || trace.fraction < clip.trace.fraction) {
         trace.ent = touch;
@@ -635,14 +686,15 @@ export class ServerCollision {
    * @returns {Trace} collision result
    */
   move(start, mins, maxs, end, type, passedict) {
+    const worldState = this._getEntityCollisionState(SV.server.edicts[0]) ?? { kind: 'hull', ent: SV.server.edicts[0] };
     const clip = {
-      trace: this.clipMoveToEntity(SV.server.edicts[0], start, mins, maxs, end),
+      trace: this._clipMoveToEntityWithState(worldState, start, mins, maxs, end),
       start,
       end,
       mins,
-      mins2: type === Defs.moveTypes.MOVE_MISSILE ? new Vector(-15.0, -15.0, -15.0) : mins,
+      mins2: type === Defs.moveTypes.MOVE_MISSILE ? ServerCollision.MISSILE_MINS : mins,
       maxs,
-      maxs2: type === Defs.moveTypes.MOVE_MISSILE ? new Vector(15.0, 15.0, 15.0) : maxs,
+      maxs2: type === Defs.moveTypes.MOVE_MISSILE ? ServerCollision.MISSILE_MAXS : maxs,
       type,
       passedict,
       boxmins: new Vector(),

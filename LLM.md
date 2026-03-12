@@ -27,6 +27,7 @@ Where’s what these tools have worked on in big chunks and my experience:
 | WebGL 2 port | Claude Opus 4.6 is really excelling at coding, especially doing heavy leg work such as porting from WebGL 1 to WebGL 2. It would have taken me hours to get everything sorted out and optimized. |
 | Pmove improvements | I did an 80% port of pmove.c from QuakeWorld, together with Claude Opus 4.6 I implemented Q1 and Q2 movement profiles as well as wired up the whole code with client-side prediction and some other shenanigans. |
 | Brushlist implementation | Pmove works best with non-hull based data, Claude Opus 4.6 sketched out the brushlist based code, but it was not perfect, lots of fine tuning and manual debugging was required to get a decent result. |
+| Unit Tests | GPT-5.4 is my guinea pig on this one. I asked it to write unit tests around server physics code so that this code is always solid and won’t contain nasty surprises. |
 
 ## Conclusion
 
