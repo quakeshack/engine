@@ -275,7 +275,7 @@ export class ServerPhysics {
    * Applies a small upward force used for buoyancy.
    * @param {import('../Edict.mjs').ServerEdict} ent entity to influence
    */
-  addBoyancy(ent) {
+  addBuoyancy(ent) {
     const velocity = ent.entity.velocity;
     velocity[2] += SV.gravity.value * Host.frametime * 0.01;
     ent.entity.velocity = velocity;

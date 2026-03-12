@@ -589,6 +589,8 @@ export class BrushTrace {
     console.assert(!Number.isNaN(end[0]) && !Number.isNaN(end[1]) && !Number.isNaN(end[2]), 'NaN end');
 
     if (!worldModel.nodes || worldModel.nodes.length === 0) {
+      trace.allsolid = false;
+      trace.endpos.set(end);
       return trace;
     }
 
@@ -608,6 +610,8 @@ export class BrushTrace {
     const rootNode = worldModel.nodes[headNode];
 
     if (!rootNode) {
+      trace.allsolid = false;
+      trace.endpos.set(end);
       return trace;
     }
 
@@ -754,6 +758,7 @@ export class BrushTrace {
     trace.allsolid = false;
 
     if (!model.brushes || model.numBrushes === 0) {
+      trace.endpos.set(end);
       return trace;
     }
 

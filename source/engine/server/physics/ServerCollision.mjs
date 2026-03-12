@@ -751,8 +751,21 @@ export class ServerCollision {
   _traceTouch(clip, touch) {
     const touchState = this._getEntityCollisionState(touch) ?? this._getHullFallbackState(touch);
     const { mins, maxs } = this._getTouchTraceExtents(clip, touch);
+    const trace = this._clipMoveToEntityWithState(touchState, clip.start, mins, maxs, clip.end);
 
-    return this._clipMoveToEntityWithState(touchState, clip.start, mins, maxs, clip.end);
+    console.assert(
+      Number.isFinite(trace.fraction)
+      && Number.isFinite(trace.endpos[0])
+      && Number.isFinite(trace.endpos[1])
+      && Number.isFinite(trace.endpos[2])
+      && Number.isFinite(trace.plane.normal[0])
+      && Number.isFinite(trace.plane.normal[1])
+      && Number.isFinite(trace.plane.normal[2])
+      && Number.isFinite(trace.plane.dist),
+      'ServerCollision._traceTouch produced malformed trace',
+    );
+
+    return trace;
   }
 
   /**
@@ -797,8 +810,20 @@ export class ServerCollision {
   _createMoveClip(start, mins, maxs, end, type, passedict) {
     const worldEdict = SV.server.edicts[0];
     const worldState = this._getEntityCollisionState(worldEdict) ?? this._getHullFallbackState(worldEdict);
+    const worldTrace = this._clipMoveToEntityWithState(worldState, start, mins, maxs, end);
+    console.assert(
+      Number.isFinite(worldTrace.fraction)
+      && Number.isFinite(worldTrace.endpos[0])
+      && Number.isFinite(worldTrace.endpos[1])
+      && Number.isFinite(worldTrace.endpos[2])
+      && Number.isFinite(worldTrace.plane.normal[0])
+      && Number.isFinite(worldTrace.plane.normal[1])
+      && Number.isFinite(worldTrace.plane.normal[2])
+      && Number.isFinite(worldTrace.plane.dist),
+      'ServerCollision._createMoveClip produced malformed world trace',
+    );
     const clip = new MoveClip(
-      this._clipMoveToEntityWithState(worldState, start, mins, maxs, end),
+      worldTrace,
       start,
       end,
       mins,

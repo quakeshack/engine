@@ -506,6 +506,47 @@ test('BrushTrace.boxTrace traverses world brush lists through BSP nodes', () => 
   assertNear(trace.endpos[2], 0);
 });
 
+test('BrushTrace.boxTrace returns a clean miss for empty world models', () => {
+  const worldModel = new BrushModel();
+  worldModel.name = 'empty-world';
+  worldModel.nodes = [];
+
+  const start = new Vector(1, 2, 3);
+  const end = new Vector(10, 20, 30);
+  const trace = BrushTrace.boxTrace(worldModel, 0, start, end, Pmove.PLAYER_MINS, Pmove.PLAYER_MAXS);
+
+  assert.equal(trace.allsolid, false);
+  assert.equal(trace.startsolid, false);
+  assert.equal(trace.fraction, 1.0);
+  assert.deepEqual([...trace.endpos], [...end]);
+});
+
+test('BrushTrace.transformedBoxTrace returns a clean miss for empty submodels', () => {
+  const model = new BrushModel();
+  model.name = '*empty';
+  model.submodel = true;
+  model.brushes = [];
+  model.brushsides = [];
+  model.leafbrushes = [];
+  model.numBrushes = 0;
+
+  const end = new Vector(10, 20, 30);
+  const trace = BrushTrace.transformedBoxTrace(
+    model,
+    new Vector(1, 2, 3),
+    end,
+    Pmove.PLAYER_MINS,
+    Pmove.PLAYER_MAXS,
+    Vector.origin,
+    Vector.origin,
+  );
+
+  assert.equal(trace.allsolid, false);
+  assert.equal(trace.startsolid, false);
+  assert.equal(trace.fraction, 1.0);
+  assert.deepEqual([...trace.endpos], [...end]);
+});
+
 test('BrushTrace.testPosition traverses world brush lists through BSP nodes', () => {
   const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
 
@@ -1241,6 +1282,163 @@ test('ServerCollision.move keeps outer legacy hull split points stable across de
     assertNear(trace.endpos[0], 9.96875, 0.000001);
     assertNear(trace.endpos[1], 0);
     assertNear(trace.endpos[2], 0);
+  });
+
+  test('ServerCollision.move ignores zero-volume touched entities for boxed movers', () => {
+    const collision = new ServerCollision();
+    const worldModel = createBrushWorldModel({ center: [1024, 0, 0], halfExtents: [16, 16, 16] });
+    const worldEdict = createMockEdict(createMockEntity({
+      origin: new Vector(),
+      solidType: solid.SOLID_BSP,
+    }));
+    const moverEdict = createMockEdict(createMockEntity({
+      origin: new Vector(),
+      mins: Pmove.PLAYER_MINS.copy(),
+      maxs: Pmove.PLAYER_MAXS.copy(),
+      solidType: solid.SOLID_BBOX,
+    }));
+    const zeroVolumeTouch = createMockEdict(createMockEntity({
+      origin: new Vector(32, 0, 0),
+      mins: new Vector(),
+      maxs: new Vector(),
+      solidType: solid.SOLID_BBOX,
+    }));
+    let narrowPhaseCalls = 0;
+
+    withMockRegistry({
+      Con: {
+        Print() {},
+        DPrint() {},
+      },
+      Host: { frametime: 0.1 },
+      SV: {
+        area: {
+          tree: {
+            queryAABB() {
+              return [zeroVolumeTouch];
+            },
+          },
+        },
+        server: {
+          edicts: [worldEdict],
+          worldmodel: worldModel,
+        },
+      },
+    }, () => {
+      collision._traceTouch = () => {
+        narrowPhaseCalls += 1;
+        throw new Error('zero-volume touches should be skipped before narrow phase');
+      };
+
+      const trace = collision.move(
+        new Vector(0, 0, 0),
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+        new Vector(64, 0, 0),
+        moveTypes.MOVE_NORMAL,
+        moverEdict,
+      );
+
+      assert.equal(trace.fraction, 1.0);
+      assert.equal(trace.ent, null);
+      assert.equal(trace.startsolid, false);
+      assert.equal(narrowPhaseCalls, 0);
+      assert.deepEqual([...trace.endpos], [64, 0, 0]);
+    });
+  });
+
+  test('ServerCollision.move asserts when a touched entity returns a malformed trace', () => {
+    const collision = new ServerCollision();
+    const worldModel = createBrushWorldModel({ center: [1024, 0, 0], halfExtents: [16, 16, 16] });
+    const worldEdict = createMockEdict(createMockEntity({
+      origin: new Vector(),
+      solidType: solid.SOLID_BSP,
+    }));
+    const badTouch = createMockEdict(createMockEntity({
+      origin: new Vector(32, 0, 0),
+      mins: new Vector(-16, -16, -16),
+      maxs: new Vector(16, 16, 16),
+      solidType: solid.SOLID_BBOX,
+    }));
+
+    withMockRegistry({
+      Con: {
+        Print() {},
+        DPrint() {},
+      },
+      Host: { frametime: 0.1 },
+      SV: {
+        area: {
+          tree: {
+            queryAABB() {
+              return [badTouch];
+            },
+          },
+        },
+        server: {
+          edicts: [worldEdict],
+          worldmodel: worldModel,
+        },
+      },
+    }, () => {
+      const assertions = [];
+      const originalConsoleAssert = console.assert;
+      const originalClipMoveToEntityWithState = collision._clipMoveToEntityWithState.bind(collision);
+      collision._clipMoveToEntityWithState = (state, start, mins, maxs, end) => {
+        if (state.ent !== badTouch) {
+          return originalClipMoveToEntityWithState(state, start, mins, maxs, end);
+        }
+
+        const invalidEnd = new Vector();
+        invalidEnd[0] = Number.NaN;
+        invalidEnd[1] = Number.NaN;
+        invalidEnd[2] = Number.NaN;
+        const invalidNormal = new Vector();
+        invalidNormal[0] = Number.NaN;
+        invalidNormal[1] = Number.NaN;
+        invalidNormal[2] = Number.NaN;
+
+        return {
+          allsolid: false,
+          startsolid: true,
+          fraction: Number.NaN,
+          endpos: invalidEnd,
+          plane: { normal: invalidNormal, dist: Number.NaN },
+          ent: badTouch,
+          inopen: false,
+          inwater: false,
+        };
+      };
+
+      console.assert = (condition, ...args) => {
+        assertions.push({ condition, args });
+      };
+
+      try {
+        const trace = collision.move(
+          new Vector(0, 0, 0),
+          Pmove.PLAYER_MINS,
+          Pmove.PLAYER_MAXS,
+          new Vector(64, 0, 0),
+          moveTypes.MOVE_NORMAL,
+          null,
+        );
+
+        assert.equal(Number.isNaN(trace.fraction), true);
+        assert.equal(Number.isNaN(trace.endpos[0]), true);
+        assert.equal(trace.ent, badTouch);
+        assert.equal(trace.startsolid, true);
+      } finally {
+        console.assert = originalConsoleAssert;
+      }
+
+      const malformedTraceAssertions = assertions.filter((entry) =>
+        entry.condition === false
+        && entry.args[0] === 'ServerCollision._traceTouch produced malformed trace'
+      );
+
+      assert.equal(malformedTraceAssertions.length, 1);
+    });
   });
 });
 
@@ -2931,7 +3129,7 @@ test('ServerPhysics.addGravity and addBoyancy accumulate using entity gravity an
     },
   }, () => {
     serverPhysics.addGravity(edict);
-    serverPhysics.addBoyancy(edict);
+    serverPhysics.addBuoyancy(edict);
   });
 
   assert.deepEqual([...entity.velocity], [0, 0, -88]);
