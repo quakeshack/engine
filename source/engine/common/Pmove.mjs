@@ -1221,10 +1221,10 @@ export class BrushTrace {
         continue;
       }
 
-      // Exact face contact must remain walkable. Classifying d1 === 0 as
-      // inside turns resting contact on brush-based movers into a false stuck
-      // state, which can make pushers think the player is blocking them.
-      if (d1 >= 0) {
+      // Exact face contact, plus tiny sub-epsilon overlap from snapped player
+      // origins, must remain walkable. Treating these as inside turns riders
+      // on rising brush movers into false blockers.
+      if (d1 >= -DIST_EPSILON) {
         return false;
       }
     }

@@ -2,13 +2,17 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
-import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.mjs';
+import { content, flags, gameCapabilities, moveType, moveTypes, solid } from '../../source/shared/Defs.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { ServerArea } from '../../source/engine/server/physics/ServerArea.mjs';
+import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';
 import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.mjs';
 
 import {
   assertNear,
+  createBoxBrushModel,
+  createBrushWorldModel,
   createMockEdict,
   createMockEntity,
   defaultMockRegistry,
@@ -531,7 +535,7 @@ describe('ServerPhysics', () => {
 
         assert.deepEqual([...pusherEdict.entity.origin], [0, 0, 0]);
         assert.deepEqual([...riderEdict.entity.origin], [0, 0, 32]);
-        assert.equal(testCount, 1);
+        assert.equal(testCount, 2);
         assert.equal(blockedCalls.length, 1);
         assert.equal(blockedCalls[0], riderEdict.entity);
         assert.equal(pusherEdict.entity.ltime, 0);
@@ -723,6 +727,162 @@ describe('ServerPhysics', () => {
       });
     });
 
+    test('ignores rider overlap that only collides with the current pusher after the move', () => {
+      const testCalls = [];
+      const blockedCalls = [];
+
+      const worldEdict = createMockEdict(createMockEntity());
+      worldEdict.num = 0;
+
+      const pusherEntity = createMockEntity({
+        origin: new Vector(0, 0, 0),
+        mins: new Vector(-64, -64, -16),
+        maxs: new Vector(64, 64, 16),
+        velocity: new Vector(0, 0, 100),
+        movetype: moveType.MOVETYPE_PUSH,
+        solidType: solid.SOLID_BSP,
+      });
+      pusherEntity.blocked = (blockingEntity) => {
+        blockedCalls.push(blockingEntity);
+      };
+      const pusherEdict = createMockEdict(pusherEntity);
+      pusherEdict.num = 1;
+
+      const riderEntity = createMockEntity({
+        origin: new Vector(0, 0, 40),
+        mins: new Vector(-16, -16, -24),
+        maxs: new Vector(16, 16, 32),
+        movetype: moveType.MOVETYPE_WALK,
+        solidType: solid.SOLID_BBOX,
+        flagsValue: flags.FL_ONGROUND,
+        groundentity: pusherEntity,
+      });
+      const riderEdict = createMockEdict(riderEntity);
+      riderEdict.num = 2;
+
+      let testPositionCall = 0;
+
+      withMockRegistry(defaultMockRegistry({
+        area: {
+          linkEdict() {},
+        },
+        collision: {
+          testEntityPosition(edict) {
+            testCalls.push({ edict, pusherSolid: pusherEntity.solid });
+
+            if (edict !== riderEdict) {
+              return false;
+            }
+
+            testPositionCall += 1;
+
+            if (testPositionCall === 1) {
+              return true;
+            }
+
+            return false;
+          },
+          move(start, mins, maxs, end) {
+            return {
+              allsolid: false,
+              startsolid: false,
+              fraction: 1.0,
+              endpos: end.copy(),
+              ent: null,
+            };
+          },
+        },
+        server: {
+          num_edicts: 3,
+          edicts: [worldEdict, pusherEdict, riderEdict],
+          gameAPI: { time: 0 },
+        },
+      }), () => {
+        const serverPhysics = new ServerPhysics();
+        serverPhysics.pushMove(pusherEdict, 0.1);
+      });
+
+      assert.equal(blockedCalls.length, 0);
+      assert.equal(testCalls.length, 2);
+      assert.equal(testCalls[0].edict, riderEdict);
+      assert.equal(testCalls[0].pusherSolid, solid.SOLID_BSP);
+      assert.equal(testCalls[1].edict, riderEdict);
+      assert.equal(testCalls[1].pusherSolid, solid.SOLID_NOT);
+      assert.deepEqual([...pusherEdict.entity.origin], [0, 0, 10]);
+      assert.deepEqual([...riderEdict.entity.origin], [0, 0, 50]);
+    });
+
+    test('keeps non-rider overlaps with the current pusher blocking the move', () => {
+      const testCalls = [];
+      const blockedCalls = [];
+
+      const worldEdict = createMockEdict(createMockEntity());
+      worldEdict.num = 0;
+
+      const pusherEntity = createMockEntity({
+        origin: new Vector(0, 0, 0),
+        mins: new Vector(-64, -64, -16),
+        maxs: new Vector(64, 64, 16),
+        velocity: new Vector(0, 0, 100),
+        movetype: moveType.MOVETYPE_PUSH,
+        solidType: solid.SOLID_BSP,
+      });
+      pusherEntity.blocked = (blockingEntity) => {
+        blockedCalls.push(blockingEntity);
+      };
+      const pusherEdict = createMockEdict(pusherEntity);
+      pusherEdict.num = 1;
+
+      const blockerEntity = createMockEntity({
+        origin: new Vector(0, 0, 0),
+        mins: new Vector(-16, -16, -24),
+        maxs: new Vector(16, 16, 32),
+        movetype: moveType.MOVETYPE_STEP,
+        solidType: solid.SOLID_BBOX,
+      });
+      const blockerEdict = createMockEdict(blockerEntity);
+      blockerEdict.num = 2;
+
+      withMockRegistry(defaultMockRegistry({
+        area: {
+          linkEdict() {},
+        },
+        collision: {
+          testEntityPosition(edict) {
+            testCalls.push({ edict, pusherSolid: pusherEntity.solid });
+            return edict === blockerEdict;
+          },
+          move(start, mins, maxs, end) {
+            return {
+              allsolid: false,
+              startsolid: false,
+              fraction: 1.0,
+              endpos: end.copy(),
+              ent: null,
+            };
+          },
+        },
+        server: {
+          num_edicts: 3,
+          edicts: [worldEdict, pusherEdict, blockerEdict],
+          gameAPI: { time: 0 },
+        },
+      }), () => {
+        const serverPhysics = new ServerPhysics();
+        serverPhysics.pushMove(pusherEdict, 0.1);
+      });
+
+      assert.equal(testCalls.length, 2);
+      assert.equal(testCalls[0].edict, blockerEdict);
+      assert.equal(testCalls[0].pusherSolid, solid.SOLID_BSP);
+      assert.equal(testCalls[1].edict, blockerEdict);
+      assert.equal(testCalls[1].pusherSolid, solid.SOLID_BSP);
+      assert.equal(blockedCalls.length, 1);
+      assert.equal(blockedCalls[0], blockerEdict.entity);
+      assert.deepEqual([...pusherEdict.entity.origin], [0, 0, 0]);
+      assert.deepEqual([...blockerEdict.entity.origin], [0, 0, 0]);
+    });
+
     test('combines translation with non-yaw rotation when carrying riders', () => {
       const transformPointToLocal = (point, origin, basis) => {
         const delta = point.copy().subtract(origin);
@@ -783,6 +943,97 @@ describe('ServerPhysics', () => {
         assert.equal(testCalls[0], riderEdict);
         assert.equal(blockedCalls.length, 0);
       });
+    });
+
+    test('does not call blocked() for a rider resting within sub-epsilon top contact on a BSP pusher', () => {
+      const blockedCalls = [];
+      const pusherModel = createBoxBrushModel({ halfExtents: [64, 64, 16], name: '*plat' });
+      const worldModel = createBrushWorldModel({ center: [4096, 0, 0], halfExtents: [16, 16, 16] });
+      const modelSource = {
+        getModelByIndex(index) {
+          return index === 1 ? pusherModel : null;
+        },
+        getWorldEntity() {
+          return null;
+        },
+        getWorldModel() {
+          return worldModel;
+        },
+      };
+      const area = new ServerArea(modelSource);
+      area.initBoxHull();
+      const collision = new ServerCollision(modelSource);
+      const serverPhysics = new ServerPhysics();
+
+      const worldEdict = createMockEdict(createMockEntity({
+        movetype: moveType.MOVETYPE_NONE,
+        solidType: solid.SOLID_BSP,
+      }));
+      worldEdict.num = 0;
+
+      const pusherEntity = createMockEntity({
+        origin: new Vector(0, 0, 0),
+        mins: new Vector(-64, -64, -16),
+        maxs: new Vector(64, 64, 16),
+        velocity: new Vector(0, 0, 100),
+        movetype: moveType.MOVETYPE_PUSH,
+        solidType: solid.SOLID_BSP,
+      });
+      pusherEntity.modelindex = 1;
+      pusherEntity.blocked = (blockingEntity) => {
+        blockedCalls.push(blockingEntity);
+      };
+      const pusherEdict = createMockEdict(pusherEntity);
+      pusherEdict.num = 1;
+
+      const riderEntity = createMockEntity({
+        origin: new Vector(0, 0, 39.99),
+        mins: new Vector(-16, -16, -24),
+        maxs: new Vector(16, 16, 32),
+        movetype: moveType.MOVETYPE_WALK,
+        solidType: solid.SOLID_BBOX,
+        flagsValue: flags.FL_ONGROUND,
+        groundentity: pusherEntity,
+      });
+      riderEntity.classname = 'player';
+      const riderEdict = createMockEdict(riderEntity);
+      riderEdict.num = 2;
+
+      withMockRegistry(defaultMockRegistry({
+        maxvelocity: { value: 2000 },
+        area,
+        collision,
+        physics: serverPhysics,
+        server: {
+          time: 0,
+          num_edicts: 3,
+          edicts: [worldEdict, pusherEdict, riderEdict],
+          worldmodel: worldModel,
+          navigation: { relinkEdict() {} },
+          gameCapabilities: [gameCapabilities.CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK],
+          gameAPI: { time: 0 },
+        },
+      }), () => {
+        const touches = [pusherEdict, riderEdict];
+        area.tree = {
+          insert() {
+            return { remove() {} };
+          },
+          queryAABB() {
+            return touches;
+          },
+        };
+
+        area.linkEdict(pusherEdict);
+        area.linkEdict(riderEdict);
+        serverPhysics.pushMove(pusherEdict, 0.1);
+
+        assert.equal(collision.testEntityPosition(riderEdict), false);
+      });
+
+      assert.equal(blockedCalls.length, 0);
+      assert.deepEqual([...pusherEdict.entity.origin], [0, 0, 10]);
+      assertNear(riderEdict.entity.origin[2], 49.99, 1e-4);
     });
   });
 

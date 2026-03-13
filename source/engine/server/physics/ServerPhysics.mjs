@@ -393,7 +393,11 @@ export class ServerPhysics {
         continue;
       }
 
-      if (((check.entity.flags & Defs.flags.FL_ONGROUND) === 0) || !check.entity.groundentity || !check.entity.groundentity.equals(pusher.entity)) {
+      const wasGroundedOnPusher = (check.entity.flags & Defs.flags.FL_ONGROUND) !== 0 &&
+        check.entity.groundentity !== null &&
+        check.entity.groundentity.equals(pusher.entity);
+
+      if (!wasGroundedOnPusher) {
         if (!check.entity.absmin.lt(maxs) || !check.entity.absmax.gt(mins)) {
           continue;
         }
@@ -431,6 +435,16 @@ export class ServerPhysics {
       pusher.entity.solid = Defs.solid.SOLID_BSP;
 
       if (SV.collision.testEntityPosition(check)) {
+        if (wasGroundedOnPusher) {
+          pusher.entity.solid = Defs.solid.SOLID_NOT;
+          const blockedByOtherSolid = SV.collision.testEntityPosition(check);
+          pusher.entity.solid = Defs.solid.SOLID_BSP;
+
+          if (!blockedByOtherSolid) {
+            continue;
+          }
+        }
+
         const cmins = check.entity.mins;
         const cmaxs = check.entity.maxs;
         if (cmins[0] === cmaxs[0]) {

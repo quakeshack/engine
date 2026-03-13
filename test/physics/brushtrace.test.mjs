@@ -2,7 +2,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
-import { BrushTrace, Pmove } from '../../source/engine/common/Pmove.mjs';
+import { BrushTrace, DIST_EPSILON, Pmove } from '../../source/engine/common/Pmove.mjs';
 import { BrushSide } from '../../source/engine/common/model/BSP.mjs';
 import { content } from '../../source/shared/Defs.mjs';
 
@@ -124,12 +124,25 @@ describe('BrushTrace', () => {
       const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
       const origin = new Vector(100, 0, 0);
       const tangentPosition = new Vector(100, 0, 40);
+      const snappedContactPosition = new Vector(100, 0, 40 - DIST_EPSILON * 0.25);
       const penetratingPosition = new Vector(100, 0, 39.9);
 
       assert.equal(
         BrushTrace.transformedTestPosition(
           model,
           tangentPosition,
+          Pmove.PLAYER_MINS,
+          Pmove.PLAYER_MAXS,
+          origin,
+          Vector.origin,
+        ),
+        true,
+      );
+
+      assert.equal(
+        BrushTrace.transformedTestPosition(
+          model,
+          snappedContactPosition,
           Pmove.PLAYER_MINS,
           Pmove.PLAYER_MAXS,
           origin,

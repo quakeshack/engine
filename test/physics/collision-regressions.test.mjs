@@ -2797,7 +2797,7 @@ test('ServerPhysics.pushMove rolls back and calls blocked() when rider remains s
 
     assert.deepEqual([...pusherEdict.entity.origin], [0, 0, 0]);
     assert.deepEqual([...riderEdict.entity.origin], [0, 0, 32]);
-    assert.equal(testCount, 1);
+    assert.equal(testCount, 2);
     assert.equal(blockedCalls.length, 1);
     assert.equal(blockedCalls[0], riderEdict.entity);
     assert.equal(pusherEdict.entity.ltime, 0);
