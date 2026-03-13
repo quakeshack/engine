@@ -51,7 +51,7 @@ in float vDynamicLightDot;
 in float vFog;
 in vec3 vNormal;
 in vec3 vLightVec;
-in float vLightMix;
+in vec3 vDynamicLightVec;
 in vec3 vTangent;
 in vec3 vBitangent;
 in vec3 vViewVec;
@@ -196,6 +196,7 @@ void main(void) {
   float lightFactor = 1.0;
 
   if (uPerformDotLighting) {
+    float dynamicStrength = clamp(max(uDynamicShadeLight.r, max(uDynamicShadeLight.g, uDynamicShadeLight.b)), 0.0, 1.0);
     vec3 lightDirection;
 
     if (uHaveDeluxemap) {
@@ -246,13 +247,13 @@ void main(void) {
     specFactor = specIntensity * pow(max(dot(N, H), 0.0), 16.0);
 
     // Add dynamic light contribution
-    float dynLightDot = max(dot(N, vLightVec), 0.0);
-    vec3 dynH = normalize(vLightVec + V);
-    float dynSpecFactor = specIntensity * pow(max(dot(N, dynH), 0.0), 16.0);
+    float dynLightDot = max(dot(N, vDynamicLightVec), 0.0) * dynamicStrength;
+    vec3 dynH = normalize(vDynamicLightVec + V);
+    float dynSpecFactor = specIntensity * pow(max(dot(N, dynH), 0.0), 16.0) * dynamicStrength;
 
     // Combine both light sources
-    lightFactor += dynLightDot * vLightMix;
-    specFactor += dynSpecFactor * vLightMix;
+    lightFactor += dynLightDot;
+    specFactor += dynSpecFactor;
   }
 
   // Calculate bump mapping factor - blend between full lighting and bump-modified lighting

@@ -31,7 +31,7 @@ out float vDynamicLightDot;
 out float vFog;
 out vec3 vNormal;
 out vec3 vLightVec;
-out float vLightMix;
+out vec3 vDynamicLightVec;
 out vec3 vTangent;
 out vec3 vBitangent;
 out mat3 vAngles;
@@ -70,7 +70,8 @@ void main(void) {
   float distToView = length(worldToView);
 
   // Transform light vector
-  vLightVec = normalize(worldPos - uLightVec.xyz * uAngles);
+  vLightVec = normalize(worldPos - uLightVec.xyz);
+  vDynamicLightVec = normalize(worldPos - uDynamicLightVec);
 
   // Lighting calculations - minimize branching impact
   // Always transform normals (cheaper than branching), fragment shader will use if needed
@@ -82,15 +83,12 @@ void main(void) {
 
   // Compute both lighting paths, select based on uniform
   // This avoids branching at the cost of a few extra ops (which is faster on GPU)
-  float lightDist = length(uLightVec.xyz - worldPos);
-  float dynamicLightMix = clamp(uLightVec.w / lightDist, 0.0, 1.0);
   float staticLightDot = dot(transformedNormal, vLightVec);
-  vDynamicLightDot = max(0.0, dot(transformedNormal, normalize(worldPos - uDynamicLightVec)));
+  vDynamicLightDot = max(0.0, dot(transformedNormal, vDynamicLightVec));
 
-  // Use mix/step to avoid branching (branchless selection)
-  float useDotLighting = float(uPerformDotLighting);
-  vLightMix = mix(1.0, dynamicLightMix, useDotLighting);
-  vLightDot = mix(staticLightDot, 0.0, useDotLighting);
+  // Keep non-PBR brush lighting unmodified while allowing PBR surfaces to source
+  // their static direction from the deluxemap in the fragment shader.
+  vLightDot = mix(staticLightDot, 0.0, float(uPerformDotLighting));
 
   // Fog calculation - use branchless approach
   // Pre-calculate all fog modes, then select

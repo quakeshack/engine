@@ -41,6 +41,42 @@ export const LIGHTMAP_BLOCK_HEIGHT = LIGHTMAP_BLOCK_SIZE * 4; // RGBA byte strid
  */
 export class BrushModelRenderer extends ModelRenderer {
   /**
+   * Determine whether a brush model should sample the shared deluxemap atlas.
+   * Inline BSP submodels reuse the world atlas even when they do not carry
+   * their own `deluxemap` pointer.
+   * @param {BrushModel} clmodel The brush model being rendered
+   * @param {BrushModel|null} worldModel The active world model
+   * @returns {boolean} True when deluxemap sampling should stay enabled
+   */
+  static usesDeluxemap(clmodel, worldModel) {
+    return Boolean(clmodel.deluxemap !== null || (clmodel.submodel && worldModel?.deluxemap !== null));
+  }
+
+  /**
+   * Build the lighting state used by inline brush entities.
+   * Brush models should use the same BSP + dynamic-light sampling as alias/mesh entities.
+   * @param {BrushModel} clmodel The brush model being rendered
+   * @param {ClientEdict} entity The entity being rendered
+   * @param {(entity: ClientEdict) => [Vector, Vector, Vector, Vector, Vector]} calculateLightValues Light sampler callback
+   * @param {BrushModel|null} [worldModel] The active world model
+   * @returns {{ambientlight: Vector, shadelight: Vector, lightPosition: Vector, dynamicShadeLight: Vector, dynamicLightPosition: Vector, hasDeluxemap: boolean}} Resolved lighting state
+   */
+  static resolveEntityLightingState(clmodel, entity, calculateLightValues, worldModel = null) {
+    const [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition] = calculateLightValues(entity);
+    const usesSharedWorldLightmap = clmodel.submodel === true
+      && (clmodel.lightdata !== null || clmodel.lightdata_rgb !== null);
+
+    return {
+      ambientlight: usesSharedWorldLightmap ? new Vector(1.0, 1.0, 1.0) : ambientlight,
+      shadelight: usesSharedWorldLightmap ? new Vector(0.0, 0.0, 0.0) : shadelight,
+      lightPosition,
+      dynamicShadeLight,
+      dynamicLightPosition,
+      hasDeluxemap: BrushModelRenderer.usesDeluxemap(clmodel, worldModel),
+    };
+  }
+
+  /**
    * Get the model type this renderer handles
    * @returns {number} Mod.type.brush (0)
    */
@@ -189,18 +225,19 @@ export class BrushModelRenderer extends ModelRenderer {
     const program = GL.UseProgram('brush');
     gl.uniform3f(program.uAmbientLight, 1.0, 1.0, 1.0);
     gl.uniform3f(program.uShadeLight, 0.0, 0.0, 0.0);
+    gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
     gl.uniform1f(program.uAlpha, 1.0);
 
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
+    gl.uniform4f(program.uLightVec, 0.0, 0.0, 0.0, 0.0);
+    gl.uniform3f(program.uDynamicLightVec, 0.0, 0.0, 0.0);
 
     // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, true);
     GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
-    GL.BindArray(program.tDeluxemap, R.deluxemap_texture);
-
-    gl.uniform1f(program.uHaveDeluxemap, 1.0);
+    this._bindBrushDeluxemap(program, clmodel);
 
     // wallhack: GL_BLEND is required
     // gl.enable(gl.BLEND);
@@ -217,21 +254,6 @@ export class BrushModelRenderer extends ModelRenderer {
       if (R.CullBox(leaf.mins, leaf.maxs)) {
         continue;
       }
-
-      const lightVector = new Vector(0, 0, 0);
-      let lightRadius = 0;
-
-      // naive approach of getting the next best light
-      for (const l of CL.state.clientEntities.dlights) {
-        if (l.die < CL.state.time || l.radius === 0.0) {
-          continue;
-        }
-
-        lightVector.set(l.origin);
-        lightRadius = l.radius;
-      }
-
-      gl.uniform4fv(program.uLightVec, [...lightVector, lightRadius]);
 
       for (let j = 0; j < leaf.skychain; j++) {
         const cmds = leaf.cmds[j];
@@ -330,15 +352,17 @@ export class BrushModelRenderer extends ModelRenderer {
 
     gl.uniform3f(program.uAmbientLight, 1.0, 1.0, 1.0);
     gl.uniform3f(program.uShadeLight, 0.0, 0.0, 0.0);
+    gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
     gl.uniform1f(program.uAlpha, 1.0);
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
-    gl.uniform1f(program.uHaveDeluxemap, 1.0);
+    gl.uniform4f(program.uLightVec, 0.0, 0.0, 0.0, 0.0);
+    gl.uniform3f(program.uDynamicLightVec, 0.0, 0.0, 0.0);
 
     this._setupBrushShaderCommon(program, clmodel, true);
     GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
-    GL.BindArray(program.tDeluxemap, R.deluxemap_texture);
+    this._bindBrushDeluxemap(program, clmodel);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -353,17 +377,6 @@ export class BrushModelRenderer extends ModelRenderer {
   renderWorldTransparentLeaf(clmodel, leaf) {
     const worldspawn = CL.state.clientEntities.getEntity(0);
     const program = this._worldTransparentProgram;
-
-    const lightVector = new Vector(0, 0, 0);
-    let lightRadius = 0;
-    for (const l of CL.state.clientEntities.dlights) {
-      if (l.die < CL.state.time || l.radius === 0.0) {
-        continue;
-      }
-      lightVector.set(l.origin);
-      lightRadius = l.radius;
-    }
-    gl.uniform4fv(program.uLightVec, [...lightVector, lightRadius]);
 
     for (let j = 0; j < leaf.skychain; j++) {
       const cmds = leaf.cmds[j];
@@ -598,22 +611,7 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   _renderOpaqueSurfaces(clmodel, e, viewMatrix) {
     const program = GL.UseProgram('brush');
-
-    // Setup lighting
-    if (!clmodel.submodel) {
-      const [ambientlight, shadelight, lightPosition] = R._CalculateLightValues(e);
-      gl.uniform3fv(program.uAmbientLight, ambientlight);
-      gl.uniform3fv(program.uShadeLight, shadelight);
-      gl.uniform4fv(program.uLightVec, [...lightPosition, 64.0]);
-      gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
-      gl.uniform3f(program.uDynamicLightVec, 0.0, 0.0, 0.0);
-    } else {
-      gl.uniform3f(program.uAmbientLight, 1.0, 1.0, 1.0);
-      gl.uniform3f(program.uShadeLight, 0.0, 0.0, 0.0);
-      gl.uniform4f(program.uLightVec, 0.0, 0.0, 0.0, 0.0);
-      gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
-      gl.uniform3f(program.uDynamicLightVec, 0.0, 0.0, 0.0);
-    }
+    this._applyEntityLighting(program, clmodel, e);
 
     // Setup transforms
     gl.uniform3fv(program.uOrigin, e.lerp.origin);
@@ -627,9 +625,7 @@ export class BrushModelRenderer extends ModelRenderer {
     this._setupBrushShaderCommon(program, clmodel, false);
     GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
-    GL.BindArray(program.tDeluxemap, clmodel.submodel ? R.deluxemap_texture : R.normal_up_texture);
-
-    gl.uniform1f(program.uHaveDeluxemap, clmodel.submodel ? 1.0 : 0.0);
+    this._bindBrushDeluxemap(program, clmodel);
 
     // Render each texture chain
     if (!clmodel.chains || clmodel.chains.length === 0) {
@@ -651,20 +647,6 @@ export class BrushModelRenderer extends ModelRenderer {
       material.emit(e);
       material.bindTo(program);
 
-      // Setup dynamic lighting
-      const lightVector = new Vector(0, 0, 0);
-      let lightRadius = 0;
-
-      for (const l of CL.state.clientEntities.dlights) {
-        if (l.die < CL.state.time || l.radius === 0.0) {
-          continue;
-        }
-        lightVector.set(l.origin);
-        lightRadius = l.radius;
-      }
-
-      gl.uniform4fv(program.uLightVec, [...lightVector, lightRadius]);
-
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
       R.c_brush_draws++;
     }
@@ -679,22 +661,7 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   _renderTransparentSurfaces(clmodel, e, viewMatrix) {
     const program = GL.UseProgram('brush');
-
-    // Setup lighting
-    if (!clmodel.submodel) {
-      const [ambientlight, shadelight, lightPosition] = R._CalculateLightValues(e);
-      gl.uniform3fv(program.uAmbientLight, ambientlight);
-      gl.uniform3fv(program.uShadeLight, shadelight);
-      gl.uniform4fv(program.uLightVec, [...lightPosition, 64.0]);
-      gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
-      gl.uniform3f(program.uDynamicLightVec, 0.0, 0.0, 0.0);
-    } else {
-      gl.uniform3f(program.uAmbientLight, 1.0, 1.0, 1.0);
-      gl.uniform3f(program.uShadeLight, 0.0, 0.0, 0.0);
-      gl.uniform4f(program.uLightVec, 0.0, 0.0, 0.0, 0.0);
-      gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
-      gl.uniform3f(program.uDynamicLightVec, 0.0, 0.0, 0.0);
-    }
+    this._applyEntityLighting(program, clmodel, e);
 
     // Setup transforms
     gl.uniform3fv(program.uOrigin, e.lerp.origin);
@@ -708,9 +675,7 @@ export class BrushModelRenderer extends ModelRenderer {
     this._setupBrushShaderCommon(program, clmodel, false);
     GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
-    GL.BindArray(program.tDeluxemap, clmodel.submodel ? R.deluxemap_texture : R.normal_up_texture);
-
-    gl.uniform1f(program.uHaveDeluxemap, clmodel.submodel ? 1.0 : 0.0);
+    this._bindBrushDeluxemap(program, clmodel);
 
     // Enable blending for transparent surfaces (depth writes stay ON so
     // the Z-buffer correctly orders transparent geometry against each other)
@@ -744,20 +709,6 @@ export class BrushModelRenderer extends ModelRenderer {
 
       material.emit(e);
       material.bindTo(program);
-
-      // Setup dynamic lighting
-      const lightVector = new Vector(0, 0, 0);
-      let lightRadius = 0;
-
-      for (const l of CL.state.clientEntities.dlights) {
-        if (l.die < CL.state.time || l.radius === 0.0) {
-          continue;
-        }
-        lightVector.set(l.origin);
-        lightRadius = l.radius;
-      }
-
-      gl.uniform4fv(program.uLightVec, [...lightVector, lightRadius]);
 
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
       R.c_brush_draws++;
@@ -817,6 +768,49 @@ export class BrushModelRenderer extends ModelRenderer {
 
     gl.depthMask(true);
     gl.disable(gl.BLEND);
+  }
+
+  /**
+   * @private
+   * @param {object} program Active brush shader program
+   * @param {BrushModel} clmodel The brush model
+   * @param {ClientEdict} entity The entity being rendered
+   */
+  _applyEntityLighting(program, clmodel, entity) {
+    const lightingState = BrushModelRenderer.resolveEntityLightingState(
+      clmodel,
+      entity,
+      R._CalculateLightValues,
+      CL.state.worldmodel,
+    );
+
+    gl.uniform3fv(program.uAmbientLight, lightingState.ambientlight);
+    gl.uniform3fv(program.uShadeLight, lightingState.shadelight);
+    gl.uniform4f(
+      program.uLightVec,
+      lightingState.lightPosition[0],
+      lightingState.lightPosition[1],
+      lightingState.lightPosition[2],
+      0.0,
+    );
+    gl.uniform3fv(program.uDynamicShadeLight, lightingState.dynamicShadeLight);
+    gl.uniform3fv(program.uDynamicLightVec, lightingState.dynamicLightPosition);
+  }
+
+  /**
+   * @private
+   * @param {object} program Active brush shader program
+   * @param {BrushModel} clmodel The brush model
+   */
+  _bindBrushDeluxemap(program, clmodel) {
+    if (BrushModelRenderer.usesDeluxemap(clmodel, CL.state.worldmodel)) {
+      GL.BindArray(program.tDeluxemap, R.deluxemap_texture);
+      gl.uniform1f(program.uHaveDeluxemap, 1.0);
+      return;
+    }
+
+    GL.BindArray(program.tDeluxemap, R.normal_up_texture);
+    gl.uniform1f(program.uHaveDeluxemap, 0.0);
   }
 
   /**
