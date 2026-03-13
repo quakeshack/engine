@@ -25,6 +25,44 @@ export class ServerPhysics {
   }
 
   /**
+   * Convert a world-space point into local pusher space using an orthonormal basis.
+   * @param {Vector} point point in world space
+   * @param {Vector} origin transform origin
+   * @param {number[]} basis 3x3 rotation basis from Vector.toRotationMatrix()
+   * @returns {Vector} point in local space
+   */
+  static _transformPointToLocal(point, origin, basis) {
+    const delta = point.copy().subtract(origin);
+    const forward = new Vector(basis[0], basis[1], basis[2]);
+    const right = new Vector(basis[3], basis[4], basis[5]);
+    const up = new Vector(basis[6], basis[7], basis[8]);
+
+    return new Vector(
+      delta.dot(forward),
+      delta.dot(right),
+      delta.dot(up),
+    );
+  }
+
+  /**
+   * Convert a local-space point back into world space using an orthonormal basis.
+   * @param {Vector} point point in local space
+   * @param {Vector} origin transform origin
+   * @param {number[]} basis 3x3 rotation basis from Vector.toRotationMatrix()
+   * @returns {Vector} point in world space
+   */
+  static _transformPointToWorld(point, origin, basis) {
+    const forward = new Vector(basis[0], basis[1], basis[2]);
+    const right = new Vector(basis[3], basis[4], basis[5]);
+    const up = new Vector(basis[6], basis[7], basis[8]);
+
+    return origin.copy()
+      .add(forward.multiply(point[0]))
+      .add(right.multiply(point[1]))
+      .add(up.multiply(point[2]));
+  }
+
+  /**
    * Iterates all non-static entities to ensure none start inside solid space.
    */
   checkAllEnts() {
@@ -334,9 +372,11 @@ export class ServerPhysics {
     const maxs = pusher.entity.absmax.copy().add(move);
     const pushorig = pusher.entity.origin.copy();
     const pushangles = pusher.entity.angles.copy();
+    const pushbasis = pushangles.isOrigin() ? null : pushangles.toRotationMatrix();
 
     pusher.entity.origin = pusher.entity.origin.copy().add(move);
     pusher.entity.angles = pusher.entity.angles.copy().add(rotation);
+    const finalbasis = pusher.entity.angles.isOrigin() ? null : pusher.entity.angles.toRotationMatrix();
     pusher.entity.ltime += movetime;
     SV.area.linkEdict(pusher);
 
@@ -375,13 +415,14 @@ export class ServerPhysics {
       let finalMove = move.copy();
 
       if (!rotation.isOrigin()) {
-        const offset = check.entity.origin.copy().subtract(pushorig);
+        const localOffset = pushbasis === null
+          ? check.entity.origin.copy().subtract(pushorig)
+          : ServerPhysics._transformPointToLocal(check.entity.origin, pushorig, pushbasis);
+        const newPos = finalbasis === null
+          ? pusher.entity.origin.copy().add(localOffset)
+          : ServerPhysics._transformPointToWorld(localOffset, pusher.entity.origin, finalbasis);
 
-        if (rotation[1] !== 0) {
-          const rotatedOffset = new Vector(0, 0, 1).rotatePointAroundVector(offset, rotation[1]);
-          const newPos = pushorig.copy().add(rotatedOffset);
-          finalMove = newPos.subtract(check.entity.origin);
-        }
+        finalMove = newPos.subtract(check.entity.origin);
 
         check.entity.angles = check.entity.angles.copy().add(rotation);
       }
@@ -433,7 +474,7 @@ export class ServerPhysics {
     const thinktime = ent.entity.nextthink;
     let movetime;
 
-    if (thinktime < (oldltime + Host.frametime)) {
+    if (thinktime > 0.0 && thinktime < (oldltime + Host.frametime)) {
       movetime = Math.max(thinktime - oldltime, 0.0);
     } else {
       movetime = Host.frametime;

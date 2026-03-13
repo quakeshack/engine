@@ -9,7 +9,6 @@ import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics
 
 import {
   assertNear,
-  createBoxBrushModel,
   createMockEdict,
   createMockEntity,
   defaultMockRegistry,
@@ -118,7 +117,7 @@ describe('ServerPhysics', () => {
       };
       const touchedEdict = createMockEdict(touchedEntity);
 
-      /** @param {number} solidType */
+      /** @param {number} solidType solidity value to assign to the pushed test entity */
       const runCase = (solidType) => {
         const entity = createMockEntity({
           origin: new Vector(1, 2, 3),
@@ -723,6 +722,68 @@ describe('ServerPhysics', () => {
         assert.equal(blockedCalls.length, 0);
       });
     });
+
+    test('combines translation with non-yaw rotation when carrying riders', () => {
+      const transformPointToLocal = (point, origin, basis) => {
+        const delta = point.copy().subtract(origin);
+        const forward = new Vector(basis[0], basis[1], basis[2]);
+        const right = new Vector(basis[3], basis[4], basis[5]);
+        const up = new Vector(basis[6], basis[7], basis[8]);
+
+        return new Vector(
+          delta.dot(forward),
+          delta.dot(right),
+          delta.dot(up),
+        );
+      };
+
+      const transformPointToWorld = (point, origin, basis) => {
+        const forward = new Vector(basis[0], basis[1], basis[2]);
+        const right = new Vector(basis[3], basis[4], basis[5]);
+        const up = new Vector(basis[6], basis[7], basis[8]);
+
+        return origin.copy()
+          .add(forward.multiply(point[0]))
+          .add(right.multiply(point[1]))
+          .add(up.multiply(point[2]));
+      };
+
+      withMockServerPhysics(({ serverPhysics, pusherEdict, riderEdict, moveCalls, testCalls, blockedCalls }) => {
+        pusherEdict.entity.velocity = new Vector(10, 0, 0);
+        pusherEdict.entity.avelocity = new Vector(900, 0, 0);
+
+        const initialOrigin = pusherEdict.entity.origin.copy();
+        const initialAngles = pusherEdict.entity.angles.copy();
+        const riderStart = new Vector(32, 0, 32);
+        const localOffset = initialAngles.isOrigin()
+          ? riderStart.copy().subtract(initialOrigin)
+          : transformPointToLocal(riderStart, initialOrigin, initialAngles.toRotationMatrix());
+        const expectedPusherOrigin = initialOrigin.copy().add(new Vector(1, 0, 0));
+        const expectedPusherAngles = initialAngles.copy().add(new Vector(90, 0, 0));
+        const expectedOrigin = transformPointToWorld(localOffset, expectedPusherOrigin, expectedPusherAngles.toRotationMatrix());
+
+        riderEdict.entity.origin = riderStart;
+        riderEdict.entity.angles = new Vector(0, 0, 0);
+        riderEdict.entity.absmin = riderEdict.entity.origin.copy().add(riderEdict.entity.mins);
+        riderEdict.entity.absmax = riderEdict.entity.origin.copy().add(riderEdict.entity.maxs);
+
+        serverPhysics.pushMove(pusherEdict, 0.1);
+
+        assert.equal(moveCalls.length, 1);
+        assertNear(moveCalls[0].end[0], expectedOrigin[0], 1e-9);
+        assertNear(moveCalls[0].end[1], expectedOrigin[1], 1e-9);
+        assertNear(moveCalls[0].end[2], expectedOrigin[2], 1e-9);
+        assertNear(riderEdict.entity.origin[0], expectedOrigin[0], 1e-9);
+        assertNear(riderEdict.entity.origin[1], expectedOrigin[1], 1e-9);
+        assertNear(riderEdict.entity.origin[2], expectedOrigin[2], 1e-9);
+        assert.deepEqual([...riderEdict.entity.angles], [90, 0, 0]);
+        assert.deepEqual([...pusherEdict.entity.origin], [1, 0, 0]);
+        assert.deepEqual([...pusherEdict.entity.angles], [90, 0, 0]);
+        assert.equal(testCalls.length, 1);
+        assert.equal(testCalls[0], riderEdict);
+        assert.equal(blockedCalls.length, 0);
+      });
+    });
   });
 
   describe('physicsPusher', () => {
@@ -804,6 +865,46 @@ describe('ServerPhysics', () => {
       assert.equal(entity.nextthink, 1.3);
       assert.equal(thinkCalls, 0);
       assert.equal(observedGameTime, 0);
+    });
+
+    test('moves pushers for a full frame when no think is scheduled', () => {
+      const serverPhysics = new ServerPhysics();
+      const moveTimes = [];
+      let thinkCalls = 0;
+      const entity = createMockEntity({
+        movetype: moveType.MOVETYPE_PUSH,
+        solidType: solid.SOLID_BSP,
+        avelocity: new Vector(0, 100, 0),
+      });
+      entity.ltime = 1.0;
+      entity.nextthink = 0.0;
+      entity.think = () => {
+        thinkCalls += 1;
+      };
+      const edict = createMockEdict(entity);
+
+      withMockRegistry(defaultMockRegistry({
+        Host: { frametime: 0.1 },
+        server: {
+          time: 9.0,
+          gameAPI: { time: 0 },
+        },
+      }), () => {
+        serverPhysics.pushMove = (pusher, movetime) => {
+          moveTimes.push(movetime);
+          pusher.entity.ltime += movetime;
+          pusher.entity.angles = pusher.entity.angles.add(pusher.entity.avelocity.copy().multiply(movetime));
+        };
+
+        serverPhysics.physicsPusher(edict);
+      });
+
+      assert.equal(moveTimes.length, 1);
+      assertNear(moveTimes[0], 0.1, 1e-9);
+      assertNear(entity.ltime, 1.1, 1e-9);
+      assert.deepEqual([...entity.angles], [0, 10, 0]);
+      assert.equal(entity.nextthink, 0.0);
+      assert.equal(thinkCalls, 0);
     });
   });
 

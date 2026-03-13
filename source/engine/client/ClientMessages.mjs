@@ -135,7 +135,7 @@ export class ClientMessages {
 
   /**
    * General client data parsing.
-   * @param {number} bits
+   * @param {number} bits bitmask from Protocol.su describing which general client fields follow
    */
   #parseClientGeneral(bits) {
     // Parse the general client data.
@@ -167,7 +167,7 @@ export class ClientMessages {
   /**
    * Client data parsing for Quake 1.
    * This will fill CL.state.stats and CL.state.items.
-   * @param {number} bits
+   * @param {number} bits bitmask from Protocol.su describing which legacy client fields follow
    */
   #parseClientLegacy(bits) {
     const item = NET.message.readLong();
