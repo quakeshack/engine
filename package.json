@@ -31,8 +31,11 @@
     "ws": "^8.18.0"
   },
   "scripts": {
+    "test": "node --test test/**/*.test.mjs",
+    "test:common": "node --test test/common/**/*.test.mjs",
     "test:physics": "node --test test/physics/**/*.test.mjs",
-    "build:wrangler": "npm run test:physics && npm run build:production",
+    "test:renderer": "node --test test/renderer/**/*.test.mjs",
+    "build:wrangler": "npm run test && npm run build:production",
     "dev": "vite build --watch --mode development",
     "build": "vite build",
     "build:production": "vite build --mode production",

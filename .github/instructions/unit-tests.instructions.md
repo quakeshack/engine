@@ -3,7 +3,8 @@
 ### Runner and File Layout
 
 - **Test runner**: Node.js built-in (`node:test`). No third-party frameworks.
-- **Glob**: `node --test test/physics/**/*.test.mjs` (see `package.json` scripts).
+- **Primary glob**: `node --test test/**/*.test.mjs` (see `package.json` scripts).
+- **Category globs**: Keep tests grouped by top-level area such as `test/common/`, `test/physics/`, and `test/renderer/`.
 - **File naming**: `<subsystem>.test.mjs`. One file per production class/module.
 - **Shared helpers**: `test/physics/fixtures.mjs` (no `.test.` — never auto-run).
 - **All files are ESM** (`.mjs`). Use `import`/`export` exclusively.
@@ -59,7 +60,7 @@ withMockRegistry({
 
 ### Writing New Tests
 
-1. **One file per production module**: `ServerPhysics` → `server-physics.test.mjs`, `Pmove` → `pmove.test.mjs`.
+1. **One file per production module**: `ServerPhysics` → `test/physics/server-physics.test.mjs`, `Mod` → `test/common/model-cache.test.mjs`.
 2. **Regression tests go in the relevant subsystem file**, not a catch-all file.
 3. **Document magic numbers** with a comment explaining the derivation. Example:
    ```javascript
@@ -78,6 +79,9 @@ withMockRegistry({
 ### Running Tests
 
 ```bash
+npm test               # all tests
+npm run test:common    # common engine tests
 npm run test:physics       # all physics tests
+npm run test:renderer      # renderer tests
 node --test test/physics/server-physics.test.mjs  # single file
 ```

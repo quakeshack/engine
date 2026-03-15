@@ -169,6 +169,11 @@ class GL {
 - **Use `_` prefix** for protected methods. Add `@protected` JSDoc tag.
 - **Use `#` prefix** for private methods.
 
+### Respect boundaries of abstraction
+
+- **Avoid accessing private or protected members** of other classes directly. Use public methods instead. If not available, consider refactoring.
+- **Do not do work of classes outside of them**. If you find yourself needing to manipulate internal state of another class, consider adding a public method to that class instead. Refactoring may be needed to maintain proper encapsulation.
+
 ## Naming Conventions
 
 - **Variables:** Descriptive names, camelCase. Avoid abbreviations.
@@ -215,3 +220,4 @@ class GL {
 ## Random Tips
 
 - **Prefer `Math.hypot(x, y)`** over `Math.sqrt(x*x + y*y)` in not so hot paths and when range is not critical.
+- Avoid empty JSDoc comments, they add no value. If a comment is needed, make sure it provides useful information that is not obvious from the code itself.

@@ -171,7 +171,7 @@ function parseServerData() {
     const models = [null];
     const sounds = [null];
 
-    models[1] = await Mod.ForNameAsync(model_precache[1]);
+    models[1] = await Mod.ForNameAsync(model_precache[1], false, Mod.scope.client);
     nummodels--;
 
     while (nummodels > 0) {
@@ -179,7 +179,7 @@ function parseServerData() {
       nummodels -= chunksize;
 
       CL.SetConnectingStep(25 + (models.length / model_precache.length) * 30, 'Loading models');
-      models.push(...await Promise.all(model_precache.slice(models.length, models.length + chunksize).map((m) => Mod.ForNameAsync(m))));
+      models.push(...await Promise.all(model_precache.slice(models.length, models.length + chunksize).map((m) => Mod.ForNameAsync(m, false, Mod.scope.client))));
 
       CL.SendCmd();
     }

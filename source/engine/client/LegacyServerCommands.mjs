@@ -221,7 +221,7 @@ function handleLegacyServerData() {
     const sounds = [null];
 
     // Load world model first
-    models[1] = await Mod.ForNameAsync(model_precache[1]);
+    models[1] = await Mod.ForNameAsync(model_precache[1], false, Mod.scope.client);
 
     // Load remaining models in chunks
     while (models.length < model_precache.length) {
@@ -231,7 +231,7 @@ function handleLegacyServerData() {
         break;
       }
       CL.SetConnectingStep(25 + (models.length / model_precache.length) * 30, 'Loading models');
-      const loaded = await Promise.all(remaining.slice(0, chunksize).map((m) => Mod.ForNameAsync(m)));
+      const loaded = await Promise.all(remaining.slice(0, chunksize).map((m) => Mod.ForNameAsync(m, false, Mod.scope.client)));
       models.push(...loaded);
       CL.SendCmd();
     }

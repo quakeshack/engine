@@ -1526,7 +1526,7 @@ Host.Viewmodel_f = async function(model) {
   if (ent) {
     return;
   }
-  const m = await Mod.ForNameAsync(model);
+  const m = await Mod.ForNameAsync(model, false, Mod.scope.client);
   if (!m) {
     Con.Print('Can\'t load ' + model + '\n');
     return;

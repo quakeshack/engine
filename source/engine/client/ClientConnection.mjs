@@ -134,11 +134,9 @@ export default class ClientConnection {
   clearState() {
     S.StopAllSounds();
 
-    if (!SV.server.active) {
-      Con.DPrint('Clearing memory\n');
-      Mod.ClearAll();
-      this.cls.signon = 0;
-    }
+    Con.DPrint('Clearing client model views\n');
+    Mod.ClearAll(Mod.scope.client);
+    this.cls.signon = 0;
 
     this.setConnectingStep(null, null);
 

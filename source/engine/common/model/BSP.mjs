@@ -599,4 +599,47 @@ export class BrushModel extends BaseModel {
   newSkyRenderer() {
     return null;
   }
+
+  /**
+   * @returns {BrushModel} scoped runtime view
+   */
+  createScopedView() {
+    const scopedView = /** @type {BrushModel} */ (super.createScopedView());
+
+    scopedView.cmds = null;
+    scopedView.chains = [];
+    scopedView.waterchain = 0;
+    scopedView.skychain = 0;
+    scopedView.opaqueVAO = null;
+    scopedView.turbulentVAO = null;
+
+    return scopedView;
+  }
+
+  /**
+   */
+  cleanupScopedView() {
+    super.cleanupScopedView();
+
+    const gl = this._getGLContext();
+
+    if (gl === null) {
+      return;
+    }
+
+    if (this.cmds !== null) {
+      gl.deleteBuffer(this.cmds);
+      this.cmds = null;
+    }
+
+    if (this.opaqueVAO) {
+      gl.deleteVertexArray(this.opaqueVAO);
+      this.opaqueVAO = null;
+    }
+
+    if (this.turbulentVAO) {
+      gl.deleteVertexArray(this.turbulentVAO);
+      this.turbulentVAO = null;
+    }
+  }
 };

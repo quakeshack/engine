@@ -45,4 +45,42 @@ export class MeshModel extends BaseModel {
 
   // Submesh support (multiple materials)
   /** @type {Array} */ submeshes = [];
+
+  /**
+   * @returns {MeshModel} scoped runtime view
+   */
+  createScopedView() {
+    const scopedView = /** @type {MeshModel} */ (super.createScopedView());
+
+    scopedView.vbo = null;
+    scopedView.ibo = null;
+    scopedView.vao = null;
+
+    return scopedView;
+  }
+
+  cleanupScopedView() {
+    super.cleanupScopedView();
+
+    const gl = this._getGLContext();
+
+    if (gl === null) {
+      return;
+    }
+
+    if (this.vao) {
+      gl.deleteVertexArray(this.vao);
+      this.vao = null;
+    }
+
+    if (this.vbo !== null) {
+      gl.deleteBuffer(this.vbo);
+      this.vbo = null;
+    }
+
+    if (this.ibo !== null) {
+      gl.deleteBuffer(this.ibo);
+      this.ibo = null;
+    }
+  }
 }

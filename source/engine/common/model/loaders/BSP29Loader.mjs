@@ -2019,10 +2019,23 @@ export class BSP29Loader extends ModelLoader {
       this._assignAllowedClipnodeMask(out.hulls[0]);
       this._assignAllowedClipnodeMask(out.hulls[1]);
       this._assignAllowedClipnodeMask(out.hulls[2]);
+      out.vertexes = loadmodel.vertexes;
+      out.edges = loadmodel.edges;
+      out.surfedges = loadmodel.surfedges;
+      out.nodes = loadmodel.nodes;
+      out.leafs = loadmodel.leafs;
+      out.texinfo = loadmodel.texinfo;
       out.textures = loadmodel.textures;
+      out.marksurfaces = loadmodel.marksurfaces;
       out.lightdata = loadmodel.lightdata;
       out.lightdata_rgb = loadmodel.lightdata_rgb;
+      out.deluxemap = loadmodel.deluxemap;
       out.faces = loadmodel.faces;
+      out.visdata = loadmodel.visdata;
+      out.numclusters = loadmodel.numclusters;
+      out.clusterPvsOffsets = loadmodel.clusterPvsOffsets;
+      out.phsdata = loadmodel.phsdata;
+      out.clusterPhsOffsets = loadmodel.clusterPhsOffsets;
       out.firstface = view.getUint32(fileofs + 56, true);
       out.numfaces = view.getUint32(fileofs + 60, true);
 
@@ -2031,7 +2044,6 @@ export class BSP29Loader extends ModelLoader {
         out.brushes = loadmodel.brushes;
         out.brushsides = loadmodel.brushsides;
         out.leafbrushes = loadmodel.leafbrushes;
-        out.nodes = loadmodel.nodes;
         out.planes = loadmodel.planes;
 
         // Set per-submodel brush range from BRUSHLIST data
@@ -2041,6 +2053,8 @@ export class BSP29Loader extends ModelLoader {
           out.numBrushes = brushRange.numBrushes;
         }
       }
+
+      out.worldspawnInfo = loadmodel.worldspawnInfo;
 
       loadmodel.submodels[i - 1] = out;
       fileofs += 64;

@@ -445,7 +445,7 @@ export default class SV {
 
   static HasMap(mapname) {
     console.trace('SV.HasMap called');
-    return Mod.ForName('maps/' + mapname + '.bsp') !== null;
+    return Mod.known['maps/' + mapname + '.bsp'] !== undefined;
   }
 
   static async SpawnServer(mapname) {
@@ -464,7 +464,7 @@ export default class SV {
 
     // Clear memory and load game progs
     Con.DPrint('Clearing memory\n');
-    Mod.ClearAll();
+    Mod.ClearAll(Mod.scope.server);
     await SV.#loadGameProgs();
 
     // Initialize edicts and server state
@@ -843,7 +843,7 @@ export default class SV {
    */
   static async #loadWorldModel(mapname) {
     SV.server.mapname = mapname;
-    SV.server.worldmodel = /** @type {BrushModel} */ (await Mod.ForNameAsync('maps/' + mapname + '.bsp'));
+    SV.server.worldmodel = /** @type {BrushModel} */ (await Mod.ForNameAsync('maps/' + mapname + '.bsp', false, Mod.scope.server));
 
     if (SV.server.worldmodel === null) {
       Con.PrintWarning('SV.SpawnServer: Cannot start server, unable to load map ' + mapname + '\n');
@@ -874,7 +874,7 @@ export default class SV {
     // Precache all submodels (brushes connected to entities like doors)
     for (let i = 1; i <= SV.server.worldmodel.submodels.length; i++) {
       SV.server.modelPrecache[i + 1] = '*' + i;
-      SV.server.models[i + 1] = Mod.ForName('*' + i);
+      SV.server.models[i + 1] = Mod.ForName('*' + i, Mod.scope.server);
     }
 
     Con.DPrint('Model precache setup complete\n');

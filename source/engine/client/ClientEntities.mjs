@@ -446,7 +446,7 @@ export default class ClientEntities {
       'progs/bolt2.mdl',
       'progs/bolt3.mdl',
       'progs/beam.mdl', // CR: does not exist in Quake
-    ].map((model) => Mod.ForNameAsync(model, false).then((m) => ({ model: m, name: model }))))) {
+    ].map((model) => Mod.ForNameAsync(model, false, Mod.scope.client).then((m) => ({ model: m, name: model }))))) {
       this.tempEntityModels[name] = model;
     }
   }

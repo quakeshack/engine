@@ -34,7 +34,7 @@ FROM builder AS test
 # adding test maps
 COPY data/id1/maps/test_*.bsp ./data/id1/maps/
 
-CMD ["npm", "run", "test:physics"]
+CMD ["npm", "run", "test"]
 
 # Production stage — dedicated server + web client host
 FROM node:24-alpine

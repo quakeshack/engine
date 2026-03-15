@@ -1,4 +1,16 @@
+import GL from '../../client/GL.mjs';
+import { eventBus } from '../../registry.mjs';
 import Vector from '../../../shared/Vector.mjs';
+
+let gl = /** @type {WebGL2RenderingContext|null} */ (null);
+
+eventBus.subscribe('gl.ready', () => {
+  gl = GL.gl;
+});
+
+eventBus.subscribe('gl.shutdown', () => {
+  gl = null;
+});
 
 export class Plane { // TODO: move to shared
   type = 0;
@@ -107,5 +119,33 @@ export class BaseModel {
 
     /** @type {WebGLBuffer|null} WebGLBuffer for alias models, or null for brush/sprite models */
     this.cmds = null;
+  }
+
+  /**
+   * Create a per-scope runtime view that reuses immutable model data.
+   * @returns {BaseModel} scoped runtime view
+   */
+  createScopedView() {
+    const scopedView = /** @type {BaseModel} */ (Object.assign(
+      Object.create(Object.getPrototypeOf(this)),
+      this,
+    ));
+
+    return scopedView;
+  }
+
+  /**
+   * @protected
+   * @returns {WebGL2RenderingContext|null} current GL context, if available
+   */
+  _getGLContext() {
+    return gl;
+  }
+
+  /**
+   * Release runtime-only resources owned by a scoped model view.
+   */
+  cleanupScopedView() {
+    // Base models do not assume ownership of shared GPU resources.
   }
 };

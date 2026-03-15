@@ -462,7 +462,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
     }
 
     SV.server.modelPrecache.push(modelName);
-    SV.server.models.push(Mod.ForNameAsync(modelName, true)); // will cause promises in the array
+    SV.server.models.push(Mod.ForNameAsync(modelName, true, Mod.scope.server)); // will cause promises in the array
   }
 
   /**

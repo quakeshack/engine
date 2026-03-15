@@ -1,4 +1,3 @@
-import GL from '../client/GL.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { MissingResourceError } from './Errors.mjs';
 import { ModelLoaderRegistry } from './model/ModelLoaderRegistry.mjs';
@@ -11,10 +10,7 @@ import ParsedQC from './model/parsers/ParsedQC.mjs';
 import { BSP38Loader } from './model/loaders/BSP38Loader.mjs';
 
 /** @typedef {import('./model/BaseModel.mjs').BaseModel} BaseModel */
-
-const Mod = {};
-
-export default Mod;
+/** @typedef {'shared' | 'client' | 'server'} ModelScope */
 
 let { CL, COM } = registry;
 
@@ -23,141 +19,226 @@ eventBus.subscribe('registry.frozen', () => {
   COM = registry.COM;
 });
 
-let gl = /** @type {WebGL2RenderingContext} */ (null);
-
-eventBus.subscribe('gl.ready', () => {
-  gl = GL.gl;
-});
-
-eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
-});
-
 // Re-export model classes for backward compatibility
 export { AliasModel } from './model/AliasModel.mjs';
 export { BrushModel } from './model/BSP.mjs';
 export { SpriteModel } from './model/SpriteModel.mjs';
 export { MeshModel } from './model/MeshModel.mjs';
 
-Mod.type = { brush: 0, sprite: 1, alias: 2, mesh: 3 };
+export default class Mod {
+  static type = { brush: 0, sprite: 1, alias: 2, mesh: 3 };
 
-Mod.hull = {
-  /** hull0, point intersection */
-  normal: 0,
-  /** hull1, testing for player (32, 32, 56) */
-  player: 1,
-  /** hull2, testing for large objects (64, 64, 88) */
-  big: 2,
-  /** hull3, only used by BSP30 for crouching etc. (32, 32, 36) */
-  crouch: 3,
-};
+  static scope = Object.freeze({
+    shared: 'shared',
+    client: 'client',
+    server: 'server',
+  });
 
-Mod.known = /** @type {Record<string, BaseModel>} */ ({});
+  static hull = {
+    /** hull0, point intersection */
+    normal: 0,
+    /** hull1, testing for player (32, 32, 56) */
+    player: 1,
+    /** hull2, testing for large objects (64, 64, 88) */
+    big: 2,
+    /** hull3, only used by BSP30 for crouching etc. (32, 32, 36) */
+    crouch: 3,
+  };
 
-Mod.modelLoaderRegistry = new ModelLoaderRegistry();
+  static known = /** @type {Record<string, BaseModel>} */ ({});
 
-Mod.Init = function () {
-  Mod.modelLoaderRegistry.clear();
-  Mod.modelLoaderRegistry.register(new BSP38Loader());
-  Mod.modelLoaderRegistry.register(new BSP2Loader()); // Register BSP2 before BSP29 so it’s checked first (more specific format)
-  Mod.modelLoaderRegistry.register(new BSP29Loader());
-  Mod.modelLoaderRegistry.register(new AliasMDLLoader());
-  Mod.modelLoaderRegistry.register(new SpriteSPRLoader());
-  Mod.modelLoaderRegistry.register(new WavefrontOBJLoader());
-};
+  static clientKnown = /** @type {Record<string, BaseModel>} */ ({});
 
-Mod.ClearAll = function () {
-  if (!registry.isDedicatedServer) {
-    if (CL.cls.changelevel) {
-      return; // don’t clear models during a changelevel, they will be freed by the renderer when the level is unloaded
+  static serverKnown = /** @type {Record<string, BaseModel>} */ ({});
+
+  static pendingLoads = /** @type {Record<string, Promise<BaseModel|null>>} */ ({});
+
+  static modelLoaderRegistry = new ModelLoaderRegistry();
+
+  static Init() {
+    Mod.modelLoaderRegistry.clear();
+    Mod.modelLoaderRegistry.register(new BSP38Loader());
+    Mod.modelLoaderRegistry.register(new BSP2Loader()); // Register BSP2 before BSP29 so it’s checked first (more specific format)
+    Mod.modelLoaderRegistry.register(new BSP29Loader());
+    Mod.modelLoaderRegistry.register(new AliasMDLLoader());
+    Mod.modelLoaderRegistry.register(new SpriteSPRLoader());
+    Mod.modelLoaderRegistry.register(new WavefrontOBJLoader());
+  }
+
+  /**
+   * @param {ModelScope} scope requested model scope
+   * @returns {Record<string, BaseModel>} cache for the requested scope
+   */
+  static GetScopeCache(scope) {
+    switch (scope) {
+      case Mod.scope.client:
+        return Mod.clientKnown;
+      case Mod.scope.server:
+        return Mod.serverKnown;
+      default:
+        return Mod.known;
     }
   }
 
-  const tempEnts = (() => {
-    if (registry.isDedicatedServer) {
-      return [];
+  /**
+   * @param {string} name model name
+   * @param {ModelScope} scope requested scope
+   * @returns {BaseModel|null} scoped model instance or null when unavailable
+   */
+  static ResolveScopedModel(name, scope) {
+    if (scope === Mod.scope.shared) {
+      return Mod.known[name] || null;
     }
 
-    return Object.keys(CL.state.clientEntities.tempEntityModels);
-  })();
+    const scopedCache = Mod.GetScopeCache(scope);
 
-  // TODO: should be different stages of freeing: level, game, all
-  for (const name of Object.keys(Mod.known)) {
-    const mod = Mod.known[name];
-
-    if (tempEnts.includes(name)) {
-      continue; // don’t free temp entity models here (FIXME)
+    if (scopedCache[name]) {
+      return scopedCache[name];
     }
 
-    if (mod.cmds !== null) { // TODO: move responsibility to model.free or the renderer
-      gl.deleteBuffer(mod.cmds);
+    const sharedModel = Mod.known[name];
+
+    if (!sharedModel) {
+      return null;
     }
 
-    delete Mod.known[name];
-  }
-};
+    const scopedModel = sharedModel.createScopedView();
+    scopedCache[name] = scopedModel;
 
-Mod.LoadModelFromBuffer = async function (name, buffer) {
-  // FIXME: maybe catch at least NotImplementedError here and give a better
-  //        error message, right now it will simply crash the whole engine
-  const model = await Mod.modelLoaderRegistry.load(buffer, name);
-
-  Mod.RegisterModel(model);
-
-  return model;
-};
-
-Mod.RegisterModel = function (model) {
-  Mod.known[model.name] = model;
-};
-
-/**
- * @param {string} name model to load
- * @param {boolean} crash whether to throw an error if the model is not found
- * @returns {Promise<BaseModel|null>} the loaded model or null if not found
- */
-Mod.LoadModelAsync = async function (name, crash) { // private method
-  // lookup from cache first
-  if (Mod.known[name]) {
-    return Mod.known[name];
+    return scopedModel;
   }
 
-  const buf = await COM.LoadFile(name);
-  if (buf === null) {
-    if (crash === true) {
-      throw new MissingResourceError(name);
+  static PruneSharedCache() {
+    for (const name of Object.keys(Mod.known)) {
+      if (Mod.clientKnown[name] || Mod.serverKnown[name]) {
+        continue;
+      }
+
+      delete Mod.known[name];
     }
-    return null;
-  }
-  return await Mod.LoadModelFromBuffer(name, buf);
-};
-
-/**
- * Load submodels. For anything else, use Mod.ForNameAsync instead.
- * @param {string} name filename
- * @returns {BaseModel|null} the loaded model or null if not found
- */
-Mod.ForName = function (name) { // public method
-  console.assert(name[0] === '*', 'only submodels supported in Mod.ForName');
-
-  return Mod.known[name] || null;
-};
-
-/**
- * @param {string} name filename
- * @param {boolean} crash whether to throw an error if the model is not found
- * @returns {Promise<BaseModel|null>} the loaded model or null if not found
- */
-Mod.ForNameAsync = async function (name, crash = false) { // public method
-  if (name[0] === '*') {
-    return Mod.ForName(name);
   }
 
-  return await Mod.LoadModelAsync(name, crash);
-};
+  /**
+   * @param {ModelScope} [scope] scope to clear
+   */
+  static ClearAll(scope = Mod.scope.shared) {
+    if (scope === Mod.scope.shared) {
+      for (const scopedScope of [Mod.scope.client, Mod.scope.server]) {
+        Mod.ClearAll(scopedScope);
+      }
 
-Mod.ParseQC = function (qcContent) {
-  const data = new ParsedQC();
+      for (const name of Object.keys(Mod.known)) {
+        delete Mod.known[name];
+      }
 
-  return data.parseQC(qcContent);
-};
+      return;
+    }
+
+    const tempEnts = (() => {
+      if (scope !== Mod.scope.client || registry.isDedicatedServer) {
+        return [];
+      }
+
+      return Object.keys(CL.state.clientEntities.tempEntityModels);
+    })();
+
+    const scopedCache = Mod.GetScopeCache(scope);
+
+    for (const name of Object.keys(scopedCache)) {
+      const mod = scopedCache[name];
+
+      if (tempEnts.includes(name)) {
+        continue;
+      }
+
+      mod.cleanupScopedView();
+      delete scopedCache[name];
+    }
+
+    Mod.PruneSharedCache();
+  }
+
+  static async LoadModelFromBuffer(name, buffer) {
+    // FIXME: maybe catch at least NotImplementedError here and give a better
+    //        error message, right now it will simply crash the whole engine
+    const model = await Mod.modelLoaderRegistry.load(buffer, name);
+
+    Mod.RegisterModel(model);
+
+    return model;
+  }
+
+  static RegisterModel(model) {
+    Mod.known[model.name] = model;
+  }
+
+  /**
+   * @param {string} name model to load
+   * @param {boolean} crash whether to throw an error if the model is not found
+   * @param {ModelScope} scope requested cache scope
+   * @returns {Promise<BaseModel|null>} the loaded model or null if not found
+   */
+  static async LoadModelAsync(name, crash, scope = Mod.scope.shared) { // private method
+    const scopedModel = Mod.ResolveScopedModel(name, scope);
+
+    if (scopedModel !== null) {
+      return scopedModel;
+    }
+
+    if (Mod.pendingLoads[name] === undefined) {
+      Mod.pendingLoads[name] = (async () => {
+        const buf = await COM.LoadFile(name);
+        if (buf === null) {
+          if (crash === true) {
+            throw new MissingResourceError(name);
+          }
+          return null;
+        }
+
+        return await Mod.LoadModelFromBuffer(name, buf);
+      })().finally(() => {
+        delete Mod.pendingLoads[name];
+      });
+    }
+
+    const loadedModel = await Mod.pendingLoads[name];
+
+    if (loadedModel === null) {
+      return null;
+    }
+
+    return Mod.ResolveScopedModel(name, scope);
+  }
+
+  /**
+   * Load submodels. For anything else, use Mod.ForNameAsync instead.
+   * @param {string} name filename
+   * @param {ModelScope} [scope] requested cache scope
+   * @returns {BaseModel|null} the loaded model or null if not found
+   */
+  static ForName(name, scope = Mod.scope.shared) { // public method
+    console.assert(name[0] === '*', 'only submodels supported in Mod.ForName');
+
+    return Mod.ResolveScopedModel(name, scope);
+  }
+
+  /**
+   * @param {string} name filename
+   * @param {boolean} crash whether to throw an error if the model is not found
+   * @param {ModelScope} [scope] requested cache scope
+   * @returns {Promise<BaseModel|null>} the loaded model or null if not found
+   */
+  static async ForNameAsync(name, crash = false, scope = Mod.scope.shared) { // public method
+    if (name[0] === '*') {
+      return Mod.ForName(name, scope);
+    }
+
+    return await Mod.LoadModelAsync(name, crash, scope);
+  }
+
+  static ParseQC(qcContent) {
+    const data = new ParsedQC();
+
+    return data.parseQC(qcContent);
+  }
+}
