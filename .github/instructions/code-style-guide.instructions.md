@@ -71,6 +71,7 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 - **Do not be too expressive with syntax**; prefer clarity and consistency over cleverness.
 - **Use template literals** for string concatenation when it improves readability.
 - **Avoid unnecessary boolean checks**, e.g. `if (isReady) { ... }` instead of `if (isReady === true) { ... }`.
+- **Avoid standalone functions**, group them into classes when appropriate (i.e. more than three) and use static methods if they do not need to access instance state.
 
 ### Control Statement Formatting
 
@@ -189,6 +190,7 @@ class GL {
 
 - **Use for:** Complex algorithms ("why"), TODOs/FIXMEs (with context), workarounds.
 - **Do NOT use for:** Obvious code, inline property descriptions (use JSDoc), commented-out code.
+- **Do NOT have empty JSDoc comments**, always add a description.
 
 ## Architecture Patterns
 
