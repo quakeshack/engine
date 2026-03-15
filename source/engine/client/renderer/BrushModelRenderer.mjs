@@ -35,6 +35,15 @@ eventBus.subscribe('gl.shutdown', () => {
 export const LIGHTMAP_BLOCK_SIZE = 2048;
 export const LIGHTMAP_BLOCK_HEIGHT = LIGHTMAP_BLOCK_SIZE * 4; // RGBA byte stride per row
 
+const TURBULENT_FALLBACK_NORMAL_OFFSET = 2.0;
+const TURBULENT_FALLBACK_LATERAL_OFFSET = 12.0;
+const TURBULENT_FALLBACK_NEIGHBOR_COUNT = 6;
+const TURBULENT_FALLBACK_NEIGHBOR_GAIN = 1.4;
+const TURBULENT_FALLBACK_MAX_BOOST = 1.3;
+const TURBULENT_FALLBACK_FACE_BLEND = 0.35;
+const TURBULENT_FALLBACK_SCALE = 0.0078125;
+const TURBULENT_FALLBACK_EPSILON = 0.0001;
+
 /**
  * Renderer for BSP brush models (maps and inline models like doors, platforms).
  * Handles both static world geometry and dynamic brush entities.
@@ -74,6 +83,186 @@ export class BrushModelRenderer extends ModelRenderer {
       dynamicLightPosition,
       hasDeluxemap: BrushModelRenderer.usesDeluxemap(clmodel, worldModel),
     };
+  }
+
+  /**
+   * @private
+   * @param {Vector} axis Axis candidate.
+   * @param {Vector} normal Surface normal.
+   * @returns {Vector|null} Axis projected onto the face plane, or null when degenerate.
+   */
+  static _projectTurbulentFallbackAxis(axis, normal) {
+    const projectedAxis = axis.copy().subtract(normal.copy().multiply(axis.dot(normal)));
+
+    if (projectedAxis.normalize() <= TURBULENT_FALLBACK_EPSILON) {
+      return null;
+    }
+
+    return projectedAxis;
+  }
+
+  /**
+   * @private
+   * @param {BrushModel} model Model containing the face.
+   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @returns {{tangent: Vector, bitangent: Vector}} Face-plane sampling basis.
+   */
+  static _getTurbulentFallbackBasis(model, face) {
+    const normal = face.normal.copy();
+
+    if (normal.normalize() <= TURBULENT_FALLBACK_EPSILON) {
+      return {
+        tangent: new Vector(1.0, 0.0, 0.0),
+        bitangent: new Vector(0.0, 1.0, 0.0),
+      };
+    }
+
+    const texinfo = model.texinfo?.[face.texinfo] ?? null;
+    let tangent = texinfo
+      ? BrushModelRenderer._projectTurbulentFallbackAxis(new Vector(texinfo.vecs[0][0], texinfo.vecs[0][1], texinfo.vecs[0][2]), normal)
+      : null;
+    let bitangent = texinfo
+      ? BrushModelRenderer._projectTurbulentFallbackAxis(new Vector(texinfo.vecs[1][0], texinfo.vecs[1][1], texinfo.vecs[1][2]), normal)
+      : null;
+
+    const faceWithVerts = /** @type {import('../../common/model/BaseModel.mjs').Face & { verts?: number[][] }} */ (face);
+
+    if (tangent === null && faceWithVerts.verts && faceWithVerts.verts.length >= 2) {
+      const edge = new Vector(
+        faceWithVerts.verts[1][0] - faceWithVerts.verts[0][0],
+        faceWithVerts.verts[1][1] - faceWithVerts.verts[0][1],
+        faceWithVerts.verts[1][2] - faceWithVerts.verts[0][2],
+      );
+      tangent = BrushModelRenderer._projectTurbulentFallbackAxis(edge, normal);
+    }
+
+    if (tangent === null) {
+      tangent = normal.perpendicular();
+    }
+
+    if (bitangent === null || Math.abs(bitangent.dot(tangent)) >= 0.99) {
+      bitangent = normal.cross(tangent);
+      if (bitangent.normalize() <= TURBULENT_FALLBACK_EPSILON) {
+        bitangent = normal.perpendicular();
+      }
+    }
+
+    return { tangent, bitangent };
+  }
+
+  /**
+   * @param {BrushModel} model Model containing the face.
+   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {Vector} worldPos Vertex position used for the fallback sample.
+   * @param {(position: Vector) => [Vector, Vector]} sampleLightPoint Light sampler callback.
+   * @returns {number[]} Vertex-level fallback light color.
+   */
+  static sampleTurbulentFallbackLight(model, face, worldPos, sampleLightPoint) {
+    const normal = face.normal.copy();
+
+    if (normal.normalize() <= TURBULENT_FALLBACK_EPSILON) {
+      return [0.0, 0.0, 0.0];
+    }
+
+    const { tangent, bitangent } = BrushModelRenderer._getTurbulentFallbackBasis(model, face);
+    const normalOffset = normal.copy().multiply(TURBULENT_FALLBACK_NORMAL_OFFSET);
+    const tangentOffset = tangent.copy().multiply(TURBULENT_FALLBACK_LATERAL_OFFSET);
+    const bitangentOffset = bitangent.copy().multiply(TURBULENT_FALLBACK_LATERAL_OFFSET);
+    const diagonalOffset = tangent.copy().add(bitangent);
+    diagonalOffset.normalize();
+    diagonalOffset.multiply(TURBULENT_FALLBACK_LATERAL_OFFSET);
+    const antiDiagonalOffset = tangent.copy().subtract(bitangent);
+    antiDiagonalOffset.normalize();
+    antiDiagonalOffset.multiply(TURBULENT_FALLBACK_LATERAL_OFFSET);
+    const samplePositions = [
+      worldPos,
+      worldPos.copy().add(normalOffset),
+      worldPos.copy().subtract(normalOffset),
+      worldPos.copy().add(tangentOffset),
+      worldPos.copy().subtract(tangentOffset),
+      worldPos.copy().add(bitangentOffset),
+      worldPos.copy().subtract(bitangentOffset),
+      worldPos.copy().add(diagonalOffset),
+      worldPos.copy().subtract(diagonalOffset),
+      worldPos.copy().add(antiDiagonalOffset),
+      worldPos.copy().subtract(antiDiagonalOffset),
+      new Vector(worldPos[0], worldPos[1], worldPos[2] - TURBULENT_FALLBACK_NORMAL_OFFSET),
+    ];
+    const visibleSamples = [];
+    let bestColor = new Vector(0.0, 0.0, 0.0);
+    let bestIntensity = 0.0;
+
+    for (let i = 0; i < samplePositions.length; i++) {
+      const [color] = sampleLightPoint(samplePositions[i]);
+      const intensity = Math.max(color[0], color[1], color[2]);
+
+      if (intensity <= 0.0) {
+        continue;
+      }
+
+      visibleSamples.push({ color, intensity });
+
+      if (intensity <= bestIntensity) {
+        continue;
+      }
+
+      bestColor = color;
+      bestIntensity = intensity;
+    }
+
+    if (visibleSamples.length === 0) {
+      return [0.0, 0.0, 0.0];
+    }
+
+    visibleSamples.sort((sampleA, sampleB) => sampleB.intensity - sampleA.intensity);
+
+    const neighborhoodColor = new Vector(0.0, 0.0, 0.0);
+    const neighborhoodCount = Math.min(visibleSamples.length, TURBULENT_FALLBACK_NEIGHBOR_COUNT);
+
+    for (let i = 0; i < neighborhoodCount; i++) {
+      neighborhoodColor.add(visibleSamples[i].color);
+    }
+
+    neighborhoodColor.multiply(1.0 / neighborhoodCount);
+    neighborhoodColor.multiply(TURBULENT_FALLBACK_NEIGHBOR_GAIN);
+
+    const neighborhoodIntensity = Math.max(neighborhoodColor[0], neighborhoodColor[1], neighborhoodColor[2]);
+
+    if (neighborhoodIntensity > bestIntensity && bestIntensity > 0.0) {
+      const maxBoostedIntensity = bestIntensity * TURBULENT_FALLBACK_MAX_BOOST;
+      if (neighborhoodIntensity > maxBoostedIntensity) {
+        neighborhoodColor.multiply(maxBoostedIntensity / neighborhoodIntensity);
+      }
+    }
+
+    const finalColor = new Vector(
+      Math.max(bestColor[0], neighborhoodColor[0]),
+      Math.max(bestColor[1], neighborhoodColor[1]),
+      Math.max(bestColor[2], neighborhoodColor[2]),
+    );
+
+    return [
+      Math.max(0.0, finalColor[0] * TURBULENT_FALLBACK_SCALE),
+      Math.max(0.0, finalColor[1] * TURBULENT_FALLBACK_SCALE),
+      Math.max(0.0, finalColor[2] * TURBULENT_FALLBACK_SCALE),
+    ];
+  }
+
+  /**
+   * @param {number[]} vertexLight Per-vertex fallback color.
+   * @param {number[]} faceLight Face-level fallback color.
+   * @param {number} factor Blend factor in the 0..1 range.
+   * @returns {number[]} Smoothed fallback color.
+   */
+  static blendTurbulentFallbackLight(vertexLight, faceLight, factor) {
+    const clampedFactor = Math.max(0.0, Math.min(factor, 1.0));
+    const inverseFactor = 1.0 - clampedFactor;
+
+    return [
+      vertexLight[0] * inverseFactor + faceLight[0] * clampedFactor,
+      vertexLight[1] * inverseFactor + faceLight[1] * clampedFactor,
+      vertexLight[2] * inverseFactor + faceLight[2] * clampedFactor,
+    ];
   }
 
   /**
@@ -1359,6 +1548,7 @@ export class BrushModelRenderer extends ModelRenderer {
   _buildBrushModelDisplayLists(m) {
     const cmds = [];
     const styles = [0.0, 0.0, 0.0, 0.0];
+    const turbulentFallbackCache = new Map();
     let verts = 0;
     let cutoff = 0;
     m.chains = [];
@@ -1423,21 +1613,29 @@ export class BrushModelRenderer extends ModelRenderer {
           styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
         }
         const hasLightmap = this._surfaceHasTurbulentLightmap(m, surf);
+        const faceFallbackLight = hasLightmap ? null : this._getTurbulentFallbackFaceLight(m, surf, turbulentFallbackCache);
         chain[2] += surf.verts.length;
         for (let k = 0; k < surf.verts.length; k++) {
           const vert = surf.verts[k];
           const fallbackLight = hasLightmap
             ? [0.0, 0.0, 0.0]
-            : this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]));
+            : BrushModelRenderer.blendTurbulentFallbackLight(
+              this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]), turbulentFallbackCache),
+              faceFallbackLight,
+              TURBULENT_FALLBACK_FACE_BLEND,
+            );
+          const dlightTexCoordS = vert[5];
+          const dlightTexCoordT = vert[6];
           // Position (12 bytes)
           cmds.push(vert[0], vert[1], vert[2]);
-          // TexCoord (16 bytes)
-          cmds.push(vert[3], vert[4], hasLightmap ? vert[5] : -1.0, hasLightmap ? vert[6] : -1.0);
+          // TexCoord (16 bytes) keeps the lightmap atlas UVs for dlights.
+          cmds.push(vert[3], vert[4], dlightTexCoordS, dlightTexCoordT);
           // LightStyle (16 bytes)
           cmds.push(styles[0], styles[1], styles[2], styles[3]);
           // aNormal carries per-vertex fallback light for no-lightmap turbulents.
           cmds.push(fallbackLight[0], fallbackLight[1], fallbackLight[2]);
-          cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+          // aTangent carries dynamic-light atlas UVs and the baked-lightmap flag.
+          cmds.push(dlightTexCoordS, dlightTexCoordT, hasLightmap ? 1.0 : 0.0, 0.0, 0.0, 0.0);
         }
       }
       if (chain[2] !== 0) {
@@ -1505,6 +1703,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
     const cmds = [];
     const styles = [0.0, 0.0, 0.0, 0.0];
+    const turbulentFallbackCache = new Map();
     let verts = 0;
     let cutoff = 0;
 
@@ -1603,22 +1802,30 @@ export class BrushModelRenderer extends ModelRenderer {
             styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
           }
           const hasLightmap = this._surfaceHasTurbulentLightmap(m, surf);
+          const faceFallbackLight = hasLightmap ? null : this._getTurbulentFallbackFaceLight(m, surf, turbulentFallbackCache);
           this._expandLeafBoundsForSurface(leaf, surf.verts);
           chain[2] += surf.verts.length;
           for (let l = 0; l < surf.verts.length; l++) {
             const vert = surf.verts[l];
             const fallbackLight = hasLightmap
               ? [0.0, 0.0, 0.0]
-              : this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]));
+              : BrushModelRenderer.blendTurbulentFallbackLight(
+                this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]), turbulentFallbackCache),
+                faceFallbackLight,
+                TURBULENT_FALLBACK_FACE_BLEND,
+              );
+            const dlightTexCoordS = vert[5];
+            const dlightTexCoordT = vert[6];
             // Position (12 bytes)
             cmds.push(vert[0], vert[1], vert[2]);
-            // TexCoord (16 bytes)
-            cmds.push(vert[3], vert[4], hasLightmap ? vert[5] : -1.0, hasLightmap ? vert[6] : -1.0);
+            // TexCoord (16 bytes) keeps the lightmap atlas UVs for dlights.
+            cmds.push(vert[3], vert[4], dlightTexCoordS, dlightTexCoordT);
             // LightStyle (16 bytes)
             cmds.push(styles[0], styles[1], styles[2], styles[3]);
             // aNormal carries per-vertex fallback light for no-lightmap turbulents.
             cmds.push(fallbackLight[0], fallbackLight[1], fallbackLight[2]);
-            cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+            // aTangent carries dynamic-light atlas UVs and the baked-lightmap flag.
+            cmds.push(dlightTexCoordS, dlightTexCoordT, hasLightmap ? 1.0 : 0.0, 0.0, 0.0, 0.0);
           }
         }
         if (chain[2] !== 0) {
@@ -1693,48 +1900,82 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * @private
+   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {Vector} worldPos Vertex position used for the fallback sample.
+   * @returns {string} Cache key shared by coplanar turbulent edges.
+   */
+  _getTurbulentFallbackCacheKey(face, worldPos) {
+    return [
+      face.texture,
+      Math.round(face.normal[0] * 1024.0),
+      Math.round(face.normal[1] * 1024.0),
+      Math.round(face.normal[2] * 1024.0),
+      Math.round(worldPos[0] * 16.0),
+      Math.round(worldPos[1] * 16.0),
+      Math.round(worldPos[2] * 16.0),
+    ].join('|');
+  }
+
+  /**
+   * @private
+   * @param {BrushModel} model Model containing the face.
+   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @returns {Vector} Approximate center used for face-level fallback smoothing.
+   */
+  _getTurbulentFallbackFaceCenter(model, face) {
+    const center = new Vector(0.0, 0.0, 0.0);
+
+    for (let i = 0; i < face.numedges; i++) {
+      const surfEdgeIndex = model.surfedges[face.firstedge + i];
+      const vertex = surfEdgeIndex > 0
+        ? model.vertexes[model.edges[surfEdgeIndex][0]]
+        : model.vertexes[model.edges[-surfEdgeIndex][1]];
+      center.add(vertex);
+    }
+
+    center.multiply(1.0 / Math.max(face.numedges, 1));
+    return center;
+  }
+
+  /**
+   * @private
+   * @param {BrushModel} model Model containing the face.
+   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {Map<string, number[]>} cache Shared per-model fallback cache.
+   * @returns {number[]} Face-level fallback color.
+   */
+  _getTurbulentFallbackFaceLight(model, face, cache) {
+    const faceCenter = this._getTurbulentFallbackFaceCenter(model, face);
+    return this._getTurbulentFallbackLight(model, face, faceCenter, cache);
+  }
+
+  /**
+   * @private
    * @param {BrushModel} model Model containing the face.
    * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
    * @param {Vector} worldPos Vertex position used for the fallback sample.
+   * @param {Map<string, number[]>} [cache] Shared per-model fallback cache.
    * @returns {number[]} Vertex-level fallback light color.
    */
-  _getTurbulentFallbackLight(model, face, worldPos) {
-    const turbulentFace = /** @type {import('../../common/model/BaseModel.mjs').Face & { verts?: number[][] }} */ (face);
-
+  _getTurbulentFallbackLight(model, face, worldPos, cache = null) {
     if (model.submodel || CL.state.worldmodel === null) {
       return [1.0, 1.0, 1.0];
     }
 
-    // Sampling exactly on a no-lightmap turbulent plane can immediately hit the
-    // same face inside RecursiveLightPoint and return the zero-light path.
-    // Probe a few nearby positions around the vertex and keep the brightest result.
-    const normalOffset = turbulentFace.normal.copy().multiply(2.0);
-    const samplePositions = [
-      worldPos,
-      worldPos.copy().add(normalOffset),
-      worldPos.copy().subtract(normalOffset),
-      new Vector(worldPos[0], worldPos[1], worldPos[2] - 2.0),
-    ];
-    let bestColor = new Vector(0.0, 0.0, 0.0);
-    let bestIntensity = 0.0;
+    if (cache !== null) {
+      const cacheKey = this._getTurbulentFallbackCacheKey(face, worldPos);
+      const cachedLight = cache.get(cacheKey);
 
-    for (let i = 0; i < samplePositions.length; i++) {
-      const [color] = R.LightPoint(samplePositions[i]);
-      const intensity = Math.max(color[0], color[1], color[2]);
-
-      if (intensity <= bestIntensity) {
-        continue;
+      if (cachedLight) {
+        return cachedLight;
       }
 
-      bestColor = color;
-      bestIntensity = intensity;
+      const fallbackLight = BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, R.LightPoint);
+      cache.set(cacheKey, fallbackLight);
+      return fallbackLight;
     }
 
-    return [
-      Math.max(0.0, bestColor[0] * 0.0078125),
-      Math.max(0.0, bestColor[1] * 0.0078125),
-      Math.max(0.0, bestColor[2] * 0.0078125),
-    ];
+    return BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, R.LightPoint);
   }
 
   /**

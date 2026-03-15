@@ -93,3 +93,52 @@ describe('BrushModelRenderer.resolveEntityLightingState', () => {
     assert.equal(lightingState.hasDeluxemap, false);
   });
 });
+
+describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
+  test('lifts dim no-lightmap turbulent samples toward nearby visible light', () => {
+    const face = {
+      normal: new Vector(0, 0, 1),
+      texinfo: 0,
+      verts: [
+        [0, 0, 0],
+        [16, 0, 0],
+        [16, 16, 0],
+      ],
+    };
+    const model = {
+      texinfo: [{ vecs: [[1, 0, 0, 0], [0, 1, 0, 0]] }],
+    };
+
+    const fallbackLight = BrushModelRenderer.sampleTurbulentFallbackLight(
+      model,
+      face,
+      new Vector(0, 0, 0),
+      (position) => {
+        const hasNearbyVisibleLight = Math.abs(position[0]) >= 7.5 || Math.abs(position[1]) >= 7.5;
+
+        if (hasNearbyVisibleLight) {
+          return [new Vector(32, 24, 16), new Vector()];
+        }
+
+        return [new Vector(16, 12, 8), new Vector()];
+      },
+    );
+
+    assert(fallbackLight[0] > 32 * 0.0078125);
+    assert(fallbackLight[0] <= 32 * 0.0078125 * 1.3 + 0.0001);
+    assert.equal(fallbackLight[1] > 24 * 0.0078125, true);
+    assert.equal(fallbackLight[2] > 16 * 0.0078125, true);
+  });
+
+  test('blends vertex fallback toward a face-level fallback to soften seams', () => {
+    const blendedLight = BrushModelRenderer.blendTurbulentFallbackLight(
+      [0.2, 0.1, 0.05],
+      [0.4, 0.3, 0.2],
+      0.35,
+    );
+
+    assert(Math.abs(blendedLight[0] - 0.27) < 0.000001);
+    assert(Math.abs(blendedLight[1] - 0.17) < 0.000001);
+    assert(Math.abs(blendedLight[2] - 0.1025) < 0.000001);
+  });
+});

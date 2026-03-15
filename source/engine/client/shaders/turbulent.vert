@@ -18,7 +18,7 @@ in vec3 aPosition;
 in vec3 aNormal;
 in vec4 aTexCoord;
 in vec4 aLightStyle;
-// in vec3 aTangent;
+in vec3 aTangent;
 // in vec3 aBitangent;
 
 out vec4 vTexCoord;
@@ -28,6 +28,8 @@ out float vFog;
 out vec3 vPosition;
 out vec3 vNormal;
 out vec3 vFallbackLight;
+out vec2 vDlightTexCoord;
+out float vHasLightmap;
 
 void main(void) {
   vec3 aPositionA = aPosition;
@@ -43,6 +45,8 @@ void main(void) {
   vPosition = position;
   vNormal = uViewAngles * vec3(0.0, 0.0, 1.0);
   vFallbackLight = aNormal;
+  vDlightTexCoord = aTangent.xy;
+  vHasLightmap = aTangent.z;
 
   // compute fog based on distance from camera
   float dist = length((uAngles * aPositionA + uOrigin) - uViewOrigin);

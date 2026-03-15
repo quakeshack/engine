@@ -16,6 +16,8 @@ in vec4 vTexCoord;
 in vec4 vLightStyle;
 in float vFog;
 in vec3 vFallbackLight;
+in vec2 vDlightTexCoord;
+in float vHasLightmap;
 uniform vec3 uFogColor;
 
 void main(void) {
@@ -29,7 +31,7 @@ void main(void) {
   );
 
   vec4 scaledLightstyle = lightstyle * 43.828125;
-  bool hasLightmap = vTexCoord.z >= 0.0 && vTexCoord.w >= 0.0;
+  bool hasLightmap = vHasLightmap > 0.5;
 
   vec3 d;
   if (hasLightmap) {
@@ -42,7 +44,7 @@ void main(void) {
     d = vFallbackLight;
   }
 
-  vec3 dlight = texture(tDlight, hasLightmap ? vTexCoord.zw : vTexCoord.st).rgb;
+  vec3 dlight = texture(tDlight, vDlightTexCoord).rgb;
 
   fragColor = vec4(
     texel.r * mix(1.0, d.r + dlight.r, texel.a),
