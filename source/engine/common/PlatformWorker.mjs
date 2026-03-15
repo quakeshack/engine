@@ -8,7 +8,7 @@ eventBus.subscribe('registry.frozen', () => {
 });
 
 /** @type {boolean} */
-const isNode = typeof process !== 'undefined' && process.versions?.node !== null; // eslint-disable-line no-undef
+const isNode = typeof process !== 'undefined' && process.versions?.node !== null;  
 
 /**
  * Unified worker wrapper that works on both Node.js and browser environments.

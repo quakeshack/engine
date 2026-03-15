@@ -269,7 +269,9 @@ export default class ClientDemos {
     }
 
     this.stopPlayback();
-    this.startPlayback(this.demos[this.demonum++]);
+    this.startPlayback(this.demos[this.demonum++]).catch((e) => {
+      Con.PrintError('Failed to start playback: ' + e.message + '\n');
+    });
   }
 
   #finishTimeDemo() {

@@ -6,30 +6,40 @@ import { eventBus, registry } from '../registry.mjs';
 let { COM, Con, S } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  COM = registry.COM;
-  Con = registry.Con;
-  S = registry.S;
+  ({ COM, Con, S } = registry);
 });
 
 export default class CDAudio {
-  /** @type {Function[]} */
+  /** @type {Array<() => void>} */
   static #eventListeners = [];
   static initialized = false;
   static enabled = false;
+  /** @type {number | null} */
   static playTrack = null;
-  /** @type {HTMLAudioElement} */
+  /** @type {HTMLAudioElement | null} */
   static cd = null;
   static cdvolume = 1.0;
 
+  static #playCurrentTrack() {
+    if (CDAudio.cd === null || CDAudio.playTrack === null) {
+      return;
+    }
+
+    CDAudio.cd.play().catch((error) => {
+      Con.PrintWarning(`Could not play track ${CDAudio.playTrack}: ${error}\n`);
+      CDAudio.Stop();
+    });
+  }
+
   static Play(track, looping) {
-    if (CDAudio.initialized !== true || CDAudio.enabled !== true) {
+    if (!CDAudio.initialized || !CDAudio.enabled) {
       return;
     }
     if (CDAudio.playTrack === track) {
       if (CDAudio.cd !== null) {
         CDAudio.cd.loop = looping;
-        if (looping === true && CDAudio.cd.paused === true) {
-          CDAudio.cd.play(); // FIXME: await
+        if (looping && CDAudio.cd.paused) {
+          CDAudio.#playCurrentTrack();
         }
       }
       return;
@@ -39,14 +49,11 @@ export default class CDAudio {
     CDAudio.cd = new Audio(COM.GetNetpath(`music/${track}.opus`));
     CDAudio.cd.loop = looping;
     CDAudio.cd.volume = CDAudio.cdvolume;
-    CDAudio.cd.play().catch((e) => {
-      Con.PrintWarning(`Could not play track ${track}: ${e}\n`);
-      CDAudio.Stop();
-    });
+    CDAudio.#playCurrentTrack();
   }
 
   static Stop() {
-    if (CDAudio.initialized !== true || CDAudio.enabled !== true) {
+    if (!CDAudio.initialized || !CDAudio.enabled) {
       return;
     }
     if (CDAudio.cd !== null) {
@@ -57,7 +64,7 @@ export default class CDAudio {
   }
 
   static Pause() {
-    if (CDAudio.initialized !== true || CDAudio.enabled !== true) {
+    if (!CDAudio.initialized || !CDAudio.enabled) {
       return;
     }
     if (CDAudio.cd !== null) {
@@ -66,11 +73,11 @@ export default class CDAudio {
   }
 
   static Resume() {
-    if (CDAudio.initialized !== true || CDAudio.enabled !== true) {
+    if (!CDAudio.initialized || !CDAudio.enabled) {
       return;
     }
     if (CDAudio.cd !== null) {
-      CDAudio.cd.play(); // FIXME: await
+      CDAudio.#playCurrentTrack();
     }
   }
 
@@ -79,7 +86,7 @@ export default class CDAudio {
       Con.PrintWarning('CD Audio not initialized\n');
       return;
     }
-    switch (new String(command).toLowerCase()) {
+    switch (String(command).toLowerCase()) {
       case 'on':
         CDAudio.enabled = true;
         return;
@@ -104,11 +111,13 @@ export default class CDAudio {
         return;
       case 'info':
         if (CDAudio.cd !== null) {
-          if (CDAudio.cd.paused !== true) {
-            Con.Print('Currently ' + (CDAudio.cd.loop === true ? 'looping' : 'playing') + ' ' + (new URL(CDAudio.cd.src).pathname) + '\n');
+          if (!CDAudio.cd.paused) {
+            const playbackMode = CDAudio.cd.loop ? 'looping' : 'playing';
+            const path = new URL(CDAudio.cd.src).pathname;
+            Con.Print(`Currently ${playbackMode} ${path}\n`);
           }
         }
-        Con.Print('Volume is ' + CDAudio.cdvolume + '\n');
+        Con.Print(`Volume is ${CDAudio.cdvolume}\n`);
         return;
       default:
         Con.Print('Unknown command.  Commands are on, off, play, loop, stop, pause, resume, info\n');
@@ -117,7 +126,7 @@ export default class CDAudio {
   }
 
   static Update() {
-    if (CDAudio.initialized !== true || CDAudio.enabled !== true) {
+    if (!CDAudio.initialized || !CDAudio.enabled) {
       return;
     }
     if (S.bgmvolume.value === CDAudio.cdvolume) {

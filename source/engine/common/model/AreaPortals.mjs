@@ -1,4 +1,4 @@
-import { registry, eventBus } from '../../registry.mjs';
+import { eventBus } from '../../registry.mjs';
 
 /**
  * Manages area portal state and area connectivity for a BrushModel.

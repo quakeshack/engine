@@ -71,7 +71,7 @@ export default class WorkerFramework {
 
   static async Init() {
     let COM;
-    // eslint-disable-next-line no-undef
+     
     const isNode = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
 
     if (isNode) {

@@ -11,10 +11,10 @@ const V = {};
 
 export default V;
 
-let { CL, Con, Host, NET, R, SCR } = registry;
+let { CL, Con, Host, R, SCR } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, NET, R, SCR } = registry);
+  ({ CL, Con, Host, R, SCR } = registry);
 });
 
 V.dmg_time = 0.0;
