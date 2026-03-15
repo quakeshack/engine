@@ -644,6 +644,14 @@ export default class SV {
       client.edict.entity.impulse = cmd.impulse;
     }
 
+    // While paused, keep the latest command/entity-side compatibility fields
+    // in sync, but do not enqueue movement for later replay.
+    if (SV.server.paused) {
+      client.cmd.set(cmd);
+      client.lastMoveSequence = seq;
+      return;
+    }
+
     // Queue the command for per-command processing in physicsClient
     // (QW-style: each command is simulated individually so msec matches
     // what the client predicted, even when multiple arrive in one frame).
