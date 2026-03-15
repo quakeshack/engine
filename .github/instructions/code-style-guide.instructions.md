@@ -68,6 +68,9 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 - **Avoid deep nesting**; refactor into helper functions if necessary.
 - **Never mutate function parameters**; create new variables instead.
 - **Always put code blocks in braces** (`{}`), even for single statements.
+- **Do not be too expressive with syntax**; prefer clarity and consistency over cleverness.
+- **Use template literals** for string concatenation when it improves readability.
+- **Avoid unnecessary boolean checks**, e.g. `if (isReady) { ... }` instead of `if (isReady === true) { ... }`.
 
 ### Control Statement Formatting
 
