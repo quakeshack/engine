@@ -113,6 +113,11 @@ export interface MapDetails {
   pictures: string[];
 };
 
+export interface StartServerListEntry {
+  label: string;
+  callback: (ServerEngineAPI: ServerEngineAPI) => void;
+};
+
 export interface ServerGameInterface {
   // only used with CAP_SPAWNPARMS_LEGACY flag
   SetNewParms?(): void;
@@ -143,7 +148,8 @@ export interface ServerGameInterface {
   deserialize(data: any): void;
 
   static GetServerInfoFields(): ServerInfoField[];
-  static GetMapList(): MapDetails[];
+  static GetMapList(): MapDetails[] | null;
+  static GetStartServerList(): StartServerListEntry[] | null;
 
   static Init(ServerEngineAPI: ServerEngineAPI): void;
   static Shutdown(): void;

@@ -1,8 +1,10 @@
+import PR from '../../server/Progs.mjs';
 import { K } from '../../../shared/Keys.mjs';
 import Cmd from '../../common/Cmd.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import { Action, Label, Spacer } from './MenuItem.mjs';
 import { MenuPage, VerticalLayout } from './MenuPage.mjs';
+import { ServerEngineAPI } from '../../common/GameAPIs.mjs';
 
 let { M } = registry;
 
@@ -55,21 +57,17 @@ export default class MultiplayerMainMenu extends MenuPage {
     // }
 
     if (registry.urls?.signalingURL) {
-      this.items.push(new Action({
-        label: 'Start deathmatch',
-        action() {
-          M.CloseMenu();
-          Cmd.ExecuteString('exec dm.cfg');
-        },
-      }));
+      const serverActions = PR.QuakeJS.ServerGameAPI.GetStartServerList();
 
-      this.items.push(new Action({
-        label: 'Start co-op game',
-        action() {
-          M.CloseMenu();
-          Cmd.ExecuteString('exec coop.cfg');
-        },
-      }));
+      for (const serverAction of serverActions) {
+        this.items.push(new Action({
+          label: serverAction.label,
+          action() {
+            M.CloseMenu();
+            serverAction.callback(ServerEngineAPI);
+          },
+        }));
+      }
     } else {
       this.items.push(new Action({
         label: 'Join local game',
