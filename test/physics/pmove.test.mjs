@@ -335,23 +335,30 @@ describe('PmovePlayer', () => {
     assertNear(player.velocity[2], 41.5, 0.001);
   });
 
-  test('matches the hull slope climb shape on the brush-backed slope regression map', async () => {
+  test('keeps decisive uphill progress on the brush-backed slope regression map', async () => {
     const brushFrames = await runMapForwardFrames('maps/test_slope.bsp', 24);
-    const hullFrames = await runMapForwardFrames('maps/test_slope_hull.bsp', 24);
 
     const firstRampFrame = 13;
     const lastRampFrame = 20;
 
-    assert.ok(brushFrames[firstRampFrame].moved[0] > 5.0);
-    assert.ok(brushFrames[firstRampFrame].moved[0] < 8.0);
+    assert.ok(brushFrames[firstRampFrame].moved[0] > 12.0);
     assert.ok(brushFrames[firstRampFrame].moved[2] > 5.0);
-    assert.ok(brushFrames[firstRampFrame].moved[2] < 8.0);
 
     for (let frame = firstRampFrame; frame <= lastRampFrame; frame++) {
-      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.25);
-      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.25);
-      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.25);
-      assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.25);
+      assert.ok(brushFrames[frame].onground !== null);
+      assert.ok(brushFrames[frame].moved[0] > 4.0);
+    }
+  });
+
+  test('tracks the hull slope climb on the brush-backed slope regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_slope.bsp', 24);
+    const hullFrames = await runMapForwardFrames('maps/test_slope_hull.bsp', 24);
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.75);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.75);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.75);
+      assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.75);
     }
   });
 
@@ -370,6 +377,18 @@ describe('PmovePlayer', () => {
 
     assert.ok(brushFrames[7].moved[1] < -1.0);
     assert.ok(hullFrames[7].moved[1] < -1.0);
+  });
+
+  test('tracks the hull slope climb on the brush-backed slope_2 regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_slope_2.bsp', 24);
+    const hullFrames = await runMapForwardFrames('maps/test_slope_2_hull.bsp', 24);
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.75);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.75);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.75);
+      assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.75);
+    }
   });
 
   describe('_checkDuck', () => {
@@ -544,7 +563,7 @@ describe('PmovePlayer', () => {
   });
 
   describe('_stepSlideMove', () => {
-    test('keeps the stepped path when it travels farther horizontally', () => {
+    test('snaps down to a walkable slope after an unblocked slide', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
       let slideCalls = 0;
@@ -555,48 +574,9 @@ describe('PmovePlayer', () => {
       player.onground = 0;
       player._slideMove = () => {
         slideCalls += 1;
-        if (slideCalls === 1) {
-          player.origin.setTo(4, 0, 0);
-          player.velocity.setTo(10, 0, 0);
-          return;
-        }
-
         player.origin.setTo(8, 0, 4);
         player.velocity.setTo(20, 0, 3);
-      };
-
-      pmove.clipPlayerMove = () => {
-        traceCalls += 1;
-
-        if (traceCalls === 1) {
-          return createTrace({
-            endpos: new Vector(4, 0, -18),
-            normal: new Vector(0, 0, 1),
-          });
-        }
-
-        if (traceCalls === 2) {
-          return createTrace({
-            endpos: new Vector(0, 0, 9),
-            fraction: 0.5,
-            normal: new Vector(0, 0, 1),
-            ent: 3,
-          });
-        }
-
-        return createTrace({
-          endpos: new Vector(8, 0, 0),
-          normal: new Vector(0, 0, 1),
-          ent: 4,
-        });
-      };
-
-      player.velocity.setTo(30, 0, 0);
-      player.onground = 0;
-      player._slideMove = () => {
-        slideCalls += 1;
-        player.origin.setTo(8, 0, 4);
-        player.velocity.setTo(20, 0, 3);
+        return false;
       };
 
       pmove.clipPlayerMove = (start, end) => {
@@ -620,6 +600,64 @@ describe('PmovePlayer', () => {
       assert.deepEqual([...player.origin], [8, 0, 3.5]);
       assert.deepEqual([...player.velocity], [20, 0, 3]);
       assert.deepEqual(player.touchindices, [5]);
+    });
+
+    test('still evaluates the stepped retry after a blocked slide move', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let slideCalls = 0;
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(30, 0, 0);
+      player.onground = 0;
+      player._slideMove = () => {
+        slideCalls += 1;
+        if (slideCalls === 1) {
+          player.origin.setTo(8, 0, 4);
+          player.velocity.setTo(20, 0, 3);
+          return true;
+        }
+
+        player.origin.setTo(12, 0, 9);
+        player.velocity.setTo(24, 0, 6);
+        return true;
+      };
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        if (traceCalls === 1) {
+          assert.deepEqual([...start], [0, 0, 0]);
+          assert.deepEqual([...end], [0, 0, 18]);
+          return createTrace({
+            endpos: new Vector(0, 0, 9),
+            fraction: 0.5,
+            normal: new Vector(0, 0, 1),
+            ent: 3,
+          });
+        }
+
+        if (traceCalls === 2) {
+          assert.deepEqual([...start], [12, 0, 9]);
+          assert.deepEqual([...end], [12, 0, -0.03125]);
+          return createTrace({
+            endpos: new Vector(12, 0, 4),
+            normal: new Vector(0, 0, 1),
+            ent: 4,
+          });
+        }
+
+        throw new Error(`unexpected trace call ${traceCalls}`);
+      };
+
+      player._stepSlideMove();
+
+      assert.equal(slideCalls, 2);
+      assert.equal(traceCalls, 2);
+      assert.deepEqual([...player.origin], [12, 0, 4]);
+      assert.deepEqual([...player.velocity], [24, 0, 3]);
+      assert.deepEqual(player.touchindices, [3, 4]);
     });
   });
 

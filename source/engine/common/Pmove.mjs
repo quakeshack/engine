@@ -2824,6 +2824,7 @@ export class PmovePlayer { // pmove_t (player state only)
   /**
    * The basic solid body movement clip that slides along multiple planes.
    * This is the inner loop, it does NOT attempt step-up.
+   * @returns {boolean} True when movement hit a blocking plane and required clipping.
    */
   _slideMove() { // Q1: SV_FlyMove / Q2: PM_StepSlideMove_
     const _dbg = PmovePlayer.DEBUG;
@@ -2842,6 +2843,7 @@ export class PmovePlayer { // pmove_t (player state only)
     let timeLeft = this.frametime;
     const end = this.#slideEnd;
     const clipVelocity = this.#slideClipVelocity;
+    let blocked = false;
 
     for (let bumpcount = 0; bumpcount < numbumps; bumpcount++) {
       end.set(this.velocity).multiply(timeLeft).add(this.origin);
@@ -2849,6 +2851,7 @@ export class PmovePlayer { // pmove_t (player state only)
       const trace = this._pmove.clipPlayerMove(this.origin, end);
 
       if (trace.allsolid) {
+        blocked = true;
         // trapped in solid, still record the touch so impact() fires
         if (trace.ent !== null) {
           this.touchindices.push(trace.ent);
@@ -2857,7 +2860,7 @@ export class PmovePlayer { // pmove_t (player state only)
           console.warn(`[_slideMove] ALLSOLID at bump ${bumpcount}, origin=${this.origin}, end=${end}`);
         }
         this.velocity[2] = 0;
-        return;
+        return true;
       }
 
       if (trace.fraction > 0) {
@@ -2870,6 +2873,8 @@ export class PmovePlayer { // pmove_t (player state only)
       if (trace.fraction === 1) {
         break; // moved the entire distance
       }
+
+      blocked = true;
 
       if (_dbg) {
         console.log(`[_slideMove] bump ${bumpcount}: frac=${trace.fraction.toFixed(4)} normal=(${trace.plane.normal[0].toFixed(3)},${trace.plane.normal[1].toFixed(3)},${trace.plane.normal[2].toFixed(3)}) ent=${trace.ent} origin=${this.origin} vel=${this.velocity}`);
@@ -2967,6 +2972,8 @@ export class PmovePlayer { // pmove_t (player state only)
     if (this.pmTime) {
       this.velocity.set(primalVelocity);
     }
+
+    return blocked;
   }
 
   // =========================================================================
@@ -2992,22 +2999,14 @@ export class PmovePlayer { // pmove_t (player state only)
     const startOrigin = this.#stepStartOrigin.set(this.origin);
     const startVelocity = this.#stepStartVelocity.set(this.velocity);
     const wasOnGround = this.onground !== null;
-    let slopeContactTrace = null;
 
     // try sliding at current height first
-    this._slideMove();
+    const blocked = this._slideMove();
 
-    // Slope descent fix: when the player was on the ground, the purely
-    // horizontal slide can leave us floating above the slope surface.
-    // Trace down by STEPSIZE to maintain ground contact and prevent
-    // per-frame ground/air oscillation (“stutter”) on downward slopes.
-    //
-    // Only snap to actual slopes (normal[2] < 1.0), NOT flat surfaces.
-    // On stairs, the step surfaces are perfectly horizontal (normal[2] = 1.0);
-    // snapping to them would yank the player down an entire step instantly.
-    // Stair descent is instead handled naturally by the step-up mechanism
-    // below, which steps up, slides forward, then steps down to the next step.
-    if (wasOnGround) {
+    // Only do the sticky ground snap when the initial slide moved cleanly.
+    // If the move was blocked, keep evaluating the normal step-up retry
+    // instead of short-circuiting on slope contact.
+    if (!blocked && wasOnGround) {
       const stickTarget = this.#stepStickTarget.set(this.origin);
       stickTarget[2] -= STEPSIZE;
       const stickTrace = this._pmove.clipPlayerMove(this.origin, stickTarget);
@@ -3021,17 +3020,8 @@ export class PmovePlayer { // pmove_t (player state only)
         if (stickTrace.ent !== null) {
           this.touchindices.push(stickTrace.ent);
         }
-        slopeContactTrace = stickTrace;
       }
-    }
 
-    // A walkable non-flat slope is already handled by the slide path above.
-    // Running the stair step-up retry on the same frame can alternate between
-    // two nearly equivalent positions and cause jitter on steep ramps.
-    if (slopeContactTrace !== null) {
-      if (PmovePlayer.DEBUG) {
-        console.log(`[_stepSlideMove] skip step-up: slope normal=${slopeContactTrace.plane.normal} ent=${slopeContactTrace.ent}`);
-      }
       return;
     }
 
