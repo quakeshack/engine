@@ -42,6 +42,27 @@ eventBus.subscribe('gl.shutdown', () => {
 
 const R = {};
 
+const FOG_TURBULENT_SORT_EPSILON = 0.0001;
+
+/**
+ * Compare mixed fog and turbulent items for the shared transparent pass.
+ * Distances sort back-to-front. When a fog volume and a turbulent surface
+ * begin at the same depth, fog must draw first so the nearer liquid can blend
+ * over it instead of the fog overpainting the liquid.
+ * @param {{dist: number, kind: number}} itemA First sorted item
+ * @param {{dist: number, kind: number}} itemB Second sorted item
+ * @returns {number} Sort comparator result
+ */
+export function compareFogAndTurbulentItems(itemA, itemB) {
+  const distDelta = itemB.dist - itemA.dist;
+
+  if (Math.abs(distDelta) > FOG_TURBULENT_SORT_EPSILON) {
+    return distDelta;
+  }
+
+  return itemB.kind - itemA.kind;
+}
+
 export default R;
 
 eventBus.subscribe('client.disconnected', () => {
@@ -782,12 +803,12 @@ R._renderFogAndTurbulentsSorted = function(worldEntity) {
   }
 
   const vieworg = R.refdef.vieworg;
-  /** @type {Array<{dist: number, kind: number, data: Node|import('../common/model/BSP.mjs').FogVolumeInfo}>} */
+  /** @type {Array<{dist: number, kind: number, data: import('../common/model/BSP.mjs').WorldTurbulentChainInfo|import('../common/model/BSP.mjs').FogVolumeInfo}>} */
   const items = [];
 
-  const turbulentLeaves = brushRenderer.getWorldTurbulentLeaves(worldmodel, vieworg);
-  for (let i = 0; i < turbulentLeaves.length; i++) {
-    items.push({ dist: turbulentLeaves[i].dist, kind: 0, data: turbulentLeaves[i].leaf });
+  const turbulentChains = brushRenderer.getWorldTurbulentChains(worldmodel, vieworg);
+  for (let i = 0; i < turbulentChains.length; i++) {
+    items.push({ dist: turbulentChains[i].dist, kind: 0, data: turbulentChains[i].chain });
   }
 
   const fogItems = brushRenderer.getFogVolumeItems(worldmodel, vieworg);
@@ -799,7 +820,7 @@ R._renderFogAndTurbulentsSorted = function(worldEntity) {
     return;
   }
 
-  items.sort((a, b) => b.dist - a.dist);
+  items.sort(compareFogAndTurbulentItems);
 
   let activePass = -1;
 
@@ -824,7 +845,7 @@ R._renderFogAndTurbulentsSorted = function(worldEntity) {
     }
 
     if (item.kind === 0) {
-      brushRenderer.renderWorldTurbulentLeaf(worldmodel, /** @type {Node} */ (item.data));
+      brushRenderer.renderWorldTurbulentChain(worldmodel, /** @type {import('../common/model/BSP.mjs').WorldTurbulentChainInfo} */ (item.data));
       continue;
     }
 

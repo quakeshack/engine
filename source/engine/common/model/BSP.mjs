@@ -40,6 +40,15 @@ import { AreaPortals } from './AreaPortals.mjs';
  */
 
 /**
+ * @typedef {object} WorldTurbulentChainInfo
+ * @property {number} texture Texture index used by the draw batch
+ * @property {number} firstVertex First vertex in the turbulent VBO region
+ * @property {number} vertexCount Number of vertices in the draw batch
+ * @property {Vector} mins Tight world-space bounds minimum
+ * @property {Vector} maxs Tight world-space bounds maximum
+ */
+
+/**
  * @typedef {Record<string, {fileofs: number, filelen: number}>} BSPXLumps
  * BSPX extended lump data (RGBLIGHTING, LIGHTINGDIR, etc.)
  */
@@ -310,6 +319,8 @@ export class Node extends BrushModelComponent {
   waterchain = 0;
   /** @type {number[]} render command list */
   cmds = [];
+  /** @type {WorldTurbulentChainInfo[]} tight turbulent draw batches for sorted world rendering */
+  turbulentChains = [];
 
   // === Quake 2 based features ===
   /** @type {number} cluster for PVS */
@@ -338,6 +349,7 @@ export class Node extends BrushModelComponent {
     this.skychain = 0;
     this.waterchain = 0;
     this.cmds.length = 0;
+    this.turbulentChains.length = 0;
 
     if (this.mins !== null && this.baseMins !== null) {
       this.mins.set(this.baseMins);

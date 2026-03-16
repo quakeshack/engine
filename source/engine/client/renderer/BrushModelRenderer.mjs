@@ -643,6 +643,41 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * Collect visible world turbulent draw batches with tight bounds so fog and
+   * semi-transparent liquids can share the same sorted space.
+   * @param {BrushModel} clmodel The world model
+   * @param {Float32Array|number[]} vieworg Camera position [x, y, z]
+   * @returns {{chain: import('../../common/model/BSP.mjs').WorldTurbulentChainInfo, dist: number}[]} Turbulent draw items with distance metadata
+   */
+  getWorldTurbulentChains(clmodel, vieworg) {
+    const items = [];
+
+    for (let i = 0; i < clmodel.leafs.length; i++) {
+      const leaf = clmodel.leafs[i];
+      if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+        continue;
+      }
+      if (R.CullBox(leaf.mins, leaf.maxs) === true) {
+        continue;
+      }
+
+      for (let j = 0; j < leaf.turbulentChains.length; j++) {
+        const chain = leaf.turbulentChains[j];
+        if (R.CullBox(chain.mins, chain.maxs) === true) {
+          continue;
+        }
+
+        items.push({
+          chain,
+          dist: this._getBoundsDistanceToView(chain.mins, chain.maxs, vieworg),
+        });
+      }
+    }
+
+    return items;
+  }
+
+  /**
    * Approximate view-relative sort distance for bounded transparent content.
    * Uses the nearest point on the AABB instead of the center so large leaves
    * and fog volumes sort by the depth where they begin affecting the view.
@@ -692,24 +727,44 @@ export class BrushModelRenderer extends ModelRenderer {
    * @param {Node} leaf The BSP leaf to render
    */
   renderWorldTurbulentLeaf(clmodel, leaf) {
-    const worldspawn = CL.state.clientEntities.getEntity(0);
-    const program = this._worldTurbulentProgram;
-
     for (let j = leaf.waterchain; j < leaf.cmds.length; j++) {
       const cmds = leaf.cmds[j];
-      const material = clmodel.textures[cmds[0]];
-
-      material.emit(worldspawn);
-      const alpha = this._getTurbulentMaterialAlpha(material, worldspawn);
-      this._setTurbulentSurfaceState(alpha);
-      gl.uniform1f(program.uAlpha, alpha);
-
-      R.c_brush_verts += cmds[2];
-      R.c_brush_tris += cmds[2] / 3;
-      material.bindTo(program);
-      gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
-      R.c_brush_draws++;
+      this._renderWorldTurbulentBatch(clmodel, cmds[0], cmds[1], cmds[2]);
     }
+  }
+
+  /**
+   * Render a single pre-sorted world turbulent draw batch.
+   * Must be called between `beginWorldTurbulentPass` and `endWorldTurbulentPass`.
+   * @param {BrushModel} clmodel The world model
+   * @param {import('../../common/model/BSP.mjs').WorldTurbulentChainInfo} chain The turbulent draw batch to render
+   */
+  renderWorldTurbulentChain(clmodel, chain) {
+    this._renderWorldTurbulentBatch(clmodel, chain.texture, chain.firstVertex, chain.vertexCount);
+  }
+
+  /**
+   * @private
+   * @param {BrushModel} clmodel The world model
+   * @param {number} textureIndex Texture index for this draw
+   * @param {number} firstVertex First vertex in the turbulent VBO region
+   * @param {number} vertexCount Number of vertices in the draw batch
+   */
+  _renderWorldTurbulentBatch(clmodel, textureIndex, firstVertex, vertexCount) {
+    const worldspawn = CL.state.clientEntities.getEntity(0);
+    const program = this._worldTurbulentProgram;
+    const material = clmodel.textures[textureIndex];
+
+    material.emit(worldspawn);
+    const alpha = this._getTurbulentMaterialAlpha(material, worldspawn);
+    this._setTurbulentSurfaceState(alpha);
+    gl.uniform1f(program.uAlpha, alpha);
+
+    R.c_brush_verts += vertexCount;
+    R.c_brush_tris += vertexCount / 3;
+    material.bindTo(program);
+    gl.drawArrays(gl.TRIANGLES, firstVertex, vertexCount);
+    R.c_brush_draws++;
   }
 
   /**
@@ -1658,6 +1713,37 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * Expand arbitrary bounds to contain all vertices of a surface.
+   * @private
+   * @param {Vector} mins Mutable bounds minimum
+   * @param {Vector} maxs Mutable bounds maximum
+   * @param {Array<number[]>} verts The surface's vertex array
+   */
+  _expandBounds(mins, maxs, verts) {
+    for (let v = 0; v < verts.length; v++) {
+      const vert = verts[v];
+      if (vert[0] < mins[0]) {
+        mins[0] = vert[0];
+      }
+      if (vert[1] < mins[1]) {
+        mins[1] = vert[1];
+      }
+      if (vert[2] < mins[2]) {
+        mins[2] = vert[2];
+      }
+      if (vert[0] > maxs[0]) {
+        maxs[0] = vert[0];
+      }
+      if (vert[1] > maxs[1]) {
+        maxs[1] = vert[1];
+      }
+      if (vert[2] > maxs[2]) {
+        maxs[2] = vert[2];
+      }
+    }
+  }
+
+  /**
    * Expand a leaf's bounding box to contain all vertices of a surface.
    * BSP leaf bounds represent only the leaf's convex volume, but surfaces
    * assigned via marksurfaces can extend beyond it. Without expansion,
@@ -1667,27 +1753,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * @param {Array<number[]>} verts The surface's vertex array
    */
   _expandLeafBoundsForSurface(leaf, verts) {
-    for (let v = 0; v < verts.length; v++) {
-      const vert = verts[v];
-      if (vert[0] < leaf.mins[0]) {
-        leaf.mins[0] = vert[0];
-      }
-      if (vert[1] < leaf.mins[1]) {
-        leaf.mins[1] = vert[1];
-      }
-      if (vert[2] < leaf.mins[2]) {
-        leaf.mins[2] = vert[2];
-      }
-      if (vert[0] > leaf.maxs[0]) {
-        leaf.maxs[0] = vert[0];
-      }
-      if (vert[1] > leaf.maxs[1]) {
-        leaf.maxs[1] = vert[1];
-      }
-      if (vert[2] > leaf.maxs[2]) {
-        leaf.maxs[2] = vert[2];
-      }
-    }
+    this._expandBounds(leaf.mins, leaf.maxs, verts);
   }
 
   /**
@@ -1794,6 +1860,8 @@ export class BrushModelRenderer extends ModelRenderer {
       for (let j = 0; j < m.leafs.length; j++) {
         const leaf = m.leafs[j];
         const chain = [i, verts, 0];
+        const chainMins = new Vector(Infinity, Infinity, Infinity);
+        const chainMaxs = new Vector(-Infinity, -Infinity, -Infinity);
         for (let k = 0; k < leaf.nummarksurfaces; k++) {
           const surf = m.faces[m.marksurfaces[leaf.firstmarksurface + k]];
           if (surf.texture !== i) {
@@ -1806,6 +1874,7 @@ export class BrushModelRenderer extends ModelRenderer {
           const hasLightmap = this._surfaceHasTurbulentLightmap(m, surf);
           const faceFallbackLight = hasLightmap ? null : this._getTurbulentFallbackFaceLight(m, surf, turbulentFallbackCache);
           this._expandLeafBoundsForSurface(leaf, surf.verts);
+          this._expandBounds(chainMins, chainMaxs, surf.verts);
           chain[2] += surf.verts.length;
           for (let l = 0; l < surf.verts.length; l++) {
             const vert = surf.verts[l];
@@ -1832,6 +1901,13 @@ export class BrushModelRenderer extends ModelRenderer {
         }
         if (chain[2] !== 0) {
           leaf.cmds.push(chain);
+          leaf.turbulentChains.push({
+            texture: i,
+            firstVertex: chain[1],
+            vertexCount: chain[2],
+            mins: chainMins,
+            maxs: chainMaxs,
+          });
           verts += chain[2];
         }
       }

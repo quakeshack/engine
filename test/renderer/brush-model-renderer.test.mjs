@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.mjs';
+import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { BrushModelRenderer } from '../../source/engine/client/renderer/BrushModelRenderer.mjs';
 import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.mjs';
 
@@ -141,6 +142,49 @@ describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
     assert(Math.abs(blendedLight[0] - 0.27) < 0.000001);
     assert(Math.abs(blendedLight[1] - 0.17) < 0.000001);
     assert(Math.abs(blendedLight[2] - 0.1025) < 0.000001);
+  });
+});
+
+describe('BrushModelRenderer.getWorldTurbulentChains', () => {
+  test('sorts world turbulents by tight batch bounds instead of oversized leaf bounds', () => {
+    const previousR = registry.R;
+    registry.R = {
+      visframecount: 7,
+      CullBox() {
+        return false;
+      },
+    };
+    eventBus.publish('registry.frozen');
+
+    try {
+      const renderer = new BrushModelRenderer();
+      const chain = {
+        texture: 0,
+        firstVertex: 12,
+        vertexCount: 6,
+        mins: new Vector(96, -8, -8),
+        maxs: new Vector(128, 8, 8),
+      };
+      const model = {
+        leafs: [{
+          visframe: 7,
+          waterchain: 0,
+          cmds: [[0, 12, 6]],
+          turbulentChains: [chain],
+          mins: new Vector(-1024, -1024, -1024),
+          maxs: new Vector(1024, 1024, 1024),
+        }],
+      };
+
+      const items = renderer.getWorldTurbulentChains(model, new Vector(0, 0, 0));
+
+      assert.equal(items.length, 1);
+      assert.equal(items[0].chain, chain);
+      assert.equal(items[0].dist, 96);
+    } finally {
+      registry.R = previousR;
+      eventBus.publish('registry.frozen');
+    }
   });
 });
 
