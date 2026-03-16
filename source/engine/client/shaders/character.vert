@@ -1,4 +1,6 @@
 #version 300 es
+precision highp float;
+
 uniform vec2 uCharacter;
 uniform vec2 uDest;
 uniform mat4 uOrtho;

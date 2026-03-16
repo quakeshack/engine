@@ -1,4 +1,5 @@
 #version 300 es
+precision highp float;
 
 uniform vec3 uOrigin;
 uniform mat3 uAngles;

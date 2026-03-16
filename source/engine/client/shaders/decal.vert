@@ -1,4 +1,6 @@
 #version 300 es
+precision highp float;
+
 uniform vec3 uViewOrigin;
 uniform mat3 uViewAngles;
 uniform mat4 uPerspective;

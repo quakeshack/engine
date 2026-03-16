@@ -1,4 +1,6 @@
 #version 300 es
+precision highp float;
+
 uniform mat4 uOrtho;
 
 in vec2 aPosition;

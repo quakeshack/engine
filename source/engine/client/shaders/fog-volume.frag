@@ -1,7 +1,8 @@
 #version 300 es
 precision highp float;
-precision mediump sampler3D;
-precision mediump sampler2D;
+precision highp sampler3D;
+precision highp sampler2D;
+
 out vec4 fragColor;
 
 uniform vec3 uViewOrigin;

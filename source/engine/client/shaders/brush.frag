@@ -5,6 +5,7 @@ precision highp sampler2DArray;
 precision highp sampler2DShadow;
 precision highp samplerCube;
 precision highp samplerCubeShadow;
+
 out vec4 fragColor;
 
 uniform float uGamma;

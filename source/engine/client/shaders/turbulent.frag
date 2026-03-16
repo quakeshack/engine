@@ -2,6 +2,7 @@
 precision highp float;
 precision highp sampler2D;
 precision highp sampler2DArray;
+
 out vec4 fragColor;
 
 uniform float uGamma;
