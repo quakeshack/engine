@@ -416,13 +416,6 @@ export class SimpleSkyBox extends SkyRenderer {
       this.#cubeVAO = null;
     }
 
-    this.#front.free();
-    this.#back.free();
-    this.#left.free();
-    this.#right.free();
-    this.#up.free();
-    this.#down.free();
-
     this.#front = null;
     this.#back = null;
     this.#left = null;

@@ -55,6 +55,69 @@ export default class Mod {
 
   static modelLoaderRegistry = new ModelLoaderRegistry();
 
+  static IsSubmodelName(name) {
+    return name[0] === '*';
+  }
+
+  /**
+   * @param {BaseModel} sharedModel shared cached model
+   * @returns {boolean} true when the model is a world brush model with inline submodels
+   */
+  static IsBrushWorldModel(sharedModel) {
+    return sharedModel.type === Mod.type.brush
+      && sharedModel.submodel !== true
+      && Array.isArray(sharedModel.submodels)
+      && sharedModel.submodels.length > 0;
+  }
+
+  /**
+   * @param {BaseModel} sharedWorld shared world model
+   * @param {BaseModel} scopedWorld scoped world model
+   * @param {ModelScope} scope requested scope
+   */
+  static RegisterScopedSubmodels(sharedWorld, scopedWorld, scope) {
+    if (!Mod.IsBrushWorldModel(sharedWorld)) {
+      return;
+    }
+
+    const scopedCache = Mod.GetScopeCache(scope);
+    scopedWorld.submodels = [];
+
+    for (let i = 0; i < sharedWorld.submodels.length; i++) {
+      const submodelName = `*${i + 1}`;
+      const existingScopedSubmodel = scopedCache[submodelName];
+
+      if (existingScopedSubmodel) {
+        existingScopedSubmodel.cleanupScopedView();
+      }
+
+      const sharedSubmodel = sharedWorld.submodels[i];
+      const scopedSubmodel = sharedSubmodel.createScopedView();
+
+      scopedSubmodel.vertexes = scopedWorld.vertexes;
+      scopedSubmodel.edges = scopedWorld.edges;
+      scopedSubmodel.surfedges = scopedWorld.surfedges;
+      scopedSubmodel.nodes = scopedWorld.nodes;
+      scopedSubmodel.leafs = scopedWorld.leafs;
+      scopedSubmodel.texinfo = scopedWorld.texinfo;
+      scopedSubmodel.textures = scopedWorld.textures;
+      scopedSubmodel.marksurfaces = scopedWorld.marksurfaces;
+      scopedSubmodel.lightdata = scopedWorld.lightdata;
+      scopedSubmodel.lightdata_rgb = scopedWorld.lightdata_rgb;
+      scopedSubmodel.deluxemap = scopedWorld.deluxemap;
+      scopedSubmodel.faces = scopedWorld.faces;
+      scopedSubmodel.visdata = scopedWorld.visdata;
+      scopedSubmodel.numclusters = scopedWorld.numclusters;
+      scopedSubmodel.clusterPvsOffsets = scopedWorld.clusterPvsOffsets;
+      scopedSubmodel.phsdata = scopedWorld.phsdata;
+      scopedSubmodel.clusterPhsOffsets = scopedWorld.clusterPhsOffsets;
+      scopedSubmodel.worldspawnInfo = scopedWorld.worldspawnInfo;
+
+      scopedWorld.submodels[i] = scopedSubmodel;
+      scopedCache[submodelName] = scopedSubmodel;
+    }
+  }
+
   static Init() {
     Mod.modelLoaderRegistry.clear();
     Mod.modelLoaderRegistry.register(new BSP38Loader());
@@ -104,6 +167,10 @@ export default class Mod {
 
     const scopedModel = sharedModel.createScopedView();
     scopedCache[name] = scopedModel;
+
+    if (Mod.IsBrushWorldModel(sharedModel)) {
+      Mod.RegisterScopedSubmodels(sharedModel, scopedModel, scope);
+    }
 
     return scopedModel;
   }

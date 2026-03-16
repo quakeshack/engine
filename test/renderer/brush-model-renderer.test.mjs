@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.mjs';
 import { BrushModelRenderer } from '../../source/engine/client/renderer/BrushModelRenderer.mjs';
+import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.mjs';
 
 describe('BrushModelRenderer.resolveEntityLightingState', () => {
   test('treats inline submodels as sharing the world deluxemap atlas', () => {
@@ -140,5 +141,36 @@ describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
     assert(Math.abs(blendedLight[0] - 0.27) < 0.000001);
     assert(Math.abs(blendedLight[1] - 0.17) < 0.000001);
     assert(Math.abs(blendedLight[2] - 0.1025) < 0.000001);
+  });
+});
+
+describe('SimpleSkyBox.shutdown', () => {
+  test('does not free shared sky face textures', () => {
+    const skybox = new SimpleSkyBox({ cmds: null, leafs: [], skychain: 0 });
+    const frees = [];
+    const wraps = [];
+    const makeTexture = (name) => ({
+      wrapClamped() {
+        wraps.push(name);
+      },
+      free() {
+        frees.push(name);
+      },
+    });
+
+    skybox.setSkyTextures(
+      makeTexture('front'),
+      makeTexture('back'),
+      makeTexture('left'),
+      makeTexture('right'),
+      makeTexture('up'),
+      makeTexture('down'),
+    );
+
+    assert.deepEqual(wraps, ['front', 'back', 'left', 'right', 'up', 'down']);
+
+    skybox.shutdown();
+
+    assert.deepEqual(frees, []);
   });
 });

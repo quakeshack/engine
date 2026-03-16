@@ -167,6 +167,8 @@ export class BSP2Loader extends BSP29Loader {
         firstface: view.getUint32(fileofs + 36, true), // uint32 instead of uint16
         numfaces: view.getUint32(fileofs + 40, true), // uint32 instead of uint16
       });
+      loadmodel.nodes[i].baseMins = loadmodel.nodes[i].mins.copy();
+      loadmodel.nodes[i].baseMaxs = loadmodel.nodes[i].maxs.copy();
       fileofs += 44;
     }
 
@@ -237,6 +239,8 @@ export class BSP2Loader extends BSP29Loader {
           view.getUint8(fileofs + 43),
         ],
       });
+      loadmodel.leafs[i].baseMins = loadmodel.leafs[i].mins.copy();
+      loadmodel.leafs[i].baseMaxs = loadmodel.leafs[i].maxs.copy();
       fileofs += 44;
     }
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);

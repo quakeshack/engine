@@ -13,10 +13,10 @@ import { materialFlags, noTextureMaterial, PBRMaterial, QuakeMaterial } from '..
 import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.mjs';
 
 // Get registry references (will be set by eventBus)
-let { COM, Con, Mod } = registry;
+let { COM, Con } = registry;
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Mod } = registry);
+  ({ COM, Con } = registry);
 });
 
 /**
@@ -1746,6 +1746,8 @@ export class BSP29Loader extends ModelLoader {
         firstface: view.getUint16(fileofs + 20, true),
         numfaces: view.getUint16(fileofs + 22, true),
       });
+      loadmodel.nodes[i].baseMins = loadmodel.nodes[i].mins.copy();
+      loadmodel.nodes[i].baseMaxs = loadmodel.nodes[i].maxs.copy();
       fileofs += 24;
     }
 
@@ -1802,6 +1804,8 @@ export class BSP29Loader extends ModelLoader {
           view.getUint8(fileofs + 27),
         ],
       }));
+      loadmodel.leafs[i].baseMins = loadmodel.leafs[i].mins.copy();
+      loadmodel.leafs[i].baseMaxs = loadmodel.leafs[i].maxs.copy();
       fileofs += 28;
     }
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
@@ -2062,8 +2066,6 @@ export class BSP29Loader extends ModelLoader {
       for (let j = 0; j < out.numfaces; j++) {
         out.faces[out.firstface + j].submodel = true;
       }
-
-      Mod.RegisterModel(out);
     }
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
   }

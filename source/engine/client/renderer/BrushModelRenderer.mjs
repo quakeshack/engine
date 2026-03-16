@@ -1701,6 +1701,8 @@ export class BrushModelRenderer extends ModelRenderer {
       return; // Already built
     }
 
+    m.resetWorldRenderState();
+
     const cmds = [];
     const styles = [0.0, 0.0, 0.0, 0.0];
     const turbulentFallbackCache = new Map();

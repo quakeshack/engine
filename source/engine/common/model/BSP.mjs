@@ -284,6 +284,10 @@ export class Node extends BrushModelComponent {
   mins = null;
   /** @type {Vector|null} maximum bounding box */
   maxs = null;
+  /** @type {Vector|null} immutable bounds loaded from BSP data */
+  baseMins = null;
+  /** @type {Vector|null} immutable bounds loaded from BSP data */
+  baseMaxs = null;
   /** @type {number} first marksurface index (for leafs), aka firstleafface */
   firstmarksurface = 0;
   /** @type {number} number of marksurfaces (for leafs), aka numleaffaces */
@@ -320,6 +324,27 @@ export class Node extends BrushModelComponent {
   *facesIter() {
     for (let i = 0; i < this.numfaces; i++) {
       yield this._brushmodel.faces[this.firstface + i];
+    }
+  }
+
+  /**
+   * Reset renderer-owned runtime state on this BSP node/leaf.
+   * Leaf bounds may be expanded during display-list packing, so restore them
+   * from the immutable BSP bounds before rebuilding world render chains.
+   */
+  resetRenderState() {
+    this.markvisframe = 0;
+    this.visframe = 0;
+    this.skychain = 0;
+    this.waterchain = 0;
+    this.cmds.length = 0;
+
+    if (this.mins !== null && this.baseMins !== null) {
+      this.mins.set(this.baseMins);
+    }
+
+    if (this.maxs !== null && this.baseMaxs !== null) {
+      this.maxs.set(this.baseMaxs);
     }
   }
 };
@@ -601,6 +626,36 @@ export class BrushModel extends BaseModel {
   }
 
   /**
+   * Reset runtime-only face state for a scoped brush model view.
+   * Dynamic light bookkeeping is rebuilt per client frame and must not be
+   * inherited from an earlier scoped instance of the same cached map.
+   * @private
+   */
+  _resetScopedFaces() {
+    for (let i = 0; i < this.faces.length; i++) {
+      this.faces[i].dlightbits = 0;
+      this.faces[i].dlightframe = -1;
+    }
+  }
+
+  /**
+   * Reset renderer-owned world BSP runtime state before rebuilding display lists.
+   * This clears stale per-leaf command chains and restores original BSP bounds
+   * without cloning the full node graph per scoped model view.
+   */
+  resetWorldRenderState() {
+    for (let i = 0; i < this.nodes.length; i++) {
+      this.nodes[i].resetRenderState();
+    }
+
+    for (let i = 0; i < this.leafs.length; i++) {
+      this.leafs[i].resetRenderState();
+    }
+
+    this._resetScopedFaces();
+  }
+
+  /**
    * @returns {BrushModel} scoped runtime view
    */
   createScopedView() {
@@ -612,6 +667,8 @@ export class BrushModel extends BaseModel {
     scopedView.skychain = 0;
     scopedView.opaqueVAO = null;
     scopedView.turbulentVAO = null;
+
+    scopedView._resetScopedFaces();
 
     return scopedView;
   }

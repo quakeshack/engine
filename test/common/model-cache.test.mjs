@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import Mod from '../../source/engine/common/Mod.mjs';
 import { AliasModel } from '../../source/engine/common/model/AliasModel.mjs';
 import { Face } from '../../source/engine/common/model/BaseModel.mjs';
-import { BrushModel } from '../../source/engine/common/model/BSP.mjs';
+import { BrushModel, Node } from '../../source/engine/common/model/BSP.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import Vector from '../../source/shared/Vector.mjs';
 
@@ -98,17 +98,41 @@ function createSharedBrushModels() {
   const worldModel = new BrushModel('maps/scoped-test.bsp');
   const submodel = new BrushModel('*1');
   const face = new Face();
+  const rootNode = new Node(worldModel);
+  const leaf = new Node(worldModel);
   const vertexes = [new Vector(0, 0, 0), new Vector(16, 0, 0)];
   const edges = [[0, 1]];
   const surfedges = [0];
   const texinfo = [{ texture: 0, vecs: [[1, 0, 0, 0], [0, 1, 0, 0]], flags: 0, value: 0, nexttexinfo: -1 }];
   const faces = [face];
 
+  rootNode.num = 0;
+  rootNode.contents = 0;
+  rootNode.mins = new Vector(-16, -16, -16);
+  rootNode.maxs = new Vector(16, 16, 16);
+  rootNode.baseMins = rootNode.mins.copy();
+  rootNode.baseMaxs = rootNode.maxs.copy();
+
+  leaf.num = 1;
+  leaf.contents = -1;
+  leaf.parent = rootNode;
+  leaf.mins = new Vector(-8, -8, -8);
+  leaf.maxs = new Vector(8, 8, 8);
+  leaf.baseMins = leaf.mins.copy();
+  leaf.baseMaxs = leaf.maxs.copy();
+  leaf.firstmarksurface = 0;
+  leaf.nummarksurfaces = 1;
+
+  rootNode.children = [leaf, leaf];
+
   worldModel.vertexes = vertexes;
   worldModel.edges = edges;
   worldModel.surfedges = surfedges;
   worldModel.texinfo = texinfo;
   worldModel.faces = faces;
+  worldModel.nodes = [rootNode];
+  worldModel.leafs = [leaf];
+  worldModel.marksurfaces = [0];
   worldModel.submodels = [submodel];
 
   submodel.submodel = true;
@@ -121,7 +145,24 @@ function createSharedBrushModels() {
   submodel.numfaces = 1;
 
   Mod.RegisterModel(worldModel);
-  Mod.RegisterModel(submodel);
+
+  return { worldModel, submodel };
+}
+
+/**
+ * @param {string} worldName model name
+ * @param {number} vertexX unique vertex value to identify the world
+ * @returns {{ worldModel: BrushModel, submodel: BrushModel }} registered shared world and inline submodel
+ */
+function createSharedBrushModelsForWorld(worldName, vertexX) {
+  const { worldModel, submodel } = createSharedBrushModels();
+
+  delete Mod.known[worldModel.name];
+  worldModel.name = worldName;
+  worldModel.vertexes = [new Vector(vertexX, 0, 0), new Vector(vertexX + 16, 0, 0)];
+  submodel.vertexes = worldModel.vertexes;
+
+  Mod.RegisterModel(worldModel);
 
   return { worldModel, submodel };
 }
@@ -153,19 +194,19 @@ describe('Mod scoped model cache', () => {
       const sharedSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.shared));
 
       assert.equal(sharedWorld, worldModel);
-      assert.equal(sharedSubmodel, submodel);
+      assert.equal(sharedSubmodel, null);
       assert.notEqual(serverWorld, clientWorld);
       assert.notEqual(serverWorld, sharedWorld);
       assert.notEqual(serverSubmodel, clientSubmodel);
-      assert.notEqual(clientSubmodel, sharedSubmodel);
+      assert.notEqual(clientSubmodel, submodel);
       assert.equal(serverWorld.faces, sharedWorld.faces);
       assert.equal(clientWorld.faces, sharedWorld.faces);
       assert.equal(clientSubmodel.faces, clientWorld.faces);
       assert.equal(serverSubmodel.faces, serverWorld.faces);
-      assert.equal(clientSubmodel.vertexes, sharedSubmodel.vertexes);
-      assert.equal(clientSubmodel.edges, sharedSubmodel.edges);
-      assert.equal(clientSubmodel.surfedges, sharedSubmodel.surfedges);
-      assert.equal(clientSubmodel.texinfo, sharedSubmodel.texinfo);
+      assert.equal(clientSubmodel.vertexes, clientWorld.vertexes);
+      assert.equal(clientSubmodel.edges, clientWorld.edges);
+      assert.equal(clientSubmodel.surfedges, clientWorld.surfedges);
+      assert.equal(clientSubmodel.texinfo, clientWorld.texinfo);
       assert.equal(clientSubmodel.vertexes.length > 0, true);
       assert.equal(clientSubmodel.edges.length > 0, true);
       assert.equal(clientSubmodel.surfedges.length > 0, true);
@@ -173,17 +214,33 @@ describe('Mod scoped model cache', () => {
       Mod.ClearAll(Mod.scope.server);
 
       const refreshedServerSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.server));
-      assert.notEqual(refreshedServerSubmodel, serverSubmodel);
-      assert.equal(refreshedServerSubmodel.vertexes, sharedSubmodel.vertexes);
+      assert.equal(refreshedServerSubmodel, null);
       assert.equal(Mod.ForName('*1', Mod.scope.client), clientSubmodel);
-      assert.equal(Mod.ForName('*1', Mod.scope.shared), sharedSubmodel);
+      assert.equal(Mod.ForName('*1', Mod.scope.shared), null);
 
       Mod.ClearAll(Mod.scope.client);
 
       const refreshedClientSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.client));
-      assert.notEqual(refreshedClientSubmodel, clientSubmodel);
-      assert.equal(refreshedClientSubmodel.vertexes, sharedSubmodel.vertexes);
-      assert.equal(refreshedClientSubmodel.surfedges, sharedSubmodel.surfedges);
+      assert.equal(refreshedClientSubmodel, null);
+    });
+  });
+
+  test('keeps bare submodel names scoped to their owning world per side', async () => {
+    await withModelRegistry(async () => {
+      const { worldModel: serverWorldShared } = createSharedBrushModelsForWorld('maps/server-test.bsp', 64);
+      const { worldModel: clientWorldShared } = createSharedBrushModelsForWorld('maps/client-test.bsp', 256);
+
+      const serverWorld = asBrushModel(await Mod.ForNameAsync(serverWorldShared.name, true, Mod.scope.server));
+      const clientWorld = asBrushModel(await Mod.ForNameAsync(clientWorldShared.name, true, Mod.scope.client));
+
+      const serverSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.server));
+      const clientSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.client));
+
+      assert.equal(serverSubmodel.vertexes, serverWorld.vertexes);
+      assert.equal(clientSubmodel.vertexes, clientWorld.vertexes);
+      assert.equal(serverSubmodel.vertexes[0][0], 64);
+      assert.equal(clientSubmodel.vertexes[0][0], 256);
+      assert.notEqual(serverSubmodel.vertexes, clientSubmodel.vertexes);
     });
   });
 
@@ -205,6 +262,58 @@ describe('Mod scoped model cache', () => {
 
       const refreshedClientAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, Mod.scope.client));
       assert.equal(refreshedClientAliasModel.cmds, sharedAliasModel.cmds);
+    });
+  });
+
+  test('resets shared brush leaf runtime state before rebuilding a scoped client view', async () => {
+    await withModelRegistry(async () => {
+      const { worldModel } = createSharedBrushModels();
+
+      const clientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.client));
+      const serverWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.server));
+      const sharedWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.shared));
+
+      assert.equal(clientWorld.nodes[0], sharedWorld.nodes[0]);
+      assert.equal(clientWorld.leafs[0], sharedWorld.leafs[0]);
+      assert.equal(serverWorld.nodes[0], sharedWorld.nodes[0]);
+      assert.equal(serverWorld.leafs[0], sharedWorld.leafs[0]);
+
+      clientWorld.nodes[0].visframe = 123;
+      clientWorld.nodes[0].markvisframe = 456;
+      clientWorld.leafs[0].skychain = 2;
+      clientWorld.leafs[0].waterchain = 3;
+      clientWorld.leafs[0].cmds.push([99, 12, 18]);
+      clientWorld.leafs[0].mins[0] = -128;
+      clientWorld.faces[0].dlightbits = 7;
+      clientWorld.faces[0].dlightframe = 42;
+
+      assert.deepEqual(sharedWorld.leafs[0].cmds, [[99, 12, 18]]);
+      assert.equal(sharedWorld.leafs[0].skychain, 2);
+      assert.equal(sharedWorld.leafs[0].waterchain, 3);
+      assert.equal(sharedWorld.leafs[0].mins[0], -128);
+
+      Mod.ClearAll(Mod.scope.client);
+
+      const refreshedClientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.client));
+
+      assert.notEqual(refreshedClientWorld, clientWorld);
+      assert.equal(refreshedClientWorld.nodes[0], clientWorld.nodes[0]);
+      assert.equal(refreshedClientWorld.leafs[0], clientWorld.leafs[0]);
+      assert.equal(refreshedClientWorld.leafs[0].skychain, 2);
+      assert.deepEqual(refreshedClientWorld.leafs[0].cmds, [[99, 12, 18]]);
+      assert.equal(refreshedClientWorld.faces[0].dlightbits, 0);
+      assert.equal(refreshedClientWorld.faces[0].dlightframe, -1);
+
+      refreshedClientWorld.resetWorldRenderState();
+
+      assert.equal(refreshedClientWorld.nodes[0].visframe, 0);
+      assert.equal(refreshedClientWorld.nodes[0].markvisframe, 0);
+      assert.equal(refreshedClientWorld.leafs[0].skychain, 0);
+      assert.equal(refreshedClientWorld.leafs[0].waterchain, 0);
+      assert.deepEqual(refreshedClientWorld.leafs[0].cmds, []);
+      assert.equal(refreshedClientWorld.leafs[0].mins[0], -8);
+      assert.equal(refreshedClientWorld.faces[0].dlightbits, 0);
+      assert.equal(refreshedClientWorld.faces[0].dlightframe, -1);
     });
   });
 
