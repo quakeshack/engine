@@ -85,7 +85,7 @@ Grouped by sections and then sorted by priority (more or less).
 - [_] BSP38 loader
 - [X] port physics code from Quake 2 (there are a bunch of fixes)
   - [X] fixing physics (walking over entities etc.), essentially Q2’s pmove.c
-  - [_] rotating brushes
+  - [X] rotating brushes
 - [_] add PHS support to sound subsystem and area portals
 - [_] PCX loader
 - [_] colormap.pcx support
@@ -156,6 +156,10 @@ Grouped by sections and then sorted by priority (more or less).
 - https://mus1n.github.io/Quake-3-Skybox/ 360 to skybox
 
 ## Log
+
+### 2026-03-18
+
+- The whole Pmove endeavor turned out to be so messy, by this point ripping out the original code and rewriting it from scratch would have been better
 
 ### 2026-03-13
 

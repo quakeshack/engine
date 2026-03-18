@@ -1414,6 +1414,9 @@ export class BrushTrace {
     let leavefrac = 1;
     /** @type {import('./model/BaseModel.mjs').Plane|null} */
     let clipplane = null;
+    /** @type {import('./model/BaseModel.mjs').Plane|null} */
+    let tangentAxialPlane = null;
+    let tangentAxialMovesDeeper = false;
 
     let getout = false;
     let startout = false;
@@ -1439,10 +1442,16 @@ export class BrushTrace {
       const d2 = plane.normal.dot(ctx.end) - dist;
 
       const nonAxialContact = plane.type >= 3;
+      const axialTangentStart = !nonAxialContact && d1 < 0 && d1 >= -DIST_EPSILON;
       const nearStart = nonAxialContact && Math.abs(d1) <= DIST_EPSILON;
       const nearEnd = nonAxialContact && Math.abs(d2) <= DIST_EPSILON;
       if (d2 >= 0 || nearEnd) { getout = true; }
       if (d1 >= 0 || nearStart) { startout = true; }
+
+      if (axialTangentStart) {
+        tangentAxialPlane = plane;
+        tangentAxialMovesDeeper ||= d2 < -DIST_EPSILON;
+      }
 
       // If completely in front of face, no intersection with this brush
       if (d1 >= 0 && d2 >= d1) {
@@ -1480,6 +1489,18 @@ export class BrushTrace {
         if (f < leavefrac) {
           leavefrac = f;
         }
+      }
+    }
+
+    if (!startout && tangentAxialPlane !== null) {
+      if (!tangentAxialMovesDeeper) {
+        return;
+      }
+
+      startout = true;
+      if (enterfrac < 0 || clipplane === null) {
+        enterfrac = 0;
+        clipplane = tangentAxialPlane;
       }
     }
 

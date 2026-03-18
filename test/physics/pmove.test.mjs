@@ -83,6 +83,17 @@ function createTrace({
 /** @typedef {{ origin: Vector, moved: Vector, velocity: Vector, onground: number|null }} MapPmoveFrame */
 
 /**
+ * @typedef {{
+ *   basePath?: string,
+ *   mapName: string,
+ *   frames: number,
+ *   startOrigin?: Vector|null,
+ *   yaw?: number|null,
+ *   buildCmd?: ((player: PmovePlayer, frame: number) => UserCmd)|null,
+ * }} MapFrameRunOptions
+ */
+
+/**
  * Parse the BSP entity lump using the engine token parser.
  * @param {string} text entity lump text
  * @returns {Record<string, string>[]} parsed entities
@@ -175,13 +186,19 @@ function resolveMapYaw(spawn, entities) {
 }
 
 /**
- * Run a real BSP-backed forward movement probe for a fixed number of frames.
- * @param {string} mapName map path relative to data/id1
- * @param {number} frames number of frames to simulate
+ * Run a real BSP-backed movement probe for a fixed number of frames.
+ * @param {MapFrameRunOptions} options movement probe options
  * @returns {Promise<MapPmoveFrame[]>} per-frame movement snapshots
  */
-async function runMapForwardFrames(mapName, frames) {
-  const baseUrl = new URL('../../data/id1/', import.meta.url);
+async function runMapFrames({
+  basePath = '../../data/id1/',
+  mapName,
+  frames,
+  startOrigin = null,
+  yaw = null,
+  buildCmd = null,
+}) {
+  const baseUrl = new URL(basePath, import.meta.url);
   const previousRegistry = {
     COM: registry.COM,
     Con: registry.Con,
@@ -227,8 +244,8 @@ async function runMapForwardFrames(mapName, frames) {
     const entities = parseMapEntities(model.entities);
     const spawn = requireMapEntity(entities, (entity) => entity.classname === 'info_player_start', 'spawn entity classname=info_player_start');
 
-    const spawnOrigin = parseMapOrigin(spawn.origin);
-    const yaw = resolveMapYaw(spawn, entities);
+    const spawnOrigin = startOrigin ?? parseMapOrigin(spawn.origin);
+    const moveYaw = yaw ?? resolveMapYaw(spawn, entities);
 
     const pmove = new Pmove();
     pmove.setWorldmodel(model);
@@ -236,7 +253,7 @@ async function runMapForwardFrames(mapName, frames) {
     const player = pmove.newPlayerMove();
     player.origin.set(spawnOrigin);
     player.velocity.clear();
-    player.angles.setTo(0, yaw, 0);
+    player.angles.setTo(0, moveYaw, 0);
     player.pmFlags = PMF.ON_GROUND;
     player.onground = 0;
 
@@ -245,10 +262,14 @@ async function runMapForwardFrames(mapName, frames) {
 
     for (let frame = 0; frame < frames; frame++) {
       const before = player.origin.copy();
-      const cmd = new UserCmd();
-      cmd.msec = 50;
-      cmd.forwardmove = 320;
-      cmd.angles = player.angles.copy();
+      const cmd = buildCmd?.(player, frame) ?? new UserCmd();
+      if (cmd.msec === 0) {
+        cmd.msec = 50;
+      }
+      if (buildCmd === null) {
+        cmd.forwardmove = 320;
+        cmd.angles = player.angles.copy();
+      }
       player.cmd = cmd;
       player.move();
 
@@ -268,12 +289,19 @@ async function runMapForwardFrames(mapName, frames) {
       }
     }
 
-    registry.COM = previousRegistry.COM;
-    registry.Con = previousRegistry.Con;
-    registry.Mod = previousRegistry.Mod;
-    registry.isDedicatedServer = previousRegistry.isDedicatedServer;
+    Object.assign(registry, previousRegistry);
     eventBus.publish('registry.frozen');
   }
+}
+
+/**
+ * Run a real BSP-backed forward movement probe for a fixed number of frames.
+ * @param {string} mapName map path relative to data/id1
+ * @param {number} frames number of frames to simulate
+ * @returns {Promise<MapPmoveFrame[]>} per-frame movement snapshots
+ */
+async function runMapForwardFrames(mapName, frames) {
+  return runMapFrames({ mapName, frames });
 }
 
 describe('PmovePlayer', () => {
@@ -377,6 +405,26 @@ describe('PmovePlayer', () => {
 
     assert.ok(brushFrames[7].moved[1] < -1.0);
     assert.ok(hullFrames[7].moved[1] < -1.0);
+  });
+
+  test('does not wedge on the hw_doom corridor sidestep repro', async () => {
+    const frames = await runMapFrames({
+      mapName: 'maps/test_hw_doom.bsp',
+      frames: 8,
+      startOrigin: new Vector(645.5, -667.875, 24),
+      yaw: 270,
+      buildCmd(player) {
+        const cmd = new UserCmd();
+        cmd.msec = 50;
+        cmd.sidemove = -320;
+        cmd.angles = player.angles.copy();
+        return cmd;
+      },
+    });
+
+    assert.ok(frames[5].moved[0] > 4.0);
+    assert.ok(frames[6].moved[0] > 4.0);
+    assert.ok(frames[7].moved[0] > 4.0);
   });
 
   test('tracks the hull slope climb on the brush-backed slope_2 regression map', async () => {
