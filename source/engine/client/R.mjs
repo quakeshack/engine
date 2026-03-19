@@ -633,15 +633,31 @@ R.CullBox = function(mins, maxs) {
 };
 
 /**
+ * Alias models in Quake sample static light slightly above their origin so
+ * monsters are lit from torso height rather than foot height.
+ * @param {ClientEdict} entity Entity being lit.
+ * @returns {Vector} World position used for static light sampling.
+ */
+R.GetEntityLightSamplePoint = function(entity) {
+  const samplePoint = entity.lerp.origin.copy();
+
+  if (entity.model !== null) {
+    samplePoint[2] -= entity.mins[2]; // effectively +24.0u on alias models
+  }
+
+  return samplePoint;
+};
+
+/**
  * @param {ClientEdict} e edict to calculate light for
  * @returns {[Vector, Vector, Vector, Vector, Vector]} ambient light, shade light, nearest light origin, dynamic shade light, dynamic light origin
  */
 R._CalculateLightValues = function (e) {
-  const [ambientlight, lightOrigin] = R.LightPoint(e.lerp.origin);
+  const [ambientlight, lightOrigin] = R.LightPoint(R.GetEntityLightSamplePoint(e));
   const shadelight = ambientlight.copy();
 
   // never have a pitch black view model
-  if ((e === CL.state.viewent) && (ambientlight.average() < 24.0)) {
+  if (e === CL.state.viewent && ambientlight.average() < 24.0) {
     if (ambientlight.average() === 0) {
       ambientlight.setTo(1.0, 1.0, 1.0); // no color, set to white
     }
@@ -694,13 +710,12 @@ R._CalculateLightValues = function (e) {
   if (e.effects & (effect.EF_FULLBRIGHT | effect.EF_MUZZLEFLASH)) {
     ambientlight.setTo(255.0, 255.0, 255.0);
     shadelight.set(ambientlight);
-  } else if (((e.num >= 1) && (e.num <= CL.state.maxclients) && (shadelight.greatest() < 8.0)) || (e.effects & effect.EF_MINLIGHT)) {
+  } else if ((e.num >= 1 && e.num <= CL.state.maxclients && shadelight.greatest() < 8.0) || (e.effects & effect.EF_MINLIGHT)) {
     // never let players go totally dark either
     if (ambientlight.average() === 0) {
       ambientlight.setTo(1.0, 1.0, 1.0); // no color, set to white
     }
     ambientlight.multiply(8.0);
-    // shadelight.set(ambientlight);
     shadelight[0] = Math.max(shadelight[0], ambientlight[0]);
     shadelight[1] = Math.max(shadelight[1], ambientlight[1]);
     shadelight[2] = Math.max(shadelight[2], ambientlight[2]);
