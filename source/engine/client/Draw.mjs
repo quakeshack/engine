@@ -285,7 +285,7 @@ export default class Draw {
    * @param {number} scale The scale factor.
    */
   static Char(x, y, num, scale = 1.0) {
-    GL.StreamDrawTexturedQuad(Math.floor(x), Math.floor(y), scale << 3, scale << 3,
+    GL.StreamDrawTexturedQuad(Math.floor(x), Math.floor(y), scale * 8, scale * 8,
       (num & 15) * 0.0625, (num >> 4) * 0.0625,
       ((num & 15) + 1) * 0.0625, ((num >> 4) + 1) * 0.0625);
   }

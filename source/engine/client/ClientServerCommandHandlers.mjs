@@ -279,7 +279,9 @@ function parseStartSoundPacket() {
  */
 function parseStaticEntity() {
   const ent = CL.state.clientEntities.allocateClientEntity(NET.message.readString());
-  ent.model = CL.state.model_precache[NET.message.readByte()];
+  const modelindex = NET.message.readByte();
+  ent.modelindex = modelindex;
+  ent.model = CL.state.model_precache[modelindex];
   ent.frame = NET.message.readByte();
   ent.colormap = NET.message.readByte();
   ent.skinnum = NET.message.readByte();
@@ -476,6 +478,7 @@ function parsePacketEntities() {
 
     if (bits & Protocol.u.model) {
       const modelindex = NET.message.readByte();
+      clent.modelindex = modelindex;
       clent.model = CL.state.model_precache[modelindex] || null;
 
       clent.framePrevious = null;

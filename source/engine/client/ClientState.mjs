@@ -173,6 +173,7 @@ class ClientRuntimeState {
   time = 0.0;
   latency = 0.0;
   last_received_message = 0.0;
+  /** @type {number} effectively the player’s edict number */
   viewentity = 0;
   /** @type {ClientEdict|null} view model reference (TODO: rename to viewmodel) */
   viewent = null;

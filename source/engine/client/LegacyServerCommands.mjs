@@ -320,6 +320,7 @@ function handleLegacySpawnStatic() {
   }
 
   const ent = CL.state.clientEntities.allocateClientEntity('static_entity');
+  ent.modelindex = modelindex;
   ent.model = CL.state.model_precache[modelindex];
   ent.frame = frame;
   ent.colormap = colormap;
@@ -419,6 +420,7 @@ export function handleLegacyEntityUpdate(bits) {
 
   // Model
   const modelindex = (bits & U.MODEL) ? NET.message.readByte() : baseline.modelindex;
+  clent.modelindex = modelindex;
   const model = CL.state.model_precache[modelindex] || null;
   if (model !== clent.model) {
     clent.model = model;

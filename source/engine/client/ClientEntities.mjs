@@ -95,6 +95,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.num = num;
     /** @type {BaseModel} */
     this.model = null;
+    this.modelindex = 0;
     this.framePrevious = null;
     this.frameTime = 0.0;
     this.frame = 0;
@@ -207,6 +208,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.framePrevious = null;
     this.frameTime = 0.0;
     this.frame = 0;
+    this.modelindex = 0;
     this.skinnum = 0;
     this.colormap = 0;
     this.effects = 0;
