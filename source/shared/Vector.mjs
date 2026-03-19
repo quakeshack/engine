@@ -270,6 +270,8 @@ export default class Vector extends Float32Array {
    * @returns {DirectionalVectors} directional vectors
    */
   angleVectors() {
+    console.assert(Number.isFinite(this[0]) && Number.isFinite(this[1]) && Number.isFinite(this[2]), 'angles must be finite numbers');
+
     let angle = this[0] * Math.PI / 180.0;
     const sp = Math.sin(angle);
     const cp = Math.cos(angle);
