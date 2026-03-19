@@ -57,6 +57,7 @@ export default class MultiplayerMainMenu extends MenuPage {
     // }
 
     if (registry.urls?.signalingURL) {
+      // FIXME: move the start serverlist to the ClientGameAPI
       const serverActions = PR.QuakeJS.ServerGameAPI.GetStartServerList();
 
       for (const serverAction of serverActions) {
