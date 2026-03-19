@@ -178,8 +178,20 @@ class GL {
     const vsource = shaderSources[vertexShaderPath];
     const fsource = shaderSources[fragmentShaderPath];
 
-    console.assert(vsource !== undefined, `Vertex shader source not found for program ${identifier}`);
-    console.assert(fsource !== undefined, `Fragment shader source not found for program ${identifier}`);
+    if (vsource === undefined || fsource === undefined) {
+      const missingResources = [];
+
+      if (vsource === undefined) {
+        missingResources.push(vertexShaderPath);
+      }
+      if (fsource === undefined) {
+        missingResources.push(fragmentShaderPath);
+      }
+
+      throw new MissingResourceError(
+        `${missingResources.join(', ')}. If these shader files were added while the dev session was already running, restart the active Vite build/watch process so import.meta.glob rebuilds the shader manifest.`,
+      );
+    }
 
     const vsh = gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vsh, vsource);

@@ -3,7 +3,8 @@ precision highp float;
 precision highp sampler3D;
 precision highp sampler2D;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEmissive;
 
 uniform vec3 uViewOrigin;
 uniform mat3 uViewAngles;
@@ -153,4 +154,5 @@ void main(void) {
   vec3 color = pow(clamp(uFogVolumeColor * (lightTint + dlightContrib), 0.0, 1.0), vec3(uGamma));
 
   fragColor = vec4(color, fogFactor);
+  fragEmissive = vec4(0.0);
 }

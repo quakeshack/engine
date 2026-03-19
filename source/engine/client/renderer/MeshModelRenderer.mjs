@@ -1,5 +1,6 @@
 import Vector from '../../../shared/Vector.mjs';
 import { ModelRenderer } from './ModelRenderer.mjs';
+import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import GL, { ATTRIB_LOCATIONS } from '../GL.mjs';
 
@@ -124,6 +125,7 @@ export class MeshModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uLightVec, lightPosition);
     gl.uniform3fv(program.uDynamicShadeLight, dynamicShadeLight);
     gl.uniform3fv(program.uDynamicLightVec, dynamicLightPosition);
+    gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
 
     // Bind texture
     if (clmodel.texture) {

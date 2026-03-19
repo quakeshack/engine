@@ -7,6 +7,18 @@ let { CL, R } = registry;
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
   R = registry.R;
+
+  // no renderer available in headless mode, so we need to provide a fallback for material renderer state access
+  if (!R) {
+    // @ts-ignore
+    R = {
+      blacktexture: nullTexture,
+      notexture: nullTexture,
+      flatnormalmap: nullTexture,
+      interpolation: { value: false },
+      c_brush_texture_binds: 0,
+    };
+  }
 });
 
 let gl = /** @type {WebGL2RenderingContext} */ (null);
@@ -19,13 +31,43 @@ eventBus.subscribe('gl.shutdown', () => {
   gl = null;
 });
 
+/** @typedef {{ blacktexture: GLTexture, notexture: GLTexture, flatnormalmap: GLTexture, interpolation: { value: boolean }, c_brush_texture_binds: number }} MaterialRendererState */
+
+const nullTexture = /** @type {GLTexture} */ ({
+  bind() {},
+  free() {},
+});
+
 export const materialFlags = Object.freeze({
   MF_NONE: 0,
   MF_TRANSPARENT: 1,
   MF_SKY: 2,
   MF_TURBULENT: 4,
   MF_SKIP: 8,
+  MF_FULLBRIGHT: 16,
 });
+
+/**
+ * Resolve the luminance texture for a material draw.
+ * Materials flagged MF_FULLBRIGHT fall back to their diffuse texture when they
+ * do not provide a separate luminance map.
+ * @param {number} flags Material flags.
+ * @param {GLTexture|null} luminanceTexture Explicit luminance texture.
+ * @param {GLTexture|null} diffuseTexture Active diffuse texture.
+ * @param {GLTexture} fallbackTexture Renderer fallback texture.
+ * @returns {GLTexture} Luminance texture to bind for the draw.
+ */
+export function resolveMaterialLuminanceTexture(flags, luminanceTexture, diffuseTexture, fallbackTexture) {
+  if (luminanceTexture && luminanceTexture !== fallbackTexture) {
+    return luminanceTexture;
+  }
+
+  if ((flags & materialFlags.MF_FULLBRIGHT) !== 0 && diffuseTexture !== null) {
+    return diffuseTexture;
+  }
+
+  return fallbackTexture;
+}
 
 /**
  * A class representing a material.
@@ -131,13 +173,88 @@ export class BaseMaterial {
   }
 };
 
+class BrushMaterial extends BaseMaterial {
+  luminance = /** @type {GLTexture} */ (null);
+
+  constructor(name, width, height) {
+    super(name, width, height);
+
+    this.luminance = R.blacktexture;
+  }
+
+  /**
+   * @protected
+   * @param {object} program Active shader program.
+   */
+  _bindInterpolation(program) {
+    if (program.uInterpolation !== undefined) {
+      gl.uniform1f(program.uInterpolation, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
+    }
+  }
+
+  /**
+   * @protected
+   * @returns {GLTexture} Luminance texture for the current draw.
+   */
+  _getLuminanceTexture() {
+    return resolveMaterialLuminanceTexture(this.flags, this.luminance, this._getCurrentTexture(), R.blacktexture);
+  }
+
+  /**
+   * @protected
+   * @param {object} program Active shader program.
+   */
+  _bindLuminance(program) {
+    if (program.tLuminance !== undefined) {
+      this._getLuminanceTexture().bind(program.tLuminance);
+      R.c_brush_texture_binds++;
+    }
+  }
+
+  /**
+   * @protected
+   * @returns {GLTexture} Current diffuse texture for the draw.
+   */
+  _getCurrentTexture() {
+    return R.notexture;
+  }
+
+  /**
+   * @protected
+   * @returns {GLTexture} Next diffuse texture for interpolated draws.
+   */
+  _getNextTexture() {
+    return this._getCurrentTexture();
+  }
+
+  /**
+   * @protected
+   * @param {object} program Active shader program.
+   */
+  _bindPrimaryTextures(program) {
+    const currentTexture = this._getCurrentTexture();
+
+    if (program.tTextureA !== undefined && program.tTextureB !== undefined) {
+      currentTexture.bind(program.tTextureA);
+      this._getNextTexture().bind(program.tTextureB);
+      R.c_brush_texture_binds += 2;
+    }
+
+    if (program.tTexture !== undefined) {
+      currentTexture.bind(program.tTexture);
+      R.c_brush_texture_binds++;
+    }
+  }
+}
+
 /**
  * A class representing a Quake-style material with animation frames.
  * It supports multiple frames and alternate frames for different states.
  * No support for PBR or advanced features.
  */
-export class QuakeMaterial extends BaseMaterial {
+export class QuakeMaterial extends BrushMaterial {
   #textures = /** @type {GLTexture[]} */ ([]);
+  #luminanceTextures = /** @type {(GLTexture|null)[]} */ ([]);
 
   #frames = /** @type {number} */ (1);
   #alternateFrames = /** @type {number} */ (0);
@@ -147,24 +264,10 @@ export class QuakeMaterial extends BaseMaterial {
 
   bindTo(program) {
     gl.uniform1i(program.uPerformDotLighting, 0);
-    gl.uniform1f(program.uInterpolation, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
+    this._bindInterpolation(program);
 
-    if (program.tTextureA !== undefined && program.tTextureB !== undefined) {
-      this.#textures[this.#frame].bind(program.tTextureA);
-      this.#textures[this.#nextFrame].bind(program.tTextureB);
-      R.c_brush_texture_binds += 2;
-    }
-
-    if (program.tTexture !== undefined) {
-      this.#textures[this.#frame].bind(program.tTexture);
-      R.c_brush_texture_binds++;
-    }
-
-    // TODO: this could be the full bright map
-    if (program.tLuminance !== undefined) {
-      R.blacktexture.bind(program.tLuminance);
-      R.c_brush_texture_binds++;
-    }
+    this._bindPrimaryTextures(program);
+    this._bindLuminance(program);
   }
 
   set texture(texture) {
@@ -172,18 +275,53 @@ export class QuakeMaterial extends BaseMaterial {
     this.#textures.length = 1;
   }
 
+  set luminanceTexture(texture) {
+    this.#luminanceTextures[0] = texture;
+    this.#luminanceTextures.length = 1;
+  }
+
   get texture() {
     return this.#textures[0] || null;
   }
 
-  addAnimationFrame(num, frameTexture) {
-    this.#frames = Math.max(this.#frames, num + 1);
-    this.#textures[num] = frameTexture;
+  get luminanceTexture() {
+    return this.#luminanceTextures[0] || null;
   }
 
-  addAlternateFrame(num, frameTexture) {
+  /**
+   * @protected
+   * @returns {GLTexture} Current diffuse texture for the active animation frame.
+   */
+  _getCurrentTexture() {
+    return this.#textures[this.#frame] || R.notexture;
+  }
+
+  /**
+   * @protected
+   * @returns {GLTexture} Next diffuse texture for the active animation frame.
+   */
+  _getNextTexture() {
+    return this.#textures[this.#nextFrame] || this._getCurrentTexture();
+  }
+
+  /**
+   * @protected
+   * @returns {GLTexture} Luminance texture for the active animation frame.
+   */
+  _getLuminanceTexture() {
+    return resolveMaterialLuminanceTexture(this.flags, this.#luminanceTextures[this.#frame] || null, this._getCurrentTexture(), R.blacktexture);
+  }
+
+  addAnimationFrame(num, frameTexture, frameLuminanceTexture = null) {
+    this.#frames = Math.max(this.#frames, num + 1);
+    this.#textures[num] = frameTexture;
+    this.#luminanceTextures[num] = frameLuminanceTexture;
+  }
+
+  addAlternateFrame(num, frameTexture, frameLuminanceTexture = null) {
     this.#alternateFrames = Math.max(this.#alternateFrames, num + 1);
     this.#textures[num + 10] = frameTexture;
+    this.#luminanceTextures[num + 10] = frameLuminanceTexture;
   }
 
   emit(/** @type {ClientEdict} */ clientEdict = null) {
@@ -205,15 +343,21 @@ export class QuakeMaterial extends BaseMaterial {
       tex.free();
     }
 
+    for (const tex of this.#luminanceTextures) {
+      if (tex && tex !== R.blacktexture) {
+        tex.free();
+      }
+    }
+
     this.#textures.length = 0;
+    this.#luminanceTextures.length = 0;
   }
 };
 
 /**
  * A class representing a PBR material.
  */
-export class PBRMaterial extends BaseMaterial {
-  luminance = /** @type {GLTexture} */ (null);
+export class PBRMaterial extends BrushMaterial {
   diffuse = /** @type {GLTexture} */ (null);
   specular = /** @type {GLTexture} */ (null);
   normal = /** @type {GLTexture} */ (null);
@@ -222,7 +366,6 @@ export class PBRMaterial extends BaseMaterial {
     super(name, width, height);
 
     this.diffuse = R.notexture;
-    this.luminance = R.blacktexture;
     this.specular = R.blacktexture;
     this.normal = R.flatnormalmap;
   }
@@ -232,24 +375,9 @@ export class PBRMaterial extends BaseMaterial {
       gl.uniform1i(program.uPerformDotLighting, 1);
     }
 
-    if (program.uInterpolation !== undefined) {
-      gl.uniform1f(program.uInterpolation, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
-    }
+    this._bindInterpolation(program);
 
-    if (program.tTexture !== undefined) {
-      this.diffuse.bind(program.tTexture);
-      R.c_brush_texture_binds++;
-    }
-
-    if (program.tTextureA !== undefined) {
-      this.diffuse.bind(program.tTextureA);
-      R.c_brush_texture_binds++;
-    }
-
-    if (program.tTextureB !== undefined) {
-      this.diffuse.bind(program.tTextureB);
-      R.c_brush_texture_binds++;
-    }
+    this._bindPrimaryTextures(program);
 
     if (program.tSpecular !== undefined) {
       this.specular.bind(program.tSpecular);
@@ -261,10 +389,7 @@ export class PBRMaterial extends BaseMaterial {
       R.c_brush_texture_binds++;
     }
 
-    if (program.tLuminance !== undefined) {
-      this.luminance.bind(program.tLuminance);
-      R.c_brush_texture_binds++;
-    }
+    this._bindLuminance(program);
   }
 
   emit(/** @type {ClientEdict?} */ clientEdict = null) {
@@ -287,6 +412,14 @@ export class PBRMaterial extends BaseMaterial {
     if (this.normal !== R.flatnormalmap) {
       this.normal.free();
     }
+  }
+
+  /**
+   * @protected
+   * @returns {GLTexture} Current diffuse texture for PBR draws.
+   */
+  _getCurrentTexture() {
+    return this.diffuse || R.notexture;
   }
 };
 

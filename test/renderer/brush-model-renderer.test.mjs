@@ -3,8 +3,21 @@ import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
-import { BrushModelRenderer } from '../../source/engine/client/renderer/BrushModelRenderer.mjs';
+import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/BrushModelRenderer.mjs';
 import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.mjs';
+
+describe('resolveBrushBloomContributionStrength', () => {
+  test('clamps invalid contribution strengths to zero', () => {
+    assert.equal(resolveBrushBloomContributionStrength(-1), 0.0);
+    assert.equal(resolveBrushBloomContributionStrength(0), 0.0);
+    assert.equal(resolveBrushBloomContributionStrength(Number.NaN), 0.0);
+  });
+
+  test('preserves positive contribution strengths', () => {
+    assert.equal(resolveBrushBloomContributionStrength(0.33), 0.33);
+    assert.equal(resolveBrushBloomContributionStrength(1.0), 1.0);
+  });
+});
 
 describe('BrushModelRenderer.resolveEntityLightingState', () => {
   test('treats inline submodels as sharing the world deluxemap atlas', () => {

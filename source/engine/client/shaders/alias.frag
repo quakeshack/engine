@@ -1,9 +1,11 @@
 #version 300 es
 precision highp float;
+precision highp sampler2D;
 precision highp sampler2DShadow;
 precision highp samplerCubeShadow;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 uniform vec3 uAmbientLight;
@@ -11,7 +13,9 @@ uniform vec3 uShadeLight;
 uniform vec3 uDynamicShadeLight;
 uniform float uTime;
 uniform sampler2D tTexture;
+uniform sampler2D tLuminance;
 uniform float uAlpha;
+uniform float uBloomEmissiveScale;
 
 // Shadow mapping
 uniform sampler2DShadow tShadowMap0;
@@ -55,6 +59,7 @@ float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
 
 void main(void){
   vec4 texel = texture(tTexture, vTexCoord);
+  vec3 luminance = texture(tLuminance, vTexCoord).rgb;
 
   // Local entity shadow — small local depth map, BSP-light-driven direction.
   // Fades smoothly to fully-lit at the coverage edge (no hard clip).
@@ -105,4 +110,8 @@ void main(void){
   // apply fog
   vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a);
+  vec3 emissiveColor = texel.rgb * clamp(luminance + vec3(uBloomEmissiveScale), 0.0, 1.0);
+  emissiveColor = pow(emissiveColor, vec3(uGamma));
+  emissiveColor = mix(uFogColor, emissiveColor, vFog);
+  fragEmissive = vec4(emissiveColor, fragColor.a);
 }

@@ -2,7 +2,7 @@ import Vector from '../../../../shared/Vector.mjs';
 import Q from '../../../../shared/Q.mjs';
 import { content } from '../../../../shared/Defs.mjs';
 import { GLTexture } from '../../../client/GL.mjs';
-import W, { readWad3Texture, translateIndexToRGBA } from '../../W.mjs';
+import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.mjs';
 import { CRC16CCITT } from '../../CRC.mjs';
 import { CorruptedResourceError } from '../../Errors.mjs';
 import { eventBus, registry } from '../../../registry.mjs';
@@ -228,6 +228,7 @@ export class BSP29Loader extends ModelLoader {
       const tx = materials[cleanName];
 
       let glt = null;
+      let luminanceTexture = null;
 
       // Load texture data (skip for dedicated server)
       if (!registry.isDedicatedServer) {
@@ -252,6 +253,10 @@ export class BSP29Loader extends ModelLoader {
               new Uint8Array(data).set(new Uint8Array(buf, absofs, len));
               const wtex = readWad3Texture(data, tx.name, 0);
               glt = GLTexture.FromLumpTexture(wtex);
+              const wadLuminance = BSP29Loader._createWadLuminanceTexture(data, tx.name, tx.width, tx.height);
+              if (wadLuminance !== null) {
+                luminanceTexture = wadLuminance;
+              }
               tx.averageColor = BSP29Loader._computeAverageColor(wtex.data);
             }
           }
@@ -262,6 +267,10 @@ export class BSP29Loader extends ModelLoader {
           const rgba = translateIndexToRGBA(pixelData, tx.width, tx.height, W.d_8to24table_u8, tx.name[0] === '{' ? 255 : null, 240);
           const textureId = `${tx.name}/${CRC16CCITT.Block(pixelData)}`; // CR: unique texture ID to avoid conflicts across maps
           glt = GLTexture.Allocate(textureId, tx.width, tx.height, rgba);
+          const luminanceRGBA = translateIndexToLuminanceRGBA(pixelData, tx.width, tx.height, W.d_8to24table_u8, tx.name[0] === '{' ? 255 : null, 240);
+          if (BSP29Loader._hasVisiblePixels(luminanceRGBA)) {
+            luminanceTexture = GLTexture.Allocate(`${textureId}:luminance`, tx.width, tx.height, luminanceRGBA);
+          }
           tx.averageColor = BSP29Loader._computeAverageColor(rgba);
         }
 
@@ -273,6 +282,10 @@ export class BSP29Loader extends ModelLoader {
         if (tx.name[0] === '{') {
           tx.flags |= materialFlags.MF_TRANSPARENT;
         }
+
+        if (tx.name.toLowerCase().startsWith('*lava')) {
+          tx.flags |= materialFlags.MF_FULLBRIGHT;
+        }
       }
 
       if (name[0] === '+') { // animation prefix
@@ -280,19 +293,60 @@ export class BSP29Loader extends ModelLoader {
 
         if (frame >= 48 && frame <= 57) { // '0'-'9'
           const frameIndex = frame - 48;
-          tx.addAnimationFrame(frameIndex, glt);
+          tx.addAnimationFrame(frameIndex, glt, luminanceTexture);
         } else if (frame >= 65 && frame <= 74) { // 'A'-'J'
           const frameIndex = frame - 65;
-          tx.addAlternateFrame(frameIndex, glt);
+          tx.addAlternateFrame(frameIndex, glt, luminanceTexture);
         }
       } else {
         tx.texture = glt;
+        tx.luminanceTexture = luminanceTexture;
       }
 
       loadmodel.textures[i] = tx;
     }
 
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs + filelen);
+  }
+
+  /**
+   * @param {ArrayBuffer} wadTextureData Copied WAD3 texture data.
+   * @param {string} textureName Texture name for cache IDs.
+   * @param {number} width Texture width.
+   * @param {number} height Texture height.
+   * @returns {GLTexture|null} Uploaded luminance texture when the source has fullbright pixels.
+   */
+  static _createWadLuminanceTexture(wadTextureData, textureName, width, height) {
+    const indexedData = new Uint8Array(wadTextureData, 40, width * height);
+    const palette = new Uint8Array(wadTextureData,
+      40 +
+      width * height +
+      width / 2 * height / 2 +
+      width / 4 * height / 4 +
+      width / 8 * height / 8 +
+      2,
+    768);
+    const luminanceRGBA = translateIndexToLuminanceRGBA(indexedData, width, height, palette, textureName[0] === '{' ? 255 : null, 240);
+
+    if (!BSP29Loader._hasVisiblePixels(luminanceRGBA)) {
+      return null;
+    }
+
+    return GLTexture.Allocate(`${textureName}/${CRC16CCITT.Block(indexedData)}:luminance`, width, height, luminanceRGBA);
+  }
+
+  /**
+   * @param {Uint8Array} rgba RGBA texture data.
+   * @returns {boolean} True when any pixel contributes visible color.
+   */
+  static _hasVisiblePixels(rgba) {
+    for (let i = 3; i < rgba.length; i += 4) {
+      if (rgba[i] !== 0) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**

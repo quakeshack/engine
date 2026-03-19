@@ -8,7 +8,6 @@ import { eventBus, registry } from '../registry.mjs';
 import GL from './GL.mjs';
 import VID from './VID.mjs';
 import PostProcess from './renderer/PostProcess.mjs';
-import WarpEffect from './renderer/WarpEffect.mjs';
 
 let { CL, Con, Draw, Host, Key, M, R, S, Sbar, V } = registry;
 
@@ -360,14 +359,16 @@ SCR.UpdateScreen = function() {
       // PostProcess.resolve handles both the simple blit (no active effects)
       // and the chained effect path (warp, motion blur, etc.).
       PostProcess.end();
-      const sceneTexture = R.usePostProcess
-        ? PostProcess.colorTexture
-        : WarpEffect.texture;
       PostProcess.resolve(
         R.refdef.vrect.x, R.refdef.vrect.y,
         R.refdef.vrect.width, R.refdef.vrect.height,
-        sceneTexture,
+        PostProcess.colorTexture,
       );
+
+      const bloomEffect = PostProcess.getEffect('bloom');
+      if (bloomEffect && bloomEffect.active && R.bloomDebug && R.bloomDebug.value !== 0) {
+        bloomEffect.drawDebugPreview();
+      }
     }
     if (Con.forcedup !== true) {
       R.PolyBlend();

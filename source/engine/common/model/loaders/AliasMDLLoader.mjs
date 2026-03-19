@@ -1,11 +1,36 @@
 import Vector from '../../../../shared/Vector.mjs';
 import Q from '../../../../shared/Q.mjs';
 import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.mjs';
-import W, { translateIndexToRGBA } from '../../W.mjs';
+import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.mjs';
 import { CRC16CCITT } from '../../CRC.mjs';
 import { registry } from '../../../registry.mjs';
 import { ModelLoader } from '../ModelLoader.mjs';
 import { AliasModel } from '../AliasModel.mjs';
+
+/**
+ * Builds the diffuse and luminance skin layers for a legacy alias model skin.
+ * Fullbright indexed colors stay emissive-only in the luminance layer.
+ * @param {Uint8Array} skin indexed Quake skin pixels
+ * @param {number} width skin width
+ * @param {number} height skin height
+ * @param {Uint8Array} [palette] RGB palette data
+ * @param {?number} [transparentColor] optional transparent palette index
+ * @param {number} [fullbrightColorStart] first fullbright palette index
+ * @returns {{diffuse: Uint8Array, luminance: Uint8Array}} translated texture layers
+ */
+export function buildAliasSkinLayers(
+  skin,
+  width,
+  height,
+  palette = W.d_8to24table_u8,
+  transparentColor = null,
+  fullbrightColorStart = 240,
+) {
+  return {
+    diffuse: translateIndexToRGBA(skin, width, height, palette, transparentColor, fullbrightColorStart),
+    luminance: translateIndexToLuminanceRGBA(skin, width, height, palette, transparentColor, fullbrightColorStart),
+  };
+}
 
 /**
  * Pre-computed vertex normals for Quake's Alias Model format.
@@ -440,12 +465,15 @@ export class AliasMDLLoader extends ModelLoader {
         // Single skin
         const skin = new Uint8Array(buffer, inmodel, skinsize);
         this._floodFillSkin(loadmodel, skin);
-        const rgba = translateIndexToRGBA(skin, loadmodel._skin_width, loadmodel._skin_height, W.d_8to24table_u8, null, 240);
+        const { diffuse, luminance } = buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
 
         loadmodel.skins[i] = {
           group: false,
           texturenum: !registry.isDedicatedServer
-            ? GLTexture.Allocate(loadmodel.name + '_' + i, loadmodel._skin_width, loadmodel._skin_height, rgba)
+            ? GLTexture.Allocate(loadmodel.name + '_' + i, loadmodel._skin_width, loadmodel._skin_height, diffuse)
+            : null,
+          luminanceTexture: !registry.isDedicatedServer
+            ? GLTexture.Allocate(loadmodel.name + '_' + i + '_luma', loadmodel._skin_width, loadmodel._skin_height, luminance)
             : null,
         };
 
@@ -474,10 +502,13 @@ export class AliasMDLLoader extends ModelLoader {
         for (let j = 0; j < numskins; j++) {
           const skin = new Uint8Array(buffer, inmodel, skinsize);
           this._floodFillSkin(loadmodel, skin);
-          const rgba = translateIndexToRGBA(skin, loadmodel._skin_width, loadmodel._skin_height, W.d_8to24table_u8, null, 240);
+          const { diffuse, luminance } = buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
 
           group.skins[j].texturenum = !registry.isDedicatedServer
-            ? GLTexture.Allocate(loadmodel.name + '_' + i + '_' + j, loadmodel._skin_width, loadmodel._skin_height, rgba)
+            ? GLTexture.Allocate(loadmodel.name + '_' + i + '_' + j, loadmodel._skin_width, loadmodel._skin_height, diffuse)
+            : null;
+          group.skins[j].luminanceTexture = !registry.isDedicatedServer
+            ? GLTexture.Allocate(loadmodel.name + '_' + i + '_' + j + '_luma', loadmodel._skin_width, loadmodel._skin_height, luminance)
             : null;
 
           if (loadmodel.player === true) {

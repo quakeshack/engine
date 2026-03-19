@@ -23,6 +23,14 @@ eventBus.subscribe('gl.shutdown', () => {
 });
 
 /**
+ * @param {number} strength Requested sky bloom strength.
+ * @returns {number} Sanitized sky bloom strength.
+ */
+export function resolveSkyBloomEmissiveScale(strength) {
+  return Number.isFinite(strength) && strength > 0.0 ? strength : 0.0;
+}
+
+/**
  * Base class for sky rendering.
  * Allows different sky rendering techniques to be implemented.
  * Right now the BSP model loader sets up the desired sky renderer.
@@ -197,6 +205,7 @@ export class Quake1Sky extends SkyRenderer {
     const program = GL.UseProgram('sky');
     // Two scrolling layers at different speeds for parallax effect
     gl.uniform2f(program.uTime, (Host.realtime * 0.125) % 1.0, (Host.realtime * 0.03125) % 1.0);
+    gl.uniform1f(program.uBloomEmissiveScale, resolveSkyBloomEmissiveScale(R.bloomSkyStrength?.value ?? 0.0));
     this.#solidskytexture.bind(program.tSolid); // Base sky layer
     this.#alphaskytexture.bind(program.tAlpha); // Overlay layer (e.g., clouds)
 
@@ -443,6 +452,7 @@ export class SimpleSkyBox extends SkyRenderer {
     gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uLightVec, 0.0, 0.0, 1.0);
     gl.uniform1f(program.uAlpha, 1.0);
+    gl.uniform1f(program.uBloomEmissiveScale, resolveSkyBloomEmissiveScale(R.bloomSkyStrength?.value ?? 0.0));
 
     if (program.tShadowMap0 !== undefined && R.shadow_textures?.[0]) {
       GL.Bind(program.tShadowMap0, R.shadow_textures[0]);

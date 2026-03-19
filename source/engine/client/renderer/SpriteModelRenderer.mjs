@@ -1,4 +1,5 @@
 import { ModelRenderer } from './ModelRenderer.mjs';
+import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import GL from '../GL.mjs';
 
@@ -83,6 +84,7 @@ export class SpriteModelRenderer extends ModelRenderer {
 
     // Prepare uniforms
     gl.uniform1f(program.uAlpha, entity.alpha);
+    gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(entity.effects));
 
     // Select frame
     let num = e.frame;

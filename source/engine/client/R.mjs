@@ -17,6 +17,7 @@ import { MeshModelRenderer } from './renderer/MeshModelRenderer.mjs';
 import Draw from './Draw.mjs';
 import { BrushModel, Node, revealedVisibility } from '../common/model/BSP.mjs';
 import PostProcess from './renderer/PostProcess.mjs';
+import BloomEffect from './renderer/BloomEffect.mjs';
 import WarpEffect from './renderer/WarpEffect.mjs';
 import ShadowMap from './renderer/ShadowMap.mjs';
 import { ClientDlight, ClientEdict } from './ClientEntities.mjs';
@@ -642,8 +643,11 @@ R.GetEntityLightSamplePoint = function(entity) {
   const samplePoint = entity.lerp.origin.copy();
 
   if (entity.model !== null) {
-    samplePoint[2] -= entity.mins[2]; // effectively +24.0u on alias models
+    // samplePoint[2] -= entity.mins[2] + 24.0; // effectively +24.0u on alias models
+    // CR: fun, that makes the boss in E1M7 pitch black
   }
+
+  // console.log(`Sampling light for entity ${entity.num} at ${samplePoint}`, entity.model, entity.mins, entity.maxs);
 
   return samplePoint;
 };
@@ -1232,18 +1236,13 @@ R.SetupGL = function() {
   const w = (vrect.width * pixelRatio) >> 0;
   const h = (vrect.height * pixelRatio) >> 0;
 
-  if (R.usePostProcess === true) {
-    // Depth-aware post-process path: render scene to FBO with depth texture
-    // for fog volumes. Pipeline effects (warp, etc.) are applied during resolve.
+  if (R.usePostProcess === true || PostProcess.hasActiveEffects()) {
+    // Render the scene to the shared post-process capture FBO whenever a
+    // screen-space effect needs to sample it. Depth-aware passes like fog
+    // use the same capture path and sample the depth texture mid-frame.
     PostProcess.resize(w, h);
     PostProcess.begin();
     gl.viewport(0, 0, w, h);
-  } else if (PostProcess.hasActiveEffects()) {
-    // Pipeline effects only (no fog): render scene to the warp effect's FBO
-    // so the effect pipeline can sample it.
-    const warpEffect = /** @type {WarpEffect} */ (PostProcess.getEffect('warp'));
-    warpEffect.resize(w, h);
-    PostProcess.beginToEffectFBO(WarpEffect.fbo, WarpEffect.width, WarpEffect.height);
   } else {
     gl.viewport((vrect.x * pixelRatio) >> 0, ((VID.height - vrect.height - vrect.y) * pixelRatio) >> 0, w, h);
   }
@@ -1266,6 +1265,11 @@ R.PreRenderScene = function() {
   const warpEffect = PostProcess.getEffect('warp');
   if (warpEffect) {
     warpEffect.active = R.dowarp;
+  }
+
+  const bloomEffect = PostProcess.getEffect('bloom');
+  if (bloomEffect) {
+    bloomEffect.active = R.bloom.value !== 0;
   }
 
   // Activate depth-texture post-process when fog volumes exist.
@@ -1503,18 +1507,18 @@ R.InitShaders = async function() {
   // rendering alias models
   await Promise.all([
     GL.CreateProgram('alias',
-      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled'],
+      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
       [
         ['aPositionA', gl.FLOAT, 3],
         ['aPositionB', gl.FLOAT, 3],
         ['aNormal', gl.FLOAT, 3],
         ['aTexCoord', gl.FLOAT, 2],
       ],
-      ['tTexture', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap']),
+      ['tTexture', 'tLuminance', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap']),
 
     // rendering mesh models (OBJ, IQM, GLTF)
     GL.CreateProgram('mesh',
-      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled'],
+      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
       [
         ['aPosition', gl.FLOAT, 3],
         ['aTexCoord', gl.FLOAT, 2],
@@ -1524,7 +1528,7 @@ R.InitShaders = async function() {
 
     // rendering brush models (water is down below)
     GL.CreateProgram('brush',
-      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uShadowMapSize', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled'],
+      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uShadowMapSize', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale'],
         [
           ['aPosition', gl.FLOAT, 3],
           ['aTexCoord', gl.FLOAT, 4],
@@ -1543,18 +1547,18 @@ R.InitShaders = async function() {
 
     // rendering the player model (similar to alias model but with custom colors)
     GL.CreateProgram('player',
-      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uTop', 'uBottom', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled'],
+      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uTop', 'uBottom', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
         [
           ['aPositionA', gl.FLOAT, 3],
           ['aPositionB', gl.FLOAT, 3],
           ['aNormal', gl.FLOAT, 3],
           ['aTexCoord', gl.FLOAT, 2],
         ],
-        ['tTexture', 'tPlayer', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap']),
+        ['tTexture', 'tLuminance', 'tPlayer', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap']),
 
     // for rendering sprites (usually effects)
     GL.CreateProgram('sprite',
-      ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uFogColor', 'uFogParams', 'uInterpolation', 'uAlpha'],
+      ['uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uFogColor', 'uFogParams', 'uInterpolation', 'uAlpha', 'uBloomEmissiveScale'],
         [['aPosition', gl.FLOAT, 3], ['aTexCoord', gl.FLOAT, 2]],
         ['tTexture']),
 
@@ -1572,7 +1576,7 @@ R.InitShaders = async function() {
 
     // rendering water brushes
     GL.CreateProgram('turbulent',
-      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uTime', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uAlpha'],
+      ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uTime', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uAlpha', 'uBloomEmissiveScale', 'uBloomDlightScale'],
         [
           ['aPosition', gl.FLOAT, 3],
           ['aTexCoord', gl.FLOAT, 4],
@@ -1581,7 +1585,7 @@ R.InitShaders = async function() {
           // ['aTangent', gl.FLOAT, 3],
           // ['aBitangent', gl.FLOAT, 3],
         ],
-        ['tTexture', 'tLightmap', 'tDlight', 'tLightStyle', 'tDeluxemap']),
+        ['tTexture', 'tLuminance', 'tLightmap', 'tDlight', 'tLightStyle', 'tDeluxemap']),
 
     // warp overlay effect
     GL.CreateProgram('warp',
@@ -1589,8 +1593,23 @@ R.InitShaders = async function() {
         [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
         ['tTexture']),
 
+    GL.CreateProgram('bloom-extract',
+      ['uOrtho'],
+      [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+      ['tTexture']),
+
+    GL.CreateProgram('bloom-blur',
+      ['uOrtho', 'uTexelOffset'],
+      [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+      ['tTexture']),
+
+    GL.CreateProgram('bloom-composite',
+      ['uOrtho', 'uStrength'],
+      [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+      ['tScene', 'tBloom']),
+
     GL.CreateProgram('sky',
-      ['uViewAngles', 'uPerspective', 'uScale', 'uGamma', 'uTime', 'uFogColor', 'uFogParams'],
+      ['uViewAngles', 'uPerspective', 'uScale', 'uGamma', 'uTime', 'uFogColor', 'uFogParams', 'uBloomEmissiveScale'],
       [['aPosition', gl.FLOAT, 3]],
       ['tSolid', 'tAlpha']),
 
@@ -1656,7 +1675,14 @@ R.Init = async function() {
   R.polyblend = new Cvar('gl_polyblend', '1');
   R.flashblend = new Cvar('gl_flashblend', '0');
   R.nocolors = new Cvar('gl_nocolors', '0');
-  R.interpolation = new Cvar('r_interpolation', '1', Cvar.FLAG.ARCHIVE, 'Interpolation of textures and animation groups, 0 - off, 1 - on');
+  R.bloom = new Cvar('r_bloom', '0', Cvar.FLAG.NONE, 'Screen-space bloom post-process, 0 = off, 1 = on.');
+  R.bloomStrength = new Cvar('r_bloom_strength', '0.8', Cvar.FLAG.NONE, 'Additive bloom intensity.');
+  R.bloomSkyStrength = new Cvar('r_bloom_sky_strength', '0.33', Cvar.FLAG.NONE, 'Sky contribution added to the bloom emissive target. Lower than 1 keeps the sky glow subtle.');
+  R.bloomDlightStrength = new Cvar('r_bloom_dlight_strength', '0.33', Cvar.FLAG.NONE, 'Dynamic-light surface contribution added to the bloom emissive target. Set to 0 to disable.');
+  R.bloomSpecularStrength = new Cvar('r_bloom_specular_strength', '0.33', Cvar.FLAG.NONE, 'Specular reflection contribution added to the bloom emissive target. Set to 0 to disable.');
+  R.bloomDownsample = new Cvar('r_bloom_downsample', '4', Cvar.FLAG.NONE, 'Bloom buffer downsample divisor, clamped to 1-8.');
+  R.bloomDebug = new Cvar('r_bloom_debug', '0', Cvar.FLAG.NONE, 'Bloom debug preview: 0 = off, 1 = emissive, 2 = extract, 3 = blur, 4 = all.');
+  R.interpolation = new Cvar('r_interpolation', '1', Cvar.FLAG.NONE, 'Interpolation of textures and animation groups, 0 - off, 1 - on');
   // fog controls (TODO: make that a cheat, but resetting cvar to default is done after R.NewMapFog, so need to rethink the order of operations)
   R.fog_color = new Cvar('r_fog_color', '128 128 128', Cvar.FLAG.NONE, 'Fog color: R G B (0-255)');
   R.fog_start = new Cvar('r_fog_start', '128', Cvar.FLAG.NONE, 'Fog start distance (linear)');
@@ -1676,8 +1702,9 @@ R.Init = async function() {
   modelRendererRegistry.register(new MeshModelRenderer());
 
   // Initialize post-process infrastructure (scene FBO with depth texture)
-  // and register the warp effect for underwater distortion.
+  // and register screen-space effects that resolve from that capture.
   PostProcess.init();
+  PostProcess.addEffect(new BloomEffect());
   PostProcess.addEffect(new WarpEffect());
 
   // Initialize shadow mapping (depth-only FBO + sun light)

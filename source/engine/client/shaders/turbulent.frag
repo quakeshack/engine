@@ -3,12 +3,16 @@ precision highp float;
 precision highp sampler2D;
 precision highp sampler2DArray;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 uniform float uTime;
 uniform float uAlpha;
+uniform float uBloomEmissiveScale;
+uniform float uBloomDlightScale;
 uniform sampler2D tTexture;
+uniform sampler2D tLuminance;
 uniform sampler2DArray tLightmap;
 uniform sampler2D tDlight;
 uniform sampler2D tLightStyle;
@@ -22,7 +26,9 @@ in float vHasLightmap;
 uniform vec3 uFogColor;
 
 void main(void) {
-  vec4 texel = vec4(texture(tTexture, vTexCoord.st + vec2(sin(vTexCoord.t * 3.141593 + uTime), sin(vTexCoord.s * 3.141593 + uTime)) * 0.125).rgb, 1.0);
+  vec2 warpedTexCoord = vTexCoord.st + vec2(sin(vTexCoord.t * 3.141593 + uTime), sin(vTexCoord.s * 3.141593 + uTime)) * 0.125;
+  vec4 texel = vec4(texture(tTexture, warpedTexCoord).rgb, 1.0);
+  vec3 luminance = texture(tLuminance, warpedTexCoord).rgb;
 
   vec4 lightstyle = vec4(
     texture(tLightStyle, vec2(vLightStyle.x, 0.0)).r,
@@ -47,6 +53,8 @@ void main(void) {
 
   vec3 dlight = texture(tDlight, vDlightTexCoord).rgb;
 
+  vec3 emissiveColor = texel.rgb * clamp(luminance + vec3(uBloomEmissiveScale), 0.0, 1.0);
+
   fragColor = vec4(
     texel.r * mix(1.0, d.r + dlight.r, texel.a),
     texel.g * mix(1.0, d.g + dlight.g, texel.a),
@@ -54,7 +62,12 @@ void main(void) {
     uAlpha
   );
   // apply fog (mix RGB only, preserve alpha)
-  vec3 finalRgb = fragColor.rgb;
+  vec3 finalRgb = fragColor.rgb + emissiveColor;
   finalRgb = mix(uFogColor, finalRgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a);
+
+  emissiveColor += texel.rgb * dlight * uBloomDlightScale;
+  vec3 bloomEmissive = pow(emissiveColor, vec3(uGamma));
+  bloomEmissive = mix(uFogColor, bloomEmissive, vFog);
+  fragEmissive = vec4(bloomEmissive, uAlpha);
 }

@@ -2,6 +2,7 @@ import Vector from '../../../shared/Vector.mjs';
 import { ModelRenderer } from './ModelRenderer.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import GL, { ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.mjs';
+import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
 import { materialFlags } from './Materials.mjs';
 import { BrushModel, Node } from '../../common/model/BSP.mjs';
 import { ClientEdict } from '../ClientEntities.mjs';
@@ -43,6 +44,14 @@ const TURBULENT_FALLBACK_MAX_BOOST = 1.3;
 const TURBULENT_FALLBACK_FACE_BLEND = 0.35;
 const TURBULENT_FALLBACK_SCALE = 0.0078125;
 const TURBULENT_FALLBACK_EPSILON = 0.0001;
+
+/**
+ * @param {number} strength Requested brush bloom contribution strength.
+ * @returns {number} Sanitized non-negative bloom contribution strength.
+ */
+export function resolveBrushBloomContributionStrength(strength) {
+  return Number.isFinite(strength) && strength > 0.0 ? strength : 0.0;
+}
 
 /**
  * Renderer for BSP brush models (maps and inline models like doors, platforms).
@@ -417,6 +426,9 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
     gl.uniform1f(program.uAlpha, 1.0);
+    gl.uniform1f(program.uBloomEmissiveScale, 0.0);
+    gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomSpecularScale, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
     gl.uniform4f(program.uLightVec, 0.0, 0.0, 0.0, 0.0);
@@ -544,6 +556,9 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
     gl.uniform1f(program.uAlpha, 1.0);
+    gl.uniform1f(program.uBloomEmissiveScale, 0.0);
+    gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomSpecularScale, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
     gl.uniform4f(program.uLightVec, 0.0, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicLightVec, 0.0, 0.0, 0.0);
@@ -711,6 +726,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
     gl.uniform1f(program.uTime, Host.realtime);
+    gl.uniform1f(program.uBloomEmissiveScale, 0.0);
+    gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
 
     // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, true);
@@ -864,6 +881,9 @@ export class BrushModelRenderer extends ModelRenderer {
     // Setup uniforms
     gl.uniform1f(program.uInterpolation, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
     gl.uniform1f(program.uAlpha, 1.0);
+    gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
+    gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomSpecularScale, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
     // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, false);
@@ -914,6 +934,9 @@ export class BrushModelRenderer extends ModelRenderer {
     // Setup uniforms
     gl.uniform1f(program.uInterpolation, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
     gl.uniform1f(program.uAlpha, e.alpha);
+    gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
+    gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomSpecularScale, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
     // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, false);
@@ -973,6 +996,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uOrigin, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles, false, viewMatrix);
     gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
+    gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
+    gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
 
     // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, false);

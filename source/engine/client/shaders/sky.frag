@@ -1,10 +1,13 @@
 #version 300 es
 precision highp float;
+precision highp sampler2D;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 uniform vec2 uTime;
+uniform float uBloomEmissiveScale;
 uniform sampler2D tSolid;
 uniform sampler2D tAlpha;
 
@@ -23,4 +26,5 @@ void main(void) {
   // apply fog to sky RGB
   vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a);
+  fragEmissive = vec4(finalRgb * uBloomEmissiveScale, fragColor.a);
 }

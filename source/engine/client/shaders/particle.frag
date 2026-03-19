@@ -1,7 +1,8 @@
 #version 300 es
 precision highp float;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 
@@ -19,4 +20,5 @@ void main(void) {
   // apply fog (particles keep alpha)
   vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a);
+  fragEmissive = vec4(0.0);
 }

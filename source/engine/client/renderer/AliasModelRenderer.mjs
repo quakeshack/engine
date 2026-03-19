@@ -1,5 +1,6 @@
 import Vector from '../../../shared/Vector.mjs';
 import { ModelRenderer } from './ModelRenderer.mjs';
+import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import GL from '../GL.mjs';
 import W from '../../common/W.mjs';
@@ -133,6 +134,7 @@ export class AliasModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uInterpolation, R.interpolation.value && (e.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
     gl.uniform1f(program.uTime, Host.realtime);
     gl.uniform1f(program.uAlpha, e.alpha);
+    gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
 
     // Bind vertex buffer and setup attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds);
@@ -144,6 +146,7 @@ export class AliasModelRenderer extends ModelRenderer {
     // Select and bind skin texture
     const skin = this._selectSkin(clmodel, e);
     skin.texturenum.bind(program.tTexture);
+    (skin.luminanceTexture || R.blacktexture).bind(program.tLuminance);
     if (clmodel.player === true) {
       skin.playertexture.bind(program.tPlayer);
     }

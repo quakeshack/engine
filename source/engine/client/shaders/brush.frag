@@ -6,11 +6,15 @@ precision highp sampler2DShadow;
 precision highp samplerCube;
 precision highp samplerCubeShadow;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 uniform float uInterpolation;
 uniform float uAlpha;
+uniform float uBloomEmissiveScale;
+uniform float uBloomDlightScale;
+uniform float uBloomSpecularScale;
 
 uniform sampler2D tTextureA;
 uniform sampler2D tTextureB;
@@ -189,8 +193,9 @@ void main(void) {
 
   // Point shadow darkens the lightmap (with a darkness floor so it never
   // goes pure black) and fully occludes the dynamic light contribution.
+  vec3 surfaceDlight = texture(tDlight, vTexCoord.zw).rgb * pointShadow;
   vec3 staticLight = lightmap * shadow * mix(uShadowDarkness, 1.0, pointShadow)
-                   + texture(tDlight, vTexCoord.zw).rgb * pointShadow;
+                   + surfaceDlight;
 
   float bumpLightDot = 1.0;
   float specFactor = 0.0;
@@ -265,10 +270,12 @@ void main(void) {
   // Pre-calculate common factors to avoid redundant calculations
   vec3 shadeAmbient = vLightDot * uShadeLight + uAmbientLight + vDynamicLightDot * uDynamicShadeLight;
   vec3 lightingFactor = staticLight * bumpFactor * shadeAmbient;
-  vec3 luminanceMask = texel.a * (vec3(1.0) - luminance.rgb);
+  vec3 emissiveMask = clamp(luminance.rgb + vec3(uBloomEmissiveScale), 0.0, 1.0);
+  vec3 specularColor = specFactor * staticLight;
 
   // Combine lighting in one operation per channel
-  vec3 finalColor = texel.rgb * mix(vec3(1.0), lightingFactor, luminanceMask) + specFactor * staticLight;
+  vec3 emissiveColor = texel.rgb * emissiveMask;
+  vec3 finalColor = texel.rgb * lightingFactor + specularColor + emissiveColor;
 
   // Apply gamma correction using pow on vec3 (single operation instead of 3)
   finalColor = pow(finalColor, vec3(uGamma));
@@ -277,4 +284,10 @@ void main(void) {
   finalColor = mix(uFogColor, finalColor, vFog);
 
   fragColor = vec4(finalColor, texel.a * uAlpha);
+
+  emissiveColor += texel.rgb * surfaceDlight * uBloomDlightScale;
+  emissiveColor += specularColor * uBloomSpecularScale;
+  emissiveColor = pow(emissiveColor, vec3(uGamma));
+  emissiveColor = mix(uFogColor, emissiveColor, vFog);
+  fragEmissive = vec4(emissiveColor, texel.a * uAlpha);
 }

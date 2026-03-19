@@ -1,9 +1,11 @@
 #version 300 es
 precision highp float;
+precision highp sampler2D;
 precision highp sampler2DShadow;
 precision highp samplerCubeShadow;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 uniform vec3 uAmbientLight;
@@ -12,6 +14,7 @@ uniform vec3 uDynamicShadeLight;
 uniform float uTime;
 uniform sampler2D tTexture;
 uniform float uAlpha;
+uniform float uBloomEmissiveScale;
 
 // Shadow mapping
 uniform sampler2DShadow tShadowMap0;
@@ -104,4 +107,5 @@ void main(void){
   // apply fog
   vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a);
+  fragEmissive = vec4(finalRgb * uBloomEmissiveScale, fragColor.a);
 }

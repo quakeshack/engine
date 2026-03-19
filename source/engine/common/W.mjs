@@ -442,11 +442,45 @@ export function translateIndexToRGBA(uint8data, width, height, palette = W.d_8to
     rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
 
     // our pixel shader is considering the alpha channel whether to use the lightmap or not
-    rgba[i * 4 + 3] = fullbrightColorStart !== null && colorIndex > fullbrightColorStart ? 0 : 255;
+    rgba[i * 4 + 3] = fullbrightColorStart !== null && colorIndex >= fullbrightColorStart ? 0 : 255;
   }
 
   return rgba;
 };
+
+/**
+ * Convert indexed 8-bit data into an RGBA emissive texture containing only
+ * Quake fullbright pixels.
+ * @param {Uint8Array} uint8data Indexed 8-bit texture data.
+ * @param {number} width Texture width.
+ * @param {number} height Texture height.
+ * @param {?Uint8Array} palette Palette data, 256 colors x 3 bytes.
+ * @param {?number} transparentColor Optional transparent palette index.
+ * @param {?number} fullbrightColorStart Palette index where fullbright colors begin.
+ * @returns {Uint8Array} RGBA data containing only fullbright pixels.
+ */
+export function translateIndexToLuminanceRGBA(uint8data, width, height, palette = W.d_8to24table_u8, transparentColor = null, fullbrightColorStart = 240) {
+  const rgba = new Uint8Array(width * height * 4);
+
+  for (let i = 0; i < width * height; i++) {
+    const colorIndex = uint8data[i];
+
+    if (transparentColor !== null && colorIndex === transparentColor) {
+      continue;
+    }
+
+    if (fullbrightColorStart === null || colorIndex < fullbrightColorStart) {
+      continue;
+    }
+
+    rgba[i * 4 + 0] = palette[colorIndex * 3];
+    rgba[i * 4 + 1] = palette[colorIndex * 3 + 1];
+    rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
+    rgba[i * 4 + 3] = 255;
+  }
+
+  return rgba;
+}
 
 /**
  * Reads a WAD3 texture from the given data.

@@ -157,6 +157,10 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-03-19
+
+- Toying around with rendering passes after watching some videos from https://www.youtube.com/@ThreatInteractive/videos
+
 ### 2026-03-18
 
 - The whole Pmove endeavor turned out to be so messy, by this point ripping out the original code and rewriting it from scratch would have been better

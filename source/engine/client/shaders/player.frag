@@ -1,9 +1,11 @@
 #version 300 es
 precision highp float;
+precision highp sampler2D;
 precision highp sampler2DShadow;
 precision highp samplerCubeShadow;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 uniform vec3 uAmbientLight;
@@ -13,8 +15,10 @@ uniform float uTime;
 uniform vec3 uTop;
 uniform vec3 uBottom;
 uniform sampler2D tTexture;
+uniform sampler2D tLuminance;
 uniform sampler2D tPlayer;
 uniform float uAlpha;
+uniform float uBloomEmissiveScale;
 
 // Shadow mapping
 uniform sampler2DShadow tShadowMap0;
@@ -58,6 +62,7 @@ float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
 
 void main(void) {
   vec4 texel = texture(tTexture, vTexCoord);
+  vec3 luminance = texture(tLuminance, vTexCoord).rgb;
   vec4 player = texture(tPlayer, vTexCoord);
 
   // Local entity shadow — small local depth map, BSP-light-driven direction.
@@ -95,9 +100,15 @@ void main(void) {
     vLightDot * uShadeLight.b + uAmbientLight.b + vDynamicLightDot * uDynamicShadeLight.b * pointShadow
   ) * shadow;
 
-  fragColor.r = mix(mix(texel.r, uTop.r * (1.0 / 191.25) * player.x, player.y), uBottom.r * (1.0 / 191.25) * player.z, player.w) * mix(1.0, lighting.r, texel.a);
-  fragColor.g = mix(mix(texel.g, uTop.g * (1.0 / 191.25) * player.x, player.y), uBottom.g * (1.0 / 191.25) * player.z, player.w) * mix(1.0, lighting.g, texel.a);
-  fragColor.b = mix(mix(texel.b, uTop.b * (1.0 / 191.25) * player.x, player.y), uBottom.b * (1.0 / 191.25) * player.z, player.w) * mix(1.0, lighting.b, texel.a);
+  vec3 baseColor = vec3(
+    mix(mix(texel.r, uTop.r * (1.0 / 191.25) * player.x, player.y), uBottom.r * (1.0 / 191.25) * player.z, player.w),
+    mix(mix(texel.g, uTop.g * (1.0 / 191.25) * player.x, player.y), uBottom.g * (1.0 / 191.25) * player.z, player.w),
+    mix(mix(texel.b, uTop.b * (1.0 / 191.25) * player.x, player.y), uBottom.b * (1.0 / 191.25) * player.z, player.w)
+  );
+
+  fragColor.r = baseColor.r * mix(1.0, lighting.r, texel.a);
+  fragColor.g = baseColor.g * mix(1.0, lighting.g, texel.a);
+  fragColor.b = baseColor.b * mix(1.0, lighting.b, texel.a);
 
   fragColor.r = pow(fragColor.r, uGamma);
   fragColor.g = pow(fragColor.g, uGamma);
@@ -105,5 +116,9 @@ void main(void) {
   // apply fog
   vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a * uAlpha);
+  vec3 emissiveColor = baseColor * clamp(luminance + vec3(uBloomEmissiveScale), 0.0, 1.0);
+  emissiveColor = pow(emissiveColor, vec3(uGamma));
+  emissiveColor = mix(uFogColor, emissiveColor, vFog);
+  fragEmissive = vec4(emissiveColor, fragColor.a);
 }
 

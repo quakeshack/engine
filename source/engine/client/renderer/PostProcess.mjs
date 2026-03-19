@@ -38,6 +38,9 @@ export default class PostProcess {
   /** @type {WebGLTexture} Color texture attachment (RGBA) */
   static colorTexture = null;
 
+  /** @type {WebGLTexture} Emissive texture attachment (RGBA) */
+  static emissiveTexture = null;
+
   /** @type {WebGLTexture} Depth texture attachment (DEPTH_COMPONENT24) */
   static depthTexture = null;
 
@@ -63,6 +66,9 @@ export default class PostProcess {
 
   /** @type {WebGLRenderbuffer} Multisampled color renderbuffer */
   static msaaColorRB = null;
+
+  /** @type {WebGLRenderbuffer} Multisampled emissive renderbuffer */
+  static msaaEmissiveRB = null;
 
   /** @type {WebGLRenderbuffer} Multisampled depth renderbuffer */
   static msaaDepthRB = null;
@@ -150,6 +156,14 @@ export default class PostProcess {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
+      // Emissive texture
+      PostProcess.emissiveTexture = gl.createTexture();
+      GL.Bind(0, PostProcess.emissiveTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
       // Depth texture
       PostProcess.depthTexture = gl.createTexture();
       GL.Bind(0, PostProcess.depthTexture);
@@ -164,7 +178,9 @@ export default class PostProcess {
       // Assemble scene FBO
       gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.colorTexture, 0);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, PostProcess.emissiveTexture, 0);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, PostProcess.depthTexture, 0);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
@@ -172,13 +188,17 @@ export default class PostProcess {
     // Each renderbuffer must be bound at least once before framebufferRenderbuffer.
     PostProcess.msaaFBO = gl.createFramebuffer();
     PostProcess.msaaColorRB = gl.createRenderbuffer();
+    PostProcess.msaaEmissiveRB = gl.createRenderbuffer();
     PostProcess.msaaDepthRB = gl.createRenderbuffer();
     gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaColorRB);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaEmissiveRB);
     gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaDepthRB);
     gl.bindRenderbuffer(gl.RENDERBUFFER, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.msaaFBO);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, PostProcess.msaaColorRB);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, PostProcess.msaaEmissiveRB);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, PostProcess.msaaDepthRB);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     // Ping-pong FBOs for effect chaining
@@ -220,6 +240,10 @@ export default class PostProcess {
 
     // Resize color texture
     GL.Bind(0, PostProcess.colorTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+    // Resize emissive texture
+    GL.Bind(0, PostProcess.emissiveTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 
     // Resize depth texture
@@ -264,6 +288,10 @@ export default class PostProcess {
 
     // Multisampled color renderbuffer (RGBA8)
     gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaColorRB);
+    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height);
+
+    // Multisampled emissive renderbuffer (RGBA8)
+    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaEmissiveRB);
     gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height);
 
     // Multisampled depth renderbuffer (DEPTH_COMPONENT24)
@@ -311,7 +339,9 @@ export default class PostProcess {
       gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
     }
     gl.viewport(0, 0, PostProcess.width, PostProcess.height);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.clearBufferfv(gl.COLOR, 0, [0.0, 0.0, 0.0, 0.0]);
+    gl.clearBufferfv(gl.COLOR, 1, [0.0, 0.0, 0.0, 0.0]);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
     PostProcess.active = true;
   }
 
@@ -352,6 +382,23 @@ export default class PostProcess {
   }
 
   /**
+   * Resolve one multisampled color attachment into a texture-backed attachment 0.
+   * Some browsers reject `drawBuffers([COLOR_ATTACHMENT1])` during blits, so the
+   * destination attachment is temporarily rebound to slot 0 for the resolve.
+   * @param {GLenum} readAttachment Source MSAA color attachment.
+   * @param {WebGLTexture} targetTexture Destination texture.
+   * @param {number} width Resolve width in pixels.
+   * @param {number} height Resolve height in pixels.
+   */
+  static _resolveMSAAColorAttachment(readAttachment, targetTexture, width, height) {
+    gl.readBuffer(readAttachment);
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, null, 0);
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+  }
+
+  /**
    * Resolve the multisampled FBO to the texture-backed scene FBO.
    * Blits both color and depth so the texture FBO has valid data for
    * depth sampling and the effect pipeline. After this call, the
@@ -363,8 +410,16 @@ export default class PostProcess {
 
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, PostProcess.msaaFBO);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, PostProcess.fbo);
-    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+
+    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT0, PostProcess.colorTexture, w, h);
+    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT1, PostProcess.emissiveTexture, w, h);
+
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.colorTexture, 0);
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, PostProcess.emissiveTexture, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     PostProcess.msaaResolved = true;
   }
 
@@ -476,6 +531,10 @@ export default class PostProcess {
       gl.deleteTexture(PostProcess.colorTexture);
       PostProcess.colorTexture = null;
     }
+    if (PostProcess.emissiveTexture) {
+      gl.deleteTexture(PostProcess.emissiveTexture);
+      PostProcess.emissiveTexture = null;
+    }
     if (PostProcess.depthTexture) {
       gl.deleteTexture(PostProcess.depthTexture);
       PostProcess.depthTexture = null;
@@ -493,6 +552,10 @@ export default class PostProcess {
     if (PostProcess.msaaColorRB) {
       gl.deleteRenderbuffer(PostProcess.msaaColorRB);
       PostProcess.msaaColorRB = null;
+    }
+    if (PostProcess.msaaEmissiveRB) {
+      gl.deleteRenderbuffer(PostProcess.msaaEmissiveRB);
+      PostProcess.msaaEmissiveRB = null;
     }
     if (PostProcess.msaaDepthRB) {
       gl.deleteRenderbuffer(PostProcess.msaaDepthRB);
