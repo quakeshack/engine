@@ -8,6 +8,7 @@ import Cvar from '../common/Cvar.mjs';
 import { CorruptedResourceError, MissingResourceError } from '../common/Errors.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import { BrushModel } from '../common/Mod.mjs';
+import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.mjs';
 import { Face } from '../common/model/BaseModel.mjs';
 import PlatformWorker from '../common/PlatformWorker.mjs';
 import WorkerManager from '../common/WorkerManager.mjs';
@@ -163,7 +164,12 @@ class Node {
 
 export class NavMeshOutOfDateException extends CorruptedResourceError {};
 
-const NAV_FILE_VERSION = 2;
+// TODO: in future we could build graphs per entity type (e.g. monster navmesh with tighter clearances, flying monster navmesh that ignores ground support, etc.)
+
+const NAV_FILE_VERSION = 3;
+const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
+const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
+const NAV_LINK_STEP_DISTANCE = 8.0;
 
 export class Navigation {
   /** @type {Cvar} */
@@ -178,10 +184,17 @@ export class Navigation {
   static nav_build_process = null;
 
   /** maximum slope that is passable */
-  maxSlope = 0.7; // ~45 degrees
+  maxSlope = MIN_STEP_NORMAL;
+  walkerMins = NAV_MONSTER_MINS.copy();
+  walkerMaxs = NAV_MONSTER_MAXS.copy();
   /** units of headroom required above waypoint */
-  requiredHeight = -Def.hull[0][0][2] + Def.hull[0][1][2]; // hull 1
-  requiredRadius = (-Def.hull[0][0][0] + Def.hull[0][1][0]) / 2; // hull 1 (radius, not diameter)
+  requiredHeight = NAV_MONSTER_MAXS[2] - NAV_MONSTER_MINS[2];
+  requiredRadius = Math.max(
+    NAV_MONSTER_MAXS[0],
+    NAV_MONSTER_MAXS[1],
+    -NAV_MONSTER_MINS[0],
+    -NAV_MONSTER_MINS[1],
+  );
 
   /** @type {Record<string,(path:Vector[]|null)=>(void)>} holds pending requests for the worker thread */
   #requests = {};
@@ -194,6 +207,12 @@ export class Navigation {
 
   /** @type {Function?} unsubscribe from nav.path.response */
   #pathResponseEventListener = null;
+
+  /** @type {Function?} unsubscribe from nav_debug_graph changes */
+  #debugGraphEventListener = null;
+
+  /** @type {Function?} unsubscribe from nav_debug_waypoints changes */
+  #debugWaypointsEventListener = null;
 
   constructor(worldmodel) {
     /** @type {BrushModel?} */
@@ -216,7 +235,7 @@ export class Navigation {
       this.nav_build_process = new Cvar('nav_build_process', '0', Cvar.FLAG.NONE, 'if set to 1, it will force build the nav mesh and quit');
     }
 
-    this.nav_save_waypoints = new Cvar('nav_save_waypoints', '0', Cvar.FLAG.NONE, 'if set to 1, will save all extracted waypoints to nav file');
+    this.nav_save_waypoints = new Cvar('nav_save_waypoints', '0', Cvar.FLAG.NONE, 'deprecated, extracted waypoints stay in memory and are not written to nav files');
     this.nav_debug_graph = new Cvar('nav_debug_graph', '0', Cvar.FLAG.NONE, 'if set to 1, will render the navigation graph for debugging');
     this.nav_debug_waypoints = new Cvar('nav_debug_waypoints', '0', Cvar.FLAG.NONE, 'if set to 1, will render all waypoints for debugging');
     this.nav_debug_path = new Cvar('nav_debug_path', '0', Cvar.FLAG.NONE | Cvar.FLAG.CHEAT, 'if set to 1, will render the last computed path for debugging');
@@ -250,12 +269,41 @@ export class Navigation {
     this.#pathResponseEventListener = eventBus.subscribe('nav.path.response', (/** @type {string} */ id, /** @type {Vector[]} */ path) => {
       const vecpath = path ? path.map((p) => new Vector(...p)) : null;
 
+      if (vecpath && Navigation.nav_debug_path?.value) {
+        this.#debugPath(vecpath);
+      }
+
       // since all events are global, we need to check what’s intended for us
       if (id in this.#requests) {
         this.#requests[id](vecpath);
         delete this.#requests[id];
       }
     });
+  }
+
+  #subscribeDebugCvars() {
+    this.#debugGraphEventListener = eventBus.subscribe('cvar.changed.nav_debug_graph', (/** @type {Cvar} */ cvar) => {
+      if (cvar.value !== 0) {
+        this.#scheduleDebugRefresh();
+      }
+    });
+
+    this.#debugWaypointsEventListener = eventBus.subscribe('cvar.changed.nav_debug_waypoints', (/** @type {Cvar} */ cvar) => {
+      if (cvar.value !== 0) {
+        this.#scheduleDebugRefresh();
+      }
+    });
+  }
+
+  #scheduleDebugRefresh() {
+    if (!R) {
+      return;
+    }
+
+    setTimeout(() => {
+      this.#debugWaypoints();
+      this.#debugNavigation();
+    }, 1000);
   }
 
   init() {
@@ -267,6 +315,7 @@ export class Navigation {
 
     this.#initWorker();
     this.#subscribePathResponse();
+    this.#subscribeDebugCvars();
     eventBus.publish('nav.load', SV.server.mapname, SV.server.worldmodel.checksum);
   }
 
@@ -287,6 +336,16 @@ export class Navigation {
       this.#pathResponseEventListener = null;
     }
 
+    if (this.#debugGraphEventListener) {
+      this.#debugGraphEventListener();
+      this.#debugGraphEventListener = null;
+    }
+
+    if (this.#debugWaypointsEventListener) {
+      this.#debugWaypointsEventListener();
+      this.#debugWaypointsEventListener = null;
+    }
+
     Con.DPrint('Navigation: shutdown complete.\n');
   }
 
@@ -294,6 +353,10 @@ export class Navigation {
     console.assert(this.worldmodel || expectedChecksum, 'Navigation: worldmodel or expectedChecksum is required');
 
     const filename = `maps/${mapname}.nav`;
+
+    this.graph.nodes.length = 0;
+    this.graph.octree = null;
+    this.relinkSkiplist.length = 0;
 
     // Try to load binary file first (ArrayBuffer). Fallback to text JSON for older files.
     const buf = await COM.LoadFile(filename);
@@ -372,25 +435,18 @@ export class Navigation {
       // surfaces (optional)
       const surfCount = readUint32();
       if (surfCount > 0) {
-        const surfData = [];
         for (let si = 0; si < surfCount; si++) {
-          const stability = readFloat32();
-          const nx = readFloat32(); const ny = readFloat32(); const nz = readFloat32();
-          const faceIndex = readUint32();
+          readFloat32();
+          readFloat32(); readFloat32(); readFloat32();
+          readUint32();
           const wpCount = readUint32();
-          const wps = [];
           for (let wi = 0; wi < wpCount; wi++) {
-            const wx = readFloat32(); const wy = readFloat32(); const wz = readFloat32();
-            const avail = readFloat32();
-            const near = !!readUint8();
-            const clip = !!readUint8();
-            const floating = !!readUint8();
-            wps.push([[wx, wy, wz], avail, near, clip, floating]);
+            readFloat32(); readFloat32(); readFloat32();
+            readFloat32();
+            readUint8();
+            readUint8();
+            readUint8();
           }
-          surfData.push([stability, [nx, ny, nz], faceIndex, wps]);
-        }
-        if (this.worldmodel) {
-          node.surfaces = new Set(surfData.map((sd) => WalkableSurface.deserialize(sd, this)));
         }
       }
 
@@ -409,10 +465,11 @@ export class Navigation {
     }
 
     this.#buildOctree();
+    this.#scheduleDebugRefresh();
   }
 
   async save() {
-    console.assert(this.worldmodel, 'Navigation: worldmodel is required');
+    console.assert(Boolean(this.worldmodel), 'Navigation: worldmodel is required');
 
     const filename = `maps/${SV.server.mapname}.nav`;
 
@@ -461,27 +518,8 @@ export class Navigation {
       pushUint8(n.isClipping ? 1 : 0);
       pushUint8(n.isFloating ? 1 : 0);
 
-      // surfaces
-      if (Navigation.nav_save_waypoints.value !== 0) {
-        const surfaces = Array.from(n.surfaces);
-        pushUint32(surfaces.length);
-        for (const s of surfaces) {
-          pushFloat32(s.stability);
-          pushFloat32(s.normal[0]); pushFloat32(s.normal[1]); pushFloat32(s.normal[2]);
-          pushUint32(s.faceIndex);
-          pushUint32(s.waypoints.length);
-          for (const wp of s.waypoints) {
-            pushFloat32(wp.origin[0]); pushFloat32(wp.origin[1]); pushFloat32(wp.origin[2]);
-            pushFloat32(wp.availableHeight);
-            pushUint8(wp.nearLedge ? 1 : 0);
-            pushUint8(wp.isClipping ? 1 : 0);
-            pushUint8(wp.isFloating ? 1 : 0);
-          }
-        }
-      } else {
-        // simply write 0 here
-        pushUint32(0);
-      }
+      // waypoints are build-only debug data and are intentionally not serialized
+      pushUint32(0);
 
       // neighbors
       pushUint32(n.neighbors.length);
@@ -501,25 +539,237 @@ export class Navigation {
     }
   }
 
+  #playerStandOffset() {
+    return new Vector(0, 0, -this.walkerMins[2]);
+  }
+
   /**
-   * @param {Vector} startpos start position (waypoint)
-   * @param {Vector} endpos end position (waypoint), will overwrite!
-   * @param {number} hullNum hull number
-   * @returns {number} fraction of unobstructed trace, 0 = completely blocked, 1 = fully clear
+   * @param {Vector} position stand origin
+   * @returns {boolean} true when the player-sized box fits at the given origin
    */
-  #testTraceStatic(startpos, endpos, hullNum) {
-    const trace = SV.collision.traceStaticWorldLine(startpos.copy(), endpos.copy(), hullNum);
-    endpos.set(trace.endpos);
-    if (trace.allsolid) {
-      return -1;
+  #isValidStandOrigin(position) {
+    const trace = SV.collision.traceStaticWorld(
+      position.copy(),
+      this.walkerMins,
+      this.walkerMaxs,
+      position.copy(),
+    );
+
+    return !trace.startsolid && !trace.allsolid;
+  }
+
+  /**
+   * @param {Vector} startpos stand origin
+   * @param {Vector} endpos stand origin
+   * @returns {import('./physics/ServerCollisionSupport.mjs').CollisionTrace} collision result
+   */
+  #tracePlayerStatic(startpos, endpos) {
+    return SV.collision.traceStaticWorld(
+      startpos.copy(),
+      this.walkerMins,
+      this.walkerMaxs,
+      endpos.copy(),
+    );
+  }
+
+  /**
+   * @param {Vector} position stand origin
+   * @returns {boolean} true when the walker has enough floor support at the position
+   */
+  #hasGroundSupport(position) {
+    const mins = position.copy().add(this.walkerMins);
+    const maxs = position.copy().add(this.walkerMaxs);
+
+    const allCornersSolid =
+      SV.collision.pointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
+      && SV.collision.pointContents(new Vector(mins[0], maxs[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
+      && SV.collision.pointContents(new Vector(maxs[0], mins[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID
+      && SV.collision.pointContents(new Vector(maxs[0], maxs[1], mins[2] - 1.0)) === Def.content.CONTENT_SOLID;
+
+    if (allCornersSolid) {
+      return true;
     }
-    return trace.fraction;
+
+    const start = position.copy().add(new Vector(0.0, 0.0, this.walkerMins[2] + 1.0));
+    const stop = start.copy().add(new Vector(0.0, 0.0, -2.0 * STEPSIZE));
+
+    let trace = SV.collision.move(start, Vector.origin, Vector.origin, stop, Def.moveTypes.MOVE_NOMONSTERS, null);
+
+    if (trace.fraction === 1.0) {
+      return false;
+    }
+
+    let bottom = trace.endpos[2];
+    const mid = bottom;
+
+    for (let x = 0; x <= 1; x++) {
+      for (let y = 0; y <= 1; y++) {
+        start[0] = stop[0] = x !== 0 ? maxs[0] : mins[0];
+        start[1] = stop[1] = y !== 0 ? maxs[1] : mins[1];
+
+        trace = SV.collision.move(start, Vector.origin, Vector.origin, stop, Def.moveTypes.MOVE_NOMONSTERS, null);
+
+        if (trace.fraction !== 1.0 && trace.endpos[2] > bottom) {
+          bottom = trace.endpos[2];
+        }
+
+        if (trace.fraction === 1.0 || (mid - trace.endpos[2]) > STEPSIZE) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * @param {Vector} position stand origin
+   * @param {number} [probeHeight] upward probe distance
+   * @returns {number} free vertical movement before the player box hits something
+   */
+  #measureAvailableHeight(position, probeHeight = this.requiredHeight) {
+    const trace = this.#tracePlayerStatic(position, position.copy().add(new Vector(0, 0, probeHeight)));
+    return Math.max(0.0, trace.endpos[2] - position[2]);
+  }
+
+  /**
+   * @param {WalkableSurface} surface surface to use for projection
+   * @returns {Vector} a point on the surface plane
+   */
+  #getSurfacePoint(surface) {
+    const surfedge = this.worldmodel.surfedges[surface.face.firstedge];
+
+    if (surfedge > 0) {
+      return new Vector().set(this.worldmodel.vertexes[this.worldmodel.edges[surfedge][0]]);
+    }
+
+    return new Vector().set(this.worldmodel.vertexes[this.worldmodel.edges[-surfedge][1]]);
+  }
+
+  /**
+   * @param {Face} face BSP face
+   * @returns {Vector} plane-side-corrected face normal
+   */
+  #getFaceNormal(face) {
+    const normal = face.plane.normal.copy();
+
+    if (face.planeBack) {
+      normal.multiply(-1.0);
+    }
+
+    return normal;
+  }
+
+  /**
+   * @param {Vector} point point to project
+   * @param {WalkableSurface} surface target surface
+   * @returns {Vector} point projected onto the surface plane
+   */
+  #projectPointOntoSurface(point, surface) {
+    const surfacePoint = this.#getSurfacePoint(surface);
+    const pointToSurface = point.copy().subtract(surfacePoint);
+    const distanceToPlane = pointToSurface.dot(surface.normal);
+
+    return point.copy().subtract(surface.normal.copy().multiply(distanceToPlane));
+  }
+
+  /**
+   * @param {Vector} standOrigin stand origin to project
+   * @param {WalkableSurface} surface target surface
+   * @returns {Vector} stand origin snapped back onto the supporting plane
+   */
+  #projectStandOriginOntoSurface(standOrigin, surface) {
+    const floorPoint = standOrigin.copy();
+    floorPoint[2] += this.walkerMins[2];
+
+    return this.#projectPointOntoSurface(floorPoint, surface).add(this.#playerStandOffset());
+  }
+
+  /**
+   * @param {Vector} origin base stand origin
+   * @param {WalkableSurface} surface target surface
+   * @param {number} x x offset
+   * @param {number} y y offset
+   * @returns {Vector} stand origin offset around the waypoint while following the surface plane
+   */
+  #offsetStandOrigin(origin, surface, x, y) {
+    const floorPoint = origin.copy();
+    floorPoint[2] += this.walkerMins[2];
+    floorPoint[0] += x;
+    floorPoint[1] += y;
+
+    return this.#projectPointOntoSurface(floorPoint, surface).add(this.#playerStandOffset());
+  }
+
+  /**
+   * @param {Vector} startOrigin start stand origin
+   * @param {Vector} endOrigin end stand origin
+   * @returns {boolean} true when static-world step logic can traverse from start to end
+   */
+  #evaluateTraversalBetween(startOrigin, endOrigin) {
+    if (!this.#isValidStandOrigin(startOrigin)) {
+      return { ok: false, reason: 'start-fit' };
+    }
+
+    if (!this.#isValidStandOrigin(endOrigin)) {
+      return { ok: false, reason: 'end-fit' };
+    }
+
+    if (!this.#hasGroundSupport(startOrigin) || !this.#hasGroundSupport(endOrigin)) {
+      return {
+        ok: false,
+        reason: !this.#hasGroundSupport(startOrigin) ? 'start-support' : 'end-support',
+      };
+    }
+
+    const delta = endOrigin.copy().subtract(startOrigin);
+    delta[2] = 0.0;
+
+    const totalDistance = delta.len();
+
+    if (totalDistance === 0.0) {
+      return {
+        ok: Math.abs(endOrigin[2] - startOrigin[2]) <= STEPSIZE,
+        reason: 'same-spot',
+      };
+    }
+
+    const stepDistance = Math.min(NAV_LINK_STEP_DISTANCE, totalDistance);
+    const direction = delta.copy().multiply(1.0 / totalDistance);
+    let previousOrigin = startOrigin;
+
+    for (let travelled = stepDistance; travelled < totalDistance; travelled += stepDistance) {
+      const t = travelled / totalDistance;
+      const sampleOrigin = startOrigin.copy().add(direction.copy().multiply(travelled));
+      sampleOrigin[2] = startOrigin[2] + (endOrigin[2] - startOrigin[2]) * t;
+
+      if (Math.abs(sampleOrigin[2] - previousOrigin[2]) > STEPSIZE + 1.0) {
+        return { ok: false, reason: 'height-mismatch' };
+      }
+
+      if (!this.#isValidStandOrigin(sampleOrigin)) {
+        return { ok: false, reason: 'step-fit' };
+      }
+
+      if (!this.#hasGroundSupport(sampleOrigin)) {
+        return { ok: false, reason: 'step-support' };
+      }
+
+      previousOrigin = sampleOrigin;
+    }
+
+    if (Math.abs(endOrigin[2] - previousOrigin[2]) > STEPSIZE + 1.0) {
+      return { ok: false, reason: 'height-mismatch' };
+    }
+
+    return { ok: true, reason: 'ok' };
   }
 
   #extractWalkableSurfaces() {
     const walkableSurfaces = [];
+    let sampledWaypointCount = 0;
+    let retainedWaypointCount = 0;
 
-    const downwards = new Vector(0, 0, -1);
     const upwards = new Vector(0, 0, 1);
     const sidewards = new Vector(0, 1, 0);
 
@@ -534,7 +784,9 @@ export class Navigation {
       const walkableSurface = new WalkableSurface(face, i);
 
       // Only accept surfaces whose normals point upward and do not exceed a 45 degrees incline.
-      walkableSurface.stability = face.normal.dot(downwards);
+      const faceNormal = this.#getFaceNormal(face);
+
+      walkableSurface.stability = faceNormal.dot(upwards);
 
       if (walkableSurface.stability < this.maxSlope) {
         continue;
@@ -545,7 +797,7 @@ export class Navigation {
         continue;
       }
 
-      walkableSurface.normal.set(face.normal);
+      walkableSurface.normal.set(faceNormal);
 
       walkableSurfaces.push(walkableSurface);
     }
@@ -566,12 +818,6 @@ export class Navigation {
           vec.set(this.worldmodel.vertexes[this.worldmodel.edges[surfedge][0]]);
         } else {
           vec.set(this.worldmodel.vertexes[this.worldmodel.edges[-surfedge][1]]);
-        }
-
-        // triangulate on the fly, absolutely cursed
-        if (i >= 3) {
-          verts3.push(verts3[0]);
-          verts3.push(verts3[verts3.length - 2]);
         }
 
         verts3.push(vec);
@@ -679,15 +925,19 @@ export class Navigation {
         return Math.hypot(dx, dy);
       };
 
-      // margin inside polygon to avoid sampling near edges (in world units projected to local 2D)
-      const innerMargin = 0;
+      // sample the actor center lane instead of the full polygon so narrow stairs and ledges
+      // can still produce valid points without relying on later support pruning alone.
+      const innerMargin = this.requiredRadius;
 
       // sampling resolution (units between samples on the face)
-      const step = 12;
+      const step = 8;
+
+      const startX = Math.floor(minX / step) * step + (step * 0.5);
+      const startY = Math.floor(minY / step) * step + (step * 0.5);
 
       // grid-sample the bounding box and test inclusion
-      for (let sx = Math.floor(minX); sx <= Math.ceil(maxX); sx += step) {
-        for (let sy = Math.floor(minY); sy <= Math.ceil(maxY); sy += step) {
+      for (let sx = startX; sx <= Math.ceil(maxX); sx += step) {
+        for (let sy = startY; sy <= Math.ceil(maxY); sy += step) {
           const pt2 = [sx, sy];
           if (!pointInPoly(pt2, verts2)) {
             continue;
@@ -712,90 +962,61 @@ export class Navigation {
             continue;
           }
 
-          // map 2D point back to 3D: origin + u * x + v * y
+          // map 2D point back to 3D: origin + u * x + v * y, then lift to a player stand origin
           const worldPoint = origin.copy().add(u.copy().multiply(pt2[0])).add(v.copy().multiply(pt2[1]));
+          const standOrigin = worldPoint.add(this.#playerStandOffset());
 
-          surface.waypoints.push(new Waypoint(worldPoint));
+          surface.waypoints.push(new Waypoint(standOrigin));
+          sampledWaypointCount++;
         }
       }
     }
 
-    // Pass 3: prune waypoints that do not have enough headroom
-    // - for each waypoint, trace upwards to see how much free space is above it
+    // Pass 3: prune waypoints that do not have enough player-sized clearance
     const rr = this.requiredRadius;
-    const hull2Height = new Vector(0, 0, -Def.hull[1][0][2] + Def.hull[1][1][2]);
+    const sideOffsets = [
+      [-rr * 1.4, -rr], [0.0, -rr], [rr * 1.4, -rr],
+      [-rr, 0.0], [rr, 0.0],
+      [-rr * 1.4, rr], [0.0, rr], [rr * 1.4, rr],
+    ];
+    const pruneStats = {
+      invalidFit: 0,
+      lowHeight: 0,
+      unsupported: 0,
+      retained: 0,
+    };
 
     for (const surface of walkableSurfaces) {
       for (const wp of surface.waypoints) {
-        const startpos = wp.origin.copy();
-        const endpos = startpos.copy();
-
-        // trace up hull2 height, will modify endpos to the actual endpoint
-        this.#testTraceStatic(startpos, endpos.add(hull2Height), 0);
-
-        wp.availableHeight = endpos[2] - startpos[2];
-
-        if (wp.availableHeight <= 24.0) { // immediately disqualify
+        if (!this.#isValidStandOrigin(wp.origin)) {
           wp.availableHeight = 0;
+          wp.isClipping = true;
+          pruneStats.invalidFit++;
           continue;
         }
 
-        if (surface.stability < 1) {
-          continue; // skip special checks for sloped surfaces for the time being
+        wp.availableHeight = this.#measureAvailableHeight(wp.origin);
+
+        if (wp.availableHeight < this.requiredHeight) {
+          wp.availableHeight = 0;
+          pruneStats.lowHeight++;
+          continue;
         }
 
-        // trace around, taking surface.normal into account to follow the slope
-        for (const baseDir of [
-          new Vector(rr, 0, 0),
-          new Vector(-rr, 0, 0),
-          new Vector(0, 0, 0),
-          new Vector(0, rr, 0),
-          new Vector(0, -rr, 0),
-        ]) {
-          // FIXME: this does not work correctly on the other direction (E1M1 stairs)
-          // project baseDir onto the plane by removing the component along surface.normal
-          const dir = baseDir.copy().subtract(
-            surface.normal.copy().multiply(baseDir.dot(surface.normal)),
-          );
-          if (dir.len() === 0) {
-            continue;
-          }
-          dir.normalize();
-          dir.multiply(this.requiredRadius);
-          const sideStart = wp.origin.copy();
-          const sideEnd = sideStart.copy().add(dir);
-          const frac = this.#testTraceStatic(sideStart, sideEnd, 0);
-          if (frac < 1) {
-            wp.isClipping = true;
-            break;
-          }
+        if (!this.#hasGroundSupport(wp.origin)) {
+          wp.isFloating = true;
+          pruneStats.unsupported++;
+          continue;
         }
 
-        const ledgeCheckHeight = 18.0 * 2; // 2 step sizes
+        for (const [x, y] of sideOffsets) {
+          const sideOrigin = this.#offsetStandOrigin(wp.origin, surface, x, y);
 
-        // trace around downwards to detect ledges
-        for (const dir of [
-          new Vector(-rr * 1.4, -rr, -ledgeCheckHeight), new Vector(0, -rr, -ledgeCheckHeight), new Vector(rr * 1.4, -rr, -ledgeCheckHeight),
-          new Vector(-rr, 0, -ledgeCheckHeight), new Vector(0, 0, -ledgeCheckHeight), new Vector(rr, 0, -ledgeCheckHeight),
-          new Vector(-rr * 1.4, rr, -ledgeCheckHeight), new Vector(0, rr, -ledgeCheckHeight), new Vector(rr * 1.4, rr, -ledgeCheckHeight),
-        ]) {
-          // TODO: apply normal vector to dir to follow slope
-          const sideStart = wp.origin.copy().add(new Vector(dir[0], dir[1], 0));
-          const sideEnd = sideStart.copy().add(new Vector(0, 0, dir[2]));
-          const frac = this.#testTraceStatic(sideStart, sideEnd, 0);
-          if (frac === -1 && sideEnd[2] === sideStart[2]) { // still on solid ground
-            if (sideEnd[0] !== sideStart[0] || sideEnd[1] !== sideStart[1]) { // found a wall
-              // TODO: but what if it’s a small protrusion, e.g. stairs?
-              wp.isClipping = true;
-            }
+          if (!this.#isValidStandOrigin(sideOrigin)) {
             continue;
           }
 
-          if (frac > 0 && dir[0] === 0 && dir[1] === 0) {
-            wp.isFloating = true;
-          }
-
-          if (sideStart[2] - sideEnd[2] >= ledgeCheckHeight) {
+          if (!this.#hasGroundSupport(sideOrigin)) {
             wp.nearLedge = true;
             break;
           }
@@ -811,6 +1032,7 @@ export class Navigation {
       for (const wp of surface.waypoints) {
         if (wp.availableHeight >= 56 && !wp.isClipping && !wp.isFloating) {
           suitableWaypoints.push(wp);
+          pruneStats.retained++;
         }
       }
 
@@ -819,9 +1041,14 @@ export class Navigation {
       }
 
       surface.waypoints = suitableWaypoints;
+      retainedWaypointCount += suitableWaypoints.length;
 
       this.geometry.walkableSurfaces.push(surface);
     }
+
+    Con.DPrint(
+      `Navigation: walkable surfaces=${walkableSurfaces.length}, sampled waypoints=${sampledWaypointCount}, retained waypoints=${retainedWaypointCount}, retained surfaces=${this.geometry.walkableSurfaces.length}, invalidFit=${pruneStats.invalidFit}, lowHeight=${pruneStats.lowHeight}, unsupported=${pruneStats.unsupported}\n`,
+    );
   }
 
   #buildNavigationGraph() {
@@ -847,60 +1074,40 @@ export class Navigation {
     const nodes = this.graph.nodes;
     nodes.length = 0;
 
-    const distance = (/** @type {Vector} */ a, /** @type {Vector} */ b) => Math.hypot(a[0] - b[0], a[1] - b[1]); // CR: z ignored, since they are coplanar anyway
-
-    // Helper function to project a point onto a surface plane
-    const projectOntoSurface = (/** @type {Vector} */ point, /** @type {WalkableSurface} */ surface) => {
-      const normal = surface.normal;
-      const face = surface.face;
-
-      // Get a point on the surface plane (use first vertex of the face)
-      let surfacePoint = null;
-      const surfedge = this.worldmodel.surfedges[face.firstedge];
-      if (surfedge > 0) {
-        surfacePoint = new Vector().set(this.worldmodel.vertexes[this.worldmodel.edges[surfedge][0]]);
-      } else {
-        surfacePoint = new Vector().set(this.worldmodel.vertexes[this.worldmodel.edges[-surfedge][1]]);
-      }
-
-      // Project point onto the plane: p' = p - ((p - surfacePoint) · n) * n
-      const pointToSurface = point.copy().subtract(surfacePoint);
-      const distanceToPlane = pointToSurface.dot(normal);
-      return point.copy().subtract(normal.copy().multiply(distanceToPlane));
-    };
+    const distance = (/** @type {Vector} */ a, /** @type {Vector} */ b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
     // Group waypoints that should be merged together
+    /** @type {{seedOrigin: Vector, items: {wp: Waypoint, surface: WalkableSurface, index: number}[]}[]} */
     const waypointGroups = [];
-    const processed = new Set();
 
     for (let i = 0; i < allWaypoints.length; i++) {
-      if (processed.has(i)) {
-        continue;
-      }
+      const current = allWaypoints[i];
+      let bestGroup = null;
+      let bestDistance = Infinity;
 
-      const { wp: seedWp, surface: seedSurface } = allWaypoints[i];
-      const group = [{ wp: seedWp, surface: seedSurface, index: i }];
-      processed.add(i);
+      for (const group of waypointGroups) {
+        const d = distance(group.seedOrigin, current.wp.origin);
+        const heightDiff = Math.abs(group.seedOrigin[2] - current.wp.origin[2]);
 
-      // Find all nearby waypoints that should merge with this one
-      for (let j = i + 1; j < allWaypoints.length; j++) {
-        if (processed.has(j)) {
+        if (d > mergeRadius || heightDiff > STEPSIZE) {
           continue;
         }
 
-        const { wp: otherWp, surface: otherSurface } = allWaypoints[j];
-
-        // Check if waypoints are close enough and on compatible surfaces
-        const d = distance(seedWp.origin, otherWp.origin);
-        const heightDiff = Math.abs(seedWp.origin[2] - otherWp.origin[2]);
-
-        if (d <= mergeRadius && heightDiff <= 8) { // allow small height differences for slopes
-          group.push({ wp: otherWp, surface: otherSurface, index: j });
-          processed.add(j);
+        if (d < bestDistance) {
+          bestDistance = d;
+          bestGroup = group;
         }
       }
 
-      waypointGroups.push(group);
+      if (bestGroup === null) {
+        waypointGroups.push({
+          seedOrigin: current.wp.origin.copy(),
+          items: [{ ...current, index: i }],
+        });
+        continue;
+      }
+
+      bestGroup.items.push({ ...current, index: i });
     }
 
     // Create nodes from waypoint groups
@@ -909,32 +1116,43 @@ export class Navigation {
 
       // Compute centroid of all waypoints in the group
       const centroid = new Vector();
-      let availableHeight = 0;
+      let representativeOrigin = /** @type {Vector|null} */ (null);
+      let representativeDistance = Infinity;
+      let minAvailableHeight = Infinity;
       let nearLedge = false;
       let isClipping = false;
       let isFloating = false;
       /** @type {Set<WalkableSurface>} */
       const surfaces = new Set();
 
-      for (const { wp, surface } of group) {
+      for (const { wp, surface } of group.items) {
         centroid.add(wp.origin);
-        availableHeight = Math.min(availableHeight, wp.availableHeight);
+        minAvailableHeight = Math.min(minAvailableHeight, wp.availableHeight);
         nearLedge = nearLedge || wp.nearLedge;
         isClipping = isClipping || wp.isClipping;
         isFloating = isFloating || wp.isFloating;
         surfaces.add(surface);
       }
 
-      centroid.multiply(1.0 / group.length);
+      centroid.multiply(1.0 / group.items.length);
 
       // If all waypoints are on the same surface, project centroid onto that surface
       if (surfaces.size === 1) {
         const surface = surfaces.values().next().value;
-        centroid.set(projectOntoSurface(centroid, surface));
+        centroid.set(this.#projectStandOriginOntoSurface(centroid, surface));
       }
 
-      const node = new Node(id, centroid);
-      node.availableHeight = availableHeight;
+      for (const { wp } of group.items) {
+        const d = wp.origin.distanceTo(centroid);
+
+        if (d < representativeDistance) {
+          representativeDistance = d;
+          representativeOrigin = wp.origin;
+        }
+      }
+
+      const node = new Node(id, representativeOrigin ?? centroid);
+      node.availableHeight = Number.isFinite(minAvailableHeight) ? minAvailableHeight : 0.0;
       node.nearLedge = nearLedge;
       node.isClipping = isClipping;
       node.isFloating = isFloating;
@@ -944,7 +1162,17 @@ export class Navigation {
     }
 
     // 3) connect nodes: attempt links between node pairs if close and unobstructed
-    const stepOffset = new Vector(0, 0, 18); // maximum allowance to climb steps (FIXME: STEPSIZE)
+    const linkStats = {
+      considered: 0,
+      linked: 0,
+      startFit: 0,
+      endFit: 0,
+      startSupport: 0,
+      endSupport: 0,
+      stepFit: 0,
+      stepSupport: 0,
+      heightMismatch: 0,
+    };
 
     for (let i = 0; i < nodes.length; i++) {
       const a = nodes[i];
@@ -957,38 +1185,74 @@ export class Navigation {
           continue;
         }
 
-        // perform a trace between the two node origins to ensure unobstructed path
-        const start = a.origin;
-        const end = b.origin;
-        const startStepped = start.copy().add(stepOffset);
+        linkStats.considered++;
 
-        const frac = this.#testTraceStatic(start.copy(), end.copy(), 1);
-        const fracStep = this.#testTraceStatic(startStepped, end.copy(), 0);
+        const aToB = this.#evaluateTraversalBetween(a.origin, b.origin);
+        const bToA = this.#evaluateTraversalBetween(b.origin, a.origin);
 
-        if (frac < 1.0 && fracStep < 1.0) {
-          // blocked or partially blocked
+        if (!aToB.ok && !bToA.ok) {
+          const reasons = [aToB.reason, bToA.reason];
+
+          if (reasons.includes('start-fit')) {
+            linkStats.startFit++;
+          } else if (reasons.includes('end-fit')) {
+            linkStats.endFit++;
+          } else if (reasons.includes('start-support')) {
+            linkStats.startSupport++;
+          } else if (reasons.includes('end-support')) {
+            linkStats.endSupport++;
+          } else if (reasons.includes('step-fit')) {
+            linkStats.stepFit++;
+          } else if (reasons.includes('step-support')) {
+            linkStats.stepSupport++;
+          } else {
+            linkStats.heightMismatch++;
+          }
+
           continue;
         }
 
-        let costBasis = dist; // simple cost metric: distance
-        let costA = 0, costB = 0;
+        if (aToB.ok) {
+          let cost = dist + Math.max(0.0, b.origin[2] - a.origin[2]);
 
-        // add penalties for being near a ledge, twice the sum of two merge radii
+          if (a.nearLedge) {
+            cost += 96;
+          }
 
-        if (a.nearLedge) {
-          costA += 96;
+          if (b.nearLedge) {
+            cost += 96;
+          }
+
+          a.neighbors.push([b.id, cost, 0]);
+          linkStats.linked++;
         }
 
-        if (b.nearLedge) {
-          costB += 96;
+        if (bToA.ok) {
+          let cost = dist + Math.max(0.0, a.origin[2] - b.origin[2]);
+
+          if (b.nearLedge) {
+            cost += 96;
+          }
+
+          if (a.nearLedge) {
+            cost += 96;
+          }
+
+          b.neighbors.push([a.id, cost, 0]);
+          linkStats.linked++;
         }
-
-        costBasis += Math.max(0, end[2] - start[2]); // prefer lower paths
-
-        a.neighbors.push([b.id, costBasis + costA, 0]);
-        b.neighbors.push([a.id, costBasis + costB, 0]);
       }
     }
+
+    Con.DPrint(
+      `Navigation: merged ${allWaypoints.length} waypoints into ${waypointGroups.length} waypoint groups\n`,
+    );
+    Con.PrintWarning(
+      `Navigation: link stats considered=${linkStats.considered} linked=${linkStats.linked} `
+      + `startFit=${linkStats.startFit} endFit=${linkStats.endFit} `
+      + `startSupport=${linkStats.startSupport} endSupport=${linkStats.endSupport} `
+      + `stepFit=${linkStats.stepFit} stepSupport=${linkStats.stepSupport} heightMismatch=${linkStats.heightMismatch}\n`,
+    );
   }
 
   /** @type {Record<number,*>} edict number to timeout, we cool down incoming updates here */
@@ -1137,6 +1401,11 @@ export class Navigation {
   }
 
   #buildOctree() {
+    if (this.graph.nodes.length === 0) {
+      this.graph.octree = null;
+      return;
+    }
+
     // compute bounding box of node origins
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -1404,6 +1673,11 @@ export class Navigation {
       return;
     }
 
+    if (this.geometry.walkableSurfaces.length === 0) {
+      Con.PrintWarning('Navigation: waypoint debug is only available immediately after a local nav build. Nav files do not include waypoint data.\n');
+      return;
+    }
+
     /** @type {{origin: Vector, color: number, surface: WalkableSurface}[]} */
     const debugPoints = [];
     let waypoints = 0;
@@ -1433,13 +1707,37 @@ export class Navigation {
     }
   }
 
+  // #debugKnownTestNavMeshProbes() {
+  //   if (SV.server.mapname !== 'test_nav_mesh') {
+  //     return;
+  //   }
+
+  //   const probes = [
+  //     ['knight-start', new Vector(-160.0, -112.0, -160.0)],
+  //     ['player-start', new Vector(352.0, -120.0, 40.0)],
+  //     ['tele-dest-1', new Vector(352.0, -24.0, 24.0)],
+  //     ['tele-dest-2', new Vector(-168.0, -416.0, -168.0)],
+  //   ];
+
+  //   for (const [label, origin] of probes) {
+  //     Con.PrintWarning(
+  //       `Navigation: probe ${label} fit=${this.#isValidStandOrigin(origin)} support=${this.#hasGroundSupport(origin)} height=${this.#measureAvailableHeight(origin)}\n`,
+  //     );
+  //   }
+  // }
+
   build() {
-    console.assert(this.worldmodel, 'Navigation: worldmodel is required');
+    console.assert(Boolean(this.worldmodel), 'Navigation: worldmodel is required');
 
     this.graph.octree = null;
     this.graph.nodes.length = 0;
+    this.geometry.walkableSurfaces.length = 0;
+    this.relinkSkiplist.length = 0;
+    this.relinkEdictLinks = {};
 
     Con.PrintWarning('Navigation: node graph out of date, rebuilding...\n');
+
+    // this.#debugKnownTestNavMeshProbes();
 
     this.#extractWalkableSurfaces();
     this.#buildNavigationGraph();
@@ -1457,11 +1755,6 @@ export class Navigation {
       })
       .catch((err) => Con.PrintError('Navigation: failed to save navigation graph: ' + err + '\n'));
 
-    if (R) {
-      setTimeout(() => {
-        this.#debugWaypoints();
-        this.#debugNavigation();
-      }, 1000); // wait a bit for renderer to initialize
-    }
+    this.#scheduleDebugRefresh();
   }
 };
