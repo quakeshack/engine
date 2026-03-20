@@ -533,10 +533,8 @@ export class Navigation {
     const out = new Uint8Array(bytes);
     await COM.WriteFile(filename, out, out.length);
 
-    if (registry.isDedicatedServer) {
-      // tell the worker thread to reload the data
-      eventBus.publish('nav.load', SV.server.mapname);
-    }
+    // Keep the worker in sync after every successful rebuild, including listen-server sessions.
+    eventBus.publish('nav.load', SV.server.mapname, this.worldmodel.checksum);
   }
 
   #playerStandOffset() {
@@ -704,7 +702,7 @@ export class Navigation {
   /**
    * @param {Vector} startOrigin start stand origin
    * @param {Vector} endOrigin end stand origin
-   * @returns {boolean} true when static-world step logic can traverse from start to end
+   * @returns {{ok: boolean, reason: string}} traversal result for static-world stand sampling
    */
   #evaluateTraversalBetween(startOrigin, endOrigin) {
     if (!this.#isValidStandOrigin(startOrigin)) {
