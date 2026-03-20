@@ -160,9 +160,128 @@ class Node {
 
     return node;
   }
-};
+}
 
-export class NavMeshOutOfDateException extends CorruptedResourceError {};
+/**
+ * Binary min-heap keyed by fScore for efficient A* open-set extraction.
+ */
+class MinHeap {
+  /** @type {number[]} node IDs stored in heap order */
+  #data = [];
+  /** @type {Float64Array} fScore reference, indexed by node ID */
+  #keys;
+  /** @type {Int32Array} heap index of each node ID (-1 = not in heap) */
+  #index;
+
+  /** @param {number} capacity maximum node count */
+  constructor(capacity) {
+    this.#keys = new Float64Array(capacity).fill(Infinity);
+    this.#index = new Int32Array(capacity).fill(-1);
+  }
+
+  /** @returns {number} number of items in the heap */
+  get size() {
+    return this.#data.length;
+  }
+
+  /**
+   * Insert or update a node's priority.
+   * @param {number} id node ID
+   * @param {number} priority fScore value
+   */
+  pushOrDecrease(id, priority) {
+    this.#keys[id] = priority;
+
+    if (this.#index[id] !== -1) {
+      this.#bubbleUp(this.#index[id]);
+      return;
+    }
+
+    this.#data.push(id);
+    this.#index[id] = this.#data.length - 1;
+    this.#bubbleUp(this.#data.length - 1);
+  }
+
+  /**
+   * Extract the node with the smallest fScore.
+   * @returns {number} node ID with the lowest priority
+   */
+  pop() {
+    const top = this.#data[0];
+    const last = this.#data.pop();
+
+    this.#index[top] = -1;
+
+    if (this.#data.length > 0) {
+      this.#data[0] = last;
+      this.#index[last] = 0;
+      this.#sinkDown(0);
+    }
+
+    return top;
+  }
+
+  /**
+   * @param {number} i heap array index to bubble up
+   */
+  #bubbleUp(i) {
+    const data = this.#data;
+    const keys = this.#keys;
+    const idx = this.#index;
+
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+
+      if (keys[data[i]] >= keys[data[parent]]) {
+        break;
+      }
+
+      const tmp = data[i];
+      data[i] = data[parent];
+      data[parent] = tmp;
+      idx[data[i]] = i;
+      idx[data[parent]] = parent;
+      i = parent;
+    }
+  }
+
+  /**
+   * @param {number} i heap array index to sink down
+   */
+  #sinkDown(i) {
+    const data = this.#data;
+    const keys = this.#keys;
+    const idx = this.#index;
+    const n = data.length;
+
+    while (true) {
+      let smallest = i;
+      const left = 2 * i + 1;
+      const right = 2 * i + 2;
+
+      if (left < n && keys[data[left]] < keys[data[smallest]]) {
+        smallest = left;
+      }
+
+      if (right < n && keys[data[right]] < keys[data[smallest]]) {
+        smallest = right;
+      }
+
+      if (smallest === i) {
+        break;
+      }
+
+      const tmp = data[i];
+      data[i] = data[smallest];
+      data[smallest] = tmp;
+      idx[data[i]] = i;
+      idx[data[smallest]] = smallest;
+      i = smallest;
+    }
+  }
+}
+
+export class NavMeshOutOfDateException extends CorruptedResourceError {}
 
 // TODO: in future we could build graphs per entity type (e.g. monster navmesh with tighter clearances, flying monster navmesh that ignores ground support, etc.)
 
@@ -356,7 +475,7 @@ export class Navigation {
 
     this.graph.nodes.length = 0;
     this.graph.octree = null;
-    this.relinkSkiplist.length = 0;
+    this.relinkSkiplist.clear();
 
     // Try to load binary file first (ArrayBuffer). Fallback to text JSON for older files.
     const buf = await COM.LoadFile(filename);
@@ -418,7 +537,7 @@ export class Navigation {
     // relink skiplist
     const relinkCount = readUint32();
     for (let i = 0; i < relinkCount; i++) {
-      this.relinkSkiplist.push(readUint32());
+      this.relinkSkiplist.add(readUint32());
     }
 
     // nodes
@@ -503,7 +622,7 @@ export class Navigation {
     pushFloat32(this.requiredRadius);
 
     // relink skiplist
-    pushUint32(this.relinkSkiplist.length);
+    pushUint32(this.relinkSkiplist.size);
     for (const v of this.relinkSkiplist) {
       pushUint32(v);
     }
@@ -1159,7 +1278,10 @@ export class Navigation {
       nodes.push(node);
     }
 
-    // 3) connect nodes: attempt links between node pairs if close and unobstructed
+    // 3) build spatial index before linking to accelerate neighbor search
+    this.#buildOctree();
+
+    // 4) connect nodes: attempt links between nearby, unobstructed node pairs
     const linkStats = {
       considered: 0,
       linked: 0,
@@ -1172,16 +1294,27 @@ export class Navigation {
       heightMismatch: 0,
     };
 
-    for (let i = 0; i < nodes.length; i++) {
-      const a = nodes[i];
+    // track already-evaluated pairs to avoid duplicate work
+    const evaluatedPairs = new Set();
 
-      for (let j = i + 1; j < nodes.length; j++) {
-        const b = nodes[j];
-        const dist = b.origin.distanceTo(a.origin);
-
-        if (dist > linkRadius) {
+    for (const a of nodes) {
+      for (const b of this.#findNearestNodes(a.origin, linkRadius)) {
+        if (a.id === b.id) {
           continue;
         }
+
+        // ensure each pair is evaluated only once
+        const lo = Math.min(a.id, b.id);
+        const hi = Math.max(a.id, b.id);
+        const pairKey = lo * nodes.length + hi;
+
+        if (evaluatedPairs.has(pairKey)) {
+          continue;
+        }
+
+        evaluatedPairs.add(pairKey);
+
+        const dist = b.origin.distanceTo(a.origin);
 
         linkStats.considered++;
 
@@ -1259,8 +1392,8 @@ export class Navigation {
   /** @type {Record<number,Node>} */
   relinkEdictLinks = {};
 
-  /** @type {number[]} list of edict numbers that we are not interested in, since it’s dynamic, e.g. func_door */
-  relinkSkiplist = [];
+  /** @type {Set<number>} edict numbers not interesting for relinking (e.g. func_door) */
+  relinkSkiplist = new Set();
 
   /**
    * updates navigation links based on entity position
@@ -1280,7 +1413,7 @@ export class Navigation {
     }
 
     // this edict got flagged as not interesting earlier
-    if (this.relinkSkiplist.includes(edict.num)) {
+    if (this.relinkSkiplist.has(edict.num)) {
       return;
     }
 
@@ -1343,18 +1476,18 @@ export class Navigation {
       const destination = destinationEdict?.entity ?? null;
 
       if (!destination) {
-        console.warn('Navigation: teleporter without a valid target', source);
+        Con.PrintWarning(`Navigation: teleporter without a valid target: ${source.classname}\n`);
         continue;
       }
 
       const sp = source.centerPoint.copy(), dp = destination.centerPoint.copy();
 
-      console.debug('Navigation: found teleporter', sp, '-->', dp);
+      Con.DPrint(`Navigation: found teleporter [${sp}] --> [${dp}]\n`);
 
       const destNode = this.#findNearestNode(dp, 96); // Just grab one in proximity of the destination
 
       if (!destNode) {
-        console.warn('Navigation: teleporter destination has no nearby navnode', destination);
+        Con.PrintWarning('Navigation: teleporter destination has no nearby navnode\n');
         continue;
       }
 
@@ -1364,17 +1497,17 @@ export class Navigation {
       const sourceNode = new Node(this.graph.nodes.length, sp);
       sourceNode.availableHeight = source.maxs[2] - source.mins[2];
       this.graph.nodes.push(sourceNode);
-      console.debug('Navigation: adding teleporter source node', sourceNode);
+      Con.DPrint(`Navigation: adding teleporter source node ${sourceNode.id}\n`);
 
       // link the new node to its neighbors
       for (const sourceNodeNeighbor of this.#findNearestNodes(sp, 64)) {
-        console.debug('Navigation: linking teleporter nodes', sourceNodeNeighbor.id, '-->', sourceNode.id);
+        Con.DPrint(`Navigation: linking teleporter nodes ${sourceNodeNeighbor.id} --> ${sourceNode.id}\n`);
         sourceNodeNeighbor.neighbors.push([sourceNode.id, cost, 0]); // one-way link
         // this.graph.edges.push([ sourceNodeNeighbor.id, sourceNode.id, cost ]);
       }
 
       // link the new node to the destination node
-      console.debug('Navigation: linking teleporter nodes', sourceNode.id, '-->', destNode.id);
+      Con.DPrint(`Navigation: linking teleporter nodes ${sourceNode.id} --> ${destNode.id}\n`);
       sourceNode.neighbors.push([destNode.id, cost, 0]); // one-way link
       // this.graph.edges.push([ sourceNode.id, destNode.id, cost ]);
     }
@@ -1394,7 +1527,7 @@ export class Navigation {
         continue;
       }
 
-      this.relinkSkiplist.push(doorEdict.num);
+      this.relinkSkiplist.add(doorEdict.num);
     }
   }
 
@@ -1455,7 +1588,7 @@ export class Navigation {
     }
 
     // fallthrough to full scan if nothing found within maxDist in octree
-    console.warn('Navigation: nearest node not found in octree, falling back to linear scan', this, position, maxDist);
+    Con.DPrint('Navigation: nearest node not found in octree, falling back to linear scan\n');
 
     let best = null;
     let bestDist = Infinity;
@@ -1472,12 +1605,20 @@ export class Navigation {
   }
 
   /**
-   * Find nearest graph node to a world position. Not using the Octree.
+   * Find all graph nodes within maxDist of a world position.
+   * Uses the octree when available, falls back to linear scan.
    * @param {Vector} position world-space position to query
    * @param {number} maxDist maximum search distance in world units
-   * @yields {Node} node if found, null if none within maxDist or graph is empty
+   * @yields {Node} nodes within range
    */
   *#findNearestNodes(position, maxDist = 512) {
+    if (this.graph.octree) {
+      for (const [, node] of this.graph.octree.root.querySphere(position, maxDist)) {
+        yield node;
+      }
+      return;
+    }
+
     for (const node of this.graph.nodes) {
       const d = position.distanceTo(node.origin);
       if (d <= maxDist) {
@@ -1520,7 +1661,7 @@ export class Navigation {
     const goalNode = this.#findNearestNode(goalPos, 512);
 
     if (!startNode || !goalNode) {
-      console.warn('Navigation: no start or goal node found', startPos, goalPos);
+      Con.DPrint('Navigation: no start or goal node found\n');
       return null;
     }
 
@@ -1530,73 +1671,47 @@ export class Navigation {
       return path;
     }
 
-    // A* structures
-    const openSet = new Set([startNode.id]);
-    const cameFrom = {}; // id -> id
-    const gScore = {}; // id -> cost
-    const fScore = {}; // id -> estimated total
-
-    const heuristic = (/** @type {Vector} */ a, /** @type {Vector} */ b) => a.distanceTo(b);
-
-    for (const n of this.graph.nodes) {
-      gScore[n.id] = Infinity;
-      fScore[n.id] = Infinity;
-    }
+    const nodeCount = this.graph.nodes.length;
+    const gScore = new Float64Array(nodeCount).fill(Infinity);
+    const cameFrom = new Int32Array(nodeCount).fill(-1);
+    const openSet = new MinHeap(nodeCount);
 
     gScore[startNode.id] = 0;
-    fScore[startNode.id] = heuristic(startNode.origin, goalNode.origin);
-
-    // TODO: limit the size, since the graph can be huge and things are moving around anyway all the time
-    //       the AI code already knows to refresh the path after some time or distance traveled, so this is fine
+    openSet.pushOrDecrease(startNode.id, startNode.origin.distanceTo(goalNode.origin));
 
     while (openSet.size > 0) {
-      // pick node in openSet with lowest fScore
-      let currentId = null;
-      let currentF = Infinity;
-      for (const id of openSet) {
-        if (fScore[id] < currentF) {
-          currentF = fScore[id];
-          currentId = id;
-        }
-      }
+      const currentId = openSet.pop();
 
       if (currentId === goalNode.id) {
-        // reconstruct path
         const path = [];
         let cur = currentId;
-        while (cur !== undefined) {
-          const node = this.graph.nodes[cur];
-          path.push(node.origin.copy());
+
+        while (cur !== -1) {
+          path.push(this.graph.nodes[cur].origin.copy());
           cur = cameFrom[cur];
         }
+
         path.reverse();
-        // prepend exact start and append exact goal for precision
         path[0] = startPos.copy();
         path.push(goalPos.copy());
-        // CR: not smoothing for now, there are some issues with NPCs following the lines (movestep, unable to step over gaps)
-        const bspath = path; // sampleBSpline(path, Math.min(200, path.length * 4));
-        this.#debugPath(bspath);
-        return bspath;
+        this.#debugPath(path);
+        return path;
       }
 
-      openSet.delete(currentId);
+      const currentG = gScore[currentId];
 
       for (const nb of this.graph.nodes[currentId].neighbors) {
-        const tentativeG = gScore[currentId] + nb[1] + nb[2];
-
         const nbId = nb[0];
+        const tentativeG = currentG + nb[1] + nb[2];
+
         if (tentativeG < gScore[nbId]) {
           cameFrom[nbId] = currentId;
           gScore[nbId] = tentativeG;
-          fScore[nbId] = tentativeG + heuristic(this.graph.nodes[nbId].origin, goalNode.origin);
-          if (!openSet.has(nbId)) {
-            openSet.add(nbId);
-          }
+          openSet.pushOrDecrease(nbId, tentativeG + this.graph.nodes[nbId].origin.distanceTo(goalNode.origin));
         }
       }
     }
 
-    // no path found
     return null;
   }
 
@@ -1697,8 +1812,8 @@ export class Navigation {
       }
     }
 
-    console.debug('waypoints: ', waypoints);
-    console.debug('extracted walkable surfaces:', this.geometry.walkableSurfaces);
+    Con.DPrint(`Navigation: debug waypoints: ${waypoints}\n`);
+    Con.DPrint(`Navigation: extracted walkable surfaces: ${this.geometry.walkableSurfaces.length}\n`);
 
     for (const { color, origin } of debugPoints) {
       this.#emitDot(origin, color);
@@ -1730,7 +1845,7 @@ export class Navigation {
     this.graph.octree = null;
     this.graph.nodes.length = 0;
     this.geometry.walkableSurfaces.length = 0;
-    this.relinkSkiplist.length = 0;
+    this.relinkSkiplist.clear();
     this.relinkEdictLinks = {};
 
     Con.PrintWarning('Navigation: node graph out of date, rebuilding...\n');
@@ -1755,4 +1870,4 @@ export class Navigation {
 
     this.#scheduleDebugRefresh();
   }
-};
+}

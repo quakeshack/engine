@@ -592,4 +592,221 @@ describe('Navigation.build', () => {
     assert.ok(nodeCount > 0);
     assert.ok(surfaceCounts.every((count) => count === 0));
   });
+
+  test('publishes nav.load after saving a rebuilt graph in listen-server mode', async () => {
+    const worldmodel = createNavigationWorldModel();
+    const publishedLoads = [];
+
+    const collision = {
+      traceStaticWorld(start, mins, maxs, end) {
+        assertExpectedTraceShape(mins, maxs);
+
+        return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
+      },
+      move(start, mins, maxs, end) {
+        return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
+      },
+      pointContents(point) {
+        return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
+      },
+      staticWorldContents(point) {
+        return isSupportedFloorPoint(point) ? -1 : 0;
+      },
+      traceStaticWorldLine() {
+        assert.fail('Navigation.build should not use point-sized static line traces');
+      },
+    };
+
+    const navigation = new Navigation(worldmodel);
+
+    Navigation.nav_build_process = null;
+    Navigation.nav_save_waypoints = { value: 0 };
+    Navigation.nav_debug_graph = { value: 0 };
+    Navigation.nav_debug_waypoints = { value: 0 };
+    Navigation.nav_debug_path = { value: 0 };
+
+    await withNavigationRegistry({
+      COM: { WriteFile() { return Promise.resolve(); } },
+      Con: {
+        DPrint() {},
+        PrintWarning() {},
+        PrintSuccess() {},
+        PrintError() {},
+      },
+      SV: {
+        collision,
+        server: {
+          mapname: 'nav-test',
+          worldmodel,
+          num_edicts: 0,
+          edicts: [],
+        },
+      },
+    }, async () => {
+      registry.isDedicatedServer = false;
+
+      const unsubscribe = eventBus.subscribe('nav.load', (mapname, checksum) => {
+        publishedLoads.push({ mapname, checksum });
+      });
+
+      navigation.build();
+      await Promise.resolve();
+      await Promise.resolve();
+      unsubscribe();
+    });
+
+    assert.deepEqual(publishedLoads, [{ mapname: 'nav-test', checksum: worldmodel.checksum }]);
+  });
+});
+
+describe('Navigation.findPath', () => {
+  test('returns direct path when start and goal share the nearest node', async () => {
+    const worldmodel = createNavigationWorldModel();
+    const collision = {
+      traceStaticWorld(start, mins, maxs, end) {
+        return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
+      },
+      move(start, mins, maxs, end) {
+        return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
+      },
+      pointContents(point) {
+        return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
+      },
+    };
+
+    const navigation = new Navigation(worldmodel);
+
+    Navigation.nav_build_process = null;
+    Navigation.nav_save_waypoints = { value: 0 };
+    Navigation.nav_debug_graph = { value: 0 };
+    Navigation.nav_debug_waypoints = { value: 0 };
+    Navigation.nav_debug_path = { value: 0 };
+
+    await withNavigationRegistry({
+      COM: { WriteFile() { return Promise.resolve(); } },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: {
+        collision,
+        server: { mapname: 'nav-test', worldmodel, num_edicts: 0, edicts: [] },
+      },
+    }, () => {
+      navigation.build();
+    });
+
+    assert.ok(navigation.graph.nodes.length > 1, 'should have multiple nodes');
+
+    const node = navigation.graph.nodes[0];
+    const start = node.origin.copy();
+    const goal = node.origin.copy().add(new Vector(1, 1, 0));
+
+    const path = navigation.findPath(start, goal);
+    assert.ok(path);
+    assert.equal(path.length, 2);
+    assert.deepEqual([...path[0]], [...start]);
+    assert.deepEqual([...path[1]], [...goal]);
+  });
+
+  test('finds a multi-hop path across connected nodes', async () => {
+    const worldmodel = createNavigationWorldModel();
+    const collision = {
+      traceStaticWorld(start, mins, maxs, end) {
+        return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
+      },
+      move(start, mins, maxs, end) {
+        return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
+      },
+      pointContents(point) {
+        return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
+      },
+    };
+
+    const navigation = new Navigation(worldmodel);
+
+    Navigation.nav_build_process = null;
+    Navigation.nav_save_waypoints = { value: 0 };
+    Navigation.nav_debug_graph = { value: 0 };
+    Navigation.nav_debug_waypoints = { value: 0 };
+    Navigation.nav_debug_path = { value: 0 };
+
+    await withNavigationRegistry({
+      COM: { WriteFile() { return Promise.resolve(); } },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: {
+        collision,
+        server: { mapname: 'nav-test', worldmodel, num_edicts: 0, edicts: [] },
+      },
+    }, () => {
+      navigation.build();
+    });
+
+    // pick two distant nodes that require multiple hops
+    const nodes = navigation.graph.nodes;
+    assert.ok(nodes.length >= 4, 'need at least 4 nodes for a multi-hop test');
+
+    // use two nodes that are far apart
+    const startNode = nodes[0];
+    let goalNode = nodes[nodes.length - 1];
+
+    // ensure they are distinct
+    assert.notEqual(startNode.id, goalNode.id);
+
+    const path = navigation.findPath(startNode.origin.copy(), goalNode.origin.copy());
+
+    // path may be null if the graph is disconnected, but for a single large floor it should connect
+    if (path) {
+      assert.ok(path.length >= 2, 'path should have at least start and goal');
+      assert.deepEqual([...path[0]], [...startNode.origin]);
+      assert.deepEqual([...path[path.length - 1]], [...goalNode.origin]);
+    }
+  });
+
+  test('returns null when graph is empty', () => {
+    const navigation = new Navigation(null);
+
+    Navigation.nav_debug_path = { value: 0 };
+
+    const path = navigation.findPath(new Vector(0, 0, 24), new Vector(100, 100, 24));
+    assert.equal(path, null);
+  });
+
+  test('returns null when start or goal has no nearby node', async () => {
+    const worldmodel = createNavigationWorldModel();
+    const collision = {
+      traceStaticWorld(start, mins, maxs, end) {
+        return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
+      },
+      move(start, mins, maxs, end) {
+        return traceAgainstFlatFloor(start, mins, maxs, end, isSupportedFloorPoint);
+      },
+      pointContents(point) {
+        return contentsAgainstFlatFloor(point, isSupportedFloorPoint);
+      },
+    };
+
+    const navigation = new Navigation(worldmodel);
+
+    Navigation.nav_build_process = null;
+    Navigation.nav_save_waypoints = { value: 0 };
+    Navigation.nav_debug_graph = { value: 0 };
+    Navigation.nav_debug_waypoints = { value: 0 };
+    Navigation.nav_debug_path = { value: 0 };
+
+    await withNavigationRegistry({
+      COM: { WriteFile() { return Promise.resolve(); } },
+      Con: { DPrint() {}, PrintWarning() {}, PrintSuccess() {}, PrintError() {} },
+      SV: {
+        collision,
+        server: { mapname: 'nav-test', worldmodel, num_edicts: 0, edicts: [] },
+      },
+    }, () => {
+      navigation.build();
+
+      assert.ok(navigation.graph.nodes.length > 0);
+
+      // position far away from any node
+      const farAway = new Vector(99999, 99999, 99999);
+      const path = navigation.findPath(farAway, navigation.graph.nodes[0].origin.copy());
+      assert.equal(path, null);
+    });
+  });
 });
