@@ -86,7 +86,7 @@ export class Quaternion extends Array {
  * While most methods are mutating, some return new Vectors for convenience.
  * Make sure to read the JSDoc carefully.
  */
-export default class Vector extends Float32Array {
+export default class Vector extends Float32Array { // CR: we need 32 bit precision to simulate some Q1 issues
   /** Vector origin constant */
   static origin = (new Vector()).freeze();
 
@@ -357,6 +357,10 @@ export default class Vector extends Float32Array {
    */
   toRotationMatrix() {
     let [pitch, yaw, roll] = this;
+    // FIXME: with infinite components, we need to err out here
+    console.assert(Number.isFinite(pitch), 'finite pitch');
+    console.assert(Number.isFinite(yaw), 'finite yaw');
+    console.assert(Number.isFinite(roll), 'finite roll');
     pitch *= Math.PI / -180.0;
     yaw *= Math.PI / 180.0;
     roll *= Math.PI / 180.0;
@@ -499,6 +503,9 @@ export default class Vector extends Float32Array {
    */
   set(other) {
     console.assert(other instanceof Vector, 'not a Vector');
+    console.assert(!Number.isNaN(other[0]), 'NaN component');
+    console.assert(!Number.isNaN(other[1]), 'NaN component');
+    console.assert(!Number.isNaN(other[2]), 'NaN component');
     this[0] = other[0];
     this[1] = other[1];
     this[2] = other[2];
@@ -514,6 +521,9 @@ export default class Vector extends Float32Array {
    */
   setTo(x, y, z) {
     console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
+    console.assert(!Number.isNaN(x), 'NaN component');
+    console.assert(!Number.isNaN(y), 'NaN component');
+    console.assert(!Number.isNaN(z), 'NaN component');
     this[0] = x;
     this[1] = y;
     this[2] = z;

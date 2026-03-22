@@ -279,7 +279,7 @@ export class Hull { // hull_t
   check(p1f, p2f, p1, p2, trace, num = this.firstClipNode, depth = 0) {
     // check for empty
     if (num < 0) {
-      if (num !== content.CONTENT_SOLID) {
+      if (num !== content.CONTENT_SOLID && num !== content.CONTENT_SKY) {
         trace.allsolid = false;
         if (num === content.CONTENT_EMPTY) {
           trace.inopen = true;
@@ -334,7 +334,8 @@ export class Hull { // hull_t
     }
 
     // go past the node
-    if (this.pointContents(mid, node.children[1 - side]) !== content.CONTENT_SOLID) {
+    const pointContents = this.pointContents(mid, node.children[1 - side]);
+    if (pointContents !== content.CONTENT_SOLID && pointContents !== content.CONTENT_SKY) {
       return this.check(midf, p2f, mid, p2, trace, node.children[1 - side], depth + 1);
     }
 
@@ -352,7 +353,7 @@ export class Hull { // hull_t
       trace.plane.dist = -plane.dist;
     }
 
-    while (this.pointContents(mid) === content.CONTENT_SOLID) {
+    while ([content.CONTENT_SOLID, content.CONTENT_SKY].includes(this.pointContents(mid))) {
       // shouldn’t really happen, but does occasionally
       frac -= 0.1;
       if (frac < 0.0) {
@@ -1058,7 +1059,7 @@ export class BrushTrace {
       }
 
       // Only collide with solid/clip brushes
-      if (brush.contents !== content.CONTENT_SOLID
+      if ((brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_SKY)
         && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
         continue;
       }
@@ -1118,7 +1119,7 @@ export class BrushTrace {
         continue;
       }
 
-      if (brush.contents !== content.CONTENT_SOLID
+      if (brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_SKY
         && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
         continue;
       }
@@ -1172,7 +1173,7 @@ export class BrushTrace {
       brush._brushTraceCheck = checkCount;
 
       // CONTENT_CLIP blocks entities with size (non-zero mins/maxs)
-      if (brush.contents !== content.CONTENT_SOLID
+      if (brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_SKY
         && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
         continue;
       }
@@ -1350,7 +1351,7 @@ export class BrushTrace {
    */
   static _traceToLeaf(ctx, leaf) {
     // Q1 content classification for trace flags
-    if (leaf.contents !== content.CONTENT_SOLID) {
+    if (leaf.contents !== content.CONTENT_SOLID && leaf.contents !== content.CONTENT_SKY) {
       ctx.trace.allsolid = false;
       if (leaf.contents === content.CONTENT_EMPTY) {
         ctx.trace.inopen = true;
@@ -1383,6 +1384,7 @@ export class BrushTrace {
       // Only collide with solid/clip brushes for movement traces.
       // CONTENT_CLIP blocks entities with size but not point traces.
       if (brush.contents !== content.CONTENT_SOLID
+        && brush.contents !== content.CONTENT_SKY
         && (brush.contents !== content.CONTENT_CLIP || ctx.isPoint)) {
         continue;
       }
@@ -1445,8 +1447,14 @@ export class BrushTrace {
       const axialTangentStart = !nonAxialContact && d1 < 0 && d1 >= -DIST_EPSILON;
       const nearStart = nonAxialContact && Math.abs(d1) <= DIST_EPSILON;
       const nearEnd = nonAxialContact && Math.abs(d2) <= DIST_EPSILON;
-      if (d2 >= 0 || nearEnd) { getout = true; }
-      if (d1 >= 0 || nearStart) { startout = true; }
+
+      if (d2 >= 0 || nearEnd) {
+        getout = true;
+      }
+
+      if (d1 >= 0 || nearStart) {
+        startout = true;
+      }
 
       if (axialTangentStart) {
         tangentAxialPlane = plane;
@@ -1723,7 +1731,9 @@ export class PhysEnt { // physent_t
       if (!brush || brush.numsides === 0) {
         continue;
       }
-      if (brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_CLIP) {
+      if (brush.contents !== content.CONTENT_SOLID
+        && brush.contents !== content.CONTENT_SKY
+        && brush.contents !== content.CONTENT_CLIP) {
         continue;
       }
 
@@ -1828,7 +1838,9 @@ export class PhysEnt { // physent_t
       if (!brush || brush.numsides === 0) {
         continue;
       }
-      if (brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_CLIP) {
+      if (brush.contents !== content.CONTENT_SOLID
+        && brush.contents !== content.CONTENT_SKY
+        && brush.contents !== content.CONTENT_CLIP) {
         continue;
       }
 
@@ -2028,7 +2040,11 @@ export class PhysEnt { // physent_t
             const last = model.firstBrush + model.numBrushes;
             for (let bi = model.firstBrush; bi < last; bi++) {
               const brush = brushes[bi];
-              if (!brush || brush.numsides === 0) { continue; }
+
+              if (!brush || brush.numsides === 0) {
+                continue;
+              }
+
               console.warn(
                 `  brush[${bi}]: contents=${brush.contents} sides=${brush.numsides}`,
                 `mins=${brush.mins} maxs=${brush.maxs}`,
@@ -2072,7 +2088,10 @@ export class PhysEnt { // physent_t
       if (this.canCompareBrushAgainstHull) {
         const hull = this.getClippingHull();
         const localPosition = this.toHullSpace(position);
-        hullResult = hull.pointContents(localPosition) !== content.CONTENT_SOLID;
+
+        const pointContents = hull.pointContents(localPosition);
+
+        hullResult = pointContents !== content.CONTENT_SOLID && pointContents !== content.CONTENT_SKY;
 
         if (brushResult && !hullResult && this._brushPositionNeedsHullTangentFallback(position)) {
           usedHullTangentFallback = true;
@@ -2114,9 +2133,14 @@ export class PhysEnt { // physent_t
             const last = model.firstBrush + model.numBrushes;
             for (let bi = model.firstBrush; bi < last; bi++) {
               const brush = brushes[bi];
-              if (!brush || brush.numsides === 0) { continue; }
+              if (!brush || brush.numsides === 0) {
+                continue;
+              }
               if (brush.contents !== content.CONTENT_SOLID
-                && brush.contents !== -8) { continue; }
+                && brush.contents !== content.CONTENT_SKY
+                && brush.contents !== content.CONTENT_CLIP) {
+                continue;
+              }
               // Minkowski test inline
               let inside = true;
               for (let si = 0; si < brush.numsides; si++) {
@@ -2127,7 +2151,10 @@ export class PhysEnt { // physent_t
                   dist -= (plane.normal[j] < 0 ? Pmove.PLAYER_MAXS[j] : Pmove.PLAYER_MINS[j]) * plane.normal[j];
                 }
                 const d1 = plane.normal.dot(position) - dist;
-                if (d1 > 0) { inside = false; break; }
+                if (d1 > 0) {
+                  inside = false;
+                  break;
+                }
               }
               if (inside) {
                 console.warn(
@@ -2145,7 +2172,8 @@ export class PhysEnt { // physent_t
 
     // Legacy hull-based point test
     const hull = this.getClippingHull();
-    return hull.pointContents(this.toHullSpace(position)) !== content.CONTENT_SOLID;
+    const pointContents = hull.pointContents(this.toHullSpace(position));
+    return pointContents !== content.CONTENT_SOLID && pointContents !== content.CONTENT_SKY;
   }
 
   // CR: we can add getClippingHullCrouch() for BSP30 hulls here later
@@ -2568,7 +2596,7 @@ export class PmovePlayer { // pmove_t (player state only)
     wjspot[2] += this._pmove.configuration.wallcheckZ;
 
     let cont = this._pmove.staticWorldContents(wjspot);
-    if (cont !== content.CONTENT_SOLID) {
+    if (cont !== content.CONTENT_SOLID && cont !== content.CONTENT_SKY) {
       return;
     }
 

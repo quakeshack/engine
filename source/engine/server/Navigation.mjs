@@ -365,6 +365,14 @@ export class Navigation {
         SV.server.navigation.build();
       }
     });
+
+    eventBus.subscribe('nav.debug.emit-dot.temporarily', (position, colors, ttl) => {
+      this.#emitDotFrontend(new Vector(...position), colors, ttl);
+    });
+
+    eventBus.subscribe('nav.debug.emit-dot.permanently', (position, colors) => {
+      this.#emitDotFrontend(new Vector(...position), colors, Infinity);
+    });
   }
 
   #initWorker() {
@@ -656,7 +664,7 @@ export class Navigation {
     eventBus.publish('nav.load', SV.server.mapname, this.worldmodel.checksum);
   }
 
-  #playerStandOffset() {
+  #newWalkerStandOffset() {
     return new Vector(0, 0, -this.walkerMins[2]);
   }
 
@@ -680,7 +688,7 @@ export class Navigation {
    * @param {Vector} endpos stand origin
    * @returns {import('./physics/ServerCollisionSupport.mjs').CollisionTrace} collision result
    */
-  #tracePlayerStatic(startpos, endpos) {
+  #traceWalkerStatic(startpos, endpos) {
     return SV.collision.traceStaticWorld(
       startpos.copy(),
       this.walkerMins,
@@ -745,7 +753,7 @@ export class Navigation {
    * @returns {number} free vertical movement before the player box hits something
    */
   #measureAvailableHeight(position, probeHeight = this.requiredHeight) {
-    const trace = this.#tracePlayerStatic(position, position.copy().add(new Vector(0, 0, probeHeight)));
+    const trace = this.#traceWalkerStatic(position, position.copy().add(new Vector(0, 0, probeHeight)));
     return Math.max(0.0, trace.endpos[2] - position[2]);
   }
 
@@ -761,20 +769,6 @@ export class Navigation {
     }
 
     return new Vector().set(this.worldmodel.vertexes[this.worldmodel.edges[-surfedge][1]]);
-  }
-
-  /**
-   * @param {Face} face BSP face
-   * @returns {Vector} plane-side-corrected face normal
-   */
-  #getFaceNormal(face) {
-    const normal = face.plane.normal.copy();
-
-    if (face.planeBack) {
-      normal.multiply(-1.0);
-    }
-
-    return normal;
   }
 
   /**
@@ -799,7 +793,7 @@ export class Navigation {
     const floorPoint = standOrigin.copy();
     floorPoint[2] += this.walkerMins[2];
 
-    return this.#projectPointOntoSurface(floorPoint, surface).add(this.#playerStandOffset());
+    return this.#projectPointOntoSurface(floorPoint, surface).add(this.#newWalkerStandOffset());
   }
 
   /**
@@ -815,7 +809,7 @@ export class Navigation {
     floorPoint[0] += x;
     floorPoint[1] += y;
 
-    return this.#projectPointOntoSurface(floorPoint, surface).add(this.#playerStandOffset());
+    return this.#projectPointOntoSurface(floorPoint, surface).add(this.#newWalkerStandOffset());
   }
 
   /**
@@ -901,7 +895,7 @@ export class Navigation {
       const walkableSurface = new WalkableSurface(face, i);
 
       // Only accept surfaces whose normals point upward and do not exceed a 45 degrees incline.
-      const faceNormal = this.#getFaceNormal(face);
+      const faceNormal = face.normal;
 
       walkableSurface.stability = faceNormal.dot(upwards);
 
@@ -1009,42 +1003,8 @@ export class Navigation {
         return inside;
       };
 
-      /**
-       * helper: distance from point to segment in 2D
-       * @param {number[]} p 2D point, point to measure
-       * @param {number[]} a 2D point, edge start
-       * @param {number[]} b 2D point, edge end
-       * @returns {number} distance
-       */
-      const distPointToSeg = (p, a, b) => {
-        // p, a, b are [x,y]
-        const vx = b[0] - a[0];
-        const vy = b[1] - a[1];
-        const wx = p[0] - a[0];
-        const wy = p[1] - a[1];
-        const c1 = vx * wx + vy * wy;
-        if (c1 <= 0) {
-          const dx = p[0] - a[0];
-          const dy = p[1] - a[1];
-          return Math.hypot(dx, dy);
-        }
-        const c2 = vx * vx + vy * vy;
-        if (c2 <= c1) {
-          const dx = p[0] - b[0];
-          const dy = p[1] - b[1];
-          return Math.hypot(dx, dy);
-        }
-        const t = c1 / c2;
-        const projx = a[0] + t * vx;
-        const projy = a[1] + t * vy;
-        const dx = p[0] - projx;
-        const dy = p[1] - projy;
-        return Math.hypot(dx, dy);
-      };
-
       // sample the actor center lane instead of the full polygon so narrow stairs and ledges
       // can still produce valid points without relying on later support pruning alone.
-      const innerMargin = this.requiredRadius;
 
       // sampling resolution (units between samples on the face)
       const step = 8;
@@ -1060,28 +1020,9 @@ export class Navigation {
             continue;
           }
 
-          // ensure sample is at least `innerMargin` units away from any polygon edge
-          let minEdgeDist = Infinity;
-
-          for (let ei = 0, ej = verts2.length - 1; ei < verts2.length; ej = ei++) {
-            const a = verts2[ej];
-            const b = verts2[ei];
-            const d = innerMargin > 0 ? distPointToSeg(pt2, a, b) : 0;
-            if (d < minEdgeDist) {
-              minEdgeDist = d;
-            }
-            if (minEdgeDist < innerMargin) {
-              break;
-            }
-          }
-
-          if (minEdgeDist < innerMargin) {
-            continue;
-          }
-
           // map 2D point back to 3D: origin + u * x + v * y, then lift to a player stand origin
           const worldPoint = origin.copy().add(u.copy().multiply(pt2[0])).add(v.copy().multiply(pt2[1]));
-          const standOrigin = worldPoint.add(this.#playerStandOffset());
+          const standOrigin = worldPoint.add(this.#newWalkerStandOffset());
 
           surface.waypoints.push(new Waypoint(standOrigin));
           sampledWaypointCount++;
@@ -1147,7 +1088,7 @@ export class Navigation {
       const suitableWaypoints = [];
 
       for (const wp of surface.waypoints) {
-        if (wp.availableHeight >= 56 && !wp.isClipping && !wp.isFloating) {
+        if ((wp.availableHeight >= this.walkerMaxs[2] - this.walkerMins[2]) && !wp.isClipping && !wp.isFloating) {
           suitableWaypoints.push(wp);
           pruneStats.retained++;
         }
@@ -1667,7 +1608,6 @@ export class Navigation {
 
     if (startNode.id === goalNode.id) {
       const path = [startPos.copy(), goalPos.copy()];
-      this.#debugPath(path);
       return path;
     }
 
@@ -1694,7 +1634,6 @@ export class Navigation {
         path.reverse();
         path[0] = startPos.copy();
         path.push(goalPos.copy());
-        this.#debugPath(path);
         return path;
       }
 
@@ -1716,6 +1655,14 @@ export class Navigation {
   }
 
   #emitDot(position, color = 15, ttl = Infinity) {
+    if (Number.isFinite(ttl)) {
+      eventBus.publish('nav.debug.emit-dot.temporarily', position, color, ttl);
+    } else {
+      eventBus.publish('nav.debug.emit-dot.permanently', position, color);
+    }
+  }
+
+  static #emitDotFrontend(position, color = 15, ttl = Infinity) {
     if (!R) {
       return;
     }
@@ -1756,10 +1703,6 @@ export class Navigation {
    * @param {number} color indexed color
    */
   #debugPath(vectors, color = 251) {
-    if (!Navigation.nav_debug_path?.value) {
-      return;
-    }
-
     if (!vectors || vectors.length === 0) {
       return;
     }
@@ -1773,6 +1716,7 @@ export class Navigation {
       const totalDistance = diff.len();
       const stepLength = 4;
       diff.normalize();
+
       // Sample along the segment every 5 units
       for (let dist = 0; dist <= totalDistance; dist += stepLength) {
         const samplePoint = start.copy().add(diff.copy().multiply(dist));

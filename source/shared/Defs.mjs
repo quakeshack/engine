@@ -212,10 +212,12 @@ export const content = Object.freeze({
   CONTENT_WATER: -3,
   CONTENT_SLIME: -4,
   CONTENT_LAVA: -5,
+  /** behaves like CONTENT_SOLID (collisions and sealing), but renders sky and might affect game play */
   CONTENT_SKY: -6,
 
   // for build tools shenanigans:
   CONTENT_ORIGIN: -7,
+  /** clip brush, does not affect PxS nor rendering, but collisions */
   CONTENT_CLIP: -8,
 
   // currents:

@@ -157,6 +157,12 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-03-22
+
+- airplane mode:
+  - some navigation polishing
+  - making content sky clip movement
+
 ### 2026-03-19
 
 - Toying around with rendering passes after watching some videos from https://www.youtube.com/@ThreatInteractive/videos
