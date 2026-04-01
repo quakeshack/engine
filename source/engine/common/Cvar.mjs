@@ -245,7 +245,7 @@ export default class Cvar {
       return true;
     }
 
-    if ((v.flags & Cvar.FLAG.CHEAT) && SV.server.active && CL?.cls.serverInfo?.sv_cheats !== '1') {
+    if ((v.flags & Cvar.FLAG.CHEAT) && SV.server.active && !registry.isDedicatedServer && CL.cls.serverInfo?.sv_cheats !== '1') {
       Con.Print('Cheats are not enabled on this server.\n');
       return true;
     }

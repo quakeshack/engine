@@ -18,6 +18,7 @@ import SV from './server/Server.mjs';
 import PR from './server/Progs.mjs';
 import Mod from './common/Mod.mjs';
 import * as WebSocket from 'ws';
+import InfluxMetrics from './server/telemetry/InfluxMetrics.mjs';
 
 export default class EngineLauncher {
   static async Launch() {
@@ -39,6 +40,9 @@ export default class EngineLauncher {
     registry.SV = SV;
     registry.PR = PR;
     registry.Mod = Mod;
+
+    // Optional telemetry integration (configured via influxdb_* cvars/env).
+    InfluxMetrics.Install();
 
     // registry is ready
     registryFreeze();
