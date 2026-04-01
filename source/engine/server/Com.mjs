@@ -99,7 +99,7 @@ export default class NodeCOM extends COM {
   /**
    * Loads and parses a pack file.
    * @param {string} packfile - The path to the pack file.
-   * @returns {Promise<Array<object> | undefined>} - The parsed pack file entries or undefined if the file doesn't exist.
+   * @returns {Promise<Array<object> | null>} - The parsed pack file entries or null if the file doesn't exist.
    */
   static async LoadPackFile(packfile) {
     if (!existsSync(`data/${packfile}`)) { // CR: wanna see something ugly? check out the async version of existsSync…

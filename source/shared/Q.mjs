@@ -156,6 +156,7 @@ export const enumHelpers = Object.freeze({
    * @returns {string|number|null} enum value
    */
   fromKey(name) {
+    // @ts-ignore
     return this[name] ?? null;
   },
 });
