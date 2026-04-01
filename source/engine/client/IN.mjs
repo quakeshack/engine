@@ -45,134 +45,8 @@ IN.StartupMouse = function() {
   IN.mouse_avail = true;
 };
 
-IN.StartupTouchpad = function() {
-  const $leftZone = document.getElementById('left-zone');
-  const $rightZone = document.getElementById('right-zone');
-
-  if (!$leftZone || !$rightZone) {
-    Con.Print('IN.StartupTouchpad: virtual joystick zones missing\n');
-    return;
-  }
-
-  // disabled for now, we need proper feature selection for this
-  return;
-
-  // if (!window.matchMedia("(pointer: coarse)").matches) {
-  //   return;
-  // }
-
-  // Con.Print(`IN.StartupTouchpad: detected coarse input, setting up virtual joysticks\n`);
-
-  // // Create a semi-joystick in the left zone
-  // const moveJoystick = nipplejs.create({
-  //   zone: $leftZone,
-  //   mode: 'semi',          // 'semi' means the joystick follows your finger in that zone
-  //   size: 100,             // Diameter of the joystick
-  //   threshold: 0.5,        // Before triggering movement events
-  //   color: 'white',
-  //   fadeTime: 250,         // How quickly the joystick fades out after release
-  //   reset: true,
-  // });
-
-  // // Create a semi-joystick in the right zone
-  // const lookJoystick = nipplejs.create({
-  //   zone: document.getElementById('right-zone'),
-  //   mode: 'semi',
-  //   size: 100,
-  //   threshold: 0.5,
-  //   color: 'white',
-  //   fadeTime: 250,
-  //   reset: true,
-  // });
-
-  // const touchpadData = {
-  //   move: {
-  //     vector: [0.0, 0.0],
-  //     force: 0.0,
-  //   },
-  //   look: {
-  //     vector: [0.0, 0.0],
-  //     force: 0.0,
-  //   },
-  // };
-
-  // moveJoystick.on('move', (evt, data) => {
-  //   const d = touchpadData.move;
-
-  //   d.vector[0] = data.vector.x * data.distance;
-  //   d.vector[1] = data.vector.y * data.distance;
-
-  //   IN.moveJoystick = data;
-  // });
-
-  // moveJoystick.on('end', () => {
-  //   const d = touchpadData.move;
-
-  //   d.vector[0] = 0.0;
-  //   d.vector[1] = 0.0;
-  //   d.force = 0.0;
-  // });
-
-  // lookJoystick.on('move', (evt, data) => {
-  //   const d = touchpadData.look;
-
-  //   d.vector[0] = data.vector.x * data.distance;
-  //   d.vector[1] = data.vector.y * data.distance;
-
-  //   IN.lookJoystick = data;
-  // });
-
-  // lookJoystick.on('end', () => {
-  //   const d = touchpadData.look;
-  //   d.vector[0] = 0.0;
-  //   d.vector[1] = 0.0;
-  //   d.force = 0.0;
-  // });
-
-  // IN._touchpadData = touchpadData;
-
-  // $leftZone.style.display = 'block';
-  // $rightZone.style.display = 'block';
-};
-
-IN._TouchpadHandleLook = function() {
-  const pitch = CL.m_pitch.value;
-  const yaw = CL.m_yaw.value;
-
-  const sensitivity = 1.5; // IN._touchpadData.look.force;
-  const vector = IN._touchpadData.look.vector;
-  const angles = CL.state.viewangles;
-
-  angles[0] -= vector[1] * sensitivity * pitch;
-  angles[1] -= vector[0] * sensitivity * 2 * yaw;
-
-  if (angles[0] > 80.0) {
-    angles[0] = 80.0;
-  } else if (angles[0] < -70.0) {
-    angles[0] = -70.0;
-  }
-};
-
-IN._TouchpadHandleMove = function() {
-  const forward = CL.m_forward.value;
-  const side = CL.m_side.value;
-  const sensitivity = 10; // IN._touchpadData.look.force;
-  const vector = IN._touchpadData.move.vector;
-
-  CL.state.cmd.sidemove = side * vector[0] * sensitivity;
-  CL.state.cmd.forwardmove = forward * vector[1] * sensitivity;
-};
-
-IN.TouchpadMove = function() {
-  if (IN._touchpadData) {
-    IN._TouchpadHandleLook();
-    IN._TouchpadHandleMove();
-  }
-};
-
 IN.Init = function() {
   IN.StartupMouse();
-  IN.StartupTouchpad();
 };
 
 IN.Shutdown = function() {
@@ -240,7 +114,6 @@ IN.Move = function() {
   }
 
   IN.MouseMove();
-  IN.TouchpadMove();
 };
 
 IN.onclick = function() {
