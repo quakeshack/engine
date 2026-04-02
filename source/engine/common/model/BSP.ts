@@ -494,7 +494,7 @@ export class Brush extends BrushModelComponent {
 
 /**
  * Base class for brush-based models (BSP maps).
- * All loading is handled by `BSP29Loader.mjs`.
+ * All loading is handled by `BSP29Loader`.
  */
 export class BrushModel extends BaseModel {
   /** BSP format version. */

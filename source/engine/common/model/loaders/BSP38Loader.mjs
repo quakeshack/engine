@@ -3,7 +3,7 @@ import Q from '../../../../shared/Q.ts';
 import Vector from '../../../../shared/Vector.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { Plane } from '../BaseModel.ts';
-import { Brush, BrushModel, BrushSide, Node } from '../BSP.mjs';
+import { Brush, BrushModel, BrushSide, Node } from '../BSP.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 
 /** @typedef {Record<number, DataView>} LumpViews */

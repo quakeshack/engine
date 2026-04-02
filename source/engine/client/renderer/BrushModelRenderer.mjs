@@ -4,7 +4,7 @@ import { eventBus, registry } from '../../registry.mjs';
 import GL, { ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.mjs';
 import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
 import { materialFlags } from './Materials.mjs';
-import { BrushModel, Node } from '../../common/model/BSP.mjs';
+import { BrushModel, Node } from '../../common/model/BSP.ts';
 import { ClientEdict } from '../ClientEntities.mjs';
 import Mesh from './Mesh.mjs';
 import PostProcess from './PostProcess.mjs';
@@ -662,7 +662,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * semi-transparent liquids can share the same sorted space.
    * @param {BrushModel} clmodel The world model
    * @param {Float32Array|number[]} vieworg Camera position [x, y, z]
-   * @returns {{chain: import('../../common/model/BSP.mjs').WorldTurbulentChainInfo, dist: number}[]} Turbulent draw items with distance metadata
+   * @returns {{chain: import('../../common/model/BSP.ts').WorldTurbulentChainInfo, dist: number}[]} Turbulent draw items with distance metadata
    */
   getWorldTurbulentChains(clmodel, vieworg) {
     const items = [];
@@ -754,7 +754,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Render a single pre-sorted world turbulent draw batch.
    * Must be called between `beginWorldTurbulentPass` and `endWorldTurbulentPass`.
    * @param {BrushModel} clmodel The world model
-   * @param {import('../../common/model/BSP.mjs').WorldTurbulentChainInfo} chain The turbulent draw batch to render
+   * @param {import('../../common/model/BSP.ts').WorldTurbulentChainInfo} chain The turbulent draw batch to render
    */
   renderWorldTurbulentChain(clmodel, chain) {
     this._renderWorldTurbulentBatch(clmodel, chain.texture, chain.firstVertex, chain.vertexCount);
@@ -1119,7 +1119,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Light probe textures for fog volumes, keyed by the fog volume object.
    * Each entry holds a raw WebGL texture, the grid resolution, and a reusable
    * pixel buffer to avoid reallocating on every lightstyle update.
-   * @type {Map<import('../../common/model/BSP.mjs').FogVolumeInfo, {texture: WebGLTexture, resX: number, resY: number, resZ: number, data: Uint8Array}>}
+   * @type {Map<import('../../common/model/BSP.ts').FogVolumeInfo, {texture: WebGLTexture, resX: number, resY: number, resZ: number, data: Uint8Array}>}
    */
   #fogLightProbes = new Map();
 
@@ -1174,7 +1174,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Sample R.LightPoint into a pixel buffer for a fog volume's light probe grid.
    * Data is laid out for TEXTURE_3D upload: Z slices are contiguous in memory.
    * Texel at grid (ix, iy, iz) is at index (iz * resY * resX + iy * resX + ix).
-   * @param {import('../../common/model/BSP.mjs').FogVolumeInfo} fogVolume The fog volume
+   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
    * @param {Uint8Array} data Pixel buffer to fill (resX * resY * resZ * 4)
    * @param {number} resX Grid resolution X
    * @param {number} resY Grid resolution Y
@@ -1229,7 +1229,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Create or update the light probe texture for a fog volume.
    * If the probe already exists, re-samples into the existing pixel buffer
    * and re-uploads via texSubImage2D (avoids GPU allocation).
-   * @param {import('../../common/model/BSP.mjs').FogVolumeInfo} fogVolume The fog volume
+   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
    * @returns {{texture: WebGLTexture, resX: number, resY: number, resZ: number, data: Uint8Array}} The probe data
    */
   _createOrUpdateFogLightProbe(fogVolume) {
@@ -1269,7 +1269,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Get the light probe texture for a fog volume, creating or updating it
    * when lightstyle animations tick. Lightstyles animate at 10 Hz, so the
    * probes are re-sampled at most 10 times per second.
-   * @param {import('../../common/model/BSP.mjs').FogVolumeInfo} fogVolume The fog volume
+   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
    * @returns {{texture: WebGLTexture, resX: number, resY: number, resZ: number, data: Uint8Array}|null} Probe data, or null if light data is unavailable
    */
   _getFogLightProbe(fogVolume) {
@@ -1310,7 +1310,7 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Collect active dynamic lights that overlap a fog volume's AABB.
    * Returns up to MAX_FOG_DLIGHTS lights sorted by contribution (closest first).
-   * @param {import('../../common/model/BSP.mjs').FogVolumeInfo} fogVolume The fog volume
+   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
    * @returns {{origin: Vector, radius: number, color: Vector}[]} Overlapping dlights
    */
   _collectFogDlights(fogVolume) {
@@ -1350,7 +1350,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * Upload dynamic light uniforms for the current fog volume.
-   * @param {import('../../common/model/BSP.mjs').FogVolumeInfo} fogVolume The fog volume
+   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
    */
   _uploadFogDlights(fogVolume) {
     const program = this._fogVolumeProgram;
@@ -1431,7 +1431,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Collect fog volumes with distance from the given viewpoint for back-to-front sorting.
    * @param {BrushModel} worldmodel The world model containing fog volume definitions
    * @param {Float32Array|number[]} vieworg Camera position [x, y, z]
-   * @returns {{fogVolume: import('../../common/model/BSP.mjs').FogVolumeInfo, dist: number}[]} Fog volume items with distance
+   * @returns {{fogVolume: import('../../common/model/BSP.ts').FogVolumeInfo, dist: number}[]} Fog volume items with distance
    */
   getFogVolumeItems(worldmodel, vieworg) {
     if (!worldmodel.fogVolumes || worldmodel.fogVolumes.length === 0) {
@@ -1488,7 +1488,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Render a single fog volume.
    * Must be called between `beginFogVolumePass` and `endFogVolumePass`.
    * @param {BrushModel} worldmodel The world model
-   * @param {import('../../common/model/BSP.mjs').FogVolumeInfo} fogVolume The fog volume to render
+   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume to render
    */
   renderSingleFogVolume(worldmodel, fogVolume) {
     const program = this._fogVolumeProgram;

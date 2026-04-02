@@ -131,7 +131,7 @@ export default class ShadowMap {
   /**
    * Reference to the worldmodel whose entities were last parsed.
    * Used to detect map changes and re-parse lazily.
-   * @type {import('../../common/model/BSP.mjs').BrushModel|null}
+   * @type {import('../../common/model/BSP.ts').BrushModel|null}
    */
   static _parsedWorldmodel = null;
 
@@ -431,7 +431,7 @@ export default class ShadowMap {
    * viewpoint differs from the camera's.
    */
   static renderWorldShadow() {
-    const worldmodel = /** @type {import('../../common/model/BSP.mjs').BrushModel} */ (CL.state.worldmodel);
+    const worldmodel = /** @type {import('../../common/model/BSP.ts').BrushModel} */ (CL.state.worldmodel);
     if (!worldmodel) {
       return;
     }
@@ -554,7 +554,7 @@ export default class ShadowMap {
 
   /**
    * Render a brush submodel entity (door, platform, etc.) into a shadow map.
-   * @param {import('../../common/model/BSP.mjs').BrushModel} model
+   * @param {import('../../common/model/BSP.ts').BrushModel} model
    * @param {import('../ClientEntities.mjs').ClientEdict} entity
    * @param {Float64Array} lightSpaceMatrix
    * @param {string} programName
@@ -1004,7 +1004,7 @@ export default class ShadowMap {
    * Call after selectPointLight() returns true.
    */
   static renderPointLightShadow() {
-    const worldmodel = /** @type {import('../../common/model/BSP.mjs').BrushModel} */ (CL.state.worldmodel);
+    const worldmodel = /** @type {import('../../common/model/BSP.ts').BrushModel} */ (CL.state.worldmodel);
     if (!worldmodel) {
       return;
     }

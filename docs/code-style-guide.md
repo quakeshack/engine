@@ -64,7 +64,7 @@ This document outlines the coding conventions and style rules for the Quakeshack
    /** @type {import('./ClientEntities.mjs').ClientEdict} */
 
    // ✅ GOOD for model types
-   /** @type {import('../../common/model/BSP.mjs').BrushModel} */
+   /** @type {import('../../common/model/BSP.ts').BrushModel} */
    ```
 
 ## Registry and Global Variables
@@ -231,10 +231,10 @@ Always verify import paths are correct:
 
 ```javascript
 // ❌ BAD - Wrong relative path
-/** @param {import('../../../common/model/BSP.mjs').BrushModel} model */
+/** @param {import('../../../common/model/BSP.ts').BrushModel} model */
 
 // ✅ GOOD - Correct relative path from current file
-/** @param {import('../../common/model/BSP.mjs').BrushModel} model */
+/** @param {import('../../common/model/BSP.ts').BrushModel} model */
 ```
 
 ### Return Types from Library Functions

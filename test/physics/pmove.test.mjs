@@ -22,7 +22,7 @@ import {
  * Build a brush-backed world where a solid wall continues as a clip brush.
  * The seam at y=0 should remain slideable when the player is already tangent
  * to the shared x face of both brushes.
- * @returns {import('../../source/engine/common/model/BSP.mjs').BrushModel} world model fixture
+ * @returns {import('../../source/engine/common/model/BSP.ts').BrushModel} world model fixture
  */
 function createWallClipSeamWorldModel() {
   const model = createBrushWorldModel({ axis: 0, center: [24, -32, 0], halfExtents: [8, 32, 64] });
@@ -240,7 +240,7 @@ async function runMapFrames({
   Mod.Init();
 
   try {
-    const model = /** @type {import('../../source/engine/common/model/BSP.mjs').BrushModel} */ (await Mod.ForNameAsync(mapName, true));
+    const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ (await Mod.ForNameAsync(mapName, true));
     const entities = parseMapEntities(model.entities);
     const spawn = requireMapEntity(entities, (entity) => entity.classname === 'info_player_start', 'spawn entity classname=info_player_start');
 

@@ -4,7 +4,7 @@ import Cvar from '../common/Cvar.ts';
 import Q from '../../shared/Q.ts';
 import { eventBus, registry } from '../registry.mjs';
 
-/** @typedef {import('../common/model/BSP.mjs').Node} BSPNode */
+/** @typedef {import('../common/model/BSP.ts').Node} BSPNode */
 
 let { CL, COM, Con, Host } = registry;
 

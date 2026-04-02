@@ -15,7 +15,7 @@ import { AliasModelRenderer } from './renderer/AliasModelRenderer.mjs';
 import { SpriteModelRenderer } from './renderer/SpriteModelRenderer.mjs';
 import { MeshModelRenderer } from './renderer/MeshModelRenderer.mjs';
 import Draw from './Draw.mjs';
-import { BrushModel, Node, revealedVisibility } from '../common/model/BSP.mjs';
+import { BrushModel, Node, revealedVisibility } from '../common/model/BSP.ts';
 import PostProcess from './renderer/PostProcess.mjs';
 import BloomEffect from './renderer/BloomEffect.mjs';
 import WarpEffect from './renderer/WarpEffect.mjs';
@@ -822,7 +822,7 @@ R._renderFogAndTurbulentsSorted = function(worldEntity) {
   }
 
   const vieworg = R.refdef.vieworg;
-  /** @type {Array<{dist: number, kind: number, data: import('../common/model/BSP.mjs').WorldTurbulentChainInfo|import('../common/model/BSP.mjs').FogVolumeInfo}>} */
+  /** @type {Array<{dist: number, kind: number, data: import('../common/model/BSP.ts').WorldTurbulentChainInfo|import('../common/model/BSP.ts').FogVolumeInfo}>} */
   const items = [];
 
   const turbulentChains = brushRenderer.getWorldTurbulentChains(worldmodel, vieworg);
@@ -864,11 +864,11 @@ R._renderFogAndTurbulentsSorted = function(worldEntity) {
     }
 
     if (item.kind === 0) {
-      brushRenderer.renderWorldTurbulentChain(worldmodel, /** @type {import('../common/model/BSP.mjs').WorldTurbulentChainInfo} */ (item.data));
+      brushRenderer.renderWorldTurbulentChain(worldmodel, /** @type {import('../common/model/BSP.ts').WorldTurbulentChainInfo} */ (item.data));
       continue;
     }
 
-    brushRenderer.renderSingleFogVolume(worldmodel, /** @type {import('../common/model/BSP.mjs').FogVolumeInfo} */ (item.data));
+    brushRenderer.renderSingleFogVolume(worldmodel, /** @type {import('../common/model/BSP.ts').FogVolumeInfo} */ (item.data));
   }
 
   if (activePass === 0) {

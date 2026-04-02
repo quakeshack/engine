@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import Mod from '../../source/engine/common/Mod.ts';
 import { AliasModel } from '../../source/engine/common/model/AliasModel.ts';
 import { Face } from '../../source/engine/common/model/BaseModel.ts';
-import { BrushModel, Node } from '../../source/engine/common/model/BSP.mjs';
+import { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import Vector from '../../source/shared/Vector.ts';
 

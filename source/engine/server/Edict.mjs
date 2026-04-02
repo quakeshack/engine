@@ -8,7 +8,7 @@ import Q from '../../shared/Q.ts';
 import { ConsoleCommand } from '../common/Cmd.ts';
 import { ClientEdict } from '../client/ClientEntities.mjs';
 import { OctreeNode } from '../../shared/Octree.ts';
-import { Visibility } from '../common/model/BSP.mjs';
+import { Visibility } from '../common/model/BSP.ts';
 
 /** @typedef {import('../../game/id1/entity/BaseEntity.mjs').default} BaseEntity */
 /** @typedef {import('../../game/id1/entity/Worldspawn.mjs').WorldspawnEntity} WorldspawnEntity */

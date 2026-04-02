@@ -3,7 +3,7 @@ import { MissingResourceError } from './Errors.ts';
 import { ModelLoaderRegistry } from './model/ModelLoaderRegistry.ts';
 import { AliasMDLLoader } from './model/loaders/AliasMDLLoader.mjs';
 import { SpriteSPRLoader } from './model/loaders/SpriteSPRLoader.mjs';
-import { BSP29Loader } from './model/loaders/BSP29Loader.mjs';
+import { BSP29Loader } from './model/loaders/BSP29Loader.ts';
 import { BSP2Loader } from './model/loaders/BSP2Loader.mjs';
 import { WavefrontOBJLoader } from './model/loaders/WavefrontOBJLoader.mjs';
 import ParsedQC from './model/parsers/ParsedQC.mjs';

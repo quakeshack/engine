@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
-import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
+import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';
@@ -159,23 +159,23 @@ export function createBrushWorldModel({ axis = 0, center = [64, 0, 0], halfExten
   axisNormal[axis] = 1;
   const roomMins = new Vector(-2048, -2048, -2048);
   const roomMaxs = new Vector(2048, 2048, 2048);
-  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
     contents: content.CONTENT_EMPTY,
     firstleafbrush: 0,
     numleafbrushes: 1,
   });
-  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
     contents: content.CONTENT_EMPTY,
     firstleafbrush: 1,
     numleafbrushes: 0,
   });
 
-  model.nodes = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([{
+  model.nodes = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([{
     contents: 0,
     plane: createAxisPlane(axisNormal, 0, axis),
     children: [frontLeaf, backLeaf],
   }]);
-  model.leafs = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([frontLeaf, backLeaf]);
+  model.leafs = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([frontLeaf, backLeaf]);
   model.leafbrushes = [0];
   model.hulls = /** @type {BrushModel['hulls']} */ ([
     createRoomHullFromBounds(roomMins, roomMaxs),

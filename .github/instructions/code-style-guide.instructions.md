@@ -154,13 +154,15 @@ class GL {
 
 ### `null` initializations
 
-- **Explicitly initialize variables to `null`** when they will later hold an object reference and provide JSDoc type annotations either as cast or an inline comment.
-  - Example: `let model = /** @type {BaseModel} */ (null);`
+- **Explicitly initialize variables to `null`** when they will later hold an object reference.
+  - In `.ts` files: `let model: BaseModel | null = null;`
+  - In `.mjs` files: `let model = /** @type {BaseModel} */ (null);`
 
 ### Empty Arrays
 
-- **Initialize empty arrays with `[]`** instead of `new Array()` and provide JSDoc type annotations.
-  - Example: `let vertices = /** @type {number[]} */ ([]);`
+- **Initialize empty arrays with `[]`** instead of `new Array()`.
+  - In `.ts` files: `const vertices: number[] = [];`
+  - In `.mjs` files: `let vertices = /** @type {number[]} */ ([]);`
 
 ## Class and Interface Design
 
@@ -173,6 +175,7 @@ class GL {
 
 - **Use `_` prefix** for protected methods. Add `@protected` JSDoc tag.
 - **Use `#` prefix** for private methods.
+- In `.ts` files, prefer native `protected` / `private` keywords. See `typescript-port.instructions.md`.
 
 ### Respect boundaries of abstraction
 
