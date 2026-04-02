@@ -4,7 +4,7 @@ import { promises as fsPromises, existsSync, writeFileSync, constants } from 'fs
 
 import Q from '../../shared/Q.ts';
 import { CRC16CCITT as CRC } from '../common/CRC.ts';
-import COM from '../common/Com.mjs';
+import COM from '../common/Com.ts';
 
 import { CorruptedResourceError } from '../common/Errors.ts';
 import { registry, eventBus } from '../registry.mjs';

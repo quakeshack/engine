@@ -46,7 +46,7 @@ import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.
 
 /**
  * @typedef MockRegistryConfig
- * @property {typeof import('../../source/engine/common/Com.mjs').default | null} [COM]
+ * @property {typeof import('../../source/engine/common/Com.ts').default | null} [COM]
  * @property {object|null} [CL]
  * @property {{ Print: Function, DPrint: Function }} Con
  * @property {{ frametime: number }} Host

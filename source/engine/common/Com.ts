@@ -1,5 +1,4 @@
-
-import { registry, eventBus } from '../registry.mjs';
+import { registry, eventBus, getCommonRegistry } from '../registry.mjs';
 
 import Q from '../../shared/Q.ts';
 import { CorruptedResourceError } from './Errors.ts';
@@ -10,50 +9,72 @@ import Cmd from './Cmd.ts';
 import { defaultBasedir, defaultGame } from './Def.ts';
 import { CRC16CCITT } from './CRC.ts';
 
-let { Con, Sys } = registry;
+let { Con, Sys } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  Con = registry.Con;
-  Sys = registry.Sys;
+  ({ Con, Sys } = getCommonRegistry());
 });
 
-/** @typedef {{ name: string; filepos: number; filelen: number;}[]} PackFile */
-/** @typedef {{filename: any; pack: PackFile[];}} SearchPath */
+/** A file entry inside a .pak archive. */
+export type PackFileEntry = {
+  name: string;
+  filepos: number;
+  filelen: number;
+};
 
+/** A search path entry in the virtual filesystem. */
+export type SearchPath = {
+  filename: string;
+  pack: PackFileEntry[][];
+};
+
+/** Result of {@link COM.Parse}. */
+export type ParseResult = {
+  token: string;
+  data: string | null;
+};
+
+/**
+ * Common file system, command line, and string parsing utilities.
+ *
+ * This is the base class shared by both the browser client and the Node.js
+ * dedicated server (`server/Com.mjs` extends this as `NodeCOM`).
+ */
 export default class COM {
-  /** @type {string[]} */
-  static argv = [];
-
-  /** @type {SearchPath[]} */
-  static searchpaths = [];
+  static argv: string[] = [];
+  static searchpaths: SearchPath[] = [];
 
   static hipnotic = false;
   static rogue = false;
   static standard_quake = true;
   static modified = false;
 
-  /** @type {Cvar} */
-  static registered = null;
+  static registered: Cvar | null = null;
 
-  /** @type {Cvar|string} */ // FIXME: string turns into Cvar when jumping from InitArgv to Init
-  static cmdline = null;
+  /**
+   * Command line string — starts as a plain string from
+   * {@link COM.InitArgv}, then replaced with a Cvar in {@link COM.Init}.
+   */
+  static cmdline: Cvar | string | null = null;
 
-  /** @type {?AbortController} */
-  static abortController = null;
+  static abortController: AbortController | null = null;
 
-  /** @type {SearchPath[]} */
-  static gamedir = null;
+  static gamedir: SearchPath[] | null = null;
 
-  /** @type {string} mod name */
-  static game = defaultGame;
+  /** Active mod name. */
+  static game: string = defaultGame;
 
-  static DefaultExtension(path, extension) {
+  /**
+   * Append a default file extension if none is present.
+   * @returns the path with extension appended when no extension was found
+   */
+  static DefaultExtension(path: string, extension: string): string {
     for (let i = path.length - 1; i >= 0; i--) {
       const src = path.charCodeAt(i);
-      if (src === 47) {
+      if (src === 47) { // '/'
         break;
       }
-      if (src === 46) {
+      if (src === 46) { // '.'
         return path;
       }
     }
@@ -61,20 +82,25 @@ export default class COM {
   }
 
   /**
-   * Quake style parser.
-   * @param {string} data string to parse
-   * @returns {{token: string, data: string|null}} parsed token and remaining data to parse
+   * Quake-style token parser.
+   *
+   * Splits `data` into the next whitespace-delimited token (respecting
+   * double-quote strings and `//` line comments) and returns the token
+   * together with the remaining unparsed data.
+   * @returns parsed token and remaining data
    */
-  static Parse(data) { // FIXME: remove charCodeAt code
+  static Parse(data: string): ParseResult {
     let token = '';
-    let i = 0; let c;
+    let i = 0;
+    let c = 0;
     if (data.length === 0) {
       return { token, data: null };
     }
 
+    // skip whitespace and // comments
     let skipwhite = true;
     while (true) {
-      if (skipwhite !== true) {
+      if (!skipwhite) {
         break;
       }
       skipwhite = false;
@@ -88,9 +114,10 @@ export default class COM {
         }
         i++;
       }
-      if ((c === 47) && (data.charCodeAt(i + 1) === 47)) {
+      // skip // comments
+      if (c === 47 && data.charCodeAt(i + 1) === 47) { // '//'
         while (true) {
-          if ((i >= data.length) || (data.charCodeAt(i) === 10)) {
+          if (i >= data.length || data.charCodeAt(i) === 10) { // '\n'
             break;
           }
           i++;
@@ -99,20 +126,22 @@ export default class COM {
       }
     }
 
-    if (c === 34) {
+    // handle quoted strings
+    if (c === 34) { // '"'
       i++;
       while (true) {
         c = data.charCodeAt(i);
         i++;
-        if ((i >= data.length) || (c === 34)) {
+        if (i >= data.length || c === 34) { // '"'
           return { token, data: data.substring(i) };
         }
         token += String.fromCharCode(c);
       }
     }
 
+    // regular token
     while (true) {
-      if ((i >= data.length) || (c <= 32)) {
+      if (i >= data.length || c <= 32) { // whitespace
         break;
       }
       token += String.fromCharCode(c);
@@ -121,34 +150,35 @@ export default class COM {
     }
 
     return { token, data: data.substring(i) };
-  };
+  }
 
-  static CheckParm(parm) {
+  /**
+   * Check if a command-line parameter is present.
+   * @returns the argv index of the parameter, or null if not found
+   */
+  static CheckParm(parm: string): number | null {
     for (let i = 1; i < this.argv.length; i++) {
       if (this.argv[i] === parm) {
         return i;
       }
     }
-
     return null;
-  };
+  }
 
   /**
-   * Gets parameter from command line.
-   * @param {string} parm parameter name
-   * @returns {string|null} value of the parameter or null if not found
+   * Get a command-line parameter value (the argument after the flag).
+   * @returns the value following `parm`, or null if not found
    */
-  static GetParm(parm) {
+  static GetParm(parm: string): string | null {
     for (let i = 1; i < this.argv.length; i++) {
       if (this.argv[i] === parm) {
         return this.argv[i + 1] || null;
       }
     }
-
     return null;
-  };
+  }
 
-  static async CheckRegistered() {
+  static async CheckRegistered(): Promise<boolean> {
     const filename = 'gfx/pop.lmp';
     const h = await this.LoadFile(filename);
 
@@ -158,17 +188,18 @@ export default class COM {
       return false;
     }
 
-    if (CRC16CCITT.Block(new Uint8Array(h)) !== 25990) { // CR: shouldn’t be that hard to generate a fake pop.lmp with the same checksum
+    // CR: shouldn't be that hard to generate a fake pop.lmp with the same checksum
+    if (CRC16CCITT.Block(new Uint8Array(h)) !== 25990) {
       throw new CorruptedResourceError(filename, 'not genuine registered version');
     }
 
-    this.registered.set(true);
+    this.registered!.set(true);
     Con.PrintSuccess('Playing registered version.\n');
     eventBus.publish('com.registered', true);
     return true;
   }
 
-  static InitArgv(argv) {
+  static InitArgv(argv: string[]) {
     this.cmdline = (argv.join(' ') + ' ').substring(0, 256);
     for (let i = 0; i < argv.length; i++) {
       this.argv[i] = argv[i];
@@ -193,8 +224,8 @@ export default class COM {
     this.abortController = new AbortController();
 
     this.registered = new Cvar('registered', '0', Cvar.FLAG.READONLY, 'Set to 1, when not playing shareware.');
-    // @ts-ignore: need to fix that later, this.cmdline is a string first, but then it’s turned into a Cvar.
-    this.cmdline = new Cvar('cmdline', this.cmdline, Cvar.FLAG.READONLY, 'Command line used to start the game.');
+    // cmdline starts as a string from InitArgv, then becomes a Cvar here
+    this.cmdline = new Cvar('cmdline', this.cmdline as string, Cvar.FLAG.READONLY, 'Command line used to start the game.');
 
     Cmd.AddCommand('path', this.Path_f);
 
@@ -202,7 +233,7 @@ export default class COM {
 
     await Promise.all([
       this.CheckRegistered(),
-      W.LoadPalette('gfx/palette.lmp'), // CR: we early load the palette here, it’s needed in both dedicated and browser processes
+      W.LoadPalette('gfx/palette.lmp'), // CR: we early load the palette here, it's needed in both dedicated and browser processes
     ]);
 
     Sys.Print('COM.Init: low-level initialization completed.\n');
@@ -212,8 +243,7 @@ export default class COM {
 
   static Shutdown() {
     Sys.Print('COM.Shutdown: signaling outstanding promises to abort\n');
-
-    this.abortController.abort('COM.Shutdown');
+    this.abortController!.abort('COM.Shutdown');
   }
 
   static Path_f() {
@@ -221,40 +251,40 @@ export default class COM {
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await
-  static async WriteFile(filename, data, len) {
+  static async WriteFile(filename: string, data: ArrayLike<number>, len: number): Promise<boolean> {
     if (registry.isInsideWorker) {
       Sys.Print('COM.WriteFile: not supported inside worker threads\n');
       return false;
     }
 
     filename = filename.toLowerCase();
-    const dest = [];
+    const dest: string[] = [];
     for (let i = 0; i < len; i++) {
       dest[i] = String.fromCharCode(data[i]);
     }
     try {
       localStorage.setItem('Quake.' + this.searchpaths[this.searchpaths.length - 1].filename + '/' + filename, dest.join(''));
     } catch (e) {
-      Sys.Print('COM.WriteFile: failed on ' + filename + ', ' + e.message + '\n');
+      Sys.Print('COM.WriteFile: failed on ' + filename + ', ' + (e as Error).message + '\n');
       return false;
     }
     Sys.Print('COM.WriteFile: ' + filename + '\n');
     return true;
-  };
+  }
 
-  static WriteTextFile(filename, data) {
+  static WriteTextFile(filename: string, data: string): boolean {
     filename = filename.toLowerCase();
     try {
       localStorage.setItem('Quake.' + this.searchpaths[this.searchpaths.length - 1].filename + '/' + filename, data);
     } catch (e) {
-      Sys.Print('COM.WriteTextFile: failed on ' + filename + ', ' + e.message + '\n');
+      Sys.Print('COM.WriteTextFile: failed on ' + filename + ', ' + (e as Error).message + '\n');
       return false;
     }
     Sys.Print('COM.WriteTextFile: ' + filename + '\n');
     return true;
-  };
+  }
 
-  static GetNetpath(filename, gameDir = null) {
+  static GetNetpath(filename: string, gameDir: string | null = null): string {
     if (gameDir === null) {
       gameDir = this.GetGamedir();
     }
@@ -272,20 +302,21 @@ export default class COM {
   }
 
   /**
-   * Get the current game directory
-   * @returns {string} game name, e.g. 'id1'
+   * Get the current game directory.
+   * @returns game name, e.g. `'id1'`
    */
-  static GetGamedir() {
+  static GetGamedir(): string {
     return this.searchpaths.length > 0
       ? this.searchpaths[this.searchpaths.length - 1].filename
       : defaultGame;
   }
 
   /**
-   * @param {string} filename virtual filename
-   * @returns {Promise<ArrayBuffer>} binary content
+   * Load a file from the virtual filesystem.
+   * Searches localStorage first, then fetches from the CDN/server.
+   * @returns binary content, or null if not found
    */
-  static async LoadFile(filename) {
+  static async LoadFile(filename: string): Promise<ArrayBuffer | null> {
     filename = filename.toLowerCase();
 
     eventBus.publish('com.fs.being', filename);
@@ -328,37 +359,34 @@ export default class COM {
   }
 
   /**
-   * Loads a text file.
-   * @param {string} filename filename
-   * @returns {Promise<string>} content of the file as a string
+   * Load a text file, stripping carriage returns.
+   * @returns file content as a string, or null if not found
    */
-  static async LoadTextFile(filename) {
+  static async LoadTextFile(filename: string): Promise<string | null> {
     const buf = await this.LoadFile(filename);
     if (buf === null) {
       return null;
     }
     const bufview = new Uint8Array(buf);
-    const f = [];
+    const f: string[] = [];
     for (let i = 0; i < bufview.length; i++) {
-      if (bufview[i] !== 13) {
+      if (bufview[i] !== 13) { // skip CR
         f[f.length] = String.fromCharCode(bufview[i]);
       }
     }
     return f.join('');
-  };
+  }
 
   /**
    * Add a game directory to the search path.
    * Note: PAK files are pre-extracted at build time, so we only track the directory.
-   * @param {string} dir - directory name (e.g., 'id1')
    */
   // eslint-disable-next-line @typescript-eslint/require-await
-  static async AddGameDirectory(dir) {
-    /** @type {SearchPath} */
-    const search = { filename: dir, pack: [] };
-    this.searchpaths[this.searchpaths.length] = search;
+  static async AddGameDirectory(dir: string) {
+    const search: SearchPath = { filename: dir, pack: [] };
+    this.searchpaths.push(search);
     Con.DPrint(`Added game directory: ${dir}\n`);
-  };
+  }
 
   static async InitFilesystem() {
     // Shortcut for specifying game directory at build time
@@ -368,9 +396,9 @@ export default class COM {
       return;
     }
 
-    let search;
+    let search: string | undefined;
 
-    let i = this.CheckParm('-basedir');
+    const i = this.CheckParm('-basedir');
     if (i !== null) {
       search = this.argv[i + 1];
     }
@@ -380,19 +408,19 @@ export default class COM {
       await this.AddGameDirectory(defaultBasedir);
     }
 
-    if (this.rogue === true) {
+    if (this.rogue) {
       await this.AddGameDirectory('rogue');
-    } else if (this.hipnotic === true) {
+    } else if (this.hipnotic) {
       await this.AddGameDirectory('hipnotic');
     }
 
-    i = this.CheckParm('-game');
-    if (i !== null) {
-      search = this.argv[i + 1];
-      if (search !== undefined) {
+    const gameIdx = this.CheckParm('-game');
+    if (gameIdx !== null) {
+      const gameArg = this.argv[gameIdx + 1];
+      if (gameArg !== undefined) {
         this.modified = true;
-        this.game = search;
-        await this.AddGameDirectory(search);
+        this.game = gameArg;
+        await this.AddGameDirectory(gameArg);
       }
     } else if (defaultGame !== defaultBasedir) {
       this.game = defaultGame;
@@ -402,4 +430,4 @@ export default class COM {
 
     this.gamedir = [this.searchpaths[this.searchpaths.length - 1]];
   }
-};
+}

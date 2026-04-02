@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import COMClass from '../../source/engine/common/Com.mjs';
+import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.mjs';
 import { PMF, Pmove } from '../../source/engine/common/Pmove.mjs';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';

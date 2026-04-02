@@ -1,7 +1,7 @@
 import { eventBus, registry } from '../registry.mjs';
 import Mod from './Mod.mjs';
 import Sys from './Sys.mjs';
-import COM from './Com.mjs';
+import COM from './Com.ts';
 
 class WorkerConsole {
   static Print(message) {
@@ -71,7 +71,7 @@ export default class WorkerFramework {
 
   static async Init() {
     let COM;
-     
+
     const isNode = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
 
     if (isNode) {

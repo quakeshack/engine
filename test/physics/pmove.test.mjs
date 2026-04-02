@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import COMClass from '../../source/engine/common/Com.mjs';
+import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.mjs';
 import Vector from '../../source/shared/Vector.ts';
 import { content } from '../../source/shared/Defs.ts';
@@ -218,7 +218,7 @@ async function runMapFrames({
     PrintSuccess() {},
   });
   registry.Mod = Mod;
-  registry.COM = /** @type {typeof import('../../source/engine/common/Com.mjs').default} */ ({
+  registry.COM = /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
     Parse: COMClass.Parse,
     async LoadFile(name) {
       try {

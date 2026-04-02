@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Cmd from '../../source/engine/common/Cmd.ts';
-import COM from '../../source/engine/common/Com.mjs';
+import COM from '../../source/engine/common/Com.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { registry } from '../../source/engine/registry.mjs';
 import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
