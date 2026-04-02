@@ -581,7 +581,7 @@ function handleLegacyParticle() {
 
 /**
  * Parses a beam entity from the message buffer.
- * @param {import('../common/model/BaseModel.mjs').BaseModel} model beam model to use
+ * @param {import('../common/model/BaseModel.ts').BaseModel} model beam model to use
  */
 function parseLegacyBeam(model) {
   const ent = NET.message.readShort();

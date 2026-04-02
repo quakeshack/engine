@@ -113,7 +113,7 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * @private
    * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
    * @returns {{tangent: Vector, bitangent: Vector}} Face-plane sampling basis.
    */
   static _getTurbulentFallbackBasis(model, face) {
@@ -134,7 +134,7 @@ export class BrushModelRenderer extends ModelRenderer {
       ? BrushModelRenderer._projectTurbulentFallbackAxis(new Vector(texinfo.vecs[1][0], texinfo.vecs[1][1], texinfo.vecs[1][2]), normal)
       : null;
 
-    const faceWithVerts = /** @type {import('../../common/model/BaseModel.mjs').Face & { verts?: number[][] }} */ (face);
+    const faceWithVerts = /** @type {import('../../common/model/BaseModel.ts').Face & { verts?: number[][] }} */ (face);
 
     if (tangent === null && faceWithVerts.verts && faceWithVerts.verts.length >= 2) {
       const edge = new Vector(
@@ -161,7 +161,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
    * @param {Vector} worldPos Vertex position used for the fallback sample.
    * @param {(position: Vector) => [Vector, Vector]} sampleLightPoint Light sampler callback.
    * @returns {number[]} Vertex-level fallback light color.
@@ -1986,7 +1986,7 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * @private
    * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
    * @returns {boolean} True when the face has usable baked lightmap samples.
    */
   _surfaceHasTurbulentLightmap(model, face) {
@@ -2003,7 +2003,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * @private
-   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
    * @param {Vector} worldPos Vertex position used for the fallback sample.
    * @returns {string} Cache key shared by coplanar turbulent edges.
    */
@@ -2022,7 +2022,7 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * @private
    * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
    * @returns {Vector} Approximate center used for face-level fallback smoothing.
    */
   _getTurbulentFallbackFaceCenter(model, face) {
@@ -2043,7 +2043,7 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * @private
    * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
    * @param {Map<string, number[]>} cache Shared per-model fallback cache.
    * @returns {number[]} Face-level fallback color.
    */
@@ -2055,7 +2055,7 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * @private
    * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.mjs').Face} face Turbulent face being packed.
+   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
    * @param {Vector} worldPos Vertex position used for the fallback sample.
    * @param {Map<string, number[]>} [cache] Shared per-model fallback cache.
    * @returns {number[]} Vertex-level fallback light color.

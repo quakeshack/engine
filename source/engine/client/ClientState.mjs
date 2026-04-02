@@ -6,7 +6,7 @@ import Vector from '../../shared/Vector.ts';
 import { EventBus, eventBus, registry } from '../registry.mjs';
 import ClientEntities, { ClientEdict } from './ClientEntities.mjs';
 import { ClientMessages } from './ClientMessages.mjs';
-import { BrushModel } from '../common/Mod.mjs';
+import { BrushModel } from '../common/Mod.ts';
 
 let { CL } = registry;
 

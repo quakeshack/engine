@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import Mod from '../../source/engine/common/Mod.mjs';
-import { AliasModel } from '../../source/engine/common/model/AliasModel.mjs';
-import { Face } from '../../source/engine/common/model/BaseModel.mjs';
+import Mod from '../../source/engine/common/Mod.ts';
+import { AliasModel } from '../../source/engine/common/model/AliasModel.ts';
+import { Face } from '../../source/engine/common/model/BaseModel.ts';
 import { BrushModel, Node } from '../../source/engine/common/model/BSP.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import Vector from '../../source/shared/Vector.ts';
 
-/** @typedef {import('../../source/engine/common/model/BaseModel.mjs').BaseModel} BaseModel */
+/** @typedef {import('../../source/engine/common/model/BaseModel.ts').BaseModel} BaseModel */
 
 /**
  * @param {BaseModel|null} model model to narrow
@@ -180,8 +180,8 @@ function createSharedAliasModel() {
   return aliasModel;
 }
 
-describe('Mod scoped model cache', () => {
-  test('separates client and server submodel instances while reusing shared BSP data', async () => {
+void describe('Mod scoped model cache', () => {
+  void test('separates client and server submodel instances while reusing shared BSP data', async () => {
     await withModelRegistry(async () => {
       const { worldModel, submodel } = createSharedBrushModels();
 
@@ -225,7 +225,7 @@ describe('Mod scoped model cache', () => {
     });
   });
 
-  test('keeps bare submodel names scoped to their owning world per side', async () => {
+  void test('keeps bare submodel names scoped to their owning world per side', async () => {
     await withModelRegistry(async () => {
       const { worldModel: serverWorldShared } = createSharedBrushModelsForWorld('maps/server-test.bsp', 64);
       const { worldModel: clientWorldShared } = createSharedBrushModelsForWorld('maps/client-test.bsp', 256);
@@ -244,7 +244,7 @@ describe('Mod scoped model cache', () => {
     });
   });
 
-  test('keeps shared alias vertex buffers visible to scoped views', async () => {
+  void test('keeps shared alias vertex buffers visible to scoped views', async () => {
     await withModelRegistry(async () => {
       const sharedAliasModel = createSharedAliasModel();
 
@@ -265,7 +265,7 @@ describe('Mod scoped model cache', () => {
     });
   });
 
-  test('resets shared brush leaf runtime state before rebuilding a scoped client view', async () => {
+  void test('resets shared brush leaf runtime state before rebuilding a scoped client view', async () => {
     await withModelRegistry(async () => {
       const { worldModel } = createSharedBrushModels();
 
@@ -317,7 +317,7 @@ describe('Mod scoped model cache', () => {
     });
   });
 
-  test('clears shared and scoped caches together when clearing shared scope', async () => {
+  void test('clears shared and scoped caches together when clearing shared scope', async () => {
     await withModelRegistry(async () => {
       const { worldModel } = createSharedBrushModels();
       const sharedAliasModel = createSharedAliasModel();

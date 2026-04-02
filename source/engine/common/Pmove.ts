@@ -12,7 +12,7 @@
 import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { content } from '../../shared/Defs.ts';
-import { BrushModel } from './Mod.mjs';
+import { BrushModel } from './Mod.ts';
 import Cvar from './Cvar.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 
@@ -1384,8 +1384,8 @@ export class BrushTrace {
 
     let enterfrac = -1;
     let leavefrac = 1;
-    let clipplane: import('./model/BaseModel.mjs').Plane | null = null;
-    let tangentAxialPlane: import('./model/BaseModel.mjs').Plane | null = null;
+    let clipplane: import('./model/BaseModel.ts').Plane | null = null;
+    let tangentAxialPlane: import('./model/BaseModel.ts').Plane | null = null;
     let tangentAxialMovesDeeper = false;
 
     let getout = false;

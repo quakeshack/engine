@@ -146,7 +146,7 @@ R.RenderDlights = function() {
 };
 
 /**
- * @param {import('../common/model/BaseModel.mjs').Face} surf Surface to sample.
+ * @param {import('../common/model/BaseModel.ts').Face} surf Surface to sample.
  * @returns {Vector} A known point on the surface plane.
  */
 R.GetDynamicLightSurfacePoint = function(surf) {
@@ -161,7 +161,7 @@ R.GetDynamicLightSurfacePoint = function(surf) {
 
 /**
  * @param {ClientDlight} light Dynamic light being evaluated.
- * @param {import('../common/model/BaseModel.mjs').Face} surf Surface being tested.
+ * @param {import('../common/model/BaseModel.ts').Face} surf Surface being tested.
  * @returns {{distanceToPlane: number, impact: Vector}|null} Surface-plane hit information when the light is in front of the face.
  */
 R.GetDynamicLightSurfaceImpact = function(light, surf) {
@@ -180,7 +180,7 @@ R.GetDynamicLightSurfaceImpact = function(light, surf) {
 
 /**
  * @param {ClientDlight} light Dynamic light being evaluated.
- * @param {import('../common/model/BaseModel.mjs').Face} surf Surface being tested.
+ * @param {import('../common/model/BaseModel.ts').Face} surf Surface being tested.
  * @param {Vector} impact Projected point on the face plane.
  * @returns {boolean} True when the light has line of sight to the surface.
  */

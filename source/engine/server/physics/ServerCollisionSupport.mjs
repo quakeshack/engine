@@ -25,7 +25,7 @@ export class MeshCollisionState extends CollisionState {
 export class BrushCollisionState extends CollisionState {
   /**
    * @param {ServerEdict} ent entity being traced against
-   * @param {import('../../common/Mod.mjs').BrushModel} model brush collision model
+   * @param {import('../../common/Mod.ts').BrushModel} model brush collision model
    * @param {Vector} origin brush-model origin
    * @param {Vector} angles brush-model angles
    */
@@ -148,7 +148,7 @@ export class CollisionTrace {
 export class MeshTraceContext {
   /** @type {ServerEdict} */
   ent;
-  /** @type {import('../../common/model/MeshModel.mjs').MeshModel} */
+  /** @type {import('../../common/model/MeshModel.ts').MeshModel} */
   model;
   /** @type {Vector} */
   start;
@@ -171,7 +171,7 @@ export class MeshTraceContext {
 
   /**
    * @param {ServerEdict} ent entity being traced against
-   * @param {import('../../common/model/MeshModel.mjs').MeshModel} model mesh collision model
+   * @param {import('../../common/model/MeshModel.ts').MeshModel} model mesh collision model
    * @param {Vector} start start position
    * @param {Vector} mins minimum extents of the moving box
    * @param {Vector} maxs maximum extents of the moving box

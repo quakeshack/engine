@@ -12,7 +12,7 @@ import VID from './VID.mjs';
 import { clientRuntimeState, clientStaticState } from './ClientState.mjs';
 import ClientConnection from './ClientConnection.mjs';
 import ClientLifecycle from './ClientLifecycle.mjs';
-import { BrushModel } from '../common/Mod.mjs';
+import { BrushModel } from '../common/Mod.ts';
 // import { materialFlags, PBRMaterial, QuakeMaterial } from './renderer/Materials.mjs';
 /** @typedef {import('./Sound.mjs').SFX} SFX */
 

@@ -1,8 +1,8 @@
 import { registry } from '../../../registry.mjs';
 
 import Vector from '../../../../shared/Vector.ts';
-import { ModelLoader } from '../ModelLoader.mjs';
-import { MeshModel } from '../MeshModel.mjs';
+import { ModelLoader } from '../ModelLoader.ts';
+import { MeshModel } from '../MeshModel.ts';
 import { PBRMaterial } from '../../../client/renderer/Materials.mjs';
 import { GLTexture } from '../../../client/GL.mjs';
 
@@ -330,7 +330,7 @@ export class WavefrontOBJLoader extends ModelLoader {
   /**
    * Calculate bounding box for the model
    * @protected
-   * @param {import('../MeshModel.mjs').MeshModel} model The model
+   * @param {import('../MeshModel.ts').MeshModel} model The model
    */
   _calculateBounds(model) {
     if (!model.vertices || model.vertices.length === 0) {
@@ -371,7 +371,7 @@ export class WavefrontOBJLoader extends ModelLoader {
    * Generate tangent and bitangent vectors for normal mapping
    * Based on "Lengyel's Method" for computing tangent space basis
    * @protected
-   * @param {import('../MeshModel.mjs').MeshModel} model The model
+   * @param {import('../MeshModel.ts').MeshModel} model The model
    */
   _generateTangentSpace(model) {
     const numVerts = model.numVertices;

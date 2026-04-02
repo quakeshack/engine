@@ -6,7 +6,7 @@ import {
 } from './Defs.mjs';
 import { ServerClient } from '../Client.mjs';
 import { PM_TYPE } from '../../common/Pmove.ts';
-import { BrushModel } from '../../common/Mod.mjs';
+import { BrushModel } from '../../common/Mod.ts';
 
 let { Host, SV, V } = registry;
 

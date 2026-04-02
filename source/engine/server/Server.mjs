@@ -17,7 +17,7 @@ import { ServerMovement } from './physics/ServerMovement.mjs';
 import { ServerArea } from './physics/ServerArea.mjs';
 import { ServerCollision } from './physics/ServerCollision.mjs';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.mjs';
-import { BrushModel } from '../common/Mod.mjs';
+import { BrushModel } from '../common/Mod.ts';
 import { ServerClient } from './Client.mjs';
 
 let { COM, Con, Host, Mod, NET, PR } = registry;
@@ -171,7 +171,7 @@ export default class SV {
     clientdataFieldsBitsWriter: null,
     /** @type {Record<string, { fields: string[], bitsWriter: 'writeByte' | 'writeShort' | 'writeLong'}>} maps classname to its fields and the apropriate bits writer */
     clientEntityFields: {},
-    /** @type {import('../common/Mod.mjs').BaseModel[]} */
+    /** @type {import('../common/Mod.ts').BaseModel[]} */
     models: [],
     /** @type {string[]} */
     soundPrecache: [],

@@ -332,7 +332,7 @@ function parseServerCvars() {
 
 /**
  * Parses beam-style temporary entities.
- * @param {import('../common/model/BaseModel.mjs').BaseModel} model Model to attach to the beam.
+ * @param {import('../common/model/BaseModel.ts').BaseModel} model Model to attach to the beam.
  */
 function parseBeam(model) {
   const ent = NET.message.readShort();
@@ -930,7 +930,7 @@ function handleCutscene() {
  * Calls the help command when the server requests the sell screen.
  */
 function handleSellScreen() {
-  Cmd.ExecuteString('help');
+  void Cmd.ExecuteString('help');
 }
 
 /**

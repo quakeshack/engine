@@ -584,7 +584,7 @@ export default class ShadowMap {
   /**
    * Render an alias model entity (monster, item, weapon) into a shadow map.
    * Handles frame interpolation identically to AliasModelRenderer.
-   * @param {import('../../common/model/AliasModel.mjs').AliasModel} model
+   * @param {import('../../common/model/AliasModel.ts').AliasModel} model
    * @param {import('../ClientEntities.mjs').ClientEdict} entity
    * @param {Float64Array} lightSpaceMatrix
    * @param {string} programName
@@ -632,7 +632,7 @@ export default class ShadowMap {
 
   /**
    * Render a mesh model entity (glTF) into a shadow map.
-   * @param {import('../../common/model/MeshModel.mjs').MeshModel} model
+   * @param {import('../../common/model/MeshModel.ts').MeshModel} model
    * @param {import('../ClientEntities.mjs').ClientEdict} entity
    * @param {Float64Array} lightSpaceMatrix
    * @param {string} programName

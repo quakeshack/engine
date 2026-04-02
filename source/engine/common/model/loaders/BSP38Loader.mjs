@@ -2,9 +2,9 @@ import { content } from '../../../../shared/Defs.ts';
 import Q from '../../../../shared/Q.ts';
 import Vector from '../../../../shared/Vector.ts';
 import { CRC16CCITT } from '../../CRC.ts';
-import { Plane } from '../BaseModel.mjs';
+import { Plane } from '../BaseModel.ts';
 import { Brush, BrushModel, BrushSide, Node } from '../BSP.mjs';
-import { ModelLoader } from '../ModelLoader.mjs';
+import { ModelLoader } from '../ModelLoader.ts';
 
 /** @typedef {Record<number, DataView>} LumpViews */
 
@@ -300,14 +300,13 @@ export class BSP38Loader extends ModelLoader {
     // int32		firstface, numfaces;	// submodels just draw faces
     //                   // without walking the bsp tree
 
-    const stride = 48;
-    const length = modelsLump.byteLength / stride;
+    void modelsLump;
     loadmodel.submodels.length = 0;
 
 
   }
 
-  async load(buffer, name) {
+  load(buffer, name) {
     const loadmodel = new BrushModel(name);
 
     loadmodel.version = BSP_VERSION;
@@ -325,9 +324,7 @@ export class BSP38Loader extends ModelLoader {
     loadmodel.needload = false;
     loadmodel.checksum = CRC16CCITT.Block(new Uint8Array(buffer));
 
-    debugger;
-
-    return loadmodel;
+    return Promise.resolve(loadmodel);
   }
 };
 

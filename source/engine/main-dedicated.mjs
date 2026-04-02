@@ -16,7 +16,7 @@ import V from './client/V.mjs';
 import NET from './network/Network.ts';
 import SV from './server/Server.mjs';
 import PR from './server/Progs.mjs';
-import Mod from './common/Mod.mjs';
+import Mod from './common/Mod.ts';
 import * as WebSocket from 'ws';
 
 export default class EngineLauncher {

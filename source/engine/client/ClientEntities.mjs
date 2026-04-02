@@ -8,7 +8,7 @@ import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
 import { SFX } from './Sound.mjs';
 import { Node, revealedVisibility } from '../common/model/BSP.mjs';
-import { BaseModel } from '../common/model/BaseModel.mjs';
+import { BaseModel } from '../common/model/BaseModel.ts';
 
 let { CL, Con, Mod, PR, R, S } = registry;
 
@@ -70,7 +70,7 @@ export class ClientBeam {
   start = new Vector();
   end = new Vector();
 
-  /** @type {import('../common/model/BaseModel.mjs').BaseModel} what model to use to draw the beam */
+  /** @type {import('../common/model/BaseModel.ts').BaseModel} what model to use to draw the beam */
   model = null;
 
   /** @type {number} */
@@ -425,7 +425,7 @@ export default class ClientEntities {
     explosion: null,
   };
 
-  /** @type {Record<string, import('../common/Mod.mjs').BaseModel>} available tent models, initialized in initTempEntities */
+  /** @type {Record<string, import('../common/Mod.ts').BaseModel>} available tent models, initialized in initTempEntities */
   tempEntityModels = {};
 
   constructor() {

@@ -1,5 +1,5 @@
 import W from '../../common/W.ts';
-import { BrushModel } from '../../common/Mod.mjs';
+import { BrushModel } from '../../common/Mod.ts';
 import { eventBus, registry } from '../../registry.mjs';
 
 import GL, { ATTRIB_LOCATIONS, GLTexture } from '../GL.mjs';

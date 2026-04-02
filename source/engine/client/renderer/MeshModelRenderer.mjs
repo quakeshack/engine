@@ -44,7 +44,7 @@ export class MeshModelRenderer extends ModelRenderer {
   }
 
   /**
-   * @param {import('../../common/model/MeshModel.mjs').MeshModel} _model The mesh model
+   * @param {import('../../common/model/MeshModel.ts').MeshModel} _model The mesh model
    * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
    * @returns {boolean} Mesh transparency is not implemented, so meshes stay in the opaque pass
    */
@@ -54,7 +54,7 @@ export class MeshModelRenderer extends ModelRenderer {
   }
 
   /**
-   * @param {import('../../common/model/MeshModel.mjs').MeshModel} _model The mesh model
+   * @param {import('../../common/model/MeshModel.ts').MeshModel} _model The mesh model
    * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
    * @returns {boolean} False because sorted transparent mesh rendering is not implemented yet
    */
@@ -74,7 +74,7 @@ export class MeshModelRenderer extends ModelRenderer {
 
   /**
    * Render a single mesh model entity.
-   * @param {import('../../common/model/MeshModel.mjs').MeshModel} model The mesh model to render
+   * @param {import('../../common/model/MeshModel.ts').MeshModel} model The mesh model to render
    * @param {import('../ClientEntities.mjs').ClientEdict} entity The entity being rendered
    * @param {number} pass Rendering pass (0=opaque, 1=transparent)
    */
@@ -163,7 +163,7 @@ export class MeshModelRenderer extends ModelRenderer {
 
   /**
    * Prepare mesh model for rendering (build display lists, upload to GPU).
-   * @param {import('../../common/model/MeshModel.mjs').MeshModel} model The mesh model to prepare
+   * @param {import('../../common/model/MeshModel.ts').MeshModel} model The mesh model to prepare
    * @param {boolean} isWorldModel Whether this model is the world model
    */
   // eslint-disable-next-line no-unused-vars
@@ -281,7 +281,7 @@ export class MeshModelRenderer extends ModelRenderer {
   /**
    * Load texture for mesh model
    * @private
-   * @param {import('../../common/model/MeshModel.mjs').MeshModel} model The mesh model
+   * @param {import('../../common/model/MeshModel.ts').MeshModel} model The mesh model
    */
   _loadTexture(model) {
     // Try to load texture using the texture name

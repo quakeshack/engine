@@ -3,8 +3,8 @@ import { GLTexture } from '../../../client/GL.mjs';
 import W, { translateIndexToRGBA } from '../../W.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { registry } from '../../../registry.mjs';
-import { ModelLoader } from '../ModelLoader.mjs';
-import { SpriteModel } from '../SpriteModel.mjs';
+import { ModelLoader } from '../ModelLoader.ts';
+import { SpriteModel } from '../SpriteModel.ts';
 
 /**
  * Loader for Quake Sprite format (.spr)

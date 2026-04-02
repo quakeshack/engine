@@ -11,21 +11,21 @@ export class CollisionModelSource {
   /** @type {() => ServerEdict|null} */
   #getServerWorldEntity = () => null;
 
-  /** @type {() => import('./Mod.mjs').BrushModel|null} */
+  /** @type {() => import('./Mod.ts').BrushModel|null} */
   #getServerWorldModel = () => null;
 
-  /** @type {() => Array<import('./Mod.mjs').BrushModel|object|null>|null} */
+  /** @type {() => Array<import('./Mod.ts').BrushModel|object|null>|null} */
   #getServerModels = () => null;
 
-  /** @type {() => import('./Mod.mjs').BrushModel|null} */
+  /** @type {() => import('./Mod.ts').BrushModel|null} */
   #getClientWorldModel = () => null;
 
-  /** @type {() => Array<import('./Mod.mjs').BrushModel|object|null>|null} */
+  /** @type {() => Array<import('./Mod.ts').BrushModel|object|null>|null} */
   #getClientModels = () => null;
 
   /**
    * Install live server accessors.
-   * @param {{getWorldEntity?: () => ServerEdict|null, getWorldModel?: () => import('./Mod.mjs').BrushModel|null, getModels?: () => Array<import('./Mod.mjs').BrushModel|object|null>|null}} accessors server accessors
+   * @param {{getWorldEntity?: () => ServerEdict|null, getWorldModel?: () => import('./Mod.ts').BrushModel|null, getModels?: () => Array<import('./Mod.ts').BrushModel|object|null>|null}} accessors server accessors
    */
   configureServer(accessors = {}) {
     this.#getServerWorldEntity = accessors.getWorldEntity ?? (() => null);
@@ -35,7 +35,7 @@ export class CollisionModelSource {
 
   /**
    * Install live client accessors.
-   * @param {{getWorldModel?: () => import('./Mod.mjs').BrushModel|null, getModels?: () => Array<import('./Mod.mjs').BrushModel|object|null>|null}} accessors client accessors
+   * @param {{getWorldModel?: () => import('./Mod.ts').BrushModel|null, getModels?: () => Array<import('./Mod.ts').BrushModel|object|null>|null}} accessors client accessors
    */
   configureClient(accessors = {}) {
     this.#getClientWorldModel = accessors.getWorldModel ?? (() => null);
@@ -47,7 +47,7 @@ export class CollisionModelSource {
     return this.#getServerWorldEntity();
   }
 
-  /** @returns {import('./Mod.mjs').BrushModel|null} active static-world model */
+  /** @returns {import('./Mod.ts').BrushModel|null} active static-world model */
   getWorldModel() {
     return this.#getServerWorldModel()
       ?? this.#getClientWorldModel()
@@ -58,7 +58,7 @@ export class CollisionModelSource {
   /**
    * Resolve a model from the active runtime's model cache.
    * @param {number} modelIndex precached model index
-   * @returns {import('./Mod.mjs').BrushModel|object|null} resolved model, if any
+   * @returns {import('./Mod.ts').BrushModel|object|null} resolved model, if any
    */
   getModelByIndex(modelIndex) {
     return this.#getServerModels()?.[modelIndex]

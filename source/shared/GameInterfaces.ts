@@ -3,7 +3,7 @@ import type { ClientEngineAPI as ClientEngineApiValue, ServerEngineAPI as Server
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.mjs';
 import type Vector from './Vector.ts';
 import type { StartGameInterface } from '../engine/client/ClientLifecycle.mjs';
-import type { BaseModel } from '../engine/common/model/BaseModel.mjs';
+import type { BaseModel } from '../engine/common/model/BaseModel.ts';
 
 export type ClientEngineAPI = Readonly<typeof ClientEngineApiValue>;
 export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;

@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import COMClass from '../../source/engine/common/Com.ts';
-import Mod from '../../source/engine/common/Mod.mjs';
+import Mod from '../../source/engine/common/Mod.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content } from '../../source/shared/Defs.ts';
 import { DIST_EPSILON, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
@@ -304,12 +304,12 @@ async function runMapForwardFrames(mapName, frames) {
   return runMapFrames({ mapName, frames });
 }
 
-describe('PmovePlayer', () => {
-  test('DEBUG is disabled before Pmove.Init()', () => {
+void describe('PmovePlayer', () => {
+  void test('DEBUG is disabled before Pmove.Init()', () => {
     assert.equal(PmovePlayer.DEBUG, false);
   });
 
-  test('move integrates one grounded movement frame against a world model', () => {
+  void test('move integrates one grounded movement frame against a world model', () => {
     const worldModel = createBrushWorldModel({ axis: 2, center: [0, 0, -40], halfExtents: [512, 512, 16] });
     const pmove = new Pmove();
     const player = pmove.newPlayerMove();
@@ -332,7 +332,7 @@ describe('PmovePlayer', () => {
     assert.ok(player.velocity[0] > 0);
   });
 
-  test('move uses noclip-style spectator movement without collision traces', () => {
+  void test('move uses noclip-style spectator movement without collision traces', () => {
     const pmove = new Pmove();
     const player = pmove.newPlayerMove();
 
@@ -363,7 +363,7 @@ describe('PmovePlayer', () => {
     assertNear(player.velocity[2], 41.5, 0.001);
   });
 
-  test('keeps decisive uphill progress on the brush-backed slope regression map', async () => {
+  void test('keeps decisive uphill progress on the brush-backed slope regression map', async () => {
     const brushFrames = await runMapForwardFrames('maps/test_slope.bsp', 24);
 
     const firstRampFrame = 13;
@@ -378,7 +378,7 @@ describe('PmovePlayer', () => {
     }
   });
 
-  test('tracks the hull slope climb on the brush-backed slope regression map', async () => {
+  void test('tracks the hull slope climb on the brush-backed slope regression map', async () => {
     const brushFrames = await runMapForwardFrames('maps/test_slope.bsp', 24);
     const hullFrames = await runMapForwardFrames('maps/test_slope_hull.bsp', 24);
 
@@ -390,7 +390,7 @@ describe('PmovePlayer', () => {
     }
   });
 
-  test('matches the hull corner slide timing on the brush-backed clip_2 regression map', async () => {
+  void test('matches the hull corner slide timing on the brush-backed clip_2 regression map', async () => {
     const brushFrames = await runMapForwardFrames('maps/test_clip_2.bsp', 12);
     const hullFrames = await runMapForwardFrames('maps/test_clip_2_hull.bsp', 12);
 
@@ -407,7 +407,7 @@ describe('PmovePlayer', () => {
     assert.ok(hullFrames[7].moved[1] < -1.0);
   });
 
-  test('does not wedge on the hw_doom corridor sidestep repro', async () => {
+  void test('does not wedge on the hw_doom corridor sidestep repro', async () => {
     const frames = await runMapFrames({
       mapName: 'maps/test_hw_doom.bsp',
       frames: 8,
@@ -427,7 +427,7 @@ describe('PmovePlayer', () => {
     assert.ok(frames[7].moved[0] > 4.0);
   });
 
-  test('tracks the hull slope climb on the brush-backed slope_2 regression map', async () => {
+  void test('tracks the hull slope climb on the brush-backed slope_2 regression map', async () => {
     const brushFrames = await runMapForwardFrames('maps/test_slope_2.bsp', 24);
     const hullFrames = await runMapForwardFrames('maps/test_slope_2_hull.bsp', 24);
 
@@ -439,8 +439,8 @@ describe('PmovePlayer', () => {
     }
   });
 
-  describe('_checkDuck', () => {
-    test('enters ducked state on grounded crouch input and stands when space is clear', () => {
+  void describe('_checkDuck', () => {
+    void test('enters ducked state on grounded crouch input and stands when space is clear', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
 
@@ -464,8 +464,8 @@ describe('PmovePlayer', () => {
     });
   });
 
-  describe('_checkSpecialMovement', () => {
-    test('starts a waterjump when water waist depth meets a solid lip with empty space above', () => {
+  void describe('_checkSpecialMovement', () => {
+    void test('starts a waterjump when water waist depth meets a solid lip with empty space above', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
 
@@ -503,8 +503,8 @@ describe('PmovePlayer', () => {
     });
   });
 
-  describe('_categorizePosition', () => {
-    test('keeps grounded state on a walkable slope while climbing quickly', () => {
+  void describe('_categorizePosition', () => {
+    void test('keeps grounded state on a walkable slope while climbing quickly', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
 
@@ -530,7 +530,7 @@ describe('PmovePlayer', () => {
       assert.deepEqual(player.touchindices, [0]);
     });
 
-    test('still drops ground while moving upward fast after leaving the floor', () => {
+    void test('still drops ground while moving upward fast after leaving the floor', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
       let traceCalls = 0;
@@ -553,7 +553,7 @@ describe('PmovePlayer', () => {
       assert.equal(traceCalls, 0);
     });
 
-    test('ignores a stale grounded flag while moving upward fast', () => {
+    void test('ignores a stale grounded flag while moving upward fast', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
       let traceCalls = 0;
@@ -577,8 +577,8 @@ describe('PmovePlayer', () => {
     });
   });
 
-  describe('waterjump movement', () => {
-    test('applies gravity and clears waterjump once the upward boost turns downward', () => {
+  void describe('waterjump movement', () => {
+    void test('applies gravity and clears waterjump once the upward boost turns downward', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
       let stepSlideCalls = 0;
@@ -610,8 +610,8 @@ describe('PmovePlayer', () => {
     });
   });
 
-  describe('_stepSlideMove', () => {
-    test('snaps down to a walkable slope after an unblocked slide', () => {
+  void describe('_stepSlideMove', () => {
+    void test('snaps down to a walkable slope after an unblocked slide', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
       let slideCalls = 0;
@@ -650,7 +650,7 @@ describe('PmovePlayer', () => {
       assert.deepEqual(player.touchindices, [5]);
     });
 
-    test('still evaluates the stepped retry after a blocked slide move', () => {
+    void test('still evaluates the stepped retry after a blocked slide move', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
       let slideCalls = 0;
@@ -709,8 +709,8 @@ describe('PmovePlayer', () => {
     });
   });
 
-  describe('_slideMove', () => {
-    test('slides past a wall-to-clip seam and snap keeps the seam walkable', () => {
+  void describe('_slideMove', () => {
+    void test('slides past a wall-to-clip seam and snap keeps the seam walkable', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
 
@@ -746,7 +746,7 @@ describe('PmovePlayer', () => {
       assert.deepEqual([...continuedTrace.endpos], [0, 144, 0]);
     });
 
-    test('treats zero-progress near-parallel brush re-clips as a single slide plane', () => {
+    void test('treats zero-progress near-parallel brush re-clips as a single slide plane', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
       let traceCalls = 0;
@@ -796,9 +796,9 @@ describe('PmovePlayer', () => {
   });
 });
 
-describe('Pmove', () => {
-  describe('clipPlayerMove', () => {
-    test('keeps startsolid end positions in world space', () => {
+void describe('Pmove', () => {
+  void describe('clipPlayerMove', () => {
+    void test('keeps startsolid end positions in world space', () => {
       const pmove = new Pmove();
 
       pmove.addEntity(createPmoveBoxEntity({
@@ -816,7 +816,7 @@ describe('Pmove', () => {
       assert.deepEqual([...trace.endpos], [...start]);
     });
 
-    test('reports hull hits in world coordinates', () => {
+    void test('reports hull hits in world coordinates', () => {
       const pmove = new Pmove();
 
       pmove.addEntity(createPmoveBoxEntity({
@@ -834,7 +834,7 @@ describe('Pmove', () => {
       assertNear(trace.endpos[2], 0);
     });
 
-    test('preserves later startsolid when an earlier equal-fraction clip already won', () => {
+    void test('preserves later startsolid when an earlier equal-fraction clip already won', () => {
       const pmove = new Pmove();
       const start = new Vector(0, 0, 0);
       const end = new Vector(100, 0, 0);
@@ -870,7 +870,7 @@ describe('Pmove', () => {
       assert.deepEqual([...trace.endpos], [...start]);
     });
 
-    test('ands allsolid across equal-fraction startsolid physents', () => {
+    void test('ands allsolid across equal-fraction startsolid physents', () => {
       const pmove = new Pmove();
       const start = new Vector(0, 0, 0);
       const end = new Vector(100, 0, 0);
@@ -907,7 +907,7 @@ describe('Pmove', () => {
     });
   });
 
-  test('server-style smoke setup mirrors TestServerside assertions', () => {
+  void test('server-style smoke setup mirrors TestServerside assertions', () => {
     const worldModel = createLegacyWorldModel(
       new Vector(-256, -256, -128),
       new Vector(256, 256, 128),
@@ -945,7 +945,7 @@ describe('Pmove', () => {
     assert.equal(playerMoveTraceHigher.fraction, 1.0);
   });
 
-  test('traceStaticWorldPlayerMove traces world only and ignores dynamic physents', () => {
+  void test('traceStaticWorldPlayerMove traces world only and ignores dynamic physents', () => {
     const worldModel = createLegacyWorldModel(
       new Vector(-256, -256, -128),
       new Vector(256, 256, 128),
@@ -969,7 +969,7 @@ describe('Pmove', () => {
     assertNear(aggregateTrace.endpos[0], 31.96875, 0.001);
   });
 
-  test('brush-list world path supports server-style vertical smoke checks', () => {
+  void test('brush-list world path supports server-style vertical smoke checks', () => {
     const worldModel = createBrushWorldModel({ axis: 2, center: [0, 0, 144], halfExtents: [512, 512, 16] });
     const pmove = new Pmove();
     const entity = createPmoveBoxEntity({
@@ -997,8 +997,8 @@ describe('Pmove', () => {
     assert.equal(playerMoveTraceHigher.fraction, 1.0);
   });
 
-  describe('staticWorldContents', () => {
-    test('uses brush-backed world solids before leaf contents', () => {
+  void describe('staticWorldContents', () => {
+    void test('uses brush-backed world solids before leaf contents', () => {
       const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
       const pmove = new Pmove();
 
@@ -1010,7 +1010,7 @@ describe('Pmove', () => {
       assert.equal(pmove.staticWorldContents(new Vector(8, 0, 0)), content.CONTENT_WATER);
     });
 
-    test('normalizes brush-backed current leaves to water', () => {
+    void test('normalizes brush-backed current leaves to water', () => {
       const worldModel = createBrushWorldModel({ center: [64, 0, 0], halfExtents: [16, 16, 16] });
       const pmove = new Pmove();
 
@@ -1022,8 +1022,8 @@ describe('Pmove', () => {
     });
   });
 
-  describe('crouching movement', () => {
-    test('uses duckspeed as the movement cap while ducked on the ground', () => {
+  void describe('crouching movement', () => {
+    void test('uses duckspeed as the movement cap while ducked on the ground', () => {
       const pmove = new Pmove();
       const player = pmove.newPlayerMove();
       const recordedWishspeeds = [];

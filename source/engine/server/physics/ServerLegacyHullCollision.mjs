@@ -10,7 +10,7 @@ eventBus.subscribe('registry.frozen', () => {
 });
 
 /** @typedef {import('./ServerCollisionSupport.mjs').CollisionTrace} CollisionTrace */
-/** @typedef {import('../../common/Mod.mjs').BrushModel} BrushModel */
+/** @typedef {import('../../common/Mod.ts').BrushModel} BrushModel */
 
 /**
  * Check whether a clipnode belongs to the owning legacy hull subtree.

@@ -1,7 +1,7 @@
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
-import Mod, { BrushModel } from '../../common/Mod.mjs';
+import Mod, { BrushModel } from '../../common/Mod.ts';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
 import { eventBus, registry } from '../../registry.mjs';
 import {
@@ -628,7 +628,7 @@ export class ServerCollision {
       return null;
     }
 
-    const meshModel = /** @type {import('../../common/model/MeshModel.mjs').MeshModel} */ (model);
+    const meshModel = /** @type {import('../../common/model/MeshModel.ts').MeshModel} */ (model);
     if (!meshModel.indices || !meshModel.vertices || meshModel.numTriangles === 0) {
       return null;
     }

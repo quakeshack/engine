@@ -10,7 +10,7 @@ import { ED, ServerEdict } from '../server/Edict.mjs';
 import Cmd from './Cmd.ts';
 import Cvar from './Cvar.ts';
 import { HostError } from './Errors.ts';
-import Mod from './Mod.mjs';
+import Mod from './Mod.ts';
 import W from './W.ts';
 
 /** @typedef {import('../client/ClientEntities.mjs').ClientEdict} ClientEdict */
@@ -19,7 +19,7 @@ import W from './W.ts';
 /** @typedef {import('../network/MSG.ts').SzBuffer} SzBuffer */
 /** @typedef {import('../server/Navigation.mjs').Navigation} Navigation */
 /** @typedef {import('./model/parsers/ParsedQC.mjs').default} ParsedQC */
-/** @typedef {import('./model/BaseModel.mjs').BaseModel} BaseModel */
+/** @typedef {import('./model/BaseModel.ts').BaseModel} BaseModel */
 /** @typedef {import('../server/physics/ServerCollisionSupport.mjs').CollisionTrace} CollisionTrace */
 /**
  * @typedef ClientTraceOptions

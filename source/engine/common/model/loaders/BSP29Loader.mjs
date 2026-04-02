@@ -6,9 +6,9 @@ import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA
 import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { eventBus, registry } from '../../../registry.mjs';
-import { ModelLoader } from '../ModelLoader.mjs';
+import { ModelLoader } from '../ModelLoader.ts';
 import { Brush, BrushModel, BrushSide, Node } from '../BSP.mjs';
-import { Face, Plane } from '../BaseModel.mjs';
+import { Face, Plane } from '../BaseModel.ts';
 import { materialFlags, noTextureMaterial, PBRMaterial, QuakeMaterial } from '../../../client/renderer/Materials.mjs';
 import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.mjs';
 

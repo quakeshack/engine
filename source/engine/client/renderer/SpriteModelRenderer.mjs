@@ -48,7 +48,7 @@ export class SpriteModelRenderer extends ModelRenderer {
   }
 
   /**
-   * @param {import('../../common/model/SpriteModel.mjs').SpriteModel} _model The sprite model
+   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model
    * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
    * @returns {boolean} Sprites are never drawn in the opaque pass
    */
@@ -58,7 +58,7 @@ export class SpriteModelRenderer extends ModelRenderer {
   }
 
   /**
-   * @param {import('../../common/model/SpriteModel.mjs').SpriteModel} _model The sprite model
+   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model
    * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
    * @returns {boolean} Sprites use their dedicated sprite pass rather than the sorted transparent pass
    */
@@ -70,7 +70,7 @@ export class SpriteModelRenderer extends ModelRenderer {
   /**
    * Render a single sprite model entity.
    * Generates billboard geometry dynamically based on camera orientation.
-   * @param {import('../../common/model/SpriteModel.mjs').SpriteModel} model The sprite model to render
+   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} model The sprite model to render
    * @param {import('../ClientEntities.mjs').ClientEdict} entity The entity being rendered
    * @param {number} pass Rendering pass (0=opaque, 1=transparent)
    */
@@ -195,7 +195,7 @@ export class SpriteModelRenderer extends ModelRenderer {
   /**
    * Prepare sprite model for rendering.
    * Sprites use dynamic geometry, so no GPU resources to prepare.
-   * @param {import('../../common/model/SpriteModel.mjs').SpriteModel} _model The sprite model to prepare
+   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model to prepare
    * @param {boolean} isWorldModel Whether this model is the world model
    */
   // eslint-disable-next-line no-unused-vars
@@ -206,7 +206,7 @@ export class SpriteModelRenderer extends ModelRenderer {
   /**
    * Free GPU resources for this sprite model.
    * Sprites don't allocate GPU resources.
-   * @param {import('../../common/model/SpriteModel.mjs').SpriteModel} _model The sprite model to cleanup
+   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model to cleanup
    */
   // eslint-disable-next-line no-unused-vars
   cleanupModel(_model) {

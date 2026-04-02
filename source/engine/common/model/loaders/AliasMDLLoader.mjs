@@ -4,8 +4,8 @@ import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.mjs';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { registry } from '../../../registry.mjs';
-import { ModelLoader } from '../ModelLoader.mjs';
-import { AliasModel } from '../AliasModel.mjs';
+import { ModelLoader } from '../ModelLoader.ts';
+import { AliasModel } from '../AliasModel.ts';
 
 /**
  * Builds the diffuse and luminance skin layers for a legacy alias model skin.
@@ -324,7 +324,7 @@ export class AliasMDLLoader extends ModelLoader {
 
   /**
    * Load ST (texture coordinate) vertices
-   * @param {import('../AliasModel.mjs').AliasModel} loadmodel - The model being loaded
+   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
    * @param {ArrayBuffer} buffer - The model file data
    * @param {number} inmodel - Current offset in buffer
    * @returns {number} New offset after reading vertices
@@ -348,7 +348,7 @@ export class AliasMDLLoader extends ModelLoader {
 
   /**
    * Load triangles
-   * @param {import('../AliasModel.mjs').AliasModel} loadmodel - The model being loaded
+   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
    * @param {ArrayBuffer} buffer - The model file data
    * @param {number} inmodel - Current offset in buffer
    * @returns {number} New offset after reading triangles
@@ -375,7 +375,7 @@ export class AliasMDLLoader extends ModelLoader {
 
   /**
    * Flood fill skin to handle transparent areas
-   * @param {import('../AliasModel.mjs').AliasModel} loadmodel - The model being loaded
+   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
    * @param {Uint8Array} skin - The skin pixel data
    * @private
    */
@@ -415,7 +415,7 @@ export class AliasMDLLoader extends ModelLoader {
 
   /**
    * Translate player skin for color customization
-   * @param {import('../AliasModel.mjs').AliasModel} loadmodel - The model being loaded
+   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
    * @param {Uint8Array} data - The original skin data
    * @param {*} skin - The skin object to store the result
    * @private
@@ -447,7 +447,7 @@ export class AliasMDLLoader extends ModelLoader {
 
   /**
    * Load all skins (textures) for the model
-   * @param {import('../AliasModel.mjs').AliasModel} loadmodel - The model being loaded
+   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
    * @param {ArrayBuffer} buffer - The model file data
    * @param {number} inmodel - Current offset in buffer
    * @returns {number} New offset after reading skins
@@ -527,7 +527,7 @@ export class AliasMDLLoader extends ModelLoader {
 
   /**
    * Load all animation frames
-   * @param {import('../AliasModel.mjs').AliasModel} loadmodel - The model being loaded
+   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
    * @param {ArrayBuffer} buffer - The model file data
    * @param {number} inmodel - Current offset in buffer
    * @private
@@ -602,7 +602,7 @@ export class AliasMDLLoader extends ModelLoader {
 
   /**
    * Build rendering commands (WebGL buffers) for efficient rendering
-   * @param {import('../AliasModel.mjs').AliasModel} loadmodel - The model being loaded
+   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
    * @private
    */
   _buildRenderCommands(loadmodel) {

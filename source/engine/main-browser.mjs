@@ -8,7 +8,7 @@ import V from './client/V.mjs';
 import NET from './network/Network.ts';
 import SV from './server/Server.mjs';
 import PR from './server/Progs.mjs';
-import Mod from './common/Mod.mjs';
+import Mod from './common/Mod.ts';
 import Key from './client/Key.mjs';
 import CL from './client/CL.mjs';
 import S from './client/Sound.mjs';

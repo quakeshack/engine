@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import COMClass from '../../source/engine/common/Com.ts';
-import Mod from '../../source/engine/common/Mod.mjs';
+import Mod from '../../source/engine/common/Mod.ts';
 import { PMF, Pmove } from '../../source/engine/common/Pmove.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
@@ -14,14 +14,14 @@ import Vector from '../../source/shared/Vector.ts';
 
 /**
  * @typedef {object} HarnessOptions
- * @property {string} mapName
- * @property {string} gameDir
- * @property {string} spawnClassname
- * @property {string} orientationTargetname
- * @property {number} frames
- * @property {number} msec
- * @property {number} forwardmove
- * @property {number} probeDistance
+ * @property {string} mapName BSP path relative to the selected game directory.
+ * @property {string} gameDir Game directory used to resolve the BSP and assets.
+ * @property {string} spawnClassname Spawn classname used to place the probe entity.
+ * @property {string} orientationTargetname Optional targetname used to derive the probe yaw.
+ * @property {number} frames Number of movement frames to simulate.
+ * @property {number} msec Frame duration in milliseconds for each simulated command.
+ * @property {number} forwardmove Forward movement command applied each frame.
+ * @property {number} probeDistance Distance used for optional forward probe traces.
  */
 
 /**
