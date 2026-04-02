@@ -49,6 +49,38 @@
  * @property {boolean} isDedicatedServer true when running in server mode
  * @property {boolean} isInsideWorker true when running inside a worker
  */
+/**
+ * Registry members guaranteed after both browser and dedicated launch.
+ * @typedef {Registry & {
+ *   COM: ComModule,
+ *   Con: ConModule,
+ *   Host: HostModule,
+ *   NET: NetModule,
+ *   Sys: SysModule,
+ *   V: VModule,
+ *   SV: ServerModule,
+ *   Mod: ModModule,
+ *   PR: ProgsModule,
+ *   WebSocket: WebSocketClass,
+ * }} CommonRegistry
+ */
+/**
+ * Registry members guaranteed only after browser launch.
+ * @typedef {CommonRegistry & {
+ *   CL: ClientModule,
+ *   Draw: DrawModule,
+ *   Key: KeyModule,
+ *   IN: InputModule,
+ *   M: MenuModule,
+ *   R: RendererModule,
+ *   S: SoundModule,
+ *   Sbar: SbarModule,
+ *   SCR: ScrModule,
+ *   urls: URLs,
+ *   buildConfig: BuildConfig,
+ *   isDedicatedServer: false,
+ * }} ClientRegistry
+ */
 /** @type {Registry} */
 export const registry = {
   COM: undefined,
@@ -82,6 +114,24 @@ export const registry = {
 
 // make sure the registry is not extensible beyond the defined properties
 Object.seal(registry);
+
+/**
+ * Returns the registry members guaranteed after both browser and dedicated launch.
+ * Use this from code that runs in either runtime.
+ * @returns {CommonRegistry} initialized common registry view
+ */
+export function getCommonRegistry() {
+  return /** @type {CommonRegistry} */ (registry);
+}
+
+/**
+ * Returns the registry members guaranteed only after browser launch.
+ * Use this only from browser or client-only code paths.
+ * @returns {ClientRegistry} initialized client registry view
+ */
+export function getClientRegistry() {
+  return /** @type {ClientRegistry} */ (registry);
+}
 
 export class EventBus {
   /** @type {Map<string, Set<Function>>} */

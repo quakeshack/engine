@@ -1,4 +1,4 @@
-import { SzBuffer } from '../network/MSG.mjs';
+import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Defs from '../../shared/Defs.ts';
 import Cvar from '../common/Cvar.mjs';

@@ -1,7 +1,7 @@
 import { enumHelpers } from '../../shared/Q.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.ts';
-import { SzBuffer } from '../network/MSG.mjs';
+import { SzBuffer } from '../network/MSG.ts';
 import { QSocket } from '../network/NetworkDrivers.mjs';
 import * as Protocol from '../network/Protocol.ts';
 import { eventBus, registry } from '../registry.mjs';

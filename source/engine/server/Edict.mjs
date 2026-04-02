@@ -1,5 +1,5 @@
 import Vector from '../../shared/Vector.ts';
-import { SzBuffer, registerSerializableType } from '../network/MSG.mjs';
+import { SzBuffer, registerSerializableType } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.mjs';
 import * as Defs from '../../shared/Defs.ts';

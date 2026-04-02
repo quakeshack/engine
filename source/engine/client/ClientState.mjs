@@ -1,4 +1,4 @@
-import { SzBuffer } from '../network/MSG.mjs';
+import { SzBuffer } from '../network/MSG.ts';
 import { QSocket } from '../network/NetworkDrivers.mjs';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.mjs';

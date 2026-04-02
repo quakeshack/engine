@@ -1,7 +1,7 @@
 import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Q from '../../shared/Q.ts';
-import { SzBuffer } from '../network/MSG.mjs';
+import { SzBuffer } from '../network/MSG.ts';
 import Cmd from '../common/Cmd.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { HostError } from '../common/Errors.mjs';

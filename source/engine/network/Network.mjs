@@ -2,7 +2,7 @@ import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import Q from '../../shared/Q.ts';
 import { eventBus, registry } from '../registry.mjs';
-import { SzBuffer } from './MSG.mjs';
+import { SzBuffer } from './MSG.ts';
 import { BaseDriver, LoopDriver, QSocket, WebRTCDriver, WebSocketDriver } from './NetworkDrivers.mjs';
 import { DriverRegistry } from './DriverRegistry.mjs';
 import { InviteCommand } from './ConsoleCommands.mjs';

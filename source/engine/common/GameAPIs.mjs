@@ -16,7 +16,7 @@ import W from './W.mjs';
 /** @typedef {import('../client/ClientEntities.mjs').ClientEdict} ClientEdict */
 /** @typedef {import('../client/ClientEntities.mjs').ClientDlight} ClientDlight */
 /** @typedef {import('../client/GL.mjs').GLTexture} GLTexture */
-/** @typedef {import('../network/MSG.mjs').SzBuffer} SzBuffer */
+/** @typedef {import('../network/MSG.ts').SzBuffer} SzBuffer */
 /** @typedef {import('../server/Navigation.mjs').Navigation} Navigation */
 /** @typedef {import('./model/parsers/ParsedQC.mjs').default} ParsedQC */
 /** @typedef {import('./model/BaseModel.mjs').BaseModel} BaseModel */
