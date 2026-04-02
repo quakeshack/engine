@@ -2,7 +2,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
-import { content, flags, solid } from '../../source/shared/Defs.mjs';
+import { content, flags, solid } from '../../source/shared/Defs.ts';
 import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.mjs';
 
 import {

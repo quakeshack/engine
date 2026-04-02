@@ -1,5 +1,5 @@
 import Vector from '../../../shared/Vector.mjs';
-import * as Defs from '../../../shared/Defs.mjs';
+import * as Defs from '../../../shared/Defs.ts';
 import { STEPSIZE } from '../../common/Pmove.mjs';
 import { ServerEdict } from '../Edict.mjs';
 import { eventBus, registry } from '../../registry.mjs';

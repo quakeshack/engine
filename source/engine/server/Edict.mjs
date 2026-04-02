@@ -2,7 +2,7 @@ import Vector from '../../shared/Vector.mjs';
 import { SzBuffer, registerSerializableType } from '../network/MSG.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import * as Def from '../common/Def.mjs';
-import * as Defs from '../../shared/Defs.mjs';
+import * as Defs from '../../shared/Defs.ts';
 import { eventBus, registry } from '../registry.mjs';
 import Q from '../../shared/Q.mjs';
 import { ConsoleCommand } from '../common/Cmd.mjs';

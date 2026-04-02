@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import COMClass from '../../source/engine/common/Com.mjs';
 import Mod from '../../source/engine/common/Mod.mjs';
 import Vector from '../../source/shared/Vector.mjs';
-import { content } from '../../source/shared/Defs.mjs';
+import { content } from '../../source/shared/Defs.ts';
 import { DIST_EPSILON, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
 import { UserCmd } from '../../source/engine/network/Protocol.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';

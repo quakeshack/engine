@@ -2,7 +2,7 @@ import * as Protocol from '../network/Protocol.mjs';
 import * as Def from '../common/Def.mjs';
 import Cmd from '../common/Cmd.mjs';
 import { HostError } from '../common/Errors.mjs';
-import { gameCapabilities } from '../../shared/Defs.mjs';
+import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.mjs';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.mjs';

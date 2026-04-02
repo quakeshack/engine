@@ -1,5 +1,6 @@
 import { PmoveConfiguration } from '../../shared/Pmove.mjs';
 import Vector from '../../shared/Vector.mjs';
+import { solid } from '../../shared/Defs.ts';
 import Key from '../client/Key.mjs';
 import { SFX } from '../client/Sound.mjs';
 import VID from '../client/VID.mjs';
@@ -19,7 +20,22 @@ import W from './W.mjs';
 /** @typedef {import('../server/Navigation.mjs').Navigation} Navigation */
 /** @typedef {import('./model/parsers/ParsedQC.mjs').default} ParsedQC */
 /** @typedef {import('./model/BaseModel.mjs').BaseModel} BaseModel */
-/** @typedef {import('../server/physics/ServerCollision.mjs').Trace} Trace */
+/** @typedef {import('../server/physics/ServerCollisionSupport.mjs').CollisionTrace} CollisionTrace */
+/**
+ * @typedef ClientTraceOptions
+ * @property {boolean} [includeEntities] include current client entities in addition to static world geometry
+ * @property {?number} [passEntityId] client entity number to skip during entity tracing
+ * @property {?((entity: ClientEdict) => boolean)} [filter] optional candidate filter for entity tracing
+ */
+/**
+ * @typedef GameTrace
+ * @property {{ all: boolean, start: boolean }} solid solid hit flags
+ * @property {number} fraction completed trace fraction
+ * @property {{ normal: Vector, distance: number }} plane impact plane
+ * @property {{ inOpen: boolean, inWater: boolean }} contents terminal contents flags
+ * @property {Vector} point final trace point
+ * @property {import('../../game/id1/entity/BaseEntity.mjs').default|ClientEdict|null} entity hit entity, if any
+ */
 
 let { CL, Con, Draw, Host, R, S, SCR, SV, V} = registry;
 
@@ -91,6 +107,164 @@ function internalTraceToGameTrace(trace) {
     /** @type {?import('../../game/id1/entity/BaseEntity.mjs').default} entity */
     entity: trace.ent ? trace.ent.entity : null,
   };
+}
+
+/**
+ * @param {ClientEdict} entity client entity candidate
+ * @returns {boolean} true when the entity can be traced against
+ */
+function isTraceableClientSolid(entity) {
+  return entity.solid === solid.SOLID_BBOX
+    || entity.solid === solid.SOLID_SLIDEBOX
+    || entity.solid === solid.SOLID_BSP
+    || entity.solid === solid.SOLID_MESH;
+}
+
+/**
+ * @param {ClientEdict} entity client entity candidate
+ * @returns {{ mins: Vector, maxs: Vector }} extents used for tracing this entity
+ */
+function getClientTraceExtents(entity) {
+  if (entity.model !== null && entity.mins.isOrigin() && entity.maxs.isOrigin()) {
+    return {
+      mins: entity.model.mins,
+      maxs: entity.model.maxs,
+    };
+  }
+
+  return {
+    mins: entity.mins,
+    maxs: entity.maxs,
+  };
+}
+
+/**
+ * @param {ClientEdict} entity client entity candidate
+ * @param {Vector} absmin output minimum bounds
+ * @param {Vector} absmax output maximum bounds
+ */
+function computeClientTraceBounds(entity, absmin, absmax) {
+  const { mins, maxs } = getClientTraceExtents(entity);
+
+  if (!entity.angles.isOrigin()) {
+    const basis = entity.angles.toRotationMatrix();
+    const forward = new Vector(basis[0], basis[1], basis[2]);
+    const right = new Vector(basis[3], basis[4], basis[5]);
+    const up = new Vector(basis[6], basis[7], basis[8]);
+
+    const centerX = (mins[0] + maxs[0]) * 0.5;
+    const centerY = (mins[1] + maxs[1]) * 0.5;
+    const centerZ = (mins[2] + maxs[2]) * 0.5;
+    const extentsX = (maxs[0] - mins[0]) * 0.5;
+    const extentsY = (maxs[1] - mins[1]) * 0.5;
+    const extentsZ = (maxs[2] - mins[2]) * 0.5;
+
+    const worldCenter = entity.origin.copy()
+      .add(forward.copy().multiply(centerX))
+      .add(right.copy().multiply(centerY))
+      .add(up.copy().multiply(centerZ));
+
+    const worldExtentX = Math.abs(forward[0]) * extentsX + Math.abs(right[0]) * extentsY + Math.abs(up[0]) * extentsZ;
+    const worldExtentY = Math.abs(forward[1]) * extentsX + Math.abs(right[1]) * extentsY + Math.abs(up[1]) * extentsZ;
+    const worldExtentZ = Math.abs(forward[2]) * extentsX + Math.abs(right[2]) * extentsY + Math.abs(up[2]) * extentsZ;
+
+    absmin.setTo(
+      worldCenter[0] - worldExtentX,
+      worldCenter[1] - worldExtentY,
+      worldCenter[2] - worldExtentZ,
+    );
+    absmax.setTo(
+      worldCenter[0] + worldExtentX,
+      worldCenter[1] + worldExtentY,
+      worldCenter[2] + worldExtentZ,
+    );
+    return;
+  }
+
+  absmin.set(entity.origin).add(mins);
+  absmax.set(entity.origin).add(maxs);
+}
+
+/**
+ * @param {Vector} traceMins trace minimum bounds
+ * @param {Vector} traceMaxs trace maximum bounds
+ * @param {Vector} entityMins entity minimum bounds
+ * @param {Vector} entityMaxs entity maximum bounds
+ * @returns {boolean} true when the AABBs overlap
+ */
+function traceBoundsOverlap(traceMins, traceMaxs, entityMins, entityMaxs) {
+  return !(
+    traceMins[0] > entityMaxs[0]
+    || traceMins[1] > entityMaxs[1]
+    || traceMins[2] > entityMaxs[2]
+    || traceMaxs[0] < entityMins[0]
+    || traceMaxs[1] < entityMins[1]
+    || traceMaxs[2] < entityMins[2]
+  );
+}
+
+/**
+ * @param {Vector} start trace start
+ * @param {Vector} end trace end
+ * @param {CollisionTrace} worldTrace current static-world trace result
+ * @param {ClientTraceOptions} options client trace options
+ * @returns {CollisionTrace} best trace including eligible client entities
+ */
+function traceClientEntities(start, end, worldTrace, options) {
+  const traceMins = new Vector(
+    Math.min(start[0], worldTrace.endpos[0]),
+    Math.min(start[1], worldTrace.endpos[1]),
+    Math.min(start[2], worldTrace.endpos[2]),
+  );
+  const traceMaxs = new Vector(
+    Math.max(start[0], worldTrace.endpos[0]),
+    Math.max(start[1], worldTrace.endpos[1]),
+    Math.max(start[2], worldTrace.endpos[2]),
+  );
+  const entityMins = new Vector();
+  const entityMaxs = new Vector();
+
+  /** @type {CollisionTrace} */
+  let bestTrace = worldTrace;
+
+  for (const entity of CL.state.clientEntities.getEntities()) {
+    if (entity.num === 0 || entity.free || entity.origin.isInfinite() || entity.model === null) {
+      continue;
+    }
+
+    if (!isTraceableClientSolid(entity)) {
+      continue;
+    }
+
+    if (options.passEntityId !== null && options.passEntityId !== undefined && entity.num === options.passEntityId) {
+      continue;
+    }
+
+    if (options.filter !== null && options.filter !== undefined && !options.filter(entity)) {
+      continue;
+    }
+
+    computeClientTraceBounds(entity, entityMins, entityMaxs);
+
+    if (!traceBoundsOverlap(traceMins, traceMaxs, entityMins, entityMaxs)) {
+      continue;
+    }
+
+    const trace = SV.collision.clipMoveToEntity({
+      // @ts-ignore Client tracing reuses shared narrow-phase helpers with a lightweight ClientEdict adapter.
+      entity,
+      num: entity.num,
+      equals(other) {
+        return this === other;
+      },
+    }, start, Vector.origin, Vector.origin, bestTrace.endpos);
+
+    if (trace.allsolid || trace.startsolid || trace.fraction < bestTrace.fraction) {
+      bestTrace = trace;
+    }
+  }
+
+  return bestTrace;
 }
 
 export class CommonEngineAPI {
@@ -373,10 +547,11 @@ export class ServerEngineAPI extends CommonEngineAPI {
   }
 
   /**
-   * @param field
-   * @param value
-   * @param startEdictId
+   * @param {string} field field name to inspect on each entity
+   * @param {import('../../shared/GameInterfaces').EdictValueType} value target field value
+   * @param {number} startEdictId entity number to start searching from
    * @deprecated use FindAllByFieldAndValue instead
+   * @returns {ServerEdict|null} first matching edict, if any
    */
   static FindByFieldAndValue(field, value, startEdictId = 0) { // FIXME: startEdictId should be edict? not 100% happy about this
     for (let i = startEdictId; i < SV.server.num_edicts; i++) {
@@ -497,8 +672,8 @@ export class ServerEngineAPI extends CommonEngineAPI {
   }
 
   /**
-   * @param tempEntityId
-   * @param origin
+   * @param {number} tempEntityId temporary entity protocol id
+   * @param {Vector} origin event origin
    * @deprecated use client events instead
    */
   static DispatchTempEntityEvent(tempEntityId, origin) {
@@ -508,10 +683,10 @@ export class ServerEngineAPI extends CommonEngineAPI {
   }
 
   /**
-   * @param beamId
-   * @param edictId
-   * @param startOrigin
-   * @param endOrigin
+   * @param {number} beamId beam protocol id
+   * @param {number} edictId source entity id
+   * @param {Vector} startOrigin beam start position
+   * @param {Vector} endOrigin beam end position
    * @deprecated use client events instead
    */
   static DispatchBeamEvent(beamId, edictId, startOrigin, endOrigin) {
@@ -805,16 +980,23 @@ export class ClientEngineAPI extends CommonEngineAPI {
 
   /**
    * Performs a trace line in the client game world.
-   * Currently this traces static world geometry only.
+   * By default this traces static world geometry only.
    * Keep this legacy entry point aligned with the server-side Traceline name so
    * client tracing can grow into entity-aware behavior later without another API
    * rename.
    * @param {Vector} start start position
    * @param {Vector} end end position
-   * @returns {Trace} trace result
+   * @param {ClientTraceOptions} [options] optional entity-tracing options
+   * @returns {GameTrace} trace result
    */
-  static Traceline(start, end) {
-    return internalTraceToGameTrace(SV.collision.traceWorldLine(start, end));
+  static Traceline(start, end, options = null) {
+    const worldTrace = SV.collision.traceWorldLine(start, end);
+
+    if (options === null || options.includeEntities !== true) {
+      return internalTraceToGameTrace(worldTrace);
+    }
+
+    return internalTraceToGameTrace(traceClientEntities(start, end, worldTrace, options));
   }
 
   /**
@@ -919,7 +1101,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
       return CL.state.levelname;
     },
     get entityNum() {
-      return CL.state.viewent.num;
+      return CL.state.viewentity;
     },
     /**
      * local time, not game time! If you are looking for SV.server.time, check gametime

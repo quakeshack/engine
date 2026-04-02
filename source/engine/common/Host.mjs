@@ -11,8 +11,8 @@ import Chase from '../client/Chase.mjs';
 import VID from '../client/VID.mjs';
 import { HostError } from './Errors.mjs';
 import CDAudio from '../client/CDAudio.mjs';
-import * as Defs from '../../shared/Defs.mjs';
-import { content, gameCapabilities } from '../../shared/Defs.mjs';
+import * as Defs from '../../shared/Defs.ts';
+import { content, gameCapabilities } from '../../shared/Defs.ts';
 import ClientLifecycle from '../client/ClientLifecycle.mjs';
 import { Pmove } from './Pmove.mjs';
 

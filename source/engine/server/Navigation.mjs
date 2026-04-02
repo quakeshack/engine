@@ -1,5 +1,5 @@
 // import sampleBSpline from '../../shared/BSpline.mjs';
-import * as Def from '../../shared/Defs.mjs';
+import * as Def from '../../shared/Defs.ts';
 import { Octree } from '../../shared/Octree.mjs';
 import Vector from '../../shared/Vector.mjs';
 import Cmd from '../common/Cmd.mjs';

@@ -8,7 +8,7 @@ import { eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from './Edict.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import PF, { etype, ofs } from './ProgsAPI.mjs';
-import { gameCapabilities } from '../../shared/Defs.mjs';
+import { gameCapabilities } from '../../shared/Defs.ts';
 import { loadGameModule } from './GameLoader.mjs';
 
 const PR = {};

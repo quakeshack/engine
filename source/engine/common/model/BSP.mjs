@@ -1,5 +1,5 @@
 import { BaseMaterial } from '../../client/renderer/Materials.mjs';
-import { content } from '../../../shared/Defs.mjs';
+import { content } from '../../../shared/Defs.ts';
 import { BaseModel } from './BaseModel.mjs';
 import { SkyRenderer } from '../../client/renderer/Sky.mjs';
 import { AreaPortals } from './AreaPortals.mjs';

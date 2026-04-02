@@ -22,9 +22,9 @@ eventBus.subscribe('registry.frozen', () => {
 export default class Con {
   static backscroll = 0;
   static current = 0;
-  static text = [];
+  static text = /** @type {{ text: string, time: number, color: Vector, doNotNotify: boolean }[]} */([]);
   static captureBuffer = null;
-  /** @type {Cvar} */
+  /** @type {Cvar?} */
   static notifytime = null;
 
   /** used by the client to force the console to be up */

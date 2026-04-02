@@ -1,7 +1,7 @@
 import { registry, eventBus } from '../registry.mjs';
 import Cmd from './Cmd.mjs';
 import Q from '../../shared/Q.mjs';
-import { cvarFlags } from '../../shared/Defs.mjs';
+import { cvarFlags } from '../../shared/Defs.ts';
 
 let { CL, Con, SV } = registry;
 

@@ -93,6 +93,7 @@ function dedicatedWorkerBundlePlugin(mode) {
 
     async closeBundle() {
       const { rollup } = await import('rollup');
+      const { transformWithEsbuild } = await import('vite');
       const workerDir = resolve(__dirname, 'source/engine/server');
       const outDir = resolve(__dirname, 'dist/dedicated/workers');
 
@@ -112,6 +113,21 @@ function dedicatedWorkerBundlePlugin(mode) {
         // Node built-ins stay external (both prefixed and bare); everything else is inlined
         external: [/^node:/, 'fs', 'path', 'os', 'url', 'util', 'crypto', 'stream', 'events', 'buffer', 'http', 'https', 'net', 'tls', 'child_process', 'worker_threads'],
         plugins: [
+          {
+            name: 'transpile-typescript-modules',
+            async transform(code, id) {
+              if (!/\.(ts|mts|cts)$/.test(id)) {
+                return null;
+              }
+
+              return await transformWithEsbuild(code, id, {
+                format: 'esm',
+                loader: 'ts',
+                sourcemap: mode !== 'production',
+                target: 'node24',
+              });
+            },
+          },
           {
             // WorkerFramework.mjs constructs dynamic import paths at runtime
             // to evade Vite's static analysis (e.g. ['..','server','Com.mjs'].join('/')).

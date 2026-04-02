@@ -8,7 +8,7 @@ import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import { ED, ServerEdict } from './Edict.mjs';
 import { EventBus, eventBus, registry } from '../registry.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
-import * as Defs from '../../shared/Defs.mjs';
+import * as Defs from '../../shared/Defs.ts';
 import { Navigation } from './Navigation.mjs';
 import { ServerPhysics } from './physics/ServerPhysics.mjs';
 import { ServerClientPhysics } from './physics/ServerClientPhysics.mjs';

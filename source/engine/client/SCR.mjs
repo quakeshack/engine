@@ -1,6 +1,6 @@
 /* global  */
 
-import { gameCapabilities } from '../../shared/Defs.mjs';
+import { gameCapabilities } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { clientConnectionState } from '../common/Def.mjs';

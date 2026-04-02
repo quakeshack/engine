@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.mjs';
 import { BrushTrace, DIST_EPSILON, Pmove } from '../../source/engine/common/Pmove.mjs';
 import { BrushSide } from '../../source/engine/common/model/BSP.mjs';
-import { content } from '../../source/shared/Defs.mjs';
+import { content } from '../../source/shared/Defs.ts';
 
 import {
   assertNear,

@@ -8,7 +8,7 @@ import Chase from './Chase.mjs';
 import W from '../common/W.mjs';
 import VID from './VID.mjs';
 import GL, { ATTRIB_LOCATIONS, GLTexture } from './GL.mjs';
-import { content, effect, gameCapabilities } from '../../shared/Defs.mjs';
+import { content, effect, gameCapabilities } from '../../shared/Defs.ts';
 import { modelRendererRegistry } from './renderer/ModelRendererRegistry.mjs';
 import { BrushModelRenderer, LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from './renderer/BrushModelRenderer.mjs';
 import { AliasModelRenderer } from './renderer/AliasModelRenderer.mjs';

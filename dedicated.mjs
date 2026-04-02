@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env node --experimental-transform-types
 import process from 'node:process';
 import EngineLauncher from './source/engine/main-dedicated.mjs';
 

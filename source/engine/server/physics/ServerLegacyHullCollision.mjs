@@ -1,5 +1,5 @@
 import Vector from '../../../shared/Vector.mjs';
-import * as Defs from '../../../shared/Defs.mjs';
+import * as Defs from '../../../shared/Defs.ts';
 import { DIST_EPSILON } from '../../common/Pmove.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 

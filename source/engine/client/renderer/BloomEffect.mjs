@@ -4,7 +4,7 @@ import VID from '../VID.mjs';
 import PostProcessEffect from './PostProcessEffect.mjs';
 import Vector from '../../../shared/Vector.mjs';
 import { eventBus, registry } from '../../registry.mjs';
-import { effect } from '../../../shared/Defs.mjs';
+import { effect } from '../../../shared/Defs.ts';
 
 let { Draw, R } = registry;
 

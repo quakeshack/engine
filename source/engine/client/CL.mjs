@@ -5,7 +5,7 @@ import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { Pmove, PmovePlayer } from '../common/Pmove.mjs';
 import { eventBus, registry } from '../registry.mjs';
-import { gameCapabilities, solid } from '../../shared/Defs.mjs';
+import { gameCapabilities, solid } from '../../shared/Defs.ts';
 import ClientDemos from './ClientDemos.mjs';
 import { ClientPlayerState } from './ClientMessages.mjs';
 import VID from './VID.mjs';

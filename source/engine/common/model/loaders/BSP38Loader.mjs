@@ -1,4 +1,4 @@
-import { content } from '../../../../shared/Defs.mjs';
+import { content } from '../../../../shared/Defs.ts';
 import Q from '../../../../shared/Q.mjs';
 import Vector from '../../../../shared/Vector.mjs';
 import { CRC16CCITT } from '../../CRC.mjs';

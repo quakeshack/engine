@@ -1,5 +1,5 @@
 import { ClientGameInterface, ServerGameInterface } from "../../shared/GameInterfaces";
-import { gameCapabilities } from "../../shared/Defs.mjs";
+import { gameCapabilities } from "../../shared/Defs.ts";
 
 export interface GameModuleIdentification {
   name: string;

@@ -1,6 +1,6 @@
 import Vector from './Vector.mjs';
 
-/** @typedef {{origin: Vector, absmin: Vector|null, absmax: Vector|null, octreeNode: OctreeNode<OctreeItem>|null}} OctreeItem */
+/** @typedef {{origin: Vector|null, absmin: Vector|null, absmax: Vector|null, octreeNode: OctreeNode<OctreeItem>|null}} OctreeItem */
 
 /**
  * Octree node holding a spatially indexed item.

@@ -19,9 +19,9 @@ eventBus.subscribe('registry.frozen', () => {
 export class ConsoleCommand {
   /** @type {?import('../server/Edict.mjs').ServerClient} Invoking server client. Unset, when called locally. */
   client = null;
-  /** @type {string} The name that was used to execute this command. */
+  /** @type {string?} The name that was used to execute this command. */
   command = null;
-  /** @type {string} Full command line. */
+  /** @type {string?} Full command line. */
   args = null;
   /** @type {string[]} Arguments including the name. */
   argv = [];
@@ -52,10 +52,10 @@ export class ConsoleCommand {
     let command = this.command;
 
     if (command && command.toLowerCase() === 'cmd') {
-      command = argv.shift();
+      command = argv.shift() || null;
     }
 
-    if (command === undefined) {
+    if (command === null) {
       Con.Print('Usage: cmd <command> <args>\n');
       return true;
     }
@@ -101,7 +101,7 @@ class ForwardCommand extends ConsoleCommand {
 class ExecSlot {
   constructor(/** @type {string} */ filename) {
     this.filename = filename;
-    this.content = null;
+    this.content = /** @type {string|null} */ (null);
     this.isReady = false;
   }
 };

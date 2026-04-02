@@ -1,5 +1,5 @@
 import { enumHelpers } from '../../shared/Q.mjs';
-import { gameCapabilities } from '../../shared/Defs.mjs';
+import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.mjs';
 import { SzBuffer } from '../network/MSG.mjs';
 import { QSocket } from '../network/NetworkDrivers.mjs';

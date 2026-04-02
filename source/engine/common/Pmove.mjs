@@ -9,7 +9,7 @@
 
 import Vector from '../../shared/Vector.mjs';
 import * as Protocol from '../network/Protocol.mjs';
-import { content } from '../../shared/Defs.mjs';
+import { content } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.mjs';
 import Cvar from './Cvar.mjs';
 import { PmoveConfiguration } from '../../shared/Pmove.mjs';
@@ -3749,7 +3749,7 @@ export class Pmove { // pmove_t
   /**
    * Adds an entity (client or server) to physents.
    * @param {import('../server/Edict.mjs').BaseEntity|import('../client/ClientEntities.mjs').ClientEdict} entity actual entity
-   * @param {BrushModel} model model must be provided when entity is SOLID_BSP
+   * @param {BrushModel|null} model model must be provided when entity is SOLID_BSP
    * @returns {Pmove} this
    */
   addEntity(entity, model = null) {

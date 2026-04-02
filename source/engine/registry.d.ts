@@ -40,32 +40,32 @@ type IN = typeof _IN;
 type WebSocket = typeof WebSocketClass;
 
 interface Registry {
-  isDedicatedServer: boolean | null;
+  isDedicatedServer?: boolean;
   isInsideWorker: boolean;
 
-  COM: Com | null;
-  Con: Con | null;
-  Host: Host | null;
-  Sys: Sys | null;
-  V: V | null;
-  SV: SV | null;
-  PR: PR | null;
-  NET: NET | null;
-  Mod: Mod | null;
-  CL: CL | null;
-  SCR: SCR | null;
-  R: R | null;
-  Draw: Draw | null;
-  Key: Key | null;
-  IN: IN | null;
-  Sbar: Sbar | null;
-  S: S | null;
-  M: M | null;
+  COM?: Com;
+  Con?: Con;
+  Host?: Host;
+  Sys?: Sys;
+  V?: V;
+  SV?: SV;
+  PR?: PR;
+  NET?: NET;
+  Mod?: Mod;
+  CL?: CL;
+  SCR?: SCR;
+  R?: R;
+  Draw?: Draw;
+  Key?: Key;
+  IN?: IN;
+  Sbar?: Sbar;
+  S?: S;
+  M?: M;
 
-  WebSocket: WebSocket | null;
+  WebSocket?: WebSocket;
 
-  urls: URLs | null;
-  buildConfig: BuildConfig | null;
+  urls?: URLs;
+  buildConfig?: BuildConfig;
 };
 
 export const registry: Registry;

@@ -1,6 +1,6 @@
 import Vector from '../../../../shared/Vector.mjs';
 import Q from '../../../../shared/Q.mjs';
-import { content } from '../../../../shared/Defs.mjs';
+import { content } from '../../../../shared/Defs.ts';
 import { GLTexture } from '../../../client/GL.mjs';
 import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.mjs';
 import { CRC16CCITT } from '../../CRC.mjs';

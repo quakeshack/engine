@@ -31,10 +31,10 @@
     "ws": "^8.18.0"
   },
   "scripts": {
-    "test": "node --test test/**/*.test.mjs",
-    "test:common": "node --test test/common/**/*.test.mjs",
-    "test:physics": "node --test test/physics/**/*.test.mjs",
-    "test:renderer": "node --test test/renderer/**/*.test.mjs",
+    "test": "node --experimental-transform-types --test test/**/*.test.mjs",
+    "test:common": "node --experimental-transform-types --test test/common/**/*.test.mjs",
+    "test:physics": "node --experimental-transform-types --test test/physics/**/*.test.mjs",
+    "test:renderer": "node --experimental-transform-types --test test/renderer/**/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "typecheck:watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "build:wrangler": "npm run test && npm run build:production",
@@ -49,7 +49,7 @@
     "dedicated:dev": "vite build --watch --mode development --config vite.config.dedicated.mjs",
     "dedicated:build": "vite build --config vite.config.dedicated.mjs",
     "dedicated:build:production": "vite build --config vite.config.dedicated.mjs --mode production",
-    "dedicated:start": "node ./dedicated.mjs +exec server.cfg",
+    "dedicated:start": "node --experimental-transform-types ./dedicated.mjs +exec server.cfg",
     "dedicated:start:production": "node ./dist/dedicated/dedicated.mjs +exec server.cfg"
   }
 }

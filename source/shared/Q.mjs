@@ -1,4 +1,4 @@
-import { EPSILON } from './Defs.mjs';
+import { EPSILON } from './Defs.ts';
 
 /**
  * Utility class for common engine functions.

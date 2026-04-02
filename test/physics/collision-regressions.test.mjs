@@ -2,7 +2,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.mjs';
-import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.mjs';
+import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
 import { BrushTrace, Hull, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.mjs';

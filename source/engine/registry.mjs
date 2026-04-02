@@ -6,32 +6,32 @@
  * @type {import('./registry').Registry}
  */
 export const registry = {
-  COM: null,
-  Con: null,
-  Host: null,
-  NET: null,
-  Draw: null,
-  Sys: null,
-  V: null,
-  CL: null,
-  SV: null,
-  Mod: null,
-  PR: null,
-  R: null,
-  SCR: null,
-  Key: null,
-  IN: null,
-  Sbar: null,
-  S: null,
-  M: null,
+  COM: undefined,
+  Con: undefined,
+  Host: undefined,
+  NET: undefined,
+  Draw: undefined,
+  Sys: undefined,
+  V: undefined,
+  CL: undefined,
+  SV: undefined,
+  Mod: undefined,
+  PR: undefined,
+  R: undefined,
+  SCR: undefined,
+  Key: undefined,
+  IN: undefined,
+  Sbar: undefined,
+  S: undefined,
+  M: undefined,
 
-  WebSocket: null,
+  WebSocket: undefined,
 
-  urls: null,
-  buildConfig: null,
+  urls: undefined,
+  buildConfig: undefined,
 
   /** @type {boolean} true, when running in server mode */
-  isDedicatedServer: null,
+  isDedicatedServer: false,
   isInsideWorker: false,
 };
 
@@ -45,7 +45,7 @@ export class EventBus {
   #listeners = new Map();
 
   /** @type {string} */
-  #name = null;
+  #name;
 
   /**
    * @param {string} name name

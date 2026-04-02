@@ -1,7 +1,7 @@
 import Cvar from '../common/Cvar.mjs';
 import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import * as Def from '../common/Def.mjs';
-import { gameCapabilities } from '../../shared/Defs.mjs';
+import { gameCapabilities } from '../../shared/Defs.ts';
 import ClientInput from './ClientInput.mjs';
 import CL from './CL.mjs';
 import { clientRuntimeState } from './ClientState.mjs';

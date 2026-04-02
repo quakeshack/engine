@@ -1,5 +1,5 @@
 import Vector from '../../../shared/Vector.mjs';
-import * as Defs from '../../../shared/Defs.mjs';
+import * as Defs from '../../../shared/Defs.ts';
 import { Octree } from '../../../shared/Octree.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
@@ -16,6 +16,9 @@ eventBus.subscribe('registry.frozen', () => {
  * Handles the area node BSP tree used for spatial queries.
  */
 export class ServerArea {
+  /** @type {?Octree<import('../Edict.mjs').ServerEdict>} */
+  tree = null;
+
   /**
    * @param {CollisionModelSource} [modelSource] runtime model resolver
    */
@@ -191,7 +194,7 @@ export class ServerArea {
 
     const halfSize = pow2 / 2;
 
-    this.tree = new Octree(center, halfSize, 16, 64);
+    this.tree = /** @type {Octree<import('../Edict.mjs').ServerEdict>} */ (new Octree(center, halfSize, 16, 64));
   }
 
   /**
@@ -246,7 +249,10 @@ export class ServerArea {
       return;
     }
 
-    const sides = Vector.boxOnPlaneSide(ent.entity.absmin, ent.entity.absmax, node.plane);
+    const entity = /** @type {import('../Edict.mjs').BaseEntity} */ (ent.entity);
+    console.assert(entity !== null);
+
+    const sides = Vector.boxOnPlaneSide(entity.absmin, entity.absmax, node.plane);
 
     if ((sides & 1) !== 0) {
       this.findTouchedLeafs(ent, node.children[0]);
@@ -268,6 +274,9 @@ export class ServerArea {
       return;
     }
 
+    const entity = /** @type {import('../Edict.mjs').BaseEntity} */ (ent.entity);
+    console.assert(entity !== null);
+
     SV.server.navigation.relinkEdict(ent);
     this.unlinkEdict(ent);
 
@@ -280,28 +289,28 @@ export class ServerArea {
       absmin.add(new Vector(-1.0, -1.0, -1.0));
       absmax.add(new Vector(1.0, 1.0, 1.0));
 
-      if ((ent.entity.flags & Defs.flags.FL_ITEM) !== 0) { // TODO: should be a feature flag for the game
+      if ((entity.flags & Defs.flags.FL_ITEM) !== 0) { // TODO: should be a feature flag for the game
         absmin.add(new Vector(-14.0, -14.0, 1.0));
         absmax.add(new Vector(14.0, 14.0, -1.0));
       }
     }
 
-    ent.entity.absmin = ent.entity.absmin.set(absmin);
-    ent.entity.absmax = ent.entity.absmax.set(absmax);
+    entity.absmin = entity.absmin.set(absmin);
+    entity.absmax = entity.absmax.set(absmax);
 
     ent.leafnums = [];
-    if (ent.entity.modelindex !== 0) {
+    if (entity.modelindex !== 0) {
       this.findTouchedLeafs(ent, SV.server.worldmodel.nodes[0]);
     }
 
-    if (ent.entity.solid === Defs.solid.SOLID_NOT) {
+    if (entity.solid === Defs.solid.SOLID_NOT) {
       return;
     }
 
     const node = this.tree.insert(ent);
     ent.octreeNode = node;
 
-    if (ent.entity.movetype !== Defs.moveType.MOVETYPE_NOCLIP && touchTriggers) {
+    if (entity.movetype !== Defs.moveType.MOVETYPE_NOCLIP && touchTriggers) {
       this.touchLinks(ent);
     }
   }

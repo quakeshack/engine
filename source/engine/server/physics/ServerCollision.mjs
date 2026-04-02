@@ -1,5 +1,5 @@
 import Vector from '../../../shared/Vector.mjs';
-import * as Defs from '../../../shared/Defs.mjs';
+import * as Defs from '../../../shared/Defs.ts';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
 import Mod, { BrushModel } from '../../common/Mod.mjs';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.mjs';

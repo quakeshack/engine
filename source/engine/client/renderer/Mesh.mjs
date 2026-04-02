@@ -1,4 +1,4 @@
-import { EPSILON } from '../../../shared/Defs.mjs';
+import { EPSILON } from '../../../shared/Defs.ts';
 
 /**
  * Mesh stuff.
