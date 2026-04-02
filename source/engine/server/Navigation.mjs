@@ -1,6 +1,6 @@
-// import sampleBSpline from '../../shared/BSpline.mjs';
+// import sampleBSpline from '../../shared/BSpline.ts';
 import * as Def from '../../shared/Defs.ts';
-import { Octree } from '../../shared/Octree.mjs';
+import { Octree } from '../../shared/Octree.ts';
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.mjs';
 // import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';

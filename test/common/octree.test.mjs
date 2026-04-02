@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { Octree } from '../../source/shared/Octree.mjs';
+import { Octree } from '../../source/shared/Octree.ts';
 import Vector from '../../source/shared/Vector.ts';
 
-/** @typedef {import('../../source/shared/Octree.mjs').OctreeNode<TestItem>} TestOctreeNode */
+/** @typedef {import('../../source/shared/Octree.ts').OctreeNode<TestItem>} TestOctreeNode */
 
 /**
  * @typedef TestItem
@@ -60,7 +60,7 @@ function insertTracked(tree, item) {
 }
 
 /**
- * @param {import('../../source/shared/Octree.mjs').OctreeNode<TestItem>} node node whose children must exist
+ * @param {import('../../source/shared/Octree.ts').OctreeNode<TestItem>} node node whose children must exist
  * @returns {TestOctreeNode[]} node children
  */
 function requireChildren(node) {
@@ -68,8 +68,8 @@ function requireChildren(node) {
   return node.children;
 }
 
-describe('Octree', () => {
-  test('splits into children once capacity is exceeded', () => {
+void describe('Octree', () => {
+  void test('splits into children once capacity is exceeded', () => {
     const tree = new Octree(new Vector(0, 0, 0), 16, 1, 1);
     const first = createPointItem('first', new Vector(-4, -4, -4));
     const second = createPointItem('second', new Vector(4, 4, 4));
@@ -90,7 +90,7 @@ describe('Octree', () => {
     );
   });
 
-  test('keeps oversized bounds in the parent after a split', () => {
+  void test('keeps oversized bounds in the parent after a split', () => {
     const tree = new Octree(new Vector(0, 0, 0), 16, 1, 1);
     const anchor = createPointItem('anchor', new Vector(10, 10, 10));
     const straddling = createBoxItem('straddling', new Vector(0, 0, 0), new Vector(-2, -2, -2), new Vector(2, 2, 2));
@@ -106,7 +106,7 @@ describe('Octree', () => {
     assert.notEqual(anchor.octreeNode, tree.root);
   });
 
-  test('merges children back into the parent when removals drop below capacity', () => {
+  void test('merges children back into the parent when removals drop below capacity', () => {
     const tree = new Octree(new Vector(0, 0, 0), 16, 1, 1);
     const first = createPointItem('first', new Vector(-4, -4, -4));
     const second = createPointItem('second', new Vector(4, 4, 4));

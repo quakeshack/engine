@@ -1,4 +1,4 @@
-/* eslint jsdoc/require-param-type: "off", jsdoc/require-returns: "off" */
+/* eslint jsdoc/require-returns: "off" */
 
 type VectorLike = ArrayLike<number>;
 

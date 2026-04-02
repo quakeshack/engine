@@ -2,13 +2,13 @@ import Vector from './Vector.ts';
 
 /**
  * Uniform clamped knot vector in [0,1]
- * @param {number} nCtrl nCtrl
- * @param {number} degree degree
- * @returns {number[]} knots
+ * @param nCtrl nCtrl
+ * @param degree degree
+ * @returns knots
  */
-function makeClampedUniformKnots(nCtrl, degree) {
+function makeClampedUniformKnots(nCtrl: number, degree: number): number[] {
   const m = nCtrl + degree + 1;
-  const knots = new Array(m).fill(0);
+  const knots = new Array<number>(m).fill(0);
   const nInterior = m - 2 * (degree + 1);
 
   for (let i = 0; i < nInterior; i++) {
@@ -23,13 +23,13 @@ function makeClampedUniformKnots(nCtrl, degree) {
 }
 
 /**
- * @param {number} u u
- * @param {number} degree degree
- * @param {number[]} knots knots
- * @returns {number} span index
+ * @param u u
+ * @param degree degree
+ * @param knots knots
+ * @returns span index
  */
-function findSpan(u, degree, knots) {
-  const n = knots.length - degree - 2; // last control index
+function findSpan(u: number, degree: number, knots: number[]): number {
+  const n = knots.length - degree - 2;
 
   if (u >= knots[n + 1]) {
     return n;
@@ -39,8 +39,9 @@ function findSpan(u, degree, knots) {
     return degree;
   }
 
-  // binary search
-  let low = degree, high = n + 1, mid = Math.floor((low + high) / 2);
+  let low = degree;
+  let high = n + 1;
+  let mid = Math.floor((low + high) / 2);
 
   while (!(u >= knots[mid] && u < knots[mid + 1])) {
     if (u < knots[mid]) {
@@ -57,17 +58,16 @@ function findSpan(u, degree, knots) {
 
 /**
  * De Boor evaluation at parameter u in [0,1]
- * @param {number} u u
- * @param {number} degree degree
- * @param {number[]} knots knots
- * @param {Vector[]} ctrl ctrl
- * @returns {Vector} point on the curve
+ * @param u u
+ * @param degree degree
+ * @param knots knots
+ * @param ctrl ctrl
+ * @returns point on the curve
  */
-function deBoor(u, degree, knots, ctrl) {
+function deBoor(u: number, degree: number, knots: number[], ctrl: Vector[]): Vector {
   const k = findSpan(u, degree, knots);
-  const d = [];
+  const d: Vector[] = [];
 
-  // copy affected control points
   for (let j = 0; j <= degree; j++) {
     d[j] = ctrl[k - degree + j].copy();
   }
@@ -86,13 +86,13 @@ function deBoor(u, degree, knots, ctrl) {
 
 /**
  * Sample a cubic B-spline through given control points.
- * @param {Vector[]} points control points (path you want to smooth)
- * @param {number?} samples number of points to sample along the curve
- * @returns {Vector[]} sampled points along the B-spline
+ * @param points control points (path you want to smooth)
+ * @param samples number of points to sample along the curve
+ * @returns sampled points along the B-spline
  */
-export default function sampleBSpline(points, samples = null) {
+export default function sampleBSpline(points: Vector[], samples: number | null = null): Vector[] {
   if (points.length < 4) {
-    return points.slice(); // need at least 4 for cubic
+    return points.slice();
   }
 
   if (samples === null) {
@@ -101,11 +101,10 @@ export default function sampleBSpline(points, samples = null) {
 
   const degree = 3;
   const knots = makeClampedUniformKnots(points.length, degree);
-
-  const out = [];
+  const out: Vector[] = [];
 
   for (let i = 0; i < samples; i++) {
-    const u = i / (samples - 1); // [0,1]
+    const u = i / (samples - 1);
     out.push(deBoor(u, degree, knots, points));
   }
 

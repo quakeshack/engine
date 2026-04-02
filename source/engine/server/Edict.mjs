@@ -7,7 +7,7 @@ import { eventBus, registry } from '../registry.mjs';
 import Q from '../../shared/Q.mjs';
 import { ConsoleCommand } from '../common/Cmd.mjs';
 import { ClientEdict } from '../client/ClientEntities.mjs';
-import { OctreeNode } from '../../shared/Octree.mjs';
+import { OctreeNode } from '../../shared/Octree.ts';
 import { Visibility } from '../common/model/BSP.mjs';
 
 /** @typedef {import('../../game/id1/entity/BaseEntity.mjs').default} BaseEntity */

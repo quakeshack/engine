@@ -21,11 +21,9 @@ const stylisticPlugin = /** @type {import('eslint').ESLint.Plugin} */ (stylistic
 const typeScriptEslintPlugin = /** @type {import('eslint').ESLint.Plugin} */ (
   /** @type {unknown} */ (tseslint)
 );
-const nodeGlobals = {
-  ...globals.node,
-};
-
-delete nodeGlobals.Buffer;
+const nodeGlobals = Object.fromEntries(
+  Object.entries(globals.node).filter(([name]) => name !== 'Buffer'),
+);
 
 const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   'max-len': 'off',
@@ -119,6 +117,9 @@ export default defineConfig([
     },
     rules: {
       ...commonRules,
+      'jsdoc/require-param-type': 'off',
+      'jsdoc/require-property-type': 'off',
+      'jsdoc/require-returns-type': 'off',
       'no-undef': 'off',
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': ['error', {

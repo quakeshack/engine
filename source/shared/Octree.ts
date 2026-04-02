@@ -1,37 +1,52 @@
 import Vector from './Vector.ts';
 
-/** @typedef {{origin: Vector|null, absmin: Vector|null, absmax: Vector|null, octreeNode: OctreeNode<OctreeItem>|null}} OctreeItem */
+/**
+ * Octree node holding a spatially indexed item.
+ */
+export interface OctreeItem<T extends OctreeItem<T>> {
+  origin: Vector | null;
+  absmin: Vector | null;
+  absmax: Vector | null;
+  octreeNode: OctreeNode<T> | null;
+}
 
 /**
  * Octree node holding a spatially indexed item.
- * @template {OctreeItem} T
+ * @template T
  */
-export class OctreeNode {
+export class OctreeNode<T extends OctreeItem<T>> {
+  center: Vector;
+  halfSize: number;
+  capacity: number;
+  minSize: number;
+  parent: OctreeNode<T> | null;
+  totalCount: number;
+  items: T[];
+  children: OctreeNode<T>[] | null;
+
   /**
-   * @param {Vector} center center point, e.g (mins + maxs) / 2
-   * @param {number} halfSize half the size of the longest dimension, e.g. (Math.max of (maxs - mins)) / 2 +1
-   * @param {number} capacity maximum items per node before splitting
-   * @param {number} minSize minimum halfSize to allow splitting
-   * @param {OctreeNode<T>|null} parent parent node
+   * @param center center point, e.g (mins + maxs) / 2
+   * @param halfSize half the size of the longest dimension, e.g. (Math.max of (maxs - mins)) / 2 +1
+   * @param capacity maximum items per node before splitting
+   * @param minSize minimum halfSize to allow splitting
+   * @param parent parent node
    */
-  constructor(center, halfSize, capacity = 8, minSize = 4, parent = null) {
-    this.center = center; // Vector
-    this.halfSize = halfSize; // number
+  constructor(center: Vector, halfSize: number, capacity = 8, minSize = 4, parent: OctreeNode<T> | null = null) {
+    this.center = center;
+    this.halfSize = halfSize;
     this.capacity = capacity;
     this.minSize = minSize;
     this.parent = parent;
     this.totalCount = 0;
-    /** @type {T[]} */
     this.items = [];
-    /** @type {OctreeNode<T>[]|null} */
     this.children = null;
   }
 
   /**
-   * @param {Vector} point position
-   * @returns {boolean} true if point is inside this node's box
+   * @param point position
+   * @returns true if point is inside this node's box
    */
-  #isInBox(point) {
+  #isInBox(point: Vector): boolean {
     const dx = Math.abs(point[0] - this.center[0]);
     const dy = Math.abs(point[1] - this.center[1]);
     const dz = Math.abs(point[2] - this.center[2]);
@@ -40,11 +55,11 @@ export class OctreeNode {
   }
 
   /**
-   * @param {Vector} mins minimum bounds
-   * @param {Vector} maxs maximum bounds
-   * @returns {boolean} true if box is fully inside this node's box
+   * @param mins minimum bounds
+   * @param maxs maximum bounds
+   * @returns true if box is fully inside this node's box
    */
-  #isBoxInBox(mins, maxs) {
+  #isBoxInBox(mins: Vector, maxs: Vector): boolean {
     const nodeMinX = this.center[0] - this.halfSize;
     const nodeMaxX = this.center[0] + this.halfSize;
     const nodeMinY = this.center[1] - this.halfSize;
@@ -59,13 +74,12 @@ export class OctreeNode {
 
   /**
    * Subdivides this node into eight children.
-   * @returns {OctreeNode<T>[]} created children
+   * @returns created children
    */
-  #subdivide() {
+  #subdivide(): OctreeNode<T>[] {
     const hs = this.halfSize / 2;
     const offs = [-hs, hs];
-    /** @type {OctreeNode<T>[]} */
-    const children = [];
+    const children: OctreeNode<T>[] = [];
 
     for (let ix = 0; ix < 2; ix++) {
       for (let iy = 0; iy < 2; iy++) {
@@ -87,11 +101,11 @@ export class OctreeNode {
 
   /**
    * Inserts an item into the first child that fully contains it.
-   * @param {T} item item to insert
-   * @param {OctreeNode<T>[]} children child nodes
-   * @returns {OctreeNode<T>|null} child node that accepted the item, if any
+   * @param item item to insert
+   * @param children child nodes
+   * @returns child node that accepted the item, if any
    */
-  #insertIntoChildren(item, children) {
+  #insertIntoChildren(item: T, children: OctreeNode<T>[]): OctreeNode<T> | null {
     for (const child of children) {
       const node = child.insert(item);
       if (node !== null) {
@@ -104,17 +118,16 @@ export class OctreeNode {
 
   /**
    * Inserts item.
-   * @param {T} obj item
-   * @returns {OctreeNode<T>|null} node where item was inserted, or null
+   * @param obj item
+   * @returns node where item was inserted, or null
    */
-  insert(obj) {
-    // if the object has bounds, check if it fits in this node
-    if (obj.absmin && obj.absmax) {
+  insert(obj: T): OctreeNode<T> | null {
+    if (obj.absmin !== null && obj.absmax !== null) {
       if (!this.#isBoxInBox(obj.absmin, obj.absmax)) {
         return null;
       }
     } else {
-      if (!this.#isInBox(obj.origin)) {
+      if (obj.origin === null || !this.#isInBox(obj.origin)) {
         return null;
       }
     }
@@ -122,48 +135,37 @@ export class OctreeNode {
     let children = this.children;
 
     if (children === null) {
-      // is there enough space? if so, add it here
       if (this.items.length < this.capacity || this.halfSize <= this.minSize) {
         this.items.push(obj);
         this.#updateCount(1);
         return this;
       }
 
-      // split
-      // temporarily reduce count for items we are about to move
       this.#updateCount(-this.items.length);
       children = this.#subdivide();
 
-      // move items into children
       const old = this.items;
       this.items = [];
 
-      // re-insert old items
       for (const item of old) {
         const node = this.#insertIntoChildren(item, children);
         if (node !== null) {
-          if (item.octreeNode) {
-            item.octreeNode = node;
-          }
+          item.octreeNode = node;
         }
 
         if (node === null) {
-          this.items.push(item); // keep in parent if it doesn’t fit in any child
-          if (item.octreeNode) {
-            item.octreeNode = this;
-          }
-          this.#updateCount(1); // re-add count for the item kept in this node
+          this.items.push(item);
+          item.octreeNode = this;
+          this.#updateCount(1);
         }
       }
     }
 
-    // insert into child
     const node = this.#insertIntoChildren(obj, children);
     if (node !== null) {
       return node;
     }
 
-    // if it didn’t fit in any child (e.g. straddles boundary), keep it here
     this.items.push(obj);
     this.#updateCount(1);
     return this;
@@ -171,12 +173,11 @@ export class OctreeNode {
 
   /**
    * Updates totalCount up the tree.
-   * @param {number} delta changed number of items
+   * @param delta changed number of items
    */
-  #updateCount(delta) {
-    /** @type {OctreeNode<T>|null} */
-    let node = this; // eslint-disable-line consistent-this
-    while (node) {
+  #updateCount(delta: number): void {
+    let node: OctreeNode<T> | null = this; // eslint-disable-line consistent-this
+    while (node !== null) {
       node.totalCount += delta;
       node = node.parent;
     }
@@ -184,10 +185,10 @@ export class OctreeNode {
 
   /**
    * Removes item from this node.
-   * @param {T} obj item
-   * @returns {boolean} true if removed
+   * @param obj item
+   * @returns true if removed
    */
-  remove(obj) {
+  remove(obj: T): boolean {
     const idx = this.items.indexOf(obj);
     if (idx !== -1) {
       this.items.splice(idx, 1);
@@ -201,11 +202,10 @@ export class OctreeNode {
   /**
    * Checks if children can be merged.
    */
-  #checkMerge() {
-    /** @type {OctreeNode<T>|null} */
-    let node = this; // eslint-disable-line consistent-this
-    while (node) {
-      if (node.children && node.totalCount <= node.capacity) {
+  #checkMerge(): void {
+    let node: OctreeNode<T> | null = this; // eslint-disable-line consistent-this
+    while (node !== null) {
+      if (node.children !== null && node.totalCount <= node.capacity) {
         node.#merge();
       }
       node = node.parent;
@@ -215,22 +215,20 @@ export class OctreeNode {
   /**
    * Merges all children into this node.
    */
-  #merge() {
+  #merge(): void {
     const items = this.#getAllItems();
     this.items = items;
     this.children = null;
     for (const item of this.items) {
-      if (item.octreeNode) {
-        item.octreeNode = this;
-      }
+      item.octreeNode = this;
     }
   }
 
   /**
    * Returns all items in this node and its children.
-   * @returns {T[]} items
+   * @returns items
    */
-  #getAllItems() {
+  #getAllItems(): T[] {
     let items = [...this.items];
     const children = this.children;
 
@@ -245,14 +243,12 @@ export class OctreeNode {
 
   /**
    * Collect candidates inside AABB.
-   * @param {Vector} mins minimum bounds
-   * @param {Vector} maxs maximum bounds
-   * @yields {T} item
-   * @returns {IterableIterator<T>} items inside AABB
+   * @param mins minimum bounds
+   * @param maxs maximum bounds
+   * @yields item
+   * @returns items inside AABB
    */
-  *queryAABB(mins, maxs) {
-    // AABB-AABB intersection test
-    // node bounds:
+  *queryAABB(mins: Vector, maxs: Vector): IterableIterator<T> {
     const nodeMinX = this.center[0] - this.halfSize;
     const nodeMaxX = this.center[0] + this.halfSize;
     const nodeMinY = this.center[1] - this.halfSize;
@@ -266,19 +262,15 @@ export class OctreeNode {
       return;
     }
 
-    // check items
     if (this.items.length > 0) {
       for (const p of this.items) {
-        // check if item is inside query AABB
-        if (p.absmin && p.absmax) {
-          // AABB-AABB overlap
+        if (p.absmin !== null && p.absmax !== null) {
           if (p.absmin[0] <= maxs[0] && p.absmax[0] >= mins[0] &&
             p.absmin[1] <= maxs[1] && p.absmax[1] >= mins[1] &&
             p.absmin[2] <= maxs[2] && p.absmax[2] >= mins[2]) {
             yield p;
           }
-        } else {
-          // item in AABB
+        } else if (p.origin !== null) {
           if (p.origin[0] >= mins[0] && p.origin[0] <= maxs[0] &&
             p.origin[1] >= mins[1] && p.origin[1] <= maxs[1] &&
             p.origin[2] >= mins[2] && p.origin[2] <= maxs[2]) {
@@ -288,7 +280,6 @@ export class OctreeNode {
       }
     }
 
-    // traverse children
     const children = this.children;
 
     if (children !== null) {
@@ -300,26 +291,27 @@ export class OctreeNode {
 
   /**
    * Collect candidates inside sphere centered at pos with radius r.
-   * @param {Vector} point position
-   * @param {number} radius radius
-   * @yields {[number, T]} distance and item
-   * @returns {IterableIterator<[number, T]>} items inside sphere
+   * @param point position
+   * @param radius radius
+   * @yields distance and item
+   * @returns items inside sphere
    */
-  *querySphere(point, radius) {
-    // AABB-sphere intersection test
+  *querySphere(point: Vector, radius: number): IterableIterator<[number, T]> {
     const dx = Math.max(0, Math.abs(point[0] - this.center[0]) - this.halfSize);
     const dy = Math.max(0, Math.abs(point[1] - this.center[1]) - this.halfSize);
     const dz = Math.max(0, Math.abs(point[2] - this.center[2]) - this.halfSize);
     const dist2 = dx * dx + dy * dy + dz * dz;
 
     if (dist2 > radius * radius) {
-      // no intersection
       return;
     }
 
-    // check items
     if (this.items.length > 0) {
       for (const item of this.items) {
+        if (item.origin === null) {
+          continue;
+        }
+
         const d = item.origin.copy().subtract(point).len();
         if (d <= radius) {
           yield [d, item];
@@ -327,7 +319,6 @@ export class OctreeNode {
       }
     }
 
-    // traverse children
     const children = this.children;
 
     if (children !== null) {
@@ -340,37 +331,37 @@ export class OctreeNode {
 
 /**
  * Simple Octree for spatial-indexing of anything.
- * @template {OctreeItem} T
+ * @template T
  */
-export class Octree {
+export class Octree<T extends OctreeItem<T>> {
+  root: OctreeNode<T>;
+
   /**
-   * @param {Vector} center center point, e.g (mins + maxs) / 2
-   * @param {number} halfSize half the size of the longest dimension, e.g. (Math.max of (maxs - mins)) / 2 +1
-   * @param {number} capacity maximum items per node before splitting, default 8
-   * @param {number} minSize minimum halfSize to allow splitting, default 4
+   * @param center center point, e.g (mins + maxs) / 2
+   * @param halfSize half the size of the longest dimension, e.g. (Math.max of (maxs - mins)) / 2 +1
+   * @param capacity maximum items per node before splitting, default 8
+   * @param minSize minimum halfSize to allow splitting, default 4
    */
-  constructor(center, halfSize, capacity = 8, minSize = 4) {
-    /** @type {OctreeNode<T>} */
+  constructor(center: Vector, halfSize: number, capacity = 8, minSize = 4) {
     this.root = new OctreeNode(center, halfSize, capacity, minSize);
   }
 
   /**
    * Inserts item.
-   * @param {T} item item to add
-   * @returns {OctreeNode<T>|null} node where item was inserted
+   * @param item item to add
+   * @returns node where item was inserted
    */
-  insert(item) {
+  insert(item: T): OctreeNode<T> | null {
     return this.root.insert(item);
   }
 
   /**
    * Removes item.
-   * @param {T} item item to remove
-   * @returns {boolean} true if removed
+   * @param item item to remove
+   * @returns true if removed
    */
-  remove(item) {
-    // if an item knows its node, use it
-    if (item.octreeNode) {
+  remove(item: T): boolean {
+    if (item.octreeNode !== null) {
       const removed = item.octreeNode.remove(item);
       if (removed) {
         item.octreeNode = null;
@@ -378,30 +369,27 @@ export class Octree {
       return removed;
     }
 
-    // otherwise we can’t easily remove without searching, which is slow
-    // for now assume item has octreeNode if it was inserted
-    // TODO: fallback search removal
     return false;
   }
 
   /**
    * Collect candidates inside AABB.
-   * @param {Vector} mins minimum bounds
-   * @param {Vector} maxs maximum bounds
-   * @yields {T} item
+   * @param mins minimum bounds
+   * @param maxs maximum bounds
+   * @yields item
    */
-  *queryAABB(mins, maxs) {
+  *queryAABB(mins: Vector, maxs: Vector): IterableIterator<T> {
     yield* this.root.queryAABB(mins, maxs);
   }
 
   /**
    * Finds nearest item to point within maxDist.
-   * @param {Vector} point point in space to search nearest to
-   * @param {number} maxDist maximum distance to search, default unlimited
-   * @returns {T|null} nearest item whose origin is within maxDist, or null
+   * @param point point in space to search nearest to
+   * @param maxDist maximum distance to search, default unlimited
+   * @returns nearest item whose origin is within maxDist, or null
    */
-  nearest(point, maxDist = Infinity) {
-    let best = null;
+  nearest(point: Vector, maxDist = Infinity): T | null {
+    let best: T | null = null;
     let bestDist = Infinity;
 
     for (const [d, item] of this.root.querySphere(point, maxDist)) {
@@ -413,4 +401,4 @@ export class Octree {
 
     return best;
   }
-};
+}
