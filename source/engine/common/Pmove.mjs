@@ -8,7 +8,7 @@
  */
 
 import Vector from '../../shared/Vector.ts';
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import { content } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.mjs';
 import Cvar from './Cvar.mjs';

@@ -1,4 +1,4 @@
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import { HostError } from '../common/Errors.mjs';
 import Cvar from '../common/Cvar.mjs';
 import Cmd from '../common/Cmd.mjs';

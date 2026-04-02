@@ -1,5 +1,5 @@
 import { AsyncFunction } from '../../shared/Q.ts';
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import { eventBus, registry } from '../registry.mjs';
 import Cvar from './Cvar.mjs';
 import { clientConnectionState } from './Def.mjs';

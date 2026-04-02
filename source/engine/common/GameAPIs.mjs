@@ -4,7 +4,7 @@ import { solid } from '../../shared/Defs.ts';
 import Key from '../client/Key.mjs';
 import { SFX } from '../client/Sound.mjs';
 import VID from '../client/VID.mjs';
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import { EventBus, eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from '../server/Edict.mjs';
 import Cmd from './Cmd.mjs';

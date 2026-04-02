@@ -1,5 +1,5 @@
 import Cvar from './Cvar.mjs';
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import * as Def from './Def.mjs';
 import Cmd, { ConsoleCommand } from './Cmd.mjs';
 import { eventBus, registry } from '../registry.mjs';

@@ -1,6 +1,6 @@
 import { SzBuffer } from '../network/MSG.mjs';
 import { QSocket } from '../network/NetworkDrivers.mjs';
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.mjs';
 import Vector from '../../shared/Vector.ts';
 import { EventBus, eventBus, registry } from '../registry.mjs';

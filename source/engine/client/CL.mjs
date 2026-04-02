@@ -1,6 +1,6 @@
 import Q from '../../shared/Q.ts';
 import * as Def from '../common/Def.mjs';
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { Pmove, PmovePlayer } from '../common/Pmove.mjs';

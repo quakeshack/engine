@@ -1,4 +1,4 @@
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.mjs';
 import { HostError } from '../common/Errors.mjs';
 import { eventBus, registry } from '../registry.mjs';

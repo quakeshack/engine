@@ -7,7 +7,7 @@ import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/B
 import { BrushTrace, Hull, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
-import { UserCmd } from '../../source/engine/network/Protocol.mjs';
+import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';

@@ -7,7 +7,7 @@ import Mod from '../../source/engine/common/Mod.mjs';
 import Vector from '../../source/shared/Vector.ts';
 import { content } from '../../source/shared/Defs.ts';
 import { DIST_EPSILON, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.mjs';
-import { UserCmd } from '../../source/engine/network/Protocol.mjs';
+import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 
 import {

@@ -1,5 +1,5 @@
 import Vector from '../../shared/Vector.ts';
-import * as Protocol from '../network/Protocol.mjs';
+import * as Protocol from '../network/Protocol.ts';
 import Q from '../../shared/Q.ts';
 import { SzBuffer } from '../network/MSG.mjs';
 import Cmd from '../common/Cmd.mjs';
