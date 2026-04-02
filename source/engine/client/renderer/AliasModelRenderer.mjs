@@ -3,7 +3,7 @@ import { ModelRenderer } from './ModelRenderer.mjs';
 import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import GL from '../GL.mjs';
-import W from '../../common/W.mjs';
+import W from '../../common/W.ts';
 import { effect } from '../../../shared/Defs.ts';
 
 let { CL, Host, R, Con } = registry;

@@ -1,108 +1,100 @@
-
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.mjs';
 import { CorruptedResourceError, MissingResourceError } from './Errors.ts';
 import Q from '../../shared/Q.ts';
 
-let { COM } = registry;
+let { COM } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  COM = registry.COM;
+  ({ COM } = getCommonRegistry());
 });
+
+export interface WadLumpRecord {
+  readonly data: ArrayBuffer;
+  readonly type: number;
+  readonly size: number;
+  readonly name: string;
+}
 
 /**
  * WAD lump texture representation.
  * Contains only data, not uploaded to the GPU or anything.
  */
 export class WadLumpTexture {
-  /**
-   * @param {string} name internal texture name
-   * @param {number} width width
-   * @param {number} height height
-   * @param {Uint8Array} data RGBA texture data
-   */
-  constructor(name, width, height, data) {
-    this.name = name; // lump name
-    this.width = width; // texture width
-    this.height = height; // texture height
-    this.data = data; // texture data (Uint8Array)
-
+  constructor(
+    readonly name: string,
+    readonly width: number,
+    readonly height: number,
+    readonly data: Uint8Array,
+  ) {
     Object.freeze(this);
   }
 
-  toDataURL() {
+  toDataURL(): string {
     const canvas = document.createElement('canvas');
     canvas.width = this.width;
     canvas.height = this.height;
     const ctx = canvas.getContext('2d');
+    if (ctx === null) {
+      throw new Error('WadLumpTexture.toDataURL: 2D canvas context unavailable');
+    }
     const data = ctx.createImageData(canvas.width, canvas.height);
     data.data.set(new Uint8Array(this.data));
     ctx.putImageData(data, 0, 0);
     return canvas.toDataURL();
   }
 
-  toString() {
+  toString(): string {
     return `WadLumpTexture(${this.name}, ${this.width} x ${this.height} pixels, ${this.data.length} bytes)`;
   }
-};
+}
 
-export class WadFileInterface {
-  static MAGIC = 0; // magic number, to be defined in subclasses
+export abstract class WadFileInterface {
+  static MAGIC = 0;
 
-  /** @protected */
-  _lumps = {};
+  protected _lumps: Record<string, WadLumpRecord> = {};
 
-  getLumpNames() {
+  getLumpNames(): string[] {
     return Object.keys(this._lumps);
   }
 
-  // eslint-disable-next-line no-unused-vars
-  load(view) {
-    console.assert(null, 'WadFileInterface.load: not implemented');
-  }
+  abstract load(base: ArrayBuffer): void;
 
   /**
    * This will return the raw data for the given name.
-   * @param {string} name identifer of the lump to retrieve
-   * @returns {ArrayBuffer} the lump data
+   * @returns the lump data
    */
-  // eslint-disable-next-line no-unused-vars
-  getLump(name) {
-    console.assert(null, 'WadFileInterface.getLump: not implemented');
-    return new ArrayBuffer(0);
-  }
+  abstract getLump(name: string): ArrayBuffer | WadLumpRecord;
 
   /**
    * This will return the palette translated data for the given name.
-   * @param {string} name identifer of the lump to retrieve
-   * @param {?number} mipmapLevel mipmap level to retrieve, will always take the most available mipmap level
-   * @returns {WadLumpTexture} the decoded texture data
+   * @returns the decoded texture data
    */
-  // eslint-disable-next-line no-unused-vars
-  getLumpMipmap(name, mipmapLevel) {
-    console.assert(null, 'WadFileInterface.getLumpMipmap: not implemented');
-    return null;
-  }
-};
+  abstract getLumpMipmap(name: string, mipmapLevel?: number): WadLumpTexture | null;
+}
+
+/** A concrete WAD handler constructor with a static MAGIC identifier. */
+interface WadHandlerConstructor {
+  readonly MAGIC: number;
+  new(): WadFileInterface;
+}
 
 export default class W {
-  /** @type {Array<typeof WadFileInterface>} */
-  static _handlers = [];
+  static _handlers: WadHandlerConstructor[] = [];
 
   /** Current palette in 32 bit words. */
-  static d_8to24table = new Uint32Array(new ArrayBuffer(1024));
+  static d_8to24table = new Uint32Array(256);
 
   /** Current palette in 256 8 bit tuples for RGB. */
   static d_8to24table_u8 = new Uint8Array(768);
 
-  /** @type {number} Fill color index */
-  static filledColor = null;
+  /** Fill color index. */
+  static filledColor: number | null = null;
 
   /**
    * Loads given WAD file. Supports multiple WAD formats (WAD2, WAD3).
-   * @param {string} filename wad file path
-   * @returns {Promise<WadFileInterface>} the loaded WAD file or null if not found
+   * @returns the loaded WAD file
    */
-  static async LoadFile(filename) {
+  static async LoadFile(filename: string): Promise<WadFileInterface> {
     const base = await COM.LoadFile(filename);
 
     if (!base) {
@@ -111,23 +103,22 @@ export default class W {
 
     const view = new DataView(base);
     const magic = view.getUint32(0, true);
-    const handler = W._handlers.find((h) => h.MAGIC === magic);
+    const handler = W._handlers.find((wadHandler) => wadHandler.MAGIC === magic);
 
-    if (!handler) {
+    if (handler === undefined) {
       throw new CorruptedResourceError(filename, 'not a valid WAD file');
     }
 
     const wadFile = new handler();
     wadFile.load(base);
     return wadFile;
-  };
+  }
 
   /**
    * Loads the default palette from the given file. Used for all Quake resources.
    * A palette is a 256 color palette, each color is 3 bytes (RGB). 768 bytes in total.
-   * @param {string} filename palette file path, e.g. 'gfx/palette.lmp'
    */
-  static async LoadPalette(filename) {
+  static async LoadPalette(filename: string) {
     const palette = await COM.LoadFile(filename);
 
     if (palette === null) {
@@ -135,6 +126,7 @@ export default class W {
     }
 
     W.d_8to24table_u8 = new Uint8Array(palette);
+    W.filledColor = null;
 
     for (let i = 0, src = 0; i < 256; i++) {
       const pal = W.d_8to24table_u8;
@@ -147,14 +139,13 @@ export default class W {
     }
 
     eventBus.publish('wad.palette.loaded');
-  };
+  }
 
   /**
    * Loads a lump from the filesystem as texture.
-   * @param {string} filename lump file path
-   * @returns {Promise<WadLumpTexture>} the loaded lump texture
+   * @returns the loaded lump texture
    */
-  static async LoadLump(filename) { // TODO: this should take a type parameter to specify the type of the lump
+  static async LoadLump(filename: string) { // TODO: this should take a type parameter to specify the type of the lump
     const buf = await COM.LoadFile(filename);
 
     if (buf === null) {
@@ -168,20 +159,23 @@ export default class W {
 
     return new WadLumpTexture(filename, width, height, translateIndexToRGBA(data, width, height, W.d_8to24table_u8, 255));
   }
-};
+}
 
 /**
  * Quake 1 WAD file format handler.
  */
 class Wad2File extends WadFileInterface {
-  static MAGIC = 0x32444157; // 'WAD2'
+  static override MAGIC = 0x32444157; // 'WAD2'
+
+  /** Active palette, sourced from {@link W.d_8to24table_u8}. */
+  readonly palette: Uint8Array;
 
   constructor() {
     super();
-    this.palette = W.d_8to24table_u8; // use the palette from VID
+    this.palette = W.d_8to24table_u8;
   }
 
-  load(base) {
+  override load(base: ArrayBuffer) {
     const view = new DataView(base);
     console.assert(view.getUint32(0, true) === Wad2File.MAGIC, 'magic number');
     const numlumps = view.getUint32(4, true);
@@ -191,12 +185,12 @@ class Wad2File extends WadFileInterface {
       const type = view.getUint8(infotableofs + 12);
       const lump = new ArrayBuffer(size);
       const name = Q.memstr(new Uint8Array(base, infotableofs + 16, 16));
-      (new Uint8Array(lump)).set(new Uint8Array(base, view.getUint32(infotableofs, true), size));
+      new Uint8Array(lump).set(new Uint8Array(base, view.getUint32(infotableofs, true), size));
       this._lumps[name.toUpperCase()] = {
         data: lump,
-        type: type, // lump type
-        size: size, // uncompressed size
-        name: name,
+        type, // lump type
+        size, // uncompressed size
+        name,
       };
       infotableofs += 32;
     }
@@ -204,10 +198,9 @@ class Wad2File extends WadFileInterface {
 
   /**
    * This will return the raw data for the given name.
-   * @param {string} name identifer of the lump to retrieve
-   * @returns {ArrayBuffer} the lump data
+   * @returns the lump data
    */
-  getLump(name) {
+  override getLump(name: string): ArrayBuffer {
     const lump = this._lumps[name.toUpperCase()];
 
     if (!lump) {
@@ -219,12 +212,9 @@ class Wad2File extends WadFileInterface {
 
   /**
    * This will return the palette translated data for the given name.
-   * @param {string} name identifer of the lump to retrieve
-   * @param {?number} mipmapLevel always 0, WAD2 does not support mipmaps
-   * @returns {WadLumpTexture} the decoded texture data
+   * @returns the decoded texture data
    */
-  // eslint-disable-next-line no-unused-vars
-  getLumpMipmap(name, mipmapLevel = 0) {
+  override getLumpMipmap(name: string, _mipmapLevel = 0): WadLumpTexture {
     const data = this.getLump(name);
     const view = new DataView(data);
 
@@ -245,7 +235,7 @@ class Wad2File extends WadFileInterface {
 
     return new WadLumpTexture(name, width, height, rgba);
   }
-};
+}
 
 W._handlers.push(Wad2File);
 
@@ -253,9 +243,9 @@ W._handlers.push(Wad2File);
  * GoldSrc WAD3 file format handler.
  */
 class Wad3File extends WadFileInterface {
-  static MAGIC = 0x33444157; // 'WAD3'
+  static override MAGIC = 0x33444157; // 'WAD3'
 
-  load(base) {
+  override load(base: ArrayBuffer) {
     const view = new DataView(base);
     console.assert(view.getUint32(0, true) === Wad3File.MAGIC, 'magic number');
     const numlumps = view.getUint32(4, true);
@@ -271,26 +261,25 @@ class Wad3File extends WadFileInterface {
       const lump = new ArrayBuffer(size);
 
       if (!compression) { // Uncompressed
-        (new Uint8Array(lump)).set(new Uint8Array(base, filepos, disksize));
+        new Uint8Array(lump).set(new Uint8Array(base, filepos, disksize));
       } else { // Compressed
         const compressedData = new Uint8Array(base, filepos, disksize);
         const decompressed = Wad3File._decompressLZ(compressedData, size);
-        (new Uint8Array(lump)).set(decompressed);
+        new Uint8Array(lump).set(decompressed);
       }
 
       this._lumps[name.toUpperCase()] = {
         data: lump,
-        type: type,
-        size: size,
-        name: name,
+        type,
+        size,
+        name,
       };
 
       infotableofs += 32;
     }
   }
 
-  // eslint-disable-next-line no-unused-vars
-  _parseQPicLump(name, data, mipmapLevel) {
+  _parseQPicLump(name: string, data: ArrayBuffer, _mipmapLevel: number): WadLumpTexture {
     const view = new DataView(data);
     const width = view.getUint32(0, true);
     const height = view.getUint32(4, true);
@@ -308,16 +297,15 @@ class Wad3File extends WadFileInterface {
     return new WadLumpTexture(name, width, height, rgba);
   }
 
-  _parseMiptexLump(name, data, mipmapLevel) {
+  _parseMiptexLump(name: string, data: ArrayBuffer, mipmapLevel: number): WadLumpTexture {
     return readWad3Texture(data, name, mipmapLevel);
   }
 
   /**
    * This will return the raw data for the given name.
-   * @param {string} name identifer of the lump to retrieve
-   * @returns {ArrayBuffer} the lump data
+   * @returns the lump data
    */
-  getLump(name) {
+  override getLump(name: string): WadLumpRecord {
     const lump = this._lumps[name.toUpperCase()];
 
     if (!lump) {
@@ -329,11 +317,9 @@ class Wad3File extends WadFileInterface {
 
   /**
    * This will return the palette translated data for the given name.
-   * @param {string} name name of the lump to retrieve
-   * @param {number} mipmapLevel 0..3, 0 is the base level
-   * @returns {WadLumpTexture} the decoded texture data
+   * @returns the decoded texture data
    */
-  getLumpMipmap(name, mipmapLevel = 0) {
+  override getLumpMipmap(name: string, mipmapLevel = 0): WadLumpTexture | null {
     const lumpInfo = this._lumps[name.toUpperCase()];
 
     if (!lumpInfo) {
@@ -353,16 +339,14 @@ class Wad3File extends WadFileInterface {
         return null; // TODO: implement font handling
     }
 
-    throw new CorruptedResourceError(name, 'not a valid lump type (' + lumpInfo.type + ')');
+    throw new CorruptedResourceError(name, `not a valid lump type (${lumpInfo.type})`);
   }
 
   /**
    * Decompress LZ-compressed data from GoldSrc WAD3 files
-   * @param {Uint8Array} compressed - The compressed data
-   * @param {number} uncompressedSize - Expected size of uncompressed data
-   * @returns {Uint8Array} - The decompressed data
+   * @returns the decompressed data
    */
-  static _decompressLZ(compressed, uncompressedSize) {
+  static _decompressLZ(compressed: Uint8Array, uncompressedSize: number): Uint8Array {
     const output = new Uint8Array(uncompressedSize);
     let inPos = 0;
     let outPos = 0;
@@ -407,23 +391,25 @@ class Wad3File extends WadFileInterface {
     }
 
     return output;
-  };
-};
+  }
+}
 
 W._handlers.push(Wad3File);
 
 /**
  * Helper function to convert indexed 8-bit data to RGBA format.
  * It has options for transparency and fullbright colors.
- * @param {Uint8Array} uint8data indexed 8-bit data, each byte is an index to the palette
- * @param {number} width width
- * @param {number} height height
- * @param {?Uint8Array} palette palette data, 256 colors, each color is 3 bytes (RGB), default is W.d_8to24table_u8
- * @param {?number} transparentColor optional color index to treat as transparent (default is null, no transparency)
- * @param {?number} fullbrightColorStart optional color index where fullbright colors start (default is null, no fullbright)
- * @returns {Uint8Array} RGBA data, each pixel is 4 bytes (R, G, B, A)
+ * @returns RGBA data, each pixel is 4 bytes (R, G, B, A)
  */
-export function translateIndexToRGBA(uint8data, width, height, palette = W.d_8to24table_u8, transparentColor = null, fullbrightColorStart = null) {
+export function translateIndexToRGBA(
+  uint8data: Uint8Array,
+  width: number,
+  height: number,
+  palette: Uint8Array | null = W.d_8to24table_u8,
+  transparentColor: number | null = null,
+  fullbrightColorStart: number | null = null,
+): Uint8Array {
+  const resolvedPalette = palette ?? W.d_8to24table_u8;
   const rgba = new Uint8Array(width * height * 4);
 
   for (let i = 0; i < width * height; i++) {
@@ -437,29 +423,31 @@ export function translateIndexToRGBA(uint8data, width, height, palette = W.d_8to
     }
 
     // lookup the color in the palette
-    rgba[i * 4 + 0] = palette[colorIndex * 3];
-    rgba[i * 4 + 1] = palette[colorIndex * 3 + 1];
-    rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
+    rgba[i * 4 + 0] = resolvedPalette[colorIndex * 3];
+    rgba[i * 4 + 1] = resolvedPalette[colorIndex * 3 + 1];
+    rgba[i * 4 + 2] = resolvedPalette[colorIndex * 3 + 2];
 
     // our pixel shader is considering the alpha channel whether to use the lightmap or not
     rgba[i * 4 + 3] = fullbrightColorStart !== null && colorIndex >= fullbrightColorStart ? 0 : 255;
   }
 
   return rgba;
-};
+}
 
 /**
  * Convert indexed 8-bit data into an RGBA emissive texture containing only
  * Quake fullbright pixels.
- * @param {Uint8Array} uint8data Indexed 8-bit texture data.
- * @param {number} width Texture width.
- * @param {number} height Texture height.
- * @param {?Uint8Array} palette Palette data, 256 colors x 3 bytes.
- * @param {?number} transparentColor Optional transparent palette index.
- * @param {?number} fullbrightColorStart Palette index where fullbright colors begin.
- * @returns {Uint8Array} RGBA data containing only fullbright pixels.
+ * @returns RGBA data containing only fullbright pixels
  */
-export function translateIndexToLuminanceRGBA(uint8data, width, height, palette = W.d_8to24table_u8, transparentColor = null, fullbrightColorStart = 240) {
+export function translateIndexToLuminanceRGBA(
+  uint8data: Uint8Array,
+  width: number,
+  height: number,
+  palette: Uint8Array | null = W.d_8to24table_u8,
+  transparentColor: number | null = null,
+  fullbrightColorStart: number | null = 240,
+): Uint8Array {
+  const resolvedPalette = palette ?? W.d_8to24table_u8;
   const rgba = new Uint8Array(width * height * 4);
 
   for (let i = 0; i < width * height; i++) {
@@ -473,9 +461,9 @@ export function translateIndexToLuminanceRGBA(uint8data, width, height, palette 
       continue;
     }
 
-    rgba[i * 4 + 0] = palette[colorIndex * 3];
-    rgba[i * 4 + 1] = palette[colorIndex * 3 + 1];
-    rgba[i * 4 + 2] = palette[colorIndex * 3 + 2];
+    rgba[i * 4 + 0] = resolvedPalette[colorIndex * 3];
+    rgba[i * 4 + 1] = resolvedPalette[colorIndex * 3 + 1];
+    rgba[i * 4 + 2] = resolvedPalette[colorIndex * 3 + 2];
     rgba[i * 4 + 3] = 255;
   }
 
@@ -484,12 +472,9 @@ export function translateIndexToLuminanceRGBA(uint8data, width, height, palette 
 
 /**
  * Reads a WAD3 texture from the given data.
- * @param {ArrayBuffer} data WAD3 texture data
- * @param {string} name texture name, used if the texture name in the data is empty
- * @param {number} mipmapLevel 0..3, 0 is the base level
- * @returns {WadLumpTexture} the decoded texture data
+ * @returns the decoded texture data
  */
-export function readWad3Texture(data, name, mipmapLevel = 0) {
+export function readWad3Texture(data: ArrayBuffer, name: string, mipmapLevel = 0): WadLumpTexture {
   const view = new DataView(data);
   const width = view.getUint32(16, true);
   const height = view.getUint32(20, true);
@@ -523,7 +508,14 @@ export function readWad3Texture(data, name, mipmapLevel = 0) {
   );
 
   // Textures with a name starting with '{' are transparent, so we set the transparent color to 255
-  const rgba = translateIndexToRGBA(uint8data, swidth, sheight, palette, texName[0] === '{' ? 255 : null, (texName[0] === '~' || texName[2] === '~') ? 240 : null);
+  const rgba = translateIndexToRGBA(
+    uint8data,
+    swidth,
+    sheight,
+    palette,
+    texName[0] === '{' ? 255 : null,
+    (texName[0] === '~' || texName[2] === '~') ? 240 : null,
+  );
 
   return new WadLumpTexture(texName, swidth, sheight, rgba);
-};
+}

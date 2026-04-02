@@ -1,4 +1,4 @@
-import W from '../../common/W.mjs';
+import W from '../../common/W.ts';
 import { BrushModel } from '../../common/Mod.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 

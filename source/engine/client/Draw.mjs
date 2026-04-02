@@ -2,7 +2,7 @@ import Vector from '../../shared/Vector.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 
 import VID from './VID.mjs';
-import W, { WadFileInterface, WadLumpTexture } from '../common/W.mjs';
+import W, { WadFileInterface, WadLumpTexture } from '../common/W.ts';
 
 import { eventBus, registry } from '../registry.mjs';
 import GL, { GLTexture } from './GL.mjs';

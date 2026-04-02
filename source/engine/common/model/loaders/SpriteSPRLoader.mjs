@@ -1,6 +1,6 @@
 import Vector from '../../../../shared/Vector.ts';
 import { GLTexture } from '../../../client/GL.mjs';
-import W, { translateIndexToRGBA } from '../../W.mjs';
+import W, { translateIndexToRGBA } from '../../W.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { registry } from '../../../registry.mjs';
 import { ModelLoader } from '../ModelLoader.mjs';

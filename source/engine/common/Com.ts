@@ -4,7 +4,7 @@ import Q from '../../shared/Q.ts';
 import { CorruptedResourceError } from './Errors.ts';
 
 import Cvar from './Cvar.ts';
-import W from './W.mjs';
+import W from './W.ts';
 import Cmd from './Cmd.ts';
 import { defaultBasedir, defaultGame } from './Def.ts';
 import { CRC16CCITT } from './CRC.ts';

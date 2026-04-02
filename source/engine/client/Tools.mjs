@@ -1,5 +1,5 @@
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
-import W, { WadFileInterface } from '../common/W.mjs';
+import W, { WadFileInterface } from '../common/W.ts';
 import { eventBus, registry } from '../registry.mjs';
 
 let { Con } = registry;

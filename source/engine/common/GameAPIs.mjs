@@ -11,7 +11,7 @@ import Cmd from './Cmd.ts';
 import Cvar from './Cvar.ts';
 import { HostError } from './Errors.ts';
 import Mod from './Mod.mjs';
-import W from './W.mjs';
+import W from './W.ts';
 
 /** @typedef {import('../client/ClientEntities.mjs').ClientEdict} ClientEdict */
 /** @typedef {import('../client/ClientEntities.mjs').ClientDlight} ClientDlight */

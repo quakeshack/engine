@@ -5,7 +5,7 @@ import * as Def from '../common/Def.ts';
 
 import { eventBus, registry } from '../registry.mjs';
 import Chase from './Chase.mjs';
-import W from '../common/W.mjs';
+import W from '../common/W.ts';
 import VID from './VID.mjs';
 import GL, { ATTRIB_LOCATIONS, GLTexture } from './GL.mjs';
 import { content, effect, gameCapabilities } from '../../shared/Defs.ts';
