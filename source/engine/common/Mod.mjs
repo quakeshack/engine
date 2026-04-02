@@ -1,5 +1,5 @@
 import { eventBus, registry } from '../registry.mjs';
-import { MissingResourceError } from './Errors.mjs';
+import { MissingResourceError } from './Errors.ts';
 import { ModelLoaderRegistry } from './model/ModelLoaderRegistry.mjs';
 import { AliasMDLLoader } from './model/loaders/AliasMDLLoader.mjs';
 import { SpriteSPRLoader } from './model/loaders/SpriteSPRLoader.mjs';

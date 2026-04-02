@@ -1,5 +1,5 @@
 import Vector from '../../shared/Vector.ts';
-import { MissingResourceError } from '../common/Errors.mjs';
+import { MissingResourceError } from '../common/Errors.ts';
 
 import VID from './VID.mjs';
 import W, { WadFileInterface, WadLumpTexture } from '../common/W.mjs';

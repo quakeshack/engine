@@ -1,4 +1,4 @@
-import { NotImplementedError } from '../Errors.mjs';
+import { NotImplementedError } from '../Errors.ts';
 import { BaseModel } from './BaseModel.mjs';
 import { ModelLoader } from './ModelLoader.mjs';
 

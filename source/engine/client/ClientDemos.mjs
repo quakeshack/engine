@@ -1,8 +1,8 @@
 
-import { clientConnectionState } from '../common/Def.mjs';
+import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, registry } from '../registry.mjs';
 import * as Protocol from '../network/Protocol.ts';
-import { HostError } from '../common/Errors.mjs';
+import { HostError } from '../common/Errors.ts';
 
 let { CL, COM, Con, Host, NET } = registry;
 

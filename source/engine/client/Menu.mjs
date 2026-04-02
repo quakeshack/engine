@@ -1,7 +1,7 @@
 import { K } from '../../shared/Keys.ts';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
-import { clientConnectionState } from '../common/Def.mjs';
+import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, registry } from '../registry.mjs';
 import ClientLifecycle from './ClientLifecycle.mjs';
 import { GLTexture } from './GL.mjs';

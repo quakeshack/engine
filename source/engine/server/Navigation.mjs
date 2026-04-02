@@ -5,7 +5,7 @@ import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.mjs';
 // import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
-import { CorruptedResourceError, MissingResourceError } from '../common/Errors.mjs';
+import { CorruptedResourceError, MissingResourceError } from '../common/Errors.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import { BrushModel } from '../common/Mod.mjs';
 import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.mjs';

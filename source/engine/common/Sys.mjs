@@ -1,4 +1,4 @@
-import { NotImplementedError } from './Errors.mjs';
+import { NotImplementedError } from './Errors.ts';
 
 export class BaseWorker {
   /** @type {Function[]} @protected */

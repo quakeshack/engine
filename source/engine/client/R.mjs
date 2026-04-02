@@ -1,7 +1,7 @@
 import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.mjs';
 import Cmd from '../common/Cmd.mjs';
-import * as Def from '../common/Def.mjs';
+import * as Def from '../common/Def.ts';
 
 import { eventBus, registry } from '../registry.mjs';
 import Chase from './Chase.mjs';

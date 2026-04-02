@@ -1,7 +1,7 @@
 import * as Protocol from '../network/Protocol.ts';
-import * as Def from '../common/Def.mjs';
+import * as Def from '../common/Def.ts';
 import { eventBus, registry } from '../registry.mjs';
-import { HostError } from '../common/Errors.mjs';
+import { HostError } from '../common/Errors.ts';
 import Vector from '../../shared/Vector.ts';
 import { PmovePlayer } from '../common/Pmove.mjs';
 import { gameCapabilities } from '../../shared/Defs.ts';

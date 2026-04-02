@@ -1,6 +1,6 @@
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.mjs';
-import { HostError } from '../common/Errors.mjs';
+import { HostError } from '../common/Errors.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from './Edict.mjs';

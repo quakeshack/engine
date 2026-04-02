@@ -1,4 +1,4 @@
-import { NotImplementedError } from '../Errors.mjs';
+import { NotImplementedError } from '../Errors.ts';
 
 /**
  * Abstract base class for model format loaders.

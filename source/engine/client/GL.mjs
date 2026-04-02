@@ -1,6 +1,6 @@
 import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
-import { MissingResourceError } from '../common/Errors.mjs';
+import { MissingResourceError } from '../common/Errors.ts';
 import { WadLumpTexture } from '../common/W.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import VID from './VID.mjs';

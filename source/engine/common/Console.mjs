@@ -5,7 +5,7 @@ import Cvar from './Cvar.mjs';
 import Vector from '../../shared/Vector.ts';
 import Cmd from './Cmd.mjs';
 import VID from '../client/VID.mjs';
-import { clientConnectionState } from './Def.mjs';
+import { clientConnectionState } from './Def.ts';
 import { ClientEngineAPI } from './GameAPIs.mjs';
 
 let { CL, Draw, Host, Key, M, SCR } = registry;

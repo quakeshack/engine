@@ -1,5 +1,5 @@
 import { registry, eventBus } from '../registry.mjs';
-import { SysError } from './Errors.mjs';
+import { SysError } from './Errors.ts';
 import PlatformWorker from './PlatformWorker.mjs';
 
 let { Con, COM } = registry;

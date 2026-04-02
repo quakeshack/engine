@@ -3,10 +3,10 @@
 import { promises as fsPromises, existsSync, writeFileSync, constants } from 'fs';
 
 import Q from '../../shared/Q.ts';
-import { CRC16CCITT as CRC } from '../common/CRC.mjs';
+import { CRC16CCITT as CRC } from '../common/CRC.ts';
 import COM from '../common/Com.mjs';
 
-import { CorruptedResourceError } from '../common/Errors.mjs';
+import { CorruptedResourceError } from '../common/Errors.ts';
 import { registry, eventBus } from '../registry.mjs';
 
 let { Con, Sys } = registry;

@@ -1,7 +1,7 @@
 import { SzBuffer } from '../network/MSG.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import * as Protocol from '../network/Protocol.ts';
-import * as Def from '../common/Def.mjs';
+import * as Def from '../common/Def.ts';
 import Vector from '../../shared/Vector.ts';
 import { EventBus, eventBus, registry } from '../registry.mjs';
 import ClientEntities, { ClientEdict } from './ClientEntities.mjs';
@@ -13,6 +13,14 @@ let { CL } = registry;
 eventBus.subscribe('registry.frozen', () => {
   CL = registry.CL;
 });
+
+/**
+ * Create a stats array sized to the numeric legacy stat entries.
+ * @returns {number[]} Fresh zeroed stat slots.
+ */
+function createLegacyStatsArray() {
+  return Object.values(Def.stat).filter((value) => typeof value === 'number').map(() => 0);
+}
 
 const clientGameEvents = [
   'vid.resize',
@@ -157,7 +165,7 @@ class ClientRuntimeState {
   /** @type {number} server-acknowledged old button state */
   ackedPmOldButtons = 0;
 
-  stats = Object.values(Def.stat).map(() => 0);
+  stats = createLegacyStatsArray();
   items = 0;
   item_gettime = new Array(32).fill(0.0);
   faceanimtime = 0.0;
@@ -247,7 +255,7 @@ class ClientRuntimeState {
     this.ackedPmFlags = 0;
     this.ackedPmTime = 0;
     this.ackedPmOldButtons = 0;
-    this.stats = Object.values(Def.stat).map(() => 0);
+    this.stats = createLegacyStatsArray();
     this.items = 0;
     this.item_gettime.fill(0.0);
     this.faceanimtime = 0.0;

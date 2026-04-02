@@ -1,4 +1,4 @@
-import { NotImplementedError } from '../../common/Errors.mjs';
+import { NotImplementedError } from '../../common/Errors.ts';
 
 /**
  * Abstract base class for model renderers.

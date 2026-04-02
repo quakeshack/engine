@@ -1,6 +1,6 @@
 import * as Protocol from '../network/Protocol.ts';
-import * as Def from '../common/Def.mjs';
-import { HostError } from '../common/Errors.mjs';
+import * as Def from '../common/Def.ts';
+import { HostError } from '../common/Errors.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { ScoreSlot } from './ClientState.mjs';
 import Vector from '../../shared/Vector.ts';

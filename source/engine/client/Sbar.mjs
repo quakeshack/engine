@@ -3,7 +3,7 @@
 import Cmd from '../common/Cmd.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import VID from './VID.mjs';
-import * as Def from '../common/Def.mjs';
+import * as Def from '../common/Def.ts';
 import Cvar from '../common/Cvar.mjs';
 
 const Sbar = {};

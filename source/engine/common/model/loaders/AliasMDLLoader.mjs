@@ -2,7 +2,7 @@ import Vector from '../../../../shared/Vector.ts';
 import Q from '../../../../shared/Q.ts';
 import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.mjs';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.mjs';
-import { CRC16CCITT } from '../../CRC.mjs';
+import { CRC16CCITT } from '../../CRC.ts';
 import { registry } from '../../../registry.mjs';
 import { ModelLoader } from '../ModelLoader.mjs';
 import { AliasModel } from '../AliasModel.mjs';

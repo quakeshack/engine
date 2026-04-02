@@ -9,7 +9,7 @@ import { EventBus, eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from '../server/Edict.mjs';
 import Cmd from './Cmd.mjs';
 import Cvar from './Cvar.mjs';
-import { HostError } from './Errors.mjs';
+import { HostError } from './Errors.ts';
 import Mod from './Mod.mjs';
 import W from './W.mjs';
 

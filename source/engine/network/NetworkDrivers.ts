@@ -1,5 +1,5 @@
 import Cvar from '../common/Cvar.mjs';
-import { HostError } from '../common/Errors.mjs';
+import { HostError } from '../common/Errors.ts';
 import type { SzBuffer } from './MSG.ts';
 import { eventBus, getCommonRegistry, registry } from '../registry.mjs';
 import { formatIP } from './Misc.ts';

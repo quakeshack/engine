@@ -1,6 +1,6 @@
 
 import { eventBus, registry } from '../registry.mjs';
-import { CorruptedResourceError, MissingResourceError } from './Errors.mjs';
+import { CorruptedResourceError, MissingResourceError } from './Errors.ts';
 import Q from '../../shared/Q.ts';
 
 let { COM } = registry;

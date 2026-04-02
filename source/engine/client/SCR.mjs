@@ -3,7 +3,7 @@
 import { gameCapabilities } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
-import { clientConnectionState } from '../common/Def.mjs';
+import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, registry } from '../registry.mjs';
 import GL from './GL.mjs';
 import VID from './VID.mjs';

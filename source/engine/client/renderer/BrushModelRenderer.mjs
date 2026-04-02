@@ -8,7 +8,7 @@ import { BrushModel, Node } from '../../common/model/BSP.mjs';
 import { ClientEdict } from '../ClientEntities.mjs';
 import Mesh from './Mesh.mjs';
 import PostProcess from './PostProcess.mjs';
-import * as Def from '../../common/Def.mjs';
+import * as Def from '../../common/Def.ts';
 
 let { CL, Host, R } = registry;
 

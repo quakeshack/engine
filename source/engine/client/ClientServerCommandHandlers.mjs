@@ -1,7 +1,7 @@
 import * as Protocol from '../network/Protocol.ts';
-import * as Def from '../common/Def.mjs';
+import * as Def from '../common/Def.ts';
 import Cmd from '../common/Cmd.mjs';
-import { HostError } from '../common/Errors.mjs';
+import { HostError } from '../common/Errors.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';

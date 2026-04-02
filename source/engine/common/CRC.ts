@@ -1,8 +1,8 @@
 /**
- * CRC class for calculating CRC-16-CCITT checksum.
+ * CRC-16-CCITT checksum helper.
  */
 export class CRC16CCITT {
-  static #table = [
+  static readonly #table = [
     0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
     0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
     0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6,
@@ -38,15 +38,17 @@ export class CRC16CCITT {
   ];
 
   /**
-   * Calculates the CRC-16-CCITT checksum for the given data block.
-   * @param {Uint8Array} start - The input data block.
-   * @returns {number} The calculated CRC-16-CCITT checksum.
+   * Calculate the checksum for a block of bytes.
+   * @param start
+   * @returns CRC-16-CCITT checksum.
    */
-  static Block(start) {
+  static Block(start: Uint8Array): number {
     let crcvalue = 0xffff;
-    for (let i = 0; i < start.length; i++) {
-      crcvalue = ((crcvalue << 8) & 0xffff) ^ this.#table[(crcvalue >> 8) ^ start[i]];
+
+    for (const byte of start) {
+      crcvalue = ((crcvalue << 8) & 0xffff) ^ this.#table[(crcvalue >> 8) ^ byte];
     }
+
     return crcvalue;
   }
-};
+}

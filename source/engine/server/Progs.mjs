@@ -1,7 +1,7 @@
 import Cmd from '../common/Cmd.mjs';
-import { CRC16CCITT } from '../common/CRC.mjs';
+import { CRC16CCITT } from '../common/CRC.ts';
 import Cvar from '../common/Cvar.mjs';
-import { HostError, MissingResourceError } from '../common/Errors.mjs';
+import { HostError, MissingResourceError } from '../common/Errors.ts';
 import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import { eventBus, registry } from '../registry.mjs';

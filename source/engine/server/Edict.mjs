@@ -1,7 +1,7 @@
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer, registerSerializableType } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
-import * as Def from '../common/Def.mjs';
+import * as Def from '../common/Def.ts';
 import * as Defs from '../../shared/Defs.ts';
 import { eventBus, registry } from '../registry.mjs';
 import Q from '../../shared/Q.ts';

@@ -1,6 +1,6 @@
 import Cvar from './Cvar.mjs';
 import * as Protocol from '../network/Protocol.ts';
-import * as Def from './Def.mjs';
+import * as Def from './Def.ts';
 import Cmd, { ConsoleCommand } from './Cmd.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import Vector from '../../shared/Vector.ts';
@@ -9,7 +9,7 @@ import { ServerClient } from '../server/Client.mjs';
 import { ServerEngineAPI } from './GameAPIs.mjs';
 import Chase from '../client/Chase.mjs';
 import VID from '../client/VID.mjs';
-import { HostError } from './Errors.mjs';
+import { HostError } from './Errors.ts';
 import CDAudio from '../client/CDAudio.mjs';
 import * as Defs from '../../shared/Defs.ts';
 import { content, gameCapabilities } from '../../shared/Defs.ts';

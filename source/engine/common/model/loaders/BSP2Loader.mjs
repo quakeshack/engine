@@ -1,5 +1,5 @@
 import Vector from '../../../../shared/Vector.ts';
-import { CorruptedResourceError } from '../../Errors.mjs';
+import { CorruptedResourceError } from '../../Errors.ts';
 import { BSP29Loader } from './BSP29Loader.mjs';
 import { Face } from '../BaseModel.mjs';
 import { BrushModel, Node } from '../BSP.mjs';

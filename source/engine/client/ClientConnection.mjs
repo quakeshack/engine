@@ -1,11 +1,11 @@
 import * as Protocol from '../network/Protocol.ts';
-import { HostError } from '../common/Errors.mjs';
+import { HostError } from '../common/Errors.ts';
 import Cvar from '../common/Cvar.mjs';
 import Cmd from '../common/Cmd.mjs';
 import ClientInput from './ClientInput.mjs';
 import { clientRuntimeState, clientStaticState } from './ClientState.mjs';
 import { eventBus, registry } from '../registry.mjs';
-import * as Def from '../common/Def.mjs';
+import * as Def from '../common/Def.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.mjs';
 

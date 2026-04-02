@@ -4,7 +4,7 @@ import Q from '../../shared/Q.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import Cmd from '../common/Cmd.mjs';
 import { eventBus, registry } from '../registry.mjs';
-import { HostError } from '../common/Errors.mjs';
+import { HostError } from '../common/Errors.ts';
 
 let { Con, CL, Host, NET, V } = registry;
 

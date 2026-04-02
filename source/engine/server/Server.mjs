@@ -3,7 +3,7 @@ import { MoveVars, Pmove } from '../common/Pmove.mjs';
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
-import * as Def from './../common/Def.mjs';
+import * as Def from './../common/Def.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import { ED, ServerEdict } from './Edict.mjs';
 import { EventBus, eventBus, registry } from '../registry.mjs';

@@ -1,5 +1,5 @@
 import Q from '../../shared/Q.ts';
-import * as Def from '../common/Def.mjs';
+import * as Def from '../common/Def.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';

@@ -1,6 +1,6 @@
 import GL from '../GL.mjs';
 import Cvar from '../../common/Cvar.mjs';
-import { limits } from '../../common/Def.mjs';
+import { limits } from '../../common/Def.ts';
 import { eventBus, registry } from '../../registry.mjs';
 import { materialFlags } from './Materials.mjs';
 import { effect } from '../../../shared/Defs.ts';
