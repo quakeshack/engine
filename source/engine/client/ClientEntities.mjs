@@ -4,7 +4,7 @@ import * as Def from '../common/Def.mjs';
 import { content, effect, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.mjs';
 import { DefaultClientEdictHandler } from './ClientLegacy.mjs';
-import { BaseClientEdictHandler } from '../../shared/ClientEdict.mjs';
+import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
 import { SFX } from './Sound.mjs';
 import { Node, revealedVisibility } from '../common/model/BSP.mjs';

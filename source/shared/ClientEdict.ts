@@ -1,14 +1,19 @@
+import type { ClientEdict } from '../engine/client/ClientEntities.mjs';
 
-
-/** @typedef {import('../engine/client/ClientEntities.mjs').ClientEdict} ClientEdict */
-/** @typedef {typeof import('../engine/common/GameAPIs.mjs').ClientEngineAPI} ClientEngineAPI */
+type ClientEngineAPI = typeof import('../engine/common/GameAPIs.mjs').ClientEngineAPI;
 
 export class BaseClientEdictHandler {
   /**
-   * @param {ClientEdict} clientEdict client edict instance
-   * @param {ClientEngineAPI} engineAPI client engine API
+   * Client edict instance.
    */
-  constructor(clientEdict, engineAPI) {
+  clientEdict: ClientEdict;
+
+  /**
+   * Client engine API.
+   */
+  engine: ClientEngineAPI;
+
+  constructor(clientEdict: ClientEdict, engineAPI: ClientEngineAPI) {
     this.clientEdict = clientEdict;
     this.engine = engineAPI;
   }
@@ -32,4 +37,4 @@ export class BaseClientEdictHandler {
    */
   think() {
   }
-};
+}

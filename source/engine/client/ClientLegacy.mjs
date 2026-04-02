@@ -5,7 +5,7 @@
 
 import Vector from '../../shared/Vector.ts';
 import { effect, modelFlags } from '../../shared/Defs.ts';
-import { BaseClientEdictHandler } from '../../shared/ClientEdict.mjs';
+import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 
 import { registry, eventBus } from '../registry.mjs';
 

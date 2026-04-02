@@ -1,4 +1,4 @@
-import { BaseClientEdictHandler } from "./ClientEdict.mjs";
+import { BaseClientEdictHandler } from "./ClientEdict.ts";
 import { ClientEngineAPI, ServerEngineAPI } from "../engine/common/GameAPIs.mjs";
 import { ServerEdict } from "../engine/server/Edict.mjs";
 import Vector from "./Vector.ts";
