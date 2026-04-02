@@ -25,6 +25,7 @@ interface AliasSingleFrame {
   readonly bboxmax: Vector;
   readonly name: string;
   readonly v: AliasPoseVertex[];
+  readonly cmdofs?: number;
 }
 
 interface AliasGroupedFrameEntry {
@@ -33,6 +34,7 @@ interface AliasGroupedFrameEntry {
   readonly bboxmax: Vector;
   readonly name: string;
   readonly v: AliasPoseVertex[];
+  readonly cmdofs?: number;
 }
 
 interface AliasGroupedFrame {

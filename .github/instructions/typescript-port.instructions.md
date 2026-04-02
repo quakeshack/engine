@@ -3,6 +3,8 @@
 
 When porting `.mjs` files to `.ts` (or polishing an earlier verbatim JS→TS port), apply every applicable rule below. The goal is idiomatic, type-safe TypeScript that relies on the compiler rather than JSDoc for type information.
 
+Files have to end with an empty line.
+
 ### Interfaces over Type Aliases
 
 - **Prefer `interface`** for object shapes. Only use `type` for unions, intersections, tuples, or mapped types.
@@ -204,6 +206,9 @@ Use this checklist when polishing a ported `.ts` file:
 11. [ ] No empty JSDoc blocks — every block has a description ending with a period.
 12. [ ] ESLint clean (`npx eslint <file>`).
 13. [ ] All tests pass (`npm run test`).
+14. [ ] All original comments preserved, especially TODOs and complex logic explanations.
+15. [ ] File ends with an empty line.
+16. [ ] If there is some important logic that is not covered by tests yet, add tests for it.
 
 ### Avoid inline import type annotations
 
@@ -230,3 +235,70 @@ const COM = comModule.COM as typeof import('../common/COM.ts');
 ```
 
 But this is a special case and should not be used as a general pattern for type imports!
+
+### Porting over comments
+
+Make sure to **always** carry over comments from the original `.mjs` file, especially those that explain complex logic or important context.
+
+However, **do not carry over comments that only describe types** (e.g., "Bounding radius for culling") since the TS types should be self-explanatory. Instead, add a JSDoc comment with a description if needed.
+
+For example, consider this original code snippet with helpful comments:
+
+```javascript
+…
+
+    // Calculate bounding box
+    this._calculateBounds(loadmodel);
+
+    // Generate tangents and bitangents for normal mapping
+    if (loadmodel.normals && loadmodel.texcoords) {
+      this._generateTangentSpace(loadmodel);
+    }
+
+    // Set texture name (convention: same as model name without .obj)
+    const baseName = name.replace(/\.obj$/i, '.png').replace(/^models\//i, 'textures/');
+    loadmodel.textureName = baseName;
+
+…
+```
+
+❌ Omitting comments:
+
+```typescript
+
+    this.#calculateBounds(loadmodel);
+
+    if (loadmodel.normals !== null && loadmodel.texcoords !== null) {
+      this.#generateTangentSpace(loadmodel);
+    }
+
+    const baseName = name.replace(/\.obj$/i, '.png').replace(/^models\//i, 'textures/');
+    loadmodel.textureName = baseName;
+
+```
+
+✅ With comments preserved and updated:
+
+```typescript
+
+    // Calculate bounding box for frustum culling
+    this.#calculateBounds(loadmodel);
+
+    // Generate tangents/bitangents needed for normal mapping
+    if (loadmodel.normals !== null && loadmodel.texcoords !== null) {
+      this.#generateTangentSpace(loadmodel);
+    }
+
+    // Derive texture name from model name (e.g. models/foo.obj → textures/foo.png)
+    const baseName = name.replace(/\.obj$/i, '.png').replace(/^models\//i, 'textures/');
+    loadmodel.textureName = baseName;
+
+```
+
+**Never ever delete TODO or FIXME unless the underlying issue has been fully resolved.** If the comment is no longer relevant, update it instead of deleting.
+
+### Adding missing tests
+
+If you encounter important logic that is not covered by tests, add new tests to cover it. This is especially critical for complex algorithms, edge cases, or any code that has caused bugs in the past.
+
+If code looks risky or has had bugs before, but there are no tests for it, that's a strong signal that tests should be added. Don't skip this step just to get the TS port done faster — the goal is not just to convert to TypeScript, but to improve code quality and maintainability overall.

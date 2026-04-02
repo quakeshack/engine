@@ -1,31 +1,85 @@
 import Vector from '../../../../shared/Vector.ts';
 import Q from '../../../../shared/Q.ts';
 import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.mjs';
-import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
-import { CRC16CCITT } from '../../CRC.ts';
 import { registry } from '../../../registry.mjs';
+import { CRC16CCITT } from '../../CRC.ts';
+import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
+import { AliasModel, type AliasFrame, type AliasSkin } from '../AliasModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
-import { AliasModel } from '../AliasModel.ts';
+
+interface AliasSkinLayers {
+  readonly diffuse: Uint8Array;
+  readonly luminance: Uint8Array;
+}
+
+
+interface MutableAliasSingleSkin {
+  group: false;
+  texturenum: GLTexture | null;
+  luminanceTexture: GLTexture | null;
+  translated?: Uint8Array;
+  playertexture?: GLTexture | null;
+}
+
+interface MutableAliasGroupedSkinEntry {
+  interval: number;
+  texturenum?: GLTexture | null;
+  luminanceTexture?: GLTexture | null;
+  translated?: Uint8Array;
+  playertexture?: GLTexture | null;
+}
+
+interface MutableAliasGroupedSkin {
+  group: true;
+  skins: MutableAliasGroupedSkinEntry[];
+}
+
+interface MutableAliasPoseVertex {
+  v: Vector;
+  lightnormalindex: number;
+}
+
+interface MutableAliasSingleFrame {
+  group: false;
+  bboxmin: Vector;
+  bboxmax: Vector;
+  name: string;
+  v: MutableAliasPoseVertex[];
+  cmdofs?: number;
+}
+
+interface MutableAliasGroupedFrameEntry {
+  interval: number;
+  bboxmin: Vector;
+  bboxmax: Vector;
+  name: string;
+  v: MutableAliasPoseVertex[];
+  cmdofs?: number;
+}
+
+interface MutableAliasGroupedFrame {
+  group: true;
+  bboxmin: Vector;
+  bboxmax: Vector;
+  frames: MutableAliasGroupedFrameEntry[];
+}
+
+type MutableAliasFrame = MutableAliasSingleFrame | MutableAliasGroupedFrame;
+type MutableAliasSkin = MutableAliasSingleSkin | MutableAliasGroupedSkin;
 
 /**
  * Builds the diffuse and luminance skin layers for a legacy alias model skin.
  * Fullbright indexed colors stay emissive-only in the luminance layer.
- * @param {Uint8Array} skin indexed Quake skin pixels
- * @param {number} width skin width
- * @param {number} height skin height
- * @param {Uint8Array} [palette] RGB palette data
- * @param {?number} [transparentColor] optional transparent palette index
- * @param {number} [fullbrightColorStart] first fullbright palette index
- * @returns {{diffuse: Uint8Array, luminance: Uint8Array}} translated texture layers
+ * @returns The translated diffuse and luminance texture layers.
  */
 export function buildAliasSkinLayers(
-  skin,
-  width,
-  height,
-  palette = W.d_8to24table_u8,
-  transparentColor = null,
+  skin: Uint8Array,
+  width: number,
+  height: number,
+  palette: Uint8Array = W.d_8to24table_u8,
+  transparentColor: number | null = null,
   fullbrightColorStart = 240,
-) {
+): AliasSkinLayers {
   return {
     diffuse: translateIndexToRGBA(skin, width, height, palette, transparentColor, fullbrightColorStart),
     luminance: translateIndexToLuminanceRGBA(skin, width, height, palette, transparentColor, fullbrightColorStart),
@@ -213,43 +267,28 @@ export const avertexnormals = new Float32Array([
 ]);
 
 /**
- * Loader for Quake Alias Model format (.mdl)
+ * Loader for Quake Alias Model format (.mdl).
  * Magic: 0x4f504449 ("IDPO")
  * Version: 6
  */
 export class AliasMDLLoader extends ModelLoader {
-  /**
-   * Get magic numbers that identify this format
-   * @returns {number[]} Array of magic numbers
-   */
-  getMagicNumbers() {
+  override getMagicNumbers(): number[] {
     return [0x4f504449]; // "IDPO"
   }
 
-  /**
-   * Get file extensions for this format
-   * @returns {string[]} Array of file extensions
-   */
-  getExtensions() {
+  override getExtensions(): string[] {
     return ['.mdl'];
   }
 
-  /**
-   * Get human-readable name of this loader
-   * @returns {string} Loader name
-   */
-  getName() {
+  override getName(): string {
     return 'Quake Alias';
   }
 
   /**
-   * Load an Alias MDL model from buffer
-   * @param {ArrayBuffer} buffer - The model file data
-   * @param {string} name - The model name/path
-   * @returns {Promise<AliasModel>} The loaded model
+   * Load an Alias MDL model from buffer.
+   * @returns The loaded alias model.
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async load(buffer, name) {
+  override load(buffer: ArrayBuffer, name: string): Promise<AliasModel> {
     const loadmodel = new AliasModel(name);
 
     loadmodel.type = 2; // Mod.type.alias
@@ -306,36 +345,32 @@ export class AliasMDLLoader extends ModelLoader {
     loadmodel.maxs = new Vector(16.0, 16.0, 16.0);
 
     // Load model data
-    let inmodel = this._loadAllSkins(loadmodel, buffer, 84);
-    inmodel = this._loadSTVerts(loadmodel, buffer, inmodel);
-    inmodel = this._loadTriangles(loadmodel, buffer, inmodel);
-    this._loadAllFrames(loadmodel, buffer, inmodel);
+    let inmodel = this.#loadAllSkins(loadmodel, buffer, 84);
+    inmodel = this.#loadSTVerts(loadmodel, buffer, inmodel);
+    inmodel = this.#loadTriangles(loadmodel, buffer, inmodel);
+    this.#loadAllFrames(loadmodel, buffer, inmodel);
 
     // Prepare rendering data (if not dedicated server)
     if (!registry.isDedicatedServer) {
-      this._buildRenderCommands(loadmodel);
+      this.#buildRenderCommands(loadmodel);
     }
 
     loadmodel.needload = false;
     loadmodel.checksum = CRC16CCITT.Block(new Uint8Array(buffer));
 
-    return loadmodel;
+    return Promise.resolve(loadmodel);
   }
 
   /**
-   * Load ST (texture coordinate) vertices
-   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
-   * @param {ArrayBuffer} buffer - The model file data
-   * @param {number} inmodel - Current offset in buffer
-   * @returns {number} New offset after reading vertices
-   * @private
+   * Load ST (texture coordinate) vertices.
+   * @returns The next byte offset after the ST vertex block.
    */
-  _loadSTVerts(loadmodel, buffer, inmodel) {
+  #loadSTVerts(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number): number {
     const view = new DataView(buffer);
     loadmodel._stverts.length = loadmodel._num_verts;
 
-    for (let i = 0; i < loadmodel._num_verts; i++) {
-      loadmodel._stverts[i] = {
+    for (let index = 0; index < loadmodel._num_verts; index++) {
+      loadmodel._stverts[index] = {
         onseam: view.getUint32(inmodel, true) !== 0,
         s: view.getUint32(inmodel + 4, true),
         t: view.getUint32(inmodel + 8, true),
@@ -347,19 +382,15 @@ export class AliasMDLLoader extends ModelLoader {
   }
 
   /**
-   * Load triangles
-   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
-   * @param {ArrayBuffer} buffer - The model file data
-   * @param {number} inmodel - Current offset in buffer
-   * @returns {number} New offset after reading triangles
-   * @private
+   * Load triangles.
+   * @returns The next byte offset after the triangle block.
    */
-  _loadTriangles(loadmodel, buffer, inmodel) {
+  #loadTriangles(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number): number {
     const view = new DataView(buffer);
     loadmodel._triangles.length = loadmodel._num_tris;
 
-    for (let i = 0; i < loadmodel._num_tris; i++) {
-      loadmodel._triangles[i] = {
+    for (let index = 0; index < loadmodel._num_tris; index++) {
+      loadmodel._triangles[index] = {
         facesfront: view.getUint32(inmodel, true) !== 0,
         vertindex: [
           view.getUint32(inmodel + 4, true),
@@ -374,12 +405,9 @@ export class AliasMDLLoader extends ModelLoader {
   }
 
   /**
-   * Flood fill skin to handle transparent areas
-   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
-   * @param {Uint8Array} skin - The skin pixel data
-   * @private
+   * Flood fill skin to handle transparent areas.
    */
-  _floodFillSkin(loadmodel, skin) {
+  #floodFillSkin(loadmodel: AliasModel, skin: Uint8Array): void {
     const fillcolor = skin[0];
     const filledcolor = W.filledColor;
 
@@ -389,136 +417,126 @@ export class AliasMDLLoader extends ModelLoader {
 
     const width = loadmodel._skin_width;
     const height = loadmodel._skin_height;
+    const lifo: Array<[number, number]> = [[0, 0]];
 
-    const lifo = [[0, 0]];
-
-    for (let sp = 1; sp > 0;) {
-      const cur = lifo[--sp];
-      const x = cur[0];
-      const y = cur[1];
+    for (let stackPointer = 1; stackPointer > 0;) {
+      const [x, y] = lifo[--stackPointer];
       skin[y * width + x] = filledcolor;
 
       if (x > 0 && skin[y * width + x - 1] === fillcolor) {
-        lifo[sp++] = [x - 1, y];
+        lifo[stackPointer++] = [x - 1, y];
       }
       if (x < (width - 1) && skin[y * width + x + 1] === fillcolor) {
-        lifo[sp++] = [x + 1, y];
+        lifo[stackPointer++] = [x + 1, y];
       }
       if (y > 0 && skin[(y - 1) * width + x] === fillcolor) {
-        lifo[sp++] = [x, y - 1];
+        lifo[stackPointer++] = [x, y - 1];
       }
       if (y < (height - 1) && skin[(y + 1) * width + x] === fillcolor) {
-        lifo[sp++] = [x, y + 1];
+        lifo[stackPointer++] = [x, y + 1];
       }
     }
   }
 
   /**
-   * Translate player skin for color customization
-   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
-   * @param {Uint8Array} data - The original skin data
-   * @param {*} skin - The skin object to store the result
-   * @private
+   * Translate player skin for color customization.
    */
-  _translatePlayerSkin(loadmodel, data, skin) {
+  #translatePlayerSkin(loadmodel: AliasModel, data: Uint8Array, skin: MutableAliasSkin): void {
     if (registry.isDedicatedServer) {
       return;
     }
 
-    if ((loadmodel._skin_width !== 512) || (loadmodel._skin_height !== 256)) {
+    if (loadmodel._skin_width !== 512 || loadmodel._skin_height !== 256) {
       data = resampleTexture8(data, loadmodel._skin_width, loadmodel._skin_height, 512, 256);
     }
 
-    const out = new Uint8Array(new ArrayBuffer(524288));
+    const out = new Uint8Array(524288);
 
-    for (let i = 0; i < 131072; i++) {
-      const original = data[i];
+    for (let index = 0; index < 131072; index++) {
+      const original = data[index];
       if ((original >> 4) === 1) {
-        out[i << 2] = (original & 15) * 17;
-        out[(i << 2) + 1] = 255;
+        out[index << 2] = (original & 15) * 17;
+        out[(index << 2) + 1] = 255;
       } else if ((original >> 4) === 6) {
-        out[(i << 2) + 2] = (original & 15) * 17;
-        out[(i << 2) + 3] = 255;
+        out[(index << 2) + 2] = (original & 15) * 17;
+        out[(index << 2) + 3] = 255;
       }
     }
 
-    skin.playertexture = GLTexture.Allocate(loadmodel.name + '_playerskin', 512, 256, out);
+    skin.playertexture = GLTexture.Allocate(`${loadmodel.name}_playerskin`, 512, 256, out);
   }
 
   /**
-   * Load all skins (textures) for the model
-   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
-   * @param {ArrayBuffer} buffer - The model file data
-   * @param {number} inmodel - Current offset in buffer
-   * @returns {number} New offset after reading skins
-   * @private
+   * Load all skins (textures) for the model.
+   * @returns The next byte offset after the skin data.
    */
-  _loadAllSkins(loadmodel, buffer, inmodel) {
+  #loadAllSkins(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number): number {
     loadmodel.skins.length = loadmodel._num_skins;
     const view = new DataView(buffer);
     const skinsize = loadmodel._skin_width * loadmodel._skin_height;
 
-    for (let i = 0; i < loadmodel._num_skins; i++) {
+    for (let skinIndex = 0; skinIndex < loadmodel._num_skins; skinIndex++) {
       inmodel += 4;
 
       if (view.getUint32(inmodel - 4, true) === 0) {
         // Single skin
         const skin = new Uint8Array(buffer, inmodel, skinsize);
-        this._floodFillSkin(loadmodel, skin);
+        this.#floodFillSkin(loadmodel, skin);
         const { diffuse, luminance } = buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
-
-        loadmodel.skins[i] = {
+        const singleSkin: MutableAliasSingleSkin = {
           group: false,
           texturenum: !registry.isDedicatedServer
-            ? GLTexture.Allocate(loadmodel.name + '_' + i, loadmodel._skin_width, loadmodel._skin_height, diffuse)
+            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}`, loadmodel._skin_width, loadmodel._skin_height, diffuse)
             : null,
           luminanceTexture: !registry.isDedicatedServer
-            ? GLTexture.Allocate(loadmodel.name + '_' + i + '_luma', loadmodel._skin_width, loadmodel._skin_height, luminance)
+            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, luminance)
             : null,
         };
 
+        loadmodel.skins[skinIndex] = singleSkin as AliasSkin;
+
         if (loadmodel.player === true) {
-          this._translatePlayerSkin(loadmodel, new Uint8Array(buffer, inmodel, skinsize), loadmodel.skins[i]);
+          this.#translatePlayerSkin(loadmodel, new Uint8Array(buffer, inmodel, skinsize), singleSkin);
         }
 
         inmodel += skinsize;
       } else {
         // Skin group (animated skins)
-        const group = {
+        const group: MutableAliasGroupedSkin = {
           group: true,
           skins: [],
         };
         const numskins = view.getUint32(inmodel, true);
         inmodel += 4;
 
-        for (let j = 0; j < numskins; j++) {
-          group.skins[j] = { interval: view.getFloat32(inmodel, true) };
-          if (group.skins[j].interval <= 0.0) {
+        for (let groupIndex = 0; groupIndex < numskins; groupIndex++) {
+          group.skins[groupIndex] = { interval: view.getFloat32(inmodel, true) };
+          if (group.skins[groupIndex].interval <= 0.0) {
             throw new Error('AliasMDLLoader: skin interval <= 0');
           }
           inmodel += 4;
         }
 
-        for (let j = 0; j < numskins; j++) {
+        for (let groupIndex = 0; groupIndex < numskins; groupIndex++) {
           const skin = new Uint8Array(buffer, inmodel, skinsize);
-          this._floodFillSkin(loadmodel, skin);
+          this.#floodFillSkin(loadmodel, skin);
           const { diffuse, luminance } = buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
 
-          group.skins[j].texturenum = !registry.isDedicatedServer
-            ? GLTexture.Allocate(loadmodel.name + '_' + i + '_' + j, loadmodel._skin_width, loadmodel._skin_height, diffuse)
+          group.skins[groupIndex].texturenum = !registry.isDedicatedServer
+            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}`, loadmodel._skin_width, loadmodel._skin_height, diffuse)
             : null;
-          group.skins[j].luminanceTexture = !registry.isDedicatedServer
-            ? GLTexture.Allocate(loadmodel.name + '_' + i + '_' + j + '_luma', loadmodel._skin_width, loadmodel._skin_height, luminance)
+          group.skins[groupIndex].luminanceTexture = !registry.isDedicatedServer
+            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, luminance)
             : null;
 
           if (loadmodel.player === true) {
-            this._translatePlayerSkin(loadmodel, new Uint8Array(buffer, inmodel, skinsize), group.skins[j]);
+            this.#translatePlayerSkin(loadmodel, new Uint8Array(buffer, inmodel, skinsize), group.skins[groupIndex]);
           }
 
           inmodel += skinsize;
         }
 
-        loadmodel.skins[i] = group;
+        loadmodel.skins[skinIndex] = group as AliasSkin;
       }
     }
 
@@ -526,22 +544,18 @@ export class AliasMDLLoader extends ModelLoader {
   }
 
   /**
-   * Load all animation frames
-   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
-   * @param {ArrayBuffer} buffer - The model file data
-   * @param {number} inmodel - Current offset in buffer
-   * @private
+   * Load all animation frames.
    */
-  _loadAllFrames(loadmodel, buffer, inmodel) {
+  #loadAllFrames(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number): void {
     loadmodel.frames = [];
     const view = new DataView(buffer);
 
-    for (let i = 0; i < loadmodel._frames; i++) {
+    for (let frameIndex = 0; frameIndex < loadmodel._frames; frameIndex++) {
       inmodel += 4;
 
       if (view.getUint32(inmodel - 4, true) === 0) {
         // Single frame
-        const frame = {
+        const frame: MutableAliasSingleFrame = {
           group: false,
           bboxmin: new Vector(view.getUint8(inmodel), view.getUint8(inmodel + 1), view.getUint8(inmodel + 2)),
           bboxmax: new Vector(view.getUint8(inmodel + 4), view.getUint8(inmodel + 5), view.getUint8(inmodel + 6)),
@@ -550,18 +564,18 @@ export class AliasMDLLoader extends ModelLoader {
         };
         inmodel += 24;
 
-        for (let j = 0; j < loadmodel._num_verts; j++) {
-          frame.v[j] = {
+        for (let vertexIndex = 0; vertexIndex < loadmodel._num_verts; vertexIndex++) {
+          frame.v[vertexIndex] = {
             v: new Vector(view.getUint8(inmodel), view.getUint8(inmodel + 1), view.getUint8(inmodel + 2)),
             lightnormalindex: view.getUint8(inmodel + 3),
           };
           inmodel += 4;
         }
 
-        loadmodel.frames[i] = frame;
+        loadmodel.frames[frameIndex] = frame as AliasFrame;
       } else {
         // Frame group (animated frames)
-        const group = {
+        const group: MutableAliasGroupedFrame = {
           group: true,
           bboxmin: new Vector(view.getUint8(inmodel + 4), view.getUint8(inmodel + 5), view.getUint8(inmodel + 6)),
           bboxmax: new Vector(view.getUint8(inmodel + 8), view.getUint8(inmodel + 9), view.getUint8(inmodel + 10)),
@@ -570,24 +584,30 @@ export class AliasMDLLoader extends ModelLoader {
         const numframes = view.getUint32(inmodel, true);
         inmodel += 12;
 
-        for (let j = 0; j < numframes; j++) {
-          group.frames[j] = { interval: view.getFloat32(inmodel, true) };
-          if (group.frames[j].interval <= 0.0) {
+        for (let groupIndex = 0; groupIndex < numframes; groupIndex++) {
+          group.frames[groupIndex] = {
+            interval: view.getFloat32(inmodel, true),
+            bboxmin: new Vector(),
+            bboxmax: new Vector(),
+            name: '',
+            v: [],
+          };
+          if (group.frames[groupIndex].interval <= 0.0) {
             throw new Error('AliasMDLLoader: frame interval <= 0');
           }
           inmodel += 4;
         }
 
-        for (let j = 0; j < numframes; j++) {
-          const frame = group.frames[j];
+        for (let groupIndex = 0; groupIndex < numframes; groupIndex++) {
+          const frame = group.frames[groupIndex];
           frame.bboxmin = new Vector(view.getUint8(inmodel), view.getUint8(inmodel + 1), view.getUint8(inmodel + 2));
           frame.bboxmax = new Vector(view.getUint8(inmodel + 4), view.getUint8(inmodel + 5), view.getUint8(inmodel + 6));
           frame.name = Q.memstr(new Uint8Array(buffer, inmodel + 8, 16));
           frame.v = [];
           inmodel += 24;
 
-          for (let k = 0; k < loadmodel._num_verts; k++) {
-            frame.v[k] = {
+          for (let vertexIndex = 0; vertexIndex < loadmodel._num_verts; vertexIndex++) {
+            frame.v[vertexIndex] = {
               v: new Vector(view.getUint8(inmodel), view.getUint8(inmodel + 1), view.getUint8(inmodel + 2)),
               lightnormalindex: view.getUint8(inmodel + 3),
             };
@@ -595,24 +615,29 @@ export class AliasMDLLoader extends ModelLoader {
           }
         }
 
-        loadmodel.frames[i] = group;
+        loadmodel.frames[frameIndex] = group as AliasFrame;
       }
     }
   }
 
   /**
-   * Build rendering commands (WebGL buffers) for efficient rendering
-   * @param {import('../AliasModel.ts').AliasModel} loadmodel - The model being loaded
-   * @private
+   * Build rendering commands (WebGL buffers) for efficient rendering.
    */
-  _buildRenderCommands(loadmodel) {
+  #buildRenderCommands(loadmodel: AliasModel): void {
     const gl = GL.gl;
-    const cmds = [];
+    const scale = loadmodel._scale;
+    const scaleOrigin = loadmodel._scale_origin;
+
+    console.assert(scale !== null && scaleOrigin !== null);
+    if (scale === null || scaleOrigin === null) {
+      return;
+    }
+
+    const cmds: number[] = [];
 
     // Build texture coordinates
-
-    for (let i = 0; i < loadmodel._num_tris; i++) {
-      const triangle = loadmodel._triangles[i];
+    for (let triangleIndex = 0; triangleIndex < loadmodel._num_tris; triangleIndex++) {
+      const triangle = loadmodel._triangles[triangleIndex];
 
       if (triangle.facesfront === true) {
         const vert0 = loadmodel._stverts[triangle.vertindex[0]];
@@ -629,8 +654,8 @@ export class AliasMDLLoader extends ModelLoader {
         continue;
       }
 
-      for (let j = 0; j < 3; j++) {
-        const vert = loadmodel._stverts[triangle.vertindex[j]];
+      for (let vertexOffset = 0; vertexOffset < 3; vertexOffset++) {
+        const vert = loadmodel._stverts[triangle.vertindex[vertexOffset]];
         if (vert.onseam === true) {
           cmds.push((vert.s + loadmodel._skin_width / 2 + 0.5) / loadmodel._skin_width);
         } else {
@@ -641,24 +666,24 @@ export class AliasMDLLoader extends ModelLoader {
     }
 
     // Build vertex data for each frame
-    for (let i = 0; i < loadmodel.frames.length; i++) {
-      const group = loadmodel.frames[i];
+    for (let frameIndex = 0; frameIndex < loadmodel.frames.length; frameIndex++) {
+      const group = loadmodel.frames[frameIndex] as MutableAliasFrame;
 
       if (group.group === true) {
-        for (let j = 0; j < group.frames.length; j++) {
-          const frame = group.frames[j];
+        for (let groupIndex = 0; groupIndex < group.frames.length; groupIndex++) {
+          const frame = group.frames[groupIndex];
           frame.cmdofs = cmds.length * 4;
 
-          for (let k = 0; k < loadmodel._num_tris; k++) {
-            const triangle = loadmodel._triangles[k];
+          for (let triangleIndex = 0; triangleIndex < loadmodel._num_tris; triangleIndex++) {
+            const triangle = loadmodel._triangles[triangleIndex];
 
-            for (let l = 0; l < 3; l++) {
-              const vert = frame.v[triangle.vertindex[l]];
+            for (let vertexOffset = 0; vertexOffset < 3; vertexOffset++) {
+              const vert = frame.v[triangle.vertindex[vertexOffset]];
               console.assert(vert.lightnormalindex < avertexnormals.length / 3);
-              cmds.push(vert.v[0] * loadmodel._scale[0] + loadmodel._scale_origin[0]);
-              cmds.push(vert.v[1] * loadmodel._scale[1] + loadmodel._scale_origin[1]);
-              cmds.push(vert.v[2] * loadmodel._scale[2] + loadmodel._scale_origin[2]);
-              cmds.push(avertexnormals[vert.lightnormalindex * 3 + 0]);
+              cmds.push(vert.v[0] * scale[0] + scaleOrigin[0]);
+              cmds.push(vert.v[1] * scale[1] + scaleOrigin[1]);
+              cmds.push(vert.v[2] * scale[2] + scaleOrigin[2]);
+              cmds.push(avertexnormals[vert.lightnormalindex * 3]);
               cmds.push(avertexnormals[vert.lightnormalindex * 3 + 1]);
               cmds.push(avertexnormals[vert.lightnormalindex * 3 + 2]);
             }
@@ -670,16 +695,16 @@ export class AliasMDLLoader extends ModelLoader {
       const frame = group;
       frame.cmdofs = cmds.length * 4;
 
-      for (let j = 0; j < loadmodel._num_tris; j++) {
-        const triangle = loadmodel._triangles[j];
+      for (let triangleIndex = 0; triangleIndex < loadmodel._num_tris; triangleIndex++) {
+        const triangle = loadmodel._triangles[triangleIndex];
 
-        for (let k = 0; k < 3; k++) {
-          const vert = frame.v[triangle.vertindex[k]];
+        for (let vertexOffset = 0; vertexOffset < 3; vertexOffset++) {
+          const vert = frame.v[triangle.vertindex[vertexOffset]];
           console.assert(vert.lightnormalindex < avertexnormals.length / 3);
-          cmds.push(vert.v[0] * loadmodel._scale[0] + loadmodel._scale_origin[0]);
-          cmds.push(vert.v[1] * loadmodel._scale[1] + loadmodel._scale_origin[1]);
-          cmds.push(vert.v[2] * loadmodel._scale[2] + loadmodel._scale_origin[2]);
-          cmds.push(avertexnormals[vert.lightnormalindex * 3 + 0]);
+          cmds.push(vert.v[0] * scale[0] + scaleOrigin[0]);
+          cmds.push(vert.v[1] * scale[1] + scaleOrigin[1]);
+          cmds.push(vert.v[2] * scale[2] + scaleOrigin[2]);
+          cmds.push(avertexnormals[vert.lightnormalindex * 3]);
           cmds.push(avertexnormals[vert.lightnormalindex * 3 + 1]);
           cmds.push(avertexnormals[vert.lightnormalindex * 3 + 2]);
         }

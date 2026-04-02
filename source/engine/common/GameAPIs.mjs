@@ -18,7 +18,7 @@ import W from './W.ts';
 /** @typedef {import('../client/GL.mjs').GLTexture} GLTexture */
 /** @typedef {import('../network/MSG.ts').SzBuffer} SzBuffer */
 /** @typedef {import('../server/Navigation.mjs').Navigation} Navigation */
-/** @typedef {import('./model/parsers/ParsedQC.mjs').default} ParsedQC */
+/** @typedef {import('./model/parsers/ParsedQC.ts').default} ParsedQC */
 /** @typedef {import('./model/BaseModel.ts').BaseModel} BaseModel */
 /** @typedef {import('../server/physics/ServerCollisionSupport.mjs').CollisionTrace} CollisionTrace */
 /**

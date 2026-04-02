@@ -73,7 +73,7 @@ export class BSP29Loader extends ModelLoader {
     // Load all BSP lumps
     this.#loadEntities(loadmodel, buffer);
     this.#loadVertexes(loadmodel, buffer);
-    this.#loadEdges(loadmodel, buffer);
+    this._loadEdges(loadmodel, buffer);
     this.#loadSurfedges(loadmodel, buffer);
     this.#loadTextures(loadmodel, buffer);
     await this.#loadMaterials(loadmodel);
@@ -1470,7 +1470,7 @@ export class BSP29Loader extends ModelLoader {
   /**
    * Load edges from BSP lump.
    */
-  #loadEdges(loadmodel: BrushModel, buf: ArrayBuffer): void {
+  protected _loadEdges(loadmodel: BrushModel, buf: ArrayBuffer): void {
     const view = new DataView(buf);
     const lump = BSP29Loader.#lump;
     let fileofs = view.getUint32((lump.edges << 3) + 4, true);

@@ -1,28 +1,25 @@
+import type { ParsedQC as ParsedQCShape } from '../../../../shared/GameInterfaces.ts';
+
 import Q from '../../../../shared/Q.ts';
 import Vector from '../../../../shared/Vector.ts';
 
-/** @typedef {import('../../../../shared/GameInterfaces').ParsedQC} IParsedQC */
-/** @augments IParsedQC */
-export default class ParsedQC {
-  /** @type {string} */
-  cd = null;
+/**
+ * Parsed representation of a QuakeC model `.qc` source file.
+ */
+export default class ParsedQC implements ParsedQCShape {
+  cd = '';
   origin = new Vector();
-  /** @type {string} */
-  base = null;
-  /** @type {string} */
-  skin = null;
-  /** @type {string[]} */
-  frames = [];
-  /** @type {Record<string, number[]>} */
-  animations = {};
-  /** @type {number} */
+  base: string | null = null;
+  skin: string | null = null;
+  frames: string[] = [];
+  animations: Record<string, number[]> = {};
   scale = 1.0;
 
   /**
-   * @param {string} qcContent qc model source
-   * @returns {this} this
+   * Parse QC model source into a structured representation.
+   * @returns This parsed QC instance.
    */
-  parseQC(qcContent) {
+  parseQC(qcContent: string): this {
     console.assert(typeof qcContent === 'string', 'qcContent must be a string');
 
     const lines = qcContent.trim().split('\n');
@@ -33,7 +30,8 @@ export default class ParsedQC {
       }
 
       const parts = line.split(/\s+/);
-      const [key, value] = [parts.shift(), parts.join(' ')];
+      const key = parts.shift();
+      const value = parts.join(' ');
 
       switch (key) {
         case '$cd':
@@ -41,7 +39,7 @@ export default class ParsedQC {
           break;
 
         case '$origin':
-          this.origin = new Vector(...value.split(/\s+/).map((n) => Q.atof(n)));
+          this.origin = new Vector(...value.split(/\s+/).map((component) => Q.atof(component)));
           break;
 
         case '$base':
@@ -82,4 +80,4 @@ export default class ParsedQC {
 
     return this;
   }
-};
+}

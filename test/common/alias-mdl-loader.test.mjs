@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { buildAliasSkinLayers } from '../../source/engine/common/model/loaders/AliasMDLLoader.mjs';
+import { buildAliasSkinLayers } from '../../source/engine/common/model/loaders/AliasMDLLoader.ts';
 
-describe('buildAliasSkinLayers', () => {
-  test('splits legacy alias fullbright pixels into diffuse and luminance layers', () => {
+void describe('buildAliasSkinLayers', () => {
+  void test('splits legacy alias fullbright pixels into diffuse and luminance layers', () => {
     const palette = new Uint8Array(256 * 3);
     palette[16 * 3] = 1;
     palette[16 * 3 + 1] = 2;
@@ -25,7 +25,7 @@ describe('buildAliasSkinLayers', () => {
     ]);
   });
 
-  test('respects transparent pixels when building alias luminance layers', () => {
+  void test('respects transparent pixels when building alias luminance layers', () => {
     const palette = new Uint8Array(256 * 3);
     palette[255 * 3] = 70;
     palette[255 * 3 + 1] = 80;

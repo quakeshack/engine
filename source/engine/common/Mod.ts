@@ -1,13 +1,13 @@
 import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.mjs';
 import { MissingResourceError } from './Errors.ts';
 import { ModelLoaderRegistry } from './model/ModelLoaderRegistry.ts';
-import { AliasMDLLoader } from './model/loaders/AliasMDLLoader.mjs';
-import { SpriteSPRLoader } from './model/loaders/SpriteSPRLoader.mjs';
+import { AliasMDLLoader } from './model/loaders/AliasMDLLoader.ts';
+import { SpriteSPRLoader } from './model/loaders/SpriteSPRLoader.ts';
 import { BSP29Loader } from './model/loaders/BSP29Loader.ts';
-import { BSP2Loader } from './model/loaders/BSP2Loader.mjs';
-import { WavefrontOBJLoader } from './model/loaders/WavefrontOBJLoader.mjs';
-import ParsedQC from './model/parsers/ParsedQC.mjs';
-import { BSP38Loader } from './model/loaders/BSP38Loader.mjs';
+import { BSP2Loader } from './model/loaders/BSP2Loader.ts';
+import { WavefrontOBJLoader } from './model/loaders/WavefrontOBJLoader.ts';
+import ParsedQC from './model/parsers/ParsedQC.ts';
+import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
 
 let { COM } = getCommonRegistry();
@@ -41,6 +41,7 @@ export enum ModelHull {
 type ModelCache = Record<string, BaseModel>;
 
 // Re-export model classes for backward compatibility.
+// TODO: remove these!
 export { AliasModel } from './model/AliasModel.ts';
 export { BrushModel } from './model/BSP.ts';
 export { SpriteModel } from './model/SpriteModel.ts';
@@ -50,8 +51,11 @@ export { MeshModel } from './model/MeshModel.ts';
  * Shared model cache and loading entry point.
  */
 export default class Mod {
+  /** @deprecated use ModelType instead */
   static type = ModelType;
+  /** @deprecated use ModelScope instead */
   static scope = ModelScope;
+  /** @deprecated use ModelHull instead */
   static hull = ModelHull;
   static known: ModelCache = {};
   static clientKnown: ModelCache = {};
