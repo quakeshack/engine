@@ -10,7 +10,7 @@ globalThis.Worker = Worker;
 
 import Sys from './server/Sys.mjs';
 import NodeCOM from './server/Com.mjs';
-import Con from './common/Console.mjs';
+import Con from './common/Console.ts';
 import Host from './common/Host.mjs';
 import V from './client/V.mjs';
 import NET from './network/Network.ts';

@@ -208,7 +208,7 @@ async function runMapFrames({
   const knownKeysBefore = new Set(Object.keys(Mod.known));
 
   registry.isDedicatedServer = true;
-  registry.Con = /** @type {typeof import('../../source/engine/common/Console.mjs').default} */ ({
+  registry.Con = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
     Print() {},
     DPrint() {},
     PrintWarning() {},

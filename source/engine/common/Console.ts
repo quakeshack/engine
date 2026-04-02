@@ -1,36 +1,44 @@
-
-
-import { eventBus, registry } from '../registry.mjs';
-import Cvar from './Cvar.ts';
 import Vector from '../../shared/Vector.ts';
+import { eventBus, getClientRegistry, registry } from '../registry.mjs';
+import Cvar from './Cvar.ts';
 import Cmd from './Cmd.ts';
 import VID from '../client/VID.mjs';
 import { clientConnectionState } from './Def.ts';
 import { ClientEngineAPI } from './GameAPIs.mjs';
 
-let { CL, Draw, Host, Key, M, SCR } = registry;
+let { CL, Draw, Host, Key, M, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  CL = registry.CL;
-  Draw = registry.Draw;
-  Host = registry.Host;
-  Key = registry.Key;
-  M = registry.M;
-  SCR = registry.SCR;
+  ({ CL, Draw, Host, Key, M, SCR } = getClientRegistry());
 });
 
+/** A single line entry in the console text buffer. */
+type ConsoleLine = {
+  text: string;
+  time: number;
+  color: Vector;
+  doNotNotify: boolean;
+};
+
+/**
+ * Console output and display.
+ *
+ * Handles printing, notification display, and the interactive drop-down
+ * console overlay used by both the browser client and dedicated server.
+ */
 export default class Con {
   static backscroll = 0;
   static current = 0;
-  static text = /** @type {{ text: string, time: number, color: Vector, doNotNotify: boolean }[]} */([]);
-  static captureBuffer = null;
-  /** @type {Cvar?} */
-  static notifytime = null;
+  static text: ConsoleLine[] = [];
+  static captureBuffer: string[] | null = null;
 
-  /** used by the client to force the console to be up */
+  /** Console notification display time. */
+  static notifytime: Cvar | null = null;
+
+  /** Used by the client to force the console to be up. */
   static forcedup = false;
 
-  /** used by the client to determine how many lines to draw */
+  /** Used by the client to determine how many lines to draw. */
   static vislines = 0;
 
   static ToggleConsole_f() {
@@ -87,13 +95,13 @@ export default class Con {
     Con.captureBuffer = [];
   }
 
-  static StopCapturing() {
-    const data = Con.captureBuffer.join('\n') + '\n';
+  static StopCapturing(): string {
+    const data = Con.captureBuffer!.join('\n') + '\n';
     Con.captureBuffer = null;
     return data;
   }
 
-  static Print(msg, color = new Vector(1.0, 1.0, 1.0)) {
+  static Print(msg: string, color = new Vector(1.0, 1.0, 1.0)) {
     let doNotNotify = false;
 
     Con.backscroll = 0;
@@ -135,7 +143,7 @@ export default class Con {
     }
   }
 
-  static DPrint(msg) {
+  static DPrint(msg: string) {
     if (!Host.developer?.value) {
       return;
     }
@@ -143,15 +151,15 @@ export default class Con {
     Con.Print(msg, new Vector(0.7, 0.7, 1.0));
   }
 
-  static PrintWarning(msg) {
+  static PrintWarning(msg: string) {
     Con.Print(msg, new Vector(1.0, 1.0, 0.3));
   }
 
-  static PrintError(msg) {
+  static PrintError(msg: string) {
     Con.Print(msg, new Vector(1.0, 0.3, 0.3));
   }
 
-  static PrintSuccess(msg) {
+  static PrintSuccess(msg: string) {
     Con.Print(msg, new Vector(0.3, 1.0, 0.3));
   }
 
@@ -177,7 +185,7 @@ export default class Con {
     }
 
     for (; i < Con.text.length; i++) {
-      if (Con.text[i].doNotNotify || (Host.realtime - Con.text[i].time) > Con.notifytime.value) {
+      if (Con.text[i].doNotNotify || (Host.realtime - Con.text[i].time) > Con.notifytime!.value) {
         continue;
       }
 
@@ -192,7 +200,7 @@ export default class Con {
     }
   }
 
-  static DrawConsole(lines) {
+  static DrawConsole(lines: number) {
     if (lines <= 0) {
       return;
     }

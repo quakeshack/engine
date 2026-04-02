@@ -41,7 +41,7 @@ async function withModelRegistry(callback) {
   const previousPendingLoads = { ...Mod.pendingLoads };
 
   registry.isDedicatedServer = true;
-  registry.Con = /** @type {typeof import('../../source/engine/common/Console.mjs').default} */ ({
+  registry.Con = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
     Print() {},
     DPrint() {},
     PrintWarning() {},

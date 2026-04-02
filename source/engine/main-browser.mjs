@@ -2,7 +2,7 @@ import { registry, freeze as registryFreeze } from './registry.mjs';
 
 import Sys from './client/Sys.mjs';
 import COM from './common/Com.mjs';
-import Con from './common/Console.mjs';
+import Con from './common/Console.ts';
 import Host from './common/Host.mjs';
 import V from './client/V.mjs';
 import NET from './network/Network.ts';
