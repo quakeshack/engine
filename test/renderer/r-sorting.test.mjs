@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import R, { compareFogAndTurbulentItems } from '../../source/engine/client/R.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 
 describe('compareFogAndTurbulentItems', () => {
   test('sorts farther items first', () => {

@@ -1,4 +1,4 @@
-import Vector from './Vector.mjs';
+import Vector from './Vector.ts';
 
 /**
  * Uniform clamped knot vector in [0,1]

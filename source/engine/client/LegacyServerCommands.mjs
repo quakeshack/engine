@@ -3,7 +3,7 @@ import * as Def from '../common/Def.mjs';
 import { HostError } from '../common/Errors.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { ScoreSlot } from './ClientState.mjs';
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import {
   handleNop,
   handleTime,

@@ -4,7 +4,7 @@ import { limits } from '../../common/Def.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import { materialFlags } from './Materials.mjs';
 import { effect } from '../../../shared/Defs.ts';
-import Vector from '../../../shared/Vector.mjs';
+import Vector from '../../../shared/Vector.ts';
 import { AliasModelRenderer } from './AliasModelRenderer.mjs';
 
 let { CL, COM, Mod, R, SV } = registry;

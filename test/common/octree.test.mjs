@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { Octree } from '../../source/shared/Octree.mjs';
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 
 /** @typedef {import('../../source/shared/Octree.mjs').OctreeNode<TestItem>} TestOctreeNode */
 

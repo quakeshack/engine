@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 import { entityClasses } from '../../source/game/id1/GameAPI.mjs';
 
 const TrainEntity = entityClasses.find((entityClass) => entityClass.classname === 'func_train');

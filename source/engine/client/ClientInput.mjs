@@ -1,4 +1,4 @@
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.mjs';
 import Q from '../../shared/Q.mjs';
 import { SzBuffer } from '../network/MSG.mjs';

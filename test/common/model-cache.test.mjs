@@ -6,7 +6,7 @@ import { AliasModel } from '../../source/engine/common/model/AliasModel.mjs';
 import { Face } from '../../source/engine/common/model/BaseModel.mjs';
 import { BrushModel, Node } from '../../source/engine/common/model/BSP.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 
 /** @typedef {import('../../source/engine/common/model/BaseModel.mjs').BaseModel} BaseModel */
 

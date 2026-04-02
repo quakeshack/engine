@@ -1,4 +1,4 @@
-import Vector from '../../../../shared/Vector.mjs';
+import Vector from '../../../../shared/Vector.ts';
 import { CorruptedResourceError } from '../../Errors.mjs';
 import { BSP29Loader } from './BSP29Loader.mjs';
 import { Face } from '../BaseModel.mjs';

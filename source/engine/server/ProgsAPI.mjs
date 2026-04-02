@@ -1,4 +1,4 @@
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.mjs';
 import { HostError } from '../common/Errors.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';

@@ -1,4 +1,4 @@
-import Vector from '../../../../shared/Vector.mjs';
+import Vector from '../../../../shared/Vector.ts';
 import Q from '../../../../shared/Q.mjs';
 import { content } from '../../../../shared/Defs.ts';
 import { GLTexture } from '../../../client/GL.mjs';

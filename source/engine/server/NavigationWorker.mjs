@@ -2,7 +2,7 @@ import WorkerFramework from '../common/WorkerFramework.mjs';
 import { eventBus, registry } from '../registry.mjs';
 
 import { Navigation, NavMeshOutOfDateException } from './Navigation.mjs';
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 
 await WorkerFramework.Init();
 

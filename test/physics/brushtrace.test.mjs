@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 import { BrushTrace, DIST_EPSILON, Pmove } from '../../source/engine/common/Pmove.mjs';
 import { BrushSide } from '../../source/engine/common/model/BSP.mjs';
 import { content } from '../../source/shared/Defs.ts';

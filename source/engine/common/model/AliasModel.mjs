@@ -15,10 +15,10 @@ export class AliasModel extends BaseModel {
 
     // Private model data (used during loading)
 
-    /** @type {import('../../../shared/Vector.mjs').default|null} Scale factors for vertices */
+    /** @type {import('../../../shared/Vector.ts').default|null} Scale factors for vertices */
     this._scale = null;
 
-    /** @type {import('../../../shared/Vector.mjs').default|null} Origin offset for vertices */
+    /** @type {import('../../../shared/Vector.ts').default|null} Origin offset for vertices */
     this._scale_origin = null;
 
     /** @type {number} Number of skins in file */

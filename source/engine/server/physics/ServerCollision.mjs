@@ -1,4 +1,4 @@
-import Vector from '../../../shared/Vector.mjs';
+import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
 import Mod, { BrushModel } from '../../common/Mod.mjs';

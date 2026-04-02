@@ -1,4 +1,4 @@
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import Q from '../../shared/Q.mjs';

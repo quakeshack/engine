@@ -1,5 +1,5 @@
 import Q from '../../../../shared/Q.mjs';
-import Vector from '../../../../shared/Vector.mjs';
+import Vector from '../../../../shared/Vector.ts';
 
 /** @typedef {import('../../../../shared/GameInterfaces.d.ts').ParsedQC} IParsedQC */
 /** @augments IParsedQC */

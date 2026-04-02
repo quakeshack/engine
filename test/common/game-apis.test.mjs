@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 import { solid } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
 import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.mjs';

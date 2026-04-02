@@ -1,6 +1,6 @@
 import Cvar from '../common/Cvar.mjs';
 import { MoveVars, Pmove } from '../common/Pmove.mjs';
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import * as Def from './../common/Def.mjs';

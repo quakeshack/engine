@@ -1,6 +1,6 @@
 import { enumHelpers } from '../../shared/Q.mjs';
 import { gameCapabilities } from '../../shared/Defs.ts';
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.mjs';
 import { QSocket } from '../network/NetworkDrivers.mjs';
 import * as Protocol from '../network/Protocol.mjs';

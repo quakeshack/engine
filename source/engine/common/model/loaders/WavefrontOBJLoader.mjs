@@ -1,6 +1,6 @@
 import { registry } from '../../../registry.mjs';
 
-import Vector from '../../../../shared/Vector.mjs';
+import Vector from '../../../../shared/Vector.ts';
 import { ModelLoader } from '../ModelLoader.mjs';
 import { MeshModel } from '../MeshModel.mjs';
 import { PBRMaterial } from '../../../client/renderer/Materials.mjs';

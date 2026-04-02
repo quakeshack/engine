@@ -3,7 +3,7 @@
  * Classes from this file are used by the client, when the game is not providing a ClientGameAPI implementation.
  */
 
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import { effect, modelFlags } from '../../shared/Defs.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.mjs';
 

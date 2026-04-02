@@ -7,14 +7,14 @@
  * Original sources: pmove.c, pmovetst.c (Q2), pmove.c (Q1).
  */
 
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.mjs';
 import { content } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.mjs';
 import Cvar from './Cvar.mjs';
 import { PmoveConfiguration } from '../../shared/Pmove.mjs';
 
-/** @typedef {import('../../shared/Vector.mjs').DirectionalVectors} DirectionalVectors */
+/** @typedef {import('../../shared/Vector.ts').DirectionalVectors} DirectionalVectors */
 /** @typedef {{ normal: Vector, type: number }} BrushTracePlaneLike */
 
 // ---------------------------------------------------------------------------

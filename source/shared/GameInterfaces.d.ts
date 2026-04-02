@@ -1,7 +1,7 @@
 import { BaseClientEdictHandler } from "./ClientEdict.mjs";
 import { ClientEngineAPI, ServerEngineAPI } from "../engine/common/GameAPIs.mjs";
 import { ServerEdict } from "../engine/server/Edict.mjs";
-import Vector from "./Vector.mjs";
+import Vector from "./Vector.ts";
 import { StartGameInterface } from "../engine/client/ClientLifecycle.mjs";
 
 export type ClientEngineAPI = Readonly<typeof ClientEngineAPI>;

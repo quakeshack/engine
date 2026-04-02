@@ -1,4 +1,4 @@
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import { content, gameCapabilities } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';

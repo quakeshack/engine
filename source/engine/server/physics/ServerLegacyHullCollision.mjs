@@ -1,4 +1,4 @@
-import Vector from '../../../shared/Vector.mjs';
+import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { DIST_EPSILON } from '../../common/Pmove.mjs';
 import { eventBus, registry } from '../../registry.mjs';

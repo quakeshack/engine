@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 import { moveType, solid } from '../../source/shared/Defs.ts';
 import { entityClasses } from '../../source/game/id1/GameAPI.mjs';
 
@@ -9,6 +9,9 @@ const RotatingEntity = entityClasses.find((entityClass) => entityClass.classname
 
 assert.ok(RotatingEntity, 'func_rotating must be registered in GameAPI');
 
+/**
+ *
+ */
 function createRotatingEntityFixture() {
   const modelMins = new Vector(-16, -16, -16);
   const modelMaxs = new Vector(16, 16, 16);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { Navigation } from '../../source/engine/server/Navigation.mjs';
 

@@ -1,6 +1,6 @@
 import GL from '../../client/GL.mjs';
 import { eventBus } from '../../registry.mjs';
-import Vector from '../../../shared/Vector.mjs';
+import Vector from '../../../shared/Vector.ts';
 
 let gl = /** @type {WebGL2RenderingContext|null} */ (null);
 

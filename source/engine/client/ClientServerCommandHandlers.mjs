@@ -3,7 +3,7 @@ import * as Def from '../common/Def.mjs';
 import Cmd from '../common/Cmd.mjs';
 import { HostError } from '../common/Errors.mjs';
 import { gameCapabilities } from '../../shared/Defs.ts';
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.mjs';
 import { eventBus, registry } from '../registry.mjs';

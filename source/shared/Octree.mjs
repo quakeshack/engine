@@ -1,4 +1,4 @@
-import Vector from './Vector.mjs';
+import Vector from './Vector.ts';
 
 /** @typedef {{origin: Vector|null, absmin: Vector|null, absmax: Vector|null, octreeNode: OctreeNode<OctreeItem>|null}} OctreeItem */
 

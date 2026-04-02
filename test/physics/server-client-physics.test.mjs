@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 import { flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';

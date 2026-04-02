@@ -1,5 +1,5 @@
 import { PmoveConfiguration } from '../../shared/Pmove.mjs';
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import { solid } from '../../shared/Defs.ts';
 import Key from '../client/Key.mjs';
 import { SFX } from '../client/Sound.mjs';

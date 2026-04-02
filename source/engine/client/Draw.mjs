@@ -1,4 +1,4 @@
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import { MissingResourceError } from '../common/Errors.mjs';
 
 import VID from './VID.mjs';

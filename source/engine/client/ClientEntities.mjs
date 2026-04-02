@@ -1,4 +1,4 @@
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import { eventBus, registry } from '../registry.mjs';
 import * as Def from '../common/Def.mjs';
 import { content, effect, solid } from '../../shared/Defs.ts';

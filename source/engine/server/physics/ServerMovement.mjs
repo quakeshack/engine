@@ -1,4 +1,4 @@
-import Vector from '../../../shared/Vector.mjs';
+import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { STEPSIZE } from '../../common/Pmove.mjs';
 import { ServerEdict } from '../Edict.mjs';

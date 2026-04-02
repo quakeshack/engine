@@ -2,7 +2,7 @@
 
 import { eventBus, registry } from '../registry.mjs';
 import Cvar from './Cvar.mjs';
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 import Cmd from './Cmd.mjs';
 import VID from '../client/VID.mjs';
 import { clientConnectionState } from './Def.mjs';

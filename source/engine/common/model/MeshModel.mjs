@@ -1,5 +1,5 @@
 import { BaseMaterial } from '../../client/renderer/Materials.mjs';
-import Vector from '../../../shared/Vector.mjs';
+import Vector from '../../../shared/Vector.ts';
 import { BaseModel } from './BaseModel.mjs';
 
 /**

@@ -1,4 +1,4 @@
-import Vector from '../../../../shared/Vector.mjs';
+import Vector from '../../../../shared/Vector.ts';
 import { GLTexture } from '../../../client/GL.mjs';
 import W, { translateIndexToRGBA } from '../../W.mjs';
 import { CRC16CCITT } from '../../CRC.mjs';

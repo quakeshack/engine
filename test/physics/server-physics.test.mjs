@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 import { content, flags, gameCapabilities, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.mjs';

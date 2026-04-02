@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
+import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
 import { Pmove } from '../../source/engine/common/Pmove.mjs';
@@ -294,6 +294,7 @@ export function createMockEdict(entity) {
  * Build a default mock registry config with silent console and standard frametime.
  * Supply SV overrides to configure server-side mocks.
  * @param {object} [sv] SV overrides
+ * @param cl
  * @returns {MockRegistryConfig} registry config
  */
 export function defaultMockRegistry(sv = {}, cl = null) {

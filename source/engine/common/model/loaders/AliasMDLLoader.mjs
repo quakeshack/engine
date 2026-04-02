@@ -1,4 +1,4 @@
-import Vector from '../../../../shared/Vector.mjs';
+import Vector from '../../../../shared/Vector.ts';
 import Q from '../../../../shared/Q.mjs';
 import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.mjs';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.mjs';

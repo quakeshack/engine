@@ -1,6 +1,6 @@
 import { content } from '../../../../shared/Defs.ts';
 import Q from '../../../../shared/Q.mjs';
-import Vector from '../../../../shared/Vector.mjs';
+import Vector from '../../../../shared/Vector.ts';
 import { CRC16CCITT } from '../../CRC.mjs';
 import { Plane } from '../BaseModel.mjs';
 import { Brush, BrushModel, BrushSide, Node } from '../BSP.mjs';

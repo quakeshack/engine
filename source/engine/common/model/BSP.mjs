@@ -4,7 +4,7 @@ import { BaseModel } from './BaseModel.mjs';
 import { SkyRenderer } from '../../client/renderer/Sky.mjs';
 import { AreaPortals } from './AreaPortals.mjs';
 
-/** @typedef {import('../../../shared/Vector.mjs').default} Vector */
+/** @typedef {import('../../../shared/Vector.ts').default} Vector */
 /** @typedef {import('./BaseModel.mjs').Face} Face */
 /** @typedef {import('./BaseModel.mjs').Plane} Plane */
 

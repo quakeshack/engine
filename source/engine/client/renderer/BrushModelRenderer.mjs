@@ -1,4 +1,4 @@
-import Vector from '../../../shared/Vector.mjs';
+import Vector from '../../../shared/Vector.ts';
 import { ModelRenderer } from './ModelRenderer.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 import GL, { ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.mjs';

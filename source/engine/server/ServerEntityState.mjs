@@ -1,4 +1,4 @@
-import Vector from '../../shared/Vector.mjs';
+import Vector from '../../shared/Vector.ts';
 
 /** @typedef {import('../../shared/GameInterfaces').SerializableType} SerializableType */
 
