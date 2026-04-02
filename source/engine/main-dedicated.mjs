@@ -13,7 +13,7 @@ import NodeCOM from './server/Com.mjs';
 import Con from './common/Console.mjs';
 import Host from './common/Host.mjs';
 import V from './client/V.mjs';
-import NET from './network/Network.mjs';
+import NET from './network/Network.ts';
 import SV from './server/Server.mjs';
 import PR from './server/Progs.mjs';
 import Mod from './common/Mod.mjs';

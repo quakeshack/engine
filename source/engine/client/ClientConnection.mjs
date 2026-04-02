@@ -6,7 +6,7 @@ import ClientInput from './ClientInput.mjs';
 import { clientRuntimeState, clientStaticState } from './ClientState.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import * as Def from '../common/Def.mjs';
-import { QSocket } from '../network/NetworkDrivers.mjs';
+import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.mjs';
 
 let { Con, Host, IN, Mod, NET, SCR, S, SV } = registry;

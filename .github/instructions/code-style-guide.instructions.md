@@ -64,6 +64,7 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 - **Use camelCase** for variables and functions, PascalCase for classes.
 - **Use descriptive names** for variables and functions.
 - **Keep functions small** and focused on a single task or a single responsibility.
+- **Prefer function declarations** for helper functions when arrow-function semantics are not needed.
 - **Use early returns** to reduce nesting and improve readability.
 - **Avoid deep nesting**; refactor into helper functions if necessary.
 - **Never mutate function parameters**; create new variables instead.

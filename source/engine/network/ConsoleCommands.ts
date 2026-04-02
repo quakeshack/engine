@@ -1,18 +1,20 @@
 import { ConsoleCommand } from '../common/Cmd.mjs';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.mjs';
 
-let { NET, Con } = registry;
+let { Con, NET } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  NET = registry.NET;
-  Con = registry.Con;
+  ({ Con, NET } = getCommonRegistry());
 });
 
+/**
+ * Copy a join link for the currently hosted session.
+ */
 export class InviteCommand extends ConsoleCommand {
-  async run() {
+  async run(): Promise<void> {
     const listenAddress = NET.GetListenAddress();
 
-    if (!listenAddress) {
+    if (listenAddress === null) {
       Con.PrintWarning('Cannot create invite link, not hosting.\n');
       return;
     }
@@ -25,9 +27,8 @@ export class InviteCommand extends ConsoleCommand {
     try {
       await navigator.clipboard.writeText(shareLink.toString());
       Con.Print(`This link has been copied to your clipboard:\n${shareLink.toString()}\n`);
-    // eslint-disable-next-line no-unused-vars
-    } catch (err) {
+    } catch {
       prompt('Share this link to invite players:', shareLink.toString());
     }
   }
-};
+}

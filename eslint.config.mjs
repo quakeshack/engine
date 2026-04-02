@@ -117,6 +117,8 @@ export default defineConfig([
     },
     rules: {
       ...commonRules,
+      'jsdoc/check-param-names': 'off',
+      'jsdoc/require-param': 'off',
       'jsdoc/require-param-type': 'off',
       'jsdoc/require-property-type': 'off',
       'jsdoc/require-returns-type': 'off',

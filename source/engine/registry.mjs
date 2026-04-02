@@ -4,7 +4,7 @@
 /** @typedef {typeof import('./common/Sys.mjs').default} SysModule */
 /** @typedef {typeof import('./common/Host.mjs').default} HostModule */
 /** @typedef {typeof import('./client/V.mjs').default} VModule */
-/** @typedef {typeof import('./network/Network.mjs').default} NetModule */
+/** @typedef {typeof import('./network/Network').default} NetModule */
 /** @typedef {typeof import('./server/Server.mjs').default} ServerModule */
 /** @typedef {typeof import('./server/Progs.mjs').default} ProgsModule */
 /** @typedef {typeof import('./common/Mod.mjs').default} ModModule */

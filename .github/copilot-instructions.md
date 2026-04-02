@@ -63,6 +63,10 @@ eventBus.subscribe("registry.frozen", () => {
 - **No `any`, `unknown`, or `*`**. Use specific types (e.g. `ArrayBuffer`).
 - **No `@returns {void}`**.
 
+### Helper Functions
+- **Prefer function declarations** for helper functions when lexical `this`, expression semantics, or very local inline usage are not needed.
+- **Use `const foo = (...) => ...`** only when arrow-function behavior is actually relevant.
+
 ## Specific Patterns to Observe
 
 - **Module System**: ES Modules exclusively (`type: "module"` in package.json).
