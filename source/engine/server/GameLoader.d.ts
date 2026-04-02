@@ -1,5 +1,5 @@
-import { ClientGameInterface, ServerGameInterface } from "../../shared/GameInterfaces";
-import { gameCapabilities } from "../../shared/Defs.ts";
+import { ClientGameConstructor, ServerGameConstructor } from '../../shared/GameInterfaces.ts';
+import { gameCapabilities } from '../../shared/Defs.ts';
 
 export interface GameModuleIdentification {
   name: string;
@@ -10,8 +10,8 @@ export interface GameModuleIdentification {
 
 export interface GameModuleInterface {
   identification: GameModuleIdentification,
-  ServerGameAPI: ServerGameInterface;
-  ClientGameAPI: ClientGameInterface;
+  ServerGameAPI: ServerGameConstructor;
+  ClientGameAPI: ClientGameConstructor;
 };
 
 export async function loadGameModule(gameDir: string): Promise<GameModuleInterface>;

@@ -1,7 +1,7 @@
 import Q from '../../../../shared/Q.ts';
 import Vector from '../../../../shared/Vector.ts';
 
-/** @typedef {import('../../../../shared/GameInterfaces.d.ts').ParsedQC} IParsedQC */
+/** @typedef {import('../../../../shared/GameInterfaces').ParsedQC} IParsedQC */
 /** @augments IParsedQC */
 export default class ParsedQC {
   /** @type {string} */
