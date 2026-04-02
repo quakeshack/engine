@@ -1,10 +1,55 @@
 
+/** @typedef {typeof import('./common/Console.mjs').default} ConModule */
+/** @typedef {typeof import('./common/Com.mjs').default} ComModule */
+/** @typedef {typeof import('./common/Sys.mjs').default} SysModule */
+/** @typedef {typeof import('./common/Host.mjs').default} HostModule */
+/** @typedef {typeof import('./client/V.mjs').default} VModule */
+/** @typedef {typeof import('./network/Network.mjs').default} NetModule */
+/** @typedef {typeof import('./server/Server.mjs').default} ServerModule */
+/** @typedef {typeof import('./server/Progs.mjs').default} ProgsModule */
+/** @typedef {typeof import('./common/Mod.mjs').default} ModModule */
+/** @typedef {typeof import('./client/CL.mjs').default} ClientModule */
+/** @typedef {typeof import('./client/SCR.mjs').default} ScrModule */
+/** @typedef {typeof import('./client/R.mjs').default} RendererModule */
+/** @typedef {typeof import('./client/Draw.mjs').default} DrawModule */
+/** @typedef {typeof import('./client/Key.mjs').default} KeyModule */
+/** @typedef {typeof import('./client/Sbar.mjs').default} SbarModule */
+/** @typedef {typeof import('./client/Sound.mjs').default} SoundModule */
+/** @typedef {typeof import('./client/Menu.mjs').default} MenuModule */
+/** @typedef {typeof import('./client/IN.mjs').default} InputModule */
+/** @typedef {typeof import('ws').default} WebSocketClass */
+/** @typedef {import('./build-config').BuildConfig} BuildConfig */
+/** @typedef {import('./build-config').URLs} URLs */
 /**
  * Registry for engine components.
  * Unfortunately, the engine components are too tightly coupled, that’s why we need a registry for the time being.
  * NOTE: Before adding more components here, consider refactoring the code to use ES6 modules and imports.
- * @type {import('./registry').Registry}
+ * @typedef {object} Registry
+ * @property {ComModule | undefined} COM command and filesystem module
+ * @property {ConModule | undefined} Con console output module
+ * @property {HostModule | undefined} Host engine host lifecycle module
+ * @property {NetModule | undefined} NET networking module
+ * @property {DrawModule | undefined} Draw 2D drawing module
+ * @property {SysModule | undefined} Sys platform system module
+ * @property {VModule | undefined} V view and camera module
+ * @property {ClientModule | undefined} CL client runtime module
+ * @property {ServerModule | undefined} SV server runtime module
+ * @property {ModModule | undefined} Mod model loading and cache module
+ * @property {ProgsModule | undefined} PR game program interface module
+ * @property {RendererModule | undefined} R renderer module
+ * @property {ScrModule | undefined} SCR screen and HUD module
+ * @property {KeyModule | undefined} Key input binding module
+ * @property {InputModule | undefined} IN low-level input module
+ * @property {SbarModule | undefined} Sbar status bar module
+ * @property {SoundModule | undefined} S audio module
+ * @property {MenuModule | undefined} M menu module
+ * @property {WebSocketClass | undefined} WebSocket injected WebSocket constructor
+ * @property {URLs | undefined} urls runtime URL providers
+ * @property {BuildConfig | undefined} buildConfig build-time configuration snapshot
+ * @property {boolean} isDedicatedServer true when running in server mode
+ * @property {boolean} isInsideWorker true when running inside a worker
  */
+/** @type {Registry} */
 export const registry = {
   COM: undefined,
   Con: undefined,
@@ -38,8 +83,6 @@ export const registry = {
 // make sure the registry is not extensible beyond the defined properties
 Object.seal(registry);
 
-/** @typedef {import('../shared/EventBus').EventBus} EventBusT */
-/** @augments EventBusT */
 export class EventBus {
   /** @type {Map<string, Set<Function>>} */
   #listeners = new Map();
