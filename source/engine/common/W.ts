@@ -264,7 +264,7 @@ class Wad3File extends WadFileInterface {
         new Uint8Array(lump).set(new Uint8Array(base, filepos, disksize));
       } else { // Compressed
         const compressedData = new Uint8Array(base, filepos, disksize);
-        const decompressed = Wad3File._decompressLZ(compressedData, size);
+        const decompressed = Wad3File.#decompressLZ(compressedData, size);
         new Uint8Array(lump).set(decompressed);
       }
 
@@ -279,7 +279,7 @@ class Wad3File extends WadFileInterface {
     }
   }
 
-  _parseQPicLump(name: string, data: ArrayBuffer, _mipmapLevel: number): WadLumpTexture {
+  #parseQPicLump(name: string, data: ArrayBuffer, _mipmapLevel: number): WadLumpTexture {
     const view = new DataView(data);
     const width = view.getUint32(0, true);
     const height = view.getUint32(4, true);
@@ -297,7 +297,7 @@ class Wad3File extends WadFileInterface {
     return new WadLumpTexture(name, width, height, rgba);
   }
 
-  _parseMiptexLump(name: string, data: ArrayBuffer, mipmapLevel: number): WadLumpTexture {
+  #parseMiptexLump(name: string, data: ArrayBuffer, mipmapLevel: number): WadLumpTexture {
     return readWad3Texture(data, name, mipmapLevel);
   }
 
@@ -329,10 +329,10 @@ class Wad3File extends WadFileInterface {
     switch (lumpInfo.type) {
       case 0x43: // miptex
       case 0x40: // spraydecal
-        return this._parseMiptexLump(lumpInfo.name, lumpInfo.data, mipmapLevel);
+        return this.#parseMiptexLump(lumpInfo.name, lumpInfo.data, mipmapLevel);
 
       case 0x42: // QPic
-        return this._parseQPicLump(lumpInfo.name, lumpInfo.data, mipmapLevel);
+        return this.#parseQPicLump(lumpInfo.name, lumpInfo.data, mipmapLevel);
 
       case 0x46: // font
         console.assert(false, 'Wad3File.getLumpMipmap: font handling not implemented');
@@ -346,7 +346,7 @@ class Wad3File extends WadFileInterface {
    * Decompress LZ-compressed data from GoldSrc WAD3 files
    * @returns the decompressed data
    */
-  static _decompressLZ(compressed: Uint8Array, uncompressedSize: number): Uint8Array {
+  static #decompressLZ(compressed: Uint8Array, uncompressedSize: number): Uint8Array {
     const output = new Uint8Array(uncompressedSize);
     let inPos = 0;
     let outPos = 0;

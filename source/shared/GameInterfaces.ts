@@ -1,7 +1,11 @@
 import type { BaseClientEdictHandler } from './ClientEdict.ts';
 import type { ClientEngineAPI as ClientEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.mjs';
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.mjs';
+import type { GLTexture as GLTextureValue } from '../engine/client/GL.mjs';
+import type { SFX as SFXValue } from '../engine/client/Sound.mjs';
+import type CvarValue from '../engine/common/Cvar.ts';
 import type Vector from './Vector.ts';
+import type { PmoveConfiguration as PmoveConfigurationValue, PmoveQuake2Configuration as PmoveQuake2ConfigurationValue } from '../shared/Pmove.ts';
 import type { StartGameInterface } from '../engine/client/ClientLifecycle.mjs';
 import type { BaseModel } from '../engine/common/model/BaseModel.ts';
 
@@ -9,11 +13,11 @@ export type ClientEngineAPI = Readonly<typeof ClientEngineApiValue>;
 export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;
 export type ServerEdict = Readonly<ServerEdictValue>;
 
-export type GLTexture = import('../engine/client/GL.mjs').GLTexture;
-export type Cvar = Readonly<import('../engine/common/Cvar.ts').default>;
+export type GLTexture = GLTextureValue;
+export type Cvar = Readonly<CvarValue>;
 
-export type PmoveConfiguration = Readonly<import('../shared/Pmove.ts').PmoveConfiguration>;
-export type PmoveQuake2Configuration = Readonly<import('../shared/Pmove.ts').PmoveQuake2Configuration>;
+export type PmoveConfiguration = Readonly<PmoveConfigurationValue>;
+export type PmoveQuake2Configuration = Readonly<PmoveQuake2ConfigurationValue>;
 
 export type SerializableType = string | number | boolean | Vector | ServerEdict | SerializableType[] | null;
 
@@ -22,7 +26,7 @@ export type ClientdataMap = Record<string, SerializableType>;
 export type EdictValueType = string | number | boolean | Vector | null;
 export type EdictData = Record<string, EdictValueType>;
 
-export type SFX = Readonly<import('../engine/client/Sound.mjs').SFX>;
+export type SFX = Readonly<SFXValue>;
 
 export type ViewmodelConfig = {
   visible: boolean;

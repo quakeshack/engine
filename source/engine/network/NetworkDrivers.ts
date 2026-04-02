@@ -631,10 +631,10 @@ export class WebSocketDriver extends BaseDriver {
     }
 
     const { webSocket: browserSocket } = socketState;
-    browserSocket.onerror = this._OnErrorClient;
-    browserSocket.onmessage = this._OnMessageClient;
-    browserSocket.onopen = this._OnOpenClient;
-    browserSocket.onclose = this._OnCloseClient;
+    browserSocket.onerror = this.#OnErrorClient;
+    browserSocket.onmessage = this.#OnMessageClient;
+    browserSocket.onopen = this.#OnOpenClient;
+    browserSocket.onclose = this.#OnCloseClient;
 
     browserSocket.qsocket = sock;
     sock.state = QSocket.STATE_CONNECTING;
@@ -682,7 +682,7 @@ export class WebSocketDriver extends BaseDriver {
     return type;
   }
 
-  _FlushSendBuffer(qsocket: QSocket): boolean {
+  #FlushSendBuffer(qsocket: QSocket): boolean {
     const socketState = getWebSocketState(qsocket);
 
     if (socketState === null) {
@@ -724,7 +724,7 @@ export class WebSocketDriver extends BaseDriver {
     return true;
   }
 
-  _SendRawMessage(qsocket: QSocket, data: Uint8Array): number {
+  #SendRawMessage(qsocket: QSocket, data: Uint8Array): number {
     const socketState = getWebSocketState(qsocket);
 
     if (socketState === null) {
@@ -732,7 +732,7 @@ export class WebSocketDriver extends BaseDriver {
     }
 
     socketState.sendQueue.push(data);
-    this._FlushSendBuffer(qsocket);
+    this.#FlushSendBuffer(qsocket);
     return qsocket.state !== QSocket.STATE_DISCONNECTED ? 1 : -1;
   }
 
@@ -743,7 +743,7 @@ export class WebSocketDriver extends BaseDriver {
     buffer[index++] = data.cursize & 0xff;
     buffer[index++] = (data.cursize >> 8) & 0xff;
     buffer.set(new Uint8Array(data.data, 0, data.cursize), index);
-    return this._SendRawMessage(qsocket, buffer);
+    return this.#SendRawMessage(qsocket, buffer);
   }
 
   SendUnreliableMessage(qsocket: QSocket, data: NetworkPayload): number {
@@ -753,21 +753,21 @@ export class WebSocketDriver extends BaseDriver {
     buffer[index++] = data.cursize & 0xff;
     buffer[index++] = (data.cursize >> 8) & 0xff;
     buffer.set(new Uint8Array(data.data, 0, data.cursize), index);
-    return this._SendRawMessage(qsocket, buffer);
+    return this.#SendRawMessage(qsocket, buffer);
   }
 
   Close(qsocket: QSocket): void {
     const socketState = getWebSocketState(qsocket);
 
     if (socketState !== null && this.CanSendMessage(qsocket)) {
-      this._FlushSendBuffer(qsocket);
+      this.#FlushSendBuffer(qsocket);
       socketState.webSocket.close(1000);
     }
 
     qsocket.state = QSocket.STATE_DISCONNECTED;
   }
 
-  _OnErrorClient(this: BrowserWebSocketWithSocket, _error: Event): void {
+  #OnErrorClient(this: BrowserWebSocketWithSocket, _error: Event): void {
     if (this.qsocket === undefined) {
       return;
     }
@@ -776,7 +776,7 @@ export class WebSocketDriver extends BaseDriver {
     this.qsocket.state = QSocket.STATE_DISCONNECTED;
   }
 
-  _OnMessageClient(this: BrowserWebSocketWithSocket, message: MessageEvent<string | ArrayBuffer>): void {
+  #OnMessageClient(this: BrowserWebSocketWithSocket, message: MessageEvent<string | ArrayBuffer>): void {
     if (this.qsocket === undefined) {
       return;
     }
@@ -803,13 +803,13 @@ export class WebSocketDriver extends BaseDriver {
     }, NET.delay_receive.value + (Math.random() - 0.5) * NET.delay_receive_jitter.value);
   }
 
-  _OnOpenClient(this: BrowserWebSocketWithSocket): void {
+  #OnOpenClient(this: BrowserWebSocketWithSocket): void {
     if (this.qsocket !== undefined) {
       this.qsocket.state = QSocket.STATE_CONNECTED;
     }
   }
 
-  _OnCloseClient(this: BrowserWebSocketWithSocket): void {
+  #OnCloseClient(this: BrowserWebSocketWithSocket): void {
     if (this.qsocket === undefined || this.qsocket.state !== QSocket.STATE_CONNECTED) {
       return;
     }
@@ -818,7 +818,7 @@ export class WebSocketDriver extends BaseDriver {
     this.qsocket.state = QSocket.STATE_DISCONNECTING;
   }
 
-  _OnConnectionServer(ws: NodeWebSocketLike, req: NodeIncomingMessageLike): void {
+  #OnConnectionServer(ws: NodeWebSocketLike, req: NodeIncomingMessageLike): void {
     Con.DPrint('WebSocketDriver._OnConnectionServer: received new connection\n');
 
     const sock = NET.NewQSocket(this);
@@ -889,7 +889,7 @@ export class WebSocketDriver extends BaseDriver {
     const nodeWebSocketModule = WebSocketModule as NodeWebSocketModuleLike;
 
     this.wss = new nodeWebSocketModule.WebSocketServer({ server: NET.server });
-    this.wss.on('connection', this._OnConnectionServer.bind(this));
+    this.wss.on('connection', this.#OnConnectionServer.bind(this));
     this.newConnections = [];
   }
 
@@ -972,7 +972,7 @@ export class WebRTCDriver extends BaseDriver {
       sessionId = host;
     }
 
-    if (!this._ConnectSignaling()) {
+    if (!this.#ConnectSignaling()) {
       Con.PrintError('WebRTCDriver.Connect: Failed to connect to signaling server\n');
       return null;
     }
@@ -984,9 +984,9 @@ export class WebRTCDriver extends BaseDriver {
 
     const onSignalingReady = () => {
       if (shouldCreateSession) {
-        this._CreateSession(sock);
+        this.#CreateSession(sock);
       } else {
-        this._JoinSession(sock, sessionId);
+        this.#JoinSession(sock, sessionId);
       }
     };
 
@@ -1003,7 +1003,7 @@ export class WebRTCDriver extends BaseDriver {
     return sock;
   }
 
-  _ConnectSignaling(): boolean {
+  #ConnectSignaling(): boolean {
     if (this.signalingWs !== null) {
       if (this.signalingWs.readyState === 1 || this.signalingWs.readyState === 0) {
         return true;
@@ -1021,10 +1021,10 @@ export class WebRTCDriver extends BaseDriver {
       this.signalingWs.onopen = () => {
         Con.DPrint(`WebRTCDriver: Connected to signaling server at ${this.signalingUrl}\n`);
         const previousSessionId = this.sessionId;
-        this._ProcessPendingSignaling();
+        this.#ProcessPendingSignaling();
 
         if (previousSessionId !== null && previousSessionId === this.sessionId) {
-          this._RestoreSession();
+          this.#RestoreSession();
         }
       };
 
@@ -1033,13 +1033,13 @@ export class WebRTCDriver extends BaseDriver {
           return;
         }
 
-        await this._OnSignalingMessage(JSON.parse(event.data) as SignalingMessage);
+        await this.#OnSignalingMessage(JSON.parse(event.data) as SignalingMessage);
       };
 
       this.signalingWs.onerror = (errorEvent: Event) => {
         console.debug('WebRTCDriver: Signaling WebSocket error', errorEvent);
         Con.DPrint(`WebRTCDriver: Signaling error: ${errorEvent}\n`);
-        this._OnSignalingError({ error: 'Signaling connection error', type: 'error' });
+        this.#OnSignalingError({ error: 'Signaling connection error', type: 'error' });
       };
 
       this.signalingWs.onclose = (closeEvent: CloseEvent) => {
@@ -1051,19 +1051,19 @@ export class WebRTCDriver extends BaseDriver {
           Con.PrintWarning(`Signaling server at ${this.signalingUrl} might be unavailable.\n`);
         }
 
-        this._OnSignalingError({ error: 'Signaling connection closed', type: 'error' });
-        this._ScheduleReconnect();
+        this.#OnSignalingError({ error: 'Signaling connection closed', type: 'error' });
+        this.#ScheduleReconnect();
       };
 
       return true;
     } catch (error) {
       Con.PrintError(`WebRTCDriver: Failed to connect to signaling at ${this.signalingUrl}:\n${getErrorMessage(error as Throwable)}\n`);
-      this._ScheduleReconnect();
+      this.#ScheduleReconnect();
       return false;
     }
   }
 
-  _ScheduleReconnect(): void {
+  #ScheduleReconnect(): void {
     if (this.reconnectTimer !== null) {
       return;
     }
@@ -1074,31 +1074,31 @@ export class WebRTCDriver extends BaseDriver {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       Con.DPrint('WebRTCDriver: Attempting to reconnect...\n');
-      this._ConnectSignaling();
+      this.#ConnectSignaling();
     }, delay);
   }
 
-  _RestoreSession(): void {
+  #RestoreSession(): void {
     if (this.isHost) {
       Con.DPrint('WebRTCDriver: Restoring host session...\n');
-      this._SendSignaling({
+      this.#SendSignaling({
         type: 'create-session',
         sessionId: this.sessionId ?? undefined,
         hostToken: this.hostToken ?? undefined,
-        serverInfo: this._GatherServerInfo(),
-        isPublic: this._IsSessionPublic(),
+        serverInfo: this.#GatherServerInfo(),
+        isPublic: this.#IsSessionPublic(),
       });
       return;
     }
 
     Con.DPrint(`WebRTCDriver: Restoring client session ${this.sessionId}\n`);
-    this._SendSignaling({
+    this.#SendSignaling({
       type: 'join-session',
       sessionId: this.sessionId ?? undefined,
     });
   }
 
-  _ProcessPendingSignaling(): void {
+  #ProcessPendingSignaling(): void {
     for (const sock of NET.activeSockets) {
       const socketData = sock === undefined ? null : getWebRTCSocketState(sock);
 
@@ -1109,51 +1109,51 @@ export class WebRTCDriver extends BaseDriver {
     }
   }
 
-  _SendSignaling(message: SignalingMessage): void {
+  #SendSignaling(message: SignalingMessage): void {
     if (this.signalingWs !== null && this.signalingWs.readyState === 1) {
       this.signalingWs.send(JSON.stringify(message));
     }
   }
 
-  _StartPingInterval(): void {
+  #StartPingInterval(): void {
     if (!this.isHost) {
       return;
     }
 
-    this._StopPingInterval();
+    this.#StopPingInterval();
     this.pingInterval = setInterval(() => {
-      this._SendSignaling({ type: 'ping' });
+      this.#SendSignaling({ type: 'ping' });
     }, 30 * 1000);
-    this._SendSignaling({ type: 'ping' });
+    this.#SendSignaling({ type: 'ping' });
   }
 
-  _StopPingInterval(): void {
+  #StopPingInterval(): void {
     if (this.pingInterval !== null) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
   }
 
-  _StartServerInfoSubscriptions(): void {
+  #StartServerInfoSubscriptions(): void {
     if (!this.isHost) {
       return;
     }
 
-    this._StopServerInfoSubscriptions();
-    this.serverEventSubscriptions.push(eventBus.subscribe('server.spawned', () => this._UpdateServerInfo()));
-    this.serverEventSubscriptions.push(eventBus.subscribe('server.client.connected', () => this._UpdateServerInfo()));
-    this.serverEventSubscriptions.push(eventBus.subscribe('server.client.disconnected', () => this._UpdateServerInfo()));
+    this.#StopServerInfoSubscriptions();
+    this.serverEventSubscriptions.push(eventBus.subscribe('server.spawned', () => this.#UpdateServerInfo()));
+    this.serverEventSubscriptions.push(eventBus.subscribe('server.client.connected', () => this.#UpdateServerInfo()));
+    this.serverEventSubscriptions.push(eventBus.subscribe('server.client.disconnected', () => this.#UpdateServerInfo()));
     this.serverEventSubscriptions.push(eventBus.subscribe('cvar.changed', (cvarName: string) => {
       const cvar = Cvar.FindVar(cvarName);
 
       if (cvar !== null && (cvar.flags & Cvar.FLAG.SERVER) !== 0) {
-        this._UpdateServerInfo();
+        this.#UpdateServerInfo();
       }
     }));
-    this._UpdateServerInfo();
+    this.#UpdateServerInfo();
   }
 
-  _StopServerInfoSubscriptions(): void {
+  #StopServerInfoSubscriptions(): void {
     while (this.serverEventSubscriptions.length > 0) {
       const unsubscribe = this.serverEventSubscriptions.pop();
 
@@ -1163,19 +1163,19 @@ export class WebRTCDriver extends BaseDriver {
     }
   }
 
-  _UpdateServerInfo(): void {
+  #UpdateServerInfo(): void {
     if (!this.isHost || this.sessionId === null) {
       return;
     }
 
-    this._SendSignaling({
+    this.#SendSignaling({
       type: 'update-server-info',
-      serverInfo: this._GatherServerInfo(),
-      isPublic: this._IsSessionPublic(),
+      serverInfo: this.#GatherServerInfo(),
+      isPublic: this.#IsSessionPublic(),
     });
   }
 
-  _GatherServerInfo(): ServerInfo {
+  #GatherServerInfo(): ServerInfo {
     const serverInfo: ServerInfo = {
       hostname: Cvar.FindVar('hostname')?.string ?? 'UNNAMED',
       maxPlayers: SV.svs.maxclients,
@@ -1192,12 +1192,12 @@ export class WebRTCDriver extends BaseDriver {
     return serverInfo;
   }
 
-  _IsSessionPublic(): boolean {
+  #IsSessionPublic(): boolean {
     return (Cvar.FindVar('sv_public')?.value ?? 0) !== 0;
   }
 
-  _CreateSession(sock: QSocket): void {
-    this._SendSignaling({ type: 'create-session' });
+  #CreateSession(sock: QSocket): void {
+    this.#SendSignaling({ type: 'create-session' });
     const socketState = getWebRTCSocketState(sock);
 
     if (socketState !== null) {
@@ -1207,8 +1207,8 @@ export class WebRTCDriver extends BaseDriver {
     this.isHost = true;
   }
 
-  _JoinSession(sock: QSocket, sessionId: string | null): void {
-    this._SendSignaling({
+  #JoinSession(sock: QSocket, sessionId: string | null): void {
+    this.#SendSignaling({
       type: 'join-session',
       sessionId: sessionId ?? undefined,
     });
@@ -1221,44 +1221,44 @@ export class WebRTCDriver extends BaseDriver {
     this.sessionId = sessionId;
   }
 
-  async _OnSignalingMessage(message: SignalingMessage): Promise<void> {
+  async #OnSignalingMessage(message: SignalingMessage): Promise<void> {
     switch (message.type) {
       case 'session-created':
-        this._OnSessionCreated(message);
+        this.#OnSessionCreated(message);
         return;
       case 'session-joined':
-        this._OnSessionJoined(message);
+        this.#OnSessionJoined(message);
         return;
       case 'peer-joined':
-        this._OnPeerJoined(message);
+        this.#OnPeerJoined(message);
         return;
       case 'peer-left':
-        this._OnPeerLeft(message);
+        this.#OnPeerLeft(message);
         return;
       case 'offer':
-        await this._OnOffer(message);
+        await this.#OnOffer(message);
         return;
       case 'answer':
-        await this._OnAnswer(message);
+        await this.#OnAnswer(message);
         return;
       case 'ice-candidate':
-        await this._OnIceCandidate(message);
+        await this.#OnIceCandidate(message);
         return;
       case 'session-closed':
-        this._OnSessionClosed(message);
+        this.#OnSessionClosed(message);
         return;
       case 'pong':
         return;
       case 'error':
         Con.DPrint(`WebRTCDriver: Signaling error: ${message.error}\n`);
-        this._OnSignalingError(message);
+        this.#OnSignalingError(message);
         return;
       default:
         Con.DPrint(`WebRTCDriver: Unknown signaling message: ${message.type}\n`);
     }
   }
 
-  _OnSignalingError(message: SignalingMessage): void {
+  #OnSignalingError(message: SignalingMessage): void {
     let failedSocket: QSocket | null = null;
 
     for (const sock of NET.activeSockets) {
@@ -1302,7 +1302,7 @@ export class WebRTCDriver extends BaseDriver {
     Con.PrintWarning(`WebRTCDriver: Signaling error (no matching socket): ${message.error}\n`);
   }
 
-  _OnSessionCreated(message: SignalingMessage): void {
+  #OnSessionCreated(message: SignalingMessage): void {
     this.sessionId = message.sessionId ?? null;
     this.peerId = message.peerId ?? null;
     this.isHost = message.isHost ?? false;
@@ -1324,7 +1324,7 @@ export class WebRTCDriver extends BaseDriver {
     }
 
     if (sock === null) {
-      sock = this._FindSocketBySession(this.sessionId);
+      sock = this.#FindSocketBySession(this.sessionId);
     }
 
     const socketData = sock === null ? null : getWebRTCSocketState(sock);
@@ -1334,14 +1334,14 @@ export class WebRTCDriver extends BaseDriver {
       sock.state = QSocket.STATE_CONNECTED;
       sock.address = `WebRTC Host (${this.sessionId})`;
       Con.DPrint('WebRTCDriver: Host socket ready for accepting peers\n');
-      this._StartPingInterval();
-      this._StartServerInfoSubscriptions();
+      this.#StartPingInterval();
+      this.#StartServerInfoSubscriptions();
 
       if (message.existingPeers !== undefined && message.existingPeers.length > 0) {
         Con.DPrint(`WebRTCDriver: Reconnecting to ${message.existingPeers.length} existing peers...\n`);
 
         for (const peerId of message.existingPeers) {
-          this._OnPeerJoined({ type: 'peer-joined', peerId });
+          this.#OnPeerJoined({ type: 'peer-joined', peerId });
         }
       }
 
@@ -1351,7 +1351,7 @@ export class WebRTCDriver extends BaseDriver {
     Con.PrintWarning(`WebRTCDriver: No socket found for session ${this.sessionId}\n`);
   }
 
-  _OnSessionJoined(message: SignalingMessage): void {
+  #OnSessionJoined(message: SignalingMessage): void {
     this.sessionId = message.sessionId ?? null;
     this.peerId = message.peerId ?? null;
     this.isHost = message.isHost ?? false;
@@ -1360,7 +1360,7 @@ export class WebRTCDriver extends BaseDriver {
     Con.DPrint(`WebRTCDriver: Your peer ID: ${this.peerId}\n`);
     Con.DPrint(`WebRTCDriver: Peers in session: ${message.peerCount}\n`);
 
-    const sock = this._FindSocketBySession(this.sessionId);
+    const sock = this.#FindSocketBySession(this.sessionId);
 
     if (sock !== null) {
       sock.address = `WebRTC Peer (${this.sessionId})`;
@@ -1371,7 +1371,7 @@ export class WebRTCDriver extends BaseDriver {
     Con.PrintWarning(`WebRTCDriver: No socket found for joined session ${this.sessionId}\n`);
   }
 
-  _OnPeerJoined(message: SignalingMessage): void {
+  #OnPeerJoined(message: SignalingMessage): void {
     if (message.peerId === undefined) {
       return;
     }
@@ -1388,34 +1388,34 @@ export class WebRTCDriver extends BaseDriver {
         peerId: message.peerId,
       });
 
-      this._CreatePeerConnection(peerSock, message.peerId, true);
+      this.#CreatePeerConnection(peerSock, message.peerId, true);
       this.newConnections.push(peerSock);
       Con.DPrint(`WebRTCDriver: Created socket for peer ${message.peerId}, added to new connections\n`);
     }
   }
 
-  _OnPeerLeft(message: SignalingMessage): void {
+  #OnPeerLeft(message: SignalingMessage): void {
     if (message.peerId !== undefined) {
       Con.DPrint(`WebRTCDriver: Peer ${message.peerId} left\n`);
-      this._ClosePeerConnection(message.peerId);
+      this.#ClosePeerConnection(message.peerId);
     }
   }
 
-  async _OnOffer(message: SignalingMessage): Promise<void> {
+  async #OnOffer(message: SignalingMessage): Promise<void> {
     if (message.fromPeerId === undefined || message.offer === undefined || message.offer === null) {
       return;
     }
 
     Con.DPrint(`WebRTCDriver: Received offer from ${message.fromPeerId}\n`);
 
-    const sock = this._FindSocketBySession(this.sessionId);
+    const sock = this.#FindSocketBySession(this.sessionId);
 
     if (sock === null) {
       Con.PrintWarning('WebRTCDriver._OnOffer: No socket found for session\n');
       return;
     }
 
-    const peerConnection = this._CreatePeerConnection(sock, message.fromPeerId, false);
+    const peerConnection = this.#CreatePeerConnection(sock, message.fromPeerId, false);
 
     if (peerConnection === null) {
       return;
@@ -1425,7 +1425,7 @@ export class WebRTCDriver extends BaseDriver {
       await peerConnection.setRemoteDescription(new RTCSessionDescription(message.offer));
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
-      this._SendSignaling({
+      this.#SendSignaling({
         type: 'answer',
         targetPeerId: message.fromPeerId,
         answer: peerConnection.localDescription,
@@ -1435,14 +1435,14 @@ export class WebRTCDriver extends BaseDriver {
     }
   }
 
-  async _OnAnswer(message: SignalingMessage): Promise<void> {
+  async #OnAnswer(message: SignalingMessage): Promise<void> {
     if (message.fromPeerId === undefined || message.answer === undefined || message.answer === null) {
       return;
     }
 
     Con.DPrint(`WebRTCDriver: Received answer from ${message.fromPeerId}\n`);
 
-    const sock = this.isHost ? this._FindSocketByPeerId(message.fromPeerId) : this._FindSocketBySession(this.sessionId);
+    const sock = this.isHost ? this.#FindSocketByPeerId(message.fromPeerId) : this.#FindSocketBySession(this.sessionId);
 
     const socketData = sock === null ? null : getWebRTCSocketState(sock);
 
@@ -1466,12 +1466,12 @@ export class WebRTCDriver extends BaseDriver {
     }
   }
 
-  async _OnIceCandidate(message: SignalingMessage): Promise<void> {
+  async #OnIceCandidate(message: SignalingMessage): Promise<void> {
     if (message.fromPeerId === undefined) {
       return;
     }
 
-    const sock = this.isHost ? this._FindSocketByPeerId(message.fromPeerId) : this._FindSocketBySession(this.sessionId);
+    const sock = this.isHost ? this.#FindSocketByPeerId(message.fromPeerId) : this.#FindSocketBySession(this.sessionId);
 
     const socketData = sock === null ? null : getWebRTCSocketState(sock);
 
@@ -1494,10 +1494,10 @@ export class WebRTCDriver extends BaseDriver {
     }
   }
 
-  _OnSessionClosed(message: SignalingMessage): void {
+  #OnSessionClosed(message: SignalingMessage): void {
     Con.DPrint(`WebRTCDriver: Session closed: ${message.reason}\n`);
 
-    const sock = this._FindSocketBySession(this.sessionId);
+    const sock = this.#FindSocketBySession(this.sessionId);
 
     if (sock !== null) {
       sock.state = QSocket.STATE_DISCONNECTED;
@@ -1508,7 +1508,7 @@ export class WebRTCDriver extends BaseDriver {
     this.isHost = false;
   }
 
-  _CreatePeerConnection(sock: QSocket, peerId: string, initiator: boolean): RTCPeerConnection | null {
+  #CreatePeerConnection(sock: QSocket, peerId: string, initiator: boolean): RTCPeerConnection | null {
     console.assert(sock.transportState?.kind === 'webrtc', 'WebRTCDriver._CreatePeerConnection: Invalid socket');
 
     const socketData = getWebRTCSocketState(sock);
@@ -1530,7 +1530,7 @@ export class WebRTCDriver extends BaseDriver {
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         Con.DPrint(`WebRTCDriver: Sending ICE candidate to ${peerId}\n`);
-        this._SendSignaling({
+        this.#SendSignaling({
           type: 'ice-candidate',
           targetPeerId: peerId,
           candidate: event.candidate,
@@ -1552,19 +1552,19 @@ export class WebRTCDriver extends BaseDriver {
         Con.DPrint(`WebRTCDriver: P2P connection established with ${peerId}\n`);
       } else if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
         Con.DPrint(`WebRTCDriver: Connection ${peerConnection.connectionState} with ${peerId}\n`);
-        this._ClosePeerConnection(peerId);
+        this.#ClosePeerConnection(peerId);
       }
     };
 
     if (initiator) {
       const reliableChannel = peerConnection.createDataChannel('reliable', { ordered: true });
       const unreliableChannel = peerConnection.createDataChannel('unreliable', { ordered: false, maxRetransmits: 10 });
-      this._SetupDataChannel(sock, peerId, reliableChannel, unreliableChannel);
+      this.#SetupDataChannel(sock, peerId, reliableChannel, unreliableChannel);
 
       void peerConnection.createOffer()
         .then((offer) => peerConnection.setLocalDescription(offer))
         .then(() => {
-          this._SendSignaling({
+          this.#SendSignaling({
             type: 'offer',
             targetPeerId: peerId,
             offer: peerConnection.localDescription,
@@ -1595,10 +1595,10 @@ export class WebRTCDriver extends BaseDriver {
 
         if (channel.label === 'reliable') {
           channels.reliable = channel;
-          this._SetupDataChannelHandlers(sock, peerId, channel);
+          this.#SetupDataChannelHandlers(sock, peerId, channel);
         } else if (channel.label === 'unreliable') {
           channels.unreliable = channel;
-          this._SetupDataChannelHandlers(sock, peerId, channel);
+          this.#SetupDataChannelHandlers(sock, peerId, channel);
         }
       };
     }
@@ -1606,7 +1606,7 @@ export class WebRTCDriver extends BaseDriver {
     return peerConnection;
   }
 
-  _SetupDataChannel(sock: QSocket, peerId: string, reliableChannel: RTCDataChannel, unreliableChannel: RTCDataChannel): void {
+  #SetupDataChannel(sock: QSocket, peerId: string, reliableChannel: RTCDataChannel, unreliableChannel: RTCDataChannel): void {
     const socketData = getWebRTCSocketState(sock);
 
     if (socketData === null) {
@@ -1618,11 +1618,11 @@ export class WebRTCDriver extends BaseDriver {
       unreliable: unreliableChannel,
     });
 
-    this._SetupDataChannelHandlers(sock, peerId, reliableChannel);
-    this._SetupDataChannelHandlers(sock, peerId, unreliableChannel);
+    this.#SetupDataChannelHandlers(sock, peerId, reliableChannel);
+    this.#SetupDataChannelHandlers(sock, peerId, unreliableChannel);
   }
 
-  _SetupDataChannelHandlers(sock: QSocket, peerId: string, channel: RTCDataChannel): void {
+  #SetupDataChannelHandlers(sock: QSocket, peerId: string, channel: RTCDataChannel): void {
     channel.binaryType = 'arraybuffer';
 
     channel.onopen = () => {
@@ -1633,7 +1633,7 @@ export class WebRTCDriver extends BaseDriver {
         Con.DPrint('WebRTCDriver: Socket now CONNECTED (can send/receive data)\n');
       }
 
-      this._FlushSendBuffer(sock);
+      this.#FlushSendBuffer(sock);
     };
 
     channel.onclose = () => {
@@ -1655,8 +1655,8 @@ export class WebRTCDriver extends BaseDriver {
     };
   }
 
-  _ClosePeerConnection(peerId: string): void {
-    const sock = this.isHost ? this._FindSocketByPeerId(peerId) : this._FindSocketBySession(this.sessionId);
+  #ClosePeerConnection(peerId: string): void {
+    const sock = this.isHost ? this.#FindSocketByPeerId(peerId) : this.#FindSocketBySession(this.sessionId);
 
     const socketData = sock === null ? null : getWebRTCSocketState(sock);
 
@@ -1678,7 +1678,7 @@ export class WebRTCDriver extends BaseDriver {
     sock.state = QSocket.STATE_DISCONNECTED;
   }
 
-  _FindSocketBySession(sessionId: string | null): QSocket | null {
+  #FindSocketBySession(sessionId: string | null): QSocket | null {
     for (const sock of NET.activeSockets) {
       const socketData = sock === undefined ? null : getWebRTCSocketState(sock);
 
@@ -1690,7 +1690,7 @@ export class WebRTCDriver extends BaseDriver {
     return null;
   }
 
-  _FindSocketByPeerId(peerId: string): QSocket | null {
+  #FindSocketByPeerId(peerId: string): QSocket | null {
     for (const sock of NET.activeSockets) {
       const socketData = sock === undefined ? null : getWebRTCSocketState(sock);
 
@@ -1712,7 +1712,7 @@ export class WebRTCDriver extends BaseDriver {
     return sock;
   }
 
-  _FlushSendBuffer(qsocket: QSocket): void {
+  #FlushSendBuffer(qsocket: QSocket): void {
     const webRtcData = getWebRTCSocketState(qsocket);
 
     if (webRtcData === null) {
@@ -1738,7 +1738,7 @@ export class WebRTCDriver extends BaseDriver {
         break;
       }
 
-      const result = this._SendToAllPeers(qsocket, message.buffer, message.reliable);
+      const result = this.#SendToAllPeers(qsocket, message.buffer, message.reliable);
 
       if (result > 0) {
         queue.shift();
@@ -1749,7 +1749,7 @@ export class WebRTCDriver extends BaseDriver {
 
     if (queue.length === 0 && qsocket.state === QSocket.STATE_DISCONNECTING) {
       Con.DPrint(`WebRTCDriver._FlushSendBuffer: buffer drained, closing ${qsocket.address}\n`);
-      this._ForceClose(qsocket);
+      this.#ForceClose(qsocket);
     }
   }
 
@@ -1802,7 +1802,7 @@ export class WebRTCDriver extends BaseDriver {
     buffer[2] = (data.cursize >> 8) & 0xff;
     buffer.set(new Uint8Array(data.data, 0, data.cursize), 3);
     socketData.sendQueue.push({ buffer, reliable: true });
-    this._FlushSendBuffer(qsocket);
+    this.#FlushSendBuffer(qsocket);
     return 1;
   }
 
@@ -1819,11 +1819,11 @@ export class WebRTCDriver extends BaseDriver {
     buffer[2] = (data.cursize >> 8) & 0xff;
     buffer.set(new Uint8Array(data.data, 0, data.cursize), 3);
     socketData.sendQueue.push({ buffer, reliable: false });
-    this._FlushSendBuffer(qsocket);
+    this.#FlushSendBuffer(qsocket);
     return 1;
   }
 
-  _SendToAllPeers(qsocket: QSocket, buffer: Uint8Array, reliable: boolean): number {
+  #SendToAllPeers(qsocket: QSocket, buffer: Uint8Array, reliable: boolean): number {
     console.assert(qsocket.transportState?.kind === 'webrtc', 'WebRTCDriver._SendToAllPeers: Invalid socket');
 
     const socketData = getWebRTCSocketState(qsocket);
@@ -1882,7 +1882,7 @@ export class WebRTCDriver extends BaseDriver {
       return;
     }
 
-    this._FlushSendBuffer(qsocket);
+    this.#FlushSendBuffer(qsocket);
 
     if (socketData.sendQueue.length > 0 && qsocket.state !== QSocket.STATE_DISCONNECTED) {
       if (socketData.dataChannels.size > 0) {
@@ -1892,7 +1892,7 @@ export class WebRTCDriver extends BaseDriver {
         setTimeout(() => {
           if (qsocket.state === QSocket.STATE_DISCONNECTING) {
             Con.DPrint(`WebRTCDriver.Close: timeout waiting for flush, forcing close for ${qsocket.address}\n`);
-            this._ForceClose(qsocket);
+            this.#ForceClose(qsocket);
           }
         }, 5000);
 
@@ -1900,10 +1900,10 @@ export class WebRTCDriver extends BaseDriver {
       }
     }
 
-    this._ForceClose(qsocket);
+    this.#ForceClose(qsocket);
   }
 
-  _ForceClose(qsocket: QSocket): void {
+  #ForceClose(qsocket: QSocket): void {
     const socketData = getWebRTCSocketState(qsocket);
 
     if (socketData === null) {
@@ -1921,12 +1921,12 @@ export class WebRTCDriver extends BaseDriver {
     const isSessionSocket = socketData.isHost || (!this.isHost && socketData.sessionId === this.sessionId);
 
     if (socketData.isHost) {
-      this._StopPingInterval();
-      this._StopServerInfoSubscriptions();
+      this.#StopPingInterval();
+      this.#StopServerInfoSubscriptions();
     }
 
     if (isSessionSocket && this.sessionId !== null) {
-      this._SendSignaling({ type: 'leave-session' });
+      this.#SendSignaling({ type: 'leave-session' });
     }
 
     if (isSessionSocket) {
@@ -1959,7 +1959,7 @@ export class WebRTCDriver extends BaseDriver {
       Con.DPrint('WebRTCDriver: Starting WebRTC host session for listen server\n');
       this.creatingSession = true;
 
-      if (!this._ConnectSignaling()) {
+      if (!this.#ConnectSignaling()) {
         Con.PrintWarning('WebRTCDriver: Failed to connect to signaling server\n');
         this.creatingSession = false;
         return;
@@ -1971,10 +1971,10 @@ export class WebRTCDriver extends BaseDriver {
       sock.transportState = createWebRTCSocketState({ sessionId: null, isHost: true });
 
       const createSessionWhenReady = () => {
-        this._SendSignaling({
+        this.#SendSignaling({
           type: 'create-session',
-          serverInfo: this._GatherServerInfo(),
-          isPublic: this._IsSessionPublic(),
+          serverInfo: this.#GatherServerInfo(),
+          isPublic: this.#IsSessionPublic(),
         });
         Con.DPrint('WebRTCDriver: Session creation request sent\n');
       };
@@ -1995,8 +1995,8 @@ export class WebRTCDriver extends BaseDriver {
     }
 
     Con.DPrint('WebRTCDriver: Stopping listen server, tearing down session\n');
-    this._StopPingInterval();
-    this._StopServerInfoSubscriptions();
+    this.#StopPingInterval();
+    this.#StopServerInfoSubscriptions();
 
     for (let index = NET.activeSockets.length - 1; index >= 0; index--) {
       const sock = NET.activeSockets[index];
@@ -2014,7 +2014,7 @@ export class WebRTCDriver extends BaseDriver {
     }
 
     if (this.sessionId !== null) {
-      this._SendSignaling({ type: 'leave-session' });
+      this.#SendSignaling({ type: 'leave-session' });
     }
 
     if (this.signalingWs !== null) {

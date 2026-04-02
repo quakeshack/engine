@@ -1,6 +1,7 @@
 import type { ClientEdict } from '../engine/client/ClientEntities.mjs';
+import type { ClientEngineAPI as ClientEngineApiValue } from '../engine/common/GameAPIs.mjs';
 
-type ClientEngineAPI = typeof import('../engine/common/GameAPIs.mjs').ClientEngineAPI;
+type ClientEngineAPI = typeof ClientEngineApiValue;
 
 export class BaseClientEdictHandler {
   /**

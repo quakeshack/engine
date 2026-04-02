@@ -9,14 +9,16 @@
 
 /* eslint-disable jsdoc/require-returns */
 
-import Vector from '../../shared/Vector.ts';
+import Vector, { type DirectionalVectors } from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { content } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.ts';
 import Cvar from './Cvar.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
-
-type DirectionalVectors = import('../../shared/Vector.ts').DirectionalVectors;
+import type { ClientEdict } from '../client/ClientEntities.mjs';
+import type { BaseEntity } from '../server/Edict.mjs';
+import type { Plane as BaseModelPlane } from './model/BaseModel.ts';
+import type { Brush, Node } from './model/BSP.ts';
 interface BrushTracePlaneLike {
   readonly normal: Vector;
   readonly type: number;
@@ -569,7 +571,7 @@ export class BrushTrace {
   /**
    * Check whether a brush AABB can possibly overlap the current swept move.
    */
-  static _brushMayAffectTrace(ctx: BrushTraceContext, brush: import('./model/BSP.ts').Brush): boolean {
+  static _brushMayAffectTrace(ctx: BrushTraceContext, brush: Brush): boolean {
     if (brush.mins === null || brush.mins === undefined || brush.maxs === null || brush.maxs === undefined) {
       return true;
     }
@@ -580,7 +582,7 @@ export class BrushTrace {
   /**
    * Check whether a brush AABB can possibly overlap the current position test.
    */
-  static _brushMayAffectPosition(brush: import('./model/BSP.ts').Brush, boundsMins: Vector, boundsMaxs: Vector): boolean {
+  static _brushMayAffectPosition(brush: Brush, boundsMins: Vector, boundsMaxs: Vector): boolean {
     if (brush.mins === null || brush.mins === undefined || brush.maxs === null || brush.maxs === undefined) {
       return true;
     }
@@ -593,7 +595,7 @@ export class BrushTrace {
    * enter a node's bounds. Used only for pruning; false negatives are avoided
    * by falling back when bounds are missing.
    */
-  static _estimateNodeEntryFraction(ctx: BrushTraceContext, node: import('./model/BSP.ts').Node): number {
+  static _estimateNodeEntryFraction(ctx: BrushTraceContext, node: Node): number {
     if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
       return 0;
     }
@@ -637,7 +639,7 @@ export class BrushTrace {
   /**
    * Check whether a node can still affect the current trace.
    */
-  static _nodeMayAffectTrace(ctx: BrushTraceContext, node: import('./model/BSP.ts').Node): boolean {
+  static _nodeMayAffectTrace(ctx: BrushTraceContext, node: Node): boolean {
     if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
       return true;
     }
@@ -947,7 +949,7 @@ export class BrushTrace {
    * Recursively walk the BSP tree for position testing, expanding by box
    * extents to visit all leaves the player box overlaps.
    */
-  static _testPositionRecursive(worldModel: BrushModel, node: import('./model/BSP.ts').Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, extents: Vector, isPoint: boolean, checkCount: number): boolean {
+  static _testPositionRecursive(worldModel: BrushModel, node: Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, extents: Vector, isPoint: boolean, checkCount: number): boolean {
     if (node.mins !== null && node.mins !== undefined && node.maxs !== null && node.maxs !== undefined
       && !BrushTrace._boundsOverlap(boundsMins, boundsMaxs, node.mins, node.maxs)) {
       return false;
@@ -1137,7 +1139,7 @@ export class BrushTrace {
   /**
    * Test if a player-sized box overlaps any solid brush in a leaf.
    */
-  static _testLeafSolid(worldModel: BrushModel, leaf: import('./model/BSP.ts').Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, checkCount: number): boolean {
+  static _testLeafSolid(worldModel: BrushModel, leaf: Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, checkCount: number): boolean {
     const brushes = worldModel.brushes;
     const leafbrushes = worldModel.leafbrushes;
 
@@ -1182,7 +1184,7 @@ export class BrushTrace {
   /**
    * Test if a box at origin is inside a brush. Equivalent to Q2’s CM_TestBoxInBrush.
    */
-  static _testBoxInBrush(worldModel: BrushModel, brush: import('./model/BSP.ts').Brush, position: Vector, mins: Vector, maxs: Vector): boolean {
+  static _testBoxInBrush(worldModel: BrushModel, brush: Brush, position: Vector, mins: Vector, maxs: Vector): boolean {
     const brushsides = worldModel.brushsides;
     const planes = worldModel.planes;
 
@@ -1224,7 +1226,7 @@ export class BrushTrace {
    * Recursively traverse the BSP node tree, expanding by trace extents.
    * At leaf nodes, test all brushes. Equivalent to Q2’s CM_RecursiveHullCheck.
    */
-  static _recursiveHullCheck(ctx: BrushTraceContext, node: import('./model/BSP.ts').Node, p1f: number, p2f: number, p1: Vector, p2: Vector, depth: number = 0) {
+  static _recursiveHullCheck(ctx: BrushTraceContext, node: Node, p1f: number, p2f: number, p1: Vector, p2: Vector, depth: number = 0) {
     if (!BrushTrace._nodeMayAffectTrace(ctx, node)) {
       return;
     }
@@ -1321,7 +1323,7 @@ export class BrushTrace {
    * Test all brushes in a leaf against the current trace.
    * Equivalent to Q2’s CM_TraceToLeaf.
    */
-  static _traceToLeaf(ctx: BrushTraceContext, leaf: import('./model/BSP.ts').Node) {
+  static _traceToLeaf(ctx: BrushTraceContext, leaf: Node) {
     // Q1 content classification for trace flags
     if (leaf.contents !== content.CONTENT_SOLID && leaf.contents !== content.CONTENT_SKY) {
       ctx.trace.allsolid = false;
@@ -1373,7 +1375,7 @@ export class BrushTrace {
    * Clip the trace against a single brush’s planes.
    * Equivalent to Q2’s CM_ClipBoxToBrush.
    */
-  static _clipBoxToBrush(ctx: BrushTraceContext, brush: import('./model/BSP.ts').Brush) {
+  static _clipBoxToBrush(ctx: BrushTraceContext, brush: Brush) {
     const brushsides = ctx.worldModel.brushsides;
     const planes = ctx.worldModel.planes;
     const moveDeltaX = ctx.end[0] - ctx.start[0];
@@ -1384,8 +1386,8 @@ export class BrushTrace {
 
     let enterfrac = -1;
     let leavefrac = 1;
-    let clipplane: import('./model/BaseModel.ts').Plane | null = null;
-    let tangentAxialPlane: import('./model/BaseModel.ts').Plane | null = null;
+    let clipplane: BaseModelPlane | null = null;
+    let tangentAxialPlane: BaseModelPlane | null = null;
     let tangentAxialMovesDeeper = false;
 
     let getout = false;
@@ -3742,7 +3744,7 @@ export class Pmove { // pmove_t
    * @param model - brush model to use for SOLID_BSP-style entities
    * @returns this pmove instance
    */
-  addEntity(entity: import('../server/Edict.mjs').BaseEntity | import('../client/ClientEntities.mjs').ClientEdict, model: BrushModel | null = null): Pmove {
+  addEntity(entity: BaseEntity | ClientEdict, model: BrushModel | null = null): Pmove {
     const pe = new PhysEnt(this);
 
     console.assert(model === null || model instanceof BrushModel, 'no model or brush model required');
