@@ -16,23 +16,23 @@ eventBus.subscribe('registry.frozen', () => {
 });
 
 /** A file entry inside a .pak archive. */
-export type PackFileEntry = {
-  name: string;
-  filepos: number;
-  filelen: number;
-};
+export interface PackFileEntry {
+  readonly name: string;
+  readonly filepos: number;
+  readonly filelen: number;
+}
 
 /** A search path entry in the virtual filesystem. */
-export type SearchPath = {
-  filename: string;
+export interface SearchPath {
+  readonly filename: string;
   pack: PackFileEntry[][];
-};
+}
 
 /** Result of {@link COM.Parse}. */
-export type ParseResult = {
-  token: string;
-  data: string | null;
-};
+export interface ParseResult {
+  readonly token: string;
+  readonly data: string | null;
+}
 
 /**
  * Common file system, command line, and string parsing utilities.
@@ -200,14 +200,10 @@ export default class COM {
   }
 
   static InitArgv(argv: string[]) {
-    this.cmdline = (argv.join(' ') + ' ').substring(0, 256);
-    for (let i = 0; i < argv.length; i++) {
-      this.argv[i] = argv[i];
-    }
+    this.cmdline = `${argv.join(' ')} `.substring(0, 256);
+    this.argv = [...argv];
     if (this.CheckParm('-safe')) {
-      this.argv[this.argv.length] = '-nosound';
-      this.argv[this.argv.length] = '-nocdaudio';
-      this.argv[this.argv.length] = '-nomouse';
+      this.argv.push('-nosound', '-nocdaudio', '-nomouse');
     }
     if (this.CheckParm('-rogue')) {
       this.rogue = true;
@@ -258,29 +254,31 @@ export default class COM {
     }
 
     filename = filename.toLowerCase();
-    const dest: string[] = [];
+    const bytes = new Uint8Array(len);
     for (let i = 0; i < len; i++) {
-      dest[i] = String.fromCharCode(data[i]);
+      bytes[i] = data[i];
     }
+    const gameDir = this.searchpaths[this.searchpaths.length - 1].filename;
     try {
-      localStorage.setItem('Quake.' + this.searchpaths[this.searchpaths.length - 1].filename + '/' + filename, dest.join(''));
+      localStorage.setItem(`Quake.${gameDir}/${filename}`, new TextDecoder('iso-8859-1').decode(bytes));
     } catch (e) {
-      Sys.Print('COM.WriteFile: failed on ' + filename + ', ' + (e as Error).message + '\n');
+      Sys.Print(`COM.WriteFile: failed on ${filename}, ${(e as Error).message}\n`);
       return false;
     }
-    Sys.Print('COM.WriteFile: ' + filename + '\n');
+    Sys.Print(`COM.WriteFile: ${filename}\n`);
     return true;
   }
 
   static WriteTextFile(filename: string, data: string): boolean {
     filename = filename.toLowerCase();
+    const gameDir = this.searchpaths[this.searchpaths.length - 1].filename;
     try {
-      localStorage.setItem('Quake.' + this.searchpaths[this.searchpaths.length - 1].filename + '/' + filename, data);
+      localStorage.setItem(`Quake.${gameDir}/${filename}`, data);
     } catch (e) {
-      Sys.Print('COM.WriteTextFile: failed on ' + filename + ', ' + (e as Error).message + '\n');
+      Sys.Print(`COM.WriteTextFile: failed on ${filename}, ${(e as Error).message}\n`);
       return false;
     }
-    Sys.Print('COM.WriteTextFile: ' + filename + '\n');
+    Sys.Print(`COM.WriteTextFile: ${filename}\n`);
     return true;
   }
 
@@ -367,14 +365,7 @@ export default class COM {
     if (buf === null) {
       return null;
     }
-    const bufview = new Uint8Array(buf);
-    const f: string[] = [];
-    for (let i = 0; i < bufview.length; i++) {
-      if (bufview[i] !== 13) { // skip CR
-        f[f.length] = String.fromCharCode(bufview[i]);
-      }
-    }
-    return f.join('');
+    return new TextDecoder('iso-8859-1').decode(buf).replaceAll('\r', '');
   }
 
   /**
