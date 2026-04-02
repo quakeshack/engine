@@ -1,7 +1,7 @@
 
 /** @typedef {typeof import('./common/Console.ts').default} ConModule */
 /** @typedef {typeof import('./common/Com.ts').default} ComModule */
-/** @typedef {typeof import('./common/Sys.mjs').default} SysModule */
+/** @typedef {typeof import('./common/Sys.ts').default} SysModule */
 /** @typedef {typeof import('./common/Host.mjs').default} HostModule */
 /** @typedef {typeof import('./client/V.mjs').default} VModule */
 /** @typedef {typeof import('./network/Network').default} NetModule */

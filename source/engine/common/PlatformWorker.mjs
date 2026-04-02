@@ -1,5 +1,5 @@
 import { registry, eventBus } from '../registry.mjs';
-import { BaseWorker } from './Sys.mjs';
+import { BaseWorker } from './Sys.ts';
 
 let { Host } = registry;
 

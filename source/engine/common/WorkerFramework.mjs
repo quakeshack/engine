@@ -1,6 +1,6 @@
 import { eventBus, registry } from '../registry.mjs';
 import Mod from './Mod.mjs';
-import Sys from './Sys.mjs';
+import Sys from './Sys.ts';
 import COM from './Com.ts';
 
 class WorkerConsole {

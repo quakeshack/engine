@@ -1,27 +1,36 @@
 import { NotImplementedError } from './Errors.ts';
 
-export class BaseWorker {
-  /** @type {Function[]} @protected */
-  _shutdownListeners = [];
+/** Message listener callback for worker communication. */
+type WorkerMessageListener = (message: unknown) => void;
 
-  /**
-   * @param {string} name name of the worker
-   */
-  constructor(name) {
+/** Shutdown listener callback. */
+type WorkerShutdownListener = () => void;
+
+/**
+ * Abstract base class for platform-specific worker implementations.
+ *
+ * Subclassed by `PlatformWorker` for both browser (Web Worker) and
+ * Node.js (worker_threads) environments.
+ */
+export class BaseWorker {
+  protected _shutdownListeners: WorkerShutdownListener[] = [];
+
+  /** Display name of this worker instance. */
+  name: string;
+
+  constructor(name: string) {
     this.name = name;
   }
 
-  // eslint-disable-next-line no-unused-vars
-  addOnMessageListener(listener) {
+  addOnMessageListener(_listener: WorkerMessageListener) {
     throw new NotImplementedError('Worker.addOnMessageListener must be implemented in a subclass');
   }
 
-  addOnShutdownListener(listener) {
+  addOnShutdownListener(listener: WorkerShutdownListener) {
     this._shutdownListeners.push(listener);
   }
 
-  // eslint-disable-next-line no-unused-vars
-  postMessage(message) {
+  postMessage(_message: unknown) {
     throw new NotImplementedError('Worker.postMessage must be implemented in a subclass');
   }
 
@@ -29,35 +38,34 @@ export class BaseWorker {
   async shutdown() {
     throw new NotImplementedError('Worker.shutdown must be implemented in a subclass');
   }
-};
+}
 
-/** Base class for Sys implementations. */
+/**
+ * Abstract base class for platform system services.
+ *
+ * Provides the contract for initialization, output, and timing that
+ * platform-specific implementations (`client/Sys`, `server/Sys`,
+ * `WorkerSys`) must fulfil.
+ */
 export default class Sys {
   // eslint-disable-next-line @typescript-eslint/require-await
   static async Init() {
     throw new NotImplementedError('Sys.Init must be implemented in a subclass');
   }
 
-  static Quit() {
+  static Quit(): never {
     throw new NotImplementedError('Sys.Quit must be implemented in a subclass');
   }
 
-  // eslint-disable-next-line no-unused-vars
-  static Print(text) {
+  static Print(_text: string) {
     throw new NotImplementedError('Sys.Print must be implemented in a subclass');
   }
 
-  /** @returns {number} uptime in seconds */
-  static FloatTime() {
+  static FloatTime(): number {
     throw new NotImplementedError('Sys.GetTime must be implemented in a subclass');
-    // eslint-disable-next-line no-unreachable
-    return 0;
   }
 
-  /** @returns {number} uptime in milliseconds, containing microseconds */
-  static FloatMilliTime() {
+  static FloatMilliTime(): number {
     throw new NotImplementedError('Sys.FloatMilliTime must be implemented in a subclass');
-    // eslint-disable-next-line no-unreachable
-    return 0;
   }
-};
+}
