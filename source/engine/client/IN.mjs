@@ -1,5 +1,5 @@
 import { K } from '../../shared/Keys.ts';
-import Cvar from '../common/Cvar.mjs';
+import Cvar from '../common/Cvar.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { kbutton, kbuttons } from './ClientInput.mjs';
 import VID from './VID.mjs';

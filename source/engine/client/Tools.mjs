@@ -1,4 +1,4 @@
-import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import W, { WadFileInterface } from '../common/W.mjs';
 import { eventBus, registry } from '../registry.mjs';
 

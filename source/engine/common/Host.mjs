@@ -1,7 +1,7 @@
-import Cvar from './Cvar.mjs';
+import Cvar from './Cvar.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from './Def.ts';
-import Cmd, { ConsoleCommand } from './Cmd.mjs';
+import Cmd, { ConsoleCommand } from './Cmd.ts';
 import { eventBus, registry } from '../registry.mjs';
 import Vector from '../../shared/Vector.ts';
 import Q from '../../shared/Q.ts';

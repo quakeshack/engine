@@ -2,7 +2,7 @@ import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Q from '../../shared/Q.ts';
 import { SzBuffer } from '../network/MSG.ts';
-import Cmd from '../common/Cmd.mjs';
+import Cmd from '../common/Cmd.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { HostError } from '../common/Errors.ts';
 
@@ -46,6 +46,7 @@ export const kbuttons = new Array(Object.keys(kbutton).length);
 export default class ClientInput {
   static impulse = 0;
 
+  /** @this {import('../common/Cmd.ts').ConsoleCommand} */
   static KeyDown_f(cmd) { // private
     let b = kbutton[this.command.substring(1)];
     if (b === undefined) {
@@ -78,6 +79,7 @@ export default class ClientInput {
     }
   }
 
+  /** @this {import('../common/Cmd.ts').ConsoleCommand} */
   static KeyUp_f(cmd) { // private
     let b = kbutton[this.command.substring(1)];
 

@@ -1,6 +1,6 @@
 import Q from '../../../shared/Q.ts';
 import { K } from '../../../shared/Keys.ts';
-import Cvar from '../../common/Cvar.mjs';
+import Cvar from '../../common/Cvar.ts';
 import { eventBus, registry } from '../../registry.mjs';
 
 let { S, M, Host } = registry;

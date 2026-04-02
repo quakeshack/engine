@@ -1,5 +1,5 @@
 import GL from '../GL.mjs';
-import Cvar from '../../common/Cvar.mjs';
+import Cvar from '../../common/Cvar.ts';
 import VID from '../VID.mjs';
 import PostProcessEffect from './PostProcessEffect.mjs';
 import { eventBus } from '../../registry.mjs';

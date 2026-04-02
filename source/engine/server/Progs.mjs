@@ -1,6 +1,6 @@
-import Cmd from '../common/Cmd.mjs';
+import Cmd from '../common/Cmd.ts';
 import { CRC16CCITT } from '../common/CRC.ts';
-import Cvar from '../common/Cvar.mjs';
+import Cvar from '../common/Cvar.ts';
 import { HostError, MissingResourceError } from '../common/Errors.ts';
 import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';

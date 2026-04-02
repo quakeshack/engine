@@ -1,5 +1,5 @@
 import Vector from '../../shared/Vector.ts';
-import Cvar from '../common/Cvar.mjs';
+import Cvar from '../common/Cvar.ts';
 import { eventBus, registry } from '../registry.mjs';
 
 let { CL, R, SV } = registry;

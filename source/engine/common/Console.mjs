@@ -1,9 +1,9 @@
 
 
 import { eventBus, registry } from '../registry.mjs';
-import Cvar from './Cvar.mjs';
+import Cvar from './Cvar.ts';
 import Vector from '../../shared/Vector.ts';
-import Cmd from './Cmd.mjs';
+import Cmd from './Cmd.ts';
 import VID from '../client/VID.mjs';
 import { clientConnectionState } from './Def.ts';
 import { ClientEngineAPI } from './GameAPIs.mjs';

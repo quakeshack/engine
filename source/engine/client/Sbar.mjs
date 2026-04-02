@@ -1,10 +1,10 @@
 /* globalx Sbar Draw, COM, Host, CL, Cmd, SCR, Def, VID */
 
-import Cmd from '../common/Cmd.mjs';
+import Cmd from '../common/Cmd.ts';
 import { eventBus, registry } from '../registry.mjs';
 import VID from './VID.mjs';
 import * as Def from '../common/Def.ts';
-import Cvar from '../common/Cvar.mjs';
+import Cvar from '../common/Cvar.ts';
 
 const Sbar = {};
 

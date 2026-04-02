@@ -1,7 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 
-import Cmd from '../common/Cmd.mjs';
-import Cvar from '../common/Cvar.mjs';
+import Cmd from '../common/Cmd.ts';
+import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import Q from '../../shared/Q.ts';
 import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.mjs';

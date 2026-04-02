@@ -1,7 +1,7 @@
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Defs from '../../shared/Defs.ts';
-import Cvar from '../common/Cvar.mjs';
+import Cvar from '../common/Cvar.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { ServerClient } from './Client.mjs';
 import { ServerEntityState } from './ServerEntityState.mjs';

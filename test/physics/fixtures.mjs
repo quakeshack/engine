@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
-import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
+import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
-import { Pmove } from '../../source/engine/common/Pmove.mjs';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';
@@ -47,6 +46,7 @@ import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.
 
 /**
  * @typedef MockRegistryConfig
+ * @property {typeof import('../../source/engine/common/Com.mjs').default | null} [COM]
  * @property {object|null} [CL]
  * @property {{ Print: Function, DPrint: Function }} Con
  * @property {{ frametime: number }} Host
@@ -309,28 +309,43 @@ export function defaultMockRegistry(sv = {}, cl = null) {
 /**
  * Run a callback with mocked registry values.
  * @param {MockRegistryConfig} mockedRegistry registry replacements
- * @param {() => void} callback test callback
+ * @param {() => void | Promise<void>} callback test callback
  */
 export function withMockRegistry(mockedRegistry, callback) {
+  const previousCOM = registry.COM;
   const previousCL = registry.CL;
   const previousCon = registry.Con;
   const previousHost = registry.Host;
   const previousSV = registry.SV;
 
+  registry.COM = mockedRegistry.COM ?? previousCOM;
   registry.CL = mockedRegistry.CL ?? null;
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
   registry.SV = mockedRegistry.SV;
   eventBus.publish('registry.frozen');
 
-  try {
-    callback();
-  } finally {
+  const restore = () => {
+    registry.COM = previousCOM;
     registry.CL = previousCL;
     registry.Con = previousCon;
     registry.Host = previousHost;
     registry.SV = previousSV;
     eventBus.publish('registry.frozen');
+  };
+
+  try {
+    const result = callback();
+
+    if (result !== null && result !== undefined && typeof result.then === 'function') {
+      return Promise.resolve(result).finally(restore);
+    }
+
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
   }
 }
 
@@ -379,7 +394,7 @@ export function withMockServerPhysics(callback) {
     linkCalls.push(edict);
   };
 
-  withMockRegistry({
+  void withMockRegistry({
     Con: {
       Print() {},
       DPrint() {},

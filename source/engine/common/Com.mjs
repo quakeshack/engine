@@ -4,9 +4,9 @@ import { registry, eventBus } from '../registry.mjs';
 import Q from '../../shared/Q.ts';
 import { CorruptedResourceError } from './Errors.ts';
 
-import Cvar from './Cvar.mjs';
+import Cvar from './Cvar.ts';
 import W from './W.mjs';
-import Cmd from './Cmd.mjs';
+import Cmd from './Cmd.ts';
 import { defaultBasedir, defaultGame } from './Def.ts';
 import { CRC16CCITT } from './CRC.ts';
 

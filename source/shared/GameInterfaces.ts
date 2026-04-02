@@ -10,7 +10,7 @@ export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;
 export type ServerEdict = Readonly<ServerEdictValue>;
 
 export type GLTexture = import('../engine/client/GL.mjs').GLTexture;
-export type Cvar = Readonly<import('../engine/common/Cvar.mjs').default>;
+export type Cvar = Readonly<import('../engine/common/Cvar.ts').default>;
 
 export type PmoveConfiguration = Readonly<import('../shared/Pmove.ts').PmoveConfiguration>;
 export type PmoveQuake2Configuration = Readonly<import('../shared/Pmove.ts').PmoveQuake2Configuration>;

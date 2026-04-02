@@ -1,6 +1,6 @@
 import Vector from '../../shared/Vector.ts';
-import Cvar from '../common/Cvar.mjs';
-import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.ts';
+import Cmd from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 
 import { eventBus, registry } from '../registry.mjs';

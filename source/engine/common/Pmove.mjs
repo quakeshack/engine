@@ -11,7 +11,7 @@ import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { content } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.mjs';
-import Cvar from './Cvar.mjs';
+import Cvar from './Cvar.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 
 /** @typedef {import('../../shared/Vector.ts').DirectionalVectors} DirectionalVectors */

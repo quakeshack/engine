@@ -8,9 +8,9 @@ import { join } from 'path';
 import { createServer } from 'http';
 
 import { registry, eventBus } from '../registry.mjs';
-import Cvar from '../common/Cvar.mjs';
+import Cvar from '../common/Cvar.ts';
 /** @typedef {import('node:repl').REPLServer} REPLServer */
-import Cmd from '../common/Cmd.mjs';
+import Cmd from '../common/Cmd.ts';
 import Q from '../../shared/Q.ts';
 import WorkerManager from '../common/WorkerManager.mjs';
 import workerFactories from '../common/WorkerFactories.mjs';
@@ -92,8 +92,8 @@ export default class Sys {
         },
         completer(line) {
           const completions = [
-            ...Cmd.functions.map((fnc) => fnc.name),
-            ...Object.keys(Cvar._vars).map((cvar) => cvar), // FIXME: Cvar._vars is private, should not be accessed directly
+            ...Cmd.GetCommandNames(),
+            ...Cvar.GetVariableNames(),
           ];
 
           const hits = completions.filter((c) => c.startsWith(line));

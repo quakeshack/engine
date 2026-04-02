@@ -1,10 +1,10 @@
-import Cvar from '../common/Cvar.mjs';
+import Cvar from '../common/Cvar.ts';
 import { MoveVars, Pmove } from '../common/Pmove.mjs';
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from './../common/Def.ts';
-import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { ED, ServerEdict } from './Edict.mjs';
 import { EventBus, eventBus, registry } from '../registry.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';

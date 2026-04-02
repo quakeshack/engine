@@ -5,7 +5,7 @@ import * as Def from '../common/Def.ts';
 import * as Defs from '../../shared/Defs.ts';
 import { eventBus, registry } from '../registry.mjs';
 import Q from '../../shared/Q.ts';
-import { ConsoleCommand } from '../common/Cmd.mjs';
+import { ConsoleCommand } from '../common/Cmd.ts';
 import { ClientEdict } from '../client/ClientEntities.mjs';
 import { OctreeNode } from '../../shared/Octree.ts';
 import { Visibility } from '../common/model/BSP.mjs';

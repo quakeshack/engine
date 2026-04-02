@@ -1,6 +1,6 @@
 import PR from '../../server/Progs.mjs';
 import { K } from '../../../shared/Keys.ts';
-import Cmd from '../../common/Cmd.mjs';
+import Cmd from '../../common/Cmd.ts';
 import { eventBus, registry } from '../../registry.mjs';
 import { Action, Label, Spacer } from './MenuItem.mjs';
 import { MenuPage, VerticalLayout } from './MenuPage.mjs';

@@ -1,8 +1,8 @@
 import Q from '../../shared/Q.ts';
 import * as Def from '../common/Def.ts';
 import * as Protocol from '../network/Protocol.ts';
-import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
-import Cvar from '../common/Cvar.mjs';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
+import Cvar from '../common/Cvar.ts';
 import { Pmove, PmovePlayer } from '../common/Pmove.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { gameCapabilities, solid } from '../../shared/Defs.ts';

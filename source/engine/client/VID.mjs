@@ -1,4 +1,4 @@
-import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { eventBus } from '../registry.mjs';
 
 class FullscreenCommand extends ConsoleCommand {

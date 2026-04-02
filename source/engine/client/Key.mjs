@@ -1,7 +1,7 @@
 import { K } from '../../shared/Keys.ts';
 import Vector from '../../shared/Vector.ts';
-import Cmd from '../common/Cmd.mjs';
-import Cvar from '../common/Cvar.mjs';
+import Cmd from '../common/Cmd.ts';
+import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import { registry, eventBus } from '../registry.mjs';
 

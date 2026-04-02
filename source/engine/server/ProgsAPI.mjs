@@ -1,5 +1,5 @@
 import Vector from '../../shared/Vector.ts';
-import Cmd from '../common/Cmd.mjs';
+import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import { eventBus, registry } from '../registry.mjs';

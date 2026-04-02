@@ -1,7 +1,7 @@
 import * as Protocol from '../network/Protocol.ts';
 import { HostError } from '../common/Errors.ts';
-import Cvar from '../common/Cvar.mjs';
-import Cmd from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.ts';
+import Cmd from '../common/Cmd.ts';
 import ClientInput from './ClientInput.mjs';
 import { clientRuntimeState, clientStaticState } from './ClientState.mjs';
 import { eventBus, registry } from '../registry.mjs';

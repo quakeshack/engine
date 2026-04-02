@@ -1,5 +1,5 @@
-import Cvar from '../common/Cvar.mjs';
-import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
+import Cvar from '../common/Cvar.ts';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import ClientInput from './ClientInput.mjs';

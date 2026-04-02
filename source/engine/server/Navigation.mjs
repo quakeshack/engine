@@ -2,9 +2,9 @@
 import * as Def from '../../shared/Defs.ts';
 import { Octree } from '../../shared/Octree.ts';
 import Vector from '../../shared/Vector.ts';
-import Cmd from '../common/Cmd.mjs';
-// import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';
-import Cvar from '../common/Cvar.mjs';
+import Cmd from '../common/Cmd.ts';
+// import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
+import Cvar from '../common/Cvar.ts';
 import { CorruptedResourceError, MissingResourceError } from '../common/Errors.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import { BrushModel } from '../common/Mod.mjs';
