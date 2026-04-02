@@ -1,10 +1,10 @@
 import { NotImplementedError } from './Errors.ts';
 
 /** Message listener callback for worker communication. */
-type WorkerMessageListener = (message: unknown) => void;
+export type WorkerMessageListener = (message: unknown) => void;
 
 /** Shutdown listener callback. */
-type WorkerShutdownListener = () => void;
+export type WorkerShutdownListener = () => void;
 
 /**
  * Abstract base class for platform-specific worker implementations.

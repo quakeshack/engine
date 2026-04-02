@@ -10,8 +10,8 @@ import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import { BrushModel } from '../common/Mod.mjs';
 import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.mjs';
 import { Face } from '../common/model/BaseModel.mjs';
-import PlatformWorker from '../common/PlatformWorker.mjs';
-import WorkerManager from '../common/WorkerManager.mjs';
+import PlatformWorker from '../common/PlatformWorker.ts';
+import WorkerManager from '../common/WorkerManager.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { ServerEdict } from './Edict.mjs';
 

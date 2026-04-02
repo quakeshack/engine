@@ -2,7 +2,7 @@
 import { Worker } from 'node:worker_threads';
 import { registry, freeze as registryFreeze } from './registry.mjs';
 
-// Polyfill Worker global for Node.js so that WorkerFactories.mjs
+// Polyfill Worker global for Node.js so that WorkerFactories.ts
 // (which uses the browser-compatible `new Worker(url)` pattern for
 // Vite static analysis) works identically in unbundled Node.js.
 // @ts-ignore — Node.js worker_threads.Worker is API-compatible at runtime

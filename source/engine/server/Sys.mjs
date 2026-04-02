@@ -12,8 +12,8 @@ import Cvar from '../common/Cvar.ts';
 /** @typedef {import('node:repl').REPLServer} REPLServer */
 import Cmd from '../common/Cmd.ts';
 import Q from '../../shared/Q.ts';
-import WorkerManager from '../common/WorkerManager.mjs';
-import workerFactories from '../common/WorkerFactories.mjs';
+import WorkerManager from '../common/WorkerManager.ts';
+import workerFactories from '../common/WorkerFactories.ts';
 
 let { COM, Host, NET } = registry;
 

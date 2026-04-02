@@ -2,8 +2,8 @@ import { K } from '../../shared/Keys.ts';
 import Q from '../../shared/Q.ts';
 import { eventBus, registry } from '../registry.mjs';
 import Tools from './Tools.mjs';
-import WorkerManager from '../common/WorkerManager.mjs';
-import workerFactories from '../common/WorkerFactories.mjs';
+import WorkerManager from '../common/WorkerManager.ts';
+import workerFactories from '../common/WorkerFactories.ts';
 
 let { COM, Host, Key } = registry;
 
