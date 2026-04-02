@@ -80,7 +80,7 @@ async function withWorkerRegistry(consoleCapture, callback) {
     gamedir: [{ filename: 'id1', pack: [] }],
     game: 'id1',
     }),
-    Host: /** @type {typeof import('../../source/engine/common/Host.mjs').default} */ (/** @type {unknown} */ ({
+    Host: /** @type {typeof import('../../source/engine/common/Host.ts').default} */ (/** @type {unknown} */ ({
       crashes,
       HandleCrash(error) {
         crashes.push(error);

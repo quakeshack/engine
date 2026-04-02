@@ -3,7 +3,7 @@ import { registry, freeze as registryFreeze } from './registry.mjs';
 import Sys from './client/Sys.mjs';
 import COM from './common/Com.ts';
 import Con from './common/Console.ts';
-import Host from './common/Host.mjs';
+import Host from './common/Host.ts';
 import V from './client/V.mjs';
 import NET from './network/Network.ts';
 import SV from './server/Server.mjs';
