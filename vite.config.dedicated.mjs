@@ -118,7 +118,7 @@ function dedicatedWorkerBundlePlugin(mode) {
             // We undo that here so Rollup can resolve and bundle them.
             name: 'resolve-worker-dynamic-imports',
             transform(code, id) {
-              if (!id.includes('WorkerFramework')) return null;
+              if (!id.includes('WorkerFramework')) { return null; }
               // Replace the two-step variable + import() patterns with direct
               // literal import() calls so Rollup can statically resolve them.
               return {
@@ -186,6 +186,8 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('/source/engine/') || id.includes('/source/shared/')) {
             return 'engine';
           }
+
+          return null;
         },
       },
     },
@@ -211,6 +213,7 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': resolve(__dirname, 'source'),
     },
+    extensions: ['.ts', '.mts', '.mjs', '.js', '.json'],
     preserveSymlinks: process.env.VITE_PRESERVE_SYMLINKS === 'true',
   },
 }));

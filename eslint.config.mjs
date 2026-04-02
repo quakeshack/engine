@@ -1,10 +1,20 @@
 import { defineConfig } from 'eslint/config';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import globals from 'globals';
 import pluginJs from '@eslint/js';
 import jsdoc from 'eslint-plugin-jsdoc';
 import stylistic from '@stylistic/eslint-plugin';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const typeAwareParserOptions = {
+  ecmaVersion: 'latest',
+  sourceType: 'module',
+  projectService: true,
+  tsconfigRootDir: __dirname,
+};
 
 const jsdocPlugin = /** @type {import('eslint').ESLint.Plugin} */ (jsdoc);
 const stylisticPlugin = /** @type {import('eslint').ESLint.Plugin} */ (stylistic);
@@ -86,11 +96,7 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
       parser: tsparser,
-      parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-        project: './jsconfig.json',
-      },
+      parserOptions: typeAwareParserOptions,
     },
     plugins: {
       '@stylistic': stylisticPlugin,
@@ -100,28 +106,56 @@ export default defineConfig([
     rules: commonRules,
   },
   {
+    files: ['**/*.{ts,mts,cts}'],
+    languageOptions: {
+      globals: globals.browser,
+      parser: tsparser,
+      parserOptions: typeAwareParserOptions,
+    },
+    plugins: {
+      '@stylistic': stylisticPlugin,
+      '@typescript-eslint': typeScriptEslintPlugin,
+      jsdoc: jsdocPlugin,
+    },
+    rules: {
+      ...commonRules,
+      'no-undef': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+      }],
+    },
+  },
+  {
     files: [
       'dedicated.mjs',
+      'dedicated.ts',
       'eslint.config.mjs',
+      'eslint.config.ts',
       'vite.config.mjs',
+      'vite.config.ts',
       'vite.config.dedicated.mjs',
+      'vite.config.dedicated.ts',
       'source/engine/main-dedicated.mjs',
-      'source/engine/server/**/*.mjs',
-      'source/engine/common/**/*.mjs',
-      'test/**/*.mjs',
+      'source/engine/main-dedicated.ts',
+      'source/engine/server/**/*.{mjs,ts,mts,cts}',
+      'source/engine/common/**/*.{mjs,ts,mts,cts}',
+      'test/**/*.{mjs,ts,mts,cts}',
     ],
     languageOptions: {
       globals: nodeGlobals,
     },
   },
   {
-    files: ['source/cloudflare/**/*.mjs'],
+    files: ['source/cloudflare/**/*.{mjs,ts,mts,cts}'],
     languageOptions: {
       globals: globals.serviceworker,
     },
   },
   {
-    files: ['**/*.cjs'],
+    files: ['**/*.{cjs,cts}'],
     languageOptions: {
       sourceType: 'commonjs',
     },

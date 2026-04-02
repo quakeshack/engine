@@ -10,6 +10,7 @@
     "node": ">=24 <25"
   },
   "devDependencies": {
+    "@types/node": "^24.6.1",
     "@eslint/js": "^9.17.0",
     "@stylistic/eslint-plugin": "^5.2.2",
     "@typescript-eslint/eslint-plugin": "^8.46.4",
@@ -34,6 +35,8 @@
     "test:common": "node --test test/common/**/*.test.mjs",
     "test:physics": "node --test test/physics/**/*.test.mjs",
     "test:renderer": "node --test test/renderer/**/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "typecheck:watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "build:wrangler": "npm run test && npm run build:production",
     "dev": "vite build --watch --mode development",
     "build": "vite build",
