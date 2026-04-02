@@ -1,4 +1,4 @@
-import { K } from '../../shared/Keys.mjs';
+import { K } from '../../shared/Keys.ts';
 import Cvar from '../common/Cvar.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import { kbutton, kbuttons } from './ClientInput.mjs';

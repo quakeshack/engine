@@ -2,7 +2,7 @@ import Cmd from '../common/Cmd.mjs';
 import { CRC16CCITT } from '../common/CRC.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { HostError, MissingResourceError } from '../common/Errors.mjs';
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from './Edict.mjs';

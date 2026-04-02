@@ -4,7 +4,7 @@ import * as Protocol from '../network/Protocol.mjs';
 import * as Def from '../common/Def.mjs';
 import * as Defs from '../../shared/Defs.ts';
 import { eventBus, registry } from '../registry.mjs';
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import { ConsoleCommand } from '../common/Cmd.mjs';
 import { ClientEdict } from '../client/ClientEntities.mjs';
 import { OctreeNode } from '../../shared/Octree.ts';

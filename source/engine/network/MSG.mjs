@@ -1,4 +1,4 @@
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.mjs';
 import { eventBus, registry } from '../registry.mjs';

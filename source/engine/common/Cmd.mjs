@@ -1,4 +1,4 @@
-import { AsyncFunction } from '../../shared/Q.mjs';
+import { AsyncFunction } from '../../shared/Q.ts';
 import * as Protocol from '../network/Protocol.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import Cvar from './Cvar.mjs';

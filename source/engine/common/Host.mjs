@@ -4,7 +4,7 @@ import * as Def from './Def.mjs';
 import Cmd, { ConsoleCommand } from './Cmd.mjs';
 import { eventBus, registry } from '../registry.mjs';
 import Vector from '../../shared/Vector.ts';
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import { ServerClient } from '../server/Client.mjs';
 import { ServerEngineAPI } from './GameAPIs.mjs';
 import Chase from '../client/Chase.mjs';

@@ -1,4 +1,4 @@
-import { K } from '../../../shared/Keys.mjs';
+import { K } from '../../../shared/Keys.ts';
 import { eventBus, registry } from '../../registry.mjs';
 
 // Destructure registry modules

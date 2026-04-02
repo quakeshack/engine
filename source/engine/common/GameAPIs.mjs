@@ -1,4 +1,4 @@
-import { PmoveConfiguration } from '../../shared/Pmove.mjs';
+import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
 import { solid } from '../../shared/Defs.ts';
 import Key from '../client/Key.mjs';

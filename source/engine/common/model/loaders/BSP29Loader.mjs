@@ -1,5 +1,5 @@
 import Vector from '../../../../shared/Vector.ts';
-import Q from '../../../../shared/Q.mjs';
+import Q from '../../../../shared/Q.ts';
 import { content } from '../../../../shared/Defs.ts';
 import { GLTexture } from '../../../client/GL.mjs';
 import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.mjs';

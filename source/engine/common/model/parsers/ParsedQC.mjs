@@ -1,4 +1,4 @@
-import Q from '../../../../shared/Q.mjs';
+import Q from '../../../../shared/Q.ts';
 import Vector from '../../../../shared/Vector.ts';
 
 /** @typedef {import('../../../../shared/GameInterfaces.d.ts').ParsedQC} IParsedQC */

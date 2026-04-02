@@ -1,6 +1,6 @@
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import Q from '../../../shared/Q.mjs';
+import Q from '../../../shared/Q.ts';
 import { eventBus, registry } from '../../registry.mjs';
 import {
   GROUND_ANGLE_THRESHOLD,

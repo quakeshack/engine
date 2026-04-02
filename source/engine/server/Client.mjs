@@ -1,4 +1,4 @@
-import { enumHelpers } from '../../shared/Q.mjs';
+import { enumHelpers } from '../../shared/Q.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.mjs';

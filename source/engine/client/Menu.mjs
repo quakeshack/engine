@@ -1,4 +1,4 @@
-import { K } from '../../shared/Keys.mjs';
+import { K } from '../../shared/Keys.ts';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';
 import { clientConnectionState } from '../common/Def.mjs';

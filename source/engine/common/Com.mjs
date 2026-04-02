@@ -1,7 +1,7 @@
 
 import { registry, eventBus } from '../registry.mjs';
 
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import { CorruptedResourceError } from './Errors.mjs';
 
 import Cvar from './Cvar.mjs';

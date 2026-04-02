@@ -1,5 +1,5 @@
-import Q from '../../../shared/Q.mjs';
-import { K } from '../../../shared/Keys.mjs';
+import Q from '../../../shared/Q.ts';
+import { K } from '../../../shared/Keys.ts';
 import Cvar from '../../common/Cvar.mjs';
 import { eventBus, registry } from '../../registry.mjs';
 

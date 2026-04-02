@@ -12,7 +12,7 @@ import * as Protocol from '../network/Protocol.mjs';
 import { content } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.mjs';
 import Cvar from './Cvar.mjs';
-import { PmoveConfiguration } from '../../shared/Pmove.mjs';
+import { PmoveConfiguration } from '../../shared/Pmove.ts';
 
 /** @typedef {import('../../shared/Vector.ts').DirectionalVectors} DirectionalVectors */
 /** @typedef {{ normal: Vector, type: number }} BrushTracePlaneLike */

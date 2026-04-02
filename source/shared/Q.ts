@@ -1,16 +1,20 @@
 import { EPSILON } from './Defs.ts';
 
+type ByteArray = Uint8Array | number[];
+type EnumValue = string | number | null;
+type EnumRecord = Record<string, EnumValue>;
+
 /**
  * Utility class for common engine functions.
  */
 export default class Q {
   /**
    * Converts a Uint8Array or array of bytes to a string, stopping at the first zero byte.
-   * @param {Uint8Array|number[]} src - Source byte array.
-   * @returns {string} The resulting string.
+   * @param src source byte array
+   * @returns the resulting string
    */
-  static memstr(src) {
-    const dest = [];
+  static memstr(src: ByteArray): string {
+    const dest: string[] = [];
     for (let i = 0; i < src.length; i++) {
       if (src[i] === 0) {
         break;
@@ -22,10 +26,10 @@ export default class Q {
 
   /**
    * Converts a string to an ArrayBuffer of bytes (8-bit, zero-padded).
-   * @param {string} src - Source string.
-   * @returns {ArrayBuffer} The resulting ArrayBuffer.
+   * @param src source string
+   * @returns the resulting ArrayBuffer
    */
-  static strmem(src) {
+  static strmem(src: string): ArrayBuffer {
     const buf = new ArrayBuffer(src.length);
     const dest = new Uint8Array(buf);
     for (let i = 0; i < src.length; i++) {
@@ -36,43 +40,44 @@ export default class Q {
 
   /**
    * Checks if a value is NaN.
-   * @param {number} value - Value to check.
-   * @returns {boolean} True if value is NaN.
+   * @param value value to check
+   * @returns true if value is NaN
    */
-  static isNaN(value) {
+  static isNaN(value: number): boolean {
     return Number.isNaN(value);
   }
 
   /**
    * Converts a string to an integer.
    * NOTE: Use `+value|0` during regular use in the main/rendering loop.
-   * @param {string} value - String to convert.
-   * @returns {number} The integer value.
+   * @param value string to convert
+   * @returns the integer value
    */
-  static atoi(value) {
+  static atoi(value: string): number {
     return parseInt(value);
   }
 
   /**
    * Converts a string to a float.
    * NOTE: Use `+value` during regular use in the main/rendering loop.
-   * @param {string} value - String to convert.
-   * @returns {number} The float value.
+   * @param value string to convert
+   * @returns the float value
    */
-  static atof(value) {
+  static atof(value: string): number {
     return parseFloat(value);
   }
 
   /**
    * Encodes a byte array to a base64 string.
-   * @param {Uint8Array|number[]} src - Source byte array.
-   * @returns {string} Base64-encoded string.
+   * @param src source byte array
+   * @returns base64-encoded string
    */
-  static btoa(src) {
+  static btoa(src: ByteArray): string {
     const str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    const val = [];
+    const val: string[] = [];
     const len = src.length - (src.length % 3);
-    let c; let i;
+    let c: number;
+    let i: number;
     for (i = 0; i < len; i += 3) {
       c = (src[i] << 16) + (src[i + 1] << 8) + src[i + 2];
       val[val.length] = str.charAt(c >> 18) + str.charAt((c >> 12) & 63) + str.charAt((c >> 6) & 63) + str.charAt(c & 63);
@@ -89,11 +94,11 @@ export default class Q {
 
   /**
    * Turns seconds like 3692 into a string like "01:01:32".
-   * @param {number} secs seconds
-   * @returns {string} hours:mins:seconds
+   * @param secs seconds
+   * @returns hours:mins:seconds
    */
-  static secsToTime(secs) {
-    let negative = secs < 0;
+  static secsToTime(secs: number): string {
+    const negative = secs < 0;
     let seconds = Math.floor(Math.abs(secs));
     let minutes = Math.floor(seconds / 60);
     let hours = 0;
@@ -110,32 +115,32 @@ export default class Q {
 
   /**
    * Yields execution to the event loop (async).
-   * @returns {Promise<void>} Promise that resolves on next tick.
+   * @returns promise that resolves on next tick
    */
-  static yield() {
+  static yield(): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   /**
    * Sleeps for a given number of milliseconds (async).
-   * @param {number} msec - Milliseconds to sleep.
-   * @returns {Promise<void>} Promise that resolves after the delay.
+   * @param msec milliseconds to sleep
+   * @returns promise that resolves after the delay
    */
-  static sleep(msec) {
+  static sleep(msec: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, msec));
   }
 
   /**
    * Compares two floating point numbers for near-equality.
-   * @param {number} a - First number.
-   * @param {number} b - Second number.
-   * @param {number} epsilon Tolerance for comparison, optional.
-   * @returns {boolean} True if numbers are nearly equal.
+   * @param a first number
+   * @param b second number
+   * @param epsilon tolerance for comparison, optional
+   * @returns true if numbers are nearly equal
    */
-  static compareFloat(a, b, epsilon = EPSILON) {
+  static compareFloat(a: number, b: number, epsilon = EPSILON): boolean {
     return Math.abs(a - b) < epsilon;
   }
-};
+}
 
 /**
  * Helper functions for enums.
@@ -143,20 +148,18 @@ export default class Q {
  */
 export const enumHelpers = Object.freeze({
   /**
-   * @param {string|number|null} val enum value
-   * @returns {string} enum key
+   * @param val enum value
+   * @returns enum key
    */
-  toKey(val) {
-    // @ts-ignore
-    return /** @type {string} */ (Object.entries(this).find(([, v]) => v === val)?.[0] ?? `unknown (${val})`);
+  toKey(this: EnumRecord, val: EnumValue): string {
+    return Object.entries(this).find(([, value]) => value === val)?.[0] ?? `unknown (${val})`;
   },
 
   /**
-   * @param {string} name enum key
-   * @returns {string|number|null} enum value
+   * @param name enum key
+   * @returns enum value
    */
-  fromKey(name) {
-    // @ts-ignore
+  fromKey(this: EnumRecord, name: string): EnumValue {
     return this[name] ?? null;
   },
 });

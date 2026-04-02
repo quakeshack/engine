@@ -1,6 +1,6 @@
 import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.mjs';
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import { SzBuffer } from '../network/MSG.mjs';
 import Cmd from '../common/Cmd.mjs';
 import { eventBus, registry } from '../registry.mjs';

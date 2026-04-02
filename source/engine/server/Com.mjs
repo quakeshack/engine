@@ -2,7 +2,7 @@
 
 import { promises as fsPromises, existsSync, writeFileSync, constants } from 'fs';
 
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import { CRC16CCITT as CRC } from '../common/CRC.mjs';
 import COM from '../common/Com.mjs';
 

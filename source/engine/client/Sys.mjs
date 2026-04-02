@@ -1,5 +1,5 @@
-import { K } from '../../shared/Keys.mjs';
-import Q from '../../shared/Q.mjs';
+import { K } from '../../shared/Keys.ts';
+import Q from '../../shared/Q.ts';
 import { eventBus, registry } from '../registry.mjs';
 import Tools from './Tools.mjs';
 import WorkerManager from '../common/WorkerManager.mjs';

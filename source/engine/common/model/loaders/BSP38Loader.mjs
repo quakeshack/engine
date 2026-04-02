@@ -1,5 +1,5 @@
 import { content } from '../../../../shared/Defs.ts';
-import Q from '../../../../shared/Q.mjs';
+import Q from '../../../../shared/Q.ts';
 import Vector from '../../../../shared/Vector.ts';
 import { CRC16CCITT } from '../../CRC.mjs';
 import { Plane } from '../BaseModel.mjs';

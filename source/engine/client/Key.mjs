@@ -1,4 +1,4 @@
-import { K } from '../../shared/Keys.mjs';
+import { K } from '../../shared/Keys.ts';
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.mjs';
 import Cvar from '../common/Cvar.mjs';

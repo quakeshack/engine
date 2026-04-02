@@ -1,5 +1,5 @@
 import Vector from '../../../../shared/Vector.ts';
-import Q from '../../../../shared/Q.mjs';
+import Q from '../../../../shared/Q.ts';
 import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.mjs';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.mjs';
 import { CRC16CCITT } from '../../CRC.mjs';

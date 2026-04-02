@@ -1,4 +1,4 @@
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import * as Def from '../common/Def.mjs';
 import * as Protocol from '../network/Protocol.mjs';
 import Cmd, { ConsoleCommand } from '../common/Cmd.mjs';

@@ -11,7 +11,7 @@ import { registry, eventBus } from '../registry.mjs';
 import Cvar from '../common/Cvar.mjs';
 /** @typedef {import('node:repl').REPLServer} REPLServer */
 import Cmd from '../common/Cmd.mjs';
-import Q from '../../shared/Q.mjs';
+import Q from '../../shared/Q.ts';
 import WorkerManager from '../common/WorkerManager.mjs';
 import workerFactories from '../common/WorkerFactories.mjs';
 
