@@ -121,9 +121,13 @@ Host.SendChatMessageToClient = function(client, name, message, direct = false) {
   client.message.writeByte(direct ? 1 : 0);
 };
 
-Host.ClientPrint = function(string) { // FIXME: Host.client
-  Host.client.message.writeByte(Protocol.svc.print);
-  Host.client.message.writeString(string);
+/**
+ * @param {ServerClient} client recipient client
+ * @param {string} string text to send
+ */
+Host.ClientPrint = function(client, string) {
+  client.message.writeByte(Protocol.svc.print);
+  client.message.writeString(string);
 };
 
 Host.BroadcastPrint = function(string) {
@@ -204,16 +208,16 @@ Host.ShutdownServer = function(isCrashShutdown = false) { // TODO: SV duties
   do {
     count = 0;
     for (i = 0; i < SV.svs.maxclients; i++) { // FIXME: this 1is completely broken, it won’t properly close connections
-      Host.client = SV.svs.clients[i];
-      if (Host.client.state < ServerClient.STATE.CONNECTED || Host.client.message.cursize === 0) {
+      const client = SV.svs.clients[i];
+      if (client.state < ServerClient.STATE.CONNECTED || client.message.cursize === 0) {
         continue;
       }
-      if (NET.CanSendMessage(Host.client.netconnection)) {
-        NET.SendMessage(Host.client.netconnection, Host.client.message);
-        Host.client.message.clear();
+      if (NET.CanSendMessage(client.netconnection)) {
+        NET.SendMessage(client.netconnection, client.message);
+        client.message.clear();
         continue;
       }
-      NET.GetMessage(Host.client.netconnection);
+      NET.GetMessage(client.netconnection);
       count++;
     }
     if ((Sys.FloatTime() - start) > 3.0) { // this breaks a loop when the stuff on the top is stuck
@@ -561,7 +565,10 @@ Host.Status_f = function() {
     }
     print = Con.Print;
   } else {
-    print = Host.ClientPrint;
+    const client = this.client;
+    print = (text) => {
+      Host.ClientPrint(client, text);
+    };
   }
   print('hostname: ' + NET.hostname.string + '\n');
   print('address : ' + NET.GetListenAddress() + '\n');
@@ -614,7 +621,7 @@ class HostConsoleCommand extends ConsoleCommand {
    */
   cheat() {
     if (!SV.cheats.value) {
-      Host.ClientPrint('Cheats are not enabled on this server.\n');
+      Host.ClientPrint(this.client, 'Cheats are not enabled on this server.\n');
       return true;
     }
 
@@ -633,9 +640,9 @@ Host.God_f = class extends HostConsoleCommand {
     const client = this.client;
     client.edict.entity.flags ^= Defs.flags.FL_GODMODE;
     if ((client.edict.entity.flags & Defs.flags.FL_GODMODE) === 0) {
-      Host.ClientPrint('godmode OFF\n');
+      Host.ClientPrint(client, 'godmode OFF\n');
     } else {
-      Host.ClientPrint('godmode ON\n');
+      Host.ClientPrint(client, 'godmode ON\n');
     }
   }
 };
@@ -651,9 +658,9 @@ Host.Notarget_f = class extends HostConsoleCommand {
     const client = this.client;
     client.edict.entity.flags ^= Defs.flags.FL_NOTARGET;
     if ((client.edict.entity.flags & Defs.flags.FL_NOTARGET) === 0) {
-      Host.ClientPrint('notarget OFF\n');
+      Host.ClientPrint(client, 'notarget OFF\n');
     } else {
-      Host.ClientPrint('notarget ON\n');
+      Host.ClientPrint(client, 'notarget ON\n');
     }
   }
 };
@@ -670,12 +677,12 @@ Host.Noclip_f = class extends HostConsoleCommand {
     if (client.edict.entity.movetype !== Defs.moveType.MOVETYPE_NOCLIP) {
       Host.noclip_anglehack = true;
       client.edict.entity.movetype = Defs.moveType.MOVETYPE_NOCLIP;
-      Host.ClientPrint('noclip ON\n');
+      Host.ClientPrint(client, 'noclip ON\n');
       return;
     }
     Host.noclip_anglehack = false;
     client.edict.entity.movetype = Defs.moveType.MOVETYPE_WALK;
-    Host.ClientPrint('noclip OFF\n');
+    Host.ClientPrint(client, 'noclip OFF\n');
   }
 };
 
@@ -690,11 +697,11 @@ Host.Fly_f = class extends HostConsoleCommand {
     const client = this.client;
     if (client.edict.entity.movetype !== Defs.moveType.MOVETYPE_FLY) {
       client.edict.entity.movetype = Defs.moveType.MOVETYPE_FLY;
-      Host.ClientPrint('flymode ON\n');
+      Host.ClientPrint(client, 'flymode ON\n');
       return;
     }
     client.edict.entity.movetype = Defs.moveType.MOVETYPE_WALK;
-    Host.ClientPrint('flymode OFF\n');
+    Host.ClientPrint(client, 'flymode OFF\n');
   }
 };
 
@@ -703,7 +710,9 @@ Host.Ping_f = function() {
     return;
   }
 
-  Host.ClientPrint('Client ping times:\n');
+  const recipientClient = this.client;
+
+  Host.ClientPrint(recipientClient, 'Client ping times:\n');
 
   for (let i = 0; i < SV.svs.maxclients; i++) {
     /** @type {ServerClient} */
@@ -719,7 +728,7 @@ Host.Ping_f = function() {
       total += client.ping_times[j];
     }
 
-    Host.ClientPrint((total * 62.5).toFixed(0).padStart(3) + ' ' + client.name + '\n');
+    Host.ClientPrint(recipientClient, (total * 62.5).toFixed(0).padStart(3) + ' ' + client.name + '\n');
   }
 };
 
@@ -822,7 +831,7 @@ Host.Changelevel_f = function(mapname) {
 
 Host.Restart_f = function() {
   if ((SV.server.active) && (registry.isDedicatedServer || !CL.cls.demoplayback && !this.client)) {
-    Cmd.ExecuteString(`map ${SV.server.mapname}`);
+    void Cmd.ExecuteString(`map ${SV.server.mapname}`);
   }
 };
 
@@ -1098,7 +1107,7 @@ Host.Say_f = function(teamonly, message) {
     return;
   }
 
-  const save = Host.client;
+  const sender = this.client;
 
   if (message.length > 140) {
     message = message.substring(0, 140) + '...';
@@ -1109,15 +1118,13 @@ Host.Say_f = function(teamonly, message) {
     if (client.state < ServerClient.STATE.CONNECTED) {
       continue;
     }
-    if ((Host.teamplay.value !== 0) && (teamonly === true) && (client.entity.team !== save.entity.team)) { // Legacy cvars
+    if ((Host.teamplay.value !== 0) && (teamonly === true) && (client.entity.team !== sender.entity.team)) { // Legacy cvars
       continue;
     }
-    Host.SendChatMessageToClient(client, save.name, message, false);
+    Host.SendChatMessageToClient(client, sender.name, message, false);
   }
 
-  Host.client = save; // unsure whether I removed it or not
-
-  Con.Print(`${save.name}: ${message}\n`);
+  Con.Print(`${sender.name}: ${message}\n`);
 };
 
 Host.Say_Team_f = function(message) {
@@ -1148,7 +1155,7 @@ Host.Tell_f = function(recipient, message) {
     message = message.substring(0, 140) + '...';
   }
 
-  const save = Host.client;
+  const sender = this.client;
   for (let i = 0; i < SV.svs.maxclients; i++) {
     const client = SV.svs.clients[i];
     if (client.state < ServerClient.STATE.CONNECTED) {
@@ -1157,14 +1164,13 @@ Host.Tell_f = function(recipient, message) {
     if (client.name.toLowerCase() !== recipient.toLowerCase()) {
       continue;
     }
-    Host.SendChatMessageToClient(client, save.name, message, true);
-    Host.SendChatMessageToClient(Host.client, save.name, message, true);
+    Host.SendChatMessageToClient(client, sender.name, message, true);
+    Host.SendChatMessageToClient(sender, sender.name, message, true);
     break;
   }
-  Host.client = save;
 };
 
-Host.Color_f = function(...argv) { // signon 2, step 2 // FIXME: Host.client
+Host.Color_f = function(...argv) { // signon 2, step 2
   Con.DPrint(`Host.Color_f: ${this.client}\n`);
   if (argv.length <= 1) {
     Con.Print('"color" is "' + (CL.color.value >> 4) + ' ' + (CL.color.value & 15) + '"\ncolor <0-13> [0-13]\n');
@@ -1213,7 +1219,7 @@ Host.Kill_f = function() {
 
   const client = this.client;
   if (client.edict.entity.health <= 0.0) {
-    Host.ClientPrint('Can\'t suicide -- already dead!\n');
+    Host.ClientPrint(client, 'Can\'t suicide -- already dead!\n');
     return;
   }
 
@@ -1226,12 +1232,14 @@ Host.Pause_f = function() {
     return;
   }
 
+  const client = this.client;
+
   if (Host.pausable.value === 0) {
-    Host.ClientPrint('Pause not allowed.\n');
+    Host.ClientPrint(client, 'Pause not allowed.\n');
     return;
   }
   SV.server.paused = !SV.server.paused;
-  Host.BroadcastPrint(Host.client.name + (SV.server.paused === true ? ' paused the game\n' : ' unpaused the game\n'));
+  Host.BroadcastPrint(client.name + (SV.server.paused === true ? ' paused the game\n' : ' unpaused the game\n'));
   SV.server.reliable_datagram.writeByte(Protocol.svc.setpause);
   SV.server.reliable_datagram.writeByte(SV.server.paused === true ? 1 : 0);
 };
@@ -1370,7 +1378,7 @@ Host.Begin_f = function() {  // signon 3, step 1
   }
 };
 
-Host.Kick_f = function() { // FIXME: Host.client
+Host.Kick_f = function() {
   const argv = this.argv;
   if (!this.client) {
     if (!SV.server.active) {
@@ -1381,9 +1389,11 @@ Host.Kick_f = function() { // FIXME: Host.client
   if (argv.length < 2) {
     return;
   }
-  const save = Host.client;
   const s = argv[1].toLowerCase();
+  const invokingClient = this.client;
   let i; let byNumber = false;
+  let targetClient = /** @type {ServerClient | null} */ (null);
+
   if ((argv.length >= 3) && (s === '#')) {
     i = Q.atoi(argv[2]) - 1;
     if ((i < 0) || (i >= SV.svs.maxclients)) {
@@ -1392,38 +1402,35 @@ Host.Kick_f = function() { // FIXME: Host.client
     if (SV.svs.clients[i].state !== ServerClient.STATE.SPAWNED) {
       return;
     }
-    Host.client = SV.svs.clients[i];
+    targetClient = SV.svs.clients[i];
     byNumber = true;
   } else {
     for (i = 0; i < SV.svs.maxclients; i++) {
-      Host.client = SV.svs.clients[i];
-      if (Host.client.state < ServerClient.STATE.CONNECTED) {
+      const client = SV.svs.clients[i];
+      if (client.state < ServerClient.STATE.CONNECTED) {
         continue;
       }
-      if (Host.client.name.toLowerCase() === s) {
+      if (client.name.toLowerCase() === s) {
+        targetClient = client;
         break;
       }
     }
   }
-  if (i >= SV.svs.maxclients) {
-    Host.client = save;
+  if (targetClient === null) {
     return;
   }
-  if (Host.client === save) {
+  if (targetClient === invokingClient) {
     return;
   }
   let who;
-  if (!this.client) {
+  if (!invokingClient) {
     if (registry.isDedicatedServer) {
       who = NET.hostname.string;
     } else {
       who = CL.name.string;
     }
   } else {
-    if (Host.client === save) {
-      return;
-    }
-    who = save.name;
+    who = invokingClient.name;
   }
   let message;
   if (argv.length >= 3) {
@@ -1448,8 +1455,7 @@ Host.Kick_f = function() { // FIXME: Host.client
     }
     dropReason = 'Kicked by ' + who + ': ' + message.data.substring(p);
   }
-  Host.DropClient(Host.client, false, dropReason);
-  Host.client = save;
+  Host.DropClient(targetClient, false, dropReason);
 };
 
 Host.Give_f = class extends HostConsoleCommand { // TODO: move to game
@@ -1466,15 +1472,17 @@ Host.Give_f = class extends HostConsoleCommand { // TODO: move to game
       return;
     }
 
+    const client = this.client;
+
     if (!classname) {
-      Host.ClientPrint('give <classname>\n');
+      Host.ClientPrint(client, 'give <classname>\n');
       return;
     }
 
-    const player = this.client.edict;
+    const player = client.edict;
 
     if (!classname.startsWith('item_') && !classname.startsWith('weapon_')) {
-      Host.ClientPrint('Only entity classes item_* and weapon_* are allowed!\n');
+      Host.ClientPrint(client, 'Only entity classes item_* and weapon_* are allowed!\n');
       return;
     }
 
@@ -1493,7 +1501,7 @@ Host.Give_f = class extends HostConsoleCommand { // TODO: move to game
       const origin = trace.point.subtract(forward.multiply(16.0)).add(new Vector(0.0, 0.0, 16.0));
 
       if (![content.CONTENT_EMPTY, content.CONTENT_WATER].includes(ServerEngineAPI.DetermineStaticWorldContents(origin))) {
-        Host.ClientPrint('Item would spawn out of world!\n');
+        Host.ClientPrint(client, 'Item would spawn out of world!\n');
         return;
       }
 
