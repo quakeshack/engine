@@ -3,7 +3,7 @@ import * as Def from '../common/Def.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { HostError } from '../common/Errors.ts';
 import Vector from '../../shared/Vector.ts';
-import { PmovePlayer } from '../common/Pmove.mjs';
+import { PmovePlayer } from '../common/Pmove.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import { ClientEdict } from './ClientEntities.mjs';
 

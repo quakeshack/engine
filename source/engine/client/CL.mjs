@@ -3,7 +3,7 @@ import * as Def from '../common/Def.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
-import { Pmove, PmovePlayer } from '../common/Pmove.mjs';
+import { Pmove, PmovePlayer } from '../common/Pmove.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { gameCapabilities, solid } from '../../shared/Defs.ts';
 import ClientDemos from './ClientDemos.mjs';
@@ -209,7 +209,7 @@ export default class CL {
         return;
       }
 
-      Cmd.ExecuteString('map ' + map);
+      void Cmd.ExecuteString('map ' + map);
 
       CL.StartRecording(demoname, Q.atoi(track));
     }

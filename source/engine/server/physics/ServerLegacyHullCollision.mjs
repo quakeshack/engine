@@ -1,6 +1,6 @@
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import { DIST_EPSILON } from '../../common/Pmove.mjs';
+import { DIST_EPSILON } from '../../common/Pmove.ts';
 import { eventBus, registry } from '../../registry.mjs';
 
 let { Con } = registry;

@@ -8,7 +8,7 @@ import Cvar from '../common/Cvar.ts';
 import { CorruptedResourceError, MissingResourceError } from '../common/Errors.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.mjs';
 import { BrushModel } from '../common/Mod.mjs';
-import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.mjs';
+import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.ts';
 import { Face } from '../common/model/BaseModel.mjs';
 import PlatformWorker from '../common/PlatformWorker.ts';
 import WorkerManager from '../common/WorkerManager.ts';
@@ -1803,11 +1803,11 @@ export class Navigation {
 
     Con.DPrint('Navigation: node graph built with ' + this.graph.nodes.length + ' nodes.\n');
 
-    this.save()
+    void this.save()
       .then(() => {
         Con.PrintSuccess('Navigation: navigation graph saved!\n');
         if (Navigation.nav_build_process?.value) {
-          Cmd.ExecuteString('quit');
+          void Cmd.ExecuteString('quit');
         }
       })
       .catch((err) => Con.PrintError('Navigation: failed to save navigation graph: ' + err + '\n'));

@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.mjs';
-import { PMF, Pmove } from '../../source/engine/common/Pmove.mjs';
+import { PMF, Pmove } from '../../source/engine/common/Pmove.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import Vector from '../../source/shared/Vector.ts';

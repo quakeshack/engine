@@ -119,7 +119,7 @@ export class CollisionTrace {
   }
 
   /**
-   * @param {import('../../common/Pmove.mjs').Trace} brushTrace shared brush trace result
+   * @param {import('../../common/Pmove.ts').Trace} brushTrace shared brush trace result
    * @param {ServerEdict} ent entity that owns the brush model
    * @returns {CollisionTrace} server collision trace
    */

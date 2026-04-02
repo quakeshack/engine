@@ -14,7 +14,7 @@ import CDAudio from '../client/CDAudio.mjs';
 import * as Defs from '../../shared/Defs.ts';
 import { content, gameCapabilities } from '../../shared/Defs.ts';
 import ClientLifecycle from '../client/ClientLifecycle.mjs';
-import { Pmove } from './Pmove.mjs';
+import { Pmove } from './Pmove.ts';
 
 const Host = {};
 

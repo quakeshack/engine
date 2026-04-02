@@ -5,7 +5,7 @@ import { gameCapabilities } from '../../shared/Defs.ts';
 import ClientInput from './ClientInput.mjs';
 import CL from './CL.mjs';
 import { clientRuntimeState } from './ClientState.mjs';
-import { MoveVars, Pmove } from '../common/Pmove.mjs';
+import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.mjs';
 import { eventBus, registry } from '../registry.mjs';
 
@@ -30,11 +30,11 @@ export class StartGameInterface {
 /** Quake 1 default start game entries */
 export class DefaultStartGameFunctions extends StartGameInterface {
   startSingleplayerGame() {
-    Cmd.ExecuteString('map start');
+    void Cmd.ExecuteString('map start');
   }
 
   startMultiplayerGame(/** @type {string} */ mapname) {
-    Cmd.ExecuteString(`map ${mapname}`);
+    void Cmd.ExecuteString(`map ${mapname}`);
   }
 };
 

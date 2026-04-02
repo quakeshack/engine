@@ -1,5 +1,5 @@
 import Cvar from '../common/Cvar.ts';
-import { MoveVars, Pmove } from '../common/Pmove.mjs';
+import { MoveVars, Pmove } from '../common/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
@@ -686,7 +686,7 @@ export default class SV {
     Con.Print(`[${client.name}@${client.netconnection.address}] ${cmd}\n`);
 
     Con.StartCapturing();
-    Cmd.ExecuteString(cmd);
+    void Cmd.ExecuteString(cmd);
 
     const response = Con.StopCapturing();
     message.writeByte(Protocol.svc.print);
@@ -1056,7 +1056,7 @@ export default class SV {
     );
 
     if (matchedCommand) {
-      Cmd.ExecuteString(input, client);
+      void Cmd.ExecuteString(input, client);
     } else {
       Con.Print(`${client.name} tried to ${input}!\n`);
     }

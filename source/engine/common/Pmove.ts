@@ -7,6 +7,8 @@
  * Original sources: pmove.c, pmovetst.c (Q2), pmove.c (Q1).
  */
 
+/* eslint-disable jsdoc/require-returns */
+
 import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { content } from '../../shared/Defs.ts';
@@ -14,12 +16,26 @@ import { BrushModel } from './Mod.mjs';
 import Cvar from './Cvar.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 
-/** @typedef {import('../../shared/Vector.ts').DirectionalVectors} DirectionalVectors */
-/** @typedef {{ normal: Vector, type: number }} BrushTracePlaneLike */
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+type DirectionalVectors = import('../../shared/Vector.ts').DirectionalVectors;
+interface BrushTracePlaneLike {
+  readonly normal: Vector;
+  readonly type: number;
+}
+type BrushTraceTransform = { readonly origin: Vector; readonly basis: number[] | null } | null;
+interface NearbyBrushSideSummary {
+  readonly distance: number;
+  readonly summary: string;
+}
+interface NearbyBrushCandidate {
+  readonly index: number;
+  readonly contents: number;
+  readonly numsides: number;
+  readonly nearestPlaneDistance: number;
+  touchingPlanes: number;
+  readonly mins: Vector;
+  readonly maxs: Vector;
+  sideSummaries: string[];
+}
 
 export const DIST_EPSILON = 0.03125;
 export const STOP_EPSILON = 0.1;
@@ -37,39 +53,35 @@ export const ZERO_PROGRESS_DUPLICATE_DOT = 0.985;
 /**
  * Player movement flags (pmove-specific, separate from entity flags).
  * These travel with the player state and are used for prediction.
- * @readonly
- * @enum {number}
  */
-export const PMF = Object.freeze({
+export enum PMF {
   /** Player is ducked */
-  DUCKED: (1 << 0),
+  DUCKED = (1 << 0),
   /** Player has jump button held (prevent re-jump) */
-  JUMP_HELD: (1 << 1),
+  JUMP_HELD = (1 << 1),
   /** Player is on the ground */
-  ON_GROUND: (1 << 2),
+  ON_GROUND = (1 << 2),
   /** Timing: landing cooldown (prevents immediate re-jump after hard landing) */
-  TIME_LAND: (1 << 3),
+  TIME_LAND = (1 << 3),
   /** Timing: water jump is active */
-  TIME_WATERJUMP: (1 << 4),
+  TIME_WATERJUMP = (1 << 4),
   /** Timing: teleport freeze */
-  TIME_TELEPORT: (1 << 5),
-});
+  TIME_TELEPORT = (1 << 5),
+}
 
 /**
  * Player movement types.
- * @readonly
- * @enum {number}
  */
-export const PM_TYPE = Object.freeze({
+export enum PM_TYPE {
   /** Normal movement */
-  NORMAL: 0,
+  NORMAL = 0,
   /** Spectator - noclip flight */
-  SPECTATOR: 1,
+  SPECTATOR = 1,
   /** Dead – reduced input, extra friction */
-  DEAD: 2,
+  DEAD = 2,
   /** Frozen – no movement at all */
-  FREEZE: 3,
-});
+  FREEZE = 3,
+}
 
 // ---------------------------------------------------------------------------
 // MoveVars: shared physics tuning knobs
@@ -81,77 +93,107 @@ export const PM_TYPE = Object.freeze({
  * Physics tuning knobs shared between client and server.
  */
 export class MoveVars { // movevars_t
+  /** World gravity strength. */
+  gravity: number;
+  /** Minimum speed preserved before friction stops the player. */
+  stopspeed: number;
+  /** Default maximum ground speed. */
+  maxspeed: number;
+  /** Maximum speed while in spectator flight. */
+  spectatormaxspeed: number;
+  /** Maximum speed while ducked. */
+  duckspeed: number;
+  /** Ground acceleration factor. */
+  accelerate: number;
+  /** Air acceleration factor. */
+  airaccelerate: number;
+  /** Water acceleration factor. */
+  wateraccelerate: number;
+  /** Ground friction multiplier. */
+  friction: number;
+  /** Water friction multiplier. */
+  waterfriction: number;
+  /** Base swimming speed. */
+  waterspeed: number;
+  /** Per-entity gravity scale. */
+  entgravity: number;
+  /** Extra friction applied near ledges. */
+  edgefriction: number;
+
   constructor() {
-    /** @type {number} world gravity (units/sec²) */
     this.gravity = 800;
-    /** @type {number} speed below which friction acts at full strength */
     this.stopspeed = 100;
-    /** @type {number} maximum walking speed */
     this.maxspeed = 320; // Q2: 300
-    /** @type {number} maximum spectator speed */
     this.spectatormaxspeed = 500;
-    /** @type {number} duck speed cap */
     this.duckspeed = 100;
-    /** @type {number} ground acceleration factor */
     this.accelerate = 10;
-    /** @type {number} air acceleration factor */
     this.airaccelerate = 0.7;
-    /** @type {number} water acceleration factor */
     this.wateraccelerate = 10;
-    /** @type {number} ground friction factor */
     this.friction = 6;
-    /** @type {number} water friction factor */
     this.waterfriction = 1;
-    /** @type {number} maximum water speed */
     this.waterspeed = 400;
-    /** @type {number} per-entity gravity multiplier (1.0 = normal) */
     this.entgravity = 1.0;
-    /** @type {number} edge friction multiplier */
     this.edgefriction = 2;
   }
-};
+}
 
 // ---------------------------------------------------------------------------
 // Geometry primitives: Plane, Trace, ClipNode, Hull, BoxHull
 // ---------------------------------------------------------------------------
 
 export class Plane { // mplane_t
+  /** Plane normal. */
+  normal: Vector;
+  /** Signed distance from the origin. */
+  dist: number;
+  /** Plane axis classification used by BSP tracing. */
+  type: number;
+  /** Cached sign bits for fast box-plane tests. */
+  signBits: number;
+
   constructor() {
     this.normal = new Vector();
     this.dist = 0;
-    /** @type {number} for texture axis selection and fast side tests */
     this.type = 0;
-    /** @type {number} signx + signy<<1 + signz<<1 */
     this.signBits = 0;
   }
-};
+}
 
 export class Trace { // pmtrace_t
+  /** Whether the entire trace volume stayed inside solid. */
+  allsolid: boolean;
+  /** Whether the start point began inside solid. */
+  startsolid: boolean;
+  /** Completed fraction of the attempted move. */
+  fraction: number;
+  /** Final position after clipping. */
+  endpos: Vector;
+  /** Impact plane for the first blocking hit. */
+  plane: Plane;
+  /** Physent index hit by the trace, or null when nothing was hit. */
+  ent: number | null;
+  /** Whether the trace entered open space. */
+  inopen: boolean;
+  /** Whether the trace entered water. */
+  inwater: boolean;
+
   constructor() {
-    /** if true, plane is not valid */
     this.allsolid = true;
-    /** if true, the initial point was in a solid area */
     this.startsolid = false;
-    /** moving along the vector completed, 1.0 = didn’t hit anything */
     this.fraction = 1.0;
-    /** final position */
     this.endpos = new Vector();
-    /** surface normal at impact */
     this.plane = new Plane();
-    /** @type {?number} edict number the surface is on, if applicable */
     this.ent = null;
-    /** true if the surface is in a open area */
     this.inopen = false;
-    /** true if the surface is in water */
     this.inwater = false;
   }
 
   /**
    * Sets this trace to the other trace.
-   * @param {Trace} other other trace
-   * @returns {Trace} this
+   * @param other - source trace to copy from
+   * @returns this trace after copying the values
    */
-  set(other) {
+  set(other: Trace): Trace {
     console.assert(other instanceof Trace, 'other must be a Trace');
 
     this.allsolid = other.allsolid;
@@ -169,36 +211,58 @@ export class Trace { // pmtrace_t
 
   /**
    * Creates a copy.
-   * @returns {Trace} copy of this trace
+   * @returns duplicated trace state
    */
-  copy() {
+  copy(): Trace {
     const trace = new Trace();
     trace.set(this);
     return trace;
   }
-};
+}
 
 export class ClipNode { // dclipnode_t
+  /** Plane index used by this BSP clip node. */
+  readonly planeNum: number;
+  /** Child node indices or negative contents values. */
+  readonly children: [number, number];
+
   constructor(planeNum = 0) {
     this.planeNum = planeNum;
     this.children = [0, 0];
   }
-};
+}
 
 export class Hull { // hull_t
+  /** Hull-space minimum bounds for this collision hull. */
+  clipMins: Vector;
+  /** Hull-space maximum bounds for this collision hull. */
+  clipMaxs: Vector;
+  /** First valid BSP clip node index. */
+  firstClipNode: number;
+  /** Last valid BSP clip node index. */
+  lastClipNode: number;
+  /** Optional mask restricting which clip nodes may be traversed. */
+  allowedClipNodes: Uint8Array | null;
+  /** BSP clip nodes used for hull traversal. */
+  clipNodes: ClipNode[];
+  /** Plane list referenced by the clip nodes. */
+  planes: Plane[];
+
   constructor() {
     this.clipMins = new Vector();
     this.clipMaxs = new Vector();
     this.firstClipNode = 0;
     this.lastClipNode = 0;
-    /** @type {Uint8Array|null} */
     this.allowedClipNodes = null;
-    /** @type {ClipNode[]} */
     this.clipNodes = [];
-    /** @type {Plane[]} */
     this.planes = [];
   }
 
+  /**
+   * Clone collision data from a model hull into runtime Hull objects.
+   * @param hull - source hull from model loading
+   * @returns copied runtime hull
+   */
   static fromModelHull(hull) {
     const newHull = new Hull();
     newHull.clipMins = hull.clip_mins.copy();
@@ -226,11 +290,11 @@ export class Hull { // hull_t
 
   /**
    * Determine if a point is inside the hull and if so, return the content type.
-   * @param {Vector} point point to test
-   * @param {number} num clip node to start
-   * @returns {number} content type
+   * @param point - point to classify in hull space
+   * @param num - starting clip node index
+   * @returns negative Quake contents value for the containing leaf
    */
-  pointContents(point, num = this.firstClipNode) {
+  pointContents(point: Vector, num: number = this.firstClipNode): number {
     // as long as num is a valid node, keep going down the tree
     while (num >= 0) {
       if (this.allowedClipNodes !== null && this.allowedClipNodes[num] !== 1) {
@@ -262,21 +326,20 @@ export class Hull { // hull_t
     return num;
   }
 
-  /** @type {Vector[]} */
-  static _midPool = Array.from({ length: 64 }, () => new Vector());
+  static readonly _midPool: Vector[] = Array.from({ length: 64 }, () => new Vector());
 
   /**
    * Check against hull.
-   * @param {number} p1f fraction at p1 (usually 0.0)
-   * @param {number} p2f fraction at p2 (usually 1.0)
-   * @param {Vector} p1 start point
-   * @param {Vector} p2 end point
-   * @param {Trace} trace object to store trace results
-   * @param {number} num starting clipnode number (typically hull.firstclipnode)
-   * @param {number} depth recursion depth
-   * @returns {boolean} true means going down, false means going up
+   * @param p1f - starting fraction along the trace segment
+   * @param p2f - ending fraction along the trace segment
+   * @param p1 - start point in hull space
+   * @param p2 - end point in hull space
+   * @param trace - trace result being updated in place
+   * @param num - current clip node index
+   * @param depth - recursion depth for pooled midpoint scratch vectors
+   * @returns true while traversal should continue, false after a blocking hit
    */
-  check(p1f, p2f, p1, p2, trace, num = this.firstClipNode, depth = 0) {
+  check(p1f: number, p2f: number, p1: Vector, p2: Vector, trace: Trace, num: number = this.firstClipNode, depth: number = 0): boolean {
     // check for empty
     if (num < 0) {
       if (num !== content.CONTENT_SOLID && num !== content.CONTENT_SKY) {
@@ -426,11 +489,12 @@ export class BoxHull extends Hull {
   }
 
   /**
-   * @param {Vector} mins mins
-   * @param {Vector} maxs maxs
-   * @returns {BoxHull} this
+   * Configure the reusable box hull to match an entity bounding box.
+   * @param mins - local minimum corner
+   * @param maxs - local maximum corner
+   * @returns this box hull for chaining
    */
-  setSize(mins, maxs) {
+  setSize(mins: Vector, maxs: Vector): BoxHull {
     console.assert(mins instanceof Vector, 'mins must be a Vector');
     console.assert(maxs instanceof Vector, 'maxs must be a Vector');
 
@@ -442,7 +506,7 @@ export class BoxHull extends Hull {
 
     return this;
   }
-};
+}
 
 // ---------------------------------------------------------------------------
 // BrushTrace: Q2-style brush-based collision tracing
@@ -464,31 +528,20 @@ export class BoxHull extends Hull {
  * traces for maps that include brush data.
  */
 export class BrushTrace {
-  /** @type {number} monotonically increasing counter to avoid testing the same brush twice */
-  static _checkCount = 0;
+  static _checkCount: number = 0;
 
   /**
    * Test whether two axis-aligned bounding boxes overlap.
-   * @param {Vector} mins1 first box minimum
-   * @param {Vector} maxs1 first box maximum
-   * @param {Vector} mins2 second box minimum
-   * @param {Vector} maxs2 second box maximum
-   * @returns {boolean} true when the boxes overlap or touch
    */
-  static _boundsOverlap(mins1, maxs1, mins2, maxs2) {
+  static _boundsOverlap(mins1: Vector, maxs1: Vector, mins2: Vector, maxs2: Vector): boolean {
     return mins1[0] <= maxs2[0] && mins1[1] <= maxs2[1] && mins1[2] <= maxs2[2]
       && maxs1[0] >= mins2[0] && maxs1[1] >= mins2[1] && maxs1[2] >= mins2[2];
   }
 
   /**
    * Compute the swept world-space bounds of a point or box move.
-   * @param {Vector} start trace start
-   * @param {Vector} end trace end
-   * @param {Vector} mins box mins
-   * @param {Vector} maxs box maxs
-   * @returns {{mins: Vector, maxs: Vector}} swept bounds
    */
-  static _computeSweepBounds(start, end, mins, maxs) {
+  static _computeSweepBounds(start: Vector, end: Vector, mins: Vector, maxs: Vector): { mins: Vector; maxs: Vector } {
     return {
       mins: new Vector(
         Math.min(start[0] + mins[0], end[0] + mins[0]),
@@ -505,12 +558,8 @@ export class BrushTrace {
 
   /**
    * Compute the world-space bounds of a point or box at a fixed position.
-   * @param {Vector} position position to test
-   * @param {Vector} mins box mins
-   * @param {Vector} maxs box maxs
-   * @returns {{mins: Vector, maxs: Vector}} world-space bounds
    */
-  static _computePositionBounds(position, mins, maxs) {
+  static _computePositionBounds(position: Vector, mins: Vector, maxs: Vector): { mins: Vector; maxs: Vector } {
     return {
       mins: new Vector(position[0] + mins[0], position[1] + mins[1], position[2] + mins[2]),
       maxs: new Vector(position[0] + maxs[0], position[1] + maxs[1], position[2] + maxs[2]),
@@ -519,11 +568,8 @@ export class BrushTrace {
 
   /**
    * Check whether a brush AABB can possibly overlap the current swept move.
-   * @param {BrushTraceContext} ctx trace context
-   * @param {import('./model/BSP.mjs').Brush} brush brush candidate
-   * @returns {boolean} true when the brush could affect the move
    */
-  static _brushMayAffectTrace(ctx, brush) {
+  static _brushMayAffectTrace(ctx: BrushTraceContext, brush: import('./model/BSP.mjs').Brush): boolean {
     if (brush.mins === null || brush.mins === undefined || brush.maxs === null || brush.maxs === undefined) {
       return true;
     }
@@ -533,12 +579,8 @@ export class BrushTrace {
 
   /**
    * Check whether a brush AABB can possibly overlap the current position test.
-   * @param {import('./model/BSP.mjs').Brush} brush brush candidate
-   * @param {Vector} boundsMins position-test bounds minimum
-   * @param {Vector} boundsMaxs position-test bounds maximum
-   * @returns {boolean} true when the brush could affect the test
    */
-  static _brushMayAffectPosition(brush, boundsMins, boundsMaxs) {
+  static _brushMayAffectPosition(brush: import('./model/BSP.mjs').Brush, boundsMins: Vector, boundsMaxs: Vector): boolean {
     if (brush.mins === null || brush.mins === undefined || brush.maxs === null || brush.maxs === undefined) {
       return true;
     }
@@ -550,11 +592,8 @@ export class BrushTrace {
    * Estimate the earliest global trace fraction where a swept point/box can
    * enter a node's bounds. Used only for pruning; false negatives are avoided
    * by falling back when bounds are missing.
-   * @param {BrushTraceContext} ctx trace context
-   * @param {import('./model/BSP.mjs').Node} node BSP node or leaf
-   * @returns {number} earliest possible entry fraction, or Infinity when unreachable
    */
-  static _estimateNodeEntryFraction(ctx, node) {
+  static _estimateNodeEntryFraction(ctx: BrushTraceContext, node: import('./model/BSP.mjs').Node): number {
     if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
       return 0;
     }
@@ -597,11 +636,8 @@ export class BrushTrace {
 
   /**
    * Check whether a node can still affect the current trace.
-   * @param {BrushTraceContext} ctx trace context
-   * @param {import('./model/BSP.mjs').Node} node BSP node or leaf
-   * @returns {boolean} true when traversal should continue into the node
    */
-  static _nodeMayAffectTrace(ctx, node) {
+  static _nodeMayAffectTrace(ctx: BrushTraceContext, node: import('./model/BSP.mjs').Node): boolean {
     if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
       return true;
     }
@@ -618,14 +654,8 @@ export class BrushTrace {
    * Walkable ramps need this to avoid horizontal climb stalls, and corner
    * slides need it so a real diagonal face can beat an inferred axial wall
    * from the same brush when both land within epsilon.
-   * @param {BrushTracePlaneLike|null} currentPlane currently selected clip plane
-   * @param {number} currentFraction currently selected enter fraction
-   * @param {BrushTracePlaneLike} candidatePlane newly intersected plane
-   * @param {number} candidateFraction newly intersected enter fraction
-   * @param {number} fractionEpsilon move-distance-scaled tie threshold
-   * @returns {boolean} true when the candidate plane should replace the current one
    */
-  static _shouldPreferClipPlane(currentPlane, currentFraction, candidatePlane, candidateFraction, fractionEpsilon) {
+  static _shouldPreferClipPlane(currentPlane: BrushTracePlaneLike | null, currentFraction: number, candidatePlane: BrushTracePlaneLike, candidateFraction: number, fractionEpsilon: number): boolean {
     if (currentPlane === null) {
       return true;
     }
@@ -648,14 +678,8 @@ export class BrushTrace {
    * Earlier trace hits win globally, but nearly simultaneous hits can still
    * benefit from plane preference. This lets a real non-axial face replace an
    * exact-tangent axial wall from another brush in the same leaf.
-   * @param {BrushTracePlaneLike|null} currentPlane currently selected trace plane
-   * @param {number} currentFraction currently selected trace fraction
-   * @param {BrushTracePlaneLike} candidatePlane newly intersected trace plane
-   * @param {number} candidateFraction newly intersected trace fraction
-   * @param {number} fractionEpsilon move-distance-scaled tie threshold
-   * @returns {boolean} true when the candidate trace hit should replace the current hit
    */
-  static _shouldPreferTraceHit(currentPlane, currentFraction, candidatePlane, candidateFraction, fractionEpsilon) {
+  static _shouldPreferTraceHit(currentPlane: BrushTracePlaneLike | null, currentFraction: number, candidatePlane: BrushTracePlaneLike, candidateFraction: number, fractionEpsilon: number): boolean {
     if (currentPlane === null) {
       return true;
     }
@@ -677,23 +701,21 @@ export class BrushTrace {
 
   /**
    * Resolve the head node for world-model BSP traversal.
-   * @param {BrushModel} model - brush model to inspect
-   * @returns {number} clipnode index used as the trace root
    */
-  static _getHeadNode(model) {
+  static _getHeadNode(model: BrushModel): number {
     return model.hulls[0]?.firstclipnode ?? 0;
   }
 
   /**
    * Dispatch a brush trace against either a submodel brush range or a world BSP.
-   * @param {BrushModel} model - world model or submodel owning the brush data
-   * @param {Vector} start - local-space trace start
-   * @param {Vector} end - local-space trace end
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @returns {Trace} trace result
+   * @param model - model to trace against
+   * @param start - world-space start point
+   * @param end - world-space end point
+   * @param mins - box minimum corner relative to the origin
+   * @param maxs - box maximum corner relative to the origin
+   * @returns trace result in model space or world space as appropriate
    */
-  static _traceModel(model, start, end, mins, maxs) {
+  static _traceModel(model: BrushModel, start: Vector, end: Vector, mins: Vector, maxs: Vector): Trace {
     return model.submodel
       ? BrushTrace.boxTraceModel(model, start, end, mins, maxs)
       : BrushTrace.boxTrace(model, BrushTrace._getHeadNode(model), start, end, mins, maxs);
@@ -701,13 +723,13 @@ export class BrushTrace {
 
   /**
    * Dispatch a position test against either a submodel brush range or a world BSP.
-   * @param {BrushModel} model - world model or submodel owning the brush data
-   * @param {Vector} position - local-space position to test
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @returns {boolean} true if position is valid (not in solid)
+   * @param model - model to test against
+   * @param position - world-space position to test
+   * @param mins - box minimum corner relative to the origin
+   * @param maxs - box maximum corner relative to the origin
+   * @returns true when the position does not overlap solid brush geometry
    */
-  static _testModelPosition(model, position, mins, maxs) {
+  static _testModelPosition(model: BrushModel, position: Vector, mins: Vector, maxs: Vector): boolean {
     return model.submodel
       ? BrushTrace.testPositionModel(model, position, mins, maxs)
       : BrushTrace.testPosition(model, BrushTrace._getHeadNode(model), position, mins, maxs);
@@ -715,11 +737,11 @@ export class BrushTrace {
 
   /**
    * Resolve the entity transform used by shared brush collision helpers.
-   * @param {Vector} origin - entity origin
-   * @param {Vector} angles - entity angles
-   * @returns {{origin: Vector, basis: number[]|null}|null} transform context, or null when identity
+   * @param origin - entity origin in world space
+   * @param angles - entity rotation angles
+   * @returns cached transform data, or null when no transform is needed
    */
-  static _getTransformContext(origin, angles) {
+  static _getTransformContext(origin: Vector, angles: Vector): BrushTraceTransform {
     const basis = angles.isOrigin() ? null : angles.toRotationMatrix();
 
     if (basis === null && origin.isOrigin()) {
@@ -731,11 +753,11 @@ export class BrushTrace {
 
   /**
    * Convert a world-space point into local model space for an entity transform.
-   * @param {Vector} point - world-space point
-   * @param {{origin: Vector, basis: number[]|null}|null} transform - entity transform context
-   * @returns {Vector} transformed local-space point
+   * @param point - point in world space
+   * @param transform - entity transform context
+   * @returns point in local model space
    */
-  static _toLocalPoint(point, transform) {
+  static _toLocalPoint(point: Vector, transform: BrushTraceTransform): Vector {
     if (transform === null) {
       return point;
     }
@@ -750,16 +772,16 @@ export class BrushTrace {
   /**
    * Trace a box against a brush model with entity transform applied.
    * Equivalent to Quake 2's transformed box trace helpers.
-   * @param {BrushModel} model - world model or submodel owning the brush data
-   * @param {Vector} start - world-space trace start
-   * @param {Vector} end - world-space trace end
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @param {Vector} origin - entity origin
-   * @param {Vector} angles - entity angles
-   * @returns {Trace} world-space trace result
+   * @param model - brush model to trace against
+   * @param start - world-space start point
+   * @param end - world-space end point
+   * @param mins - box minimum corner relative to the origin
+   * @param maxs - box maximum corner relative to the origin
+   * @param origin - entity origin applied before tracing
+   * @param angles - entity rotation applied before tracing
+   * @returns world-space trace result
    */
-  static transformedBoxTrace(model, start, end, mins, maxs, origin = Vector.origin, angles = Vector.origin) {
+  static transformedBoxTrace(model: BrushModel, start: Vector, end: Vector, mins: Vector, maxs: Vector, origin: Vector = Vector.origin, angles: Vector = Vector.origin): Trace {
     const transform = BrushTrace._getTransformContext(origin, angles);
 
     if (transform === null) {
@@ -777,15 +799,15 @@ export class BrushTrace {
    * Test if a box at the given world-space position overlaps a brush model
    * after applying entity translation and rotation.
    * Equivalent to Quake 2's transformed position test helpers.
-   * @param {BrushModel} model - world model or submodel owning the brush data
-   * @param {Vector} position - world-space position to test
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @param {Vector} origin - entity origin
-   * @param {Vector} angles - entity angles
-   * @returns {boolean} true if position is valid (not in solid)
+   * @param model - brush model to test against
+   * @param position - world-space position to test
+   * @param mins - box minimum corner relative to the origin
+   * @param maxs - box maximum corner relative to the origin
+   * @param origin - entity origin applied before testing
+   * @param angles - entity rotation applied before testing
+   * @returns true when the transformed box does not overlap solid brush geometry
    */
-  static transformedTestPosition(model, position, mins, maxs, origin = Vector.origin, angles = Vector.origin) {
+  static transformedTestPosition(model: BrushModel, position: Vector, mins: Vector, maxs: Vector, origin: Vector = Vector.origin, angles: Vector = Vector.origin): boolean {
     const transform = BrushTrace._getTransformContext(origin, angles);
 
     if (transform === null) {
@@ -800,15 +822,15 @@ export class BrushTrace {
   /**
    * Trace a box from start to end through the BSP tree, testing individual brushes.
    * Equivalent to Q2’s CM_BoxTrace.
-   * @param {BrushModel} worldModel - world model owning the BSP data
-   * @param {number} headNode - BSP node index to start traversal from
-   * @param {Vector} start - start position
-   * @param {Vector} end - end position
-   * @param {Vector} mins - box mins (typically PLAYER_MINS)
-   * @param {Vector} maxs - box maxs (typically PLAYER_MAXS)
-   * @returns {Trace} trace result
+   * @param worldModel - world brush model with BSP data
+   * @param headNode - BSP node index to start traversal from
+   * @param start - world-space start point
+   * @param end - world-space end point
+   * @param mins - box minimum corner relative to the origin
+   * @param maxs - box maximum corner relative to the origin
+   * @returns trace result against BSP brushes
    */
-  static boxTrace(worldModel, headNode, start, end, mins, maxs) {
+  static boxTrace(worldModel: BrushModel, headNode: number, start: Vector, end: Vector, mins: Vector, maxs: Vector): Trace {
     const trace = new Trace();
 
     // Brush traces must derive allsolid from brush overlap, not from the
@@ -839,8 +861,7 @@ export class BrushTrace {
     const totalMove = end.copy().subtract(start);
     const sweepBounds = BrushTrace._computeSweepBounds(start, end, mins, maxs);
 
-    /** @type {BrushTraceContext} */
-    const ctx = {
+    const ctx: BrushTraceContext = {
       worldModel,
       trace,
       mins,
@@ -884,14 +905,14 @@ export class BrushTrace {
   /**
    * Test if a player-sized box at the given position overlaps any solid brush.
    * Equivalent to Q2’s CM_BoxTrace position-test special case.
-   * @param {BrushModel} worldModel - world model owning the BSP data
-   * @param {number} headNode - BSP node index to start traversal from
-   * @param {Vector} position - position to test
-   * @param {Vector} mins - box mins (typically PLAYER_MINS)
-   * @param {Vector} maxs - box maxs (typically PLAYER_MAXS)
-   * @returns {boolean} true if position is valid (not stuck in solid)
+   * @param worldModel - world brush model with BSP data
+   * @param headNode - BSP node index to start traversal from
+   * @param position - world-space position to test
+   * @param mins - box minimum corner relative to the origin
+   * @param maxs - box maximum corner relative to the origin
+   * @returns true when the position is clear of solid brushes
    */
-  static testPosition(worldModel, headNode, position, mins, maxs) {
+  static testPosition(worldModel: BrushModel, headNode: number, position: Vector, mins: Vector, maxs: Vector): boolean {
     if (!worldModel.nodes || worldModel.nodes.length === 0) {
       return true;
     }
@@ -925,19 +946,8 @@ export class BrushTrace {
   /**
    * Recursively walk the BSP tree for position testing, expanding by box
    * extents to visit all leaves the player box overlaps.
-   * @param {BrushModel} worldModel - world model
-   * @param {import('./model/BSP.mjs').Node} node - current node
-   * @param {Vector} position - test position
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @param {Vector} boundsMins - world-space test bounds minimum
-   * @param {Vector} boundsMaxs - world-space test bounds maximum
-   * @param {Vector} extents - absolute half-extents
-   * @param {boolean} isPoint - true if point trace
-   * @param {number} checkCount - dedup counter
-   * @returns {boolean} true if solid overlap found
    */
-  static _testPositionRecursive(worldModel, node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount) {
+  static _testPositionRecursive(worldModel: BrushModel, node: import('./model/BSP.mjs').Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, extents: Vector, isPoint: boolean, checkCount: number): boolean {
     if (node.mins !== null && node.mins !== undefined && node.maxs !== null && node.maxs !== undefined
       && !BrushTrace._boundsOverlap(boundsMins, boundsMaxs, node.mins, node.maxs)) {
       return false;
@@ -997,14 +1007,8 @@ export class BrushTrace {
    * Unlike boxTrace which walks the BSP tree, this tests every brush in the
    * submodel's range directly. Used for submodel entities (doors, plats, etc.)
    * whose brushes are NOT inserted into the world BSP leaf-brush index.
-   * @param {BrushModel} model - submodel with brush data (shared arrays from world)
-   * @param {Vector} start - start position (local to entity)
-   * @param {Vector} end - end position (local to entity)
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @returns {Trace} trace result
    */
-  static boxTraceModel(model, start, end, mins, maxs) {
+  static boxTraceModel(model: BrushModel, start: Vector, end: Vector, mins: Vector, maxs: Vector): Trace {
     const trace = new Trace();
 
     // Brute-force path: no BSP tree walk, so no leaf visits to clear allsolid.
@@ -1032,8 +1036,7 @@ export class BrushTrace {
     const totalMove = end.copy().subtract(start);
     const sweepBounds = BrushTrace._computeSweepBounds(start, end, mins, maxs);
 
-    /** @type {BrushTraceContext} */
-    const ctx = {
+    const ctx: BrushTraceContext = {
       worldModel: model,
       trace,
       mins,
@@ -1094,13 +1097,8 @@ export class BrushTrace {
    * Test if a player-sized box at position overlaps any solid brush in
    * a submodel's brush range (brute-force). Used for submodel entities
    * whose brushes are NOT in the BSP leaf-brush index.
-   * @param {BrushModel} model - submodel with brush data
-   * @param {Vector} position - position to test (local to entity)
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @returns {boolean} true if position is valid (not in solid)
    */
-  static testPositionModel(model, position, mins, maxs) {
+  static testPositionModel(model: BrushModel, position: Vector, mins: Vector, maxs: Vector): boolean {
     if (!model.brushes || model.numBrushes === 0) {
       return true;
     }
@@ -1138,17 +1136,8 @@ export class BrushTrace {
 
   /**
    * Test if a player-sized box overlaps any solid brush in a leaf.
-   * @param {BrushModel} worldModel - world model
-   * @param {import('./model/BSP.mjs').Node} leaf - leaf node
-   * @param {Vector} position - position to test
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @param {Vector} boundsMins - world-space test bounds minimum
-   * @param {Vector} boundsMaxs - world-space test bounds maximum
-   * @param {number} checkCount - dedup counter
-   * @returns {boolean} true if solid overlap found
    */
-  static _testLeafSolid(worldModel, leaf, position, mins, maxs, boundsMins, boundsMaxs, checkCount) {
+  static _testLeafSolid(worldModel: BrushModel, leaf: import('./model/BSP.mjs').Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, checkCount: number): boolean {
     const brushes = worldModel.brushes;
     const leafbrushes = worldModel.leafbrushes;
 
@@ -1192,14 +1181,8 @@ export class BrushTrace {
 
   /**
    * Test if a box at origin is inside a brush. Equivalent to Q2’s CM_TestBoxInBrush.
-   * @param {BrushModel} worldModel - world model
-   * @param {import('./model/BSP.mjs').Brush} brush - brush to test
-   * @param {Vector} position - box center position
-   * @param {Vector} mins - box mins
-   * @param {Vector} maxs - box maxs
-   * @returns {boolean} true if the box is inside the brush
    */
-  static _testBoxInBrush(worldModel, brush, position, mins, maxs) {
+  static _testBoxInBrush(worldModel: BrushModel, brush: import('./model/BSP.mjs').Brush, position: Vector, mins: Vector, maxs: Vector): boolean {
     const brushsides = worldModel.brushsides;
     const planes = worldModel.planes;
 
@@ -1234,23 +1217,14 @@ export class BrushTrace {
     return true;
   }
 
-  /** @type {Vector[]} */
-  static _midPool = Array.from({ length: 96 }, () => new Vector());
-  /** @type {Vector[]} */
-  static _mid2Pool = Array.from({ length: 96 }, () => new Vector());
+  static readonly _midPool: Vector[] = Array.from({ length: 96 }, () => new Vector());
+  static readonly _mid2Pool: Vector[] = Array.from({ length: 96 }, () => new Vector());
 
   /**
    * Recursively traverse the BSP node tree, expanding by trace extents.
    * At leaf nodes, test all brushes. Equivalent to Q2’s CM_RecursiveHullCheck.
-   * @param {BrushTraceContext} ctx - trace context
-   * @param {import('./model/BSP.mjs').Node} node - current BSP node (or leaf)
-   * @param {number} p1f - fraction at p1
-   * @param {number} p2f - fraction at p2
-   * @param {Vector} p1 - start of segment
-   * @param {Vector} p2 - end of segment
-   * @param {number} depth - recursion depth
    */
-  static _recursiveHullCheck(ctx, node, p1f, p2f, p1, p2, depth = 0) {
+  static _recursiveHullCheck(ctx: BrushTraceContext, node: import('./model/BSP.mjs').Node, p1f: number, p2f: number, p1: Vector, p2: Vector, depth: number = 0) {
     if (!BrushTrace._nodeMayAffectTrace(ctx, node)) {
       return;
     }
@@ -1346,10 +1320,8 @@ export class BrushTrace {
   /**
    * Test all brushes in a leaf against the current trace.
    * Equivalent to Q2’s CM_TraceToLeaf.
-   * @param {BrushTraceContext} ctx - trace context
-   * @param {import('./model/BSP.mjs').Node} leaf - leaf node
    */
-  static _traceToLeaf(ctx, leaf) {
+  static _traceToLeaf(ctx: BrushTraceContext, leaf: import('./model/BSP.mjs').Node) {
     // Q1 content classification for trace flags
     if (leaf.contents !== content.CONTENT_SOLID && leaf.contents !== content.CONTENT_SKY) {
       ctx.trace.allsolid = false;
@@ -1400,10 +1372,8 @@ export class BrushTrace {
   /**
    * Clip the trace against a single brush’s planes.
    * Equivalent to Q2’s CM_ClipBoxToBrush.
-   * @param {BrushTraceContext} ctx - trace context
-   * @param {import('./model/BSP.mjs').Brush} brush - brush to clip against
    */
-  static _clipBoxToBrush(ctx, brush) {
+  static _clipBoxToBrush(ctx: BrushTraceContext, brush: import('./model/BSP.mjs').Brush) {
     const brushsides = ctx.worldModel.brushsides;
     const planes = ctx.worldModel.planes;
     const moveDeltaX = ctx.end[0] - ctx.start[0];
@@ -1414,10 +1384,8 @@ export class BrushTrace {
 
     let enterfrac = -1;
     let leavefrac = 1;
-    /** @type {import('./model/BaseModel.mjs').Plane|null} */
-    let clipplane = null;
-    /** @type {import('./model/BaseModel.mjs').Plane|null} */
-    let tangentAxialPlane = null;
+    let clipplane: import('./model/BaseModel.mjs').Plane | null = null;
+    let tangentAxialPlane: import('./model/BaseModel.mjs').Plane | null = null;
     let tangentAxialMovesDeeper = false;
 
     let getout = false;
@@ -1538,12 +1506,12 @@ export class BrushTrace {
   /**
    * Convert a world-space point into local model space using the inverse of a
    * rigid transform represented by origin plus orthonormal basis rows.
-   * @param {Vector} point - world-space point
-   * @param {Vector} origin - transform origin
-   * @param {number[]} basis - 3x3 rotation matrix from Vector.toRotationMatrix()
-   * @returns {Vector} point in local space
+   * @param point - world-space point
+   * @param origin - transform origin
+   * @param basis - 3x3 rotation matrix from Vector.toRotationMatrix()
+   * @returns point in local model space
    */
-  static _transformPointToLocal(point, origin, basis) {
+  static _transformPointToLocal(point: Vector, origin: Vector, basis: number[]): Vector {
     const delta = point.copy().subtract(origin);
     const forward = new Vector(basis[0], basis[1], basis[2]);
     const right = new Vector(basis[3], basis[4], basis[5]);
@@ -1558,12 +1526,12 @@ export class BrushTrace {
 
   /**
    * Convert a local-space point into world space using origin plus basis rows.
-   * @param {Vector} point - local-space point
-   * @param {Vector} origin - transform origin
-   * @param {number[]} basis - 3x3 rotation matrix from Vector.toRotationMatrix()
-   * @returns {Vector} point in world space
+   * @param point - local-space point
+   * @param origin - transform origin
+   * @param basis - 3x3 rotation matrix from Vector.toRotationMatrix()
+   * @returns point in world space
    */
-  static _transformPointToWorld(point, origin, basis) {
+  static _transformPointToWorld(point: Vector, origin: Vector, basis: number[]): Vector {
     const forward = new Vector(basis[0], basis[1], basis[2]);
     const right = new Vector(basis[3], basis[4], basis[5]);
     const up = new Vector(basis[6], basis[7], basis[8]);
@@ -1576,11 +1544,11 @@ export class BrushTrace {
 
   /**
    * Rotate a local-space plane normal into world space.
-   * @param {Vector} normal - local-space normal
-   * @param {number[]} basis - 3x3 rotation matrix from Vector.toRotationMatrix()
-   * @returns {Vector} world-space normal
+   * @param normal - local-space normal
+   * @param basis - 3x3 rotation matrix from Vector.toRotationMatrix()
+   * @returns world-space normal
    */
-  static _transformNormalToWorld(normal, basis) {
+  static _transformNormalToWorld(normal: Vector, basis: number[]): Vector {
     const forward = new Vector(basis[0], basis[1], basis[2]);
     const right = new Vector(basis[3], basis[4], basis[5]);
     const up = new Vector(basis[6], basis[7], basis[8]);
@@ -1592,11 +1560,11 @@ export class BrushTrace {
 
   /**
    * Convert a local-space trace result back into world space.
-   * @param {Trace} localTrace - local-space trace result
-   * @param {{origin: Vector, basis: number[]|null}|null} transform - entity transform context
-   * @returns {Trace} world-space trace result
+   * @param localTrace - local-space trace result
+   * @param transform - entity transform context
+   * @returns world-space trace result
    */
-  static _transformTraceToWorld(localTrace, transform) {
+  static _transformTraceToWorld(localTrace: Trace, transform: BrushTraceTransform): Trace {
     if (transform === null) {
       return localTrace;
     }
@@ -1616,102 +1584,101 @@ export class BrushTrace {
   }
 }
 
-/**
- * @typedef {object} BrushTraceContext
- * @property {BrushModel} worldModel - world model with BSP data
- * @property {Trace} trace - trace result being accumulated
- * @property {Vector} mins - player box mins
- * @property {Vector} maxs - player box maxs
- * @property {boolean} isPoint - true if mins/maxs are zero (point trace)
- * @property {Vector} extents - absolute half-extents of the player box
- * @property {Vector} start - trace start position
- * @property {Vector} end - trace end position
- * @property {Vector} totalMove - end minus start
- * @property {Vector} sweepMins - swept move bounding box minimum
- * @property {Vector} sweepMaxs - swept move bounding box maximum
- * @property {number} checkCount - dedup counter for brush testing
- */
+interface BrushTraceContext {
+  readonly worldModel: BrushModel;
+  readonly trace: Trace;
+  readonly mins: Vector;
+  readonly maxs: Vector;
+  readonly isPoint: boolean;
+  readonly extents: Vector;
+  readonly start: Vector;
+  readonly end: Vector;
+  readonly totalMove: Vector;
+  readonly sweepMins: Vector;
+  readonly sweepMaxs: Vector;
+  readonly checkCount: number;
+}
+
 
 // ---------------------------------------------------------------------------
 // PhysEnt: a physics entity stored in the Pmove world
 // ---------------------------------------------------------------------------
 
 export class PhysEnt { // physent_t
+  /** Legacy Q1 hulls used when brush tracing is unavailable. */
+  hulls: Hull[];
+  /** Entity origin in world space. */
+  origin: Vector;
+  /** Entity rotation used for transformed brush traces. */
+  angles: Vector;
+  /** Local bounding-box minimums for non-BSP entities. */
+  mins: Vector;
+  /** Local bounding-box maximums for non-BSP entities. */
+  maxs: Vector;
+  /** Owning edict index when this physent maps back to game state. */
+  edictId: number | null;
+  /** Shared world brush model used for Q2-style brush tracing. */
+  brushWorldModel: BrushModel | null;
+  /** BSP node root used when tracing against the world brush model. */
+  brushHeadNode: number;
+  /** Submodel brush range used for brute-force submodel tracing. */
+  brushModel: BrushModel | null;
+  readonly #pmoveRef: WeakRef<Pmove>;
+
   /**
-   * @param {Pmove} pmove parent pmove instance
+   * @param pmove - parent pmove instance
    */
-  constructor(pmove) {
-    /** only for bsp models (legacy Q1 hull-based collision) @type {Hull[]} */
+  constructor(pmove: Pmove) {
     this.hulls = [];
-    /** origin */
     this.origin = new Vector();
-    /** angles for transformed brush collision */
     this.angles = new Vector();
-    /** only for non-bsp models */
     this.mins = new Vector();
-    /** only for non-bsp models */
     this.maxs = new Vector();
-    /** actual edict index, used to map back to edicts @type {?number} */
     this.edictId = null;
 
-    /**
-     * Reference to the world model for brush-based collision.
-     * The world model owns nodes, leafs, planes, brushes, brushsides, leafbrushes.
-     * Submodels reference the same world model (shared BSP tree).
-     * @type {BrushModel|null}
-     */
     this.brushWorldModel = null;
 
-    /**
-     * BSP node index for brush collision traversal root.
-     * For the world entity this is the world headnode.
-     * Not used for submodel entities (they use brute-force brush testing).
-     * @type {number}
-     */
     this.brushHeadNode = -1;
 
-    /**
-     * Submodel reference for brute-force brush collision.
-     * Set for submodel entities (doors, plats, etc.) whose brushes are
-     * NOT in the BSP leaf-brush index. When set, tracing iterates this
-     * model's firstBrush..firstBrush+numBrushes directly.
-     * Null for the world entity (which uses BSP tree walk via brushHeadNode).
-     * @type {BrushModel|null}
-     */
     this.brushModel = null;
 
-    /** @type {WeakRef<Pmove>} @private */
-    this._pmove_wf = new WeakRef(pmove);
+    this.#pmoveRef = new WeakRef(pmove);
   }
 
-  /** @returns {Pmove} pmove @private */
-  get _pmove() {
-    return this._pmove_wf.deref();
+  /** Parent Pmove instance. */
+  get _pmove(): Pmove {
+    const pmove = this.#pmoveRef.deref();
+
+    if (pmove === undefined) {
+      throw new Error('PhysEnt parent Pmove was released');
+    }
+
+    return pmove;
   }
 
   /**
    * Whether this entity uses brush-based collision (Q2-style).
    * When false, falls back to legacy hull-based collision (Q1-style).
-   * @returns {boolean} true if brush-based collision is available
+   * @returns true when brush-based collision is available
    */
-  get usesBrushTracing() {
+  get usesBrushTracing(): boolean {
     return this.brushWorldModel !== null && this.brushWorldModel.hasBrushData;
   }
 
   /**
    * Active brush collision model: submodels use their own brush range, world uses the world model.
-   * @returns {BrushModel} brush model to trace against
+   * @returns brush model to trace against
    */
-  get brushCollisionModel() {
+  get brushCollisionModel(): BrushModel | null {
     return this.brushModel ?? this.brushWorldModel;
   }
 
   /**
    * Emit nearby blocking brushes around a debug position when brush and hull comparisons disagree.
-   * @param {Vector} position world-space position to inspect
-   * @param {string} label debug label for the sampled position
+   * @param position - world-space position to inspect
+   * @param label - debug label for the sampled position
    */
-  _debugLogNearbyBlockingBrushes(position, label) {
+  _debugLogNearbyBlockingBrushes(position: Vector, label: string) {
     const model = this.brushCollisionModel;
     const brushes = model?.brushes;
     const planes = model?.planes;
@@ -1723,8 +1690,7 @@ export class PhysEnt { // physent_t
 
     const firstBrush = model.firstBrush ?? 0;
     const lastBrush = firstBrush + (model.numBrushes ?? brushes.length);
-    /** @type {{ index: number, contents: number, numsides: number, nearestPlaneDistance: number, touchingPlanes: number, mins: Vector, maxs: Vector, sideSummaries: string[] }[]} */
-    const candidates = [];
+    const candidates: NearbyBrushCandidate[] = [];
 
     for (let brushIndex = firstBrush; brushIndex < lastBrush; brushIndex++) {
       const brush = brushes[brushIndex];
@@ -1752,8 +1718,7 @@ export class PhysEnt { // physent_t
 
       let nearestPlaneDistance = Number.POSITIVE_INFINITY;
       let touchingPlanes = 0;
-      /** @type {{ distance: number, summary: string }[]} */
-      const sideSummaries = [];
+      const sideSummaries: NearbyBrushSideSummary[] = [];
 
       for (let sideIndex = 0; sideIndex < brush.numsides; sideIndex++) {
         const side = brushsides[brush.firstside + sideIndex];
@@ -1816,10 +1781,10 @@ export class PhysEnt { // physent_t
    * they sit exactly tangent to an axial wall plane. Legacy BSP hull point
    * contents treats that pose as solid, which causes the tiny separating nudge
    * seen in hull-backed maps before movement begins.
-   * @param {Vector} position world-space position to inspect
-   * @returns {boolean} true when the position would become solid if axial wall tangency counted as overlap
+   * @param position - world-space position to inspect
+   * @returns true when hull-style tangency should still count as blocked
    */
-  _brushPositionNeedsHullTangentFallback(position) {
+  _brushPositionNeedsHullTangentFallback(position: Vector): boolean {
     const model = this.brushCollisionModel;
     const brushes = model?.brushes;
     const planes = model?.planes;
@@ -1901,18 +1866,18 @@ export class PhysEnt { // physent_t
 
   /**
    * Legacy hull comparisons are only meaningful for axis-aligned brush traces.
-   * @returns {boolean} true if brush-vs-hull debug comparison is valid
+   * @returns true when brush-vs-hull debug comparisons are valid
    */
-  get canCompareBrushAgainstHull() {
+  get canCompareBrushAgainstHull(): boolean {
     return this.hulls.length > 0 && this.angles.isOrigin();
   }
 
   /**
    * Legacy hull comparisons are only meaningful for axial contact planes.
-   * @param {Vector} normal candidate contact normal
-   * @returns {boolean} true when the normal is axis-aligned
+   * @param normal - candidate contact normal
+   * @returns true when the normal is axis-aligned
    */
-  static _isAxialNormal(normal) {
+  static _isAxialNormal(normal: Vector): boolean {
     const ax = Math.abs(normal[0]);
     const ay = Math.abs(normal[1]);
     const az = Math.abs(normal[2]);
@@ -1924,11 +1889,11 @@ export class PhysEnt { // physent_t
 
   /**
    * Convert a point into this physent's legacy hull space.
-   * @param {Vector} point point in world space
-   * @param {Vector|null} scratch scratch vector to reuse, or null to allocate
-   * @returns {Vector} point in local hull space
+   * @param point - point in world space
+   * @param scratch - optional scratch vector to reuse
+   * @returns point in local hull space
    */
-  toHullSpace(point, scratch = null) {
+  toHullSpace(point: Vector, scratch: Vector | null = null): Vector {
     const localPoint = scratch ?? point.copy();
     return localPoint.set(point).subtract(this.origin);
   }
@@ -1936,11 +1901,11 @@ export class PhysEnt { // physent_t
   /**
    * Convert a point into the collision space expected by this physent.
    * Brush traces operate in world space; legacy hull traces use local space.
-   * @param {Vector} point point in world space
-   * @param {Vector|null} scratch scratch vector to reuse for hull traces
-   * @returns {Vector} point in the collision space expected by the active path
+   * @param point - point in world space
+   * @param scratch - optional scratch vector for hull conversion
+   * @returns point in the active collision space
    */
-  toCollisionSpace(point, scratch = null) {
+  toCollisionSpace(point: Vector, scratch: Vector | null = null): Vector {
     if (this.usesBrushTracing) {
       return point;
     }
@@ -1950,11 +1915,11 @@ export class PhysEnt { // physent_t
 
   /**
    * Convert a point from this physent's collision space back to world space.
-   * @param {Vector} point point in collision space
-   * @param {Vector|null} scratch scratch vector to reuse for hull traces
-   * @returns {Vector} point in world space
+   * @param point - point in collision space
+   * @param scratch - optional scratch vector for hull conversion
+   * @returns point in world space
    */
-  toWorldSpace(point, scratch = null) {
+  toWorldSpace(point: Vector, scratch: Vector | null = null): Vector {
     if (this.usesBrushTracing) {
       return point;
     }
@@ -1963,15 +1928,15 @@ export class PhysEnt { // physent_t
     return worldPoint.set(point).add(this.origin);
   }
 
-  #hullMinsScratch = new Vector();
-  #hullMaxsScratch = new Vector();
+  readonly #hullMinsScratch = new Vector();
+  readonly #hullMaxsScratch = new Vector();
 
   /**
    * Returns clipping hull for this entity (legacy Q1 hull-based path).
    * NOTE: This is not async/wait safe, since it will modify pmove’s boxHull in-place.
-   * @returns {Hull} hull
+   * @returns hull used for legacy player traces
    */
-  getClippingHull() {
+  getClippingHull(): Hull {
     if (this.hulls.length > 0) {
       return this.hulls[1]; // player hull
     }
@@ -1986,11 +1951,11 @@ export class PhysEnt { // physent_t
    * Trace a player-sized box from start to end using the appropriate collision method.
    * For brush-based entities, uses Q2-style brush tracing.
    * For hull-based entities, uses Q1-style hull tracing.
-   * @param {Vector} start world-space start position
-   * @param {Vector} end world-space end position
-   * @returns {Trace} trace result
+   * @param start - world-space start position
+   * @param end - world-space end position
+   * @returns trace result for this physent
    */
-  tracePlayerMove(start, end) {
+  tracePlayerMove(start: Vector, end: Vector): Trace {
     const traceStart = this.toCollisionSpace(start);
     const traceEnd = this.toCollisionSpace(end);
 
@@ -2068,10 +2033,10 @@ export class PhysEnt { // physent_t
 
   /**
    * Test if a player-sized box at position is inside solid.
-   * @param {Vector} position world-space position to test
-   * @returns {boolean} true if position is valid (not in solid)
+   * @param position - world-space position to test
+   * @returns true when the position is valid and not in solid
    */
-  testPlayerPosition(position) {
+  testPlayerPosition(position: Vector): boolean {
     if (this.usesBrushTracing) {
       const brushResult = BrushTrace.transformedTestPosition(
         this.brushCollisionModel,
@@ -2177,7 +2142,7 @@ export class PhysEnt { // physent_t
   }
 
   // CR: we can add getClippingHullCrouch() for BSP30 hulls here later
-};
+}
 
 // ---------------------------------------------------------------------------
 // PmovePlayer: the core player movement simulation
@@ -2207,74 +2172,100 @@ export class PhysEnt { // physent_t
  * it back after.
  */
 export class PmovePlayer { // pmove_t (player state only)
-  /** @type {boolean} enables verbose movement debugging */
-  static get DEBUG() {
+  /** Frame time derived from the current user command. */
+  frametime: number;
+  /** Water depth from 0 to 3. */
+  waterlevel: number;
+  /** Current water contents value. */
+  watertype: number;
+  /** Ground physent index, or null while airborne. */
+  onground: number | null;
+  /** Player origin in world space. */
+  origin: Vector;
+  /** Player velocity in world units per second. */
+  velocity: Vector;
+  /** Resolved view angles used for movement. */
+  angles: Vector;
+  /** Current movement mode. */
+  pmType: PM_TYPE;
+  /** Player movement flags bitmask. */
+  pmFlags: number;
+  /** Timing counter for landing, teleport, and water-jump states. */
+  pmTime: number;
+  /** View height offset from the origin. */
+  viewheight: number;
+  /** Previous frame button state for edge-triggered input. */
+  oldbuttons: number;
+  /** Quake 1 water-jump timer compatibility field. */
+  waterjumptime: number;
+  /** Backwards-compatible spectator flag. */
+  spectator: boolean;
+  /** Backwards-compatible dead-player flag. */
+  dead: boolean;
+  /** Current input command being simulated. */
+  cmd: Protocol.UserCmd;
+  /** Physent indices touched during this frame. */
+  touchindices: number[];
+  /** Whether the player is on a ladder this frame. */
+  _ladder: boolean;
+  /** Cached angle vectors for the current view angles. */
+  _angleVectors: DirectionalVectors | null;
+  readonly #pmoveRef: WeakRef<Pmove>;
+
+  /** Enables verbose movement debugging. */
+  static get DEBUG(): boolean {
     return (Pmove.debug?.value ?? 0) !== 0;
   }
 
   /**
-   * @param {Pmove} pmove pmove instance (world + physents)
+   * @param pmove - pmove instance containing world collision state
    */
-  constructor(pmove) {
+  constructor(pmove: Pmove) {
     // --- Public state (read/write by caller) ---
 
-    /** @type {number} computed from cmd.msec */
     this.frametime = 0;
-    /** @type {number} 0-3 water depth */
     this.waterlevel = 0;
-    /** @type {number} content type of water */
     this.watertype = 0;
 
-    /** @type {?number} ground edict number; null if airborne */
     this.onground = null;
 
-    /** @type {Vector} player position (full float precision) */
     this.origin = new Vector();
-    /** @type {Vector} player velocity (full float precision) */
     this.velocity = new Vector();
-    /** @type {Vector} resolved view angles */
     this.angles = new Vector();
 
-    /** @type {number} movement type (PM_TYPE enum) */
     this.pmType = PM_TYPE.NORMAL;
-    /** @type {number} PM flag bitmask (PMF enum) */
     this.pmFlags = 0;
-    /** @type {number} timing counter for special states (in msec/8 units) */
     this.pmTime = 0;
 
-    /** @type {number} view height offset from origin */
     this.viewheight = 22;
 
-    /** @type {number} remembered old buttons for edge detection */
     this.oldbuttons = 0;
-    /** @type {number} Q1 compat, waterjump time remaining */
     this.waterjumptime = 0.0;
-    /** @type {boolean} backwards compat flag */
     this.spectator = false;
-    /** @type {boolean} backwards compat flag */
     this.dead = false;
 
-    /** @type {Protocol.UserCmd} input command */
     this.cmd = new Protocol.UserCmd();
 
-    /** @type {number[]} list of touched edict numbers */
     this.touchindices = [];
 
     // --- Private ---
 
-    /** @type {boolean} whether we are on a ladder this frame */
     this._ladder = false;
 
-    /** @type {DirectionalVectors} cached angle vectors @private */
     this._angleVectors = null;
 
-    /** @type {WeakRef<Pmove>} @private */
-    this._pmove_wf = new WeakRef(pmove);
+    this.#pmoveRef = new WeakRef(pmove);
   }
 
-  /** @returns {Pmove} parent Pmove instance @private */
-  get _pmove() {
-    return this._pmove_wf.deref();
+  /** Parent Pmove instance. */
+  get _pmove(): Pmove {
+    const pmove = this.#pmoveRef.deref();
+
+    if (pmove === undefined) {
+      throw new Error('PmovePlayer parent Pmove was released');
+    }
+
+    return pmove;
   }
 
   // =========================================================================
@@ -2761,12 +2752,12 @@ export class PmovePlayer { // pmove_t (player state only)
 
   /**
    * Slide off of the impacting surface.
-   * @param {Vector} veloIn input velocity
-   * @param {Vector} normal surface normal
-   * @param {Vector} veloOut output velocity (may alias veloIn)
-   * @param {number} overbounce overbounce factor (Q1: 1.0, Q2: 1.01)
+   * @param veloIn - input velocity
+   * @param normal - surface normal
+   * @param veloOut - output velocity, which may alias the input
+   * @param overbounce - overbounce factor used by Quake movement
    */
-  _clipVelocity(veloIn, normal, veloOut, overbounce) { // Q2: PM_ClipVelocity
+  _clipVelocity(veloIn: Vector, normal: Vector, veloOut: Vector, overbounce: number) { // Q2: PM_ClipVelocity
     const backoff = veloIn.dot(normal) * overbounce;
 
     for (let i = 0; i < 3; i++) {
@@ -2784,11 +2775,11 @@ export class PmovePlayer { // pmove_t (player state only)
 
   /**
    * Ground/water acceleration.
-   * @param {Vector} wishdir desired direction (unit vector)
-   * @param {number} wishspeed desired speed
-   * @param {number} accel acceleration factor
+   * @param wishdir - desired movement direction as a unit vector
+   * @param wishspeed - desired movement speed
+   * @param accel - acceleration factor to apply this frame
    */
-  _accelerate(wishdir, wishspeed, accel) { // Q2: PM_Accelerate
+  _accelerate(wishdir: Vector, wishspeed: number, accel: number) { // Q2: PM_Accelerate
     const currentspeed = this.velocity.dot(wishdir);
     let addspeed = wishspeed - currentspeed;
     if (addspeed <= 0) {
@@ -2809,11 +2800,11 @@ export class PmovePlayer { // pmove_t (player state only)
    * Air acceleration, preserves the Q1/Q2 air-strafe mechanic.
    * wishspeed is capped at 30 for the addspeed check, but the uncapped
    * value is used for accelspeed. This allows bunny-hopping.
-   * @param {Vector} wishdir desired direction (unit vector)
-   * @param {number} wishspeed desired speed (uncapped)
-   * @param {number} accel acceleration factor
+   * @param wishdir - desired movement direction as a unit vector
+   * @param wishspeed - uncapped desired movement speed
+   * @param accel - acceleration factor to apply this frame
    */
-  _airAccelerate(wishdir, wishspeed, accel) { // Q2: PM_AirAccelerate
+  _airAccelerate(wishdir: Vector, wishspeed: number, accel: number) { // Q2: PM_AirAccelerate
     let wishspd = wishspeed;
     if (wishspd > 30) {
       wishspd = 30;
@@ -2841,24 +2832,24 @@ export class PmovePlayer { // pmove_t (player state only)
   // =========================================================================
 
   // --- Scratch Vectors for _slideMove ---
-  #slideOriginalVelocity = new Vector();
-  #slidePrimalVelocity = new Vector();
-  #slideEnd = new Vector();
-  #slideClipVelocity = new Vector();
-  #slideCreaseDir = new Vector();
-  #slidePlanes = Array.from({ length: MAX_CLIP_PLANES }, () => new Vector());
+  readonly #slideOriginalVelocity = new Vector();
+  readonly #slidePrimalVelocity = new Vector();
+  readonly #slideEnd = new Vector();
+  readonly #slideClipVelocity = new Vector();
+  readonly #slideCreaseDir = new Vector();
+  readonly #slidePlanes = Array.from({ length: MAX_CLIP_PLANES }, () => new Vector());
 
   /**
    * Brush bevels can report a second zero-progress hit whose normal only
    * differs slightly from the wall we already clipped against. Treat that as a
    * duplicate plane so we keep sliding instead of manufacturing a bogus crease.
-   * @param {Vector} normal candidate collision plane normal
-   * @param {number} planeCount number of existing clip planes
-   * @param {Vector[]} planes existing clip planes
-   * @param {number} fraction trace fraction for the candidate hit
-   * @returns {boolean} true when the candidate plane should be collapsed into an existing one
+   * @param normal - candidate collision plane normal
+   * @param planeCount - number of existing slide planes
+   * @param planes - accumulated slide plane normals
+   * @param fraction - trace fraction for the candidate collision
+   * @returns true when the candidate plane should be merged into an existing one
    */
-  _isDuplicateSlidePlane(normal, planeCount, planes, fraction) {
+  _isDuplicateSlidePlane(normal: Vector, planeCount: number, planes: Vector[], fraction: number): boolean {
     const duplicateDot = fraction === 0.0 ? ZERO_PROGRESS_DUPLICATE_DOT : 0.99;
 
     for (let i = 0; i < planeCount; i++) {
@@ -2873,9 +2864,8 @@ export class PmovePlayer { // pmove_t (player state only)
   /**
    * The basic solid body movement clip that slides along multiple planes.
    * This is the inner loop, it does NOT attempt step-up.
-   * @returns {boolean} True when movement hit a blocking plane and required clipping.
    */
-  _slideMove() { // Q1: SV_FlyMove / Q2: PM_StepSlideMove_
+  _slideMove(): boolean { // Q1: SV_FlyMove / Q2: PM_StepSlideMove_
     const _dbg = PmovePlayer.DEBUG;
     const _dbgStartOrigin = _dbg ? this.origin.copy() : null;
     const _dbgStartVelocity = _dbg ? this.velocity.copy() : null;
@@ -2887,8 +2877,7 @@ export class PmovePlayer { // pmove_t (player state only)
     // against the same BSP hull plane with the 1.01 overbounce factor.
     const originalVelocity = this.#slideOriginalVelocity.set(this.velocity);
     let numplanes = 0;
-    /** @type {Vector[]} */
-    const planes = this.#slidePlanes;
+    const planes: Vector[] = this.#slidePlanes;
     let timeLeft = this.frametime;
     const end = this.#slideEnd;
     const clipVelocity = this.#slideClipVelocity;
@@ -3030,20 +3019,20 @@ export class PmovePlayer { // pmove_t (player state only)
   // =========================================================================
 
   // --- Scratch Vectors for _stepSlideMove ---
-  #stepStartOrigin = new Vector();
-  #stepStartVelocity = new Vector();
-  #stepDownOrigin = new Vector();
-  #stepDownVelocity = new Vector();
-  #stepUpOrigin = new Vector();
-  #stepStickTarget = new Vector();
-  #stepUp = new Vector();
-  #stepDown = new Vector();
+  readonly #stepStartOrigin = new Vector();
+  readonly #stepStartVelocity = new Vector();
+  readonly #stepDownOrigin = new Vector();
+  readonly #stepDownVelocity = new Vector();
+  readonly #stepUpOrigin = new Vector();
+  readonly #stepStickTarget = new Vector();
+  readonly #stepUp = new Vector();
+  readonly #stepDown = new Vector();
 
-  /**
-   * Each intersection will try to step over the obstruction instead of
-   * sliding along it. This calls _slideMove twice: once without step-up,
-   * once with step-up, and picks whichever went farther horizontally.
-   */
+/**
+ * Each intersection will try to step over the obstruction instead of
+ * sliding along it. This calls _slideMove twice: once without step-up,
+ * once with step-up, and picks whichever went farther horizontally.
+ */
   _stepSlideMove() { // Q2: PM_StepSlideMove
     const startOrigin = this.#stepStartOrigin.set(this.origin);
     const startVelocity = this.#stepStartVelocity.set(this.velocity);
@@ -3300,10 +3289,10 @@ export class PmovePlayer { // pmove_t (player state only)
     this._slideMove();
   }
 
-  /**
-   * Fly/spectator movement - noclip with friction.
-   * Can be called by spectators or noclip modes.
-   */
+/**
+ * Fly/spectator movement - noclip with friction.
+ * Can be called by spectators or noclip modes.
+ */
   _flyMove() { // Q2: PM_FlyMove
     this.viewheight = 22; // TODO: config
 
@@ -3376,10 +3365,10 @@ export class PmovePlayer { // pmove_t (player state only)
   // Position snapping / nudging
   // =========================================================================
 
-  /**
-   * Quantize position to 1/8 unit precision for network transmission
-   * and nudge into a valid position.
-   */
+/**
+ * Quantize position to 1/8 unit precision for network transmission
+ * and nudge into a valid position.
+ */
   _snapPosition() { // Q2: PM_SnapPosition
     // snap velocity to 1/8 unit precision (see SzBuffer)
     for (let i = 0; i < 3; i++) {
@@ -3421,11 +3410,11 @@ export class PmovePlayer { // pmove_t (player state only)
     this.origin.set(base);
   }
 
-  /**
-   * If pmove.origin is in a solid position,
-   * try nudging slightly on all axes to
-   * allow for the cut precision of the net coordinates.
-   */
+/**
+ * If pmove.origin is in a solid position,
+ * try nudging slightly on all axes to
+ * allow for the cut precision of the net coordinates.
+ */
   _nudgePosition() { // Q2: PM_InitialSnapPosition / QW: NudgePosition
     const offsets = [0, -1, 1];
     const base = this.origin.copy();
@@ -3449,7 +3438,7 @@ export class PmovePlayer { // pmove_t (player state only)
     }
     this.origin.set(base);
   }
-};
+}
 
 // ---------------------------------------------------------------------------
 // Pmove: the world container (physents, collision infrastructure)
@@ -3470,13 +3459,21 @@ export class Pmove { // pmove_t
 
   static MAX_CLIP_PLANES = MAX_CLIP_PLANES;
 
-  static PLAYER_MINS = new Vector(-16.0, -16.0, -24.0);
-  static PLAYER_MAXS = new Vector(16.0, 16.0, 32.0);
+  static readonly PLAYER_MINS = new Vector(-16.0, -16.0, -24.0);
+  static readonly PLAYER_MAXS = new Vector(16.0, 16.0, 32.0);
 
-  static MAX_PHYSENTS = 32;
+  static readonly MAX_PHYSENTS = 32;
 
-  /** @type {Cvar} */
-  static debug = null;
+  static debug: Cvar | null = null;
+
+  /** Runtime configuration shared by client and server movement. */
+  configuration = new PmoveConfiguration();
+  /** Physics entities, with index 0 reserved for the static world. */
+  physents: PhysEnt[] = [];
+  /** Reusable box hull for non-BSP entity collision. */
+  boxHull = new BoxHull();
+  /** Movement tuning variables shared by simulated players. */
+  movevars = new MoveVars();
 
   static Init() {
     Pmove.debug = new Cvar('pm_debug', '0', Cvar.FLAG.NONE, 'pmove debug output');
@@ -3487,23 +3484,15 @@ export class Pmove { // pmove_t
     Pmove.debug = null;
   }
 
-  /** @type {PmoveConfiguration} parameters for certain checks */
-  configuration = new PmoveConfiguration();
-
-  /** @type {PhysEnt[]} 0 - world */
-  physents = [];
-  boxHull = new BoxHull();
-  movevars = new MoveVars();
-
-  /** @type {Map<string, Hull[]>} cache for pm hulls from mod hulls */
-  #modelHullsCache = new Map();
+  /** Cache for cloned model hulls keyed by model name. */
+  readonly #modelHullsCache = new Map<string, Hull[]>();
 
   /**
    * Normalize static-world contents values so current volumes behave like water.
-   * @param {number} contents raw contents value
-   * @returns {number} normalized static-world contents value
+   * @param contents - raw contents value from the collision backend
+   * @returns normalized static-world contents value
    */
-  _normalizeStaticWorldContents(contents) {
+  _normalizeStaticWorldContents(contents: number): number {
     if ((contents <= content.CONTENT_CURRENT_0) && (contents >= content.CONTENT_CURRENT_DOWN)) {
       return content.CONTENT_WATER;
     }
@@ -3513,11 +3502,11 @@ export class Pmove { // pmove_t
 
   /**
    * Sample brush-backed static-world contents without exposing BSP details to callers.
-   * @param {PhysEnt} worldPhysEnt world physent
-   * @param {Vector} point position to sample
-   * @returns {number} static-world contents value
+   * @param worldPhysEnt - world physent holding the active brush model
+   * @param point - world-space position to sample
+   * @returns static-world contents value
    */
-  _pointContentsBrushStaticWorld(worldPhysEnt, point) {
+  _pointContentsBrushStaticWorld(worldPhysEnt: PhysEnt, point: Vector): number {
     console.assert(worldPhysEnt.brushWorldModel instanceof BrushModel, 'world brush model');
 
     if (!BrushTrace.transformedTestPosition(
@@ -3538,10 +3527,10 @@ export class Pmove { // pmove_t
    * Sample static-world contents using the active world collision backend.
    * This queries the world physent only; dynamic entities and BSP submodels are
    * not included here.
-   * @param {Vector} point position to sample
-   * @returns {number} static-world contents value
+   * @param point - world-space position to sample
+   * @returns static-world contents value
    */
-  staticWorldContents(point) {
+  staticWorldContents(point: Vector): number {
     console.assert(this.physents[0] instanceof PhysEnt, 'world physent');
 
     const worldPhysEnt = this.physents[0];
@@ -3558,31 +3547,31 @@ export class Pmove { // pmove_t
 
   /**
    * Compatibility alias for staticWorldContents.
-   * @param {Vector} point position to sample
-   * @returns {number} static-world contents value
+   * @param point - world-space position to sample
+   * @returns static-world contents value
    */
-  worldContents(point) {
+  worldContents(point: Vector): number {
     return this.staticWorldContents(point);
   }
 
   /**
    * Compatibility alias for staticWorldContents.
-   * @param {Vector} point position to sample
-   * @returns {number} static-world contents value
+   * @param point - world-space position to sample
+   * @returns static-world contents value
    */
-  pointContents(point) {
+  pointContents(point: Vector): number {
     return this.staticWorldContents(point);
   }
 
   /**
    * Normalize a player-move trace so startsolid results stop at the start point.
-   * @param {Trace} trace trace to normalize
-   * @param {Vector} start trace start position
-   * @param {number} physEntIndex physent index for debug logging
-   * @param {PhysEnt} physEnt physent that produced the trace
-   * @returns {Trace} normalized trace
+   * @param trace - trace to normalize in place
+   * @param start - original trace start position
+   * @param physEntIndex - physent index used for debug logging
+   * @param physEnt - physent that produced the trace
+   * @returns normalized trace
    */
-  _finalizePlayerMoveTrace(trace, start, physEntIndex, physEnt) {
+  _finalizePlayerMoveTrace(trace: Trace, start: Vector, physEntIndex: number, physEnt: PhysEnt): Trace {
     if (trace.allsolid) {
       trace.startsolid = true;
     }
@@ -3602,11 +3591,11 @@ export class Pmove { // pmove_t
    * Trace a player-sized move against the static world only.
    * Dynamic entities and BSP submodels owned by separate physents are not
    * included here.
-   * @param {Vector} start starting point
-   * @param {Vector} end end point (e.g. start + velocity * frametime)
-   * @returns {Trace} trace object against the world physent only
+   * @param start - starting point
+   * @param end - end point, usually start plus velocity times frame time
+   * @returns trace against the world physent only
    */
-  traceStaticWorldPlayerMove(start, end) {
+  traceStaticWorldPlayerMove(start: Vector, end: Vector): Trace {
     console.assert(!Number.isNaN(start[0]) && !Number.isNaN(start[1]) && !Number.isNaN(start[2]), 'NaN start');
     console.assert(!Number.isNaN(end[0]) && !Number.isNaN(end[1]) && !Number.isNaN(end[2]), 'NaN end');
     console.assert(this.physents[0] instanceof PhysEnt, 'world physent');
@@ -3621,13 +3610,14 @@ export class Pmove { // pmove_t
     return this._finalizePlayerMoveTrace(trace, start, 0, worldPhysEnt);
   }
 
-  #validPosTestScratch = new Vector();
+  readonly #validPosTestScratch = new Vector();
 
   /**
-   * @param {Vector} position player’s origin
-   * @returns {boolean} Returns false if the given player position is not valid (in solid)
+   * Check whether a player-sized box can occupy the given world-space position.
+   * @param position - player origin to validate
+   * @returns true when no physent blocks the position
    */
-  isValidPlayerPosition(position) {
+  isValidPlayerPosition(position: Vector): boolean {
     for (let i = 0; i < this.physents.length; i++) {
       const pe = this.physents[i];
 
@@ -3653,11 +3643,11 @@ export class Pmove { // pmove_t
 
   /**
    * Attempts to move the player from start to end.
-   * @param {Vector} start starting point
-   * @param {Vector} end end point (e.g. start + velocity * frametime)
-   * @returns {Trace} trace object
+   * @param start - starting point
+   * @param end - end point, usually start plus velocity times frame time
+   * @returns earliest blocking trace across all physents
    */
-  clipPlayerMove(start, end) {
+  clipPlayerMove(start: Vector, end: Vector): Trace {
     console.assert(!Number.isNaN(start[0]) && !Number.isNaN(start[1]) && !Number.isNaN(start[2]), 'NaN start');
     console.assert(!Number.isNaN(end[0]) && !Number.isNaN(end[1]) && !Number.isNaN(end[2]), 'NaN end');
 
@@ -3710,10 +3700,10 @@ export class Pmove { // pmove_t
   /**
    * Sets worldmodel.
    * This will automatically reset all physents.
-   * @param {BrushModel} model worldmodel
-   * @returns {Pmove} this
+   * @param model - world brush model to use as physent zero
+   * @returns this pmove instance
    */
-  setWorldmodel(model) {
+  setWorldmodel(model: BrushModel): Pmove {
     console.assert(model instanceof BrushModel, 'model');
 
     this.physents.length = 0;
@@ -3739,20 +3729,20 @@ export class Pmove { // pmove_t
 
   /**
    * Clears all entities.
-   * @returns {Pmove} this
+   * @returns this pmove instance
    */
-  clearEntities() {
+  clearEntities(): Pmove {
     this.physents.length = 1;
     return this;
   }
 
   /**
    * Adds an entity (client or server) to physents.
-   * @param {import('../server/Edict.mjs').BaseEntity|import('../client/ClientEntities.mjs').ClientEdict} entity actual entity
-   * @param {BrushModel|null} model model must be provided when entity is SOLID_BSP
-   * @returns {Pmove} this
+   * @param entity - entity state to mirror into the physent list
+   * @param model - brush model to use for SOLID_BSP-style entities
+   * @returns this pmove instance
    */
-  addEntity(entity, model = null) {
+  addEntity(entity: import('../server/Edict.mjs').BaseEntity | import('../client/ClientEntities.mjs').ClientEdict, model: BrushModel | null = null): Pmove {
     const pe = new PhysEnt(this);
 
     console.assert(model === null || model instanceof BrushModel, 'no model or brush model required');
@@ -3812,9 +3802,9 @@ export class Pmove { // pmove_t
 
   /**
    * Returns a new player move engine.
-   * @returns {PmovePlayer} player move engine
+   * @returns fresh per-player movement state bound to this pmove world
    */
-  newPlayerMove() {
+  newPlayerMove(): PmovePlayer {
     return new PmovePlayer(this);
   }
-};
+}

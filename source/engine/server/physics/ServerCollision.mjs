@@ -2,7 +2,7 @@ import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
 import Mod, { BrushModel } from '../../common/Mod.mjs';
-import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.mjs';
+import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
 import { eventBus, registry } from '../../registry.mjs';
 import {
   BrushCollisionState,
@@ -24,7 +24,7 @@ let { Con, SV } = registry;
 
 /** @typedef {import('../Client.mjs').ServerEdict} ServerEdict */
 
-/** @typedef {import('../../common/Pmove.mjs').Trace} SharedBrushTrace */
+/** @typedef {import('../../common/Pmove.ts').Trace} SharedBrushTrace */
 
 eventBus.subscribe('registry.frozen', () => {
   Con = registry.Con;
@@ -119,7 +119,7 @@ export class ServerCollision {
 
   /**
    * Convert a shared brush trace result into the server collision trace shape.
-   * @param {import('../../common/Pmove.mjs').Trace} brushTrace shared brush trace result
+   * @param {import('../../common/Pmove.ts').Trace} brushTrace shared brush trace result
    * @param {ServerEdict} ent entity that owns the brush model
    * @returns {CollisionTrace} server collision trace
    */

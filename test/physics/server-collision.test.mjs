@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
 import { BrushModel } from '../../source/engine/common/model/BSP.mjs';
-import { BrushTrace, Pmove } from '../../source/engine/common/Pmove.mjs';
+import { BrushTrace, Pmove } from '../../source/engine/common/Pmove.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.mjs';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.mjs';
