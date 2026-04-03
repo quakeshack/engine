@@ -6,8 +6,8 @@ import { content, flags, moveType, moveTypes, solid } from '../../source/shared/
 import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { Pmove } from '../../source/engine/common/Pmove.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
-import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
-import { ServerArea } from '../../source/engine/server/physics/ServerArea.mjs';
+import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
+import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
 import {
   assertNear,
@@ -989,6 +989,49 @@ void describe('ServerArea', () => {
       assert.equal(hull, worldModel.hulls[0]);
       assert.deepEqual([...offset], [...worldModel.hulls[0].clip_mins]);
     });
+  });
+
+  void test('invokes trigger touch with the trigger entity bound as this', () => {
+    const area = new ServerArea();
+    const subjectEntity = createMockEntity({
+      origin: new Vector(8, 0, 0),
+      mins: new Vector(-16, -16, -24),
+      maxs: new Vector(16, 16, 32),
+      solidType: solid.SOLID_BBOX,
+    });
+    const subjectEdict = createMockEdict(subjectEntity);
+    const touchedEntities = [];
+    const triggerEntity = createMockEntity({
+      origin: new Vector(),
+      mins: new Vector(-32, -32, -32),
+      maxs: new Vector(32, 32, 32),
+      solidType: solid.SOLID_TRIGGER,
+    });
+    const triggerEdict = createMockEdict(triggerEntity);
+
+    triggerEntity.spawnflags = 1234;
+    triggerEntity.touch = function(other) {
+      touchedEntities.push({ spawnflags: this.spawnflags, other });
+    };
+
+    area.tree = {
+      queryAABB() {
+        return [subjectEdict, triggerEdict];
+      },
+    };
+
+    void withMockRegistry(defaultMockRegistry({
+      server: {
+        time: 4.2,
+        gameAPI: { time: 0 },
+      },
+    }), () => {
+      area.touchLinks(subjectEdict);
+    });
+
+    assert.equal(touchedEntities.length, 1);
+    assert.equal(touchedEntities[0].spawnflags, 1234);
+    assert.equal(touchedEntities[0].other, subjectEntity);
   });
 });
 

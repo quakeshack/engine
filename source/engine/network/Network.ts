@@ -288,16 +288,16 @@ export default class NET {
 
 eventBus.subscribe('server.spawned', () => {
   if (SV.svs.maxclients === 1 && NET.listening) {
-    Cmd.ExecuteString('listen 0');
+    void Cmd.ExecuteString('listen 0');
   }
 
   if (SV.svs.maxclients > 1 && !NET.listening) {
-    Cmd.ExecuteString('listen 1');
+    void Cmd.ExecuteString('listen 1');
   }
 });
 
 eventBus.subscribe('server.shutdown', () => {
   if (NET.listening) {
-    Cmd.ExecuteString('listen 0');
+    void Cmd.ExecuteString('listen 0');
   }
 });

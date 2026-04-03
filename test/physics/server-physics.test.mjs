@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, gameCapabilities, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
-import { ServerArea } from '../../source/engine/server/physics/ServerArea.mjs';
-import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
-import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';
-import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.mjs';
+import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
+import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
+import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
+import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.ts';
 
 import {
   assertNear,
@@ -20,9 +20,9 @@ import {
   withMockServerPhysics,
 } from './fixtures.mjs';
 
-describe('ServerPhysics', () => {
-  describe('checkVelocity', () => {
-    test('clears NaNs and clamps to maxvelocity', () => {
+void describe('ServerPhysics', () => {
+  void describe('checkVelocity', () => {
+    void test('clears NaNs and clamps to maxvelocity', () => {
       const serverPhysics = new ServerPhysics();
       const prints = [];
       const entity = createMockEntity({
@@ -34,7 +34,7 @@ describe('ServerPhysics', () => {
       entity.classname = 'test_entity';
       const edict = createMockEdict(entity);
 
-      withMockRegistry({
+      void withMockRegistry({
         ...defaultMockRegistry({ maxvelocity: { value: 2000 } }),
         Con: {
           Print(message) {
@@ -54,8 +54,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('pushEntity', () => {
-    test('uses MOVE_MISSILE and preserves origin on allsolid', () => {
+  void describe('pushEntity', () => {
+    void test('uses MOVE_MISSILE and preserves origin on allsolid', () => {
       const serverPhysics = new ServerPhysics();
       const linkCalls = [];
       const moveCalls = [];
@@ -68,7 +68,7 @@ describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         area: {
           linkEdict(linkedEdict) {
             linkCalls.push(linkedEdict);
@@ -110,7 +110,7 @@ describe('ServerPhysics', () => {
       assert.equal(linkCalls[0], edict);
     });
 
-    test('uses MOVE_NOMONSTERS for trigger and non-solid entities', () => {
+    void test('uses MOVE_NOMONSTERS for trigger and non-solid entities', () => {
       const serverPhysics = new ServerPhysics();
       const moveCalls = [];
       const touchCalls = [];
@@ -134,7 +134,7 @@ describe('ServerPhysics', () => {
         };
         const edict = createMockEdict(entity);
 
-        withMockRegistry(defaultMockRegistry({
+        void withMockRegistry(defaultMockRegistry({
           area: {
             linkEdict() {},
           },
@@ -172,8 +172,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('flyMove', () => {
-    test('clips against a wall and records steptrace', () => {
+  void describe('flyMove', () => {
+    void test('clips against a wall and records steptrace', () => {
       const serverPhysics = new ServerPhysics();
       const moveCalls = [];
       const impacts = [];
@@ -187,7 +187,7 @@ describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         collision: {
           move(start, mins, maxs, end, type, passedict) {
             moveCalls.push({ start: start.copy(), end: end.copy(), type, passedict });
@@ -222,7 +222,7 @@ describe('ServerPhysics', () => {
       assert.deepEqual([...impacts[0].pushVector], [10, 0, 0]);
     });
 
-    test('stops in a two-plane crease', () => {
+    void test('stops in a two-plane crease', () => {
       const serverPhysics = new ServerPhysics();
       let moveCallCount = 0;
       const blockerA = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
@@ -236,7 +236,7 @@ describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         collision: {
           move() {
             moveCallCount += 1;
@@ -279,7 +279,7 @@ describe('ServerPhysics', () => {
       assert.deepEqual([...edict.entity.velocity], [0, 0, 0]);
     });
 
-    test('dead-stops when clipped by three non-coplanar planes', () => {
+    void test('dead-stops when clipped by three non-coplanar planes', () => {
       const serverPhysics = new ServerPhysics();
       let moveCallCount = 0;
       const blockerA = createMockEdict(createMockEntity({ solidType: solid.SOLID_BBOX }));
@@ -294,7 +294,7 @@ describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         collision: {
           move() {
             moveCallCount += 1;
@@ -348,7 +348,7 @@ describe('ServerPhysics', () => {
       assert.deepEqual([...edict.entity.velocity], [0, 0, 0]);
     });
 
-    test('keeps state finite when a degenerate wall normal repeats', () => {
+    void test('keeps state finite when a degenerate wall normal repeats', () => {
       const serverPhysics = new ServerPhysics();
       let moveCallCount = 0;
       const impacts = [];
@@ -362,7 +362,7 @@ describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         collision: {
           move() {
             moveCallCount += 1;
@@ -401,8 +401,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('checkAllEnts', () => {
-    test('skips static entities and reports invalid dynamic positions', () => {
+  void describe('checkAllEnts', () => {
+    void test('skips static entities and reports invalid dynamic positions', () => {
       const serverPhysics = new ServerPhysics();
       const prints = [];
       const tested = [];
@@ -417,7 +417,7 @@ describe('ServerPhysics', () => {
       const walkEdict = createMockEdict(walkEntity);
       walkEdict.num = 5;
 
-      withMockRegistry({
+      void withMockRegistry({
         ...defaultMockRegistry({
           collision: {
             testEntityPosition(edict) {
@@ -445,8 +445,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('runThink', () => {
-    test('returns false when the entity frees itself during think', () => {
+  void describe('runThink', () => {
+    void test('returns false when the entity frees itself during think', () => {
       const serverPhysics = new ServerPhysics();
       let freed = false;
       let thinkCalls = 0;
@@ -459,7 +459,7 @@ describe('ServerPhysics', () => {
       const edict = createMockEdict(entity);
       edict.isFree = () => freed;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         server: {
           time: 1.0,
           gameAPI: { time: 0 },
@@ -475,7 +475,7 @@ describe('ServerPhysics', () => {
       assert.equal(entity.nextthink, 0.0);
     });
 
-    test('executes multiple thinks that become due within one frame', () => {
+    void test('executes multiple thinks that become due within one frame', () => {
       const serverPhysics = new ServerPhysics();
       const thinkTimes = [];
       const entity = createMockEntity();
@@ -486,7 +486,7 @@ describe('ServerPhysics', () => {
       };
       const edict = createMockEdict(entity);
 
-      withMockRegistry({
+      void withMockRegistry({
         ...defaultMockRegistry({
           server: {
             time: 1.0,
@@ -506,8 +506,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('pushMove', () => {
-    test('carries a grounded rider upward without blocked()', () => {
+  void describe('pushMove', () => {
+    void test('carries a grounded rider upward without blocked()', () => {
       withMockServerPhysics(({ serverPhysics, pusherEdict, riderEdict, moveCalls, testCalls, blockedCalls }) => {
         serverPhysics.pushMove(pusherEdict, 0.1);
 
@@ -522,7 +522,7 @@ describe('ServerPhysics', () => {
       });
     });
 
-    test('rolls back and calls blocked() when rider remains stuck', () => {
+    void test('rolls back and calls blocked() when rider remains stuck', () => {
       withMockServerPhysics(({ serverPhysics, pusherEdict, riderEdict, blockedCalls }) => {
         let testCount = 0;
         registry.SV.collision.testEntityPosition = (edict) => {
@@ -542,7 +542,7 @@ describe('ServerPhysics', () => {
       });
     });
 
-    test('restores earlier riders when a later rider blocks the push', () => {
+    void test('restores earlier riders when a later rider blocks the push', () => {
       const linkCalls = [];
       const blockedCalls = [];
 
@@ -584,7 +584,7 @@ describe('ServerPhysics', () => {
       const riderBEdict = createMockEdict(riderBEntity);
       riderBEdict.num = 3;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         maxvelocity: { value: 2000 },
         area: {
           linkEdict(edict) {
@@ -627,7 +627,7 @@ describe('ServerPhysics', () => {
       assert.ok(linkCalls.length >= 5);
     });
 
-    test('collapses trigger bounds instead of rolling back the pusher', () => {
+    void test('collapses trigger bounds instead of rolling back the pusher', () => {
       const blockedCalls = [];
 
       const pusherEntity = createMockEntity({
@@ -657,7 +657,7 @@ describe('ServerPhysics', () => {
       const triggerEdict = createMockEdict(triggerEntity);
       triggerEdict.num = 2;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         maxvelocity: { value: 2000 },
         area: {
           linkEdict(edict) {
@@ -698,7 +698,7 @@ describe('ServerPhysics', () => {
       assert.equal(pusherEdict.entity.ltime, 0.1);
     });
 
-    test('rotates grounded riders around the pusher yaw axis', () => {
+    void test('rotates grounded riders around the pusher yaw axis', () => {
       withMockServerPhysics(({ serverPhysics, pusherEdict, riderEdict, moveCalls, testCalls, blockedCalls }) => {
         pusherEdict.entity.velocity.clear();
         pusherEdict.entity.avelocity = new Vector(0, 900, 0);
@@ -727,7 +727,7 @@ describe('ServerPhysics', () => {
       });
     });
 
-    test('ignores rider overlap that only collides with the current pusher after the move', () => {
+    void test('ignores rider overlap that only collides with the current pusher after the move', () => {
       const testCalls = [];
       const blockedCalls = [];
 
@@ -762,7 +762,7 @@ describe('ServerPhysics', () => {
 
       let testPositionCall = 0;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         area: {
           linkEdict() {},
         },
@@ -812,7 +812,7 @@ describe('ServerPhysics', () => {
       assert.deepEqual([...riderEdict.entity.origin], [0, 0, 50]);
     });
 
-    test('keeps non-rider overlaps with the current pusher blocking the move', () => {
+    void test('keeps non-rider overlaps with the current pusher blocking the move', () => {
       const testCalls = [];
       const blockedCalls = [];
 
@@ -843,7 +843,7 @@ describe('ServerPhysics', () => {
       const blockerEdict = createMockEdict(blockerEntity);
       blockerEdict.num = 2;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         area: {
           linkEdict() {},
         },
@@ -883,7 +883,7 @@ describe('ServerPhysics', () => {
       assert.deepEqual([...blockerEdict.entity.origin], [0, 0, 0]);
     });
 
-    test('combines translation with non-yaw rotation when carrying riders', () => {
+    void test('combines translation with non-yaw rotation when carrying riders', () => {
       const transformPointToLocal = (point, origin, basis) => {
         const delta = point.copy().subtract(origin);
         const forward = new Vector(basis[0], basis[1], basis[2]);
@@ -945,7 +945,7 @@ describe('ServerPhysics', () => {
       });
     });
 
-    test('does not call blocked() for a rider resting within sub-epsilon top contact on a BSP pusher', () => {
+    void test('does not call blocked() for a rider resting within sub-epsilon top contact on a BSP pusher', () => {
       const blockedCalls = [];
       const pusherModel = createBoxBrushModel({ halfExtents: [64, 64, 16], name: '*plat' });
       const worldModel = createBrushWorldModel({ center: [4096, 0, 0], halfExtents: [16, 16, 16] });
@@ -999,7 +999,7 @@ describe('ServerPhysics', () => {
       const riderEdict = createMockEdict(riderEntity);
       riderEdict.num = 2;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         maxvelocity: { value: 2000 },
         area,
         collision,
@@ -1037,8 +1037,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('physicsPusher', () => {
-    test('limits movement to nextthink and then runs think', () => {
+  void describe('physicsPusher', () => {
+    void test('limits movement to nextthink and then runs think', () => {
       const serverPhysics = new ServerPhysics();
       const moveTimes = [];
       let observedGameTime = -1;
@@ -1054,7 +1054,7 @@ describe('ServerPhysics', () => {
       };
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         server: {
           time: 7.0,
           gameAPI: { time: 0 },
@@ -1078,7 +1078,7 @@ describe('ServerPhysics', () => {
       assert.equal(observedGameTime, 7.0);
     });
 
-    test('keeps think deferred when nextthink is beyond this frame', () => {
+    void test('keeps think deferred when nextthink is beyond this frame', () => {
       const serverPhysics = new ServerPhysics();
       const moveTimes = [];
       let observedGameTime = -1;
@@ -1094,7 +1094,7 @@ describe('ServerPhysics', () => {
       };
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         server: {
           time: 8.0,
           gameAPI: { time: 0 },
@@ -1118,7 +1118,7 @@ describe('ServerPhysics', () => {
       assert.equal(observedGameTime, 0);
     });
 
-    test('moves pushers for a full frame when no think is scheduled', () => {
+    void test('moves pushers for a full frame when no think is scheduled', () => {
       const serverPhysics = new ServerPhysics();
       const moveTimes = [];
       let thinkCalls = 0;
@@ -1134,7 +1134,7 @@ describe('ServerPhysics', () => {
       };
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         Host: { frametime: 0.1 },
         server: {
           time: 9.0,
@@ -1159,8 +1159,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('checkStuck', () => {
-    test('restores oldorigin when the saved position is clear', () => {
+  void describe('checkStuck', () => {
+    void test('restores oldorigin when the saved position is clear', () => {
       const serverPhysics = new ServerPhysics();
       const prints = [];
       const linkCalls = [];
@@ -1173,7 +1173,7 @@ describe('ServerPhysics', () => {
       entity.oldorigin = new Vector(1, 2, 3);
       const edict = createMockEdict(entity);
 
-      withMockRegistry({
+      void withMockRegistry({
         ...defaultMockRegistry({
           area: {
             linkEdict(linkedEdict, touchTriggers) {
@@ -1206,7 +1206,7 @@ describe('ServerPhysics', () => {
     });
 
     // checkStuck tries: 1 (current pos) + 1 (oldorigin) + 18 z-levels * 3 x * 3 y = 164
-    test('reports failure after exhausting all nudges', () => {
+    void test('reports failure after exhausting all nudges', () => {
       const serverPhysics = new ServerPhysics();
       const prints = [];
       const linkCalls = [];
@@ -1219,7 +1219,7 @@ describe('ServerPhysics', () => {
       entity.oldorigin = new Vector(1, 2, 3);
       const edict = createMockEdict(entity);
 
-      withMockRegistry({
+      void withMockRegistry({
         ...defaultMockRegistry({
           area: {
             linkEdict(linkedEdict, touchTriggers) {
@@ -1250,8 +1250,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('checkWater', () => {
-    test('leaves entities dry when feet probe is not water', () => {
+  void describe('checkWater', () => {
+    void test('leaves entities dry when feet probe is not water', () => {
       const serverPhysics = new ServerPhysics();
       const probes = [];
       const entity = createMockEntity({
@@ -1262,7 +1262,7 @@ describe('ServerPhysics', () => {
       entity.view_ofs = new Vector(0, 0, 22);
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         collision: {
           pointContents(point) {
             probes.push(point.copy());
@@ -1279,7 +1279,7 @@ describe('ServerPhysics', () => {
       assert.deepEqual([...probes[0]], [10, 20, 7]);
     });
 
-    test('distinguishes feet waist and head submersion', () => {
+    void test('distinguishes feet waist and head submersion', () => {
       const serverPhysics = new ServerPhysics();
       const feetEntity = createMockEntity({
         origin: new Vector(0, 0, 40),
@@ -1303,7 +1303,7 @@ describe('ServerPhysics', () => {
       const runCase = (entity, contents) => {
         let probeIndex = 0;
 
-        withMockRegistry(defaultMockRegistry({
+        void withMockRegistry(defaultMockRegistry({
           collision: {
             pointContents() {
               const result = contents[probeIndex];
@@ -1321,7 +1321,7 @@ describe('ServerPhysics', () => {
       const headResult = (() => {
         let result;
 
-        withMockRegistry(defaultMockRegistry({
+        void withMockRegistry(defaultMockRegistry({
           collision: {
             pointContents() {
               return content.CONTENT_WATER;
@@ -1344,8 +1344,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('checkWaterTransition', () => {
-    test('plays a splash and marks waist-deep water when entering from air', () => {
+  void describe('checkWaterTransition', () => {
+    void test('plays a splash and marks waist-deep water when entering from air', () => {
       const serverPhysics = new ServerPhysics();
       const startSoundCalls = [];
       const entity = createMockEntity({
@@ -1355,7 +1355,7 @@ describe('ServerPhysics', () => {
       entity.waterlevel = 0;
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         collision: {
           pointContents() {
             return content.CONTENT_WATER;
@@ -1377,7 +1377,7 @@ describe('ServerPhysics', () => {
       assert.equal(entity.waterlevel, 2);
     });
 
-    test('plays a splash and clears watertype when leaving water', () => {
+    void test('plays a splash and clears watertype when leaving water', () => {
       const serverPhysics = new ServerPhysics();
       const startSoundCalls = [];
       const entity = createMockEntity({
@@ -1387,7 +1387,7 @@ describe('ServerPhysics', () => {
       entity.waterlevel = 2;
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         collision: {
           pointContents() {
             return content.CONTENT_EMPTY;
@@ -1410,8 +1410,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('wallFriction', () => {
-    test('damps tangential speed when the player is steering into a wall', () => {
+  void describe('wallFriction', () => {
+    void test('damps tangential speed when the player is steering into a wall', () => {
       const serverPhysics = new ServerPhysics();
       const entity = createMockEntity({
         velocity: new Vector(10, 4, 3),
@@ -1428,8 +1428,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('addGravity / addBuoyancy', () => {
-    test('accumulate using entity gravity and frametime', () => {
+  void describe('addGravity / addBuoyancy', () => {
+    void test('accumulate using entity gravity and frametime', () => {
       const serverPhysics = new ServerPhysics();
       const entity = createMockEntity({
         velocity: new Vector(0, 0, 10),
@@ -1437,7 +1437,7 @@ describe('ServerPhysics', () => {
       entity.gravity = 0.5;
       const edict = createMockEdict(entity);
 
-      withMockRegistry({
+      void withMockRegistry({
         ...defaultMockRegistry({ gravity: { value: 800 } }),
         Host: { frametime: 0.25 },
       }, () => {
@@ -1449,8 +1449,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('clipVelocity', () => {
-    test('zeroes tiny residuals after clipping against an angled plane', () => {
+  void describe('clipVelocity', () => {
+    void test('zeroes tiny residuals after clipping against an angled plane', () => {
       const serverPhysics = new ServerPhysics();
       const out = new Vector();
 
@@ -1467,8 +1467,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('physicsToss', () => {
-    test('keeps a bounce entity moving after a hard floor impact', () => {
+  void describe('physicsToss', () => {
+    void test('keeps a bounce entity moving after a hard floor impact', () => {
       const serverPhysics = new ServerPhysics();
       const entity = createMockEntity({
         origin: new Vector(0, 0, 64),
@@ -1488,7 +1488,7 @@ describe('ServerPhysics', () => {
       const floorEdict = createMockEdict(floorEntity);
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         gravity: { value: 800 },
         maxvelocity: { value: 2000 },
         area: {
@@ -1527,7 +1527,7 @@ describe('ServerPhysics', () => {
       assert.deepEqual([...entity.angles], [0, 0, 9]);
     });
 
-    test('settles non-bounce tosses on walkable ground', () => {
+    void test('settles non-bounce tosses on walkable ground', () => {
       const serverPhysics = new ServerPhysics();
       const entity = createMockEntity({
         origin: new Vector(0, 0, 64),
@@ -1547,7 +1547,7 @@ describe('ServerPhysics', () => {
       const floorEdict = createMockEdict(floorEntity);
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         gravity: { value: 800 },
         maxvelocity: { value: 2000 },
         area: {
@@ -1587,8 +1587,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('physicsStep', () => {
-    test('applies airborne step movement, links, and plays the landing sound', () => {
+  void describe('physicsStep', () => {
+    void test('applies airborne step movement, links, and plays the landing sound', () => {
       const serverPhysics = new ServerPhysics();
       const soundCalls = [];
       const linkCalls = [];
@@ -1601,7 +1601,7 @@ describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      withMockRegistry({
+      void withMockRegistry({
         ...defaultMockRegistry({
           gravity: { value: 800 },
           area: {
@@ -1647,7 +1647,7 @@ describe('ServerPhysics', () => {
       assert.equal(soundCalls[0][2], 'demon/dland2.wav');
     });
 
-    test('still runs think and water transition while already grounded', () => {
+    void test('still runs think and water transition while already grounded', () => {
       const serverPhysics = new ServerPhysics();
       const sequence = [];
       const entity = createMockEntity({
@@ -1657,7 +1657,7 @@ describe('ServerPhysics', () => {
       });
       const edict = createMockEdict(entity);
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         area: {
           linkEdict() {
             sequence.push('linkEdict');
@@ -1694,8 +1694,8 @@ describe('ServerPhysics', () => {
     });
   });
 
-  describe('physics', () => {
-    test('applies gravity and toss movement for one frame', () => {
+  void describe('physics', () => {
+    void test('applies gravity and toss movement for one frame', () => {
       const linkCalls = [];
       const moveCalls = [];
       let startFrameCount = 0;
@@ -1719,7 +1719,7 @@ describe('ServerPhysics', () => {
       const tossEdict = createMockEdict(tossEntity);
       tossEdict.num = 1;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         gravity: { value: 800 },
         maxvelocity: { value: 2000 },
         area: {
@@ -1774,6 +1774,53 @@ describe('ServerPhysics', () => {
         assert.deepEqual([...tossEntity.velocity], [10, 0, -80]);
         assert.equal(linkCalls.length, 1);
       });
+    });
+
+    void test('does not treat reserved client slots as attached clients for non-client edicts', () => {
+      let startFrameCount = 0;
+      let pusherCalls = 0;
+      const worldEdict = createMockEdict(createMockEntity({ movetype: moveType.MOVETYPE_NONE }));
+      const doorEdict = createMockEdict(createMockEntity({
+        movetype: moveType.MOVETYPE_PUSH,
+        solidType: solid.SOLID_BSP,
+      }));
+
+      doorEdict.num = 16;
+      doorEdict.isClient = () => false;
+      doorEdict.getClient = () => ({ state: 0 });
+
+      void withMockRegistry(defaultMockRegistry({
+        area: {
+          linkEdict() {},
+        },
+        clientPhysics: {
+          physicsClient() {
+            throw new Error('non-client edict should not run through client physics just because a reserved slot exists');
+          },
+        },
+        server: {
+          time: 0,
+          num_edicts: 2,
+          edicts: [worldEdict, doorEdict],
+          gameAPI: {
+            time: 0,
+            force_retouch: 0,
+            startFrame() {
+              startFrameCount += 1;
+            },
+          },
+        },
+      }), () => {
+        const serverPhysics = new ServerPhysics();
+        serverPhysics.physicsPusher = (edict) => {
+          pusherCalls += 1;
+          assert.equal(edict, doorEdict);
+        };
+        serverPhysics.physics();
+      });
+
+      assert.equal(startFrameCount, 1);
+      assert.equal(pusherCalls, 1);
     });
   });
 });

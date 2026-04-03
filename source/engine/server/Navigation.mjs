@@ -686,7 +686,7 @@ export class Navigation {
   /**
    * @param {Vector} startpos stand origin
    * @param {Vector} endpos stand origin
-   * @returns {import('./physics/ServerCollisionSupport.mjs').CollisionTrace} collision result
+   * @returns {import('./physics/ServerCollisionSupport.ts').CollisionTrace} collision result
    */
   #traceWalkerStatic(startpos, endpos) {
     return SV.collision.traceStaticWorld(

@@ -5,7 +5,7 @@ import { GLTexture } from '../../../client/GL.mjs';
 import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
-import { eventBus, registry } from '../../../registry.mjs';
+import { eventBus, getCommonRegistry, registry } from '../../../registry.mjs';
 import { ModelLoader } from '../ModelLoader.ts';
 import { Brush, BrushModel, BrushSide, Node, type BSPXLumps, type Clipnode, type Hull } from '../BSP.ts';
 import { Face, Plane } from '../BaseModel.ts';
@@ -13,10 +13,10 @@ import { materialFlags, noTextureMaterial, PBRMaterial, QuakeMaterial } from '..
 import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.mjs';
 
 // Get registry references (will be set by eventBus)
-let { COM, Con } = registry;
+let { COM, Con } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = registry);
+  ({ COM, Con } = getCommonRegistry());
 });
 
 interface AllowedClipnodeHull extends Hull {

@@ -1,37 +1,43 @@
+import type { ServerEdict } from '../Edict.mjs';
+import type { CollisionTrace } from './ServerCollisionSupport.ts';
+
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import Q from '../../../shared/Q.ts';
-import { eventBus, registry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.mjs';
 import {
   GROUND_ANGLE_THRESHOLD,
   VELOCITY_EPSILON,
   MAX_BUMP_COUNT,
   BlockedFlags,
-} from './Defs.mjs';
+} from './Defs.ts';
 
-let { Con, Host, SV } = registry;
+interface FlyMoveResult {
+  readonly blocked: number;
+  readonly steptrace: CollisionTrace | null;
+}
+
+interface MovedEntityState {
+  readonly origin: Vector;
+  readonly angles: Vector;
+  readonly edict: ServerEdict;
+}
+
+let { Con, Host, SV } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  Con = registry.Con;
-  Host = registry.Host;
-  SV = registry.SV;
+  ({ Con, Host, SV } = getCommonRegistry());
 });
 
 /**
  * Handles core physics simulation, entity movement, and collision handling.
  */
 export class ServerPhysics {
-  constructor() {
-  }
-
   /**
    * Convert a world-space point into local pusher space using an orthonormal basis.
-   * @param {Vector} point point in world space
-   * @param {Vector} origin transform origin
-   * @param {number[]} basis 3x3 rotation basis from Vector.toRotationMatrix()
-   * @returns {Vector} point in local space
+   * @returns Point in local space.
    */
-  static _transformPointToLocal(point, origin, basis) {
+  static _transformPointToLocal(point: Vector, origin: Vector, basis: number[]): Vector {
     const delta = point.copy().subtract(origin);
     const forward = new Vector(basis[0], basis[1], basis[2]);
     const right = new Vector(basis[3], basis[4], basis[5]);
@@ -46,12 +52,9 @@ export class ServerPhysics {
 
   /**
    * Convert a local-space point back into world space using an orthonormal basis.
-   * @param {Vector} point point in local space
-   * @param {Vector} origin transform origin
-   * @param {number[]} basis 3x3 rotation basis from Vector.toRotationMatrix()
-   * @returns {Vector} point in world space
+   * @returns Point in world space.
    */
-  static _transformPointToWorld(point, origin, basis) {
+  static _transformPointToWorld(point: Vector, origin: Vector, basis: number[]): Vector {
     const forward = new Vector(basis[0], basis[1], basis[2]);
     const right = new Vector(basis[3], basis[4], basis[5]);
     const up = new Vector(basis[6], basis[7], basis[8]);
@@ -65,14 +68,14 @@ export class ServerPhysics {
   /**
    * Iterates all non-static entities to ensure none start inside solid space.
    */
-  checkAllEnts() {
-    for (let e = 1; e < SV.server.num_edicts; e++) {
-      const check = SV.server.edicts[e];
+  checkAllEnts(): void {
+    for (let index = 1; index < SV.server.num_edicts; index++) {
+      const check = SV.server.edicts[index];
       if (check.isFree()) {
         continue;
       }
 
-      switch (check.entity.movetype) {
+      switch (check.entity!.movetype) {
         case Defs.moveType.MOVETYPE_PUSH:
         case Defs.moveType.MOVETYPE_NONE:
         case Defs.moveType.MOVETYPE_NOCLIP:
@@ -88,23 +91,23 @@ export class ServerPhysics {
 
   /**
    * Clamps velocity/origin components and guards against NaN values.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to validate
    */
-  checkVelocity(ent) {
-    const velo = ent.entity.velocity;
-    const origin = ent.entity.origin;
+  checkVelocity(ent: ServerEdict): void {
+    const entity = ent.entity!;
+    const velo = entity.velocity;
+    const origin = entity.origin;
 
-    for (let i = 0; i < 3; i++) {
-      let component = velo[i];
+    for (let index = 0; index < 3; index++) {
+      let component = velo[index];
 
       if (Q.isNaN(component)) {
-        Con.Print('Got a NaN velocity on ' + ent.entity.classname + '\n');
+        Con.Print(`Got a NaN velocity on ${entity.classname}\n`);
         component = 0.0;
       }
 
-      if (Q.isNaN(origin[i])) {
-        Con.Print('Got a NaN origin on ' + ent.entity.classname + '\n');
-        origin[i] = 0.0;
+      if (Q.isNaN(origin[index])) {
+        Con.Print(`Got a NaN origin on ${entity.classname}\n`);
+        origin[index] = 0.0;
       }
 
       if (component > SV.maxvelocity.value) {
@@ -113,21 +116,22 @@ export class ServerPhysics {
         component = -SV.maxvelocity.value;
       }
 
-      velo[i] = component;
+      velo[index] = component;
     }
 
-    ent.entity.origin = ent.entity.origin.set(origin);
-    ent.entity.velocity = ent.entity.velocity.set(velo);
+    entity.origin = entity.origin.set(origin);
+    entity.velocity = entity.velocity.set(velo);
   }
 
   /**
    * Executes pending thinks for an entity until caught up with server time.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to process
-   * @returns {boolean} false if the entity was freed during thinking
+   * @returns False if the entity was freed during thinking.
    */
-  runThink(ent) {
+  runThink(ent: ServerEdict): boolean {
+    const entity = ent.entity!;
+
     while (true) {
-      let thinktime = ent.entity.nextthink;
+      let thinktime = entity.nextthink;
 
       if (thinktime <= 0.0 || thinktime > (SV.server.time + Host.frametime)) {
         return true;
@@ -137,9 +141,9 @@ export class ServerPhysics {
         thinktime = SV.server.time;
       }
 
-      ent.entity.nextthink = 0.0;
+      entity.nextthink = 0.0;
       SV.server.gameAPI.time = thinktime;
-      ent.entity.think();
+      entity.think();
 
       if (ent.isFree()) {
         return false;
@@ -149,15 +153,12 @@ export class ServerPhysics {
 
   /**
    * Invokes touch callbacks between two entities.
-   * @param {import('../Edict.mjs').ServerEdict} e1 first entity
-   * @param {import('../Edict.mjs').ServerEdict} e2 second entity
-   * @param {Vector} pushVector vector representing the push force
    */
-  impact(e1, e2, pushVector) {
+  impact(e1: ServerEdict, e2: ServerEdict, pushVector: Vector): void {
     SV.server.gameAPI.time = SV.server.time;
 
-    const ent1 = /** @type {import('../Edict.mjs').BaseEntity} */ (e1.entity);
-    const ent2 = /** @type {import('../Edict.mjs').BaseEntity} */ (e2.entity);
+    const ent1 = e1.entity!;
+    const ent2 = e2.entity!;
 
     if (ent1.touch && ent1.solid !== Defs.solid.SOLID_NOT) {
       ent1.touch(ent2, pushVector);
@@ -170,12 +171,8 @@ export class ServerPhysics {
 
   /**
    * Clips the velocity vector against a collision plane.
-   * @param {Vector} vec incoming velocity
-   * @param {Vector} normal collision normal
-   * @param {Vector} out output velocity
-   * @param {number} overbounce overbounce factor
    */
-  clipVelocity(vec, normal, out, overbounce) {
+  clipVelocity(vec: Vector, normal: Vector, out: Vector, overbounce: number): void {
     const backoff = vec.dot(normal) * overbounce;
 
     out[0] = vec[0] - normal[0] * backoff;
@@ -196,35 +193,34 @@ export class ServerPhysics {
 
   /**
    * Performs sliding movement with up to four collision planes.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to move
-   * @param {number} time frame time slice
-   * @returns {{blocked: number, steptrace: import('./ServerCollision.mjs').Trace | null}} result with blocked flags and optional wall trace
+   * @returns Blocked flags and an optional wall trace.
    */
-  flyMove(ent, time) {
-    const planes = [];
-    const primalVelocity = ent.entity.velocity.copy();
+  flyMove(ent: ServerEdict, time: number): FlyMoveResult {
+    const entity = ent.entity!;
+    const planes: Vector[] = [];
+    const primalVelocity = entity.velocity.copy();
     let originalVelocity = primalVelocity.copy();
     const newVelocity = new Vector();
     let timeLeft = time;
     let blocked = BlockedFlags.NONE;
-    let steptrace = null;
+    let steptrace: CollisionTrace | null = null;
 
     for (let bumpCount = 0; bumpCount < MAX_BUMP_COUNT; bumpCount++) {
-      if (ent.entity.velocity.isOrigin()) {
+      if (entity.velocity.isOrigin()) {
         break;
       }
 
-      const end = ent.entity.origin.copy().add(ent.entity.velocity.copy().multiply(timeLeft));
-      const trace = SV.collision.move(ent.entity.origin, ent.entity.mins, ent.entity.maxs, end, 0, ent);
+      const end = entity.origin.copy().add(entity.velocity.copy().multiply(timeLeft));
+      const trace = SV.collision.move(entity.origin, entity.mins, entity.maxs, end, 0, ent);
 
       if (trace.allsolid) {
-        ent.entity.velocity = new Vector();
+        entity.velocity = new Vector();
         return { blocked: BlockedFlags.BOTH, steptrace };
       }
 
       if (trace.fraction > 0.0) {
-        ent.entity.origin = ent.entity.origin.set(trace.endpos);
-        originalVelocity = ent.entity.velocity.copy();
+        entity.origin = entity.origin.set(trace.endpos);
+        originalVelocity = entity.velocity.copy();
         planes.length = 0;
         if (trace.fraction === 1.0) {
           break;
@@ -232,21 +228,22 @@ export class ServerPhysics {
       }
 
       console.assert(trace.ent !== null, 'trace.ent must not be null');
+      const traceEnt = trace.ent!;
 
       if (trace.plane.normal[2] > GROUND_ANGLE_THRESHOLD) {
         blocked |= BlockedFlags.FLOOR;
-        if (trace.ent.entity.solid === Defs.solid.SOLID_BSP ||
-            trace.ent.entity.solid === Defs.solid.SOLID_BBOX ||
-            trace.ent.entity.solid === Defs.solid.SOLID_MESH) {
-          ent.entity.flags |= Defs.flags.FL_ONGROUND;
-          ent.entity.groundentity = trace.ent.entity;
+        if (traceEnt.entity!.solid === Defs.solid.SOLID_BSP
+            || traceEnt.entity!.solid === Defs.solid.SOLID_BBOX
+            || traceEnt.entity!.solid === Defs.solid.SOLID_MESH) {
+          entity.flags |= Defs.flags.FL_ONGROUND;
+          entity.groundentity = traceEnt.entity!;
         }
       } else if (trace.plane.normal[2] === 0.0) {
         blocked |= BlockedFlags.WALL;
         steptrace = trace;
       }
 
-      this.impact(ent, trace.ent, ent.entity.velocity.copy());
+      this.impact(ent, traceEnt, entity.velocity.copy());
 
       if (ent.isFree()) {
         break;
@@ -255,42 +252,42 @@ export class ServerPhysics {
       timeLeft -= timeLeft * trace.fraction;
 
       if (planes.length >= 5) {
-        ent.entity.velocity = new Vector();
+        entity.velocity = new Vector();
         return { blocked: 3, steptrace };
       }
 
       planes.push(trace.plane.normal.copy());
 
-      let i;
-      let j;
-      for (i = 0; i < planes.length; i++) {
-        this.clipVelocity(originalVelocity, planes[i], newVelocity, 1.0);
-        for (j = 0; j < planes.length; j++) {
-          if (j !== i) {
-            const plane = planes[j];
+      let planeIndex: number;
+      let otherPlaneIndex: number;
+      for (planeIndex = 0; planeIndex < planes.length; planeIndex++) {
+        this.clipVelocity(originalVelocity, planes[planeIndex], newVelocity, 1.0);
+        for (otherPlaneIndex = 0; otherPlaneIndex < planes.length; otherPlaneIndex++) {
+          if (otherPlaneIndex !== planeIndex) {
+            const plane = planes[otherPlaneIndex];
             if ((newVelocity[0] * plane[0] + newVelocity[1] * plane[1] + newVelocity[2] * plane[2]) < 0.0) {
               break;
             }
           }
         }
-        if (j === planes.length) {
+        if (otherPlaneIndex === planes.length) {
           break;
         }
       }
 
-      if (i !== planes.length) {
-        ent.entity.velocity = newVelocity.copy();
+      if (planeIndex !== planes.length) {
+        entity.velocity = newVelocity.copy();
       } else {
         if (planes.length !== 2) {
-          ent.entity.velocity = new Vector();
+          entity.velocity = new Vector();
           return { blocked: 7, steptrace };
         }
         const dir = planes[0].cross(planes[1]);
-        ent.entity.velocity = dir.multiply(dir.dot(ent.entity.velocity));
+        entity.velocity = dir.multiply(dir.dot(entity.velocity));
       }
 
-      if (ent.entity.velocity.dot(primalVelocity) <= 0.0) {
-        ent.entity.velocity = new Vector();
+      if (entity.velocity.dot(primalVelocity) <= 0.0) {
+        entity.velocity = new Vector();
         return { blocked, steptrace };
       }
     }
@@ -300,37 +297,35 @@ export class ServerPhysics {
 
   /**
    * Applies gravity to an entity taking custom gravity into account.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to influence
    */
-  addGravity(ent) {
-    const entGravity = typeof(ent.entity.gravity) === 'number' ? ent.entity.gravity : 1.0;
-    const velocity = ent.entity.velocity;
+  addGravity(ent: ServerEdict): void {
+    const entity = ent.entity!;
+    const entGravity = typeof entity.gravity === 'number' ? entity.gravity : 1.0;
+    const velocity = entity.velocity;
     velocity[2] += entGravity * SV.gravity.value * Host.frametime * -1.0;
-    ent.entity.velocity = velocity;
+    entity.velocity = velocity;
   }
 
   /**
    * Applies a small upward force used for buoyancy.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to influence
    */
-  addBuoyancy(ent) {
-    const velocity = ent.entity.velocity;
+  addBuoyancy(ent: ServerEdict): void {
+    const velocity = ent.entity!.velocity;
     velocity[2] += SV.gravity.value * Host.frametime * 0.01;
-    ent.entity.velocity = velocity;
+    ent.entity!.velocity = velocity;
   }
 
   /**
    * Pushes an entity by the provided vector and performs collision handling.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to move
-   * @param {Vector} pushVector movement vector
-   * @returns {import('./ServerCollision.mjs').Trace} resulting trace
+   * @returns Resulting trace.
    */
-  pushEntity(ent, pushVector) {
-    const end = ent.entity.origin.copy().add(pushVector);
-    const solid = ent.entity.solid;
+  pushEntity(ent: ServerEdict, pushVector: Vector): CollisionTrace {
+    const entity = ent.entity!;
+    const end = entity.origin.copy().add(pushVector);
+    const solid = entity.solid;
 
-    let nomonsters;
-    if (ent.entity.movetype === Defs.moveType.MOVETYPE_FLYMISSILE) {
+    let nomonsters: number;
+    if (entity.movetype === Defs.moveType.MOVETYPE_FLYMISSILE) {
       nomonsters = Defs.moveTypes.MOVE_MISSILE;
     } else if (solid === Defs.solid.SOLID_TRIGGER || solid === Defs.solid.SOLID_NOT) {
       nomonsters = Defs.moveTypes.MOVE_NOMONSTERS;
@@ -338,13 +333,13 @@ export class ServerPhysics {
       nomonsters = Defs.moveTypes.MOVE_NORMAL;
     }
 
-    const trace = SV.collision.move(ent.entity.origin, ent.entity.mins, ent.entity.maxs, end, nomonsters, ent);
+    const trace = SV.collision.move(entity.origin, entity.mins, entity.maxs, end, nomonsters, ent);
 
     // CR: Only move the entity if the trace made progress. When allsolid is true,
     // the entity started and remained entirely in solid (e.g. spawned inside a wall),
     // so we keep it at its current position to prevent falling out of world.
     if (!trace.allsolid) {
-      ent.entity.origin = ent.entity.origin.set(trace.endpos);
+      entity.origin = entity.origin.set(trace.endpos);
     }
     SV.area.linkEdict(ent, true);
 
@@ -357,48 +352,49 @@ export class ServerPhysics {
 
   /**
    * Moves a pusher entity and resolves collisions with touched entities.
-   * @param {import('../Edict.mjs').ServerEdict} pusher pusher entity
-   * @param {number} movetime time to move
    */
-  pushMove(pusher, movetime) {
-    if (pusher.entity.velocity.isOrigin() && pusher.entity.avelocity.isOrigin()) {
-      pusher.entity.ltime += movetime;
+  pushMove(pusher: ServerEdict, movetime: number): void {
+    const pusherEntity = pusher.entity!;
+
+    if (pusherEntity.velocity.isOrigin() && pusherEntity.avelocity.isOrigin()) {
+      pusherEntity.ltime += movetime;
       return;
     }
 
-    const move = pusher.entity.velocity.copy().multiply(movetime);
-    const rotation = pusher.entity.avelocity.copy().multiply(movetime);
-    const mins = pusher.entity.absmin.copy().add(move);
-    const maxs = pusher.entity.absmax.copy().add(move);
-    const pushorig = pusher.entity.origin.copy();
-    const pushangles = pusher.entity.angles.copy();
+    const move = pusherEntity.velocity.copy().multiply(movetime);
+    const rotation = pusherEntity.avelocity.copy().multiply(movetime);
+    const mins = pusherEntity.absmin.copy().add(move);
+    const maxs = pusherEntity.absmax.copy().add(move);
+    const pushorig = pusherEntity.origin.copy();
+    const pushangles = pusherEntity.angles.copy();
     const pushbasis = pushangles.isOrigin() ? null : pushangles.toRotationMatrix();
 
-    pusher.entity.origin = pusher.entity.origin.copy().add(move);
-    pusher.entity.angles = pusher.entity.angles.copy().add(rotation);
-    const finalbasis = pusher.entity.angles.isOrigin() ? null : pusher.entity.angles.toRotationMatrix();
-    pusher.entity.ltime += movetime;
+    pusherEntity.origin = pusherEntity.origin.copy().add(move);
+    pusherEntity.angles = pusherEntity.angles.copy().add(rotation);
+    const finalbasis = pusherEntity.angles.isOrigin() ? null : pusherEntity.angles.toRotationMatrix();
+    pusherEntity.ltime += movetime;
     SV.area.linkEdict(pusher);
 
-    const moved = [];
+    const moved: MovedEntityState[] = [];
 
-    for (let e = 1; e < SV.server.num_edicts; e++) {
-      const check = SV.server.edicts[e];
+    for (let index = 1; index < SV.server.num_edicts; index++) {
+      const check = SV.server.edicts[index];
       if (check.isFree()) {
         continue;
       }
 
-      const movetype = check.entity.movetype;
+      const checkEntity = check.entity!;
+      const movetype = checkEntity.movetype;
       if (movetype === Defs.moveType.MOVETYPE_PUSH || movetype === Defs.moveType.MOVETYPE_NONE || movetype === Defs.moveType.MOVETYPE_NOCLIP) {
         continue;
       }
 
-      const wasGroundedOnPusher = (check.entity.flags & Defs.flags.FL_ONGROUND) !== 0 &&
-        check.entity.groundentity !== null &&
-        check.entity.groundentity.equals(pusher.entity);
+      const wasGroundedOnPusher = (checkEntity.flags & Defs.flags.FL_ONGROUND) !== 0
+        && checkEntity.groundentity !== null
+        && checkEntity.groundentity.equals(pusherEntity);
 
       if (!wasGroundedOnPusher) {
-        if (!check.entity.absmin.lt(maxs) || !check.entity.absmax.gt(mins)) {
+        if (!checkEntity.absmin.lt(maxs) || !checkEntity.absmax.gt(mins)) {
           continue;
         }
 
@@ -408,71 +404,70 @@ export class ServerPhysics {
       }
 
       if (movetype !== Defs.moveType.MOVETYPE_WALK) {
-        check.entity.flags &= ~Defs.flags.FL_ONGROUND;
+        checkEntity.flags &= ~Defs.flags.FL_ONGROUND;
       }
 
-      const entorig = check.entity.origin.copy();
-      const entangles = check.entity.angles.copy();
-      moved[moved.length] = [entorig, entangles, check];
-      pusher.entity.solid = Defs.solid.SOLID_NOT;
+      const entorig = checkEntity.origin.copy();
+      const entangles = checkEntity.angles.copy();
+      moved.push({ origin: entorig, angles: entangles, edict: check });
+      pusherEntity.solid = Defs.solid.SOLID_NOT;
 
       let finalMove = move.copy();
 
       if (!rotation.isOrigin()) {
         const localOffset = pushbasis === null
-          ? check.entity.origin.copy().subtract(pushorig)
-          : ServerPhysics._transformPointToLocal(check.entity.origin, pushorig, pushbasis);
+          ? checkEntity.origin.copy().subtract(pushorig)
+          : ServerPhysics._transformPointToLocal(checkEntity.origin, pushorig, pushbasis);
         const newPos = finalbasis === null
-          ? pusher.entity.origin.copy().add(localOffset)
-          : ServerPhysics._transformPointToWorld(localOffset, pusher.entity.origin, finalbasis);
+          ? pusherEntity.origin.copy().add(localOffset)
+          : ServerPhysics._transformPointToWorld(localOffset, pusherEntity.origin, finalbasis);
 
-        finalMove = newPos.subtract(check.entity.origin);
+        finalMove = newPos.subtract(checkEntity.origin);
 
-        check.entity.angles = check.entity.angles.copy().add(rotation);
+        checkEntity.angles = checkEntity.angles.copy().add(rotation);
       }
 
       this.pushEntity(check, finalMove);
-      pusher.entity.solid = Defs.solid.SOLID_BSP;
+      pusherEntity.solid = Defs.solid.SOLID_BSP;
 
       if (SV.collision.testEntityPosition(check)) {
         if (wasGroundedOnPusher) {
-          pusher.entity.solid = Defs.solid.SOLID_NOT;
+          pusherEntity.solid = Defs.solid.SOLID_NOT;
           const blockedByOtherSolid = SV.collision.testEntityPosition(check);
-          pusher.entity.solid = Defs.solid.SOLID_BSP;
+          pusherEntity.solid = Defs.solid.SOLID_BSP;
 
           if (!blockedByOtherSolid) {
             continue;
           }
         }
 
-        const cmins = check.entity.mins;
-        const cmaxs = check.entity.maxs;
+        const cmins = checkEntity.mins;
+        const cmaxs = checkEntity.maxs;
         if (cmins[0] === cmaxs[0]) {
           continue;
         }
-        if (check.entity.solid === Defs.solid.SOLID_NOT || check.entity.solid === Defs.solid.SOLID_TRIGGER) {
+        if (checkEntity.solid === Defs.solid.SOLID_NOT || checkEntity.solid === Defs.solid.SOLID_TRIGGER) {
           cmins[0] = cmaxs[0] = 0.0;
           cmins[1] = cmaxs[1] = 0.0;
           cmaxs[2] = cmins[2];
-          check.entity.mins = cmins;
-          check.entity.maxs = cmaxs;
+          checkEntity.mins = cmins;
+          checkEntity.maxs = cmaxs;
           continue;
         }
-        check.entity.origin = entorig;
-        check.entity.angles = entangles;
+        checkEntity.origin = entorig;
+        checkEntity.angles = entangles;
         SV.area.linkEdict(check, true);
-        pusher.entity.origin = pusher.entity.origin.set(pushorig);
-        pusher.entity.angles = pusher.entity.angles.set(pushangles);
+        pusherEntity.origin = pusherEntity.origin.set(pushorig);
+        pusherEntity.angles = pusherEntity.angles.set(pushangles);
         SV.area.linkEdict(pusher);
-        pusher.entity.ltime -= movetime;
-        if (pusher.entity.blocked) {
-          pusher.entity.blocked(check.entity);
+        pusherEntity.ltime -= movetime;
+        if (pusherEntity.blocked) {
+          pusherEntity.blocked(checkEntity);
         }
-        for (let i = 0; i < moved.length; i++) { // FIXME: rewrite
-          const movedEdict = moved[i];
-          movedEdict[2].entity.origin = movedEdict[0];
-          movedEdict[2].entity.angles = movedEdict[1];
-          SV.area.linkEdict(movedEdict[2]);
+        for (const movedEdict of moved) { // FIXME: rewrite
+          movedEdict.edict.entity!.origin = movedEdict.origin;
+          movedEdict.edict.entity!.angles = movedEdict.angles;
+          SV.area.linkEdict(movedEdict.edict);
         }
         return;
       }
@@ -481,12 +476,12 @@ export class ServerPhysics {
 
   /**
    * Applies motion to MOVETYPE_PUSH entities.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to process
    */
-  physicsPusher(ent) {
-    const oldltime = ent.entity.ltime;
-    const thinktime = ent.entity.nextthink;
-    let movetime;
+  physicsPusher(ent: ServerEdict): void {
+    const entity = ent.entity!;
+    const oldltime = entity.ltime;
+    const thinktime = entity.nextthink;
+    let movetime: number;
 
     if (thinktime > 0.0 && thinktime < (oldltime + Host.frametime)) {
       movetime = Math.max(thinktime - oldltime, 0.0);
@@ -498,37 +493,38 @@ export class ServerPhysics {
       this.pushMove(ent, movetime);
     }
 
-    if (thinktime <= oldltime || thinktime > ent.entity.ltime) {
+    if (thinktime <= oldltime || thinktime > entity.ltime) {
       return;
     }
 
-    ent.entity.nextthink = 0.0;
+    entity.nextthink = 0.0;
     SV.server.gameAPI.time = SV.server.time;
-    ent.entity.think();
+    entity.think();
   }
 
   /**
    * Attempts to resolve a stuck player by nudging the entity around.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to fix
    */
-  checkStuck(ent) {
+  checkStuck(ent: ServerEdict): void {
+    const entity = ent.entity!;
+
     if (!SV.collision.testEntityPosition(ent)) {
-      ent.entity.oldorigin = ent.entity.oldorigin.set(ent.entity.origin);
+      entity.oldorigin = entity.oldorigin.set(entity.origin);
       return;
     }
 
-    ent.entity.origin = ent.entity.origin.set(ent.entity.oldorigin);
+    entity.origin = entity.origin.set(entity.oldorigin);
     if (!SV.collision.testEntityPosition(ent)) {
       Con.DPrint('Unstuck.\n');
       SV.area.linkEdict(ent, true);
       return;
     }
 
-    const norg = ent.entity.origin.copy();
+    const norg = entity.origin.copy();
     for (norg[2] = 0.0; norg[2] <= 17.0; norg[2]++) {
       for (norg[0] = -1.0; norg[0] <= 1.0; norg[0]++) {
         for (norg[1] = -1.0; norg[1] <= 1.0; norg[1]++) {
-          ent.entity.origin = ent.entity.origin.set(norg).add(norg);
+          entity.origin = entity.origin.set(norg).add(norg);
           if (!SV.collision.testEntityPosition(ent)) {
             Con.DPrint('Unstuck.\n');
             SV.area.linkEdict(ent, true);
@@ -543,11 +539,10 @@ export class ServerPhysics {
 
   /**
    * Inspects the entity position to determine water level and type.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to inspect
-   * @returns {boolean} true if entity is largely underwater
+   * @returns True if entity is largely underwater.
    */
-  checkWater(ent) {
-    const entity = ent.entity;
+  checkWater(ent: ServerEdict): boolean {
+    const entity = ent.entity!;
     const point = entity.origin.copy().add(new Vector(0.0, 0.0, entity.mins[2] + 1.0));
     entity.waterlevel = Defs.waterlevel.WATERLEVEL_NONE;
     entity.watertype = Defs.content.CONTENT_EMPTY;
@@ -574,42 +569,41 @@ export class ServerPhysics {
 
   /**
    * Emits splash sounds when transitioning between water and air.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to update
    */
-  checkWaterTransition(ent) {
-    const cont = SV.collision.pointContents(ent.entity.origin);
+  checkWaterTransition(ent: ServerEdict): void {
+    const entity = ent.entity!;
+    const cont = SV.collision.pointContents(entity.origin);
 
-    if (!ent.entity.watertype) { // just spawned here
-      ent.entity.watertype = cont;
-      ent.entity.waterlevel = Defs.waterlevel.WATERLEVEL_FEET;
+    if (!entity.watertype) {
+      entity.watertype = cont;
+      entity.waterlevel = Defs.waterlevel.WATERLEVEL_FEET;
       return;
     }
 
     if (cont <= Defs.content.CONTENT_WATER) {
-      if (ent.entity.watertype === Defs.content.CONTENT_EMPTY) {
+      if (entity.watertype === Defs.content.CONTENT_EMPTY) {
         SV.messages.startSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
       }
-      ent.entity.watertype = cont;
-      ent.entity.waterlevel = Defs.waterlevel.WATERLEVEL_WAIST;
+      entity.watertype = cont;
+      entity.waterlevel = Defs.waterlevel.WATERLEVEL_WAIST;
       return;
     }
 
-    if (ent.entity.watertype !== Defs.content.CONTENT_EMPTY) {
+    if (entity.watertype !== Defs.content.CONTENT_EMPTY) {
       // just walked into water
       SV.messages.startSound(ent, 0, 'misc/h2ohit1.wav', 255, 1.0);
     }
 
-    ent.entity.watertype = Defs.content.CONTENT_EMPTY;
-    ent.entity.waterlevel = cont; // CR: I’m not sure whether this is correct or should be e.g. WATERLEVEL_NONE
+    entity.watertype = Defs.content.CONTENT_EMPTY;
+    entity.waterlevel = cont; // CR: I’m not sure whether this is correct or should be e.g. WATERLEVEL_NONE
   }
 
   /**
    * Applies wall friction to prevent jittering when sliding along geometry.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to modify
-   * @param {{plane: {normal: Vector}}} trace collision trace
    */
-  wallFriction(ent, trace) {
-    const viewAngles = ent.entity.v_angle ?? ent.entity.angles;
+  wallFriction(ent: ServerEdict, trace: CollisionTrace): void {
+    const entity = ent.entity!;
+    const viewAngles = entity.v_angle ?? entity.angles;
     const { forward } = viewAngles.angleVectors();
     const normal = trace.plane.normal;
     let d = normal.dot(forward) + 0.5;
@@ -617,23 +611,22 @@ export class ServerPhysics {
       return;
     }
     d += 1.0;
-    const velo = ent.entity.velocity;
+    const velo = entity.velocity;
     velo[0] = (velo[0] - normal[0] * normal.dot(velo)) * d;
     velo[1] = (velo[1] - normal[1] * normal.dot(velo)) * d;
-    ent.entity.velocity = velo;
+    entity.velocity = velo;
   }
 
   /**
    * Attempts to unstick an entity by trying small offsets.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to adjust
-   * @param {Vector} oldvel previous velocity
-   * @returns {number} resulting clip flags
+   * @returns Resulting clip flags.
    */
-  tryUnstick(ent, oldvel) {
-    const oldorg = ent.entity.origin.copy();
+  tryUnstick(ent: ServerEdict, oldvel: Vector): number {
+    const entity = ent.entity!;
+    const oldorg = entity.origin.copy();
     const dir = new Vector(2.0, 0.0, 0.0);
-    for (let i = 0; i <= 7; i++) {
-      switch (i) {
+    for (let index = 0; index <= 7; index++) {
+      switch (index) {
         case 1: dir[0] = 0.0; dir[1] = 2.0; break;
         case 2: dir[0] = -2.0; dir[1] = 0.0; break;
         case 3: dir[0] = 0.0; dir[1] = -2.0; break;
@@ -644,45 +637,46 @@ export class ServerPhysics {
         default: break;
       }
       this.pushEntity(ent, dir);
-      ent.entity.velocity = new Vector(oldvel[0], oldvel[1], 0.0);
+      entity.velocity = new Vector(oldvel[0], oldvel[1], 0.0);
       const result = this.flyMove(ent, VELOCITY_EPSILON);
-      const curorg = ent.entity.origin;
+      const curorg = entity.origin;
       if (Math.abs(oldorg[1] - curorg[1]) > 4.0 || Math.abs(oldorg[0] - curorg[0]) > 4.0) {
         return result.blocked;
       }
-      ent.entity.origin = ent.entity.origin.set(oldorg);
+      entity.origin = entity.origin.set(oldorg);
     }
-    ent.entity.velocity = new Vector();
+    entity.velocity = new Vector();
     return 7;
   }
 
   /**
    * Simulates toss/bounce style movement.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to update
    */
-  physicsToss(ent) {
+  physicsToss(ent: ServerEdict): void {
+    const entity = ent.entity!;
+
     if (!this.runThink(ent)) {
       return;
     }
-    if ((ent.entity.flags & Defs.flags.FL_ONGROUND) !== 0) {
+    if ((entity.flags & Defs.flags.FL_ONGROUND) !== 0) {
       return;
     }
 
     this.checkVelocity(ent);
-    const movetype = ent.entity.movetype;
+    const movetype = entity.movetype;
     if (movetype !== Defs.moveType.MOVETYPE_FLY && movetype !== Defs.moveType.MOVETYPE_FLYMISSILE) {
       this.addGravity(ent);
     }
 
-    ent.entity.angles = ent.entity.angles.add(ent.entity.avelocity.copy().multiply(Host.frametime));
-    const trace = this.pushEntity(ent, ent.entity.velocity.copy().multiply(Host.frametime));
+    entity.angles = entity.angles.add(entity.avelocity.copy().multiply(Host.frametime));
+    const trace = this.pushEntity(ent, entity.velocity.copy().multiply(Host.frametime));
 
     // CR: If entity started and stayed entirely in solid (e.g. spawned inside a wall),
     // stop movement to prevent falling out of world. This commonly happens when items
     // are dropped by monsters dying near walls.
     if (trace.allsolid) {
-      ent.entity.velocity = new Vector();
-      ent.entity.avelocity = new Vector();
+      entity.velocity = new Vector();
+      entity.avelocity = new Vector();
       return;
     }
 
@@ -691,15 +685,16 @@ export class ServerPhysics {
     }
 
     const velocity = new Vector();
-    this.clipVelocity(ent.entity.velocity, trace.plane.normal, velocity, movetype === Defs.moveType.MOVETYPE_BOUNCE ? 1.5 : 1.0);
-    ent.entity.velocity = velocity;
+    this.clipVelocity(entity.velocity, trace.plane.normal, velocity, movetype === Defs.moveType.MOVETYPE_BOUNCE ? 1.5 : 1.0);
+    entity.velocity = velocity;
 
     if (trace.plane.normal[2] > GROUND_ANGLE_THRESHOLD) {
-      if (ent.entity.velocity[2] < 60.0 || movetype !== Defs.moveType.MOVETYPE_BOUNCE) {
-        ent.entity.flags |= Defs.flags.FL_ONGROUND;
-        ent.entity.groundentity = trace.ent.entity;
-        ent.entity.velocity = new Vector();
-        ent.entity.avelocity = new Vector();
+      if (entity.velocity[2] < 60.0 || movetype !== Defs.moveType.MOVETYPE_BOUNCE) {
+        console.assert(trace.ent !== null, 'grounding toss trace must resolve a hit entity');
+        entity.flags |= Defs.flags.FL_ONGROUND;
+        entity.groundentity = trace.ent!.entity!;
+        entity.velocity = new Vector();
+        entity.avelocity = new Vector();
       }
     }
 
@@ -708,12 +703,11 @@ export class ServerPhysics {
 
   /**
    * Handles MOVETYPE_STEP entities (most monsters).
-   * @param {import('../Edict.mjs').ServerEdict} ent entity to update
    */
-  physicsStep(ent) {
-    const entity = ent.entity;
+  physicsStep(ent: ServerEdict): void {
+    const entity = ent.entity!;
     if ((entity.flags & (Defs.flags.FL_ONGROUND | Defs.flags.FL_FLY | Defs.flags.FL_SWIM)) === 0) {
-      const hitsound = (ent.entity.velocity[2] < (SV.gravity.value * -VELOCITY_EPSILON));
+      const hitsound = entity.velocity[2] < (SV.gravity.value * -VELOCITY_EPSILON);
       this.addGravity(ent);
       this.checkVelocity(ent);
       this.flyMove(ent, Host.frametime);
@@ -729,12 +723,12 @@ export class ServerPhysics {
   /**
    * Runs the main entity physics step for the server.
    */
-  physics() {
+  physics(): void {
     SV.server.gameAPI.time = SV.server.time;
     SV.server.gameAPI.startFrame();
 
-    for (let i = 0; i < SV.server.num_edicts; i++) {
-      const ent = SV.server.edicts[i];
+    for (let index = 0; index < SV.server.num_edicts; index++) {
+      const ent = SV.server.edicts[index];
       if (ent.isFree()) {
         continue;
       }
@@ -747,7 +741,7 @@ export class ServerPhysics {
         SV.clientPhysics.physicsClient(ent);
         continue;
       }
-      switch (ent.entity.movetype) {
+      switch (ent.entity!.movetype) {
         case Defs.moveType.MOVETYPE_PUSH:
           this.physicsPusher(ent);
           continue;
@@ -767,7 +761,7 @@ export class ServerPhysics {
           this.physicsToss(ent);
           continue;
         default:
-          throw new Error('SV.Physics: bad movetype ' + (ent.entity.movetype >> 0));
+          throw new Error(`SV.Physics: bad movetype ${ent.entity!.movetype >> 0}`);
       }
     }
 

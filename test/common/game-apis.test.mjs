@@ -2,12 +2,12 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
-import { solid } from '../../source/shared/Defs.ts';
+import { moveTypes, solid } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
-import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
-import { ServerArea } from '../../source/engine/server/physics/ServerArea.mjs';
-import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
-import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.mjs';
+import { ClientEngineAPI, ServerEngineAPI } from '../../source/engine/common/GameAPIs.ts';
+import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
+import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
+import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
 
 /**
@@ -149,6 +149,70 @@ void describe('ClientEngineAPI.Traceline', () => {
 
       assert.ok(trace.fraction < 1.0);
       assert.equal(trace.entity, filtered);
+    });
+  });
+});
+
+void describe('ServerEngineAPI.Traceline', () => {
+  void test('calls collision.move with the collision instance bound as this', () => {
+    const collision = {
+      calls: [],
+      move(start, mins, maxs, end, type, passedict) {
+        this.calls.push({ start, mins, maxs, end, type, passedict });
+        return CollisionTrace.empty(end);
+      },
+    };
+
+    void withMockRegistry(defaultMockRegistry({
+      collision,
+    }), () => {
+      const trace = ServerEngineAPI.Traceline(
+        new Vector(1, 2, 3),
+        new Vector(4, 5, 6),
+        true,
+        null,
+      );
+
+      assert.equal(trace.fraction, 1.0);
+    });
+
+    assert.equal(collision.calls.length, 1);
+    assert.equal(collision.calls[0].type, moveTypes.MOVE_NOMONSTERS);
+    assert.deepEqual([...collision.calls[0].start], [1, 2, 3]);
+    assert.deepEqual([...collision.calls[0].end], [4, 5, 6]);
+  });
+});
+
+void describe('ServerEngineAPI.Navigate', () => {
+  void test('passes through a missing synchronous path as null', () => {
+    void withMockRegistry(defaultMockRegistry({
+      server: {
+        navigation: {
+          findPath() {
+            return null;
+          },
+        },
+      },
+    }), () => {
+      const path = ServerEngineAPI.Navigate(new Vector(1, 2, 3), new Vector(4, 5, 6));
+
+      assert.equal(path, null);
+    });
+  });
+
+  void test('passes through a missing asynchronous path as null', async () => {
+    await withMockRegistry(defaultMockRegistry({
+      server: {
+        navigation: {
+          findPathAsync() {
+            return Promise.resolve(null);
+          },
+        },
+      },
+    }), async () => {
+      const path = await ServerEngineAPI.NavigateAsync(new Vector(1, 2, 3), new Vector(4, 5, 6));
+
+      assert.equal(path, null);
     });
   });
 });

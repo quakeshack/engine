@@ -1,37 +1,42 @@
+import type { BrushModel, Hull } from '../../common/model/BSP.ts';
+import type { CollisionTrace } from './ServerCollisionSupport.ts';
+
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { DIST_EPSILON } from '../../common/Pmove.ts';
-import { eventBus, registry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.mjs';
 
-let { Con } = registry;
+interface LegacyHull extends Hull {
+  readonly firstclipnode: number;
+  readonly allowedClipNodes?: Uint8Array | null;
+}
+
+let { Con } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con } = registry);
+  ({ Con } = getCommonRegistry());
 });
-
-/** @typedef {import('./ServerCollisionSupport.mjs').CollisionTrace} CollisionTrace */
-/** @typedef {import('../../common/Mod.ts').BrushModel} BrushModel */
 
 /**
  * Check whether a clipnode belongs to the owning legacy hull subtree.
  * BSP29 hull arrays are shared across models, so foreign clipnodes must be
  * ignored to keep world traces from wandering into inline trigger geometry.
- * @param {{allowedClipNodes?: Uint8Array|null}} hull hull descriptor
- * @param {number} num clipnode index
- * @returns {boolean} true when the clipnode belongs to the active hull subtree
+ * @param hull Hull descriptor.
+ * @param num Clipnode index.
+ * @returns True when the clipnode belongs to the active hull subtree.
  */
-export function isHullNodeAllowed(hull, num) {
+export function isHullNodeAllowed(hull: LegacyHull, num: number): boolean {
   const allowedClipNodes = hull.allowedClipNodes;
   return allowedClipNodes === undefined || allowedClipNodes === null || allowedClipNodes[num] === 1;
 }
 
 /**
  * Compute the signed distance from a point to a hull plane.
- * @param {{type: number, dist: number, normal: Vector}} plane hull plane
- * @param {Vector} point point to test
- * @returns {number} signed distance to the plane
+ * @param plane Hull plane.
+ * @param point Point to test.
+ * @returns Signed distance to the plane.
  */
-export function getHullPlaneDistance(plane, point) {
+export function getHullPlaneDistance(plane: Hull['planes'][number], point: Vector): number {
   if (plane.type < 3) {
     return point[plane.type] - plane.dist;
   }
@@ -41,11 +46,11 @@ export function getHullPlaneDistance(plane, point) {
 
 /**
  * Update trace state after reaching a terminal hull leaf.
- * @param {number} contents terminal hull contents value
- * @param {CollisionTrace} trace trace accumulator
- * @returns {boolean} true when traversal should continue upward
+ * @param contents Terminal hull contents value.
+ * @param trace Trace accumulator.
+ * @returns True when traversal should continue upward.
  */
-export function classifyHullLeaf(contents, trace) {
+export function classifyHullLeaf(contents: number, trace: CollisionTrace): boolean {
   if (contents !== Defs.content.CONTENT_SOLID) {
     trace.allsolid = false;
     if (contents === Defs.content.CONTENT_EMPTY) {
@@ -62,20 +67,20 @@ export function classifyHullLeaf(contents, trace) {
 
 /**
  * Determines the contents inside a hull by descending the clipnode tree.
- * @param {*} hull hull data to test against
- * @param {number} num starting clipnode index
- * @param {Vector} p point to classify
- * @returns {number} content type for the point
+ * @param hull Hull data to test against.
+ * @param num Starting clipnode index.
+ * @param p Point to classify.
+ * @returns Content type for the point.
  */
-export function hullPointContents(hull, num, p) {
+export function hullPointContents(hull: LegacyHull, num: number, p: Vector): number {
   while (num >= 0) {
     if (!isHullNodeAllowed(hull, num)) {
       return Defs.content.CONTENT_EMPTY;
     }
 
     console.assert(num >= hull.firstclipnode && num <= hull.lastclipnode, 'valid node number', num);
-    const node = hull.clipnodes[num];
-    const plane = hull.planes[node.planenum];
+    const node = hull.clipnodes[num]!;
+    const plane = hull.planes[node.planenum]!;
     const d = getHullPlaneDistance(plane, p);
 
     if (d < 0) {
@@ -90,13 +95,13 @@ export function hullPointContents(hull, num, p) {
 
 /**
  * Returns the contents at the specified world position.
- * @param {BrushModel} worldmodel world model that owns hull 0
- * @param {Vector} p position to sample
- * @returns {number} world content
+ * @param worldmodel World model that owns hull 0.
+ * @param p Position to sample.
+ * @returns World content.
  */
-export function pointContents(worldmodel, p) {
-  const cont = hullPointContents(worldmodel.hulls[0], 0, p);
-  if ((cont <= Defs.content.CONTENT_CURRENT_0) && (cont >= Defs.content.CONTENT_CURRENT_DOWN)) {
+export function pointContents(worldmodel: BrushModel, p: Vector): number {
+  const cont = hullPointContents(worldmodel.hulls[0] as LegacyHull, 0, p);
+  if (cont <= Defs.content.CONTENT_CURRENT_0 && cont >= Defs.content.CONTENT_CURRENT_DOWN) {
     return Defs.content.CONTENT_WATER;
   }
   return cont;
@@ -104,17 +109,26 @@ export function pointContents(worldmodel, p) {
 
 /**
  * Recursively tests a swept hull against the world and aggregates the trace result.
- * @param {*} hull hull to trace against
- * @param {number} num clipnode index
- * @param {number} p1f fraction at the start point
- * @param {number} p2f fraction at the end point
- * @param {Vector} p1 start point
- * @param {Vector} p2 end point
- * @param {CollisionTrace} trace trace accumulator
- * @param {number} [depth] recursion depth reserved for API compatibility
- * @returns {boolean} true if traversal should continue downward
+ * @param hull Hull to trace against.
+ * @param num Clipnode index.
+ * @param p1f Fraction at the start point.
+ * @param p2f Fraction at the end point.
+ * @param p1 Start point.
+ * @param p2 End point.
+ * @param trace Trace accumulator.
+ * @param depth Recursion depth reserved for API compatibility.
+ * @returns True if traversal should continue downward.
  */
-export function recursiveHullCheck(hull, num, p1f, p2f, p1, p2, trace, depth = 0) {
+export function recursiveHullCheck(
+  hull: LegacyHull,
+  num: number,
+  p1f: number,
+  p2f: number,
+  p1: Vector,
+  p2: Vector,
+  trace: CollisionTrace,
+  depth = 0,
+): boolean {
   void depth;
 
   if (trace.fraction <= p1f) {
@@ -131,8 +145,8 @@ export function recursiveHullCheck(hull, num, p1f, p2f, p1, p2, trace, depth = 0
 
   console.assert(num >= hull.firstclipnode && num <= hull.lastclipnode, 'valid node number', num);
 
-  const node = hull.clipnodes[num];
-  const plane = hull.planes[node.planenum];
+  const node = hull.clipnodes[num]!;
+  const plane = hull.planes[node.planenum]!;
   const t1 = getHullPlaneDistance(plane, p1);
   const t2 = getHullPlaneDistance(plane, p2);
 

@@ -4,9 +4,8 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { ServerClient } from '../../source/engine/server/Client.mjs';
-import { ServerClientPhysics } from '../../source/engine/server/physics/ServerClientPhysics.mjs';
+import { ServerClientPhysics } from '../../source/engine/server/physics/ServerClientPhysics.ts';
 
 import {
   createBoxBrushModel,
@@ -30,9 +29,9 @@ function createUserCmd(options = {}) {
   return cmd;
 }
 
-describe('ServerClientPhysics', () => {
-  describe('_runSharedPmove', () => {
-    test('syncs pmove state, splits long commands, and deduplicates touch impacts', () => {
+void describe('ServerClientPhysics', () => {
+  void describe('_runSharedPmove', () => {
+    void test('syncs pmove state, splits long commands, and deduplicates touch impacts', () => {
       const clientPhysics = new ServerClientPhysics();
       const impacts = [];
       const addEntityCalls = [];
@@ -165,7 +164,7 @@ describe('ServerClientPhysics', () => {
       client.pmFlags = 2;
       client.pmTime = 3;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         pmove,
         physics: {
           impact(ent, touchEdict, pushVector) {
@@ -214,8 +213,8 @@ describe('ServerClientPhysics', () => {
     });
   });
 
-  describe('physicsClient', () => {
-    test('drains queued walk commands and links once per frame', () => {
+  void describe('physicsClient', () => {
+    void test('drains queued walk commands and links once per frame', () => {
       const clientPhysics = new ServerClientPhysics();
       const events = [];
       const entity = createMockEntity({
@@ -231,7 +230,7 @@ describe('ServerClientPhysics', () => {
       ];
       edict.getClient = () => client;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         area: {
           linkEdict(linkedEdict, touchTriggers) {
             events.push(['linkEdict', linkedEdict, touchTriggers]);
@@ -288,7 +287,7 @@ describe('ServerClientPhysics', () => {
       assert.equal(client.pendingCmds.length, 0);
     });
 
-    test('skips movement when no walk commands are queued', () => {
+    void test('skips movement when no walk commands are queued', () => {
       const clientPhysics = new ServerClientPhysics();
       const events = [];
       const entity = createMockEntity({
@@ -300,7 +299,7 @@ describe('ServerClientPhysics', () => {
       client.state = ServerClient.STATE.CONNECTED;
       edict.getClient = () => client;
 
-      withMockRegistry(defaultMockRegistry({
+      void withMockRegistry(defaultMockRegistry({
         area: {
           linkEdict() {
             events.push('linkEdict');

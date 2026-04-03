@@ -9,12 +9,12 @@ import type { Visibility } from './model/BSP.ts';
 
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
-import { solid } from '../../shared/Defs.ts';
+import { moveTypes, solid } from '../../shared/Defs.ts';
 import Key from '../client/Key.mjs';
 import { SFX as SFXValue } from '../client/Sound.mjs';
 import VID from '../client/VID.mjs';
 import * as Protocol from '../network/Protocol.ts';
-import { EventBus, eventBus, registry } from '../registry.mjs';
+import { EventBus, eventBus, getClientRegistry, getCommonRegistry } from '../registry.mjs';
 import { ED, ServerEdict as ServerEdictValue } from '../server/Edict.mjs';
 import Cmd from './Cmd.ts';
 import Cvar from './Cvar.ts';
@@ -74,10 +74,12 @@ type ServerEntityFilter = ((entity: ServerEdict) => boolean) | null;
 type ClientEntityFilter = ((entity: ClientEdict) => boolean) | null;
 type CommandCallback = (...args: string[]) => void | Promise<void>;
 
-let { CL, COM, Con, Draw, Host, R, S, SCR, SV, V } = registry;
+let { COM, Con, Host, SV, V } = getCommonRegistry();
+let { CL, Draw, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Draw, Host, R, S, SCR, SV, V } = registry);
+  ({ COM, Con, Host, SV, V } = getCommonRegistry());
+  ({ CL, Draw, R, S, SCR } = getClientRegistry());
 });
 
 eventBus.subscribe('com.ready', () => {
@@ -93,7 +95,9 @@ eventBus.subscribe('com.ready', () => {
     CommonEngineAPI.gameFlavors.push(GameFlavors.rogue);
   }
 
-  if (COM.registered.value === 1) {
+  console.assert(COM.registered !== null, 'COM.registered must exist after com.ready');
+
+  if (COM.registered!.value === 1) {
     ServerEngineAPI.registered = true;
     ClientEngineAPI.registered = true;
   }
@@ -311,7 +315,11 @@ export class CommonEngineAPI {
    * @returns The modified variable.
    */
   static SetCvar(name: string, value: string): Cvar {
-    return Cvar.Set(name, value);
+    const variable = Cvar.Set(name, value);
+
+    console.assert(variable !== null, 'Cvar.Set requires a registered variable', name);
+
+    return variable!;
   }
 
   /**
@@ -405,7 +413,25 @@ export class ServerEngineAPI extends CommonEngineAPI {
     maxs: Vector | null = null,
   ): GameTrace {
     const nullVec = Vector.origin;
-    const trace = SV.collision.move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict) as InternalTraceLike;
+    const moveType = noMonsters ? moveTypes.MOVE_NOMONSTERS : moveTypes.MOVE_NORMAL;
+    const collision = SV.collision as {
+      move(
+        start: Vector,
+        mins: Vector,
+        maxs: Vector,
+        end: Vector,
+        type: moveTypes,
+        passedict: ServerEdict | null,
+      ): InternalTraceLike;
+    };
+    const trace = collision.move(
+      start,
+      mins ? mins : nullVec,
+      maxs ? maxs : nullVec,
+      end,
+      moveType,
+      passEdict,
+    );
     return internalTraceToGameTrace(trace);
   }
 
@@ -418,7 +444,25 @@ export class ServerEngineAPI extends CommonEngineAPI {
     maxs: Vector | null = null,
   ): InternalTraceLike {
     const nullVec = Vector.origin;
-    return SV.collision.move(start, mins ? mins : nullVec, maxs ? maxs : nullVec, end, noMonsters, passEdict) as InternalTraceLike;
+    const moveType = noMonsters ? moveTypes.MOVE_NOMONSTERS : moveTypes.MOVE_NORMAL;
+    const collision = SV.collision as {
+      move(
+        start: Vector,
+        mins: Vector,
+        maxs: Vector,
+        end: Vector,
+        type: moveTypes,
+        passedict: ServerEdict | null,
+      ): InternalTraceLike;
+    };
+    return collision.move(
+      start,
+      mins ? mins : nullVec,
+      maxs ? maxs : nullVec,
+      end,
+      moveType,
+      passEdict,
+    );
   }
 
   /**
@@ -426,9 +470,11 @@ export class ServerEngineAPI extends CommonEngineAPI {
    * It will also send an update to all connected clients.
    */
   static Lightstyle(styleId: number, sequenceString: string): void {
-    SV.server.lightstyles[styleId] = sequenceString;
+    const server = SV.server as typeof SV.server & { lightstyles: string[]; loading: boolean };
 
-    if (SV.server.loading) {
+    server.lightstyles[styleId] = sequenceString;
+
+    if (server.loading) {
       return;
     }
 
@@ -521,13 +567,17 @@ export class ServerEngineAPI extends CommonEngineAPI {
     const mins = origin.copy().subtract(vradius);
     const maxs = origin.copy().add(vradius);
     const edicts: ServerEdict[] = [];
+    const tree = SV.area.tree;
 
-    for (const ent of SV.area.tree.queryAABB(mins, maxs)) {
+    console.assert(tree !== null, 'SV.area.tree must be initialized before radius queries');
+
+    for (const ent of tree!.queryAABB(mins, maxs)) {
       if (ent.num === 0 || ent.isFree()) {
         continue;
       }
 
-      const eorg = origin.copy().subtract(ent.entity.origin.copy().add(ent.entity.mins.copy().add(ent.entity.maxs).multiply(0.5)));
+      const entity = ent.entity!;
+      const eorg = origin.copy().subtract(entity.origin.copy().add(entity.mins.copy().add(entity.maxs).multiply(0.5)));
 
       if (eorg.len() > radius) {
         continue;
@@ -554,7 +604,9 @@ export class ServerEngineAPI extends CommonEngineAPI {
         continue;
       }
 
-      if (ent.entity[field] === value) {
+      const entity = ent.entity! as BaseEntity & Record<string, EdictValueType>;
+
+      if (entity[field] === value) {
         return ent; // FIXME: turn it into yield
       }
     }
@@ -575,7 +627,9 @@ export class ServerEngineAPI extends CommonEngineAPI {
         continue;
       }
 
-      if (ent.entity[field] === value) {
+      const entity = ent.entity! as BaseEntity & Record<string, EdictValueType>;
+
+      if (entity[field] === value) {
         yield ent;
       }
     }
@@ -664,7 +718,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
   }
 
   static IsLoading(): boolean {
-    return SV.server.loading;
+    return (SV.server as typeof SV.server & { loading: boolean }).loading;
   }
 
   /**
@@ -729,25 +783,27 @@ export class ServerEngineAPI extends CommonEngineAPI {
    */
   static DispatchClientEvent(receiverPlayerEdict: ServerEdict, expedited: boolean, eventCode: number, ...args: SerializableType[]): void {
     console.assert(receiverPlayerEdict instanceof ServerEdictValue && receiverPlayerEdict.isClient(), 'emitterEdict must be a ServerEdict connected to a client');
+    console.assert(receiverPlayerEdict.getClient() !== null, 'receiverPlayerEdict must have a client');
 
-    const destination = expedited ? receiverPlayerEdict.getClient().expedited_message : receiverPlayerEdict.getClient().message;
+    const receiverClient = receiverPlayerEdict.getClient()!;
+    const destination = expedited ? receiverClient.expedited_message : receiverClient.message;
 
     this.#DispatchClientEventOnDestination(destination, eventCode, ...args);
   }
 
   /**
    * Return a series of waypoints from start to end.
-   * @returns Waypoints from start to end, including start and end.
+   * @returns The waypoints from start to end, or `null` when no path could be found.
    */
-  static Navigate(start: Vector, end: Vector): Vector[] {
+  static Navigate(start: Vector, end: Vector): Vector[] | null {
     return SV.server.navigation.findPath(start, end);
   }
 
   /**
    * Return a series of waypoints from start to end asynchronously.
-   * @returns Waypoints from start to end, including start and end.
+   * @returns The waypoints from start to end, or `null` when no path could be found.
    */
-  static NavigateAsync(start: Vector, end: Vector): Promise<Vector[]> {
+  static NavigateAsync(start: Vector, end: Vector): Promise<Vector[] | null> {
     return SV.server.navigation.findPathAsync(start, end);
   }
 
@@ -772,8 +828,9 @@ export class ServerEngineAPI extends CommonEngineAPI {
    */
   static SetPmoveConfiguration(config: PmoveConfiguration): void {
     console.assert(config instanceof PmoveConfiguration, 'config must be an instance of PmoveConfiguration');
+    console.assert(SV.pmove !== null, 'SV.pmove must exist before setting configuration');
 
-    SV.pmove.configuration = config;
+    SV.pmove!.configuration = config;
   }
 
   static get maxplayers(): number {
@@ -845,7 +902,11 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns The loaded sound effect.
    */
   static LoadSound(sfxName: string): SFXValue {
-    return S.PrecacheSound(sfxName);
+    const sfx = S.PrecacheSound(sfxName);
+
+    console.assert(sfx !== null, 'sound must be precached before being returned', sfxName);
+
+    return sfx!;
   }
 
   /**
@@ -1024,13 +1085,15 @@ export class ClientEngineAPI extends CommonEngineAPI {
       return CL.state.viewangles.copy();
     },
     get vieworigin(): Vector {
-      return CL.state.viewent.origin.copy();
+      console.assert(CL.state.viewent !== null, 'client view entity must exist when reading vieworigin');
+
+      return CL.state.viewent!.origin.copy();
     },
     get maxclients(): number {
       return CL.state.maxclients;
     },
     get levelname(): string {
-      return CL.state.levelname;
+      return CL.state.levelname ?? '';
     },
     get entityNum(): number {
       return CL.state.viewentity;
@@ -1093,7 +1156,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * @returns The current view size.
      */
     get viewsize(): number {
-      return SCR.viewsize.value as number;
+      return (SCR as typeof SCR & { viewsize: Cvar }).viewsize.value as number;
     },
   };
 

@@ -1,4 +1,4 @@
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.mjs';
 
 import type { ServerEdict } from '../server/Edict.mjs';
 import type { BrushModel } from './model/BSP.ts';
@@ -14,10 +14,12 @@ interface ClientCollisionModelAccessors {
   readonly getModels?: () => Array<BrushModel | object | null> | null;
 }
 
-let { CL, SV } = registry;
+let { SV } = getCommonRegistry();
+let { CL } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, SV } = registry);
+  ({ SV } = getCommonRegistry());
+  ({ CL } = getClientRegistry());
 });
 
 /**

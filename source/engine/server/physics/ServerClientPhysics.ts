@@ -1,19 +1,19 @@
+import type { ServerEdict } from '../Edict.mjs';
+
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import { eventBus, registry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.mjs';
 import {
   VELOCITY_EPSILON,
-} from './Defs.mjs';
+} from './Defs.ts';
 import { ServerClient } from '../Client.mjs';
 import { PM_TYPE } from '../../common/Pmove.ts';
 import { BrushModel } from '../../common/Mod.ts';
 
-let { Host, SV, V } = registry;
+let { Host, SV, V } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  Host = registry.Host;
-  SV = registry.SV;
-  V = registry.V;
+  ({ Host, SV, V } = getCommonRegistry());
 });
 
 /**
@@ -23,9 +23,6 @@ eventBus.subscribe('registry.frozen', () => {
  * and server authoritative movement use the exact same code path.
  */
 export class ServerClientPhysics {
-  constructor() {
-  }
-
   // =========================================================================
   // Shared PmovePlayer integration
   // =========================================================================
@@ -33,14 +30,18 @@ export class ServerClientPhysics {
   /**
    * Populates SV.pmove physents with solid entities near the player.
    * Must be called before running a PmovePlayer for a client.
-   * @param {import('../Edict.mjs').ServerEdict} playerEdict player edict (excluded from list)
+   * @param playerEdict Player edict (excluded from list).
    */
-  _setupPhysents(playerEdict) {
+  _setupPhysents(playerEdict: ServerEdict): void {
     const pm = SV.pmove;
-    pm.clearEntities();
+    console.assert(pm !== null, 'SV.pmove must be initialized before setting up physents');
 
-    for (let i = 1; i < SV.server.num_edicts; i++) {
-      const edict = SV.server.edicts[i];
+    const activePmove = pm!;
+
+    activePmove.clearEntities();
+
+    for (let index = 1; index < SV.server.num_edicts; index++) {
+      const edict = SV.server.edicts[index];
       if (!edict || edict.isFree() || edict === playerEdict) {
         continue;
       }
@@ -50,17 +51,17 @@ export class ServerClientPhysics {
         continue;
       }
 
-      const s = entity.solid;
+      const solidType = entity.solid;
 
-      if (s !== Defs.solid.SOLID_BSP && s !== Defs.solid.SOLID_BBOX && s !== Defs.solid.SOLID_SLIDEBOX) {
+      if (solidType !== Defs.solid.SOLID_BSP && solidType !== Defs.solid.SOLID_BBOX && solidType !== Defs.solid.SOLID_SLIDEBOX) {
         continue;
       }
 
-      const model = (s === Defs.solid.SOLID_BSP && entity.modelindex)
+      const model = solidType === Defs.solid.SOLID_BSP && entity.modelindex
         ? SV.server.models[entity.modelindex]
         : null;
 
-      pm.addEntity(entity, /** @type {BrushModel} */ (model instanceof BrushModel ? model : null));
+      activePmove.addEntity(entity, model instanceof BrushModel ? model : null);
     }
   }
 
@@ -69,20 +70,23 @@ export class ServerClientPhysics {
    * the entity and client objects. This replaces the old server-side
    * walkMove/airMove/waterMove/friction/accelerate code with the same
    * movement code the client uses for prediction.
-   * @param {import('../Edict.mjs').ServerEdict} ent player edict
-   * @param {ServerClient} client client connection
+   * @param ent Player edict.
+   * @param client Client connection.
    */
-  _runSharedPmove(ent, client) {
-    const entity = ent.entity;
+  _runSharedPmove(ent: ServerEdict, client: ServerClient): void {
+    const entity = ent.entity!;
     const pm = SV.pmove;
+    console.assert(pm !== null, 'SV.pmove must be initialized before running shared pmove');
+
+    const activePmove = pm!;
 
     // --- Set up physents ---
     this._setupPhysents(ent);
 
     // --- Create a fresh player mover ---
-    const pmove = pm.newPlayerMove();
+    const pmove = activePmove.newPlayerMove();
 
-    // --- Copy entity state → pmove ---
+    // --- Copy entity state -> pmove ---
     pmove.origin.set(entity.origin);
     pmove.velocity.set(entity.velocity);
     pmove.angles.set(entity.v_angle ?? entity.angles);
@@ -136,17 +140,19 @@ export class ServerClientPhysics {
       pmove.move();
     }
 
-    // --- Copy results back → entity ---
+    // --- Copy results back -> entity ---
     entity.origin = entity.origin.set(pmove.origin);
     entity.velocity = entity.velocity.set(pmove.velocity);
 
     // Ground entity
     if (pmove.onground !== null) {
       entity.flags |= Defs.flags.FL_ONGROUND;
-      if (pmove.onground > 0 && pmove.onground < pm.physents.length) {
-        const pe = pm.physents[pmove.onground];
-        if (pe.edictId !== undefined && pe.edictId < SV.server.num_edicts) {
-          entity.groundentity = SV.server.edicts[pe.edictId].entity;
+      if (pmove.onground > 0 && pmove.onground < activePmove.physents.length) {
+        const physent = activePmove.physents[pmove.onground]!;
+        const edictId = physent.edictId;
+
+        if (edictId !== undefined && edictId !== null && edictId < SV.server.num_edicts) {
+          entity.groundentity = SV.server.edicts[edictId].entity;
         } else {
           entity.groundentity = null;
         }
@@ -177,15 +183,17 @@ export class ServerClientPhysics {
     client.pmFlags = pmove.pmFlags;
     client.pmTime = pmove.pmTime;
 
-    // Touched entities — fire touch functions via SV.physics.impact
+    // Touched entities - fire touch functions via SV.physics.impact
     // to match the bidirectional touch semantics used by SV_FlyMove.
-    const touchedSet = new Set();
-    for (const idx of pmove.touchindices) {
-      if (idx > 0 && idx < pm.physents.length && !touchedSet.has(idx)) {
-        touchedSet.add(idx);
-        const pe = pm.physents[idx];
-        if (pe.edictId !== undefined && pe.edictId < SV.server.num_edicts) {
-          const touchEdict = SV.server.edicts[pe.edictId];
+    const touchedSet = new Set<number>();
+    for (const index of pmove.touchindices) {
+      if (index > 0 && index < activePmove.physents.length && !touchedSet.has(index)) {
+        touchedSet.add(index);
+        const physent = activePmove.physents[index]!;
+        const edictId = physent.edictId;
+
+        if (edictId !== undefined && edictId !== null && edictId < SV.server.num_edicts) {
+          const touchEdict = SV.server.edicts[edictId];
           if (!touchEdict.isFree()) {
             SV.physics.impact(ent, touchEdict, entity.velocity.copy());
           }
@@ -200,24 +208,25 @@ export class ServerClientPhysics {
 
   /**
    * Updates the ideal pitch for a client when standing on the ground.
-   * @param {import('../Edict.mjs').ServerEdict} ent player entity
+   * @param ent Player entity.
    */
-  setIdealPitch(ent) {
-    if (!ent || (ent.entity.flags & Defs.flags.FL_ONGROUND) === 0) {
+  setIdealPitch(ent: ServerEdict): void {
+    if (!ent || (ent.entity!.flags & Defs.flags.FL_ONGROUND) === 0) {
       return;
     }
 
-    const origin = ent.entity.origin;
-    const angleval = ent.entity.angles[1] * (Math.PI / 180.0);
+    const entity = ent.entity!;
+    const origin = entity.origin;
+    const angleval = entity.angles[1] * (Math.PI / 180.0);
     const sinval = Math.sin(angleval);
     const cosval = Math.cos(angleval);
-    const top = new Vector(0.0, 0.0, origin[2] + ent.entity.view_ofs[2]);
+    const top = new Vector(0.0, 0.0, origin[2] + entity.view_ofs[2]);
     const bottom = new Vector(0.0, 0.0, top[2] - 160.0);
-    const z = [];
+    const z: number[] = [];
 
-    for (let i = 0; i < 6; i++) {
-      top[0] = bottom[0] = origin[0] + cosval * (i + 3) * 12.0;
-      top[1] = bottom[1] = origin[1] + sinval * (i + 3) * 12.0;
+    for (let index = 0; index < 6; index++) {
+      top[0] = bottom[0] = origin[0] + cosval * (index + 3) * 12.0;
+      top[1] = bottom[1] = origin[1] + sinval * (index + 3) * 12.0;
 
       const tr = SV.collision.move(top, Vector.origin, Vector.origin, bottom, 1, ent);
 
@@ -225,14 +234,14 @@ export class ServerClientPhysics {
         return;
       }
 
-      z[i] = top[2] - tr.fraction * 160.0;
+      z[index] = top[2] - tr.fraction * 160.0;
     }
 
     let dir = 0.0;
     let steps = 0;
 
-    for (let i = 1; i < 6; i++) {
-      const step = z[i] - z[i - 1];
+    for (let index = 1; index < 6; index++) {
+      const step = z[index] - z[index - 1];
 
       if (Math.abs(step) <= VELOCITY_EPSILON) {
         continue;
@@ -247,28 +256,30 @@ export class ServerClientPhysics {
     }
 
     if (dir === 0.0) {
-      ent.entity.idealpitch = 0.0;
+      entity.idealpitch = 0.0;
       return;
     }
 
     if (steps >= 2) {
-      ent.entity.idealpitch = -dir * SV.idealpitchscale.value;
+      entity.idealpitch = -dir * SV.idealpitchscale.value;
     }
   }
 
   // =========================================================================
-  // Client think — punchangle decay and visual angle setup
+  // Client think - punchangle decay and visual angle setup
   // =========================================================================
 
   /**
    * Executes per-frame input processing for a client.
-   * Movement is NOT done here — it runs through PmovePlayer in physicsClient.
+   * Movement is NOT done here - it runs through PmovePlayer in physicsClient.
    * This only handles punchangle decay and visual angle updates.
-   * @param {import('../Edict.mjs').ServerEdict} edict client edict
-   * @param {ServerClient} client client connection (unused, movement runs in physicsClient)
+   * @param edict Client edict.
+   * @param _client Client connection (unused, movement runs in physicsClient).
    */
-  clientThink(edict, client) { // eslint-disable-line no-unused-vars
-    const entity = edict.entity;
+  clientThink(edict: ServerEdict, _client: ServerClient): void {
+    void _client;
+
+    const entity = edict.entity!;
 
     if (!edict || entity.movetype === Defs.moveType.MOVETYPE_NONE) {
       return;
@@ -315,20 +326,24 @@ export class ServerClientPhysics {
    * move commands can arrive in a single server frame. We process each
    * queued command individually with its original msec so the server
    * movement matches the client-side prediction (QW-style).
-   * @param {import('../Edict.mjs').ServerEdict} ent edict
+   * @param ent Edict.
    */
-  physicsClient(ent) {
+  physicsClient(ent: ServerEdict): void {
     const client = ent.getClient();
+    console.assert(client !== null, 'client edict must have an attached server client');
 
-    if (client.state < ServerClient.STATE.CONNECTED) {
+    const activeClient = client!;
+    const gameAPI = SV.server.gameAPI as typeof SV.server.gameAPI & { time: number };
+
+    if (activeClient.state < ServerClient.STATE.CONNECTED) {
       return;
     }
 
-    SV.server.gameAPI.time = SV.server.time;
+    gameAPI.time = SV.server.time;
     SV.server.gameAPI.PlayerPreThink(ent);
     SV.physics.checkVelocity(ent);
-    const movetype = ent.entity.movetype >> 0;
-    if ((movetype === Defs.moveType.MOVETYPE_TOSS) || (movetype === Defs.moveType.MOVETYPE_BOUNCE)) {
+    const movetype = ent.entity!.movetype >> 0;
+    if (movetype === Defs.moveType.MOVETYPE_TOSS || movetype === Defs.moveType.MOVETYPE_BOUNCE) {
       SV.physics.physicsToss(ent);
     } else {
       if (!SV.physics.runThink(ent)) {
@@ -347,21 +362,21 @@ export class ServerClientPhysics {
           // smooth and the next packet will catch up. Running with the
           // last known cmd would add phantom movement, making the
           // remote player appear to move faster than the host.
-          for (const cmd of client.pendingCmds) {
-            client.cmd.set(cmd);
-            this._runSharedPmove(ent, client);
+          for (const cmd of activeClient.pendingCmds) {
+            activeClient.cmd.set(cmd);
+            this._runSharedPmove(ent, activeClient);
           }
-          client.pendingCmds.length = 0;
+          activeClient.pendingCmds.length = 0;
           break;
         case Defs.moveType.MOVETYPE_FLY:
           SV.physics.flyMove(ent, Host.frametime);
           break;
         default:
-          throw new Error('SV.Physics_Client: bad movetype ' + movetype);
+          throw new Error(`SV.Physics_Client: bad movetype ${movetype}`);
       }
     }
     SV.area.linkEdict(ent, true);
-    SV.server.gameAPI.time = SV.server.time;
+    gameAPI.time = SV.server.time;
     SV.server.gameAPI.PlayerPostThink(ent);
   }
 }

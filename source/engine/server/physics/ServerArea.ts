@@ -1,14 +1,35 @@
+import type { Hull, Node } from '../../common/model/BSP.ts';
+import type { BaseEntity, ServerEdict } from '../Edict.mjs';
+
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { Octree } from '../../../shared/Octree.ts';
-import { eventBus, registry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.mjs';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
-import { BrushModel } from '../../../engine/common/Mod.ts';
+import { BrushModel } from '../../common/Mod.ts';
 
-let { SV } = registry;
+interface BoxClipNode {
+  planenum: number;
+  children: number[];
+}
+
+interface BoxPlane {
+  type: number;
+  normal: Vector;
+  dist: number;
+}
+
+interface BoxHull {
+  clipnodes: BoxClipNode[];
+  planes: BoxPlane[];
+  firstclipnode: number;
+  lastclipnode: number;
+}
+
+let { SV } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  SV = registry.SV;
+  ({ SV } = getCommonRegistry());
 });
 
 /**
@@ -16,42 +37,46 @@ eventBus.subscribe('registry.frozen', () => {
  * Handles the area node BSP tree used for spatial queries.
  */
 export class ServerArea {
-  /** @type {?Octree<import('../Edict.mjs').ServerEdict>} */
-  tree = null;
+  tree: Octree<ServerEdict> | null = null;
+  box_clipnodes: BoxClipNode[] = [];
+  box_planes: BoxPlane[] = [];
+  box_hull: BoxHull | null = null;
+  readonly _modelSource: CollisionModelSource;
 
   /**
-   * @param {CollisionModelSource} [modelSource] runtime model resolver
+   * @param modelSource Runtime model resolver.
    */
-  constructor(modelSource = createRegistryCollisionModelSource()) {
+  constructor(modelSource: CollisionModelSource = createRegistryCollisionModelSource()) {
     this._modelSource = modelSource;
   }
 
   /**
    * Resolve a collision model by model index from either the active server or
    * the client precache populated during signon.
-   * @param {number} modelIndex precached model index
-   * @returns {BrushModel|object|null} resolved model, if any
+   * @param modelIndex Precached model index.
+   * @returns Resolved model, if any.
    */
-  _getModelByIndex(modelIndex) {
+  _getModelByIndex(modelIndex: number): ReturnType<CollisionModelSource['getModelByIndex']> {
     return this._modelSource.getModelByIndex(modelIndex);
   }
 
   /**
    * Compute entity world bounds, expanding rotated BSP bounds into a world AABB.
-   * @param {import('../Edict.mjs').ServerEdict} ent entity being linked
-   * @param {Vector} absmin output minimum bounds
-   * @param {Vector} absmax output maximum bounds
+   * @param ent Entity being linked.
+   * @param absmin Output minimum bounds.
+   * @param absmax Output maximum bounds.
    */
-  _computeEntityBounds(ent, absmin, absmax) {
-    const origin = ent.entity.origin;
-    const mins = ent.entity.mins;
-    const maxs = ent.entity.maxs;
-    const model = this._getModelByIndex(ent.entity.modelindex);
+  _computeEntityBounds(ent: ServerEdict, absmin: Vector, absmax: Vector): void {
+    const entity = ent.entity!;
+    const origin = entity.origin;
+    const mins = entity.mins;
+    const maxs = entity.maxs;
+    const model = this._getModelByIndex(entity.modelindex);
 
-    if (ent.entity.solid === Defs.solid.SOLID_BSP
+    if (entity.solid === Defs.solid.SOLID_BSP
       && model instanceof BrushModel
-      && !ent.entity.angles.isOrigin()) {
-      const basis = ent.entity.angles.toRotationMatrix();
+      && !entity.angles.isOrigin()) {
+      const basis = entity.angles.toRotationMatrix();
       const forward = new Vector(basis[0], basis[1], basis[2]);
       const right = new Vector(basis[3], basis[4], basis[5]);
       const up = new Vector(basis[6], basis[7], basis[8]);
@@ -92,7 +117,7 @@ export class ServerArea {
   /**
    * Initializes the temporary hull data used for axis-aligned clipping.
    */
-  initBoxHull() {
+  initBoxHull(): void {
     this.box_clipnodes = [];
     this.box_planes = [];
     this.box_hull = {
@@ -102,42 +127,45 @@ export class ServerArea {
       lastclipnode: 5,
     };
 
-    for (let i = 0; i <= 5; i++) {
-      const node = {};
-      this.box_clipnodes[i] = node;
-      node.planenum = i;
-      node.children = [];
-      node.children[i & 1] = Defs.content.CONTENT_EMPTY;
-      if (i !== 5) {
-        node.children[1 - (i & 1)] = i + 1;
+    for (let index = 0; index <= 5; index++) {
+      const node: BoxClipNode = {
+        planenum: index,
+        children: [],
+      };
+      this.box_clipnodes[index] = node;
+      node.children[index & 1] = Defs.content.CONTENT_EMPTY;
+      if (index !== 5) {
+        node.children[1 - (index & 1)] = index + 1;
       } else {
-        node.children[1 - (i & 1)] = Defs.content.CONTENT_SOLID;
+        node.children[1 - (index & 1)] = Defs.content.CONTENT_SOLID;
       }
 
-      const plane = {};
-      this.box_planes[i] = plane;
-      plane.type = i >> 1;
-      plane.normal = new Vector();
-      plane.normal[i >> 1] = 1.0;
-      plane.dist = 0.0;
+      const plane: BoxPlane = {
+        type: index >> 1,
+        normal: new Vector(),
+        dist: 0.0,
+      };
+      this.box_planes[index] = plane;
+      plane.normal[index >> 1] = 1.0;
     }
   }
 
   /**
    * Resolves the hull that should be used when clipping against a given entity.
-   * @param {import('../Edict.mjs').ServerEdict} ent edict to create a hull for
-   * @param {Vector} mins minimum extents of the moving object
-   * @param {Vector} maxs maximum extents of the moving object
-   * @param {Vector} out_offset receives the hull offset relative to entity origin
-   * @returns {*} the hull structure used for collision tests
+   * @param ent Edict to create a hull for.
+   * @param mins Minimum extents of the moving object.
+   * @param maxs Maximum extents of the moving object.
+   * @param out_offset Receives the hull offset relative to entity origin.
+   * @returns The hull structure used for collision tests.
    */
-  hullForEntity(ent, mins, maxs, out_offset) {
-    const model = this._getModelByIndex(ent.entity.modelindex);
-    const origin = ent.entity.origin;
+  hullForEntity(ent: ServerEdict, mins: Vector, maxs: Vector, out_offset: Vector): Hull | BoxHull {
+    const entity = ent.entity!;
+    const model = this._getModelByIndex(entity.modelindex);
+    const origin = entity.origin;
 
-    if (ent.entity.solid !== Defs.solid.SOLID_BSP || !(model instanceof BrushModel)) { // CR: don’t ask
-      const emaxs = ent.entity.maxs;
-      const emins = ent.entity.mins;
+    if (entity.solid !== Defs.solid.SOLID_BSP || !(model instanceof BrushModel)) { // CR: don’t ask
+      const emaxs = entity.maxs;
+      const emins = entity.mins;
       // FIXME: create a new hull for this instead of mutating the box hull planes (which could cause issues if multiple entities use it at the same time)
       this.box_planes[0].dist = emaxs[0] - mins[0];
       this.box_planes[1].dist = emins[0] - maxs[0];
@@ -146,20 +174,20 @@ export class ServerArea {
       this.box_planes[4].dist = emaxs[2] - mins[2];
       this.box_planes[5].dist = emins[2] - maxs[2];
       out_offset.set(origin);
-      return this.box_hull;
+      return this.box_hull!;
     }
 
-    console.assert(ent.entity.movetype !== Defs.moveType.MOVETYPE_NONE,
+    console.assert(entity.movetype !== Defs.moveType.MOVETYPE_NONE,
       'requires SOLID_BSP with MOVETYPE_NONE, use MOVETYPE_PUSH instead');
 
     const size = maxs[0] - mins[0];
-    let hull;
+    let hull: Hull;
     if (size < 3.0) {
-      hull = model.hulls[0];
+      hull = model.hulls[0]!;
     } else if (size <= 32.0) {
-      hull = model.hulls[1];
+      hull = model.hulls[1]!;
     } else {
-      hull = model.hulls[2];
+      hull = model.hulls[2]!;
     }
 
     out_offset.setTo(
@@ -173,10 +201,10 @@ export class ServerArea {
 
   /**
    * Recursively builds the area node BSP used for spatial queries.
-   * @param {Vector} mins minimum bounds
-   * @param {Vector} maxs maximum bounds
+   * @param mins Minimum bounds.
+   * @param maxs Maximum bounds.
    */
-  initOctree(mins, maxs) {
+  initOctree(mins: Vector, maxs: Vector): void {
     // center is the midpoint of mins/maxs
     const center = mins.copy().add(maxs).multiply(0.5);
 
@@ -194,14 +222,14 @@ export class ServerArea {
 
     const halfSize = pow2 / 2;
 
-    this.tree = /** @type {Octree<import('../Edict.mjs').ServerEdict>} */ (new Octree(center, halfSize, 16, 64));
+    this.tree = new Octree(center, halfSize, 16, 64);
   }
 
   /**
    * Removes an edict from any area lists it is currently linked to.
-   * @param {import('../Edict.mjs').ServerEdict} ent edict to unlink
+   * @param ent Edict to unlink.
    */
-  unlinkEdict(ent) {
+  unlinkEdict(ent: ServerEdict): void {
     if (ent.octreeNode) {
       ent.octreeNode.remove(ent);
       ent.octreeNode = null;
@@ -210,32 +238,43 @@ export class ServerArea {
 
   /**
    * Iterates all trigger edicts that potentially overlap the provided entity.
-   * @param {import('../Edict.mjs').ServerEdict} ent subject edict
+   * @param ent Subject edict.
    */
-  touchLinks(ent) {
-    const absmin = ent.entity.absmin;
-    const absmax = ent.entity.absmax;
+  touchLinks(ent: ServerEdict): void {
+    const tree = this.tree;
+    const entity = ent.entity!;
+    const gameAPI = SV.server.gameAPI as typeof SV.server.gameAPI & { time: number };
 
-    for (const touch of this.tree.queryAABB(absmin, absmax)) {
+    console.assert(tree !== null, 'ServerArea tree must be initialized before touchLinks');
+
+    const activeTree = tree!;
+
+    const absmin = entity.absmin;
+    const absmax = entity.absmax;
+
+    for (const touch of activeTree.queryAABB(absmin, absmax)) {
       if (touch === ent) {
         continue;
       }
 
-      if (!touch.entity.touch || touch.entity.solid !== Defs.solid.SOLID_TRIGGER) {
+      const touchEntity = touch.entity!;
+      if (!touchEntity.touch || touchEntity.solid !== Defs.solid.SOLID_TRIGGER) {
         continue;
       }
 
-      SV.server.gameAPI.time = SV.server.time;
-      touch.entity.touch(!ent.isFree() ? ent.entity : null);
+      const touchFn = touchEntity.touch as (this: BaseEntity, other: BaseEntity | null) => void;
+
+      gameAPI.time = SV.server.time;
+      touchFn.call(touchEntity, !ent.isFree() ? ent.entity : null);
     }
   }
 
   /**
    * Populates the leaf list for an entity by traversing the BSP tree.
-   * @param {import('../Edict.mjs').ServerEdict} ent subject edict
-   * @param {*} node current BSP node
+   * @param ent Subject edict.
+   * @param node Current BSP node.
    */
-  findTouchedLeafs(ent, node) {
+  findTouchedLeafs(ent: ServerEdict, node: Node): void {
     if (node.contents === Defs.content.CONTENT_SOLID) {
       return;
     }
@@ -249,33 +288,33 @@ export class ServerArea {
       return;
     }
 
-    const entity = /** @type {import('../Edict.mjs').BaseEntity} */ (ent.entity);
-    console.assert(entity !== null);
+    console.assert(ent.entity !== null);
+    const entity = ent.entity! as BaseEntity;
 
-    const sides = Vector.boxOnPlaneSide(entity.absmin, entity.absmax, node.plane);
+    const sides = Vector.boxOnPlaneSide(entity.absmin, entity.absmax, node.plane!);
 
     if ((sides & 1) !== 0) {
-      this.findTouchedLeafs(ent, node.children[0]);
+      this.findTouchedLeafs(ent, node.children[0] as Node);
     }
 
     if ((sides & 2) !== 0) {
-      this.findTouchedLeafs(ent, node.children[1]);
+      this.findTouchedLeafs(ent, node.children[1] as Node);
     }
   }
 
   /**
    * Inserts an edict into the area lists and optionally processes trigger touches.
    * NOTE: absmin/absmax will be reset.
-   * @param {import('../Edict.mjs').ServerEdict} ent edict to link
-   * @param {boolean} touchTriggers whether triggers should be evaluated
+   * @param ent Edict to link.
+   * @param touchTriggers Whether triggers should be evaluated.
    */
-  linkEdict(ent, touchTriggers = false) {
+  linkEdict(ent: ServerEdict, touchTriggers = false): void {
     if (ent.equals(SV.server.edicts[0]) || ent.isFree()) {
       return;
     }
 
-    const entity = /** @type {import('../Edict.mjs').BaseEntity} */ (ent.entity);
-    console.assert(entity !== null);
+    console.assert(ent.entity !== null);
+    const entity = ent.entity! as BaseEntity;
 
     SV.server.navigation.relinkEdict(ent);
     this.unlinkEdict(ent);
@@ -307,7 +346,13 @@ export class ServerArea {
       return;
     }
 
-    const node = this.tree.insert(ent);
+    const tree = this.tree;
+
+    console.assert(tree !== null, 'ServerArea tree must be initialized before linkEdict');
+
+    const activeTree = tree!;
+
+    const node = activeTree.insert(ent);
     ent.octreeNode = node;
 
     if (entity.movetype !== Defs.moveType.MOVETYPE_NOCLIP && touchTriggers) {

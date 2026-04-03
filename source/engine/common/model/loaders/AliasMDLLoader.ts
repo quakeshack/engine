@@ -629,9 +629,9 @@ export class AliasMDLLoader extends ModelLoader {
     const scaleOrigin = loadmodel._scale_origin;
 
     console.assert(scale !== null && scaleOrigin !== null);
-    if (scale === null || scaleOrigin === null) {
-      return;
-    }
+
+    const activeScale = scale!;
+    const activeScaleOrigin = scaleOrigin!;
 
     const cmds: number[] = [];
 
@@ -680,9 +680,9 @@ export class AliasMDLLoader extends ModelLoader {
             for (let vertexOffset = 0; vertexOffset < 3; vertexOffset++) {
               const vert = frame.v[triangle.vertindex[vertexOffset]];
               console.assert(vert.lightnormalindex < avertexnormals.length / 3);
-              cmds.push(vert.v[0] * scale[0] + scaleOrigin[0]);
-              cmds.push(vert.v[1] * scale[1] + scaleOrigin[1]);
-              cmds.push(vert.v[2] * scale[2] + scaleOrigin[2]);
+              cmds.push(vert.v[0] * activeScale[0] + activeScaleOrigin[0]);
+              cmds.push(vert.v[1] * activeScale[1] + activeScaleOrigin[1]);
+              cmds.push(vert.v[2] * activeScale[2] + activeScaleOrigin[2]);
               cmds.push(avertexnormals[vert.lightnormalindex * 3]);
               cmds.push(avertexnormals[vert.lightnormalindex * 3 + 1]);
               cmds.push(avertexnormals[vert.lightnormalindex * 3 + 2]);
@@ -701,9 +701,9 @@ export class AliasMDLLoader extends ModelLoader {
         for (let vertexOffset = 0; vertexOffset < 3; vertexOffset++) {
           const vert = frame.v[triangle.vertindex[vertexOffset]];
           console.assert(vert.lightnormalindex < avertexnormals.length / 3);
-          cmds.push(vert.v[0] * scale[0] + scaleOrigin[0]);
-          cmds.push(vert.v[1] * scale[1] + scaleOrigin[1]);
-          cmds.push(vert.v[2] * scale[2] + scaleOrigin[2]);
+          cmds.push(vert.v[0] * activeScale[0] + activeScaleOrigin[0]);
+          cmds.push(vert.v[1] * activeScale[1] + activeScaleOrigin[1]);
+          cmds.push(vert.v[2] * activeScale[2] + activeScaleOrigin[2]);
           cmds.push(avertexnormals[vert.lightnormalindex * 3]);
           cmds.push(avertexnormals[vert.lightnormalindex * 3 + 1]);
           cmds.push(avertexnormals[vert.lightnormalindex * 3 + 2]);

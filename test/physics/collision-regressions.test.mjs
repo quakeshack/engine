@@ -9,10 +9,10 @@ import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loade
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
-import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
-import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';
-import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.mjs';
-import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.mjs';
+import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
+import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
+import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.ts';
+import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.ts';
 
 void test('PmovePlayer.DEBUG is disabled before Pmove.Init()', () => {
   assert.equal(PmovePlayer.DEBUG, false);

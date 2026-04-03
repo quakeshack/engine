@@ -1,10 +1,10 @@
-import { registry, eventBus } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.mjs';
 import { BaseWorker, type WorkerMessageListener } from './Sys.ts';
 
-let { Host } = registry;
+let { Host } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host } = registry);
+  ({ Host } = getCommonRegistry());
 });
 
 const isNode = typeof process !== 'undefined' && process.versions?.node !== undefined;

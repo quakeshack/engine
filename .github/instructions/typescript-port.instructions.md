@@ -163,6 +163,22 @@ constructor() {
 // ✅ Just omit it
 ```
 
+### Avoid typeof to check existence of functions
+
+```typescript
+
+// ❌ Avoid this pattern
+…
+if (typeof someModule.someFunction === 'function') {
+…
+const attachedClient = typeof ent.getClient === 'function' ? ent.getClient() : null;
+…
+
+// ✅ Instead, use optional chaining and nullish coalescing
+if (sometype instanceof SomeClass) {
+…
+```
+
 ### Template Literals
 
 Replace string concatenation with template literals for readability.
@@ -302,3 +318,111 @@ For example, consider this original code snippet with helpful comments:
 If you encounter important logic that is not covered by tests, add new tests to cover it. This is especially critical for complex algorithms, edge cases, or any code that has caused bugs in the past.
 
 If code looks risky or has had bugs before, but there are no tests for it, that's a strong signal that tests should be added. Don't skip this step just to get the TS port done faster — the goal is not just to convert to TypeScript, but to improve code quality and maintainability overall.
+
+### Initialize the registry properly
+
+```typescript
+
+// ❌ This will cause static analysis regarding e.g. Con being undefined:
+
+let { Con } = registry;
+
+eventBus.subscribe('registry.frozen', () => {
+  ({ Con } = registry);
+});
+
+// ✅ Instead, initialize with the helper function that has the correct typing and will be updated when the registry is frozen:
+
+let { Con } = getCommonRegistry();
+
+eventBus.subscribe('registry.frozen', () => {
+  ({ Con } = getCommonRegistry());
+});
+
+```
+
+### Potential null and undefined values
+
+When porting, if you encounter a variable that is initialized to `null` or `undefined` and later assigned an object, make sure to update the type annotation to reflect this. For example:
+
+```typescript
+
+// ❌ Original JS with JSDoc cast
+let model = /** @type {BaseModel} */ (null);
+
+// ✅ TS with explicit nullability
+let model: BaseModel | null = null;
+
+```
+
+There are cases where the variable is initialized to `null` but is guaranteed to be assigned a non-null value before it is used. In such cases, you can use the non-null assertion operator (`!`) when accessing the variable, or you can refactor the code to ensure that the variable is properly initialized before use.
+
+```typescript
+// Example of using non-null assertion
+let model: BaseModel | null = null;
+
+function initializeModel() {
+  model = new BaseModel();
+}
+
+function useModel() {
+  console.assert(model !== null, 'Model must be initialized before use');
+
+  model!.doSomething(); // Using non-null assertion
+}
+```
+
+**Note**: When in doubt, always combine a console.assert() check with the non-null assertion to ensure that the assumption holds true at runtime. This way, if there is a case where the variable is accessed before being initialized, it will throw an error with a clear message. Prefer console.assert() over if-checks that throw errors, as it is more concise and clearly indicates that this is an invariant assumption rather than normal control flow. It will also be stripped out in production builds, so it won't have any performance impact.
+
+#### Avoiding unnecessary null checks together with indirections
+
+Another important optimization while porting over code and in regards to nullability is to **avoid unnecessary null checks**. If you have a variable that is initialized to `null` but is guaranteed to be assigned a non-null value before it is used, you can safely use the non-null assertion operator (`!`) without adding redundant null checks throughout the code.
+
+```typescript
+
+// ❌ ent.entity is guaranteed to be non-null, so the null check would be redundant and add unnecessary complexity
+
+for (const ent of SV.area.tree.queryAABB(mins, maxs)) {
+  if (ent.num === 0 || ent.isFree()) {
+    continue;
+  }
+
+  const eorg = origin.copy().subtract(ent.entity.origin.copy().add(ent.entity.mins.copy().add(ent.entity.maxs).multiply(0.5)));
+
+  if (eorg.len() > radius) {
+    continue;
+  }
+
+  if (!filterFn || filterFn(ent)) {
+    edicts.push(ent);
+  }
+}
+
+// ✅ Instead, use non-null assertion and add a console.assert to ensure the assumption holds
+
+for (const ent of SV.area.tree.queryAABB(mins, maxs)) {
+  if (ent.num === 0 || ent.isFree()) {
+    continue;
+  }
+
+  const entity = ent.entity!; // Non-null assertion
+  console.assert(entity !== null, 'Entity must be initialized before use');
+
+  const eorg = origin.copy().subtract(entity.origin.copy().add(entity.mins.copy().add(entity.maxs).multiply(0.5)));
+
+  if (eorg.len() > radius) {
+    continue;
+  }
+
+  if (!filterFn || filterFn(ent)) {
+    edicts.push(ent);
+  }
+}
+
+```
+
+In absolutely guaranteed non-null cases, avoid the console.assert as well.
+
+### Do not touch game code unless necessary
+
+When porting the engine code, try to avoid making changes to the core game logic or mechanics unless it is necessary for the TypeScript conversion. Before making any changes, raise a question or discussion to clarify whether the change is necessary and beneficial for the overall codebase. If a change is needed, make sure to add tests to cover the new behavior and ensure that all existing tests still pass.

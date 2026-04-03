@@ -89,8 +89,8 @@ function createDoorEntityFixture() {
   return { entity, gameAPI };
 }
 
-describe('DoorEntity', () => {
-  test('resets the scheduled go-down think when reopening a door that is already at the top', () => {
+void describe('DoorEntity', () => {
+  void test('resets the scheduled go-down think when reopening a door that is already at the top', () => {
     const { entity } = createDoorEntityFixture();
     const activator = { centerPoint: null };
 
