@@ -162,7 +162,6 @@ export class ServerMessages {
   /**
    * Sends the serverdata message to a specific client.
    * Needs to be done in order to complete the signon process step 1.
-   * @param {ServerClient} client client
    */
   sendServerData(client: ServerClient): void {
     const message = client.message;
@@ -230,7 +229,7 @@ export class ServerMessages {
     message.writeByte(Protocol.svc.setview);
     message.writeShort(client.edict.num);
 
-    const serverCvars = Array.from(Cvar.Filter((/** @type {Cvar} */ cvar) => (cvar.flags & Cvar.FLAG.SERVER) !== 0));
+    const serverCvars = Array.from(Cvar.Filter((cvar: Cvar) => (cvar.flags & Cvar.FLAG.SERVER) !== 0));
     if (serverCvars.length > 0) {
       client.message.writeByte(Protocol.svc.cvar);
       client.message.writeByte(serverCvars.length);
@@ -397,10 +396,7 @@ export class ServerMessages {
 
   /**
    * Writes delta between two entity states to the message.
-   * @param {SzBuffer} msg The message to write to
-   * @param {ServerEntityState} from The previous entity state
-   * @param {ServerEntityState} to The new entity state
-   * @returns {boolean} true if any data was written, false otherwise
+   * @returns True when any entity state data was written.
    */
   writeDeltaEntity(msg: SzBuffer, from: ServerEntityState, to: ServerEntityState): boolean {
     const EPSILON = 0.01;
@@ -795,8 +791,7 @@ export class ServerMessages {
 
   /**
    * Sends a datagram to a specific client.
-   * @param {import('./Client.mjs').ServerClient} client client to send to
-   * @returns {boolean} success
+   * @returns True when the datagram contained any replicated changes.
    */
   sendClientDatagram(client: ServerClient): boolean {
     const msg = new SzBuffer(16000, 'SV.SendClientDatagram');

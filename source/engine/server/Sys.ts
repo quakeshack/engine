@@ -165,7 +165,7 @@ export default class Sys extends BaseSys {
 
   /**
    * Returns the time elapsed since initialization.
-    * @returns The elapsed time in seconds.
+   * @returns The elapsed time in seconds.
    */
   static override FloatTime(): number {
     return Date.now() * 0.001 - Sys.#oldtime;
@@ -173,7 +173,7 @@ export default class Sys extends BaseSys {
 
   /**
    * Returns the time elapsed since initialization in milliseconds.
-    * @returns The elapsed time in milliseconds.
+   * @returns The elapsed time in milliseconds.
    */
   static override FloatMilliTime(): number {
     return performance.now();

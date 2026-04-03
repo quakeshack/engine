@@ -7,7 +7,7 @@ import Cvar from '../common/Cvar.ts';
 import { HostError, MissingResourceError } from '../common/Errors.ts';
 import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.mjs';
 import { ED, ServerEdict } from './Edict.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import PF, { etype, ofs } from './ProgsAPI.mjs';
@@ -136,12 +136,10 @@ const PR = {} as ProgsModule;
 
 export default PR;
 
-let { COM, Con, SV } = registry;
+let { COM, Con, SV } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  COM = registry.COM;
-  Con = registry.Con;
-  SV = registry.SV;
+  ({ COM, Con, SV } = getCommonRegistry());
 });
 
 PR.saveglobal = (1<<15);
@@ -373,10 +371,9 @@ class ProgsEntity {
   static SERIALIZATION_TYPE_PRIMITIVE = 'P';
 
   /**
-   *
-   * @param {*} ed can be null, then it’s global
+   * Creates a QuakeC entity view backed by an edict or the globals table.
    */
-  constructor(ed) {
+    constructor(ed: ServerEdict | null) {
     // const stats = ed ? PR._stats.edict : PR._stats.global;
     const defs = ed ? PR.fielddefs : PR.globaldefs;
 
@@ -653,8 +650,7 @@ class ProgsEntity {
 
 /**
  * Retrieves the global definition at the specified offset.
- * @param {number} ofs - The offset to retrieve.
- * @returns {object|null} - The global definition.
+ * @returns The matching global definition, or null when none exists.
  */
 PR.GlobalAtOfs = function(ofs) {
   return PR.globaldefs.find((def) => def.ofs === ofs) || null;
@@ -662,8 +658,7 @@ PR.GlobalAtOfs = function(ofs) {
 
 /**
  * Retrieves the field definition at the specified offset.
- * @param {number} ofs - The offset to retrieve.
- * @returns {object|null} - The field definition.
+ * @returns The matching field definition, or null when none exists.
  */
 PR.FieldAtOfs = function(ofs) {
   return PR.fielddefs.find((def) => def.ofs === ofs) || null;
@@ -671,8 +666,7 @@ PR.FieldAtOfs = function(ofs) {
 
 /**
  * Finds a field definition by name.
- * @param {string} name - The field name.
- * @returns {object|null} - The field definition.
+ * @returns The matching field definition, or null when none exists.
  */
 PR.FindField = function(name) {
   return PR.fielddefs.find((def) => PR.GetString(def.name) === name) || null;
@@ -680,8 +674,7 @@ PR.FindField = function(name) {
 
 /**
  * Finds a global definition by name.
- * @param {string} name - The global name.
- * @returns {object|null} - The global definition.
+ * @returns The matching global definition, or null when none exists.
  */
 PR.FindGlobal = function(name) {
   return PR.globaldefs.find((def) => PR.GetString(def.name) === name) || null;
@@ -689,8 +682,7 @@ PR.FindGlobal = function(name) {
 
 /**
  * Finds a function definition by name.
- * @param {string} name - The function name.
- * @returns {number} - The function index.
+ * @returns The function index, or `-1` when the function cannot be found.
  */
 PR.FindFunction = function(name) {
   return PR.functions.findIndex((func) => PR.GetString(func.name) === name);
@@ -1085,10 +1077,8 @@ PR.LoadProgs = async function() {
   return gameAPI;
 };
 
-/** @type {Cvar[]} */
 PR._cvars = [];
 
-/** @type {import('./GameLoader').GameModuleInterface|null} */
 PR.QuakeJS = null;
 
 PR.Init = async function() {

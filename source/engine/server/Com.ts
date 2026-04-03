@@ -19,7 +19,7 @@ export default class NodeCOM extends COM {
 
   /**
    * Loads a file, searching through registered search paths and packs.
-    * @returns The file contents, or null when the file cannot be found.
+   * @returns The file contents, or null when the file cannot be found.
    */
   static override async LoadFile(filename: string): Promise<ArrayBuffer | null> {
     filename = filename.toLowerCase();
@@ -93,7 +93,7 @@ export default class NodeCOM extends COM {
 
   /**
    * Loads and parses a pack file.
-    * @returns The parsed pack entries, or null when the pack file does not exist.
+   * @returns The parsed pack entries, or null when the pack file does not exist.
    */
   static async LoadPackFile(packfile: string): Promise<PackFileEntry[] | null> {
     if (!existsSync(`data/${packfile}`)) { // CR: wanna see something ugly? check out the async version of existsSync…
