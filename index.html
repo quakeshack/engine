@@ -34,7 +34,7 @@
 		</div>
 
 		<script type="module">
-			import('./source/engine/main-browser.mjs').then((module) => {
+			import('./source/engine/main-browser.ts').then((module) => {
 				// Build configuration, these variables are replaced at build time
 				// NOTE: These are bare identifiers that get replaced by Vite’s define
 				const signalingURL = __BUILD_SIGNALING_URL__;

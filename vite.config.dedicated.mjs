@@ -24,7 +24,7 @@ function dedicatedServerPathsPlugin() {
     transform(code, id) {
       // In the entry point, strip the shebang (added back in renderChunk)
       // and adjust process.chdir to navigate up from dist/dedicated/ to project root
-      if (id.endsWith('/dedicated.mjs')) {
+      if (id.endsWith('/dedicated.ts')) {
         return {
           code: code
             .replace(/^#!.*\n/, '')
@@ -182,7 +182,7 @@ export default defineConfig(({ mode }) => ({
     pure: mode === 'production' ? ['console.log', 'console.debug', 'console.info', 'console.assert', 'console.trace'] : [],
   },
   build: {
-    ssr: resolve(__dirname, 'dedicated.mjs'),
+    ssr: resolve(__dirname, 'dedicated.ts'),
     outDir: resolve(__dirname, 'dist/dedicated'),
     emptyOutDir: true,
     target: 'node24',

@@ -17,7 +17,9 @@
 /** @typedef {typeof import('./client/Sound.mjs').default} SoundModule */
 /** @typedef {typeof import('./client/Menu.mjs').default} MenuModule */
 /** @typedef {typeof import('./client/IN.mjs').default} InputModule */
-/** @typedef {typeof import('ws').default} WebSocketClass */
+/** @typedef {typeof globalThis.WebSocket} BrowserWebSocketClass */
+/** @typedef {typeof import('ws')} NodeWebSocketModule */
+/** @typedef {BrowserWebSocketClass | NodeWebSocketModule} WebSocketDependency */
 /** @typedef {import('./build-config').BuildConfig} BuildConfig */
 /** @typedef {import('./build-config').URLs} URLs */
 /**
@@ -43,7 +45,7 @@
  * @property {SbarModule | undefined} Sbar status bar module
  * @property {SoundModule | undefined} S audio module
  * @property {MenuModule | undefined} M menu module
- * @property {WebSocketClass | undefined} WebSocket injected WebSocket constructor
+ * @property {WebSocketDependency | undefined} WebSocket injected websocket dependency
  * @property {URLs | undefined} urls runtime URL providers
  * @property {BuildConfig | undefined} buildConfig build-time configuration snapshot
  * @property {boolean} isDedicatedServer true when running in server mode
@@ -61,7 +63,7 @@
  *   SV: ServerModule,
  *   Mod: ModModule,
  *   PR: ProgsModule,
- *   WebSocket: WebSocketClass,
+ *   WebSocket: WebSocketDependency,
  * }} CommonRegistry
  */
 /**

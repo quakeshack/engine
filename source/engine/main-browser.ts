@@ -1,31 +1,27 @@
-import { registry, freeze as registryFreeze } from './registry.mjs';
+import type { BuildConfig, URLs } from './build-config';
 
+import CL from './client/CL.mjs';
+import Draw from './client/Draw.mjs';
+import IN from './client/IN.mjs';
+import Key from './client/Key.mjs';
+import M from './client/Menu.mjs';
+import R from './client/R.mjs';
+import S from './client/Sound.mjs';
 import Sys from './client/Sys.mjs';
+import V from './client/V.mjs';
+import Sbar from './client/Sbar.mjs';
+import SCR from './client/SCR.mjs';
 import COM from './common/Com.ts';
 import Con from './common/Console.ts';
 import Host from './common/Host.ts';
-import V from './client/V.mjs';
-import NET from './network/Network.ts';
-import SV from './server/Server.mjs';
-import PR from './server/Progs.mjs';
 import Mod from './common/Mod.ts';
-import Key from './client/Key.mjs';
-import CL from './client/CL.mjs';
-import S from './client/Sound.mjs';
-import Draw from './client/Draw.mjs';
-import R from './client/R.mjs';
-import M from './client/Menu.mjs';
-import SCR from './client/SCR.mjs';
-import Sbar from './client/Sbar.mjs';
-import IN from './client/IN.mjs';
+import NET from './network/Network.ts';
+import { freeze as registryFreeze, registry } from './registry.mjs';
+import PR from './server/Progs.ts';
+import SV from './server/Server.ts';
 
 export default class EngineLauncher {
-  /**
-   * @param {typeof registry.urls} urls URL builder functions
-   * @param {typeof registry.buildConfig} buildConfig build information from Vite
-   * @returns {Promise<import("./registry.mjs").registry>} engine registry
-   */
-  static async Launch(urls, buildConfig) {
+  static async Launch(urls: URLs, buildConfig: BuildConfig): Promise<typeof registry> {
     console.info('Launching engine in browser mode...');
 
     registry.urls = urls;
@@ -64,4 +60,4 @@ export default class EngineLauncher {
 
     return registry;
   }
-};
+}

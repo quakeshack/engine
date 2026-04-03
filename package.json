@@ -1,7 +1,7 @@
 {
   "name": "quakeshack",
   "version": "1.0.0",
-  "main": "dedicated.mjs",
+  "main": "dedicated.ts",
   "type": "module",
   "repository": "https://github.com/chrisnew/quakeshack",
   "license": "GPL-2.0-only",
@@ -49,7 +49,7 @@
     "dedicated:dev": "vite build --watch --mode development --config vite.config.dedicated.mjs",
     "dedicated:build": "vite build --config vite.config.dedicated.mjs",
     "dedicated:build:production": "vite build --config vite.config.dedicated.mjs --mode production",
-    "dedicated:start": "node --experimental-transform-types ./dedicated.mjs +exec server.cfg",
+    "dedicated:start": "node --experimental-transform-types ./dedicated.ts +exec server.cfg",
     "dedicated:start:production": "node ./dist/dedicated/dedicated.mjs +exec server.cfg"
   }
 }

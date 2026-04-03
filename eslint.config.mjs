@@ -133,7 +133,6 @@ export default defineConfig([
   },
   {
     files: [
-      'dedicated.mjs',
       'dedicated.ts',
       'eslint.config.mjs',
       'eslint.config.ts',
@@ -141,7 +140,6 @@ export default defineConfig([
       'vite.config.ts',
       'vite.config.dedicated.mjs',
       'vite.config.dedicated.ts',
-      'source/engine/main-dedicated.mjs',
       'source/engine/main-dedicated.ts',
       'source/engine/server/**/*.{mjs,ts,mts,cts}',
       'source/engine/common/**/*.{mjs,ts,mts,cts}',
