@@ -5,7 +5,7 @@ import { SzBuffer } from '../network/MSG.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { eventBus, registry } from '../registry.mjs';
-import { ServerEntityState } from './Server.mjs';
+import { ServerEntityState } from './ServerEntityState.mjs';
 
 let { SV } = registry;
 
