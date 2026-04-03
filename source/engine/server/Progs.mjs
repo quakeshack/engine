@@ -6,7 +6,7 @@ import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { ED, ServerEdict } from './Edict.mjs';
-import { ServerEngineAPI } from '../common/GameAPIs.mjs';
+import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import PF, { etype, ofs } from './ProgsAPI.mjs';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import { loadGameModule } from './GameLoader.mjs';

@@ -4,19 +4,12 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { solid } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
-import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.mjs';
+import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.mjs';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.mjs';
 import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.mjs';
 import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
 
-/**
- *
- * @param num
- * @param origin
- * @param mins
- * @param maxs
- */
 /**
  * @param {number} num entity number
  * @param {Vector} origin entity origin
@@ -38,11 +31,11 @@ function createClientTraceEntity(num, origin, mins, maxs) {
   return entity;
 }
 
-describe('ClientEngineAPI.Traceline', () => {
-  test('keeps the default client trace static-world only', () => {
+void describe('ClientEngineAPI.Traceline', () => {
+  void test('keeps the default client trace static-world only', () => {
     let clipMoveCalls = 0;
 
-    withMockRegistry(defaultMockRegistry({
+    void withMockRegistry(defaultMockRegistry({
       collision: {
         traceWorldLine(_start, end) {
           return CollisionTrace.empty(end);
@@ -68,7 +61,7 @@ describe('ClientEngineAPI.Traceline', () => {
     });
   });
 
-  test('can trace current client entities on demand', () => {
+  void test('can trace current client entities on demand', () => {
     const collision = new ServerCollision();
     const area = new ServerArea();
     area.initBoxHull();
@@ -80,7 +73,7 @@ describe('ClientEngineAPI.Traceline', () => {
       new Vector(16, 16, 32),
     );
 
-    withMockRegistry(defaultMockRegistry({
+    void withMockRegistry(defaultMockRegistry({
       area,
       collision: {
         traceWorldLine(_start, end) {
@@ -108,7 +101,7 @@ describe('ClientEngineAPI.Traceline', () => {
     });
   });
 
-  test('supports skipping and filtering client trace candidates', () => {
+  void test('supports skipping and filtering client trace candidates', () => {
     const collision = new ServerCollision();
     const area = new ServerArea();
     area.initBoxHull();
@@ -126,7 +119,7 @@ describe('ClientEngineAPI.Traceline', () => {
       new Vector(16, 16, 32),
     );
 
-    withMockRegistry(defaultMockRegistry({
+    void withMockRegistry(defaultMockRegistry({
       area,
       collision: {
         traceWorldLine(_start, end) {

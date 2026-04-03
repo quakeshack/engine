@@ -4,7 +4,7 @@ import Cmd from '../../common/Cmd.ts';
 import { eventBus, registry } from '../../registry.mjs';
 import { Action, Label, Spacer } from './MenuItem.mjs';
 import { MenuPage, VerticalLayout } from './MenuPage.mjs';
-import { ServerEngineAPI } from '../../common/GameAPIs.mjs';
+import { ServerEngineAPI } from '../../common/GameAPIs.ts';
 
 let { M } = registry;
 

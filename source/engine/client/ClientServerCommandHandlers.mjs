@@ -4,8 +4,8 @@ import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.mjs';
-import { sharedCollisionModelSource } from '../common/CollisionModelSource.mjs';
+import { ClientEngineAPI } from '../common/GameAPIs.ts';
+import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { ScoreSlot } from './ClientState.mjs';
 

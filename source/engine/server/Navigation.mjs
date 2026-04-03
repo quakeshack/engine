@@ -6,7 +6,7 @@ import Cmd from '../common/Cmd.ts';
 // import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { CorruptedResourceError, MissingResourceError } from '../common/Errors.ts';
-import { ServerEngineAPI } from '../common/GameAPIs.mjs';
+import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import { BrushModel } from '../common/Mod.ts';
 import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.ts';
 import { Face } from '../common/model/BaseModel.ts';

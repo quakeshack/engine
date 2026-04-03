@@ -1,6 +1,6 @@
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
+import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
 import Mod, { BrushModel } from '../../common/Mod.ts';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
 import { eventBus, registry } from '../../registry.mjs';

@@ -5,7 +5,7 @@ import { content, effect, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.mjs';
 import { DefaultClientEdictHandler } from './ClientLegacy.mjs';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.mjs';
+import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { SFX } from './Sound.mjs';
 import { Node, revealedVisibility } from '../common/model/BSP.ts';
 import { BaseModel } from '../common/model/BaseModel.ts';

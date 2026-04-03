@@ -6,7 +6,7 @@ import W, { WadFileInterface, WadLumpTexture } from '../common/W.ts';
 
 import { eventBus, registry } from '../registry.mjs';
 import GL, { GLTexture } from './GL.mjs';
-import { ClientEngineAPI } from '../common/GameAPIs.mjs';
+import { ClientEngineAPI } from '../common/GameAPIs.ts';
 
 let { Host } = registry;
 

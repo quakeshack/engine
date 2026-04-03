@@ -7,7 +7,7 @@ import * as Def from './../common/Def.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { ED, ServerEdict } from './Edict.mjs';
 import { EventBus, eventBus, registry } from '../registry.mjs';
-import { ServerEngineAPI } from '../common/GameAPIs.mjs';
+import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import * as Defs from '../../shared/Defs.ts';
 import { Navigation } from './Navigation.mjs';
 import { ServerPhysics } from './physics/ServerPhysics.mjs';
@@ -16,7 +16,7 @@ import { ServerMessages } from './ServerMessages.mjs';
 import { ServerMovement } from './physics/ServerMovement.mjs';
 import { ServerArea } from './physics/ServerArea.mjs';
 import { ServerCollision } from './physics/ServerCollision.mjs';
-import { sharedCollisionModelSource } from '../common/CollisionModelSource.mjs';
+import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
 import { BrushModel } from '../common/Mod.ts';
 import { ServerClient } from './Client.mjs';
 

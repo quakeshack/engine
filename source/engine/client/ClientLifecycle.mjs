@@ -6,7 +6,7 @@ import ClientInput from './ClientInput.mjs';
 import CL from './CL.mjs';
 import { clientRuntimeState } from './ClientState.mjs';
 import { MoveVars, Pmove } from '../common/Pmove.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.mjs';
+import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { eventBus, registry } from '../registry.mjs';
 
 let { Host, PR, S } = registry;

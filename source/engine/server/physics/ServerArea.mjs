@@ -2,7 +2,7 @@ import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { Octree } from '../../../shared/Octree.ts';
 import { eventBus, registry } from '../../registry.mjs';
-import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.mjs';
+import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
 import { BrushModel } from '../../../engine/common/Mod.ts';
 
 let { SV } = registry;

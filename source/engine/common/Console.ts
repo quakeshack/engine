@@ -4,7 +4,7 @@ import Cvar from './Cvar.ts';
 import Cmd from './Cmd.ts';
 import VID from '../client/VID.mjs';
 import { clientConnectionState } from './Def.ts';
-import { ClientEngineAPI } from './GameAPIs.mjs';
+import { ClientEngineAPI } from './GameAPIs.ts';
 
 let { CL, Draw, Host, Key, M, SCR } = getClientRegistry();
 
