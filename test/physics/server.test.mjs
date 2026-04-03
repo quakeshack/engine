@@ -73,8 +73,8 @@ function installReadClientMoveContext({ paused }) {
   };
 }
 
-describe('SV.ReadClientMove', () => {
-  test('queues movement commands while the server is running', () => {
+void describe('SV.ReadClientMove', () => {
+  void test('queues movement commands while the server is running', () => {
     const context = installReadClientMoveContext({ paused: false });
 
     try {
@@ -93,7 +93,7 @@ describe('SV.ReadClientMove', () => {
     }
   });
 
-  test('does not enqueue paused movement backlog', () => {
+  void test('does not enqueue paused movement backlog', () => {
     const context = installReadClientMoveContext({ paused: true });
 
     try {

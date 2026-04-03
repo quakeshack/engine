@@ -733,7 +733,7 @@ export default class Host {
         Q.secsToTime(NET.time - client.netconnection.connecttime).padEnd(9),
         client.ping.toFixed(0).padStart(4),
         Number(0).toFixed(0).padStart(4), // TODO: add loss
-        ServerClient.STATE.toKey(client.state).padEnd(10),
+        (ServerClient.STATE[client.state] ?? `unknown (${client.state})`).padEnd(10),
         client.netconnection.address,
       ];
 
