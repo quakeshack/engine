@@ -38,7 +38,7 @@ export interface ParseResult {
  * Common file system, command line, and string parsing utilities.
  *
  * This is the base class shared by both the browser client and the Node.js
- * dedicated server (`server/Com.mjs` extends this as `NodeCOM`).
+ * dedicated server (`server/Com.ts` extends this as `NodeCOM`).
  */
 export default class COM {
   static argv: string[] = [];

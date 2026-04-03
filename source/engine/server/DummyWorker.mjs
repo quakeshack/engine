@@ -1,2 +1,0 @@
-import './DummyWorker.ts';
-

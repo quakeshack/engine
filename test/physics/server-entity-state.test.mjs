@@ -1,11 +1,11 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ServerEntityState as ReExportedServerEntityState } from '../../source/engine/server/Server.mjs';
-import { ServerEntityState } from '../../source/engine/server/ServerEntityState.mjs';
+import { ServerEntityState as ReExportedServerEntityState } from '../../source/engine/server/Server.ts';
+import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
 
 void describe('ServerEntityState', () => {
-  void test('re-exports the canonical implementation from Server.mjs', () => {
+  void test('re-exports the canonical implementation from Server.ts', () => {
     assert.equal(ReExportedServerEntityState, ServerEntityState);
   });
 

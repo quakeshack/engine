@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
-import SV from '../../source/engine/server/Server.mjs';
-import { ServerEntityState } from '../../source/engine/server/ServerEntityState.mjs';
-import { ServerMessages } from '../../source/engine/server/ServerMessages.mjs';
+import SV from '../../source/engine/server/Server.ts';
+import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
+import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 
 /**
  * Installs a minimal server registry context for delta-entity message tests.

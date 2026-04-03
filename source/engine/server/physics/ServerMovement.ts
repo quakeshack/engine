@@ -1,5 +1,5 @@
 import type BaseEntity from '../../../game/id1/entity/BaseEntity.mjs';
-import type { ServerEdict } from '../Edict.mjs';
+import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';

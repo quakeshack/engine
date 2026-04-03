@@ -13,7 +13,7 @@ import type { Face } from '../common/model/BaseModel.ts';
 import type PlatformWorker from '../common/PlatformWorker.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import { eventBus, registry } from '../registry.mjs';
-import type { BaseEntity, ServerEdict } from './Edict.mjs';
+import type { BaseEntity, ServerEdict } from './Edict.ts';
 import type { CollisionTrace } from './physics/ServerCollisionSupport.ts';
 
 type VectorTuple = [number, number, number];
@@ -442,7 +442,7 @@ export class Navigation {
   }
 
   #initWorker(): void {
-    this.#worker = WorkerManager.SpawnWorker('server/NavigationWorker.mjs', [
+    this.#worker = WorkerManager.SpawnWorker('server/NavigationWorker.ts', [
       'nav.load',
       'nav.path.request',
     ]);

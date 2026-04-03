@@ -1,14 +1,14 @@
 import type { Visibility } from '../common/model/BSP.ts';
 import type Vector from '../../shared/Vector.ts';
-import type { BaseEntity, ServerEdict, WorldspawnEntity } from './Edict.mjs';
+import type { BaseEntity, ServerEdict, WorldspawnEntity } from './Edict.ts';
 
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Defs from '../../shared/Defs.ts';
 import Cvar from '../common/Cvar.ts';
 import { eventBus, getCommonRegistry } from '../registry.mjs';
-import { ServerClient } from './Client.mjs';
-import { ServerEntityState } from './ServerEntityState.mjs';
+import { ServerClient } from './Client.ts';
+import { ServerEntityState } from './ServerEntityState.ts';
 
 type BitsWriter = 'writeByte' | 'writeShort' | 'writeLong';
 type EntityFieldValue = string | number | boolean | Vector | null | ServerEdict | BaseEntity | undefined;

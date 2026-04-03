@@ -1,6 +1,6 @@
 import type { BaseClientEdictHandler } from './ClientEdict.ts';
 import type { ClientEngineAPI as ClientEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.ts';
-import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.mjs';
+import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
 import type { GLTexture as GLTextureValue } from '../engine/client/GL.mjs';
 import type { SFX as SFXValue } from '../engine/client/Sound.mjs';
 import type CvarValue from '../engine/common/Cvar.ts';

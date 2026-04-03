@@ -1,6 +1,6 @@
 import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.mjs';
 
-import type { ServerEdict } from '../server/Edict.mjs';
+import type { ServerEdict } from '../server/Edict.ts';
 import type { BrushModel } from './model/BSP.ts';
 
 interface ServerCollisionModelAccessors {

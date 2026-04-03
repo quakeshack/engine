@@ -1,5 +1,5 @@
 import type { Hull, Node } from '../../common/model/BSP.ts';
-import type { BaseEntity, ServerEdict } from '../Edict.mjs';
+import type { BaseEntity, ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';

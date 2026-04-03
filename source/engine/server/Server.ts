@@ -8,22 +8,22 @@ import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from './../common/Def.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
-import { ED, ServerEdict } from './Edict.mjs';
+import { ED, ServerEdict } from './Edict.ts';
 import { EventBus, eventBus, getCommonRegistry } from '../registry.mjs';
 import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import * as Defs from '../../shared/Defs.ts';
-import { Navigation } from './Navigation.mjs';
+import { Navigation } from './Navigation.ts';
 import { ServerPhysics } from './physics/ServerPhysics.ts';
 import { ServerClientPhysics } from './physics/ServerClientPhysics.ts';
-import { ServerMessages } from './ServerMessages.mjs';
+import { ServerMessages } from './ServerMessages.ts';
 import { ServerMovement } from './physics/ServerMovement.ts';
 import { ServerArea } from './physics/ServerArea.ts';
 import { ServerCollision } from './physics/ServerCollision.ts';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
 import { BrushModel } from '../common/Mod.ts';
-import { ServerClient } from './Client.mjs';
+import { ServerClient } from './Client.ts';
 
-export { ServerEntityState } from './ServerEntityState.mjs';
+export { ServerEntityState } from './ServerEntityState.ts';
 
 let { COM, Con, Host, Mod, NET, PR } = getCommonRegistry();
 

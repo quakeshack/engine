@@ -1,7 +1,7 @@
 import WorkerFramework from '../common/WorkerFramework.ts';
 import { eventBus, registry } from '../registry.mjs';
 
-import { Navigation, NavMeshOutOfDateException } from './Navigation.mjs';
+import { Navigation, NavMeshOutOfDateException } from './Navigation.ts';
 import Vector from '../../shared/Vector.ts';
 
 type WorkerVectorLike = ArrayLike<number>;

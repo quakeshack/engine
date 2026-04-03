@@ -1,4 +1,4 @@
-import type { ServerEdict } from '../Edict.mjs';
+import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
@@ -6,7 +6,7 @@ import { eventBus, getCommonRegistry } from '../../registry.mjs';
 import {
   VELOCITY_EPSILON,
 } from './Defs.ts';
-import { ServerClient } from '../Client.mjs';
+import { ServerClient } from '../Client.ts';
 import { PM_TYPE } from '../../common/Pmove.ts';
 import { BrushModel } from '../../common/Mod.ts';
 

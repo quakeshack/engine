@@ -110,7 +110,7 @@ void describe('PlatformWorker', () => {
 
     await withWorkerRegistry(consoleCapture, async () => {
       const rawWorker = new FakeNodeWorker();
-      const worker = new PlatformWorker('server/DummyWorker.mjs', rawWorker);
+      const worker = new PlatformWorker('server/DummyWorker.ts', rawWorker);
       const messages = [];
       let shutdownCalls = 0;
 
@@ -137,7 +137,7 @@ void describe('PlatformWorker', () => {
 
     await withWorkerRegistry(consoleCapture, async () => {
       const rawWorker = new FakeNodeWorker();
-      const worker = new PlatformWorker('server/DummyWorker.mjs', rawWorker);
+      const worker = new PlatformWorker('server/DummyWorker.ts', rawWorker);
       const error = new Error('worker boom');
 
       rawWorker.emit('error', error);
@@ -157,10 +157,10 @@ void describe('WorkerManager', () => {
       const rawWorker = new FakeNodeWorker();
 
       WorkerManager.Init({
-        'server/DummyWorker.mjs': () => rawWorker,
+        'server/DummyWorker.ts': () => rawWorker,
       });
 
-      const worker = WorkerManager.SpawnWorker('server/DummyWorker.mjs', ['nav.build']);
+      const worker = WorkerManager.SpawnWorker('server/DummyWorker.ts', ['nav.build']);
 
       assert.deepEqual(rawWorker.messages[0], {
         event: 'worker.framework.init',

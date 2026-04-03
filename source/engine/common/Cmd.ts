@@ -1,4 +1,4 @@
-import type { ServerClient } from '../server/Client.mjs';
+import type { ServerClient } from '../server/Client.ts';
 
 import * as Protocol from '../network/Protocol.ts';
 import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.mjs';

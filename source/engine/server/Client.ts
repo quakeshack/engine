@@ -1,13 +1,13 @@
 import type { PlayerEntitySpawnParamsDynamic } from '../../shared/GameInterfaces.ts';
 import type { QSocket } from '../network/NetworkDrivers.ts';
-import type { BaseEntity, ServerEdict } from './Edict.mjs';
+import type { BaseEntity, ServerEdict } from './Edict.ts';
 
 import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { eventBus, getCommonRegistry } from '../registry.mjs';
-import { ServerEntityState } from './ServerEntityState.mjs';
+import { ServerEntityState } from './ServerEntityState.ts';
 
 interface LegacySpawnParmsGameAPI {
   SetChangeParms(clientEdict: ServerEdict): void;

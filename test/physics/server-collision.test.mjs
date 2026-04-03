@@ -563,7 +563,7 @@ void describe('ServerCollision', () => {
           maxs,
           end,
           moveTypes.MOVE_NORMAL,
-          /** @type {import('../../source/engine/server/Client.mjs').ServerEdict} */ (passedict),
+          /** @type {import('../../source/engine/server/Client.ts').ServerEdict} */ (passedict),
         );
 
         assert.equal(queryCalls.length, 1);

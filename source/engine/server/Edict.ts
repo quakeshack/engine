@@ -3,7 +3,7 @@ import type { WorldspawnEntity as WorldspawnEntityValue } from '../../game/id1/e
 import type { OctreeNode } from '../../shared/Octree.ts';
 import type { Visibility } from '../common/model/BSP.ts';
 import type { ClientEdict } from '../client/ClientEntities.mjs';
-import type { ServerClient } from './Client.mjs';
+import type { ServerClient } from './Client.ts';
 
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer, registerSerializableType } from '../network/MSG.ts';

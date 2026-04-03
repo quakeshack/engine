@@ -5,8 +5,8 @@
 /** @typedef {typeof import('./common/Host.ts').default} HostModule */
 /** @typedef {typeof import('./client/V.mjs').default} VModule */
 /** @typedef {typeof import('./network/Network').default} NetModule */
-/** @typedef {typeof import('./server/Server.mjs').default} ServerModule */
-/** @typedef {typeof import('./server/Progs.mjs').default} ProgsModule */
+/** @typedef {typeof import('./server/Server.ts').default} ServerModule */
+/** @typedef {typeof import('./server/Progs.ts').default} ProgsModule */
 /** @typedef {typeof import('./common/Mod.ts').default} ModModule */
 /** @typedef {typeof import('./client/CL.mjs').default} ClientModule */
 /** @typedef {typeof import('./client/SCR.mjs').default} ScrModule */

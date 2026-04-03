@@ -1,7 +1,7 @@
 import type { Trace as SharedBrushTrace } from '../../common/Pmove.ts';
 import type { BrushModel } from '../../common/model/BSP.ts';
 import type { MeshModel } from '../../common/model/MeshModel.ts';
-import type { ServerEdict } from '../Edict.mjs';
+import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 

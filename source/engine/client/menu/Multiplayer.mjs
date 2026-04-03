@@ -1,4 +1,4 @@
-import PR from '../../server/Progs.mjs';
+import PR from '../../server/Progs.ts';
 import { K } from '../../../shared/Keys.ts';
 import Cmd from '../../common/Cmd.ts';
 import { eventBus, registry } from '../../registry.mjs';
@@ -74,7 +74,7 @@ export default class MultiplayerMainMenu extends MenuPage {
         label: 'Join local game',
         action() {
           M.CloseMenu();
-          Cmd.ExecuteString('connect self');
+          void Cmd.ExecuteString('connect self');
         },
       }));
     }
@@ -139,7 +139,7 @@ export default class MultiplayerMainMenu extends MenuPage {
           label: `${map} near ${[info.colo || null, info.country].filter(Boolean).join(', ')} [${players}]`,
           action() {
             M.CloseMenu();
-            Cmd.ExecuteString(`connect webrtc://${session.sessionId}`);
+            void Cmd.ExecuteString(`connect webrtc://${session.sessionId}`);
           },
         }));
       }

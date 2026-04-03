@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
-import { ServerClient } from '../../source/engine/server/Client.mjs';
+import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerClientPhysics } from '../../source/engine/server/physics/ServerClientPhysics.ts';
 
 import {

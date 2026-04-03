@@ -103,7 +103,7 @@ export default class WorkerFramework {
       const workerThreadsId = ['node', 'worker_threads'].join(':');
       const { parentPort } = await import(/* @vite-ignore */ workerThreadsId);
       this.port = parentPort as WorkerFrameworkPort;
-      const serverComId = ['..', 'server', 'Com.mjs'].join('/');
+      const serverComId = ['..', 'server', 'Com.ts'].join('/');
       const comModule = await import(/* @vite-ignore */ serverComId);
       workerCom = comModule.default as typeof COM;
 

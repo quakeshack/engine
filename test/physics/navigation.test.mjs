@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
-import { Navigation } from '../../source/engine/server/Navigation.mjs';
+import { Navigation } from '../../source/engine/server/Navigation.ts';
 
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);

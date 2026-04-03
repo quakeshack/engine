@@ -8,7 +8,7 @@
 
 /* eslint-disable jsdoc/require-returns */
 
-import type { ServerEdict } from '../server/Edict.mjs';
+import type { ServerEdict } from '../server/Edict.ts';
 
 import Cvar from './Cvar.ts';
 import * as Protocol from '../network/Protocol.ts';
@@ -17,7 +17,7 @@ import Cmd, { ConsoleCommand } from './Cmd.ts';
 import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.mjs';
 import Vector from '../../shared/Vector.ts';
 import Q from '../../shared/Q.ts';
-import { ServerClient } from '../server/Client.mjs';
+import { ServerClient } from '../server/Client.ts';
 import { ServerEngineAPI } from './GameAPIs.ts';
 import Chase from '../client/Chase.mjs';
 import VID from '../client/VID.mjs';

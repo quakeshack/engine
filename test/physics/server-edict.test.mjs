@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ServerEdict } from '../../source/engine/server/Edict.mjs';
+import { ServerEdict } from '../../source/engine/server/Edict.ts';
 
 import { defaultMockRegistry, withMockRegistry } from './fixtures.mjs';
 

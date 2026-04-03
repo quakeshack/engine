@@ -1,4 +1,4 @@
-import type { ServerEdict } from '../Edict.mjs';
+import type { ServerEdict } from '../Edict.ts';
 import type { CollisionTrace } from './ServerCollisionSupport.ts';
 
 import Vector from '../../../shared/Vector.ts';

@@ -26,7 +26,7 @@ export default class WorkerManager {
    *
    * Factories are passed in at runtime (rather than statically imported)
    * to avoid a circular module dependency: worker scripts transitively
-   * import WorkerManager via Navigation.mjs, and WorkerFactories.ts
+   * import WorkerManager via Navigation.ts, and WorkerFactories.ts
    * references those same worker scripts.
    */
   static Init(factories: WorkerFactoryRegistry) {
@@ -34,7 +34,7 @@ export default class WorkerManager {
     // eventBus.subscribe('com.ready', () => {
     //   console.info('WorkerManager: Spawning dummy worker for initialization test.');
 
-    //   const worker = this.SpawnWorker('server/DummyWorker.mjs', ['worker.test', 'worker.busy', 'worker.error']);
+    //   const worker = this.SpawnWorker('server/DummyWorker.ts', ['worker.test', 'worker.busy', 'worker.error']);
 
     //   const sab = new SharedArrayBuffer(4);
 

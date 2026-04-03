@@ -1,5 +1,4 @@
 import type { ServerGameInterface } from '../../shared/GameInterfaces.ts';
-import type { GameModuleInterface } from './GameLoader.ts';
 
 import Cmd from '../common/Cmd.ts';
 import { CRC16CCITT } from '../common/CRC.ts';
@@ -8,11 +7,11 @@ import { HostError, MissingResourceError } from '../common/Errors.ts';
 import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import { eventBus, getCommonRegistry } from '../registry.mjs';
-import { ED, ServerEdict } from './Edict.mjs';
+import { ED, ServerEdict } from './Edict.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.ts';
-import PF, { etype, ofs } from './ProgsAPI.mjs';
+import PF, { etype, ofs } from './ProgsAPI.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
-import { loadGameModule } from './GameLoader.mjs';
+import { loadGameModule, type GameModuleInterface } from './GameLoader.ts';
 
 interface ProgsStatement {
   op: number;
