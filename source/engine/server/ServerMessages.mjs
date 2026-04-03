@@ -423,7 +423,7 @@ export class ServerMessages {
 
     if (bits & Protocol.u.effects) {
       msg.writeByte(to.effects);
-      msg.writeByte(Math.floor(to.alpha * 255.0));
+      msg.writeByte(Math.floor((to.alpha || 1) * 255.0)); // CR: QuakeC may not have alpha
     }
 
     if (bits & Protocol.u.solid) {
