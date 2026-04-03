@@ -63,6 +63,7 @@ export class ServerCollision {
   /**
    * Resolve a collision model by model index from either the active server or
    * the client precache populated by server signon data.
+   * @returns The resolved collision model, if any.
    */
   _getModelByIndex(modelIndex: number): CollisionModel {
     return this._modelSource.getModelByIndex(modelIndex);
@@ -70,6 +71,7 @@ export class ServerCollision {
 
   /**
    * Resolve the model used by an entity for collision.
+   * @returns The collision model associated with the entity.
    */
   _getEntityModel(ent: ServerEdict): CollisionModel {
     if (ent === SV.server?.edicts?.[0]) {
@@ -81,6 +83,7 @@ export class ServerCollision {
 
   /**
    * Resolve the collision state used by an entity during tracing.
+   * @returns The resolved collision state, or `null` when the entity cannot be traced.
    */
   _getEntityCollisionState(ent: ServerEdict): CollisionState | null {
     const entity = ent.entity!;
@@ -107,6 +110,7 @@ export class ServerCollision {
 
   /**
    * Build a hull fallback state for callers that want a guaranteed collision mode.
+   * @returns The legacy hull collision state for the entity.
    */
   _getHullFallbackState(ent: ServerEdict): HullCollisionState {
     return new HullCollisionState(ent);
@@ -115,6 +119,7 @@ export class ServerCollision {
   /**
    * Resolve the active static-world model for traces that can run on either a
    * local server or a pure client connection.
+   * @returns The active world entity and world model.
    */
   _getStaticWorldSource(): StaticWorldSource {
     return {
@@ -125,6 +130,7 @@ export class ServerCollision {
 
   /**
    * Convert a shared brush trace result into the server collision trace shape.
+   * @returns The server collision trace derived from the shared brush trace.
    */
   _toServerTrace(brushTrace: SharedTrace, ent: ServerEdict | null): CollisionTrace {
     if (ent !== null) {
@@ -149,6 +155,7 @@ export class ServerCollision {
 
   /**
    * Returns true when the provided model is a brush model.
+   * @returns True when the model is a brush model.
    */
   _isBrushModel(model: CollisionModel): model is BrushModel {
     return model instanceof BrushModel;
@@ -156,6 +163,7 @@ export class ServerCollision {
 
   /**
    * Returns true when the provided model is a mesh model.
+   * @returns True when the model is a mesh model.
    */
   _isMeshModel(model: CollisionModel): model is MeshModel {
     return model instanceof MeshModel;
@@ -163,6 +171,7 @@ export class ServerCollision {
 
   /**
    * Determine whether a trace is point-sized.
+   * @returns True when the trace extents represent a point trace.
    */
   _isPointTrace(mins: Vector, maxs: Vector): boolean {
     return mins.isOrigin() && maxs.isOrigin();
@@ -204,6 +213,7 @@ export class ServerCollision {
   /**
    * Legacy hull point traces remain the compatibility baseline when brush and
    * hull BSP paths disagree about the first finite hit.
+   * @returns True when the legacy hull result should override the brush result.
    */
   _shouldPreferHullPointTrace(brushTrace: CollisionTrace, hullTrace: CollisionTrace): boolean {
     if (hullTrace.fraction >= 1.0) {
@@ -224,6 +234,7 @@ export class ServerCollision {
   /**
    * Hull fallback is only safe for point traces whose BSP entity is not rotated,
    * because the legacy hull path does not apply entity angles.
+   * @returns True when the legacy hull fallback is safe for this trace.
    */
   _canUseHullPointFallback(state: BrushCollisionState, mins: Vector, maxs: Vector): boolean {
     if (!this._isPointTrace(mins, maxs)) {
@@ -240,6 +251,7 @@ export class ServerCollision {
   /**
    * Trace a BSP entity through the shared brush path and cross-check supported
    * point traces against the legacy hull path to avoid false early hits.
+   * @returns The preferred collision trace for the BSP entity.
    */
   _clipMoveToBrushStateWithHullFallback(
     state: BrushCollisionState,
@@ -275,6 +287,7 @@ export class ServerCollision {
   /**
    * Run the shared brush trace path for a BSP entity, including zero-length
    * position tests that must avoid swept-trace startsolid artifacts.
+   * @returns The shared brush trace result.
    */
   _traceBrushModel(
     model: BrushModel,
@@ -320,6 +333,7 @@ export class ServerCollision {
 
   /**
    * Trace against an entity through the shared brush path.
+   * @returns The collision trace against the brush-backed entity.
    */
   _clipMoveToBrushState(state: BrushCollisionState, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
     return this._clipMoveToBrushStateWithHullFallback(state, start, mins, maxs, end);
@@ -327,6 +341,7 @@ export class ServerCollision {
 
   /**
    * Trace against an entity through the legacy hull path.
+   * @returns The collision trace against the legacy hull-backed entity.
    */
   _clipMoveToHullState(state: HullCollisionState, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
     const trace = CollisionTrace.hullInitial(end);
@@ -352,6 +367,7 @@ export class ServerCollision {
   /**
    * Trace a line through a specific legacy hull without exposing clipnode walks
    * to higher-level callers.
+   * @returns The collision trace through the legacy hull.
    */
   _traceLegacyHullLine(hull: Hull, start: Vector, end: Vector): CollisionTrace {
     const trace = CollisionTrace.hullInitial(end);
@@ -361,6 +377,7 @@ export class ServerCollision {
 
   /**
    * Determines the contents inside a hull by descending the clipnode tree.
+   * @returns The contents value at the point within the hull.
    */
   hullPointContents(hull: Hull, num: number, p: Vector): number {
     return legacyHullPointContents(hull, num, p);
@@ -368,6 +385,7 @@ export class ServerCollision {
 
   /**
    * Normalize static-world contents values so current volumes behave like water.
+   * @returns The normalized contents value.
    */
   _normalizeStaticWorldContents(contents: number): number {
     if ((contents <= Defs.content.CONTENT_CURRENT_0) && (contents >= Defs.content.CONTENT_CURRENT_DOWN)) {
@@ -380,6 +398,7 @@ export class ServerCollision {
   /**
    * Sample the contents of a brush-backed world without exposing brush internals
    * to higher-level callers.
+   * @returns The contents sampled from the brush-backed world.
    */
   _pointContentsBrushStaticWorld(worldModel: BrushModel, point: Vector): number {
     if (!BrushTrace.transformedTestPosition(
@@ -399,6 +418,7 @@ export class ServerCollision {
   /**
    * Sample static-world contents using the best collision backend for the
    * active map.
+   * @returns The static-world contents at the sampled point.
    */
   staticWorldContents(point: Vector, hullNum = 0): number {
     const { worldModel } = this._getStaticWorldSource();
@@ -416,6 +436,7 @@ export class ServerCollision {
 
   /**
    * Compatibility alias for staticWorldContents.
+   * @returns The static-world contents at the sampled point.
    */
   worldContents(point: Vector, hullNum = 0): number {
     return this.staticWorldContents(point, hullNum);
@@ -423,6 +444,7 @@ export class ServerCollision {
 
   /**
    * Compatibility alias for staticWorldContents.
+   * @returns The static-world contents at the sampled point.
    */
   pointContents(p: Vector, hullNum = 0): number {
     return this.staticWorldContents(p, hullNum);
@@ -431,6 +453,7 @@ export class ServerCollision {
   /**
    * Trace static-world geometry using the best collision backend for the active
    * map.
+   * @returns The collision trace through static world geometry.
    */
   traceStaticWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector, hullNum = 0): CollisionTrace {
     const { worldEntity, worldModel } = this._getStaticWorldSource();
@@ -463,6 +486,7 @@ export class ServerCollision {
 
   /**
    * Compatibility alias for traceStaticWorld.
+   * @returns The collision trace through static world geometry.
    */
   traceWorld(start: Vector, mins: Vector, maxs: Vector, end: Vector, hullNum = 0): CollisionTrace {
     return this.traceStaticWorld(start, mins, maxs, end, hullNum);
@@ -470,6 +494,7 @@ export class ServerCollision {
 
   /**
    * Trace a point-sized line against the static world.
+   * @returns The collision trace through the static world line segment.
    */
   traceStaticWorldLine(start: Vector, end: Vector, hullNum = 0): CollisionTrace {
     return this.traceStaticWorld(start, Vector.origin, Vector.origin, end, hullNum);
@@ -477,6 +502,7 @@ export class ServerCollision {
 
   /**
    * Compatibility alias for traceStaticWorldLine.
+   * @returns The collision trace through the static world line segment.
    */
   traceWorldLine(start: Vector, end: Vector, hullNum = 0): CollisionTrace {
     return this.traceStaticWorldLine(start, end, hullNum);
@@ -484,6 +510,7 @@ export class ServerCollision {
 
   /**
    * Recursively tests a swept hull against the world and aggregates the trace result.
+   * @returns True when traversal should continue.
    */
   recursiveHullCheck(
     hull: Hull,
@@ -500,6 +527,7 @@ export class ServerCollision {
 
   /**
    * Tests whether a point lies inside a triangle using cross-product winding.
+   * @returns True when the point lies inside the triangle.
    */
   _pointInTriangle(p: Vector, v0: Vector, v1: Vector, v2: Vector, normal: Vector): boolean {
     // Small negative tolerance closes micro-gaps between adjacent triangles.
@@ -576,6 +604,7 @@ export class ServerCollision {
 
   /**
    * Build a mesh tracing context if the target entity has usable mesh data.
+   * @returns The mesh trace context, or `null` when mesh tracing is unavailable.
    */
   _createMeshTraceContext(ent: ServerEdict, start: Vector, mins: Vector, maxs: Vector, end: Vector): MeshTraceContext | null {
     const model = this._getEntityModel(ent);
@@ -592,6 +621,7 @@ export class ServerCollision {
    * (Minkowski sum) and tested for ray intersection. A DIST_EPSILON push-back
    * keeps the endpoint slightly in front of the surface, preventing the next
    * frame's trace from starting on or inside the plane.
+   * @returns The collision trace against the mesh entity.
    */
   clipMoveToMesh(ent: ServerEdict, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
     const trace = CollisionTrace.empty(end);
@@ -628,6 +658,7 @@ export class ServerCollision {
 
   /**
    * Traces a moving box against a target entity.
+   * @returns The collision trace against the target entity.
    */
   clipMoveToEntity(ent: ServerEdict, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
     const state = this._getEntityCollisionState(ent) ?? this._getHullFallbackState(ent);
@@ -637,6 +668,7 @@ export class ServerCollision {
 
   /**
    * Trace against a target entity using its pre-resolved collision state.
+   * @returns The collision trace against the target entity.
    */
   _clipMoveToEntityWithState(state: CollisionState, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
     if (state instanceof MeshCollisionState) {
@@ -653,6 +685,7 @@ export class ServerCollision {
   /**
    * Select the extents used to trace against a touched entity.
    * Missiles expand only against monsters.
+   * @returns The mins and maxs used for the narrow-phase trace.
    */
   _getTouchTraceExtents(clip: MoveClip, touch: ServerEdict): TraceExtents {
     if ((touch.entity!.flags & Defs.flags.FL_MONSTER) !== 0) {
@@ -664,6 +697,7 @@ export class ServerCollision {
 
   /**
    * Determine whether a touched entity should be skipped before narrow-phase tracing.
+   * @returns True when the touched entity should be ignored.
    */
   _shouldSkipTouch(clip: MoveClip, touch: ServerEdict): boolean {
     const touchEntity = touch.entity!;
@@ -699,6 +733,7 @@ export class ServerCollision {
 
   /**
    * Check whether a touched entity overlaps the clip broadphase box.
+   * @returns True when the touched entity overlaps the broadphase bounds.
    */
   _touchOverlapsClipBounds(clip: MoveClip, touch: ServerEdict): boolean {
     const touchEntity = touch.entity!;
@@ -715,6 +750,7 @@ export class ServerCollision {
 
   /**
    * Run narrow-phase tracing against a touched entity using the correct extents.
+   * @returns The collision trace against the touched entity.
    */
   _traceTouch(clip: MoveClip, touch: ServerEdict): CollisionTrace {
     const touchState = this._getEntityCollisionState(touch) ?? this._getHullFallbackState(touch);
@@ -763,6 +799,7 @@ export class ServerCollision {
 
   /**
    * Build the clip context used to trace a move through the world and dynamic entities.
+   * @returns The initialized move clip context.
    */
   _createMoveClip(
     start: Vector,
@@ -831,6 +868,7 @@ export class ServerCollision {
 
   /**
    * Fully traces a moving box through the world.
+   * @returns The final collision trace for the move.
    */
   move(
     start: Vector,
@@ -849,6 +887,7 @@ export class ServerCollision {
 
   /**
    * Tests whether an entity is currently stuck in solid geometry.
+   * @returns True when the entity starts in solid.
    */
   testEntityPosition(ent: ServerEdict): boolean {
     const entity = ent.entity!;

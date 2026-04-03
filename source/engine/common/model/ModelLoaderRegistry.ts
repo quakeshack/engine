@@ -20,6 +20,7 @@ export class ModelLoaderRegistry {
 
   /**
    * Finds a loader that can handle the given file.
+   * @returns The first matching loader, or `null` when none can load the file.
    */
   findLoader(buffer: ArrayBuffer, filename: string): ModelLoader | null {
     for (const loader of this.loaders) {
@@ -33,6 +34,7 @@ export class ModelLoaderRegistry {
 
   /**
    * Loads a model using the first compatible registered loader.
+   * @returns A promise resolving to the loaded model.
    */
   async load(buffer: ArrayBuffer, name: string): Promise<BaseModel> {
     const loader = this.findLoader(buffer, name);
