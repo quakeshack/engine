@@ -32,7 +32,7 @@ export class ModelRenderer {
    * Whether this model/entity pair should contribute to the opaque pass.
    * Renderers can override this when transparency is entity- or material-driven.
    * @param {import('../../common/model/BaseModel.ts').BaseModel} _model The model to evaluate
-   * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity to evaluate
+   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity to evaluate
    * @returns {boolean} True when the pair should render during the opaque pass
    */
   // eslint-disable-next-line no-unused-vars
@@ -44,7 +44,7 @@ export class ModelRenderer {
    * Whether this model/entity pair should contribute to the sorted transparent pass.
    * Sprites are handled by their dedicated pass and should normally return false here.
    * @param {import('../../common/model/BaseModel.ts').BaseModel} _model The model to evaluate
-   * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity to evaluate
+   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity to evaluate
    * @returns {boolean} True when the pair should render during the sorted transparent pass
    */
   // eslint-disable-next-line no-unused-vars
@@ -55,7 +55,7 @@ export class ModelRenderer {
   /**
    * Render a single entity with this model type.
    * @param {import('../../common/model/BaseModel.ts').BaseModel} _model The model to render
-   * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
    * @param {number} [_pass] Rendering pass (0=opaque, 1=transparent, etc.)
    */
   // eslint-disable-next-line no-unused-vars

@@ -8,7 +8,7 @@ import type { BrushModel } from '../common/Mod.ts';
 import type { ClientGameInterface, ClientSerializableType, SFX } from '../../shared/GameInterfaces.ts';
 import type ClientDemos from './ClientDemos.ts';
 import { EventBus, eventBus, getClientRegistry } from '../registry.mjs';
-import ClientEntities, { ClientEdict } from './ClientEntities.mjs';
+import ClientEntities, { ClientEdict } from './ClientEntities.ts';
 import { ClientMessages } from './ClientMessages.ts';
 
 type ClientConnectionProgress = {

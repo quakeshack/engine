@@ -511,7 +511,7 @@ export default class ShadowMap {
 
   /**
    * Determine whether an entity should contribute to the local shadow pass.
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity Visible entity candidate
+   * @param {import('../ClientEntities.ts').ClientEdict} entity Visible entity candidate
    * @param {Vector|Float64Array|number[]|null} cutoffOrigin Local shadow reference origin
    * @param {number} cutoffDistSq Squared caster cutoff distance
    * @returns {boolean} `true` if the entity should contribute to local shadows
@@ -555,7 +555,7 @@ export default class ShadowMap {
   /**
    * Render a brush submodel entity (door, platform, etc.) into a shadow map.
    * @param {import('../../common/model/BSP.ts').BrushModel} model
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity
+   * @param {import('../ClientEntities.ts').ClientEdict} entity
    * @param {Float64Array} lightSpaceMatrix
    * @param {string} programName
    */
@@ -585,7 +585,7 @@ export default class ShadowMap {
    * Render an alias model entity (monster, item, weapon) into a shadow map.
    * Handles frame interpolation identically to AliasModelRenderer.
    * @param {import('../../common/model/AliasModel.ts').AliasModel} model
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity
+   * @param {import('../ClientEntities.ts').ClientEdict} entity
    * @param {Float64Array} lightSpaceMatrix
    * @param {string} programName
    */
@@ -633,7 +633,7 @@ export default class ShadowMap {
   /**
    * Render a mesh model entity (glTF) into a shadow map.
    * @param {import('../../common/model/MeshModel.ts').MeshModel} model
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity
+   * @param {import('../ClientEntities.ts').ClientEdict} entity
    * @param {Float64Array} lightSpaceMatrix
    * @param {string} programName
    */

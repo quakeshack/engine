@@ -5,7 +5,7 @@ import GL, { ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.mjs';
 import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
 import { materialFlags } from './Materials.mjs';
 import { BrushModel, Node } from '../../common/model/BSP.ts';
-import { ClientEdict } from '../ClientEntities.mjs';
+import { ClientEdict } from '../ClientEntities.ts';
 import Mesh from './Mesh.mjs';
 import PostProcess from './PostProcess.mjs';
 import * as Def from '../../common/Def.ts';

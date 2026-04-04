@@ -1,6 +1,6 @@
 import type BaseEntity from '../../game/id1/entity/BaseEntity.mjs';
 import type { EdictValueType, SerializableType } from '../../shared/GameInterfaces.ts';
-import type { ClientDlight, ClientEdict } from '../client/ClientEntities.mjs';
+import type { ClientDlight, ClientEdict } from '../client/ClientEntities.ts';
 import type { GLTexture } from '../client/GL.mjs';
 import type { SzBuffer } from '../network/MSG.ts';
 import type ParsedQC from './model/parsers/ParsedQC.ts';

@@ -8,7 +8,7 @@ import { clientRuntimeState, clientStaticState, type ClientRuntimeState, type Cl
 import { eventBus, getClientRegistry } from '../registry.mjs';
 import { HostError } from '../common/Errors.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
-import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.mjs';
+import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.ts';
 
 type IdentityCvars = {
   name: Cvar | null;

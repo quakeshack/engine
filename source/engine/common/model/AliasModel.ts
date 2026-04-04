@@ -103,12 +103,6 @@ export class AliasModel extends BaseModel {
   /** Texture coordinate vertices. */
   _stverts: AliasStVertex[] = [];
 
-  /** Model flags, used together with `Mod.flags` on the client. */
-  flags = 0;
-
-  /** True when animation frames should be selected randomly. */
-  random = false;
-
   /** Animation frames used by rendering and host-side metadata lookups. */
   frames: AliasFrame[] = [];
 
@@ -138,8 +132,6 @@ export class AliasModel extends BaseModel {
     this._frames = 0;
     this._triangles = [];
     this._stverts = [];
-    this.flags = 0;
-    this.random = false;
     this.frames = [];
     this.skins = [];
     this.boundingradius = 0;

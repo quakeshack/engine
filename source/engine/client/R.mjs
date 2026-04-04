@@ -20,7 +20,7 @@ import PostProcess from './renderer/PostProcess.mjs';
 import BloomEffect from './renderer/BloomEffect.mjs';
 import WarpEffect from './renderer/WarpEffect.mjs';
 import ShadowMap from './renderer/ShadowMap.mjs';
-import { ClientDlight, ClientEdict } from './ClientEntities.mjs';
+import { ClientDlight, ClientEdict } from './ClientEntities.ts';
 import { avertexnormals } from '../common/model/loaders/AliasMDLLoader.ts';
 import { SkyRenderer } from './renderer/Sky.mjs';
 

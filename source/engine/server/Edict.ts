@@ -2,7 +2,7 @@ import type { EdictData } from '../../shared/GameInterfaces.ts';
 import type { WorldspawnEntity as WorldspawnEntityValue } from '../../game/id1/entity/Worldspawn.mjs';
 import type { OctreeNode } from '../../shared/Octree.ts';
 import type { Visibility } from '../common/model/BSP.ts';
-import type { ClientEdict } from '../client/ClientEntities.mjs';
+import type { ClientEdict } from '../client/ClientEntities.ts';
 import type { ServerClient } from './Client.ts';
 
 import Vector from '../../shared/Vector.ts';

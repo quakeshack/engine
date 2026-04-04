@@ -1,5 +1,5 @@
 import { eventBus, registry } from '../../registry.mjs';
-import { ClientEdict } from '../ClientEntities.mjs';
+import { ClientEdict } from '../ClientEntities.ts';
 import GL, { GLTexture } from '../GL.mjs';
 
 let { CL, R } = registry;

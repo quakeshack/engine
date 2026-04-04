@@ -4,7 +4,7 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
-import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
+import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 
 // ── Typedefs ────────────────────────────────────────────────────────────────

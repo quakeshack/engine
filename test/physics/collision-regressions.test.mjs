@@ -8,7 +8,7 @@ import { BrushTrace, Hull, PMF, Pmove, PmovePlayer, Trace } from '../../source/e
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
 import { eventBus, registry } from '../../source/engine/registry.mjs';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
-import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
+import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.ts';

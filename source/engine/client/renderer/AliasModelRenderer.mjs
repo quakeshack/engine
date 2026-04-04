@@ -46,7 +46,7 @@ export class AliasModelRenderer extends ModelRenderer {
 
   /**
    * @param {import('../../common/model/AliasModel.ts').AliasModel} _model The alias model
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} entity The entity being rendered
    * @returns {boolean} True when this alias model should render in the opaque pass
    */
   rendersOpaquePass(_model, entity) {
@@ -55,7 +55,7 @@ export class AliasModelRenderer extends ModelRenderer {
 
   /**
    * @param {import('../../common/model/AliasModel.ts').AliasModel} _model The alias model
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} entity The entity being rendered
    * @returns {boolean} True when this alias model should render in the sorted transparent pass
    */
   rendersTransparentPass(_model, entity) {
@@ -66,7 +66,7 @@ export class AliasModelRenderer extends ModelRenderer {
    * Render a single alias model entity.
    * Handles frustum culling, frame interpolation, skinning, and player color translation.
    * @param {import('../../common/model/AliasModel.ts').AliasModel} model The alias model to render
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} entity The entity being rendered
    * @param {number} pass Rendering pass (0=opaque, 1=transparent)
    */
   render(model, entity, pass = 0) {
@@ -183,7 +183,7 @@ export class AliasModelRenderer extends ModelRenderer {
   /**
    * Select animation frames for rendering with interpolation
    * @param {import('../../common/model/AliasModel.ts').AliasModel} clmodel The alias model
-   * @param {import('../ClientEntities.mjs').ClientEdict} e The entity
+   * @param {import('../ClientEntities.ts').ClientEdict} e The entity
    * @returns {{frameA: object, frameB: object, targettime: number}} Selected frames and interpolation factor
    */
   static _selectFrames(clmodel, e) {
@@ -231,7 +231,7 @@ export class AliasModelRenderer extends ModelRenderer {
    * Select skin texture for rendering (handles skin groups and animation)
    * @private
    * @param {import('../../common/model/AliasModel.ts').AliasModel} clmodel The alias model
-   * @param {import('../ClientEntities.mjs').ClientEdict} e The entity
+   * @param {import('../ClientEntities.ts').ClientEdict} e The entity
    * @returns {object} Selected skin texture
    */
   _selectSkin(clmodel, e) {

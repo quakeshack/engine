@@ -1,4 +1,4 @@
-import type { ClientEdict } from '../engine/client/ClientEntities.mjs';
+import type { ClientEdict } from '../engine/client/ClientEntities.ts';
 import type { ClientEngineAPI as ClientEngineApiValue } from '../engine/common/GameAPIs.ts';
 
 type ClientEngineAPI = typeof ClientEngineApiValue;

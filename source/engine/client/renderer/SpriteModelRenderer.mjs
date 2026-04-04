@@ -49,7 +49,7 @@ export class SpriteModelRenderer extends ModelRenderer {
 
   /**
    * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model
-   * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
    * @returns {boolean} Sprites are never drawn in the opaque pass
    */
   // eslint-disable-next-line no-unused-vars
@@ -59,7 +59,7 @@ export class SpriteModelRenderer extends ModelRenderer {
 
   /**
    * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model
-   * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
    * @returns {boolean} Sprites use their dedicated sprite pass rather than the sorted transparent pass
    */
   // eslint-disable-next-line no-unused-vars
@@ -71,7 +71,7 @@ export class SpriteModelRenderer extends ModelRenderer {
    * Render a single sprite model entity.
    * Generates billboard geometry dynamically based on camera orientation.
    * @param {import('../../common/model/SpriteModel.ts').SpriteModel} model The sprite model to render
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} entity The entity being rendered
    * @param {number} pass Rendering pass (0=opaque, 1=transparent)
    */
   render(model, entity, pass = 0) {

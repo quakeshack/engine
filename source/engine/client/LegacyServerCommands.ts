@@ -1,7 +1,7 @@
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import { HostError } from '../common/Errors.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
 import type { BrushModel } from '../common/Mod.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
@@ -28,12 +28,10 @@ import {
   handleSellScreen,
 } from './ClientServerCommandHandlers.ts';
 
-/** @typedef {typeof import('./CL.mjs').default} ClientLayer */
-
-let { CL, Con, NET, Mod, S, R, V, Host } = registry;
+let { CL, Con, NET, Mod, S, R, V, Host } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, NET, Mod, S, R, V, Host } = registry);
+  ({ CL, Con, NET, Mod, S, R, V, Host } = getClientRegistry());
 });
 
 // TRIGGER WARNING: this content has been completely produced by Claude Opus 4.6
@@ -41,48 +39,48 @@ eventBus.subscribe('registry.frozen', () => {
 
 // ── WinQuake SU_ Client Data Update Bits ────────────────────────────────────
 // Note: bit 8 is unused in WinQuake, so ITEMS starts at bit 9.
-const SU = {
-  VIEWHEIGHT:  1 << 0,
-  IDEALPITCH:  1 << 1,
-  PUNCH1:      1 << 2,
-  PUNCH2:      1 << 3,
-  PUNCH3:      1 << 4,
-  VELOCITY1:   1 << 5,
-  VELOCITY2:   1 << 6,
-  VELOCITY3:   1 << 7,
+const enum SU {
+  VIEWHEIGHT = 1 << 0,
+  IDEALPITCH = 1 << 1,
+  PUNCH1 = 1 << 2,
+  PUNCH2 = 1 << 3,
+  PUNCH3 = 1 << 4,
+  VELOCITY1 = 1 << 5,
+  VELOCITY2 = 1 << 6,
+  VELOCITY3 = 1 << 7,
   // bit 8 unused
-  ITEMS:       1 << 9,
-  ONGROUND:    1 << 10,
-  INWATER:     1 << 11,
-  WEAPONFRAME: 1 << 12,
-  ARMOR:       1 << 13,
-  WEAPON:      1 << 14,
-};
+  ITEMS = 1 << 9,
+  ONGROUND = 1 << 10,
+  INWATER = 1 << 11,
+  WEAPONFRAME = 1 << 12,
+  ARMOR = 1 << 13,
+  WEAPON = 1 << 14,
+}
 
 // ── WinQuake U_ Entity Update Bits ──────────────────────────────────────────
-const U = {
-  MOREBITS:    1 << 0,
-  ORIGIN1:     1 << 1,
-  ORIGIN2:     1 << 2,
-  ORIGIN3:     1 << 3,
-  ANGLE2:      1 << 4,
-  NOLERP:      1 << 5,
-  FRAME:       1 << 6,
-  SIGNAL:      1 << 7,
-  ANGLE1:      1 << 8,
-  ANGLE3:      1 << 9,
-  MODEL:       1 << 10,
-  COLORMAP:    1 << 11,
-  SKIN:        1 << 12,
-  EFFECTS:     1 << 13,
-  LONGENTITY:  1 << 14,
-};
+const enum U {
+  MOREBITS = 1 << 0,
+  ORIGIN1 = 1 << 1,
+  ORIGIN2 = 1 << 2,
+  ORIGIN3 = 1 << 3,
+  ANGLE2 = 1 << 4,
+  NOLERP = 1 << 5,
+  FRAME = 1 << 6,
+  SIGNAL = 1 << 7,
+  ANGLE1 = 1 << 8,
+  ANGLE3 = 1 << 9,
+  MODEL = 1 << 10,
+  COLORMAP = 1 << 11,
+  SKIN = 1 << 12,
+  EFFECTS = 1 << 13,
+  LONGENTITY = 1 << 14,
+}
 
 // ── WinQuake SND_ Sound Flags ───────────────────────────────────────────────
-const SND = {
-  VOLUME:      1 << 0,
-  ATTENUATION: 1 << 1,
-};
+const enum SND {
+  VOLUME = 1 << 0,
+  ATTENUATION = 1 << 1,
+}
 
 // ── Legacy Coordinate / Angle Helpers ───────────────────────────────────────
 // WinQuake coords: 16-bit short × (1/8)    = 2 bytes
@@ -92,7 +90,7 @@ const SND = {
  * Reads a WinQuake coordinate (short / 8).
  * @returns {number} the decoded coordinate
  */
-function readLegacyCoord() {
+function readLegacyCoord(): number {
   return NET.message.readShort() * (1.0 / 8.0);
 }
 
@@ -100,7 +98,7 @@ function readLegacyCoord() {
  * Reads a WinQuake angle (byte × 360/256).
  * @returns {number} the decoded angle in degrees
  */
-function readLegacyAngle() {
+function readLegacyAngle(): number {
   return NET.message.readByte() * (360.0 / 256.0);
 }
 
@@ -108,7 +106,7 @@ function readLegacyAngle() {
  * Reads 3 WinQuake coordinates as a Vector.
  * @returns {Vector} xyz coordinate vector
  */
-function readLegacyCoordVector() {
+function readLegacyCoordVector(): Vector {
   return new Vector(readLegacyCoord(), readLegacyCoord(), readLegacyCoord());
 }
 
@@ -116,13 +114,13 @@ function readLegacyCoordVector() {
  * Reads 3 WinQuake angles as a Vector.
  * @returns {Vector} pitch/yaw/roll angle vector
  */
-function readLegacyAngleVector() {
+function readLegacyAngleVector(): Vector {
   return new Vector(readLegacyAngle(), readLegacyAngle(), readLegacyAngle());
 }
 
 // ── Entity Baselines ────────────────────────────────────────────────────────
 
-type LegacyBaseline = {
+interface LegacyBaseline {
   modelindex: number;
   frame: number;
   colormap: number;
@@ -130,7 +128,7 @@ type LegacyBaseline = {
   effects: number;
   origin: Float32Array;
   angles: Float32Array;
-};
+}
 
 const legacyBaselines: LegacyBaseline[] = [];
 
@@ -139,7 +137,7 @@ const legacyBaselines: LegacyBaseline[] = [];
  * @param {number} num entity number
  * @returns {LegacyBaseline} the baseline record
  */
-function getBaseline(num) {
+function getBaseline(num: number): LegacyBaseline {
   if (!legacyBaselines[num]) {
     legacyBaselines[num] = {
       modelindex: 0,
@@ -154,8 +152,30 @@ function getBaseline(num) {
   return legacyBaselines[num];
 }
 
-function getModelSyncbase(model) {
-  return 'random' in model && model.random ? Math.random() : 0.0;
+/**
+ * Returns the random-sync seed for models that support randomized animation starts.
+ * @param {BaseModel} model Model assigned to the entity.
+ * @returns {number} Sync seed to store on the client entity.
+ */
+function getModelSyncbase(model: BaseModel): number {
+  return model.random ? Math.random() : 0.0;
+}
+
+/**
+ * Stores a loaded precache slice while preserving Quake's sparse slot indexing.
+ * @param {T[]} target Precache target array.
+ * @param {number} startIndex First slot covered by the loaded slice.
+ * @param {Array<T | null>} loaded Loaded values, where null leaves the slot empty.
+ */
+function storeLoadedSlice<T>(target: T[], startIndex: number, loaded: Array<T | null>): void {
+  target.length = startIndex + loaded.length;
+
+  for (let offset = 0; offset < loaded.length; offset++) {
+    const value = loaded[offset];
+    if (value !== null) {
+      target[startIndex + offset] = value;
+    }
+  }
 }
 
 // ── svc_serverdata (11) ─────────────────────────────────────────────────────
@@ -198,7 +218,7 @@ function handleLegacyServerData() {
   CL.SetConnectingStep(15, 'Received server info');
 
   // Read model precache list (strings terminated by empty string)
-  const model_precache = /** @type {string[]} */ ([]);
+  const model_precache: string[] = [];
   for (let nummodels = 1; ; nummodels++) {
     const str = NET.message.readString();
     if (str.length === 0) {
@@ -208,7 +228,7 @@ function handleLegacyServerData() {
   }
 
   // Read sound precache list (strings terminated by empty string)
-  const sound_precache = /** @type {string[]} */ ([]);
+  const sound_precache: string[] = [];
   for (let numsounds = 1; ; numsounds++) {
     const str = NET.message.readString();
     if (str.length === 0) {
@@ -221,11 +241,17 @@ function handleLegacyServerData() {
   CL.connection.processingServerDataState = 1;
 
   void (async () => {
-    const models = /** @type {(BaseModel | null)[]} */ ([null]);
-    const sounds = /** @type {(SFX | null)[]} */ ([null]);
+    const models: BaseModel[] = [];
+    const sounds: SFX[] = [];
+    models.length = 1;
+    sounds.length = 1;
 
     // Load world model first
-    models[1] = await Mod.ForNameAsync(model_precache[1], false, Mod.scope.client);
+    const worldModel = await Mod.ForNameAsync(model_precache[1], false, Mod.scope.client);
+    if (worldModel === null) {
+      throw new HostError(`Failed to load world model ${model_precache[1]}`);
+    }
+    models[1] = worldModel;
 
     // Load remaining models in chunks
     while (models.length < model_precache.length) {
@@ -235,8 +261,9 @@ function handleLegacyServerData() {
         break;
       }
       CL.SetConnectingStep(25 + (models.length / model_precache.length) * 30, 'Loading models');
+      const modelStart = models.length;
       const loaded = await Promise.all(remaining.slice(0, chunksize).map((m) => Mod.ForNameAsync(m, false, Mod.scope.client)));
-      models.push(...loaded);
+      storeLoadedSlice(models, modelStart, loaded);
       CL.SendCmd();
     }
 
@@ -248,18 +275,22 @@ function handleLegacyServerData() {
         break;
       }
       CL.SetConnectingStep(55 + (sounds.length / sound_precache.length) * 30, 'Loading sounds');
+      const soundStart = sounds.length;
       const loaded = await Promise.all(remaining.slice(0, chunksize).map((s) => S.PrecacheSoundAsync(s)));
-      sounds.push(...loaded);
+      storeLoadedSlice(sounds, soundStart, loaded);
       CL.SendCmd();
     }
 
     return { models, sounds };
   })().then(({ models, sounds }) => {
-    CL.state.model_precache = models;
-    CL.state.sound_precache = sounds;
+    CL.state.model_precache.length = 0;
+    CL.state.sound_precache.length = 0;
+
+    CL.state.model_precache.push(...models);
+    CL.state.sound_precache.push(...sounds);
 
     CL.connection.processingServerDataState = 2;
-    CL.state.worldmodel = /** @type {BrushModel} */ (CL.state.model_precache[1]);
+    CL.state.worldmodel = CL.state.model_precache[1] as BrushModel;
     CL.pmove.setWorldmodel(CL.state.worldmodel);
 
     const ent = CL.state.clientEntities.getEntity(0);
@@ -399,7 +430,7 @@ function handleLegacyClientData() {
  * byte is set.
  * @param {number} bits initial update bits (low 7 bits of command byte)
  */
-export function handleLegacyEntityUpdate(bits) {
+export function handleLegacyEntityUpdate(bits: number): void {
   // Advance signon on first entity update  (SIGNONS - 1 → SIGNONS)
   if (CL.cls.signon === 3) {
     CL.cls.signon = 4;
@@ -590,7 +621,7 @@ function handleLegacyParticle() {
  * Parses a beam entity from the message buffer.
  * @param {BaseModel | null | undefined} model beam model to use
  */
-function parseLegacyBeam(model) {
+function parseLegacyBeam(model: BaseModel | null | undefined): void {
   const ent = NET.message.readShort();
   const start = readLegacyCoordVector();
   const end = readLegacyCoordVector();
@@ -654,11 +685,15 @@ function handleLegacyTempEntity() {
   switch (type) {
     case Protocol.te.wizspike:
       R.RunParticleEffect(pos, Vector.origin, 20, 20);
-      S.StartSound(-1, 0, sounds.wizhit, pos, 1.0, 1.0);
+      if (sounds.wizhit !== null) {
+        S.StartSound(-1, 0, sounds.wizhit, pos, 1.0, 1.0);
+      }
       return;
     case Protocol.te.knightspike:
       R.RunParticleEffect(pos, Vector.origin, 226, 20);
-      S.StartSound(-1, 0, sounds.knighthit, pos, 1.0, 1.0);
+      if (sounds.knighthit !== null) {
+        S.StartSound(-1, 0, sounds.knighthit, pos, 1.0, 1.0);
+      }
       return;
     case Protocol.te.spike:
       R.RunParticleEffect(pos, Vector.origin, 0, 10);
@@ -676,12 +711,16 @@ function handleLegacyTempEntity() {
       dl.radius = 350.0;
       dl.die = CL.state.time + 0.5;
       dl.decay = 300.0;
-      S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      if (sounds.explosion !== null) {
+        S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      }
       }
       return;
     case Protocol.te.tarexplosion:
       R.BlobExplosion(pos);
-      S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      if (sounds.explosion !== null) {
+        S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      }
       return;
     case Protocol.te.lavasplash:
       R.LavaSplash(pos);
@@ -698,7 +737,9 @@ function handleLegacyTempEntity() {
       dl.radius = 350.0;
       dl.die = CL.state.time + 0.5;
       dl.decay = 300.0;
-      S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      if (sounds.explosion !== null) {
+        S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      }
       }
       return;
   }
@@ -752,8 +793,7 @@ function handleLegacyUpdateStat() {
 // Only WinQuake svc commands (0–34).  QuakeShack-only opcodes (≥101) are
 // omitted because a WinQuake demo will never emit them.
 
-/** @type {Partial<Record<number, () => void>>} */
-export const legacyServerCommandHandlers = {
+export const legacyServerCommandHandlers: Partial<Record<number, () => void>> = {
   [Protocol.svc.nop]: handleNop,
   [Protocol.svc.time]: handleTime,
   [Protocol.svc.clientdata]: handleLegacyClientData,

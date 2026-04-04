@@ -7,13 +7,12 @@ import Vector from '../../shared/Vector.ts';
 import { effect, modelFlags } from '../../shared/Defs.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 
-import { registry, eventBus } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
 
-let { CL, R } = registry;
+let { CL, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  CL = registry.CL;
-  R = registry.R;
+  ({ CL, R } = getClientRegistry());
 });
 
 /**
@@ -22,11 +21,12 @@ eventBus.subscribe('registry.frozen', () => {
  * no specific game implementation is provided.
  */
 export class DefaultClientEdictHandler extends BaseClientEdictHandler {
-  emit() {
+  emit(): void {
     const clent = this.clientEdict;
     const oldorg = clent.originPrevious;
+    const modelBits = clent.model?.flags ?? 0;
 
-    if ((clent.model.flags & modelFlags.MF_ROTATE) !== 0) {
+    if ((modelBits & modelFlags.MF_ROTATE) !== 0) {
       clent.angles[1] = Vector.anglemod(CL.state.time * 100.0);
     }
     if ((clent.effects & effect.EF_BRIGHTFIELD) !== 0) {
@@ -58,29 +58,29 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       dl.die = CL.state.time + 0.001;
       // dl.color = new Vector(0.5, 0.5, 1.0);
     }
-    if ((clent.model.flags & modelFlags.MF_GIB) !== 0) {
+    if ((modelBits & modelFlags.MF_GIB) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 2);
-    } else if ((clent.model.flags & modelFlags.MF_ZOMGIB) !== 0) {
+    } else if ((modelBits & modelFlags.MF_ZOMGIB) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 4);
-    } else if ((clent.model.flags & modelFlags.MF_TRACER) !== 0) {
+    } else if ((modelBits & modelFlags.MF_TRACER) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 3);
-    } else if ((clent.model.flags & modelFlags.MF_TRACER2) !== 0) {
+    } else if ((modelBits & modelFlags.MF_TRACER2) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 5);
-    } else if ((clent.model.flags & modelFlags.MF_ROCKET) !== 0) {
+    } else if ((modelBits & modelFlags.MF_ROCKET) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 0);
       const dl = CL.state.clientEntities.allocateDynamicLight(clent.num);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2]);
       dl.radius = 200.0;
       dl.die = CL.state.time + 0.01;
-    } else if ((clent.model.flags & modelFlags.MF_GRENADE) !== 0) {
+    } else if ((modelBits & modelFlags.MF_GRENADE) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 1);
-    } else if ((clent.model.flags & modelFlags.MF_TRACER3) !== 0) {
+    } else if ((modelBits & modelFlags.MF_TRACER3) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 6);
     }
   }
 
-  think() {
+  think(): void {
     // Default implementation does nothing.
     // Override this method in a subclass to provide custom logic.
   }
-};
+}

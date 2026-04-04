@@ -45,7 +45,7 @@ export class MeshModelRenderer extends ModelRenderer {
 
   /**
    * @param {import('../../common/model/MeshModel.ts').MeshModel} _model The mesh model
-   * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
    * @returns {boolean} Mesh transparency is not implemented, so meshes stay in the opaque pass
    */
   // eslint-disable-next-line no-unused-vars
@@ -55,7 +55,7 @@ export class MeshModelRenderer extends ModelRenderer {
 
   /**
    * @param {import('../../common/model/MeshModel.ts').MeshModel} _model The mesh model
-   * @param {import('../ClientEntities.mjs').ClientEdict} _entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
    * @returns {boolean} False because sorted transparent mesh rendering is not implemented yet
    */
   // eslint-disable-next-line no-unused-vars
@@ -75,7 +75,7 @@ export class MeshModelRenderer extends ModelRenderer {
   /**
    * Render a single mesh model entity.
    * @param {import('../../common/model/MeshModel.ts').MeshModel} model The mesh model to render
-   * @param {import('../ClientEntities.mjs').ClientEdict} entity The entity being rendered
+   * @param {import('../ClientEntities.ts').ClientEdict} entity The entity being rendered
    * @param {number} pass Rendering pass (0=opaque, 1=transparent)
    */
   render(model, entity, pass = 0) {

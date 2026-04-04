@@ -15,7 +15,7 @@ import { content } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.ts';
 import Cvar from './Cvar.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
-import type { ClientEdict } from '../client/ClientEntities.mjs';
+import type { ClientEdict } from '../client/ClientEntities.ts';
 import type { BaseEntity } from '../server/Edict.ts';
 import type { Plane as BaseModelPlane } from './model/BaseModel.ts';
 import type { Brush, Node } from './model/BSP.ts';

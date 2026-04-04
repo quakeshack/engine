@@ -1,53 +1,67 @@
+import type { ClientEventValue } from '../../shared/GameInterfaces.ts';
+import type { SFX } from './Sound.mjs';
+import type { BaseModel } from '../common/model/BaseModel.ts';
+import type { BrushModel } from '../common/Mod.ts';
+import type { Pmove } from '../common/Pmove.ts';
+
 import Vector from '../../shared/Vector.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
 import * as Def from '../common/Def.ts';
 import { content, effect, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.ts';
-import { DefaultClientEdictHandler } from './ClientLegacy.mjs';
+import { DefaultClientEdictHandler } from './ClientLegacy.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import { SFX } from './Sound.mjs';
-import { Node, revealedVisibility } from '../common/model/BSP.ts';
-import { BaseModel } from '../common/model/BaseModel.ts';
+import { revealedVisibility, type Node } from '../common/model/BSP.ts';
 
-let { CL, Con, Mod, PR, R, S } = registry;
+interface ClientEntityLerpState {
+  readonly frame: [number, number, number];
+  readonly origin: Vector;
+  readonly angles: Vector;
+}
+
+interface TempEntitySounds {
+  wizhit: SFX | null;
+  knighthit: SFX | null;
+  tink1: SFX | null;
+  ric1: SFX | null;
+  ric2: SFX | null;
+  ric3: SFX | null;
+  explosion: SFX | null;
+}
+
+let { CL, Con, Mod, PR, R, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  CL = registry.CL;
-  Con = registry.Con;
-  Mod = registry.Mod;
-  PR = registry.PR;
-  R = registry.R;
-  S = registry.S;
+  ({ CL, Con, Mod, PR, R, S } = getClientRegistry());
 });
 
 export class ClientDlight {
-  /** @type {number} light radius */
+  /** light radius */
   radius = 0.0;
 
-  /** @type {Vector} light color, RGB */
+  /** light color, RGB */
   color = new Vector(1.0, 1.0, 1.0);
 
-  /** @type {Vector} origin */
+  /** origin */
   origin = new Vector();
 
-  /** @type {number} time when this light is considered gone */
+  /** time when this light is considered gone */
   die = 0.0;
 
-  /** @type {number} radius decrease per second, e.g. 300 */
+  /** radius decrease per second, e.g. 300 */
   decay = 0.0;
 
-  /** @type {number} entity number */
+  /** entity number */
   entity = 0;
 
-  /** @type {number} */
   minlight = 0;
 
-  isFree() {
+  isFree(): boolean {
     return this.radius < 0.0 || this.die < CL.state.time;
   }
 
-  clear() {
+  clear(): void {
     this.radius = 0.0;
     this.color.setTo(1.0, 1.0, 1.0);
     this.origin.clear();
@@ -57,27 +71,25 @@ export class ClientDlight {
     this.minlight = 0;
   }
 
-  think() {
+  think(): void {
     this.radius -= this.decay * CL.state.time;
 
     if (this.radius < 0.0) {
       this.radius = 0;
     }
   }
-};
+}
 
 export class ClientBeam {
   start = new Vector();
   end = new Vector();
 
-  /** @type {import('../common/model/BaseModel.ts').BaseModel} what model to use to draw the beam */
-  model = null;
+  /** what model to use to draw the beam */
+  model: BaseModel | null = null;
 
-  /** @type {number} */
   entity = 0;
-
   endtime = 0.0;
-};
+}
 
 /**
  * Client edict maps to a server edict.
@@ -86,14 +98,60 @@ export class ClientBeam {
  * more complex logic that is not part of a client-server session.
  */
 export class ClientEdict { // TODO: extends Protocol.EntityState
-  /** @type {BaseClientEdictHandler} */
-  #handler = null;
+  #handler: BaseClientEdictHandler | null = null;
 
-  /** @param {number} num entity number */
-  constructor(num) {
+  classname: string | null;
+  readonly num: number;
+  model: BaseModel | null;
+  modelindex: number;
+  framePrevious: number | null;
+  frameTime: number;
+  frame: number;
+  skinnum: number;
+  colormap: number;
+  effects: number;
+  /** alpha value for rendering */
+  alpha: number;
+  solid: number;
+  originPrevious: Vector;
+  originTime: number;
+  origin: Vector;
+  anglesPrevious: Vector;
+  anglesTime: number;
+  angles: Vector;
+  velocityPrevious: Vector;
+  velocityTime: number;
+  velocity: Vector;
+  dlightbits: number;
+  dlightframe: number;
+  /** keeps track of origin changes */
+  msg_origins: [Vector, Vector];
+  /** keeps track of angle changes */
+  msg_angles: [Vector, Vector];
+  /** keeps track of velocity changes */
+  msg_velocity: [Vector, Vector];
+  leafs: number[];
+  /** count of received updates */
+  updatecount: number;
+  /** whether is ClientEntity is ready to be recycled */
+  free: boolean;
+  syncbase: number;
+  /** we are using this to lerp animations and positions as well as in future steering client entities */
+  nextthink: number;
+  maxs: Vector;
+  mins: Vector;
+  /** entity fields pushed by the server */
+  extended: Record<string, ClientEventValue>;
+  /** server time when this entity was last updated (legacy demo playback only) */
+  msgtime: number;
+  /** force-link flag: snap to current position, no interpolation (legacy demo playback only) */
+  forcelink: boolean;
+  readonly lerp: ClientEntityLerpState;
+
+  /** @param num entity number */
+  constructor(num: number) {
     this.classname = null;
     this.num = num;
-    /** @type {BaseModel} */
     this.model = null;
     this.modelindex = 0;
     this.framePrevious = null;
@@ -102,7 +160,6 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.skinnum = 0;
     this.colormap = 0;
     this.effects = 0;
-    /** @type {number} alpha value for rendering */
     this.alpha = 1.0;
     this.solid = 0;
     this.originPrevious = new Vector(Infinity, Infinity, Infinity);
@@ -111,49 +168,39 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.anglesPrevious = new Vector(Infinity, Infinity, Infinity);
     this.anglesTime = 0.0;
     this.angles = new Vector(Infinity, Infinity, Infinity);
-    this.velocityPrevious = new Vector(Infinity, Infinity, Infinity);;
+    this.velocityPrevious = new Vector(Infinity, Infinity, Infinity);
     this.velocityTime = 0.0;
     this.velocity = new Vector();
     this.dlightbits = 0;
     this.dlightframe = 0;
-    /** keeps track of origin changes */
     this.msg_origins = [new Vector(), new Vector()];
-    /** keeps track of angle changes */
     this.msg_angles = [new Vector(), new Vector()];
-    /** keeps track of velocity changes */
     this.msg_velocity = [new Vector(), new Vector()];
     this.leafs = [];
-    /** count of received updates */
     this.updatecount = 0;
-    /** whether is ClientEntity is ready to be recycled */
     this.free = false;
     this.syncbase = 0.0;
-    /** we are using this to lerp animations and positions as well as in future steering client entities */
     this.nextthink = -1;
     this.maxs = new Vector();
     this.mins = new Vector();
-    /** @type {Record<string, import('../../shared/GameInterfaces').ClientEventValue>} entity fields pushed by the server */
     this.extended = {};
-    /** server time when this entity was last updated (legacy demo playback only) */
     this.msgtime = 0.0;
-    /** force-link flag: snap to current position, no interpolation (legacy demo playback only) */
     this.forcelink = false;
 
-    /** @type {ClientEdict} */
     const that = this;
 
     /**
      * holds lerped origin and angles for rendering purposes
      */
     this.lerp = {
-      get frame() {
+      get frame(): [number, number, number] {
         const time = CL.state.clientMessages.mtime[0];
         if (that.nextthink <= time || that.framePrevious === null || CL.nolerp.value) {
           return [that.frame, that.frame, 0];
         }
         return [that.framePrevious, that.frame, (time - that.frameTime) / (that.nextthink - that.frameTime)];
       },
-      get origin() {
+      get origin(): Vector {
         const time = CL.state.clientMessages.mtime[0];
         if (that.nextthink <= time || CL.nolerp.value || that.originPrevious.isInfinite()) {
           return that.origin;
@@ -168,7 +215,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
         );
         return l;
       },
-      get angles() {
+      get angles(): Vector {
         const time = CL.state.clientMessages.mtime[0];
         if (that.nextthink <= time || CL.nolerp.value || that.anglesPrevious.isInfinite()) {
           return that.angles;
@@ -178,8 +225,8 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
         const a1 = that.anglesPrevious;
         const d = a0.copy().subtract(a1);
         for (let i = 0; i < 3; i++) { // avoid snapping around
-          if (d[i] > 180)  { d[i] -= 360; };
-          if (d[i] < -180) { d[i] += 360; };
+          if (d[i] > 180) { d[i] -= 360; }
+          if (d[i] < -180) { d[i] += 360; }
         }
         const v = new Vector(
           a1[0] + d[0] * f,
@@ -194,16 +241,16 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     Object.seal(this);
   }
 
-  isStatic() {
+  isStatic(): boolean {
     return this.num === -1;
   }
 
-  equals(other) {
+  equals(other: { num: number } | null): boolean {
     // CR: playing with fire here
-    return this === other || (this.num !== -1 && this.num === other.num);
+    return other !== null && (this === other || (this.num !== -1 && this.num === other.num));
   }
 
-  freeEdict() {
+  freeEdict(): void {
     this.model = null;
     this.framePrevious = null;
     this.frameTime = 0.0;
@@ -247,20 +294,34 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
    * Links the entity to the current world model.
    * This has to be called after the origin for a client-side entity has been changed.
    */
-  linkEdict() {
-    console.assert(CL.state.worldmodel !== null, 'worldmodel must be set before linking an entity');
+  linkEdict(): void {
+    const worldmodel = CL.state.worldmodel;
+
+    console.assert(worldmodel !== null, 'worldmodel must be set before linking an entity');
     console.assert(this.isStatic(), 'linkEdict is only valid for client-side entities');
+    console.assert(this.model !== null, 'model must be set before linking an entity');
+
+    if (worldmodel === null || this.model === null) {
+      return;
+    }
+
+    const rootNode = worldmodel.nodes[0];
+    console.assert(rootNode !== undefined, 'worldmodel must have a root node before linking an entity');
+    if (rootNode === undefined) {
+      return;
+    }
+
     const emins = this.origin.copy().add(this.model.mins);
     const emaxs = this.origin.copy().add(this.model.maxs);
-    this.#splitEntityOnNode(CL.state.worldmodel.nodes[0], emins, emaxs);
+    this.#splitEntityOnNode(rootNode, emins, emaxs);
   }
 
   /**
-   * @param {Node} node BSP node to split the entity on
-   * @param {Vector} emins entity mins
-   * @param {Vector} emaxs entity maxs
+   * @param node BSP node to split the entity on
+   * @param emins entity mins
+   * @param emaxs entity maxs
    */
-  #splitEntityOnNode(node, emins, emaxs) {
+  #splitEntityOnNode(node: Node, emins: Vector, emaxs: Vector): void {
     if (node.contents === content.CONTENT_SOLID) {
       return;
     }
@@ -270,56 +331,61 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
       return;
     }
 
-    const sides = Vector.boxOnPlaneSide(emins, emaxs, node.plane);
-
-    if ((sides & 1) !== 0) {
-      this.#splitEntityOnNode(node.children[0], emins, emaxs);
+    const plane = node.plane;
+    if (plane === null) {
+      return;
     }
 
-    if ((sides & 2) !== 0) {
-      this.#splitEntityOnNode(node.children[1], emins, emaxs);
+    const sides = Vector.boxOnPlaneSide(emins, emaxs, plane);
+    const frontChild = node.children[0];
+    const backChild = node.children[1];
+
+    if ((sides & 1) !== 0 && frontChild !== null && typeof frontChild !== 'number') {
+      this.#splitEntityOnNode(frontChild, emins, emaxs);
+    }
+
+    if ((sides & 2) !== 0 && backChild !== null && typeof backChild !== 'number') {
+      this.#splitEntityOnNode(backChild, emins, emaxs);
     }
   }
 
   /**
    * Sets the origin of the entity.
    * Only valid for client-side entities.
-   * @param {Vector} origin new position of the entity
+   * @param origin new position of the entity
    */
-  setOrigin(origin) {
+  setOrigin(origin: Vector): void {
     this.origin.set(origin);
     this.linkEdict();
   }
 
   /** loads handler based on set classname */
-  loadHandler() {
-    /** @type {typeof BaseClientEdictHandler} */
+  loadHandler(): void {
     const handler = (() => {
       const ClientAPI = PR.QuakeJS?.ClientGameAPI;
 
-      if (!ClientAPI) {
+      if (!ClientAPI || this.classname === null) {
         return null;
       }
 
-      const handler = ClientAPI.GetClientEdictHandler(this.classname);
+      const entityHandler = ClientAPI.GetClientEdictHandler(this.classname);
 
-      if (!handler) {
+      if (!entityHandler) {
         // Con.DPrint('No ClientEdictHandler for entity: ' + this.classname + '\n');
         return null;
       }
 
-      return handler;
-    })() || DefaultClientEdictHandler;
+      return entityHandler;
+    })() ?? DefaultClientEdictHandler;
 
     this.#handler = new handler(this, ClientEngineAPI);
   }
 
   /**
    * Sets origin and angles according to the current message.
-   * @param {boolean} doLerp whether to do a point lerp
+   * @param doLerp whether to do a point lerp
    */
-  updatePosition(doLerp) {
-
+  updatePosition(doLerp: boolean): void {
     const time = CL.state.clientMessages.mtime[0];
 
     // not precisely a position, but it is part of the lerp too
@@ -360,79 +426,72 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.velocity.set(this.msg_velocity[0]);
   }
 
-  spawn() {
+  spawn(): void {
     if (this.#handler) {
       this.#handler.spawn();
     }
   }
 
-  emit() {
+  emit(): void {
     if (this.#handler) {
       this.#handler.emit();
     }
   }
 
-  think() {
+  think(): void {
     if (this.#handler) {
       this.#handler.think();
     }
   }
 
-  toString() {
+  toString(): string {
     return `${this.num.toFixed(0).padStart(3, ' ')}: ${(this.classname || '(no classname)').padEnd(32)} ${(this.model?.name || '-').padEnd(32)}: [${this.origin}], ${this.angles}`;
   }
-};
+}
 
 export default class ClientEntities {
-  /** @type {ClientEdict[]} all entities */
-  static_entities = [];
+  /** all entities */
+  static_entities: ClientEdict[] = [];
 
-  /** @type {ClientEdict[]} all server managed entities */
-  entities = [];
+  /** all server managed entities */
+  entities: ClientEdict[] = [];
 
-  /** @type {ClientEdict[]} visible entities staged for the next frame */
-  visedicts = [];
+  /** visible entities staged for the next frame */
+  visedicts: ClientEdict[] = [];
 
-  /** @type {ClientEdict[]} all temporary entities, will last one frame */
-  temp_entities = [];
+  /** all temporary entities, will last one frame */
+  temp_entities: ClientEdict[] = [];
 
-  /** @type {ClientDlight[]} current dynamic lights */
-  dlights = [];
+  /** current dynamic lights */
+  dlights: ClientDlight[] = [];
 
-  /** @type {string[]} current configured lightstyles (set by the server) */
-  lightstyle = [];
+  /** current configured lightstyles (set by the server) */
+  lightstyle: string[] = [];
 
-  /** @type {ClientBeam[]} current beams */
-  beams = [];
+  /** current beams */
+  beams: ClientBeam[] = [];
 
   num_temp_entities = 0;
   num_visedicts = 0;
 
-  tempEntitySounds = {
-    /** @type {SFX} */
+  tempEntitySounds: TempEntitySounds = {
     wizhit: null,
-    /** @type {SFX} */
     knighthit: null,
-    /** @type {SFX} */
     tink1: null,
-    /** @type {SFX} */
     ric1: null,
-    /** @type {SFX} */
     ric2: null,
-    /** @type {SFX} */
     ric3: null,
-    /** @type {SFX} */
     explosion: null,
   };
 
-  /** @type {Record<string, import('../common/Mod.ts').BaseModel>} available tent models, initialized in initTempEntities */
-  tempEntityModels = {};
+  /** available tent models, initialized in initTempEntities */
+  tempEntityModels: Record<string, BaseModel | null> = {};
 
   constructor() {
     this.clear();
   }
 
-  async initTempEntities() {
+  async initTempEntities(): Promise<void> {
     this.tempEntitySounds = {
       wizhit: S.PrecacheSound('wizard/hit.wav'),
       knighthit: S.PrecacheSound('hknight/hit.wav'),
@@ -443,27 +502,27 @@ export default class ClientEntities {
       explosion: S.PrecacheSound('weapons/r_exp3.wav'),
     };
 
-    for (const {model, name} of await Promise.all([
+    for (const { model, name } of await Promise.all([
       'progs/bolt.mdl',
       'progs/bolt2.mdl',
       'progs/bolt3.mdl',
       'progs/beam.mdl', // CR: does not exist in Quake
-    ].map((model) => Mod.ForNameAsync(model, false, Mod.scope.client).then((m) => ({ model: m, name: model }))))) {
+    ].map((model) => Mod.ForNameAsync(model, false, Mod.scope.client).then((loadedModel) => ({ model: loadedModel, name: model }))))) {
       this.tempEntityModels[name] = model;
     }
   }
 
   /**
-   * @param {number} id lightstyle number
-   * @param {string} style lightstyle sequence
+   * @param id lightstyle number
+   * @param style lightstyle sequence
    */
-  setLightstyle(id, style) {
+  setLightstyle(id: number, style: string): void {
     console.assert(id >= 0 && id < this.lightstyle.length, 'id must be in range');
 
     this.lightstyle[id] = style;
   }
 
-  clear() {
+  clear(): void {
     this.static_entities.length = 0;
     this.visedicts.length = 0;
     this.entities.length = 0;
@@ -490,11 +549,11 @@ export default class ClientEntities {
     }
   }
 
-  setSolidEntities(pmove) {
+  setSolidEntities(pmove: Pmove): void {
     pmove.clearEntities();
 
     for (const clent of this.getEntities()) {
-      if (clent.num === 0 || !clent.model) {
+      if (clent.num === 0 || clent.model === null) {
         continue;
       }
 
@@ -505,14 +564,15 @@ export default class ClientEntities {
         continue;
       }
 
-      pmove.addEntity(clent, s === solid.SOLID_BSP ? clent.model : null);
+      const brushModel = s === solid.SOLID_BSP ? clent.model as BrushModel : null;
+      pmove.addEntity(clent, brushModel);
     }
   }
 
-  printEntities() {
+  printEntities(): void {
     Con.Print('Entities:\n');
     for (const ent of this.getEntities()) {
-      if (!ent.model) {
+      if (ent.model === null) {
         continue;
       }
 
@@ -520,8 +580,8 @@ export default class ClientEntities {
     }
   }
 
-  allocateDynamicLight(entityId) {
-    let dl = null;
+  allocateDynamicLight(entityId: number): ClientDlight {
+    let dl: ClientDlight | null = null;
 
     if (entityId === -1) {
       entityId = 0;
@@ -564,10 +624,10 @@ export default class ClientEntities {
 
   /**
    * Allocates a temporary entity. It will last one frame.
-   * @param {string?} classname optional classname to set for the temporary entity
-   * @returns {ClientEdict} a new temporary entity
+   * @param classname optional classname to set for the temporary entity
+   * @returns a new temporary entity
    */
-  allocateTempEntity(classname = null) {
+  allocateTempEntity(classname: string | null = null): ClientEdict {
     const ent = new ClientEdict(-1);
 
     this.temp_entities[this.num_temp_entities++] = ent;
@@ -584,10 +644,10 @@ export default class ClientEntities {
   /**
    * Allocates a client-only entity.
    * It will not be managed by the server and is used for client-side effects (debris, gibs, projectiles etc.).
-   * @param {string?} classname optional classname to set for the temporary entity
-   * @returns {ClientEdict} a new client-only entity
+   * @param classname optional classname to set for the temporary entity
+   * @returns a new client-only entity
    */
-  allocateClientEntity(classname = null) {
+  allocateClientEntity(classname: string | null = null): ClientEdict {
     const ent = new ClientEdict(-1);
 
     if (classname !== null) {
@@ -614,10 +674,10 @@ export default class ClientEntities {
   /**
    * Returns a client entity by its number.
    * If the entity does not exist, it will be allocated as a null entity.
-   * @param {number} num entity number
-   * @returns {ClientEdict} entity
+   * @param num entity number
+   * @returns entity
    */
-  getEntity(num) {
+  getEntity(num: number): ClientEdict {
     if (this.entities[num] !== undefined) {
       return this.entities[num];
     }
@@ -629,19 +689,24 @@ export default class ClientEntities {
       this.entities.push(new ClientEdict(this.entities.length));
     }
 
-    return this.entities[num];
+    return this.entities[num]!;
   }
 
-  #thinkTempEntities() {
+  #thinkTempEntities(): void {
     // TODO: rework
     this.num_temp_entities = 0;
     for (let i = 0; i < Def.limits.beams; i++) {
-      let yaw; let pitch;
+      let yaw: number;
+      let pitch: number;
       const b = this.beams[i];
-      if (!b.model || b.endtime < CL.state.time) {
+      if (b.model === null || b.endtime < CL.state.time) {
         continue;
       }
       if (b.entity === CL.state.viewentity) {
+        if (CL.state.playerentity === null) {
+          continue;
+        }
+
         b.start = CL.state.playerentity.origin.copy();
       }
       const dist = b.end.copy().subtract(b.start);
@@ -688,7 +753,7 @@ export default class ClientEntities {
     }
   }
 
-  #thinkDlights() {
+  #thinkDlights(): void {
     for (let i = 0; i < Def.limits.dlights; i++) {
       const dl = this.dlights[i];
 
@@ -700,19 +765,19 @@ export default class ClientEntities {
     }
   }
 
-  #thinkEntities() {
+  #thinkEntities(): void {
     for (const clent of this.getEntities()) {
       clent.think();
     }
   }
 
-  think() {
+  think(): void {
     this.#thinkEntities();
     this.#thinkTempEntities();
     this.#thinkDlights();
   }
 
-  #emitEntities() {
+  #emitEntities(): void {
     // reset all visible entities
     this.num_visedicts = 0;
 
@@ -747,7 +812,7 @@ export default class ClientEntities {
       }
 
       // if the entity is not visible, skip it
-      if (!clent.model || (clent.effects & effect.EF_NODRAW)) {
+      if (clent.model === null || (clent.effects & effect.EF_NODRAW)) {
         continue;
       }
 
@@ -760,12 +825,19 @@ export default class ClientEntities {
       this.visedicts[this.num_visedicts++] = clent;
     }
 
+    const worldmodel = CL.state.worldmodel;
+    console.assert(worldmodel !== null, 'worldmodel must be set before emitting client entities');
+    if (worldmodel === null) {
+      return;
+    }
+
     // get the PVS for the current view
-    const vis = R.novis.value !== 0 ? revealedVisibility : CL.state.worldmodel.getPvsByPoint(R.refdef.vieworg);
+    const rendererState = R as typeof R & { novis: { value: number } };
+    const vis = rendererState.novis.value !== 0 ? revealedVisibility : worldmodel.getPvsByPoint(R.refdef.vieworg);
 
     for (const clent of this.static_entities) {
       // freed entity or invisible entity
-      if (clent.free || !clent.model || (clent.effects & effect.EF_NODRAW)) {
+      if (clent.free || clent.model === null || (clent.effects & effect.EF_NODRAW)) {
         continue;
       }
 
@@ -784,14 +856,14 @@ export default class ClientEntities {
     }
   }
 
-  #emitProjectiles() {
+  #emitProjectiles(): void {
     // TODO: implement
   }
 
-  #emitTempEntities() {
+  #emitTempEntities(): void {
     for (let i = 0; i < this.num_temp_entities; i++) {
       const ent = this.temp_entities[i];
-      if (!ent.model || ent.free) {
+      if (ent.model === null || ent.free) {
         continue;
       }
 
@@ -801,7 +873,7 @@ export default class ClientEntities {
     }
   }
 
-  emit() {
+  emit(): void {
     if (CL.state.worldmodel === null) {
       // no world model, nothing to render
       return;
@@ -815,9 +887,9 @@ export default class ClientEntities {
   /**
    * Returns all entities in the game.
    * Both client-only and server entities.
-   * @yields {ClientEdict} entity
+   * @yields entity
    */
-  *getEntities() {
+  *getEntities(): Generator<ClientEdict, void, void> {
     for (const entity of this.entities) {
       if (!entity || entity.free) {
         continue;
@@ -837,11 +909,14 @@ export default class ClientEntities {
 
   /**
    * Contains all entities that are staged to be rendered.
-   * @yields {ClientEdict} entity
+   * @yields entity
    */
-  *getVisibleEntities() {
+  *getVisibleEntities(): Generator<ClientEdict, void, void> {
     for (let i = 0; i < this.num_visedicts; i++) {
-      yield this.visedicts[i];
+      const entity = this.visedicts[i];
+      if (entity !== undefined) {
+        yield entity;
+      }
     }
   }
-};
+}

@@ -3,24 +3,24 @@ import * as Def from '../common/Def.ts';
 import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
+import type { ClientGameInterface } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import type { BrushModel } from '../common/Mod.ts';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
 import type { SFX } from './Sound.mjs';
 
 import { legacyServerCommandHandlers, handleLegacyEntityUpdate } from './LegacyServerCommands.ts';
 
-/** @typedef {typeof import('./CL.mjs').default} ClientLayer */
-/** @typedef {import('./ClientMessages.ts').ClientMessages} ClientMessages */
+type ClientSignonState = 0 | 1 | 2 | 3 | 4;
 
-let { CL, Con, SCR, S, R, V, Host, SV, NET, Mod, PR, COM } = registry;
+let { CL, Con, SCR, S, R, V, Host, SV, NET, Mod, PR, COM } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, SCR, S, R, V, Host, SV, NET, Mod, PR, COM } = registry);
+  ({ CL, Con, SCR, S, R, V, Host, SV, NET, Mod, PR, COM } = getClientRegistry());
 });
 
 sharedCollisionModelSource.configureClient({
@@ -31,8 +31,26 @@ sharedCollisionModelSource.configureClient({
 /** Tracks entity updates during message parsing */
 let entitiesReceived = 0;
 
-function getModelSyncbase(model) {
-  return 'random' in model && model.random ? Math.random() : 0.0;
+/**
+ * Stores a loaded precache slice while preserving Quake's sparse slot indexing.
+ * @param {T[]} target Precache target array.
+ * @param {number} startIndex First slot covered by the loaded slice.
+ * @param {Array<T | null>} loaded Loaded values, where null leaves the slot empty.
+ */
+function storeLoadedSlice<T>(target: T[], startIndex: number, loaded: Array<T | null>): void {
+  target.length = startIndex + loaded.length;
+
+  for (let offset = 0; offset < loaded.length; offset++) {
+    const value = loaded[offset];
+    if (value !== null) {
+      target[startIndex + offset] = value;
+    }
+  }
+}
+
+/** Marks the screen refdef as dirty for the next frame. */
+function markRefdefDirty(): void {
+  (SCR as typeof SCR & { recalc_refdef: boolean }).recalc_refdef = true;
 }
 
 /**
@@ -45,7 +63,7 @@ function parseServerData() {
   const version = NET.message.readByte();
 
   if (version !== Protocol.version) {
-    throw new HostError('Server returned protocol version ' + version + ', not ' + Protocol.version + '\n');
+    throw new HostError(`Server returned protocol version ${version}, not ${Protocol.version}\n`);
   }
 
   const isHavingClientQuakeJS = NET.message.readByte() === 1;
@@ -71,15 +89,15 @@ function parseServerData() {
       throw new HostError(`Server (v${serverVersion.join('.')} ) is not compatible. You are running v${identification.version.join('.')}\nTry clearing your cache and connect again.`);
     }
 
-    CL.state.gameAPI = new PR.QuakeJS.ClientGameAPI(ClientEngineAPI);
+    CL.state.gameAPI = Reflect.construct(PR.QuakeJS.ClientGameAPI, [ClientEngineAPI]) as ClientGameInterface;
   } else {
     const game = NET.message.readString();
 
     if (game !== COM.game) {
-      throw new HostError('Server is running game ' + game + ', not ' + COM.game + '\n');
+      throw new HostError(`Server is running game ${game}, not ${COM.game}\n`);
     }
 
-    document.title = `${game} on ${Def.productName} (${Host.version.string})`;
+    document.title = `${game} on ${Def.productName} (${Host.version?.string ?? 'unknown'})`;
   }
 
   CL.state.maxclients = NET.message.readByte();
@@ -101,8 +119,9 @@ function parseServerData() {
 
   CL.SetConnectingStep(15, 'Received server info');
 
-  let str;
-  let nummodels; const model_precache = /** @type {string[]} */ ([]);
+  let str: string;
+  let nummodels: number;
+  const model_precache: string[] = [];
   for (nummodels = 1; ; nummodels++) {
     str = NET.message.readString();
     if (str.length === 0) {
@@ -110,7 +129,8 @@ function parseServerData() {
     }
     model_precache[nummodels] = str;
   }
-  let numsounds; const sound_precache = /** @type {string[]} */ ([]);
+  let numsounds: number;
+  const sound_precache: string[] = [];
   for (numsounds = 1; ; numsounds++) {
     str = NET.message.readString();
     if (str.length === 0) {
@@ -120,7 +140,7 @@ function parseServerData() {
   }
 
   if (CL.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_DYNAMIC)) {
-    const clientdataFields = /** @type {string[]} */ ([]);
+    const clientdataFields: string[] = [];
 
     while (true) {
       const fields = NET.message.readString();
@@ -141,7 +161,7 @@ function parseServerData() {
         break;
       }
 
-      const fields = /** @type {string[]} */ ([]);
+      const fields: string[] = [];
 
       while (true) {
         const field = NET.message.readString();
@@ -153,8 +173,7 @@ function parseServerData() {
         fields.push(field);
       }
 
-      /** @type {'readByte' | 'readShort' | 'readLong'} */
-      let bitsReader;
+      let bitsReader: 'readByte' | 'readShort' | 'readLong';
 
       console.assert(fields.length <= 32, 'entity fields must not have more than 32 fields');
 
@@ -175,10 +194,16 @@ function parseServerData() {
   CL.connection.processingServerDataState = 1;
 
   void (async () => {
-    const models = /** @type {(BaseModel | null)[]} */ ([null]);
-    const sounds = /** @type {(SFX | null)[]} */ ([null]);
+    const models: BaseModel[] = [];
+    const sounds: SFX[] = [];
+    models.length = 1;
+    sounds.length = 1;
 
-    models[1] = await Mod.ForNameAsync(model_precache[1], false, Mod.scope.client);
+    const worldModel = await Mod.ForNameAsync(model_precache[1], false, Mod.scope.client);
+    if (worldModel === null) {
+      throw new HostError(`Failed to load world model ${model_precache[1]}`);
+    }
+    models[1] = worldModel;
     nummodels--;
 
     while (nummodels > 0) {
@@ -186,7 +211,9 @@ function parseServerData() {
       nummodels -= chunksize;
 
       CL.SetConnectingStep(25 + (models.length / model_precache.length) * 30, 'Loading models');
-      models.push(...await Promise.all(model_precache.slice(models.length, models.length + chunksize).map((m) => Mod.ForNameAsync(m, false, Mod.scope.client))));
+      const modelStart = models.length;
+      const loadedModels = await Promise.all(model_precache.slice(modelStart, modelStart + chunksize).map((m) => Mod.ForNameAsync(m, false, Mod.scope.client)));
+      storeLoadedSlice(models, modelStart, loadedModels);
 
       CL.SendCmd();
     }
@@ -195,7 +222,9 @@ function parseServerData() {
       const chunksize = Math.min(numsounds, 10);
       numsounds -= chunksize;
       CL.SetConnectingStep(55 + (sounds.length / sound_precache.length) * 30, 'Loading sounds');
-      sounds.push(...await Promise.all(sound_precache.slice(sounds.length, sounds.length + chunksize).map((s) => S.PrecacheSoundAsync(s))));
+      const soundStart = sounds.length;
+      const loadedSounds = await Promise.all(sound_precache.slice(soundStart, soundStart + chunksize).map((s) => S.PrecacheSoundAsync(s)));
+      storeLoadedSlice(sounds, soundStart, loadedSounds);
 
       CL.SendCmd();
     }
@@ -209,7 +238,7 @@ function parseServerData() {
     CL.state.sound_precache.push(...sounds);
 
     CL.connection.processingServerDataState = 2;
-    CL.state.worldmodel = /** @type {BrushModel} */ (CL.state.model_precache[1]);
+    CL.state.worldmodel = CL.state.model_precache[1] as BrushModel;
     CL.pmove.setWorldmodel(CL.state.worldmodel);
     const ent = CL.state.clientEntities.getEntity(0);
     ent.classname = 'worldspawn';
@@ -347,7 +376,7 @@ function parseServerCvars() {
  * Parses beam-style temporary entities.
  * @param {BaseModel | null | undefined} model Model to attach to the beam.
  */
-function parseBeam(model) {
+function parseBeam(model: BaseModel | null | undefined) {
   const ent = NET.message.readShort();
   const start = NET.message.readCoordVector();
   const end = NET.message.readCoordVector();
@@ -407,11 +436,15 @@ function parseTemporaryEntity() {
   switch (type) {
     case Protocol.te.wizspike:
       R.RunParticleEffect(pos, Vector.origin, 20, 20);
-      S.StartSound(-1, 0, sounds.wizhit, pos, 1.0, 1.0);
+      if (sounds.wizhit !== null) {
+        S.StartSound(-1, 0, sounds.wizhit, pos, 1.0, 1.0);
+      }
       return;
     case Protocol.te.knightspike:
       R.RunParticleEffect(pos, Vector.origin, 226, 20);
-      S.StartSound(-1, 0, sounds.knighthit, pos, 1.0, 1.0);
+      if (sounds.knighthit !== null) {
+        S.StartSound(-1, 0, sounds.knighthit, pos, 1.0, 1.0);
+      }
       return;
     case Protocol.te.spike:
       R.RunParticleEffect(pos, Vector.origin, 0, 10);
@@ -429,12 +462,16 @@ function parseTemporaryEntity() {
       dl.radius = 350.0;
       dl.die = CL.state.time + 0.5;
       dl.decay = 300.0;
-      S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      if (sounds.explosion !== null) {
+        S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      }
     }
       return;
     case Protocol.te.tarexplosion:
       R.BlobExplosion(pos);
-      S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      if (sounds.explosion !== null) {
+        S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      }
       return;
     case Protocol.te.lavasplash:
       R.LavaSplash(pos);
@@ -451,7 +488,9 @@ function parseTemporaryEntity() {
       dl.radius = 350.0;
       dl.die = CL.state.time + 0.5;
       dl.decay = 300.0;
-      S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      if (sounds.explosion !== null) {
+        S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
+      }
     }
       return;
   }
@@ -498,7 +537,7 @@ function parsePacketEntities() {
       clent.frameTime = 0.0;
 
       if (clent.model) {
-        clent.syncbase = getModelSyncbase(clent.model);
+        clent.syncbase = clent.model.random ? Math.random() : 0.0;
       }
     }
 
@@ -544,9 +583,15 @@ function parsePacketEntities() {
     }
 
     if (CL.gameCapabilities.includes(gameCapabilities.CAP_ENTITY_EXTENDED)) {
-      const clientEntityFields = CL.state.clientEntityFields[clent.classname];
+      const classname = clent.classname;
+      const clientEntityFields = classname !== null ? CL.state.clientEntityFields[classname] : undefined;
       if (clientEntityFields) {
-        const fieldbits = NET.message[clientEntityFields.bitsReader]();
+        // TODO: optimize this
+        const fieldbits = clientEntityFields.bitsReader === 'readByte'
+          ? NET.message.readByte()
+          : clientEntityFields.bitsReader === 'readShort'
+            ? NET.message.readShort()
+            : NET.message.readLong();
 
         if (fieldbits > 0) {
           const fields = [];
@@ -629,7 +674,7 @@ function handleClientData() {
 function handleVersion() {
   const protocol = NET.message.readLong();
   if (protocol !== Protocol.version) {
-    throw new HostError('CL.ParseServerMessage: Server is protocol ' + protocol + ' instead of ' + Protocol.version + '\n');
+    throw new HostError(`CL.ParseServerMessage: Server is protocol ${protocol} instead of ${Protocol.version}\n`);
   }
 }
 
@@ -653,7 +698,7 @@ function handlePrint() {
 function handleCenterPrint() {
   const string = NET.message.readString();
   SCR.CenterPrint(string);
-  Con.Print('\x03' + string + '\n'); // TODO: have a better system for this
+  Con.Print(`\x03${string}\n`); // TODO: have a better system for this
 }
 
 /**
@@ -684,12 +729,15 @@ function handleDamage() {
  * Parses svc_serverdata and reinitializes renderer state.
  */
 function handleServerData() {
-  SCR.recalc_refdef = true;
+  markRefdefDirty();
 
   // peak into the serverdata message to detect legacy demos and route to the old handlers if needed
   if (new DataView(NET.message.data).getUint32(1, true) === 15) {
-    legacyServerCommandHandlers[Protocol.svc.serverdata]();
-    return;
+    const handleLegacyServerData = legacyServerCommandHandlers[Protocol.svc.serverdata];
+    if (handleLegacyServerData) {
+      handleLegacyServerData();
+      return;
+    }
   }
 
   parseServerData();
@@ -746,7 +794,11 @@ function handleStopSound() {
  */
 function handleLoadSound() {
   const index = NET.message.readByte();
-  CL.state.sound_precache[index] = S.PrecacheSound(NET.message.readString());
+  const sound = S.PrecacheSound(NET.message.readString());
+  if (sound === null) {
+    return;
+  }
+  CL.state.sound_precache[index] = sound;
   Con.DPrint(`CL.ParseServerMessage: load sound "${CL.state.sound_precache[index].name}" (${CL.state.sound_precache[index].state}) on slot ${index}\n`);
 }
 
@@ -858,7 +910,7 @@ function handleSignonNum() {
     throw new HostError('Received signon ' + signon + ' when at ' + CL.cls.signon);
   }
   console.assert(signon >= 0 && signon <= 4, 'signon must be in range 0-4');
-  CL.cls.signon = /** @type {0|1|2|3|4} */ (signon);
+  CL.cls.signon = signon as ClientSignonState;
   Con.DPrint(`Received signon ${signon}\n`);
   CL.SignonReply();
 }
@@ -916,7 +968,7 @@ function handleCdTrack() {
 function handleIntermission() {
   CL.state.intermission = 1;
   CL.state.completed_time = CL.state.time;
-  SCR.recalc_refdef = true;
+  markRefdefDirty();
 }
 
 /**
@@ -925,7 +977,7 @@ function handleIntermission() {
 function handleFinale() {
   CL.state.intermission = 2;
   CL.state.completed_time = CL.state.time;
-  SCR.recalc_refdef = true;
+  markRefdefDirty();
   SCR.CenterPrint(NET.message.readString());
 }
 
@@ -935,7 +987,7 @@ function handleFinale() {
 function handleCutscene() {
   CL.state.intermission = 3;
   CL.state.completed_time = CL.state.time;
-  SCR.recalc_refdef = true;
+  markRefdefDirty();
   SCR.CenterPrint(NET.message.readString());
 }
 
@@ -989,12 +1041,15 @@ function handleClientEvent() {
 function handleSetPortalState() {
   const portalNum = NET.message.readShort();
   const open = NET.message.readByte() !== 0;
-  console.assert(CL.state.worldmodel !== null, 'worldmodel must be available before changing portal state');
-  CL.state.worldmodel.areaPortals.setPortalState(portalNum, open);
+  const worldmodel = CL.state.worldmodel;
+  console.assert(worldmodel !== null, 'worldmodel must be available before changing portal state');
+  if (worldmodel === null) {
+    return;
+  }
+  worldmodel.areaPortals.setPortalState(portalNum, open);
 }
 
-/** @type {Partial<Record<number, () => void>>} */
-const serverCommandHandlers = {
+const serverCommandHandlers: Partial<Record<number, () => void>> = {
   [Protocol.svc.nop]: handleNop,
   [Protocol.svc.time]: handleTime,
   [Protocol.svc.clientdata]: handleClientData,
@@ -1063,7 +1118,7 @@ export function parseServerMessage() {
     NET.message.beginReading();
   }
 
-  const messages = /** @type {string[]} */ ([]);
+  const messages: string[] = [];
 
   while (CL.cls.state > Def.clientConnectionState.disconnected) {
     if (CL.connection.processingServerDataState > 0) {
@@ -1087,7 +1142,7 @@ export function parseServerMessage() {
       continue;
     }
 
-    const commandEntry = CL.svc_strings.find(([, value]) => value === cmd);
+    const commandEntry = (CL.svc_strings ?? []).find(([, value]) => value === cmd);
 
     if (!commandEntry) {
       CL.PrintLastServerMessages();
@@ -1127,7 +1182,7 @@ export function parseServerMessage() {
   // CL.state.clientEntities.setSolidEntities(CL.pmove);
 
   if (CL.shownet.value === 2) {
-    Con.Print('NET: (' + NET.message.cursize + ') ' + messages.join(', ') + '\n');
+    Con.Print(`NET: (${NET.message.cursize}) ${messages.join(', ')}\n`);
   }
 }
 

@@ -5,7 +5,7 @@ import { PmovePlayer } from '../common/Pmove.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import { eventBus, getClientRegistry } from '../registry.mjs';
 import { HostError } from '../common/Errors.ts';
-import { ClientEdict } from './ClientEntities.mjs';
+import { ClientEdict } from './ClientEntities.ts';
 
 type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';
 

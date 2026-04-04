@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { moveTypes, solid } from '../../source/shared/Defs.ts';
-import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
+import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ClientEngineAPI, ServerEngineAPI } from '../../source/engine/common/GameAPIs.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
