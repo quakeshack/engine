@@ -1,4 +1,4 @@
-import type { EdictValueType, SerializableType } from '../../shared/GameInterfaces.ts';
+import type { EdictData, EdictValueType, SerializableType } from '../../shared/GameInterfaces.ts';
 import type { ClientDlight, ClientEdict } from '../client/ClientEntities.ts';
 import type { GLTexture } from '../client/GL.ts';
 import type { SzBuffer } from '../network/MSG.ts';
@@ -67,6 +67,21 @@ interface ClientTraceEntityAdapter {
   readonly entity: ClientEdict;
   readonly num: number;
   equals(other: unknown): boolean;
+}
+
+/**
+ * Normalize runtime entity references passed through dynamic spawn initial data.
+ * @param initialData Initial field values supplied to SpawnEntity.
+ * @returns Initial data with ServerEdict wrappers replaced by live entities.
+ */
+function normalizeEntityInitialData(initialData: Record<string, EdictValueType>): EdictData {
+  const normalizedInitialData: EdictData = {};
+
+  for (const [key, value] of Object.entries(initialData)) {
+    normalizedInitialData[key] = value instanceof ServerEdictValue ? value.entity : value;
+  }
+
+  return normalizedInitialData;
 }
 
 type ServerEntityFilter = ((entity: ServerEdict) => boolean) | null;
@@ -699,12 +714,13 @@ export class ServerEngineAPI extends CommonEngineAPI {
    */
   static SpawnEntity(classname: string, initialData: Record<string, EdictValueType> = {}): ServerEdict | null {
     const edict = ED.Alloc();
+    const normalizedInitialData = normalizeEntityInitialData(initialData);
 
     try {
       const gameAPI = SV.server.gameAPI;
       console.assert(gameAPI !== null, 'server gameAPI must exist before spawning entities');
 
-      if (gameAPI === null || !gameAPI.prepareEntity(edict, classname, initialData)) {
+      if (gameAPI === null || !gameAPI.prepareEntity(edict, classname, normalizedInitialData)) {
         edict.freeEdict();
         return null;
       }

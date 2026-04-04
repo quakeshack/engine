@@ -27,7 +27,12 @@ export type ClientEventValue = ClientSerializableType | object;
 
 export type ClientdataMap = Record<string, ClientSerializableType>;
 
-export type EdictValueType = string | number | boolean | Vector | null;
+export interface ServerEntityReference {
+  readonly edict?: ServerEdict | null;
+  readonly edictId?: number | null;
+}
+
+export type EdictValueType = string | number | boolean | Vector | ServerEdict | ServerEntityReference | null;
 export type EdictData = Record<string, EdictValueType>;
 
 export type SFX = Readonly<SFXValue>;

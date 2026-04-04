@@ -1,4 +1,5 @@
 import type { SzBuffer } from '../network/MSG.ts';
+import type { ClientEdict } from '../../shared/GameInterfaces.ts';
 
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
@@ -20,6 +21,35 @@ interface ProgsAPI {
   _assertTrue(check: boolean, message: string): void;
   _VarString(first: number): string;
   builtin: BuiltinFunction[];
+}
+
+interface QuakeCRuntimeGameAPI {
+  msg_entity: ServerEdict | null;
+  self: ServerEdict;
+  trace_allsolid: number;
+  trace_endpos: Vector;
+  trace_ent: { readonly entity: ClientEdict | NonNullable<ServerEdict['entity']> } | null;
+  trace_fraction: number;
+  trace_inopen: number;
+  trace_inwater: number;
+  trace_plane_dist: number;
+  trace_plane_normal: Vector;
+  trace_startsolid: number;
+  v_forward: Vector;
+  v_right: Vector;
+  v_up: Vector;
+}
+
+/**
+ * Retrieves the active QuakeC runtime game API.
+ * @returns The QuakeC runtime view for builtin access.
+ */
+function getQuakeCGameAPI(): QuakeCRuntimeGameAPI {
+  const gameAPI = SV.server.gameAPI as QuakeCRuntimeGameAPI | null;
+
+  console.assert(gameAPI !== null, 'QuakeC builtins require an active game API');
+
+  return gameAPI!;
 }
 
 const PF: ProgsAPI = {
@@ -220,21 +250,23 @@ function generateBuiltinFunction(name: string, func: BuiltinImplementation, argT
 
 const error = generateBuiltinFunction('error', (str: string): never => {
   Con.PrintError(`======SERVER ERROR in ${PR.GetString(PR.xfunction.name)}\n${str}\n`);
-  ED.Print(SV.server.gameAPI.self);
+  ED.Print(getQuakeCGameAPI().self);
   throw new HostError(`Program error: ${str}`);
 }, [etype.ev_strings]);
 
 const objerror = generateBuiltinFunction('objerror', (str: string): never => {
   Con.PrintError(`======OBJECT ERROR in ${PR.GetString(PR.xfunction.name)}\n${str}\n`);
-  ED.Print(SV.server.gameAPI.self);
+  ED.Print(getQuakeCGameAPI().self);
   throw new HostError(`Program error: ${str}`);
 }, [etype.ev_strings]);
 
 const makevectors = generateBuiltinFunction('makevectors', (vec: Vector): void => {
   const { forward, right, up } = vec.angleVectors();
-  SV.server.gameAPI.v_forward = forward;
-  SV.server.gameAPI.v_right = right;
-  SV.server.gameAPI.v_up = up;
+  const gameAPI = getQuakeCGameAPI();
+
+  gameAPI.v_forward = forward;
+  gameAPI.v_right = right;
+  gameAPI.v_up = up;
 }, [etype.ev_vector]);
 
 const setorigin = generateBuiltinFunction('setorigin', (edict: ServerEdict, vec: Vector): void => edict.setOrigin(vec), [etype.ev_entity, etype.ev_vector], etype.ev_void);
@@ -290,20 +322,21 @@ const breakstatement: BuiltinFunction = function breakstatement() {
 };
 
 const traceline = generateBuiltinFunction('traceline', (start: Vector, end: Vector, noMonsters: number, passEdict: ServerEdict | null): void => {
-  const trace = ServerEngineAPI.TracelineLegacy(start, end, noMonsters, passEdict);
+  const trace = ServerEngineAPI.TracelineLegacy(start, end, noMonsters !== 0, passEdict);
+  const gameAPI = getQuakeCGameAPI();
 
-  SV.server.gameAPI.trace_allsolid = trace.allsolid ? 1.0 : 0.0;
-  SV.server.gameAPI.trace_startsolid = trace.startsolid ? 1.0 : 0.0;
-  SV.server.gameAPI.trace_fraction = trace.fraction;
-  SV.server.gameAPI.trace_inwater = trace.inwater ? 1.0 : 0.0;
-  SV.server.gameAPI.trace_inopen = trace.inopen ? 1.0 : 0.0;
-  SV.server.gameAPI.trace_endpos = trace.endpos;
-  SV.server.gameAPI.trace_plane_normal = trace.plane.normal;
-  SV.server.gameAPI.trace_plane_dist = trace.plane.dist;
-  SV.server.gameAPI.trace_ent = trace.ent || null;
+  gameAPI.trace_allsolid = trace.allsolid ? 1.0 : 0.0;
+  gameAPI.trace_startsolid = trace.startsolid ? 1.0 : 0.0;
+  gameAPI.trace_fraction = trace.fraction;
+  gameAPI.trace_inwater = trace.inwater ? 1.0 : 0.0;
+  gameAPI.trace_inopen = trace.inopen ? 1.0 : 0.0;
+  gameAPI.trace_endpos = trace.endpos;
+  gameAPI.trace_plane_normal = trace.plane.normal;
+  gameAPI.trace_plane_dist = trace.plane.dist;
+  gameAPI.trace_ent = trace.ent || null;
 }, [etype.ev_vector, etype.ev_vector, etype.ev_integer, etype.ev_entity]);
 
-const checkclient = generateBuiltinFunction('checkclient', (): ServerEdict | null => SV.server.gameAPI.self.getNextBestClient(), [], etype.ev_entity_client);
+const checkclient = generateBuiltinFunction('checkclient', (): ServerEdict | null => getQuakeCGameAPI().self.getNextBestClient(), [], etype.ev_entity_client);
 
 const stuffcmd = generateBuiltinFunction('stuffcmd', (clientEdict: ServerEdict, command: string): void => {
   clientEdict.getClient().sendConsoleCommands(command);
@@ -323,12 +356,12 @@ const cvar_set = generateBuiltinFunction('cvar_set', (name: string, value: strin
 }, [etype.ev_string, etype.ev_string]);
 
 const findradius = generateBuiltinFunction('findradius', (origin: Vector, radius: number): ServerEdict => {
-  const edicts = ServerEngineAPI.FindInRadius(origin, radius);
-  let chain = SV.server.edicts[0];
+  const edicts = ServerEngineAPI.FindInRadius(origin, radius) as unknown as ServerEdict[];
+  let chain: ServerEdict = SV.server.edicts[0] as ServerEdict;
 
   for (const edict of edicts) {
     edict.entity.chain = chain;
-    chain = edict;
+    chain = edict as ServerEdict;
   }
 
   return chain;
@@ -353,7 +386,7 @@ const Remove = generateBuiltinFunction('Remove', (edict: ServerEdict): void => {
 }, [etype.ev_entity]);
 
 const Find = generateBuiltinFunction('Find', (edict: ServerEdict, field: string, value: string): ServerEdict | null => ServerEngineAPI.FindByFieldAndValue(field, value, edict.num + 1), [etype.ev_entity, etype.ev_field, etype.ev_string], etype.ev_entity);
-const MoveToGoal = generateBuiltinFunction('MoveToGoal', (dist: number): boolean => SV.server.gameAPI.self.moveToGoal(dist), [etype.ev_float], etype.ev_bool);
+const MoveToGoal = generateBuiltinFunction('MoveToGoal', (dist: number): boolean => getQuakeCGameAPI().self.moveToGoal(dist), [etype.ev_float], etype.ev_bool);
 const precache_file = generateBuiltinFunction('precache_file', (value: number): number => value, [etype.ev_integer], etype.ev_integer);
 
 const precache_sound = generateBuiltinFunction('precache_sound', (sfxName: string): void => {
@@ -382,12 +415,12 @@ const eprint: BuiltinFunction = function eprint() {
 
 const walkmove = generateBuiltinFunction('walkmove', (yaw: number, dist: number): boolean => {
   const oldFunction = PR.xfunction;
-  const result = SV.server.gameAPI.self.walkMove(yaw, dist);
+  const result = getQuakeCGameAPI().self.walkMove(yaw, dist);
   PR.xfunction = oldFunction;
   return result;
 }, [etype.ev_float, etype.ev_float], etype.ev_bool);
 
-const droptofloor = generateBuiltinFunction('droptofloor', (): boolean => SV.server.gameAPI.self.dropToFloor(-256.0), [], etype.ev_bool);
+const droptofloor = generateBuiltinFunction('droptofloor', (): boolean => getQuakeCGameAPI().self.dropToFloor(-256.0), [], etype.ev_bool);
 
 const lightstyle = generateBuiltinFunction('lightstyle', (style: number, value: string): void => {
   ServerEngineAPI.Lightstyle(style, value);
@@ -401,12 +434,12 @@ const pointcontents = generateBuiltinFunction('pointcontents', (point: Vector): 
 const nextent = generateBuiltinFunction('nextent', (edict: ServerEdict): ServerEdict | null => edict.nextEdict(), [etype.ev_entity], etype.ev_entity);
 
 const aim = generateBuiltinFunction('aim', (edict: ServerEdict): Vector => {
-  const direction = SV.server.gameAPI.v_forward;
+  const direction = getQuakeCGameAPI().v_forward;
   return edict.aim(direction);
 }, [etype.ev_entity], etype.ev_vector);
 
 const changeyaw = generateBuiltinFunction('changeyaw', (): void => {
-  SV.server.gameAPI.self.changeYaw();
+  getQuakeCGameAPI().self.changeYaw();
 }, []);
 
 /**
@@ -419,7 +452,7 @@ function WriteGeneric(dest: number): SzBuffer {
       return SV.server.datagram;
 
     case 1: {
-      const messageEntity = SV.server.gameAPI.msg_entity;
+      const messageEntity = getQuakeCGameAPI().msg_entity;
       const entityNumber = messageEntity.num;
 
       if (!messageEntity.isClient()) {

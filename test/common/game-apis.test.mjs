@@ -5,6 +5,7 @@ import Vector from '../../source/shared/Vector.ts';
 import { moveTypes, solid } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ClientEngineAPI, ServerEngineAPI } from '../../source/engine/common/GameAPIs.ts';
+import { ServerEdict } from '../../source/engine/server/Edict.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
 import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
@@ -180,6 +181,47 @@ void describe('ServerEngineAPI.Traceline', () => {
     assert.equal(collision.calls[0].type, moveTypes.MOVE_NOMONSTERS);
     assert.deepEqual([...collision.calls[0].start], [1, 2, 3]);
     assert.deepEqual([...collision.calls[0].end], [4, 5, 6]);
+  });
+});
+
+void describe('ServerEngineAPI.SpawnEntity', () => {
+  void test('unwraps edict-backed initial entity references before prepareEntity', () => {
+    const worldEdict = new ServerEdict(0);
+    const ownerEdict = new ServerEdict(1);
+    const spawnedEdict = new ServerEdict(2);
+    const ownerEntity = { classname: 'player' };
+    let capturedInitialData = null;
+
+    ownerEdict.entity = ownerEntity;
+
+    void withMockRegistry(defaultMockRegistry({
+      area: {
+        unlinkEdict() {},
+      },
+      svs: {
+        maxclients: 1,
+      },
+      server: {
+        time: 0,
+        num_edicts: 2,
+        edicts: [worldEdict, ownerEdict, spawnedEdict],
+        gameAPI: {
+          prepareEntity(_edict, _classname, initialData) {
+            capturedInitialData = initialData;
+            return true;
+          },
+          spawnPreparedEntity() {
+            return true;
+          },
+        },
+      },
+    }), () => {
+      const result = ServerEngineAPI.SpawnEntity('test_entity', { owner: ownerEdict });
+
+      assert.equal(result, spawnedEdict);
+    });
+
+    assert.equal(capturedInitialData.owner, ownerEntity);
   });
 });
 

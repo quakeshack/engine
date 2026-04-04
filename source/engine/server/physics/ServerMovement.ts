@@ -1,5 +1,5 @@
-import type BaseEntity from '../../../game/id1/entity/BaseEntity.mjs';
-import type { ServerEdict } from '../Edict.ts';
+import type { ServerEdict as ReadonlyServerEdict } from '../../../shared/GameInterfaces.ts';
+import type { BaseEntity, ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
@@ -7,7 +7,7 @@ import { STEPSIZE } from '../../common/Pmove.ts';
 import { eventBus, getCommonRegistry } from '../../registry.ts';
 
 interface EdictReferenceLike {
-  readonly edict?: ServerEdict | null;
+  readonly edict?: ReadonlyServerEdict | null;
 }
 
 let { SV } = getCommonRegistry();
@@ -324,7 +324,7 @@ export class ServerMovement {
     }
   }
 
-  closeEnough(ent: ServerEdict, goal: ServerEdict, dist: number): boolean {
+  closeEnough(ent: ServerEdict, goal: { readonly entity: BaseEntity | null }, dist: number): boolean {
     const absmin = ent.entity!.absmin;
     const absmax = ent.entity!.absmax;
     const absminGoal = goal.entity!.absmin;
@@ -340,7 +340,7 @@ export class ServerMovement {
     return true;
   }
 
-  #resolveEdict(value: BaseEntity | EdictReferenceLike | ServerEdict | null): ServerEdict | null {
+  #resolveEdict(value: BaseEntity | EdictReferenceLike | ReadonlyServerEdict | ServerEdict | null): ReadonlyServerEdict | ServerEdict | null {
     if (!value) {
       return null;
     }
@@ -350,7 +350,7 @@ export class ServerMovement {
     return value.edict ?? null;
   }
 
-  #resolveEntity(value: BaseEntity | EdictReferenceLike | ServerEdict | null): BaseEntity | null {
+  #resolveEntity(value: BaseEntity | EdictReferenceLike | ReadonlyServerEdict | ServerEdict | null): BaseEntity | null {
     if (!value) {
       return null;
     }
@@ -363,7 +363,7 @@ export class ServerMovement {
     return value.edict?.entity ?? null;
   }
 
-  #isServerEdictLike(value: BaseEntity | EdictReferenceLike | ServerEdict): value is ServerEdict {
+  #isServerEdictLike(value: BaseEntity | EdictReferenceLike | ReadonlyServerEdict | ServerEdict): value is ReadonlyServerEdict | ServerEdict {
     return 'entity' in value && typeof value.isWorld === 'function';
   }
 }

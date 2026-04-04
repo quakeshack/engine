@@ -1,7 +1,8 @@
-import type { ServerGameInterface } from '../../shared/GameInterfaces.ts';
+import type { ClientEdict, ServerGameInterface } from '../../shared/GameInterfaces.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import type { QSocket } from '../network/NetworkDrivers.ts';
 
+import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.ts';
 import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { SzBuffer } from '../network/MSG.ts';
@@ -42,10 +43,38 @@ type PlayerClientdataEntity = ServerClient['entity'] & {
   clientdataFields: string[];
 } & Record<string, unknown>;
 
+/**
+ * Runtime view of the active game API owned by the server.
+ *
+ * This extends the public game-module contract with mutable state that the
+ * server frame loop and QuakeC builtin layer exchange at runtime, such as
+ * trace results, orientation vectors, and legacy global values like `self`.
+ * Keeping that widened shape local to the server preserves the stable
+ * `ServerGameInterface` boundary while still giving engine code a typed place
+ * for the extra per-frame data that does not belong in the public API.
+ */
 interface ServerRuntimeGameAPI extends ServerGameInterface {
+  coop?: number;
+  deathmatch?: number;
+  force_retouch?: number;
   frametime: number;
+  mapname?: string | null;
+  msg_entity?: ServerEdict | null;
+  self?: ServerEdict | null;
   time: number;
   serverflags?: number;
+  trace_allsolid?: number;
+  trace_endpos?: Vector;
+  trace_ent?: { readonly entity: ClientEdict | NonNullable<ServerEdict['entity']> } | null;
+  trace_fraction?: number;
+  trace_inopen?: number;
+  trace_inwater?: number;
+  trace_plane_dist?: number;
+  trace_plane_normal?: Vector;
+  trace_startsolid?: number;
+  v_forward?: Vector;
+  v_right?: Vector;
+  v_up?: Vector;
 }
 
 interface LegacySpawnParmsGameAPI extends ServerRuntimeGameAPI {

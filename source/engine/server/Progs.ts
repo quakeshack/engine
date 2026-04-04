@@ -1,4 +1,4 @@
-import type { ServerGameInterface } from '../../shared/GameInterfaces.ts';
+import type { EdictData, ServerGameInterface } from '../../shared/GameInterfaces.ts';
 
 import Cmd from '../common/Cmd.ts';
 import { CRC16CCITT } from '../common/CRC.ts';
@@ -7,7 +7,7 @@ import { HostError, MissingResourceError } from '../common/Errors.ts';
 import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import { eventBus, getCommonRegistry } from '../registry.ts';
-import { ED, ServerEdict } from './Edict.ts';
+import { ED, ServerEdict, type BaseEntity } from './Edict.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import PF, { etype, ofs } from './ProgsAPI.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
@@ -39,6 +39,23 @@ interface ProgsFunctionDefinition {
 
 type ProgsValue = string | number | boolean | number[] | null;
 type ProgsStackEntry = [number, ProgsFunctionDefinition | null];
+
+interface FunctionProxySettings {
+  readonly backupSelfAndOther?: boolean;
+  readonly resetOther?: boolean;
+}
+
+type ProgsSerializedValue = [string, ...unknown[]];
+type ProgsSerializedData = Record<string, ProgsSerializedValue>;
+type ProgsEntityRecord = ProgsEntity & Record<string, unknown>;
+
+interface ProgsGameAPI extends ServerGameInterface {
+  readonly [key: string]: unknown;
+  coop: number;
+  deathmatch: number;
+  mapname: string | null;
+  serverflags: number;
+}
 
 const PROGS_OP = Object.freeze({
   done: 0,
@@ -268,9 +285,14 @@ PR.progheader_crc = 5927;
  * FIXME: function proxies need to become cached
  */
 class ProgsFunctionProxy extends Function {
-  static proxyCache = [];
+  static proxyCache: Record<string, ProgsFunctionProxy> = {};
 
-  constructor(fnc, ent = null, settings = {}) {
+  declare fnc: number;
+  declare ent: ProgsEntity | ServerEdict | null;
+  declare _signature: string | null;
+  declare _settings: FunctionProxySettings;
+
+  constructor(fnc: number, ent: ProgsEntity | ServerEdict | null = null, settings: FunctionProxySettings = {}) {
     super();
 
     this.fnc = fnc;
@@ -289,12 +311,12 @@ class ProgsFunctionProxy extends Function {
     Object.freeze(this);
   }
 
-  toString() {
+  toString(): string {
     return `${PR.GetString(PR.functions[this.fnc].name)} (ProgsFunctionProxy(${this.fnc}))`;
   }
 
-  static create(fnc, ent, settings = {}) {
-    const cacheId = `${fnc}-${ent ? ent.num : 'null'}`;
+  static create(fnc: number, ent: ProgsEntity | ServerEdict | null, settings: FunctionProxySettings = {}): ProgsFunctionProxy {
+    const cacheId = `${fnc}-${ent ? ProgsFunctionProxy._getEdictId(ent) : 'null'}`;
 
     if (ProgsFunctionProxy.proxyCache[cacheId]) {
       return ProgsFunctionProxy.proxyCache[cacheId];
@@ -312,7 +334,7 @@ class ProgsFunctionProxy extends Function {
     return ProgsFunctionProxy.proxyCache[cacheId];
   }
 
-  static _getEdictId(ent) {
+  static _getEdictId(ent: ProgsEntity | ServerEdict | null): number {
     if (!ent) {
       return 0;
     }
@@ -328,11 +350,11 @@ class ProgsFunctionProxy extends Function {
    * Calls the proxied QuakeC function.
    * @returns The QuakeC function return value interpreted as a float.
    */
-  call(self) {
+  call(self: ProgsEntity | ServerEdict | null): ProgsValue {
     const old_self = PR.globals_int[PR.globalvars.self];
     const old_other = PR.globals_int[PR.globalvars.other];
 
-    if (this.ent && !this.ent.isFree()) {
+    if (this.ent && (!(this.ent instanceof ServerEdict) || !this.ent.isFree())) {
       // in case this is a function bound to an entity, we need to set it to self
       PR.globals_int[PR.globalvars.self] = ProgsFunctionProxy._getEdictId(this.ent);
 
@@ -369,15 +391,25 @@ class ProgsEntity {
   static SERIALIZATION_TYPE_VECTOR = 'V';
   static SERIALIZATION_TYPE_PRIMITIVE = 'P';
 
+  declare _edictNum: number;
+  declare _v: ArrayBuffer | null;
+  declare _v_float: Float32Array | null;
+  declare _v_int: Int32Array | null;
+  declare _serializableFields: string[];
+
   /**
    * Creates a QuakeC entity view backed by an edict or the globals table.
    */
-    constructor(ed: ServerEdict | null) {
+  constructor(ed: ServerEdict | null) {
     // const stats = ed ? PR._stats.edict : PR._stats.global;
     const defs = ed ? PR.fielddefs : PR.globaldefs;
 
+    this._edictNum = ed ? ed.num : 0;
+    this._v = null;
+    this._v_float = null;
+    this._v_int = null;
+
     if (ed) {
-      this._edictNum = ed.num;
       this._v = new ArrayBuffer(PR.entityfields * 4);
       this._v_float = new Float32Array(this._v);
       this._v_int = new Int32Array(this._v);
@@ -556,11 +588,12 @@ class ProgsEntity {
     }
   }
 
-  serialize() {
-    const data = {};
+  serialize(): ProgsSerializedData {
+    const data: ProgsSerializedData = {};
+    const entityView = this as ProgsEntityRecord;
 
     for (const field of this._serializableFields) {
-      const value = this[field];
+      const value = entityView[field];
 
       switch (true) {
         case value === null:
@@ -590,7 +623,9 @@ class ProgsEntity {
     return data;
   }
 
-  deserialize(obj) {
+  deserialize(obj: ProgsSerializedData): this {
+    const entityView = this as ProgsEntityRecord;
+
     for (const [key, value] of Object.entries(obj)) {
       console.assert(this._serializableFields.includes(key));
 
@@ -598,19 +633,19 @@ class ProgsEntity {
 
       switch (type) {
         case ProgsEntity.SERIALIZATION_TYPE_EDICT:
-          this[key] = SV.server.edicts[data[0]];
+          entityView[key] = SV.server.edicts[data[0] as number];
           break;
 
         case ProgsEntity.SERIALIZATION_TYPE_FUNCTION:
-          this[key] = {fnc: data[0]};
+          entityView[key] = { fnc: data[0] };
           break;
 
         case ProgsEntity.SERIALIZATION_TYPE_VECTOR:
-          this[key] = new Vector(...data);
+          entityView[key] = new Vector(...data as [number, number, number]);
           break;
 
         case ProgsEntity.SERIALIZATION_TYPE_PRIMITIVE:
-          this[key] = data[0];
+          entityView[key] = data[0];
           break;
       }
     }
@@ -618,7 +653,7 @@ class ProgsEntity {
     return this;
   }
 
-  clear() {
+  clear(): void {
     if (this._v) {
       const int32 = new Int32Array(this._v);
       for (let i = 0; i < PR.entityfields; i++) {
@@ -627,23 +662,42 @@ class ProgsEntity {
     }
   }
 
-  free() {
+  free(): void {
     this.clear();
   }
 
-  equals(other) {
-    return other && other._edictNum === this._edictNum;
+  equals(other: ProgsEntity | ServerEdict | null): boolean {
+    return other !== null && ProgsFunctionProxy._getEdictId(other) === this._edictNum;
   }
 
-  spawn() {
+  spawn(): void {
     // QuakeC is different, the actual spawn function is called by its classname
-    SV.server.gameAPI[this.classname]({num: this._edictNum});
+    const gameAPI = SV.server.gameAPI as unknown as ProgsGameAPI;
+    const entityView = this as ProgsEntityRecord;
+    const classname = typeof entityView.classname === 'string' ? entityView.classname : null;
+    const spawnFunction = classname !== null ? gameAPI[classname] : null;
+
+    console.assert(typeof spawnFunction === 'function', 'classname spawn function required');
+
+    (spawnFunction as (edict: { num: number }) => void)({ num: this._edictNum });
   }
 
-  get edictId() {
+  get edictId(): number {
     return this._edictNum;
   }
 };
+
+/**
+ * Retrieves the QuakeC entity view for a live server edict.
+ * @returns The QuakeC entity record backing the edict.
+ */
+function getProgsEntity(edict: ServerEdict): ProgsEntityRecord {
+  const entity = edict.entity as unknown as ProgsEntityRecord | null;
+
+  console.assert(entity !== null, 'QuakeC edict must have an entity view');
+
+  return entity!;
+}
 
 // edict
 
@@ -934,7 +988,7 @@ PR.LoadProgs = async function() {
     const def = PR.FindField(field);
     PR.entvars[field] = (def !== null) ? def.ofs : null;
   }
-  ProgsFunctionProxy.proxyCache = []; // free all cached functions
+  ProgsFunctionProxy.proxyCache = {}; // free all cached functions
   // hook up progs.dat with our proxies
 
   const progsAPI = new ProgsEntity(null);
@@ -944,11 +998,13 @@ PR.LoadProgs = async function() {
   const coop = Cvar.FindVar('coop');
 
   const gameAPI = Object.assign(progsAPI, {
-    prepareEntity(edict, classname, initialData = {}) {
+    prepareEntity(edict: ServerEdict, classname: string | null, initialData: EdictData = {}): boolean {
       if (!edict.entity) { // do not use isFree(), check for unset entity property
-        edict.entity = new ProgsEntity(edict);
+        edict.entity = new ProgsEntity(edict) as unknown as BaseEntity;
         Object.freeze(edict.entity);
       }
+
+      const preparedEntity = getProgsEntity(edict);
 
       // yet another hack, always be successful during a loadgame
       if (SV.server.loadgame) {
@@ -965,13 +1021,13 @@ PR.LoadProgs = async function() {
         return true;
       }
 
-      if (!SV.server.gameAPI[classname]) {
+      if (typeof (SV.server.gameAPI as unknown as ProgsGameAPI)[classname] !== 'function') {
         Con.PrintWarning(`No spawn function for edict ${edict.num}: ${classname}\n`);
         // debugger;
         return false;
       }
 
-      initialData.classname = classname;
+      preparedEntity.classname = classname;
 
       for (const [key, value] of Object.entries(initialData)) {
         const field = PR.FindField(key);
@@ -983,36 +1039,54 @@ PR.LoadProgs = async function() {
 
         switch (field.type & 0x7fff) {
           case etype.ev_entity:
-            edict.entity[key] = value instanceof ServerEdict ? value : {num: Q.atoi(value)};
+            if (value === null || typeof value === 'object') {
+              preparedEntity[key] = value;
+            } else {
+              preparedEntity[key] = { num: Q.atoi(String(value)) };
+            }
             break;
 
           case etype.ev_vector:
-            edict.entity[key] = value instanceof Vector ? value : new Vector(...value.split(' ').map((x) => Q.atof(x)));
+            if (value instanceof Vector) {
+              preparedEntity[key] = value;
+            } else {
+              preparedEntity[key] = new Vector(...String(value).split(' ').map((x) => Q.atof(x)));
+            }
             break;
 
           case etype.ev_field: {
+            if (typeof value !== 'string') {
+              throw new TypeError(`Expected field name string for ${key}`);
+            }
+
             const d = PR.FindField(value);
             if (!d) {
               Con.PrintWarning(`Can't find field: ${value}\n`);
               break;
             }
-            edict.entity[key] = d;
+            preparedEntity[key] = d;
             break;
           }
 
           case etype.ev_function: {
-            edict.entity[key] = {fnc: value};
+            if (typeof value === 'string') {
+              preparedEntity[key] = value;
+            } else if (typeof value === 'number') {
+              preparedEntity[key] = { fnc: value };
+            } else {
+              throw new TypeError(`Expected function name or function id for ${key}`);
+            }
             break;
           }
 
           default:
-            edict.entity[key] = value;
+            preparedEntity[key] = value;
         }
       }
 
       // these are quake specific things happening during loading
 
-      const spawnflags = edict.entity.spawnflags || 0;
+      const spawnflags = typeof preparedEntity.spawnflags === 'number' ? preparedEntity.spawnflags : 0;
 
       if (deathmatch.value !== 0 && (spawnflags & 2048)) {
         return false;
@@ -1027,7 +1101,7 @@ PR.LoadProgs = async function() {
       return true;
     },
 
-    spawnPreparedEntity(edict) {
+    spawnPreparedEntity(edict: ServerEdict): boolean {
       if (!edict.entity) {
         Con.PrintError('PR.LoadProgs.spawnPreparedEntity: no entity class instance set!\n');
         return false;
@@ -1043,7 +1117,7 @@ PR.LoadProgs = async function() {
       return true;
     },
 
-    init(mapname, serverflags) {
+    init(mapname: string, serverflags: number): void {
       gameAPI.mapname = mapname;
       gameAPI.serverflags = serverflags;
 
@@ -1061,15 +1135,15 @@ PR.LoadProgs = async function() {
     },
 
 
-    shutdown(_isCrashShutdown) {
+    shutdown(_isCrashShutdown: boolean): void {
     },
 
-    startFrame() {
+    startFrame(): void {
       // pass to the VM
       // @ts-ignore
       progsAPI.StartFrame(null);
     },
-  });
+  }) as ProgsEntityRecord & ProgsGameAPI;
 
   Object.freeze(gameAPI);
 
@@ -1443,14 +1517,14 @@ PR.ExecuteProgram = function(fnum) {
       case PR.op.storep_s:
       case PR.op.storep_fnc:
         ptr = PR.globals_int[st.b];
-        SV.server.edicts[Math.floor(ptr / PR.edict_size)].entity._v_int[((ptr % PR.edict_size) - 96) >> 2] = PR.globals_int[st.a];
+        getProgsEntity(SV.server.edicts[Math.floor(ptr / PR.edict_size)])._v_int![((ptr % PR.edict_size) - 96) >> 2] = PR.globals_int[st.a];
         continue;
       case PR.op.storep_v:
         ed = SV.server.edicts[Math.floor(PR.globals_int[st.b] / PR.edict_size)];
         ptr = ((PR.globals_int[st.b] % PR.edict_size) - 96) >> 2;
-        ed.entity._v_int[ptr] = PR.globals_int[st.a];
-        ed.entity._v_int[ptr + 1] = PR.globals_int[st.a + 1];
-        ed.entity._v_int[ptr + 2] = PR.globals_int[st.a + 2];
+        getProgsEntity(ed)._v_int![ptr] = PR.globals_int[st.a];
+        getProgsEntity(ed)._v_int![ptr + 1] = PR.globals_int[st.a + 1];
+        getProgsEntity(ed)._v_int![ptr + 2] = PR.globals_int[st.a + 2];
         continue;
       case PR.op.address:
         ed = PR.globals_int[st.a];
@@ -1464,14 +1538,14 @@ PR.ExecuteProgram = function(fnum) {
       case PR.op.load_ent:
       case PR.op.load_s:
       case PR.op.load_fnc:
-        PR.globals_int[st.c] = SV.server.edicts[PR.globals_int[st.a]].entity._v_int[PR.globals_int[st.b]];
+        PR.globals_int[st.c] = getProgsEntity(SV.server.edicts[PR.globals_int[st.a]])._v_int![PR.globals_int[st.b]];
         continue;
       case PR.op.load_v:
         ed = SV.server.edicts[PR.globals_int[st.a]];
         ptr = PR.globals_int[st.b];
-        PR.globals_int[st.c] = ed.entity._v_int[ptr];
-        PR.globals_int[st.c + 1] = ed.entity._v_int[ptr + 1];
-        PR.globals_int[st.c + 2] = ed.entity._v_int[ptr + 2];
+        PR.globals_int[st.c] = getProgsEntity(ed)._v_int![ptr];
+        PR.globals_int[st.c + 1] = getProgsEntity(ed)._v_int![ptr + 1];
+        PR.globals_int[st.c + 2] = getProgsEntity(ed)._v_int![ptr + 2];
         continue;
       case PR.op.jz:
         if (PR.globals_int[st.a] === 0) {
@@ -1532,9 +1606,9 @@ PR.ExecuteProgram = function(fnum) {
         continue;
       case PR.op.state:
         ed = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-        ed.entity._v_float[PR.entvars.nextthink] = PR.globals_float[PR.globalvars.time] + 0.1;
-        ed.entity._v_float[PR.entvars.frame] = PR.globals_float[st.a];
-        ed.entity._v_int[PR.entvars.think] = PR.globals_int[st.b];
+        getProgsEntity(ed)._v_float![PR.entvars.nextthink] = PR.globals_float[PR.globalvars.time] + 0.1;
+        getProgsEntity(ed)._v_float![PR.entvars.frame] = PR.globals_float[st.a];
+        getProgsEntity(ed)._v_int![PR.entvars.think] = PR.globals_int[st.b];
         continue;
     }
     PR.RunError('Bad opcode ' + st.op);

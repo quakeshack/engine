@@ -35,6 +35,10 @@ interface TraceExtents {
   readonly maxs: Vector;
 }
 
+type LegacyHull = Hull & {
+  readonly firstclipnode: number;
+};
+
 let { Con, SV } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
@@ -371,7 +375,8 @@ export class ServerCollision {
    */
   _traceLegacyHullLine(hull: Hull, start: Vector, end: Vector): CollisionTrace {
     const trace = CollisionTrace.hullInitial(end);
-    this.recursiveHullCheck(hull, hull.firstclipnode ?? 0, 0.0, 1.0, start, end, trace);
+    const legacyHull = this._asLegacyHull(hull);
+    this.recursiveHullCheck(legacyHull, legacyHull.firstclipnode, 0.0, 1.0, start, end, trace);
     return trace;
   }
 
@@ -380,7 +385,7 @@ export class ServerCollision {
    * @returns The contents value at the point within the hull.
    */
   hullPointContents(hull: Hull, num: number, p: Vector): number {
-    return legacyHullPointContents(hull, num, p);
+    return legacyHullPointContents(this._asLegacyHull(hull), num, p);
   }
 
   /**
@@ -522,7 +527,16 @@ export class ServerCollision {
     trace: CollisionTrace,
     depth = 0,
   ): boolean {
-    return legacyRecursiveHullCheck(hull, num, p1f, p2f, p1, p2, trace, depth);
+    return legacyRecursiveHullCheck(this._asLegacyHull(hull), num, p1f, p2f, p1, p2, trace, depth);
+  }
+
+  /**
+   * Narrow a BSP hull to the legacy shape required by clipnode traversal.
+   * @returns The hull with a concrete first clipnode.
+   */
+  _asLegacyHull(hull: Hull): LegacyHull {
+    console.assert(typeof hull.firstclipnode === 'number', 'legacy hull requires firstclipnode');
+    return hull as LegacyHull;
   }
 
   /**

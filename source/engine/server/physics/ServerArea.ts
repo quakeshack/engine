@@ -10,18 +10,21 @@ import { BrushModel } from '../../common/Mod.ts';
 
 interface BoxClipNode {
   planenum: number;
-  children: number[];
+  children: [number, number];
 }
 
 interface BoxPlane {
   type: number;
   normal: Vector;
   dist: number;
+  signbits: Hull['planes'][number]['signbits'];
 }
 
 interface BoxHull {
   clipnodes: BoxClipNode[];
   planes: BoxPlane[];
+  clip_mins: Vector;
+  clip_maxs: Vector;
   firstclipnode: number;
   lastclipnode: number;
 }
@@ -123,6 +126,8 @@ export class ServerArea {
     this.box_hull = {
       clipnodes: this.box_clipnodes,
       planes: this.box_planes,
+      clip_mins: Vector.origin,
+      clip_maxs: Vector.origin,
       firstclipnode: 0,
       lastclipnode: 5,
     };
@@ -130,7 +135,7 @@ export class ServerArea {
     for (let index = 0; index <= 5; index++) {
       const node: BoxClipNode = {
         planenum: index,
-        children: [],
+        children: [0, 0],
       };
       this.box_clipnodes[index] = node;
       node.children[index & 1] = Defs.content.CONTENT_EMPTY;
@@ -144,6 +149,7 @@ export class ServerArea {
         type: index >> 1,
         normal: new Vector(),
         dist: 0.0,
+        signbits: 0,
       };
       this.box_planes[index] = plane;
       plane.normal[index >> 1] = 1.0;
