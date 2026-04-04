@@ -4,37 +4,32 @@ import { MissingResourceError } from '../common/Errors.ts';
 import VID from './VID.ts';
 import W, { WadFileInterface, WadLumpTexture } from '../common/W.ts';
 
-import { eventBus, registry } from '../registry.mjs';
-import GL, { GLTexture } from './GL.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
+import GL, { GLTexture } from './GL.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 
-let { Host } = registry;
+let { Host } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  Host = registry.Host;
+  ({ Host } = getClientRegistry());
 });
 
-let gl = /** @type {WebGL2RenderingContext} */ (null);
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
 
 const HIDPI_THRESHOLD = 1.0;
 
 /**
  * Based on the old Draw.CharToConback function but in 32 bit, this function places conchars into the conback texture data.
- * @param {Uint8Array} conback conback texture data
- * @param {Uint8Array} chars chars texture data
- * @param {number} num character code ASCII
- * @param {number} dest destination offset in conback
- * @param {Vector} color color vector
  */
-function charToConback(conback, chars, num, dest, color) {
+function charToConback(conback: Uint8Array, chars: Uint8Array, num: number, dest: number, color: number[]): void {
   let source = ((num >> 4) << 10) + ((num & 15) << 3);
   for (let drawline = 0; drawline < 8; drawline++) {
     for (let x = 0; x < 8; x++) {
@@ -50,35 +45,26 @@ function charToConback(conback, chars, num, dest, color) {
 }
 
 /**
- * Draw class provides static methods and properties for rendering UI elements and graphics.
+ * Provides static methods and properties for rendering UI elements and graphics.
  */
 export default class Draw {
-  /** @type {HTMLImageElement|null} */
-  static #loadingElem = null;
-  /** @type {WadFileInterface|null} */
-  static #gfxWad = null;
-  /** @type {GLTexture|null} */
-  static #chars = null;
-  /** @type {GLTexture|null} */
-  static #charsLarge = null;
-  /** @type {Record<string, number>} */
-  static #charsLargeWidthTable = {};
-  /** @type {WadLumpTexture|null} */
-  static #loading = null;
-  /** @type {GLTexture|null} */
-  static #conback = null;
-  /** @type {number} */
+  /** Loading indicator image element. */
+  static #loadingElem: HTMLImageElement | null = null;
+  static #gfxWad: WadFileInterface | null = null;
+  static #chars: GLTexture | null = null;
+  static #charsLarge: GLTexture | null = null;
+  static #charsLargeWidthTable: Record<string, number> = {};
+  static #loading: WadLumpTexture | null = null;
+  static #conback: GLTexture | null = null;
   static #loadingCounter = 0;
-  /** @type {WebGLFramebuffer|null} */
-  static #fbo = null;
-  /** @type {GLTexture|null} */
-  static #currentTexture = null;
+  static #fbo: WebGLFramebuffer | null = null;
+  static #currentTexture: GLTexture | null = null;
 
   /**
    * Redirects all subsequent Draw calls to the specified texture.
-   * @param {GLTexture} texture The texture to render to.
+   * @param texture The texture to render to.
    */
-  static BeginTexture(texture) {
+  static BeginTexture(texture: GLTexture): void {
     if (!texture.ready) {
       texture.upload(null);
     }
@@ -114,7 +100,7 @@ export default class Draw {
   /**
    * Ends rendering to texture and restores screen output.
    */
-  static EndTexture() {
+  static EndTexture(): void {
     GL.StreamFlush();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
@@ -129,14 +115,10 @@ export default class Draw {
 
   /**
    * Generates a GLTexture from a given font string to be used as a replacement for ConChars.
-   * NOTE: does not generate the special symbols, only ASCII 32-127
-   * @param {string} font Font string (e.g. 'bold 30px monospace')
-   * @param {number} size Texture size (default 512)
-   * @param {Record<string, number>} widthTable Optional width table to fill
-   * @returns {Promise<GLTexture>} A promise that resolves to the generated font texture.
-   * @protected
+   * NOTE: does not generate the special symbols, only ASCII 32-127.
+   * @returns The generated font texture.
    */
-  static async CreateFontTexture(font, size = 512, widthTable = {}) {
+  static async CreateFontTexture(font: string, size = 512, widthTable: Record<string, number> = {}): Promise<GLTexture> {
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
@@ -161,7 +143,7 @@ export default class Draw {
     const gold = `rgb(${r},${g},${b})`;
     const white = '#fff';
 
-    const drawChar = (i, color) => {
+    const drawChar = (i: number, color: string) => {
       const charCode = i % 128; // splitting it in half
       if (charCode < 32) {
         return; // the font most likely does not have the Quake special symbols
@@ -190,18 +172,27 @@ export default class Draw {
       drawChar(i, i < 128 ? white : gold);
     }
 
-    // console.log('widthTable:', widthTable);
-    // window.open('', '_blank')?.document.write('<img src="' + canvas.toDataURL() + '">');
-
     const bitmap = await createImageBitmap(canvas);
     return GLTexture.Allocate('font:' + font, size, size, bitmap).lockTextureMode('GL_LINEAR');
   }
 
   /**
    * Initializes the Draw system, loads resources, and sets up event listeners.
-   * @returns {Promise<void>}
    */
-  static async Init() {
+  static async Init(): Promise<void> {
+    GL.CreateProgram('fill',
+      ['uOrtho'],
+      [['aPosition', gl.FLOAT, 2], ['aColor', gl.UNSIGNED_BYTE, 4, true]],
+      []);
+    GL.CreateProgram('pic',
+      ['uOrtho', 'uColor'],
+      [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+      ['tTexture']);
+    GL.CreateProgram('pic-translate',
+      ['uOrtho', 'uTop', 'uBottom'],
+      [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+      ['tTexture', 'tTrans']);
+
     // Load gfx.wad and essential lumps in parallel
     const [gfxWad, conback, loading, conback32, concharsLarge] = await Promise.all([
       W.LoadFile('gfx.wad'),
@@ -209,20 +200,6 @@ export default class Draw {
       W.LoadLump('gfx/loading.lmp'),
       GLTexture.FromImageFile('gfx/conback.png', true), // optional 32-bit conback
       GLTexture.FromImageFile('gfx/concharslarge.png', true), // optional large conchars
-
-      // also load all shaders we need
-      GL.CreateProgram('fill',
-        ['uOrtho'],
-        [['aPosition', gl.FLOAT, 2], ['aColor', gl.UNSIGNED_BYTE, 4, true]],
-        []),
-      GL.CreateProgram('pic',
-        ['uOrtho', 'uColor'],
-        [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
-        ['tTexture']),
-      GL.CreateProgram('pic-translate',
-        ['uOrtho', 'uTop', 'uBottom'],
-        [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
-        ['tTexture', 'tTrans']),
     ]);
 
     Draw.#gfxWad = gfxWad;
@@ -253,38 +230,31 @@ export default class Draw {
     if (concharsLarge !== null) {
       Draw.#charsLarge = concharsLarge.lockTextureMode('GL_LINEAR');
       Draw.#charsLargeWidthTable = { '0': 17, '1': 17, '2': 17, '3': 17, '4': 17, '5': 17, '6': 17, '7': 17, '8': 17, '9': 17, ' ': 17, '!': 17, '"': 17, '#': 17, '$': 17, '%': 17, '&': 17, "'": 17, '(': 17, ')': 17, '*': 17, '+': 17, ',': 17, '-': 17, '.': 17, '/': 17, ':': 17, ';': 17, '<': 17, '=': 17, '>': 17, '?': 17, '@': 17, 'A': 17, 'B': 17, 'C': 17, 'D': 17, 'E': 17, 'F': 17, 'G': 17, 'H': 17, 'I': 17, 'J': 17, 'K': 17, 'L': 17, 'M': 17, 'N': 17, 'O': 17, 'P': 17, 'Q': 17, 'R': 17, 'S': 17, 'T': 17, 'U': 17, 'V': 17, 'W': 17, 'X': 17, 'Y': 17, 'Z': 17, '[': 17, '\\': 17, ']': 17, '^': 17, '_': 17, '`': 17, 'a': 17, 'b': 17, 'c': 17, 'd': 17, 'e': 17, 'f': 17, 'g': 17, 'h': 17, 'i': 17, 'j': 17, 'k': 17, 'l': 17, 'm': 17, 'n': 17, 'o': 17, 'p': 17, 'q': 17, 'r': 17, 's': 17, 't': 17, 'u': 17, 'v': 17, 'w': 17, 'x': 17, 'y': 17, 'z': 17, '{': 17, '|': 17, '}': 17, '~': 17, '\x7f': 0 };
-
     } else {
       Draw.#charsLarge = Draw.#chars; // fallback to normal chars
     }
 
     const elem = document.getElementById('loading');
     if (elem instanceof HTMLImageElement) {
-      Draw.#loadingElem = /** @type {HTMLImageElement} */ (elem);
+      Draw.#loadingElem = elem;
       Draw.#loadingElem.src = Draw.#loading.toDataURL();
     }
 
     eventBus.subscribe('com.fs.being', Draw.BeginDisc);
     eventBus.subscribe('com.fs.end', Draw.EndDisc);
-    VID.mainwindow.style.backgroundImage = 'url("' + Draw.#gfxWad.getLumpMipmap('BACKTILE', 0).toDataURL() + '")';
+    VID.mainwindow.style.backgroundImage = `url("${Draw.#gfxWad.getLumpMipmap('BACKTILE', 0).toDataURL()}")`;
 
     Draw.#fbo = gl.createFramebuffer(); // TODO: cleanup
-
-    // await Draw.CreateFontTexture('bold 28px "monospace"', 512, Draw.#charsLargeWidthTable);
-
-
-    // Draw.#charsLarge = await Draw.CreateFontTexture('bold 28px "Fira Code"', 512, Draw.#charsLargeWidthTable);
-    // Draw.#charsLarge = Draw.#chars;
   }
 
   /**
    * Draws a single character at the specified position.
-   * @param {number} x The x position.
-   * @param {number} y The y position.
-   * @param {number} num The character code.
-   * @param {number} scale The scale factor.
+   * @param x The x position.
+   * @param y The y position.
+   * @param num The character code.
+   * @param scale The scale factor.
    */
-  static Char(x, y, num, scale = 1.0) {
+  static Char(x: number, y: number, num: number, scale = 1.0): void {
     GL.StreamDrawTexturedQuad(Math.floor(x), Math.floor(y), scale * 8, scale * 8,
       (num & 15) * 0.0625, (num >> 4) * 0.0625,
       ((num & 15) + 1) * 0.0625, ((num >> 4) + 1) * 0.0625);
@@ -292,38 +262,38 @@ export default class Draw {
 
   /**
    * Draws a character using the loaded font texture.
-   * @param {number} x The x position.
-   * @param {number} y The y position.
-   * @param {number} num The character code.
-   * @param {number} scale The scale factor.
+   * @param x The x position.
+   * @param y The y position.
+   * @param num The character code.
+   * @param scale The scale factor.
    */
-  static Character(x, y, num, scale = 1.0) {
+  static Character(x: number, y: number, num: number, scale = 1.0): void {
     const program = GL.UseProgram('pic', true);
     gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
     if (scale > HIDPI_THRESHOLD) {
-      Draw.#charsLarge.bind(program.tTexture, true);
+      Draw.#charsLarge!.bind(program.tTexture, true);
     } else {
-      Draw.#chars.bind(program.tTexture, true);
+      Draw.#chars!.bind(program.tTexture, true);
     }
     Draw.Char(x, y, num, scale);
   }
 
   /**
    * Draws a string at the specified position.
-   * @param {number} x The x position.
-   * @param {number} y The y position.
-   * @param {string} str The string to draw.
-   * @param {number} scale The scale factor.
-   * @param {Vector} color The color vector.
-   * @returns {number} The new x position after drawing the string.
+   * @param x The x position.
+   * @param y The y position.
+   * @param str The string to draw.
+   * @param scale The scale factor.
+   * @param color The color vector.
+   * @returns The new x position after drawing the string.
    */
-  static String(x, y, str, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)) {
+  static String(x: number, y: number, str: string, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)): number {
     const program = GL.UseProgram('pic', true);
     gl.uniform3f(program.uColor, color[0], color[1], color[2]);
     if (scale > HIDPI_THRESHOLD) {
-      Draw.#charsLarge.bind(program.tTexture, true);
+      Draw.#charsLarge!.bind(program.tTexture, true);
     } else {
-      Draw.#chars.bind(program.tTexture, true);
+      Draw.#chars!.bind(program.tTexture, true);
     }
     for (let i = 0; i < str.length; i++) {
       Draw.Char(x, y, str.charCodeAt(i), scale);
@@ -335,19 +305,19 @@ export default class Draw {
 
   /**
    * Draws a string in white color at the specified position.
-   * @param {number} x The x position.
-   * @param {number} y The y position.
-   * @param {string} str The string to draw.
-   * @param {number} scale The scale factor.
-   * @returns {number} The new x position after drawing the string.
+   * @param x The x position.
+   * @param y The y position.
+   * @param str The string to draw.
+   * @param scale The scale factor.
+   * @returns The new x position after drawing the string.
    */
-  static StringWhite(x, y, str, scale = 1.0) {
+  static StringWhite(x: number, y: number, str: string, scale = 1.0): number {
     const program = GL.UseProgram('pic', true);
     gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
     if (scale > HIDPI_THRESHOLD) {
-      Draw.#charsLarge.bind(program.tTexture, true);
+      Draw.#charsLarge!.bind(program.tTexture, true);
     } else {
-      Draw.#chars.bind(program.tTexture, true);
+      Draw.#chars!.bind(program.tTexture, true);
     }
     for (let i = 0; i < str.length; i++) {
       Draw.Char(x, y, str.charCodeAt(i) + 128, scale);
@@ -358,48 +328,42 @@ export default class Draw {
 
   /**
    * Loads a picture from the WAD file.
-   * @param {string} name The lump name.
-   * @returns {GLTexture} The loaded GLTexture.
+   * @param name The lump name.
+   * @returns The loaded GLTexture.
    */
-  static LoadPicFromWad(name) {
-    const texdata = Draw.#gfxWad.getLumpMipmap(name, 0);
+  static LoadPicFromWad(name: string): GLTexture {
+    const texdata = Draw.#gfxWad!.getLumpMipmap(name, 0);
     return GLTexture.FromLumpTexture(texdata).lockTextureMode('GL_NEAREST');
   }
 
   /**
    * Loads a picture from a lump file.
-   * @param {string} name The lump name.
-   * @returns {Promise<GLTexture>} A promise that resolves to the loaded GLTexture.
+   * @returns The loaded picture texture.
    */
-  static async LoadPicFromLump(name) {
-    return GLTexture.FromLumpTexture(await W.LoadLump('gfx/' + name + '.lmp')).lockTextureMode('GL_NEAREST');
+  static async LoadPicFromLump(name: string): Promise<GLTexture> {
+    return GLTexture.FromLumpTexture(await W.LoadLump(`gfx/${name}.lmp`)).lockTextureMode('GL_NEAREST');
   }
 
   /**
-   * Loads a picture from a lump file in the background.
-   * @param {string} name The lump name.
-   * @returns {GLTexture} A promise that resolves to the loaded GLTexture.
+   * Loads a picture from a lump file, returning a placeholder immediately while loading asynchronously.
+   * @returns The placeholder or cached texture.
    */
-  static LoadPicFromLumpDeferred(name) {
-    // TODO: do cache lookup
-
+  static LoadPicFromLumpDeferred(name: string): GLTexture {
     const glt = GLTexture.Allocate(name, 1, 1, new Uint8Array([0, 0, 0, 0])).lockTextureMode('GL_NEAREST');
 
     if (glt.width > 1 && glt.height > 1) {
       return glt;
     }
 
-    W.LoadLump('gfx/' + name + '.lmp').then((lump) => {
+    W.LoadLump(`gfx/${name}.lmp`).then((lump) => {
       if (lump === null) {
-        // TODO: handle missing lump gracefully
         return;
       }
 
       glt.resize(lump.width, lump.height);
       glt.upload(lump.data);
-    }).catch((err) => {
-      console.error('LoadPicFromLumpDeferred(\'' + name + '\'): ' + err.message);
-      // TODO: handle error here
+    }).catch((err: Error) => {
+      console.error(`LoadPicFromLumpDeferred('${name}'): ${err.message}`);
     });
 
     return glt;
@@ -407,37 +371,30 @@ export default class Draw {
 
   /**
    * Loads a picture from an image file.
-   * @param {string} filename Filename of the image to load.
-   * @returns {Promise<GLTexture>} A promise that resolves to the loaded GLTexture.
+   * @returns The loaded picture texture.
    */
-  static async LoadPicFromFile(filename) {
+  static async LoadPicFromFile(filename: string): Promise<GLTexture> {
     return (await GLTexture.FromImageFile(filename)).lockTextureMode('GL_NEAREST');
   }
 
   /**
-   * Loads a picture from a lump file in the background.
-   * @param {string} filename The lump name.
-   * @returns {GLTexture} A promise that resolves to the loaded GLTexture.
+   * Loads a picture from an image file, returning a placeholder immediately.
    * @deprecated not implemented yet
+   * @returns The placeholder texture.
    */
-  static LoadPicFromFileDeferred(filename) {
-    // TODO: do cache lookup
-
+  static LoadPicFromFileDeferred(filename: string): GLTexture {
     const glt = GLTexture.Allocate(filename, 1, 1, new Uint8Array([0, 0, 0, 0])).lockTextureMode('GL_NEAREST');
-
-    // TODO: implement this
-
     return glt;
   }
 
   /**
    * Draws a picture at the specified position.
-   * @param {number} x The x position.
-   * @param {number} y The y position.
-   * @param {GLTexture} pic The texture to draw.
-   * @param {number} [scale] The scale factor for the picture.
+   * @param x The x position.
+   * @param y The y position.
+   * @param pic The texture to draw.
+   * @param scale The scale factor for the picture.
    */
-  static Pic(x, y, pic, scale = 1.0) {
+  static Pic(x: number, y: number, pic: GLTexture, scale = 1.0): void {
     if (!pic.ready) {
       return;
     }
@@ -450,14 +407,14 @@ export default class Draw {
 
   /**
    * Draws a translated picture at the specified position.
-   * @param {number} x The x position.
-   * @param {number} y The y position.
-   * @param {GLTexture} pic The texture to draw.
-   * @param {number} top The top color index.
-   * @param {number} bottom The bottom color index.
-   * @param {number} [scale] The scale factor for the picture.
+   * @param x The x position.
+   * @param y The y position.
+   * @param pic The texture to draw.
+   * @param top The top color index.
+   * @param bottom The bottom color index.
+   * @param scale The scale factor for the picture.
    */
-  static PicTranslate(x, y, pic, top, bottom, scale = 1.0) {
+  static PicTranslate(x: number, y: number, pic: GLTexture, top: number, bottom: number, scale = 1.0): void {
     if (!pic.ready) {
       return;
     }
@@ -480,25 +437,25 @@ export default class Draw {
 
   /**
    * Draws the console background.
-   * @param {number} lines The number of lines to show.
+   * @param lines The number of lines to show.
    */
-  static ConsoleBackground(lines) {
+  static ConsoleBackground(lines: number): void {
     const program = GL.UseProgram('pic', true);
     gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
-    Draw.#conback.bind(program.tTexture, true);
+    Draw.#conback!.bind(program.tTexture, true);
     GL.StreamDrawTexturedQuad(0, lines - VID.height, VID.width, VID.height, 0.0, 0.0, 1.0, 1.0);
     GL.StreamFlush();
   }
 
   /**
-   * Fills a rectangle with a solid color.
-   * @param {number} x The x position.
-   * @param {number} y The y position.
-   * @param {number} w The width of the rectangle.
-   * @param {number} h The height of the rectangle.
-   * @param {number} c The color index.
+   * Fills a rectangle with a solid indexed-palette color.
+   * @param x The x position.
+   * @param y The y position.
+   * @param w The width of the rectangle.
+   * @param h The height of the rectangle.
+   * @param c The color index.
    */
-  static FillIndexed(x, y, w, h, c) {
+  static FillIndexed(x: number, y: number, w: number, h: number, c: number): void {
     GL.UseProgram('fill', true);
     const color = W.d_8to24table[c];
     GL.StreamDrawColoredQuad(x, y, w, h, color & 0xff, (color >> 8) & 0xff, color >> 16, 255);
@@ -506,14 +463,14 @@ export default class Draw {
 
   /**
    * Fills a rectangle with a solid color.
-   * @param {number} x The x position.
-   * @param {number} y The y position.
-   * @param {number} w The width of the rectangle.
-   * @param {number} h The height of the rectangle.
-   * @param {Vector} c The color index.
-   * @param {number} a Optional alpha value (default is 1.0).
+   * @param x The x position.
+   * @param y The y position.
+   * @param w The width of the rectangle.
+   * @param h The height of the rectangle.
+   * @param c The color vector.
+   * @param a Optional alpha value (default is 1.0).
    */
-  static Fill(x, y, w, h, c, a = 1.0) {
+  static Fill(x: number, y: number, w: number, h: number, c: Vector, a = 1.0): void {
     GL.UseProgram('fill', true);
     GL.StreamDrawColoredQuad(x, y, w, h, Math.floor(c[0] * 255.0), Math.floor(c[1] * 255.0), Math.floor(c[2] * 255.0), Math.floor(a * 255.0));
   }
@@ -521,7 +478,7 @@ export default class Draw {
   /**
    * Draws a faded screen overlay.
    */
-  static FadeScreen() {
+  static FadeScreen(): void {
     GL.UseProgram('fill', true);
     GL.StreamDrawColoredQuad(0, 0, VID.width, VID.height, 0, 0, 0, 204);
   }
@@ -529,7 +486,7 @@ export default class Draw {
   /**
    * Draws a black screen overlay.
    */
-  static BlackScreen() {
+  static BlackScreen(): void {
     GL.UseProgram('fill', true);
     GL.StreamDrawColoredQuad(0, 0, VID.width, VID.height, 0, 0, 0, 255);
   }
@@ -537,7 +494,7 @@ export default class Draw {
   /**
    * Begins showing the loading disc.
    */
-  static BeginDisc() {
+  static BeginDisc(): void {
     Draw.#loadingCounter++;
     if (Draw.#loadingElem === null) {
       return;
@@ -549,7 +506,7 @@ export default class Draw {
   /**
    * Ends showing the loading disc.
    */
-  static EndDisc() {
+  static EndDisc(): void {
     if (--Draw.#loadingCounter > 0) {
       return;
     }
@@ -560,14 +517,14 @@ export default class Draw {
   }
 
   /**
-   * Updates the position of the loading disc.
+   * Updates the position of the loading disc based on current viewport dimensions.
    */
-  static UpdateDiscPosition() {
+  static UpdateDiscPosition(): void {
     if (Draw.#loadingElem === null) {
       return;
     }
-    Draw.#loadingElem.style.left = ((VID.width - Draw.#loading.width)) + 'px';
-    Draw.#loadingElem.style.top = ((VID.height - Draw.#loading.height)) + 'px';
+    Draw.#loadingElem.style.left = `${VID.width - Draw.#loading!.width}px`;
+    Draw.#loadingElem.style.top = `${VID.height - Draw.#loading!.height}px`;
   }
 }
 

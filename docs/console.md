@@ -2,10 +2,10 @@
 
 Everything related to this is in:
 
-* `Console.mjs`
-* `Cmd.mjs`
-* `Cvar.mjs`
-* `Key.mjs`
+* `Console.ts`
+* `Cmd.ts`
+* `Cvar.ts`
+* `Key.ts`
 
 ## Console Frontend
 

@@ -1,16 +1,16 @@
 import type { BuildConfig, URLs } from './build-config';
 
 import CL from './client/CL.ts';
-import Draw from './client/Draw.mjs';
+import Draw from './client/Draw.ts';
 import IN from './client/IN.ts';
-import Key from './client/Key.mjs';
+import Key from './client/Key.ts';
 import M from './client/Menu.ts';
 import R from './client/R.mjs';
 import S from './client/Sound.ts';
 import Sys from './client/Sys.ts';
 import V from './client/V.ts';
-import Sbar from './client/Sbar.mjs';
-import SCR from './client/SCR.mjs';
+import Sbar from './client/Sbar.ts';
+import SCR from './client/SCR.ts';
 import COM from './common/Com.ts';
 import Con from './common/Console.ts';
 import Host from './common/Host.ts';

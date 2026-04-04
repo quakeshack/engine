@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import GL from '../../source/engine/client/GL.mjs';
+import GL from '../../source/engine/client/GL.ts';
 import PostProcess from '../../source/engine/client/renderer/PostProcess.ts';
 import { eventBus } from '../../source/engine/registry.mjs';
 
-describe('PostProcess._resolveMSAAColorAttachment', () => {
-  test('resolves secondary attachments through draw attachment 0', () => {
+void describe('PostProcess._resolveMSAAColorAttachment', () => {
+  void test('resolves secondary attachments through draw attachment 0', () => {
     const operations = [];
     const mockGl = {
       COLOR_ATTACHMENT0: 0x8CE0,

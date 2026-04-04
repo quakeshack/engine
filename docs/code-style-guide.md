@@ -118,7 +118,7 @@ Mod.type.brush;            // CORRECT!
 
 ```javascript
 // ✅ GOOD - GL is not in registry, import directly
-import GL from './GL.mjs';
+import GL from './GL.ts';
 
 let gl = null;
 eventBus.subscribe('gl.ready', () => {
