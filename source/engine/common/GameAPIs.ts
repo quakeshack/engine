@@ -712,7 +712,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
    * Spawn an Edict, not an entity.
    * @returns The spawned edict, or `null` on failure.
    */
-  static SpawnEntity(classname: string, initialData: Record<string, EdictValueType> = {}): ServerEdict | null {
+  static SpawnEntity<T = BaseEntity>(classname: string, initialData: Record<string, EdictValueType> = {}): (Omit<ServerEdict, 'entity'> & { entity: T }) | null {
     const edict = ED.Alloc();
     const normalizedInitialData = normalizeEntityInitialData(initialData);
 
@@ -734,7 +734,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
       throw e;
     }
 
-    return edict;
+    return edict as unknown as Omit<ServerEdict, 'entity'> & { entity: T };
   }
 
   static IsLoading(): boolean {

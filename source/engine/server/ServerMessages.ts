@@ -175,7 +175,7 @@ export class ServerMessages {
     const worldspawnEntity = requireWorldspawnEntity();
 
     message.writeByte(Protocol.svc.print);
-    message.writeString(`\x02\nVERSION ${Host.version.string} SERVER (${SV.server.gameVersion})\n`);
+    message.writeString(`\x02\nVERSION ${Host.version!.string} SERVER (${SV.server.gameVersion})\n`);
 
     message.writeByte(Protocol.svc.serverdata);
     message.writeByte(Protocol.version);
@@ -194,7 +194,7 @@ export class ServerMessages {
     }
 
     message.writeByte(SV.svs.maxclients);
-    message.writeString(worldspawnEntity.message || SV.server.mapname);
+    message.writeString(worldspawnEntity.message || SV.server.mapname!);
     // SV.pmove.movevars.sendToClient(message);
     for (let i = 1; i < SV.server.modelPrecache.length; i++) {
       message.writeString(SV.server.modelPrecache[i]);
@@ -472,13 +472,13 @@ export class ServerMessages {
       return false;
     }
 
-    console.assert(to.num > 0, 'valid entity num', to.num);
+    console.assert(to.num !== null && to.num > 0, 'valid entity num', to.num);
 
-    msg.writeUint16(to.num);
+    msg.writeUint16(to.num!);
     msg.writeUint16(bits);
 
     if (bits & Protocol.u.classname) {
-      msg.writeString(to.classname);
+      msg.writeString(to.classname!);
     }
 
     if (bits & Protocol.u.free) {
@@ -534,8 +534,8 @@ export class ServerMessages {
     }
 
     if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_EXTENDED)) {
-      if (SV.server.clientEntityFields[to.classname]) {
-        const entityFields = SV.server.clientEntityFields[to.classname];
+      if (SV.server.clientEntityFields[to.classname!]) {
+        const entityFields = SV.server.clientEntityFields[to.classname!];
         const fields = entityFields.fields;
         const bitsWriter = entityFields.bitsWriter as BitsWriter | null;
 
@@ -565,7 +565,7 @@ export class ServerMessages {
   writeEntitiesToClient(clientEdict: ServerEdict, msg: SzBuffer): boolean {
     const clientEntity = requireEntity(clientEdict);
     const origin = clientEntity.origin.copy().add(clientEntity.view_ofs);
-    const pvs = SV.server.worldmodel.getFatPvsByPoint(origin);
+    const pvs = SV.server.worldmodel!.getFatPvsByPoint(origin);
 
     let changes = this.writePlayersToClient(clientEdict, pvs, msg) ? 1 : 0;
 

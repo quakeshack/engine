@@ -607,3 +607,34 @@ Then update all **internal TypeScript imports** to point directly to `.ts`. The 
 - Override of `_defineState` for terminal frames (attack→run, pain→run, death→null)
 - `override` on methods, `protected` on `_newEntityAI` and `hasMeleeAttack`
 - `private` on helper methods (`_fishMelee`)
+
+#### 12i. `SpawnEntity<T>` — Generic Entity Spawning
+
+`ServerEngineAPI.SpawnEntity` accepts an optional generic type parameter `T` that narrows the returned edict's `.entity` to the expected entity class. Since TypeScript generics are erased at runtime, the generic is a caller-side assertion — always pair it with a `console.assert(… instanceof …)` to validate at runtime.
+
+```typescript
+// ❌ Old pattern — manual `as` cast, no runtime check
+const backpack = this.engine.SpawnEntity(BackpackEntity.classname, {
+  origin: this.origin.copy(),
+  regeneration_time: 0,
+})?.entity as BackpackEntity | undefined;
+
+backpack?.toss();
+
+// ✅ New pattern — generic + instanceof assert
+const backpack = this.engine.SpawnEntity<BackpackEntity>(BackpackEntity.classname, {
+  origin: this.origin.copy(),
+  regeneration_time: 0,
+})?.entity!;
+
+console.assert(backpack instanceof BackpackEntity);
+
+backpack.toss();
+```
+
+Key rules:
+
+- **Always pass the concrete entity class** as the generic argument: `SpawnEntity<BackpackEntity>(…)`.
+- **Always follow with `console.assert(result instanceof EntityClass)`** — the generic cannot be checked at runtime by the engine, so the call site must verify.
+- **Use `!` (non-null assertion) on `.entity`** when the spawn is expected to succeed. If failure is a possibility, use `?.` and guard accordingly.
+- **Never use `as EntityClass | undefined`** to narrow the result — prefer the generic parameter instead.
