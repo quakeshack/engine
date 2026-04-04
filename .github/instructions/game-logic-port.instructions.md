@@ -137,13 +137,15 @@ This catches typos at compile time. Generating the union type is straightforward
 `BaseEntity._defineSequence()` is already implemented and generates a numbered sequence of states from a prefix and frame array:
 
 ```typescript
-static _defineSequence(
+static _defineSequence<T extends BaseEntity>(
   prefix: string,
   frames: readonly (string | number)[],
-  handler: ((this: BaseEntity, frameIndex: number) => void) | null = null,
+  handler: ((this: T, frameIndex: number) => void) | null = null,
   loop = true,
 ): void;
 ```
+
+The generic `T` is inferred from the callback's `this` annotation, so subclass callbacks get full type safety without casts.
 
 States are named `${prefix}1`, `${prefix}2`, ... with the last frame looping back to `${prefix}1` by default. This collapses 8 stand-state calls into one:
 
@@ -178,17 +180,19 @@ The `_modelQC` string and `_parseModelData` pattern can stay mostly as-is, but:
 - Make `_modelData` typed: `static readonly _modelData: Readonly<ParsedQC> | null`.
 - Consider moving the raw QC string into a separate `.qc` asset file loaded at build time (Vite raw import) so it doesn't bloat the TS source. Not mandatory, but cleaner for large QC definitions.
 
-#### 3d. Callbacks should be arrow functions or method references
+#### 3d. Callbacks use the concrete entity `this` type
 
-The current `function() { this._ai.stand(); }` pattern requires `call(this)` dispatch and loses TS `this` typing. Options:
+`_defineState` and `_defineSequence` are generic on `T extends BaseEntity` — the `T` is inferred from the callback's `this` annotation. Annotate callbacks with the concrete entity type to get full type safety without casts:
 
-1. **Arrow in `_defineState`**: Already works if `_defineState` stores it and `_runState` calls `handler.call(this)`. The `this` parameter annotation gives type safety:
-   ```typescript
-   this._defineState('army_stand1', 'stand1', 'army_stand2',
-     function (this: ArmySoldierMonster) { this._ai.stand(); });
-   ```
+```typescript
+this._defineSequence('f_stand', swimFrames,
+  function (this: FishMonsterEntity) { this._ai.stand(); });
 
-2. **Named method references**: For unique behaviors (firing, refire checks), define a private method and pass its reference. More readable for complex logic.
+this._defineState('f_death21', 'death21', null,
+  function (this: FishMonsterEntity) { this.solid = solid.SOLID_NOT; });
+```
+
+The generic is erased at storage time (`handler as ScheduledThinkCallback`) so the untyped `_states` record remains compatible, while `_runState` dispatches via `.call(this)` on the real entity instance.
 
 ---
 
@@ -502,4 +506,104 @@ For each `.mjs` → `.ts` entity file:
 - [ ] Verify all components (`DamageHandler`, `Sub`, `AI`) are typed via generic `EntityWrapper<T>`.
 - [ ] Run `eslint --fix` and `tsc --noEmit`.
 - [ ] Add or update unit tests for serialization round-trip and key behaviors.
-- [ ] Delete the old `.mjs` file once all importers reference the `.ts` version.
+- [ ] Convert the old `.mjs` file to a one-line re-export shim: `export { default } from './File.ts';`
+- [ ] Update internal TS imports to point to `.ts` directly (e.g. `GameAPI.ts`).
+
+---
+
+### 12. Common Pitfalls When Porting Monster Entities
+
+These issues were encountered and resolved during the Fish.mjs → Fish.ts port. They apply to all monster/entity ports.
+
+#### 12a. Callback `this` parameter in `_defineSequence` / `_defineState`
+
+`_defineSequence<T>` and `_defineState<T>` are generic — `T` is inferred from the callback's `this` annotation. Always annotate callbacks with the concrete entity type for full type safety:
+
+```typescript
+// ✅ Correct — T is inferred as FishMonsterEntity, full autocomplete on this
+this._defineSequence('f_stand', swimFrames,
+  function (this: FishMonsterEntity) { this._ai.stand(); });
+```
+
+The generic is erased when stored in `_states` (`handler as ScheduledThinkCallback`), which is safe because `_runState` always dispatches via `.call(this)` on the concrete entity instance.
+
+#### 12b. Engine edict interface properties cannot use `override`
+
+Properties like `netname`, `classname`, and other edict fields exist on the engine's `BaseEntity` **interface** (defined in `Edict.ts`), not on the game-side `BaseEntity` class. TypeScript `override` only applies to members declared in a parent class. Implementing an interface property is not an override.
+
+```typescript
+// ❌ Compile error — netname is not in the class hierarchy
+override get netname(): string { return 'a fish'; }
+
+// ✅ Correct — plain getter (implements the interface property)
+get netname(): string { return 'a fish'; }
+```
+
+#### 12c. Vector uses indexed access, not named properties
+
+The `Vector` class uses `[0]`, `[1]`, `[2]` for component access — **not** `.x`, `.y`, `.z`. There is no `Vector.of()` static factory either.
+
+```typescript
+// ❌ Wrong
+Vector.of(-16, -16, -24)
+vector.x
+
+// ✅ Correct
+new Vector(-16, -16, -24)
+vector[0]
+```
+
+#### 12d. Static `_size` must not use `as const`
+
+The parent class declares `_size` as `[Vector | null, Vector | null]` (a mutable tuple). Using `as const` on the child declaration creates a `readonly` tuple that is not assignable to the mutable parent type.
+
+```typescript
+// ❌ Compile error — readonly tuple not assignable to mutable
+static _size = [new Vector(-16, -16, -24), new Vector(16, 16, 24)] as const;
+
+// ✅ Correct — explicit mutable tuple type
+static _size: [Vector, Vector] = [new Vector(-16, -16, -24), new Vector(16, 16, 24)];
+```
+
+#### 12e. ESM circular dependency in tests
+
+Entity `.ts` files import from each other and from `GameAPI.ts`, creating circular module dependencies. In production the entry point (`GameAPI.ts`) evaluates first, establishing all bindings. In tests, importing a specific entity file directly may invert the evaluation order, causing TDZ errors.
+
+**Always `await import('GameAPI.ts')` before importing any entity class in tests:**
+
+```javascript
+// In test file — must be top-level await
+await import('../../source/game/id1/GameAPI.ts');
+const { default: FishMonsterEntity } = await import('../../source/game/id1/entity/monster/Fish.ts');
+```
+
+#### 12f. `_initStates` must be called explicitly in tests
+
+The game registry calls `_initStates()` on each entity class during bootstrap. In unit tests without the full registry, call it manually before testing state machine properties:
+
+```javascript
+FishMonsterEntity._initStates();
+```
+
+#### 12g. The `.mjs` shim pattern
+
+After porting, convert the old `.mjs` file to a one-line re-export shim so that any remaining `.mjs` importers continue to work without modification:
+
+```javascript
+// Fish.mjs — re-export shim
+export { default } from './Fish.ts';
+```
+
+Then update all **internal TypeScript imports** to point directly to `.ts`. The shim is only for external/legacy `.mjs` consumers.
+
+#### 12h. Reference port: Fish.ts
+
+`source/game/id1/entity/monster/Fish.ts` serves as the canonical example of a fully ported monster entity. It demonstrates:
+
+- `@entity` class decorator (no `@serializable` fields needed — Fish has none beyond inherited)
+- `_defineSequence` to collapse repetitive state definitions
+- Callback `this: FishMonsterEntity` with generic inference (no casts needed)
+- Non-looping sequences (`loop = false` for death)
+- Override of `_defineState` for terminal frames (attack→run, pain→run, death→null)
+- `override` on methods, `protected` on `_newEntityAI` and `hasMeleeAttack`
+- `private` on helper methods (`_fishMelee`)
