@@ -10,9 +10,9 @@
     "node": ">=24 <25"
   },
   "devDependencies": {
-    "@types/node": "^24.6.1",
     "@eslint/js": "^9.17.0",
     "@stylistic/eslint-plugin": "^5.2.2",
+    "@types/node": "^24.6.1",
     "@typescript-eslint/eslint-plugin": "^8.46.4",
     "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^9.19.0",
@@ -21,6 +21,7 @@
     "eslint-plugin-sort-class-members": "^1.21.0",
     "eslint-plugin-types": "^1.0.2",
     "globals": "^15.14.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.12"
   },
@@ -31,10 +32,10 @@
     "ws": "^8.18.0"
   },
   "scripts": {
-    "test": "node --experimental-transform-types --test test/**/*.test.mjs",
-    "test:common": "node --experimental-transform-types --test test/common/**/*.test.mjs",
-    "test:physics": "node --experimental-transform-types --test test/physics/**/*.test.mjs",
-    "test:renderer": "node --experimental-transform-types --test test/renderer/**/*.test.mjs",
+    "test": "tsx --test test/**/*.test.mjs",
+    "test:common": "tsx --test test/common/**/*.test.mjs",
+    "test:physics": "tsx --test test/physics/**/*.test.mjs",
+    "test:renderer": "tsx --test test/renderer/**/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "typecheck:watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "build:wrangler": "npm run test && npm run build:production",
@@ -42,14 +43,11 @@
     "build": "vite build",
     "build:production": "vite build --mode production",
     "watch": "vite build --watch",
-
     "lint": "eslint source",
     "lint-fix": "eslint --fix source",
-
     "dedicated:dev": "vite build --watch --mode development --config vite.config.dedicated.mjs",
     "dedicated:build": "vite build --config vite.config.dedicated.mjs",
     "dedicated:build:production": "vite build --config vite.config.dedicated.mjs --mode production",
-    "dedicated:start": "node --experimental-transform-types ./dedicated.ts +exec server.cfg",
-    "dedicated:start:production": "node ./dist/dedicated/dedicated.mjs +exec server.cfg"
+    "dedicated:start": "node ./dist/dedicated/dedicated.mjs +exec server.cfg"
   }
 }

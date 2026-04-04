@@ -6,7 +6,7 @@ All rules from the general TS porting guide still apply. This document only adds
 
 ---
 
-### 1. Serializable Fields — Replace `startFields`/`endFields` with a Decorator
+### 1. Serializable Fields — Use `@entity` / `@serializable` Decorators
 
 The current JS pattern snapshots `Object.keys()` before and after field assignment to discover which properties to serialize:
 
@@ -22,76 +22,54 @@ _declareFields() {
 }
 ```
 
-In TypeScript, use a **`@serializable` field decorator** that registers the property at class definition time. No runtime key diffing needed.
+In TypeScript, use the `@entity` class decorator and `@serializable` field decorator from `MiscHelpers.ts`. The `@serializable` decorator marks individual fields, and `@entity` on the class flushes them into a frozen `static serializableFields` array at class definition time — fully compatible with the existing `collectSerializableFields()` prototype-chain walk.
 
 ```typescript
-// ✅ TypeScript pattern
+// ✅ TypeScript pattern — decorators
+import { entity, serializable, Serializer } from '../helper/MiscHelpers.ts';
+
+@entity
 class BaseMonster extends BaseEntity {
   @serializable health = 100;
   @serializable enemy: BaseEntity | null = null;
+  @serializable pausetime = 0;
 
-  // Components are regular fields — no decorator, not serialized.
+  // Components are regular class fields — not decorated, not serialized.
   protected readonly _damageHandler = new DamageHandler(this);
 }
 ```
 
-#### Decorator implementation
+The legacy `static readonly serializableFields` array pattern still works but is no longer recommended for new TypeScript classes. Legacy `.mjs` callers using `startFields()`/`endFields()` continue to work during the migration.
 
-Use [TC39 Stage 3 decorators](https://github.com/tc39/proposal-decorators) (native in TypeScript 5.0+, no `experimentalDecorators` flag). The decorator records metadata on the class:
+#### How it works
 
-```typescript
-const serializableFieldsKey = Symbol('serializableFields');
-
-type SerializableFieldsMap = Map<string, true>;
-
-/**
- * Marks a class field for save/load serialization.
- */
-function serializable<This, Value>(
-  _target: undefined, context: ClassFieldDecoratorContext<This, Value>,
-): void {
-  const fieldName = String(context.name);
-
-  context.metadata[serializableFieldsKey] ??= new Map<string, true>();
-  (context.metadata[serializableFieldsKey] as SerializableFieldsMap).set(fieldName, true);
-}
-```
-
-At serialization time, `Serializer` reads the metadata chain (walking the prototype chain to collect inherited decorated fields) instead of relying on an instance-level field list. This:
-
-- Eliminates `startFields()` / `endFields()` entirely.
-- Eliminates `_declareFields()` — fields are declared inline on the class body.
-- Makes it impossible to forget wrapping a field or accidentally serializing a component.
-- Works with `Object.seal(this)` because all fields are already declared as TS class fields.
-
-#### Inheritance
-
-Parent-class decorated fields are automatically included — `Symbol.metadata` propagates up the prototype chain. No `super._declareFields()` call needed.
-
-#### Serializer changes
-
-The `Serializer` constructor changes from taking a `(object, engine)` pair to reading from class metadata:
+1. `@serializable` field decorators accumulate field names in a module-level array during class definition.
+2. `@entity` class decorator freezes those names into a `static serializableFields` property.
+3. `collectSerializableFields()` in `MiscHelpers.ts` walks the constructor chain bottom-up and merges every class's `serializableFields` array. Parent fields are included automatically.
 
 ```typescript
-class Serializer {
-  getSerializableFields(instance: object): string[] {
-    const fields: string[] = [];
-    let proto = Object.getPrototypeOf(instance);
-    while (proto) {
-      const meta = proto.constructor[Symbol.metadata];
-      const map = meta?.[serializableFieldsKey] as SerializableFieldsMap | undefined;
-      if (map) {
-        for (const key of map.keys()) {
-          if (!fields.includes(key)) {
-            fields.push(key);
-          }
-        }
-      }
-      proto = Object.getPrototypeOf(proto);
-    }
-    return fields;
-  }
+// BaseEntity uses @entity + @serializable for its fields:
+@entity
+class BaseEntity {
+  @serializable ltime = 0.0;
+  @serializable origin = new Vector();
+  // ...
 }
+
+// BaseMonster adds its own:
+@entity
+class BaseMonster extends BaseEntity {
+  @serializable health = 100;
+  @serializable enemy: BaseEntity | null = null;
+}
+
+// ArmySoldierMonster adds its own:
+@entity
+class ArmySoldierMonster extends BaseMonster {
+  @serializable _aiState = 'idle';
+}
+
+// At runtime the Serializer sees all three merged: ['ltime', 'origin', ..., 'health', ..., '_aiState']
 ```
 
 #### `_declareFields()` removal checklist
@@ -100,9 +78,12 @@ class Serializer {
 |---|---|
 | Override `_declareFields()`, call `super._declareFields()` | Delete the method entirely |
 | `this._serializer.startFields()` / `endFields()` | Delete both calls |
-| Field assignments inside the boundary | Move to class field declarations with `@serializable` |
-| Component creation after `endFields()` | Regular class fields, no decorator |
-| `this._serializer = new Serializer(this, this.engine)` in constructor | One shared `Serializer` per call, or construct it lazily; the serializer reads metadata, not per-instance lists |
+| Field assignments inside the boundary | Move to typed class field declarations with `@serializable` |
+| Component creation after `endFields()` | Regular class fields (no `@serializable`) |
+| Manual `static readonly serializableFields = [...]` | Delete — `@entity` + `@serializable` handles this |
+| `this._serializer = new Serializer(this, this.engine)` in constructor | Keep as-is; Serializer reads `serializableFields` from the chain |
+
+The legacy `startFields()`/`endFields()` API remains in `Serializer` for `.mjs` callers during the migration.
 
 ---
 
@@ -151,35 +132,20 @@ protected _runState(state?: S | null): boolean;
 
 This catches typos at compile time. Generating the union type is straightforward — it is the set of first-argument strings across all `_defineState` calls.
 
-#### 3b. Animation sequence helper
+#### 3b. Animation sequence helper — `_defineSequence`
 
-Most state definitions are repetitive animation loops. Introduce a helper that generates a sequence:
+`BaseEntity._defineSequence()` is already implemented and generates a numbered sequence of states from a prefix and frame array:
 
 ```typescript
-/**
- * Defines a looping sequence of animation frames.
- * @param prefix - State name prefix (e.g. `'army_stand'`).
- * @param frames - Ordered frame names from the model QC.
- * @param handler - Callback invoked on each frame.
- * @param loop - Whether the last frame loops back to the first. Default `true`.
- */
-protected static _defineSequence(
+static _defineSequence(
   prefix: string,
-  frames: string[],
-  handler: (this: BaseEntity, frameIndex: number) => void,
+  frames: readonly (string | number)[],
+  handler: ((this: BaseEntity, frameIndex: number) => void) | null = null,
   loop = true,
-): void {
-  for (let i = 0; i < frames.length; i++) {
-    const state = `${prefix}${i + 1}`;
-    const next = i < frames.length - 1
-      ? `${prefix}${i + 2}`
-      : (loop ? `${prefix}1` : null);
-    this._defineState(state, frames[i], next, function () { handler.call(this, i); });
-  }
-}
+): void;
 ```
 
-This collapses 8 stand-state calls into one:
+States are named `${prefix}1`, `${prefix}2`, ... with the last frame looping back to `${prefix}1` by default. This collapses 8 stand-state calls into one:
 
 ```typescript
 // ❌ Before: 8 calls
@@ -188,11 +154,12 @@ this._defineState('army_stand2', 'stand2', 'army_stand3', function () { this._ai
 // ... 6 more
 
 // ✅ After: 1 call
-this._defineSequence('army_stand', ['stand1','stand2','stand3','stand4','stand5','stand6','stand7','stand8'],
+this._defineSequence('army_stand',
+  ['stand1','stand2','stand3','stand4','stand5','stand6','stand7','stand8'],
   function () { this._ai.stand(); });
 ```
 
-For sequences where individual frames need different behavior (like walk speeds or firing on frame 4), use the `frameIndex` parameter or fall back to individual `_defineState` calls:
+For sequences where individual frames need different behavior (walk speeds, firing on a specific frame), use the `frameIndex` parameter or fall back to individual `_defineState` calls:
 
 ```typescript
 const walkSpeeds = [1,1,1,1,2,3,4,4,2,2,2,1,0,1,1,1,3,3,3,3,2,1,1,1];

@@ -12,10 +12,10 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY index.html ./index.html
-COPY dedicated.mjs ./dedicated.mjs
+COPY dedicated.ts ./dedicated.ts
 COPY vite.config.mjs ./vite.config.mjs
 COPY vite.config.dedicated.mjs ./vite.config.dedicated.mjs
-COPY jsconfig.json ./jsconfig.json
+COPY tsconfig.json ./tsconfig.json
 COPY source ./source
 COPY public ./public
 COPY test ./test
@@ -60,4 +60,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO /dev/null http://localhost:3000/ || exit 1
 
-CMD ["npm", "run", "dedicated:start:production"]
+CMD ["npm", "run", "dedicated:start"]

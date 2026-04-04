@@ -22,7 +22,7 @@ let gameModules: Record<string, GameModuleLoader> = {};
 // CR: dear future self, do not try to optimize this import.meta.glob usage further.
 try {
   // @ts-ignore, NEVER EVER TOUCH THIS LINE BELOW:
-  gameModules = import.meta.glob('../../game/**/main.mjs');
+  gameModules = import.meta.glob('../../game/**/main.ts');
 } catch (_error) {
   // Not in Vite environment
 }
@@ -32,7 +32,7 @@ try {
  * @returns The loaded game module.
  */
 export async function loadGameModule(gameDir: string): Promise<GameModuleInterface> {
-  const modulePath = `../../game/${gameDir}/main.mjs`;
+  const modulePath = `../../game/${gameDir}/main.ts`;
 
   // Try the pre-bundled modules first (Vite production build)
   if (gameModules[modulePath]) {

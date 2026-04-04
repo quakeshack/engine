@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import { describe, test } from 'node:test';
+import { glob } from 'node:fs/promises';
 
 import PlatformWorker from '../../source/engine/common/PlatformWorker.ts';
 import WorkerManager from '../../source/engine/common/WorkerManager.ts';
@@ -190,5 +192,65 @@ void describe('WorkerManager', () => {
       assert.deepEqual(consoleCapture.warnings, ['from worker\n']);
       assert.deepEqual(navResponses, [[8, ['c']]]);
     });
+  });
+});
+
+const dedicatedDir = new URL('../../dist/dedicated/', import.meta.url);
+
+void describe('Dedicated build worker output', () => {
+  void test('WorkerFactories URLs point to ./workers/*.mjs in the engine bundle', async () => {
+    const engineChunks = [];
+    const dir = new URL('./', dedicatedDir);
+
+    for await (const entry of fs.glob('engine-*.mjs', { cwd: dir })) {
+      engineChunks.push(new URL(entry, dir));
+    }
+
+    assert.ok(engineChunks.length > 0, 'expected at least one engine-*.mjs chunk in dist/dedicated/');
+
+    const code = await fs.readFile(engineChunks[0], 'utf8');
+    const workerUrlPattern = /new Worker\(new URL\(["']([^"']+)["'],\s*import\.meta\.url\)/g;
+    const urls = [...code.matchAll(workerUrlPattern)].map((m) => m[1]);
+
+    assert.ok(urls.length >= 2, `expected at least 2 worker URLs, found ${urls.length}: ${urls.join(', ')}`);
+
+    for (const url of urls) {
+      assert.ok(url.startsWith('./workers/'), `worker URL should start with ./workers/, got: ${url}`);
+      assert.ok(url.endsWith('.mjs'), `worker URL should end with .mjs, got: ${url}`);
+    }
+  });
+
+  void test('worker bundles exist in dist/dedicated/workers/', async () => {
+    const workersDir = new URL('workers/', dedicatedDir);
+
+    for (const name of ['NavigationWorker.mjs', 'DummyWorker.mjs']) {
+      const filePath = new URL(name, workersDir);
+      const stat = await fs.stat(filePath).catch(() => null);
+      assert.ok(stat !== null && stat.isFile(), `expected ${name} to exist in dist/dedicated/workers/`);
+    }
+  });
+
+  void test('worker bundles do not contain unresolved source imports', async () => {
+    const workersDir = new URL('workers/', dedicatedDir);
+    const workerFiles = [];
+
+    for await (const entry of fs.glob('*.mjs', { cwd: workersDir })) {
+      workerFiles.push(new URL(entry, workersDir));
+    }
+
+    assert.ok(workerFiles.length > 0, 'expected at least one .mjs file in dist/dedicated/workers/');
+
+    for (const file of workerFiles) {
+      const code = await fs.readFile(file, 'utf8');
+      const sourceImports = [...code.matchAll(/from\s+["']([^"']+)["']/g)]
+        .map((m) => m[1])
+        .filter((specifier) => specifier.includes('/source/') || specifier.endsWith('.ts'));
+
+      assert.deepEqual(
+        sourceImports,
+        [],
+        `${file.pathname} still imports unresolved source paths: ${sourceImports.join(', ')}`,
+      );
+    }
   });
 });

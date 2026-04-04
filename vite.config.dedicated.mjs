@@ -29,7 +29,7 @@ function dedicatedServerPathsPlugin() {
           code: code
             .replace(/^#!.*\n/, '')
             .replace(
-              "new URL('./', import.meta.url)",
+              /new URL\((['"])\.\/\1,\s*import\.meta\.url\)/,
               "new URL('../..', import.meta.url)",
             ),
           map: null,
@@ -44,7 +44,7 @@ function dedicatedServerPathsPlugin() {
       if (id.includes('/source/engine/server/Sys.ts')) {
         return {
           code: code.replace(
-            "import.meta.dirname + '/../..'",
+            /import\.meta\.dirname\s*\+\s*(['"])\/\.\.\/(\.\.)\1/,
             "import.meta.dirname + '/..'",
           ),
           map: null,
@@ -56,7 +56,7 @@ function dedicatedServerPathsPlugin() {
       // dedicatedWorkerBundlePlugin (see below).
       if (id.includes('WorkerFactories.ts')) {
         return {
-          code: code.replace(/\.\.\/server\/([^']+)\.ts/g, './workers/$1.mjs'),
+          code: code.replace(/\.\.\/server\/([^'"]+)\.ts/g, './workers/$1.mjs'),
           map: null,
         };
       }
@@ -137,14 +137,16 @@ function dedicatedWorkerBundlePlugin(mode) {
               if (!id.includes('WorkerFramework')) { return null; }
               // Replace the two-step variable + import() patterns with direct
               // literal import() calls so Rollup can statically resolve them.
+              // esbuild may convert single quotes to double quotes and reformat
+              // the import() across multiple lines, so the regexes must be flexible.
               return {
                 code: code
                   .replace(
-                    /const workerThreadsId\s*=\s*\[.*?\]\.join\([^)]+\);\s*const \{ parentPort \} = await import\(\/\* @vite-ignore \*\/ workerThreadsId\)/s,
+                    /const workerThreadsId\s*=\s*\[['"]node['"],\s*['"]worker_threads['"]\]\.join\([^)]+\);\s*const \{ parentPort \} = await import\(\s*(?:\/\*.*?\*\/\s*)?workerThreadsId\s*\)/s,
                     "const { parentPort } = await import('node:worker_threads')",
                   )
                   .replace(
-                    /const serverComId\s*=\s*\[.*?\]\.join\([^)]+\);\s*const comModule = await import\(\/\* @vite-ignore \*\/ serverComId\)/s,
+                    /const serverComId\s*=\s*\[['"]\.\.['"],\s*['"]server['"],\s*['"]Com\.ts['"]\]\.join\([^)]+\);\s*const comModule = await import\(\s*(?:\/\*.*?\*\/\s*)?serverComId\s*\)/s,
                     "const comModule = await import('../server/Com.ts')",
                   ),
                 map: null,
