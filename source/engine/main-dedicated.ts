@@ -15,7 +15,7 @@ import Sys from './server/Sys.ts';
 // Polyfill Worker global for Node.js so that WorkerFactories.ts
 // (which uses the browser-compatible `new Worker(url)` pattern for
 // Vite static analysis) works identically in unbundled Node.js.
-globalThis.Worker = Worker as typeof globalThis.Worker;
+globalThis.Worker = Worker as unknown as typeof globalThis.Worker;
 
 export default class EngineLauncher {
   static async Launch(): Promise<typeof registry> {

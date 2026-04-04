@@ -108,7 +108,7 @@ export function createRegistryCollisionModelSource(): CollisionModelSource {
   modelSource.configureServer({
     getWorldEntity: () => SV?.server?.edicts?.[0] ?? null,
     getWorldModel: () => SV?.server?.worldmodel ?? null,
-    getModels: () => (SV?.server?.models.map((model) => model instanceof Promise ? null : model) as Array<BaseModel | null> | undefined) ?? null,
+    getModels: () => (SV?.server?.models?.map((model) => model instanceof Promise ? null : model) as Array<BaseModel | null> | undefined) ?? null,
   });
   modelSource.configureClient({
     getWorldModel: () => CL?.state?.worldmodel ?? null,

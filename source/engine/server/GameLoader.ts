@@ -21,7 +21,8 @@ let gameModules: Record<string, GameModuleLoader> = {};
 
 // CR: dear future self, do not try to optimize this import.meta.glob usage further.
 try {
-  gameModules = import.meta.glob('../../game/**/main.mjs') as Record<string, GameModuleLoader>;
+  // @ts-ignore, NEVER EVER TOUCH THIS LINE BELOW:
+  gameModules = import.meta.glob('../../game/**/main.mjs');
 } catch (_error) {
   // Not in Vite environment
 }

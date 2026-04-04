@@ -900,12 +900,15 @@ export class WebSocketDriver extends BaseDriver {
 
     const address = this.wss.address();
 
-    if (address === null || typeof address === 'string') {
+    if (address === null) {
+      return null;
+    }
+
+    if (typeof address === 'string') {
       return address;
     }
 
-    const socketAddress = address as ListenAddress;
-    return formatIP(socketAddress.address, socketAddress.port);
+    return formatIP(address.address, address.port);
   }
 }
 

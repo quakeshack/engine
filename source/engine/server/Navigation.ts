@@ -1090,7 +1090,7 @@ export class Navigation {
       // grid-sample the bounding box and test inclusion
       for (let sx = startX; sx <= Math.ceil(maxX); sx += step) {
         for (let sy = startY; sy <= Math.ceil(maxY); sy += step) {
-          const pt2 = [sx, sy];
+          const pt2: PlanePoint = [sx, sy];
           if (!pointInPoly(pt2, verts2)) {
             continue;
           }
@@ -1252,7 +1252,7 @@ export class Navigation {
       let nearLedge = false;
       let isClipping = false;
       let isFloating = false;
-      const surfaces = new Set();
+      const surfaces = new Set<WalkableSurface>();
 
       for (const { wp, surface } of group.items) {
         centroid.add(wp.origin);

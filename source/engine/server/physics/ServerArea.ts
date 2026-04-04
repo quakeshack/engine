@@ -257,12 +257,16 @@ export class ServerArea {
         continue;
       }
 
-      const touchEntity = touch.entity!;
-      if (!touchEntity.touch || touchEntity.solid !== Defs.solid.SOLID_TRIGGER) {
+      const touchEntity = touch.entity as (BaseEntity & {
+        solid: number;
+        touch?: (this: BaseEntity, other: BaseEntity | null) => void;
+      }) | null;
+
+      if (touchEntity === null || !touchEntity.touch || touchEntity.solid !== Defs.solid.SOLID_TRIGGER) {
         continue;
       }
 
-      const touchFn = touchEntity.touch as (this: BaseEntity, other: BaseEntity | null) => void;
+      const touchFn = touchEntity.touch;
 
       gameAPI.time = SV.server.time;
       touchFn.call(touchEntity, !ent.isFree() ? ent.entity : null);

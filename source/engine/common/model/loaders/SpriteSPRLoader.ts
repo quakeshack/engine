@@ -12,7 +12,7 @@ interface MutableSpriteFrameImage {
   width: number;
   height: number;
   glt: GLTexture;
-  texturenum: number;
+  texturenum: WebGLTexture | null;
 }
 
 interface MutableSpriteSingleFrame extends MutableSpriteFrameImage {

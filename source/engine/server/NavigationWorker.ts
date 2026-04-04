@@ -9,7 +9,7 @@ type WorkerVectorLike = ArrayLike<number>;
 await WorkerFramework.Init();
 
 const { Con } = registry;
-const navigation = new Navigation();
+const navigation = new Navigation(null);
 
 eventBus.subscribe('nav.load', async (mapname: string, checksum: number | null) => {
   Con.DPrint('Navigation: loading navigation graph...\n');
@@ -27,7 +27,10 @@ eventBus.subscribe('nav.load', async (mapname: string, checksum: number | null) 
 });
 
 eventBus.subscribe('nav.path.request', (id: string, start: WorkerVectorLike, end: WorkerVectorLike) => {
-  const path = navigation.findPath(new Vector(...start), new Vector(...end));
+  const path = navigation.findPath(
+    new Vector(start[0], start[1], start[2]),
+    new Vector(end[0], end[1], end[2]),
+  );
 
   WorkerFramework.Publish('nav.path.response', id, path);
 });

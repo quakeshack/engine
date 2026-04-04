@@ -22,7 +22,7 @@ export interface Hull {
   readonly planes: Plane[];
 
   /** Index of the first clipnode, when the hull is a subrange. */
-  readonly firstclipnode?: number;
+  firstclipnode?: number;
 
   /** Index of the last clipnode. */
   readonly lastclipnode: number;

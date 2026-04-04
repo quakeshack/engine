@@ -23,6 +23,7 @@ export interface BaseEntity extends SerializableEntity {
   absmin: Vector;
   clear(): void;
   colormap: number;
+  deadflag?: number;
   effects: number;
   flags: number;
   frame: number;
@@ -42,9 +43,12 @@ export interface BaseEntity extends SerializableEntity {
   solid: number;
   takedamage: number;
   team: number;
+  teleport_time?: number;
   velocity: Vector;
   view_ofs: Vector;
   v_angle: Vector;
+  waterlevel?: number;
+  watertype?: number;
   readonly edictId: number | undefined;
   restoreSpawnParameters?(data: string | null): void;
 }
@@ -142,8 +146,8 @@ export class ED {
         continue;
       }
 
-      const printableEntity = entity as Record<string, string | number | boolean | Vector | BaseEntity | null | undefined>;
-      Con.Print(`${name.padStart(24, '.')}: ${printableEntity[name]}\n`);
+      const printableValue = (entity as BaseEntity & Record<string, string | number | boolean | Vector | BaseEntity | null | undefined>)[name];
+      Con.Print(`${name.padStart(24, '.')}: ${printableValue}\n`);
     }
   }
 
@@ -284,11 +288,9 @@ export class ED {
         continue;
       }
 
-      if (anglehack) {
-        parsedValue.token = `0 ${parsedValue.token} 0`;
-      }
+      const tokenValue = anglehack ? `0 ${parsedValue.token} 0` : parsedValue.token;
 
-      initialData[keyname] = parsedValue.token.replace(/\\n/g, '\n');
+      initialData[keyname] = tokenValue.replace(/\\n/g, '\n');
       init = true;
     }
 
@@ -362,7 +364,7 @@ export class ServerEdict {
   readonly num: number;
   free: boolean;
   octreeNode: OctreeNode<ServerEdict> | null;
-  readonly leafnums: number[];
+  leafnums: number[];
   freetime: number;
   entity: BaseEntity | null;
 

@@ -70,7 +70,13 @@ export class BSP2Loader extends BSP29Loader {
       const mins = [Infinity, Infinity];
       const maxs = [-Infinity, -Infinity];
       const tex = loadmodel.texinfo[face.texinfo];
+      console.assert(typeof tex.texture === 'number', 'BSP2 texture indices must stay numeric');
+      if (typeof tex.texture !== 'number') {
+        throw new CorruptedResourceError(loadmodel.name, 'BSP2Loader: face texture index is not numeric');
+      }
       face.texture = tex.texture;
+      const texVec0 = new Vector(tex.vecs[0][0], tex.vecs[0][1], tex.vecs[0][2]);
+      const texVec1 = new Vector(tex.vecs[1][0], tex.vecs[1][1], tex.vecs[1][2]);
 
       for (let j = 0; j < face.numedges; j++) {
         const edgeIndex = loadmodel.surfedges[face.firstedge + j];
@@ -78,8 +84,8 @@ export class BSP2Loader extends BSP29Loader {
           ? loadmodel.vertexes[loadmodel.edges[edgeIndex][0]]
           : loadmodel.vertexes[loadmodel.edges[-edgeIndex][1]];
 
-        const val0 = vertex.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3];
-        const val1 = vertex.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3];
+        const val0 = vertex.dot(texVec0) + tex.vecs[0][3];
+        const val1 = vertex.dot(texVec1) + tex.vecs[1][3];
 
         if (val0 < mins[0]) {
           mins[0] = val0;

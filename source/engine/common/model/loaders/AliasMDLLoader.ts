@@ -698,11 +698,7 @@ export class AliasMDLLoader extends ModelLoader {
         continue;
       }
 
-      if (group.group) {
-        continue;
-      }
-
-      const frame: MutableAliasRenderFrame = group;
+      const frame = group as MutableAliasSingleFrame;
       frame.cmdofs = cmds.length * 4;
 
       for (let triangleIndex = 0; triangleIndex < loadmodel._num_tris; triangleIndex++) {

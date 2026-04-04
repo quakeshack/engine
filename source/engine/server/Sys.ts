@@ -61,7 +61,7 @@ const evaluateReplCommand: REPLEval = function(command, _context, _filename, cal
   MainLoop.notify();
   this.clearBufferedCommand();
   Cmd.text += command;
-  setTimeout(() => callback(null), 20); // we have to wait at least one frame before expecting a result
+  setTimeout(() => callback(null, undefined), 20); // we have to wait at least one frame before expecting a result
 };
 
 eventBus.subscribe('net.connection.accepted', () => {

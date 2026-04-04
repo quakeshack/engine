@@ -1,6 +1,7 @@
 import type { Visibility } from '../common/model/BSP.ts';
+import type { SerializableType } from '../../shared/GameInterfaces.ts';
 import type Vector from '../../shared/Vector.ts';
-import type { BaseEntity, ServerEdict, WorldspawnEntity } from './Edict.ts';
+import type { BaseEntity, ServerEdict } from './Edict.ts';
 
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
@@ -11,7 +12,7 @@ import { ServerClient } from './Client.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
 
 type BitsWriter = 'writeByte' | 'writeShort' | 'writeLong';
-type EntityFieldValue = string | number | boolean | Vector | null | ServerEdict | BaseEntity | undefined;
+type DynamicEntityFieldValue = SerializableType | undefined;
 
 interface DamageInflictorEntityLike {
   edict?: ServerEdict;
@@ -19,7 +20,12 @@ interface DamageInflictorEntityLike {
   entity: ServerMessageEntity;
 }
 
-interface ServerMessageEntity extends BaseEntity, Record<string, EntityFieldValue> {
+interface WorldspawnMessageEntity {
+  message?: string | null;
+  sounds?: number;
+}
+
+interface ServerMessageEntity extends BaseEntity {
   alpha: number;
   ammo_cells: number;
   ammo_nails: number;
@@ -27,7 +33,7 @@ interface ServerMessageEntity extends BaseEntity, Record<string, EntityFieldValu
   ammo_shells: number;
   armorvalue: number;
   classname: string;
-  colormap?: number;
+  colormap: number;
   currentammo: number;
   dmg_inflictor: DamageInflictorEntityLike | ServerEdict | null;
   dmg_save: number;
@@ -36,6 +42,7 @@ interface ServerMessageEntity extends BaseEntity, Record<string, EntityFieldValu
   fixangle: boolean;
   flags: number;
   frame: number;
+  frags: number;
   health: number;
   idealpitch: number;
   items: number;
@@ -81,12 +88,12 @@ function requireEntity(edict: ServerEdict): ServerMessageEntity {
  * Returns the initialized worldspawn entity.
  * @returns The current worldspawn entity.
  */
-function requireWorldspawnEntity(): WorldspawnEntity {
+function requireWorldspawnEntity(): WorldspawnMessageEntity {
   const entity = SV.server.edicts[0]?.entity;
 
   console.assert(entity !== null, 'ServerMessages requires a worldspawn entity');
 
-  return entity as WorldspawnEntity;
+  return entity as WorldspawnMessageEntity;
 }
 
 /**
@@ -596,9 +603,14 @@ export class ServerMessages {
         if (SV.server.clientEntityFields[entity.classname]) {
           const entityFields = SV.server.clientEntityFields[entity.classname];
           const fields = entityFields.fields;
+          const serializableEntity = entity as ServerMessageEntity & Record<string, DynamicEntityFieldValue>;
 
           for (const field of fields) {
-            toState.extended[field] = entity[field];
+            const value = serializableEntity[field];
+
+            if (value !== undefined) {
+              toState.extended[field] = value;
+            }
           }
         }
       }
@@ -765,10 +777,11 @@ export class ServerMessages {
 
       let fieldbits = 0;
       const values = [];
+      const serializableEntity = clientEntity as ServerMessageEntity & Record<string, DynamicEntityFieldValue>;
 
       for (let i = 0; i < clientdataFields.length; i++) {
         const field = clientdataFields[i];
-        const value = clientEntity[field];
+        const value = serializableEntity[field];
 
         if (!value) {
           continue;
@@ -857,7 +870,7 @@ export class ServerMessages {
   updateToReliableMessages(): void {
     for (let i = 0; i < SV.svs.maxclients; i++) {
       const currentClient = SV.svs.clients[i];
-      const frags = currentClient.edict.entity ? currentClient.edict.entity.frags | 0 : 0;
+      const frags = currentClient.edict.entity ? requireEntity(currentClient.edict).frags | 0 : 0;
       if (currentClient.old_frags === frags) {
         continue;
       }

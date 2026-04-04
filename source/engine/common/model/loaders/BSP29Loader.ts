@@ -36,6 +36,8 @@ interface MaterialFile {
   readonly materials: Record<string, MaterialDefinition>;
 }
 
+type MaterialTextureCategory = 'luminance' | 'diffuse' | 'specular' | 'normal';
+
 function getNodeChild(node: Node, childIndex: 0 | 1): Node {
   const child = node.children[childIndex];
   console.assert(child instanceof Node, 'BSP29Loader expected linked BSP child node');
@@ -149,6 +151,10 @@ export class BSP29Loader extends ModelLoader {
       GLTexture.FromImageFile(`gfx/env/${skyname}up.png`),
       GLTexture.FromImageFile(`gfx/env/${skyname}dn.png`),
     ]);
+
+    if (front === null || back === null || left === null || right === null || up === null || down === null) {
+      return;
+    }
 
     // CR: unholy yet convenient hack to pass sky texture data to SkyRenderer
     loadmodel.newSkyRenderer = function () {
@@ -290,16 +296,23 @@ export class BSP29Loader extends ModelLoader {
       if (name[0] === '+') { // animation prefix
         const frame = name.toUpperCase().charCodeAt(1);
 
-        if (frame >= 48 && frame <= 57) { // '0'-'9'
-          const frameIndex = frame - 48;
-          tx.addAnimationFrame(frameIndex, glt, luminanceTexture);
-        } else if (frame >= 65 && frame <= 74) { // 'A'-'J'
-          const frameIndex = frame - 65;
-          tx.addAlternateFrame(frameIndex, glt, luminanceTexture);
+        if (glt !== null) {
+          if (frame >= 48 && frame <= 57) { // '0'-'9'
+            const frameIndex = frame - 48;
+            tx.addAnimationFrame(frameIndex, glt, luminanceTexture);
+          } else if (frame >= 65 && frame <= 74) { // 'A'-'J'
+            const frameIndex = frame - 65;
+            tx.addAlternateFrame(frameIndex, glt, luminanceTexture);
+          }
         }
       } else {
-        tx.texture = glt;
-        tx.luminanceTexture = luminanceTexture;
+        if (glt !== null) {
+          tx.texture = glt;
+        }
+
+        if (luminanceTexture !== null) {
+          tx.luminanceTexture = luminanceTexture;
+        }
       }
 
       loadmodel.textures[i] = tx;
@@ -374,13 +387,23 @@ export class BSP29Loader extends ModelLoader {
       const [txIndex, texture] = textureEntry;
       const pbr = new PBRMaterial(texture.name, texture.width, texture.height);
 
-      for (const category of ['luminance', 'diffuse', 'specular', 'normal']) {
-        if (textures[category]) {
+      const materialTextureCategories: MaterialTextureCategory[] = ['luminance', 'diffuse', 'specular', 'normal'];
+
+      for (const category of materialTextureCategories) {
+        const texturePath = textures[category];
+
+        if (texturePath) {
           try {
-            pbr[category] = await GLTexture.FromImageFile(textures[category]);
-            Con.DPrint(`BSP29Loader: loaded ${category} texture for ${texture.name} from ${textures[category]}\n`);
-          } catch (e) {
-            Con.PrintError(`BSP29Loader: failed to load ${textures[category]}: ${e.message}\n`);
+            const loadedTexture = await GLTexture.FromImageFile(texturePath);
+
+            if (loadedTexture !== null) {
+              pbr[category] = loadedTexture;
+            }
+
+            Con.DPrint(`BSP29Loader: loaded ${category} texture for ${texture.name} from ${texturePath}\n`);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            Con.PrintError(`BSP29Loader: failed to load ${texturePath}: ${errorMessage}\n`);
           }
         }
       }
@@ -395,7 +418,7 @@ export class BSP29Loader extends ModelLoader {
         }
       }
 
-      if (!textures.diffuse && (texture instanceof QuakeMaterial)) {
+      if (!textures.diffuse && texture instanceof QuakeMaterial && texture.texture !== null) {
         pbr.diffuse = texture.texture; // keep original diffuse as base
       }
 
@@ -622,12 +645,18 @@ export class BSP29Loader extends ModelLoader {
       }
     }
 
-    const portals = [];
+    const portals: Array<{
+      readonly portalNum: number;
+      readonly axis: 0 | 1 | 2;
+      readonly dist: number;
+      readonly backVis: ReturnType<BrushModel['getPhsByPoint']>;
+      readonly frontVis: ReturnType<BrushModel['getPhsByPoint']>;
+    }> = [];
 
     for (const [portalNum, bbox] of mergedBboxes) {
       // Determine split plane (thinnest axis)
-      const size = [bbox.maxs[0] - bbox.mins[0], bbox.maxs[1] - bbox.mins[1], bbox.maxs[2] - bbox.mins[2]];
-      let axis = 0;
+      const size: [number, number, number] = [bbox.maxs[0] - bbox.mins[0], bbox.maxs[1] - bbox.mins[1], bbox.maxs[2] - bbox.mins[2]];
+      let axis: 0 | 1 | 2 = 0;
 
       if (size[1] < size[0]) {
         axis = 1;
@@ -672,10 +701,16 @@ export class BSP29Loader extends ModelLoader {
         }
 
         const p = portals[i];
+        const nodeMins = node.mins;
+        const nodeMaxs = node.maxs;
 
-        if (node.maxs[p.axis] < p.dist) {
+        if (nodeMins === null || nodeMaxs === null) {
+          continue;
+        }
+
+        if (nodeMaxs[p.axis] < p.dist) {
           nextStates[i] = 0;
-        } else if (node.mins[p.axis] > p.dist) {
+        } else if (nodeMins[p.axis] > p.dist) {
           nextStates[i] = 1;
         }
       }
@@ -687,9 +722,17 @@ export class BSP29Loader extends ModelLoader {
           return;
         }
 
-        const cx = (node.mins[0] + node.maxs[0]) * 0.5;
-        const cy = (node.mins[1] + node.maxs[1]) * 0.5;
-        const cz = (node.mins[2] + node.maxs[2]) * 0.5;
+        const nodeMins = node.mins;
+        const nodeMaxs = node.maxs;
+        console.assert(nodeMins !== null && nodeMaxs !== null, 'leaf nodes require bounds for area computation');
+
+        if (nodeMins === null || nodeMaxs === null) {
+          return;
+        }
+
+        const cx = (nodeMins[0] + nodeMaxs[0]) * 0.5;
+        const cy = (nodeMins[1] + nodeMaxs[1]) * 0.5;
+        const cz = (nodeMins[2] + nodeMaxs[2]) * 0.5;
         const center = [cx, cy, cz];
 
         let sig = '';
@@ -759,12 +802,18 @@ export class BSP29Loader extends ModelLoader {
         const area = nextArea++;
         areasList.push({ sig, area });
         areaLeafsMap.set(area, []);
+        const areaLeafs = areaLeafsMap.get(area);
+        console.assert(areaLeafs !== undefined, 'area leaf list must exist after initialization');
+
+        if (areaLeafs === undefined) {
+          continue;
+        }
 
         // BFS within this signature group using PVS
         const queue = [startLeaf];
         visited.add(startLeaf);
         loadmodel.leafs[startLeaf].area = area;
-        areaLeafsMap.get(area).push(startLeaf);
+        areaLeafs.push(startLeaf);
 
         while (queue.length > 0) {
           const current = queue.shift();
@@ -775,7 +824,7 @@ export class BSP29Loader extends ModelLoader {
             if (!visited.has(candidate) && pvs.isRevealed(candidate)) {
               visited.add(candidate);
               loadmodel.leafs[candidate].area = area;
-              areaLeafsMap.get(area).push(candidate);
+              areaLeafs.push(candidate);
               queue.push(candidate);
             }
           }
@@ -821,6 +870,11 @@ export class BSP29Loader extends ModelLoader {
         // PVS Adjacency Check
         const leafsA = areaLeafsMap.get(areaA);
         const leafsB = areaLeafsMap.get(areaB);
+
+        if (leafsA === undefined || leafsB === undefined) {
+          continue;
+        }
+
         let pvsAdjacent = false;
 
         // Check A seeing B (optimization: only check first few or scan until hit)
@@ -875,7 +929,7 @@ export class BSP29Loader extends ModelLoader {
     const autoAssignDoors: { modelIndex: number; model: string }[] = [];
     let maxExplicitPortal = -1;
 
-    let data = loadmodel.entities;
+    let data: string | null = loadmodel.entities;
 
     Con.DPrint('BSP29Loader.#parsePortalEntities: looking for portals in entity lump...\n');
 
@@ -1362,6 +1416,12 @@ export class BSP29Loader extends ModelLoader {
 
     for (let i = 0; i < loadmodel.leafs.length; i++) {
       const leaf = loadmodel.leafs[i];
+      const leafMins = leaf.mins;
+      const leafMaxs = leaf.maxs;
+
+      if (leafMins === null || leafMaxs === null) {
+        continue;
+      }
 
       // Skip liquid leafs — we want light from surrounding solid geometry
       if (leaf.contents === content.CONTENT_WATER
@@ -1371,9 +1431,9 @@ export class BSP29Loader extends ModelLoader {
       }
 
       // AABB overlap test
-      if (leaf.mins[0] > eMaxs[0] || leaf.maxs[0] < eMins[0]
-        || leaf.mins[1] > eMaxs[1] || leaf.maxs[1] < eMins[1]
-        || leaf.mins[2] > eMaxs[2] || leaf.maxs[2] < eMins[2]) {
+      if (leafMins[0] > eMaxs[0] || leafMaxs[0] < eMins[0]
+        || leafMins[1] > eMaxs[1] || leafMaxs[1] < eMins[1]
+        || leafMins[2] > eMaxs[2] || leafMaxs[2] < eMins[2]) {
         continue;
       }
 
@@ -1386,9 +1446,15 @@ export class BSP29Loader extends ModelLoader {
           continue;
         }
 
+        const lmshift = face.lmshift;
+
+        if (lmshift === null) {
+          continue;
+        }
+
         // Compute lightmap dimensions for this face
-        const smax = (face.extents[0] >> face.lmshift) + 1;
-        const tmax = (face.extents[1] >> face.lmshift) + 1;
+        const smax = (face.extents[0] >> lmshift) + 1;
+        const tmax = (face.extents[1] >> lmshift) + 1;
         const size = smax * tmax;
 
         if (size <= 0 || size > 4096) {
@@ -1397,28 +1463,40 @@ export class BSP29Loader extends ModelLoader {
 
         // Sample only the first light style (style 0 = static light)
         if (hasRGB) {
+          const lightdataRgb = loadmodel.lightdata_rgb;
+
+          if (lightdataRgb === null) {
+            continue;
+          }
+
           const offset = face.lightofs * 3;
 
-          if (offset + size * 3 > loadmodel.lightdata_rgb.length) {
+          if (offset + size * 3 > lightdataRgb.length) {
             continue;
           }
 
           for (let s = 0; s < size * 3; s += 3) {
             // Perceptual luminance
-            totalIntensity += loadmodel.lightdata_rgb[offset + s] * 0.299
-              + loadmodel.lightdata_rgb[offset + s + 1] * 0.587
-              + loadmodel.lightdata_rgb[offset + s + 2] * 0.114;
+            totalIntensity += lightdataRgb[offset + s] * 0.299
+              + lightdataRgb[offset + s + 1] * 0.587
+              + lightdataRgb[offset + s + 2] * 0.114;
             sampleCount++;
           }
         } else {
+          const lightdata = loadmodel.lightdata;
+
+          if (lightdata === null) {
+            continue;
+          }
+
           const offset = face.lightofs;
 
-          if (offset + size > loadmodel.lightdata.length) {
+          if (offset + size > lightdata.length) {
             continue;
           }
 
           for (let s = 0; s < size; s++) {
-            totalIntensity += loadmodel.lightdata[offset + s];
+            totalIntensity += lightdata[offset + s];
             sampleCount++;
           }
         }
@@ -1617,7 +1695,6 @@ export class BSP29Loader extends ModelLoader {
         firstedge: view.getInt32(fileofs + 4, true),
         numedges: view.getUint16(fileofs + 8, true),
         texinfo: view.getUint16(fileofs + 10, true),
-        styles: [],
         lightofs: view.getInt32(fileofs + 16, true),
         lmshift,
       });
@@ -1663,9 +1740,9 @@ export class BSP29Loader extends ModelLoader {
       face.texturemins = [Math.floor(mins[0] / lmscale) * lmscale, Math.floor(mins[1] / lmscale) * lmscale];
       face.extents = [Math.ceil(maxs[0] / lmscale) * lmscale - face.texturemins[0], Math.ceil(maxs[1] / lmscale) * lmscale - face.texturemins[1]];
 
-      if (loadmodel.textures[tex.texture].flags & MaterialFlags.MF_TURBULENT) {
+      if (loadmodel.textures[face.texture].flags & MaterialFlags.MF_TURBULENT) {
         face.turbulent = true;
-      } else if (loadmodel.textures[tex.texture].flags & MaterialFlags.MF_SKY) {
+      } else if (loadmodel.textures[face.texture].flags & MaterialFlags.MF_SKY) {
         face.sky = true;
       }
 
@@ -2289,14 +2366,24 @@ export class BSP29Loader extends ModelLoader {
       }
 
       if (d1 >= 0) {
-        insertBrushRecursive(node.children[0], brushIdx, brush);
+        const frontChild = node.children[0];
+        console.assert(frontChild !== null, 'brush insertion requires linked BSP child');
+
+        if (frontChild !== null) {
+          insertBrushRecursive(frontChild as Node, brushIdx, brush);
+        }
       }
       // Brushes that touch the split plane on their back-most extent must be
       // inserted into both leaves. Otherwise exact-boundary player positions
       // can miss a clip brush in one leaf and hit it only after a tiny move
       // into the adjacent leaf, producing false stuck/allsolid behavior.
       if (d2 <= 0) {
-        insertBrushRecursive(node.children[1], brushIdx, brush);
+        const backChild = node.children[1];
+        console.assert(backChild !== null, 'brush insertion requires linked BSP child');
+
+        if (backChild !== null) {
+          insertBrushRecursive(backChild as Node, brushIdx, brush);
+        }
       }
     };
 
@@ -2430,15 +2517,15 @@ export class BSP29Loader extends ModelLoader {
       }
 
       // vec3_t step
-      const step = new Vector(
+      const step: [number, number, number] = [
         view.getFloat32(offset, true),
         view.getFloat32(offset + 4, true),
         view.getFloat32(offset + 8, true),
-      );
+      ];
       offset += 12;
 
       // ivec3_t size
-      const size = [
+      const size: [number, number, number] = [
         view.getInt32(offset, true),
         view.getInt32(offset + 4, true),
         view.getInt32(offset + 8, true),
@@ -2507,14 +2594,14 @@ export class BSP29Loader extends ModelLoader {
           return;
         }
 
-        const leafMins = [
+        const leafMins: [number, number, number] = [
           view.getInt32(offset, true),
           view.getInt32(offset + 4, true),
           view.getInt32(offset + 8, true),
         ];
         offset += 12;
 
-        const leafSize = [
+        const leafSize: [number, number, number] = [
           view.getInt32(offset, true),
           view.getInt32(offset + 4, true),
           view.getInt32(offset + 8, true),
