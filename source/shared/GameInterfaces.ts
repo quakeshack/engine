@@ -3,7 +3,7 @@ import type { ClientEngineAPI as ClientEngineApiValue, ServerEngineAPI as Server
 import type { ClientEdict as ClientEdictValue } from '../engine/client/ClientEntities.ts';
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
 import type { GLTexture as GLTextureValue } from '../engine/client/GL.mjs';
-import type { SFX as SFXValue } from '../engine/client/Sound.mjs';
+import type { SFX as SFXValue } from '../engine/client/Sound.ts';
 import type CvarValue from '../engine/common/Cvar.ts';
 import type Vector from './Vector.ts';
 import type { PmoveConfiguration as PmoveConfigurationValue, PmoveQuake2Configuration as PmoveQuake2ConfigurationValue } from '../shared/Pmove.ts';

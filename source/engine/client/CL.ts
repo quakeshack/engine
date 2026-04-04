@@ -1,10 +1,12 @@
+import type { SFX } from './Sound.ts';
+
 import Q from '../../shared/Q.ts';
 import * as Def from '../common/Def.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { Pmove, PmovePlayer } from '../common/Pmove.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
 import { gameCapabilities, solid } from '../../shared/Defs.ts';
 import ClientDemos from './ClientDemos.ts';
 import { ClientPlayerState } from './ClientMessages.ts';
@@ -14,16 +16,11 @@ import ClientConnection from './ClientConnection.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { BrushModel } from '../common/Mod.ts';
 // import { materialFlags, PBRMaterial, QuakeMaterial } from './renderer/Materials.mjs';
-/** @typedef {import('./Sound.mjs').SFX} SFX */
 
-let { Con, Draw, Host, S, Sbar } = registry;
+let { Con, Draw, Host, S, Sbar } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  Con = registry.Con;
-  Draw = registry.Draw;
-  Host = registry.Host;
-  S = registry.S;
-  Sbar = registry.Sbar;
+  ({ Con, Draw, Host, S, Sbar } = getClientRegistry());
 });
 
 export default class CL {
@@ -33,20 +30,17 @@ export default class CL {
   /** @deprecated – use Def.clientConnectionState */
   static active = Def.clientConnectionState;
 
-  /** @type {Pmove} */
   static pmove = new Pmove();
 
   static #clientDemos = new ClientDemos();
-  /** @type {ClientConnection} */
-  static #connection = null;
+  static #connection: ClientConnection;
 
-  /** @type {gameCapabilities[]} */
-  static gameCapabilities = [];
+  static gameCapabilities: gameCapabilities[] = [];
 
-  /** @type {boolean} */
   static sbarDisabled = false;
   static cls = clientStaticState;
   static state = clientRuntimeState;
+  static svc_strings: Array<[string, number]> = [];
 
   static {
     this.#connection = new ClientConnection({ clientDemos: this.#clientDemos });
@@ -54,59 +48,58 @@ export default class CL {
     this.svc_strings = Object.entries(Protocol.svc);
   }
 
-  /** @type {Cvar} */ static nolerp = null;
-  /** @type {Cvar} */ static rcon_password = null;
-  /** @type {Cvar} */ static shownet = null;
-  /** @type {Cvar} */ static name = null;
-  /** @type {Cvar} */ static color = null;
-  /** @type {Cvar} */ static upspeed = null;
-  /** @type {Cvar} */ static forwardspeed = null;
-  /** @type {Cvar} */ static backspeed = null;
-  /** @type {Cvar} */ static sidespeed = null;
-  /** @type {Cvar} */ static movespeedkey = null;
-  /** @type {Cvar} */ static yawspeed = null;
-  /** @type {Cvar} */ static pitchspeed = null;
-  /** @type {Cvar} */ static anglespeedkey = null;
-  /** @type {Cvar} */ static lookspring = null;
-  /** @type {Cvar} */ static lookstrafe = null;
-  /** @type {Cvar} */ static sensitivity = null;
-  /** @type {Cvar} */ static m_pitch = null;
-  /** @type {Cvar} */ static m_yaw = null;
-  /** @type {Cvar} */ static m_forward = null;
-  /** @type {Cvar} */ static m_side = null;
-  /** @type {Cvar} */ static nopred = null;
-  /** @type {Cvar} */ static nohud = null;
-  /** @type {Cvar} */ static areaportals = null;
+  static nolerp: Cvar = null!;
+  static rcon_password: Cvar = null!;
+  static shownet: Cvar = null!;
+  static name: Cvar = null!;
+  static color: Cvar = null!;
+  static upspeed: Cvar = null!;
+  static forwardspeed: Cvar = null!;
+  static backspeed: Cvar = null!;
+  static sidespeed: Cvar = null!;
+  static movespeedkey: Cvar = null!;
+  static yawspeed: Cvar = null!;
+  static pitchspeed: Cvar = null!;
+  static anglespeedkey: Cvar = null!;
+  static lookspring: Cvar = null!;
+  static lookstrafe: Cvar = null!;
+  static sensitivity: Cvar = null!;
+  static m_pitch: Cvar = null!;
+  static m_yaw: Cvar = null!;
+  static m_forward: Cvar = null!;
+  static m_side: Cvar = null!;
+  static nopred: Cvar = null!;
+  static nohud: Cvar = null!;
+  static areaportals: Cvar = null!;
 
-  /** @type {SFX} */ static sfx_talk = null;
-  /** @type {Protocol.UserCmd} */ static nullcmd = new Protocol.UserCmd();
+  static sfx_talk: SFX | null = null;
+  static nullcmd = new Protocol.UserCmd();
 
-
-  static StartDemos(demos) {
+  static StartDemos(demos: string[]): void {
     this.#clientDemos.startDemos(demos);
   }
 
-  static async StartPlayback(demoname, timedemo = false) {
+  static async StartPlayback(demoname: string, timedemo = false): Promise<void> {
     await this.#clientDemos.startPlayback(demoname, timedemo);
   }
 
-  static StopPlayback() { // public, by Host.js
+  static StopPlayback(): void { // public, by Host.js
     this.#clientDemos.stopPlayback();
   }
 
-  static StartRecording(demoname, forcetrack = -1) {
+  static StartRecording(demoname: string, forcetrack = -1): void {
     this.#clientDemos.startRecording(demoname, forcetrack);
   }
 
-  static async StopRecording() {
+  static async StopRecording(): Promise<void> {
     await this.#clientDemos.stopRecording();
   }
 
-  static NextDemo() { // public, by Host.js, M.js
+  static NextDemo(): void { // public, by Host.js, M.js
     this.#clientDemos.playNext();
-  };
+  }
 
-  static async Init() {
+  static async Init(): Promise<void> {
     eventBus.subscribe('server.spawning', () => {
       CL.SetConnectingStep(1, 'Spawning server');
     });
@@ -118,68 +111,68 @@ export default class CL {
     return ClientLifecycle.init();
   }
 
-  static InitGame() {
+  static InitGame(): void {
     return ClientLifecycle.initGame();
   }
 
-  static SetConnectingStep(percentage, message) {
+  static SetConnectingStep(percentage: number | null, message: string | null): void {
     CL.#connection.setConnectingStep(percentage, message);
   }
 
-  static GetMessage() {
+  static GetMessage(): number {
     return CL.#connection.getMessage();
   }
 
-  static SendCmd() {
+  static SendCmd(): void {
     CL.#connection.sendCmd();
   }
 
-  static ResetCheatCvars() {
+  static ResetCheatCvars(): void {
     CL.#connection.resetCheatCvars();
   }
 
-  static ClearState() {
+  static ClearState(): void {
     CL.#connection.clearState();
   }
 
-  static ConfigureConnectionIdentity(cvars) {
+  static ConfigureConnectionIdentity(cvars: { name: Cvar | null; color: Cvar | null; rcon_password: Cvar | null }): void {
     CL.#connection.configureIdentityCvars(cvars);
   }
 
-  static get connection() {
+  static get connection(): ClientConnection {
     return CL.#connection;
   }
 
-  static ReadFromServer() {
+  static ReadFromServer(): void {
     CL.connection.readFromServer();
   }
 
-  static ParseServerMessage() {
+  static ParseServerMessage(): void {
     CL.connection.parseServerMessage();
   }
 
-  static PrintLastServerMessages() {
+  static PrintLastServerMessages(): void {
     CL.connection.printLastServerMessages();
   }
 
-  static Disconnect() {
+  static Disconnect(): void {
     CL.#connection.disconnect();
   }
 
-  static CheckConnectingState() {
+  static CheckConnectingState(): void {
     CL.#connection.checkConnectingState();
   }
 
-  static Connect(host) {
+  static Connect(host: string): void {
     CL.#connection.connect(host);
   }
 
-  static SignonReply() {
+  static SignonReply(): void {
     CL.#connection.signonReply();
   }
 
-  static Stop_f = class StopRecordingCommand extends ConsoleCommand { // private
-    async run() {
+  static Stop_f = class StopRecordingCommand extends ConsoleCommand {
+    async run(): Promise<void> {
       if (this.client) {
         return;
       }
@@ -188,8 +181,8 @@ export default class CL {
     }
   };
 
-  static Record_f = class StartRecordingCommand extends ConsoleCommand { // private
-    run(demoname, map, track) {
+  static Record_f = class StartRecordingCommand extends ConsoleCommand {
+    run(demoname?: string, map?: string, track?: string): void {
       if (this.client) {
         return;
       }
@@ -216,7 +209,7 @@ export default class CL {
   };
 
   static StartDemos_f = class StartDemosCommand extends ConsoleCommand {
-    run(...demos) {
+    run(...demos: string[]): void {
       if (this.client) {
         return;
       }
@@ -235,7 +228,7 @@ export default class CL {
   };
 
   static Demos_f = class NextDemoCommand extends ConsoleCommand {
-    run() {
+    run(): void {
       if (CL.#clientDemos.demonum === -1) {
         CL.#clientDemos.demonum = 1;
       }
@@ -246,7 +239,7 @@ export default class CL {
   };
 
   static StopDemo_f = class StopPlaybackCommand extends ConsoleCommand {
-    run() {
+    run(): void {
       if (this.client) {
         return;
       }
@@ -260,7 +253,7 @@ export default class CL {
   };
 
   static PlayDemo_f = class StartPlaybackCommand extends ConsoleCommand {
-    async run(demoname) {
+    async run(demoname?: string): Promise<void> {
       if (this.client) {
         return;
       }
@@ -276,7 +269,7 @@ export default class CL {
   };
 
   static TimeDemo_f = class TimeDemoCommand extends ConsoleCommand { // private
-    async run(demoname) {
+    async run(demoname?: string): Promise<void> {
       if (this.client) {
         return;
       }
@@ -292,7 +285,7 @@ export default class CL {
   };
 
   static Rcon_f = class extends ConsoleCommand {
-    run(...args) { // private
+    run(...args: string[]): void { // private
       if (args.length === 0) {
         Con.Print('Usage: rcon <command>\n');
         return;
@@ -311,8 +304,7 @@ export default class CL {
     }
   };
 
-  static Draw() { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR
-
+  static Draw(): void { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR
     if (this.cls.changelevel || this.cls.connecting) {
       Draw.BlackScreen();
 
@@ -337,7 +329,7 @@ export default class CL {
     }
   }
 
-  static DrawHUD() {
+  static DrawHUD(): void {
     if (this.nohud.value !== 0) {
       return;
     }
@@ -351,7 +343,7 @@ export default class CL {
     }
   }
 
-  static ClientFrame() {
+  static ClientFrame(): void {
     if (this.cls.signon !== 4) {
       return; // not ready yet
     }
@@ -375,10 +367,9 @@ export default class CL {
     //   // comptex.flags &= ~materialFlags.MF_SKIP;
     //   Draw.EndTexture();
     // }
-
   }
 
-  static ServerInfo_f() { // private
+  static ServerInfo_f(): void { // private
     if (CL.cls.state !== Def.clientConnectionState.connected) {
       Con.Print('Can\'t "serverinfo", not connected\n');
       return;
@@ -389,7 +380,7 @@ export default class CL {
     }
   }
 
-  static MoveAround_f() { // private
+  static MoveAround_f(): void { // private
     if (CL.cls.state !== Def.clientConnectionState.connected) {
       Con.Print('Can\'t "movearound", not connected\n');
       return;
@@ -410,7 +401,7 @@ export default class CL {
     CL.cls.movearound = setInterval(() => {
       if (CL.cls.state !== Def.clientConnectionState.connected) {
         Con.Print('No longer connected, stopped moving around.\n');
-        clearInterval(CL.cls.movearound);
+        clearInterval(CL.cls.movearound!);
         CL.cls.movearound = null;
         return;
       }
@@ -435,7 +426,7 @@ export default class CL {
     Con.Print('Started moving around.\n');
   }
 
-  static AppendChatMessage(name, message, direct) { // private // TODO: Client
+  static AppendChatMessage(name: string, message: string, direct: boolean): void { // private // TODO: Client
     eventBus.publish('client.chat.message', name, message, direct);
 
     if (this.gameCapabilities.includes(gameCapabilities.CAP_CHAT_MANAGED)) {
@@ -446,11 +437,11 @@ export default class CL {
       this.state.chatlog.shift();
     }
 
-    this.state.chatlog.push({name, message, direct});
+    this.state.chatlog.push({ name, message, direct });
     S.LocalSound(this.sfx_talk);
   }
 
-  static PredictMove() { // public, by Host.js
+  static PredictMove(): void { // public, by Host.js
     this.state.time = Host.realtime - this.state.latency;
     this.state.predicted = false;
 
@@ -536,7 +527,7 @@ export default class CL {
    * Populates CL.pmove with solid entities from the client entity list
    * for collision detection during prediction.
    */
-  static #setupPredictionPhysents() {
+  static #setupPredictionPhysents(): void {
     const pm = this.pmove;
     pm.clearEntities();
 
@@ -572,7 +563,7 @@ export default class CL {
    * @param {ClientPlayerState} to current state
    * @param {Protocol.UserCmd} u player commands
    */
-  static PredictUsercmd(pmove, from, to, u) { // private
+  static PredictUsercmd(pmove: PmovePlayer, from: ClientPlayerState, to: ClientPlayerState, u: Protocol.UserCmd): void { // private
     // split long commands
     if (u.msec > 50) {
       const mid = new ClientPlayerState(pmove);
@@ -616,8 +607,7 @@ export default class CL {
    * then with clipping against them.
    * This sets up the first phase.
    */
-  static SetUpPlayerPrediction() { // public, by Host.js
+  static SetUpPlayerPrediction(): void { // public, by Host.js
     // TODO: implement prediction setup once client prediction is refactored.
   }
-
-};
+}

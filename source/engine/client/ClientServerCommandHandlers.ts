@@ -11,7 +11,7 @@ import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
 import { eventBus, getClientRegistry } from '../registry.mjs';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
-import type { SFX } from './Sound.mjs';
+import type { SFX } from './Sound.ts';
 
 import { legacyServerCommandHandlers, handleLegacyEntityUpdate } from './LegacyServerCommands.ts';
 

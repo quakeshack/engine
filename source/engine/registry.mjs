@@ -8,14 +8,14 @@
 /** @typedef {typeof import('./server/Server.ts').default} ServerModule */
 /** @typedef {typeof import('./server/Progs.ts').default} ProgsModule */
 /** @typedef {typeof import('./common/Mod.ts').default} ModModule */
-/** @typedef {typeof import('./client/CL.mjs').default} ClientModule */
+/** @typedef {typeof import('./client/CL.ts').default} ClientModule */
 /** @typedef {typeof import('./client/SCR.mjs').default} ScrModule */
 /** @typedef {typeof import('./client/R.mjs').default} RendererModule */
 /** @typedef {typeof import('./client/Draw.mjs').default} DrawModule */
 /** @typedef {typeof import('./client/Key.mjs').default} KeyModule */
 /** @typedef {typeof import('./client/Sbar.mjs').default} SbarModule */
-/** @typedef {typeof import('./client/Sound.mjs').default} SoundModule */
-/** @typedef {typeof import('./client/Menu.mjs').default} MenuModule */
+/** @typedef {typeof import('./client/Sound.ts').default} SoundModule */
+/** @typedef {typeof import('./client/Menu.ts').default} MenuModule */
 /** @typedef {typeof import('./client/IN.ts').default} InputModule */
 /** @typedef {typeof globalThis.WebSocket} BrowserWebSocketClass */
 /** @typedef {typeof import('ws')} NodeWebSocketModule */

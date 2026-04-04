@@ -1,50 +1,52 @@
+import type { Node as BSPNode } from '../common/model/BSP.ts';
+
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import Q from '../../shared/Q.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
 
-/** @typedef {import('../common/model/BSP.ts').Node} BSPNode */
-
-let { CL, COM, Con, Host } = registry;
+let { CL, COM, Con, Host } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Host } = registry);
+  ({ CL, COM, Con, Host } = getClientRegistry());
 });
 
 const MAX_DYNAMIC_CHANNELS = 64;
 
-/** @typedef {{data: AudioBuffer, length: number, size: number, loopstart: ?number}} SFXCache */
+type SFXCache = {
+  data: AudioBuffer;
+  length: number;
+  size: number;
+  loopstart: number | null;
+};
+
+export enum SfxState {
+  NEW = 'new',
+  LOADING = 'loading',
+  AVAILABLE = 'available',
+  FAILED = 'failed',
+}
 
 // ─── SFX ────────────────────────────────────────────────────────────────────────
 
 export class SFX {
-  static STATE = {
-    NEW: 'new',
-    LOADING: 'loading',
-    AVAILABLE: 'available',
-    FAILED: 'failed',
-  };
+  static readonly STATE = SfxState;
 
-  /** @param {string} name sfx filename */
-  constructor(name) {
-    /** @type {string} */
+  name: string;
+  cache: SFXCache | null = null;
+  state: SfxState = SfxState.NEW;
+
+  _readyPromise: Promise<SFX> | null = null;
+  _readyResolve: ((sfx: SFX) => void) | null = null;
+  _readyReject: ((err: Error) => void) | null = null;
+
+  constructor(name: string) {
     this.name = name;
-    /** @type {SFXCache|null} */
-    this.cache = null;
-    /** @type {string} */
-    this.state = SFX.STATE.NEW;
-
-    /** @type {Promise<SFX>|null} */
-    this._readyPromise = null;
-    /** @type {((sfx: SFX) => void)|null} */
-    this._readyResolve = null;
-    /** @type {((err: Error) => void)|null} */
-    this._readyReject = null;
   }
 
   /** @returns {Promise<SFX>} resolves when the SFX data is loaded */
-  get ready() {
+  get ready(): Promise<SFX> {
     if (this._readyPromise === null) {
       if (this.state === SFX.STATE.AVAILABLE) {
         this._readyPromise = Promise.resolve(this);
@@ -57,18 +59,20 @@ export class SFX {
         });
       }
     }
+
     return this._readyPromise;
   }
 
   /** @returns {Promise<boolean>} whether loading succeeded */
-  async load() {
+  async load(): Promise<boolean> {
     if (this.state !== SFX.STATE.NEW) {
       return false;
     }
-    return await Sound.LoadSound(this);
+
+    return Sound.LoadSound(this);
   }
 
-  play() {
+  play(): void {
     Sound.LocalSound(this);
   }
 }
@@ -76,44 +80,30 @@ export class SFX {
 // ─── Channel ────────────────────────────────────────────────────────────────────
 
 class Channel {
-  /**
-   * @param {AudioContext} context Web Audio context
-   * @param {AudioNode} destination master gain bus
-   */
-  constructor(context, destination) {
-    /** @type {SFX|null} */
-    this.sfx = null;
-    /** @type {Vector} */
-    this.origin = new Vector();
-    /** @type {number} */
-    this.dist_mult = 0;
-    /** @type {number|null} */
-    this.entnum = null;
-    /** @type {number|null} */
-    this.entchannel = null;
-    /** @type {number} */
-    this.end = 0;
-    /** @type {number} */
-    this.master_vol = 0;
-    /** @type {number} */
-    this.channel_vol = 0;
-    /** @type {number} */
-    this.pan = 0;
+  sfx: SFX | null = null;
+  origin = new Vector();
+  dist_mult = 0;
+  entnum: number | null = null;
+  entchannel: number | null = null;
+  end = 0;
+  master_vol = 0;
+  channel_vol = 0;
+  pan = 0;
 
-    /** @type {AudioContext} */
+  _context: AudioContext;
+  _panner: StereoPannerNode;
+  _gain: GainNode;
+  _source: AudioBufferSourceNode | null = null;
+
+  constructor(context: AudioContext, destination: AudioNode) {
     this._context = context;
-    /** @type {StereoPannerNode} */
     this._panner = context.createStereoPanner();
-    /** @type {GainNode} */
     this._gain = context.createGain();
     this._panner.connect(this._gain);
     this._gain.connect(destination);
-
-    /** @type {AudioBufferSourceNode|null} */
-    this._source = null;
   }
 
-  reset() {
+  reset(): void {
     this.stop();
     this.sfx = null;
     this.origin[0] = 0;
@@ -129,7 +119,7 @@ class Channel {
   }
 
   /** Starts playback of the current sfx from the beginning. */
-  play() {
+  play(): void {
     if (!this.sfx?.cache) {
       return;
     }
@@ -160,7 +150,7 @@ class Channel {
     this.updateVol();
   }
 
-  stop() {
+  stop(): void {
     if (!this._source) {
       return;
     }
@@ -171,11 +161,14 @@ class Channel {
 
     try {
       source.stop(0);
-    } catch { /* already stopped */ }
+    } catch {
+      /* already stopped */
+    }
+
     source.disconnect();
   }
 
-  updateVol() {
+  updateVol(): void {
     this._panner.pan.value = Math.max(-1, Math.min(1, this.pan));
     this._gain.gain.value = Math.max(0, this.channel_vol * Sound.volume.value);
   }
@@ -183,7 +176,7 @@ class Channel {
   /**
    * Computes pan and channel_vol based on the listener position/orientation.
    */
-  spatialize() {
+  spatialize(): void {
     // Local sound: full volume, center pan
     if (this.entnum === CL.state.viewentity) {
       this.pan = 0;
@@ -193,7 +186,7 @@ class Channel {
     }
 
     // Area portal occlusion
-    if (CL.areaportals?.value > 0 && CL.state.worldmodel && Sound._listenerLeaf) {
+    if (CL.areaportals.value > 0 && CL.state.worldmodel && Sound._listenerLeaf) {
       const leaf = CL.state.worldmodel.getLeafForPoint(this.origin);
       if (!CL.state.worldmodel.areaPortals.leafsConnected(Sound._listenerLeaf, leaf)) {
         this.channel_vol = 0;
@@ -223,7 +216,7 @@ class Channel {
   }
 
   /** Disconnects all persistent audio nodes from the graph. */
-  dispose() {
+  dispose(): void {
     this.stop();
     this._panner.disconnect();
     this._gain.disconnect();
@@ -232,50 +225,35 @@ class Channel {
 
 // ─── Sound ──────────────────────────────────────────────────────────────────────
 
-class Sound {
-  /** @type {Channel[]} */
-  static _channels = [];
-  /** @type {Channel[]} */
-  static _staticChannels = [];
-  /** @type {Channel[]} */
-  static _ambientChannels = [];
-  /** @type {SFX[]} */
-  static _knownSfx = [];
+export default class Sound {
+  static _channels: Channel[] = [];
+  static _staticChannels: Channel[] = [];
+  static _ambientChannels: Channel[] = [];
+  static _knownSfx: SFX[] = [];
 
   // Listener state
   static _listenerOrigin = new Vector();
   static _listenerRight = new Vector();
-  /** @type {BSPNode|null} */
-  static _listenerLeaf = null;
+  static _listenerLeaf: BSPNode | null = null;
 
   static _started = false;
-  /** @type {AudioContext|null} */
-  static _context = null;
-  /** @type {GainNode|null} */
-  static _masterGain = null;
-  /** @type {BiquadFilterNode|null} */
-  static _underwaterFilter = null;
+  static _context: AudioContext | null = null;
+  static _masterGain: GainNode | null = null;
+  static _underwaterFilter: BiquadFilterNode | null = null;
 
   // Cvars
-  /** @type {Cvar} */
-  static _precache = null;
-  /** @type {Cvar} */
-  static _nosound = null;
-  /** @type {Cvar} */
-  static _ambientLevel = null;
-  /** @type {Cvar} */
-  static _ambientFade = null;
-  /** @type {Cvar} */
-  static volume = null;
-  /** @type {Cvar} */
-  static bgmvolume = null;
+  static _precache: Cvar = null!;
+  static _nosound: Cvar = null!;
+  static _ambientLevel: Cvar = null!;
+  static _ambientFade: Cvar = null!;
+  static volume: Cvar = null!;
+  static bgmvolume: Cvar = null!;
 
-  /** @type {Array<() => void>} */
-  static _eventListeners = [];
+  static _eventListeners: Array<() => void> = [];
 
   // ─── Init / Shutdown ────────────────────────────────────────────────────────
 
-  static Init() {
+  static Init(): void {
     Cmd.AddCommand('play', Sound.Play_f.bind(Sound));
     Cmd.AddCommand('playvol', Sound.PlayVol_f.bind(Sound));
     Cmd.AddCommand('stopsound', Sound.StopAllSounds.bind(Sound));
@@ -302,7 +280,8 @@ class Sound {
 
       Sound._started = true;
     } catch (err) {
-      Con.PrintWarning(`S.Init: AudioContext failed (${err.message}). Sound disabled.\n`);
+      const message = err instanceof Error ? err.message : String(err);
+      Con.PrintWarning(`S.Init: AudioContext failed (${message}). Sound disabled.\n`);
       return;
     }
 
@@ -318,7 +297,7 @@ class Sound {
       Sound._ambientChannels.push(ch);
 
       sfx.ready.then(() => {
-        if (sfx.cache.loopstart === null) {
+        if (sfx.cache?.loopstart === null) {
           Con.Print(`S.Init: Sound ${name} not looped\n`);
         }
         ch.play();
@@ -333,7 +312,7 @@ class Sound {
     Con.DPrint('Sound subsystem initialized.\n');
   }
 
-  static Shutdown() {
+  static Shutdown(): void {
     for (const unsub of Sound._eventListeners) {
       unsub();
     }
@@ -369,19 +348,19 @@ class Sound {
    * @param {string} name sound filename
    * @returns {SFX|null} the SFX handle or null if sound is disabled
    */
-  static PrecacheSound(name) {
+  static PrecacheSound(name: string): SFX | null {
     if (!Sound._started || Sound._nosound.value !== 0) {
       return null;
     }
 
-    let sfx = Sound._knownSfx.find((s) => s.name === name);
+    let sfx = Sound._knownSfx.find((soundEffect) => soundEffect.name === name);
     if (!sfx) {
       sfx = new SFX(name);
       Sound._knownSfx.push(sfx);
     }
 
     if (Sound._precache.value !== 0 && sfx.state === SFX.STATE.NEW) {
-      Sound.LoadSound(sfx).catch(() => {});
+      void Sound.LoadSound(sfx).catch(() => {});
     }
 
     return sfx;
@@ -391,12 +370,12 @@ class Sound {
    * @param {string} name sound filename
    * @returns {Promise<SFX|null>} the SFX handle or null if sound is disabled
    */
-  static async PrecacheSoundAsync(name) {
+  static async PrecacheSoundAsync(name: string): Promise<SFX | null> {
     if (!Sound._started || Sound._nosound.value !== 0) {
       return null;
     }
 
-    let sfx = Sound._knownSfx.find((s) => s.name === name);
+    let sfx = Sound._knownSfx.find((soundEffect) => soundEffect.name === name);
     if (!sfx) {
       sfx = new SFX(name);
       Sound._knownSfx.push(sfx);
@@ -416,7 +395,7 @@ class Sound {
    * @param {SFX} sfx sound effect to load
    * @returns {Promise<boolean>} whether loading succeeded
    */
-  static async LoadSound(sfx) {
+  static async LoadSound(sfx: SFX): Promise<boolean> {
     if (!Sound._started || Sound._nosound.value !== 0) {
       sfx.state = SFX.STATE.FAILED;
       return false;
@@ -428,6 +407,12 @@ class Sound {
 
     if (sfx.state !== SFX.STATE.NEW) {
       return sfx.state === SFX.STATE.AVAILABLE;
+    }
+
+    const context = Sound._context;
+    if (context === null) {
+      sfx.state = SFX.STATE.FAILED;
+      return false;
     }
 
     sfx.state = SFX.STATE.LOADING;
@@ -444,19 +429,20 @@ class Sound {
 
     const loopInfo = Sound._parseWavLoopInfo(data);
 
-    let audioBuffer;
+    let audioBuffer: AudioBuffer;
     try {
-      audioBuffer = await Sound._context.decodeAudioData(data);
-    } catch (e) {
-      Con.PrintError(`S.LoadSound: decodeAudioData failed for ${sfx.name}: ${e.message}\n`);
+      audioBuffer = await context.decodeAudioData(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Con.PrintError(`S.LoadSound: decodeAudioData failed for ${sfx.name}: ${message}\n`);
       sfx.state = SFX.STATE.FAILED;
-      sfx._readyReject?.(new Error(e.message));
+      sfx._readyReject?.(new Error(message));
       sfx._readyResolve = null;
       sfx._readyReject = null;
       return false;
     }
 
-    let loopstart = null;
+    let loopstart: number | null = null;
     if (loopInfo.loopstartSamples !== null) {
       const rate = loopInfo.sampleRate || audioBuffer.sampleRate;
       loopstart = loopInfo.loopstartSamples / rate;
@@ -474,7 +460,7 @@ class Sound {
   }
 
   /** Loads up to 4 pending sounds per batch, then recurses. */
-  static LoadPendingFiles() {
+  static LoadPendingFiles(): void {
     const pending = Sound._knownSfx.filter((sfx) => sfx.state === SFX.STATE.NEW);
     if (pending.length === 0) {
       return;
@@ -483,7 +469,8 @@ class Sound {
     Promise.all(pending.slice(0, 4).map((sfx) => sfx.load())).then(() => {
       Sound.LoadPendingFiles();
     }).catch((err) => {
-      Con.PrintError(`S.LoadPendingFiles: ${err.message || err}\n`);
+      const message = err instanceof Error ? err.message : String(err);
+      Con.PrintError(`S.LoadPendingFiles: ${message}\n`);
     });
   }
 
@@ -497,7 +484,7 @@ class Sound {
    * @param {number} vol master volume [0..1]
    * @param {number} attenuation distance falloff factor
    */
-  static StartSound(entnum, entchannel, sfx, origin, vol, attenuation) {
+  static StartSound(entnum: number, entchannel: number, sfx: SFX | null, origin: Vector, vol: number, attenuation: number): void {
     if (!Sound._started || Sound._nosound.value !== 0 || !sfx) {
       return;
     }
@@ -530,7 +517,7 @@ class Sound {
     }
 
     if (sfx.state === SFX.STATE.NEW) {
-      Sound.LoadSound(sfx).catch(() => {});
+      void Sound.LoadSound(sfx).catch(() => {});
     }
 
     if (sfx.state !== SFX.STATE.FAILED) {
@@ -544,7 +531,7 @@ class Sound {
    * @param {number} vol master volume [0..1]
    * @param {number} attenuation distance falloff factor
    */
-  static StaticSound(sfx, origin, vol, attenuation) {
+  static StaticSound(sfx: SFX | null, origin: Vector, vol: number, attenuation: number): void {
     if (!Sound._started || Sound._nosound.value !== 0 || !sfx) {
       return;
     }
@@ -563,6 +550,10 @@ class Sound {
     Sound._staticChannels.push(ch);
 
     const start = () => {
+      if (!sfx.cache) {
+        return;
+      }
+
       if (sfx.cache.loopstart === null) {
         Con.PrintWarning(`S.StaticSound: ${sfx.name} not looped, assuming start 0\n`);
         sfx.cache.loopstart = 0;
@@ -583,19 +574,19 @@ class Sound {
    * @param {number} entnum entity number
    * @param {number} entchannel channel on entity
    */
-  static StopSound(entnum, entchannel) {
+  static StopSound(entnum: number, entchannel: number): void {
     if (!Sound._started) {
       return;
     }
 
-    const ch = Sound._channels.find((c) => c.entnum === entnum && c.entchannel === entchannel);
+    const ch = Sound._channels.find((channel) => channel.entnum === entnum && channel.entchannel === entchannel);
     if (ch) {
       ch.stop();
       ch.reset();
     }
   }
 
-  static StopAllSounds() {
+  static StopAllSounds(): void {
     if (!Sound._started) {
       return;
     }
@@ -620,14 +611,14 @@ class Sound {
    * Plays a local (non-spatialized) sound at the view entity.
    * @param {SFX} sfx sound to play
    */
-  static LocalSound(sfx) {
+  static LocalSound(sfx: SFX | null): void {
     Sound.StartSound(CL.state.viewentity, -1, sfx, Vector.origin, 1.0, 1.0);
   }
 
   // ─── Console commands ───────────────────────────────────────────────────────
 
   /** @param {...string} samples sound names to play */
-  static Play_f(...samples) {
+  static Play_f(...samples: string[]): void {
     if (!Sound._started) {
       return;
     }
@@ -641,7 +632,7 @@ class Sound {
   }
 
   /** @param {...string} args name/volume pairs */
-  static PlayVol_f(...args) {
+  static PlayVol_f(...args: string[]): void {
     if (!Sound._started) {
       return;
     }
@@ -654,10 +645,10 @@ class Sound {
     }
   }
 
-  static SoundList_f() {
+  static SoundList_f(): void {
     let total = 0;
     for (const sfx of Sound._knownSfx) {
-      let info;
+      let info: string;
       if (sfx.state === SFX.STATE.AVAILABLE && sfx.cache) {
         const loop = sfx.cache.loopstart !== null ? 'L ' : '  ';
         info = `${loop} ${String(sfx.cache.size).padEnd(8)}`;
@@ -668,7 +659,7 @@ class Sound {
       Con.Print(`${info} : ${sfx.name}\n`);
     }
 
-    const playing = Sound._channels.filter((c) => c._source !== null).length;
+    const playing = Sound._channels.filter((channel) => channel._source !== null).length;
     Con.Print(`Total resident: ${total}\n`);
     Con.Print(`Active channels: ${playing}/${Sound._channels.length}\n`);
   }
@@ -682,7 +673,7 @@ class Sound {
    * @param {Vector} _up unused (kept for API compat)
    * @param {boolean} underwater whether the listener is submerged
    */
-  static Update(origin, _forward, right, _up, underwater) {
+  static Update(origin: Vector, _forward: Vector, right: Vector, _up: Vector, underwater: boolean): void {
     if (!Sound._started || Sound._nosound.value !== 0) {
       return;
     }
@@ -716,7 +707,7 @@ class Sound {
   }
 
   /** @protected */
-  static _updateAmbientSounds() {
+  static _updateAmbientSounds(): void {
     if (!CL.state.worldmodel || !Sound._listenerLeaf || Sound._ambientLevel.value === 0) {
       for (const ch of Sound._ambientChannels) {
         ch.channel_vol = 0;
@@ -747,7 +738,7 @@ class Sound {
   }
 
   /** @protected */
-  static _updateDynamicSounds() {
+  static _updateDynamicSounds(): void {
     for (const ch of Sound._channels) {
       if (!ch.sfx) {
         continue;
@@ -767,7 +758,7 @@ class Sound {
   }
 
   /** @protected */
-  static _updateStaticSounds() {
+  static _updateStaticSounds(): void {
     for (const ch of Sound._staticChannels) {
       ch.spatialize();
     }
@@ -776,11 +767,18 @@ class Sound {
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   /** @returns {Channel} a new audio channel wired to the master bus */
-  static _newChannel() {
-    return new Channel(Sound._context, Sound._masterGain);
+  static _newChannel(): Channel {
+    const context = Sound._context;
+    const masterGain = Sound._masterGain;
+
+    if (context === null || masterGain === null) {
+      throw new Error('Sound graph is not initialized');
+    }
+
+    return new Channel(context, masterGain);
   }
 
-  static _ensureContextRunning() {
+  static _ensureContextRunning(): void {
     if (Sound._context?.state === 'suspended') {
       Sound._context.resume().catch(() => {});
     }
@@ -791,10 +789,10 @@ class Sound {
    * @param {number} entchannel channel on entity
    * @returns {Channel} allocated or reused channel
    */
-  static _pickChannel(entnum, entchannel) {
+  static _pickChannel(entnum: number, entchannel: number): Channel {
     // Reuse existing channel for same entity+channel
     if (entchannel !== 0) {
-      const existing = Sound._channels.find((c) => c.entnum === entnum && c.entchannel === entchannel);
+      const existing = Sound._channels.find((channel) => channel.entnum === entnum && channel.entchannel === entchannel);
       if (existing) {
         existing.reset();
         return existing;
@@ -802,7 +800,7 @@ class Sound {
     }
 
     // Find a free channel
-    const free = Sound._channels.find((c) => !c.sfx);
+    const free = Sound._channels.find((channel) => !channel.sfx);
     if (free) {
       return free;
     }
@@ -815,7 +813,7 @@ class Sound {
     }
 
     // Voice steal: pick quietest non-local channel
-    let victim = null;
+    let victim: Channel | null = null;
     let lowestVol = Infinity;
     for (const ch of Sound._channels) {
       if (ch.entnum === CL.state.viewentity) {
@@ -840,33 +838,33 @@ class Sound {
    * @param {ArrayBuffer} data raw WAV file data
    * @returns {{loopstartSamples: number|null, sampleRate: number|null}} parsed loop info
    */
-  static _parseWavLoopInfo(data) {
+  static _parseWavLoopInfo(data: ArrayBuffer): { loopstartSamples: number | null; sampleRate: number | null } {
     const view = new DataView(data);
 
     if (data.byteLength < 12
-      || view.getUint32(0, true) !== 0x46464952   // 'RIFF'
-      || view.getUint32(8, true) !== 0x45564157) { // 'WAVE'
+      || view.getUint32(0, true) !== 0x46464952
+      || view.getUint32(8, true) !== 0x45564157) {
       return { loopstartSamples: null, sampleRate: null };
     }
 
     let pos = 12;
-    let sampleRate = null;
-    let cueLoopStart = null;
-    let smplLoopStart = null;
+    let sampleRate: number | null = null;
+    let cueLoopStart: number | null = null;
+    let smplLoopStart: number | null = null;
 
     while (pos + 8 <= data.byteLength) {
       const id = view.getUint32(pos, true);
       const size = Math.min(view.getUint32(pos + 4, true), data.byteLength - pos - 8);
       const at = pos + 8;
 
-      if (id === 0x20746d66 && size >= 8) {          // 'fmt '
+      if (id === 0x20746d66 && size >= 8) {
         sampleRate = view.getUint32(at + 4, true);
-      } else if (id === 0x20657563 && size >= 28) {   // 'cue '
+      } else if (id === 0x20657563 && size >= 28) {
         const n = view.getUint32(at, true);
         if (n > 0 && size >= 4 + n * 24) {
           cueLoopStart = view.getUint32(at + 4 + (n - 1) * 24 + 20, true);
         }
-      } else if (id === 0x6c706d73 && size >= 60) {   // 'smpl'
+      } else if (id === 0x6c706d73 && size >= 60) {
         if (view.getUint32(at + 28, true) >= 1) {
           smplLoopStart = view.getUint32(at + 36 + 8, true);
         }
@@ -881,5 +879,3 @@ class Sound {
     return { loopstartSamples: smplLoopStart ?? cueLoopStart, sampleRate };
   }
 }
-
-export default Sound;

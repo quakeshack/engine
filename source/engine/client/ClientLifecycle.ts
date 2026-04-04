@@ -3,7 +3,7 @@ import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import ClientInput from './ClientInput.ts';
-import CL from './CL.mjs';
+import CL from './CL.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';

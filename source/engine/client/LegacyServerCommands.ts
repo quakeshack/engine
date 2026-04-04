@@ -6,7 +6,7 @@ import type { BrushModel } from '../common/Mod.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
 import Vector from '../../shared/Vector.ts';
-import type { SFX } from './Sound.mjs';
+import type { SFX } from './Sound.ts';
 import {
   handleNop,
   handleTime,

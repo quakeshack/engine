@@ -11,7 +11,7 @@ import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
 import { moveTypes, solid } from '../../shared/Defs.ts';
 import Key from '../client/Key.mjs';
-import { SFX as SFXValue } from '../client/Sound.mjs';
+import { SFX as SFXValue } from '../client/Sound.ts';
 import VID from '../client/VID.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { EventBus, eventBus, getClientRegistry, getCommonRegistry } from '../registry.mjs';
