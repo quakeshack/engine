@@ -5,7 +5,7 @@ import Draw from './client/Draw.ts';
 import IN from './client/IN.ts';
 import Key from './client/Key.ts';
 import M from './client/Menu.ts';
-import R from './client/R.mjs';
+import R from './client/R.ts';
 import S from './client/Sound.ts';
 import Sys from './client/Sys.ts';
 import V from './client/V.ts';

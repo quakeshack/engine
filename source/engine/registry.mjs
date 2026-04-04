@@ -10,7 +10,7 @@
 /** @typedef {typeof import('./common/Mod.ts').default} ModModule */
 /** @typedef {typeof import('./client/CL.ts').default} ClientModule */
 /** @typedef {typeof import('./client/SCR.ts').default} ScrModule */
-/** @typedef {typeof import('./client/R.mjs').default} RendererModule */
+/** @typedef {typeof import('./client/R.ts').default} RendererModule */
 /** @typedef {typeof import('./client/Draw.ts').default} DrawModule */
 /** @typedef {typeof import('./client/Key.ts').default} KeyModule */
 /** @typedef {typeof import('./client/Sbar.ts').default} SbarModule */
