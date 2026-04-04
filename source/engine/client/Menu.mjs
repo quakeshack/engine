@@ -3,10 +3,10 @@ import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, registry } from '../registry.mjs';
-import ClientLifecycle from './ClientLifecycle.mjs';
+import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.mjs';
-import MultiplayerMainMenu from './menu/Multiplayer.mjs';
-import VID from './VID.mjs';
+import MultiplayerMainMenu from './menu/Multiplayer.ts';
+import VID from './VID.ts';
 
 let { CL, COM, Con, Draw, Host, Key, S, SCR, SV, V } = registry;
 
@@ -231,7 +231,7 @@ M.SinglePlayer_Key = function (k) {
       switch (M.singleplayer_cursor) {
         case 0:
           if (SV.server.active) {
-            Cmd.ExecuteString('disconnect');
+            void Cmd.ExecuteString('disconnect');
           }
           Key.dest.value = Key.dest.game;
           ClientLifecycle.startGame.startSingleplayerGame();

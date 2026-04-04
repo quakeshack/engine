@@ -2,12 +2,12 @@ import type { BuildConfig, URLs } from './build-config';
 
 import CL from './client/CL.mjs';
 import Draw from './client/Draw.mjs';
-import IN from './client/IN.mjs';
+import IN from './client/IN.ts';
 import Key from './client/Key.mjs';
 import M from './client/Menu.mjs';
 import R from './client/R.mjs';
 import S from './client/Sound.mjs';
-import Sys from './client/Sys.mjs';
+import Sys from './client/Sys.ts';
 import V from './client/V.mjs';
 import Sbar from './client/Sbar.mjs';
 import SCR from './client/SCR.mjs';

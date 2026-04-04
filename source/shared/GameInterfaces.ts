@@ -1,16 +1,18 @@
 import type { BaseClientEdictHandler } from './ClientEdict.ts';
 import type { ClientEngineAPI as ClientEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.ts';
+import type { ClientEdict as ClientEdictValue } from '../engine/client/ClientEntities.mjs';
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
 import type { GLTexture as GLTextureValue } from '../engine/client/GL.mjs';
 import type { SFX as SFXValue } from '../engine/client/Sound.mjs';
 import type CvarValue from '../engine/common/Cvar.ts';
 import type Vector from './Vector.ts';
 import type { PmoveConfiguration as PmoveConfigurationValue, PmoveQuake2Configuration as PmoveQuake2ConfigurationValue } from '../shared/Pmove.ts';
-import type { StartGameInterface } from '../engine/client/ClientLifecycle.mjs';
+import type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
 import type { BaseModel } from '../engine/common/model/BaseModel.ts';
 
 export type ClientEngineAPI = Readonly<typeof ClientEngineApiValue>;
 export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;
+export type ClientEdict = Readonly<ClientEdictValue>;
 export type ServerEdict = Readonly<ServerEdictValue>;
 
 export type GLTexture = GLTextureValue;
@@ -20,8 +22,10 @@ export type PmoveConfiguration = Readonly<PmoveConfigurationValue>;
 export type PmoveQuake2Configuration = Readonly<PmoveQuake2ConfigurationValue>;
 
 export type SerializableType = string | number | boolean | Vector | ServerEdict | SerializableType[] | null;
+export type ClientSerializableType = string | number | boolean | Vector | ClientEdict | ClientSerializableType[] | null;
+export type ClientEventValue = ClientSerializableType | object;
 
-export type ClientdataMap = Record<string, SerializableType>;
+export type ClientdataMap = Record<string, ClientSerializableType>;
 
 export type EdictValueType = string | number | boolean | Vector | null;
 export type EdictData = Record<string, EdictValueType>;
@@ -77,7 +81,7 @@ export declare abstract class ClientGameInterface {
   saveGame(): string;
   loadGame(data: string): void;
 
-  handleClientEvent(code: number, ...args: SerializableType[]): void;
+  handleClientEvent(code: number, ...args: ClientEventValue[]): void;
   updateRefDef(refdef: RefDef): void;
 
   static GetStartGameInterface(engineAPI: ClientEngineAPI): StartGameInterface | null;

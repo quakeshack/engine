@@ -1,11 +1,12 @@
-import type { SerializableType } from '../../shared/GameInterfaces.ts';
+import type { ClientEventValue, SerializableType } from '../../shared/GameInterfaces.ts';
 import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { eventBus, getCommonRegistry } from '../registry.mjs';
 
 type SerializableVectorLike = ArrayLike<number>;
-type SerializableValue = SerializableType | object;
+type ServerSerializableValue = SerializableType | object;
+type SerializableValue = ClientEventValue;
 type SerializableConstructor<T extends object = object> = abstract new (...args: never[]) => T;
 
 type SerializableHandlers<T extends object = object, ServerValue = object, ClientValue = object> = {
@@ -497,7 +498,7 @@ export class SzBuffer {
     return to;
   }
 
-  writeSerializables(serializables: readonly SerializableValue[]): void {
+  writeSerializables(serializables: readonly ServerSerializableValue[]): void {
     for (const serializable of serializables) {
       switch (true) {
         case serializable === undefined:

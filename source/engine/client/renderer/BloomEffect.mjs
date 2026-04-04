@@ -1,6 +1,6 @@
 import GL from '../GL.mjs';
 import PostProcess from './PostProcess.mjs';
-import VID from '../VID.mjs';
+import VID from '../VID.ts';
 import PostProcessEffect from './PostProcessEffect.mjs';
 import Vector from '../../../shared/Vector.ts';
 import { eventBus, registry } from '../../registry.mjs';

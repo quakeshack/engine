@@ -2,7 +2,7 @@ import Vector from '../../shared/Vector.ts';
 import { eventBus, getClientRegistry, registry } from '../registry.mjs';
 import Cvar from './Cvar.ts';
 import Cmd from './Cmd.ts';
-import VID from '../client/VID.mjs';
+import VID from '../client/VID.ts';
 import { clientConnectionState } from './Def.ts';
 import { ClientEngineAPI } from './GameAPIs.ts';
 

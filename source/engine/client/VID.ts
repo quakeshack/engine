@@ -2,25 +2,21 @@ import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { eventBus } from '../registry.mjs';
 
 class FullscreenCommand extends ConsoleCommand {
-  async run() {
+  override async run(): Promise<void> {
     await VID.mainwindow.requestFullscreen();
   }
 }
 
 export default class VID {
-  /** @type {number} */
-  static width = null;
-  /** @type {number} */
-  static height = null;
-  /** @type {HTMLCanvasElement} */
-  static mainwindow = null;
-  /** @type {number} */
+  static width = 0;
+  static height = 0;
+  static mainwindow: HTMLCanvasElement;
   static pixelRatio = 1;
 
-  static Resize() {
-    const elem = document.documentElement;
-    const width = (elem.clientWidth <= 320) ? 320 : elem.clientWidth;
-    const height = (elem.clientHeight <= 200) ? 200 : elem.clientHeight;
+  static Resize(): void {
+    const root = document.documentElement;
+    const width = root.clientWidth <= 320 ? 320 : root.clientWidth;
+    const height = root.clientHeight <= 200 ? 200 : root.clientHeight;
 
     if (width === VID.width && height === VID.height && window.devicePixelRatio === VID.pixelRatio) {
       return; // no change
@@ -31,8 +27,8 @@ export default class VID {
     VID.pixelRatio = window.devicePixelRatio || 1;
     VID.mainwindow.width = Math.round(width * VID.pixelRatio);
     VID.mainwindow.height = Math.round(height * VID.pixelRatio);
-    VID.mainwindow.style.width = width + 'px';
-    VID.mainwindow.style.height = height + 'px';
+    VID.mainwindow.style.width = `${width}px`;
+    VID.mainwindow.style.height = `${height}px`;
 
     eventBus.publish('vid.resize', {
       width: VID.width,
@@ -41,7 +37,7 @@ export default class VID {
     });
   }
 
-  static DownloadScreenshot() {
+  static DownloadScreenshot(): void {
     const dataURL = VID.mainwindow.toDataURL('image/jpeg');
     const link = document.createElement('a');
     link.href = dataURL;
@@ -51,14 +47,20 @@ export default class VID {
     document.body.removeChild(link);
   }
 
-  static Init() {
-    // @ts-ignore
-    VID.mainwindow = document.getElementById('mainwindow');
+  static Init(): void {
+    const mainwindow = document.getElementById('mainwindow');
+    if (!(mainwindow instanceof HTMLCanvasElement)) {
+      throw new Error('Missing required canvas #mainwindow');
+    }
+    VID.mainwindow = mainwindow;
 
     VID.mainwindow.style.display = 'inline-block';
 
-    const $progress = document.getElementById('progress');
-    $progress.parentElement.removeChild($progress);
+    const progress = document.getElementById('progress');
+    if (progress === null || progress.parentElement === null) {
+      throw new Error('Missing required progress indicator');
+    }
+    progress.parentElement.removeChild(progress);
 
     VID.Resize(); // trigger once since we are ready now
 
@@ -67,13 +69,13 @@ export default class VID {
     Cmd.AddCommand('fullscreen', FullscreenCommand);
 
     eventBus.publish('vid.ready');
-  };
+  }
 
-  static Shutdown() {
+  static Shutdown(): void {
     VID.mainwindow.style.display = 'none';
 
     window.removeEventListener('resize', VID.Resize);
 
     eventBus.publish('vid.shutdown');
   }
-};
+}

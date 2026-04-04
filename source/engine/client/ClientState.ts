@@ -3,22 +3,48 @@ import { QSocket } from '../network/NetworkDrivers.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import Vector from '../../shared/Vector.ts';
-import { EventBus, eventBus, registry } from '../registry.mjs';
+import type { BaseModel } from '../common/model/BaseModel.ts';
+import type { BrushModel } from '../common/Mod.ts';
+import type { ClientGameInterface, ClientSerializableType, SFX } from '../../shared/GameInterfaces.ts';
+import type ClientDemos from './ClientDemos.ts';
+import { EventBus, eventBus, getClientRegistry } from '../registry.mjs';
 import ClientEntities, { ClientEdict } from './ClientEntities.mjs';
-import { ClientMessages } from './ClientMessages.mjs';
-import { BrushModel } from '../common/Mod.ts';
+import { ClientMessages } from './ClientMessages.ts';
 
-let { CL } = registry;
+type ClientConnectionProgress = {
+  message: string;
+  percentage: number;
+};
+
+type ClientChatMessage = {
+  name: string;
+  message: string;
+  direct: boolean;
+};
+
+type ClientEntityFieldDefinition = {
+  fields: string[];
+  bitsReader: 'readByte' | 'readShort' | 'readLong';
+};
+
+type ClientMoveCommand = {
+  cmd: Protocol.UserCmd;
+  msec: number;
+};
+
+type ClientLoadData = [string | null, string | null];
+
+let { CL } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  CL = registry.CL;
+  ({ CL } = getClientRegistry());
 });
 
 /**
  * Create a stats array sized to the numeric legacy stat entries.
- * @returns {number[]} Fresh zeroed stat slots.
+ * @returns Fresh zeroed stat slots.
  */
-function createLegacyStatsArray() {
+function createLegacyStatsArray(): number[] {
   return Object.values(Def.stat).filter((value) => typeof value === 'number').map(() => 0);
 }
 
@@ -35,82 +61,77 @@ const clientGameEvents = [
   'client.server-info.updated',
   'client.damage',
   'client.chat.message',
-];
+] as const;
 
 class ClientStaticState {
   signon = 0;
-  /** @type {Def.clientConnectionState} */
-  state = 0;
+  state: Def.clientConnectionState = Def.clientConnectionState.disconnected;
   spawnparms = '';
   changelevel = false;
   message = new SzBuffer(8192, 'CL.cls.message');
-  /** @type {QSocket|null} */
-  netcon = null;
-  /** @type {{ message: string, percentage: number } | null} */
-  connecting = null;
-  /** @type {Record<string, string>} */
-  serverInfo = {};
+  netcon: QSocket | null = null;
+  connecting: ClientConnectionProgress | null = null;
+  serverInfo: Record<string, string> = {};
   lastcmdsent = 0;
   isLocalGame = false;
-  movearound = null;
-  /** @type {boolean} will enable the legacy network protocol (15) for old demos */
+  movearound: ReturnType<typeof setInterval> | null = null;
+  /** will enable the legacy network protocol (15) for old demos */
   legacy_demo = false;
-  /** @type {import('./ClientDemos.mjs').default|null} */
-  #clientDemos = null;
-  /** @type {ClientRuntimeState|null} */
-  #runtimeState = null;
+  #clientDemos: ClientDemos | null = null;
+  #runtimeState: ClientRuntimeState | null = null;
 
-  bindClientDemos(clientDemos) {
+  bindClientDemos(clientDemos: ClientDemos): void {
     this.#clientDemos = clientDemos;
   }
 
-  bindRuntimeState(runtimeState) {
+  bindRuntimeState(runtimeState: ClientRuntimeState): void {
     this.#runtimeState = runtimeState;
   }
 
-  get demoplayback() {
+  get demoplayback(): boolean {
     return this.#clientDemos?.demoplayback ?? false;
   }
 
-  get demorecording() {
+  get demorecording(): boolean {
     return this.#clientDemos?.demorecording ?? false;
   }
 
-  get demonum() {
+  get demonum(): number {
     return this.#clientDemos?.demonum ?? -1;
   }
 
-  set demonum(value) {
-    if (this.#clientDemos) {
+  set demonum(value: number) {
+    if (this.#clientDemos !== null) {
       this.#clientDemos.demonum = value;
     }
   }
 
-  get forcetrack() {
+  get forcetrack(): number {
     return this.#clientDemos?.forcetrack ?? -1;
   }
 
-  set forcetrack(value) {
-    if (this.#clientDemos) {
+  set forcetrack(value: number) {
+    if (this.#clientDemos !== null) {
       this.#clientDemos.forcetrack = value;
     }
   }
 
-  get latency() {
-    if (!this.#runtimeState) {
+  get latency(): number {
+    if (this.#runtimeState === null) {
       return 0;
     }
+
     const player = this.#runtimeState.playernum;
     const slot = this.#runtimeState.scores[player];
     return slot?.ping ?? 0;
   }
 
-  clear() {
+  clear(): void {
     this.message.clear();
     this.serverInfo = {};
     this.lastcmdsent = 0;
     this.legacy_demo = false;
-    if (this.movearound) {
+    if (this.movearound !== null) {
       clearInterval(this.movearound);
       this.movearound = null;
     }
@@ -118,21 +139,22 @@ class ClientStaticState {
 }
 
 export class ScoreSlot {
-  constructor(index) {
-    this.index = index;
-  }
-
+  index: number;
   name = '';
   entertime = 0.0;
   frags = 0;
   colors = 0;
   ping = 0;
 
-  get isActive() {
+  constructor(index: number) {
+    this.index = index;
+  }
+
+  get isActive(): boolean {
     return this.name !== '';
   }
 
-  get entity() {
+  get entity(): ClientEdict | null {
     return CL.state.clientEntities.getEntity(this.index + 1);
   }
 }
@@ -140,36 +162,34 @@ export class ScoreSlot {
 class ClientRuntimeState {
   clientEntities = new ClientEntities();
   clientMessages = new ClientMessages();
-  /** @type {Record<string,{fields: string[], bitsReader: 'readByte' | 'readShort' | 'readLong'}>} */
-  clientEntityFields = {};
-  /** @type {Record<string, import('../../shared/GameInterfaces').SerializableType>} */
-  clientdata = {};
+  clientEntityFields: Record<string, ClientEntityFieldDefinition> = {};
+  clientdata: Record<string, ClientSerializableType> = {};
   movemessages = 0;
   cmd = new Protocol.UserCmd();
   lastcmd = new Protocol.UserCmd();
 
   // --- prediction state ---
-  /** @type {number} incrementing move sequence counter (wraps at 256) */
+  /** incrementing move sequence counter (wraps at 256) */
   moveSequence = 0;
-  /** @type {number} last move sequence acknowledged by the server */
+  /** last move sequence acknowledged by the server */
   acknowledgedMoveSequence = 0;
-  /** @type {{cmd: Protocol.UserCmd, msec: number}[]} ring buffer of commands indexed by (moveSequence & CMD_BUFFER_MASK) */
+  /** ring buffer of commands indexed by (moveSequence & CMD_BUFFER_MASK) */
   cmdBuffer = ClientRuntimeState.#createCmdBuffer();
-  /** @type {boolean} true when prediction ran this frame (prevents emit from overwriting) */
+  /** true when prediction ran this frame (prevents emit from overwriting) */
   predicted = false;
 
-  /** @type {number} server-acknowledged pmFlags (PMF bitmask) */
+  /** server-acknowledged pmFlags (PMF bitmask) */
   ackedPmFlags = 0;
-  /** @type {number} server-acknowledged pmTime (timing counter) */
+  /** server-acknowledged pmTime (timing counter) */
   ackedPmTime = 0;
-  /** @type {number} server-acknowledged old button state */
+  /** server-acknowledged old button state */
   ackedPmOldButtons = 0;
 
   stats = createLegacyStatsArray();
   items = 0;
   item_gettime = new Array(32).fill(0.0);
-  faceanimtime = 0.0;
   cshifts = Array.from({ length: 8 }, () => [0.0, 0.0, 0.0, 0.0]);
+  faceanimtime = 0.0;
   viewangles = new Vector();
   punchangle = new Vector();
   idealpitch = 0.0;
@@ -181,68 +201,68 @@ class ClientRuntimeState {
   time = 0.0;
   latency = 0.0;
   last_received_message = 0.0;
-  /** @type {number} effectively the player’s edict number */
+  /** effectively the player’s edict number */
   viewentity = 0;
-  /** @type {ClientEdict|null} view model reference (TODO: rename to viewmodel) */
-  viewent = null;
+  /** view model reference (TODO: rename to viewmodel) */
+  viewent: ClientEdict | null = null;
   cdtrack = 0;
   looptrack = 0;
-  chatlog = [];
-  model_precache = [];
-  sound_precache = [];
-  levelname = null;
+  chatlog: ClientChatMessage[] = [];
+  model_precache: BaseModel[] = [];
+  sound_precache: SFX[] = [];
+  levelname: string | null = null;
   gametype = 0;
   onground = false;
   maxclients = 1;
-  /** @type {ScoreSlot[]} */
-  scores = [];
-  /** @type {BrushModel|null} */
-  worldmodel = null;
+  scores: ScoreSlot[] = [];
+  worldmodel: BrushModel | null = null;
   viewheight = 0;
   inwater = false;
   nodrift = false;
-  /** @type {import('../../shared/GameInterfaces').ClientGameInterface|null} */
-  gameAPI = null;
+  gameAPI: ClientGameInterface | null = null;
+  paused = false;
+  /** event bus solely for engine-game communication */
+  eventBus = new EventBus('client-game');
+  #proxyEventListeners: Array<() => void> = [];
+  /** stores client-game state waiting for signon 4 */
+  loadClientData: ClientLoadData | null = null;
+  #clientGameEvents: readonly string[];
 
-  /** @returns {{cmd: Protocol.UserCmd, msec: number}[]} fresh command ring buffer */
-  static #createCmdBuffer() {
+  /**
+   * @returns Fresh command ring buffer.
+   */
+  static #createCmdBuffer(): ClientMoveCommand[] {
     return new Array(Protocol.CMD_BUFFER_SIZE).fill(null).map(() => ({
       cmd: new Protocol.UserCmd(),
       msec: 0,
     }));
   }
-  paused = false;
-  /** event bus solely for engine-game communication */
-  eventBus = new EventBus('client-game');
-  /** @type {Function[]} */
-  #proxyEventListeners = [];
-  /** stores client-game state waiting for signon 4 */
-  loadClientData = null;
-  /** @type {string[]} */
-  #clientGameEvents;
 
-  constructor({ clientGameEvents }) {
+  constructor({ clientGameEvents }: { clientGameEvents: readonly string[] }) {
     this.#clientGameEvents = clientGameEvents;
   }
 
-  get playernum() {
+  get playernum(): number {
     return this.viewentity - 1;
   }
 
+  /**
+   * @returns Current player state for prediction.
+   */
   get playerstate() {
     return this.clientMessages.playerstates[this.playernum];
   }
 
-  get playerentity() {
+  get playerentity(): ClientEdict | null {
     return this.clientEntities.getEntity(this.viewentity);
   }
 
-  get velocity() {
+  get velocity(): Vector {
     const entity = this.playerentity;
     return entity ? entity.velocity : Vector.origin;
   }
 
-  clear() {
+  clear(): void {
     this.clientMessages.clear();
     this.clientEntities.clear();
     this.movemessages = 0;
@@ -258,6 +278,9 @@ class ClientRuntimeState {
     this.stats = createLegacyStatsArray();
     this.items = 0;
     this.item_gettime.fill(0.0);
+    for (const cshift of this.cshifts) {
+      cshift.fill(0.0);
+    }
     this.faceanimtime = 0.0;
     this.viewangles = new Vector();
     this.punchangle = new Vector();
@@ -286,9 +309,6 @@ class ClientRuntimeState {
     this.inwater = false;
     this.nodrift = false;
     this.paused = false;
-    for (const cshift of this.cshifts) {
-      cshift.fill(0.0);
-    }
     for (const key of Object.keys(this.clientEntityFields)) {
       delete this.clientEntityFields[key];
     }
@@ -300,7 +320,7 @@ class ClientRuntimeState {
     this.#configureProxyEvents();
   }
 
-  #configureProxyEvents() {
+  #configureProxyEvents(): void {
     for (const event of this.#clientGameEvents) {
       this.#proxyEventListeners.push(eventBus.subscribe(event, (...args) => this.eventBus.publish(event, ...args)));
     }

@@ -2,7 +2,7 @@ import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import { HostError } from '../common/Errors.ts';
 import { eventBus, registry } from '../registry.mjs';
-import { ScoreSlot } from './ClientState.mjs';
+import { ScoreSlot } from './ClientState.ts';
 import Vector from '../../shared/Vector.ts';
 import {
   handleNop,
@@ -255,7 +255,7 @@ function handleLegacyServerData() {
     CL.state.sound_precache = sounds;
 
     CL.connection.processingServerDataState = 2;
-    CL.state.worldmodel = CL.state.model_precache[1];
+    CL.state.worldmodel = /** @type {import('../common/Mod.ts').BrushModel} */ (CL.state.model_precache[1]);
     CL.pmove.setWorldmodel(CL.state.worldmodel);
 
     const ent = CL.state.clientEntities.getEntity(0);

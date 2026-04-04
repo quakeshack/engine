@@ -5,7 +5,7 @@ import Cvar from '../common/Cvar.ts';
 import * as Def from '../common/Def.ts';
 import Q from '../../shared/Q.ts';
 import { eventBus, registry } from '../registry.mjs';
-import Chase from './Chase.mjs';
+import Chase from './Chase.ts';
 
 const V = {};
 

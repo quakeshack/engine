@@ -1,15 +1,34 @@
 import PR from '../../server/Progs.ts';
 import { K } from '../../../shared/Keys.ts';
 import Cmd from '../../common/Cmd.ts';
-import { eventBus, registry } from '../../registry.mjs';
-import { Action, Label, Spacer } from './MenuItem.mjs';
-import { MenuPage, VerticalLayout } from './MenuPage.mjs';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { Action, Label, Spacer } from './MenuItem.ts';
+import { MenuPage, VerticalLayout } from './MenuPage.ts';
+import type { MenuStack } from './MenuStack.ts';
 import { ServerEngineAPI } from '../../common/GameAPIs.ts';
 
-let { M } = registry;
+interface ServerInfoSummary {
+  readonly hostname?: string;
+  readonly map?: string;
+  readonly currentPlayers?: number;
+  readonly maxPlayers?: number;
+  readonly colo?: string | null;
+  readonly country?: string | null;
+}
+
+interface ServerSessionSummary {
+  readonly sessionId: string;
+  readonly serverInfo?: ServerInfoSummary | null;
+}
+
+interface ServerListResponse {
+  readonly servers?: ServerSessionSummary[] | null;
+}
+
+let { M, urls } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ M } = registry);
+  ({ M, urls } = getClientRegistry());
 });
 
 // CR: this whole menu is heavily WIP
@@ -30,8 +49,11 @@ eventBus.subscribe('registry.frozen', () => {
 // - start game
 
 export default class MultiplayerMainMenu extends MenuPage {
+  staticItemCount: number | undefined;
+  menuStack: MenuStack | null;
+
   // eslint-disable-next-line @typescript-eslint/require-await
-  async init() {
+  override async init(): Promise<void> {
     // M.m_multi is arriving later
     this.titlePic = M.p_multi;
 
@@ -56,7 +78,7 @@ export default class MultiplayerMainMenu extends MenuPage {
     //   this.items.push(action);
     // }
 
-    if (registry.urls?.signalingURL) {
+    if (urls?.signalingURL) {
       // FIXME: move the start serverlist to the ClientGameAPI
       const serverActions = PR.QuakeJS.ServerGameAPI.GetStartServerList();
 
@@ -84,14 +106,14 @@ export default class MultiplayerMainMenu extends MenuPage {
     this.staticItemCount = this.items.length;
   }
 
-  activate() {
+  override activate(): void {
     super.activate();
-    if (registry.urls?.signalingURL) {
+    if (urls?.signalingURL) {
       void this.refreshSessions();
     }
   }
 
-  #addRefreshSessionsButton() {
+  #addRefreshSessionsButton(): void {
     this.items.push(new Spacer());
     this.items.push(new Action({
       label: 'Refresh Sessions',
@@ -101,7 +123,7 @@ export default class MultiplayerMainMenu extends MenuPage {
     }));
   }
 
-  async refreshSessions() {
+  async refreshSessions(): Promise<void> {
     // Reset to static items
     if (this.staticItemCount !== undefined && this.items.length > this.staticItemCount) {
       // Clean up previous dynamic items
@@ -111,12 +133,16 @@ export default class MultiplayerMainMenu extends MenuPage {
     this.items.push(new Label({ label: 'Finding sessions...' }));
 
     try {
-      const signalingUrl = new URL(registry.urls.signalingURL);
+      if (!urls?.signalingURL) {
+        throw new Error('Signaling URL is unavailable');
+      }
+
+      const signalingUrl = new URL(urls.signalingURL);
       const protocol = signalingUrl.protocol === 'wss:' ? 'https:' : 'http:';
       const url = `${protocol}//${signalingUrl.host}/list-servers`;
 
       const response = await fetch(url);
-      const data = await response.json();
+      const data = await response.json() as ServerListResponse;
 
       // Remove "Finding sessions..."
       this.items.length = 3;
@@ -145,7 +171,7 @@ export default class MultiplayerMainMenu extends MenuPage {
       }
 
       this.#addRefreshSessionsButton();
-    } catch (e) {
+    } catch (error: unknown) {
       // Remove loading indicator if present
       const lastItem = this.items[this.items.length - 1];
       if (lastItem && lastItem.label === 'Finding sessions...') {
@@ -153,17 +179,11 @@ export default class MultiplayerMainMenu extends MenuPage {
       }
       this.items.push(new Label({ label: 'Unable to fetch sessions' }));
       this.#addRefreshSessionsButton();
-      console.error('Failed to fetch sessions:', e);
+      console.error('Failed to fetch sessions:', error);
     }
   }
 
-  /** @type {import('./MenuStack.mjs').MenuStack} */
-  menuStack;
-
-  /**
-   * @param {import('./MenuStack.mjs').MenuStack} menuStack - Navigation stack
-   */
-  constructor(menuStack) {
+  constructor(menuStack: MenuStack | null = null) {
     const layout = new VerticalLayout({
       startY: 40,
       spacing: 8,
@@ -179,10 +199,9 @@ export default class MultiplayerMainMenu extends MenuPage {
   }
 
   /**
-   * @param {number} key - Key code
-   * @returns {boolean} True if handled
+   * @returns True if handled.
    */
-  handleInput(key) {
+  override handleInput(key: number): boolean {
     if (key === K.ESCAPE) {
       this.deactivate();
       M.CloseMenu();
@@ -190,4 +209,4 @@ export default class MultiplayerMainMenu extends MenuPage {
     }
     return super.handleInput(key);
   }
-};
+}

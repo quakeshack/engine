@@ -2,46 +2,43 @@ import Cvar from '../common/Cvar.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
-import ClientInput from './ClientInput.mjs';
+import ClientInput from './ClientInput.ts';
 import CL from './CL.mjs';
-import { clientRuntimeState } from './ClientState.mjs';
+import { clientRuntimeState } from './ClientState.ts';
 import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
 
-let { Host, PR, S } = registry;
+let { Host, PR, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  Host = registry.Host;
-  PR = registry.PR;
-  S = registry.S;
+  ({ Host, PR, S } = getClientRegistry());
 });
 
 /** The client game can tell the menu what to do when a new game is requested. */
 export class StartGameInterface {
-  startSingleplayerGame() {
+  startSingleplayerGame(): void {
   }
 
-  // eslint-disable-next-line no-unused-vars
-  startMultiplayerGame(/** @type {string} */ mapname) {
+  startMultiplayerGame(_mapname: string): void {
   }
-};
+}
 
-/** Quake 1 default start game entries */
+/** Quake 1 default start game entries. */
 export class DefaultStartGameFunctions extends StartGameInterface {
-  startSingleplayerGame() {
+  override startSingleplayerGame(): void {
     void Cmd.ExecuteString('map start');
   }
 
-  startMultiplayerGame(/** @type {string} */ mapname) {
+  override startMultiplayerGame(mapname: string): void {
     void Cmd.ExecuteString(`map ${mapname}`);
   }
-};
+}
 
 export default class ClientLifecycle {
-  static startGame = /** @type {StartGameInterface} */ (null);
+  static startGame: StartGameInterface | null = null;
 
-  static async init() {
+  static async init(): Promise<void> {
     CL.ClearState();
     ClientInput.Init();
     CL.pmove = new Pmove();
@@ -55,8 +52,8 @@ export default class ClientLifecycle {
     CL.sbarDisabled = CL.gameCapabilities.includes(gameCapabilities.CAP_HUD_INCLUDES_SBAR);
   }
 
-  static initGame() {
-    CL.gameCapabilities = PR.capabilities;
+  static initGame(): void {
+    CL.gameCapabilities = [...PR.capabilities];
 
     if (!PR.QuakeJS?.identification) {
       document.title = `${Def.productName} (${Host.version.string})`;
@@ -75,15 +72,15 @@ export default class ClientLifecycle {
       this.startGame = new DefaultStartGameFunctions();
     }
 
-    CL.gameCapabilities = PR.QuakeJS.identification.capabilities;
+    CL.gameCapabilities = [...PR.QuakeJS.identification.capabilities];
   }
 
-  static resumeGame(clientdata, particles) {
+  static resumeGame(clientdata: string | null, particles: string | null): void {
     CL.Connect('local');
     clientRuntimeState.loadClientData = [clientdata, particles];
   }
 
-  static #registerCvars() {
+  static #registerCvars(): void {
     CL.name = new Cvar('_cl_name', 'player', Cvar.FLAG.ARCHIVE);
     CL.color = new Cvar('_cl_color', '0', Cvar.FLAG.ARCHIVE);
     CL.upspeed = new Cvar('cl_upspeed', '200');
@@ -109,9 +106,9 @@ export default class ClientLifecycle {
     CL.areaportals = new Cvar('cl_areaportals', '0', Cvar.FLAG.ARCHIVE, 'Enables/disables client-side area portal culling');
   }
 
-  static #registerCommands() {
+  static #registerCommands(): void {
     Cmd.AddCommand('entities', class EntitiesCommand extends ConsoleCommand {
-      run() {
+      override run(): void {
         clientRuntimeState.clientEntities.printEntities();
       }
     });

@@ -1,30 +1,30 @@
-
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.mjs';
 import * as Protocol from '../network/Protocol.ts';
 import { HostError } from '../common/Errors.ts';
 
-let { CL, COM, Con, Host, NET } = registry;
+let { CL, COM, Con, Host, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  CL = registry.CL;
-  COM = registry.COM;
-  Con = registry.Con;
-  Host = registry.Host;
-  NET = registry.NET;
+  ({ CL, COM, Con, Host, NET } = getClientRegistry());
 });
 
+/**
+ * Returns a readable error message for demo playback failures.
+ * @returns Readable error message.
+ */
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export default class ClientDemos {
-  /** @type {string} */
-  demoname = null;
+  demoname: string | null = null;
   demonum = 0;
   demoplayback = false;
   demorecording = false;
-  /** @type {string[]} */
-  demos = [];
+  demos: string[] = [];
 
-  /** @type {ArrayBuffer} */
-  demofile = null;
+  demofile: ArrayBuffer | null = null;
   demoofs = 0;
   demosize = 0;
   timedemo = false;
@@ -33,31 +33,42 @@ export default class ClientDemos {
   td_lastframe = -1;
   forcetrack = -1;
 
-  /** @type {number|null} Host.realtime when gameplay (signon 4) first began */
-  demoBaseRealtime = null;
-  /** @type {number} server time (clientMessages.mtime[0]) at demoBaseRealtime */
+  /** Host.realtime when gameplay (signon 4) first began. */
+  demoBaseRealtime: number | null = null;
+
+  /** Server time (clientMessages.mtime[0]) at demoBaseRealtime. */
   demoBaseServertime = 0;
 
-  writeDemoMessage() {
-    const len = this.demoofs + 16 + NET.message.cursize;
-
-    if (this.demofile.byteLength < len) {
-      const src = new Uint8Array(this.demofile, 0, this.demoofs);
-      this.demofile = new ArrayBuffer(this.demofile.byteLength + 16384);
-      (new Uint8Array(this.demofile)).set(src);
+  #getDemoFile(): ArrayBuffer {
+    if (this.demofile === null) {
+      throw new HostError('demo file is not open');
     }
 
-    const f = new DataView(this.demofile, this.demoofs, 16);
-    f.setInt32(0, NET.message.cursize, true);
-    f.setFloat32(4, CL.state.viewangles[0], true);
-    f.setFloat32(8, CL.state.viewangles[1], true);
-    f.setFloat32(12, CL.state.viewangles[2], true);
-    (new Uint8Array(this.demofile)).set(new Uint8Array(NET.message.data, 0, NET.message.cursize), this.demoofs + 16);
+    return this.demofile;
+  }
+
+  writeDemoMessage(): void {
+    const currentFile = this.#getDemoFile();
+    const len = this.demoofs + 16 + NET.message.cursize;
+
+    if (currentFile.byteLength < len) {
+      const src = new Uint8Array(currentFile, 0, this.demoofs);
+      this.demofile = new ArrayBuffer(currentFile.byteLength + 16384);
+      new Uint8Array(this.demofile).set(src);
+    }
+
+    const demoFile = this.#getDemoFile();
+    const view = new DataView(demoFile, this.demoofs, 16);
+    view.setInt32(0, NET.message.cursize, true);
+    view.setFloat32(4, CL.state.viewangles[0], true);
+    view.setFloat32(8, CL.state.viewangles[1], true);
+    view.setFloat32(12, CL.state.viewangles[2], true);
+    new Uint8Array(demoFile).set(new Uint8Array(NET.message.data, 0, NET.message.cursize), this.demoofs + 16);
 
     this.demoofs = len;
-  };
+  }
 
-  getMessage() {
+  getMessage(): 0 | 1 {
     console.assert(this.demoplayback, 'must be in playback mode to get message');
 
     if (CL.cls.signon === 4) {
@@ -91,14 +102,19 @@ export default class ClientDemos {
       return 0;
     }
 
-    const view = new DataView(this.demofile);
+    const demoFile = this.#getDemoFile();
+    const view = new DataView(demoFile);
     NET.message.cursize = view.getUint32(this.demoofs, true);
 
     if (NET.message.cursize > 8000) {
       throw new HostError('Demo message > MAX_MSGLEN');
     }
 
-    CL.state.viewangles.setTo(view.getFloat32(this.demoofs + 4, true), view.getFloat32(this.demoofs + 8, true), view.getFloat32(this.demoofs + 12, true));
+    CL.state.viewangles.setTo(
+      view.getFloat32(this.demoofs + 4, true),
+      view.getFloat32(this.demoofs + 8, true),
+      view.getFloat32(this.demoofs + 12, true),
+    );
 
     this.demoofs += 16;
 
@@ -107,11 +123,11 @@ export default class ClientDemos {
       return 0;
     }
 
-    const src = new Uint8Array(this.demofile, this.demoofs, NET.message.cursize);
+    const src = new Uint8Array(demoFile, this.demoofs, NET.message.cursize);
     const dest = new Uint8Array(NET.message.data, 0, NET.message.cursize);
 
-    for (let i = 0; i < NET.message.cursize; i++) {
-      dest[i] = src[i];
+    for (let index = 0; index < NET.message.cursize; index++) {
+      dest[index] = src[index];
     }
 
     this.demoofs += NET.message.cursize;
@@ -119,42 +135,42 @@ export default class ClientDemos {
     return 1;
   }
 
-  async startPlayback(demoname, timedemo = false) {
+  async startPlayback(demoname: string, timedemo = false): Promise<void> {
     console.assert(CL.cls.state === clientConnectionState.disconnected, 'must be disconnected to start playback');
     console.assert(!this.demoplayback, 'must not be in playback mode');
 
     const name = COM.DefaultExtension(demoname, '.dem');
-    Con.Print('Playing demo from ' + name + '.\n');
+    Con.Print(`Playing demo from ${name}.\n`);
 
     this.demofile = await COM.LoadFile(name);
     if (this.demofile === null) {
-      Con.PrintError('ERROR: couldn\'t open ' + demoname + '\n');
+      Con.PrintError(`ERROR: couldn't open ${demoname}\n`);
       this.demonum = -1;
       // TODO: SCR.disabled_for_loading = false;
       return;
     }
 
-    const demofile_u8 = new Uint8Array(this.demofile);
-    this.demosize = demofile_u8.length;
+    const demoFileBytes = new Uint8Array(this.demofile);
+    this.demosize = demoFileBytes.length;
     this.demoplayback = true;
     // eslint-disable-next-line require-atomic-updates
     CL.cls.state = clientConnectionState.connected;
     this.forcetrack = 0;
 
-    let i;
+    let index: number;
     let neg = false;
 
-    for (i = 0; i < demofile_u8.length; i++) {
-      const c = demofile_u8[i];
+    for (index = 0; index < demoFileBytes.length; index++) {
+      const character = demoFileBytes[index];
 
-      if (c === 10) {
+      if (character === 10) {
         break;
       }
 
-      if (c === 45) {
+      if (character === 45) {
         neg = true;
       } else {
-        this.forcetrack = this.forcetrack * 10 + c - 48;
+        this.forcetrack = this.forcetrack * 10 + character - 48;
       }
     }
 
@@ -162,7 +178,7 @@ export default class ClientDemos {
       this.forcetrack = -this.forcetrack;
     }
 
-    this.demoofs = i + 1;
+    this.demoofs = index + 1;
 
     this.demoBaseRealtime = null;
     this.demoBaseServertime = 0;
@@ -174,7 +190,7 @@ export default class ClientDemos {
     }
   }
 
-  stopPlayback() {
+  stopPlayback(): void {
     if (!this.demoplayback) {
       return;
     }
@@ -188,9 +204,9 @@ export default class ClientDemos {
     if (this.timedemo) {
       this.#finishTimeDemo();
     }
-  };
+  }
 
-  startRecording(demoname, forcetrack = -1) {
+  startRecording(demoname: string, forcetrack = -1): void {
     console.assert(CL.cls.state === clientConnectionState.connected, 'must be connected to start recording a demo');
 
     if (forcetrack !== -1) {
@@ -201,22 +217,22 @@ export default class ClientDemos {
 
     this.demoname = COM.DefaultExtension(demoname, '.dem');
 
-    Con.PrintSuccess('recording to ' + this.demoname + '.\n');
+    Con.PrintSuccess(`recording to ${this.demoname}.\n`);
 
     this.demofile = new ArrayBuffer(16384);
 
-    const trackstr = this.forcetrack.toString() + '\n';
-    const dest = new Uint8Array(this.demofile, 0, trackstr.length);
+    const trackString = `${this.forcetrack.toString()}\n`;
+    const dest = new Uint8Array(this.demofile, 0, trackString.length);
 
-    for (let i = 0; i < trackstr.length; i++) {
-      dest[i] = trackstr.charCodeAt(i);
+    for (let index = 0; index < trackString.length; index++) {
+      dest[index] = trackString.charCodeAt(index);
     }
 
-    this.demoofs = trackstr.length;
+    this.demoofs = trackString.length;
     this.demorecording = true;
   }
 
-  async stopRecording() {
+  async stopRecording(): Promise<boolean> {
     if (!this.demorecording) {
       Con.Print('Not recording a demo.\n');
       return false;
@@ -228,8 +244,14 @@ export default class ClientDemos {
 
     this.writeDemoMessage();
 
-    if (!await COM.WriteFile(this.demoname, new Uint8Array(this.demofile), this.demoofs)) {
-      Con.PrintError(`ERROR: couldn't write demo file ${this.demoname}!`);
+    const demoname = this.demoname;
+    const demoFile = this.demofile;
+    if (demoname === null || demoFile === null) {
+      throw new HostError('demo recording state is incomplete');
+    }
+
+    if (!await COM.WriteFile(demoname, new Uint8Array(demoFile), this.demoofs)) {
+      Con.PrintError(`ERROR: couldn't write demo file ${demoname}!`);
       return false;
     }
 
@@ -241,7 +263,7 @@ export default class ClientDemos {
     return true;
   }
 
-  startDemos(demos) {
+  startDemos(demos: string[]): void {
     this.demos.length = 0;
     this.demos.push(...demos);
 
@@ -253,7 +275,7 @@ export default class ClientDemos {
     }
   }
 
-  playNext() {
+  playNext(): void {
     if (this.demonum === -1) {
       return;
     }
@@ -269,17 +291,17 @@ export default class ClientDemos {
     }
 
     this.stopPlayback();
-    this.startPlayback(this.demos[this.demonum++]).catch((e) => {
-      Con.PrintError('Failed to start playback: ' + e.message + '\n');
+    this.startPlayback(this.demos[this.demonum++]).catch((error: unknown) => {
+      Con.PrintError(`Failed to start playback: ${getErrorMessage(error)}\n`);
     });
   }
 
-  #finishTimeDemo() {
+  #finishTimeDemo(): void {
     this.timedemo = false;
 
     const frames = Host.framecount - this.td_startframe - 1;
     const time = Math.max(1, Host.realtime - this.td_starttime);
 
-    Con.Print(frames + ' frames ' + time.toFixed(1) + ' seconds ' + (frames / time).toFixed(1) + ' fps\n');
+    Con.Print(`${frames} frames ${time.toFixed(1)} seconds ${(frames / time).toFixed(1)} fps\n`);
   }
-};
+}

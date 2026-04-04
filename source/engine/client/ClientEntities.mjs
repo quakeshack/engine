@@ -2,7 +2,7 @@ import Vector from '../../shared/Vector.ts';
 import { eventBus, registry } from '../registry.mjs';
 import * as Def from '../common/Def.ts';
 import { content, effect, solid } from '../../shared/Defs.ts';
-import Chase from './Chase.mjs';
+import Chase from './Chase.ts';
 import { DefaultClientEdictHandler } from './ClientLegacy.mjs';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
@@ -132,7 +132,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.nextthink = -1;
     this.maxs = new Vector();
     this.mins = new Vector();
-    /** @type {Record<string, import('../../shared/GameInterfaces').SerializableType>} entity fields pushed by the server */
+    /** @type {Record<string, import('../../shared/GameInterfaces').ClientEventValue>} entity fields pushed by the server */
     this.extended = {};
     /** server time when this entity was last updated (legacy demo playback only) */
     this.msgtime = 0.0;

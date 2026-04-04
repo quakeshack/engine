@@ -19,13 +19,13 @@ import Vector from '../../shared/Vector.ts';
 import Q from '../../shared/Q.ts';
 import { ServerClient } from '../server/Client.ts';
 import { ServerEngineAPI } from './GameAPIs.ts';
-import Chase from '../client/Chase.mjs';
-import VID from '../client/VID.mjs';
+import Chase from '../client/Chase.ts';
+import VID from '../client/VID.ts';
 import { HostError } from './Errors.ts';
-import CDAudio from '../client/CDAudio.mjs';
+import CDAudio from '../client/CDAudio.ts';
 import * as Defs from '../../shared/Defs.ts';
 import { content, gameCapabilities } from '../../shared/Defs.ts';
-import ClientLifecycle from '../client/ClientLifecycle.mjs';
+import ClientLifecycle from '../client/ClientLifecycle.ts';
 import { Pmove } from './Pmove.ts';
 
 let { COM, Con, Mod, NET, PR, SV, Sys, V } = getCommonRegistry();

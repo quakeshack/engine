@@ -3,7 +3,7 @@ import Cvar from '../common/Cvar.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 import { WadLumpTexture } from '../common/W.ts';
 import { eventBus, registry } from '../registry.mjs';
-import VID from './VID.mjs';
+import VID from './VID.ts';
 
 /** @type {Record<string, string>|null} */
 let shaderSources = /** @type {Record<string, string>|null} */ (null);

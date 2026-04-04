@@ -1,29 +1,36 @@
 import * as Protocol from '../network/Protocol.ts';
-import { HostError } from '../common/Errors.ts';
+import * as Def from '../common/Def.ts';
 import Cvar from '../common/Cvar.ts';
 import Cmd from '../common/Cmd.ts';
-import ClientInput from './ClientInput.mjs';
-import { clientRuntimeState, clientStaticState } from './ClientState.mjs';
-import { eventBus, registry } from '../registry.mjs';
-import * as Def from '../common/Def.ts';
+import ClientInput from './ClientInput.ts';
+import type ClientDemos from './ClientDemos.ts';
+import { clientRuntimeState, clientStaticState, type ClientRuntimeState, type ClientStaticState } from './ClientState.ts';
+import { eventBus, getClientRegistry } from '../registry.mjs';
+import { HostError } from '../common/Errors.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.mjs';
 
-let { Con, Host, IN, Mod, NET, SCR, S, SV } = registry;
+type IdentityCvars = {
+  name: Cvar | null;
+  color: Cvar | null;
+  rcon_password: Cvar | null;
+};
+
+let { Con, Host, IN, Mod, NET, SCR, S, SV } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  Con = registry.Con;
-  Host = registry.Host;
-  IN = registry.IN;
-  Mod = registry.Mod;
-  NET = registry.NET;
-  SCR = registry.SCR;
-  S = registry.S;
-  SV = registry.SV;
+  ({ Con, Host, IN, Mod, NET, SCR, S, SV } = getClientRegistry());
 });
 
 export default class ClientConnection {
-  constructor({ clientDemos }) {
+  cls: ClientStaticState;
+  state: ClientRuntimeState;
+  clientDemos: ClientDemos;
+  identityCvars: IdentityCvars;
+  processingServerDataState: number;
+  lastServerMessages: string[];
+
+  constructor({ clientDemos }: { clientDemos: ClientDemos }) {
     this.cls = clientStaticState;
     this.state = clientRuntimeState;
     this.clientDemos = clientDemos;
@@ -36,16 +43,20 @@ export default class ClientConnection {
     this.lastServerMessages = [];
   }
 
-  configureIdentityCvars({ name, color, rcon_password }) {
+  configureIdentityCvars({ name, color, rcon_password }: IdentityCvars): void {
     this.identityCvars.name = name;
     this.identityCvars.color = color;
     this.identityCvars.rcon_password = rcon_password;
   }
 
-  setConnectingStep(percentage, message) {
+  setConnectingStep(percentage: number | null, message: string | null): void {
     if (percentage === null && message === null) {
       this.cls.connecting = null;
       return;
+    }
+
+    if (percentage === null || message === null) {
+      throw new HostError('Connecting step percentage and message must both be provided');
     }
 
     Con.DPrint(`${percentage.toFixed(0).padStart(3, ' ')}% ${message}\n`);
@@ -59,21 +70,27 @@ export default class ClientConnection {
     };
   }
 
-  getMessage() {
+  getMessage(): number {
     if (this.clientDemos.demoplayback === true) {
       return this.clientDemos.getMessage();
     }
 
-    let r = null;
+    const netcon = this.cls.netcon;
+
+    if (netcon === null) {
+      throw new HostError('CL.GetMessage: no active connection');
+    }
+
+    let result = 0;
 
     while (true) {
-      r = NET.GetMessage(this.cls.netcon);
+      result = NET.GetMessage(netcon);
 
-      if (r !== 1 && r !== 2) {
-        return r;
+      if (result !== 1 && result !== 2) {
+        return result;
       }
 
-      if (NET.message.cursize === 1 && (new Uint8Array(NET.message.data, 0, 1))[0] === Protocol.svc.nop) {
+      if (NET.message.cursize === 1 && new Uint8Array(NET.message.data, 0, 1)[0] === Protocol.svc.nop) {
         Con.DPrint('<-- server to client keepalive\n');
       } else {
         break;
@@ -84,10 +101,10 @@ export default class ClientConnection {
       this.clientDemos.writeDemoMessage();
     }
 
-    return r;
+    return result;
   }
 
-  sendCmd() {
+  sendCmd(): void {
     if (this.cls.state === Def.clientConnectionState.disconnected) {
       return;
     }
@@ -112,12 +129,18 @@ export default class ClientConnection {
       return;
     }
 
-    if (NET.CanSendMessage(this.cls.netcon) !== true) {
+    const netcon = this.cls.netcon;
+
+    if (netcon === null) {
+      throw new HostError('CL.SendCmd: no active connection');
+    }
+
+    if (NET.CanSendMessage(netcon) !== true) {
       Con.DPrint('CL.SendCmd: can\'t send\n');
       return;
     }
 
-    if (NET.SendMessage(this.cls.netcon, this.cls.message) === -1) {
+    if (NET.SendMessage(netcon, this.cls.message) === -1) {
       throw new HostError('CL.SendCmd: lost server connection');
     }
 
@@ -125,13 +148,13 @@ export default class ClientConnection {
     this.cls.lastcmdsent = Host.realtime;
   }
 
-  resetCheatCvars() {
-    for (const cvar of Cvar.Filter((cvar) => (cvar.flags & Cvar.FLAG.CHEAT) !== 0)) {
+  resetCheatCvars(): void {
+    for (const cvar of Cvar.Filter((candidate) => (candidate.flags & Cvar.FLAG.CHEAT) !== 0)) {
       cvar.reset();
     }
   }
 
-  clearState() {
+  clearState(): void {
     S.StopAllSounds();
 
     Con.DPrint('Clearing client model views\n');
@@ -146,11 +169,11 @@ export default class ClientConnection {
     this.lastServerMessages.length = 0;
   }
 
-  disconnect() {
+  disconnect(): void {
     this.setConnectingStep(null, null);
     S.StopAllSounds();
 
-    if (this.state.gameAPI) {
+    if (this.state.gameAPI !== null) {
       this.state.gameAPI.shutdown();
       this.state.gameAPI = null;
     }
@@ -162,14 +185,18 @@ export default class ClientConnection {
       this.cls.message.clear();
     } else if (this.cls.state === Def.clientConnectionState.connected) {
       if (this.cls.demorecording === true) {
-        Cmd.ExecuteString('stopdemo\n');
+        void Cmd.ExecuteString('stopdemo\n');
       }
       Con.DPrint('Sending clc_disconnect\n');
       this.cls.message.clear();
       this.cls.message.writeByte(Protocol.clc.disconnect);
-      NET.SendUnreliableMessage(this.cls.netcon, this.cls.message);
+      if (this.cls.netcon !== null) {
+        NET.SendUnreliableMessage(this.cls.netcon, this.cls.message);
+      }
       this.cls.message.clear();
-      NET.Close(this.cls.netcon);
+      if (this.cls.netcon !== null) {
+        NET.Close(this.cls.netcon);
+      }
       this.cls.state = Def.clientConnectionState.disconnected;
       if (SV.server.active === true) {
         Host.ShutdownServer();
@@ -183,17 +210,21 @@ export default class ClientConnection {
     eventBus.publish('client.disconnected');
   }
 
-  checkConnectingState() {
+  checkConnectingState(): void {
     const sock = this.cls.netcon;
+
+    if (sock === null) {
+      throw new HostError('CL.CheckConnectingState: no active connection');
+    }
 
     switch (sock.state) {
       case QSocket.STATE_CONNECTED:
         this.cls.lastcmdsent = Host.realtime;
-        Con.DPrint('CL.Connect: connected to ' + sock.address + '\n');
+        Con.DPrint(`CL.Connect: connected to ${sock.address}\n`);
         this.cls.demonum = -1;
         this.cls.state = Def.clientConnectionState.connected;
         this.cls.signon = 0;
-        this.setConnectingStep(10, 'Connecting to ' + sock.address);
+        this.setConnectingStep(10, `Connecting to ${sock.address}`);
         eventBus.publish('client.connected', sock.address);
         break;
 
@@ -205,15 +236,15 @@ export default class ClientConnection {
     }
   }
 
-  connect(host) {
+  connect(host: string): void {
     if (this.cls.demoplayback === true) {
       return;
     }
 
     this.disconnect();
-    this.setConnectingStep(5, 'Connecting to ' + host);
+    this.setConnectingStep(5, `Connecting to ${host}`);
 
-    this.cls.isLocalGame = (host === 'local');
+    this.cls.isLocalGame = host === 'local';
     this.cls.state = Def.clientConnectionState.connecting;
     this.cls.lastcmdsent = Host.realtime;
 
@@ -228,8 +259,8 @@ export default class ClientConnection {
     this.cls.netcon = sock;
   }
 
-  signonReply() {
-    Con.DPrint('CL.SignonReply: ' + this.cls.signon + '\n');
+  signonReply(): void {
+    Con.DPrint(`CL.SignonReply: ${this.cls.signon}\n`);
 
     switch (this.cls.signon) {
       case 1:
@@ -237,16 +268,24 @@ export default class ClientConnection {
         this.cls.message.writeByte(Protocol.clc.stringcmd);
         this.cls.message.writeString('prespawn');
         break;
-      case 2:
+      case 2: {
+        const name = this.identityCvars.name;
+        const color = this.identityCvars.color;
+
+        if (name === null || color === null) {
+          throw new HostError('Client identity cvars must be configured before signon');
+        }
+
         eventBus.publish('client.server-info.ready', Object.assign({}, this.cls.serverInfo));
         this.setConnectingStep(95, 'Setting client state');
         this.cls.message.writeByte(Protocol.clc.stringcmd);
-        this.cls.message.writeString('name "' + this.identityCvars.name.string + '"\n');
+        this.cls.message.writeString(`name "${name.string}"\n`);
         this.cls.message.writeByte(Protocol.clc.stringcmd);
-        this.cls.message.writeString('color ' + (this.identityCvars.color.value >> 4) + ' ' + (this.identityCvars.color.value & 15) + '\n');
+        this.cls.message.writeString(`color ${color.value >> 4} ${color.value & 15}\n`);
         this.cls.message.writeByte(Protocol.clc.stringcmd);
-        this.cls.message.writeString('spawn ' + this.cls.spawnparms);
+        this.cls.message.writeString(`spawn ${this.cls.spawnparms}`);
         break;
+      }
       case 3:
         this.setConnectingStep(100, 'Joining the game!');
         this.cls.message.writeByte(Protocol.clc.stringcmd);
@@ -261,19 +300,19 @@ export default class ClientConnection {
         S.LoadPendingFiles();
         break;
       default:
-        throw new HostError('Received invalid signon state: ' + this.cls.signon);
+        throw new HostError(`Received invalid signon state: ${this.cls.signon}`);
     }
 
     eventBus.publish('client.signon', this.cls.signon);
   }
 
-  readFromServer() {
+  readFromServer(): void {
     while (true) {
       if (this.processingServerDataState === 1) {
         return;
       }
 
-      let ret;
+      let ret = 0;
       if (this.processingServerDataState === 2) {
         this.processingServerDataState = 3;
       } else {
@@ -294,18 +333,18 @@ export default class ClientConnection {
     }
   }
 
-  parseServerMessage() {
+  parseServerMessage(): void {
     parseServerCommandMessage();
   }
 
-  printLastServerMessages() {
+  printLastServerMessages(): void {
     if (this.lastServerMessages.length === 0) {
       return;
     }
 
     Con.Print('Last server messages:\n');
     for (const cmd of this.lastServerMessages) {
-      Con.Print(' ' + cmd + '\n');
+      Con.Print(` ${cmd}\n`);
     }
   }
 }

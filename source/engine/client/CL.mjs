@@ -6,12 +6,12 @@ import Cvar from '../common/Cvar.ts';
 import { Pmove, PmovePlayer } from '../common/Pmove.ts';
 import { eventBus, registry } from '../registry.mjs';
 import { gameCapabilities, solid } from '../../shared/Defs.ts';
-import ClientDemos from './ClientDemos.mjs';
-import { ClientPlayerState } from './ClientMessages.mjs';
-import VID from './VID.mjs';
-import { clientRuntimeState, clientStaticState } from './ClientState.mjs';
-import ClientConnection from './ClientConnection.mjs';
-import ClientLifecycle from './ClientLifecycle.mjs';
+import ClientDemos from './ClientDemos.ts';
+import { ClientPlayerState } from './ClientMessages.ts';
+import VID from './VID.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import ClientConnection from './ClientConnection.ts';
+import ClientLifecycle from './ClientLifecycle.ts';
 import { BrushModel } from '../common/Mod.ts';
 // import { materialFlags, PBRMaterial, QuakeMaterial } from './renderer/Materials.mjs';
 /** @typedef {import('./Sound.mjs').SFX} SFX */

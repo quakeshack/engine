@@ -1,26 +1,87 @@
 import { K } from '../../../shared/Keys.ts';
-import { eventBus, registry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { MenuItem } from './MenuItem.ts';
+
+interface MenuPicture {
+  readonly width?: number;
+}
+
+interface MenuPageConfig {
+  readonly items?: MenuItem[];
+  readonly layout?: MenuLayout | null;
+  readonly title?: string | null;
+  readonly titlePic?: MenuPicture | null;
+  readonly onEnter?: () => void;
+  readonly onExit?: () => void;
+  readonly customDraw?: ((page: MenuPage) => void) | null;
+}
+
+interface VerticalLayoutConfig {
+  readonly startY?: number;
+  readonly spacing?: number;
+  readonly labelX?: number;
+  readonly valueX?: number;
+  readonly showCursor?: boolean;
+  readonly cursorX?: number;
+}
+
+interface ImageBasedLayoutConfig {
+  readonly backgroundPic?: unknown;
+  readonly backgroundX?: number;
+  readonly backgroundY?: number;
+  readonly cursorX?: number;
+  readonly cursorYBase?: number;
+  readonly cursorYSpacing?: number;
+}
+
+interface ListLayoutConfig {
+  readonly startX?: number;
+  readonly startY?: number;
+  readonly spacing?: number;
+  readonly cursorX?: number;
+}
+
+interface GridLayoutConfig {
+  readonly columns?: number;
+  readonly startX?: number;
+  readonly startY?: number;
+  readonly columnSpacing?: number;
+  readonly rowSpacing?: number;
+}
+
+export interface MenuLayout {
+  draw(items: MenuItem[], focusedIndex: number): void;
+}
 
 // Destructure registry modules
-let { S, M, Host } = registry;
+let { Host, M, S } = getClientRegistry();
 
 // Update when registry is frozen
 eventBus.subscribe('registry.frozen', () => {
-  ({ S, M, Host } = registry);
+  ({ Host, M, S } = getClientRegistry());
 });
 
 /**
- * A menu page containing items with automatic navigation
+ * A menu page containing items with automatic navigation.
  */
 export class MenuPage {
-  constructor(config = {}) {
+  items: MenuItem[];
+  layout: MenuLayout | null;
+  title: string | null;
+  titlePic: MenuPicture | null;
+  cursor: number;
+  onEnter: () => void;
+  onExit: () => void;
+  customDraw: ((page: MenuPage) => void) | null;
+
+  constructor(config: MenuPageConfig = {}) {
     this.items = config.items || [];
     this.layout = config.layout || null;
     this.title = config.title || null;
     this.titlePic = config.titlePic || null;
     this.cursor = 0;
-    this.onEnter = config.onEnter || (() => { });
-    this.onExit = config.onExit || (() => { });
+    this.onEnter = config.onEnter || (() => {});
+    this.onExit = config.onExit || (() => {});
     this.customDraw = config.customDraw || null;
 
     // Find first focusable item
@@ -28,18 +89,18 @@ export class MenuPage {
   }
 
   /**
-   * Initialize the menu page (called once when menu system is set up)
+   * Initialize the menu page (called once when menu system is set up).
    */
-  async init() {
+  async init(): Promise<void> {
   }
 
   /**
-   * Draw the menu page
+   * Draw the menu page.
    */
-  draw() {
+  draw(): void {
     // Draw title if provided
     if (this.titlePic) {
-      const titleX = 160 - Math.floor(this.titlePic.width / 2);
+      const titleX = 160 - Math.floor((this.titlePic.width ?? 0) / 2);
       M.DrawPic(titleX, 4, this.titlePic);
     } else if (this.title) {
       const titleX = 160 - (this.title.length * 8) / 2;
@@ -53,17 +114,14 @@ export class MenuPage {
     }
 
     // Use layout system
-    if (this.layout) {
-      this.layout.draw(this.items, this.cursor);
-    }
+    this.layout?.draw(this.items, this.cursor);
   }
 
   /**
-   * Handle keyboard input
-   * @param {number} key - Key code
-   * @returns {boolean} True if input was handled
+   * Handle keyboard input.
+   * @returns True if input was handled.
    */
-  handleInput(key) {
+  handleInput(key: number): boolean {
     // Let focused item handle input first
     const focused = this.items[this.cursor];
     if (focused && focused.handleInput(key)) {
@@ -85,34 +143,33 @@ export class MenuPage {
   }
 
   /**
-   * Called when menu becomes active
+   * Called when menu becomes active.
    */
-  activate() {
+  activate(): void {
     this._moveCursorToFirstFocusable();
 
     for (const item of this.items) {
-      item.activate?.();
+      item.activate();
     }
 
     this.onEnter();
   }
 
   /**
-   * Called when menu becomes inactive
+   * Called when menu becomes inactive.
    */
-  deactivate() {
+  deactivate(): void {
     for (const item of this.items) {
-      item.deactivate?.();
+      item.deactivate();
     }
 
     this.onExit();
   }
 
   /**
-   * Move cursor by offset, skipping non-focusable items
-   * @param {number} offset - Direction to move (-1 for up, 1 for down)
+   * Move cursor by offset, skipping non-focusable items.
    */
-  _moveCursor(offset) {
+  protected _moveCursor(offset: number): void {
     if (!this.items.length) {
       return;
     }
@@ -138,14 +195,13 @@ export class MenuPage {
         S.LocalSound(M.sfx_menu1);
         return;
       }
-
     } while (attempts < maxAttempts && this.cursor !== start);
   }
 
   /**
-   * Move cursor to first focusable item
+   * Move cursor to first focusable item.
    */
-  _moveCursorToFirstFocusable() {
+  protected _moveCursorToFirstFocusable(): void {
     this.cursor = 0;
     if (!this.items.length) {
       return;
@@ -153,9 +209,9 @@ export class MenuPage {
 
     // If current item is not focusable, find first focusable
     if (!this.items[this.cursor]?.focusable) {
-      for (let i = 0; i < this.items.length; i++) {
-        if (this.items[i]?.focusable) {
-          this.cursor = i;
+      for (let index = 0; index < this.items.length; index++) {
+        if (this.items[index]?.focusable) {
+          this.cursor = index;
           return;
         }
       }
@@ -164,10 +220,17 @@ export class MenuPage {
 }
 
 /**
- * Vertical layout - standard menu layout
+ * Vertical layout - standard menu layout.
  */
-export class VerticalLayout {
-  constructor(config = {}) {
+export class VerticalLayout implements MenuLayout {
+  startY: number;
+  spacing: number;
+  labelX: number;
+  valueX: number;
+  showCursor: boolean;
+  cursorX: number;
+
+  constructor(config: VerticalLayoutConfig = {}) {
     this.startY = config.startY ?? 32;
     this.spacing = config.spacing ?? 4;
     this.labelX = config.labelX ?? 16;
@@ -176,15 +239,15 @@ export class VerticalLayout {
     this.cursorX = config.cursorX ?? 200;
   }
 
-  draw(items, focusedIndex) {
+  draw(items: MenuItem[], focusedIndex: number): void {
     let y = this.startY;
 
-    for (const [i, item] of items.entries()) {
+    for (const [index, item] of items.entries()) {
       if (!item.visible) {
         continue;
       }
 
-      const focused = i === focusedIndex;
+      const focused = index === focusedIndex;
 
       // Draw the item
       item.draw(this.labelX, y, focused);
@@ -201,10 +264,17 @@ export class VerticalLayout {
 }
 
 /**
- * Image-based layout - for menus that use a single background image
+ * Image-based layout - for menus that use a single background image.
  */
-export class ImageBasedLayout {
-  constructor(config = {}) {
+export class ImageBasedLayout implements MenuLayout {
+  backgroundPic: unknown;
+  backgroundX: number;
+  backgroundY: number;
+  cursorX: number;
+  cursorYBase: number;
+  cursorYSpacing: number;
+
+  constructor(config: ImageBasedLayoutConfig = {}) {
     this.backgroundPic = config.backgroundPic;
     this.backgroundX = config.backgroundX ?? 72;
     this.backgroundY = config.backgroundY ?? 32;
@@ -213,7 +283,7 @@ export class ImageBasedLayout {
     this.cursorYSpacing = config.cursorYSpacing ?? 20;
   }
 
-  draw(items, focusedIndex) {
+  draw(items: MenuItem[], focusedIndex: number): void {
     // Draw background image
     if (this.backgroundPic) {
       M.DrawPic(this.backgroundX, this.backgroundY, this.backgroundPic);
@@ -225,36 +295,41 @@ export class ImageBasedLayout {
     M.DrawPic(this.cursorX, cursorY, M.menudot[dotFrame]);
 
     // Items can still draw if needed (for custom elements)
-    for (const [i, item] of items.entries()) {
+    for (const [index, item] of items.entries()) {
       if (!item.visible) {
         continue;
       }
 
-      item.draw?.(0, 0, i === focusedIndex);
+      item.draw(0, 0, index === focusedIndex);
     }
   }
 }
 
 /**
- * List layout - for save/load game lists
+ * List layout - for save/load game lists.
  */
-export class ListLayout {
-  constructor(config = {}) {
+export class ListLayout implements MenuLayout {
+  startX: number;
+  startY: number;
+  spacing: number;
+  cursorX: number;
+
+  constructor(config: ListLayoutConfig = {}) {
     this.startX = config.startX ?? 16;
     this.startY = config.startY ?? 32;
     this.spacing = config.spacing ?? 8;
     this.cursorX = config.cursorX ?? 8;
   }
 
-  draw(items, focusedIndex) {
+  draw(items: MenuItem[], focusedIndex: number): void {
     let y = this.startY;
 
-    for (const [i, item] of items.entries()) {
+    for (const [index, item] of items.entries()) {
       if (!item.visible) {
         continue;
       }
 
-      const focused = i === focusedIndex;
+      const focused = index === focusedIndex;
 
       // Draw the item
       item.draw(this.startX, y, focused);
@@ -271,10 +346,16 @@ export class ListLayout {
 }
 
 /**
- * Grid layout - for multi-column layouts
+ * Grid layout - for multi-column layouts.
  */
-export class GridLayout {
-  constructor(config = {}) {
+export class GridLayout implements MenuLayout {
+  columns: number;
+  startX: number;
+  startY: number;
+  columnSpacing: number;
+  rowSpacing: number;
+
+  constructor(config: GridLayoutConfig = {}) {
     this.columns = config.columns ?? 2;
     this.startX = config.startX ?? 16;
     this.startY = config.startY ?? 32;
@@ -282,15 +363,15 @@ export class GridLayout {
     this.rowSpacing = config.rowSpacing ?? 8;
   }
 
-  draw(items, focusedIndex) {
-    for (const [i, item] of items.entries()) {
+  draw(items: MenuItem[], focusedIndex: number): void {
+    for (const [index, item] of items.entries()) {
       if (!item.visible) {
         continue;
       }
 
-      const focused = i === focusedIndex;
-      const row = Math.floor(i / this.columns);
-      const col = i % this.columns;
+      const focused = index === focusedIndex;
+      const row = Math.floor(index / this.columns);
+      const col = index % this.columns;
 
       const x = this.startX + col * this.columnSpacing;
       const y = this.startY + row * this.rowSpacing;

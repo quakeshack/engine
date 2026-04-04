@@ -1,16 +1,18 @@
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
-import { eventBus, registry } from '../registry.mjs';
-import { HostError } from '../common/Errors.ts';
 import Vector from '../../shared/Vector.ts';
 import { PmovePlayer } from '../common/Pmove.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
+import { eventBus, getClientRegistry } from '../registry.mjs';
+import { HostError } from '../common/Errors.ts';
 import { ClientEdict } from './ClientEntities.mjs';
 
-let { CL, COM, NET } = registry;
+type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';
+
+let { CL, COM, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, NET } = registry);
+  ({ CL, COM, NET } = getClientRegistry());
 });
 
 /**
@@ -18,41 +20,51 @@ eventBus.subscribe('registry.frozen', () => {
  * to do move prediction and to generate a drawable entity
  */
 export class ClientPlayerState extends Protocol.EntityState {
-  /**
-   * @param {PmovePlayer} pmove pmove for player
-   */
-  constructor(pmove) {
+  /** last command for prediction */
+  command: Protocol.UserCmd;
+
+  /** all player's won't be updated each frame */
+  messagenum: number;
+
+  /** not the same as the packet time, because player commands come asyncronously */
+  stateTime: number;
+
+  declare origin: Vector;
+  velocity: Vector;
+  weaponframe: number;
+  waterjumptime: number;
+
+  /** null in air, else pmove entity number */
+  onground: number | null;
+
+  oldbuttons: number;
+
+  /** Q2-style player movement flags (PMF bitmask) */
+  pmFlags: number;
+
+  /** Q2-style timing counter for special states */
+  pmTime: number;
+  pmove: PmovePlayer;
+
+  constructor(pmove: PmovePlayer) {
     super();
-    /** @type {Protocol.UserCmd} last command for prediction */
     this.command = new Protocol.UserCmd();
-
-    /** all player's won't be updated each frame */
     this.messagenum = 0;
-
-    /** not the same as the packet time, because player commands come asyncronously */
     this.stateTime = 0.0;
-
     this.origin = new Vector();
     this.velocity = new Vector();
-
     this.weaponframe = 0;
-
     this.waterjumptime = 0.0;
-    /** @type {?number} null in air, else pmove entity number */
     this.onground = null;
     this.oldbuttons = 0;
-
-    /** @type {number} Q2-style player movement flags (PMF bitmask) */
     this.pmFlags = 0;
-    /** @type {number} Q2-style timing counter for special states */
     this.pmTime = 0;
-
     this.pmove = pmove;
 
     Object.seal(this);
   }
 
-  readFromMessage() {
+  readFromMessage(): void {
     this.flags = NET.message.readShort();
     this.origin.set(NET.message.readCoordVector());
     this.frame = NET.message.readByte();
@@ -61,7 +73,7 @@ export class ClientPlayerState extends Protocol.EntityState {
 
     if (this.flags & Protocol.pf.PF_MSEC) {
       const msec = NET.message.readByte();
-      this.stateTime -= (msec / 1000.0);
+      this.stateTime -= msec / 1000.0;
     }
 
     // TODO: stateTime, parsecounttime
@@ -83,32 +95,31 @@ export class ClientPlayerState extends Protocol.EntityState {
     }
 
     if (this.flags & Protocol.pf.PF_SKINNUM) {
-      this.skin = NET.message.readByte();
+      this.skinnum = NET.message.readByte();
     }
 
     if (this.flags & Protocol.pf.PF_WEAPONFRAME) {
       this.weaponframe = NET.message.readByte();
     }
   }
-};
+}
 
 /**
  * Handles player movement and entity related messages.
  */
 export class ClientMessages {
-  /** @type {number[]} current received time, last received time */
-  mtime = [0.0, 0.0];
+  /** current received time, last received time */
+  mtime: [number, number] = [0.0, 0.0];
 
-  /** @type {ClientPlayerState[]} */
-  playerstates = [];
+  playerstates: ClientPlayerState[] = [];
 
-  /** @type {string[]} additional private player fields whose values are getting updated each frame */
-  #clientdataFields = [];
+  /** additional private player fields whose values are getting updated each frame */
+  #clientdataFields: string[] = [];
 
-  /** @type {'readLong'|'readShort'|'readByte'} shortcut to read the current amount of clientdata field bits */
-  #readClientdataFieldsBits = null;
+  /** shortcut to read the current amount of clientdata field bits */
+  #readClientdataFieldsBits: ClientdataBitsReader | null = null;
 
-  set clientdataFields(fields) {
+  set clientdataFields(fields: string[]) {
     this.#clientdataFields.length = 0;
     this.#clientdataFields.push(...fields);
 
@@ -126,7 +137,7 @@ export class ClientMessages {
   /**
    * Parses Protocol.svc.time message.
    */
-  parseTime() {
+  parseTime(): void {
     // This is the time of the last message received from the server.
     this.mtime[1] = this.mtime[0];
     // This is the current time we got from the server.
@@ -135,9 +146,9 @@ export class ClientMessages {
 
   /**
    * General client data parsing.
-   * @param {number} bits bitmask from Protocol.su describing which general client fields follow
+   * @param bits bitmask from Protocol.su describing which general client fields follow
    */
-  #parseClientGeneral(bits) {
+  #parseClientGeneral(bits: number): void {
     // Parse the general client data.
 
     CL.state.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? NET.message.readChar() : Protocol.default_viewheight;
@@ -167,9 +178,9 @@ export class ClientMessages {
   /**
    * Client data parsing for Quake 1.
    * This will fill CL.state.stats and CL.state.items.
-   * @param {number} bits bitmask from Protocol.su describing which legacy client fields follow
+   * @param bits bitmask from Protocol.su describing which legacy client fields follow
    */
-  #parseClientLegacy(bits) {
+  #parseClientLegacy(bits: number): void {
     const item = NET.message.readLong();
     if (CL.state.items !== item) {
       for (let j = 0; j < CL.state.item_gettime.length; j++) {
@@ -199,14 +210,22 @@ export class ClientMessages {
   /**
    * Client data parsing for QuakeJS based games.
    */
-  #parseClientdata() {
+  #parseClientdata(): void {
+    if (this.#readClientdataFieldsBits === null) {
+      throw new HostError('Clientdata field bits reader not initialized');
+    }
+
     const fieldbits = NET.message[this.#readClientdataFieldsBits]();
 
-    const fields = [];
-    const fieldsToNull = [];
+    const fields: string[] = [];
+    const fieldsToNull: string[] = [];
 
     for (let i = 0; i < this.#clientdataFields.length; i++) {
       const field = this.#clientdataFields[i];
+
+      if (field === undefined) {
+        continue;
+      }
 
       if ((fieldbits & (1 << i)) !== 0) {
         fields.push(field);
@@ -220,6 +239,10 @@ export class ClientMessages {
     // we are writing directly into clientdata object
     const clientdata = CL.state.gameAPI.clientdata;
 
+    if (clientdata === null) {
+      throw new HostError('Client game API clientdata is not initialized');
+    }
+
     while (true) {
       const dataType = NET.message.readByte();
 
@@ -229,7 +252,10 @@ export class ClientMessages {
 
       const field = fields[counter++];
 
-      console.assert(field !== undefined, `Unknown clientdata field index ${counter - 1} for data type ${dataType}`);
+      if (field === undefined) {
+        throw new HostError(`Unknown clientdata field index ${counter - 1} for data type ${dataType}`);
+      }
+
       console.assert(clientdata[field] !== undefined, `Unknown clientdata field ${field} for data type ${dataType}`);
 
       switch (dataType) {
@@ -294,7 +320,7 @@ export class ClientMessages {
     }
   }
 
-  parseClientEvent() {
+  parseClientEvent(): void {
     const eventCode = NET.message.readByte();
     const args = NET.message.readSerializablesOnClient();
 
@@ -304,7 +330,7 @@ export class ClientMessages {
   /**
    * Parses Protocol.svc.clientdata message.
    */
-  parseClient() {
+  parseClient(): void {
     const bits = NET.message.readShort();
 
     this.#parseClientGeneral(bits);
@@ -316,26 +342,30 @@ export class ClientMessages {
     }
   }
 
-  parsePlayer() {
+  parsePlayer(): void {
     const num = NET.message.readByte();
 
     if (num > CL.state.maxclients) {
       throw new HostError('CL.ParsePlayerinfo: num > maxclients');
     }
 
-    if (!this.playerstates[num]) {
+    if (this.playerstates[num] === undefined) {
       this.playerstates[num] = new ClientPlayerState(CL.pmove.newPlayerMove());
     }
 
     const state = this.playerstates[num];
+
+    if (state === undefined) {
+      throw new HostError(`Missing client player state ${num}`);
+    }
 
     state.number = num;
     state.readFromMessage();
     state.angles.set(state.command.angles);
   }
 
-  clear() {
+  clear(): void {
     this.mtime.fill(0.0);
     this.playerstates.length = 0;
   }
-};
+}

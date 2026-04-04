@@ -12,7 +12,7 @@ import Vector from '../../shared/Vector.ts';
 import { moveTypes, solid } from '../../shared/Defs.ts';
 import Key from '../client/Key.mjs';
 import { SFX as SFXValue } from '../client/Sound.mjs';
-import VID from '../client/VID.mjs';
+import VID from '../client/VID.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { EventBus, eventBus, getClientRegistry, getCommonRegistry } from '../registry.mjs';
 import { ED, ServerEdict as ServerEdictValue } from '../server/Edict.ts';

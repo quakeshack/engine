@@ -2,7 +2,7 @@
 
 import Cmd from '../common/Cmd.ts';
 import { eventBus, registry } from '../registry.mjs';
-import VID from './VID.mjs';
+import VID from './VID.ts';
 import * as Def from '../common/Def.ts';
 import Cvar from '../common/Cvar.ts';
 

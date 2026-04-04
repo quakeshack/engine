@@ -1,7 +1,7 @@
 
 /** @typedef {typeof import('./common/Console.ts').default} ConModule */
 /** @typedef {typeof import('./common/Com.ts').default} ComModule */
-/** @typedef {typeof import('./common/Sys.ts').default} SysModule */
+/** @typedef {typeof import('./common/Sys.ts').default | typeof import('./client/Sys.ts').default | typeof import('./server/Sys.ts').default} SysModule */
 /** @typedef {typeof import('./common/Host.ts').default} HostModule */
 /** @typedef {typeof import('./client/V.mjs').default} VModule */
 /** @typedef {typeof import('./network/Network').default} NetModule */
@@ -16,7 +16,7 @@
 /** @typedef {typeof import('./client/Sbar.mjs').default} SbarModule */
 /** @typedef {typeof import('./client/Sound.mjs').default} SoundModule */
 /** @typedef {typeof import('./client/Menu.mjs').default} MenuModule */
-/** @typedef {typeof import('./client/IN.mjs').default} InputModule */
+/** @typedef {typeof import('./client/IN.ts').default} InputModule */
 /** @typedef {typeof globalThis.WebSocket} BrowserWebSocketClass */
 /** @typedef {typeof import('ws')} NodeWebSocketModule */
 /** @typedef {BrowserWebSocketClass | NodeWebSocketModule} WebSocketDependency */
