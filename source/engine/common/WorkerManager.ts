@@ -1,4 +1,4 @@
-import { registry, eventBus, getCommonRegistry } from '../registry.mjs';
+import { registry, eventBus, getCommonRegistry } from '../registry.ts';
 import { SysError } from './Errors.ts';
 import PlatformWorker, { type WorkerFactoryRegistry, type WorkerMessageEnvelope } from './PlatformWorker.ts';
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import R, { compareFogAndTurbulentItems } from '../../source/engine/client/R.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 import Vector from '../../source/shared/Vector.ts';
 
 void describe('compareFogAndTurbulentItems', () => {

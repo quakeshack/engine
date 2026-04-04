@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import NET from '../../source/engine/network/Network.ts';
 import { BaseDriver, LoopDriver, QSocket } from '../../source/engine/network/NetworkDrivers.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 
 class RecordingDriver extends BaseDriver {
   calls = [];

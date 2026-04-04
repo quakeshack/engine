@@ -5,7 +5,7 @@ import { GLTexture } from '../../../client/GL.ts';
 import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
-import { eventBus, getCommonRegistry, registry } from '../../../registry.mjs';
+import { eventBus, getCommonRegistry, registry } from '../../../registry.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 import { Brush, BrushModel, BrushSide, Node, type BSPXLumps, type Clipnode, type Hull } from '../BSP.ts';
 import { Face, Plane } from '../BaseModel.ts';

@@ -1,6 +1,6 @@
 import type { URLs } from '../build-config';
 
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.ts';
 import Mod from './Mod.ts';
 import Sys from './Sys.ts';
 import COM, { type SearchPath } from './Com.ts';

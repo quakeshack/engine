@@ -1,6 +1,6 @@
 import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 
 let { CL, R, SV } = getClientRegistry();
 

@@ -4,7 +4,7 @@ import type { CollisionTrace } from './ServerCollisionSupport.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import Q from '../../../shared/Q.ts';
-import { eventBus, getCommonRegistry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
   GROUND_ANGLE_THRESHOLD,
   VELOCITY_EPSILON,

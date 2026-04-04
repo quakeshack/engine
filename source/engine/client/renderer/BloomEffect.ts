@@ -3,7 +3,7 @@ import PostProcess from './PostProcess.ts';
 import VID from '../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import Vector from '../../../shared/Vector.ts';
-import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.ts';
 import { effect } from '../../../shared/Defs.ts';
 
 let { Draw, R } = getClientRegistry();

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 import SV from '../../source/engine/server/Server.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 

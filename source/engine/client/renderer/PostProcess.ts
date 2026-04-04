@@ -2,7 +2,7 @@ import GL from '../GL.ts';
 import Cvar from '../../common/Cvar.ts';
 import VID from '../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import { eventBus } from '../../registry.mjs';
+import { eventBus } from '../../registry.ts';
 
 let gl: WebGL2RenderingContext = null!;
 

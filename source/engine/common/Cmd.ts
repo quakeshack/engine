@@ -1,7 +1,7 @@
 import type { ServerClient } from '../server/Client.ts';
 
 import * as Protocol from '../network/Protocol.ts';
-import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
 import Cvar from './Cvar.ts';
 import { clientConnectionState } from './Def.ts';
 

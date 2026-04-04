@@ -1,5 +1,5 @@
 import { K } from '../../../shared/Keys.ts';
-import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.ts';
 import { MenuItem } from './MenuItem.ts';
 
 interface MenuPicture {

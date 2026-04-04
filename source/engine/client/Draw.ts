@@ -4,7 +4,7 @@ import { MissingResourceError } from '../common/Errors.ts';
 import VID from './VID.ts';
 import W, { WadFileInterface, WadLumpTexture } from '../common/W.ts';
 
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 import GL, { GLTexture } from './GL.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 

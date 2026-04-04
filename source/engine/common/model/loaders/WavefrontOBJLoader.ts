@@ -1,4 +1,4 @@
-import { registry } from '../../../registry.mjs';
+import { registry } from '../../../registry.ts';
 
 import Vector from '../../../../shared/Vector.ts';
 import { GLTexture } from '../../../client/GL.ts';

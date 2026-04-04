@@ -2,7 +2,7 @@ import type { ClientEventValue, SerializableType } from '../../shared/GameInterf
 import Q from '../../shared/Q.ts';
 import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 
 type SerializableVectorLike = ArrayLike<number>;
 type ServerSerializableValue = SerializableType | object;

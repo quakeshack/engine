@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import PostProcess from '../../source/engine/client/renderer/PostProcess.ts';
-import { eventBus } from '../../source/engine/registry.mjs';
+import { eventBus } from '../../source/engine/registry.ts';
 
 void describe('PostProcess._resolveMSAAColorAttachment', () => {
   void test('resolves secondary attachments through draw attachment 0', () => {

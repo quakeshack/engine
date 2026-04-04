@@ -4,7 +4,7 @@ import type { CollisionTrace } from './ServerCollisionSupport.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { DIST_EPSILON } from '../../common/Pmove.ts';
-import { eventBus, getCommonRegistry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.ts';
 
 interface LegacyHull extends Hull {
   readonly firstclipnode: number;

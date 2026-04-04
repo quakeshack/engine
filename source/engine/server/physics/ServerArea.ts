@@ -4,7 +4,7 @@ import type { BaseEntity, ServerEdict } from '../Edict.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { Octree } from '../../../shared/Octree.ts';
-import { eventBus, getCommonRegistry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.ts';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
 import { BrushModel } from '../../common/Mod.ts';
 

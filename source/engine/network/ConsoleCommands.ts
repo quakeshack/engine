@@ -1,5 +1,5 @@
 import { ConsoleCommand } from '../common/Cmd.ts';
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 
 let { Con, NET } = getCommonRegistry();
 

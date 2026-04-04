@@ -3,7 +3,7 @@ import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 
 let { CL, Con, Host, M } = getClientRegistry();
 

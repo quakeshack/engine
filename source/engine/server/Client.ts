@@ -6,7 +6,7 @@ import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
 
 interface LegacySpawnParmsGameAPI {

@@ -1,6 +1,6 @@
 import { K } from '../../shared/Keys.ts';
 import Cvar from '../common/Cvar.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 import { kbutton, kbuttons } from './ClientInput.ts';
 import VID from './VID.ts';
 

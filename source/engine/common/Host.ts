@@ -14,7 +14,7 @@ import Cvar from './Cvar.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from './Def.ts';
 import Cmd, { ConsoleCommand } from './Cmd.ts';
-import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
 import Vector from '../../shared/Vector.ts';
 import Q from '../../shared/Q.ts';
 import { ServerClient } from '../server/Client.ts';

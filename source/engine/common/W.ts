@@ -1,4 +1,4 @@
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 import { CorruptedResourceError, MissingResourceError } from './Errors.ts';
 import Q from '../../shared/Q.ts';
 

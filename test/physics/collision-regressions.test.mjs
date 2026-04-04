@@ -6,7 +6,7 @@ import { content, flags, moveType, moveTypes, solid } from '../../source/shared/
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
 import { BrushTrace, Hull, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';

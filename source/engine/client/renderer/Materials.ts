@@ -1,4 +1,4 @@
-import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import GL, { GLTexture, type GLProgramInfo } from '../GL.ts';
 

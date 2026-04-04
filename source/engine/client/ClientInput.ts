@@ -3,7 +3,7 @@ import * as Protocol from '../network/Protocol.ts';
 import Q from '../../shared/Q.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import Cmd, { type ConsoleCommand } from '../common/Cmd.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 import { HostError } from '../common/Errors.ts';
 
 interface KButtonState {

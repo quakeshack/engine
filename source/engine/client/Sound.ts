@@ -4,7 +4,7 @@ import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import Q from '../../shared/Q.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 
 let { CL, COM, Con, Host } = getClientRegistry();
 

@@ -1,6 +1,6 @@
 import Vector from '../../../shared/Vector.ts';
 import { ModelRenderer } from './ModelRenderer.ts';
-import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { MaterialFlags, type BaseMaterial } from './Materials.ts';

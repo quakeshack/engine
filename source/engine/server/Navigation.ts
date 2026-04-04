@@ -12,7 +12,7 @@ import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.ts';
 import type { Face } from '../common/model/BaseModel.ts';
 import type PlatformWorker from '../common/PlatformWorker.ts';
 import WorkerManager from '../common/WorkerManager.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.ts';
 import type { BaseEntity, ServerEdict } from './Edict.ts';
 import type { CollisionTrace } from './physics/ServerCollisionSupport.ts';
 

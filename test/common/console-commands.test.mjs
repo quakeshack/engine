@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { InviteCommand } from '../../source/engine/network/ConsoleCommands.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 
 /**
  * Temporarily install a global value for the duration of a callback.

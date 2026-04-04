@@ -2,7 +2,7 @@ import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import { eventBus, getCommonRegistry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
   VELOCITY_EPSILON,
 } from './Defs.ts';

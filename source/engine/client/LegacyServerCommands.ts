@@ -1,7 +1,7 @@
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import { HostError } from '../common/Errors.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 import type { BrushModel } from '../common/Mod.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';

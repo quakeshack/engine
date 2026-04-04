@@ -5,7 +5,7 @@ import type { BrushModel } from '../common/Mod.ts';
 import type { Pmove } from '../common/Pmove.ts';
 
 import Vector from '../../shared/Vector.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 import * as Def from '../common/Def.ts';
 import { content, effect, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.ts';

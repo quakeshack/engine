@@ -1,6 +1,6 @@
 import GL from '../GL.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.ts';
 
 let { Host } = getClientRegistry();
 

@@ -14,7 +14,7 @@ import Key from '../client/Key.ts';
 import { SFX as SFXValue } from '../client/Sound.ts';
 import VID from '../client/VID.ts';
 import * as Protocol from '../network/Protocol.ts';
-import { EventBus, eventBus, getClientRegistry, getCommonRegistry } from '../registry.mjs';
+import { EventBus, eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 import { ED, ServerEdict as ServerEdictValue } from '../server/Edict.ts';
 import Cmd from './Cmd.ts';
 import Cvar from './Cvar.ts';

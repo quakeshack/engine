@@ -5,7 +5,7 @@ import Con from './common/Console.ts';
 import Host from './common/Host.ts';
 import Mod from './common/Mod.ts';
 import NET from './network/Network.ts';
-import { freeze as registryFreeze, registry } from './registry.mjs';
+import { freeze as registryFreeze, registry } from './registry.ts';
 import V from './client/V.ts';
 import NodeCOM from './server/Com.ts';
 import PR from './server/Progs.ts';

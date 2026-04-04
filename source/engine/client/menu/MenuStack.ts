@@ -1,4 +1,4 @@
-import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.ts';
 import type { MenuPage } from './MenuPage.ts';
 
 // Destructure registry modules

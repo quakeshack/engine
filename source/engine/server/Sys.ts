@@ -9,7 +9,7 @@ import express from 'express';
 import { join } from 'path';
 import { createServer } from 'http';
 
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 import Cvar from '../common/Cvar.ts';
 import Cmd from '../common/Cmd.ts';
 import Q from '../../shared/Q.ts';

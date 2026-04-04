@@ -5,7 +5,7 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { ClientMessages } from '../../source/engine/client/ClientMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 
 /**
  * Run a callback with just the registry modules ClientMessages depends on.

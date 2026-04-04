@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import PlatformWorker from '../../source/engine/common/PlatformWorker.ts';
 import WorkerManager from '../../source/engine/common/WorkerManager.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 
 class FakeNodeWorker {
   constructor() {

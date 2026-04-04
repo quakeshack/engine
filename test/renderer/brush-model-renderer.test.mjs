@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/BrushModelRenderer.ts';
 import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.ts';
 

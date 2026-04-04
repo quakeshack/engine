@@ -5,7 +5,7 @@ import Cmd from '../common/Cmd.ts';
 import ClientInput from './ClientInput.ts';
 import type ClientDemos from './ClientDemos.ts';
 import { clientRuntimeState, clientStaticState, type ClientRuntimeState, type ClientStaticState } from './ClientState.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 import { HostError } from '../common/Errors.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.ts';

@@ -16,7 +16,7 @@ import Con from './common/Console.ts';
 import Host from './common/Host.ts';
 import Mod from './common/Mod.ts';
 import NET from './network/Network.ts';
-import { freeze as registryFreeze, registry } from './registry.mjs';
+import { freeze as registryFreeze, registry } from './registry.ts';
 import PR from './server/Progs.ts';
 import SV from './server/Server.ts';
 

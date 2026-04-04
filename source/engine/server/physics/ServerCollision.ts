@@ -6,7 +6,7 @@ import * as Defs from '../../../shared/Defs.ts';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
 import { BrushModel, MeshModel } from '../../common/Mod.ts';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
-import { eventBus, getCommonRegistry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
   BrushCollisionState,
   CollisionState,

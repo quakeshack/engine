@@ -1,7 +1,7 @@
 import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
 import type { SzBuffer } from './MSG.ts';
-import { eventBus, getCommonRegistry, registry } from '../registry.mjs';
+import { eventBus, getCommonRegistry, registry } from '../registry.ts';
 import { formatIP } from './Misc.ts';
 
 type Throwable = Error | string | number | boolean | null | undefined | { message?: string };

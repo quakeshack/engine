@@ -7,7 +7,7 @@ import CL from './CL.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 
 let { Host, PR, S } = getClientRegistry();
 

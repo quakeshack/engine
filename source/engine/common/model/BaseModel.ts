@@ -1,5 +1,5 @@
 import GL from '../../client/GL.ts';
-import { eventBus } from '../../registry.mjs';
+import { eventBus } from '../../registry.ts';
 import Vector from '../../../shared/Vector.ts';
 
 let gl: WebGL2RenderingContext | null = null;

@@ -4,7 +4,7 @@ import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.ts';
-import { eventBus, getCommonRegistry, registry } from '../registry.mjs';
+import { eventBus, getCommonRegistry, registry } from '../registry.ts';
 import { ED, ServerEdict } from './Edict.ts';
 
 type BuiltinValue = string | number | boolean | Vector | ServerEdict | null;

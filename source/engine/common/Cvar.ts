@@ -1,4 +1,4 @@
-import { eventBus, getCommonRegistry, registry } from '../registry.mjs';
+import { eventBus, getCommonRegistry, registry } from '../registry.ts';
 import Cmd from './Cmd.ts';
 import Q from '../../shared/Q.ts';
 import { cvarFlags } from '../../shared/Defs.ts';

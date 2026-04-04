@@ -1,5 +1,5 @@
 import WorkerFramework from '../common/WorkerFramework.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.ts';
 
 await WorkerFramework.Init();
 

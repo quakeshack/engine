@@ -7,7 +7,7 @@ import { CRC16CCITT as CRC } from '../common/CRC.ts';
 import COM, { type PackFileEntry, type SearchPath } from '../common/Com.ts';
 
 import { CorruptedResourceError } from '../common/Errors.ts';
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 
 let { Con, Sys } = getCommonRegistry();
 

@@ -4,7 +4,7 @@ import type { ServerEdict } from '../Edict.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { STEPSIZE } from '../../common/Pmove.ts';
-import { eventBus, getCommonRegistry } from '../../registry.mjs';
+import { eventBus, getCommonRegistry } from '../../registry.ts';
 
 interface EdictReferenceLike {
   readonly edict?: ServerEdict | null;

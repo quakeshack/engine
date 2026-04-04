@@ -6,7 +6,7 @@ import * as Def from '../../source/engine/common/Def.ts';
 import ClientConnection from '../../source/engine/client/ClientConnection.ts';
 import { clientRuntimeState, clientStaticState } from '../../source/engine/client/ClientState.ts';
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
+import { eventBus, registry } from '../../source/engine/registry.ts';
 
 /**
  * Build a minimal demo subsystem stub for connection tests.

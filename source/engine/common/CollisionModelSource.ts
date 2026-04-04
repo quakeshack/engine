@@ -1,4 +1,4 @@
-import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 
 import type { ServerEdict } from '../server/Edict.ts';
 import type { BrushModel } from './model/BSP.ts';

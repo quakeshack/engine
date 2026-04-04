@@ -1,5 +1,5 @@
 import Vector from '../../shared/Vector.ts';
-import { eventBus, getClientRegistry, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Cvar from './Cvar.ts';
 import Cmd from './Cmd.ts';
 import VID from '../client/VID.ts';

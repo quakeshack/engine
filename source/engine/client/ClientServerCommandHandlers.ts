@@ -8,7 +8,7 @@ import Vector from '../../shared/Vector.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import type { BrushModel } from '../common/Mod.ts';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
 import type { SFX } from './Sound.ts';

@@ -1,7 +1,7 @@
 import GL from '../GL.ts';
 import Cvar from '../../common/Cvar.ts';
 import { limits } from '../../common/Def.ts';
-import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.ts';
 import { MaterialFlags } from './Materials.ts';
 import { effect } from '../../../shared/Defs.ts';
 import Vector from '../../../shared/Vector.ts';

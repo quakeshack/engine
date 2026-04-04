@@ -9,7 +9,7 @@ import * as Protocol from '../network/Protocol.ts';
 import * as Def from './../common/Def.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { ED, ServerEdict } from './Edict.ts';
-import { EventBus, eventBus, getCommonRegistry } from '../registry.mjs';
+import { EventBus, eventBus, getCommonRegistry } from '../registry.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import * as Defs from '../../shared/Defs.ts';
 import { Navigation } from './Navigation.ts';

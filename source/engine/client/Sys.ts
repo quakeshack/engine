@@ -1,6 +1,6 @@
 import { K } from '../../shared/Keys.ts';
 import Q from '../../shared/Q.ts';
-import { eventBus, getClientRegistry, registry } from '../registry.mjs';
+import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Tools from './Tools.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import workerFactories from '../common/WorkerFactories.ts';

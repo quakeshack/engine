@@ -2,7 +2,7 @@ import { gameCapabilities } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, getClientRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry } from '../registry.ts';
 import GL from './GL.ts';
 import VID from './VID.ts';
 import PostProcess from './renderer/PostProcess.ts';

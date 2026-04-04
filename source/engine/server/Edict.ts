@@ -10,7 +10,7 @@ import { SzBuffer, registerSerializableType } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import * as Defs from '../../shared/Defs.ts';
-import { eventBus, registry } from '../registry.mjs';
+import { eventBus, registry } from '../registry.ts';
 import Q from '../../shared/Q.ts';
 import { ConsoleCommand } from '../common/Cmd.ts';
 

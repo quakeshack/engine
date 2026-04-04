@@ -1,6 +1,6 @@
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import W, { WadFileInterface } from '../common/W.ts';
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 
 let { Con } = getCommonRegistry();
 

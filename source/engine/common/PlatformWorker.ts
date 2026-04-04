@@ -1,4 +1,4 @@
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 import { BaseWorker, type WorkerMessageListener } from './Sys.ts';
 
 let { Host } = getCommonRegistry();

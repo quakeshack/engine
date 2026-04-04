@@ -6,7 +6,7 @@ import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Defs from '../../shared/Defs.ts';
 import Cvar from '../common/Cvar.ts';
-import { eventBus, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getCommonRegistry } from '../registry.ts';
 import { ServerClient } from './Client.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
 

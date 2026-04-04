@@ -1,7 +1,7 @@
 import PR from '../../server/Progs.ts';
 import { K } from '../../../shared/Keys.ts';
 import Cmd from '../../common/Cmd.ts';
-import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.ts';
 import { Action, Label, Spacer } from './MenuItem.ts';
 import { MenuPage, VerticalLayout } from './MenuPage.ts';
 import type { MenuStack } from './MenuStack.ts';

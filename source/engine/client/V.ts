@@ -6,7 +6,7 @@ import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import * as Def from '../common/Def.ts';
 import Q from '../../shared/Q.ts';
-import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.mjs';
+import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 import Chase from './Chase.ts';
 
 let { Con, Host } = getCommonRegistry();
