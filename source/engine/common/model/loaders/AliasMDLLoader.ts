@@ -1,6 +1,6 @@
 import Vector from '../../../../shared/Vector.ts';
 import Q from '../../../../shared/Q.ts';
-import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.mjs';
+import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.ts';
 import { registry } from '../../../registry.mjs';
 import { CRC16CCITT } from '../../CRC.ts';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';

@@ -1,4 +1,4 @@
-import type { GLTexture } from '../../client/GL.mjs';
+import type { GLTexture } from '../../client/GL.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import { BaseModel } from './BaseModel.ts';

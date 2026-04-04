@@ -3,7 +3,7 @@
 /** @typedef {typeof import('./common/Com.ts').default} ComModule */
 /** @typedef {typeof import('./common/Sys.ts').default | typeof import('./client/Sys.ts').default | typeof import('./server/Sys.ts').default} SysModule */
 /** @typedef {typeof import('./common/Host.ts').default} HostModule */
-/** @typedef {typeof import('./client/V.mjs').default} VModule */
+/** @typedef {typeof import('./client/V.ts').default} VModule */
 /** @typedef {typeof import('./network/Network').default} NetModule */
 /** @typedef {typeof import('./server/Server.ts').default} ServerModule */
 /** @typedef {typeof import('./server/Progs.ts').default} ProgsModule */

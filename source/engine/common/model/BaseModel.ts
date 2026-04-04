@@ -1,4 +1,4 @@
-import GL from '../../client/GL.mjs';
+import GL from '../../client/GL.ts';
 import { eventBus } from '../../registry.mjs';
 import Vector from '../../../shared/Vector.ts';
 

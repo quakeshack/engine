@@ -1,7 +1,7 @@
 import Vector from '../../../../shared/Vector.ts';
 import Q from '../../../../shared/Q.ts';
 import { content } from '../../../../shared/Defs.ts';
-import { GLTexture } from '../../../client/GL.mjs';
+import { GLTexture } from '../../../client/GL.ts';
 import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';

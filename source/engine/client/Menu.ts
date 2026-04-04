@@ -6,7 +6,7 @@ import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, getClientRegistry } from '../registry.mjs';
 import ClientLifecycle from './ClientLifecycle.ts';
-import { GLTexture } from './GL.mjs';
+import { GLTexture } from './GL.ts';
 import MultiplayerMainMenu from './menu/Multiplayer.ts';
 import VID from './VID.ts';
 

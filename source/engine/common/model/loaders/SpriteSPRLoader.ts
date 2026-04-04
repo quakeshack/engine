@@ -1,5 +1,5 @@
 import Vector from '../../../../shared/Vector.ts';
-import { GLTexture } from '../../../client/GL.mjs';
+import { GLTexture } from '../../../client/GL.ts';
 import { registry } from '../../../registry.mjs';
 import { CRC16CCITT } from '../../CRC.ts';
 import W, { translateIndexToRGBA } from '../../W.ts';

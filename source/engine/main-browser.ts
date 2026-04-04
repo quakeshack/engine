@@ -8,7 +8,7 @@ import M from './client/Menu.ts';
 import R from './client/R.mjs';
 import S from './client/Sound.ts';
 import Sys from './client/Sys.ts';
-import V from './client/V.mjs';
+import V from './client/V.ts';
 import Sbar from './client/Sbar.mjs';
 import SCR from './client/SCR.mjs';
 import COM from './common/Com.ts';
