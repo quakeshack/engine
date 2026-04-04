@@ -9,8 +9,8 @@ import { eventBus, getCommonRegistry, registry } from '../../../registry.mjs';
 import { ModelLoader } from '../ModelLoader.ts';
 import { Brush, BrushModel, BrushSide, Node, type BSPXLumps, type Clipnode, type Hull } from '../BSP.ts';
 import { Face, Plane } from '../BaseModel.ts';
-import { materialFlags, noTextureMaterial, PBRMaterial, QuakeMaterial } from '../../../client/renderer/Materials.mjs';
-import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.mjs';
+import { MaterialFlags, noTextureMaterial, PBRMaterial, QuakeMaterial } from '../../../client/renderer/Materials.ts';
+import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.ts';
 
 // Get registry references (will be set by eventBus)
 let { COM, Con } = getCommonRegistry();
@@ -223,7 +223,7 @@ export class BSP29Loader extends ModelLoader {
             return skyrenderer;
           };
 
-          tx.flags |= materialFlags.MF_SKY;
+          tx.flags |= MaterialFlags.MF_SKY;
         } else {
           // Try loading WAD3 texture
           const len = 40 + tx.width * tx.height * (1 + 0.25 + 0.0625 + 0.015625) + 2 + 768;
@@ -256,16 +256,16 @@ export class BSP29Loader extends ModelLoader {
         }
 
         if (tx.name[0] === '*' || tx.name[0] === '!') {
-          tx.flags |= materialFlags.MF_TURBULENT;
+          tx.flags |= MaterialFlags.MF_TURBULENT;
         }
 
         // Mark textures with '{' prefix as transparent (for alpha blending)
         if (tx.name[0] === '{') {
-          tx.flags |= materialFlags.MF_TRANSPARENT;
+          tx.flags |= MaterialFlags.MF_TRANSPARENT;
         }
 
         if (tx.name.toLowerCase().startsWith('*lava')) {
-          tx.flags |= materialFlags.MF_FULLBRIGHT;
+          tx.flags |= MaterialFlags.MF_FULLBRIGHT;
         }
       }
 
@@ -1160,7 +1160,7 @@ export class BSP29Loader extends ModelLoader {
         const face = submodel.faces[submodel.firstface + j];
         const material = loadmodel.textures[face.texture];
 
-        if (!(material.flags & materialFlags.MF_TURBULENT)) {
+        if (!(material.flags & MaterialFlags.MF_TURBULENT)) {
           allTurbulent = false;
           break;
         }
@@ -1638,9 +1638,9 @@ export class BSP29Loader extends ModelLoader {
       face.texturemins = [Math.floor(mins[0] / lmscale) * lmscale, Math.floor(mins[1] / lmscale) * lmscale];
       face.extents = [Math.ceil(maxs[0] / lmscale) * lmscale - face.texturemins[0], Math.ceil(maxs[1] / lmscale) * lmscale - face.texturemins[1]];
 
-      if (loadmodel.textures[tex.texture].flags & materialFlags.MF_TURBULENT) {
+      if (loadmodel.textures[tex.texture].flags & MaterialFlags.MF_TURBULENT) {
         face.turbulent = true;
-      } else if (loadmodel.textures[tex.texture].flags & materialFlags.MF_SKY) {
+      } else if (loadmodel.textures[tex.texture].flags & MaterialFlags.MF_SKY) {
         face.sky = true;
       }
 

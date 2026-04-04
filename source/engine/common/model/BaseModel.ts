@@ -96,6 +96,17 @@ export class Face {
 
   /** Last frame index that updated the dynamic light bits. */
   dlightframe = -1;
+
+  // ─── Renderer-side state (populated by BrushModelRenderer) ───────────────
+
+  /** Rendered vertex data packed by the display list builder. Each entry is a vertex attribute array. */
+  verts: number[][] | null = null;
+
+  /** Lightmap atlas block S coordinate (set by the lightmap allocator). */
+  light_s = 0;
+
+  /** Lightmap atlas block T coordinate (set by the lightmap allocator). */
+  light_t = 0;
 }
 
 /**

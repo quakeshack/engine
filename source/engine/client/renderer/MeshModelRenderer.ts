@@ -1,23 +1,26 @@
 import Vector from '../../../shared/Vector.ts';
-import { ModelRenderer } from './ModelRenderer.mjs';
-import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
-import { eventBus, registry } from '../../registry.mjs';
-import GL, { ATTRIB_LOCATIONS } from '../GL.mjs';
+import { ModelRenderer } from './ModelRenderer.ts';
+import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
+import GL, { ATTRIB_LOCATIONS } from '../GL.ts';
+import type { MeshModel } from '../../common/model/MeshModel.ts';
+import type { ClientEdict } from '../ClientEntities.ts';
+import type { BaseModel } from '../../common/model/BaseModel.ts';
 
-let { Con, R } = registry;
+let { Con, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con, R } = registry);
+  ({ Con, R } = getClientRegistry());
 });
 
-let gl = /** @type {WebGL2RenderingContext} */ (null);
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
 
 /**
@@ -26,60 +29,58 @@ eventBus.subscribe('gl.shutdown', () => {
  */
 export class MeshModelRenderer extends ModelRenderer {
   /**
-   * Get the model type this renderer handles
-   * @returns {number} Mod.type.mesh (3)
+   * Get the model type this renderer handles.
+   * @returns Mod.type.mesh (3)
    */
-  getModelType() {
+  override getModelType(): number {
     return 3; // Mod.type.mesh
   }
 
   /**
    * Setup rendering state for mesh models.
-   * @param {number} [_pass] Rendering pass (0=opaque, 1=transparent)
+   * @param _pass Rendering pass (0=opaque, 1=transparent).
    */
-  // eslint-disable-next-line no-unused-vars
-  setupRenderState(_pass = 0) {
+
+  override setupRenderState(_pass = 0): void {
     // Mesh models bind their own buffers and state per-entity
     // No shared setup needed at this level
   }
 
   /**
-   * @param {import('../../common/model/MeshModel.ts').MeshModel} _model The mesh model
-   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
-   * @returns {boolean} Mesh transparency is not implemented, so meshes stay in the opaque pass
+   * @param _model The mesh model.
+   * @param _entity The entity being rendered.
+   * @returns Mesh transparency is not implemented, so meshes stay in the opaque pass.
    */
-  // eslint-disable-next-line no-unused-vars
-  rendersOpaquePass(_model, _entity) {
+  override rendersOpaquePass(_model: BaseModel, _entity: ClientEdict): boolean {
     return true;
   }
 
   /**
-   * @param {import('../../common/model/MeshModel.ts').MeshModel} _model The mesh model
-   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
-   * @returns {boolean} False because sorted transparent mesh rendering is not implemented yet
+   * @param _model The mesh model.
+   * @param _entity The entity being rendered.
+   * @returns False because sorted transparent mesh rendering is not implemented yet.
    */
-  // eslint-disable-next-line no-unused-vars
-  rendersTransparentPass(_model, _entity) {
+  override rendersTransparentPass(_model: BaseModel, _entity: ClientEdict): boolean {
     return false;
   }
 
   /**
    * Cleanup rendering state after rendering mesh models.
-   * @param {number} [_pass] Rendering pass (0=opaque, 1=transparent)
+   * @param _pass Rendering pass (0=opaque, 1=transparent).
    */
-  // eslint-disable-next-line no-unused-vars
-  cleanupRenderState(_pass = 0) {
+
+  override cleanupRenderState(_pass = 0): void {
     // No shared cleanup needed
   }
 
   /**
    * Render a single mesh model entity.
-   * @param {import('../../common/model/MeshModel.ts').MeshModel} model The mesh model to render
-   * @param {import('../ClientEntities.ts').ClientEdict} entity The entity being rendered
-   * @param {number} pass Rendering pass (0=opaque, 1=transparent)
+   * @param model The mesh model to render.
+   * @param entity The entity being rendered.
+   * @param pass Rendering pass (0=opaque, 1=transparent).
    */
-  render(model, entity, pass = 0) {
-    const clmodel = model;
+  override render(model: BaseModel, entity: ClientEdict, pass = 0): void {
+    const clmodel = model as MeshModel;
     const e = entity;
 
     // Only render in opaque pass for now
@@ -108,30 +109,30 @@ export class MeshModelRenderer extends ModelRenderer {
     }
 
     // Use dedicated mesh shader
-    const program = GL.UseProgram('mesh');
+    const program = GL.UseProgram('mesh')!;
 
     // Bind model VAO (captures VBO layout + IBO)
-    GL.BindVAO(clmodel.vao);
+    GL.BindVAO(clmodel.vao!);
 
     // Setup uniforms
     const viewMatrix = e.lerp.angles.toRotationMatrix();
-    gl.uniform3fv(program.uOrigin, e.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles, false, viewMatrix);
+    gl.uniform3fv(program.uOrigin!, e.lerp.origin);
+    gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
 
     // Lighting
     const [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition] = R._CalculateLightValues(e);
-    gl.uniform3fv(program.uAmbientLight, ambientlight);
-    gl.uniform3fv(program.uShadeLight, shadelight);
-    gl.uniform3fv(program.uLightVec, lightPosition);
-    gl.uniform3fv(program.uDynamicShadeLight, dynamicShadeLight);
-    gl.uniform3fv(program.uDynamicLightVec, dynamicLightPosition);
-    gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
+    gl.uniform3fv(program.uAmbientLight!, ambientlight);
+    gl.uniform3fv(program.uShadeLight!, shadelight);
+    gl.uniform3fv(program.uLightVec!, lightPosition);
+    gl.uniform3fv(program.uDynamicShadeLight!, dynamicShadeLight);
+    gl.uniform3fv(program.uDynamicLightVec!, dynamicLightPosition);
+    gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
 
     // Bind texture
     if (clmodel.texture) {
       clmodel.texture.bindTo(program);
     } else {
-      R.notexture.bind(program.tTexture);
+      R.notexture.bind(program.tTexture!);
     }
 
     // Bind local shadow maps
@@ -163,12 +164,12 @@ export class MeshModelRenderer extends ModelRenderer {
 
   /**
    * Prepare mesh model for rendering (build display lists, upload to GPU).
-   * @param {import('../../common/model/MeshModel.ts').MeshModel} model The mesh model to prepare
-   * @param {boolean} isWorldModel Whether this model is the world model
+   * @param model The mesh model to prepare.
+   * @param isWorldModel Whether this model is the world model.
    */
-  // eslint-disable-next-line no-unused-vars
-  prepareModel(model, isWorldModel = false) {
-    const m = model;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  override prepareModel(model: BaseModel, isWorldModel = false): void {
+    const m = model as MeshModel;
 
     // Clean up existing buffers if present
     if (m.vbo) {
@@ -255,41 +256,59 @@ export class MeshModelRenderer extends ModelRenderer {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ibo);
 
     // Flip winding order (CW -> CCW) to fix inside-out rendering
-    const indices = new (m.indices instanceof Uint16Array ? Uint16Array : Uint32Array)(m.indices.length);
-    for (let i = 0; i < m.indices.length; i += 3) {
-      indices[i] = m.indices[i];
-      indices[i + 1] = m.indices[i + 2];
-      indices[i + 2] = m.indices[i + 1];
+    const srcIndices = m.indices!;
+    const indices = new (srcIndices instanceof Uint16Array ? Uint16Array : Uint32Array)(srcIndices.length);
+    for (let i = 0; i < srcIndices.length; i += 3) {
+      indices[i] = srcIndices[i];
+      indices[i + 1] = srcIndices[i + 2];
+      indices[i + 2] = srcIndices[i + 1];
     }
 
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 
     // Create VAO capturing VBO layout + IBO binding
     const stride = 56;
-    m.vao = GL.CreateVAO(m.vbo, [
+    m.vao = GL.CreateVAO(m.vbo!, [
       { location: ATTRIB_LOCATIONS.aPosition, components: 3, type: gl.FLOAT, normalized: false, stride, offset: 0 },
       { location: ATTRIB_LOCATIONS.aTexCoord, components: 2, type: gl.FLOAT, normalized: false, stride, offset: 12 },
       { location: ATTRIB_LOCATIONS.aNormal, components: 3, type: gl.FLOAT, normalized: false, stride, offset: 20 },
-    ], m.ibo);
+    ], m.ibo!);
 
     Con.DPrint(`MeshModelRenderer.prepareModel: ${m.name} uploaded ${m.numVertices} vertices, ${m.numTriangles} triangles\n`);
 
-    // Load texture
     this._loadTexture(m);
   }
 
   /**
-   * Load texture for mesh model
-   * @private
-   * @param {import('../../common/model/MeshModel.ts').MeshModel} model The mesh model
+   * Load texture for mesh model.
+   * @param model The mesh model.
    */
-  _loadTexture(model) {
+  private _loadTexture(model: MeshModel): void {
     // Try to load texture using the texture name
     // For now, just use the base name and let the texture system find it
     if (model.textureName) {
       // The texture will be loaded lazily when first needed
-      // For now, we'll just store the name
       // TODO: Implement proper texture loading for external formats (PNG, JPG)
+    }
+  }
+
+  /**
+   * Free GPU resources for this mesh model.
+   * @param model The mesh model to cleanup.
+   */
+  override cleanupModel(model: BaseModel): void {
+    const m = model as MeshModel;
+    if (m.vao) {
+      gl.deleteVertexArray(m.vao);
+      m.vao = null;
+    }
+    if (m.vbo) {
+      gl.deleteBuffer(m.vbo);
+      m.vbo = null;
+    }
+    if (m.ibo) {
+      gl.deleteBuffer(m.ibo);
+      m.ibo = null;
     }
   }
 }

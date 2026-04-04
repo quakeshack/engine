@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { materialFlags, resolveMaterialLuminanceTexture } from '../../source/engine/client/renderer/Materials.mjs';
+import { MaterialFlags, resolveMaterialLuminanceTexture } from '../../source/engine/client/renderer/Materials.ts';
 
 describe('resolveMaterialLuminanceTexture', () => {
   test('keeps the explicit luminance texture when one is present', () => {
@@ -10,7 +10,7 @@ describe('resolveMaterialLuminanceTexture', () => {
     const luminanceTexture = /** @type {import('../../source/engine/client/GL.mjs').GLTexture} */ ({});
 
     assert.equal(
-      resolveMaterialLuminanceTexture(materialFlags.MF_FULLBRIGHT, luminanceTexture, diffuseTexture, fallbackTexture),
+      resolveMaterialLuminanceTexture(MaterialFlags.MF_FULLBRIGHT, luminanceTexture, diffuseTexture, fallbackTexture),
       luminanceTexture,
     );
   });
@@ -20,7 +20,7 @@ describe('resolveMaterialLuminanceTexture', () => {
     const diffuseTexture = /** @type {import('../../source/engine/client/GL.mjs').GLTexture} */ ({});
 
     assert.equal(
-      resolveMaterialLuminanceTexture(materialFlags.MF_FULLBRIGHT, fallbackTexture, diffuseTexture, fallbackTexture),
+      resolveMaterialLuminanceTexture(MaterialFlags.MF_FULLBRIGHT, fallbackTexture, diffuseTexture, fallbackTexture),
       diffuseTexture,
     );
   });
@@ -30,7 +30,7 @@ describe('resolveMaterialLuminanceTexture', () => {
     const diffuseTexture = /** @type {import('../../source/engine/client/GL.mjs').GLTexture} */ ({});
 
     assert.equal(
-      resolveMaterialLuminanceTexture(materialFlags.MF_NONE, null, diffuseTexture, fallbackTexture),
+      resolveMaterialLuminanceTexture(MaterialFlags.MF_NONE, null, diffuseTexture, fallbackTexture),
       fallbackTexture,
     );
   });

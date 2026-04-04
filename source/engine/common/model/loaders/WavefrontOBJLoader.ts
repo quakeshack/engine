@@ -2,7 +2,7 @@ import { registry } from '../../../registry.mjs';
 
 import Vector from '../../../../shared/Vector.ts';
 import { GLTexture } from '../../../client/GL.ts';
-import { PBRMaterial } from '../../../client/renderer/Materials.mjs';
+import { PBRMaterial } from '../../../client/renderer/Materials.ts';
 import { MeshModel } from '../MeshModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 

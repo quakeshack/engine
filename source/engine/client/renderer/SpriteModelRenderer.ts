@@ -1,23 +1,29 @@
-import { ModelRenderer } from './ModelRenderer.mjs';
-import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
-import { eventBus, registry } from '../../registry.mjs';
-import GL from '../GL.mjs';
+import { ModelRenderer } from './ModelRenderer.ts';
+import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
+import GL from '../GL.ts';
+import type { SpriteModel, SpriteSingleFrame, SpriteFrameImage } from '../../common/model/SpriteModel.ts';
+import type { ClientEdict } from '../ClientEntities.ts';
+import type { BaseModel } from '../../common/model/BaseModel.ts';
 
-let { CL, R } = registry;
+let { CL, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, R } = registry);
+  ({ CL, R } = getClientRegistry());
 });
 
-let gl = /** @type {WebGL2RenderingContext} */ (null);
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
+
+/** A resolved (non-group) sprite frame ready for rendering. */
+type SpriteRenderFrame = SpriteSingleFrame | SpriteFrameImage;
 
 /**
  * Renderer for Sprite SPR models (2D billboards like explosions, particles).
@@ -25,105 +31,98 @@ eventBus.subscribe('gl.shutdown', () => {
  */
 export class SpriteModelRenderer extends ModelRenderer {
   /**
-   * Get the model type this renderer handles
-   * @returns {number} Mod.type.sprite (1)
+   * Get the model type this renderer handles.
+   * @returns Mod.type.sprite (1)
    */
-  getModelType() {
+  override getModelType(): number {
     return 1; // Mod.type.sprite
   }
 
   /**
    * Setup rendering state for sprite models.
    * Enables blending for transparent sprites.
-   * @param {number} pass Rendering pass (0=opaque, 1=transparent)
-   * @returns {object|null} The shader program or null if not in sprite pass
+   * @param pass Rendering pass (0=opaque, 1=transparent).
    */
-  setupRenderState(pass = 0) {
+  override setupRenderState(pass = 0): void {
     if (pass === 1) {
-      // Sprites are typically rendered in transparent pass
-      const program = GL.UseProgram('sprite', true);
-      return program;
+      GL.UseProgram('sprite', true);
     }
-    return null;
   }
 
   /**
-   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model
-   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
-   * @returns {boolean} Sprites are never drawn in the opaque pass
+   * @param _model The sprite model.
+   * @param _entity The entity being rendered.
+   * @returns Sprites are never drawn in the opaque pass.
    */
-  // eslint-disable-next-line no-unused-vars
-  rendersOpaquePass(_model, _entity) {
+  override rendersOpaquePass(_model: BaseModel, _entity: ClientEdict): boolean {
     return false;
   }
 
   /**
-   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model
-   * @param {import('../ClientEntities.ts').ClientEdict} _entity The entity being rendered
-   * @returns {boolean} Sprites use their dedicated sprite pass rather than the sorted transparent pass
+   * @param _model The sprite model.
+   * @param _entity The entity being rendered.
+   * @returns Sprites use their dedicated sprite pass rather than the sorted transparent pass.
    */
-  // eslint-disable-next-line no-unused-vars
-  rendersTransparentPass(_model, _entity) {
+  override rendersTransparentPass(_model: BaseModel, _entity: ClientEdict): boolean {
     return false;
   }
 
   /**
    * Render a single sprite model entity.
    * Generates billboard geometry dynamically based on camera orientation.
-   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} model The sprite model to render
-   * @param {import('../ClientEntities.ts').ClientEdict} entity The entity being rendered
-   * @param {number} pass Rendering pass (0=opaque, 1=transparent)
+   * @param model The sprite model to render.
+   * @param entity The entity being rendered.
+   * @param pass Rendering pass (0=opaque, 1=transparent).
    */
-  render(model, entity, pass = 0) {
+  override render(model: BaseModel, entity: ClientEdict, pass = 0): void {
     if (pass === 0) {
       return; // Sprites only render in transparent pass
     }
 
+    const spriteModel = model as SpriteModel;
     const e = entity;
-    const program = GL.UseProgram('sprite', true);
+    const program = GL.UseProgram('sprite', true)!;
 
     // Prepare uniforms
-    gl.uniform1f(program.uAlpha, entity.alpha);
-    gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(entity.effects));
+    gl.uniform1f(program.uAlpha!, entity.alpha);
+    gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(entity.effects));
 
     // Select frame
     let num = e.frame;
-    if ((num >= model.numframes) || (num < 0)) {
-      if (registry.Con) {
-        registry.Con.DPrint('SpriteModelRenderer: no such frame ' + num + '\n');
-      }
+    if ((num >= spriteModel.numframes) || (num < 0)) {
       num = 0;
     }
 
-    let frame = model.frames[num];
+    let frame: SpriteRenderFrame = spriteModel.frames[num] as SpriteRenderFrame;
 
     // Handle frame groups (animated sprites)
-    if (frame.group === true) {
+    if ((frame as { group?: boolean }).group === true) {
+      const groupedFrame = spriteModel.frames[num] as { group: true; frames: SpriteFrameImage[] };
       const time = CL.state.time + e.syncbase;
-      num = frame.frames.length - 1;
-      const fullinterval = frame.frames[num].interval;
+      const groupLen = groupedFrame.frames.length - 1;
+      const fullinterval = groupedFrame.frames[groupLen].interval!;
       const targettime = time - Math.floor(time / fullinterval) * fullinterval;
 
       let i = 0;
-      for (i = 0; i < num; i++) {
-        if (frame.frames[i].interval > targettime) {
+      for (i = 0; i < groupLen; i++) {
+        if (groupedFrame.frames[i].interval! > targettime) {
           break;
         }
       }
-      frame = frame.frames[i];
+      frame = groupedFrame.frames[i];
     }
 
-    // TODO: set uInterpolation, frames
-
     // Bind texture
-    GL.Bind(program.tTexture, frame.texturenum, true);
+    GL.Bind(program.tTexture!, frame.texturenum, true);
 
     // Calculate billboard orientation
-    let r, u;
-    if (model.oriented === true) {
+    let r: { [n: number]: number };
+    let u: { [n: number]: number };
+    if (spriteModel.oriented === true) {
       // Sprite has fixed orientation
-      const {right, up} = e.angles.angleVectors();
-      [r, u] = [right, up];
+      const { right, up } = e.angles.angleVectors();
+      r = right;
+      u = up;
     } else {
       // Sprite faces camera
       r = R.vright;
@@ -136,8 +135,6 @@ export class SpriteModelRenderer extends ModelRenderer {
     const y1 = frame.origin[1];
     const x2 = x1 + frame.width;
     const y2 = y1 + frame.height;
-
-    // TODO: use precomputed Vertex Array
 
     // Write 6 vertices (2 triangles) to stream buffer
     GL.StreamGetSpace(6);
@@ -184,10 +181,9 @@ export class SpriteModelRenderer extends ModelRenderer {
   /**
    * Cleanup rendering state after sprite models.
    * Flushes the stream buffer to draw all sprites.
-   * @param {number} [_pass] Rendering pass (0=opaque, 1=transparent)
+   * @param _pass Rendering pass (0=opaque, 1=transparent).
    */
-  // eslint-disable-next-line no-unused-vars
-  cleanupRenderState(_pass = 0) {
+  override cleanupRenderState(_pass = 0): void {
     // Flush accumulated sprite geometry
     GL.StreamFlush();
   }
@@ -195,21 +191,20 @@ export class SpriteModelRenderer extends ModelRenderer {
   /**
    * Prepare sprite model for rendering.
    * Sprites use dynamic geometry, so no GPU resources to prepare.
-   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model to prepare
-   * @param {boolean} isWorldModel Whether this model is the world model
+   * @param _model The sprite model to prepare.
+   * @param isWorldModel Whether this model is the world model.
    */
-  // eslint-disable-next-line no-unused-vars
-  prepareModel(_model, isWorldModel = false) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  override prepareModel(_model: BaseModel, isWorldModel = false): void {
     // Sprites don't need GPU preparation - geometry is generated per-frame
   }
 
   /**
    * Free GPU resources for this sprite model.
    * Sprites don't allocate GPU resources.
-   * @param {import('../../common/model/SpriteModel.ts').SpriteModel} _model The sprite model to cleanup
+   * @param _model The sprite model to cleanup.
    */
-  // eslint-disable-next-line no-unused-vars
-  cleanupModel(_model) {
+  override cleanupModel(_model: BaseModel): void {
     // Sprites don't have GPU resources to clean up
   }
 }

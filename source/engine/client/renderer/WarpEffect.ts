@@ -1,22 +1,21 @@
-import GL from '../GL.mjs';
-import PostProcessEffect from './PostProcessEffect.mjs';
-import { eventBus, registry } from '../../registry.mjs';
+import GL from '../GL.ts';
+import PostProcessEffect from './PostProcessEffect.ts';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
 
-let { Host } = registry;
+let { Host } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host } = registry);
+  ({ Host } = getClientRegistry());
 });
 
-/** @type {WebGL2RenderingContext} */
-let gl = /** @type {WebGL2RenderingContext} */ (null);
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
 
 /**
@@ -37,24 +36,22 @@ export default class WarpEffect extends PostProcessEffect {
   /**
    * Apply the warp distortion effect by drawing a fullscreen quad with
    * the 'warp' shader.
-   * @param {WebGLTexture} inputTexture - Scene color texture to distort
-   * @param {number} x - Viewport x position
-   * @param {number} y - Viewport y position
-   * @param {number} width - Viewport width
-   * @param {number} height - Viewport height
+   * @param inputTexture Scene color texture to distort.
+   * @param x Viewport x position.
+   * @param y Viewport y position.
+   * @param width Viewport width.
+   * @param height Viewport height.
    */
-  apply(inputTexture, x, y, width, height) {
+  override apply(inputTexture: WebGLTexture, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('warp');
-    GL.Bind(program.tTexture, inputTexture);
-    gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
+    GL.Bind(program!.tTexture!, inputTexture);
+    gl.uniform1f(program!.uTime!, Host.realtime % (Math.PI * 2.0));
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
   }
 
-  /**
-   * Mark the effect inactive on shutdown.
-   */
-  shutdown() {
+  /** Mark the effect inactive on shutdown. */
+  override shutdown(): void {
     this.active = false;
   }
-};
+}

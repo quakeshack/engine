@@ -11,30 +11,22 @@
  * this pipeline.
  */
 export default class PostProcessEffect {
-  /** @type {string} Unique name identifying this effect */
-  name;
+  /** Unique name identifying this effect. */
+  readonly name: string;
 
-  /** @type {boolean} Whether this effect is currently enabled */
+  /** Whether this effect is currently enabled. */
   active = false;
 
-  /**
-   * @param {string} name - Unique identifier for this effect
-   */
-  constructor(name) {
+  constructor(name: string) {
     this.name = name;
   }
 
   /**
    * Apply the effect by drawing a fullscreen quad with the appropriate shader.
    * The caller has already bound the correct output framebuffer and viewport.
-   * @param {WebGLTexture} _inputTexture - The scene (or previous effect's) color texture
-   * @param {number} _x - Viewport x position (screen-space)
-   * @param {number} _y - Viewport y position (screen-space)
-   * @param {number} _width - Viewport width (screen-space)
-   * @param {number} _height - Viewport height (screen-space)
    */
-  // eslint-disable-next-line no-unused-vars
-  apply(_inputTexture, _x, _y, _width, _height) {
+
+  apply(_inputTexture: WebGLTexture, _x: number, _y: number, _width: number, _height: number): void {
     throw new Error(`PostProcessEffect.apply() not implemented for '${this.name}'`);
   }
 
@@ -42,25 +34,31 @@ export default class PostProcessEffect {
    * Called when the effect's FBO textures need resizing.
    * Override if the effect maintains its own GPU resources that depend on
    * viewport dimensions.
-   * @param {number} _width - New width in pixels
-   * @param {number} _height - New height in pixels
    */
-  // eslint-disable-next-line no-unused-vars
-  resize(_width, _height) {
+
+  resize(_width: number, _height: number): void {
     // Default: no-op. Override if needed.
   }
 
   /**
    * Initialize GPU resources. Called once during PostProcess.addEffect().
    */
-  init() {
+  init(): void {
     // Default: no-op.
   }
 
   /**
    * Clean up GPU resources on shutdown.
    */
-  shutdown() {
+  shutdown(): void {
     // Default: no-op.
   }
-};
+
+  /**
+   * Draw a debug preview overlay for this effect.
+   * Override in subclasses that support debug visualizations (e.g. BloomEffect).
+   */
+  drawDebugPreview(): void {
+    // Default: no-op.
+  }
+}

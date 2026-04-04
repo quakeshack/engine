@@ -1,27 +1,30 @@
-import GL from '../GL.mjs';
+import GL from '../GL.ts';
 import Cvar from '../../common/Cvar.ts';
 import { limits } from '../../common/Def.ts';
-import { eventBus, registry } from '../../registry.mjs';
-import { materialFlags } from './Materials.mjs';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
+import { MaterialFlags } from './Materials.ts';
 import { effect } from '../../../shared/Defs.ts';
 import Vector from '../../../shared/Vector.ts';
-import { AliasModelRenderer } from './AliasModelRenderer.mjs';
+import { AliasModelRenderer } from './AliasModelRenderer.ts';
+import type { BrushModel } from '../../common/model/BSP.ts';
+import type { AliasModel } from '../../common/model/AliasModel.ts';
+import type { MeshModel } from '../../common/model/MeshModel.ts';
+import type { ClientEdict } from '../ClientEntities.ts';
 
-let { CL, COM, Mod, R, SV } = registry;
+let { CL, COM, Mod, R, SV } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Mod, R, SV } = registry);
+  ({ CL, COM, Mod, R, SV } = getClientRegistry());
 });
 
-/** @type {WebGL2RenderingContext} */
-let gl = null;
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
 
 /** Shadow map resolution (px). Local coverage keeps this sharp at 1024. */
@@ -41,7 +44,7 @@ const POINT_NEAR = 1.0;
  * Order matches GL_TEXTURE_CUBE_MAP_POSITIVE_X .. NEGATIVE_Z.
  * Each entry: [targetX, targetY, targetZ, upX, upY, upZ]
  */
-const CUBE_FACES = [
+const CUBE_FACES: [number, number, number, number, number, number][] = [
   [ 1,  0,  0,   0, -1,  0], // +X
   [-1,  0,  0,   0, -1,  0], // -X
   [ 0,  1,  0,   0,  0,  1], // +Y
@@ -51,7 +54,7 @@ const CUBE_FACES = [
 ];
 
 /**
- * Directional shadow mapping for a single "sun" light.
+ * Directional and point-light shadow mapping for the scene.
  *
  * Renders the world BSP into a depth-only FBO from the light's perspective,
  * then the scene shaders sample this depth texture (via `sampler2DShadow`)
@@ -61,132 +64,123 @@ const CUBE_FACES = [
 export default class ShadowMap {
   // ─── FBO & textures ──────────────────────────────────────────────
 
-  /** @type {WebGLFramebuffer} Depth-only framebuffer for the shadow pass */
-  static fbo = null;
+  /** Depth-only framebuffer for the shadow pass. */
+  static fbo: WebGLFramebuffer | null = null;
 
-  /** @type {WebGLTexture[]} Depth textures with hardware comparison (sampler2DShadow) */
-  static depthTextures = [];
+  /** Depth textures with hardware comparison (sampler2DShadow). */
+  static depthTextures: WebGLTexture[] = [];
 
-  /** @type {WebGLTexture} 1×1 always-lit dummy texture used when shadows are off */
-  static dummyTexture = null;
+  /** 1×1 always-lit dummy texture used when shadows are off. */
+  static dummyTexture: WebGLTexture | null = null;
 
   // ─── Matrices ────────────────────────────────────────────────────
 
-  /** @type {Float64Array[]} Column-major 4×4 light-space view-projection matrices */
-  static lightSpaceMatrices = Array.from({ length: LOCAL_SHADOW_COUNT }, () => new Float64Array(16));
+  /** Column-major 4×4 light-space view-projection matrices. */
+  static lightSpaceMatrices: Float64Array[] = Array.from({ length: LOCAL_SHADOW_COUNT }, () => new Float64Array(16));
 
   // ─── Cvars ───────────────────────────────────────────────────────
 
-  /** @type {Cvar} Master toggle (0 = off, 1 = on) */
-  static enabled = null;
+  /** Master toggle (0 = off, 1 = on). */
+  static enabled: Cvar | null = null;
 
-  /** @type {Cvar} Orthographic half-size in world units — kept small for a local blob-style shadow */
-  static range = null;
+  /** Orthographic half-size in world units. */
+  static range: Cvar | null = null;
 
-  /** @type {Cvar} Minimum brightness in shadow (0 = pitch black, 1 = no shadow) */
-  static darkness = null;
+  /** Minimum brightness in shadow (0 = pitch black, 1 = no shadow). */
+  static darkness: Cvar | null = null;
 
-  /** @type {Cvar} Maximum distance from the viewer for local shadow casters */
-  static casterRadius = null;
+  /** Maximum distance from the viewer for local shadow casters. */
+  static casterRadius: Cvar | null = null;
 
-  /** @type {Cvar} Fallback shadow yaw when no nearby light is found (degrees, 0 = +X, 90 = +Y) */
-  static sunYaw = null;
+  /** Fallback shadow yaw when no nearby light is found (degrees). */
+  static sunYaw: Cvar | null = null;
 
-  /** @type {Cvar} Fallback shadow pitch when no nearby light is found (degrees, negative = downward) */
-  static sunPitch = null;
+  /** Fallback shadow pitch when no nearby light is found (degrees, negative = downward). */
+  static sunPitch: Cvar | null = null;
 
   // ─── Local light direction ────────────────────────────────────────
 
   /**
-   * Normalised direction vector the shadow light travels (light → scene).
-   * Derived each frame from the closest visible light entity parsed from
-   * the BSP entity lump.  Falls back to the configured fallback angles
-   * when no visible light entity is found.
-   * @type {Float64Array[]}
+   * Normalized direction vector the shadow light travels (light → scene).
+   * Derived each frame from the closest visible light entity.
    */
-  static localLightDirs = Array.from({ length: LOCAL_SHADOW_COUNT }, () => new Float64Array([0, 0, -1]));
+  static localLightDirs: Float64Array[] = Array.from({ length: LOCAL_SHADOW_COUNT }, () => new Float64Array([0, 0, -1]));
 
-  /** @type {number} Number of active local shadow directions this frame */
-  static localLightCount = 0;
+  /** Number of active local shadow directions this frame. */
+  static localLightCount: number = 0;
 
   /**
    * Shadow intensity multiplier passed to the fragment shader as `uShadowEnabled`.
-   * Always 1.0 when using static BSP light data; edge fade in the shader
-   * handles the coverage boundary.
-   * @type {number}
+   * Always 1.0 when using static BSP light data.
    */
-  static localLightFalloff = 1.0;
+  static localLightFalloff: number = 1.0;
 
   // ─── Static light entity cache ────────────────────────────────────
 
   /**
    * Parsed light entities from the BSP entity lump.
    * Each entry holds a position and radius (derived from the entity's
-   * `light` key, defaulting to 300).  Populated once per map load by
-   * `parseLightEntities()` and reused every frame.
-   * @type {Array<{origin: Float64Array, radius: number}>}
+   * `light` key, defaulting to 300). Populated once per map load.
    */
-  static lightEntities = [];
+  static lightEntities: { origin: Float64Array; radius: number }[] = [];
 
-  /**
-   * Reference to the worldmodel whose entities were last parsed.
-   * Used to detect map changes and re-parse lazily.
-   * @type {import('../../common/model/BSP.ts').BrushModel|null}
-   */
-  static _parsedWorldmodel = null;
+  /** Reference to the worldmodel whose entities were last parsed. */
+  static _parsedWorldmodel: BrushModel | null = null;
 
-  /** @type {number} Maximum number of light entities to test per frame (performance cap) */
-  static _MAX_LIGHT_TRACES = 8;
+  /** Maximum number of light entities to test per frame (performance cap). */
+  static _MAX_LIGHT_TRACES: number = 8;
 
-  /** @type {number} Distance used to nudge embedded light origins out of fixtures for LOS tests */
-  static _LIGHT_VISIBILITY_BIAS = 16.0;
+  /** Distance used to nudge embedded light origins out of fixtures for LOS tests. */
+  static _LIGHT_VISIBILITY_BIAS: number = 16.0;
 
-  /** @type {Float64Array} Scratch buffer for relaxed map-light visibility traces */
-  static _lightTraceScratch = new Float64Array(3);
+  /** Scratch buffer for relaxed map-light visibility traces. */
+  static _lightTraceScratch: Float64Array = new Float64Array(3);
 
-  /** @type {Float64Array} Stable focus point for the local entity-shadow projection */
-  static _shadowFocusPoint = new Float64Array(3);
+  /** Stable focus point for the local entity-shadow projection. */
+  static _shadowFocusPoint: Float64Array = new Float64Array(3);
 
-  /** @type {Int32Array} Indices of the map lights steering the local shadow directions */
-  static _currentLocalLightIndices = Int32Array.from([-1, -1, -1]);
+  /** Indices of the map lights steering the local shadow directions. */
+  static _currentLocalLightIndices: Int32Array = Int32Array.from([-1, -1, -1]);
 
   // ─── Point light shadow ──────────────────────────────────────────
 
-  /** @type {WebGLFramebuffer} Depth-only FBO for point light shadow (reused for all 6 faces) */
-  static pointFBO = null;
+  /** Depth-only FBO for point light shadow (reused for all 6 faces). */
+  static pointFBO: WebGLFramebuffer | null = null;
 
-  /** @type {WebGLTexture} Depth cubemap with hardware comparison (samplerCubeShadow) */
-  static pointDepthCube = null;
+  /** Depth cubemap with hardware comparison (samplerCubeShadow). */
+  static pointDepthCube: WebGLTexture | null = null;
 
-  /** @type {WebGLTexture} 1×1 always-lit dummy cubemap used when point shadows are off */
-  static pointDummyCube = null;
+  /** 1×1 always-lit dummy cubemap used when point shadows are off. */
+  static pointDummyCube: WebGLTexture | null = null;
 
-  /** @type {Float64Array} Column-major 4×4 per-face view-projection matrix */
-  static pointFaceMatrix = new Float64Array(16);
+  /** Column-major 4×4 per-face view-projection matrix. */
+  static pointFaceMatrix: Float64Array = new Float64Array(16);
 
-  /** @type {Float64Array} Active point light position [x, y, z] for this frame */
-  static pointLightOrigin = new Float64Array(3);
+  /** Active point light position [x, y, z] for this frame. */
+  static pointLightOrigin: Float64Array = new Float64Array(3);
 
-  /** @type {number} Active point light radius for this frame */
-  static pointLightRadius = 0;
+  /** Active point light radius for this frame. */
+  static pointLightRadius: number = 0;
 
-  /** @type {boolean} Whether a point light shadow was rendered this frame */
-  static pointLightActive = false;
+  /** Whether a point light shadow was rendered this frame. */
+  static pointLightActive: boolean = false;
 
-  /** @type {Cvar} Enable point light shadow mapping (0 = off, 1 = on) */
-  static pointEnabled = null;
+  /** Enable point light shadow mapping (0 = off, 1 = on). */
+  static pointEnabled: Cvar | null = null;
 
-  /** @type {Cvar} Normal offset bias for point light shadows (world units) */
-  static pointNormalBias = null;
+  /** Normal offset bias for point light shadows (world units). */
+  static pointNormalBias: Cvar | null = null;
 
-  /** @type {number} Shadow map resolution in pixels (read by shaders for PCF texel size) */
-  static size = SHADOW_SIZE;
+  /** Shadow map resolution in pixels (read by shaders for PCF texel size). */
+  static size: number = SHADOW_SIZE;
+
+  // ─── Initialization ───────────────────────────────────────────────
 
   /**
    * Initialize the shadow mapping system.
    * Creates the depth FBO, shadow texture and dummy texture.
    */
-  static init() {
+  static init(): void {
     ShadowMap.enabled = new Cvar('r_shadows', '1', Cvar.FLAG.ARCHIVE, 'Enable local entity shadow mapping');
     ShadowMap.range = new Cvar('r_shadow_range', (SHADOW_SIZE / 4).toFixed(0), Cvar.FLAG.ARCHIVE, 'Local shadow map coverage radius in world units');
     ShadowMap.darkness = new Cvar('r_shadow_darkness', '0.66', Cvar.FLAG.ARCHIVE, 'Minimum brightness in shadow (0=black, 1=no shadow)');
@@ -197,11 +191,10 @@ export default class ShadowMap {
     // ── Shadow depth textures ──────────────────────────────────────
     ShadowMap.depthTextures.length = 0;
     for (let i = 0; i < LOCAL_SHADOW_COUNT; i++) {
-      const depthTexture = gl.createTexture();
+      const depthTexture = gl.createTexture()!;
       ShadowMap.depthTextures.push(depthTexture);
       GL.Bind(0, depthTexture);
       gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, SHADOW_SIZE, SHADOW_SIZE);
-      // LINEAR + COMPARE gives free 2×2 PCF via sampler2DShadow
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -211,15 +204,15 @@ export default class ShadowMap {
     }
 
     // ── Depth-only FBO ─────────────────────────────────────────────
-    ShadowMap.fbo = gl.createFramebuffer();
+    ShadowMap.fbo = gl.createFramebuffer()!;
     gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, ShadowMap.depthTextures[0], 0);
-    gl.drawBuffers([]);   // no color attachment
+    gl.drawBuffers([]);
     gl.readBuffer(gl.NONE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     // ── 1×1 dummy (always-lit) ─────────────────────────────────────
-    ShadowMap.dummyTexture = gl.createTexture();
+    ShadowMap.dummyTexture = gl.createTexture()!;
     GL.Bind(0, ShadowMap.dummyTexture);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, 1, 1);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, new Uint32Array([0xFFFFFFFF]));
@@ -234,7 +227,7 @@ export default class ShadowMap {
     ShadowMap.pointEnabled = new Cvar('r_shadow_point', '1', Cvar.FLAG.ARCHIVE, 'Enable point light shadow mapping');
     ShadowMap.pointNormalBias = new Cvar('r_shadow_point_normal_bias', '1.5', Cvar.FLAG.ARCHIVE, 'Normal offset bias for point light shadows (world units)');
 
-    ShadowMap.pointDepthCube = gl.createTexture();
+    ShadowMap.pointDepthCube = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, ShadowMap.pointDepthCube);
     for (let face = 0; face < 6; face++) {
       gl.texImage2D(
@@ -252,7 +245,7 @@ export default class ShadowMap {
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
 
     // ── Point light depth FBO (face attachment swapped each pass) ──
-    ShadowMap.pointFBO = gl.createFramebuffer();
+    ShadowMap.pointFBO = gl.createFramebuffer()!;
     gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.pointFBO);
     gl.framebufferTexture2D(
       gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
@@ -263,7 +256,7 @@ export default class ShadowMap {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     // ── 1×1 dummy cubemap (always-lit) ─────────────────────────────
-    ShadowMap.pointDummyCube = gl.createTexture();
+    ShadowMap.pointDummyCube = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, ShadowMap.pointDummyCube);
     const dummyPixel = new Uint32Array([0xFFFFFFFF]);
     for (let face = 0; face < 6; face++) {
@@ -281,55 +274,47 @@ export default class ShadowMap {
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
   }
 
+  // ─── Matrix computation ───────────────────────────────────────────
+
   /**
    * Recompute the light-space view-projection matrix for one local shadow.
    * Uses an orthographic projection centred on the local shadow focus point.
-   * @param {number} slotIndex Local shadow slot to update
    */
-  static _updateLightSpaceMatrix(slotIndex) {
-    const range = ShadowMap.range.value;
+  static _updateLightSpaceMatrix(slotIndex: number): void {
+    const range = ShadowMap.range!.value;
     const focusPoint = ShadowMap._shadowFocusPoint;
     const focusX = focusPoint[0];
     const focusY = focusPoint[1];
     const focusZ = focusPoint[2];
 
-    // Light direction (FROM light TO scene), already normalised
     const dir = ShadowMap.localLightDirs[slotIndex];
     const dirX = dir[0];
     const dirY = dir[1];
     const dirZ = dir[2];
 
-    // Light "eye" — offset back from the shadow focus point along the light direction.
     const eyeX = focusX - dirX * range;
     const eyeY = focusY - dirY * range;
     const eyeZ = focusZ - dirZ * range;
 
-    // ── Build an OpenGL-style lookAt matrix ────────────────────────
-    // Forward = sun direction (already unit-length)
     const fX = dirX, fY = dirY, fZ = dirZ;
 
-    // Choose a world-up that isn't parallel to forward
-    let upX = 0, upY = 0, upZ = 1; // Quake up = +Z
+    let upX = 0, upY = 0, upZ = 1;
     if (Math.abs(fZ) > 0.99) {
       upX = 1; upY = 0; upZ = 0;
     }
 
-    // right = normalize(forward × up)
     let rX = fY * upZ - fZ * upY;
     let rY = fZ * upX - fX * upZ;
     let rZ = fX * upY - fY * upX;
     const rLen = Math.hypot(rX, rY, rZ);
     rX /= rLen; rY /= rLen; rZ /= rLen;
 
-    // real up = right × forward (already unit since both inputs are unit)
     upX = rY * fZ - rZ * fY;
     upY = rZ * fX - rX * fZ;
     upZ = rX * fY - rY * fX;
 
-    // OpenGL convention: camera looks along -Z in eye space
     const zX = -fX, zY = -fY, zZ = -fZ;
 
-    // Column-major view matrix (rotation rows, translation column)
     const v0 = rX, v1 = upX, v2 = zX;
     const v4 = rY, v5 = upY, v6 = zY;
     const v8 = rZ, v9 = upZ, v10 = zZ;
@@ -337,7 +322,6 @@ export default class ShadowMap {
     let v13 = -(upX * eyeX + upY * eyeY + upZ * eyeZ);
     const v14 = -(zX * eyeX + zY * eyeY + zZ * eyeZ);
 
-    // ── Orthographic projection (symmetric) ────────────────────────
     const halfSize = range;
     const near = 0.0;
     const far = range * 2.0;
@@ -345,19 +329,10 @@ export default class ShadowMap {
     const invDepth = -2.0 / (far - near);
     const nfTerm = -(far + near) / (far - near);
 
-    // ── Texel snapping ─────────────────────────────────────────────
-    // Snap the light-space XY translation to shadow-map texel boundaries.
-    // Without this the ortho projection shifts by sub-texel amounts as the
-    // camera moves, causing shadow edges to shimmer ("shadow swimming").
-    // We quantise the NDC-space translation (ortho × viewTranslation) so
-    // that it always lands on a texel centre.
-    const texelSize = (2.0 * halfSize) / SHADOW_SIZE; // world units per texel
+    const texelSize = (2.0 * halfSize) / SHADOW_SIZE;
     v12 = Math.floor(v12 / texelSize) * texelSize;
     v13 = Math.floor(v13 / texelSize) * texelSize;
 
-    // ── lightSpaceMatrix = ortho × view  (column-major multiply) ───
-    // ortho is diagonal-ish, so many terms simplify:
-    //   ortho = diag(invHS, invHS, invDepth, 1) + [0,0,0,nfTerm] in col 3
     const m = ShadowMap.lightSpaceMatrices[slotIndex];
     m[0]  = invHS * v0;
     m[1]  = invHS * v1;
@@ -377,22 +352,20 @@ export default class ShadowMap {
     m[15] = 1;
   }
 
-  /**
-   * Recompute all active local shadow matrices for the current frame.
-   */
-  static updateLightSpaceMatrices() {
+  /** Recompute all active local shadow matrices for the current frame. */
+  static updateLightSpaceMatrices(): void {
     for (let i = 0; i < ShadowMap.localLightCount; i++) {
       ShadowMap._updateLightSpaceMatrix(i);
     }
   }
 
+  // ─── Shadow pass management ───────────────────────────────────────
+
   /**
-   * Begin the shadow depth pass.
-   * Binds the shadow FBO, clears depth, and sets GL state for depth-only
-   * rendering with polygon offset bias to reduce shadow acne.
-   * @param {number} slotIndex Local shadow slot whose depth texture will be rendered
+   * Begin the shadow depth pass for a local directional shadow slot.
+   * Binds the shadow FBO, clears depth, and sets GL state.
    */
-  static begin(slotIndex) {
+  static begin(slotIndex: number): void {
     gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.fbo);
     gl.framebufferTexture2D(
       gl.FRAMEBUFFER,
@@ -402,54 +375,45 @@ export default class ShadowMap {
       0,
     );
     gl.viewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
-    gl.enable(gl.DEPTH_TEST); // required — Set2D disables this at end of previous frame
+    gl.enable(gl.DEPTH_TEST);
     gl.clear(gl.DEPTH_BUFFER_BIT);
     gl.colorMask(false, false, false, false);
     gl.enable(gl.POLYGON_OFFSET_FILL);
     gl.polygonOffset(1.0, 1.0);
-    gl.disable(gl.CULL_FACE); // render both sides so front-face depth is captured for thin occluders
+    gl.disable(gl.CULL_FACE);
   }
 
-  /**
-   * End the shadow depth pass and restore GL state.
-   */
-  static end() {
+  /** End the shadow depth pass and restore GL state. */
+  static end(): void {
     gl.enable(gl.CULL_FACE);
-    gl.cullFace(gl.FRONT); // restore engine default
+    gl.cullFace(gl.FRONT);
     gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.colorMask(true, true, true, true);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
+  // ─── World shadow rendering ───────────────────────────────────────
+
   /**
    * Render the world BSP opaque geometry into the shadow map.
    * Uses a large polygon offset so the world depth is pushed well behind
-   * its true position — this prevents self-shadowing on world surfaces
-   * while still acting as an occluder that stops entity shadows from
-   * bleeding through walls and floors.
-   * Iterates every leaf (no camera-vis culling) because the light's
-   * viewpoint differs from the camera's.
+   * its true position to prevent self-shadowing on world surfaces.
    */
-  static renderWorldShadow() {
-    const worldmodel = /** @type {import('../../common/model/BSP.ts').BrushModel} */ (CL.state.worldmodel);
+  static renderWorldShadow(): void {
+    const worldmodel = CL.state.worldmodel as BrushModel | null;
     if (!worldmodel) {
       return;
     }
 
-    // Large bias: pushes stored depth far behind the surface so the world
-    // never shadows itself, but entity depth (written with normal bias)
-    // is still in front and casts shadows correctly.
     gl.polygonOffset(8.0, 4096.0);
 
-    GL.BindVAO(/** @type {WebGLVertexArrayObject} */ (worldmodel.opaqueVAO));
-    const program = GL.UseProgram('shadow-brush');
+    GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
+    const program = GL.UseProgram('shadow-brush')!;
 
-    // World entity: origin = 0, angles = identity
     gl.uniform3f(program.uOrigin, 0, 0, 0);
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
     gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, ShadowMap.lightSpaceMatrices[0]);
 
-    // Draw all opaque leaf commands (skip vis — we need everything the light sees)
     for (let i = 0; i < worldmodel.leafs.length; i++) {
       const leaf = worldmodel.leafs[i];
       if (leaf.skychain === 0) {
@@ -458,10 +422,9 @@ export default class ShadowMap {
 
       for (let j = 0; j < leaf.skychain; j++) {
         const cmds = leaf.cmds[j];
-        const flags = worldmodel.textures[cmds[0]].flags;
+        const flags = (worldmodel.textures[cmds[0]] as { flags: number }).flags;
 
-        // Skip non-renderable and transparent surfaces
-        if (flags & (materialFlags.MF_SKIP | materialFlags.MF_TRANSPARENT)) {
+        if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT)) {
           continue;
         }
 
@@ -470,21 +433,22 @@ export default class ShadowMap {
     }
 
     GL.UnbindVAO();
-
-    // Restore normal bias for entity shadow casters
     gl.polygonOffset(1.0, 1.0);
   }
+
+  // ─── Entity shadow rendering ──────────────────────────────────────
 
   /**
    * Render visible entities (brush submodels, alias models, mesh models)
    * into the active shadow map.
-   * @param {Float64Array} lightSpaceMatrix The light-space VP matrix
-   * @param {string} brushProgram Program name for brush/mesh models
-   * @param {string} aliasProgram Program name for alias models
-   * @param {Vector|Float64Array|number[]|null} cutoffOrigin View-relative origin used to reject distant local casters
-   * @param {number} cutoffDistSq Squared cutoff distance for local shadow casters
    */
-  static renderEntitiesShadow(lightSpaceMatrix, brushProgram = 'shadow-brush', aliasProgram = 'shadow-alias', cutoffOrigin = null, cutoffDistSq = Infinity) {
+  static renderEntitiesShadow(
+    lightSpaceMatrix: Float64Array,
+    brushProgram = 'shadow-brush',
+    aliasProgram = 'shadow-alias',
+    cutoffOrigin: Vector | Float64Array | number[] | null = null,
+    cutoffDistSq = Infinity,
+  ): void {
     if (R.drawentities.value === 0) {
       return;
     }
@@ -495,13 +459,13 @@ export default class ShadowMap {
       const model = entity.model;
       switch (model.type) {
         case Mod.type.brush:
-          ShadowMap._renderBrushEntityShadow(model, entity, lightSpaceMatrix, brushProgram);
+          ShadowMap._renderBrushEntityShadow(model as BrushModel, entity, lightSpaceMatrix, brushProgram);
           break;
         case Mod.type.alias:
-          ShadowMap._renderAliasEntityShadow(model, entity, lightSpaceMatrix, aliasProgram);
+          ShadowMap._renderAliasEntityShadow(model as AliasModel, entity, lightSpaceMatrix, aliasProgram);
           break;
         case Mod.type.mesh:
-          ShadowMap._renderMeshEntityShadow(model, entity, lightSpaceMatrix, brushProgram);
+          ShadowMap._renderMeshEntityShadow(model as MeshModel, entity, lightSpaceMatrix, brushProgram);
           break;
         default:
           break;
@@ -511,12 +475,13 @@ export default class ShadowMap {
 
   /**
    * Determine whether an entity should contribute to the local shadow pass.
-   * @param {import('../ClientEntities.ts').ClientEdict} entity Visible entity candidate
-   * @param {Vector|Float64Array|number[]|null} cutoffOrigin Local shadow reference origin
-   * @param {number} cutoffDistSq Squared caster cutoff distance
-   * @returns {boolean} `true` if the entity should contribute to local shadows
+   * @returns True when the entity should cast a local directional shadow this frame.
    */
-  static _isLocalShadowCasterEntity(entity, cutoffOrigin, cutoffDistSq) {
+  static _isLocalShadowCasterEntity(
+    entity: ClientEdict,
+    cutoffOrigin: Vector | Float64Array | number[] | null,
+    cutoffDistSq: number,
+  ): boolean {
     if (entity.model === null || entity.alpha === 0.0 || entity.alpha < 1.0) {
       return false;
     }
@@ -552,19 +517,18 @@ export default class ShadowMap {
     return true;
   }
 
-  /**
-   * Render a brush submodel entity (door, platform, etc.) into a shadow map.
-   * @param {import('../../common/model/BSP.ts').BrushModel} model
-   * @param {import('../ClientEntities.ts').ClientEdict} entity
-   * @param {Float64Array} lightSpaceMatrix
-   * @param {string} programName
-   */
-  static _renderBrushEntityShadow(model, entity, lightSpaceMatrix, programName) {
+  /** @private */
+  static _renderBrushEntityShadow(
+    model: BrushModel,
+    entity: ClientEdict,
+    lightSpaceMatrix: Float64Array,
+    programName: string,
+  ): void {
     if (!model.opaqueVAO || !model.chains || model.chains.length === 0) {
       return;
     }
-    GL.BindVAO(/** @type {WebGLVertexArrayObject} */ (model.opaqueVAO));
-    const program = GL.UseProgram(programName);
+    GL.BindVAO(model.opaqueVAO as WebGLVertexArrayObject);
+    const program = GL.UseProgram(programName)!;
 
     gl.uniform3fv(program.uOrigin, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles, false, entity.lerp.angles.toRotationMatrix());
@@ -572,8 +536,8 @@ export default class ShadowMap {
 
     for (let i = 0; i < model.chains.length; i++) {
       const chain = model.chains[i];
-      const flags = model.textures[chain[0]].flags;
-      if (flags & (materialFlags.MF_SKIP | materialFlags.MF_TRANSPARENT | materialFlags.MF_TURBULENT)) {
+      const flags = (model.textures[chain[0]] as { flags: number }).flags;
+      if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_TURBULENT)) {
         continue;
       }
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
@@ -581,19 +545,17 @@ export default class ShadowMap {
     GL.UnbindVAO();
   }
 
-  /**
-   * Render an alias model entity (monster, item, weapon) into a shadow map.
-   * Handles frame interpolation identically to AliasModelRenderer.
-   * @param {import('../../common/model/AliasModel.ts').AliasModel} model
-   * @param {import('../ClientEntities.ts').ClientEdict} entity
-   * @param {Float64Array} lightSpaceMatrix
-   * @param {string} programName
-   */
-  static _renderAliasEntityShadow(model, entity, lightSpaceMatrix, programName) {
+  /** @private */
+  static _renderAliasEntityShadow(
+    model: AliasModel,
+    entity: ClientEdict,
+    lightSpaceMatrix: Float64Array,
+    programName: string,
+  ): void {
     if (!model.cmds) {
       return;
     }
-    const program = GL.UseProgram(programName);
+    const program = GL.UseProgram(programName)!;
 
     gl.uniform3fv(program.uOrigin, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles, false, entity.lerp.angles.toRotationMatrix());
@@ -603,46 +565,43 @@ export default class ShadowMap {
 
     gl.uniform1f(program.uInterpolation, R.interpolation.value && (entity.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
 
-    // Bind vertex buffer and setup attributes (stride=24: 3 floats pos + 3 floats normal)
-    gl.bindBuffer(gl.ARRAY_BUFFER, model.cmds);
-    gl.enableVertexAttribArray(program.aPositionA.location);
-    gl.enableVertexAttribArray(program.aPositionB.location);
-    gl.vertexAttribPointer(program.aPositionA.location, 3, gl.FLOAT, false, 24, frameA.cmdofs);
-    gl.vertexAttribPointer(program.aPositionB.location, 3, gl.FLOAT, false, 24, frameB.cmdofs);
+    gl.bindBuffer(gl.ARRAY_BUFFER, model.cmds as WebGLBuffer);
+    gl.enableVertexAttribArray(program.aPositionA.location as number);
+    gl.enableVertexAttribArray(program.aPositionB.location as number);
+    gl.vertexAttribPointer(program.aPositionA.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs);
+    gl.vertexAttribPointer(program.aPositionB.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs);
 
-    // Bind normal attributes for point shadow normal offset bias (offset +12 in same buffer)
     if (program.aNormalA) {
-      gl.enableVertexAttribArray(program.aNormalA.location);
-      gl.enableVertexAttribArray(program.aNormalB.location);
-      gl.vertexAttribPointer(program.aNormalA.location, 3, gl.FLOAT, false, 24, frameA.cmdofs + 12);
-      gl.vertexAttribPointer(program.aNormalB.location, 3, gl.FLOAT, false, 24, frameB.cmdofs + 12);
+      gl.enableVertexAttribArray(program.aNormalA.location as number);
+      gl.enableVertexAttribArray(program.aNormalB.location as number);
+      gl.vertexAttribPointer(program.aNormalA.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs + 12);
+      gl.vertexAttribPointer(program.aNormalB.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs + 12);
       gl.uniform3fv(program.uLightPos, ShadowMap.pointLightOrigin);
-      gl.uniform1f(program.uNormalBias, ShadowMap.pointNormalBias.value);
+      gl.uniform1f(program.uNormalBias, ShadowMap.pointNormalBias!.value);
     }
 
     gl.drawArrays(gl.TRIANGLES, 0, model._num_tris * 3);
 
-    gl.disableVertexAttribArray(program.aPositionA.location);
-    gl.disableVertexAttribArray(program.aPositionB.location);
+    gl.disableVertexAttribArray(program.aPositionA.location as number);
+    gl.disableVertexAttribArray(program.aPositionB.location as number);
     if (program.aNormalA) {
-      gl.disableVertexAttribArray(program.aNormalA.location);
-      gl.disableVertexAttribArray(program.aNormalB.location);
+      gl.disableVertexAttribArray(program.aNormalA.location as number);
+      gl.disableVertexAttribArray(program.aNormalB.location as number);
     }
   }
 
-  /**
-   * Render a mesh model entity (glTF) into a shadow map.
-   * @param {import('../../common/model/MeshModel.ts').MeshModel} model
-   * @param {import('../ClientEntities.ts').ClientEdict} entity
-   * @param {Float64Array} lightSpaceMatrix
-   * @param {string} programName
-   */
-  static _renderMeshEntityShadow(model, entity, lightSpaceMatrix, programName) {
+  /** @private */
+  static _renderMeshEntityShadow(
+    model: MeshModel,
+    entity: ClientEdict,
+    lightSpaceMatrix: Float64Array,
+    programName: string,
+  ): void {
     if (!model.vao) {
       return;
     }
     GL.BindVAO(model.vao);
-    const program = GL.UseProgram(programName);
+    const program = GL.UseProgram(programName)!;
 
     gl.uniform3fv(program.uOrigin, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles, false, entity.lerp.angles.toRotationMatrix());
@@ -653,32 +612,26 @@ export default class ShadowMap {
     GL.UnbindVAO();
   }
 
-  /**
-   * @returns {WebGLTexture[]} The textures to bind as local shadow maps
-   */
-  static getActiveTextures() {
-    const textures = new Array(LOCAL_SHADOW_COUNT);
+  // ─── Active texture queries ───────────────────────────────────────
+
+  /** @returns The textures to bind as local shadow maps. */
+  static getActiveTextures(): WebGLTexture[] {
+    const textures = new Array<WebGLTexture>(LOCAL_SHADOW_COUNT);
     for (let i = 0; i < LOCAL_SHADOW_COUNT; i++) {
-      textures[i] = ShadowMap.enabled.value && i < ShadowMap.localLightCount
+      textures[i] = ShadowMap.enabled!.value && i < ShadowMap.localLightCount
         ? ShadowMap.depthTextures[i]
-        : ShadowMap.dummyTexture;
+        : ShadowMap.dummyTexture!;
     }
     return textures;
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  //  Point light (cube) shadow mapping
-  // ═══════════════════════════════════════════════════════════════════
+  // ─── Point light (cube) shadow mapping ───────────────────────────
 
   /**
    * Parse all light entities from the BSP entity lump and cache them.
-   * Scans the raw entity string for entities whose classname starts with
-   * `"light"`.  For each one the origin and the light level (from the
-   * `"light"` key, default 300) are stored in `ShadowMap.lightEntities`.
-   * Called lazily from `selectLocalLight` whenever the worldmodel changes.
-   * @param {string} entityString Raw entity lump text from the BSP
+   * Scans the raw entity string for entities whose classname starts with `"light"`.
    */
-  static parseLightEntities(entityString) {
+  static parseLightEntities(entityString: string): void {
     ShadowMap.lightEntities.length = 0;
     ShadowMap._currentLocalLightIndices.fill(-1);
     ShadowMap.localLightCount = 0;
@@ -687,7 +640,7 @@ export default class ShadowMap {
       return;
     }
 
-    let data = entityString;
+    let data: string | null = entityString;
 
     while (data) {
       const parsed = COM.Parse(data);
@@ -697,7 +650,7 @@ export default class ShadowMap {
         break;
       }
 
-      const ent = {};
+      const ent: Record<string, string> = {};
       while (data) {
         const parsedKey = COM.Parse(data);
         data = parsedKey.data;
@@ -731,7 +684,6 @@ export default class ShadowMap {
         parseFloat(parts[2]),
       ]);
 
-      // The "light" key specifies intensity; default 300 per Quake convention
       const radius = ent.light ? parseFloat(ent.light) : 300;
 
       if (radius > 0 && !Number.isNaN(origin[0])) {
@@ -744,11 +696,9 @@ export default class ShadowMap {
 
   /**
    * Test line-of-sight between two points using the world BSP hull 0.
-   * @param {Vector|Float64Array|number[]} start Start point
-   * @param {Vector|Float64Array|number[]} end End point
-   * @returns {boolean} `true` if the line is unobstructed
+   * @returns True if the line is unobstructed.
    */
-  static _traceVisible(start, end) {
+  static _traceVisible(start: Vector | Float64Array | number[], end: Vector | Float64Array | number[]): boolean {
     const trace = SV.collision.traceStaticWorldLine(
       new Vector(start[0], start[1], start[2]),
       new Vector(end[0], end[1], end[2]),
@@ -759,11 +709,9 @@ export default class ShadowMap {
   /**
    * Test visibility from a map light to the target, allowing for lights that
    * are embedded slightly inside wall fixtures or ceilings.
-   * @param {Vector|Float64Array|number[]} start Light entity origin
-   * @param {Vector|Float64Array|number[]} end Shadow target point
-   * @returns {boolean} `true` if a direct or nudged trace is unobstructed
+   * @returns True if a direct or nudged trace is unobstructed.
    */
-  static _traceLightVisible(start, end) {
+  static _traceLightVisible(start: Vector | Float64Array | number[], end: Vector | Float64Array | number[]): boolean {
     if (ShadowMap._traceVisible(start, end)) {
       return true;
     }
@@ -789,13 +737,10 @@ export default class ShadowMap {
 
   /**
    * Determine the single top-down local shadow used this frame.
-   * The shadow focus follows the nearest visible caster; the local shadow
-   * direction itself is fixed straight down for now.
-   * @param {Vector|Float64Array|number[]} viewOrigin Camera position used only
-   *   as a last-resort fallback when no shadow casters are visible.
+   * The shadow focus follows the nearest visible caster.
    */
-  static selectLocalLights(viewOrigin) {
-    let anchorEntity = null;
+  static selectLocalLights(viewOrigin: Vector | Float64Array | number[]): void {
+    let anchorEntity: ClientEdict | null = null;
     let bestDistSq = Infinity;
 
     for (const entity of CL.state.clientEntities.getVisibleEntities()) {
@@ -827,12 +772,8 @@ export default class ShadowMap {
     }
   }
 
-  /**
-   * Apply the configurable fallback shadow direction.
-   * Used when no light entity from the BSP entity lump is visible.
-   * @param {number} slotIndex Local shadow slot to populate with the fallback direction
-   */
-  static _applyFallbackDirection(slotIndex) {
+  /** Apply the configurable fallback shadow direction to a slot. */
+  static _applyFallbackDirection(slotIndex: number): void {
     ShadowMap._currentLocalLightIndices[slotIndex] = -1;
     const dir = ShadowMap.localLightDirs[slotIndex];
     dir[0] = 0.0;
@@ -843,24 +784,19 @@ export default class ShadowMap {
 
   /**
    * Select the strongest light for point shadow casting.
-   * Considers both transient dynamic lights and static BSP light
-   * entities. Picks whichever scores highest (radius / distance).
-   * BSP lights are capped at twice their radius so distant map
-   * lights don't compete with nearby ones.
-   * @param {Vector|Float64Array|number[]} viewOrigin Camera position in world space.
-   * @returns {boolean} True if a suitable light was found.
+   * Considers both transient dynamic lights and static BSP light entities.
+   * @returns True if a suitable light was found.
    */
-  static selectPointLight(viewOrigin) {
+  static selectPointLight(viewOrigin: Vector | Float64Array | number[]): boolean {
     ShadowMap.pointLightActive = false;
 
-    if (!ShadowMap.pointEnabled.value) {
+    if (!ShadowMap.pointEnabled!.value) {
       return false;
     }
 
-    // Lazy-parse BSP light entities when worldmodel changes (new map)
-    const worldmodel = CL.state.worldmodel;
+    const worldmodel = CL.state.worldmodel as BrushModel | null;
     if (worldmodel && ShadowMap._parsedWorldmodel !== worldmodel) {
-      ShadowMap.parseLightEntities(worldmodel.entities);
+      ShadowMap.parseLightEntities(worldmodel.entities as string);
       ShadowMap._parsedWorldmodel = worldmodel;
     }
 
@@ -870,7 +806,6 @@ export default class ShadowMap {
     let bestOriginZ = 0;
     let bestRadius = 0;
 
-    // Score transient dynamic lights
     const dlights = CL.state.clientEntities.dlights;
     for (let i = 0; i < limits.dlights; i++) {
       const l = dlights[i];
@@ -893,33 +828,6 @@ export default class ShadowMap {
       }
     }
 
-    // // Score static BSP light entities — only consider lights within
-    // // twice their radius so distant map lights don't compete.
-    // const lights = ShadowMap.lightEntities;
-    // for (let i = 0; i < lights.length; i++) {
-    //   const light = lights[i];
-    //   const dx = light.origin[0] - viewOrigin[0];
-    //   const dy = light.origin[1] - viewOrigin[1];
-    //   const dz = light.origin[2] - viewOrigin[2];
-    //   const distSq = dx * dx + dy * dy + dz * dz;
-    //   const maxDist = light.radius * 2.0;
-
-    //   if (distSq > maxDist * maxDist) {
-    //     continue;
-    //   }
-
-    //   const dist = Math.sqrt(distSq);
-    //   const score = light.radius / Math.max(dist, 1.0);
-
-    //   if (score > bestScore) {
-    //     bestScore = score;
-    //     bestOriginX = light.origin[0];
-    //     bestOriginY = light.origin[1];
-    //     bestOriginZ = light.origin[2];
-    //     bestRadius = light.radius;
-    //   }
-    // }
-
     if (bestScore < 0) {
       return false;
     }
@@ -935,76 +843,58 @@ export default class ShadowMap {
   /**
    * Build a 90° perspective view-projection matrix for one cube face.
    * Writes into ShadowMap.pointFaceMatrix (column-major).
-   * @param {number} faceIndex 0-5 corresponding to +X, -X, +Y, -Y, +Z, -Z
    */
-  static buildPointFaceMatrix(faceIndex) {
+  static buildPointFaceMatrix(faceIndex: number): void {
     const face = CUBE_FACES[faceIndex];
     const ox = ShadowMap.pointLightOrigin[0];
     const oy = ShadowMap.pointLightOrigin[1];
     const oz = ShadowMap.pointLightOrigin[2];
     const far = ShadowMap.pointLightRadius;
 
-    // Target direction
     const tx = face[0], ty = face[1], tz = face[2];
-    // Up vector
     let ux = face[3], uy = face[4], uz = face[5];
 
-    // right = normalize(target × up)
     let rx = ty * uz - tz * uy;
     let ry = tz * ux - tx * uz;
     let rz = tx * uy - ty * ux;
     const rLen = Math.hypot(rx, ry, rz);
     rx /= rLen; ry /= rLen; rz /= rLen;
 
-    // Recalculate up = right × target
     ux = ry * tz - rz * ty;
     uy = rz * tx - rx * tz;
     uz = rx * ty - ry * tx;
 
-    // View matrix (lookAt: eye=origin, centre=origin+target, up)
-    // Camera looks along -Z in eye space, so negate the forward axis
     const fwX = -tx, fwY = -ty, fwZ = -tz;
 
     const v12 = -(rx * ox + ry * oy + rz * oz);
     const v13 = -(ux * ox + uy * oy + uz * oz);
     const v14 = -(fwX * ox + fwY * oy + fwZ * oz);
 
-    // Perspective matrix (symmetric, 90° FOV, aspect 1:1)
-    // f = 1/tan(45°) = 1.0
-    const nf = POINT_NEAR / (POINT_NEAR - far); // = n/(n-f)
-    const nf2 = (POINT_NEAR * far) / (POINT_NEAR - far); // = n*f/(n-f)
+    const nf = POINT_NEAR / (POINT_NEAR - far);
+    const nf2 = (POINT_NEAR * far) / (POINT_NEAR - far);
 
-    // Combined P × V (column-major)
-    // P = diag(1, 1, nf, 0) + col3(0, 0, nf2, -1)
     const m = ShadowMap.pointFaceMatrix;
-    // Column 0: P * V col0
     m[0]  = rx;
     m[1]  = ux;
     m[2]  = nf * fwX;
     m[3]  = -fwX;
-    // Column 1: P * V col1
     m[4]  = ry;
     m[5]  = uy;
     m[6]  = nf * fwY;
     m[7]  = -fwY;
-    // Column 2: P * V col2
     m[8]  = rz;
     m[9]  = uz;
     m[10] = nf * fwZ;
     m[11] = -fwZ;
-    // Column 3: P * V col3
     m[12] = v12;
     m[13] = v13;
     m[14] = nf * v14 + nf2;
     m[15] = -v14;
   }
 
-  /**
-   * Render the point light shadow cube map (all 6 faces).
-   * Call after selectPointLight() returns true.
-   */
-  static renderPointLightShadow() {
-    const worldmodel = /** @type {import('../../common/model/BSP.ts').BrushModel} */ (CL.state.worldmodel);
+  /** Render the point light shadow cube map (all 6 faces). */
+  static renderPointLightShadow(): void {
+    const worldmodel = CL.state.worldmodel as BrushModel | null;
     if (!worldmodel) {
       return;
     }
@@ -1013,19 +903,18 @@ export default class ShadowMap {
     gl.viewport(0, 0, POINT_SHADOW_SIZE, POINT_SHADOW_SIZE);
     gl.enable(gl.DEPTH_TEST);
     gl.colorMask(false, false, false, false);
-    gl.disable(gl.CULL_FACE); // render both sides for correct occlusion behind thin geometry
+    gl.disable(gl.CULL_FACE);
 
-    GL.BindVAO(/** @type {WebGLVertexArrayObject} */ (worldmodel.opaqueVAO));
-    const program = GL.UseProgram('shadow-point');
+    GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
+    const program = GL.UseProgram('shadow-point')!;
 
     gl.uniform3f(program.uOrigin, 0, 0, 0);
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
     gl.uniform3fv(program.uLightPos, ShadowMap.pointLightOrigin);
     gl.uniform1f(program.uLightRadius, ShadowMap.pointLightRadius);
-    gl.uniform1f(program.uNormalBias, ShadowMap.pointNormalBias.value);
+    gl.uniform1f(program.uNormalBias, ShadowMap.pointNormalBias!.value);
 
     for (let face = 0; face < 6; face++) {
-      // Attach the correct cube face to the FBO depth
       gl.framebufferTexture2D(
         gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
         gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
@@ -1036,7 +925,6 @@ export default class ShadowMap {
       ShadowMap.buildPointFaceMatrix(face);
       gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, ShadowMap.pointFaceMatrix);
 
-      // Draw all opaque leaf geometry
       for (let i = 0; i < worldmodel.leafs.length; i++) {
         const leaf = worldmodel.leafs[i];
         if (leaf.skychain === 0) {
@@ -1044,20 +932,18 @@ export default class ShadowMap {
         }
         for (let j = 0; j < leaf.skychain; j++) {
           const cmds = leaf.cmds[j];
-          const flags = worldmodel.textures[cmds[0]].flags;
-          if (flags & (materialFlags.MF_SKIP | materialFlags.MF_TRANSPARENT)) {
+          const flags = (worldmodel.textures[cmds[0]] as { flags: number }).flags;
+          if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT)) {
             continue;
           }
           gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
         }
       }
 
-      // Draw entities into this cube face (exclude the light-emitting entity)
       GL.UnbindVAO();
       ShadowMap.renderEntitiesShadow(ShadowMap.pointFaceMatrix, 'shadow-point', 'shadow-alias-point');
 
-      // Re-bind world VAO and program for next face
-      GL.BindVAO(/** @type {WebGLVertexArrayObject} */ (worldmodel.opaqueVAO));
+      GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
       GL.UseProgram('shadow-point');
       gl.uniform3f(program.uOrigin, 0, 0, 0);
       gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
@@ -1065,15 +951,13 @@ export default class ShadowMap {
 
     GL.UnbindVAO();
     gl.enable(gl.CULL_FACE);
-    gl.cullFace(gl.FRONT); // restore engine default
+    gl.cullFace(gl.FRONT);
     gl.colorMask(true, true, true, true);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  /**
-   * @returns {WebGLTexture} The cube texture to bind as point shadow map (real or dummy)
-   */
-  static getActivePointTexture() {
-    return ShadowMap.pointLightActive ? ShadowMap.pointDepthCube : ShadowMap.pointDummyCube;
+  /** @returns The cube texture to bind as point shadow map (real or dummy). */
+  static getActivePointTexture(): WebGLTexture {
+    return ShadowMap.pointLightActive ? ShadowMap.pointDepthCube! : ShadowMap.pointDummyCube!;
   }
 }

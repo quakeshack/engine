@@ -19,7 +19,7 @@ interface AliasPoseVertex {
   readonly lightnormalindex: number;
 }
 
-interface AliasSingleFrame {
+export interface AliasSingleFrame {
   readonly group: false;
   readonly bboxmin: Vector;
   readonly bboxmax: Vector;
@@ -28,7 +28,7 @@ interface AliasSingleFrame {
   readonly cmdofs?: number;
 }
 
-interface AliasGroupedFrameEntry {
+export interface AliasGroupedFrameEntry {
   readonly interval: number;
   readonly bboxmin: Vector;
   readonly bboxmax: Vector;
@@ -44,7 +44,7 @@ interface AliasGroupedFrame {
   readonly frames: AliasGroupedFrameEntry[];
 }
 
-interface AliasSingleSkin {
+export interface AliasSingleSkin {
   readonly group: false;
   readonly texturenum: GLTexture | null;
   readonly luminanceTexture: GLTexture | null;
@@ -52,7 +52,7 @@ interface AliasSingleSkin {
   readonly playertexture?: GLTexture | null;
 }
 
-interface AliasGroupedSkinEntry {
+export interface AliasGroupedSkinEntry {
   readonly interval: number;
   readonly texturenum?: GLTexture | null;
   readonly luminanceTexture?: GLTexture | null;

@@ -7,7 +7,7 @@ import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, registry } from '../registry.mjs';
 import GL from './GL.mjs';
 import VID from './VID.ts';
-import PostProcess from './renderer/PostProcess.mjs';
+import PostProcess from './renderer/PostProcess.ts';
 
 let { CL, Con, Draw, Host, Key, M, R, S, Sbar, V } = registry;
 

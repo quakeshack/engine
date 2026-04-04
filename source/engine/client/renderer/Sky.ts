@@ -1,32 +1,29 @@
 import W from '../../common/W.ts';
 import { BrushModel } from '../../common/Mod.ts';
-import { eventBus, registry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
+import GL, { ATTRIB_LOCATIONS, GLTexture } from '../GL.ts';
 
-import GL, { ATTRIB_LOCATIONS, GLTexture } from '../GL.mjs';
-
-let { Host, R } = registry;
+let { Host, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  Host = registry.Host;
-  R = registry.R;
+  ({ Host, R } = getClientRegistry());
 });
 
-/** @type {WebGL2RenderingContext} */
-let gl = null;
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
 
 /**
- * @param {number} strength Requested sky bloom strength.
- * @returns {number} Sanitized sky bloom strength.
+ * @param strength Requested sky bloom strength.
+ * @returns Sanitized sky bloom strength.
  */
-export function resolveSkyBloomEmissiveScale(strength) {
+export function resolveSkyBloomEmissiveScale(strength: number): number {
   return Number.isFinite(strength) && strength > 0.0 ? strength : 0.0;
 }
 
@@ -36,24 +33,23 @@ export function resolveSkyBloomEmissiveScale(strength) {
  * Right now the BSP model loader sets up the desired sky renderer.
  */
 export class SkyRenderer {
-  /**
-   * @param {BrushModel} worldmodel current world
-   */
-  constructor(worldmodel) {
+  /** Current world model. */
+  worldmodel: BrushModel;
+
+  constructor(worldmodel: BrushModel) {
     this.worldmodel = worldmodel;
   }
 
   /**
    * Renders the stencil mask for sky surfaces.
-   * @protected
    */
-  _renderStencilMask() {
+  protected _renderStencilMask(): void {
     // Disable color writes - we only want to mark the depth buffer where sky is visible
     gl.colorMask(false, false, false, false);
 
-    const program = GL.UseProgram('sky-chain');
+    const program = GL.UseProgram('sky-chain')!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.worldmodel.cmds);
-    gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 12, this.worldmodel.skychain);
+    gl.vertexAttribPointer(program.aPosition!.location, 3, gl.FLOAT, false, 12, this.worldmodel.skychain);
 
     // Render all visible sky surfaces from the BSP tree
     // This writes to the depth buffer, creating a stencil of where sky should appear
@@ -81,15 +77,12 @@ export class SkyRenderer {
     gl.colorMask(true, true, true, true);
   }
 
-  init() {
-  }
+  init(): void {}
 
-  shutdown() {
-  }
+  shutdown(): void {}
 
-  render() {
-  }
-};
+  render(): void {}
+}
 
 /**
  * Quake 1 style sky rendering.
@@ -99,14 +92,10 @@ export class SkyRenderer {
 export class Quake1Sky extends SkyRenderer {
   #solidskytexture = new GLTexture('r_solidsky', 128, 128);
   #alphaskytexture = new GLTexture('r_alphasky', 128, 128);
+  #skybox: WebGLBuffer | null = null;
 
-  #skybox = null;
-
-  /**
-   * VAO for the sky dome VBO (position-only, 12-byte stride).
-   * @type {WebGLVertexArrayObject|null}
-   */
-  #skyboxVAO = null;
+  /** VAO for the sky dome VBO (position-only, 12-byte stride). */
+  #skyboxVAO: WebGLVertexArrayObject | null = null;
 
   /**
    * Procedurally generates a dome mesh for skybox rendering.
@@ -125,16 +114,16 @@ export class Quake1Sky extends SkyRenderer {
    * - Plus a triangle fan at the top (zenith)
    * - Total: 180 vertices (60 triangles)
    */
-  #makeSky() {
+  #makeSky(): void {
     // Pre-compute sine values for angles from 0° to 90° in steps of 11.25° (π/16)
     // These define the dome's curvature
     const sin = Array.from({ length: 9 }, (_, i) =>
       Number(Math.sin(i * Math.PI / 16).toFixed(6)),
     );
-    let vecs = []; let i; let j;
+    let vecs: number[] = [];
 
     // Build the dome mesh in 4 vertical segments
-    for (i = 0; i < 7; i += 2) {
+    for (let i = 0; i < 7; i += 2) {
       // Triangle fan at the top (zenith) of this segment
       // Connects the peak (0, 0, 1) to the top edge of the dome
       vecs = vecs.concat(
@@ -146,7 +135,7 @@ export class Quake1Sky extends SkyRenderer {
 
       // Build the dome grid: 8 horizontal rings, each forming a strip of quads
       // Each quad is split into 2 triangles
-      for (j = 0; j < 7; j++) {
+      for (let j = 0; j < 7; j++) {
         // The vertices form a spherical coordinate grid:
         // sin[i] controls the X/Y position (azimuth angle)
         // sin[j] controls the Z height (elevation angle)
@@ -169,19 +158,18 @@ export class Quake1Sky extends SkyRenderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.#skybox);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vecs), gl.STATIC_DRAW);
 
-    this.#skyboxVAO = GL.CreateVAO(this.#skybox, [
+    this.#skyboxVAO = GL.CreateVAO(this.#skybox!, [
       { location: ATTRIB_LOCATIONS.aPosition, components: 3, type: gl.FLOAT, normalized: false, stride: 12, offset: 0 },
     ]);
   }
 
-  init() {
+  override init(): void {
     this.#makeSky();
-
     this.#alphaskytexture.lockTextureMode('GL_NEAREST');
     this.#solidskytexture.lockTextureMode('GL_LINEAR');
   }
 
-  shutdown() {
+  override shutdown(): void {
     this.#solidskytexture.free();
     this.#alphaskytexture.free();
 
@@ -195,47 +183,47 @@ export class Quake1Sky extends SkyRenderer {
     }
   }
 
-  #renderSkyboxDome() {
+  #renderSkyboxDome(): void {
     // Configure depth testing: only draw sky where depth > existing (i.e., behind everything)
     gl.depthFunc(gl.GREATER);
     gl.depthMask(false); // Don't write to depth buffer
     gl.disable(gl.CULL_FACE); // Need to see both sides of the dome
 
     // Set up the sky shader with scrolling textures
-    const program = GL.UseProgram('sky');
+    const program = GL.UseProgram('sky')!;
     // Two scrolling layers at different speeds for parallax effect
-    gl.uniform2f(program.uTime, (Host.realtime * 0.125) % 1.0, (Host.realtime * 0.03125) % 1.0);
-    gl.uniform1f(program.uBloomEmissiveScale, resolveSkyBloomEmissiveScale(R.bloomSkyStrength?.value ?? 0.0));
-    this.#solidskytexture.bind(program.tSolid); // Base sky layer
-    this.#alphaskytexture.bind(program.tAlpha); // Overlay layer (e.g., clouds)
+    gl.uniform2f(program.uTime!, (Host.realtime * 0.125) % 1.0, (Host.realtime * 0.03125) % 1.0);
+    gl.uniform1f(program.uBloomEmissiveScale!, resolveSkyBloomEmissiveScale(R.bloomSkyStrength?.value ?? 0.0));
+    this.#solidskytexture.bind(program.tSolid!); // Base sky layer
+    this.#alphaskytexture.bind(program.tAlpha!); // Overlay layer (e.g., clouds)
 
     // Bind the procedurally-generated dome mesh
-    GL.BindVAO(this.#skyboxVAO);
+    GL.BindVAO(this.#skyboxVAO!);
 
     // Render the sky dome 8 times - once for each octant of a sphere
     // The uScale uniform transforms the base dome mesh to cover different octants
     // This creates a full spherical skybox from a single dome mesh
 
     // Octants with positive X
-    gl.uniform3f(program.uScale, 2.0, -2.0, 1.0);  // +X, -Y, +Z
+    gl.uniform3f(program.uScale!, 2.0, -2.0, 1.0);  // +X, -Y, +Z
     gl.drawArrays(gl.TRIANGLES, 0, 180);
-    gl.uniform3f(program.uScale, 2.0, -2.0, -1.0); // +X, -Y, -Z
+    gl.uniform3f(program.uScale!, 2.0, -2.0, -1.0); // +X, -Y, -Z
     gl.drawArrays(gl.TRIANGLES, 0, 180);
 
-    gl.uniform3f(program.uScale, 2.0, 2.0, 1.0);   // +X, +Y, +Z
+    gl.uniform3f(program.uScale!, 2.0, 2.0, 1.0);   // +X, +Y, +Z
     gl.drawArrays(gl.TRIANGLES, 0, 180);
-    gl.uniform3f(program.uScale, 2.0, 2.0, -1.0);  // +X, +Y, -Z
+    gl.uniform3f(program.uScale!, 2.0, 2.0, -1.0);  // +X, +Y, -Z
     gl.drawArrays(gl.TRIANGLES, 0, 180);
 
     // Octants with negative X
-    gl.uniform3f(program.uScale, -2.0, -2.0, 1.0);  // -X, -Y, +Z
+    gl.uniform3f(program.uScale!, -2.0, -2.0, 1.0);  // -X, -Y, +Z
     gl.drawArrays(gl.TRIANGLES, 0, 180);
-    gl.uniform3f(program.uScale, -2.0, -2.0, -1.0); // -X, -Y, -Z
+    gl.uniform3f(program.uScale!, -2.0, -2.0, -1.0); // -X, -Y, -Z
     gl.drawArrays(gl.TRIANGLES, 0, 180);
 
-    gl.uniform3f(program.uScale, -2.0, 2.0, 1.0);   // -X, +Y, +Z
+    gl.uniform3f(program.uScale!, -2.0, 2.0, 1.0);   // -X, +Y, +Z
     gl.drawArrays(gl.TRIANGLES, 0, 180);
-    gl.uniform3f(program.uScale, -2.0, 2.0, -1.0);  // -X, +Y, -Z
+    gl.uniform3f(program.uScale!, -2.0, 2.0, -1.0);  // -X, +Y, -Z
     gl.drawArrays(gl.TRIANGLES, 0, 180);
 
     GL.UnbindVAO();
@@ -255,9 +243,8 @@ export class Quake1Sky extends SkyRenderer {
    * not behind walls or geometry. The skybox itself is rendered 8 times (once
    * for each octant of the sphere) using a procedurally-generated dome mesh.
    */
-  render() {
+  override render(): void {
     console.assert(this.#skybox !== null, 'Skybox mesh not initialized');
-
     this._renderStencilMask();
     this.#renderSkyboxDome();
   }
@@ -272,9 +259,9 @@ export class Quake1Sky extends SkyRenderer {
    * Each layer is extracted as a 128x128 texture and converted from 8-bit
    * palette indices to 32-bit RGBA. The layers scroll at different speeds
    * in the shader to create a parallax depth effect.
-   * @param {Uint8Array} indexedTexture - 256x128 8-bit indexed sky texture data
+   * @param indexedTexture 256x128 8-bit indexed sky texture data.
    */
-  setSkyTexture(indexedTexture) {
+  setSkyTexture(indexedTexture: Uint8Array): void {
     const trans = new ArrayBuffer(65536); // 128x128x4 bytes
     const trans32 = new Uint32Array(trans);
 
@@ -305,29 +292,25 @@ export class Quake1Sky extends SkyRenderer {
 
     this.#alphaskytexture.upload(new Uint8Array(trans));
   }
-};
+}
 
 /**
  * GoldSrc style simple skybox rendering.
  * Accepts 6 separate textures for each face of the skybox cube.
  */
 export class SimpleSkyBox extends SkyRenderer {
-  #front = /** @type {GLTexture|null} */ (null);
-  #back = /** @type {GLTexture|null} */ (null);
-  #left = /** @type {GLTexture|null} */ (null);
-  #right = /** @type {GLTexture|null} */ (null);
-  #up = /** @type {GLTexture|null} */ (null);
-  #down = /** @type {GLTexture|null} */ (null);
+  #front: GLTexture | null = null;
+  #back: GLTexture | null = null;
+  #left: GLTexture | null = null;
+  #right: GLTexture | null = null;
+  #up: GLTexture | null = null;
+  #down: GLTexture | null = null;
+  #cubeBuffer: WebGLBuffer | null = null;
 
-  #cubeBuffer = null;
+  /** VAO for the skybox cube VBO (position+texcoord+normal, 32-byte stride). */
+  #cubeVAO: WebGLVertexArrayObject | null = null;
 
-  /**
-   * VAO for the skybox cube VBO (position+texcoord+normal, 32-byte stride).
-   * @type {WebGLVertexArrayObject|null}
-   */
-  #cubeVAO = null;
-
-  setSkyTextures(front, back, left, right, up, down) {
+  setSkyTextures(front: GLTexture, back: GLTexture, left: GLTexture, right: GLTexture, up: GLTexture, down: GLTexture): void {
     this.#front = front;
     this.#back = back;
     this.#left = left;
@@ -343,15 +326,15 @@ export class SimpleSkyBox extends SkyRenderer {
     this.#down.wrapClamped();
   }
 
-  init() {
+  override init(): void {
     const s = 16384.0;
-    const verts = [];
-    const push = (x, y, z, u, v, nx, ny, nz) => {
+    const verts: number[] = [];
+    const push = (x: number, y: number, z: number, u: number, v: number, nx: number, ny: number, nz: number): void => {
       verts.push(x, y, z, u, v, nx, ny, nz);
     };
 
     // Front (+X)
-    const nFront = [1, 0, 0];
+    const nFront: [number, number, number] = [1, 0, 0];
     push(s,s,-s, 0,1, ...nFront);
     push(s,-s,-s, 1,1, ...nFront);
     push(s,-s,s, 1,0, ...nFront);
@@ -360,7 +343,7 @@ export class SimpleSkyBox extends SkyRenderer {
     push(s,s,s, 0,0, ...nFront);
 
     // Back (-X)
-    const nBack = [-1, 0, 0];
+    const nBack: [number, number, number] = [-1, 0, 0];
     push(-s,-s,-s, 0,1, ...nBack);
     push(-s,s,-s, 1,1, ...nBack);
     push(-s,s,s, 1,0, ...nBack);
@@ -369,7 +352,7 @@ export class SimpleSkyBox extends SkyRenderer {
     push(-s,-s,s, 0,0, ...nBack);
 
     // Left (+Y)
-    const nLeft = [0, 1, 0];
+    const nLeft: [number, number, number] = [0, 1, 0];
     push(-s,s,-s, 0,1, ...nLeft);
     push(s,s,-s, 1,1, ...nLeft);
     push(s,s,s, 1,0, ...nLeft);
@@ -378,7 +361,7 @@ export class SimpleSkyBox extends SkyRenderer {
     push(-s,s,s, 0,0, ...nLeft);
 
     // Right (-Y)
-    const nRight = [0, -1, 0];
+    const nRight: [number, number, number] = [0, -1, 0];
     push(s,-s,-s, 0,1, ...nRight);
     push(-s,-s,-s, 1,1, ...nRight);
     push(-s,-s,s, 1,0, ...nRight);
@@ -387,7 +370,7 @@ export class SimpleSkyBox extends SkyRenderer {
     push(s,-s,s, 0,0, ...nRight);
 
     // Up (+Z)
-    const nUp = [0, 0, 1];
+    const nUp: [number, number, number] = [0, 0, 1];
     push(s,s,s, 1,1, ...nUp);
     push(s,-s,s, 1,0, ...nUp);
     push(-s,-s,s, 0,0, ...nUp);
@@ -396,7 +379,7 @@ export class SimpleSkyBox extends SkyRenderer {
     push(-s,s,s, 0,1, ...nUp);
 
     // Down (-Z)
-    const nDown = [0, 0, -1];
+    const nDown: [number, number, number] = [0, 0, -1];
     push(s,-s,-s, 0,0, ...nDown);
     push(s,s,-s, 0,1, ...nDown);
     push(-s,s,-s, 1,1, ...nDown);
@@ -408,14 +391,14 @@ export class SimpleSkyBox extends SkyRenderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.#cubeBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
 
-    this.#cubeVAO = GL.CreateVAO(this.#cubeBuffer, [
+    this.#cubeVAO = GL.CreateVAO(this.#cubeBuffer!, [
       { location: ATTRIB_LOCATIONS.aPosition, components: 3, type: gl.FLOAT, normalized: false, stride: 32, offset: 0 },
       { location: ATTRIB_LOCATIONS.aTexCoord, components: 2, type: gl.FLOAT, normalized: false, stride: 32, offset: 12 },
       { location: ATTRIB_LOCATIONS.aNormal, components: 3, type: gl.FLOAT, normalized: false, stride: 32, offset: 20 },
     ]);
   }
 
-  shutdown() {
+  override shutdown(): void {
     if (this.#cubeBuffer) {
       gl.deleteBuffer(this.#cubeBuffer);
       this.#cubeBuffer = null;
@@ -433,7 +416,7 @@ export class SimpleSkyBox extends SkyRenderer {
     this.#down = null;
   }
 
-  render() {
+  override render(): void {
     if (!this.#front) {
       return;
     }
@@ -444,15 +427,15 @@ export class SimpleSkyBox extends SkyRenderer {
     gl.depthMask(false);
     gl.disable(gl.CULL_FACE);
 
-    const program = GL.UseProgram('mesh');
-    gl.uniform3fv(program.uOrigin, R.refdef.vieworg);
-    gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
-    gl.uniform3f(program.uAmbientLight, 1.0, 1.0, 1.0);
-    gl.uniform3f(program.uShadeLight, 0.0, 0.0, 0.0);
-    gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
-    gl.uniform3f(program.uLightVec, 0.0, 0.0, 1.0);
-    gl.uniform1f(program.uAlpha, 1.0);
-    gl.uniform1f(program.uBloomEmissiveScale, resolveSkyBloomEmissiveScale(R.bloomSkyStrength?.value ?? 0.0));
+    const program = GL.UseProgram('mesh')!;
+    gl.uniform3fv(program.uOrigin!, R.refdef.vieworg);
+    gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
+    gl.uniform3f(program.uAmbientLight!, 1.0, 1.0, 1.0);
+    gl.uniform3f(program.uShadeLight!, 0.0, 0.0, 0.0);
+    gl.uniform3f(program.uDynamicShadeLight!, 0.0, 0.0, 0.0);
+    gl.uniform3f(program.uLightVec!, 0.0, 0.0, 1.0);
+    gl.uniform1f(program.uAlpha!, 1.0);
+    gl.uniform1f(program.uBloomEmissiveScale!, resolveSkyBloomEmissiveScale(R.bloomSkyStrength?.value ?? 0.0));
 
     if (program.tShadowMap0 !== undefined && R.shadow_textures?.[0]) {
       GL.Bind(program.tShadowMap0, R.shadow_textures[0]);
@@ -467,14 +450,14 @@ export class SimpleSkyBox extends SkyRenderer {
       GL.BindCube(program.tPointShadowMap, R.point_shadow_texture);
     }
 
-    GL.BindVAO(this.#cubeVAO);
+    GL.BindVAO(this.#cubeVAO!);
 
     const faces = [this.#front, this.#back, this.#right, this.#left, this.#up, this.#down];
     for (let i = 0; i < 6; i++) {
-        if (faces[i]) {
-            faces[i].bind(0);
-            gl.drawArrays(gl.TRIANGLES, i * 6, 6);
-        }
+      if (faces[i]) {
+        faces[i]!.bind(0);
+        gl.drawArrays(gl.TRIANGLES, i * 6, 6);
+      }
     }
 
     GL.UnbindVAO();
@@ -482,4 +465,4 @@ export class SimpleSkyBox extends SkyRenderer {
     gl.depthMask(true);
     gl.depthFunc(gl.LESS);
   }
-};
+}

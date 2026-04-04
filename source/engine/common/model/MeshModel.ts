@@ -1,4 +1,4 @@
-import type { BaseMaterial } from '../../client/renderer/Materials.mjs';
+import type { BaseMaterial } from '../../client/renderer/Materials.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import { BaseModel } from './BaseModel.ts';

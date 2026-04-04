@@ -1,17 +1,17 @@
-import GL from '../GL.mjs';
+import GL from '../GL.ts';
 import Cvar from '../../common/Cvar.ts';
 import VID from '../VID.ts';
-import PostProcessEffect from './PostProcessEffect.mjs';
+import PostProcessEffect from './PostProcessEffect.ts';
 import { eventBus } from '../../registry.mjs';
 
-let gl = /** @type {WebGL2RenderingContext} */ (null);
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
 
 /**
@@ -32,109 +32,107 @@ eventBus.subscribe('gl.shutdown', () => {
 export default class PostProcess {
   // ─── Scene FBO (depth-aware rendering) ───────────────────────────
 
-  /** @type {WebGLFramebuffer} Scene framebuffer object */
-  static fbo = null;
+  /** Scene framebuffer object. */
+  static fbo: WebGLFramebuffer | null = null;
 
-  /** @type {WebGLTexture} Color texture attachment (RGBA) */
-  static colorTexture = null;
+  /** Color texture attachment (RGBA). */
+  static colorTexture: WebGLTexture | null = null;
 
-  /** @type {WebGLTexture} Emissive texture attachment (RGBA) */
-  static emissiveTexture = null;
+  /** Emissive texture attachment (RGBA). */
+  static emissiveTexture: WebGLTexture | null = null;
 
-  /** @type {WebGLTexture} Depth texture attachment (DEPTH_COMPONENT24) */
-  static depthTexture = null;
+  /** Depth texture attachment (DEPTH_COMPONENT24). */
+  static depthTexture: WebGLTexture | null = null;
 
-  /** @type {WebGLRenderbuffer} Depth renderbuffer used temporarily during depth sampling */
-  static depthRenderbuffer = null;
+  /** Depth renderbuffer used temporarily during depth sampling. */
+  static depthRenderbuffer: WebGLRenderbuffer | null = null;
 
-  /** @type {number} Current scene FBO width in pixels */
+  /** Current scene FBO width in pixels. */
   static width = 0;
 
-  /** @type {number} Current scene FBO height in pixels */
+  /** Current scene FBO height in pixels. */
   static height = 0;
 
-  /** @type {boolean} Whether the PostProcess system is currently active (FBO bound) */
+  /** Whether the PostProcess system is currently active (FBO bound). */
   static active = false;
 
   // ─── MSAA (multisampled scene FBO) ───────────────────────────────
 
-  /** @type {Cvar} MSAA sample count (0 = off, 2/4/8) */
-  static msaa = null;
+  /** MSAA sample count (0 = off, 2/4/8). */
+  static msaa: Cvar | null = null;
 
-  /** @type {WebGLFramebuffer} Multisampled FBO for scene rendering */
-  static msaaFBO = null;
+  /** Multisampled FBO for scene rendering. */
+  static msaaFBO: WebGLFramebuffer | null = null;
 
-  /** @type {WebGLRenderbuffer} Multisampled color renderbuffer */
-  static msaaColorRB = null;
+  /** Multisampled color renderbuffer. */
+  static msaaColorRB: WebGLRenderbuffer | null = null;
 
-  /** @type {WebGLRenderbuffer} Multisampled emissive renderbuffer */
-  static msaaEmissiveRB = null;
+  /** Multisampled emissive renderbuffer. */
+  static msaaEmissiveRB: WebGLRenderbuffer | null = null;
 
-  /** @type {WebGLRenderbuffer} Multisampled depth renderbuffer */
-  static msaaDepthRB = null;
+  /** Multisampled depth renderbuffer. */
+  static msaaDepthRB: WebGLRenderbuffer | null = null;
 
-  /** @type {number} Current MSAA sample count (0 = disabled) */
+  /** Current MSAA sample count (0 = disabled). */
   static msaaSamples = 0;
 
-  /** @type {number} Current MSAA FBO width */
+  /** Current MSAA FBO width. */
   static msaaWidth = 0;
 
-  /** @type {number} Current MSAA FBO height */
+  /** Current MSAA FBO height. */
   static msaaHeight = 0;
 
-  /** @type {boolean} Whether MSAA has been resolved to the texture FBO this frame */
+  /** Whether MSAA has been resolved to the texture FBO this frame. */
   static msaaResolved = false;
 
   // ─── Ping-pong FBOs for effect chaining ──────────────────────────
 
-  /** @type {WebGLFramebuffer} Ping FBO for effect chaining */
-  static pingFBO = null;
+  /** Ping FBO for effect chaining. */
+  static pingFBO: WebGLFramebuffer | null = null;
 
-  /** @type {WebGLTexture} Ping color texture */
-  static pingTexture = null;
+  /** Ping color texture. */
+  static pingTexture: WebGLTexture | null = null;
 
-  /** @type {WebGLFramebuffer} Pong FBO for effect chaining */
-  static pongFBO = null;
+  /** Pong FBO for effect chaining. */
+  static pongFBO: WebGLFramebuffer | null = null;
 
-  /** @type {WebGLTexture} Pong color texture */
-  static pongTexture = null;
+  /** Pong color texture. */
+  static pongTexture: WebGLTexture | null = null;
 
-  /** @type {number} Ping-pong FBO width */
+  /** Ping-pong FBO width. */
   static ppWidth = 0;
 
-  /** @type {number} Ping-pong FBO height */
+  /** Ping-pong FBO height. */
   static ppHeight = 0;
 
   // ─── Effect pipeline ─────────────────────────────────────────────
 
-  /** @type {PostProcessEffect[]} Registered effects, applied in order */
-  static effects = [];
+  /** Registered effects, applied in order. */
+  static effects: PostProcessEffect[] = [];
 
   /**
    * Register a post-process effect. Effects are applied in the order
    * they are added. Each effect's {@link PostProcessEffect.init} is
    * called during registration.
-   * @param {PostProcessEffect} effect - The effect to register
    */
-  static addEffect(effect) {
+  static addEffect(effect: PostProcessEffect): void {
     effect.init();
     PostProcess.effects.push(effect);
   }
 
   /**
    * Get a registered effect by name.
-   * @param {string} name - The effect name to look up
-   * @returns {PostProcessEffect} The effect, or undefined if not found
+   * @returns The effect with the given name, or undefined if not registered.
    */
-  static getEffect(name) {
+  static getEffect(name: string): PostProcessEffect | undefined {
     return PostProcess.effects.find((e) => e.name === name);
   }
 
   /**
    * Whether any post-process effect is currently active.
-   * @returns {boolean} True if any registered effect is active
+   * @returns True when at least one registered effect is active.
    */
-  static hasActiveEffects() {
+  static hasActiveEffects(): boolean {
     return PostProcess.effects.some((e) => e.active);
   }
 
@@ -142,12 +140,11 @@ export default class PostProcess {
    * Initialize the post-process system.
    * Creates scene FBO, MSAA FBO (if enabled), and ping-pong FBOs.
    */
-  static init() {
+  static init(): void {
     PostProcess.msaa = new Cvar('gl_msaa', '4', Cvar.FLAG.ARCHIVE, ' MSAA sample count (0 = off, 2/4/8)');
 
     PostProcess.fbo = gl.createFramebuffer();
     {
-
       // Color texture
       PostProcess.colorTexture = gl.createTexture();
       GL.Bind(0, PostProcess.colorTexture);
@@ -227,10 +224,8 @@ export default class PostProcess {
 
   /**
    * Resize the scene FBO textures to match the viewport dimensions.
-   * @param {number} width - New width in pixels
-   * @param {number} height - New height in pixels
    */
-  static resize(width, height) {
+  static resize(width: number, height: number): void {
     if (PostProcess.width === width && PostProcess.height === height) {
       return;
     }
@@ -262,11 +257,9 @@ export default class PostProcess {
   /**
    * Allocate (or deallocate) multisampled renderbuffer storage.
    * Called from `resize()` whenever the scene dimensions change.
-   * @param {number} width - New width in pixels
-   * @param {number} height - New height in pixels
    */
-  static _resizeMSAA(width, height) {
-    const requested = PostProcess.msaa.value >> 0;
+  static _resizeMSAA(width: number, height: number): void {
+    const requested = PostProcess.msaa!.value >> 0;
     if (requested <= 0) {
       PostProcess.msaaSamples = 0;
       PostProcess.msaaWidth = 0;
@@ -274,7 +267,7 @@ export default class PostProcess {
       return;
     }
 
-    const maxSamples = gl.getParameter(gl.MAX_SAMPLES);
+    const maxSamples = gl.getParameter(gl.MAX_SAMPLES) as number;
     const samples = Math.min(requested, maxSamples);
 
     if (PostProcess.msaaWidth === width && PostProcess.msaaHeight === height
@@ -302,10 +295,8 @@ export default class PostProcess {
 
   /**
    * Resize the ping-pong FBOs used for effect chaining.
-   * @param {number} width - New width in pixels
-   * @param {number} height - New height in pixels
    */
-  static resizePingPong(width, height) {
+  static resizePingPong(width: number, height: number): void {
     if (PostProcess.ppWidth === width && PostProcess.ppHeight === height) {
       return;
     }
@@ -331,7 +322,7 @@ export default class PostProcess {
    * is rendered with anti-aliasing. The MSAA FBO is resolved to the
    * texture FBO before depth sampling or at `end()`.
    */
-  static begin() {
+  static begin(): void {
     if (PostProcess.msaaSamples > 0) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.msaaFBO);
       PostProcess.msaaResolved = false;
@@ -348,11 +339,8 @@ export default class PostProcess {
   /**
    * Begin rendering the scene to an effect's own FBO.
    * Used when only pipeline effects are active (no depth-texture scene FBO needed).
-   * @param {WebGLFramebuffer} fbo - The effect's FBO
-   * @param {number} width - FBO width
-   * @param {number} height - FBO height
    */
-  static beginToEffectFBO(fbo, width, height) {
+  static beginToEffectFBO(fbo: WebGLFramebuffer, width: number, height: number): void {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.viewport(0, 0, width, height);
@@ -365,7 +353,7 @@ export default class PostProcess {
    * If MSAA is active, resolves to the texture FBO first so the depth
    * texture contains valid data.
    */
-  static beginDepthSampling() {
+  static beginDepthSampling(): void {
     if (PostProcess.msaaSamples > 0 && !PostProcess.msaaResolved) {
       PostProcess.resolveMSAA();
     }
@@ -376,7 +364,7 @@ export default class PostProcess {
   /**
    * Reattach the depth texture to the FBO after depth sampling is done.
    */
-  static endDepthSampling() {
+  static endDepthSampling(): void {
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, PostProcess.depthTexture, 0);
   }
@@ -385,12 +373,12 @@ export default class PostProcess {
    * Resolve one multisampled color attachment into a texture-backed attachment 0.
    * Some browsers reject `drawBuffers([COLOR_ATTACHMENT1])` during blits, so the
    * destination attachment is temporarily rebound to slot 0 for the resolve.
-   * @param {GLenum} readAttachment Source MSAA color attachment.
-   * @param {WebGLTexture} targetTexture Destination texture.
-   * @param {number} width Resolve width in pixels.
-   * @param {number} height Resolve height in pixels.
+   * @param readAttachment Source MSAA color attachment.
+   * @param targetTexture Destination texture.
+   * @param width Resolve width in pixels.
+   * @param height Resolve height in pixels.
    */
-  static _resolveMSAAColorAttachment(readAttachment, targetTexture, width, height) {
+  static _resolveMSAAColorAttachment(readAttachment: GLenum, targetTexture: WebGLTexture, width: number, height: number): void {
     gl.readBuffer(readAttachment);
     gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, null, 0);
     gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
@@ -404,15 +392,15 @@ export default class PostProcess {
    * depth sampling and the effect pipeline. After this call, the
    * texture FBO is bound as the active FRAMEBUFFER.
    */
-  static resolveMSAA() {
+  static resolveMSAA(): void {
     const w = PostProcess.width;
     const h = PostProcess.height;
 
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, PostProcess.msaaFBO);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, PostProcess.fbo);
 
-    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT0, PostProcess.colorTexture, w, h);
-    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT1, PostProcess.emissiveTexture, w, h);
+    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT0, PostProcess.colorTexture!, w, h);
+    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT1, PostProcess.emissiveTexture!, w, h);
 
     gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.colorTexture, 0);
     gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, PostProcess.emissiveTexture, 0);
@@ -428,7 +416,7 @@ export default class PostProcess {
    * (no-fog path), resolves to the texture FBO first so the color texture
    * is available for the effect pipeline. Then unbinds the FBO.
    */
-  static end() {
+  static end(): void {
     if (PostProcess.msaaSamples > 0 && !PostProcess.msaaResolved) {
       PostProcess.resolveMSAA();
     }
@@ -440,13 +428,8 @@ export default class PostProcess {
    * Resolve the scene to the screen, applying all active effects in order.
    * When no effects are active, performs a simple blit. When effects are
    * active, chains them using ping-pong FBOs.
-   * @param {number} x - Viewport x position
-   * @param {number} y - Viewport y position
-   * @param {number} width - Viewport width
-   * @param {number} height - Viewport height
-   * @param {WebGLTexture} sceneTexture - The scene color texture to resolve
    */
-  static resolve(x, y, width, height, sceneTexture) {
+  static resolve(x: number, y: number, width: number, height: number, sceneTexture: WebGLTexture): void {
     const activeEffects = PostProcess.effects.filter((e) => e.active);
 
     if (activeEffects.length === 0) {
@@ -461,7 +444,7 @@ export default class PostProcess {
     PostProcess.resizePingPong(pixelWidth, pixelHeight);
 
     // Save the current viewport (GL.Set2D has already set up 2D rendering)
-    const savedViewport = gl.getParameter(gl.VIEWPORT);
+    const savedViewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
 
     gl.disable(gl.BLEND);
 
@@ -484,7 +467,7 @@ export default class PostProcess {
         gl.viewport(0, 0, pixelWidth, pixelHeight);
         // Draw at ortho-space dimensions (VID.width/height) so the ortho matrix works
         activeEffects[i].apply(inputTexture, 0, 0, VID.width, VID.height);
-        inputTexture = textures[i % 2];
+        inputTexture = textures[i % 2]!;
       }
     }
 
@@ -493,18 +476,13 @@ export default class PostProcess {
 
   /**
    * Blit a texture to the screen using the 'pic' shader.
-   * @param {WebGLTexture} texture - Source texture
-   * @param {number} x - Screen x
-   * @param {number} y - Screen y
-   * @param {number} width - Screen width
-   * @param {number} height - Screen height
    */
-  static _blitToScreen(texture, x, y, width, height) {
+  static _blitToScreen(texture: WebGLTexture, x: number, y: number, width: number, height: number): void {
     gl.disable(gl.BLEND);
 
     const program = GL.UseProgram('pic');
-    gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
-    GL.Bind(program.tTexture, texture);
+    gl.uniform3f(program!.uColor, 1.0, 1.0, 1.0);
+    GL.Bind(program!.tTexture, texture);
     // FBO texture has (0,0) at bottom-left; 2D screen has (0,0) at top-left.
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
@@ -515,7 +493,7 @@ export default class PostProcess {
   /**
    * Clean up all GPU resources.
    */
-  static shutdown() {
+  static shutdown(): void {
     // Shut down all effects
     for (const effect of PostProcess.effects) {
       effect.shutdown();
@@ -590,4 +568,4 @@ export default class PostProcess {
     PostProcess.ppHeight = 0;
     PostProcess.active = false;
   }
-};
+}

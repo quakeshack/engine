@@ -1,33 +1,45 @@
-import GL from '../GL.mjs';
-import PostProcess from './PostProcess.mjs';
+import GL from '../GL.ts';
+import PostProcess from './PostProcess.ts';
 import VID from '../VID.ts';
-import PostProcessEffect from './PostProcessEffect.mjs';
+import PostProcessEffect from './PostProcessEffect.ts';
 import Vector from '../../../shared/Vector.ts';
-import { eventBus, registry } from '../../registry.mjs';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
 import { effect } from '../../../shared/Defs.ts';
 
-let { Draw, R } = registry;
+let { Draw, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Draw, R } = registry);
+  ({ Draw, R } = getClientRegistry());
 });
 
-/** @type {WebGL2RenderingContext} */
-let gl = /** @type {WebGL2RenderingContext} */ (null);
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
 
+/** Textures available for bloom debug preview rendering. */
+interface BloomDebugTextures {
+  emissiveTexture: WebGLTexture | null;
+  extractTexture: WebGLTexture | null;
+  blurTexture: WebGLTexture | null;
+}
+
+/** A single item in the bloom debug preview list. */
+interface BloomDebugPreviewItem {
+  label: string;
+  texture: WebGLTexture;
+}
+
 /**
- * @param {number} downsample Requested downsample divisor.
- * @returns {number} Clamped divisor for the bloom buffers.
+ * @param downsample Requested downsample divisor.
+ * @returns Clamped divisor for the bloom buffers.
  */
-export function resolveBloomDownsample(downsample) {
+export function resolveBloomDownsample(downsample: number): number {
   const requested = downsample >> 0;
 
   if (requested <= 1) {
@@ -38,10 +50,10 @@ export function resolveBloomDownsample(downsample) {
 }
 
 /**
- * @param {number} mode Requested debug preview mode.
- * @returns {number} Clamped bloom debug mode.
+ * @param mode Requested debug preview mode.
+ * @returns Clamped bloom debug mode.
  */
-export function resolveBloomDebugMode(mode) {
+export function resolveBloomDebugMode(mode: number): number {
   const requested = mode >> 0;
 
   if (requested <= 0) {
@@ -52,18 +64,18 @@ export function resolveBloomDebugMode(mode) {
 }
 
 /**
- * @param {number} mode Requested debug preview mode.
- * @param {{emissiveTexture: WebGLTexture|null, extractTexture: WebGLTexture|null, blurTexture: WebGLTexture|null}} textures Preview textures.
- * @returns {{label: string, texture: WebGLTexture}[]} Preview items to render.
+ * @param mode Requested debug preview mode.
+ * @param textures Preview textures.
+ * @returns Preview items to render.
  */
-export function getBloomDebugPreviewItems(mode, textures) {
+export function getBloomDebugPreviewItems(mode: number, textures: BloomDebugTextures): BloomDebugPreviewItem[] {
   const resolvedMode = resolveBloomDebugMode(mode);
 
   if (resolvedMode === 0) {
     return [];
   }
 
-  const previewItems = /** @type {{label: string, texture: WebGLTexture|null}[]} */ ([]);
+  const previewItems: { label: string; texture: WebGLTexture | null }[] = [];
 
   if (resolvedMode === 1 || resolvedMode === 4) {
     previewItems.push({ label: 'emissive', texture: textures.emissiveTexture });
@@ -79,16 +91,16 @@ export function getBloomDebugPreviewItems(mode, textures) {
     return [];
   }
 
-  return /** @type {{label: string, texture: WebGLTexture}[]} */ (previewItems);
+  return previewItems as BloomDebugPreviewItem[];
 }
 
 /**
- * @param {number} width Full-resolution width.
- * @param {number} height Full-resolution height.
- * @param {number} downsample Requested downsample divisor.
- * @returns {{width: number, height: number}} Bloom buffer dimensions.
+ * @param width Full-resolution width.
+ * @param height Full-resolution height.
+ * @param downsample Requested downsample divisor.
+ * @returns Bloom buffer dimensions.
  */
-export function getBloomBufferSize(width, height, downsample) {
+export function getBloomBufferSize(width: number, height: number, downsample: number): { width: number; height: number } {
   const divisor = resolveBloomDownsample(downsample);
 
   return {
@@ -98,10 +110,10 @@ export function getBloomBufferSize(width, height, downsample) {
 }
 
 /**
- * @param {number} entityEffects Bitmask of entity effect flags.
- * @returns {number} Emissive bloom scale for the entity.
+ * @param entityEffects Bitmask of entity effect flags.
+ * @returns Emissive bloom scale for the entity.
  */
-export function getEntityBloomEmissiveScale(entityEffects) {
+export function getEntityBloomEmissiveScale(entityEffects: number): number {
   return (entityEffects & (effect.EF_FULLBRIGHT | effect.EF_MUZZLEFLASH)) !== 0 ? 1.0 : 0.0;
 }
 
@@ -109,32 +121,30 @@ export function getEntityBloomEmissiveScale(entityEffects) {
  * Emissive-driven bloom effect with quarter-resolution blur and additive composite.
  */
 export default class BloomEffect extends PostProcessEffect {
-  /** @type {WebGLFramebuffer} Bright-pass framebuffer. */
-  static extractFBO = null;
+  /** Bright-pass framebuffer. */
+  static extractFBO: WebGLFramebuffer | null = null;
 
-  /** @type {WebGLTexture} Bright-pass texture. */
-  static extractTexture = null;
+  /** Bright-pass texture. */
+  static extractTexture: WebGLTexture | null = null;
 
-  /** @type {WebGLFramebuffer} Blur framebuffer. */
-  static blurFBO = null;
+  /** Blur framebuffer. */
+  static blurFBO: WebGLFramebuffer | null = null;
 
-  /** @type {WebGLTexture} Blur texture. */
-  static blurTexture = null;
+  /** Blur texture. */
+  static blurTexture: WebGLTexture | null = null;
 
-  /** @type {number} Current bloom buffer width. */
+  /** Current bloom buffer width. */
   static width = 0;
 
-  /** @type {number} Current bloom buffer height. */
+  /** Current bloom buffer height. */
   static height = 0;
 
   constructor() {
     super('bloom');
   }
 
-  /**
-   * Create bloom framebuffers and textures.
-   */
-  init() {
+  /** Create bloom framebuffers and textures. */
+  override init(): void {
     BloomEffect.extractFBO = gl.createFramebuffer();
     BloomEffect.extractTexture = BloomEffect.#createColorTexture();
     gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.extractFBO);
@@ -148,10 +158,10 @@ export default class BloomEffect extends PostProcessEffect {
   }
 
   /**
-   * @param {number} width New width in pixels.
-   * @param {number} height New height in pixels.
+   * @param width New width in pixels.
+   * @param height New height in pixels.
    */
-  resize(width, height) {
+  override resize(width: number, height: number): void {
     const downsample = R.bloomDownsample ? R.bloomDownsample.value : 4;
     const size = getBloomBufferSize(width, height, downsample);
 
@@ -170,19 +180,19 @@ export default class BloomEffect extends PostProcessEffect {
   }
 
   /**
-   * @param {WebGLTexture} inputTexture Scene color texture.
-   * @param {number} x Output viewport x position.
-   * @param {number} y Output viewport y position.
-   * @param {number} width Output viewport width.
-   * @param {number} height Output viewport height.
+   * @param inputTexture Scene color texture.
+   * @param x Output viewport x position.
+   * @param y Output viewport y position.
+   * @param width Output viewport width.
+   * @param height Output viewport height.
    */
-  apply(inputTexture, x, y, width, height) {
+  override apply(inputTexture: WebGLTexture, x: number, y: number, width: number, height: number): void {
     if (!BloomEffect.extractFBO || !BloomEffect.blurFBO || BloomEffect.width === 0 || BloomEffect.height === 0) {
       return;
     }
 
-    const outputFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-    const outputViewport = gl.getParameter(gl.VIEWPORT);
+    const outputFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+    const outputViewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
 
     gl.disable(gl.BLEND);
 
@@ -194,22 +204,20 @@ export default class BloomEffect extends PostProcessEffect {
     gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.blurFBO);
     gl.viewport(0, 0, BloomEffect.width, BloomEffect.height);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    BloomEffect.#blur(BloomEffect.extractTexture, 1.0 / BloomEffect.width, 0.0);
+    BloomEffect.#blur(BloomEffect.extractTexture!, 1.0 / BloomEffect.width, 0.0);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.extractFBO);
     gl.viewport(0, 0, BloomEffect.width, BloomEffect.height);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    BloomEffect.#blur(BloomEffect.blurTexture, 0.0, 1.0 / BloomEffect.height);
+    BloomEffect.#blur(BloomEffect.blurTexture!, 0.0, 1.0 / BloomEffect.height);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, outputFramebuffer);
     gl.viewport(outputViewport[0], outputViewport[1], outputViewport[2], outputViewport[3]);
     BloomEffect.#composite(inputTexture, x, y, width, height);
   }
 
-  /**
-   * Clean up bloom GPU resources.
-   */
-  shutdown() {
+  /** Clean up bloom GPU resources. */
+  override shutdown(): void {
     if (BloomEffect.extractFBO) {
       gl.deleteFramebuffer(BloomEffect.extractFBO);
       BloomEffect.extractFBO = null;
@@ -232,10 +240,8 @@ export default class BloomEffect extends PostProcessEffect {
     this.active = false;
   }
 
-  /**
-   * Draw an on-screen bloom debug preview.
-   */
-  drawDebugPreview() {
+  /** Draw an on-screen bloom debug preview. */
+  override drawDebugPreview(): void {
     const mode = resolveBloomDebugMode(R.bloomDebug ? R.bloomDebug.value : 0);
 
     if (mode === 0) {
@@ -258,15 +264,11 @@ export default class BloomEffect extends PostProcessEffect {
     const availableWidth = Math.max(96, VID.width - margin * (previewItems.length + 1));
     const previewWidth = Math.max(96, Math.min(256, Math.floor(availableWidth / previewItems.length)));
     const previewHeight = Math.max(54, Math.floor(previewWidth * 9 / 16));
-    const previews = /** @type {{label: string, texture: WebGLTexture, x: number}[]} */ ([]);
+    const previews: Array<{ label: string; texture: WebGLTexture; x: number }> = [];
     let x = margin;
 
     for (const item of previewItems) {
-      previews.push({
-        label: item.label,
-        texture: item.texture,
-        x,
-      });
+      previews.push({ label: item.label, texture: item.texture, x });
       x += previewWidth + margin;
     }
 
@@ -285,11 +287,9 @@ export default class BloomEffect extends PostProcessEffect {
     }
   }
 
-  /**
-   * @returns {WebGLTexture} Newly configured bloom texture.
-   */
-  static #createColorTexture() {
-    const texture = gl.createTexture();
+  /** @returns Newly configured bloom texture. */
+  static #createColorTexture(): WebGLTexture {
+    const texture = gl.createTexture()!;
     GL.Bind(0, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -299,66 +299,64 @@ export default class BloomEffect extends PostProcessEffect {
     return texture;
   }
 
-  /**
-   */
-  static #extract() {
+  static #extract(): void {
     const program = GL.UseProgram('bloom-extract');
-    GL.Bind(program.tTexture, PostProcess.emissiveTexture);
+    GL.Bind(program!.tTexture!, PostProcess.emissiveTexture);
     GL.StreamDrawTexturedQuad(0, 0, VID.width, VID.height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
   }
 
   /**
-   * @param {WebGLTexture} inputTexture Texture to blur.
-   * @param {number} texelOffsetX Horizontal texel offset.
-   * @param {number} texelOffsetY Vertical texel offset.
+   * @param inputTexture Texture to blur.
+   * @param texelOffsetX Horizontal texel offset.
+   * @param texelOffsetY Vertical texel offset.
    */
-  static #blur(inputTexture, texelOffsetX, texelOffsetY) {
+  static #blur(inputTexture: WebGLTexture, texelOffsetX: number, texelOffsetY: number): void {
     const program = GL.UseProgram('bloom-blur');
-    GL.Bind(program.tTexture, inputTexture);
-    gl.uniform2f(program.uTexelOffset, texelOffsetX, texelOffsetY);
+    GL.Bind(program!.tTexture!, inputTexture);
+    gl.uniform2f(program!.uTexelOffset!, texelOffsetX, texelOffsetY);
     GL.StreamDrawTexturedQuad(0, 0, VID.width, VID.height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
   }
 
   /**
-   * @param {WebGLTexture} inputTexture Scene color texture.
-   * @param {number} x Output viewport x position.
-   * @param {number} y Output viewport y position.
-   * @param {number} width Output viewport width.
-   * @param {number} height Output viewport height.
+   * @param inputTexture Scene color texture.
+   * @param x Output viewport x position.
+   * @param y Output viewport y position.
+   * @param width Output viewport width.
+   * @param height Output viewport height.
    */
-  static #composite(inputTexture, x, y, width, height) {
+  static #composite(inputTexture: WebGLTexture, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('bloom-composite');
-    GL.Bind(program.tScene, inputTexture);
-    GL.Bind(program.tBloom, BloomEffect.extractTexture);
-    gl.uniform1f(program.uStrength, R.bloomStrength.value);
+    GL.Bind(program!.tScene!, inputTexture);
+    GL.Bind(program!.tBloom!, BloomEffect.extractTexture);
+    gl.uniform1f(program!.uStrength!, R.bloomStrength.value);
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
   }
 
   /**
-   * @param {WebGLTexture} texture Texture to preview.
-   * @param {number} x Screen x position.
-   * @param {number} y Screen y position.
-   * @param {number} width Preview width.
-   * @param {number} height Preview height.
+   * @param texture Texture to preview.
+   * @param x Screen x position.
+   * @param y Screen y position.
+   * @param width Preview width.
+   * @param height Preview height.
    */
-  static #drawDebugTexture(texture, x, y, width, height) {
+  static #drawDebugTexture(texture: WebGLTexture, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('pic');
-    gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
-    GL.Bind(program.tTexture, texture);
+    gl.uniform3f(program!.uColor!, 1.0, 1.0, 1.0);
+    GL.Bind(program!.tTexture!, texture);
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
   }
 
   /**
-   * @param {number} x Frame x position.
-   * @param {number} y Frame y position.
-   * @param {number} width Frame width.
-   * @param {number} height Frame height.
+   * @param x Frame x position.
+   * @param y Frame y position.
+   * @param width Frame width.
+   * @param height Frame height.
    */
-  static #drawDebugFrame(x, y, width, height) {
+  static #drawDebugFrame(x: number, y: number, width: number, height: number): void {
     const frameColor = new Vector(1.0, 1.0, 1.0);
     Draw.Fill(x - 1, y - 1, width + 2, 1, frameColor);
     Draw.Fill(x - 1, y + height, width + 2, 1, frameColor);

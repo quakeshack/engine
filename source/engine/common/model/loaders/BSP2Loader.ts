@@ -2,7 +2,7 @@ import Vector from '../../../../shared/Vector.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { Face } from '../BaseModel.ts';
 import { BrushModel, Node } from '../BSP.ts';
-import { materialFlags } from '../../../client/renderer/Materials.mjs';
+import { MaterialFlags } from '../../../client/renderer/Materials.ts';
 import { BSP29Loader } from './BSP29Loader.ts';
 
 /**
@@ -99,9 +99,9 @@ export class BSP2Loader extends BSP29Loader {
       face.texturemins = [Math.floor(mins[0] / lmscale) * lmscale, Math.floor(mins[1] / lmscale) * lmscale];
       face.extents = [Math.ceil(maxs[0] / lmscale) * lmscale - face.texturemins[0], Math.ceil(maxs[1] / lmscale) * lmscale - face.texturemins[1]];
 
-      if ((loadmodel.textures[tex.texture].flags & materialFlags.MF_TURBULENT) !== 0) {
+      if ((loadmodel.textures[tex.texture].flags & MaterialFlags.MF_TURBULENT) !== 0) {
         face.turbulent = true;
-      } else if ((loadmodel.textures[tex.texture].flags & materialFlags.MF_SKY) !== 0) {
+      } else if ((loadmodel.textures[tex.texture].flags & MaterialFlags.MF_SKY) !== 0) {
         face.sky = true;
       }
 

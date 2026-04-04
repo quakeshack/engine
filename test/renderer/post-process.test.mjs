@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.mjs';
-import PostProcess from '../../source/engine/client/renderer/PostProcess.mjs';
+import PostProcess from '../../source/engine/client/renderer/PostProcess.ts';
 import { eventBus } from '../../source/engine/registry.mjs';
 
 describe('PostProcess._resolveMSAAColorAttachment', () => {

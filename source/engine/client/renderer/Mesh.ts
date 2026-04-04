@@ -1,15 +1,16 @@
 import { EPSILON } from '../../../shared/Defs.ts';
 
 /**
- * Mesh stuff.
+ * Mesh utility helpers.
  */
 export default class Mesh {
   /**
    * Calculate tangents and bitangents for a vertex array.
-   * @param {number[]} cmds vertex data array (stride = 20 floats: pos(3), uv(2), color(4), normal(3), tangent(3), bitangent(3))
-   * @param {number} cutoff number of floats to process (should be multiple of 60 for whole triangles)
+   * Stride is 20 floats: pos(3), uv(2), color(4), normal(3), tangent(3), bitangent(3).
+   * @param cmds Vertex data array.
+   * @param cutoff Number of floats to process (should be multiple of 60 for whole triangles).
    */
-  static CalculateTangentBitangents(cmds, cutoff) {
+  static CalculateTangentBitangents(cmds: number[], cutoff: number): void {
     // compute per-triangle tangent/bitangent (stride = 20 floats)
     const stride = 20;
     for (let i = 0; i + stride * 3 <= Math.min(cutoff, cmds.length); i += stride * 3) {
@@ -86,4 +87,4 @@ export default class Mesh {
       }
     }
   }
-};
+}

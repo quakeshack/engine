@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { resolveSkyBloomEmissiveScale } from '../../source/engine/client/renderer/Sky.mjs';
+import { resolveSkyBloomEmissiveScale } from '../../source/engine/client/renderer/Sky.ts';
 
 describe('resolveSkyBloomEmissiveScale', () => {
   test('clamps invalid values to zero', () => {

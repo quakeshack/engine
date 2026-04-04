@@ -19,7 +19,7 @@ interface GLProgramAttrib {
   offset: number;
 }
 
-type GLProgramDynamicProperties = {
+export type GLProgramDynamicProperties = {
   [key in `a${string}`]?: GLProgramAttrib;
 } & {
   [key in `u${string}`]?: WebGLUniformLocation | null;
@@ -27,7 +27,7 @@ type GLProgramDynamicProperties = {
   [key in `t${string}`]?: number;
 };
 
-type GLProgramInfo = {
+export type GLProgramInfo = {
   identifier: string;
   program: WebGLProgram;
   attribs: GLProgramAttrib[];

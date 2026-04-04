@@ -68,16 +68,16 @@ describe('R.GetEntityLightSamplePoint', () => {
     const previousCL = registry.CL;
     const previousMod = registry.Mod;
 
-    registry.CL = { state: { viewent: null } };
-    registry.Mod = { type: { alias: 2, brush: 1 } };
+    registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { viewent: null } });
+    registry.Mod = /** @type {typeof import('../../source/engine/common/Mod.ts').default} */ (/** @type {unknown} */ ({ type: { alias: 2, brush: 1 } }));
     eventBus.publish('registry.frozen');
 
     try {
-      const entity = {
+      const entity = /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ ({
         lerp: { origin: new Vector(-4, 8, 12) },
         model: { type: 1 },
         mins: new Vector(),
-      };
+      });
 
       const samplePoint = R.GetEntityLightSamplePoint(entity);
 

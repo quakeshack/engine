@@ -1,29 +1,30 @@
 import Vector from '../../../shared/Vector.ts';
-import { ModelRenderer } from './ModelRenderer.mjs';
-import { eventBus, registry } from '../../registry.mjs';
-import GL, { ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.mjs';
-import { getEntityBloomEmissiveScale } from './BloomEffect.mjs';
-import { materialFlags } from './Materials.mjs';
-import { BrushModel, Node } from '../../common/model/BSP.ts';
-import { ClientEdict } from '../ClientEntities.ts';
-import Mesh from './Mesh.mjs';
-import PostProcess from './PostProcess.mjs';
+import { ModelRenderer } from './ModelRenderer.ts';
+import { eventBus, getClientRegistry } from '../../registry.mjs';
+import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.ts';
+import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
+import { MaterialFlags, type BaseMaterial } from './Materials.ts';
+import type { BrushModel, Node, FogVolumeInfo, WorldTurbulentChainInfo } from '../../common/model/BSP.ts';
+import type { Face, BaseModel } from '../../common/model/BaseModel.ts';
+import type { ClientEdict } from '../ClientEntities.ts';
+import Mesh from './Mesh.ts';
+import PostProcess from './PostProcess.ts';
 import * as Def from '../../common/Def.ts';
 
-let { CL, Host, R } = registry;
+let { CL, Host, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, R } = registry);
+  ({ CL, Host, R } = getClientRegistry());
 });
 
-let gl = /** @type {WebGL2RenderingContext} */ (null);
+let gl: WebGL2RenderingContext = null!;
 
 eventBus.subscribe('gl.ready', () => {
   gl = GL.gl;
 });
 
 eventBus.subscribe('gl.shutdown', () => {
-  gl = null;
+  gl = null!;
 });
 
 // Lightmap atlas configuration
@@ -46,11 +47,40 @@ const TURBULENT_FALLBACK_SCALE = 0.0078125;
 const TURBULENT_FALLBACK_EPSILON = 0.0001;
 
 /**
- * @param {number} strength Requested brush bloom contribution strength.
- * @returns {number} Sanitized non-negative bloom contribution strength.
+ * @param strength Requested brush bloom contribution strength.
+ * @returns Sanitized non-negative bloom contribution strength.
  */
-export function resolveBrushBloomContributionStrength(strength) {
+export function resolveBrushBloomContributionStrength(strength: number): number {
   return Number.isFinite(strength) && strength > 0.0 ? strength : 0.0;
+}
+
+/** Internal data held per fog volume light probe. */
+interface FogLightProbeData {
+  texture: WebGLTexture;
+  resX: number;
+  resY: number;
+  resZ: number;
+  data: Uint8Array;
+}
+
+/** Dynamic light entry used for fog volume dlight uploads. */
+interface FogDlightEntry {
+  origin: Vector;
+  radius: number;
+  color: Vector;
+  distSq: number;
+}
+
+/**
+ * Resolver return type for entity lighting state.
+ */
+interface EntityLightingState {
+  ambientlight: Vector;
+  shadelight: Vector;
+  lightPosition: Vector;
+  dynamicShadeLight: Vector;
+  dynamicLightPosition: Vector;
+  hasDeluxemap: boolean;
 }
 
 /**
@@ -58,28 +88,85 @@ export function resolveBrushBloomContributionStrength(strength) {
  * Handles both static world geometry and dynamic brush entities.
  */
 export class BrushModelRenderer extends ModelRenderer {
+  // ─── Static properties ────────────────────────────────────────────
+
+  /** Resolution of the 3D light probe grid per axis. */
+  static FOG_LIGHT_PROBE_RES = 8;
+
+  /**
+   * Maximum number of dynamic lights passed to the fog volume shader.
+   * Must match MAX_FOG_DLIGHTS in fog-volume.frag.
+   */
+  static MAX_FOG_DLIGHTS = 8;
+
+  // ─── Private instance fields ──────────────────────────────────────
+
+  /**
+   * Light probe textures for fog volumes, keyed by the fog volume object.
+   * Each entry holds a raw WebGL texture, the grid resolution, and a reusable
+   * pixel buffer to avoid reallocating on every lightstyle update.
+   */
+  #fogLightProbes: Map<FogVolumeInfo, FogLightProbeData> = new Map();
+
+  /**
+   * The lightstyle animation frame index when probes were last rebuilt.
+   * Lightstyles tick at 10 Hz (floor(time * 10)), so probes are only
+   * regenerated when this value changes.
+   */
+  #fogProbeStyleFrame: number = -1;
+
+  /** A 1×1 white texture used as a fallback when no light probe is available. */
+  #fogLightProbeWhite: WebGLTexture | null = null;
+
+  /**
+   * Lazily created unit cube VBO for rendering world-level fog volumes.
+   * The cube spans [0,1]^3 and is transformed via uOrigin/uAngles.
+   */
+  #fogCubeVBO: WebGLBuffer | null = null;
+
+  /** Lazily created VAO for the fog cube VBO (position-only, 12-byte stride). */
+  #fogCubeVAO: WebGLVertexArrayObject | null = null;
+
+  // ─── Runtime program/model state ─────────────────────────────────
+
+  /** Active 'brush' program during world transparent pass. */
+  _worldTransparentProgram: GLProgramInfo | null = null;
+
+  /** World model associated with the current transparent pass. */
+  _worldTransparentModel: BrushModel | null = null;
+
+  /** Active 'turbulent' program during world turbulent pass. */
+  _worldTurbulentProgram: GLProgramInfo | null = null;
+
+  /** World model associated with the current turbulent pass. */
+  _worldTurbulentModel: BrushModel | null = null;
+
+  /** Active 'fog-volume' program during fog volume pass. */
+  _fogVolumeProgram: GLProgramInfo | null = null;
+
+  // ─── Static methods ───────────────────────────────────────────────
+
   /**
    * Determine whether a brush model should sample the shared deluxemap atlas.
    * Inline BSP submodels reuse the world atlas even when they do not carry
    * their own `deluxemap` pointer.
-   * @param {BrushModel} clmodel The brush model being rendered
-   * @param {BrushModel|null} worldModel The active world model
-   * @returns {boolean} True when deluxemap sampling should stay enabled
+   * @returns True when the model references the shared world deluxemap atlas.
    */
-  static usesDeluxemap(clmodel, worldModel) {
+  static usesDeluxemap(clmodel: BrushModel, worldModel: BrushModel | null): boolean {
     return Boolean(clmodel.deluxemap !== null || (clmodel.submodel && worldModel?.deluxemap !== null));
   }
 
   /**
    * Build the lighting state used by inline brush entities.
    * Brush models should use the same BSP + dynamic-light sampling as alias/mesh entities.
-   * @param {BrushModel} clmodel The brush model being rendered
-   * @param {ClientEdict} entity The entity being rendered
-   * @param {(entity: ClientEdict) => [Vector, Vector, Vector, Vector, Vector]} calculateLightValues Light sampler callback
-   * @param {BrushModel|null} [worldModel] The active world model
-   * @returns {{ambientlight: Vector, shadelight: Vector, lightPosition: Vector, dynamicShadeLight: Vector, dynamicLightPosition: Vector, hasDeluxemap: boolean}} Resolved lighting state
+   * @returns The resolved entity lighting state.
    */
-  static resolveEntityLightingState(clmodel, entity, calculateLightValues, worldModel = null) {
+  static resolveEntityLightingState(
+    clmodel: BrushModel,
+    entity: ClientEdict,
+    calculateLightValues: (entity: ClientEdict) => [Vector, Vector, Vector, Vector, Vector],
+    worldModel: BrushModel | null = null,
+  ): EntityLightingState {
     const [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition] = calculateLightValues(entity);
     const usesSharedWorldLightmap = clmodel.submodel === true
       && (clmodel.lightdata !== null || clmodel.lightdata_rgb !== null);
@@ -95,12 +182,11 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * Projects and normalises a tangent axis against the surface normal.
    * @private
-   * @param {Vector} axis Axis candidate.
-   * @param {Vector} normal Surface normal.
-   * @returns {Vector|null} Axis projected onto the face plane, or null when degenerate.
+   * @returns The projected axis, or null when the result is degenerate.
    */
-  static _projectTurbulentFallbackAxis(axis, normal) {
+  static _projectTurbulentFallbackAxis(axis: Vector, normal: Vector): Vector | null {
     const projectedAxis = axis.copy().subtract(normal.copy().multiply(axis.dot(normal)));
 
     if (projectedAxis.normalize() <= TURBULENT_FALLBACK_EPSILON) {
@@ -111,12 +197,11 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * Computes an orthonormal tangent/bitangent basis for turbulent UV fallback.
    * @private
-   * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
-   * @returns {{tangent: Vector, bitangent: Vector}} Face-plane sampling basis.
+   * @returns Tangent and bitangent vectors aligned to the surface.
    */
-  static _getTurbulentFallbackBasis(model, face) {
+  static _getTurbulentFallbackBasis(model: BrushModel, face: Face): { tangent: Vector; bitangent: Vector } {
     const normal = face.normal.copy();
 
     if (normal.normalize() <= TURBULENT_FALLBACK_EPSILON) {
@@ -134,13 +219,11 @@ export class BrushModelRenderer extends ModelRenderer {
       ? BrushModelRenderer._projectTurbulentFallbackAxis(new Vector(texinfo.vecs[1][0], texinfo.vecs[1][1], texinfo.vecs[1][2]), normal)
       : null;
 
-    const faceWithVerts = /** @type {import('../../common/model/BaseModel.ts').Face & { verts?: number[][] }} */ (face);
-
-    if (tangent === null && faceWithVerts.verts && faceWithVerts.verts.length >= 2) {
+    if (tangent === null && face.verts && face.verts.length >= 2) {
       const edge = new Vector(
-        faceWithVerts.verts[1][0] - faceWithVerts.verts[0][0],
-        faceWithVerts.verts[1][1] - faceWithVerts.verts[0][1],
-        faceWithVerts.verts[1][2] - faceWithVerts.verts[0][2],
+        face.verts[1][0] - face.verts[0][0],
+        face.verts[1][1] - face.verts[0][1],
+        face.verts[1][2] - face.verts[0][2],
       );
       tangent = BrushModelRenderer._projectTurbulentFallbackAxis(edge, normal);
     }
@@ -160,13 +243,16 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
-   * @param {Vector} worldPos Vertex position used for the fallback sample.
-   * @param {(position: Vector) => [Vector, Vector]} sampleLightPoint Light sampler callback.
-   * @returns {number[]} Vertex-level fallback light color.
+   * Sample fallback light at a vertex position by probing the world in a neighborhood.
+   * @param sampleLightPoint Light sampler callback from R.LightPoint.
+   * @returns RGB light values in the 0..1 renderer range.
    */
-  static sampleTurbulentFallbackLight(model, face, worldPos, sampleLightPoint) {
+  static sampleTurbulentFallbackLight(
+    model: BrushModel,
+    face: Face,
+    worldPos: Vector,
+    sampleLightPoint: (position: Vector) => [Vector, Vector],
+  ): number[] {
     const normal = face.normal.copy();
 
     if (normal.normalize() <= TURBULENT_FALLBACK_EPSILON) {
@@ -197,7 +283,7 @@ export class BrushModelRenderer extends ModelRenderer {
       worldPos.copy().subtract(antiDiagonalOffset),
       new Vector(worldPos[0], worldPos[1], worldPos[2] - TURBULENT_FALLBACK_NORMAL_OFFSET),
     ];
-    const visibleSamples = [];
+    const visibleSamples: { color: Vector; intensity: number }[] = [];
     let bestColor = new Vector(0.0, 0.0, 0.0);
     let bestIntensity = 0.0;
 
@@ -258,12 +344,11 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * @param {number[]} vertexLight Per-vertex fallback color.
-   * @param {number[]} faceLight Face-level fallback color.
-   * @param {number} factor Blend factor in the 0..1 range.
-   * @returns {number[]} Smoothed fallback color.
+   * Blend per-vertex and per-face turbulent fallback light by a smoothstep factor.
+   * @param factor Blend factor in the 0..1 range.
+   * @returns The blended RGB light values.
    */
-  static blendTurbulentFallbackLight(vertexLight, faceLight, factor) {
+  static blendTurbulentFallbackLight(vertexLight: number[], faceLight: number[], factor: number): number[] {
     const clampedFactor = Math.max(0.0, Math.min(factor, 1.0));
     const inverseFactor = 1.0 - clampedFactor;
 
@@ -274,40 +359,23 @@ export class BrushModelRenderer extends ModelRenderer {
     ];
   }
 
-  /**
-   * Get the model type this renderer handles
-   * @returns {number} Mod.type.brush (0)
-   */
-  getModelType() {
-    return 0; // Mod.type.brush
+  // ─── ModelRenderer interface ──────────────────────────────────────
+
+  /** @returns Mod.type.brush (0) */
+  getModelType(): number {
+    return 0;
   }
 
-  /**
-   * Setup rendering state for brush models.
-   * Binds shared textures and prepares GL state for brush rendering.
-   * @param {number} [_pass] Rendering pass (0=opaque, 1=transparent)
-   */
-  // eslint-disable-next-line no-unused-vars
-  setupRenderState(_pass = 0) {
+
+  setupRenderState(_pass = 0): void {
     // Brush models bind their own buffers and state per-entity
-    // No shared setup needed at this level
   }
 
-  /**
-   * @param {BrushModel} _model The brush model
-   * @param {ClientEdict} entity The entity being rendered
-   * @returns {boolean} True when the brush model should contribute to the opaque pass
-   */
-  rendersOpaquePass(_model, entity) {
+  rendersOpaquePass(_model: BaseModel, entity: ClientEdict): boolean {
     return entity.alpha >= 1.0;
   }
 
-  /**
-   * @param {BrushModel} model The brush model
-   * @param {ClientEdict} entity The entity being rendered
-   * @returns {boolean} True when the brush model has transparent content for the sorted pass
-   */
-  rendersTransparentPass(model, entity) {
+  rendersTransparentPass(model: BaseModel, entity: ClientEdict): boolean {
     if (entity.alpha <= 0.0) {
       return false;
     }
@@ -316,15 +384,17 @@ export class BrushModelRenderer extends ModelRenderer {
       return true;
     }
 
-    if (!model.chains || model.chains.length === 0) {
+    const clmodel = model as BrushModel;
+
+    if (!clmodel.chains || clmodel.chains.length === 0) {
       return false;
     }
 
-    for (let i = 0; i < model.chains.length; i++) {
-      const chain = model.chains[i];
-      const material = model.textures[chain[0]];
+    for (let i = 0; i < clmodel.chains.length; i++) {
+      const chain = clmodel.chains[i];
+      const material = clmodel.textures[chain[0]];
 
-      if ((material.flags & materialFlags.MF_TRANSPARENT) !== 0) {
+      if ((material.flags & MaterialFlags.MF_TRANSPARENT) !== 0) {
         return true;
       }
     }
@@ -335,16 +405,13 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Render a single brush model entity.
    * Handles frustum culling, transforms, lighting, and both opaque and turbulent surfaces.
-   * @param {BrushModel} model The brush model to render
-   * @param {ClientEdict} entity The entity being rendered
-   * @param {number} pass Rendering pass (0=opaque, 1=transparent)
+   * @param pass Rendering pass (0=opaque, 1=turbulent, 2=transparent)
    */
-  render(model, entity, pass = 0) {
-    const clmodel = model;
+  render(model: BaseModel, entity: ClientEdict, pass = 0): void {
+    const clmodel = model as BrushModel;
     const e = entity;
 
     // Check if this is the world entity (entity 0)
-    // World uses leafs structure, entities use chains structure
     if (e === CL.state.clientEntities.getEntity(0)) {
       if (pass === 0) {
         this.renderWorld(clmodel);
@@ -356,8 +423,7 @@ export class BrushModelRenderer extends ModelRenderer {
       return;
     }
 
-    // Regular brush entity rendering (doors, platforms, etc)
-    // Frustum culling
+    // Regular brush entity — frustum cull
     if (clmodel.submodel === true) {
       if (R.CullBox(
         new Vector(
@@ -388,7 +454,6 @@ export class BrushModelRenderer extends ModelRenderer {
       }
     }
 
-    // Bind VAO and render appropriate pass
     const viewMatrix = e.lerp.angles.toRotationMatrix();
 
     if (pass === 0) {
@@ -409,18 +474,18 @@ export class BrushModelRenderer extends ModelRenderer {
     }
   }
 
+  // ─── World rendering ──────────────────────────────────────────────
+
   /**
-   * Render the world (entity 0) opaque surfaces.
-   * World uses leafs structure instead of chains.
-   * @param {BrushModel} clmodel The world model
+   * Render the world (entity 0) opaque surfaces using the leafs structure.
    */
-  renderWorld(clmodel) {
+  renderWorld(clmodel: BrushModel): void {
     const worldspawn = CL.state.clientEntities.getEntity(0);
 
     GL.BindVAO(clmodel.opaqueVAO);
     R.c_brush_vbos++;
 
-    const program = GL.UseProgram('brush');
+    const program = GL.UseProgram('brush')!;
     gl.uniform3f(program.uAmbientLight, 1.0, 1.0, 1.0);
     gl.uniform3f(program.uShadeLight, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicShadeLight, 0.0, 0.0, 0.0);
@@ -429,22 +494,15 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale, 0.0);
     gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
-
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
     gl.uniform4f(program.uLightVec, 0.0, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicLightVec, 0.0, 0.0, 0.0);
 
-    // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, true);
     GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
     this._bindBrushDeluxemap(program, clmodel);
 
-    // wallhack: GL_BLEND is required
-    // gl.enable(gl.BLEND);
-    // gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-    // Iterate through visible leafs
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
 
@@ -458,14 +516,13 @@ export class BrushModelRenderer extends ModelRenderer {
 
       for (let j = 0; j < leaf.skychain; j++) {
         const cmds = leaf.cmds[j];
-        const material = clmodel.textures[cmds[0]];
+        const material = clmodel.textures[cmds[0]] as BaseMaterial;
 
-        if (material.flags & materialFlags.MF_SKIP) {
+        if (material.flags & MaterialFlags.MF_SKIP) {
           continue;
         }
 
-        // Skip transparent surfaces in opaque pass
-        if (material.flags & materialFlags.MF_TRANSPARENT) {
+        if (material.flags & MaterialFlags.MF_TRANSPARENT) {
           continue;
         }
 
@@ -485,10 +542,8 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * Render the world (entity 0) transparent surfaces with alpha blending.
-   * World uses leafs structure instead of chains.
-   * @param {BrushModel} clmodel The world model
    */
-  renderWorldTransparent(clmodel) {
+  renderWorldTransparent(clmodel: BrushModel): void {
     this.beginWorldTransparentPass(clmodel);
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
@@ -506,12 +561,10 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Collect visible world leafs that contain transparent surfaces, with
    * squared distance from the given viewpoint for back-to-front sorting.
-   * @param {BrushModel} clmodel The world model
-   * @param {Float32Array|number[]} vieworg Camera position [x, y, z]
-   * @returns {{leaf: Node, dist: number}[]} Transparent leaf items sorted by distance (farthest first)
+   * @returns Leaf entries with squared view distances for back-to-front sorting.
    */
-  getWorldTransparentLeaves(clmodel, vieworg) {
-    const items = [];
+  getWorldTransparentLeaves(clmodel: BrushModel, vieworg: Float32Array | number[]): { leaf: Node; dist: number }[] {
+    const items: { leaf: Node; dist: number }[] = [];
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
       if (leaf.visframe !== R.visframecount || leaf.skychain === 0) {
@@ -520,10 +573,9 @@ export class BrushModelRenderer extends ModelRenderer {
       if (R.CullBox(leaf.mins, leaf.maxs)) {
         continue;
       }
-      // Check if this leaf has any transparent surfaces
       let hasTransparent = false;
       for (let j = 0; j < leaf.skychain; j++) {
-        if (clmodel.textures[leaf.cmds[j][0]].flags & materialFlags.MF_TRANSPARENT) {
+        if ((clmodel.textures[leaf.cmds[j][0]] as BaseMaterial).flags & MaterialFlags.MF_TRANSPARENT) {
           hasTransparent = true;
           break;
         }
@@ -540,14 +592,12 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Setup GL state for world transparent leaf rendering.
    * Call once before one or more `renderWorldTransparentLeaf` calls.
-   * @param {BrushModel} clmodel The world model
    */
-  beginWorldTransparentPass(clmodel) {
+  beginWorldTransparentPass(clmodel: BrushModel): void {
     GL.BindVAO(clmodel.opaqueVAO);
     R.c_brush_vbos++;
 
-    /** @type {object} */
-    const program = GL.UseProgram('brush');
+    const program = GL.UseProgram('brush')!;
     this._worldTransparentProgram = program;
     this._worldTransparentModel = clmodel;
 
@@ -573,23 +623,21 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Render a single leaf’s transparent surfaces.
+   * Render a single leaf's transparent surfaces.
    * Must be called between `beginWorldTransparentPass` and `endWorldTransparentPass`.
-   * @param {BrushModel} clmodel The world model
-   * @param {Node} leaf The BSP leaf to render
    */
-  renderWorldTransparentLeaf(clmodel, leaf) {
+  renderWorldTransparentLeaf(clmodel: BrushModel, leaf: Node): void {
     const worldspawn = CL.state.clientEntities.getEntity(0);
-    const program = this._worldTransparentProgram;
+    const program = this._worldTransparentProgram!;
 
     for (let j = 0; j < leaf.skychain; j++) {
       const cmds = leaf.cmds[j];
-      const material = clmodel.textures[cmds[0]];
+      const material = clmodel.textures[cmds[0]] as BaseMaterial;
 
-      if (material.flags & materialFlags.MF_SKIP) {
+      if (material.flags & MaterialFlags.MF_SKIP) {
         continue;
       }
-      if (!(material.flags & materialFlags.MF_TRANSPARENT)) {
+      if (!(material.flags & MaterialFlags.MF_TRANSPARENT)) {
         continue;
       }
 
@@ -604,22 +652,21 @@ export class BrushModelRenderer extends ModelRenderer {
     }
   }
 
-  /**
-   * Cleanup GL state after world transparent leaf rendering.
-   */
-  endWorldTransparentPass() {
+  /** Cleanup GL state after world transparent leaf rendering. */
+  endWorldTransparentPass(): void {
     gl.disable(gl.BLEND);
     GL.UnbindVAO();
     this._worldTransparentProgram = null;
     this._worldTransparentModel = null;
   }
 
+  // ─── World turbulent rendering ────────────────────────────────────
+
   /**
    * Render the world (entity 0) turbulent surfaces.
-   * World uses leafs structure instead of chains.
-   * @param {BrushModel} clmodel The world model
+   * Note: method name preserves original typo for API compatibility.
    */
-  renderWorldTurbolents(clmodel) {
+  renderWorldTurbolents(clmodel: BrushModel): void {
     this.beginWorldTurbulentPass(clmodel);
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
@@ -635,14 +682,12 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Collect visible world leafs that contain turbulent surfaces, with
-   * squared distance from the given viewpoint for back-to-front sorting.
-   * @param {BrushModel} clmodel The world model
-   * @param {Float32Array|number[]} vieworg Camera position [x, y, z]
-   * @returns {{leaf: Node, dist: number}[]} Turbulent leaf items sorted by distance (farthest first)
+   * Collect visible world leafs that contain turbulent surfaces, sorted by
+   * distance from the given viewpoint (farthest first).
+   * @returns Leaf entries with view distances for farthest-first rendering.
    */
-  getWorldTurbulentLeaves(clmodel, vieworg) {
-    const items = [];
+  getWorldTurbulentLeaves(clmodel: BrushModel, vieworg: Float32Array | number[]): { leaf: Node; dist: number }[] {
+    const items: { leaf: Node; dist: number }[] = [];
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
       if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
@@ -660,12 +705,10 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Collect visible world turbulent draw batches with tight bounds so fog and
    * semi-transparent liquids can share the same sorted space.
-   * @param {BrushModel} clmodel The world model
-   * @param {Float32Array|number[]} vieworg Camera position [x, y, z]
-   * @returns {{chain: import('../../common/model/BSP.ts').WorldTurbulentChainInfo, dist: number}[]} Turbulent draw items with distance metadata
+   * @returns Turbulent chain entries with view distances for back-to-front sorting.
    */
-  getWorldTurbulentChains(clmodel, vieworg) {
-    const items = [];
+  getWorldTurbulentChains(clmodel: BrushModel, vieworg: Float32Array | number[]): { chain: WorldTurbulentChainInfo; dist: number }[] {
+    const items: { chain: WorldTurbulentChainInfo; dist: number }[] = [];
 
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
@@ -693,43 +736,20 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Approximate view-relative sort distance for bounded transparent content.
-   * Uses the nearest point on the AABB instead of the center so large leaves
-   * and fog volumes sort by the depth where they begin affecting the view.
-   * @private
-   * @param {Vector|number[]|Float32Array} mins Minimum corner of the AABB
-   * @param {Vector|number[]|Float32Array} maxs Maximum corner of the AABB
-   * @param {Float32Array|number[]} vieworg Camera position [x, y, z]
-   * @returns {number} Euclidean distance from the view to the nearest point on the bounds
-   */
-  _getBoundsDistanceToView(mins, maxs, vieworg) {
-    const nearestX = Math.max(mins[0], Math.min(vieworg[0], maxs[0]));
-    const nearestY = Math.max(mins[1], Math.min(vieworg[1], maxs[1]));
-    const nearestZ = Math.max(mins[2], Math.min(vieworg[2], maxs[2]));
-    const dx = nearestX - vieworg[0];
-    const dy = nearestY - vieworg[1];
-    const dz = nearestZ - vieworg[2];
-
-    return Math.hypot(dx, dy, dz);
-  }
-
-  /**
    * Setup GL state for world turbulent leaf rendering.
    * Call once before one or more `renderWorldTurbulentLeaf` calls.
-   * @param {BrushModel} clmodel The world model
    */
-  beginWorldTurbulentPass(clmodel) {
+  beginWorldTurbulentPass(clmodel: BrushModel): void {
     GL.BindVAO(clmodel.turbulentVAO);
     R.c_brush_vbos++;
 
-    const program = GL.UseProgram('turbulent');
+    const program = GL.UseProgram('turbulent')!;
     gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
     gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
     gl.uniform1f(program.uTime, Host.realtime);
     gl.uniform1f(program.uBloomEmissiveScale, 0.0);
     gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
 
-    // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, true);
     GL.Bind(program.tLightStyle, R.lightstyle_texture_a);
 
@@ -740,10 +760,8 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Render a single leaf's turbulent surfaces.
    * Must be called between `beginWorldTurbulentPass` and `endWorldTurbulentPass`.
-   * @param {BrushModel} clmodel The world model
-   * @param {Node} leaf The BSP leaf to render
    */
-  renderWorldTurbulentLeaf(clmodel, leaf) {
+  renderWorldTurbulentLeaf(clmodel: BrushModel, leaf: Node): void {
     for (let j = leaf.waterchain; j < leaf.cmds.length; j++) {
       const cmds = leaf.cmds[j];
       this._renderWorldTurbulentBatch(clmodel, cmds[0], cmds[1], cmds[2]);
@@ -753,24 +771,248 @@ export class BrushModelRenderer extends ModelRenderer {
   /**
    * Render a single pre-sorted world turbulent draw batch.
    * Must be called between `beginWorldTurbulentPass` and `endWorldTurbulentPass`.
-   * @param {BrushModel} clmodel The world model
-   * @param {import('../../common/model/BSP.ts').WorldTurbulentChainInfo} chain The turbulent draw batch to render
    */
-  renderWorldTurbulentChain(clmodel, chain) {
+  renderWorldTurbulentChain(clmodel: BrushModel, chain: WorldTurbulentChainInfo): void {
     this._renderWorldTurbulentBatch(clmodel, chain.texture, chain.firstVertex, chain.vertexCount);
   }
 
+  /** Cleanup GL state after world turbulent leaf rendering. */
+  endWorldTurbulentPass(): void {
+    gl.disable(gl.BLEND);
+    gl.depthMask(true);
+    GL.UnbindVAO();
+    this._worldTurbulentProgram = null;
+    this._worldTurbulentModel = null;
+  }
+
+  // ─── Fog volume rendering ─────────────────────────────────────────
+
   /**
-   * @private
-   * @param {BrushModel} clmodel The world model
-   * @param {number} textureIndex Texture index for this draw
-   * @param {number} firstVertex First vertex in the turbulent VBO region
-   * @param {number} vertexCount Number of vertices in the draw batch
+   * Render all fog volumes defined in the world model.
+   * Handles both inline brush model fog volumes (*N) and world-level
+   * water/slime/lava fog volumes (modelIndex === 0).
    */
-  _renderWorldTurbulentBatch(clmodel, textureIndex, firstVertex, vertexCount) {
+  renderFogVolumes(worldmodel: BrushModel): void {
+    if (!this.beginFogVolumePass(worldmodel)) {
+      return;
+    }
+    for (const fogVolume of worldmodel.fogVolumes) {
+      this.renderSingleFogVolume(worldmodel, fogVolume);
+    }
+    this.endFogVolumePass();
+  }
+
+  /**
+   * Collect fog volumes with distance from the given viewpoint for back-to-front sorting.
+   * @returns Fog volume entries with view distances for back-to-front sorting.
+   */
+  getFogVolumeItems(worldmodel: BrushModel, vieworg: Float32Array | number[]): { fogVolume: FogVolumeInfo; dist: number }[] {
+    if (!worldmodel.fogVolumes || worldmodel.fogVolumes.length === 0) {
+      return [];
+    }
+    const items: { fogVolume: FogVolumeInfo; dist: number }[] = [];
+    for (const fogVolume of worldmodel.fogVolumes) {
+      const dist = this._getBoundsDistanceToView(fogVolume.mins, fogVolume.maxs, vieworg);
+      items.push({ fogVolume, dist });
+    }
+    return items;
+  }
+
+  /**
+   * Setup GL state for fog volume rendering.
+   * @returns True if fog volume pass was started, false if skipped.
+   */
+  beginFogVolumePass(worldmodel: BrushModel): boolean {
+    if (!worldmodel.fogVolumes || worldmodel.fogVolumes.length === 0) {
+      return false;
+    }
+
+    PostProcess.beginDepthSampling();
+
+    const program = GL.UseProgram('fog-volume')!;
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.cullFace(gl.BACK);
+    gl.enable(gl.CULL_FACE);
+
+    GL.Bind(program.tDepth, PostProcess.depthTexture);
+    gl.uniform2f(program.uScreenSize, PostProcess.width, PostProcess.height);
+
+    this._fogVolumeProgram = program;
+    return true;
+  }
+
+  /**
+   * Render a single fog volume.
+   * Must be called between `beginFogVolumePass` and `endFogVolumePass`.
+   */
+  renderSingleFogVolume(worldmodel: BrushModel, fogVolume: FogVolumeInfo): void {
+    const program = this._fogVolumeProgram!;
+
+    gl.uniform3f(
+      program.uFogVolumeColor,
+      fogVolume.color[0] / 255.0,
+      fogVolume.color[1] / 255.0,
+      fogVolume.color[2] / 255.0,
+    );
+    gl.uniform1f(program.uFogVolumeDensity, fogVolume.density);
+    gl.uniform1f(program.uFogVolumeMaxOpacity, fogVolume.maxOpacity);
+
+    // Bind the light probe 3D texture for this fog volume.
+    // _getFogLightProbe / _getFogLightProbeWhite may upload via Bind3D(0, ...)
+    // which clobbers texture unit 0 (tDepth). Re-bind depth after.
+    const probe = this._getFogLightProbe(fogVolume);
+    GL.Bind3D(program.tLightProbe, probe ? probe.texture : this._getFogLightProbeWhite());
+    GL.Bind(program.tDepth, PostProcess.depthTexture);
+
+    this._uploadFogDlights(fogVolume);
+
+    gl.uniform3f(program.uFogVolumeMins, fogVolume.mins[0], fogVolume.mins[1], fogVolume.mins[2]);
+    gl.uniform3f(program.uFogVolumeMaxs, fogVolume.maxs[0], fogVolume.maxs[1], fogVolume.maxs[2]);
+
+    if (fogVolume.modelIndex === 0) {
+      const sizeX = fogVolume.maxs[0] - fogVolume.mins[0];
+      const sizeY = fogVolume.maxs[1] - fogVolume.mins[1];
+      const sizeZ = fogVolume.maxs[2] - fogVolume.mins[2];
+
+      gl.uniformMatrix3fv(program.uAngles, false, new Float32Array([
+        sizeX, 0, 0,
+        0, sizeY, 0,
+        0, 0, sizeZ,
+      ]));
+      gl.uniform3f(program.uOrigin, fogVolume.mins[0], fogVolume.mins[1], fogVolume.mins[2]);
+
+      this._getFogCubeVBO();
+
+      // Bind the fog cube VAO directly instead of through GL.BindVAO/UnbindVAO
+      // to avoid attribute/program state being cleared between volumes.
+      gl.bindVertexArray(this.#fogCubeVAO);
+      R.c_brush_vbos++;
+
+      gl.drawArrays(gl.TRIANGLES, 0, 36);
+      gl.bindVertexArray(null);
+      R.c_brush_draws++;
+    } else {
+      const submodel = worldmodel.submodels[fogVolume.modelIndex - 1];
+
+      if (!submodel || !submodel.cmds) {
+        return;
+      }
+
+      gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
+      gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, submodel.cmds as WebGLBuffer);
+      R.c_brush_vbos++;
+      gl.vertexAttribPointer(program.aPosition.location as number, 3, gl.FLOAT, false, 80, 0);
+
+      if (submodel.chains) {
+        for (const chain of submodel.chains) {
+          gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
+          R.c_brush_draws++;
+        }
+      }
+    }
+  }
+
+  /** Cleanup GL state after fog volume rendering. */
+  endFogVolumePass(): void {
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.cullFace(gl.FRONT);
+    gl.enable(gl.CULL_FACE);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+    gl.disable(gl.BLEND);
+
+    PostProcess.endDepthSampling();
+    this._fogVolumeProgram = null;
+  }
+
+
+  cleanupRenderState(_pass = 0): void {
+    // Brush models clean up their own state per-entity
+  }
+
+  // ─── Model preparation ────────────────────────────────────────────
+
+  /**
+   * Prepare brush model for rendering (build display lists, upload to GPU).
+   * Handles both world models (using leafs) and entity models (using chains).
+   * @param isWorldModel True if this is the actual world map (model index 1)
+   */
+  prepareModel(model: BrushModel, isWorldModel = false): void {
+    const m = model;
+
+    if (m.cmds && typeof m.cmds === 'object' && m.cmds !== null) {
+      gl.deleteBuffer(m.cmds as WebGLBuffer);
+      m.cmds = null;
+    }
+
+    if (model.name[0] !== '*') {
+      for (const face of model.faces) {
+        this._buildSurfaceDisplayList(model, face);
+      }
+    }
+
+    if (isWorldModel) {
+      this._buildWorldModelDisplayLists(m);
+    } else {
+      this._buildBrushModelDisplayLists(m);
+    }
+  }
+
+  /**
+   * Free GPU resources for this brush model.
+   */
+  cleanupModel(model: BrushModel): void {
+    if (model.opaqueVAO) {
+      gl.deleteVertexArray(model.opaqueVAO as WebGLVertexArrayObject);
+      model.opaqueVAO = null;
+    }
+    if (model.turbulentVAO) {
+      gl.deleteVertexArray(model.turbulentVAO as WebGLVertexArrayObject);
+      model.turbulentVAO = null;
+    }
+    if (model.cmds) {
+      gl.deleteBuffer(model.cmds as WebGLBuffer);
+      model.cmds = null;
+    }
+
+    if (model.fogVolumes && model.fogVolumes.length > 0) {
+      this._freeFogLightProbes();
+    }
+  }
+
+  // ─── Private helpers ──────────────────────────────────────────────
+
+  /**
+   * Distance from the viewpoint to the nearest point of an axis-aligned bounding box.
+   * @private
+   * @returns Distance to the nearest AABB corner in world units.
+   */
+  _getBoundsDistanceToView(
+    mins: Vector | number[] | Float32Array,
+    maxs: Vector | number[] | Float32Array,
+    vieworg: Float32Array | number[],
+  ): number {
+    const nearestX = Math.max(mins[0], Math.min(vieworg[0], maxs[0]));
+    const nearestY = Math.max(mins[1], Math.min(vieworg[1], maxs[1]));
+    const nearestZ = Math.max(mins[2], Math.min(vieworg[2], maxs[2]));
+    const dx = nearestX - vieworg[0];
+    const dy = nearestY - vieworg[1];
+    const dz = nearestZ - vieworg[2];
+
+    return Math.hypot(dx, dy, dz);
+  }
+
+  /** @private */
+  _renderWorldTurbulentBatch(clmodel: BrushModel, textureIndex: number, firstVertex: number, vertexCount: number): void {
     const worldspawn = CL.state.clientEntities.getEntity(0);
-    const program = this._worldTurbulentProgram;
-    const material = clmodel.textures[textureIndex];
+    const program = this._worldTurbulentProgram!;
+    const material = clmodel.textures[textureIndex] as BaseMaterial;
 
     material.emit(worldspawn);
     const alpha = this._getTurbulentMaterialAlpha(material, worldspawn);
@@ -785,34 +1027,20 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Cleanup GL state after world turbulent leaf rendering.
-   */
-  endWorldTurbulentPass() {
-    gl.disable(gl.BLEND);
-    gl.depthMask(true);
-    GL.UnbindVAO();
-    this._worldTurbulentProgram = null;
-    this._worldTurbulentModel = null;
-  }
-
-  /**
+   * Combined clamped alpha for a turbulent material surface.
    * @private
-   * @param {import('./Materials.mjs').BaseMaterial} material Material chosen for the draw.
-   * @param {ClientEdict} entity Entity that owns the surface.
-   * @returns {number} Combined material/entity alpha in the 0..1 range.
+   * @returns Clamped product of material and entity alpha in the 0..1 range.
    */
-  _getTurbulentMaterialAlpha(material, entity) {
+  _getTurbulentMaterialAlpha(material: BaseMaterial, entity: ClientEdict): number {
     const entityAlpha = entity?.alpha ?? 1.0;
     return Math.max(0.0, Math.min(material.currentAlpha * entityAlpha, 1.0));
   }
 
   /**
    * Opaque liquids must write depth so they occlude later fog/transparent passes.
-   * Transparent liquids stay blended and keep depth writes disabled.
    * @private
-   * @param {number} alpha Effective surface alpha.
    */
-  _setTurbulentSurfaceState(alpha) {
+  _setTurbulentSurfaceState(alpha: number): void {
     if (alpha >= 1.0) {
       gl.disable(gl.BLEND);
       gl.depthMask(true);
@@ -823,30 +1051,20 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.depthMask(false);
   }
 
-  /**
-   * Setup common brush shader uniforms and textures.
-   * Configures lightmaps, dynamic lights, light styles, and deluxemaps.
-   * @private
-   * @param {WebGLProgram} program The shader program (brush or turbulent)
-   * @param {BrushModel} clmodel The brush model
-   * @param {boolean} isWorld Whether this is the world entity (affects deluxemap/dlight settings)
-   */
-  _setupBrushShaderCommon(program, clmodel, isWorld) {
-    // Bind lightmap textures
+  /** @private */
+  _setupBrushShaderCommon(program: GLProgramInfo, clmodel: BrushModel, isWorld: boolean): void {
     if ((R.fullbright.value !== 0) || (clmodel.lightdata === null && clmodel.lightdata_rgb === null)) {
       GL.BindArray(program.tLightmap, R.fullbright_texture);
     } else {
       GL.BindArray(program.tLightmap, R.lightmap_texture);
     }
 
-    // Bind dynamic light texture
     if (R.flashblend.value === 0 && (isWorld || clmodel.submodel)) {
       GL.Bind(program.tDlight, R.dlightmap_rgba_texture);
     } else {
       GL.Bind(program.tDlight, R.null_texture);
     }
 
-    // Bind local shadow map textures
     if (program.tShadowMap0 !== undefined && R.shadow_textures?.[0]) {
       GL.Bind(program.tShadowMap0, R.shadow_textures[0]);
     }
@@ -857,51 +1075,38 @@ export class BrushModelRenderer extends ModelRenderer {
       GL.Bind(program.tShadowMap2, R.shadow_textures[2]);
     }
 
-    // Bind point light cube shadow map
     if (program.tPointShadowMap !== undefined) {
       GL.BindCube(program.tPointShadowMap, R.point_shadow_texture);
     }
   }
 
-  /**
-   * Render opaque (non-turbulent) brush surfaces
-   * @private
-   * @param {BrushModel} clmodel The brush model
-   * @param {ClientEdict} e The entity
-   * @param {number[]} viewMatrix Rotation matrix for entity orientation
-   */
-  _renderOpaqueSurfaces(clmodel, e, viewMatrix) {
-    const program = GL.UseProgram('brush');
+  /** @private */
+  _renderOpaqueSurfaces(clmodel: BrushModel, e: ClientEdict, viewMatrix: number[]): void {
+    const program = GL.UseProgram('brush')!;
     this._applyEntityLighting(program, clmodel, e);
 
-    // Setup transforms
     gl.uniform3fv(program.uOrigin, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles, false, viewMatrix);
-
-    // Setup uniforms
     gl.uniform1f(program.uInterpolation, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
     gl.uniform1f(program.uAlpha, 1.0);
     gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
-    // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, false);
     GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
     this._bindBrushDeluxemap(program, clmodel);
 
-    // Render each texture chain
     if (!clmodel.chains || clmodel.chains.length === 0) {
       return;
     }
 
     for (let i = 0; i < clmodel.chains.length; i++) {
       const chain = clmodel.chains[i];
-      const material = clmodel.textures[chain[0]];
+      const material = clmodel.textures[chain[0]] as BaseMaterial;
 
-      // Skip turbulent and transparent surfaces in opaque pass
-      if ((material.flags & materialFlags.MF_TURBULENT) || (material.flags & materialFlags.MF_TRANSPARENT)) {
+      if ((material.flags & MaterialFlags.MF_TURBULENT) || (material.flags & MaterialFlags.MF_TRANSPARENT)) {
         continue;
       }
 
@@ -916,40 +1121,27 @@ export class BrushModelRenderer extends ModelRenderer {
     }
   }
 
-  /**
-   * Render transparent brush surfaces with alpha blending
-   * @private
-   * @param {BrushModel} clmodel The brush model
-   * @param {ClientEdict} e The entity
-   * @param {number[]} viewMatrix Rotation matrix for entity orientation
-   */
-  _renderTransparentSurfaces(clmodel, e, viewMatrix) {
-    const program = GL.UseProgram('brush');
+  /** @private */
+  _renderTransparentSurfaces(clmodel: BrushModel, e: ClientEdict, viewMatrix: number[]): void {
+    const program = GL.UseProgram('brush')!;
     this._applyEntityLighting(program, clmodel, e);
 
-    // Setup transforms
     gl.uniform3fv(program.uOrigin, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles, false, viewMatrix);
-
-    // Setup uniforms
     gl.uniform1f(program.uInterpolation, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
     gl.uniform1f(program.uAlpha, e.alpha);
     gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
-    // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, false);
     GL.Bind(program.tLightStyleA, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB, R.lightstyle_texture_b);
     this._bindBrushDeluxemap(program, clmodel);
 
-    // Enable blending for transparent surfaces (depth writes stay ON so
-    // the Z-buffer correctly orders transparent geometry against each other)
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // Render each texture chain (only transparent ones)
     if (!clmodel.chains || clmodel.chains.length === 0) {
       gl.disable(gl.BLEND);
       return;
@@ -957,16 +1149,14 @@ export class BrushModelRenderer extends ModelRenderer {
 
     for (let i = 0; i < clmodel.chains.length; i++) {
       const chain = clmodel.chains[i];
-      const material = clmodel.textures[chain[0]];
+      const material = clmodel.textures[chain[0]] as BaseMaterial;
 
-      // Skip requested
-      if (material.flags & materialFlags.MF_SKIP) {
+      if (material.flags & MaterialFlags.MF_SKIP) {
         continue;
       }
 
-      // Only render transparent surfaces in this pass
       if (e.alpha === 1.0 && (
-        (material.flags & materialFlags.MF_TURBULENT) || !(material.flags & materialFlags.MF_TRANSPARENT)
+        (material.flags & MaterialFlags.MF_TURBULENT) || !(material.flags & MaterialFlags.MF_TRANSPARENT)
       )) {
         continue;
       }
@@ -984,26 +1174,18 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.disable(gl.BLEND);
   }
 
-  /**
-   * Render turbulent (water, slime, lava, teleport) brush surfaces
-   * @private
-   * @param {BrushModel} clmodel The brush model
-   * @param {ClientEdict} e The entity
-   * @param {number[]} viewMatrix Rotation matrix for entity orientation
-   */
-  _renderTurbulentSurfaces(clmodel, e, viewMatrix) {
-    const program = GL.UseProgram('turbulent');
+  /** @private */
+  _renderTurbulentSurfaces(clmodel: BrushModel, e: ClientEdict, viewMatrix: number[]): void {
+    const program = GL.UseProgram('turbulent')!;
     gl.uniform3fv(program.uOrigin, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles, false, viewMatrix);
     gl.uniform1f(program.uTime, Host.realtime % (Math.PI * 2.0));
     gl.uniform1f(program.uBloomEmissiveScale, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale, R.bloomDlightStrength.value);
 
-    // Bind common textures
     this._setupBrushShaderCommon(program, clmodel, false);
     GL.Bind(program.tLightStyle, R.lightstyle_texture_a);
 
-    // Render each turbulent chain
     if (!clmodel.chains || clmodel.chains.length === 0) {
       gl.depthMask(true);
       gl.disable(gl.BLEND);
@@ -1012,15 +1194,14 @@ export class BrushModelRenderer extends ModelRenderer {
 
     for (let i = 0; i < clmodel.chains.length; i++) {
       const chain = clmodel.chains[i];
-      const material = clmodel.textures[chain[0]];
+      const material = clmodel.textures[chain[0]] as BaseMaterial;
 
-      // Skip requested
-      if (material.flags & materialFlags.MF_SKIP) {
+      if (material.flags & MaterialFlags.MF_SKIP) {
         continue;
       }
 
-      if (!(material.flags & materialFlags.MF_TURBULENT)) {
-        continue; // Skip non-turbulent surfaces in this pass
+      if (!(material.flags & MaterialFlags.MF_TURBULENT)) {
+        continue;
       }
 
       material.emit(e);
@@ -1039,18 +1220,13 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.disable(gl.BLEND);
   }
 
-  /**
-   * @private
-   * @param {object} program Active brush shader program
-   * @param {BrushModel} clmodel The brush model
-   * @param {ClientEdict} entity The entity being rendered
-   */
-  _applyEntityLighting(program, clmodel, entity) {
+  /** @private */
+  _applyEntityLighting(program: GLProgramInfo, clmodel: BrushModel, entity: ClientEdict): void {
     const lightingState = BrushModelRenderer.resolveEntityLightingState(
       clmodel,
       entity,
       R._CalculateLightValues,
-      CL.state.worldmodel,
+      CL.state.worldmodel as BrushModel | null,
     );
 
     gl.uniform3fv(program.uAmbientLight, lightingState.ambientlight);
@@ -1066,13 +1242,9 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uDynamicLightVec, lightingState.dynamicLightPosition);
   }
 
-  /**
-   * @private
-   * @param {object} program Active brush shader program
-   * @param {BrushModel} clmodel The brush model
-   */
-  _bindBrushDeluxemap(program, clmodel) {
-    if (BrushModelRenderer.usesDeluxemap(clmodel, CL.state.worldmodel)) {
+  /** @private */
+  _bindBrushDeluxemap(program: GLProgramInfo, clmodel: BrushModel): void {
+    if (BrushModelRenderer.usesDeluxemap(clmodel, CL.state.worldmodel as BrushModel | null)) {
       GL.BindArray(program.tDeluxemap, R.deluxemap_texture);
       gl.uniform1f(program.uHaveDeluxemap, 1.0);
       return;
@@ -1083,23 +1255,13 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Resolution of the 3D light probe grid per axis.
-   * A grid of RES^3 probes is sampled from R.LightPoint and packed into a 2D texture.
-   * @type {number}
-   */
-  static FOG_LIGHT_PROBE_RES = 8;
-
-  /**
    * Create a VAO for brush geometry at the given byte offset in the VBO.
-   * All 6 standard brush attributes are configured with 80-byte stride.
    * @private
-   * @param {WebGLBuffer} vbo The VBO containing brush vertex data
-   * @param {number} offset Byte offset for the first vertex
-   * @returns {WebGLVertexArrayObject} The created VAO
+   * @returns The created vertex array object.
    */
-  _createBrushVAO(vbo, offset) {
+  _createBrushVAO(vbo: WebGLBuffer, offset: number): WebGLVertexArrayObject {
     return GL.CreateVAO(vbo, [
-      { location: 0, components: 3, type: gl.FLOAT, normalized: false, stride: BRUSH_VERTEX_STRIDE, offset: offset },
+      { location: 0, components: 3, type: gl.FLOAT, normalized: false, stride: BRUSH_VERTEX_STRIDE, offset },
       { location: 1, components: 4, type: gl.FLOAT, normalized: false, stride: BRUSH_VERTEX_STRIDE, offset: offset + 12 },
       { location: 2, components: 4, type: gl.FLOAT, normalized: false, stride: BRUSH_VERTEX_STRIDE, offset: offset + 28 },
       { location: 3, components: 3, type: gl.FLOAT, normalized: false, stride: BRUSH_VERTEX_STRIDE, offset: offset + 44 },
@@ -1108,58 +1270,19 @@ export class BrushModelRenderer extends ModelRenderer {
     ]);
   }
 
-  /**
-   * Maximum number of dynamic lights passed to the fog volume shader.
-   * Must match MAX_FOG_DLIGHTS in fog-volume.frag.
-   * @type {number}
-   */
-  static MAX_FOG_DLIGHTS = 8;
+  // ─── Fog light probes ─────────────────────────────────────────────
 
   /**
-   * Light probe textures for fog volumes, keyed by the fog volume object.
-   * Each entry holds a raw WebGL texture, the grid resolution, and a reusable
-   * pixel buffer to avoid reallocating on every lightstyle update.
-   * @type {Map<import('../../common/model/BSP.ts').FogVolumeInfo, {texture: WebGLTexture, resX: number, resY: number, resZ: number, data: Uint8Array}>}
+   * Get or create the 1×1×1 white fallback fog light probe texture.
+   * @private
+   * @returns A white 3-D texture used when no probe data is available.
    */
-  #fogLightProbes = new Map();
-
-  /**
-   * The lightstyle animation frame index when probes were last rebuilt.
-   * Lightstyles tick at 10 Hz (floor(time * 10)), so probes are only
-   * regenerated when this value changes.
-   * @type {number}
-   */
-  #fogProbeStyleFrame = -1;
-
-  /**
-   * A 1x1 white texture used as a fallback when no light probe is available.
-   * @type {WebGLTexture|null}
-   */
-  #fogLightProbeWhite = null;
-
-  /**
-   * Lazily created unit cube VBO for rendering world-level fog volumes.
-   * The cube spans [0,1]^3 and is transformed via uOrigin/uAngles to match each fog volume's AABB.
-   * @type {WebGLBuffer|null}
-   */
-  #fogCubeVBO = null;
-
-  /**
-   * Lazily created VAO for the fog cube VBO (position-only, 12-byte stride).
-   * @type {WebGLVertexArrayObject|null}
-   */
-  #fogCubeVAO = null;
-
-  /**
-   * Get or create a 1×1×1 white fallback 3D texture for fog volumes without light probes.
-   * @returns {WebGLTexture} The white 3D texture
-   */
-  _getFogLightProbeWhite() {
+  _getFogLightProbeWhite(): WebGLTexture {
     if (this.#fogLightProbeWhite) {
       return this.#fogLightProbeWhite;
     }
 
-    this.#fogLightProbeWhite = gl.createTexture();
+    this.#fogLightProbeWhite = gl.createTexture()!;
     GL.Bind3D(0, this.#fogLightProbeWhite);
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -1170,17 +1293,8 @@ export class BrushModelRenderer extends ModelRenderer {
     return this.#fogLightProbeWhite;
   }
 
-  /**
-   * Sample R.LightPoint into a pixel buffer for a fog volume's light probe grid.
-   * Data is laid out for TEXTURE_3D upload: Z slices are contiguous in memory.
-   * Texel at grid (ix, iy, iz) is at index (iz * resY * resX + iy * resX + ix).
-   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
-   * @param {Uint8Array} data Pixel buffer to fill (resX * resY * resZ * 4)
-   * @param {number} resX Grid resolution X
-   * @param {number} resY Grid resolution Y
-   * @param {number} resZ Grid resolution Z
-   */
-  _sampleFogLightProbe(fogVolume, data, resX, resY, resZ) {
+  /** @private */
+  _sampleFogLightProbe(fogVolume: FogVolumeInfo, data: Uint8Array, resX: number, resY: number, resZ: number): void {
     const sizeX = fogVolume.maxs[0] - fogVolume.mins[0];
     const sizeY = fogVolume.maxs[1] - fogVolume.mins[1];
     const sizeZ = fogVolume.maxs[2] - fogVolume.mins[2];
@@ -1189,7 +1303,6 @@ export class BrushModelRenderer extends ModelRenderer {
     for (let iz = 0; iz < resZ; iz++) {
       for (let iy = 0; iy < resY; iy++) {
         for (let ix = 0; ix < resX; ix++) {
-          // Map grid position to world position (probe at cell center)
           const u = (ix + 0.5) / resX;
           const v = (iy + 0.5) / resY;
           const w = (iz + 0.5) / resZ;
@@ -1202,11 +1315,6 @@ export class BrushModelRenderer extends ModelRenderer {
           const [color] = R.LightPoint(worldPos);
 
           const idx = (iz * sliceSize + iy * resX + ix) * 4;
-
-          // Normalize light color: preserve hue, map maximum component to 1.0.
-          // This prevents the light probe from dimming the fog (the base fog
-          // color already accounts for ambient brightness). We only want the
-          // chromatic variation from colored lights.
           const maxComp = Math.max(color[0], color[1], color[2]);
 
           if (maxComp > 1.0) {
@@ -1214,7 +1322,6 @@ export class BrushModelRenderer extends ModelRenderer {
             data[idx + 1] = Math.min(255, Math.round((color[1] / maxComp) * 255));
             data[idx + 2] = Math.min(255, Math.round((color[2] / maxComp) * 255));
           } else {
-            // Very dark area — keep as white (no tinting)
             data[idx] = 255;
             data[idx + 1] = 255;
             data[idx + 2] = 255;
@@ -1226,17 +1333,14 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Create or update the light probe texture for a fog volume.
-   * If the probe already exists, re-samples into the existing pixel buffer
-   * and re-uploads via texSubImage2D (avoids GPU allocation).
-   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
-   * @returns {{texture: WebGLTexture, resX: number, resY: number, resZ: number, data: Uint8Array}} The probe data
+   * Build or refresh the 3-D light probe texture for a fog volume.
+   * @private
+   * @returns The created or updated probe data stored in the fog light probe map.
    */
-  _createOrUpdateFogLightProbe(fogVolume) {
+  _createOrUpdateFogLightProbe(fogVolume: FogVolumeInfo): FogLightProbeData {
     const existing = this.#fogLightProbes.get(fogVolume);
 
     if (existing) {
-      // Re-sample into existing buffer and re-upload
       this._sampleFogLightProbe(fogVolume, existing.data, existing.resX, existing.resY, existing.resZ);
       GL.Bind3D(0, existing.texture);
       gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, existing.resX, existing.resY, existing.resZ, gl.RGBA, gl.UNSIGNED_BYTE, existing.data);
@@ -1251,7 +1355,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
     this._sampleFogLightProbe(fogVolume, data, resX, resY, resZ);
 
-    const texture = gl.createTexture();
+    const texture = gl.createTexture()!;
     GL.Bind3D(0, texture);
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, resX, resY, resZ, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -1260,26 +1364,22 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
 
-    const probe = { texture, resX, resY, resZ, data };
+    const probe: FogLightProbeData = { texture, resX, resY, resZ, data };
     this.#fogLightProbes.set(fogVolume, probe);
     return probe;
   }
 
   /**
-   * Get the light probe texture for a fog volume, creating or updating it
-   * when lightstyle animations tick. Lightstyles animate at 10 Hz, so the
-   * probes are re-sampled at most 10 times per second.
-   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
-   * @returns {{texture: WebGLTexture, resX: number, resY: number, resZ: number, data: Uint8Array}|null} Probe data, or null if light data is unavailable
+   * Get the current fog light probe for a volume, rebuilding it when stale.
+   * @private
+   * @returns The probe data, or null when world lighting is unavailable.
    */
-  _getFogLightProbe(fogVolume) {
-    // Only create probes if the world has light data to sample
-    const worldmodel = CL.state.worldmodel;
+  _getFogLightProbe(fogVolume: FogVolumeInfo): FogLightProbeData | null {
+    const worldmodel = CL.state.worldmodel as BrushModel | null;
     if (!worldmodel || (worldmodel.lightdata === null && worldmodel.lightdata_rgb === null)) {
       return null;
     }
 
-    // Check if lightstyles have ticked since last update
     const styleFrame = Math.floor(CL.state.time * 10.0);
     const needsUpdate = styleFrame !== this.#fogProbeStyleFrame;
 
@@ -1287,18 +1387,15 @@ export class BrushModelRenderer extends ModelRenderer {
       this.#fogProbeStyleFrame = styleFrame;
     }
 
-    // First access: always create. Subsequent: only re-sample on style tick.
     if (!this.#fogLightProbes.has(fogVolume) || needsUpdate) {
       return this._createOrUpdateFogLightProbe(fogVolume);
     }
 
-    return this.#fogLightProbes.get(fogVolume);
+    return this.#fogLightProbes.get(fogVolume) ?? null;
   }
 
-  /**
-   * Free all fog light probe textures. Called on map change.
-   */
-  _freeFogLightProbes() {
+  /** @private */
+  _freeFogLightProbes(): void {
     if (gl) {
       for (const { texture } of this.#fogLightProbes.values()) {
         gl.deleteTexture(texture);
@@ -1309,12 +1406,11 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * Collect active dynamic lights that overlap a fog volume's AABB.
-   * Returns up to MAX_FOG_DLIGHTS lights sorted by contribution (closest first).
-   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
-   * @returns {{origin: Vector, radius: number, color: Vector}[]} Overlapping dlights
+   * @returns Up to MAX_FOG_DLIGHTS lights sorted by contribution (closest first).
+   * @private
    */
-  _collectFogDlights(fogVolume) {
-    const results = [];
+  _collectFogDlights(fogVolume: FogVolumeInfo): FogDlightEntry[] {
+    const results: FogDlightEntry[] = [];
     const dlights = CL.state.clientEntities.dlights;
 
     for (let i = 0; i < Def.limits.dlights; i++) {
@@ -1324,7 +1420,6 @@ export class BrushModelRenderer extends ModelRenderer {
         continue;
       }
 
-      // Sphere-AABB overlap: find closest point on AABB to light origin
       const cx = Math.max(fogVolume.mins[0], Math.min(dl.origin[0], fogVolume.maxs[0]));
       const cy = Math.max(fogVolume.mins[1], Math.min(dl.origin[1], fogVolume.maxs[1]));
       const cz = Math.max(fogVolume.mins[2], Math.min(dl.origin[2], fogVolume.maxs[2]));
@@ -1343,17 +1438,13 @@ export class BrushModelRenderer extends ModelRenderer {
       }
     }
 
-    // Sort by distance (closest first) and cap at MAX_FOG_DLIGHTS
     results.sort((a, b) => a.distSq - b.distSq);
     return results.slice(0, BrushModelRenderer.MAX_FOG_DLIGHTS);
   }
 
-  /**
-   * Upload dynamic light uniforms for the current fog volume.
-   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume
-   */
-  _uploadFogDlights(fogVolume) {
-    const program = this._fogVolumeProgram;
+  /** @private */
+  _uploadFogDlights(fogVolume: FogVolumeInfo): void {
+    const program = this._fogVolumeProgram!;
     const dlights = this._collectFogDlights(fogVolume);
 
     gl.uniform1i(program.uDlightCount, dlights.length);
@@ -1361,11 +1452,11 @@ export class BrushModelRenderer extends ModelRenderer {
     for (let i = 0; i < dlights.length; i++) {
       const dl = dlights[i];
       gl.uniform4f(
-        program['uDlightPos[' + i + ']'],
+        program[`uDlightPos[${i}]`] as WebGLUniformLocation,
         dl.origin[0], dl.origin[1], dl.origin[2], dl.radius,
       );
       gl.uniform4f(
-        program['uDlightColor[' + i + ']'],
+        program[`uDlightColor[${i}]`] as WebGLUniformLocation,
         dl.color[0], dl.color[1], dl.color[2], 0.0,
       );
     }
@@ -1373,18 +1464,15 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * Get or create the shared unit cube VBO used for world-level fog volumes.
-   * @returns {WebGLBuffer} The unit cube VBO
+   * @private
+   * @returns The shared unit cube VBO for fog volume rendering.
    */
-  _getFogCubeVBO() {
+  _getFogCubeVBO(): WebGLBuffer {
     if (this.#fogCubeVBO) {
       return this.#fogCubeVBO;
     }
 
     // Unit cube [0,1]^3 — 12 triangles, 36 vertices, CW winding from outside
-    // (matching Quake BSP convention: outward faces are CW in world space).
-    // The fog shader uses gl.cullFace(gl.BACK) which, with the Quake projection's
-    // coordinate mapping, culls near-side faces and renders far-side faces.
-    // This gives exit-point fragments for correct fog thickness calculation.
     const verts = new Float32Array([
       // Front face (z=1)
       0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1,
@@ -1400,7 +1488,7 @@ export class BrushModelRenderer extends ModelRenderer {
       0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1,
     ]);
 
-    this.#fogCubeVBO = gl.createBuffer();
+    this.#fogCubeVBO = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.#fogCubeVBO);
     gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
 
@@ -1411,232 +1499,24 @@ export class BrushModelRenderer extends ModelRenderer {
     return this.#fogCubeVBO;
   }
 
-  /**
-   * Render all fog volumes defined in the world model.
-   * Handles both inline brush model fog volumes (*N) and world-level
-   * water/slime/lava fog volumes (modelIndex === 0).
-   * @param {BrushModel} worldmodel The world model containing fog volume definitions
-   */
-  renderFogVolumes(worldmodel) {
-    if (!this.beginFogVolumePass(worldmodel)) {
-      return;
-    }
-    for (const fogVolume of worldmodel.fogVolumes) {
-      this.renderSingleFogVolume(worldmodel, fogVolume);
-    }
-    this.endFogVolumePass();
-  }
-
-  /**
-   * Collect fog volumes with distance from the given viewpoint for back-to-front sorting.
-   * @param {BrushModel} worldmodel The world model containing fog volume definitions
-   * @param {Float32Array|number[]} vieworg Camera position [x, y, z]
-   * @returns {{fogVolume: import('../../common/model/BSP.ts').FogVolumeInfo, dist: number}[]} Fog volume items with distance
-   */
-  getFogVolumeItems(worldmodel, vieworg) {
-    if (!worldmodel.fogVolumes || worldmodel.fogVolumes.length === 0) {
-      return [];
-    }
-    const items = [];
-    for (const fogVolume of worldmodel.fogVolumes) {
-      const dist = this._getBoundsDistanceToView(fogVolume.mins, fogVolume.maxs, vieworg);
-      items.push({ fogVolume, dist });
-    }
-    return items;
-  }
-
-  /**
-   * Setup GL state for fog volume rendering.
-   * Call once before one or more `renderSingleFogVolume` calls.
-   * @param {BrushModel} worldmodel The world model
-   * @returns {boolean} True if fog volume pass was started, false if skipped
-   */
-  beginFogVolumePass(worldmodel) {
-    if (!worldmodel.fogVolumes || worldmodel.fogVolumes.length === 0) {
-      return false;
-    }
-
-    // Detach depth texture from FBO so we can sample it
-    PostProcess.beginDepthSampling();
-
-    const program = GL.UseProgram('fog-volume');
-
-    // GL state for fog volumes:
-    // - Blend: src alpha compositing
-    // - No depth test: shader handles depth via texture sampling
-    // - No depth writes
-    // - Cull back faces (Quake winding): renders the far side of the brush,
-    //   giving us exit points for the fog ray. The shader computes entry via AABB.
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.disable(gl.DEPTH_TEST);
-    gl.depthMask(false);
-    gl.cullFace(gl.BACK);
-    gl.enable(gl.CULL_FACE);
-
-    // Bind scene depth texture
-    GL.Bind(program.tDepth, PostProcess.depthTexture);
-
-    // Pass screen dimensions for depth texture UV calculation
-    gl.uniform2f(program.uScreenSize, PostProcess.width, PostProcess.height);
-
-    this._fogVolumeProgram = program;
-    return true;
-  }
-
-  /**
-   * Render a single fog volume.
-   * Must be called between `beginFogVolumePass` and `endFogVolumePass`.
-   * @param {BrushModel} worldmodel The world model
-   * @param {import('../../common/model/BSP.ts').FogVolumeInfo} fogVolume The fog volume to render
-   */
-  renderSingleFogVolume(worldmodel, fogVolume) {
-    const program = this._fogVolumeProgram;
-
-    // Set fog volume parameters
-    gl.uniform3f(
-      program.uFogVolumeColor,
-      fogVolume.color[0] / 255.0,
-      fogVolume.color[1] / 255.0,
-      fogVolume.color[2] / 255.0,
-    );
-    gl.uniform1f(program.uFogVolumeDensity, fogVolume.density);
-    gl.uniform1f(program.uFogVolumeMaxOpacity, fogVolume.maxOpacity);
-
-    // Bind the light probe 3D texture for this fog volume.
-    // _getFogLightProbe / _getFogLightProbeWhite may upload via Bind3D(0, ...)
-    // which clobbers texture unit 0 (tDepth). Re-bind depth after.
-    const probe = this._getFogLightProbe(fogVolume);
-    GL.Bind3D(program.tLightProbe, probe ? probe.texture : this._getFogLightProbeWhite());
-    // Restore depth texture on unit 0 (may have been clobbered by probe upload)
-    GL.Bind(program.tDepth, PostProcess.depthTexture);
-
-    // Upload dynamic lights overlapping this fog volume
-    this._uploadFogDlights(fogVolume);
-
-    // Pass the AABB of the fog volume for ray intersection
-    gl.uniform3f(program.uFogVolumeMins, fogVolume.mins[0], fogVolume.mins[1], fogVolume.mins[2]);
-    gl.uniform3f(program.uFogVolumeMaxs, fogVolume.maxs[0], fogVolume.maxs[1], fogVolume.maxs[2]);
-
-    if (fogVolume.modelIndex === 0) {
-      // World-level fog volume: use a unit cube transformed to match the AABB
-      const sizeX = fogVolume.maxs[0] - fogVolume.mins[0];
-      const sizeY = fogVolume.maxs[1] - fogVolume.mins[1];
-      const sizeZ = fogVolume.maxs[2] - fogVolume.mins[2];
-
-      // uAngles becomes a scale matrix (diagonal = AABB size)
-      gl.uniformMatrix3fv(program.uAngles, false, new Float32Array([
-        sizeX, 0, 0,
-        0, sizeY, 0,
-        0, 0, sizeZ,
-      ]));
-      gl.uniform3f(program.uOrigin, fogVolume.mins[0], fogVolume.mins[1], fogVolume.mins[2]);
-
-      this._getFogCubeVBO();
-
-      // Bind the fog cube VAO directly instead of through GL.BindVAO/UnbindVAO.
-      // GL.UnbindVAO() disables vertex attributes on the default VAO and clears
-      // GL.currentProgram, which breaks subsequent submodel fog volumes that
-      // rely on the default VAO having aPosition enabled from beginFogVolumePass.
-      gl.bindVertexArray(this.#fogCubeVAO);
-      R.c_brush_vbos++;
-
-      gl.drawArrays(gl.TRIANGLES, 0, 36);
-      gl.bindVertexArray(null);
-      R.c_brush_draws++;
-    } else {
-      // Submodel fog volume: use the submodel's own VBO
-      const submodel = worldmodel.submodels[fogVolume.modelIndex - 1];
-
-      if (!submodel || !submodel.cmds) {
-        return;
-      }
-
-      gl.uniform3f(program.uOrigin, 0.0, 0.0, 0.0);
-      gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
-
-      gl.bindBuffer(gl.ARRAY_BUFFER, submodel.cmds);
-      R.c_brush_vbos++;
-      gl.vertexAttribPointer(program.aPosition.location, 3, gl.FLOAT, false, 80, 0);
-
-      if (submodel.chains) {
-        for (const chain of submodel.chains) {
-          gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
-          R.c_brush_draws++;
-        }
-      }
-    }
-  }
-
-  /**
-   * Cleanup GL state after fog volume rendering.
-   */
-  endFogVolumePass() {
-    // Restore GL state for subsequent passes (turbulents, particles, etc.).
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthMask(true);
-    gl.cullFace(gl.FRONT);
-    gl.enable(gl.CULL_FACE);
-    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
-    gl.disable(gl.BLEND);
-
-    // Reattach depth texture to FBO
-    PostProcess.endDepthSampling();
-    this._fogVolumeProgram = null;
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  cleanupRenderState(_pass = 0) {
-    // Brush models clean up their own state per-entity
-    // No shared cleanup needed at this level
-  }
-
-  /**
-   * Prepare brush model for rendering (build display lists, upload to GPU).
-   * Handles both world models (using leafs) and entity models (using chains).
-   * @param {BrushModel} model The brush model to prepare
-   * @param {boolean} [isWorldModel] True if this is the actual world map (model index 1)
-   */
-  prepareModel(model, isWorldModel = false) {
-    const m = model;
-
-    // Clean up existing buffer if present
-    if (m.cmds && typeof m.cmds === 'object' && m.cmds !== null) {
-      gl.deleteBuffer(m.cmds);
-      m.cmds = null;
-    }
-
-    if (model.name[0] !== '*') {
-      for (const face of model.faces) {
-        this._buildSurfaceDisplayList(model, face);
-      }
-    }
-
-    if (isWorldModel) {
-      this._buildWorldModelDisplayLists(m);
-    } else {
-      this._buildBrushModelDisplayLists(m);
-    }
-  }
+  // ─── Display list builders ────────────────────────────────────────
 
   /**
    * Build display lists for regular brush entities (doors, platforms, etc).
-   * Uses chains structure to group surfaces by texture.
    * @private
-   * @param {BrushModel} m The brush model
    */
-  _buildBrushModelDisplayLists(m) {
-    const cmds = [];
+  _buildBrushModelDisplayLists(m: BrushModel): void {
+    const cmds: number[] = [];
     const styles = [0.0, 0.0, 0.0, 0.0];
-    const turbulentFallbackCache = new Map();
+    const turbulentFallbackCache = new Map<string, number[]>();
     let verts = 0;
     let cutoff = 0;
     m.chains = [];
 
     // Build opaque surfaces (non-sky, non-turbulent)
     for (let i = 0; i < m.textures.length; i++) {
-      const texture = m.textures[i];
-      if (texture.flags & materialFlags.MF_SKY || texture.flags & materialFlags.MF_TURBULENT) {
+      const texture = m.textures[i] as BaseMaterial;
+      if (texture.flags & MaterialFlags.MF_SKY || texture.flags & MaterialFlags.MF_TURBULENT) {
         continue;
       }
       const chain = [i, verts, 0];
@@ -1654,13 +1534,9 @@ export class BrushModelRenderer extends ModelRenderer {
         chain[2] += surf.verts.length;
         for (let k = 0; k < surf.verts.length; k++) {
           const vert = surf.verts[k];
-          // Position (12 bytes)
           cmds.push(vert[0], vert[1], vert[2]);
-          // TexCoord (16 bytes)
           cmds.push(vert[3], vert[4], vert[5], vert[6]);
-          // LightStyle (16 bytes)
           cmds.push(styles[0], styles[1], styles[2], styles[3]);
-          // Normal (12 bytes) + Tangent/Bitangent placeholders (24 bytes)
           cmds.push(surf.normal[0], surf.normal[1], surf.normal[2]);
           cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         }
@@ -1676,8 +1552,8 @@ export class BrushModelRenderer extends ModelRenderer {
 
     // Build turbulent surfaces (water, lava, slime)
     for (let i = 0; i < m.textures.length; i++) {
-      const texture = m.textures[i];
-      if (!(texture.flags & materialFlags.MF_TURBULENT)) {
+      const texture = m.textures[i] as BaseMaterial;
+      if (!(texture.flags & MaterialFlags.MF_TURBULENT)) {
         continue;
       }
       const chain = [i, verts, 0];
@@ -1701,20 +1577,15 @@ export class BrushModelRenderer extends ModelRenderer {
             ? [0.0, 0.0, 0.0]
             : BrushModelRenderer.blendTurbulentFallbackLight(
               this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]), turbulentFallbackCache),
-              faceFallbackLight,
+              faceFallbackLight!,
               TURBULENT_FALLBACK_FACE_BLEND,
             );
           const dlightTexCoordS = vert[5];
           const dlightTexCoordT = vert[6];
-          // Position (12 bytes)
           cmds.push(vert[0], vert[1], vert[2]);
-          // TexCoord (16 bytes) keeps the lightmap atlas UVs for dlights.
           cmds.push(vert[3], vert[4], dlightTexCoordS, dlightTexCoordT);
-          // LightStyle (16 bytes)
           cmds.push(styles[0], styles[1], styles[2], styles[3]);
-          // aNormal carries per-vertex fallback light for no-lightmap turbulents.
           cmds.push(fallbackLight[0], fallbackLight[1], fallbackLight[2]);
-          // aTangent carries dynamic-light atlas UVs and the baked-lightmap flag.
           cmds.push(dlightTexCoordS, dlightTexCoordT, hasLightmap ? 1.0 : 0.0, 0.0, 0.0, 0.0);
         }
       }
@@ -1724,86 +1595,61 @@ export class BrushModelRenderer extends ModelRenderer {
       }
     }
 
-    // Calculate tangents and bitangents for PBR normal mapping
     Mesh.CalculateTangentBitangents(cmds, cutoff);
 
-    // Upload to GPU
-    m.cmds = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, m.cmds);
+    m.cmds = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, m.cmds as WebGLBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cmds), gl.STATIC_DRAW);
 
-    // Create VAOs for opaque (offset 0) and turbulent (offset waterchain) passes
-    m.opaqueVAO = this._createBrushVAO(m.cmds, 0);
-    m.turbulentVAO = this._createBrushVAO(m.cmds, m.waterchain);
+    m.opaqueVAO = this._createBrushVAO(m.cmds as WebGLBuffer, 0);
+    m.turbulentVAO = this._createBrushVAO(m.cmds as WebGLBuffer, m.waterchain);
   }
 
   /**
    * Expand arbitrary bounds to contain all vertices of a surface.
    * @private
-   * @param {Vector} mins Mutable bounds minimum
-   * @param {Vector} maxs Mutable bounds maximum
-   * @param {Array<number[]>} verts The surface's vertex array
    */
-  _expandBounds(mins, maxs, verts) {
+  _expandBounds(mins: Vector, maxs: Vector, verts: number[][]): void {
     for (let v = 0; v < verts.length; v++) {
       const vert = verts[v];
-      if (vert[0] < mins[0]) {
-        mins[0] = vert[0];
-      }
-      if (vert[1] < mins[1]) {
-        mins[1] = vert[1];
-      }
-      if (vert[2] < mins[2]) {
-        mins[2] = vert[2];
-      }
-      if (vert[0] > maxs[0]) {
-        maxs[0] = vert[0];
-      }
-      if (vert[1] > maxs[1]) {
-        maxs[1] = vert[1];
-      }
-      if (vert[2] > maxs[2]) {
-        maxs[2] = vert[2];
-      }
+      if (vert[0] < mins[0]) { mins[0] = vert[0]; }
+      if (vert[1] < mins[1]) { mins[1] = vert[1]; }
+      if (vert[2] < mins[2]) { mins[2] = vert[2]; }
+      if (vert[0] > maxs[0]) { maxs[0] = vert[0]; }
+      if (vert[1] > maxs[1]) { maxs[1] = vert[1]; }
+      if (vert[2] > maxs[2]) { maxs[2] = vert[2]; }
     }
   }
 
   /**
    * Expand a leaf's bounding box to contain all vertices of a surface.
-   * BSP leaf bounds represent only the leaf's convex volume, but surfaces
-   * assigned via marksurfaces can extend beyond it. Without expansion,
-   * frustum culling incorrectly rejects leafs whose geometry is visible.
    * @private
-   * @param {Node} leaf The leaf whose bounds to expand
-   * @param {Array<number[]>} verts The surface's vertex array
    */
-  _expandLeafBoundsForSurface(leaf, verts) {
+  _expandLeafBoundsForSurface(leaf: Node, verts: number[][]): void {
     this._expandBounds(leaf.mins, leaf.maxs, verts);
   }
 
   /**
-   * Build display lists for the world model.
-   * Uses leafs structure for visibility-based rendering.
+   * Build display lists for the world model using the leafs structure.
    * @private
-   * @param {BrushModel} m The world model
    */
-  _buildWorldModelDisplayLists(m) {
+  _buildWorldModelDisplayLists(m: BrushModel): void {
     if (m.cmds !== null) {
-      return; // Already built
+      return;
     }
 
     m.resetWorldRenderState();
 
-    const cmds = [];
+    const cmds: number[] = [];
     const styles = [0.0, 0.0, 0.0, 0.0];
-    const turbulentFallbackCache = new Map();
+    const turbulentFallbackCache = new Map<string, number[]>();
     let verts = 0;
     let cutoff = 0;
 
     // Build opaque surfaces (non-sky, non-turbulent) organized by leaf
     for (let i = 0; i < m.textures.length; i++) {
-      const texture = m.textures[i];
-      if ((texture.flags & materialFlags.MF_SKY) || (texture.flags & materialFlags.MF_TURBULENT)) {
+      const texture = m.textures[i] as BaseMaterial;
+      if ((texture.flags & MaterialFlags.MF_SKY) || (texture.flags & MaterialFlags.MF_TURBULENT)) {
         continue;
       }
       for (let j = 0; j < m.leafs.length; j++) {
@@ -1818,17 +1664,13 @@ export class BrushModelRenderer extends ModelRenderer {
           for (let l = 0; l < surf.styles.length; l++) {
             styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
           }
-          this._expandLeafBoundsForSurface(leaf, surf.verts);
+          this._expandLeafBoundsForSurface(leaf, surf.verts!);
           chain[2] += surf.verts.length;
           for (let l = 0; l < surf.verts.length; l++) {
             const vert = surf.verts[l];
-            // Position (12 bytes)
             cmds.push(vert[0], vert[1], vert[2]);
-            // TexCoord (16 bytes)
             cmds.push(vert[3], vert[4], vert[5], vert[6]);
-            // LightStyle (16 bytes)
             cmds.push(styles[0], styles[1], styles[2], styles[3]);
-            // Normal (12 bytes) + Tangent/Bitangent placeholders (24 bytes)
             cmds.push(surf.normal[0], surf.normal[1], surf.normal[2]);
             cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
           }
@@ -1847,8 +1689,8 @@ export class BrushModelRenderer extends ModelRenderer {
 
     // Build sky surfaces
     for (let i = 0; i < m.textures.length; i++) {
-      const texture = m.textures[i];
-      if (!(texture.flags & materialFlags.MF_SKY)) {
+      const texture = m.textures[i] as BaseMaterial;
+      if (!(texture.flags & MaterialFlags.MF_SKY)) {
         continue;
       }
       for (let j = 0; j < m.leafs.length; j++) {
@@ -1859,7 +1701,7 @@ export class BrushModelRenderer extends ModelRenderer {
           if (surf.texture !== i) {
             continue;
           }
-          this._expandLeafBoundsForSurface(leaf, surf.verts);
+          this._expandLeafBoundsForSurface(leaf, surf.verts!);
           chain[1] += surf.verts.length;
           for (let l = 0; l < surf.verts.length; l++) {
             const vert = surf.verts[l];
@@ -1878,8 +1720,8 @@ export class BrushModelRenderer extends ModelRenderer {
 
     // Build turbulent surfaces (water, lava, slime)
     for (let i = 0; i < m.textures.length; i++) {
-      const texture = m.textures[i];
-      if (!(texture.flags & materialFlags.MF_TURBULENT)) {
+      const texture = m.textures[i] as BaseMaterial;
+      if (!(texture.flags & MaterialFlags.MF_TURBULENT)) {
         continue;
       }
       for (let j = 0; j < m.leafs.length; j++) {
@@ -1898,8 +1740,8 @@ export class BrushModelRenderer extends ModelRenderer {
           }
           const hasLightmap = this._surfaceHasTurbulentLightmap(m, surf);
           const faceFallbackLight = hasLightmap ? null : this._getTurbulentFallbackFaceLight(m, surf, turbulentFallbackCache);
-          this._expandLeafBoundsForSurface(leaf, surf.verts);
-          this._expandBounds(chainMins, chainMaxs, surf.verts);
+          this._expandLeafBoundsForSurface(leaf, surf.verts!);
+          this._expandBounds(chainMins, chainMaxs, surf.verts!);
           chain[2] += surf.verts.length;
           for (let l = 0; l < surf.verts.length; l++) {
             const vert = surf.verts[l];
@@ -1907,20 +1749,15 @@ export class BrushModelRenderer extends ModelRenderer {
               ? [0.0, 0.0, 0.0]
               : BrushModelRenderer.blendTurbulentFallbackLight(
                 this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]), turbulentFallbackCache),
-                faceFallbackLight,
+                faceFallbackLight!,
                 TURBULENT_FALLBACK_FACE_BLEND,
               );
             const dlightTexCoordS = vert[5];
             const dlightTexCoordT = vert[6];
-            // Position (12 bytes)
             cmds.push(vert[0], vert[1], vert[2]);
-            // TexCoord (16 bytes) keeps the lightmap atlas UVs for dlights.
             cmds.push(vert[3], vert[4], dlightTexCoordS, dlightTexCoordT);
-            // LightStyle (16 bytes)
             cmds.push(styles[0], styles[1], styles[2], styles[3]);
-            // aNormal carries per-vertex fallback light for no-lightmap turbulents.
             cmds.push(fallbackLight[0], fallbackLight[1], fallbackLight[2]);
-            // aTangent carries dynamic-light atlas UVs and the baked-lightmap flag.
             cmds.push(dlightTexCoordS, dlightTexCoordT, hasLightmap ? 1.0 : 0.0, 0.0, 0.0, 0.0);
           }
         }
@@ -1938,58 +1775,56 @@ export class BrushModelRenderer extends ModelRenderer {
       }
     }
 
-    // Calculate tangents and bitangents for PBR normal mapping
     Mesh.CalculateTangentBitangents(cmds, cutoff);
 
-    // Upload to GPU
-    m.cmds = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, m.cmds);
+    m.cmds = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, m.cmds as WebGLBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cmds), gl.STATIC_DRAW);
 
-    // Create VAOs for opaque (offset 0) and turbulent (offset waterchain) passes
-    m.opaqueVAO = this._createBrushVAO(m.cmds, 0);
-    m.turbulentVAO = this._createBrushVAO(m.cmds, m.waterchain);
+    m.opaqueVAO = this._createBrushVAO(m.cmds as WebGLBuffer, 0);
+    m.turbulentVAO = this._createBrushVAO(m.cmds as WebGLBuffer, m.waterchain);
   }
 
-  _buildSurfaceDisplayList(model, face) {
+  /** @private */
+  _buildSurfaceDisplayList(model: BrushModel, face: Face): void {
     face.verts = [];
     if (face.numedges < 3) {
       return;
     }
     const texinfo = model.texinfo[face.texinfo];
-    const texture = model.textures[texinfo.texture];
+    const texture = model.textures[texinfo.texture as number] as BaseMaterial;
     for (let i = 0; i < face.numedges; i++) {
       const index = model.surfedges[face.firstedge + i];
-      let vec;
+      let vec: Vector;
       if (index > 0) {
         vec = model.vertexes[model.edges[index][0]];
       } else {
         vec = model.vertexes[model.edges[-index][1]];
       }
-      const vert = [vec[0], vec[1], vec[2]];
+      const vert: number[] = [vec[0], vec[1], vec[2]];
       if (face.sky !== true) {
-        const s = vec.dot(new Vector(...texinfo.vecs[0])) + texinfo.vecs[0][3];
-        const t = vec.dot(new Vector(...texinfo.vecs[1])) + texinfo.vecs[1][3];
+        const s = vec.dot(new Vector(texinfo.vecs[0][0], texinfo.vecs[0][1], texinfo.vecs[0][2])) + texinfo.vecs[0][3];
+        const t = vec.dot(new Vector(texinfo.vecs[1][0], texinfo.vecs[1][1], texinfo.vecs[1][2])) + texinfo.vecs[1][3];
         vert[3] = s / texture.width;
         vert[4] = t / texture.height;
-        vert[5] = (s - face.texturemins[0] + (face.light_s << face.lmshift) + (1 << (face.lmshift - 1))) / (LIGHTMAP_BLOCK_SIZE * (1 << face.lmshift));
-        vert[6] = (t - face.texturemins[1] + (face.light_t << face.lmshift) + (1 << (face.lmshift - 1))) / (LIGHTMAP_BLOCK_SIZE * (1 << face.lmshift));
+        const lmshift = face.lmshift ?? 0;
+        vert[5] = (s - face.texturemins[0] + (face.light_s << lmshift) + (1 << (lmshift - 1))) / (LIGHTMAP_BLOCK_SIZE * (1 << lmshift));
+        vert[6] = (t - face.texturemins[1] + (face.light_t << lmshift) + (1 << (lmshift - 1))) / (LIGHTMAP_BLOCK_SIZE * (1 << lmshift));
       }
       if (i >= 3) {
-        face.verts[face.verts.length] = face.verts[0];
-        face.verts[face.verts.length] = face.verts[face.verts.length - 2];
+        face.verts.push(face.verts[0]);
+        face.verts.push(face.verts[face.verts.length - 2]);
       }
-      face.verts[face.verts.length] = vert;
+      face.verts.push(vert);
     }
   }
 
   /**
+   * Whether a surface has baked lightmap data available for turbulent sampling.
    * @private
-   * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
-   * @returns {boolean} True when the face has usable baked lightmap samples.
+   * @returns True when the surface carries valid lightmap data.
    */
-  _surfaceHasTurbulentLightmap(model, face) {
+  _surfaceHasTurbulentLightmap(model: BrushModel, face: Face): boolean {
     if (face.styles.length === 0 || face.lightofs < 0) {
       return false;
     }
@@ -2002,12 +1837,11 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * Build a cache key encoding the face and world-space sample position.
    * @private
-   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
-   * @param {Vector} worldPos Vertex position used for the fallback sample.
-   * @returns {string} Cache key shared by coplanar turbulent edges.
+   * @returns A string key for the turbulent fallback light cache.
    */
-  _getTurbulentFallbackCacheKey(face, worldPos) {
+  _getTurbulentFallbackCacheKey(face: Face, worldPos: Vector): string {
     return [
       face.texture,
       Math.round(face.normal[0] * 1024.0),
@@ -2020,12 +1854,11 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * Compute the centroid of a BSP face in world space.
    * @private
-   * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
-   * @returns {Vector} Approximate center used for face-level fallback smoothing.
+   * @returns The face centroid as a world-space vector.
    */
-  _getTurbulentFallbackFaceCenter(model, face) {
+  _getTurbulentFallbackFaceCenter(model: BrushModel, face: Face): Vector {
     const center = new Vector(0.0, 0.0, 0.0);
 
     for (let i = 0; i < face.numedges; i++) {
@@ -2041,26 +1874,21 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
+   * Sample turbulent fallback light at the face centroid.
    * @private
-   * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
-   * @param {Map<string, number[]>} cache Shared per-model fallback cache.
-   * @returns {number[]} Face-level fallback color.
+   * @returns RGB fallback light values at the face center.
    */
-  _getTurbulentFallbackFaceLight(model, face, cache) {
+  _getTurbulentFallbackFaceLight(model: BrushModel, face: Face, cache: Map<string, number[]>): number[] {
     const faceCenter = this._getTurbulentFallbackFaceCenter(model, face);
     return this._getTurbulentFallbackLight(model, face, faceCenter, cache);
   }
 
   /**
+   * Sample turbulent fallback light at an arbitrary world-space position.
    * @private
-   * @param {BrushModel} model Model containing the face.
-   * @param {import('../../common/model/BaseModel.ts').Face} face Turbulent face being packed.
-   * @param {Vector} worldPos Vertex position used for the fallback sample.
-   * @param {Map<string, number[]>} [cache] Shared per-model fallback cache.
-   * @returns {number[]} Vertex-level fallback light color.
+   * @returns RGB fallback light values at the given position.
    */
-  _getTurbulentFallbackLight(model, face, worldPos, cache = null) {
+  _getTurbulentFallbackLight(model: BrushModel, face: Face, worldPos: Vector, cache: Map<string, number[]> | null = null): number[] {
     if (model.submodel || CL.state.worldmodel === null) {
       return [1.0, 1.0, 1.0];
     }
@@ -2079,30 +1907,5 @@ export class BrushModelRenderer extends ModelRenderer {
     }
 
     return BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, R.LightPoint);
-  }
-
-  /**
-   * Free GPU resources for this brush model.
-   * Uses global `gl` from registry.
-   * @param {BrushModel} model The brush model to cleanup
-   */
-  cleanupModel(model) {
-    if (model.opaqueVAO) {
-      gl.deleteVertexArray(model.opaqueVAO);
-      model.opaqueVAO = null;
-    }
-    if (model.turbulentVAO) {
-      gl.deleteVertexArray(model.turbulentVAO);
-      model.turbulentVAO = null;
-    }
-    if (model.cmds) {
-      gl.deleteBuffer(model.cmds);
-      model.cmds = null;
-    }
-
-    // Free fog light probe textures when world model is cleaned up
-    if (model.fogVolumes && model.fogVolumes.length > 0) {
-      this._freeFogLightProbes();
-    }
   }
 }

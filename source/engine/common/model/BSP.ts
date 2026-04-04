@@ -1,9 +1,9 @@
-import type { BaseMaterial } from '../../client/renderer/Materials.mjs';
+import type { BaseMaterial } from '../../client/renderer/Materials.ts';
 import type Vector from '../../../shared/Vector.ts';
 
 import { content } from '../../../shared/Defs.ts';
 import { BaseModel, type Face, type Plane } from './BaseModel.ts';
-import { SkyRenderer } from '../../client/renderer/Sky.mjs';
+import { SkyRenderer } from '../../client/renderer/Sky.ts';
 import { AreaPortals, type PortalDefinition } from './AreaPortals.ts';
 
 export interface Clipnode {

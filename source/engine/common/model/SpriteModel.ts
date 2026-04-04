@@ -8,7 +8,8 @@ interface SpriteFrameImage {
   readonly width: number;
   readonly height: number;
   readonly glt: GLTexture;
-  readonly texturenum: number;
+  /** Raw WebGL texture handle, stored from {@link GLTexture.texnum}. */
+  readonly texturenum: WebGLTexture | null;
 }
 
 interface SpriteSingleFrame {
@@ -17,7 +18,28 @@ interface SpriteSingleFrame {
   readonly width: number;
   readonly height: number;
   readonly glt: GLTexture;
-  readonly texturenum: number;
+  /** Raw WebGL texture handle, stored from {@link GLTexture.texnum}. */
+  readonly texturenum: WebGLTexture | null;
+}
+
+export interface SpriteFrameImage {
+  readonly interval?: number;
+  readonly origin: [number, number];
+  readonly width: number;
+  readonly height: number;
+  readonly glt: GLTexture;
+  /** Raw WebGL texture handle, stored from {@link GLTexture.texnum}. */
+  readonly texturenum: WebGLTexture | null;
+}
+
+export interface SpriteSingleFrame {
+  readonly group: false;
+  readonly origin: [number, number];
+  readonly width: number;
+  readonly height: number;
+  readonly glt: GLTexture;
+  /** Raw WebGL texture handle, stored from {@link GLTexture.texnum}. */
+  readonly texturenum: WebGLTexture | null;
 }
 
 interface SpriteFrameGroup {
