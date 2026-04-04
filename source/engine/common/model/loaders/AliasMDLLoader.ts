@@ -495,7 +495,7 @@ export class AliasMDLLoader extends ModelLoader {
 
         loadmodel.skins[skinIndex] = singleSkin as AliasSkin;
 
-        if (loadmodel.player === true) {
+        if (loadmodel.player) {
           this.#translatePlayerSkin(loadmodel, new Uint8Array(buffer, inmodel, skinsize), singleSkin);
         }
 
@@ -529,7 +529,7 @@ export class AliasMDLLoader extends ModelLoader {
             ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, luminance)
             : null;
 
-          if (loadmodel.player === true) {
+          if (loadmodel.player) {
             this.#translatePlayerSkin(loadmodel, new Uint8Array(buffer, inmodel, skinsize), group.skins[groupIndex]);
           }
 
@@ -639,7 +639,7 @@ export class AliasMDLLoader extends ModelLoader {
     for (let triangleIndex = 0; triangleIndex < loadmodel._num_tris; triangleIndex++) {
       const triangle = loadmodel._triangles[triangleIndex];
 
-      if (triangle.facesfront === true) {
+      if (triangle.facesfront) {
         const vert0 = loadmodel._stverts[triangle.vertindex[0]];
         cmds.push((vert0.s + 0.5) / loadmodel._skin_width);
         cmds.push((vert0.t + 0.5) / loadmodel._skin_height);
@@ -656,7 +656,7 @@ export class AliasMDLLoader extends ModelLoader {
 
       for (let vertexOffset = 0; vertexOffset < 3; vertexOffset++) {
         const vert = loadmodel._stverts[triangle.vertindex[vertexOffset]];
-        if (vert.onseam === true) {
+        if (vert.onseam) {
           cmds.push((vert.s + loadmodel._skin_width / 2 + 0.5) / loadmodel._skin_width);
         } else {
           cmds.push((vert.s + 0.5) / loadmodel._skin_width);
@@ -669,7 +669,7 @@ export class AliasMDLLoader extends ModelLoader {
     for (let frameIndex = 0; frameIndex < loadmodel.frames.length; frameIndex++) {
       const group = loadmodel.frames[frameIndex] as MutableAliasFrame;
 
-      if (group.group === true) {
+      if (group.group) {
         for (let groupIndex = 0; groupIndex < group.frames.length; groupIndex++) {
           const frame = group.frames[groupIndex];
           frame.cmdofs = cmds.length * 4;

@@ -781,7 +781,7 @@ export default class ClientEntities {
     // reset all visible entities
     this.num_visedicts = 0;
 
-    const isLegacy = CL.cls.legacy_demo === true;
+    const isLegacy = CL.cls.legacy_demo;
     const mtime0 = CL.state.clientMessages.mtime[0];
 
     for (let i = 1; i < this.entities.length; i++) {

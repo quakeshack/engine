@@ -107,7 +107,7 @@ export default class V {
     if (CL.state.laststop === CL.state.time) {
       return;
     }
-    if ((CL.state.nodrift === true) || (CL.state.pitchvel === 0.0)) {
+    if (CL.state.nodrift || CL.state.pitchvel === 0.0) {
       CL.state.pitchvel = V.centerspeed.value;
       CL.state.nodrift = false;
       CL.state.driftmove = 0.0;
@@ -121,13 +121,13 @@ export default class V {
   }
 
   static DriftPitch(): void {
-    if ((Host.noclip_anglehack === true) || (CL.state.onground !== true) || (CL.cls.demoplayback === true)) {
+    if (Host.noclip_anglehack || !CL.state.onground || CL.cls.demoplayback) {
       CL.state.driftmove = 0.0;
       CL.state.pitchvel = 0.0;
       return;
     }
 
-    if (CL.state.nodrift === true) {
+    if (CL.state.nodrift) {
       if (Math.abs(CL.state.cmd.forwardmove) < CL.forwardspeed.value) {
         CL.state.driftmove = 0.0;
       } else {
@@ -164,7 +164,8 @@ export default class V {
   }
 
   static ApplyDamage(armor: number, blood: number, origin: Vector): void { // Client (formally known as V.ParseDamage)
-    const ent = CL.state.playerentity;
+    const ent = CL.state.playerentity!;
+    console.assert(ent !== null, 'Player entity is required for damage calculations');
     const from = origin.subtract(ent.origin);
 
     eventBus.publish('client.damage', { damageReceived: blood, armorLost: armor, attackOrigin: from.copy() });
@@ -326,14 +327,16 @@ export default class V {
   }
 
   static CalcIntermissionRefdef(): void {
-    const ent = CL.state.playerentity;
+    const ent = CL.state.playerentity!;
+    console.assert(ent !== null, 'Player entity is required for intermission view calculations');
     R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]);
     R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]);
     R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]);
     R.refdef.viewangles[0] = finiteOrZero(ent.angles[0]) + Math.sin(CL.state.time * V.ipitch_cycle.value) * V.ipitch_level.value;
     R.refdef.viewangles[1] = finiteOrZero(ent.angles[1]) + Math.sin(CL.state.time * V.iyaw_cycle.value) * V.iyaw_level.value;
     R.refdef.viewangles[2] = finiteOrZero(ent.angles[2]) + Math.sin(CL.state.time * V.iroll_cycle.value) * V.iroll_level.value;
-    CL.state.viewent.model = null;
+    console.assert(CL.state.viewent !== null, 'View entity is required for intermission view calculations');
+    CL.state.viewent!.model = null;
   }
 
   static CalcRefdef(): void { // TODO: Client
@@ -341,7 +344,9 @@ export default class V {
       V.DriftPitch();
     }
 
-    const ent = CL.state.playerentity;
+    const ent = CL.state.playerentity!;
+    console.assert(ent !== null, 'Player entity is required for view calculations');
+
     ent.angles[1] = CL.state.viewangles[1];
     ent.angles[0] = -CL.state.viewangles[0];
     const bob = V.CalcBob();
@@ -352,7 +357,7 @@ export default class V {
 
     R.refdef.viewangles[0] = CL.state.viewangles[0];
     R.refdef.viewangles[1] = CL.state.viewangles[1];
-    R.refdef.viewangles[2] = CL.state.viewangles[2] + V.CalcRoll(CL.state.playerentity.angles, CL.state.velocity);
+    R.refdef.viewangles[2] = CL.state.viewangles[2] + V.CalcRoll(ent.angles, CL.state.velocity);
 
     if (V.dmg_time > 0.0) {
       if (V.kicktime.value) {
@@ -396,7 +401,9 @@ export default class V {
       R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) + 30.0;
     }
 
-    const view = CL.state.viewent;
+    const view = CL.state.viewent!;
+    console.assert(view !== null, 'View entity is required for view calculations');
+
     view.angles[0] = -R.refdef.viewangles[0] - ipitch;
     view.angles[1] = R.refdef.viewangles[1] - iyaw;
     view.angles[2] = CL.state.viewangles[2] - iroll;
@@ -416,7 +423,8 @@ export default class V {
     }
 
     if (CL.gameCapabilities.includes(gameCapabilities.CAP_VIEWMODEL_MANAGED) && CL.state.gameAPI) {
-      const viewmodel = CL.state.gameAPI.viewmodel;
+      const viewmodel = CL.state.gameAPI.viewmodel!;
+      console.assert(viewmodel !== null, 'Viewmodel is required for view calculations');
       view.model = viewmodel.model;
       view.frame = viewmodel.frame;
       // visibility is considered by R.DrawViewModel
@@ -438,7 +446,7 @@ export default class V {
 
     R.refdef.viewangles.add(CL.state.punchangle);
 
-    if ((CL.state.onground === true) && ((ent.origin[2] - V.oldz) > 0.0)) {
+    if (CL.state.onground && (ent.origin[2] - V.oldz) > 0.0) {
       let steptime = Host.frametime;
       if (steptime < 0.0) {
         steptime = 0.0;

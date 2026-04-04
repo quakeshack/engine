@@ -72,7 +72,7 @@ export default class ClientDemos {
     console.assert(this.demoplayback, 'must be in playback mode to get message');
 
     if (CL.cls.signon === 4) {
-      if (this.timedemo === true) {
+      if (this.timedemo) {
         if (Host.framecount === this.td_lastframe) {
           return 0;
         }
@@ -174,7 +174,7 @@ export default class ClientDemos {
       }
     }
 
-    if (neg === true) {
+    if (neg) {
       this.forcetrack = -this.forcetrack;
     }
 

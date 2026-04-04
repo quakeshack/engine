@@ -150,7 +150,7 @@ export default class SCR {
       Cvar.Set('viewsize', '120');
     }
 
-    let size; let full;
+    let size = 0.0, full = false;
     if (CL.state.intermission !== 0) {
       full = true;
       size = 1.0;
@@ -182,7 +182,7 @@ export default class SCR {
       vrect.height = VID.height - Sbar.lines;
     }
     vrect.x = (VID.width - vrect.width) / 2;
-    if (full === true) {
+    if (full) {
       vrect.y = 0;
     } else {
       vrect.y = (VID.height - Sbar.lines - vrect.height) / 2;
@@ -257,14 +257,14 @@ export default class SCR {
 
   /** Draws the network-lag indicator when packets are delayed. */
   static DrawNet(): void {
-    if (((Host.realtime - CL.state.last_received_message) >= 0.3) && (CL.cls.demoplayback !== true)) {
+    if ((Host.realtime - CL.state.last_received_message >= 0.3) && !CL.cls.demoplayback) {
       Draw.Pic(R.refdef.vrect.x, R.refdef.vrect.y, SCR.net);
     }
   }
 
   /** Draws the pause indicator when the game is paused. */
   static DrawPause(): void {
-    if ((SCR.showpause.value !== 0) && (CL.state.paused === true)) {
+    if (SCR.showpause.value !== 0 && CL.state.paused) {
       Draw.Pic((VID.width - SCR.pause.width * 2) / 2, (VID.height - 48 - SCR.pause.height * 2) / 2, SCR.pause, 2);
     }
   }
@@ -275,7 +275,7 @@ export default class SCR {
   static SetUpToDrawConsole(): void {
     Con.forcedup = (!CL.state.worldmodel) || (CL.cls.signon !== 4);
 
-    if (Con.forcedup === true) {
+    if (Con.forcedup) {
       SCR.con_current = 200;
       return;
     }
@@ -350,7 +350,7 @@ export default class SCR {
       SCR.oldscreensize = SCR.viewsize.value;
       SCR.recalc_refdef = true;
     }
-    if (SCR.recalc_refdef === true) {
+    if (SCR.recalc_refdef) {
       SCR.CalcRefdef();
     }
 
@@ -388,12 +388,13 @@ export default class SCR {
 
       V.RenderView();
       GL.Set2D();
-      if (R.usePostProcess === true || PostProcess.hasActiveEffects()) {
+      if (R.usePostProcess || PostProcess.hasActiveEffects()) {
         PostProcess.end();
+        console.assert(PostProcess.colorTexture !== null, 'PostProcess color texture is not set');
         PostProcess.resolve(
           R.refdef.vrect.x, R.refdef.vrect.y,
           R.refdef.vrect.width, R.refdef.vrect.height,
-          PostProcess.colorTexture,
+          PostProcess.colorTexture!,
         );
 
         const bloomEffect = PostProcess.getEffect('bloom');
@@ -401,7 +402,7 @@ export default class SCR {
           bloomEffect.drawDebugPreview();
         }
       }
-      if (Con.forcedup !== true) {
+      if (!Con.forcedup) {
         R.PolyBlend();
       }
 
@@ -454,7 +455,7 @@ export default class SCR {
 
     SCR._requestedAnimationFrames++;
 
-    if (SCR.screenshot === true) {
+    if (SCR.screenshot) {
       SCR.screenshot = false;
       gl.finish();
 

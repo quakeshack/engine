@@ -96,7 +96,7 @@ export class SpriteModelRenderer extends ModelRenderer {
     let frame: SpriteRenderFrame = spriteModel.frames[num] as SpriteRenderFrame;
 
     // Handle frame groups (animated sprites)
-    if ((frame as { group?: boolean }).group === true) {
+    if ((frame as { group?: boolean }).group) {
       const groupedFrame = spriteModel.frames[num] as { group: true; frames: SpriteFrameImage[] };
       const time = CL.state.time + e.syncbase;
       const groupLen = groupedFrame.frames.length - 1;
@@ -118,7 +118,7 @@ export class SpriteModelRenderer extends ModelRenderer {
     // Calculate billboard orientation
     let r: { [n: number]: number };
     let u: { [n: number]: number };
-    if (spriteModel.oriented === true) {
+    if (spriteModel.oriented) {
       // Sprite has fixed orientation
       const { right, up } = e.angles.angleVectors();
       r = right;

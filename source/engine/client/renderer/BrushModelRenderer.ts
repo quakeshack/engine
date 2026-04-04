@@ -168,8 +168,7 @@ export class BrushModelRenderer extends ModelRenderer {
     worldModel: BrushModel | null = null,
   ): EntityLightingState {
     const [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition] = calculateLightValues(entity);
-    const usesSharedWorldLightmap = clmodel.submodel === true
-      && (clmodel.lightdata !== null || clmodel.lightdata_rgb !== null);
+    const usesSharedWorldLightmap = clmodel.submodel && (clmodel.lightdata !== null || clmodel.lightdata_rgb !== null);
 
     return {
       ambientlight: usesSharedWorldLightmap ? new Vector(1.0, 1.0, 1.0) : ambientlight,
@@ -424,7 +423,7 @@ export class BrushModelRenderer extends ModelRenderer {
     }
 
     // Regular brush entity — frustum cull
-    if (clmodel.submodel === true) {
+    if (clmodel.submodel) {
       if (R.CullBox(
         new Vector(
           e.origin[0] + clmodel.mins[0],
@@ -435,7 +434,7 @@ export class BrushModelRenderer extends ModelRenderer {
           e.origin[0] + clmodel.maxs[0],
           e.origin[1] + clmodel.maxs[1],
           e.origin[2] + clmodel.maxs[2],
-        )) === true) {
+        ))) {
         return;
       }
     } else {
@@ -449,7 +448,7 @@ export class BrushModelRenderer extends ModelRenderer {
           e.origin[0] + clmodel.radius,
           e.origin[1] + clmodel.radius,
           e.origin[2] + clmodel.radius,
-        )) === true) {
+        ))) {
         return;
       }
     }
@@ -673,7 +672,7 @@ export class BrushModelRenderer extends ModelRenderer {
       if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
         continue;
       }
-      if (R.CullBox(leaf.mins, leaf.maxs) === true) {
+      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
       this.renderWorldTurbulentLeaf(clmodel, leaf);
@@ -693,10 +692,10 @@ export class BrushModelRenderer extends ModelRenderer {
       if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
         continue;
       }
-      if (R.CullBox(leaf.mins, leaf.maxs) === true) {
+      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
-      const dist = this._getBoundsDistanceToView(leaf.mins, leaf.maxs, vieworg);
+      const dist = this._getBoundsDistanceToView(leaf.mins!, leaf.maxs!, vieworg);
       items.push({ leaf, dist });
     }
     return items;
@@ -715,19 +714,19 @@ export class BrushModelRenderer extends ModelRenderer {
       if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
         continue;
       }
-      if (R.CullBox(leaf.mins, leaf.maxs) === true) {
+      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
 
       for (let j = 0; j < leaf.turbulentChains.length; j++) {
         const chain = leaf.turbulentChains[j];
-        if (R.CullBox(chain.mins, chain.maxs) === true) {
+        if (R.CullBox(chain.mins!, chain.maxs!)) {
           continue;
         }
 
         items.push({
           chain,
-          dist: this._getBoundsDistanceToView(chain.mins, chain.maxs, vieworg),
+          dist: this._getBoundsDistanceToView(chain.mins!, chain.maxs!, vieworg),
         });
       }
     }
@@ -1802,7 +1801,7 @@ export class BrushModelRenderer extends ModelRenderer {
         vec = model.vertexes[model.edges[-index][1]];
       }
       const vert: number[] = [vec[0], vec[1], vec[2]];
-      if (face.sky !== true) {
+      if (!face.sky) {
         const s = vec.dot(new Vector(texinfo.vecs[0][0], texinfo.vecs[0][1], texinfo.vecs[0][2])) + texinfo.vecs[0][3];
         const t = vec.dot(new Vector(texinfo.vecs[1][0], texinfo.vecs[1][1], texinfo.vecs[1][2])) + texinfo.vecs[1][3];
         vert[3] = s / texture.width;

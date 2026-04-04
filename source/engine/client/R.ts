@@ -1273,7 +1273,7 @@ class R {
     const w = (vrect.width * pixelRatio) >> 0;
     const h = (vrect.height * pixelRatio) >> 0;
 
-    if (R.usePostProcess === true || PostProcess.hasActiveEffects()) {
+    if (R.usePostProcess || PostProcess.hasActiveEffects()) {
       // Render the scene to the shared post-process capture FBO whenever a
       // screen-space effect needs to sample it. Depth-aware passes like fog
       // use the same capture path and sample the depth texture mid-frame.

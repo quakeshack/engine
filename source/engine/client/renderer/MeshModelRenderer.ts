@@ -99,7 +99,7 @@ export class MeshModelRenderer extends ModelRenderer {
         e.origin[0] + clmodel.maxs[0],
         e.origin[1] + clmodel.maxs[1],
         e.origin[2] + clmodel.maxs[2],
-      )) === true) {
+      ))) {
       return;
     }
 

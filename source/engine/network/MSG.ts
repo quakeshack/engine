@@ -105,7 +105,7 @@ export class SzBuffer {
 
   allocate(size: number): number {
     if (this.cursize + size > this.maxsize) {
-      if (this.allowoverflow !== true) {
+      if (!this.allowoverflow) {
         throw new RangeError('SzBuffer.allocate: overflow without allowoverflow set');
       }
 

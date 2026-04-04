@@ -746,7 +746,7 @@ export class ServerMessages {
       msg.writeByte(clientEntity.ammo_nails);
       msg.writeByte(clientEntity.ammo_rockets);
       msg.writeByte(clientEntity.ammo_cells);
-      if (COM.standard_quake === true) {
+      if (COM.standard_quake) {
         msg.writeByte(clientEntity.weapon & 0xff);
       } else {
         const weapon = clientEntity.weapon;

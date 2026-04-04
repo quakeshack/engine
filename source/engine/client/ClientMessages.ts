@@ -200,7 +200,7 @@ export class ClientMessages {
     CL.state.stats[Def.stat.nails] = NET.message.readByte();
     CL.state.stats[Def.stat.rockets] = NET.message.readByte();
     CL.state.stats[Def.stat.cells] = NET.message.readByte();
-    if (COM.standard_quake === true) {
+    if (COM.standard_quake) {
       CL.state.stats[Def.stat.activeweapon] = NET.message.readByte();
     } else {
       CL.state.stats[Def.stat.activeweapon] = 1 << NET.message.readByte();

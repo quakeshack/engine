@@ -73,7 +73,7 @@ export default class Mod {
    */
   static IsBrushWorldModel(sharedModel: BaseModel): boolean {
     return sharedModel.type === Mod.type.brush
-      && sharedModel.submodel !== true
+      && !sharedModel.submodel
       && Array.isArray(sharedModel.submodels)
       && sharedModel.submodels.length > 0;
   }

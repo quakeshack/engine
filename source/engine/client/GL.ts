@@ -219,14 +219,14 @@ class GL {
     const vsh = requireValue(gl.createShader(gl.VERTEX_SHADER), 'Failed to create vertex shader');
     gl.shaderSource(vsh, vsource);
     gl.compileShader(vsh);
-    if (gl.getShaderParameter(vsh, gl.COMPILE_STATUS) !== true) {
+    if (!gl.getShaderParameter(vsh, gl.COMPILE_STATUS)) {
       throw new Error('Error compiling shader: ' + gl.getShaderInfoLog(vsh));
     }
 
     const fsh = requireValue(gl.createShader(gl.FRAGMENT_SHADER), 'Failed to create fragment shader');
     gl.shaderSource(fsh, fsource);
     gl.compileShader(fsh);
-    if (gl.getShaderParameter(fsh, gl.COMPILE_STATUS) !== true) {
+    if (!gl.getShaderParameter(fsh, gl.COMPILE_STATUS)) {
       throw new Error('Error compiling shader: ' + gl.getShaderInfoLog(fsh));
     }
 
@@ -241,7 +241,7 @@ class GL {
     }
 
     gl.linkProgram(p);
-    if (gl.getProgramParameter(p, gl.LINK_STATUS) !== true) {
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
       throw new Error('Error linking program: ' + gl.getProgramInfoLog(p));
     }
 
@@ -259,7 +259,7 @@ class GL {
         location,
         type: attribParameters[1],
         components: attribParameters[2],
-        normalized: attribParameters[3] === true,
+        normalized: attribParameters[3] ?? false,
         offset: program.vertexSize,
       };
       program.attribs.push(attrib);
@@ -637,7 +637,7 @@ export class GLTexture {
     this.#textureMode = currentTextureMode;
 
     console.assert(this.width > 0 && this.height > 0, 'Texture width and height must be greater than zero');
-    console.assert(textureCache.has(identifier) === false, 'Texture must not already exist in the cache');
+    console.assert(!textureCache.has(identifier), 'Texture must not already exist in the cache');
 
     textureCache.set(identifier, this);
 

@@ -154,7 +154,7 @@ export default class Sbar {
     Sbar.scorebar = Draw.LoadPicFromWad('SCOREBAR');
     Sbar.disc = Draw.LoadPicFromWad('DISC');
 
-    if (COM.hipnotic === true) {
+    if (COM.hipnotic) {
       Sbar.h_weapons = [[
         Draw.LoadPicFromWad('INV_LASER'),
         Draw.LoadPicFromWad('INV_MJOLNIR'),
@@ -183,7 +183,7 @@ export default class Sbar {
         Draw.LoadPicFromWad('SB_WSUIT'),
         Draw.LoadPicFromWad('SB_ESHLD'),
       ];
-    } else if (COM.rogue === true) {
+    } else if (COM.rogue) {
       Sbar.r_invbar = [
         Draw.LoadPicFromWad('R_INVBAR1'),
         Draw.LoadPicFromWad('R_INVBAR2'),
@@ -309,7 +309,7 @@ export default class Sbar {
   static DrawInventory(): void {
     let i;
 
-    if (COM.rogue === true) {
+    if (COM.rogue) {
       Sbar.DrawPic(0, -24, Sbar.r_invbar![CL.state.stats[Def.stat.activeweapon] >= Def.rit.lava_nailgun ? 0 : 1]);
     } else {
       Sbar.DrawPic(0, -24, Sbar.ibar);
@@ -328,7 +328,7 @@ export default class Sbar {
       }
       Sbar.DrawPic(i * 24, -16, Sbar.weapons[flashon][i]);
     }
-    if (COM.hipnotic === true) {
+    if (COM.hipnotic) {
       let grenadeflashing = false;
       for (i = 0; i <= 3; i++) {
         if ((CL.state.items & (1 << Sbar.hipweapons![i])) !== 0) {
@@ -346,7 +346,7 @@ export default class Sbar {
             }
           } else if (i === 3) {
             if ((CL.state.items & Def.it.grenade_launcher) !== 0) {
-              if (grenadeflashing !== true) {
+              if (!grenadeflashing) {
                 Sbar.DrawPic(96, -16, Sbar.h_weapons![flashon][3]);
               }
             } else {
@@ -357,7 +357,7 @@ export default class Sbar {
           }
         }
       }
-    } else if (COM.rogue === true) {
+    } else if (COM.rogue) {
       if (CL.state.stats[Def.stat.activeweapon] >= Def.rit.lava_nailgun) {
         for (i = 0; i <= 4; i++) {
           if (CL.state.stats[Def.stat.activeweapon] === (Def.rit.lava_nailgun << i)) {
@@ -384,7 +384,7 @@ export default class Sbar {
       }
     }
 
-    if (COM.hipnotic === true) {
+    if (COM.hipnotic) {
       for (i = 2; i <= 5; i++) {
         if ((CL.state.items & (1 << (17 + i))) !== 0) {
           Sbar.DrawPic(192 + (i << 4), -16, Sbar.items[i]);
@@ -402,7 +402,7 @@ export default class Sbar {
           Sbar.DrawPic(192 + (i << 4), -16, Sbar.items[i]);
         }
       }
-      if (COM.rogue === true) {
+      if (COM.rogue) {
         if ((CL.state.items & 536870912) !== 0) {
           Sbar.DrawPic(288, -16, Sbar.r_items![0]);
         }
@@ -445,7 +445,7 @@ export default class Sbar {
   }
 
   static DrawFace(): void {
-    if ((COM.rogue === true) && (CL.state.maxclients !== 1) && (Cvar.FindVar('teamplay').value >= 4) && (Cvar.FindVar('teamplay').value <= 6)) {
+    if (COM.rogue && (CL.state.maxclients !== 1) && (Cvar.FindVar('teamplay').value >= 4) && (Cvar.FindVar('teamplay').value <= 6)) {
       const s = CL.state.scores[CL.state.viewentity - 1];
       const top = (s.colors & 0xf0) + 8;
       const xofs = CL.state.maxclients === 1 ? 113 : (VID.width >> 1) - 47;
@@ -496,7 +496,7 @@ export default class Sbar {
       Sbar.DrawInventory();
     }
 
-    if ((Sbar.showscores === true) || (CL.state.stats[Def.stat.health] <= 0)) {
+    if (Sbar.showscores || CL.state.stats[Def.stat.health] <= 0) {
       Sbar.DrawPic(0, 0, Sbar.scorebar);
       Sbar.SoloScoreboard();
       if (CL.state.maxclients > 1) {
@@ -511,7 +511,7 @@ export default class Sbar {
 
     Sbar.DrawPic(0, 0, Sbar.sbar);
 
-    if (COM.hipnotic === true) {
+    if (COM.hipnotic) {
       if ((CL.state.items & Def.it.key1) !== 0) {
         Sbar.DrawPic(209, 3, Sbar.items[0]);
       }
@@ -520,7 +520,7 @@ export default class Sbar {
       }
     }
 
-    const it = (COM.rogue === true) ? Def.rit : Def.it;
+    const it = (COM.rogue) ? Def.rit : Def.it;
 
     if ((CL.state.items & Def.it.invulnerability) !== 0) {
       Sbar.DrawNum(24, 0, 666, 3, 1);
@@ -548,7 +548,7 @@ export default class Sbar {
       Sbar.DrawPic(224, 0, Sbar.ammo[2]);
     } else if ((CL.state.items & it.cells) !== 0) {
       Sbar.DrawPic(224, 0, Sbar.ammo[3]);
-    } else if (COM.rogue === true) {
+    } else if (COM.rogue) {
       if ((CL.state.items & Def.rit.lava_nails) !== 0) {
         Sbar.DrawPic(224, 0, Sbar.r_ammo![0]);
       } else if ((CL.state.items & Def.rit.plasma_ammo) !== 0) {

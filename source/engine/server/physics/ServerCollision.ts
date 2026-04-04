@@ -853,7 +853,7 @@ export class ServerCollision {
         continue;
       }
 
-      if (clip.trace.allsolid === true) {
+      if (clip.trace.allsolid) {
         return;
       }
 

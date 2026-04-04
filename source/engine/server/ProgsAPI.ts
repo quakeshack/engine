@@ -292,11 +292,11 @@ const breakstatement: BuiltinFunction = function breakstatement() {
 const traceline = generateBuiltinFunction('traceline', (start: Vector, end: Vector, noMonsters: number, passEdict: ServerEdict | null): void => {
   const trace = ServerEngineAPI.TracelineLegacy(start, end, noMonsters, passEdict);
 
-  SV.server.gameAPI.trace_allsolid = trace.allsolid === true ? 1.0 : 0.0;
-  SV.server.gameAPI.trace_startsolid = trace.startsolid === true ? 1.0 : 0.0;
+  SV.server.gameAPI.trace_allsolid = trace.allsolid ? 1.0 : 0.0;
+  SV.server.gameAPI.trace_startsolid = trace.startsolid ? 1.0 : 0.0;
   SV.server.gameAPI.trace_fraction = trace.fraction;
-  SV.server.gameAPI.trace_inwater = trace.inwater === true ? 1.0 : 0.0;
-  SV.server.gameAPI.trace_inopen = trace.inopen === true ? 1.0 : 0.0;
+  SV.server.gameAPI.trace_inwater = trace.inwater ? 1.0 : 0.0;
+  SV.server.gameAPI.trace_inopen = trace.inopen ? 1.0 : 0.0;
   SV.server.gameAPI.trace_endpos = trace.endpos;
   SV.server.gameAPI.trace_plane_normal = trace.plane.normal;
   SV.server.gameAPI.trace_plane_dist = trace.plane.dist;

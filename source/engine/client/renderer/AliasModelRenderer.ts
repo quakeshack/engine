@@ -101,13 +101,13 @@ export class AliasModelRenderer extends ModelRenderer {
         e.origin[0] + clmodel.boundingradius,
         e.origin[1] + clmodel.boundingradius,
         e.origin[2] + clmodel.boundingradius,
-      )) === true) {
+      ))) {
       return;
     }
 
     // Select shader program (player vs normal)
     let program;
-    if ((e.colormap !== 0) && (clmodel.player === true) && (R.nocolors.value === 0)) {
+    if (e.colormap !== 0 && clmodel.player && R.nocolors.value === 0) {
       program = GL.UseProgram('player');
 
       // Calculate player colors
@@ -164,7 +164,7 @@ export class AliasModelRenderer extends ModelRenderer {
     const skin = this._selectSkin(clmodel, e);
     skin.texturenum!.bind(program!.tTexture!);
     (skin.luminanceTexture || R.blacktexture).bind(program!.tLuminance!);
-    if (clmodel.player === true) {
+    if (clmodel.player) {
       skin.playertexture!.bind(program!.tPlayer!);
     }
 
@@ -219,7 +219,7 @@ export class AliasModelRenderer extends ModelRenderer {
     let targettime = 0;
 
     // Handle frame groups (animated sequences)
-    if (frameGroup.group === true) {
+    if (frameGroup.group) {
       const groupLen = frameGroup.frames.length - 1;
       const fullinterval = frameGroup.frames[groupLen].interval;
       frameA = frameGroup.frames[0];
@@ -266,7 +266,7 @@ export class AliasModelRenderer extends ModelRenderer {
     let skin = clmodel.skins[num];
 
     // Handle skin groups (animated textures)
-    if (skin.group === true) {
+    if (skin.group) {
       const groupLen = skin.skins.length - 1;
       const fullinterval = skin.skins[groupLen].interval;
       const targettime = time - Math.floor(time / fullinterval) * fullinterval;

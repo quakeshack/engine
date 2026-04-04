@@ -22,26 +22,6 @@ interface SpriteSingleFrame {
   readonly texturenum: WebGLTexture | null;
 }
 
-export interface SpriteFrameImage {
-  readonly interval?: number;
-  readonly origin: [number, number];
-  readonly width: number;
-  readonly height: number;
-  readonly glt: GLTexture;
-  /** Raw WebGL texture handle, stored from {@link GLTexture.texnum}. */
-  readonly texturenum: WebGLTexture | null;
-}
-
-export interface SpriteSingleFrame {
-  readonly group: false;
-  readonly origin: [number, number];
-  readonly width: number;
-  readonly height: number;
-  readonly glt: GLTexture;
-  /** Raw WebGL texture handle, stored from {@link GLTexture.texnum}. */
-  readonly texturenum: WebGLTexture | null;
-}
-
 interface SpriteFrameGroup {
   readonly group: true;
   readonly frames: SpriteFrameImage[];

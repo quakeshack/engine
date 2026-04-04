@@ -107,7 +107,7 @@ export default class Key {
       return;
     }
 
-    if ((key === K.BACKSPACE) || (key === K.LEFTARROW)) {
+    if (key === K.BACKSPACE || key === K.LEFTARROW) {
       if (Key.edit_line.length > 0) {
         Key.edit_line = Key.edit_line.substring(0, Key.edit_line.length - 1);
       }
@@ -164,7 +164,7 @@ export default class Key {
       return;
     }
 
-    if ((key < 32) || (key > 127)) {
+    if (key < 32 || key > 127) {
       return;
     }
 
@@ -195,7 +195,7 @@ export default class Key {
       Key.chat_buffer = '';
       return;
     }
-    if ((key < 32) || (key > 127)) {
+    if (key < 32 || key > 127) {
       return;
     }
     if (key === K.BACKSPACE) {
@@ -241,7 +241,7 @@ export default class Key {
    * @returns The key name, or `'<UNKNOWN KEYNUM>'` for unrecognized codes.
    */
   static KeynumToString(keynum: number): string {
-    if ((keynum > 32) && (keynum < 127)) {
+    if (keynum > 32 && keynum < 127) {
       return String.fromCharCode(keynum);
     }
 
@@ -373,13 +373,13 @@ export default class Key {
 
   /** Routes a raw key event to the appropriate handler based on current destination. */
   static Event(key: number, down: boolean): void {
-    if (CL.cls.state === clientConnectionState.connecting && key === K.ESCAPE && down === true) {
+    if (CL.cls.state === clientConnectionState.connecting && key === K.ESCAPE && down) {
       CL.Disconnect();
       M.ToggleMenu_f();
       return;
     }
-    if (down === true) {
-      if ((key !== K.BACKSPACE) && (key !== K.PAUSE) && (Key.down[key] === true)) {
+    if (down) {
+      if (key !== K.BACKSPACE && key !== K.PAUSE && Key.down[key]) {
         return;
       }
     }
@@ -390,7 +390,7 @@ export default class Key {
     }
 
     if (key === K.ESCAPE) {
-      if (down !== true) {
+      if (!down) {
         return;
       }
       if (Key.dest.value === Key.dest.message) {
@@ -405,7 +405,7 @@ export default class Key {
 
     let kb: string | null | undefined;
 
-    if (down !== true) {
+    if (!down) {
       kb = Key.bindings[key];
       if (kb !== null && kb !== undefined) {
         if (kb.charCodeAt(0) === 43) {
@@ -423,14 +423,14 @@ export default class Key {
       return;
     }
 
-    if ((CL.cls.demoplayback === true) && (Key.consolekeys[key] === true) && (Key.dest.value === Key.dest.game)) {
+    if (CL.cls.demoplayback && Key.consolekeys[key] && Key.dest.value === Key.dest.game) {
       M.ToggleMenu_f();
       return;
     }
 
-    if (((Key.dest.value === Key.dest.menu) && ((key === K.ESCAPE) || ((key >= K.F1) && (key <= K.F12)))) ||
-      ((Key.dest.value === Key.dest.console) && (Key.consolekeys[key] !== true)) ||
-      ((Key.dest.value === Key.dest.game) && ((Con.forcedup !== true) || (Key.consolekeys[key] !== true)))) {
+    if ((Key.dest.value === Key.dest.menu && (key === K.ESCAPE || (key >= K.F1 && key <= K.F12))) ||
+      (Key.dest.value === Key.dest.console && !Key.consolekeys[key]) ||
+      (Key.dest.value === Key.dest.game && (!Con.forcedup || !Key.consolekeys[key]))) {
       kb = Key.bindings[key];
       if (kb !== null && kb !== undefined) {
         if (kb.charCodeAt(0) === 43) {
@@ -442,7 +442,7 @@ export default class Key {
       return;
     }
 
-    if (Key.shift_down === true) {
+    if (Key.shift_down) {
       key = Key.shift[key];
     }
 

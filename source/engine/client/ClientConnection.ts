@@ -71,7 +71,7 @@ export default class ClientConnection {
   }
 
   getMessage(): number {
-    if (this.clientDemos.demoplayback === true) {
+    if (this.clientDemos.demoplayback) {
       return this.clientDemos.getMessage();
     }
 
@@ -135,7 +135,7 @@ export default class ClientConnection {
       throw new HostError('CL.SendCmd: no active connection');
     }
 
-    if (NET.CanSendMessage(netcon) !== true) {
+    if (!NET.CanSendMessage(netcon)) {
       Con.DPrint('CL.SendCmd: can\'t send\n');
       return;
     }
@@ -178,13 +178,13 @@ export default class ClientConnection {
       this.state.gameAPI = null;
     }
 
-    if (this.cls.demoplayback === true) {
+    if (this.cls.demoplayback) {
       this.clientDemos.stopPlayback();
     } else if (this.cls.state === Def.clientConnectionState.connecting) {
       this.cls.state = Def.clientConnectionState.disconnected;
       this.cls.message.clear();
     } else if (this.cls.state === Def.clientConnectionState.connected) {
-      if (this.cls.demorecording === true) {
+      if (this.cls.demorecording) {
         void Cmd.ExecuteString('stopdemo\n');
       }
       Con.DPrint('Sending clc_disconnect\n');
@@ -198,7 +198,7 @@ export default class ClientConnection {
         NET.Close(this.cls.netcon);
       }
       this.cls.state = Def.clientConnectionState.disconnected;
-      if (SV.server.active === true) {
+      if (SV.server.active) {
         Host.ShutdownServer();
       }
     }
@@ -237,7 +237,7 @@ export default class ClientConnection {
   }
 
   connect(host: string): void {
-    if (this.cls.demoplayback === true) {
+    if (this.cls.demoplayback) {
       return;
     }
 

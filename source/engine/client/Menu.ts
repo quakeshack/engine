@@ -285,7 +285,7 @@ export default class M {
       case K.ESCAPE:
         M.CloseMenu();
         CL.cls.demonum = M.save_demonum;
-        if ((CL.cls.demonum !== -1) && (CL.cls.demoplayback !== true) && (CL.cls.state !== clientConnectionState.connected)) {
+        if (CL.cls.demonum !== -1 && !CL.cls.demoplayback && CL.cls.state !== clientConnectionState.connected) {
           CL.NextDemo();
         }
         return;
@@ -402,7 +402,7 @@ export default class M {
   }
 
   static Menu_Save_f(): void {
-    if ((SV.server.active !== true) || (CL.state.intermission !== 0) || (SV.svs.maxclients !== 1)) {
+    if (!SV.server.active || CL.state.intermission !== 0 || SV.svs.maxclients !== 1) {
       return;
     }
     M.entersound = true;
@@ -434,7 +434,7 @@ export default class M {
         return;
       case K.ENTER:
         S.LocalSound(M.sfx_menu2);
-        if (M.loadable[M.load_cursor] !== true) {
+        if (!M.loadable[M.load_cursor]) {
           return;
         }
         M.CloseMenu();
@@ -456,10 +456,10 @@ export default class M {
         }
         return;
       case K.DEL:
-        if (M.removable[M.load_cursor] !== true) {
+        if (!M.removable[M.load_cursor]) {
           return;
         }
-        if (confirm('Delete selected game?') !== true) {
+        if (!confirm('Delete selected game?')) {
           return;
         }
         localStorage.removeItem('Quake.' + COM.gamedir[0].filename + '/s' + M.load_cursor + '.sav');
@@ -491,10 +491,10 @@ export default class M {
         }
         return;
       case K.DEL:
-        if (M.removable[M.load_cursor] !== true) {
+        if (!M.removable[M.load_cursor]) {
           return;
         }
-        if (confirm('Delete selected game?') !== true) {
+        if (!confirm('Delete selected game?')) {
           return;
         }
         localStorage.removeItem('Quake.' + COM.gamedir[0].filename + '/s' + M.load_cursor + '.sav');
@@ -867,7 +867,7 @@ export default class M {
   static Keys_Draw(): void {
     M.DrawPic(160 - (M.ttl_cstm.width / 2), 4, M.ttl_cstm);
 
-    if (M.bind_grab === true) {
+    if (M.bind_grab) {
       M.Print(12, 32, 'Press a key or button for this action');
       M.DrawCharacter(130, 48 + (M.keys_cursor << 3), 61);
     } else {
@@ -895,7 +895,7 @@ export default class M {
   }
 
   static Keys_Key(k: number): void {
-    if (M.bind_grab === true) {
+    if (M.bind_grab) {
       S.LocalSound(M.sfx_menu1);
       if ((k !== K.ESCAPE) && (k !== 96)) {
         Cmd.text = 'bind "' + Key.KeynumToString(k) + '" "' + M.bindnames[M.keys_cursor][0] + '"\n' + Cmd.text;
@@ -1061,7 +1061,7 @@ export default class M {
   }
 
   static Quit_Draw(): void {
-    if (M.wasInMenus === true) {
+    if (M.wasInMenus) {
       M.state.value = M.quit_prevstate;
       M.recursiveDraw = true;
       M.Draw();
@@ -1078,7 +1078,7 @@ export default class M {
     switch (k) {
       case K.ESCAPE:
       case 110:
-        if (M.wasInMenus === true) {
+        if (M.wasInMenus) {
           M.state.value = M.quit_prevstate;
           M.entersound = true;
         } else {
@@ -1252,7 +1252,7 @@ export default class M {
         M.Launch_Server_Draw();
         break;
     }
-    if (M.entersound === true) {
+    if (M.entersound) {
       S.LocalSound(M.sfx_menu2);
       M.entersound = false;
     }

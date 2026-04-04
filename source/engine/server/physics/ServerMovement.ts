@@ -121,13 +121,13 @@ export class ServerMovement {
     const end = neworg.copy();
     end[2] -= STEPSIZE * 2.0;
     let trace = SV.collision.move(neworg, mins, maxs, end, Defs.moveTypes.MOVE_NORMAL, ent);
-    if (trace.allsolid === true) {
+    if (trace.allsolid) {
       return false;
     }
-    if (trace.startsolid === true) {
+    if (trace.startsolid) {
       neworg[2] -= STEPSIZE;
       trace = SV.collision.move(neworg, mins, maxs, end, Defs.moveTypes.MOVE_NORMAL, ent);
-      if (trace.allsolid === true || trace.startsolid === true) {
+      if (trace.allsolid || trace.startsolid) {
         return false;
       }
     }

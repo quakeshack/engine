@@ -83,7 +83,7 @@ export class ED {
     for (i = SV.svs.maxclients + 1; i < SV.server.num_edicts; i++) {
       edict = SV.server.edicts[i] as ServerEdict;
 
-      if (edict.free === true && (edict.freetime < 2.0 || SV.server.time - edict.freetime > 0.5)) {
+      if (edict.free && (edict.freetime < 2.0 || SV.server.time - edict.freetime > 0.5)) {
         ED.ClearEdict(edict);
         return edict;
       }
@@ -161,7 +161,7 @@ export class ED {
 
   static PrintEdict_f = class PrintEdictCommand extends ConsoleCommand {
     run(id?: string): void {
-      if (SV.server.active !== true) {
+      if (!SV.server.active) {
         return;
       }
 
@@ -182,7 +182,7 @@ export class ED {
    * Prints an edict usage summary.
    */
   static Count(): void {
-    if (SV.server.active !== true) {
+    if (!SV.server.active) {
       return;
     }
 
@@ -194,7 +194,7 @@ export class ED {
     for (let i = 0; i < SV.server.num_edicts; i++) {
       const ent = SV.server.edicts[i] as ServerEdict;
 
-      if (ent.isFree() === true) {
+      if (ent.isFree()) {
         continue;
       }
 

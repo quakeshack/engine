@@ -1,5 +1,5 @@
 import { eventBus, getCommonRegistry } from '../registry.ts';
-import { CorruptedResourceError, MissingResourceError } from './Errors.ts';
+import { CorruptedResourceError, MissingResourceError, NotImplementedError } from './Errors.ts';
 import Q from '../../shared/Q.ts';
 
 let { COM } = getCommonRegistry();
@@ -69,7 +69,7 @@ export abstract class WadFileInterface {
    * This will return the palette translated data for the given name.
    * @returns the decoded texture data
    */
-  abstract getLumpMipmap(name: string, mipmapLevel?: number): WadLumpTexture | null;
+  abstract getLumpMipmap(name: string, mipmapLevel?: number): WadLumpTexture;
 }
 
 /** A concrete WAD handler constructor with a static MAGIC identifier. */
@@ -319,7 +319,7 @@ class Wad3File extends WadFileInterface {
    * This will return the palette translated data for the given name.
    * @returns the decoded texture data
    */
-  override getLumpMipmap(name: string, mipmapLevel = 0): WadLumpTexture | null {
+  override getLumpMipmap(name: string, mipmapLevel = 0): WadLumpTexture {
     const lumpInfo = this._lumps[name.toUpperCase()];
 
     if (!lumpInfo) {
@@ -336,7 +336,7 @@ class Wad3File extends WadFileInterface {
 
       case 0x46: // font
         console.assert(false, 'Wad3File.getLumpMipmap: font handling not implemented');
-        return null; // TODO: implement font handling
+        throw new NotImplementedError('font (lump type 0x46) handling not implemented');
     }
 
     throw new CorruptedResourceError(name, `not a valid lump type (${lumpInfo.type})`);

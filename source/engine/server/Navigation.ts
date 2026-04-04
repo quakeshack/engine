@@ -982,7 +982,7 @@ export class Navigation {
       }
 
       // Ignore special surfaces, also submodel faces
-      if (face.turbulent === true || face.sky === true || face.submodel === true) {
+      if (face.turbulent || face.sky || face.submodel) {
         continue;
       }
 

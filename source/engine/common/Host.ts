@@ -402,7 +402,7 @@ export default class Host {
     SV.CheckForNewClients();
     SV.RunClients();
 
-    if (SV.server.paused !== true && (SV.svs.maxclients >= 2 || (!registry.isDedicatedServer && Key.dest.value === Key.dest.game))) {
+    if (!SV.server.paused && (SV.svs.maxclients >= 2 || (!registry.isDedicatedServer && Key.dest.value === Key.dest.game))) {
       SV.physics.physics();
     }
 
@@ -1412,9 +1412,9 @@ export default class Host {
     }
 
     SV.server.paused = !SV.server.paused;
-    Host.BroadcastPrint(`${client.name}${SV.server.paused === true ? ' paused the game\n' : ' unpaused the game\n'}`);
+    Host.BroadcastPrint(`${client.name}${SV.server.paused ? ' paused the game\n' : ' unpaused the game\n'}`);
     SV.server.reliable_datagram.writeByte(Protocol.svc.setpause);
-    SV.server.reliable_datagram.writeByte(SV.server.paused === true ? 1 : 0);
+    SV.server.reliable_datagram.writeByte(SV.server.paused ? 1 : 0);
   }
 
   static PreSpawn_f(this: ConsoleCommand): void { // signon 1, step 1

@@ -289,7 +289,7 @@ export default class ClientInput {
     buf.writeByte(CL.state.cmd.impulse);
     buf.writeByte(CL.state.moveSequence);
 
-    if (CL.cls.demoplayback === true) {
+    if (CL.cls.demoplayback) {
       return;
     }
     if (++CL.state.movemessages <= 2) {

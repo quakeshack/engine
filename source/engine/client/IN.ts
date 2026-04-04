@@ -88,7 +88,7 @@ export default class IN {
       } else if (angles[0] < -70.0) {
         angles[0] = -70.0;
       }
-    } else if (strafe !== 0 && Host.noclip_anglehack === true) {
+    } else if (strafe !== 0 && Host.noclip_anglehack) {
       CL.state.cmd.upmove -= CL.m_forward.value * mouseY;
     } else {
       CL.state.cmd.forwardmove -= CL.m_forward.value * mouseY;
@@ -128,6 +128,6 @@ export default class IN {
     }
 
     Key.Event(K.ESCAPE, true);
-    Key.Event(K.ESCAPE);
+    Key.Event(K.ESCAPE, false);
   }
 }

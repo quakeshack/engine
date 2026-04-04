@@ -206,6 +206,11 @@ export default class Draw {
     Draw.#loading = loading;
 
     const conchars = Draw.#gfxWad.getLumpMipmap('CONCHARS', 0);
+
+    if (conchars === null) {
+      throw new MissingResourceError('gfx.wad/CONCHARS');
+    }
+
     Draw.#chars = GLTexture.FromLumpTexture(conchars).lockTextureMode('GL_NEAREST');
 
     Draw.#conback = (() => {
@@ -218,7 +223,7 @@ export default class Draw {
       }
 
       // we are writing the version into the conback texture
-      const version = Host.version.string;
+      const version = Host.version!.string;
       const color = ClientEngineAPI.IndexToRGB(95);
       for (let i = 0; i < version.length; i++) {
         charToConback(conback.data, conchars.data, version.charCodeAt(i), 59829 - ((version.length - i) * 8), color);
@@ -242,7 +247,12 @@ export default class Draw {
 
     eventBus.subscribe('com.fs.being', Draw.BeginDisc);
     eventBus.subscribe('com.fs.end', Draw.EndDisc);
-    VID.mainwindow.style.backgroundImage = `url("${Draw.#gfxWad.getLumpMipmap('BACKTILE', 0).toDataURL()}")`;
+
+    const backtile = Draw.#gfxWad.getLumpMipmap('BACKTILE', 0);
+
+    if (backtile !== null) {
+      VID.mainwindow.style.backgroundImage = `url("${backtile.toDataURL()}")`;
+    }
 
     Draw.#fbo = gl.createFramebuffer(); // TODO: cleanup
   }
@@ -268,8 +278,8 @@ export default class Draw {
    * @param scale The scale factor.
    */
   static Character(x: number, y: number, num: number, scale = 1.0): void {
-    const program = GL.UseProgram('pic', true);
-    gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
+    const program = GL.UseProgram('pic', true)!;
+    gl.uniform3f(program.uColor!, 1.0, 1.0, 1.0);
     if (scale > HIDPI_THRESHOLD) {
       Draw.#charsLarge!.bind(program.tTexture, true);
     } else {
@@ -288,8 +298,8 @@ export default class Draw {
    * @returns The new x position after drawing the string.
    */
   static String(x: number, y: number, str: string, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)): number {
-    const program = GL.UseProgram('pic', true);
-    gl.uniform3f(program.uColor, color[0], color[1], color[2]);
+    const program = GL.UseProgram('pic', true)!;
+    gl.uniform3f(program.uColor!, color[0], color[1], color[2]);
     if (scale > HIDPI_THRESHOLD) {
       Draw.#charsLarge!.bind(program.tTexture, true);
     } else {
@@ -312,8 +322,8 @@ export default class Draw {
    * @returns The new x position after drawing the string.
    */
   static StringWhite(x: number, y: number, str: string, scale = 1.0): number {
-    const program = GL.UseProgram('pic', true);
-    gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
+    const program = GL.UseProgram('pic', true)!;
+    gl.uniform3f(program.uColor!, 1.0, 1.0, 1.0);
     if (scale > HIDPI_THRESHOLD) {
       Draw.#charsLarge!.bind(program.tTexture, true);
     } else {
@@ -333,7 +343,8 @@ export default class Draw {
    */
   static LoadPicFromWad(name: string): GLTexture {
     const texdata = Draw.#gfxWad!.getLumpMipmap(name, 0);
-    return GLTexture.FromLumpTexture(texdata).lockTextureMode('GL_NEAREST');
+    console.assert(texdata !== null, `Lump ${name} not found in gfx.wad`);
+    return GLTexture.FromLumpTexture(texdata!).lockTextureMode('GL_NEAREST');
   }
 
   /**
@@ -374,7 +385,7 @@ export default class Draw {
    * @returns The loaded picture texture.
    */
   static async LoadPicFromFile(filename: string): Promise<GLTexture> {
-    return (await GLTexture.FromImageFile(filename)).lockTextureMode('GL_NEAREST');
+    return (await GLTexture.FromImageFile(filename))!.lockTextureMode('GL_NEAREST');
   }
 
   /**
@@ -398,8 +409,8 @@ export default class Draw {
     if (!pic.ready) {
       return;
     }
-    const program = GL.UseProgram('pic', true);
-    gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
+    const program = GL.UseProgram('pic', true)!;
+    gl.uniform3f(program.uColor!, 1.0, 1.0, 1.0);
     pic.bind(program.tTexture, true);
     GL.StreamDrawTexturedQuad(x, y, pic.width * scale, pic.height * scale, 0.0, 0.0, 1.0, 1.0);
     GL.StreamFlush();
@@ -419,8 +430,8 @@ export default class Draw {
       return;
     }
     GL.StreamFlush();
-    const program = GL.UseProgram('pic-translate');
-    gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
+    const program = GL.UseProgram('pic-translate')!;
+    gl.uniform3f(program.uColor!, 1.0, 1.0, 1.0);
     pic.bind(program.tTexture);
     // @ts-ignore: translate may be dynamically added
     console.assert(pic.translate !== null, 'pic.translate must not be null');
@@ -428,9 +439,9 @@ export default class Draw {
     pic.translate && pic.translate.bind(program.tTrans);
     let p = W.d_8to24table[top];
     const uvscale = 1.0 / 191.25;
-    gl.uniform3f(program.uTop, (p & 0xff) * uvscale, ((p >> 8) & 0xff) * uvscale, (p >> 16) * uvscale);
+    gl.uniform3f(program.uTop!, (p & 0xff) * uvscale, ((p >> 8) & 0xff) * uvscale, (p >> 16) * uvscale);
     p = W.d_8to24table[bottom];
-    gl.uniform3f(program.uBottom, (p & 0xff) * uvscale, ((p >> 8) & 0xff) * uvscale, (p >> 16) * uvscale);
+    gl.uniform3f(program.uBottom!, (p & 0xff) * uvscale, ((p >> 8) & 0xff) * uvscale, (p >> 16) * uvscale);
     GL.StreamDrawTexturedQuad(x, y, pic.width * scale, pic.height * scale, 0.0, 0.0, 1.0, 1.0);
     GL.StreamFlush();
   }
@@ -440,8 +451,8 @@ export default class Draw {
    * @param lines The number of lines to show.
    */
   static ConsoleBackground(lines: number): void {
-    const program = GL.UseProgram('pic', true);
-    gl.uniform3f(program.uColor, 1.0, 1.0, 1.0);
+    const program = GL.UseProgram('pic', true)!;
+    gl.uniform3f(program.uColor!, 1.0, 1.0, 1.0);
     Draw.#conback!.bind(program.tTexture, true);
     GL.StreamDrawTexturedQuad(0, lines - VID.height, VID.width, VID.height, 0.0, 0.0, 1.0, 1.0);
     GL.StreamFlush();

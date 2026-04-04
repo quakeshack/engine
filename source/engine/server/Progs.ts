@@ -1171,11 +1171,11 @@ PR.PrintStatement = function(s) {
   } else {
     text = '';
   }
-  if ((s.op === PR.op.jnz) || (s.op === PR.op.jz)) {
+  if (s.op === PR.op.jnz || s.op === PR.op.jz) {
     text += PR.GlobalString(s.a) + 'branch ' + s.b;
   } else if (s.op === PR.op.jump) {
     text += 'branch ' + s.a;
-  } else if ((s.op >= PR.op.store_f) && (s.op <= PR.op.store_fnc)) {
+  } else if (s.op >= PR.op.store_f && s.op <= PR.op.store_fnc) {
     text += PR.GlobalString(s.a) + PR.GlobalStringNoContents(s.b);
   } else {
     if (s.a !== 0) {
@@ -1218,7 +1218,7 @@ PR.StackTrace = function() {
 };
 
 PR.Profile_f = function() {
-  if (SV.server.active !== true) {
+  if (!SV.server.active) {
     return;
   }
   let num = 0; let max; let best; let i; let f; let profile;
@@ -1292,7 +1292,7 @@ PR.LeaveFunction = function() {
 };
 
 PR.ExecuteProgram = function(fnum) {
-  if ((fnum === 0) || (fnum >= PR.functions.length)) {
+  if (fnum === 0 || fnum >= PR.functions.length) {
     if (PR.globals_int[PR.globalvars.self] !== 0) {
       ED.Print(SV.server.edicts[PR.globals_int[PR.globalvars.self]]);
     }
@@ -1371,10 +1371,10 @@ PR.ExecuteProgram = function(fnum) {
         PR.globals_float[st.c] = (PR.globals_float[st.a] < PR.globals_float[st.b]) ? 1.0 : 0.0;
         continue;
       case PR.op.and:
-        PR.globals_float[st.c] = ((PR.globals_float[st.a] !== 0.0) && (PR.globals_float[st.b] !== 0.0)) ? 1.0 : 0.0;
+        PR.globals_float[st.c] = (PR.globals_float[st.a] !== 0.0 && PR.globals_float[st.b] !== 0.0) ? 1.0 : 0.0;
         continue;
       case PR.op.or:
-        PR.globals_float[st.c] = ((PR.globals_float[st.a] !== 0.0) || (PR.globals_float[st.b] !== 0.0)) ? 1.0 : 0.0;
+        PR.globals_float[st.c] = (PR.globals_float[st.a] !== 0.0 || PR.globals_float[st.b] !== 0.0) ? 1.0 : 0.0;
         continue;
       case PR.op.not_f:
         PR.globals_float[st.c] = (PR.globals_float[st.a] === 0.0) ? 1.0 : 0.0;
@@ -1454,7 +1454,7 @@ PR.ExecuteProgram = function(fnum) {
         continue;
       case PR.op.address:
         ed = PR.globals_int[st.a];
-        if ((ed === 0) && (SV.server.loading !== true)) {
+        if (ed === 0 && !SV.server.loading) {
           PR.RunError('assignment to world entity');
         }
         PR.globals_int[st.c] = ed * PR.edict_size + 96 + (PR.globals_int[st.b] << 2);

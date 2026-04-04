@@ -934,15 +934,15 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Translate a palette index into an RGB color vector.
    * @returns The RGB color vector.
    */
-  static IndexToRGB(index: number): Vector {
+  static IndexToRGB(index: number): [number, number, number] {
     console.assert(typeof index === 'number', 'index must be a number');
     console.assert(index >= 0 && index < 256, 'index must be in range [0, 255]');
 
-    return new Vector(
+    return [
       W.d_8to24table_u8[index * 3] / 256,
       W.d_8to24table_u8[index * 3 + 1] / 256,
       W.d_8to24table_u8[index * 3 + 2] / 256,
-    );
+    ];
   }
 
   /**
@@ -992,7 +992,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
   static Traceline(start: Vector, end: Vector, options: ClientTraceOptions | null = null): GameTrace {
     const worldTrace = SV.collision.traceWorldLine(start, end) as InternalTraceLike;
 
-    if (options === null || options.includeEntities !== true) {
+    if (options === null || !options.includeEntities) {
       return internalTraceToGameTrace(worldTrace);
     }
 

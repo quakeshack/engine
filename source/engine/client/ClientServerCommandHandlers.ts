@@ -256,7 +256,7 @@ function parseServerData() {
         CL.state.gameAPI.loadGame(CL.state.loadClientData[0]);
       }
     }
-    if (CL.state.loadClientData && CL.state.loadClientData[1]) {
+    if (CL.state.loadClientData && Array.isArray(CL.state.loadClientData[1])) {
       R.DeserializeParticles(CL.state.loadClientData[1]);
     }
     CL.state.loadClientData = null;
@@ -955,7 +955,7 @@ function handleCdTrack() {
   CL.state.cdtrack = NET.message.readByte();
   NET.message.readByte(); // unused (usually always the same as cdtrack)
 
-  if (((CL.cls.demoplayback === true) || (CL.cls.demorecording === true)) && (CL.cls.forcetrack !== -1)) {
+  if ((CL.cls.demoplayback || CL.cls.demorecording) && CL.cls.forcetrack !== -1) {
     eventBus.publish('client.cdtrack', CL.cls.forcetrack);
   } else {
     eventBus.publish('client.cdtrack', CL.state.cdtrack);
@@ -1125,7 +1125,7 @@ export function parseServerMessage() {
       break;
     }
 
-    if (NET.message.badread === true) {
+    if (NET.message.badread) {
       CL.PrintLastServerMessages();
       throw new HostError('CL.ParseServerMessage: Bad server message');
     }
