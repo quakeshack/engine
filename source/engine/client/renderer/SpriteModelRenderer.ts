@@ -2,7 +2,7 @@ import { ModelRenderer } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL from '../GL.ts';
-import type { SpriteModel, SpriteSingleFrame, SpriteFrameImage } from '../../common/model/SpriteModel.ts';
+import type { SpriteModel } from '../../common/model/SpriteModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
 
@@ -23,7 +23,9 @@ eventBus.subscribe('gl.shutdown', () => {
 });
 
 /** A resolved (non-group) sprite frame ready for rendering. */
-type SpriteRenderFrame = SpriteSingleFrame | SpriteFrameImage;
+type SpriteFrame = SpriteModel['frames'][number];
+type SpriteGroupedFrame = Extract<SpriteFrame, { group: true }>;
+type SpriteRenderFrame = Exclude<SpriteFrame, { group: true }> | SpriteGroupedFrame['frames'][number];
 
 /**
  * Renderer for Sprite SPR models (2D billboards like explosions, particles).
@@ -93,11 +95,12 @@ export class SpriteModelRenderer extends ModelRenderer {
       num = 0;
     }
 
-    let frame: SpriteRenderFrame = spriteModel.frames[num] as SpriteRenderFrame;
+    const selectedFrame = spriteModel.frames[num];
+    let frame: SpriteRenderFrame;
 
     // Handle frame groups (animated sprites)
-    if ((frame as { group?: boolean }).group) {
-      const groupedFrame = spriteModel.frames[num] as { group: true; frames: SpriteFrameImage[] };
+    if (selectedFrame.group) {
+      const groupedFrame = selectedFrame;
       const time = CL.state.time + e.syncbase;
       const groupLen = groupedFrame.frames.length - 1;
       const fullinterval = groupedFrame.frames[groupLen].interval!;
@@ -110,6 +113,8 @@ export class SpriteModelRenderer extends ModelRenderer {
         }
       }
       frame = groupedFrame.frames[i];
+    } else {
+      frame = selectedFrame as Exclude<SpriteFrame, { group: true }>;
     }
 
     // Bind texture

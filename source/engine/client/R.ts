@@ -3,7 +3,7 @@ import Cvar from '../common/Cvar.ts';
 import Cmd from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 
-import { eventBus, registry } from '../registry.ts';
+import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Chase from './Chase.ts';
 import W from '../common/W.ts';
 import VID from './VID.ts';
@@ -15,7 +15,7 @@ import { AliasModelRenderer } from './renderer/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/MeshModelRenderer.ts';
 import Draw from './Draw.ts';
-import { BrushModel, type FogVolumeInfo, type LightgridPointSample, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
+import { BrushModel, type BrushTexVec, type FogVolumeInfo, type LightgridPointSample, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
 import { type Face, Plane } from '../common/model/BaseModel.ts';
 import PostProcess from './renderer/PostProcess.ts';
 import BloomEffect from './renderer/BloomEffect.ts';
@@ -25,10 +25,10 @@ import { ClientDlight, ClientEdict } from './ClientEntities.ts';
 import { avertexnormals } from '../common/model/loaders/AliasMDLLoader.ts';
 import { SkyRenderer } from './renderer/Sky.ts';
 
-let { CL, Host, Mod, SCR, SV, Sys, V } = registry;
+let { CL, Host, Mod, SCR, SV, Sys, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, Mod, SCR, SV, Sys, V } = registry);
+  ({ CL, Host, Mod, SCR, SV, Sys, V } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -79,7 +79,7 @@ type EntityLightValues = [Vector, Vector, Vector, Vector, Vector];
 type GridPosition = [number, number, number];
 type Vec4 = [number, number, number, number];
 
-interface SerializedParticle {
+export interface SerializedParticle {
   i: number;
   die: number;
   color: number;
@@ -88,6 +88,24 @@ interface SerializedParticle {
   org: [number, number, number];
   vel: [number, number, number];
 }
+
+interface Particle {
+  die: number;
+  color: number;
+  ramp: number;
+  type: ParticleType;
+  org: Vector;
+  vel: Vector;
+}
+
+interface Decal {
+  readonly texture: GLTexture;
+  readonly verts: [Vector, Vector, Vector, Vector];
+  readonly color: Vector;
+  readonly die: number;
+}
+
+type AngularVelocity = [number, number, number];
 
 enum ParticleType {
   tracer = 0,
@@ -130,6 +148,78 @@ class R {
   static lightstylevalue_a = new Uint8Array(new ArrayBuffer(64));
   static lightstylevalue_b = new Uint8Array(new ArrayBuffer(64));
 
+  static waterwarp: Cvar = null!;
+  static fullbright: Cvar = null!;
+  static drawentities: Cvar = null!;
+  static drawviewmodel: Cvar = null!;
+  static drawturbulents: Cvar = null!;
+  static novis: Cvar = null!;
+  static speeds: Cvar = null!;
+  static polyblend: Cvar = null!;
+  static flashblend: Cvar = null!;
+  static nocolors: Cvar = null!;
+  static bloom: Cvar = null!;
+  static bloomStrength: Cvar = null!;
+  static bloomSkyStrength: Cvar = null!;
+  static bloomDlightStrength: Cvar = null!;
+  static bloomSpecularStrength: Cvar = null!;
+  static bloomDownsample: Cvar = null!;
+  static bloomDebug: Cvar = null!;
+  static interpolation: Cvar = null!;
+  static fog_color: Cvar = null!;
+  static fog_start: Cvar = null!;
+  static fog_end: Cvar = null!;
+  static fog_density: Cvar = null!;
+  static fog_mode: Cvar = null!;
+
+  static notexture: GLTexture = null!;
+  static blacktexture: GLTexture = null!;
+  static flatnormalmap: GLTexture = null!;
+  static deluxemap_texture: WebGLTexture = null!;
+  static lightmap_texture: WebGLTexture = null!;
+  static dlightmap_rgba_texture: WebGLTexture = null!;
+  static lightstyle_texture_a: WebGLTexture = null!;
+  static lightstyle_texture_b: WebGLTexture = null!;
+  static fullbright_texture: WebGLTexture = null!;
+  static null_texture: WebGLTexture = null!;
+  static normal_up_texture: WebGLTexture = null!;
+  static shadow_textures: WebGLTexture[] = [];
+  static shadow_texture: WebGLTexture | null = null;
+  static point_shadow_texture: WebGLTexture | null = null;
+  static world_depth_texture: WebGLTexture | null = null;
+  static dlightvecs: WebGLBuffer = null!;
+  static dlightVAO: WebGLVertexArrayObject = null!;
+
+  static usePostProcess = false;
+  static dowarp = false;
+  static particles: Particle[] = [];
+  static decals: Decal[] = [];
+  static numparticles = 0;
+  static avelocities: AngularVelocity[] = [];
+  static allocated: number[] = [];
+  static c_brush_verts = 0;
+  static c_brush_tris = 0;
+  static c_brush_draws = 0;
+  static c_brush_draws_pbr = 0;
+  static c_brush_vbos = 0;
+  static c_brush_texture_binds = 0;
+  static c_alias_polys = 0;
+
+  private static _textureAxisToVector(texVec: BrushTexVec): Vector {
+    return new Vector(texVec[0], texVec[1], texVec[2]);
+  }
+
+  private static _createDeadParticle(): Particle {
+    return {
+      die: -1.0,
+      color: 0,
+      ramp: 0.0,
+      type: ParticleType.slowgrav,
+      org: new Vector(),
+      vel: new Vector(),
+    };
+  }
+
   static AnimateLight(): void {
     if (R.fullbright.value === 0) {
       const i = Math.floor(CL.state.time * 10.0);
@@ -161,7 +251,8 @@ class R {
     }
     R.dlightframecount++;
     gl.enable(gl.BLEND);
-    const program = GL.UseProgram('dlight'); let a;
+    const program = GL.UseProgram('dlight')!; let a;
+    console.assert(program !== null, 'dlight program required');
     GL.BindVAO(R.dlightVAO);
     for (let i = 0; i < Def.limits.dlights; i++) {
       const l = CL.state.clientEntities.dlights[i];
@@ -177,8 +268,8 @@ class R {
         V.blend[2] *= 1.0 - a;
         continue;
       }
-      gl.uniform3fv(program.uOrigin, l.origin);
-      gl.uniform1f(program.uRadius, l.radius);
+      gl.uniform3fv(program.uOrigin!, l.origin);
+      gl.uniform1f(program.uRadius!, l.radius);
       gl.drawArrays(gl.TRIANGLE_FAN, 0, 18);
     }
     GL.UnbindVAO();
@@ -190,13 +281,15 @@ class R {
    * @returns A known point on the surface plane.
    */
   static GetDynamicLightSurfacePoint(surf: Face): Vector {
-    const surfedge = CL.state.worldmodel.surfedges[surf.firstedge!];
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+    const surfedge = worldmodel.surfedges[surf.firstedge!];
 
     if (surfedge >= 0) {
-      return CL.state.worldmodel.vertexes[CL.state.worldmodel.edges[surfedge][0]].copy();
+      return worldmodel.vertexes[worldmodel.edges[surfedge][0]].copy();
     }
 
-    return CL.state.worldmodel.vertexes[CL.state.worldmodel.edges[-surfedge][1]].copy();
+    return worldmodel.vertexes[worldmodel.edges[-surfedge][1]].copy();
   };
 
   /**
@@ -235,14 +328,20 @@ class R {
     if (node.contents < 0) {
       return;
     }
-    const normal = node.plane!.normal;
-    const dist = light.origin.dot(normal) - node.plane.dist;
+    const plane = node.plane!;
+    console.assert(plane !== null, 'node plane required');
+    const normal = plane.normal;
+    const dist = light.origin.dot(normal) - plane.dist;
     if (dist > light.radius) {
-      R.MarkLights(light, bit, node.children[0]);
+      const frontChild = node.children[0] as Node;
+      console.assert(frontChild instanceof Node, `R.MarkLights expected linked BSP child 0 on node ${node.num}`);
+      R.MarkLights(light, bit, frontChild);
       return;
     }
     if (dist < -light.radius) {
-      R.MarkLights(light, bit, node.children[1]);
+      const backChild = node.children[1] as Node;
+      console.assert(backChild instanceof Node, `R.MarkLights expected linked BSP child 1 on node ${node.num}`);
+      R.MarkLights(light, bit, backChild);
       return;
     }
     for (const surf of node.facesIter()) {
@@ -262,14 +361,21 @@ class R {
       }
       surf.dlightbits |= bit;
     }
-    R.MarkLights(light, bit, node.children[0]);
-    R.MarkLights(light, bit, node.children[1]);
+    const frontChild = node.children[0] as Node;
+    const backChild = node.children[1] as Node;
+    console.assert(frontChild instanceof Node, `R.MarkLights expected linked BSP child 0 on node ${node.num}`);
+    console.assert(backChild instanceof Node, `R.MarkLights expected linked BSP child 1 on node ${node.num}`);
+    R.MarkLights(light, bit, frontChild);
+    R.MarkLights(light, bit, backChild);
   };
 
   static PushDlights() {
     if (R.flashblend.value !== 0) {
       return;
     }
+
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
 
     for (let i = 0; i < LIGHTMAP_BLOCK_SIZE; i++) {
       R.lightmap_modified[i] = 0;
@@ -281,23 +387,28 @@ class R {
       const l = CL.state.clientEntities.dlights[i];
 
       if (!l.isFree()) {
-        R.MarkLights(l, bit, CL.state.worldmodel.nodes[0]);
+        R.MarkLights(l, bit, worldmodel.nodes[0]);
         for (const ent of CL.state.clientEntities.getVisibleEntities()) {
           if (ent.model === null) {
             continue;
           }
-          if ((ent.model.type !== Mod.type.brush) || !ent.model.submodel) {
+          if (!(ent.model instanceof BrushModel) || !ent.model.submodel) {
             continue;
           }
-          R.MarkLights(l, bit, CL.state.worldmodel.nodes[ent.model.hulls[0].firstclipnode]);
+          const firstClipNode = ent.model.hulls[0]?.firstclipnode;
+          const submodelNode = firstClipNode !== undefined ? worldmodel.nodes[firstClipNode] : null;
+
+          if (submodelNode !== undefined && submodelNode !== null) {
+            R.MarkLights(l, bit, submodelNode);
+          }
         }
       }
       bit += bit;
     }
 
     let surf;
-    for (let i = 0; i < CL.state.worldmodel.faces.length; i++) {
-      surf = CL.state.worldmodel.faces[i];
+    for (let i = 0; i < worldmodel.faces.length; i++) {
+      surf = worldmodel.faces[i];
       if (surf.dlightframe === R.dlightframecount) {
         R.RemoveDynamicLights(surf);
       } else if (surf.dlightframe === (R.dlightframecount + 1)) {
@@ -314,7 +425,9 @@ class R {
         if (!R.lightmap_modified[j]) {
           continue;
         }
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, i, LIGHTMAP_BLOCK_SIZE, j - i + 1, gl.RGBA, gl.UNSIGNED_BYTE, R.dlightmaps_rgba.subarray(i * LIGHTMAP_BLOCK_SIZE * 4, (j + 1) * LIGHTMAP_BLOCK_SIZE * 4));
+        const dlightmapsRgba = R.dlightmaps_rgba!;
+        console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, i, LIGHTMAP_BLOCK_SIZE, j - i + 1, gl.RGBA, gl.UNSIGNED_BYTE, dlightmapsRgba.subarray(i * LIGHTMAP_BLOCK_SIZE * 4, (j + 1) * LIGHTMAP_BLOCK_SIZE * 4));
         break;
       }
       break;
@@ -328,13 +441,21 @@ class R {
       return null;
     }
 
-    const normal = node.plane.normal;
-    const front = start[0] * normal[0] + start[1] * normal[1] + start[2] * normal[2] - node.plane.dist;
-    const back = end[0] * normal[0] + end[1] * normal[1] + end[2] * normal[2] - node.plane.dist;
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+    const plane = node.plane!;
+    console.assert(plane !== null, 'node plane required');
+    const normal = plane.normal;
+    const front = start[0] * normal[0] + start[1] * normal[1] + start[2] * normal[2] - plane.dist;
+    const back = end[0] * normal[0] + end[1] * normal[1] + end[2] * normal[2] - plane.dist;
     const side = front < 0;
+    const frontChild = node.children[side ? 1 : 0] as Node;
+    const backChild = node.children[side ? 0 : 1] as Node;
+    console.assert(frontChild instanceof Node, `R.RecursiveLightPoint expected linked front child on node ${node.num}`);
+    console.assert(backChild instanceof Node, `R.RecursiveLightPoint expected linked back child on node ${node.num}`);
 
     if ((back < 0) === side) {
-      return R.RecursiveLightPoint(node.children[side ? 1 : 0], start, end);
+      return R.RecursiveLightPoint(frontChild, start, end);
     }
 
     const frac = front / (front - back);
@@ -344,7 +465,7 @@ class R {
       start[2] + (end[2] - start[2]) * frac,
     );
 
-    const r = R.RecursiveLightPoint(node.children[side ? 1 : 0], start, mid);
+    const r = R.RecursiveLightPoint(frontChild, start, mid);
 
     if (r !== null) {
       return r;
@@ -359,9 +480,9 @@ class R {
         continue;
       }
 
-      const tex = CL.state.worldmodel.texinfo[surf.texinfo];
-      const s = mid.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3];
-      const t = mid.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3];
+      const tex = worldmodel.texinfo[surf.texinfo];
+      const s = mid.dot(R._textureAxisToVector(tex.vecs[0])) + tex.vecs[0][3];
+      const t = mid.dot(R._textureAxisToVector(tex.vecs[1])) + tex.vecs[1][3];
       if ((s < surf.texturemins[0]) || (t < surf.texturemins[1])) {
         continue;
       }
@@ -376,15 +497,19 @@ class R {
         return [new Vector(), mid];
       }
 
-      ds >>= surf.lmshift;
-      dt >>= surf.lmshift;
+      const lmshift = surf.lmshift!;
+      console.assert(lmshift !== null, 'face lightmap shift required');
 
-      const smax = (surf.extents[0] >> surf.lmshift) + 1;
-      const tmax = (surf.extents[1] >> surf.lmshift) + 1;
+      ds >>= lmshift;
+      dt >>= lmshift;
+
+      const smax = (surf.extents[0] >> lmshift) + 1;
+      const tmax = (surf.extents[1] >> lmshift) + 1;
 
       const r3 = new Vector();
-      const haveRGB = CL.state.worldmodel.lightdata_rgb !== null;
-      const lightdata = haveRGB ? CL.state.worldmodel.lightdata_rgb : CL.state.worldmodel.lightdata;
+      const haveRGB = worldmodel.lightdata_rgb !== null;
+      const lightdata = (haveRGB ? worldmodel.lightdata_rgb : worldmodel.lightdata)!;
+      console.assert(lightdata !== null, 'world lightdata required');
       const channels = haveRGB ? 3 : 1;
       const uInterpolation = R.interpolation.value ? (CL.state.time % .2) / .2 : 0;
 
@@ -419,22 +544,25 @@ class R {
       ];
     }
 
-    return R.RecursiveLightPoint(node.children[!side ? 1 : 0], mid, end);
+    return R.RecursiveLightPoint(backChild, mid, end);
   };
 
   static LightPoint(p: Vector): LightPointResult {
-    if (CL.state.worldmodel.lightdata === null && CL.state.worldmodel.lightdata_rgb === null) {
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+
+    if (worldmodel.lightdata === null && worldmodel.lightdata_rgb === null) {
       return [new Vector(255, 255, 255), new Vector(0, 0, 0)];
     }
 
     // Try lightgrid first if available
-    if (CL.state.worldmodel.lightgrid !== null) {
+    if (worldmodel.lightgrid !== null) {
       const gridResult = R.LightPointFromGrid(p);
       if (gridResult !== null) {
         // Get a proper light origin from surface trace for directional shading.
         // The lightgrid provides correct color but has no surface information,
         // so we trace downward to find the surface below the entity.
-        const surfaceTrace = R.RecursiveLightPoint(CL.state.worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
+        const surfaceTrace = R.RecursiveLightPoint(worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
         if (surfaceTrace !== null) {
           gridResult[1] = surfaceTrace[1];
         }
@@ -442,7 +570,7 @@ class R {
       }
     }
 
-    const r = R.RecursiveLightPoint(CL.state.worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
+    const r = R.RecursiveLightPoint(worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
 
     if (r === null) {
       return [new Vector(0, 0, 0), new Vector(0, 0, 0)];
@@ -456,7 +584,14 @@ class R {
    * @returns Point data or null when the octree has no lighting sample there.
    */
   static SampleLightgridPoint(gridPos: GridPosition): LightgridPointSample | null {
-    const grid = CL.state.worldmodel.lightgrid;
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+    const grid = worldmodel.lightgrid;
+
+    if (grid === null) {
+      return null;
+    }
+
     const LGNODE_LEAF = 1 << 31;
     const LGNODE_MISSING = 1 << 30;
 
@@ -538,9 +673,11 @@ class R {
    * @returns Interpolated RGB light and origin, or null when no grid sample is available.
    */
   static LightPointFromGrid(pos: Vector): LightPointResult | null {
-    const grid = CL.state.worldmodel.lightgrid;
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+    const grid = worldmodel.lightgrid;
 
-    if (!grid) {
+    if (grid === null) {
       return null;
     }
 
@@ -569,7 +706,7 @@ class R {
     for (let dz = 0; dz <= 1; dz++) {
       for (let dy = 0; dy <= 1; dy++) {
         for (let dx = 0; dx <= 1; dx++) {
-          const gridPos = [baseX + dx, baseY + dy, baseZ + dz];
+          const gridPos: GridPosition = [baseX + dx, baseY + dy, baseZ + dz];
           const sample = R.SampleLightgridPoint(gridPos);
 
           // Calculate trilinear weight
@@ -776,7 +913,7 @@ class R {
     }
 
     // Group entities by model type for batched rendering
-    const entitiesByType = new Map();
+    const entitiesByType = new Map<number, ClientEdict[]>();
 
     for (const entity of CL.state.clientEntities.getVisibleEntities()) {
       if (entity.model === null || entity.alpha === 0.0) {
@@ -784,10 +921,14 @@ class R {
       }
 
       const modelType = entity.model.type;
+      if (modelType === null) {
+        continue;
+      }
+
       if (!entitiesByType.has(modelType)) {
         entitiesByType.set(modelType, []);
       }
-      entitiesByType.get(modelType).push(entity);
+      entitiesByType.get(modelType)!.push(entity);
     }
 
     // Pass 0: Opaque models (brush, alias)
@@ -796,15 +937,19 @@ class R {
         continue; // Sprites are drawn in pass 1
       }
 
-      const renderer = modelRendererRegistry.getRenderer(modelType);
+      const renderer = modelRendererRegistry.getRenderer(modelType)!;
+      console.assert(renderer !== null, `renderer required for model type ${modelType}`);
 
       renderer.setupRenderState(0);
       for (const entity of entities) {
-        if (!renderer.rendersOpaquePass(entity.model, entity)) {
+        const model = entity.model!;
+        console.assert(model !== null, 'entity model required for opaque pass');
+
+        if (!renderer.rendersOpaquePass(model, entity)) {
           continue;
         }
 
-        renderer.render(entity.model, entity, 0);
+        renderer.render(model, entity, 0);
       }
       renderer.cleanupRenderState(0);
     }
@@ -813,12 +958,15 @@ class R {
     // Pass 1: Transparent sprites with blending
     const spriteEntities = entitiesByType.get(Mod.type.sprite);
     if (spriteEntities) {
-      const renderer = modelRendererRegistry.getRenderer(Mod.type.sprite);
+      const renderer = modelRendererRegistry.getRenderer(Mod.type.sprite)!;
+      console.assert(renderer !== null, 'sprite renderer required');
 
       gl.enable(gl.BLEND);
       renderer.setupRenderState(1);
       for (const entity of spriteEntities) {
-        renderer.render(entity.model, entity, 1);
+        const model = entity.model!;
+        console.assert(model !== null, 'entity model required for sprite pass');
+        renderer.render(model, entity, 1);
       }
       renderer.cleanupRenderState(1);
       GL.StreamFlush();
@@ -838,8 +986,13 @@ class R {
    * back to the simple sequential turbulent pass.
    */
   static _renderFogAndTurbulentsSorted(worldEntity: ClientEdict): void {
-    const worldmodel = worldEntity.model as BrushModel;
-    const brushRenderer = modelRendererRegistry.getRenderer(Mod.type.brush) as BrushModelRenderer;
+    if (!(worldEntity.model instanceof BrushModel)) {
+      return;
+    }
+
+    const worldmodel = worldEntity.model;
+    const brushRenderer = modelRendererRegistry.getRenderer(Mod.type.brush)! as BrushModelRenderer;
+    console.assert(brushRenderer !== null, 'brush renderer required');
     const hasFog = PostProcess.active
       && worldmodel.fogVolumes && worldmodel.fogVolumes.length > 0;
     const hasTurbulents = R.drawturbulents.value;
@@ -920,18 +1073,21 @@ class R {
    * This ensures transparent surfaces blend correctly regardless of type.
    */
   static _renderTransparentsSorted(worldEntity: ClientEdict): void {
-    const worldmodel = worldEntity.model as BrushModel;
+    if (!(worldEntity.model instanceof BrushModel)) {
+      return;
+    }
+
+    const worldmodel = worldEntity.model;
 
     const vieworg = R.refdef.vieworg;
     const items: TransparentSortItem[] = [];
 
     // Collect world transparent leaves with distances
-    const brushRenderer = modelRendererRegistry.getRenderer(Mod.type.brush) as BrushModelRenderer;
-    if (worldEntity && worldEntity.model) {
-      const worldLeaves = brushRenderer.getWorldTransparentLeaves(worldmodel, vieworg);
-      for (let i = 0; i < worldLeaves.length; i++) {
-        items.push({ dist: worldLeaves[i].dist, kind: 0, data: worldLeaves[i].leaf });
-      }
+    const brushRenderer = modelRendererRegistry.getRenderer(Mod.type.brush)! as BrushModelRenderer;
+    console.assert(brushRenderer !== null, 'brush renderer required');
+    const worldLeaves = brushRenderer.getWorldTransparentLeaves(worldmodel, vieworg);
+    for (let i = 0; i < worldLeaves.length; i++) {
+      items.push({ dist: worldLeaves[i].dist, kind: 0, data: worldLeaves[i].leaf });
     }
 
     // Collect transparent entities with distances
@@ -941,8 +1097,13 @@ class R {
           continue;
         }
 
-        const renderer = modelRendererRegistry.getRenderer(entity.model.type);
-        if (renderer === null || !renderer.rendersTransparentPass(entity.model, entity)) {
+        if (entity.model.type === null) {
+          continue;
+        }
+
+        const renderer = modelRendererRegistry.getRenderer(entity.model.type)!;
+        console.assert(renderer !== null, `renderer required for model type ${entity.model.type}`);
+        if (!renderer.rendersTransparentPass(entity.model, entity)) {
           continue;
         }
 
@@ -983,7 +1144,12 @@ class R {
           worldPassActive = false;
         }
         const entity = item.data as ClientEdict;
-        const renderer = modelRendererRegistry.getRenderer(entity.model.type);
+        if (entity.model === null || entity.model.type === null) {
+          continue;
+        }
+
+        const renderer = modelRendererRegistry.getRenderer(entity.model.type)!;
+        console.assert(renderer !== null, `renderer required for model type ${entity.model.type}`);
         renderer.render(entity.model, entity, 2);
         GL.StreamFlush();
       }
@@ -1009,17 +1175,24 @@ class R {
     }
 
     if (!CL.gameCapabilities.includes(gameCapabilities.CAP_VIEWMODEL_MANAGED)) {
+      const viewent = CL.state.viewent!;
+      console.assert(viewent !== null, 'view entity required');
+
       if ((CL.state.items & Def.it.invisibility) !== 0) { // Legacy
         return;
       }
       if (CL.state.stats[Def.stat.health] <= 0) { // Legacy
         return;
       }
-      if (!CL.state.viewent.model) {
+      if (!viewent.model) {
         return;
       }
     } else if (CL.state.gameAPI) {
       const viewmodel = CL.state.gameAPI.viewmodel;
+
+      if (viewmodel === null) {
+        return;
+      }
 
       if (!viewmodel.visible) {
         return; // game says to not draw the view model
@@ -1035,21 +1208,25 @@ class R {
     let ymax = 4.0 * Math.tan(SCR.fov.value * 0.82 * Math.PI / 360.0);
     R.perspective[0] = 4.0 / (ymax * R.refdef.vrect.width / R.refdef.vrect.height);
     R.perspective[5] = 4.0 / ymax;
-    let program = GL.UseProgram('alias');
-    gl.uniformMatrix4fv(program.uPerspective, false, R.perspective);
+    let program = GL.UseProgram('alias')!;
+    console.assert(program !== null, 'alias program required');
+    gl.uniformMatrix4fv(program.uPerspective!, false, R.perspective);
 
-    if (CL.state.viewent.model !== null) {
-      const aliasRenderer = modelRendererRegistry.getRenderer(Mod.type.alias);
+    const viewent = CL.state.viewent;
+    if (viewent !== null && viewent.model !== null) {
+      const aliasRenderer = modelRendererRegistry.getRenderer(Mod.type.alias)!;
+      console.assert(aliasRenderer !== null, 'alias renderer required');
       aliasRenderer.setupRenderState(0);
-      aliasRenderer.render(CL.state.viewent.model, CL.state.viewent, 0);
+      aliasRenderer.render(viewent.model, viewent, 0);
       aliasRenderer.cleanupRenderState(0);
     }
 
     ymax = 4.0 * Math.tan(R.refdef.fov_y * Math.PI / 360.0);
     R.perspective[0] = 4.0 / (ymax * R.refdef.vrect.width / R.refdef.vrect.height);
     R.perspective[5] = 4.0 / ymax;
-    program = GL.UseProgram('alias');
-    gl.uniformMatrix4fv(program.uPerspective, false, R.perspective);
+    program = GL.UseProgram('alias')!;
+    console.assert(program !== null, 'alias program required');
+    gl.uniformMatrix4fv(program.uPerspective!, false, R.perspective);
 
     gl.depthRange(0.0, 1.0);
   };
@@ -1243,13 +1420,13 @@ class R {
         gl.uniformMatrix4fv(program.uLightSpaceMatrix2, false, ShadowMap.lightSpaceMatrices[2]);
       }
       if (program.uShadowEnabled !== undefined) {
-        gl.uniform1f(program.uShadowEnabled, ShadowMap.enabled.value ? 1.0 : 0.0);
+        gl.uniform1f(program.uShadowEnabled, ShadowMap.enabled!.value ? 1.0 : 0.0);
       }
       if (program.uShadowCount !== undefined) {
-        gl.uniform1i(program.uShadowCount, ShadowMap.enabled.value ? ShadowMap.localLightCount : 0);
+        gl.uniform1i(program.uShadowCount, ShadowMap.enabled!.value ? ShadowMap.localLightCount : 0);
       }
       if (program.uShadowDarkness !== undefined) {
-        gl.uniform1f(program.uShadowDarkness, ShadowMap.darkness.value);
+        gl.uniform1f(program.uShadowDarkness, ShadowMap.darkness!.value);
       }
       if (program.uShadowMapSize !== undefined) {
         gl.uniform1f(program.uShadowMapSize, ShadowMap.size);
@@ -1291,9 +1468,11 @@ class R {
 
   static PreRenderScene() {
     R.AnimateLight();
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
     const {forward, right, up} = R.refdef.viewangles.angleVectors();
     [R.vpn, R.vright, R.vup] = [forward, right, up];
-    R.viewleaf = CL.state.worldmodel.getLeafForPoint(R.refdef.vieworg);
+    R.viewleaf = worldmodel.getLeafForPoint(R.refdef.vieworg);
     V.SetContentsColor(R.viewleaf.contents);
     V.CalcBlend();
     R.dowarp = (R.waterwarp.value !== 0) && (R.viewleaf.contents <= content.CONTENT_WATER);
@@ -1311,11 +1490,11 @@ class R {
 
     // Activate depth-texture post-process when fog volumes exist.
     // Pipeline effects (warp, etc.) are resolved separately via PostProcess.resolve.
-    R.usePostProcess = CL.state.worldmodel.fogVolumes && CL.state.worldmodel.fogVolumes.length > 0;
+    R.usePostProcess = worldmodel.fogVolumes.length > 0;
 
     // Choose the shadow texture for this frame (real or dummy)
     R.shadow_textures = ShadowMap.getActiveTextures();
-    R.shadow_texture = R.shadow_textures[0];
+    R.shadow_texture = R.shadow_textures[0] ?? null;
     R.point_shadow_texture = ShadowMap.getActivePointTexture();
   };
 
@@ -1323,7 +1502,8 @@ class R {
     // Render world and entities using the renderer registry
     const worldEntity = CL.state.clientEntities.getEntity(0);
     if (worldEntity && worldEntity.model) {
-      const brushRenderer = modelRendererRegistry.getRenderer(Mod.type.brush);
+      const brushRenderer = modelRendererRegistry.getRenderer(Mod.type.brush)!;
+      console.assert(brushRenderer !== null, 'brush renderer required');
       // Pass 0: World opaque surfaces
       brushRenderer.render(worldEntity.model, worldEntity, 0);
     }
@@ -1355,15 +1535,17 @@ class R {
 
   static RenderScene() {
     R.SetFrustum();
+    console.assert(ShadowMap.enabled !== null, 'shadow toggle required');
+    console.assert(ShadowMap.casterRadius !== null, 'shadow caster radius required');
 
     // Shadow depth pass — local entity shadow centered on the nearest visible
     // shadow caster. Static world shadowing remains authored by baked lightmaps.
-    if (ShadowMap.enabled.value) {
+    if (ShadowMap.enabled!.value) {
       ShadowMap.selectLocalLights(R.refdef.vieworg);
       ShadowMap.updateLightSpaceMatrices();
       R.shadow_textures = ShadowMap.getActiveTextures();
-      R.shadow_texture = R.shadow_textures[0];
-      const localCasterRadius = ShadowMap.casterRadius.value;
+      R.shadow_texture = R.shadow_textures[0] ?? null;
+      const localCasterRadius = ShadowMap.casterRadius!.value;
       const localCasterRadiusSq = localCasterRadius * localCasterRadius;
 
       for (let i = 0; i < ShadowMap.localLightCount; i++) {
@@ -1401,7 +1583,7 @@ class R {
   static _speeds: string[] = [];
 
   static RenderView() {
-    let time1;
+    let time1 = 0;
     if (R.speeds.value !== 0) {
       gl.finish();
       time1 = Sys.FloatMilliTime();
@@ -1778,9 +1960,10 @@ class R {
   };
 
   static NewMapFog() {
-    console.assert(CL.state.worldmodel, 'worldmodel must be loaded before InitFog');
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel must be loaded before InitFog');
 
-    const fogInfo = CL.state.worldmodel.worldspawnInfo.fog;
+    const fogInfo = worldmodel.worldspawnInfo.fog;
 
     if (!fogInfo) {
       R.fog_mode.set(-1);
@@ -1802,12 +1985,15 @@ class R {
   static NewMap() {
     R.BuildLightmaps();
 
-    for (let i = 0; i < R.dlightmaps_rgba.length; i++) {
-      R.dlightmaps_rgba[i] = 0;
+    const dlightmapsRgba = R.dlightmaps_rgba!;
+    console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
+
+    for (let i = 0; i < dlightmapsRgba.length; i++) {
+      dlightmapsRgba[i] = 0;
     }
 
     GL.Bind(0, R.dlightmap_rgba_texture);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, R.dlightmaps_rgba);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, dlightmapsRgba);
 
     R.NewMapFog();
     R.MakeSky();
@@ -1830,7 +2016,7 @@ class R {
     R.lightmaps_rgb = null;
     R.dlightmaps_rgba = null;
 
-    R.allocated = null;
+    R.allocated = [];
 
     R.shadow_textures = [];
     R.shadow_texture = null;
@@ -1918,11 +2104,11 @@ class R {
         color: 0x6f,
         ramp: 0.0,
         type: R.ptype.explode,
-        org: [
+        org: new Vector(
           ent.origin[0] + avertexnormals[i * 3 + 0] * 64.0 + cp * cy * 16.0,
           ent.origin[1] + avertexnormals[i * 3 + 1] * 64.0 + cp * sy * 16.0,
           ent.origin[2] + avertexnormals[i * 3 + 2] * 64.0 + sp * -16.0,
-        ],
+        ),
         vel: new Vector(),
       };
     }
@@ -1931,7 +2117,7 @@ class R {
   static ClearParticles() {
     R.particles = [];
     for (let i = 0; i < R.numparticles; i++) {
-      R.particles[i] = {die: -1.0};
+      R.particles[i] = R._createDeadParticle();
     }
   };
 
@@ -1960,6 +2146,7 @@ class R {
       R.particles[allocated[i]] = {
         die: CL.state.time + 0.3,
         color: colorStart + (colorMod++ % colorLength),
+        ramp: 0.0,
         type: R.ptype.blob,
         org: new Vector(
           org[0] + Math.random() * 32.0 - 16.0,
@@ -1998,6 +2185,7 @@ class R {
       R.particles[allocated[i]] = {
         die: CL.state.time + 0.6 * Math.random(),
         color: (color & 0xf8) + Math.floor(Math.random() * 8.0),
+        ramp: 0.0,
         type: R.ptype.slowgrav,
         org: new Vector(
           org[0] + Math.random() * 16.0 - 8.0,
@@ -2189,7 +2377,7 @@ class R {
 
     const size = 4.0; // Decal size
 
-    const verts = [
+    const verts: [Vector, Vector, Vector, Vector] = [
       origin.copy().add(right.copy().multiply(-size)).add(up.copy().multiply(size)),
       origin.copy().add(right.copy().multiply(size)).add(up.copy().multiply(size)),
       origin.copy().add(right.copy().multiply(size)).add(up.copy().multiply(-size)),
@@ -2203,9 +2391,11 @@ class R {
     }
 
     // Calculate lighting
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
     const lightStart = origin.copy().add(normal.copy().multiply(4.0));
     const lightEnd = origin.copy().subtract(normal.copy().multiply(4.0));
-    const lightResult = R.RecursiveLightPoint(CL.state.worldmodel.nodes[0], lightStart, lightEnd);
+    const lightResult = R.RecursiveLightPoint(worldmodel.nodes[0], lightStart, lightEnd);
 
     let color = new Vector(255, 255, 255); // Default to white
     if (lightResult) {
@@ -2237,11 +2427,12 @@ class R {
 
     GL.StreamFlush();
 
-    const program = GL.UseProgram('decal');
+    const program = GL.UseProgram('decal')!;
+    console.assert(program !== null, 'decal program required');
     gl.depthMask(false);
     gl.enable(gl.BLEND);
 
-    gl.uniform1f(program.uAlpha, 1.0);
+    gl.uniform1f(program.uAlpha!, 1.0);
 
     let currentTexture = null;
 
@@ -2250,7 +2441,7 @@ class R {
 
       if (decal.texture !== currentTexture) {
         GL.StreamFlush();
-        decal.texture.bind(program.tTexture);
+        decal.texture.bind(program.tTexture!);
         currentTexture = decal.texture;
       }
 
@@ -2285,7 +2476,8 @@ class R {
     gl.enable(gl.BLEND);
 
     const frametime = Host.frametime;
-    const grav = frametime * SV.gravity.value * 0.05;
+    console.assert(SV.gravity !== null, 'server gravity cvar required');
+    const grav = frametime * SV.gravity!.value * 0.05;
     const dvel = frametime * 4.0;
     let scale;
 
@@ -2393,8 +2585,14 @@ class R {
   static deluxemap: Uint8Array | null = null; // allocated on demand
 
   static AddDynamicLights(surf: Face): void {
-    const smax = (surf.extents[0] >> surf.lmshift) + 1;
-    const tmax = (surf.extents[1] >> surf.lmshift) + 1;
+    const lmshift = surf.lmshift!;
+    console.assert(lmshift !== null, 'face lightmap shift required');
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+    const dlightmapsRgba = R.dlightmaps_rgba!;
+    console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
+    const smax = (surf.extents[0] >> lmshift) + 1;
+    const tmax = (surf.extents[1] >> lmshift) + 1;
     const size = smax * tmax;
 
     const blocklights: number[] = [];
@@ -2420,19 +2618,19 @@ class R {
       }
       minlight = rad - minlight;
       const impact = lightImpact.impact;
-      const tex = CL.state.worldmodel.texinfo[surf.texinfo];
+      const tex = worldmodel.texinfo[surf.texinfo];
       const local = [
-        impact.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0],
-        impact.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1],
+        impact.dot(R._textureAxisToVector(tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0],
+        impact.dot(R._textureAxisToVector(tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1],
       ];
       for (let t = 0; t < tmax; t++) {
-        let td = local[1] - (t << surf.lmshift);
+        let td = local[1] - (t << lmshift);
         if (td < 0.0) {
           td = -td;
         }
         td = Math.floor(td);
         for (let s = 0; s < smax; s++) {
-          let sd = local[0] - (s << surf.lmshift);
+          let sd = local[0] - (s << lmshift);
           if (sd < 0) {
             sd = -sd;
           }
@@ -2466,31 +2664,41 @@ class R {
         // console.log(blrgb);
         i++;
         for (let i = 0; i < 3; i++) {
-          R.dlightmaps_rgba[dldest + i] = blrgb[i];
+          dlightmapsRgba[dldest + i] = blrgb[i];
         }
       }
     }
   };
 
   static RemoveDynamicLights(surf: Face): void {
-    const smax = (surf.extents[0] >> surf.lmshift) + 1;
-    const tmax = (surf.extents[1] >> surf.lmshift) + 1;
+    const lmshift = surf.lmshift!;
+    console.assert(lmshift !== null, 'face lightmap shift required');
+    const dlightmapsRgba = R.dlightmaps_rgba!;
+    console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
+    const smax = (surf.extents[0] >> lmshift) + 1;
+    const tmax = (surf.extents[1] >> lmshift) + 1;
     for (let t = 0; t < tmax; t++) {
       R.lightmap_modified[surf.light_t + t] = 1;
       const dest = ((surf.light_t + t) * LIGHTMAP_BLOCK_SIZE) + surf.light_s;
       for (let s = 0; s < smax; s++) {
         const dldest = (dest + s) * 4;
         for (let i = 0; i < 3; i++) {
-          R.dlightmaps_rgba[dldest + i] = 0;
+          dlightmapsRgba[dldest + i] = 0;
         }
-        R.dlightmaps_rgba[dldest + 3] = 255; // fully opaque
+        dlightmapsRgba[dldest + 3] = 255; // fully opaque
       }
     }
   };
 
   static BuildLightMap(currentmodel: BrushModel, surf: Face): void {
-    const smax = (surf.extents[0] >> surf.lmshift) + 1;
-    const tmax = (surf.extents[1] >> surf.lmshift) + 1;
+    const lmshift = surf.lmshift!;
+    console.assert(lmshift !== null, 'face lightmap shift required');
+    const lightmapsRgb = R.lightmaps_rgb!;
+    console.assert(lightmapsRgb !== null, 'lightmap buffer required');
+    const lightdata = currentmodel.lightdata!;
+    console.assert(lightdata !== null, 'brush lightdata required');
+    const smax = (surf.extents[0] >> lmshift) + 1;
+    const tmax = (surf.extents[1] >> lmshift) + 1;
 
     for (let k = 0; k < 3; k++) {
       const offset = LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_HEIGHT * k;
@@ -2501,7 +2709,7 @@ class R {
         let dest = (surf.light_t * LIGHTMAP_BLOCK_HEIGHT) + (surf.light_s << 2) + maps;
         for (let i = 0; i < tmax; i++) {
           for (let j = 0; j < smax; j++) {
-            R.lightmaps_rgb[dest + (j << 2) + offset] = currentmodel.lightdata[lightmap + j];
+            lightmapsRgb[dest + (j << 2) + offset] = lightdata[lightmap + j];
           }
           lightmap += smax;
           dest += LIGHTMAP_BLOCK_HEIGHT;
@@ -2512,7 +2720,7 @@ class R {
         let dest = (surf.light_t * LIGHTMAP_BLOCK_HEIGHT) + (surf.light_s << 2) + maps;
         for (let i = 0; i < tmax; i++) {
           for (let j = 0; j < smax; j++) {
-            R.lightmaps_rgb[dest + (j << 2) + offset] = 0;
+            lightmapsRgb[dest + (j << 2) + offset] = 0;
           }
           dest += LIGHTMAP_BLOCK_HEIGHT;
         }
@@ -2521,8 +2729,14 @@ class R {
   };
 
   static BuildLightMapEx(currentmodel: BrushModel, surf: Face): void {
-    const smax = (surf.extents[0] >> surf.lmshift) + 1;
-    const tmax = (surf.extents[1] >> surf.lmshift) + 1;
+    const lmshift = surf.lmshift!;
+    console.assert(lmshift !== null, 'face lightmap shift required');
+    const lightmapsRgb = R.lightmaps_rgb!;
+    console.assert(lightmapsRgb !== null, 'lightmap buffer required');
+    const lightdataRgb = currentmodel.lightdata_rgb!;
+    console.assert(lightdataRgb !== null, 'brush rgb lightdata required');
+    const smax = (surf.extents[0] >> lmshift) + 1;
+    const tmax = (surf.extents[1] >> lmshift) + 1;
 
     if (currentmodel.deluxemap && !R.deluxemap) {
       R.deluxemap = new Uint8Array(new ArrayBuffer(LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_HEIGHT * 3));
@@ -2537,10 +2751,10 @@ class R {
         let dest = (surf.light_t * LIGHTMAP_BLOCK_HEIGHT) + (surf.light_s << 2) + maps;
         for (let i = 0; i < tmax; i++) {
           for (let j = 0; j < smax; j++) {
-            R.lightmaps_rgb[dest + (j << 2) + offset] = currentmodel.lightdata_rgb[(lightmap + j * 3) + k];
+            lightmapsRgb[dest + (j << 2) + offset] = lightdataRgb[(lightmap + j * 3) + k];
 
             if (currentmodel.deluxemap) {
-              R.deluxemap[dest + (j << 2) + offset] = currentmodel.deluxemap[(lightmap + j * 3) + k];
+              R.deluxemap![dest + (j << 2) + offset] = currentmodel.deluxemap[(lightmap + j * 3) + k];
             }
           }
           lightmap += smax * 3;
@@ -2552,10 +2766,10 @@ class R {
         let dest = (surf.light_t * LIGHTMAP_BLOCK_HEIGHT) + (surf.light_s << 2) + maps;
         for (let i = 0; i < tmax; i++) {
           for (let j = 0; j < smax; j++) {
-            R.lightmaps_rgb[dest + (j << 2) + offset] = 0;
+            lightmapsRgb[dest + (j << 2) + offset] = 0;
 
             if (currentmodel.deluxemap) {
-              R.deluxemap[dest + (j << 2) + offset] = 0;
+              R.deluxemap![dest + (j << 2) + offset] = 0;
             }
           }
           dest += LIGHTMAP_BLOCK_HEIGHT;
@@ -2578,29 +2792,36 @@ class R {
       }
       return;
     }
-    R.RecursiveWorldNode(node.children[0]);
-    R.RecursiveWorldNode(node.children[1]);
+    const frontChild = node.children[0] as Node;
+    const backChild = node.children[1] as Node;
+    console.assert(frontChild instanceof Node, `R.RecursiveWorldNode expected linked BSP child 0 on node ${node.num}`);
+    console.assert(backChild instanceof Node, `R.RecursiveWorldNode expected linked BSP child 1 on node ${node.num}`);
+    R.RecursiveWorldNode(frontChild);
+    R.RecursiveWorldNode(backChild);
   };
 
   static MarkLeafs() {
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+
     if ((R.oldviewleaf === R.viewleaf) && (R.novis.value === 0)) {
       return;
     }
     R.visframecount++;
     R.oldviewleaf = R.viewleaf;
-    const vis = (R.novis.value !== 0 || R.viewleaf === null || R.viewleaf.num === 0) ? revealedVisibility : (
+    const vis = (R.novis.value === 1 || R.viewleaf === null || R.viewleaf.num === 0) ? revealedVisibility : (
       R.novis.value === 2 ?
-        CL.state.worldmodel.getPhsByLeaf(R.viewleaf) :
-        CL.state.worldmodel.getPvsByLeaf(R.viewleaf)
+        worldmodel.getPhsByLeaf(R.viewleaf) :
+        worldmodel.getPvsByLeaf(R.viewleaf)
     );
-    for (let i = 1; i < CL.state.worldmodel.leafs.length; i++) {
+    for (let i = 1; i < worldmodel.leafs.length; i++) {
       if (!vis.isRevealed(i)) {
         continue;
       }
-      if (CL.areaportals.value > 0 && R.viewleaf && !CL.state.worldmodel.areaPortals.leafsConnected(R.viewleaf, CL.state.worldmodel.leafs[i])) {
+      if (CL.areaportals.value > 0 && R.viewleaf && !worldmodel.areaPortals.leafsConnected(R.viewleaf, worldmodel.leafs[i])) {
         continue;
       }
-      for (let node = CL.state.worldmodel.leafs[i]; node; node = node.parent) {
+      for (let node: Node | null = worldmodel.leafs[i]; node !== null; node = node.parent) {
         if (node.markvisframe === R.visframecount) {
           break;
         }
@@ -2612,14 +2833,14 @@ class R {
         break;
       }
       const p = R.refdef.vieworg.copy();
-      let leaf;
+      let leaf: Node;
       if (R.viewleaf.contents <= content.CONTENT_WATER) {
-        leaf = CL.state.worldmodel.getLeafForPoint(p.add(new Vector(0, 0, 16.0)));
+        leaf = worldmodel.getLeafForPoint(p.add(new Vector(0, 0, 16.0)));
         if (leaf.contents <= content.CONTENT_WATER) {
           break;
         }
       } else {
-        leaf = CL.state.worldmodel.getLeafForPoint(p.add(new Vector(0, 0, -16.0)));
+        leaf = worldmodel.getLeafForPoint(p.add(new Vector(0, 0, -16.0)));
         if (leaf.contents > content.CONTENT_WATER) {
           break;
         }
@@ -2627,15 +2848,15 @@ class R {
       if (leaf === R.viewleaf) {
         break;
       }
-      const vis = CL.state.worldmodel.getPvsByLeaf(leaf);
-      for (let i = 1; i < CL.state.worldmodel.leafs.length; i++) {
+      const vis = worldmodel.getPvsByLeaf(leaf);
+      for (let i = 1; i < worldmodel.leafs.length; i++) {
         if (!vis.isRevealed(i)) {
           continue;
         }
-        if (CL.areaportals.value > 0 && !CL.state.worldmodel.areaPortals.leafsConnected(R.viewleaf, CL.state.worldmodel.leafs[i])) {
+        if (CL.areaportals.value > 0 && !worldmodel.areaPortals.leafsConnected(R.viewleaf, worldmodel.leafs[i])) {
           continue;
         }
-        for (let node = CL.state.worldmodel.leafs[i]; node; node = node.parent) {
+        for (let node: Node | null = worldmodel.leafs[i]; node !== null; node = node.parent) {
           if (node.markvisframe === R.visframecount) {
             break;
           }
@@ -2645,13 +2866,15 @@ class R {
     // eslint-disable-next-line no-constant-condition
     } while (false);
     R.drawsky = false;
-    R.RecursiveWorldNode(CL.state.worldmodel.nodes[0]);
+    R.RecursiveWorldNode(worldmodel.nodes[0]);
   };
 
   static AllocBlock(surf: Face): void {
-    const w = (surf.extents[0] >> surf.lmshift) + 1;
-    const h = (surf.extents[1] >> surf.lmshift) + 1;
-    let x; let y; let i; let j; let best = LIGHTMAP_BLOCK_SIZE; let best2;
+    const lmshift = surf.lmshift!;
+    console.assert(lmshift !== null, 'face lightmap shift required');
+    const w = (surf.extents[0] >> lmshift) + 1;
+    const h = (surf.extents[1] >> lmshift) + 1;
+    let x = 0; let y = 0; let i; let j; let best = LIGHTMAP_BLOCK_SIZE; let best2;
     for (i = 0; i < (LIGHTMAP_BLOCK_SIZE - w); i++) {
       best2 = 0;
       for (j = 0; j < w; j++) {
@@ -2684,14 +2907,16 @@ class R {
     R.lightmaps_rgb = new Uint8Array(new ArrayBuffer(LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_HEIGHT * 3));
     R.dlightmaps_rgba = new Uint8Array(new ArrayBuffer(LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_SIZE * 4));
 
-    const brushRenderer = modelRendererRegistry.getRenderer(Mod.type.brush);
-    const meshRenderer = modelRendererRegistry.getRenderer(Mod.type.mesh);
+    const brushRenderer = modelRendererRegistry.getRenderer(Mod.type.brush)!;
+    const meshRenderer = modelRendererRegistry.getRenderer(Mod.type.mesh)!;
+    console.assert(brushRenderer !== null, 'brush renderer required');
+    console.assert(meshRenderer !== null, 'mesh renderer required');
 
     for (let i = 1; i < CL.state.model_precache.length; i++) {
       const currentmodel = CL.state.model_precache[i];
 
       // Handle brush models (BSP maps)
-      if (currentmodel.type === Mod.type.brush) {
+      if (currentmodel instanceof BrushModel) {
         if (currentmodel.name[0] !== '*') { // skip submodels
           for (let j = 0; j < currentmodel.faces.length; j++) {
             const surf = currentmodel.faces[j];
@@ -2749,7 +2974,9 @@ class R {
       R.skyrenderer.shutdown();
     }
 
-    R.skyrenderer = CL.state.worldmodel.newSkyRenderer();
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+    R.skyrenderer = worldmodel.newSkyRenderer();
 
     if (!R.skyrenderer) {
       return;

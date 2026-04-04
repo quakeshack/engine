@@ -66,6 +66,8 @@ interface MutableAliasGroupedFrame {
 
 type MutableAliasFrame = MutableAliasSingleFrame | MutableAliasGroupedFrame;
 type MutableAliasSkin = MutableAliasSingleSkin | MutableAliasGroupedSkin;
+type MutableAliasRenderFrame = MutableAliasSingleFrame | MutableAliasGroupedFrameEntry;
+type MutableAliasRenderSkin = MutableAliasSingleSkin | MutableAliasGroupedSkinEntry;
 
 /**
  * Builds the diffuse and luminance skin layers for a legacy alias model skin.
@@ -411,6 +413,10 @@ export class AliasMDLLoader extends ModelLoader {
     const fillcolor = skin[0];
     const filledcolor = W.filledColor;
 
+    if (filledcolor === null) {
+      return;
+    }
+
     if (fillcolor === filledcolor) {
       return;
     }
@@ -441,7 +447,7 @@ export class AliasMDLLoader extends ModelLoader {
   /**
    * Translate player skin for color customization.
    */
-  #translatePlayerSkin(loadmodel: AliasModel, data: Uint8Array, skin: MutableAliasSkin): void {
+  #translatePlayerSkin(loadmodel: AliasModel, data: Uint8Array, skin: MutableAliasRenderSkin): void {
     if (registry.isDedicatedServer) {
       return;
     }
@@ -692,7 +698,11 @@ export class AliasMDLLoader extends ModelLoader {
         continue;
       }
 
-      const frame = group;
+      if (group.group) {
+        continue;
+      }
+
+      const frame: MutableAliasRenderFrame = group;
       frame.cmdofs = cmds.length * 4;
 
       for (let triangleIndex = 0; triangleIndex < loadmodel._num_tris; triangleIndex++) {

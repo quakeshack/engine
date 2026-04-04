@@ -18,7 +18,7 @@ import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import type { ClientEdict } from '../client/ClientEntities.ts';
 import type { BaseEntity } from '../server/Edict.ts';
 import type { Plane as BaseModelPlane } from './model/BaseModel.ts';
-import type { Brush, Node } from './model/BSP.ts';
+import { Node, type Brush } from './model/BSP.ts';
 interface BrushTracePlaneLike {
   readonly normal: Vector;
   readonly type: number;
@@ -980,27 +980,35 @@ export class BrushTrace {
 
     // Entirely on front side
     if (d >= offset) {
+      const frontChild = node.children[0] as Node;
+      console.assert(frontChild instanceof Node, 'brush trace expected linked BSP child node');
       return BrushTrace._testPositionRecursive(
-        worldModel, node.children[0], position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
+        worldModel, frontChild, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
       );
     }
 
     // Entirely on back side
     if (d < -offset) {
+      const backChild = node.children[1] as Node;
+      console.assert(backChild instanceof Node, 'brush trace expected linked BSP child node');
       return BrushTrace._testPositionRecursive(
-        worldModel, node.children[1], position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
+        worldModel, backChild, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
       );
     }
 
     // Box straddles the plane: test both sides
+    const frontChild = node.children[0] as Node;
+    const backChild = node.children[1] as Node;
+    console.assert(frontChild instanceof Node, 'brush trace expected linked BSP child node');
+    console.assert(backChild instanceof Node, 'brush trace expected linked BSP child node');
     if (BrushTrace._testPositionRecursive(
-      worldModel, node.children[0], position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
+      worldModel, frontChild, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
     )) {
       return true;
     }
 
     return BrushTrace._testPositionRecursive(
-      worldModel, node.children[1], position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
+      worldModel, backChild, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
     );
   }
 
@@ -1263,13 +1271,17 @@ export class BrushTrace {
 
     // Both on front side
     if (t1 >= offset && t2 >= offset) {
-      BrushTrace._recursiveHullCheck(ctx, node.children[0], p1f, p2f, p1, p2, depth + 1);
+      const frontChild = node.children[0] as Node;
+      console.assert(frontChild instanceof Node, 'brush trace expected linked BSP child node');
+      BrushTrace._recursiveHullCheck(ctx, frontChild, p1f, p2f, p1, p2, depth + 1);
       return;
     }
 
     // Both on back side
     if (t1 < -offset && t2 < -offset) {
-      BrushTrace._recursiveHullCheck(ctx, node.children[1], p1f, p2f, p1, p2, depth + 1);
+      const backChild = node.children[1] as Node;
+      console.assert(backChild instanceof Node, 'brush trace expected linked BSP child node');
+      BrushTrace._recursiveHullCheck(ctx, backChild, p1f, p2f, p1, p2, depth + 1);
       return;
     }
 
@@ -1307,7 +1319,9 @@ export class BrushTrace {
     mid[1] = p1[1] + frac * (p2[1] - p1[1]);
     mid[2] = p1[2] + frac * (p2[2] - p1[2]);
 
-    BrushTrace._recursiveHullCheck(ctx, node.children[side], p1f, midf, p1, mid, depth + 1);
+    const nearChild = node.children[side as 0 | 1] as Node;
+    console.assert(nearChild instanceof Node, 'brush trace expected linked BSP child node');
+    BrushTrace._recursiveHullCheck(ctx, nearChild, p1f, midf, p1, mid, depth + 1);
 
     // Go past the node
     const midf2 = p1f + (p2f - p1f) * frac2;
@@ -1316,7 +1330,9 @@ export class BrushTrace {
     mid2[1] = p1[1] + frac2 * (p2[1] - p1[1]);
     mid2[2] = p1[2] + frac2 * (p2[2] - p1[2]);
 
-    BrushTrace._recursiveHullCheck(ctx, node.children[side ^ 1], midf2, p2f, mid2, p2, depth + 1);
+    const farChild = node.children[(side ^ 1) as 0 | 1] as Node;
+    console.assert(farChild instanceof Node, 'brush trace expected linked BSP child node');
+    BrushTrace._recursiveHullCheck(ctx, farChild, midf2, p2f, mid2, p2, depth + 1);
   }
 
   /**
@@ -3789,7 +3805,7 @@ export class Pmove { // pmove_t
       // For non-BSP entities, hull-based collision is always used (BoxHull)
     }
 
-    if ('edictId' in entity) {
+    if ('edictId' in entity && typeof entity.edictId === 'number') {
       pe.edictId = entity.edictId;
     }
 

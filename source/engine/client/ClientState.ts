@@ -5,6 +5,7 @@ import * as Def from '../common/Def.ts';
 import Vector from '../../shared/Vector.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import type { BrushModel } from '../common/Mod.ts';
+import type { SerializedParticle } from './R.ts';
 import type { ClientGameInterface, ClientSerializableType, SFX } from '../../shared/GameInterfaces.ts';
 import type ClientDemos from './ClientDemos.ts';
 import { EventBus, eventBus, getClientRegistry } from '../registry.ts';
@@ -32,7 +33,7 @@ type ClientMoveCommand = {
   msec: number;
 };
 
-type ClientLoadData = [string | null, string | null];
+type ClientLoadData = [string | null, SerializedParticle[] | null];
 
 let { CL } = getClientRegistry();
 

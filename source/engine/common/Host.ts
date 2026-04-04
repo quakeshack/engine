@@ -8,6 +8,9 @@
 
 /* eslint-disable jsdoc/require-returns */
 
+import { SerializableEntity, type SerializedData } from '../../shared/GameInterfaces.ts';
+import type { SerializedParticle } from '../client/R.ts';
+import type { AliasModel } from './model/AliasModel.ts';
 import type { ServerEdict } from '../server/Edict.ts';
 
 import Cvar from './Cvar.ts';
@@ -42,8 +45,7 @@ interface ScheduledFutureEntry {
   readonly callback: DeferredCallback;
 }
 type PrintFunction = (text: string) => void;
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-type SavegameEdictEntry = [classname: string, data: JsonValue] | null;
+type SavegameEdictEntry = [classname: string, data: SerializedData] | null;
 type SpawnParameters = ServerClient['spawn_parms'];
 type CrashLike =
   | Error
@@ -64,12 +66,19 @@ interface SavegameState {
   readonly mapname: string;
   readonly time: number;
   readonly lightstyles: string[];
-  readonly globals: JsonValue;
+  readonly globals: SerializedData;
   readonly cvars: Array<[name: string, value: string]>;
-  readonly clientdata: JsonValue | null;
+  readonly clientdata: string | null;
   readonly edicts: SavegameEdictEntry[];
   readonly num_edicts: number;
-  readonly particles: JsonValue;
+  readonly particles: SerializedParticle[];
+}
+
+interface LegacyLevelStats {
+  total_secrets: number;
+  total_monsters: number;
+  found_secrets: number;
+  killed_monsters: number;
 }
 
 /** Extracts a display name from a CrashLike value. */
@@ -103,7 +112,7 @@ class HostConsoleCommand extends ConsoleCommand {
    * Returns true when the command must abort because cheats are disabled.
    */
   cheat(): boolean {
-    if (SV.cheats.value) {
+    if (SV.cheats !== null && SV.cheats.value) {
       return false;
     }
 
@@ -396,7 +405,13 @@ export default class Host {
   }
 
   static ServerFrame(): void { // TODO: move to SV.ServerFrame
-    SV.server.gameAPI.frametime = Host.frametime;
+    const gameAPI = SV.server.gameAPI;
+    console.assert(gameAPI !== null, 'server gameAPI must exist during ServerFrame');
+    if (gameAPI === null) {
+      return;
+    }
+
+    gameAPI.frametime = Host.frametime;
     SV.server.datagram.clear();
     SV.server.expedited_datagram.clear();
     SV.CheckForNewClients();
@@ -521,7 +536,7 @@ export default class Host {
     }
 
     // Set up prediction for other players.
-    CL.SetUpPlayerPrediction(false);
+    CL.SetUpPlayerPrediction();
 
     if (Host.speeds !== null && Host.speeds.value !== 0) {
       console.profile('CL.PredictMove');
@@ -535,7 +550,7 @@ export default class Host {
     }
 
     // Set up prediction for other players.
-    CL.SetUpPlayerPrediction(true);
+    CL.SetUpPlayerPrediction();
 
     // Build a refresh entity list.
     CL.state.clientEntities.emit();
@@ -764,9 +779,16 @@ export default class Host {
         return;
       }
 
-      client.edict.entity.flags ^= Defs.flags.FL_GODMODE;
+      const entity = client.edict.entity;
+      console.assert(entity !== null, 'god command requires a live client entity');
 
-      if ((client.edict.entity.flags & Defs.flags.FL_GODMODE) === 0) {
+      if (entity === null) {
+        return;
+      }
+
+      entity.flags ^= Defs.flags.FL_GODMODE;
+
+      if ((entity.flags & Defs.flags.FL_GODMODE) === 0) {
         Host.ClientPrint(client, 'godmode OFF\n');
         return;
       }
@@ -787,9 +809,16 @@ export default class Host {
         return;
       }
 
-      client.edict.entity.flags ^= Defs.flags.FL_NOTARGET;
+      const entity = client.edict.entity;
+      console.assert(entity !== null, 'notarget command requires a live client entity');
 
-      if ((client.edict.entity.flags & Defs.flags.FL_NOTARGET) === 0) {
+      if (entity === null) {
+        return;
+      }
+
+      entity.flags ^= Defs.flags.FL_NOTARGET;
+
+      if ((entity.flags & Defs.flags.FL_NOTARGET) === 0) {
         Host.ClientPrint(client, 'notarget OFF\n');
         return;
       }
@@ -810,15 +839,22 @@ export default class Host {
         return;
       }
 
-      if (client.edict.entity.movetype !== Defs.moveType.MOVETYPE_NOCLIP) {
+      const entity = client.edict.entity;
+      console.assert(entity !== null, 'noclip command requires a live client entity');
+
+      if (entity === null) {
+        return;
+      }
+
+      if (entity.movetype !== Defs.moveType.MOVETYPE_NOCLIP) {
         Host.noclip_anglehack = true;
-        client.edict.entity.movetype = Defs.moveType.MOVETYPE_NOCLIP;
+        entity.movetype = Defs.moveType.MOVETYPE_NOCLIP;
         Host.ClientPrint(client, 'noclip ON\n');
         return;
       }
 
       Host.noclip_anglehack = false;
-      client.edict.entity.movetype = Defs.moveType.MOVETYPE_WALK;
+      entity.movetype = Defs.moveType.MOVETYPE_WALK;
       Host.ClientPrint(client, 'noclip OFF\n');
     }
   };
@@ -835,13 +871,20 @@ export default class Host {
         return;
       }
 
-      if (client.edict.entity.movetype !== Defs.moveType.MOVETYPE_FLY) {
-        client.edict.entity.movetype = Defs.moveType.MOVETYPE_FLY;
+      const entity = client.edict.entity;
+      console.assert(entity !== null, 'fly command requires a live client entity');
+
+      if (entity === null) {
+        return;
+      }
+
+      if (entity.movetype !== Defs.moveType.MOVETYPE_FLY) {
+        entity.movetype = Defs.moveType.MOVETYPE_FLY;
         Host.ClientPrint(client, 'flymode ON\n');
         return;
       }
 
-      client.edict.entity.movetype = Defs.moveType.MOVETYPE_WALK;
+      entity.movetype = Defs.moveType.MOVETYPE_WALK;
       Host.ClientPrint(client, 'flymode OFF\n');
     }
   };
@@ -1057,29 +1100,50 @@ export default class Host {
     }
 
     const client = SV.svs.clients[0];
+    const clientEntity = client.edict.entity;
+    console.assert(clientEntity !== null, 'savegame requires a connected player entity');
 
-    if (client.state >= ServerClient.STATE.CONNECTED && client.edict.entity.health <= 0.0) {
+    if (clientEntity === null) {
+      return;
+    }
+
+    if (client.state >= ServerClient.STATE.CONNECTED && clientEntity.health <= 0.0) {
       Con.PrintWarning('Can\'t savegame with a dead player\n');
       return;
     }
 
-    const clientdata = CL.state.gameAPI ? CL.state.gameAPI.saveGame() as JsonValue : null;
+    const clientdata = CL.state.gameAPI ? CL.state.gameAPI.saveGame() : null;
+    const gameAPI = SV.server.gameAPI;
+    const gameversion = SV.server.gameVersion;
+    const mapname = SV.server.mapname;
+
+    console.assert(gameAPI !== null, 'savegame requires a loaded game API');
+    console.assert(gameversion !== null, 'savegame requires a loaded game version');
+    console.assert(mapname !== null, 'savegame requires an active map name');
+
+    if (gameAPI === null || gameversion === null || mapname === null) {
+      return;
+    }
 
     // IDEA: we could actually compress this by using a list of common fields.
     const edicts: SavegameEdictEntry[] = [];
 
     for (const edict of SV.server.edicts) {
-      edicts.push(edict.isFree() ? null : [edict.entity.classname, edict.entity.serialize() as JsonValue]);
+      const entity = edict.entity;
+
+      edicts.push(edict.isFree() || entity === null || !(entity instanceof SerializableEntity)
+        ? null
+        : [entity.classname, entity.serialize()]);
     }
 
-    const globals = SV.server.gameAPI.serialize() as JsonValue;
+    const globals = gameAPI.serialize();
 
     const gamestate: SavegameState = {
       version: Def.gamestateVersion,
-      gameversion: SV.server.gameVersion,
+      gameversion,
       comment: CL.state.levelname,
       spawn_parms: client.spawn_parms,
-      mapname: SV.server.mapname,
+      mapname,
       time: SV.server.time,
       lightstyles: SV.server.lightstyles,
       globals,
@@ -1087,7 +1151,7 @@ export default class Host {
       clientdata,
       edicts,
       num_edicts: SV.server.num_edicts,
-      particles: R.SerializeParticles() as JsonValue,
+      particles: R.SerializeParticles(),
     };
 
     const filename = COM.DefaultExtension(savename, '.json');
@@ -1168,7 +1232,14 @@ export default class Host {
     SV.server.loadgame = true;
 
     SV.server.lightstyles = gamestate.lightstyles;
-    SV.server.gameAPI.deserialize(gamestate.globals);
+    const gameAPI = SV.server.gameAPI;
+    console.assert(gameAPI !== null, 'loadgame requires a live server game API');
+
+    if (gameAPI === null) {
+      return;
+    }
+
+    gameAPI.deserialize(gamestate.globals);
 
     SV.server.num_edicts = gamestate.num_edicts;
     console.assert(SV.server.num_edicts <= SV.server.edicts.length, 'resizing edicts not supported yet'); // TODO: alloc more edicts
@@ -1185,7 +1256,7 @@ export default class Host {
       }
 
       const [classname] = serializedEdict;
-      console.assert(SV.server.gameAPI.prepareEntity(edict, classname), 'no entity for classname');
+      console.assert(gameAPI.prepareEntity(edict, classname), 'no entity for classname');
     }
 
     // Second run: we can start deserializing now that entity classes exist.
@@ -1198,7 +1269,14 @@ export default class Host {
       }
 
       const [, entityData] = serializedEdict;
-      edict.entity.deserialize(entityData);
+      const entity = edict.entity;
+      console.assert(entity instanceof SerializableEntity, 'loaded edict entity must support serialization');
+
+      if (!(entity instanceof SerializableEntity)) {
+        continue;
+      }
+
+      entity.deserialize(entityData);
       edict.linkEdict();
     }
 
@@ -1375,7 +1453,15 @@ export default class Host {
     }
 
     this.client.colors = playercolor;
-    this.client.edict.entity.team = bottom + 1;
+
+    const entity = this.client.edict.entity;
+    console.assert(entity !== null, 'color command requires a live client entity');
+
+    if (entity === null) {
+      return;
+    }
+
+    entity.team = bottom + 1;
 
     const message = SV.server.reliable_datagram;
     message.writeByte(Protocol.svc.updatecolors);
@@ -1390,13 +1476,27 @@ export default class Host {
 
     const client = this.client;
 
-    if (client.edict.entity.health <= 0.0) {
+    const entity = client.edict.entity;
+    console.assert(entity !== null, 'kill command requires a live client entity');
+
+    if (entity === null) {
+      return;
+    }
+
+    if (entity.health <= 0.0) {
       Host.ClientPrint(client, 'Can\'t suicide -- already dead!\n');
       return;
     }
 
-    SV.server.gameAPI.time = SV.server.time;
-    SV.server.gameAPI.ClientKill(client.edict);
+    const gameAPI = SV.server.gameAPI;
+    console.assert(gameAPI !== null, 'kill command requires a live server game API');
+
+    if (gameAPI === null) {
+      return;
+    }
+
+    gameAPI.time = SV.server.time;
+    gameAPI.ClientKill(client.edict);
   }
 
   static Pause_f(this: ConsoleCommand): void {
@@ -1464,7 +1564,14 @@ export default class Host {
     if (SV.server.loadgame) {
       SV.server.paused = false;
     } else {
-      SV.server.gameAPI.prepareEntity(entity, 'player', {
+      const gameAPI = SV.server.gameAPI;
+      console.assert(gameAPI !== null, 'spawn requires a live server game API');
+
+      if (gameAPI === null) {
+        return;
+      }
+
+      gameAPI.prepareEntity(entity, 'player', {
         netname: client.name,
         colormap: entity.num, // the num, not the entity
         team: (client.colors & 15) + 1,
@@ -1473,19 +1580,24 @@ export default class Host {
       // Load legacy spawn parameters.
       if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_SPAWNPARMS_LEGACY) && Array.isArray(client.spawn_parms)) {
         for (let index = 0; index <= 15; index++) {
-          SV.server.gameAPI[`parm${index + 1}`] = client.spawn_parms[index];
+          Reflect.set(gameAPI, `parm${index + 1}`, client.spawn_parms[index]);
         }
       }
 
       // Load dynamic spawn parameters.
       if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_SPAWNPARMS_DYNAMIC)) {
-        entity.entity.restoreSpawnParameters(client.spawn_parms);
+        const playerEntity = entity.entity;
+        console.assert(playerEntity !== null, 'spawn requires a prepared player entity');
+
+        if (playerEntity !== null && typeof playerEntity.restoreSpawnParameters === 'function') {
+          playerEntity.restoreSpawnParameters(typeof client.spawn_parms === 'string' ? client.spawn_parms : null);
+        }
       }
 
-      SV.server.gameAPI.time = SV.server.time;
-      SV.server.gameAPI.ClientConnect(entity);
-      SV.server.gameAPI.time = SV.server.time;
-      SV.server.gameAPI.PutClientInServer(entity);
+      gameAPI.time = SV.server.time;
+      gameAPI.ClientConnect(entity);
+      gameAPI.time = SV.server.time;
+      gameAPI.PutClientInServer(entity);
     }
 
     for (let index = 0; index < SV.svs.maxclients; index++) {
@@ -1508,22 +1620,45 @@ export default class Host {
     }
 
     if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_UPDATESTAT)) {
+      const gameAPI = SV.server.gameAPI;
+      const legacyStats = gameAPI as (typeof gameAPI & Partial<LegacyLevelStats>) | null;
+      const hasLegacyLevelStats = legacyStats !== null
+        && typeof legacyStats.total_secrets === 'number'
+        && typeof legacyStats.total_monsters === 'number'
+        && typeof legacyStats.found_secrets === 'number'
+        && typeof legacyStats.killed_monsters === 'number';
+
+      console.assert(hasLegacyLevelStats, 'gameAPI must expose legacy level stats when CAP_CLIENTDATA_UPDATESTAT is enabled');
+
+      if (!hasLegacyLevelStats || legacyStats === null) {
+        return;
+      }
+
+      const strictLegacyStats = legacyStats as LegacyLevelStats;
+
       message.writeByte(Protocol.svc.updatestat);
       message.writeByte(Def.stat.totalsecrets);
-      message.writeLong(SV.server.gameAPI.total_secrets);
+      message.writeLong(strictLegacyStats.total_secrets);
       message.writeByte(Protocol.svc.updatestat);
       message.writeByte(Def.stat.totalmonsters);
-      message.writeLong(SV.server.gameAPI.total_monsters);
+      message.writeLong(strictLegacyStats.total_monsters);
       message.writeByte(Protocol.svc.updatestat);
       message.writeByte(Def.stat.secrets);
-      message.writeLong(SV.server.gameAPI.found_secrets);
+      message.writeLong(strictLegacyStats.found_secrets);
       message.writeByte(Protocol.svc.updatestat);
       message.writeByte(Def.stat.monsters);
-      message.writeLong(SV.server.gameAPI.killed_monsters);
+      message.writeLong(strictLegacyStats.killed_monsters);
+    }
+
+    const playerEntity = entity.entity;
+    console.assert(playerEntity !== null, 'spawned client must have a player entity');
+
+    if (playerEntity === null) {
+      return;
     }
 
     message.writeByte(Protocol.svc.setangle);
-    message.writeAngleVector(entity.entity.angles);
+    message.writeAngleVector(playerEntity.angles);
     SV.messages.writeClientdataToMessage(client, message);
     message.writeByte(Protocol.svc.signonnum);
     message.writeByte(3);
@@ -1538,7 +1673,14 @@ export default class Host {
     }
 
     // Send all portal states before the client is officially spawned and gets updates incrementally.
-    const areaPortals = SV.server.worldmodel.areaPortals;
+    const worldmodel = SV.server.worldmodel;
+    console.assert(worldmodel !== null, 'server worldmodel required');
+
+    if (worldmodel === null) {
+      return;
+    }
+
+    const areaPortals = worldmodel.areaPortals;
 
     for (let portalIndex = 0; portalIndex < areaPortals.numPortals; portalIndex++) {
       this.client.message.writeByte(Protocol.svc.setportalstate);
@@ -1548,9 +1690,16 @@ export default class Host {
 
     this.client.state = ServerClient.STATE.SPAWNED;
 
-    if (SV.server.gameAPI.ClientBegin) {
-      SV.server.gameAPI.time = SV.server.time;
-      SV.server.gameAPI.ClientBegin(this.client.edict);
+    const gameAPI = SV.server.gameAPI;
+    console.assert(gameAPI !== null, 'begin requires a live server game API');
+
+    if (gameAPI === null) {
+      return;
+    }
+
+    if (gameAPI.ClientBegin) {
+      gameAPI.time = SV.server.time;
+      gameAPI.ClientBegin(this.client.edict);
     }
   }
 
@@ -1666,8 +1815,15 @@ export default class Host {
 
       // Wait for the next server frame.
       SV.ScheduleGameCommand(() => {
-        const { forward } = player.entity.v_angle.angleVectors();
-        const start = player.entity.origin;
+        const playerEntity = player.entity;
+        console.assert(playerEntity !== null, 'give command requires a live player entity');
+
+        if (playerEntity === null) {
+          return;
+        }
+
+        const { forward } = playerEntity.v_angle.angleVectors();
+        const start = playerEntity.origin;
         const end = forward.copy().multiply(64.0).add(start);
         const mins = new Vector(-16.0, -16.0, -24.0);
         const maxs = new Vector(16.0, 16.0, 32.0);
@@ -1691,7 +1847,7 @@ export default class Host {
       for (let index = 0; index < SV.server.num_edicts; index++) {
         const edict = SV.server.edicts[index];
 
-        if (!edict.isFree() && edict.entity.classname === 'viewthing') {
+        if (!edict.isFree() && edict.entity !== null && edict.entity.classname === 'viewthing') {
           return edict;
         }
       }
@@ -1720,8 +1876,15 @@ export default class Host {
       return;
     }
 
-    entity.entity.frame = 0;
-    CL.state.model_precache[entity.entity.modelindex] = loadedModel;
+    const viewEntity = entity.entity;
+    console.assert(viewEntity !== null, 'viewmodel command requires a live viewthing entity');
+
+    if (viewEntity === null) {
+      return;
+    }
+
+    viewEntity.frame = 0;
+    CL.state.model_precache[viewEntity.modelindex] = loadedModel;
   }
 
   static Viewframe_f(frame?: string): void {
@@ -1736,19 +1899,28 @@ export default class Host {
       return;
     }
 
-    const model = CL.state.model_precache[entity.entity.modelindex >> 0];
+    const viewEntity = entity.entity;
+    console.assert(viewEntity !== null, 'viewframe requires a live viewthing entity');
 
-    if (!model) {
+    if (viewEntity === null) {
       return;
     }
 
-    let nextFrame = Q.atoi(frame);
+    const model = CL.state.model_precache[viewEntity.modelindex >> 0];
 
-    if (nextFrame >= model.frames.length) {
-      nextFrame = model.frames.length - 1;
+    if (!model || model.type !== Mod.type.alias) {
+      return;
     }
 
-    entity.entity.frame = nextFrame;
+    const aliasModel = model as AliasModel;
+
+    let nextFrame = Q.atoi(frame);
+
+    if (nextFrame >= aliasModel.frames.length) {
+      nextFrame = aliasModel.frames.length - 1;
+    }
+
+    viewEntity.frame = nextFrame;
   }
 
   static Viewnext_f(): void {
@@ -1758,20 +1930,36 @@ export default class Host {
       return;
     }
 
-    const model = CL.state.model_precache[entity.entity.modelindex >> 0];
+    const viewEntity = entity.entity;
+    console.assert(viewEntity !== null, 'viewnext requires a live viewthing entity');
 
-    if (!model) {
+    if (viewEntity === null) {
       return;
     }
 
-    let nextFrame = (entity.entity.frame >> 0) + 1;
+    const model = CL.state.model_precache[viewEntity.modelindex >> 0];
 
-    if (nextFrame >= model.frames.length) {
-      nextFrame = model.frames.length - 1;
+    if (!model || model.type !== Mod.type.alias) {
+      return;
     }
 
-    entity.entity.frame = nextFrame;
-    Con.Print(`frame ${nextFrame}: ${model.frames[nextFrame].name}\n`);
+    const aliasModel = model as AliasModel;
+
+    let nextFrame = (viewEntity.frame >> 0) + 1;
+
+    if (nextFrame >= aliasModel.frames.length) {
+      nextFrame = aliasModel.frames.length - 1;
+    }
+
+    viewEntity.frame = nextFrame;
+    const frameData = aliasModel.frames[nextFrame];
+    let frameName: string;
+    if (frameData.group) {
+      frameName = frameData.frames[0].name;
+    } else {
+      frameName = (frameData as Exclude<AliasModel['frames'][number], { group: true }>).name;
+    }
+    Con.Print(`frame ${nextFrame}: ${frameName}\n`);
   }
 
   static Viewprev_f(): void {
@@ -1781,20 +1969,36 @@ export default class Host {
       return;
     }
 
-    const model = CL.state.model_precache[entity.entity.modelindex >> 0];
+    const viewEntity = entity.entity;
+    console.assert(viewEntity !== null, 'viewprev requires a live viewthing entity');
 
-    if (!model) {
+    if (viewEntity === null) {
       return;
     }
 
-    let nextFrame = (entity.entity.frame >> 0) - 1;
+    const model = CL.state.model_precache[viewEntity.modelindex >> 0];
+
+    if (!model || model.type !== Mod.type.alias) {
+      return;
+    }
+
+    const aliasModel = model as AliasModel;
+
+    let nextFrame = (viewEntity.frame >> 0) - 1;
 
     if (nextFrame < 0) {
       nextFrame = 0;
     }
 
-    entity.entity.frame = nextFrame;
-    Con.Print(`frame ${nextFrame}: ${model.frames[nextFrame].name}\n`);
+    viewEntity.frame = nextFrame;
+    const frameData = aliasModel.frames[nextFrame];
+    let frameName: string;
+    if (frameData.group) {
+      frameName = frameData.frames[0].name;
+    } else {
+      frameName = (frameData as Exclude<AliasModel['frames'][number], { group: true }>).name;
+    }
+    Con.Print(`frame ${nextFrame}: ${frameName}\n`);
   }
 
   static InitCommands(): void {

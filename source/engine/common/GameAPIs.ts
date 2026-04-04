@@ -1,4 +1,3 @@
-import type BaseEntity from '../../game/id1/entity/BaseEntity.mjs';
 import type { EdictValueType, SerializableType } from '../../shared/GameInterfaces.ts';
 import type { ClientDlight, ClientEdict } from '../client/ClientEntities.ts';
 import type { GLTexture } from '../client/GL.ts';
@@ -15,7 +14,7 @@ import { SFX as SFXValue } from '../client/Sound.ts';
 import VID from '../client/VID.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { EventBus, eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
-import { ED, ServerEdict as ServerEdictValue } from '../server/Edict.ts';
+import { ED, type BaseEntity, ServerEdict as ServerEdictValue } from '../server/Edict.ts';
 import Cmd from './Cmd.ts';
 import Cvar from './Cvar.ts';
 import { HostError } from './Errors.ts';
@@ -604,9 +603,10 @@ export class ServerEngineAPI extends CommonEngineAPI {
         continue;
       }
 
-      const entity = ent.entity! as BaseEntity & Record<string, EdictValueType>;
+      const entity = ent.entity!;
+      const entityFields = entity as BaseEntity & Record<string, EdictValueType | undefined>;
 
-      if (entity[field] === value) {
+      if (entityFields[field] === value) {
         return ent; // FIXME: turn it into yield
       }
     }
@@ -627,9 +627,10 @@ export class ServerEngineAPI extends CommonEngineAPI {
         continue;
       }
 
-      const entity = ent.entity! as BaseEntity & Record<string, EdictValueType>;
+      const entity = ent.entity!;
+      const entityFields = entity as BaseEntity & Record<string, EdictValueType | undefined>;
 
-      if (entity[field] === value) {
+      if (entityFields[field] === value) {
         yield ent;
       }
     }
@@ -700,12 +701,15 @@ export class ServerEngineAPI extends CommonEngineAPI {
     const edict = ED.Alloc();
 
     try {
-      if (!SV.server.gameAPI.prepareEntity(edict, classname, initialData)) {
+      const gameAPI = SV.server.gameAPI;
+      console.assert(gameAPI !== null, 'server gameAPI must exist before spawning entities');
+
+      if (gameAPI === null || !gameAPI.prepareEntity(edict, classname, initialData)) {
         edict.freeEdict();
         return null;
       }
 
-      if (!SV.server.gameAPI.spawnPreparedEntity(edict)) {
+      if (!gameAPI.spawnPreparedEntity(edict)) {
         edict.freeEdict();
         return null;
       }
@@ -796,7 +800,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
    * @returns The waypoints from start to end, or `null` when no path could be found.
    */
   static Navigate(start: Vector, end: Vector): Vector[] | null {
-    return SV.server.navigation.findPath(start, end);
+    return SV.server.navigation?.findPath(start, end) ?? null;
   }
 
   /**
@@ -804,15 +808,19 @@ export class ServerEngineAPI extends CommonEngineAPI {
    * @returns The waypoints from start to end, or `null` when no path could be found.
    */
   static NavigateAsync(start: Vector, end: Vector): Promise<Vector[] | null> {
-    return SV.server.navigation.findPathAsync(start, end);
+    return SV.server.navigation?.findPathAsync(start, end) ?? Promise.resolve(null);
   }
 
   static GetPHS(origin: Vector): Visibility {
-    return SV.server.worldmodel.getPhsByPoint(origin);
+    const worldmodel = SV.server.worldmodel;
+    console.assert(worldmodel !== null, 'server worldmodel required for PHS queries');
+    return worldmodel!.getPhsByPoint(origin);
   }
 
   static GetPVS(origin: Vector): Visibility {
-    return SV.server.worldmodel.getPvsByPoint(origin);
+    const worldmodel = SV.server.worldmodel;
+    console.assert(worldmodel !== null, 'server worldmodel required for PVS queries');
+    return worldmodel!.getPvsByPoint(origin);
   }
 
   /**
@@ -820,7 +828,9 @@ export class ServerEngineAPI extends CommonEngineAPI {
    * @returns The area index, where `0` means outside or invalid.
    */
   static GetAreaForPoint(origin: Vector): number {
-    return SV.server.worldmodel.getLeafForPoint(origin).area;
+    const worldmodel = SV.server.worldmodel;
+    console.assert(worldmodel !== null, 'server worldmodel required for area queries');
+    return worldmodel!.getLeafForPoint(origin).area;
   }
 
   /**

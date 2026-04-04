@@ -47,7 +47,7 @@ type MenuStateStore = {
   value: MenuStateId;
 };
 
-type MenuPic = GLTexture & { translate?: GLTexture | null };
+export type MenuPic = GLTexture & { translate?: GLTexture | null };
 type SaveGameData = { comment?: string; mapname?: string };
 type BindName = [string, string];
 type QuitMessage = [string, string, string, string];

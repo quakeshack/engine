@@ -129,6 +129,30 @@ export type SerializedObject = [number, SerializedData];
 export type SerializedValue = SerializedSkipped | SerializedInfinity | SerializedPrimitiveValue | SerializedFunction | SerializedVector | SerializedArray | SerializedEdictReference | SerializedObject;
 export type SerializedData = Record<string, SerializedValue>;
 
+interface SerializableEntityCandidate {
+  readonly classname?: unknown;
+  readonly serialize?: unknown;
+  readonly deserialize?: unknown;
+}
+
+export abstract class SerializableEntity {
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (value === null || typeof value !== 'object') {
+      return false;
+    }
+
+    const candidate = value as SerializableEntityCandidate;
+
+    return typeof candidate.classname === 'string'
+      && typeof candidate.serialize === 'function'
+      && typeof candidate.deserialize === 'function';
+  }
+
+  abstract classname: string;
+  abstract serialize(): SerializedData;
+  abstract deserialize(data: SerializedData): void;
+}
+
 export declare abstract class ServerGameInterface {
   SetNewParms?(): void;
   SetSpawnParms?(clientEdict: ServerEdict): void;

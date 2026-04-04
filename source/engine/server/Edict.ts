@@ -1,4 +1,4 @@
-import type { EdictData } from '../../shared/GameInterfaces.ts';
+import { SerializableEntity, type EdictData } from '../../shared/GameInterfaces.ts';
 import type { WorldspawnEntity as WorldspawnEntityValue } from '../../game/id1/entity/Worldspawn.mjs';
 import type { OctreeNode } from '../../shared/Octree.ts';
 import type { Visibility } from '../common/model/BSP.ts';
@@ -14,7 +14,7 @@ import { eventBus, registry } from '../registry.ts';
 import Q from '../../shared/Q.ts';
 import { ConsoleCommand } from '../common/Cmd.ts';
 
-export interface BaseEntity {
+export interface BaseEntity extends SerializableEntity {
   classname: string;
   alpha: number;
   angles: Vector;
@@ -45,6 +45,8 @@ export interface BaseEntity {
   velocity: Vector;
   view_ofs: Vector;
   v_angle: Vector;
+  readonly edictId: number | undefined;
+  restoreSpawnParameters?(data: string | null): void;
 }
 
 export type WorldspawnEntity = WorldspawnEntityValue;

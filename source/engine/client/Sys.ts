@@ -137,7 +137,7 @@ function handleContextMenu(event: MouseEvent): void {
 /** Clears pressed-key state when the window regains focus. */
 function handleFocus(): void {
   for (let index = 0; index < 256; index++) {
-    Key.Event(index);
+    Key.Event(index, false);
     Key.down[index] = false;
   }
 }
@@ -160,7 +160,7 @@ function handleKeyUp(event: KeyboardEvent): void {
     return;
   }
 
-  Key.Event(key);
+  Key.Event(key, false);
   event.preventDefault();
 }
 
@@ -199,7 +199,7 @@ function handleMouseUp(event: MouseEvent): void {
     return;
   }
 
-  Key.Event(key);
+  Key.Event(key, false);
   event.preventDefault();
 }
 
@@ -207,7 +207,7 @@ function handleMouseUp(event: MouseEvent): void {
 function handleLegacyMouseWheel(event: LegacyWheelEvent): void {
   const key = event.wheelDeltaY > 0 ? K.MWHEELUP : K.MWHEELDOWN;
   Key.Event(key, true);
-  Key.Event(key);
+  Key.Event(key, false);
   event.preventDefault();
 }
 
@@ -215,7 +215,7 @@ function handleLegacyMouseWheel(event: LegacyWheelEvent): void {
 function handleWheel(event: WheelEvent): void {
   const key = event.deltaY < 0 ? K.MWHEELUP : K.MWHEELDOWN;
   Key.Event(key, true);
-  Key.Event(key);
+  Key.Event(key, false);
   event.preventDefault();
 }
 

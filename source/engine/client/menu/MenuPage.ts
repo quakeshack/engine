@@ -1,16 +1,13 @@
 import { K } from '../../../shared/Keys.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
+import type { MenuPic } from '../Menu.ts';
 import { MenuItem } from './MenuItem.ts';
-
-interface MenuPicture {
-  readonly width?: number;
-}
 
 interface MenuPageConfig {
   readonly items?: MenuItem[];
   readonly layout?: MenuLayout | null;
   readonly title?: string | null;
-  readonly titlePic?: MenuPicture | null;
+  readonly titlePic?: MenuPic | null;
   readonly onEnter?: () => void;
   readonly onExit?: () => void;
   readonly customDraw?: ((page: MenuPage) => void) | null;
@@ -26,7 +23,7 @@ interface VerticalLayoutConfig {
 }
 
 interface ImageBasedLayoutConfig {
-  readonly backgroundPic?: unknown;
+  readonly backgroundPic?: MenuPic | null;
   readonly backgroundX?: number;
   readonly backgroundY?: number;
   readonly cursorX?: number;
@@ -68,7 +65,7 @@ export class MenuPage {
   items: MenuItem[];
   layout: MenuLayout | null;
   title: string | null;
-  titlePic: MenuPicture | null;
+  titlePic: MenuPic | null;
   cursor: number;
   onEnter: () => void;
   onExit: () => void;
@@ -267,7 +264,7 @@ export class VerticalLayout implements MenuLayout {
  * Image-based layout - for menus that use a single background image.
  */
 export class ImageBasedLayout implements MenuLayout {
-  backgroundPic: unknown;
+  backgroundPic: MenuPic | null;
   backgroundX: number;
   backgroundY: number;
   cursorX: number;

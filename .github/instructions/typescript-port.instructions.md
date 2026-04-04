@@ -179,6 +179,60 @@ if (sometype instanceof SomeClass) {
 …
 ```
 
+### Hot-Path Narrowing and API Contracts
+
+When TypeScript complains in render loops, BSP recursion, movement code, input dispatch, or other hot paths, do **not** introduce tiny helper functions merely to placate the type checker.
+
+- **Do not create helper functions whose only purpose is syntactic narrowing** such as `isFoo(...)`, `requireBar(...)`, `resolveBaz(...)`, or `getNodeChild(...)` when the call site already knows the invariant and is in a hot path.
+- **Prefer local invariant checks** at the use site:
+  - `const worldmodel = CL.state.worldmodel!;`
+  - `console.assert(worldmodel !== null, 'worldmodel required');`
+  - then use the narrowed local directly.
+- **Use small local `as` casts only after an adjacent `console.assert(...)` or branch that already proves the invariant.** Keep the cast at the use site instead of hiding it in another function.
+- **Preserve existing runtime contracts.** Do not make required parameters optional just to quiet the compiler; fix every caller instead.
+- **Avoid `Reflect.get`, `Reflect.set`, and other dynamic property access in hot paths.** If a property is part of the runtime contract, teach the type system about it with an interface or class member and use direct property access.
+- **Avoid structural capability probes based on repeated reflective checks** like `typeof Reflect.get(entity, 'serialize') === 'function'` in gameplay code. Prefer a real runtime capability marker when possible.
+
+Example:
+
+```typescript
+// ❌ Avoid helper indirection for a known hot-path invariant.
+function getNodeChild(node: Node, childIndex: 0 | 1): Node {
+  const child = node.children[childIndex];
+  console.assert(child instanceof Node, 'linked child required');
+  return child as Node;
+}
+
+BrushTrace._recursiveHullCheck(ctx, getNodeChild(node, 0), p1f, p2f, p1, p2, depth + 1);
+
+// ✅ Narrow locally where the value is consumed.
+const frontChild = node.children[0] as Node;
+console.assert(frontChild instanceof Node, 'linked child required');
+BrushTrace._recursiveHullCheck(ctx, frontChild, p1f, p2f, p1, p2, depth + 1);
+```
+
+For runtime capabilities shared with still-JS game code, prefer a dedicated runtime marker over repeated structural probes. A good pattern is a small abstract class with `Symbol.hasInstance` so engine code can use `instanceof` while JS implementations remain compatible.
+
+```typescript
+abstract class SerializableEntity {
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (value === null || typeof value !== 'object') {
+      return false;
+    }
+
+    const candidate = value as {
+      readonly classname?: unknown;
+      readonly serialize?: unknown;
+      readonly deserialize?: unknown;
+    };
+
+    return typeof candidate.classname === 'string'
+      && typeof candidate.serialize === 'function'
+      && typeof candidate.deserialize === 'function';
+  }
+}
+```
+
 ### Template Literals
 
 Replace string concatenation with template literals for readability.
@@ -225,6 +279,9 @@ Use this checklist when polishing a ported `.ts` file:
 14. [ ] All original comments preserved, especially TODOs and complex logic explanations.
 15. [ ] File ends with an empty line.
 16. [ ] If there is some important logic that is not covered by tests yet, add tests for it.
+17. [ ] No helper functions were introduced solely for TypeScript narrowing in hot paths.
+18. [ ] No hot-path reflective property access was introduced where a typed field or runtime capability marker would do.
+19. [ ] Existing method signatures were preserved unless there was an intentional API change.
 
 ### Avoid inline import type annotations
 

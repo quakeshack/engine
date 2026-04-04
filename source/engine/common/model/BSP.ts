@@ -56,6 +56,11 @@ export interface FogVolumeInfo {
   readonly maxs: [number, number, number];
 }
 
+export interface BrushRange {
+  readonly firstBrush: number;
+  readonly numBrushes: number;
+}
+
 export interface WorldTurbulentChainInfo {
   /** Texture index used by the draw batch. */
   readonly texture: number;
@@ -632,6 +637,9 @@ export class BrushModel extends BaseModel {
   /** Number of brushes belonging to this model. */
   numBrushes = 0;
 
+  /** Per-submodel brush ranges parsed from BRUSHLIST BSPX data. */
+  _brushRanges: Map<number, BrushRange> | null = null;
+
   /** Opaque world VAO created by the brush renderer. */
   opaqueVAO: WebGLVertexArrayObject | null = null;
 
@@ -776,8 +784,8 @@ export class BrushModel extends BaseModel {
   /**
    * @returns Scoped runtime view.
    */
-  override createScopedView(): BrushModel {
-    const scopedView = super.createScopedView() as BrushModel;
+  override createScopedView(): this {
+    const scopedView = super.createScopedView() as this;
 
     scopedView.cmds = null;
     scopedView.chains = [];

@@ -34,7 +34,7 @@ eventBus.subscribe('registry.frozen', () => {
 type BitsWriter = 'writeByte' | 'writeShort' | 'writeLong';
 type ScheduledGameCommand = () => void;
 type ServerClientSpawnParameters = ServerClient['spawn_parms'];
-type ServerModel = BaseModel | null | Promise<BaseModel>;
+type ServerModel = BaseModel | null | Promise<BaseModel | null>;
 type DynamicSpawnClientEntity = ServerClient['entity'] & {
   restoreSpawnParameters(data: string | null): void;
 };
@@ -526,7 +526,7 @@ export default class SV {
 
     for (const model of SV.server.models) {
       if (model instanceof Promise) {
-        void model.then((loadedModel) => loadedModel.reset());
+        void model.then((loadedModel) => loadedModel?.reset());
         continue;
       }
 
@@ -734,12 +734,14 @@ export default class SV {
   }
 
   static async #loadGameProgs(): Promise<void> {
-    const gameAPI = PR.QuakeJS ? new PR.QuakeJS.ServerGameAPI(ServerEngineAPI) : await PR.LoadProgs();
+    const gameAPI = PR.QuakeJS
+      ? Reflect.construct(PR.QuakeJS.ServerGameAPI, [ServerEngineAPI]) as ServerRuntimeGameAPI
+      : await PR.LoadProgs();
 
     SV.server.gameAPI = gameAPI as ServerRuntimeGameAPI;
     SV.server.gameVersion = PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`;
     SV.server.gameName = PR.QuakeJS ? PR.QuakeJS.identification.name : COM.game;
-    SV.server.gameCapabilities = PR.QuakeJS ? PR.QuakeJS.identification.capabilities : PR.capabilities;
+    SV.server.gameCapabilities = PR.QuakeJS ? [...PR.QuakeJS.identification.capabilities] : [...PR.capabilities];
 
     Con.DPrint('Game progs loaded\n');
   }
@@ -1051,5 +1053,5 @@ class PlayerMoveCvars extends MoveVars {
 sharedCollisionModelSource.configureServer({
   getWorldEntity: () => SV.server.edicts[0] ?? null,
   getWorldModel: () => SV.server.worldmodel,
-  getModels: () => SV.server.models,
+  getModels: () => SV.server.models.map((model) => model instanceof Promise ? null : model),
 });

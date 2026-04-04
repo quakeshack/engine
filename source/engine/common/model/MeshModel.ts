@@ -94,8 +94,8 @@ export class MeshModel extends BaseModel {
     this.type = 3;
   }
 
-  override createScopedView(): MeshModel {
-    const scopedView = super.createScopedView() as MeshModel;
+  override createScopedView(): this {
+    const scopedView = super.createScopedView() as this;
 
     // Scoped views must not own shared GPU objects from the source model.
     scopedView.vbo = null;

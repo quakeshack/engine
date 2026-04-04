@@ -236,12 +236,29 @@ export class AliasModelRenderer extends ModelRenderer {
     } else if (R.interpolation.value && (e.effects & effect.EF_MUZZLEFLASH) === 0) {
       // Handle lerp-based interpolation
       const [previousFrame, nextFrame, f] = e.lerp.frame;
-      frameA = clmodel.frames[previousFrame] as AliasRenderFrame;
-      frameB = clmodel.frames[nextFrame] as AliasRenderFrame;
+      const previous = clmodel.frames[previousFrame];
+      const next = clmodel.frames[nextFrame];
+      console.assert(previous.group === false, 'alias lerp previous frame must be a single frame');
+      console.assert(next.group === false, 'alias lerp next frame must be a single frame');
+
+      if (previous.group) {
+        frameA = previous.frames[0];
+      } else {
+        frameA = previous as AliasSingleFrame;
+      }
+
+      if (next.group) {
+        frameB = next.frames[0];
+      } else {
+        frameB = next as AliasSingleFrame;
+      }
+
       targettime = f;
     } else {
-      frameA = frameGroup;
-      frameB = frameGroup;
+      console.assert(frameGroup.group === false, 'alias static frame must be a single frame');
+      const staticFrame = frameGroup as AliasSingleFrame;
+      frameA = staticFrame;
+      frameB = staticFrame;
     }
 
     return { frameA, frameB, targettime };
@@ -263,7 +280,7 @@ export class AliasModelRenderer extends ModelRenderer {
       num = 0;
     }
 
-    let skin = clmodel.skins[num];
+    const skin = clmodel.skins[num];
 
     // Handle skin groups (animated textures)
     if (skin.group) {
@@ -280,7 +297,7 @@ export class AliasModelRenderer extends ModelRenderer {
       return skin.skins[i];
     }
 
-    return skin;
+    return skin as AliasSingleSkin;
   }
 
   /**

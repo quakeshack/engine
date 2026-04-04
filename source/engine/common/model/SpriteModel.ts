@@ -2,7 +2,7 @@ import type { GLTexture } from '../../client/GL.ts';
 
 import { BaseModel } from './BaseModel.ts';
 
-interface SpriteFrameImage {
+export interface SpriteFrameImage {
   readonly interval?: number;
   readonly origin: [number, number];
   readonly width: number;
@@ -12,7 +12,7 @@ interface SpriteFrameImage {
   readonly texturenum: WebGLTexture | null;
 }
 
-interface SpriteSingleFrame {
+export interface SpriteSingleFrame {
   readonly group: false;
   readonly origin: [number, number];
   readonly width: number;

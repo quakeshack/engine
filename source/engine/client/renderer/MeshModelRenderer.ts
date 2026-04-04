@@ -156,10 +156,8 @@ export class MeshModelRenderer extends ModelRenderer {
     gl.drawElements(gl.TRIANGLES, clmodel.numTriangles * 3, indexType, 0);
     GL.UnbindVAO();
 
-    // Stats
-    R.c_alias_draws++;
-    R.c_alias_verts += clmodel.numVertices;
-    R.c_alias_tris += clmodel.numTriangles;
+    // Track non-brush geometry together with alias-model poly counts in r_speeds.
+    R.c_alias_polys += clmodel.numTriangles;
   }
 
   /**

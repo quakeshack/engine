@@ -99,7 +99,7 @@ export default class WorkerManager {
           break;
 
         default:
-          eventBus.publish(event, ...data);
+          eventBus.publish(event, ...(data as Array<Parameters<typeof eventBus.publish>[1]>));
           break;
       }
     });

@@ -108,7 +108,8 @@ export default class WorkerFramework {
       workerCom = comModule.default as typeof COM;
 
       this.port.on?.('message', ({ event, args }) => {
-        eventBus.publish(event, ...args);
+        const eventArgs = Array.isArray(args) ? args as Array<Parameters<typeof eventBus.publish>[1]> : [];
+        eventBus.publish(event, ...eventArgs);
       });
     } else {
       this.port = self as unknown as WorkerFrameworkPort;
@@ -116,7 +117,8 @@ export default class WorkerFramework {
 
       this.port.addEventListener?.('message', (event) => {
         const { event: eventName, args } = event.data;
-        eventBus.publish(eventName, ...args);
+        const eventArgs = Array.isArray(args) ? args as Array<Parameters<typeof eventBus.publish>[1]> : [];
+        eventBus.publish(eventName, ...eventArgs);
       });
     }
 

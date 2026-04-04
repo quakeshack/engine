@@ -7,7 +7,7 @@ import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { eventBus, getCommonRegistry, registry } from '../../../registry.ts';
 import { ModelLoader } from '../ModelLoader.ts';
-import { Brush, BrushModel, BrushSide, Node, type BSPXLumps, type Clipnode, type Hull } from '../BSP.ts';
+import { Brush, BrushModel, BrushSide, Node, type BSPXLumps, type BrushRange, type BrushTexInfo, type Clipnode, type Hull } from '../BSP.ts';
 import { Face, Plane } from '../BaseModel.ts';
 import { MaterialFlags, noTextureMaterial, PBRMaterial, QuakeMaterial } from '../../../client/renderer/Materials.ts';
 import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.ts';
@@ -20,8 +20,26 @@ eventBus.subscribe('registry.frozen', () => {
 });
 
 interface AllowedClipnodeHull extends Hull {
-  readonly firstclipnode: number;
   allowedClipNodes?: Uint8Array | null;
+}
+
+interface MaterialDefinition {
+  readonly diffuse?: string;
+  readonly luminance?: string;
+  readonly specular?: string;
+  readonly normal?: string;
+  readonly flags?: string[];
+}
+
+interface MaterialFile {
+  readonly version: number;
+  readonly materials: Record<string, MaterialDefinition>;
+}
+
+function getNodeChild(node: Node, childIndex: 0 | 1): Node {
+  const child = node.children[childIndex];
+  console.assert(child instanceof Node, 'BSP29Loader expected linked BSP child node');
+  return child as Node;
 }
 
 /**
@@ -342,7 +360,7 @@ export class BSP29Loader extends ModelLoader {
     }
 
     Con.DPrint(`BSP29Loader: found materials file for ${loadmodel.name}\n`);
-    const materialData = JSON.parse(matfile);
+    const materialData = JSON.parse(matfile) as MaterialFile;
     console.assert(materialData.version === 1);
 
     for (const [txName, textures] of Object.entries(materialData.materials)) {
@@ -369,9 +387,11 @@ export class BSP29Loader extends ModelLoader {
 
       if (textures.flags) {
         for (const flagName of textures.flags) {
-          const flagValue = materialFlags[flagName];
+          const flagValue = MaterialFlags[flagName as keyof typeof MaterialFlags];
           console.assert(typeof flagValue === 'number', `BSP29Loader: unknown material flag ${flagName} in ${loadmodel.name}`);
-          pbr.flags |= flagValue;
+          if (typeof flagValue === 'number') {
+            pbr.flags |= flagValue;
+          }
         }
       }
 
@@ -703,10 +723,10 @@ export class BSP29Loader extends ModelLoader {
 
       // Inner Node
       if (node.children[0]) {
-        classifyRecursive(node.children[0], nextStates);
+        classifyRecursive(getNodeChild(node, 0), nextStates);
       }
       if (node.children[1]) {
-        classifyRecursive(node.children[1], nextStates);
+        classifyRecursive(getNodeChild(node, 1), nextStates);
       }
     };
 
@@ -1176,11 +1196,11 @@ export class BSP29Loader extends ModelLoader {
 
       // Derive fog color from the texture's average color, modulated by ambient light
       const material = loadmodel.textures[turbulentTextureIndex];
-      const baseColor = material.averageColor || [128, 128, 128];
-      const volMins = [submodel.mins[0], submodel.mins[1], submodel.mins[2]];
-      const volMaxs = [submodel.maxs[0], submodel.maxs[1], submodel.maxs[2]];
+      const baseColor: [number, number, number] = material.averageColor || [128, 128, 128];
+      const volMins: [number, number, number] = [submodel.mins[0], submodel.mins[1], submodel.mins[2]];
+      const volMaxs: [number, number, number] = [submodel.maxs[0], submodel.maxs[1], submodel.maxs[2]];
       const lightFactor = this.#sampleAmbientLightForVolume(loadmodel, volMins, volMaxs);
-      const color = [
+      const color: [number, number, number] = [
         Math.round(baseColor[0] * lightFactor),
         Math.round(baseColor[1] * lightFactor),
         Math.round(baseColor[2] * lightFactor),
@@ -1228,7 +1248,7 @@ export class BSP29Loader extends ModelLoader {
       if (!liquidLeafsByType.has(c)) {
         liquidLeafsByType.set(c, []);
       }
-      liquidLeafsByType.get(c).push(i);
+      liquidLeafsByType.get(c)?.push(i);
     }
 
     if (liquidLeafsByType.size === 0) {
@@ -1237,7 +1257,10 @@ export class BSP29Loader extends ModelLoader {
 
     for (const [contentType, leafIndices] of liquidLeafsByType) {
       // Find dominant turbulent texture color across all leafs of this type
-      const color = this.#findClusterTurbulentColor(loadmodel, leafIndices) || [128, 128, 128];
+      const clusterColor = this.#findClusterTurbulentColor(loadmodel, leafIndices);
+      const color: [number, number, number] = clusterColor !== null
+        ? [clusterColor[0], clusterColor[1], clusterColor[2]]
+        : [128, 128, 128];
 
       const contentName = contentType === content.CONTENT_WATER ? 'water'
         : contentType === content.CONTENT_SLIME ? 'slime' : 'lava';
@@ -1248,10 +1271,13 @@ export class BSP29Loader extends ModelLoader {
       // Create one fog volume per leaf with exact BSP bounds, modulated by ambient light
       for (const leafIdx of leafIndices) {
         const leaf = loadmodel.leafs[leafIdx];
-        const volMins = [leaf.mins[0], leaf.mins[1], leaf.mins[2]];
-        const volMaxs = [leaf.maxs[0], leaf.maxs[1], leaf.maxs[2]];
+        if (leaf.mins === null || leaf.maxs === null) {
+          continue;
+        }
+        const volMins: [number, number, number] = [leaf.mins[0], leaf.mins[1], leaf.mins[2]];
+        const volMaxs: [number, number, number] = [leaf.maxs[0], leaf.maxs[1], leaf.maxs[2]];
         const lightFactor = this.#sampleAmbientLightForVolume(loadmodel, volMins, volMaxs);
-        const dimmedColor = [
+        const dimmedColor: [number, number, number] = [
           Math.round(color[0] * lightFactor),
           Math.round(color[1] * lightFactor),
           Math.round(color[2] * lightFactor),
@@ -1416,7 +1442,7 @@ export class BSP29Loader extends ModelLoader {
    * Skips fully transparent pixels so alpha-masked areas don't dilute the color.
    * @returns The average RGB color.
    */
-  static #computeAverageColor(rgba: Uint8Array): number[] {
+  static #computeAverageColor(rgba: Uint8Array): [number, number, number] {
     let r = 0;
     let g = 0;
     let b = 0;
@@ -1548,18 +1574,17 @@ export class BSP29Loader extends ModelLoader {
     const count = filelen / 40;
     loadmodel.texinfo.length = 0;
     for (let i = 0; i < count; i++) {
-      const out = {
-        vecs: [
-          [view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true), view.getFloat32(fileofs + 12, true)],
-          [view.getFloat32(fileofs + 16, true), view.getFloat32(fileofs + 20, true), view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true)],
-        ],
-        texture: view.getUint32(fileofs + 32, true),
-        flags: view.getUint32(fileofs + 36, true),
-      };
-      if (out.texture >= loadmodel.textures.length) {
-        out.texture = loadmodel.textures.length - 1;
-        out.flags = 0;
+      const vecs: BrushTexInfo['vecs'] = [
+        [view.getFloat32(fileofs, true), view.getFloat32(fileofs + 4, true), view.getFloat32(fileofs + 8, true), view.getFloat32(fileofs + 12, true)],
+        [view.getFloat32(fileofs + 16, true), view.getFloat32(fileofs + 20, true), view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true)],
+      ];
+      let texture = view.getUint32(fileofs + 32, true);
+      let flags = view.getUint32(fileofs + 36, true);
+      if (texture >= loadmodel.textures.length) {
+        texture = loadmodel.textures.length - 1;
+        flags = 0;
       }
+      const out: BrushTexInfo = { vecs, texture, flags };
       loadmodel.texinfo[i] = out;
       fileofs += 40;
     }
@@ -1606,7 +1631,7 @@ export class BSP29Loader extends ModelLoader {
       const mins = [Infinity, Infinity];
       const maxs = [-Infinity, -Infinity];
       const tex = loadmodel.texinfo[face.texinfo];
-      face.texture = tex.texture;
+      face.texture = typeof tex.texture === 'number' ? tex.texture : 0;
 
       for (let j = 0; j < face.numedges; j++) {
         const e = loadmodel.surfedges[face.firstedge + j];
@@ -1614,8 +1639,8 @@ export class BSP29Loader extends ModelLoader {
           ? loadmodel.vertexes[loadmodel.edges[e][0]]
           : loadmodel.vertexes[loadmodel.edges[-e][1]];
 
-        const val0 = v.dot(new Vector(...tex.vecs[0])) + tex.vecs[0][3];
-        const val1 = v.dot(new Vector(...tex.vecs[1])) + tex.vecs[1][3];
+        const val0 = v.dot(new Vector(tex.vecs[0][0], tex.vecs[0][1], tex.vecs[0][2])) + tex.vecs[0][3];
+        const val1 = v.dot(new Vector(tex.vecs[1][0], tex.vecs[1][1], tex.vecs[1][2])) + tex.vecs[1][3];
 
         if (val0 < mins[0]) {
           mins[0] = val0;
@@ -1862,7 +1887,7 @@ export class BSP29Loader extends ModelLoader {
    * Attach the owning subtree mask to a legacy hull.
    */
   #assignAllowedClipnodeMask(hull?: AllowedClipnodeHull): void {
-    if (!hull) {
+    if (!hull || hull.firstclipnode === undefined) {
       return;
     }
 

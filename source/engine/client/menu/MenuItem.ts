@@ -2,11 +2,7 @@ import Q from '../../../shared/Q.ts';
 import { K } from '../../../shared/Keys.ts';
 import Cvar from '../../common/Cvar.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
-
-interface MenuPicture {
-  readonly width?: number;
-  readonly height?: number;
-}
+import type { MenuPic } from '../Menu.ts';
 
 interface MenuItemConfig {
   readonly label?: string;
@@ -55,7 +51,7 @@ interface LabelConfig extends MenuItemConfig {
 }
 
 interface ImageConfig extends MenuItemConfig {
-  readonly pic?: MenuPicture | null;
+  readonly pic?: MenuPic | null;
   readonly centered?: boolean;
 }
 
@@ -448,7 +444,7 @@ export class Label extends MenuItem {
  * Image - displays a picture (for image-based menu items like main menu).
  */
 export class Image extends MenuItem {
-  pic: MenuPicture | null;
+  pic: MenuPic | null;
   centered: boolean;
 
   constructor(config: ImageConfig) {

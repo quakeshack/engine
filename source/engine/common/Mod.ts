@@ -9,6 +9,7 @@ import { WavefrontOBJLoader } from './model/loaders/WavefrontOBJLoader.ts';
 import ParsedQC from './model/parsers/ParsedQC.ts';
 import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
+import type { BrushModel } from './model/BSP.ts';
 
 let { COM } = getCommonRegistry();
 let { CL } = getClientRegistry();
@@ -39,6 +40,10 @@ export enum ModelHull {
 }
 
 type ModelCache = Record<string, BaseModel>;
+
+function isBrushModel(model: BaseModel): model is BrushModel {
+  return model.type === ModelType.brush;
+}
 
 // Re-export model classes for backward compatibility.
 // TODO: remove these!
@@ -71,10 +76,9 @@ export default class Mod {
    * Returns true when the shared model is a world brush model with inline submodels.
    * @returns True when the model is a world brush model with inline submodels.
    */
-  static IsBrushWorldModel(sharedModel: BaseModel): boolean {
-    return sharedModel.type === Mod.type.brush
+  static IsBrushWorldModel(sharedModel: BaseModel): sharedModel is BrushModel {
+    return isBrushModel(sharedModel)
       && !sharedModel.submodel
-      && Array.isArray(sharedModel.submodels)
       && sharedModel.submodels.length > 0;
   }
 
@@ -82,7 +86,7 @@ export default class Mod {
    * Rebuilds scoped inline submodels against a scoped world view.
    */
   static RegisterScopedSubmodels(sharedWorld: BaseModel, scopedWorld: BaseModel, scope: ModelScope): void {
-    if (!Mod.IsBrushWorldModel(sharedWorld)) {
+    if (!Mod.IsBrushWorldModel(sharedWorld) || !isBrushModel(scopedWorld)) {
       return;
     }
 

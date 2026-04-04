@@ -1,17 +1,18 @@
 import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 
 import type { ServerEdict } from '../server/Edict.ts';
+import type { BaseModel } from './model/BaseModel.ts';
 import type { BrushModel } from './model/BSP.ts';
 
 interface ServerCollisionModelAccessors {
   readonly getWorldEntity?: () => ServerEdict | null;
   readonly getWorldModel?: () => BrushModel | null;
-  readonly getModels?: () => Array<BrushModel | object | null> | null;
+  readonly getModels?: () => Array<BaseModel | null> | null;
 }
 
 interface ClientCollisionModelAccessors {
   readonly getWorldModel?: () => BrushModel | null;
-  readonly getModels?: () => Array<BrushModel | object | null> | null;
+  readonly getModels?: () => Array<BaseModel | null> | null;
 }
 
 let { SV } = getCommonRegistry();
@@ -30,9 +31,9 @@ eventBus.subscribe('registry.frozen', () => {
 export class CollisionModelSource {
   #getServerWorldEntity: () => ServerEdict | null = () => null;
   #getServerWorldModel: () => BrushModel | null = () => null;
-  #getServerModels: () => Array<BrushModel | object | null> | null = () => null;
+  #getServerModels: () => Array<BaseModel | null> | null = () => null;
   #getClientWorldModel: () => BrushModel | null = () => null;
-  #getClientModels: () => Array<BrushModel | object | null> | null = () => null;
+  #getClientModels: () => Array<BaseModel | null> | null = () => null;
 
   /**
    * Install live server accessors.
@@ -64,17 +65,32 @@ export class CollisionModelSource {
    * @returns The current server or client world model.
    */
   getWorldModel(): BrushModel | null {
-    return this.#getServerWorldModel()
-      ?? this.#getClientWorldModel()
-      ?? this.#getClientModels()?.[1]
-      ?? null;
+    const serverWorldModel = this.#getServerWorldModel();
+
+    if (serverWorldModel !== null) {
+      return serverWorldModel;
+    }
+
+    const clientWorldModel = this.#getClientWorldModel();
+
+    if (clientWorldModel !== null) {
+      return clientWorldModel;
+    }
+
+    const fallbackClientModel = this.#getClientModels()?.[1] ?? null;
+
+    if (fallbackClientModel !== null && fallbackClientModel.type === 0) {
+      return fallbackClientModel as BrushModel;
+    }
+
+    return null;
   }
 
   /**
    * Resolve a model from the active runtime's model cache.
    * @returns The resolved model, if any.
    */
-  getModelByIndex(modelIndex: number): BrushModel | object | null {
+  getModelByIndex(modelIndex: number): BaseModel | null {
     return this.#getServerModels()?.[modelIndex]
       ?? this.#getClientModels()?.[modelIndex]
       ?? null;
@@ -92,7 +108,7 @@ export function createRegistryCollisionModelSource(): CollisionModelSource {
   modelSource.configureServer({
     getWorldEntity: () => SV?.server?.edicts?.[0] ?? null,
     getWorldModel: () => SV?.server?.worldmodel ?? null,
-    getModels: () => SV?.server?.models ?? null,
+    getModels: () => (SV?.server?.models.map((model) => model instanceof Promise ? null : model) as Array<BaseModel | null> | undefined) ?? null,
   });
   modelSource.configureClient({
     getWorldModel: () => CL?.state?.worldmodel ?? null,
