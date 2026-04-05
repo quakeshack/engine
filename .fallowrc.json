@@ -1,0 +1,11 @@
+{
+  "entry": [
+    "source/cloudflare/worker.mjs",
+    "source/engine/main-browser.ts",
+    "source/game/**/main.ts"
+  ],
+  "ignorePatterns": [
+    ".fallow/**",
+    "dist/**"
+  ]
+}

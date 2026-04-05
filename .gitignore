@@ -3,3 +3,4 @@ data/id1/*.pak
 data/
 dist/
 .wrangler/
+.fallow/
