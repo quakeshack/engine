@@ -3,6 +3,11 @@ import { describe, test } from 'node:test';
 
 const { ServerGameAPI } = await import('../../source/game/id1/GameAPI.ts');
 
+/**
+ * Create a mutable mock cvar.
+ * @param {number|string} initialValue Initial cvar value.
+ * @returns {object} Mock cvar.
+ */
 function createMockCvar(initialValue) {
   const normalizedValue = Number(initialValue);
 
@@ -18,6 +23,11 @@ function createMockCvar(initialValue) {
   };
 }
 
+/**
+ * Create the static cvar table used by ServerGameAPI tests.
+ * @param {object} overrides Override values for selected cvars.
+ * @returns {object} Mock static cvar registry.
+ */
 function createStaticCvars(overrides = {}) {
   return {
     nomonster: createMockCvar(0),

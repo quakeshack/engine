@@ -4,6 +4,10 @@ import assert from 'node:assert/strict';
 import BaseEntity from '../../source/game/id1/entity/BaseEntity.ts';
 import { entity, serializable, Serializer } from '../../source/game/id1/helper/MiscHelpers.ts';
 
+/**
+ * Create the minimal game API surface required by serializer tests.
+ * @returns {object} Mock game API.
+ */
 function createMockGameAPI() {
   return {
     engine: {
