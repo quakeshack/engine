@@ -240,42 +240,6 @@ export default class SV {
   /** Scheduled game commands. */
   static _scheduledGameCommands: ScheduledGameCommand[] = [];
 
-  static #requireGameAPI(): ServerRuntimeGameAPI {
-    if (SV.server.gameAPI === null) {
-      throw new Error('SV.server.gameAPI is not initialized');
-    }
-
-    return SV.server.gameAPI;
-  }
-
-  static #requireWorldModel(): BrushModel {
-    if (SV.server.worldmodel === null) {
-      throw new Error('SV.server.worldmodel is not initialized');
-    }
-
-    return SV.server.worldmodel;
-  }
-
-  static #requirePmove(): Pmove {
-    if (SV.pmove === null) {
-      throw new Error('SV.pmove is not initialized');
-    }
-
-    return SV.pmove;
-  }
-
-  static #requireNavigation(): Navigation {
-    if (SV.server.navigation === null) {
-      throw new Error('SV.server.navigation is not initialized');
-    }
-
-    return SV.server.navigation;
-  }
-
-  static #getLegacySpawnParmsGameAPI(): LegacySpawnParmsGameAPI {
-    return SV.#requireGameAPI() as unknown as LegacySpawnParmsGameAPI;
-  }
-
   static InitPmove(): void {
     SV.pmove = new Pmove();
     SV.pmove.movevars = new PlayerMoveCvars();
@@ -395,7 +359,8 @@ export default class SV {
           spawnParms[i] = oldSpawnParms![i] as number;
         }
       } else {
-        const gameAPI = SV.#getLegacySpawnParmsGameAPI();
+        console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
+        const gameAPI = SV.server.gameAPI! as LegacySpawnParmsGameAPI;
         gameAPI.SetNewParms();
 
         for (let i = 0; i < spawnParms.length; i++) {
@@ -456,7 +421,8 @@ export default class SV {
   }
 
   static SaveSpawnparms(): void {
-    const gameAPI = SV.#requireGameAPI();
+    console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
+    const gameAPI = SV.server.gameAPI!;
 
     if ('serverflags' in gameAPI) {
       SV.svs.serverflags = gameAPI.serverflags ?? 0;
@@ -500,8 +466,10 @@ export default class SV {
       return false;
     }
 
-    const worldmodel = SV.#requireWorldModel();
-    const pmove = SV.#requirePmove();
+    console.assert(SV.server.worldmodel !== null, 'SV.server.worldmodel is initialized');
+    const worldmodel = SV.server.worldmodel!;
+    console.assert(SV.pmove !== null, 'SV.pmove is initialized');
+    const pmove = SV.pmove!;
     pmove.setWorldmodel(worldmodel);
 
     SV.area.initOctree(worldmodel.mins, worldmodel.maxs);
@@ -518,7 +486,8 @@ export default class SV {
     SV.server.eventBus.unsubscribeAll();
     SV.server.navigation = new Navigation(worldmodel);
 
-    const gameAPI = SV.#requireGameAPI();
+    console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
+    const gameAPI = SV.server.gameAPI!;
     gameAPI.init(mapname, SV.svs.serverflags);
 
     if (!SV.#spawnWorldspawnEntity()) {
@@ -811,7 +780,8 @@ export default class SV {
   }
 
   static #setupModelPrecache(): void {
-    const worldmodel = SV.#requireWorldModel();
+    console.assert(SV.server.worldmodel !== null, 'SV.server.worldmodel is initialized');
+    const worldmodel = SV.server.worldmodel!;
 
     SV.server.models.length = 2;
     SV.server.models[0] = null;
@@ -833,7 +803,8 @@ export default class SV {
   }
 
   static #setupPlayerEntities(): boolean {
-    const gameAPI = SV.#requireGameAPI();
+    console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
+    const gameAPI = SV.server.gameAPI!;
 
     for (let i = 0; i < SV.svs.maxclients; i++) {
       const ent = SV.server.edicts[i + 1] as ServerEdict;
@@ -893,7 +864,8 @@ export default class SV {
 
   static #setupExtendedEntityFields(): void {
     if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_EXTENDED)) {
-      const fields = SV.#requireGameAPI().getClientEntityFields();
+      console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
+      const fields = SV.server.gameAPI!.getClientEntityFields();
 
       for (const [classname, extendedFields] of Object.entries(fields)) {
         const clientEntityField: ClientEntityFieldConfig = {
@@ -920,8 +892,10 @@ export default class SV {
 
   static #spawnWorldspawnEntity(): boolean {
     const ent = SV.server.edicts[0] as ServerEdict;
-    const worldmodel = SV.#requireWorldModel();
-    const gameAPI = SV.#requireGameAPI();
+    console.assert(SV.server.worldmodel !== null, 'SV.server.worldmodel is initialized');
+    const worldmodel = SV.server.worldmodel!;
+    console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
+    const gameAPI = SV.server.gameAPI!;
 
     if (!gameAPI.prepareEntity(ent, 'worldspawn', {
       model: worldmodel.name,
@@ -976,7 +950,8 @@ export default class SV {
       }
     }
 
-    SV.#requireNavigation().init();
+    console.assert(SV.server.navigation !== null, 'SV.server.navigation is initialized');
+    SV.server.navigation!.init();
     eventBus.publish('server.spawned', { mapname });
     Con.PrintSuccess('Server spawned.\n');
   }

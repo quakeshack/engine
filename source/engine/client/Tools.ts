@@ -1,4 +1,5 @@
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
+import { MissingResourceError } from '../common/Errors.ts';
 import W, { WadFileInterface } from '../common/W.ts';
 import { eventBus, getCommonRegistry } from '../registry.ts';
 
@@ -26,6 +27,7 @@ function getErrorMessage(error: unknown): string {
  */
 function getRequiredLumpTexture(wad: WadFileInterface, entry: string) {
   const texture = wad.getLumpMipmap(entry, 0);
+
   if (texture === null) {
     throw new Error(`Could not decode wad entry ${entry}`);
   }
@@ -51,7 +53,7 @@ class GfxTool {
    */
   getWad(): WadFileInterface {
     if (this.wad === null) {
-      throw new Error(`Wad ${this.filename} was not loaded`);
+      throw new MissingResourceError(this.filename);
     }
 
     return this.wad;

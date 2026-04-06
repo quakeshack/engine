@@ -2,6 +2,7 @@ import Vector from '../../../../shared/Vector.ts';
 import { GLTexture } from '../../../client/GL.ts';
 import { registry } from '../../../registry.ts';
 import { CRC16CCITT } from '../../CRC.ts';
+import { CorruptedResourceError } from '../../Errors.ts';
 import W, { translateIndexToRGBA } from '../../W.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 import { SpriteModel, type SpriteFrame } from '../SpriteModel.ts';
@@ -46,7 +47,7 @@ export class SpriteSPRLoader extends ModelLoader {
     const version = view.getUint32(4, true);
 
     if (version !== 1) {
-      throw new Error(`${name} has wrong version number (${version} should be 1)`);
+      throw new CorruptedResourceError(name, `${name} has wrong version number (${version} should be 1)`);
     }
 
     loadmodel.oriented = view.getUint32(8, true) === 3;
@@ -56,7 +57,7 @@ export class SpriteSPRLoader extends ModelLoader {
     loadmodel._frames = view.getUint32(24, true);
 
     if (loadmodel._frames === 0) {
-      throw new Error(`model ${name} has no frames`);
+      throw new CorruptedResourceError(name, `model ${name} has no frames`);
     }
 
     loadmodel.random = view.getUint32(32, true) === 1;
@@ -96,7 +97,7 @@ export class SpriteSPRLoader extends ModelLoader {
       for (let j = 0; j < numframes; j++) {
         group.frames[j] = { interval: view.getFloat32(inframe, true) } as MutableSpriteFrameImage;
         if ((group.frames[j].interval ?? 0) <= 0.0) {
-          throw new Error('SpriteSPRLoader: interval <= 0');
+          throw new CorruptedResourceError(name, 'SpriteSPRLoader: interval <= 0');
         }
         inframe += 4;
       }

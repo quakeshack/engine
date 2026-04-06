@@ -134,7 +134,7 @@ export class BSP2Loader extends BSP29Loader {
     const filelen = view.getUint32((lump.nodes << 3) + 8, true);
 
     if ((filelen === 0) || ((filelen % 44) !== 0)) {
-      throw new Error(`BSP2Loader: nodes lump size is invalid in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP2Loader: nodes lump size is invalid');
     }
 
     const count = filelen / 44;
@@ -192,7 +192,7 @@ export class BSP2Loader extends BSP29Loader {
     const filelen = view.getUint32((lump.leafs << 3) + 8, true);
 
     if ((filelen % 44) !== 0) {
-      throw new Error(`BSP2Loader: leafs lump size is not a multiple of 44 in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP2Loader: leafs lump size is not a multiple of 44');
     }
 
     const count = filelen / 44;
@@ -257,7 +257,7 @@ export class BSP2Loader extends BSP29Loader {
     const filelen = view.getUint32((lump.clipnodes << 3) + 8, true);
 
     if ((filelen % 12) !== 0) {
-      throw new Error(`BSP2Loader: clipnodes lump size is not a multiple of 12 in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP2Loader: clipnodes lump size is not a multiple of 12');
     }
 
     const count = filelen / 12;

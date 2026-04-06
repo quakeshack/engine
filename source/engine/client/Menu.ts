@@ -10,6 +10,7 @@ import { GLTexture } from './GL.ts';
 import { KeyDestination } from './Key.ts';
 import MultiplayerMainMenu from './menu/Multiplayer.ts';
 import VID from './VID.ts';
+import { MissingResourceError } from '../common/Errors.ts';
 
 let { CL, COM, Con, Draw, Host, Key, S, SCR, SV, V } = getClientRegistry();
 
@@ -1159,7 +1160,7 @@ export default class M {
     {
       const lmpfile = await COM.LoadFile('gfx/menuplyr.lmp');
       if (lmpfile === null) {
-        throw new Error('Failed to load gfx/menuplyr.lmp');
+        throw new MissingResourceError('gfx/menuplyr.lmp');
       }
 
       const view = new DataView(lmpfile, 0, 8);

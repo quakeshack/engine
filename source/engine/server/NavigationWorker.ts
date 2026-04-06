@@ -22,7 +22,8 @@ eventBus.subscribe('nav.load', async (mapname: string, checksum: number | null) 
   } catch (error) {
     // unusable navmesh, trigger a rebuild
     if (error instanceof NavMeshOutOfDateException) {
-      WorkerFramework.Publish('nav.build');
+      // WorkerFramework.Publish('nav.build');
+      Con.PrintWarning('Navigation: navmesh is out of date, needs to be rebuilt\n');
     }
   }
 });

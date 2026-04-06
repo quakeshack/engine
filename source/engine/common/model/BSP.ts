@@ -33,7 +33,8 @@ export interface Hull {
   /** Maximum bounding box for this hull. */
   readonly clip_maxs: Vector;
 
-  // TODO: allowedClipNodes?
+  /** Optional mask restricting traversal to the owning clipnode subtree. */
+  allowedClipNodes?: Uint8Array | null;
 }
 
 export type WorldspawnInfo = Record<string, string>;

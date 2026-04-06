@@ -271,7 +271,7 @@ export class Hull { // hull_t
     newHull.clipMaxs = hull.clip_maxs.copy();
     newHull.firstClipNode = hull.firstclipnode!;
     newHull.lastClipNode = hull.lastclipnode!;
-    newHull.allowedClipNodes = null; // FIXME: missing allowed clip node masks in Q1 BSP format
+    newHull.allowedClipNodes = hull.allowedClipNodes?.slice() ?? null;
     newHull.clipNodes = hull.clipnodes.map((clipnode) => {
       const node = new ClipNode(clipnode.planenum);
       node.children[0] = clipnode.children[0];
@@ -1691,12 +1691,8 @@ export class PhysEnt { // physent_t
 
   /** Parent Pmove instance. */
   get _pmove(): Pmove {
-    const pmove = this.#pmoveRef.deref();
-
-    if (pmove === undefined) {
-      throw new Error('PhysEnt parent Pmove was released');
-    }
-
+    const pmove = this.#pmoveRef.deref()!;
+    console.assert(pmove !== undefined, 'physent parent Pmove was released');
     return pmove;
   }
 
@@ -2314,12 +2310,8 @@ export class PmovePlayer { // pmove_t (player state only)
 
   /** Parent Pmove instance. */
   get _pmove(): Pmove {
-    const pmove = this.#pmoveRef.deref();
-
-    if (pmove === undefined) {
-      throw new Error('PmovePlayer parent Pmove was released');
-    }
-
+    const pmove = this.#pmoveRef.deref()!;
+    console.assert(pmove !== undefined, 'PmovePlayer parent Pmove was released');
     return pmove;
   }
 

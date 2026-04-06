@@ -14,6 +14,7 @@ import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 import Q from '../../shared/Q.ts';
 import { ConsoleCommand } from '../common/Cmd.ts';
 import { ModelType } from '../common/Mod.ts';
+import { CorruptedResourceError, HostError } from '../common/Errors.ts';
 
 export interface BaseEntity extends SerializableEntity {
   classname: string;
@@ -273,7 +274,7 @@ export class ED {
       }
 
       if (data === null) {
-        throw new Error('ED.ParseEdict: EOF without closing brace');
+        throw new CorruptedResourceError('<entities.txt>', 'ED.ParseEdict: EOF without closing brace');
       }
 
       if (parsedKey.token === 'angle') {
@@ -295,11 +296,11 @@ export class ED {
       data = parsedValue.data!;
 
       if (data === null) {
-        throw new Error('ED.ParseEdict: EOF without closing brace');
+        throw new CorruptedResourceError('<entities.txt>', 'ED.ParseEdict: EOF without closing brace');
       }
 
       if (parsedValue.token.charCodeAt(0) === 125) {
-        throw new Error('ED.ParseEdict: Closing brace without data');
+        throw new CorruptedResourceError('<entities.txt>', 'ED.ParseEdict: Closing brace without data');
       }
 
       if (keyname.startsWith('_')) {
@@ -340,7 +341,7 @@ export class ED {
       data = parsed.data;
 
       if (parsed.token !== '{') {
-        throw new Error(`ED.LoadFromFile: found ${parsed.token} when expecting {`);
+        throw new CorruptedResourceError('<entities.txt>', `ED.LoadFromFile: found ${parsed.token} when expecting {`);
       }
 
       const initialData: EdictData = {};
@@ -398,14 +399,6 @@ export class ServerEdict {
     this.entity = null;
   }
 
-  private _requireEntity(): BaseEntity {
-    if (this.entity === null) {
-      throw new Error(`Edict ${this.num} has no entity`);
-    }
-
-    return this.entity;
-  }
-
   /**
    * Clears the currently linked entity instance.
    */
@@ -453,7 +446,7 @@ export class ServerEdict {
       return `unused (${this.num})`;
     }
 
-    const entity = this._requireEntity();
+    const entity = this.entity!;
     return `Edict (${entity.classname}, num: ${this.num}, origin: ${entity.origin})`;
   }
 
@@ -476,11 +469,9 @@ export class ServerEdict {
    * Updates mins, maxs, and size for this entity.
    */
   setMinMaxSize(min: Vector, max: Vector): void {
-    if (min[0] > max[0] || min[1] > max[1] || min[2] > max[2]) {
-      throw new Error('Edict.setMinMaxSize: backwards mins/maxs');
-    }
+    console.assert(min[0] <= max[0] && min[1] <= max[1] && min[2] <= max[2], 'Edict.setMinMaxSize: backwards mins/maxs');
 
-    const entity = this._requireEntity();
+    const entity = this.entity!;
     entity.mins = min.copy();
     entity.maxs = max.copy();
     entity.size = max.copy().subtract(min);
@@ -491,7 +482,7 @@ export class ServerEdict {
    * Moves the entity to a new origin and relinks it.
    */
   setOrigin(vec: Vector): void {
-    this._requireEntity().origin = vec.copy();
+    this.entity!.origin = vec.copy();
     this.linkEdict(false);
   }
 
@@ -515,10 +506,10 @@ export class ServerEdict {
     }
 
     if (i === SV.server.modelPrecache.length) {
-      throw new Error(`Edict.setModel: ${model} not precached`);
+      throw new HostError(`Edict.setModel: ${model} not precached`);
     }
 
-    const entity = this._requireEntity();
+    const entity = this.entity!;
     entity.model = model;
     entity.modelindex = i;
 
@@ -556,7 +547,7 @@ export class ServerEdict {
    * @returns True when the drop succeeded.
    */
   dropToFloor(z = -2048.0): boolean {
-    const entity = this._requireEntity();
+    const entity = this.entity!;
     const end = entity.origin.copy().add(new Vector(0.0, 0.0, z));
     const trace = SV.collision.move(entity.origin, entity.mins, entity.maxs, end, 0, this);
 
@@ -582,7 +573,7 @@ export class ServerEdict {
    * Converts this edict into a static entity for client signon.
    */
   makeStatic(): void {
-    const entity = this._requireEntity();
+    const entity = this.entity!;
     const message = SV.server.signon;
     const modelIndex = SV.ModelIndex(entity.model)!;
     console.assert(modelIndex !== null, `Edict.makeStatic: model ${entity.model} not precached`);
@@ -637,7 +628,7 @@ export class ServerEdict {
           continue;
         }
 
-        const entity = ent._requireEntity();
+        const entity = ent.entity!;
 
         if (entity.health <= 0.0 || (entity.flags & Defs.flags.FL_NOTARGET) !== 0) {
           continue;
@@ -647,7 +638,7 @@ export class ServerEdict {
       }
 
       SV.server.lastcheck = i;
-      ServerEdict.#lastcheckpvs = SV.server.worldmodel!.getPvsByPoint(ent._requireEntity().origin.copy().add(ent._requireEntity().view_ofs));
+      ServerEdict.#lastcheckpvs = SV.server.worldmodel!.getPvsByPoint(ent.entity!.origin.copy().add(ent.entity!.view_ofs));
       SV.server.lastchecktime = SV.server.time;
     }
 
@@ -664,7 +655,7 @@ export class ServerEdict {
       return null;
     }
 
-    const leaf = SV.server.worldmodel!.getLeafForPoint(this._requireEntity().origin.copy().add(this._requireEntity().view_ofs)).num;
+    const leaf = SV.server.worldmodel!.getLeafForPoint(this.entity!.origin.copy().add(this.entity!.view_ofs)).num;
 
     if (leaf === 0 || !lastcheckpvs.isRevealed(leaf)) {
       return null;
@@ -694,7 +685,7 @@ export class ServerEdict {
    * @returns The resolved aim direction.
    */
   aim(direction: Vector): Vector {
-    const entity = this._requireEntity();
+    const entity = this.entity!;
     const dir = direction.copy();
     const origin = entity.origin.copy();
     const start = origin.add(new Vector(0.0, 0.0, 20.0));
@@ -753,7 +744,7 @@ export class ServerEdict {
     }
 
     if (bestent !== null) {
-      const bestEntity = bestent._requireEntity();
+      const bestEntity = bestent.entity!;
       dir.set(bestEntity.origin).subtract(entity.origin);
       const dist = dir.dot(bestdir);
       end[0] = bestdir[0] * dist;
@@ -787,7 +778,7 @@ export class ServerEdict {
    * @returns The new yaw angle.
    */
   changeYaw(): number {
-    const entity = this._requireEntity();
+    const entity = this.entity!;
     const angles = entity.angles;
     angles[1] = SV.movement.changeYaw(this);
     entity.angles = angles;

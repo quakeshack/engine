@@ -153,10 +153,12 @@ export default class Con {
   }
 
   static PrintWarning(msg: string) {
+    // TODO: make Con.Print make emit this as a console.warn
     Con.Print(msg, new Vector(1.0, 1.0, 0.3));
   }
 
   static PrintError(msg: string) {
+    // TODO: make Con.Print make emit this as a console.error
     Con.Print(msg, new Vector(1.0, 0.3, 0.3));
   }
 

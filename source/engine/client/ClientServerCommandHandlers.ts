@@ -494,9 +494,9 @@ function parseTemporaryEntity() {
       }
     }
       return;
+    default:
+      throw new Error(`CL.ParseTEnt: bad type ${type}`);
   }
-
-  throw new Error(`CL.ParseTEnt: bad type ${type}`);
 }
 
 /**

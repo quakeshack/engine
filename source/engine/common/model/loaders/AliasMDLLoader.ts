@@ -7,6 +7,7 @@ import { ModelType } from '../../Mod.ts';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
 import { AliasModel, type AliasFrame, type AliasSkin } from '../AliasModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
+import { CorruptedResourceError } from '../../Errors.ts';
 
 interface AliasSkinLayers {
   readonly diffuse: Uint8Array;
@@ -299,7 +300,7 @@ export class AliasMDLLoader extends ModelLoader {
     const version = view.getUint32(4, true);
 
     if (version !== 6) {
-      throw new Error(`${name} has wrong version number (${version} should be 6)`);
+      throw new CorruptedResourceError(name, `${name} has wrong version number (${version} should be 6)`);
     }
 
     // Read header
@@ -317,7 +318,7 @@ export class AliasMDLLoader extends ModelLoader {
     loadmodel._num_skins = view.getUint32(48, true);
 
     if (loadmodel._num_skins === 0) {
-      throw new Error(`model ${name} has no skins`);
+      throw new CorruptedResourceError(name, `model ${name} has no skins`);
     }
 
     loadmodel._skin_width = view.getUint32(52, true);
@@ -325,19 +326,19 @@ export class AliasMDLLoader extends ModelLoader {
     loadmodel._num_verts = view.getUint32(60, true);
 
     if (loadmodel._num_verts === 0) {
-      throw new Error(`model ${name} has no vertices`);
+      throw new CorruptedResourceError(name, `model ${name} has no vertices`);
     }
 
     loadmodel._num_tris = view.getUint32(64, true);
 
     if (loadmodel._num_tris === 0) {
-      throw new Error(`model ${name} has no triangles`);
+      throw new CorruptedResourceError(name, `model ${name} has no triangles`);
     }
 
     loadmodel._frames = view.getUint32(68, true);
 
     if (loadmodel._frames === 0) {
-      throw new Error(`model ${name} has no frames`);
+      throw new CorruptedResourceError(name, `model ${name} has no frames`);
     }
 
     loadmodel.random = view.getUint32(72, true) === 1;
@@ -517,7 +518,7 @@ export class AliasMDLLoader extends ModelLoader {
         for (let groupIndex = 0; groupIndex < numskins; groupIndex++) {
           group.skins[groupIndex] = { interval: view.getFloat32(inmodel, true) };
           if (group.skins[groupIndex].interval <= 0.0) {
-            throw new Error('AliasMDLLoader: skin interval <= 0');
+            throw new CorruptedResourceError(loadmodel.name, 'AliasMDLLoader: skin interval <= 0');
           }
           inmodel += 4;
         }
@@ -598,7 +599,7 @@ export class AliasMDLLoader extends ModelLoader {
             v: [],
           };
           if (group.frames[groupIndex].interval <= 0.0) {
-            throw new Error('AliasMDLLoader: frame interval <= 0');
+            throw new CorruptedResourceError(loadmodel.name, 'AliasMDLLoader: frame interval <= 0');
           }
           inmodel += 4;
         }

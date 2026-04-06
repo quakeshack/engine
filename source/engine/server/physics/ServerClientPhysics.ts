@@ -9,6 +9,7 @@ import {
 import { ServerClient } from '../Client.ts';
 import { PM_TYPE } from '../../common/Pmove.ts';
 import { BrushModel } from '../../common/Mod.ts';
+import { HostError } from '../../common/Errors.ts';
 
 let { Host, SV, V } = getCommonRegistry();
 
@@ -373,7 +374,7 @@ export class ServerClientPhysics {
           SV.physics.flyMove(ent, Host.frametime);
           break;
         default:
-          throw new Error(`SV.Physics_Client: bad movetype ${movetype}`);
+          throw new HostError(`SV.Physics_Client: bad movetype ${movetype}`);
       }
     }
     SV.area.linkEdict(ent, true);

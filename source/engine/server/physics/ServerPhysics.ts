@@ -1,3 +1,4 @@
+import { HostError } from '../../common/Errors.ts';
 import type { ServerEdict } from '../Edict.ts';
 import type { CollisionTrace } from './ServerCollisionSupport.ts';
 
@@ -769,7 +770,7 @@ export class ServerPhysics {
           this.physicsToss(ent);
           continue;
         default:
-          throw new Error(`SV.Physics: bad movetype ${ent.entity!.movetype >> 0}`);
+          throw new HostError(`SV.Physics: bad movetype ${ent.entity!.movetype >> 0}`);
       }
     }
 

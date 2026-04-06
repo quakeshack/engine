@@ -289,7 +289,7 @@ class MinHeap {
   /**
    * Bubbles a node up until the heap invariant is restored.
    */
-    #bubbleUp(i: number): void {
+  #bubbleUp(i: number): void {
     const data = this.#data;
     const keys = this.#keys;
     const idx = this.#index;
@@ -313,7 +313,7 @@ class MinHeap {
   /**
    * Sinks a node down until the heap invariant is restored.
    */
-    #sinkDown(i: number): void {
+  #sinkDown(i: number): void {
     const data = this.#data;
     const keys = this.#keys;
     const idx = this.#index;
@@ -346,7 +346,7 @@ class MinHeap {
   }
 }
 
-export class NavMeshOutOfDateException extends CorruptedResourceError {}
+export class NavMeshOutOfDateException extends CorruptedResourceError { }
 
 // TODO: in future we could build graphs per entity type (e.g. monster navmesh with tighter clearances, flying monster navmesh that ignores ground support, etc.)
 
@@ -360,6 +360,7 @@ export class Navigation {
   static nav_debug_waypoints: Cvar | null = null;
   static nav_debug_graph: Cvar | null = null;
   static nav_debug_path: Cvar | null = null;
+  static nav_enabled: Cvar | null = null;
   /** unavailable outside of the dedicated server. */
   static nav_build_process: Cvar | null = null;
 
@@ -381,9 +382,6 @@ export class Navigation {
 
   /** worker thread handling navigation lookups. */
   #worker: PlatformWorker | null = null;
-
-  /** unsubscribe from nav.path.request. */
-  #pathRequestEventListener: EventUnsubscribe = null;
 
   /** unsubscribe from nav.path.response. */
   #pathResponseEventListener: EventUnsubscribe = null;
@@ -426,6 +424,7 @@ export class Navigation {
     this.nav_debug_graph = new Cvar('nav_debug_graph', '0', Cvar.FLAG.NONE, 'if set to 1, will render the navigation graph for debugging');
     this.nav_debug_waypoints = new Cvar('nav_debug_waypoints', '0', Cvar.FLAG.NONE, 'if set to 1, will render all waypoints for debugging');
     this.nav_debug_path = new Cvar('nav_debug_path', '0', Cvar.FLAG.NONE | Cvar.FLAG.CHEAT, 'if set to 1, will render the last computed path for debugging');
+    this.nav_enabled = new Cvar('nav_enabled', '1', Cvar.FLAG.NONE, 'if set to 1, navigation is enabled');
 
     // worker thread -> main thread: mesh probably out of date
     eventBus.subscribe('nav.build', (): void => {
@@ -523,11 +522,6 @@ export class Navigation {
     }
 
     this.#shutdownWorker();
-
-    if (this.#pathRequestEventListener) {
-      this.#pathRequestEventListener();
-      this.#pathRequestEventListener = null;
-    }
 
     if (this.#pathResponseEventListener) {
       this.#pathResponseEventListener();
@@ -1481,7 +1475,7 @@ export class Navigation {
       }
 
       const destinationEdict = Array.from(ServerEngineAPI.FindAllByFieldAndValue('targetname', source.target))[0];
-  const destination = destinationEdict?.entity as ServerEntity | null;
+      const destination = destinationEdict?.entity as ServerEntity | null;
 
       if (!destination) {
         Con.PrintWarning(`Navigation: teleporter without a valid target: ${source.classname}\n`);
@@ -1567,7 +1561,7 @@ export class Navigation {
     const halfSize = Math.max(extentX, extentY, extentZ) / 2 + 1;
 
     const center = new Vector(cx, cy, cz);
-  this.graph.octree = new Octree<Node>(center, halfSize, 12, 8);
+    this.graph.octree = new Octree<Node>(center, halfSize, 12, 8);
 
     for (const n of this.graph.nodes) {
       this.graph.octree.insert(n);
@@ -1578,7 +1572,7 @@ export class Navigation {
    * Find nearest graph node to a world position.
    * @returns The nearest node within the search radius, or null.
    */
-    #findNearestNode(position: Vector, maxDist = 512): Node | null {
+  #findNearestNode(position: Vector, maxDist = 512): Node | null {
     if (this.graph.nodes.length === 0) {
       return null;
     }
@@ -1637,6 +1631,10 @@ export class Navigation {
    * @returns A promised path containing the start and goal positions, or null.
    */
   findPathAsync(startPos: Vector, goalPos: Vector): Promise<Vector[] | null> {
+    if (!Navigation.nav_enabled!.value) {
+      return Promise.resolve(null);
+    }
+
     return new Promise<Vector[] | null>((resolve) => {
       const id = Math.random().toString(36).substring(2, 10);
 
@@ -1651,7 +1649,7 @@ export class Navigation {
    * Returns an array of Vector positions (node origins) or null if no path.
    * @returns A path containing the start and goal positions, or null.
    */
-    findPath(startPos: Vector, goalPos: Vector): Vector[] | null {
+  findPath(startPos: Vector, goalPos: Vector): Vector[] | null {
     if (!this.graph || !this.graph.nodes || this.graph.nodes.length === 0) {
       return null;
     }

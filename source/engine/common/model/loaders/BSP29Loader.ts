@@ -1560,7 +1560,7 @@ export class BSP29Loader extends ModelLoader {
     let fileofs = view.getUint32((lump.vertexes << 3) + 4, true);
     const filelen = view.getUint32((lump.vertexes << 3) + 8, true);
     if ((filelen % 12) !== 0) {
-      throw new Error(`BSP29Loader: vertexes lump size is not a multiple of 12 in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP29Loader: vertexes lump size is not a multiple of 12');
     }
     const count = filelen / 12;
     loadmodel.vertexes.length = 0;
@@ -1620,7 +1620,7 @@ export class BSP29Loader extends ModelLoader {
     let fileofs = view.getUint32((lump.planes << 3) + 4, true);
     const filelen = view.getUint32((lump.planes << 3) + 8, true);
     if ((filelen % 20) !== 0) {
-      throw new Error(`BSP29Loader: planes lump size is not a multiple of 20 in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP29Loader: planes lump size is not a multiple of 20');
     }
     const count = filelen / 20;
     loadmodel.planes.length = 0;
@@ -1651,7 +1651,7 @@ export class BSP29Loader extends ModelLoader {
     let fileofs = view.getUint32((lump.texinfo << 3) + 4, true);
     const filelen = view.getUint32((lump.texinfo << 3) + 8, true);
     if ((filelen % 40) !== 0) {
-      throw new Error(`BSP29Loader: texinfo lump size is not a multiple of 40 in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP29Loader: texinfo lump size is not a multiple of 40');
     }
     const count = filelen / 40;
     loadmodel.texinfo.length = 0;
@@ -1785,7 +1785,7 @@ export class BSP29Loader extends ModelLoader {
     const filelen = view.getUint32((lump.nodes << 3) + 8, true);
 
     if ((filelen === 0) || ((filelen % 24) !== 0)) {
-      throw new Error(`BSP29Loader: nodes lump size is invalid in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP29Loader: nodes lump size is invalid');
     }
 
     const count = filelen / 24;
@@ -1833,7 +1833,7 @@ export class BSP29Loader extends ModelLoader {
     let fileofs = view.getUint32((lump.leafs << 3) + 4, true);
     const filelen = view.getUint32((lump.leafs << 3) + 8, true);
     if ((filelen % 28) !== 0) {
-      throw new Error(`BSP29Loader: leafs lump size is not a multiple of 28 in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP29Loader: leafs lump size is not a multiple of 28');
     }
     const count = filelen / 28;
     loadmodel.leafs.length = count;
@@ -1991,7 +1991,7 @@ export class BSP29Loader extends ModelLoader {
     for (let i = 0; i < count; i++) {
       const j = view.getUint16(fileofs + (i << 1), true);
       if (j > loadmodel.faces.length) {
-        throw new Error('BSP29Loader: bad surface number in marksurfaces');
+        throw new CorruptedResourceError(loadmodel.name, 'BSP29Loader: bad surface number in marksurfaces');
       }
       loadmodel.marksurfaces[i] = j;
     }
@@ -2008,7 +2008,7 @@ export class BSP29Loader extends ModelLoader {
     const filelen = view.getUint32((lump.models << 3) + 8, true);
     const count = filelen >> 6;
     if (count === 0) {
-      throw new Error(`BSP29Loader: no submodels in ${loadmodel.name}`);
+      throw new CorruptedResourceError(loadmodel.name, 'BSP29Loader: no submodels');
     }
     loadmodel.submodels.length = 0;
 

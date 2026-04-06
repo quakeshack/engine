@@ -478,13 +478,13 @@ export function handleLegacyEntityUpdate(bits: number): void {
 
   // Origin / angle – interleaved per axis (WinQuake order)
   clent.msg_origins[0][0] = (bits & U.ORIGIN1) ? readLegacyCoord() : baseline.origin[0];
-  clent.msg_angles[0][0]  = (bits & U.ANGLE1)  ? readLegacyAngle() : baseline.angles[0];
+  clent.msg_angles[0][0] = (bits & U.ANGLE1) ? readLegacyAngle() : baseline.angles[0];
 
   clent.msg_origins[0][1] = (bits & U.ORIGIN2) ? readLegacyCoord() : baseline.origin[1];
-  clent.msg_angles[0][1]  = (bits & U.ANGLE2)  ? readLegacyAngle() : baseline.angles[1];
+  clent.msg_angles[0][1] = (bits & U.ANGLE2) ? readLegacyAngle() : baseline.angles[1];
 
   clent.msg_origins[0][2] = (bits & U.ORIGIN3) ? readLegacyCoord() : baseline.origin[2];
-  clent.msg_angles[0][2]  = (bits & U.ANGLE3)  ? readLegacyAngle() : baseline.angles[2];
+  clent.msg_angles[0][2] = (bits & U.ANGLE3) ? readLegacyAngle() : baseline.angles[2];
 
   // U_NOLERP: server explicitly says don’t interpolate (e.g. teleport)
   if (bits & U.NOLERP) {
@@ -715,7 +715,7 @@ function handleLegacyTempEntity() {
       if (sounds.explosion !== null) {
         S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
       }
-      }
+    }
       return;
     case Protocol.te.tarexplosion:
       R.BlobExplosion(pos);
@@ -741,11 +741,12 @@ function handleLegacyTempEntity() {
       if (sounds.explosion !== null) {
         S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
       }
-      }
       return;
+    }
+    default:
+      throw new Error(`CL.ParseTEnt: bad type ${type}`);
   }
 
-  throw new Error(`CL.ParseTEnt: bad type ${type}`);
 }
 
 // ── svc_spawnstaticsound (29) ───────────────────────────────────────────────

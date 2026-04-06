@@ -813,6 +813,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
 
   /**
    * Return a series of waypoints from start to end.
+   * @deprecated use NavigateAsync instead
    * @returns The waypoints from start to end, or `null` when no path could be found.
    */
   static Navigate(start: Vector, end: Vector): Vector[] | null {
