@@ -28,8 +28,7 @@ type NodeWebSocketLike = {
   readyState: number;
   send: (data: ArrayBuffer) => void;
   on: {
-    (eventName: 'close', listener: () => void): void;
-    (eventName: 'error', listener: () => void): void;
+    (eventName: 'close' | 'error', listener: () => void): void;
     (eventName: 'message', listener: (data: NodeRawData) => void): void;
   };
 };
@@ -145,6 +144,7 @@ function getErrorMessage(error: Throwable): string {
     return error.message;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string
   return String(error);
 }
 
@@ -1041,7 +1041,8 @@ export class WebRTCDriver extends BaseDriver {
 
       this.signalingWs.onerror = (errorEvent: Event) => {
         console.debug('WebRTCDriver: Signaling WebSocket error', errorEvent);
-        Con.DPrint(`WebRTCDriver: Signaling error: ${errorEvent}\n`);
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
+        Con.DPrint(`WebRTCDriver: Signaling error: ${errorEvent}\n`); // FIXME: this does not print anything useful, need to find a better way to log the error details
         this.#OnSignalingError({ error: 'Signaling connection error', type: 'error' });
       };
 
@@ -1143,9 +1144,9 @@ export class WebRTCDriver extends BaseDriver {
     }
 
     this.#StopServerInfoSubscriptions();
-    this.serverEventSubscriptions.push(eventBus.subscribe('server.spawned', () => this.#UpdateServerInfo()));
-    this.serverEventSubscriptions.push(eventBus.subscribe('server.client.connected', () => this.#UpdateServerInfo()));
-    this.serverEventSubscriptions.push(eventBus.subscribe('server.client.disconnected', () => this.#UpdateServerInfo()));
+    this.serverEventSubscriptions.push(eventBus.subscribe('server.spawned', () => { this.#UpdateServerInfo(); }));
+    this.serverEventSubscriptions.push(eventBus.subscribe('server.client.connected', () => { this.#UpdateServerInfo(); }));
+    this.serverEventSubscriptions.push(eventBus.subscribe('server.client.disconnected', () => { this.#UpdateServerInfo(); }));
     this.serverEventSubscriptions.push(eventBus.subscribe('cvar.changed', (cvarName: string) => {
       const cvar = Cvar.FindVar(cvarName);
 
@@ -1183,7 +1184,7 @@ export class WebRTCDriver extends BaseDriver {
       hostname: Cvar.FindVar('hostname')?.string ?? 'UNNAMED',
       maxPlayers: SV.svs.maxclients,
       currentPlayers: NET.activeconnections,
-      map: SV.server.mapname,
+      map: SV.server.mapname!,
       mod: COM.game,
       settings: {},
     };
@@ -1645,7 +1646,8 @@ export class WebRTCDriver extends BaseDriver {
     };
 
     channel.onerror = (error) => {
-      Con.PrintError(`WebRTCDriver: Data channel error with ${peerId}: ${error}\n`);
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
+      Con.PrintError(`WebRTCDriver: Data channel error with ${peerId}: ${error}\n`); // FIXME: this does not print anything useful, need to find a better way to log the error details
       sock.state = QSocket.STATE_DISCONNECTED;
     };
 

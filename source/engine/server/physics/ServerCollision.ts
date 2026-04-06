@@ -392,7 +392,7 @@ export class ServerCollision {
    * Normalize static-world contents values so current volumes behave like water.
    * @returns The normalized contents value.
    */
-  _normalizeStaticWorldContents(contents: number): number {
+  _normalizeStaticWorldContents(contents: Defs.content): Defs.content {
     if ((contents <= Defs.content.CONTENT_CURRENT_0) && (contents >= Defs.content.CONTENT_CURRENT_DOWN)) {
       return Defs.content.CONTENT_WATER;
     }
@@ -425,7 +425,7 @@ export class ServerCollision {
    * active map.
    * @returns The static-world contents at the sampled point.
    */
-  staticWorldContents(point: Vector, hullNum = 0): number {
+  staticWorldContents(point: Vector, hullNum = 0): Defs.content {
     const { worldModel } = this._getStaticWorldSource();
 
     if (worldModel === null) {
@@ -443,7 +443,7 @@ export class ServerCollision {
    * Compatibility alias for staticWorldContents.
    * @returns The static-world contents at the sampled point.
    */
-  worldContents(point: Vector, hullNum = 0): number {
+  worldContents(point: Vector, hullNum = 0): Defs.content {
     return this.staticWorldContents(point, hullNum);
   }
 
@@ -451,7 +451,7 @@ export class ServerCollision {
    * Compatibility alias for staticWorldContents.
    * @returns The static-world contents at the sampled point.
    */
-  pointContents(p: Vector, hullNum = 0): number {
+  pointContents(p: Vector, hullNum = 0): Defs.content {
     return this.staticWorldContents(p, hullNum);
   }
 
@@ -820,7 +820,7 @@ export class ServerCollision {
     mins: Vector,
     maxs: Vector,
     end: Vector,
-    type: number,
+    type: Defs.moveTypes,
     passedict: ServerEdict | null,
   ): MoveClip {
     const worldEdict = SV.server.edicts[0];
@@ -858,7 +858,9 @@ export class ServerCollision {
    * Recursively checks the links in the area node BSP for collision.
    */
   clipToLinks(clip: MoveClip): void {
-    for (const touch of SV.area.tree.queryAABB(clip.boxmins, clip.boxmaxs)) {
+    console.assert(SV.area.tree !== null, 'collision area tree must be initialized before clipping to links');
+
+    for (const touch of SV.area.tree!.queryAABB(clip.boxmins, clip.boxmaxs)) {
       if (this._shouldSkipTouch(clip, touch)) {
         continue;
       }

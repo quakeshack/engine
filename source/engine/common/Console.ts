@@ -1,4 +1,5 @@
 import Vector from '../../shared/Vector.ts';
+import { KeyDestination } from '../client/Key.ts';
 import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Cvar from './Cvar.ts';
 import Cmd from './Cmd.ts';
@@ -43,17 +44,17 @@ export default class Con {
 
   static ToggleConsole_f() {
     SCR.EndLoadingPlaque();
-    if (Key.dest.value === Key.dest.console) {
+    if (Key.destination === KeyDestination.console) {
       if (CL.cls.state !== clientConnectionState.connected) {
         M.Menu_Main_f();
         return;
       }
-      Key.dest.value = Key.dest.game;
+      Key.destination = KeyDestination.game;
       // Key.edit_line = ''; // CR: this annoys me otherwise
       Key.history_line = Key.lines.length;
       return;
     }
-    Key.dest.value = Key.dest.console;
+    Key.destination = KeyDestination.console;
   }
 
   static Clear_f() {
@@ -69,12 +70,12 @@ export default class Con {
   }
 
   static MessageMode_f() {
-    Key.dest.value = Key.dest.message;
+    Key.destination = KeyDestination.message;
     Key.team_message = false;
   }
 
   static MessageMode2_f() {
-    Key.dest.value = Key.dest.message;
+    Key.destination = KeyDestination.message;
     Key.team_message = true;
   }
 
@@ -164,7 +165,7 @@ export default class Con {
   }
 
   static DrawInput() {
-    if (Key.dest.value !== Key.dest.console) {
+    if (Key.destination !== KeyDestination.console) {
       return;
     }
     let text = ']' + Key.edit_line + String.fromCharCode(10 + ((Host.realtime * 4.0) & 1));
@@ -195,7 +196,7 @@ export default class Con {
 
     v += 16;
 
-    if (Key.dest.value === Key.dest.message) {
+    if (Key.destination === KeyDestination.message) {
       Draw.String(8, v, 'say: ' + Key.chat_buffer + String.fromCharCode(10 + ((Host.realtime * 4.0) & 1)), 2.0);
     }
   }

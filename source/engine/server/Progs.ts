@@ -327,7 +327,7 @@ class ProgsFunctionProxy extends Function {
     // such an ugly hack to make objects actually callable
     ProgsFunctionProxy.proxyCache[cacheId] = new Proxy(obj, {
       apply(target, thisArg, args) {
-        return obj.call.apply(obj, args);
+        return obj.call.apply(obj, args as [ProgsEntity | ServerEdict | null]);
       },
     });
 
@@ -438,12 +438,12 @@ class ProgsEntity {
         this._serializableFields.push(name);
       }
 
-      const val_float = new Float32Array(val);
-      const val_int = new Int32Array(val);
+      const val_float = new Float32Array(val!);
+      const val_int = new Int32Array(val!);
 
-      const assignedFunctions = [];
+      const assignedFunctions = [] as Function[];
 
-      switch (type) {
+      switch (type as etype) {
         case etype.ev_string:
           Object.defineProperty(this, name, {
             get: function() {
@@ -745,7 +745,7 @@ PR.ValueString = function(type, val, ofs) {
   const val_float = new Float32Array(val);
   const val_int = new Int32Array(val);
   type &= ~PR.saveglobal;
-  switch (type) {
+  switch (type as etype) {
     case etype.ev_string:
       return PR.GetString(val_int[ofs]);
     case etype.ev_entity:
@@ -777,7 +777,7 @@ PR.Value = function(type, val, ofs) {
   const val_float = new Float32Array(val);
   const val_int = new Int32Array(val);
   type &= ~PR.saveglobal;
-  switch (type) {
+  switch (type as etype) {
     case etype.ev_string:
       return PR.GetString(val_int[ofs]);
     case etype.ev_pointer:
@@ -809,7 +809,7 @@ PR.UglyValueString = function(type, val, ofs) {
   const val_float = new Float32Array(val);
   const val_int = new Int32Array(val);
   type &= ~PR.saveglobal;
-  switch (type) {
+  switch (type as etype) {
     case etype.ev_string:
       return PR.GetString(val_int[ofs]);
     case etype.ev_entity:
@@ -993,9 +993,13 @@ PR.LoadProgs = async function() {
 
   const progsAPI = new ProgsEntity(null);
 
-  const deathmatch = Cvar.FindVar('deathmatch');
-  const skill = Cvar.FindVar('skill');
-  const coop = Cvar.FindVar('coop');
+  const deathmatch = Cvar.FindVar('deathmatch')!;
+  const skill = Cvar.FindVar('skill')!;
+  const coop = Cvar.FindVar('coop')!;
+
+  console.assert(deathmatch instanceof Cvar, 'deathmatch cvar not found');
+  console.assert(skill instanceof Cvar, 'skill cvar not found');
+  console.assert(coop instanceof Cvar, 'coop cvar not found');
 
   const gameAPI = Object.assign(progsAPI, {
     prepareEntity(edict: ServerEdict, classname: string | null, initialData: EdictData = {}): boolean {
@@ -1037,7 +1041,7 @@ PR.LoadProgs = async function() {
           continue;
         }
 
-        switch (field.type & 0x7fff) {
+        switch ((field.type & 0x7fff) as etype) {
           case etype.ev_entity:
             if (value === null || typeof value === 'object') {
               preparedEntity[key] = value;
@@ -1050,6 +1054,7 @@ PR.LoadProgs = async function() {
             if (value instanceof Vector) {
               preparedEntity[key] = value;
             } else {
+              // eslint-disable-next-line @typescript-eslint/no-base-to-string
               preparedEntity[key] = new Vector(...String(value).split(' ').map((x) => Q.atof(x)));
             }
             break;
@@ -1088,13 +1093,13 @@ PR.LoadProgs = async function() {
 
       const spawnflags = typeof preparedEntity.spawnflags === 'number' ? preparedEntity.spawnflags : 0;
 
-      if (deathmatch.value !== 0 && (spawnflags & 2048)) {
+      if (deathmatch!.value !== 0 && (spawnflags & 2048)) {
         return false;
       }
 
       const skillFlags = [256, 512, 1024, 1024];
 
-      if (spawnflags & skillFlags[Math.max(0, Math.min(skillFlags.length, skill.value))]) {
+      if (spawnflags & skillFlags[Math.max(0, Math.min(skillFlags.length, skill!.value))]) {
         return false;
       }
 
@@ -1122,7 +1127,7 @@ PR.LoadProgs = async function() {
       gameAPI.serverflags = serverflags;
 
       // coop automatically disables deathmatch
-      if (coop.value) {
+      if (coop!.value) {
         coop.set(true);
         deathmatch.set(false);
       }
@@ -1161,7 +1166,7 @@ PR.Init = async function() {
       PR.QuakeJS = null;
     } else {
       // try to get the game API
-      PR.QuakeJS = await loadGameModule(COM.gamedir[0].filename);
+      PR.QuakeJS = await loadGameModule(COM.gamedir![0].filename);
       PR.QuakeJS.ServerGameAPI.Init(ServerEngineAPI);
 
       const identification = PR.QuakeJS.identification;
@@ -1169,13 +1174,17 @@ PR.Init = async function() {
     return;
     }
   } catch (e) {
-    if (typeof(e.code) === 'string' && e.code !== 'ERR_MODULE_NOT_FOUND') { // only catch module not found errors
+    const errorCode = typeof e === 'object' && e !== null && 'code' in e && typeof e.code === 'string'
+      ? e.code
+      : null;
+
+    if (errorCode !== null && errorCode !== 'ERR_MODULE_NOT_FOUND') { // only catch module not found errors
       throw e;
     }
 
     // CR: stupidest error convention ever, check https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import#return_value
-
-    Con.PrintWarning('PR.Init: Falling back to QuakeC, failed to initialize QuakeJS server code: ' + e.message +'.\n');
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    Con.PrintWarning('PR.Init: Falling back to QuakeC, failed to initialize QuakeJS server code: ' + errorMessage + '.\n');
 
     PR.QuakeJS = null;
   }

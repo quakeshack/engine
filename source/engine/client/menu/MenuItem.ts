@@ -138,7 +138,7 @@ export class Action extends MenuItem {
     }
   }
 
-  override handleInput(key: number): boolean {
+  override handleInput(key: K): boolean {
     if (!this.enabled) {
       return false;
     }
@@ -212,7 +212,7 @@ export class Slider extends MenuItem {
     M.DrawSlider(x + 116, y, this.getNormalizedValue());
   }
 
-  override handleInput(key: number): boolean {
+  override handleInput(key: K): boolean {
     if (!this.enabled) {
       return false;
     }
@@ -294,7 +294,7 @@ export class Toggle extends MenuItem {
     M.PrintWhite(x + 116, y, this.isOn() ? this.onLabel : this.offLabel);
   }
 
-  override handleInput(key: number): boolean {
+  override handleInput(key: K): boolean {
     if (!this.enabled) {
       return false;
     }
@@ -375,7 +375,7 @@ export class Textbox extends MenuItem {
     }
   }
 
-  override handleInput(key: number): boolean {
+  override handleInput(key: K): boolean {
     if (!this.enabled) {
       return false;
     }
@@ -389,7 +389,7 @@ export class Textbox extends MenuItem {
     }
 
     // Printable characters
-    if (key >= 32 && key <= 127) {
+    if (key >= K.SPACE && key <= K.BACKSPACE) {
       const current = this.getValue();
       if (current.length < this.maxLength) {
         this.setValue(current + String.fromCharCode(key));

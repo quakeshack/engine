@@ -34,7 +34,7 @@ Grouped by sections and then sorted by priority (more or less).
 - [_] CL: go over the client API again, too much confusing lingo here and there after me hacking in lots of features
 - [_] SV: cleanup the `SV.WriteEntitiesToClient` mess a bit, make it more flexible
 - [_] cleanup `charCodeAt` everywhere
-- [_] completely get rid of `Host.client`
+- [X] completely get rid of `Host.client`
 - [X] refactor `MSG`/`SZ` especially in regards to `NET.message` and `client[…].message`
 - [_] `CL.state.intermission`/`ExitIntermission`: unsure what happens next on DS
 - [_] remove C style code that is almost verbatim from Quake
@@ -156,6 +156,13 @@ Grouped by sections and then sorted by priority (more or less).
 - https://mus1n.github.io/Quake-3-Skybox/ 360 to skybox
 
 ## Log
+
+### 2026-04-05
+
+- The Grand TypeScript Port™
+  - due to the use of annotations, dedicated must be transpiled before run
+  - decided to ditch QuakeC VM and legacy code paths completely
+  - decided to ditch old SBar code as well
 
 ### 2026-04-01
 

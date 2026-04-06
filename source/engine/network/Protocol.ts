@@ -250,7 +250,7 @@ export class UserCmd {
     return cmd;
   }
 
-  set(other: UserCmd): UserCmd {
+  set(other: UserCmd): this {
     this.msec = other.msec;
     this.forwardmove = other.forwardmove;
     this.sidemove = other.sidemove;
@@ -262,7 +262,7 @@ export class UserCmd {
     return this;
   }
 
-  reset(): UserCmd {
+  reset(): this {
     this.msec = 0;
     this.forwardmove = 0;
     this.sidemove = 0;

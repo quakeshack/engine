@@ -1,6 +1,7 @@
 import GL from '../../client/GL.ts';
 import { eventBus } from '../../registry.ts';
 import Vector from '../../../shared/Vector.ts';
+import type { ModelType } from '../Mod.ts';
 
 let gl: WebGL2RenderingContext | null = null;
 
@@ -122,7 +123,7 @@ export class BaseModel {
   name: string;
 
   /** Concrete model type, assigned by subclasses. */
-  type: number | null;
+  type: ModelType | null;
 
   /** Number of frames in file. */
   _num_frames = 0;

@@ -32,6 +32,8 @@ export interface Hull {
 
   /** Maximum bounding box for this hull. */
   readonly clip_maxs: Vector;
+
+  // TODO: allowedClipNodes?
 }
 
 export type WorldspawnInfo = Record<string, string>;
@@ -202,7 +204,7 @@ export class Visibility {
    * Reveal all clusters.
    * @returns This visibility object.
    */
-  revealAll(): Visibility {
+  revealAll(): this {
     this.#data.fill(0xff);
     this.#unconditionalReveal = true;
 
@@ -213,7 +215,7 @@ export class Visibility {
    * Hide all clusters.
    * @returns This visibility object.
    */
-  hideAll(): Visibility {
+  hideAll(): this {
     this.#data.fill(0x00);
 
     return this;
@@ -232,7 +234,7 @@ export class Visibility {
     }
 
     while (true) {
-      if (node.contents < 0) {
+      if (node.contents < content.CONTENT_NONE) {
         if (node.contents !== content.CONTENT_SOLID && node.cluster >= 0 && model.clusterPvsOffsets !== null) {
           const visofs = model.clusterPvsOffsets[node.cluster];
           const vis = Visibility.fromBrushModel(model, visofs);
@@ -268,7 +270,7 @@ export class Visibility {
    * @param p Point in world space.
    * @returns This visibility object.
    */
-  addFatPoint(p: Vector): Visibility {
+  addFatPoint(p: Vector): this {
     const model = this.#model;
 
     if (model !== null) {
@@ -360,7 +362,7 @@ export class Node extends BrushModelComponent {
   /** Node index in the nodes array. */
   num = 0;
 
-  contents = 0;
+  contents: content = content.CONTENT_NONE;
 
   /** Index into planes array. */
   planenum = 0;
@@ -478,8 +480,8 @@ export class Brush extends BrushModelComponent {
   /** Number of brush sides. */
   numsides = 0;
 
-  /** Contents flags, see `Defs.content`. */
-  contents = 0;
+  /** Contents of the brush. */
+  contents: content = content.CONTENT_NONE;
 
   /** Axis-aligned bounding box minimum. */
   mins: Vector | null = null;
@@ -648,6 +650,10 @@ export class BrushModel extends BaseModel {
 
   override type = 0;
 
+  get isWorldModel(): boolean {
+    return !this.submodel;
+  }
+
   /**
    * Whether this model has complete brush-based collision data.
    * When true, Q2-style brush tracing can be used instead of Q1-style hull tracing.
@@ -676,7 +682,7 @@ export class BrushModel extends BaseModel {
     let node = this.nodes[0] as Node;
 
     while (true) {
-      if (node.contents < 0) {
+      if (node.contents < content.CONTENT_NONE) {
         return node;
       }
 

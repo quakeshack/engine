@@ -3,6 +3,7 @@ import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
+import { KeyDestination } from './Key.ts';
 import GL from './GL.ts';
 import VID from './VID.ts';
 import PostProcess from './renderer/PostProcess.ts';
@@ -102,7 +103,7 @@ export default class SCR {
    */
   static DrawCenterString(): void {
     SCR.centertime_off -= Host.frametime;
-    if (((SCR.centertime_off <= 0.0) && (CL.state.intermission === 0)) || (Key.dest.value !== Key.dest.game)) {
+    if (((SCR.centertime_off <= 0.0) && (CL.state.intermission === 0)) || (Key.destination !== KeyDestination.game)) {
       return;
     }
 
@@ -281,7 +282,7 @@ export default class SCR {
     }
 
     let conlines;
-    if (Key.dest.value === Key.dest.console) {
+    if (Key.destination === KeyDestination.console) {
       conlines = 100;
     } else {
       conlines = 0;
@@ -308,7 +309,7 @@ export default class SCR {
       Con.DrawConsole(SCR.con_current);
       return;
     }
-    if ((Key.dest.value === Key.dest.game || Key.dest.value === Key.dest.message) && CL.cls.signon === 4) {
+    if ((Key.destination === KeyDestination.game || Key.destination === KeyDestination.message) && CL.cls.signon === 4) {
       Con.DrawNotify();
     }
   }
@@ -376,11 +377,11 @@ export default class SCR {
         const samples = SCR._frameTimes.filter((a): a is number => a !== null);
         SCR.FPS = 1000 / (samples.reduce((a, b) => a + b, 0) / samples.length);
 
-        if (Host.refreshrate.value === 0 && Host.framecount > SCR._frameTimes.length * 10) {
+        if (Host.refreshrate!.value === 0 && Host.framecount > SCR._frameTimes.length * 10) {
           const refreshRate = (Math.ceil(SCR.FPS / 15)) * 15;
           Con.DPrint(`Determined refresh rate: ${Math.round(SCR.FPS)} FPS\n`);
           Con.DPrint(`Setting Host refreshrate to ${Math.round(refreshRate)}\n`);
-          Host.refreshrate.set(Math.round(refreshRate));
+          Host.refreshrate!.set(Math.round(refreshRate));
         }
       }
 
@@ -408,20 +409,20 @@ export default class SCR {
 
       if (CL.cls.state === clientConnectionState.connecting) {
         CL.Draw();
-      } else if ((CL.state.intermission === 1) && (Key.dest.value === Key.dest.game)) {
+      } else if ((CL.state.intermission === 1) && (Key.destination === KeyDestination.game)) {
         if (!CL.sbarDisabled) {
           Sbar.IntermissionOverlay();
         } else {
           CL.DrawHUD();
         }
-      } else if ((CL.state.intermission === 2) && (Key.dest.value === Key.dest.game)) {
+      } else if ((CL.state.intermission === 2) && (Key.destination === KeyDestination.game)) {
         if (!CL.sbarDisabled) {
           Sbar.FinaleOverlay();
           SCR.DrawCenterString();
         } else {
           CL.DrawHUD();
         }
-      } else if ((CL.state.intermission === 3) && (Key.dest.value === Key.dest.game)) {
+      } else if ((CL.state.intermission === 3) && (Key.destination === KeyDestination.game)) {
         if (!CL.sbarDisabled) {
           SCR.DrawCenterString();
         } else {

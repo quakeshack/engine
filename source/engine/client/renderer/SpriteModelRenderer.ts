@@ -2,6 +2,7 @@ import { ModelRenderer } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL from '../GL.ts';
+import { ModelType } from '../../common/Mod.ts';
 import type { SpriteModel } from '../../common/model/SpriteModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
@@ -34,10 +35,10 @@ type SpriteRenderFrame = Exclude<SpriteFrame, { group: true }> | SpriteGroupedFr
 export class SpriteModelRenderer extends ModelRenderer {
   /**
    * Get the model type this renderer handles.
-   * @returns Mod.type.sprite (1)
+   * @returns ModelType.sprite.
    */
-  override getModelType(): number {
-    return 1; // Mod.type.sprite
+  override getModelType(): ModelType {
+    return ModelType.sprite;
   }
 
   /**

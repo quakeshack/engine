@@ -138,7 +138,6 @@ function handleContextMenu(event: MouseEvent): void {
 function handleFocus(): void {
   for (let index = 0; index < 256; index++) {
     Key.Event(index, false);
-    Key.down[index] = false;
   }
 }
 

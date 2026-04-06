@@ -78,6 +78,43 @@ const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   '@typescript-eslint/no-redundant-type-constituents': 'warn',
 });
 
+/** Extra strict rules applied only to TypeScript files. */
+const tsStrictRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
+  // Replace base rules with TS-aware extension equivalents
+  'consistent-return': 'off',
+  '@typescript-eslint/consistent-return': 'error',
+  'no-duplicate-imports': 'off',
+
+  // Strict type-checked rules
+  '@typescript-eslint/no-base-to-string': 'error',
+  '@typescript-eslint/no-confusing-void-expression': 'error',
+  '@typescript-eslint/no-duplicate-enum-values': 'error',
+  '@typescript-eslint/no-duplicate-type-constituents': 'error',
+  '@typescript-eslint/no-for-in-array': 'error',
+  '@typescript-eslint/no-implied-eval': 'error',
+  '@typescript-eslint/no-mixed-enums': 'error',
+  '@typescript-eslint/no-non-null-asserted-nullish-coalescing': 'error',
+  '@typescript-eslint/no-non-null-asserted-optional-chain': 'error',
+  '@typescript-eslint/no-redundant-type-constituents': 'error',
+  '@typescript-eslint/no-unnecessary-boolean-literal-compare': 'error',
+  '@typescript-eslint/no-unnecessary-template-expression': 'error',
+  '@typescript-eslint/no-unnecessary-type-constraint': 'error',
+  '@typescript-eslint/no-unnecessary-type-conversion': 'error',
+  '@typescript-eslint/no-unsafe-enum-comparison': 'error',
+  '@typescript-eslint/no-useless-constructor': 'error',
+  '@typescript-eslint/only-throw-error': 'error',
+  '@typescript-eslint/prefer-promise-reject-errors': 'error',
+  '@typescript-eslint/prefer-reduce-type-parameter': 'error',
+  '@typescript-eslint/prefer-return-this-type': 'error',
+  '@typescript-eslint/restrict-plus-operands': ['error', {
+    allowNumberAndString: true,
+  }],
+  '@typescript-eslint/restrict-template-expressions': 'off',
+  '@typescript-eslint/return-await': ['error', 'error-handling-correctness-only'],
+  '@typescript-eslint/unbound-method': 'warn',
+  '@typescript-eslint/unified-signatures': 'error',
+});
+
 export default defineConfig([
   {
     ignores: [
@@ -117,6 +154,7 @@ export default defineConfig([
     },
     rules: {
       ...commonRules,
+      ...tsStrictRules,
       'jsdoc/check-param-names': 'off',
       'jsdoc/require-param': 'off',
       'jsdoc/require-param-type': 'off',

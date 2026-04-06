@@ -4,6 +4,7 @@ import { Face } from '../BaseModel.ts';
 import { BrushModel, Node } from '../BSP.ts';
 import { MaterialFlags } from '../../../client/renderer/Materials.ts';
 import { BSP29Loader } from './BSP29Loader.ts';
+import { content } from '../../../../shared/Defs.ts';
 
 /**
  * Loader for BSP2 format (.bsp).
@@ -149,8 +150,8 @@ export class BSP2Loader extends BSP29Loader {
         firstface: view.getUint32(fileofs + 36, true),
         numfaces: view.getUint32(fileofs + 40, true),
       });
-      loadmodel.nodes[i].baseMins = loadmodel.nodes[i].mins.copy();
-      loadmodel.nodes[i].baseMaxs = loadmodel.nodes[i].maxs.copy();
+      loadmodel.nodes[i].baseMins = loadmodel.nodes[i].mins!.copy();
+      loadmodel.nodes[i].baseMaxs = loadmodel.nodes[i].maxs!.copy();
       fileofs += 44;
     }
 
@@ -169,7 +170,7 @@ export class BSP2Loader extends BSP29Loader {
     function setParent(node: Node, parent: Node | null): void {
       node.parent = parent;
 
-      if (node.contents < 0 || !node.children[0] || !node.children[1]) {
+      if (node.contents < content.CONTENT_NONE || !node.children[0] || !node.children[1]) {
         return;
       }
 
@@ -214,8 +215,8 @@ export class BSP2Loader extends BSP29Loader {
           view.getUint8(fileofs + 43),
         ],
       });
-      loadmodel.leafs[i].baseMins = loadmodel.leafs[i].mins.copy();
-      loadmodel.leafs[i].baseMaxs = loadmodel.leafs[i].maxs.copy();
+      loadmodel.leafs[i].baseMins = loadmodel.leafs[i].mins!.copy();
+      loadmodel.leafs[i].baseMaxs = loadmodel.leafs[i].maxs!.copy();
       fileofs += 44;
     }
 

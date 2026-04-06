@@ -539,4 +539,4 @@ export default class Draw {
   }
 }
 
-eventBus.subscribe('vid.resize', () => Draw.UpdateDiscPosition());
+eventBus.subscribe('vid.resize', () => { Draw.UpdateDiscPosition(); });

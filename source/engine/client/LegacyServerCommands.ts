@@ -2,7 +2,7 @@ import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import { HostError } from '../common/Errors.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
-import type { BrushModel } from '../common/Mod.ts';
+import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
 import Vector from '../../shared/Vector.ts';
@@ -247,7 +247,7 @@ function handleLegacyServerData() {
     sounds.length = 1;
 
     // Load world model first
-    const worldModel = await Mod.ForNameAsync(model_precache[1], false, Mod.scope.client);
+    const worldModel = await Mod.ForNameAsync(model_precache[1], false, ModelScope.client);
     if (worldModel === null) {
       throw new HostError(`Failed to load world model ${model_precache[1]}`);
     }
@@ -262,7 +262,7 @@ function handleLegacyServerData() {
       }
       CL.SetConnectingStep(25 + (models.length / model_precache.length) * 30, 'Loading models');
       const modelStart = models.length;
-      const loaded = await Promise.all(remaining.slice(0, chunksize).map((m) => Mod.ForNameAsync(m, false, Mod.scope.client)));
+      const loaded = await Promise.all(remaining.slice(0, chunksize).map((m) => Mod.ForNameAsync(m, false, ModelScope.client)));
       storeLoadedSlice(models, modelStart, loaded);
       CL.SendCmd();
     }
@@ -662,7 +662,8 @@ function parseLegacyBeam(model: BaseModel | null | undefined): void {
  * Parses a WinQuake svc_temp_entity with legacy coordinate precision.
  */
 function handleLegacyTempEntity() {
-  const type = NET.message.readByte();
+  const type = NET.message.readByte() as Protocol.te;
+  console.assert(Object.values(Protocol.te).includes(type), `invalid temp entity type ${type}`);
 
   switch (type) {
     case Protocol.te.lightning1:

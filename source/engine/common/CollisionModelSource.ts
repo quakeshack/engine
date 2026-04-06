@@ -1,6 +1,7 @@
 import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 
 import type { ServerEdict } from '../server/Edict.ts';
+import { ModelType } from './Mod.ts';
 import type { BaseModel } from './model/BaseModel.ts';
 import type { BrushModel } from './model/BSP.ts';
 
@@ -79,7 +80,7 @@ export class CollisionModelSource {
 
     const fallbackClientModel = this.#getClientModels()?.[1] ?? null;
 
-    if (fallbackClientModel !== null && fallbackClientModel.type === 0) {
+    if (fallbackClientModel !== null && fallbackClientModel.type === ModelType.brush) {
       return fallbackClientModel as BrushModel;
     }
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-implied-eval */
 import type { SzBuffer } from '../network/MSG.ts';
 import type { ClientEdict } from '../../shared/GameInterfaces.ts';
 
@@ -9,7 +10,7 @@ import { eventBus, getCommonRegistry, registry } from '../registry.ts';
 import { ED, ServerEdict } from './Edict.ts';
 
 type BuiltinValue = string | number | boolean | Vector | ServerEdict | null;
-type BuiltinImplementation = (...args: BuiltinValue[]) => BuiltinValue | void;
+type BuiltinImplementation<TArgs extends BuiltinValue[] = BuiltinValue[], TReturn extends BuiltinValue | void = BuiltinValue | void> = (...args: TArgs) => TReturn;
 type BuiltinFunction = () => void;
 
 interface GeneratedAssert {
@@ -120,7 +121,12 @@ export enum ofs {
  * Generates a function that can be exposed to the QuakeC VM as a builtin.
  * @returns The VM-facing builtin wrapper.
  */
-function generateBuiltinFunction(name: string, func: BuiltinImplementation, argTypes: readonly etype[] = [], returnType: etype = etype.ev_void): BuiltinFunction {
+function generateBuiltinFunction<TArgs extends BuiltinValue[], TReturn extends BuiltinValue | void>(
+  name: string,
+  func: BuiltinImplementation<TArgs, TReturn>,
+  argTypes: readonly etype[] = [],
+  returnType: etype = etype.ev_void,
+): BuiltinFunction {
   if (!(func instanceof Function)) {
     throw new TypeError('func must be a Function!');
   }
@@ -269,8 +275,8 @@ const makevectors = generateBuiltinFunction('makevectors', (vec: Vector): void =
   gameAPI.v_up = up;
 }, [etype.ev_vector]);
 
-const setorigin = generateBuiltinFunction('setorigin', (edict: ServerEdict, vec: Vector): void => edict.setOrigin(vec), [etype.ev_entity, etype.ev_vector], etype.ev_void);
-const setsize = generateBuiltinFunction('setsize', (edict: ServerEdict, min: Vector, max: Vector): void => edict.setMinMaxSize(min, max), [etype.ev_entity, etype.ev_vector, etype.ev_vector], etype.ev_void);
+const setorigin = generateBuiltinFunction('setorigin', (edict: ServerEdict, vec: Vector): void => { edict.setOrigin(vec); }, [etype.ev_entity, etype.ev_vector], etype.ev_void);
+const setsize = generateBuiltinFunction('setsize', (edict: ServerEdict, min: Vector, max: Vector): void => { edict.setMinMaxSize(min, max); }, [etype.ev_entity, etype.ev_vector, etype.ev_vector], etype.ev_void);
 
 const setmodel = generateBuiltinFunction('setmodel', (edict: ServerEdict, model: string): void => {
   edict.setModel(model);
@@ -371,7 +377,7 @@ const dprint = generateBuiltinFunction('dprint', (message: string): void => {
   ServerEngineAPI.ConsoleDebug(message);
 }, [etype.ev_strings]);
 
-const ftos = generateBuiltinFunction('ftos', (value: number): string => ((+value | 0) === +value ? value.toString() : value.toFixed(1)), [etype.ev_float], etype.ev_string);
+const ftos = generateBuiltinFunction('ftos', (value: number): string => (Number.isInteger(value) ? value.toString() : value.toFixed(1)), [etype.ev_float], etype.ev_string);
 const fabs = generateBuiltinFunction('fabs', (value: number): number => Math.abs(value), [etype.ev_float], etype.ev_float);
 const vtos = generateBuiltinFunction('vtos', (vec: Vector): string => vec.toString(), [etype.ev_vector], etype.ev_string);
 
@@ -452,14 +458,14 @@ function WriteGeneric(dest: number): SzBuffer {
       return SV.server.datagram;
 
     case 1: {
-      const messageEntity = getQuakeCGameAPI().msg_entity;
+      const messageEntity = getQuakeCGameAPI().msg_entity!;
       const entityNumber = messageEntity.num;
 
       if (!messageEntity.isClient()) {
         throw new Error(`WriteGeneric: not a client ${entityNumber}`);
       }
 
-      return messageEntity.getClient().message;
+      return messageEntity.getClient()!.message;
     }
 
     case 2:
@@ -510,10 +516,11 @@ const makestatic = generateBuiltinFunction('makestatic', (edict: ServerEdict): v
 }, [etype.ev_entity]);
 
 const setspawnparms = generateBuiltinFunction('setspawnparms', (clientEdict: ServerEdict): void => {
-  const spawnParameters = clientEdict.getClient().spawn_parms;
+  console.assert(clientEdict.isClient(), 'setspawnparms requires a client edict');
+  const spawnParameters = clientEdict.getClient()!.spawn_parms;
 
   for (let i = 0; i <= 15; i++) {
-    SV.server.gameAPI[`parm${i + 1}`] = spawnParameters[i];
+    SV.server.gameAPI[`parm${i + 1}`] = spawnParameters![i];
   }
 }, [etype.ev_entity_client]);
 

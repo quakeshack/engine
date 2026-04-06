@@ -183,8 +183,8 @@ export class ServerMovement {
       return false;
     }
 
-    const goalEdict = this.#resolveEdict(entity.goalentity);
-    const enemyEdict = this.#resolveEdict(entity.enemy);
+    const goalEdict = this.#resolveEdict(entity.goalentity || null);
+    const enemyEdict = this.#resolveEdict(entity.enemy || null);
 
     console.assert(goalEdict !== null, 'must have goal for moveToGoal');
 
@@ -195,7 +195,7 @@ export class ServerMovement {
     }
 
     // TODO: consider reintroducing direct movestep steering toward goal to reduce chase ping-pong.
-    if (Math.random() >= 0.75 || !this.stepDirection(ent, entity.ideal_yaw, dist)) {
+    if (Math.random() >= 0.75 || !this.stepDirection(ent, entity.ideal_yaw || 0, dist)) {
       this.newChaseDir(ent, goalTarget, dist);
       return true;
     }
@@ -207,7 +207,7 @@ export class ServerMovement {
     const entity = edict.entity!;
     const angle1 = entity.angles[1];
     const current = Vector.anglemod(angle1);
-    const ideal = entity.ideal_yaw;
+    const ideal = entity.ideal_yaw || 0;
 
     if (current === ideal) {
       return angle1;
@@ -257,7 +257,7 @@ export class ServerMovement {
 
   newChaseDir(actor: ServerEdict, endpos: Vector, dist: number): void {
     const entity = actor.entity!;
-    const olddir = Vector.anglemod(((entity.ideal_yaw / 45.0) >> 0) * 45.0);
+    const olddir = Vector.anglemod((((entity.ideal_yaw || 0) / 45.0) >> 0) * 45.0);
     const turnaround = Vector.anglemod(olddir - 180.0);
     const deltax = endpos[0] - entity.origin[0];
     const deltay = endpos[1] - entity.origin[1];

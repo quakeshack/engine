@@ -280,6 +280,7 @@ export default class V {
       CL.state.cshifts[CL.cshift.bonus][3] = 0.0;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
     for (let i = CL.cshift.user1; i < CL.state.cshifts.length; i++) {
       const userShift = CL.state.cshifts[i];
       userShift[3] -= Host.frametime * 100.0;

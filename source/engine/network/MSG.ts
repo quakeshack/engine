@@ -92,7 +92,7 @@ export class SzBuffer {
     return copy;
   }
 
-  set(other: SzBuffer): SzBuffer {
+  set(other: SzBuffer): this {
     this.name = other.name;
     this.data = new ArrayBuffer(other.maxsize);
     new Uint8Array(this.data).set(new Uint8Array(other.data));

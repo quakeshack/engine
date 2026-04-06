@@ -12,7 +12,7 @@ import { MIN_STEP_NORMAL, STEPSIZE } from '../common/Pmove.ts';
 import type { Face } from '../common/model/BaseModel.ts';
 import type PlatformWorker from '../common/PlatformWorker.ts';
 import WorkerManager from '../common/WorkerManager.ts';
-import { eventBus, registry } from '../registry.ts';
+import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
 import type { BaseEntity, ServerEdict } from './Edict.ts';
 import type { CollisionTrace } from './physics/ServerCollisionSupport.ts';
 
@@ -82,10 +82,12 @@ function vectorToTuple(vector: Vector): VectorTuple {
   return [vector[0], vector[1], vector[2]];
 }
 
-let { CL, COM, Con, R, SV } = registry;
+let { COM, Con, SV } = getCommonRegistry();
+let { CL, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, R, SV } = registry);
+  ({ COM, Con, SV } = getCommonRegistry());
+  ({ CL, R } = getClientRegistry());
 });
 
 class Waypoint {
@@ -158,7 +160,7 @@ class WalkableSurface {
 
     console.assert(face, 'Navigation requires a worldmodel when deserializing surfaces');
 
-    const surface = new WalkableSurface(face, faceIndex);
+    const surface = new WalkableSurface(face!, faceIndex);
     surface.stability = data[0];
     surface.normal = new Vector(...data[1]);
     surface.waypoints = data[3].map((wpData) => Waypoint.deserialize(wpData));
@@ -506,10 +508,13 @@ export class Navigation {
       this.build();
     }
 
+    console.assert(SV.server.mapname, 'SV.server.mapname is required for navigation initialization');
+    console.assert(SV.server.worldmodel, 'SV.server.worldmodel is required for navigation initialization');
+
     this.#initWorker();
     this.#subscribePathResponse();
     this.#subscribeDebugCvars();
-    eventBus.publish('nav.load', SV.server.mapname, SV.server.worldmodel.checksum);
+    eventBus.publish('nav.load', SV.server.mapname, SV.server.worldmodel!.checksum);
   }
 
   shutdown(): void {
@@ -612,7 +617,7 @@ export class Navigation {
       if (checksum !== expectedChecksum) {
         throw new NavMeshOutOfDateException(filename, 'outdated map');
       }
-    } else if (checksum !== this.worldmodel.checksum) {
+    } else if (checksum !== this.worldmodel!.checksum) {
       throw new NavMeshOutOfDateException(filename, 'outdated map');
     }
 
@@ -674,7 +679,8 @@ export class Navigation {
   }
 
   async save(): Promise<void> {
-    console.assert(Boolean(this.worldmodel), 'Navigation: worldmodel is required');
+    console.assert(this.worldmodel !== null, 'Navigation: worldmodel is required');
+    console.assert(SV.server.mapname, 'SV.server.mapname is required');
 
     const filename = `maps/${SV.server.mapname}.nav`;
 
@@ -690,7 +696,7 @@ export class Navigation {
       bytes.push((value >>> 16) & 0xff);
       bytes.push((value >>> 24) & 0xff);
     };
-    const pushInt32 = (value: number): void => pushUint32(value >>> 0);
+    const pushInt32 = (value: number): void => { pushUint32(value >>> 0); };
     const pushFloat32 = (value: number): void => {
       tdv.setFloat32(0, value, true);
       const byteView = new Uint8Array(tmp, 0, 4);
@@ -707,11 +713,11 @@ export class Navigation {
     pushUint32(NAV_FILE_VERSION);
 
     // world name
-    const nameBytes = new TextEncoder().encode(SV.server.mapname);
+    const nameBytes = new TextEncoder().encode(SV.server.mapname!);
     pushUint16(nameBytes.length);
     pushBytes(nameBytes);
 
-    pushUint32(this.worldmodel.checksum);
+    pushUint32(this.worldmodel!.checksum);
     pushFloat32(this.requiredHeight);
     pushFloat32(this.requiredRadius);
 
@@ -747,7 +753,7 @@ export class Navigation {
     await COM.WriteFile(filename, out, out.length);
 
     // Keep the worker in sync after every successful rebuild, including listen-server sessions.
-    eventBus.publish('nav.load', SV.server.mapname, this.worldmodel.checksum);
+    eventBus.publish('nav.load', SV.server.mapname, this.worldmodel!.checksum);
   }
 
   #newWalkerStandOffset(): Vector {
@@ -846,13 +852,15 @@ export class Navigation {
    * @returns A point lying on the given surface plane.
    */
   #getSurfacePoint(surface: WalkableSurface): Vector {
-    const surfedge = this.worldmodel.surfedges[surface.face.firstedge];
+    console.assert(this.worldmodel, 'Navigation: worldmodel is required for surface point retrieval');
+
+    const surfedge = this.worldmodel!.surfedges[surface.face.firstedge];
 
     if (surfedge > 0) {
-      return new Vector().set(this.worldmodel.vertexes[this.worldmodel.edges[surfedge][0]]);
+      return new Vector().set(this.worldmodel!.vertexes[this.worldmodel!.edges[surfedge][0]]);
     }
 
-    return new Vector().set(this.worldmodel.vertexes[this.worldmodel.edges[-surfedge][1]]);
+    return new Vector().set(this.worldmodel!.vertexes[this.worldmodel!.edges[-surfedge][1]]);
   }
 
   /**
@@ -962,9 +970,11 @@ export class Navigation {
     const upwards = new Vector(0, 0, 1);
     const sidewards = new Vector(0, 1, 0);
 
+    console.assert(this.worldmodel, 'Navigation: worldmodel is required for walkable surface extraction');
+
     // Pass 1: collect all potentially walkable surfaces
-    for (let i = 0; i < this.worldmodel.faces.length; i++) {
-      const face = this.worldmodel.faces[i];
+    for (let i = 0; i < this.worldmodel!.faces.length; i++) {
+      const face = this.worldmodel!.faces[i];
 
       if (face.numedges < 3) {
         continue;
@@ -1000,12 +1010,12 @@ export class Navigation {
       const verts3: Vector[] = [];
       for (let i = 0; i < face.numedges; i++) {
         const vec = new Vector();
-        const surfedge = this.worldmodel.surfedges[face.firstedge + i];
+        const surfedge = this.worldmodel!.surfedges[face.firstedge + i];
 
         if (surfedge > 0) {
-          vec.set(this.worldmodel.vertexes[this.worldmodel.edges[surfedge][0]]);
+          vec.set(this.worldmodel!.vertexes[this.worldmodel!.edges[surfedge][0]]);
         } else {
-          vec.set(this.worldmodel.vertexes[this.worldmodel.edges[-surfedge][1]]);
+          vec.set(this.worldmodel!.vertexes[this.worldmodel!.edges[-surfedge][1]]);
         }
 
         verts3.push(vec);
@@ -1731,7 +1741,7 @@ export class Navigation {
   }
 
   #debugNavigation(): void {
-    if (!Navigation.nav_debug_graph.value) {
+    if (!Navigation.nav_debug_graph!.value) {
       return;
     }
 
@@ -1773,7 +1783,7 @@ export class Navigation {
   }
 
   #debugWaypoints(): void {
-    if (!Navigation.nav_debug_waypoints.value) {
+    if (!Navigation.nav_debug_waypoints!.value) {
       return;
     }
 
@@ -1856,7 +1866,7 @@ export class Navigation {
           void Cmd.ExecuteString('quit');
         }
       })
-      .catch((err) => Con.PrintError(`Navigation: failed to save navigation graph: ${err}\n`));
+      .catch((err) => { Con.PrintError(`Navigation: failed to save navigation graph: ${err}\n`); });
 
     this.#scheduleDebugRefresh();
   }

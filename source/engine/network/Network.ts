@@ -184,6 +184,7 @@ export default class NET {
     if (!registry.isDedicatedServer) {
       const { Key } = getClientRegistry();
 
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
       eventBus.subscribe('server.spawned', async () => {
         await Q.sleep(5000);
 
@@ -194,6 +195,7 @@ export default class NET {
         Con.PrintSuccess('Online multiplayer game has been created!\n');
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
       eventBus.subscribe('client.signon', async (signon: number) => {
         if (signon !== 4) {
           return;

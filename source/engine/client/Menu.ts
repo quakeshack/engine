@@ -7,6 +7,7 @@ import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.ts';
+import { KeyDestination } from './Key.ts';
 import MultiplayerMainMenu from './menu/Multiplayer.ts';
 import VID from './VID.ts';
 
@@ -238,16 +239,16 @@ export default class M {
 
   static CloseMenu(): void {
     if (CL.cls.state === clientConnectionState.connected) {
-      Key.dest.value = Key.dest.game;
+      Key.destination = KeyDestination.game;
     } else {
-      Key.dest.value = Key.dest.console;
+      Key.destination = KeyDestination.console;
     }
     M.state.value = M.state.none;
   }
 
   static ToggleMenu_f(): void {
     M.entersound = true;
-    if (Key.dest.value === Key.dest.menu) {
+    if (Key.destination === KeyDestination.menu) {
       if (M.state.value !== M.state.main) {
         M.Menu_Main_f();
         return;
@@ -264,11 +265,11 @@ export default class M {
       return;
     }
 
-    if (Key.dest.value !== Key.dest.menu) {
+    if (Key.destination !== KeyDestination.menu) {
       M.save_demonum = CL.cls.demonum;
       CL.cls.demonum = -1;
     }
-    Key.dest.value = Key.dest.menu;
+    Key.destination = KeyDestination.menu;
     M.state.value = M.state.main;
     M.entersound = true;
   }
@@ -280,7 +281,7 @@ export default class M {
     M.DrawPic(54, 32 + M.main_cursor * 20, M.menudot[Math.floor(Host.realtime * 10.0) % 6]);
   }
 
-  static Main_Key(k: number): void {
+  static Main_Key(k: K): void {
     switch (k) {
       case K.ESCAPE:
         M.CloseMenu();
@@ -324,7 +325,7 @@ export default class M {
 
   // Single player menu
   static Menu_SinglePlayer_f(): void {
-    Key.dest.value = Key.dest.menu;
+    Key.destination = KeyDestination.menu;
     M.state.value = M.state.singleplayer;
     M.entersound = true;
   }
@@ -336,7 +337,7 @@ export default class M {
     M.DrawPic(54, 32 + M.singleplayer_cursor * 20, M.menudot[Math.floor(Host.realtime * 10.0) % 6]);
   }
 
-  static SinglePlayer_Key(k: number): void {
+  static SinglePlayer_Key(k: K): void {
     switch (k) {
       case K.ESCAPE:
         M.Menu_Main_f();
@@ -360,7 +361,7 @@ export default class M {
             if (SV.server.active) {
               void Cmd.ExecuteString('disconnect');
             }
-            Key.dest.value = Key.dest.game;
+            Key.destination = KeyDestination.game;
             ClientLifecycle.startGame!.startSingleplayerGame();
             return;
           case 1:
@@ -376,8 +377,8 @@ export default class M {
   // Load/save menu
   static ScanSaves(): void {
     const searchpaths = COM.searchpaths;
-    const search = 'Quake.' + COM.gamedir[0].filename + '/s';
-    COM.searchpaths = COM.gamedir;
+    const search = 'Quake.' + COM.gamedir![0].filename + '/s';
+    COM.searchpaths = COM.gamedir!;
     for (let i = 0; i < M.max_savegames; i++) {
       const f = localStorage.getItem(search + i + '.json');
       if (!f) {
@@ -397,7 +398,7 @@ export default class M {
   static Menu_Load_f(): void {
     M.entersound = true;
     M.state.value = M.state.load;
-    Key.dest.value = Key.dest.menu;
+    Key.destination = KeyDestination.menu;
     M.ScanSaves();
   }
 
@@ -407,7 +408,7 @@ export default class M {
     }
     M.entersound = true;
     M.state.value = M.state.save;
-    Key.dest.value = Key.dest.menu;
+    Key.destination = KeyDestination.menu;
     M.ScanSaves();
   }
 
@@ -427,7 +428,7 @@ export default class M {
     M.DrawCharacter(8, 32 + (M.load_cursor << 3), 12 + ((Host.realtime * 4.0) & 1));
   }
 
-  static Load_Key(k: number): void {
+  static Load_Key(k: K): void {
     switch (k) {
       case K.ESCAPE:
         M.Menu_SinglePlayer_f();
@@ -462,12 +463,12 @@ export default class M {
         if (!confirm('Delete selected game?')) {
           return;
         }
-        localStorage.removeItem('Quake.' + COM.gamedir[0].filename + '/s' + M.load_cursor + '.sav');
+        localStorage.removeItem('Quake.' + COM.gamedir![0].filename + '/s' + M.load_cursor + '.sav');
         M.ScanSaves();
     }
   }
 
-  static Save_Key(k: number): void {
+  static Save_Key(k: K): void {
     switch (k) {
       case K.ESCAPE:
         M.Menu_SinglePlayer_f();
@@ -497,14 +498,14 @@ export default class M {
         if (!confirm('Delete selected game?')) {
           return;
         }
-        localStorage.removeItem('Quake.' + COM.gamedir[0].filename + '/s' + M.load_cursor + '.sav');
+        localStorage.removeItem('Quake.' + COM.gamedir![0].filename + '/s' + M.load_cursor + '.sav');
         M.ScanSaves();
     }
   }
 
   // Multiplayer menu
   static Menu_MultiPlayer_f(): void {
-    Key.dest.value = Key.dest.menu;
+    Key.destination = KeyDestination.menu;
     M.state.value = M.state.multiplayer;
     M.entersound = true;
     M.multiplayer_myname = CL.name.string;
@@ -549,7 +550,7 @@ export default class M {
     }
   }
 
-  static MultiPlayer_Key(k: number): void {
+  static MultiPlayer_Key(k: K): void {
     if (k === K.ESCAPE) {
       M.Menu_Main_f();
     }
@@ -643,7 +644,7 @@ export default class M {
         return;
     }
 
-    if ((k < 32) || (k > 127)) {
+    if (k < K.SPACE || k > K.BACKSPACE) {
       return;
     }
     if (M.multiplayer_cursor === 0) {
@@ -659,7 +660,7 @@ export default class M {
 
   // Options menu
   static Menu_Options_f(): void {
-    Key.dest.value = Key.dest.menu;
+    Key.destination = KeyDestination.menu;
     M.state.value = M.state.options;
     M.entersound = true;
   }
@@ -794,7 +795,7 @@ export default class M {
     M.DrawCharacter(200, 32 + (M.options_cursor << 3), 12 + ((Host.realtime * 4.0) & 1));
   }
 
-  static Options_Key(k: number): void {
+  static Options_Key(k: K): void {
     switch (k) {
       case K.ESCAPE:
         M.Menu_Main_f();
@@ -838,7 +839,7 @@ export default class M {
 
   // Keys menu
   static Menu_Keys_f(): void {
-    Key.dest.value = Key.dest.menu;
+    Key.destination = KeyDestination.menu;
     M.state.value = M.state.keys;
     M.entersound = true;
   }
@@ -894,10 +895,10 @@ export default class M {
     }
   }
 
-  static Keys_Key(k: number): void {
+  static Keys_Key(k: K): void {
     if (M.bind_grab) {
       S.LocalSound(M.sfx_menu1);
-      if ((k !== K.ESCAPE) && (k !== 96)) {
+      if (k !== K.ESCAPE && k !== 96 as K) { // FIXME: what’s 96?
         Cmd.text = 'bind "' + Key.KeynumToString(k) + '" "' + M.bindnames[M.keys_cursor][0] + '"\n' + Cmd.text;
       }
       M.bind_grab = false;
@@ -938,7 +939,7 @@ export default class M {
 
   // Help menu
   static Menu_Help_f(): void {
-    Key.dest.value = Key.dest.menu;
+    Key.destination = KeyDestination.menu;
     M.state.value = M.state.help;
     M.entersound = true;
     M.help_page = 0;
@@ -948,7 +949,7 @@ export default class M {
     M.DrawPic(0, 0, M.help_pages[M.help_page]);
   }
 
-  static Help_Key(k: number): void {
+  static Help_Key(k: K): void {
     switch (k) {
       case K.ESCAPE:
         M.Menu_Main_f();
@@ -974,8 +975,8 @@ export default class M {
     if (M.state.value === M.state.quit) {
       return;
     }
-    M.wasInMenus = (Key.dest.value === Key.dest.menu);
-    Key.dest.value = Key.dest.menu;
+    M.wasInMenus = (Key.destination === KeyDestination.menu);
+    Key.destination = KeyDestination.menu;
     M.quit_prevstate = M.state.value;
     M.state.value = M.state.quit;
     M.entersound = true;
@@ -986,8 +987,8 @@ export default class M {
     if (M.state.value === M.state.alert) {
       return;
     }
-    M.wasInMenus = (Key.dest.value === Key.dest.menu);
-    Key.dest.value = Key.dest.menu;
+    M.wasInMenus = (Key.destination === KeyDestination.menu);
+    Key.destination = KeyDestination.menu;
     M.state.value = M.state.alert;
     M.entersound = true; // TODO: have a different sound
     M.alertMessage = { title, message };
@@ -1028,7 +1029,7 @@ export default class M {
     }
   }
 
-  static Alert_Key(k: number): void {
+  static Alert_Key(k: K): void {
     if (k === K.ENTER || k === K.ESCAPE) {
       M.CloseMenu();
     }
@@ -1038,7 +1039,7 @@ export default class M {
     launchServerMenu.draw();
   }
 
-  static Launch_Server_Key(k: number): void {
+  static Launch_Server_Key(k: K): void {
     if (k === K.ESCAPE) {
       launchServerMenu.deactivate();
       M.CloseMenu();
@@ -1052,8 +1053,8 @@ export default class M {
     if (M.state.value === M.state.launch_server) {
       return;
     }
-    M.wasInMenus = (Key.dest.value === Key.dest.menu);
-    Key.dest.value = Key.dest.menu;
+    M.wasInMenus = (Key.destination === KeyDestination.menu);
+    Key.destination = KeyDestination.menu;
     M.state.value = M.state.launch_server;
     M.entersound = true;
 
@@ -1074,10 +1075,10 @@ export default class M {
     M.Print(64, 108, M.quitMessage[M.msgNumber][3]);
   }
 
-  static Quit_Key(k: number): void {
+  static Quit_Key(k: K): void {
     switch (k) {
       case K.ESCAPE:
-      case 110:
+      case 110 as K:
         if (M.wasInMenus) {
           M.state.value = M.quit_prevstate;
           M.entersound = true;
@@ -1085,8 +1086,8 @@ export default class M {
           M.CloseMenu();
         }
         break;
-      case 121:
-        Key.dest.value = Key.dest.console;
+      case 121 as K:
+        Key.destination = KeyDestination.console;
         Host.Quit_f();
     }
   }
@@ -1207,7 +1208,7 @@ export default class M {
   }
 
   static Draw(): void {
-    if (M.state.value === M.state.none || Key.dest.value !== Key.dest.menu) {
+    if (M.state.value === M.state.none || Key.destination !== KeyDestination.menu) {
       return;
     }
 

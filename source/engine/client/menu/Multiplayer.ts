@@ -80,7 +80,9 @@ export default class MultiplayerMainMenu extends MenuPage {
 
     if (urls?.signalingURL) {
       // FIXME: move the start serverlist to the ClientGameAPI
-      const serverActions = PR.QuakeJS.ServerGameAPI.GetStartServerList();
+      const serverActions = PR.QuakeJS!.ServerGameAPI.GetStartServerList()!;
+
+      console.assert(Array.isArray(serverActions), 'Expected GetStartServerList to return an array');
 
       for (const serverAction of serverActions) {
         this.items.push(new Action({
@@ -201,7 +203,7 @@ export default class MultiplayerMainMenu extends MenuPage {
   /**
    * @returns True if handled.
    */
-  override handleInput(key: number): boolean {
+  override handleInput(key: K): boolean {
     if (key === K.ESCAPE) {
       this.deactivate();
       M.CloseMenu();

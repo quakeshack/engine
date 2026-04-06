@@ -21,7 +21,7 @@ import { ServerMovement } from './physics/ServerMovement.ts';
 import { ServerArea } from './physics/ServerArea.ts';
 import { ServerCollision } from './physics/ServerCollision.ts';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
-import { BrushModel } from '../common/Mod.ts';
+import { BrushModel, ModelScope } from '../common/Mod.ts';
 import { ServerClient } from './Client.ts';
 
 export { ServerEntityState } from './ServerEntityState.ts';
@@ -491,7 +491,7 @@ export default class SV {
     }
 
     Con.DPrint('Clearing memory\n');
-    Mod.ClearAll(Mod.scope.server);
+    Mod.ClearAll(ModelScope.server);
     await SV.#loadGameProgs();
 
     SV.#initializeEdicts();
@@ -798,7 +798,7 @@ export default class SV {
 
   static async #loadWorldModel(mapname: string): Promise<boolean> {
     SV.server.mapname = mapname;
-    SV.server.worldmodel = await Mod.ForNameAsync(`maps/${mapname}.bsp`, false, Mod.scope.server) as BrushModel | null;
+    SV.server.worldmodel = await Mod.ForNameAsync(`maps/${mapname}.bsp`, false, ModelScope.server) as BrushModel | null;
 
     if (SV.server.worldmodel === null) {
       Con.PrintWarning(`SV.SpawnServer: Cannot start server, unable to load map ${mapname}\n`);
@@ -826,7 +826,7 @@ export default class SV {
 
     for (let i = 1; i <= worldmodel.submodels.length; i++) {
       SV.server.modelPrecache[i + 1] = `*${i}`;
-      SV.server.models[i + 1] = Mod.ForName(`*${i}`, Mod.scope.server) as BaseModel;
+      SV.server.models[i + 1] = Mod.ForName(`*${i}`, ModelScope.server) as BaseModel;
     }
 
     Con.DPrint('Model precache setup complete\n');
@@ -992,7 +992,7 @@ export default class SV {
     Con.Print(`${client.name} tried to ${input}!\n`);
   }
 
-  static #processClientCommand(client: ServerClient, cmd: number): boolean {
+  static #processClientCommand(client: ServerClient, cmd: Protocol.clc): boolean {
     switch (cmd) {
       case Protocol.clc.nop:
         Con.DPrint(`${client.netconnection?.address ?? 'unknown'} sent a nop\n`);

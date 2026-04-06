@@ -61,7 +61,7 @@ const evaluateReplCommand: REPLEval = function(command, _context, _filename, cal
   MainLoop.notify();
   this.clearBufferedCommand();
   Cmd.text += command;
-  setTimeout(() => callback(null, undefined), 20); // we have to wait at least one frame before expecting a result
+  setTimeout(() => { callback(null, undefined); }, 20); // we have to wait at least one frame before expecting a result
 };
 
 eventBus.subscribe('net.connection.accepted', () => {
@@ -120,8 +120,8 @@ export default class Sys extends BaseSys {
     // eslint-disable-next-line require-atomic-updates
     Sys.#isRunning = true;
 
-    if (Host.refreshrate.value === 0) {
-      Host.refreshrate.set(60);
+    if (Host.refreshrate!.value === 0) {
+      Host.refreshrate!.set(60);
     }
 
     // Main loop
@@ -136,7 +136,7 @@ export default class Sys extends BaseSys {
         Sys.Print(`Host.Frame took too long: ${dtime} ms\n`);
       }
 
-      await Q.sleep(Math.max(0, 1000.0 / Math.min(300, Math.max(60, Host.refreshrate.value)) - dtime));
+      await Q.sleep(Math.max(0, 1000.0 / Math.min(300, Math.max(60, Host.refreshrate!.value)) - dtime));
 
       // when there are no more commands to process and no active connections, we can sleep indefinitely
       if (NET.activeconnections === 0 && Host._scheduledForNextFrame.length === 0 && !Cmd.HasPendingCommands()) {
@@ -160,7 +160,7 @@ export default class Sys extends BaseSys {
    * Prints a message to the console.
    */
   static override Print(text: string): void {
-    stdout.write(String(text).trim() + '\n');
+    stdout.write(text.trim() + '\n');
   }
 
   /**
@@ -230,7 +230,7 @@ export default class Sys extends BaseSys {
 
         // Set headers and send the file data
         res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Cache-Control', Host.developer.value ? 'private, max-age=0' : 'public, max-age=86400');
+        res.setHeader('Cache-Control', Host.developer!.value ? 'private, max-age=0' : 'public, max-age=86400');
 
         // Convert ArrayBuffer -> Buffer before sending
         return res.send(Buffer.from(fileData));

@@ -112,7 +112,7 @@ export default class CL {
   }
 
   static InitGame(): void {
-    return ClientLifecycle.initGame();
+    ClientLifecycle.initGame();
   }
 
   static SetConnectingStep(percentage: number | null, message: string | null): void {
@@ -204,7 +204,7 @@ export default class CL {
 
       void Cmd.ExecuteString('map ' + map);
 
-      CL.StartRecording(demoname, Q.atoi(track));
+      CL.StartRecording(demoname, Q.atoi(track || '0'));
     }
   };
 
@@ -300,7 +300,7 @@ export default class CL {
 
       CL.cls.message.writeByte(Protocol.clc.rconcmd);
       CL.cls.message.writeString(password);
-      CL.cls.message.writeString(this.args.substring(5));
+      CL.cls.message.writeString(this.args!.substring(5));
     }
   };
 

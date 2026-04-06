@@ -9,7 +9,7 @@
 
 /* eslint-disable jsdoc/require-returns */
 
-import Vector, { type DirectionalVectors } from '../../shared/Vector.ts';
+import Vector, { DirectionalVectors } from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { content } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.ts';
@@ -18,7 +18,7 @@ import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import type { ClientEdict } from '../client/ClientEntities.ts';
 import type { BaseEntity } from '../server/Edict.ts';
 import type { Plane as BaseModelPlane } from './model/BaseModel.ts';
-import { Node, type Brush } from './model/BSP.ts';
+import { Node, type Brush, type Hull as BSPHull } from './model/BSP.ts';
 interface BrushTracePlaneLike {
   readonly normal: Vector;
   readonly type: number;
@@ -195,7 +195,7 @@ export class Trace { // pmtrace_t
    * @param other - source trace to copy from
    * @returns this trace after copying the values
    */
-  set(other: Trace): Trace {
+  set(other: Trace): this {
     console.assert(other instanceof Trace, 'other must be a Trace');
 
     this.allsolid = other.allsolid;
@@ -265,13 +265,13 @@ export class Hull { // hull_t
    * @param hull - source hull from model loading
    * @returns copied runtime hull
    */
-  static fromModelHull(hull) {
+  static fromModelHull(hull: BSPHull): Hull {
     const newHull = new Hull();
     newHull.clipMins = hull.clip_mins.copy();
     newHull.clipMaxs = hull.clip_maxs.copy();
-    newHull.firstClipNode = hull.firstclipnode;
-    newHull.lastClipNode = hull.lastclipnode;
-    newHull.allowedClipNodes = hull.allowedClipNodes ?? null;
+    newHull.firstClipNode = hull.firstclipnode!;
+    newHull.lastClipNode = hull.lastclipnode!;
+    newHull.allowedClipNodes = null; // FIXME: missing allowed clip node masks in Q1 BSP format
     newHull.clipNodes = hull.clipnodes.map((clipnode) => {
       const node = new ClipNode(clipnode.planenum);
       node.children[0] = clipnode.children[0];
@@ -296,7 +296,7 @@ export class Hull { // hull_t
    * @param num - starting clip node index
    * @returns negative Quake contents value for the containing leaf
    */
-  pointContents(point: Vector, num: number = this.firstClipNode): number {
+  pointContents(point: Vector, num: number = this.firstClipNode): content {
     // as long as num is a valid node, keep going down the tree
     while (num >= 0) {
       if (this.allowedClipNodes !== null && this.allowedClipNodes[num] !== 1) {
@@ -344,9 +344,10 @@ export class Hull { // hull_t
   check(p1f: number, p2f: number, p1: Vector, p2: Vector, trace: Trace, num: number = this.firstClipNode, depth: number = 0): boolean {
     // check for empty
     if (num < 0) {
-      if (num !== content.CONTENT_SOLID && num !== content.CONTENT_SKY) {
+      const contentNum = num as content;
+      if (contentNum !== content.CONTENT_SOLID && contentNum !== content.CONTENT_SKY) {
         trace.allsolid = false;
-        if (num === content.CONTENT_EMPTY) {
+        if (contentNum === content.CONTENT_EMPTY) {
           trace.inopen = true;
         } else {
           trace.inwater = true;
@@ -496,7 +497,7 @@ export class BoxHull extends Hull {
    * @param maxs - local maximum corner
    * @returns this box hull for chaining
    */
-  setSize(mins: Vector, maxs: Vector): BoxHull {
+  setSize(mins: Vector, maxs: Vector): this {
     console.assert(mins instanceof Vector, 'mins must be a Vector');
     console.assert(maxs instanceof Vector, 'maxs must be a Vector');
 
@@ -956,12 +957,12 @@ export class BrushTrace {
     }
 
     // Leaf node: test all brushes in this leaf
-    if (node.contents < 0) {
+    if (node.contents < content.CONTENT_NONE) {
       return BrushTrace._testLeafSolid(worldModel, node, position, mins, maxs, boundsMins, boundsMaxs, checkCount);
     }
 
     // Internal node: test which side(s) of the splitting plane the box is on
-    const plane = node.plane;
+    const plane = node.plane!;
     let d, offset;
 
     if (plane.type < 3) {
@@ -1202,8 +1203,10 @@ export class BrushTrace {
    * Test if a box at origin is inside a brush. Equivalent to Q2’s CM_TestBoxInBrush.
    */
   static _testBoxInBrush(worldModel: BrushModel, brush: Brush, position: Vector, mins: Vector, maxs: Vector): boolean {
-    const brushsides = worldModel.brushsides;
+    const brushsides = worldModel.brushsides!;
     const planes = worldModel.planes;
+
+    console.assert(brushsides !== null, 'brush trace expected brushsides');
 
     for (let i = 0; i < brush.numsides; i++) {
       const side = brushsides[brush.firstside + i];
@@ -1253,13 +1256,13 @@ export class BrushTrace {
     }
 
     // Leaf node: test brushes
-    if (node.contents < 0) {
+    if (node.contents < content.CONTENT_NONE) {
       BrushTrace._traceToLeaf(ctx, node);
       return;
     }
 
     // Internal node: find the point distances to the splitting plane
-    const plane = node.plane;
+    const plane = node.plane!;
     let t1, t2, offset;
 
     if (plane.type < 3) {
@@ -1413,13 +1416,15 @@ export class BrushTrace {
    * Equivalent to Q2’s CM_ClipBoxToBrush.
    */
   static _clipBoxToBrush(ctx: BrushTraceContext, brush: Brush) {
-    const brushsides = ctx.worldModel.brushsides;
+    const brushsides = ctx.worldModel.brushsides!;
     const planes = ctx.worldModel.planes;
     const moveDeltaX = ctx.end[0] - ctx.start[0];
     const moveDeltaY = ctx.end[1] - ctx.start[1];
     const moveDeltaZ = ctx.end[2] - ctx.start[2];
     const moveDistance = Math.sqrt(moveDeltaX * moveDeltaX + moveDeltaY * moveDeltaY + moveDeltaZ * moveDeltaZ);
     const fractionEpsilon = moveDistance > DIST_EPSILON ? DIST_EPSILON / moveDistance : 1.0;
+
+    console.assert(brushsides !== null, 'brush trace expected brushsides');
 
     let enterfrac = -1;
     let leavefrac = 1;
@@ -1531,13 +1536,13 @@ export class BrushTrace {
 
     if (enterfrac < leavefrac) {
       const currentPlane = ctx.trace.fraction < 1.0 ? ctx.trace.plane : null;
-      if (enterfrac > -1 && BrushTrace._shouldPreferTraceHit(currentPlane, ctx.trace.fraction, clipplane, enterfrac, fractionEpsilon)) {
+      if (enterfrac > -1 && BrushTrace._shouldPreferTraceHit(currentPlane, ctx.trace.fraction, clipplane!, enterfrac, fractionEpsilon)) {
         if (enterfrac < 0) {
           enterfrac = 0;
         }
         ctx.trace.fraction = enterfrac;
-        ctx.trace.plane.normal.set(clipplane.normal);
-        ctx.trace.plane.dist = clipplane.dist;
+        ctx.trace.plane.normal.set(clipplane!.normal);
+        ctx.trace.plane.dist = clipplane!.dist;
       }
     }
   }
@@ -1742,12 +1747,12 @@ export class PhysEnt { // physent_t
         continue;
       }
 
-      const expandedMinX = brush.mins[0] - Pmove.PLAYER_MAXS[0] - DIST_EPSILON;
-      const expandedMinY = brush.mins[1] - Pmove.PLAYER_MAXS[1] - DIST_EPSILON;
-      const expandedMinZ = brush.mins[2] - Pmove.PLAYER_MAXS[2] - DIST_EPSILON;
-      const expandedMaxX = brush.maxs[0] - Pmove.PLAYER_MINS[0] + DIST_EPSILON;
-      const expandedMaxY = brush.maxs[1] - Pmove.PLAYER_MINS[1] + DIST_EPSILON;
-      const expandedMaxZ = brush.maxs[2] - Pmove.PLAYER_MINS[2] + DIST_EPSILON;
+      const expandedMinX = brush.mins![0] - Pmove.PLAYER_MAXS[0] - DIST_EPSILON;
+      const expandedMinY = brush.mins![1] - Pmove.PLAYER_MAXS[1] - DIST_EPSILON;
+      const expandedMinZ = brush.mins![2] - Pmove.PLAYER_MAXS[2] - DIST_EPSILON;
+      const expandedMaxX = brush.maxs![0] - Pmove.PLAYER_MINS[0] + DIST_EPSILON;
+      const expandedMaxY = brush.maxs![1] - Pmove.PLAYER_MINS[1] + DIST_EPSILON;
+      const expandedMaxZ = brush.maxs![2] - Pmove.PLAYER_MINS[2] + DIST_EPSILON;
 
       if (position[0] < expandedMinX || position[0] > expandedMaxX
         || position[1] < expandedMinY || position[1] > expandedMaxY
@@ -1788,8 +1793,8 @@ export class PhysEnt { // physent_t
         numsides: brush.numsides,
         nearestPlaneDistance,
         touchingPlanes,
-        mins: brush.mins,
-        maxs: brush.maxs,
+        mins: brush.mins!,
+        maxs: brush.maxs!,
         sideSummaries: sideSummaries.slice(0, 4).map((entry) => entry.summary),
       });
     }
@@ -1848,12 +1853,12 @@ export class PhysEnt { // physent_t
         continue;
       }
 
-      const expandedMinX = brush.mins[0] - Pmove.PLAYER_MAXS[0] - DIST_EPSILON;
-      const expandedMinY = brush.mins[1] - Pmove.PLAYER_MAXS[1] - DIST_EPSILON;
-      const expandedMinZ = brush.mins[2] - Pmove.PLAYER_MAXS[2] - DIST_EPSILON;
-      const expandedMaxX = brush.maxs[0] - Pmove.PLAYER_MINS[0] + DIST_EPSILON;
-      const expandedMaxY = brush.maxs[1] - Pmove.PLAYER_MINS[1] + DIST_EPSILON;
-      const expandedMaxZ = brush.maxs[2] - Pmove.PLAYER_MINS[2] + DIST_EPSILON;
+      const expandedMinX = brush.mins![0] - Pmove.PLAYER_MAXS[0] - DIST_EPSILON;
+      const expandedMinY = brush.mins![1] - Pmove.PLAYER_MAXS[1] - DIST_EPSILON;
+      const expandedMinZ = brush.mins![2] - Pmove.PLAYER_MAXS[2] - DIST_EPSILON;
+      const expandedMaxX = brush.maxs![0] - Pmove.PLAYER_MINS[0] + DIST_EPSILON;
+      const expandedMaxY = brush.maxs![1] - Pmove.PLAYER_MINS[1] + DIST_EPSILON;
+      const expandedMaxZ = brush.maxs![2] - Pmove.PLAYER_MINS[2] + DIST_EPSILON;
 
       if (position[0] < expandedMinX || position[0] > expandedMaxX
         || position[1] < expandedMinY || position[1] > expandedMaxY
@@ -1999,8 +2004,10 @@ export class PhysEnt { // physent_t
     const traceEnd = this.toCollisionSpace(end);
 
     if (this.usesBrushTracing) {
+      console.assert(this.brushCollisionModel !== null, 'brush tracing expected a valid collision model');
+
       const brushTrace = BrushTrace.transformedBoxTrace(
-        this.brushCollisionModel,
+        this.brushCollisionModel!,
         traceStart,
         traceEnd,
         Pmove.PLAYER_MINS,
@@ -2042,8 +2049,11 @@ export class PhysEnt { // physent_t
             // Brush blocks but hull doesn't — log which specific brush is the culprit
             const brushes = model.brushes;
             const last = model.firstBrush + model.numBrushes;
+
+            console.assert(brushes !== null, 'brush trace expected brushes in model');
+
             for (let bi = model.firstBrush; bi < last; bi++) {
-              const brush = brushes[bi];
+              const brush = brushes![bi];
 
               if (!brush || brush.numsides === 0) {
                 continue;
@@ -2077,8 +2087,10 @@ export class PhysEnt { // physent_t
    */
   testPlayerPosition(position: Vector): boolean {
     if (this.usesBrushTracing) {
+      console.assert(this.brushCollisionModel !== null, 'brush tracing expected a valid collision model');
+
       const brushResult = BrushTrace.transformedTestPosition(
-        this.brushCollisionModel,
+        this.brushCollisionModel!,
         position,
         Pmove.PLAYER_MINS,
         Pmove.PLAYER_MAXS,
@@ -2135,8 +2147,12 @@ export class PhysEnt { // physent_t
             const planes = model.planes;
             const brushsides = model.brushsides;
             const last = model.firstBrush + model.numBrushes;
+
+            console.assert(brushes !== null, 'brush trace expected brushes in model');
+            console.assert(brushsides !== null, 'brush trace expected brushsides in model');
+
             for (let bi = model.firstBrush; bi < last; bi++) {
-              const brush = brushes[bi];
+              const brush = brushes![bi];
               if (!brush || brush.numsides === 0) {
                 continue;
               }
@@ -2148,7 +2164,7 @@ export class PhysEnt { // physent_t
               // Minkowski test inline
               let inside = true;
               for (let si = 0; si < brush.numsides; si++) {
-                const side = brushsides[brush.firstside + si];
+                const side = brushsides![brush.firstside + si];
                 const plane = planes[side.planenum];
                 let dist = plane.dist;
                 for (let j = 0; j < 3; j++) {
@@ -2216,7 +2232,7 @@ export class PmovePlayer { // pmove_t (player state only)
   /** Water depth from 0 to 3. */
   waterlevel: number;
   /** Current water contents value. */
-  watertype: number;
+  watertype: content;
   /** Ground physent index, or null while airborne. */
   onground: number | null;
   /** Player origin in world space. */
@@ -2433,8 +2449,8 @@ export class PmovePlayer { // pmove_t (player state only)
     this._snapPosition();
 
     if (_dbg) {
-      const moved = !this.origin.equals(_dbgOriginBefore);
-      const snapMoved = !this.origin.equals(_dbgBeforeSnap);
+      const moved = !this.origin.equals(_dbgOriginBefore!);
+      const snapMoved = !this.origin.equals(_dbgBeforeSnap!);
       if (moved) {
         console.log(`[Pmove] frame: origin ${_dbgOriginBefore} -> ${_dbgBeforeSnap} -> snap ${this.origin} vel=${this.velocity} onground=${this.onground} flags=${this.pmFlags}${snapMoved ? ' (SNAP MOVED)' : ''}`);
       }
@@ -2593,8 +2609,10 @@ export class PmovePlayer { // pmove_t (player state only)
 
     this._ladder = false;
 
+    console.assert(this._angleVectors instanceof DirectionalVectors, 'angle vectors should be set by _clampAngles before checking special movement');
+
     // check for ladder
-    const flatforward = new Vector(this._angleVectors.forward[0], this._angleVectors.forward[1], 0);
+    const flatforward = new Vector(this._angleVectors!.forward[0], this._angleVectors!.forward[1], 0);
     flatforward.normalize();
 
     const spot = this.origin.copy().add(flatforward);
@@ -3191,10 +3209,12 @@ export class PmovePlayer { // pmove_t (player state only)
     const fmove = this.cmd.forwardmove;
     const smove = this.cmd.sidemove;
 
+    console.assert(this._angleVectors instanceof DirectionalVectors, 'angle vectors should be set by _clampAngles before air move');
+
     // Project forward/right onto the horizontal plane and renormalize.
     // This prevents looking up/down from reducing horizontal move speed.
-    const forward = this._angleVectors.forward.copy();
-    const right = this._angleVectors.right.copy();
+    const forward = this._angleVectors!.forward.copy();
+    const right = this._angleVectors!.right.copy();
     forward[2] = 0;
     right[2] = 0;
     forward.normalize();
@@ -3272,8 +3292,10 @@ export class PmovePlayer { // pmove_t (player state only)
 
   /** Water movement. */
   _waterMove() { // Q2: PM_WaterMove / QW: PM_WaterMove
-    const forward = this._angleVectors.forward;
-    const right = this._angleVectors.right;
+    console.assert(this._angleVectors instanceof DirectionalVectors, 'angle vectors should be set by _clampAngles before water move');
+
+    const forward = this._angleVectors!.forward;
+    const right = this._angleVectors!.right;
 
     const wishvel = new Vector(
       forward[0] * this.cmd.forwardmove + right[0] * this.cmd.sidemove,
@@ -3359,8 +3381,9 @@ export class PmovePlayer { // pmove_t (player state only)
     const fmove = this.cmd.forwardmove;
     const smove = this.cmd.sidemove;
 
-    const fwd = this._angleVectors.forward.copy();
-    const rgt = this._angleVectors.right.copy();
+    console.assert(this._angleVectors instanceof DirectionalVectors, 'angle vectors should be set by _clampAngles before fly move');
+    const fwd = this._angleVectors!.forward.copy();
+    const rgt = this._angleVectors!.right.copy();
     fwd.normalize();
     rgt.normalize();
 
@@ -3519,7 +3542,7 @@ export class Pmove { // pmove_t
   }
 
   static Shutdown() {
-    Pmove.debug.free();
+    Pmove.debug!.free();
     Pmove.debug = null;
   }
 
@@ -3531,7 +3554,7 @@ export class Pmove { // pmove_t
    * @param contents - raw contents value from the collision backend
    * @returns normalized static-world contents value
    */
-  _normalizeStaticWorldContents(contents: number): number {
+  _normalizeStaticWorldContents(contents: content): content {
     if ((contents <= content.CONTENT_CURRENT_0) && (contents >= content.CONTENT_CURRENT_DOWN)) {
       return content.CONTENT_WATER;
     }
@@ -3549,7 +3572,7 @@ export class Pmove { // pmove_t
     console.assert(worldPhysEnt.brushWorldModel instanceof BrushModel, 'world brush model');
 
     if (!BrushTrace.transformedTestPosition(
-      worldPhysEnt.brushWorldModel,
+      worldPhysEnt.brushWorldModel!,
       point,
       Vector.origin,
       Vector.origin,
@@ -3559,7 +3582,7 @@ export class Pmove { // pmove_t
       return content.CONTENT_SOLID;
     }
 
-    return this._normalizeStaticWorldContents(worldPhysEnt.brushWorldModel.getLeafForPoint(point).contents);
+    return this._normalizeStaticWorldContents(worldPhysEnt.brushWorldModel!.getLeafForPoint(point).contents);
   }
 
   /**
@@ -3569,7 +3592,7 @@ export class Pmove { // pmove_t
    * @param point - world-space position to sample
    * @returns static-world contents value
    */
-  staticWorldContents(point: Vector): number {
+  staticWorldContents(point: Vector): content {
     console.assert(this.physents[0] instanceof PhysEnt, 'world physent');
 
     const worldPhysEnt = this.physents[0];
@@ -3742,7 +3765,7 @@ export class Pmove { // pmove_t
    * @param model - world brush model to use as physent zero
    * @returns this pmove instance
    */
-  setWorldmodel(model: BrushModel): Pmove {
+  setWorldmodel(model: BrushModel): this {
     console.assert(model instanceof BrushModel, 'model');
 
     this.physents.length = 0;
@@ -3770,7 +3793,7 @@ export class Pmove { // pmove_t
    * Clears all entities.
    * @returns this pmove instance
    */
-  clearEntities(): Pmove {
+  clearEntities(): this {
     this.physents.length = 1;
     return this;
   }
@@ -3781,7 +3804,7 @@ export class Pmove { // pmove_t
    * @param model - brush model to use for SOLID_BSP-style entities
    * @returns this pmove instance
    */
-  addEntity(entity: BaseEntity | ClientEdict, model: BrushModel | null = null): Pmove {
+  addEntity(entity: BaseEntity | ClientEdict, model: BrushModel | null = null): this {
     const pe = new PhysEnt(this);
 
     console.assert(model === null || model instanceof BrushModel, 'no model or brush model required');
@@ -3808,7 +3831,7 @@ export class Pmove { // pmove_t
 
       // Always set up hull data as fallback (and for hull0 pointContents)
       if (this.#modelHullsCache.has(model.name)) {
-        pe.hulls = this.#modelHullsCache.get(model.name);
+        pe.hulls = this.#modelHullsCache.get(model.name)!;
       } else {
         for (const modelHull of model.hulls) {
           pe.hulls.push(Hull.fromModelHull(modelHull));

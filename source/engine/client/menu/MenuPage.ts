@@ -118,7 +118,7 @@ export class MenuPage {
    * Handle keyboard input.
    * @returns True if input was handled.
    */
-  handleInput(key: number): boolean {
+  handleInput(key: K): boolean {
     // Let focused item handle input first
     const focused = this.items[this.cursor];
     if (focused && focused.handleInput(key)) {
@@ -272,7 +272,8 @@ export class ImageBasedLayout implements MenuLayout {
   cursorYSpacing: number;
 
   constructor(config: ImageBasedLayoutConfig = {}) {
-    this.backgroundPic = config.backgroundPic;
+    console.assert(config.backgroundPic !== undefined, 'ImageBasedLayout requires a backgroundPic');
+    this.backgroundPic = config.backgroundPic!;
     this.backgroundX = config.backgroundX ?? 72;
     this.backgroundY = config.backgroundY ?? 32;
     this.cursorX = config.cursorX ?? 54;

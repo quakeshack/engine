@@ -50,7 +50,7 @@ export function getHullPlaneDistance(plane: Hull['planes'][number], point: Vecto
  * @param trace Trace accumulator.
  * @returns True when traversal should continue upward.
  */
-export function classifyHullLeaf(contents: number, trace: CollisionTrace): boolean {
+export function classifyHullLeaf(contents: Defs.content, trace: CollisionTrace): boolean {
   if (contents !== Defs.content.CONTENT_SOLID) {
     trace.allsolid = false;
     if (contents === Defs.content.CONTENT_EMPTY) {
@@ -72,7 +72,7 @@ export function classifyHullLeaf(contents: number, trace: CollisionTrace): boole
  * @param p Point to classify.
  * @returns Content type for the point.
  */
-export function hullPointContents(hull: LegacyHull, num: number, p: Vector): number {
+export function hullPointContents(hull: LegacyHull, num: number, p: Vector): Defs.content {
   while (num >= 0) {
     if (!isHullNodeAllowed(hull, num)) {
       return Defs.content.CONTENT_EMPTY;

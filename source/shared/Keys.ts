@@ -5,6 +5,10 @@ export enum K {
   ESCAPE = 27,
   SPACE = 32,
 
+  // TODO: 96
+  // TODO: 110
+  // TODO: 121
+
   BACKSPACE = 127,
   UPARROW = 128,
   DOWNARROW = 129,

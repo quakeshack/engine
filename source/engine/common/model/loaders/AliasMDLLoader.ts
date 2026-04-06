@@ -3,6 +3,7 @@ import Q from '../../../../shared/Q.ts';
 import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.ts';
 import { registry } from '../../../registry.ts';
 import { CRC16CCITT } from '../../CRC.ts';
+import { ModelType } from '../../Mod.ts';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
 import { AliasModel, type AliasFrame, type AliasSkin } from '../AliasModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
@@ -65,8 +66,6 @@ interface MutableAliasGroupedFrame {
 }
 
 type MutableAliasFrame = MutableAliasSingleFrame | MutableAliasGroupedFrame;
-type MutableAliasSkin = MutableAliasSingleSkin | MutableAliasGroupedSkin;
-type MutableAliasRenderFrame = MutableAliasSingleFrame | MutableAliasGroupedFrameEntry;
 type MutableAliasRenderSkin = MutableAliasSingleSkin | MutableAliasGroupedSkinEntry;
 
 /**
@@ -293,7 +292,7 @@ export class AliasMDLLoader extends ModelLoader {
   override load(buffer: ArrayBuffer, name: string): Promise<AliasModel> {
     const loadmodel = new AliasModel(name);
 
-    loadmodel.type = 2; // Mod.type.alias
+    loadmodel.type = ModelType.alias;
     loadmodel.player = name === 'progs/player.mdl';
 
     const view = new DataView(buffer);

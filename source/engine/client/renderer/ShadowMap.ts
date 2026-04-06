@@ -10,11 +10,12 @@ import type { BrushModel } from '../../common/model/BSP.ts';
 import type { AliasModel } from '../../common/model/AliasModel.ts';
 import type { MeshModel } from '../../common/model/MeshModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
+import { ModelType } from '../../common/Mod.ts';
 
-let { CL, COM, Mod, R, SV } = getClientRegistry();
+let { CL, COM, R, SV } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Mod, R, SV } = getClientRegistry());
+  ({ CL, COM, R, SV } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -410,9 +411,9 @@ export default class ShadowMap {
     GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
     const program = GL.UseProgram('shadow-brush')!;
 
-    gl.uniform3f(program.uOrigin, 0, 0, 0);
-    gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
-    gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, ShadowMap.lightSpaceMatrices[0]);
+    gl.uniform3f(program.uOrigin!, 0, 0, 0);
+    gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ShadowMap.lightSpaceMatrices[0]);
 
     for (let i = 0; i < worldmodel.leafs.length; i++) {
       const leaf = worldmodel.leafs[i];
@@ -456,15 +457,16 @@ export default class ShadowMap {
       if (!ShadowMap._isLocalShadowCasterEntity(entity, cutoffOrigin, cutoffDistSq)) {
         continue;
       }
-      const model = entity.model;
+      const model = entity.model!;
+      console.assert(model !== null, `Entity ${entity.num} has no model`);
       switch (model.type) {
-        case Mod.type.brush:
+        case ModelType.brush:
           ShadowMap._renderBrushEntityShadow(model as BrushModel, entity, lightSpaceMatrix, brushProgram);
           break;
-        case Mod.type.alias:
+        case ModelType.alias:
           ShadowMap._renderAliasEntityShadow(model as AliasModel, entity, lightSpaceMatrix, aliasProgram);
           break;
-        case Mod.type.mesh:
+        case ModelType.mesh:
           ShadowMap._renderMeshEntityShadow(model as MeshModel, entity, lightSpaceMatrix, brushProgram);
           break;
         default:
@@ -501,7 +503,7 @@ export default class ShadowMap {
     }
 
     const type = entity.model.type;
-    if (type !== Mod.type.brush && type !== Mod.type.alias && type !== Mod.type.mesh) {
+    if (type !== ModelType.brush && type !== ModelType.alias && type !== ModelType.mesh) {
       return false;
     }
 
@@ -530,9 +532,9 @@ export default class ShadowMap {
     GL.BindVAO(model.opaqueVAO as WebGLVertexArrayObject);
     const program = GL.UseProgram(programName)!;
 
-    gl.uniform3fv(program.uOrigin, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles, false, entity.lerp.angles.toRotationMatrix());
-    gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, lightSpaceMatrix);
+    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
 
     for (let i = 0; i < model.chains.length; i++) {
       const chain = model.chains[i];
@@ -557,36 +559,36 @@ export default class ShadowMap {
     }
     const program = GL.UseProgram(programName)!;
 
-    gl.uniform3fv(program.uOrigin, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles, false, entity.lerp.angles.toRotationMatrix());
-    gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, lightSpaceMatrix);
+    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
 
     const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(model, entity);
 
-    gl.uniform1f(program.uInterpolation, R.interpolation.value && (entity.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
+    gl.uniform1f(program.uInterpolation!, R.interpolation.value && (entity.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, model.cmds as WebGLBuffer);
-    gl.enableVertexAttribArray(program.aPositionA.location as number);
-    gl.enableVertexAttribArray(program.aPositionB.location as number);
-    gl.vertexAttribPointer(program.aPositionA.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs);
-    gl.vertexAttribPointer(program.aPositionB.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs);
+    gl.enableVertexAttribArray(program.aPositionA!.location as number);
+    gl.enableVertexAttribArray(program.aPositionB!.location as number);
+    gl.vertexAttribPointer(program.aPositionA!.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs!);
+    gl.vertexAttribPointer(program.aPositionB!.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs!);
 
     if (program.aNormalA) {
-      gl.enableVertexAttribArray(program.aNormalA.location as number);
-      gl.enableVertexAttribArray(program.aNormalB.location as number);
-      gl.vertexAttribPointer(program.aNormalA.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs + 12);
-      gl.vertexAttribPointer(program.aNormalB.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs + 12);
-      gl.uniform3fv(program.uLightPos, ShadowMap.pointLightOrigin);
-      gl.uniform1f(program.uNormalBias, ShadowMap.pointNormalBias!.value);
+      gl.enableVertexAttribArray(program.aNormalA!.location as number);
+      gl.enableVertexAttribArray(program.aNormalB!.location as number);
+      gl.vertexAttribPointer(program.aNormalA!.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs! + 12);
+      gl.vertexAttribPointer(program.aNormalB!.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs! + 12);
+      gl.uniform3fv(program.uLightPos!, ShadowMap.pointLightOrigin);
+      gl.uniform1f(program.uNormalBias!, ShadowMap.pointNormalBias!.value);
     }
 
     gl.drawArrays(gl.TRIANGLES, 0, model._num_tris * 3);
 
-    gl.disableVertexAttribArray(program.aPositionA.location as number);
-    gl.disableVertexAttribArray(program.aPositionB.location as number);
+    gl.disableVertexAttribArray(program.aPositionA!.location as number);
+    gl.disableVertexAttribArray(program.aPositionB!.location as number);
     if (program.aNormalA) {
-      gl.disableVertexAttribArray(program.aNormalA.location as number);
-      gl.disableVertexAttribArray(program.aNormalB.location as number);
+      gl.disableVertexAttribArray(program.aNormalA!.location as number);
+      gl.disableVertexAttribArray(program.aNormalB!.location as number);
     }
   }
 
@@ -603,9 +605,9 @@ export default class ShadowMap {
     GL.BindVAO(model.vao);
     const program = GL.UseProgram(programName)!;
 
-    gl.uniform3fv(program.uOrigin, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles, false, entity.lerp.angles.toRotationMatrix());
-    gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, lightSpaceMatrix);
+    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
 
     const indexType = model.indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
     gl.drawElements(gl.TRIANGLES, model.numTriangles * 3, indexType, 0);
@@ -908,11 +910,11 @@ export default class ShadowMap {
     GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
     const program = GL.UseProgram('shadow-point')!;
 
-    gl.uniform3f(program.uOrigin, 0, 0, 0);
-    gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
-    gl.uniform3fv(program.uLightPos, ShadowMap.pointLightOrigin);
-    gl.uniform1f(program.uLightRadius, ShadowMap.pointLightRadius);
-    gl.uniform1f(program.uNormalBias, ShadowMap.pointNormalBias!.value);
+    gl.uniform3f(program.uOrigin!, 0, 0, 0);
+    gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
+    gl.uniform3fv(program.uLightPos!, ShadowMap.pointLightOrigin);
+    gl.uniform1f(program.uLightRadius!, ShadowMap.pointLightRadius);
+    gl.uniform1f(program.uNormalBias!, ShadowMap.pointNormalBias!.value);
 
     for (let face = 0; face < 6; face++) {
       gl.framebufferTexture2D(
@@ -923,7 +925,7 @@ export default class ShadowMap {
       gl.clear(gl.DEPTH_BUFFER_BIT);
 
       ShadowMap.buildPointFaceMatrix(face);
-      gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, ShadowMap.pointFaceMatrix);
+      gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ShadowMap.pointFaceMatrix);
 
       for (let i = 0; i < worldmodel.leafs.length; i++) {
         const leaf = worldmodel.leafs[i];
@@ -945,8 +947,8 @@ export default class ShadowMap {
 
       GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
       GL.UseProgram('shadow-point');
-      gl.uniform3f(program.uOrigin, 0, 0, 0);
-      gl.uniformMatrix3fv(program.uAngles, false, GL.identity);
+      gl.uniform3f(program.uOrigin!, 0, 0, 0);
+      gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     }
 
     GL.UnbindVAO();

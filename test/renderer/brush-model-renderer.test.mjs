@@ -100,7 +100,7 @@ void describe('BrushModelRenderer.resolveEntityLightingState', () => {
 
   void test('falls back to non-deluxemap lighting when the model has no deluxe data', () => {
     const lightingState = BrushModelRenderer.resolveEntityLightingState(
-      /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ deluxemap: null, lightdata: null, lightdata_rgb: null }),
+      /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ deluxemap: null, lightdata: null, lightdata_rgb: null, submodel: false }),
       /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ ({}),
       () => [new Vector(), new Vector(), new Vector(), new Vector(), new Vector()],
     );

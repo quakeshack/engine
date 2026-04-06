@@ -22,6 +22,7 @@ import Vector from '../../shared/Vector.ts';
 import Q from '../../shared/Q.ts';
 import { ServerClient } from '../server/Client.ts';
 import { ServerEngineAPI } from './GameAPIs.ts';
+import { KeyDestination } from '../client/Key.ts';
 import Chase from '../client/Chase.ts';
 import VID from '../client/VID.ts';
 import { HostError } from './Errors.ts';
@@ -30,6 +31,7 @@ import * as Defs from '../../shared/Defs.ts';
 import { content, gameCapabilities } from '../../shared/Defs.ts';
 import ClientLifecycle from '../client/ClientLifecycle.ts';
 import { Pmove } from './Pmove.ts';
+import { ModelScope, ModelType } from './Mod.ts';
 
 let { COM, Con, Mod, NET, PR, SV, Sys, V } = getCommonRegistry();
 let { CL, Draw, IN, Key, M, R, S, SCR, Sbar } = getClientRegistry();
@@ -417,7 +419,7 @@ export default class Host {
     SV.CheckForNewClients();
     SV.RunClients();
 
-    if (!SV.server.paused && (SV.svs.maxclients >= 2 || (!registry.isDedicatedServer && Key.dest.value === Key.dest.game))) {
+    if (!SV.server.paused && (SV.svs.maxclients >= 2 || (!registry.isDedicatedServer && Key.destination === KeyDestination.game))) {
       SV.physics.physics();
     }
 
@@ -689,7 +691,7 @@ export default class Host {
   // Commands
 
   static Quit_f(): void {
-    if (!registry.isDedicatedServer && Key.dest.value !== Key.dest.console) {
+    if (!registry.isDedicatedServer && Key.destination !== KeyDestination.console) {
       M.Menu_Quit_f();
       return;
     }
@@ -747,7 +749,7 @@ export default class Host {
         client.uniqueId.substring(0, 19).padEnd(19),
         Q.secsToTime(NET.time - client.netconnection.connecttime).padEnd(9),
         client.ping.toFixed(0).padStart(4),
-        Number(0).toFixed(0).padStart(4), // TODO: add loss
+        (0).toFixed(0).padStart(4), // TODO: add loss
         (ServerClient.STATE[client.state] ?? `unknown (${client.state})`).padEnd(10),
         client.netconnection.address,
       ];
@@ -942,7 +944,7 @@ export default class Host {
     Host.ShutdownServer(); // CR: this is the reason why you would need to use changelevel on Counter-Strike 1.6 etc.
 
     if (!registry.isDedicatedServer) {
-      Key.dest.value = Key.dest.game;
+      Key.destination = KeyDestination.game;
       SCR.BeginLoadingPlaque();
       CL.SetConnectingStep(5, 'Spawning server');
       CL.cls.spawnparms = spawnparms.join(' ');
@@ -1665,7 +1667,7 @@ export default class Host {
   }
 
   static Begin_f(this: ConsoleCommand): void { // signon 3, step 1
-    Con.DPrint(`Host.Begin_f: ${this.client}\n`);
+    Con.DPrint(`Host.Begin_f: ${this.client!}\n`);
 
     if (this.client === null) {
       Con.Print('begin is not valid from the console\n');
@@ -1697,7 +1699,7 @@ export default class Host {
       return;
     }
 
-    if (gameAPI.ClientBegin) {
+    if (gameAPI.ClientBegin instanceof Function) {
       gameAPI.time = SV.server.time;
       gameAPI.ClientBegin(this.client.edict);
     }
@@ -1869,7 +1871,7 @@ export default class Host {
       return;
     }
 
-    const loadedModel = await Mod.ForNameAsync(model, false, Mod.scope.client);
+    const loadedModel = await Mod.ForNameAsync(model, false, ModelScope.client);
 
     if (!loadedModel) {
       Con.Print(`Can't load ${model}\n`);
@@ -1908,7 +1910,7 @@ export default class Host {
 
     const model = CL.state.model_precache[viewEntity.modelindex >> 0];
 
-    if (!model || model.type !== Mod.type.alias) {
+    if (!model || model.type !== ModelType.alias) {
       return;
     }
 
@@ -1939,7 +1941,7 @@ export default class Host {
 
     const model = CL.state.model_precache[viewEntity.modelindex >> 0];
 
-    if (!model || model.type !== Mod.type.alias) {
+    if (!model || model.type !== ModelType.alias) {
       return;
     }
 
@@ -1978,7 +1980,7 @@ export default class Host {
 
     const model = CL.state.model_precache[viewEntity.modelindex >> 0];
 
-    if (!model || model.type !== Mod.type.alias) {
+    if (!model || model.type !== ModelType.alias) {
       return;
     }
 

@@ -1,7 +1,7 @@
 import type { ClientEventValue } from '../../shared/GameInterfaces.ts';
 import type { SFX } from './Sound.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
-import type { BrushModel } from '../common/Mod.ts';
+import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import type { Pmove } from '../common/Pmove.ts';
 
 import Vector from '../../shared/Vector.ts';
@@ -109,10 +109,10 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   frame: number;
   skinnum: number;
   colormap: number;
-  effects: number;
+  effects: effect;
   /** alpha value for rendering */
   alpha: number;
-  solid: number;
+  solid: solid;
   originPrevious: Vector;
   originTime: number;
   origin: Vector;
@@ -326,7 +326,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
       return;
     }
 
-    if (node.contents < 0) {
+    if (node.contents < content.CONTENT_NONE) {
       this.leafs[this.leafs.length] = node.num;
       return;
     }
@@ -507,7 +507,7 @@ export default class ClientEntities {
       'progs/bolt2.mdl',
       'progs/bolt3.mdl',
       'progs/beam.mdl', // CR: does not exist in Quake
-    ].map((model) => Mod.ForNameAsync(model, false, Mod.scope.client).then((loadedModel) => ({ model: loadedModel, name: model }))))) {
+    ].map((model) => Mod.ForNameAsync(model, false, ModelScope.client).then((loadedModel) => ({ model: loadedModel, name: model }))))) {
       this.tempEntityModels[name] = model;
     }
   }

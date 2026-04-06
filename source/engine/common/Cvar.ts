@@ -85,7 +85,7 @@ export default class Cvar {
     return Cvar.GetVariableNames().find((name) => name.startsWith(partial)) ?? null;
   }
 
-  set(value: CvarValue): Cvar {
+  set(value: CvarValue): this {
     let nextValue: string;
 
     // turning everything into a string
@@ -120,7 +120,7 @@ export default class Cvar {
     return this;
   }
 
-  reset(): Cvar {
+  reset(): this {
     this.set(this.#originalValue);
     return this;
   }

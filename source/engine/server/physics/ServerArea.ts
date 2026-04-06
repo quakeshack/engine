@@ -289,7 +289,7 @@ export class ServerArea {
       return;
     }
 
-    if (node.contents < 0) {
+    if (node.contents < Defs.content.CONTENT_NONE) {
       if (ent.leafnums.length === 16) {
         return;
       }
@@ -326,7 +326,7 @@ export class ServerArea {
     console.assert(ent.entity !== null);
     const entity = ent.entity! as BaseEntity;
 
-    SV.server.navigation.relinkEdict(ent);
+    SV.server.navigation!.relinkEdict(ent);
     this.unlinkEdict(ent);
 
     const absmin = new Vector();
@@ -349,7 +349,7 @@ export class ServerArea {
 
     ent.leafnums = [];
     if (entity.modelindex !== 0) {
-      this.findTouchedLeafs(ent, SV.server.worldmodel.nodes[0]);
+      this.findTouchedLeafs(ent, SV.server.worldmodel!.nodes[0]);
     }
 
     if (entity.solid === Defs.solid.SOLID_NOT) {

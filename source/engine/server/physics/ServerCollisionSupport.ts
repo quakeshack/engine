@@ -4,6 +4,7 @@ import type { MeshModel } from '../../common/model/MeshModel.ts';
 import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
+import type { moveTypes } from '../../../shared/Defs.ts';
 
 interface CollisionPlaneSource {
   readonly normal: Vector;
@@ -74,7 +75,7 @@ export class MoveClip {
   mins2: Vector;
   maxs: Vector;
   maxs2: Vector;
-  type: number;
+  type: moveTypes;
   passedict: ServerEdict | null;
   boxmins: Vector;
   boxmaxs: Vector;

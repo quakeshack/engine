@@ -75,7 +75,7 @@ export class Quaternion extends Array<number> {
   /**
    * Freezes this Quaternion.
    */
-  freeze(): Quaternion {
+  freeze(): this {
     Object.freeze(this);
     return this;
   }
@@ -84,7 +84,7 @@ export class Quaternion extends Array<number> {
    * Quake-style string representation of a Quaternion.
    */
   override toString(): string {
-    return `${this.map((element) => element.toFixed(1)).join(' ')}`;
+    return this.map((element) => element.toFixed(1)).join(' ');
   }
 }
 
@@ -647,6 +647,6 @@ export default class Vector extends Float32Array {
    * Quake-style string representation of a Vector.
    */
   override toString(): string {
-    return `${this.map((element) => +element.toFixed(1)).join(' ')}`;
+    return this.map((element) => +element.toFixed(1)).join(' ');
   }
 }

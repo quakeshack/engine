@@ -4,6 +4,7 @@ import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL from '../GL.ts';
 import W from '../../common/W.ts';
+import { ModelType } from '../../common/Mod.ts';
 import { effect } from '../../../shared/Defs.ts';
 import type { AliasModel, AliasSingleFrame, AliasGroupedFrameEntry, AliasSingleSkin, AliasGroupedSkinEntry } from '../../common/model/AliasModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
@@ -45,10 +46,10 @@ interface AliasFrameSelection {
 export class AliasModelRenderer extends ModelRenderer {
   /**
    * Get the model type this renderer handles.
-   * @returns Mod.type.alias (2)
+   * @returns ModelType.alias.
    */
-  override getModelType(): number {
-    return 2; // Mod.type.alias
+  override getModelType(): ModelType {
+    return ModelType.alias;
   }
 
   /**
@@ -238,8 +239,8 @@ export class AliasModelRenderer extends ModelRenderer {
       const [previousFrame, nextFrame, f] = e.lerp.frame;
       const previous = clmodel.frames[previousFrame];
       const next = clmodel.frames[nextFrame];
-      console.assert(previous.group === false, 'alias lerp previous frame must be a single frame');
-      console.assert(next.group === false, 'alias lerp next frame must be a single frame');
+      console.assert(!previous.group, 'alias lerp previous frame must be a single frame');
+      console.assert(!next.group, 'alias lerp next frame must be a single frame');
 
       if (previous.group) {
         frameA = previous.frames[0];
@@ -255,7 +256,7 @@ export class AliasModelRenderer extends ModelRenderer {
 
       targettime = f;
     } else {
-      console.assert(frameGroup.group === false, 'alias static frame must be a single frame');
+      console.assert(!frameGroup.group, 'alias static frame must be a single frame');
       const staticFrame = frameGroup as AliasSingleFrame;
       frameA = staticFrame;
       frameB = staticFrame;

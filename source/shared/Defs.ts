@@ -92,7 +92,7 @@ export enum damage {
 /**
  * Collision trace move types.
  */
-export enum moveTypes {
+export enum moveTypes { // TODO: unfortunate name, need to rename this to avoid confusion with edict.movetype
   /** normal trace */
   MOVE_NORMAL = 0,
   /** don't clip against monsters */
@@ -176,6 +176,7 @@ export const hull = Object.freeze([
  */
 export enum content {
   // for convenience:
+  /** uninitialized content, should never show up */
   CONTENT_NONE = 0,
 
   // for game play:

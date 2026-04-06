@@ -303,14 +303,16 @@ export default class Sbar {
     str = minutes.toString();
     Sbar.DrawString(256 - (str.length << 3), 4, str);
 
-    Sbar.DrawString(232 - (CL.state.levelname.length << 2), 12, CL.state.levelname);
+    if (CL.state.levelname) {
+      Sbar.DrawString(232 - (CL.state.levelname!.length << 2), 12, CL.state.levelname!);
+    }
   }
 
   static DrawInventory(): void {
     let i;
 
     if (COM.rogue) {
-      Sbar.DrawPic(0, -24, Sbar.r_invbar![CL.state.stats[Def.stat.activeweapon] >= Def.rit.lava_nailgun ? 0 : 1]);
+      Sbar.DrawPic(0, -24, Sbar.r_invbar![CL.state.stats[Def.stat.activeweapon] as Def.rit >= Def.rit.lava_nailgun ? 0 : 1]);
     } else {
       Sbar.DrawPic(0, -24, Sbar.ibar);
     }
@@ -358,7 +360,7 @@ export default class Sbar {
         }
       }
     } else if (COM.rogue) {
-      if (CL.state.stats[Def.stat.activeweapon] >= Def.rit.lava_nailgun) {
+      if (CL.state.stats[Def.stat.activeweapon] as Def.rit >= Def.rit.lava_nailgun) {
         for (i = 0; i <= 4; i++) {
           if (CL.state.stats[Def.stat.activeweapon] === (Def.rit.lava_nailgun << i)) {
             Sbar.DrawPic((i + 2) * 24, -16, Sbar.r_weapons![i]);
@@ -445,7 +447,8 @@ export default class Sbar {
   }
 
   static DrawFace(): void {
-    if (COM.rogue && (CL.state.maxclients !== 1) && (Cvar.FindVar('teamplay').value >= 4) && (Cvar.FindVar('teamplay').value <= 6)) {
+    // FIXME: cache Cvars
+    if (COM.rogue && (CL.state.maxclients !== 1) && (Cvar.FindVar('teamplay')!.value >= 4) && (Cvar.FindVar('teamplay')!.value <= 6)) {
       const s = CL.state.scores[CL.state.viewentity - 1];
       const top = (s.colors & 0xf0) + 8;
       const xofs = CL.state.maxclients === 1 ? 113 : (VID.width >> 1) - 47;

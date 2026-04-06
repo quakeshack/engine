@@ -480,9 +480,9 @@ export default class PostProcess {
   static _blitToScreen(texture: WebGLTexture, x: number, y: number, width: number, height: number): void {
     gl.disable(gl.BLEND);
 
-    const program = GL.UseProgram('pic');
-    gl.uniform3f(program!.uColor, 1.0, 1.0, 1.0);
-    GL.Bind(program!.tTexture, texture);
+    const program = GL.UseProgram('pic')!;
+    gl.uniform3f(program!.uColor!, 1.0, 1.0, 1.0);
+    GL.Bind(program!.tTexture!, texture);
     // FBO texture has (0,0) at bottom-left; 2D screen has (0,0) at top-left.
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();

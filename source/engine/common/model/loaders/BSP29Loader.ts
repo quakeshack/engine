@@ -7,7 +7,7 @@ import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { eventBus, getCommonRegistry, registry } from '../../../registry.ts';
 import { ModelLoader } from '../ModelLoader.ts';
-import { Brush, BrushModel, BrushSide, Node, type BSPXLumps, type BrushRange, type BrushTexInfo, type Clipnode, type Hull } from '../BSP.ts';
+import { Brush, BrushModel, BrushSide, Node, type BSPXLumps, type BrushTexInfo, type Clipnode, type Hull, type LightgridLeaf, type LightgridNode, type LightgridPointSample, type LightgridStyleSample } from '../BSP.ts';
 import { Face, Plane } from '../BaseModel.ts';
 import { MaterialFlags, noTextureMaterial, PBRMaterial, QuakeMaterial } from '../../../client/renderer/Materials.ts';
 import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.ts';
@@ -38,6 +38,10 @@ interface MaterialFile {
 
 type MaterialTextureCategory = 'luminance' | 'diffuse' | 'specular' | 'normal';
 
+/**
+ * Helper function to get a child node from a BSP node, with type assertion.
+ * @returns The child node at the specified index.
+ */
 function getNodeChild(node: Node, childIndex: 0 | 1): Node {
   const child = node.children[childIndex];
   console.assert(child instanceof Node, 'BSP29Loader expected linked BSP child node');
@@ -715,7 +719,7 @@ export class BSP29Loader extends ModelLoader {
         }
       }
 
-      if (node.contents < 0) {
+      if (node.contents < content.CONTENT_NONE) {
         // Leaf Node
         if (node.contents === content.CONTENT_SOLID) {
           node.area = 0;
@@ -1086,12 +1090,12 @@ export class BSP29Loader extends ModelLoader {
     loadmodel.entities = Q.memstr(new Uint8Array(buf, fileofs, filelen));
     loadmodel.worldspawnInfo = {};
 
-    let data = loadmodel.entities;
+    let data = loadmodel.entities as string | null;
 
     // going for worldspawn and light
     let stillLooking = 2;
     while (stillLooking > 0) {
-      const parsed = COM.Parse(data);
+      const parsed = COM.Parse(data!);
       data = parsed.data;
 
       if (!data) {
@@ -1289,7 +1293,7 @@ export class BSP29Loader extends ModelLoader {
       return;
     }
 
-    const liquidLeafsByType = new Map<number, number[]>();
+    const liquidLeafsByType = new Map<content, number[]>();
 
     for (let i = 0; i < loadmodel.leafs.length; i++) {
       const leaf = loadmodel.leafs[i];
@@ -1763,7 +1767,7 @@ export class BSP29Loader extends ModelLoader {
   #setParent(node: Node, parent: Node | null): void {
     node.parent = parent;
 
-    if (node.contents < 0) {
+    if (node.contents < content.CONTENT_NONE) {
       return;
     }
 
@@ -1797,8 +1801,8 @@ export class BSP29Loader extends ModelLoader {
         firstface: view.getUint16(fileofs + 20, true),
         numfaces: view.getUint16(fileofs + 22, true),
       });
-      loadmodel.nodes[i].baseMins = loadmodel.nodes[i].mins.copy();
-      loadmodel.nodes[i].baseMaxs = loadmodel.nodes[i].maxs.copy();
+      loadmodel.nodes[i].baseMins = loadmodel.nodes[i].mins!.copy();
+      loadmodel.nodes[i].baseMaxs = loadmodel.nodes[i].maxs!.copy();
       fileofs += 24;
     }
 
@@ -1851,8 +1855,8 @@ export class BSP29Loader extends ModelLoader {
           view.getUint8(fileofs + 27),
         ],
       });
-      loadmodel.leafs[i].baseMins = loadmodel.leafs[i].mins.copy();
-      loadmodel.leafs[i].baseMaxs = loadmodel.leafs[i].maxs.copy();
+      loadmodel.leafs[i].baseMins = loadmodel.leafs[i].mins!.copy();
+      loadmodel.leafs[i].baseMaxs = loadmodel.leafs[i].maxs!.copy();
       fileofs += 28;
     }
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
@@ -1901,22 +1905,24 @@ export class BSP29Loader extends ModelLoader {
    * Create hull0 (point hull) from BSP nodes for collision detection.
    */
   #makeHull0(loadmodel: BrushModel): void {
-    const clipnodes = [];
+    type Clipnode = { planenum: number; children: (number | Node)[] };
+
+    const clipnodes = [] as Clipnode[];
     const hull = {
       clipnodes: clipnodes,
       lastclipnode: loadmodel.nodes.length - 1,
       planes: loadmodel.planes,
       clip_mins: new Vector(),
       clip_maxs: new Vector(),
-    };
+    } as Hull;
 
     for (let i = 0; i < loadmodel.nodes.length; i++) {
       const node = loadmodel.nodes[i];
-      const out = { planenum: node.planenum, children: [] };
+      const out = { planenum: node.planenum, children: [] } as Clipnode;
       const child0 = node.children[0] as Node;
       const child1 = node.children[1] as Node;
-      out.children[0] = child0.contents < 0 ? child0.contents : child0.num;
-      out.children[1] = child1.contents < 0 ? child1.contents : child1.num;
+      out.children[0] = child0.contents < content.CONTENT_NONE ? child0.contents : child0.num;
+      out.children[1] = child1.contents < content.CONTENT_NONE ? child1.contents : child1.num;
       clipnodes[i] = out;
     }
     loadmodel.hulls[0] = hull;
@@ -2333,7 +2339,7 @@ export class BSP29Loader extends ModelLoader {
     /** Recursively insert a brush into BSP leaf nodes whose bounds overlap. */
     const insertBrushRecursive = (node: Node, brushIdx: number, brush: Brush): void => {
       // Leaf node: add the brush here
-      if (node.contents < 0) {
+      if (node.contents < content.CONTENT_NONE) {
         const leafIndex = leafIndexMap.get(node);
         if (leafIndex !== undefined) {
           leafBrushLists[leafIndex].push(brushIdx);
@@ -2342,26 +2348,28 @@ export class BSP29Loader extends ModelLoader {
       }
 
       // Internal node: test brush AABB against splitting plane
-      const plane = node.plane;
+      const plane = node.plane!;
+      console.assert(plane !== undefined, 'BSP node without plane');
+
       let d1, d2;
 
       if (plane.type < 3) {
         // Axial plane: fast path
-        d1 = brush.maxs[plane.type] - plane.dist;
-        d2 = brush.mins[plane.type] - plane.dist;
+        d1 = brush.maxs![plane.type] - plane.dist;
+        d2 = brush.mins![plane.type] - plane.dist;
       } else {
         // General plane: compute support points using worst-case AABB corners
         const nx = plane.normal[0];
         const ny = plane.normal[1];
         const nz = plane.normal[2];
 
-        d1 = nx * (nx >= 0 ? brush.maxs[0] : brush.mins[0])
-           + ny * (ny >= 0 ? brush.maxs[1] : brush.mins[1])
-           + nz * (nz >= 0 ? brush.maxs[2] : brush.mins[2])
+        d1 = nx * (nx >= 0 ? brush.maxs![0] : brush.mins![0])
+           + ny * (ny >= 0 ? brush.maxs![1] : brush.mins![1])
+           + nz * (nz >= 0 ? brush.maxs![2] : brush.mins![2])
            - plane.dist;
-        d2 = nx * (nx >= 0 ? brush.mins[0] : brush.maxs[0])
-           + ny * (ny >= 0 ? brush.mins[1] : brush.maxs[1])
-           + nz * (nz >= 0 ? brush.mins[2] : brush.maxs[2])
+        d2 = nx * (nx >= 0 ? brush.mins![0] : brush.maxs![0])
+           + ny * (ny >= 0 ? brush.mins![1] : brush.maxs![1])
+           + nz * (nz >= 0 ? brush.mins![2] : brush.maxs![2])
            - plane.dist;
       }
 
@@ -2559,16 +2567,16 @@ export class BSP29Loader extends ModelLoader {
       }
 
       // Parse nodes
-      const nodes = [];
+      const nodes = [] as LightgridNode[];
       for (let i = 0; i < numnodes; i++) {
         const mid = [
           view.getUint32(offset, true),
           view.getUint32(offset + 4, true),
           view.getUint32(offset + 8, true),
-        ];
+        ] as [number, number, number];
         offset += 12;
 
-        const child = [];
+        const child = [] as number[];
         for (let j = 0; j < 8; j++) {
           child[j] = view.getUint32(offset, true);
           offset += 4;
@@ -2586,7 +2594,7 @@ export class BSP29Loader extends ModelLoader {
       offset += 4;
 
       // Parse leafs
-      const leafs = [];
+      const leafs = [] as LightgridLeaf[];
       for (let i = 0; i < numleafs; i++) {
         // Check bounds for leaf header (mins + size = 24 bytes)
         if (offset + 24 > endOffset) {
@@ -2610,7 +2618,7 @@ export class BSP29Loader extends ModelLoader {
 
         // Parse per-point data
         const totalPoints = leafSize[0] * leafSize[1] * leafSize[2];
-        const points = [];
+        const points = [] as LightgridPointSample[];
 
         for (let p = 0; p < totalPoints; p++) {
           // Check bounds for stylecount byte
@@ -2628,7 +2636,7 @@ export class BSP29Loader extends ModelLoader {
             continue;
           }
 
-          const styles = [];
+          const styles = [] as LightgridStyleSample[];
           for (let s = 0; s < stylecount; s++) {
             // Check bounds for style data (1 byte stylenum + 3 bytes rgb = 4 bytes)
             if (offset + 3 >= endOffset) {
@@ -2644,7 +2652,7 @@ export class BSP29Loader extends ModelLoader {
               view.getUint8(offset),
               view.getUint8(offset + 1),
               view.getUint8(offset + 2),
-            ];
+            ] as [number, number, number];
             offset += 3;
 
             styles.push({ stylenum, rgb });
@@ -2668,7 +2676,13 @@ export class BSP29Loader extends ModelLoader {
 
       Con.DPrint(`BSP29Loader: loaded LIGHTGRID_OCTREE with ${numnodes} nodes and ${numleafs} leafs\n`);
     } catch (error) {
-      Con.DPrint(`BSP29Loader: error loading LIGHTGRID_OCTREE: ${error.message}\n`);
+      if (error instanceof Error) {
+        Con.PrintError(`BSP29Loader: error loading LIGHTGRID_OCTREE: ${error.message}\n`);
+      } else {
+        Con.PrintError('BSP29Loader: error loading LIGHTGRID_OCTREE\n');
+        // eslint-disable-next-line no-debugger
+        debugger;
+      }
       loadmodel.lightgrid = null;
     }
   }

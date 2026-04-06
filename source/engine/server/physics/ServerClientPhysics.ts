@@ -92,15 +92,16 @@ export class ServerClientPhysics {
     pmove.angles.set(entity.v_angle ?? entity.angles);
 
     // Persistent PM state from the client connection
+    const teleportTime = entity.teleport_time || 0;
     pmove.oldbuttons = client.pmOldButtons;
     pmove.pmFlags = client.pmFlags;
     pmove.pmTime = client.pmTime;
-    pmove.waterjumptime = entity.teleport_time > SV.server.time ? (entity.teleport_time - SV.server.time) : 0;
-    pmove.dead = entity.deadflag > 0;
+    pmove.waterjumptime = teleportTime > SV.server.time ? (teleportTime - SV.server.time) : 0;
+    pmove.dead = entity.deadflag! > 0;
     pmove.spectator = false;
 
     // Determine PM type
-    if (entity.deadflag > 0) {
+    if (entity.deadflag! > 0) {
       pmove.pmType = PM_TYPE.DEAD;
     } else if (entity.movetype === Defs.moveType.MOVETYPE_NOCLIP) {
       pmove.pmType = PM_TYPE.SPECTATOR;
@@ -261,7 +262,7 @@ export class ServerClientPhysics {
     }
 
     if (steps >= 2) {
-      entity.idealpitch = -dir * SV.idealpitchscale.value;
+      entity.idealpitch = -dir * SV.idealpitchscale!.value;
     }
   }
 
@@ -295,7 +296,7 @@ export class ServerClientPhysics {
 
     entity.punchangle = punchangle.multiply(len);
 
-    if (entity.deadflag > 0) {
+    if (entity.deadflag! > 0) {
       return;
     }
 
@@ -340,9 +341,9 @@ export class ServerClientPhysics {
     }
 
     gameAPI.time = SV.server.time;
-    SV.server.gameAPI.PlayerPreThink(ent);
+    SV.server.gameAPI!.PlayerPreThink(ent);
     SV.physics.checkVelocity(ent);
-    const movetype = ent.entity!.movetype >> 0;
+    const movetype = (ent.entity!.movetype >> 0) as Defs.moveType;
     if (movetype === Defs.moveType.MOVETYPE_TOSS || movetype === Defs.moveType.MOVETYPE_BOUNCE) {
       SV.physics.physicsToss(ent);
     } else {
@@ -377,6 +378,6 @@ export class ServerClientPhysics {
     }
     SV.area.linkEdict(ent, true);
     gameAPI.time = SV.server.time;
-    SV.server.gameAPI.PlayerPostThink(ent);
+    SV.server.gameAPI!.PlayerPostThink(ent);
   }
 }

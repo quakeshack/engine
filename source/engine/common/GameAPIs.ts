@@ -18,7 +18,7 @@ import { ED, type BaseEntity, ServerEdict as ServerEdictValue } from '../server/
 import Cmd from './Cmd.ts';
 import Cvar from './Cvar.ts';
 import { HostError } from './Errors.ts';
-import Mod from './Mod.ts';
+import Mod, { ModelScope } from './Mod.ts';
 import W from './W.ts';
 
 type ServerEdict = ServerEdictValue;
@@ -136,8 +136,8 @@ function internalTraceToGameTrace(trace: InternalTraceLike): GameTrace {
       distance: trace.plane.dist,
     },
     contents: {
-      inOpen: !!trace.inopen,
-      inWater: !!trace.inwater,
+      inOpen: trace.inopen,
+      inWater: trace.inwater,
     },
     point: trace.endpos,
     entity: trace.ent ? trace.ent.entity : null,
@@ -705,7 +705,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
     }
 
     SV.server.modelPrecache.push(modelName);
-    SV.server.models.push(Mod.ForNameAsync(modelName, true, Mod.scope.server)); // will cause promises in the array
+    SV.server.models.push(Mod.ForNameAsync(modelName, true, ModelScope.server)); // will cause promises in the array
   }
 
   /**

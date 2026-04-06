@@ -6,7 +6,7 @@ import { gameCapabilities } from '../../shared/Defs.ts';
 import type { ClientGameInterface } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import type { BrushModel } from '../common/Mod.ts';
+import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
@@ -199,7 +199,7 @@ function parseServerData() {
     models.length = 1;
     sounds.length = 1;
 
-    const worldModel = await Mod.ForNameAsync(model_precache[1], false, Mod.scope.client);
+    const worldModel = await Mod.ForNameAsync(model_precache[1], false, ModelScope.client);
     if (worldModel === null) {
       throw new HostError(`Failed to load world model ${model_precache[1]}`);
     }
@@ -212,7 +212,7 @@ function parseServerData() {
 
       CL.SetConnectingStep(25 + (models.length / model_precache.length) * 30, 'Loading models');
       const modelStart = models.length;
-      const loadedModels = await Promise.all(model_precache.slice(modelStart, modelStart + chunksize).map((m) => Mod.ForNameAsync(m, false, Mod.scope.client)));
+      const loadedModels = await Promise.all(model_precache.slice(modelStart, modelStart + chunksize).map((m) => Mod.ForNameAsync(m, false, ModelScope.client)));
       storeLoadedSlice(models, modelStart, loadedModels);
 
       CL.SendCmd();
@@ -413,7 +413,8 @@ function parseBeam(model: BaseModel | null | undefined) {
  * Decodes temporary entities (explosions, splashes, etc.).
  */
 function parseTemporaryEntity() {
-  const type = NET.message.readByte();
+  const type = NET.message.readByte() as Protocol.te;
+  console.assert(Object.values(Protocol.te).includes(type), `CL.ParseTEnt: invalid temp entity type ${type}`);
 
   switch (type) {
     case Protocol.te.lightning1:

@@ -21,14 +21,14 @@ export const defaultBasedir = 'id1';
 /**
  * Engine limitations.
  */
-export enum limits {
-  edicts = 64,
-  clients = 32,
-  dlights = 32,
-  lightstyles = 64,
-  beams = 24,
-  entities = 1024,
-}
+export const limits = Object.freeze({
+  edicts: 64,
+  clients: 32,
+  dlights: 32,
+  lightstyles: 64,
+  beams: 24,
+  entities: 1024,
+});
 
 /**
  * Legacy client stat indices.

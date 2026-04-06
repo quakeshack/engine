@@ -187,7 +187,7 @@ class GL {
     const program = {
       identifier,
       program: p,
-      attribs: [],
+      attribs: [] as GLProgramAttrib[],
       vertexSize: 0,
       attribBits: 0,
     } as GLProgramMutable;
@@ -762,7 +762,7 @@ export class GLTexture {
    * @param {string} name texture mode name
    * @returns {GLTexture} this
    */
-  lockTextureMode(name: string): GLTexture {
+  lockTextureMode(name: string): this {
     console.assert(textureModes[name] !== undefined, 'Valid texture mode required');
 
     if (this.#textureModeListener !== null) {
@@ -777,7 +777,7 @@ export class GLTexture {
     return this;
   }
 
-  wrapClamped(): GLTexture {
+  wrapClamped(): this {
     this.#textureWrap = 'clamp';
 
     if (this.ready) {
@@ -787,7 +787,7 @@ export class GLTexture {
     return this;
   }
 
-  wrapRepeat(): GLTexture {
+  wrapRepeat(): this {
     this.#textureWrap = 'repeat';
 
     if (this.ready) {
@@ -797,7 +797,7 @@ export class GLTexture {
     return this;
   }
 
-  resize(width: number, height: number): GLTexture {
+  resize(width: number, height: number): this {
     console.assert(width > 0 && height > 0, 'Texture width and height must be greater than zero');
 
     this.width = width;
@@ -814,7 +814,7 @@ export class GLTexture {
    * @param {boolean} flushStream flush the stream before binding
    * @returns {GLTexture} this
    */
-  bind(target = 0, flushStream = false): GLTexture {
+  bind(target = 0, flushStream = false): this {
     if (!this.ready) {
       missingPicTexture.bind(target, flushStream);
       return this;
@@ -845,7 +845,7 @@ export class GLTexture {
    * @param {Uint8Array | ImageBitmap | null} data texture data in RGBA format or as ImageBitmap
    * @returns {GLTexture} this
    */
-  upload(data: Uint8Array | ImageBitmap | null): GLTexture {
+  upload(data: Uint8Array | ImageBitmap | null): this {
     if (this.#texnum === null) {
       this.#texnum = requireValue(gl.createTexture(), 'Failed to create WebGL texture');
     }
@@ -974,7 +974,8 @@ function wrapGL(glContext: WebGL2RenderingContext): WebGL2RenderingContext {
   ] as const;
 
   for (const key of keysToCatch) {
-    const original = glContext[key].bind(glContext);
+    const original = glContext[key].bind(glContext) as Function;
+    console.assert(typeof original === 'function', `Expected gl.${key} to be a function`);
 
     // @ts-expect-error dynamic WebGL method instrumentation
     glContext[key] = (...args: Array<number | object | null | undefined>) => {
@@ -1048,7 +1049,7 @@ function GL_Init(): void {
   Cmd.AddCommand('gl_texturelist', TextureListCommand);
 
   initClear();
-  eventBus.subscribe('cvar.changed.gl_clear', () => initClear());
+  eventBus.subscribe('cvar.changed.gl_clear', () => { initClear(); });
 
   GL.streamArray = new ArrayBuffer(8192);
   GL.streamArrayBytes = new Uint8Array(GL.streamArray);
@@ -1127,5 +1128,5 @@ function GL_Shutdown(): void {
   eventBus.publish('gl.shutdown');
 }
 
-eventBus.subscribe('vid.ready', () => GL_Init());
-eventBus.subscribe('vid.shutdown', () => GL_Shutdown());
+eventBus.subscribe('vid.ready', () => { GL_Init(); });
+eventBus.subscribe('vid.shutdown', () => { GL_Shutdown(); });

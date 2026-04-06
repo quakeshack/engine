@@ -110,10 +110,10 @@ export class ServerPhysics {
         origin[index] = 0.0;
       }
 
-      if (component > SV.maxvelocity.value) {
-        component = SV.maxvelocity.value;
-      } else if (component < -SV.maxvelocity.value) {
-        component = -SV.maxvelocity.value;
+      if (component > SV.maxvelocity!.value) {
+        component = SV.maxvelocity!.value;
+      } else if (component < -SV.maxvelocity!.value) {
+        component = -SV.maxvelocity!.value;
       }
 
       velo[index] = component;
@@ -131,7 +131,7 @@ export class ServerPhysics {
     const entity = ent.entity!;
 
     while (true) {
-      let thinktime = entity.nextthink;
+      let thinktime = entity.nextthink!;
 
       if (thinktime <= 0.0 || thinktime > (SV.server.time + Host.frametime)) {
         return true;
@@ -142,8 +142,9 @@ export class ServerPhysics {
       }
 
       entity.nextthink = 0.0;
-      SV.server.gameAPI.time = thinktime;
-      entity.think();
+      SV.server.gameAPI!.time = thinktime;
+      console.assert(entity.think instanceof Function, 'runThink: entity.think must be a function');
+      entity.think!();
 
       if (ent.isFree()) {
         return false;
@@ -155,7 +156,7 @@ export class ServerPhysics {
    * Invokes touch callbacks between two entities.
    */
   impact(e1: ServerEdict, e2: ServerEdict, pushVector: Vector): void {
-    SV.server.gameAPI.time = SV.server.time;
+    SV.server.gameAPI!.time = SV.server.time;
 
     const ent1 = e1.entity!;
     const ent2 = e2.entity!;
@@ -302,7 +303,7 @@ export class ServerPhysics {
     const entity = ent.entity!;
     const entGravity = typeof entity.gravity === 'number' ? entity.gravity : 1.0;
     const velocity = entity.velocity;
-    velocity[2] += entGravity * SV.gravity.value * Host.frametime * -1.0;
+    velocity[2] += entGravity * SV.gravity!.value * Host.frametime * -1.0;
     entity.velocity = velocity;
   }
 
@@ -311,7 +312,7 @@ export class ServerPhysics {
    */
   addBuoyancy(ent: ServerEdict): void {
     const velocity = ent.entity!.velocity;
-    velocity[2] += SV.gravity.value * Host.frametime * 0.01;
+    velocity[2] += SV.gravity!.value * Host.frametime * 0.01;
     ent.entity!.velocity = velocity;
   }
 
@@ -356,8 +357,12 @@ export class ServerPhysics {
   pushMove(pusher: ServerEdict, movetime: number): void {
     const pusherEntity = pusher.entity!;
 
+    console.assert(pusherEntity !== null, 'pushMove: pusherEntity must not be null');
+    console.assert(pusherEntity.ltime !== undefined, 'pushMove: pusherEntity.ltime must be defined');
+    console.assert(typeof (pusherEntity.ltime) === 'number' && !Number.isNaN(pusherEntity.ltime), 'pushMove: pusherEntity.ltime must be a number');
+
     if (pusherEntity.velocity.isOrigin() && pusherEntity.avelocity.isOrigin()) {
-      pusherEntity.ltime += movetime;
+      pusherEntity.ltime! += movetime;
       return;
     }
 
@@ -372,7 +377,7 @@ export class ServerPhysics {
     pusherEntity.origin = pusherEntity.origin.copy().add(move);
     pusherEntity.angles = pusherEntity.angles.copy().add(rotation);
     const finalbasis = pusherEntity.angles.isOrigin() ? null : pusherEntity.angles.toRotationMatrix();
-    pusherEntity.ltime += movetime;
+    pusherEntity.ltime! += movetime;
     SV.area.linkEdict(pusher);
 
     const moved: MovedEntityState[] = [];
@@ -460,7 +465,7 @@ export class ServerPhysics {
         pusherEntity.origin = pusherEntity.origin.set(pushorig);
         pusherEntity.angles = pusherEntity.angles.set(pushangles);
         SV.area.linkEdict(pusher);
-        pusherEntity.ltime -= movetime;
+        pusherEntity.ltime! -= movetime;
         if (pusherEntity.blocked) {
           pusherEntity.blocked(checkEntity);
         }
@@ -479,8 +484,8 @@ export class ServerPhysics {
    */
   physicsPusher(ent: ServerEdict): void {
     const entity = ent.entity!;
-    const oldltime = entity.ltime;
-    const thinktime = entity.nextthink;
+    const oldltime = entity.ltime!;
+    const thinktime = entity.nextthink!;
     let movetime: number;
 
     if (thinktime > 0.0 && thinktime < (oldltime + Host.frametime)) {
@@ -493,13 +498,15 @@ export class ServerPhysics {
       this.pushMove(ent, movetime);
     }
 
-    if (thinktime <= oldltime || thinktime > entity.ltime) {
+    if (thinktime <= oldltime || thinktime > entity.ltime!) {
       return;
     }
 
     entity.nextthink = 0.0;
-    SV.server.gameAPI.time = SV.server.time;
-    entity.think();
+    SV.server.gameAPI!.time = SV.server.time;
+
+    console.assert(entity.think instanceof Function, 'physicsPusher: entity.think must be a function');
+    entity.think!();
   }
 
   /**
@@ -509,11 +516,11 @@ export class ServerPhysics {
     const entity = ent.entity!;
 
     if (!SV.collision.testEntityPosition(ent)) {
-      entity.oldorigin = entity.oldorigin.set(entity.origin);
+      entity.oldorigin = entity.oldorigin!.set(entity.origin);
       return;
     }
 
-    entity.origin = entity.origin.set(entity.oldorigin);
+    entity.origin = entity.origin.set(entity.oldorigin!);
     if (!SV.collision.testEntityPosition(ent)) {
       Con.DPrint('Unstuck.\n');
       SV.area.linkEdict(ent, true);
@@ -595,7 +602,7 @@ export class ServerPhysics {
     }
 
     entity.watertype = Defs.content.CONTENT_EMPTY;
-    entity.waterlevel = cont; // CR: I’m not sure whether this is correct or should be e.g. WATERLEVEL_NONE
+    entity.waterlevel = Defs.waterlevel.WATERLEVEL_NONE; // FIXME: double check if this is correct, used to be `cont` before
   }
 
   /**
@@ -707,7 +714,7 @@ export class ServerPhysics {
   physicsStep(ent: ServerEdict): void {
     const entity = ent.entity!;
     if ((entity.flags & (Defs.flags.FL_ONGROUND | Defs.flags.FL_FLY | Defs.flags.FL_SWIM)) === 0) {
-      const hitsound = entity.velocity[2] < (SV.gravity.value * -VELOCITY_EPSILON);
+      const hitsound = entity.velocity[2] < (SV.gravity!.value * -VELOCITY_EPSILON);
       this.addGravity(ent);
       this.checkVelocity(ent);
       this.flyMove(ent, Host.frametime);
@@ -724,8 +731,9 @@ export class ServerPhysics {
    * Runs the main entity physics step for the server.
    */
   physics(): void {
-    SV.server.gameAPI.time = SV.server.time;
-    SV.server.gameAPI.startFrame();
+    console.assert(SV.server.gameAPI !== null, 'physics: gameAPI must not be null');
+    SV.server.gameAPI!.time = SV.server.time;
+    SV.server.gameAPI!.startFrame();
 
     for (let index = 0; index < SV.server.num_edicts; index++) {
       const ent = SV.server.edicts[index];
@@ -734,7 +742,7 @@ export class ServerPhysics {
       }
       // force_retouch: relink ALL entities so stationary objects re-check
       // trigger contacts (e.g. telefrag triggers).
-      if (SV.server.gameAPI.force_retouch) {
+      if (SV.server.gameAPI!.force_retouch) {
         SV.area.linkEdict(ent, true);
       }
       if (ent.isClient()) {
@@ -765,8 +773,8 @@ export class ServerPhysics {
       }
     }
 
-    if (SV.server.gameAPI.force_retouch) {
-      SV.server.gameAPI.force_retouch--;
+    if (SV.server.gameAPI!.force_retouch) {
+      SV.server.gameAPI!.force_retouch--;
     }
 
     SV.server.time += Host.frametime;

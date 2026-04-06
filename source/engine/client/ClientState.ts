@@ -323,7 +323,7 @@ class ClientRuntimeState {
 
   #configureProxyEvents(): void {
     for (const event of this.#clientGameEvents) {
-      this.#proxyEventListeners.push(eventBus.subscribe(event, (...args) => this.eventBus.publish(event, ...args)));
+      this.#proxyEventListeners.push(eventBus.subscribe(event, (...args) => { this.eventBus.publish(event, ...args); }));
     }
   }
 }

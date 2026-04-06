@@ -60,7 +60,7 @@ interface ServerMessageEntity extends BaseEntity {
   sounds?: number;
   velocity: Vector;
   view_ofs: Vector;
-  waterlevel: number;
+  waterlevel: Defs.waterlevel;
   weapon: number;
   weaponframe: number;
   weaponmodel: string | null;

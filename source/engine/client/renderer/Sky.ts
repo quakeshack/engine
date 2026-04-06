@@ -62,7 +62,7 @@ export class SkyRenderer {
       }
 
       // Frustum culling
-      if (R.CullBox(leaf.mins, leaf.maxs)) {
+      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
 

@@ -9,7 +9,7 @@ import { WavefrontOBJLoader } from './model/loaders/WavefrontOBJLoader.ts';
 import ParsedQC from './model/parsers/ParsedQC.ts';
 import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
-import type { BrushModel } from './model/BSP.ts';
+import { BrushModel } from './model/BSP.ts';
 
 let { COM } = getCommonRegistry();
 let { CL } = getClientRegistry();
@@ -41,10 +41,6 @@ export enum ModelHull {
 
 type ModelCache = Record<string, BaseModel>;
 
-function isBrushModel(model: BaseModel): model is BrushModel {
-  return model.type === ModelType.brush;
-}
-
 // Re-export model classes for backward compatibility.
 // TODO: remove these!
 export { AliasModel } from './model/AliasModel.ts';
@@ -56,37 +52,17 @@ export { MeshModel } from './model/MeshModel.ts';
  * Shared model cache and loading entry point.
  */
 export default class Mod {
-  /** @deprecated use ModelType instead */
-  static type = ModelType;
-  /** @deprecated use ModelScope instead */
-  static scope = ModelScope;
-  /** @deprecated use ModelHull instead */
-  static hull = ModelHull;
   static known: ModelCache = {};
   static clientKnown: ModelCache = {};
   static serverKnown: ModelCache = {};
   static readonly pendingLoads: Record<string, Promise<BaseModel | null>> = {};
   static readonly modelLoaderRegistry = new ModelLoaderRegistry();
 
-  static IsSubmodelName(name: string): boolean {
-    return name[0] === '*';
-  }
-
-  /**
-   * Returns true when the shared model is a world brush model with inline submodels.
-   * @returns True when the model is a world brush model with inline submodels.
-   */
-  static IsBrushWorldModel(sharedModel: BaseModel): sharedModel is BrushModel {
-    return isBrushModel(sharedModel)
-      && !sharedModel.submodel
-      && sharedModel.submodels.length > 0;
-  }
-
   /**
    * Rebuilds scoped inline submodels against a scoped world view.
    */
   static RegisterScopedSubmodels(sharedWorld: BaseModel, scopedWorld: BaseModel, scope: ModelScope): void {
-    if (!Mod.IsBrushWorldModel(sharedWorld) || !isBrushModel(scopedWorld)) {
+    if (!(sharedWorld instanceof BrushModel && sharedWorld.isWorldModel) || !(scopedWorld instanceof BrushModel)) {
       return;
     }
 
@@ -144,9 +120,9 @@ export default class Mod {
    */
   static GetScopeCache(scope: ModelScope): ModelCache {
     switch (scope) {
-      case Mod.scope.client:
+      case ModelScope.client:
         return Mod.clientKnown;
-      case Mod.scope.server:
+      case ModelScope.server:
         return Mod.serverKnown;
       default:
         return Mod.known;
@@ -159,7 +135,7 @@ export default class Mod {
    * @returns The scoped model instance, or `null` when unavailable.
    */
   static ResolveScopedModel(name: string, scope: ModelScope): BaseModel | null {
-    if (scope === Mod.scope.shared) {
+    if (scope === ModelScope.shared) {
       return Mod.known[name] ?? null;
     }
 
@@ -178,7 +154,7 @@ export default class Mod {
     const scopedModel = sharedModel.createScopedView();
     scopedCache[name] = scopedModel;
 
-    if (Mod.IsBrushWorldModel(sharedModel)) {
+    if (sharedModel instanceof BrushModel && sharedModel.isWorldModel) {
       Mod.RegisterScopedSubmodels(sharedModel, scopedModel, scope);
     }
 
@@ -198,9 +174,9 @@ export default class Mod {
   /**
    * Clears cached models for a scope.
    */
-  static ClearAll(scope: ModelScope = Mod.scope.shared): void {
-    if (scope === Mod.scope.shared) {
-      for (const scopedScope of [Mod.scope.client, Mod.scope.server]) {
+  static ClearAll(scope: ModelScope = ModelScope.shared): void {
+    if (scope === ModelScope.shared) {
+      for (const scopedScope of [ModelScope.client, ModelScope.server]) {
         Mod.ClearAll(scopedScope);
       }
 
@@ -212,7 +188,7 @@ export default class Mod {
     }
 
     const tempEnts = (() => {
-      if (scope !== Mod.scope.client || registry.isDedicatedServer) {
+      if (scope !== ModelScope.client || registry.isDedicatedServer) {
         return [] as string[];
       }
 
@@ -249,7 +225,7 @@ export default class Mod {
    * Loads a named model into the shared cache and returns the scoped instance.
    * @returns The scoped model instance, or `null` when the load fails without crashing.
    */
-  static async LoadModelAsync(name: string, crash: boolean, scope: ModelScope = Mod.scope.shared): Promise<BaseModel | null> {
+  static async LoadModelAsync(name: string, crash: boolean, scope: ModelScope = ModelScope.shared): Promise<BaseModel | null> {
     const scopedModel = Mod.ResolveScopedModel(name, scope);
 
     if (scopedModel !== null) {
@@ -287,7 +263,7 @@ export default class Mod {
    * Resolves an inline submodel from the already loaded world model cache.
    * @returns The scoped inline submodel, or `null` when it is unavailable.
    */
-  static ForName(name: string, scope: ModelScope = Mod.scope.shared): BaseModel | null {
+  static ForName(name: string, scope: ModelScope = ModelScope.shared): BaseModel | null {
     console.assert(name[0] === '*', 'only submodels supported in Mod.ForName');
     return Mod.ResolveScopedModel(name, scope);
   }
@@ -296,7 +272,7 @@ export default class Mod {
    * Returns the requested model, loading it first when necessary.
    * @returns The requested model, or `null` when it cannot be loaded.
    */
-  static async ForNameAsync(name: string, crash = false, scope: ModelScope = Mod.scope.shared): Promise<BaseModel | null> {
+  static async ForNameAsync(name: string, crash = false, scope: ModelScope = ModelScope.shared): Promise<BaseModel | null> {
     if (name[0] === '*') {
       return Mod.ForName(name, scope);
     }

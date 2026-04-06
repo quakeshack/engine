@@ -237,7 +237,7 @@ export class ClientMessages {
     let counter = 0;
 
     // we are writing directly into clientdata object
-    const clientdata = CL.state.gameAPI.clientdata;
+    const clientdata = CL.state.gameAPI!.clientdata;
 
     if (clientdata === null) {
       throw new HostError('Client game API clientdata is not initialized');
@@ -324,7 +324,7 @@ export class ClientMessages {
     const eventCode = NET.message.readByte();
     const args = NET.message.readSerializablesOnClient();
 
-    CL.state.gameAPI.handleClientEvent(eventCode, ...args);
+    CL.state.gameAPI!.handleClientEvent(eventCode, ...args);
   }
 
   /**

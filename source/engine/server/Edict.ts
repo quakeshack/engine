@@ -10,9 +10,10 @@ import { SzBuffer, registerSerializableType } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import * as Defs from '../../shared/Defs.ts';
-import { eventBus, registry } from '../registry.ts';
+import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 import Q from '../../shared/Q.ts';
 import { ConsoleCommand } from '../common/Cmd.ts';
+import { ModelType } from '../common/Mod.ts';
 
 export interface BaseEntity extends SerializableEntity {
   classname: string;
@@ -46,7 +47,7 @@ export interface BaseEntity extends SerializableEntity {
   maxs: Vector;
   model: string | null;
   modelindex: number;
-  movetype: number;
+  movetype: Defs.moveType;
   netname?: string | null;
   nextthink?: number;
   oldorigin?: Vector;
@@ -55,9 +56,9 @@ export interface BaseEntity extends SerializableEntity {
   punchangle: Vector;
   size: Vector;
   skin: number;
-  solid: number;
+  solid: Defs.solid;
   spawn(): void;
-  takedamage: number;
+  takedamage: Defs.damage;
   team: number;
   teleport_time?: number;
   think?(): void;
@@ -65,8 +66,8 @@ export interface BaseEntity extends SerializableEntity {
   velocity: Vector;
   view_ofs: Vector;
   v_angle: Vector;
-  waterlevel?: number;
-  watertype?: number;
+  waterlevel?: Defs.waterlevel;
+  watertype?: Defs.content;
   yaw_speed?: number;
   readonly edictId: number | undefined;
   restoreSpawnParameters?(data: string | null): void;
@@ -74,10 +75,12 @@ export interface BaseEntity extends SerializableEntity {
 
 export type WorldspawnEntity = WorldspawnEntityValue;
 
-let { CL, COM, Con, Host, NET, PR, SV } = registry;
+let { COM, Con, Host, NET, PR, SV } = getCommonRegistry();
+let { CL } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Host, NET, PR, SV } = registry);
+  ({ CL } = getClientRegistry());
+  ({ COM, Con, Host, NET, PR, SV } = getCommonRegistry());
 });
 
 /**
@@ -88,11 +91,6 @@ export class ED {
    * Clears an edict for reuse.
    */
   static ClearEdict(ed: ServerEdict): void {
-    if (ed.entity) {
-      ed.entity.free();
-      ed.entity = null;
-    }
-
     ed.clear();
     ed.free = false;
   }
@@ -166,6 +164,7 @@ export class ED {
       }
 
       const printableValue = (entity as BaseEntity & Record<string, string | number | boolean | Vector | BaseEntity | null | undefined>)[name];
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
       Con.Print(`${name.padStart(24, '.')}: ${printableValue}\n`);
     }
   }
@@ -223,7 +222,7 @@ export class ED {
         continue;
       }
 
-      const entity = ent.entity;
+      const entity = ent.entity!;
 
       console.assert(entity !== null, 'ED.Count requires a live entity');
 
@@ -267,7 +266,7 @@ export class ED {
     while (true) {
       const parsedKey = COM.Parse(data);
 
-      data = parsedKey.data;
+      data = parsedKey.data!;
 
       if (parsedKey.token.charCodeAt(0) === 125) {
         break;
@@ -293,7 +292,7 @@ export class ED {
 
       const parsedValue = COM.Parse(data);
 
-      data = parsedValue.data;
+      data = parsedValue.data!;
 
       if (data === null) {
         throw new Error('ED.ParseEdict: EOF without closing brace');
@@ -326,7 +325,10 @@ export class ED {
   static async LoadFromFile(data: string): Promise<void> {
     let inhibit = 0;
     let ent: ServerEdict | null = null;
-    SV.server.gameAPI.time = SV.server.time;
+
+    console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is required to load entities');
+
+    SV.server.gameAPI!.time = SV.server.time;
 
     while (true) {
       const parsed = COM.Parse(data);
@@ -351,7 +353,7 @@ export class ED {
         continue;
       }
 
-      const maySpawn = SV.server.gameAPI.prepareEntity(ent, initialData.classname as string, initialData);
+      const maySpawn = SV.server.gameAPI!.prepareEntity(ent, initialData.classname as string, initialData);
 
       if (!maySpawn) {
         ED.Free(ent);
@@ -361,7 +363,7 @@ export class ED {
 
       await SV.WaitForPrecachedResources();
 
-      const spawned = SV.server.gameAPI.spawnPreparedEntity(ent);
+      const spawned = SV.server.gameAPI!.spawnPreparedEntity(ent);
 
       if (!spawned) {
         Con.Print(`Could not spawn entity for edict ${ent.num}:\n`);
@@ -524,7 +526,8 @@ export class ServerEdict {
 
     if (mod instanceof Promise) {
       void mod.then((loadedModel) => {
-        this.setMinMaxSize(loadedModel.mins, loadedModel.maxs);
+        console.assert(loadedModel !== null, `Edict.setModel: failed to load model ${model}`);
+        this.setMinMaxSize(loadedModel!.mins, loadedModel!.maxs);
       });
       return;
     }
@@ -536,7 +539,7 @@ export class ServerEdict {
     }
 
     if (entity.solid === Defs.solid.SOLID_BSP) {
-      console.assert(mod && mod.type === 0, 'Edict.setModel: not a brush model for SOLID_BSP');
+      console.assert(mod && mod.type === ModelType.brush, 'Edict.setModel: not a brush model for SOLID_BSP');
     }
   }
 
@@ -581,9 +584,11 @@ export class ServerEdict {
   makeStatic(): void {
     const entity = this._requireEntity();
     const message = SV.server.signon;
+    const modelIndex = SV.ModelIndex(entity.model)!;
+    console.assert(modelIndex !== null, `Edict.makeStatic: model ${entity.model} not precached`);
     message.writeByte(Protocol.svc.spawnstatic);
     message.writeString(entity.classname);
-    message.writeByte(SV.ModelIndex(entity.model));
+    message.writeByte(modelIndex);
     message.writeByte(entity.frame || 0);
     message.writeByte(entity.colormap || 0);
     message.writeByte(entity.skin || 0);
@@ -642,7 +647,7 @@ export class ServerEdict {
       }
 
       SV.server.lastcheck = i;
-      ServerEdict.#lastcheckpvs = SV.server.worldmodel.getPvsByPoint(ent._requireEntity().origin.copy().add(ent._requireEntity().view_ofs));
+      ServerEdict.#lastcheckpvs = SV.server.worldmodel!.getPvsByPoint(ent._requireEntity().origin.copy().add(ent._requireEntity().view_ofs));
       SV.server.lastchecktime = SV.server.time;
     }
 
@@ -659,7 +664,7 @@ export class ServerEdict {
       return null;
     }
 
-    const leaf = SV.server.worldmodel.getLeafForPoint(this._requireEntity().origin.copy().add(this._requireEntity().view_ofs)).num;
+    const leaf = SV.server.worldmodel!.getLeafForPoint(this._requireEntity().origin.copy().add(this._requireEntity().view_ofs)).num;
 
     if (leaf === 0 || !lastcheckpvs.isRevealed(leaf)) {
       return null;
@@ -699,13 +704,13 @@ export class ServerEdict {
     if (trace.ent !== null) {
       const hitEntity = trace.ent.entity;
 
-      if (hitEntity !== null && hitEntity.takedamage === Defs.damage.DAMAGE_AIM && (!Host.teamplay.value || entity.team <= 0 || entity.team !== hitEntity.team)) {
+      if (hitEntity !== null && hitEntity.takedamage === Defs.damage.DAMAGE_AIM && (!Host.teamplay!.value || entity.team <= 0 || entity.team !== hitEntity.team)) {
         return dir;
       }
     }
 
     const bestdir = dir.copy();
-    let bestdist = SV.aim.value;
+    let bestdist = SV.aim!.value;
     let bestent: ServerEdict | null = null;
 
     for (let i = 1; i < SV.server.num_edicts; i++) {
@@ -725,7 +730,7 @@ export class ServerEdict {
         continue;
       }
 
-      if (Host.teamplay.value !== 0 && entity.team > 0 && entity.team === checkEntity.team) {
+      if (Host.teamplay!.value !== 0 && entity.team > 0 && entity.team === checkEntity.team) {
         continue;
       }
 

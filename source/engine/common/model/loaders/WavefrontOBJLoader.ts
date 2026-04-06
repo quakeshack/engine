@@ -80,7 +80,7 @@ export class WavefrontOBJLoader extends ModelLoader {
 
     if (!registry.isDedicatedServer) {
       const material = new PBRMaterial(baseName, 256, 256);
-      material.diffuse = await GLTexture.FromImageFile(baseName);
+      material.diffuse = (await GLTexture.FromImageFile(baseName))!;
       material.width = material.diffuse.width;
       material.height = material.diffuse.height;
       loadmodel.texture = material;

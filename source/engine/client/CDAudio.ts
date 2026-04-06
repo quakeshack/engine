@@ -155,10 +155,10 @@ export default class CDAudio {
     CDAudio.initialized = true;
     CDAudio.enabled = true;
     CDAudio.Update();
-    CDAudio.#eventListeners.push(eventBus.subscribe('client.cdtrack', (track: number) => CDAudio.Play(track, true)));
-    CDAudio.#eventListeners.push(eventBus.subscribe('client.paused', () => CDAudio.Pause()));
-    CDAudio.#eventListeners.push(eventBus.subscribe('client.unpaused', () => CDAudio.Resume()));
-    CDAudio.#eventListeners.push(eventBus.subscribe('client.disconnected', () => CDAudio.Stop()));
+    CDAudio.#eventListeners.push(eventBus.subscribe('client.cdtrack', (track: number) => { CDAudio.Play(track, true); }));
+    CDAudio.#eventListeners.push(eventBus.subscribe('client.paused', () => { CDAudio.Pause(); }));
+    CDAudio.#eventListeners.push(eventBus.subscribe('client.unpaused', () => { CDAudio.Resume(); }));
+    CDAudio.#eventListeners.push(eventBus.subscribe('client.disconnected', () => { CDAudio.Stop(); }));
     Con.DPrint('CD Audio Initialized\n');
   }
 

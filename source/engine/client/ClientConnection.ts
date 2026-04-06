@@ -9,6 +9,7 @@ import { eventBus, getClientRegistry } from '../registry.ts';
 import { HostError } from '../common/Errors.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.ts';
+import { ModelScope } from '../common/Mod.ts';
 
 type IdentityCvars = {
   name: Cvar | null;
@@ -158,7 +159,7 @@ export default class ClientConnection {
     S.StopAllSounds();
 
     Con.DPrint('Clearing client model views\n');
-    Mod.ClearAll(Mod.scope.client);
+    Mod.ClearAll(ModelScope.client);
     this.cls.signon = 0;
 
     this.setConnectingStep(null, null);

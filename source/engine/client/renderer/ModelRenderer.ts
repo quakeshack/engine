@@ -1,4 +1,5 @@
 import { NotImplementedError } from '../../common/Errors.ts';
+import { ModelType } from '../../common/Mod.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 
@@ -11,13 +12,13 @@ import type { ClientEdict } from '../ClientEntities.ts';
  */
 export class ModelRenderer {
   /**
-   * Returns the model type constant this renderer handles (e.g. Mod.type.brush).
+   * Returns the model type constant this renderer handles (e.g. ModelType.brush).
    * @returns The model type identifier for this renderer.
    */
-  getModelType(): number {
+  getModelType(): ModelType {
     throw new NotImplementedError('ModelRenderer.getModelType must be implemented');
     // eslint-disable-next-line no-unreachable
-    return -1;
+    return ModelType.brush;
   }
 
   /**

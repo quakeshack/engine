@@ -96,11 +96,11 @@ eventBus.subscribe('registry.frozen', () => {
 ```javascript
 // ❌ NEVER ACCESS DIRECTLY - This breaks in nested scopes and loses type inference
 registry.Con.DPrint(...);  // WRONG!
-registry.Mod.type.brush;    // WRONG!
+registry.Mod.ClearAll();    // WRONG!
 
 // ✅ ALWAYS USE - Destructured variables work everywhere
 Con.DPrint(...);           // CORRECT!
-Mod.type.brush;            // CORRECT!
+Mod.ClearAll();            // CORRECT!
 ```
 
 **Important:** Even in files that already have registry access, always set up the destructuring prolog at the top of the file. Never use `registry.ModuleName` syntax anywhere in the code.
@@ -286,7 +286,7 @@ _renderOpaqueSurfaces(clmodel) {
 
 ### Constants
 - Use UPPER_CASE for true constants
-- Use `Mod.type.brush` pattern for enum-like values
+- Use native enums like `ModelType.brush` for enum-like values
 
 ### Files
 - Use PascalCase for class files: `BrushModelRenderer.mjs`

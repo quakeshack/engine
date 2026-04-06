@@ -305,8 +305,8 @@ export default class Sound {
     }
 
     Sound._eventListeners.push(
-      eventBus.subscribe('client.paused', () => Sound._context?.suspend()),
-      eventBus.subscribe('client.unpaused', () => Sound._context?.resume()),
+      eventBus.subscribe('client.paused', () => void Sound._context?.suspend()),
+      eventBus.subscribe('client.unpaused', () => void Sound._context?.resume()),
     );
 
     Con.DPrint('Sound subsystem initialized.\n');
@@ -521,7 +521,7 @@ export default class Sound {
     }
 
     if (sfx.state !== SFX.STATE.FAILED) {
-      sfx.ready.then(() => play()).catch(() => {});
+      sfx.ready.then(() => { play(); }).catch(() => {});
     }
   }
 
@@ -566,7 +566,7 @@ export default class Sound {
     if (sfx.state === SFX.STATE.AVAILABLE) {
       start();
     } else if (sfx.state !== SFX.STATE.FAILED) {
-      sfx.ready.then(() => start()).catch(() => {});
+      sfx.ready.then(() => { start(); }).catch(() => {});
     }
   }
 

@@ -79,22 +79,27 @@ export default class WorkerManager {
       // Handle special events directly, otherwise publish to event bus
       switch (event) {
         case 'worker.con.print':
+          // eslint-disable-next-line @typescript-eslint/no-base-to-string
           Con.Print(String(data[0] ?? ''));
           break;
 
         case 'worker.con.print.success':
+          // eslint-disable-next-line @typescript-eslint/no-base-to-string
           Con.PrintSuccess(String(data[0] ?? ''));
           break;
 
         case 'worker.con.print.warning':
+          // eslint-disable-next-line @typescript-eslint/no-base-to-string
           Con.PrintWarning(String(data[0] ?? ''));
           break;
 
         case 'worker.con.print.error':
+          // eslint-disable-next-line @typescript-eslint/no-base-to-string
           Con.PrintError(String(data[0] ?? ''));
           break;
 
         case 'worker.con.dprint':
+          // eslint-disable-next-line @typescript-eslint/no-base-to-string
           Con.DPrint(String(data[0] ?? ''));
           break;
 
