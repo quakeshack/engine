@@ -5,7 +5,7 @@ import Vector from '../../source/shared/Vector.ts';
 
 await import('../../source/game/id1/GameAPI.ts');
 
-const { default: ShamblerMonsterEntity } = await import('../../source/game/id1/entity/monster/Shambler.mjs');
+const { default: ShamblerMonsterEntity } = await import('../../source/game/id1/entity/monster/Shambler.ts');
 
 ShamblerMonsterEntity._initStates();
 
@@ -76,7 +76,7 @@ function createMonsterFixture(MonsterClass) {
     nomonsters: 0,
   };
 
-  const entity = new MonsterClass(edict, gameAPI);
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
   edict.entity = entity;
   entity.origin = new Vector();
   entity.angles = new Vector();

@@ -6,7 +6,7 @@ import { effect } from '../../source/game/id1/Defs.ts';
 
 await import('../../source/game/id1/GameAPI.ts');
 
-const { default: ShalrathMonsterEntity, ShalrathMissileEntity } = await import('../../source/game/id1/entity/monster/Shalrath.mjs');
+const { default: ShalrathMonsterEntity, ShalrathMissileEntity } = await import('../../source/game/id1/entity/monster/Shalrath.ts');
 
 ShalrathMonsterEntity._initStates();
 
@@ -76,7 +76,7 @@ function createMonsterFixture(MonsterClass) {
     nomonsters: 0,
   };
 
-  const entity = new MonsterClass(edict, gameAPI);
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
   edict.entity = entity;
   entity.origin = new Vector(10, 20, 30);
   entity.angles = new Vector();
@@ -197,7 +197,7 @@ void describe('ShalrathMonsterEntity QC fixes', () => {
       },
     };
 
-    const missile = new ShalrathMissileEntity(edict, owner.game);
+    const missile = new ShalrathMissileEntity(edict, owner.game).initializeEntity();
     edict.entity = missile;
     missile.owner = owner;
     owner.movedir = new Vector(1, 0, 0);

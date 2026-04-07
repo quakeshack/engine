@@ -6,7 +6,7 @@ import { tentType } from '../../source/game/id1/Defs.ts';
 
 await import('../../source/game/id1/GameAPI.ts');
 
-const { default: TarbabyMonsterEntity } = await import('../../source/game/id1/entity/monster/Tarbaby.mjs');
+const { default: TarbabyMonsterEntity } = await import('../../source/game/id1/entity/monster/Tarbaby.ts');
 
 TarbabyMonsterEntity._initStates();
 
@@ -81,7 +81,7 @@ function createMonsterFixture(MonsterClass) {
     nomonsters: 0,
   };
 
-  const entity = new MonsterClass(edict, gameAPI);
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
   edict.entity = entity;
   entity.origin = new Vector(10, 20, 30);
   entity.velocity = new Vector(100, 0, 0);

@@ -2,7 +2,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
-import { entityClasses } from '../../source/game/id1/GameAPI.mjs';
+import { entityClasses } from '../../source/game/id1/GameAPI.ts';
 
 const TrainEntity = entityClasses.find((entityClass) => entityClass.classname === 'func_train');
 
@@ -103,8 +103,8 @@ function createTrainEntityFixture() {
   return { entity, gameAPI };
 }
 
-describe('TrainEntity', () => {
-  test('uses attack_finished for blocked damage cooldown without mutating nextthink', () => {
+void describe('TrainEntity', () => {
+  void test('uses attack_finished for blocked damage cooldown without mutating nextthink', () => {
     const { entity, gameAPI } = createTrainEntityFixture();
     const damageCalls = [];
     const victim = {

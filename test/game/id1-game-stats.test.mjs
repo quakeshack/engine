@@ -3,7 +3,6 @@ import { describe, test } from 'node:test';
 
 const { clientEvent } = await import('../../source/game/id1/Defs.ts');
 const gameStatsModule = await import('../../source/game/id1/helper/GameStats.ts');
-const gameStatsShimModule = await import('../../source/game/id1/helper/GameStats.mjs');
 
 const GameStats = gameStatsModule.default;
 const { gameStatSlots } = gameStatsModule;
@@ -69,11 +68,6 @@ function createEntity(edictNum) {
 }
 
 void describe('GameStats', () => {
-  void test('keeps the .mjs shim aligned with the TypeScript module', () => {
-    assert.equal(gameStatsShimModule.default, GameStats);
-    assert.deepEqual(gameStatsShimModule.gameStatSlots, gameStatSlots);
-  });
-
   void test('tracks decorated stat fields for serialization', () => {
     const engineAPI = createEngineAPI();
     const stats = new GameStats({}, engineAPI);

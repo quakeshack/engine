@@ -1,8 +1,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { worldType } from '../../source/game/id1/Defs.mjs';
-import { entityClasses } from '../../source/game/id1/GameAPI.mjs';
+import { worldType } from '../../source/game/id1/Defs.ts';
+import { entityClasses } from '../../source/game/id1/GameAPI.ts';
 
 const DoorEntity = entityClasses.find((entityClass) => entityClass.classname === 'func_door');
 

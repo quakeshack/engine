@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { moveType, solid } from '../../source/shared/Defs.ts';
-import { entityClasses } from '../../source/game/id1/GameAPI.mjs';
+import { entityClasses } from '../../source/game/id1/GameAPI.ts';
 
 const RotatingEntity = entityClasses.find((entityClass) => entityClass.classname === 'func_rotating');
 
 assert.ok(RotatingEntity, 'func_rotating must be registered in GameAPI');
 
 /**
- *
+ * Create a minimal rotating-entity fixture.
+ * @returns {{ entity: InstanceType<typeof RotatingEntity>, precachedModels: string[] }} Fixture data.
  */
 function createRotatingEntityFixture() {
   const modelMins = new Vector(-16, -16, -16);
@@ -109,8 +110,8 @@ function createRotatingEntityFixture() {
   return { entity, precachedModels };
 }
 
-describe('RotatingEntity', () => {
-  test('starts spinning on spawn when START_ON is set', () => {
+void describe('RotatingEntity', () => {
+  void test('starts spinning on spawn when START_ON is set', () => {
     const { entity, precachedModels } = createRotatingEntityFixture();
     entity.spawnflags = RotatingEntity.START_ON;
     entity.speed = 180;
@@ -124,7 +125,7 @@ describe('RotatingEntity', () => {
     assert.deepEqual(precachedModels, []);
   });
 
-  test('maps axis flags to the engine Euler components and toggles with use', () => {
+  void test('maps axis flags to the engine Euler components and toggles with use', () => {
     const cases = [
       { spawnflags: RotatingEntity.X_AXIS, expected: [0, 0, 90] },
       { spawnflags: RotatingEntity.Y_AXIS, expected: [90, 0, 0] },
@@ -151,7 +152,7 @@ describe('RotatingEntity', () => {
     }
   });
 
-  test('inflicts configured damage on touch and stops on block when requested', () => {
+  void test('inflicts configured damage on touch and stops on block when requested', () => {
     const { entity } = createRotatingEntityFixture();
     const damageCalls = [];
     const victim = {

@@ -7,7 +7,7 @@ import { ATTACK_STATE } from '../../source/game/id1/helper/AI.ts';
 
 await import('../../source/game/id1/GameAPI.ts');
 
-const { default: WizardMonsterEntity } = await import('../../source/game/id1/entity/monster/Wizard.mjs');
+const { default: WizardMonsterEntity } = await import('../../source/game/id1/entity/monster/Wizard.ts');
 
 WizardMonsterEntity._initStates();
 
@@ -77,7 +77,7 @@ function createMonsterFixture(MonsterClass) {
     nomonsters: 0,
   };
 
-  const entity = new MonsterClass(edict, gameAPI);
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
   edict.entity = entity;
   entity.origin = new Vector();
   entity.angles = new Vector();

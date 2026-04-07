@@ -6,7 +6,7 @@ import { damage, moveType, solid } from '../../source/game/id1/Defs.ts';
 
 await import('../../source/game/id1/GameAPI.ts');
 
-const { default: OldOneMonster } = await import('../../source/game/id1/entity/monster/OldOne.mjs');
+const { default: OldOneMonster } = await import('../../source/game/id1/entity/monster/OldOne.ts');
 
 OldOneMonster._initStates();
 
@@ -88,7 +88,7 @@ function createMonsterFixture(MonsterClass, gameOverrides = {}) {
     ...gameOverrides,
   };
 
-  const entity = new MonsterClass(edict, gameAPI);
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
   edict.entity = entity;
   entity.origin = new Vector(10, 20, 30);
   entity.angles = new Vector();

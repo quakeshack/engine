@@ -6,7 +6,7 @@ import { damage, moveType, solid } from '../../source/game/id1/Defs.ts';
 
 await import('../../source/game/id1/GameAPI.ts');
 
-const { default: ZombieMonster } = await import('../../source/game/id1/entity/monster/Zombie.mjs');
+const { default: ZombieMonster } = await import('../../source/game/id1/entity/monster/Zombie.ts');
 
 ZombieMonster._initStates();
 
@@ -76,7 +76,7 @@ function createMonsterFixture(MonsterClass) {
     nomonsters: 0,
   };
 
-  const entity = new MonsterClass(edict, gameAPI);
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
   edict.entity = entity;
   entity.origin = new Vector();
   entity.angles = new Vector();

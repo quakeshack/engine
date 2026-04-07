@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 
-import { flags, items, worldType } from '../../source/game/id1/Defs.mjs';
-import { entityClasses } from '../../source/game/id1/GameAPI.mjs';
+import { flags, items, worldType } from '../../source/game/id1/Defs.ts';
+import { entityClasses } from '../../source/game/id1/GameAPI.ts';
 
 const OgreEntity = entityClasses.find((entityClass) => entityClass.classname === 'monster_ogre');
 const PlayerCtor = entityClasses.find((entityClass) => entityClass.classname === 'player');
@@ -136,7 +136,7 @@ function createMonsterVisibilityFixture() {
     gameAI: createMockGameAI(),
   };
 
-  const entity = new OgreEntity(edict, gameAPI);
+  const entity = new OgreEntity(edict, gameAPI).initializeEntity();
   edict.entity = entity;
 
   entity.health = 200;
@@ -192,7 +192,7 @@ function createPlayerFixture() {
     },
   };
 
-  const player = new PlayerCtor(edict, gameAPI);
+  const player = new PlayerCtor(edict, gameAPI).initializeEntity();
   edict.entity = player;
 
   player.health = 100;

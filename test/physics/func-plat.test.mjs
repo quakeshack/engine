@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { entityClasses } from '../../source/game/id1/GameAPI.mjs';
+import { entityClasses } from '../../source/game/id1/GameAPI.ts';
 
 const PlatformEntity = entityClasses.find((entityClass) => entityClass.classname === 'func_plat');
 
@@ -84,8 +84,8 @@ function createPlatformEntityFixture() {
   return { entity, gameAPI };
 }
 
-describe('PlatformEntity', () => {
-  test('extends the scheduled go-down think instead of leaving a stale queue entry', () => {
+void describe('PlatformEntity', () => {
+  void test('extends the scheduled go-down think instead of leaving a stale queue entry', () => {
     const { entity } = createPlatformEntityFixture();
 
     entity.ltime = 5.0;

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 const { ServerGameAPI } = await import('../../source/game/id1/GameAPI.ts');
+const { default: BaseEntity } = await import('../../source/game/id1/entity/BaseEntity.ts');
 
 /**
  * Create a mutable mock cvar.
@@ -110,6 +111,71 @@ void describe('ServerGameAPI cvar access', () => {
       assert.equal(precachedResources, true);
       assert.equal(initializedNextMap, true);
     } finally {
+      ServerGameAPI._cvars = originalCvars;
+    }
+  });
+});
+
+void describe('ServerGameAPI entity lifecycle', () => {
+  void test('prepareEntity precaches after assigned initial data is applied', () => {
+    class DeferredInitEntity extends BaseEntity {
+      static classname = 'deferred_init_entity';
+
+      constructor(edict, gameAPI) {
+        super(edict, gameAPI);
+        this.constructorValue = 3;
+      }
+
+      _declareFields() {
+        super._declareFields();
+        this._serializer.startFields();
+        this.initializerReady = 0;
+        this.constructorValue = 0;
+        this.precacheObservedValue = -1;
+        this._serializer.endFields();
+      }
+
+      _precache() {
+        this.precacheObservedValue = this.initializerReady;
+      }
+    }
+
+    const originalRegistry = ServerGameAPI._entityRegistry;
+    const originalCvars = ServerGameAPI._cvars;
+
+    try {
+      ServerGameAPI._cvars = createStaticCvars();
+      ServerGameAPI._entityRegistry = {
+        has(classname) {
+          return classname === DeferredInitEntity.classname;
+        },
+        get(classname) {
+          return classname === DeferredInitEntity.classname ? DeferredInitEntity : null;
+        },
+      };
+
+      const gameAPI = Object.create(ServerGameAPI.prototype);
+      gameAPI.constructor = ServerGameAPI;
+      gameAPI.engine = {
+        ConsoleWarning() {},
+        IsLoading() {
+          return false;
+        },
+      };
+      gameAPI._missingEntityClassStats = {};
+      gameAPI._isPreparingEntityAllowed = () => true;
+
+      const edict = { entity: null };
+
+      const prepared = gameAPI.prepareEntity(edict, DeferredInitEntity.classname, {
+        initializerReady: 7,
+      });
+
+      assert.equal(prepared, true);
+      assert.equal(edict.entity.precacheObservedValue, 7);
+      assert.equal(edict.entity.constructorValue, 0);
+    } finally {
+      ServerGameAPI._entityRegistry = originalRegistry;
       ServerGameAPI._cvars = originalCvars;
     }
   });

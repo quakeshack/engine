@@ -6,7 +6,7 @@ import { effect, moveType, solid, tentType } from '../../source/game/id1/Defs.ts
 
 await import('../../source/game/id1/GameAPI.ts');
 
-const { BossLavaball, BossMonster, EventLightningEntity } = await import('../../source/game/id1/entity/monster/Boss.mjs');
+const { BossLavaball, BossMonster, EventLightningEntity } = await import('../../source/game/id1/entity/monster/Boss.ts');
 
 const ELECTRODE_STATE_TOP = 0;
 
@@ -82,7 +82,7 @@ function createBossFixture(MonsterClass, gameOverrides = {}) {
     ...gameOverrides,
   };
 
-  const entity = new MonsterClass(edict, gameAPI);
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
   edict.entity = entity;
   entity.origin = new Vector(10, 20, 30);
   entity.angles = new Vector();
@@ -158,7 +158,7 @@ function createLightningFixture() {
     nomonsters: 0,
   };
 
-  const entity = new EventLightningEntity(edict, gameAPI);
+  const entity = new EventLightningEntity(edict, gameAPI).initializeEntity();
   edict.entity = entity;
   return entity;
 }
@@ -270,7 +270,7 @@ void describe('BossLavaball', () => {
       },
     };
 
-    const lavaball = new BossLavaball(edict, boss.game);
+    const lavaball = new BossLavaball(edict, boss.game).initializeEntity();
     edict.entity = lavaball;
     lavaball.movedir = new Vector(1, 0, 0);
 

@@ -1,5 +1,5 @@
 import { SerializableEntity, type EdictData } from '../../shared/GameInterfaces.ts';
-import type { WorldspawnEntity as WorldspawnEntityValue } from '../../game/id1/entity/Worldspawn.mjs';
+import type { WorldspawnEntity as WorldspawnEntityValue } from '../../game/id1/entity/Worldspawn.ts';
 import type { OctreeNode } from '../../shared/Octree.ts';
 import type { Visibility } from '../common/model/BSP.ts';
 import type { ClientEdict } from '../client/ClientEntities.ts';

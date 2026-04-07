@@ -76,7 +76,7 @@ void describe('BaseEntity', () => {
       }
     }
 
-    const entity = new ModFriendlyEntity(createMockGameAPI());
+    const entity = new ModFriendlyEntity(createMockGameAPI()).initializeEntity();
 
     assert.equal(Object.isSealed(entity), false);
     assert.equal(entity.customField, 42);
@@ -97,7 +97,7 @@ void describe('@entity / @serializable decorators', () => {
   });
 
   void test('Serializer collects all decorated BaseEntity fields', () => {
-    const entity = new BaseEntity(null, createMockGameAPI());
+    const entity = new BaseEntity(null, createMockGameAPI()).initializeEntity();
     const serialized = entity._serializer.serialize();
     assert.ok('ltime' in serialized);
     assert.ok('origin' in serialized);
@@ -117,7 +117,7 @@ void describe('@entity / @serializable decorators', () => {
       }
     }
 
-    const child = new LegacyChild(createMockGameAPI());
+    const child = new LegacyChild(createMockGameAPI()).initializeEntity();
     const serialized = child._serializer.serialize();
     assert.ok('ltime' in serialized, 'inherits decorated parent fields');
     assert.ok('customProp' in serialized, 'includes own static array fields');
@@ -126,6 +126,36 @@ void describe('@entity / @serializable decorators', () => {
   void test('entity and serializable are exported functions', () => {
     assert.equal(typeof entity, 'function');
     assert.equal(typeof serializable, 'function');
+  });
+
+});
+
+void describe('BasePropEntity decorator port', async () => {
+  await import('../../source/game/id1/GameAPI.ts');
+
+  const { default: BasePropEntity, PropState } = await import('../../source/game/id1/entity/props/BasePropEntity.ts');
+
+  void test('uses decorator-registered fields with initialized defaults', () => {
+    class TestPropEntity extends BasePropEntity {
+      static classname = 'test_prop_entity';
+
+      spawn() {}
+    }
+
+    const entity = new TestPropEntity(null, createMockGameAPI()).initializeEntity();
+    const serialized = entity._serializer.serialize();
+
+    assert.ok(Array.isArray(BasePropEntity.serializableFields));
+    assert.ok(Object.isFrozen(BasePropEntity.serializableFields));
+    assert.ok(BasePropEntity.serializableFields.includes('sounds'));
+    assert.ok(BasePropEntity.serializableFields.includes('pos1'));
+    assert.ok(BasePropEntity.serializableFields.includes('state'));
+    assert.equal(entity.sounds, 0);
+    assert.equal(entity.state, PropState.STATE_TOP);
+    assert.equal(entity._sub !== null, true);
+    assert.ok('sounds' in serialized);
+    assert.ok('pos1' in serialized);
+    assert.ok('state' in serialized);
   });
 });
 

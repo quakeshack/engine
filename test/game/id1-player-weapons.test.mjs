@@ -4,8 +4,8 @@ import { describe, test } from 'node:test';
 await import('../../source/game/id1/GameAPI.ts');
 
 const defsModule = await import('../../source/game/id1/Defs.ts');
-const playerModule = await import('../../source/game/id1/entity/Player.mjs');
-const weaponsModule = await import('../../source/game/id1/entity/Weapons.mjs');
+const playerModule = await import('../../source/game/id1/entity/Player.ts');
+const weaponsModule = await import('../../source/game/id1/entity/Weapons.ts');
 
 const { items, waterlevel } = defsModule;
 const { PlayerEntity } = playerModule;
@@ -37,6 +37,16 @@ void describe('Player and weapon module surface', () => {
     assert.equal(typeof PlayerWeapons, 'function');
     assert.equal(typeof DamageHandler, 'function');
     assert.equal(weaponConfig instanceof Map, true);
+  });
+
+  void test('registers player-specific state through serializer decorators', () => {
+    const serializableFields = Reflect.get(PlayerEntity, 'serializableFields');
+
+    assert.equal(Array.isArray(serializableFields), true);
+    assert.equal(serializableFields.includes('_spawnParameters'), true);
+    assert.equal(serializableFields.includes('weapon'), true);
+    assert.equal(serializableFields.includes('invincible_sound_time'), true);
+    assert.equal(serializableFields.includes('_modelIndex'), true);
   });
 });
 
@@ -106,5 +116,38 @@ void describe('PlayerEntity weapon selection', () => {
     });
 
     assert.equal(PlayerEntity.prototype.chooseBestWeapon.call(player), items.IT_GRENADE_LAUNCHER);
+  });
+
+  void test('applyBackpack caps ammo and switches to the picked weapon outside deathmatch', () => {
+    const selectedWeapons = [];
+    const player = {
+      ...createWeaponSelectionPlayer({
+        ammo_shells: 95,
+        ammo_rockets: 99,
+        items: items.IT_AXE | items.IT_SHOTGUN,
+        weapon: items.IT_SHOTGUN,
+      }),
+      constructor: PlayerEntity,
+      game: { deathmatch: false },
+      setWeapon(weapon) {
+        selectedWeapons.push(weapon);
+        this.weapon = weapon;
+      },
+    };
+
+    const changed = PlayerEntity.prototype.applyBackpack.call(player, {
+      ammo_shells: 10,
+      ammo_nails: 0,
+      ammo_rockets: 5,
+      ammo_cells: 0,
+      items: items.IT_ROCKET_LAUNCHER,
+      weapon: items.IT_ROCKET_LAUNCHER,
+    });
+
+    assert.equal(changed, true);
+    assert.equal(player.ammo_shells, 100);
+    assert.equal(player.ammo_rockets, 100);
+    assert.equal(player.items & items.IT_ROCKET_LAUNCHER, items.IT_ROCKET_LAUNCHER);
+    assert.deepEqual(selectedWeapons, [items.IT_ROCKET_LAUNCHER]);
   });
 });

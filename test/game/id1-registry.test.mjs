@@ -4,7 +4,6 @@ import { describe, test } from 'node:test';
 import BaseEntity from '../../source/game/id1/entity/BaseEntity.ts';
 
 const registryModule = await import('../../source/game/id1/helper/Registry.ts');
-const registryShimModule = await import('../../source/game/id1/helper/Registry.mjs');
 
 const EntityRegistry = registryModule.default;
 
@@ -66,10 +65,6 @@ function resetCounters() {
 }
 
 void describe('EntityRegistry', () => {
-  void test('keeps the .mjs shim aligned with the TypeScript module', () => {
-    assert.equal(registryShimModule.default, EntityRegistry);
-  });
-
   void test('registers entity classes by classname', () => {
     const registry = new EntityRegistry([RegisteredEntity, ServerOnlyEntity]);
 

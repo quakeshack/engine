@@ -1,12 +1,72 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import Vector from '../../source/shared/Vector.ts';
+
 await import('../../source/game/id1/GameAPI.ts');
 
 const { ArmySoldierMonster, ArmyEnforcerMonster } = await import('../../source/game/id1/entity/monster/Soldier.ts');
+const { Laser } = await import('../../source/game/id1/entity/Weapons.ts');
 
 ArmySoldierMonster._initStates();
 ArmyEnforcerMonster._initStates();
+
+function createMonsterFixture(MonsterClass, gameOverrides = {}) {
+  const spawnRequests = [];
+  const edict = { entity: null };
+  const engine = {
+    IsLoading() {
+      return false;
+    },
+    ParseQC() {
+      return null;
+    },
+    PrecacheModel() {
+    },
+    PrecacheSound() {
+    },
+    SpawnEntity(classname, initialData = {}) {
+      spawnRequests.push({ classname, initialData });
+      return { entity: null };
+    },
+    DispatchTempEntityEvent() {
+    },
+    FindByFieldAndValue() {
+      return null;
+    },
+    FindAllByFieldAndValue() {
+      return [];
+    },
+    eventBus: {
+      publish() {
+      },
+    },
+  };
+  const gameAPI = {
+    engine,
+    time: 10,
+    skill: 1,
+    deathmatch: 0,
+    nomonsters: 0,
+    gravity: 800,
+    hasFeature() {
+      return false;
+    },
+    ...gameOverrides,
+  };
+
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
+  edict.entity = entity;
+  entity.origin = new Vector();
+
+  return { entity, gameAPI, spawnRequests };
+}
+
+function assertVectorNear(actual, expected, epsilon = 1e-6) {
+  for (let i = 0; i < 3; i++) {
+    assert.ok(Math.abs(actual[i] - expected[i]) <= epsilon, `component ${i} mismatch: ${actual[i]} !== ${expected[i]}`);
+  }
+}
 
 void describe('ArmySoldierMonster class metadata', () => {
   void test('classname is monster_army', () => {
@@ -25,10 +85,50 @@ void describe('ArmySoldierMonster class metadata', () => {
     assert.deepEqual([maxs[0], maxs[1], maxs[2]], [16, 16, 40]);
   });
 
-  void test('serializableFields is a frozen empty array', () => {
+  void test('preserves the legacy serialized AI state field and keeps helpers runtime-only', () => {
+    const { entity } = createMonsterFixture(ArmySoldierMonster);
+    const serialized = entity._serializer.serialize();
+
     assert.ok(Array.isArray(ArmySoldierMonster.serializableFields));
     assert.ok(Object.isFrozen(ArmySoldierMonster.serializableFields));
-    assert.deepEqual(ArmySoldierMonster.serializableFields, []);
+    assert.deepEqual(ArmySoldierMonster.serializableFields, ['_aiState']);
+    assert.equal(entity._aiState, null);
+    assert.ok('_aiState' in serialized);
+    assert.ok(!('_damageInflictor' in serialized));
+  });
+
+  void test('fire keeps the QuakeC lead target calculation and spread values', () => {
+    const { entity } = createMonsterFixture(ArmySoldierMonster);
+    const shots = [];
+    let faceCalls = 0;
+
+    entity.enemy = {
+      origin: new Vector(100, 20, 40),
+      velocity: new Vector(15, -10, 0),
+    };
+    entity._ai = {
+      face() {
+        faceCalls++;
+      },
+    };
+    entity.attackSound = () => {
+    };
+    entity._damageInflictor.fireBullets = (count, direction, spread) => {
+      shots.push({ count, direction: direction.copy(), spread: spread.copy() });
+    };
+
+    entity._fire();
+
+    const expectedDirection = entity.enemy.origin.copy()
+      .subtract(entity.enemy.velocity.copy().multiply(0.2))
+      .subtract(entity.origin);
+    expectedDirection.normalize();
+
+    assert.equal(faceCalls, 1);
+    assert.equal(shots.length, 1);
+    assert.equal(shots[0].count, 4);
+    assertVectorNear(shots[0].direction, expectedDirection);
+    assertVectorNear(shots[0].spread, new Vector(0.1, 0.1, 0));
   });
 });
 
@@ -93,6 +193,40 @@ void describe('ArmyEnforcerMonster class metadata', () => {
     assert.ok(Array.isArray(ArmyEnforcerMonster.serializableFields));
     assert.ok(Object.isFrozen(ArmyEnforcerMonster.serializableFields));
     assert.deepEqual(ArmyEnforcerMonster.serializableFields, []);
+  });
+
+  void test('fire spawns a laser from the muzzle origin and updates movedir', () => {
+    const { entity, spawnRequests } = createMonsterFixture(ArmyEnforcerMonster);
+    let laserOrigin = null;
+    const laser = Object.create(Laser.prototype);
+
+    laser.setOrigin = (origin) => {
+      laserOrigin = origin.copy();
+    };
+
+    entity.origin = new Vector(10, 20, 30);
+    entity.angles = new Vector();
+    entity.enemy = {
+      origin: new Vector(70, 60, 30),
+    };
+    entity.engine.SpawnEntity = (classname, initialData = {}) => {
+      spawnRequests.push({ classname, initialData });
+      return {
+        entity: laser,
+      };
+    };
+
+    entity.fire();
+
+    const movedir = entity.enemy.origin.copy().subtract(entity.origin);
+    movedir.normalize();
+    const { forward, right } = entity.angles.angleVectors();
+    const expectedOrigin = entity.origin.copy().add(forward.multiply(30)).add(right.multiply(8.5)).add(new Vector(0, 0, 16));
+
+    assert.equal(spawnRequests.length, 1);
+    assert.equal(spawnRequests[0].initialData.owner, entity);
+    assertVectorNear(entity.movedir, movedir);
+    assertVectorNear(laserOrigin, expectedOrigin);
   });
 });
 

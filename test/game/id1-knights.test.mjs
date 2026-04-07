@@ -1,13 +1,78 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import Vector from '../../source/shared/Vector.ts';
+
 await import('../../source/game/id1/GameAPI.ts');
 
-const { tentType } = await import('../../source/game/id1/Defs.ts');
+const { channel, tentType } = await import('../../source/game/id1/Defs.ts');
 const { HellKnightMonster, KnightMonster, KnightSpike } = await import('../../source/game/id1/entity/monster/Knights.ts');
 
 KnightMonster._initStates();
 HellKnightMonster._initStates();
+
+function createMonsterFixture(MonsterClass, gameOverrides = {}) {
+  const soundCalls = [];
+  const spawnRequests = [];
+  const edict = { entity: null };
+  const engine = {
+    IsLoading() {
+      return false;
+    },
+    ParseQC() {
+      return null;
+    },
+    PrecacheSound() {
+    },
+    PrecacheModel() {
+    },
+    SpawnEntity(classname, initialData = {}) {
+      spawnRequests.push({ classname, initialData });
+      return { entity: null };
+    },
+    DispatchTempEntityEvent() {
+    },
+    FindByFieldAndValue() {
+      return null;
+    },
+    FindAllByFieldAndValue() {
+      return [];
+    },
+    eventBus: {
+      publish() {
+      },
+    },
+  };
+  const gameAPI = {
+    engine,
+    time: 10,
+    skill: 1,
+    deathmatch: 0,
+    nomonsters: 0,
+    gravity: 800,
+    hasFeature() {
+      return false;
+    },
+    ...gameOverrides,
+  };
+
+  const entity = new MonsterClass(edict, gameAPI).initializeEntity();
+  edict.entity = entity;
+  entity.origin = new Vector();
+  entity.view_ofs = new Vector();
+  entity.movedir = new Vector();
+  entity.startSound = (...args) => {
+    soundCalls.push(args);
+  };
+
+  return { entity, gameAPI, soundCalls, spawnRequests };
+}
+
+function assertVectorNear(actual, expected, epsilon = 1e-6) {
+  for (let i = 0; i < 3; i++) {
+    assert.ok(Math.abs(actual[i] - expected[i]) <= epsilon, `component ${i} mismatch: ${actual[i]} !== ${expected[i]}`);
+  }
+}
 
 void describe('KnightMonster metadata', () => {
   void test('class metadata matches the original monster', () => {
@@ -54,6 +119,33 @@ void describe('KnightMonster state machine', () => {
     assert.equal(typeof states.knight_bow1.handler, 'function');
     assert.equal(typeof states.knight_die1.handler, 'function');
     assert.equal(typeof states.knight_pain2.handler, 'function');
+  });
+
+  void test('thinkMelee keeps the legacy distance split between melee and run attack', () => {
+    const { entity } = createMonsterFixture(KnightMonster);
+    const runStates = [];
+
+    entity._runState = (state) => {
+      runStates.push(state);
+      return true;
+    };
+
+    entity.enemy = {
+      origin: new Vector(60, 0, 0),
+      view_ofs: new Vector(),
+    };
+    entity.thinkMelee();
+
+    entity.enemy = {
+      origin: new Vector(120, 0, 0),
+      view_ofs: new Vector(),
+    };
+    entity.thinkMelee();
+
+    entity.enemy = null;
+    entity.thinkMelee();
+
+    assert.deepEqual(runStates, ['knight_atk1', 'knight_runatk1', 'knight_atk1']);
   });
 });
 
@@ -107,5 +199,37 @@ void describe('HellKnightMonster state machine', () => {
     assert.equal(typeof states.hknight_char_b1.handler, 'function');
     assert.equal(typeof states.hknight_pain2.handler, 'function');
     assert.equal(typeof states.hknight_dieb1.handler, 'function');
+  });
+
+  void test('attackShot preserves the projectile spawn contract and aimed movedir', () => {
+    const { entity, soundCalls, spawnRequests } = createMonsterFixture(HellKnightMonster);
+    const originalRandom = Math.random;
+
+    entity.origin = new Vector(5, -10, 20);
+    entity.enemy = {
+      origin: new Vector(45, 10, 20),
+    };
+
+    Math.random = () => 0.5;
+
+    try {
+      entity.attackShot(2);
+    } finally {
+      Math.random = originalRandom;
+    }
+
+    const offsetAngles = entity.enemy.origin.copy().subtract(entity.origin).toAngles();
+    offsetAngles[1] += 12;
+    const { forward } = offsetAngles.angleVectors();
+    forward.normalize();
+    forward[2] = -forward[2];
+
+    assert.equal(spawnRequests.length, 1);
+    assert.equal(spawnRequests[0].classname, KnightSpike.classname);
+    assert.equal(spawnRequests[0].initialData.speed, 300);
+    assert.equal(spawnRequests[0].initialData.owner, entity);
+    assert.equal(soundCalls.length, 1);
+    assert.deepEqual(soundCalls[0].slice(0, 2), [channel.CHAN_WEAPON, 'hknight/attack1.wav']);
+    assertVectorNear(entity.movedir, forward);
   });
 });
