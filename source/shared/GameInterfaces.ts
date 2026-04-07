@@ -7,8 +7,10 @@ import type { SFX as SFXValue } from '../engine/client/Sound.ts';
 import type CvarValue from '../engine/common/Cvar.ts';
 import type Vector from './Vector.ts';
 import type { PmoveConfiguration as PmoveConfigurationValue, PmoveQuake2Configuration as PmoveQuake2ConfigurationValue } from '../shared/Pmove.ts';
-import type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
 import type { BaseModel } from '../engine/common/model/BaseModel.ts';
+import type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
+
+export type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
 
 export type ClientEngineAPI = Readonly<typeof ClientEngineApiValue>;
 export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;

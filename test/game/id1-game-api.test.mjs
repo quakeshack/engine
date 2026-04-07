@@ -43,6 +43,82 @@ function createStaticCvars(overrides = {}) {
   };
 }
 
+/**
+ * Create the minimal server engine surface required by ServerGameAPI construction tests.
+ * @param {object} overrides Optional engine overrides.
+ * @returns {object} Mock server engine.
+ */
+function createMockServerEngine(overrides = {}) {
+  const cvars = {
+    teamplay: createMockCvar(0),
+    sv_gravity: createMockCvar(800),
+    sv_nextmap: createMockCvar(0),
+  };
+
+  return {
+    GetCvar(name) {
+      return cvars[name] ?? createMockCvar(0);
+    },
+    eventBus: {
+      subscribe() {
+        return () => {};
+      },
+    },
+    maxplayers: 1,
+    ...overrides,
+  };
+}
+
+void describe('ServerGameAPI serialization', () => {
+  void test('preserves the legacy serialized field set with decorator registration', () => {
+    const gameAPI = new ServerGameAPI(createMockServerEngine());
+
+    assert.deepEqual(ServerGameAPI.serializableFields, [
+      'mapname',
+      'force_retouch',
+      'stats',
+      'parm1',
+      'parm2',
+      'parm3',
+      'parm4',
+      'parm5',
+      'parm6',
+      'parm7',
+      'parm8',
+      'parm9',
+      'parm10',
+      'parm11',
+      'parm12',
+      'parm13',
+      'parm14',
+      'parm15',
+      'parm16',
+      'serverflags',
+      'time',
+      'framecount',
+      'frametime',
+      'worldspawn',
+      'lastspawn',
+      'gameover',
+      'intermission_running',
+      'intermission_exittime',
+      'nextmap',
+    ]);
+
+    const serialized = gameAPI.serialize();
+
+    assert.deepEqual(Object.keys(serialized), ServerGameAPI.serializableFields);
+    assert.deepEqual(serialized.stats, ['S', {
+      monsters_total: ['P', 0],
+      monsters_killed: ['P', 0],
+      secrets_total: ['P', 0],
+      secrets_found: ['P', 0],
+    }]);
+    assert.equal(Object.hasOwn(serialized, 'gameAI'), false);
+    assert.equal(Object.hasOwn(serialized, 'bodyque_head'), false);
+  });
+});
+
 void describe('ServerGameAPI cvar access', () => {
   void test('getters read initialized cvars directly', () => {
     const originalCvars = ServerGameAPI._cvars;

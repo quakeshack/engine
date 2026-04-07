@@ -203,6 +203,19 @@ void describe('id1 client sync', () => {
     assert.equal(serverInfo.coop, '1');
     assert.equal(serverInfo.map, 'e1m8');
   });
+
+  void test('parses numeric stat strings and ignores non-numeric stat strings', () => {
+    const engine = createMockClientEngine();
+    const stats = new ClientStats(engine);
+
+    engine.eventBus.publish(clientEventName(clientEvent.STATS_INIT), 'monsters_total', '13');
+    engine.eventBus.publish(clientEventName(clientEvent.STATS_UPDATED), 'secrets_found', ' 2 ');
+    engine.eventBus.publish(clientEventName(clientEvent.STATS_UPDATED), 'monsters_killed', 'not-a-number');
+
+    assert.equal(stats.monsters_total, 13);
+    assert.equal(stats.secrets_found, 2);
+    assert.equal(stats.monsters_killed, 0);
+  });
 });
 
 void describe('id1 client HUD state', () => {

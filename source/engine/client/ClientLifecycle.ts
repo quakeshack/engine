@@ -17,21 +17,18 @@ eventBus.subscribe('registry.frozen', () => {
 });
 
 /** The client game can tell the menu what to do when a new game is requested. */
-export class StartGameInterface {
-  startSingleplayerGame(): void {
-  }
-
-  startMultiplayerGame(_mapname: string): void {
-  }
+export interface StartGameInterface {
+  startSingleplayerGame(): void;
+  startMultiplayerGame(mapname: string): void;
 }
 
 /** Quake 1 default start game entries. */
-export class DefaultStartGameFunctions extends StartGameInterface {
-  override startSingleplayerGame(): void {
+export class DefaultStartGameFunctions implements StartGameInterface {
+  startSingleplayerGame(): void {
     void Cmd.ExecuteString('map start');
   }
 
-  override startMultiplayerGame(mapname: string): void {
+  startMultiplayerGame(mapname: string): void {
     void Cmd.ExecuteString(`map ${mapname}`);
   }
 }
