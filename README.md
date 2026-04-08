@@ -83,7 +83,7 @@ Open http://localhost:3000/ and enjoy hacking.
 
 The dedicated server can be started using `npm run dedicated:start`, but this will run with many `console.assert(…)` in hot paths and is only really suitable for development work.
 
-That’s why you should compile the dedicated server with `npm run dedicated:build:production` and start it using `npm run dedicated:start:production`.
+That’s why you should compile the dedicated server with `npm run dedicated:build:production` and start it using `npm run dedicated:start`.
 
 ### Deploy to a CDN
 

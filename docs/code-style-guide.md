@@ -61,7 +61,7 @@ This document outlines the coding conventions and style rules for the Quakeshack
 5. **Use specific types from imports**
    ```javascript
    // ✅ GOOD
-   /** @type {import('./ClientEntities.mjs').ClientEdict} */
+   /** @type {import('./ClientEntities.ts').ClientEdict} */
 
    // ✅ GOOD for model types
    /** @type {import('../../common/model/BSP.ts').BrushModel} */
@@ -188,16 +188,16 @@ eventBus.subscribe('gl.ready', () => {
 
 ## File Organization
 
-### No index.mjs Files
+### No index.ts Files
 
 Avoid barrel exports - use direct imports instead:
 
 ```javascript
-// ❌ BAD (using index.mjs)
+// ❌ BAD (using index.ts)
 import { BrushModelRenderer } from './renderer';
 
 // ✅ GOOD (direct import)
-import { BrushModelRenderer } from './renderer/BrushModelRenderer.mjs';
+import { BrushModelRenderer } from './renderer/BrushModelRenderer.ts';
 ```
 
 **Rationale:**
@@ -262,17 +262,33 @@ getModelType() {
 }
 ```
 
-### Private Methods
+### Protected and Private Methods
 
-Use `_` prefix for private methods and add `@private` JSDoc tag:
+Use native TypeScript access modifiers in `.ts` files. Keep `_` prefixes for protected members that subclasses override, and use `#` for methods that are truly private:
 
 ```javascript
 /**
- * Render opaque surfaces
- * @private
- * @param {BrushModel} clmodel The brush model
+ * Render opaque surfaces.
  */
-_renderOpaqueSurfaces(clmodel) {
+protected _renderOpaqueSurfaces(clmodel) {
+  // Implementation
+}
+
+class SignalingClient {
+  #connectSignaling() {
+    // Implementation
+  }
+}
+```
+
+Keep `@protected` and `@private` tags only when a mixed JS/TS boundary still needs them.
+
+```javascript
+/**
+ * Render legacy compatibility state.
+ * @private
+ */
+#renderCompatibilityState() {
   // Implementation
 }
 ```
@@ -289,9 +305,9 @@ _renderOpaqueSurfaces(clmodel) {
 - Use native enums like `ModelType.brush` for enum-like values
 
 ### Files
-- Use PascalCase for class files: `BrushModelRenderer.mjs`
-- Use camelCase for utility files: `modelUtils.mjs`
-- Always use `.mjs` extension
+- Use PascalCase for class files: `BrushModelRenderer.ts`
+- Use camelCase for utility files: `modelUtils.ts`
+- Always use `.ts` extension for TypeScript source files
 
 ## Comments
 

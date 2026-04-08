@@ -53,10 +53,10 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 
 ## File Organization
 
-### No index.mjs Files
+### No index.ts Files
 
 - **Avoid barrel exports**. Use direct imports instead.
-- Example: Import `BrushModelRenderer` from `./renderer/BrushModelRenderer.mjs`, not `./renderer`.
+- Example: Import `BrushModelRenderer` from `./renderer/BrushModelRenderer.ts`, not `./renderer`.
 
 ## General Style Guidelines
 
@@ -188,7 +188,7 @@ class GL {
   - `model` (or `clmodel`) instead of `m`.
   - `entity` instead of `ent` or `e`.
 - **Constants:** UPPER_CASE.
-- **Files:** PascalCase for classes (`BrushModelRenderer.mjs`), camelCase for utils (`modelUtils.mjs`). Always `.mjs`.
+- **Files:** PascalCase for classes (`BrushModelRenderer.ts`), camelCase for utils (`modelUtils.ts`). Always `.ts` for TypeScript source files.
 
 ## Comments
 
