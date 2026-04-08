@@ -16,6 +16,7 @@ import { ConsoleCommand } from '../common/Cmd.ts';
 import { ModelType } from '../common/Mod.ts';
 import { CorruptedResourceError, HostError } from '../common/Errors.ts';
 
+// FIXME: we should improve this interface and make the actual BaseEntity implement it
 export interface BaseEntity extends SerializableEntity {
   classname: string;
   alpha: number;
@@ -43,6 +44,7 @@ export interface BaseEntity extends SerializableEntity {
   ideal_yaw?: number;
   idealpitch?: number;
   fixangle?: boolean;
+  interact?(interactingEntity: BaseEntity): void;
   ltime?: number;
   mins: Vector;
   maxs: Vector;
@@ -64,6 +66,7 @@ export interface BaseEntity extends SerializableEntity {
   teleport_time?: number;
   think?(): void;
   touch?(touchedByEntity: BaseEntity, pushVector: Vector): void;
+  use?(usedByEntity: BaseEntity): void;
   velocity: Vector;
   view_ofs: Vector;
   v_angle: Vector;

@@ -1370,7 +1370,7 @@ PR.LeaveFunction = function() {
   for (--c; c >= 0; --c) {
     PR.globals_int[PR.xfunction.parm_start + c] = PR.localstack[PR.localstack_used + c];
   }
-  PR.xfunction = PR.stack[--PR.depth][1];
+  PR.xfunction = PR.stack[--PR.depth][1]!;
   return PR.stack[PR.depth][0];
 };
 
@@ -1615,9 +1615,9 @@ PR.ExecuteProgram = function(fnum) {
         continue;
       case PR.op.state:
         ed = SV.server.edicts[PR.globals_int[PR.globalvars.self]];
-        getProgsEntity(ed)._v_float![PR.entvars.nextthink] = PR.globals_float[PR.globalvars.time] + 0.1;
-        getProgsEntity(ed)._v_float![PR.entvars.frame] = PR.globals_float[st.a];
-        getProgsEntity(ed)._v_int![PR.entvars.think] = PR.globals_int[st.b];
+        getProgsEntity(ed)._v_float![PR.entvars.nextthink!] = PR.globals_float[PR.globalvars.time] + 0.1;
+        getProgsEntity(ed)._v_float![PR.entvars.frame!] = PR.globals_float[st.a];
+        getProgsEntity(ed)._v_int![PR.entvars.think!] = PR.globals_int[st.b];
         continue;
     }
     PR.RunError('Bad opcode ' + st.op);

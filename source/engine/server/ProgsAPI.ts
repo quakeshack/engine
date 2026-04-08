@@ -25,6 +25,23 @@ interface ProgsAPI {
 }
 
 interface QuakeCRuntimeGameAPI {
+  prepareEntity(edict: ServerEdict, classname: string | null, initialData?: Record<string, unknown>): boolean;
+  parm1: number;
+  parm2: number;
+  parm3: number;
+  parm4: number;
+  parm5: number;
+  parm6: number;
+  parm7: number;
+  parm8: number;
+  parm9: number;
+  parm10: number;
+  parm11: number;
+  parm12: number;
+  parm13: number;
+  parm14: number;
+  parm15: number;
+  parm16: number;
   msg_entity: ServerEdict | null;
   self: ServerEdict;
   trace_allsolid: number;
@@ -287,11 +304,11 @@ const bprint = generateBuiltinFunction('bprint', (message: string): void => {
 }, [etype.ev_strings]);
 
 const sprint = generateBuiltinFunction('sprint', (clientEdict: ServerEdict, message: string): void => {
-  clientEdict.getClient().consolePrint(message);
+  clientEdict.getClient()!.consolePrint(message);
 }, [etype.ev_entity_client, etype.ev_strings]);
 
 const centerprint = generateBuiltinFunction('centerprint', (clientEdict: ServerEdict, message: string): void => {
-  clientEdict.getClient().centerPrint(message);
+  clientEdict.getClient()!.centerPrint(message);
 }, [etype.ev_entity_client, etype.ev_strings]);
 
 const normalize = generateBuiltinFunction('normalize', (vec: Vector): Vector => {
@@ -345,7 +362,7 @@ const traceline = generateBuiltinFunction('traceline', (start: Vector, end: Vect
 const checkclient = generateBuiltinFunction('checkclient', (): ServerEdict | null => getQuakeCGameAPI().self.getNextBestClient(), [], etype.ev_entity_client);
 
 const stuffcmd = generateBuiltinFunction('stuffcmd', (clientEdict: ServerEdict, command: string): void => {
-  clientEdict.getClient().sendConsoleCommands(command);
+  clientEdict.getClient()!.sendConsoleCommands(command);
 }, [etype.ev_entity_client, etype.ev_string]);
 
 const localcmd = generateBuiltinFunction('localcmd', (command: string): void => {
@@ -366,7 +383,11 @@ const findradius = generateBuiltinFunction('findradius', (origin: Vector, radius
   let chain: ServerEdict = SV.server.edicts[0] as ServerEdict;
 
   for (const edict of edicts) {
-    edict.entity.chain = chain;
+    const entity = edict.entity!;
+
+    console.assert(entity !== null, 'findradius requires edicts with live entities');
+
+    entity.chain = chain;
     chain = edict as ServerEdict;
   }
 
@@ -383,7 +404,7 @@ const vtos = generateBuiltinFunction('vtos', (vec: Vector): string => vec.toStri
 
 const Spawn = generateBuiltinFunction('Spawn', (): ServerEdict => {
   const edict = ED.Alloc();
-  SV.server.gameAPI.prepareEntity(edict, null, {});
+  getQuakeCGameAPI().prepareEntity(edict, null, {});
   return edict;
 }, [], etype.ev_entity);
 
@@ -518,9 +539,11 @@ const makestatic = generateBuiltinFunction('makestatic', (edict: ServerEdict): v
 const setspawnparms = generateBuiltinFunction('setspawnparms', (clientEdict: ServerEdict): void => {
   console.assert(clientEdict.isClient(), 'setspawnparms requires a client edict');
   const spawnParameters = clientEdict.getClient()!.spawn_parms;
+  const gameAPI = getQuakeCGameAPI();
+  const parmKeys = ['parm1', 'parm2', 'parm3', 'parm4', 'parm5', 'parm6', 'parm7', 'parm8', 'parm9', 'parm10', 'parm11', 'parm12', 'parm13', 'parm14', 'parm15', 'parm16'] as const;
 
   for (let i = 0; i <= 15; i++) {
-    SV.server.gameAPI[`parm${i + 1}`] = spawnParameters![i];
+    gameAPI[parmKeys[i]] = Number(spawnParameters![i]);
   }
 }, [etype.ev_entity_client]);
 

@@ -23,7 +23,10 @@ export type Cvar = Readonly<CvarValue>;
 export type PmoveConfiguration = Readonly<PmoveConfigurationValue>;
 export type PmoveQuake2Configuration = Readonly<PmoveQuake2ConfigurationValue>;
 
-export type SerializableType = string | number | boolean | Vector | ServerEdict | SerializableType[] | null;
+export interface SerializableObject {
+  [key: string]: SerializableType;
+}
+export type SerializableType = string | number | boolean | Vector | ServerEdict | SerializableObject | SerializableType[] | null;
 export type ClientSerializableType = string | number | boolean | Vector | ClientEdict | ClientSerializableType[] | null;
 export type ClientEventValue = ClientSerializableType | object;
 
@@ -125,15 +128,15 @@ export interface StartServerListEntry {
 }
 
 export type SerializedPrimitive = string | number | boolean | null;
-export type SerializedVector = [number, number, number, number];
-export type SerializedSkipped = [number];
-export type SerializedInfinity = [number, number];
-export type SerializedPrimitiveValue = [number, SerializedPrimitive];
-export type SerializedFunction = [number, string];
-export type SerializedArray = [number, SerializedValue[]];
-export type SerializedEdictReference = [number, number];
-export type SerializedObject = [number, SerializedData];
-export type SerializedValue = SerializedSkipped | SerializedInfinity | SerializedPrimitiveValue | SerializedFunction | SerializedVector | SerializedArray | SerializedEdictReference | SerializedObject;
+export type SerializedSkipped = ['X'];
+export type SerializedInfinity = ['I', number];
+export type SerializedPrimitiveValue = ['P', SerializedPrimitive];
+export type SerializedFunction = ['F', string];
+export type SerializedArray = ['A', SerializedValue[]];
+export type SerializedEdictReference = ['E', number | null];
+export type SerializedObject = ['S', SerializedData];
+export type SerializedVector = ['V', ...number[]];
+export type SerializedValue = SerializedSkipped | SerializedInfinity | SerializedPrimitiveValue | SerializedFunction | SerializedArray | SerializedEdictReference | SerializedObject | SerializedVector;
 export type SerializedData = Record<string, SerializedValue>;
 
 interface SerializableEntityCandidate {

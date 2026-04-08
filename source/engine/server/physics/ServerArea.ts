@@ -264,7 +264,7 @@ export class ServerArea {
       }
 
       const touchEntity = touch.entity as (BaseEntity & {
-        solid: number;
+        solid: Defs.solid;
         touch?: (this: BaseEntity, other: BaseEntity | null) => void;
       }) | null;
 
