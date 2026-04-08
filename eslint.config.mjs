@@ -12,6 +12,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const typeAwareParserOptions = {
   ecmaVersion: 'latest',
   sourceType: 'module',
+  // Game modules vendored under source/game are responsible for shipping a
+  // local tsconfig.json when they want typed linting for their own tests.
   projectService: true,
   tsconfigRootDir: __dirname,
 };
@@ -181,10 +183,21 @@ export default defineConfig([
       'source/engine/main-dedicated.ts',
       'source/engine/server/**/*.{mjs,ts,mts,cts}',
       'source/engine/common/**/*.{mjs,ts,mts,cts}',
+      'source/game/**/test/**/*.{mjs,ts,mts,cts}',
       'test/**/*.{mjs,ts,mts,cts}',
     ],
     languageOptions: {
       globals: nodeGlobals,
+    },
+  },
+  {
+    files: [
+      'source/game/**/test/**/*.{mjs,ts,mts,cts}',
+      'test/**/*.{mjs,ts,mts,cts}',
+    ],
+    rules: {
+      'jsdoc/require-param-type': 'off',
+      'jsdoc/require-returns-type': 'off',
     },
   },
   {

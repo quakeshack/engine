@@ -33,7 +33,9 @@
     "ws": "^8.18.0"
   },
   "scripts": {
-    "test": "tsx --test test/**/*.test.mjs",
+    "test": "tsx --test test/**/*.test.mjs source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs",
+    "test:engine": "tsx --test test/**/*.test.mjs",
+    "test:game": "tsx --test source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs",
     "test:common": "tsx --test test/common/**/*.test.mjs",
     "test:physics": "tsx --test test/physics/**/*.test.mjs",
     "test:renderer": "tsx --test test/renderer/**/*.test.mjs",

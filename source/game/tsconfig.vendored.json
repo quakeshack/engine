@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "checkJs": false
+  },
+  "exclude": [
+    "../../node_modules",
+    "../../dist"
+  ]
+}
