@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { describe, test } from 'node:test';
-import { glob } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
 import PlatformWorker from '../../source/engine/common/PlatformWorker.ts';
 import WorkerManager from '../../source/engine/common/WorkerManager.ts';
@@ -196,14 +197,15 @@ void describe('WorkerManager', () => {
 });
 
 const dedicatedDir = new URL('../../dist/dedicated/', import.meta.url);
+const dedicatedDirPath = fileURLToPath(dedicatedDir);
+const dedicatedBuildAvailable = existsSync(dedicatedDirPath);
 
-void describe('Dedicated build worker output', () => {
+void describe('Dedicated build worker output', { skip: !dedicatedBuildAvailable }, () => {
   void test('WorkerFactories URLs point to ./workers/*.mjs in the engine bundle', async () => {
     const engineChunks = [];
-    const dir = new URL('./', dedicatedDir);
 
-    for await (const entry of fs.glob('engine-*.mjs', { cwd: dir })) {
-      engineChunks.push(new URL(entry, dir));
+    for await (const entry of fs.glob('engine-*.mjs', { cwd: dedicatedDirPath })) {
+      engineChunks.push(new URL(entry, dedicatedDir));
     }
 
     assert.ok(engineChunks.length > 0, 'expected at least one engine-*.mjs chunk in dist/dedicated/');
@@ -232,9 +234,10 @@ void describe('Dedicated build worker output', () => {
 
   void test('worker bundles do not contain unresolved source imports', async () => {
     const workersDir = new URL('workers/', dedicatedDir);
+    const workersDirPath = fileURLToPath(workersDir);
     const workerFiles = [];
 
-    for await (const entry of fs.glob('*.mjs', { cwd: workersDir })) {
+    for await (const entry of fs.glob('*.mjs', { cwd: workersDirPath })) {
       workerFiles.push(new URL(entry, workersDir));
     }
 
