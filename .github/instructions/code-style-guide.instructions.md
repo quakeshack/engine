@@ -53,10 +53,10 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 
 ## File Organization
 
-### No index.mjs Files
+### No index.ts Files
 
 - **Avoid barrel exports**. Use direct imports instead.
-- Example: Import `BrushModelRenderer` from `./renderer/BrushModelRenderer.mjs`, not `./renderer`.
+- Example: Import `BrushModelRenderer` from `./renderer/BrushModelRenderer.ts`, not `./renderer`.
 
 ## General Style Guidelines
 
@@ -64,6 +64,7 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 - **Use camelCase** for variables and functions, PascalCase for classes.
 - **Use descriptive names** for variables and functions.
 - **Keep functions small** and focused on a single task or a single responsibility.
+- **Prefer function declarations** for helper functions when arrow-function semantics are not needed.
 - **Use early returns** to reduce nesting and improve readability.
 - **Avoid deep nesting**; refactor into helper functions if necessary.
 - **Never mutate function parameters**; create new variables instead.
@@ -153,13 +154,15 @@ class GL {
 
 ### `null` initializations
 
-- **Explicitly initialize variables to `null`** when they will later hold an object reference and provide JSDoc type annotations either as cast or an inline comment.
-  - Example: `let model = /** @type {BaseModel} */ (null);`
+- **Explicitly initialize variables to `null`** when they will later hold an object reference.
+  - In `.ts` files: `let model: BaseModel | null = null;`
+  - In `.mjs` files: `let model = /** @type {BaseModel} */ (null);`
 
 ### Empty Arrays
 
-- **Initialize empty arrays with `[]`** instead of `new Array()` and provide JSDoc type annotations.
-  - Example: `let vertices = /** @type {number[]} */ ([]);`
+- **Initialize empty arrays with `[]`** instead of `new Array()`.
+  - In `.ts` files: `const vertices: number[] = [];`
+  - In `.mjs` files: `let vertices = /** @type {number[]} */ ([]);`
 
 ## Class and Interface Design
 
@@ -172,6 +175,7 @@ class GL {
 
 - **Use `_` prefix** for protected methods. Add `@protected` JSDoc tag.
 - **Use `#` prefix** for private methods.
+- In `.ts` files, prefer native `protected` / `private` keywords. See `typescript-port.instructions.md`.
 
 ### Respect boundaries of abstraction
 
@@ -184,7 +188,7 @@ class GL {
   - `model` (or `clmodel`) instead of `m`.
   - `entity` instead of `ent` or `e`.
 - **Constants:** UPPER_CASE.
-- **Files:** PascalCase for classes (`BrushModelRenderer.mjs`), camelCase for utils (`modelUtils.mjs`). Always `.mjs`.
+- **Files:** PascalCase for classes (`BrushModelRenderer.ts`), camelCase for utils (`modelUtils.ts`). Always `.ts` for TypeScript source files.
 
 ## Comments
 

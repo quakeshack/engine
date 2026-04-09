@@ -2,19 +2,19 @@
 
 Everything related to this is in:
 
-* `Console.mjs`
-* `Cmd.mjs`
-* `Cvar.mjs`
-* `Key.mjs`
+* `Console.ts`
+* `Cmd.ts`
+* `Cvar.ts`
+* `Key.ts`
 
 ## Console Frontend
 
 * `Con.DrawNotify` is responsible for drawing the chat input box.
 * `Con.DrawInput` draws the input box for the actual console.
 * `Con.DrawConsole` is responsible for drawing everything.
-* `Key.dest.value` decides what is receiving key strokes:
-  * `Key.dest.console` is for the console
-  * `Key.dest.message` is for chatting
+* `Key.destination` decides what is receiving key strokes:
+  * `KeyDestination.console` is for the console
+  * `KeyDestination.message` is for chatting
   * However, actual handling of the key strokes is happening in `Key.Console`.
 
 ### Console Background Customization

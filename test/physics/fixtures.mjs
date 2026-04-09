@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
-import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.mjs';
-import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.mjs';
-import { Pmove } from '../../source/engine/common/Pmove.mjs';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
-import { ClientEdict } from '../../source/engine/client/ClientEntities.mjs';
-import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.mjs';
+import Vector from '../../source/shared/Vector.ts';
+import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
+import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
+import { eventBus, registry } from '../../source/engine/registry.ts';
+import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 
 // ── Typedefs ────────────────────────────────────────────────────────────────
 
@@ -47,6 +46,7 @@ import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.
 
 /**
  * @typedef MockRegistryConfig
+ * @property {typeof import('../../source/engine/common/Com.ts').default | null} [COM]
  * @property {object|null} [CL]
  * @property {{ Print: Function, DPrint: Function }} Con
  * @property {{ frametime: number }} Host
@@ -159,23 +159,23 @@ export function createBrushWorldModel({ axis = 0, center = [64, 0, 0], halfExten
   axisNormal[axis] = 1;
   const roomMins = new Vector(-2048, -2048, -2048);
   const roomMaxs = new Vector(2048, 2048, 2048);
-  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+  const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
     contents: content.CONTENT_EMPTY,
     firstleafbrush: 0,
     numleafbrushes: 1,
   });
-  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.mjs').Node} */ ({
+  const backLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
     contents: content.CONTENT_EMPTY,
     firstleafbrush: 1,
     numleafbrushes: 0,
   });
 
-  model.nodes = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([{
+  model.nodes = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([{
     contents: 0,
     plane: createAxisPlane(axisNormal, 0, axis),
     children: [frontLeaf, backLeaf],
   }]);
-  model.leafs = /** @type {import('../../source/engine/common/model/BSP.mjs').Node[]} */ ([frontLeaf, backLeaf]);
+  model.leafs = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([frontLeaf, backLeaf]);
   model.leafbrushes = [0];
   model.hulls = /** @type {BrushModel['hulls']} */ ([
     createRoomHullFromBounds(roomMins, roomMaxs),
@@ -294,6 +294,7 @@ export function createMockEdict(entity) {
  * Build a default mock registry config with silent console and standard frametime.
  * Supply SV overrides to configure server-side mocks.
  * @param {object} [sv] SV overrides
+ * @param cl
  * @returns {MockRegistryConfig} registry config
  */
 export function defaultMockRegistry(sv = {}, cl = null) {
@@ -308,28 +309,43 @@ export function defaultMockRegistry(sv = {}, cl = null) {
 /**
  * Run a callback with mocked registry values.
  * @param {MockRegistryConfig} mockedRegistry registry replacements
- * @param {() => void} callback test callback
+ * @param {() => void | Promise<void>} callback test callback
  */
 export function withMockRegistry(mockedRegistry, callback) {
+  const previousCOM = registry.COM;
   const previousCL = registry.CL;
   const previousCon = registry.Con;
   const previousHost = registry.Host;
   const previousSV = registry.SV;
 
+  registry.COM = mockedRegistry.COM ?? previousCOM;
   registry.CL = mockedRegistry.CL ?? null;
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
   registry.SV = mockedRegistry.SV;
   eventBus.publish('registry.frozen');
 
-  try {
-    callback();
-  } finally {
+  const restore = () => {
+    registry.COM = previousCOM;
     registry.CL = previousCL;
     registry.Con = previousCon;
     registry.Host = previousHost;
     registry.SV = previousSV;
     eventBus.publish('registry.frozen');
+  };
+
+  try {
+    const result = callback();
+
+    if (result !== null && result !== undefined && typeof result.then === 'function') {
+      return Promise.resolve(result).finally(restore);
+    }
+
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
   }
 }
 
@@ -378,7 +394,7 @@ export function withMockServerPhysics(callback) {
     linkCalls.push(edict);
   };
 
-  withMockRegistry({
+  void withMockRegistry({
     Con: {
       Print() {},
       DPrint() {},

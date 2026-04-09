@@ -1,6 +1,6 @@
 # The Quake Shack Engine
 
-This is a modern JavaScript port of Quake 1 with some features sprinkled on top.
+This is a modern TypeScript port of Quake 1 with some features sprinkled on top.
 
 Added features include, but are not limited to:
 
@@ -83,7 +83,7 @@ Open http://localhost:3000/ and enjoy hacking.
 
 The dedicated server can be started using `npm run dedicated:start`, but this will run with many `console.assert(…)` in hot paths and is only really suitable for development work.
 
-That’s why you should compile the dedicated server with `npm run dedicated:build:production` and start it using `npm run dedicated:start:production`.
+That’s why you should compile the dedicated server with `npm run dedicated:build:production` and start it using `npm run dedicated:start`.
 
 ### Deploy to a CDN
 
@@ -158,8 +158,8 @@ There are two main entrypoints:
 
 | File | Description |
 | - | - |
-| source/engine/main-browser.mjs | launcher for a full browser session |
-| source/engine/main-dedicated.mjs | launcher for a dedicated server |
+| source/engine/main-browser.ts | launcher for a full browser session |
+| source/engine/main-dedicated.ts | launcher for a dedicated server |
 
 ## Based on the work of
 

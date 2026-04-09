@@ -14,8 +14,12 @@
 
 ### Three different kinds of builds
 
-We need to make sure the correct build is used at all times.
+All code is always compiled through esbuild (via Vite) before execution. This ensures full TypeScript feature support (decorators, const enum, etc.) across every environment.
 
-1. Dedicated development server: The code is executed in node.js directly, no build step required.
-2. Dedicated production server: The code is built using `npm run build:production` and the output files in `dist/` are executed in node.js. This is required to strip out all console.assert statements and other development-only code for optimal performance.
-3. Client code: The code is built using `npm run build:production` and the output files in `dist/` are executed in the browser.
+1. Dedicated development server: Build with `npm run dedicated:dev` (Vite watch mode), run with `npm run dedicated:start`. The build step compiles TypeScript to JavaScript in `dist/dedicated/` with source maps enabled.
+2. Dedicated production server: Build with `npm run dedicated:build:production` and run with `npm run dedicated:start`. Strips console.assert and other development-only code for optimal performance.
+3. Client code: Build with `npm run build:production` and serve the output in `dist/browser/` to the browser.
+
+### Testing
+
+Tests use `tsx` (esbuild-based) as the Node.js loader, ensuring the same TypeScript compilation behavior as the Vite builds. Run with `npm test`.

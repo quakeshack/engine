@@ -1,11 +1,11 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import Vector from '../../source/shared/Vector.mjs';
-import * as Protocol from '../../source/engine/network/Protocol.mjs';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
-import SV from '../../source/engine/server/Server.mjs';
-import { ServerClient } from '../../source/engine/server/Client.mjs';
+import Vector from '../../source/shared/Vector.ts';
+import * as Protocol from '../../source/engine/network/Protocol.ts';
+import { eventBus, registry } from '../../source/engine/registry.ts';
+import SV from '../../source/engine/server/Server.ts';
+import { ServerClient } from '../../source/engine/server/Client.ts';
 
 import {
   createMockEdict,
@@ -73,8 +73,8 @@ function installReadClientMoveContext({ paused }) {
   };
 }
 
-describe('SV.ReadClientMove', () => {
-  test('queues movement commands while the server is running', () => {
+void describe('SV.ReadClientMove', () => {
+  void test('queues movement commands while the server is running', () => {
     const context = installReadClientMoveContext({ paused: false });
 
     try {
@@ -93,7 +93,7 @@ describe('SV.ReadClientMove', () => {
     }
   });
 
-  test('does not enqueue paused movement backlog', () => {
+  void test('does not enqueue paused movement backlog', () => {
     const context = installReadClientMoveContext({ paused: true });
 
     try {

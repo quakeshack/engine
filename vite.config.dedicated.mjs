@@ -24,39 +24,39 @@ function dedicatedServerPathsPlugin() {
     transform(code, id) {
       // In the entry point, strip the shebang (added back in renderChunk)
       // and adjust process.chdir to navigate up from dist/dedicated/ to project root
-      if (id.endsWith('/dedicated.mjs')) {
+      if (id.endsWith('/dedicated.ts')) {
         return {
           code: code
             .replace(/^#!.*\n/, '')
             .replace(
-              "new URL('./', import.meta.url)",
+              /new URL\((['"])\.\/\1,\s*import\.meta\.url\)/,
               "new URL('../..', import.meta.url)",
             ),
           map: null,
         };
       }
 
-      // In Sys.mjs, the __dirname calculation needs adjusting:
+      // In Sys.ts, the __dirname calculation needs adjusting:
       // Unbundled: import.meta.dirname = <root>/source/engine/server (3 levels deep)
       //   + '/../..' goes up 2, then later code does + '/..' for a total of 3 up = root
       // Bundled: import.meta.dirname = <root>/dist/dedicated (2 levels deep)
       //   + '/..' goes up 1, then later code does + '/..' for a total of 2 up = root
-      if (id.includes('/source/engine/server/Sys.mjs')) {
+      if (id.includes('/source/engine/server/Sys.ts')) {
         return {
           code: code.replace(
-            "import.meta.dirname + '/../..'",
+            /import\.meta\.dirname\s*\+\s*(['"])\/\.\.\/(\.\.)\1/,
             "import.meta.dirname + '/..'",
           ),
           map: null,
         };
       }
 
-      // In WorkerFactories.mjs, rewrite worker URLs to point at self-contained
+      // In WorkerFactories.ts, rewrite worker URLs to point at self-contained
       // bundles that will be placed alongside the dedicated server output by
       // dedicatedWorkerBundlePlugin (see below).
-      if (id.includes('WorkerFactories.mjs')) {
+      if (id.includes('WorkerFactories.ts')) {
         return {
-          code: code.replace(/'\.\.\/server\//g, "'./workers/"),
+          code: code.replace(/\.\.\/server\/([^'"]+)\.ts/g, './workers/$1.mjs'),
           map: null,
         };
       }
@@ -80,10 +80,10 @@ function dedicatedServerPathsPlugin() {
  * Worker threads in Node.js load their own module graph independently,
  * so they cannot share chunks with the main SSR bundle.  This plugin
  * runs a secondary Rollup build after the main one completes, producing
- * a standalone bundle for every *Worker.mjs file under source/engine/server/.
+ * a standalone bundle for every *Worker.ts file under source/engine/server/.
  *
  * The output lands in dist/dedicated/workers/ which the rewritten URLs
- * in WorkerFactories.mjs (see dedicatedServerPathsPlugin) point at.
+ * in WorkerFactories.ts (see dedicatedServerPathsPlugin) point at.
  * @param {string} mode Vite build mode (development / production)
  * @returns {import('vite').Plugin} Vite plugin
  */
@@ -93,11 +93,12 @@ function dedicatedWorkerBundlePlugin(mode) {
 
     async closeBundle() {
       const { rollup } = await import('rollup');
+      const { transformWithEsbuild } = await import('vite');
       const workerDir = resolve(__dirname, 'source/engine/server');
       const outDir = resolve(__dirname, 'dist/dedicated/workers');
 
       const workerPaths = [];
-      for await (const entry of glob('*Worker.mjs', { cwd: workerDir })) {
+      for await (const entry of glob('*Worker.ts', { cwd: workerDir })) {
         workerPaths.push(resolve(workerDir, entry));
       }
 
@@ -107,29 +108,46 @@ function dedicatedWorkerBundlePlugin(mode) {
 
       const bundle = await rollup({
         input: Object.fromEntries(
-          workerPaths.map((p) => [basename(p, '.mjs'), p]),
+          workerPaths.map((p) => [basename(p, '.ts'), p]),
         ),
         // Node built-ins stay external (both prefixed and bare); everything else is inlined
         external: [/^node:/, 'fs', 'path', 'os', 'url', 'util', 'crypto', 'stream', 'events', 'buffer', 'http', 'https', 'net', 'tls', 'child_process', 'worker_threads'],
         plugins: [
           {
-            // WorkerFramework.mjs constructs dynamic import paths at runtime
-            // to evade Vite's static analysis (e.g. ['..','server','Com.mjs'].join('/')).
+            name: 'transpile-typescript-modules',
+            async transform(code, id) {
+              if (!/\.(ts|mts|cts)$/.test(id)) {
+                return null;
+              }
+
+              return await transformWithEsbuild(code, id, {
+                format: 'esm',
+                loader: 'ts',
+                sourcemap: mode !== 'production',
+                target: 'node24',
+              });
+            },
+          },
+          {
+            // WorkerFramework.ts constructs dynamic import paths at runtime
+            // to evade Vite's static analysis (e.g. ['..','server','Com.ts'].join('/')).
             // We undo that here so Rollup can resolve and bundle them.
             name: 'resolve-worker-dynamic-imports',
             transform(code, id) {
-              if (!id.includes('WorkerFramework')) return null;
+              if (!id.includes('WorkerFramework')) { return null; }
               // Replace the two-step variable + import() patterns with direct
               // literal import() calls so Rollup can statically resolve them.
+              // esbuild may convert single quotes to double quotes and reformat
+              // the import() across multiple lines, so the regexes must be flexible.
               return {
                 code: code
                   .replace(
-                    /const workerThreadsId\s*=\s*\[.*?\]\.join\([^)]+\);\s*const \{ parentPort \} = await import\(\/\* @vite-ignore \*\/ workerThreadsId\)/s,
+                    /const workerThreadsId\s*=\s*\[['"]node['"],\s*['"]worker_threads['"]\]\.join\([^)]+\);\s*const \{ parentPort \} = await import\(\s*(?:\/\*.*?\*\/\s*)?workerThreadsId\s*\)/s,
                     "const { parentPort } = await import('node:worker_threads')",
                   )
                   .replace(
-                    /const serverComId\s*=\s*\[.*?\]\.join\([^)]+\);\s*const comModule = await import\(\/\* @vite-ignore \*\/ serverComId\)/s,
-                    "const comModule = await import('../server/Com.mjs')",
+                    /const serverComId\s*=\s*\[['"]\.\.['"],\s*['"]server['"],\s*['"]Com\.ts['"]\]\.join\([^)]+\);\s*const comModule = await import\(\s*(?:\/\*.*?\*\/\s*)?serverComId\s*\)/s,
+                    "const comModule = await import('../server/Com.ts')",
                   ),
                 map: null,
               };
@@ -166,7 +184,7 @@ export default defineConfig(({ mode }) => ({
     pure: mode === 'production' ? ['console.log', 'console.debug', 'console.info', 'console.assert', 'console.trace'] : [],
   },
   build: {
-    ssr: resolve(__dirname, 'dedicated.mjs'),
+    ssr: resolve(__dirname, 'dedicated.ts'),
     outDir: resolve(__dirname, 'dist/dedicated'),
     emptyOutDir: true,
     target: 'node24',
@@ -178,14 +196,16 @@ export default defineConfig(({ mode }) => ({
         entryFileNames: '[name].mjs',
         chunkFileNames: '[name]-[hash].mjs',
         // Extract shared engine/library code into a separate chunk so that
-        // both the entry (dedicated.mjs) and game module chunks import from
+        // both the entry (dedicated.ts) and game module chunks import from
         // it. Without this, Rollup puts shared code into the entry chunk,
-        // causing game module chunks to import from dedicated.mjs — which
+        // causing game module chunks to import from dedicated.ts — which
         // has a top-level await and creates an ESM evaluation deadlock.
         manualChunks(id) {
           if (id.includes('/source/engine/') || id.includes('/source/shared/')) {
             return 'engine';
           }
+
+          return null;
         },
       },
     },
@@ -211,6 +231,7 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': resolve(__dirname, 'source'),
     },
+    extensions: ['.ts', '.mts', '.mjs', '.js', '.json'],
     preserveSymlinks: process.env.VITE_PRESERVE_SYMLINKS === 'true',
   },
 }));

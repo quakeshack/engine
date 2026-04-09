@@ -1,7 +1,7 @@
 {
   "name": "quakeshack",
-  "version": "1.0.0",
-  "main": "dedicated.mjs",
+  "version": "1.2.0",
+  "main": "dedicated.ts",
   "type": "module",
   "repository": "https://github.com/chrisnew/quakeshack",
   "license": "GPL-2.0-only",
@@ -12,6 +12,9 @@
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@stylistic/eslint-plugin": "^5.2.2",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.6.1",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.46.4",
     "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^9.19.0",
@@ -19,34 +22,35 @@
     "eslint-plugin-jsdoc": "^50.6.3",
     "eslint-plugin-sort-class-members": "^1.21.0",
     "eslint-plugin-types": "^1.0.2",
+    "fallow": "^2.13.3",
     "globals": "^15.14.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.12"
   },
   "dependencies": {
-    "ammojs3": "^0.0.11",
-    "cannon": "^0.6.2",
     "express": "^4.21.2",
     "ws": "^8.18.0"
   },
   "scripts": {
-    "test": "node --test test/**/*.test.mjs",
-    "test:common": "node --test test/common/**/*.test.mjs",
-    "test:physics": "node --test test/physics/**/*.test.mjs",
-    "test:renderer": "node --test test/renderer/**/*.test.mjs",
+    "test": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/**/*.test.mjs source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs",
+    "test:engine": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/**/*.test.mjs",
+    "test:game": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs",
+    "test:common": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/common/**/*.test.mjs",
+    "test:physics": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/physics/**/*.test.mjs",
+    "test:renderer": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/renderer/**/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "typecheck:watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "build:wrangler": "npm run test && npm run build:production",
     "dev": "vite build --watch --mode development",
     "build": "vite build",
     "build:production": "vite build --mode production",
     "watch": "vite build --watch",
-
-    "lint": "eslint source",
-    "lint-fix": "eslint --fix source",
-
+    "lint": "eslint --fix source dedicated.ts eslint.config.mjs vite.config.mjs vite.config.dedicated.mjs",
+    "check": "npm run typecheck && npm run lint",
     "dedicated:dev": "vite build --watch --mode development --config vite.config.dedicated.mjs",
     "dedicated:build": "vite build --config vite.config.dedicated.mjs",
     "dedicated:build:production": "vite build --config vite.config.dedicated.mjs --mode production",
-    "dedicated:start": "node ./dedicated.mjs +exec server.cfg",
-    "dedicated:start:production": "node ./dist/dedicated/dedicated.mjs +exec server.cfg"
+    "dedicated:start": "node ./dist/dedicated/dedicated.mjs +exec server.cfg"
   }
 }

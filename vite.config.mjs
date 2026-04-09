@@ -122,6 +122,7 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': resolve(__dirname, 'source'),
     },
+    extensions: ['.ts', '.mts', '.mjs', '.js', '.json'],
     preserveSymlinks: process.env.VITE_PRESERVE_SYMLINKS === 'true',
   },
 }));

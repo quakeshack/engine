@@ -4,7 +4,15 @@
  * https://developers.cloudflare.com/workers/static-assets/
  */
 
+/**
+ * @typedef {{ ASSETS: { fetch(request: Request): Promise<Response> } }} WorkerEnv
+ */
+
 export default {
+  /**
+   * @param {Request} request Incoming worker request.
+   * @param {WorkerEnv} env Worker bindings.
+   */
   async fetch(request, env) {
     // Serve static assets via the ASSETS binding
     const response = await env.ASSETS.fetch(request);

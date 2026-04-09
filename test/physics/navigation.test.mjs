@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import Vector from '../../source/shared/Vector.mjs';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
-import { Navigation } from '../../source/engine/server/Navigation.mjs';
+import Vector from '../../source/shared/Vector.ts';
+import { eventBus, registry } from '../../source/engine/registry.ts';
+import { Navigation } from '../../source/engine/server/Navigation.ts';
 
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
@@ -277,8 +277,8 @@ function readNavSurfaceCounts(data) {
   return { nodeCount, surfaceCounts };
 }
 
-describe('Navigation.build', () => {
-  test('uses monster-sized static-world traces and stores stand origins', async () => {
+void describe('Navigation.build', () => {
+  void test('uses monster-sized static-world traces and stores stand origins', async () => {
     const worldmodel = createNavigationWorldModel();
     let boxTraceCount = 0;
     let lineTraceCount = 0;
@@ -345,7 +345,7 @@ describe('Navigation.build', () => {
     }
   });
 
-  test('clears previously extracted surfaces before rebuilding', async () => {
+  void test('clears previously extracted surfaces before rebuilding', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
       traceStaticWorld(start, mins, maxs, end) {
@@ -404,7 +404,7 @@ describe('Navigation.build', () => {
     });
   });
 
-  test('does not collapse a large walkable region into a single node', async () => {
+  void test('does not collapse a large walkable region into a single node', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
       traceStaticWorld(start, mins, maxs, end) {
@@ -459,7 +459,7 @@ describe('Navigation.build', () => {
     assert.ok(navigation.graph.nodes.some((node) => node.neighbors.length > 0));
   });
 
-  test('rejects walkable samples that lack monster-style corner support', async () => {
+  void test('rejects walkable samples that lack monster-style corner support', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
       traceStaticWorld(start, mins, maxs, end) {
@@ -527,7 +527,7 @@ describe('Navigation.build', () => {
     assert.equal(navigation.geometry.walkableSurfaces.length, 0);
   });
 
-  test('does not persist extracted waypoints into nav files', async () => {
+  void test('does not persist extracted waypoints into nav files', async () => {
     const worldmodel = createNavigationWorldModel();
     let writtenData = null;
 
@@ -593,7 +593,7 @@ describe('Navigation.build', () => {
     assert.ok(surfaceCounts.every((count) => count === 0));
   });
 
-  test('publishes nav.load after saving a rebuilt graph in listen-server mode', async () => {
+  void test('publishes nav.load after saving a rebuilt graph in listen-server mode', async () => {
     const worldmodel = createNavigationWorldModel();
     const publishedLoads = [];
 
@@ -659,8 +659,8 @@ describe('Navigation.build', () => {
   });
 });
 
-describe('Navigation.findPath', () => {
-  test('returns direct path when start and goal share the nearest node', async () => {
+void describe('Navigation.findPath', () => {
+  void test('returns direct path when start and goal share the nearest node', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
       traceStaticWorld(start, mins, maxs, end) {
@@ -706,7 +706,7 @@ describe('Navigation.findPath', () => {
     assert.deepEqual([...path[1]], [...goal]);
   });
 
-  test('finds a multi-hop path across connected nodes', async () => {
+  void test('finds a multi-hop path across connected nodes', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
       traceStaticWorld(start, mins, maxs, end) {
@@ -760,7 +760,7 @@ describe('Navigation.findPath', () => {
     }
   });
 
-  test('returns null when graph is empty', () => {
+  void test('returns null when graph is empty', () => {
     const navigation = new Navigation(null);
 
     Navigation.nav_debug_path = { value: 0 };
@@ -769,7 +769,7 @@ describe('Navigation.findPath', () => {
     assert.equal(path, null);
   });
 
-  test('returns null when start or goal has no nearby node', async () => {
+  void test('returns null when start or goal has no nearby node', async () => {
     const worldmodel = createNavigationWorldModel();
     const collision = {
       traceStaticWorld(start, mins, maxs, end) {

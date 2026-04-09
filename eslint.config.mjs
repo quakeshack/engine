@@ -1,4 +1,6 @@
 import { defineConfig } from 'eslint/config';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import globals from 'globals';
 import pluginJs from '@eslint/js';
 import jsdoc from 'eslint-plugin-jsdoc';
@@ -6,16 +8,24 @@ import stylistic from '@stylistic/eslint-plugin';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const typeAwareParserOptions = {
+  ecmaVersion: 'latest',
+  sourceType: 'module',
+  // Game modules vendored under source/game are responsible for shipping a
+  // local tsconfig.json when they want typed linting for their own tests.
+  projectService: true,
+  tsconfigRootDir: __dirname,
+};
+
 const jsdocPlugin = /** @type {import('eslint').ESLint.Plugin} */ (jsdoc);
 const stylisticPlugin = /** @type {import('eslint').ESLint.Plugin} */ (stylistic);
 const typeScriptEslintPlugin = /** @type {import('eslint').ESLint.Plugin} */ (
   /** @type {unknown} */ (tseslint)
 );
-const nodeGlobals = {
-  ...globals.node,
-};
-
-delete nodeGlobals.Buffer;
+const nodeGlobals = Object.fromEntries(
+  Object.entries(globals.node).filter(([name]) => name !== 'Buffer'),
+);
 
 const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   'max-len': 'off',
@@ -70,6 +80,43 @@ const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   '@typescript-eslint/no-redundant-type-constituents': 'warn',
 });
 
+/** Extra strict rules applied only to TypeScript files. */
+const tsStrictRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
+  // Replace base rules with TS-aware extension equivalents
+  'consistent-return': 'off',
+  '@typescript-eslint/consistent-return': 'error',
+  'no-duplicate-imports': 'off',
+
+  // Strict type-checked rules
+  '@typescript-eslint/no-base-to-string': 'error',
+  '@typescript-eslint/no-confusing-void-expression': 'error',
+  '@typescript-eslint/no-duplicate-enum-values': 'error',
+  '@typescript-eslint/no-duplicate-type-constituents': 'error',
+  '@typescript-eslint/no-for-in-array': 'error',
+  '@typescript-eslint/no-implied-eval': 'error',
+  '@typescript-eslint/no-mixed-enums': 'error',
+  '@typescript-eslint/no-non-null-asserted-nullish-coalescing': 'error',
+  '@typescript-eslint/no-non-null-asserted-optional-chain': 'error',
+  '@typescript-eslint/no-redundant-type-constituents': 'error',
+  '@typescript-eslint/no-unnecessary-boolean-literal-compare': 'error',
+  '@typescript-eslint/no-unnecessary-template-expression': 'error',
+  '@typescript-eslint/no-unnecessary-type-constraint': 'error',
+  '@typescript-eslint/no-unnecessary-type-conversion': 'error',
+  '@typescript-eslint/no-unsafe-enum-comparison': 'error',
+  '@typescript-eslint/no-useless-constructor': 'error',
+  '@typescript-eslint/only-throw-error': 'error',
+  '@typescript-eslint/prefer-promise-reject-errors': 'error',
+  '@typescript-eslint/prefer-reduce-type-parameter': 'error',
+  '@typescript-eslint/prefer-return-this-type': 'error',
+  '@typescript-eslint/restrict-plus-operands': ['error', {
+    allowNumberAndString: true,
+  }],
+  '@typescript-eslint/restrict-template-expressions': 'off',
+  '@typescript-eslint/return-await': ['error', 'error-handling-correctness-only'],
+  '@typescript-eslint/unbound-method': 'warn',
+  '@typescript-eslint/unified-signatures': 'error',
+});
+
 export default defineConfig([
   {
     ignores: [
@@ -86,11 +133,7 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
       parser: tsparser,
-      parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-        project: './jsconfig.json',
-      },
+      parserOptions: typeAwareParserOptions,
     },
     plugins: {
       '@stylistic': stylisticPlugin,
@@ -100,28 +143,71 @@ export default defineConfig([
     rules: commonRules,
   },
   {
+    files: ['**/*.{ts,mts,cts}'],
+    languageOptions: {
+      globals: globals.browser,
+      parser: tsparser,
+      parserOptions: typeAwareParserOptions,
+    },
+    plugins: {
+      '@stylistic': stylisticPlugin,
+      '@typescript-eslint': typeScriptEslintPlugin,
+      jsdoc: jsdocPlugin,
+    },
+    rules: {
+      ...commonRules,
+      ...tsStrictRules,
+      'jsdoc/check-param-names': 'off',
+      'jsdoc/require-param': 'off',
+      'jsdoc/require-param-type': 'off',
+      'jsdoc/require-property-type': 'off',
+      'jsdoc/require-returns-type': 'off',
+      'no-undef': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+      }],
+    },
+  },
+  {
     files: [
-      'dedicated.mjs',
+      'dedicated.ts',
       'eslint.config.mjs',
+      'eslint.config.ts',
       'vite.config.mjs',
+      'vite.config.ts',
       'vite.config.dedicated.mjs',
-      'source/engine/main-dedicated.mjs',
-      'source/engine/server/**/*.mjs',
-      'source/engine/common/**/*.mjs',
-      'test/**/*.mjs',
+      'vite.config.dedicated.ts',
+      'source/engine/main-dedicated.ts',
+      'source/engine/server/**/*.{mjs,ts,mts,cts}',
+      'source/engine/common/**/*.{mjs,ts,mts,cts}',
+      'source/game/**/test/**/*.{mjs,ts,mts,cts}',
+      'test/**/*.{mjs,ts,mts,cts}',
     ],
     languageOptions: {
       globals: nodeGlobals,
     },
   },
   {
-    files: ['source/cloudflare/**/*.mjs'],
+    files: [
+      'source/game/**/test/**/*.{mjs,ts,mts,cts}',
+      'test/**/*.{mjs,ts,mts,cts}',
+    ],
+    rules: {
+      'jsdoc/require-param-type': 'off',
+      'jsdoc/require-returns-type': 'off',
+    },
+  },
+  {
+    files: ['source/cloudflare/**/*.{mjs,ts,mts,cts}'],
     languageOptions: {
       globals: globals.serviceworker,
     },
   },
   {
-    files: ['**/*.cjs'],
+    files: ['**/*.{cjs,cts}'],
     languageOptions: {
       sourceType: 'commonjs',
     },

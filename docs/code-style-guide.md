@@ -61,10 +61,10 @@ This document outlines the coding conventions and style rules for the Quakeshack
 5. **Use specific types from imports**
    ```javascript
    // ✅ GOOD
-   /** @type {import('./ClientEntities.mjs').ClientEdict} */
+   /** @type {import('./ClientEntities.ts').ClientEdict} */
 
    // ✅ GOOD for model types
-   /** @type {import('../../common/model/BSP.mjs').BrushModel} */
+   /** @type {import('../../common/model/BSP.ts').BrushModel} */
    ```
 
 ## Registry and Global Variables
@@ -96,11 +96,11 @@ eventBus.subscribe('registry.frozen', () => {
 ```javascript
 // ❌ NEVER ACCESS DIRECTLY - This breaks in nested scopes and loses type inference
 registry.Con.DPrint(...);  // WRONG!
-registry.Mod.type.brush;    // WRONG!
+registry.Mod.ClearAll();    // WRONG!
 
 // ✅ ALWAYS USE - Destructured variables work everywhere
 Con.DPrint(...);           // CORRECT!
-Mod.type.brush;            // CORRECT!
+Mod.ClearAll();            // CORRECT!
 ```
 
 **Important:** Even in files that already have registry access, always set up the destructuring prolog at the top of the file. Never use `registry.ModuleName` syntax anywhere in the code.
@@ -118,7 +118,7 @@ Mod.type.brush;            // CORRECT!
 
 ```javascript
 // ✅ GOOD - GL is not in registry, import directly
-import GL from './GL.mjs';
+import GL from './GL.ts';
 
 let gl = null;
 eventBus.subscribe('gl.ready', () => {
@@ -188,16 +188,16 @@ eventBus.subscribe('gl.ready', () => {
 
 ## File Organization
 
-### No index.mjs Files
+### No index.ts Files
 
 Avoid barrel exports - use direct imports instead:
 
 ```javascript
-// ❌ BAD (using index.mjs)
+// ❌ BAD (using index.ts)
 import { BrushModelRenderer } from './renderer';
 
 // ✅ GOOD (direct import)
-import { BrushModelRenderer } from './renderer/BrushModelRenderer.mjs';
+import { BrushModelRenderer } from './renderer/BrushModelRenderer.ts';
 ```
 
 **Rationale:**
@@ -231,10 +231,10 @@ Always verify import paths are correct:
 
 ```javascript
 // ❌ BAD - Wrong relative path
-/** @param {import('../../../common/model/BSP.mjs').BrushModel} model */
+/** @param {import('../../../common/model/BSP.ts').BrushModel} model */
 
 // ✅ GOOD - Correct relative path from current file
-/** @param {import('../../common/model/BSP.mjs').BrushModel} model */
+/** @param {import('../../common/model/BSP.ts').BrushModel} model */
 ```
 
 ### Return Types from Library Functions
@@ -262,17 +262,33 @@ getModelType() {
 }
 ```
 
-### Private Methods
+### Protected and Private Methods
 
-Use `_` prefix for private methods and add `@private` JSDoc tag:
+Use native TypeScript access modifiers in `.ts` files. Keep `_` prefixes for protected members that subclasses override, and use `#` for methods that are truly private:
 
 ```javascript
 /**
- * Render opaque surfaces
- * @private
- * @param {BrushModel} clmodel The brush model
+ * Render opaque surfaces.
  */
-_renderOpaqueSurfaces(clmodel) {
+protected _renderOpaqueSurfaces(clmodel) {
+  // Implementation
+}
+
+class SignalingClient {
+  #connectSignaling() {
+    // Implementation
+  }
+}
+```
+
+Keep `@protected` and `@private` tags only when a mixed JS/TS boundary still needs them.
+
+```javascript
+/**
+ * Render legacy compatibility state.
+ * @private
+ */
+#renderCompatibilityState() {
   // Implementation
 }
 ```
@@ -286,12 +302,12 @@ _renderOpaqueSurfaces(clmodel) {
 
 ### Constants
 - Use UPPER_CASE for true constants
-- Use `Mod.type.brush` pattern for enum-like values
+- Use native enums like `ModelType.brush` for enum-like values
 
 ### Files
-- Use PascalCase for class files: `BrushModelRenderer.mjs`
-- Use camelCase for utility files: `modelUtils.mjs`
-- Always use `.mjs` extension
+- Use PascalCase for class files: `BrushModelRenderer.ts`
+- Use camelCase for utility files: `modelUtils.ts`
+- Always use `.ts` extension for TypeScript source files
 
 ## Comments
 

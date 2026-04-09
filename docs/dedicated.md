@@ -2,10 +2,11 @@
 
 QuakeShack supports running as a dedicated server in a Node.js environment. A dedicated server allows you to host multiplayer games with better performance and without requiring a client GUI to be actively running.
 
-To start a dedicated server for production use, you can use the command:
+To build and start a dedicated server for production use, run:
 
 ```sh
-npm run dedicated:start:production
+npm run dedicated:build:production
+npm run dedicated:start
 ```
 
 It will automatically execute `server.cfg` upon start.

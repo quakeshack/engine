@@ -1,30 +1,30 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import Vector from '../../source/shared/Vector.mjs';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
-import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/BrushModelRenderer.mjs';
-import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.mjs';
+import Vector from '../../source/shared/Vector.ts';
+import { eventBus, registry } from '../../source/engine/registry.ts';
+import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/BrushModelRenderer.ts';
+import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.ts';
 
-describe('resolveBrushBloomContributionStrength', () => {
-  test('clamps invalid contribution strengths to zero', () => {
+void describe('resolveBrushBloomContributionStrength', () => {
+  void test('clamps invalid contribution strengths to zero', () => {
     assert.equal(resolveBrushBloomContributionStrength(-1), 0.0);
     assert.equal(resolveBrushBloomContributionStrength(0), 0.0);
     assert.equal(resolveBrushBloomContributionStrength(Number.NaN), 0.0);
   });
 
-  test('preserves positive contribution strengths', () => {
+  void test('preserves positive contribution strengths', () => {
     assert.equal(resolveBrushBloomContributionStrength(0.33), 0.33);
     assert.equal(resolveBrushBloomContributionStrength(1.0), 1.0);
   });
 });
 
-describe('BrushModelRenderer.resolveEntityLightingState', () => {
-  test('treats inline submodels as sharing the world deluxemap atlas', () => {
-    const worldModel = { deluxemap: new Uint8Array(3) };
+void describe('BrushModelRenderer.resolveEntityLightingState', () => {
+  void test('treats inline submodels as sharing the world deluxemap atlas', () => {
+    const worldModel = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ deluxemap: new Uint8Array(3) });
     const lightingState = BrushModelRenderer.resolveEntityLightingState(
-      { deluxemap: null, submodel: true },
-      {},
+      /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ deluxemap: null, submodel: true }),
+      /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ ({}),
       () => [new Vector(), new Vector(), new Vector(), new Vector(), new Vector()],
       worldModel,
     );
@@ -32,9 +32,9 @@ describe('BrushModelRenderer.resolveEntityLightingState', () => {
     assert.equal(lightingState.hasDeluxemap, true);
   });
 
-  test('uses sampled static and dynamic lighting for inline brush entities', () => {
-    const model = { deluxemap: new Uint8Array(3), lightdata: null, lightdata_rgb: null };
-    const entity = { id: 7 };
+  void test('uses sampled static and dynamic lighting for inline brush entities', () => {
+    const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ deluxemap: new Uint8Array(3), lightdata: null, lightdata_rgb: null });
+    const entity = /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ (/** @type {unknown} */ ({ id: 7 }));
     const ambientlight = new Vector(0.25, 0.5, 0.75);
     const shadelight = new Vector(0.75, 0.5, 0.25);
     const lightPosition = new Vector(100, 200, 300);
@@ -58,7 +58,7 @@ describe('BrushModelRenderer.resolveEntityLightingState', () => {
     assert.equal(lightingState.hasDeluxemap, true);
   });
 
-  test('keeps inline submodels on the world lightmap intensity contract', () => {
+  void test('keeps inline submodels on the world lightmap intensity contract', () => {
     const ambientlight = new Vector(0.25, 0.5, 0.75);
     const shadelight = new Vector(0.75, 0.5, 0.25);
     const lightPosition = new Vector(100, 200, 300);
@@ -66,8 +66,8 @@ describe('BrushModelRenderer.resolveEntityLightingState', () => {
     const dynamicLightPosition = new Vector(-10, -20, 40);
 
     const lightingState = BrushModelRenderer.resolveEntityLightingState(
-      { deluxemap: null, lightdata: new Uint8Array(3), lightdata_rgb: null, submodel: true },
-      {},
+      /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ deluxemap: null, lightdata: new Uint8Array(3), lightdata_rgb: null, submodel: true }),
+      /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ ({}),
       () => [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition],
     );
 
@@ -78,7 +78,7 @@ describe('BrushModelRenderer.resolveEntityLightingState', () => {
     assert.equal(lightingState.dynamicLightPosition, dynamicLightPosition);
   });
 
-  test('keeps sampled ambient and shade lighting for standalone brush bsp entities', () => {
+  void test('keeps sampled ambient and shade lighting for standalone brush bsp entities', () => {
     const ambientlight = new Vector(0.25, 0.5, 0.75);
     const shadelight = new Vector(0.75, 0.5, 0.25);
     const lightPosition = new Vector(100, 200, 300);
@@ -86,8 +86,8 @@ describe('BrushModelRenderer.resolveEntityLightingState', () => {
     const dynamicLightPosition = new Vector(-10, -20, 40);
 
     const lightingState = BrushModelRenderer.resolveEntityLightingState(
-      { deluxemap: null, lightdata: new Uint8Array(3), lightdata_rgb: null, submodel: false },
-      {},
+      /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ deluxemap: null, lightdata: new Uint8Array(3), lightdata_rgb: null, submodel: false }),
+      /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ ({}),
       () => [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition],
     );
 
@@ -98,10 +98,10 @@ describe('BrushModelRenderer.resolveEntityLightingState', () => {
     assert.equal(lightingState.dynamicLightPosition, dynamicLightPosition);
   });
 
-  test('falls back to non-deluxemap lighting when the model has no deluxe data', () => {
+  void test('falls back to non-deluxemap lighting when the model has no deluxe data', () => {
     const lightingState = BrushModelRenderer.resolveEntityLightingState(
-      { deluxemap: null, lightdata: null, lightdata_rgb: null },
-      {},
+      /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ deluxemap: null, lightdata: null, lightdata_rgb: null, submodel: false }),
+      /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ ({}),
       () => [new Vector(), new Vector(), new Vector(), new Vector(), new Vector()],
     );
 
@@ -109,9 +109,9 @@ describe('BrushModelRenderer.resolveEntityLightingState', () => {
   });
 });
 
-describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
-  test('lifts dim no-lightmap turbulent samples toward nearby visible light', () => {
-    const face = {
+void describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
+  void test('lifts dim no-lightmap turbulent samples toward nearby visible light', () => {
+    const face = /** @type {import('../../source/engine/common/model/BaseModel.ts').Face} */ ({
       normal: new Vector(0, 0, 1),
       texinfo: 0,
       verts: [
@@ -119,10 +119,10 @@ describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
         [16, 0, 0],
         [16, 16, 0],
       ],
-    };
-    const model = {
+    });
+    const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ (/** @type {unknown} */ ({
       texinfo: [{ vecs: [[1, 0, 0, 0], [0, 1, 0, 0]] }],
-    };
+    }));
 
     const fallbackLight = BrushModelRenderer.sampleTurbulentFallbackLight(
       model,
@@ -145,7 +145,7 @@ describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
     assert.equal(fallbackLight[2] > 16 * 0.0078125, true);
   });
 
-  test('blends vertex fallback toward a face-level fallback to soften seams', () => {
+  void test('blends vertex fallback toward a face-level fallback to soften seams', () => {
     const blendedLight = BrushModelRenderer.blendTurbulentFallbackLight(
       [0.2, 0.1, 0.05],
       [0.4, 0.3, 0.2],
@@ -158,15 +158,15 @@ describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
   });
 });
 
-describe('BrushModelRenderer.getWorldTurbulentChains', () => {
-  test('sorts world turbulents by tight batch bounds instead of oversized leaf bounds', () => {
+void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
+  void test('sorts world turbulents by tight batch bounds instead of oversized leaf bounds', () => {
     const previousR = registry.R;
-    registry.R = {
+    registry.R = /** @type {typeof import('../../source/engine/client/R.ts').default} */ ({
       visframecount: 7,
       CullBox() {
         return false;
       },
-    };
+    });
     eventBus.publish('registry.frozen');
 
     try {
@@ -178,7 +178,7 @@ describe('BrushModelRenderer.getWorldTurbulentChains', () => {
         mins: new Vector(96, -8, -8),
         maxs: new Vector(128, 8, 8),
       };
-      const model = {
+      const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({
         leafs: [{
           visframe: 7,
           waterchain: 0,
@@ -187,7 +187,7 @@ describe('BrushModelRenderer.getWorldTurbulentChains', () => {
           mins: new Vector(-1024, -1024, -1024),
           maxs: new Vector(1024, 1024, 1024),
         }],
-      };
+      });
 
       const items = renderer.getWorldTurbulentChains(model, new Vector(0, 0, 0));
 
@@ -201,12 +201,12 @@ describe('BrushModelRenderer.getWorldTurbulentChains', () => {
   });
 });
 
-describe('SimpleSkyBox.shutdown', () => {
-  test('does not free shared sky face textures', () => {
-    const skybox = new SimpleSkyBox({ cmds: null, leafs: [], skychain: 0 });
+void describe('SimpleSkyBox.shutdown', () => {
+  void test('does not free shared sky face textures', () => {
+    const skybox = new SimpleSkyBox(/** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ ({ cmds: null, leafs: [], skychain: 0 }));
     const frees = [];
     const wraps = [];
-    const makeTexture = (name) => ({
+    const makeTexture = (name) => /** @type {import('../../source/engine/client/GL.ts').GLTexture} */ ({
       wrapClamped() {
         wraps.push(name);
       },

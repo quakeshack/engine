@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import R, { compareFogAndTurbulentItems } from '../../source/engine/client/R.mjs';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
-import Vector from '../../source/shared/Vector.mjs';
+import R, { compareFogAndTurbulentItems } from '../../source/engine/client/R.ts';
+import { eventBus, registry } from '../../source/engine/registry.ts';
+import Vector from '../../source/shared/Vector.ts';
 
-describe('compareFogAndTurbulentItems', () => {
-  test('sorts farther items first', () => {
+void describe('compareFogAndTurbulentItems', () => {
+  void test('sorts farther items first', () => {
     const result = compareFogAndTurbulentItems(
       { dist: 64, kind: 0 },
       { dist: 128, kind: 1 },
@@ -15,7 +15,7 @@ describe('compareFogAndTurbulentItems', () => {
     assert(result > 0);
   });
 
-  test('sorts fog before turbulent when their front depth ties', () => {
+  void test('sorts fog before turbulent when their front depth ties', () => {
     const fog = { dist: 96, kind: 1 };
     const turbulent = { dist: 96, kind: 0 };
     const items = [turbulent, fog];
@@ -25,7 +25,7 @@ describe('compareFogAndTurbulentItems', () => {
     assert.deepEqual(items, [fog, turbulent]);
   });
 
-  test('treats near-equal distances as a tie for boundary-sharing fog and water', () => {
+  void test('treats near-equal distances as a tie for boundary-sharing fog and water', () => {
     const fog = { dist: 96.00005, kind: 1 };
     const turbulent = { dist: 96.0, kind: 0 };
     const items = [turbulent, fog];
@@ -36,7 +36,7 @@ describe('compareFogAndTurbulentItems', () => {
   });
 });
 
-describe('R.GetEntityLightSamplePoint', () => {
+void describe('R.GetEntityLightSamplePoint', () => {
   // CR: this is currently not working, see original
   // test('derives alias sample height from negative mins to match classic Quake monsters', () => {
   //   const previousCL = registry.CL;
@@ -64,20 +64,20 @@ describe('R.GetEntityLightSamplePoint', () => {
   //   }
   // });
 
-  test('keeps brush and sprite entities on their true origin', () => {
+  void test('keeps brush and sprite entities on their true origin', () => {
     const previousCL = registry.CL;
     const previousMod = registry.Mod;
 
-    registry.CL = { state: { viewent: null } };
-    registry.Mod = { type: { alias: 2, brush: 1 } };
+    registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { viewent: null } });
+    registry.Mod = /** @type {typeof import('../../source/engine/common/Mod.ts').default} */ (/** @type {unknown} */ ({ type: { alias: 2, brush: 1 } }));
     eventBus.publish('registry.frozen');
 
     try {
-      const entity = {
+      const entity = /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ ({
         lerp: { origin: new Vector(-4, 8, 12) },
         model: { type: 1 },
         mins: new Vector(),
-      };
+      });
 
       const samplePoint = R.GetEntityLightSamplePoint(entity);
 

@@ -26,7 +26,7 @@ The WebRTC implementation allows clients to connect directly to each other for m
 
 ### Components
 
-1.  **WebRTCDriver (`engine/source/engine/network/NetworkDrivers.mjs`)**:
+1.  **WebRTCDriver (`engine/source/engine/network/NetworkDrivers.ts`)**:
     *   Implements the `BaseDriver` interface.
     *   Handles signaling handshake via WebSocket.
     *   Manages `RTCPeerConnection` and `RTCDataChannel`s.

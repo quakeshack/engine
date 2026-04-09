@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import Mod from '../../source/engine/common/Mod.mjs';
-import { AliasModel } from '../../source/engine/common/model/AliasModel.mjs';
-import { Face } from '../../source/engine/common/model/BaseModel.mjs';
-import { BrushModel, Node } from '../../source/engine/common/model/BSP.mjs';
-import { eventBus, registry } from '../../source/engine/registry.mjs';
-import Vector from '../../source/shared/Vector.mjs';
+import Mod, { ModelScope } from '../../source/engine/common/Mod.ts';
+import { AliasModel } from '../../source/engine/common/model/AliasModel.ts';
+import { Face } from '../../source/engine/common/model/BaseModel.ts';
+import { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';
+import { eventBus, registry } from '../../source/engine/registry.ts';
+import Vector from '../../source/shared/Vector.ts';
 
-/** @typedef {import('../../source/engine/common/model/BaseModel.mjs').BaseModel} BaseModel */
+/** @typedef {import('../../source/engine/common/model/BaseModel.ts').BaseModel} BaseModel */
 
 /**
  * @param {BaseModel|null} model model to narrow
@@ -41,7 +41,7 @@ async function withModelRegistry(callback) {
   const previousPendingLoads = { ...Mod.pendingLoads };
 
   registry.isDedicatedServer = true;
-  registry.Con = /** @type {typeof import('../../source/engine/common/Console.mjs').default} */ ({
+  registry.Con = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
     Print() {},
     DPrint() {},
     PrintWarning() {},
@@ -60,7 +60,7 @@ async function withModelRegistry(callback) {
     const previousMod = previousRegistry.Mod;
     const previousIsDedicatedServer = previousRegistry.isDedicatedServer;
 
-    Mod.ClearAll(Mod.scope.shared);
+    Mod.ClearAll(ModelScope.shared);
 
     for (const name of Object.keys(Mod.known)) {
       delete Mod.known[name];
@@ -180,18 +180,18 @@ function createSharedAliasModel() {
   return aliasModel;
 }
 
-describe('Mod scoped model cache', () => {
-  test('separates client and server submodel instances while reusing shared BSP data', async () => {
+void describe('Mod scoped model cache', () => {
+  void test('separates client and server submodel instances while reusing shared BSP data', async () => {
     await withModelRegistry(async () => {
       const { worldModel, submodel } = createSharedBrushModels();
 
-      const serverWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.server));
-      const clientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.client));
-      const sharedWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.shared));
+      const serverWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.server));
+      const clientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.client));
+      const sharedWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.shared));
 
-      const serverSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.server));
-      const clientSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.client));
-      const sharedSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.shared));
+      const serverSubmodel = asBrushModel(Mod.ForName('*1', ModelScope.server));
+      const clientSubmodel = asBrushModel(Mod.ForName('*1', ModelScope.client));
+      const sharedSubmodel = asBrushModel(Mod.ForName('*1', ModelScope.shared));
 
       assert.equal(sharedWorld, worldModel);
       assert.equal(sharedSubmodel, null);
@@ -211,30 +211,30 @@ describe('Mod scoped model cache', () => {
       assert.equal(clientSubmodel.edges.length > 0, true);
       assert.equal(clientSubmodel.surfedges.length > 0, true);
 
-      Mod.ClearAll(Mod.scope.server);
+      Mod.ClearAll(ModelScope.server);
 
-      const refreshedServerSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.server));
+      const refreshedServerSubmodel = asBrushModel(Mod.ForName('*1', ModelScope.server));
       assert.equal(refreshedServerSubmodel, null);
-      assert.equal(Mod.ForName('*1', Mod.scope.client), clientSubmodel);
-      assert.equal(Mod.ForName('*1', Mod.scope.shared), null);
+      assert.equal(Mod.ForName('*1', ModelScope.client), clientSubmodel);
+      assert.equal(Mod.ForName('*1', ModelScope.shared), null);
 
-      Mod.ClearAll(Mod.scope.client);
+      Mod.ClearAll(ModelScope.client);
 
-      const refreshedClientSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.client));
+      const refreshedClientSubmodel = asBrushModel(Mod.ForName('*1', ModelScope.client));
       assert.equal(refreshedClientSubmodel, null);
     });
   });
 
-  test('keeps bare submodel names scoped to their owning world per side', async () => {
+  void test('keeps bare submodel names scoped to their owning world per side', async () => {
     await withModelRegistry(async () => {
       const { worldModel: serverWorldShared } = createSharedBrushModelsForWorld('maps/server-test.bsp', 64);
       const { worldModel: clientWorldShared } = createSharedBrushModelsForWorld('maps/client-test.bsp', 256);
 
-      const serverWorld = asBrushModel(await Mod.ForNameAsync(serverWorldShared.name, true, Mod.scope.server));
-      const clientWorld = asBrushModel(await Mod.ForNameAsync(clientWorldShared.name, true, Mod.scope.client));
+      const serverWorld = asBrushModel(await Mod.ForNameAsync(serverWorldShared.name, true, ModelScope.server));
+      const clientWorld = asBrushModel(await Mod.ForNameAsync(clientWorldShared.name, true, ModelScope.client));
 
-      const serverSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.server));
-      const clientSubmodel = asBrushModel(Mod.ForName('*1', Mod.scope.client));
+      const serverSubmodel = asBrushModel(Mod.ForName('*1', ModelScope.server));
+      const clientSubmodel = asBrushModel(Mod.ForName('*1', ModelScope.client));
 
       assert.equal(serverSubmodel.vertexes, serverWorld.vertexes);
       assert.equal(clientSubmodel.vertexes, clientWorld.vertexes);
@@ -244,34 +244,34 @@ describe('Mod scoped model cache', () => {
     });
   });
 
-  test('keeps shared alias vertex buffers visible to scoped views', async () => {
+  void test('keeps shared alias vertex buffers visible to scoped views', async () => {
     await withModelRegistry(async () => {
       const sharedAliasModel = createSharedAliasModel();
 
-      const clientAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, Mod.scope.client));
-      const serverAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, Mod.scope.server));
+      const clientAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, ModelScope.client));
+      const serverAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, ModelScope.server));
 
       assert.notEqual(clientAliasModel, sharedAliasModel);
       assert.notEqual(serverAliasModel, sharedAliasModel);
       assert.equal(clientAliasModel.cmds, sharedAliasModel.cmds);
       assert.equal(serverAliasModel.cmds, sharedAliasModel.cmds);
 
-      Mod.ClearAll(Mod.scope.client);
+      Mod.ClearAll(ModelScope.client);
 
       assert.equal(sharedAliasModel.cmds !== null, true);
 
-      const refreshedClientAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, Mod.scope.client));
+      const refreshedClientAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, ModelScope.client));
       assert.equal(refreshedClientAliasModel.cmds, sharedAliasModel.cmds);
     });
   });
 
-  test('resets shared brush leaf runtime state before rebuilding a scoped client view', async () => {
+  void test('resets shared brush leaf runtime state before rebuilding a scoped client view', async () => {
     await withModelRegistry(async () => {
       const { worldModel } = createSharedBrushModels();
 
-      const clientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.client));
-      const serverWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.server));
-      const sharedWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.shared));
+      const clientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.client));
+      const serverWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.server));
+      const sharedWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.shared));
 
       assert.equal(clientWorld.nodes[0], sharedWorld.nodes[0]);
       assert.equal(clientWorld.leafs[0], sharedWorld.leafs[0]);
@@ -292,9 +292,9 @@ describe('Mod scoped model cache', () => {
       assert.equal(sharedWorld.leafs[0].waterchain, 3);
       assert.equal(sharedWorld.leafs[0].mins[0], -128);
 
-      Mod.ClearAll(Mod.scope.client);
+      Mod.ClearAll(ModelScope.client);
 
-      const refreshedClientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.client));
+      const refreshedClientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.client));
 
       assert.notEqual(refreshedClientWorld, clientWorld);
       assert.equal(refreshedClientWorld.nodes[0], clientWorld.nodes[0]);
@@ -317,15 +317,15 @@ describe('Mod scoped model cache', () => {
     });
   });
 
-  test('clears shared and scoped caches together when clearing shared scope', async () => {
+  void test('clears shared and scoped caches together when clearing shared scope', async () => {
     await withModelRegistry(async () => {
       const { worldModel } = createSharedBrushModels();
       const sharedAliasModel = createSharedAliasModel();
 
-      const clientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.client));
-      const serverWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, Mod.scope.server));
-      const clientAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, Mod.scope.client));
-      const serverAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, Mod.scope.server));
+      const clientWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.client));
+      const serverWorld = asBrushModel(await Mod.ForNameAsync(worldModel.name, true, ModelScope.server));
+      const clientAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, ModelScope.client));
+      const serverAliasModel = asAliasModel(await Mod.ForNameAsync(sharedAliasModel.name, true, ModelScope.server));
 
       assert.equal(clientWorld !== null, true);
       assert.equal(serverWorld !== null, true);
@@ -335,16 +335,16 @@ describe('Mod scoped model cache', () => {
       assert.equal(Object.keys(Mod.clientKnown).length > 0, true);
       assert.equal(Object.keys(Mod.serverKnown).length > 0, true);
 
-      Mod.ClearAll(Mod.scope.shared);
+      Mod.ClearAll(ModelScope.shared);
 
       assert.deepEqual(Object.keys(Mod.known), []);
       assert.deepEqual(Object.keys(Mod.clientKnown), []);
       assert.deepEqual(Object.keys(Mod.serverKnown), []);
-      assert.equal(Mod.ResolveScopedModel(worldModel.name, Mod.scope.shared), null);
-      assert.equal(Mod.ForName('*1', Mod.scope.client), null);
-      assert.equal(Mod.ForName('*1', Mod.scope.server), null);
-      assert.equal(Mod.ResolveScopedModel(sharedAliasModel.name, Mod.scope.client), null);
-      assert.equal(Mod.ResolveScopedModel(sharedAliasModel.name, Mod.scope.server), null);
+      assert.equal(Mod.ResolveScopedModel(worldModel.name, ModelScope.shared), null);
+      assert.equal(Mod.ForName('*1', ModelScope.client), null);
+      assert.equal(Mod.ForName('*1', ModelScope.server), null);
+      assert.equal(Mod.ResolveScopedModel(sharedAliasModel.name, ModelScope.client), null);
+      assert.equal(Mod.ResolveScopedModel(sharedAliasModel.name, ModelScope.server), null);
     });
   });
 });
