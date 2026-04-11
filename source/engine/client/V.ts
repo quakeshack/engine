@@ -1,7 +1,7 @@
 type ColorShift = [number, number, number, number];
 
 import Vector from '../../shared/Vector.ts';
-import { content, gameCapabilities } from '../../shared/Defs.ts';
+import { content } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import * as Def from '../common/Def.ts';
@@ -368,12 +368,6 @@ export default class V {
       V.dmg_time -= Host.frametime;
     }
 
-    if (CL.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_LEGACY)) {
-      if (CL.state.stats[Def.stat.health] <= 0) {
-        R.refdef.viewangles[2] = 80.0;
-      }
-    }
-
     const ipitch = V.idlescale.value * Math.sin(CL.state.time * V.ipitch_cycle.value) * V.ipitch_level.value;
     const iyaw = V.idlescale.value * Math.sin(CL.state.time * V.iyaw_cycle.value) * V.iyaw_level.value;
     const iroll = V.idlescale.value * Math.sin(CL.state.time * V.iroll_cycle.value) * V.iroll_level.value;
@@ -423,15 +417,15 @@ export default class V {
         view.origin[2] += 0.5;
     }
 
-    if (CL.gameCapabilities.includes(gameCapabilities.CAP_VIEWMODEL_MANAGED) && CL.state.gameAPI) {
-      const viewmodel = CL.state.gameAPI.viewmodel!;
-      console.assert(viewmodel !== null, 'Viewmodel is required for view calculations');
+    const viewmodel = CL.state.gameAPI?.viewmodel ?? null;
+
+    if (viewmodel !== null) {
       view.model = viewmodel.model;
       view.frame = viewmodel.frame;
       // visibility is considered by R.DrawViewModel
     } else {
-      view.model = CL.state.model_precache[CL.state.stats[Def.stat.weapon]];
-      view.frame = CL.state.stats[Def.stat.weaponframe];
+      view.model = null;
+      view.frame = 0;
     }
 
     // allow lerping viewmodel by heuristic

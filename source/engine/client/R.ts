@@ -8,7 +8,7 @@ import Chase from './Chase.ts';
 import W from '../common/W.ts';
 import VID from './VID.ts';
 import GL, { ATTRIB_LOCATIONS, GLTexture } from './GL.ts';
-import { content, effect, gameCapabilities } from '../../shared/Defs.ts';
+import { content, effect } from '../../shared/Defs.ts';
 import { modelRendererRegistry } from './renderer/ModelRendererRegistry.ts';
 import { BrushModelRenderer, LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from './renderer/BrushModelRenderer.ts';
 import { AliasModelRenderer } from './renderer/AliasModelRenderer.ts';
@@ -1175,33 +1175,18 @@ class R {
       return;
     }
 
-    if (!CL.gameCapabilities.includes(gameCapabilities.CAP_VIEWMODEL_MANAGED)) {
-      const viewent = CL.state.viewent!;
-      console.assert(viewent !== null, 'view entity required');
+    const viewmodel = CL.state.gameAPI?.viewmodel ?? null;
 
-      if ((CL.state.items & Def.it.invisibility) !== 0) { // Legacy
-        return;
-      }
-      if (CL.state.stats[Def.stat.health] <= 0) { // Legacy
-        return;
-      }
-      if (!viewent.model) {
-        return;
-      }
-    } else if (CL.state.gameAPI) {
-      const viewmodel = CL.state.gameAPI.viewmodel;
+    if (viewmodel === null) {
+      return;
+    }
 
-      if (viewmodel === null) {
-        return;
-      }
+    if (!viewmodel.visible) {
+      return; // game says to not draw the view model
+    }
 
-      if (!viewmodel.visible) {
-        return; // game says to not draw the view model
-      }
-
-      if (!viewmodel.model) {
-        return; // no model to draw
-      }
+    if (!viewmodel.model) {
+      return; // no model to draw
     }
 
     gl.depthRange(0.0, 0.3);

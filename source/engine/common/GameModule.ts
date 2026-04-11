@@ -25,16 +25,7 @@ interface GameModuleContractCandidate {
 
 type GameModuleLoader = () => Promise<GameModuleInterface>;
 
-const requiredGameModuleCapabilities = [
-  gameCapabilities.CAP_CLIENTDATA_DYNAMIC,
-  gameCapabilities.CAP_SPAWNPARMS_DYNAMIC,
-] as const;
-
-const unsupportedLegacyGameModuleCapabilities = [
-  gameCapabilities.CAP_CLIENTDATA_UPDATESTAT,
-  gameCapabilities.CAP_CLIENTDATA_LEGACY,
-  gameCapabilities.CAP_SPAWNPARMS_LEGACY,
-] as const;
+const supportedGameModuleCapabilities = new Set<string>(Object.values(gameCapabilities));
 
 let { COM, Con } = getCommonRegistry();
 
@@ -92,17 +83,11 @@ export function validateGameModuleContract(gameModule: unknown): GameModuleInter
     throw new TypeError('Game module identification must export capabilities.');
   }
 
-  const capabilities = identification.capabilities as gameCapabilities[];
-  const missingCapabilities = requiredGameModuleCapabilities.filter((capability) => !capabilities.includes(capability));
+  const capabilities = identification.capabilities as string[];
+  const unsupportedCapabilities = capabilities.filter((capability) => !supportedGameModuleCapabilities.has(capability));
 
-  if (missingCapabilities.length > 0) {
-    throw new TypeError(`Game module must enable ${missingCapabilities.join(', ')}.`);
-  }
-
-  const legacyCapabilities = unsupportedLegacyGameModuleCapabilities.filter((capability) => capabilities.includes(capability));
-
-  if (legacyCapabilities.length > 0) {
-    throw new TypeError(`Game module must not enable legacy capabilities: ${legacyCapabilities.join(', ')}.`);
+  if (unsupportedCapabilities.length > 0) {
+    throw new TypeError(`Game module exports unsupported capabilities: ${unsupportedCapabilities.join(', ')}.`);
   }
 
   if (typeof candidate.ServerGameAPI !== 'function') {

@@ -8,10 +8,10 @@ import GL from './GL.ts';
 import VID from './VID.ts';
 import PostProcess from './renderer/PostProcess.ts';
 
-let { CL, Con, Draw, Host, Key, M, R, S, Sbar, V } = getClientRegistry();
+let { CL, Con, Draw, Host, Key, M, R, S, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Draw, Host, Key, M, R, S, Sbar, V } = getClientRegistry());
+  ({ CL, Con, Draw, Host, Key, M, R, S, V } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -47,6 +47,9 @@ export default class SCR {
 
   /** True when the crosshair should be suppressed (e.g. HUD includes its own crosshair). */
   static disableCrosshair = false;
+
+  /** Bottom-of-screen pixels reserved for HUD elements at the current view size. */
+  static hudReservedHeight = 0;
 
   static count = 0;
   static FPS = 0;
@@ -156,15 +159,15 @@ export default class SCR {
     if (CL.state.intermission !== 0) {
       full = true;
       size = 1.0;
-      Sbar.lines = 0;
+      SCR.hudReservedHeight = 0;
     } else {
       size = SCR.viewsize.value;
       if (size >= 120.0) {
-        Sbar.lines = 0;
+        SCR.hudReservedHeight = 0;
       } else if (size >= 110.0) {
-        Sbar.lines = 24;
+        SCR.hudReservedHeight = 24;
       } else {
-        Sbar.lines = 48;
+        SCR.hudReservedHeight = 48;
       }
       if (size >= 100.0) {
         full = true;
@@ -180,14 +183,14 @@ export default class SCR {
       vrect.width = 96;
     }
     vrect.height = Math.floor(VID.height * size);
-    if (vrect.height > (VID.height - Sbar.lines)) {
-      vrect.height = VID.height - Sbar.lines;
+    if (vrect.height > (VID.height - SCR.hudReservedHeight)) {
+      vrect.height = VID.height - SCR.hudReservedHeight;
     }
     vrect.x = (VID.width - vrect.width) / 2;
     if (full) {
       vrect.y = 0;
     } else {
-      vrect.y = (VID.height - Sbar.lines - vrect.height) / 2;
+      vrect.y = (VID.height - SCR.hudReservedHeight - vrect.height) / 2;
     }
 
     if (SCR.fov.value < 10) {
@@ -237,9 +240,6 @@ export default class SCR {
     SCR.net = Draw.LoadPicFromWad('NET');
     SCR.turtle = Draw.LoadPicFromWad('TURTLE');
     SCR.pause = Draw.LoadPicFromLumpDeferred('pause');
-    SCR.crosshair = new Cvar('crosshair', '0', Cvar.FLAG.ARCHIVE);
-    SCR.crossx = new Cvar('cl_crossx', '0', Cvar.FLAG.ARCHIVE);
-    SCR.crossy = new Cvar('cl_crossy', '0', Cvar.FLAG.ARCHIVE);
     SCR.disableCrosshair = CL.gameCapabilities.includes(gameCapabilities.CAP_HUD_INCLUDES_CROSSHAIR);
   }
 
@@ -410,25 +410,8 @@ export default class SCR {
 
       if (CL.cls.state === clientConnectionState.connecting) {
         CL.Draw();
-      } else if ((CL.state.intermission === 1) && (Key.destination === KeyDestination.game)) {
-        if (!CL.sbarDisabled) {
-          Sbar.IntermissionOverlay();
-        } else {
-          CL.DrawHUD();
-        }
-      } else if ((CL.state.intermission === 2) && (Key.destination === KeyDestination.game)) {
-        if (!CL.sbarDisabled) {
-          Sbar.FinaleOverlay();
-          SCR.DrawCenterString();
-        } else {
-          CL.DrawHUD();
-        }
-      } else if ((CL.state.intermission === 3) && (Key.destination === KeyDestination.game)) {
-        if (!CL.sbarDisabled) {
-          SCR.DrawCenterString();
-        } else {
-          CL.DrawHUD();
-        }
+      } else if ((CL.state.intermission !== 0) && (Key.destination === KeyDestination.game)) {
+        CL.DrawHUD();
       } else {
         if (!SCR.disableCrosshair && SCR.crosshair.value !== 0) {
           Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width / 2) + SCR.crossx.value,

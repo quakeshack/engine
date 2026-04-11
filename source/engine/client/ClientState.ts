@@ -17,12 +17,6 @@ type ClientConnectionProgress = {
   percentage: number;
 };
 
-type ClientChatMessage = {
-  name: string;
-  message: string;
-  direct: boolean;
-};
-
 type ClientEntityFieldDefinition = {
   fields: string[];
   bitsReader: 'readByte' | 'readShort' | 'readLong';
@@ -205,7 +199,6 @@ class ClientRuntimeState {
   viewent: ClientEdict | null = null;
   cdtrack = 0;
   looptrack = 0;
-  chatlog: ClientChatMessage[] = [];
   model_precache: BaseModel[] = [];
   sound_precache: SFX[] = [];
   levelname: string | null = null;
@@ -294,7 +287,6 @@ class ClientRuntimeState {
     this.viewent = new ClientEdict(-1);
     this.cdtrack = 0;
     this.looptrack = 0;
-    this.chatlog.length = 0;
     this.model_precache.length = 0;
     this.sound_precache.length = 0;
     this.levelname = null;

@@ -13,10 +13,7 @@ function createGameModule(overrides = {}) {
       name: 'Test Game',
       author: 'test',
       version: [1, 0, 0],
-      capabilities: [
-        gameCapabilities.CAP_CLIENTDATA_DYNAMIC,
-        gameCapabilities.CAP_SPAWNPARMS_DYNAMIC,
-      ],
+      capabilities: [],
     },
     ServerGameAPI: DummyServerGameAPI,
     ClientGameAPI: DummyClientGameAPI,
@@ -40,39 +37,34 @@ void describe('validateGameModuleContract', () => {
     );
   });
 
-  void test('rejects a game module without dynamic clientdata support', () => {
+  void test('accepts a game module that opts into supported optional capabilities', () => {
     const gameModule = createGameModule({
       identification: {
         name: 'Test Game',
         author: 'test',
         version: [1, 0, 0],
-        capabilities: [gameCapabilities.CAP_SPAWNPARMS_DYNAMIC],
+        capabilities: [gameCapabilities.CAP_HUD_INCLUDES_CROSSHAIR],
       },
     });
 
-    assert.throws(
-      () => validateGameModuleContract(gameModule),
-      /CAP_CLIENTDATA_DYNAMIC/,
-    );
+    assert.equal(validateGameModuleContract(gameModule), gameModule);
   });
 
-  void test('rejects a game module that still enables legacy gameplay capabilities', () => {
+  void test('rejects a game module that still exports removed capabilities', () => {
     const gameModule = createGameModule({
       identification: {
         name: 'Test Game',
         author: 'test',
         version: [1, 0, 0],
         capabilities: [
-          gameCapabilities.CAP_CLIENTDATA_DYNAMIC,
-          gameCapabilities.CAP_SPAWNPARMS_DYNAMIC,
-          gameCapabilities.CAP_CLIENTDATA_LEGACY,
+          'CAP_HUD_INCLUDES_SBAR',
         ],
       },
     });
 
     assert.throws(
       () => validateGameModuleContract(gameModule),
-      /legacy capabilities/,
+      /unsupported capabilities/,
     );
   });
 });

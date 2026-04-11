@@ -1,7 +1,6 @@
 import Cvar from '../common/Cvar.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
-import { gameCapabilities } from '../../shared/Defs.ts';
 import ClientInput from './ClientInput.ts';
 import CL from './CL.ts';
 import { clientRuntimeState } from './ClientState.ts';
@@ -11,10 +10,10 @@ import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import type { SerializedParticle } from './R.ts';
 
-let { Host, S } = getClientRegistry();
+let { Host } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, S } = getClientRegistry());
+  ({ Host } = getClientRegistry());
 });
 
 /** The client game can tell the menu what to do when a new game is requested. */
@@ -46,9 +45,7 @@ export default class ClientLifecycle {
     this.#registerCommands();
     await clientRuntimeState.clientEntities.initTempEntities();
     CL.ConfigureConnectionIdentity({ name: CL.name, color: CL.color, rcon_password: CL.rcon_password });
-    CL.sfx_talk = S.PrecacheSound('misc/talk.wav');
     this.initGame();
-    CL.sbarDisabled = CL.gameCapabilities.includes(gameCapabilities.CAP_HUD_INCLUDES_SBAR);
   }
 
   static initGame(): void {

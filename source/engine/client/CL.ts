@@ -1,5 +1,3 @@
-import type { SFX } from './Sound.ts';
-
 import Q from '../../shared/Q.ts';
 import * as Def from '../common/Def.ts';
 import * as Protocol from '../network/Protocol.ts';
@@ -17,10 +15,10 @@ import ClientLifecycle from './ClientLifecycle.ts';
 import { BrushModel } from '../common/Mod.ts';
 // import { materialFlags, PBRMaterial, QuakeMaterial } from './renderer/Materials.mjs';
 
-let { Con, Draw, Host, S, Sbar } = getClientRegistry();
+let { Con, Draw, Host } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Draw, Host, S, Sbar } = getClientRegistry());
+  ({ Con, Draw, Host } = getClientRegistry());
 });
 
 export default class CL {
@@ -36,8 +34,6 @@ export default class CL {
   static #connection: ClientConnection;
 
   static gameCapabilities: gameCapabilities[] = [];
-
-  static sbarDisabled = false;
   static cls = clientStaticState;
   static state = clientRuntimeState;
   static svc_strings: Array<[string, number]> = [];
@@ -71,8 +67,6 @@ export default class CL {
   static nopred: Cvar = null!;
   static nohud: Cvar = null!;
   static areaportals: Cvar = null!;
-
-  static sfx_talk: SFX | null = null;
   static nullcmd = new Protocol.UserCmd();
 
   static StartDemos(demos: string[]): void {
@@ -337,10 +331,6 @@ export default class CL {
     if (this.state.gameAPI) {
       this.state.gameAPI.draw();
     }
-
-    if (!this.sbarDisabled) {
-      Sbar.Draw();
-    }
   }
 
   static ClientFrame(): void {
@@ -428,17 +418,6 @@ export default class CL {
 
   static AppendChatMessage(name: string, message: string, direct: boolean): void { // private // TODO: Client
     eventBus.publish('client.chat.message', name, message, direct);
-
-    if (this.gameCapabilities.includes(gameCapabilities.CAP_CHAT_MANAGED)) {
-      return;
-    }
-
-    if (this.state.chatlog.length > 5) {
-      this.state.chatlog.shift();
-    }
-
-    this.state.chatlog.push({ name, message, direct });
-    S.LocalSound(this.sfx_talk);
   }
 
   static PredictMove(): void { // public, by Host.js

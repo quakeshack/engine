@@ -2,7 +2,6 @@ import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
-import { gameCapabilities } from '../../shared/Defs.ts';
 import type { ClientGameInterface } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
 import GameModule from '../common/GameModule.ts';
@@ -154,41 +153,39 @@ function parseServerData() {
 
   CL.state.clientMessages.clientdataFields = clientdataFields;
 
-  if (CL.gameCapabilities.includes(gameCapabilities.CAP_ENTITY_EXTENDED)) {
-    while (true) {
-      const classname = NET.message.readString();
+  while (true) {
+    const classname = NET.message.readString();
 
-      if (classname === '') {
+    if (classname === '') {
+      break;
+    }
+
+    const fields: string[] = [];
+
+    while (true) {
+      const field = NET.message.readString();
+
+      if (field === '') {
         break;
       }
 
-      const fields: string[] = [];
+      fields.push(field);
+    }
 
-      while (true) {
-        const field = NET.message.readString();
+    let bitsReader: 'readByte' | 'readShort' | 'readLong';
 
-        if (field === '') {
-          break;
-        }
+    console.assert(fields.length <= 32, 'entity fields must not have more than 32 fields');
 
-        fields.push(field);
-      }
+    if (fields.length <= 8) {
+      bitsReader = 'readByte';
+    } else if (fields.length <= 16) {
+      bitsReader = 'readShort';
+    } else {
+      bitsReader = 'readLong';
+    }
 
-      let bitsReader: 'readByte' | 'readShort' | 'readLong';
-
-      console.assert(fields.length <= 32, 'entity fields must not have more than 32 fields');
-
-      if (fields.length <= 8) {
-        bitsReader = 'readByte';
-      } else if (fields.length <= 16) {
-        bitsReader = 'readShort';
-      } else {
-        bitsReader = 'readLong';
-      }
-
-      if (fields.length > 0) {
-        CL.state.clientEntityFields[classname] = { fields, bitsReader };
-      }
+    if (fields.length > 0) {
+      CL.state.clientEntityFields[classname] = { fields, bitsReader };
     }
   }
 
@@ -584,34 +581,32 @@ function parsePacketEntities() {
       clent.nextthink = CL.state.clientMessages.mtime[0] + NET.message.readByte() / 255.0;
     }
 
-    if (CL.gameCapabilities.includes(gameCapabilities.CAP_ENTITY_EXTENDED)) {
-      const classname = clent.classname;
-      const clientEntityFields = classname !== null ? CL.state.clientEntityFields[classname] : undefined;
-      if (clientEntityFields) {
-        // TODO: optimize this
-        const fieldbits = clientEntityFields.bitsReader === 'readByte'
-          ? NET.message.readByte()
-          : clientEntityFields.bitsReader === 'readShort'
-            ? NET.message.readShort()
-            : NET.message.readLong();
+    const classname = clent.classname;
+    const clientEntityFields = classname !== null ? CL.state.clientEntityFields[classname] : undefined;
+    if (clientEntityFields) {
+      // TODO: optimize this
+      const fieldbits = clientEntityFields.bitsReader === 'readByte'
+        ? NET.message.readByte()
+        : clientEntityFields.bitsReader === 'readShort'
+          ? NET.message.readShort()
+          : NET.message.readLong();
 
-        if (fieldbits > 0) {
-          const fields = [];
+      if (fieldbits > 0) {
+        const fields = [];
 
-          for (let i = 0; i < clientEntityFields.fields.length; i++) {
-            const field = clientEntityFields.fields[i];
-            if ((fieldbits & (1 << i)) !== 0) {
-              fields.push(field);
-            }
+        for (let i = 0; i < clientEntityFields.fields.length; i++) {
+          const field = clientEntityFields.fields[i];
+          if ((fieldbits & (1 << i)) !== 0) {
+            fields.push(field);
           }
+        }
 
-          let counter = 0;
+        let counter = 0;
 
-          const values = NET.message.readSerializablesOnClient();
+        const values = NET.message.readSerializablesOnClient();
 
-          for (const value of values) {
-            clent.extended[fields[counter++]] = value;
-          }
+        for (const value of values) {
+          clent.extended[fields[counter++]] = value;
         }
       }
     }

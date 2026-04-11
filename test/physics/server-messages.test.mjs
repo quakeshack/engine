@@ -88,4 +88,38 @@ void describe('ServerMessages.writeDeltaEntity', () => {
       context.restore();
     }
   });
+
+  void test('writes extended entity field payloads without a capability flag', () => {
+    const context = installWriteDeltaEntityContext();
+
+    try {
+      SV.server.clientEntityFields = {
+        monster_ogre: {
+          fields: ['scale'],
+          bitsWriter: 'writeByte',
+        },
+      };
+
+      const messages = new ServerMessages();
+      const from = new ServerEntityState(1);
+      const to = new ServerEntityState(1);
+      const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity extended fields');
+
+      from.classname = 'monster_ogre';
+      to.classname = 'monster_ogre';
+      to.effects = 2;
+      to.extended.scale = 7;
+
+      assert.equal(messages.writeDeltaEntity(buffer, from, to), true);
+
+      const view = new DataView(buffer.data);
+      assert.equal(view.getUint8(4), 2);
+      assert.equal(view.getUint8(5), 255);
+      assert.equal(view.getUint8(6), 1);
+      assert.equal(view.getUint8(7), Protocol.serializableTypes.byte);
+      assert.equal(view.getUint8(8), 7);
+    } finally {
+      context.restore();
+    }
+  });
 });

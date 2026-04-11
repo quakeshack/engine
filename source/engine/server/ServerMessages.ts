@@ -205,16 +205,14 @@ export class ServerMessages {
     }
     message.writeByte(0);
 
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_EXTENDED)) {
-      for (const [classname, { fields }] of Object.entries(SV.server.clientEntityFields)) {
-        message.writeString(classname);
-        for (const field of fields) {
-          message.writeString(field);
-        }
-        message.writeByte(0);
+    for (const [classname, { fields }] of Object.entries(SV.server.clientEntityFields)) {
+      message.writeString(classname);
+      for (const field of fields) {
+        message.writeString(field);
       }
       message.writeByte(0);
     }
+    message.writeByte(0);
 
     // sounds on worldspawn defines the cd track
     const cdtrack = worldspawnEntity.sounds;
@@ -526,29 +524,27 @@ export class ServerMessages {
       msg.writeByte(to.nextthink - from.nextthink < 0.250 ? Math.min(255, (to.nextthink - from.nextthink) * 255.0) : 0);
     }
 
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_EXTENDED)) {
-      if (SV.server.clientEntityFields[to.classname!]) {
-        const entityFields = SV.server.clientEntityFields[to.classname!];
-        const fields = entityFields.fields;
-        const bitsWriter = entityFields.bitsWriter as BitsWriter | null;
+    if (SV.server.clientEntityFields[to.classname!]) {
+      const entityFields = SV.server.clientEntityFields[to.classname!];
+      const fields = entityFields.fields;
+      const bitsWriter = entityFields.bitsWriter as BitsWriter | null;
 
-        let fieldbits = 0;
-        const values = [];
+      let fieldbits = 0;
+      const values = [];
 
-        for (const field of fields) {
-          if (from.extended[field] !== to.extended[field]) {
-            fieldbits |= 1 << fields.indexOf(field);
-            values.push(to.extended[field]);
-          }
+      for (const field of fields) {
+        if (from.extended[field] !== to.extended[field]) {
+          fieldbits |= 1 << fields.indexOf(field);
+          values.push(to.extended[field]);
         }
+      }
 
-        if (bitsWriter) {
-          msg[bitsWriter](fieldbits);
-        }
+      if (bitsWriter) {
+        msg[bitsWriter](fieldbits);
+      }
 
-        if (bitsWriter && fieldbits > 0) {
-          msg.writeSerializables(values);
-        }
+      if (bitsWriter && fieldbits > 0) {
+        msg.writeSerializables(values);
       }
     }
 
@@ -592,18 +588,16 @@ export class ServerMessages {
       toState.mins.set(entity.mins);
       toState.nextthink = entity.nextthink || 0;
 
-      if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_EXTENDED)) {
-        if (SV.server.clientEntityFields[entity.classname]) {
-          const entityFields = SV.server.clientEntityFields[entity.classname];
-          const fields = entityFields.fields;
-          const serializableEntity = entity as ServerMessageEntity & Record<string, DynamicEntityFieldValue>;
+      if (SV.server.clientEntityFields[entity.classname]) {
+        const entityFields = SV.server.clientEntityFields[entity.classname];
+        const fields = entityFields.fields;
+        const serializableEntity = entity as ServerMessageEntity & Record<string, DynamicEntityFieldValue>;
 
-          for (const field of fields) {
-            const value = serializableEntity[field];
+        for (const field of fields) {
+          const value = serializableEntity[field];
 
-            if (value !== undefined) {
-              toState.extended[field] = value;
-            }
+          if (value !== undefined) {
+            toState.extended[field] = value;
           }
         }
       }

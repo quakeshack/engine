@@ -837,28 +837,30 @@ export default class SV {
   }
 
   static #setupExtendedEntityFields(): void {
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_EXTENDED)) {
-      console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
-      const fields = SV.server.gameAPI!.getClientEntityFields();
+    console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
+    const fields = SV.server.gameAPI!.getClientEntityFields();
 
-      for (const [classname, extendedFields] of Object.entries(fields)) {
-        const clientEntityField: ClientEntityFieldConfig = {
-          fields: [],
-          bitsWriter: null,
-        };
+    for (const key of Object.keys(SV.server.clientEntityFields)) {
+      delete SV.server.clientEntityFields[key];
+    }
 
-        clientEntityField.fields.push(...extendedFields);
+    for (const [classname, extendedFields] of Object.entries(fields)) {
+      const clientEntityField: ClientEntityFieldConfig = {
+        fields: [],
+        bitsWriter: null,
+      };
 
-        if (extendedFields.length <= 8) {
-          clientEntityField.bitsWriter = 'writeByte';
-        } else if (extendedFields.length <= 16) {
-          clientEntityField.bitsWriter = 'writeShort';
-        } else if (extendedFields.length <= 32) {
-          clientEntityField.bitsWriter = 'writeLong';
-        }
+      clientEntityField.fields.push(...extendedFields);
 
-        SV.server.clientEntityFields[classname] = clientEntityField;
+      if (extendedFields.length <= 8) {
+        clientEntityField.bitsWriter = 'writeByte';
+      } else if (extendedFields.length <= 16) {
+        clientEntityField.bitsWriter = 'writeShort';
+      } else if (extendedFields.length <= 32) {
+        clientEntityField.bitsWriter = 'writeLong';
       }
+
+      SV.server.clientEntityFields[classname] = clientEntityField;
     }
 
     Con.DPrint('Extended entity fields setup complete\n');

@@ -9,7 +9,6 @@ import R from './client/R.ts';
 import S from './client/Sound.ts';
 import Sys from './client/Sys.ts';
 import V from './client/V.ts';
-import Sbar from './client/Sbar.ts';
 import SCR from './client/SCR.ts';
 import COM from './common/Com.ts';
 import Con from './common/Console.ts';
@@ -48,7 +47,6 @@ export default class EngineLauncher {
     registry.R = R;
     registry.M = M;
     registry.SCR = SCR;
-    registry.Sbar = Sbar;
     registry.IN = IN;
 
     // registry is ready

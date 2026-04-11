@@ -13,7 +13,6 @@ type ScrModule = typeof import('./client/SCR.ts').default;
 type RendererModule = typeof import('./client/R.ts').default;
 type DrawModule = typeof import('./client/Draw.ts').default;
 type KeyModule = typeof import('./client/Key.ts').default;
-type SbarModule = typeof import('./client/Sbar.ts').default;
 type SoundModule = typeof import('./client/Sound.ts').default;
 type MenuModule = typeof import('./client/Menu.ts').default;
 type InputModule = typeof import('./client/IN.ts').default;
@@ -49,7 +48,6 @@ export interface Registry {
   SCR: ScrModule | undefined;
   Key: KeyModule | undefined;
   IN: InputModule | undefined;
-  Sbar: SbarModule | undefined;
   S: SoundModule | undefined;
   M: MenuModule | undefined;
   WebSocket: WebSocketDependency | undefined;
@@ -85,7 +83,6 @@ export interface ClientRegistry extends CommonRegistry {
   M: MenuModule;
   R: RendererModule;
   S: SoundModule;
-  Sbar: SbarModule;
   SCR: ScrModule;
   urls: URLs;
   buildConfig: BuildConfig;
@@ -107,7 +104,6 @@ export const registry: Registry = {
   SCR: undefined,
   Key: undefined,
   IN: undefined,
-  Sbar: undefined,
   S: undefined,
   M: undefined,
   WebSocket: undefined,

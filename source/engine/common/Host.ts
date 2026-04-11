@@ -28,18 +28,18 @@ import VID from '../client/VID.ts';
 import { HostError } from './Errors.ts';
 import CDAudio from '../client/CDAudio.ts';
 import * as Defs from '../../shared/Defs.ts';
-import { content, gameCapabilities } from '../../shared/Defs.ts';
+import { content } from '../../shared/Defs.ts';
 import ClientLifecycle from '../client/ClientLifecycle.ts';
 import GameModule from './GameModule.ts';
 import { Pmove } from './Pmove.ts';
 import { ModelScope, ModelType } from './Mod.ts';
 
 let { COM, Con, Mod, NET, SV, Sys, V } = getCommonRegistry();
-let { CL, Draw, IN, Key, M, R, S, SCR, Sbar } = getClientRegistry();
+let { CL, Draw, IN, Key, M, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
   ({ COM, Con, Mod, NET, SV, Sys, V } = getCommonRegistry());
-  ({ CL, Draw, IN, Key, M, R, S, SCR, Sbar } = getClientRegistry());
+  ({ CL, Draw, IN, Key, M, R, S, SCR } = getClientRegistry());
 });
 
 type DeferredCallback = () => void | Promise<void>;
@@ -640,10 +640,6 @@ export default class Host {
       await CL.Init();
       SCR.Init();
       CDAudio.Init();
-
-      if (!CL.gameCapabilities.includes(gameCapabilities.CAP_HUD_INCLUDES_SBAR)) {
-        await Sbar.Init();
-      }
 
       IN.Init();
     }

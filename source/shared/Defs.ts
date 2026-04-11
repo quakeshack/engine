@@ -231,26 +231,8 @@ export enum clientStat {
  * Feature flags for the game code (both server and client).
  */
 export enum gameCapabilities {
-  /** this will read total_secrets, total_monsters, found_secrets, killed_monsters being sent via updatestat and let the client write them to CL.state.stat */
-  CAP_CLIENTDATA_UPDATESTAT = 'CAP_CLIENTDATA_UPDATESTAT',
-  /** this will add items and ammo information to clientdata messages */
-  CAP_CLIENTDATA_LEGACY = 'CAP_CLIENTDATA_LEGACY',
-  /** this will transmit clientdataFields defined in the player entity to the client and automatically populate clientdata on the ClientGameAPI */
-  CAP_CLIENTDATA_DYNAMIC = 'CAP_CLIENTDATA_DYNAMIC',
-  /** will allow updating certain fields from server to client */
-  CAP_ENTITY_EXTENDED = 'CAP_ENTITY_EXTENDED',
-  /** the client game code brings its own status bar, in other words: no Sbar required! */
-  CAP_HUD_INCLUDES_SBAR = 'CAP_HUD_INCLUDES_SBAR',
   /** the client game code takes care of rendering crosshairs, in other words: V is not required to draw one! */
   CAP_HUD_INCLUDES_CROSSHAIR = 'CAP_HUD_INCLUDES_CROSSHAIR',
-  /** the client game manages the view model now, no longer the game code */
-  CAP_VIEWMODEL_MANAGED = 'CAP_VIEWMODEL_MANAGED',
-  /** no longer using SetNewParms, SetSpawnParms, SetChangeParms, parm0..15, but the new interfaces allowing for more flexibility */
-  CAP_SPAWNPARMS_DYNAMIC = 'CAP_SPAWNPARMS_DYNAMIC',
-  /** will use SetNewParms, SetSpawnParms, SetChangeParms, parm0..15, etc. */
-  CAP_SPAWNPARMS_LEGACY = 'CAP_SPAWNPARMS_LEGACY',
-  /** prevents chat messages from being handled by the engine, client code will handle that */
-  CAP_CHAT_MANAGED = 'CAP_CHAT_MANAGED',
   /** adds additional units to the bounding box during entity linking (e.g. for items additional 28 units in total per x/y axis) */
   CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK = 'CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK',
 }

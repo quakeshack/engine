@@ -1145,6 +1145,13 @@ export class ClientEngineAPI extends CommonEngineAPI {
     get intermission(): boolean {
       return CL.state.intermission > 0;
     },
+    /**
+     * Current intermission mode: 0 = none, 1 = map exit, 2 = finale, 3 = cutscene.
+     * @returns Current intermission mode.
+     */
+    get intermissionState(): number {
+      return CL.state.intermission;
+    },
     set intermission(value: boolean) {
       CL.state.intermission = value ? 1 : 0;
     },
@@ -1184,6 +1191,17 @@ export class ClientEngineAPI extends CommonEngineAPI {
      */
     get viewsize(): number {
       return (SCR as typeof SCR & { viewsize: Cvar }).viewsize.value as number;
+    },
+    /**
+     * @returns The current 3D view rectangle in screen coordinates.
+     */
+    get viewRect(): { x: number; y: number; width: number; height: number } {
+      return {
+        x: R.refdef.vrect.x,
+        y: R.refdef.vrect.y,
+        width: R.refdef.vrect.width,
+        height: R.refdef.vrect.height,
+      };
     },
   };
 
