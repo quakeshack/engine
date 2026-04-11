@@ -76,8 +76,6 @@ class ClientStaticState {
   lastcmdsent = 0;
   isLocalGame = false;
   movearound: ReturnType<typeof setInterval> | null = null;
-  /** will enable the legacy network protocol (15) for old demos */
-  legacy_demo = false;
   #clientDemos: ClientDemos | null = null;
   #runtimeState: ClientRuntimeState | null = null;
 
@@ -131,7 +129,6 @@ class ClientStaticState {
     this.message.clear();
     this.serverInfo = {};
     this.lastcmdsent = 0;
-    this.legacy_demo = false;
     if (this.movearound !== null) {
       clearInterval(this.movearound);
       this.movearound = null;

@@ -8,7 +8,6 @@ import NET from './network/Network.ts';
 import { freeze as registryFreeze, registry } from './registry.ts';
 import V from './client/V.ts';
 import NodeCOM from './server/Com.ts';
-import PR from './server/Progs.ts';
 import SV from './server/Server.ts';
 import Sys from './server/Sys.ts';
 
@@ -35,7 +34,6 @@ export default class EngineLauncher {
     registry.V = V;
     registry.NET = NET;
     registry.SV = SV;
-    registry.PR = PR;
     registry.Mod = Mod;
 
     // registry is ready

@@ -155,6 +155,33 @@ function resetClientConnectionState() {
 }
 
 void describe('ClientConnection', () => {
+  void test('marks loopback connects as local games', () => {
+    resetClientConnectionState();
+
+    const connectingSocket = {
+      state: QSocket.STATE_CONNECTING,
+      address: 'local',
+    };
+
+    void withMockClientRegistry(createMockClientRegistry({
+      NET: {
+        Connect() {
+          return connectingSocket;
+        },
+      },
+    }), () => {
+      const connection = new ClientConnection({ clientDemos: createMockClientDemos() });
+
+      connection.connect('local');
+
+      assert.equal(clientStaticState.isLocalGame, true);
+      assert.equal(clientStaticState.state, Def.clientConnectionState.connecting);
+      assert.equal(clientStaticState.netcon, connectingSocket);
+    });
+
+    resetClientConnectionState();
+  });
+
   void test('establishes a connection and transitions into the connected state', () => {
     resetClientConnectionState();
 

@@ -5,6 +5,7 @@ import { HostError } from '../common/Errors.ts';
 import { gameCapabilities } from '../../shared/Defs.ts';
 import type { ClientGameInterface } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
+import GameModule from '../common/GameModule.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
@@ -13,14 +14,12 @@ import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
 import type { SFX } from './Sound.ts';
 
-import { legacyServerCommandHandlers, handleLegacyEntityUpdate } from './LegacyServerCommands.ts';
-
 type ClientSignonState = 0 | 1 | 2 | 3 | 4;
 
-let { CL, Con, SCR, S, R, V, Host, SV, NET, Mod, PR, COM } = getClientRegistry();
+let { CL, Con, SCR, S, R, V, Host, NET, Mod } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, SCR, S, R, V, Host, SV, NET, Mod, PR, COM } = getClientRegistry());
+  ({ CL, Con, SCR, S, R, V, Host, NET, Mod } = getClientRegistry());
 });
 
 sharedCollisionModelSource.configureClient({
@@ -30,6 +29,20 @@ sharedCollisionModelSource.configureClient({
 
 /** Tracks entity updates during message parsing */
 let entitiesReceived = 0;
+
+/**
+ * Detects unsupported Protocol 15 / WinQuake serverdata payloads.
+ * @returns Whether the unread payload starts with a legacy Protocol 15 serverdata header.
+ */
+function isUnsupportedLegacyServerData(): boolean {
+  const remainingBytes = NET.message.cursize - NET.message.readcount;
+
+  if (remainingBytes < 4) {
+    return false;
+  }
+
+  return new DataView(NET.message.data, NET.message.readcount, remainingBytes).getInt32(0, true) === 15;
+}
 
 /**
  * Stores a loaded precache slice while preserving Quake's sparse slot indexing.
@@ -66,39 +79,29 @@ function parseServerData() {
     throw new HostError(`Server returned protocol version ${version}, not ${Protocol.version}\n`);
   }
 
-  const isHavingClientQuakeJS = NET.message.readByte() === 1;
+  Con.DPrint('Server is running a game module with ClientGameAPI provided.\n');
 
-  if (isHavingClientQuakeJS) {
-    Con.DPrint('Server is running QuakeJS with ClientGameAPI provided.\n');
+  const activeGameModule = GameModule.active;
 
-    if (!PR.QuakeJS?.ClientGameAPI) {
-      throw new HostError('Server is running QuakeJS with client code provided,\nbut client code is not imported.\nTry clearing your cache and connect again.');
-    }
-
-    const name = NET.message.readString();
-    const author = NET.message.readString();
-    const serverVersion = [NET.message.readByte(), NET.message.readByte(), NET.message.readByte()];
-
-    const identification = PR.QuakeJS.identification;
-
-    if (identification.name !== name || identification.author !== author) {
-      throw new HostError(`Cannot connect, game mismatch.\nThe server is running ${name}\nand you are running ${identification.name}.`);
-    }
-
-    if (!PR.QuakeJS.ClientGameAPI.IsServerCompatible(serverVersion)) {
-      throw new HostError(`Server (v${serverVersion.join('.')} ) is not compatible. You are running v${identification.version.join('.')}\nTry clearing your cache and connect again.`);
-    }
-
-    CL.state.gameAPI = Reflect.construct(PR.QuakeJS.ClientGameAPI, [ClientEngineAPI]) as ClientGameInterface;
-  } else {
-    const game = NET.message.readString();
-
-    if (game !== COM.game) {
-      throw new HostError(`Server is running game ${game}, not ${COM.game}\n`);
-    }
-
-    document.title = `${game} on ${Def.productName} (${Host.version!.string})`;
+  if (activeGameModule === null) {
+    throw new HostError('Server is running a game module with client code provided,\nbut no matching client game module is loaded.\nTry clearing your cache and connect again.');
   }
+
+  const name = NET.message.readString();
+  const author = NET.message.readString();
+  const serverVersion = [NET.message.readByte(), NET.message.readByte(), NET.message.readByte()];
+
+  const identification = activeGameModule.identification;
+
+  if (identification.name !== name || identification.author !== author) {
+    throw new HostError(`Cannot connect, game mismatch.\nThe server is running ${name}\nand you are running ${identification.name}.`);
+  }
+
+  if (!activeGameModule.ClientGameAPI.IsServerCompatible(serverVersion)) {
+    throw new HostError(`Server (v${serverVersion.join('.')} ) is not compatible. You are running v${identification.version.join('.')}\nTry clearing your cache and connect again.`);
+  }
+
+  CL.state.gameAPI = Reflect.construct(activeGameModule.ClientGameAPI, [ClientEngineAPI]) as ClientGameInterface;
 
   CL.state.maxclients = NET.message.readByte();
   if ((CL.state.maxclients <= 0) || (CL.state.maxclients > 32)) {
@@ -139,19 +142,17 @@ function parseServerData() {
     sound_precache[numsounds] = str;
   }
 
-  if (CL.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_DYNAMIC)) {
-    const clientdataFields: string[] = [];
+  const clientdataFields: string[] = [];
 
-    while (true) {
-      const fields = NET.message.readString();
-      if (fields === '') {
-        break;
-      }
-      clientdataFields.push(fields);
+  while (true) {
+    const fields = NET.message.readString();
+    if (fields === '') {
+      break;
     }
-
-    CL.state.clientMessages.clientdataFields = clientdataFields;
+    clientdataFields.push(fields);
   }
+
+  CL.state.clientMessages.clientdataFields = clientdataFields;
 
   if (CL.gameCapabilities.includes(gameCapabilities.CAP_ENTITY_EXTENDED)) {
     while (true) {
@@ -732,13 +733,8 @@ function handleDamage() {
 function handleServerData() {
   markRefdefDirty();
 
-  // peak into the serverdata message to detect legacy demos and route to the old handlers if needed
-  if (new DataView(NET.message.data).getUint32(1, true) === 15) {
-    const handleLegacyServerData = legacyServerCommandHandlers[Protocol.svc.serverdata];
-    if (handleLegacyServerData) {
-      handleLegacyServerData();
-      return;
-    }
+  if (isUnsupportedLegacyServerData()) {
+    throw new HostError('Protocol 15 / WinQuake serverdata is no longer supported.');
   }
 
   parseServerData();
@@ -917,32 +913,6 @@ function handleSignonNum() {
 }
 
 /**
- * Increments the monster kill statistic.
- */
-function handleKilledMonster() {
-  console.assert(SV.server.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_UPDATESTAT), 'killedmonster requires CAP_LEGACY_UPDATESTAT');
-  CL.state.stats[Def.stat.monsters]++;
-}
-
-/**
- * Increments the secret discovery statistic.
- */
-function handleFoundSecret() {
-  console.assert(SV.server.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_UPDATESTAT), 'foundsecret requires CAP_LEGACY_UPDATESTAT');
-  CL.state.stats[Def.stat.secrets]++;
-}
-
-/**
- * Updates an individual HUD/statistic entry.
- */
-function handleUpdateStat() {
-  console.assert(SV.server.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_UPDATESTAT), 'updatestat requires CAP_LEGACY_UPDATESTAT');
-  const index = NET.message.readByte();
-  console.assert(index >= 0 && index < CL.state.stats.length, 'updatestat must be in range');
-  CL.state.stats[index] = NET.message.readLong();
-}
-
-/**
  * Queues a static ambient sound.
  */
 function handleSpawnStaticSound() {
@@ -1079,9 +1049,6 @@ const serverCommandHandlers: Partial<Record<number, () => void>> = {
   [Protocol.svc.temp_entity]: handleTempEntity,
   [Protocol.svc.setpause]: handleSetPause,
   [Protocol.svc.signonnum]: handleSignonNum,
-  [Protocol.svc.killedmonster]: handleKilledMonster,
-  [Protocol.svc.foundsecret]: handleFoundSecret,
-  [Protocol.svc.updatestat]: handleUpdateStat,
   [Protocol.svc.spawnstaticsound]: handleSpawnStaticSound,
   [Protocol.svc.cdtrack]: handleCdTrack,
   [Protocol.svc.intermission]: handleIntermission,
@@ -1137,12 +1104,6 @@ export function parseServerMessage() {
       break;
     }
 
-    // legacy demo playback: high bit of command byte indicates an entity delta
-    if (CL.cls.legacy_demo && (cmd & 0x80)) {
-      handleLegacyEntityUpdate(cmd & 0x7F);
-      continue;
-    }
-
     const commandEntry = (CL.svc_strings ?? []).find(([, value]) => value === cmd);
 
     if (!commandEntry) {
@@ -1161,7 +1122,7 @@ export function parseServerMessage() {
       CL.connection.lastServerMessages.shift();
     }
 
-    const handler = (CL.cls.legacy_demo && legacyServerCommandHandlers[cmd]) ? legacyServerCommandHandlers[cmd] : serverCommandHandlers[cmd];
+    const handler = serverCommandHandlers[cmd];
 
     if (handler) {
       handler();

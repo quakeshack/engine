@@ -12,7 +12,7 @@ import * as Def from '../common/Def.ts';
 import * as Defs from '../../shared/Defs.ts';
 import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 import Q from '../../shared/Q.ts';
-import { ConsoleCommand } from '../common/Cmd.ts';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { ModelType } from '../common/Mod.ts';
 import { CorruptedResourceError, HostError } from '../common/Errors.ts';
 
@@ -79,13 +79,91 @@ export interface BaseEntity extends SerializableEntity {
 
 export type WorldspawnEntity = WorldspawnEntityValue;
 
-let { COM, Con, Host, NET, PR, SV } = getCommonRegistry();
+let { COM, Con, Host, NET, SV } = getCommonRegistry();
 let { CL } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
   ({ CL } = getClientRegistry());
-  ({ COM, Con, Host, NET, PR, SV } = getCommonRegistry());
+  ({ COM, Con, Host, NET, SV } = getCommonRegistry());
 });
+
+/** fields to hide from console output */
+const NON_PRINTABLE_ENTITY_FIELDS = new Set(['edict', 'engine', 'game']);
+
+/**
+ * Collects the field names worth printing for a live entity.
+ * @returns Sorted entity field names suitable for debug output.
+ */
+function getPrintableEntityFieldNames(entity: BaseEntity): string[] {
+  const fieldNames = new Set<string>();
+
+  for (const fieldName of Object.keys(entity)) {
+    if (NON_PRINTABLE_ENTITY_FIELDS.has(fieldName) || fieldName.startsWith('_')) {
+      continue;
+    }
+
+    fieldNames.add(fieldName);
+  }
+
+  return [...fieldNames].sort();
+}
+
+/**
+ * Formats a single entity field value for console output.
+ * @returns Readable string representation for console debugging.
+ */
+function formatPrintableEntityValue(value: unknown): string {
+  if (value === null) {
+    return 'null';
+  }
+
+  if (value === undefined) {
+    return 'undefined';
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  if (typeof value === 'bigint' || typeof value === 'symbol') {
+    return value.toString();
+  }
+
+  if (value instanceof Vector) {
+    return value.toString();
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => formatPrintableEntityValue(entry)).join(', ')}]`;
+  }
+
+  if (typeof value === 'object') {
+    const candidate = value as {
+      readonly classname?: unknown;
+      readonly edictId?: unknown;
+      readonly num?: unknown;
+      readonly constructor?: { readonly name?: unknown };
+    };
+
+    if (typeof candidate.classname === 'string') {
+      const entityId = typeof candidate.edictId === 'number' ? `#${candidate.edictId}` : '';
+      return `${candidate.classname}${entityId}`;
+    }
+
+    if (typeof candidate.num === 'number') {
+      return `edict #${candidate.num}`;
+    }
+
+    const constructorName = candidate.constructor?.name;
+    if (typeof constructorName === 'string' && constructorName !== 'Object') {
+      return `[${constructorName}]`;
+    }
+
+    return `[object ${(constructorName instanceof String) ? constructorName : 'Object'}]`;
+  }
+
+  return '[value]';
+}
 
 /**
  * Server-side edict allocation, parsing, and debugging helpers.
@@ -159,17 +237,20 @@ export class ED {
 
     Con.Print(`\nEDICT ${ed.num}:\n`);
 
-    for (let i = 1; i < PR.fielddefs.length; i++) {
-      const fieldDef = PR.fielddefs[i];
-      const name = PR.GetString(fieldDef.name);
+    if (entity === null) {
+      Con.Print('\nNULL ENTITY!\n');
+      return;
+    }
 
-      if (/_[xyz]$/.test(name)) {
+
+    for (const name of getPrintableEntityFieldNames(entity)) {
+      const printableValue = (entity as unknown as Record<string, unknown>)[name];
+
+      if (printableValue === undefined || typeof printableValue === 'function') {
         continue;
       }
 
-      const printableValue = (entity as BaseEntity & Record<string, string | number | boolean | Vector | BaseEntity | null | undefined>)[name];
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      Con.Print(`${name.padStart(24, '.')}: ${printableValue}\n`);
+      Con.Print(`${name.padStart(24, '.')}: ${formatPrintableEntityValue(printableValue)}\n`);
     }
   }
 
@@ -187,6 +268,9 @@ export class ED {
     });
   }
 
+  /**
+   * Prints an edict summary.
+   */
   static PrintEdict_f = class PrintEdictCommand extends ConsoleCommand {
     run(id?: string): void {
       if (!SV.server.active) {
@@ -207,52 +291,68 @@ export class ED {
   };
 
   /**
+   * Prints all active edicts.
+   */
+  static PrintEdicts_f = class PrintEdictsCommand extends ConsoleCommand {
+    run(): void {
+      if (!SV.server.active) {
+        return;
+      }
+
+      ED.PrintEdicts();
+    }
+  };
+
+  /**
    * Prints an edict usage summary.
    */
-  static Count(): void {
-    if (!SV.server.active) {
-      return;
+  static PrintEdictcount_f = class PrintEdictcountCommand extends ConsoleCommand {
+    run(): void {
+      if (!SV.server.active) {
+        return;
+      }
+
+      let active = 0;
+      let models = 0;
+      let solid = 0;
+      let step = 0;
+
+      for (let i = 0; i < SV.server.num_edicts; i++) {
+        const ent = SV.server.edicts[i] as ServerEdict;
+
+        if (ent.isFree()) {
+          continue;
+        }
+
+        const entity = ent.entity!;
+
+        console.assert(entity !== null, 'ED.Count requires a live entity');
+
+        active++;
+
+        if (entity.solid) {
+          solid++;
+        }
+
+        if (entity.model) {
+          models++;
+        }
+
+        if (entity.movetype === Defs.moveType.MOVETYPE_STEP) {
+          step++;
+        }
+      }
+
+      const numEdicts = SV.server.num_edicts;
+      const padWidth = Math.ceil(Math.log10(numEdicts + 1)) + 1;
+
+      Con.Print(`num_edicts :${numEdicts.toString().padStart(padWidth, ' ')}\n`);
+      Con.Print(`active     :${active.toString().padStart(padWidth, ' ')}\n`);
+      Con.Print(`view       :${models.toString().padStart(padWidth, ' ')}\n`);
+      Con.Print(`touch      :${solid.toString().padStart(padWidth, ' ')}\n`);
+      Con.Print(`step       :${step.toString().padStart(padWidth, ' ')}\n`);
     }
-
-    let active = 0;
-    let models = 0;
-    let solid = 0;
-    let step = 0;
-
-    for (let i = 0; i < SV.server.num_edicts; i++) {
-      const ent = SV.server.edicts[i] as ServerEdict;
-
-      if (ent.isFree()) {
-        continue;
-      }
-
-      const entity = ent.entity!;
-
-      console.assert(entity !== null, 'ED.Count requires a live entity');
-
-      active++;
-
-      if (entity.solid) {
-        solid++;
-      }
-
-      if (entity.model) {
-        models++;
-      }
-
-      if (entity.movetype === Defs.moveType.MOVETYPE_STEP) {
-        step++;
-      }
-    }
-
-    const numEdicts = SV.server.num_edicts;
-
-    Con.Print(`num_edicts:${numEdicts <= 9 ? '  ' : numEdicts <= 99 ? ' ' : ''}${numEdicts}\n`);
-    Con.Print(`active    :${active <= 9 ? '  ' : active <= 99 ? ' ' : ''}${active}\n`);
-    Con.Print(`view      :${models <= 9 ? '  ' : models <= 99 ? ' ' : ''}${models}\n`);
-    Con.Print(`touch     :${solid <= 9 ? '  ' : solid <= 99 ? ' ' : ''}${solid}\n`);
-    Con.Print(`step      :${step <= 9 ? '  ' : step <= 99 ? ' ' : ''}${step}\n`);
-  }
+  };
 
   /**
    * Parses one edict block from entity text.
@@ -377,6 +477,12 @@ export class ED {
     }
 
     Con.DPrint(`${inhibit} entities inhibited\n`);
+  }
+
+  static Init() {
+    Cmd.AddCommand('edict', ED.PrintEdict_f);
+    Cmd.AddCommand('edicts', ED.PrintEdicts_f);
+    Cmd.AddCommand('edictcount', ED.PrintEdictcount_f);
   }
 }
 

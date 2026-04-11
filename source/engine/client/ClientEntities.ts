@@ -11,6 +11,7 @@ import { content, effect, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.ts';
 import { DefaultClientEdictHandler } from './ClientLegacy.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
+import GameModule from '../common/GameModule.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { revealedVisibility, type Node } from '../common/model/BSP.ts';
 
@@ -30,10 +31,10 @@ interface TempEntitySounds {
   explosion: SFX | null;
 }
 
-let { CL, Con, Mod, PR, R, S } = getClientRegistry();
+let { CL, Con, Mod, R, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Mod, PR, R, S } = getClientRegistry());
+  ({ CL, Con, Mod, R, S } = getClientRegistry());
 });
 
 export class ClientDlight {
@@ -142,10 +143,6 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   mins: Vector;
   /** entity fields pushed by the server */
   extended: Record<string, ClientEventValue>;
-  /** server time when this entity was last updated (legacy demo playback only) */
-  msgtime: number;
-  /** force-link flag: snap to current position, no interpolation (legacy demo playback only) */
-  forcelink: boolean;
   readonly lerp: ClientEntityLerpState;
 
   /** @param num entity number */
@@ -184,8 +181,6 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.maxs = new Vector();
     this.mins = new Vector();
     this.extended = {};
-    this.msgtime = 0.0;
-    this.forcelink = false;
 
     const that = this;
 
@@ -282,8 +277,6 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.velocityTime = 0.0;
     this.velocityPrevious.setTo(Infinity, Infinity, Infinity);
     this.nextthink = -1;
-    this.msgtime = 0.0;
-    this.forcelink = false;
     // make sure we delete the field, not just replace the holding object
     for (const key of Object.keys(this.extended)) {
       delete this.extended[key];
@@ -362,13 +355,18 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   /** loads handler based on set classname */
   loadHandler(): void {
     const handler = (() => {
-      const ClientAPI = PR.QuakeJS?.ClientGameAPI;
-
-      if (!ClientAPI || this.classname === null) {
+      if (this.classname === null) {
         return null;
       }
 
-      const entityHandler = ClientAPI.GetClientEdictHandler(this.classname);
+      const activeGameModule = GameModule.active;
+      console.assert(activeGameModule !== null, 'ClientEdict.loadHandler requires an active game module');
+
+      if (activeGameModule === null) {
+        return null;
+      }
+
+      const entityHandler = activeGameModule.ClientGameAPI.GetClientEdictHandler(this.classname);
 
       if (!entityHandler) {
         // Con.DPrint('No ClientEdictHandler for entity: ' + this.classname + '\n');
@@ -781,9 +779,6 @@ export default class ClientEntities {
     // reset all visible entities
     this.num_visedicts = 0;
 
-    const isLegacy = CL.cls.legacy_demo;
-    const mtime0 = CL.state.clientMessages.mtime[0];
-
     for (let i = 1; i < this.entities.length; i++) {
       const clent = this.entities[i];
 
@@ -794,12 +789,6 @@ export default class ClientEntities {
 
       // entity has not been updated yet
       if (clent.updatecount === 0) {
-        continue;
-      }
-
-      // legacy demo playback: no update anymore, consider it gone
-      if (isLegacy && clent.msgtime !== mtime0) {
-        clent.model = null;
         continue;
       }
 

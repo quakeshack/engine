@@ -2,17 +2,11 @@ import type { PlayerEntitySpawnParamsDynamic } from '../../shared/GameInterfaces
 import type { QSocket } from '../network/NetworkDrivers.ts';
 import type { BaseEntity, ServerEdict } from './Edict.ts';
 
-import { gameCapabilities } from '../../shared/Defs.ts';
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { eventBus, getCommonRegistry } from '../registry.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
-
-interface LegacySpawnParmsGameAPI {
-  SetChangeParms(clientEdict: ServerEdict): void;
-  [key: `parm${number}`]: number;
-}
 
 let { SV } = getCommonRegistry();
 
@@ -33,7 +27,7 @@ export enum ServerClientState {
   SPAWNED = 3,
 }
 
-type ServerClientSpawnParameters = number[] | ReturnType<PlayerEntitySpawnParamsDynamic['saveSpawnParameters']> | null;
+type ServerClientSpawnParameters = ReturnType<PlayerEntitySpawnParamsDynamic['saveSpawnParameters']> | null;
 type ServerClientEntity = BaseEntity & { netname?: string | null };
 type DynamicSpawnClientEntity = ServerClientEntity & PlayerEntitySpawnParamsDynamic;
 
@@ -141,12 +135,7 @@ export class ServerClient {
     this.pmTime = 0;
     this.pmOldButtons = 0;
     this.lastMoveSequence = 0;
-
-    if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_SPAWNPARMS_LEGACY)) {
-      this.spawn_parms = new Array(16);
-    } else {
-      this.spawn_parms = null;
-    }
+    this.spawn_parms = null;
   }
 
   /**
@@ -207,21 +196,7 @@ export class ServerClient {
   }
 
   saveSpawnparms(): void {
-    if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_SPAWNPARMS_DYNAMIC)) {
-      this.spawn_parms = (this.entity as DynamicSpawnClientEntity).saveSpawnParameters();
-      return;
-    }
-
-    if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_SPAWNPARMS_LEGACY)) {
-      const gameAPI = SV.server.gameAPI as unknown as LegacySpawnParmsGameAPI;
-      gameAPI.SetChangeParms(this.edict);
-
-      this.spawn_parms = new Array(16);
-
-      for (let i = 0; i < this.spawn_parms.length; i++) {
-        this.spawn_parms[i] = gameAPI[`parm${i + 1}`];
-      }
-    }
+    this.spawn_parms = (this.entity as DynamicSpawnClientEntity).saveSpawnParameters();
   }
 
   /**

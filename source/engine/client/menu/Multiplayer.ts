@@ -1,6 +1,6 @@
-import PR from '../../server/Progs.ts';
 import { K } from '../../../shared/Keys.ts';
 import Cmd from '../../common/Cmd.ts';
+import GameModule from '../../common/GameModule.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import { Action, Label, Spacer } from './MenuItem.ts';
 import { MenuPage, VerticalLayout } from './MenuPage.ts';
@@ -57,8 +57,8 @@ export default class MultiplayerMainMenu extends MenuPage {
     // M.m_multi is arriving later
     this.titlePic = M.p_multi;
 
-    // const serverFields = PR.QuakeJS.ServerGameAPI.GetServerInfoFields();
-    // const mapList = PR.QuakeJS.ServerGameAPI.GetMapList();
+    // const serverFields = GameModule.active?.ServerGameAPI.GetServerInfoFields();
+    // const mapList = GameModule.active?.ServerGameAPI.GetMapList();
 
     // TODO: add server fields
     // for (const serverField of serverFields) {
@@ -79,12 +79,12 @@ export default class MultiplayerMainMenu extends MenuPage {
     // }
 
     if (urls?.signalingURL) {
-      // FIXME: move the start serverlist to the ClientGameAPI
-      const serverActions = PR.QuakeJS!.ServerGameAPI.GetStartServerList()!;
+      // FIXME: move the start server list to the ClientGameAPI
+      const serverActions = GameModule.active?.ServerGameAPI.GetStartServerList();
 
       console.assert(Array.isArray(serverActions), 'Expected GetStartServerList to return an array');
 
-      for (const serverAction of serverActions) {
+      for (const serverAction of serverActions ?? []) {
         this.items.push(new Action({
           label: serverAction.label,
           action() {

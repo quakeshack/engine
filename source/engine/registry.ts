@@ -7,7 +7,6 @@ type HostModule = typeof import('./common/Host.ts').default;
 type VModule = typeof import('./client/V.ts').default;
 type NetModule = typeof import('./network/Network.ts').default;
 type ServerModule = typeof import('./server/Server.ts').default;
-type ProgsModule = typeof import('./server/Progs.ts').default;
 type ModModule = typeof import('./common/Mod.ts').default;
 type ClientModule = typeof import('./client/CL.ts').default;
 type ScrModule = typeof import('./client/SCR.ts').default;
@@ -46,7 +45,6 @@ export interface Registry {
   CL: ClientModule | undefined;
   SV: ServerModule | undefined;
   Mod: ModModule | undefined;
-  PR: ProgsModule | undefined;
   R: RendererModule | undefined;
   SCR: ScrModule | undefined;
   Key: KeyModule | undefined;
@@ -73,7 +71,6 @@ export interface CommonRegistry extends Registry {
   V: VModule;
   SV: ServerModule;
   Mod: ModModule;
-  PR: ProgsModule;
   WebSocket: WebSocketDependency;
 }
 
@@ -106,7 +103,6 @@ export const registry: Registry = {
   CL: undefined,
   SV: undefined,
   Mod: undefined,
-  PR: undefined,
   R: undefined,
   SCR: undefined,
   Key: undefined,

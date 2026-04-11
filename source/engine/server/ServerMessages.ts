@@ -7,6 +7,7 @@ import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Defs from '../../shared/Defs.ts';
 import Cvar from '../common/Cvar.ts';
+import { requireActiveGameModule } from '../common/GameModule.ts';
 import { eventBus, getCommonRegistry } from '../registry.ts';
 import { ServerClient } from './Client.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
@@ -66,10 +67,10 @@ interface ServerMessageEntity extends BaseEntity {
   weaponmodel: string | null;
 }
 
-let { COM, Con, Host, NET, PR, SV } = getCommonRegistry();
+let { Con, Host, NET, SV } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Host, NET, PR, SV } = getCommonRegistry());
+  ({ Con, Host, NET, SV } = getCommonRegistry());
 });
 
 /**
@@ -173,25 +174,19 @@ export class ServerMessages {
   sendServerData(client: ServerClient): void {
     const message = client.message;
     const worldspawnEntity = requireWorldspawnEntity();
+    const activeGameModule = requireActiveGameModule();
+    const { author, name, version } = activeGameModule.identification;
 
     message.writeByte(Protocol.svc.print);
     message.writeString(`\x02\nVERSION ${Host.version!.string} SERVER (${SV.server.gameVersion})\n`);
 
     message.writeByte(Protocol.svc.serverdata);
     message.writeByte(Protocol.version);
-
-    if (PR.QuakeJS?.ClientGameAPI) {
-      const { author, name, version } = PR.QuakeJS.identification;
-      message.writeByte(1);
-      message.writeString(name);
-      message.writeString(author);
-      message.writeByte(version[0]);
-      message.writeByte(version[1]);
-      message.writeByte(version[2]);
-    } else {
-      message.writeByte(0);
-      message.writeString(COM.game);
-    }
+    message.writeString(name);
+    message.writeString(author);
+    message.writeByte(version[0]);
+    message.writeByte(version[1]);
+    message.writeByte(version[2]);
 
     message.writeByte(SV.svs.maxclients);
     message.writeString(worldspawnEntity.message || SV.server.mapname!);
@@ -205,12 +200,10 @@ export class ServerMessages {
     }
     message.writeByte(0);
 
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_CLIENTDATA_DYNAMIC)) {
-      for (const field of SV.server.clientdataFields) {
-        message.writeString(field);
-      }
-      message.writeByte(0);
+    for (const field of SV.server.clientdataFields) {
+      message.writeString(field);
     }
+    message.writeByte(0);
 
     if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_EXTENDED)) {
       for (const [classname, { fields }] of Object.entries(SV.server.clientEntityFields)) {
@@ -667,25 +660,12 @@ export class ServerMessages {
       clientEntity.fixangle = false;
     }
 
-    let bits = Protocol.su.items | Protocol.su.weapon | Protocol.su.moveack;
+    let bits = Protocol.su.moveack;
     if (clientEntity.view_ofs[2] !== Protocol.default_viewheight) {
       bits |= Protocol.su.viewheight;
     }
     if (clientEntity.idealpitch !== 0.0) {
       bits |= Protocol.su.idealpitch;
-    }
-
-    const serverflags = SV.server.gameAPI?.serverflags ?? 0;
-
-    let items;
-    if (clientEntity.items2 !== undefined) {
-      if (clientEntity.items2 !== 0.0) {
-        items = (clientEntity.items >> 0) + ((clientEntity.items2 << 23) >>> 0);
-      } else {
-        items = (clientEntity.items >> 0) + ((serverflags << 28) >>> 0);
-      }
-    } else {
-      items = (clientEntity.items >> 0) + ((serverflags << 28) >>> 0);
     }
 
     if (clientEntity.flags & Defs.flags.FL_ONGROUND) {
@@ -705,13 +685,6 @@ export class ServerMessages {
     }
     if (punchangle[2] !== 0.0) {
       bits |= Protocol.su.punch3;
-    }
-
-    if (clientEntity.weaponframe !== 0.0) {
-      bits |= Protocol.su.weaponframe;
-    }
-    if (clientEntity.armorvalue !== 0.0) {
-      bits |= Protocol.su.armor;
     }
 
     msg.writeByte(Protocol.svc.clientdata);
@@ -742,61 +715,30 @@ export class ServerMessages {
       msg.writeByte(client.pmOldButtons);
     }
 
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_CLIENTDATA_LEGACY)) {
-      msg.writeLong(items);
-      if ((bits & Protocol.su.weaponframe) !== 0) {
-        msg.writeByte(clientEntity.weaponframe);
+    const clientdataFields = SV.server.clientdataFields;
+    const destination = msg;
+
+    let fieldbits = 0;
+    const values = [];
+    const serializableEntity = clientEntity as ServerMessageEntity & Record<string, DynamicEntityFieldValue>;
+
+    for (let i = 0; i < clientdataFields.length; i++) {
+      const field = clientdataFields[i];
+      const value = serializableEntity[field];
+
+      if (!value) {
+        continue;
       }
-      if ((bits & Protocol.su.armor) !== 0) {
-        msg.writeByte(clientEntity.armorvalue);
-      }
-      const weaponModelIndex = SV.ModelIndex(clientEntity.weaponmodel);
-      msg.writeByte(weaponModelIndex ?? 0);
-      msg.writeShort(clientEntity.health);
-      msg.writeByte(clientEntity.currentammo);
-      msg.writeByte(clientEntity.ammo_shells);
-      msg.writeByte(clientEntity.ammo_nails);
-      msg.writeByte(clientEntity.ammo_rockets);
-      msg.writeByte(clientEntity.ammo_cells);
-      if (COM.standard_quake) {
-        msg.writeByte(clientEntity.weapon & 0xff);
-      } else {
-        const weapon = clientEntity.weapon;
-        for (let i = 0; i <= 31; i++) {
-          if ((weapon & (1 << i)) !== 0) {
-            msg.writeByte(i);
-            break;
-          }
-        }
-      }
+
+      fieldbits |= (1 << i);
+      values.push(value);
     }
 
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_CLIENTDATA_DYNAMIC)) {
-      const clientdataFields = SV.server.clientdataFields;
-      const destination = msg;
-
-      let fieldbits = 0;
-      const values = [];
-      const serializableEntity = clientEntity as ServerMessageEntity & Record<string, DynamicEntityFieldValue>;
-
-      for (let i = 0; i < clientdataFields.length; i++) {
-        const field = clientdataFields[i];
-        const value = serializableEntity[field];
-
-        if (!value) {
-          continue;
-        }
-
-        fieldbits |= (1 << i);
-        values.push(value);
-      }
-
-      const bitsWriter = SV.server.clientdataFieldsBitsWriter as BitsWriter | null;
-      console.assert(bitsWriter, 'clientdataFieldsBitsWriter must be configured when CAP_CLIENTDATA_DYNAMIC is enabled');
-      if (bitsWriter) {
-        destination[bitsWriter](fieldbits);
-        destination.writeSerializables(values);
-      }
+    const bitsWriter = SV.server.clientdataFieldsBitsWriter as BitsWriter | null;
+    console.assert(bitsWriter !== null, 'clientdataFieldsBitsWriter must be configured for GameModule clientdata');
+    if (bitsWriter !== null) {
+      destination[bitsWriter](fieldbits);
+      destination.writeSerializables(values);
     }
 
     return true;

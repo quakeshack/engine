@@ -11,6 +11,7 @@ import * as Def from './../common/Def.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { ED, ServerEdict } from './Edict.ts';
 import { EventBus, eventBus, getCommonRegistry } from '../registry.ts';
+import { requireActiveGameModule } from '../common/GameModule.ts';
 import { ServerEngineAPI } from '../common/GameAPIs.ts';
 import * as Defs from '../../shared/Defs.ts';
 import { Navigation } from './Navigation.ts';
@@ -26,10 +27,10 @@ import { ServerClient } from './Client.ts';
 
 export { ServerEntityState } from './ServerEntityState.ts';
 
-let { COM, Con, Host, Mod, NET, PR } = getCommonRegistry();
+let { Con, Host, Mod, NET } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Host, Mod, NET, PR } = getCommonRegistry());
+  ({ Con, Host, Mod, NET } = getCommonRegistry());
 });
 
 type BitsWriter = 'writeByte' | 'writeShort' | 'writeLong';
@@ -75,11 +76,6 @@ interface ServerRuntimeGameAPI extends ServerGameInterface {
   v_forward?: Vector;
   v_right?: Vector;
   v_up?: Vector;
-}
-
-interface LegacySpawnParmsGameAPI extends ServerRuntimeGameAPI {
-  SetNewParms(): void;
-  [key: `parm${number}`]: number;
 }
 
 interface ClientEntityFieldConfig {
@@ -346,28 +342,9 @@ export default class SV {
     client.state = ServerClient.STATE.CONNECTING;
     client.old_frags = Infinity;
 
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_SPAWNPARMS_DYNAMIC)) {
-      const entity = client.entity as DynamicSpawnClientEntity;
-      entity.restoreSpawnParameters(typeof oldSpawnParms === 'string' ? oldSpawnParms : null);
-    } else if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_SPAWNPARMS_LEGACY)) {
-      const spawnParms = client.spawn_parms as number[];
-
-      if (SV.server.loadgame) {
-        console.assert(oldSpawnParms instanceof Array, 'old_spawn_parms is an array');
-
-        for (let i = 0; i < spawnParms.length; i++) {
-          spawnParms[i] = oldSpawnParms![i] as number;
-        }
-      } else {
-        console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
-        const gameAPI = SV.server.gameAPI! as LegacySpawnParmsGameAPI;
-        gameAPI.SetNewParms();
-
-        for (let i = 0; i < spawnParms.length; i++) {
-          spawnParms[i] = gameAPI[`parm${i + 1}`];
-        }
-      }
-    }
+    const entity = client.entity as DynamicSpawnClientEntity;
+    console.assert(typeof entity.restoreSpawnParameters === 'function', 'player entity must implement restoreSpawnParameters');
+    entity.restoreSpawnParameters(typeof oldSpawnParms === 'string' ? oldSpawnParms : null);
 
     SV.messages.sendServerData(client);
   }
@@ -458,7 +435,7 @@ export default class SV {
 
     Con.DPrint('Clearing memory\n');
     Mod.ClearAll(ModelScope.server);
-    await SV.#loadGameProgs();
+    SV.#loadGameProgs();
 
     SV.#initializeEdicts();
 
@@ -731,15 +708,14 @@ export default class SV {
     }
   }
 
-  static async #loadGameProgs(): Promise<void> {
-    const gameAPI = PR.QuakeJS
-      ? Reflect.construct(PR.QuakeJS.ServerGameAPI, [ServerEngineAPI]) as ServerRuntimeGameAPI
-      : await PR.LoadProgs();
+  static #loadGameProgs(): void {
+    const activeGameModule = requireActiveGameModule();
+    const gameAPI = Reflect.construct(activeGameModule.ServerGameAPI, [ServerEngineAPI]) as ServerRuntimeGameAPI;
 
     SV.server.gameAPI = gameAPI as ServerRuntimeGameAPI;
-    SV.server.gameVersion = PR.QuakeJS ? `${PR.QuakeJS.identification.version.join('.')} QuakeJS` : `${PR.crc} CRC`;
-    SV.server.gameName = PR.QuakeJS ? PR.QuakeJS.identification.name : COM.game;
-    SV.server.gameCapabilities = PR.QuakeJS ? [...PR.QuakeJS.identification.capabilities] : [...PR.capabilities];
+    SV.server.gameVersion = activeGameModule.identification.version.join('.');
+    SV.server.gameName = activeGameModule.identification.name;
+    SV.server.gameCapabilities = [...activeGameModule.identification.capabilities];
 
     Con.DPrint('Game progs loaded\n');
   }
@@ -831,32 +807,30 @@ export default class SV {
   }
 
   static #setupClientDataFields(): void {
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_CLIENTDATA_DYNAMIC)) {
-      const playerEntity = SV.server.edicts[1]?.entity;
+    const playerEntity = SV.server.edicts[1]?.entity;
 
-      console.assert(playerEntity !== null, 'CAP_CLIENTDATA_DYNAMIC requires player entity');
-      console.assert(playerEntity !== null && 'clientdataFields' in playerEntity, 'CAP_CLIENTDATA_DYNAMIC requires clientdataFields on PlayerEntity');
+    console.assert(playerEntity !== null, 'GameModule player entity must exist');
+    console.assert(playerEntity !== null && 'clientdataFields' in playerEntity, 'GameModule player entity must expose clientdataFields');
 
-      const typedPlayerEntity = playerEntity as PlayerClientdataEntity;
-      const fields = typedPlayerEntity.clientdataFields;
+    const typedPlayerEntity = playerEntity as PlayerClientdataEntity;
+    const fields = typedPlayerEntity.clientdataFields;
 
-      console.assert(fields instanceof Array, 'clientdataFields must be an array');
+    console.assert(fields instanceof Array, 'clientdataFields must be an array');
 
-      SV.server.clientdataFields.length = 0;
-      SV.server.clientdataFields.push(...fields);
-      console.assert(SV.server.clientdataFields.length <= 32, 'clientdata must not have more than 32 fields');
+    SV.server.clientdataFields.length = 0;
+    SV.server.clientdataFields.push(...fields);
+    console.assert(SV.server.clientdataFields.length <= 32, 'clientdata must not have more than 32 fields');
 
-      if (fields.length <= 8) {
-        SV.server.clientdataFieldsBitsWriter = 'writeByte';
-      } else if (fields.length <= 16) {
-        SV.server.clientdataFieldsBitsWriter = 'writeShort';
-      } else if (fields.length <= 32) {
-        SV.server.clientdataFieldsBitsWriter = 'writeLong';
-      }
+    if (fields.length <= 8) {
+      SV.server.clientdataFieldsBitsWriter = 'writeByte';
+    } else if (fields.length <= 16) {
+      SV.server.clientdataFieldsBitsWriter = 'writeShort';
+    } else if (fields.length <= 32) {
+      SV.server.clientdataFieldsBitsWriter = 'writeLong';
+    }
 
-      for (const field of fields) {
-        console.assert(typedPlayerEntity[field] !== undefined, `Undefined clientdata field ${field}`);
-      }
+    for (const field of fields) {
+      console.assert(typedPlayerEntity[field] !== undefined, `Undefined clientdata field ${field}`);
     }
 
     Con.DPrint('Clientdata fields setup complete\n');

@@ -72,7 +72,7 @@ export default defineConfig(({ mode }) => ({
             return 'vendor';
           }
 
-          // keep game modules as separate chunks (they are dynamically loaded by the PR code)
+          // keep game modules as separate chunks (they are dynamically loaded by the GameModule runtime)
           if (id.includes('/source/game/')) {
             // extract the gamedir name
             const gameMatch = id.match(/\/source\/game\/([^/]+)\//);

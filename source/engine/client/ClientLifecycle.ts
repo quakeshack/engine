@@ -5,15 +5,16 @@ import { gameCapabilities } from '../../shared/Defs.ts';
 import ClientInput from './ClientInput.ts';
 import CL from './CL.ts';
 import { clientRuntimeState } from './ClientState.ts';
+import GameModule from '../common/GameModule.ts';
 import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import type { SerializedParticle } from './R.ts';
 
-let { Host, PR, S } = getClientRegistry();
+let { Host, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, PR, S } = getClientRegistry());
+  ({ Host, S } = getClientRegistry());
 });
 
 /** The client game can tell the menu what to do when a new game is requested. */
@@ -51,29 +52,26 @@ export default class ClientLifecycle {
   }
 
   static initGame(): void {
-    CL.gameCapabilities = [...PR.capabilities];
     const hostVersion = Host.version;
+    const activeGameModule = GameModule.active;
 
     console.assert(hostVersion !== null, 'Host.version must be registered before initGame');
 
-    if (!PR.QuakeJS?.identification) {
-      document.title = `${Def.productName} (${hostVersion?.string ?? ''})`;
-      return;
+    if (activeGameModule === null) {
+      throw new Error('ClientLifecycle.initGame requires an active game module.');
     }
 
-    document.title = `${PR.QuakeJS.identification.name} (${PR.QuakeJS.identification.version.join('.')}) on ${Def.productName} (${hostVersion?.string ?? ''})`;
+    document.title = `${activeGameModule.identification.name} (${activeGameModule.identification.version.join('.')}) on ${Def.productName} (${hostVersion?.string ?? ''})`;
 
-    if (PR.QuakeJS.ClientGameAPI) {
-      PR.QuakeJS.ClientGameAPI.Init(ClientEngineAPI);
+    activeGameModule.ClientGameAPI.Init(ClientEngineAPI);
 
-      this.startGame = PR.QuakeJS.ClientGameAPI.GetStartGameInterface(ClientEngineAPI);
-    }
+    this.startGame = activeGameModule.ClientGameAPI.GetStartGameInterface(ClientEngineAPI);
 
     if (!this.startGame) {
       this.startGame = new DefaultStartGameFunctions();
     }
 
-    CL.gameCapabilities = [...PR.QuakeJS.identification.capabilities];
+    CL.gameCapabilities = [...activeGameModule.identification.capabilities];
   }
 
   static resumeGame(clientdata: string | null, particles: SerializedParticle[] | null): void {

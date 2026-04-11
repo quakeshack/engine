@@ -64,7 +64,7 @@ export default class NET {
       const { CL } = getClientRegistry();
 
       CL.cls.state = clientConnectionState.connecting;
-      Con.Print('trying...\n');
+      Con.DPrint(`trying to connect to ${address}...\n`);
       NET.start_time = NET.time;
       NET.reps = 0;
     }

@@ -96,6 +96,7 @@ export default class SCR {
     SCR.centerstring[SCR.centerstring.length] = str.substring(start, i);
     SCR.centertime_off = SCR.centertime.value;
     SCR.centertime_start = CL.state.time;
+    eventBus.publish('client.center-print', str);
   }
 
   /**

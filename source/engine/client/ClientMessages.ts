@@ -1,18 +1,16 @@
 import * as Protocol from '../network/Protocol.ts';
-import * as Def from '../common/Def.ts';
 import Vector from '../../shared/Vector.ts';
 import { PmovePlayer } from '../common/Pmove.ts';
-import { gameCapabilities } from '../../shared/Defs.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import { HostError } from '../common/Errors.ts';
 import { ClientEdict } from './ClientEntities.ts';
 
 type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';
 
-let { CL, COM, NET } = getClientRegistry();
+let { CL, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, NET } = getClientRegistry());
+  ({ CL, NET } = getClientRegistry());
 });
 
 /**
@@ -176,39 +174,7 @@ export class ClientMessages {
   }
 
   /**
-   * Client data parsing for Quake 1.
-   * This will fill CL.state.stats and CL.state.items.
-   * @param bits bitmask from Protocol.su describing which legacy client fields follow
-   */
-  #parseClientLegacy(bits: number): void {
-    const item = NET.message.readLong();
-    if (CL.state.items !== item) {
-      for (let j = 0; j < CL.state.item_gettime.length; j++) {
-        if ((((item >>> j) & 1) !== 0) && (((CL.state.items >>> j) & 1) === 0)) {
-          CL.state.item_gettime[j] = CL.state.time;
-        }
-      }
-      CL.state.items = item;
-    }
-
-    CL.state.stats[Def.stat.weaponframe] = ((bits & Protocol.su.weaponframe) !== 0) ? NET.message.readByte() : 0;
-    CL.state.stats[Def.stat.armor] = ((bits & Protocol.su.armor) !== 0) ? NET.message.readByte() : 0;
-    CL.state.stats[Def.stat.weapon] = ((bits & Protocol.su.weapon) !== 0) ? NET.message.readByte() : 0;
-    CL.state.stats[Def.stat.health] = NET.message.readShort();
-    CL.state.stats[Def.stat.ammo] = NET.message.readByte();
-    CL.state.stats[Def.stat.shells] = NET.message.readByte();
-    CL.state.stats[Def.stat.nails] = NET.message.readByte();
-    CL.state.stats[Def.stat.rockets] = NET.message.readByte();
-    CL.state.stats[Def.stat.cells] = NET.message.readByte();
-    if (COM.standard_quake) {
-      CL.state.stats[Def.stat.activeweapon] = NET.message.readByte();
-    } else {
-      CL.state.stats[Def.stat.activeweapon] = 1 << NET.message.readByte();
-    }
-  }
-
-  /**
-   * Client data parsing for QuakeJS based games.
+   * Client data parsing for GameModule-based games.
    */
   #parseClientdata(): void {
     if (this.#readClientdataFieldsBits === null) {
@@ -334,12 +300,7 @@ export class ClientMessages {
     const bits = NET.message.readShort();
 
     this.#parseClientGeneral(bits);
-
-    if (CL.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_LEGACY)) {
-      this.#parseClientLegacy(bits);
-    } else {
-      this.#parseClientdata();
-    }
+    this.#parseClientdata();
   }
 
   parsePlayer(): void {

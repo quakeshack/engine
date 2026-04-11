@@ -11,7 +11,7 @@
 import { SerializableEntity, type SerializedData } from '../../shared/GameInterfaces.ts';
 import type { SerializedParticle } from '../client/R.ts';
 import type { AliasModel } from './model/AliasModel.ts';
-import type { ServerEdict } from '../server/Edict.ts';
+import { ED, type ServerEdict } from '../server/Edict.ts';
 
 import Cvar from './Cvar.ts';
 import * as Protocol from '../network/Protocol.ts';
@@ -30,14 +30,15 @@ import CDAudio from '../client/CDAudio.ts';
 import * as Defs from '../../shared/Defs.ts';
 import { content, gameCapabilities } from '../../shared/Defs.ts';
 import ClientLifecycle from '../client/ClientLifecycle.ts';
+import GameModule from './GameModule.ts';
 import { Pmove } from './Pmove.ts';
 import { ModelScope, ModelType } from './Mod.ts';
 
-let { COM, Con, Mod, NET, PR, SV, Sys, V } = getCommonRegistry();
+let { COM, Con, Mod, NET, SV, Sys, V } = getCommonRegistry();
 let { CL, Draw, IN, Key, M, R, S, SCR, Sbar } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Mod, NET, PR, SV, Sys, V } = getCommonRegistry());
+  ({ COM, Con, Mod, NET, SV, Sys, V } = getCommonRegistry());
   ({ CL, Draw, IN, Key, M, R, S, SCR, Sbar } = getClientRegistry());
 });
 
@@ -74,13 +75,6 @@ interface SavegameState {
   readonly edicts: SavegameEdictEntry[];
   readonly num_edicts: number;
   readonly particles: SerializedParticle[];
-}
-
-interface LegacyLevelStats {
-  total_secrets: number;
-  total_monsters: number;
-  found_secrets: number;
-  killed_monsters: number;
 }
 
 /** Extracts a display name from a CrashLike value. */
@@ -629,7 +623,9 @@ export default class Host {
     }
 
     Con.Init();
-    await PR.Init();
+    ED.Init();
+    await GameModule.Init();
+
     Mod.Init();
     NET.Init();
     Pmove.Init();
@@ -1579,22 +1575,17 @@ export default class Host {
         team: (client.colors & 15) + 1,
       });
 
-      // Load legacy spawn parameters.
-      if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_SPAWNPARMS_LEGACY) && Array.isArray(client.spawn_parms)) {
-        for (let index = 0; index <= 15; index++) {
-          Reflect.set(gameAPI, `parm${index + 1}`, client.spawn_parms[index]);
-        }
+      const playerEntity = entity.entity;
+      console.assert(
+        playerEntity !== null && typeof playerEntity.restoreSpawnParameters === 'function',
+        'spawn requires a prepared player entity with restoreSpawnParameters',
+      );
+
+      if (playerEntity === null || typeof playerEntity.restoreSpawnParameters !== 'function') {
+        return;
       }
 
-      // Load dynamic spawn parameters.
-      if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_SPAWNPARMS_DYNAMIC)) {
-        const playerEntity = entity.entity;
-        console.assert(playerEntity !== null, 'spawn requires a prepared player entity');
-
-        if (playerEntity !== null && typeof playerEntity.restoreSpawnParameters === 'function') {
-          playerEntity.restoreSpawnParameters(typeof client.spawn_parms === 'string' ? client.spawn_parms : null);
-        }
-      }
+      playerEntity.restoreSpawnParameters(typeof client.spawn_parms === 'string' ? client.spawn_parms : null);
 
       gameAPI.time = SV.server.time;
       gameAPI.ClientConnect(entity);
@@ -1619,37 +1610,6 @@ export default class Host {
       message.writeByte(Protocol.svc.lightstyle);
       message.writeByte(index);
       message.writeString(SV.server.lightstyles[index]);
-    }
-
-    if (SV.server.gameCapabilities.includes(gameCapabilities.CAP_CLIENTDATA_UPDATESTAT)) {
-      const gameAPI = SV.server.gameAPI;
-      const legacyStats = gameAPI as (typeof gameAPI & Partial<LegacyLevelStats>) | null;
-      const hasLegacyLevelStats = legacyStats !== null
-        && typeof legacyStats.total_secrets === 'number'
-        && typeof legacyStats.total_monsters === 'number'
-        && typeof legacyStats.found_secrets === 'number'
-        && typeof legacyStats.killed_monsters === 'number';
-
-      console.assert(hasLegacyLevelStats, 'gameAPI must expose legacy level stats when CAP_CLIENTDATA_UPDATESTAT is enabled');
-
-      if (!hasLegacyLevelStats || legacyStats === null) {
-        return;
-      }
-
-      const strictLegacyStats = legacyStats as LegacyLevelStats;
-
-      message.writeByte(Protocol.svc.updatestat);
-      message.writeByte(Def.stat.totalsecrets);
-      message.writeLong(strictLegacyStats.total_secrets);
-      message.writeByte(Protocol.svc.updatestat);
-      message.writeByte(Def.stat.totalmonsters);
-      message.writeLong(strictLegacyStats.total_monsters);
-      message.writeByte(Protocol.svc.updatestat);
-      message.writeByte(Def.stat.secrets);
-      message.writeLong(strictLegacyStats.found_secrets);
-      message.writeByte(Protocol.svc.updatestat);
-      message.writeByte(Def.stat.monsters);
-      message.writeLong(strictLegacyStats.killed_monsters);
     }
 
     const playerEntity = entity.entity;
@@ -1791,7 +1751,7 @@ export default class Host {
   static Give_f = class extends HostConsoleCommand { // TODO: move to game
     override run(classname?: string): void {
       // CR: unsure if I want a “give item_shells” approach or if I want to push
-      // this piece of code into PR/PF and let the game handle this instead.
+      // this piece of code into the game module and let the game handle this instead.
 
       if (this.forward() || this.cheat()) {
         return;
