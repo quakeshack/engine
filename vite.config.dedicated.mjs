@@ -225,6 +225,7 @@ export default defineConfig(({ mode }) => ({
     '__BUILD_TIMESTAMP__': JSON.stringify(new Date().toISOString()),
     '__BUILD_COMMIT_HASH__': JSON.stringify(process.env.WORKERS_CI_COMMIT_SHA?.substring(0, 7) || null),
     '__BUILD_GAME_DIR__': JSON.stringify(process.env.VITE_GAME_DIR || null),
+    '__BUILD_BASE_DIR__': JSON.stringify(process.env.VITE_BASE_DIR || null),
     '__DEV__': JSON.stringify(mode !== 'production'),
   },
   resolve: {

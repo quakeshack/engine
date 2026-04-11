@@ -380,21 +380,34 @@ export default class COM {
   }
 
   static async InitFilesystem() {
-    // Shortcut for specifying game directory at build time
-    if (registry.buildConfig?.gameDir) {
-      await this.AddGameDirectory(registry.buildConfig.gameDir);
-      this.gamedir = [this.searchpaths[this.searchpaths.length - 1]];
-      return;
-    }
-
     let search: string | undefined;
+    const buildBaseDir = registry.buildConfig?.baseDir ?? null;
 
     const i = this.CheckParm('-basedir');
     if (i !== null) {
       search = this.argv[i + 1];
     }
+
+    const effectiveBaseDir = search ?? buildBaseDir ?? defaultBasedir;
+
+    // Build-time game overrides still select the active game directory, but
+    // they now layer on top of the effective base directory instead of
+    // bypassing it entirely.
+    if (registry.buildConfig?.gameDir) {
+      await this.AddGameDirectory(effectiveBaseDir);
+      if (registry.buildConfig.gameDir !== effectiveBaseDir) {
+        this.modified = true;
+        this.game = registry.buildConfig.gameDir;
+        await this.AddGameDirectory(registry.buildConfig.gameDir);
+      }
+      this.gamedir = [this.searchpaths[this.searchpaths.length - 1]];
+      return;
+    }
+
     if (search !== undefined) {
       await this.AddGameDirectory(search);
+    } else if (buildBaseDir !== null) {
+      await this.AddGameDirectory(buildBaseDir);
     } else {
       await this.AddGameDirectory(defaultBasedir);
     }

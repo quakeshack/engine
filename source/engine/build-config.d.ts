@@ -9,8 +9,11 @@ export interface BuildConfig {
   /** Git commit hash during build */
   commitHash: string | null;
 
-  /** Default game directory */
-  gameDir: string; // allows building with a different default game
+  /** Default game directory override for single-game builds. */
+  gameDir: string | null;
+
+  /** Default base directory override used when no `-basedir` argument is set. */
+  baseDir: string | null;
 };
 
 /**

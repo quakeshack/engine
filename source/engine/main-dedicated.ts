@@ -1,3 +1,5 @@
+import type { BuildConfig } from './build-config';
+
 import { Worker } from 'node:worker_threads';
 import * as WebSocketModule from 'ws';
 
@@ -17,8 +19,10 @@ import Sys from './server/Sys.ts';
 globalThis.Worker = Worker as unknown as typeof globalThis.Worker;
 
 export default class EngineLauncher {
-  static async Launch(): Promise<typeof registry> {
+  static async Launch(buildConfig?: BuildConfig): Promise<typeof registry> {
     console.info('Launching engine as dedicated server...');
+
+    registry.buildConfig = buildConfig;
 
     // set some global flags
     registry.isDedicatedServer = true;

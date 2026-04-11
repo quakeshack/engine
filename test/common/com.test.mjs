@@ -2,6 +2,68 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import COM from '../../source/engine/common/Com.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+
+function cloneSearchPaths(searchpaths) {
+  if (searchpaths === null) {
+    return null;
+  }
+
+  return searchpaths.map((search) => ({
+    filename: search.filename,
+    pack: search.pack.map((pack) => [...pack]),
+  }));
+}
+
+function createBuildConfig(overrides = {}) {
+  return {
+    mode: 'production',
+    timestamp: '2026-04-11T00:00:00.000Z',
+    commitHash: null,
+    gameDir: null,
+    baseDir: null,
+    ...overrides,
+  };
+}
+
+async function withFilesystemState(callback) {
+  const savedState = {
+    argv: [...COM.argv],
+    searchpaths: cloneSearchPaths(COM.searchpaths),
+    hipnotic: COM.hipnotic,
+    rogue: COM.rogue,
+    standardQuake: COM.standard_quake,
+    modified: COM.modified,
+    gamedir: cloneSearchPaths(COM.gamedir),
+    game: COM.game,
+    buildConfig: registry.buildConfig,
+  };
+
+  COM.argv = ['quake'];
+  COM.searchpaths = [];
+  COM.hipnotic = false;
+  COM.rogue = false;
+  COM.standard_quake = true;
+  COM.modified = false;
+  COM.gamedir = null;
+  COM.game = 'id1';
+  registry.buildConfig = undefined;
+
+  try {
+    await callback();
+  } finally {
+    COM.argv = savedState.argv;
+    COM.searchpaths = savedState.searchpaths ?? [];
+    COM.hipnotic = savedState.hipnotic;
+    COM.rogue = savedState.rogue;
+    COM.standard_quake = savedState.standardQuake;
+    COM.modified = savedState.modified;
+    COM.gamedir = savedState.gamedir;
+    COM.game = savedState.game;
+    registry.buildConfig = savedState.buildConfig;
+  }
+}
 
 void describe('COM', () => {
   void describe('DefaultExtension', () => {
@@ -105,6 +167,62 @@ void describe('COM', () => {
       } finally {
         COM.argv = savedArgv;
       }
+    });
+  });
+
+  void describe('InitFilesystem', () => {
+    void test('uses the build-config base directory when no -basedir argument is provided', async () => {
+      await withMockRegistry({
+        ...defaultMockRegistry(),
+        COM,
+      }, async () => {
+        await withFilesystemState(async () => {
+          registry.buildConfig = createBuildConfig({ baseDir: 'lq1' });
+
+          await COM.InitFilesystem();
+
+          assert.deepEqual(COM.searchpaths.map((search) => search.filename), ['lq1']);
+          assert.equal(COM.gamedir?.[0].filename, 'lq1');
+        });
+      });
+    });
+
+    void test('prefers the command-line -basedir argument over the build-config fallback', async () => {
+      await withMockRegistry({
+        ...defaultMockRegistry(),
+        COM,
+      }, async () => {
+        await withFilesystemState(async () => {
+          COM.argv = ['quake', '-basedir', 'id1'];
+          registry.buildConfig = createBuildConfig({ baseDir: 'lq1' });
+
+          await COM.InitFilesystem();
+
+          assert.deepEqual(COM.searchpaths.map((search) => search.filename), ['id1']);
+          assert.equal(COM.gamedir?.[0].filename, 'id1');
+        });
+      });
+    });
+
+    void test('layers the build-config game directory on top of the effective base directory', async () => {
+      await withMockRegistry({
+        ...defaultMockRegistry(),
+        COM,
+      }, async () => {
+        await withFilesystemState(async () => {
+          registry.buildConfig = createBuildConfig({
+            gameDir: 'hellwave',
+            baseDir: 'lq1',
+          });
+
+          await COM.InitFilesystem();
+
+          assert.deepEqual(COM.searchpaths.map((search) => search.filename), ['lq1', 'hellwave']);
+          assert.equal(COM.gamedir?.[0].filename, 'hellwave');
+          assert.equal(COM.game, 'hellwave');
+          assert.equal(COM.modified, true);
+        });
+      });
     });
   });
 });

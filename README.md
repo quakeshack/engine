@@ -85,6 +85,17 @@ The dedicated server can be started using `npm run dedicated:start`, but this wi
 
 That’s why you should compile the dedicated server with `npm run dedicated:build:production` and start it using `npm run dedicated:start`.
 
+You can override the default base game directory at build time when you want the engine to start from something other than `id1`:
+
+```sh
+VITE_BASE_DIR="lq1" npm run build:production
+VITE_BASE_DIR="lq1" npm run dedicated:build:production
+```
+
+This replaces the fallback used when no `-basedir` argument is supplied. `VITE_GAME_DIR` still remains the hard single-game override for builds that should boot straight into one game directory.
+
+When both variables are set, the engine mounts `VITE_BASE_DIR` first and then mounts `VITE_GAME_DIR` as the active game directory on top of it.
+
 ### Deploy to a CDN
 
 You can deploy the built frontend code to a CDN such as Cloudflare and skip the virtual Quake filesystem by providing the URL where to get the game assets (basically everything extracted from the pak files) from.
