@@ -33,7 +33,8 @@ RUN npm run build:production && \
 # Test stage — keeps dev dependencies and test sources so CI can run regressions
 FROM builder AS test
 
-# adding test maps
+# adding test maps and pak0.pak to run regression tests in CI
+COPY data/id1/pak0.pak ./data/id1/
 COPY data/id1/maps/test_*.bsp ./data/id1/maps/
 
 CMD ["npm", "run", "test"]
