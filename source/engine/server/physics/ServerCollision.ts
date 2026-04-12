@@ -4,18 +4,20 @@ import type { ServerEdict } from '../Edict.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
-import { BrushModel, MeshModel } from '../../common/Mod.ts';
+import { AliasModel, BrushModel, MeshModel } from '../../common/Mod.ts';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
 import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
+  AliasCollisionState,
   BrushCollisionState,
+  CollisionTriangle,
   CollisionState,
   CollisionTrace,
   HullCollisionState,
   MeshCollisionState,
-  MeshTraceContext,
-  MeshTriangle,
   MoveClip,
+  TriangleCollisionState,
+  TriangleTraceContext,
 } from './ServerCollisionSupport.ts';
 import {
   hullPointContents as legacyHullPointContents,
@@ -23,7 +25,7 @@ import {
   recursiveHullCheck as legacyRecursiveHullCheck,
 } from './ServerLegacyHullCollision.ts';
 
-type CollisionModel = BrushModel | MeshModel | object | null;
+type CollisionModel = BrushModel | MeshModel | AliasModel | object | null;
 
 interface StaticWorldSource {
   readonly worldEntity: ServerEdict | null;
@@ -94,9 +96,16 @@ export class ServerCollision {
 
     if (entity.solid === Defs.solid.SOLID_MESH) {
       const model = this._getEntityModel(ent);
-      return this._isMeshModel(model)
-        ? new MeshCollisionState(ent, model)
-        : null;
+
+      if (this._isMeshModel(model)) {
+        return new MeshCollisionState(ent, model);
+      }
+
+      if (this._isAliasModel(model)) {
+        return new AliasCollisionState(ent, model);
+      }
+
+      return null;
     }
 
     if (entity.solid === Defs.solid.SOLID_BSP) {
@@ -171,6 +180,14 @@ export class ServerCollision {
    */
   _isMeshModel(model: CollisionModel): model is MeshModel {
     return model instanceof MeshModel;
+  }
+
+  /**
+   * Returns true when the provided model is an alias model.
+   * @returns True when the model is an alias model.
+   */
+  _isAliasModel(model: CollisionModel): model is AliasModel {
+    return model instanceof AliasModel;
   }
 
   /**
@@ -558,12 +575,12 @@ export class ServerCollision {
   }
 
   /**
-   * Update a trace with start-solid information for a mesh triangle.
+   * Update a trace with start-solid information for a triangle-backed entity.
    */
-  _updateMeshStartSolid(
+  _updateTriangleStartSolid(
     trace: CollisionTrace,
-    meshTrace: MeshTraceContext,
-    triangle: MeshTriangle,
+    triangleTrace: TriangleTraceContext,
+    triangle: CollisionTriangle,
     startDistance: number,
     supportRadius: number,
     approach: number,
@@ -572,7 +589,7 @@ export class ServerCollision {
       return;
     }
 
-    const projectedStart = meshTrace.projectPointOntoPlane(meshTrace.startCenter, triangle.normal, triangle.planeDist);
+    const projectedStart = triangleTrace.projectPointOntoPlane(triangleTrace.startCenter, triangle.normal, triangle.planeDist);
     if (!this._pointInTriangle(projectedStart, triangle.v0, triangle.v1, triangle.v2, triangle.normal)) {
       return;
     }
@@ -584,12 +601,12 @@ export class ServerCollision {
   }
 
   /**
-   * Try to record a nearer face impact from a mesh triangle.
+   * Try to record a nearer face impact from a triangle-backed entity.
    */
-  _updateMeshImpact(
+  _updateTriangleImpact(
     trace: CollisionTrace,
-    meshTrace: MeshTraceContext,
-    triangle: MeshTriangle,
+    triangleTrace: TriangleTraceContext,
+    triangle: CollisionTriangle,
     startDistance: number,
     approach: number,
   ): void {
@@ -604,8 +621,8 @@ export class ServerCollision {
       return;
     }
 
-    const hitCenter = meshTrace.getCenterAtFraction(fraction);
-    const projectedHit = meshTrace.projectPointOntoPlane(hitCenter, triangle.normal, triangle.planeDist);
+    const hitCenter = triangleTrace.getCenterAtFraction(fraction);
+    const projectedHit = triangleTrace.projectPointOntoPlane(hitCenter, triangle.normal, triangle.planeDist);
     if (!this._pointInTriangle(projectedHit, triangle.v0, triangle.v1, triangle.v2, triangle.normal)) {
       return;
     }
@@ -613,61 +630,88 @@ export class ServerCollision {
     trace.fraction = fraction;
     trace.plane.normal = triangle.normal.copy();
     trace.plane.dist = triangle.planeDist;
-    trace.ent = meshTrace.ent;
+    trace.ent = triangleTrace.ent;
   }
 
   /**
-   * Build a mesh tracing context if the target entity has usable mesh data.
-   * @returns The mesh trace context, or `null` when mesh tracing is unavailable.
+   * Build a triangle tracing context if the target entity has usable triangle data.
+   * @returns The triangle trace context, or `null` when triangle tracing is unavailable.
    */
-  _createMeshTraceContext(ent: ServerEdict, start: Vector, mins: Vector, maxs: Vector, end: Vector): MeshTraceContext | null {
-    const model = this._getEntityModel(ent);
-    if (!this._isMeshModel(model) || model.indices === null || model.vertices === null || model.numTriangles === 0) {
+  _createTriangleTraceContext(
+    state: TriangleCollisionState,
+    start: Vector,
+    mins: Vector,
+    maxs: Vector,
+    end: Vector,
+  ): TriangleTraceContext | null {
+    const triangleAdapter = state.createTriangleAdapter(SV.server?.time ?? 0.0);
+
+    if (triangleAdapter === null || triangleAdapter.triangleCount === 0) {
       return null;
     }
 
-    return new MeshTraceContext(ent, model, start, mins, maxs, end);
+    return new TriangleTraceContext(state.ent, triangleAdapter, start, mins, maxs, end);
   }
 
   /**
-   * Traces a moving box against a mesh entity using expanded face planes.
+   * Traces a moving box against a triangle-backed entity using expanded face planes.
    * Each triangle face is expanded outward by the box's support radius
    * (Minkowski sum) and tested for ray intersection. A DIST_EPSILON push-back
    * keeps the endpoint slightly in front of the surface, preventing the next
    * frame's trace from starting on or inside the plane.
-   * @returns The collision trace against the mesh entity.
+   * @returns The collision trace against the triangle-backed entity.
    */
-  clipMoveToMesh(ent: ServerEdict, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
+  _clipMoveToTriangleState(
+    state: TriangleCollisionState,
+    start: Vector,
+    mins: Vector,
+    maxs: Vector,
+    end: Vector,
+  ): CollisionTrace {
     const trace = CollisionTrace.empty(end);
 
-    const meshTrace = this._createMeshTraceContext(ent, start, mins, maxs, end);
-    if (meshTrace === null) {
+    const triangleTrace = this._createTriangleTraceContext(state, start, mins, maxs, end);
+    if (triangleTrace === null) {
       return trace;
     }
 
-    for (let index = 0; index < meshTrace.model.numTriangles; index++) {
-      const triangle = MeshTriangle.fromMesh(meshTrace, index);
+    for (const index of triangleTrace.getCandidateTriangleIndices()) {
+      const triangle = CollisionTriangle.fromTraceContext(triangleTrace, index);
       if (triangle === null) {
         continue;
       }
 
-      const supportRadius = meshTrace.getBoxSupportRadius(triangle.normal);
-      const approach = triangle.getApproach(meshTrace.moveDir);
-      const startDistance = triangle.normal.dot(meshTrace.startCenter) - triangle.planeDist - supportRadius;
+      const supportRadius = triangleTrace.getBoxSupportRadius(triangle.normal);
+      const approach = triangle.getApproach(triangleTrace.moveDir);
+      const startDistance = triangle.normal.dot(triangleTrace.startCenter) - triangle.planeDist - supportRadius;
 
       if (startDistance <= 0.0) {
-        this._updateMeshStartSolid(trace, meshTrace, triangle, startDistance, supportRadius, approach);
+        this._updateTriangleStartSolid(trace, triangleTrace, triangle, startDistance, supportRadius, approach);
         continue;
       }
 
-      this._updateMeshImpact(trace, meshTrace, triangle, startDistance, approach);
+      this._updateTriangleImpact(trace, triangleTrace, triangle, startDistance, approach);
     }
 
     if (trace.fraction < 1.0) {
-      trace.endpos = meshTrace.getTraceEndAtFraction(trace.fraction);
+      trace.endpos = triangleTrace.getTraceEndAtFraction(trace.fraction);
     }
 
     return trace;
+  }
+
+  /**
+   * Traces a moving box against a mesh entity.
+   * @returns The collision trace against the mesh entity.
+   */
+  clipMoveToMesh(ent: ServerEdict, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
+    const state = this._getEntityCollisionState(ent);
+
+    if (!(state instanceof MeshCollisionState)) {
+      return CollisionTrace.empty(end);
+    }
+
+    return this._clipMoveToTriangleState(state, start, mins, maxs, end);
   }
 
   /**
@@ -685,8 +729,8 @@ export class ServerCollision {
    * @returns The collision trace against the target entity.
    */
   _clipMoveToEntityWithState(state: CollisionState, start: Vector, mins: Vector, maxs: Vector, end: Vector): CollisionTrace {
-    if (state instanceof MeshCollisionState) {
-      return this.clipMoveToMesh(state.ent, start, mins, maxs, end);
+    if (state instanceof TriangleCollisionState) {
+      return this._clipMoveToTriangleState(state, start, mins, maxs, end);
     }
 
     if (state instanceof BrushCollisionState) {
@@ -763,11 +807,30 @@ export class ServerCollision {
   }
 
   /**
+   * Monster step movement expects thick gameplay blockers, not thin triangle shells.
+   * Use the entity hull for monster-vs-mesh contacts so oversized monster bounds
+   * like OldOne and Boss still block other AI reliably.
+   * @returns True when the touched mesh should be clipped through the hull fallback.
+   */
+  _shouldUseHullFallbackForTouch(clip: MoveClip, touch: ServerEdict): boolean {
+    const passedictEntity = clip.passedict?.entity;
+
+    if (passedictEntity === null || passedictEntity === undefined) {
+      return false;
+    }
+
+    return (passedictEntity.flags & Defs.flags.FL_MONSTER) !== 0
+      && touch.entity!.solid === Defs.solid.SOLID_MESH;
+  }
+
+  /**
    * Run narrow-phase tracing against a touched entity using the correct extents.
    * @returns The collision trace against the touched entity.
    */
   _traceTouch(clip: MoveClip, touch: ServerEdict): CollisionTrace {
-    const touchState = this._getEntityCollisionState(touch) ?? this._getHullFallbackState(touch);
+    const touchState = this._shouldUseHullFallbackForTouch(clip, touch)
+      ? this._getHullFallbackState(touch)
+      : (this._getEntityCollisionState(touch) ?? this._getHullFallbackState(touch));
     const { mins, maxs } = this._getTouchTraceExtents(clip, touch);
     const trace = this._clipMoveToEntityWithState(touchState, clip.start, mins, maxs, clip.end);
 

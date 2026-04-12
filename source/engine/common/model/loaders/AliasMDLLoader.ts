@@ -352,6 +352,12 @@ export class AliasMDLLoader extends ModelLoader {
     inmodel = this.#loadTriangles(loadmodel, buffer, inmodel);
     this.#loadAllFrames(loadmodel, buffer, inmodel);
 
+    const collisionBounds = loadmodel.getCollisionBounds();
+    if (collisionBounds !== null) {
+      loadmodel.mins = collisionBounds.mins;
+      loadmodel.maxs = collisionBounds.maxs;
+    }
+
     // Prepare rendering data (if not dedicated server)
     if (!registry.isDedicatedServer) {
       this.#buildRenderCommands(loadmodel);
@@ -715,8 +721,6 @@ export class AliasMDLLoader extends ModelLoader {
           cmds.push(avertexnormals[vert.lightnormalindex * 3 + 2]);
         }
       }
-
-      frame.v.length = 0; // Free memory
     }
 
     // Upload to WebGL
