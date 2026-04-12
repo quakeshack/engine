@@ -90,7 +90,8 @@ function createTriangleSpatialIndex(items: TriangleBoundsItem[]): TriangleSpatia
     (maxs[2] - mins[2]) * 0.5,
     1.0,
   ) + 1.0;
-  const tree = new Octree(center, halfSize, 16, 8);
+
+  const tree = new Octree<TriangleBoundsItem>(center, halfSize, 16, 8);
 
   for (const item of items) {
     tree.insert(item);

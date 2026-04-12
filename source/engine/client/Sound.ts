@@ -261,7 +261,7 @@ export default class Sound {
 
     Sound._nosound = new Cvar('nosound', COM.CheckParm('-nosound') ? '1' : '0', Cvar.FLAG.READONLY);
     Sound.volume = new Cvar('volume', '0.7', Cvar.FLAG.ARCHIVE);
-    Sound._precache = new Cvar('precache', '1');
+    Sound._precache = new Cvar('s_precache', '1', Cvar.FLAG.NONE, '0 = only load sounds when played, 1 = load all sounds at level start');
     Sound.bgmvolume = new Cvar('bgmvolume', '1', Cvar.FLAG.ARCHIVE);
     Sound._ambientLevel = new Cvar('ambient_level', '0.3');
     Sound._ambientFade = new Cvar('ambient_fade', '100');

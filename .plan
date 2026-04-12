@@ -157,6 +157,16 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-04-13
+
+- added feature party for SOLID_MESH on Alias models (still a bit wonky though, but works on the bosses okayish)
+- completely removed QuakeC VM and legacy code path
+  - cutting out QuakeC VM and all the legacy shims really allows for improvements now
+  - also removed Protocol 15 support again
+- fixed a bunch of structural issues over at the game code, I really like how the Serializer evolved
+- found a bunch of issues regarding save/load game, still needs proper in-depth testing
+- added VITE_GAME_DIR build config (I need that for hellwave vendoring and local development)
+
 ### 2026-04-05
 
 - The Grand TypeScript Port™

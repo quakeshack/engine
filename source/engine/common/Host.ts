@@ -8,7 +8,7 @@
 
 /* eslint-disable jsdoc/require-returns */
 
-import { SerializableEntity, type SerializedData } from '../../shared/GameInterfaces.ts';
+import { SerializableEntity, type SerializedData, type ServerGameInterface } from '../../shared/GameInterfaces.ts';
 import type { SerializedParticle } from '../client/R.ts';
 import type { AliasModel } from './model/AliasModel.ts';
 import { ED, type ServerEdict } from '../server/Edict.ts';
@@ -75,6 +75,49 @@ interface SavegameState {
   readonly edicts: SavegameEdictEntry[];
   readonly num_edicts: number;
   readonly particles: SerializedParticle[];
+}
+
+/**
+ * Restores savegame edicts in two passes so entity references resolve after
+ * all entity instances have been created.
+ */
+function applySavegameEdicts(
+  edicts: ServerEdict[],
+  savedEdicts: SavegameEdictEntry[],
+  gameAPI: Pick<ServerGameInterface, 'prepareEntity'>,
+): void {
+  for (let index = 0; index < edicts.length; index++) {
+    const edict = edicts[index];
+    const savedEdict = savedEdicts[index];
+
+    if (savedEdict === undefined || savedEdict === null) {
+      edict.freeEdict();
+      continue;
+    }
+
+    const [classname] = savedEdict;
+    console.assert(gameAPI.prepareEntity(edict, classname), 'no entity for classname');
+  }
+
+  for (let index = 0; index < edicts.length; index++) {
+    const edict = edicts[index];
+    const savedEdict = savedEdicts[index];
+
+    if (edict.isFree() || savedEdict === undefined || savedEdict === null) {
+      continue;
+    }
+
+    const [, entityData] = savedEdict;
+    const entity = edict.entity;
+    console.assert(entity instanceof SerializableEntity, 'loaded edict entity must support serialization');
+
+    if (!(entity instanceof SerializableEntity)) {
+      continue;
+    }
+
+    entity.deserialize(entityData);
+    edict.linkEdict();
+  }
 }
 
 /** Extracts a display name from a CrashLike value. */
@@ -1188,7 +1231,13 @@ export default class Host {
       return;
     }
 
-    const gamestate = JSON.parse(data) as SavegameState;
+    let gamestate: SavegameState;
+
+    try {
+      gamestate = JSON.parse(data) as SavegameState;
+    } catch {
+      throw new HostError(`Savegame ${filename} is corrupted or unreadable.`);
+    }
 
     if (gamestate.version !== Def.gamestateVersion) {
       throw new HostError(`Savegame is version ${gamestate.version}, not ${Def.gamestateVersion}\n`);
@@ -1222,7 +1271,7 @@ export default class Host {
       throw new HostError(`Game is version ${gamestate.gameversion}, not ${SV.server.gameVersion}\n`);
     }
 
-    SV.server.paused = true;
+    SV.server.paused = false;
     SV.server.loadgame = true;
 
     SV.server.lightstyles = gamestate.lightstyles;
@@ -1233,46 +1282,18 @@ export default class Host {
       return;
     }
 
-    gameAPI.deserialize(gamestate.globals);
+    if (gamestate.num_edicts > gamestate.edicts.length) {
+      throw new HostError(`Savegame ${filename} has ${gamestate.num_edicts} active edicts but only ${gamestate.edicts.length} saved edict records.`);
+    }
+
+    if (gamestate.edicts.length > SV.server.edicts.length) {
+      throw new HostError(`Savegame ${filename} needs ${gamestate.edicts.length} edicts but the server only allocated ${SV.server.edicts.length}.`);
+    }
 
     SV.server.num_edicts = gamestate.num_edicts;
-    console.assert(SV.server.num_edicts <= SV.server.edicts.length, 'resizing edicts not supported yet'); // TODO: alloc more edicts
 
-    // First run through all edicts to make sure the entity structures get initialized.
-    for (let index = 0; index < SV.server.edicts.length; index++) {
-      const edict = SV.server.edicts[index];
-      const serializedEdict = gamestate.edicts[index];
-
-      if (serializedEdict === undefined || serializedEdict === null) {
-        // FIXME: QuakeC doesn’t like it at all when edicts suddenly disappear, we should offload this code to the GameAPI.
-        edict.freeEdict();
-        continue;
-      }
-
-      const [classname] = serializedEdict;
-      console.assert(gameAPI.prepareEntity(edict, classname), 'no entity for classname');
-    }
-
-    // Second run: we can start deserializing now that entity classes exist.
-    for (let index = 0; index < SV.server.edicts.length; index++) {
-      const edict = SV.server.edicts[index];
-      const serializedEdict = gamestate.edicts[index];
-
-      if (edict.isFree() || serializedEdict === undefined || serializedEdict === null) {
-        continue;
-      }
-
-      const [, entityData] = serializedEdict;
-      const entity = edict.entity;
-      console.assert(entity instanceof SerializableEntity, 'loaded edict entity must support serialization');
-
-      if (!(entity instanceof SerializableEntity)) {
-        continue;
-      }
-
-      entity.deserialize(entityData);
-      edict.linkEdict();
-    }
+    applySavegameEdicts(SV.server.edicts, gamestate.edicts, gameAPI);
+    gameAPI.deserialize(gamestate.globals);
 
     SV.server.time = gamestate.time;
 

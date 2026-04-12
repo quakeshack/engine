@@ -28,6 +28,8 @@ Where’s what these tools have worked on in big chunks and my experience:
 | Pmove improvements | I did an 80% port of pmove.c from QuakeWorld, together with Claude Opus 4.6 I implemented Q1 and Q2 movement profiles as well as wired up the whole code with client-side prediction and some other shenanigans. |
 | Brushlist implementation | Pmove works best with non-hull based data, Claude Opus 4.6 sketched out the brushlist based code, but it was not perfect, lots of fine tuning and manual debugging was required to get a decent result. |
 | Unit Tests | GPT-5.4 is my guinea pig on this one. I asked it to write unit tests around server physics code so that this code is always solid and won’t contain nasty surprises. |
+| TypeScript support and port | See https://github.com/quakeshack/engine/pull/8 for details. |
+| SOLID_MESH support | I wanted polygon-based collision support. Both Claude 4.5 back then and now GPT 5.4 are doing a so-so job. Some rainy day I need to look into it myself. |
 
 ## Conclusion
 
