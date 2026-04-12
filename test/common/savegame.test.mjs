@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
@@ -9,6 +8,7 @@ import * as Def from '../../source/engine/common/Def.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import ClientLifecycle from '../../source/engine/client/ClientLifecycle.ts';
 import { ServerEdict } from '../../source/engine/server/Edict.ts';
+import NodeCOM from '../../source/engine/server/Com.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import { Serializer } from '../../source/game/id1/helper/MiscHelpers.ts';
 import { cvarFlags } from '../../source/shared/Defs.ts';
@@ -321,20 +321,20 @@ function createIntegrationEngineAPI(getEdicts) {
     ParseQC: Mod.ParseQC,
     eventBus: {
       subscribe() {
-        return () => {};
+        return () => { };
       },
     },
     maxplayers: 1,
-    PrecacheModel() {},
-    PrecacheSound() {},
-    ConsoleWarning() {},
-    ConsoleError() {},
-    ConsolePrint() {},
-    BroadcastPrint() {},
-    ChangeLevel() {},
-    PlayTrack() {},
-    Lightstyle() {},
-    SetCvar() {},
+    PrecacheModel() { },
+    PrecacheSound() { },
+    ConsoleWarning() { },
+    ConsoleError() { },
+    ConsolePrint() { },
+    BroadcastPrint() { },
+    ChangeLevel() { },
+    PlayTrack() { },
+    Lightstyle() { },
+    SetCvar() { },
     SpawnEntity() {
       throw new Error('unexpected SpawnEntity call in integration test');
     },
@@ -577,12 +577,12 @@ void describe('Host.Loadgame_f', () => {
         sv.server.mapname = mapname;
         return true;
       },
-      ShutdownServer() {},
+      ShutdownServer() { },
     };
     const client = {
       cls: { demonum: 0 },
-      Disconnect() {},
-      SetConnectingStep() {},
+      Disconnect() { },
+      SetConnectingStep() { },
     };
     const mockCOM = {
       DefaultExtension: COMClass.DefaultExtension,
@@ -668,12 +668,12 @@ void describe('Host.Loadgame_f', () => {
         spawnCalls += 1;
         return true;
       },
-      ShutdownServer() {},
+      ShutdownServer() { },
     };
     const client = {
       cls: { demonum: 0 },
-      Disconnect() {},
-      SetConnectingStep() {},
+      Disconnect() { },
+      SetConnectingStep() { },
     };
     const mockCOM = {
       DefaultExtension: COMClass.DefaultExtension,
@@ -757,12 +757,12 @@ void describe('Host.Loadgame_f', () => {
         sv.server.mapname = mapname;
         return true;
       },
-      ShutdownServer() {},
+      ShutdownServer() { },
     };
     const client = {
       cls: { demonum: 0 },
-      Disconnect() {},
-      SetConnectingStep() {},
+      Disconnect() { },
+      SetConnectingStep() { },
     };
     const mockCOM = {
       DefaultExtension: COMClass.DefaultExtension,
@@ -794,12 +794,14 @@ void describe('Host.Loadgame_f', () => {
 void describe('Host.save/load integration', () => {
   void test('round-trips real id1 worldspawn and player entities on E1M1', async () => {
     const consoleCapture = createMockConsole();
-    const baseUrl = new URL('../../data/id1/', import.meta.url);
     const knownKeysBefore = new Set(Object.keys(Mod.known));
     const resumes = [];
     const previousRenderer = registry.R;
     const previousIsDedicatedServer = registry.isDedicatedServer;
     const previousServerGameCvars = ServerGameAPI._cvars;
+    const previousSys = registry.Sys;
+    const previousSearchpaths = COMClass.searchpaths;
+    const previousGamedir = COMClass.gamedir;
     const savedCvars = [
       createMockCvar('sv_gravity', '800', cvarFlags.SERVER),
       createMockCvar('skill', '2', cvarFlags.GAME),
@@ -827,6 +829,9 @@ void describe('Host.save/load integration', () => {
         return [];
       },
     };
+    registry.Sys = {
+      Print() { },
+    };
     registry.isDedicatedServer = true;
     eventBus.publish('registry.frozen');
 
@@ -835,23 +840,14 @@ void describe('Host.save/load integration', () => {
       Parse: COMClass.Parse,
       DefaultExtension: COMClass.DefaultExtension,
       async LoadFile(name) {
-        try {
-          const data = await fs.readFile(new URL(name, baseUrl));
-          return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-        } catch {
-          return null;
-        }
+        return NodeCOM.LoadFile(name);
       },
       async LoadTextFile(name) {
         if (name.endsWith('.json')) {
           return savedText;
         }
 
-        try {
-          return await fs.readFile(new URL(name, baseUrl), 'utf8');
-        } catch {
-          return null;
-        }
+        return null;
       },
       WriteTextFile(filename, data) {
         if (!filename.endsWith('.json')) {
@@ -886,8 +882,8 @@ void describe('Host.save/load integration', () => {
         ],
       },
       area: {
-        linkEdict() {},
-        unlinkEdict() {},
+        linkEdict() { },
+        unlinkEdict() { },
       },
       SpawnServer: async (mapname) => {
         const freshEdicts = [new ServerEdict(0), new ServerEdict(1), new ServerEdict(2)];
@@ -911,12 +907,12 @@ void describe('Host.save/load integration', () => {
         sv.svs.clients[0].edict = freshEdicts[1];
         return true;
       },
-      ShutdownServer() {},
+      ShutdownServer() { },
     };
     const client = {
       cls: { demonum: 0 },
-      Disconnect() {},
-      SetConnectingStep() {},
+      Disconnect() { },
+      SetConnectingStep() { },
       state: {
         intermission: 0,
         levelname: 'E1M1',
@@ -946,9 +942,14 @@ void describe('Host.save/load integration', () => {
         },
         isDedicatedServer: true,
       }, async () => {
+        // Load the real id1 pak metadata so maps/e1m1.bsp resolves through COM.
+        COMClass.searchpaths = [];
+        COMClass.gamedir = null;
+        await NodeCOM.AddGameDirectory('id1');
+
         Mod.Init();
 
-        const model = await Mod.ForNameAsync('maps/e1m1-extracted.bsp', true);
+        const model = await Mod.ForNameAsync('maps/e1m1.bsp', true);
         assert.ok(model !== null);
 
         const entities = parseMapEntities(model.entities);
@@ -1034,7 +1035,10 @@ void describe('Host.save/load integration', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
+      COMClass.searchpaths = previousSearchpaths;
+      COMClass.gamedir = previousGamedir;
       registry.R = previousRenderer;
+      registry.Sys = previousSys;
       registry.isDedicatedServer = previousIsDedicatedServer;
       ServerGameAPI._cvars = previousServerGameCvars;
       eventBus.publish('registry.frozen');
