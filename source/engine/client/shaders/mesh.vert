@@ -48,14 +48,13 @@ void main(void) {
 
   // fog distance (world position)
   float dist = length(worldPos - uViewOrigin);
-  if (uFogParams.w < 0.0) {
-    vFog = 1.0;
-  } else if (uFogParams.w < 0.5) {
-    float denom = max(0.0001, uFogParams.y - uFogParams.x);
-    vFog = clamp((uFogParams.y - dist) / denom, 0.0, 1.0);
-  } else if (abs(uFogParams.w - 1.0) < 0.5) {
-    vFog = clamp(exp(-uFogParams.z * dist), 0.0, 1.0);
-  } else {
-    vFog = clamp(exp(-uFogParams.z * uFogParams.z * dist * dist), 0.0, 1.0);
-  }
+  float fogLinear = clamp((uFogParams.y - dist) / max(0.0001, uFogParams.y - uFogParams.x), 0.0, 1.0);
+  float fogExp = clamp(exp(-uFogParams.z * dist), 0.0, 1.0);
+  float fogExp2 = clamp(exp(-uFogParams.z * uFogParams.z * dist * dist), 0.0, 1.0);
+
+  float isNoFog = step(uFogParams.w, -0.5);
+  float isLinear = step(uFogParams.w, 0.5) * (1.0 - isNoFog);
+  float isExp = step(abs(uFogParams.w - 1.0), 0.5) * (1.0 - isNoFog - isLinear);
+
+  vFog = mix(mix(mix(fogExp2, fogExp, isExp), fogLinear, isLinear), 1.0, isNoFog);
 }

@@ -1469,9 +1469,13 @@ class R {
       warpEffect.active = R.dowarp;
     }
 
+    const bloomEnabled = R.bloom.value !== 0;
     const bloomEffect = PostProcess.getEffect('bloom');
+    if (!bloomEnabled) {
+      BloomEffect.invalidateHistory();
+    }
     if (bloomEffect) {
-      bloomEffect.active = R.bloom.value !== 0;
+      bloomEffect.active = bloomEnabled;
     }
 
     // Activate depth-texture post-process when fog volumes exist.
@@ -1808,10 +1812,20 @@ class R {
         [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
         ['tTexture'])),
 
+      Promise.resolve(GL.CreateProgram('bloom-metric',
+        ['uOrtho', 'uCoverageThreshold'],
+        [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+        ['tTexture'])),
+
+      Promise.resolve(GL.CreateProgram('bloom-adapt',
+        ['uOrtho', 'uFrameTime', 'uSettleRate', 'uRecoverRate', 'uFirstFrame', 'uMinMultiplier', 'uBrightnessStart', 'uBrightnessEnd', 'uCoverageStart', 'uCoverageEnd'],
+        [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+        ['tMetric', 'tPrevious'])),
+
       Promise.resolve(GL.CreateProgram('bloom-composite',
         ['uOrtho', 'uStrength'],
         [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
-        ['tScene', 'tBloom'])),
+        ['tScene', 'tBloom', 'tAdaptation'])),
 
       Promise.resolve(GL.CreateProgram('sky',
         ['uViewAngles', 'uPerspective', 'uScale', 'uGamma', 'uTime', 'uFogColor', 'uFogParams', 'uBloomEmissiveScale'],

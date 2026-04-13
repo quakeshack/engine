@@ -18,9 +18,7 @@ void main(void) {
   texColor.rgb *= vColor;
 
   fragColor = texColor;
-  fragColor.r = pow(fragColor.r, uGamma);
-  fragColor.g = pow(fragColor.g, uGamma);
-  fragColor.b = pow(fragColor.b, uGamma);
+  fragColor.rgb = pow(fragColor.rgb, vec3(uGamma));
 
   if (fragColor.a < 0.01) discard;
 

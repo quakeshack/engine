@@ -19,12 +19,10 @@ void main(void) {
   // while grazing-angle surfaces get maximum offset (no acne).
   vec3 worldNormal = uAngles * aNormal;
   float normalLen = length(worldNormal);
-  if (normalLen > 0.0) {
-    worldNormal /= normalLen;
-    vec3 lightDir = normalize(worldPos - uLightPos);
-    float cosTheta = dot(worldNormal, lightDir);
-    worldPos += worldNormal * uNormalBias * sqrt(1.0 - cosTheta * cosTheta);
-  }
+  worldNormal /= max(normalLen, 0.0001);
+  vec3 lightDir = normalize(worldPos - uLightPos);
+  float cosTheta = dot(worldNormal, lightDir);
+  worldPos += worldNormal * uNormalBias * sqrt(1.0 - cosTheta * cosTheta) * step(0.0001, normalLen);
 
   gl_Position = uLightSpaceMatrix * vec4(worldPos, 1.0);
 }

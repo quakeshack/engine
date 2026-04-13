@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import { effect } from '../../source/shared/Defs.ts';
-import { getBloomBufferSize, getBloomDebugPreviewItems, getEntityBloomEmissiveScale, resolveBloomDebugMode, resolveBloomDownsample } from '../../source/engine/client/renderer/BloomEffect.ts';
+import { advanceBloomAdaptation, getBloomBufferSize, getBloomDebugPreviewItems, getEntityBloomEmissiveScale, resolveBloomAdaptationTarget, resolveBloomDebugMode, resolveBloomDownsample } from '../../source/engine/client/renderer/BloomEffect.ts';
 
 const bloomBlurShaderSource = readFileSync(new URL('../../source/engine/client/shaders/bloom-blur.frag', import.meta.url), 'utf8');
 
@@ -77,6 +77,54 @@ describe('getEntityBloomEmissiveScale', () => {
   test('keeps normal lit entities out of the emissive bloom buffer', () => {
     assert.equal(getEntityBloomEmissiveScale(effect.EF_NONE), 0.0);
     assert.equal(getEntityBloomEmissiveScale(effect.EF_BRIGHTLIGHT), 0.0);
+  });
+});
+
+describe('resolveBloomAdaptationTarget', () => {
+  test('keeps bloom at full strength when the measured bloom footprint is small', () => {
+    assert.equal(resolveBloomAdaptationTarget(0.0, 0.0), 1.0);
+    assert.equal(resolveBloomAdaptationTarget(Number.NaN, 0.9), 1.0);
+    assert.equal(resolveBloomAdaptationTarget(0.15, 0.05), 1.0);
+  });
+
+  test('reduces bloom further as broad bright coverage grows', () => {
+    const mediumCoverage = resolveBloomAdaptationTarget(0.14, 0.45);
+    const highCoverage = resolveBloomAdaptationTarget(0.14, 0.8);
+
+    assert.ok(highCoverage < mediumCoverage);
+    assert.ok(highCoverage < 0.7);
+  });
+
+  test('never drops below the minimum multiplier for fully dominant bloom', () => {
+    const target = resolveBloomAdaptationTarget(1.0, 1.0);
+
+    assert.ok(target >= 0.35);
+    assert.ok(target <= 0.36);
+  });
+});
+
+describe('advanceBloomAdaptation', () => {
+  test('settles toward a lower multiplier over time without snapping instantly', () => {
+    let current = 1.0;
+
+    for (let i = 0; i < 5; ++i) {
+      current = advanceBloomAdaptation(current, 0.45, 0.1);
+    }
+
+    assert.ok(current < 0.7);
+    assert.ok(current > 0.45);
+  });
+
+  test('recovers upward more gently than it settles downward', () => {
+    const settled = advanceBloomAdaptation(1.0, 0.45, 0.1);
+    const recovered = advanceBloomAdaptation(0.45, 1.0, 0.1);
+
+    assert.ok(1.0 - settled > recovered - 0.45);
+  });
+
+  test('sanitizes invalid inputs back toward the default multiplier', () => {
+    assert.equal(advanceBloomAdaptation(Number.NaN, Number.NaN, Number.NaN), 1.0);
+    assert.equal(advanceBloomAdaptation(0.4, 0.8, 0.0), 0.4);
   });
 });
 

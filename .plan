@@ -166,6 +166,7 @@ Grouped by sections and then sorted by priority (more or less).
 - fixed a bunch of structural issues over at the game code, I really like how the Serializer evolved
 - found a bunch of issues regarding save/load game, still needs proper in-depth testing
 - added VITE_GAME_DIR build config (I need that for hellwave vendoring and local development)
+- improved bloom effect and optimized shaders (mainly removed if-trees)
 
 ### 2026-04-05
 

@@ -16,9 +16,7 @@ uniform vec3 uFogColor;
 
 void main(void) {
   fragColor = texture(tTexture, vTexCoord);
-  fragColor.r = pow(fragColor.r, uGamma);
-  fragColor.g = pow(fragColor.g, uGamma);
-  fragColor.b = pow(fragColor.b, uGamma);
+  fragColor.rgb = pow(fragColor.rgb, vec3(uGamma));
   if (fragColor.a < 0.25) discard;
   fragColor.a = fragColor.a * uAlpha;
   // apply fog

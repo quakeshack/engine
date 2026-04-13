@@ -20,9 +20,7 @@ void main(void) {
 
   fragColor = vec4(mix(texture(tSolid, vTexCoord + uTime.y).rgb, alpha.rgb, alpha.a), 1.0);
 
-  fragColor.r = pow(fragColor.r, uGamma);
-  fragColor.g = pow(fragColor.g, uGamma);
-  fragColor.b = pow(fragColor.b, uGamma);
+  fragColor.rgb = pow(fragColor.rgb, vec3(uGamma));
   // apply fog to sky RGB
   vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a);

@@ -38,29 +38,22 @@ void main(void) {
   );
 
   vec4 scaledLightstyle = lightstyle * 43.828125;
-  bool hasLightmap = vHasLightmap > 0.5;
 
-  vec3 d;
-  if (hasLightmap) {
-    d = vec3(
+  vec3 d = mix(
+    vFallbackLight,
+    vec3(
       dot(texture(tLightmap, vec3(vTexCoord.zw, 0.0)), scaledLightstyle),
       dot(texture(tLightmap, vec3(vTexCoord.zw, 1.0)), scaledLightstyle),
       dot(texture(tLightmap, vec3(vTexCoord.zw, 2.0)), scaledLightstyle)
-    );
-  } else {
-    d = vFallbackLight;
-  }
+    ),
+    step(0.5, vHasLightmap)
+  );
 
   vec3 dlight = texture(tDlight, vDlightTexCoord).rgb;
 
   vec3 emissiveColor = texel.rgb * clamp(luminance + vec3(uBloomEmissiveScale), 0.0, 1.0);
 
-  fragColor = vec4(
-    texel.r * mix(1.0, d.r + dlight.r, texel.a),
-    texel.g * mix(1.0, d.g + dlight.g, texel.a),
-    texel.b * mix(1.0, d.b + dlight.b, texel.a),
-    uAlpha
-  );
+  fragColor = vec4(texel.rgb * mix(vec3(1.0), d + dlight, texel.a), uAlpha);
   // apply fog (mix RGB only, preserve alpha)
   vec3 finalRgb = fragColor.rgb + emissiveColor;
   finalRgb = mix(uFogColor, finalRgb, vFog);

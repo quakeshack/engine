@@ -21,12 +21,10 @@ void main(void) {
   // Normal offset bias (see shadow-point.vert for rationale)
   vec3 worldNormal = uAngles * localNormal;
   float normalLen = length(worldNormal);
-  if (normalLen > 0.0) {
-    worldNormal /= normalLen;
-    vec3 lightDir = normalize(worldPos - uLightPos);
-    float cosTheta = dot(worldNormal, lightDir);
-    worldPos += worldNormal * uNormalBias * sqrt(1.0 - cosTheta * cosTheta);
-  }
+  worldNormal /= max(normalLen, 0.0001);
+  vec3 lightDir = normalize(worldPos - uLightPos);
+  float cosTheta = dot(worldNormal, lightDir);
+  worldPos += worldNormal * uNormalBias * sqrt(1.0 - cosTheta * cosTheta) * step(0.0001, normalLen);
 
   gl_Position = uLightSpaceMatrix * vec4(worldPos, 1.0);
 }

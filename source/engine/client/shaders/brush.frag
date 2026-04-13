@@ -153,43 +153,30 @@ void main(void) {
   // Modulates the lightmap; fades smoothly to fully-lit at coverage edge.
   // 5×5 Gaussian-weighted PCF for smooth shadow edges. Each tap uses the
   // hardware sampler2DShadow (LINEAR gives free 2×2 PCF per tap).
-  float shadow = 1.0;
-  if (uShadowEnabled > 0.5 && uShadowCount > 0) {
-    shadow = sampleLocalShadowPCF(tShadowMap0, vShadowCoord0);
-    if (uShadowCount > 1) {
-      shadow = min(shadow, sampleLocalShadowPCF(tShadowMap1, vShadowCoord1));
-    }
-    if (uShadowCount > 2) {
-      shadow = min(shadow, sampleLocalShadowPCF(tShadowMap2, vShadowCoord2));
-    }
-  }
+  float s0 = sampleLocalShadowPCF(tShadowMap0, vShadowCoord0);
+  float s1 = sampleLocalShadowPCF(tShadowMap1, vShadowCoord1);
+  float s2 = sampleLocalShadowPCF(tShadowMap2, vShadowCoord2);
+
+  float shadow = mix(1.0, s0, step(1.0, float(uShadowCount)));
+  shadow = mix(shadow, min(s0, s1), step(2.0, float(uShadowCount)));
+  shadow = mix(shadow, min(min(s0, s1), s2), step(3.0, float(uShadowCount)));
+  shadow = mix(1.0, shadow, step(0.5, uShadowEnabled));
 
   // Point light shadow — entity shadows cast from the nearest point light
   // (BSP light entity or transient dynamic light). Fades quickly with
   // distance so the effect is localised around the light source.
-  float pointShadow = 1.0;
-  if (uPointShadowEnabled > 0.5) {
-    vec3 fragToLight = vWorldPos - uPointLightPos;
-    float fragDist = length(fragToLight);
-    if (fragDist < uPointLightRadius) {
-      // The cubemap face's perspective projection stores depth based on
-      // the view-space Z, which equals the dominant axis of fragToLight
-      // (the component that selected this cube face). Using the radial
-      // distance instead would overestimate depth at face edges/corners,
-      // producing a cross-shaped shadow artifact at cube face seams.
-      vec3 absFTL = abs(fragToLight);
-      float viewZ = max(absFTL.x, max(absFTL.y, absFTL.z));
-      float n = 1.0;
-      float f = uPointLightRadius;
-      float refDepth = (n * f / (n - f)) / viewZ + n / (n - f);
-      refDepth = refDepth * 0.5 + 0.5;
-      float cubeShadow = texture(tPointShadowMap, vec4(fragToLight, refDepth));
-      // Quick distance fade — shadow strongest near the light, gone
-      // well before the radius edge so coverage stays tight.
-      float ptFade = 1.0 - smoothstep(f * 0.3, f * 0.7, fragDist);
-      pointShadow = mix(1.0, cubeShadow, ptFade);
-    }
-  }
+  vec3 fragToLight = vWorldPos - uPointLightPos;
+  float fragDist = length(fragToLight);
+  vec3 absFTL = abs(fragToLight);
+  float viewZ = max(absFTL.x, max(absFTL.y, absFTL.z));
+  float n = 1.0;
+  float f = uPointLightRadius;
+  float refDepth = (n * f / (n - f)) / viewZ + n / (n - f);
+  refDepth = refDepth * 0.5 + 0.5;
+  float cubeShadow = texture(tPointShadowMap, vec4(fragToLight, refDepth));
+  float ptFade = 1.0 - smoothstep(f * 0.3, f * 0.7, fragDist);
+
+  float pointShadow = mix(1.0, cubeShadow, ptFade * step(fragDist, f) * step(0.5, uPointShadowEnabled));
 
   // Point shadow darkens the lightmap (with a darkness floor so it never
   // goes pure black) and fully occludes the dynamic light contribution.

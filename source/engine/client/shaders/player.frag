@@ -46,15 +46,10 @@ uniform vec3 uFogColor;
 
 float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   vec3 shadowCoord = shadowCoordH.xyz / shadowCoordH.w * 0.5 + 0.5;
-  if (shadowCoord.z < 0.0 || shadowCoord.z > 1.0) {
-    return 1.0;
-  }
+  float zValid = step(0.0, shadowCoord.z) * step(shadowCoord.z, 1.0);
 
   float edgeDist = max(abs(shadowCoord.x * 2.0 - 1.0), abs(shadowCoord.y * 2.0 - 1.0));
-  float fade = 1.0 - smoothstep(0.7, 1.0, edgeDist);
-  if (fade <= 0.0) {
-    return 1.0;
-  }
+  float fade = (1.0 - smoothstep(0.7, 1.0, edgeDist)) * zValid;
 
   float rawShadow = texture(shadowMap, shadowCoord);
   return mix(1.0, mix(uShadowDarkness, 1.0, rawShadow), fade);
@@ -67,52 +62,34 @@ void main(void) {
 
   // Local entity shadow — small local depth map, BSP-light-driven direction.
   // Fades smoothly to fully-lit at the coverage edge (no hard clip).
-  float shadow = 1.0;
-  if (uShadowEnabled > 0.5 && uShadowCount > 0) {
-    shadow = sampleLocalShadow(tShadowMap0, vShadowCoord0);
-    if (uShadowCount > 1) {
-      shadow = min(shadow, sampleLocalShadow(tShadowMap1, vShadowCoord1));
-    }
-    if (uShadowCount > 2) {
-      shadow = min(shadow, sampleLocalShadow(tShadowMap2, vShadowCoord2));
-    }
-  }
+  float s0 = sampleLocalShadow(tShadowMap0, vShadowCoord0);
+  float s1 = sampleLocalShadow(tShadowMap1, vShadowCoord1);
+  float s2 = sampleLocalShadow(tShadowMap2, vShadowCoord2);
+
+  float shadow = mix(1.0, s0, step(1.0, float(uShadowCount)));
+  shadow = mix(shadow, min(s0, s1), step(2.0, float(uShadowCount)));
+  shadow = mix(shadow, min(min(s0, s1), s2), step(3.0, float(uShadowCount)));
+  shadow = mix(1.0, shadow, step(0.5, uShadowEnabled));
 
   // Point light shadow
-  float pointShadow = 1.0;
-  if (uPointShadowEnabled > 0.5) {
-    vec3 fragToLight = vWorldPos - uPointLightPos;
-    float fragDist = length(fragToLight);
-    if (fragDist < uPointLightRadius) {
-      vec3 absFTL = abs(fragToLight);
-      float viewZ = max(absFTL.x, max(absFTL.y, absFTL.z));
-      float n = 1.0;
-      float f = uPointLightRadius;
-      float refDepth = (n * f / (n - f)) / viewZ + n / (n - f);
-      refDepth = refDepth * 0.5 + 0.5;
-      pointShadow = texture(tPointShadowMap, vec4(fragToLight, refDepth));
-    }
-  }
+  vec3 fragToLight = vWorldPos - uPointLightPos;
+  float fragDist = length(fragToLight);
+  vec3 absFTL = abs(fragToLight);
+  float viewZ = max(absFTL.x, max(absFTL.y, absFTL.z));
+  float n = 1.0;
+  float f = uPointLightRadius;
+  float refDepth = (n * f / (n - f)) / viewZ + n / (n - f);
+  refDepth = refDepth * 0.5 + 0.5;
+  float cubeShadow = texture(tPointShadowMap, vec4(fragToLight, refDepth));
 
-  vec3 lighting = vec3(
-    vLightDot * uShadeLight.r + uAmbientLight.r + vDynamicLightDot * uDynamicShadeLight.r * pointShadow,
-    vLightDot * uShadeLight.g + uAmbientLight.g + vDynamicLightDot * uDynamicShadeLight.g * pointShadow,
-    vLightDot * uShadeLight.b + uAmbientLight.b + vDynamicLightDot * uDynamicShadeLight.b * pointShadow
-  ) * shadow;
+  float pointShadow = mix(1.0, cubeShadow, step(fragDist, f) * step(0.5, uPointShadowEnabled));
 
-  vec3 baseColor = vec3(
-    mix(mix(texel.r, uTop.r * (1.0 / 191.25) * player.x, player.y), uBottom.r * (1.0 / 191.25) * player.z, player.w),
-    mix(mix(texel.g, uTop.g * (1.0 / 191.25) * player.x, player.y), uBottom.g * (1.0 / 191.25) * player.z, player.w),
-    mix(mix(texel.b, uTop.b * (1.0 / 191.25) * player.x, player.y), uBottom.b * (1.0 / 191.25) * player.z, player.w)
-  );
+  vec3 lighting = (vLightDot * uShadeLight + uAmbientLight + vDynamicLightDot * uDynamicShadeLight * pointShadow) * shadow;
 
-  fragColor.r = baseColor.r * mix(1.0, lighting.r, texel.a);
-  fragColor.g = baseColor.g * mix(1.0, lighting.g, texel.a);
-  fragColor.b = baseColor.b * mix(1.0, lighting.b, texel.a);
+  vec3 baseColor = mix(mix(texel.rgb, uTop * ((1.0 / 191.25) * player.x), player.y), uBottom * ((1.0 / 191.25) * player.z), player.w);
 
-  fragColor.r = pow(fragColor.r, uGamma);
-  fragColor.g = pow(fragColor.g, uGamma);
-  fragColor.b = pow(fragColor.b, uGamma);
+  fragColor = vec4(baseColor * mix(vec3(1.0), lighting, texel.a), texel.a);
+  fragColor.rgb = pow(fragColor.rgb, vec3(uGamma));
   // apply fog
   vec3 finalRgb = mix(uFogColor, fragColor.rgb, vFog);
   fragColor = vec4(finalRgb, fragColor.a * uAlpha);

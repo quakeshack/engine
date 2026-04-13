@@ -19,9 +19,5 @@ void main(void) {
 
   vTexCoord = aPosition.xy * uScale.xy * 1.5;
 
-  if (uFogParams.w < 0.0) {
-    vFog = 1.0;
-  } else {
-    vFog = 0.0;
-  }
+  vFog = step(uFogParams.w, -0.5);
 }

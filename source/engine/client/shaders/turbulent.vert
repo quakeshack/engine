@@ -50,19 +50,15 @@ void main(void) {
 
   // compute fog based on distance from camera
   float dist = length((uAngles * aPositionA + uOrigin) - uViewOrigin);
-  float denom = max(0.0001, uFogParams.y - uFogParams.x);
-  float distNorm = clamp((dist - uFogParams.x) / denom, 0.0, 1.0);
-  if (uFogParams.w < 0.0) {
-    vFog = 1.0;
-  } else if (uFogParams.w < 0.5) {
-    // linear: fog = (end - dist) / (end - start)
-    float denom = max(0.0001, uFogParams.y - uFogParams.x);
-    vFog = clamp((uFogParams.y - dist) / denom, 0.0, 1.0);
-  } else if (abs(uFogParams.w - 1.0) < 0.5) {
-    // exp (apply density across [start,end])
-    vFog = clamp(exp(-uFogParams.z * distNorm), 0.0, 1.0);
-  } else {
-    // exp2 (apply density across [start,end])
-    vFog = clamp(exp(-uFogParams.z * uFogParams.z * distNorm * distNorm), 0.0, 1.0);
-  }
+  float distNorm = clamp((dist - uFogParams.x) / max(0.0001, uFogParams.y - uFogParams.x), 0.0, 1.0);
+
+  float fogLinear = clamp((uFogParams.y - dist) / max(0.0001, uFogParams.y - uFogParams.x), 0.0, 1.0);
+  float fogExp = clamp(exp(-uFogParams.z * distNorm), 0.0, 1.0);
+  float fogExp2 = clamp(exp(-uFogParams.z * uFogParams.z * distNorm * distNorm), 0.0, 1.0);
+
+  float isNoFog = step(uFogParams.w, -0.5);
+  float isLinear = step(uFogParams.w, 0.5) * (1.0 - isNoFog);
+  float isExp = step(abs(uFogParams.w - 1.0), 0.5) * (1.0 - isNoFog - isLinear);
+
+  vFog = mix(mix(mix(fogExp2, fogExp, isExp), fogLinear, isLinear), 1.0, isNoFog);
 }

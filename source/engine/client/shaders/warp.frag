@@ -18,18 +18,16 @@ void main(void) {
 
   // Apply a slight blur effect using a gaussian kernel.
 
-  float kernel[9];
-  kernel[0] = 0.0625; kernel[1] = 0.125;  kernel[2] = 0.0625;
-  kernel[3] = 0.125;  kernel[4] = 0.25;   kernel[5] = 0.125;
-  kernel[6] = 0.0625; kernel[7] = 0.125;  kernel[8] = 0.0625;
-
   vec4 color = vec4(0.0);
-
-  for (int i = -1; i <= 1; i++) {
-    for (int j = -1; j <= 1; j++) {
-      color += texture(tTexture, warpedCoord + vec2(float(i) * texOffset.x, float(j) * texOffset.y)) * kernel[i + 1 + (j + 1) * 3];
-    }
-  }
+  color += texture(tTexture, warpedCoord + vec2(-texOffset.x, -texOffset.y)) * 0.0625;
+  color += texture(tTexture, warpedCoord + vec2(0.0,         -texOffset.y)) * 0.125;
+  color += texture(tTexture, warpedCoord + vec2(texOffset.x,  -texOffset.y)) * 0.0625;
+  color += texture(tTexture, warpedCoord + vec2(-texOffset.x, 0.0))         * 0.125;
+  color += texture(tTexture, warpedCoord)                                   * 0.25;
+  color += texture(tTexture, warpedCoord + vec2(texOffset.x,  0.0))         * 0.125;
+  color += texture(tTexture, warpedCoord + vec2(-texOffset.x, texOffset.y)) * 0.0625;
+  color += texture(tTexture, warpedCoord + vec2(0.0,          texOffset.y)) * 0.125;
+  color += texture(tTexture, warpedCoord + vec2(texOffset.x,  texOffset.y)) * 0.0625;
 
   fragColor = color;
 }
