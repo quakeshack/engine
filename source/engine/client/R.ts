@@ -19,6 +19,8 @@ import { BrushModel, type BrushTexVec, type FogVolumeInfo, type LightgridPointSa
 import { type Face, Plane } from '../common/model/BaseModel.ts';
 import PostProcess from './renderer/PostProcess.ts';
 import BloomEffect from './renderer/BloomEffect.ts';
+import ColorGradeEffect from './renderer/ColorGradeEffect.ts';
+import BlurEffect from './renderer/BlurEffect.ts';
 import WarpEffect from './renderer/WarpEffect.ts';
 import ShadowMap from './renderer/ShadowMap.ts';
 import { ClientDlight, ClientEdict } from './ClientEntities.ts';
@@ -1802,6 +1804,16 @@ class R {
           [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
           ['tTexture'])),
 
+      Promise.resolve(GL.CreateProgram('color-grade',
+        ['uOrtho', 'uTime', 'uSaturation', 'uContrast', 'uExposure', 'uTintColor', 'uTintStrength', 'uPulseStrength', 'uPulsePeriod'],
+        [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+        ['tTexture'])),
+
+      Promise.resolve(GL.CreateProgram('blur',
+        ['uOrtho', 'uDirection', 'uRadius'],
+        [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+        ['tTexture'])),
+
       Promise.resolve(GL.CreateProgram('bloom-extract',
         ['uOrtho'],
         [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
@@ -1925,6 +1937,8 @@ class R {
     PostProcess.init();
     PostProcess.addEffect(new BloomEffect());
     PostProcess.addEffect(new WarpEffect());
+    PostProcess.addEffect(new ColorGradeEffect());
+    PostProcess.addEffect(new BlurEffect());
 
     // Initialize shadow mapping (depth-only FBO + sun light)
     ShadowMap.init();

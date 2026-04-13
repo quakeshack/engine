@@ -3,6 +3,7 @@ import Cvar from '../../common/Cvar.ts';
 import VID from '../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import { eventBus } from '../../registry.ts';
+import type { PostProcessStack, PostProcessEffectDescriptor } from '../../../shared/GameInterfaces.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -110,6 +111,9 @@ export default class PostProcess {
   /** Registered effects, applied in order. */
   static effects: PostProcessEffect[] = [];
 
+  /** Active gameplay-driven post-process stack. */
+  static stack: PostProcessStack = [];
+
   /**
    * Register a post-process effect. Effects are applied in the order
    * they are added. Each effect's {@link PostProcessEffect.init} is
@@ -118,6 +122,24 @@ export default class PostProcess {
   static addEffect(effect: PostProcessEffect): void {
     effect.init();
     PostProcess.effects.push(effect);
+  }
+
+  static setStack(stack: PostProcessStack): void {
+    PostProcess.stack = stack.filter((entry): entry is PostProcessEffectDescriptor => entry !== null && entry !== undefined);
+  }
+
+  static getStackEntry<T extends PostProcessEffectDescriptor['id']>(effectName: T): Extract<PostProcessEffectDescriptor, { id: T }>['settings'] | undefined {
+    const entry = PostProcess.stack.find((stackEntry) => stackEntry.id === effectName) as Extract<PostProcessEffectDescriptor, { id: T }> | undefined;
+
+    return entry?.settings;
+  }
+
+  static clearStack(): void {
+    PostProcess.stack = [];
+  }
+
+  static hasGameplayStack(): boolean {
+    return PostProcess.stack.length > 0;
   }
 
   /**
@@ -133,7 +155,7 @@ export default class PostProcess {
    * @returns True when at least one registered effect is active.
    */
   static hasActiveEffects(): boolean {
-    return PostProcess.effects.some((e) => e.active);
+    return PostProcess.effects.some((e) => e.active) || PostProcess.stack.length > 0;
   }
 
   /**
@@ -470,6 +492,54 @@ export default class PostProcess {
         inputTexture = textures[i % 2]!;
       }
     }
+
+    gl.enable(gl.BLEND);
+  }
+
+  /**
+   * Apply the game-driven effect stack to the scene texture.
+   * Chains each effect through ping-pong FBOs, then writes the final
+   * result back into {@link PostProcess.colorTexture} so {@link PostProcess.resolve} can use
+   * it without an FBO read/write hazard.
+   */
+  static resolveGameplayStack(): void {
+    if (PostProcess.stack.length === 0) {
+      return;
+    }
+
+    const activeEffects = PostProcess.stack
+      .map((entry) => PostProcess.getEffect(entry.id))
+      .filter((effect): effect is PostProcessEffect => effect !== undefined);
+
+    if (activeEffects.length === 0) {
+      return;
+    }
+
+    const w = PostProcess.width;
+    const h = PostProcess.height;
+    PostProcess.resizePingPong(w, h);
+
+    gl.disable(gl.BLEND);
+
+    let input: WebGLTexture = PostProcess.colorTexture!;
+    const fbos = [PostProcess.pingFBO, PostProcess.pongFBO];
+    const textures = [PostProcess.pingTexture!, PostProcess.pongTexture!];
+
+    for (let i = 0; i < activeEffects.length; i++) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[i % 2]);
+      gl.viewport(0, 0, w, h);
+      activeEffects[i].apply(input, 0, 0, VID.width, VID.height);
+      input = textures[i % 2];
+    }
+
+    // Write the final result back into COLOR_ATTACHMENT0 of the scene FBO so
+    // that PostProcess.resolve() reads from colorTexture without a ping-pong
+    // read/write hazard.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.viewport(0, 0, w, h);
+    PostProcess._blitToScreen(input, 0, 0, VID.width, VID.height);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
 
     gl.enable(gl.BLEND);
   }

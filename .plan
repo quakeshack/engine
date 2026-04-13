@@ -61,6 +61,8 @@ Grouped by sections and then sorted by priority (more or less).
 - [X] double check the fullbright texture rendering of alias ~and sprite~ models
 - [_] proper func_fog functionality so that game code can change fog parameters
 - [_] lod considering fog
+- [_] have preprocessor support in shaders (`#include` etc.) and clean up duplicate functions
+- [_] have smooth transitions between post processing stacks (or decay timer etc.)
 
 ### Random issues
 
@@ -156,6 +158,11 @@ Grouped by sections and then sorted by priority (more or less).
 - https://mus1n.github.io/Quake-3-Skybox/ 360 to skybox
 
 ## Log
+
+### 2026-04-14
+
+- added stackable post processor effects
+  - in future they should have smooth transitions (decay time, linear/exp/log)
 
 ### 2026-04-13
 

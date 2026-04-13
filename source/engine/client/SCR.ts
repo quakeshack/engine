@@ -393,6 +393,10 @@ export default class SCR {
       if (R.usePostProcess || PostProcess.hasActiveEffects()) {
         PostProcess.end();
         console.assert(PostProcess.colorTexture !== null, 'PostProcess color texture is not set');
+        if (PostProcess.hasGameplayStack()) {
+          PostProcess.resolveGameplayStack();
+        }
+
         PostProcess.resolve(
           R.refdef.vrect.x, R.refdef.vrect.y,
           R.refdef.vrect.width, R.refdef.vrect.height,

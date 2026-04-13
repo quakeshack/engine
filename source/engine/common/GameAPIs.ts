@@ -20,6 +20,8 @@ import Cvar from './Cvar.ts';
 import { HostError } from './Errors.ts';
 import Mod, { ModelScope } from './Mod.ts';
 import W from './W.ts';
+import PostProcess from '../client/renderer/PostProcess.ts';
+import type { PostProcessStack } from '../../shared/GameInterfaces.ts';
 
 type ServerEdict = ServerEdictValue;
 
@@ -1202,6 +1204,20 @@ export class ClientEngineAPI extends CommonEngineAPI {
         width: R.refdef.vrect.width,
         height: R.refdef.vrect.height,
       };
+    },
+  };
+
+  static readonly PostProcess = {
+    setStack(stack: PostProcessStack): void {
+      PostProcess.setStack(stack);
+    },
+
+    clearStack(): void {
+      PostProcess.clearStack();
+    },
+
+    hasStack(): boolean {
+      return PostProcess.hasGameplayStack();
     },
   };
 

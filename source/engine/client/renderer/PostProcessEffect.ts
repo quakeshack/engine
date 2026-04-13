@@ -17,6 +17,9 @@ export default class PostProcessEffect {
   /** Whether this effect is currently enabled. */
   active = false;
 
+  /** Whether this effect is managed by the gameplay-driven stack. */
+  stackable = false;
+
   constructor(name: string) {
     this.name = name;
   }

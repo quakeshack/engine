@@ -77,6 +77,26 @@ export type ClientDamageEvent = {
   attackOrigin: Vector;
 };
 
+export type PostProcessColorGradeDescriptor = {
+  readonly saturation?: number;
+  readonly contrast?: number;
+  readonly exposure?: number;
+  readonly tintColor?: Vector;
+  readonly tintStrength?: number;
+  readonly pulseStrength?: number;
+  readonly pulsePeriod?: number;
+};
+
+export type PostProcessBlurDescriptor = {
+  readonly radius?: number;
+};
+
+export type PostProcessEffectDescriptor =
+  | { readonly id: 'color-grade'; readonly settings: PostProcessColorGradeDescriptor }
+  | { readonly id: 'blur'; readonly settings: PostProcessBlurDescriptor };
+
+export type PostProcessStack = readonly PostProcessEffectDescriptor[];
+
 export declare abstract class ClientGameInterface {
   clientdata: ClientdataMap | null;
   viewmodel: ViewmodelConfig | null;
