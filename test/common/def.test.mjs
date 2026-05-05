@@ -5,7 +5,7 @@ import { clientConnectionState, defaultBasedir, defaultGame, gamestateVersion, l
 
 void describe('common definitions', () => {
   void test('exposes the expected engine identity and defaults', () => {
-    assert.equal(productName, 'The Quake Shack');
+    assert.equal(productName, 'QuakeShack');
     assert.equal(defaultGame, 'id1');
     assert.equal(defaultBasedir, 'id1');
     assert.equal(gamestateVersion, 2);

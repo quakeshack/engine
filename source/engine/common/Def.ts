@@ -1,7 +1,7 @@
 /**
  * Name of this fun project.
  */
-export const productName = 'The Quake Shack';
+export const productName = 'QuakeShack';
 
 /**
  * Version string.

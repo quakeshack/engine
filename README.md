@@ -1,4 +1,4 @@
-# The Quake Shack Engine
+# QuakeShack Engine
 
 This is a modern TypeScript port of Quake 1 with some features sprinkled on top.
 
@@ -36,7 +36,9 @@ QuakeShack provides a detailed set of documentation files within the [docs](./do
 
 ### Turn-key ready build and deploy
 
-Use Docker to build and start a container:
+The Dockerfile used in CI/CD installs dependencies with `npm ci`, builds both `dist/browser/` and `dist/dedicated/`, runs tests in a dedicated stage, and starts the compiled dedicated server in the final image.
+
+You can reproduce that locally with Docker:
 
 ```sh
 # make sure that the game repo is also cloned
@@ -46,7 +48,7 @@ git submodule update --init
 ./build.sh
 
 # start the container
-docker run --rm -ti -p 3000:3000 quakeshack
+docker run --rm -ti -p 3000:3000 quakeshack:latest
 ```
 
 Open http://localhost:3000/ and enjoy the game.
@@ -55,10 +57,12 @@ This repository comes with the Quake 1 shareware game assets and computed naviga
 
 ### Development environment
 
-Firstly, you need to install the dependencies and tools (eslint, vite):
+The current toolchain targets Node.js 24, matching the Docker image and the `engines` field in `package.json`.
+
+Firstly, install the dependencies and tools exactly like CI/CD does:
 
 ```sh
-npm install
+npm ci
 ```
 
 Also, make sure that the game repo is cloned:
@@ -67,23 +71,34 @@ Also, make sure that the game repo is cloned:
 git submodule update --init
 ```
 
-Next, you need to start both the dedicated server and vite watcher like so:
+For local development you need a browser build, a dedicated build, and the actual dedicated server process:
 
 ```sh
-# start vite in development mode in the background
-npm run dev &
+# terminal 1: build the browser bundle in watch mode
+npm run dev
 
-# start the dedicated server to serve both the virtual Quake filesystem and whatever vite is building for you
+# terminal 2: build the dedicated bundle in watch mode
+npm run dedicated:dev
+
+# terminal 3: once dist/dedicated/dedicated.mjs exists, start the server
 npm run dedicated:start
 ```
+
+`npm run dedicated:start` serves `dist/browser/`, the virtual Quake filesystem, and the networking endpoints. It does not compile TypeScript on the fly, so one of the dedicated build commands must run first.
 
 Open http://localhost:3000/ and enjoy hacking.
 
 ### Production environment
 
-The dedicated server can be started using `npm run dedicated:start`, but this will run with many `console.assert(…)` in hot paths and is only really suitable for development work.
+For a production build, generate both the browser and dedicated bundles before starting the server:
 
-That’s why you should compile the dedicated server with `npm run dedicated:build:production` and start it using `npm run dedicated:start`.
+```sh
+npm run build:production
+npm run dedicated:build:production
+npm run dedicated:start
+```
+
+`npm run dedicated:start` always launches the compiled bundle from `dist/dedicated/dedicated.mjs`. The difference between development and production is which build command produced that bundle.
 
 You can override the default base game directory at build time when you want the engine to start from something other than `id1`:
 
@@ -96,6 +111,8 @@ This replaces the fallback used when no `-basedir` argument is supplied. `VITE_G
 
 When both variables are set, the engine mounts `VITE_BASE_DIR` first and then mounts `VITE_GAME_DIR` as the active game directory on top of it.
 
+The same variables are wired through the Dockerfile, so container builds can pass them as Docker build arguments as well.
+
 ### Deploy to a CDN
 
 You can deploy the built frontend code to a CDN such as Cloudflare and skip the virtual Quake filesystem by providing the URL where to get the game assets (basically everything extracted from the pak files) from.
@@ -105,6 +122,8 @@ You can set a custom URL to serve the assets like this:
 ```sh
 VITE_CDN_URL_PATTERN="https://cdn{shard}.example.net/{gameDir}/{filename}"
 ```
+
+When building through Docker or CI/CD, pass `VITE_CDN_URL_PATTERN` and `VITE_SIGNALING_URL` as `--build-arg` values with the same names.
 
 However, it’s not necessary to provide a different URL, per default it will try to load files from `/qfs/{filename}`. You can skip the `{gameDir}` part, if you only want to serve one mod or the original game (`id1`).
 
@@ -162,15 +181,18 @@ These are the important directory structures:
 | source/engine/server | anything server-code related |
 | source/engine/common | everything used in both client and server code |
 | source/engine/network | networking code |
+| source/cloudflare | Cloudflare Worker entrypoint used by `wrangler.toml` |
 | source/shared | code that is used in both engine and game code |
 
 
-There are two main entrypoints:
+There are two build entrypoints at the repository root:
 
 | File | Description |
 | - | - |
-| source/engine/main-browser.ts | launcher for a full browser session |
-| source/engine/main-dedicated.ts | launcher for a dedicated server |
+| index.html | browser build entrypoint; imports `source/engine/main-browser.ts` |
+| dedicated.ts | dedicated build entrypoint; imports `source/engine/main-dedicated.ts` |
+
+The engine launchers themselves live in `source/engine/main-browser.ts` and `source/engine/main-dedicated.ts`.
 
 ## Based on the work of
 

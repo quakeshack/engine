@@ -1,6 +1,6 @@
-# Code Style Guide - Quakeshack Engine
+# Code Style Guide - QuakeShack Engine
 
-This document outlines the coding conventions and style rules for the Quakeshack Engine codebase.
+This document outlines the coding conventions and style rules for the QuakeShack Engine codebase.
 
 ## JSDoc Documentation
 
