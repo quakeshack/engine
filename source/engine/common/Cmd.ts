@@ -334,7 +334,7 @@ export default class Cmd {
     console.assert(Cvar.FindVar(name) === null, 'command name must not be taken by a cvar', name);
 
     if (Cmd.HasCommand(name)) {
-      Con.Print(`Cmd.AddCommand: ${name} already defined\n`);
+      console.assert(false, `Cmd.AddCommand: ${name} already exists`);
       return;
     }
 
@@ -352,6 +352,18 @@ export default class Cmd {
         }
       },
     });
+  }
+
+  static RemoveCommand(name: string): void {
+    const index = Cmd.functions.findIndex((entry) => entry.name === name);
+
+    console.assert(index !== -1, `Cmd.RemoveCommand: ${name} doesn't exist`);
+
+    if (index === -1) {
+      return;
+    }
+
+    Cmd.functions.splice(index, 1);
   }
 
   static CompleteCommand(partial: string): string | null {

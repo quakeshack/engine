@@ -144,6 +144,8 @@ export default class M {
   static msgNumber = 0;
 
   static alertMessage = { title: '', message: '' };
+  static overlayNoticeId: string | null = null;
+  static overlayNoticeLines: string[] = [];
 
   static recursiveDraw = false;
   static entersound = false;
@@ -238,6 +240,46 @@ export default class M {
     M.DrawPic(cx, cy + 8, M.box_br);
   }
 
+  static SetOverlayNotice(id: string, message: string): void {
+    M.overlayNoticeId = id;
+    M.overlayNoticeLines = message.split('\n');
+  }
+
+  static ClearOverlayNotice(id?: string): void {
+    if (id !== undefined && M.overlayNoticeId !== id) {
+      return;
+    }
+
+    M.overlayNoticeId = null;
+    M.overlayNoticeLines = [];
+  }
+
+  static DrawOverlayNotice(): void {
+    if (
+      M.overlayNoticeLines.length === 0
+      || M.state.value === M.state.alert
+      || M.state.value === M.state.quit
+    ) {
+      return;
+    }
+
+    const widestLineLength = M.overlayNoticeLines.reduce((widest, line) => Math.max(widest, line.length), 0);
+    const boxWidth = Math.max(24, Math.min(64, widestLineLength + 4));
+    const maxTextLength = boxWidth - 2;
+    const x = Math.floor((320 - boxWidth * 8) / 2);
+    const y = Math.max(28, Math.floor((200 - (M.overlayNoticeLines.length + 6) * 8) / 2));
+
+    M.DrawTextBox(x, y, boxWidth, M.overlayNoticeLines.length + 2);
+
+    let textY = y + 16;
+    for (const line of M.overlayNoticeLines) {
+      if (line.length > 0) {
+        M.PrintWhite(x + 16, textY, line.substring(0, maxTextLength));
+      }
+      textY += 8;
+    }
+  }
+
   static CloseMenu(): void {
     if (CL.cls.state === clientConnectionState.connected) {
       Key.destination = KeyDestination.game;
@@ -247,7 +289,7 @@ export default class M {
     M.state.value = M.state.none;
   }
 
-  static ToggleMenu_f(): void {
+  static ToggleMenu_f(this: void): void {
     M.entersound = true;
     if (Key.destination === KeyDestination.menu) {
       if (M.state.value !== M.state.main) {
@@ -261,7 +303,7 @@ export default class M {
   }
 
   // Main menu
-  static Menu_Main_f(): void {
+  static Menu_Main_f(this: void): void {
     if (CL.cls.connecting !== null) {
       return;
     }
@@ -325,7 +367,7 @@ export default class M {
   }
 
   // Single player menu
-  static Menu_SinglePlayer_f(): void {
+  static Menu_SinglePlayer_f(this: void): void {
     Key.destination = KeyDestination.menu;
     M.state.value = M.state.singleplayer;
     M.entersound = true;
@@ -396,14 +438,14 @@ export default class M {
     COM.searchpaths = searchpaths;
   }
 
-  static Menu_Load_f(): void {
+  static Menu_Load_f(this: void): void {
     M.entersound = true;
     M.state.value = M.state.load;
     Key.destination = KeyDestination.menu;
     M.ScanSaves();
   }
 
-  static Menu_Save_f(): void {
+  static Menu_Save_f(this: void): void {
     if (!SV.server.active || CL.state.intermission !== 0 || SV.svs.maxclients !== 1) {
       return;
     }
@@ -505,7 +547,7 @@ export default class M {
   }
 
   // Multiplayer menu
-  static Menu_MultiPlayer_f(): void {
+  static Menu_MultiPlayer_f(this: void): void {
     Key.destination = KeyDestination.menu;
     M.state.value = M.state.multiplayer;
     M.entersound = true;
@@ -660,7 +702,7 @@ export default class M {
   }
 
   // Options menu
-  static Menu_Options_f(): void {
+  static Menu_Options_f(this: void): void {
     Key.destination = KeyDestination.menu;
     M.state.value = M.state.options;
     M.entersound = true;
@@ -839,7 +881,7 @@ export default class M {
   }
 
   // Keys menu
-  static Menu_Keys_f(): void {
+  static Menu_Keys_f(this: void): void {
     Key.destination = KeyDestination.menu;
     M.state.value = M.state.keys;
     M.entersound = true;
@@ -939,7 +981,7 @@ export default class M {
   }
 
   // Help menu
-  static Menu_Help_f(): void {
+  static Menu_Help_f(this: void): void {
     Key.destination = KeyDestination.menu;
     M.state.value = M.state.help;
     M.entersound = true;
@@ -972,7 +1014,7 @@ export default class M {
   }
 
   // Quit menu
-  static Menu_Quit_f(): void {
+  static Menu_Quit_f(this: void): void {
     if (M.state.value === M.state.quit) {
       return;
     }
@@ -1050,7 +1092,7 @@ export default class M {
     launchServerMenu.handleInput(k);
   }
 
-  static Menu_Launch_Server_f(): void {
+  static Menu_Launch_Server_f(this: void): void {
     if (M.state.value === M.state.launch_server) {
       return;
     }

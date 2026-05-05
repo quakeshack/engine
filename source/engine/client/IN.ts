@@ -4,10 +4,188 @@ import { eventBus, getClientRegistry } from '../registry.ts';
 import { kbutton, kbuttons } from './ClientInput.ts';
 import VID from './VID.ts';
 
-let { CL, COM, Con, Host, Key, V } = getClientRegistry();
+/** Browser-derived signals used to decide whether mobile play needs external input devices. */
+export interface MobileInputEnvironment {
+  readonly userAgent?: string | null;
+  readonly userAgentDataMobile?: boolean | null;
+  readonly maxTouchPoints?: number | null;
+  readonly matchMedia?: ((query: string) => { readonly matches: boolean } | MediaQueryList | null) | null;
+}
+
+/** Snapshot of the current mobile input support state. */
+export interface MobileInputSupportState {
+  readonly isMobileDevice: boolean;
+  readonly hasTouchInput: boolean;
+  readonly hasFinePointer: boolean;
+  readonly hasKeyboardActivity: boolean;
+  readonly hasMouseActivity: boolean;
+}
+
+/**
+ * Safely evaluates a media query from the provided browser-like environment.
+ * @returns True when the query matches.
+ */
+function matchesMediaQuery(environment: MobileInputEnvironment, query: string): boolean {
+  const matchMedia = environment.matchMedia;
+
+  if (matchMedia === undefined || matchMedia === null) {
+    return false;
+  }
+
+  const result = matchMedia(query);
+  return result !== null && result.matches;
+}
+
+/**
+ * Detects mobile user agents that should receive the external-input warning.
+ * @returns True when the user agent looks mobile.
+ */
+function isMobileUserAgent(userAgent: string | null | undefined): boolean {
+  if (userAgent === undefined || userAgent === null) {
+    return false;
+  }
+
+  return /android|iphone|ipad|ipod|mobile/i.test(userAgent);
+}
+
+/**
+ * Detect whether the browser identifies itself as a mobile device.
+ * @returns True when the environment is mobile.
+ */
+function detectMobileDevice(environment: MobileInputEnvironment): boolean {
+  if (environment.userAgentDataMobile === true) {
+    return true;
+  }
+
+  return isMobileUserAgent(environment.userAgent);
+}
+
+/**
+ * Detect whether touch-first input is available.
+ * @returns True when touch input is present.
+ */
+function detectTouchInput(environment: MobileInputEnvironment): boolean {
+  return (environment.maxTouchPoints ?? 0) > 0
+    || matchesMediaQuery(environment, '(any-pointer: coarse)')
+    || matchesMediaQuery(environment, '(pointer: coarse)');
+}
+
+/**
+ * Detect whether a fine pointer such as a mouse is available.
+ * @returns True when a fine pointer is present.
+ */
+function detectFinePointer(environment: MobileInputEnvironment): boolean {
+  return matchesMediaQuery(environment, '(any-pointer: fine)')
+    || matchesMediaQuery(environment, '(pointer: fine)');
+}
+
+/**
+ * Collect the current browser input signals needed for mobile input support checks.
+ * @returns The current browser input environment.
+ */
+function getBrowserMobileInputEnvironment(): MobileInputEnvironment {
+  const navigatorValue = globalThis.navigator as (Navigator & {
+    readonly userAgentData?: {
+      readonly mobile?: boolean;
+    };
+  }) | undefined;
+
+  return {
+    userAgent: navigatorValue?.userAgent ?? null,
+    userAgentDataMobile: typeof navigatorValue?.userAgentData?.mobile === 'boolean'
+      ? navigatorValue.userAgentData.mobile
+      : null,
+    maxTouchPoints: navigatorValue?.maxTouchPoints ?? null,
+    matchMedia: typeof globalThis.matchMedia === 'function'
+      ? globalThis.matchMedia.bind(globalThis)
+      : null,
+  };
+}
+
+/**
+ * Build the initial mobile input support snapshot from browser signals.
+ * @returns Initial support state.
+ */
+export function createMobileInputSupportState(environment: MobileInputEnvironment): MobileInputSupportState {
+  return {
+    isMobileDevice: detectMobileDevice(environment),
+    hasTouchInput: detectTouchInput(environment),
+    hasFinePointer: detectFinePointer(environment),
+    hasKeyboardActivity: false,
+    hasMouseActivity: false,
+  };
+}
+
+/**
+ * Refresh browser-derived input capabilities while preserving observed activity.
+ * @returns Updated support state.
+ */
+export function refreshMobileInputSupportState(
+  state: MobileInputSupportState,
+  environment: MobileInputEnvironment,
+): MobileInputSupportState {
+  return {
+    ...state,
+    isMobileDevice: detectMobileDevice(environment),
+    hasTouchInput: detectTouchInput(environment),
+    hasFinePointer: detectFinePointer(environment),
+  };
+}
+
+/**
+ * Record that the user has provided keyboard input.
+ * @returns Updated support state.
+ */
+export function markKeyboardActivity(state: MobileInputSupportState): MobileInputSupportState {
+  if (state.hasKeyboardActivity) {
+    return state;
+  }
+
+  return {
+    ...state,
+    hasKeyboardActivity: true,
+  };
+}
+
+/**
+ * Record that the user has provided mouse movement.
+ * @returns Updated support state.
+ */
+export function markMouseActivity(state: MobileInputSupportState): MobileInputSupportState {
+  if (state.hasMouseActivity) {
+    return state;
+  }
+
+  return {
+    ...state,
+    hasMouseActivity: true,
+  };
+}
+
+/**
+ * Determine whether the current state has usable mouse support.
+ * @returns True when mouse support is available.
+ */
+export function hasMouseSupport(state: MobileInputSupportState): boolean {
+  return state.hasFinePointer || state.hasMouseActivity;
+}
+
+/**
+ * Decide whether the mobile external-input warning should currently be shown.
+ * @returns True when the warning should be visible.
+ */
+export function shouldShowMobileExternalInputWarning(state: MobileInputSupportState): boolean {
+  if (!state.isMobileDevice || !state.hasTouchInput) {
+    return false;
+  }
+
+  return !state.hasKeyboardActivity || !hasMouseSupport(state);
+}
+
+let { CL, COM, Con, Host, Key, M, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Host, Key, V } = getClientRegistry());
+  ({ CL, COM, Con, Host, Key, M, V } = getClientRegistry());
 });
 
 export default class IN {
@@ -17,6 +195,23 @@ export default class IN {
   static old_mouse_y = 0.0;
   static m_filter: Cvar;
   static mouse_avail = false;
+  static mobileInputSupport: MobileInputSupportState | null = null;
+  static #mobileInputCapabilitySubscriptions: Array<() => void> = [];
+
+  static readonly #mobileUnsupportedNoticeId = 'mobile-external-input';
+  static readonly #mobileUnsupportedNotice = [
+    'Playing on a mobile phone without a keyboard',
+    'and mouse is currently not supported.',
+    '',
+    'Connect a keyboard and mouse to your phone',
+    'to play QuakeShack.',
+  ].join('\n');
+  static readonly #mobileInputMediaQueries = Object.freeze([
+    '(any-pointer: coarse)',
+    '(pointer: coarse)',
+    '(any-pointer: fine)',
+    '(pointer: fine)',
+  ] as const);
 
   static StartupMouse(): void {
     IN.m_filter = new Cvar('m_filter', '1', Cvar.FLAG.ARCHIVE);
@@ -36,9 +231,15 @@ export default class IN {
 
   static Init(): void {
     IN.StartupMouse();
+    IN.#subscribeToMobileInputCapabilityChanges();
+    IN.#refreshMobileInputSupportFromEnvironment();
   }
 
   static Shutdown(): void {
+    M.ClearOverlayNotice(IN.#mobileUnsupportedNoticeId);
+    IN.mobileInputSupport = null;
+    IN.#clearMobileInputCapabilitySubscriptions();
+
     if (!IN.mouse_avail) {
       return;
     }
@@ -107,27 +308,117 @@ export default class IN {
     IN.MouseMove();
   }
 
-  static onclick(): void {
+  static onclick(this: void): void {
     if (document.pointerLockElement !== VID.mainwindow) {
       void VID.mainwindow.requestPointerLock();
     }
   }
 
-  static onmousemove(event: MouseEvent): void {
+  static onmousemove(this: void, event: MouseEvent): void {
     if (document.pointerLockElement !== VID.mainwindow) {
       return;
     }
 
+    IN.NoteMouseActivity();
     IN.mouse_x += event.movementX;
     IN.mouse_y += event.movementY;
   }
 
-  static onpointerlockchange(): void {
+  static onpointerlockchange(this: void): void {
     if (document.pointerLockElement === VID.mainwindow) {
       return;
     }
 
     Key.Event(K.ESCAPE, true);
     Key.Event(K.ESCAPE, false);
+  }
+
+  static NoteKeyboardActivity(): void {
+    IN.#updateMobileInputSupport(markKeyboardActivity);
+  }
+
+  static NoteMouseActivity(): void {
+    IN.#updateMobileInputSupport(markMouseActivity);
+  }
+
+  static #updateMobileInputSupport(
+    update: (state: MobileInputSupportState) => MobileInputSupportState,
+  ): void {
+    const currentState = IN.mobileInputSupport ?? createMobileInputSupportState(getBrowserMobileInputEnvironment());
+    IN.mobileInputSupport = update(currentState);
+    IN.#refreshMobileInputSupportFromEnvironment();
+  }
+
+  /**
+   * Refresh browser-derived input capabilities while preserving observed activity.
+   */
+  static #refreshMobileInputSupportFromEnvironment(): void {
+    const environment = getBrowserMobileInputEnvironment();
+
+    IN.mobileInputSupport = IN.mobileInputSupport === null
+      ? createMobileInputSupportState(environment)
+      : refreshMobileInputSupportState(IN.mobileInputSupport, environment);
+    IN.#syncMobileInputWarning();
+  }
+
+  /**
+   * Subscribe to pointer-capability media queries so newly attached mice update the warning state.
+   */
+  static #subscribeToMobileInputCapabilityChanges(): void {
+    IN.#clearMobileInputCapabilitySubscriptions();
+
+    if (typeof globalThis.matchMedia !== 'function') {
+      return;
+    }
+
+    for (const query of IN.#mobileInputMediaQueries) {
+      const mediaQueryList = globalThis.matchMedia(query);
+      const handleChange = (): void => {
+        IN.#refreshMobileInputSupportFromEnvironment();
+      };
+
+      if (typeof mediaQueryList.addEventListener === 'function') {
+        mediaQueryList.addEventListener('change', handleChange);
+        IN.#mobileInputCapabilitySubscriptions.push(() => {
+          mediaQueryList.removeEventListener('change', handleChange);
+        });
+        continue;
+      }
+
+      const legacyMediaQueryList = mediaQueryList as MediaQueryList & {
+        addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+        removeListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+      };
+
+      if (
+        typeof legacyMediaQueryList.addListener === 'function'
+        && typeof legacyMediaQueryList.removeListener === 'function'
+      ) {
+        legacyMediaQueryList.addListener(handleChange);
+        IN.#mobileInputCapabilitySubscriptions.push(() => {
+          legacyMediaQueryList.removeListener!(handleChange);
+        });
+      }
+    }
+  }
+
+  /**
+   * Remove any media-query listeners registered for mobile input capability changes.
+   */
+  static #clearMobileInputCapabilitySubscriptions(): void {
+    for (const unsubscribe of IN.#mobileInputCapabilitySubscriptions) {
+      unsubscribe();
+    }
+
+    IN.#mobileInputCapabilitySubscriptions.length = 0;
+  }
+
+  static #syncMobileInputWarning(): void {
+    if (IN.mobileInputSupport !== null && shouldShowMobileExternalInputWarning(IN.mobileInputSupport)) {
+      M.SetOverlayNotice(IN.#mobileUnsupportedNoticeId, IN.#mobileUnsupportedNotice);
+      return;
+    }
+
+    M.ClearOverlayNotice(IN.#mobileUnsupportedNoticeId);
   }
 }

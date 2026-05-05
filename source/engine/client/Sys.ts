@@ -2,6 +2,7 @@ import { K } from '../../shared/Keys.ts';
 import Q from '../../shared/Q.ts';
 import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Tools from './Tools.ts';
+import IN from './IN.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import workerFactories from '../common/WorkerFactories.ts';
 
@@ -148,6 +149,7 @@ function handleKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  IN.NoteKeyboardActivity();
   Key.Event(key, true);
   event.preventDefault();
 }
@@ -191,6 +193,13 @@ function handleMouseDown(event: MouseEvent): void {
   event.preventDefault();
 }
 
+/** Records real mouse pointer activity outside pointer lock so mobile warnings can clear. */
+function handlePointerDown(event: PointerEvent): void {
+  if (event.pointerType === 'mouse') {
+    IN.NoteMouseActivity();
+  }
+}
+
 /** Dispatches mouse-button releases into the engine input system. */
 function handleMouseUp(event: MouseEvent): void {
   const key = getMouseButtonKey(event.which);
@@ -224,6 +233,7 @@ function registerWindowListeners(): void {
   window.addEventListener('focus', handleFocus);
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('keyup', handleKeyUp);
+  window.addEventListener('pointerdown', handlePointerDown);
   window.addEventListener('mousedown', handleMouseDown);
   window.addEventListener('mouseup', handleMouseUp);
   window.addEventListener('wheel', handleWheel, { passive: false });
@@ -236,6 +246,7 @@ function unregisterWindowListeners(): void {
   window.removeEventListener('focus', handleFocus);
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('keyup', handleKeyUp);
+  window.removeEventListener('pointerdown', handlePointerDown);
   window.removeEventListener('mousedown', handleMouseDown);
   window.removeEventListener('mouseup', handleMouseUp);
   window.removeEventListener('wheel', handleWheel);

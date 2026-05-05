@@ -83,20 +83,7 @@ export default class SCR {
    * Formats a center-print string into wrapped lines and starts the display timer.
    */
   static CenterPrint(str: string): void {
-    SCR.centerstring = [];
-    let i; let start = 0; let next;
-    for (i = 0; i < str.length; i++) {
-      if (str.charCodeAt(i) === 10) {
-        next = i + 1;
-      } else if ((i - start) >= 40) {
-        next = i;
-      } else {
-        continue;
-      }
-      SCR.centerstring[SCR.centerstring.length] = str.substring(start, i);
-      start = next!;
-    }
-    SCR.centerstring[SCR.centerstring.length] = str.substring(start, i);
+    SCR.centerstring = SCR.#formatCenterLines(str);
     SCR.centertime_off = SCR.centertime.value;
     SCR.centertime_start = CL.state.time;
     eventBus.publish('client.center-print', str);
@@ -212,13 +199,13 @@ export default class SCR {
   }
 
   /** Console command: increases the view size. */
-  static SizeUp_f(): void {
+  static SizeUp_f(this: void): void {
     Cvar.Set('viewsize', SCR.viewsize.value + 10);
     SCR.recalc_refdef = true;
   }
 
   /** Console command: decreases the view size. */
-  static SizeDown_f(): void {
+  static SizeDown_f(this: void): void {
     Cvar.Set('viewsize', SCR.viewsize.value - 10);
     SCR.recalc_refdef = true;
   }
@@ -316,7 +303,7 @@ export default class SCR {
   }
 
   /** Requests a screenshot on the next rendered frame. */
-  static ScreenShot_f(): void {
+  static ScreenShot_f(this: void): void {
     SCR.screenshot = true;
   }
 
@@ -433,6 +420,8 @@ export default class SCR {
         M.Draw();
       }
 
+      M.DrawOverlayNotice();
+
       GL.StreamFlush();
 
       R.PrintSpeeds();
@@ -450,5 +439,30 @@ export default class SCR {
 
       VID.DownloadScreenshot();
     }
+  }
+
+  /**
+   * Formats Quake-style center text into wrapped lines.
+   * @returns Wrapped lines.
+   */
+  static #formatCenterLines(str: string): string[] {
+    const lines: string[] = [];
+    let start = 0;
+
+    for (let index = 0; index < str.length; index++) {
+      if (str.charCodeAt(index) === 10) {
+        lines.push(str.substring(start, index));
+        start = index + 1;
+        continue;
+      }
+
+      if ((index - start) >= 40) {
+        lines.push(str.substring(start, index));
+        start = index;
+      }
+    }
+
+    lines.push(str.substring(start));
+    return lines;
   }
 }

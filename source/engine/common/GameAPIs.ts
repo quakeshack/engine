@@ -583,11 +583,11 @@ export class ServerEngineAPI extends CommonEngineAPI {
     const mins = origin.copy().subtract(vradius);
     const maxs = origin.copy().add(vradius);
     const edicts: ServerEdict[] = [];
-    const tree = SV.area.tree;
+    const tree = SV.area.tree!;
 
     console.assert(tree !== null, 'SV.area.tree must be initialized before radius queries');
 
-    for (const ent of tree!.queryAABB(mins, maxs)) {
+    for (const ent of tree.queryAABB(mins, maxs)) {
       if (ent.num === 0 || ent.isFree()) {
         continue;
       }
@@ -890,9 +890,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   static UnregisterCommand(name: string): void {
-    void name;
-    // TODO: implement
-    console.assert(false, 'UnregisterCommand is not implemented yet');
+    Cmd.RemoveCommand(name);
   }
 
   /**
