@@ -37,7 +37,25 @@ export interface Hull {
   allowedClipNodes?: Uint8Array | null;
 }
 
-export type WorldspawnInfo = Record<string, string>;
+/**
+ * Optional settings carried by the worldspawn entity, which may be used by the renderer etc.
+ */
+export interface WorldspawnInfo extends Record<string, string | undefined> {
+  /** optional skybox name, will make the renderer use a skybox if provided */
+  skyname?: string;
+
+  /** optional lightmap scale, @see https://ericw-tools.readthedocs.io/en/latest/light.html#cmdoption-light-lmscale */
+  _lightmap_scale?: string;
+
+  /** optional fteqw-style fog settings, e.g. "exp r g b" */
+  fog?: string;
+
+  /** automatically generate fog volumes */
+  _qs_autogen_fog?: '1' | '0';
+
+  /** optional semicolon seperated list of qsmat file names, e.g. "textures/my-set.qsmat.json" */
+  _qs_mat?: string;
+}
 
 export interface FogVolumeInfo {
   /** The inline brush model index from `*N` notation, or `0` for world water. */
@@ -574,7 +592,7 @@ export class BrushModel extends BaseModel {
   /** Entity lump as a string. */
   entities: string | null = null;
 
-  /** Parsed worldspawn entity properties. */
+  /** Parsed worldspawn entity properties, some are supported and interpreted, others are stored as-is. */
   worldspawnInfo: WorldspawnInfo = {};
 
   /** Offset for BSPX extended data. */

@@ -363,70 +363,88 @@ export class BSP29Loader extends ModelLoader {
   }
 
   /**
-   * Load material definitions from .qsmat.json file if available.
+   * Load material definitions from .qsmat.json files if available.
    */
   async #loadMaterials(loadmodel: BrushModel): Promise<void> {
     if (registry.isDedicatedServer) {
       return;
     }
 
-    const matfile = await COM.LoadTextFile(loadmodel.name.replace(/\.bsp$/i, '.qsmat.json'));
+    const filenames = [] as string[];
 
-    if (!matfile) {
-      return;
-    }
+    // build list of filenames based on _qs_mat
+    for (const qsMat of (loadmodel.worldspawnInfo._qs_mat?.split(/;\s*/) || [])) {
+      const filename = qsMat.trim();
 
-    Con.DPrint(`BSP29Loader: found materials file for ${loadmodel.name}\n`);
-    const materialData = JSON.parse(matfile) as MaterialFile;
-    console.assert(materialData.version === 1);
-
-    for (const [txName, textures] of Object.entries(materialData.materials)) {
-      const textureEntry = Array.from(loadmodel.textures.entries()).find(([, t]) => t.name === txName);
-
-      if (!textureEntry) {
-        Con.DPrint(`BSP29Loader: referenced material (${txName}) is not used\n`);
+      if (filename === '') {
         continue;
       }
 
-      const [txIndex, texture] = textureEntry;
-      const pbr = new PBRMaterial(texture.name, texture.width, texture.height);
+      filenames.push(filename);
+    }
 
-      const materialTextureCategories: MaterialTextureCategory[] = ['luminance', 'diffuse', 'specular', 'normal'];
+    // load all files in parallel
+    const matfiles = await Promise.all(filenames.map((filename) => COM.LoadTextFile(filename)));
 
-      for (const category of materialTextureCategories) {
-        const texturePath = textures[category];
+    for (let i = 0; i < filenames.length; i++) {
+      const filename = filenames[i];
+      const matfile = matfiles[i];
 
-        if (texturePath) {
-          try {
-            const loadedTexture = await GLTexture.FromImageFile(texturePath);
+      if (!matfile) {
+        continue;
+      }
 
-            if (loadedTexture !== null) {
-              pbr[category] = loadedTexture;
+      Con.DPrint(`BSP29Loader: loaded material file ${filename}\n`);
+      const materialData = JSON.parse(matfile) as MaterialFile;
+      console.assert(materialData.version === 1);
+
+      for (const [txName, textures] of Object.entries(materialData.materials)) {
+        const textureEntry = Array.from(loadmodel.textures.entries()).find(([, t]) => t.name === txName);
+
+        if (!textureEntry) {
+          continue;
+        }
+
+        const [txIndex, texture] = textureEntry;
+        const pbr = new PBRMaterial(texture.name, texture.width, texture.height);
+
+        const materialTextureCategories: MaterialTextureCategory[] = ['luminance', 'diffuse', 'specular', 'normal'];
+
+        for (const category of materialTextureCategories) {
+          const texturePath = textures[category];
+
+          if (texturePath) {
+            try {
+              const loadedTexture = await GLTexture.FromImageFile(texturePath);
+
+              if (loadedTexture !== null) {
+                pbr[category] = loadedTexture;
+              }
+
+              Con.DPrint(`BSP29Loader: loaded ${category} texture for ${texture.name} from ${texturePath} (material file ${filename})\n`);
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              Con.PrintError(`BSP29Loader: failed to load ${texturePath} (material file ${filename}): ${errorMessage}\n`);
             }
-
-            Con.DPrint(`BSP29Loader: loaded ${category} texture for ${texture.name} from ${texturePath}\n`);
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            Con.PrintError(`BSP29Loader: failed to load ${texturePath}: ${errorMessage}\n`);
           }
         }
-      }
 
-      if (textures.flags) {
-        for (const flagName of textures.flags) {
-          const flagValue = MaterialFlags[flagName as keyof typeof MaterialFlags];
-          console.assert(typeof flagValue === 'number', `BSP29Loader: unknown material flag ${flagName} in ${loadmodel.name}`);
-          if (typeof flagValue === 'number') {
-            pbr.flags |= flagValue;
+        if (textures.flags) {
+          for (const flagName of textures.flags) {
+            const flagValue = MaterialFlags[flagName as keyof typeof MaterialFlags];
+            console.assert(typeof flagValue === 'number', `BSP29Loader: unknown material flag ${flagName} in ${loadmodel.name} (material file ${filename})`);
+            if (typeof flagValue === 'number') {
+              pbr.flags |= flagValue;
+            }
           }
         }
-      }
 
-      if (!textures.diffuse && texture instanceof QuakeMaterial && texture.texture !== null) {
-        pbr.diffuse = texture.texture; // keep original diffuse as base
-      }
+        if (!textures.diffuse && texture instanceof QuakeMaterial && texture.texture !== null) {
+          pbr.diffuse = texture.texture; // keep original diffuse as base
+        }
 
-      loadmodel.textures[txIndex] = pbr; // replace with PBR material
+        loadmodel.textures[txIndex] = pbr; // replace with PBR material
+      }
     }
   }
 

@@ -2,13 +2,19 @@
 
 The `.qsmat.json` file format is used to define PBR (Physically Based Rendering) materials for Quake BSP maps in the QuakeShack engine. It allows replacing or augmenting standard Quake textures with high-resolution diffuse, normal, specular, and luminance maps.
 
-## Filename Convention
+## Referencing Material Files
 
-The material definition file must have the same base name as the BSP file it corresponds to, with the extension `.qsmat.json`.
+Material files are referenced via the `_qs_mat` key in the map's **worldspawn** entity. The value is one or more file paths (relative to the game directory), separated by semicolons. The engine loads all listed files in parallel and merges their material definitions.
 
-**Example:**
-If your map file is: `maps/example.bsp`
-Your material file should be: `maps/example.qsmat.json`
+**Example worldspawn entry (in your `.map` source):**
+```
+"_qs_mat" "materials/example.qsmat.json"
+```
+
+**Multiple files** (useful for shared material libraries):
+```
+"_qs_mat" "materials/shared.qsmat.json; materials/example.qsmat.json"
+```
 
 ## Format Structure
 

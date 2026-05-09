@@ -1984,7 +1984,7 @@ class R {
       return;
     }
 
-    const [exp, r, g, b] = fogInfo.split(' ').map(Number);
+    const [exp, r, g, b] = fogInfo.split(/\s+/).map(Number);
 
     // CR: I took that calculation from Ironwail’s Fog_SetupFrame:
     const ExpAdjustment = 1.20112241; // sqrt(log2(e))
