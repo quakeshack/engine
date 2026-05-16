@@ -2,10 +2,28 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import * as Protocol from '../../source/engine/network/Protocol.ts';
-import { SzBuffer } from '../../source/engine/network/MSG.ts';
+import { registerSerializableType, SzBuffer } from '../../source/engine/network/MSG.ts';
 import { ClientMessages } from '../../source/engine/client/ClientMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
+
+class MockClientSerializable {
+  constructor(value) {
+    this.value = value;
+  }
+}
+
+registerSerializableType(MockClientSerializable, {
+  serialize(sz, object) {
+    sz.writeString(object.value);
+  },
+  deserializeOnServer(sz) {
+    return new MockClientSerializable(sz.readString());
+  },
+  deserializeOnClient(sz) {
+    return new MockClientSerializable(sz.readString());
+  },
+});
 
 /**
  * Run a callback with just the registry modules ClientMessages depends on.
@@ -142,5 +160,54 @@ void describe('ClientMessages', () => {
     assert.ok(receivedEvents[0][1][3] instanceof Vector);
     assert.deepEqual([...receivedEvents[0][1][3]], [1, 2, 3]);
     assert.equal(receivedEvents[0][1][4], null);
+  });
+
+  void test('parses array and custom serializable clientdata fields through the generic reader', () => {
+    const messages = new ClientMessages();
+    messages.clientdataFields = ['inventory', 'target'];
+
+    const buffer = new SzBuffer(128, 'client-messages-rich-clientdata');
+    buffer.writeShort(0);
+    buffer.writeByte(3);
+    buffer.writeSerializables([[1, 2, 3], new MockClientSerializable('teleporter')]);
+    buffer.beginReading();
+
+    const mockCL = {
+      gameCapabilities: [],
+      state: {
+        time: 1,
+        clientMessages: messages,
+        viewheight: 0,
+        idealpitch: 0,
+        punchangle: new Vector(),
+        onground: false,
+        inwater: false,
+        acknowledgedMoveSequence: 0,
+        ackedPmFlags: 0,
+        ackedPmTime: 0,
+        ackedPmOldButtons: 0,
+        items: 0,
+        item_gettime: new Array(32).fill(0),
+        stats: new Array(32).fill(0),
+        gameAPI: {
+          clientdata: {
+            inventory: [],
+            target: null,
+          },
+        },
+      },
+    };
+
+    void withMockClientMessagesRegistry({
+      CL: mockCL,
+      COM: { standard_quake: true },
+      NET: { message: buffer },
+    }, () => {
+      messages.parseClient();
+    });
+
+    assert.deepEqual(mockCL.state.gameAPI.clientdata.inventory, [1, 2, 3]);
+    assert.equal(mockCL.state.gameAPI.clientdata.target instanceof MockClientSerializable, true);
+    assert.equal(mockCL.state.gameAPI.clientdata.target.value, 'teleporter');
   });
 });

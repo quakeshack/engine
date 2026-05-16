@@ -233,6 +233,10 @@ export default class ClientInput {
 
     cmd.upmove = CL.upspeed.value * (ClientInput.KeyState(kbutton.moveup) - ClientInput.KeyState(kbutton.movedown));
 
+    if ((kbuttons[kbutton.jump].state & 3) !== 0 && cmd.upmove < 20) {
+      cmd.upmove = 20;
+    }
+
     if ((kbuttons[kbutton.klook].state & 1) === 0) {
       cmd.forwardmove = CL.forwardspeed.value * ClientInput.KeyState(kbutton.forward) - CL.backspeed.value * ClientInput.KeyState(kbutton.back);
     } else {

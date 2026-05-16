@@ -577,14 +577,14 @@ export class ServerEdict {
   /**
    * Updates mins, maxs, and size for this entity.
    */
-  setMinMaxSize(min: Vector, max: Vector): void {
+  setMinMaxSize(min: Vector, max: Vector, touchTriggers = true): void {
     console.assert(min[0] <= max[0] && min[1] <= max[1] && min[2] <= max[2], 'Edict.setMinMaxSize: backwards mins/maxs');
 
     const entity = this.entity!;
     entity.mins = min.copy();
     entity.maxs = max.copy();
     entity.size = max.copy().subtract(min);
-    this.linkEdict(true);
+    this.linkEdict(touchTriggers);
   }
 
   /**
@@ -605,7 +605,7 @@ export class ServerEdict {
   /**
    * Sets the model, also setting mins/maxs when applicable.
    */
-  setModel(model: string): void {
+  setModel(model: string, touchTriggers = true): void {
     let i: number;
 
     for (i = 0; i < SV.server.modelPrecache.length; i++) {
@@ -627,15 +627,15 @@ export class ServerEdict {
     if (mod instanceof Promise) {
       void mod.then((loadedModel) => {
         console.assert(loadedModel !== null, `Edict.setModel: failed to load model ${model}`);
-        this.setMinMaxSize(loadedModel!.mins, loadedModel!.maxs);
+        this.setMinMaxSize(loadedModel!.mins, loadedModel!.maxs, touchTriggers);
       });
       return;
     }
 
     if (mod) {
-      this.setMinMaxSize(mod.mins, mod.maxs);
+      this.setMinMaxSize(mod.mins, mod.maxs, touchTriggers);
     } else {
-      this.setMinMaxSize(Vector.origin, Vector.origin);
+      this.setMinMaxSize(Vector.origin, Vector.origin, touchTriggers);
     }
 
     if (entity.solid === Defs.solid.SOLID_BSP) {

@@ -200,8 +200,6 @@ export class ClientMessages {
       }
     }
 
-    let counter = 0;
-
     // we are writing directly into clientdata object
     const clientdata = CL.state.gameAPI!.clientdata;
 
@@ -209,53 +207,20 @@ export class ClientMessages {
       throw new HostError('Client game API clientdata is not initialized');
     }
 
-    while (true) {
-      const dataType = NET.message.readByte();
+    const values = NET.message.readSerializablesOnClient();
 
-      if (dataType === Protocol.serializableTypes.none) {
-        break;
-      }
+    if (values.length !== fields.length) {
+      throw new HostError(`Mismatched clientdata payload: expected ${fields.length} values, received ${values.length}`);
+    }
 
-      const field = fields[counter++];
+    for (let i = 0; i < values.length; i++) {
+      const field = fields[i];
 
       if (field === undefined) {
-        throw new HostError(`Unknown clientdata field index ${counter - 1} for data type ${dataType}`);
+        throw new HostError(`Unknown clientdata field index ${i}`);
       }
 
-      console.assert(clientdata[field] !== undefined, `Unknown clientdata field ${field} for data type ${dataType}`);
-
-      switch (dataType) {
-        case Protocol.serializableTypes.long:
-          clientdata[field] = NET.message.readLong();
-          break;
-        case Protocol.serializableTypes.short:
-          clientdata[field] = NET.message.readShort();
-          break;
-        case Protocol.serializableTypes.byte:
-          clientdata[field] = NET.message.readByte();
-          break;
-        case Protocol.serializableTypes.float:
-          clientdata[field] = NET.message.readFloat();
-          break;
-        case Protocol.serializableTypes.vector:
-          clientdata[field] = NET.message.readCoordVector();
-          break;
-        case Protocol.serializableTypes.string:
-          clientdata[field] = NET.message.readString();
-          break;
-        case Protocol.serializableTypes.true:
-          clientdata[field] = true;
-          break;
-        case Protocol.serializableTypes.false:
-          clientdata[field] = false;
-          break;
-        case Protocol.serializableTypes.null:
-          clientdata[field] = null;
-          break;
-        default:
-          throw new HostError(`Unknown or unsupported client event data type: ${dataType}`);
-        // TODO: handle custom serializable types, also arrays are missing
-      }
+      clientdata[field] = values[i] ?? null;
     }
 
     for (const field of fieldsToNull) { // TODO: remove this once the server only pushes updated fields and no longer non-null/non-zero fields
@@ -271,6 +236,9 @@ export class ClientMessages {
         case value instanceof ClientEdict:
         case typeof value === 'string':
           clientdata[field] = null;
+          break;
+        case Array.isArray(value):
+          clientdata[field] = [];
           break;
         case typeof value === 'number':
           clientdata[field] = 0;
