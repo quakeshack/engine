@@ -165,10 +165,6 @@ export class BaseMaterial {
   free(): void {
     // to be implemented by subclasses
   }
-
-  [Symbol.dispose](): void {
-    this.free();
-  }
 }
 
 class BrushMaterial extends BaseMaterial {

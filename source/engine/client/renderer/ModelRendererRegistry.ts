@@ -1,3 +1,4 @@
+import type { BaseModel } from '../../common/model/BaseModel.ts';
 import { ModelRenderer } from './ModelRenderer.ts';
 
 /**
@@ -5,41 +6,57 @@ import { ModelRenderer } from './ModelRenderer.ts';
  * Maps model types to their corresponding renderer implementations.
  */
 export class ModelRendererRegistry {
-  readonly #renderers = new Map<number, ModelRenderer>();
+  readonly #renderers = new Map<typeof BaseModel, ModelRenderer>();
 
   /**
-   * Register a renderer for a specific model type.
+   * Register a renderer for a specific model class.
    */
   register(renderer: ModelRenderer): void {
-    const modelType = renderer.getModelType();
-    if (this.#renderers.has(modelType)) {
-      console.warn(`ModelRendererRegistry: Renderer for type ${modelType} already registered, replacing`);
-    }
-    this.#renderers.set(modelType, renderer);
+    const modelClass = renderer.getModelClass();
+
+    console.assert(modelClass, 'ModelRenderer must specify a model class');
+    console.assert(!this.#renderers.has(modelClass), `ModelRenderer for class ${modelClass.name} is already registered, overwriting`);
+
+    this.#renderers.set(modelClass, renderer);
   }
 
   /**
-   * Get the renderer for a specific model type.
+   * Get the renderer for a specific model class.
    * @returns The matching renderer, or null if none is registered.
    */
-  getRenderer(modelType: number): ModelRenderer | null {
-    return this.#renderers.get(modelType) ?? null;
+  getRendererForModelClass(modelClass: typeof BaseModel): ModelRenderer | null {
+    return this.#renderers.get(modelClass) ?? null;
   }
 
   /**
-   * Check if a renderer is registered for a model type.
-   * @returns True when a renderer is registered for the given type.
+   * Get the renderer for a concrete model instance.
+   * Supports subclasses by falling back to an `instanceof` match.
+   * @returns The matching renderer, or null if none is registered.
    */
-  hasRenderer(modelType: number): boolean {
-    return this.#renderers.has(modelType);
+  getRendererForModel(model: BaseModel): ModelRenderer | null {
+    const directRenderer = this.#renderers.get(model.constructor as typeof BaseModel);
+
+    if (directRenderer) {
+      return directRenderer;
+    }
+
+    return null;
   }
 
   /**
-   * Unregister a renderer for a specific model type.
+   * Check if a renderer is registered for a model class.
+   * @returns True when a renderer is registered for the given class.
+   */
+  hasRendererForModelClass(modelClass: typeof BaseModel): boolean {
+    return this.#renderers.has(modelClass);
+  }
+
+  /**
+   * Unregister a renderer for a specific model class.
    * @returns True when a renderer was found and removed.
    */
-  unregister(modelType: number): boolean {
-    return this.#renderers.delete(modelType);
+  unregisterForModelClass(modelClass: typeof BaseModel): boolean {
+    return this.#renderers.delete(modelClass);
   }
 
   /**
@@ -50,10 +67,10 @@ export class ModelRendererRegistry {
   }
 
   /**
-   * Get all registered model types.
-   * @returns Array of all registered model type constants.
+   * Get all registered model classes.
+   * @returns Array of all registered model constructors.
    */
-  getRegisteredTypes(): number[] {
+  getRegisteredModelClasses(): (typeof BaseModel)[] {
     return Array.from(this.#renderers.keys());
   }
 }

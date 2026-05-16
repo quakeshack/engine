@@ -3,8 +3,7 @@ import { ModelRenderer } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL, { ATTRIB_LOCATIONS } from '../GL.ts';
-import { ModelType } from '../../common/Mod.ts';
-import type { MeshModel } from '../../common/model/MeshModel.ts';
+import { MeshModel } from '../../common/model/MeshModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
 
@@ -30,11 +29,11 @@ eventBus.subscribe('gl.shutdown', () => {
  */
 export class MeshModelRenderer extends ModelRenderer {
   /**
-   * Get the model type this renderer handles.
-   * @returns ModelType.mesh.
+   * Get the model class this renderer handles.
+   * @returns MeshModel constructor.
    */
-  override getModelType(): ModelType {
-    return ModelType.mesh;
+  override getModelClass(): typeof MeshModel {
+    return MeshModel;
   }
 
   /**

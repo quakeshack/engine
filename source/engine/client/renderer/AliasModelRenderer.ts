@@ -4,9 +4,8 @@ import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL from '../GL.ts';
 import W from '../../common/W.ts';
-import { ModelType } from '../../common/Mod.ts';
 import { effect } from '../../../shared/Defs.ts';
-import type { AliasModel, AliasSingleFrame, AliasGroupedFrameEntry, AliasSingleSkin, AliasGroupedSkinEntry } from '../../common/model/AliasModel.ts';
+import { AliasModel, type AliasSingleFrame, type AliasGroupedFrameEntry, type AliasSingleSkin, type AliasGroupedSkinEntry } from '../../common/model/AliasModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
 
@@ -45,11 +44,11 @@ interface AliasFrameSelection {
  */
 export class AliasModelRenderer extends ModelRenderer {
   /**
-   * Get the model type this renderer handles.
-   * @returns ModelType.alias.
+   * Get the model class this renderer handles.
+   * @returns AliasModel constructor.
    */
-  override getModelType(): ModelType {
-    return ModelType.alias;
+  override getModelClass(): typeof AliasModel {
+    return AliasModel;
   }
 
   /**

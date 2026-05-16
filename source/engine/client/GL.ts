@@ -889,10 +889,6 @@ export class GLTexture {
     textureCache.delete(this.identifier);
   }
 
-  [Symbol.dispose](): void {
-    this.free();
-  }
-
   toString(): string {
     return `${this.identifier} (${this.width} x ${this.height}, ${this.ready ? 'ready' : 'not ready'})`;
   }

@@ -4,8 +4,7 @@ import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { MaterialFlags, type BaseMaterial } from './Materials.ts';
-import { ModelType } from '../../common/Mod.ts';
-import type { BrushModel, Node, FogVolumeInfo, WorldTurbulentChainInfo } from '../../common/model/BSP.ts';
+import { BrushModel, type Node, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../common/model/BSP.ts';
 import type { Face, BaseModel } from '../../common/model/BaseModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import Mesh from './Mesh.ts';
@@ -361,9 +360,9 @@ export class BrushModelRenderer extends ModelRenderer {
 
   // ─── ModelRenderer interface ──────────────────────────────────────
 
-  /** @returns ModelType.brush. */
-  override getModelType(): ModelType {
-    return ModelType.brush;
+  /** @returns BrushModel constructor. */
+  override getModelClass(): typeof BrushModel {
+    return BrushModel;
   }
 
 

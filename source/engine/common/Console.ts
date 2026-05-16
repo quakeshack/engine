@@ -239,7 +239,7 @@ export default class Con {
         continue;
       }
       for (let j = 0; j < rows; j++) {
-        Draw.String(8, y, text.substr(j * width, width), 2.0, color);
+        Draw.String(8, y, text.substring(j * width, (j + 1) * width), 2.0, color);
         y += 16;
       }
     }

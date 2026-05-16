@@ -10,12 +10,15 @@ import VID from './VID.ts';
 import GL, { ATTRIB_LOCATIONS, GLTexture } from './GL.ts';
 import { content, effect } from '../../shared/Defs.ts';
 import { modelRendererRegistry } from './renderer/ModelRendererRegistry.ts';
+import type { ModelRenderer } from './renderer/ModelRenderer.ts';
 import { BrushModelRenderer, LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from './renderer/BrushModelRenderer.ts';
 import { AliasModelRenderer } from './renderer/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/MeshModelRenderer.ts';
 import Draw from './Draw.ts';
 import { BrushModel, type BrushTexVec, type FogVolumeInfo, type LightgridPointSample, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
+import { MeshModel } from '../common/model/MeshModel.ts';
+import { SpriteModel } from '../common/model/SpriteModel.ts';
 import { type Face, Plane } from '../common/model/BaseModel.ts';
 import PostProcess from './renderer/PostProcess.ts';
 import BloomEffect from './renderer/BloomEffect.ts';
@@ -26,7 +29,6 @@ import ShadowMap from './renderer/ShadowMap.ts';
 import { ClientDlight, ClientEdict } from './ClientEntities.ts';
 import { avertexnormals } from '../common/model/loaders/AliasMDLLoader.ts';
 import { SkyRenderer } from './renderer/Sky.ts';
-import { ModelType } from '../common/Mod.ts';
 
 let { CL, Host, SCR, SV, Sys, V } = getClientRegistry();
 
@@ -915,34 +917,27 @@ class R {
       return;
     }
 
-    // Group entities by model type for batched rendering
-    const entitiesByType = new Map<ModelType, ClientEdict[]>();
+    // Group entities by renderer for batched rendering without numeric type dispatch.
+    const entitiesByRenderer = new Map<ModelRenderer, ClientEdict[]>();
 
     for (const entity of CL.state.clientEntities.getVisibleEntities()) {
       if (entity.model === null || entity.alpha === 0.0) {
         continue;
       }
 
-      const modelType = entity.model.type;
-      if (modelType === null) {
+      const renderer = modelRendererRegistry.getRendererForModel(entity.model);
+      if (renderer === null) {
         continue;
       }
 
-      if (!entitiesByType.has(modelType)) {
-        entitiesByType.set(modelType, []);
+      if (!entitiesByRenderer.has(renderer)) {
+        entitiesByRenderer.set(renderer, []);
       }
-      entitiesByType.get(modelType)!.push(entity);
+      entitiesByRenderer.get(renderer)!.push(entity);
     }
 
-    // Pass 0: Opaque models (brush, alias)
-    for (const [modelType, entities] of entitiesByType) {
-      if (modelType === ModelType.sprite) {
-        continue; // Sprites are drawn in pass 1
-      }
-
-      const renderer = modelRendererRegistry.getRenderer(modelType)!;
-      console.assert(renderer !== null, `renderer required for model type ${modelType}`);
-
+    // Pass 0: Opaque models.
+    for (const [renderer, entities] of entitiesByRenderer) {
       renderer.setupRenderState(0);
       for (const entity of entities) {
         const model = entity.model!;
@@ -959,19 +954,18 @@ class R {
     GL.StreamFlush();
 
     // Pass 1: Transparent sprites with blending
-    const spriteEntities = entitiesByType.get(ModelType.sprite);
+    const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
+    const spriteEntities = spriteRenderer !== null ? entitiesByRenderer.get(spriteRenderer) : undefined;
     if (spriteEntities) {
-      const renderer = modelRendererRegistry.getRenderer(ModelType.sprite)!;
-      console.assert(renderer !== null, 'sprite renderer required');
-
+      console.assert(spriteRenderer !== null, 'sprite renderer required');
       gl.enable(gl.BLEND);
-      renderer.setupRenderState(1);
+      spriteRenderer!.setupRenderState(1);
       for (const entity of spriteEntities) {
         const model = entity.model!;
         console.assert(model !== null, 'entity model required for sprite pass');
-        renderer.render(model, entity, 1);
+        spriteRenderer!.render(model, entity, 1);
       }
-      renderer.cleanupRenderState(1);
+      spriteRenderer!.cleanupRenderState(1);
       GL.StreamFlush();
       gl.disable(gl.BLEND);
     }
@@ -994,7 +988,7 @@ class R {
     }
 
     const worldmodel = worldEntity.model;
-  const brushRenderer = modelRendererRegistry.getRenderer(ModelType.brush)! as BrushModelRenderer;
+    const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer;
     console.assert(brushRenderer !== null, 'brush renderer required');
     const hasFog = PostProcess.active
       && worldmodel.fogVolumes && worldmodel.fogVolumes.length > 0;
@@ -1086,7 +1080,7 @@ class R {
     const items: TransparentSortItem[] = [];
 
     // Collect world transparent leaves with distances
-    const brushRenderer = modelRendererRegistry.getRenderer(ModelType.brush)! as BrushModelRenderer;
+    const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer;
     console.assert(brushRenderer !== null, 'brush renderer required');
     const worldLeaves = brushRenderer.getWorldTransparentLeaves(worldmodel, vieworg);
     for (let i = 0; i < worldLeaves.length; i++) {
@@ -1100,13 +1094,10 @@ class R {
           continue;
         }
 
-        if (entity.model.type === null) {
-          continue;
-        }
+        const renderer = modelRendererRegistry.getRendererForModel(entity.model);
+        console.assert(renderer !== null, `renderer required for ${entity.model.constructor.name}`);
 
-        const renderer = modelRendererRegistry.getRenderer(entity.model.type)!;
-        console.assert(renderer !== null, `renderer required for model type ${entity.model.type}`);
-        if (!renderer.rendersTransparentPass(entity.model, entity)) {
+        if (!renderer!.rendersTransparentPass(entity.model, entity)) {
           continue;
         }
 
@@ -1147,13 +1138,15 @@ class R {
           worldPassActive = false;
         }
         const entity = item.data as ClientEdict;
-        if (entity.model === null || entity.model.type === null) {
+
+        if (entity.model === null) {
           continue;
         }
 
-        const renderer = modelRendererRegistry.getRenderer(entity.model.type)!;
-        console.assert(renderer !== null, `renderer required for model type ${entity.model.type}`);
-        renderer.render(entity.model, entity, 2);
+        const renderer = modelRendererRegistry.getRendererForModel(entity.model);
+        console.assert(renderer !== null, `renderer required for ${entity.model.constructor.name}`);
+
+        renderer!.render(entity.model, entity, 2);
         GL.StreamFlush();
       }
     }
@@ -1202,11 +1195,11 @@ class R {
 
     const viewent = CL.state.viewent;
     if (viewent !== null && viewent.model !== null) {
-      const aliasRenderer = modelRendererRegistry.getRenderer(ModelType.alias)!;
+      const aliasRenderer = modelRendererRegistry.getRendererForModel(viewent.model);
       console.assert(aliasRenderer !== null, 'alias renderer required');
-      aliasRenderer.setupRenderState(0);
-      aliasRenderer.render(viewent.model, viewent, 0);
-      aliasRenderer.cleanupRenderState(0);
+      aliasRenderer!.setupRenderState(0);
+      aliasRenderer!.render(viewent.model, viewent, 0);
+      aliasRenderer!.cleanupRenderState(0);
     }
 
     ymax = 4.0 * Math.tan(R.refdef.fov_y * Math.PI / 360.0);
@@ -1494,10 +1487,10 @@ class R {
     // Render world and entities using the renderer registry
     const worldEntity = CL.state.clientEntities.getEntity(0);
     if (worldEntity && worldEntity.model) {
-      const brushRenderer = modelRendererRegistry.getRenderer(ModelType.brush)!;
+      const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel);
       console.assert(brushRenderer !== null, 'brush renderer required');
       // Pass 0: World opaque surfaces
-      brushRenderer.render(worldEntity.model, worldEntity, 0);
+      brushRenderer!.render(worldEntity.model, worldEntity, 0);
     }
 
     // Draw all other entities (pass 0 for opaque, pass 1 for turbulent)
@@ -2921,8 +2914,8 @@ class R {
     R.lightmaps_rgb = new Uint8Array(new ArrayBuffer(LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_HEIGHT * 3));
     R.dlightmaps_rgba = new Uint8Array(new ArrayBuffer(LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_SIZE * 4));
 
-    const brushRenderer = modelRendererRegistry.getRenderer(ModelType.brush)!;
-    const meshRenderer = modelRendererRegistry.getRenderer(ModelType.mesh)!;
+    const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel);
+    const meshRenderer = modelRendererRegistry.getRendererForModelClass(MeshModel);
     console.assert(brushRenderer !== null, 'brush renderer required');
     console.assert(meshRenderer !== null, 'mesh renderer required');
 
@@ -2946,12 +2939,12 @@ class R {
         }
         // Use the brush renderer to prepare the model
         // Only model index 1 is the world model, all others are entity models
-        brushRenderer.prepareModel(currentmodel, i === 1);
+        brushRenderer!.prepareModel(currentmodel, i === 1);
       }
 
       // Handle mesh models (OBJ, IQM, etc.)
-      if (currentmodel.type === ModelType.mesh) {
-        meshRenderer.prepareModel(currentmodel);
+      if (currentmodel instanceof MeshModel) {
+        meshRenderer!.prepareModel(currentmodel);
       }
     }
 
@@ -3007,12 +3000,9 @@ class R {
     R.skyrenderer.shutdown();
     R.skyrenderer = null;
   };
-
-
 }
 
 export default R;
-
 
 eventBus.subscribe('client.disconnected', () => {
   R.ClearAll();
