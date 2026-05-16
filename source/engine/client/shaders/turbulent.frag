@@ -8,6 +8,8 @@ layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 uniform float uTime;
+uniform float uInterpolation;
+uniform float uLightstyleInterpolation;
 uniform float uAlpha;
 uniform float uBloomEmissiveScale;
 uniform float uBloomDlightScale;
@@ -15,7 +17,8 @@ uniform sampler2D tTexture;
 uniform sampler2D tLuminance;
 uniform sampler2DArray tLightmap;
 uniform sampler2D tDlight;
-uniform sampler2D tLightStyle;
+uniform sampler2D tLightStyleA;
+uniform sampler2D tLightStyleB;
 
 in vec4 vTexCoord;
 in vec4 vLightStyle;
@@ -30,14 +33,20 @@ void main(void) {
   vec4 texel = vec4(texture(tTexture, warpedTexCoord).rgb, 1.0);
   vec3 luminance = texture(tLuminance, warpedTexCoord).rgb;
 
-  vec4 lightstyle = vec4(
-    texture(tLightStyle, vec2(vLightStyle.x, 0.0)).r,
-    texture(tLightStyle, vec2(vLightStyle.y, 0.0)).r,
-    texture(tLightStyle, vec2(vLightStyle.z, 0.0)).r,
-    texture(tLightStyle, vec2(vLightStyle.w, 0.0)).r
+  vec4 lightstyleA = vec4(
+    texture(tLightStyleA, vec2(vLightStyle.x, 0.0)).r,
+    texture(tLightStyleA, vec2(vLightStyle.y, 0.0)).r,
+    texture(tLightStyleA, vec2(vLightStyle.z, 0.0)).r,
+    texture(tLightStyleA, vec2(vLightStyle.w, 0.0)).r
+  );
+  vec4 lightstyleB = vec4(
+    texture(tLightStyleB, vec2(vLightStyle.x, 0.0)).r,
+    texture(tLightStyleB, vec2(vLightStyle.y, 0.0)).r,
+    texture(tLightStyleB, vec2(vLightStyle.z, 0.0)).r,
+    texture(tLightStyleB, vec2(vLightStyle.w, 0.0)).r
   );
 
-  vec4 scaledLightstyle = lightstyle * 43.828125;
+  vec4 scaledLightstyle = mix(lightstyleA, lightstyleB, uLightstyleInterpolation) * 43.828125;
 
   vec3 d = mix(
     vFallbackLight,

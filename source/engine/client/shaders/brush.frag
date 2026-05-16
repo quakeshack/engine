@@ -11,6 +11,7 @@ layout(location = 1) out vec4 fragEmissive;
 
 uniform float uGamma;
 uniform float uInterpolation;
+uniform float uLightstyleInterpolation;
 uniform float uAlpha;
 uniform float uBloomEmissiveScale;
 uniform float uBloomDlightScale;
@@ -136,7 +137,7 @@ void main(void) {
     texture(tLightStyleB, vec2(vLightStyle.z, 0.0)).r,
     texture(tLightStyleB, vec2(vLightStyle.w, 0.0)).r
   );
-  vec4 lightstyle = mix(lightstyleA, lightstyleB, uInterpolation) * LIGHTSTYLE_SCALE;
+  vec4 lightstyle = mix(lightstyleA, lightstyleB, uLightstyleInterpolation) * LIGHTSTYLE_SCALE;
 
   // Sample lightmap layers (R, G, B each in a separate array layer)
   vec4 lightmapR = texture(tLightmap, vec3(vTexCoord.zw, 0.0));

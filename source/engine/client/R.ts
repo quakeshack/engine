@@ -225,6 +225,30 @@ class R {
     };
   }
 
+  /**
+   * Returns interpolation for animated texture/material groups.
+   */
+  static GetTextureInterpolation(): number {
+    if (R.interpolation.value === 0) {
+      return 0.0;
+    }
+
+    return (CL.state.time % 0.2) / 0.2;
+  }
+
+  /**
+   * Returns smoothed interpolation for 10 Hz lightstyle animation.
+   */
+  static GetLightstyleInterpolation(): number {
+    if (R.interpolation.value === 0) {
+      return 0.0;
+    }
+
+    const linear = (CL.state.time * 10.0) % 1.0;
+
+    return linear * linear * (3.0 - 2.0 * linear);
+  }
+
   static AnimateLight(): void {
     if (R.fullbright.value === 0) {
       const i = Math.floor(CL.state.time * 10.0);
@@ -516,7 +540,7 @@ class R {
       const lightdata = (haveRGB ? worldmodel.lightdata_rgb : worldmodel.lightdata)!;
       console.assert(lightdata !== null, 'world lightdata required');
       const channels = haveRGB ? 3 : 1;
-      const uInterpolation = R.interpolation.value ? (CL.state.time % .2) / .2 : 0;
+      const uInterpolation = R.GetLightstyleInterpolation();
 
       for (let k = 0; k < channels; k++) {
         let lightmap = surf.lightofs + dt * smax + ds;
@@ -743,7 +767,7 @@ class R {
 
     // Accumulate weighted RGB values
     const r3 = new Vector(0, 0, 0);
-    const uInterpolation = R.interpolation.value ? (CL.state.time % .2) / .2 : 0;
+    const uInterpolation = R.GetLightstyleInterpolation();
 
     for (let i = 0; i < samples.length; i++) {
       const sample = samples[i];
@@ -1732,7 +1756,7 @@ class R {
 
       // rendering brush models (water is down below)
       Promise.resolve(GL.CreateProgram('brush',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uShadowMapSize', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uLightstyleInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uShadowMapSize', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale'],
           [
             ['aPosition', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 4],
@@ -1780,7 +1804,7 @@ class R {
 
       // rendering water brushes
       Promise.resolve(GL.CreateProgram('turbulent',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uTime', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uAlpha', 'uBloomEmissiveScale', 'uBloomDlightScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uTime', 'uInterpolation', 'uLightstyleInterpolation', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uAlpha', 'uBloomEmissiveScale', 'uBloomDlightScale'],
           [
             ['aPosition', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 4],
@@ -1789,7 +1813,7 @@ class R {
             // ['aTangent', gl.FLOAT, 3],
             // ['aBitangent', gl.FLOAT, 3],
           ],
-          ['tTexture', 'tLuminance', 'tLightmap', 'tDlight', 'tLightStyle', 'tDeluxemap'])),
+          ['tTexture', 'tLuminance', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tDeluxemap'])),
 
       // warp overlay effect
       Promise.resolve(GL.CreateProgram('warp',

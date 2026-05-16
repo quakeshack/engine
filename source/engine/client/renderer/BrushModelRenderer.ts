@@ -493,6 +493,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
+    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
+    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform4f(program.uLightVec!, 0.0, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicLightVec!, 0.0, 0.0, 0.0);
@@ -608,6 +610,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
+    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
+    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform4f(program.uLightVec!, 0.0, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicLightVec!, 0.0, 0.0, 0.0);
@@ -746,11 +750,14 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uOrigin!, 0.0, 0.0, 0.0);
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform1f(program.uTime!, Host.realtime);
+    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
+    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
 
     this._setupBrushShaderCommon(program, clmodel, true);
-    GL.Bind(program.tLightStyle!, R.lightstyle_texture_a);
+    GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
+    GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
 
     this._worldTurbulentProgram = program;
     this._worldTurbulentModel = clmodel;
@@ -1086,7 +1093,8 @@ export class BrushModelRenderer extends ModelRenderer {
 
     gl.uniform3fv(program.uOrigin!, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
-    gl.uniform1f(program.uInterpolation!, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
+    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
+    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
     gl.uniform1f(program.uAlpha!, 1.0);
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
@@ -1127,7 +1135,8 @@ export class BrushModelRenderer extends ModelRenderer {
 
     gl.uniform3fv(program.uOrigin!, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
-    gl.uniform1f(program.uInterpolation!, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
+    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
+    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
     gl.uniform1f(program.uAlpha!, e.alpha);
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
@@ -1179,11 +1188,14 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uOrigin!, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
     gl.uniform1f(program.uTime!, Host.realtime % (Math.PI * 2.0));
+    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
+    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
 
     this._setupBrushShaderCommon(program, clmodel, false);
-    GL.Bind(program.tLightStyle!, R.lightstyle_texture_a);
+    GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
+    GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
       gl.depthMask(true);
