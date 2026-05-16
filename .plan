@@ -16,17 +16,23 @@ Grouped by sections and then sorted by priority (more or less).
 
 - [_] M: better multiplayer menus
   - [_] setup a profile when new player
-  - [_] better create game menu
-  - [_] integrate with server browser
+  - [X] better create game menu
+  - [X] integrate with server browser
 - [X] M: make it more readible on high DPI screens
 - [_] UI: textboxes should act more like text boxes
+  - [X] add reusable textbox menu component
+  - [_] add cursor navigation/editing behavior (left/right/home/end/delete)
+  - [_] add selection and clipboard support (copy/paste)
 - [_] CL: finished demos trigger a `Host.Error` (lost connection), needs fixing
 - [_] M: introduce a password required dialog to join password protected servers
 - [_] M: touch support (how to escape etc) and mouse support
+  - [X] mobile input capability detection + external input warning
+  - [_] touch-first menu navigation and escape UX
+  - [_] gameplay touch controls with mouse-equivalent look input
 - [_] M: rewrite the code using the new framework
 - [_] IN: proper virtual joystick and keyboard/UI
 - [_] M: expose GUI toolkit (draw routines etc.) to the client game code, put stuff in shared/
-- [_] CL: remove that chatlog stuff again, it’s all done in the Client code now
+- [X] CL: remove that chatlog stuff again, it’s all done in the Client code now
 
 ### Code smell
 
@@ -49,7 +55,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 ### Life improvements
 
-- [_] unregister Cvars and Commands registered by the game code
+- [X] unregister Cvars and Commands registered by the game code
 
 ### Rendering improvements
 
@@ -60,14 +66,18 @@ Grouped by sections and then sorted by priority (more or less).
 - [X] fix lightmap datastructure, right now it’s eating up ~200 MiB
 - [X] double check the fullbright texture rendering of alias ~and sprite~ models
 - [_] proper func_fog functionality so that game code can change fog parameters
+  - [X] add `func_fog` entity and map-spawned fog parameters
+  - [_] allow runtime game-side fog parameter changes
 - [_] lod considering fog
 - [_] have preprocessor support in shaders (`#include` etc.) and clean up duplicate functions
 - [_] have smooth transitions between post processing stacks (or decay timer etc.)
+  - [X] add stackable post processing effects
+  - [_] add smooth transitions between stack changes (decay/interp)
 
 ### Random issues
 
 - [X] a not precached resource will cause dropping Promises, game code needs model right away, QuakeC VM broken
-- [_] invoking all these special Host console commands intended to be forwarded from the client or handled on a per client basis are causing issues when invoked outside of that (e.g. exec’ing color, name etc. on a dedicated server)
+- [X] invoking all these special Host console commands intended to be forwarded from the client or handled on a per client basis are causing issues when invoked outside of that (e.g. exec’ing color, name etc. on a dedicated server)
 - [X] group animated models are not rendered anymore
 
 ### LibreQuake support
@@ -76,6 +86,7 @@ Grouped by sections and then sorted by priority (more or less).
 - [X] add back `.lit` support (right now it’s only looking for RGBLIGHTING bspxlump)
 - [X] add fog support (basically read out the worldspawnInfo and configure the distance correctly)
 - [_] try to get QuakeC’s progs.dat going
+  - [_] reimplement QuakeC VM on top of the game code
 
 ### Game experience breaking/degrading issues
 
@@ -158,6 +169,18 @@ Grouped by sections and then sorted by priority (more or less).
 - https://mus1n.github.io/Quake-3-Skybox/ 360 to skybox
 
 ## Log
+
+### 2026-05-16
+
+- some code cleanup and small fixes
+- there are a few things I’m quite unhappy about:
+  - the whole model code path, it should be more generic and streamlined
+  - navigation is not fully done to my satisfaction
+    - NPCs must be aware of things they cannot reach
+    - doors etc. not considered
+  - PVS+PHS lacks area support
+    - I had issues with portals linking areas
+    - areas were compiled incorrectly, linking foreign leafs to areas etc.
 
 ### 2026-05-09
 
