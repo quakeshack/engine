@@ -1,11 +1,12 @@
 import type { Visibility } from '../common/model/BSP.ts';
 import type { SerializableType } from '../../shared/GameInterfaces.ts';
-import type Vector from '../../shared/Vector.ts';
+import Vector from '../../shared/Vector.ts';
 import type { BaseEntity, ServerEdict } from './Edict.ts';
 
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Defs from '../../shared/Defs.ts';
+import { areSerializableValuesEqual } from '../../shared/SerializableValues.ts';
 import Cvar from '../common/Cvar.ts';
 import { requireActiveGameModule } from '../common/GameModule.ts';
 import { eventBus, getCommonRegistry } from '../registry.ts';
@@ -95,6 +96,44 @@ function requireWorldspawnEntity(): WorldspawnMessageEntity {
   console.assert(entity !== null, 'ServerMessages requires a worldspawn entity');
 
   return entity as WorldspawnMessageEntity;
+}
+
+/**
+ * Returns true when the value is a plain serializable object.
+ * @returns True when the value is a plain object payload.
+ */
+function isPlainSerializableObject(value: SerializableType): value is Record<string, SerializableType> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value) || value instanceof Vector) {
+    return false;
+  }
+
+  return Object.getPrototypeOf(value) === Object.prototype;
+}
+
+/**
+ * Creates a detached snapshot copy for serializable values.
+ * @returns A copy suitable for diff snapshots.
+ */
+function cloneSerializableValue(value: SerializableType): SerializableType {
+  if (value instanceof Vector) {
+    return value.copy();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneSerializableValue(entry));
+  }
+
+  if (isPlainSerializableObject(value)) {
+    const clone: Record<string, SerializableType> = {};
+
+    for (const [key, child] of Object.entries(value)) {
+      clone[key] = cloneSerializableValue(child);
+    }
+
+    return clone;
+  }
+
+  return value;
 }
 
 /**
@@ -714,18 +753,26 @@ export class ServerMessages {
 
     let fieldbits = 0;
     const values = [];
+    const clientdataSnapshot = client.clientdataSnapshot;
     const serializableEntity = clientEntity as ServerMessageEntity & Record<string, DynamicEntityFieldValue>;
 
     for (let i = 0; i < clientdataFields.length; i++) {
       const field = clientdataFields[i];
       const value = serializableEntity[field];
 
-      if (!value) {
+      if (value === undefined) {
+        continue;
+      }
+
+      const hasSnapshot = Object.hasOwn(clientdataSnapshot, field);
+
+      if (hasSnapshot && areSerializableValuesEqual(clientdataSnapshot[field]!, value)) {
         continue;
       }
 
       fieldbits |= (1 << i);
       values.push(value);
+      clientdataSnapshot[field] = cloneSerializableValue(value);
     }
 
     const bitsWriter = SV.server.clientdataFieldsBitsWriter as BitsWriter | null;

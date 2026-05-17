@@ -1,4 +1,4 @@
-import type { PlayerEntitySpawnParamsDynamic } from '../../shared/GameInterfaces.ts';
+import type { PlayerEntitySpawnParamsDynamic, SerializableType } from '../../shared/GameInterfaces.ts';
 import type { QSocket } from '../network/NetworkDrivers.ts';
 import type { BaseEntity, ServerEdict } from './Edict.ts';
 
@@ -61,6 +61,7 @@ export class ServerClient {
   pmTime: number;
   pmOldButtons: number;
   lastMoveSequence: number;
+  clientdataSnapshot: Record<string, SerializableType>;
 
   constructor(num: number) {
     this.state = ServerClient.STATE.FREE;
@@ -89,6 +90,7 @@ export class ServerClient {
     this.pmTime = 0;
     this.pmOldButtons = 0;
     this.lastMoveSequence = 0;
+    this.clientdataSnapshot = {};
   }
 
   toString(): string {
@@ -135,6 +137,7 @@ export class ServerClient {
     this.pmTime = 0;
     this.pmOldButtons = 0;
     this.lastMoveSequence = 0;
+    this.clientdataSnapshot = {};
     this.spawn_parms = null;
   }
 
@@ -157,6 +160,7 @@ export class ServerClient {
     this.pmTime = 0;
     this.pmOldButtons = 0;
     this.lastMoveSequence = 0;
+    this.clientdataSnapshot = {};
   }
 
   /**

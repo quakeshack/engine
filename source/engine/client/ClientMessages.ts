@@ -1,9 +1,10 @@
 import * as Protocol from '../network/Protocol.ts';
+import type { ClientSerializableType } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
+import { areSerializableValuesEqual } from '../../shared/SerializableValues.ts';
 import { PmovePlayer } from '../common/Pmove.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import { HostError } from '../common/Errors.ts';
-import { ClientEdict } from './ClientEntities.ts';
 
 type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';
 
@@ -184,7 +185,6 @@ export class ClientMessages {
     const fieldbits = NET.message[this.#readClientdataFieldsBits]();
 
     const fields: string[] = [];
-    const fieldsToNull: string[] = [];
 
     for (let i = 0; i < this.#clientdataFields.length; i++) {
       const field = this.#clientdataFields[i];
@@ -195,8 +195,6 @@ export class ClientMessages {
 
       if ((fieldbits & (1 << i)) !== 0) {
         fields.push(field);
-      } else {
-        fieldsToNull.push(field);
       }
     }
 
@@ -220,37 +218,15 @@ export class ClientMessages {
         throw new HostError(`Unknown clientdata field index ${i}`);
       }
 
-      clientdata[field] = values[i] ?? null;
-    }
+      const previousValue = (clientdata[field] ?? null) as ClientSerializableType;
+      const nextValue = (values[i] ?? null) as ClientSerializableType;
 
-    for (const field of fieldsToNull) { // TODO: remove this once the server only pushes updated fields and no longer non-null/non-zero fields
-      const value = clientdata[field];
-
-      switch (true) {
-        case value === null:
-          // already null, do nothing
-          break;
-        case value instanceof Vector:
-          value.clear();
-          break;
-        case value instanceof ClientEdict:
-        case typeof value === 'string':
-          clientdata[field] = null;
-          break;
-        case Array.isArray(value):
-          clientdata[field] = [];
-          break;
-        case typeof value === 'number':
-          clientdata[field] = 0;
-          break;
-        case typeof value === 'boolean':
-          clientdata[field] = false;
-          break;
-        default:
-          throw new HostError(`Unknown client event data type for field ${field}: ${typeof value}`);
+      if (areSerializableValuesEqual(previousValue, nextValue)) {
+        continue;
       }
 
-      // TODO: trigger a client event for a changed field
+      clientdata[field] = nextValue;
+      eventBus.publish('client.clientdata.field-changed', field, nextValue, previousValue);
     }
   }
 

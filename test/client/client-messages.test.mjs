@@ -66,9 +66,10 @@ function withMockClientMessagesRegistry({ CL, COM, NET }, callback) {
 }
 
 void describe('ClientMessages', () => {
-  void test('parses acknowledged move state and dynamic clientdata fields', () => {
+  void test('parses acknowledged move state and keeps untouched sparse clientdata fields', () => {
     const messages = new ClientMessages();
     messages.clientdataFields = ['health', 'alive'];
+    const fieldChanges = [];
 
     const buffer = new SzBuffer(128, 'client-messages-clientdata');
     buffer.writeShort(Protocol.su.moveack);
@@ -108,6 +109,10 @@ void describe('ClientMessages', () => {
       },
     };
 
+    const unsubscribe = eventBus.subscribe('client.clientdata.field-changed', (...args) => {
+      fieldChanges.push(args);
+    });
+
     void withMockClientMessagesRegistry({
       CL: mockCL,
       COM: { standard_quake: true },
@@ -116,12 +121,15 @@ void describe('ClientMessages', () => {
       messages.parseClient();
     });
 
+    unsubscribe();
+
     assert.equal(mockCL.state.acknowledgedMoveSequence, 17);
     assert.equal(mockCL.state.ackedPmFlags, 3);
     assert.equal(mockCL.state.ackedPmTime, 6);
     assert.equal(mockCL.state.ackedPmOldButtons, 9);
     assert.equal(mockCL.state.gameAPI.clientdata.health, 125);
-    assert.equal(mockCL.state.gameAPI.clientdata.alive, false);
+    assert.equal(mockCL.state.gameAPI.clientdata.alive, true);
+    assert.deepEqual(fieldChanges, [['health', 125, 10]]);
   });
 
   void test('parses client events and forwards the decoded arguments to the game API', () => {
@@ -209,5 +217,82 @@ void describe('ClientMessages', () => {
     assert.deepEqual(mockCL.state.gameAPI.clientdata.inventory, [1, 2, 3]);
     assert.equal(mockCL.state.gameAPI.clientdata.target instanceof MockClientSerializable, true);
     assert.equal(mockCL.state.gameAPI.clientdata.target.value, 'teleporter');
+  });
+
+  void test('publishes explicit field-change events for sparse clientdata transitions', () => {
+    const messages = new ClientMessages();
+    messages.clientdataFields = ['target'];
+    const fieldChanges = [];
+
+    const first = new SzBuffer(128, 'client-messages-field-changed-first');
+    first.writeShort(0);
+    first.writeByte(1);
+    first.writeSerializables(['ogre']);
+    first.beginReading();
+
+    const second = new SzBuffer(128, 'client-messages-field-changed-second');
+    second.writeShort(0);
+    second.writeByte(1);
+    second.writeSerializables([null]);
+    second.beginReading();
+
+    const mockState = {
+      time: 1,
+      clientMessages: messages,
+      viewheight: 0,
+      idealpitch: 0,
+      punchangle: new Vector(),
+      onground: false,
+      inwater: false,
+      acknowledgedMoveSequence: 0,
+      ackedPmFlags: 0,
+      ackedPmTime: 0,
+      ackedPmOldButtons: 0,
+      items: 0,
+      item_gettime: new Array(32).fill(0),
+      stats: new Array(32).fill(0),
+      gameAPI: {
+        clientdata: {
+          target: null,
+        },
+      },
+    };
+
+    const net = { message: first };
+    const unsubscribe = eventBus.subscribe('client.clientdata.field-changed', (...args) => {
+      fieldChanges.push(args);
+    });
+
+    void withMockClientMessagesRegistry({
+      CL: {
+        gameCapabilities: [],
+        state: mockState,
+      },
+      COM: { standard_quake: true },
+      NET: net,
+    }, () => {
+      messages.parseClient();
+    });
+
+    net.message = second;
+
+    void withMockClientMessagesRegistry({
+      CL: {
+        gameCapabilities: [],
+        state: mockState,
+      },
+      COM: { standard_quake: true },
+      NET: net,
+    }, () => {
+      messages.parseClient();
+    });
+
+    unsubscribe();
+
+    assert.deepEqual(fieldChanges, [
+      ['target', 'ogre', null],
+      ['target', null, 'ogre'],
+    ]);
+    assert.equal(mockState.gameAPI.clientdata.target, null);
   });
 });

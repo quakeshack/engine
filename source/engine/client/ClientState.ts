@@ -56,6 +56,7 @@ const clientGameEvents = [
   'client.server-info.updated',
   'client.damage',
   'client.chat.message',
+  'client.clientdata.field-changed',
 ] as const;
 
 class ClientStaticState {

@@ -437,11 +437,6 @@ export default class CL {
       return;
     }
 
-    // ensure the pmove has the current worldmodel
-    if (!this.pmove.physents.length && this.state.worldmodel) {
-      this.pmove.setWorldmodel(this.state.worldmodel);
-    }
-
     if (!this.pmove.physents.length) {
       return;
     }
@@ -455,9 +450,6 @@ export default class CL {
       // no pending commands or too many (something went wrong) — skip prediction
       return;
     }
-
-    // populate collision entities for prediction
-    CL.#setupPredictionPhysents();
 
     // get a player move instance
     const pmove = this.pmove.newPlayerMove();
@@ -587,6 +579,24 @@ export default class CL {
    * This sets up the first phase.
    */
   static SetUpPlayerPrediction(): void { // public, by Host.js
-    // TODO: implement prediction setup once client prediction is refactored.
+    if (this.nopred.value !== 0 || this.cls.demoplayback) {
+      this.pmove.clearEntities();
+      return;
+    }
+
+    if (this.state.playerentity === null) {
+      this.pmove.clearEntities();
+      return;
+    }
+
+    if (!this.pmove.physents.length && this.state.worldmodel !== null) {
+      this.pmove.setWorldmodel(this.state.worldmodel);
+    }
+
+    if (!this.pmove.physents.length) {
+      return;
+    }
+
+    this.#setupPredictionPhysents();
   }
 }

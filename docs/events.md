@@ -29,6 +29,7 @@ The engine has an event bus.
 | client.damage | 1. ClientDamageEvent | Damage event. Sent when the player received damage. |
 | client.center-print | 1. message | Center print text was requested. |
 | client.chat.message | 1. name, 2. message, 3. whether is a direct message or not. | Chat message received. |
+| client.clientdata.field-changed | 1. field, 2. value, 3. previousValue | A sparse clientdata field changed in the latest server snapshot. |
 | client.disconnected | - | Essentially the game stopped. |
 | client.connecting | 1. address | Trying to connect to a server. |
 | client.signon | 1. signon number | Triggered on each signon reply step. |
