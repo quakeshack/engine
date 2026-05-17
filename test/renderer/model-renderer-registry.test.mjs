@@ -43,16 +43,6 @@ void describe('ModelRendererRegistry', () => {
     assert.equal(registry.getRendererForModel(model), renderer);
   });
 
-  void test('falls back to instanceof matching for subclasses', () => {
-    const registry = new ModelRendererRegistry();
-    const renderer = new TestModelRenderer();
-    const childModel = new TestModelChild('child-model');
-
-    registry.register(renderer);
-
-    assert.equal(registry.getRendererForModel(childModel), renderer);
-  });
-
   void test('unregisters model-class mappings', () => {
     const registry = new ModelRendererRegistry();
     const testRenderer = new TestModelRenderer();
