@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -13,6 +14,8 @@ import { ServerCollision } from '../../source/engine/server/physics/ServerCollis
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.ts';
 import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.ts';
+import COMClass from '../../source/engine/common/Com.ts';
+import Mod from '../../source/engine/common/Mod.ts';
 
 void test('PmovePlayer.DEBUG is disabled before Pmove.Init()', () => {
   assert.equal(PmovePlayer.DEBUG, false);
@@ -3562,3 +3565,160 @@ void test('ServerPhysics.physics applies gravity and toss movement for one frame
     assert.equal(linkCalls.length, 1);
   });
 });
+
+/**
+ * Test fixture: load a real BSP map using Com and Mod.
+ * This allows testing actual brushlist collision against hull-only collision.
+ * @param {string} mapName map name relative to data/id1/maps/ (e.g. 'test_clip_4.bsp')
+ * @returns {Promise<import('../../source/engine/common/model/BSP.ts').BrushModel>} loaded model
+ */
+async function loadBSPMap(mapName) {
+  const baseUrl = new URL('../../data/id1/', import.meta.url);
+  const previousRegistry = {
+    COM: registry.COM,
+    Con: registry.Con,
+    Mod: registry.Mod,
+    isDedicatedServer: registry.isDedicatedServer,
+  };
+  const knownKeysBefore = new Set(Object.keys(Mod.known));
+
+  registry.isDedicatedServer = true;
+  registry.Con = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
+    Print() {},
+    DPrint() {},
+    PrintWarning() {},
+    PrintError(...args) {
+      console.error(...args);
+    },
+    PrintSuccess() {},
+  });
+  registry.Mod = Mod;
+  registry.COM = /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
+    Parse: COMClass.Parse,
+    async LoadFile(name) {
+      try {
+        // The Mod system requests paths like 'maps/test_clip_4.bsp'
+        const data = await fs.readFile(new URL(name, baseUrl));
+        return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+      } catch {
+        return null;
+      }
+    },
+    async LoadTextFile(name) {
+      try {
+        const data = await fs.readFile(new URL(name, baseUrl), 'utf8');
+        return data;
+      } catch {
+        return null;
+      }
+    },
+  });
+  eventBus.publish('registry.frozen');
+  Mod.Init();
+
+  try {
+    // Request with the 'maps/' prefix like pmove.test.mjs does
+    const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ (await Mod.ForNameAsync(`maps/${mapName}`, true));
+    return model;
+  } finally {
+    for (const name of Object.keys(Mod.known)) {
+      if (!knownKeysBefore.has(name)) {
+        delete Mod.known[name];
+      }
+    }
+
+    Object.assign(registry, previousRegistry);
+    eventBus.publish('registry.frozen');
+  }
+}
+
+void describe('test_clip_4 regression: brushlist vs hull collision', () => {
+  void test('BrushTrace collision blocks player between columns (brushlist version)', async () => {
+    const model = await loadBSPMap('test_clip_4.bsp');
+
+    // Player starts at (8, 24, -40) and needs to move toward item_key1 at (-112, -80, -40)
+    // There are two columns (brush 6 and 7) between the player and the item
+    // The columns should block the player from reaching the item
+    const playerStart = new Vector(8, 24, -40);
+    const itemLocation = new Vector(-112, -80, -40);
+    const playerMins = new Vector(-16, -16, -24);
+    const playerMaxs = new Vector(16, 16, 32);
+
+    // Movement direction from player to item
+    const moveDir = itemLocation.copy().subtract(playerStart);
+    moveDir.normalize();
+
+    // Trace from player toward the item, moving far enough to reach it if unobstructed
+    const moveDistance = moveDir.copy().multiply(200);
+    const moveEnd = playerStart.copy().add(moveDistance);
+
+    const trace = BrushTrace.boxTrace(
+      model,
+      0,
+      playerStart,
+      moveEnd,
+      playerMins,
+      playerMaxs,
+    );
+
+    // The trace should hit one of the columns before reaching the item location
+    // If this test fails, it means the player can slide through the columns (the bug)
+    assert.ok(trace.fraction < 1.0, 'Player should be blocked by columns, not reach the end of movement');
+    assert.ok(trace.fraction < 0.5, 'Player should be significantly blocked, stopping before reaching item');
+    assert.ok(trace.endpos[0] > itemLocation[0], 'Player should stop before the item location (X coordinate)');
+  });
+
+  void test('Hull collision blocks player between columns (hull-only version)', async () => {
+    const model = await loadBSPMap('test_clip_4_hull.bsp');
+
+    const playerStart = new Vector(8, 24, -40);
+
+    // Use legacy hull-based trace (via PMF-style trace through Pmove)
+    const pmove = new Pmove();
+    pmove.setWorldmodel(model);
+
+    const trace = new Trace();
+    trace.allsolid = true;
+    trace.fraction = 1.0;
+    trace.endpos.set(playerStart.copy().add(new Vector(-200, 0, 0)));
+
+    // Use the hull system for this test
+    if (model.hulls && model.hulls[1]) {
+      const hull = Hull.fromModelHull(model.hulls[1]);
+      const moveEnd = new Vector(playerStart[0] - 200, playerStart[1], playerStart[2]);
+      hull.check(0.0, 1.0, playerStart, moveEnd, trace);
+
+      // Should also be blocked by columns
+      assert.ok(trace.fraction < 1.0, 'Hull collision should also block player');
+    }
+  });
+
+    void test('BrushTrace allows returning through clear contact positions between the columns', async () => {
+      const model = await loadBSPMap('test_clip_4.bsp');
+      const mins = Pmove.PLAYER_MINS;
+      const maxs = Pmove.PLAYER_MAXS;
+
+      // Along y = -16 the player box is only touching the upper column face.
+      // Both centers are reported clear, so the trace between them must remain
+      // clear in both directions instead of clipping one way at DIST_EPSILON.
+      const gapEdge = new Vector(-72, -16, -40);
+      const gapInterior = new Vector(-72, -17, -40);
+
+      assert.equal(BrushTrace.testPosition(model, 0, gapEdge, mins, maxs), true);
+      assert.equal(BrushTrace.testPosition(model, 0, gapInterior, mins, maxs), true);
+
+      const intoEdgeTrace = BrushTrace.boxTrace(model, 0, gapInterior, gapEdge, mins, maxs);
+      const outOfEdgeTrace = BrushTrace.boxTrace(model, 0, gapEdge, gapInterior, mins, maxs);
+
+      assert.equal(intoEdgeTrace.startsolid, false);
+      assert.equal(intoEdgeTrace.allsolid, false);
+      assert.equal(intoEdgeTrace.fraction, 1.0);
+      assert.deepEqual([...intoEdgeTrace.endpos], [...gapEdge]);
+
+      assert.equal(outOfEdgeTrace.startsolid, false);
+      assert.equal(outOfEdgeTrace.allsolid, false);
+      assert.equal(outOfEdgeTrace.fraction, 1.0);
+      assert.deepEqual([...outOfEdgeTrace.endpos], [...gapInterior]);
+    });
+});
+

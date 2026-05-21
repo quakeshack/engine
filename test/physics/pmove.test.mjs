@@ -407,6 +407,23 @@ void describe('PmovePlayer', () => {
     assert.ok(hullFrames[7].moved[1] < -1.0);
   });
 
+  void test('matches the hull column blockage on the brush-backed clip_4 regression map', async () => {
+    const brushFrames = await runMapForwardFrames('maps/test_clip_4.bsp', 8);
+    const hullFrames = await runMapForwardFrames('maps/test_clip_4_hull.bsp', 8);
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.25);
+      assertNear(brushFrames[frame].origin[1], hullFrames[frame].origin[1], 0.25);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.25);
+      assertNear(brushFrames[frame].moved[1], hullFrames[frame].moved[1], 0.25);
+      assertNear(brushFrames[frame].velocity[0], hullFrames[frame].velocity[0], 0.25);
+      assertNear(brushFrames[frame].velocity[1], hullFrames[frame].velocity[1], 0.25);
+    }
+
+    assertNear(brushFrames[5].moved[0], 0.0, 0.25);
+    assertNear(brushFrames[5].moved[1], 0.0, 0.25);
+  });
+
   void test('does not wedge on the hw_doom corridor sidestep repro', async () => {
     const frames = await runMapFrames({
       mapName: 'maps/test_hw_doom.bsp',

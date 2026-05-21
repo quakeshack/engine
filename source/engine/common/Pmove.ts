@@ -1418,11 +1418,8 @@ export class BrushTrace {
   static _clipBoxToBrush(ctx: BrushTraceContext, brush: Brush) {
     const brushsides = ctx.worldModel.brushsides!;
     const planes = ctx.worldModel.planes;
-    const moveDeltaX = ctx.end[0] - ctx.start[0];
-    const moveDeltaY = ctx.end[1] - ctx.start[1];
-    const moveDeltaZ = ctx.end[2] - ctx.start[2];
-    const moveDistance = Math.sqrt(moveDeltaX * moveDeltaX + moveDeltaY * moveDeltaY + moveDeltaZ * moveDeltaZ);
-    const fractionEpsilon = moveDistance > DIST_EPSILON ? DIST_EPSILON / moveDistance : 1.0;
+    const totalMoveLength = Math.sqrt(ctx.totalMove[0] ** 2 + ctx.totalMove[1] ** 2 + ctx.totalMove[2] ** 2);
+    const fractionEpsilon = totalMoveLength > DIST_EPSILON ? DIST_EPSILON / totalMoveLength : 1.0;
 
     console.assert(brushsides !== null, 'brush trace expected brushsides');
 
@@ -1431,6 +1428,7 @@ export class BrushTrace {
     let clipplane: BaseModelPlane | null = null;
     let tangentAxialPlane: BaseModelPlane | null = null;
     let tangentAxialMovesDeeper = false;
+    let axialWallClearAxisMask = 0;
 
     let getout = false;
     let startout = false;
@@ -1457,8 +1455,12 @@ export class BrushTrace {
 
       const nonAxialContact = plane.type >= 3;
       const axialTangentStart = !nonAxialContact && d1 < 0 && d1 >= -DIST_EPSILON;
+      const axialWallClearContact = !nonAxialContact
+        && Math.abs(plane.normal[2]) <= DIST_EPSILON
+        && Math.abs(d1) <= DIST_EPSILON
+        && d2 >= -DIST_EPSILON;
       const nearStart = nonAxialContact && Math.abs(d1) <= DIST_EPSILON;
-      const nearEnd = nonAxialContact && Math.abs(d2) <= DIST_EPSILON;
+      const nearEnd = Math.abs(d2) <= DIST_EPSILON;
 
       if (d2 >= 0 || nearEnd) {
         getout = true;
@@ -1473,8 +1475,18 @@ export class BrushTrace {
         tangentAxialMovesDeeper ||= d2 < -DIST_EPSILON;
       }
 
-      // If completely in front of face, no intersection with this brush
-      if (d1 >= 0 && d2 >= d1) {
+      // Exact tangent wall starts that stay on or outside the same face are
+      // clear contact, but we still need to test the remaining planes so an
+      // orthogonal wall can block the sweep, which is what closes clip_4.
+      if (axialWallClearContact) {
+        axialWallClearAxisMask |= 1 << plane.type;
+        continue;
+      }
+
+      // Position tests treat exact and sub-epsilon face contact as clear, so
+      // traces must not clip a move whose endpoint only lands on that same
+      // clear contact boundary.
+      if (d1 >= 0 && (d2 >= d1 || d2 >= -DIST_EPSILON)) {
         return;
       }
 
@@ -1531,6 +1543,13 @@ export class BrushTrace {
         ctx.trace.allsolid = true;
         ctx.trace.fraction = 0;
       }
+      return;
+    }
+
+    // A point sweep that stays exactly on a vertical brush edge should not
+    // clip against the horizontal cap face. Treating the cap as blocking here
+    // regresses the edge-on contact contract covered by brushtrace.test.
+    if (ctx.isPoint && axialWallClearAxisMask === 3 && clipplane !== null && Math.abs(clipplane.normal[2]) > DIST_EPSILON) {
       return;
     }
 
