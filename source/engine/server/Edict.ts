@@ -190,6 +190,7 @@ export class ED {
 
       if (edict.free && (edict.freetime < 2.0 || SV.server.time - edict.freetime > 0.5)) {
         ED.ClearEdict(edict);
+        eventBus.publish('server.edict.assigned', edict.num);
         return edict;
       }
     }
@@ -206,6 +207,7 @@ export class ED {
 
     edict = SV.server.edicts[SV.server.num_edicts++] as ServerEdict;
     ED.ClearEdict(edict);
+    eventBus.publish('server.edict.assigned', edict.num);
     return edict;
   }
 
@@ -221,6 +223,7 @@ export class ED {
     }
 
     ed.freetime = SV.server.time;
+    eventBus.publish('server.edict.freed', ed.num);
   }
 
   /**

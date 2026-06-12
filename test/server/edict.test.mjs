@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
-import { ED } from '../../source/engine/server/Edict.ts';
+import { eventBus } from '../../source/engine/registry.ts';
+import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
 import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
 
 void describe('ED.Print', () => {
@@ -62,5 +63,73 @@ void describe('ED.Print', () => {
     assert.doesNotMatch(output, /_internal/);
     assert.doesNotMatch(output, /shouldNotPrint1/);
     assert.doesNotMatch(output, /shouldNotPrint2/);
+  });
+});
+
+void describe('ED lifecycle events', () => {
+  void test('emits server.edict.assigned when reusing a freed slot', () => {
+    const worldEdict = new ServerEdict(0);
+    const clientEdict = new ServerEdict(1);
+    const reusableEdict = new ServerEdict(2);
+    reusableEdict.free = true;
+    reusableEdict.freetime = 0;
+
+    const assignedEdictIds = [];
+    const unsubscribe = eventBus.subscribe('server.edict.assigned', (edictId) => {
+      assignedEdictIds.push(edictId);
+    });
+
+    try {
+      void withMockRegistry(defaultMockRegistry({
+        svs: {
+          maxclients: 1,
+        },
+        server: {
+          time: 1,
+          num_edicts: 3,
+          edicts: [worldEdict, clientEdict, reusableEdict],
+        },
+      }), () => {
+        const assigned = ED.Alloc();
+        assert.equal(assigned.num, 2);
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    assert.deepEqual(assignedEdictIds, [2]);
+  });
+
+  void test('emits server.edict.assigned when allocating a fresh slot', () => {
+    const worldEdict = new ServerEdict(0);
+    const clientEdict = new ServerEdict(1);
+    const activeEdict = new ServerEdict(2);
+    activeEdict.free = false;
+    const freshEdict = new ServerEdict(3);
+
+    const assignedEdictIds = [];
+    const unsubscribe = eventBus.subscribe('server.edict.assigned', (edictId) => {
+      assignedEdictIds.push(edictId);
+    });
+
+    try {
+      void withMockRegistry(defaultMockRegistry({
+        svs: {
+          maxclients: 1,
+        },
+        server: {
+          time: 1,
+          num_edicts: 3,
+          edicts: [worldEdict, clientEdict, activeEdict, freshEdict],
+        },
+      }), () => {
+        const assigned = ED.Alloc();
+        assert.equal(assigned.num, 3);
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    assert.deepEqual(assignedEdictIds, [3]);
   });
 });

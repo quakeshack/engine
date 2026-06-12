@@ -385,7 +385,7 @@ export class Hull { // hull_t
     // put the crosspoint DIST_EPSILON pixels on the near side
     let frac = Math.max(0.0, Math.min(1.0, (t1 + (t1 < 0.0 ? DIST_EPSILON : -DIST_EPSILON)) / (t1 - t2))); // epsilon value of 0.03125 = 1/32
     let midf = p1f + (p2f - p1f) * frac;
-    if (depth >= Hull._midPool.length) {
+    while (depth >= Hull._midPool.length) {
       Hull._midPool.push(new Vector());
     }
     const mid = Hull._midPool[depth];

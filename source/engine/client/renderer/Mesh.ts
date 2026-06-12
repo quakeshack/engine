@@ -5,16 +5,66 @@ import { EPSILON } from '../../../shared/Defs.ts';
  */
 export default class Mesh {
   /**
+   * Build a stable key for vertices that should share tangent-space accumulation.
+   * Uses quantized position/UV/normal to tolerate tiny floating-point drift.
+   * @returns Quantized key used for accumulation lookup.
+   */
+  static _buildTangentVertexKey(cmds: number[], base: number): string {
+    const quantize = (value: number): number => Math.round(value * 1_000_000.0);
+
+    return [
+      quantize(cmds[base + 0]),
+      quantize(cmds[base + 1]),
+      quantize(cmds[base + 2]),
+      quantize(cmds[base + 3]),
+      quantize(cmds[base + 4]),
+      quantize(cmds[base + 11]),
+      quantize(cmds[base + 12]),
+      quantize(cmds[base + 13]),
+    ].join('|');
+  }
+
+  /**
+   * Generate a deterministic tangent perpendicular to a normal.
+   * @returns Unit-length fallback tangent.
+   */
+  static _fallbackTangentFromNormal(nx: number, ny: number, nz: number): [number, number, number] {
+    if (Math.abs(nz) < 0.999) {
+      const tx = -ny;
+      const ty = nx;
+      const tz = 0.0;
+      const len = Math.hypot(tx, ty, tz) || 1.0;
+
+      return [tx / len, ty / len, tz / len];
+    }
+
+    const tx = 0.0;
+    const ty = nz;
+    const tz = -ny;
+    const len = Math.hypot(tx, ty, tz) || 1.0;
+
+    return [tx / len, ty / len, tz / len];
+  }
+
+  /**
    * Calculate tangents and bitangents for a vertex array.
    * Stride is 20 floats: pos(3), uv(2), color(4), normal(3), tangent(3), bitangent(3).
    * @param cmds Vertex data array.
    * @param cutoff Number of floats to process (should be multiple of 60 for whole triangles).
    */
   static CalculateTangentBitangents(cmds: number[], cutoff: number): void {
-    // compute per-triangle tangent/bitangent (stride = 20 floats)
     const stride = 20;
-    for (let i = 0; i + stride * 3 <= Math.min(cutoff, cmds.length); i += stride * 3) {
-      // vertices of triangle
+    const maxOffset = Math.min(cutoff, cmds.length);
+    const accumulators = new Map<string, {
+      tx: number;
+      ty: number;
+      tz: number;
+      bx: number;
+      by: number;
+      bz: number;
+    }>();
+
+    for (let i = 0; i + stride * 3 <= maxOffset; i += stride * 3) {
       const i0 = i;
       const i1 = i + stride;
       const i2 = i + stride * 2;
@@ -30,10 +80,12 @@ export default class Mesh {
       const deltaUV1 = [uv1[0] - uv0[0], uv1[1] - uv0[1]];
       const deltaUV2 = [uv2[0] - uv0[0], uv2[1] - uv0[1]];
       const det = deltaUV1[0] * deltaUV2[1] - deltaUV2[0] * deltaUV1[1];
-      let f = 0.0;
-      if (Math.abs(det) > EPSILON) { // CR: must be non-zero
-        f = 1.0 / det;
+
+      if (Math.abs(det) <= EPSILON) {
+        continue;
       }
+
+      const f = 1.0 / det;
       const tx = f * (deltaUV2[1] * edge1[0] - deltaUV1[1] * edge2[0]);
       const ty = f * (deltaUV2[1] * edge1[1] - deltaUV1[1] * edge2[1]);
       const tz = f * (deltaUV2[1] * edge1[2] - deltaUV1[1] * edge2[2]);
@@ -42,48 +94,91 @@ export default class Mesh {
       const bz = f * (-deltaUV2[0] * edge1[2] + deltaUV1[0] * edge2[2]);
 
       for (const base of [i0, i1, i2]) {
-        // Get the correct normal from the vertex data
+        const key = Mesh._buildTangentVertexKey(cmds, base);
+        const entry = accumulators.get(key);
+
+        if (entry) {
+          entry.tx += tx;
+          entry.ty += ty;
+          entry.tz += tz;
+          entry.bx += bx;
+          entry.by += by;
+          entry.bz += bz;
+          continue;
+        }
+
+        accumulators.set(key, { tx, ty, tz, bx, by, bz });
+      }
+    }
+
+    for (let base = 0; base + stride <= maxOffset; base += stride) {
+      const key = Mesh._buildTangentVertexKey(cmds, base);
+      const accumulator = accumulators.get(key);
+
+      if (!accumulator) {
+        continue;
+      }
+
+      let tx = accumulator.tx;
+      let ty = accumulator.ty;
+      let tz = accumulator.tz;
+      let bx = accumulator.bx;
+      let by = accumulator.by;
+      let bz = accumulator.bz;
+
+      {
         const nx = cmds[base + 11];
         const ny = cmds[base + 12];
         const nz = cmds[base + 13];
 
-        // Gram-Schmidt: tangent = tangent - normal * dot(normal, tangent)
         const dot_nt = nx * tx + ny * ty + nz * tz;
-        const ortho_tx = tx - nx * dot_nt;
-        const ortho_ty = ty - ny * dot_nt;
-        const ortho_tz = tz - nz * dot_nt;
+        tx -= nx * dot_nt;
+        ty -= ny * dot_nt;
+        tz -= nz * dot_nt;
 
-        // normalize orthogonalized tangent
-        const tlen = Math.hypot(ortho_tx, ortho_ty, ortho_tz) || 1.0;
-        const tnorm = [ortho_tx / tlen, ortho_ty / tlen, ortho_tz / tlen];
+        const tlen = Math.hypot(tx, ty, tz);
+        let tangentX = 0.0;
+        let tangentY = 0.0;
+        let tangentZ = 0.0;
+
+        if (tlen > EPSILON) {
+          tangentX = tx / tlen;
+          tangentY = ty / tlen;
+          tangentZ = tz / tlen;
+        } else {
+          const fallbackTangent = Mesh._fallbackTangentFromNormal(nx, ny, nz);
+          tangentX = fallbackTangent[0];
+          tangentY = fallbackTangent[1];
+          tangentZ = fallbackTangent[2];
+        }
 
         const dot_nb = nx * bx + ny * by + nz * bz;
-        const ortho_bx = bx - nx * dot_nb;
-        const ortho_by = by - ny * dot_nb;
-        const ortho_bz = bz - nz * dot_nb;
+        bx -= nx * dot_nb;
+        by -= ny * dot_nb;
+        bz -= nz * dot_nb;
 
-        const dot_tb = tnorm[0] * ortho_bx + tnorm[1] * ortho_by + tnorm[2] * ortho_bz;
-        const bitangentX = ortho_bx - tnorm[0] * dot_tb;
-        const bitangentY = ortho_by - tnorm[1] * dot_tb;
-        const bitangentZ = ortho_bz - tnorm[2] * dot_tb;
+        const dot_tb = tangentX * bx + tangentY * by + tangentZ * bz;
+        let bitangentX = bx - tangentX * dot_tb;
+        let bitangentY = by - tangentY * dot_tb;
+        let bitangentZ = bz - tangentZ * dot_tb;
         const blen = Math.hypot(bitangentX, bitangentY, bitangentZ);
 
-        const bnorm = blen > EPSILON ? [
-          bitangentX / blen,
-          bitangentY / blen,
-          bitangentZ / blen,
-        ] : [
-          ny * tnorm[2] - nz * tnorm[1],
-          nz * tnorm[0] - nx * tnorm[2],
-          nx * tnorm[1] - ny * tnorm[0],
-        ];
+        if (blen > EPSILON) {
+          bitangentX /= blen;
+          bitangentY /= blen;
+          bitangentZ /= blen;
+        } else {
+          bitangentX = ny * tangentZ - nz * tangentY;
+          bitangentY = nz * tangentX - nx * tangentZ;
+          bitangentZ = nx * tangentY - ny * tangentX;
+        }
 
-        cmds[base + 14] = tnorm[0];
-        cmds[base + 15] = tnorm[1];
-        cmds[base + 16] = tnorm[2];
-        cmds[base + 17] = bnorm[0];
-        cmds[base + 18] = bnorm[1];
-        cmds[base + 19] = bnorm[2];
+        cmds[base + 14] = tangentX;
+        cmds[base + 15] = tangentY;
+        cmds[base + 16] = tangentZ;
+        cmds[base + 17] = bitangentX;
+        cmds[base + 18] = bitangentY;
+        cmds[base + 19] = bitangentZ;
       }
     }
   }

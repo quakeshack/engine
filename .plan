@@ -170,6 +170,12 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-12
+
+- tangent-bitangent-normal calculation updated
+- fixed a bug when going too deep into hull tree lookups
+- added an event when edicts get assigned/freed
+
 ### 2026-05-16
 
 - some code cleanup and small fixes

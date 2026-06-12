@@ -87,6 +87,8 @@ Those events are only fired by the server code.
 | - | - | - |
 | server.spawning | 1. map name | Emitted when spawning a server. |
 | server.spawned | 1. map name | Emitted when spawning a server succeeded. |
+| server.edict.assigned | 1. edict id | Emitted when a server edict slot is assigned to a new entity. |
+| server.edict.freed | 1. edict id | Emitted when a server edict slot is freed and can be reused. |
 | server.shutting-down | | Emitted when shutting a server down. All clients are still connected. |
 | server.shutdown | | Emitted when the server is shut down and after cleaning up everything. |
 
