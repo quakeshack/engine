@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import strip from '@rollup/plugin-strip';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -46,14 +47,13 @@ function gameModulePreloadPlugin() {
 }
 
 export default defineConfig(({ mode }) => ({
-  esbuild: {
-    drop: mode === 'production' ? ['debugger'] : [],
-    pure: mode === 'production' ? ['console.log', 'console.debug', 'console.info', 'console.assert', 'console.trace'] : [],
-  },
   build: {
     outDir: resolve(__dirname, 'dist/browser'),
     emptyOutDir: true,
     rollupOptions: {
+      plugins: mode === 'production' ? [strip({
+        functions: ['console.log', 'console.debug', 'console.info', 'console.warn', 'console.error', 'console.assert', 'console.trace'],
+      })] : [],
       input: {
         main: resolve(__dirname, 'index.html'),
       },
@@ -89,7 +89,7 @@ export default defineConfig(({ mode }) => ({
     copyPublicDir: true,
     sourcemap: mode !== 'production',
     chunkSizeWarningLimit: 1000,
-    minify: mode === 'production' ? 'esbuild' : false,
+    minify: 'esbuild',
     reportCompressedSize: true,
     target: 'es2022',
   },

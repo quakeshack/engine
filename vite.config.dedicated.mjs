@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import strip from '@rollup/plugin-strip';
 import { resolve, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { glob } from 'fs/promises';
@@ -21,7 +22,7 @@ function dedicatedServerPathsPlugin() {
     name: 'dedicated-server-paths',
 
     // Transform source files before bundling
-    transform(code, id) {
+    transform(/** @type {string} */ code, /** @type {string} */ id) {
       // In the entry point, strip the shebang (added back in renderChunk)
       // and adjust process.chdir to navigate up from dist/dedicated/ to project root
       if (id.endsWith('/dedicated.ts')) {
@@ -65,7 +66,7 @@ function dedicatedServerPathsPlugin() {
     },
 
     // Add shebang to the output
-    renderChunk(code, chunk) {
+    renderChunk(/** @type {string} */ code, chunk) {
       if (chunk.isEntry) {
         return { code: '#!/usr/bin/env node\n' + code, map: null };
       }
@@ -115,7 +116,7 @@ function dedicatedWorkerBundlePlugin(mode) {
         plugins: [
           {
             name: 'transpile-typescript-modules',
-            async transform(code, id) {
+            async transform(/** @type {string} */ code, /** @type {string} */ id) {
               if (!/\.(ts|mts|cts)$/.test(id)) {
                 return null;
               }
@@ -133,7 +134,7 @@ function dedicatedWorkerBundlePlugin(mode) {
             // to evade Vite's static analysis (e.g. ['..','server','Com.ts'].join('/')).
             // We undo that here so Rollup can resolve and bundle them.
             name: 'resolve-worker-dynamic-imports',
-            transform(code, id) {
+            transform(/** @type {string} */ code, /** @type {string} */ id) {
               if (!id.includes('WorkerFramework')) { return null; }
               // Replace the two-step variable + import() patterns with direct
               // literal import() calls so Rollup can statically resolve them.
@@ -156,7 +157,10 @@ function dedicatedWorkerBundlePlugin(mode) {
         ],
         // The engine source has pre-existing circular dependencies that
         // Vite silences in its own build.  Suppress them here too.
-        onwarn(warning, defaultHandler) {
+        onwarn(
+          /** @type {import('rollup').RollupLog} */ warning,
+          /** @type {import('rollup').LoggingFunction} */ defaultHandler,
+        ) {
           if (warning.code === 'CIRCULAR_DEPENDENCY') {
             return;
           }
@@ -179,18 +183,17 @@ function dedicatedWorkerBundlePlugin(mode) {
 }
 
 export default defineConfig(({ mode }) => ({
-  esbuild: {
-    drop: mode === 'production' ? ['debugger'] : [],
-    pure: mode === 'production' ? ['console.log', 'console.debug', 'console.info', 'console.assert', 'console.trace'] : [],
-  },
   build: {
     ssr: resolve(__dirname, 'dedicated.ts'),
     outDir: resolve(__dirname, 'dist/dedicated'),
     emptyOutDir: true,
     target: 'node24',
     sourcemap: mode !== 'production',
-    minify: mode === 'production' ? 'esbuild' : false,
+    minify: 'esbuild',
     rollupOptions: {
+      plugins: mode === 'production' ? [strip({
+        functions: ['console.log', 'console.debug', 'console.info', 'console.warn', 'console.error', 'console.assert', 'console.trace'],
+      })] : [],
       output: {
         format: 'es',
         entryFileNames: '[name].mjs',
