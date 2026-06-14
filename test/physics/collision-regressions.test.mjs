@@ -3741,8 +3741,8 @@ void describe('test_clip_4 regression: brushlist vs hull collision', () => {
 });
 
 void test('ServerCollision.traceStaticWorldLine keeps the E1M1 brushlist dog sightline clear at the earlier player position', async () => {
-  const legacyModel = await loadBSPMap('e1m1-extracted.bsp');
-  const brushlistModel = await loadBSPMap('e1m1_bl.bsp');
+  const legacyModel = await loadBSPMap('test_e1m1_hull.bsp');
+  const brushlistModel = await loadBSPMap('test_e1m1.bsp');
 
   const dogEye = new Vector(432, 2120, -143);
   const playerEye = new Vector(179.875, 1969.625, -162);
