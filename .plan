@@ -170,6 +170,14 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-14
+
+- refactored Pmove and collision code, found some issues:
+  - a subtle bug in the hull code leading player movement to choke on certain spots
+  - an annoying bug in the brushlist code leading the player to choke when sliding along walls (only facing south/west)
+  - turned out that missing quantization of the position lead to getting stuck in certain situations
+  - another fun bug fix: not dropping out early on tangential brush contact leading to blind enemies
+
 ### 2026-06-12
 
 - tangent-bitangent-normal calculation updated

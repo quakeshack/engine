@@ -17,27 +17,13 @@ import Cvar from './Cvar.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import type { ClientEdict } from '../client/ClientEntities.ts';
 import type { BaseEntity } from '../server/Edict.ts';
-import type { Plane as BaseModelPlane } from './model/BaseModel.ts';
-import { Node, type Brush, type Hull as BSPHull } from './model/BSP.ts';
-interface BrushTracePlaneLike {
-  readonly normal: Vector;
-  readonly type: number;
-}
-type BrushTraceTransform = { readonly origin: Vector; readonly basis: number[] | null } | null;
-interface NearbyBrushSideSummary {
-  readonly distance: number;
-  readonly summary: string;
-}
-interface NearbyBrushCandidate {
-  readonly index: number;
-  readonly contents: number;
-  readonly numsides: number;
-  readonly nearestPlaneDistance: number;
-  touchingPlanes: number;
-  readonly mins: Vector;
-  readonly maxs: Vector;
-  sideSummaries: string[];
-}
+import { type Hull as BSPHull } from './model/BSP.ts';
+import { BrushTrace } from './collision/BrushTrace.ts';
+import { shouldUseHullTangentFallback } from './collision/BrushHullCompatibility.ts';
+import { debugLogPositionMismatch, debugLogTraceMismatch, isAxialNormal } from './collision/BrushHullDiagnostics.ts';
+import type { PlayerCollisionEntity, PlayerCollisionWorld } from './collision/CollisionContracts.ts';
+
+export { BrushTrace };
 
 export const DIST_EPSILON = 0.03125;
 export const STOP_EPSILON = 0.1;
@@ -50,7 +36,10 @@ export const MIN_STEP_NORMAL = 0.7;
 export const MAX_CLIP_PLANES = 5;
 
 /** Near-parallel planes from zero-progress brush re-clips are treated as duplicates */
-export const ZERO_PROGRESS_DUPLICATE_DOT = 0.985;
+export const ZERO_PROGRESS_DUPLICATE_DOT = 0.94;
+
+/** Nearby walkable slope contact tolerance used by hull-tangent fallback gating. */
+export const SLOPE_CONTACT_EPSILON = 1.0;
 
 /**
  * Player movement flags (pmove-specific, separate from entity flags).
@@ -512,1162 +501,10 @@ export class BoxHull extends Hull {
 }
 
 // ---------------------------------------------------------------------------
-// BrushTrace: Q2-style brush-based collision tracing
-//
-// Used when the BSP has brush/brushside/leafbrush data (Q2 maps, or Q1 maps
-// with BSPX BRUSHLIST extension). This replaces Q1’s hull-based traces and
-// gives exact collision against the actual brush geometry rather than
-// pre-expanded clipnode trees.
-//
-// Architecture: traverse the BSP node tree (with extents offset for the
-// player box). At each leaf, test every brush in that leaf via
-// clipBoxToBrush. This is the standard Quake 2 approach from cmodel.c.
-// ---------------------------------------------------------------------------
-
-/**
- * Q2-style brush-based collision tracing.
- *
- * Provides exact collision against brush geometry, replacing the Q1 hull-based
- * traces for maps that include brush data.
- */
-export class BrushTrace {
-  static _checkCount: number = 0;
-
-  /**
-   * Test whether two axis-aligned bounding boxes overlap.
-   */
-  static _boundsOverlap(mins1: Vector, maxs1: Vector, mins2: Vector, maxs2: Vector): boolean {
-    return mins1[0] <= maxs2[0] && mins1[1] <= maxs2[1] && mins1[2] <= maxs2[2]
-      && maxs1[0] >= mins2[0] && maxs1[1] >= mins2[1] && maxs1[2] >= mins2[2];
-  }
-
-  /**
-   * Compute the swept world-space bounds of a point or box move.
-   */
-  static _computeSweepBounds(start: Vector, end: Vector, mins: Vector, maxs: Vector): { mins: Vector; maxs: Vector } {
-    return {
-      mins: new Vector(
-        Math.min(start[0] + mins[0], end[0] + mins[0]),
-        Math.min(start[1] + mins[1], end[1] + mins[1]),
-        Math.min(start[2] + mins[2], end[2] + mins[2]),
-      ),
-      maxs: new Vector(
-        Math.max(start[0] + maxs[0], end[0] + maxs[0]),
-        Math.max(start[1] + maxs[1], end[1] + maxs[1]),
-        Math.max(start[2] + maxs[2], end[2] + maxs[2]),
-      ),
-    };
-  }
-
-  /**
-   * Compute the world-space bounds of a point or box at a fixed position.
-   */
-  static _computePositionBounds(position: Vector, mins: Vector, maxs: Vector): { mins: Vector; maxs: Vector } {
-    return {
-      mins: new Vector(position[0] + mins[0], position[1] + mins[1], position[2] + mins[2]),
-      maxs: new Vector(position[0] + maxs[0], position[1] + maxs[1], position[2] + maxs[2]),
-    };
-  }
-
-  /**
-   * Check whether a brush AABB can possibly overlap the current swept move.
-   */
-  static _brushMayAffectTrace(ctx: BrushTraceContext, brush: Brush): boolean {
-    if (brush.mins === null || brush.mins === undefined || brush.maxs === null || brush.maxs === undefined) {
-      return true;
-    }
-
-    return BrushTrace._boundsOverlap(ctx.sweepMins, ctx.sweepMaxs, brush.mins, brush.maxs);
-  }
-
-  /**
-   * Check whether a brush AABB can possibly overlap the current position test.
-   */
-  static _brushMayAffectPosition(brush: Brush, boundsMins: Vector, boundsMaxs: Vector): boolean {
-    if (brush.mins === null || brush.mins === undefined || brush.maxs === null || brush.maxs === undefined) {
-      return true;
-    }
-
-    return BrushTrace._boundsOverlap(boundsMins, boundsMaxs, brush.mins, brush.maxs);
-  }
-
-  /**
-   * Estimate the earliest global trace fraction where a swept point/box can
-   * enter a node's bounds. Used only for pruning; false negatives are avoided
-   * by falling back when bounds are missing.
-   */
-  static _estimateNodeEntryFraction(ctx: BrushTraceContext, node: Node): number {
-    if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
-      return 0;
-    }
-
-    let enter = 0;
-    let leave = 1;
-
-    for (let axis = 0; axis < 3; axis++) {
-      const expandedMin = node.mins[axis] - ctx.extents[axis];
-      const expandedMax = node.maxs[axis] + ctx.extents[axis];
-      const start = ctx.start[axis];
-      const delta = ctx.totalMove[axis];
-
-      if (Math.abs(delta) <= Number.EPSILON) {
-        if (start < expandedMin || start > expandedMax) {
-          return Infinity;
-        }
-        continue;
-      }
-
-      let axisEnter = (expandedMin - start) / delta;
-      let axisLeave = (expandedMax - start) / delta;
-
-      if (axisEnter > axisLeave) {
-        const temp = axisEnter;
-        axisEnter = axisLeave;
-        axisLeave = temp;
-      }
-
-      enter = Math.max(enter, axisEnter);
-      leave = Math.min(leave, axisLeave);
-
-      if (enter > leave) {
-        return Infinity;
-      }
-    }
-
-    return Math.max(0, enter);
-  }
-
-  /**
-   * Check whether a node can still affect the current trace.
-   */
-  static _nodeMayAffectTrace(ctx: BrushTraceContext, node: Node): boolean {
-    if (node.mins === null || node.mins === undefined || node.maxs === null || node.maxs === undefined) {
-      return true;
-    }
-
-    if (!BrushTrace._boundsOverlap(ctx.sweepMins, ctx.sweepMaxs, node.mins, node.maxs)) {
-      return false;
-    }
-
-    return BrushTrace._estimateNodeEntryFraction(ctx, node) <= ctx.trace.fraction;
-  }
-
-  /**
-   * Nearly simultaneous non-axial planes should win over axial bevels.
-   * Walkable ramps need this to avoid horizontal climb stalls, and corner
-   * slides need it so a real diagonal face can beat an inferred axial wall
-   * from the same brush when both land within epsilon.
-   */
-  static _shouldPreferClipPlane(currentPlane: BrushTracePlaneLike | null, currentFraction: number, candidatePlane: BrushTracePlaneLike, candidateFraction: number, fractionEpsilon: number): boolean {
-    if (currentPlane === null) {
-      return true;
-    }
-
-    if (candidateFraction > currentFraction + fractionEpsilon) {
-      return true;
-    }
-
-    if (Math.abs(candidateFraction - currentFraction) > fractionEpsilon) {
-      return false;
-    }
-
-    const candidateIsNonAxial = candidatePlane.type >= 3;
-    const currentIsAxialWall = currentPlane.type < 3 && Math.abs(currentPlane.normal[2]) <= DIST_EPSILON;
-
-    return candidateIsNonAxial && currentIsAxialWall;
-  }
-
-  /**
-   * Earlier trace hits win globally, but nearly simultaneous hits can still
-   * benefit from plane preference. This lets a real non-axial face replace an
-   * exact-tangent axial wall from another brush in the same leaf.
-   */
-  static _shouldPreferTraceHit(currentPlane: BrushTracePlaneLike | null, currentFraction: number, candidatePlane: BrushTracePlaneLike, candidateFraction: number, fractionEpsilon: number): boolean {
-    if (currentPlane === null) {
-      return true;
-    }
-
-    if (candidateFraction < currentFraction - fractionEpsilon) {
-      return true;
-    }
-
-    if (candidateFraction > currentFraction + fractionEpsilon) {
-      return false;
-    }
-
-    const candidateIsNonAxial = candidatePlane.type >= 3;
-    const currentIsAxialWall = currentPlane.type < 3 && Math.abs(currentPlane.normal[2]) <= DIST_EPSILON;
-    const candidateIsWalkableSlope = candidateIsNonAxial && candidatePlane.normal[2] >= MIN_STEP_NORMAL;
-
-    return candidateIsWalkableSlope || (candidateIsNonAxial && currentIsAxialWall);
-  }
-
-  /**
-   * Resolve the head node for world-model BSP traversal.
-   */
-  static _getHeadNode(model: BrushModel): number {
-    return model.hulls[0]?.firstclipnode ?? 0;
-  }
-
-  /**
-   * Dispatch a brush trace against either a submodel brush range or a world BSP.
-   * @param model - model to trace against
-   * @param start - world-space start point
-   * @param end - world-space end point
-   * @param mins - box minimum corner relative to the origin
-   * @param maxs - box maximum corner relative to the origin
-   * @returns trace result in model space or world space as appropriate
-   */
-  static _traceModel(model: BrushModel, start: Vector, end: Vector, mins: Vector, maxs: Vector): Trace {
-    return model.submodel
-      ? BrushTrace.boxTraceModel(model, start, end, mins, maxs)
-      : BrushTrace.boxTrace(model, BrushTrace._getHeadNode(model), start, end, mins, maxs);
-  }
-
-  /**
-   * Dispatch a position test against either a submodel brush range or a world BSP.
-   * @param model - model to test against
-   * @param position - world-space position to test
-   * @param mins - box minimum corner relative to the origin
-   * @param maxs - box maximum corner relative to the origin
-   * @returns true when the position does not overlap solid brush geometry
-   */
-  static _testModelPosition(model: BrushModel, position: Vector, mins: Vector, maxs: Vector): boolean {
-    return model.submodel
-      ? BrushTrace.testPositionModel(model, position, mins, maxs)
-      : BrushTrace.testPosition(model, BrushTrace._getHeadNode(model), position, mins, maxs);
-  }
-
-  /**
-   * Resolve the entity transform used by shared brush collision helpers.
-   * @param origin - entity origin in world space
-   * @param angles - entity rotation angles
-   * @returns cached transform data, or null when no transform is needed
-   */
-  static _getTransformContext(origin: Vector, angles: Vector): BrushTraceTransform {
-    const basis = angles.isOrigin() ? null : angles.toRotationMatrix();
-
-    if (basis === null && origin.isOrigin()) {
-      return null;
-    }
-
-    return { origin, basis };
-  }
-
-  /**
-   * Convert a world-space point into local model space for an entity transform.
-   * @param point - point in world space
-   * @param transform - entity transform context
-   * @returns point in local model space
-   */
-  static _toLocalPoint(point: Vector, transform: BrushTraceTransform): Vector {
-    if (transform === null) {
-      return point;
-    }
-
-    if (transform.basis !== null) {
-      return BrushTrace._transformPointToLocal(point, transform.origin, transform.basis);
-    }
-
-    return point.copy().subtract(transform.origin);
-  }
-
-  /**
-   * Trace a box against a brush model with entity transform applied.
-   * Equivalent to Quake 2's transformed box trace helpers.
-   * @param model - brush model to trace against
-   * @param start - world-space start point
-   * @param end - world-space end point
-   * @param mins - box minimum corner relative to the origin
-   * @param maxs - box maximum corner relative to the origin
-   * @param origin - entity origin applied before tracing
-   * @param angles - entity rotation applied before tracing
-   * @returns world-space trace result
-   */
-  static transformedBoxTrace(model: BrushModel, start: Vector, end: Vector, mins: Vector, maxs: Vector, origin: Vector = Vector.origin, angles: Vector = Vector.origin): Trace {
-    const transform = BrushTrace._getTransformContext(origin, angles);
-
-    if (transform === null) {
-      return BrushTrace._traceModel(model, start, end, mins, maxs);
-    }
-
-    const localStart = BrushTrace._toLocalPoint(start, transform);
-    const localEnd = BrushTrace._toLocalPoint(end, transform);
-    const localTrace = BrushTrace._traceModel(model, localStart, localEnd, mins, maxs);
-
-    return BrushTrace._transformTraceToWorld(localTrace, transform);
-  }
-
-  /**
-   * Test if a box at the given world-space position overlaps a brush model
-   * after applying entity translation and rotation.
-   * Equivalent to Quake 2's transformed position test helpers.
-   * @param model - brush model to test against
-   * @param position - world-space position to test
-   * @param mins - box minimum corner relative to the origin
-   * @param maxs - box maximum corner relative to the origin
-   * @param origin - entity origin applied before testing
-   * @param angles - entity rotation applied before testing
-   * @returns true when the transformed box does not overlap solid brush geometry
-   */
-  static transformedTestPosition(model: BrushModel, position: Vector, mins: Vector, maxs: Vector, origin: Vector = Vector.origin, angles: Vector = Vector.origin): boolean {
-    const transform = BrushTrace._getTransformContext(origin, angles);
-
-    if (transform === null) {
-      return BrushTrace._testModelPosition(model, position, mins, maxs);
-    }
-
-    const localPosition = BrushTrace._toLocalPoint(position, transform);
-
-    return BrushTrace._testModelPosition(model, localPosition, mins, maxs);
-  }
-
-  /**
-   * Trace a box from start to end through the BSP tree, testing individual brushes.
-   * Equivalent to Q2’s CM_BoxTrace.
-   * @param worldModel - world brush model with BSP data
-   * @param headNode - BSP node index to start traversal from
-   * @param start - world-space start point
-   * @param end - world-space end point
-   * @param mins - box minimum corner relative to the origin
-   * @param maxs - box maximum corner relative to the origin
-   * @returns trace result against BSP brushes
-   */
-  static boxTrace(worldModel: BrushModel, headNode: number, start: Vector, end: Vector, mins: Vector, maxs: Vector): Trace {
-    const trace = new Trace();
-
-    // Brush traces must derive allsolid from brush overlap, not from the
-    // legacy BSP leaf contents encountered during traversal. A tangent
-    // fraction-0 clip can happen in a solid-side leaf without the player box
-    // being embedded in brush geometry.
-    trace.allsolid = false;
-
-    console.assert(!Number.isNaN(start[0]) && !Number.isNaN(start[1]) && !Number.isNaN(start[2]), 'NaN start');
-    console.assert(!Number.isNaN(end[0]) && !Number.isNaN(end[1]) && !Number.isNaN(end[2]), 'NaN end');
-
-    if (!worldModel.nodes || worldModel.nodes.length === 0) {
-      trace.allsolid = false;
-      trace.endpos.set(end);
-      return trace;
-    }
-
-    const isPoint = (mins[0] === 0 && mins[1] === 0 && mins[2] === 0
-                  && maxs[0] === 0 && maxs[1] === 0 && maxs[2] === 0);
-    const extents = isPoint ? new Vector() : new Vector(
-      -mins[0] > maxs[0] ? -mins[0] : maxs[0],
-      -mins[1] > maxs[1] ? -mins[1] : maxs[1],
-      -mins[2] > maxs[2] ? -mins[2] : maxs[2],
-    );
-
-    const checkCount = ++BrushTrace._checkCount;
-
-    const totalMove = end.copy().subtract(start);
-    const sweepBounds = BrushTrace._computeSweepBounds(start, end, mins, maxs);
-
-    const ctx: BrushTraceContext = {
-      worldModel,
-      trace,
-      mins,
-      maxs,
-      isPoint,
-      extents,
-      start,
-      end,
-      totalMove,
-      sweepMins: sweepBounds.mins,
-      sweepMaxs: sweepBounds.maxs,
-      checkCount,
-    };
-
-    const rootNode = worldModel.nodes[headNode];
-
-    if (!rootNode) {
-      trace.allsolid = false;
-      trace.endpos.set(end);
-      return trace;
-    }
-
-    BrushTrace._recursiveHullCheck(ctx, rootNode, 0, 1, start, end);
-
-    if (trace.fraction === 1.0) {
-      trace.endpos.set(end);
-    } else {
-      console.assert(!Number.isNaN(trace.fraction), 'NaN fraction');
-
-      for (let i = 0; i < 3; i++) {
-        console.assert(!Number.isNaN(start[i]), 'NaN start');
-        console.assert(!Number.isNaN(end[i]), 'NaN end');
-
-        trace.endpos[i] = start[i] + trace.fraction * (end[i] - start[i]);
-      }
-    }
-
-    return trace;
-  }
-
-  /**
-   * Test if a player-sized box at the given position overlaps any solid brush.
-   * Equivalent to Q2’s CM_BoxTrace position-test special case.
-   * @param worldModel - world brush model with BSP data
-   * @param headNode - BSP node index to start traversal from
-   * @param position - world-space position to test
-   * @param mins - box minimum corner relative to the origin
-   * @param maxs - box maximum corner relative to the origin
-   * @returns true when the position is clear of solid brushes
-   */
-  static testPosition(worldModel: BrushModel, headNode: number, position: Vector, mins: Vector, maxs: Vector): boolean {
-    if (!worldModel.nodes || worldModel.nodes.length === 0) {
-      return true;
-    }
-
-    const checkCount = ++BrushTrace._checkCount;
-
-    const isPoint = (mins[0] === 0 && mins[1] === 0 && mins[2] === 0
-                  && maxs[0] === 0 && maxs[1] === 0 && maxs[2] === 0);
-    const extents = isPoint ? new Vector() : new Vector(
-      -mins[0] > maxs[0] ? -mins[0] : maxs[0],
-      -mins[1] > maxs[1] ? -mins[1] : maxs[1],
-      -mins[2] > maxs[2] ? -mins[2] : maxs[2],
-    );
-
-    const rootNode = worldModel.nodes[headNode];
-    if (!rootNode) {
-      return true;
-    }
-
-    // Walk the BSP tree recursively, expanding by box extents at each
-    // splitting plane so we visit ALL leaves the player box overlaps.
-    // The old code only walked to a single leaf using the center point,
-    // which missed brushes in adjacent leaves that the box extends into.
-    const positionBounds = BrushTrace._computePositionBounds(position, mins, maxs);
-
-    return !BrushTrace._testPositionRecursive(
-      worldModel, rootNode, position, mins, maxs, positionBounds.mins, positionBounds.maxs, extents, isPoint, checkCount,
-    );
-  }
-
-  /**
-   * Recursively walk the BSP tree for position testing, expanding by box
-   * extents to visit all leaves the player box overlaps.
-   */
-  static _testPositionRecursive(worldModel: BrushModel, node: Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, extents: Vector, isPoint: boolean, checkCount: number): boolean {
-    if (node.mins !== null && node.mins !== undefined && node.maxs !== null && node.maxs !== undefined
-      && !BrushTrace._boundsOverlap(boundsMins, boundsMaxs, node.mins, node.maxs)) {
-      return false;
-    }
-
-    // Leaf node: test all brushes in this leaf
-    if (node.contents < content.CONTENT_NONE) {
-      return BrushTrace._testLeafSolid(worldModel, node, position, mins, maxs, boundsMins, boundsMaxs, checkCount);
-    }
-
-    // Internal node: test which side(s) of the splitting plane the box is on
-    const plane = node.plane!;
-    let d, offset;
-
-    if (plane.type < 3) {
-      d = position[plane.type] - plane.dist;
-      offset = extents[plane.type];
-    } else {
-      d = plane.normal.dot(position) - plane.dist;
-      if (isPoint) {
-        offset = 0;
-      } else {
-        offset = Math.abs(extents[0] * plane.normal[0])
-               + Math.abs(extents[1] * plane.normal[1])
-               + Math.abs(extents[2] * plane.normal[2]);
-      }
-    }
-
-    // Entirely on front side
-    if (d >= offset) {
-      const frontChild = node.children[0];
-      console.assert(typeof frontChild === 'object' && frontChild !== null, 'brush trace expected linked BSP child node');
-      if (typeof frontChild !== 'object' || frontChild === null) {
-        return false;
-      }
-      return BrushTrace._testPositionRecursive(
-        worldModel, frontChild as Node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
-      );
-    }
-
-    // Entirely on back side
-    if (d < -offset) {
-      const backChild = node.children[1];
-      console.assert(typeof backChild === 'object' && backChild !== null, 'brush trace expected linked BSP child node');
-      if (typeof backChild !== 'object' || backChild === null) {
-        return false;
-      }
-      return BrushTrace._testPositionRecursive(
-        worldModel, backChild as Node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
-      );
-    }
-
-    // Box straddles the plane: test both sides
-    const frontChild = node.children[0];
-    const backChild = node.children[1];
-    console.assert(typeof frontChild === 'object' && frontChild !== null, 'brush trace expected linked BSP child node');
-    console.assert(typeof backChild === 'object' && backChild !== null, 'brush trace expected linked BSP child node');
-    if (typeof frontChild !== 'object' || frontChild === null || typeof backChild !== 'object' || backChild === null) {
-      return false;
-    }
-    if (BrushTrace._testPositionRecursive(
-      worldModel, frontChild as Node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
-    )) {
-      return true;
-    }
-
-    return BrushTrace._testPositionRecursive(
-      worldModel, backChild as Node, position, mins, maxs, boundsMins, boundsMaxs, extents, isPoint, checkCount,
-    );
-  }
-
-  /**
-   * Trace a box from start to end against a submodel's brush range (brute-force).
-   * Unlike boxTrace which walks the BSP tree, this tests every brush in the
-   * submodel's range directly. Used for submodel entities (doors, plats, etc.)
-   * whose brushes are NOT inserted into the world BSP leaf-brush index.
-   */
-  static boxTraceModel(model: BrushModel, start: Vector, end: Vector, mins: Vector, maxs: Vector): Trace {
-    const trace = new Trace();
-
-    // Brute-force path: no BSP tree walk, so no leaf visits to clear allsolid.
-    // Default Trace has allsolid=true; we must clear it here so that traces
-    // that miss all brushes correctly report "not in solid" instead of falsely
-    // blocking all movement. _clipBoxToBrush will set allsolid=true if the
-    // trace is genuinely embedded inside a brush.
-    trace.allsolid = false;
-
-    if (!model.brushes || model.numBrushes === 0) {
-      trace.endpos.set(end);
-      return trace;
-    }
-
-    const isPoint = (mins[0] === 0 && mins[1] === 0 && mins[2] === 0
-                  && maxs[0] === 0 && maxs[1] === 0 && maxs[2] === 0);
-    const extents = isPoint ? new Vector() : new Vector(
-      -mins[0] > maxs[0] ? -mins[0] : maxs[0],
-      -mins[1] > maxs[1] ? -mins[1] : maxs[1],
-      -mins[2] > maxs[2] ? -mins[2] : maxs[2],
-    );
-
-    const checkCount = ++BrushTrace._checkCount;
-
-    const totalMove = end.copy().subtract(start);
-    const sweepBounds = BrushTrace._computeSweepBounds(start, end, mins, maxs);
-
-    const ctx: BrushTraceContext = {
-      worldModel: model,
-      trace,
-      mins,
-      maxs,
-      isPoint,
-      extents,
-      start,
-      end,
-      totalMove,
-      sweepMins: sweepBounds.mins,
-      sweepMaxs: sweepBounds.maxs,
-      checkCount,
-    };
-
-    const brushes = model.brushes;
-    const lastBrush = model.firstBrush + model.numBrushes;
-
-    for (let i = model.firstBrush; i < lastBrush; i++) {
-      const brush = brushes[i];
-
-      if (!brush || brush.numsides === 0) {
-        continue;
-      }
-
-      // Only collide with solid/clip brushes
-      if ((brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_SKY)
-        && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
-        continue;
-      }
-
-      if (!BrushTrace._brushMayAffectTrace(ctx, brush)) {
-        continue;
-      }
-
-      BrushTrace._clipBoxToBrush(ctx, brush);
-
-      if (trace.fraction === 0) {
-        break;
-      }
-    }
-
-    if (trace.fraction === 1.0) {
-      trace.endpos.set(end);
-    } else {
-      console.assert(!Number.isNaN(trace.fraction), 'NaN fraction');
-
-      for (let i = 0; i < 3; i++) {
-        console.assert(!Number.isNaN(start[i]), 'NaN start');
-        console.assert(!Number.isNaN(end[i]), 'NaN end');
-        trace.endpos[i] = start[i] + trace.fraction * (end[i] - start[i]);
-      }
-    }
-
-    return trace;
-  }
-
-  /**
-   * Test if a player-sized box at position overlaps any solid brush in
-   * a submodel's brush range (brute-force). Used for submodel entities
-   * whose brushes are NOT in the BSP leaf-brush index.
-   */
-  static testPositionModel(model: BrushModel, position: Vector, mins: Vector, maxs: Vector): boolean {
-    if (!model.brushes || model.numBrushes === 0) {
-      return true;
-    }
-
-    const isPoint = (mins[0] === 0 && mins[1] === 0 && mins[2] === 0
-                  && maxs[0] === 0 && maxs[1] === 0 && maxs[2] === 0);
-    const positionBounds = BrushTrace._computePositionBounds(position, mins, maxs);
-
-    const brushes = model.brushes;
-    const lastBrush = model.firstBrush + model.numBrushes;
-
-    for (let i = model.firstBrush; i < lastBrush; i++) {
-      const brush = brushes[i];
-
-      if (!brush || brush.numsides === 0) {
-        continue;
-      }
-
-      if (brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_SKY
-        && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
-        continue;
-      }
-
-      if (!BrushTrace._brushMayAffectPosition(brush, positionBounds.mins, positionBounds.maxs)) {
-        continue;
-      }
-
-      if (BrushTrace._testBoxInBrush(model, brush, position, mins, maxs)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  /**
-   * Test if a player-sized box overlaps any solid brush in a leaf.
-   */
-  static _testLeafSolid(worldModel: BrushModel, leaf: Node, position: Vector, mins: Vector, maxs: Vector, boundsMins: Vector, boundsMaxs: Vector, checkCount: number): boolean {
-    const brushes = worldModel.brushes;
-    const leafbrushes = worldModel.leafbrushes;
-
-    if (!brushes || !leafbrushes) {
-      return false;
-    }
-
-    const isPoint = (mins[0] === 0 && mins[1] === 0 && mins[2] === 0
-                  && maxs[0] === 0 && maxs[1] === 0 && maxs[2] === 0);
-
-    for (let k = 0; k < leaf.numleafbrushes; k++) {
-      const brushNum = leafbrushes[leaf.firstleafbrush + k];
-      const brush = brushes[brushNum];
-
-      if (!brush || brush.numsides === 0) {
-        continue;
-      }
-
-      if (brush._brushTraceCheck === checkCount) {
-        continue;
-      }
-      brush._brushTraceCheck = checkCount;
-
-      // CONTENT_CLIP blocks entities with size (non-zero mins/maxs)
-      if (brush.contents !== content.CONTENT_SOLID && brush.contents !== content.CONTENT_SKY
-        && (brush.contents !== content.CONTENT_CLIP || isPoint)) {
-        continue;
-      }
-
-      if (!BrushTrace._brushMayAffectPosition(brush, boundsMins, boundsMaxs)) {
-        continue;
-      }
-
-      if (BrushTrace._testBoxInBrush(worldModel, brush, position, mins, maxs)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Test if a box at origin is inside a brush. Equivalent to Q2’s CM_TestBoxInBrush.
-   */
-  static _testBoxInBrush(worldModel: BrushModel, brush: Brush, position: Vector, mins: Vector, maxs: Vector): boolean {
-    const brushsides = worldModel.brushsides!;
-    const planes = worldModel.planes;
-
-    console.assert(brushsides !== null, 'brush trace expected brushsides');
-
-    for (let i = 0; i < brush.numsides; i++) {
-      const side = brushsides[brush.firstside + i];
-      const plane = planes[side.planenum];
-
-      // Push the plane out for box extents (Minkowski expansion)
-      let dist = plane.dist;
-      for (let j = 0; j < 3; j++) {
-        dist -= (plane.normal[j] < 0 ? maxs[j] : mins[j]) * plane.normal[j];
-      }
-
-      const d1 = plane.normal.dot(position) - dist;
-
-      if (plane.type >= 3) {
-        if (d1 >= -DIST_EPSILON) {
-          return false;
-        }
-        continue;
-      }
-
-      // Exact face contact, plus tiny sub-epsilon overlap from snapped player
-      // origins, must remain walkable. Treating these as inside turns riders
-      // on rising brush movers into false blockers.
-      if (d1 >= -DIST_EPSILON) {
-        return false;
-      }
-    }
-
-    // Inside all brush planes
-    return true;
-  }
-
-  static readonly _midPool: Vector[] = Array.from({ length: 96 }, () => new Vector());
-  static readonly _mid2Pool: Vector[] = Array.from({ length: 96 }, () => new Vector());
-
-  /**
-   * Recursively traverse the BSP node tree, expanding by trace extents.
-   * At leaf nodes, test all brushes. Equivalent to Q2’s CM_RecursiveHullCheck.
-   */
-  static _recursiveHullCheck(ctx: BrushTraceContext, node: Node, p1f: number, p2f: number, p1: Vector, p2: Vector, depth: number = 0) {
-    if (!BrushTrace._nodeMayAffectTrace(ctx, node)) {
-      return;
-    }
-
-    if (ctx.trace.fraction <= p1f) {
-      return; // already hit something nearer
-    }
-
-    // Leaf node: test brushes
-    if (node.contents < content.CONTENT_NONE) {
-      BrushTrace._traceToLeaf(ctx, node);
-      return;
-    }
-
-    // Internal node: find the point distances to the splitting plane
-    const plane = node.plane!;
-    let t1, t2, offset;
-
-    if (plane.type < 3) {
-      t1 = p1[plane.type] - plane.dist;
-      t2 = p2[plane.type] - plane.dist;
-      offset = ctx.extents[plane.type];
-    } else {
-      t1 = plane.normal.dot(p1) - plane.dist;
-      t2 = plane.normal.dot(p2) - plane.dist;
-      if (ctx.isPoint) {
-        offset = 0;
-      } else {
-        offset = Math.abs(ctx.extents[0] * plane.normal[0])
-               + Math.abs(ctx.extents[1] * plane.normal[1])
-               + Math.abs(ctx.extents[2] * plane.normal[2]);
-      }
-    }
-
-    // Both on front side
-    if (t1 >= offset && t2 >= offset) {
-      const frontChild = node.children[0];
-      console.assert(typeof frontChild === 'object' && frontChild !== null, 'brush trace expected linked BSP child node');
-      if (typeof frontChild !== 'object' || frontChild === null) {
-        return;
-      }
-      BrushTrace._recursiveHullCheck(ctx, frontChild as Node, p1f, p2f, p1, p2, depth + 1);
-      return;
-    }
-
-    // Both on back side
-    if (t1 < -offset && t2 < -offset) {
-      const backChild = node.children[1];
-      console.assert(typeof backChild === 'object' && backChild !== null, 'brush trace expected linked BSP child node');
-      if (typeof backChild !== 'object' || backChild === null) {
-        return;
-      }
-      BrushTrace._recursiveHullCheck(ctx, backChild as Node, p1f, p2f, p1, p2, depth + 1);
-      return;
-    }
-
-    // The trace crosses the plane. Compute entry and exit fractions.
-    let frac, frac2;
-    let side;
-    const idist = 1.0 / (t1 - t2);
-
-    if (t1 < t2) {
-      side = 1;
-      frac = Math.min(1.0, Math.max(0.0, (t1 - offset + DIST_EPSILON) * idist));
-      frac2 = Math.min(1.0, Math.max(0.0, (t1 + offset + DIST_EPSILON) * idist));
-    } else if (t1 > t2) {
-      side = 0;
-      frac = Math.min(1.0, Math.max(0.0, (t1 + offset + DIST_EPSILON) * idist));
-      frac2 = Math.min(1.0, Math.max(0.0, (t1 - offset - DIST_EPSILON) * idist));
-    } else {
-      side = 0;
-      frac = 1;
-      frac2 = 0;
-    }
-
-    while (depth >= BrushTrace._midPool.length) {
-      BrushTrace._midPool.push(new Vector());
-      BrushTrace._mid2Pool.push(new Vector());
-    }
-
-    console.assert(depth !== 128, 'hull check went quite deep');
-    console.assert(depth < 256, 'hull check went really deep');
-
-    // Move up to the node
-    const midf = p1f + (p2f - p1f) * frac;
-    const mid = BrushTrace._midPool[depth];
-    mid[0] = p1[0] + frac * (p2[0] - p1[0]);
-    mid[1] = p1[1] + frac * (p2[1] - p1[1]);
-    mid[2] = p1[2] + frac * (p2[2] - p1[2]);
-
-    const nearChild = node.children[side as 0 | 1];
-    console.assert(typeof nearChild === 'object' && nearChild !== null, 'brush trace expected linked BSP child node');
-    if (typeof nearChild !== 'object' || nearChild === null) {
-      return;
-    }
-    BrushTrace._recursiveHullCheck(ctx, nearChild as Node, p1f, midf, p1, mid, depth + 1);
-
-    // Go past the node
-    const midf2 = p1f + (p2f - p1f) * frac2;
-    const mid2 = BrushTrace._mid2Pool[depth];
-    mid2[0] = p1[0] + frac2 * (p2[0] - p1[0]);
-    mid2[1] = p1[1] + frac2 * (p2[1] - p1[1]);
-    mid2[2] = p1[2] + frac2 * (p2[2] - p1[2]);
-
-    const farChild = node.children[(side ^ 1) as 0 | 1];
-    console.assert(typeof farChild === 'object' && farChild !== null, 'brush trace expected linked BSP child node');
-    if (typeof farChild !== 'object' || farChild === null) {
-      return;
-    }
-    BrushTrace._recursiveHullCheck(ctx, farChild as Node, midf2, p2f, mid2, p2, depth + 1);
-  }
-
-  /**
-   * Test all brushes in a leaf against the current trace.
-   * Equivalent to Q2’s CM_TraceToLeaf.
-   */
-  static _traceToLeaf(ctx: BrushTraceContext, leaf: Node) {
-    // Q1 content classification for trace flags
-    if (leaf.contents !== content.CONTENT_SOLID && leaf.contents !== content.CONTENT_SKY) {
-      ctx.trace.allsolid = false;
-      if (leaf.contents === content.CONTENT_EMPTY) {
-        ctx.trace.inopen = true;
-      } else if (leaf.contents <= content.CONTENT_WATER) {
-        ctx.trace.inwater = true;
-      }
-    }
-
-    const brushes = ctx.worldModel.brushes;
-    const leafbrushes = ctx.worldModel.leafbrushes;
-
-    if (!brushes || !leafbrushes) {
-      return;
-    }
-
-    for (let k = 0; k < leaf.numleafbrushes; k++) {
-      const brushNum = leafbrushes[leaf.firstleafbrush + k];
-      const brush = brushes[brushNum];
-
-      if (!brush || brush.numsides === 0) {
-        continue;
-      }
-
-      // Skip already-tested brushes (same brush can appear in multiple leaves)
-      if (brush._brushTraceCheck === ctx.checkCount) {
-        continue;
-      }
-      brush._brushTraceCheck = ctx.checkCount;
-
-      // Only collide with solid/clip brushes for movement traces.
-      // CONTENT_CLIP blocks entities with size but not point traces.
-      if (brush.contents !== content.CONTENT_SOLID
-        && brush.contents !== content.CONTENT_SKY
-        && (brush.contents !== content.CONTENT_CLIP || ctx.isPoint)) {
-        continue;
-      }
-
-      if (!BrushTrace._brushMayAffectTrace(ctx, brush)) {
-        continue;
-      }
-
-      BrushTrace._clipBoxToBrush(ctx, brush);
-    }
-  }
-
-  /**
-   * Clip the trace against a single brush’s planes.
-   * Equivalent to Q2’s CM_ClipBoxToBrush.
-   */
-  static _clipBoxToBrush(ctx: BrushTraceContext, brush: Brush) {
-    const brushsides = ctx.worldModel.brushsides!;
-    const planes = ctx.worldModel.planes;
-    const totalMoveLength = Math.sqrt(ctx.totalMove[0] ** 2 + ctx.totalMove[1] ** 2 + ctx.totalMove[2] ** 2);
-    const fractionEpsilon = totalMoveLength > DIST_EPSILON ? DIST_EPSILON / totalMoveLength : 1.0;
-
-    console.assert(brushsides !== null, 'brush trace expected brushsides');
-
-    let enterfrac = -1;
-    let leavefrac = 1;
-    let clipplane: BaseModelPlane | null = null;
-    let tangentAxialPlane: BaseModelPlane | null = null;
-    let tangentAxialMovesDeeper = false;
-    let axialWallClearAxisMask = 0;
-
-    let getout = false;
-    let startout = false;
-
-    for (let i = 0; i < brush.numsides; i++) {
-      const side = brushsides[brush.firstside + i];
-      const plane = planes[side.planenum];
-
-      // Compute distance adjusted for box extents (Minkowski expansion)
-      let dist;
-      if (!ctx.isPoint) {
-        // Push the plane out appropriately for mins/maxs
-        let ofs0 = 0, ofs1 = 0, ofs2 = 0;
-        if (plane.normal[0] < 0) { ofs0 = ctx.maxs[0]; } else { ofs0 = ctx.mins[0]; }
-        if (plane.normal[1] < 0) { ofs1 = ctx.maxs[1]; } else { ofs1 = ctx.mins[1]; }
-        if (plane.normal[2] < 0) { ofs2 = ctx.maxs[2]; } else { ofs2 = ctx.mins[2]; }
-        dist = plane.dist - (ofs0 * plane.normal[0] + ofs1 * plane.normal[1] + ofs2 * plane.normal[2]);
-      } else {
-        dist = plane.dist;
-      }
-
-      const d1 = plane.normal.dot(ctx.start) - dist;
-      const d2 = plane.normal.dot(ctx.end) - dist;
-
-      const nonAxialContact = plane.type >= 3;
-      const axialTangentStart = !nonAxialContact && d1 < 0 && d1 >= -DIST_EPSILON;
-      const axialWallClearContact = !nonAxialContact
-        && Math.abs(plane.normal[2]) <= DIST_EPSILON
-        && Math.abs(d1) <= DIST_EPSILON
-        && d2 >= -DIST_EPSILON;
-      const nearStart = nonAxialContact && Math.abs(d1) <= DIST_EPSILON;
-      const nearEnd = Math.abs(d2) <= DIST_EPSILON;
-
-      if (d2 >= 0 || nearEnd) {
-        getout = true;
-      }
-
-      if (d1 >= 0 || nearStart) {
-        startout = true;
-      }
-
-      if (axialTangentStart) {
-        tangentAxialPlane = plane;
-        tangentAxialMovesDeeper ||= d2 < -DIST_EPSILON;
-      }
-
-      // Exact tangent wall starts that stay on or outside the same face are
-      // clear contact, but we still need to test the remaining planes so an
-      // orthogonal wall can block the sweep, which is what closes clip_4.
-      if (axialWallClearContact) {
-        axialWallClearAxisMask |= 1 << plane.type;
-        continue;
-      }
-
-      // Position tests treat exact and sub-epsilon face contact as clear, so
-      // traces must not clip a move whose endpoint only lands on that same
-      // clear contact boundary.
-      if (d1 >= 0 && (d2 >= d1 || d2 >= -DIST_EPSILON)) {
-        return;
-      }
-
-      // Starting tangent to a non-axial plane and moving deeper into the brush
-      // should produce an immediate clip plane, not a startsolid classification.
-      if (nearStart && d2 < -DIST_EPSILON) {
-        if (enterfrac < 0) {
-          enterfrac = 0;
-          clipplane = plane;
-        }
-        continue;
-      }
-
-      // Exact face contact must remain a walkable contact. Treat only
-      // strictly negative distances as being behind the expanded face so
-      // resting floor traces do not flip into startsolid/allsolid.
-      if (d1 < 0 && d2 < 0) {
-        continue;
-      }
-
-      // Crosses face
-      if (d1 > d2) {
-        // Enter
-        const f = (d1 - DIST_EPSILON) / (d1 - d2);
-        if (BrushTrace._shouldPreferClipPlane(clipplane, enterfrac, plane, f, fractionEpsilon)) {
-          enterfrac = f;
-          clipplane = plane;
-        }
-      } else {
-        // Leave
-        const f = (d1 + DIST_EPSILON) / (d1 - d2);
-        if (f < leavefrac) {
-          leavefrac = f;
-        }
-      }
-    }
-
-    if (!startout && tangentAxialPlane !== null) {
-      if (!tangentAxialMovesDeeper) {
-        return;
-      }
-
-      startout = true;
-      if (enterfrac < 0 || clipplane === null) {
-        enterfrac = 0;
-        clipplane = tangentAxialPlane;
-      }
-    }
-
-    if (!startout) {
-      // Original point was inside brush
-      ctx.trace.startsolid = true;
-      if (!getout) {
-        ctx.trace.allsolid = true;
-        ctx.trace.fraction = 0;
-      }
-      return;
-    }
-
-    // A point sweep that stays exactly on a vertical brush edge should not
-    // clip against the horizontal cap face. Treating the cap as blocking here
-    // regresses the edge-on contact contract covered by brushtrace.test.
-    if (ctx.isPoint && axialWallClearAxisMask === 3 && clipplane !== null && Math.abs(clipplane.normal[2]) > DIST_EPSILON) {
-      return;
-    }
-
-    if (enterfrac < leavefrac) {
-      const currentPlane = ctx.trace.fraction < 1.0 ? ctx.trace.plane : null;
-      if (enterfrac > -1 && BrushTrace._shouldPreferTraceHit(currentPlane, ctx.trace.fraction, clipplane!, enterfrac, fractionEpsilon)) {
-        if (enterfrac < 0) {
-          enterfrac = 0;
-        }
-        ctx.trace.fraction = enterfrac;
-        ctx.trace.plane.normal.set(clipplane!.normal);
-        ctx.trace.plane.dist = clipplane!.dist;
-      }
-    }
-  }
-
-  /**
-   * Convert a world-space point into local model space using the inverse of a
-   * rigid transform represented by origin plus orthonormal basis rows.
-   * @param point - world-space point
-   * @param origin - transform origin
-   * @param basis - 3x3 rotation matrix from Vector.toRotationMatrix()
-   * @returns point in local model space
-   */
-  static _transformPointToLocal(point: Vector, origin: Vector, basis: number[]): Vector {
-    const delta = point.copy().subtract(origin);
-    const forward = new Vector(basis[0], basis[1], basis[2]);
-    const right = new Vector(basis[3], basis[4], basis[5]);
-    const up = new Vector(basis[6], basis[7], basis[8]);
-
-    return new Vector(
-      delta.dot(forward),
-      delta.dot(right),
-      delta.dot(up),
-    );
-  }
-
-  /**
-   * Convert a local-space point into world space using origin plus basis rows.
-   * @param point - local-space point
-   * @param origin - transform origin
-   * @param basis - 3x3 rotation matrix from Vector.toRotationMatrix()
-   * @returns point in world space
-   */
-  static _transformPointToWorld(point: Vector, origin: Vector, basis: number[]): Vector {
-    const forward = new Vector(basis[0], basis[1], basis[2]);
-    const right = new Vector(basis[3], basis[4], basis[5]);
-    const up = new Vector(basis[6], basis[7], basis[8]);
-
-    return origin.copy()
-      .add(forward.multiply(point[0]))
-      .add(right.multiply(point[1]))
-      .add(up.multiply(point[2]));
-  }
-
-  /**
-   * Rotate a local-space plane normal into world space.
-   * @param normal - local-space normal
-   * @param basis - 3x3 rotation matrix from Vector.toRotationMatrix()
-   * @returns world-space normal
-   */
-  static _transformNormalToWorld(normal: Vector, basis: number[]): Vector {
-    const forward = new Vector(basis[0], basis[1], basis[2]);
-    const right = new Vector(basis[3], basis[4], basis[5]);
-    const up = new Vector(basis[6], basis[7], basis[8]);
-
-    return forward.multiply(normal[0])
-      .add(right.multiply(normal[1]))
-      .add(up.multiply(normal[2]));
-  }
-
-  /**
-   * Convert a local-space trace result back into world space.
-   * @param localTrace - local-space trace result
-   * @param transform - entity transform context
-   * @returns world-space trace result
-   */
-  static _transformTraceToWorld(localTrace: Trace, transform: BrushTraceTransform): Trace {
-    if (transform === null) {
-      return localTrace;
-    }
-
-    const trace = localTrace.copy();
-
-    if (transform.basis !== null) {
-      trace.endpos = BrushTrace._transformPointToWorld(localTrace.endpos, transform.origin, transform.basis);
-      trace.plane.normal = BrushTrace._transformNormalToWorld(localTrace.plane.normal, transform.basis);
-      trace.plane.dist = localTrace.plane.dist + trace.plane.normal.dot(transform.origin);
-    } else {
-      trace.endpos.add(transform.origin);
-      trace.plane.dist += trace.plane.normal.dot(transform.origin);
-    }
-
-    return trace;
-  }
-}
-
-interface BrushTraceContext {
-  readonly worldModel: BrushModel;
-  readonly trace: Trace;
-  readonly mins: Vector;
-  readonly maxs: Vector;
-  readonly isPoint: boolean;
-  readonly extents: Vector;
-  readonly start: Vector;
-  readonly end: Vector;
-  readonly totalMove: Vector;
-  readonly sweepMins: Vector;
-  readonly sweepMaxs: Vector;
-  readonly checkCount: number;
-}
-
-
-// ---------------------------------------------------------------------------
 // PhysEnt: a physics entity stored in the Pmove world
 // ---------------------------------------------------------------------------
 
-export class PhysEnt { // physent_t
+export class PhysEnt implements PlayerCollisionEntity { // physent_t
   /** Legacy Q1 hulls used when brush tracing is unavailable. */
   hulls: Hull[];
   /** Entity origin in world space. */
@@ -1733,217 +570,11 @@ export class PhysEnt { // physent_t
   }
 
   /**
-   * Emit nearby blocking brushes around a debug position when brush and hull comparisons disagree.
-   * @param position - world-space position to inspect
-   * @param label - debug label for the sampled position
-   */
-  _debugLogNearbyBlockingBrushes(position: Vector, label: string) {
-    const model = this.brushCollisionModel;
-    const brushes = model?.brushes;
-    const planes = model?.planes;
-    const brushsides = model?.brushsides;
-
-    if (!model || !brushes || !planes || !brushsides) {
-      return;
-    }
-
-    const firstBrush = model.firstBrush ?? 0;
-    const lastBrush = firstBrush + (model.numBrushes ?? brushes.length);
-    const candidates: NearbyBrushCandidate[] = [];
-
-    for (let brushIndex = firstBrush; brushIndex < lastBrush; brushIndex++) {
-      const brush = brushes[brushIndex];
-      if (!brush || brush.numsides === 0) {
-        continue;
-      }
-      if (brush.contents !== content.CONTENT_SOLID
-        && brush.contents !== content.CONTENT_SKY
-        && brush.contents !== content.CONTENT_CLIP) {
-        continue;
-      }
-
-      const expandedMinX = brush.mins![0] - Pmove.PLAYER_MAXS[0] - DIST_EPSILON;
-      const expandedMinY = brush.mins![1] - Pmove.PLAYER_MAXS[1] - DIST_EPSILON;
-      const expandedMinZ = brush.mins![2] - Pmove.PLAYER_MAXS[2] - DIST_EPSILON;
-      const expandedMaxX = brush.maxs![0] - Pmove.PLAYER_MINS[0] + DIST_EPSILON;
-      const expandedMaxY = brush.maxs![1] - Pmove.PLAYER_MINS[1] + DIST_EPSILON;
-      const expandedMaxZ = brush.maxs![2] - Pmove.PLAYER_MINS[2] + DIST_EPSILON;
-
-      if (position[0] < expandedMinX || position[0] > expandedMaxX
-        || position[1] < expandedMinY || position[1] > expandedMaxY
-        || position[2] < expandedMinZ || position[2] > expandedMaxZ) {
-        continue;
-      }
-
-      let nearestPlaneDistance = Number.POSITIVE_INFINITY;
-      let touchingPlanes = 0;
-      const sideSummaries: NearbyBrushSideSummary[] = [];
-
-      for (let sideIndex = 0; sideIndex < brush.numsides; sideIndex++) {
-        const side = brushsides[brush.firstside + sideIndex];
-        const plane = planes[side.planenum];
-        let dist = plane.dist;
-
-        for (let axis = 0; axis < 3; axis++) {
-          dist -= (plane.normal[axis] < 0 ? Pmove.PLAYER_MAXS[axis] : Pmove.PLAYER_MINS[axis]) * plane.normal[axis];
-        }
-
-        const planeDistance = plane.normal.dot(position) - dist;
-        nearestPlaneDistance = Math.min(nearestPlaneDistance, Math.abs(planeDistance));
-        if (Math.abs(planeDistance) <= DIST_EPSILON) {
-          touchingPlanes += 1;
-        }
-
-        sideSummaries.push({
-          distance: Math.abs(planeDistance),
-          summary: `side=${sideIndex} normal=(${plane.normal[0].toFixed(3)},${plane.normal[1].toFixed(3)},${plane.normal[2].toFixed(3)}) planeDist=${plane.dist.toFixed(3)} adjusted=${dist.toFixed(3)} delta=${planeDistance.toFixed(5)}`,
-        });
-      }
-
-      sideSummaries.sort((left, right) => left.distance - right.distance);
-
-      candidates.push({
-        index: brushIndex,
-        contents: brush.contents,
-        numsides: brush.numsides,
-        nearestPlaneDistance,
-        touchingPlanes,
-        mins: brush.mins!,
-        maxs: brush.maxs!,
-        sideSummaries: sideSummaries.slice(0, 4).map((entry) => entry.summary),
-      });
-    }
-
-    candidates.sort((left, right) => left.nearestPlaneDistance - right.nearestPlaneDistance);
-
-    if (candidates.length === 0) {
-      console.warn(`  ${label}: no nearby solid/clip brushes in expanded bounds`);
-      return;
-    }
-
-    for (const candidate of candidates.slice(0, 8)) {
-      console.warn(
-        `  ${label}: brush[${candidate.index}] contents=${candidate.contents}`,
-        `numsides=${candidate.numsides}`,
-        `nearestPlaneDistance=${candidate.nearestPlaneDistance.toFixed(5)}`,
-        `touchingPlanes=${candidate.touchingPlanes}`,
-        `mins=${candidate.mins} maxs=${candidate.maxs}`,
-      );
-      for (const sideSummary of candidate.sideSummaries) {
-        console.warn(`    ${sideSummary}`);
-      }
-    }
-  }
-
-  /**
-   * Detect positions that are only considered valid by brush tracing because
-   * they sit exactly tangent to an axial wall plane. Legacy BSP hull point
-   * contents treats that pose as solid, which causes the tiny separating nudge
-   * seen in hull-backed maps before movement begins.
-   * @param position - world-space position to inspect
-   * @returns true when hull-style tangency should still count as blocked
-   */
-  _brushPositionNeedsHullTangentFallback(position: Vector): boolean {
-    const model = this.brushCollisionModel;
-    const brushes = model?.brushes;
-    const planes = model?.planes;
-    const brushsides = model?.brushsides;
-
-    if (!model || !brushes || !planes || !brushsides) {
-      return false;
-    }
-
-    const firstBrush = model.firstBrush ?? 0;
-    const lastBrush = firstBrush + (model.numBrushes ?? brushes.length);
-
-    for (let brushIndex = firstBrush; brushIndex < lastBrush; brushIndex++) {
-      const brush = brushes[brushIndex];
-
-      if (!brush || brush.numsides === 0) {
-        continue;
-      }
-      if (brush.contents !== content.CONTENT_SOLID
-        && brush.contents !== content.CONTENT_SKY
-        && brush.contents !== content.CONTENT_CLIP) {
-        continue;
-      }
-
-      const expandedMinX = brush.mins![0] - Pmove.PLAYER_MAXS[0] - DIST_EPSILON;
-      const expandedMinY = brush.mins![1] - Pmove.PLAYER_MAXS[1] - DIST_EPSILON;
-      const expandedMinZ = brush.mins![2] - Pmove.PLAYER_MAXS[2] - DIST_EPSILON;
-      const expandedMaxX = brush.maxs![0] - Pmove.PLAYER_MINS[0] + DIST_EPSILON;
-      const expandedMaxY = brush.maxs![1] - Pmove.PLAYER_MINS[1] + DIST_EPSILON;
-      const expandedMaxZ = brush.maxs![2] - Pmove.PLAYER_MINS[2] + DIST_EPSILON;
-
-      if (position[0] < expandedMinX || position[0] > expandedMaxX
-        || position[1] < expandedMinY || position[1] > expandedMaxY
-        || position[2] < expandedMinZ || position[2] > expandedMaxZ) {
-        continue;
-      }
-
-      let touchingAxialWall = false;
-      let inside = true;
-
-      for (let sideIndex = 0; sideIndex < brush.numsides; sideIndex++) {
-        const side = brushsides[brush.firstside + sideIndex];
-        const plane = planes[side.planenum];
-        let dist = plane.dist;
-
-        for (let axis = 0; axis < 3; axis++) {
-          dist -= (plane.normal[axis] < 0 ? Pmove.PLAYER_MAXS[axis] : Pmove.PLAYER_MINS[axis]) * plane.normal[axis];
-        }
-
-        const planeDistance = plane.normal.dot(position) - dist;
-        const axialWall = plane.type < 3 && Math.abs(plane.normal[2]) <= DIST_EPSILON;
-
-        if (axialWall && Math.abs(planeDistance) <= DIST_EPSILON) {
-          touchingAxialWall = true;
-          continue;
-        }
-
-        if (plane.type >= 3) {
-          if (planeDistance >= -DIST_EPSILON) {
-            inside = false;
-            break;
-          }
-          continue;
-        }
-
-        if (planeDistance >= 0) {
-          inside = false;
-          break;
-        }
-      }
-
-      if (inside && touchingAxialWall) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
    * Legacy hull comparisons are only meaningful for axis-aligned brush traces.
    * @returns true when brush-vs-hull debug comparisons are valid
    */
   get canCompareBrushAgainstHull(): boolean {
     return this.hulls.length > 0 && this.angles.isOrigin();
-  }
-
-  /**
-   * Legacy hull comparisons are only meaningful for axial contact planes.
-   * @param normal - candidate contact normal
-   * @returns true when the normal is axis-aligned
-   */
-  static _isAxialNormal(normal: Vector): boolean {
-    const ax = Math.abs(normal[0]);
-    const ay = Math.abs(normal[1]);
-    const az = Math.abs(normal[2]);
-
-    return (Math.abs(ax - 1.0) <= DIST_EPSILON && ay <= DIST_EPSILON && az <= DIST_EPSILON)
-      || (ax <= DIST_EPSILON && Math.abs(ay - 1.0) <= DIST_EPSILON && az <= DIST_EPSILON)
-      || (ax <= DIST_EPSILON && ay <= DIST_EPSILON && Math.abs(az - 1.0) <= DIST_EPSILON);
   }
 
   /**
@@ -2042,44 +673,23 @@ export class PhysEnt { // physent_t
 
         const brushBlocks = brushTrace.fraction < 1.0 || brushTrace.startsolid || brushTrace.allsolid;
         const hullBlocks = hullTrace.fraction < 1.0 || hullTrace.startsolid || hullTrace.allsolid;
-        const comparableContact = PhysEnt._isAxialNormal(brushTrace.plane.normal)
-          || PhysEnt._isAxialNormal(hullTrace.plane.normal);
+        const comparableContact = isAxialNormal(brushTrace.plane.normal, DIST_EPSILON)
+          || isAxialNormal(hullTrace.plane.normal, DIST_EPSILON);
 
         if (brushBlocks !== hullBlocks && comparableContact) {
-          const model = this.brushModel;
-          console.warn(
-            `[Pmove MISMATCH] edictId=${this.edictId} model=${model?.name ?? 'world'}`,
-            `\n  brush: frac=${brushTrace.fraction.toFixed(4)} startsolid=${brushTrace.startsolid} allsolid=${brushTrace.allsolid}`,
-            `\n  hull:  frac=${hullTrace.fraction.toFixed(4)} startsolid=${hullTrace.startsolid} allsolid=${hullTrace.allsolid}`,
-            `\n  start=${start} end=${end}`,
-            model ? `\n  brushRange: first=${model.firstBrush} num=${model.numBrushes}` : '',
-          );
-
-          if (!brushBlocks && hullBlocks) {
-            this._debugLogNearbyBlockingBrushes(start, 'start-nearby');
-            this._debugLogNearbyBlockingBrushes(end, 'end-nearby');
-          }
-
-          if (brushBlocks && !hullBlocks && model) {
-            // Brush blocks but hull doesn't — log which specific brush is the culprit
-            const brushes = model.brushes;
-            const last = model.firstBrush + model.numBrushes;
-
-            console.assert(brushes !== null, 'brush trace expected brushes in model');
-
-            for (let bi = model.firstBrush; bi < last; bi++) {
-              const brush = brushes![bi];
-
-              if (!brush || brush.numsides === 0) {
-                continue;
-              }
-
-              console.warn(
-                `  brush[${bi}]: contents=${brush.contents} sides=${brush.numsides}`,
-                `mins=${brush.mins} maxs=${brush.maxs}`,
-              );
-            }
-          }
+          debugLogTraceMismatch({
+            edictId: this.edictId,
+            model: this.brushModel,
+            start,
+            end,
+            brushTrace,
+            hullTrace,
+            brushBlocks,
+            hullBlocks,
+            playerMins: Pmove.PLAYER_MINS,
+            playerMaxs: Pmove.PLAYER_MAXS,
+            distEpsilon: DIST_EPSILON,
+          });
         }
       }
 
@@ -2124,7 +734,18 @@ export class PhysEnt { // physent_t
 
         hullResult = pointContents !== content.CONTENT_SOLID && pointContents !== content.CONTENT_SKY;
 
-        if (brushResult && !hullResult && this._brushPositionNeedsHullTangentFallback(position)) {
+        if (brushResult && !hullResult && this.brushCollisionModel !== null
+          && shouldUseHullTangentFallback({
+            model: this.brushCollisionModel,
+            position,
+            hull,
+            localPosition,
+            playerMins: Pmove.PLAYER_MINS,
+            playerMaxs: Pmove.PLAYER_MAXS,
+            distEpsilon: DIST_EPSILON,
+            minStepNormal: MIN_STEP_NORMAL,
+            slopeContactEpsilon: SLOPE_CONTACT_EPSILON,
+          })) {
           usedHullTangentFallback = true;
         }
       }
@@ -2143,62 +764,16 @@ export class PhysEnt { // physent_t
       // DEBUG: compare with hull result when pm_debug is on
       if (PmovePlayer.DEBUG && this.canCompareBrushAgainstHull) {
         if (brushResult !== hullResult) {
-          const model = this.brushModel;
-          console.warn(
-            `[Pmove POS MISMATCH] edictId=${this.edictId} model=${model?.name ?? 'world'}`,
-            `\n  brush says ${brushResult ? 'VALID' : 'IN SOLID'}`,
-            `\n  hull  says ${hullResult ? 'VALID' : 'IN SOLID'}`,
-            `\n  position=${position}`,
-            model ? `\n  brushRange: first=${model.firstBrush} num=${model.numBrushes}` : '',
-          );
-
-          if (brushResult && !hullResult) {
-            this._debugLogNearbyBlockingBrushes(position, 'position-nearby');
-          }
-
-          if (!brushResult && hullResult && model) {
-            // Brush says solid, hull says valid — log culprit brush
-            const brushes = model.brushes;
-            const planes = model.planes;
-            const brushsides = model.brushsides;
-            const last = model.firstBrush + model.numBrushes;
-
-            console.assert(brushes !== null, 'brush trace expected brushes in model');
-            console.assert(brushsides !== null, 'brush trace expected brushsides in model');
-
-            for (let bi = model.firstBrush; bi < last; bi++) {
-              const brush = brushes![bi];
-              if (!brush || brush.numsides === 0) {
-                continue;
-              }
-              if (brush.contents !== content.CONTENT_SOLID
-                && brush.contents !== content.CONTENT_SKY
-                && brush.contents !== content.CONTENT_CLIP) {
-                continue;
-              }
-              // Minkowski test inline
-              let inside = true;
-              for (let si = 0; si < brush.numsides; si++) {
-                const side = brushsides![brush.firstside + si];
-                const plane = planes[side.planenum];
-                let dist = plane.dist;
-                for (let j = 0; j < 3; j++) {
-                  dist -= (plane.normal[j] < 0 ? Pmove.PLAYER_MAXS[j] : Pmove.PLAYER_MINS[j]) * plane.normal[j];
-                }
-                const d1 = plane.normal.dot(position) - dist;
-                if (d1 > 0) {
-                  inside = false;
-                  break;
-                }
-              }
-              if (inside) {
-                console.warn(
-                  `  CULPRIT brush[${bi}]: contents=${brush.contents} sides=${brush.numsides}`,
-                  `mins=${brush.mins} maxs=${brush.maxs}`,
-                );
-              }
-            }
-          }
+          debugLogPositionMismatch({
+            edictId: this.edictId,
+            model: this.brushModel,
+            position,
+            brushResult,
+            hullResult,
+            playerMins: Pmove.PLAYER_MINS,
+            playerMaxs: Pmove.PLAYER_MAXS,
+            distEpsilon: DIST_EPSILON,
+          });
         }
       }
 
@@ -2900,10 +1475,10 @@ export class PmovePlayer { // pmove_t (player state only)
   // =========================================================================
 
   // --- Scratch Vectors for _slideMove ---
-  readonly #slideOriginalVelocity = new Vector();
   readonly #slidePrimalVelocity = new Vector();
   readonly #slideEnd = new Vector();
   readonly #slideClipVelocity = new Vector();
+  readonly #slideWorkVelocity = new Vector();
   readonly #slideCreaseDir = new Vector();
   readonly #slidePlanes = Array.from({ length: MAX_CLIP_PLANES }, () => new Vector());
 
@@ -2911,6 +1486,7 @@ export class PmovePlayer { // pmove_t (player state only)
    * Brush bevels can report a second zero-progress hit whose normal only
    * differs slightly from the wall we already clipped against. Treat that as a
    * duplicate plane so we keep sliding instead of manufacturing a bogus crease.
+   * FTEQW also skips true duplicate wall planes from brush seams outright.
    * @param normal - candidate collision plane normal
    * @param planeCount - number of existing slide planes
    * @param planes - accumulated slide plane normals
@@ -2918,10 +1494,20 @@ export class PmovePlayer { // pmove_t (player state only)
    * @returns true when the candidate plane should be merged into an existing one
    */
   _isDuplicateSlidePlane(normal: Vector, planeCount: number, planes: Vector[], fraction: number): boolean {
-    const duplicateDot = fraction === 0.0 ? ZERO_PROGRESS_DUPLICATE_DOT : 0.99;
-
     for (let i = 0; i < planeCount; i++) {
-      if (normal.dot(planes[i]) > duplicateDot) {
+      const plane = planes[i];
+      const dx = plane[0] - normal[0];
+      const dy = plane[1] - normal[1];
+      const dz = plane[2] - normal[2];
+
+      // FTEQW-style seam duplicate check.
+      if ((dx * dx + dy * dy + dz * dz) <= (0.01 * 0.01)) {
+        return true;
+      }
+
+      // Keep the zero-progress near-parallel guard to avoid bogus crease
+      // velocity when brush traces re-clip against the same wall bevel.
+      if (fraction === 0.0 && normal.dot(plane) > ZERO_PROGRESS_DUPLICATE_DOT) {
         return true;
       }
     }
@@ -2939,16 +1525,12 @@ export class PmovePlayer { // pmove_t (player state only)
     const _dbgStartVelocity = _dbg ? this.velocity.copy() : null;
     const numbumps = 4;
     const primalVelocity = this.#slidePrimalVelocity.set(this.velocity);
-    // Q1-style: snapshot velocity at the last point of actual movement.
-    // The clip loop always clips from this stable reference, not from an
-    // already-clipped result. This avoids precision drift when re-clipping
-    // against the same BSP hull plane with the 1.01 overbounce factor.
-    const originalVelocity = this.#slideOriginalVelocity.set(this.velocity);
     let numplanes = 0;
     const planes: Vector[] = this.#slidePlanes;
     let timeLeft = this.frametime;
     const end = this.#slideEnd;
     const clipVelocity = this.#slideClipVelocity;
+    const workVelocity = this.#slideWorkVelocity;
     let blocked = false;
 
     for (let bumpcount = 0; bumpcount < numbumps; bumpcount++) {
@@ -2972,7 +1554,6 @@ export class PmovePlayer { // pmove_t (player state only)
       if (trace.fraction > 0) {
         // actually moved some distance
         this.origin.set(trace.endpos);
-        originalVelocity.set(this.velocity);
         numplanes = 0;
       }
 
@@ -3006,23 +1587,19 @@ export class PmovePlayer { // pmove_t (player state only)
       // player. This check is standard in Q1 source ports (QS, FTEQW).
       const traceNormal = trace.plane.normal;
       if (this._isDuplicateSlidePlane(traceNormal, numplanes, planes, trace.fraction)) {
-        // Nudge velocity away from the surface to help the next trace
-        this.velocity[0] += traceNormal[0];
-        this.velocity[1] += traceNormal[1];
-        this.velocity[2] += traceNormal[2];
         continue;
       }
 
       planes[numplanes].set(traceNormal);
       numplanes++;
 
-      // Clip originalVelocity (Q1-style) so each plane attempt starts
-      // from the same stable base. Q2 clips the current velocity in-place,
-      // but Q1’s BSP hull traces need the original reference to avoid
-      // precision drift from re-clipping with the overbounce factor.
+      // FTEQW/Q2 style: clip velocity in-place while searching for a
+      // candidate that satisfies all accumulated planes.
+      workVelocity.set(this.velocity);
       let i, j;
       for (i = 0; i < numplanes; i++) {
-        this._clipVelocity(originalVelocity, planes[i], clipVelocity, this._pmove.configuration.overbounce);
+        this._clipVelocity(workVelocity, planes[i], clipVelocity, this._pmove.configuration.overbounce);
+        workVelocity.set(clipVelocity);
 
         for (j = 0; j < numplanes; j++) {
           if (j !== i) {
@@ -3053,6 +1630,11 @@ export class PmovePlayer { // pmove_t (player state only)
         }
 
         const dir = this.#slideCreaseDir.set(planes[0]).cross(planes[1]);
+        if (dir.normalize() <= DIST_EPSILON) {
+          this.velocity.clear();
+          break;
+        }
+
         const d = dir.dot(this.velocity);
         this.velocity.set(dir).multiply(d);
         if (_dbg) {
@@ -3438,6 +2020,11 @@ export class PmovePlayer { // pmove_t (player state only)
   // Position snapping / nudging
   // =========================================================================
 
+  readonly #snapCandidate = new Vector();
+  readonly #snapProbeTarget = new Vector();
+  readonly #snapProbeDir = new Vector();
+  readonly #snapBestCandidate = new Vector();
+
 /**
  * Quantize position to 1/8 unit precision for network transmission
  * and nudge into a valid position.
@@ -3464,16 +2051,74 @@ export class PmovePlayer { // pmove_t (player state only)
       }
     }
 
-    // try all jitter combinations (closest first)
-    const jitterbits = [0, 4, 1, 2, 3, 5, 6, 7];
-    for (let j = 0; j < 8; j++) {
-      const bits = jitterbits[j];
-      for (let i = 0; i < 3; i++) {
-        this.origin[i] = base[i] + ((bits & (1 << i)) ? sign[i] * 0.125 : 0);
+    let bestScore = -Infinity;
+    let found = false;
+
+    const probeDir = this.#snapProbeDir.clear();
+    if (this.pmType !== PM_TYPE.SPECTATOR && this._angleVectors instanceof DirectionalVectors) {
+      const forward = this._angleVectors.forward;
+      const right = this._angleVectors.right;
+      probeDir[0] = forward[0] * this.cmd.forwardmove + right[0] * this.cmd.sidemove;
+      probeDir[1] = forward[1] * this.cmd.forwardmove + right[1] * this.cmd.sidemove;
+    }
+    probeDir[2] = 0;
+
+    // After a corner dead-stop, velocity may already be zero; fall back to
+    // current horizontal velocity only when there is no directional input.
+    if (probeDir.normalize() <= STOP_EPSILON) {
+      probeDir.set(this.velocity);
+      probeDir[2] = 0;
+    }
+
+    const shouldProbeForward = this.pmType !== PM_TYPE.SPECTATOR && probeDir.normalize() > STOP_EPSILON;
+    if (shouldProbeForward) {
+      probeDir.multiply(4.0);
+    }
+
+    // For snapped positions, multiple jitter candidates may be valid but not
+    // equally playable. Score each valid candidate by short forward progress
+    // and keep the best one so we avoid selecting corner-tangent dead spots.
+    const axisOffsets = [
+      sign[0] === 0 ? [0, -0.125, 0.125] : [0, sign[0] * 0.125],
+      sign[1] === 0 ? [0, -0.125, 0.125] : [0, sign[1] * 0.125],
+      sign[2] === 0 ? [0, -0.125, 0.125] : [0, sign[2] * 0.125],
+    ];
+
+    for (let z = 0; z < axisOffsets[2].length; z++) {
+      for (let x = 0; x < axisOffsets[0].length; x++) {
+        for (let y = 0; y < axisOffsets[1].length; y++) {
+          const candidate = this.#snapCandidate;
+          candidate[0] = base[0] + axisOffsets[0][x];
+          candidate[1] = base[1] + axisOffsets[1][y];
+          candidate[2] = base[2] + axisOffsets[2][z];
+
+          if (!this._pmove.isValidPlayerPosition(candidate)) {
+            continue;
+          }
+
+          let score = 0;
+          if (shouldProbeForward) {
+            const probeTarget = this.#snapProbeTarget.set(candidate).add(probeDir);
+            const probeTrace = this._pmove.clipPlayerMove(candidate, probeTarget);
+            score = probeTrace.fraction;
+          }
+
+          if (!found || score > bestScore) {
+            found = true;
+            bestScore = score;
+            this.#snapBestCandidate.set(candidate);
+
+            if (!shouldProbeForward || score >= 1.0) {
+              break;
+            }
+          }
+        }
       }
-      if (this._pmove.isValidPlayerPosition(this.origin)) {
-        return;
-      }
+    }
+
+    if (found) {
+      this.origin.set(this.#snapBestCandidate);
+      return;
     }
 
     // couldn’t find a valid position - stay at snapped base
@@ -3522,7 +2167,7 @@ export class PmovePlayer { // pmove_t (player state only)
  * Holds the world (physents) and provides collision primitives.
  * Instantiate one per context (one for client prediction, one for server).
  */
-export class Pmove { // pmove_t
+export class Pmove implements PlayerCollisionWorld { // pmove_t
   /** @deprecated import DIST_EPSILON instead */
   static DIST_EPSILON = DIST_EPSILON;
   /** @deprecated import STOP_EPSILON instead */

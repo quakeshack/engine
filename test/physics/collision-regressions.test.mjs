@@ -6,6 +6,7 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
 import { BrushTrace, Hull, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
+import { CollisionModelSource } from '../../source/engine/common/CollisionModelSource.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
@@ -511,6 +512,23 @@ void test('BrushTrace.transformedBoxTrace clips tangent sloped clip-brush starts
   assertNear(trace.plane.normal[1], 0.8944271909999159, 0.001);
   assertNear(trace.plane.normal[2], 0.0, 0.001);
   assert.deepEqual([...trace.endpos], [353.5, -108.80000305175781, 25]);
+});
+
+void test('BrushTrace.boxTrace keeps point traces clear when they start on an axial face and move farther outside it', () => {
+  const model = createBoxBrushModel({ center: [436, 2016, -96], halfExtents: [4, 32, 96] });
+  const trace = BrushTrace.boxTrace(
+    model,
+    0,
+    new Vector(432, 2120, -143),
+    new Vector(179.875, 1969.625, -162),
+    Vector.origin,
+    Vector.origin,
+  );
+
+  assert.equal(trace.startsolid, false);
+  assert.equal(trace.allsolid, false);
+  assert.equal(trace.fraction, 1.0);
+  assert.deepEqual([...trace.endpos], [179.875, 1969.625, -162]);
 });
 
 void test('BrushTrace.transformedBoxTrace returns world-space impact points', () => {
@@ -3720,5 +3738,25 @@ void describe('test_clip_4 regression: brushlist vs hull collision', () => {
       assert.equal(outOfEdgeTrace.fraction, 1.0);
       assert.deepEqual([...outOfEdgeTrace.endpos], [...gapInterior]);
     });
+});
+
+void test('ServerCollision.traceStaticWorldLine keeps the E1M1 brushlist dog sightline clear at the earlier player position', async () => {
+  const legacyModel = await loadBSPMap('e1m1-extracted.bsp');
+  const brushlistModel = await loadBSPMap('e1m1_bl.bsp');
+
+  const dogEye = new Vector(432, 2120, -143);
+  const playerEye = new Vector(179.875, 1969.625, -162);
+  const createCollision = (model) => {
+    const modelSource = new CollisionModelSource();
+    modelSource.configureClient({ getWorldModel: () => model });
+    return new ServerCollision(modelSource);
+  };
+
+  const legacyTrace = createCollision(legacyModel).traceStaticWorldLine(dogEye, playerEye);
+  const brushlistTrace = createCollision(brushlistModel).traceStaticWorldLine(dogEye, playerEye);
+
+  assert.equal(legacyTrace.fraction, 1.0);
+  assert.equal(brushlistTrace.fraction, 1.0);
+  assert.deepEqual([...brushlistTrace.endpos], [...playerEye]);
 });
 

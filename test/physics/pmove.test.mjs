@@ -424,6 +424,32 @@ void describe('PmovePlayer', () => {
     assertNear(brushFrames[5].moved[1], 0.0, 0.25);
   });
 
+  void test('matches hull progression on the brush-backed complex_2 corner tangency regression map', async () => {
+    const brushFrames = await runMapFrames({
+      mapName: 'maps/test_complex_2.bsp',
+      frames: 10,
+      startOrigin: new Vector(-24, 16, 8.75),
+      yaw: 30,
+    });
+    const hullFrames = await runMapFrames({
+      mapName: 'maps/test_complex_2_hull.bsp',
+      frames: 10,
+      startOrigin: new Vector(-24, 16, 8.75),
+      yaw: 30,
+    });
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.5);
+      assertNear(brushFrames[frame].origin[1], hullFrames[frame].origin[1], 0.5);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.5);
+      assertNear(brushFrames[frame].velocity[0], hullFrames[frame].velocity[0], 0.5);
+      assertNear(brushFrames[frame].velocity[1], hullFrames[frame].velocity[1], 0.5);
+    }
+
+    // Regression: brush path previously snapped to (48, 32, 24) and stalled.
+    assert.ok(brushFrames[6].moved[0] > 8.0);
+  });
+
   void test('does not wedge on the hw_doom corridor sidestep repro', async () => {
     const frames = await runMapFrames({
       mapName: 'maps/test_hw_doom.bsp',
@@ -454,6 +480,51 @@ void describe('PmovePlayer', () => {
       assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.75);
       assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.75);
     }
+  });
+
+  void test('tracks the hull slope_3 descent from the raised spawn height', async () => {
+    const startOrigin = new Vector(160, 0, 24.875);
+    const brushFrames = await runMapFrames({
+      mapName: 'maps/test_slope_3.bsp',
+      frames: 48,
+      startOrigin,
+    });
+    const hullFrames = await runMapFrames({
+      mapName: 'maps/test_slope_3_hull.bsp',
+      frames: 48,
+      startOrigin,
+    });
+
+    for (let frame = 0; frame < brushFrames.length; frame++) {
+      assertNear(brushFrames[frame].origin[0], hullFrames[frame].origin[0], 0.75);
+      assertNear(brushFrames[frame].origin[2], hullFrames[frame].origin[2], 0.75);
+      assertNear(brushFrames[frame].moved[0], hullFrames[frame].moved[0], 0.75);
+      assertNear(brushFrames[frame].moved[2], hullFrames[frame].moved[2], 0.75);
+    }
+  });
+
+  void test('does not stall on slope_3 when starting at integer z', async () => {
+    const startOrigin = new Vector(160, 0, 24);
+    const brushFrames = await runMapFrames({
+      mapName: 'maps/test_slope_3.bsp',
+      frames: 48,
+      startOrigin,
+    });
+    const hullFrames = await runMapFrames({
+      mapName: 'maps/test_slope_3_hull.bsp',
+      frames: 48,
+      startOrigin,
+    });
+
+    const brushFinal = brushFrames[brushFrames.length - 1];
+    const hullFinal = hullFrames[hullFrames.length - 1];
+
+    assert.ok(
+      brushFinal.origin[0] < 0,
+      `brushFinal=${brushFinal.origin} hullFinal=${hullFinal.origin}`,
+    );
+    assertNear(brushFinal.origin[0], hullFinal.origin[0], 1.0);
+    assertNear(brushFinal.origin[2], hullFinal.origin[2], 1.0);
   });
 
   void describe('_checkDuck', () => {
@@ -809,6 +880,152 @@ void describe('PmovePlayer', () => {
       assert.ok(player.origin[1] > 99.0);
       assert.ok(Math.abs(player.velocity[0]) < 2.0);
       assert.ok(player.velocity[1] > 99.0);
+    });
+
+    void test('ignores exact duplicate seam planes without nudging velocity into walls', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(100, 100, 0);
+      player.frametime = 1.0;
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        if (traceCalls === 1) {
+          assert.deepEqual([...start], [0, 0, 0]);
+          assert.deepEqual([...end], [100, 100, 0]);
+          return createTrace({
+            endpos: new Vector(50, 50, 0),
+            fraction: 0.5,
+            normal: new Vector(-1, 0, 0),
+            ent: 1,
+          });
+        }
+
+        if (traceCalls === 2) {
+          assert.deepEqual([...start], [50, 50, 0]);
+          return createTrace({
+            endpos: new Vector(50, 50, 0),
+            fraction: 0.0,
+            normal: new Vector(-1, 0, 0),
+            ent: 1,
+          });
+        }
+
+        return createTrace({
+          endpos: end.copy(),
+          fraction: 1.0,
+        });
+      };
+
+      player._slideMove();
+
+      assert.equal(traceCalls, 3);
+      assertNear(player.origin[0], 50.0, 0.001);
+      assertNear(player.origin[1], 100.0, 0.001);
+      assertNear(player.velocity[0], 0.0, 0.001);
+      assertNear(player.velocity[1], 100.0, 0.001);
+    });
+
+    void test('keeps sliding around convex rounded corners on zero-progress re-clips', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+      let traceCalls = 0;
+
+      player.origin.clear();
+      player.velocity.setTo(120, 40, 0);
+      player.frametime = 1.0;
+
+      pmove.clipPlayerMove = (start, end) => {
+        traceCalls += 1;
+
+        if (traceCalls === 1) {
+          assert.deepEqual([...start], [0, 0, 0]);
+          assert.deepEqual([...end], [120, 40, 0]);
+          return createTrace({
+            endpos: new Vector(48, 16, 0),
+            fraction: 0.4,
+            normal: new Vector(-1, 0, 0),
+            ent: 1,
+          });
+        }
+
+        if (traceCalls === 2) {
+          assert.deepEqual([...start], [48, 16, 0]);
+          return createTrace({
+            endpos: new Vector(48, 16, 0),
+            fraction: 0.0,
+            normal: new Vector(-0.95, -0.31224989991991997, 0),
+            ent: 1,
+          });
+        }
+
+        return createTrace({
+          endpos: end.copy(),
+          fraction: 1.0,
+        });
+      };
+
+      player._slideMove();
+
+      assert.ok(traceCalls >= 2);
+      assert.ok(player.origin[0] > 40.0);
+      assert.ok(player.origin[1] > 20.0);
+      assert.ok(player.velocity[1] > 0.0);
+      assert.ok(player.velocity.len() > 1.0);
+    });
+
+    void test('keeps sliding around mirrored convex rounded corners regardless of north/south orientation', () => {
+      const pmove = new Pmove();
+      const player = pmove.newPlayerMove();
+
+      const runCase = (secondNormalY) => {
+        let traceCalls = 0;
+
+        player.origin.clear();
+        player.velocity.setTo(120, secondNormalY > 0 ? -40 : 40, 0);
+        player.frametime = 1.0;
+
+        pmove.clipPlayerMove = (start, end) => {
+          traceCalls += 1;
+
+          if (traceCalls === 1) {
+            return createTrace({
+              endpos: new Vector(48, secondNormalY > 0 ? -16 : 16, 0),
+              fraction: 0.4,
+              normal: new Vector(-1, 0, 0),
+              ent: 1,
+            });
+          }
+
+          if (traceCalls === 2) {
+            return createTrace({
+              endpos: new Vector(48, secondNormalY > 0 ? -16 : 16, 0),
+              fraction: 0.0,
+              normal: new Vector(-0.95, secondNormalY, 0),
+              ent: 1,
+            });
+          }
+
+          return createTrace({
+            endpos: end.copy(),
+            fraction: 1.0,
+          });
+        };
+
+        player._slideMove();
+
+        assert.ok(player.origin[0] > 40.0);
+        assert.ok(Math.abs(player.origin[1]) > 20.0);
+        assert.ok(Math.abs(player.velocity[1]) > 0.0);
+        assert.ok(player.velocity.len() > 1.0);
+      };
+
+      runCase(-0.31224989991991997);
+      runCase(0.31224989991991997);
     });
   });
 });

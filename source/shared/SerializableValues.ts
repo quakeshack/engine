@@ -1,13 +1,16 @@
 import type { ClientSerializableType, SerializableType } from './GameInterfaces.ts';
 import Vector from './Vector.ts';
 
-type ComparableSerializableValue = SerializableType | ClientSerializableType;
+interface ComparableSerializableObject {
+  [key: string]: ComparableSerializableValue;
+}
+type ComparableSerializableValue = SerializableType | ClientSerializableType | ComparableSerializableObject;
 
 /**
  * Returns true when the value is a plain serializable object payload.
  * @returns True when the value is a plain object payload.
  */
-function isPlainSerializableObject(value: ComparableSerializableValue): value is Record<string, ComparableSerializableValue> {
+function isPlainSerializableObject(value: ComparableSerializableValue): value is ComparableSerializableObject {
   if (value === null || typeof value !== 'object' || Array.isArray(value) || value instanceof Vector) {
     return false;
   }

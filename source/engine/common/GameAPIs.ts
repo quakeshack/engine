@@ -579,7 +579,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
    * @returns Matching edicts.
    */
   static FindInRadius(origin: Vector, radius: number, filterFn: ServerEntityFilter = null): ServerEdict[] {
-    const vradius = new Vector(radius, radius, radius);
+    const vradius = new Vector(radius, radius, radius).multiply(1.5);
     const mins = origin.copy().subtract(vradius);
     const maxs = origin.copy().add(vradius);
     const edicts: ServerEdict[] = [];
@@ -631,9 +631,10 @@ export class ServerEngineAPI extends CommonEngineAPI {
     return null;
   }
 
-  // TODO: optimize lookups by using maps for fields such as targetname, etc.
+  // TODO: optimize lookups by using maps for fields such as classname, target, targetname
   /**
    * Yield all edicts whose field matches the supplied value.
+   * Complexity: O(n) where n is the number of edicts in the server.
    * @yields Matching edicts.
    */
   static *FindAllByFieldAndValue(field: string, value: EdictValueType, startEdictId = 0): Generator<ServerEdict, void, void> { // FIXME: startEdictId should be edict? not 100% happy about this
@@ -655,6 +656,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
 
   /**
    * Yield all edicts that match the filter.
+   * Complexity: O(n) where n is the number of edicts in the server.
    * @yields Matching edicts.
    */
   static *FindAllByFilter(filterFn: ServerEntityFilter = null, startEdictId = 0): Generator<ServerEdict, void, void> { // FIXME: startEdictId should be edict? not 100% happy about this
@@ -740,7 +742,7 @@ export class ServerEngineAPI extends CommonEngineAPI {
   }
 
   static IsLoading(): boolean {
-    return (SV.server as typeof SV.server & { loading: boolean }).loading;
+    return SV.server.loading;
   }
 
   /**

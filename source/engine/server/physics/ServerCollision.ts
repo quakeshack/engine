@@ -954,7 +954,7 @@ export class ServerCollision {
     mins: Vector,
     maxs: Vector,
     end: Vector,
-    type: number,
+    type: Defs.moveTypes,
     passedict: ServerEdict | null,
   ): CollisionTrace {
     const clip = this._createMoveClip(start, mins, maxs, end, type, passedict);

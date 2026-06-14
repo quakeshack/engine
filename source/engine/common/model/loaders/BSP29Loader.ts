@@ -2257,28 +2257,6 @@ export class BSP29Loader extends ModelLoader {
 
         const firstside = allBrushSides.length;
 
-        // Generate the 6 axial planes inferred from mins/maxs.
-        // Per the BSPX spec: "Axial planes MUST NOT be written - they will be
-        // inferred from the brush's mins+maxs."
-        // +X, -X, +Y, -Y, +Z, -Z
-        const axialDefs: [Vector, number][] = [
-          [new Vector(1, 0, 0), bmaxs[0]],
-          [new Vector(-1, 0, 0), -bmins[0]],
-          [new Vector(0, 1, 0), bmaxs[1]],
-          [new Vector(0, -1, 0), -bmins[1]],
-          [new Vector(0, 0, 1), bmaxs[2]],
-          [new Vector(0, 0, -1), -bmins[2]],
-        ];
-
-        for (const [normal, dist] of axialDefs) {
-          const planeIdx = allBrushPlanes.length;
-          allBrushPlanes.push(makePlane(normal, dist));
-
-          const side = new BrushSide(loadmodel);
-          side.planenum = planeIdx;
-          allBrushSides.push(side);
-        }
-
         // Parse the non-axial planes from the lump
         if (offset + brushNumPlanes * 16 > endOffset) {
           Con.Print('BSP29Loader: BRUSHLIST lump truncated at brush planes\n');
@@ -2294,6 +2272,30 @@ export class BSP29Loader extends ModelLoader {
           const dist = view.getFloat32(offset + 12, true);
           offset += 16;
 
+          const planeIdx = allBrushPlanes.length;
+          allBrushPlanes.push(makePlane(normal, dist));
+
+          const side = new BrushSide(loadmodel);
+          side.planenum = planeIdx;
+          allBrushSides.push(side);
+        }
+
+        // Generate the 6 axial planes inferred from mins/maxs.
+        // Per the BSPX spec: "Axial planes MUST NOT be written - they will be
+        // inferred from the brush's mins+maxs."
+        // Keep these after the explicit non-axial planes to match FTE's
+        // ordering and preserve equivalent tie-break behavior in collision.
+        // +X, -X, +Y, -Y, +Z, -Z
+        const axialDefs: [Vector, number][] = [
+          [new Vector(1, 0, 0), bmaxs[0]],
+          [new Vector(-1, 0, 0), -bmins[0]],
+          [new Vector(0, 1, 0), bmaxs[1]],
+          [new Vector(0, -1, 0), -bmins[1]],
+          [new Vector(0, 0, 1), bmaxs[2]],
+          [new Vector(0, 0, -1), -bmins[2]],
+        ];
+
+        for (const [normal, dist] of axialDefs) {
           const planeIdx = allBrushPlanes.length;
           allBrushPlanes.push(makePlane(normal, dist));
 
