@@ -790,7 +790,7 @@ export class ServerMessages {
    * @returns True when the datagram contained any replicated changes.
    */
   sendClientDatagram(client: ServerClient): boolean {
-    const msg = new SzBuffer(16000, 'SV.SendClientDatagram');
+    const msg = new SzBuffer(65536, 'SV.SendClientDatagram');
     msg.writeByte(Protocol.svc.time);
     msg.writeFloat(SV.server.time);
 

@@ -5,7 +5,7 @@ import { eventBus, getCommonRegistry, registry } from '../registry.ts';
 import { formatIP } from './Misc.ts';
 
 type Throwable = Error | string | number | boolean | null | undefined | { message?: string };
-type NetworkPayload = Pick<SzBuffer, 'cursize' | 'data'>;
+type NetworkPayload = SzBuffer;
 type QSocketState = 'new' | 'connecting' | 'connected' | 'disconnecting' | 'disconnected';
 
 type ListenAddress = {
@@ -157,7 +157,7 @@ function createLoopbackSocketState(peer: QSocket | null): LoopbackSocketState {
   return {
     kind: 'loopback',
     peer,
-    receiveBuffer: new Uint8Array(new ArrayBuffer(8192)),
+    receiveBuffer: new Uint8Array(new ArrayBuffer(65536)),
     receiveLength: 0,
   };
 }
@@ -506,11 +506,12 @@ export class LoopDriver extends BaseDriver {
     const bufferLength = peerState.receiveLength;
     peerState.receiveLength += data.cursize + 3;
 
-    if (peerState.receiveLength > 8192) {
+    const buffer = peerState.receiveBuffer;
+
+    if (peerState.receiveLength > buffer.length) {
       throw new HostError('LoopDriver.SendMessage: overflow');
     }
 
-    const buffer = peerState.receiveBuffer;
     buffer[bufferLength] = 1;
     buffer[bufferLength + 1] = data.cursize & 0xff;
     buffer[bufferLength + 2] = data.cursize >> 8;
@@ -531,11 +532,12 @@ export class LoopDriver extends BaseDriver {
     const bufferLength = peerState.receiveLength;
     peerState.receiveLength += data.cursize + 3;
 
-    if (peerState.receiveLength > 8192) {
+    const buffer = peerState.receiveBuffer;
+
+    if (peerState.receiveLength > buffer.length) {
       throw new HostError('LoopDriver.SendUnreliableMessage: overflow');
     }
 
-    const buffer = peerState.receiveBuffer;
     buffer[bufferLength] = 2;
     buffer[bufferLength + 1] = data.cursize & 0xff;
     buffer[bufferLength + 2] = data.cursize >> 8;

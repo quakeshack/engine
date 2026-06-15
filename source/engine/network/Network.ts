@@ -10,7 +10,7 @@ import { InviteCommand } from './ConsoleCommands.ts';
 import { DriverRegistry } from './DriverRegistry.ts';
 import { BaseDriver, LoopDriver, QSocket, WebRTCDriver, WebSocketDriver } from './NetworkDrivers.ts';
 
-type NetworkPayload = Pick<SzBuffer, 'cursize' | 'data'>;
+type NetworkPayload = SzBuffer;
 
 let { Con, SV, Sys } = getCommonRegistry();
 
@@ -20,7 +20,7 @@ eventBus.subscribe('registry.frozen', () => {
 
 export default class NET {
   static activeSockets: QSocket[] = [];
-  static message = new SzBuffer(16384, 'NET.message');
+  static message = new SzBuffer(1048576, 'NET.message');
   static activeconnections = 0;
   static listening = false;
   static driverRegistry = new DriverRegistry();
