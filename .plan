@@ -108,6 +108,11 @@ Grouped by sections and then sorted by priority (more or less).
 - [_] game port
 - [_] decals rendering
 
+### Scalability
+
+- [_] leverage entity cache to speed up targetname/target/classname lookups
+- [_] look into how to push handling more than 1k NPCs
+
 ### Documentation and Hackability™
 
 - [_] look into https://vitepress.dev/ and build a proper docs website on docs.quakeshack.dev or so
@@ -169,6 +174,14 @@ Grouped by sections and then sorted by priority (more or less).
 - https://mus1n.github.io/Quake-3-Skybox/ 360 to skybox
 
 ## Log
+
+### 2026-06-16
+
+- started to look into scalability
+  - optimized shadow projection culling out of range entities
+  - `aim()` game API optimized: only consider entities in range
+  - AI: stop visibility check after a certain range skipping too deep open air tracing
+  - started adding entity caches: leverage trees to speed up target/targetname/classname lookups (not finished yet)
 
 ### 2026-06-14
 

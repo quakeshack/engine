@@ -15,6 +15,7 @@ import Q from '../../shared/Q.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { ModelType } from '../common/Mod.ts';
 import { CorruptedResourceError, HostError } from '../common/Errors.ts';
+import { ServerEngineAPI } from '../common/GameAPIs.ts';
 
 // FIXME: we should improve this interface and make the actual BaseEntity implement it
 export interface BaseEntity extends SerializableEntity {
@@ -804,21 +805,19 @@ export class ServerEdict {
     const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
     const trace = SV.collision.move(start, Vector.origin, Vector.origin, end, 0, this);
 
-    if (trace.ent !== null) {
-      const hitEntity = trace.ent.entity;
+    const hitEntity = trace.ent?.entity || null;
 
-      if (hitEntity !== null && hitEntity.takedamage === Defs.damage.DAMAGE_AIM && (!Host.teamplay!.value || entity.team <= 0 || entity.team !== hitEntity.team)) {
-        return dir;
-      }
+    // direct hit on a valid target, return the original direction
+    if (hitEntity !== null && hitEntity.takedamage === Defs.damage.DAMAGE_AIM && (!Host.teamplay!.value || entity.team <= 0 || entity.team !== hitEntity.team)) {
+      return dir;
     }
 
     const bestdir = dir.copy();
     let bestdist = SV.aim!.value;
     let bestent: ServerEdict | null = null;
 
-    for (let i = 1; i < SV.server.num_edicts; i++) {
-      const check = SV.server.edicts[i] as ServerEdict;
-
+    // check if there’s a better target in the vicinity
+    for (const check of ServerEngineAPI.FindInRadius(trace.endpos, 128.0)) {
       if (check.isFree()) {
         continue;
       }

@@ -189,7 +189,7 @@ export default class ShadowMap {
     ShadowMap.range = new Cvar('r_shadow_range', (SHADOW_SIZE / 4).toFixed(0), Cvar.FLAG.ARCHIVE, 'Local shadow map coverage radius in world units');
     ShadowMap.darkness = new Cvar('r_shadow_darkness', '0.66', Cvar.FLAG.ARCHIVE, 'Minimum brightness in shadow (0=black, 1=no shadow)');
     ShadowMap.casterRadius = new Cvar('r_shadow_caster_radius', (SHADOW_SIZE / 4).toFixed(0), Cvar.FLAG.ARCHIVE, 'Maximum distance from the local caster cluster for entities to contribute to local shadows');
-    ShadowMap.casterFadeRange = new Cvar('r_shadow_caster_fade_range', '256', Cvar.FLAG.ARCHIVE, 'Fade range near r_shadow_caster_radius where caster shadows dither in smoothly');
+    ShadowMap.casterFadeRange = new Cvar('r_shadow_caster_fade_range', (SHADOW_SIZE / 4).toFixed(0), Cvar.FLAG.ARCHIVE, 'Fade range near r_shadow_caster_radius where caster shadows dither in smoothly');
     ShadowMap.sunYaw = new Cvar('r_shadow_fallback_yaw', '225', Cvar.FLAG.ARCHIVE, 'Fallback shadow direction yaw when no nearby light is found (degrees)');
     ShadowMap.sunPitch = new Cvar('r_shadow_fallback_pitch', '-90', Cvar.FLAG.ARCHIVE, 'Fallback shadow direction pitch when no nearby light is found (degrees, negative = down)');
 
@@ -463,6 +463,7 @@ export default class ShadowMap {
       }
 
       const casterFade = ShadowMap._computeLocalCasterFade(entity, cutoffOrigin, cutoffDistSq);
+
       if (casterFade <= 0.0) {
         continue;
       }
@@ -507,11 +508,6 @@ export default class ShadowMap {
     const noShadowEffects = effect.EF_MUZZLEFLASH | effect.EF_NOSHADOW
       | effect.EF_DIMLIGHT | effect.EF_FULLBRIGHT | effect.EF_BRIGHTLIGHT;
     if (entity.effects & noShadowEffects) {
-      return false;
-    }
-
-    const type = entity.model.type;
-    if (type !== ModelType.brush && type !== ModelType.alias && type !== ModelType.mesh) {
       return false;
     }
 
@@ -610,9 +606,7 @@ export default class ShadowMap {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
-    if (program.uCasterFade !== undefined) {
-      gl.uniform1f(program.uCasterFade, casterFade);
-    }
+    gl.uniform1f(program.uCasterFade!, casterFade);
 
     for (let i = 0; i < model.chains.length; i++) {
       const chain = model.chains[i];
@@ -641,9 +635,7 @@ export default class ShadowMap {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
-    if (program.uCasterFade !== undefined) {
-      gl.uniform1f(program.uCasterFade, casterFade);
-    }
+    gl.uniform1f(program.uCasterFade!, casterFade);
 
     const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(model, entity);
 
@@ -691,9 +683,7 @@ export default class ShadowMap {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
-    if (program.uCasterFade !== undefined) {
-      gl.uniform1f(program.uCasterFade, casterFade);
-    }
+    gl.uniform1f(program.uCasterFade!, casterFade);
 
     const indexType = model.indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
     gl.drawElements(gl.TRIANGLES, model.numTriangles * 3, indexType, 0);
