@@ -93,6 +93,9 @@ export default class ShadowMap {
   /** Maximum distance from the viewer for local shadow casters. */
   static casterRadius: Cvar | null = null;
 
+  /** Width of the local caster fade band near the cutoff radius (world units). */
+  static casterFadeRange: Cvar | null = null;
+
   /** Fallback shadow yaw when no nearby light is found (degrees). */
   static sunYaw: Cvar | null = null;
 
@@ -186,6 +189,7 @@ export default class ShadowMap {
     ShadowMap.range = new Cvar('r_shadow_range', (SHADOW_SIZE / 4).toFixed(0), Cvar.FLAG.ARCHIVE, 'Local shadow map coverage radius in world units');
     ShadowMap.darkness = new Cvar('r_shadow_darkness', '0.66', Cvar.FLAG.ARCHIVE, 'Minimum brightness in shadow (0=black, 1=no shadow)');
     ShadowMap.casterRadius = new Cvar('r_shadow_caster_radius', (SHADOW_SIZE / 4).toFixed(0), Cvar.FLAG.ARCHIVE, 'Maximum distance from the local caster cluster for entities to contribute to local shadows');
+    ShadowMap.casterFadeRange = new Cvar('r_shadow_caster_fade_range', '256', Cvar.FLAG.ARCHIVE, 'Fade range near r_shadow_caster_radius where caster shadows dither in smoothly');
     ShadowMap.sunYaw = new Cvar('r_shadow_fallback_yaw', '225', Cvar.FLAG.ARCHIVE, 'Fallback shadow direction yaw when no nearby light is found (degrees)');
     ShadowMap.sunPitch = new Cvar('r_shadow_fallback_pitch', '-90', Cvar.FLAG.ARCHIVE, 'Fallback shadow direction pitch when no nearby light is found (degrees, negative = down)');
 
@@ -454,20 +458,26 @@ export default class ShadowMap {
       return;
     }
     for (const entity of CL.state.clientEntities.getVisibleEntities()) {
-      if (!ShadowMap._isLocalShadowCasterEntity(entity, cutoffOrigin, cutoffDistSq)) {
+      if (!ShadowMap._isLocalShadowCasterEntity(entity)) {
         continue;
       }
+
+      const casterFade = ShadowMap._computeLocalCasterFade(entity, cutoffOrigin, cutoffDistSq);
+      if (casterFade <= 0.0) {
+        continue;
+      }
+
       const model = entity.model!;
       console.assert(model !== null, `Entity ${entity.num} has no model`);
       switch (model.type) {
         case ModelType.brush:
-          ShadowMap._renderBrushEntityShadow(model as BrushModel, entity, lightSpaceMatrix, brushProgram);
+          ShadowMap._renderBrushEntityShadow(model as BrushModel, entity, lightSpaceMatrix, brushProgram, casterFade);
           break;
         case ModelType.alias:
-          ShadowMap._renderAliasEntityShadow(model as AliasModel, entity, lightSpaceMatrix, aliasProgram);
+          ShadowMap._renderAliasEntityShadow(model as AliasModel, entity, lightSpaceMatrix, aliasProgram, casterFade);
           break;
         case ModelType.mesh:
-          ShadowMap._renderMeshEntityShadow(model as MeshModel, entity, lightSpaceMatrix, brushProgram);
+          ShadowMap._renderMeshEntityShadow(model as MeshModel, entity, lightSpaceMatrix, brushProgram, casterFade);
           break;
         default:
           break;
@@ -481,8 +491,6 @@ export default class ShadowMap {
    */
   static _isLocalShadowCasterEntity(
     entity: ClientEdict,
-    cutoffOrigin: Vector | Float64Array | number[] | null,
-    cutoffDistSq: number,
   ): boolean {
     if (entity.model === null || entity.alpha === 0.0 || entity.alpha < 1.0) {
       return false;
@@ -507,16 +515,82 @@ export default class ShadowMap {
       return false;
     }
 
-    if (cutoffOrigin !== null && Number.isFinite(cutoffDistSq)) {
-      const dx = entity.lerp.origin[0] - cutoffOrigin[0];
-      const dy = entity.lerp.origin[1] - cutoffOrigin[1];
-      const dz = entity.lerp.origin[2] - cutoffOrigin[2];
-      if ((dx * dx + dy * dy + dz * dz) > cutoffDistSq) {
-        return false;
-      }
+    return true;
+  }
+
+  /**
+   * Compute distance-based fade for local shadow casters near the cutoff radius.
+   * Returns 1 in the inner range and smoothly approaches 0 at the outer cutoff.
+   * @returns Fade factor in the [0, 1] range.
+   */
+  static _computeLocalCasterFade(
+    entity: ClientEdict,
+    cutoffOrigin: Vector | Float64Array | number[] | null,
+    cutoffDistSq: number,
+  ): number {
+    if (cutoffOrigin === null || !Number.isFinite(cutoffDistSq)) {
+      return 1.0;
     }
 
-    return true;
+    const distSq = ShadowMap._computeEntityDistanceSqToCutoff(entity, cutoffOrigin);
+    if (distSq >= cutoffDistSq) {
+      return 0.0;
+    }
+
+    const cutoffRadius = Math.sqrt(Math.max(0.0, cutoffDistSq));
+    const fadeRange = Math.max(0.0, ShadowMap.casterFadeRange?.value ?? 0.0);
+    if (fadeRange <= 0.0) {
+      return 1.0;
+    }
+
+    const innerRadius = Math.max(0.0, cutoffRadius - fadeRange);
+    const dist = Math.sqrt(distSq);
+    if (dist <= innerRadius) {
+      return 1.0;
+    }
+
+    const t = Math.min(1.0, Math.max(0.0, (dist - innerRadius) / fadeRange));
+    return 1.0 - (t * t * (3.0 - 2.0 * t));
+  }
+
+  /**
+   * Compute squared distance from the cutoff origin to the nearest point on an entity's
+   * world-space AABB, falling back to entity origin when model bounds are unavailable.
+   * @returns Squared distance in world units.
+   */
+  static _computeEntityDistanceSqToCutoff(
+    entity: ClientEdict,
+    cutoffOrigin: Vector | Float64Array | number[],
+  ): number {
+    const model = entity.model;
+    if (model === null) {
+      return Infinity;
+    }
+
+    const origin = entity.lerp.origin;
+    const modelMins = model.mins;
+    const modelMaxs = model.maxs;
+    if (modelMins === null || modelMaxs === null) {
+      const dx = origin[0] - cutoffOrigin[0];
+      const dy = origin[1] - cutoffOrigin[1];
+      const dz = origin[2] - cutoffOrigin[2];
+      return dx * dx + dy * dy + dz * dz;
+    }
+
+    const minsX = origin[0] + modelMins[0];
+    const minsY = origin[1] + modelMins[1];
+    const minsZ = origin[2] + modelMins[2];
+    const maxsX = origin[0] + modelMaxs[0];
+    const maxsY = origin[1] + modelMaxs[1];
+    const maxsZ = origin[2] + modelMaxs[2];
+
+    const nearestX = Math.max(minsX, Math.min(cutoffOrigin[0], maxsX));
+    const nearestY = Math.max(minsY, Math.min(cutoffOrigin[1], maxsY));
+    const nearestZ = Math.max(minsZ, Math.min(cutoffOrigin[2], maxsZ));
+    const dx = nearestX - cutoffOrigin[0];
+    const dy = nearestY - cutoffOrigin[1];
+    const dz = nearestZ - cutoffOrigin[2];
+    return dx * dx + dy * dy + dz * dz;
   }
 
   /** @private */
@@ -525,6 +599,7 @@ export default class ShadowMap {
     entity: ClientEdict,
     lightSpaceMatrix: Float64Array,
     programName: string,
+    casterFade: number,
   ): void {
     if (!model.opaqueVAO || !model.chains || model.chains.length === 0) {
       return;
@@ -535,6 +610,9 @@ export default class ShadowMap {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
+    if (program.uCasterFade !== undefined) {
+      gl.uniform1f(program.uCasterFade, casterFade);
+    }
 
     for (let i = 0; i < model.chains.length; i++) {
       const chain = model.chains[i];
@@ -553,6 +631,7 @@ export default class ShadowMap {
     entity: ClientEdict,
     lightSpaceMatrix: Float64Array,
     programName: string,
+    casterFade: number,
   ): void {
     if (!model.cmds) {
       return;
@@ -562,6 +641,9 @@ export default class ShadowMap {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
+    if (program.uCasterFade !== undefined) {
+      gl.uniform1f(program.uCasterFade, casterFade);
+    }
 
     const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(model, entity);
 
@@ -598,6 +680,7 @@ export default class ShadowMap {
     entity: ClientEdict,
     lightSpaceMatrix: Float64Array,
     programName: string,
+    casterFade: number,
   ): void {
     if (!model.vao) {
       return;
@@ -608,6 +691,9 @@ export default class ShadowMap {
     gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
     gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
+    if (program.uCasterFade !== undefined) {
+      gl.uniform1f(program.uCasterFade, casterFade);
+    }
 
     const indexType = model.indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
     gl.drawElements(gl.TRIANGLES, model.numTriangles * 3, indexType, 0);
@@ -746,7 +832,7 @@ export default class ShadowMap {
     let bestDistSq = Infinity;
 
     for (const entity of CL.state.clientEntities.getVisibleEntities()) {
-      if (!ShadowMap._isLocalShadowCasterEntity(entity, null, Infinity)) {
+      if (!ShadowMap._isLocalShadowCasterEntity(entity)) {
         continue;
       }
 
@@ -901,6 +987,8 @@ export default class ShadowMap {
       return;
     }
 
+    const pointCasterCutoffDistSq = ShadowMap.pointLightRadius * ShadowMap.pointLightRadius;
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.pointFBO);
     gl.viewport(0, 0, POINT_SHADOW_SIZE, POINT_SHADOW_SIZE);
     gl.enable(gl.DEPTH_TEST);
@@ -943,7 +1031,13 @@ export default class ShadowMap {
       }
 
       GL.UnbindVAO();
-      ShadowMap.renderEntitiesShadow(ShadowMap.pointFaceMatrix, 'shadow-point', 'shadow-alias-point');
+      ShadowMap.renderEntitiesShadow(
+        ShadowMap.pointFaceMatrix,
+        'shadow-point',
+        'shadow-alias-point',
+        ShadowMap.pointLightOrigin,
+        pointCasterCutoffDistSq,
+      );
 
       GL.BindVAO(worldmodel.opaqueVAO as WebGLVertexArrayObject);
       GL.UseProgram('shadow-point');

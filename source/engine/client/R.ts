@@ -1563,7 +1563,7 @@ class R {
           ShadowMap.lightSpaceMatrices[i],
           'shadow-brush',
           'shadow-alias',
-          ShadowMap._shadowFocusPoint,
+          R.refdef.vieworg,
           localCasterRadiusSq,
         );
         ShadowMap.end();
@@ -1881,25 +1881,25 @@ class R {
 
       // shadow depth pass for directional shadow mapping
       Promise.resolve(GL.CreateProgram('shadow-brush',
-        ['uOrigin', 'uAngles', 'uLightSpaceMatrix'],
+        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uCasterFade'],
         [['aPosition', gl.FLOAT, 3]],
         [])),
 
       // shadow depth pass for point light cube shadow mapping
       Promise.resolve(GL.CreateProgram('shadow-point',
-        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uLightPos', 'uLightRadius', 'uNormalBias'],
+        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uLightPos', 'uLightRadius', 'uNormalBias', 'uCasterFade'],
         [['aPosition', gl.FLOAT, 3], ['aNormal', gl.FLOAT, 3]],
         [])),
 
       // shadow depth pass for alias models (frame interpolation)
       Promise.resolve(GL.CreateProgram('shadow-alias',
-        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation'],
+        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation', 'uCasterFade'],
         [['aPositionA', gl.FLOAT, 3], ['aPositionB', gl.FLOAT, 3]],
         [])),
 
       // point shadow depth pass for alias models (frame interpolation)
       Promise.resolve(GL.CreateProgram('shadow-alias-point',
-        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation', 'uLightPos', 'uLightRadius', 'uNormalBias'],
+        ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uInterpolation', 'uLightPos', 'uLightRadius', 'uNormalBias', 'uCasterFade'],
         [['aPositionA', gl.FLOAT, 3], ['aPositionB', gl.FLOAT, 3], ['aNormalA', gl.FLOAT, 3], ['aNormalB', gl.FLOAT, 3]],
         [])),
     ]);
