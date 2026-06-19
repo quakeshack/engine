@@ -501,13 +501,13 @@ export default class ShadowMap {
       return false;
     }
 
-    if (entity.model.name.startsWith('*')) {
+    if (entity.model.name.startsWith('*')) { // TODO: make it opt-in
       return false;
     }
 
     const noShadowEffects = effect.EF_MUZZLEFLASH | effect.EF_NOSHADOW
       | effect.EF_DIMLIGHT | effect.EF_FULLBRIGHT | effect.EF_BRIGHTLIGHT;
-    if (entity.effects & noShadowEffects) {
+    if ((entity.effects & noShadowEffects) !== 0) {
       return false;
     }
 

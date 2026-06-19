@@ -2,7 +2,7 @@ import { HostError } from '../../common/Errors.ts';
 import type { ServerEdict } from '../Edict.ts';
 import type { CollisionTrace } from './ServerCollisionSupport.ts';
 
-import Vector from '../../../shared/Vector.ts';
+import Vector, { Quaternion } from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import Q from '../../../shared/Q.ts';
 import { eventBus, getCommonRegistry } from '../../registry.ts';
@@ -376,7 +376,9 @@ export class ServerPhysics {
     const pushbasis = pushangles.isOrigin() ? null : pushangles.toRotationMatrix();
 
     pusherEntity.origin = pusherEntity.origin.copy().add(move);
-    pusherEntity.angles = pusherEntity.angles.copy().add(rotation);
+    pusherEntity.angles = Vector.fromQuaternion(
+      Quaternion.fromVector(pusherEntity.angles).multiply(Quaternion.fromVector(rotation)),
+    );
     const finalbasis = pusherEntity.angles.isOrigin() ? null : pusherEntity.angles.toRotationMatrix();
     pusherEntity.ltime! += movetime;
     SV.area.linkEdict(pusher);
@@ -430,7 +432,9 @@ export class ServerPhysics {
 
         finalMove = newPos.subtract(checkEntity.origin);
 
-        checkEntity.angles = checkEntity.angles.copy().add(rotation);
+        checkEntity.angles = Vector.fromQuaternion(
+          Quaternion.fromVector(checkEntity.angles).multiply(Quaternion.fromVector(rotation)),
+        );
       }
 
       this.pushEntity(check, finalMove);
@@ -676,7 +680,13 @@ export class ServerPhysics {
       this.addGravity(ent);
     }
 
-    entity.angles = entity.angles.add(entity.avelocity.copy().multiply(Host.frametime));
+    if (!entity.avelocity.isOrigin()) {
+      const angularStep = entity.avelocity.copy().multiply(Host.frametime);
+      entity.angles = Vector.fromQuaternion(
+        Quaternion.fromVector(entity.angles).multiply(Quaternion.fromVector(angularStep)),
+      );
+    }
+
     const trace = this.pushEntity(ent, entity.velocity.copy().multiply(Host.frametime));
 
     // CR: If entity started and stayed entirely in solid (e.g. spawned inside a wall),

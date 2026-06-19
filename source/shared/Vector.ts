@@ -35,21 +35,21 @@ export class DirectionalVectors {
  * Quaternion.
  */
 export class Quaternion extends Array<number> {
-  constructor(x = 0.0, y = 0.0, z = 0.0, w = 0.0) {
+  constructor(w = 1.0, x = 0.0, y = 0.0, z = 0.0) {
     super(4);
-    console.assert(typeof x === 'number' && typeof y === 'number' && typeof z === 'number' && typeof w === 'number', 'not a number');
-    console.assert(!Number.isNaN(x) && !Number.isNaN(y) && !Number.isNaN(z) && !Number.isNaN(w), 'NaN component');
-    this[0] = x;
-    this[1] = y;
-    this[2] = z;
-    this[3] = w;
+    console.assert(typeof w === 'number' && typeof x === 'number' && typeof y === 'number' && typeof z === 'number', 'not a number');
+    console.assert(!Number.isNaN(w) && !Number.isNaN(x) && !Number.isNaN(y) && !Number.isNaN(z), 'NaN component');
+    this[0] = w;
+    this[1] = x;
+    this[2] = y;
+    this[3] = z;
   }
 
   /**
-   * Creates Quaternion from Vector.
+   * Creates Quaternion from Euler angles in degrees.
    * @param vector
    */
-  fromVector(vector: Vector): Quaternion {
+  static fromVector(vector: Vector): Quaternion {
     return vector.toQuaternion();
   }
 
@@ -70,6 +70,119 @@ export class Quaternion extends Array<number> {
    */
   equalsTo(x: number, y: number, z: number, w: number): boolean {
     return this[0] === x && this[1] === y && this[2] === z && this[3] === w;
+  }
+
+  /**
+   * Normalize this quaternion in place. Returns the original length.
+   */
+  normalize(): number {
+    const length = Math.hypot(this[0], this[1], this[2], this[3]);
+
+    if (length === 0.0) {
+      this[0] = 1.0;
+      this[1] = 0.0;
+      this[2] = 0.0;
+      this[3] = 0.0;
+      return 0.0;
+    }
+
+    const invLength = 1.0 / length;
+    this[0] *= invLength;
+    this[1] *= invLength;
+    this[2] *= invLength;
+    this[3] *= invLength;
+    return length;
+  }
+
+  /**
+   * Spherical interpolation between two quaternions.
+   * @param from
+   * @param to
+   * @param t interpolation factor in [0, 1]
+   */
+  static slerp(from: Quaternion, to: Quaternion, t: number): Quaternion {
+    const q0 = new Quaternion(from[0], from[1], from[2], from[3]);
+    const q1 = new Quaternion(to[0], to[1], to[2], to[3]);
+    q0.normalize();
+    q1.normalize();
+
+    let dot = q0[0] * q1[0] + q0[1] * q1[1] + q0[2] * q1[2] + q0[3] * q1[3];
+
+    if (dot < 0.0) {
+      q1[0] = -q1[0];
+      q1[1] = -q1[1];
+      q1[2] = -q1[2];
+      q1[3] = -q1[3];
+      dot = -dot;
+    }
+
+    if (dot > 0.9995) {
+      q0[0] += (q1[0] - q0[0]) * t;
+      q0[1] += (q1[1] - q0[1]) * t;
+      q0[2] += (q1[2] - q0[2]) * t;
+      q0[3] += (q1[3] - q0[3]) * t;
+      q0.normalize();
+      return q0;
+    }
+
+    const clampedDot = Math.max(-1.0, Math.min(1.0, dot));
+    const theta0 = Math.acos(clampedDot);
+    const theta = theta0 * t;
+    const sinTheta = Math.sin(theta);
+    const sinTheta0 = Math.sin(theta0);
+    const s0 = Math.cos(theta) - clampedDot * sinTheta / sinTheta0;
+    const s1 = sinTheta / sinTheta0;
+
+    return new Quaternion(
+      q0[0] * s0 + q1[0] * s1,
+      q0[1] * s0 + q1[1] * s1,
+      q0[2] * s0 + q1[2] * s1,
+      q0[3] * s0 + q1[3] * s1,
+    );
+  }
+
+  /**
+   * Spherical interpolation between two Euler angle vectors, keeping wrapped angles stable.
+   * @param previous
+   * @param current
+   * @param t interpolation factor in [0, 1]
+   * @param out optional destination vector for the interpolated angles
+   * @returns interpolated angles degrees, wrapped to [0, 360)
+   */
+  static slerpAngles(previous: Vector, current: Vector, t: number, out: Vector = new Vector()): Vector {
+    const interpolation = Math.min(1.0, Math.max(0.0, t));
+    out.setQuaternion(Quaternion.slerp(Quaternion.fromVector(previous), Quaternion.fromVector(current), interpolation));
+    for (let index = 0; index < 3; index++) {
+      while (out[index] - previous[index] > 180.0) {
+        out[index] -= 360.0;
+      }
+      while (out[index] - previous[index] < -180.0) {
+        out[index] += 360.0;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Hamilton product: this = this * other (mutates in place).
+   * Equivalent to applying `other`'s rotation before `this`'s rotation.
+   * @param other
+   */
+  multiply(other: Quaternion): this {
+    const [aw, ax, ay, az] = this;
+    const [bw, bx, by, bz] = other;
+    this[0] = aw * bw - ax * bx - ay * by - az * bz;
+    this[1] = aw * bx + ax * bw + ay * bz - az * by;
+    this[2] = aw * by - ax * bz + ay * bw + az * bx;
+    this[3] = aw * bz + ax * by - ay * bx + az * bw;
+    return this;
+  }
+
+  /**
+   * Create a copy of this quaternion.
+   */
+  copy(): Quaternion {
+    return new Quaternion(this[0], this[1], this[2], this[3]);
   }
 
   /**
@@ -594,13 +707,14 @@ export default class Vector extends Float32Array {
    */
   setQuaternion(quaternion: Quaternion): this {
     const [w, x, y, z] = quaternion;
-    const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
-    const pitch = Math.asin(2 * (w * y - z * x));
-    const roll = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+    const yaw = Math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
+    const pitch = Math.asin(Math.max(-1.0, Math.min(1.0, 2.0 * (w * y - z * x))));
+    const roll = Math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y));
 
-    this[0] = roll;
-    this[1] = pitch;
-    this[2] = yaw;
+    // Engine angles are [pitch, yaw, roll] in degrees.
+    this[0] = pitch * 180.0 / Math.PI;
+    this[1] = yaw * 180.0 / Math.PI;
+    this[2] = roll * 180.0 / Math.PI;
     return this;
   }
 
@@ -608,10 +722,12 @@ export default class Vector extends Float32Array {
    * Convert these Euler angles (this) into a quaternion [w, x, y, z].
    */
   toQuaternion(): Quaternion {
-    const [roll, pitch, yaw] = this;
-    const halfRoll = roll / 2;
-    const halfPitch = pitch / 2;
-    const halfYaw = yaw / 2;
+    const pitch = this[0] * Math.PI / 180.0;
+    const yaw = this[1] * Math.PI / 180.0;
+    const roll = this[2] * Math.PI / 180.0;
+    const halfRoll = roll * 0.5;
+    const halfPitch = pitch * 0.5;
+    const halfYaw = yaw * 0.5;
     const sinRoll = Math.sin(halfRoll);
     const cosRoll = Math.cos(halfRoll);
     const sinPitch = Math.sin(halfPitch);

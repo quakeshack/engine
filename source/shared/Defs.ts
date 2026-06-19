@@ -107,9 +107,13 @@ export enum moveTypes { // TODO: unfortunate name, need to rename this to avoid 
  */
 export enum effect {
   EF_NONE = 0,
+  /** will emit particles looking like a bunch of fireflies circling the entity */
   EF_BRIGHTFIELD = 1,
+  /** emits a single muzzleflash, it will automatically be removed in the next frame */
   EF_MUZZLEFLASH = 2,
+  /** emits a bright flickering light (400 units) */
   EF_BRIGHTLIGHT = 4,
+  /** emits a dim flickering light (200 units) */
   EF_DIMLIGHT = 8,
   /** makes sure that the model is always rendered fullbright */
   EF_FULLBRIGHT = 16,

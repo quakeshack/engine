@@ -4,7 +4,7 @@ import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import type { Pmove } from '../common/Pmove.ts';
 
-import Vector from '../../shared/Vector.ts';
+import Vector, { Quaternion } from '../../shared/Vector.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import * as Def from '../common/Def.ts';
 import { content, effect, solid } from '../../shared/Defs.ts';
@@ -216,19 +216,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
           return that.angles;
         }
         const f = Math.min(1, Math.max(0, (time - that.anglesTime) / (that.nextthink - that.anglesTime)));
-        const a0 = that.angles;
-        const a1 = that.anglesPrevious;
-        const d = a0.copy().subtract(a1);
-        for (let i = 0; i < 3; i++) { // avoid snapping around
-          if (d[i] > 180) { d[i] -= 360; }
-          if (d[i] < -180) { d[i] += 360; }
-        }
-        const v = new Vector(
-          a1[0] + d[0] * f,
-          a1[1] + d[1] * f,
-          a1[2] + d[2] * f,
-        );
-        return v;
+        return Quaternion.slerpAngles(that.anglesPrevious, that.angles, f, new Vector());
       },
     };
 
@@ -243,6 +231,15 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   equals(other: { num: number } | null): boolean {
     // CR: playing with fire here
     return other !== null && (this === other || (this.num !== -1 && this.num === other.num));
+  }
+
+  /**
+   * @returns the center point of the entity's bounding box.
+   */
+  get centerPoint(): Vector {
+    const center = this.origin.copy();
+    center.add(this.mins).add(this.maxs).multiply(0.5);
+    return center;
   }
 
   freeEdict(): void {

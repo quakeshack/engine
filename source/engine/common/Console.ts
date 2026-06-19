@@ -85,9 +85,13 @@ export default class Con {
     Con.notifytime = new Cvar('con_notifytime', '3', Cvar.FLAG.ARCHIVE, 'How long to display console messages.');
 
     if (!registry.isDedicatedServer) {
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       Cmd.AddCommand('toggleconsole', Con.ToggleConsole_f);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       Cmd.AddCommand('messagemode', Con.MessageMode_f);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       Cmd.AddCommand('messagemode2', Con.MessageMode2_f);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       Cmd.AddCommand('clear', Con.Clear_f);
     }
   }

@@ -5,6 +5,10 @@ import COM from '../../source/engine/common/Com.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
 
+/**
+ *
+ * @param searchpaths
+ */
 function cloneSearchPaths(searchpaths) {
   if (searchpaths === null) {
     return null;
@@ -16,6 +20,10 @@ function cloneSearchPaths(searchpaths) {
   }));
 }
 
+/**
+ *
+ * @param overrides
+ */
 function createBuildConfig(overrides = {}) {
   return {
     mode: 'production',
@@ -27,6 +35,10 @@ function createBuildConfig(overrides = {}) {
   };
 }
 
+/**
+ *
+ * @param callback
+ */
 async function withFilesystemState(callback) {
   const savedState = {
     argv: [...COM.argv],
@@ -78,6 +90,10 @@ void describe('COM', () => {
     void test('does not treat directory slashes as extensions', () => {
       assert.equal(COM.DefaultExtension('gfx/env/sky', '.tga'), 'gfx/env/sky.tga');
     });
+
+    void test('ignores dots that appear only in parent directory names', () => {
+      assert.equal(COM.DefaultExtension('maps.v1/e1m1', '.bsp'), 'maps.v1/e1m1.bsp');
+    });
   });
 
   void describe('Parse', () => {
@@ -107,6 +123,18 @@ void describe('COM', () => {
     void test('skips leading whitespace', () => {
       const result = COM.Parse('   spaced');
       assert.equal(result.token, 'spaced');
+    });
+
+    void test('skips multiple leading comments before reading token', () => {
+      const result = COM.Parse('// first\n// second\ntoken value');
+      assert.equal(result.token, 'token');
+      assert.equal(result.data?.trim(), 'value');
+    });
+
+    void test('returns remainder for unterminated quoted string', () => {
+      const result = COM.Parse('"unterminated');
+      assert.equal(result.token, 'unterminated');
+      assert.equal(result.data, '');
     });
   });
 

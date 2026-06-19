@@ -69,16 +69,14 @@ export default class COM {
    * @returns the path with extension appended when no extension was found
    */
   static DefaultExtension(path: string, extension: string): string {
-    for (let i = path.length - 1; i >= 0; i--) {
-      const src = path.charCodeAt(i);
-      if (src === 47) { // '/'
-        break;
-      }
-      if (src === 46) { // '.'
-        return path;
-      }
+    const lastSlashIndex = path.lastIndexOf('/');
+    const lastDotIndex = path.lastIndexOf('.');
+
+    if (lastDotIndex > lastSlashIndex) {
+      return path;
     }
-    return path + extension;
+
+    return `${path}${extension}`;
   }
 
   /**
@@ -90,66 +88,71 @@ export default class COM {
    * @returns parsed token and remaining data
    */
   static Parse(data: string): ParseResult {
-    let token = '';
-    let i = 0;
-    let c = 0;
-    if (data.length === 0) {
-      return { token, data: null };
+    // ASCII codes used by Quake's token parser.
+    const CHAR_SPACE = 32; // ' '
+    const CHAR_QUOTE = 34; // '"'
+    const CHAR_LINE_FEED = 10; // '\n'
+    const CHAR_SLASH = 47; // '/'
+
+    const length = data.length;
+
+    if (length === 0) {
+      return { token: '', data: null };
     }
 
-    // skip whitespace and // comments
-    let skipwhite = true;
+    let index = 0;
+
+    // Skip whitespace and // comments.
     while (true) {
-      if (!skipwhite) {
+      while (index < length && data.charCodeAt(index) <= CHAR_SPACE) {
+        index++;
+      }
+
+      if (index >= length) {
+        return { token: '', data: null };
+      }
+
+      if (data.charCodeAt(index) !== CHAR_SLASH || data.charCodeAt(index + 1) !== CHAR_SLASH) {
         break;
       }
-      skipwhite = false;
-      while (true) {
-        if (i >= data.length) {
-          return { token, data: null };
-        }
-        c = data.charCodeAt(i);
-        if (c > 32) {
-          break;
-        }
-        i++;
-      }
-      // skip // comments
-      if (c === 47 && data.charCodeAt(i + 1) === 47) { // '//'
-        while (true) {
-          if (i >= data.length || data.charCodeAt(i) === 10) { // '\n'
-            break;
-          }
-          i++;
-        }
-        skipwhite = true;
+
+      index += 2;
+      while (index < length && data.charCodeAt(index) !== CHAR_LINE_FEED) {
+        index++;
       }
     }
 
-    // handle quoted strings
-    if (c === 34) { // '"'
-      i++;
-      while (true) {
-        c = data.charCodeAt(i);
-        i++;
-        if (i >= data.length || c === 34) { // '"'
-          return { token, data: data.substring(i) };
+    // Handle quoted strings.
+    if (data.charCodeAt(index) === CHAR_QUOTE) {
+      const tokenStart = index + 1;
+      let cursor = tokenStart;
+
+      while (cursor < length) {
+        if (data.charCodeAt(cursor) === CHAR_QUOTE) {
+          return {
+            token: data.substring(tokenStart, cursor),
+            data: data.substring(cursor + 1),
+          };
         }
-        token += String.fromCharCode(c);
+        cursor++;
       }
+
+      return {
+        token: data.substring(tokenStart),
+        data: '',
+      };
     }
 
-    // regular token
-    while (true) {
-      if (i >= data.length || c <= 32) { // whitespace
-        break;
-      }
-      token += String.fromCharCode(c);
-      i++;
-      c = data.charCodeAt(i);
+    // Parse an unquoted token.
+    let tokenEnd = index;
+    while (tokenEnd < length && data.charCodeAt(tokenEnd) > CHAR_SPACE) {
+      tokenEnd++;
     }
 
-    return { token, data: data.substring(i) };
+    return {
+      token: data.substring(index, tokenEnd),
+      data: data.substring(tokenEnd),
+    };
   }
 
   /**
@@ -178,7 +181,7 @@ export default class COM {
     return null;
   }
 
-  static async CheckRegistered(): Promise<boolean> {
+  static async CheckRegistered(): Promise<boolean> { // TODO: consider patching it out or feature flag it
     const filename = 'gfx/pop.lmp';
     const h = await this.LoadFile(filename);
 
@@ -220,9 +223,10 @@ export default class COM {
     this.abortController = new AbortController();
 
     this.registered = new Cvar('registered', '0', Cvar.FLAG.READONLY, 'Set to 1, when not playing shareware.');
-    // cmdline starts as a string from InitArgv, then becomes a Cvar here
+    // FIXME: cmdline starts as a string from InitArgv, then becomes a Cvar here
     this.cmdline = new Cvar('cmdline', this.cmdline as string, Cvar.FLAG.READONLY, 'Command line used to start the game.');
 
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     Cmd.AddCommand('path', this.Path_f);
 
     await this.InitFilesystem();

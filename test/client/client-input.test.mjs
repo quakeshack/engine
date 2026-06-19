@@ -4,6 +4,10 @@ import { describe, test } from 'node:test';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import ClientInput, { kbutton, kbuttons } from '../../source/engine/client/ClientInput.ts';
 
+/**
+ *
+ * @param callback
+ */
 function withMockClientInputRegistry(callback) {
   const previousValues = {
     CL: registry.CL,

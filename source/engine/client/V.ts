@@ -1,11 +1,11 @@
 type ColorShift = [number, number, number, number];
 
-import Vector from '../../shared/Vector.ts';
 import { content } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import * as Def from '../common/Def.ts';
 import Q from '../../shared/Q.ts';
+import Vector from '../../shared/Vector.ts';
 import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 import Chase from './Chase.ts';
 
@@ -30,6 +30,13 @@ export default class V {
   static dmg_roll = 0.0;
   static dmg_pitch = 0.0;
   static oldz = 0.0;
+  static #smoothedViewmodelBob = 0.0;
+  static #smoothedViewmodelBobInitialized = false;
+  static #previousViewPitch = 0.0;
+  static #previousViewYaw = 0.0;
+  static #viewmodelLookBobInitialized = false;
+  static #viewmodelLookBobRight = 0.0;
+  static #viewmodelLookBobUp = 0.0;
 
   static cshift_empty: ColorShift = [130.0, 80.0, 50.0, 0.0];
   static cshift_water: ColorShift = [130.0, 80.0, 50.0, 128.0];
@@ -101,6 +108,31 @@ export default class V {
       bob = -7.0;
     }
     return bob;
+  }
+
+  static SmoothValue(current: number, target: number, sharpness: number, deltaTime: number): number {
+    const smoothing = 1.0 - Math.exp(-Math.max(0.0, sharpness) * Math.max(0.0, deltaTime));
+    return current + (target - current) * smoothing;
+  }
+
+  /**
+   * @param {number} from previous yaw angle in degrees
+   * @param {number} to current yaw angle in degrees
+   * @returns {number} shortest wrapped delta in [-180, 180).
+   */
+  static ShortestAngleDelta(from: number, to: number): number {
+    return ((to - from + 540.0) % 360.0) - 180.0;
+  }
+
+  /**
+   * @param {number} pitchDelta per-frame pitch delta in degrees
+   * @param {number} yawDelta per-frame yaw delta in degrees
+   * @returns {[number, number]} right/up look bob targets for the viewmodel.
+   */
+  static ComputeViewmodelLookBobTargets(pitchDelta: number, yawDelta: number): [number, number] {
+    const rightTarget = Math.max(-1.8, Math.min(1.8, -yawDelta * 0.07));
+    const upTarget = Math.max(-1.2, Math.min(1.2, pitchDelta * 0.05));
+    return [rightTarget, upTarget];
   }
 
   static StartPitchDrift(): void {
@@ -348,9 +380,32 @@ export default class V {
     const ent = CL.state.playerentity!;
     console.assert(ent !== null, 'Player entity is required for view calculations');
 
-    ent.angles[1] = CL.state.viewangles[1];
-    ent.angles[0] = -CL.state.viewangles[0];
     const bob = V.CalcBob();
+    if (!V.#smoothedViewmodelBobInitialized) {
+      V.#smoothedViewmodelBob = bob;
+      V.#smoothedViewmodelBobInitialized = true;
+    } else {
+      V.#smoothedViewmodelBob = V.SmoothValue(V.#smoothedViewmodelBob, bob, 72.0, Host.frametime);
+    }
+    const viewmodelBob = V.#smoothedViewmodelBob;
+
+    const currentPitch = CL.state.viewangles[0];
+    const currentYaw = CL.state.viewangles[1];
+    if (!V.#viewmodelLookBobInitialized) {
+      V.#previousViewPitch = currentPitch;
+      V.#previousViewYaw = currentYaw;
+      V.#viewmodelLookBobRight = 0.0;
+      V.#viewmodelLookBobUp = 0.0;
+      V.#viewmodelLookBobInitialized = true;
+    } else {
+      const pitchDelta = currentPitch - V.#previousViewPitch;
+      const yawDelta = V.ShortestAngleDelta(V.#previousViewYaw, currentYaw);
+      const [lookBobRightTarget, lookBobUpTarget] = V.ComputeViewmodelLookBobTargets(pitchDelta, yawDelta);
+      V.#viewmodelLookBobRight = V.SmoothValue(V.#viewmodelLookBobRight, lookBobRightTarget, 18.0, Host.frametime);
+      V.#viewmodelLookBobUp = V.SmoothValue(V.#viewmodelLookBobUp, lookBobUpTarget, 18.0, Host.frametime);
+      V.#previousViewPitch = currentPitch;
+      V.#previousViewYaw = currentYaw;
+    }
 
     R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]) + 0.03125;
     R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]) + 0.03125;
@@ -402,9 +457,15 @@ export default class V {
     view.angles[0] = -R.refdef.viewangles[0] - ipitch;
     view.angles[1] = R.refdef.viewangles[1] - iyaw;
     view.angles[2] = CL.state.viewangles[2] - iroll;
-    view.origin[0] = finiteOrZero(ent.origin[0]) + forward[0] * bob * 0.4;
-    view.origin[1] = finiteOrZero(ent.origin[1]) + forward[1] * bob * 0.4;
-    view.origin[2] = finiteOrZero(ent.origin[2]) + CL.state.viewheight + forward[2] * bob * 0.4 + bob;
+    view.origin[0] = finiteOrZero(ent.origin[0]) + forward[0] * viewmodelBob * 0.4;
+    view.origin[1] = finiteOrZero(ent.origin[1]) + forward[1] * viewmodelBob * 0.4;
+    view.origin[2] = finiteOrZero(ent.origin[2]) + CL.state.viewheight + forward[2] * viewmodelBob * 0.4 + viewmodelBob;
+    view.origin[0] += right[0] * V.#viewmodelLookBobRight + up[0] * V.#viewmodelLookBobUp;
+    view.origin[1] += right[1] * V.#viewmodelLookBobRight + up[1] * V.#viewmodelLookBobUp;
+    view.origin[2] += right[2] * V.#viewmodelLookBobRight + up[2] * V.#viewmodelLookBobUp;
+    view.angles[1] += V.#viewmodelLookBobRight * 0.45;
+    view.angles[0] += V.#viewmodelLookBobUp * 0.35;
+    view.angles[2] -= V.#viewmodelLookBobRight * 0.25;
     switch (SCR.viewsize.value) {
       case 110:
       case 90:
@@ -499,8 +560,11 @@ export default class V {
   }
 
   static Init(): void {
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     Cmd.AddCommand('v_cshift', V.cshift_f);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     Cmd.AddCommand('bf', V.BonusFlash_f);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     Cmd.AddCommand('centerview', V.StartPitchDrift);
     V.centermove = new Cvar('v_centermove', '0.15');
     V.centerspeed = new Cvar('v_centerspeed', '500');

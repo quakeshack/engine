@@ -175,6 +175,11 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-19
+
+- finally started to make use of Quaternions
+- small code improvements here and there
+
 ### 2026-06-16
 
 - started to look into scalability
