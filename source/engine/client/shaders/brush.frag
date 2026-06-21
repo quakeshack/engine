@@ -182,8 +182,7 @@ void main(void) {
   // Point shadow darkens the lightmap (with a darkness floor so it never
   // goes pure black) and fully occludes the dynamic light contribution.
   vec3 surfaceDlight = texture(tDlight, vTexCoord.zw).rgb * pointShadow;
-  vec3 staticLight = lightmap * shadow * mix(uShadowDarkness, 1.0, pointShadow)
-                   + surfaceDlight;
+  vec3 staticLight = lightmap * shadow * mix(uShadowDarkness, 1.0, pointShadow) + surfaceDlight;
 
   float bumpLightDot = 1.0;
   float specFactor = 0.0;

@@ -2507,8 +2507,8 @@ class R {
     gl.enable(gl.BLEND);
 
     const frametime = Host.frametime;
-    console.assert(SV.gravity !== null, 'server gravity cvar required');
-    const grav = frametime * SV.gravity!.value * 0.05;
+    const gravity = +CL.cls.serverInfo.sv_gravity || 800;
+    const grav = frametime * gravity * 0.05;
     const dvel = frametime * 4.0;
     let scale;
 
