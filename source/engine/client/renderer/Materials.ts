@@ -89,6 +89,13 @@ export class BaseMaterial {
   /** Average color of the texture as [r, g, b] in 0-255 range. */
   averageColor: [number, number, number] = [128, 128, 128];
 
+  /**
+   * Fog tint used by the underwater fog effect when the camera is inside this
+   * turbulent material. RGB in 0-1 range. Null = fall back to the content-type
+   * default color. Populated from the texture's average color once available.
+   */
+  fogTint: [number, number, number] | null = null;
+
   constructor(name: string, width: number, height: number) {
     this.name = name;
     this.width = width;

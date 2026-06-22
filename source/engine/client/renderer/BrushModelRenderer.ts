@@ -10,6 +10,7 @@ import type { ClientEdict } from '../ClientEntities.ts';
 import Mesh from './Mesh.ts';
 import PostProcess from './PostProcess.ts';
 import * as Def from '../../common/Def.ts';
+import { content } from '../../../shared/Defs.ts';
 
 let { CL, Host, R } = getClientRegistry();
 
@@ -755,6 +756,20 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
 
+    const cameraInside = R.viewleaf !== null && R.viewleaf.contents <= content.CONTENT_WATER ? 1.0 : 0.0;
+    gl.uniform1f(program.uCameraInside!, cameraInside);
+
+    if (PostProcess.active) {
+      PostProcess.beginDepthSampling();
+      GL.Bind(program.tDepth!, PostProcess.depthTexture);
+      gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
+      // Per-surface alpha decides whether depth fog is active.
+      gl.uniform1f(program.uWaterFogDensity!, 0.0);
+    } else {
+      GL.Bind(program.tDepth!, R.null_texture);
+      gl.uniform1f(program.uWaterFogDensity!, 0.0);
+    }
+
     this._setupBrushShaderCommon(program, clmodel, true);
     GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
@@ -787,8 +802,41 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.disable(gl.BLEND);
     gl.depthMask(true);
     GL.UnbindVAO();
+    if (PostProcess.active) {
+      PostProcess.endDepthSampling();
+    }
     this._worldTurbulentProgram = null;
     this._worldTurbulentModel = null;
+  }
+
+  /**
+   * Render turbulent surfaces into the boundary depth texture only.
+   * Called as a pre-pass (before the main scene render) when the camera is
+   * submerged in a liquid. The captured depths tell the UnderwaterFogEffect
+   * where the water surface is per pixel, so fog stops at the boundary.
+   */
+  renderWorldTurbulentsBoundaryDepth(clmodel: BrushModel): void {
+    const program = GL.UseProgram('turbulent-depth')!;
+    GL.BindVAO(clmodel.turbulentVAO!);
+    R.c_brush_vbos++;
+
+    // World model is always at the origin with identity rotation.
+    gl.uniform3f(program.uOrigin!, 0.0, 0.0, 0.0);
+    gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
+    gl.uniform1f(program.uTime!, Host.realtime);
+
+    for (const leaf of clmodel.leafs) {
+      if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+        continue;
+      }
+      for (let j = leaf.waterchain; j < leaf.cmds.length; j++) {
+        const cmd = leaf.cmds[j];
+        gl.drawArrays(gl.TRIANGLES, cmd[1], cmd[2]);
+        R.c_brush_verts += cmd[2];
+      }
+    }
+
+    GL.UnbindVAO();
   }
 
   // ─── Fog volume rendering ─────────────────────────────────────────
@@ -1024,6 +1072,10 @@ export class BrushModelRenderer extends ModelRenderer {
     const alpha = this._getTurbulentMaterialAlpha(material, worldspawn);
     this._setTurbulentSurfaceState(alpha);
     gl.uniform1f(program.uAlpha!, alpha);
+    // Only apply depth fog to translucent liquids when the map has opted in via
+    // _qs_waterfog. Opaque turbulents rely on PVS and should not get absorption.
+    const waterfogEnabled = CL.state.worldmodel?.worldspawnInfo?.['_qs_waterfog'] === '1';
+    gl.uniform1f(program.uWaterFogDensity!, PostProcess.active && alpha < 1.0 && waterfogEnabled ? 0.01 : 0.0);
 
     R.c_brush_verts += vertexCount;
     R.c_brush_tris += vertexCount / 3;

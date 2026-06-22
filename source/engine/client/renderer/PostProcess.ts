@@ -48,6 +48,9 @@ export default class PostProcess {
   /** Depth renderbuffer used temporarily during depth sampling. */
   static depthRenderbuffer: WebGLRenderbuffer | null = null;
 
+  /** Scratch FBO used to blit scene depth into the temporary depth renderbuffer. */
+  static depthSamplingFBO: WebGLFramebuffer | null = null;
+
   /** Current scene FBO width in pixels. */
   static width = 0;
 
@@ -85,6 +88,18 @@ export default class PostProcess {
 
   /** Whether MSAA has been resolved to the texture FBO this frame. */
   static msaaResolved = false;
+
+  // ─── Turbulent boundary depth FBO (underwater fog) ───────────────
+
+  /**
+   * Depth-only FBO for capturing turbulent surface depths before the main
+   * scene render. Used by the underwater fog effect to determine where the
+   * water surface boundary is per-pixel.
+   */
+  static turbulentBoundaryFBO: WebGLFramebuffer | null = null;
+
+  /** Depth texture attachment for the turbulent boundary FBO. */
+  static turbulentBoundaryDepthTexture: WebGLTexture | null = null;
 
   // ─── Ping-pong FBOs for effect chaining ──────────────────────────
 
@@ -193,6 +208,13 @@ export default class PostProcess {
 
       // Depth renderbuffer (temporary during depth sampling)
       PostProcess.depthRenderbuffer = gl.createRenderbuffer();
+      // Some drivers require a renderbuffer to be bound at least once before
+      // attaching it with framebufferRenderbuffer.
+      gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+
+      // Scratch FBO for depth blits into the temporary depth renderbuffer.
+      PostProcess.depthSamplingFBO = gl.createFramebuffer();
 
       // Assemble scene FBO
       gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
@@ -201,7 +223,29 @@ export default class PostProcess {
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, PostProcess.depthTexture, 0);
       gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+      // Configure scratch depth-sampling FBO: color attachment keeps it complete,
+      // depth renderbuffer receives copied scene depth for subsequent depth tests.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.depthSamplingFBO);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.colorTexture, 0);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
+
+    // Turbulent boundary depth FBO — depth-only, resized in resize().
+    PostProcess.turbulentBoundaryDepthTexture = gl.createTexture();
+    GL.Bind(0, PostProcess.turbulentBoundaryDepthTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    PostProcess.turbulentBoundaryFBO = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.turbulentBoundaryFBO);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, PostProcess.turbulentBoundaryDepthTexture, 0);
+    gl.drawBuffers([gl.NONE]);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     // MSAA FBO with multisampled renderbuffers (storage allocated in _resizeMSAA).
     // Each renderbuffer must be bound at least once before framebufferRenderbuffer.
@@ -269,8 +313,12 @@ export default class PostProcess {
 
     // Resize depth renderbuffer
     gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
     gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+
+    // Resize turbulent boundary depth texture
+    GL.Bind(0, PostProcess.turbulentBoundaryDepthTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
 
     // Resize MSAA renderbuffers (if enabled)
     PostProcess._resizeMSAA(width, height);
@@ -313,6 +361,33 @@ export default class PostProcess {
     gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaDepthRB);
     gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, width, height);
     gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+  }
+
+  /**
+   * Begin the turbulent boundary depth pre-pass.
+   * Binds the depth-only boundary FBO, clears it to the far plane, and sets
+   * the GL state needed to capture turbulent surface depths from both faces.
+   * Call endTurbulentBoundaryPass when the pass is complete.
+   */
+  static beginTurbulentBoundaryPass(): void {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.turbulentBoundaryFBO);
+    gl.viewport(0, 0, PostProcess.width, PostProcess.height);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.depthFunc(gl.LESS);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+  }
+
+  /**
+   * End the turbulent boundary depth pre-pass and restore the scene FBO.
+   */
+  static endTurbulentBoundaryPass(): void {
+    gl.enable(gl.CULL_FACE);
+    // Restore whichever scene FBO was active before the pre-pass.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.msaaSamples > 0 ? PostProcess.msaaFBO : PostProcess.fbo);
+    gl.viewport(0, 0, PostProcess.width, PostProcess.height);
   }
 
   /**
@@ -379,6 +454,25 @@ export default class PostProcess {
     if (PostProcess.msaaSamples > 0 && !PostProcess.msaaResolved) {
       PostProcess.resolveMSAA();
     }
+
+    // Keep depth testing valid for geometry passes that sample depth by first
+    // copying the current scene depth texture into the temporary depth renderbuffer.
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, PostProcess.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, PostProcess.depthSamplingFBO);
+    gl.blitFramebuffer(
+      0,
+      0,
+      PostProcess.width,
+      PostProcess.height,
+      0,
+      0,
+      PostProcess.width,
+      PostProcess.height,
+      gl.DEPTH_BUFFER_BIT,
+      gl.NEAREST,
+    );
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, null, 0);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
   }
@@ -590,6 +684,20 @@ export default class PostProcess {
     if (PostProcess.depthRenderbuffer) {
       gl.deleteRenderbuffer(PostProcess.depthRenderbuffer);
       PostProcess.depthRenderbuffer = null;
+    }
+    if (PostProcess.depthSamplingFBO) {
+      gl.deleteFramebuffer(PostProcess.depthSamplingFBO);
+      PostProcess.depthSamplingFBO = null;
+    }
+
+    // Turbulent boundary depth FBO
+    if (PostProcess.turbulentBoundaryFBO) {
+      gl.deleteFramebuffer(PostProcess.turbulentBoundaryFBO);
+      PostProcess.turbulentBoundaryFBO = null;
+    }
+    if (PostProcess.turbulentBoundaryDepthTexture) {
+      gl.deleteTexture(PostProcess.turbulentBoundaryDepthTexture);
+      PostProcess.turbulentBoundaryDepthTexture = null;
     }
 
     // MSAA FBO

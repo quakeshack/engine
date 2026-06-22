@@ -25,6 +25,7 @@ import BloomEffect from './renderer/BloomEffect.ts';
 import ColorGradeEffect from './renderer/ColorGradeEffect.ts';
 import BlurEffect from './renderer/BlurEffect.ts';
 import WarpEffect from './renderer/WarpEffect.ts';
+import UnderwaterFogEffect from './renderer/UnderwaterFogEffect.ts';
 import ShadowMap from './renderer/ShadowMap.ts';
 import { ClientDlight, ClientEdict } from './ClientEntities.ts';
 import { avertexnormals } from '../common/model/loaders/AliasMDLLoader.ts';
@@ -189,6 +190,7 @@ class R {
   static drawentities: Cvar = null!;
   static drawviewmodel: Cvar = null!;
   static drawturbulents: Cvar = null!;
+  static underwater_fog_density: Cvar = null!;
   static novis: Cvar = null!;
   static speeds: Cvar = null!;
   static polyblend: Cvar = null!;
@@ -228,6 +230,12 @@ class R {
 
   static usePostProcess = false;
   static dowarp = false;
+
+  /** RGB fog color used by the underwater fog effect this frame (0-1 range). */
+  static underwaterFogColor: [number, number, number] = [0.05, 0.15, 0.2];
+
+  /** Fog density exponent used by the underwater fog effect this frame. */
+  static underwaterFogDensity = 0.05;
   static particles: Particle[] = [];
   static decals: Decal[] = [];
   static numparticles = 0;
@@ -1735,9 +1743,40 @@ class R {
       bloomEffect.active = bloomEnabled;
     }
 
-    // Activate depth-texture post-process when fog volumes exist.
-    // Pipeline effects (warp, etc.) are resolved separately via PostProcess.resolve.
-    R.usePostProcess = worldmodel.fogVolumes.length > 0;
+    // Configure underwater fog when the camera is inside a liquid.
+    // Opt-in per map: worldspawn key _qs_waterfog must be "1" to enable.
+    const waterfogEnabled = worldmodel.worldspawnInfo?.['_qs_waterfog'] === '1';
+    const isUnderwater = R.viewleaf.contents <= content.CONTENT_WATER;
+    const underwaterFogEffect = PostProcess.getEffect('underwater-fog');
+    if (underwaterFogEffect) {
+      underwaterFogEffect.active = waterfogEnabled && isUnderwater && R.drawturbulents.value !== 0;
+    }
+    if (isUnderwater) {
+      // Look up fog tint from the first turbulent chain in the viewleaf, falling
+      // back to a content-type default. fogTint is set on BaseMaterial once the
+      // texture average color is known; null = use the defaults below.
+      const firstChain = R.viewleaf.turbulentChains[0];
+      const material = firstChain !== undefined
+        ? worldmodel.textures[firstChain.texture]
+        : undefined;
+      const fogTint = material?.fogTint ?? null;
+
+      if (fogTint !== null) {
+        R.underwaterFogColor = fogTint;
+      } else if (R.viewleaf.contents <= content.CONTENT_LAVA) {
+        R.underwaterFogColor = [0.25, 0.05, 0.0];
+      } else if (R.viewleaf.contents <= content.CONTENT_SLIME) {
+        R.underwaterFogColor = [0.02, 0.12, 0.0];
+      } else {
+        R.underwaterFogColor = [0.05, 0.15, 0.2];
+      }
+      R.underwaterFogDensity = R.underwater_fog_density.value;
+    }
+
+    // Enable post-process FBO (and thus depth texture) whenever turbulents, fog
+    // volumes, or underwater fog are active so shaders can sample scene depth.
+    R.usePostProcess = R.drawturbulents.value !== 0 || worldmodel.fogVolumes.length > 0
+      || (waterfogEnabled && isUnderwater && R.drawturbulents.value !== 0);
 
     // Choose the shadow texture for this frame (real or dummy)
     R.shadow_textures = ShadowMap.getActiveTextures();
@@ -1812,6 +1851,22 @@ class R {
 
     R.SetupGL();
     R.MarkLeafs();
+
+    // Turbulent boundary depth pre-pass — capture turbulent surface depths so the
+    // underwater fog effect knows where the water boundary is per pixel.
+    if (PostProcess.getEffect('underwater-fog')?.active && PostProcess.active) {
+      const worldEntity = CL.state.clientEntities.getEntity(0);
+      const worldmodel = worldEntity?.model instanceof BrushModel ? worldEntity.model : null;
+      const brushRenderer = worldmodel !== null
+        ? modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer | null
+        : null;
+      if (brushRenderer !== null && worldmodel !== null) {
+        PostProcess.beginTurbulentBoundaryPass();
+        brushRenderer.renderWorldTurbulentsBoundaryDepth(worldmodel);
+        PostProcess.endTurbulentBoundaryPass();
+      }
+    }
+
     gl.enable(gl.CULL_FACE);
     R.DrawSkyBox();
     R.DrawViewModel();
@@ -2033,7 +2088,7 @@ class R {
 
       // rendering water brushes
       Promise.resolve(GL.CreateProgram('turbulent',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uTime', 'uInterpolation', 'uLightstyleInterpolation', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uAlpha', 'uBloomEmissiveScale', 'uBloomDlightScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uGamma', 'uTime', 'uInterpolation', 'uLightstyleInterpolation', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uAlpha', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uScreenSize', 'uWaterFogDensity', 'uCameraInside'],
           [
             ['aPosition', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 4],
@@ -2042,7 +2097,19 @@ class R {
             // ['aTangent', gl.FLOAT, 3],
             // ['aBitangent', gl.FLOAT, 3],
           ],
-          ['tTexture', 'tLuminance', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tDeluxemap'])),
+          ['tTexture', 'tLuminance', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tDeluxemap', 'tDepth'])),
+
+      // depth-only pre-pass for turbulent surface boundary (underwater fog)
+      Promise.resolve(GL.CreateProgram('turbulent-depth',
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uTime'],
+        [['aPosition', gl.FLOAT, 3]],
+        [])),
+
+      // underwater fog post-process effect
+      Promise.resolve(GL.CreateProgram('underwater-fog',
+        ['uOrtho', 'uFogColor', 'uFogDensity', 'uPerspective'],
+        [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
+        ['tScene', 'tDepth', 'tBoundaryDepth'])),
 
       // warp overlay effect
       Promise.resolve(GL.CreateProgram('warp',
@@ -2167,6 +2234,9 @@ class R {
     R.fog_density = new Cvar('r_fog_density', '0.01', Cvar.FLAG.NONE, 'Fog density (for exp/exp2)');
     R.fog_mode = new Cvar('r_fog_mode', '-1', Cvar.FLAG.NONE, 'Fog mode: 0=linear, 1=exp, 2=exp2, -1=disable');
 
+    // fog controls for underwater fog effect (post-process)
+    R.underwater_fog_density = new Cvar('r_underwater_fog_density', '0.01', Cvar.FLAG.CHEAT, 'Fog density exponent for the underwater fog effect.');
+
     R.InitTextures();
     R.InitParticles();
     R.InitDecals();
@@ -2182,6 +2252,7 @@ class R {
     // and register screen-space effects that resolve from that capture.
     PostProcess.init();
     PostProcess.addEffect(new BloomEffect());
+    PostProcess.addEffect(new UnderwaterFogEffect());
     PostProcess.addEffect(new WarpEffect());
     PostProcess.addEffect(new ColorGradeEffect());
     PostProcess.addEffect(new BlurEffect());

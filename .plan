@@ -175,10 +175,18 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-22
+
+- finished fogged up water effect
+
 ### 2026-06-21
 
 - cleaned up the whole rendering pass clusterfun
 - need to think of streamlining sprites and particles
+- tried a different approach to fogged up water, next up is carrying the effect inside the turbulents
+  - instead of calculating volumes for turbulents, I opted for a shader based effect
+  - calculating depth, apply the value to the alpha channel
+  - need to come up with an inside of water effect (maybe apply global fog when inside?)
 
 ### 2026-06-19
 

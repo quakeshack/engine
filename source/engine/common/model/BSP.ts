@@ -50,9 +50,6 @@ export interface WorldspawnInfo extends Record<string, string | undefined> {
   /** optional fteqw-style fog settings, e.g. "exp r g b" */
   fog?: string;
 
-  /** automatically generate fog volumes */
-  _qs_autogen_fog?: '1' | '0';
-
   /** optional semicolon seperated list of qsmat file names, e.g. "textures/my-set.qsmat.json" */
   _qs_mat?: string;
 }
