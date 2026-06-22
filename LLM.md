@@ -30,6 +30,7 @@ Where’s what these tools have worked on in big chunks and my experience:
 | Unit Tests | GPT-5.4 is my guinea pig on this one. I asked it to write unit tests around server physics code so that this code is always solid and won’t contain nasty surprises. |
 | TypeScript support and port | See https://github.com/quakeshack/engine/pull/8 for details. |
 | SOLID_MESH support | I wanted polygon-based collision support. Both Claude 4.5 back then and now GPT 5.4 are doing a so-so job. Some rainy day I need to look into it myself. |
+| fogged up water | The old way of using the volumentric fog was bugging out and while being on a hike I had the idea on redoing it. I decided to give Claude Code another try. It did actually quite a good job on it. The first attempt was a bit botched, I used 5.3-Codex through GitHub Copilot to fix it, but the second part was fixed by Claude Code in one go. Compared to what I was used to Claude Code really improved on its token burning. |
 
 ## Conclusion
 
