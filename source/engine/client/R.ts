@@ -48,7 +48,17 @@ eventBus.subscribe('gl.shutdown', () => {
 
 interface SortKindDistance {
   readonly dist: number;
-  readonly kind: number;
+  readonly kind: TransparentKind;
+}
+
+const enum TransparentKind {
+  WorldLeaf = 0,
+  Turbulent = 1,
+  FogVolume = 2,
+  Entity = 3,
+  Sprite = 4,
+  Decal = 5,
+  Particle = 6,
 }
 
 interface DynamicLightSurfaceImpact {
@@ -56,12 +66,8 @@ interface DynamicLightSurfaceImpact {
   readonly impact: Vector;
 }
 
-interface FogAndTurbulentSortItem extends SortKindDistance {
-  readonly data: WorldTurbulentChainInfo | FogVolumeInfo;
-}
-
-interface TransparentSortItem extends SortKindDistance {
-  readonly data: Node | ClientEdict;
+interface TransparentItem extends SortKindDistance {
+  readonly data: Node | WorldTurbulentChainInfo | FogVolumeInfo | ClientEdict | Particle | Decal;
 }
 
 interface RefdefRect {
@@ -108,6 +114,7 @@ interface Decal {
   readonly verts: [Vector, Vector, Vector, Vector];
   readonly color: Vector;
   readonly die: number;
+  readonly origin: Vector;
 }
 
 type AngularVelocity = [number, number, number];
@@ -128,20 +135,44 @@ enum ParticleType {
 const FOG_TURBULENT_SORT_EPSILON = 0.0001;
 
 /**
- * Compare mixed fog and turbulent items for the shared transparent pass.
- * Distances sort back-to-front. When a fog volume and a turbulent surface
- * begin at the same depth, fog must draw first so the nearer liquid can blend
- * over it instead of the fog overpainting the liquid.
+ * Resolve deterministic tie-break priority for transparent item kinds.
+ * @returns Higher values are sorted earlier on near-equal depth.
+ */
+function getTransparentKindPriority(kind: TransparentKind): number {
+  switch (kind) {
+  case TransparentKind.FogVolume:
+    return 7;
+  case TransparentKind.Turbulent:
+    return 6;
+  case TransparentKind.WorldLeaf:
+    return 5;
+  case TransparentKind.Entity:
+    return 4;
+  case TransparentKind.Sprite:
+    return 3;
+  case TransparentKind.Decal:
+    return 2;
+  case TransparentKind.Particle:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+/**
+ * Compare unified transparent items for a single back-to-front pass.
+ * Distances sort far-to-near. Near ties use deterministic kind priority,
+ * with fog volumes before turbulent surfaces so liquid can blend over fog.
  * @returns Sort comparator result.
  */
-export function compareFogAndTurbulentItems(itemA: SortKindDistance, itemB: SortKindDistance): number {
+export function compareTransparentItems(itemA: SortKindDistance, itemB: SortKindDistance): number {
   const distDelta = itemB.dist - itemA.dist;
 
   if (Math.abs(distDelta) > FOG_TURBULENT_SORT_EPSILON) {
     return distDelta;
   }
 
-  return itemB.kind - itemA.kind;
+  return getTransparentKindPriority(itemB.kind) - getTransparentKindPriority(itemA.kind);
 }
 
 
@@ -226,7 +257,107 @@ class R {
   }
 
   /**
+   * Emit one decal quad into the stream buffer.
+   */
+  private static _emitDecalQuad(decal: Decal): void {
+    GL.StreamGetSpace(6);
+
+    // Quad vertices: 0, 1, 2, 0, 2, 3
+    const v = decal.verts;
+    const c = decal.color;
+    const r = c[0];
+    const g = c[1];
+    const b = c[2];
+
+    GL.StreamWriteFloat3(v[0][0], v[0][1], v[0][2]); GL.StreamWriteFloat2(0, 0); GL.StreamWriteUByte4(r, g, b, 255);
+    GL.StreamWriteFloat3(v[1][0], v[1][1], v[1][2]); GL.StreamWriteFloat2(1, 0); GL.StreamWriteUByte4(r, g, b, 255);
+    GL.StreamWriteFloat3(v[2][0], v[2][1], v[2][2]); GL.StreamWriteFloat2(1, 1); GL.StreamWriteUByte4(r, g, b, 255);
+
+    GL.StreamWriteFloat3(v[0][0], v[0][1], v[0][2]); GL.StreamWriteFloat2(0, 0); GL.StreamWriteUByte4(r, g, b, 255);
+    GL.StreamWriteFloat3(v[2][0], v[2][1], v[2][2]); GL.StreamWriteFloat2(1, 1); GL.StreamWriteUByte4(r, g, b, 255);
+    GL.StreamWriteFloat3(v[3][0], v[3][1], v[3][2]); GL.StreamWriteFloat2(0, 1); GL.StreamWriteUByte4(r, g, b, 255);
+  }
+
+  /**
+   * Emit one particle billboard and advance its simulation by one frame.
+   */
+  private static _renderAndAdvanceParticle(particle: Particle, coords: number[], frameTime: number, grav: number, dvel: number): void {
+    const color = W.d_8to24table[particle.color];
+    let scale = (particle.org[0] - R.refdef.vieworg[0]) * R.vpn[0]
+      + (particle.org[1] - R.refdef.vieworg[1]) * R.vpn[1]
+      + (particle.org[2] - R.refdef.vieworg[2]) * R.vpn[2];
+    if (scale < 20.0) {
+      scale = 0.375;
+    } else {
+      scale = 0.375 + scale * 0.0015;
+    }
+
+    GL.StreamGetSpace(6);
+    for (let j = 0; j < 6; j++) {
+      GL.StreamWriteFloat3(particle.org[0], particle.org[1], particle.org[2]);
+      GL.StreamWriteFloat2(coords[j * 2], coords[j * 2 + 1]);
+      GL.StreamWriteFloat(scale);
+      GL.StreamWriteUByte4(color & 0xff, (color >> 8) & 0xff, color >> 16, 255);
+    }
+
+    particle.org[0] += particle.vel[0] * frameTime;
+    particle.org[1] += particle.vel[1] * frameTime;
+    particle.org[2] += particle.vel[2] * frameTime;
+
+    switch (particle.type) {
+    case R.ptype.fire:
+      particle.ramp += frameTime * 5.0;
+      if (particle.ramp >= 6.0) {
+        particle.die = -1.0;
+      } else {
+        particle.color = R.ramp3[Math.floor(particle.ramp)];
+      }
+      particle.vel[2] += grav;
+      return;
+    case R.ptype.explode:
+      particle.ramp += frameTime * 10.0;
+      if (particle.ramp >= 8.0) {
+        particle.die = -1.0;
+      } else {
+        particle.color = R.ramp1[Math.floor(particle.ramp)];
+      }
+      particle.vel[0] += particle.vel[0] * dvel;
+      particle.vel[1] += particle.vel[1] * dvel;
+      particle.vel[2] += particle.vel[2] * dvel - grav;
+      return;
+    case R.ptype.explode2:
+      particle.ramp += frameTime * 15.0;
+      if (particle.ramp >= 8.0) {
+        particle.die = -1.0;
+      } else {
+        particle.color = R.ramp2[Math.floor(particle.ramp)];
+      }
+      particle.vel[0] -= particle.vel[0] * frameTime;
+      particle.vel[1] -= particle.vel[1] * frameTime;
+      particle.vel[2] -= particle.vel[2] * frameTime + grav;
+      return;
+    case R.ptype.blob:
+      particle.vel[0] += particle.vel[0] * dvel;
+      particle.vel[1] += particle.vel[1] * dvel;
+      particle.vel[2] += particle.vel[2] * dvel - grav;
+      return;
+    case R.ptype.blob2:
+      particle.vel[0] += particle.vel[0] * dvel;
+      particle.vel[1] += particle.vel[1] * dvel;
+      particle.vel[2] -= grav;
+      return;
+    case R.ptype.grav:
+    case R.ptype.slowgrav:
+      particle.vel[2] -= grav;
+      return;
+    default:
+      return;
+    }
+  }
+
+  /**
    * Returns interpolation for animated texture/material groups.
+   * @returns The 0..1 interpolation factor for animated textures.
    */
   static GetTextureInterpolation(): number {
     if (R.interpolation.value === 0) {
@@ -238,6 +369,7 @@ class R {
 
   /**
    * Returns smoothed interpolation for 10 Hz lightstyle animation.
+   * @returns The smoothed 0..1 lightstyle interpolation factor.
    */
   static GetLightstyleInterpolation(): number {
     if (R.interpolation.value === 0) {
@@ -976,143 +1108,88 @@ class R {
       renderer.cleanupRenderState(0);
     }
     GL.StreamFlush();
-
-    // Pass 1: Transparent sprites with blending
-    const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
-    const spriteEntities = spriteRenderer !== null ? entitiesByRenderer.get(spriteRenderer) : undefined;
-    if (spriteEntities) {
-      console.assert(spriteRenderer !== null, 'sprite renderer required');
-      gl.enable(gl.BLEND);
-      spriteRenderer!.setupRenderState(1);
-      for (const entity of spriteEntities) {
-        const model = entity.model!;
-        console.assert(model !== null, 'entity model required for sprite pass');
-        spriteRenderer!.render(model, entity, 1);
-      }
-      spriteRenderer!.cleanupRenderState(1);
-      GL.StreamFlush();
-      gl.disable(gl.BLEND);
-    }
   };
 
   /**
-   * Render world turbulent surfaces and fog volumes in the correct order.
-   *
-   * Turbulent surfaces and fog volumes share the same transparency space, so
-   * they must be composed from a single back-to-front list. Rendering them in
-   * separate phases is incorrect when water and fog overlap or alternate in
-   * depth, such as foggy water volumes or mist sitting above water.
-   *
-   * When no fog volumes exist (or post-process is unavailable), this falls
-   * back to the simple sequential turbulent pass.
+   * Compute transparent sort distance for an entity.
+   * We currently sort entities by origin distance for consistency with prior
+   * behavior and because model bounds are not uniformly available here.
+   * @returns Euclidean distance from view origin to entity origin.
    */
-  static _renderFogAndTurbulentsSorted(worldEntity: ClientEdict): void {
-    if (!(worldEntity.model instanceof BrushModel)) {
-      return;
-    }
+  private static _getEntityTransparentDistance(entity: ClientEdict, vieworg: Vector): number {
+    const dx = entity.origin[0] - vieworg[0];
+    const dy = entity.origin[1] - vieworg[1];
+    const dz = entity.origin[2] - vieworg[2];
 
-    const worldmodel = worldEntity.model;
-    const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer;
-    console.assert(brushRenderer !== null, 'brush renderer required');
-    const hasFog = PostProcess.active
-      && worldmodel.fogVolumes && worldmodel.fogVolumes.length > 0;
-    const hasTurbulents = R.drawturbulents.value;
+    return Math.hypot(dx, dy, dz);
+  }
 
-    // Fast path: no fog volumes — just render turbulents the simple way
-    if (!hasFog) {
-      if (hasTurbulents) {
-        brushRenderer.render(worldmodel, worldEntity, 1);
-      }
-      return;
-    }
-
-    // Fast path: fog but no turbulents — just render fog volumes
-    if (!hasTurbulents) {
-      brushRenderer.renderFogVolumes(worldmodel);
-      return;
-    }
-
+  /**
+   * Render all blended geometry in a single back-to-front sorted pass.
+   */
+  static _renderTransparentsUnified(worldEntity: ClientEdict): void {
+    const worldmodel = worldEntity.model instanceof BrushModel ? worldEntity.model : null;
     const vieworg = R.refdef.vieworg;
-    const items: FogAndTurbulentSortItem[] = [];
+    const items: TransparentItem[] = [];
 
-    const turbulentChains = brushRenderer.getWorldTurbulentChains(worldmodel, vieworg);
-    for (let i = 0; i < turbulentChains.length; i++) {
-      items.push({ dist: turbulentChains[i].dist, kind: 0, data: turbulentChains[i].chain });
-    }
+    const brushRenderer = worldmodel !== null
+      ? modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer
+      : null;
+    if (worldmodel !== null) {
+      console.assert(brushRenderer !== null, 'brush renderer required');
 
-    const fogItems = brushRenderer.getFogVolumeItems(worldmodel, vieworg);
-    for (let i = 0; i < fogItems.length; i++) {
-      items.push({ dist: fogItems[i].dist, kind: 1, data: fogItems[i].fogVolume });
-    }
-
-    if (items.length === 0) {
-      return;
-    }
-
-    items.sort(compareFogAndTurbulentItems);
-
-    let activePass = -1;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-
-      if (item.kind !== activePass) {
-        if (activePass === 0) {
-          brushRenderer.endWorldTurbulentPass();
-        } else if (activePass === 1) {
-          brushRenderer.endFogVolumePass();
-        }
-
-        if (item.kind === 0) {
-          brushRenderer.beginWorldTurbulentPass(worldmodel);
-        } else if (!brushRenderer.beginFogVolumePass(worldmodel)) {
-          activePass = -1;
-          continue;
-        }
-
-        activePass = item.kind;
+      const worldLeaves = brushRenderer!.getWorldTransparentLeaves(worldmodel, vieworg);
+      for (let i = 0; i < worldLeaves.length; i++) {
+        items.push({ dist: worldLeaves[i].dist, kind: TransparentKind.WorldLeaf, data: worldLeaves[i].leaf });
       }
 
-      if (item.kind === 0) {
-        brushRenderer.renderWorldTurbulentChain(worldmodel, item.data as WorldTurbulentChainInfo);
+      if (R.drawturbulents.value !== 0) {
+        const turbulentChains = brushRenderer!.getWorldTurbulentChains(worldmodel, vieworg);
+        for (let i = 0; i < turbulentChains.length; i++) {
+          items.push({ dist: turbulentChains[i].dist, kind: TransparentKind.Turbulent, data: turbulentChains[i].chain });
+        }
+      }
+
+      if (PostProcess.active && worldmodel.fogVolumes && worldmodel.fogVolumes.length > 0) {
+        const fogItems = brushRenderer!.getFogVolumeItems(worldmodel, vieworg);
+        for (let i = 0; i < fogItems.length; i++) {
+          items.push({ dist: fogItems[i].dist, kind: TransparentKind.FogVolume, data: fogItems[i].fogVolume });
+        }
+      }
+    }
+
+    R.decals = R.decals.filter((decal) => decal.die > CL.state.time);
+    for (let i = 0; i < R.decals.length; i++) {
+      const decal = R.decals[i];
+      const dx = decal.origin[0] - vieworg[0];
+      const dy = decal.origin[1] - vieworg[1];
+      const dz = decal.origin[2] - vieworg[2];
+      items.push({
+        dist: Math.hypot(dx, dy, dz),
+        kind: TransparentKind.Decal,
+        data: decal,
+      });
+    }
+
+    for (let i = 0; i < R.numparticles; i++) {
+      const particle = R.particles[i];
+      if (particle.die < CL.state.time) {
         continue;
       }
 
-      brushRenderer.renderSingleFogVolume(worldmodel, item.data as FogVolumeInfo);
+      const dx = particle.org[0] - vieworg[0];
+      const dy = particle.org[1] - vieworg[1];
+      const dz = particle.org[2] - vieworg[2];
+      items.push({
+        dist: Math.hypot(dx, dy, dz),
+        kind: TransparentKind.Particle,
+        data: particle,
+      });
     }
 
-    if (activePass === 0) {
-      brushRenderer.endWorldTurbulentPass();
-    } else if (activePass === 1) {
-      brushRenderer.endFogVolumePass();
-    }
-  };
-
-  /**
-   * Render all transparent geometry (world brush surfaces + entities) in
-   * back-to-front sorted order with depth writes disabled.
-   * This ensures transparent surfaces blend correctly regardless of type.
-   */
-  static _renderTransparentsSorted(worldEntity: ClientEdict): void {
-    if (!(worldEntity.model instanceof BrushModel)) {
-      return;
-    }
-
-    const worldmodel = worldEntity.model;
-
-    const vieworg = R.refdef.vieworg;
-    const items: TransparentSortItem[] = [];
-
-    // Collect world transparent leaves with distances
-    const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer;
-    console.assert(brushRenderer !== null, 'brush renderer required');
-    const worldLeaves = brushRenderer.getWorldTransparentLeaves(worldmodel, vieworg);
-    for (let i = 0; i < worldLeaves.length; i++) {
-      items.push({ dist: worldLeaves[i].dist, kind: 0, data: worldLeaves[i].leaf });
-    }
-
-    // Collect transparent entities with distances
     if (R.drawentities.value !== 0) {
+      const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
+
       for (const entity of CL.state.clientEntities.getVisibleEntities()) {
         if (entity.model === null || entity.alpha === 0.0) {
           continue;
@@ -1121,15 +1198,24 @@ class R {
         const renderer = modelRendererRegistry.getRendererForModel(entity.model);
         console.assert(renderer !== null, `renderer required for ${entity.model.constructor.name}`);
 
+        if (renderer === spriteRenderer) {
+          items.push({
+            dist: R._getEntityTransparentDistance(entity, vieworg),
+            kind: TransparentKind.Sprite,
+            data: entity,
+          });
+          continue;
+        }
+
         if (!renderer!.rendersTransparentPass(entity.model, entity)) {
           continue;
         }
 
-        const dx = entity.origin[0] - vieworg[0];
-        const dy = entity.origin[1] - vieworg[1];
-        const dz = entity.origin[2] - vieworg[2];
-        const dist = Math.hypot(dx, dy, dz);
-        items.push({ dist, kind: 1, data: entity });
+        items.push({
+          dist: R._getEntityTransparentDistance(entity, vieworg),
+          kind: TransparentKind.Entity,
+          data: entity,
+        });
       }
     }
 
@@ -1137,49 +1223,201 @@ class R {
       return;
     }
 
-    // Sort back-to-front (farthest first)
-    items.sort((a, b) => b.dist - a.dist);
+    items.sort(compareTransparentItems);
 
-    // Render in sorted order with depth writes disabled
     gl.depthMask(false);
-    let worldPassActive = false;
+
+    const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
+    let currentDecalTexture: GLTexture | null = null;
+    const particleCoords = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
+    const particleFrameTime = Host.frametime;
+    const particleGravity = +CL.cls.serverInfo.sv_gravity || 800;
+    const particleGrav = particleFrameTime * particleGravity * 0.05;
+    const particleDvel = particleFrameTime * 4.0;
+    let activeKind: TransparentKind | -1 = -1;
+
+    const endActivePass = (): void => {
+      switch (activeKind) {
+      case TransparentKind.WorldLeaf:
+        brushRenderer?.endWorldTransparentPass();
+        GL.StreamFlush();
+        break;
+      case TransparentKind.Turbulent:
+        brushRenderer?.endWorldTurbulentPass();
+        break;
+      case TransparentKind.FogVolume:
+        brushRenderer?.endFogVolumePass();
+        break;
+      case TransparentKind.Entity:
+        GL.StreamFlush();
+        break;
+      case TransparentKind.Sprite:
+        if (spriteRenderer !== null) {
+          spriteRenderer.cleanupRenderState(1);
+        }
+        GL.StreamFlush();
+        break;
+      case TransparentKind.Decal:
+        GL.StreamFlush();
+        break;
+      case TransparentKind.Particle:
+        GL.StreamFlush();
+        break;
+      default:
+        break;
+      }
+
+      activeKind = -1;
+    };
+
+    const beginKindPass = (kind: TransparentKind): boolean => {
+      gl.enable(gl.BLEND);
+      gl.depthMask(false);
+
+      switch (kind) {
+      case TransparentKind.WorldLeaf:
+        if (brushRenderer === null || worldmodel === null) {
+          return false;
+        }
+        gl.enable(gl.CULL_FACE);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        brushRenderer.beginWorldTransparentPass(worldmodel);
+        return true;
+      case TransparentKind.Turbulent:
+        if (brushRenderer === null || worldmodel === null) {
+          return false;
+        }
+        gl.enable(gl.CULL_FACE);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        brushRenderer.beginWorldTurbulentPass(worldmodel);
+        return true;
+      case TransparentKind.FogVolume:
+        if (brushRenderer === null || worldmodel === null) {
+          return false;
+        }
+        if (!brushRenderer.beginFogVolumePass(worldmodel)) {
+          gl.enable(gl.CULL_FACE);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          return false;
+        }
+        return true;
+      case TransparentKind.Entity:
+        gl.enable(gl.CULL_FACE);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        return true;
+      case TransparentKind.Sprite:
+        gl.enable(gl.CULL_FACE);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        if (spriteRenderer !== null) {
+          spriteRenderer.setupRenderState(1);
+          return true;
+        }
+        return false;
+      case TransparentKind.Decal: {
+        gl.disable(gl.CULL_FACE);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        const program = GL.UseProgram('decal')!;
+        console.assert(program !== null, 'decal program required');
+        gl.uniform1f(program.uAlpha!, 1.0);
+        currentDecalTexture = null;
+        return true;
+      }
+      case TransparentKind.Particle:
+        gl.disable(gl.CULL_FACE);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        GL.UseProgram('particle');
+        return true;
+      default:
+        return false;
+      }
+    };
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
 
-      if (item.kind === 0) {
-        // World transparent leaf
-        if (!worldPassActive) {
-          brushRenderer.beginWorldTransparentPass(worldmodel);
-          worldPassActive = true;
+      if (item.kind !== activeKind) {
+        endActivePass();
+        if (!beginKindPass(item.kind)) {
+          continue;
+        }
+        activeKind = item.kind;
+      }
+
+      switch (item.kind) {
+      case TransparentKind.WorldLeaf:
+        if (brushRenderer === null || worldmodel === null) {
+          break;
         }
         brushRenderer.renderWorldTransparentLeaf(worldmodel, item.data as Node);
-      } else {
-        // Transparent entity — end world pass if active (shader switch)
-        if (worldPassActive) {
-          brushRenderer.endWorldTransparentPass();
-          GL.StreamFlush();
-          worldPassActive = false;
+        break;
+      case TransparentKind.Turbulent:
+        if (brushRenderer === null || worldmodel === null) {
+          break;
         }
+        brushRenderer.renderWorldTurbulentChain(worldmodel, item.data as WorldTurbulentChainInfo);
+        break;
+      case TransparentKind.FogVolume:
+        if (brushRenderer === null || worldmodel === null) {
+          break;
+        }
+        brushRenderer.renderSingleFogVolume(worldmodel, item.data as FogVolumeInfo);
+        break;
+      case TransparentKind.Entity: {
         const entity = item.data as ClientEdict;
-
         if (entity.model === null) {
-          continue;
+          break;
         }
 
         const renderer = modelRendererRegistry.getRendererForModel(entity.model);
         console.assert(renderer !== null, `renderer required for ${entity.model.constructor.name}`);
 
+        renderer!.setupRenderState(2);
         renderer!.render(entity.model, entity, 2);
+        renderer!.cleanupRenderState(2);
         GL.StreamFlush();
+        break;
+      }
+      case TransparentKind.Sprite: {
+        const entity = item.data as ClientEdict;
+        if (entity.model === null || spriteRenderer === null) {
+          break;
+        }
+
+        spriteRenderer.render(entity.model, entity, 1);
+        break;
+      }
+      case TransparentKind.Decal: {
+        const decal = item.data as Decal;
+        const program = GL.UseProgram('decal')!;
+        console.assert(program !== null, 'decal program required');
+
+        if (decal.texture !== currentDecalTexture) {
+          GL.StreamFlush();
+          decal.texture.bind(program.tTexture!);
+          currentDecalTexture = decal.texture;
+        }
+
+        R._emitDecalQuad(decal);
+        break;
+      }
+      case TransparentKind.Particle: {
+        const particle = item.data as Particle;
+        if (particle.die < CL.state.time) {
+          break;
+        }
+
+        R._renderAndAdvanceParticle(particle, particleCoords, particleFrameTime, particleGrav, particleDvel);
+
+        break;
+      }
+      default:
+        break;
       }
     }
 
-    if (worldPassActive) {
-      brushRenderer.endWorldTransparentPass();
-      GL.StreamFlush();
-    }
-
+    endActivePass();
+    gl.enable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
     gl.depthMask(true);
   };
 
@@ -1517,29 +1755,20 @@ class R {
       brushRenderer!.render(worldEntity.model, worldEntity, 0);
     }
 
-    // Draw all other entities (pass 0 for opaque, pass 1 for turbulent)
+    // Draw all other entities (pass 0 opaque only).
     R.DrawEntitiesOnList();
-
-    // Fog volumes and turbulent surfaces must be interleaved back-to-front.
-    // Without sorting, turbulents always draw over fog (or vice versa),
-    // which is wrong when a fog volume is in front of a water surface.
-    // We collect both into a single list, sort by distance from the camera,
-    // and render farthest-first so nearer surfaces blend over farther ones.
-    if (worldEntity && worldEntity.model) {
-      R._renderFogAndTurbulentsSorted(worldEntity);
-    }
 
     gl.disable(gl.CULL_FACE);
     R.RenderDlights();
-    R.DrawDecals();
-    R.DrawParticles();
 
-    // Pass 2: All transparent geometry, sorted back-to-front with depthMask(false).
-    // Without sorting, whichever draws last appears on top. By sorting farthest-first
-    // and disabling depth writes, nearer transparent surfaces blend over farther ones.
-    gl.enable(gl.CULL_FACE);
-    R._renderTransparentsSorted(worldEntity);
-    gl.disable(gl.CULL_FACE);
+    if (worldEntity && worldEntity.model) {
+      gl.enable(gl.CULL_FACE);
+      R._renderTransparentsUnified(worldEntity);
+      gl.disable(gl.CULL_FACE);
+    } else {
+      R.DrawDecals();
+      R.DrawParticles();
+    }
   };
 
   static RenderScene() {
@@ -2441,6 +2670,7 @@ class R {
       verts,
       color,
       die: CL.state.time + 10.0, // Lasts 10 seconds
+      origin: origin.copy(),
     });
   };
 
@@ -2476,22 +2706,7 @@ class R {
         currentTexture = decal.texture;
       }
 
-      GL.StreamGetSpace(6);
-
-      // Quad vertices: 0, 1, 2, 0, 2, 3
-      const v = decal.verts;
-      const c = decal.color;
-      const r = c[0];
-      const g = c[1];
-      const b = c[2];
-
-      GL.StreamWriteFloat3(v[0][0], v[0][1], v[0][2]); GL.StreamWriteFloat2(0, 0); GL.StreamWriteUByte4(r, g, b, 255);
-      GL.StreamWriteFloat3(v[1][0], v[1][1], v[1][2]); GL.StreamWriteFloat2(1, 0); GL.StreamWriteUByte4(r, g, b, 255);
-      GL.StreamWriteFloat3(v[2][0], v[2][1], v[2][2]); GL.StreamWriteFloat2(1, 1); GL.StreamWriteUByte4(r, g, b, 255);
-
-      GL.StreamWriteFloat3(v[0][0], v[0][1], v[0][2]); GL.StreamWriteFloat2(0, 0); GL.StreamWriteUByte4(r, g, b, 255);
-      GL.StreamWriteFloat3(v[2][0], v[2][1], v[2][2]); GL.StreamWriteFloat2(1, 1); GL.StreamWriteUByte4(r, g, b, 255);
-      GL.StreamWriteFloat3(v[3][0], v[3][1], v[3][2]); GL.StreamWriteFloat2(0, 1); GL.StreamWriteUByte4(r, g, b, 255);
+      R._emitDecalQuad(decal);
     }
 
     GL.StreamFlush();
@@ -2510,7 +2725,6 @@ class R {
     const gravity = +CL.cls.serverInfo.sv_gravity || 800;
     const grav = frametime * gravity * 0.05;
     const dvel = frametime * 4.0;
-    let scale;
 
     const coords = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
     for (let i = 0; i < R.numparticles; i++) {
@@ -2519,72 +2733,7 @@ class R {
         continue;
       }
 
-      const color = W.d_8to24table[p.color];
-      scale = (p.org[0] - R.refdef.vieworg[0]) * R.vpn[0] + (p.org[1] - R.refdef.vieworg[1]) * R.vpn[1] + (p.org[2] - R.refdef.vieworg[2]) * R.vpn[2];
-      if (scale < 20.0) {
-        scale = 0.375;
-      } else {
-        scale = 0.375 + scale * 0.0015;
-      }
-
-      GL.StreamGetSpace(6);
-      for (let j = 0; j < 6; j++) {
-        GL.StreamWriteFloat3(p.org[0], p.org[1], p.org[2]);
-        GL.StreamWriteFloat2(coords[j * 2], coords[j * 2 + 1]);
-        GL.StreamWriteFloat(scale);
-        GL.StreamWriteUByte4(color & 0xff, (color >> 8) & 0xff, color >> 16, 255);
-      }
-
-      p.org[0] += p.vel[0] * frametime;
-      p.org[1] += p.vel[1] * frametime;
-      p.org[2] += p.vel[2] * frametime;
-
-      switch (p.type) {
-        case R.ptype.fire:
-          p.ramp += frametime * 5.0;
-          if (p.ramp >= 6.0) {
-            p.die = -1.0;
-          } else {
-            p.color = R.ramp3[Math.floor(p.ramp)];
-          }
-          p.vel[2] += grav;
-          continue;
-        case R.ptype.explode:
-          p.ramp += frametime * 10.0;
-          if (p.ramp >= 8.0) {
-            p.die = -1.0;
-          } else {
-            p.color = R.ramp1[Math.floor(p.ramp)];
-          }
-          p.vel[0] += p.vel[0] * dvel;
-          p.vel[1] += p.vel[1] * dvel;
-          p.vel[2] += p.vel[2] * dvel - grav;
-          continue;
-        case R.ptype.explode2:
-          p.ramp += frametime * 15.0;
-          if (p.ramp >= 8.0) {
-            p.die = -1.0;
-          } else {
-            p.color = R.ramp2[Math.floor(p.ramp)];
-          }
-          p.vel[0] -= p.vel[0] * frametime;
-          p.vel[1] -= p.vel[1] * frametime;
-          p.vel[2] -= p.vel[2] * frametime + grav;
-          continue;
-        case R.ptype.blob:
-          p.vel[0] += p.vel[0] * dvel;
-          p.vel[1] += p.vel[1] * dvel;
-          p.vel[2] += p.vel[2] * dvel - grav;
-          continue;
-        case R.ptype.blob2:
-          p.vel[0] += p.vel[0] * dvel;
-          p.vel[1] += p.vel[1] * dvel;
-          p.vel[2] -= grav;
-          continue;
-        case R.ptype.grav:
-        case R.ptype.slowgrav:
-          p.vel[2] -= grav;
-      }
+      R._renderAndAdvanceParticle(p, coords, frametime, grav, dvel);
     }
 
     GL.StreamFlush();

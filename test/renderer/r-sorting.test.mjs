@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import R, { compareFogAndTurbulentItems } from '../../source/engine/client/R.ts';
+import R, { compareTransparentItems } from '../../source/engine/client/R.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import Vector from '../../source/shared/Vector.ts';
 
-void describe('compareFogAndTurbulentItems', () => {
+void describe('compareTransparentItems', () => {
   void test('sorts farther items first', () => {
-    const result = compareFogAndTurbulentItems(
+    const result = compareTransparentItems(
       { dist: 64, kind: 0 },
       { dist: 128, kind: 1 },
     );
@@ -20,7 +20,7 @@ void describe('compareFogAndTurbulentItems', () => {
     const turbulent = { dist: 96, kind: 0 };
     const items = [turbulent, fog];
 
-    items.sort(compareFogAndTurbulentItems);
+    items.sort(compareTransparentItems);
 
     assert.deepEqual(items, [fog, turbulent]);
   });
@@ -30,9 +30,20 @@ void describe('compareFogAndTurbulentItems', () => {
     const turbulent = { dist: 96.0, kind: 0 };
     const items = [turbulent, fog];
 
-    items.sort(compareFogAndTurbulentItems);
+    items.sort(compareTransparentItems);
 
     assert.deepEqual(items, [fog, turbulent]);
+  });
+
+  void test('uses deterministic tie ordering for sprite, decal, and particle kinds', () => {
+    const sprite = { dist: 64.0, kind: 4 };
+    const decal = { dist: 64.0, kind: 5 };
+    const particle = { dist: 64.0, kind: 6 };
+    const items = [particle, decal, sprite];
+
+    items.sort(compareTransparentItems);
+
+    assert.deepEqual(items, [sprite, decal, particle]);
   });
 });
 

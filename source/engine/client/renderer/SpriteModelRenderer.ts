@@ -63,10 +63,10 @@ export class SpriteModelRenderer extends ModelRenderer {
   /**
    * @param _model The sprite model.
    * @param _entity The entity being rendered.
-   * @returns Sprites use their dedicated sprite pass rather than the sorted transparent pass.
+   * @returns True because sprites are now emitted into the unified transparent pass.
    */
   override rendersTransparentPass(_model: BaseModel, _entity: ClientEdict): boolean {
-    return false;
+    return true;
   }
 
   /**

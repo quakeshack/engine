@@ -175,6 +175,11 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-21
+
+- cleaned up the whole rendering pass clusterfun
+- need to think of streamlining sprites and particles
+
 ### 2026-06-19
 
 - finally started to make use of Quaternions

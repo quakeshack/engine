@@ -40,7 +40,7 @@ export class ModelRenderer {
 
   /**
    * Whether this model/entity pair should contribute to the sorted transparent pass.
-   * Sprites are handled by their dedicated pass and should normally return false here.
+   * Return true for model/entity pairs that should be depth-sorted and blended.
    */
 
   rendersTransparentPass(_model: BaseModel, _entity: ClientEdict): boolean {
