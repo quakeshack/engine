@@ -354,6 +354,12 @@ const NAV_FILE_VERSION = 3;
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
 const NAV_LINK_STEP_DISTANCE = 8.0;
+const NAV_DEFAULT_LINK_RADIUS = 128.0;
+const NAV_TRANSITION_LINK_RADIUS = 192.0;
+const NAV_LONG_LINK_COST_SCALE = 2.0;
+const NAV_BLOCKED_LONG_LINK_COST = 1024.0;
+// Maximum downward search distance per traversal step — large enough to cover typical Quake ledge drops.
+const NAV_TRAVERSAL_DROP_LIMIT = 256.0;
 
 export class Navigation {
   static nav_save_waypoints: Cvar | null = null;
@@ -803,7 +809,7 @@ export class Navigation {
     const start = position.copy().add(new Vector(0.0, 0.0, this.walkerMins[2] + 1.0));
     const stop = start.copy().add(new Vector(0.0, 0.0, -2.0 * STEPSIZE));
 
-    let trace = SV.collision.move(start, Vector.origin, Vector.origin, stop, Def.moveTypes.MOVE_NOMONSTERS, null);
+    let trace = SV.collision.traceStaticWorld(start, Vector.origin, Vector.origin, stop);
 
     if (trace.fraction === 1.0) {
       return false;
@@ -817,7 +823,7 @@ export class Navigation {
         start[0] = stop[0] = x !== 0 ? maxs[0] : mins[0];
         start[1] = stop[1] = y !== 0 ? maxs[1] : mins[1];
 
-        trace = SV.collision.move(start, Vector.origin, Vector.origin, stop, Def.moveTypes.MOVE_NOMONSTERS, null);
+        trace = SV.collision.traceStaticWorld(start, Vector.origin, Vector.origin, stop);
 
         if (trace.fraction !== 1.0 && trace.endpos[2] > bottom) {
           bottom = trace.endpos[2];
@@ -919,10 +925,9 @@ export class Navigation {
     const totalDistance = delta.len();
 
     if (totalDistance === 0.0) {
-      return {
-        ok: Math.abs(endOrigin[2] - startOrigin[2]) <= STEPSIZE,
-        reason: 'same-spot',
-      };
+      const zDiff = endOrigin[2] - startOrigin[2];
+      // Dropping down is always traversable; climbing is limited to one step height.
+      return { ok: zDiff <= STEPSIZE, reason: 'same-spot' };
     }
 
     const stepDistance = Math.min(NAV_LINK_STEP_DISTANCE, totalDistance);
@@ -930,11 +935,23 @@ export class Navigation {
     let previousOrigin = startOrigin;
 
     for (let travelled = stepDistance; travelled < totalDistance; travelled += stepDistance) {
-      const t = travelled / totalDistance;
-      const sampleOrigin = startOrigin.copy().add(direction.copy().multiply(travelled));
-      sampleOrigin[2] = startOrigin[2] + (endOrigin[2] - startOrigin[2]) * t;
+      const sampleXY = startOrigin.copy().add(direction.copy().multiply(travelled));
 
-      if (Math.abs(sampleOrigin[2] - previousOrigin[2]) > STEPSIZE + 1.0) {
+      // Trace DOWN from slightly above the previous stand origin to find the actual floor at
+      // this horizontal position. This correctly handles ledges, ramps, and stairs instead of
+      // relying on linearly interpolated z which can pass through solid geometry or miss drops.
+      const searchStart = new Vector(sampleXY[0], sampleXY[1], previousOrigin[2] + STEPSIZE);
+      const searchEnd = new Vector(sampleXY[0], sampleXY[1], previousOrigin[2] - NAV_TRAVERSAL_DROP_LIMIT);
+      const groundTrace = SV.collision.traceStaticWorld(searchStart, this.walkerMins, this.walkerMaxs, searchEnd);
+
+      if (groundTrace.fraction === 1.0) {
+        return { ok: false, reason: 'step-no-floor' };
+      }
+
+      const sampleOrigin = new Vector(sampleXY[0], sampleXY[1], groundTrace.endpos[2]);
+
+      // Block upward steps that exceed what the AI can physically climb; downward drops are allowed.
+      if (sampleOrigin[2] > previousOrigin[2] + STEPSIZE) {
         return { ok: false, reason: 'height-mismatch' };
       }
 
@@ -942,18 +959,36 @@ export class Navigation {
         return { ok: false, reason: 'step-fit' };
       }
 
-      if (!this.#hasGroundSupport(sampleOrigin)) {
-        return { ok: false, reason: 'step-support' };
-      }
-
       previousOrigin = sampleOrigin;
     }
 
-    if (Math.abs(endOrigin[2] - previousOrigin[2]) > STEPSIZE + 1.0) {
+    // Final step: end must not be above what the AI can climb from the last sample.
+    // Downward drops to the goal are allowed (AI can fall/step off ledges).
+    if (endOrigin[2] > previousOrigin[2] + STEPSIZE) {
       return { ok: false, reason: 'height-mismatch' };
     }
 
     return { ok: true, reason: 'ok' };
+  }
+
+  /**
+   * Returns whether a long horizontal link appears blocked by a wall.
+   */
+  #isLongLinkWallBlocked(startOrigin: Vector, endOrigin: Vector): boolean {
+    const horizontalDistance = Math.hypot(endOrigin[0] - startOrigin[0], endOrigin[1] - startOrigin[1]);
+
+    if (horizontalDistance <= NAV_DEFAULT_LINK_RADIUS) {
+      return false;
+    }
+
+    const sweepEnd = new Vector(endOrigin[0], endOrigin[1], startOrigin[2]);
+    const trace = this.#traceWalkerStatic(startOrigin, sweepEnd);
+
+    if (trace.startsolid || trace.allsolid) {
+      return true;
+    }
+
+    return trace.fraction < 1.0 && trace.plane.normal[2] < this.maxSlope;
   }
 
   #extractWalkableSurfaces(): void {
@@ -1099,11 +1134,32 @@ export class Navigation {
             continue;
           }
 
-          // map 2D point back to 3D: origin + u * x + v * y, then lift to a player stand origin
+          // Map 2D point back to 3D position on the surface plane.
           const worldPoint = origin.copy().add(u.copy().multiply(pt2[0])).add(v.copy().multiply(pt2[1]));
-          const standOrigin = worldPoint.add(this.#newWalkerStandOffset());
 
-          surface.waypoints.push(new Waypoint(standOrigin));
+          // Trace down from above the surface point to find the actual stand origin.
+          // A fixed +Z offset (walkerMins offset) fails on slopes: the walker AABB clips into
+          // the tilted geometry on the uphill side, causing #isValidStandOrigin to reject
+          // every slope waypoint. The downward trace lets the BSP clip hull solve the height.
+          //
+          // The start height must be above the expanded BSP hull on the uphill side. For a slope
+          // with stability s (= face normal z component), the uphill edge of the walker box
+          // rises requiredRadius × tan(arccos(s)) = requiredRadius × √(1−s²)/s above the face
+          // center. Using this formula for the trace start means flat floors barely exceed the
+          // floor plane (entity top ≈ worldPoint.z + 66 for a 72-unit corridor, fits fine)
+          // while steep slopes get a proportionally higher start — avoiding the ceiling-piercing
+          // bug that occurred with the previous fixed +82 offset.
+          const slopeTilt = Math.sqrt(1 - surface.stability * surface.stability) / surface.stability;
+          const searchStartZ = worldPoint[2] + (-this.walkerMins[2]) + this.requiredRadius * slopeTilt + 2;
+          const searchStart = new Vector(worldPoint[0], worldPoint[1], searchStartZ);
+          const searchEnd = new Vector(worldPoint[0], worldPoint[1], worldPoint[2] - STEPSIZE);
+          const groundTrace = SV.collision.traceStaticWorld(searchStart, this.walkerMins, this.walkerMaxs, searchEnd);
+
+          if (groundTrace.fraction >= 1.0 || groundTrace.startsolid) {
+            continue;
+          }
+
+          surface.waypoints.push(new Waypoint(groundTrace.endpos.copy()));
           sampledWaypointCount++;
         }
       }
@@ -1195,7 +1251,10 @@ export class Navigation {
     // 3) connect nodes with unobstructed links (trace check)
 
     const mergeRadius = 24; // units to merge nearby waypoints
-    const linkRadius = 64; // max distance to attempt a link
+    // The default radius keeps local links tight. A larger transition radius is allowed
+    // only when there is a meaningful vertical transition or ledge context.
+    // This avoids creating implausible long-range links on flat/open areas.
+    const linkRadius = NAV_TRANSITION_LINK_RADIUS;
 
     // 1) collect all waypoints into flat list
     const allWaypoints: Array<{ wp: Waypoint; surface: WalkableSurface }> = [];
@@ -1362,6 +1421,14 @@ export class Navigation {
         if (aToB.ok) {
           let cost = dist + Math.max(0.0, b.origin[2] - a.origin[2]);
 
+          if (dist > NAV_DEFAULT_LINK_RADIUS) {
+            cost += (dist - NAV_DEFAULT_LINK_RADIUS) * NAV_LONG_LINK_COST_SCALE;
+
+            if (this.#isLongLinkWallBlocked(a.origin, b.origin)) {
+              cost += NAV_BLOCKED_LONG_LINK_COST;
+            }
+          }
+
           if (a.nearLedge) {
             cost += 96;
           }
@@ -1376,6 +1443,14 @@ export class Navigation {
 
         if (bToA.ok) {
           let cost = dist + Math.max(0.0, a.origin[2] - b.origin[2]);
+
+          if (dist > NAV_DEFAULT_LINK_RADIUS) {
+            cost += (dist - NAV_DEFAULT_LINK_RADIUS) * NAV_LONG_LINK_COST_SCALE;
+
+            if (this.#isLongLinkWallBlocked(b.origin, a.origin)) {
+              cost += NAV_BLOCKED_LONG_LINK_COST;
+            }
+          }
 
           if (b.nearLedge) {
             cost += 96;
@@ -1398,7 +1473,8 @@ export class Navigation {
       `Navigation: link stats considered=${linkStats.considered} linked=${linkStats.linked} `
       + `startFit=${linkStats.startFit} endFit=${linkStats.endFit} `
       + `startSupport=${linkStats.startSupport} endSupport=${linkStats.endSupport} `
-      + `stepFit=${linkStats.stepFit} stepSupport=${linkStats.stepSupport} heightMismatch=${linkStats.heightMismatch}\n`,
+      + `stepFit=${linkStats.stepFit} stepSupport=${linkStats.stepSupport} `
+      + `heightMismatch=${linkStats.heightMismatch}\n`,
     );
   }
 

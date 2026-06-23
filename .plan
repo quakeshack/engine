@@ -175,6 +175,11 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-23
+
+- nav mesh generation fixes
+- reset depth texture when rendering transparent brushes and turbulents
+
 ### 2026-06-22
 
 - finished fogged up water effect

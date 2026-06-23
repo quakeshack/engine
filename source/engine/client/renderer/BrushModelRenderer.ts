@@ -803,6 +803,12 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.depthMask(true);
     GL.UnbindVAO();
     if (PostProcess.active) {
+      // Unbind depthTexture from its sampler unit before reattaching it to the
+      // FBO. The turbulent shader leaves depthTexture bound to unit 7 (tDepth).
+      // The brush shader also uses unit 7 (tSpecular), and QuakeMaterial.bindTo
+      // does not rebind that slot — leaving depthTexture simultaneously attached
+      // as the FBO depth and sampled as tSpecular, which is a feedback loop.
+      GL.Bind(this._worldTurbulentProgram!.tDepth as number, R.null_texture);
       PostProcess.endDepthSampling();
     }
     this._worldTurbulentProgram = null;
@@ -981,6 +987,9 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
     gl.disable(gl.BLEND);
 
+    // Unbind depthTexture from its sampler unit before reattaching it to the FBO,
+    // for the same reason as endWorldTurbulentPass (feedback loop prevention).
+    GL.Bind(this._fogVolumeProgram!.tDepth as number, R.null_texture);
     PostProcess.endDepthSampling();
     this._fogVolumeProgram = null;
   }
