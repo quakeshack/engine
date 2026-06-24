@@ -96,10 +96,9 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     assert.equal(renderEntitiesCalls.length, 6);
 
     for (const call of renderEntitiesCalls) {
-      assert.equal(call[1], 'shadow-point');
-      assert.equal(call[2], 'shadow-alias-point');
-      assert.equal(call[3], pointLightOrigin);
-      assert.equal(call[4], pointLightRadius * pointLightRadius);
+      assert.equal(call[1], true);
+      assert.equal(call[2], pointLightOrigin);
+      assert.equal(call[3], pointLightRadius * pointLightRadius);
     }
   });
 });
