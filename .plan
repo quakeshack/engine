@@ -175,6 +175,11 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-24
+
+- more nav mesh fixes
+  - I let Claude Code grill that bug for several hours and I’m pressed, it fixed it
+
 ### 2026-06-23
 
 - nav mesh generation fixes

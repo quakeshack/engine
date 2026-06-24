@@ -354,8 +354,8 @@ const NAV_FILE_VERSION = 3;
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
 const NAV_LINK_STEP_DISTANCE = 8.0;
-const NAV_DEFAULT_LINK_RADIUS = 128.0;
-const NAV_TRANSITION_LINK_RADIUS = 192.0;
+const NAV_DEFAULT_LINK_RADIUS = 96.0;
+const NAV_TRANSITION_LINK_RADIUS = 128.0;
 const NAV_LONG_LINK_COST_SCALE = 2.0;
 const NAV_BLOCKED_LONG_LINK_COST = 1024.0;
 // Maximum downward search distance per traversal step — large enough to cover typical Quake ledge drops.
@@ -973,6 +973,7 @@ export class Navigation {
 
   /**
    * Returns whether a long horizontal link appears blocked by a wall.
+   * @returns True when the link is blocked by a wall.
    */
   #isLongLinkWallBlocked(startOrigin: Vector, endOrigin: Vector): boolean {
     const horizontalDistance = Math.hypot(endOrigin[0] - startOrigin[0], endOrigin[1] - startOrigin[1]);
@@ -1190,11 +1191,12 @@ export class Navigation {
 
         wp.availableHeight = this.#measureAvailableHeight(wp.origin);
 
-        if (wp.availableHeight < this.requiredHeight) {
-          wp.availableHeight = 0;
-          pruneStats.lowHeight++;
-          continue;
-        }
+        // Note: we intentionally do NOT prune on availableHeight < requiredHeight here.
+        // #isValidStandOrigin above already ensures the walker fits without clipping the ceiling.
+        // Requiring a full extra body-height of clearance above the walker center would incorrectly
+        // prune valid staircase waypoints that sit beneath an overhang (e.g. a staircase going
+        // under the ledge of the upper floor). The available-height value is still stored for
+        // debugging and potential future use.
 
         if (!this.#hasGroundSupport(wp.origin)) {
           wp.isFloating = true;
@@ -1222,7 +1224,7 @@ export class Navigation {
       const suitableWaypoints: Waypoint[] = [];
 
       for (const wp of surface.waypoints) {
-        if ((wp.availableHeight >= this.walkerMaxs[2] - this.walkerMins[2]) && !wp.isClipping && !wp.isFloating) {
+        if (!wp.isClipping && !wp.isFloating) {
           suitableWaypoints.push(wp);
           pruneStats.retained++;
         }
