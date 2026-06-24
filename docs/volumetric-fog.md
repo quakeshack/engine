@@ -33,15 +33,24 @@ This creates a blue-tinted fog with medium density.
 
 ![Volumetric fog example](./img/volfog-1.jpg)
 
-### 2. Automatic Water/Liquid Fog
+### 2. Underwater Fog
 
-QuakeShack automatically generates fog for water, slime, and lava volumes in your map. No extra work needed! The engine:
+When the camera is inside a liquid volume, QuakeShack can apply a post-process fog effect that simulates murky water, slime, or lava. It also adds depth-based absorption to translucent liquid surfaces.
 
-- Detects liquid-filled areas from your BSP
-- Analyzes the texture colors to match the fog color
-- Creates appropriately colored fog (blue for water, green for slime, orange-red for lava)
+This feature is opt-in. Enable it by setting `_qs_waterfog` to `1` on `worldspawn`:
 
-**NOTE**: Since this works not well enough on old maps, this feature is opt-in by setting `_qs_autogen_fog` to 1 on `worldspawn`.
+```
+{
+"classname" "worldspawn"
+"_qs_waterfog" "1"
+}
+```
+
+**Color:** The fog color is taken from the liquid texture's `fogTint` field in its `.qsmat.json` material. If no material defines a tint, the engine falls back to content-type defaults: orange-red for lava, green for slime, and blue for water.
+
+**Density:** Controlled by the console variable `r_underwater_fog_density` (default `0.01`). It is a cheat-protected cvar.
+
+**Note:** The effect only activates when turbulent (liquid surface) rendering is enabled.
 
 ## Tips for Mappers
 

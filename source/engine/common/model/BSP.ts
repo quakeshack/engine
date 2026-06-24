@@ -52,6 +52,9 @@ export interface WorldspawnInfo extends Record<string, string | undefined> {
 
   /** optional semicolon seperated list of qsmat file names, e.g. "textures/my-set.qsmat.json" */
   _qs_mat?: string;
+
+  /** opt-in for automatically enabling water fog effects (1 for on, 0 for off) */
+  _qs_waterfog?: string;
 }
 
 export interface FogVolumeInfo {

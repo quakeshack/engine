@@ -32,6 +32,7 @@ The engine has an event bus.
 | client.clientdata.field-changed | 1. field, 2. value, 3. previousValue | A sparse clientdata field changed in the latest server snapshot. |
 | client.disconnected | - | Essentially the game stopped. |
 | client.connecting | 1. address | Trying to connect to a server. |
+| client.connected | 1. address | Successfully connected to a server. |
 | client.signon | 1. signon number | Triggered on each signon reply step. |
 
 ### Console
@@ -56,7 +57,7 @@ The engine has an event bus.
 | gl.texturemode | 1. name, 2. min, 3. max | Texture mode has changed. |
 | gl.texture.ready | 1. identifier | Texture has been uploaded and is ready to be used. |
 | renderer.shaders.initialized | | Default shaders have been initialized and can be referenced. |
-| renderer.texture.initialized | | Default textures have been initialized and can be referenced. |
+| renderer.textures.initialized | | Default textures have been initialized and can be referenced. |
 | vid.resize | 1. width, 2. height, 3. pixelRatio | Dimensions of the rendering canvas have changed. |
 | vid.ready | | Viewport is ready. |
 | vid.shutdown | | Viewport is gone. |
@@ -91,6 +92,8 @@ Those events are only fired by the server code.
 | server.edict.freed | 1. edict id | Emitted when a server edict slot is freed and can be reused. |
 | server.shutting-down | | Emitted when shutting a server down. All clients are still connected. |
 | server.shutdown | | Emitted when the server is shut down and after cleaning up everything. |
+| server.client.connected | 1. client num, 2. client name | Emitted when a client has fully connected and joined the server. |
+| server.client.disconnected | 1. client num, 2. client name | Emitted when a client has disconnected from the server. |
 
 ### WAD files
 

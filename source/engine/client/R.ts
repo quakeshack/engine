@@ -1745,7 +1745,7 @@ class R {
 
     // Configure underwater fog when the camera is inside a liquid.
     // Opt-in per map: worldspawn key _qs_waterfog must be "1" to enable.
-    const waterfogEnabled = worldmodel.worldspawnInfo?.['_qs_waterfog'] === '1';
+    const waterfogEnabled = worldmodel.worldspawnInfo._qs_waterfog === '1';
     const isUnderwater = R.viewleaf.contents <= content.CONTENT_WATER;
     const underwaterFogEffect = PostProcess.getEffect('underwater-fog');
     if (underwaterFogEffect) {

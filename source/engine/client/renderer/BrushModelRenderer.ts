@@ -1083,7 +1083,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uAlpha!, alpha);
     // Only apply depth fog to translucent liquids when the map has opted in via
     // _qs_waterfog. Opaque turbulents rely on PVS and should not get absorption.
-    const waterfogEnabled = CL.state.worldmodel?.worldspawnInfo?.['_qs_waterfog'] === '1';
+    const waterfogEnabled = CL.state.worldmodel?.worldspawnInfo._qs_waterfog === '1';
     gl.uniform1f(program.uWaterFogDensity!, PostProcess.active && alpha < 1.0 && waterfogEnabled ? 0.01 : 0.0);
 
     R.c_brush_verts += vertexCount;
