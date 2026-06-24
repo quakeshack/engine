@@ -5,12 +5,9 @@ import { eventBus, getClientRegistry } from '../../registry.ts';
 import { MaterialFlags } from './Materials.ts';
 import { effect } from '../../../shared/Defs.ts';
 import Vector from '../../../shared/Vector.ts';
-import { AliasModelRenderer } from './AliasModelRenderer.ts';
 import type { BrushModel } from '../../common/model/BSP.ts';
-import type { AliasModel } from '../../common/model/AliasModel.ts';
-import type { MeshModel } from '../../common/model/MeshModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
-import { ModelType } from '../../common/Mod.ts';
+import { modelRendererRegistry } from './ModelRendererRegistry.ts';
 
 let { CL, COM, R, SV } = getClientRegistry();
 
@@ -449,8 +446,7 @@ export default class ShadowMap {
    */
   static renderEntitiesShadow(
     lightSpaceMatrix: Float64Array,
-    brushProgram = 'shadow-brush',
-    aliasProgram = 'shadow-alias',
+    isPointLight: boolean,
     cutoffOrigin: Vector | null = null,
     cutoffDistSq = Infinity,
   ): void {
@@ -470,19 +466,19 @@ export default class ShadowMap {
 
       const model = entity.model!;
       console.assert(model !== null, `Entity ${entity.num} has no model`);
-      switch (model.type) {
-        case ModelType.brush:
-          ShadowMap._renderBrushEntityShadow(model as BrushModel, entity, lightSpaceMatrix, brushProgram, casterFade);
-          break;
-        case ModelType.alias:
-          ShadowMap._renderAliasEntityShadow(model as AliasModel, entity, lightSpaceMatrix, aliasProgram, casterFade);
-          break;
-        case ModelType.mesh:
-          ShadowMap._renderMeshEntityShadow(model as MeshModel, entity, lightSpaceMatrix, brushProgram, casterFade);
-          break;
-        default:
-          break;
+
+      const renderer = modelRendererRegistry.getRendererForModel(model);
+      if (renderer === null) {
+        continue;
       }
+
+      renderer.renderShadow(model, entity, {
+        lightSpaceMatrix,
+        casterFade,
+        isPointLight,
+        pointLightOrigin: ShadowMap.pointLightOrigin,
+        pointNormalBias: ShadowMap.pointNormalBias?.value ?? 0,
+      });
     }
   }
 
@@ -587,107 +583,6 @@ export default class ShadowMap {
     const dy = nearestY - cutoffOrigin[1];
     const dz = nearestZ - cutoffOrigin[2];
     return dx * dx + dy * dy + dz * dz;
-  }
-
-  /** @private */
-  static _renderBrushEntityShadow(
-    model: BrushModel,
-    entity: ClientEdict,
-    lightSpaceMatrix: Float64Array,
-    programName: string,
-    casterFade: number,
-  ): void {
-    if (!model.opaqueVAO || !model.chains || model.chains.length === 0) {
-      return;
-    }
-    GL.BindVAO(model.opaqueVAO as WebGLVertexArrayObject);
-    const program = GL.UseProgram(programName)!;
-
-    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
-    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
-    gl.uniform1f(program.uCasterFade!, casterFade);
-
-    for (let i = 0; i < model.chains.length; i++) {
-      const chain = model.chains[i];
-      const flags = (model.textures[chain[0]] as { flags: number }).flags;
-      if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_TURBULENT)) {
-        continue;
-      }
-      gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
-    }
-    GL.UnbindVAO();
-  }
-
-  /** @private */
-  static _renderAliasEntityShadow(
-    model: AliasModel,
-    entity: ClientEdict,
-    lightSpaceMatrix: Float64Array,
-    programName: string,
-    casterFade: number,
-  ): void {
-    if (!model.cmds) {
-      return;
-    }
-    const program = GL.UseProgram(programName)!;
-
-    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
-    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
-    gl.uniform1f(program.uCasterFade!, casterFade);
-
-    const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(model, entity);
-
-    gl.uniform1f(program.uInterpolation!, R.interpolation.value && (entity.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, model.cmds as WebGLBuffer);
-    gl.enableVertexAttribArray(program.aPositionA!.location as number);
-    gl.enableVertexAttribArray(program.aPositionB!.location as number);
-    gl.vertexAttribPointer(program.aPositionA!.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs!);
-    gl.vertexAttribPointer(program.aPositionB!.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs!);
-
-    if (program.aNormalA) {
-      gl.enableVertexAttribArray(program.aNormalA!.location as number);
-      gl.enableVertexAttribArray(program.aNormalB!.location as number);
-      gl.vertexAttribPointer(program.aNormalA!.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs! + 12);
-      gl.vertexAttribPointer(program.aNormalB!.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs! + 12);
-      gl.uniform3fv(program.uLightPos!, ShadowMap.pointLightOrigin);
-      gl.uniform1f(program.uNormalBias!, ShadowMap.pointNormalBias!.value);
-    }
-
-    gl.drawArrays(gl.TRIANGLES, 0, model._num_tris * 3);
-
-    gl.disableVertexAttribArray(program.aPositionA!.location as number);
-    gl.disableVertexAttribArray(program.aPositionB!.location as number);
-    if (program.aNormalA) {
-      gl.disableVertexAttribArray(program.aNormalA!.location as number);
-      gl.disableVertexAttribArray(program.aNormalB!.location as number);
-    }
-  }
-
-  /** @private */
-  static _renderMeshEntityShadow(
-    model: MeshModel,
-    entity: ClientEdict,
-    lightSpaceMatrix: Float64Array,
-    programName: string,
-    casterFade: number,
-  ): void {
-    if (!model.vao) {
-      return;
-    }
-    GL.BindVAO(model.vao);
-    const program = GL.UseProgram(programName)!;
-
-    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
-    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
-    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, lightSpaceMatrix);
-    gl.uniform1f(program.uCasterFade!, casterFade);
-
-    const indexType = model.indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
-    gl.drawElements(gl.TRIANGLES, model.numTriangles * 3, indexType, 0);
-    GL.UnbindVAO();
   }
 
   // ─── Active texture queries ───────────────────────────────────────
@@ -1018,8 +913,7 @@ export default class ShadowMap {
       GL.UnbindVAO();
       ShadowMap.renderEntitiesShadow(
         ShadowMap.pointFaceMatrix,
-        'shadow-point',
-        'shadow-alias-point',
+        true,
         ShadowMap.pointLightOrigin,
         pointCasterCutoffDistSq,
       );

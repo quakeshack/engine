@@ -1829,8 +1829,7 @@ class R {
         ShadowMap.begin(i);
         ShadowMap.renderEntitiesShadow(
           ShadowMap.lightSpaceMatrices[i],
-          'shadow-brush',
-          'shadow-alias',
+          false,
           R.refdef.vieworg,
           localCasterRadiusSq,
         );

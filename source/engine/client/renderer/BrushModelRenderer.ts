@@ -1,5 +1,5 @@
 import Vector from '../../../shared/Vector.ts';
-import { ModelRenderer } from './ModelRenderer.ts';
+import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
@@ -472,6 +472,32 @@ export class BrushModelRenderer extends ModelRenderer {
       this._renderTransparentSurfaces(clmodel, e, viewMatrix);
       GL.UnbindVAO();
     }
+  }
+
+  // ─── Shadow rendering ────────────────────────────────────────────
+
+  override renderShadow(model: BaseModel, entity: ClientEdict, ctx: ShadowRenderContext): void {
+    const clmodel = model as BrushModel;
+    if (!clmodel.opaqueVAO || !clmodel.chains || clmodel.chains.length === 0) {
+      return;
+    }
+    GL.BindVAO(clmodel.opaqueVAO as WebGLVertexArrayObject);
+    const program = GL.UseProgram(ctx.isPointLight ? 'shadow-point' : 'shadow-brush')!;
+
+    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
+    gl.uniform1f(program.uCasterFade!, ctx.casterFade);
+
+    for (let i = 0; i < clmodel.chains.length; i++) {
+      const chain = clmodel.chains[i];
+      const flags = (clmodel.textures[chain[0]] as { flags: number }).flags;
+      if (flags & (MaterialFlags.MF_SKIP | MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_TURBULENT)) {
+        continue;
+      }
+      gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
+    }
+    GL.UnbindVAO();
   }
 
   // ─── World rendering ──────────────────────────────────────────────

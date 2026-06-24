@@ -1,5 +1,5 @@
 import Vector from '../../../shared/Vector.ts';
-import { ModelRenderer } from './ModelRenderer.ts';
+import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL, { ATTRIB_LOCATIONS } from '../GL.ts';
@@ -158,6 +158,24 @@ export class MeshModelRenderer extends ModelRenderer {
 
     // Track non-brush geometry together with alias-model poly counts in r_speeds.
     R.c_alias_polys += clmodel.numTriangles;
+  }
+
+  override renderShadow(model: BaseModel, entity: ClientEdict, ctx: ShadowRenderContext): void {
+    const clmodel = model as MeshModel;
+    if (!clmodel.vao) {
+      return;
+    }
+    GL.BindVAO(clmodel.vao);
+    const program = GL.UseProgram(ctx.isPointLight ? 'shadow-point' : 'shadow-brush')!;
+
+    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
+    gl.uniform1f(program.uCasterFade!, ctx.casterFade);
+
+    const indexType = clmodel.indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
+    gl.drawElements(gl.TRIANGLES, clmodel.numTriangles * 3, indexType, 0);
+    GL.UnbindVAO();
   }
 
   /**

@@ -1,5 +1,5 @@
 import Vector from '../../../shared/Vector.ts';
-import { ModelRenderer } from './ModelRenderer.ts';
+import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import GL from '../GL.ts';
@@ -194,6 +194,47 @@ export class AliasModelRenderer extends ModelRenderer {
 
     if (pass === 2) {
       gl.disable(gl.BLEND);
+    }
+  }
+
+  override renderShadow(model: BaseModel, entity: ClientEdict, ctx: ShadowRenderContext): void {
+    const clmodel = model as AliasModel;
+    if (!clmodel.cmds) {
+      return;
+    }
+    const program = GL.UseProgram(ctx.isPointLight ? 'shadow-alias-point' : 'shadow-alias')!;
+
+    gl.uniform3fv(program.uOrigin!, entity.lerp.origin);
+    gl.uniformMatrix3fv(program.uAngles!, false, entity.lerp.angles.toRotationMatrix());
+    gl.uniformMatrix4fv(program.uLightSpaceMatrix!, false, ctx.lightSpaceMatrix);
+    gl.uniform1f(program.uCasterFade!, ctx.casterFade);
+
+    const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(clmodel, entity);
+
+    gl.uniform1f(program.uInterpolation!, R.interpolation.value && (entity.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds as WebGLBuffer);
+    gl.enableVertexAttribArray(program.aPositionA!.location as number);
+    gl.enableVertexAttribArray(program.aPositionB!.location as number);
+    gl.vertexAttribPointer(program.aPositionA!.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs!);
+    gl.vertexAttribPointer(program.aPositionB!.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs!);
+
+    if (program.aNormalA) {
+      gl.enableVertexAttribArray(program.aNormalA!.location as number);
+      gl.enableVertexAttribArray(program.aNormalB!.location as number);
+      gl.vertexAttribPointer(program.aNormalA!.location as number, 3, gl.FLOAT, false, 24, frameA.cmdofs! + 12);
+      gl.vertexAttribPointer(program.aNormalB!.location as number, 3, gl.FLOAT, false, 24, frameB.cmdofs! + 12);
+      gl.uniform3fv(program.uLightPos!, ctx.pointLightOrigin);
+      gl.uniform1f(program.uNormalBias!, ctx.pointNormalBias);
+    }
+
+    gl.drawArrays(gl.TRIANGLES, 0, clmodel._num_tris * 3);
+
+    gl.disableVertexAttribArray(program.aPositionA!.location as number);
+    gl.disableVertexAttribArray(program.aPositionB!.location as number);
+    if (program.aNormalA) {
+      gl.disableVertexAttribArray(program.aNormalA!.location as number);
+      gl.disableVertexAttribArray(program.aNormalB!.location as number);
     }
   }
 

@@ -3,6 +3,20 @@ import { BaseModel } from '../../common/model/BaseModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 
 /**
+ * Per-entity context passed to renderShadow, carrying the shadow-pass uniforms needed
+ * to render one entity into the active shadow map.
+ */
+export interface ShadowRenderContext {
+  readonly lightSpaceMatrix: Float64Array;
+  readonly casterFade: number;
+  readonly isPointLight: boolean;
+  /** Point light world-space origin — used only when the shadow program has normal-bias support. */
+  readonly pointLightOrigin: Float32Array;
+  /** Normal-offset bias value for point light shadow shaders. */
+  readonly pointNormalBias: number;
+}
+
+/**
  * Abstract base class for model renderers.
  * Implements the Strategy pattern for polymorphic model rendering.
  * Each model type (Brush, Alias, Sprite) has its own renderer implementation.
@@ -54,6 +68,12 @@ export class ModelRenderer {
   render(_model: BaseModel, _entity: ClientEdict, _pass = 0): void {
     throw new NotImplementedError('ModelRenderer.render must be implemented');
   }
+
+  /**
+   * Render a single entity's shadow into the active shadow map.
+   * Default no-op — sprites and other non-occluding types cast no shadow.
+   */
+  renderShadow(_model: BaseModel, _entity: ClientEdict, _ctx: ShadowRenderContext): void {}
 
   /**
    * Cleanup rendering state after rendering all entities of this type.
