@@ -241,7 +241,10 @@ export class BSP29Loader extends ModelLoader {
 
       // Load texture data (skip for dedicated server)
       if (!registry.isDedicatedServer) {
-        if (tx.name.substring(0, 3).toLowerCase() === 'sky') {
+        const txname = tx.name.toLowerCase();
+
+        // HACK: textures starting with sky are special
+        if (txname.substring(0, 3) === 'sky') {
           const skyTexture = new Uint8Array(buf, absofs + view.getUint32(absofs + 24, true), 32768);
 
           // CR: unholy yet convenient hack to pass sky texture data to SkyRenderer
@@ -268,6 +271,11 @@ export class BSP29Loader extends ModelLoader {
               }
               tx.averageColor = BSP29Loader.#computeAverageColor(wtex.data);
             }
+          }
+
+          // CR: for some reason thesse lead to rendering shadows otherwise
+          if (txname === 'skip' || txname === 'clip' || txname === 'trigger') {
+            tx.flags |= MaterialFlags.MF_SKIP;
           }
         }
 

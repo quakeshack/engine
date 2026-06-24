@@ -1174,7 +1174,7 @@ export class BrushModelRenderer extends ModelRenderer {
       const chain = clmodel.chains[i];
       const material = clmodel.textures[chain[0]] as BaseMaterial;
 
-      if ((material.flags & MaterialFlags.MF_TURBULENT) || (material.flags & MaterialFlags.MF_TRANSPARENT)) {
+      if ((material.flags & (MaterialFlags.MF_TURBULENT | MaterialFlags.MF_TRANSPARENT | MaterialFlags.MF_SKIP)) !== 0) {
         continue;
       }
 
@@ -1297,6 +1297,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const lightingState = BrushModelRenderer.resolveEntityLightingState(
       clmodel,
       entity,
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       R._CalculateLightValues,
       CL.state.worldmodel as BrushModel | null,
     );
@@ -1588,7 +1589,7 @@ export class BrushModelRenderer extends ModelRenderer {
     // Build opaque surfaces (non-sky, non-turbulent)
     for (let i = 0; i < m.textures.length; i++) {
       const texture = m.textures[i] as BaseMaterial;
-      if (texture.flags & MaterialFlags.MF_SKY || texture.flags & MaterialFlags.MF_TURBULENT) {
+      if ((texture.flags & (MaterialFlags.MF_SKY | MaterialFlags.MF_TURBULENT | MaterialFlags.MF_SKIP)) !== 0) {
         continue;
       }
       const chain = [i, verts, 0];

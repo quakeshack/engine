@@ -108,7 +108,7 @@ export default class ShadowMap {
    * Normalized direction vector the shadow light travels (light → scene).
    * Derived each frame from the closest visible light entity.
    */
-  static localLightDirs: Float64Array[] = Array.from({ length: LOCAL_SHADOW_COUNT }, () => new Float64Array([0, 0, -1]));
+  static localLightDirs: Vector[] = Array.from({ length: LOCAL_SHADOW_COUNT }, () => new Vector(0, 0, -1));
 
   /** Number of active local shadow directions this frame. */
   static localLightCount: number = 0;
@@ -126,7 +126,7 @@ export default class ShadowMap {
    * Each entry holds a position and radius (derived from the entity's
    * `light` key, defaulting to 300). Populated once per map load.
    */
-  static lightEntities: { origin: Float64Array; radius: number }[] = [];
+  static lightEntities: { origin: Vector; radius: number }[] = [];
 
   /** Reference to the worldmodel whose entities were last parsed. */
   static _parsedWorldmodel: BrushModel | null = null;
@@ -138,10 +138,10 @@ export default class ShadowMap {
   static _LIGHT_VISIBILITY_BIAS: number = 16.0;
 
   /** Scratch buffer for relaxed map-light visibility traces. */
-  static _lightTraceScratch: Float64Array = new Float64Array(3);
+  static _lightTraceScratch: Vector = new Vector();
 
   /** Stable focus point for the local entity-shadow projection. */
-  static _shadowFocusPoint: Float64Array = new Float64Array(3);
+  static _shadowFocusPoint: Vector = new Vector();
 
   /** Indices of the map lights steering the local shadow directions. */
   static _currentLocalLightIndices: Int32Array = Int32Array.from([-1, -1, -1]);
@@ -161,7 +161,7 @@ export default class ShadowMap {
   static pointFaceMatrix: Float64Array = new Float64Array(16);
 
   /** Active point light position [x, y, z] for this frame. */
-  static pointLightOrigin: Float64Array = new Float64Array(3);
+  static pointLightOrigin: Vector = new Vector();
 
   /** Active point light radius for this frame. */
   static pointLightRadius: number = 0;
@@ -451,7 +451,7 @@ export default class ShadowMap {
     lightSpaceMatrix: Float64Array,
     brushProgram = 'shadow-brush',
     aliasProgram = 'shadow-alias',
-    cutoffOrigin: Vector | Float64Array | number[] | null = null,
+    cutoffOrigin: Vector | null = null,
     cutoffDistSq = Infinity,
   ): void {
     if (R.drawentities.value === 0) {
@@ -521,7 +521,7 @@ export default class ShadowMap {
    */
   static _computeLocalCasterFade(
     entity: ClientEdict,
-    cutoffOrigin: Vector | Float64Array | number[] | null,
+    cutoffOrigin: Vector | null,
     cutoffDistSq: number,
   ): number {
     if (cutoffOrigin === null || !Number.isFinite(cutoffDistSq)) {
@@ -556,7 +556,7 @@ export default class ShadowMap {
    */
   static _computeEntityDistanceSqToCutoff(
     entity: ClientEdict,
-    cutoffOrigin: Vector | Float64Array | number[],
+    cutoffOrigin: Vector,
   ): number {
     const model = entity.model;
     if (model === null) {
@@ -756,12 +756,7 @@ export default class ShadowMap {
         continue;
       }
 
-      const origin = new Float64Array([
-        parseFloat(parts[0]),
-        parseFloat(parts[1]),
-        parseFloat(parts[2]),
-      ]);
-
+      const origin = new Vector(parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2]));
       const radius = ent.light ? parseFloat(ent.light) : 300;
 
       if (radius > 0 && !Number.isNaN(origin[0])) {
@@ -776,7 +771,7 @@ export default class ShadowMap {
    * Test line-of-sight between two points using the world BSP hull 0.
    * @returns True if the line is unobstructed.
    */
-  static _traceVisible(start: Vector | Float64Array | number[], end: Vector | Float64Array | number[]): boolean {
+  static _traceVisible(start: Vector, end: Vector): boolean {
     const trace = SV.collision.traceStaticWorldLine(
       new Vector(start[0], start[1], start[2]),
       new Vector(end[0], end[1], end[2]),
@@ -789,7 +784,7 @@ export default class ShadowMap {
    * are embedded slightly inside wall fixtures or ceilings.
    * @returns True if a direct or nudged trace is unobstructed.
    */
-  static _traceLightVisible(start: Vector | Float64Array | number[], end: Vector | Float64Array | number[]): boolean {
+  static _traceLightVisible(start: Vector, end: Vector): boolean {
     if (ShadowMap._traceVisible(start, end)) {
       return true;
     }
@@ -817,7 +812,7 @@ export default class ShadowMap {
    * Determine the single top-down local shadow used this frame.
    * The shadow focus follows the nearest visible caster.
    */
-  static selectLocalLights(viewOrigin: Vector | Float64Array | number[]): void {
+  static selectLocalLights(viewOrigin: Vector): void {
     let anchorEntity: ClientEdict | null = null;
     let bestDistSq = Infinity;
 
@@ -865,7 +860,7 @@ export default class ShadowMap {
    * Considers both transient dynamic lights and static BSP light entities.
    * @returns True if a suitable light was found.
    */
-  static selectPointLight(viewOrigin: Vector | Float64Array | number[]): boolean {
+  static selectPointLight(viewOrigin: Vector): boolean {
     ShadowMap.pointLightActive = false;
 
     if (!ShadowMap.pointEnabled!.value) {

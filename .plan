@@ -179,6 +179,7 @@ Grouped by sections and then sorted by priority (more or less).
 
 - more nav mesh fixes
   - I let Claude Code grill that bug for several hours and I’m pressed, it fixed it
+- fixed shadows cast by trigger brushes
 
 ### 2026-06-23
 
