@@ -2362,6 +2362,10 @@ class R {
     GL.Bind(0, R.dlightmap_rgba_texture);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, dlightmapsRgba);
 
+    // Reset the viewleafs so that the renderer will recalculate them on the next frame.
+    R.viewleaf = null;
+    R.oldviewleaf = null;
+
     R.NewMapFog();
     R.MakeSky();
   };

@@ -186,6 +186,7 @@ void main(void) {
 
   float bumpLightDot = 1.0;
   float specFactor = 0.0;
+  float dynSpecFactor = 0.0;
   float lightFactor = 1.0;
 
   if (uPerformDotLighting) {
@@ -242,11 +243,9 @@ void main(void) {
     // Add dynamic light contribution
     float dynLightDot = max(dot(N, vDynamicLightVec), 0.0) * dynamicStrength;
     vec3 dynH = normalize(vDynamicLightVec + V);
-    float dynSpecFactor = specIntensity * pow(max(dot(N, dynH), 0.0), 16.0) * dynamicStrength;
+    dynSpecFactor = specIntensity * pow(max(dot(N, dynH), 0.0), 16.0) * dynamicStrength;
 
-    // Combine both light sources
     lightFactor += dynLightDot;
-    specFactor += dynSpecFactor;
   }
 
   // Calculate bump mapping factor - blend between full lighting and bump-modified lighting
@@ -258,7 +257,9 @@ void main(void) {
   vec3 shadeAmbient = vLightDot * uShadeLight + uAmbientLight + vDynamicLightDot * uDynamicShadeLight;
   vec3 lightingFactor = staticLight * bumpFactor * shadeAmbient;
   vec3 emissiveMask = clamp(luminance.rgb + vec3(uBloomEmissiveScale), 0.0, 1.0);
-  vec3 specularColor = specFactor * staticLight;
+  // Static specular is attenuated by the shadow maps; dynamic specular is
+  // attenuated via surfaceDlight, which already has pointShadow baked in.
+  vec3 specularColor = specFactor * lightmap * shadow + dynSpecFactor * surfaceDlight;
 
   // Combine lighting in one operation per channel
   vec3 emissiveColor = texel.rgb * emissiveMask;
