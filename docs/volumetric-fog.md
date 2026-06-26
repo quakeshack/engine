@@ -46,7 +46,7 @@ This feature is opt-in. Enable it by setting `_qs_waterfog` to `1` on `worldspaw
 }
 ```
 
-**Color:** The fog color is taken from the liquid texture's `fogTint` field in its `.qsmat.json` material. If no material defines a tint, the engine falls back to content-type defaults: orange-red for lava, green for slime, and blue for water.
+**Color:** The fog color is taken from the liquid texture's `fogTint` field in its `.qsmat.json` material. If no material defines a tint, the color will be based on the average texture color and in case the material cannot be determined, the engine falls back to content-type defaults: orange-red for lava, green for slime, and blue for water.
 
 **Density:** Controlled by the console variable `r_underwater_fog_density` (default `0.01`). It is a cheat-protected cvar.
 

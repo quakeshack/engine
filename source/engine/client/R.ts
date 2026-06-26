@@ -1119,6 +1119,35 @@ class R {
   };
 
   /**
+   * Linear nearest-neighbor search over pre-built liquid fog anchors.
+   * Returns the fog tint of the closest anchor to `vieworg`, or null if none exist.
+   * @returns Fog tint in 0–1 RGB range, or null.
+   */
+  static #nearestLiquidFogTint(worldmodel: BrushModel, vieworg: Vector): [number, number, number] | null {
+    const anchors = worldmodel.liquidFogAnchors;
+    if (anchors.length === 0) {
+      return null;
+    }
+
+    let bestTint = anchors[0].fogTint;
+    let bestDist = Number.MAX_VALUE;
+
+    for (let i = 0; i < anchors.length; i++) {
+      const c = anchors[i].center;
+      const dx = c[0] - vieworg[0];
+      const dy = c[1] - vieworg[1];
+      const dz = c[2] - vieworg[2];
+      const dist = dx * dx + dy * dy + dz * dz;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestTint = anchors[i].fogTint;
+      }
+    }
+
+    return bestTint;
+  }
+
+  /**
    * Compute transparent sort distance for an entity.
    * We currently sort entities by origin distance for consistency with prior
    * behavior and because model bounds are not uniformly available here.
@@ -1752,14 +1781,22 @@ class R {
       underwaterFogEffect.active = waterfogEnabled && isUnderwater && R.drawturbulents.value !== 0;
     }
     if (isUnderwater) {
-      // Look up fog tint from the first turbulent chain in the viewleaf, falling
-      // back to a content-type default. fogTint is set on BaseMaterial once the
-      // texture average color is known; null = use the defaults below.
+      // Look up fog tint in priority order:
+      //   1. First turbulent chain visible from the viewleaf (direct hit).
+      //   2. Nearest spatial anchor built at load time — covers narrow passages
+      //      where no surface is in view, and correctly distinguishes between
+      //      multiple distinct liquid bodies of the same content type.
+      //   3. Hardcoded content-type defaults as a last resort.
       const firstChain = R.viewleaf.turbulentChains[0];
       const material = firstChain !== undefined
         ? worldmodel.textures[firstChain.texture]
         : undefined;
-      const fogTint = material?.fogTint ?? null;
+
+      let fogTint = material?.fogTint ?? null;
+
+      if (fogTint === null) {
+        fogTint = R.#nearestLiquidFogTint(worldmodel, R.refdef.vieworg);
+      }
 
       if (fogTint !== null) {
         R.underwaterFogColor = fogTint;

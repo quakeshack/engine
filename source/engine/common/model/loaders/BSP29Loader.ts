@@ -120,6 +120,7 @@ export class BSP29Loader extends ModelLoader {
     this.#loadSubmodels(loadmodel, buffer); // CR: must be last, since it creates additional models based on this one
     this.#parseFogVolumes(loadmodel); // must be after submodels load so we can scan submodel faces
     this.#computeAreas(loadmodel);
+    this.#buildLiquidFogAnchors(loadmodel);
 
     if (loadmodel.coloredlights && !loadmodel.lightdata_rgb) {
       await this.#loadExternalLighting(loadmodel, name);
@@ -293,6 +294,8 @@ export class BSP29Loader extends ModelLoader {
 
         if (tx.name[0] === '*' || tx.name[0] === '!') {
           tx.flags |= MaterialFlags.MF_TURBULENT;
+          const [ar, ag, ab] = tx.averageColor;
+          tx.fogTint = [ar / 255, ag / 255, ab / 255];
         }
 
         // Mark textures with '{' prefix as transparent (for alpha blending)
@@ -1114,7 +1117,9 @@ export class BSP29Loader extends ModelLoader {
     const fileofs = view.getUint32((lump.entities << 3) + 4, true);
     const filelen = view.getUint32((lump.entities << 3) + 8, true);
     loadmodel.entities = Q.memstr(new Uint8Array(buf, fileofs, filelen));
-    loadmodel.worldspawnInfo = {};
+    loadmodel.worldspawnInfo = {
+      _qs_waterfog: '1',
+    };
 
     let data = loadmodel.entities as string | null;
 
@@ -1170,6 +1175,46 @@ export class BSP29Loader extends ModelLoader {
     // (moved to load() after submodels load so we can also scan submodel faces)
 
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs + filelen);
+  }
+
+  /**
+   * Build spatial fog anchors by walking each liquid leaf's mark surfaces. For
+   * every liquid leaf that has at least one turbulent face with a known fog tint,
+   * one anchor is stored at the leaf center. The renderer uses these for a
+   * nearest-neighbor fallback when the viewleaf has no visible turbulent chains.
+   */
+  #buildLiquidFogAnchors(loadmodel: BrushModel): void {
+    for (const leaf of loadmodel.leafs) {
+      if (leaf.contents > content.CONTENT_WATER) {
+        continue;
+      }
+
+      if (leaf.mins === null || leaf.maxs === null) {
+        continue;
+      }
+
+      for (let i = 0; i < leaf.nummarksurfaces; i++) {
+        const faceIndex = loadmodel.marksurfaces[leaf.firstmarksurface + i];
+        const face = loadmodel.faces[faceIndex];
+
+        if (!face?.turbulent) {
+          continue;
+        }
+
+        const mat = loadmodel.textures[face.texture];
+
+        if (!mat?.fogTint) {
+          continue;
+        }
+
+        loadmodel.liquidFogAnchors.push({
+          center: leaf.mins.copy().add(leaf.maxs).multiply(0.5),
+          fogTint: mat.fogTint,
+        });
+
+        break;
+      }
+    }
   }
 
   /**

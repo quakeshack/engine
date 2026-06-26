@@ -643,6 +643,19 @@ export class BrushModel extends BaseModel {
   /** Fog volume brush entities parsed from the BSP entity lump. */
   fogVolumes: FogVolumeInfo[] = [];
 
+  /**
+   * Spatial anchors for liquid fog fallback, built at load time from liquid leafs whose mark
+   * surfaces include at least one turbulent face with a known fog tint. When the viewleaf has
+   * no visible turbulent chains (e.g. narrow passage), the renderer finds the nearest anchor
+   * to the camera and uses its fog tint.
+   *
+   * A linear nearest-neighbor scan is used at runtime. This is intentional: the anchor count
+   * is bounded by the number of distinct liquid surfaces in a map, typically well under 100,
+   * making O(N) search negligible. If maps with hundreds of distinct liquid bodies become
+   * common, swap this for a k-d tree or octree backed by the same interface.
+   */
+  liquidFogAnchors: { readonly center: Vector; readonly fogTint: [number, number, number] }[] = [];
+
   /** Leaf brushes, when present. */
   leafbrushes: number[] | null = null;
 

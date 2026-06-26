@@ -175,6 +175,10 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-26
+
+- calculate automatic turbulent fog color based on textures
+
 ### 2026-06-24
 
 - more nav mesh fixes
