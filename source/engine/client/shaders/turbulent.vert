@@ -32,10 +32,14 @@ out vec2 vDlightTexCoord;
 out float vHasLightmap;
 
 void main(void) {
-  vec3 aPositionA = aPosition;
+  // GLQuake warp: displace X and Y using cross-axis sine waves
+  // vec3 aPositionA = vec3(
+  //   aPosition.x + 8.0 * sin(aPosition.y * 0.05 + uTime) * sin(aPosition.z * 0.05 + uTime),
+  //   aPosition.y + 8.0 * sin(aPosition.x * 0.05 + uTime) * sin(aPosition.z * 0.05 + uTime),
+  //   aPosition.z
+  // );
 
-  aPositionA.z += sin(aPosition.x + uTime) * 0.5 - 0.25;
-  aPositionA.z += cos(aPosition.y + uTime) * 0.5 - 0.25;
+  vec3 aPositionA = aPosition; // CR: disable warpning for now, vanilla maps do not have the appropriate PVS
 
   vec3 position = uViewAngles * (uAngles * aPositionA + uOrigin - uViewOrigin);
   gl_Position = uPerspective * vec4(position.xz, -position.y, 1.0);

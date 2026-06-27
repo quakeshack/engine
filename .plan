@@ -175,6 +175,11 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-06-27
+
+- disabled turbulent warping for now (vanilla maps lack required PVS)
+- fixed some lighting issues (turbulent fake lightmap as well as negative normal issues on brush models)
+
 ### 2026-06-26
 
 - calculate automatic turbulent fog color based on textures

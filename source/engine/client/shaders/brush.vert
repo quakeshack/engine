@@ -83,7 +83,8 @@ void main(void) {
 
   // Compute both lighting paths, select based on uniform
   // This avoids branching at the cost of a few extra ops (which is faster on GPU)
-  float staticLightDot = dot(transformedNormal, vLightVec);
+  // Clamp to [0, 1] like the alias shader — negative values would subtract from ambient and black out faces
+  float staticLightDot = max(0.0, dot(transformedNormal, vLightVec));
   vDynamicLightDot = max(0.0, dot(transformedNormal, vDynamicLightVec));
 
   // Keep non-PBR brush lighting unmodified while allowing PBR surfaces to source

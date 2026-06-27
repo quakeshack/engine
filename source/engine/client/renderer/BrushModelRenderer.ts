@@ -43,9 +43,10 @@ const TURBULENT_FALLBACK_LATERAL_OFFSET = 12.0;
 const TURBULENT_FALLBACK_NEIGHBOR_COUNT = 6;
 const TURBULENT_FALLBACK_NEIGHBOR_GAIN = 1.4;
 const TURBULENT_FALLBACK_MAX_BOOST = 1.3;
-const TURBULENT_FALLBACK_FACE_BLEND = 0.35;
 const TURBULENT_FALLBACK_SCALE = 0.0078125;
 const TURBULENT_FALLBACK_EPSILON = 0.0001;
+// Position quantization factor for the vertex-light averaging map (1/16 Quake unit precision).
+const TURBULENT_FALLBACK_POS_QUANT = 16.0;
 
 /**
  * @param strength Requested brush bloom contribution strength.
@@ -343,21 +344,6 @@ export class BrushModelRenderer extends ModelRenderer {
     ];
   }
 
-  /**
-   * Blend per-vertex and per-face turbulent fallback light by a smoothstep factor.
-   * @param factor Blend factor in the 0..1 range.
-   * @returns The blended RGB light values.
-   */
-  static blendTurbulentFallbackLight(vertexLight: number[], faceLight: number[], factor: number): number[] {
-    const clampedFactor = Math.max(0.0, Math.min(factor, 1.0));
-    const inverseFactor = 1.0 - clampedFactor;
-
-    return [
-      vertexLight[0] * inverseFactor + faceLight[0] * clampedFactor,
-      vertexLight[1] * inverseFactor + faceLight[1] * clampedFactor,
-      vertexLight[2] * inverseFactor + faceLight[2] * clampedFactor,
-    ];
-  }
 
   // ─── ModelRenderer interface ──────────────────────────────────────
 
@@ -1608,6 +1594,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const cmds: number[] = [];
     const styles = [0.0, 0.0, 0.0, 0.0];
     const turbulentFallbackCache = new Map<string, number[]>();
+    const turbulentFallbackAvgMap = this._buildTurbulentFallbackLightMap(m, turbulentFallbackCache);
     let verts = 0;
     let cutoff = 0;
     m.chains = [];
@@ -1668,17 +1655,11 @@ export class BrushModelRenderer extends ModelRenderer {
           styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
         }
         const hasLightmap = this._surfaceHasTurbulentLightmap(m, surf);
-        const faceFallbackLight = hasLightmap ? null : this._getTurbulentFallbackFaceLight(m, surf, turbulentFallbackCache);
         chain[2] += surf.verts.length;
         for (let k = 0; k < surf.verts.length; k++) {
           const vert = surf.verts[k];
-          const fallbackLight = hasLightmap
-            ? [0.0, 0.0, 0.0]
-            : BrushModelRenderer.blendTurbulentFallbackLight(
-              this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]), turbulentFallbackCache),
-              faceFallbackLight!,
-              TURBULENT_FALLBACK_FACE_BLEND,
-            );
+          const posKey = `${Math.round(vert[0] * TURBULENT_FALLBACK_POS_QUANT)}|${Math.round(vert[1] * TURBULENT_FALLBACK_POS_QUANT)}|${Math.round(vert[2] * TURBULENT_FALLBACK_POS_QUANT)}`;
+          const fallbackLight = hasLightmap ? [0.0, 0.0, 0.0] : (turbulentFallbackAvgMap.get(posKey) ?? [0.0, 0.0, 0.0]);
           const dlightTexCoordS = vert[5];
           const dlightTexCoordT = vert[6];
           cmds.push(vert[0], vert[1], vert[2]);
@@ -1742,6 +1723,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const cmds: number[] = [];
     const styles = [0.0, 0.0, 0.0, 0.0];
     const turbulentFallbackCache = new Map<string, number[]>();
+    const turbulentFallbackAvgMap = this._buildTurbulentFallbackLightMap(m, turbulentFallbackCache);
     let verts = 0;
     let cutoff = 0;
 
@@ -1840,20 +1822,14 @@ export class BrushModelRenderer extends ModelRenderer {
             styles[l] = surf.styles[l] * 0.015625 + 0.0078125;
           }
           const hasLightmap = this._surfaceHasTurbulentLightmap(m, surf);
-          const faceFallbackLight = hasLightmap ? null : this._getTurbulentFallbackFaceLight(m, surf, turbulentFallbackCache);
           console.assert(surf.verts !== null && Array.isArray(surf.verts));
           this._expandLeafBoundsForSurface(leaf, surf.verts!);
           this._expandBounds(chainMins, chainMaxs, surf.verts!);
           chain[2] += surf.verts!.length;
           for (let l = 0; l < surf.verts!.length; l++) {
             const vert = surf.verts![l];
-            const fallbackLight = hasLightmap
-              ? [0.0, 0.0, 0.0]
-              : BrushModelRenderer.blendTurbulentFallbackLight(
-                this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]), turbulentFallbackCache),
-                faceFallbackLight!,
-                TURBULENT_FALLBACK_FACE_BLEND,
-              );
+            const posKey = `${Math.round(vert[0] * TURBULENT_FALLBACK_POS_QUANT)}|${Math.round(vert[1] * TURBULENT_FALLBACK_POS_QUANT)}|${Math.round(vert[2] * TURBULENT_FALLBACK_POS_QUANT)}`;
+            const fallbackLight = hasLightmap ? [0.0, 0.0, 0.0] : (turbulentFallbackAvgMap.get(posKey) ?? [0.0, 0.0, 0.0]);
             const dlightTexCoordS = vert[5];
             const dlightTexCoordT = vert[6];
             cmds.push(vert[0], vert[1], vert[2]);
@@ -1956,33 +1932,47 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   /**
-   * Compute the centroid of a BSP face in world space.
+   * Pre-compute a position-keyed map of averaged turbulent fallback lights.
+   * Vertices at the same world position are averaged across all faces sharing that position,
+   * eliminating seams at BSP face boundaries caused by per-face light discontinuities.
    * @private
-   * @returns The face centroid as a world-space vector.
+   * @returns Map from quantized position key to averaged RGB fallback light.
    */
-  _getTurbulentFallbackFaceCenter(model: BrushModel, face: Face): Vector {
-    const center = new Vector(0.0, 0.0, 0.0);
+  _buildTurbulentFallbackLightMap(m: BrushModel, cache: Map<string, number[]>): Map<string, number[]> {
+    const accumMap = new Map<string, {r: number; g: number; b: number; n: number}>();
 
-    for (let i = 0; i < face.numedges; i++) {
-      const surfEdgeIndex = model.surfedges[face.firstedge + i];
-      const vertex = surfEdgeIndex > 0
-        ? model.vertexes[model.edges[surfEdgeIndex][0]]
-        : model.vertexes[model.edges[-surfEdgeIndex][1]];
-      center.add(vertex);
+    for (const surf of m.facesIter()) {
+      const texture = m.textures[surf.texture] as BaseMaterial;
+      if (!(texture.flags & MaterialFlags.MF_TURBULENT)) {
+        continue;
+      }
+      if (!surf.verts || surf.verts.length === 0) {
+        continue;
+      }
+      if (this._surfaceHasTurbulentLightmap(m, surf)) {
+        continue;
+      }
+      for (let k = 0; k < surf.verts.length; k++) {
+        const vert = surf.verts[k];
+        const posKey = `${Math.round(vert[0] * TURBULENT_FALLBACK_POS_QUANT)}|${Math.round(vert[1] * TURBULENT_FALLBACK_POS_QUANT)}|${Math.round(vert[2] * TURBULENT_FALLBACK_POS_QUANT)}`;
+        const light = this._getTurbulentFallbackLight(m, surf, new Vector(vert[0], vert[1], vert[2]), cache);
+        const existing = accumMap.get(posKey);
+        if (existing !== undefined) {
+          existing.r += light[0];
+          existing.g += light[1];
+          existing.b += light[2];
+          existing.n++;
+        } else {
+          accumMap.set(posKey, {r: light[0], g: light[1], b: light[2], n: 1});
+        }
+      }
     }
 
-    center.multiply(1.0 / Math.max(face.numedges, 1));
-    return center;
-  }
-
-  /**
-   * Sample turbulent fallback light at the face centroid.
-   * @private
-   * @returns RGB fallback light values at the face center.
-   */
-  _getTurbulentFallbackFaceLight(model: BrushModel, face: Face, cache: Map<string, number[]>): number[] {
-    const faceCenter = this._getTurbulentFallbackFaceCenter(model, face);
-    return this._getTurbulentFallbackLight(model, face, faceCenter, cache);
+    const avgMap = new Map<string, number[]>();
+    for (const [key, accum] of accumMap) {
+      avgMap.set(key, [accum.r / accum.n, accum.g / accum.n, accum.b / accum.n]);
+    }
+    return avgMap;
   }
 
   /**

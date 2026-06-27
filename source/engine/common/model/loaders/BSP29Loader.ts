@@ -1118,7 +1118,7 @@ export class BSP29Loader extends ModelLoader {
     const filelen = view.getUint32((lump.entities << 3) + 8, true);
     loadmodel.entities = Q.memstr(new Uint8Array(buf, fileofs, filelen));
     loadmodel.worldspawnInfo = {
-      _qs_waterfog: '1',
+      // _qs_waterfog: '1',
     };
 
     let data = loadmodel.entities as string | null;

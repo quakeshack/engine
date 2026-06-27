@@ -145,16 +145,53 @@ void describe('BrushModelRenderer.sampleTurbulentFallbackLight', () => {
     assert.equal(fallbackLight[2] > 16 * 0.0078125, true);
   });
 
-  void test('blends vertex fallback toward a face-level fallback to soften seams', () => {
-    const blendedLight = BrushModelRenderer.blendTurbulentFallbackLight(
-      [0.2, 0.1, 0.05],
-      [0.4, 0.3, 0.2],
-      0.35,
-    );
+});
 
-    assert(Math.abs(blendedLight[0] - 0.27) < 0.000001);
-    assert(Math.abs(blendedLight[1] - 0.17) < 0.000001);
-    assert(Math.abs(blendedLight[2] - 0.1025) < 0.000001);
+void describe('BrushModelRenderer._buildTurbulentFallbackLightMap', () => {
+  void test('averages light at shared vertex positions across adjacent turbulent faces', () => {
+    const renderer = new BrushModelRenderer();
+
+    const sharedPos = [16, 0, 0, 0, 0, 0, 0];
+    const face1 = /** @type {import('../../source/engine/common/model/BaseModel.ts').Face} */ (/** @type {unknown} */ ({
+      texture: 0,
+      styles: [],
+      lightofs: -1,
+      verts: [[0, 0, 0, 0, 0, 0, 0], sharedPos],
+    }));
+    const face2 = /** @type {import('../../source/engine/common/model/BaseModel.ts').Face} */ (/** @type {unknown} */ ({
+      texture: 0,
+      styles: [],
+      lightofs: -1,
+      verts: [sharedPos, [32, 0, 0, 0, 0, 0, 0]],
+    }));
+    const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ (/** @type {unknown} */ ({
+      submodel: false,
+      textures: [{ flags: 4 }], // MF_TURBULENT = 4
+      * facesIter() { yield face1; yield face2; },
+    }));
+
+    // face1 is dim, face2 is bright; the shared vertex should average to the midpoint.
+    /** @type {any} */ (renderer)._getTurbulentFallbackLight = (_m, face) =>
+      face === face1 ? [0.2, 0.2, 0.2] : [0.6, 0.6, 0.6];
+
+    const lightMap = /** @type {any} */ (renderer)._buildTurbulentFallbackLightMap(model, new Map());
+
+    // TURBULENT_FALLBACK_POS_QUANT = 16
+    const keyShared = `${Math.round(16 * 16)}|0|0`;
+    const keyLeft = '0|0|0';
+    const keyRight = `${Math.round(32 * 16)}|0|0`;
+
+    const sharedLight = lightMap.get(keyShared);
+    assert(sharedLight !== undefined, 'shared vertex must appear in the map');
+    assert(Math.abs(sharedLight[0] - 0.4) < 0.000001, 'shared vertex averages both faces');
+
+    const leftLight = lightMap.get(keyLeft);
+    assert(leftLight !== undefined, 'exclusive face1 vertex must appear in the map');
+    assert(Math.abs(leftLight[0] - 0.2) < 0.000001, 'exclusive face1 vertex keeps face1 light');
+
+    const rightLight = lightMap.get(keyRight);
+    assert(rightLight !== undefined, 'exclusive face2 vertex must appear in the map');
+    assert(Math.abs(rightLight[0] - 0.6) < 0.000001, 'exclusive face2 vertex keeps face2 light');
   });
 });
 
