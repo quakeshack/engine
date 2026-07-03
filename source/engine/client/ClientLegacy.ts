@@ -49,13 +49,18 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       const dl = CL.state.clientEntities.allocateDynamicLight(clent.num);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
       dl.radius = 400.0 + Math.random() * 32.0;
-      dl.die = CL.state.time + 0.001;
+      // Refreshed every frame while the effect is active, so `die` only
+      // matters as the fade-out tail once the effect stops. A near-zero
+      // offset here leaves no headroom for ClientDlight.think()'s smooth
+      // fade (and dlights are hard-culled from rendering once `die` has
+      // passed), so the light previously appeared to vanish abruptly.
+      dl.die = CL.state.time + 0.1;
     }
     if ((clent.effects & effect.EF_DIMLIGHT) !== 0) {
       const dl = CL.state.clientEntities.allocateDynamicLight(clent.num);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
       dl.radius = 200.0 + Math.random() * 32.0;
-      dl.die = CL.state.time + 0.001;
+      dl.die = CL.state.time + 0.1;
       // dl.color = new Vector(0.5, 0.5, 1.0);
     }
     if ((modelBits & modelFlags.MF_GIB) !== 0) {
@@ -71,7 +76,7 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       const dl = CL.state.clientEntities.allocateDynamicLight(clent.num);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2]);
       dl.radius = 200.0;
-      dl.die = CL.state.time + 0.01;
+      dl.die = CL.state.time + 0.1;
     } else if ((modelBits & modelFlags.MF_GRENADE) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 1);
     } else if ((modelBits & modelFlags.MF_TRACER3) !== 0) {

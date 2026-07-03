@@ -31,10 +31,10 @@ interface TempEntitySounds {
   explosion: SFX | null;
 }
 
-let { CL, Con, Mod, R, S } = getClientRegistry();
+let { CL, Con, Host, Mod, R, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Mod, R, S } = getClientRegistry());
+  ({ CL, Con, Host, Mod, R, S } = getClientRegistry());
 });
 
 export class ClientDlight {
@@ -58,6 +58,9 @@ export class ClientDlight {
 
   minlight = 0;
 
+  /** simulation time this light was (re-)allocated, used to size the fade-out window */
+  bornTime = 0.0;
+
   isFree(): boolean {
     return this.radius < 0.0 || this.die < CL.state.time;
   }
@@ -70,10 +73,26 @@ export class ClientDlight {
     this.decay = 0.0;
     this.entity = 0;
     this.minlight = 0;
+    this.bornTime = 0.0;
   }
 
   think(): void {
-    this.radius -= this.decay * CL.state.time;
+    this.radius -= this.decay * Host.frametime;
+
+    // Fade smoothly to zero instead of an abrupt cutoff at `die`: over the
+    // last half of the light's remaining lifetime (capped at 0.25s so long-
+    // lived lights, e.g. rocket glow, don't start dimming too early), scale
+    // radius down so it reaches exactly zero right as the light expires.
+    // This also covers zero-decay lights (muzzle flashes, e-lights) that
+    // otherwise held full brightness until `die` and then vanished instantly.
+    const lifetime = this.die - this.bornTime;
+    const fadeWindow = Math.min(lifetime * 0.5, 0.25);
+
+    if (fadeWindow > 0.0) {
+      const remaining = this.die - CL.state.time;
+      const fade = Math.min(Math.max(remaining / fadeWindow, 0.0), 1.0);
+      this.radius *= fade;
+    }
 
     if (this.radius < 0.0) {
       this.radius = 0;
@@ -145,6 +164,17 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   extended: Record<string, ClientEventValue>;
   readonly lerp: ClientEntityLerpState;
 
+  /**
+   * Time-smoothed static/dynamic lighting terms, blended towards the newly
+   * sampled values each frame by `R._CalculateLightValues` so lighting eases
+   * across lightmap boundaries instead of snapping. Null until first sampled.
+   */
+  smoothedAmbientLight: Vector | null;
+  smoothedShadeLight: Vector | null;
+  smoothedLightOrigin: Vector | null;
+  smoothedDynamicShadeLight: Vector | null;
+  smoothedDynamicLightOrigin: Vector | null;
+
   /** @param num entity number */
   constructor(num: number) {
     this.classname = null;
@@ -181,6 +211,11 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.maxs = new Vector();
     this.mins = new Vector();
     this.extended = {};
+    this.smoothedAmbientLight = null;
+    this.smoothedShadeLight = null;
+    this.smoothedLightOrigin = null;
+    this.smoothedDynamicShadeLight = null;
+    this.smoothedDynamicLightOrigin = null;
 
     const that = this;
 
@@ -614,6 +649,7 @@ export default class ClientEntities {
     dl.minlight = 0.0;
     dl.entity = entityId;
     dl.color.setTo(1.0, 1.0, 1.0);
+    dl.bornTime = CL.state.time;
     return dl;
   }
 

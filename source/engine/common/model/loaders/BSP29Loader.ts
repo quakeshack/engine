@@ -273,11 +273,6 @@ export class BSP29Loader extends ModelLoader {
               tx.averageColor = BSP29Loader.#computeAverageColor(wtex.data);
             }
           }
-
-          // CR: for some reason thesse lead to rendering shadows otherwise
-          if (txname === 'skip' || txname === 'clip' || txname === 'trigger') {
-            tx.flags |= MaterialFlags.MF_SKIP;
-          }
         }
 
         if (!glt) {

@@ -46,6 +46,7 @@ The `flags` array can contain the following strings:
 | `MF_TRANSPARENT` | Use alpha blending for this material. Useful for glass, grating, etc. Note that textures starting with `{` are automatically marked as transparent by the engine. |
 | `MF_SKY` | Marks the surface as a sky surface. |
 | `MF_TURBULENT` | Applies turbulent deformation (like water/slime/lava). Textures starting with `*` or `!` are automatically marked as turbulent. |
+| `MF_FULLBRIGHT` | Renders the surface unlit, ignoring lightmaps. Useful for emissive/glowing surfaces. Unlike `luminance`, this applies the diffuse texture itself as the emissive layer rather than a separate map. |
 
 ## Example
 

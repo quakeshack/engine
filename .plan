@@ -175,6 +175,32 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-07-04
+
+- more work on dynamic shadows
+  - cover the complete radius
+  - softer shadow edges
+  - skip submodel faces on world shadow depth run
+  - include submodel faces on entities
+  - tried to fix the acne on close to plane point lights (emphasis on tried)
+  - more checks around shadow acne territory
+- dlights fade out more subtly now
+- added specular lighting (Blinn-Phong) on alias models, non-PBR yet
+
+open todos:
+- fix that local shadow mess
+  - shadows are jumpy
+  - do not fade with distance
+  - probably make them top down again
+
+### 2026-06-28
+
+- I’m considering cleaning up `undefined` vs `null`:
+  - `undefined` is more TypeScript native
+  - `typeof null` gives you `'object'`
+  - there are more than 4k `null` in the codebase, so it will be an ongoing endeavor
+  - however, some `undefineds` will not replace `null` and vice-versa
+
 ### 2026-06-27
 
 - disabled turbulent warping for now (vanilla maps lack required PVS)

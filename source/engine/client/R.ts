@@ -16,7 +16,7 @@ import { AliasModelRenderer } from './renderer/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/MeshModelRenderer.ts';
 import Draw from './Draw.ts';
-import { BrushModel, type BrushTexVec, type FogVolumeInfo, type LightgridPointSample, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
+import { BrushModel, type BrushTexInfo, type BrushTexVec, type FogVolumeInfo, type LightgridPointSample, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
 import { MeshModel } from '../common/model/MeshModel.ts';
 import { SpriteModel } from '../common/model/SpriteModel.ts';
 import { type Face, Plane } from '../common/model/BaseModel.ts';
@@ -223,7 +223,7 @@ class R {
   static normal_up_texture: WebGLTexture = null!;
   static shadow_textures: WebGLTexture[] = [];
   static shadow_texture: WebGLTexture | null = null;
-  static point_shadow_texture: WebGLTexture | null = null;
+  static point_shadow_textures: WebGLTexture[] = [];
   static world_depth_texture: WebGLTexture | null = null;
   static dlightvecs: WebGLBuffer = null!;
   static dlightVAO: WebGLVertexArrayObject = null!;
@@ -707,13 +707,121 @@ class R {
       r3[1] = r3[1] >> 8;
       r3[2] = r3[2] >> 8;
 
+      const deluxeDirection = R._SampleDeluxemapDirection(surf, tex, smax, tmax, ds, dt, uInterpolation);
+
+      // Without a deluxemap, assume the light comes mostly from directly
+      // above rather than trusting the hit surface's own normal: a downward
+      // trace grazing a slanted ramp or wall ledge can return a tilted
+      // normal that doesn't represent the area's general lighting, and
+      // top-down is what classic Quake always assumed here anyway. Use
+      // #topDownFallbackDirection (a slight tilt) rather than a pure
+      // (0, 0, 1): entities only ever yaw about world Z, and a perfectly
+      // vertical light direction is invariant to rotation about that same
+      // axis, so an entity spinning in place keeps an entirely unchanged
+      // relationship between its own normals and a light directly
+      // overhead — the diffuse/specular response would never change while
+      // it turns, reading as the highlight being stuck to the mesh. The
+      // slight tilt breaks that symmetry.
       return [
         r3,
-        mid.add(surf.normal.copy().multiply(16.0)),
+        deluxeDirection !== null
+          ? mid.add(deluxeDirection.multiply(R.#lightOriginProxyDistance))
+          : mid.add(R.#topDownFallbackDirection.copy().multiply(R.#lightOriginProxyDistance)),
       ];
     }
 
     return R.RecursiveLightPoint(backChild, mid, end);
+  };
+
+  /**
+   * Distance used to project a light direction — either deluxemap-derived or
+   * the top-down fallback used when no deluxemap texel is available — into a
+   * proxy light-origin point. Must dominate the sampled entity's height above
+   * the surface (tens of units) so the true direction isn't swamped by that
+   * gap; otherwise the proxy origin sits close enough to the model that the
+   * light-to-vertex direction is driven by the model's own local geometry
+   * instead of a consistent world-space direction, leaving specular
+   * highlights fixed to the mesh instead of sweeping as the camera orbits.
+   */
+  static readonly #lightOriginProxyDistance = 512.0;
+
+  /**
+   * Unit direction toward the assumed light source when a face has no
+   * deluxemap texel (see the fallback branch above). 30° off vertical at an
+   * arbitrary azimuth: entities only ever rotate (yaw) about world Z, and a
+   * direction with no horizontal component at all is invariant to that
+   * rotation, so it can never be told apart from an entity-attached light —
+   * an entity spinning in place would show no change whatsoever in its
+   * diffuse or specular response. The tilt keeps this reading as mostly an
+   * overhead light while still varying with an entity's facing.
+   */
+  static readonly #topDownFallbackDirection = new Vector(
+    Math.sin(30.0 * Math.PI / 180.0) * Math.cos(45.0 * Math.PI / 180.0),
+    Math.sin(30.0 * Math.PI / 180.0) * Math.sin(45.0 * Math.PI / 180.0),
+    Math.cos(30.0 * Math.PI / 180.0),
+  );
+
+  /**
+   * Samples the BSPX deluxemap (dominant light direction per lightmap texel,
+   * written by ericw-tools' `LIGHTINGDIR` lump) at the given face texel and
+   * decodes it into a world-space, entity-independent light direction.
+   * Mirrors the RGB lightdata sampling loop above, blending across active
+   * lightstyles with the same intensity weighting, and reconstructs the
+   * tangent-space-encoded direction into world space via the face's texture
+   * axes and normal, matching the encoding in ericw-tools' `WriteSingleLightmap`.
+   * @returns Normalized world-space direction pointing from the surface
+   * toward the light, or null when no deluxemap data is available for this face.
+   */
+  static _SampleDeluxemapDirection(surf: Face, tex: BrushTexInfo, smax: number, tmax: number, ds: number, dt: number, uInterpolation: number): Vector | null {
+    const worldmodel = CL.state.worldmodel!;
+    console.assert(worldmodel !== null, 'worldmodel required');
+
+    if (worldmodel.deluxemap === null) {
+      return null;
+    }
+
+    const deluxemap = worldmodel.deluxemap;
+    const tangentDir = new Vector();
+    let totalWeight = 0.0;
+
+    for (let k = 0; k < 3; k++) {
+      let lightmap = surf.lightofs + dt * smax + ds;
+
+      for (let maps = 0; maps < surf.styles.length; maps++) {
+        const scale = (
+          R.lightstylevalue_a[surf.styles[maps]] * (1 - uInterpolation) +
+          R.lightstylevalue_b[surf.styles[maps]] * uInterpolation
+        ) * 22.0;
+
+        tangentDir[k] += (deluxemap[lightmap * 3 + k] / 128.0 - 1.0) * scale;
+
+        if (k === 0) {
+          totalWeight += scale;
+        }
+
+        lightmap += tmax * smax;
+      }
+    }
+
+    if (totalWeight <= 0.0) {
+      return null;
+    }
+
+    tangentDir.multiply(1.0 / totalWeight);
+
+    const sAxis = R._textureAxisToVector(tex.vecs[0]);
+    sAxis.normalize();
+    const tAxis = R._textureAxisToVector(tex.vecs[1]);
+    tAxis.normalize();
+    tAxis.multiply(-1.0);
+
+    const worldDir = new Vector(
+      tangentDir[0] * sAxis[0] + tangentDir[1] * tAxis[0] + tangentDir[2] * surf.normal[0],
+      tangentDir[0] * sAxis[1] + tangentDir[1] * tAxis[1] + tangentDir[2] * surf.normal[1],
+      tangentDir[0] * sAxis[2] + tangentDir[1] * tAxis[2] + tangentDir[2] * surf.normal[2],
+    );
+
+    return worldDir.normalize() > 0.0001 ? worldDir : null;
   };
 
   static LightPoint(p: Vector): LightPointResult {
@@ -1073,7 +1181,64 @@ class R {
     shadelight.multiply(0.0078125); // / 128.0
     dynamicShadeLight.multiply(0.0078125);
 
-    return [ ambientlight, shadelight, lightOrigin, dynamicShadeLight, dynamicLightOrigin ];
+    return R._SmoothLightValues(e, ambientlight, shadelight, lightOrigin, dynamicShadeLight, dynamicLightOrigin);
+  };
+
+  /**
+   * How quickly smoothed lighting eases towards a freshly sampled value; see
+   * `V.SmoothValue` for the exponential-decay formula this drives. Chosen to
+   * be slow enough to hide lightmap-boundary popping but still track normal
+   * movement speeds without feeling laggy.
+   */
+  static readonly #lightSmoothingSharpness = 10.0;
+
+  /**
+   * A freshly sampled light origin this far from the entity's previously
+   * smoothed origin is treated as a teleport or edict-slot reuse (a
+   * `ClientEdict` is recycled by number for unrelated game objects) rather
+   * than normal movement, and snaps instead of easing in.
+   */
+  static readonly #lightTeleportDistance = 500.0;
+
+  /**
+   * Blends freshly sampled lighting terms into the entity's persisted
+   * smoothed state, easing across lightmap boundaries instead of snapping.
+   * Snaps immediately on first sample or when the light origin jumps far
+   * enough to indicate a teleport or a recycled edict slot.
+   * @returns The entity's smoothed ambient/shade/dynamic lighting terms.
+   */
+  static _SmoothLightValues(e: ClientEdict, ambientlight: Vector, shadelight: Vector, lightOrigin: Vector, dynamicShadeLight: Vector, dynamicLightOrigin: Vector): EntityLightValues {
+    const teleported = e.smoothedLightOrigin !== null && lightOrigin.distanceTo(e.smoothedLightOrigin) > R.#lightTeleportDistance;
+
+    if (e.smoothedAmbientLight === null || teleported) {
+      e.smoothedAmbientLight = ambientlight.copy();
+      e.smoothedShadeLight = shadelight.copy();
+      e.smoothedLightOrigin = lightOrigin.copy();
+      e.smoothedDynamicShadeLight = dynamicShadeLight.copy();
+      e.smoothedDynamicLightOrigin = dynamicLightOrigin.copy();
+
+      return [ e.smoothedAmbientLight, e.smoothedShadeLight, e.smoothedLightOrigin, e.smoothedDynamicShadeLight, e.smoothedDynamicLightOrigin ];
+    }
+
+    const deltaTime = Host.frametime;
+
+    R._SmoothVectorTowards(e.smoothedAmbientLight, ambientlight, deltaTime);
+    R._SmoothVectorTowards(e.smoothedShadeLight!, shadelight, deltaTime);
+    R._SmoothVectorTowards(e.smoothedLightOrigin!, lightOrigin, deltaTime);
+    R._SmoothVectorTowards(e.smoothedDynamicShadeLight!, dynamicShadeLight, deltaTime);
+    R._SmoothVectorTowards(e.smoothedDynamicLightOrigin!, dynamicLightOrigin, deltaTime);
+
+    return [ e.smoothedAmbientLight, e.smoothedShadeLight!, e.smoothedLightOrigin!, e.smoothedDynamicShadeLight!, e.smoothedDynamicLightOrigin! ];
+  };
+
+  /**
+   * Eases `current` towards `target` component-wise in place, using
+   * `#lightSmoothingSharpness` as the exponential decay rate.
+   */
+  static _SmoothVectorTowards(current: Vector, target: Vector, deltaTime: number): void {
+    current[0] = V.SmoothValue(current[0], target[0], R.#lightSmoothingSharpness, deltaTime);
+    current[1] = V.SmoothValue(current[1], target[1], R.#lightSmoothingSharpness, deltaTime);
+    current[2] = V.SmoothValue(current[2], target[2], R.#lightSmoothingSharpness, deltaTime);
   };
 
   static DrawEntitiesOnList() {
@@ -1706,20 +1871,49 @@ class R {
         gl.uniform1i(program.uShadowCount, ShadowMap.enabled!.value ? ShadowMap.localLightCount : 0);
       }
       if (program.uShadowDarkness !== undefined) {
-        gl.uniform1f(program.uShadowDarkness, ShadowMap.darkness!.value);
+        // Blend the configured darkness toward 1.0 (no shadow) as the local
+        // shadow's weakest active light approaches the edge of its influence
+        // radius (see ShadowMap.localLightFalloff), so shadows fade smoothly
+        // instead of popping when a light falls out of range.
+        const effectiveDarkness = 1.0 - (1.0 - ShadowMap.darkness!.value) * ShadowMap.localLightFalloff;
+        gl.uniform1f(program.uShadowDarkness, effectiveDarkness);
       }
       if (program.uShadowMapSize !== undefined) {
         gl.uniform1f(program.uShadowMapSize, ShadowMap.size);
       }
       // Point light shadow uniforms
       if (program.uPointShadowEnabled !== undefined) {
-        gl.uniform1f(program.uPointShadowEnabled, ShadowMap.pointLightActive ? 1.0 : 0.0);
+        gl.uniform1f(program.uPointShadowEnabled, ShadowMap.pointLightActiveCount > 0 ? 1.0 : 0.0);
       }
-      if (program.uPointLightPos !== undefined) {
-        gl.uniform3fv(program.uPointLightPos, ShadowMap.pointLightOrigin);
+      if (program.uPointLightPos0 !== undefined) {
+        gl.uniform3fv(program.uPointLightPos0, ShadowMap.pointLightOrigins[0]);
       }
-      if (program.uPointLightRadius !== undefined) {
-        gl.uniform1f(program.uPointLightRadius, ShadowMap.pointLightRadius);
+      if (program.uPointLightRadius0 !== undefined) {
+        gl.uniform1f(program.uPointLightRadius0, ShadowMap.pointLightRadii[0]);
+      }
+      if (program.uPointLightColor0 !== undefined) {
+        gl.uniform3fv(program.uPointLightColor0, ShadowMap.pointLightColors[0]);
+      }
+      if (program.uPointLightPos1 !== undefined) {
+        gl.uniform3fv(program.uPointLightPos1, ShadowMap.pointLightOrigins[1]);
+      }
+      if (program.uPointLightRadius1 !== undefined) {
+        gl.uniform1f(program.uPointLightRadius1, ShadowMap.pointLightRadii[1]);
+      }
+      if (program.uPointLightColor1 !== undefined) {
+        gl.uniform3fv(program.uPointLightColor1, ShadowMap.pointLightColors[1]);
+      }
+      if (program.uPointLightPos2 !== undefined) {
+        gl.uniform3fv(program.uPointLightPos2, ShadowMap.pointLightOrigins[2]);
+      }
+      if (program.uPointLightRadius2 !== undefined) {
+        gl.uniform1f(program.uPointLightRadius2, ShadowMap.pointLightRadii[2]);
+      }
+      if (program.uPointLightColor2 !== undefined) {
+        gl.uniform3fv(program.uPointLightColor2, ShadowMap.pointLightColors[2]);
+      }
+      if (program.uPointShadowBias !== undefined) {
+        gl.uniform1f(program.uPointShadowBias, ShadowMap.pointBias!.value);
       }
     }
   };
@@ -1818,7 +2012,7 @@ class R {
     // Choose the shadow texture for this frame (real or dummy)
     R.shadow_textures = ShadowMap.getActiveTextures();
     R.shadow_texture = R.shadow_textures[0] ?? null;
-    R.point_shadow_texture = ShadowMap.getActivePointTexture();
+    R.point_shadow_textures = ShadowMap.getActivePointTextures();
   };
 
   static RenderWorld() {
@@ -1874,16 +2068,16 @@ class R {
       }
     }
 
-    // Point light shadow pass — render world BSP into a cube depth map
-    // from the strongest dlight's position.
-    if (ShadowMap.selectPointLight(R.refdef.vieworg)) {
+    // Point light shadow pass — render world BSP into a cube depth map per
+    // active point-light slot, from the strongest nearby dlights' positions.
+    if (ShadowMap.selectPointLights(R.refdef.vieworg) > 0) {
       ShadowMap.renderPointLightShadow();
     }
-    // Update point shadow texture AFTER selectPointLight so the correct
-    // texture (real or dummy) is bound for this frame. PreRenderScene
-    // runs before selectPointLight updates pointLightActive, so its
+    // Update point shadow textures AFTER selectPointLights so the correct
+    // textures (real or dummy) are bound for this frame. PreRenderScene
+    // runs before selectPointLights updates pointLightActiveCount, so its
     // assignment may be stale on the first frame a dlight appears.
-    R.point_shadow_texture = ShadowMap.getActivePointTexture();
+    R.point_shadow_textures = ShadowMap.getActivePointTextures();
 
     R.SetupGL();
     R.MarkLeafs();
@@ -2055,28 +2249,28 @@ class R {
     // rendering alias models
     await Promise.all([
       Promise.resolve(GL.CreateProgram('alias',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
         [
           ['aPositionA', gl.FLOAT, 3],
           ['aPositionB', gl.FLOAT, 3],
           ['aNormal', gl.FLOAT, 3],
           ['aTexCoord', gl.FLOAT, 2],
         ],
-        ['tTexture', 'tLuminance', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap'])),
+        ['tTexture', 'tLuminance', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
       // rendering mesh models (OBJ, IQM, GLTF)
       Promise.resolve(GL.CreateProgram('mesh',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
         [
           ['aPosition', gl.FLOAT, 3],
           ['aTexCoord', gl.FLOAT, 2],
           ['aNormal', gl.FLOAT, 3],
         ],
-        ['tTexture', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap'])),
+        ['tTexture', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
       // rendering brush models (water is down below)
       Promise.resolve(GL.CreateProgram('brush',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uLightstyleInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uShadowMapSize', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uLightstyleInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uShadowMapSize', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightColor0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightColor1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointLightColor2', 'uPointShadowEnabled', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale'],
           [
             ['aPosition', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 4],
@@ -2085,7 +2279,7 @@ class R {
             ['aTangent', gl.FLOAT, 3],
             ['aBitangent', gl.FLOAT, 3],
           ],
-          ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tLuminance', 'tSpecular', 'tNormal', 'tDeluxemap', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap'])),
+          ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tLuminance', 'tSpecular', 'tNormal', 'tDeluxemap', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
       // rendering dynamic lights
       Promise.resolve(GL.CreateProgram('dlight',
@@ -2095,14 +2289,14 @@ class R {
 
       // rendering the player model (similar to alias model but with custom colors)
       Promise.resolve(GL.CreateProgram('player',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uTop', 'uBottom', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos', 'uPointLightRadius', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uTop', 'uBottom', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
           [
             ['aPositionA', gl.FLOAT, 3],
             ['aPositionB', gl.FLOAT, 3],
             ['aNormal', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 2],
           ],
-          ['tTexture', 'tLuminance', 'tPlayer', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap'])),
+          ['tTexture', 'tLuminance', 'tPlayer', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
       // for rendering sprites (usually effects)
       Promise.resolve(GL.CreateProgram('sprite',
@@ -2391,7 +2585,7 @@ class R {
 
     R.shadow_textures = [];
     R.shadow_texture = null;
-    R.point_shadow_texture = null;
+    R.point_shadow_textures = [];
     R.world_depth_texture = null;
 
     R.ClearParticles();
@@ -2893,6 +3087,14 @@ class R {
 
     for (let i = 0; i < Def.limits.dlights; i++) {
       if (((surf.dlightbits >>> i) & 1) === 0) {
+        continue;
+      }
+      // Lights promoted to a point-shadow slot are excluded from this baked
+      // sum — their contribution is instead computed analytically per-fragment
+      // in the scene shaders and occluded by their own cube depth map, so
+      // multiple nearby dlights correctly shadow each other independently
+      // instead of only the single strongest one darkening the combined sum.
+      if (ShadowMap.pointLightDlightIndices.includes(i)) {
         continue;
       }
       const light = CL.state.clientEntities.dlights[i];

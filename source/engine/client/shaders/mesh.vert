@@ -26,6 +26,10 @@ out vec4 vShadowCoord0;
 out vec4 vShadowCoord1;
 out vec4 vShadowCoord2;
 out vec3 vWorldPos;
+out vec3 vNormal;
+out vec3 vLightVec;
+out vec3 vDynamicLightVec;
+out vec3 vViewVec;
 
 uniform vec4 uFogParams; // start, end, density, mode
 
@@ -43,8 +47,15 @@ void main(void) {
   vShadowCoord2 = uLightSpaceMatrix2 * shadowWorldPos;
 
   vTexCoord = aTexCoord;
-  vLightDot = max(0.0, dot(aNormal, normalize(worldPos - uLightVec)));
-  vDynamicLightDot = max(0.0, dot(aNormal, normalize(worldPos - uDynamicLightVec)));
+  vec3 worldNormal = uAngles * aNormal;
+  vec3 lightDir = normalize(worldPos - uLightVec);
+  vec3 dynamicLightDir = normalize(worldPos - uDynamicLightVec);
+  vLightDot = max(0.0, dot(worldNormal, lightDir));
+  vDynamicLightDot = max(0.0, dot(worldNormal, dynamicLightDir));
+  vNormal = worldNormal;
+  vLightVec = lightDir;
+  vDynamicLightVec = dynamicLightDir;
+  vViewVec = normalize(uViewOrigin - worldPos);
 
   // fog distance (world position)
   float dist = length(worldPos - uViewOrigin);

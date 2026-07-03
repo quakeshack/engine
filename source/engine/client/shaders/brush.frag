@@ -37,11 +37,24 @@ uniform int uShadowCount;
 uniform float uShadowDarkness;
 uniform float uShadowMapSize;
 
-// Point light shadow mapping
-uniform samplerCubeShadow tPointShadowMap;
-uniform vec3 uPointLightPos;
-uniform float uPointLightRadius;
+// Point light shadow mapping — up to 3 independent point-light shadow casters,
+// each with its own cube depth map so nearby dlights correctly occlude each
+// other's contribution instead of only the single strongest one casting a
+// shadow at all (see ShadowMap.selectPointLights()).
+uniform samplerCubeShadow tPointShadowMap0;
+uniform samplerCubeShadow tPointShadowMap1;
+uniform samplerCubeShadow tPointShadowMap2;
+uniform vec3 uPointLightPos0;
+uniform vec3 uPointLightPos1;
+uniform vec3 uPointLightPos2;
+uniform float uPointLightRadius0;
+uniform float uPointLightRadius1;
+uniform float uPointLightRadius2;
+uniform vec3 uPointLightColor0;
+uniform vec3 uPointLightColor1;
+uniform vec3 uPointLightColor2;
 uniform float uPointShadowEnabled;
+uniform float uPointShadowBias;
 
 uniform bool uPerformDotLighting;
 uniform bool uHaveDeluxemap;
@@ -112,6 +125,83 @@ float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   return mix(1.0, mix(uShadowDarkness, 1.0, lit), fade);
 }
 
+/**
+ * 5-tap PCF for the point light cube shadow map: samples the direction plus
+ * four small angular offsets along axes perpendicular to it, softening the
+ * low-resolution (256px/face) map (a single hardware-filtered tap otherwise
+ * shows up as visible speckle). Offsets are applied to the normalized
+ * direction so the angular jitter stays constant regardless of the
+ * fragment's distance from the light — except close to the light, where a
+ * fixed angular offset is no longer safe: a nearby corner or second surface
+ * can occupy a large fraction of the light's surrounding sphere, so an
+ * offset tap is likely to land on a completely different, disjoint piece of
+ * geometry than the one actually being shaded. Comparing that unrelated
+ * stored depth against this fragment's refDepth produces exactly the
+ * fragment-to-fragment inconsistent result that reads as shadow acne, so the
+ * disk is tapered down to a single hard tap as fragDist approaches the light.
+ */
+float samplePointShadowPCF(samplerCubeShadow shadowMap, vec3 dir, float refDepth, float fragDist) {
+  vec3 dirN = normalize(dir);
+  float useAltUp = step(0.99, abs(dirN.y));
+  vec3 upHint = mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), useAltUp);
+  vec3 right = normalize(cross(upHint, dirN));
+  vec3 up = cross(dirN, right);
+
+  const float kDiskReferenceDistance = 48.0;
+  float diskRadius = 0.02 * clamp(fragDist / kDiskReferenceDistance, 0.0, 1.0);
+  float lit = 0.0;
+  lit += texture(shadowMap, vec4(dirN, refDepth));
+  lit += texture(shadowMap, vec4(normalize(dirN + right * diskRadius), refDepth));
+  lit += texture(shadowMap, vec4(normalize(dirN - right * diskRadius), refDepth));
+  lit += texture(shadowMap, vec4(normalize(dirN + up * diskRadius), refDepth));
+  lit += texture(shadowMap, vec4(normalize(dirN - up * diskRadius), refDepth));
+  return lit * 0.2;
+}
+
+/**
+ * Analytic point-light contribution for one shadow-casting dlight, occluded
+ * by its own cube depth map. Replaces the baked surface dlight texel for this
+ * light (excluded from R.AddDynamicLights — see uPointLightPos0/1/2 wiring
+ * in R.ts) so each shadow-casting light's brightness and occlusion stay
+ * independent instead of a single shadow darkening every light's combined
+ * contribution at once.
+ *
+ * The linear falloff and 2.0/255.0 scale reproduce the brightness curve of
+ * the baked surface dlight (see R.AddDynamicLights: byte = clamp((radius -
+ * dist) * 2 * color, 0, 255)), just evaluated per-fragment against the true
+ * 3D distance instead of the baked texel-space approximation. Radius is
+ * floored well above the near plane so the depth reconstruction below never
+ * divides by zero for an unused (zero-radius) slot.
+ */
+vec3 samplePointLightContribution(samplerCubeShadow shadowMap, vec3 lightPos, float lightRadius, vec3 lightColor) {
+  vec3 fragToLight = vWorldPos - lightPos;
+  float fragDist = length(fragToLight);
+  vec3 absFTL = abs(fragToLight);
+  float viewZ = max(absFTL.x, max(absFTL.y, absFTL.z));
+  float n = 1.0;
+  float f = max(lightRadius, 2.0);
+  // Window-space depth stored by the cube face projection (kept in sync with
+  // ShadowMap.buildPointFaceMatrix). viewZ is clamped to the near plane to
+  // avoid a division by zero when a fragment coincides with the light origin.
+  float clampedViewZ = max(viewZ, n);
+  float refDepth = f * (clampedViewZ - n) / ((f - n) * clampedViewZ);
+  // Constant bias applied in normalized depth space (post-projection) rather
+  // than world space: the near/far mapping is hyperbolic, so a fixed
+  // world-unit offset is only effective close to the light and vanishes for
+  // casters further out within the same radius, leaving acne everywhere else.
+  refDepth = clamp(refDepth - uPointShadowBias, 0.0, 1.0);
+  float cubeShadow = samplePointShadowPCF(shadowMap, fragToLight, refDepth, fragDist);
+  // Falls off linearly and reaches exactly zero at fragDist == f (radius), so
+  // the shadow test must stay active for that whole range or occluded
+  // surfaces bleed unshadowed light in the band between the old, premature
+  // cutoff and the light's true edge.
+  float ptFade = 1.0 - smoothstep(f * 0.85, f, fragDist);
+  float pointShadow = mix(1.0, cubeShadow, ptFade * step(fragDist, f) * step(0.5, uPointShadowEnabled));
+
+  vec3 atten = clamp((f - fragDist) * (2.0 / 255.0) * lightColor, 0.0, 1.0);
+  return atten * pointShadow;
+}
+
 void main(void) {
   // Combine texture samples at the start
   vec4 textureA = texture(tTextureA, vTexCoord.xy);
@@ -163,26 +253,17 @@ void main(void) {
   shadow = mix(shadow, min(min(s0, s1), s2), step(3.0, float(uShadowCount)));
   shadow = mix(1.0, shadow, step(0.5, uShadowEnabled));
 
-  // Point light shadow — entity shadows cast from the nearest point light
-  // (BSP light entity or transient dynamic light). Fades quickly with
-  // distance so the effect is localised around the light source.
-  vec3 fragToLight = vWorldPos - uPointLightPos;
-  float fragDist = length(fragToLight);
-  vec3 absFTL = abs(fragToLight);
-  float viewZ = max(absFTL.x, max(absFTL.y, absFTL.z));
-  float n = 1.0;
-  float f = uPointLightRadius;
-  float refDepth = (n * f / (n - f)) / viewZ + n / (n - f);
-  refDepth = refDepth * 0.5 + 0.5;
-  float cubeShadow = texture(tPointShadowMap, vec4(fragToLight, refDepth));
-  float ptFade = 1.0 - smoothstep(f * 0.3, f * 0.7, fragDist);
+  // Point light shadows — up to 3 independent shadow-casting dlights, each
+  // occluded by its own cube depth map and added on top of the baked dlight
+  // texture (which excludes these lights; see R.AddDynamicLights). This way
+  // nearby dlights correctly shadow each other instead of a single shadow
+  // darkening every light's combined contribution at once.
+  vec3 pointDlight = samplePointLightContribution(tPointShadowMap0, uPointLightPos0, uPointLightRadius0, uPointLightColor0)
+                    + samplePointLightContribution(tPointShadowMap1, uPointLightPos1, uPointLightRadius1, uPointLightColor1)
+                    + samplePointLightContribution(tPointShadowMap2, uPointLightPos2, uPointLightRadius2, uPointLightColor2);
 
-  float pointShadow = mix(1.0, cubeShadow, ptFade * step(fragDist, f) * step(0.5, uPointShadowEnabled));
-
-  // Point shadow darkens the lightmap (with a darkness floor so it never
-  // goes pure black) and fully occludes the dynamic light contribution.
-  vec3 surfaceDlight = texture(tDlight, vTexCoord.zw).rgb * pointShadow;
-  vec3 staticLight = lightmap * shadow * mix(uShadowDarkness, 1.0, pointShadow) + surfaceDlight;
+  vec3 surfaceDlight = texture(tDlight, vTexCoord.zw).rgb + pointDlight;
+  vec3 staticLight = lightmap * shadow + surfaceDlight;
 
   float bumpLightDot = 1.0;
   float specFactor = 0.0;
@@ -258,7 +339,7 @@ void main(void) {
   vec3 lightingFactor = staticLight * bumpFactor * shadeAmbient;
   vec3 emissiveMask = clamp(luminance.rgb + vec3(uBloomEmissiveScale), 0.0, 1.0);
   // Static specular is attenuated by the shadow maps; dynamic specular is
-  // attenuated via surfaceDlight, which already has pointShadow baked in.
+  // attenuated via surfaceDlight, which already has the point shadows baked in.
   vec3 specularColor = specFactor * lightmap * shadow + dynSpecFactor * surfaceDlight;
 
   // Combine lighting in one operation per channel

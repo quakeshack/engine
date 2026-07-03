@@ -1043,17 +1043,21 @@ export class BrushModelRenderer extends ModelRenderer {
    * Free GPU resources for this brush model.
    */
   cleanupModel(model: BrushModel): void {
-    if (model.opaqueVAO) {
-      gl.deleteVertexArray(model.opaqueVAO as WebGLVertexArrayObject);
-      model.opaqueVAO = null;
-    }
-    if (model.turbulentVAO) {
-      gl.deleteVertexArray(model.turbulentVAO as WebGLVertexArrayObject);
-      model.turbulentVAO = null;
-    }
-    if (model.cmds) {
-      gl.deleteBuffer(model.cmds as WebGLBuffer);
-      model.cmds = null;
+    if (gl) {
+      if (model.opaqueVAO) {
+        gl.deleteVertexArray(model.opaqueVAO!);
+        model.opaqueVAO = null;
+      }
+
+      if (model.turbulentVAO) {
+        gl.deleteVertexArray(model.turbulentVAO!);
+        model.turbulentVAO = null;
+      }
+
+      if (model.cmds) {
+        gl.deleteBuffer(model.cmds!);
+        model.cmds = null;
+      }
     }
 
     if (model.fogVolumes && model.fogVolumes.length > 0) {
@@ -1154,8 +1158,14 @@ export class BrushModelRenderer extends ModelRenderer {
       GL.Bind(program.tShadowMap2!, R.shadow_textures[2]);
     }
 
-    if (program.tPointShadowMap !== undefined) {
-      GL.BindCube(program.tPointShadowMap!, R.point_shadow_texture!);
+    if (program.tPointShadowMap0 !== undefined && R.point_shadow_textures?.[0]) {
+      GL.BindCube(program.tPointShadowMap0, R.point_shadow_textures[0]);
+    }
+    if (program.tPointShadowMap1 !== undefined && R.point_shadow_textures?.[1]) {
+      GL.BindCube(program.tPointShadowMap1, R.point_shadow_textures[1]);
+    }
+    if (program.tPointShadowMap2 !== undefined && R.point_shadow_textures?.[2]) {
+      GL.BindCube(program.tPointShadowMap2, R.point_shadow_textures[2]);
     }
   }
 
@@ -1597,7 +1607,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const turbulentFallbackAvgMap = this._buildTurbulentFallbackLightMap(m, turbulentFallbackCache);
     let verts = 0;
     let cutoff = 0;
-    m.chains = [];
+    m.chains.length = 0;
 
     // Build opaque surfaces (non-sky, non-turbulent)
     for (let i = 0; i < m.textures.length; i++) {
@@ -1993,11 +2003,13 @@ export class BrushModelRenderer extends ModelRenderer {
         return cachedLight;
       }
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       const fallbackLight = BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, R.LightPoint);
       cache.set(cacheKey, fallbackLight);
       return fallbackLight;
     }
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
     return BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, R.LightPoint);
   }
 }
