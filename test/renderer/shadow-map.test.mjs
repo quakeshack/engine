@@ -5,48 +5,7 @@ import GL from '../../source/engine/client/GL.ts';
 import ShadowMap from '../../source/engine/client/renderer/ShadowMap.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import Vector from '../../source/shared/Vector.ts';
-
-/**
- * Runs a callback with a minimal CL/SV registry fixture for local-light
- * selection tests: an empty visible-entity list (so the shadow focus point
- * falls back to the supplied view origin) and a line-of-sight trace that
- * always reports visible unless overridden.
- * @param {(start: Vector, end: Vector) => { fraction: number, allsolid: boolean, startsolid: boolean }} traceStaticWorldLine
- * @param {() => void} callback
- */
-function withMockLocalLightRegistry(traceStaticWorldLine, callback) {
-  const previousCL = registry.CL;
-  const previousSV = registry.SV;
-  const previousMinElevation = ShadowMap.minElevation;
-
-  registry.CL = {
-    state: {
-      clientEntities: { getVisibleEntities: () => [] },
-    },
-  };
-  registry.SV = { collision: { traceStaticWorldLine } };
-  eventBus.publish('registry.frozen');
-
-  // Matches the r_shadow_min_elevation cvar's default (init() isn't run in
-  // these tests, so the cvar itself is never constructed).
-  ShadowMap.minElevation = { value: 20 };
-
-  const restore = () => {
-    registry.CL = previousCL;
-    registry.SV = previousSV;
-    ShadowMap.minElevation = previousMinElevation;
-    eventBus.publish('registry.frozen');
-  };
-
-  try {
-    callback();
-  } finally {
-    restore();
-  }
-}
-
-/** Int32Array with no previously-selected local shadow slots (matches ShadowMap's slot count). */
-const NO_PREVIOUS_SELECTION = new Int32Array([-1, -1, -1]);
+import { assertNear } from '../physics/fixtures.mjs';
 
 void describe('ShadowMap.renderPointLightShadow', () => {
   void test('limits entity casters to the active point light radius', () => {
@@ -465,439 +424,6 @@ void describe('ShadowMap.buildPointFaceMatrix', () => {
   });
 });
 
-void describe('ShadowMap._applyFallbackDirection', () => {
-  void test('derives (0, 0, -1) from the default straight-down pitch, ignoring yaw', () => {
-    const previousYaw = ShadowMap.sunYaw;
-    const previousPitch = ShadowMap.sunPitch;
-
-    try {
-      ShadowMap.sunYaw = { value: 225 };
-      ShadowMap.sunPitch = { value: -90 };
-      ShadowMap._applyFallbackDirection(0);
-
-      const dir = ShadowMap.localLightDirs[0];
-      assert.ok(Math.abs(dir[0]) < 1e-9, `expected x≈0, got ${dir[0]}`);
-      assert.ok(Math.abs(dir[1]) < 1e-9, `expected y≈0, got ${dir[1]}`);
-      assert.ok(Math.abs(dir[2] - (-1.0)) < 1e-9, `expected z≈-1, got ${dir[2]}`);
-    } finally {
-      ShadowMap.sunYaw = previousYaw;
-      ShadowMap.sunPitch = previousPitch;
-    }
-  });
-
-  void test('honors a horizontal fallback direction (pitch 0)', () => {
-    const previousYaw = ShadowMap.sunYaw;
-    const previousPitch = ShadowMap.sunPitch;
-
-    try {
-      ShadowMap.sunYaw = { value: 90 };
-      ShadowMap.sunPitch = { value: 0 };
-      ShadowMap._applyFallbackDirection(1);
-
-      const dir = ShadowMap.localLightDirs[1];
-      assert.ok(Math.abs(dir[0]) < 1e-9, `expected x≈0, got ${dir[0]}`);
-      assert.ok(Math.abs(dir[1] - 1.0) < 1e-9, `expected y≈1, got ${dir[1]}`);
-      assert.ok(Math.abs(dir[2]) < 1e-9, `expected z≈0, got ${dir[2]}`);
-    } finally {
-      ShadowMap.sunYaw = previousYaw;
-      ShadowMap.sunPitch = previousPitch;
-    }
-  });
-
-  void test('clears the slot as map-light-driven and resets falloff', () => {
-    const previousYaw = ShadowMap.sunYaw;
-    const previousPitch = ShadowMap.sunPitch;
-    const previousIndex = ShadowMap._currentLocalLightIndices[0];
-    const previousFalloff = ShadowMap.localLightFalloff;
-
-    try {
-      ShadowMap.sunYaw = { value: 0 };
-      ShadowMap.sunPitch = { value: -90 };
-      ShadowMap._currentLocalLightIndices[0] = 3;
-      ShadowMap.localLightFalloff = 0.2;
-
-      ShadowMap._applyFallbackDirection(0);
-
-      assert.equal(ShadowMap._currentLocalLightIndices[0], -1);
-      assert.equal(ShadowMap.localLightFalloff, 1.0);
-    } finally {
-      ShadowMap.sunYaw = previousYaw;
-      ShadowMap.sunPitch = previousPitch;
-      ShadowMap._currentLocalLightIndices[0] = previousIndex;
-      ShadowMap.localLightFalloff = previousFalloff;
-    }
-  });
-});
-
-void describe('ShadowMap._selectNearbyMapLights', () => {
-  void test('returns the strongest lights in score order, skipping ones the focus point is out of range of', () => {
-    const previousEntities = ShadowMap.lightEntities;
-    const previousTraceScratch = ShadowMap._lightTraceScratch;
-
-    try {
-      // All lights placed directly overhead/underneath (elevation 90°) so
-      // only range and score are under test here.
-      ShadowMap.lightEntities = [
-        { origin: new Vector(0, 0, 1000), radius: 100 }, // out of range: dist (1000) >= radius (100)
-        { origin: new Vector(0, 0, 100), radius: 300 },  // score 3.0
-        { origin: new Vector(0, 0, 50), radius: 300 },   // score 6.0 (strongest)
-      ];
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        const selected = ShadowMap._selectNearbyMapLights(new Vector(0, 0, 0), NO_PREVIOUS_SELECTION);
-
-        assert.equal(selected.length, 2);
-        assert.equal(selected[0].index, 2); // strongest first
-        assert.equal(selected[1].index, 1);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-      ShadowMap._lightTraceScratch = previousTraceScratch;
-    }
-  });
-
-  void test('rejects grazing-angle lights below r_shadow_min_elevation', () => {
-    const previousEntities = ShadowMap.lightEntities;
-
-    try {
-      ShadowMap.lightEntities = [
-        { origin: new Vector(100, 0, 0), radius: 300 },  // perfectly horizontal (elevation 0°)
-        { origin: new Vector(0, 0, 100), radius: 300 },  // directly overhead (elevation 90°)
-      ];
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        const selected = ShadowMap._selectNearbyMapLights(new Vector(0, 0, 0), NO_PREVIOUS_SELECTION);
-
-        assert.equal(selected.length, 1);
-        assert.equal(selected[0].index, 1);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-    }
-  });
-
-  void test('skips lights that fail the line-of-sight trace and falls through to the next candidate', () => {
-    const previousEntities = ShadowMap.lightEntities;
-
-    try {
-      ShadowMap.lightEntities = [
-        { origin: new Vector(0, 0, 50), radius: 300 },  // strongest, but occluded
-        { origin: new Vector(0, 0, 100), radius: 300 }, // weaker, but visible
-      ];
-
-      withMockLocalLightRegistry((start) => {
-        // Blocks both the direct trace from the light origin (50) and the
-        // nudged retry _traceLightVisible falls back to (~34, biased toward
-        // the focus point), so this light is occluded regardless of nudging.
-        const occluded = Math.abs(start[2] - 50) < 20;
-        return { fraction: occluded ? 0.5 : 1.0, allsolid: false, startsolid: false };
-      }, () => {
-        const selected = ShadowMap._selectNearbyMapLights(new Vector(0, 0, 0), NO_PREVIOUS_SELECTION);
-
-        assert.equal(selected.length, 1);
-        assert.equal(selected[0].index, 1);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-    }
-  });
-
-  void test('caps selections at LOCAL_SHADOW_COUNT even with more visible candidates', () => {
-    const previousEntities = ShadowMap.lightEntities;
-
-    try {
-      ShadowMap.lightEntities = [
-        { origin: new Vector(0, 0, 50), radius: 300 },
-        { origin: new Vector(0, 0, 60), radius: 300 },
-        { origin: new Vector(0, 0, 70), radius: 300 },
-        { origin: new Vector(0, 0, 80), radius: 300 },
-      ];
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        const selected = ShadowMap._selectNearbyMapLights(new Vector(0, 0, 0), NO_PREVIOUS_SELECTION);
-
-        assert.equal(selected.length, ShadowMap.localLightDirs.length);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-    }
-  });
-
-  void test('returns no selections when no light entities are parsed', () => {
-    const previousEntities = ShadowMap.lightEntities;
-
-    try {
-      ShadowMap.lightEntities = [];
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        const selected = ShadowMap._selectNearbyMapLights(new Vector(0, 0, 0), NO_PREVIOUS_SELECTION);
-
-        assert.equal(selected.length, 0);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-    }
-  });
-
-  void test('keeps a previously-selected light over a slightly stronger new candidate (selection hysteresis)', () => {
-    const previousEntities = ShadowMap.lightEntities;
-
-    try {
-      // Candidate 1 was in a slot last frame (score 5.0); candidate 0 is a
-      // new, only slightly stronger option (score 5.5) that shouldn't be
-      // able to displace it — a difference this small is the kind of noise
-      // that would otherwise flip the selection (and its direction) every
-      // frame as the player takes a single step.
-      ShadowMap.lightEntities = [
-        { origin: new Vector(0, 0, 55), radius: 300 }, // score 300/55 ≈ 5.45
-        { origin: new Vector(0, 0, 60), radius: 300 }, // score 300/60 = 5.0
-      ];
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        const previousIndices = Int32Array.from([1, -1, -1]);
-        const selected = ShadowMap._selectNearbyMapLights(new Vector(0, 0, 0), previousIndices);
-
-        assert.equal(selected.length, 2);
-        assert.equal(selected[0].index, 1); // incumbent stays on top despite the weaker raw score
-        assert.equal(selected[1].index, 0);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-    }
-  });
-
-  void test('a clearly stronger new candidate still displaces the incumbent', () => {
-    const previousEntities = ShadowMap.lightEntities;
-
-    try {
-      ShadowMap.lightEntities = [
-        { origin: new Vector(0, 0, 20), radius: 300 }, // score 15.0, far stronger than stickiness can protect against
-        { origin: new Vector(0, 0, 60), radius: 300 }, // score 5.0, incumbent
-      ];
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        const previousIndices = Int32Array.from([1, -1, -1]);
-        const selected = ShadowMap._selectNearbyMapLights(new Vector(0, 0, 0), previousIndices);
-
-        assert.equal(selected[0].index, 0);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-    }
-  });
-});
-
-void describe('ShadowMap.selectLocalLights', () => {
-  void test('drives local shadow directions from nearby visible map lights instead of a fixed top-down direction', () => {
-    const previousEntities = ShadowMap.lightEntities;
-    const previousCount = ShadowMap.localLightCount;
-    const previousIndicesState = Int32Array.from(ShadowMap._currentLocalLightIndices);
-
-    try {
-      // One light below the focus point, one above — directions should point
-      // away from each light towards the focus point (light → scene), not
-      // both be forced to the old fixed (0, 0, -1) top-down vector.
-      ShadowMap.lightEntities = [
-        { origin: new Vector(0, 0, -100), radius: 300 }, // below
-        { origin: new Vector(0, 0, 100), radius: 300 },  // above
-      ];
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        ShadowMap.selectLocalLights(new Vector(0, 0, 0));
-
-        assert.equal(ShadowMap.localLightCount, 2);
-
-        const dirFromBelow = ShadowMap.localLightDirs[0];
-        assert.ok(Math.abs(dirFromBelow[2] - 1.0) < 1e-9, `expected z≈1, got ${dirFromBelow[2]}`);
-
-        const dirFromAbove = ShadowMap.localLightDirs[1];
-        assert.ok(Math.abs(dirFromAbove[2] - (-1.0)) < 1e-9, `expected z≈-1, got ${dirFromAbove[2]}`);
-
-        assert.equal(ShadowMap._currentLocalLightIndices[0], 0);
-        assert.equal(ShadowMap._currentLocalLightIndices[1], 1);
-        assert.equal(ShadowMap._currentLocalLightIndices[2], -1);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-      ShadowMap.localLightCount = previousCount;
-      ShadowMap._currentLocalLightIndices.set(previousIndicesState);
-    }
-  });
-
-  void test('falls back to a single configured direction when no map light is in range', () => {
-    const previousEntities = ShadowMap.lightEntities;
-    const previousCount = ShadowMap.localLightCount;
-    const previousYaw = ShadowMap.sunYaw;
-    const previousPitch = ShadowMap.sunPitch;
-
-    try {
-      ShadowMap.lightEntities = [];
-      ShadowMap.sunYaw = { value: 0 };
-      ShadowMap.sunPitch = { value: -90 };
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        ShadowMap.selectLocalLights(new Vector(0, 0, 0));
-
-        assert.equal(ShadowMap.localLightCount, 1);
-        const dir = ShadowMap.localLightDirs[0];
-        assert.ok(Math.abs(dir[2] - (-1.0)) < 1e-9, `expected z≈-1, got ${dir[2]}`);
-        assert.equal(ShadowMap._currentLocalLightIndices[0], -1);
-        assert.equal(ShadowMap._currentLocalLightIndices[1], -1);
-        assert.equal(ShadowMap._currentLocalLightIndices[2], -1);
-        assert.equal(ShadowMap.localLightFalloff, 1.0);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-      ShadowMap.localLightCount = previousCount;
-      ShadowMap.sunYaw = previousYaw;
-      ShadowMap.sunPitch = previousPitch;
-    }
-  });
-
-  void test('fades localLightFalloff towards 0 as the closest active light nears the edge of its radius', () => {
-    const previousEntities = ShadowMap.lightEntities;
-    const previousCount = ShadowMap.localLightCount;
-    const previousFalloff = ShadowMap.localLightFalloff;
-
-    try {
-      // A single light 270 units below a 300-unit-radius focus point: 90% of
-      // the way to the edge of its influence, so the shadow should be mostly
-      // faded rather than at full configured darkness.
-      ShadowMap.lightEntities = [
-        { origin: new Vector(0, 0, -270), radius: 300 },
-      ];
-
-      withMockLocalLightRegistry(() => ({ fraction: 1.0, allsolid: false, startsolid: false }), () => {
-        ShadowMap.selectLocalLights(new Vector(0, 0, 0));
-
-        assert.equal(ShadowMap.localLightCount, 1);
-        assert.ok(Math.abs(ShadowMap.localLightFalloff - 0.1) < 1e-9, `expected falloff≈0.1, got ${ShadowMap.localLightFalloff}`);
-      });
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-      ShadowMap.localLightCount = previousCount;
-      ShadowMap.localLightFalloff = previousFalloff;
-    }
-  });
-});
-
-void describe('ShadowMap.selectLocalLights anchor hysteresis', () => {
-  /**
-   * Minimal duck-typed local-shadow-caster entity: only the fields read by
-   * _isLocalShadowCasterEntity() and selectLocalLights() are populated.
-   * @param {number} num
-   * @param {Vector} origin
-   * @returns {object} A mock ClientEdict-like entity.
-   */
-  function createCasterEntity(num, origin) {
-    return {
-      num,
-      model: { name: 'progs/soldier.mdl' },
-      alpha: 1.0,
-      effects: 0,
-      isStatic: () => false,
-      lerp: { origin },
-    };
-  }
-
-  void test('keeps the previous anchor entity when a new candidate is not meaningfully closer', () => {
-    const previousCount = ShadowMap.localLightCount;
-    const previousAnchorNum = ShadowMap._previousAnchorNum;
-    const previousEntities = ShadowMap.lightEntities;
-    const previousYaw = ShadowMap.sunYaw;
-    const previousPitch = ShadowMap.sunPitch;
-    const previousMinElevation = ShadowMap.minElevation;
-
-    try {
-      ShadowMap.lightEntities = [];
-      const entityA = createCasterEntity(1, new Vector(100, 0, 0));
-      const entityB = createCasterEntity(2, new Vector(90, 0, 0)); // marginally closer
-
-      const previousCL = registry.CL;
-      const previousSV = registry.SV;
-      registry.CL = { state: { clientEntities: { getVisibleEntities: () => [entityA] } } };
-      registry.SV = { collision: { traceStaticWorldLine: () => ({ fraction: 1.0, allsolid: false, startsolid: false }) } };
-      eventBus.publish('registry.frozen');
-      ShadowMap.minElevation = { value: 20 };
-      ShadowMap.sunYaw = { value: 0 };
-      ShadowMap.sunPitch = { value: -90 };
-
-      try {
-        // First frame: entityA is the only visible caster.
-        ShadowMap._previousAnchorNum = -1;
-        ShadowMap.selectLocalLights(new Vector(0, 0, 0));
-        assert.equal(ShadowMap._shadowFocusPoint[0], 100);
-
-        // Second frame: entityB appears and is now nearest, but only
-        // marginally (90 vs 100, within the hysteresis margin) — the focus
-        // point should not jump to it.
-        registry.CL = { state: { clientEntities: { getVisibleEntities: () => [entityA, entityB] } } };
-        eventBus.publish('registry.frozen');
-        ShadowMap.selectLocalLights(new Vector(0, 0, 0));
-        assert.equal(ShadowMap._shadowFocusPoint[0], 100, 'focus point should stay on the previous anchor');
-      } finally {
-        registry.CL = previousCL;
-        registry.SV = previousSV;
-        eventBus.publish('registry.frozen');
-      }
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-      ShadowMap.localLightCount = previousCount;
-      ShadowMap._previousAnchorNum = previousAnchorNum;
-      ShadowMap.sunYaw = previousYaw;
-      ShadowMap.sunPitch = previousPitch;
-      ShadowMap.minElevation = previousMinElevation;
-    }
-  });
-
-  void test('switches anchor when a new candidate is meaningfully closer', () => {
-    const previousCount = ShadowMap.localLightCount;
-    const previousAnchorNum = ShadowMap._previousAnchorNum;
-    const previousEntities = ShadowMap.lightEntities;
-    const previousYaw = ShadowMap.sunYaw;
-    const previousPitch = ShadowMap.sunPitch;
-    const previousMinElevation = ShadowMap.minElevation;
-
-    try {
-      ShadowMap.lightEntities = [];
-      const entityA = createCasterEntity(1, new Vector(100, 0, 0));
-
-      const previousCL = registry.CL;
-      const previousSV = registry.SV;
-      registry.CL = { state: { clientEntities: { getVisibleEntities: () => [entityA] } } };
-      registry.SV = { collision: { traceStaticWorldLine: () => ({ fraction: 1.0, allsolid: false, startsolid: false }) } };
-      eventBus.publish('registry.frozen');
-      ShadowMap.minElevation = { value: 20 };
-      ShadowMap.sunYaw = { value: 0 };
-      ShadowMap.sunPitch = { value: -90 };
-
-      try {
-        ShadowMap._previousAnchorNum = -1;
-        ShadowMap.selectLocalLights(new Vector(0, 0, 0));
-        assert.equal(ShadowMap._shadowFocusPoint[0], 100);
-
-        const entityC = createCasterEntity(3, new Vector(10, 0, 0)); // much closer
-        registry.CL = { state: { clientEntities: { getVisibleEntities: () => [entityA, entityC] } } };
-        eventBus.publish('registry.frozen');
-
-        ShadowMap.selectLocalLights(new Vector(0, 0, 0));
-        assert.equal(ShadowMap._shadowFocusPoint[0], 10, 'focus point should follow the clearly closer caster');
-      } finally {
-        registry.CL = previousCL;
-        registry.SV = previousSV;
-        eventBus.publish('registry.frozen');
-      }
-    } finally {
-      ShadowMap.lightEntities = previousEntities;
-      ShadowMap.localLightCount = previousCount;
-      ShadowMap._previousAnchorNum = previousAnchorNum;
-      ShadowMap.sunYaw = previousYaw;
-      ShadowMap.sunPitch = previousPitch;
-      ShadowMap.minElevation = previousMinElevation;
-    }
-  });
-});
-
 void describe('ShadowMap.selectPointLights', () => {
   /**
    * Minimal duck-typed ClientDlight-like mock: only the fields read by
@@ -1088,5 +614,278 @@ void describe('ShadowMap.selectPointLights', () => {
       ShadowMap.pointLightDlightIndices.set(previousIndices);
       ShadowMap.pointLightRadii.splice(0, ShadowMap.pointLightRadii.length, ...previousRadii);
     }
+  });
+});
+
+void describe('ShadowMap.updateTopDownMatrix', () => {
+  /**
+   * Transforms a world-space point through the light-space matrix into NDC.
+   * @param {Float64Array} matrix column-major light-space view-projection matrix
+   * @param {number} x world-space x
+   * @param {number} y world-space y
+   * @param {number} z world-space z
+   * @returns {{x: number, y: number, z: number, w: number}} Clip-space coordinates.
+   */
+  function transform(matrix, x, y, z) {
+    return {
+      x: matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
+      y: matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
+      z: matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
+      w: matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15],
+    };
+  }
+
+  void test('centers the frustum on the camera, independent of any entity or light', () => {
+    const previousRange = ShadowMap.range;
+    const previousYaw = ShadowMap.yaw;
+    const previousPitch = ShadowMap.pitch;
+
+    try {
+      ShadowMap.range = { value: 512 };
+      ShadowMap.yaw = { value: 0 };
+      ShadowMap.pitch = { value: -90 }; // straight down
+
+      ShadowMap.updateTopDownMatrix(new Vector(100, 200, 300));
+
+      const m = ShadowMap.topdownMatrix;
+      // The camera position itself must land at the center of the ortho
+      // frustum (NDC x/y ≈ 0), regardless of range. Tolerance accounts for
+      // the deliberate texel-snap on the frustum's translation (up to one
+      // texel width, 2/TOPDOWN_SHADOW_SIZE in NDC, to stop the shadow from
+      // shimmering as the camera moves continuously).
+      const clip = transform(m, 100, 200, 300);
+      const texelToleranceNdc = 2.0 / 2048 + 1e-6;
+      assert.ok(Math.abs(clip.x / clip.w) < texelToleranceNdc, `expected NDC x≈0, got ${clip.x / clip.w}`);
+      assert.ok(Math.abs(clip.y / clip.w) < texelToleranceNdc, `expected NDC y≈0, got ${clip.y / clip.w}`);
+    } finally {
+      ShadowMap.range = previousRange;
+      ShadowMap.yaw = previousYaw;
+      ShadowMap.pitch = previousPitch;
+    }
+  });
+
+  void test('a point straight down from the camera stays centered horizontally with a straight-down pitch', () => {
+    const previousRange = ShadowMap.range;
+    const previousYaw = ShadowMap.yaw;
+    const previousPitch = ShadowMap.pitch;
+
+    try {
+      ShadowMap.range = { value: 512 };
+      ShadowMap.yaw = { value: 0 };
+      ShadowMap.pitch = { value: -90 };
+
+      ShadowMap.updateTopDownMatrix(new Vector(0, 0, 0));
+
+      const m = ShadowMap.topdownMatrix;
+      const clip = transform(m, 0, 0, -200); // straight down from the camera
+      assert.ok(Math.abs(clip.x / clip.w) < 1e-6, `expected NDC x≈0, got ${clip.x / clip.w}`);
+      assert.ok(Math.abs(clip.y / clip.w) < 1e-6, `expected NDC y≈0, got ${clip.y / clip.w}`);
+    } finally {
+      ShadowMap.range = previousRange;
+      ShadowMap.yaw = previousYaw;
+      ShadowMap.pitch = previousPitch;
+    }
+  });
+
+  void test('a point at the edge of the range maps close to the NDC boundary', () => {
+    const previousRange = ShadowMap.range;
+    const previousYaw = ShadowMap.yaw;
+    const previousPitch = ShadowMap.pitch;
+
+    try {
+      ShadowMap.range = { value: 256 };
+      ShadowMap.yaw = { value: 0 };
+      ShadowMap.pitch = { value: -90 };
+
+      ShadowMap.updateTopDownMatrix(new Vector(0, 0, 0));
+
+      const m = ShadowMap.topdownMatrix;
+      // Looking straight down is a degenerate case for the "which world axis
+      // is the frustum's right axis" question (see updateTopDownMatrix's
+      // near-vertical fallback), so probe both horizontal world axes and
+      // require at least one of them to hit the NDC boundary — whichever one
+      // the fallback picked as "right" this time.
+      const clipX = transform(m, 256, 0, -50);
+      const clipY = transform(m, 0, 256, -50);
+      const ndcMagnitudeX = Math.abs(clipX.x / clipX.w);
+      const ndcMagnitudeY = Math.abs(clipY.x / clipY.w);
+      const hitsBoundary = Math.abs(ndcMagnitudeX - 1.0) < 0.02 || Math.abs(ndcMagnitudeY - 1.0) < 0.02;
+      assert.ok(hitsBoundary, `expected an offset of range along one horizontal axis to reach NDC x≈1, got x-offset→${ndcMagnitudeX}, y-offset→${ndcMagnitudeY}`);
+    } finally {
+      ShadowMap.range = previousRange;
+      ShadowMap.yaw = previousYaw;
+      ShadowMap.pitch = previousPitch;
+    }
+  });
+
+  void test('stores the light travel direction for the shader-side surface-facing mask', () => {
+    const previousRange = ShadowMap.range;
+    const previousYaw = ShadowMap.yaw;
+    const previousPitch = ShadowMap.pitch;
+
+    try {
+      ShadowMap.range = { value: 512 };
+      ShadowMap.yaw = { value: 0 };
+      ShadowMap.pitch = { value: -90 }; // straight down
+
+      ShadowMap.updateTopDownMatrix(new Vector(0, 0, 0));
+
+      // Straight down means the light travels along -Z.
+      assertNear(ShadowMap.lightDir[0], 0, 1e-6);
+      assertNear(ShadowMap.lightDir[1], 0, 1e-6);
+      assertNear(ShadowMap.lightDir[2], -1, 1e-6);
+    } finally {
+      ShadowMap.range = previousRange;
+      ShadowMap.yaw = previousYaw;
+      ShadowMap.pitch = previousPitch;
+    }
+  });
+});
+
+void describe('ShadowMap.renderTopDownShadow', () => {
+  /**
+   * Builds a minimal mock gl/program pair sufficient for renderTopDownShadow
+   * and returns the recorded draw/renderEntitiesShadow calls.
+   * @param {(mode: number, first: number, count: number) => void} onDrawArrays
+   * @returns {{mockGl: object, program: object}} The mock GL context and shadow-brush program stub.
+   */
+  function createMockGl(onDrawArrays) {
+    const mockGl = {
+      FRAMEBUFFER: 0,
+      DEPTH_ATTACHMENT: 1,
+      TEXTURE_2D: 2,
+      DEPTH_BUFFER_BIT: 3,
+      DEPTH_TEST: 4,
+      CULL_FACE: 5,
+      POLYGON_OFFSET_FILL: 6,
+      FRONT: 7,
+      bindFramebuffer() {},
+      viewport() {},
+      enable() {},
+      disable() {},
+      clear() {},
+      colorMask() {},
+      polygonOffset() {},
+      cullFace() {},
+      uniform3f() {},
+      uniformMatrix3fv() {},
+      uniformMatrix4fv() {},
+      uniform1f() {},
+      drawArrays: onDrawArrays,
+    };
+    const program = {
+      uOrigin: null,
+      uAngles: null,
+      uLightSpaceMatrix: null,
+      uCasterFade: null,
+    };
+    return { mockGl, program };
+  }
+
+  void test('renders only entities, never world geometry, centered on the camera', () => {
+    const previousCL = registry.CL;
+    const previousGL = GL.gl;
+    const previousRenderEntitiesShadow = ShadowMap.renderEntitiesShadow;
+    const previousRange = ShadowMap.range;
+    const previousYaw = ShadowMap.yaw;
+    const previousPitch = ShadowMap.pitch;
+    const previousTopdownFBO = ShadowMap.topdownFBO;
+
+    const drawCalls = [];
+    const renderEntitiesCalls = [];
+    const { mockGl } = createMockGl((_mode, first, count) => {
+      drawCalls.push([first, count]);
+    });
+
+    // A worldmodel is present (shadows require an active map) but its leafs
+    // must never be walked or drawn by this pass — a literal top-down ray
+    // would be blocked by whatever roof is overhead, which would mark
+    // virtually every indoor room "in shadow" all the time instead of just
+    // the spots actually shadowed by something.
+    const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstmarksurface: 0, nummarksurfaces: 1 };
+
+    registry.CL = {
+      state: {
+        worldmodel: {
+          opaqueVAO: {},
+          leafs: [worldLeaf],
+          faces: [{ submodel: false }],
+          marksurfaces: [0],
+          textures: [{ flags: 0 }],
+        },
+      },
+    };
+    eventBus.publish('registry.frozen');
+
+    GL.gl = mockGl;
+    eventBus.publish('gl.ready');
+    ShadowMap.renderEntitiesShadow = (...args) => {
+      renderEntitiesCalls.push(args);
+    };
+
+    ShadowMap.topdownFBO = {};
+    ShadowMap.range = { value: 512 };
+    ShadowMap.yaw = { value: 0 };
+    ShadowMap.pitch = { value: -90 };
+
+    const viewOrigin = new Vector(10, 20, 30);
+
+    try {
+      ShadowMap.renderTopDownShadow(viewOrigin);
+    } finally {
+      ShadowMap.renderEntitiesShadow = previousRenderEntitiesShadow;
+      ShadowMap.range = previousRange;
+      ShadowMap.yaw = previousYaw;
+      ShadowMap.pitch = previousPitch;
+      ShadowMap.topdownFBO = previousTopdownFBO;
+
+      GL.gl = previousGL;
+      if (previousGL) {
+        eventBus.publish('gl.ready');
+      } else {
+        eventBus.publish('gl.shutdown');
+      }
+
+      registry.CL = previousCL;
+      eventBus.publish('registry.frozen');
+    }
+
+    // No world geometry is drawn into the depth map.
+    assert.equal(drawCalls.length, 0);
+
+    // Entities are rendered once, centered on the camera with a
+    // range²-based cutoff, and not flagged as a point-light pass.
+    assert.equal(renderEntitiesCalls.length, 1);
+    const [, isPointLight, cutoffOrigin, cutoffDistSq] = renderEntitiesCalls[0];
+    assert.equal(isPointLight, false);
+    assert.equal(cutoffOrigin, viewOrigin);
+    assert.equal(cutoffDistSq, 512 * 512);
+  });
+
+  void test('does nothing when there is no worldmodel', () => {
+    const previousCL = registry.CL;
+    let bindFramebufferCalls = 0;
+
+    registry.CL = { state: { worldmodel: null } };
+    eventBus.publish('registry.frozen');
+
+    const previousGL = GL.gl;
+    GL.gl = { bindFramebuffer() { bindFramebufferCalls++; } };
+    eventBus.publish('gl.ready');
+
+    try {
+      ShadowMap.renderTopDownShadow(new Vector(0, 0, 0));
+    } finally {
+      GL.gl = previousGL;
+      if (previousGL) {
+        eventBus.publish('gl.ready');
+      } else {
+        eventBus.publish('gl.shutdown');
+      }
+      registry.CL = previousCL;
+      eventBus.publish('registry.frozen');
+    }
+
+    assert.equal(bindFramebufferCalls, 0);
   });
 });

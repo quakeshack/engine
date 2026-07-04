@@ -10,9 +10,7 @@ uniform vec3 uLightVec;
 uniform vec3 uDynamicLightVec;
 
 // Shadow mapping
-uniform mat4 uLightSpaceMatrix0;
-uniform mat4 uLightSpaceMatrix1;
-uniform mat4 uLightSpaceMatrix2;
+uniform mat4 uLightSpaceMatrix;
 
 in vec3 aPosition;
 in vec2 aTexCoord;
@@ -22,9 +20,7 @@ out vec2 vTexCoord;
 out float vLightDot;
 out float vDynamicLightDot;
 out float vFog;
-out vec4 vShadowCoord0;
-out vec4 vShadowCoord1;
-out vec4 vShadowCoord2;
+out vec4 vShadowCoord;
 out vec3 vWorldPos;
 out vec3 vNormal;
 out vec3 vLightVec;
@@ -41,10 +37,7 @@ void main(void) {
   gl_Position = uPerspective * vec4(position.xz, -position.y, 1.0);
 
   // Shadow coordinates in light space
-  vec4 shadowWorldPos = vec4(worldPos, 1.0);
-  vShadowCoord0 = uLightSpaceMatrix0 * shadowWorldPos;
-  vShadowCoord1 = uLightSpaceMatrix1 * shadowWorldPos;
-  vShadowCoord2 = uLightSpaceMatrix2 * shadowWorldPos;
+  vShadowCoord = uLightSpaceMatrix * vec4(worldPos, 1.0);
 
   vTexCoord = aTexCoord;
   vec3 worldNormal = uAngles * aNormal;

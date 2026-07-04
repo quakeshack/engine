@@ -221,7 +221,6 @@ class R {
   static fullbright_texture: WebGLTexture = null!;
   static null_texture: WebGLTexture = null!;
   static normal_up_texture: WebGLTexture = null!;
-  static shadow_textures: WebGLTexture[] = [];
   static shadow_texture: WebGLTexture | null = null;
   static point_shadow_textures: WebGLTexture[] = [];
   static world_depth_texture: WebGLTexture | null = null;
@@ -1855,31 +1854,26 @@ class R {
         gl.uniform4f(program.uFogParams, R.fog_start.value, R.fog_end.value, R.fog_density.value, R.fog_mode.value);
       }
       // shadow mapping uniforms (set on all programs that declare them)
-      if (program.uLightSpaceMatrix0 !== undefined) {
-        gl.uniformMatrix4fv(program.uLightSpaceMatrix0, false, ShadowMap.lightSpaceMatrices[0]);
-      }
-      if (program.uLightSpaceMatrix1 !== undefined) {
-        gl.uniformMatrix4fv(program.uLightSpaceMatrix1, false, ShadowMap.lightSpaceMatrices[1]);
-      }
-      if (program.uLightSpaceMatrix2 !== undefined) {
-        gl.uniformMatrix4fv(program.uLightSpaceMatrix2, false, ShadowMap.lightSpaceMatrices[2]);
+      if (program.uLightSpaceMatrix !== undefined) {
+        gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, ShadowMap.topdownMatrix);
       }
       if (program.uShadowEnabled !== undefined) {
         gl.uniform1f(program.uShadowEnabled, ShadowMap.enabled!.value ? 1.0 : 0.0);
       }
-      if (program.uShadowCount !== undefined) {
-        gl.uniform1i(program.uShadowCount, ShadowMap.enabled!.value ? ShadowMap.localLightCount : 0);
-      }
       if (program.uShadowDarkness !== undefined) {
-        // Blend the configured darkness toward 1.0 (no shadow) as the local
-        // shadow's weakest active light approaches the edge of its influence
-        // radius (see ShadowMap.localLightFalloff), so shadows fade smoothly
-        // instead of popping when a light falls out of range.
-        const effectiveDarkness = 1.0 - (1.0 - ShadowMap.darkness!.value) * ShadowMap.localLightFalloff;
-        gl.uniform1f(program.uShadowDarkness, effectiveDarkness);
+        gl.uniform1f(program.uShadowDarkness, ShadowMap.darkness!.value);
       }
       if (program.uShadowMapSize !== undefined) {
         gl.uniform1f(program.uShadowMapSize, ShadowMap.size);
+      }
+      if (program.uShadowMaxDepthNDC !== undefined) {
+        // Convert the world-unit max-depth cvar into the top-down shadow
+        // map's normalized [0,1] depth space (which spans 2 * range world
+        // units — see ShadowMap.updateTopDownMatrix's near/far planes).
+        gl.uniform1f(program.uShadowMaxDepthNDC, ShadowMap.maxDepth!.value / (2.0 * ShadowMap.range!.value));
+      }
+      if (program.uShadowLightDir !== undefined) {
+        gl.uniform3fv(program.uShadowLightDir, ShadowMap.lightDir);
       }
       // Point light shadow uniforms
       if (program.uPointShadowEnabled !== undefined) {
@@ -2009,9 +2003,8 @@ class R {
     R.usePostProcess = R.drawturbulents.value !== 0 || worldmodel.fogVolumes.length > 0
       || (waterfogEnabled && isUnderwater && R.drawturbulents.value !== 0);
 
-    // Choose the shadow texture for this frame (real or dummy)
-    R.shadow_textures = ShadowMap.getActiveTextures();
-    R.shadow_texture = R.shadow_textures[0] ?? null;
+    // Choose the shadow textures for this frame (real or dummy)
+    R.shadow_texture = ShadowMap.getActiveTopDownTexture();
     R.point_shadow_textures = ShadowMap.getActivePointTextures();
   };
 
@@ -2044,29 +2037,13 @@ class R {
   static RenderScene() {
     R.SetFrustum();
     console.assert(ShadowMap.enabled !== null, 'shadow toggle required');
-    console.assert(ShadowMap.casterRadius !== null, 'shadow caster radius required');
 
-    // Shadow depth pass — local entity shadow centered on the nearest visible
-    // shadow caster. Static world shadowing remains authored by baked lightmaps.
+    // Top-down shadow pass — a single fixed-direction directional shadow,
+    // centered on the camera. World and entities both cast into it.
     if (ShadowMap.enabled!.value) {
-      ShadowMap.selectLocalLights(R.refdef.vieworg);
-      ShadowMap.updateLightSpaceMatrices();
-      R.shadow_textures = ShadowMap.getActiveTextures();
-      R.shadow_texture = R.shadow_textures[0] ?? null;
-      const localCasterRadius = ShadowMap.casterRadius!.value;
-      const localCasterRadiusSq = localCasterRadius * localCasterRadius;
-
-      for (let i = 0; i < ShadowMap.localLightCount; i++) {
-        ShadowMap.begin(i);
-        ShadowMap.renderEntitiesShadow(
-          ShadowMap.lightSpaceMatrices[i],
-          false,
-          R.refdef.vieworg,
-          localCasterRadiusSq,
-        );
-        ShadowMap.end();
-      }
+      ShadowMap.renderTopDownShadow(R.refdef.vieworg);
     }
+    R.shadow_texture = ShadowMap.getActiveTopDownTexture();
 
     // Point light shadow pass — render world BSP into a cube depth map per
     // active point-light slot, from the strongest nearby dlights' positions.
@@ -2249,28 +2226,28 @@ class R {
     // rendering alias models
     await Promise.all([
       Promise.resolve(GL.CreateProgram('alias',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
         [
           ['aPositionA', gl.FLOAT, 3],
           ['aPositionB', gl.FLOAT, 3],
           ['aNormal', gl.FLOAT, 3],
           ['aTexCoord', gl.FLOAT, 2],
         ],
-        ['tTexture', 'tLuminance', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
+        ['tTexture', 'tLuminance', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
       // rendering mesh models (OBJ, IQM, GLTF)
       Promise.resolve(GL.CreateProgram('mesh',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uAlpha', 'uTime', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
         [
           ['aPosition', gl.FLOAT, 3],
           ['aTexCoord', gl.FLOAT, 2],
           ['aNormal', gl.FLOAT, 3],
         ],
-        ['tTexture', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
+        ['tTexture', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
       // rendering brush models (water is down below)
       Promise.resolve(GL.CreateProgram('brush',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uLightstyleInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uShadowMapSize', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightColor0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightColor1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointLightColor2', 'uPointShadowEnabled', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uLightstyleInterpolation', 'uAlpha', 'uFogColor', 'uFogParams', 'uPerformDotLighting', 'uHaveDeluxemap', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMapSize', 'uShadowMaxDepthNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightColor0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightColor1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointLightColor2', 'uPointShadowEnabled', 'uBloomEmissiveScale', 'uBloomDlightScale', 'uBloomSpecularScale'],
           [
             ['aPosition', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 4],
@@ -2279,7 +2256,7 @@ class R {
             ['aTangent', gl.FLOAT, 3],
             ['aBitangent', gl.FLOAT, 3],
           ],
-          ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tLuminance', 'tSpecular', 'tNormal', 'tDeluxemap', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
+          ['tTextureA', 'tTextureB', 'tLightmap', 'tDlight', 'tLightStyleA', 'tLightStyleB', 'tLuminance', 'tSpecular', 'tNormal', 'tDeluxemap', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
       // rendering dynamic lights
       Promise.resolve(GL.CreateProgram('dlight',
@@ -2289,14 +2266,14 @@ class R {
 
       // rendering the player model (similar to alias model but with custom colors)
       Promise.resolve(GL.CreateProgram('player',
-        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uTop', 'uBottom', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix0', 'uLightSpaceMatrix1', 'uLightSpaceMatrix2', 'uShadowEnabled', 'uShadowCount', 'uShadowDarkness', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
+        ['uOrigin', 'uAngles', 'uViewOrigin', 'uViewAngles', 'uPerspective', 'uLightVec', 'uDynamicLightVec', 'uGamma', 'uAmbientLight', 'uShadeLight', 'uDynamicShadeLight', 'uInterpolation', 'uAlpha', 'uTime', 'uTop', 'uBottom', 'uFogColor', 'uFogParams', 'uLightSpaceMatrix', 'uShadowEnabled', 'uShadowDarkness', 'uShadowMaxDepthNDC', 'uShadowLightDir', 'uPointLightPos0', 'uPointLightRadius0', 'uPointLightPos1', 'uPointLightRadius1', 'uPointLightPos2', 'uPointLightRadius2', 'uPointShadowEnabled', 'uBloomEmissiveScale'],
           [
             ['aPositionA', gl.FLOAT, 3],
             ['aPositionB', gl.FLOAT, 3],
             ['aNormal', gl.FLOAT, 3],
             ['aTexCoord', gl.FLOAT, 2],
           ],
-          ['tTexture', 'tLuminance', 'tPlayer', 'tShadowMap0', 'tShadowMap1', 'tShadowMap2', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
+          ['tTexture', 'tLuminance', 'tPlayer', 'tShadowMap', 'tPointShadowMap0', 'tPointShadowMap1', 'tPointShadowMap2'])),
 
       // for rendering sprites (usually effects)
       Promise.resolve(GL.CreateProgram('sprite',
@@ -2405,7 +2382,7 @@ class R {
         [['aPosition', gl.FLOAT, 3]],
         ['tDepth', 'tLightProbe'])),
 
-      // shadow depth pass for directional shadow mapping
+      // shadow depth pass for the top-down directional shadow
       Promise.resolve(GL.CreateProgram('shadow-brush',
         ['uOrigin', 'uAngles', 'uLightSpaceMatrix', 'uCasterFade'],
         [['aPosition', gl.FLOAT, 3]],
@@ -2583,7 +2560,6 @@ class R {
 
     R.allocated = [];
 
-    R.shadow_textures = [];
     R.shadow_texture = null;
     R.point_shadow_textures = [];
     R.world_depth_texture = null;

@@ -20,13 +20,13 @@ uniform sampler2D tPlayer;
 uniform float uAlpha;
 uniform float uBloomEmissiveScale;
 
-// Shadow mapping
-uniform sampler2DShadow tShadowMap0;
-uniform sampler2DShadow tShadowMap1;
-uniform sampler2DShadow tShadowMap2;
+// Top-down shadow mapping — a single fixed-direction directional shadow,
+// centered on the camera every frame (see ShadowMap.renderTopDownShadow()).
+uniform sampler2DShadow tShadowMap;
 uniform float uShadowEnabled;
-uniform int uShadowCount;
 uniform float uShadowDarkness;
+uniform float uShadowMaxDepthNDC;
+uniform vec3 uShadowLightDir;
 
 // Point light shadow mapping — up to 3 independent point-light shadow casters
 // (see ShadowMap.selectPointLights()); combined via min() below since the
@@ -47,9 +47,7 @@ in vec2 vTexCoord;
 in float vLightDot;
 in float vDynamicLightDot;
 in float vFog;
-in vec4 vShadowCoord0;
-in vec4 vShadowCoord1;
-in vec4 vShadowCoord2;
+in vec4 vShadowCoord;
 in vec3 vWorldPos;
 in vec3 vNormal;
 in vec3 vLightVec;
@@ -65,6 +63,11 @@ uniform vec3 uFogColor;
 const float kPlayerSpecularShininess = 24.0;
 const float kPlayerSpecularIntensity = 0.25;
 
+/**
+ * Top-down shadow test, softened by the hardware's free 2×2 PCF (sampler2DShadow
+ * + LINEAR filtering). Fades to fully-lit near the frustum edge instead of a
+ * hard clip, and floors at uShadowDarkness rather than going fully black.
+ */
 float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   vec3 shadowCoord = shadowCoordH.xyz / shadowCoordH.w * 0.5 + 0.5;
   float zValid = step(0.0, shadowCoord.z) * step(shadowCoord.z, 1.0);
@@ -73,7 +76,16 @@ float sampleLocalShadow(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   float fade = (1.0 - smoothstep(0.7, 1.0, edgeDist)) * zValid;
 
   float rawShadow = texture(shadowMap, shadowCoord);
-  return mix(1.0, mix(uShadowDarkness, 1.0, rawShadow), fade);
+
+  // Discount the occlusion when the nearest recorded caster is farther than
+  // uShadowMaxDepthNDC above this fragment — see brush.frag's
+  // sampleLocalShadowPCF for why (a caster overhead should not bleed its
+  // shadow through intervening geometry onto a much lower surface).
+  float inRange = texture(shadowMap, vec3(shadowCoord.xy, shadowCoord.z - uShadowMaxDepthNDC));
+  rawShadow = 1.0 - (1.0 - rawShadow) * inRange;
+
+  float shadow = mix(1.0, mix(uShadowDarkness, 1.0, rawShadow), fade);
+  return mix(1.0, shadow, step(0.5, uShadowEnabled));
 }
 
 /**
@@ -140,16 +152,13 @@ void main(void) {
   vec3 luminance = texture(tLuminance, vTexCoord).rgb;
   vec4 player = texture(tPlayer, vTexCoord);
 
-  // Local entity shadow — small local depth map, BSP-light-driven direction.
-  // Fades smoothly to fully-lit at the coverage edge (no hard clip).
-  float s0 = sampleLocalShadow(tShadowMap0, vShadowCoord0);
-  float s1 = sampleLocalShadow(tShadowMap1, vShadowCoord1);
-  float s2 = sampleLocalShadow(tShadowMap2, vShadowCoord2);
+  // Top-down shadow — fades smoothly to fully-lit at the coverage edge (no hard clip).
+  float shadow = sampleLocalShadow(tShadowMap, vShadowCoord);
 
-  float shadow = mix(1.0, s0, step(1.0, float(uShadowCount)));
-  shadow = mix(shadow, min(s0, s1), step(2.0, float(uShadowCount)));
-  shadow = mix(shadow, min(min(s0, s1), s2), step(3.0, float(uShadowCount)));
-  shadow = mix(1.0, shadow, step(0.5, uShadowEnabled));
+  // Mask the shadow off surfaces that face away from the top-down light
+  // direction — see brush.frag's main() for why.
+  float shadowFacing = clamp(dot(normalize(vNormal), -uShadowLightDir), 0.0, 1.0);
+  shadow = mix(1.0, shadow, shadowFacing);
 
   // Point light shadows — entity shadows from up to 3 nearby dynamic lights.
   // Combined via min() since this model only tracks one dominant analytic
@@ -158,6 +167,12 @@ void main(void) {
   float pointShadow1 = samplePointShadow(tPointShadowMap1, uPointLightPos1, uPointLightRadius1);
   float pointShadow2 = samplePointShadow(tPointShadowMap2, uPointLightPos2, uPointLightRadius2);
   float pointShadow = min(min(pointShadow0, pointShadow1), pointShadow2);
+
+  // A nearby, unoccluded shadow-casting dlight locally fills in the top-down
+  // shadow — see brush.frag's main() for why. pointShadow already accounts
+  // for the dlight being blocked by geometry between it and this fragment.
+  float dlightFill = clamp(vDynamicLightDot * max(uDynamicShadeLight.r, max(uDynamicShadeLight.g, uDynamicShadeLight.b)) * pointShadow, 0.0, 1.0);
+  shadow = max(shadow, dlightFill);
 
   vec3 lighting = (vLightDot * uShadeLight + uAmbientLight + vDynamicLightDot * uDynamicShadeLight * pointShadow) * shadow;
 

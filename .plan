@@ -186,12 +186,7 @@ Grouped by sections and then sorted by priority (more or less).
   - more checks around shadow acne territory
 - dlights fade out more subtly now
 - added specular lighting (Blinn-Phong) on alias models, non-PBR yet
-
-open todos:
-- fix that local shadow mess
-  - shadows are jumpy
-  - do not fade with distance
-  - probably make them top down again
+- local shadows merged into point shadow infrastructure, made them blend in
 
 ### 2026-06-28
 

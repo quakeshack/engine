@@ -29,13 +29,12 @@ uniform sampler2D tSpecular;
 uniform sampler2DArray tDeluxemap;
 
 // Shadow mapping
-uniform sampler2DShadow tShadowMap0;
-uniform sampler2DShadow tShadowMap1;
-uniform sampler2DShadow tShadowMap2;
+uniform sampler2DShadow tShadowMap;
 uniform float uShadowEnabled;
-uniform int uShadowCount;
 uniform float uShadowDarkness;
 uniform float uShadowMapSize;
+uniform float uShadowMaxDepthNDC;
+uniform vec3 uShadowLightDir;
 
 // Point light shadow mapping — up to 3 independent point-light shadow casters,
 // each with its own cube depth map so nearby dlights correctly occlude each
@@ -74,13 +73,18 @@ in vec3 vDynamicLightVec;
 in vec3 vTangent;
 in vec3 vBitangent;
 in vec3 vViewVec;
-in vec4 vShadowCoord0;
-in vec4 vShadowCoord1;
-in vec4 vShadowCoord2;
+in vec4 vShadowCoord;
 in vec3 vWorldPos;
 uniform vec3 uFogColor;
 in mat3 vAngles;
 
+/**
+ * 5×5 Gaussian-weighted PCF for smooth top-down shadow edges. Each tap uses
+ * the hardware sampler2DShadow (LINEAR gives free 2×2 PCF per tap), so this
+ * is effectively a much wider, softer kernel than the single-tap version the
+ * other model shaders use — worthwhile here since the world floor is the
+ * largest, most prominent shadow receiver in the scene.
+ */
 float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   vec3 shadowCoord = shadowCoordH.xyz / shadowCoordH.w * 0.5 + 0.5;
   if (shadowCoord.z < 0.0 || shadowCoord.z > 1.0) {
@@ -121,6 +125,17 @@ float sampleLocalShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoordH) {
   lit += 4.0  * texture(shadowMap, shadowCoord + vec3( 1.0,  2.0, 0.0) * texelSize);
   lit += 1.0  * texture(shadowMap, shadowCoord + vec3( 2.0,  2.0, 0.0) * texelSize);
   lit /= 256.0;
+
+  // Discount the occlusion when the nearest recorded caster is farther than
+  // uShadowMaxDepthNDC above this fragment along the shadow direction —
+  // otherwise a caster high overhead (e.g. standing on a catwalk) bleeds its
+  // shadow straight through the catwalk itself onto whatever floor happens
+  // to be far below, since the depth map has no notion of the catwalk ever
+  // being there. Reusing the same hardware-compare sampler with a shifted
+  // reference depth answers "is there still an occluder within range?" for
+  // free, with no extra texture or raw depth read needed.
+  float inRange = texture(shadowMap, vec3(shadowCoord.xy, shadowCoord.z - uShadowMaxDepthNDC));
+  lit = 1.0 - (1.0 - lit) * inRange;
 
   return mix(1.0, mix(uShadowDarkness, 1.0, lit), fade);
 }
@@ -240,18 +255,17 @@ void main(void) {
     dot(lightmapB, lightstyle)
   );
 
-  // Local entity shadow — small local depth map, BSP-light-driven direction.
-  // Modulates the lightmap; fades smoothly to fully-lit at coverage edge.
-  // 5×5 Gaussian-weighted PCF for smooth shadow edges. Each tap uses the
-  // hardware sampler2DShadow (LINEAR gives free 2×2 PCF per tap).
-  float s0 = sampleLocalShadowPCF(tShadowMap0, vShadowCoord0);
-  float s1 = sampleLocalShadowPCF(tShadowMap1, vShadowCoord1);
-  float s2 = sampleLocalShadowPCF(tShadowMap2, vShadowCoord2);
+  // Top-down shadow — modulates the lightmap; fades smoothly to fully-lit at
+  // coverage edge. 5×5 Gaussian-weighted PCF for smooth shadow edges.
+  float shadow = sampleLocalShadowPCF(tShadowMap, vShadowCoord);
 
-  float shadow = mix(1.0, s0, step(1.0, float(uShadowCount)));
-  shadow = mix(shadow, min(s0, s1), step(2.0, float(uShadowCount)));
-  shadow = mix(shadow, min(min(s0, s1), s2), step(3.0, float(uShadowCount)));
-  shadow = mix(1.0, shadow, step(0.5, uShadowEnabled));
+  // Mask the shadow off surfaces that face away from the top-down light
+  // direction (walls, the underside of beams/ceilings) — such a surface
+  // never receives direct light from straight overhead in the first place,
+  // so it should never show a contact-shadow blotch either. Falls off
+  // smoothly to zero at grazing angles rather than a hard cutoff.
+  float shadowFacing = clamp(dot(normalize(vNormal), -uShadowLightDir), 0.0, 1.0);
+  shadow = mix(1.0, shadow, shadowFacing);
 
   // Point light shadows — up to 3 independent shadow-casting dlights, each
   // occluded by its own cube depth map and added on top of the baked dlight
@@ -261,6 +275,15 @@ void main(void) {
   vec3 pointDlight = samplePointLightContribution(tPointShadowMap0, uPointLightPos0, uPointLightRadius0, uPointLightColor0)
                     + samplePointLightContribution(tPointShadowMap1, uPointLightPos1, uPointLightRadius1, uPointLightColor1)
                     + samplePointLightContribution(tPointShadowMap2, uPointLightPos2, uPointLightRadius2, uPointLightColor2);
+
+  // A nearby, unoccluded shadow-casting dlight (rocket, explosion) locally
+  // fills in the top-down shadow — a surface lit brightly by a point light
+  // right next to it isn't really "in the dark" there anymore, regardless of
+  // what the fixed overhead shadow direction says. pointDlight is already
+  // occlusion-tested against its own cube depth map, so a dlight blocked by
+  // geometry between it and this fragment correctly does not fill anything in.
+  float dlightFill = clamp(max(pointDlight.r, max(pointDlight.g, pointDlight.b)), 0.0, 1.0);
+  shadow = max(shadow, dlightFill);
 
   vec3 surfaceDlight = texture(tDlight, vTexCoord.zw).rgb + pointDlight;
   vec3 staticLight = lightmap * shadow + surfaceDlight;
