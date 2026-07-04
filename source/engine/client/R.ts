@@ -2335,7 +2335,7 @@ class R {
         ['tTexture'])),
 
       Promise.resolve(GL.CreateProgram('bloom-extract',
-        ['uOrtho'],
+        ['uOrtho', 'uTexelOffset'],
         [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
         ['tTexture'])),
 
@@ -2355,7 +2355,7 @@ class R {
         ['tMetric', 'tPrevious'])),
 
       Promise.resolve(GL.CreateProgram('bloom-composite',
-        ['uOrtho', 'uStrength'],
+        ['uOrtho', 'uStrength', 'uBloomTexelOffset'],
         [['aPosition', gl.FLOAT, 2], ['aTexCoord', gl.FLOAT, 2]],
         ['tScene', 'tBloom', 'tAdaptation'])),
 

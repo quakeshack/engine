@@ -520,6 +520,7 @@ export default class BloomEffect extends PostProcessEffect {
   static #extract(): void {
     const program = GL.UseProgram('bloom-extract');
     GL.Bind(program!.tTexture!, PostProcess.emissiveTexture);
+    gl.uniform2f(program!.uTexelOffset!, 1.0 / BloomEffect.width, 1.0 / BloomEffect.height);
     GL.StreamDrawTexturedQuad(0, 0, VID.width, VID.height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
   }
@@ -581,6 +582,7 @@ export default class BloomEffect extends PostProcessEffect {
     GL.Bind(program!.tBloom!, BloomEffect.extractTexture);
     GL.Bind(program!.tAdaptation!, BloomEffect.adaptationTextures[BloomEffect.adaptationReadIndex]);
     gl.uniform1f(program!.uStrength!, R.bloomStrength.value);
+    gl.uniform2f(program!.uBloomTexelOffset!, 1.0 / BloomEffect.width, 1.0 / BloomEffect.height);
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
   }
