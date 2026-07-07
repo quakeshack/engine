@@ -3,6 +3,7 @@ import Q from '../../shared/Q.ts';
 import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Tools from './Tools.ts';
 import IN from './IN.ts';
+import { KeyDestination } from './Key.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import workerFactories from '../common/WorkerFactories.ts';
 
@@ -142,8 +143,29 @@ function handleFocus(): void {
   }
 }
 
+/**
+ * Reads the clipboard and forwards its text to the active text input (menu textbox, console,
+ * or chat line). Clipboard access requires an async round-trip, so this can't be folded into
+ * the synchronous key handler.
+ */
+async function pasteFromClipboard(): Promise<void> {
+  try {
+    const text = await navigator.clipboard.readText();
+    Key.Paste(text);
+  } catch {
+    // Clipboard access denied or unavailable; nothing to paste.
+  }
+}
+
 /** Dispatches key-down events into the engine input system. */
 function handleKeyDown(event: KeyboardEvent): void {
+  // Ctrl/Cmd+V: paste into the active text input instead of typing a literal 'v'.
+  if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && Key.destination !== KeyDestination.game) {
+    event.preventDefault();
+    void pasteFromClipboard();
+    return;
+  }
+
   const key = getModernKey(event);
   if (key === null) {
     return;

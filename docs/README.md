@@ -10,6 +10,7 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 - [Console](console.md) - Details regarding the console implementation.
 - [Dedicated Server](dedicated.md) - Information on running QuakeShack as a dedicated server in a Node.js environment.
 - [Events](events.md) - Documentation on the engine's event bus system.
+- [Menu System](menu-system.md) - Stack-based, widget-driven menu framework and the `ClientEngineAPI.Menu` API for game code.
 - [Post-Process Effects](post-process-effects.md) - Game-controlled screen-space effects (color grading, blur) and how to extend them.
 - [QSMAT (QuakeShack Material) Format](qsmat-format.md) - Details on the `.qsmat.json` file format used to define PBR materials for Quake BSP maps.
 - [Traceline API](traceline.md) - Contract and semantics of the gameplay-facing trace query used by server and client game logic.

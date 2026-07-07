@@ -26,6 +26,21 @@ export class MenuStack {
    */
   register(name: string, page: MenuPage): void {
     this.pages.set(name, page);
+    eventBus.publish('menu.page-registered', name);
+  }
+
+  /**
+   * Find the registered name for a page instance, if any.
+   * @returns The name it is registered under, or `null` when unregistered.
+   */
+  #nameOf(page: MenuPage): string | null {
+    for (const [name, candidate] of this.pages) {
+      if (candidate === page) {
+        return name;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -36,6 +51,7 @@ export class MenuStack {
     const current = this.current();
     if (current) {
       current.deactivate();
+      eventBus.publish('menu.closed', this.#nameOf(current));
     }
 
     // Resolve page
@@ -50,6 +66,7 @@ export class MenuStack {
     this.stack.push(page);
     page.activate();
     M.entersound = true;
+    eventBus.publish('menu.opened', this.#nameOf(page));
   }
 
   /**
@@ -63,12 +80,14 @@ export class MenuStack {
 
     const page = this.stack.pop()!;
     page.deactivate();
+    eventBus.publish('menu.closed', this.#nameOf(page));
 
     // Activate new current page
     const current = this.current();
     if (current) {
       current.activate();
       M.entersound = true;
+      eventBus.publish('menu.opened', this.#nameOf(current));
     }
 
     return page;
@@ -89,6 +108,7 @@ export class MenuStack {
     while (this.stack.length > 0) {
       const page = this.stack.pop()!;
       page.deactivate();
+      eventBus.publish('menu.closed', this.#nameOf(page));
     }
   }
 

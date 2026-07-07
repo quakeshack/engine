@@ -6,7 +6,7 @@ export const productName = 'QuakeShack';
 /**
  * Version string.
  */
-export const productVersion = '1.2.0';
+export const productVersion = '1.2.1';
 
 /**
  * Default game directory.

@@ -175,6 +175,18 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-07-06
+
+- brought back a stashed menu rework
+  - also exporting menu infrastructure to the game API
+  - need to add a special key destination target to hand over input to the client game
+- added `LineEditor` component to make console, textbox and chat UI more convenient
+- game: added `isValid` helper to check for valid entities
+- I’m considering using GitHub projects to manage a clear roadmap/todo list
+  - pro: easier to find and understand, more organized
+  - con: no longer tethered to the code, repo mirrors will not have them
+- version bump to 1.2.1, even though there has been no clear versioning process so far
+
 ### 2026-07-04
 
 - more work on dynamic shadows

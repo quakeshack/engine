@@ -35,6 +35,14 @@ The engine has an event bus.
 | client.connected | 1. address | Successfully connected to a server. |
 | client.signon | 1. signon number | Triggered on each signon reply step. |
 
+### Menu
+
+| Event | Arguments | Description |
+| - | - | - |
+| menu.page-registered | 1. page name | A menu page was registered with the menu stack (`MenuStack.register`). |
+| menu.opened | 1. page name, or `null` if the page isn’t registered | A page became the current/visible menu page. |
+| menu.closed | 1. page name, or `null` if the page isn’t registered | A page stopped being the current menu page (popped, replaced, or the menu was cleared). |
+
 ### Console
 
 | Event | Arguments | Description |

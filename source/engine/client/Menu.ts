@@ -8,146 +8,322 @@ import { eventBus, getClientRegistry } from '../registry.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.ts';
 import { KeyDestination } from './Key.ts';
+import { Action, ColorPicker, KeyBindItem, SaveSlotItem, Slider, Textbox, Toggle } from './menu/MenuItem.ts';
+import { DialogPage, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from './menu/MenuPage.ts';
+import { MenuStack } from './menu/MenuStack.ts';
 import MultiplayerMainMenu from './menu/Multiplayer.ts';
 import VID from './VID.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 
-let { CL, COM, Con, Draw, Host, Key, S, SCR, SV, V } = getClientRegistry();
+let { CL, COM, Con, Draw, Host, Key, S, SCR, SV } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Draw, Host, Key, S, SCR, SV, V } = getClientRegistry());
+  ({ CL, COM, Con, Draw, Host, Key, S, SCR, SV } = getClientRegistry());
 });
-
-enum MenuStateId {
-  none = 0,
-  main = 1,
-  singleplayer = 2,
-  load = 3,
-  save = 4,
-  multiplayer = 5,
-  options = 6,
-  keys = 7,
-  help = 8,
-  quit = 9,
-  alert = 10,
-  launch_server = 11,
-}
-
-type MenuStateStore = {
-  readonly none: MenuStateId.none;
-  readonly main: MenuStateId.main;
-  readonly singleplayer: MenuStateId.singleplayer;
-  readonly load: MenuStateId.load;
-  readonly save: MenuStateId.save;
-  readonly multiplayer: MenuStateId.multiplayer;
-  readonly options: MenuStateId.options;
-  readonly keys: MenuStateId.keys;
-  readonly help: MenuStateId.help;
-  readonly quit: MenuStateId.quit;
-  readonly alert: MenuStateId.alert;
-  readonly launch_server: MenuStateId.launch_server;
-  value: MenuStateId;
-};
 
 export type MenuPic = GLTexture & { translate?: GLTexture | null };
 type SaveGameData = { comment?: string; mapname?: string };
-type BindName = [string, string];
 type QuitMessage = [string, string, string, string];
+
+const MAX_SAVEGAMES = 12;
+
+const bindnames: [string, string][] = [
+  ['+attack', 'attack'],
+  ['impulse 10', 'change weapon'],
+  ['+jump', 'jump / swim up'],
+  ['+forward', 'walk forward'],
+  ['+back', 'backpedal'],
+  ['+left', 'turn left'],
+  ['+right', 'turn right'],
+  ['+speed', 'run'],
+  ['+moveleft', 'step left'],
+  ['+moveright', 'step right'],
+  ['+strafe', 'sidestep'],
+  ['+lookup', 'look up'],
+  ['+lookdown', 'look down'],
+  ['centerview', 'center view'],
+  ['+mlook', 'mouse look'],
+  ['+klook', 'keyboard look'],
+  ['+moveup', 'swim up'],
+  ['+movedown', 'swim down'],
+];
+
+const quitMessage: QuitMessage[] = [
+  ['  Are you gonna quit', '  this game just like', '   everything else?', ''],
+  [' Milord, methinks that', '   thou art a lowly', ' quitter. Is this true?', ''],
+  [' Do I need to bust your', '  face open for trying', '        to quit?', ''],
+  [' Man, I oughta smack you', '   for trying to quit!', '     Press Y to get', '      smacked out.'],
+  [' Press Y to quit like a', '   big loser in life.', '  Press N to stay proud', '    and successful!'],
+  ['   If you press Y to', '  quit, I will summon', '  Satan all over your', '      hard drive!'],
+  ['  Um, Asmodeus dislikes', ' his children trying to', ' quit. Press Y to return', '   to your Tinkertoys.'],
+  ['  If you quit now, I\'ll', '  throw a blanket-party', '   for you next time!', ''],
+];
 
 const launchServerMenu = new MultiplayerMainMenu();
 
+/**
+ * Full-screen help picture viewer; Left/Right (or Up/Down) flip pages, Escape goes back.
+ */
+class HelpPage extends MenuPage {
+  pageIndex = 0;
+
+  constructor() {
+    super({ onEscape: () => { M.PopMenu(); } });
+  }
+
+  override draw(): void {
+    M.DrawPic(0, 0, M.help_pages[this.pageIndex]);
+  }
+
+  override handleInput(key: K): boolean {
+    if (key === K.UPARROW || key === K.RIGHTARROW) {
+      M.entersound = true;
+      this.pageIndex = (this.pageIndex + 1) % M.help_pages.length;
+      return true;
+    }
+
+    if (key === K.DOWNARROW || key === K.LEFTARROW) {
+      M.entersound = true;
+      this.pageIndex = (this.pageIndex - 1 + M.help_pages.length) % M.help_pages.length;
+      return true;
+    }
+
+    return super.handleInput(key);
+  }
+
+  override activate(): void {
+    super.activate();
+    this.pageIndex = 0;
+  }
+}
+
+/**
+ * Key-binding menu; shows different instructional text while capturing a keypress to bind.
+ */
+class KeysPage extends MenuPage {
+  override draw(): void {
+    super.draw();
+
+    const focused = this.items[this.cursor];
+    const capturing = focused instanceof KeyBindItem && focused.capturing;
+
+    if (capturing) {
+      M.Print(12, 32, 'Press a key or button for this action');
+    } else {
+      M.Print(18, 32, 'Enter to change, backspace to clear');
+    }
+  }
+}
+
+/**
+ * Quit confirmation dialog. Y confirms, N/Escape returns to whatever page was open before it.
+ */
+class QuitDialogPage extends DialogPage {
+  #messageIndex = 0;
+
+  constructor() {
+    super({
+      onEscape: () => { M.PopMenu(); },
+      getBackdrop: () => {
+        const stack = M.menuStack.stack;
+        return stack.length > 1 ? stack[stack.length - 2] : null;
+      },
+    });
+  }
+
+  override activate(): void {
+    super.activate();
+    this.#messageIndex = Math.floor(Math.random() * quitMessage.length);
+  }
+
+  override draw(): void {
+    super.draw();
+
+    const message = quitMessage[this.#messageIndex];
+    M.DrawTextBox(56, 76, 24, 4);
+    M.Print(64, 84, message[0]);
+    M.Print(64, 92, message[1]);
+    M.Print(64, 100, message[2]);
+    M.Print(64, 108, message[3]);
+  }
+
+  override handleInput(key: K): boolean {
+    if (key === 110 as K) { // 'n'
+      M.PopMenu();
+      return true;
+    }
+
+    if (key === 121 as K) { // 'y'
+      Key.destination = KeyDestination.console;
+      Host.Quit_f();
+      return true;
+    }
+
+    return super.handleInput(key);
+  }
+}
+
+/**
+ * A dismissable alert/error dialog with a dynamically sized text box.
+ */
+class AlertDialogPage extends MenuPage {
+  #title = '';
+  #message = '';
+
+  constructor() {
+    super({
+      onEscape: () => { M.CloseMenu(); },
+      onConfirm: () => { M.CloseMenu(); },
+    });
+  }
+
+  setMessage(title: string, message: string): void {
+    this.#title = title;
+    this.#message = message;
+  }
+
+  override draw(): void {
+    const titleLines = this.#title ? this.#title.split('\n') : [];
+    const messageLines = this.#message ? this.#message.split('\n') : [];
+
+    const lines: Array<string | null> = [];
+    if (titleLines.length) {
+      lines.push(...titleLines);
+      lines.push(`\x1d${'\x1e'.repeat(60)}\x1f`);
+    }
+
+    lines.push(null);
+
+    if (messageLines.length) {
+      lines.push(...messageLines);
+    }
+
+    lines.push(null);
+    lines.push('Press enter to continue.');
+
+    // Calculate dimensions for the text box
+    const boxWidth = 64;
+    const totalLines = lines.length;
+    const x = (320 - boxWidth * 8) / 2;
+
+    M.DrawTextBox(x, 52, boxWidth, totalLines + 2);
+
+    for (let i = 0, y = 68; i < totalLines; i++, y += 8) {
+      if (lines[i]) {
+        // Limit each line to 62 characters for safe drawing
+        M.PrintWhite(x + 16, y, lines[i]!.substring(0, 62));
+      }
+    }
+  }
+}
+
+/**
+ * A name-entry row matching the original multiplayer screen's layout: label on the left,
+ * input box in a fixed column to the right (rather than stacked below the label), so it
+ * doesn't compete for horizontal space with the player skin preview next to it.
+ */
+class NameFieldTextbox extends Textbox {
+  static readonly #boxX = 160;
+
+  override draw(x: number, y: number, focused: boolean): void {
+    if (!this.visible) {
+      return;
+    }
+
+    M.Print(x, y, this.label);
+    M.DrawTextBox(NameFieldTextbox.#boxX, y - 8, this.width, 1);
+    M.PrintWhite(NameFieldTextbox.#boxX + 8, y, this.getValue());
+
+    if (focused) {
+      const glyph = this._getCursorGlyph((Host.realtime * 4.0) & 1);
+      if (glyph !== null) {
+        M.DrawCharacter(NameFieldTextbox.#boxX + 8 + this.cursorPos * 8, y, glyph);
+      }
+    }
+  }
+}
+
+/**
+ * Legacy multiplayer setup screen: player name, shirt/pants color, then either joins the
+ * server browser (not yet connected) or applies profile changes immediately (connected).
+ */
+export class MultiplayerSetupPage extends MenuPage {
+  top = 0;
+  bottom = 0;
+  #oldTop = 0;
+  #oldBottom = 0;
+  #nameTextbox: Textbox;
+
+  constructor() {
+    const nameTextbox = new NameFieldTextbox({ label: 'Your name', width: 16, maxLength: 14, heightOverride: 24 });
+    const joinAction = new Action({ label: 'Join Game' });
+
+    super({
+      logoPic: M.qplaque,
+      titlePic: M.p_multi,
+      layout: new VerticalLayout({ startY: 48, spacing: 0, labelX: 64, cursorX: 56 }),
+      items: [
+        nameTextbox,
+        new ColorPicker({
+          label: 'Shirt color',
+          heightOverride: 24,
+          getValue: () => this.top,
+          setValue: (value) => { this.top = value; },
+        }),
+        new ColorPicker({
+          label: 'Pants color',
+          heightOverride: 36,
+          getValue: () => this.bottom,
+          setValue: (value) => { this.bottom = value; },
+        }),
+        joinAction,
+      ],
+      onEscape: () => { M.PopMenu(); },
+      onEnter: () => {
+        nameTextbox.value = CL.name.string;
+        this.top = this.#oldTop = CL.color.value >> 4;
+        this.bottom = this.#oldBottom = CL.color.value & 15;
+        joinAction.label = CL.cls.state !== clientConnectionState.connected ? 'Join Game' : 'Accept Changes';
+      },
+    });
+
+    this.#nameTextbox = nameTextbox;
+
+    joinAction.action = () => {
+      if (CL.name.string !== this.#nameTextbox.getValue()) {
+        Cmd.text += `name "${this.#nameTextbox.getValue()}"\n`;
+      }
+
+      if (this.top !== this.#oldTop || this.bottom !== this.#oldBottom) {
+        this.#oldTop = this.top;
+        this.#oldBottom = this.bottom;
+        Cmd.text += `color ${this.top} ${this.bottom}\n`;
+      }
+
+      if (CL.cls.state !== clientConnectionState.connected) {
+        M.Menu_Launch_Server_f();
+        return;
+      }
+
+      M.CloseMenu();
+    };
+  }
+
+  override draw(): void {
+    super.draw();
+
+    M.DrawPic(160, 56, M.bigbox);
+    M.DrawPicTranslate(
+      172, 64, M.menuplyr,
+      (this.top << 4) + (this.top >= 8 ? 4 : 11),
+      (this.bottom << 4) + (this.bottom >= 8 ? 4 : 11),
+    );
+  }
+}
+
 export default class M {
-  static state: MenuStateStore = {
-    none: MenuStateId.none,
-    main: MenuStateId.main,
-    singleplayer: MenuStateId.singleplayer,
-    load: MenuStateId.load,
-    save: MenuStateId.save,
-    multiplayer: MenuStateId.multiplayer,
-    options: MenuStateId.options,
-    keys: MenuStateId.keys,
-    help: MenuStateId.help,
-    quit: MenuStateId.quit,
-    alert: MenuStateId.alert,
-    launch_server: MenuStateId.launch_server,
-    value: MenuStateId.none,
-  };
+  static menuStack = new MenuStack();
 
-  static main_cursor = 0;
-  static main_items = 5;
-  static save_demonum = 0; // THIS IS THE REASON WHY I HATE UNINITIALIZED PROPERTIES, this line was missing and it quietly caused some NaNs deep in the demo code…
-
-  static singleplayer_cursor = 0;
-  static singleplayer_items = 3;
-
-  static load_cursor = 0;
-  static max_savegames = 12;
-  static filenames: string[] = [];
-  static loadable: boolean[] = [];
-  static removable: boolean[] = [];
-
-  static multiplayer_cursor = 1;
-  static multiplayer_cursor_table = [56, 72, 96, 120, 156];
-  static multiplayer_joinname = (() => {
-    const url = new URL(location.href);
-    return url.host + url.pathname + (!url.pathname.endsWith('/') ? '/' : '') + 'api/';
-  })();
-  static multiplayer_items = 5;
-  static multiplayer_myname = '';
-  static multiplayer_top = 0;
-  static multiplayer_oldtop = 0;
-  static multiplayer_bottom = 0;
-  static multiplayer_oldbottom = 0;
-
-  static options_cursor = 0;
-  static options_items = 12;
-
-  static bindnames: BindName[] = [
-    ['+attack', 'attack'],
-    ['impulse 10', 'change weapon'],
-    ['+jump', 'jump / swim up'],
-    ['+forward', 'walk forward'],
-    ['+back', 'backpedal'],
-    ['+left', 'turn left'],
-    ['+right', 'turn right'],
-    ['+speed', 'run'],
-    ['+moveleft', 'step left'],
-    ['+moveright', 'step right'],
-    ['+strafe', 'sidestep'],
-    ['+lookup', 'look up'],
-    ['+lookdown', 'look down'],
-    ['centerview', 'center view'],
-    ['+mlook', 'mouse look'],
-    ['+klook', 'keyboard look'],
-    ['+moveup', 'swim up'],
-    ['+movedown', 'swim down'],
-  ];
-  static keys_cursor = 0;
-  static bind_grab = false;
-
-  static num_help_pages = 6;
-  static help_page = 0;
-
-  static quitMessage: QuitMessage[] = [
-    ['  Are you gonna quit', '  this game just like', '   everything else?', ''],
-    [' Milord, methinks that', '   thou art a lowly', ' quitter. Is this true?', ''],
-    [' Do I need to bust your', '  face open for trying', '        to quit?', ''],
-    [' Man, I oughta smack you', '   for trying to quit!', '     Press Y to get', '      smacked out.'],
-    [' Press Y to quit like a', '   big loser in life.', '  Press N to stay proud', '    and successful!'],
-    ['   If you press Y to', '  quit, I will summon', '  Satan all over your', '      hard drive!'],
-    ['  Um, Asmodeus dislikes', ' his children trying to', ' quit. Press Y to return', '   to your Tinkertoys.'],
-    ['  If you quit now, I\'ll', '  throw a blanket-party', '   for you next time!', ''],
-  ];
-
-  static wasInMenus = false;
-  static quit_prevstate: MenuStateId = MenuStateId.none;
-  static msgNumber = 0;
-
-  static alertMessage = { title: '', message: '' };
-  static overlayNoticeId: string | null = null;
-  static overlayNoticeLines: string[] = [];
-
-  static recursiveDraw = false;
   static entersound = false;
 
   static sfx_menu1: SFX | null = null;
@@ -182,6 +358,19 @@ export default class M {
   static p_option: MenuPic = null!;
   static ttl_cstm: MenuPic = null!;
   static help_pages: MenuPic[] = [];
+
+  static overlayNoticeId: string | null = null;
+  static overlayNoticeLines: string[] = [];
+
+  static #saveDemonum = 0; // THIS IS THE REASON WHY I HATE UNINITIALIZED PROPERTIES, this line was missing and it quietly caused some NaNs deep in the demo code…
+
+  static #loadSlotItems: SaveSlotItem[] = [];
+  static #saveSlotItems: SaveSlotItem[] = [];
+
+  static #mainPage: MenuPage = null!;
+  static #alertPage: AlertDialogPage = null!;
+  static #quitPage: QuitDialogPage = null!;
+  static #multiplayerPage: MenuPage = null!;
 
   static DrawCharacter(cx: number, cy: number, num: number): void {
     Draw.Character(cx * 2 + Math.floor(VID.width / 2) - 320, cy * 2 + Math.floor(VID.height / 2) - 200, num, 2.0);
@@ -240,6 +429,27 @@ export default class M {
     M.DrawPic(cx, cy + 8, M.box_br);
   }
 
+  static DrawSlider(x: number, y: number, range: number): void {
+    if (range < 0) {
+      range = 0;
+    } else if (range > 1) {
+      range = 1;
+    }
+    M.DrawCharacter(x - 8, y, 128);
+    M.DrawCharacter(x, y, 129);
+    M.DrawCharacter(x + 8, y, 129);
+    M.DrawCharacter(x + 16, y, 129);
+    M.DrawCharacter(x + 24, y, 129);
+    M.DrawCharacter(x + 32, y, 129);
+    M.DrawCharacter(x + 40, y, 129);
+    M.DrawCharacter(x + 48, y, 129);
+    M.DrawCharacter(x + 56, y, 129);
+    M.DrawCharacter(x + 64, y, 129);
+    M.DrawCharacter(x + 72, y, 129);
+    M.DrawCharacter(x + 80, y, 130);
+    M.DrawCharacter(x + Math.floor(72 * range), y, 131);
+  }
+
   static SetOverlayNotice(id: string, message: string): void {
     M.overlayNoticeId = id;
     M.overlayNoticeLines = message.split('\n');
@@ -255,10 +465,12 @@ export default class M {
   }
 
   static DrawOverlayNotice(): void {
+    const current = M.menuStack.current();
+
     if (
       M.overlayNoticeLines.length === 0
-      || M.state.value === M.state.alert
-      || M.state.value === M.state.quit
+      || current === M.#alertPage
+      || current === M.#quitPage
     ) {
       return;
     }
@@ -281,18 +493,29 @@ export default class M {
   }
 
   static CloseMenu(): void {
+    M.menuStack.clear();
+    M.#returnToPreviousDestination();
+  }
+
+  static PopMenu(): void {
+    M.menuStack.pop();
+    if (M.menuStack.isEmpty()) {
+      M.#returnToPreviousDestination();
+    }
+  }
+
+  static #returnToPreviousDestination(): void {
     if (CL.cls.state === clientConnectionState.connected) {
       Key.destination = KeyDestination.game;
     } else {
       Key.destination = KeyDestination.console;
     }
-    M.state.value = M.state.none;
   }
 
   static ToggleMenu_f(this: void): void {
     M.entersound = true;
     if (Key.destination === KeyDestination.menu) {
-      if (M.state.value !== M.state.main) {
+      if (M.menuStack.current() !== M.#mainPage) {
         M.Menu_Main_f();
         return;
       }
@@ -309,830 +532,272 @@ export default class M {
     }
 
     if (Key.destination !== KeyDestination.menu) {
-      M.save_demonum = CL.cls.demonum;
+      M.#saveDemonum = CL.cls.demonum;
       CL.cls.demonum = -1;
     }
     Key.destination = KeyDestination.menu;
-    M.state.value = M.state.main;
-    M.entersound = true;
-  }
-
-  static Main_Draw(): void {
-    M.DrawPic(16, 4, M.qplaque);
-    M.DrawPic(160 - (M.ttl_main.width / 2), 4, M.ttl_main);
-    M.DrawPic(72, 32, M.mainmenu);
-    M.DrawPic(54, 32 + M.main_cursor * 20, M.menudot[Math.floor(Host.realtime * 10.0) % 6]);
-  }
-
-  static Main_Key(k: K): void {
-    switch (k) {
-      case K.ESCAPE:
-        M.CloseMenu();
-        CL.cls.demonum = M.save_demonum;
-        if (CL.cls.demonum !== -1 && !CL.cls.demoplayback && CL.cls.state !== clientConnectionState.connected) {
-          CL.NextDemo();
-        }
-        return;
-      case K.DOWNARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (++M.main_cursor >= M.main_items) {
-          M.main_cursor = 0;
-        }
-        return;
-      case K.UPARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (M.main_cursor-- === 0) {
-          M.main_cursor = M.main_items - 1;
-        }
-        return;
-      case K.ENTER:
-        M.entersound = true;
-        switch (M.main_cursor) {
-          case 0:
-            M.Menu_SinglePlayer_f();
-            return;
-          case 1:
-            M.Menu_MultiPlayer_f();
-            return;
-          case 2:
-            M.Menu_Options_f();
-            return;
-          case 3:
-            M.Menu_Help_f();
-            return;
-          case 4:
-            M.Menu_Quit_f();
-        }
-    }
+    M.menuStack.clear();
+    M.menuStack.push('main');
   }
 
   // Single player menu
   static Menu_SinglePlayer_f(this: void): void {
     Key.destination = KeyDestination.menu;
-    M.state.value = M.state.singleplayer;
-    M.entersound = true;
-  }
-
-  static SinglePlayer_Draw(): void {
-    M.DrawPic(16, 4, M.qplaque);
-    M.DrawPic(160 - (M.ttl_sgl.width / 2), 4, M.ttl_sgl);
-    M.DrawPic(72, 32, M.sp_menu);
-    M.DrawPic(54, 32 + M.singleplayer_cursor * 20, M.menudot[Math.floor(Host.realtime * 10.0) % 6]);
-  }
-
-  static SinglePlayer_Key(k: K): void {
-    switch (k) {
-      case K.ESCAPE:
-        M.Menu_Main_f();
-        return;
-      case K.DOWNARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (++M.singleplayer_cursor >= M.singleplayer_items) {
-          M.singleplayer_cursor = 0;
-        }
-        return;
-      case K.UPARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (--M.singleplayer_cursor < 0) {
-          M.singleplayer_cursor = M.singleplayer_items - 1;
-        }
-        return;
-      case K.ENTER:
-        M.entersound = true;
-        switch (M.singleplayer_cursor) {
-          case 0:
-            if (SV.server.active) {
-              void Cmd.ExecuteString('disconnect');
-            }
-            Key.destination = KeyDestination.game;
-            ClientLifecycle.startGame!.startSingleplayerGame();
-            return;
-          case 1:
-            M.Menu_Load_f();
-            return;
-          case 2:
-            M.Menu_Save_f();
-            return;
-        }
-    }
+    M.menuStack.push('singleplayer');
   }
 
   // Load/save menu
-  static ScanSaves(): void {
-    const searchpaths = COM.searchpaths;
-    const search = 'Quake.' + COM.gamedir![0].filename + '/s';
-    COM.searchpaths = COM.gamedir!;
-    for (let i = 0; i < M.max_savegames; i++) {
-      const f = localStorage.getItem(search + i + '.json');
-      if (!f) {
-        M.filenames[i] = 'Empty slot';
-        M.loadable[i] = false;
-        M.removable[i] = false;
-        continue;
-      }
-      const gamestate = JSON.parse(f) as SaveGameData;
-      M.filenames[i] = gamestate.comment || gamestate.mapname || '';
-      M.loadable[i] = true;
-      M.removable[i] = true;
-    }
-    COM.searchpaths = searchpaths;
-  }
-
   static Menu_Load_f(this: void): void {
-    M.entersound = true;
-    M.state.value = M.state.load;
     Key.destination = KeyDestination.menu;
-    M.ScanSaves();
+    M.menuStack.push('load');
   }
 
   static Menu_Save_f(this: void): void {
     if (!SV.server.active || CL.state.intermission !== 0 || SV.svs.maxclients !== 1) {
       return;
     }
-    M.entersound = true;
-    M.state.value = M.state.save;
     Key.destination = KeyDestination.menu;
-    M.ScanSaves();
-  }
-
-  static Load_Draw(): void {
-    M.DrawPic(160 - (M.p_load.width / 2), 4, M.p_load);
-    for (let i = 0; i < M.max_savegames; i++) {
-      M.Print(16, 32 + (i << 3), M.filenames[i]);
-    }
-    M.DrawCharacter(8, 32 + (M.load_cursor << 3), 12 + ((Host.realtime * 4.0) & 1));
-  }
-
-  static Save_Draw(): void {
-    M.DrawPic(160 - (M.p_save.width / 2), 4, M.p_save);
-    for (let i = 0; i < M.max_savegames; i++) {
-      M.Print(16, 32 + (i << 3), M.filenames[i]);
-    }
-    M.DrawCharacter(8, 32 + (M.load_cursor << 3), 12 + ((Host.realtime * 4.0) & 1));
-  }
-
-  static Load_Key(k: K): void {
-    switch (k) {
-      case K.ESCAPE:
-        M.Menu_SinglePlayer_f();
-        return;
-      case K.ENTER:
-        S.LocalSound(M.sfx_menu2);
-        if (!M.loadable[M.load_cursor]) {
-          return;
-        }
-        M.CloseMenu();
-        SCR.BeginLoadingPlaque();
-        Cmd.text += 'load s' + M.load_cursor + '\n';
-        return;
-      case K.UPARROW:
-      case K.LEFTARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (--M.load_cursor < 0) {
-          M.load_cursor = M.max_savegames - 1;
-        }
-        return;
-      case K.DOWNARROW:
-      case K.RIGHTARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (++M.load_cursor >= M.max_savegames) {
-          M.load_cursor = 0;
-        }
-        return;
-      case K.DEL:
-        if (!M.removable[M.load_cursor]) {
-          return;
-        }
-        if (!confirm('Delete selected game?')) {
-          return;
-        }
-        localStorage.removeItem('Quake.' + COM.gamedir![0].filename + '/s' + M.load_cursor + '.sav');
-        M.ScanSaves();
-    }
-  }
-
-  static Save_Key(k: K): void {
-    switch (k) {
-      case K.ESCAPE:
-        M.Menu_SinglePlayer_f();
-        return;
-      case K.ENTER:
-        M.CloseMenu();
-        Cmd.text += 'save s' + M.load_cursor + '\n';
-        return;
-      case K.UPARROW:
-      case K.LEFTARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (--M.load_cursor < 0) {
-          M.load_cursor = M.max_savegames - 1;
-        }
-        return;
-      case K.DOWNARROW:
-      case K.RIGHTARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (++M.load_cursor >= M.max_savegames) {
-          M.load_cursor = 0;
-        }
-        return;
-      case K.DEL:
-        if (!M.removable[M.load_cursor]) {
-          return;
-        }
-        if (!confirm('Delete selected game?')) {
-          return;
-        }
-        localStorage.removeItem('Quake.' + COM.gamedir![0].filename + '/s' + M.load_cursor + '.sav');
-        M.ScanSaves();
-    }
+    M.menuStack.push('save');
   }
 
   // Multiplayer menu
   static Menu_MultiPlayer_f(this: void): void {
+    if (M.menuStack.current() === M.#multiplayerPage) {
+      return;
+    }
     Key.destination = KeyDestination.menu;
-    M.state.value = M.state.multiplayer;
-    M.entersound = true;
-    M.multiplayer_myname = CL.name.string;
-    M.multiplayer_top = M.multiplayer_oldtop = CL.color.value >> 4;
-    M.multiplayer_bottom = M.multiplayer_oldbottom = CL.color.value & 15;
-    M.multiplayer_cursor = 1;
-  }
-
-  static MultiPlayer_Draw(): void {
-    M.DrawPic(16, 4, M.qplaque);
-    M.DrawPic(160 - (M.p_multi.width / 2), 4, M.p_multi);
-
-    const y0 = 24;
-
-    // M.Print(64, 40 - y0, 'Join game at:');
-    // M.DrawTextBox(72, 48 - y0, 22, 1);
-    // M.Print(80, 56 - y0, M.multiplayer_joinname.substring(M.multiplayer_joinname.length - 21));
-
-    M.Print(64, 72 - y0, 'Your name');
-    M.DrawTextBox(160, 64 - y0, 16, 1);
-    M.PrintWhite(168, 72 - y0, M.multiplayer_myname);
-
-    M.Print(64, 96 - y0, 'Shirt color');
-    M.Print(64, 120 - y0, 'Pants color');
-
-    const label = CL.cls.state !== clientConnectionState.connected ? 'Join Game' : 'Accept Changes';
-
-    M.DrawTextBox(64, 148 - y0, label.length, 1);
-    M.PrintWhite(72, 156 - y0, label);
-
-    M.DrawPic(160, 80 - y0, M.bigbox);
-    M.DrawPicTranslate(172, 88 - y0, M.menuplyr,
-      (M.multiplayer_top << 4) + (M.multiplayer_top >= 8 ? 4 : 11),
-      (M.multiplayer_bottom << 4) + (M.multiplayer_bottom >= 8 ? 4 : 11));
-
-    M.DrawCharacter(56, M.multiplayer_cursor_table[M.multiplayer_cursor] - y0, 12 + ((Host.realtime * 4.0) & 1));
-
-    if (M.multiplayer_cursor === 0) {
-      M.DrawCharacter(M.multiplayer_joinname.length <= 20 ? 80 + (M.multiplayer_joinname.length << 3) : 248, 56 - y0, 10 + ((Host.realtime * 4.0) & 1));
-    } else if (M.multiplayer_cursor === 1) {
-      M.DrawCharacter(168 + (M.multiplayer_myname.length << 3), 72 - y0, 10 + ((Host.realtime * 4.0) & 1));
-    }
-  }
-
-  static MultiPlayer_Key(k: K): void {
-    if (k === K.ESCAPE) {
-      M.Menu_Main_f();
-    }
-
-    switch (k) {
-      case K.UPARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (--M.multiplayer_cursor < 1) {
-          M.multiplayer_cursor = M.multiplayer_items - 1;
-        }
-        return;
-      case K.DOWNARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (++M.multiplayer_cursor >= M.multiplayer_items) {
-          M.multiplayer_cursor = 1;
-        }
-        return;
-      case K.LEFTARROW:
-        if (M.multiplayer_cursor === 2) {
-          if (--M.multiplayer_top < 0) {
-            M.multiplayer_top = 13;
-          }
-          S.LocalSound(M.sfx_menu3);
-        } else if (M.multiplayer_cursor === 3) {
-          if (--M.multiplayer_bottom < 0) {
-            M.multiplayer_bottom = 13;
-          }
-          S.LocalSound(M.sfx_menu3);
-        }
-        return;
-      case K.RIGHTARROW:
-        if (M.multiplayer_cursor === 2) {
-          (M.multiplayer_top <= 12) ? ++M.multiplayer_top : M.multiplayer_top = 0;
-        } else if (M.multiplayer_cursor === 3) {
-          (M.multiplayer_bottom <= 12) ? ++M.multiplayer_bottom : M.multiplayer_bottom = 0;
-        } else {
-          return;
-        }
-        S.LocalSound(M.sfx_menu3);
-        return;
-      case K.ENTER:
-        switch (M.multiplayer_cursor) {
-          case 0:
-            S.LocalSound(M.sfx_menu2);
-            M.CloseMenu();
-            Cmd.text += 'connect "' + M.multiplayer_joinname + '"\n';
-            return;
-          case 2:
-            S.LocalSound(M.sfx_menu3);
-            (M.multiplayer_top <= 12) ? ++M.multiplayer_top : M.multiplayer_top = 0;
-            return;
-          case 3:
-            S.LocalSound(M.sfx_menu3);
-            (M.multiplayer_bottom <= 12) ? ++M.multiplayer_bottom : M.multiplayer_bottom = 0;
-            return;
-          case 4:
-            if (CL.name.string !== M.multiplayer_myname) {
-              Cmd.text += 'name "' + M.multiplayer_myname + '"\n';
-            }
-            if ((M.multiplayer_top !== M.multiplayer_oldtop) || (M.multiplayer_bottom !== M.multiplayer_oldbottom)) {
-              M.multiplayer_oldtop = M.multiplayer_top;
-              M.multiplayer_oldbottom = M.multiplayer_bottom;
-              Cmd.text += 'color ' + M.multiplayer_top + ' ' + M.multiplayer_bottom + '\n';
-            }
-
-            S.LocalSound(M.sfx_menu2);
-
-            if (CL.cls.state !== clientConnectionState.connected) {
-              // M.CloseMenu();
-              // Cmd.text += 'connect "' + M.multiplayer_joinname + '"\n';
-              M.Menu_Launch_Server_f();
-              return;
-            }
-
-            M.CloseMenu();
-            return;
-        }
-        return;
-      case K.BACKSPACE:
-        if (M.multiplayer_cursor === 0) {
-          if (M.multiplayer_joinname.length !== 0) {
-            M.multiplayer_joinname = M.multiplayer_joinname.substring(0, M.multiplayer_joinname.length - 1);
-          }
-          return;
-        }
-        if (M.multiplayer_cursor === 1) {
-          if (M.multiplayer_myname.length !== 0) {
-            M.multiplayer_myname = M.multiplayer_myname.substring(0, M.multiplayer_myname.length - 1);
-          }
-        }
-        return;
-    }
-
-    if (k < K.SPACE || k > K.BACKSPACE) {
-      return;
-    }
-    if (M.multiplayer_cursor === 0) {
-      M.multiplayer_joinname += String.fromCharCode(k);
-      return;
-    }
-    if (M.multiplayer_cursor === 1) {
-      if (M.multiplayer_myname.length <= 14) {
-        M.multiplayer_myname += String.fromCharCode(k);
-      }
-    }
+    M.menuStack.push('multiplayer');
   }
 
   // Options menu
   static Menu_Options_f(this: void): void {
     Key.destination = KeyDestination.menu;
-    M.state.value = M.state.options;
-    M.entersound = true;
-  }
-
-  static AdjustSliders(dir: number): void {
-    S.LocalSound(M.sfx_menu3);
-
-    switch (M.options_cursor) {
-      case 3: {
-        let viewsize = SCR.viewsize.value;
-        viewsize += dir * 10;
-        if (viewsize < 30) {
-          viewsize = 30;
-        } else if (viewsize > 120) {
-          viewsize = 120;
-        }
-        Cvar.Set('viewsize', viewsize);
-        return;
-      }
-      case 4: {
-        let gamma = V.gamma.value;
-        gamma -= dir * 0.05;
-        if (gamma < 0.5) {
-          gamma = 0.5;
-        } else if (gamma > 1.0) {
-          gamma = 1.0;
-        }
-        Cvar.Set('gamma', gamma);
-        return;
-      }
-      case 5: {
-        let sensitivity = CL.sensitivity.value;
-        sensitivity += dir * 0.5;
-        if (sensitivity < 1.0) {
-          sensitivity = 1.0;
-        } else if (sensitivity > 11.0) {
-          sensitivity = 11.0;
-        }
-        Cvar.Set('sensitivity', sensitivity);
-        return;
-      }
-      case 6: {
-        let bgmvolume = S.bgmvolume.value;
-        bgmvolume += dir * 0.1;
-        if (bgmvolume < 0.0) {
-          bgmvolume = 0.0;
-        } else if (bgmvolume > 1.0) {
-          bgmvolume = 1.0;
-        }
-        Cvar.Set('bgmvolume', bgmvolume);
-        return;
-      }
-      case 7: {
-        let volume = S.volume.value;
-        volume += dir * 0.1;
-        if (volume < 0.0) {
-          volume = 0.0;
-        } else if (volume > 1.0) {
-          volume = 1.0;
-        }
-        Cvar.Set('volume', volume);
-        return;
-      }
-      case 8:
-        if (CL.forwardspeed.value > 200.0) {
-          Cvar.Set('cl_forwardspeed', 200.0);
-          Cvar.Set('cl_backspeed', 200.0);
-          return;
-        }
-        Cvar.Set('cl_forwardspeed', 400.0);
-        Cvar.Set('cl_backspeed', 400.0);
-        return;
-      case 9:
-        Cvar.Set('m_pitch', -CL.m_pitch.value);
-        return;
-      case 10:
-        Cvar.Set('lookspring', (CL.lookspring.value !== 0) ? 0 : 1);
-        return;
-      case 11:
-        Cvar.Set('lookstrafe', (CL.lookstrafe.value !== 0) ? 0 : 1);
-    }
-  }
-
-  static DrawSlider(x: number, y: number, range: number): void {
-    if (range < 0) {
-      range = 0;
-    } else if (range > 1) {
-      range = 1;
-    }
-    M.DrawCharacter(x - 8, y, 128);
-    M.DrawCharacter(x, y, 129);
-    M.DrawCharacter(x + 8, y, 129);
-    M.DrawCharacter(x + 16, y, 129);
-    M.DrawCharacter(x + 24, y, 129);
-    M.DrawCharacter(x + 32, y, 129);
-    M.DrawCharacter(x + 40, y, 129);
-    M.DrawCharacter(x + 48, y, 129);
-    M.DrawCharacter(x + 56, y, 129);
-    M.DrawCharacter(x + 64, y, 129);
-    M.DrawCharacter(x + 72, y, 129);
-    M.DrawCharacter(x + 80, y, 130);
-    M.DrawCharacter(x + Math.floor(72 * range), y, 131);
-  }
-
-  static Options_Draw(): void {
-    M.DrawPic(16, 4, M.qplaque);
-    M.DrawPic(160 - (M.p_option.width / 2), 4, M.p_option);
-
-    M.Print(48, 32, 'Customize controls');
-    M.Print(88, 40, 'Go to console');
-    M.Print(56, 48, 'Reset to defaults');
-
-    M.Print(104, 56, 'Screen size');
-    M.DrawSlider(220, 56, (SCR.viewsize.value - 30) / 90);
-    M.Print(112, 64, 'Brightness');
-    M.DrawSlider(220, 64, (1.0 - V.gamma.value) * 2.0);
-    M.Print(104, 72, 'Mouse Speed');
-    M.DrawSlider(220, 72, (CL.sensitivity.value - 1) / 10);
-    M.Print(72, 80, 'CD Music Volume');
-    M.DrawSlider(220, 80, S.bgmvolume.value);
-    M.Print(96, 88, 'Sound Volume');
-    M.DrawSlider(220, 88, S.volume.value);
-    M.Print(112, 96, 'Always Run');
-    M.Print(220, 96, (CL.forwardspeed.value > 200.0) ? 'on' : 'off');
-    M.Print(96, 104, 'Invert Mouse');
-    M.Print(220, 104, (CL.m_pitch.value < 0.0) ? 'on' : 'off');
-    M.Print(112, 112, 'Lookspring');
-    M.Print(220, 112, (CL.lookspring.value !== 0) ? 'on' : 'off');
-    M.Print(112, 120, 'Lookstrafe');
-    M.Print(220, 120, (CL.lookstrafe.value !== 0) ? 'on' : 'off');
-
-    M.DrawCharacter(200, 32 + (M.options_cursor << 3), 12 + ((Host.realtime * 4.0) & 1));
-  }
-
-  static Options_Key(k: K): void {
-    switch (k) {
-      case K.ESCAPE:
-        M.Menu_Main_f();
-        return;
-      case K.ENTER:
-        M.entersound = true;
-        switch (M.options_cursor) {
-          case 0:
-            M.Menu_Keys_f();
-            return;
-          case 1:
-            M.CloseMenu();
-            Con.ToggleConsole_f();
-            return;
-          case 2:
-            Cmd.text += 'exec default.cfg\n';
-            return;
-          default:
-            M.AdjustSliders(1);
-        }
-        return;
-      case K.UPARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (M.options_cursor-- === 0) {
-          M.options_cursor = M.options_items - 1;
-        }
-        return;
-      case K.DOWNARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (++M.options_cursor >= M.options_items) {
-          M.options_cursor = 0;
-        }
-        return;
-      case K.LEFTARROW:
-        M.AdjustSliders(-1);
-        return;
-      case K.RIGHTARROW:
-        M.AdjustSliders(1);
-    }
+    M.menuStack.push('options');
   }
 
   // Keys menu
   static Menu_Keys_f(this: void): void {
     Key.destination = KeyDestination.menu;
-    M.state.value = M.state.keys;
-    M.entersound = true;
-  }
-
-  static FindKeysForCommand(command: string): number[] {
-    const twokeys: number[] = [];
-    for (let i = 0; i < Key.bindings.length; i++) {
-      if (Key.bindings[i] === command) {
-        twokeys[twokeys.length] = i;
-        if (twokeys.length === 2) {
-          return twokeys;
-        }
-      }
-    }
-    return twokeys;
-  }
-
-  static UnbindCommand(command: string): void {
-    for (let i = 0; i < Key.bindings.length; i++) {
-      if (Key.bindings[i] === command) {
-        delete Key.bindings[i];
-      }
-    }
-  }
-
-  static Keys_Draw(): void {
-    M.DrawPic(160 - (M.ttl_cstm.width / 2), 4, M.ttl_cstm);
-
-    if (M.bind_grab) {
-      M.Print(12, 32, 'Press a key or button for this action');
-      M.DrawCharacter(130, 48 + (M.keys_cursor << 3), 61);
-    } else {
-      M.Print(18, 32, 'Enter to change, backspace to clear');
-      M.DrawCharacter(130, 48 + (M.keys_cursor << 3), 12 + ((Host.realtime * 4.0) & 1));
-    }
-
-    let y = 48;
-    let keys: number[];
-    let name: string;
-    for (let i = 0; i < M.bindnames.length; i++) {
-      M.Print(16, y, M.bindnames[i][1]);
-      keys = M.FindKeysForCommand(M.bindnames[i][0]);
-      if (keys[0] === undefined) {
-        M.Print(140, y, '???');
-      } else {
-        name = Key.KeynumToString(keys[0]);
-        if (keys[1] !== undefined) {
-          name += ' or ' + Key.KeynumToString(keys[1]);
-        }
-        M.Print(140, y, name);
-      }
-      y += 8;
-    }
-  }
-
-  static Keys_Key(k: K): void {
-    if (M.bind_grab) {
-      S.LocalSound(M.sfx_menu1);
-      if (k !== K.ESCAPE && k !== 96 as K) { // FIXME: what’s 96?
-        Cmd.text = 'bind "' + Key.KeynumToString(k) + '" "' + M.bindnames[M.keys_cursor][0] + '"\n' + Cmd.text;
-      }
-      M.bind_grab = false;
-      return;
-    }
-
-    switch (k) {
-      case K.ESCAPE:
-        M.Menu_Options_f();
-        return;
-      case K.LEFTARROW:
-      case K.UPARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (--M.keys_cursor < 0) {
-          M.keys_cursor = M.bindnames.length - 1;
-        }
-        return;
-      case K.DOWNARROW:
-      case K.RIGHTARROW:
-        S.LocalSound(M.sfx_menu1);
-        if (++M.keys_cursor >= M.bindnames.length) {
-          M.keys_cursor = 0;
-        }
-        return;
-      case K.ENTER:
-        S.LocalSound(M.sfx_menu2);
-        if (M.FindKeysForCommand(M.bindnames[M.keys_cursor][0])[1] !== undefined) {
-          M.UnbindCommand(M.bindnames[M.keys_cursor][0]);
-        }
-        M.bind_grab = true;
-        return;
-      case K.BACKSPACE:
-      case K.DEL:
-        S.LocalSound(M.sfx_menu2);
-        M.UnbindCommand(M.bindnames[M.keys_cursor][0]);
-    }
+    M.menuStack.push('keys');
   }
 
   // Help menu
   static Menu_Help_f(this: void): void {
     Key.destination = KeyDestination.menu;
-    M.state.value = M.state.help;
-    M.entersound = true;
-    M.help_page = 0;
-  }
-
-  static Help_Draw(): void {
-    M.DrawPic(0, 0, M.help_pages[M.help_page]);
-  }
-
-  static Help_Key(k: K): void {
-    switch (k) {
-      case K.ESCAPE:
-        M.Menu_Main_f();
-        return;
-      case K.UPARROW:
-      case K.RIGHTARROW:
-        M.entersound = true;
-        if (++M.help_page >= M.num_help_pages) {
-          M.help_page = 0;
-        }
-        return;
-      case K.DOWNARROW:
-      case K.LEFTARROW:
-        M.entersound = true;
-        if (--M.help_page < 0) {
-          M.help_page = M.num_help_pages - 1;
-        }
-    }
+    M.menuStack.push('help');
   }
 
   // Quit menu
   static Menu_Quit_f(this: void): void {
-    if (M.state.value === M.state.quit) {
+    if (M.menuStack.current() === M.#quitPage) {
       return;
     }
-    M.wasInMenus = (Key.destination === KeyDestination.menu);
     Key.destination = KeyDestination.menu;
-    M.quit_prevstate = M.state.value;
-    M.state.value = M.state.quit;
-    M.entersound = true;
-    M.msgNumber = Math.floor(Math.random() * M.quitMessage.length);
-  }
-
-  static Alert(title: string, message: string): void {
-    if (M.state.value === M.state.alert) {
-      return;
-    }
-    M.wasInMenus = (Key.destination === KeyDestination.menu);
-    Key.destination = KeyDestination.menu;
-    M.state.value = M.state.alert;
-    M.entersound = true; // TODO: have a different sound
-    M.alertMessage = { title, message };
-  }
-
-  static Alert_Draw(): void {
-    const { title, message } = M.alertMessage;
-    const titleLines = title ? title.split('\n') : [];
-    const messageLines = message ? message.split('\n') : [];
-
-    const lines: Array<string | null> = [];
-    if (titleLines.length) {
-      lines.push(...titleLines);
-      lines.push('\x1d' + '\x1e'.repeat(60) + '\x1f');
-    }
-
-    lines.push(null);
-
-    if (messageLines.length) {
-      lines.push(...messageLines);
-    }
-
-    lines.push(null);
-    lines.push('Press enter to continue.');
-
-    // Calculate dimensions for the text box
-    const boxWidth = 64;
-    const totalLines = lines.length;
-    const x = (320 - boxWidth * 8) / 2;
-
-    M.DrawTextBox(x, 52, boxWidth, totalLines + 2);
-
-    for (let i = 0, y = 68; i < totalLines; i++, y += 8) {
-      if (lines[i]) {
-        // Limit each line to 62 characters for safe drawing
-        M.PrintWhite(x + 16, y, lines[i]!.substring(0, 62));
-      }
-    }
-  }
-
-  static Alert_Key(k: K): void {
-    if (k === K.ENTER || k === K.ESCAPE) {
-      M.CloseMenu();
-    }
-  }
-
-  static Launch_Server_Draw(): void {
-    launchServerMenu.draw();
-  }
-
-  static Launch_Server_Key(k: K): void {
-    if (k === K.ESCAPE) {
-      launchServerMenu.deactivate();
-      M.CloseMenu();
-      return;
-    }
-
-    launchServerMenu.handleInput(k);
+    M.menuStack.push('quit');
   }
 
   static Menu_Launch_Server_f(this: void): void {
-    if (M.state.value === M.state.launch_server) {
+    if (M.menuStack.current() === launchServerMenu) {
       return;
     }
-    M.wasInMenus = (Key.destination === KeyDestination.menu);
     Key.destination = KeyDestination.menu;
-    M.state.value = M.state.launch_server;
-    M.entersound = true;
-
-    launchServerMenu.activate();
+    M.menuStack.push('launch_server');
   }
 
-  static Quit_Draw(): void {
-    if (M.wasInMenus) {
-      M.state.value = M.quit_prevstate;
-      M.recursiveDraw = true;
-      M.Draw();
-      M.state.value = M.state.quit;
+  static Alert(title: string, message: string): void {
+    if (M.menuStack.current() === M.#alertPage) {
+      return;
     }
-    M.DrawTextBox(56, 76, 24, 4);
-    M.Print(64, 84, M.quitMessage[M.msgNumber][0]);
-    M.Print(64, 92, M.quitMessage[M.msgNumber][1]);
-    M.Print(64, 100, M.quitMessage[M.msgNumber][2]);
-    M.Print(64, 108, M.quitMessage[M.msgNumber][3]);
+    M.#alertPage.setMessage(title, message);
+    Key.destination = KeyDestination.menu;
+    M.menuStack.push('alert'); // TODO: have a different sound
   }
 
-  static Quit_Key(k: K): void {
-    switch (k) {
-      case K.ESCAPE:
-      case 110 as K:
-        if (M.wasInMenus) {
-          M.state.value = M.quit_prevstate;
-          M.entersound = true;
-        } else {
-          M.CloseMenu();
+  static #scanSaves(): void {
+    const searchpaths = COM.searchpaths;
+    const search = `Quake.${COM.gamedir![0].filename}/s`;
+    COM.searchpaths = COM.gamedir!;
+
+    for (let i = 0; i < MAX_SAVEGAMES; i++) {
+      const raw = localStorage.getItem(`${search}${i}.json`);
+      const hasFile = raw !== null;
+      let label = 'Empty slot';
+
+      if (hasFile) {
+        const gamestate = JSON.parse(raw!) as SaveGameData;
+        label = gamestate.comment || gamestate.mapname || '';
+      }
+
+      M.#loadSlotItems[i].label = label;
+      M.#loadSlotItems[i].enabled = hasFile;
+      M.#loadSlotItems[i].canDelete = hasFile;
+      M.#saveSlotItems[i].label = label;
+      M.#saveSlotItems[i].canDelete = hasFile;
+    }
+
+    COM.searchpaths = searchpaths;
+  }
+
+  static #buildPages(): void {
+    const mainPage = new MenuPage({
+      logoPic: M.qplaque,
+      titlePic: M.ttl_main,
+      layout: new ImageBasedLayout({ backgroundPic: M.mainmenu }),
+      items: [
+        new Action({ action: () => { M.Menu_SinglePlayer_f(); } }),
+        new Action({ action: () => { M.Menu_MultiPlayer_f(); } }),
+        new Action({ action: () => { M.Menu_Options_f(); } }),
+        new Action({ action: () => { M.Menu_Help_f(); } }),
+        new Action({ action: () => { M.Menu_Quit_f(); } }),
+      ],
+      onEscape: () => {
+        M.CloseMenu();
+        CL.cls.demonum = M.#saveDemonum;
+        if (CL.cls.demonum !== -1 && !CL.cls.demoplayback && CL.cls.state !== clientConnectionState.connected) {
+          CL.NextDemo();
         }
-        break;
-      case 121 as K:
-        Key.destination = KeyDestination.console;
-        Host.Quit_f();
-    }
+      },
+    });
+
+    const singlePlayerPage = new MenuPage({
+      logoPic: M.qplaque,
+      titlePic: M.ttl_sgl,
+      layout: new ImageBasedLayout({ backgroundPic: M.sp_menu }),
+      items: [
+        new Action({
+          action: () => {
+            if (SV.server.active) {
+              void Cmd.ExecuteString('disconnect');
+            }
+            Key.destination = KeyDestination.game;
+            ClientLifecycle.startGame!.startSingleplayerGame();
+          },
+        }),
+        new Action({ action: () => { M.Menu_Load_f(); } }),
+        new Action({ action: () => { M.Menu_Save_f(); } }),
+      ],
+      onEscape: () => { M.PopMenu(); },
+    });
+
+    M.#loadSlotItems = Array.from({ length: MAX_SAVEGAMES }, (_, index) => new SaveSlotItem({
+      label: 'Empty slot',
+      onActivate: () => {
+        S.LocalSound(M.sfx_menu2);
+        if (!M.#loadSlotItems[index].enabled) {
+          return;
+        }
+        M.CloseMenu();
+        SCR.BeginLoadingPlaque();
+        Cmd.text += `load s${index}\n`;
+      },
+      onDelete: () => {
+        if (!confirm('Delete selected game?')) {
+          return;
+        }
+        localStorage.removeItem(`Quake.${COM.gamedir![0].filename}/s${index}.sav`);
+        M.#scanSaves();
+      },
+    }));
+
+    const loadPage = new ListPage({
+      titlePic: M.p_load,
+      layout: new ListLayout(),
+      items: M.#loadSlotItems,
+      onEscape: () => { M.PopMenu(); },
+      onEnter: () => { M.#scanSaves(); },
+    });
+
+    M.#saveSlotItems = Array.from({ length: MAX_SAVEGAMES }, (_, index) => new SaveSlotItem({
+      label: 'Empty slot',
+      onActivate: () => {
+        M.CloseMenu();
+        Cmd.text += `save s${index}\n`;
+      },
+      onDelete: () => {
+        if (!confirm('Delete selected game?')) {
+          return;
+        }
+        localStorage.removeItem(`Quake.${COM.gamedir![0].filename}/s${index}.sav`);
+        M.#scanSaves();
+      },
+    }));
+
+    const savePage = new ListPage({
+      titlePic: M.p_save,
+      layout: new ListLayout(),
+      items: M.#saveSlotItems,
+      onEscape: () => { M.PopMenu(); },
+      onEnter: () => { M.#scanSaves(); },
+    });
+
+    const multiplayerSetupPage = new MultiplayerSetupPage();
+
+    const optionsPage = new MenuPage({
+      logoPic: M.qplaque,
+      titlePic: M.p_option,
+      layout: new VerticalLayout({ startY: 32, spacing: 0, valueX: 220, cursorX: 200 }),
+      items: [
+        new Action({ label: 'Customize controls', action: () => { M.Menu_Keys_f(); } }),
+        new Action({
+          label: 'Go to console',
+          action: () => {
+            M.CloseMenu();
+            Con.ToggleConsole_f();
+          },
+        }),
+        new Action({ label: 'Reset to defaults', action: () => { Cmd.text += 'exec default.cfg\n'; } }),
+        new Slider({ label: 'Screen size', cvar: 'viewsize', min: 30, max: 120, step: 10 }),
+        new Slider({ label: 'Brightness', cvar: 'gamma', min: 0.5, max: 1.0, step: 0.05, invert: true }),
+        new Slider({ label: 'Mouse Speed', cvar: 'sensitivity', min: 1, max: 11, step: 0.5 }),
+        new Slider({ label: 'CD Music Volume', cvar: 'bgmvolume', min: 0, max: 1, step: 0.1 }),
+        new Slider({ label: 'Sound Volume', cvar: 'volume', min: 0, max: 1, step: 0.1 }),
+        new Toggle({
+          label: 'Always Run',
+          getValue: () => (CL.forwardspeed.value > 200.0 ? 1 : 0),
+          setValue: (value) => {
+            const speed = value ? 400.0 : 200.0;
+            Cvar.Set('cl_forwardspeed', speed);
+            Cvar.Set('cl_backspeed', speed);
+          },
+        }),
+        new Toggle({
+          label: 'Invert Mouse',
+          getValue: () => (CL.m_pitch.value < 0.0 ? 1 : 0),
+          setValue: () => { Cvar.Set('m_pitch', -CL.m_pitch.value); },
+        }),
+        new Toggle({ label: 'Lookspring', cvar: 'lookspring' }),
+        new Toggle({ label: 'Lookstrafe', cvar: 'lookstrafe' }),
+      ],
+      onEscape: () => { M.PopMenu(); },
+    });
+
+    const keysPage = new KeysPage({
+      titlePic: M.ttl_cstm,
+      layout: new VerticalLayout({ startY: 48, spacing: 0, labelX: 16, showCursor: false }),
+      items: bindnames.map(([command, label]) => new KeyBindItem({ label, command })),
+      onEscape: () => { M.PopMenu(); },
+    });
+
+    const helpPage = new HelpPage();
+    const quitPage = new QuitDialogPage();
+    const alertPage = new AlertDialogPage();
+
+    M.menuStack.register('main', mainPage);
+    M.menuStack.register('singleplayer', singlePlayerPage);
+    M.menuStack.register('load', loadPage);
+    M.menuStack.register('save', savePage);
+    M.menuStack.register('multiplayer', multiplayerSetupPage);
+    M.menuStack.register('options', optionsPage);
+    M.menuStack.register('keys', keysPage);
+    M.menuStack.register('help', helpPage);
+    M.menuStack.register('quit', quitPage);
+    M.menuStack.register('alert', alertPage);
+    M.menuStack.register('launch_server', launchServerMenu);
+
+    M.#mainPage = mainPage;
+    M.#alertPage = alertPage;
+    M.#quitPage = quitPage;
+    M.#multiplayerPage = multiplayerSetupPage;
   }
 
   // Menu Subsystem
@@ -1244,6 +909,8 @@ export default class M {
 
     await launchServerMenu.init();
 
+    M.#buildPages();
+
     // always close the menu when a connection progresses
     eventBus.subscribe('client.signon', () => {
       M.CloseMenu();
@@ -1251,51 +918,14 @@ export default class M {
   }
 
   static Draw(): void {
-    if (M.state.value === M.state.none || Key.destination !== KeyDestination.menu) {
+    const current = M.menuStack.current();
+    if (current === null || Key.destination !== KeyDestination.menu) {
       return;
     }
 
-    if (!M.recursiveDraw) {
-      Draw.FadeScreen();
-    } else {
-      M.recursiveDraw = false;
-    }
+    Draw.FadeScreen();
+    current.draw();
 
-    switch (M.state.value) {
-      case M.state.main:
-        M.Main_Draw();
-        break;
-      case M.state.singleplayer:
-        M.SinglePlayer_Draw();
-        break;
-      case M.state.load:
-        M.Load_Draw();
-        break;
-      case M.state.save:
-        M.Save_Draw();
-        break;
-      case M.state.multiplayer:
-        M.MultiPlayer_Draw();
-        break;
-      case M.state.options:
-        M.Options_Draw();
-        break;
-      case M.state.keys:
-        M.Keys_Draw();
-        break;
-      case M.state.help:
-        M.Help_Draw();
-        break;
-      case M.state.quit:
-        M.Quit_Draw();
-        break;
-      case M.state.alert:
-        M.Alert_Draw();
-        break;
-      case M.state.launch_server:
-        M.Launch_Server_Draw();
-        break;
-    }
     if (M.entersound) {
       S.LocalSound(M.sfx_menu2);
       M.entersound = false;
@@ -1303,40 +933,13 @@ export default class M {
   }
 
   static Keydown(key: number): void {
-    switch (M.state.value) {
-      case M.state.main:
-        M.Main_Key(key);
-        return;
-      case M.state.singleplayer:
-        M.SinglePlayer_Key(key);
-        return;
-      case M.state.load:
-        M.Load_Key(key);
-        return;
-      case M.state.save:
-        M.Save_Key(key);
-        return;
-      case M.state.multiplayer:
-        M.MultiPlayer_Key(key);
-        return;
-      case M.state.options:
-        M.Options_Key(key);
-        return;
-      case M.state.keys:
-        M.Keys_Key(key);
-        return;
-      case M.state.help:
-        M.Help_Key(key);
-        return;
-      case M.state.quit:
-        M.Quit_Key(key);
-        return;
-      case M.state.alert:
-        M.Alert_Key(key);
-        return;
-      case M.state.launch_server:
-        M.Launch_Server_Key(key);
-        return;
-    }
+    M.menuStack.current()?.handleInput(key as K);
+  }
+
+  /**
+   * Forward pasted text (e.g. Ctrl+V) to the focused item of the current menu page.
+   */
+  static Paste(text: string): void {
+    M.menuStack.current()?.handlePaste(text);
   }
 }

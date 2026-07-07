@@ -190,7 +190,6 @@ export default class MultiplayerMainMenu extends MenuPage {
       startY: 40,
       spacing: 8,
       labelX: 48,
-      valueX: 220,
       cursorX: 32,
     });
 

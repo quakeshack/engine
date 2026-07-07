@@ -1,5 +1,7 @@
 import Q from '../../../shared/Q.ts';
 import { K } from '../../../shared/Keys.ts';
+import { LineEditor } from '../../../shared/LineEditor.ts';
+import Cmd from '../../common/Cmd.ts';
 import Cvar from '../../common/Cvar.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import type { MenuPic } from '../Menu.ts';
@@ -9,6 +11,7 @@ interface MenuItemConfig {
   readonly focusable?: boolean;
   readonly visible?: boolean;
   readonly enabled?: boolean;
+  readonly heightOverride?: number;
 }
 
 type MenuAction = () => void | Promise<void>;
@@ -27,7 +30,9 @@ interface SliderConfig extends MenuItemConfig {
 }
 
 interface ToggleConfig extends MenuItemConfig {
-  readonly cvar: string;
+  readonly cvar?: string;
+  readonly getValue?: () => number;
+  readonly setValue?: (value: number) => void;
   readonly onValue?: number;
   readonly offValue?: number;
   readonly onLabel?: string;
@@ -55,10 +60,26 @@ interface ImageConfig extends MenuItemConfig {
   readonly centered?: boolean;
 }
 
-let { Host, M, S } = getClientRegistry();
+interface SaveSlotConfig extends MenuItemConfig {
+  readonly canDelete?: boolean;
+  readonly onActivate?: () => void;
+  readonly onDelete?: () => void;
+}
+
+interface KeyBindConfig extends MenuItemConfig {
+  readonly command: string;
+}
+
+interface ColorPickerConfig extends MenuItemConfig {
+  readonly getValue: () => number;
+  readonly setValue: (value: number) => void;
+  readonly max?: number;
+}
+
+let { Host, Key, M, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, M, S } = getClientRegistry());
+  ({ Host, Key, M, S } = getClientRegistry());
 });
 
 /**
@@ -69,18 +90,21 @@ export class MenuItem {
   focusable: boolean;
   visible: boolean;
   enabled: boolean;
+  heightOverride: number | null;
 
   constructor(config: MenuItemConfig = {}) {
     this.label = config.label || '';
     this.focusable = config.focusable ?? true;
     this.visible = config.visible ?? true;
     this.enabled = config.enabled ?? true;
+    this.heightOverride = config.heightOverride ?? null;
   }
 
   /**
-   * Draw the menu item.
+   * Draw the menu item. `valueX`, when provided by the layout, is the absolute column a
+   * value-drawing item (e.g. Slider, Toggle) should align its value/bar to.
    */
-  draw(_x: number, _y: number, _focused: boolean): void {
+  draw(_x: number, _y: number, _focused: boolean, _valueX?: number): void {
     // Override in subclasses
   }
 
@@ -89,6 +113,14 @@ export class MenuItem {
    * @returns True if input was handled.
    */
   handleInput(_key: number): boolean {
+    return false;
+  }
+
+  /**
+   * Handle a text paste (e.g. Ctrl+V), if the item supports text input.
+   * @returns True if the paste was handled.
+   */
+  handlePaste(_text: string): boolean {
     return false;
   }
 
@@ -111,7 +143,7 @@ export class MenuItem {
    * @returns Height in pixels.
    */
   getHeight(): number {
-    return 8; // Default single line height
+    return this.heightOverride ?? 8; // Default single line height
   }
 }
 
@@ -203,13 +235,13 @@ export class Slider extends MenuItem {
     return (value - this.min) / (this.max - this.min);
   }
 
-  override draw(x: number, y: number, _focused: boolean): void {
+  override draw(x: number, y: number, _focused: boolean, valueX?: number): void {
     if (!this.visible) {
       return;
     }
 
     M.Print(x, y, this.label);
-    M.DrawSlider(x + 116, y, this.getNormalizedValue());
+    M.DrawSlider(valueX ?? x + 116, y, this.getNormalizedValue());
   }
 
   override handleInput(key: K): boolean {
@@ -217,16 +249,18 @@ export class Slider extends MenuItem {
       return false;
     }
 
+    // When inverted, the raw value grows opposite to the displayed bar, so the step
+    // direction has to flip too: left always visually decreases the bar.
+    const direction = this.invert ? -1 : 1;
+
     if (key === K.LEFTARROW) {
-      const newValue = this.getValue() - this.step;
-      this.setValue(newValue);
+      this.setValue(this.getValue() - this.step * direction);
       S.LocalSound(M.sfx_menu3);
       return true;
     }
 
     if (key === K.RIGHTARROW || key === K.ENTER) {
-      const newValue = this.getValue() + this.step;
-      this.setValue(newValue);
+      this.setValue(this.getValue() + this.step * direction);
       S.LocalSound(M.sfx_menu3);
       return true;
     }
@@ -239,35 +273,53 @@ export class Slider extends MenuItem {
  * Toggle for on/off values.
  */
 export class Toggle extends MenuItem {
-  cvar: string;
+  cvar: string | null;
   onValue: number;
   offValue: number;
   onLabel: string;
   offLabel: string;
+  #getValueOverride: (() => number) | null;
+  #setValueOverride: ((value: number) => void) | null;
 
   constructor(config: ToggleConfig) {
     super(config);
-    this.cvar = config.cvar;
+    this.cvar = config.cvar ?? null;
     this.onValue = config.onValue ?? 1;
     this.offValue = config.offValue ?? 0;
     this.onLabel = config.onLabel ?? 'on';
     this.offLabel = config.offLabel ?? 'off';
+    this.#getValueOverride = config.getValue ?? null;
+    this.#setValueOverride = config.setValue ?? null;
+
+    console.assert(
+      this.cvar !== null || (this.#getValueOverride !== null && this.#setValueOverride !== null),
+      'Toggle requires either a cvar or a getValue/setValue pair',
+    );
   }
 
   /**
-   * Get current cvar value.
+   * Get the current value, either from the bound cvar or a custom getter.
    * @returns Current value.
    */
   getValue(): number {
-    const cvarObj = Cvar.FindVar(this.cvar);
+    if (this.#getValueOverride) {
+      return this.#getValueOverride();
+    }
+
+    const cvarObj = Cvar.FindVar(this.cvar!);
     return cvarObj ? cvarObj.value : this.offValue;
   }
 
   /**
-   * Set cvar value.
+   * Set the value, either on the bound cvar or via a custom setter.
    */
   setValue(value: number): void {
-    Cvar.Set(this.cvar, value);
+    if (this.#setValueOverride) {
+      this.#setValueOverride(value);
+      return;
+    }
+
+    Cvar.Set(this.cvar!, value);
   }
 
   /**
@@ -285,13 +337,13 @@ export class Toggle extends MenuItem {
     this.setValue(this.isOn() ? this.offValue : this.onValue);
   }
 
-  override draw(x: number, y: number, _focused: boolean): void {
+  override draw(x: number, y: number, _focused: boolean, valueX?: number): void {
     if (!this.visible) {
       return;
     }
 
     M.Print(x, y, this.label);
-    M.PrintWhite(x + 116, y, this.isOn() ? this.onLabel : this.offLabel);
+    M.PrintWhite(valueX ?? x + 116, y, this.isOn() ? this.onLabel : this.offLabel);
   }
 
   override handleInput(key: K): boolean {
@@ -310,22 +362,75 @@ export class Toggle extends MenuItem {
 }
 
 /**
- * Text input field.
+ * Text input field. Supports a movable cursor (Left/Right/Home/End), forward/backward
+ * deletion (Del/Backspace), and pasting (Ctrl+V, wired up by the platform layer).
  */
 export class Textbox extends MenuItem {
   cvar: string | null;
-  value: string;
-  maxLength: number;
-  validator: (value: string) => boolean;
   width: number;
+  #editor: LineEditor;
 
   constructor(config: TextboxConfig) {
     super(config);
     this.cvar = config.cvar || null;
-    this.value = config.value || '';
-    this.maxLength = config.maxLength ?? 32;
-    this.validator = config.validator || (() => true);
     this.width = config.width ?? 24;
+    this.#editor = new LineEditor(config.value || '', {
+      maxLength: config.maxLength ?? 32,
+      validator: config.validator || (() => true),
+    });
+  }
+
+  get maxLength(): number {
+    return this.#editor.maxLength;
+  }
+
+  set maxLength(value: number) {
+    this.#editor.maxLength = value;
+  }
+
+  get validator(): (value: string) => boolean {
+    return this.#editor.validator;
+  }
+
+  set validator(value: (value: string) => boolean) {
+    this.#editor.validator = value;
+  }
+
+  /**
+   * Current text value. Assigning it directly (e.g. to pre-fill the field from a cvar or
+   * other external source) moves the cursor to the end, mirroring how a native `<input>`
+   * behaves when its `.value` is set from script.
+   * @returns The current text value.
+   */
+  get value(): string {
+    return this.#editor.text;
+  }
+
+  set value(next: string) {
+    this.#editor.text = next;
+  }
+
+  /**
+   * Cursor index into the text.
+   * @returns The current cursor index.
+   */
+  get cursorPos(): number {
+    return this.#editor.cursorPos;
+  }
+
+  set cursorPos(pos: number) {
+    this.#editor.cursorPos = pos;
+  }
+
+  /**
+   * Determines the glyph to draw for the blinking cursor, or null when the current blink
+   * phase should instead reveal the character already under the cursor. Exposed as
+   * `protected` for subclasses with custom layouts (e.g. `NameFieldTextbox`) that draw their
+   * own cursor rather than using `draw()` as-is.
+   * @returns A character code to draw at the cursor, or null to reveal the text underneath.
+   */
+  protected _getCursorGlyph(blinkPhase: number): number | null {
+    return this.#editor.cursorGlyph(blinkPhase);
   }
 
   override activate(): void {
@@ -370,8 +475,10 @@ export class Textbox extends MenuItem {
     M.PrintWhite(x + 8, y, this.getValue());
 
     if (focused) {
-      const cursorX = x + 8 + this.getValue().length * 8;
-      M.DrawCharacter(cursorX, y, 10 + ((Host.realtime * 4.0) & 1));
+      const glyph = this._getCursorGlyph((Host.realtime * 4.0) & 1);
+      if (glyph !== null) {
+        M.DrawCharacter(x + 8 + this.cursorPos * 8, y, glyph);
+      }
     }
   }
 
@@ -380,24 +487,16 @@ export class Textbox extends MenuItem {
       return false;
     }
 
-    if (key === K.BACKSPACE) {
-      const current = this.getValue();
-      if (current.length > 0) {
-        this.setValue(current.substring(0, current.length - 1));
-      }
-      return true;
+    return this.#editor.handleKey(key);
+  }
+
+  override handlePaste(text: string): boolean {
+    if (!this.enabled) {
+      return false;
     }
 
-    // Printable characters
-    if (key >= K.SPACE && key <= K.BACKSPACE) {
-      const current = this.getValue();
-      if (current.length < this.maxLength) {
-        this.setValue(current + String.fromCharCode(key));
-      }
-      return true;
-    }
-
-    return false;
+    this.#editor.paste(text);
+    return true;
   }
 }
 
@@ -495,5 +594,184 @@ export class PlayerSkin extends MenuItem {
 
   override getHeight(): number {
     return M.bigbox.height || 0;
+  }
+}
+
+/**
+ * A single load/save game slot. Enter always activates the slot (the caller decides whether
+ * an empty slot is a no-op), Del removes it (if allowed) via onDelete.
+ */
+export class SaveSlotItem extends MenuItem {
+  canDelete: boolean;
+  onActivate: () => void;
+  onDelete: () => void;
+
+  constructor(config: SaveSlotConfig = {}) {
+    super(config);
+    this.canDelete = config.canDelete ?? false;
+    this.onActivate = config.onActivate ?? (() => {});
+    this.onDelete = config.onDelete ?? (() => {});
+  }
+
+  override draw(x: number, y: number, _focused: boolean): void {
+    if (!this.visible) {
+      return;
+    }
+
+    M.Print(x, y, this.label);
+  }
+
+  override handleInput(key: K): boolean {
+    if (!this.enabled) {
+      return false;
+    }
+
+    if (key === K.ENTER) {
+      this.onActivate();
+      return true;
+    }
+
+    if (key === K.DEL) {
+      if (this.canDelete) {
+        this.onDelete();
+      }
+      return true;
+    }
+
+    return false;
+  }
+}
+
+/**
+ * A wrapping numeric selector (e.g. player shirt/pants color), advanced via Enter/Left/Right.
+ */
+export class ColorPicker extends MenuItem {
+  getValue: () => number;
+  setValue: (value: number) => void;
+  max: number;
+
+  constructor(config: ColorPickerConfig) {
+    super(config);
+    this.getValue = config.getValue;
+    this.setValue = config.setValue;
+    this.max = config.max ?? 13;
+  }
+
+  override draw(x: number, y: number, _focused: boolean): void {
+    if (!this.visible) {
+      return;
+    }
+
+    M.Print(x, y, this.label);
+  }
+
+  override handleInput(key: K): boolean {
+    if (!this.enabled) {
+      return false;
+    }
+
+    if (key === K.LEFTARROW) {
+      this.setValue(this.getValue() <= 0 ? this.max : this.getValue() - 1);
+      S.LocalSound(M.sfx_menu3);
+      return true;
+    }
+
+    if (key === K.RIGHTARROW || key === K.ENTER) {
+      this.setValue(this.getValue() >= this.max ? 0 : this.getValue() + 1);
+      S.LocalSound(M.sfx_menu3);
+      return true;
+    }
+
+    return false;
+  }
+}
+
+/**
+ * A rebindable action row for a key-configuration menu. Enter arms capture of the next
+ * keypress to bind; Backspace/Del clears every binding for the command.
+ */
+export class KeyBindItem extends MenuItem {
+  command: string;
+  capturing: boolean;
+
+  constructor(config: KeyBindConfig) {
+    super(config);
+    this.command = config.command;
+    this.capturing = false;
+  }
+
+  #findBoundKeys(): number[] {
+    const found: number[] = [];
+
+    for (let i = 0; i < Key.bindings.length; i++) {
+      if (Key.bindings[i] === this.command) {
+        found.push(i);
+        if (found.length === 2) {
+          break;
+        }
+      }
+    }
+
+    return found;
+  }
+
+  #unbind(): void {
+    for (let i = 0; i < Key.bindings.length; i++) {
+      if (Key.bindings[i] === this.command) {
+        delete Key.bindings[i];
+      }
+    }
+  }
+
+  override draw(x: number, y: number, focused: boolean): void {
+    if (!this.visible) {
+      return;
+    }
+
+    M.Print(x, y, this.label);
+
+    const keys = this.#findBoundKeys();
+    if (keys.length === 0) {
+      M.Print(x + 124, y, '???');
+    } else {
+      let name = Key.KeynumToString(keys[0]);
+      if (keys[1] !== undefined) {
+        name += ` or ${Key.KeynumToString(keys[1])}`;
+      }
+      M.Print(x + 124, y, name);
+    }
+
+    if (focused) {
+      const cursorChar = this.capturing ? 61 : 12 + ((Host.realtime * 4.0) & 1);
+      M.DrawCharacter(x + 114, y, cursorChar);
+    }
+  }
+
+  override handleInput(key: K): boolean {
+    if (this.capturing) {
+      S.LocalSound(M.sfx_menu1);
+      if (key !== K.ESCAPE && key !== 96 as K) { // FIXME: what’s 96?
+        Cmd.text = `bind "${Key.KeynumToString(key)}" "${this.command}"\n${Cmd.text}`;
+      }
+      this.capturing = false;
+      return true;
+    }
+
+    if (key === K.ENTER) {
+      S.LocalSound(M.sfx_menu2);
+      if (this.#findBoundKeys().length > 1) {
+        this.#unbind();
+      }
+      this.capturing = true;
+      return true;
+    }
+
+    if (key === K.BACKSPACE || key === K.DEL) {
+      S.LocalSound(M.sfx_menu2);
+      this.#unbind();
+      return true;
+    }
+
+    return false;
   }
 }

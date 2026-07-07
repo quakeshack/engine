@@ -1,4 +1,5 @@
 import { K } from '../../shared/Keys.ts';
+import { LineEditor } from '../../shared/LineEditor.ts';
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
@@ -135,6 +136,7 @@ function buildConsoleKeySet(): Set<number> {
   keys.add(K.UPARROW);
   keys.add(K.DOWNARROW);
   keys.add(K.BACKSPACE);
+  keys.add(K.DEL);
   keys.add(K.HOME);
   keys.add(K.END);
   keys.add(K.PGUP);
@@ -155,8 +157,8 @@ const CONSOLE_PROMPT_COLOR = new Vector(0.8, 0.8, 0.8);
 export default class Key {
   /** Console input history. */
   static lines: string[] = [''];
-  /** Current console input line. */
-  static edit_line = '';
+  /** Line editor backing the console input line. */
+  static #consoleEditor = new LineEditor();
   /** Index into history lines for Up/Down navigation. */
   static history_line = 1;
 
@@ -180,14 +182,44 @@ export default class Key {
 
   // ── Console input ────────────────────────────────────────────────────────
 
+  /**
+   * Current console input line. Assigning it moves the cursor to the end.
+   * @returns The current console input line.
+   */
+  static get edit_line(): string {
+    return Key.#consoleEditor.text;
+  }
+
+  static set edit_line(value: string) {
+    Key.#consoleEditor.text = value;
+  }
+
+  /**
+   * Cursor index into the console input line.
+   * @returns The current cursor index.
+   */
+  static get consoleCursorPos(): number {
+    return Key.#consoleEditor.cursorPos;
+  }
+
+  /**
+   * The console input line with a blinking cursor glyph spliced in, for the given blink
+   * phase. See `LineEditor.cursorGlyph` for how the mid-line vs. end-of-line blink differs.
+   * @returns The line to draw, cursor included.
+   */
+  static consoleDisplayText(blinkPhase: number): string {
+    return Key.#consoleEditor.withCursorGlyph(blinkPhase);
+  }
+
   /** Handles a keypress for console input mode. */
   static Console(key: K): void {
     switch (key) {
       case K.ENTER: {
-        Cmd.text += `${Key.edit_line}\n`;
-        Con.Print(`]${Key.edit_line}\n`, CONSOLE_PROMPT_COLOR);
-        Key.lines.push(Key.edit_line);
-        Key.edit_line = '';
+        const line = Key.#consoleEditor.text;
+        Cmd.text += `${line}\n`;
+        Con.Print(`]${line}\n`, CONSOLE_PROMPT_COLOR);
+        Key.lines.push(line);
+        Key.#consoleEditor.text = '';
         Key.history_line = Key.lines.length;
         return;
       }
@@ -196,15 +228,6 @@ export default class Key {
         const cmd = Cmd.CompleteCommand(Key.edit_line) ?? Cvar.CompleteVariable(Key.edit_line);
         if (cmd !== null) {
           Key.edit_line = `${cmd} `;
-        }
-        return;
-      }
-
-      // WinQuake treated LEFTARROW as delete; no cursor position support yet.
-      case K.BACKSPACE:
-      case K.LEFTARROW: {
-        if (Key.edit_line.length > 0) {
-          Key.edit_line = Key.edit_line.slice(0, -1);
         }
         return;
       }
@@ -239,69 +262,87 @@ export default class Key {
         return;
       }
 
+      // Ctrl+Home/Ctrl+End jump the scrollback to the top/bottom. Plain Home/End fall
+      // through to the line editor below, moving the cursor within the input line instead.
       case K.HOME: {
-        Con.backscroll = Math.max(Con.text.length - 10, 0);
-        return;
+        if (Key.pressed.has(K.CTRL)) {
+          Con.backscroll = Math.max(Con.text.length - 10, 0);
+          return;
+        }
+        break;
       }
 
       case K.END: {
-        Con.backscroll = 0;
-        return;
+        if (Key.pressed.has(K.CTRL)) {
+          Con.backscroll = 0;
+          return;
+        }
+        break;
       }
     }
 
-    // Only accept printable ASCII (SPACE through BACKSPACE-1).
-    if (key < K.SPACE || key > K.BACKSPACE) {
-      return;
-    }
-
-    Key.edit_line += String.fromCharCode(key);
+    Key.#consoleEditor.handleKey(key);
   }
 
   // ── Chat message input ───────────────────────────────────────────────────
 
-  /** Current chat message being composed. */
-  static chat_buffer = '';
+  /** Maximum chat message length. */
+  private static readonly MAX_CHAT_LENGTH = 31;
+
+  /** Line editor backing the chat input line. */
+  static #chatEditor = new LineEditor('', { maxLength: Key.MAX_CHAT_LENGTH });
+
   /** True when composing a team-only message. */
   static team_message = false;
 
-  /** Maximum chat message length. */
-  private static readonly MAX_CHAT_LENGTH = 31;
+  /**
+   * Current chat message being composed. Assigning it moves the cursor to the end.
+   * @returns The current chat message.
+   */
+  static get chat_buffer(): string {
+    return Key.#chatEditor.text;
+  }
+
+  static set chat_buffer(value: string) {
+    Key.#chatEditor.text = value;
+  }
+
+  /**
+   * Cursor index into the chat input line.
+   * @returns The current cursor index.
+   */
+  static get chatCursorPos(): number {
+    return Key.#chatEditor.cursorPos;
+  }
+
+  /**
+   * The chat input line with a blinking cursor glyph spliced in, for the given blink phase.
+   * See `LineEditor.cursorGlyph` for how the mid-line vs. end-of-line blink differs.
+   * @returns The line to draw, cursor included.
+   */
+  static chatDisplayText(blinkPhase: number): string {
+    return Key.#chatEditor.withCursorGlyph(blinkPhase);
+  }
 
   /** Handles a keypress for chat message mode. */
   static Message(key: K): void {
     if (key === K.ENTER) {
-      if (Key.chat_buffer.trim().length > 0) {
+      if (Key.#chatEditor.text.trim().length > 0) {
         const command = Key.team_message ? 'say_team' : 'say';
-        void Cmd.ExecuteString(`${command} "${Key.chat_buffer}"`);
+        void Cmd.ExecuteString(`${command} "${Key.#chatEditor.text}"`);
       }
       Key.destination = KeyDestination.game;
-      Key.chat_buffer = '';
+      Key.#chatEditor.text = '';
       return;
     }
 
     if (key === K.ESCAPE) {
       Key.destination = KeyDestination.game;
-      Key.chat_buffer = '';
+      Key.#chatEditor.text = '';
       return;
     }
 
-    if (key < K.SPACE || key > K.BACKSPACE) {
-      return;
-    }
-
-    if (key === K.BACKSPACE) {
-      if (Key.chat_buffer.length > 0) {
-        Key.chat_buffer = Key.chat_buffer.slice(0, -1);
-      }
-      return;
-    }
-
-    if (Key.chat_buffer.length >= Key.MAX_CHAT_LENGTH) {
-      return;
-    }
-
-    Key.chat_buffer += String.fromCharCode(key);
+    Key.#chatEditor.handleKey(key);
   }
 
   // ── Key name / code conversion ───────────────────────────────────────────
@@ -516,6 +557,23 @@ export default class Key {
       default:
         Key.Console(key);
         break;
+    }
+  }
+
+  /** Forwards clipboard text (e.g. from a Ctrl+V shortcut) to the active text input. */
+  static Paste(text: string): void {
+    switch (Key.destination) {
+      case KeyDestination.menu:
+        M.Paste(text);
+        return;
+      case KeyDestination.console:
+        Key.#consoleEditor.paste(text);
+        return;
+      case KeyDestination.message:
+        Key.#chatEditor.paste(text);
+        return;
+      default:
+        return;
     }
   }
 }

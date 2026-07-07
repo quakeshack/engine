@@ -9,7 +9,9 @@ import type { Visibility } from './model/BSP.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
 import { moveTypes, solid } from '../../shared/Defs.ts';
-import Key from '../client/Key.ts';
+import Key, { KeyDestination } from '../client/Key.ts';
+import { Action, Image, Label, MenuItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
+import { GridLayout, ImageBasedLayout, ListLayout, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
 import { SFX as SFXValue } from '../client/Sound.ts';
 import VID from '../client/VID.ts';
 import * as Protocol from '../network/Protocol.ts';
@@ -91,11 +93,11 @@ type ClientEntityFilter = ((entity: ClientEdict) => boolean) | null;
 type CommandCallback = (...args: string[]) => void | Promise<void>;
 
 let { COM, Con, Host, SV, V } = getCommonRegistry();
-let { CL, Draw, R, S, SCR } = getClientRegistry();
+let { CL, Draw, M, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
   ({ COM, Con, Host, SV, V } = getCommonRegistry());
-  ({ CL, Draw, R, S, SCR } = getClientRegistry());
+  ({ CL, Draw, M, R, S, SCR } = getClientRegistry());
 });
 
 eventBus.subscribe('com.ready', () => {
@@ -1107,8 +1109,6 @@ export class ClientEngineAPI extends CommonEngineAPI {
     CL.pmove.configuration = config;
   }
 
-  static M: object | null = null;
-
   static readonly CL = {
     get viewangles(): Vector {
       return CL.state.viewangles.copy();
@@ -1219,6 +1219,126 @@ export class ClientEngineAPI extends CommonEngineAPI {
     hasStack(): boolean {
       return PostProcess.hasGameplayStack();
     },
+  };
+
+  /**
+   * Menu registration and navigation, backed by the engine's menu stack (`source/engine/client/menu/`).
+   * Widget classes are re-exported here so game code never has to import engine internals directly.
+   */
+  static readonly Menu = {
+    /**
+     * Register a page under a name so it can later be opened by `Open`/`Push`/`Replace`.
+     */
+    RegisterPage(name: string, page: MenuPage): void {
+      M.menuStack.register(name, page);
+    },
+
+    /**
+     * Unregister a previously registered page.
+     */
+    UnregisterPage(name: string): void {
+      M.menuStack.pages.delete(name);
+    },
+
+    /**
+     * Open a registered page as the pause menu, replacing whatever is currently shown.
+     */
+    Open(name: string): void {
+      Key.destination = KeyDestination.menu;
+      M.menuStack.push(name);
+    },
+
+    /**
+     * Push a registered page on top of the current one. Assumes the menu is already open.
+     */
+    Push(name: string): void {
+      M.menuStack.push(name);
+    },
+
+    /**
+     * Pop the current page, revealing whatever was open before it (closing the menu entirely
+     * if nothing is left).
+     */
+    Pop(): void {
+      M.PopMenu();
+    },
+
+    /**
+     * Replace the current page with a registered one, without growing the navigation stack.
+     */
+    Replace(name: string): void {
+      M.menuStack.replace(name);
+    },
+
+    /**
+     * Close the menu entirely, returning to the game (or console).
+     */
+    Close(): void {
+      M.CloseMenu();
+    },
+
+    /**
+     * Check whether the menu is open, optionally a specific registered page.
+     * @returns True when the menu (or the named page) is currently shown.
+     */
+    IsOpen(name?: string): boolean {
+      const current = M.menuStack.current();
+
+      if (name === undefined) {
+        return current !== null;
+      }
+
+      return current === M.menuStack.pages.get(name);
+    },
+
+    /**
+     * Insert an item into a registered page, e.g. to extend a built-in screen from game code.
+     */
+    AddItem(pageName: string, item: MenuItem, index?: number): void {
+      const page = M.menuStack.pages.get(pageName);
+
+      console.assert(page !== undefined, 'ClientEngineAPI.Menu.AddItem: unknown page', pageName);
+
+      if (!page) {
+        return;
+      }
+
+      if (index === undefined) {
+        page.items.push(item);
+      } else {
+        page.items.splice(index, 0, item);
+      }
+    },
+
+    /**
+     * Remove a previously added item from a registered page.
+     */
+    RemoveItem(pageName: string, item: MenuItem): void {
+      const page = M.menuStack.pages.get(pageName);
+
+      if (!page) {
+        return;
+      }
+
+      const index = page.items.indexOf(item);
+
+      if (index !== -1) {
+        page.items.splice(index, 1);
+      }
+    },
+
+    Action,
+    Label,
+    Slider,
+    Toggle,
+    Textbox,
+    Spacer,
+    Image,
+    MenuPage,
+    VerticalLayout,
+    ImageBasedLayout,
+    ListLayout,
+    GridLayout,
   };
 
   static get eventBus(): EventBus {

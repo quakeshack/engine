@@ -3,6 +3,8 @@ import type { ClientEngineAPI as ClientEngineApiValue, ServerEngineAPI as Server
 import type { ClientEdict as ClientEdictValue } from '../engine/client/ClientEntities.ts';
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
 import type { GLTexture as GLTextureValue } from '../engine/client/GL.ts';
+import type { MenuItem as MenuItemValue } from '../engine/client/menu/MenuItem.ts';
+import type { MenuPage as MenuPageValue } from '../engine/client/menu/MenuPage.ts';
 import type { SFX as SFXValue } from '../engine/client/Sound.ts';
 import type CvarValue from '../engine/common/Cvar.ts';
 import type Vector from './Vector.ts';
@@ -19,6 +21,11 @@ export type ServerEdict = Readonly<ServerEdictValue>;
 
 export type GLTexture = GLTextureValue;
 export type Cvar = Readonly<CvarValue>;
+
+// Menu widgets are mutable-by-design (game code configures labels/items directly), so these
+// are plain aliases rather than Readonly wrappers.
+export type MenuPage = MenuPageValue;
+export type MenuItem = MenuItemValue;
 
 export type PmoveConfiguration = Readonly<PmoveConfigurationValue>;
 export type PmoveQuake2Configuration = Readonly<PmoveQuake2ConfigurationValue>;

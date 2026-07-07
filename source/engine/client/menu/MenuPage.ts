@@ -8,8 +8,11 @@ interface MenuPageConfig {
   readonly layout?: MenuLayout | null;
   readonly title?: string | null;
   readonly titlePic?: MenuPic | null;
+  readonly logoPic?: MenuPic | null;
   readonly onEnter?: () => void;
   readonly onExit?: () => void;
+  readonly onEscape?: (() => void) | null;
+  readonly onConfirm?: (() => void) | null;
   readonly customDraw?: ((page: MenuPage) => void) | null;
 }
 
@@ -17,7 +20,7 @@ interface VerticalLayoutConfig {
   readonly startY?: number;
   readonly spacing?: number;
   readonly labelX?: number;
-  readonly valueX?: number;
+  readonly valueX?: number | null;
   readonly showCursor?: boolean;
   readonly cursorX?: number;
 }
@@ -66,9 +69,12 @@ export class MenuPage {
   layout: MenuLayout | null;
   title: string | null;
   titlePic: MenuPic | null;
+  logoPic: MenuPic | null;
   cursor: number;
   onEnter: () => void;
   onExit: () => void;
+  onEscape: (() => void) | null;
+  onConfirm: (() => void) | null;
   customDraw: ((page: MenuPage) => void) | null;
 
   constructor(config: MenuPageConfig = {}) {
@@ -76,9 +82,12 @@ export class MenuPage {
     this.layout = config.layout || null;
     this.title = config.title || null;
     this.titlePic = config.titlePic || null;
+    this.logoPic = config.logoPic || null;
     this.cursor = 0;
     this.onEnter = config.onEnter || (() => {});
     this.onExit = config.onExit || (() => {});
+    this.onEscape = config.onEscape || null;
+    this.onConfirm = config.onConfirm || null;
     this.customDraw = config.customDraw || null;
 
     // Find first focusable item
@@ -95,6 +104,11 @@ export class MenuPage {
    * Draw the menu page.
    */
   draw(): void {
+    // Corner logo (e.g. the Quake plaque) shown alongside the title on several built-in screens.
+    if (this.logoPic) {
+      M.DrawPic(16, 4, this.logoPic);
+    }
+
     // Draw title if provided
     if (this.titlePic) {
       const titleX = 160 - Math.floor((this.titlePic.width ?? 0) / 2);
@@ -125,6 +139,16 @@ export class MenuPage {
       return true;
     }
 
+    if (key === K.ESCAPE && this.onEscape) {
+      this.onEscape();
+      return true;
+    }
+
+    if (key === K.ENTER && this.onConfirm) {
+      this.onConfirm();
+      return true;
+    }
+
     // Generic navigation
     if (key === K.DOWNARROW) {
       this._moveCursor(1);
@@ -137,6 +161,14 @@ export class MenuPage {
     }
 
     return false;
+  }
+
+  /**
+   * Forward a text paste to the focused item, if it supports one.
+   * @returns True if the focused item consumed the paste.
+   */
+  handlePaste(text: string): boolean {
+    return this.items[this.cursor]?.handlePaste(text) ?? false;
   }
 
   /**
@@ -219,11 +251,15 @@ export class MenuPage {
 /**
  * Vertical layout - standard menu layout.
  */
+// Gap between a right-justified label's end and the value column it's justified against
+// (matches the original Options screen's hand-tuned label/slider alignment).
+const LABEL_VALUE_GAP = 28;
+
 export class VerticalLayout implements MenuLayout {
   startY: number;
   spacing: number;
   labelX: number;
-  valueX: number;
+  valueX: number | null;
   showCursor: boolean;
   cursorX: number;
 
@@ -231,7 +267,7 @@ export class VerticalLayout implements MenuLayout {
     this.startY = config.startY ?? 32;
     this.spacing = config.spacing ?? 4;
     this.labelX = config.labelX ?? 16;
-    this.valueX = config.valueX ?? 220;
+    this.valueX = config.valueX ?? null;
     this.showCursor = config.showCursor ?? true;
     this.cursorX = config.cursorX ?? 200;
   }
@@ -246,8 +282,12 @@ export class VerticalLayout implements MenuLayout {
 
       const focused = index === focusedIndex;
 
+      // When a value column is configured, right-justify the label against it instead of
+      // using a fixed left column, so values line up regardless of label length.
+      const x = this.valueX !== null ? this.valueX - LABEL_VALUE_GAP - item.label.length * 8 : this.labelX;
+
       // Draw the item
-      item.draw(this.labelX, y, focused);
+      item.draw(x, y, focused, this.valueX ?? undefined);
 
       // Draw cursor for focused item
       if (focused && this.showCursor && item.focusable) {
@@ -376,5 +416,50 @@ export class GridLayout implements MenuLayout {
 
       item.draw(x, y, focused);
     }
+  }
+}
+
+interface DialogPageConfig extends MenuPageConfig {
+  readonly getBackdrop?: () => MenuPage | null;
+}
+
+/**
+ * A page drawn on top of whatever page was active when it was pushed (e.g. quit/alert dialogs),
+ * replacing the previous recursive-draw-with-shared-state approach with an ordinary stack entry.
+ */
+export class DialogPage extends MenuPage {
+  getBackdrop: () => MenuPage | null;
+
+  constructor(config: DialogPageConfig = {}) {
+    super(config);
+    this.getBackdrop = config.getBackdrop ?? (() => null);
+  }
+
+  override draw(): void {
+    this.getBackdrop()?.draw();
+    super.draw();
+  }
+}
+
+/**
+ * A page where left/right arrows behave like up/down navigation (e.g. save/load slot lists).
+ */
+export class ListPage extends MenuPage {
+  override handleInput(key: K): boolean {
+    // Give the focused item first refusal on the original key before remapping navigation.
+    const focused = this.items[this.cursor];
+    if (focused && focused.handleInput(key)) {
+      return true;
+    }
+
+    if (key === K.LEFTARROW) {
+      return super.handleInput(K.UPARROW);
+    }
+
+    if (key === K.RIGHTARROW) {
+      return super.handleInput(K.DOWNARROW);
+    }
+
+    return super.handleInput(key);
   }
 }

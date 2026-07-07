@@ -174,7 +174,7 @@ export default class Con {
     if (Key.destination !== KeyDestination.console) {
       return;
     }
-    let text = ']' + Key.edit_line + String.fromCharCode(10 + ((Host.realtime * 4.0) & 1));
+    let text = ']' + Key.consoleDisplayText((Host.realtime * 4.0) & 1);
     const width = (VID.width / 16) - 2;
     if (text.length >= width) {
       text = text.substring(1 + text.length - width);
@@ -203,7 +203,7 @@ export default class Con {
     v += 16;
 
     if (Key.destination === KeyDestination.message) {
-      Draw.String(8, v, 'say: ' + Key.chat_buffer + String.fromCharCode(10 + ((Host.realtime * 4.0) & 1)), 2.0);
+      Draw.String(8, v, 'say: ' + Key.chatDisplayText((Host.realtime * 4.0) & 1), 2.0);
     }
   }
 

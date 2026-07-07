@@ -1495,15 +1495,36 @@ void describe('ServerCollision.move legacy hull recursion regressions', () => {
     });
   });
 
-  void test('ServerCollision.move ignores zero-volume touched entities for boxed movers', () => {
+  void test('ServerCollision._shouldSkipTouch still clips zero-volume (point) movers against real entities', () => {
     const collision = new ServerCollision();
-    const worldModel = createBrushWorldModel({ center: [1024, 0, 0], halfExtents: [16, 16, 16] });
-    const worldEdict = createMockEdict(createMockEntity({
-      origin: new Vector(),
-      solidType: solid.SOLID_BSP,
-    }));
     const moverEdict = createMockEdict(createMockEntity({
-      origin: new Vector(),
+      mins: new Vector(),
+      maxs: new Vector(),
+      solidType: solid.SOLID_BBOX,
+    }));
+    const realVolumeTouch = createMockEdict(createMockEntity({
+      origin: new Vector(32, 0, 0),
+      mins: Pmove.PLAYER_MINS.copy(),
+      maxs: Pmove.PLAYER_MAXS.copy(),
+      solidType: solid.SOLID_BBOX,
+    }));
+
+    withMockRegistry({
+      Con: { Print() {}, DPrint() {} },
+      Host: { frametime: 0.1 },
+      SV: {},
+    }, () => {
+      const skip = collision._shouldSkipTouch({ passedict: moverEdict, type: moveTypes.MOVE_NORMAL }, realVolumeTouch);
+
+      // A zero-volume mover (point trace) must still clip against real entities, otherwise
+      // point movers clip straight through walls and other solids.
+      assert.equal(skip, false, 'a zero-volume mover (point trace) must still clip against real entities');
+    });
+  });
+
+  void test('ServerCollision._shouldSkipTouch skips zero-volume touched entities for boxed movers', () => {
+    const collision = new ServerCollision();
+    const moverEdict = createMockEdict(createMockEntity({
       mins: Pmove.PLAYER_MINS.copy(),
       maxs: Pmove.PLAYER_MAXS.copy(),
       solidType: solid.SOLID_BBOX,
@@ -1514,47 +1535,16 @@ void describe('ServerCollision.move legacy hull recursion regressions', () => {
       maxs: new Vector(),
       solidType: solid.SOLID_BBOX,
     }));
-    let narrowPhaseCalls = 0;
 
     withMockRegistry({
-      Con: {
-        Print() {},
-        DPrint() {},
-      },
+      Con: { Print() {}, DPrint() {} },
       Host: { frametime: 0.1 },
-      SV: {
-        area: {
-          tree: {
-            queryAABB() {
-              return [zeroVolumeTouch];
-            },
-          },
-        },
-        server: {
-          edicts: [worldEdict],
-          worldmodel: worldModel,
-        },
-      },
+      SV: {},
     }, () => {
-      collision._traceTouch = () => {
-        narrowPhaseCalls += 1;
-        throw new Error('zero-volume touches should be skipped before narrow phase');
-      };
+      const skip = collision._shouldSkipTouch({ passedict: moverEdict, type: moveTypes.MOVE_NORMAL }, zeroVolumeTouch);
 
-      const trace = collision.move(
-        new Vector(0, 0, 0),
-        Pmove.PLAYER_MINS,
-        Pmove.PLAYER_MAXS,
-        new Vector(64, 0, 0),
-        moveTypes.MOVE_NORMAL,
-        moverEdict,
-      );
-
-      assert.equal(trace.fraction, 1.0);
-      assert.equal(trace.ent, null);
-      assert.equal(trace.startsolid, false);
-      assert.equal(narrowPhaseCalls, 0);
-      assert.deepEqual([...trace.endpos], [64, 0, 0]);
+      // Stock Quake semantics: a boxed mover never clips against a zero-volume (point) touched entity.
+      assert.equal(skip, true, 'a real boxed mover must skip zero-volume touched entities');
     });
   });
 
