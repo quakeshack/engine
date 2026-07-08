@@ -12,6 +12,7 @@ import { eventBus, getClientRegistry } from '../registry.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
 import type { SFX } from './Sound.ts';
+import PostProcess from './renderer/PostProcess.ts';
 
 type ClientSignonState = 0 | 1 | 2 | 3 | 4;
 
@@ -248,6 +249,7 @@ function parseServerData() {
     R.NewMap();
     CL.SendCmd();
     Host.noclip_anglehack = false;
+    PostProcess.clearStack();
     if (CL.state.gameAPI) {
       CL.state.gameAPI.init();
       if (CL.state.loadClientData && CL.state.loadClientData[0]) {
