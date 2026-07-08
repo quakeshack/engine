@@ -12,6 +12,7 @@ import { requireActiveGameModule } from '../common/GameModule.ts';
 import { eventBus, getCommonRegistry } from '../registry.ts';
 import { ServerClient } from './Client.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
+import { PmovePlayer } from '../common/Pmove.ts';
 
 type BitsWriter = 'writeByte' | 'writeShort' | 'writeLong';
 type DynamicEntityFieldValue = SerializableType | undefined;
@@ -742,10 +743,14 @@ export class ServerMessages {
     if ((bits & Protocol.su.moveack) !== 0) {
       msg.writeByte(client.lastMoveSequence);
       // send authoritative PM state alongside the move ack so the client
-      // can start prediction replay from the correct pmFlags / pmTime
+      // can start prediction replay from the correct pmFlags / pmTime / pmType
       msg.writeByte(client.pmFlags);
       msg.writeByte(client.pmTime);
       msg.writeByte(client.pmOldButtons);
+      // pmType is cheap to recompute here from the same entity fields the
+      // physics step already read this tick — no need to persist it on
+      // ServerClient the way pmFlags/pmTime are.
+      msg.writeByte(PmovePlayer.resolvePmType(clientEntity.deadflag ?? 0, clientEntity.movetype));
     }
 
     const clientdataFields = SV.server.clientdataFields;

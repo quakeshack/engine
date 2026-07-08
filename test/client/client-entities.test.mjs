@@ -26,6 +26,9 @@ function withMockClientEntitiesRegistry(callback) {
     state: {
       clientMessages: {
         mtime: [0.0],
+        // mirrors ClientMessages.renderTime: mtime[0] extrapolated by real
+        // elapsed time; tests set this directly instead of mocking Host.
+        renderTime: 0.0,
       },
     },
   };
@@ -80,7 +83,7 @@ void describe('ClientEdict.lerp.angles', () => {
       entity.angles.setTo(0.0, 10.0, 0.0);
       entity.anglesTime = 0.0;
       entity.nextthink = 1.0;
-      registry.CL.state.clientMessages.mtime[0] = 0.5;
+      registry.CL.state.clientMessages.renderTime = 0.5;
 
       const lerped = entity.lerp.angles;
       const deltaYaw = shortestAngleDelta(entity.anglesPrevious[1], lerped[1]);
@@ -97,12 +100,41 @@ void describe('ClientEdict.lerp.angles', () => {
       entity.angles.setTo(-20.0, 175.0, -40.0);
       entity.anglesTime = 0.0;
       entity.nextthink = 1.0;
-      registry.CL.state.clientMessages.mtime[0] = 0.5;
+      registry.CL.state.clientMessages.renderTime = 0.5;
 
       void entity.lerp.angles;
 
       assert.deepEqual([...entity.anglesPrevious], [35.0, -170.0, 80.0]);
       assert.deepEqual([...entity.angles], [-20.0, 175.0, -40.0]);
+    });
+  });
+});
+
+void describe('ClientEdict.lerp.origin', () => {
+  void test('advances between renders even while mtime[0] is unchanged (no new snapshot yet)', () => {
+    // Regression test: interpolation used to be driven directly off mtime[0],
+    // which only changes once per received network snapshot. That froze the
+    // rendered position for every frame in between, producing a visible pop
+    // instead of smooth motion. renderTime advances continuously instead.
+    withMockClientEntitiesRegistry(() => {
+      const entity = new ClientEdict(3);
+
+      entity.originPrevious.setTo(0.0, 0.0, 0.0);
+      entity.origin.setTo(100.0, 0.0, 0.0);
+      entity.originTime = 0.0;
+      entity.nextthink = 1.0;
+
+      // mtime[0] simulates "last received snapshot time" and stays fixed
+      // here, as it would between two network packets.
+      registry.CL.state.clientMessages.mtime[0] = 0.0;
+
+      registry.CL.state.clientMessages.renderTime = 0.2;
+      const first = entity.lerp.origin[0];
+
+      registry.CL.state.clientMessages.renderTime = 0.6;
+      const second = entity.lerp.origin[0];
+
+      assert.ok(second > first, `expected interpolation to advance (${first} -> ${second})`);
     });
   });
 });

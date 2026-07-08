@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { content } from '../../source/shared/Defs.ts';
+import { content, moveType } from '../../source/shared/Defs.ts';
 import { DIST_EPSILON, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
@@ -307,6 +307,26 @@ async function runMapForwardFrames(mapName, frames) {
 void describe('PmovePlayer', () => {
   void test('DEBUG is disabled before Pmove.Init()', () => {
     assert.equal(PmovePlayer.DEBUG, false);
+  });
+
+  void describe('resolvePmType', () => {
+    // Regression coverage: server-authoritative movement (ServerClientPhysics)
+    // and the wire protocol writer (ServerMessages) both call this so a
+    // noclip/spectating player's client-side prediction stays in lockstep
+    // with the server instead of falling under gravity/colliding with walls
+    // it can actually fly through.
+    void test('resolves NORMAL for an alive, non-noclip player', () => {
+      assert.equal(PmovePlayer.resolvePmType(0, moveType.MOVETYPE_WALK), PM_TYPE.NORMAL);
+    });
+
+    void test('resolves SPECTATOR for a noclip player', () => {
+      assert.equal(PmovePlayer.resolvePmType(0, moveType.MOVETYPE_NOCLIP), PM_TYPE.SPECTATOR);
+    });
+
+    void test('resolves DEAD regardless of movetype, taking precedence over noclip', () => {
+      assert.equal(PmovePlayer.resolvePmType(1, moveType.MOVETYPE_NOCLIP), PM_TYPE.DEAD);
+      assert.equal(PmovePlayer.resolvePmType(2, moveType.MOVETYPE_WALK), PM_TYPE.DEAD);
+    });
   });
 
   void test('move integrates one grounded movement frame against a world model', () => {

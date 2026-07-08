@@ -2,16 +2,16 @@ import * as Protocol from '../network/Protocol.ts';
 import type { ClientSerializableType } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
 import { areSerializableValuesEqual } from '../../shared/SerializableValues.ts';
-import { PmovePlayer } from '../common/Pmove.ts';
+import { PM_TYPE, PmovePlayer } from '../common/Pmove.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import { HostError } from '../common/Errors.ts';
 
 type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';
 
-let { CL, NET } = getClientRegistry();
+let { CL, Host, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, NET } = getClientRegistry());
+  ({ CL, Host, NET } = getClientRegistry());
 });
 
 /**
@@ -43,6 +43,9 @@ export class ClientPlayerState extends Protocol.EntityState {
 
   /** Q2-style timing counter for special states */
   pmTime: number;
+
+  /** Q2-style movement type (normal/spectator/dead/freeze) driving which Pmove code path runs */
+  pmType: PM_TYPE;
   pmove: PmovePlayer;
 
   constructor(pmove: PmovePlayer) {
@@ -58,6 +61,7 @@ export class ClientPlayerState extends Protocol.EntityState {
     this.oldbuttons = 0;
     this.pmFlags = 0;
     this.pmTime = 0;
+    this.pmType = PM_TYPE.NORMAL;
     this.pmove = pmove;
 
     Object.seal(this);
@@ -110,6 +114,9 @@ export class ClientMessages {
   /** current received time, last received time */
   mtime: [number, number] = [0.0, 0.0];
 
+  /** Host.realtime at which mtime[0] was captured, used to extrapolate renderTime between snapshots. */
+  mtimeReceivedAt = 0.0;
+
   playerstates: ClientPlayerState[] = [];
 
   /** additional private player fields whose values are getting updated each frame */
@@ -141,6 +148,19 @@ export class ClientMessages {
     this.mtime[1] = this.mtime[0];
     // This is the current time we got from the server.
     this.mtime[0] = NET.message.readFloat();
+    this.mtimeReceivedAt = Host.realtime;
+  }
+
+  /**
+   * Continuously-advancing estimate of the current server time, extrapolated
+   * from the last received snapshot using real elapsed time. Unlike mtime[0]
+   * (which only changes once per received snapshot), this advances every
+   * render frame so per-frame entity interpolation is smooth instead of
+   * frozen between snapshots.
+   * @returns the extrapolated current server time.
+   */
+  get renderTime(): number {
+    return this.mtime[0] + Math.max(0, Host.realtime - this.mtimeReceivedAt);
   }
 
   /**
@@ -167,10 +187,11 @@ export class ClientMessages {
     if ((bits & Protocol.su.moveack) !== 0) {
       CL.state.acknowledgedMoveSequence = NET.message.readByte();
       // server sends authoritative PM state alongside the move ack so
-      // client-side prediction replays from the correct pmFlags / pmTime
+      // client-side prediction replays from the correct pmFlags / pmTime / pmType
       CL.state.ackedPmFlags = NET.message.readByte();
       CL.state.ackedPmTime = NET.message.readByte();
       CL.state.ackedPmOldButtons = NET.message.readByte();
+      CL.state.ackedPmType = NET.message.readByte();
     }
   }
 
@@ -271,6 +292,7 @@ export class ClientMessages {
 
   clear(): void {
     this.mtime.fill(0.0);
+    this.mtimeReceivedAt = 0.0;
     this.playerstates.length = 0;
   }
 }

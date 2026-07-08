@@ -52,6 +52,7 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: true,
     rollupOptions: {
       plugins: mode === 'production' ? [strip({
+        include: ['**/*.js', '**/*.mjs', '**/*.ts'],
         functions: ['console.log', 'console.debug', 'console.info', 'console.warn', 'console.error', 'console.assert', 'console.trace'],
       })] : [],
       input: {
@@ -79,7 +80,7 @@ export default defineConfig(({ mode }) => ({
     },
     copyPublicDir: true,
     sourcemap: mode !== 'production',
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1536,
     minify: 'esbuild',
     reportCompressedSize: true,
     target: 'es2022',
@@ -87,6 +88,10 @@ export default defineConfig(({ mode }) => ({
   worker: {
     format: 'es',
     rollupOptions: {
+      plugins: mode === 'production' ? [strip({
+        include: ['**/*.js', '**/*.mjs', '**/*.ts'],
+        functions: ['console.log', 'console.debug', 'console.info', 'console.warn', 'console.error', 'console.assert', 'console.trace'],
+      })] : [],
       output: {
         entryFileNames: 'libs/worker-[name]-[hash].js',
         chunkFileNames: 'libs/worker-[name]-[hash].js',

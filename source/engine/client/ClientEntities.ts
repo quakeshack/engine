@@ -224,14 +224,14 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
      */
     this.lerp = {
       get frame(): [number, number, number] {
-        const time = CL.state.clientMessages.mtime[0];
+        const time = CL.state.clientMessages.renderTime;
         if (that.nextthink <= time || that.framePrevious === null || CL.nolerp.value) {
           return [that.frame, that.frame, 0];
         }
         return [that.framePrevious, that.frame, (time - that.frameTime) / (that.nextthink - that.frameTime)];
       },
       get origin(): Vector {
-        const time = CL.state.clientMessages.mtime[0];
+        const time = CL.state.clientMessages.renderTime;
         if (that.nextthink <= time || CL.nolerp.value || that.originPrevious.isInfinite()) {
           return that.origin;
         }
@@ -246,7 +246,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
         return l;
       },
       get angles(): Vector {
-        const time = CL.state.clientMessages.mtime[0];
+        const time = CL.state.clientMessages.renderTime;
         if (that.nextthink <= time || CL.nolerp.value || that.anglesPrevious.isInfinite()) {
           return that.angles;
         }

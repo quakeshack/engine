@@ -154,6 +154,13 @@ function dedicatedWorkerBundlePlugin(mode) {
               };
             },
           },
+          // Runs after transpile-typescript-modules so it sees plain JS (acorn
+          // cannot parse TS syntax); include covers the untransformed .ts ids
+          // since Rollup module ids keep their original extension.
+          ...(mode === 'production' ? [strip({
+            include: ['**/*.js', '**/*.mjs', '**/*.ts'],
+            functions: ['console.log', 'console.debug', 'console.info', 'console.warn', 'console.error', 'console.assert', 'console.trace'],
+          })] : []),
         ],
         // The engine source has pre-existing circular dependencies that
         // Vite silences in its own build.  Suppress them here too.
@@ -192,6 +199,7 @@ export default defineConfig(({ mode }) => ({
     minify: 'esbuild',
     rollupOptions: {
       plugins: mode === 'production' ? [strip({
+        include: ['**/*.js', '**/*.mjs', '**/*.ts'],
         functions: ['console.log', 'console.debug', 'console.info', 'console.warn', 'console.error', 'console.assert', 'console.trace'],
       })] : [],
       output: {

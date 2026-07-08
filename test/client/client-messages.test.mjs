@@ -27,26 +27,29 @@ registerSerializableType(MockClientSerializable, {
 
 /**
  * Run a callback with just the registry modules ClientMessages depends on.
- * @param {{CL: object, COM: object, NET: object}} dependencies Mocked registry dependencies.
+ * @param {{CL: object, COM: object, NET: object, Host?: object}} dependencies Mocked registry dependencies.
  * @param {() => void | Promise<void>} callback Test body.
  * @returns {void | Promise<void>} Callback result.
  */
-function withMockClientMessagesRegistry({ CL, COM, NET }, callback) {
+function withMockClientMessagesRegistry({ CL, COM, NET, Host }, callback) {
   const previousValues = {
     CL: registry.CL,
     COM: registry.COM,
     NET: registry.NET,
+    Host: registry.Host,
   };
 
   registry.CL = CL;
   registry.COM = COM;
   registry.NET = NET;
+  registry.Host = Host ?? { realtime: 0 };
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousValues.CL;
     registry.COM = previousValues.COM;
     registry.NET = previousValues.NET;
+    registry.Host = previousValues.Host;
     eventBus.publish('registry.frozen');
   };
 
@@ -77,7 +80,8 @@ void describe('ClientMessages', () => {
     buffer.writeByte(3);
     buffer.writeByte(6);
     buffer.writeByte(9);
-    buffer.writeByte(1);
+    buffer.writeByte(2); // pmType (PM_TYPE.DEAD)
+    buffer.writeByte(1); // clientdata fieldbits
     buffer.writeByte(Protocol.serializableTypes.long);
     buffer.writeLong(125);
     buffer.writeByte(Protocol.serializableTypes.none);
@@ -97,6 +101,7 @@ void describe('ClientMessages', () => {
         ackedPmFlags: 0,
         ackedPmTime: 0,
         ackedPmOldButtons: 0,
+        ackedPmType: 0,
         items: 0,
         item_gettime: new Array(32).fill(0),
         stats: new Array(32).fill(0),
@@ -127,6 +132,7 @@ void describe('ClientMessages', () => {
     assert.equal(mockCL.state.ackedPmFlags, 3);
     assert.equal(mockCL.state.ackedPmTime, 6);
     assert.equal(mockCL.state.ackedPmOldButtons, 9);
+    assert.equal(mockCL.state.ackedPmType, 2);
     assert.equal(mockCL.state.gameAPI.clientdata.health, 125);
     assert.equal(mockCL.state.gameAPI.clientdata.alive, true);
     assert.deepEqual(fieldChanges, [['health', 125, 10]]);
@@ -294,5 +300,60 @@ void describe('ClientMessages', () => {
       ['target', null, 'ogre'],
     ]);
     assert.equal(mockState.gameAPI.clientdata.target, null);
+  });
+});
+
+void describe('ClientMessages.parseTime / renderTime', () => {
+  void test('renderTime extrapolates from mtime[0] using real elapsed time since the snapshot', () => {
+    const messages = new ClientMessages();
+
+    const buffer = new SzBuffer(16, 'client-messages-time');
+    buffer.writeFloat(10.0);
+    buffer.beginReading();
+
+    const host = { realtime: 100.0 };
+
+    void withMockClientMessagesRegistry({
+      CL: {},
+      COM: {},
+      NET: { message: buffer },
+      Host: host,
+    }, () => {
+      messages.parseTime();
+
+      assert.equal(messages.mtime[0], 10.0);
+      assert.equal(messages.mtimeReceivedAt, 100.0);
+      assert.equal(messages.renderTime, 10.0, 'renderTime matches mtime[0] right at receipt');
+
+      host.realtime = 100.25;
+      assert.equal(messages.renderTime, 10.25, 'renderTime keeps advancing with real elapsed time, unlike mtime[0]');
+    });
+  });
+
+  void test('clear resets the renderTime anchor alongside mtime, without depending on the registry', () => {
+    // clear() is called from contexts (e.g. resetting connection state in
+    // tests, or an early disconnect) where the registry may not be mocked
+    // yet, so it must not read Host.
+    const messages = new ClientMessages();
+
+    const buffer = new SzBuffer(16, 'client-messages-time-clear');
+    buffer.writeFloat(10.0);
+    buffer.beginReading();
+
+    const host = { realtime: 100.0 };
+
+    void withMockClientMessagesRegistry({
+      CL: {},
+      COM: {},
+      NET: { message: buffer },
+      Host: host,
+    }, () => {
+      messages.parseTime();
+    });
+
+    messages.clear();
+
+    assert.equal(messages.mtime[0], 0.0);
+    assert.equal(messages.mtimeReceivedAt, 0.0);
   });
 });

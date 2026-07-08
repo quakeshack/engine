@@ -11,7 +11,7 @@
 
 import Vector, { DirectionalVectors } from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
-import { content } from '../../shared/Defs.ts';
+import { content, moveType } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.ts';
 import Cvar from './Cvar.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
@@ -860,6 +860,28 @@ export class PmovePlayer { // pmove_t (player state only)
   /** Enables verbose movement debugging. */
   static get DEBUG(): boolean {
     return (Pmove.debug?.value ?? 0) !== 0;
+  }
+
+  /**
+   * Resolves the PM_TYPE a player should simulate with, from its
+   * authoritative entity state. Shared by server-authoritative movement and
+   * the wire protocol writer so client-side prediction can be seeded with
+   * the exact same movement type the server used, keeping the two in
+   * lockstep (e.g. a noclip/spectating player must predict as SPECTATOR,
+   * not fall under gravity and collide with walls it can actually fly
+   * through server-side).
+   * @param deadflag entity's deadflag value (0 = alive).
+   * @param entityMovetype entity's current movetype.
+   * @returns the PM_TYPE to simulate with.
+   */
+  static resolvePmType(deadflag: number, entityMovetype: moveType): PM_TYPE {
+    if (deadflag > 0) {
+      return PM_TYPE.DEAD;
+    }
+    if (entityMovetype === moveType.MOVETYPE_NOCLIP) {
+      return PM_TYPE.SPECTATOR;
+    }
+    return PM_TYPE.NORMAL;
   }
 
   /**

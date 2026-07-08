@@ -177,6 +177,8 @@ class ClientRuntimeState {
   ackedPmTime = 0;
   /** server-acknowledged old button state */
   ackedPmOldButtons = 0;
+  /** server-acknowledged pmType (PM_TYPE), seeds prediction with the same movement mode the server used */
+  ackedPmType = 0;
 
   stats = createLegacyStatsArray();
   items = 0;
@@ -267,6 +269,7 @@ class ClientRuntimeState {
     this.ackedPmFlags = 0;
     this.ackedPmTime = 0;
     this.ackedPmOldButtons = 0;
+    this.ackedPmType = 0;
     this.stats = createLegacyStatsArray();
     this.items = 0;
     this.item_gettime.fill(0.0);

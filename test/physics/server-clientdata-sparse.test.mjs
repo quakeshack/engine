@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
+import { moveType } from '../../source/shared/Defs.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import SV from '../../source/engine/server/Server.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
+import { PM_TYPE } from '../../source/engine/common/Pmove.ts';
 
 /**
  * Install a minimal registry state for writeClientdataToMessage tests.
@@ -33,6 +35,8 @@ function installClientdataContext() {
     punchangle: new Vector(),
     health: 100,
     alive: false,
+    deadflag: 0,
+    movetype: moveType.MOVETYPE_WALK,
   };
 
   SV.server = {
@@ -74,15 +78,33 @@ function readSparseClientdataPayload(buffer) {
   buffer.beginReading();
   assert.equal(buffer.readByte(), Protocol.svc.clientdata);
   void buffer.readShort();
-  void buffer.readByte();
-  void buffer.readByte();
-  void buffer.readByte();
-  void buffer.readByte();
+  void buffer.readByte(); // lastMoveSequence
+  void buffer.readByte(); // pmFlags
+  void buffer.readByte(); // pmTime
+  void buffer.readByte(); // pmOldButtons
+  void buffer.readByte(); // pmType
 
   const fieldbits = buffer.readByte();
   const values = buffer.readSerializablesOnClient();
 
   return { fieldbits, values };
+}
+
+/**
+ * Reads the pmType byte written as part of the moveack block, right after
+ * pmOldButtons and before the clientdata fieldbits.
+ * @param {SzBuffer} buffer Source message buffer.
+ * @returns {number} Decoded PM_TYPE value.
+ */
+function readMoveAckPmType(buffer) {
+  buffer.beginReading();
+  buffer.readByte(); // svc.clientdata
+  buffer.readShort(); // bits
+  buffer.readByte(); // lastMoveSequence
+  buffer.readByte(); // pmFlags
+  buffer.readByte(); // pmTime
+  buffer.readByte(); // pmOldButtons
+  return buffer.readByte(); // pmType
 }
 
 void describe('ServerMessages clientdata sparse updates', () => {
@@ -115,6 +137,33 @@ void describe('ServerMessages clientdata sparse updates', () => {
       const thirdPayload = readSparseClientdataPayload(msgThird);
       assert.equal(thirdPayload.fieldbits, 3);
       assert.deepEqual(thirdPayload.values, [0, true]);
+    } finally {
+      context.restore();
+    }
+  });
+
+  void test('sends pmType alongside the moveack block, derived from the entity movetype/deadflag', () => {
+    // Regression coverage: client-side prediction seeds pmType from this
+    // wire field (see ClientMessages/CL.PredictUsercmd) so a noclip player
+    // predicts free-fly movement instead of gravity/collision.
+    const context = installClientdataContext();
+
+    try {
+      const messages = new ServerMessages();
+
+      const walkingMsg = new SzBuffer(256, 'walking clientdata message');
+      messages.writeClientdataToMessage(context.client, walkingMsg);
+      assert.equal(readMoveAckPmType(walkingMsg), PM_TYPE.NORMAL);
+
+      context.entity.movetype = moveType.MOVETYPE_NOCLIP;
+      const noclipMsg = new SzBuffer(256, 'noclip clientdata message');
+      messages.writeClientdataToMessage(context.client, noclipMsg);
+      assert.equal(readMoveAckPmType(noclipMsg), PM_TYPE.SPECTATOR);
+
+      context.entity.deadflag = 2;
+      const deadMsg = new SzBuffer(256, 'dead clientdata message');
+      messages.writeClientdataToMessage(context.client, deadMsg);
+      assert.equal(readMoveAckPmType(deadMsg), PM_TYPE.DEAD, 'dead must take precedence over noclip');
     } finally {
       context.restore();
     }

@@ -175,6 +175,13 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-07-08
+
+- fixed that jittery prediction caused by render time vs last message time
+- also fixed spectator glitching around (wrong pmtype)
+- game: pulled the runes and keys to the fullscreen sbar
+- vite: making sure that console.log/.assert/.debug are getting strip on production
+
 ### 2026-07-06
 
 - brought back a stashed menu rework

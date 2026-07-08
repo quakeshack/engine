@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import CL from '../../source/engine/client/CL.ts';
-import { eventBus } from '../../source/engine/registry.ts';
+import { eventBus, registry } from '../../source/engine/registry.ts';
+import * as Def from '../../source/engine/common/Def.ts';
+import * as Protocol from '../../source/engine/network/Protocol.ts';
+import { PM_TYPE, Pmove } from '../../source/engine/common/Pmove.ts';
+import { ClientPlayerState } from '../../source/engine/client/ClientMessages.ts';
 
 void describe('CL.AppendChatMessage', () => {
   void test('publishes chat messages without a legacy engine HUD fallback', () => {
@@ -23,5 +27,92 @@ void describe('CL.AppendChatMessage', () => {
     } finally {
       unsubscribe();
     }
+  });
+});
+
+void describe('CL.PredictMove', () => {
+  void test('skips prediction during intermission instead of replaying gravity/collision from the frozen server origin', () => {
+    // Regression test: the server freezes the player entity on intermission
+    // (movetype none, fixed origin) and stops sending origin updates for it.
+    // Nothing previously stopped the client from continuing to queue move
+    // commands and replay them through Pmove, which has no notion of
+    // intermission and would keep applying gravity/collision from the fixed
+    // base every frame — producing visible camera jitter.
+    const previousHost = registry.Host;
+    const previousNopred = CL.nopred;
+    const previousIntermission = CL.state.intermission;
+    const previousViewentity = CL.state.viewentity;
+    const previousMoveSequence = CL.state.moveSequence;
+    const previousAckedMoveSequence = CL.state.acknowledgedMoveSequence;
+    const previousPredicted = CL.state.predicted;
+
+    registry.Host = { realtime: 42.0 };
+    eventBus.publish('registry.frozen');
+
+    CL.nopred = { value: 0 };
+    CL.state.intermission = 1;
+    CL.state.viewentity = 1;
+    // 3 unacknowledged commands pending — prediction would normally replay them.
+    CL.state.moveSequence = 5;
+    CL.state.acknowledgedMoveSequence = 2;
+
+    const playerEntity = CL.state.playerentity;
+    playerEntity.origin.setTo(100.0, 200.0, 300.0);
+
+    try {
+      CL.PredictMove();
+
+      assert.equal(CL.state.predicted, false);
+      assert.deepEqual([...playerEntity.origin], [100.0, 200.0, 300.0]);
+    } finally {
+      registry.Host = previousHost;
+      eventBus.publish('registry.frozen');
+      CL.nopred = previousNopred;
+      CL.state.intermission = previousIntermission;
+      CL.state.viewentity = previousViewentity;
+      CL.state.moveSequence = previousMoveSequence;
+      CL.state.acknowledgedMoveSequence = previousAckedMoveSequence;
+      CL.state.predicted = previousPredicted;
+      CL.state.clientEntities.clear();
+    }
+  });
+});
+
+void describe('CL.PredictUsercmd', () => {
+  void test('seeded with a SPECTATOR pmType flies freely instead of falling like a grounded player', () => {
+    // Regression test: pmType used to never be set on the client (only
+    // pmFlags/pmTime/oldbuttons were synced from the server), so client
+    // prediction always ran ordinary gravity/collision movement even for a
+    // noclip/spectating player, causing heavy jitter against the server's
+    // correct free-fly simulation. pmType is now seeded from
+    // CL.state.ackedPmType via `from.pmType` (see CL.PredictMove).
+    //
+    // A second bug then masked the fix: PredictUsercmd used to also set
+    // `pmove.dead = CL.state.stats[Def.stat.health] <= 0`, but nothing in
+    // the current protocol ever populates CL.state.stats (it's legacy/dead
+    // state — see the grep audit that removed it), so this was always true
+    // and silently forced pmType back to DEAD inside move(), overriding the
+    // seeded SPECTATOR value. Leaving CL.state.stats untouched at its
+    // all-zero default here reproduces exactly that failure condition.
+    assert.equal(CL.state.stats[Def.stat.health], 0, 'CL.state.stats must stay unpopulated to reproduce the old bug condition');
+
+    const pmove = new Pmove().newPlayerMove();
+
+    const from = new ClientPlayerState(pmove);
+    from.origin.setTo(0.0, 0.0, 100.0);
+    from.velocity.clear();
+    from.pmType = PM_TYPE.SPECTATOR;
+
+    const to = new ClientPlayerState(pmove);
+
+    const cmd = new Protocol.UserCmd();
+    cmd.msec = 50; // stay under the 50ms split threshold for a single direct move()
+    cmd.upmove = 200; // fly straight up
+
+    CL.PredictUsercmd(pmove, from, to, cmd);
+
+    assert.equal(pmove.dead, false);
+    assert.equal(to.pmType, PM_TYPE.SPECTATOR);
+    assert.ok(to.origin[2] > from.origin[2], `expected the spectator to fly upward, got z=${to.origin[2]}`);
   });
 });

@@ -432,6 +432,14 @@ export default class CL {
       return;
     }
 
+    if (this.state.intermission !== 0) {
+      // The server freezes the player entity during intermission (movetype
+      // none, fixed origin) and never re-sends its origin. Prediction has no
+      // notion of that and would keep replaying gravity/collision from the
+      // fixed base every frame, producing visible camera jitter.
+      return;
+    }
+
     const playerEntity = this.state.playerentity;
     if (!playerEntity) {
       return;
@@ -465,6 +473,7 @@ export default class CL {
     from.pmFlags = this.state.ackedPmFlags;
     from.pmTime = this.state.ackedPmTime;
     from.oldbuttons = this.state.ackedPmOldButtons;
+    from.pmType = this.state.ackedPmType;
     from.waterjumptime = this.state.playerstate?.waterjumptime ?? 0;
 
     const to = new ClientPlayerState(pmove);
@@ -485,6 +494,7 @@ export default class CL {
       from.pmFlags = to.pmFlags;
       from.pmTime = to.pmTime;
       from.oldbuttons = to.oldbuttons;
+      from.pmType = to.pmType;
       from.waterjumptime = to.waterjumptime;
     }
 
@@ -553,8 +563,15 @@ export default class CL {
     pmove.waterjumptime = from.waterjumptime;
     pmove.pmFlags = from.pmFlags;
     pmove.pmTime = from.pmTime;
-    pmove.dead = CL.state.stats[Def.stat.health] <= 0; // TODO: use a proper player state field for this
-    pmove.spectator = false;
+    // Seeded from the server-acknowledged pmType (see ClientMessages.parseClient),
+    // which already resolves dead/noclip/normal with the server's precedence
+    // (PmovePlayer.resolvePmType), so a noclip/spectating player predicts
+    // free-fly movement instead of ordinary gravity/collision. pmove.dead is
+    // intentionally left at its default false — the old
+    // `CL.state.stats[Def.stat.health] <= 0` read was never populated by any
+    // current protocol handler, so it was always true and silently forced
+    // every prediction into PM_TYPE.DEAD, overriding this.
+    pmove.pmType = from.pmType;
 
     pmove.cmd.set(u);
 
@@ -564,6 +581,7 @@ export default class CL {
     to.oldbuttons = pmove.cmd.buttons;
     to.pmFlags = pmove.pmFlags;
     to.pmTime = pmove.pmTime;
+    to.pmType = pmove.pmType;
     to.origin.set(pmove.origin);
     to.velocity.set(pmove.velocity);
     to.angles.set(pmove.angles);

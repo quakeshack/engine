@@ -7,7 +7,7 @@ import {
   VELOCITY_EPSILON,
 } from './Defs.ts';
 import { ServerClient } from '../Client.ts';
-import { PM_TYPE } from '../../common/Pmove.ts';
+import { PmovePlayer } from '../../common/Pmove.ts';
 import { BrushModel } from '../../common/Mod.ts';
 import { HostError } from '../../common/Errors.ts';
 
@@ -101,14 +101,9 @@ export class ServerClientPhysics {
     pmove.dead = entity.deadflag! > 0;
     pmove.spectator = false;
 
-    // Determine PM type
-    if (entity.deadflag! > 0) {
-      pmove.pmType = PM_TYPE.DEAD;
-    } else if (entity.movetype === Defs.moveType.MOVETYPE_NOCLIP) {
-      pmove.pmType = PM_TYPE.SPECTATOR;
-    } else {
-      pmove.pmType = PM_TYPE.NORMAL;
-    }
+    // Determine PM type — shared with the wire protocol writer so client
+    // prediction is seeded with the exact same movement type.
+    pmove.pmType = PmovePlayer.resolvePmType(entity.deadflag ?? 0, entity.movetype);
 
     // On-ground from entity flags
     if (entity.flags & Defs.flags.FL_ONGROUND) {
