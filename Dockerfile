@@ -37,6 +37,7 @@ FROM builder AS test
 COPY data/id1/pak0.pak ./data/id1/
 COPY data/id1/maps/test_*.bsp ./data/id1/maps/
 COPY data/id1/maps/test_*.nav ./data/id1/maps/
+COPY data/bsp38-tests ./data/bsp38-tests
 
 CMD ["npm", "run", "test"]
 
