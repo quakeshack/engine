@@ -23,3 +23,7 @@ All code is always compiled through esbuild (via Vite) before execution. This en
 ### Testing
 
 Tests use `tsx` (esbuild-based) as the Node.js loader, ensuring the same TypeScript compilation behavior as the Vite builds. Run with `npm test`.
+
+### Keep the Dockerfile in sync
+
+The `Dockerfile`'s `test` stage only has access to files it explicitly `COPY`s (plus what `.dockerignore` allows through) — it does not run `npm test` against the full working tree. Whenever you add or move test fixtures (new `data/` subdirectories, new map/texture/pak assets referenced via `import.meta.url` or `readFileSync` in a `.test.mjs` file), add a matching `COPY` line to the `test` stage, and check `.dockerignore` doesn't silently exclude the new path. The same applies to the build stages: any new top-level source file, config file, or directory required by `npm run build:production` / `npm run dedicated:build:production` must be added to the `builder` stage's `COPY` list. Treat the Dockerfile as part of the change whenever it would otherwise drift from what `npm test` or the build scripts actually need.
