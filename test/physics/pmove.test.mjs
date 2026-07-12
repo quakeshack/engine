@@ -220,6 +220,7 @@ async function runMapFrames({
   registry.Mod = Mod;
   registry.COM = /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
     Parse: COMClass.Parse,
+    ParseEntityLump: COMClass.ParseEntityLump,
     async LoadFile(name) {
       try {
         const data = await fs.readFile(new URL(name, baseUrl));

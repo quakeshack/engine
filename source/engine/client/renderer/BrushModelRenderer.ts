@@ -39,6 +39,11 @@ export const LIGHTMAP_BLOCK_SIZE = 2048;
 export const LIGHTMAP_BLOCK_HEIGHT = LIGHTMAP_BLOCK_SIZE * 4; // RGBA byte stride per row
 
 const TURBULENT_FALLBACK_NORMAL_OFFSET = 2.0;
+// Deeper along-normal probe distance used to punch through a large/deep liquid volume down to
+// the real (lightmapped) floor beneath it. The shallow TURBULENT_FALLBACK_NORMAL_OFFSET probe
+// only clears thin water; for deep lava/water bodies (e.g. e4m1's lava lake) it can still land
+// close enough to the surface plane to re-hit the turbulent face itself and fail.
+const TURBULENT_FALLBACK_DEEP_NORMAL_OFFSET = 48.0;
 const TURBULENT_FALLBACK_LATERAL_OFFSET = 12.0;
 const TURBULENT_FALLBACK_NEIGHBOR_COUNT = 6;
 const TURBULENT_FALLBACK_NEIGHBOR_GAIN = 1.4;
@@ -47,6 +52,12 @@ const TURBULENT_FALLBACK_SCALE = 0.0078125;
 const TURBULENT_FALLBACK_EPSILON = 0.0001;
 // Position quantization factor for the vertex-light averaging map (1/16 Quake unit precision).
 const TURBULENT_FALLBACK_POS_QUANT = 16.0;
+// Fraction of the model's own average sampled turbulent light used as a per-vertex minimum,
+// so vertices whose probes found no nearby lit geometry (e.g. mid-lake) are lifted toward the
+// map's general brightness instead of collapsing to black.
+const TURBULENT_FALLBACK_FLOOR_FRACTION = 0.55;
+// Last-resort floor used only when a model has no valid turbulent samples at all.
+const TURBULENT_FALLBACK_DEFAULT_FLOOR = 0.4;
 
 /**
  * @param strength Requested brush bloom contribution strength.
@@ -136,6 +147,9 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /** World model associated with the current transparent pass. */
   _worldTransparentModel: BrushModel | null = null;
+
+  /** Whether the current transparent pass's model carries deluxemap data. */
+  _worldTransparentHasDeluxemap = false;
 
   /** Active 'turbulent' program during world turbulent pass. */
   _worldTurbulentProgram: GLProgramInfo | null = null;
@@ -270,6 +284,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const antiDiagonalOffset = tangent.copy().subtract(bitangent);
     antiDiagonalOffset.normalize();
     antiDiagonalOffset.multiply(TURBULENT_FALLBACK_LATERAL_OFFSET);
+    const deepNormalOffset = normal.copy().multiply(TURBULENT_FALLBACK_DEEP_NORMAL_OFFSET);
     const samplePositions = [
       worldPos,
       worldPos.copy().add(normalOffset),
@@ -283,6 +298,10 @@ export class BrushModelRenderer extends ModelRenderer {
       worldPos.copy().add(antiDiagonalOffset),
       worldPos.copy().subtract(antiDiagonalOffset),
       new Vector(worldPos[0], worldPos[1], worldPos[2] - TURBULENT_FALLBACK_NORMAL_OFFSET),
+      // Deep probes: punch further into the liquid volume to reach the real floor beneath
+      // deep water/lava, where the shallow normal offset above can still self-hit the surface.
+      worldPos.copy().subtract(deepNormalOffset),
+      new Vector(worldPos[0], worldPos[1], worldPos[2] - TURBULENT_FALLBACK_DEEP_NORMAL_OFFSET),
     ];
     const visibleSamples: { color: Vector; intensity: number }[] = [];
     let bestColor = new Vector(0.0, 0.0, 0.0);
@@ -515,7 +534,7 @@ export class BrushModelRenderer extends ModelRenderer {
     this._setupBrushShaderCommon(program, clmodel, true);
     GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
-    this._bindBrushDeluxemap(program, clmodel);
+    const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
@@ -544,7 +563,7 @@ export class BrushModelRenderer extends ModelRenderer {
         R.c_brush_tris += cmds[2] / 3;
 
         material.emit(worldspawn);
-        material.bindTo(program);
+        material.bindTo(program, hasDeluxemap);
 
         gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
         R.c_brush_draws++;
@@ -632,7 +651,7 @@ export class BrushModelRenderer extends ModelRenderer {
     this._setupBrushShaderCommon(program, clmodel, true);
     GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
-    this._bindBrushDeluxemap(program, clmodel);
+    this._worldTransparentHasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -645,6 +664,7 @@ export class BrushModelRenderer extends ModelRenderer {
   renderWorldTransparentLeaf(clmodel: BrushModel, leaf: Node): void {
     const worldspawn = CL.state.clientEntities.getEntity(0);
     const program = this._worldTransparentProgram!;
+    const hasDeluxemap = this._worldTransparentHasDeluxemap;
 
     for (let j = 0; j < leaf.skychain; j++) {
       const cmds = leaf.cmds[j];
@@ -661,7 +681,7 @@ export class BrushModelRenderer extends ModelRenderer {
       R.c_brush_tris += cmds[2] / 3;
 
       material.emit(worldspawn);
-      material.bindTo(program);
+      material.bindTo(program, hasDeluxemap);
 
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
       R.c_brush_draws++;
@@ -674,6 +694,7 @@ export class BrushModelRenderer extends ModelRenderer {
     GL.UnbindVAO();
     this._worldTransparentProgram = null;
     this._worldTransparentModel = null;
+    this._worldTransparentHasDeluxemap = false;
   }
 
   // ─── World turbulent rendering ────────────────────────────────────
@@ -1180,7 +1201,7 @@ export class BrushModelRenderer extends ModelRenderer {
     this._setupBrushShaderCommon(program, clmodel, false);
     GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
-    this._bindBrushDeluxemap(program, clmodel);
+    const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
       return;
@@ -1198,7 +1219,7 @@ export class BrushModelRenderer extends ModelRenderer {
       R.c_brush_tris += chain[2] / 3;
 
       material.emit(e);
-      material.bindTo(program);
+      material.bindTo(program, hasDeluxemap);
 
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
       R.c_brush_draws++;
@@ -1222,7 +1243,7 @@ export class BrushModelRenderer extends ModelRenderer {
     this._setupBrushShaderCommon(program, clmodel, false);
     GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
     GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
-    this._bindBrushDeluxemap(program, clmodel);
+    const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -1250,7 +1271,7 @@ export class BrushModelRenderer extends ModelRenderer {
       R.c_brush_tris += chain[2] / 3;
 
       material.emit(e);
-      material.bindTo(program);
+      material.bindTo(program, hasDeluxemap);
 
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
       R.c_brush_draws++;
@@ -1331,16 +1352,24 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uDynamicLightVec!, lightingState.dynamicLightPosition);
   }
 
-  /** @private */
-  _bindBrushDeluxemap(program: GLProgramInfo, clmodel: BrushModel): void {
-    if (BrushModelRenderer.usesDeluxemap(clmodel, CL.state.worldmodel as BrushModel | null)) {
+  /**
+   * @private
+   * @returns Whether `clmodel` carries deluxemap data, so callers can pass it
+   * on to `BaseMaterial.bindTo()` and enable per-pixel dot lighting for
+   * plain (non-PBR) surfaces too.
+   */
+  _bindBrushDeluxemap(program: GLProgramInfo, clmodel: BrushModel): boolean {
+    const hasDeluxemap = BrushModelRenderer.usesDeluxemap(clmodel, CL.state.worldmodel as BrushModel | null);
+
+    if (hasDeluxemap) {
       GL.BindArray(program.tDeluxemap!, R.deluxemap_texture);
       gl.uniform1f(program.uHaveDeluxemap!, 1.0);
-      return;
+      return true;
     }
 
     GL.BindArray(program.tDeluxemap!, R.normal_up_texture);
     gl.uniform1f(program.uHaveDeluxemap!, 0.0);
+    return false;
   }
 
   /**
@@ -1599,6 +1628,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const styles = [0.0, 0.0, 0.0, 0.0];
     const turbulentFallbackCache = new Map<string, number[]>();
     const turbulentFallbackAvgMap = this._buildTurbulentFallbackLightMap(m, turbulentFallbackCache);
+    const precomputedVertices = new Set<number>();
     let verts = 0;
     let cutoff = 0;
     m.chains.length = 0;
@@ -1624,11 +1654,21 @@ export class BrushModelRenderer extends ModelRenderer {
         chain[2] += surf.verts.length;
         for (let k = 0; k < surf.verts.length; k++) {
           const vert = surf.verts[k];
+          const vertexIndex = cmds.length / Mesh.VERTEX_STRIDE;
           cmds.push(vert[0], vert[1], vert[2]);
           cmds.push(vert[3], vert[4], vert[5], vert[6]);
           cmds.push(styles[0], styles[1], styles[2], styles[3]);
-          cmds.push(surf.normal[0], surf.normal[1], surf.normal[2]);
-          cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+          if (vert.length > 9) {
+            cmds.push(vert[7], vert[8], vert[9]);
+          } else {
+            cmds.push(surf.normal[0], surf.normal[1], surf.normal[2]);
+          }
+          if (vert.length > 15) {
+            cmds.push(vert[10], vert[11], vert[12], vert[13], vert[14], vert[15]);
+            precomputedVertices.add(vertexIndex);
+          } else {
+            cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+          }
         }
       }
       if (chain[2] !== 0) {
@@ -1679,7 +1719,7 @@ export class BrushModelRenderer extends ModelRenderer {
       }
     }
 
-    Mesh.CalculateTangentBitangents(cmds, cutoff);
+    Mesh.CalculateTangentBitangents(cmds, cutoff, precomputedVertices);
 
     m.cmds = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, m.cmds as WebGLBuffer);
@@ -1728,6 +1768,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const styles = [0.0, 0.0, 0.0, 0.0];
     const turbulentFallbackCache = new Map<string, number[]>();
     const turbulentFallbackAvgMap = this._buildTurbulentFallbackLightMap(m, turbulentFallbackCache);
+    const precomputedVertices = new Set<number>();
     let verts = 0;
     let cutoff = 0;
 
@@ -1754,11 +1795,21 @@ export class BrushModelRenderer extends ModelRenderer {
           chain[2] += surf.verts!.length;
           for (let l = 0; l < surf.verts!.length; l++) {
             const vert = surf.verts![l];
+            const vertexIndex = cmds.length / Mesh.VERTEX_STRIDE;
             cmds.push(vert[0], vert[1], vert[2]);
             cmds.push(vert[3], vert[4], vert[5], vert[6]);
             cmds.push(styles[0], styles[1], styles[2], styles[3]);
-            cmds.push(surf.normal[0], surf.normal[1], surf.normal[2]);
-            cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+            if (vert.length > 9) {
+              cmds.push(vert[7], vert[8], vert[9]);
+            } else {
+              cmds.push(surf.normal[0], surf.normal[1], surf.normal[2]);
+            }
+            if (vert.length > 15) {
+              cmds.push(vert[10], vert[11], vert[12], vert[13], vert[14], vert[15]);
+              precomputedVertices.add(vertexIndex);
+            } else {
+              cmds.push(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+            }
           }
         }
         if (chain[2] !== 0) {
@@ -1857,7 +1908,7 @@ export class BrushModelRenderer extends ModelRenderer {
       }
     }
 
-    Mesh.CalculateTangentBitangents(cmds, cutoff);
+    Mesh.CalculateTangentBitangents(cmds, cutoff, precomputedVertices);
 
     m.cmds = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, m.cmds as WebGLBuffer);
@@ -1892,6 +1943,25 @@ export class BrushModelRenderer extends ModelRenderer {
         const lmshift = face.lmshift ?? 0;
         vert[5] = (s - face.texturemins[0] + (face.light_s << lmshift) + (1 << (lmshift - 1))) / (LIGHTMAP_BLOCK_SIZE * (1 << lmshift));
         vert[6] = (t - face.texturemins[1] + (face.light_t << lmshift) + (1 << (lmshift - 1))) / (LIGHTMAP_BLOCK_SIZE * (1 << lmshift));
+      }
+      // Carry precomputed BSPX FACENORMALS data (indices 7-9 normal, 10-12 tangent, 13-15
+      // bitangent) so the display-list builders can use it instead of the flat face normal and
+      // recomputed UV-derivative tangent/bitangent.
+      if (face.vertexNormals) {
+        const normal = face.vertexNormals[i];
+        vert[7] = normal[0];
+        vert[8] = normal[1];
+        vert[9] = normal[2];
+        if (face.vertexTangents && face.vertexBitangents) {
+          const tangent = face.vertexTangents[i];
+          const bitangent = face.vertexBitangents[i];
+          vert[10] = tangent[0];
+          vert[11] = tangent[1];
+          vert[12] = tangent[2];
+          vert[13] = bitangent[0];
+          vert[14] = bitangent[1];
+          vert[15] = bitangent[2];
+        }
       }
       if (i >= 3) {
         face.verts.push(face.verts[0]);
@@ -1939,11 +2009,17 @@ export class BrushModelRenderer extends ModelRenderer {
    * Pre-compute a position-keyed map of averaged turbulent fallback lights.
    * Vertices at the same world position are averaged across all faces sharing that position,
    * eliminating seams at BSP face boundaries caused by per-face light discontinuities.
+   *
+   * A per-model ambient floor is derived from the mean of every vertex that did find nearby lit
+   * geometry, then applied as a per-channel minimum to every entry. This keeps vertices whose
+   * probes found nothing (e.g. the middle of a large lake, where every nearby probe just re-hits
+   * more lightmap-less water) from collapsing to black, while leaving already-lit vertices alone.
    * @private
    * @returns Map from quantized position key to averaged RGB fallback light.
    */
   _buildTurbulentFallbackLightMap(m: BrushModel, cache: Map<string, number[]>): Map<string, number[]> {
     const accumMap = new Map<string, {r: number; g: number; b: number; n: number}>();
+    const modelAverage = {r: 0, g: 0, b: 0, n: 0};
 
     for (const surf of m.facesIter()) {
       const texture = m.textures[surf.texture] as BaseMaterial;
@@ -1969,12 +2045,30 @@ export class BrushModelRenderer extends ModelRenderer {
         } else {
           accumMap.set(posKey, {r: light[0], g: light[1], b: light[2], n: 1});
         }
+        if (light[0] > 0.0 || light[1] > 0.0 || light[2] > 0.0) {
+          modelAverage.r += light[0];
+          modelAverage.g += light[1];
+          modelAverage.b += light[2];
+          modelAverage.n++;
+        }
       }
     }
 
+    const floor = modelAverage.n > 0
+      ? [
+        modelAverage.r / modelAverage.n * TURBULENT_FALLBACK_FLOOR_FRACTION,
+        modelAverage.g / modelAverage.n * TURBULENT_FALLBACK_FLOOR_FRACTION,
+        modelAverage.b / modelAverage.n * TURBULENT_FALLBACK_FLOOR_FRACTION,
+      ]
+      : [TURBULENT_FALLBACK_DEFAULT_FLOOR, TURBULENT_FALLBACK_DEFAULT_FLOOR, TURBULENT_FALLBACK_DEFAULT_FLOOR];
+
     const avgMap = new Map<string, number[]>();
     for (const [key, accum] of accumMap) {
-      avgMap.set(key, [accum.r / accum.n, accum.g / accum.n, accum.b / accum.n]);
+      avgMap.set(key, [
+        Math.max(accum.r / accum.n, floor[0]),
+        Math.max(accum.g / accum.n, floor[1]),
+        Math.max(accum.b / accum.n, floor[2]),
+      ]);
     }
     return avgMap;
   }

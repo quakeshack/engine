@@ -7,9 +7,11 @@ import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { eventBus, getCommonRegistry, registry } from '../../../registry.ts';
 import { ModelLoader } from '../ModelLoader.ts';
-import { Brush, BrushModel, BrushSide, Node, type BSPXLumps, type BrushTexInfo, type Clipnode, type Hull, type LightgridLeaf, type LightgridNode, type LightgridPointSample, type LightgridStyleSample } from '../BSP.ts';
+import { Brush, BrushModel, BrushSide, Node, type BrushTexInfo, type Clipnode, type Hull } from '../BSP.ts';
+import { QSMatLoader } from '../QSMatLoader.ts';
+import { BSPXLoader } from '../BSPXLoader.ts';
 import { Face, Plane } from '../BaseModel.ts';
-import { MaterialFlags, noTextureMaterial, PBRMaterial, QuakeMaterial } from '../../../client/renderer/Materials.ts';
+import { MaterialFlags, noTextureMaterial, QuakeMaterial } from '../../../client/renderer/Materials.ts';
 import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.ts';
 
 // Get registry references (will be set by eventBus)
@@ -22,21 +24,6 @@ eventBus.subscribe('registry.frozen', () => {
 interface AllowedClipnodeHull extends Hull {
   allowedClipNodes?: Uint8Array | null;
 }
-
-interface MaterialDefinition {
-  readonly diffuse?: string;
-  readonly luminance?: string;
-  readonly specular?: string;
-  readonly normal?: string;
-  readonly flags?: string[];
-}
-
-interface MaterialFile {
-  readonly version: number;
-  readonly materials: Record<string, MaterialDefinition>;
-}
-
-type MaterialTextureCategory = 'luminance' | 'diffuse' | 'specular' | 'normal';
 
 /**
  * Helper function to get a child node from a BSP node, with type assertion.
@@ -100,7 +87,7 @@ export class BSP29Loader extends ModelLoader {
     this._loadEdges(loadmodel, buffer);
     this.#loadSurfedges(loadmodel, buffer);
     this.#loadTextures(loadmodel, buffer);
-    await this.#loadMaterials(loadmodel);
+    await QSMatLoader.load(loadmodel);
     this.#loadLighting(loadmodel, buffer);
     this.#loadPlanes(loadmodel, buffer);
     this.#loadTexinfo(loadmodel, buffer);
@@ -112,12 +99,19 @@ export class BSP29Loader extends ModelLoader {
     this._loadNodes(loadmodel, buffer);
     this._loadClipnodes(loadmodel, buffer);
     this.#makeHull0(loadmodel);
-    this.#loadBSPX(loadmodel, buffer);
+    BSPXLoader.load(loadmodel, buffer, loadmodel.bspxoffset);
     this._loadBrushList(loadmodel, buffer);
     this.#loadLightingRGB(loadmodel, buffer);
-    this.#loadDeluxeMap(loadmodel, buffer);
-    this.#loadLightgridOctree(loadmodel, buffer);
     this.#loadSubmodels(loadmodel, buffer); // CR: must be last, since it creates additional models based on this one
+
+    if (loadmodel.mins.isInfinite() || loadmodel.maxs.isInfinite()) {
+      // Some third-party map compilers (e.g. certain BSP2 qbsp builds) can emit an
+      // unclipped/infinite headnode bounding box for the world model. Recover by
+      // deriving bounds from the actual vertex data instead of trusting the lump.
+      Con.PrintWarning(`BSP29Loader: ${name} has invalid model bounds in the models lump, recomputing from vertex data\n`);
+      this.#recoverModelBoundsFromVertexes(loadmodel);
+    }
+
     this.#parseFogVolumes(loadmodel); // must be after submodels load so we can scan submodel faces
     this.#computeAreas(loadmodel);
     this.#buildLiquidFogAnchors(loadmodel);
@@ -203,6 +197,32 @@ export class BSP29Loader extends ModelLoader {
       Math.abs(mins[1]) > Math.abs(maxs[1]) ? Math.abs(mins[1]) : Math.abs(maxs[1]),
       Math.abs(mins[2]) > Math.abs(maxs[2]) ? Math.abs(mins[2]) : Math.abs(maxs[2]),
     )).len();
+  }
+
+  /**
+   * Recompute mins/maxs from vertex data, overwriting whatever bounds are
+   * currently set on the model.
+   */
+  #recoverModelBoundsFromVertexes(loadmodel: BrushModel): void {
+    const mins = new Vector(Infinity, Infinity, Infinity);
+    const maxs = new Vector(-Infinity, -Infinity, -Infinity);
+
+    for (let i = 0; i < loadmodel.vertexes.length; i++) {
+      const vert = loadmodel.vertexes[i];
+
+      for (let axis = 0; axis < 3; axis++) {
+        if (vert[axis] < mins[axis]) {
+          mins[axis] = vert[axis];
+        }
+
+        if (vert[axis] > maxs[axis]) {
+          maxs[axis] = vert[axis];
+        }
+      }
+    }
+
+    loadmodel.mins.setTo(mins[0], mins[1], mins[2]);
+    loadmodel.maxs.setTo(maxs[0], maxs[1], maxs[2]);
   }
 
   /**
@@ -366,92 +386,6 @@ export class BSP29Loader extends ModelLoader {
     }
 
     return false;
-  }
-
-  /**
-   * Load material definitions from .qsmat.json files if available.
-   */
-  async #loadMaterials(loadmodel: BrushModel): Promise<void> {
-    if (registry.isDedicatedServer) {
-      return;
-    }
-
-    const filenames = [] as string[];
-
-    // build list of filenames based on _qs_mat
-    for (const qsMat of (loadmodel.worldspawnInfo._qs_mat?.split(/;\s*/) || [])) {
-      const filename = qsMat.trim();
-
-      if (filename === '') {
-        continue;
-      }
-
-      filenames.push(filename);
-    }
-
-    // load all files in parallel
-    const matfiles = await Promise.all(filenames.map((filename) => COM.LoadTextFile(filename)));
-
-    for (let i = 0; i < filenames.length; i++) {
-      const filename = filenames[i];
-      const matfile = matfiles[i];
-
-      if (!matfile) {
-        continue;
-      }
-
-      Con.DPrint(`BSP29Loader: loaded material file ${filename}\n`);
-      const materialData = JSON.parse(matfile) as MaterialFile;
-      console.assert(materialData.version === 1);
-
-      for (const [txName, textures] of Object.entries(materialData.materials)) {
-        const textureEntry = Array.from(loadmodel.textures.entries()).find(([, t]) => t.name === txName);
-
-        if (!textureEntry) {
-          continue;
-        }
-
-        const [txIndex, texture] = textureEntry;
-        const pbr = new PBRMaterial(texture.name, texture.width, texture.height);
-
-        const materialTextureCategories: MaterialTextureCategory[] = ['luminance', 'diffuse', 'specular', 'normal'];
-
-        for (const category of materialTextureCategories) {
-          const texturePath = textures[category];
-
-          if (texturePath) {
-            try {
-              const loadedTexture = await GLTexture.FromImageFile(texturePath);
-
-              if (loadedTexture !== null) {
-                pbr[category] = loadedTexture;
-              }
-
-              Con.DPrint(`BSP29Loader: loaded ${category} texture for ${texture.name} from ${texturePath} (material file ${filename})\n`);
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : String(error);
-              Con.PrintError(`BSP29Loader: failed to load ${texturePath} (material file ${filename}): ${errorMessage}\n`);
-            }
-          }
-        }
-
-        if (textures.flags) {
-          for (const flagName of textures.flags) {
-            const flagValue = MaterialFlags[flagName as keyof typeof MaterialFlags];
-            console.assert(typeof flagValue === 'number', `BSP29Loader: unknown material flag ${flagName} in ${loadmodel.name} (material file ${filename})`);
-            if (typeof flagValue === 'number') {
-              pbr.flags |= flagValue;
-            }
-          }
-        }
-
-        if (!textures.diffuse && texture instanceof QuakeMaterial && texture.texture !== null) {
-          pbr.diffuse = texture.texture; // keep original diffuse as base
-        }
-
-        loadmodel.textures[txIndex] = pbr; // replace with PBR material
-      }
-    }
   }
 
   /**
@@ -957,39 +891,9 @@ export class BSP29Loader extends ModelLoader {
     const autoAssignDoors: { modelIndex: number; model: string }[] = [];
     let maxExplicitPortal = -1;
 
-    let data: string | null = loadmodel.entities;
-
     Con.DPrint('BSP29Loader.#parsePortalEntities: looking for portals in entity lump...\n');
 
-    while (data) {
-      const parsed = COM.Parse(data);
-      data = parsed.data;
-
-      if (!data) {
-        break;
-      }
-
-      // Parse one entity block
-      const ent: Record<string, string> = {};
-
-      while (data) {
-        const parsedKey = COM.Parse(data);
-        data = parsedKey.data;
-
-        if (!data || parsedKey.token === '}') {
-          break;
-        }
-
-        const parsedValue = COM.Parse(data);
-        data = parsedValue.data;
-
-        if (!data || parsedValue.token === '}') {
-          break;
-        }
-
-        ent[parsedKey.token] = parsedValue.token;
-      }
-
+    for (const ent of COM.ParseEntityLump(loadmodel.entities)) {
       if (!ent.model || !ent.model.startsWith('*')) {
         continue;
       }
@@ -1116,37 +1020,10 @@ export class BSP29Loader extends ModelLoader {
       // _qs_waterfog: '1',
     };
 
-    let data = loadmodel.entities as string | null;
-
     // going for worldspawn and light
     let stillLooking = 2;
-    while (stillLooking > 0) {
-      const parsed = COM.Parse(data!);
-      data = parsed.data;
 
-      if (!data) {
-        break;
-      }
-
-      const currentEntity: Record<string, string> = {};
-      while (data) {
-        const parsedKey = COM.Parse(data);
-        data = parsedKey.data;
-
-        if (!data || parsedKey.token === '}') {
-          break;
-        }
-
-        const parsedValue = COM.Parse(data);
-        data = parsedValue.data;
-
-        if (!data || parsedKey.token === '}') {
-          break;
-        }
-
-        currentEntity[parsedKey.token] = parsedValue.token;
-      }
-
+    for (const currentEntity of COM.ParseEntityLump(loadmodel.entities)) {
       if (!currentEntity.classname) {
         break;
       }
@@ -1163,6 +1040,10 @@ export class BSP29Loader extends ModelLoader {
             stillLooking--;
           }
           break;
+      }
+
+      if (stillLooking <= 0) {
+        break;
       }
     }
 
@@ -1219,39 +1100,7 @@ export class BSP29Loader extends ModelLoader {
   #parseFogVolumes(loadmodel: BrushModel): void {
     loadmodel.fogVolumes.length = 0;
 
-    let data = loadmodel.entities;
-    if (!data) {
-      return;
-    }
-
-    while (data) {
-      const parsed = COM.Parse(data);
-      data = parsed.data;
-
-      if (!data) {
-        break;
-      }
-
-      const entity: Record<string, string> = {};
-
-      while (data) {
-        const parsedKey = COM.Parse(data);
-        data = parsedKey.data;
-
-        if (!data || parsedKey.token === '}') {
-          break;
-        }
-
-        const parsedValue = COM.Parse(data);
-        data = parsedValue.data;
-
-        if (!data || parsedValue.token === '}') {
-          break;
-        }
-
-        entity[parsedKey.token] = parsedValue.token;
-      }
-
+    for (const entity of COM.ParseEntityLump(loadmodel.entities)) {
       if (entity.classname !== 'func_fog' || !entity.model) {
         continue;
       }
@@ -1263,12 +1112,14 @@ export class BSP29Loader extends ModelLoader {
         continue;
       }
 
-      const colorParts = (entity.fog_color || '128 128 128').split(/\s+/).map(Number);
+      const colorParts = (entity.fog_color || '128 128 128').split(/\s+/)
+        .map(Number)
+        .map((n) => Number.isNaN(n) ? 128 : Math.min(255, Math.max(0, n)));
       const submodel = loadmodel.submodels[modelIndex - 1];
 
       loadmodel.fogVolumes.push({
         modelIndex,
-        color: [colorParts[0] || 128, colorParts[1] || 128, colorParts[2] || 128],
+        color: [colorParts[0] ?? 128, colorParts[1] ?? 128, colorParts[2] ?? 128],
         density: parseFloat(entity.fog_density || '0.01'),
         maxOpacity: Math.min(1.0, Math.max(0.0, parseFloat(entity.fog_max_opacity || '0.8'))),
         mins: submodel ? [submodel.mins[0], submodel.mins[1], submodel.mins[2]] : [0, 0, 0],
@@ -1866,33 +1717,6 @@ export class BSP29Loader extends ModelLoader {
   }
 
   /**
-   * Load BSPX extended format data (optional extra lumps).
-   */
-  #loadBSPX(loadmodel: BrushModel, buffer: ArrayBuffer): void {
-    loadmodel.bspxoffset = (loadmodel.bspxoffset + 3) & ~3;
-    if (loadmodel.bspxoffset >= buffer.byteLength) {
-      Con.DPrint('BSP29Loader: no BSPX data found\n');
-      return;
-    }
-
-    const view = new DataView(buffer);
-    const magic = view.getUint32(loadmodel.bspxoffset, true);
-    console.assert(magic === 0x58505342, 'BSP29Loader: bad BSPX magic');
-
-    const numlumps = view.getUint32(loadmodel.bspxoffset + 4, true);
-    Con.DPrint(`BSP29Loader: found BSPX data with ${numlumps} lumps\n`);
-
-    const bspxLumps: BSPXLumps = {};
-    for (let i = 0, pointer = loadmodel.bspxoffset + 8; i < numlumps; i++, pointer += 32) {
-      const name = Q.memstr(new Uint8Array(buffer, pointer, 24));
-      const fileofs = view.getUint32(pointer + 24, true);
-      const filelen = view.getUint32(pointer + 28, true);
-      bspxLumps[name] = { fileofs, filelen };
-    }
-    loadmodel.bspxlumps = bspxLumps;
-  }
-
-  /**
    * Load BSPX BRUSHLIST lump if available.
    * Parses per-model brush data from the BSPX extension, creates Brush and
    * BrushSide objects, generates the 6 axial planes that the spec says must
@@ -2240,212 +2064,4 @@ export class BSP29Loader extends ModelLoader {
     loadmodel.lightdata_rgb = new Uint8Array(data.slice(8)); // Skip header
   }
 
-  /**
-   * Load deluxemap (directional lighting normals) from BSPX lump if available.
-   */
-  #loadDeluxeMap(loadmodel: BrushModel, buf: ArrayBuffer): void {
-    loadmodel.deluxemap = null;
-
-    if (!loadmodel.bspxlumps || !loadmodel.bspxlumps['LIGHTINGDIR']) {
-      return;
-    }
-
-    const { fileofs, filelen } = loadmodel.bspxlumps['LIGHTINGDIR'];
-
-    if (filelen === 0) {
-      return;
-    }
-
-    loadmodel.deluxemap = new Uint8Array(buf.slice(fileofs, fileofs + filelen));
-  }
-
-  /**
-   * Load lightgrid octree from BSPX lump if available.
-   */
-  #loadLightgridOctree(loadmodel: BrushModel, buf: ArrayBuffer): void {
-    loadmodel.lightgrid = null;
-
-    if (!loadmodel.bspxlumps || !loadmodel.bspxlumps['LIGHTGRID_OCTREE']) {
-      return;
-    }
-
-    const { fileofs, filelen } = loadmodel.bspxlumps['LIGHTGRID_OCTREE'];
-
-    if (filelen === 0) {
-      return;
-    }
-
-    try {
-      const view = new DataView(buf);
-      let offset = fileofs;
-      const endOffset = fileofs + filelen;
-
-      // Minimum size check: vec3_t step (12) + ivec3_t size (12) + vec3_t mins (12) + byte numstyles (1) + uint32_t rootnode (4) + uint32_t numnodes (4) + uint32_t numleafs (4) = 49 bytes
-      if (filelen < 49) {
-        Con.DPrint('BSP29Loader: LIGHTGRID_OCTREE lump too small\n');
-        return;
-      }
-
-      // vec3_t step
-      const step: [number, number, number] = [
-        view.getFloat32(offset, true),
-        view.getFloat32(offset + 4, true),
-        view.getFloat32(offset + 8, true),
-      ];
-      offset += 12;
-
-      // ivec3_t size
-      const size: [number, number, number] = [
-        view.getInt32(offset, true),
-        view.getInt32(offset + 4, true),
-        view.getInt32(offset + 8, true),
-      ];
-      offset += 12;
-
-      // vec3_t mins
-      const mins = new Vector(
-        view.getFloat32(offset, true),
-        view.getFloat32(offset + 4, true),
-        view.getFloat32(offset + 8, true),
-      );
-      offset += 12;
-
-      // byte numstyles (WARNING: misaligns the rest of the data)
-      const numstyles = view.getUint8(offset);
-      offset += 1;
-
-      // uint32_t rootnode
-      const rootnode = view.getUint32(offset, true);
-      offset += 4;
-
-      // uint32_t numnodes
-      const numnodes = view.getUint32(offset, true);
-      offset += 4;
-
-      // Check if we have enough data for nodes (each node is 44 bytes: 3*4 for mid + 8*4 for children)
-      if (offset + (numnodes * 44) > endOffset) {
-        Con.DPrint('BSP29Loader: LIGHTGRID_OCTREE nodes data truncated\n');
-        return;
-      }
-
-      // Parse nodes
-      const nodes = [] as LightgridNode[];
-      for (let i = 0; i < numnodes; i++) {
-        const mid = [
-          view.getUint32(offset, true),
-          view.getUint32(offset + 4, true),
-          view.getUint32(offset + 8, true),
-        ] as [number, number, number];
-        offset += 12;
-
-        const child = [] as number[];
-        for (let j = 0; j < 8; j++) {
-          child[j] = view.getUint32(offset, true);
-          offset += 4;
-        }
-
-        nodes[i] = { mid, child };
-      }
-
-      // uint32_t numleafs
-      if (offset + 4 > endOffset) {
-        Con.DPrint('BSP29Loader: LIGHTGRID_OCTREE numleafs missing\n');
-        return;
-      }
-      const numleafs = view.getUint32(offset, true);
-      offset += 4;
-
-      // Parse leafs
-      const leafs = [] as LightgridLeaf[];
-      for (let i = 0; i < numleafs; i++) {
-        // Check bounds for leaf header (mins + size = 24 bytes)
-        if (offset + 24 > endOffset) {
-          Con.DPrint(`BSP29Loader: LIGHTGRID_OCTREE leaf ${i} header truncated\n`);
-          return;
-        }
-
-        const leafMins: [number, number, number] = [
-          view.getInt32(offset, true),
-          view.getInt32(offset + 4, true),
-          view.getInt32(offset + 8, true),
-        ];
-        offset += 12;
-
-        const leafSize: [number, number, number] = [
-          view.getInt32(offset, true),
-          view.getInt32(offset + 4, true),
-          view.getInt32(offset + 8, true),
-        ];
-        offset += 12;
-
-        // Parse per-point data
-        const totalPoints = leafSize[0] * leafSize[1] * leafSize[2];
-        const points = [] as LightgridPointSample[];
-
-        for (let p = 0; p < totalPoints; p++) {
-          // Check bounds for stylecount byte
-          if (offset >= endOffset) {
-            Con.DPrint(`BSP29Loader: LIGHTGRID_OCTREE leaf ${i} point ${p} truncated\n`);
-            return;
-          }
-
-          const stylecount = view.getUint8(offset);
-          offset += 1;
-
-          // Skip points with no data (stylecount = 0xff means missing)
-          if (stylecount === 0xff) {
-            points.push({ stylecount, styles: [] });
-            continue;
-          }
-
-          const styles = [] as LightgridStyleSample[];
-          for (let s = 0; s < stylecount; s++) {
-            // Check bounds for style data (1 byte stylenum + 3 bytes rgb = 4 bytes)
-            if (offset + 3 >= endOffset) {
-              Con.DPrint(`BSP29Loader: LIGHTGRID_OCTREE leaf ${i} point ${p} style ${s} truncated\n`);
-              return;
-            }
-
-            const stylenum = view.getUint8(offset);
-
-            offset += 1;
-
-            const rgb = [
-              view.getUint8(offset),
-              view.getUint8(offset + 1),
-              view.getUint8(offset + 2),
-            ] as [number, number, number];
-            offset += 3;
-
-            styles.push({ stylenum, rgb });
-          }
-
-          points.push({ stylecount, styles });
-        }
-
-        leafs.push({ mins: leafMins, size: leafSize, points });
-      }
-
-      loadmodel.lightgrid = {
-        step,
-        size,
-        mins,
-        numstyles,
-        rootnode,
-        nodes,
-        leafs,
-      };
-
-      Con.DPrint(`BSP29Loader: loaded LIGHTGRID_OCTREE with ${numnodes} nodes and ${numleafs} leafs\n`);
-    } catch (error) {
-      if (error instanceof Error) {
-        Con.PrintError(`BSP29Loader: error loading LIGHTGRID_OCTREE: ${error.message}\n`);
-      } else {
-        Con.PrintError('BSP29Loader: error loading LIGHTGRID_OCTREE\n');
-        // eslint-disable-next-line no-debugger
-        debugger;
-      }
-      loadmodel.lightgrid = null;
-    }
-  }
 }

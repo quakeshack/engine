@@ -213,6 +213,7 @@ function installRegistry(baseDir) {
   registry.Mod = Mod;
   registry.COM = {
     Parse: COMClass.Parse,
+    ParseEntityLump: COMClass.ParseEntityLump,
     async LoadFile(name) {
       const resolved = path.join(baseDir, name);
 

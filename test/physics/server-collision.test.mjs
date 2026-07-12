@@ -240,9 +240,56 @@ void describe('ServerCollision', () => {
       });
     });
 
+    void test('point trace against a hull-less brush world (e.g. BSP38) never calls ServerArea.hullForEntity', () => {
+      const collision = new ServerCollision();
+      const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
+      worldModel.hulls = []; // BSP38 has no clipnodes/hulls at all, unlike BSP29/BSP2
+      const worldEntity = createMockEntity({
+        origin: new Vector(),
+        angles: new Vector(),
+        movetype: moveType.MOVETYPE_NONE,
+        solidType: solid.SOLID_BSP,
+      });
+      const worldEdict = createMockEdict(worldEntity);
+
+      void withMockRegistry(defaultMockRegistry({
+        area: {
+          hullForEntity() {
+            throw new Error('hullForEntity must not be called for a model with no legacy hulls');
+          },
+          tree: {
+            queryAABB() {
+              return [];
+            },
+          },
+        },
+        server: {
+          edicts: [worldEdict],
+          worldmodel: worldModel,
+        },
+      }), () => {
+        const trace = collision.move(
+          new Vector(0, 0, 0),
+          new Vector(),
+          new Vector(),
+          new Vector(100, 0, 0),
+          0,
+          null,
+        );
+
+        assert.equal(trace.startsolid, false);
+        assert.ok(trace.fraction < 1.0);
+        assert.equal(trace.ent, worldEdict);
+      });
+    });
+
     void test('prefers a later legacy hull hit over an earlier world brush point hit', () => {
       const collision = new ServerCollision();
       const worldModel = createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush' });
+      // _clipMoveToHullState is stubbed below and never touches this, but a non-empty
+      // array is required to represent a world that has legacy hulls at all (BSP29/BSP2),
+      // which is what this test's hull-preference scenario is about.
+      worldModel.hulls = [{}];
       const worldEntity = createMockEntity({
         origin: new Vector(),
         angles: new Vector(),
@@ -444,6 +491,10 @@ void describe('ServerCollision', () => {
       const collision = new ServerCollision();
       const worldModel = createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush', submodel: false });
       const entityModel = createBoxBrushModel({ halfExtents: [8, 8, 8], name: '*clip-brush' });
+      // _clipMoveToHullState is stubbed below and never touches this, but a non-empty
+      // array is required to represent an entity model with legacy hulls (BSP29/BSP2),
+      // which is what this test's hull-preference scenario is about.
+      entityModel.hulls = [{}];
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const bspEntity = createMockEntity({
         origin: new Vector(64, 0, 0),

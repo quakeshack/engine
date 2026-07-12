@@ -6,6 +6,34 @@ import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { UserCmd, button } from '../../source/engine/network/Protocol.ts';
 
 void describe('SzBuffer', () => {
+  void describe('hasRoom', () => {
+    void test('reports room based on the buffer\'s actual maxsize, not a fixed margin', () => {
+      const buffer = new SzBuffer(16384, 'hasRoom');
+
+      assert.equal(buffer.hasRoom(16384), true);
+      assert.equal(buffer.hasRoom(16385), false);
+
+      buffer.writeByte(1);
+      buffer.cursize = 16000; // simulate a busy frame well past the old stale 1009-byte check
+
+      assert.equal(buffer.hasRoom(384), true);
+      assert.equal(buffer.hasRoom(385), false);
+    });
+
+    void test('reflects room left after writes consume cursize', () => {
+      const buffer = new SzBuffer(32, 'hasRoom writes');
+
+      assert.equal(buffer.hasRoom(32), true);
+
+      buffer.writeLong(1);
+      buffer.writeLong(2);
+
+      assert.equal(buffer.cursize, 8);
+      assert.equal(buffer.hasRoom(24), true);
+      assert.equal(buffer.hasRoom(25), false);
+    });
+  });
+
   void test('round-trips delta user commands', () => {
     const from = new UserCmd();
     const to = new UserCmd();

@@ -36,6 +36,8 @@ Each entry in the `materials` object defines the properties for a specific textu
 | `specular` | `string` | Path to the specular map texture. |
 | `luminance` | `string` | Path to the luminance (emissive) texture, layered on top of the lightmap. |
 | `flags` | `string[]` | An array of material flags. |
+| `width` | `number` | Optional. Overrides the texel-space tiling scale (see [Width and Height](#width-and-height) below). |
+| `height` | `number` | Optional. Overrides the texel-space tiling scale (see [Width and Height](#width-and-height) below). |
 
 ### Material Flags
 
@@ -47,6 +49,35 @@ The `flags` array can contain the following strings:
 | `MF_SKY` | Marks the surface as a sky surface. |
 | `MF_TURBULENT` | Applies turbulent deformation (like water/slime/lava). Textures starting with `*` or `!` are automatically marked as turbulent. |
 | `MF_FULLBRIGHT` | Renders the surface unlit, ignoring lightmaps. Useful for emissive/glowing surfaces. Unlike `luminance`, this applies the diffuse texture itself as the emissive layer rather than a separate map. |
+
+### Width and Height
+
+`width`/`height` control the **texel-space tiling scale** the engine uses when mapping a surface's UVs onto your `diffuse` image — not the pixel dimensions of the image file itself. This is the same scale the original map texture was compiled against; if your replacement texture doesn't tile at that same scale, it will tile more or fewer times across the surface than the mapper intended (a common symptom: a swapped-in texture looking "zoomed in" or "zoomed out" compared to the original).
+
+You don't need to set these for a typical Quake 1/Quake 2 (BSP29/BSP2/BSP38) map when your `diffuse` replacement is the same pixel size as the original texture — the engine derives the scale from the original automatically. Set them explicitly when:
+
+- Your `diffuse` replacement is a **different resolution** than the original texture (e.g. a 4x upscaled or hand-painted replacement at a different size). Set `width`/`height` to the **original** texture's dimensions, not the replacement's.
+- You're overriding a **BSP38 (Quake II)** map's texture and either haven't opted into `.wal`
+  loading (see `_qs_wal` below) or the texture has no `.wal` file to fall back to. Without a
+  resolved `.wal` texture, the engine falls back to using your `diffuse` image's own pixel size,
+  which only tiles correctly if it happens to match the original — for anything else, set these
+  explicitly.
+
+### `.wal` texture loading (BSP38 / Quake II only)
+
+BSP38 maps can load native `.wal` textures (`textures/<name>.wal`) for surfaces that don't have a
+qsmat override, but this is **opt-in** — set `"_qs_wal" "1"` on the map's worldspawn entity to
+enable it. It defaults to off because a map fully covered by qsmat has no use for `.wal` data, and
+loading it anyway would mean a file request per distinct texture in the map, almost all doomed to
+fail.
+
+```json
+"DOOR03": {
+  "diffuse": "textures/doors/door03_d.png",
+  "width": 64,
+  "height": 128
+}
+```
 
 ## Example
 

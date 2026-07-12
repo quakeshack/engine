@@ -4,6 +4,9 @@ import { EPSILON } from '../../../shared/Defs.ts';
  * Mesh utility helpers.
  */
 export default class Mesh {
+  /** Floats per vertex in the brush `cmds` buffer: pos(3), uv(2), color(4), normal(3), tangent(3), bitangent(3). */
+  static readonly VERTEX_STRIDE = 20;
+
   /**
    * Build a stable key for vertices that should share tangent-space accumulation.
    * Uses quantized position/UV/normal to tolerate tiny floating-point drift.
@@ -51,9 +54,12 @@ export default class Mesh {
    * Stride is 20 floats: pos(3), uv(2), color(4), normal(3), tangent(3), bitangent(3).
    * @param cmds Vertex data array.
    * @param cutoff Number of floats to process (should be multiple of 60 for whole triangles).
+   * @param precomputedVertices Vertex indices (i.e. `offset / VERTEX_STRIDE`) that already carry
+   * valid tangent/bitangent data (e.g. from a BSPX FACENORMALS lump) and must be left untouched —
+   * neither contributing to nor overwritten by the UV-derivative accumulation below.
    */
-  static CalculateTangentBitangents(cmds: number[], cutoff: number): void {
-    const stride = 20;
+  static CalculateTangentBitangents(cmds: number[], cutoff: number, precomputedVertices?: ReadonlySet<number>): void {
+    const stride = Mesh.VERTEX_STRIDE;
     const maxOffset = Math.min(cutoff, cmds.length);
     const accumulators = new Map<string, {
       tx: number;
@@ -94,6 +100,10 @@ export default class Mesh {
       const bz = f * (-deltaUV2[0] * edge1[2] + deltaUV1[0] * edge2[2]);
 
       for (const base of [i0, i1, i2]) {
+        if (precomputedVertices?.has(base / stride)) {
+          continue;
+        }
+
         const key = Mesh._buildTangentVertexKey(cmds, base);
         const entry = accumulators.get(key);
 
@@ -112,6 +122,10 @@ export default class Mesh {
     }
 
     for (let base = 0; base + stride <= maxOffset; base += stride) {
+      if (precomputedVertices?.has(base / stride)) {
+        continue;
+      }
+
       const key = Mesh._buildTangentVertexKey(cmds, base);
       const accumulator = accumulators.get(key);
 

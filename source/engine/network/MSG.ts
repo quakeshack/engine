@@ -103,6 +103,14 @@ export class SzBuffer {
     return this;
   }
 
+  /**
+   * Check whether the given number of bytes can be written without triggering overflow handling.
+   * @returns True when `bytes` more can be allocated without exceeding `maxsize`.
+   */
+  hasRoom(bytes: number): boolean {
+    return this.cursize + bytes <= this.maxsize;
+  }
+
   allocate(size: number): number {
     if (this.cursize + size > this.maxsize) {
       if (!this.allowoverflow) {

@@ -55,6 +55,15 @@ export interface WorldspawnInfo extends Record<string, string | undefined> {
 
   /** opt-in for automatically enabling water fog effects (1 for on, 0 for off) */
   _qs_waterfog?: string;
+
+  /**
+   * Opt-in for BSP38 (Quake II) `.wal` texture loading (1 for on, anything
+   * else/absent for off). Off by default: a map whose textures are fully
+   * covered by qsmat has no use for `.wal` fallback data, and attempting a
+   * `textures/<name>.wal` load per distinct texture anyway would fire off a
+   * load request for every single one, almost all doomed to fail.
+   */
+  _qs_wal?: string;
 }
 
 export interface FogVolumeInfo {
@@ -241,11 +250,17 @@ export class Visibility {
   }
 
   /**
-   * Recursive helper for `addFatPoint`.
+   * Recursive helper shared by `addFatPoint` and `addFatPhsPoint`.
+   * A point sitting inside solid content or right on a splitting plane (e.g. an explosion's
+   * impact point against a wall or floor) resolves to a single meaningless leaf via a strict
+   * BSP descent. Within an 8-unit fudge of a plane, both sides are descended and merged so a
+   * point straddling geometry still picks up the open-air leaf's visibility.
    * @param p Point in world space.
    * @param node Current BSP node.
+   * @param clusterOffsets Per-cluster byte offsets into `sourceData` (PVS or PHS).
+   * @param sourceData Compressed visibility data to merge from (PVS or PHS).
    */
-  #addToFatPoint(p: Vector, node: Node): void {
+  #addToFatPoint(p: Vector, node: Node, clusterOffsets: number[] | null, sourceData: Uint8Array | null): void {
     const model = this.#model;
 
     if (model === null) {
@@ -254,9 +269,9 @@ export class Visibility {
 
     while (true) {
       if (node.contents < content.CONTENT_NONE) {
-        if (node.contents !== content.CONTENT_SOLID && node.cluster >= 0 && model.clusterPvsOffsets !== null) {
-          const visofs = model.clusterPvsOffsets[node.cluster];
-          const vis = Visibility.fromBrushModel(model, visofs);
+        if (node.contents !== content.CONTENT_SOLID && node.cluster >= 0 && clusterOffsets !== null) {
+          const visofs = clusterOffsets[node.cluster];
+          const vis = Visibility.fromBrushModel(model, visofs, sourceData);
 
           for (let index = 0; index < this.#data.length; index++) {
             this.#data[index] |= vis.#data[index];
@@ -279,13 +294,13 @@ export class Visibility {
         continue;
       }
 
-      this.#addToFatPoint(p, node.children[0] as Node);
+      this.#addToFatPoint(p, node.children[0] as Node, clusterOffsets, sourceData);
       node = node.children[1] as Node;
     }
   }
 
   /**
-   * Merge visibility from all leafs connected to the point.
+   * Merge PVS from all leafs connected to the point.
    * @param p Point in world space.
    * @returns This visibility object.
    */
@@ -293,7 +308,40 @@ export class Visibility {
     const model = this.#model;
 
     if (model !== null) {
-      this.#addToFatPoint(p, model.nodes[0] as Node);
+      this.#addToFatPoint(p, model.nodes[0] as Node, model.clusterPvsOffsets, model.visdata);
+    }
+
+    return this;
+  }
+
+  /**
+   * Merge PHS from all leafs connected to the point.
+   * @param p Point in world space.
+   * @returns This visibility object.
+   */
+  addFatPhsPoint(p: Vector): this {
+    const model = this.#model;
+
+    if (model !== null && model.phsdata !== null) {
+      this.#addToFatPoint(p, model.nodes[0] as Node, model.clusterPhsOffsets, model.phsdata);
+    }
+
+    return this;
+  }
+
+  /**
+   * Merge another Visibility's revealed clusters into this one.
+   * @param other Visibility instance to merge in.
+   * @returns This visibility object.
+   */
+  mergeFrom(other: Visibility): this {
+    if (other.#unconditionalReveal) {
+      this.#unconditionalReveal = true;
+    }
+
+    const length = Math.min(this.#data.length, other.#data.length);
+    for (let index = 0; index < length; index++) {
+      this.#data[index] |= other.#data[index];
     }
 
     return this;
@@ -780,6 +828,44 @@ export class BrushModel extends BaseModel {
     }
 
     return Visibility.fromBrushModel(this, this.clusterPhsOffsets[leaf.cluster], this.phsdata);
+  }
+
+  /**
+   * Merge PHS from all leafs near the given starting point, the PHS counterpart to
+   * `getFatPvsByPoint`. A single sampled point can resolve to the solid/outside leaf for
+   * points sitting on or just inside geometry (e.g. an explosion's impact point against a
+   * wall or floor), which would otherwise make the sound spuriously inaudible to everyone.
+   * @param point Point in world space.
+   * @returns Merged PHS data for leafs near the point.
+   */
+  getFatPhsByPoint(point: Vector): Visibility {
+    const vis = new Visibility(this);
+
+    return vis.addFatPhsPoint(point);
+  }
+
+  /**
+   * Merge PHS across every leaf an entity occupies, rather than a single sampled point.
+   * A single point (e.g. a bounding box center) can land in solid content or a leaf whose PHS
+   * doesn't reflect the entity's actual extent, particularly for large or asymmetric movers
+   * (doors, trains, platforms) whose origin can end up embedded in geometry after a move.
+   * @param leafIndices Leaf array indices (`Node.num` values) the entity is linked into.
+   * @returns Merged PHS data across all given leafs.
+   */
+  getPhsByLeafs(leafIndices: number[]): Visibility {
+    const vis = new Visibility(this);
+
+    for (const leafIndex of leafIndices) {
+      const leaf = this.leafs[leafIndex];
+
+      if (leaf === undefined) {
+        continue;
+      }
+
+      vis.mergeFrom(this.getPhsByLeaf(leaf));
+    }
+
+    return vis;
   }
 
   /**

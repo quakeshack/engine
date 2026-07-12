@@ -103,7 +103,7 @@ export class BaseMaterial {
   }
 
 
-  bindTo(_program: GLProgramInfo): void {
+  bindTo(_program: GLProgramInfo, _hasDeluxemap: boolean = false): void {
     // to be implemented by subclasses
   }
 
@@ -255,11 +255,32 @@ export class QuakeMaterial extends BrushMaterial {
   #frame = 0;
   #nextFrame = 0;
 
-  override bindTo(program: GLProgramInfo): void {
-    gl.uniform1i(program.uPerformDotLighting!, 0);
+  /**
+   * Bind this material's textures and lighting mode for the current draw.
+   * When the model being drawn carries BSPX `LIGHTINGDIR` data, per-pixel
+   * Lambertian shading against the deluxemap direction is enabled using a
+   * flat normal map, so plain (non-`.qsmat.json`) surfaces benefit from the
+   * baked directional lighting the same way PBR materials do.
+   */
+  override bindTo(program: GLProgramInfo, hasDeluxemap: boolean = false): void {
+    gl.uniform1i(program.uPerformDotLighting!, hasDeluxemap ? 1 : 0);
     this._bindInterpolation(program);
     this._bindPrimaryTextures(program);
     this._bindLuminance(program);
+
+    if (!hasDeluxemap) {
+      return;
+    }
+
+    if (program.tNormal !== undefined) {
+      R.flatnormalmap.bind(program.tNormal!);
+      R.c_brush_texture_binds++;
+    }
+
+    if (program.tSpecular !== undefined) {
+      R.blacktexture.bind(program.tSpecular!);
+      R.c_brush_texture_binds++;
+    }
   }
 
   set texture(texture: GLTexture) {
@@ -363,7 +384,7 @@ export class PBRMaterial extends BrushMaterial {
     this.normal = R.flatnormalmap;
   }
 
-  override bindTo(program: GLProgramInfo): void {
+  override bindTo(program: GLProgramInfo, _hasDeluxemap: boolean = false): void {
     if (program.uPerformDotLighting !== undefined) {
       gl.uniform1i(program.uPerformDotLighting!, 1);
     }

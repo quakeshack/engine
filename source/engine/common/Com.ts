@@ -156,6 +156,48 @@ export default class COM {
   }
 
   /**
+   * Parses a Quake entity lump (`{ "key" "value" ... } { ... } ...`) into a
+   * sequence of key/value records, one per `{ }` block.
+   *
+   * Consumers that only need specific entities (e.g. `worldspawn`, or the
+   * first N `light` entities) can `break` out of the `for...of` loop to skip
+   * parsing the remainder of the lump.
+   * @yields one record per entity, in lump order
+   */
+  static *ParseEntityLump(data: string | null): Generator<Record<string, string>> {
+    while (data) {
+      const parsed = COM.Parse(data);
+      data = parsed.data;
+
+      if (!data) {
+        break;
+      }
+
+      const entity: Record<string, string> = {};
+
+      while (data) {
+        const parsedKey = COM.Parse(data);
+        data = parsedKey.data;
+
+        if (!data || parsedKey.token === '}') {
+          break;
+        }
+
+        const parsedValue = COM.Parse(data);
+        data = parsedValue.data;
+
+        if (!data || parsedValue.token === '}') {
+          break;
+        }
+
+        entity[parsedKey.token] = parsedValue.token;
+      }
+
+      yield entity;
+    }
+  }
+
+  /**
    * Check if a command-line parameter is present.
    * @returns the argv index of the parameter, or null if not found
    */

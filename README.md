@@ -6,8 +6,8 @@ Added features include, but are not limited to:
 
 * **Modern Environments**: Dedicated Node.js server, WebGL-based browser client, multithreading, and optimized networking.
 * **Enhanced Visuals**: 32-bit textures, WAD3 support, colored static and dynamic lighting (`.lit` files), [PBR materials](./docs/qsmat-format.md), smooth model animations, and semi-transparent water/lava/slime surfaces.
-* **Advanced Map Features**: BSP2 format for large maps, high-resolution lightmaps (`LMSCALE`), static skyboxes, and [volumetric fog](./docs/volumetric-fog.md).
-* **Modern Geometry Details**: Limited BSPX lump support (including per-pixel lighting from `LIGHTINGDIR`, dynamic lighting through `LIGHTGRID_OCTREE`, etc.).
+* **Advanced Map Features**: BSP2 format for large maps, Quake II BSP (BSP38) map loading, high-resolution lightmaps (`LMSCALE`), static skyboxes, and [volumetric fog](./docs/volumetric-fog.md).
+* **Modern Geometry Details**: BSPX lump support across both Quake 1 and Quake II map formats (including per-pixel lighting from `LIGHTINGDIR`, dynamic lighting through `LIGHTGRID_OCTREE`, etc. — see [BSPX Support](./docs/bspx.md) for what's covered per format).
 * **Multiplayer Enhancements**: Built-in peer-to-peer multiplayer using [WebRTC](./docs/webrtc.md) and client-side game code.
 * **Gameplay & Audio**: Navigation meshes for smarter NPCs and area portals for dynamic sound and culling.
 
@@ -21,7 +21,9 @@ Some features on the roadmap:
 * Better network code with client-side prediction.
 * More flexible rendering subsystem, making it easier to reuse model rendering etc.
 * HLBSP/BSP30 support.
-* Quake 2 support (BSP38, md2, etc.)
+* Full Quake 2 gameplay support (md2 models, `baseq2` game logic, monster AI, etc.) — map loading
+  (BSP38, including collision, visibility, area portals, and BSPX/`.wal` textures) is already
+  supported.
 
 This is an educational and recreational project.
 Though the vision is to provide an id tech 2 based game engine running in the browser for fun multiplayer projects.

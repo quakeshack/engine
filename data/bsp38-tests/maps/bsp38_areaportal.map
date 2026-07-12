@@ -1,0 +1,168 @@
+// Game: Quake 2
+// Minimal BSP38Loader test fixture: a single sealed box split into two areas
+// by an interior wall with a doorway, closed off by a func_areaportal brush.
+// Also includes a trigger_multiple brush entity to exercise submodel loading,
+// and a func_door filling the same doorway gap to exercise auto-derived
+// door-to-portal mapping (BSP38Loader#computeModelPortalMap).
+// entity 0
+{
+"classname" "worldspawn"
+"message" "BSP38Loader test fixture"
+"_qs_wal" "1"
+// brush 0
+{
+( -208 -80 0 ) ( 208 80 0 ) ( 208 -80 0 ) e1u1/box1_5 0 0 0 1 1
+( -208 80 -16 ) ( 208 -80 -16 ) ( 208 80 -16 ) e1u1/box1_5 0 0 0 1 1
+( -208 -80 -16 ) ( -208 80 -16 ) ( -208 -80 0 ) e1u1/box1_5 0 0 0 1 1
+( 208 -80 -16 ) ( 208 -80 0 ) ( 208 80 -16 ) e1u1/box1_5 0 0 0 1 1
+( -208 -80 -16 ) ( -208 -80 0 ) ( 208 -80 -16 ) e1u1/box1_5 0 0 0 1 1
+( -208 80 -16 ) ( 208 80 -16 ) ( -208 80 0 ) e1u1/box1_5 0 0 0 1 1
+}
+// brush 1
+{
+( -208 -80 144 ) ( 208 80 144 ) ( 208 -80 144 ) e1u1/box1_5 0 0 0 1 1
+( -208 80 128 ) ( 208 -80 128 ) ( 208 80 128 ) e1u1/box1_5 0 0 0 1 1
+( -208 -80 128 ) ( -208 80 128 ) ( -208 -80 144 ) e1u1/box1_5 0 0 0 1 1
+( 208 -80 128 ) ( 208 -80 144 ) ( 208 80 128 ) e1u1/box1_5 0 0 0 1 1
+( -208 -80 128 ) ( -208 -80 144 ) ( 208 -80 128 ) e1u1/box1_5 0 0 0 1 1
+( -208 80 128 ) ( 208 80 128 ) ( -208 80 144 ) e1u1/box1_5 0 0 0 1 1
+}
+// brush 2
+{
+( -208 -80 128 ) ( -192 80 128 ) ( -192 -80 128 ) e1u1/box1_5 0 0 0 1 1
+( -208 80 0 ) ( -192 -80 0 ) ( -192 80 0 ) e1u1/box1_5 0 0 0 1 1
+( -208 -80 0 ) ( -208 80 0 ) ( -208 -80 128 ) e1u1/box1_5 0 0 0 1 1
+( -192 -80 0 ) ( -192 -80 128 ) ( -192 80 0 ) e1u1/box1_5 0 0 0 1 1
+( -208 -80 0 ) ( -208 -80 128 ) ( -192 -80 0 ) e1u1/box1_5 0 0 0 1 1
+( -208 80 0 ) ( -192 80 0 ) ( -208 80 128 ) e1u1/box1_5 0 0 0 1 1
+}
+// brush 3
+{
+( 192 -80 128 ) ( 208 80 128 ) ( 208 -80 128 ) e1u1/box1_5 0 0 0 1 1
+( 192 80 0 ) ( 208 -80 0 ) ( 208 80 0 ) e1u1/box1_5 0 0 0 1 1
+( 192 -80 0 ) ( 192 80 0 ) ( 192 -80 128 ) e1u1/box1_5 0 0 0 1 1
+( 208 -80 0 ) ( 208 -80 128 ) ( 208 80 0 ) e1u1/box1_5 0 0 0 1 1
+( 192 -80 0 ) ( 192 -80 128 ) ( 208 -80 0 ) e1u1/box1_5 0 0 0 1 1
+( 192 80 0 ) ( 208 80 0 ) ( 192 80 128 ) e1u1/box1_5 0 0 0 1 1
+}
+// brush 4
+{
+( -192 -80 128 ) ( 192 -64 128 ) ( 192 -80 128 ) e1u1/box1_5 0 0 0 1 1
+( -192 -64 0 ) ( 192 -80 0 ) ( 192 -64 0 ) e1u1/box1_5 0 0 0 1 1
+( -192 -80 0 ) ( -192 -64 0 ) ( -192 -80 128 ) e1u1/box1_5 0 0 0 1 1
+( 192 -80 0 ) ( 192 -80 128 ) ( 192 -64 0 ) e1u1/box1_5 0 0 0 1 1
+( -192 -80 0 ) ( -192 -80 128 ) ( 192 -80 0 ) e1u1/box1_5 0 0 0 1 1
+( -192 -64 0 ) ( 192 -64 0 ) ( -192 -64 128 ) e1u1/box1_5 0 0 0 1 1
+}
+// brush 5
+{
+( -192 64 128 ) ( 192 80 128 ) ( 192 64 128 ) e1u1/box1_5 0 0 0 1 1
+( -192 80 0 ) ( 192 64 0 ) ( 192 80 0 ) e1u1/box1_5 0 0 0 1 1
+( -192 64 0 ) ( -192 80 0 ) ( -192 64 128 ) e1u1/box1_5 0 0 0 1 1
+( 192 64 0 ) ( 192 64 128 ) ( 192 80 0 ) e1u1/box1_5 0 0 0 1 1
+( -192 64 0 ) ( -192 64 128 ) ( 192 64 0 ) e1u1/box1_5 0 0 0 1 1
+( -192 80 0 ) ( 192 80 0 ) ( -192 80 128 ) e1u1/box1_5 0 0 0 1 1
+}
+// brush 6
+{
+( -8 -64 128 ) ( 8 -16 128 ) ( 8 -64 128 ) e1u1/box1_5 0 0 0 1 1
+( -8 -16 0 ) ( 8 -64 0 ) ( 8 -16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 -64 0 ) ( -8 -16 0 ) ( -8 -64 128 ) e1u1/box1_5 0 0 0 1 1
+( 8 -64 0 ) ( 8 -64 128 ) ( 8 -16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 -64 0 ) ( -8 -64 128 ) ( 8 -64 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 -16 0 ) ( 8 -16 0 ) ( -8 -16 128 ) e1u1/box1_5 0 0 0 1 1
+}
+// brush 7
+{
+( -8 16 128 ) ( 8 64 128 ) ( 8 16 128 ) e1u1/box1_5 0 0 0 1 1
+( -8 64 0 ) ( 8 16 0 ) ( 8 64 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 16 0 ) ( -8 64 0 ) ( -8 16 128 ) e1u1/box1_5 0 0 0 1 1
+( 8 16 0 ) ( 8 16 128 ) ( 8 64 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 16 0 ) ( -8 16 128 ) ( 8 16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 64 0 ) ( 8 64 0 ) ( -8 64 128 ) e1u1/box1_5 0 0 0 1 1
+}
+// brush 8
+{
+( -8 -16 128 ) ( 8 16 128 ) ( 8 -16 128 ) e1u1/box1_5 0 0 0 1 1
+( -8 16 96 ) ( 8 -16 96 ) ( 8 16 96 ) e1u1/box1_5 0 0 0 1 1
+( -8 -16 96 ) ( -8 16 96 ) ( -8 -16 128 ) e1u1/box1_5 0 0 0 1 1
+( 8 -16 96 ) ( 8 -16 128 ) ( 8 16 96 ) e1u1/box1_5 0 0 0 1 1
+( -8 -16 96 ) ( -8 -16 128 ) ( 8 -16 96 ) e1u1/box1_5 0 0 0 1 1
+( -8 16 96 ) ( 8 16 96 ) ( -8 16 128 ) e1u1/box1_5 0 0 0 1 1
+}
+}
+// entity 1
+{
+"classname" "light"
+"origin" "-100 0 96"
+"light" "300"
+}
+// entity 2
+{
+"classname" "light"
+"origin" "100 0 96"
+"light" "300"
+}
+// entity 3
+{
+"classname" "info_player_start"
+"origin" "-160 0 24"
+"angle" "0"
+}
+// entity 4
+{
+"classname" "func_areaportal"
+"style" "1"
+// brush 0 (fills the doorway gap in the dividing wall)
+{
+( -8 -16 96 ) ( 8 16 96 ) ( 8 -16 96 ) e1u1/box1_5 0 0 0 1 1
+( -8 16 0 ) ( 8 -16 0 ) ( 8 16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 -16 0 ) ( -8 16 0 ) ( -8 -16 96 ) e1u1/box1_5 0 0 0 1 1
+( 8 -16 0 ) ( 8 -16 96 ) ( 8 16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 -16 0 ) ( -8 -16 96 ) ( 8 -16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 16 0 ) ( 8 16 0 ) ( -8 16 96 ) e1u1/box1_5 0 0 0 1 1
+}
+}
+// entity 5
+// "portal" is an explicit BSP38Loader override (see #parseExplicitPortalKeys):
+// this brush sits entirely on the west side, nowhere near the doorway, so the
+// geometric heuristic in #computeModelPortalMap would never assign it a
+// portal on its own — proves the explicit-key escape hatch actually takes
+// effect rather than just agreeing with what auto-derivation would find.
+{
+"classname" "trigger_multiple"
+"wait" "-1"
+"portal" "1"
+// brush 0
+{
+( -96 -32 48 ) ( -32 32 48 ) ( -32 -32 48 ) e1u1/box1_5 0 0 0 1 1
+( -96 32 16 ) ( -32 -32 16 ) ( -32 32 16 ) e1u1/box1_5 0 0 0 1 1
+( -96 -32 16 ) ( -96 32 16 ) ( -96 -32 48 ) e1u1/box1_5 0 0 0 1 1
+( -32 -32 16 ) ( -32 -32 48 ) ( -32 32 16 ) e1u1/box1_5 0 0 0 1 1
+( -96 -32 16 ) ( -96 -32 48 ) ( -32 -32 16 ) e1u1/box1_5 0 0 0 1 1
+( -96 32 16 ) ( -32 32 16 ) ( -96 32 48 ) e1u1/box1_5 0 0 0 1 1
+}
+}
+// entity 6
+// func_door filling the same doorway gap as the func_areaportal brush above
+// (entity 4), same footprint by design: real Q2 mapping convention pairs a
+// visible/solid door brush with a separate CONTENTS_AREAPORTAL brush in the
+// same physical location. Exercises BSP38Loader#computeModelPortalMap, which
+// derives modelPortalMap['*N'] from this brush's own compiled bounds without
+// needing any target/targetname link to entity 4.
+{
+"classname" "func_door"
+"angle" "90"
+"speed" "100"
+"wait" "2"
+"lip" "8"
+// brush 0
+{
+( -8 -16 96 ) ( 8 16 96 ) ( 8 -16 96 ) e1u1/box1_5 0 0 0 1 1
+( -8 16 0 ) ( 8 -16 0 ) ( 8 16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 -16 0 ) ( -8 16 0 ) ( -8 -16 96 ) e1u1/box1_5 0 0 0 1 1
+( 8 -16 0 ) ( 8 -16 96 ) ( 8 16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 -16 0 ) ( -8 -16 96 ) ( 8 -16 0 ) e1u1/box1_5 0 0 0 1 1
+( -8 16 0 ) ( 8 16 0 ) ( -8 16 96 ) e1u1/box1_5 0 0 0 1 1
+}
+}

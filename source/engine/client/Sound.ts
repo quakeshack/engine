@@ -706,6 +706,32 @@ export default class Sound {
     Sound._updateStaticSounds();
   }
 
+  /**
+   * Checks whether a world position could possibly be heard from the current listener position,
+   * using the worldmodel's PHS. Entity-attached sounds are already PHS-filtered server-side
+   * (see ServerMessages.startSound), but some events (e.g. temp entities) are broadcast to every
+   * client unconditionally and only rely on distance attenuation and area-portal occlusion in
+   * Channel.spatialize — neither of which accounts for a source sitting in a wholly disconnected
+   * part of the map. Defaults to audible when PHS data isn't available, matching Visibility's own
+   * fallback for maps without compiled vis data.
+   *
+   * Uses the "fat point" PHS (`getFatPhsByPoint`) rather than a single strict leaf lookup: a
+   * source position sitting on or just inside solid content — e.g. an explosion's impact point
+   * against a wall or floor, which is the common case, not the exception — would otherwise
+   * resolve to the meaningless solid/outside leaf and read as unconditionally inaudible.
+   * @param origin World-space position of the sound source.
+   * @returns True when the position is potentially audible, or PHS data is unavailable.
+   */
+  static IsPositionAudible(origin: Vector): boolean {
+    const worldmodel = CL.state.worldmodel;
+
+    if (!worldmodel || !Sound._listenerLeaf || worldmodel.phsdata === null) {
+      return true;
+    }
+
+    return worldmodel.getFatPhsByPoint(origin).isRevealed(Sound._listenerLeaf.num);
+  }
+
   /** @protected */
   static _updateAmbientSounds(): void {
     if (!CL.state.worldmodel || !Sound._listenerLeaf || Sound._ambientLevel.value === 0) {

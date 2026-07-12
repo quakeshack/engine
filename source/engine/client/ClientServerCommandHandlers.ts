@@ -437,13 +437,13 @@ function parseTemporaryEntity() {
   switch (type) {
     case Protocol.te.wizspike:
       R.RunParticleEffect(pos, Vector.origin, 20, 20);
-      if (sounds.wizhit !== null) {
+      if (sounds.wizhit !== null && S.IsPositionAudible(pos)) {
         S.StartSound(-1, 0, sounds.wizhit, pos, 1.0, 1.0);
       }
       return;
     case Protocol.te.knightspike:
       R.RunParticleEffect(pos, Vector.origin, 226, 20);
-      if (sounds.knighthit !== null) {
+      if (sounds.knighthit !== null && S.IsPositionAudible(pos)) {
         S.StartSound(-1, 0, sounds.knighthit, pos, 1.0, 1.0);
       }
       return;
@@ -463,14 +463,14 @@ function parseTemporaryEntity() {
       dl.radius = 350.0;
       dl.die = CL.state.time + 0.5;
       dl.decay = 300.0;
-      if (sounds.explosion !== null) {
+      if (sounds.explosion !== null && S.IsPositionAudible(pos)) {
         S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
       }
     }
       return;
     case Protocol.te.tarexplosion:
       R.BlobExplosion(pos);
-      if (sounds.explosion !== null) {
+      if (sounds.explosion !== null && S.IsPositionAudible(pos)) {
         S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
       }
       return;
@@ -489,7 +489,7 @@ function parseTemporaryEntity() {
       dl.radius = 350.0;
       dl.die = CL.state.time + 0.5;
       dl.decay = 300.0;
-      if (sounds.explosion !== null) {
+      if (sounds.explosion !== null && S.IsPositionAudible(pos)) {
         S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
       }
     }

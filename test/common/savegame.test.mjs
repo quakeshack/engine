@@ -838,6 +838,7 @@ void describe('Host.save/load integration', () => {
     const engineAPI = createIntegrationEngineAPI(() => currentEdicts);
     const mockCOM = {
       Parse: COMClass.Parse,
+      ParseEntityLump: COMClass.ParseEntityLump,
       DefaultExtension: COMClass.DefaultExtension,
       async LoadFile(name) {
         return NodeCOM.LoadFile(name);

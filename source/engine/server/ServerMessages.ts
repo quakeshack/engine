@@ -149,9 +149,12 @@ export class ServerMessages {
 
   startParticle(org: Vector, dir: Vector, color: number, count: number): void {
     const datagram = SV.server.datagram;
-    if (datagram.cursize >= 1009) {
+
+    // svc.particle(1) + org coordvector(12) + dir coordvector(12) + count(1) + color(1)
+    if (!datagram.hasRoom(27)) {
       return;
     }
+
     datagram.writeByte(Protocol.svc.particle);
     datagram.writeCoordVector(org);
     datagram.writeCoordVector(dir);
@@ -164,11 +167,6 @@ export class ServerMessages {
     console.assert(attenuation >= 0.0 && attenuation <= 4.0, 'attenuation out of range', attenuation);
     console.assert(channel >= 0 && channel <= 7, 'channel out of range', channel);
 
-    const datagram = SV.server.datagram;
-    if (datagram.cursize >= 1009) {
-      return;
-    }
-
     let i;
     for (i = 1; i < SV.server.soundPrecache.length; i++) {
       if (sample === SV.server.soundPrecache[i]) {
@@ -176,8 +174,19 @@ export class ServerMessages {
       }
     }
     if (i >= SV.server.soundPrecache.length) {
+      const datagram = SV.server.datagram;
+
+      // svc.loadsound(1) + index(1) + sample string + null terminator(1)
+      if (!datagram.hasRoom(sample.length + 3)) {
+        return;
+      }
+
       Con.Print('SV.StartSound: ' + sample + ' was not precached\n');
       SV.server.soundPrecache.push(sample);
+
+      // Broadcast, not PHS-filtered: every client (present or future) needs this
+      // index-to-sample mapping regardless of whether it's in range to hear this
+      // particular trigger of it.
       datagram.writeByte(Protocol.svc.loadsound);
       datagram.writeByte(i);
       datagram.writeString(sample);
@@ -192,19 +201,67 @@ export class ServerMessages {
       fieldMask |= 2;
     }
 
-    datagram.writeByte(Protocol.svc.sound);
-    datagram.writeByte(fieldMask);
-    if ((fieldMask & 1) !== 0) {
-      datagram.writeByte(volume);
-    }
-    if ((fieldMask & 2) !== 0) {
-      datagram.writeByte(Math.floor(attenuation * 64.0));
-    }
     const entity = requireEntity(edict);
+    const origin = entity.origin.copy().add(entity.mins.copy().add(entity.maxs).multiply(0.5));
 
-    datagram.writeShort((edict.num << 3) + channel);
-    datagram.writeByte(i);
-    datagram.writeCoordVector(entity.origin.copy().add(entity.mins.copy().add(entity.maxs).multiply(0.5)));
+    // Network relevancy: only clients whose current position is in the sound's PHS could
+    // possibly hear it, mirroring vanilla Quake II's SV_Multicast(origin, MULTICAST_PHS).
+    // Quake 1's original sv.datagram had no such concept and broadcast every sound to every
+    // connected client unconditionally. Actual audibility (including area-portal occlusion
+    // through closed doors) is still decided client-side in Sound.spatialize — PHS here is
+    // purely a bandwidth optimization, an intentionally coarser, static superset.
+    //
+    // PHS is merged across every leaf the entity is linked into (`leafnums`), not sampled from
+    // a single point. A bbox-center point can land in solid content or a leaf that doesn't
+    // reflect the entity's actual extent — e.g. a door slab recessed into a wall pocket after
+    // its move completes — which would otherwise make the sound spuriously inaudible to everyone.
+    //
+    // Point-only logic entities (e.g. trap_spikeshooter) never set a model, so ServerArea never
+    // populates their leafnums (see ServerArea.linkEdict). Fall back to the bbox-center point for
+    // those, since merging PHS across zero leafs would otherwise hide the sound from everyone.
+    const worldmodel = SV.server.worldmodel;
+    console.assert(worldmodel !== null, 'ServerMessages.startSound requires a loaded worldmodel for PHS filtering');
+    const phs = edict.leafnums.length > 0
+      ? worldmodel!.getPhsByLeafs(edict.leafnums)
+      : worldmodel!.getPhsByPoint(origin);
+
+    for (const client of SV.svs.spawnedClients()) {
+      const message = client.expedited_message;
+
+      // Any client may still have a looping channel active for this exact (entity, channel)
+      // pair from an earlier startSound call (e.g. a door/plat/train move sound with an
+      // embedded WAV loop point). The PHS check below is recomputed from this sound's current
+      // origin and may now exclude a client that received the earlier sound while in range —
+      // movers change position between their "start" and "stop" calls, and players walk away.
+      // svc.stopsound is an idempotent no-op client-side when no channel matches this pair
+      // (Sound.StopSound), so broadcast it unconditionally to guarantee no channel is ever
+      // left orphaned, regardless of whether this new sound is itself audible to the client.
+      if (message.hasRoom(3)) {
+        message.writeByte(Protocol.svc.stopsound);
+        message.writeShort((edict.num << 3) + channel);
+      }
+
+      if (!client.edict.isInPXS(phs)) {
+        continue;
+      }
+
+      // svc.sound(1) + fieldmask(1) + volume(1) + attenuation(1) + entchannel(2) + index(1) + origin coordvector(12)
+      if (!message.hasRoom(19)) {
+        continue;
+      }
+
+      message.writeByte(Protocol.svc.sound);
+      message.writeByte(fieldMask);
+      if ((fieldMask & 1) !== 0) {
+        message.writeByte(volume);
+      }
+      if ((fieldMask & 2) !== 0) {
+        message.writeByte(Math.floor(attenuation * 64.0));
+      }
+      message.writeShort((edict.num << 3) + channel);
+      message.writeByte(i);
+      message.writeCoordVector(origin);
+    }
   }
 
   /**
@@ -605,7 +662,7 @@ export class ServerMessages {
     const visedicts = [];
 
     for (const ent of this.traversePVS(pvs, [], [clientEdict.num])) {
-      if ((msg.data.byteLength - msg.cursize) < 16) {
+      if (!msg.hasRoom(16)) {
         Con.PrintWarning('SV.WriteEntitiesToClient: packet overflow, not writing more entities\n');
         break;
       }
@@ -819,13 +876,13 @@ export class ServerMessages {
       client.last_ping_update = Host.realtime;
     }
 
-    if (client.expedited_message.cursize > 0 && (msg.cursize + client.expedited_message.cursize) < msg.data.byteLength) {
+    if (client.expedited_message.cursize > 0 && msg.hasRoom(client.expedited_message.cursize)) {
       msg.write(new Uint8Array(client.expedited_message.data), client.expedited_message.cursize);
       client.expedited_message.clear();
       changes |= 1;
     }
 
-    if ((msg.cursize + SV.server.expedited_datagram.cursize) < msg.data.byteLength) {
+    if (msg.hasRoom(SV.server.expedited_datagram.cursize)) {
       msg.write(new Uint8Array(SV.server.expedited_datagram.data), SV.server.expedited_datagram.cursize);
       changes |= 1;
     }
@@ -844,7 +901,7 @@ export class ServerMessages {
 
     client.last_update = SV.server.time;
 
-    if ((msg.cursize + SV.server.datagram.cursize) < msg.data.byteLength) {
+    if (msg.hasRoom(SV.server.datagram.cursize)) {
       msg.write(new Uint8Array(SV.server.datagram.data), SV.server.datagram.cursize);
     }
 

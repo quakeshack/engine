@@ -102,4 +102,34 @@ void describe('Mesh.CalculateTangentBitangents', () => {
       assert.ok(Number.isFinite(component));
     }
   });
+
+  void test('leaves precomputed tangent/bitangent data untouched for marked vertex indices', () => {
+    const precomputedTangent = [0.0, 1.0, 0.0];
+    const precomputedBitangent = [1.0, 0.0, 0.0];
+
+    const commands = [
+      ...createVertex(0.0, 0.0, 0.0, 0.0, 0.0),
+      ...createVertex(1.0, 0.0, 0.0, 1.0, 0.0),
+      ...createVertex(0.0, 1.0, 0.0, 0.0, 1.0),
+    ];
+
+    // Seed vertex 0 (e.g. from a BSPX FACENORMALS lump) with values the UV-derivative
+    // computation below would never produce on its own.
+    commands[STRIDE * 0 + 14] = precomputedTangent[0];
+    commands[STRIDE * 0 + 15] = precomputedTangent[1];
+    commands[STRIDE * 0 + 16] = precomputedTangent[2];
+    commands[STRIDE * 0 + 17] = precomputedBitangent[0];
+    commands[STRIDE * 0 + 18] = precomputedBitangent[1];
+    commands[STRIDE * 0 + 19] = precomputedBitangent[2];
+
+    Mesh.CalculateTangentBitangents(commands, commands.length, new Set([0]));
+
+    assertVecNear(readTangent(commands, 0), precomputedTangent);
+    assertVecNear(readBitangent(commands, 0), precomputedBitangent);
+
+    // Non-marked vertices still get their tangent/bitangent computed as usual.
+    const tangentAtVertex1 = readTangent(commands, STRIDE);
+    assertUnitVector(tangentAtVertex1);
+    assert.ok(!tangentAtVertex1.every((component, index) => Math.abs(component - precomputedTangent[index]) <= TANGENT_EPSILON));
+  });
 });

@@ -445,10 +445,11 @@ export default class ShadowMap {
         continue;
       }
 
-      // brush submodels only cast point light shadows, not top-down shadows
-      if (!isPointLight && entity.model!.name.startsWith('*')) {
-        continue;
-      }
+      // CR: commented out the submodel skip, I tuned the effects a bit
+      // // brush submodels only cast point light shadows, not top-down shadows
+      // if (!isPointLight && entity.model!.name.startsWith('*')) {
+      //   continue;
+      // }
 
       const casterFade = ShadowMap._computeCasterFade(entity, cutoffOrigin, cutoffDistSq);
       if (casterFade <= 0.0) {

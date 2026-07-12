@@ -93,6 +93,19 @@ export class Face {
   /** Face normal oriented to the BSP face side. */
   normal = new Vector();
 
+  /**
+   * Per-vertex normals from the BSPX `FACENORMALS` lump, aligned to the original per-edge vertex
+   * order (index i corresponds to the vertex produced by `surfedges[firstedge + i]`). Null when
+   * the lump is absent, in which case the renderer falls back to the flat `normal` above.
+   */
+  vertexNormals: Vector[] | null = null;
+
+  /** Per-vertex tangents from the BSPX `FACENORMALS` lump, aligned like `vertexNormals`. */
+  vertexTangents: Vector[] | null = null;
+
+  /** Per-vertex bitangents from the BSPX `FACENORMALS` lump, aligned like `vertexNormals`. */
+  vertexBitangents: Vector[] | null = null;
+
   /** Dynamic light bitmask affecting this face. */
   dlightbits = 0;
 

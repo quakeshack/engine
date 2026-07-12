@@ -945,6 +945,10 @@ void test('ServerCollision.move traces world brush sweeps through shared brush s
 void test('ServerCollision.move prefers a later legacy hull hit over an earlier world brush point hit', () => {
   const collision = new ServerCollision();
   const worldModel = createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush' });
+  // _clipMoveToHullState is stubbed below and never touches this, but a non-empty
+  // array is required to represent a world that has legacy hulls at all (BSP29/BSP2),
+  // which is what this test's hull-preference scenario is about.
+  worldModel.hulls = [{}];
   const worldEntity = createMockEntity({
     origin: new Vector(),
     angles: new Vector(),
@@ -1647,6 +1651,10 @@ void test('ServerCollision.move prefers a later legacy hull hit over an earlier 
   const collision = new ServerCollision();
   const worldModel = createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush', submodel: false });
   const entityModel = createBoxBrushModel({ halfExtents: [8, 8, 8], name: '*clip-brush' });
+  // _clipMoveToHullState is stubbed below and never touches this, but a non-empty
+  // array is required to represent an entity model with legacy hulls (BSP29/BSP2),
+  // which is what this test's hull-preference scenario is about.
+  entityModel.hulls = [{}];
   const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
   const bspEntity = createMockEntity({
     origin: new Vector(64, 0, 0),
@@ -3603,6 +3611,7 @@ async function loadBSPMap(mapName) {
   registry.Mod = Mod;
   registry.COM = /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
     Parse: COMClass.Parse,
+    ParseEntityLump: COMClass.ParseEntityLump,
     async LoadFile(name) {
       try {
         // The Mod system requests paths like 'maps/test_clip_4.bsp'

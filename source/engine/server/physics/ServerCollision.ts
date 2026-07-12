@@ -254,11 +254,17 @@ export class ServerCollision {
 
   /**
    * Hull fallback is only safe for point traces whose BSP entity is not rotated,
-   * because the legacy hull path does not apply entity angles.
+   * because the legacy hull path does not apply entity angles. It also requires
+   * the model to actually carry legacy hulls: brush-only formats (e.g. BSP38,
+   * which has no clipnodes/hulls at all) have nothing to cross-check against.
    * @returns True when the legacy hull fallback is safe for this trace.
    */
   _canUseHullPointFallback(state: BrushCollisionState, mins: Vector, maxs: Vector): boolean {
     if (!this._isPointTrace(mins, maxs)) {
+      return false;
+    }
+
+    if (state.model.hulls.length === 0) {
       return false;
     }
 
