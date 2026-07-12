@@ -1311,10 +1311,6 @@ export default class Host {
       return;
     }
 
-    if (!SV.server.active) {
-      return;
-    }
-
     let newName = names.join(' ').trim().substring(0, 15);
 
     if (!registry.isDedicatedServer && this.client === null) {
@@ -1428,7 +1424,7 @@ export default class Host {
   static Color_f(this: ConsoleCommand, ...argv: string[]): void { // signon 2, step 2
     Con.DPrint(`Host.Color_f: ${this.client}\n`);
 
-    if (argv.length <= 1) {
+    if (argv.length === 0) {
       Con.Print(`"color" is "${CL.color.value >> 4} ${CL.color.value & 15}"\ncolor <0-13> [0-13]\n`);
       return;
     }
@@ -1436,11 +1432,11 @@ export default class Host {
     let top: number;
     let bottom: number;
 
-    if (argv.length === 2) {
-      top = bottom = (Q.atoi(argv[1]) & 15) >>> 0;
+    if (argv.length === 1) {
+      top = bottom = (Q.atoi(argv[0]) & 15) >>> 0;
     } else {
-      top = (Q.atoi(argv[1]) & 15) >>> 0;
-      bottom = (Q.atoi(argv[2]) & 15) >>> 0;
+      top = (Q.atoi(argv[0]) & 15) >>> 0;
+      bottom = (Q.atoi(argv[1]) & 15) >>> 0;
     }
 
     if (top >= 14) {

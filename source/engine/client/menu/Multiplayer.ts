@@ -10,6 +10,7 @@ import { ServerEngineAPI } from '../../common/GameAPIs.ts';
 interface ServerInfoSummary {
   readonly hostname?: string;
   readonly map?: string;
+  readonly mod?: string;
   readonly currentPlayers?: number;
   readonly maxPlayers?: number;
   readonly colo?: string | null;
@@ -25,10 +26,10 @@ interface ServerListResponse {
   readonly servers?: ServerSessionSummary[] | null;
 }
 
-let { M, urls } = getClientRegistry();
+let { COM, M, urls } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ M, urls } = getClientRegistry());
+  ({ COM, M, urls } = getClientRegistry());
 });
 
 // CR: this whole menu is heavily WIP
@@ -146,18 +147,22 @@ export default class MultiplayerMainMenu extends MenuPage {
       const response = await fetch(url);
       const data = await response.json() as ServerListResponse;
 
+      // Only list servers running the same game (mod) as this client, so e.g. hellwave
+      // sessions don't show up while playing id1 and vice versa.
+      const servers = (data.servers ?? []).filter((session) => session.serverInfo?.mod === COM.game);
+
       // Remove "Finding sessions..."
       this.items.length = 3;
       this.items.push(new Spacer());
       this.items.push(new Label({ label: 'Online Sessions:' }));
 
-      if (!data.servers || data.servers.length === 0) {
+      if (servers.length === 0) {
         this.items.push(new Label({ label: 'No sessions found.' }));
         this.#addRefreshSessionsButton();
         return;
       }
 
-      for (const session of data.servers) {
+      for (const session of servers) {
         const info = session.serverInfo || {};
         // const hostname = info.hostname || 'Unknown Server';
         const map = info.map || '?';
