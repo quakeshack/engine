@@ -528,6 +528,18 @@ export default class Key {
       return;
     }
 
+    // Stuck on the console with no game running and no keyboard handy: clicking the canvas is a
+    // mouse-only escape hatch back to the menu, mirroring what Escape already does here (see
+    // Con.ToggleConsole_f). This has to happen here, at mousedown time, rather than on the
+    // browser's later 'click' event — a click on the menu's Back/Close button already changes
+    // Key.destination to console (via M.PopMenu()/CloseMenu()) within this same mousedown, and
+    // checking again on the trailing 'click' event would immediately reopen the menu it was
+    // just asked to close.
+    if (key === K.MOUSE1 && Key.destination === KeyDestination.console && CL.cls.state !== clientConnectionState.connected) {
+      M.Menu_Main_f();
+      return;
+    }
+
     // Execute bindings when the key shouldn't be consumed by the active text input:
     // - In the menu, F-keys always execute bindings.
     // - In the console, non-console keys execute bindings.

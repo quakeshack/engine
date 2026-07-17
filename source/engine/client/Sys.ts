@@ -4,6 +4,7 @@ import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Tools from './Tools.ts';
 import IN from './IN.ts';
 import { KeyDestination } from './Key.ts';
+import VID from './VID.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import workerFactories from '../common/WorkerFactories.ts';
 
@@ -11,10 +12,10 @@ interface LegacyWheelEvent extends Event {
   readonly wheelDeltaY: number;
 }
 
-let { COM, Host, Key } = getClientRegistry();
+let { COM, Host, Key, M } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Host, Key } = getClientRegistry());
+  ({ COM, Host, Key, M } = getClientRegistry());
 });
 
 eventBus.subscribe('host.crash', (error: unknown) => {
@@ -222,6 +223,12 @@ function handlePointerDown(event: PointerEvent): void {
   }
 }
 
+/** Forwards the absolute cursor position (canvas-relative) to the menu system for hover/click hit-testing. */
+function handleMouseMove(event: MouseEvent): void {
+  const rect = VID.mainwindow.getBoundingClientRect();
+  M.MouseMove(event.clientX - rect.left, event.clientY - rect.top);
+}
+
 /** Dispatches mouse-button releases into the engine input system. */
 function handleMouseUp(event: MouseEvent): void {
   const key = getMouseButtonKey(event.which);
@@ -258,6 +265,7 @@ function registerWindowListeners(): void {
   window.addEventListener('pointerdown', handlePointerDown);
   window.addEventListener('mousedown', handleMouseDown);
   window.addEventListener('mouseup', handleMouseUp);
+  window.addEventListener('mousemove', handleMouseMove);
   window.addEventListener('wheel', handleWheel, { passive: false });
   window.addEventListener('mousewheel', handleLegacyMouseWheel as EventListener, { passive: false });
 }
@@ -271,6 +279,7 @@ function unregisterWindowListeners(): void {
   window.removeEventListener('pointerdown', handlePointerDown);
   window.removeEventListener('mousedown', handleMouseDown);
   window.removeEventListener('mouseup', handleMouseUp);
+  window.removeEventListener('mousemove', handleMouseMove);
   window.removeEventListener('wheel', handleWheel);
   window.removeEventListener('mousewheel', handleLegacyMouseWheel as EventListener);
 }

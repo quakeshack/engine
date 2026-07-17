@@ -27,6 +27,7 @@ Grouped by sections and then sorted by priority (more or less).
 - [_] M: introduce a password required dialog to join password protected servers
 - [_] M: touch support (how to escape etc) and mouse support
   - [X] mobile input capability detection + external input warning
+  - [X] mouse hover/click support for menu items + a clickable Back/Close button
   - [_] touch-first menu navigation and escape UX
   - [_] gameplay touch controls with mouse-equivalent look input
 - [_] M: rewrite the code using the new framework
@@ -174,6 +175,28 @@ Grouped by sections and then sorted by priority (more or less).
 - https://mus1n.github.io/Quake-3-Skybox/ 360 to skybox
 
 ## Log
+
+### 2026-07-13
+
+- M: made the menu clickable — mouse hover moves the cursor, clicking an item activates it
+  exactly like Enter would (same widget code path, no click-specific behavior invented)
+- M: added a fixed Back/Close button, drawn independent of whatever page is open, so mouse-only
+  users always have a way out; it just synthesizes Escape so behavior can't drift from what
+  Escape already does per page
+- IN: stopped capturing the pointer (mouselook lock) when clicking the menu/console — only
+  locks during actual gameplay now
+- M: Back/Close button only shows while the mouse is the most-recently-used input, moved 40px
+  lower, and dialogs (Quit, Alert) now center it under their own message box instead of the
+  corner
+- M: Slider clicks now jump to the clicked position on the bar instead of always incrementing
+- IN/Key: clicking the canvas while stuck on the console with no game running (disconnected or
+  still connecting) now opens the main menu — a mouse-only escape hatch mirroring what Escape
+  already does there (Con.ToggleConsole_f); moved from IN.onclick (the browser's 'click' event)
+  into Key.Event itself (mousedown time) after finding clicking Back to reach the console
+  instantly reopened the menu — the trailing 'click' event was re-checking Key.destination after
+  the Back button had already flipped it from menu to console within the same physical click
+- M: the Y/N quit confirm now has clickable "Yes"/"No" prompts in the dialog box itself (same
+  hover convention as everything else), not just Y/N on the keyboard
 
 ### 2026-07-12
 

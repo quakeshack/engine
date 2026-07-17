@@ -51,6 +51,18 @@ interface GridLayoutConfig {
 
 export interface MenuLayout {
   draw(items: MenuItem[], focusedIndex: number): void;
+
+  /**
+   * Resolve which item, if any, occupies the given point in virtual menu-space coordinates.
+   * @returns The index of the focusable item under the point, or null if none.
+   */
+  hitTest(items: MenuItem[], px: number, py: number): number | null;
+}
+
+/** Where M should draw/hit-test the page-agnostic Back/Close button, in virtual menu-space. */
+export interface BackButtonAnchor {
+  readonly centerX: number;
+  readonly y: number;
 }
 
 // Destructure registry modules
@@ -160,6 +172,24 @@ export class MenuPage {
       return true;
     }
 
+    // A click activates whatever item is under the cursor. Position-aware widgets (e.g. Slider)
+    // get first refusal via handleClick(); everything else falls back to Enter's semantics,
+    // the same way Enter activates the currently focused item.
+    if (key === K.MOUSE1) {
+      const index = this.layout?.hitTest(this.items, M.mouseX, M.mouseY) ?? null;
+      if (index === null) {
+        return false;
+      }
+
+      this.cursor = index;
+      const item = this.items[index];
+      if (item.handleClick(M.mouseX, M.mouseY)) {
+        return true;
+      }
+
+      return item.handleInput(K.ENTER);
+    }
+
     return false;
   }
 
@@ -169,6 +199,27 @@ export class MenuPage {
    */
   handlePaste(text: string): boolean {
     return this.items[this.cursor]?.handlePaste(text) ?? false;
+  }
+
+  /**
+   * Move the cursor to whatever focusable item is under the given point, without playing the
+   * keyboard-navigation sound. Called on every mouse move while this page is active.
+   */
+  updateHover(mx: number, my: number): void {
+    const index = this.layout?.hitTest(this.items, mx, my) ?? null;
+    if (index !== null && index !== this.cursor && this.items[index]?.focusable) {
+      this.cursor = index;
+    }
+  }
+
+  /**
+   * Where M should draw/hit-test the page-agnostic Back/Close button for this page. Return null
+   * (the default) to use the standard bottom-left corner; override to reposition it, e.g. a
+   * dialog centering it under its own message box.
+   * @returns The button's anchor, or null to use the default corner.
+   */
+  getBackButtonAnchor(): BackButtonAnchor | null {
+    return null;
   }
 
   /**
@@ -298,6 +349,28 @@ export class VerticalLayout implements MenuLayout {
       y += item.getHeight() + this.spacing;
     }
   }
+
+  hitTest(items: MenuItem[], px: number, py: number): number | null {
+    let y = this.startY;
+
+    for (const [index, item] of items.entries()) {
+      if (!item.visible) {
+        continue;
+      }
+
+      const height = item.getHeight();
+
+      // The whole row is clickable, not just the glyphs under the label/value, so the hit box
+      // spans the full virtual screen width regardless of where VerticalLayout placed the text.
+      if (item.focusable && px >= 0 && px < 320 && py >= y && py < y + height) {
+        return index;
+      }
+
+      y += height + this.spacing;
+    }
+
+    return null;
+  }
 }
 
 /**
@@ -341,6 +414,23 @@ export class ImageBasedLayout implements MenuLayout {
       item.draw(0, 0, index === focusedIndex);
     }
   }
+
+  hitTest(items: MenuItem[], _px: number, py: number): number | null {
+    // Items have no individual geometry of their own here — hit-test the same fixed-height row
+    // band the animated dot cursor is drawn at for each index.
+    for (const [index, item] of items.entries()) {
+      if (!item.visible || !item.focusable) {
+        continue;
+      }
+
+      const rowY = this.cursorYBase + index * this.cursorYSpacing;
+      if (py >= rowY - this.cursorYSpacing / 2 && py < rowY + this.cursorYSpacing / 2) {
+        return index;
+      }
+    }
+
+    return null;
+  }
 }
 
 /**
@@ -381,6 +471,24 @@ export class ListLayout implements MenuLayout {
       y += this.spacing;
     }
   }
+
+  hitTest(items: MenuItem[], px: number, py: number): number | null {
+    let y = this.startY;
+
+    for (const [index, item] of items.entries()) {
+      if (!item.visible) {
+        continue;
+      }
+
+      if (item.focusable && px >= 0 && px < 320 && py >= y && py < y + this.spacing) {
+        return index;
+      }
+
+      y += this.spacing;
+    }
+
+    return null;
+  }
 }
 
 /**
@@ -416,6 +524,26 @@ export class GridLayout implements MenuLayout {
 
       item.draw(x, y, focused);
     }
+  }
+
+  hitTest(items: MenuItem[], px: number, py: number): number | null {
+    for (const [index, item] of items.entries()) {
+      if (!item.visible || !item.focusable) {
+        continue;
+      }
+
+      const row = Math.floor(index / this.columns);
+      const col = index % this.columns;
+
+      const x = this.startX + col * this.columnSpacing;
+      const y = this.startY + row * this.rowSpacing;
+
+      if (px >= x && px < x + this.columnSpacing && py >= y && py < y + this.rowSpacing) {
+        return index;
+      }
+    }
+
+    return null;
   }
 }
 

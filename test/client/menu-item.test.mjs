@@ -33,6 +33,7 @@ function withMockWidgetRegistry(callback) {
     Print(_x, _y, str) { printed.push(str); },
     PrintWhite(_x, _y, str) { printed.push(str); },
     DrawCharacter() {},
+    DrawSlider() {},
   };
   registry.S = { LocalSound(sfx) { sounds.push(sfx); } };
   eventBus.publish('registry.frozen');
@@ -142,6 +143,89 @@ void describe('Slider', () => {
 
         assert.equal(slider.handleInput(K.RIGHTARROW), false);
         assert.equal(slider.getValue(), 50);
+      });
+    });
+  });
+
+  void describe('handleClick', () => {
+    void test('sets the value from the click position instead of just nudging it', () => {
+      withMockWidgetRegistry(({ sounds }) => {
+        withScratchCvar('test_menu_slider_click', '0', () => {
+          const slider = new Slider({ cvar: 'test_menu_slider_click', min: 0, max: 100 });
+
+          slider.draw(16, 32, false); // bar drawn at the default x + 116 = 132.
+
+          assert.equal(slider.handleClick(132), true); // start of the bar -> min.
+          assert.equal(slider.getValue(), 0);
+
+          assert.equal(slider.handleClick(132 + 72), true); // end of the bar -> max.
+          assert.equal(slider.getValue(), 100);
+
+          assert.equal(slider.handleClick(132 + 36), true); // midpoint.
+          assert.equal(slider.getValue(), 50);
+
+          assert.deepEqual(sounds, ['menu3', 'menu3', 'menu3']);
+        });
+      });
+    });
+
+    void test('clamps clicks outside the bar to min/max instead of the label falling through to a full row click', () => {
+      withMockWidgetRegistry(() => {
+        withScratchCvar('test_menu_slider_click_clamp', '50', () => {
+          const slider = new Slider({ cvar: 'test_menu_slider_click_clamp', min: 0, max: 100 });
+
+          slider.draw(16, 32, false);
+
+          slider.handleClick(0); // well left of the bar, e.g. over the label.
+          assert.equal(slider.getValue(), 0);
+
+          slider.handleClick(9999); // well right of the bar.
+          assert.equal(slider.getValue(), 100);
+        });
+      });
+    });
+
+    void test('respects valueX from the layout instead of the default offset', () => {
+      withMockWidgetRegistry(() => {
+        withScratchCvar('test_menu_slider_click_valuex', '0', () => {
+          const slider = new Slider({ cvar: 'test_menu_slider_click_valuex', min: 0, max: 100 });
+
+          slider.draw(16, 32, false, 220);
+
+          slider.handleClick(220 + 36);
+          assert.equal(slider.getValue(), 50);
+        });
+      });
+    });
+
+    void test('inverts the click-to-value mapping for inverted sliders', () => {
+      withMockWidgetRegistry(() => {
+        withScratchCvar('test_menu_slider_click_invert', '0.75', () => {
+          const slider = new Slider({
+            cvar: 'test_menu_slider_click_invert', min: 0.5, max: 1.0, invert: true,
+          });
+
+          slider.draw(16, 32, false);
+
+          slider.handleClick(132); // start of the bar -> max for an inverted slider.
+          assert.equal(slider.getValue(), 1.0);
+
+          slider.handleClick(132 + 72); // end of the bar -> min.
+          assert.equal(slider.getValue(), 0.5);
+        });
+      });
+    });
+
+    void test('does nothing when disabled', () => {
+      withMockWidgetRegistry(() => {
+        withScratchCvar('test_menu_slider_click_disabled', '50', () => {
+          const slider = new Slider({ cvar: 'test_menu_slider_click_disabled', min: 0, max: 100, enabled: false });
+
+          slider.draw(16, 32, false);
+
+          assert.equal(slider.handleClick(132 + 72), false);
+          assert.equal(slider.getValue(), 50);
+        });
       });
     });
   });

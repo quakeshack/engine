@@ -117,6 +117,17 @@ export class MenuItem {
   }
 
   /**
+   * Handle a mouse click at the given point (virtual menu-space coordinates), for items whose
+   * behavior depends on where within their row they were clicked (e.g. Slider setting its value
+   * from the click position instead of just nudging it). Returns false to fall back to the
+   * default "click behaves like Enter" activation.
+   * @returns True if the click was handled.
+   */
+  handleClick(_px: number, _py: number): boolean {
+    return false;
+  }
+
+  /**
    * Handle a text paste (e.g. Ctrl+V), if the item supports text input.
    * @returns True if the paste was handled.
    */
@@ -189,12 +200,17 @@ export class Action extends MenuItem {
  * Slider for adjusting numeric values.
  */
 export class Slider extends MenuItem {
+  // Matches the travel distance M.DrawSlider() draws the bar/thumb across (see its `x` to
+  // `x + 72` characters), so a click can be mapped back to a normalized value.
+  static readonly #barTravel = 72;
+
   cvar: string;
   min: number;
   max: number;
   step: number;
   invert: boolean;
   displayScale: number;
+  #barX = 0;
 
   constructor(config: SliderConfig) {
     super(config);
@@ -240,8 +256,29 @@ export class Slider extends MenuItem {
       return;
     }
 
+    this.#barX = valueX ?? x + 116;
     M.Print(x, y, this.label);
-    M.DrawSlider(valueX ?? x + 116, y, this.getNormalizedValue());
+    M.DrawSlider(this.#barX, y, this.getNormalizedValue());
+  }
+
+  /**
+   * Set the value directly from a click position on the bar, rather than nudging it by one
+   * step — the click position maps linearly onto the min/max range.
+   * @returns True if the click was handled.
+   */
+  override handleClick(px: number): boolean {
+    if (!this.enabled) {
+      return false;
+    }
+
+    const normalized = Math.max(0, Math.min(1, (px - this.#barX) / Slider.#barTravel));
+    const value = this.invert
+      ? this.max - normalized * (this.max - this.min)
+      : this.min + normalized * (this.max - this.min);
+
+    this.setValue(value);
+    S.LocalSound(M.sfx_menu3);
+    return true;
   }
 
   override handleInput(key: K): boolean {

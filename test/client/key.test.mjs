@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import { K } from '../../source/shared/Keys.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
+import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 
@@ -390,6 +391,108 @@ void describe('Key', () => {
 
           assert.equal(Key.edit_line, '');
           assert.equal(Key.chat_buffer, '');
+        });
+      });
+    });
+  });
+
+  void describe('Event: stuck on the console with no game running', () => {
+    /**
+     * Temporarily installs mock `CL`/`M` registry stubs (alongside the existing `Con`/`COM`
+     * stubs from withMockKeyRegistry) so Key.Event's console-click-opens-menu branch can run
+     * without a full client bootstrap. Also sends a matching key-up afterward, since
+     * `Key.pressed` (which tracks auto-repeat) is a private static field with no other way to
+     * reset it between tests.
+     * @param {number} connectionState
+     * @param {(wasMenuOpened: () => boolean) => void} callback test callback
+     */
+    function withMockConsoleClickRegistry(connectionState, callback) {
+      withMockKeyRegistry(() => {
+        const previousCL = registry.CL;
+        const previousM = registry.M;
+        let menuOpened = false;
+
+        registry.CL = { cls: { state: connectionState, demoplayback: false } };
+        registry.M = { Menu_Main_f: () => { menuOpened = true; }, ToggleMenu_f: () => {}, Keydown: () => {} };
+        eventBus.publish('registry.frozen');
+
+        try {
+          callback(() => menuOpened);
+        } finally {
+          Key.Event(K.MOUSE1, false);
+          registry.CL = previousCL;
+          registry.M = previousM;
+          eventBus.publish('registry.frozen');
+        }
+      });
+    }
+
+    void test('opens the main menu when clicking while disconnected', () => {
+      withCleanInputState(() => {
+        Key.destination = KeyDestination.console;
+
+        withMockConsoleClickRegistry(clientConnectionState.disconnected, (wasMenuOpened) => {
+          Key.Event(K.MOUSE1, true);
+
+          assert.equal(wasMenuOpened(), true);
+        });
+      });
+    });
+
+    void test('opens the main menu when clicking while a connection attempt is still in progress', () => {
+      withCleanInputState(() => {
+        Key.destination = KeyDestination.console;
+
+        withMockConsoleClickRegistry(clientConnectionState.connecting, (wasMenuOpened) => {
+          Key.Event(K.MOUSE1, true);
+
+          assert.equal(wasMenuOpened(), true);
+        });
+      });
+    });
+
+    void test('does not open the menu when a game is actually connected', () => {
+      withCleanInputState(() => {
+        Key.destination = KeyDestination.console;
+
+        withMockConsoleClickRegistry(clientConnectionState.connected, (wasMenuOpened) => {
+          Key.Event(K.MOUSE1, true);
+
+          assert.equal(wasMenuOpened(), false);
+        });
+      });
+    });
+
+    void test('does not open the menu from destinations other than the console', () => {
+      withCleanInputState(() => {
+        Key.destination = KeyDestination.game;
+
+        withMockConsoleClickRegistry(clientConnectionState.disconnected, (wasMenuOpened) => {
+          Key.Event(K.MOUSE1, true);
+
+          assert.equal(wasMenuOpened(), false);
+        });
+      });
+    });
+
+    void test('a single click cannot both close the menu (to console) and reopen it', () => {
+      // Regression test: the menu's Back/Close button synthesizes Escape on MOUSE1, which can
+      // change Key.destination from menu to console within the very same mousedown dispatch.
+      // The console-click-opens-menu check must not re-fire for that same physical click.
+      withCleanInputState(() => {
+        Key.destination = KeyDestination.menu;
+
+        withMockConsoleClickRegistry(clientConnectionState.disconnected, (wasMenuOpened) => {
+          registry.M.Keydown = () => {
+            // Simulate the Back/Close button popping the menu stack back to the console.
+            Key.destination = KeyDestination.console;
+          };
+          eventBus.publish('registry.frozen');
+
+          Key.Event(K.MOUSE1, true);
+
+          assert.equal(wasMenuOpened(), false);
+          assert.equal(Key.destination, KeyDestination.console);
         });
       });
     });

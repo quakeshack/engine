@@ -9,6 +9,7 @@ import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.ts';
 import { KeyDestination } from './Key.ts';
 import { Action, ColorPicker, KeyBindItem, SaveSlotItem, Slider, Textbox, Toggle } from './menu/MenuItem.ts';
+import type { BackButtonAnchor } from './menu/MenuPage.ts';
 import { DialogPage, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from './menu/MenuPage.ts';
 import { MenuStack } from './menu/MenuStack.ts';
 import MultiplayerMainMenu from './menu/Multiplayer.ts';
@@ -118,7 +119,17 @@ class KeysPage extends MenuPage {
 /**
  * Quit confirmation dialog. Y confirms, N/Escape returns to whatever page was open before it.
  */
-class QuitDialogPage extends DialogPage {
+export class QuitDialogPage extends DialogPage {
+  static readonly #boxX = 56;
+  static readonly #boxY = 76;
+  static readonly #boxWidth = 24; // in DrawTextBox's content-width units (8px each)
+  static readonly #boxLines = 5; // 4 flavor-text lines + 1 Yes/No prompt row
+
+  // Row for the mouse-clickable Yes/No prompt, below the 4 lines of flavor text.
+  static readonly #promptY = 116;
+  static readonly #yesX = 88;
+  static readonly #noX = 168;
+
   #messageIndex = 0;
 
   constructor() {
@@ -136,15 +147,41 @@ class QuitDialogPage extends DialogPage {
     this.#messageIndex = Math.floor(Math.random() * quitMessage.length);
   }
 
+  static #isOverPrompt(x: number, label: string): boolean {
+    return M.mouseX >= x && M.mouseX < x + label.length * 8
+      && M.mouseY >= QuitDialogPage.#promptY && M.mouseY < QuitDialogPage.#promptY + 8;
+  }
+
+  static #drawPrompt(x: number, label: string): void {
+    if (QuitDialogPage.#isOverPrompt(x, label)) {
+      M.PrintWhite(x, QuitDialogPage.#promptY, label);
+    } else {
+      M.Print(x, QuitDialogPage.#promptY, label);
+    }
+  }
+
+  #confirmQuit(): void {
+    Key.destination = KeyDestination.console;
+    Host.Quit_f();
+  }
+
   override draw(): void {
     super.draw();
 
     const message = quitMessage[this.#messageIndex];
-    M.DrawTextBox(56, 76, 24, 4);
+    M.DrawTextBox(QuitDialogPage.#boxX, QuitDialogPage.#boxY, QuitDialogPage.#boxWidth, QuitDialogPage.#boxLines);
     M.Print(64, 84, message[0]);
     M.Print(64, 92, message[1]);
     M.Print(64, 100, message[2]);
     M.Print(64, 108, message[3]);
+    QuitDialogPage.#drawPrompt(QuitDialogPage.#yesX, 'Yes');
+    QuitDialogPage.#drawPrompt(QuitDialogPage.#noX, 'No');
+  }
+
+  override getBackButtonAnchor(): BackButtonAnchor {
+    const totalWidth = 16 + QuitDialogPage.#boxWidth * 8;
+    const boxBottom = QuitDialogPage.#boxY + (QuitDialogPage.#boxLines + 2) * 8;
+    return { centerX: QuitDialogPage.#boxX + totalWidth / 2, y: boxBottom + 8 };
   }
 
   override handleInput(key: K): boolean {
@@ -154,8 +191,17 @@ class QuitDialogPage extends DialogPage {
     }
 
     if (key === 121 as K) { // 'y'
-      Key.destination = KeyDestination.console;
-      Host.Quit_f();
+      this.#confirmQuit();
+      return true;
+    }
+
+    if (key === K.MOUSE1 && QuitDialogPage.#isOverPrompt(QuitDialogPage.#yesX, 'Yes')) {
+      this.#confirmQuit();
+      return true;
+    }
+
+    if (key === K.MOUSE1 && QuitDialogPage.#isOverPrompt(QuitDialogPage.#noX, 'No')) {
+      M.PopMenu();
       return true;
     }
 
@@ -167,6 +213,9 @@ class QuitDialogPage extends DialogPage {
  * A dismissable alert/error dialog with a dynamically sized text box.
  */
 class AlertDialogPage extends MenuPage {
+  static readonly #boxY = 52;
+  static readonly #boxWidth = 64; // in DrawTextBox's content-width units (8px each)
+
   #title = '';
   #message = '';
 
@@ -182,7 +231,13 @@ class AlertDialogPage extends MenuPage {
     this.#message = message;
   }
 
-  override draw(): void {
+  /**
+   * Build the message's text-box layout: the lines to draw, the box's left edge, and its
+   * total line count. Shared between draw() and getBackButtonAnchor() so both agree on where
+   * the box actually ends up.
+   * @returns The box's left edge, total line count, and the lines themselves.
+   */
+  #computeBoxMetrics(): { x: number; totalLines: number; lines: Array<string | null> } {
     const titleLines = this.#title ? this.#title.split('\n') : [];
     const messageLines = this.#message ? this.#message.split('\n') : [];
 
@@ -201,12 +256,16 @@ class AlertDialogPage extends MenuPage {
     lines.push(null);
     lines.push('Press enter to continue.');
 
-    // Calculate dimensions for the text box
-    const boxWidth = 64;
     const totalLines = lines.length;
-    const x = (320 - boxWidth * 8) / 2;
+    const x = (320 - AlertDialogPage.#boxWidth * 8) / 2;
 
-    M.DrawTextBox(x, 52, boxWidth, totalLines + 2);
+    return { x, totalLines, lines };
+  }
+
+  override draw(): void {
+    const { x, totalLines, lines } = this.#computeBoxMetrics();
+
+    M.DrawTextBox(x, AlertDialogPage.#boxY, AlertDialogPage.#boxWidth, totalLines + 2);
 
     for (let i = 0, y = 68; i < totalLines; i++, y += 8) {
       if (lines[i]) {
@@ -214,6 +273,13 @@ class AlertDialogPage extends MenuPage {
         M.PrintWhite(x + 16, y, lines[i]!.substring(0, 62));
       }
     }
+  }
+
+  override getBackButtonAnchor(): BackButtonAnchor {
+    const { x, totalLines } = this.#computeBoxMetrics();
+    const totalWidth = 16 + AlertDialogPage.#boxWidth * 8;
+    const boxBottom = AlertDialogPage.#boxY + (totalLines + 2 + 2) * 8;
+    return { centerX: x + totalWidth / 2, y: boxBottom + 8 };
   }
 }
 
@@ -325,6 +391,23 @@ export default class M {
   static menuStack = new MenuStack();
 
   static entersound = false;
+
+  // Current mouse position in virtual 320x200 menu-space coordinates, updated by MouseMove().
+  static mouseX = 0;
+  static mouseY = 0;
+
+  // Tracks whether the mouse (rather than the keyboard) was the most recent input, so the
+  // Back/Close button can stay hidden for keyboard-only players. True while the mouse moves or
+  // a mouse button/wheel is used; false the moment any other key is pressed.
+  static #usingMouse = false;
+
+  // Fixed, page-agnostic Back/Close button, drawn/hit-tested independently of whatever page is
+  // active (same pattern as DrawOverlayNotice) so every page — including custom ones and future
+  // game/mod pages — gets a clickable way back without having to add it to their own item list.
+  // Pages that need it positioned elsewhere (e.g. centered under a dialog box) can override
+  // MenuPage.getBackButtonAnchor() instead of using this default corner.
+  static readonly #backButtonX = 8;
+  static readonly #backButtonY = 224;
 
   static sfx_menu1: SFX | null = null;
   static sfx_menu2: SFX | null = null;
@@ -492,6 +575,78 @@ export default class M {
     }
   }
 
+  /**
+   * Convert a canvas-relative CSS-pixel mouse position into virtual menu-space coordinates
+   * (inverting the transform every M.DrawPic/M.Print call applies) and forward it to the active
+   * page's hover tracking.
+   */
+  static MouseMove(canvasX: number, canvasY: number): void {
+    M.mouseX = (canvasX - (Math.floor(VID.width / 2) - 320)) / 2;
+    M.mouseY = (canvasY - (Math.floor(VID.height / 2) - 200)) / 2;
+    M.#usingMouse = true;
+
+    if (Key.destination !== KeyDestination.menu) {
+      return;
+    }
+
+    M.menuStack.current()?.updateHover(M.mouseX, M.mouseY);
+  }
+
+  static #backButtonLabel(): string {
+    return M.menuStack.depth() > 1 ? '< Back' : '< Close';
+  }
+
+  /**
+   * Where to draw/hit-test the Back/Close button: the current page's own override (e.g. a
+   * dialog centering it under its message box), or the default bottom-left corner.
+   * @returns The button's center-x and top-y in virtual menu-space coordinates.
+   */
+  static #backButtonAnchor(): BackButtonAnchor {
+    const label = M.#backButtonLabel();
+    const override = M.menuStack.current()?.getBackButtonAnchor() ?? null;
+    if (override) {
+      return override;
+    }
+
+    return { centerX: M.#backButtonX + (label.length * 8) / 2, y: M.#backButtonY };
+  }
+
+  static #backButtonBounds(): { x0: number; y0: number; x1: number; y1: number } {
+    const label = M.#backButtonLabel();
+    const halfWidth = (label.length * 8) / 2;
+    const anchor = M.#backButtonAnchor();
+
+    return {
+      x0: anchor.centerX - halfWidth,
+      y0: anchor.y,
+      x1: anchor.centerX + halfWidth,
+      y1: anchor.y + 8,
+    };
+  }
+
+  static #isOverBackButton(mx: number, my: number): boolean {
+    if (!M.#usingMouse) {
+      return false;
+    }
+
+    const bounds = M.#backButtonBounds();
+    return mx >= bounds.x0 && mx < bounds.x1 && my >= bounds.y0 && my < bounds.y1;
+  }
+
+  static #drawBackButton(): void {
+    if (!M.#usingMouse) {
+      return;
+    }
+
+    const label = M.#backButtonLabel();
+    const bounds = M.#backButtonBounds();
+    if (M.#isOverBackButton(M.mouseX, M.mouseY)) {
+      M.PrintWhite(bounds.x0, bounds.y0, label);
+    } else {
+      M.Print(bounds.x0, bounds.y0, label);
+    }
+  }
+
   static CloseMenu(): void {
     M.menuStack.clear();
     M.#returnToPreviousDestination();
@@ -514,6 +669,9 @@ export default class M {
 
   static ToggleMenu_f(this: void): void {
     M.entersound = true;
+    // Only reachable via the Escape key or a bound command, never a mouse click, so opening or
+    // cycling the menu this way always means the player is currently using the keyboard.
+    M.#usingMouse = false;
     if (Key.destination === KeyDestination.menu) {
       if (M.menuStack.current() !== M.#mainPage) {
         M.Menu_Main_f();
@@ -925,6 +1083,7 @@ export default class M {
 
     Draw.FadeScreen();
     current.draw();
+    M.#drawBackButton();
 
     if (M.entersound) {
       S.LocalSound(M.sfx_menu2);
@@ -933,7 +1092,25 @@ export default class M {
   }
 
   static Keydown(key: number): void {
-    M.menuStack.current()?.handleInput(key as K);
+    const typedKey = key as K;
+
+    // Any other key means the player switched back to the keyboard, so the mouse-only Back/Close
+    // button should hide again until the mouse actually moves.
+    M.#usingMouse = typedKey === K.MOUSE1 || typedKey === K.MOUSE2 || typedKey === K.MOUSE3
+      || typedKey === K.MWHEELUP || typedKey === K.MWHEELDOWN;
+
+    // The Back/Close button is drawn/hit-tested independently of the current page, so it takes
+    // priority over whatever the page itself would do with a click at that position. It
+    // synthesizes exactly what Escape already does on the current page (M.PopMenu()/CloseMenu()
+    // via onEscape, or a page's own handleInput override), so behavior can never drift from
+    // Escape's.
+    if (typedKey === K.MOUSE1 && M.#isOverBackButton(M.mouseX, M.mouseY)) {
+      S.LocalSound(M.sfx_menu2);
+      M.menuStack.current()?.handleInput(K.ESCAPE);
+      return;
+    }
+
+    M.menuStack.current()?.handleInput(typedKey);
   }
 
   /**

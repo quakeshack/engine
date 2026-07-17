@@ -2,6 +2,7 @@ import { K } from '../../shared/Keys.ts';
 import Cvar from '../common/Cvar.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import { kbutton, kbuttons } from './ClientInput.ts';
+import { KeyDestination } from './Key.ts';
 import VID from './VID.ts';
 
 /** Browser-derived signals used to decide whether mobile play needs external input devices. */
@@ -309,7 +310,11 @@ export default class IN {
   }
 
   static onclick(this: void): void {
-    if (document.pointerLockElement !== VID.mainwindow) {
+    // Only capture the pointer for mouselook during actual gameplay — clicking the canvas to
+    // interact with the menu (or console/message input) must not lock/hide the cursor.
+    // The console's own "click brings up the menu" escape hatch lives in Key.Event() instead of
+    // here — it needs to run at mousedown time (see the comment there for why).
+    if (Key.destination === KeyDestination.game && document.pointerLockElement !== VID.mainwindow) {
       void VID.mainwindow.requestPointerLock();
     }
   }
