@@ -14,8 +14,8 @@ import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
  * "quit from the in-game pause menu" case most of these tests exercise), `Key` (a settable
  * destination, mutated directly by M.PopMenu()), `Host` (ForceQuit, recorded rather than
  * actually exiting the process), and `IN` (ReleasePointerLock, called by MenuStack — a no-op spy
- * here). Also registers a bare 'main' page on the real M.menuStack, since M.PopMenu()'s
- * disconnected fallback collapses back to it.
+ * here). Also registers a bare 'main' page as the root on the real M.menuStack, since
+ * M.PopMenu()'s disconnected fallback collapses back to the root page.
  * @param {(context: { quitCalled: () => boolean }) => void} callback test callback
  * @param {{ state?: import('../../source/engine/common/Def.ts').clientConnectionState }} [options]
  */
@@ -36,6 +36,7 @@ function withMockQuitRegistry(callback, options = {}) {
   registry.M = M; // MenuStack.push() sets M.entersound directly on the real registry entry.
   M.menuStack.stack.length = 0;
   M.menuStack.register('main', new MenuPage({ title: 'Main' }));
+  M.menuStack.setRootPage('main');
   eventBus.publish('registry.frozen');
 
   try {

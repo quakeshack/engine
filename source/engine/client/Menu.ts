@@ -1,4 +1,5 @@
 import type { SFX } from './Sound.ts';
+import type { HostAlertEvent } from '../../shared/GameInterfaces.ts';
 
 import { K } from '../../shared/Keys.ts';
 import Cmd from '../common/Cmd.ts';
@@ -13,6 +14,7 @@ import type { BackButtonAnchor } from './menu/MenuPage.ts';
 import { DialogPage, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from './menu/MenuPage.ts';
 import { MenuStack } from './menu/MenuStack.ts';
 import MultiplayerMainMenu from './menu/Multiplayer.ts';
+import SaveSlots from './menu/SaveSlots.ts';
 import VID from './VID.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 
@@ -32,7 +34,6 @@ eventBus.subscribe('client.disconnected', () => {
 });
 
 export type MenuPic = GLTexture & { translate?: GLTexture | null };
-type SaveGameData = { comment?: string; mapname?: string };
 type QuitMessage = [string, string, string, string];
 
 const MAX_SAVEGAMES = 12;
@@ -459,10 +460,7 @@ export default class M {
   static #loadSlotItems: SaveSlotItem[] = [];
   static #saveSlotItems: SaveSlotItem[] = [];
 
-  static #mainPage: MenuPage = null!;
   static #alertPage: AlertDialogPage = null!;
-  static #quitPage: QuitDialogPage = null!;
-  static #multiplayerPage: MenuPage = null!;
 
   static DrawCharacter(cx: number, cy: number, num: number): void {
     Draw.Character(cx * 2 + Math.floor(VID.width / 2) - 320, cy * 2 + Math.floor(VID.height / 2) - 200, num, 2.0);
@@ -557,12 +555,10 @@ export default class M {
   }
 
   static DrawOverlayNotice(): void {
-    const current = M.menuStack.current();
-
     if (
       M.overlayNoticeLines.length === 0
-      || current === M.#alertPage
-      || current === M.#quitPage
+      || M.menuStack.isShowing('alert')
+      || M.menuStack.isShowing('quit')
     ) {
       return;
     }
@@ -673,11 +669,11 @@ export default class M {
 
   static CloseMenu(): void {
     if (CL.cls.state !== clientConnectionState.connected) {
-      // There's no game to return to while disconnected -- collapse back to the main page
+      // There's no game to return to while disconnected -- collapse back to the root page
       // instead of leaving nothing on screen to look at or interact with.
-      if (M.menuStack.current() !== M.menuStack.pages.get('main')) {
+      if (!M.menuStack.isShowingRoot()) {
         M.menuStack.clear();
-        M.menuStack.push('main');
+        M.menuStack.pushRoot();
       }
       return;
     }
@@ -689,7 +685,7 @@ export default class M {
     M.menuStack.pop();
     if (M.menuStack.isEmpty()) {
       if (CL.cls.state !== clientConnectionState.connected) {
-        M.menuStack.push('main');
+        M.menuStack.pushRoot();
         return;
       }
       M.#returnToPreviousDestination();
@@ -700,6 +696,11 @@ export default class M {
     // `game` regardless of connection state: it's just "not the menu" now that the console is
     // an independent overlay rather than a destination to fall back into.
     Key.destination = KeyDestination.game;
+    // Restore the demo-loop cursor paused (set to -1 in Menu_Main_f) when the menu was opened
+    // over a playing demo, so ClientDemos can naturally advance to the next one when it ends.
+    // Only reachable here, at the point the menu is actually fully closing while connected --
+    // see the two call sites above -- since there's no game to have paused a demo for otherwise.
+    CL.cls.demonum = M.#saveDemonum;
   }
 
   static ToggleMenu_f(this: void): void {
@@ -708,7 +709,7 @@ export default class M {
     // cycling the menu this way always means the player is currently using the keyboard.
     M.#usingMouse = false;
     if (Key.destination === KeyDestination.menu) {
-      if (M.menuStack.current() !== M.#mainPage) {
+      if (!M.menuStack.isShowingRoot()) {
         M.Menu_Main_f();
         return;
       }
@@ -730,7 +731,7 @@ export default class M {
     }
     Key.destination = KeyDestination.menu;
     M.menuStack.clear();
-    M.menuStack.push('main');
+    M.menuStack.pushRoot();
   }
 
   // Single player menu
@@ -755,7 +756,7 @@ export default class M {
 
   // Multiplayer menu
   static Menu_MultiPlayer_f(this: void): void {
-    if (M.menuStack.current() === M.#multiplayerPage) {
+    if (M.menuStack.isShowing('multiplayer')) {
       return;
     }
     Key.destination = KeyDestination.menu;
@@ -782,7 +783,7 @@ export default class M {
 
   // Quit menu
   static Menu_Quit_f(this: void): void {
-    if (M.menuStack.current() === M.#quitPage) {
+    if (M.menuStack.isShowing('quit')) {
       return;
     }
     Key.destination = KeyDestination.menu;
@@ -790,7 +791,7 @@ export default class M {
   }
 
   static Menu_Launch_Server_f(this: void): void {
-    if (M.menuStack.current() === launchServerMenu) {
+    if (M.menuStack.isShowing('launch_server')) {
       return;
     }
     Key.destination = KeyDestination.menu;
@@ -798,7 +799,7 @@ export default class M {
   }
 
   static Alert(title: string, message: string): void {
-    if (M.menuStack.current() === M.#alertPage) {
+    if (M.menuStack.isShowing('alert')) {
       return;
     }
     M.#alertPage.setMessage(title, message);
@@ -807,28 +808,13 @@ export default class M {
   }
 
   static #scanSaves(): void {
-    const searchpaths = COM.searchpaths;
-    const search = `Quake.${COM.gamedir![0].filename}/s`;
-    COM.searchpaths = COM.gamedir!;
-
-    for (let i = 0; i < MAX_SAVEGAMES; i++) {
-      const raw = localStorage.getItem(`${search}${i}.json`);
-      const hasFile = raw !== null;
-      let label = 'Empty slot';
-
-      if (hasFile) {
-        const gamestate = JSON.parse(raw!) as SaveGameData;
-        label = gamestate.comment || gamestate.mapname || '';
-      }
-
-      M.#loadSlotItems[i].label = label;
-      M.#loadSlotItems[i].enabled = hasFile;
-      M.#loadSlotItems[i].canDelete = hasFile;
-      M.#saveSlotItems[i].label = label;
-      M.#saveSlotItems[i].canDelete = hasFile;
+    for (const slot of SaveSlots.list(MAX_SAVEGAMES)) {
+      M.#loadSlotItems[slot.index].label = slot.label;
+      M.#loadSlotItems[slot.index].enabled = slot.hasData;
+      M.#loadSlotItems[slot.index].canDelete = slot.hasData;
+      M.#saveSlotItems[slot.index].label = slot.label;
+      M.#saveSlotItems[slot.index].canDelete = slot.hasData;
     }
-
-    COM.searchpaths = searchpaths;
   }
 
   static #buildPages(): void {
@@ -843,18 +829,7 @@ export default class M {
         new Action({ action: () => { M.Menu_Help_f(); } }),
         new Action({ action: () => { M.Menu_Quit_f(); } }),
       ],
-      onEscape: () => {
-        // M.CloseMenu() only actually closes while connected (see M.CloseMenu()) -- while
-        // disconnected it just collapses back to this same page, so there's nothing to restore
-        // and resuming a demo loop wouldn't make sense (there's no game to have paused it for).
-        const wasConnected = CL.cls.state === clientConnectionState.connected;
-        M.CloseMenu();
-        if (wasConnected) {
-          // Restore the demo-loop cursor paused (set to -1) when the menu was opened over a
-          // playing demo, so ClientDemos can naturally advance to the next one when it ends.
-          CL.cls.demonum = M.#saveDemonum;
-        }
-      },
+      onEscape: () => { M.CloseMenu(); },
     });
 
     const singlePlayerPage = new MenuPage({
@@ -892,7 +867,7 @@ export default class M {
         if (!confirm('Delete selected game?')) {
           return;
         }
-        localStorage.removeItem(`Quake.${COM.gamedir![0].filename}/s${index}.sav`);
+        SaveSlots.delete(index);
         M.#scanSaves();
       },
     }));
@@ -915,7 +890,7 @@ export default class M {
         if (!confirm('Delete selected game?')) {
           return;
         }
-        localStorage.removeItem(`Quake.${COM.gamedir![0].filename}/s${index}.sav`);
+        SaveSlots.delete(index);
         M.#scanSaves();
       },
     }));
@@ -992,10 +967,8 @@ export default class M {
     M.menuStack.register('alert', alertPage);
     M.menuStack.register('launch_server', launchServerMenu);
 
-    M.#mainPage = mainPage;
+    M.menuStack.setRootPage('main');
     M.#alertPage = alertPage;
-    M.#quitPage = quitPage;
-    M.#multiplayerPage = multiplayerSetupPage;
   }
 
   // Menu Subsystem
@@ -1112,6 +1085,14 @@ export default class M {
     // always close the menu when a connection progresses
     eventBus.subscribe('client.signon', () => {
       M.CloseMenu();
+    });
+
+    // Host.EndGame/Host.Error report faults via the event bus rather than calling into the
+    // menu system directly (see docs/events.md#host) -- this keeps the existing alert-dialog
+    // behavior working. Once page ownership moves to game code, this subscription moves with
+    // it instead of staying here.
+    eventBus.subscribe('host.alert', (event: HostAlertEvent): void => {
+      M.Alert(event.title, event.message);
     });
   }
 

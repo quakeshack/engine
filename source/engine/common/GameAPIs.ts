@@ -5,13 +5,18 @@ import type { SzBuffer } from '../network/MSG.ts';
 import type ParsedQC from './model/parsers/ParsedQC.ts';
 import type { BaseModel } from './model/BaseModel.ts';
 import type { Visibility } from './model/BSP.ts';
+import type { DiscoveredSession } from '../client/menu/SessionDiscovery.ts';
+import type { SaveSlotInfo } from '../client/menu/SaveSlots.ts';
 
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
 import { moveTypes, solid } from '../../shared/Defs.ts';
+import { clientConnectionState } from './Def.ts';
 import Key, { KeyDestination } from '../client/Key.ts';
 import { Action, Image, Label, MenuItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
 import { GridLayout, ImageBasedLayout, ListLayout, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
+import SessionDiscovery from '../client/menu/SessionDiscovery.ts';
+import SaveSlotsService from '../client/menu/SaveSlots.ts';
 import { SFX as SFXValue } from '../client/Sound.ts';
 import VID from '../client/VID.ts';
 import * as Protocol from '../network/Protocol.ts';
@@ -1163,6 +1168,21 @@ export class ClientEngineAPI extends CommonEngineAPI {
     get serverInfo() {
       return CL.cls.serverInfo;
     },
+    /**
+     * @returns True while fully connected to a server (local or remote).
+     */
+    get connected(): boolean {
+      return CL.cls.state === clientConnectionState.connected;
+    },
+  };
+
+  static readonly SV = {
+    /**
+     * @returns True while this client is also hosting a local (listen) server.
+     */
+    get active(): boolean {
+      return SV.server.active;
+    },
   };
 
   static readonly VID = {
@@ -1241,6 +1261,15 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
+     * Declare which registered page is the root -- what `togglemenu`/Escape opens, and what
+     * `Clear()`/an involuntary disconnect falls back to. Resolved by name, so re-registering
+     * that name to a different page later keeps the root correct without calling this again.
+     */
+    SetRootPage(name: string): void {
+      M.menuStack.setRootPage(name);
+    },
+
+    /**
      * Open a registered page as the pause menu, replacing whatever is currently shown.
      */
     Open(name: string): void {
@@ -1264,6 +1293,20 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
+     * Pop pages until the stack is at most `depth` deep.
+     */
+    PopTo(depth: number): void {
+      M.menuStack.popTo(depth);
+    },
+
+    /**
+     * Pop down to a single page, leaving only the bottom of the stack.
+     */
+    PopToRoot(): void {
+      M.menuStack.popToRoot();
+    },
+
+    /**
      * Replace the current page with a registered one, without growing the navigation stack.
      */
     Replace(name: string): void {
@@ -1278,17 +1321,37 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
+     * Pop every page off the stack without changing `Key.destination` -- unlike `Close()`, this
+     * doesn't return to the game/console, it just empties the navigation stack.
+     */
+    Clear(): void {
+      M.menuStack.clear();
+    },
+
+    /**
      * Check whether the menu is open, optionally a specific registered page.
      * @returns True when the menu (or the named page) is currently shown.
      */
     IsOpen(name?: string): boolean {
-      const current = M.menuStack.current();
-
       if (name === undefined) {
-        return current !== null;
+        return M.menuStack.current() !== null;
       }
 
-      return current === M.menuStack.pages.get(name);
+      return M.menuStack.isShowing(name);
+    },
+
+    /**
+     * @returns The current navigation stack depth.
+     */
+    Depth(): number {
+      return M.menuStack.depth();
+    },
+
+    /**
+     * @returns True when nothing is on the navigation stack.
+     */
+    IsEmpty(): boolean {
+      return M.menuStack.isEmpty();
     },
 
     /**
@@ -1339,6 +1402,35 @@ export class ClientEngineAPI extends CommonEngineAPI {
     ImageBasedLayout,
     ListLayout,
     GridLayout,
+  };
+
+  static readonly Multiplayer = {
+    /**
+     * Fetch currently joinable sessions for this client's active game (mod) from the master
+     * server. Throws if signaling is unavailable -- callers that can't assume it's configured
+     * should check first or catch.
+     * @returns Sessions matching the active game/mod.
+     */
+    ListSessions(): Promise<DiscoveredSession[]> {
+      return SessionDiscovery.listSessions();
+    },
+  };
+
+  static readonly SaveSlots = {
+    /**
+     * List save-slot metadata for the currently active game directory.
+     * @returns Metadata for save slots `0..maxSlots - 1`.
+     */
+    List(maxSlots: number): SaveSlotInfo[] {
+      return SaveSlotsService.list(maxSlots);
+    },
+
+    /**
+     * Delete a save slot's data.
+     */
+    Delete(index: number): void {
+      SaveSlotsService.delete(index);
+    },
   };
 
   static get eventBus(): EventBus {

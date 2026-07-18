@@ -378,9 +378,9 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
   }
 
   /**
-   * Installs a disconnected/connected `CL` mock plus a real 'main' page registration on the
-   * actual M.menuStack, since M.CloseMenu()/M.PopMenu()'s disconnected fallback collapses back
-   * to whatever is registered under that name.
+   * Installs a disconnected/connected `CL` mock plus a real 'main' page registered as the root
+   * on the actual M.menuStack, since M.CloseMenu()/M.PopMenu()'s disconnected fallback
+   * collapses back to the root page.
    * @param {import('../../source/engine/common/Def.ts').clientConnectionState} state
    * @param {(context: { mainPage: ReturnType<typeof createMockPage> }) => void} callback test callback
    */
@@ -399,6 +399,7 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
     registry.M = M; // MenuStack.push() sets M.entersound directly on the real registry entry.
     M.menuStack.stack.length = 0;
     M.menuStack.register('main', mainPage);
+    M.menuStack.setRootPage('main');
     eventBus.publish('registry.frozen');
 
     try {
@@ -492,6 +493,7 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
     registry.M = M;
     M.menuStack.stack.length = 0;
     M.menuStack.register('main', mainPage);
+    M.menuStack.setRootPage('main');
     eventBus.publish('registry.frozen');
 
     try {

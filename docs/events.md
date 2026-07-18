@@ -79,6 +79,7 @@ The engine has an event bus.
 | host.shutting-down | - | Shutting down. Being of Host.Shutdown. |
 | host.shutdown | - | Shut down. End of Host.Shutdown. |
 | host.config.loaded | - | A saved config has been consumed. |
+| host.alert | 1. `HostAlertEvent` (`title`, `message`, `severity`: `'info' \| 'error'`) | `Host.EndGame`/`Host.Error` reporting a fault or an expected end-of-game condition. `Con.PrintError`/`PrintSuccess` already ran unconditionally before this publishes, so it's safe for nothing to be subscribed (e.g. a dedicated server, or before any game module has registered a handler) -- this is purely an opt-in richer presentation, not the only place the message is surfaced. |
 
 ### Network
 

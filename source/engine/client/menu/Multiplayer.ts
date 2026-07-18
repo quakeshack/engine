@@ -6,30 +6,12 @@ import { Action, Label, Spacer, Toggle } from './MenuItem.ts';
 import { MenuPage, VerticalLayout } from './MenuPage.ts';
 import type { MenuStack } from './MenuStack.ts';
 import { ServerEngineAPI } from '../../common/GameAPIs.ts';
+import SessionDiscovery from './SessionDiscovery.ts';
 
-interface ServerInfoSummary {
-  readonly hostname?: string;
-  readonly map?: string;
-  readonly mod?: string;
-  readonly currentPlayers?: number;
-  readonly maxPlayers?: number;
-  readonly colo?: string | null;
-  readonly country?: string | null;
-}
-
-interface ServerSessionSummary {
-  readonly sessionId: string;
-  readonly serverInfo?: ServerInfoSummary | null;
-}
-
-interface ServerListResponse {
-  readonly servers?: ServerSessionSummary[] | null;
-}
-
-let { COM, M, urls } = getClientRegistry();
+let { M, urls } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, M, urls } = getClientRegistry());
+  ({ M, urls } = getClientRegistry());
 });
 
 // CR: this whole menu is heavily WIP
@@ -148,40 +130,24 @@ export default class MultiplayerMainMenu extends MenuPage {
     this.items.push(new Label({ label: 'Finding sessions...' }));
 
     try {
-      if (!urls?.signalingURL) {
-        throw new Error('Signaling URL is unavailable');
-      }
-
-      const signalingUrl = new URL(urls.signalingURL);
-      const protocol = signalingUrl.protocol === 'wss:' ? 'https:' : 'http:';
-      const url = `${protocol}//${signalingUrl.host}/list-servers`;
-
-      const response = await fetch(url);
-      const data = await response.json() as ServerListResponse;
-
-      // Only list servers running the same game (mod) as this client, so e.g. hellwave
-      // sessions don't show up while playing id1 and vice versa.
-      const servers = (data.servers ?? []).filter((session) => session.serverInfo?.mod === COM.game);
+      const sessions = await SessionDiscovery.listSessions();
 
       // Remove "Finding sessions..."
       this.items.length = 3;
       this.items.push(new Spacer());
       this.items.push(new Label({ label: 'Online Sessions:' }));
 
-      if (servers.length === 0) {
+      if (sessions.length === 0) {
         this.items.push(new Label({ label: 'No sessions found.' }));
         this.#addRefreshSessionsButton();
         return;
       }
 
-      for (const session of servers) {
-        const info = session.serverInfo || {};
-        // const hostname = info.hostname || 'Unknown Server';
-        const map = info.map || '?';
-        const players = `${info.currentPlayers ?? 0}/${info.maxPlayers ?? 0}`;
+      for (const session of sessions) {
+        const players = `${session.currentPlayers}/${session.maxPlayers}`;
 
         this.items.push(new Action({
-          label: `${map} near ${[info.colo || null, info.country].filter(Boolean).join(', ')} [${players}]`,
+          label: `${session.map} near ${[session.colo, session.country].filter(Boolean).join(', ')} [${players}]`,
           action() {
             M.CloseMenu();
             void Cmd.ExecuteString(`connect webrtc://${session.sessionId}`);

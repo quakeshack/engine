@@ -84,6 +84,19 @@ export type ClientDamageEvent = {
   attackOrigin: Vector;
 };
 
+export type HostAlertSeverity = 'info' | 'error';
+
+/**
+ * Payload for the `host.alert` event, published by `Host.EndGame`/`Host.Error` instead of
+ * calling into the menu system directly -- game code decides independently whether/how to
+ * present it (see docs/events.md#host).
+ */
+export interface HostAlertEvent {
+  readonly title: string;
+  readonly message: string;
+  readonly severity: HostAlertSeverity;
+}
+
 export type PostProcessColorGradeDescriptor = {
   readonly saturation?: number;
   readonly contrast?: number;

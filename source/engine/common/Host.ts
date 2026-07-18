@@ -8,7 +8,7 @@
 
 /* eslint-disable jsdoc/require-returns */
 
-import { SerializableEntity, type SerializedData, type ServerGameInterface } from '../../shared/GameInterfaces.ts';
+import { SerializableEntity, type HostAlertEvent, type SerializedData, type ServerGameInterface } from '../../shared/GameInterfaces.ts';
 import type { SerializedParticle } from '../client/R.ts';
 import type { AliasModel } from './model/AliasModel.ts';
 import { ED, type ServerEdict } from '../server/Edict.ts';
@@ -208,7 +208,7 @@ export default class Host {
     }
 
     CL.Disconnect();
-    M.Alert('Host.EndGame', message);
+    eventBus.publish<[HostAlertEvent]>('host.alert', { title: 'Host.EndGame', message, severity: 'info' });
   }
 
   static Error(error: string): never | void {
@@ -231,7 +231,7 @@ export default class Host {
     CL.Disconnect();
     CL.cls.demonum = -1;
     Host.inerror = false;
-    M.Alert('Host Error', error);
+    eventBus.publish<[HostAlertEvent]>('host.alert', { title: 'Host Error', message: error, severity: 'error' });
   }
 
   static FindMaxClients(): void {

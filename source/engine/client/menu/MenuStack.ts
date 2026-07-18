@@ -15,6 +15,7 @@ eventBus.subscribe('registry.frozen', () => {
 export class MenuStack {
   stack: MenuPage[];
   pages: Map<string, MenuPage>;
+  #rootPageName: string | null = null;
 
   constructor() {
     this.stack = [];
@@ -27,6 +28,42 @@ export class MenuStack {
   register(name: string, page: MenuPage): void {
     this.pages.set(name, page);
     eventBus.publish('menu.page-registered', name);
+  }
+
+  /**
+   * Check whether the named page is the one currently on top of the stack.
+   * @returns True when the named page is current.
+   */
+  isShowing(name: string): boolean {
+    const page = this.pages.get(name);
+    return page !== undefined && this.current() === page;
+  }
+
+  /**
+   * Declare which registered page is "the root" -- resolved by name, not by reference, so
+   * re-registering that name to a different page later (e.g. a mod overriding the built-in
+   * main menu) keeps the root correct automatically without calling this again.
+   */
+  setRootPage(name: string): void {
+    console.assert(this.pages.has(name), `MenuStack.setRootPage: unknown page "${name}"`);
+    this.#rootPageName = name;
+  }
+
+  /**
+   * Push the current root page (see setRootPage). Does not clear the stack itself -- callers
+   * that want a fresh root should clear() first.
+   */
+  pushRoot(): void {
+    console.assert(this.#rootPageName !== null, 'MenuStack.pushRoot: no root page set');
+    this.push(this.#rootPageName!);
+  }
+
+  /**
+   * Check whether the root page (see setRootPage) is the one currently on top of the stack.
+   * @returns True when the root page is current.
+   */
+  isShowingRoot(): boolean {
+    return this.#rootPageName !== null && this.isShowing(this.#rootPageName);
   }
 
   /**
