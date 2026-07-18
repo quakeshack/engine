@@ -22,6 +22,15 @@ eventBus.subscribe('registry.frozen', () => {
   ({ CL, COM, Con, Draw, Host, Key, S, SCR, SV } = getClientRegistry());
 });
 
+// An involuntary disconnect (server shutdown, kick, timeout) can happen with no menu open at
+// all -- e.g. mid-gameplay. There's nothing to show without a game running, so bring the main
+// menu back up rather than leaving the player at a blank/console-backdrop screen.
+eventBus.subscribe('client.disconnected', () => {
+  if (M.menuStack.isEmpty()) {
+    M.Menu_Main_f();
+  }
+});
+
 export type MenuPic = GLTexture & { translate?: GLTexture | null };
 type SaveGameData = { comment?: string; mapname?: string };
 type QuitMessage = [string, string, string, string];
@@ -161,8 +170,8 @@ export class QuitDialogPage extends DialogPage {
   }
 
   #confirmQuit(): void {
-    Key.destination = KeyDestination.console;
-    Host.Quit_f();
+    // The player already confirmed via this dialog — skip Host.Quit_f()'s own confirmation gate.
+    Host.ForceQuit();
   }
 
   override draw(): void {
@@ -624,8 +633,23 @@ export default class M {
     };
   }
 
-  static #isOverBackButton(mx: number, my: number): boolean {
+  /**
+   * The button is hidden entirely at the root of the stack while disconnected: clicking it
+   * there would try to close the whole menu, which M.CloseMenu() now refuses to do since
+   * there's no game to return to (see M.CloseMenu()) -- showing a button that does nothing
+   * would just be confusing.
+   * @returns True if the Back/Close button should be shown/hit-tested this frame.
+   */
+  static #canShowBackButton(): boolean {
     if (!M.#usingMouse) {
+      return false;
+    }
+
+    return M.menuStack.depth() > 1 || CL.cls.state === clientConnectionState.connected;
+  }
+
+  static #isOverBackButton(mx: number, my: number): boolean {
+    if (!M.#canShowBackButton()) {
       return false;
     }
 
@@ -634,7 +658,7 @@ export default class M {
   }
 
   static #drawBackButton(): void {
-    if (!M.#usingMouse) {
+    if (!M.#canShowBackButton()) {
       return;
     }
 
@@ -648,6 +672,15 @@ export default class M {
   }
 
   static CloseMenu(): void {
+    if (CL.cls.state !== clientConnectionState.connected) {
+      // There's no game to return to while disconnected -- collapse back to the main page
+      // instead of leaving nothing on screen to look at or interact with.
+      if (M.menuStack.current() !== M.menuStack.pages.get('main')) {
+        M.menuStack.clear();
+        M.menuStack.push('main');
+      }
+      return;
+    }
     M.menuStack.clear();
     M.#returnToPreviousDestination();
   }
@@ -655,16 +688,18 @@ export default class M {
   static PopMenu(): void {
     M.menuStack.pop();
     if (M.menuStack.isEmpty()) {
+      if (CL.cls.state !== clientConnectionState.connected) {
+        M.menuStack.push('main');
+        return;
+      }
       M.#returnToPreviousDestination();
     }
   }
 
   static #returnToPreviousDestination(): void {
-    if (CL.cls.state === clientConnectionState.connected) {
-      Key.destination = KeyDestination.game;
-    } else {
-      Key.destination = KeyDestination.console;
-    }
+    // `game` regardless of connection state: it's just "not the menu" now that the console is
+    // an independent overlay rather than a destination to fall back into.
+    Key.destination = KeyDestination.game;
   }
 
   static ToggleMenu_f(this: void): void {
@@ -809,10 +844,15 @@ export default class M {
         new Action({ action: () => { M.Menu_Quit_f(); } }),
       ],
       onEscape: () => {
+        // M.CloseMenu() only actually closes while connected (see M.CloseMenu()) -- while
+        // disconnected it just collapses back to this same page, so there's nothing to restore
+        // and resuming a demo loop wouldn't make sense (there's no game to have paused it for).
+        const wasConnected = CL.cls.state === clientConnectionState.connected;
         M.CloseMenu();
-        CL.cls.demonum = M.#saveDemonum;
-        if (CL.cls.demonum !== -1 && !CL.cls.demoplayback && CL.cls.state !== clientConnectionState.connected) {
-          CL.NextDemo();
+        if (wasConnected) {
+          // Restore the demo-loop cursor paused (set to -1) when the menu was opened over a
+          // playing demo, so ClientDemos can naturally advance to the next one when it ends.
+          CL.cls.demonum = M.#saveDemonum;
         }
       },
     });

@@ -1,5 +1,6 @@
 import { K } from '../../shared/Keys.ts';
 import Cvar from '../common/Cvar.ts';
+import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import { kbutton, kbuttons } from './ClientInput.ts';
 import { KeyDestination } from './Key.ts';
@@ -310,12 +311,22 @@ export default class IN {
   }
 
   static onclick(this: void): void {
-    // Only capture the pointer for mouselook during actual gameplay — clicking the canvas to
-    // interact with the menu (or console/message input) must not lock/hide the cursor.
-    // The console's own "click brings up the menu" escape hatch lives in Key.Event() instead of
-    // here — it needs to run at mousedown time (see the comment there for why).
-    if (Key.destination === KeyDestination.game && document.pointerLockElement !== VID.mainwindow) {
+    // Only capture the pointer for mouselook during actual, connected gameplay — clicking the
+    // canvas to interact with the menu, message input, or the drop-down console (which can be
+    // open on top of gameplay) must not lock/hide the cursor. `Key.destination` alone isn't
+    // enough here: it also reads `game` while disconnected with no menu open (e.g. right after
+    // closing it), which shouldn't capture the mouse either.
+    if (Key.destination === KeyDestination.game && !Con.isOpen
+      && CL.cls.state === clientConnectionState.connected
+      && document.pointerLockElement !== VID.mainwindow) {
       void VID.mainwindow.requestPointerLock();
+    }
+  }
+
+  /** Releases the pointer lock, if held, so mouselook doesn't fight for input focus with a UI overlay. */
+  static ReleasePointerLock(): void {
+    if (document.pointerLockElement === VID.mainwindow) {
+      document.exitPointerLock();
     }
   }
 

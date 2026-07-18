@@ -12,10 +12,10 @@ interface LegacyWheelEvent extends Event {
   readonly wheelDeltaY: number;
 }
 
-let { COM, Host, Key, M } = getClientRegistry();
+let { COM, Con, Host, Key, M } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Host, Key, M } = getClientRegistry());
+  ({ COM, Con, Host, Key, M } = getClientRegistry());
 });
 
 eventBus.subscribe('host.crash', (error: unknown) => {
@@ -160,8 +160,10 @@ async function pasteFromClipboard(): Promise<void> {
 
 /** Dispatches key-down events into the engine input system. */
 function handleKeyDown(event: KeyboardEvent): void {
-  // Ctrl/Cmd+V: paste into the active text input instead of typing a literal 'v'.
-  if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && Key.destination !== KeyDestination.game) {
+  // Ctrl/Cmd+V: paste into the active text input instead of typing a literal 'v'. The console
+  // can be open on top of gameplay (Key.destination still reading `game`), so it needs its own
+  // check here rather than relying solely on the destination.
+  if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && (Con.isOpen || Key.destination !== KeyDestination.game)) {
     event.preventDefault();
     void pasteFromClipboard();
     return;

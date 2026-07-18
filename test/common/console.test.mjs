@@ -34,7 +34,37 @@ function resetConState() {
   Con.text = [];
   Con.captureBuffer = null;
   Con.forcedup = false;
+  Con.isOpen = false;
   Con.vislines = 0;
+}
+
+/**
+ * Install minimal registry stubs for `Con.ToggleConsole_f()`: `SCR` (a no-op `EndLoadingPlaque`
+ * plus a settable `con_current`, mutated directly by ToggleConsole_f when opening from the
+ * forced-up backdrop), `Key` (a settable history/lines pair, deliberately without a
+ * `destination` field — ToggleConsole_f must not touch it), and `IN` (a spy for the
+ * pointer-lock release).
+ * @param {(wasPointerLockReleased: () => boolean) => void} callback
+ */
+function withConsoleToggleRegistry(callback) {
+  const previousSCR = registry.SCR;
+  const previousKey = registry.Key;
+  const previousIN = registry.IN;
+  let released = false;
+
+  registry.SCR = /** @type {any} */ ({ EndLoadingPlaque() {}, con_current: 0 });
+  registry.Key = /** @type {any} */ ({ history_line: 0, lines: ['a', 'b', 'c'] });
+  registry.IN = /** @type {any} */ ({ ReleasePointerLock() { released = true; } });
+  eventBus.publish('registry.frozen');
+
+  try {
+    callback(() => released);
+  } finally {
+    registry.SCR = previousSCR;
+    registry.Key = previousKey;
+    registry.IN = previousIN;
+    eventBus.publish('registry.frozen');
+  }
 }
 
 void describe('Con', () => {
@@ -180,6 +210,72 @@ void describe('Con', () => {
           assert.equal(Con.text[3].time, 0);
           assert.equal(Con.text[4].time, 0);
           assert.equal(Con.text[5].time, 0);
+        } finally {
+          resetConState();
+        }
+      });
+    });
+  });
+
+  void describe('ToggleConsole_f', () => {
+    void test('toggles isOpen on and off', () => {
+      withConsoleToggleRegistry(() => {
+        resetConState();
+        try {
+          assert.equal(Con.isOpen, false);
+
+          Con.ToggleConsole_f();
+          assert.equal(Con.isOpen, true);
+
+          Con.ToggleConsole_f();
+          assert.equal(Con.isOpen, false);
+        } finally {
+          resetConState();
+        }
+      });
+    });
+
+    void test('releases pointer lock when opening, but not when closing', () => {
+      withConsoleToggleRegistry((wasPointerLockReleased) => {
+        resetConState();
+        try {
+          Con.ToggleConsole_f();
+          assert.equal(wasPointerLockReleased(), true);
+        } finally {
+          resetConState();
+        }
+      });
+    });
+
+    void test('resets the input-history cursor to the end when closing, not when opening', () => {
+      withConsoleToggleRegistry(() => {
+        resetConState();
+        try {
+          registry.Key.history_line = 0;
+
+          Con.ToggleConsole_f();
+          assert.equal(registry.Key.history_line, 0, 'unchanged while opening');
+
+          Con.ToggleConsole_f();
+          assert.equal(registry.Key.history_line, registry.Key.lines.length, 'reset while closing');
+        } finally {
+          resetConState();
+        }
+      });
+    });
+
+    void test('never touches con_current directly -- SCR.SetUpToDrawConsole() owns its animation', () => {
+      withConsoleToggleRegistry(() => {
+        resetConState();
+        try {
+          Con.forcedup = true;
+          registry.SCR.con_current = 37;
+
+          Con.ToggleConsole_f();
+          assert.equal(registry.SCR.con_current, 37, 'unchanged while opening');
+
+          Con.ToggleConsole_f();
+          assert.equal(registry.SCR.con_current, 37, 'unchanged while closing');
         } finally {
           resetConState();
         }

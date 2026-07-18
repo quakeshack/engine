@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import IN, {
   createMobileInputSupportState,
   markKeyboardActivity,
@@ -126,17 +127,24 @@ void describe('IN mobile external input warning', () => {
 
 void describe('IN.onclick', () => {
   /**
-   * Temporarily installs a mock `Key` registry stub with the given destination, and a mock
-   * `VID.mainwindow.requestPointerLock` that records whether it was called.
+   * Temporarily installs mock `Key`/`Con`/`CL` registry stubs (destination, whether the
+   * drop-down console is open, and connection state — defaults to connected, matching most of
+   * these tests' intent) and a mock `VID.mainwindow.requestPointerLock` that records whether it
+   * was called.
    * @param {KeyDestination} destination
    * @param {(wasPointerLockRequested: () => boolean) => void} callback test callback
+   * @param {{ consoleOpen?: boolean, connectionState?: number }} [options]
    */
-  function withMockClickEnvironment(destination, callback) {
+  function withMockClickEnvironment(destination, callback, options = {}) {
     const previousKey = registry.Key;
+    const previousCon = registry.Con;
+    const previousCL = registry.CL;
     const previousMainwindow = VID.mainwindow;
     let requestedPointerLock = false;
 
     registry.Key = { destination };
+    registry.Con = { isOpen: options.consoleOpen ?? false };
+    registry.CL = { cls: { state: options.connectionState ?? clientConnectionState.connected } };
     VID.mainwindow = { requestPointerLock: () => { requestedPointerLock = true; return Promise.resolve(); } };
     eventBus.publish('registry.frozen');
 
@@ -144,6 +152,8 @@ void describe('IN.onclick', () => {
       callback(() => requestedPointerLock);
     } finally {
       registry.Key = previousKey;
+      registry.Con = previousCon;
+      registry.CL = previousCL;
       VID.mainwindow = previousMainwindow;
       eventBus.publish('registry.frozen');
     }
@@ -169,15 +179,7 @@ void describe('IN.onclick', () => {
     });
   });
 
-  void test('does not capture the pointer while the console or a message prompt is active', () => {
-    withMockClickEnvironment(KeyDestination.console, (wasRequested) => {
-      withMockDocument(null, () => {
-        IN.onclick();
-
-        assert.equal(wasRequested(), false);
-      });
-    });
-
+  void test('does not capture the pointer while a message prompt is active', () => {
     withMockClickEnvironment(KeyDestination.message, (wasRequested) => {
       withMockDocument(null, () => {
         IN.onclick();
@@ -187,6 +189,29 @@ void describe('IN.onclick', () => {
     });
   });
 
+  void test('does not capture the pointer while the drop-down console is open over gameplay', () => {
+    withMockClickEnvironment(KeyDestination.game, (wasRequested) => {
+      withMockDocument(null, () => {
+        IN.onclick();
+
+        assert.equal(wasRequested(), false);
+      });
+    }, { consoleOpen: true });
+  });
+
+  void test('does not capture the pointer when destination reads game but no game is actually connected', () => {
+    // Regression test: Key.destination now also reads `game` right after closing the menu
+    // while disconnected (it no longer falls back to a `console` destination) — clicking that
+    // idle backdrop must not lock the mouse to a game that isn't running.
+    withMockClickEnvironment(KeyDestination.game, (wasRequested) => {
+      withMockDocument(null, () => {
+        IN.onclick();
+
+        assert.equal(wasRequested(), false);
+      });
+    }, { connectionState: clientConnectionState.disconnected });
+  });
+
   void test('does not re-request pointer lock when already locked', () => {
     withMockClickEnvironment(KeyDestination.game, (wasRequested) => {
       withMockDocument(VID.mainwindow, () => {
@@ -194,6 +219,30 @@ void describe('IN.onclick', () => {
 
         assert.equal(wasRequested(), false);
       });
+    });
+  });
+});
+
+void describe('IN.ReleasePointerLock', () => {
+  void test('releases the lock when this window holds it', () => {
+    withMockDocument(VID.mainwindow, () => {
+      let released = false;
+      globalThis.document.exitPointerLock = () => { released = true; };
+
+      IN.ReleasePointerLock();
+
+      assert.equal(released, true);
+    });
+  });
+
+  void test('is a no-op when the lock is not held by this window', () => {
+    withMockDocument(null, () => {
+      let released = false;
+      globalThis.document.exitPointerLock = () => { released = true; };
+
+      IN.ReleasePointerLock();
+
+      assert.equal(released, false);
     });
   });
 });

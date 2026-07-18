@@ -4,6 +4,123 @@ import { describe, test } from 'node:test';
 import SCR from '../../source/engine/client/SCR.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 
+/**
+ * Installs minimal `CL`/`Con`/`Host` registry stubs for `SCR.SetUpToDrawConsole()`, plus a
+ * fixed `SCR.conspeed` so the slide-speed math is deterministic.
+ * @param {{ worldmodel: unknown, signon: number }} state
+ * @param {() => void} callback test callback
+ */
+function withMockConsoleRegistry({ worldmodel, signon }, callback) {
+  const previousCL = registry.CL;
+  const previousCon = registry.Con;
+  const previousHost = registry.Host;
+  const previousConCurrent = SCR.con_current;
+  const previousConspeed = SCR.conspeed;
+  const con = { forcedup: false, isOpen: false };
+
+  registry.CL = { state: { worldmodel }, cls: { signon } };
+  registry.Con = con;
+  registry.Host = { frametime: 0.1 };
+  SCR.conspeed = { value: 300 };
+  eventBus.publish('registry.frozen');
+
+  try {
+    callback(con);
+  } finally {
+    registry.CL = previousCL;
+    registry.Con = previousCon;
+    registry.Host = previousHost;
+    SCR.con_current = previousConCurrent;
+    SCR.conspeed = previousConspeed;
+    eventBus.publish('registry.frozen');
+  }
+}
+
+void describe('SCR.SetUpToDrawConsole', () => {
+  void test('slides toward 0 when not open, even with no valid connected game (no full-screen pin)', () => {
+    // Regression test: the console must never snap to a full-screen pin anymore. While
+    // disconnected the main menu is always shown instead (see M.CloseMenu()), and the console
+    // itself is never drawn in that state (see SCR.isConsolePassiveBackdrop), so there's no
+    // reason for con_current to jump to a "full screen" value.
+    withMockConsoleRegistry({ worldmodel: null, signon: 0 }, (con) => {
+      con.isOpen = false;
+      SCR.con_current = 100;
+
+      SCR.SetUpToDrawConsole();
+
+      assert.equal(con.forcedup, true);
+      assert.ok(SCR.con_current < 100 && SCR.con_current >= 0, 'animates down toward 0, same as the connected case');
+    });
+  });
+
+  void test('slides open toward the normal drawer height when forced up and actively toggled open', () => {
+    withMockConsoleRegistry({ worldmodel: null, signon: 0 }, (con) => {
+      con.isOpen = true;
+      SCR.con_current = 0;
+
+      SCR.SetUpToDrawConsole();
+
+      assert.equal(con.forcedup, true);
+      assert.ok(SCR.con_current > 0 && SCR.con_current <= 100);
+    });
+  });
+
+  void test('slides open/closed at the normal drawer height with a valid connected game', () => {
+    withMockConsoleRegistry({ worldmodel: {}, signon: 4 }, (con) => {
+      con.isOpen = true;
+      SCR.con_current = 0;
+
+      SCR.SetUpToDrawConsole();
+
+      assert.equal(con.forcedup, false);
+      assert.ok(SCR.con_current > 0 && SCR.con_current <= 100);
+    });
+  });
+
+  void test('slides closed when not toggled open and there is a valid connected game', () => {
+    withMockConsoleRegistry({ worldmodel: {}, signon: 4 }, (con) => {
+      con.isOpen = false;
+      SCR.con_current = 100;
+
+      SCR.SetUpToDrawConsole();
+
+      assert.equal(con.forcedup, false);
+      assert.ok(SCR.con_current < 100 && SCR.con_current >= 0);
+    });
+  });
+});
+
+void describe('SCR.isConsolePassiveBackdrop', () => {
+  void test('true only when forced up and not actively toggled open', () => {
+    withMockConsoleRegistry({ worldmodel: null, signon: 0 }, (con) => {
+      SCR.SetUpToDrawConsole(); // sets Con.forcedup from the mocked CL state
+      con.isOpen = false;
+
+      assert.equal(SCR.isConsolePassiveBackdrop(), true);
+    });
+  });
+
+  void test('false while actively open, even with no game connected', () => {
+    withMockConsoleRegistry({ worldmodel: null, signon: 0 }, (con) => {
+      SCR.SetUpToDrawConsole();
+      con.isOpen = true;
+
+      assert.equal(SCR.isConsolePassiveBackdrop(), false);
+    });
+  });
+
+  void test('false while mid-close-animation with a valid connected game', () => {
+    // Regression test: draw-order must keep the drawer on top of the menu for the entire
+    // closing slide while connected, not just while Con.isOpen is still true.
+    withMockConsoleRegistry({ worldmodel: {}, signon: 4 }, (con) => {
+      SCR.SetUpToDrawConsole();
+      con.isOpen = false; // just toggled closed, con_current is still animating down
+
+      assert.equal(SCR.isConsolePassiveBackdrop(), false);
+    });
+  });
+});
+
 void describe('SCR.CenterPrint', () => {
   void test('publishes client.center-print after formatting the message', () => {
     const previousCL = registry.CL;

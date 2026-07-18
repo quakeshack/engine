@@ -6,25 +6,36 @@ import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import { KeyDestination } from '../../source/engine/client/Key.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import { default as M, QuitDialogPage } from '../../source/engine/client/Menu.ts';
+import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
 
 /**
  * Installs the minimal registry stubs QuitDialogPage's Yes/No handling needs: `CL` (so
- * M.PopMenu()'s fallback destination logic can run), `Key` (a settable destination, mutated
- * directly by both the dialog and M.PopMenu()), and `Host` (Quit_f, recorded rather than
- * actually exiting the process).
+ * M.PopMenu()'s fallback destination logic can run — connected by default, matching the common
+ * "quit from the in-game pause menu" case most of these tests exercise), `Key` (a settable
+ * destination, mutated directly by M.PopMenu()), `Host` (ForceQuit, recorded rather than
+ * actually exiting the process), and `IN` (ReleasePointerLock, called by MenuStack — a no-op spy
+ * here). Also registers a bare 'main' page on the real M.menuStack, since M.PopMenu()'s
+ * disconnected fallback collapses back to it.
  * @param {(context: { quitCalled: () => boolean }) => void} callback test callback
+ * @param {{ state?: import('../../source/engine/common/Def.ts').clientConnectionState }} [options]
  */
-function withMockQuitRegistry(callback) {
+function withMockQuitRegistry(callback, options = {}) {
   const previousCL = registry.CL;
   const previousKey = registry.Key;
   const previousHost = registry.Host;
+  const previousIN = registry.IN;
+  const previousM = registry.M;
   const previousStack = [...M.menuStack.stack];
+  const previousPages = new Map(M.menuStack.pages);
   let quitCalled = false;
 
-  registry.CL = { cls: { state: clientConnectionState.disconnected } };
+  registry.CL = { cls: { state: options.state ?? clientConnectionState.connected } };
   registry.Key = { destination: KeyDestination.menu };
-  registry.Host = { realtime: 0, Quit_f: () => { quitCalled = true; } };
+  registry.Host = { realtime: 0, ForceQuit: () => { quitCalled = true; } };
+  registry.IN = { ReleasePointerLock: () => {} };
+  registry.M = M; // MenuStack.push() sets M.entersound directly on the real registry entry.
   M.menuStack.stack.length = 0;
+  M.menuStack.register('main', new MenuPage({ title: 'Main' }));
   eventBus.publish('registry.frozen');
 
   try {
@@ -33,8 +44,14 @@ function withMockQuitRegistry(callback) {
     registry.CL = previousCL;
     registry.Key = previousKey;
     registry.Host = previousHost;
+    registry.IN = previousIN;
+    registry.M = previousM;
     M.menuStack.stack.length = 0;
     M.menuStack.stack.push(...previousStack);
+    M.menuStack.pages.clear();
+    for (const [name, page] of previousPages) {
+      M.menuStack.pages.set(name, page);
+    }
     eventBus.publish('registry.frozen');
   }
 }
@@ -49,7 +66,10 @@ void describe('QuitDialogPage', () => {
 
       assert.equal(page.handleInput(121), true); // 'y'
       assert.equal(quitCalled(), true);
-      assert.equal(registry.Key.destination, KeyDestination.console);
+      // 'n' already popped the (empty) stack above, falling back to `game` (the mock is
+      // connected, matching quitting from an in-game pause menu); confirming quit via 'y'
+      // doesn't touch Key.destination at all anymore.
+      assert.equal(registry.Key.destination, KeyDestination.game);
     });
   });
 
@@ -62,7 +82,7 @@ void describe('QuitDialogPage', () => {
 
       assert.equal(page.handleInput(K.MOUSE1), true);
       assert.equal(quitCalled(), true);
-      assert.equal(registry.Key.destination, KeyDestination.console);
+      assert.equal(registry.Key.destination, KeyDestination.menu);
     });
   });
 
@@ -75,9 +95,9 @@ void describe('QuitDialogPage', () => {
 
       assert.equal(page.handleInput(K.MOUSE1), true);
       assert.equal(quitCalled(), false);
-      // M.PopMenu() on an already-empty stack falls back to returnToPreviousDestination(),
-      // which routes to console since CL.cls.state is disconnected in this test.
-      assert.equal(registry.Key.destination, KeyDestination.console);
+      // M.PopMenu() on an already-empty stack falls back to returnToPreviousDestination() while
+      // connected (console is no longer a destination to fall back to).
+      assert.equal(registry.Key.destination, KeyDestination.game);
     });
   });
 
@@ -92,6 +112,36 @@ void describe('QuitDialogPage', () => {
       assert.equal(quitCalled(), false);
       assert.equal(registry.Key.destination, KeyDestination.menu);
     });
+  });
+
+  void test('N collapses back to the main page instead of the game while disconnected', () => {
+    // Regression test: M.PopMenu()'s empty-stack fallback must not drop to `game` while there's
+    // no game to return to (see M.CloseMenu()/M.PopMenu() in Menu.ts) -- the player should land
+    // back on the main menu instead of an empty screen.
+    withMockQuitRegistry(({ quitCalled }) => {
+      const page = new QuitDialogPage();
+
+      assert.equal(page.handleInput(110), true); // 'n'
+
+      assert.equal(quitCalled(), false);
+      assert.equal(registry.Key.destination, KeyDestination.menu);
+      assert.equal(M.menuStack.current()?.title, 'Main');
+    }, { state: clientConnectionState.disconnected });
+  });
+
+  void test('clicking "No" also collapses back to the main page while disconnected', () => {
+    withMockQuitRegistry(({ quitCalled }) => {
+      const page = new QuitDialogPage();
+
+      M.mouseX = 168; // QuitDialogPage's #noX
+      M.mouseY = 116;
+
+      assert.equal(page.handleInput(K.MOUSE1), true);
+
+      assert.equal(quitCalled(), false);
+      assert.equal(registry.Key.destination, KeyDestination.menu);
+      assert.equal(M.menuStack.current()?.title, 'Main');
+    }, { state: clientConnectionState.disconnected });
   });
 
   void test('getBackButtonAnchor centers under the taller box (5 lines, for the Yes/No row)', () => {

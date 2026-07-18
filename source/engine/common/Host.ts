@@ -725,12 +725,21 @@ export default class Host {
 
   // Commands
 
+  /**
+   * The `quit` command: asks for confirmation via the menu's Y/N dialog, unless typed directly
+   * into an already-open console (a deliberate enough action to skip the confirmation).
+   */
   static Quit_f(): void {
-    if (!registry.isDedicatedServer && Key.destination !== KeyDestination.console) {
+    if (!registry.isDedicatedServer && !Con.isOpen) {
       M.Menu_Quit_f();
       return;
     }
 
+    Host.ForceQuit();
+  }
+
+  /** Quits immediately, no confirmation — used once the player has already confirmed (e.g. the quit dialog's Yes). */
+  static ForceQuit(): void {
     if (SV.server.active) {
       Host.ShutdownServer();
     }

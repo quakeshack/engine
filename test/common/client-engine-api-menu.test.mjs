@@ -13,6 +13,7 @@ import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
  */
 function withMockClientEngineMenu(callback) {
   const previousM = registry.M;
+  const previousIN = registry.IN;
   const previousDestination = Key.destination;
 
   const menuStack = new MenuStack();
@@ -31,6 +32,8 @@ function withMockClientEngineMenu(callback) {
       menuStack.pop();
     },
   };
+  // MenuStack.push() releases pointer lock on every open — a no-op spy here.
+  registry.IN = { ReleasePointerLock() {} };
   eventBus.publish('registry.frozen');
 
   try {
@@ -41,6 +44,7 @@ function withMockClientEngineMenu(callback) {
     });
   } finally {
     registry.M = previousM;
+    registry.IN = previousIN;
     Key.destination = previousDestination;
     eventBus.publish('registry.frozen');
   }

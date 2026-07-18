@@ -34,6 +34,9 @@ Grouped by sections and then sorted by priority (more or less).
 - [_] IN: proper virtual joystick and keyboard/UI
 - [_] M: expose GUI toolkit (draw routines etc.) to the client game code, put stuff in shared/
 - [X] CL: remove that chatlog stuff again, it’s all done in the Client code now
+- [X] Con: reworked to a Q3A/Doom3-style drop-down drawer — independent `Con.isOpen` overlay
+  instead of a `KeyDestination.console` peer state, renders above the menu, doesn't pause
+  gameplay behind it
 
 ### Code smell
 
@@ -176,6 +179,67 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-07-18
+
+- M/Con/SCR: follow-up fixes after live-testing the Q3/Doom3 console rework:
+  - the main menu can no longer be exited while disconnected (no game and no demo playing):
+    M.CloseMenu()/M.PopMenu() now collapse back to the main page instead of clearing the whole
+    stack whenever `CL.cls.state !== connected` — there was nothing meaningful to return to
+    (an empty screen with the passive console backdrop), so Escape/Back at the root now just
+    stays put. Demo playback is unaffected since it sets `state = connected` for its duration.
+  - as a consequence, an involuntary disconnect (server shutdown, kick, timeout) that happens
+    with no menu open at all now reopens the main menu automatically (new top-level
+    `client.disconnected` subscriber in Menu.ts, gated on the stack actually being empty so it
+    never steals focus from an already-open menu) — previously this left the player staring at
+    the same full-screen console backdrop with nothing on top and no way back in without a
+    lucky click
+  - fixed the console's closing animation rendering *behind* the menu while connected: the
+    draw-order split in SCR.UpdateScreen() was keyed on `Con.isOpen` alone, so the instant the
+    player closed it (isOpen flips false) it jumped to the under-the-menu draw call even though
+    con_current was still sliding down over several frames — visually the drawer would flash
+    behind the menu mid-close instead of sliding away on top of it. Replaced with a shared
+    `SCR.isConsolePassiveBackdrop()` predicate (`Con.forcedup && !Con.isOpen`) used by both
+    `SetUpToDrawConsole()`'s full-screen pin and `UpdateScreen()`'s draw-order split, so a
+    closing-while-connected drawer (forcedup false) always stays in the on-top slot for the
+    entire animation
+  - also fixed a stale `KeyDestination.console` reference left over in menu.test.mjs from the
+    original console rework (silently resolved to `undefined`, not actually exercising the
+    "not in menu" branch it claimed to)
+  - found + fixed during a second round of live testing:
+    - opening the console while disconnected with the menu already up would snap to full
+      screen and visibly shrink down to the drawer height, instead of sliding in from empty --
+      SCR.con_current was still sitting at its pinned-200 backdrop value from before the
+      console was toggled open. Con.ToggleConsole_f() now resets it to 0 when opening from a
+      forced-up (no game) state.
+    - typing `disconnect` into the console while it and the menu were both open over live
+      gameplay left a frozen "residue" of the last rendered 3D frame visible in the gap between
+      the drawer and the menu -- V.RenderView() (and the gl.clear() inside it) skips entirely
+      once Con.forcedup is true, and nothing else was clearing the framebuffer. SCR.UpdateScreen
+      now paints Draw.BlackScreen() over the frame whenever forcedup is true.
+    - the Back/Close button was still shown (and clickable, silently doing nothing) at the root
+      of the menu while disconnected, now that closing there is blocked -- M.#canShowBackButton()
+      hides it in that specific case (still shows "< Back" one level deep, which still works).
+    - closing the menu while disconnected was calling CL.NextDemo() on every Escape press
+      (visible as "No demos listed with startdemos" console spam) because mainPage's onEscape
+      always ran its demo-loop-resume bookkeeping even when M.CloseMenu() no longer actually
+      closed anything -- guarded it on the close having actually happened (state was connected).
+  - removed the console's full-screen "backdrop behind the disconnected menu" trick entirely,
+    per follow-up feedback: since the main menu can no longer be closed while disconnected, that
+    backdrop no longer serves any purpose and was actively wrong (a leftover 3D frame could show
+    through the gap around it, and briefly flashed full-screen when the drawer was opened from
+    that pinned state -- both fixed as one-off workarounds moments earlier, now moot). The
+    console is simply never drawn at all when `Con.forcedup && !Con.isOpen`
+    (`SCR.isConsolePassiveBackdrop()`) — `SCR.SetUpToDrawConsole()` lost its 200 full-screen pin
+    entirely and just animates toward 0/100 unconditionally now, and both of the just-added
+    workarounds (Console.ts's con_current reset-on-open, SCR.ts's under-the-menu draw call site)
+    were reverted/removed as no longer needed.
+  - verified live in-browser: no conback texture visible behind the disconnected menu anymore
+    (clean black), no "< Close" button at the root while disconnected (still shows "< Back" one
+    level deep), console opens as a clean top-down sliver (not a full-screen flash) when toggled
+    open over the disconnected menu, and typing `disconnect` into the console while it and the
+    pause menu were both open over live gameplay leaves a clean black background instead of a
+    frozen 3D residue.
+
 ### 2026-07-13
 
 - M: made the menu clickable — mouse hover moves the cursor, clicking an item activates it
@@ -197,6 +261,43 @@ Grouped by sections and then sorted by priority (more or less).
   the Back button had already flipped it from menu to console within the same physical click
 - M: the Y/N quit confirm now has clickable "Yes"/"No" prompts in the dialog box itself (same
   hover convention as everything else), not just Y/N on the keyboard
+- Con: reworked the console from Quake 1 vanilla style (one of four mutually-exclusive
+  `Key.destination` values) to a Quake 3 Arena / Doom 3-style drop-down drawer:
+  - new independent `Con.isOpen` boolean, orthogonal to `Key.destination` (now just
+    game/menu/message — `console` retired as a destination entirely)
+  - `Key.Event()` gives an open console dispatch priority over whatever's underneath; Escape
+    closes it first, before touching menu/game logic
+  - draw order: the passive "no game connected" backdrop stays under the menu as before: the
+    actively-toggled drawer now renders after (on top of) the menu, and unconditionally so it's
+    reachable even during the connecting/intermission screens
+  - world simulation no longer pauses while the console is open (Host.ServerFrame's physics gate
+    was already keyed on `destination === game`, which the console no longer touches) — a
+    deliberate behavior change matching real Q3/Doom3, where the console never pauses the game
+  - releases pointer lock on open (via new IN.ReleasePointerLock, also now called from
+    MenuStack.push) so mouselook doesn't keep spinning the camera while typing — fixes a
+    pre-existing latent bug where only Escape's browser-native pointer-unlock coincidentally
+    covered the menu's case
+  - Host.Quit_f's confirm-dialog bypass no longer hijacks Key.destination; added a dedicated
+    Host.ForceQuit() for "already confirmed, just quit"
+  - found + fixed during browser testing: the console's toggle key didn't fire while a menu
+    text field (e.g. "Your Name") had focus — the menu's binding-execution carve-out only ever
+    covered F-keys; widened it to any non-consolekey (mouse buttons/wheel explicitly excluded,
+    those still need to reach menu click handling)
+  - found + fixed during browser testing: an actively-opened console stayed pinned to full
+    screen (hiding the menu entirely) whenever there was no valid connected game, because
+    `forcedup`'s full-screen snap didn't check `Con.isOpen` — it now only applies to the passive
+    backdrop, not the interactive drawer
+  - found + fixed during browser testing: closing the menu while disconnected now lands on
+    `Key.destination = game` (not the retired `console`), which quietly broke the mouse-only
+    "click reopens the menu" escape hatch (removed too eagerly, thinking it was only about the
+    console) and let IN.onclick try to pointer-lock on a canvas with no game running — restored
+    the click-reopens-menu check (now keyed on `game` + disconnected) and added a connected-state
+    check to IN.onclick
+  - verified live in-browser after all three fixes: `~` over live single-player gameplay slides
+    down as a drawer while the 3D view keeps rendering behind it (flickering light, HUD intact);
+    Escape closes it back to gameplay; `~` opened over an already-open pause menu stacks the same
+    way and Escape closing it reveals the still-open menu underneath rather than closing both;
+    clicking the disconnected idle backdrop reopens the main menu without requesting pointer lock
 
 ### 2026-07-12
 

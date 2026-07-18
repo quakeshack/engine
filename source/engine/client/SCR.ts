@@ -259,22 +259,26 @@ export default class SCR {
   }
 
   /**
-   * Determines whether the console should be drawn full-screen (forcedup) or at the configured slide height.
+   * True while the console has no business being drawn at all: there's no valid connected game
+   * (so the main menu is always showing instead — see `M.CloseMenu()`) and the player hasn't
+   * actively toggled the drop-down drawer open. Used by `UpdateScreen()` to suppress the
+   * console draw call entirely in that state, instead of rendering it as a full-screen backdrop
+   * behind the menu.
+   * @returns True while the console should not be drawn at all.
+   */
+  static isConsolePassiveBackdrop(): boolean {
+    return Con.forcedup && !Con.isOpen;
+  }
+
+  /**
+   * Animates the console's slide height toward its target (open/closed), regardless of
+   * connection state — the console is never drawn full-screen anymore (see
+   * `isConsolePassiveBackdrop()`), so there's no special-cased snap to reach.
    */
   static SetUpToDrawConsole(): void {
     Con.forcedup = (!CL.state.worldmodel) || (CL.cls.signon !== 4);
 
-    if (Con.forcedup) {
-      SCR.con_current = 200;
-      return;
-    }
-
-    let conlines;
-    if (Key.destination === KeyDestination.console) {
-      conlines = 100;
-    } else {
-      conlines = 0;
-    }
+    const conlines = Con.isOpen ? 100 : 0;
 
     if (conlines < SCR.con_current) {
       SCR.con_current -= SCR.conspeed.value * Host.frametime;
@@ -397,6 +401,13 @@ export default class SCR {
       }
       if (!Con.forcedup) {
         R.PolyBlend();
+      } else {
+        // V.RenderView() (above) skips the 3D scene render entirely while forcedup — and with
+        // it, the gl.clear() that normally happens inside R.RenderView(). Without this, a
+        // half-open console drawer or the menu's own semi-transparent fade would blend against
+        // whatever 3D frame is still sitting in the framebuffer from the last time a game was
+        // actually running, instead of a clean background.
+        Draw.BlackScreen();
       }
 
       if (CL.cls.state === clientConnectionState.connecting) {
@@ -415,9 +426,17 @@ export default class SCR {
         if (CL.cls.signon === 4) {
           CL.DrawHUD();
         }
-        SCR.DrawConsole();
         CL.Draw();
         M.Draw();
+      }
+
+      // Drawn above absolutely everything above — including the menu and the
+      // connecting/intermission branches — so the console is always reachable while open or
+      // closing. Never drawn at all while it's neither open nor connected (see
+      // isConsolePassiveBackdrop) -- the menu is always showing then, and a full-screen console
+      // texture behind it would blot it out for no reason.
+      if (!SCR.isConsolePassiveBackdrop()) {
+        SCR.DrawConsole();
       }
 
       M.DrawOverlayNotice();

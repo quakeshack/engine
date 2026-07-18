@@ -311,7 +311,12 @@ empty map.
 
 Out of scope for this pattern: giving a non-modal panel actual keyboard focus (e.g. an
 in-game-navigable scoreboard while still moving). That needs deliberate input-focus arbitration
-on top of the existing 4-state `KeyDestination` enum and hasn't been designed yet.
+on top of `KeyDestination` and hasn't been designed for arbitrary panels yet — though the
+drop-down console (see `docs/console.md`) is now a working precedent for exactly that shape of
+problem: `Con.isOpen` is an independent overlay flag that takes `Key.Event()` dispatch priority
+over whichever `KeyDestination` is active underneath, rather than being folded into the
+destination enum itself. A similar approach (an independent "this panel currently has focus" flag,
+checked early in `Key.Event()`) would generalize to other focus-stealing non-modal panels.
 
 ## Events
 

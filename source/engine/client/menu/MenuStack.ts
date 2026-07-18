@@ -2,11 +2,11 @@ import { eventBus, getClientRegistry } from '../../registry.ts';
 import type { MenuPage } from './MenuPage.ts';
 
 // Destructure registry modules
-let { M } = getClientRegistry();
+let { IN, M } = getClientRegistry();
 
 // Update when registry is frozen
 eventBus.subscribe('registry.frozen', () => {
-  ({ M } = getClientRegistry());
+  ({ IN, M } = getClientRegistry());
 });
 
 /**
@@ -66,6 +66,10 @@ export class MenuStack {
     this.stack.push(page);
     page.activate();
     M.entersound = true;
+    // Release mouselook so the camera doesn't keep spinning from residual deltas while the menu
+    // has focus (the browser only auto-releases pointer lock on Escape, not on our own state
+    // changes, and the menu can also be reached via mouse click/bound commands).
+    IN.ReleasePointerLock();
     eventBus.publish('menu.opened', this.#nameOf(page));
   }
 

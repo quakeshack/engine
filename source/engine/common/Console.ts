@@ -4,13 +4,12 @@ import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Cvar from './Cvar.ts';
 import Cmd from './Cmd.ts';
 import VID from '../client/VID.ts';
-import { clientConnectionState } from './Def.ts';
 import { ClientEngineAPI } from './GameAPIs.ts';
 
-let { CL, Draw, Host, Key, M, SCR } = getClientRegistry();
+let { CL, Draw, Host, IN, Key, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Draw, Host, Key, M, SCR } = getClientRegistry());
+  ({ CL, Draw, Host, IN, Key, SCR } = getClientRegistry());
 });
 
 /** A single line entry in the console text buffer. */
@@ -36,25 +35,29 @@ export default class Con {
   /** Console notification display time. */
   static notifytime: Cvar | null = null;
 
-  /** Used by the client to force the console to be up. */
+  /** Used by the client to force the console to be up (there's no valid connected game). */
   static forcedup = false;
+
+  /**
+   * Whether the player has toggled the drop-down console open. Independent of `Key.destination`
+   * — the console is an overlay that can appear on top of gameplay or the menu, not a peer
+   * destination, and takes dispatch priority over both while open (see `Key.Event`).
+   */
+  static isOpen = false;
 
   /** Used by the client to determine how many lines to draw. */
   static vislines = 0;
 
   static ToggleConsole_f() {
     SCR.EndLoadingPlaque();
-    if (Key.destination === KeyDestination.console) {
-      if (CL.cls.state !== clientConnectionState.connected) {
-        M.Menu_Main_f();
-        return;
-      }
-      Key.destination = KeyDestination.game;
+    Con.isOpen = !Con.isOpen;
+    if (Con.isOpen) {
+      // Release mouselook so the camera doesn't keep spinning from residual deltas while typing.
+      IN.ReleasePointerLock();
+    } else {
       // Key.edit_line = ''; // CR: this annoys me otherwise
       Key.history_line = Key.lines.length;
-      return;
     }
-    Key.destination = KeyDestination.console;
   }
 
   static Clear_f() {
@@ -171,7 +174,7 @@ export default class Con {
   }
 
   static DrawInput() {
-    if (Key.destination !== KeyDestination.console) {
+    if (!Con.isOpen) {
       return;
     }
     let text = ']' + Key.consoleDisplayText((Host.realtime * 4.0) & 1);

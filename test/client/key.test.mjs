@@ -19,7 +19,9 @@ function withMockKeyRegistry(callback) {
   const previousCOM = registry.COM;
 
   const printed = [];
-  const con = { Print(msg) { printed.push(msg); }, backscroll: 0, text: [] };
+  const con = {
+    Print(msg) { printed.push(msg); }, backscroll: 0, text: [], isOpen: false,
+  };
   registry.Con = con;
   registry.COM = COM;
   eventBus.publish('registry.frozen');
@@ -153,14 +155,17 @@ void describe('Key', () => {
 
   void describe('KeyDestination', () => {
     void test('enum values match expected constants', () => {
+      // `console` was retired as a destination — the drop-down console is now the
+      // independent `Con.isOpen` overlay instead, taking dispatch priority over whichever of
+      // these is active underneath it. Values are kept as before (minus that member) so
+      // nothing needed renumbering.
       assert.equal(KeyDestination.game, 0);
-      assert.equal(KeyDestination.console, 1);
       assert.equal(KeyDestination.message, 2);
       assert.equal(KeyDestination.menu, 3);
     });
 
-    void test('destination defaults to console', () => {
-      assert.equal(Key.destination, KeyDestination.console);
+    void test('destination defaults to game', () => {
+      assert.equal(Key.destination, KeyDestination.game);
     });
   });
 
@@ -354,10 +359,10 @@ void describe('Key', () => {
   });
 
   void describe('Paste', () => {
-    void test('routes to the console editor when destination is console', () => {
-      withMockKeyRegistry(() => {
+    void test('routes to the console editor when the console is open', () => {
+      withMockKeyRegistry(({ con }) => {
         withCleanInputState(() => {
-          Key.destination = KeyDestination.console;
+          con.isOpen = true;
           Key.edit_line = 'ac';
 
           Key.Console(K.HOME);
@@ -396,30 +401,252 @@ void describe('Key', () => {
     });
   });
 
-  void describe('Event: stuck on the console with no game running', () => {
+  void describe('Event: drop-down console overlay', () => {
     /**
      * Temporarily installs mock `CL`/`M` registry stubs (alongside the existing `Con`/`COM`
-     * stubs from withMockKeyRegistry) so Key.Event's console-click-opens-menu branch can run
-     * without a full client bootstrap. Also sends a matching key-up afterward, since
-     * `Key.pressed` (which tracks auto-repeat) is a private static field with no other way to
-     * reset it between tests.
+     * stubs from withMockKeyRegistry) so Key.Event can run without a full client bootstrap.
+     * Exposes spies for whether M.Keydown/M.ToggleMenu_f/M.Menu_Main_f were called.
+     * @param {(spies: { menuKeydownCalls: number[], toggleMenu: { count: number }, menuMainCalls: { count: number } }) => void} callback
+     * @param {{ connectionState?: number }} [options]
+     */
+    function withMockEventRegistry(callback, options = {}) {
+      withMockKeyRegistry(() => {
+        const previousCL = registry.CL;
+        const previousM = registry.M;
+        const menuKeydownCalls = [];
+        const toggleMenu = { count: 0 };
+        const menuMainCalls = { count: 0 };
+
+        registry.CL = {
+          cls: { state: options.connectionState ?? clientConnectionState.connected, demoplayback: false },
+        };
+        registry.M = {
+          Keydown: (key) => { menuKeydownCalls.push(key); },
+          ToggleMenu_f: () => { toggleMenu.count++; },
+          Menu_Main_f: () => { menuMainCalls.count++; },
+        };
+        eventBus.publish('registry.frozen');
+
+        try {
+          callback({ menuKeydownCalls, toggleMenu, menuMainCalls });
+        } finally {
+          registry.CL = previousCL;
+          registry.M = previousM;
+          eventBus.publish('registry.frozen');
+        }
+      });
+    }
+
+    void test('Escape closes an open console instead of touching whatever is underneath', () => {
+      withMockEventRegistry(({ menuKeydownCalls, toggleMenu }) => {
+        withCleanInputState(() => {
+          registry.Con.isOpen = true;
+          Key.destination = KeyDestination.game;
+
+          Key.Event(K.ESCAPE, true);
+          Key.Event(K.ESCAPE, false);
+
+          assert.equal(registry.Con.isOpen, false);
+          assert.equal(menuKeydownCalls.length, 0);
+          assert.equal(toggleMenu.count, 0);
+        });
+      });
+    });
+
+    void test('routes typed keys to the console when open, even though destination still reads game', () => {
+      withMockEventRegistry(() => {
+        withCleanInputState(() => {
+          registry.Con.isOpen = true;
+          Key.destination = KeyDestination.game;
+          Key.edit_line = '';
+
+          Key.Event('a'.charCodeAt(0), true);
+          Key.Event('a'.charCodeAt(0), false);
+
+          assert.equal(Key.edit_line, 'a');
+        });
+      });
+    });
+
+    void test('routes typed keys to the console when open, even over the menu', () => {
+      withMockEventRegistry(({ menuKeydownCalls }) => {
+        withCleanInputState(() => {
+          registry.Con.isOpen = true;
+          Key.destination = KeyDestination.menu;
+          Key.edit_line = '';
+
+          Key.Event('b'.charCodeAt(0), true);
+          Key.Event('b'.charCodeAt(0), false);
+
+          assert.equal(Key.edit_line, 'b');
+          assert.equal(menuKeydownCalls.length, 0);
+        });
+      });
+    });
+
+    void test('a key not consumed as console text still fires its binding while open (e.g. the toggle key)', () => {
+      withMockEventRegistry(() => {
+        withCleanInputState(() => {
+          const previousBindings = [...Key.bindings];
+          const previousCmdText = Cmd.text;
+          const tick = '`'.charCodeAt(0);
+
+          try {
+            Key.bindings = [];
+            Key.bindings[tick] = 'toggleconsole';
+            Cmd.text = '';
+            registry.Con.isOpen = true;
+
+            Key.Event(tick, true);
+            Key.Event(tick, false);
+
+            assert.equal(Cmd.text, 'toggleconsole\n');
+          } finally {
+            Key.bindings = previousBindings;
+            Cmd.text = previousCmdText;
+          }
+        });
+      });
+    });
+
+    void test('gameplay keys still execute their bindings when the console is closed', () => {
+      withMockEventRegistry(() => {
+        withCleanInputState(() => {
+          const previousBindings = [...Key.bindings];
+          const previousCmdText = Cmd.text;
+
+          try {
+            Key.bindings = [];
+            Key.bindings[K.SPACE] = '+jump';
+            Cmd.text = '';
+            registry.Con.isOpen = false;
+            Key.destination = KeyDestination.game;
+
+            Key.Event(K.SPACE, true);
+
+            assert.equal(Cmd.text, `+jump ${K.SPACE}\n`);
+          } finally {
+            Key.Event(K.SPACE, false);
+            Key.bindings = previousBindings;
+            Cmd.text = previousCmdText;
+          }
+        });
+      });
+    });
+
+    void test('F-keys still execute bindings in the menu when the console is closed', () => {
+      withMockEventRegistry(({ menuKeydownCalls }) => {
+        withCleanInputState(() => {
+          const previousBindings = [...Key.bindings];
+          const previousCmdText = Cmd.text;
+
+          try {
+            Key.bindings = [];
+            Key.bindings[K.F1] = 'help';
+            Cmd.text = '';
+            registry.Con.isOpen = false;
+            Key.destination = KeyDestination.menu;
+
+            Key.Event(K.F1, true);
+
+            assert.equal(Cmd.text, 'help\n');
+            assert.equal(menuKeydownCalls.length, 0);
+          } finally {
+            Key.Event(K.F1, false);
+            Key.bindings = previousBindings;
+            Cmd.text = previousCmdText;
+          }
+        });
+      });
+    });
+
+    void test('non-F-keys in the menu go to M.Keydown when the console is closed', () => {
+      withMockEventRegistry(({ menuKeydownCalls }) => {
+        withCleanInputState(() => {
+          registry.Con.isOpen = false;
+          Key.destination = KeyDestination.menu;
+
+          Key.Event(K.DOWNARROW, true);
+          Key.Event(K.DOWNARROW, false);
+
+          assert.deepEqual(menuKeydownCalls, [K.DOWNARROW]);
+        });
+      });
+    });
+
+    void test('the toggle key still opens the console from the menu, even with a text field focused', () => {
+      // Regression test: backtick/tilde are excluded from Key.consolekeys specifically so their
+      // binding always fires, but the menu's own binding-execution carve-out used to only cover
+      // F-keys — meaning `~` got silently typed into a focused menu Textbox (e.g. "Your Name")
+      // instead of toggling the console.
+      withMockEventRegistry(({ menuKeydownCalls }) => {
+        withCleanInputState(() => {
+          const previousBindings = [...Key.bindings];
+          const previousCmdText = Cmd.text;
+          const tick = '`'.charCodeAt(0);
+
+          try {
+            Key.bindings = [];
+            Key.bindings[tick] = 'toggleconsole';
+            Cmd.text = '';
+            registry.Con.isOpen = false;
+            Key.destination = KeyDestination.menu;
+
+            Key.Event(tick, true);
+
+            assert.equal(Cmd.text, 'toggleconsole\n');
+            assert.equal(menuKeydownCalls.length, 0);
+          } finally {
+            Key.Event(tick, false);
+            Key.bindings = previousBindings;
+            Cmd.text = previousCmdText;
+          }
+        });
+      });
+    });
+
+    void test('mouse clicks in the menu still go to M.Keydown, not treated as a binding', () => {
+      // Regression test for the fix above: widening the menu's binding-execution carve-out to
+      // cover non-consolekeys in general must not swallow MOUSE1/2/3 or wheel keys, which the
+      // menu's own click/scroll handling needs to keep receiving.
+      withMockEventRegistry(({ menuKeydownCalls }) => {
+        withCleanInputState(() => {
+          registry.Con.isOpen = false;
+          Key.destination = KeyDestination.menu;
+
+          Key.Event(K.MOUSE1, true);
+          Key.Event(K.MOUSE1, false);
+
+          assert.deepEqual(menuKeydownCalls, [K.MOUSE1]);
+        });
+      });
+    });
+  });
+
+  void describe('Event: stuck at the idle "game" destination with no game running', () => {
+    /**
+     * Temporarily installs mock `CL`/`M` registry stubs so Key.Event's click-opens-menu escape
+     * hatch can run without a full client bootstrap.
      * @param {number} connectionState
-     * @param {(wasMenuOpened: () => boolean) => void} callback test callback
+     * @param {(spies: { menuMainCalls: { count: number } }) => void} callback test callback
      */
     function withMockConsoleClickRegistry(connectionState, callback) {
       withMockKeyRegistry(() => {
         const previousCL = registry.CL;
         const previousM = registry.M;
-        let menuOpened = false;
+        const menuMainCalls = { count: 0 };
 
         registry.CL = { cls: { state: connectionState, demoplayback: false } };
-        registry.M = { Menu_Main_f: () => { menuOpened = true; }, ToggleMenu_f: () => {}, Keydown: () => {} };
+        registry.M = {
+          Menu_Main_f: () => { menuMainCalls.count++; },
+          ToggleMenu_f: () => {},
+          Keydown: () => {},
+        };
         eventBus.publish('registry.frozen');
 
         try {
-          callback(() => menuOpened);
+          callback({ menuMainCalls });
         } finally {
-          Key.Event(K.MOUSE1, false);
           registry.CL = previousCL;
           registry.M = previousM;
           eventBus.publish('registry.frozen');
@@ -429,70 +656,74 @@ void describe('Key', () => {
 
     void test('opens the main menu when clicking while disconnected', () => {
       withCleanInputState(() => {
-        Key.destination = KeyDestination.console;
+        Key.destination = KeyDestination.game;
 
-        withMockConsoleClickRegistry(clientConnectionState.disconnected, (wasMenuOpened) => {
+        withMockConsoleClickRegistry(clientConnectionState.disconnected, ({ menuMainCalls }) => {
           Key.Event(K.MOUSE1, true);
+          Key.Event(K.MOUSE1, false);
 
-          assert.equal(wasMenuOpened(), true);
+          assert.equal(menuMainCalls.count, 1);
         });
       });
     });
 
     void test('opens the main menu when clicking while a connection attempt is still in progress', () => {
       withCleanInputState(() => {
-        Key.destination = KeyDestination.console;
+        Key.destination = KeyDestination.game;
 
-        withMockConsoleClickRegistry(clientConnectionState.connecting, (wasMenuOpened) => {
+        withMockConsoleClickRegistry(clientConnectionState.connecting, ({ menuMainCalls }) => {
           Key.Event(K.MOUSE1, true);
+          Key.Event(K.MOUSE1, false);
 
-          assert.equal(wasMenuOpened(), true);
+          assert.equal(menuMainCalls.count, 1);
         });
       });
     });
 
     void test('does not open the menu when a game is actually connected', () => {
       withCleanInputState(() => {
-        Key.destination = KeyDestination.console;
-
-        withMockConsoleClickRegistry(clientConnectionState.connected, (wasMenuOpened) => {
-          Key.Event(K.MOUSE1, true);
-
-          assert.equal(wasMenuOpened(), false);
-        });
-      });
-    });
-
-    void test('does not open the menu from destinations other than the console', () => {
-      withCleanInputState(() => {
         Key.destination = KeyDestination.game;
 
-        withMockConsoleClickRegistry(clientConnectionState.disconnected, (wasMenuOpened) => {
+        withMockConsoleClickRegistry(clientConnectionState.connected, ({ menuMainCalls }) => {
           Key.Event(K.MOUSE1, true);
+          Key.Event(K.MOUSE1, false);
 
-          assert.equal(wasMenuOpened(), false);
+          assert.equal(menuMainCalls.count, 0);
         });
       });
     });
 
-    void test('a single click cannot both close the menu (to console) and reopen it', () => {
-      // Regression test: the menu's Back/Close button synthesizes Escape on MOUSE1, which can
-      // change Key.destination from menu to console within the very same mousedown dispatch.
-      // The console-click-opens-menu check must not re-fire for that same physical click.
+    void test('does not open the menu from the menu destination itself', () => {
       withCleanInputState(() => {
         Key.destination = KeyDestination.menu;
 
-        withMockConsoleClickRegistry(clientConnectionState.disconnected, (wasMenuOpened) => {
+        withMockConsoleClickRegistry(clientConnectionState.disconnected, ({ menuMainCalls }) => {
+          Key.Event(K.MOUSE1, true);
+          Key.Event(K.MOUSE1, false);
+
+          assert.equal(menuMainCalls.count, 0);
+        });
+      });
+    });
+
+    void test('a single click cannot both close the menu (to game) and reopen it', () => {
+      // Regression test: the menu's Back/Close button synthesizes Escape on MOUSE1, which can
+      // change Key.destination from menu to game within the very same mousedown dispatch. The
+      // click-opens-menu check must not re-fire for that same physical click.
+      withCleanInputState(() => {
+        Key.destination = KeyDestination.menu;
+
+        withMockConsoleClickRegistry(clientConnectionState.disconnected, ({ menuMainCalls }) => {
           registry.M.Keydown = () => {
-            // Simulate the Back/Close button popping the menu stack back to the console.
-            Key.destination = KeyDestination.console;
+            // Simulate the Back/Close button popping the menu stack back to `game`.
+            Key.destination = KeyDestination.game;
           };
           eventBus.publish('registry.frozen');
 
           Key.Event(K.MOUSE1, true);
 
-          assert.equal(wasMenuOpened(), false);
-          assert.equal(Key.destination, KeyDestination.console);
+          assert.equal(menuMainCalls.count, 0);
+          assert.equal(Key.destination, KeyDestination.game);
         });
       });
     });

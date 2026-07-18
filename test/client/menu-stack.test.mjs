@@ -6,19 +6,23 @@ import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
 
 /**
- * Temporarily installs a minimal `M` registry stub (MenuStack only needs `M.entersound`).
+ * Temporarily installs minimal `M`/`IN` registry stubs (MenuStack only needs `M.entersound`
+ * and `IN.ReleasePointerLock`, called on every push).
  * @param {() => void} callback test callback
  */
 function withMockMenuRegistry(callback) {
   const previousM = registry.M;
+  const previousIN = registry.IN;
 
   registry.M = { entersound: false };
+  registry.IN = { ReleasePointerLock() {} };
   eventBus.publish('registry.frozen');
 
   try {
     callback();
   } finally {
     registry.M = previousM;
+    registry.IN = previousIN;
     eventBus.publish('registry.frozen');
   }
 }
