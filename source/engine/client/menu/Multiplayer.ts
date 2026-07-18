@@ -2,7 +2,7 @@ import { K } from '../../../shared/Keys.ts';
 import Cmd from '../../common/Cmd.ts';
 import GameModule from '../../common/GameModule.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
-import { Action, Label, Spacer } from './MenuItem.ts';
+import { Action, Label, Spacer, Toggle } from './MenuItem.ts';
 import { MenuPage, VerticalLayout } from './MenuPage.ts';
 import type { MenuStack } from './MenuStack.ts';
 import { ServerEngineAPI } from '../../common/GameAPIs.ts';
@@ -80,6 +80,18 @@ export default class MultiplayerMainMenu extends MenuPage {
     // }
 
     if (urls?.signalingURL) {
+      // Private sessions still register with the master server (so WebRTC signaling and
+      // direct join-by-session-ID keep working), they are just excluded from /list-servers
+      // and the lobby website's browse listing.
+      this.items.push(new Toggle({
+        label: 'Private Session',
+        cvar: 'sv_public',
+        onValue: 0,
+        offValue: 1,
+        onLabel: 'yes',
+        offLabel: 'no',
+      }));
+
       // FIXME: move the start server list to the ClientGameAPI
       const serverActions = GameModule.active?.ServerGameAPI.GetStartServerList();
 
