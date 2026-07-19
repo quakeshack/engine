@@ -16,6 +16,16 @@ interface MenuPageConfig {
   readonly customDraw?: ((page: MenuPage) => void) | null;
   readonly customHandleInput?: ((key: K, page: MenuPage, defaultHandleInput: (key: K) => boolean) => boolean) | null;
   readonly customGetBackButtonAnchor?: (() => BackButtonAnchor | null) | null;
+  /**
+   * Whether showing this page should freeze single-player world simulation (monster think,
+   * physics, round timers, ...) the way the classic Quake pause menu does -- `true` by default,
+   * matching every existing page. Set `false` for pages meant to stay open over a live,
+   * always-running world (e.g. an in-game buy menu in a coop mod), where freezing gameplay for
+   * every other connected player just because one player opened a menu would be wrong. Has no
+   * effect once `SV.svs.maxclients >= 2` -- multiplayer/coop servers never auto-pause on menu
+   * open in the first place, regardless of this flag.
+   */
+  readonly pausesGame?: boolean;
 }
 
 interface VerticalLayoutConfig {
@@ -92,6 +102,7 @@ export class MenuPage {
   customDraw: ((page: MenuPage) => void) | null;
   customHandleInput: ((key: K, page: MenuPage, defaultHandleInput: (key: K) => boolean) => boolean) | null;
   customGetBackButtonAnchor: (() => BackButtonAnchor | null) | null;
+  pausesGame: boolean;
 
   constructor(config: MenuPageConfig = {}) {
     this.items = config.items || [];
@@ -107,6 +118,7 @@ export class MenuPage {
     this.customDraw = config.customDraw || null;
     this.customHandleInput = config.customHandleInput || null;
     this.customGetBackButtonAnchor = config.customGetBackButtonAnchor || null;
+    this.pausesGame = config.pausesGame ?? true;
 
     // Find first focusable item
     this._moveCursorToFirstFocusable();

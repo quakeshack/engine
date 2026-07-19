@@ -12,6 +12,7 @@ import IN, {
 import { KeyDestination } from '../../source/engine/client/Key.ts';
 import VID from '../../source/engine/client/VID.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
+import { K } from '../../source/shared/Keys.ts';
 
 /**
  * Temporarily installs a global `document` stub with a settable `pointerLockElement`, since
@@ -243,6 +244,76 @@ void describe('IN.ReleasePointerLock', () => {
       IN.ReleasePointerLock();
 
       assert.equal(released, false);
+    });
+  });
+});
+
+void describe('IN.onpointerlockchange', () => {
+  /**
+   * Temporarily installs a mock `Key.Event` spy so tests can assert whether a synthetic Escape
+   * was fired, without needing a full Key.ts registry.
+   * @param {(events: [number, boolean][]) => void} callback test callback
+   */
+  function withMockKeyEvent(callback) {
+    const previousKey = registry.Key;
+    const events = [];
+
+    registry.Key = { Event: (key, down) => { events.push([key, down]); } };
+    eventBus.publish('registry.frozen');
+
+    try {
+      callback(events);
+    } finally {
+      registry.Key = previousKey;
+      eventBus.publish('registry.frozen');
+    }
+  }
+
+  void test('does not synthesize Escape when pointer lock is lost because of our own ReleasePointerLock() call', () => {
+    withMockKeyEvent((events) => {
+      withMockDocument(VID.mainwindow, () => {
+        globalThis.document.exitPointerLock = () => {
+          // Real browsers fire pointerlockchange asynchronously, after exitPointerLock()
+          // already returned -- simulate that by flipping the element only here.
+          globalThis.document.pointerLockElement = null;
+        };
+
+        IN.ReleasePointerLock();
+        IN.onpointerlockchange();
+
+        assert.deepEqual(events, []);
+      });
+    });
+  });
+
+  void test('synthesizes Escape when pointer lock is lost for an unrelated reason', () => {
+    withMockKeyEvent((events) => {
+      withMockDocument(null, () => {
+        IN.onpointerlockchange();
+
+        assert.deepEqual(events, [[K.ESCAPE, true], [K.ESCAPE, false]]);
+      });
+    });
+  });
+
+  void test('the voluntary-unlock flag only suppresses the one onpointerlockchange it caused', () => {
+    withMockKeyEvent((events) => {
+      withMockDocument(VID.mainwindow, () => {
+        globalThis.document.exitPointerLock = () => {
+          globalThis.document.pointerLockElement = null;
+        };
+
+        IN.ReleasePointerLock();
+        IN.onpointerlockchange(); // consumes the flag, no synthetic Escape
+
+        assert.deepEqual(events, []);
+
+        // A later, unrelated loss of lock (no matching ReleasePointerLock() call) must still
+        // get the compensating Escape -- the flag must not stay stuck suppressing everything.
+        IN.onpointerlockchange();
+
+        assert.deepEqual(events, [[K.ESCAPE, true], [K.ESCAPE, false]]);
+      });
     });
   });
 });

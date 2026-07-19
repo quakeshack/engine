@@ -200,6 +200,15 @@ export default class IN {
   static mobileInputSupport: MobileInputSupportState | null = null;
   static #mobileInputCapabilitySubscriptions: Array<() => void> = [];
 
+  /**
+   * True while a `document.exitPointerLock()` call below is in flight -- the resulting
+   * `pointerlockchange` event fires asynchronously, after this has already returned, so
+   * `onpointerlockchange` needs a way to tell "we asked for this" apart from an unrelated loss of
+   * lock (physical Escape, tab switch) it needs to compensate for. See its comment for why that
+   * distinction matters.
+   */
+  static #voluntaryUnlock = false;
+
   static readonly #mobileUnsupportedNoticeId = 'mobile-external-input';
   static readonly #mobileUnsupportedNotice = [
     'Playing on a mobile phone without a keyboard',
@@ -326,6 +335,7 @@ export default class IN {
   /** Releases the pointer lock, if held, so mouselook doesn't fight for input focus with a UI overlay. */
   static ReleasePointerLock(): void {
     if (document.pointerLockElement === VID.mainwindow) {
+      IN.#voluntaryUnlock = true;
       document.exitPointerLock();
     }
   }
@@ -342,6 +352,15 @@ export default class IN {
 
   static onpointerlockchange(this: void): void {
     if (document.pointerLockElement === VID.mainwindow) {
+      return;
+    }
+
+    // Losing pointer lock because we ourselves called ReleasePointerLock() (e.g. opening a menu)
+    // is not a physical Escape press to compensate for -- synthesizing one here would immediately
+    // close whatever we just opened, since Key.destination has already moved on to it by the time
+    // this (necessarily async) event fires.
+    if (IN.#voluntaryUnlock) {
+      IN.#voluntaryUnlock = false;
       return;
     }
 

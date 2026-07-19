@@ -304,6 +304,27 @@ export default class M {
   }
 
   /**
+   * Whether single-player world simulation (monster think, physics, round timers, ...) should
+   * keep running right now, consulted by `Host.ServerFrame()` for listen servers below
+   * multiplayer capacity. `true` during gameplay; while a menu is open, defers to the current
+   * page's `pausesGame` flag (`true` by default, matching classic pause-on-menu behavior) so a
+   * page can opt out for a world that must keep running regardless of whether one player has a
+   * menu open (e.g. an in-game buy menu in a coop mod). Always `false` for any other destination
+   * (e.g. typing a chat message), unchanged from prior behavior.
+   * @returns True if simulation should keep running.
+   */
+  static AllowsSimulation(): boolean {
+    switch (Key.destination) {
+      case KeyDestination.game:
+        return true;
+      case KeyDestination.menu:
+        return M.menuStack.current()?.pausesGame === false;
+      default:
+        return false;
+    }
+  }
+
+  /**
    * Return control to the game unconditionally, regardless of connection state -- unlike
    * CloseMenu(), which stays open while disconnected (there's nothing to return to). Used by
    * the two call sites above (once the menu is actually, fully closing) and by actions that are

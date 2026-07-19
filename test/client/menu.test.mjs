@@ -120,6 +120,79 @@ void describe('M.MouseMove', () => {
   });
 });
 
+void describe('M.AllowsSimulation', () => {
+  /**
+   * Run a callback with `registry.Key` wired to the real `Key` module (needed since
+   * `AllowsSimulation` reads `Key.destination`) and restore its destination afterward.
+   * @param {() => void} callback test callback
+   */
+  function withMockKeyRegistry(callback) {
+    const previousKey = registry.Key;
+    const previousDestination = Key.destination;
+
+    registry.Key = Key;
+    eventBus.publish('registry.frozen');
+
+    try {
+      callback();
+    } finally {
+      Key.destination = previousDestination;
+      registry.Key = previousKey;
+      eventBus.publish('registry.frozen');
+    }
+  }
+
+  void test('allows simulation during gameplay, regardless of the menu stack', () => {
+    withMockKeyRegistry(() => {
+      Key.destination = KeyDestination.game;
+
+      assert.equal(M.AllowsSimulation(), true);
+    });
+  });
+
+  void test('blocks simulation for any other destination (e.g. typing a chat message) when nothing is on the stack', () => {
+    withMockKeyRegistry(() => {
+      Key.destination = KeyDestination.message;
+
+      assert.equal(M.AllowsSimulation(), false);
+    });
+  });
+
+  void test('blocks simulation while a menu page is open by default, matching classic pause-on-menu behavior', () => {
+    withMockKeyRegistry(() => {
+      Key.destination = KeyDestination.menu;
+      M.menuStack.stack.push({ pausesGame: true });
+
+      try {
+        assert.equal(M.AllowsSimulation(), false);
+      } finally {
+        M.menuStack.stack.pop();
+      }
+    });
+  });
+
+  void test('allows simulation while a page that opted out (pausesGame: false) is open', () => {
+    withMockKeyRegistry(() => {
+      Key.destination = KeyDestination.menu;
+      M.menuStack.stack.push({ pausesGame: false });
+
+      try {
+        assert.equal(M.AllowsSimulation(), true);
+      } finally {
+        M.menuStack.stack.pop();
+      }
+    });
+  });
+
+  void test('blocks simulation while the menu destination is active but nothing is actually on the stack', () => {
+    withMockKeyRegistry(() => {
+      Key.destination = KeyDestination.menu;
+
+      assert.equal(M.AllowsSimulation(), false);
+    });
+  });
+});
+
 void describe('M.Keydown back button', () => {
   /**
    * Temporarily installs mock `Key`/`S`/`CL` registry stubs so M.Keydown's back-button click

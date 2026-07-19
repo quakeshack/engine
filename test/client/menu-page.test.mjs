@@ -115,6 +115,22 @@ void describe('MenuPage', () => {
     });
   });
 
+  void test('pausesGame defaults to true, matching classic pause-on-menu behavior', () => {
+    withMockPageRegistry(() => {
+      const page = new MenuPage();
+
+      assert.equal(page.pausesGame, true);
+    });
+  });
+
+  void test('pausesGame can be opted out of for a page over a world that must keep running', () => {
+    withMockPageRegistry(() => {
+      const page = new MenuPage({ pausesGame: false });
+
+      assert.equal(page.pausesGame, false);
+    });
+  });
+
   void describe('handlePaste', () => {
     void test('forwards pasted text to the focused item', () => {
       withMockPageRegistry(() => {

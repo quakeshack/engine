@@ -456,7 +456,7 @@ export default class Host {
     SV.CheckForNewClients();
     SV.RunClients();
 
-    if (!SV.server.paused && (SV.svs.maxclients >= 2 || (!registry.isDedicatedServer && Key.destination === KeyDestination.game))) {
+    if (!SV.server.paused && (SV.svs.maxclients >= 2 || (!registry.isDedicatedServer && M.AllowsSimulation()))) {
       SV.physics.physics();
     }
 
