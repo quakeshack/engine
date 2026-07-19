@@ -1,10 +1,12 @@
 import type { BaseClientEdictHandler } from './ClientEdict.ts';
-import type { ClientEngineAPI as ClientEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.ts';
+import type { ClientEngineAPI as ClientEngineApiValue, CommonEngineAPI as CommonEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.ts';
 import type { ClientEdict as ClientEdictValue } from '../engine/client/ClientEntities.ts';
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
 import type { GLTexture as GLTextureValue } from '../engine/client/GL.ts';
-import type { MenuItem as MenuItemValue } from '../engine/client/menu/MenuItem.ts';
-import type { MenuPage as MenuPageValue } from '../engine/client/menu/MenuPage.ts';
+import type { ColorPicker as ColorPickerValue, KeyBindItem as KeyBindItemValue, MenuItem as MenuItemValue, SaveSlotItem as SaveSlotItemValue, Textbox as TextboxValue } from '../engine/client/menu/MenuItem.ts';
+import type { DialogPage as DialogPageValue, ListPage as ListPageValue, MenuPage as MenuPageValue } from '../engine/client/menu/MenuPage.ts';
+import type { BackButtonAnchor as BackButtonAnchorValue } from '../engine/client/menu/MenuPage.ts';
+import type { MenuPic as MenuPicValue } from '../engine/client/Menu.ts';
 import type { SFX as SFXValue } from '../engine/client/Sound.ts';
 import type CvarValue from '../engine/common/Cvar.ts';
 import type Vector from './Vector.ts';
@@ -16,6 +18,7 @@ export type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
 
 export type ClientEngineAPI = Readonly<typeof ClientEngineApiValue>;
 export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;
+export type CommonEngineAPI = Readonly<typeof CommonEngineApiValue>;
 export type ClientEdict = Readonly<ClientEdictValue>;
 export type ServerEdict = Readonly<ServerEdictValue>;
 
@@ -25,7 +28,15 @@ export type Cvar = Readonly<CvarValue>;
 // Menu widgets are mutable-by-design (game code configures labels/items directly), so these
 // are plain aliases rather than Readonly wrappers.
 export type MenuPage = MenuPageValue;
+export type DialogPage = DialogPageValue;
+export type ListPage = ListPageValue;
 export type MenuItem = MenuItemValue;
+export type Textbox = TextboxValue;
+export type ColorPicker = ColorPickerValue;
+export type SaveSlotItem = SaveSlotItemValue;
+export type KeyBindItem = KeyBindItemValue;
+export type MenuPic = MenuPicValue;
+export type BackButtonAnchor = BackButtonAnchorValue;
 
 export type PmoveConfiguration = Readonly<PmoveConfigurationValue>;
 export type PmoveQuake2Configuration = Readonly<PmoveQuake2ConfigurationValue>;
@@ -164,7 +175,7 @@ export interface MapDetails {
 
 export interface StartServerListEntry {
   label: string;
-  callback: (serverEngineAPI: ServerEngineAPI) => void;
+  callback: (engineAPI: CommonEngineAPI) => void;
 }
 
 export type SerializedPrimitive = string | number | boolean | null;

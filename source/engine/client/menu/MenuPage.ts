@@ -14,6 +14,8 @@ interface MenuPageConfig {
   readonly onEscape?: (() => void) | null;
   readonly onConfirm?: (() => void) | null;
   readonly customDraw?: ((page: MenuPage) => void) | null;
+  readonly customHandleInput?: ((key: K, page: MenuPage, defaultHandleInput: (key: K) => boolean) => boolean) | null;
+  readonly customGetBackButtonAnchor?: (() => BackButtonAnchor | null) | null;
 }
 
 interface VerticalLayoutConfig {
@@ -88,6 +90,8 @@ export class MenuPage {
   onEscape: (() => void) | null;
   onConfirm: (() => void) | null;
   customDraw: ((page: MenuPage) => void) | null;
+  customHandleInput: ((key: K, page: MenuPage, defaultHandleInput: (key: K) => boolean) => boolean) | null;
+  customGetBackButtonAnchor: (() => BackButtonAnchor | null) | null;
 
   constructor(config: MenuPageConfig = {}) {
     this.items = config.items || [];
@@ -101,6 +105,8 @@ export class MenuPage {
     this.onEscape = config.onEscape || null;
     this.onConfirm = config.onConfirm || null;
     this.customDraw = config.customDraw || null;
+    this.customHandleInput = config.customHandleInput || null;
+    this.customGetBackButtonAnchor = config.customGetBackButtonAnchor || null;
 
     // Find first focusable item
     this._moveCursorToFirstFocusable();
@@ -141,10 +147,26 @@ export class MenuPage {
   }
 
   /**
-   * Handle keyboard input.
+   * Handle keyboard input. Delegates to `customHandleInput` when configured (e.g. a page that
+   * needs extra keys beyond the generic navigation below, like Left/Right page-turning or a
+   * Yes/No dialog prompt) -- it decides whether to fall back to the default handling via the
+   * `defaultHandleInput` callback it's passed.
    * @returns True if input was handled.
    */
   handleInput(key: K): boolean {
+    if (this.customHandleInput) {
+      return this.customHandleInput(key, this, (k) => this._defaultHandleInput(k));
+    }
+
+    return this._defaultHandleInput(key);
+  }
+
+  /**
+   * The generic navigation/activation behavior every page gets unless overridden via
+   * `customHandleInput`.
+   * @returns True if input was handled.
+   */
+  protected _defaultHandleInput(key: K): boolean {
     // Let focused item handle input first
     const focused = this.items[this.cursor];
     if (focused && focused.handleInput(key)) {
@@ -213,13 +235,13 @@ export class MenuPage {
   }
 
   /**
-   * Where M should draw/hit-test the page-agnostic Back/Close button for this page. Return null
-   * (the default) to use the standard bottom-left corner; override to reposition it, e.g. a
-   * dialog centering it under its own message box.
+   * Where M should draw/hit-test the page-agnostic Back/Close button for this page. Returns
+   * null (the default) to use the standard bottom-left corner unless `customGetBackButtonAnchor`
+   * is configured, e.g. a dialog centering it under its own message box.
    * @returns The button's anchor, or null to use the default corner.
    */
   getBackButtonAnchor(): BackButtonAnchor | null {
-    return null;
+    return this.customGetBackButtonAnchor ? this.customGetBackButtonAnchor() : null;
   }
 
   /**

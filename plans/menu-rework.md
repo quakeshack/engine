@@ -520,22 +520,83 @@ override ([ClientAPI.ts:130](../source/game/hellwave/client/ClientAPI.ts#L130)),
 
 ## Phasing
 
-1. **Engine groundwork** — `MenuStack` root-page + `isShowing()` (Design A),
+1. **Engine groundwork** — done. `MenuStack` root-page + `isShowing()` (Design A),
    `SessionDiscovery` + `ClientEngineAPI.Multiplayer.ListSessions()` (Design B),
    `ClientEngineAPI.SaveSlots` (Design C), `Host.ts` → `host.alert` event bus migration
-   (Design D). No visible behavior change yet — `Menu.ts`'s existing inline pages keep
-   working, just wired through the new primitives instead of cached references/raw
-   `localStorage`/direct `M.Alert` calls.
-2. **id1 ownership** — port every page (`main` through `alert`) into
-   `id1/client/ClientAPI.ts`; delete the equivalent construction from `Menu.ts`, delete
-   the nine dead `Menu_X_f` functions and their commands (Design E), delete
-   `Multiplayer.ts`. id1 should be indistinguishable from today when played — this is a
-   pure refactor and the highest-risk step, since it touches every built-in menu screen at
-   once.
-3. **hellwave layout** — new `'main'` override with inline lobby, new `'newgame'` page from
-   `GetMapList()`.
+   (Design D).
+2. **id1 ownership** — done. Every page (`main` through `alert`) now lives in
+   `source/game/id1/client/Menu.ts`, registered from `ClientGameAPI.Init()`. `Menu.ts`
+   builds no pages at all anymore; `Multiplayer.ts` is deleted. See "What actually shipped
+   in Phase 2" below for the handful of things that came up mid-port that the original
+   design didn't anticipate.
+3. **hellwave layout** — not started. New `'main'` override with inline lobby, new
+   `'newgame'` page from `GetMapList()`.
 
 Land and fully verify id1 after phase 2 before starting phase 3.
+
+### What actually shipped in Phase 2
+
+The page-by-page port needed more composition surface than Design A–E anticipated, since
+several built-in pages (`quit`, `alert`, `help`, `keys`, `multiplayer`) subclassed
+`MenuPage`/`Textbox` directly in the old engine code — not possible from game code, which
+can only configure instances, never `extends` an engine base class. Added to close that
+gap, all under `ClientEngineAPI.Menu` unless noted:
+
+- **`MenuPage` composition hooks**: `customHandleInput(key, page, defaultHandleInput)` and
+  `customGetBackButtonAnchor()`, alongside the pre-existing `customDraw`. Together these
+  replace what subclassing `MenuPage`/`DialogPage` used to do (help's page-turning, the
+  quit dialog's Y/N + backdrop + repositioned back button, options' "extra instructional
+  text drawn after the normal layout").
+- **`Textbox.customDraw(textbox, x, y, focused)`** plus a widened `getCursorGlyph()`
+  (public, computes blink phase internally — was `protected _getCursorGlyph(blinkPhase)`,
+  usable only by an engine-side subclass). Needed for the multiplayer setup screen's name
+  field, which draws its input box in a fixed column rather than below the label.
+- **`GetPreviousPage()`** — the page one level below the current one, for a dialog's
+  `getBackdrop`. `MenuStack.stack` is already public; this just reads `stack.at(-2)`.
+- **Drawing primitives re-exported on `ClientEngineAPI.Menu`**: `Print`, `PrintWhite`,
+  `DrawCharacter`, `DrawPic`, `DrawPicTranslate`, `DrawTextBox`, `DrawSlider`, plus
+  read-only `mouseX`/`mouseY`. Every `custom*` hook above needs these to draw anything.
+- **`ForceClose()`** — clears the stack and returns to the game unconditionally, even
+  while disconnected. `Close()`'s disconnected-collapses-to-root behavior is specifically
+  wrong for "New Game," which is the one action that's itself about to make "disconnected"
+  stop being true.
+- **`ToggleConsole()`**, **`ForceQuit()`** — thin wrappers (`Con.ToggleConsole_f()`,
+  `Host.ForceQuit()`) for the options page's "Go to console" and the quit dialog's "Yes".
+- **`StartSingleplayerGame()`** — routes to `ClientLifecycle.startGame`. Lives on `M`
+  (`M.StartSingleplayerGame()`) rather than being called directly from `GameAPIs.ts`,
+  because `ClientLifecycle.ts` already imports `GameAPIs.ts` — importing it back would
+  have been a circular import (caught by a full-suite test run: it manifested as an
+  unrelated `ReferenceError: Cannot access 'ClientEntities' before initialization` in
+  `ClientState.ts`, not an obvious error at the import site itself).
+- **`LoadTranslatablePic(lumpName)`** — generalized from the `menuplyr`-specific inline
+  LMP-palette-parsing block that used to live in `M.Init()`. Kept engine-side (raw asset
+  format handling, not menu content); id1 calls it directly instead of the engine
+  preloading `menuplyr` for a page that no longer exists in `Menu.ts`.
+- **`SV.active` / `CL.connected` getters** — already anticipated in the original plan's
+  open questions, now actually wired up and used by the singleplayer and multiplayer
+  pages.
+- **`StartServerListEntry.callback` typed as `CommonEngineAPI`** (in `GameInterfaces.ts`) —
+  was typed as taking a full `ServerEngineAPI`, but every real implementation (id1's,
+  hellwave's) only ever calls `.AppendConsoleText()` on it. Since the callback is now
+  invoked from the *client*-side `launch_server` page (no `ServerEngineAPI` exists yet —
+  there's no server until this action starts one), the type was narrowed to `CommonEngineAPI`
+  — the real shared base class both `ClientEngineAPI` and `ServerEngineAPI` extend — letting
+  the client pass its own engine reference directly. An earlier version of this fix used a
+  standalone duck-typed `ConsoleTextEngineAPI` interface instead; that was replaced with
+  `CommonEngineAPI` because a structurally-independent lookalike interface doesn't resolve
+  via go-to-definition/find-references tooling the way a real shared base class does.
+- **`host.quit-requested` event** (new, alongside `host.alert`) — `Host.Quit_f()` used to
+  call `M.Menu_Quit_f()` directly; same fix as `host.alert`, for the same reason (the
+  `quit` page it used to reach into no longer exists in the engine at all).
+- **Dead code removed while touching adjacent lines**: `PlayerSkin` (a `MenuItem`
+  subclass referencing `M.bigbox`/`M.menuplyr`, confirmed unused anywhere in the codebase
+  before deleting).
+- **Test fixture work**: `source/game/id1/test/client/fixtures.ts`'s `createMockClientEngine()`
+  gained a `Menu`/`SaveSlots`/`Multiplayer`/`SV` mock (real widget/layout classes plus a
+  from-scratch, registry-free stack implementation — deliberately not the real `MenuStack`,
+  which touches `M.entersound`/`IN.ReleasePointerLock()` on every push/pop) so that
+  `ClientGameAPI.Init()` — which now unconditionally builds the full menu tree — doesn't
+  crash in tests that have nothing to do with menus.
 
 ## Testing
 

@@ -45,6 +45,7 @@ interface TextboxConfig extends MenuItemConfig {
   readonly maxLength?: number;
   readonly validator?: (value: string) => boolean;
   readonly width?: number;
+  readonly customDraw?: ((textbox: Textbox, x: number, y: number, focused: boolean) => void) | null;
 }
 
 interface SpacerConfig extends MenuItemConfig {
@@ -405,12 +406,14 @@ export class Toggle extends MenuItem {
 export class Textbox extends MenuItem {
   cvar: string | null;
   width: number;
+  customDraw: ((textbox: Textbox, x: number, y: number, focused: boolean) => void) | null;
   #editor: LineEditor;
 
   constructor(config: TextboxConfig) {
     super(config);
     this.cvar = config.cvar || null;
     this.width = config.width ?? 24;
+    this.customDraw = config.customDraw || null;
     this.#editor = new LineEditor(config.value || '', {
       maxLength: config.maxLength ?? 32,
       validator: config.validator || (() => true),
@@ -460,14 +463,15 @@ export class Textbox extends MenuItem {
   }
 
   /**
-   * Determines the glyph to draw for the blinking cursor, or null when the current blink
-   * phase should instead reveal the character already under the cursor. Exposed as
-   * `protected` for subclasses with custom layouts (e.g. `NameFieldTextbox`) that draw their
-   * own cursor rather than using `draw()` as-is.
+   * The glyph to draw for the blinking cursor this frame, or null when the current blink phase
+   * should instead reveal the character already under the cursor. Public (computes the blink
+   * phase from the current frame internally) so a `customDraw` callback with its own layout
+   * (e.g. a name field with the input box in a fixed column instead of below the label) can
+   * draw the same cursor without needing `draw()` as-is.
    * @returns A character code to draw at the cursor, or null to reveal the text underneath.
    */
-  protected _getCursorGlyph(blinkPhase: number): number | null {
-    return this.#editor.cursorGlyph(blinkPhase);
+  getCursorGlyph(): number | null {
+    return this.#editor.cursorGlyph((Host.realtime * 4.0) & 1);
   }
 
   override activate(): void {
@@ -504,6 +508,11 @@ export class Textbox extends MenuItem {
       return;
     }
 
+    if (this.customDraw) {
+      this.customDraw(this, x, y, focused);
+      return;
+    }
+
     M.Print(x, y, this.label);
 
     y += 16;
@@ -512,7 +521,7 @@ export class Textbox extends MenuItem {
     M.PrintWhite(x + 8, y, this.getValue());
 
     if (focused) {
-      const glyph = this._getCursorGlyph((Host.realtime * 4.0) & 1);
+      const glyph = this.getCursorGlyph();
       if (glyph !== null) {
         M.DrawCharacter(x + 8 + this.cursorPos * 8, y, glyph);
       }
@@ -604,35 +613,6 @@ export class Image extends MenuItem {
   }
 }
 
-export class PlayerSkin extends MenuItem {
-  value = 0;
-
-  constructor() {
-    super({ focusable: false });
-  }
-
-  override draw(x: number, y: number, _focused: boolean): void {
-    if (!this.visible) {
-      return;
-    }
-
-    const top = (this.value >> 4) & 0x0F;
-    const bottom = this.value & 0x0F;
-
-    M.DrawPic(x, y, M.bigbox);
-    M.DrawPicTranslate(
-      x + 12,
-      y + 8,
-      M.menuplyr,
-      (top << 4) + (top >= 8 ? 4 : 11),
-      (bottom << 4) + (bottom >= 8 ? 4 : 11),
-    );
-  }
-
-  override getHeight(): number {
-    return M.bigbox.height || 0;
-  }
-}
 
 /**
  * A single load/save game slot. Enter always activates the slot (the caller decides whether

@@ -1,27 +1,21 @@
 import type { SFX } from './Sound.ts';
-import type { HostAlertEvent } from '../../shared/GameInterfaces.ts';
 
 import { K } from '../../shared/Keys.ts';
 import Cmd from '../common/Cmd.ts';
-import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.ts';
 import { KeyDestination } from './Key.ts';
-import { Action, ColorPicker, KeyBindItem, SaveSlotItem, Slider, Textbox, Toggle } from './menu/MenuItem.ts';
 import type { BackButtonAnchor } from './menu/MenuPage.ts';
-import { DialogPage, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from './menu/MenuPage.ts';
 import { MenuStack } from './menu/MenuStack.ts';
-import MultiplayerMainMenu from './menu/Multiplayer.ts';
-import SaveSlots from './menu/SaveSlots.ts';
 import VID from './VID.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 
-let { CL, COM, Con, Draw, Host, Key, S, SCR, SV } = getClientRegistry();
+let { CL, COM, Draw, Key, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Draw, Host, Key, S, SCR, SV } = getClientRegistry());
+  ({ CL, COM, Draw, Key, S } = getClientRegistry());
 });
 
 // An involuntary disconnect (server shutdown, kick, timeout) can happen with no menu open at
@@ -34,368 +28,6 @@ eventBus.subscribe('client.disconnected', () => {
 });
 
 export type MenuPic = GLTexture & { translate?: GLTexture | null };
-type QuitMessage = [string, string, string, string];
-
-const MAX_SAVEGAMES = 12;
-
-const bindnames: [string, string][] = [
-  ['+attack', 'attack'],
-  ['impulse 10', 'change weapon'],
-  ['+jump', 'jump / swim up'],
-  ['+forward', 'walk forward'],
-  ['+back', 'backpedal'],
-  ['+left', 'turn left'],
-  ['+right', 'turn right'],
-  ['+speed', 'run'],
-  ['+moveleft', 'step left'],
-  ['+moveright', 'step right'],
-  ['+strafe', 'sidestep'],
-  ['+lookup', 'look up'],
-  ['+lookdown', 'look down'],
-  ['centerview', 'center view'],
-  ['+mlook', 'mouse look'],
-  ['+klook', 'keyboard look'],
-  ['+moveup', 'swim up'],
-  ['+movedown', 'swim down'],
-];
-
-const quitMessage: QuitMessage[] = [
-  ['  Are you gonna quit', '  this game just like', '   everything else?', ''],
-  [' Milord, methinks that', '   thou art a lowly', ' quitter. Is this true?', ''],
-  [' Do I need to bust your', '  face open for trying', '        to quit?', ''],
-  [' Man, I oughta smack you', '   for trying to quit!', '     Press Y to get', '      smacked out.'],
-  [' Press Y to quit like a', '   big loser in life.', '  Press N to stay proud', '    and successful!'],
-  ['   If you press Y to', '  quit, I will summon', '  Satan all over your', '      hard drive!'],
-  ['  Um, Asmodeus dislikes', ' his children trying to', ' quit. Press Y to return', '   to your Tinkertoys.'],
-  ['  If you quit now, I\'ll', '  throw a blanket-party', '   for you next time!', ''],
-];
-
-const launchServerMenu = new MultiplayerMainMenu();
-
-/**
- * Full-screen help picture viewer; Left/Right (or Up/Down) flip pages, Escape goes back.
- */
-class HelpPage extends MenuPage {
-  pageIndex = 0;
-
-  constructor() {
-    super({ onEscape: () => { M.PopMenu(); } });
-  }
-
-  override draw(): void {
-    M.DrawPic(0, 0, M.help_pages[this.pageIndex]);
-  }
-
-  override handleInput(key: K): boolean {
-    if (key === K.UPARROW || key === K.RIGHTARROW) {
-      M.entersound = true;
-      this.pageIndex = (this.pageIndex + 1) % M.help_pages.length;
-      return true;
-    }
-
-    if (key === K.DOWNARROW || key === K.LEFTARROW) {
-      M.entersound = true;
-      this.pageIndex = (this.pageIndex - 1 + M.help_pages.length) % M.help_pages.length;
-      return true;
-    }
-
-    return super.handleInput(key);
-  }
-
-  override activate(): void {
-    super.activate();
-    this.pageIndex = 0;
-  }
-}
-
-/**
- * Key-binding menu; shows different instructional text while capturing a keypress to bind.
- */
-class KeysPage extends MenuPage {
-  override draw(): void {
-    super.draw();
-
-    const focused = this.items[this.cursor];
-    const capturing = focused instanceof KeyBindItem && focused.capturing;
-
-    if (capturing) {
-      M.Print(12, 32, 'Press a key or button for this action');
-    } else {
-      M.Print(18, 32, 'Enter to change, backspace to clear');
-    }
-  }
-}
-
-/**
- * Quit confirmation dialog. Y confirms, N/Escape returns to whatever page was open before it.
- */
-export class QuitDialogPage extends DialogPage {
-  static readonly #boxX = 56;
-  static readonly #boxY = 76;
-  static readonly #boxWidth = 24; // in DrawTextBox's content-width units (8px each)
-  static readonly #boxLines = 5; // 4 flavor-text lines + 1 Yes/No prompt row
-
-  // Row for the mouse-clickable Yes/No prompt, below the 4 lines of flavor text.
-  static readonly #promptY = 116;
-  static readonly #yesX = 88;
-  static readonly #noX = 168;
-
-  #messageIndex = 0;
-
-  constructor() {
-    super({
-      onEscape: () => { M.PopMenu(); },
-      getBackdrop: () => {
-        const stack = M.menuStack.stack;
-        return stack.length > 1 ? stack[stack.length - 2] : null;
-      },
-    });
-  }
-
-  override activate(): void {
-    super.activate();
-    this.#messageIndex = Math.floor(Math.random() * quitMessage.length);
-  }
-
-  static #isOverPrompt(x: number, label: string): boolean {
-    return M.mouseX >= x && M.mouseX < x + label.length * 8
-      && M.mouseY >= QuitDialogPage.#promptY && M.mouseY < QuitDialogPage.#promptY + 8;
-  }
-
-  static #drawPrompt(x: number, label: string): void {
-    if (QuitDialogPage.#isOverPrompt(x, label)) {
-      M.PrintWhite(x, QuitDialogPage.#promptY, label);
-    } else {
-      M.Print(x, QuitDialogPage.#promptY, label);
-    }
-  }
-
-  #confirmQuit(): void {
-    // The player already confirmed via this dialog — skip Host.Quit_f()'s own confirmation gate.
-    Host.ForceQuit();
-  }
-
-  override draw(): void {
-    super.draw();
-
-    const message = quitMessage[this.#messageIndex];
-    M.DrawTextBox(QuitDialogPage.#boxX, QuitDialogPage.#boxY, QuitDialogPage.#boxWidth, QuitDialogPage.#boxLines);
-    M.Print(64, 84, message[0]);
-    M.Print(64, 92, message[1]);
-    M.Print(64, 100, message[2]);
-    M.Print(64, 108, message[3]);
-    QuitDialogPage.#drawPrompt(QuitDialogPage.#yesX, 'Yes');
-    QuitDialogPage.#drawPrompt(QuitDialogPage.#noX, 'No');
-  }
-
-  override getBackButtonAnchor(): BackButtonAnchor {
-    const totalWidth = 16 + QuitDialogPage.#boxWidth * 8;
-    const boxBottom = QuitDialogPage.#boxY + (QuitDialogPage.#boxLines + 2) * 8;
-    return { centerX: QuitDialogPage.#boxX + totalWidth / 2, y: boxBottom + 8 };
-  }
-
-  override handleInput(key: K): boolean {
-    if (key === 110 as K) { // 'n'
-      M.PopMenu();
-      return true;
-    }
-
-    if (key === 121 as K) { // 'y'
-      this.#confirmQuit();
-      return true;
-    }
-
-    if (key === K.MOUSE1 && QuitDialogPage.#isOverPrompt(QuitDialogPage.#yesX, 'Yes')) {
-      this.#confirmQuit();
-      return true;
-    }
-
-    if (key === K.MOUSE1 && QuitDialogPage.#isOverPrompt(QuitDialogPage.#noX, 'No')) {
-      M.PopMenu();
-      return true;
-    }
-
-    return super.handleInput(key);
-  }
-}
-
-/**
- * A dismissable alert/error dialog with a dynamically sized text box.
- */
-class AlertDialogPage extends MenuPage {
-  static readonly #boxY = 52;
-  static readonly #boxWidth = 64; // in DrawTextBox's content-width units (8px each)
-
-  #title = '';
-  #message = '';
-
-  constructor() {
-    super({
-      onEscape: () => { M.CloseMenu(); },
-      onConfirm: () => { M.CloseMenu(); },
-    });
-  }
-
-  setMessage(title: string, message: string): void {
-    this.#title = title;
-    this.#message = message;
-  }
-
-  /**
-   * Build the message's text-box layout: the lines to draw, the box's left edge, and its
-   * total line count. Shared between draw() and getBackButtonAnchor() so both agree on where
-   * the box actually ends up.
-   * @returns The box's left edge, total line count, and the lines themselves.
-   */
-  #computeBoxMetrics(): { x: number; totalLines: number; lines: Array<string | null> } {
-    const titleLines = this.#title ? this.#title.split('\n') : [];
-    const messageLines = this.#message ? this.#message.split('\n') : [];
-
-    const lines: Array<string | null> = [];
-    if (titleLines.length) {
-      lines.push(...titleLines);
-      lines.push(`\x1d${'\x1e'.repeat(60)}\x1f`);
-    }
-
-    lines.push(null);
-
-    if (messageLines.length) {
-      lines.push(...messageLines);
-    }
-
-    lines.push(null);
-    lines.push('Press enter to continue.');
-
-    const totalLines = lines.length;
-    const x = (320 - AlertDialogPage.#boxWidth * 8) / 2;
-
-    return { x, totalLines, lines };
-  }
-
-  override draw(): void {
-    const { x, totalLines, lines } = this.#computeBoxMetrics();
-
-    M.DrawTextBox(x, AlertDialogPage.#boxY, AlertDialogPage.#boxWidth, totalLines + 2);
-
-    for (let i = 0, y = 68; i < totalLines; i++, y += 8) {
-      if (lines[i]) {
-        // Limit each line to 62 characters for safe drawing
-        M.PrintWhite(x + 16, y, lines[i]!.substring(0, 62));
-      }
-    }
-  }
-
-  override getBackButtonAnchor(): BackButtonAnchor {
-    const { x, totalLines } = this.#computeBoxMetrics();
-    const totalWidth = 16 + AlertDialogPage.#boxWidth * 8;
-    const boxBottom = AlertDialogPage.#boxY + (totalLines + 2 + 2) * 8;
-    return { centerX: x + totalWidth / 2, y: boxBottom + 8 };
-  }
-}
-
-/**
- * A name-entry row matching the original multiplayer screen's layout: label on the left,
- * input box in a fixed column to the right (rather than stacked below the label), so it
- * doesn't compete for horizontal space with the player skin preview next to it.
- */
-class NameFieldTextbox extends Textbox {
-  static readonly #boxX = 160;
-
-  override draw(x: number, y: number, focused: boolean): void {
-    if (!this.visible) {
-      return;
-    }
-
-    M.Print(x, y, this.label);
-    M.DrawTextBox(NameFieldTextbox.#boxX, y - 8, this.width, 1);
-    M.PrintWhite(NameFieldTextbox.#boxX + 8, y, this.getValue());
-
-    if (focused) {
-      const glyph = this._getCursorGlyph((Host.realtime * 4.0) & 1);
-      if (glyph !== null) {
-        M.DrawCharacter(NameFieldTextbox.#boxX + 8 + this.cursorPos * 8, y, glyph);
-      }
-    }
-  }
-}
-
-/**
- * Legacy multiplayer setup screen: player name, shirt/pants color, then either joins the
- * server browser (not yet connected) or applies profile changes immediately (connected).
- */
-export class MultiplayerSetupPage extends MenuPage {
-  top = 0;
-  bottom = 0;
-  #oldTop = 0;
-  #oldBottom = 0;
-  #nameTextbox: Textbox;
-
-  constructor() {
-    const nameTextbox = new NameFieldTextbox({ label: 'Your name', width: 16, maxLength: 14, heightOverride: 24 });
-    const joinAction = new Action({ label: 'Join Game' });
-
-    super({
-      logoPic: M.qplaque,
-      titlePic: M.p_multi,
-      layout: new VerticalLayout({ startY: 48, spacing: 0, labelX: 64, cursorX: 56 }),
-      items: [
-        nameTextbox,
-        new ColorPicker({
-          label: 'Shirt color',
-          heightOverride: 24,
-          getValue: () => this.top,
-          setValue: (value) => { this.top = value; },
-        }),
-        new ColorPicker({
-          label: 'Pants color',
-          heightOverride: 36,
-          getValue: () => this.bottom,
-          setValue: (value) => { this.bottom = value; },
-        }),
-        joinAction,
-      ],
-      onEscape: () => { M.PopMenu(); },
-      onEnter: () => {
-        nameTextbox.value = CL.name.string;
-        this.top = this.#oldTop = CL.color.value >> 4;
-        this.bottom = this.#oldBottom = CL.color.value & 15;
-        joinAction.label = CL.cls.state !== clientConnectionState.connected ? 'Join Game' : 'Accept Changes';
-      },
-    });
-
-    this.#nameTextbox = nameTextbox;
-
-    joinAction.action = () => {
-      if (CL.name.string !== this.#nameTextbox.getValue()) {
-        Cmd.text += `name "${this.#nameTextbox.getValue()}"\n`;
-      }
-
-      if (this.top !== this.#oldTop || this.bottom !== this.#oldBottom) {
-        this.#oldTop = this.top;
-        this.#oldBottom = this.bottom;
-        Cmd.text += `color ${this.top} ${this.bottom}\n`;
-      }
-
-      if (CL.cls.state !== clientConnectionState.connected) {
-        M.Menu_Launch_Server_f();
-        return;
-      }
-
-      M.CloseMenu();
-    };
-  }
-
-  override draw(): void {
-    super.draw();
-
-    M.DrawPic(160, 56, M.bigbox);
-    M.DrawPicTranslate(
-      172, 64, M.menuplyr,
-      (this.top << 4) + (this.top >= 8 ? 4 : 11),
-      (this.bottom << 4) + (this.bottom >= 8 ? 4 : 11),
-    );
-  }
-}
 
 export default class M {
   static menuStack = new MenuStack();
@@ -434,33 +66,12 @@ export default class M {
   static box_mr: MenuPic = null!;
   static box_br: MenuPic = null!;
 
-  static qplaque: MenuPic = null!;
   static menudot: MenuPic[] = [];
-  static ttl_main: MenuPic = null!;
-  static mainmenu: MenuPic = null!;
-
-  static ttl_sgl: MenuPic = null!;
-  static sp_menu: MenuPic = null!;
-  static p_load: MenuPic = null!;
-  static p_save: MenuPic = null!;
-
-  static p_multi: MenuPic = null!;
-  static bigbox: MenuPic = null!;
-  static menuplyr: MenuPic = null!;
-
-  static p_option: MenuPic = null!;
-  static ttl_cstm: MenuPic = null!;
-  static help_pages: MenuPic[] = [];
 
   static overlayNoticeId: string | null = null;
   static overlayNoticeLines: string[] = [];
 
   static #saveDemonum = 0; // THIS IS THE REASON WHY I HATE UNINITIALIZED PROPERTIES, this line was missing and it quietly caused some NaNs deep in the demo code…
-
-  static #loadSlotItems: SaveSlotItem[] = [];
-  static #saveSlotItems: SaveSlotItem[] = [];
-
-  static #alertPage: AlertDialogPage = null!;
 
   static DrawCharacter(cx: number, cy: number, num: number): void {
     Draw.Character(cx * 2 + Math.floor(VID.width / 2) - 320, cy * 2 + Math.floor(VID.height / 2) - 200, num, 2.0);
@@ -678,7 +289,7 @@ export default class M {
       return;
     }
     M.menuStack.clear();
-    M.#returnToPreviousDestination();
+    M.ReturnToGame();
   }
 
   static PopMenu(): void {
@@ -688,19 +299,73 @@ export default class M {
         M.menuStack.pushRoot();
         return;
       }
-      M.#returnToPreviousDestination();
+      M.ReturnToGame();
     }
   }
 
-  static #returnToPreviousDestination(): void {
+  /**
+   * Return control to the game unconditionally, regardless of connection state -- unlike
+   * CloseMenu(), which stays open while disconnected (there's nothing to return to). Used by
+   * the two call sites above (once the menu is actually, fully closing) and by actions that are
+   * themselves about to create a game to return to, e.g. starting a new game from a disconnected
+   * menu (see ClientEngineAPI.Menu.ForceClose).
+   */
+  static ReturnToGame(): void {
     // `game` regardless of connection state: it's just "not the menu" now that the console is
     // an independent overlay rather than a destination to fall back into.
     Key.destination = KeyDestination.game;
     // Restore the demo-loop cursor paused (set to -1 in Menu_Main_f) when the menu was opened
     // over a playing demo, so ClientDemos can naturally advance to the next one when it ends.
-    // Only reachable here, at the point the menu is actually fully closing while connected --
-    // see the two call sites above -- since there's no game to have paused a demo for otherwise.
     CL.cls.demonum = M.#saveDemonum;
+  }
+
+  /**
+   * Start a new singleplayer game via the active mod's `StartGameInterface`, or the engine's
+   * own default (`map start`) if the mod didn't provide one. Exposed to game code via
+   * `ClientEngineAPI.Menu.StartSingleplayerGame` -- routed through `M` rather than importing
+   * `ClientLifecycle` directly into `GameAPIs.ts`, which would create a circular import
+   * (`ClientLifecycle.ts` already imports `GameAPIs.ts`).
+   */
+  static StartSingleplayerGame(): void {
+    ClientLifecycle.startGame!.startSingleplayerGame();
+  }
+
+  /**
+   * Load a lump-based pic together with a color-translation texture built from the raw palette
+   * indices (for `DrawPicTranslate`, e.g. a player-color preview). This is the only way to get
+   * the player picture translation right -- the palette-index parsing has to happen ourselves,
+   * there's no higher-level asset pipeline for it.
+   * @returns The pic, with `.translate` populated.
+   */
+  static async LoadTranslatablePic(lumpName: string): Promise<MenuPic> {
+    const pic: MenuPic = Draw.LoadPicFromLumpDeferred(lumpName);
+
+    const lmpfile = await COM.LoadFile(`gfx/${lumpName}.lmp`);
+    if (lmpfile === null) {
+      throw new MissingResourceError(`gfx/${lumpName}.lmp`);
+    }
+
+    const view = new DataView(lmpfile, 0, 8);
+    const width = view.getUint32(0, true);
+    const height = view.getUint32(4, true);
+    const data = new Uint8Array(lmpfile, 8, width * height);
+
+    const trans = new Uint8Array(new ArrayBuffer(width * height * 4));
+
+    for (let i = 0; i < width * height; i++) {
+      const p = data[i];
+      if ((p >> 4) === 1) {
+        trans[i << 2] = (p & 15) * 17;
+        trans[(i << 2) + 1] = 255;
+      } else if ((p >> 4) === 6) {
+        trans[(i << 2) + 2] = (p & 15) * 17;
+        trans[(i << 2) + 3] = 255;
+      }
+    }
+
+    pic.translate = GLTexture.Allocate(`${lumpName}_translate`, width, height, trans);
+
+    return pic;
   }
 
   static ToggleMenu_f(this: void): void {
@@ -719,7 +384,12 @@ export default class M {
     M.Menu_Main_f();
   }
 
-  // Main menu
+  /**
+   * Push the root page (see `ClientEngineAPI.Menu.SetRootPage`), clearing the stack first --
+   * the engine's only opinion on menu content is "there is a root, and Escape/an involuntary
+   * disconnect goes there." Called directly from `Key.ts` (mouse click while disconnected with
+   * the console up) in addition to the internal call sites below.
+   */
   static Menu_Main_f(this: void): void {
     if (CL.cls.connecting !== null) {
       return;
@@ -734,257 +404,9 @@ export default class M {
     M.menuStack.pushRoot();
   }
 
-  // Single player menu
-  static Menu_SinglePlayer_f(this: void): void {
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('singleplayer');
-  }
-
-  // Load/save menu
-  static Menu_Load_f(this: void): void {
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('load');
-  }
-
-  static Menu_Save_f(this: void): void {
-    if (!SV.server.active || CL.state.intermission !== 0 || SV.svs.maxclients !== 1) {
-      return;
-    }
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('save');
-  }
-
-  // Multiplayer menu
-  static Menu_MultiPlayer_f(this: void): void {
-    if (M.menuStack.isShowing('multiplayer')) {
-      return;
-    }
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('multiplayer');
-  }
-
-  // Options menu
-  static Menu_Options_f(this: void): void {
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('options');
-  }
-
-  // Keys menu
-  static Menu_Keys_f(this: void): void {
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('keys');
-  }
-
-  // Help menu
-  static Menu_Help_f(this: void): void {
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('help');
-  }
-
-  // Quit menu
-  static Menu_Quit_f(this: void): void {
-    if (M.menuStack.isShowing('quit')) {
-      return;
-    }
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('quit');
-  }
-
-  static Menu_Launch_Server_f(this: void): void {
-    if (M.menuStack.isShowing('launch_server')) {
-      return;
-    }
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('launch_server');
-  }
-
-  static Alert(title: string, message: string): void {
-    if (M.menuStack.isShowing('alert')) {
-      return;
-    }
-    M.#alertPage.setMessage(title, message);
-    Key.destination = KeyDestination.menu;
-    M.menuStack.push('alert'); // TODO: have a different sound
-  }
-
-  static #scanSaves(): void {
-    for (const slot of SaveSlots.list(MAX_SAVEGAMES)) {
-      M.#loadSlotItems[slot.index].label = slot.label;
-      M.#loadSlotItems[slot.index].enabled = slot.hasData;
-      M.#loadSlotItems[slot.index].canDelete = slot.hasData;
-      M.#saveSlotItems[slot.index].label = slot.label;
-      M.#saveSlotItems[slot.index].canDelete = slot.hasData;
-    }
-  }
-
-  static #buildPages(): void {
-    const mainPage = new MenuPage({
-      logoPic: M.qplaque,
-      titlePic: M.ttl_main,
-      layout: new ImageBasedLayout({ backgroundPic: M.mainmenu }),
-      items: [
-        new Action({ action: () => { M.Menu_SinglePlayer_f(); } }),
-        new Action({ action: () => { M.Menu_MultiPlayer_f(); } }),
-        new Action({ action: () => { M.Menu_Options_f(); } }),
-        new Action({ action: () => { M.Menu_Help_f(); } }),
-        new Action({ action: () => { M.Menu_Quit_f(); } }),
-      ],
-      onEscape: () => { M.CloseMenu(); },
-    });
-
-    const singlePlayerPage = new MenuPage({
-      logoPic: M.qplaque,
-      titlePic: M.ttl_sgl,
-      layout: new ImageBasedLayout({ backgroundPic: M.sp_menu }),
-      items: [
-        new Action({
-          action: () => {
-            if (SV.server.active) {
-              void Cmd.ExecuteString('disconnect');
-            }
-            Key.destination = KeyDestination.game;
-            ClientLifecycle.startGame!.startSingleplayerGame();
-          },
-        }),
-        new Action({ action: () => { M.Menu_Load_f(); } }),
-        new Action({ action: () => { M.Menu_Save_f(); } }),
-      ],
-      onEscape: () => { M.PopMenu(); },
-    });
-
-    M.#loadSlotItems = Array.from({ length: MAX_SAVEGAMES }, (_, index) => new SaveSlotItem({
-      label: 'Empty slot',
-      onActivate: () => {
-        S.LocalSound(M.sfx_menu2);
-        if (!M.#loadSlotItems[index].enabled) {
-          return;
-        }
-        M.CloseMenu();
-        SCR.BeginLoadingPlaque();
-        Cmd.text += `load s${index}\n`;
-      },
-      onDelete: () => {
-        if (!confirm('Delete selected game?')) {
-          return;
-        }
-        SaveSlots.delete(index);
-        M.#scanSaves();
-      },
-    }));
-
-    const loadPage = new ListPage({
-      titlePic: M.p_load,
-      layout: new ListLayout(),
-      items: M.#loadSlotItems,
-      onEscape: () => { M.PopMenu(); },
-      onEnter: () => { M.#scanSaves(); },
-    });
-
-    M.#saveSlotItems = Array.from({ length: MAX_SAVEGAMES }, (_, index) => new SaveSlotItem({
-      label: 'Empty slot',
-      onActivate: () => {
-        M.CloseMenu();
-        Cmd.text += `save s${index}\n`;
-      },
-      onDelete: () => {
-        if (!confirm('Delete selected game?')) {
-          return;
-        }
-        SaveSlots.delete(index);
-        M.#scanSaves();
-      },
-    }));
-
-    const savePage = new ListPage({
-      titlePic: M.p_save,
-      layout: new ListLayout(),
-      items: M.#saveSlotItems,
-      onEscape: () => { M.PopMenu(); },
-      onEnter: () => { M.#scanSaves(); },
-    });
-
-    const multiplayerSetupPage = new MultiplayerSetupPage();
-
-    const optionsPage = new MenuPage({
-      logoPic: M.qplaque,
-      titlePic: M.p_option,
-      layout: new VerticalLayout({ startY: 32, spacing: 0, valueX: 220, cursorX: 200 }),
-      items: [
-        new Action({ label: 'Customize controls', action: () => { M.Menu_Keys_f(); } }),
-        new Action({
-          label: 'Go to console',
-          action: () => {
-            M.CloseMenu();
-            Con.ToggleConsole_f();
-          },
-        }),
-        new Action({ label: 'Reset to defaults', action: () => { Cmd.text += 'exec default.cfg\n'; } }),
-        new Slider({ label: 'Screen size', cvar: 'viewsize', min: 30, max: 120, step: 10 }),
-        new Slider({ label: 'Brightness', cvar: 'gamma', min: 0.5, max: 1.0, step: 0.05, invert: true }),
-        new Slider({ label: 'Mouse Speed', cvar: 'sensitivity', min: 1, max: 11, step: 0.5 }),
-        new Slider({ label: 'CD Music Volume', cvar: 'bgmvolume', min: 0, max: 1, step: 0.1 }),
-        new Slider({ label: 'Sound Volume', cvar: 'volume', min: 0, max: 1, step: 0.1 }),
-        new Toggle({
-          label: 'Always Run',
-          getValue: () => (CL.forwardspeed.value > 200.0 ? 1 : 0),
-          setValue: (value) => {
-            const speed = value ? 400.0 : 200.0;
-            Cvar.Set('cl_forwardspeed', speed);
-            Cvar.Set('cl_backspeed', speed);
-          },
-        }),
-        new Toggle({
-          label: 'Invert Mouse',
-          getValue: () => (CL.m_pitch.value < 0.0 ? 1 : 0),
-          setValue: () => { Cvar.Set('m_pitch', -CL.m_pitch.value); },
-        }),
-        new Toggle({ label: 'Lookspring', cvar: 'lookspring' }),
-        new Toggle({ label: 'Lookstrafe', cvar: 'lookstrafe' }),
-      ],
-      onEscape: () => { M.PopMenu(); },
-    });
-
-    const keysPage = new KeysPage({
-      titlePic: M.ttl_cstm,
-      layout: new VerticalLayout({ startY: 48, spacing: 0, labelX: 16, showCursor: false }),
-      items: bindnames.map(([command, label]) => new KeyBindItem({ label, command })),
-      onEscape: () => { M.PopMenu(); },
-    });
-
-    const helpPage = new HelpPage();
-    const quitPage = new QuitDialogPage();
-    const alertPage = new AlertDialogPage();
-
-    M.menuStack.register('main', mainPage);
-    M.menuStack.register('singleplayer', singlePlayerPage);
-    M.menuStack.register('load', loadPage);
-    M.menuStack.register('save', savePage);
-    M.menuStack.register('multiplayer', multiplayerSetupPage);
-    M.menuStack.register('options', optionsPage);
-    M.menuStack.register('keys', keysPage);
-    M.menuStack.register('help', helpPage);
-    M.menuStack.register('quit', quitPage);
-    M.menuStack.register('alert', alertPage);
-    M.menuStack.register('launch_server', launchServerMenu);
-
-    M.menuStack.setRootPage('main');
-    M.#alertPage = alertPage;
-  }
-
   // Menu Subsystem
   static async Init(): Promise<void> {
     Cmd.AddCommand('togglemenu', M.ToggleMenu_f);
-    Cmd.AddCommand('menu_main', M.Menu_Main_f);
-    Cmd.AddCommand('menu_singleplayer', M.Menu_SinglePlayer_f);
-    Cmd.AddCommand('menu_load', M.Menu_Load_f);
-    Cmd.AddCommand('menu_save', M.Menu_Save_f);
-    Cmd.AddCommand('menu_multiplayer', M.Menu_MultiPlayer_f);
-    Cmd.AddCommand('menu_setup', M.Menu_MultiPlayer_f);
-    Cmd.AddCommand('menu_options', M.Menu_Options_f);
-    Cmd.AddCommand('menu_keys', M.Menu_Keys_f);
-    Cmd.AddCommand('help', M.Menu_Help_f);
-    Cmd.AddCommand('menu_quit', M.Menu_Quit_f);
-    Cmd.AddCommand('menu_server_launch', M.Menu_Launch_Server_f);
 
     M.sfx_menu1 = S.PrecacheSound('misc/menu1.wav');
     M.sfx_menu2 = S.PrecacheSound('misc/menu2.wav');
@@ -1001,8 +423,6 @@ export default class M {
     M.box_mr = Draw.LoadPicFromLumpDeferred('box_mr');
     M.box_br = Draw.LoadPicFromLumpDeferred('box_br');
 
-    M.qplaque = Draw.LoadPicFromLumpDeferred('qplaque');
-
     // eslint-disable-next-line require-atomic-updates
     M.menudot = await Promise.all([
       Draw.LoadPicFromLump('menudot1'),
@@ -1013,86 +433,9 @@ export default class M {
       Draw.LoadPicFromLump('menudot6'),
     ]);
 
-    // eslint-disable-next-line require-atomic-updates
-    M.ttl_main = await Draw.LoadPicFromLump('ttl_main');
-    // eslint-disable-next-line require-atomic-updates
-    M.mainmenu = await Draw.LoadPicFromLump('mainmenu');
-
-    // eslint-disable-next-line require-atomic-updates
-    M.ttl_sgl = Draw.LoadPicFromLumpDeferred('ttl_sgl');
-    // eslint-disable-next-line require-atomic-updates
-    M.sp_menu = Draw.LoadPicFromLumpDeferred('sp_menu');
-    // eslint-disable-next-line require-atomic-updates
-    M.p_load = Draw.LoadPicFromLumpDeferred('p_load');
-    // eslint-disable-next-line require-atomic-updates
-    M.p_save = Draw.LoadPicFromLumpDeferred('p_save');
-
-    // eslint-disable-next-line require-atomic-updates
-    M.p_multi = Draw.LoadPicFromLumpDeferred('p_multi');
-    // eslint-disable-next-line require-atomic-updates
-    M.bigbox = Draw.LoadPicFromLumpDeferred('bigbox');
-    // eslint-disable-next-line require-atomic-updates
-    M.menuplyr = Draw.LoadPicFromLumpDeferred('menuplyr');
-
-    // FIXME: I really don’t like this, but it’s the only way to get the player picture translation right for now
-    {
-      const lmpfile = await COM.LoadFile('gfx/menuplyr.lmp');
-      if (lmpfile === null) {
-        throw new MissingResourceError('gfx/menuplyr.lmp');
-      }
-
-      const view = new DataView(lmpfile, 0, 8);
-      const width = view.getUint32(0, true);
-      const height = view.getUint32(4, true);
-      const data = new Uint8Array(lmpfile, 8, width * height);
-
-      const trans = new Uint8Array(new ArrayBuffer(width * height * 4));
-
-      for (let i = 0; i < 4096; i++) {
-        const p = data[i];
-        if ((p >> 4) === 1) {
-          trans[i << 2] = (p & 15) * 17;
-          trans[(i << 2) + 1] = 255;
-        } else if ((p >> 4) === 6) {
-          trans[(i << 2) + 2] = (p & 15) * 17;
-          trans[(i << 2) + 3] = 255;
-        }
-      }
-
-      // eslint-disable-next-line require-atomic-updates
-      M.menuplyr.translate = GLTexture.Allocate('menuplyr_translate', width, height, trans);
-    }
-
-    // eslint-disable-next-line require-atomic-updates
-    M.p_option = Draw.LoadPicFromLumpDeferred('p_option');
-    // eslint-disable-next-line require-atomic-updates
-    M.ttl_cstm = Draw.LoadPicFromLumpDeferred('ttl_cstm');
-
-    // eslint-disable-next-line require-atomic-updates
-    M.help_pages = [
-      Draw.LoadPicFromLumpDeferred('help0'),
-      Draw.LoadPicFromLumpDeferred('help1'),
-      Draw.LoadPicFromLumpDeferred('help2'),
-      Draw.LoadPicFromLumpDeferred('help3'),
-      Draw.LoadPicFromLumpDeferred('help4'),
-      Draw.LoadPicFromLumpDeferred('help5'),
-    ];
-
-    await launchServerMenu.init();
-
-    M.#buildPages();
-
     // always close the menu when a connection progresses
     eventBus.subscribe('client.signon', () => {
       M.CloseMenu();
-    });
-
-    // Host.EndGame/Host.Error report faults via the event bus rather than calling into the
-    // menu system directly (see docs/events.md#host) -- this keeps the existing alert-dialog
-    // behavior working. Once page ownership moves to game code, this subscription moves with
-    // it instead of staying here.
-    eventBus.subscribe('host.alert', (event: HostAlertEvent): void => {
-      M.Alert(event.title, event.message);
     });
   }
 

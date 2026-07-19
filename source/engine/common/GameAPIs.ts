@@ -13,8 +13,9 @@ import Vector from '../../shared/Vector.ts';
 import { moveTypes, solid } from '../../shared/Defs.ts';
 import { clientConnectionState } from './Def.ts';
 import Key, { KeyDestination } from '../client/Key.ts';
-import { Action, Image, Label, MenuItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
-import { GridLayout, ImageBasedLayout, ListLayout, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
+import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
+import { DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
+import type { MenuPic } from '../client/Menu.ts';
 import SessionDiscovery from '../client/menu/SessionDiscovery.ts';
 import SaveSlotsService from '../client/menu/SaveSlots.ts';
 import { SFX as SFXValue } from '../client/Sound.ts';
@@ -1329,6 +1330,51 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
+     * Force the menu to close immediately and return control to the game, regardless of
+     * connection state -- unlike `Close()`, which stays open while disconnected (nothing to
+     * return to). Use this when the action itself is what's about to create a game to return
+     * to, e.g. starting a new game from a disconnected menu.
+     */
+    ForceClose(): void {
+      M.menuStack.clear();
+      M.ReturnToGame();
+    },
+
+    /**
+     * Toggle the drop-down console overlay.
+     */
+    ToggleConsole(): void {
+      Con.ToggleConsole_f();
+    },
+
+    /**
+     * Quit immediately, skipping Host.Quit_f()'s own confirmation gate -- for use after the
+     * player already confirmed via a mod's own quit dialog.
+     */
+    ForceQuit(): void {
+      Host.ForceQuit();
+    },
+
+    /**
+     * Start a new singleplayer game via the active mod's `StartGameInterface`
+     * (`ClientGameInterface.GetStartGameInterface`), or the engine's own default (`map start`)
+     * if the mod didn't provide one.
+     */
+    StartSingleplayerGame(): void {
+      M.StartSingleplayerGame();
+    },
+
+    /**
+     * Load a lump-based pic together with a color-translation texture built from its raw
+     * palette indices, for `DrawPicTranslate` (e.g. a player-color preview). The palette/LMP
+     * parsing stays engine-side since it's raw asset format handling, not menu content.
+     * @returns The pic, with `.translate` populated.
+     */
+    LoadTranslatablePic(lumpName: string): Promise<MenuPic> {
+      return M.LoadTranslatablePic(lumpName);
+    },
+
+    /**
      * Check whether the menu is open, optionally a specific registered page.
      * @returns True when the menu (or the named page) is currently shown.
      */
@@ -1352,6 +1398,16 @@ export class ClientEngineAPI extends CommonEngineAPI {
      */
     IsEmpty(): boolean {
       return M.menuStack.isEmpty();
+    },
+
+    /**
+     * The page one level below the current one on the stack, if any -- e.g. a dialog's own
+     * `getBackdrop` wanting to draw whatever was open before it appeared.
+     * @returns The previous page, or null if the current page is at (or below) the root.
+     */
+    GetPreviousPage(): MenuPage | null {
+      const stack = M.menuStack.stack;
+      return stack.length > 1 ? stack[stack.length - 2] : null;
     },
 
     /**
@@ -1390,6 +1446,56 @@ export class ClientEngineAPI extends CommonEngineAPI {
       }
     },
 
+    /**
+     * Current mouse position in virtual 320x200 menu-space coordinates.
+     * @returns The horizontal position.
+     */
+    get mouseX(): number {
+      return M.mouseX;
+    },
+
+    /**
+     * Current mouse position in virtual 320x200 menu-space coordinates.
+     * @returns The vertical position.
+     */
+    get mouseY(): number {
+      return M.mouseY;
+    },
+
+    // Low-level drawing primitives every widget/layout draws with, re-exported so a page's
+    // `customDraw`/`customHandleInput` (and a custom MenuItem's `customDraw`) can reproduce the
+    // same look without reaching into engine internals. All operate in the classic virtual
+    // 320x200 centered coordinate space -- a different coordinate system from `DrawPic`/
+    // `DrawString` above, which are resolution-aware absolute pixel offsets.
+
+    Print(cx: number, cy: number, str: string): void {
+      M.Print(cx, cy, str);
+    },
+
+    PrintWhite(cx: number, cy: number, str: string): void {
+      M.PrintWhite(cx, cy, str);
+    },
+
+    DrawCharacter(cx: number, cy: number, num: number): void {
+      M.DrawCharacter(cx, cy, num);
+    },
+
+    DrawPic(x: number, y: number, pic: MenuPic): void {
+      M.DrawPic(x, y, pic);
+    },
+
+    DrawPicTranslate(x: number, y: number, pic: MenuPic, top: number, bottom: number): void {
+      M.DrawPicTranslate(x, y, pic, top, bottom);
+    },
+
+    DrawTextBox(x: number, y: number, width: number, lines: number): void {
+      M.DrawTextBox(x, y, width, lines);
+    },
+
+    DrawSlider(x: number, y: number, range: number): void {
+      M.DrawSlider(x, y, range);
+    },
+
     Action,
     Label,
     Slider,
@@ -1397,7 +1503,12 @@ export class ClientEngineAPI extends CommonEngineAPI {
     Textbox,
     Spacer,
     Image,
+    ColorPicker,
+    SaveSlotItem,
+    KeyBindItem,
     MenuPage,
+    DialogPage,
+    ListPage,
     VerticalLayout,
     ImageBasedLayout,
     ListLayout,

@@ -726,12 +726,15 @@ export default class Host {
   // Commands
 
   /**
-   * The `quit` command: asks for confirmation via the menu's Y/N dialog, unless typed directly
-   * into an already-open console (a deliberate enough action to skip the confirmation).
+   * The `quit` command: asks for confirmation via game code's own quit dialog (see
+   * docs/events.md#host), unless typed directly into an already-open console (a deliberate
+   * enough action to skip the confirmation). Published as an event rather than calling into
+   * the menu system directly, same reasoning as `host.alert` -- the engine has no opinion on
+   * what a quit confirmation looks like, or whether one exists at all.
    */
   static Quit_f(): void {
     if (!registry.isDedicatedServer && !Con.isOpen) {
-      M.Menu_Quit_f();
+      eventBus.publish('host.quit-requested');
       return;
     }
 
@@ -1253,6 +1256,10 @@ export default class Host {
     }
 
     CL.Disconnect();
+
+    if (!registry.isDedicatedServer) {
+      SCR.BeginLoadingPlaque();
+    }
 
     // Restore all server and game cvars.
     for (const [name, value] of gamestate.cvars) {
