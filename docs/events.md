@@ -35,6 +35,7 @@ The engine has an event bus.
 | client.connected | 1. address | Successfully connected to a server. |
 | client.signon | 1. signon number | Triggered on each signon reply step. |
 | client.game-initialized | - | The active game module has finished `ClientGameAPI.Init()` (pages registered, including the root). `M` uses this to show the root menu on cold boot, since `client.disconnected` never fires without a prior connection. |
+| hud.showscores | 1. boolean | Published by the id1 `+showscores`/`-showscores` commands (`Q1HUD.Init`). The live HUD instance (any `Q1HUD` subclass) subscribes to update its own scoreboard-visibility flag. |
 
 ### Menu
 
