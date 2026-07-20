@@ -4,6 +4,7 @@ import { LineEditor } from '../../../shared/LineEditor.ts';
 import Cmd from '../../common/Cmd.ts';
 import Cvar from '../../common/Cvar.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
+import type { BitmapFont } from '../BitmapFont.ts';
 import type { MenuPic } from '../Menu.ts';
 
 interface MenuItemConfig {
@@ -18,6 +19,10 @@ type MenuAction = () => void | Promise<void>;
 
 interface ActionConfig extends MenuItemConfig {
   readonly action?: MenuAction;
+  // Optional stylized font (e.g. a chunky uppercase-only header font) to draw the label with
+  // instead of the standard conchars font -- see `Action.draw()`. `variant` 0 is used while
+  // focused, 1 otherwise, so the font's own color rows double as the hover/selection highlight.
+  readonly font?: BitmapFont;
 }
 
 interface SliderConfig extends MenuItemConfig {
@@ -172,14 +177,25 @@ export class MenuItem {
  */
 export class Action extends MenuItem {
   action: MenuAction;
+  font: BitmapFont | null;
 
   constructor(config: ActionConfig) {
     super(config);
     this.action = config.action || (() => {});
+    this.font = config.font ?? null;
   }
 
-  override draw(x: number, y: number, _focused: boolean): void {
+  override draw(x: number, y: number, focused: boolean): void {
     if (!this.visible) {
+      return;
+    }
+
+    if (this.font !== null) {
+      if (this.enabled) {
+        M.DrawBitmapString(x, y, this.label, this.font, focused ? 0 : 1);
+      } else {
+        M.DrawBitmapString(x, y, this.label, this.font, 1);
+      }
       return;
     }
 

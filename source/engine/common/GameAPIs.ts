@@ -1,5 +1,6 @@
 import type { EdictData, EdictValueType, SerializableType } from '../../shared/GameInterfaces.ts';
 import type { ClientDlight, ClientEdict } from '../client/ClientEntities.ts';
+import { BitmapFont, type BitmapFontConfig } from '../client/BitmapFont.ts';
 import type { GLTexture } from '../client/GL.ts';
 import type { SzBuffer } from '../network/MSG.ts';
 import type ParsedQC from './model/parsers/ParsedQC.ts';
@@ -925,6 +926,15 @@ export class ClientEngineAPI extends CommonEngineAPI {
    */
   static LoadPicFromFile(filename: string): Promise<GLTexture> {
     return Draw.LoadPicFromFile(filename);
+  }
+
+  /**
+   * Load a fixed-grid bitmap font atlas from a file (e.g. a stylized header font), described by
+   * `config`'s charset and glyph/cell metrics.
+   * @returns The loaded font.
+   */
+  static LoadBitmapFont(filename: string, config: Omit<BitmapFontConfig, 'texture'>): Promise<BitmapFont> {
+    return BitmapFont.FromImageFile(filename, config);
   }
 
   /**

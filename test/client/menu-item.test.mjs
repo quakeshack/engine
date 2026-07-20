@@ -7,7 +7,7 @@ import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import {
-  ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
+  Action, ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
 } from '../../source/engine/client/menu/MenuItem.ts';
 
 /**
@@ -23,6 +23,7 @@ function withMockWidgetRegistry(callback) {
 
   const printed = [];
   const sounds = [];
+  const bitmapStrings = [];
 
   registry.Host = { realtime: 0 };
   registry.Key = Key;
@@ -34,12 +35,13 @@ function withMockWidgetRegistry(callback) {
     PrintWhite(_x, _y, str) { printed.push(str); },
     DrawCharacter() {},
     DrawSlider() {},
+    DrawBitmapString(_x, _y, str, font, variant) { bitmapStrings.push({ str, font, variant }); },
   };
   registry.S = { LocalSound(sfx) { sounds.push(sfx); } };
   eventBus.publish('registry.frozen');
 
   try {
-    callback({ printed, sounds });
+    callback({ printed, sounds, bitmapStrings });
   } finally {
     registry.Host = previousHost;
     registry.Key = previousKey;
@@ -74,6 +76,68 @@ void describe('MenuItem.getHeight', () => {
   void test('respects heightOverride when provided', () => {
     const item = new MenuItem({ heightOverride: 24 });
     assert.equal(item.getHeight(), 24);
+  });
+});
+
+void describe('Action', () => {
+  void test('draws with PrintWhite when enabled and Print when disabled, without a font', () => {
+    withMockWidgetRegistry(({ printed }) => {
+      const action = new Action({ label: 'Start' });
+
+      action.draw(10, 20, false);
+      action.enabled = false;
+      action.draw(10, 20, false);
+
+      assert.deepEqual(printed, ['Start', 'Start']);
+    });
+  });
+
+  void test('invokes the action and plays a sound on Enter', () => {
+    withMockWidgetRegistry(({ sounds }) => {
+      let invoked = false;
+      const action = new Action({ label: 'Start', action: () => { invoked = true; } });
+
+      assert.equal(action.handleInput(K.ENTER), true);
+      assert.equal(invoked, true);
+      assert.deepEqual(sounds, ['menu2']);
+    });
+  });
+
+  void test('does nothing on Enter when disabled', () => {
+    withMockWidgetRegistry(() => {
+      let invoked = false;
+      const action = new Action({ label: 'Start', enabled: false, action: () => { invoked = true; } });
+
+      assert.equal(action.handleInput(K.ENTER), false);
+      assert.equal(invoked, false);
+    });
+  });
+
+  void test('draws through DrawBitmapString when a font is configured, variant 0 while focused', () => {
+    withMockWidgetRegistry(({ printed, bitmapStrings }) => {
+      const font = { charset: 'ABC' };
+      const action = new Action({ label: 'Quit', font });
+
+      action.draw(10, 20, true);
+      action.draw(10, 20, false);
+
+      assert.deepEqual(printed, []);
+      assert.deepEqual(bitmapStrings, [
+        { str: 'Quit', font, variant: 0 },
+        { str: 'Quit', font, variant: 1 },
+      ]);
+    });
+  });
+
+  void test('falls back to variant 1 through DrawBitmapString when disabled, even while focused', () => {
+    withMockWidgetRegistry(({ bitmapStrings }) => {
+      const font = { charset: 'ABC' };
+      const action = new Action({ label: 'Quit', font, enabled: false });
+
+      action.draw(10, 20, true);
+
+      assert.deepEqual(bitmapStrings, [{ str: 'Quit', font, variant: 1 }]);
+    });
   });
 });
 

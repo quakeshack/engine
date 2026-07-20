@@ -31,7 +31,7 @@ than the default 8px line). Subclasses:
 
 | Class | Purpose |
 | - | - |
-| `Action` | Runs a callback on Enter. Dims (`M.Print` instead of `M.PrintWhite`) when `enabled` is false. |
+| `Action` | Runs a callback on Enter. Dims (`M.Print` instead of `M.PrintWhite`) when `enabled` is false. An optional `font` (`BitmapFont`) draws the label with a stylized atlas instead — variant 0 while focused, 1 otherwise, so the font's own color rows double as the hover/selection highlight. |
 | `Slider` | Adjusts a numeric cvar (or `min`/`max`/`step`/`invert`/`displayScale`) with Left/Right, drawn with `M.DrawSlider`. |
 | `Toggle` | On/off value backed by a cvar, or a custom `getValue`/`setValue` pair (e.g. bitflags) — see `ColorPicker`-style usage. |
 | `Textbox` | Free-text input, optionally bound to a cvar (loads on `activate()`, commits on `deactivate()`). Supports a `customDraw` hook (see below) for layouts other than "label above box". |
@@ -204,8 +204,9 @@ directly (useful for pages a mod keeps a private reference to and never register
 `source/engine/client/Menu.ts` no longer builds a single page. What's left:
 
 - The low-level drawing primitives every widget/layout calls into: `M.Print`, `M.PrintWhite`,
-  `M.DrawCharacter`, `M.DrawPic`, `M.DrawPicTranslate`, `M.DrawTextBox`, `M.DrawSlider`. These
-  operate in the classic virtual 320×200 centered coordinate space
+  `M.DrawCharacter`, `M.DrawPic`, `M.DrawPicTranslate`, `M.DrawTextBox`, `M.DrawSlider`,
+  `M.DrawBitmapString` (draws with a `BitmapFont` instead of the standard conchars font — see
+  `Action`'s `font` option above). These operate in the classic virtual 320×200 centered coordinate space
   (`cx * 2 + VID.width/2 - 320`, ...) — **this is a different coordinate system from the HUD's
   `Gfx`/`sbar` helpers**, which use resolution-aware absolute pixel offsets, and also different
   from `ClientEngineAPI.DrawPic`/`DrawString` (resolution-aware, used outside the menu stack
@@ -287,6 +288,7 @@ static readonly Menu = {
   mouseX: number;
   mouseY: number;
   Print/PrintWhite/DrawCharacter/DrawPic/DrawPicTranslate/DrawTextBox/DrawSlider(...): void;
+  DrawBitmapString(cx: number, cy: number, str: string, font: BitmapFont, variant?: number): void;
 
   // Re-exported so mods never import engine internals directly:
   Action, Label, Slider, Toggle, Textbox, Spacer, Image,

@@ -4,6 +4,7 @@ import { K } from '../../shared/Keys.ts';
 import Cmd from '../common/Cmd.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
+import type { BitmapFont } from './BitmapFont.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.ts';
 import { KeyDestination } from './Key.ts';
@@ -116,6 +117,14 @@ export default class M {
 
   static DrawPicTranslate(x: number, y: number, pic: MenuPic, top: number, bottom: number): void {
     Draw.PicTranslate(x * 2 + Math.floor(VID.width / 2) - 320, y * 2 + Math.floor(VID.height / 2) - 200, pic, top, bottom, 2.0);
+  }
+
+  /**
+   * Draws a string with a custom `BitmapFont` instead of the standard conchars font, using the
+   * same 320x200 virtual coordinate space (and 2x doubling) as `Print`/`PrintWhite`.
+   */
+  static DrawBitmapString(cx: number, cy: number, str: string, font: BitmapFont, variant = 0): void {
+    font.draw(cx * 2 + Math.floor(VID.width / 2) - 320, cy * 2 + Math.floor(VID.height / 2) - 200, str, variant, 2.0);
   }
 
   static DrawTextBox(x: number, y: number, width: number, lines: number): void {
