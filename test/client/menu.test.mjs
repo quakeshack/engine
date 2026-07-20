@@ -729,3 +729,91 @@ void describe('M.Init: showing the main menu on cold boot', () => {
     }
   });
 });
+
+void describe('M.Init: closing the menu when a connection attempt starts', () => {
+  void test('force-closes a single open menu page', () => {
+    const previousStack = [...M.menuStack.stack];
+    const previousKey = registry.Key;
+    const previousCL = registry.CL;
+    const previousM = registry.M;
+    const openPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
+
+    registry.Key = { destination: KeyDestination.menu };
+    registry.CL = { cls: { demonum: -1 } };
+    registry.M = M;
+    M.menuStack.stack.length = 0;
+    M.menuStack.stack.push(openPage);
+    eventBus.publish('registry.frozen');
+
+    try {
+      eventBus.publish('client.connecting', 'webrtc://some-session');
+
+      assert.equal(M.menuStack.isEmpty(), true);
+      assert.equal(registry.Key.destination, KeyDestination.game);
+    } finally {
+      registry.Key = previousKey;
+      registry.CL = previousCL;
+      registry.M = previousM;
+      M.menuStack.stack.length = 0;
+      M.menuStack.stack.push(...previousStack);
+      eventBus.publish('registry.frozen');
+    }
+  });
+
+  void test('force-closes every page on the stack, not just the top one (e.g. a profile gate pushed over the main menu)', () => {
+    const previousStack = [...M.menuStack.stack];
+    const previousKey = registry.Key;
+    const previousCL = registry.CL;
+    const previousM = registry.M;
+    const mainPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
+    const gatePage = { title: 'Profile', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
+
+    registry.Key = { destination: KeyDestination.menu };
+    registry.CL = { cls: { demonum: -1 } };
+    registry.M = M;
+    M.menuStack.stack.length = 0;
+    M.menuStack.stack.push(mainPage, gatePage);
+    eventBus.publish('registry.frozen');
+
+    try {
+      eventBus.publish('client.connecting', 'local');
+
+      assert.equal(M.menuStack.isEmpty(), true);
+      assert.equal(registry.Key.destination, KeyDestination.game);
+    } finally {
+      registry.Key = previousKey;
+      registry.CL = previousCL;
+      registry.M = previousM;
+      M.menuStack.stack.length = 0;
+      M.menuStack.stack.push(...previousStack);
+      eventBus.publish('registry.frozen');
+    }
+  });
+
+  void test('does nothing when no menu is open', () => {
+    const previousStack = [...M.menuStack.stack];
+    const previousKey = registry.Key;
+    const previousCL = registry.CL;
+    const previousM = registry.M;
+
+    registry.Key = { destination: KeyDestination.game };
+    registry.CL = { cls: { demonum: -1 } };
+    registry.M = M;
+    M.menuStack.stack.length = 0;
+    eventBus.publish('registry.frozen');
+
+    try {
+      eventBus.publish('client.connecting', 'local');
+
+      assert.equal(M.menuStack.isEmpty(), true);
+      assert.equal(registry.Key.destination, KeyDestination.game);
+    } finally {
+      registry.Key = previousKey;
+      registry.CL = previousCL;
+      registry.M = previousM;
+      M.menuStack.stack.length = 0;
+      M.menuStack.stack.push(...previousStack);
+      eventBus.publish('registry.frozen');
+    }
+  });
+});

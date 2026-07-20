@@ -943,12 +943,15 @@ export class WebRTCDriver extends BaseDriver {
       return false;
     }
 
+    // `registry.urls.signalingURL` (when configured) is the master server's bare origin, not a
+    // full endpoint URL -- only its host is used here, same as SessionDiscovery.ts does for
+    // `/list-servers`. The scheme always comes from the current page (never the configured
+    // value's own scheme) so a page loaded over https doesn't attempt a mixed-content `ws://`
+    // connection, and the `/signaling` path (the only one the master server accepts a WebRTC
+    // signaling connection on, see quakeshack-master's `isWebSocketEndpoint`) is always appended.
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    this.signalingUrl = `${protocol}//${location.hostname}:8787/signaling`;
-
-    if (registry.urls?.signalingURL) {
-      this.signalingUrl = registry.urls.signalingURL;
-    }
+    const host = registry.urls?.signalingURL ? new URL(registry.urls.signalingURL).host : `${location.hostname}:8787`;
+    this.signalingUrl = `${protocol}//${host}/signaling`;
 
     this.initialized = true;
     Con.DPrint(`WebRTCDriver: Initialized with signaling at ${this.signalingUrl}\n`);

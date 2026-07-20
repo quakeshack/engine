@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import NET from '../../source/engine/network/Network.ts';
-import { BaseDriver, LoopDriver, QSocket } from '../../source/engine/network/NetworkDrivers.ts';
+import { BaseDriver, LoopDriver, QSocket, WebRTCDriver } from '../../source/engine/network/NetworkDrivers.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 
 class RecordingDriver extends BaseDriver {
@@ -116,5 +116,87 @@ void describe('NetworkDrivers', () => {
       NET.message = previousMessage;
       eventBus.publish('registry.frozen');
     }
+  });
+});
+
+/**
+ * Temporarily installs a `Con` stub plus `registry.urls`/`registry.isDedicatedServer` and a
+ * `location` global (bare, not `window.location` -- matching how `NetworkDrivers.ts` reads it),
+ * restoring everything afterward.
+ * @param {{ location: { protocol: string, hostname: string }, urls?: { signalingURL?: string }, isDedicatedServer?: boolean }} overrides scenario overrides
+ * @param {() => void} callback test callback
+ */
+function withSignalingScenario(overrides, callback) {
+  const previousCon = registry.Con;
+  const previousUrls = registry.urls;
+  const previousIsDedicatedServer = registry.isDedicatedServer;
+  const previousLocation = globalThis.location;
+
+  registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
+  registry.urls = overrides.urls;
+  registry.isDedicatedServer = overrides.isDedicatedServer ?? false;
+  globalThis.location = overrides.location;
+  eventBus.publish('registry.frozen');
+
+  try {
+    callback();
+  } finally {
+    registry.Con = previousCon;
+    registry.urls = previousUrls;
+    registry.isDedicatedServer = previousIsDedicatedServer;
+    globalThis.location = previousLocation;
+    eventBus.publish('registry.frozen');
+  }
+}
+
+void describe('WebRTCDriver.Init', () => {
+  void test('defaults to ws(s)://<hostname>:8787/signaling when no signaling URL is configured', () => {
+    withSignalingScenario({ location: { protocol: 'https:', hostname: 'play.quakeshack.dev' } }, () => {
+      const driver = new WebRTCDriver();
+
+      assert.equal(driver.Init(), true);
+      assert.equal(driver.signalingUrl, 'wss://play.quakeshack.dev:8787/signaling');
+    });
+  });
+
+  void test('appends /signaling to a configured signaling origin instead of connecting to it verbatim', () => {
+    // Regression test: the master server only accepts a WebRTC signaling connection on the
+    // `/signaling` path (see quakeshack-master's `isWebSocketEndpoint`). Connecting to the bare
+    // configured origin instead hits the root path, which falls through to the static-asset
+    // handler and returns a plain 200 instead of upgrading the WebSocket.
+    withSignalingScenario({
+      location: { protocol: 'http:', hostname: 'localhost' },
+      urls: { signalingURL: 'http://localhost:8787' },
+    }, () => {
+      const driver = new WebRTCDriver();
+
+      driver.Init();
+      assert.equal(driver.signalingUrl, 'ws://localhost:8787/signaling');
+    });
+  });
+
+  void test('always derives ws/wss from the current page, ignoring the configured URL\'s own scheme', () => {
+    withSignalingScenario({
+      location: { protocol: 'https:', hostname: 'localhost' },
+      urls: { signalingURL: 'http://master.example.test' },
+    }, () => {
+      const driver = new WebRTCDriver();
+
+      driver.Init();
+      assert.equal(driver.signalingUrl, 'wss://master.example.test/signaling');
+    });
+  });
+
+  void test('does nothing on a dedicated server', () => {
+    withSignalingScenario({
+      location: { protocol: 'http:', hostname: 'localhost' },
+      isDedicatedServer: true,
+    }, () => {
+      const driver = new WebRTCDriver();
+
+      assert.equal(driver.Init(), false);
+      assert.equal(driver.initialized, false);
+      assert.equal(driver.signalingUrl, null);
+    });
   });
 });

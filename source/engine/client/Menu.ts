@@ -37,6 +37,21 @@ eventBus.subscribe('client.game-initialized', () => {
   }
 });
 
+// A connection attempt is starting -- via a menu action (which already calls ForceClose itself,
+// making this a no-op there), a `+connect`/`+map` argument from a share link at cold boot, or a
+// `connect`/`map` command typed directly into the console. The latter two never go through any
+// menu code at all, so without this the menu (if one happened to be open, e.g. the main menu
+// showing at cold boot) would just sit on top of the connecting/loading screen for the whole
+// connect-and-load sequence instead of getting out of the way. Fires for every connection
+// attempt, not just successful ones, since there's nothing useful left for the menu to show
+// once the attempt has started either way.
+eventBus.subscribe('client.connecting', () => {
+  if (!M.menuStack.isEmpty()) {
+    M.menuStack.clear();
+    M.ReturnToGame();
+  }
+});
+
 export type MenuPic = GLTexture & { translate?: GLTexture | null };
 
 export default class M {
