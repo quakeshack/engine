@@ -44,6 +44,7 @@ export default class SCR {
   static disabled_for_loading = false;
   static disabled_time = 0;
   static screenshot = false;
+  static screenshotClean = false;
 
   /** True when the crosshair should be suppressed (e.g. HUD includes its own crosshair). */
   static disableCrosshair = false;
@@ -222,6 +223,7 @@ export default class SCR {
     SCR.centertime = new Cvar('scr_centertime', '2');
     SCR.printspeed = new Cvar('scr_printspeed', '8');
     Cmd.AddCommand('screenshot', SCR.ScreenShot_f);
+    Cmd.AddCommand('screenshot_clean', SCR.ScreenShotClean_f);
     Cmd.AddCommand('sizeup', SCR.SizeUp_f);
     Cmd.AddCommand('sizedown', SCR.SizeDown_f);
     SCR.net = Draw.LoadPicFromWad('NET');
@@ -319,6 +321,15 @@ export default class SCR {
     SCR.screenshot = true;
   }
 
+  /**
+   * Requests a screenshot on the next rendered frame with the view model and all UI
+   * overlays (crosshair, HUD, console, menu) suppressed for that one frame. Intended for
+   * clean map captures.
+   */
+  static ScreenShotClean_f(this: void): void {
+    SCR.screenshotClean = true;
+  }
+
   /** Stops all sounds and blanks the display while a map is loading. */
   static BeginLoadingPlaque(): void {
     S.StopAllSounds();
@@ -340,7 +351,7 @@ export default class SCR {
 
   /**
    * Drives one render frame: updates the refdef, dispatches the rAF callback,
-   * and optionally captures a screenshot.
+   * and optionally captures a regular or clean (view model/UI suppressed) screenshot.
    */
   static UpdateScreen(): void {
     if (SCR.oldfov !== SCR.fov.value) {
@@ -387,6 +398,12 @@ export default class SCR {
 
       SCR._lastAnimationTime = animationTime;
 
+      const captureClean = SCR.screenshotClean;
+      const previousDrawViewModel = R.drawviewmodel.value;
+      if (captureClean) {
+        R.drawviewmodel.set(0);
+      }
+
       V.RenderView();
       GL.Set2D();
       if (R.usePostProcess || PostProcess.hasActiveEffects()) {
@@ -418,42 +435,56 @@ export default class SCR {
         Draw.BlackScreen();
       }
 
-      if (CL.cls.state === clientConnectionState.connecting) {
-        CL.Draw();
-      } else if ((CL.state.intermission !== 0) && (Key.destination === KeyDestination.game)) {
-        CL.DrawHUD();
-      } else {
-        if (!SCR.disableCrosshair && SCR.crosshair.value !== 0) {
-          Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width / 2) + SCR.crossx.value,
-            R.refdef.vrect.y + (R.refdef.vrect.height / 2) + SCR.crossy.value, 43);
-        }
-        SCR.DrawNet();
-        SCR.DrawTurtle();
-        SCR.DrawPause();
-        SCR.DrawCenterString();
-        if (CL.cls.signon === 4) {
+      // A clean screenshot only wants the 3D scene (plus the post-process/cshift passes
+      // above, which are part of the scene rendering, not UI) -- skip every overlay,
+      // including the console and menu, for this one frame.
+      if (!captureClean) {
+        if (CL.cls.state === clientConnectionState.connecting) {
+          CL.Draw();
+        } else if ((CL.state.intermission !== 0) && (Key.destination === KeyDestination.game)) {
           CL.DrawHUD();
+        } else {
+          if (!SCR.disableCrosshair && SCR.crosshair.value !== 0) {
+            Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width / 2) + SCR.crossx.value,
+              R.refdef.vrect.y + (R.refdef.vrect.height / 2) + SCR.crossy.value, 43);
+          }
+          SCR.DrawNet();
+          SCR.DrawTurtle();
+          SCR.DrawPause();
+          SCR.DrawCenterString();
+          if (CL.cls.signon === 4) {
+            CL.DrawHUD();
+          }
+          CL.Draw();
+          M.Draw();
         }
-        CL.Draw();
-        M.Draw();
-      }
 
-      // Drawn above absolutely everything above — including the menu and the
-      // connecting/intermission branches — so the console is always reachable while open or
-      // closing. Never drawn at all while it's neither open nor connected (see
-      // isConsolePassiveBackdrop) -- the menu is always showing then, and a full-screen console
-      // texture behind it would blot it out for no reason.
-      if (!SCR.isConsolePassiveBackdrop()) {
-        SCR.DrawConsole();
-      }
+        // Drawn above absolutely everything above — including the menu and the
+        // connecting/intermission branches — so the console is always reachable while open or
+        // closing. Never drawn at all while it's neither open nor connected (see
+        // isConsolePassiveBackdrop) -- the menu is always showing then, and a full-screen console
+        // texture behind it would blot it out for no reason.
+        if (!SCR.isConsolePassiveBackdrop()) {
+          SCR.DrawConsole();
+        }
 
-      M.DrawOverlayNotice();
+        M.DrawOverlayNotice();
+      }
 
       GL.StreamFlush();
 
-      R.PrintSpeeds();
+      if (!captureClean) {
+        R.PrintSpeeds();
+      }
 
       gl.disable(gl.BLEND);
+
+      if (captureClean) {
+        R.drawviewmodel.set(previousDrawViewModel);
+        gl.finish();
+        VID.DownloadScreenshot('screenshot-clean.jpg');
+        SCR.screenshotClean = false;
+      }
 
       SCR._requestedAnimationFrames--;
     });

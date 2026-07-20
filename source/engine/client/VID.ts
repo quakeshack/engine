@@ -37,11 +37,14 @@ export default class VID {
     });
   }
 
-  static DownloadScreenshot(): void {
+  /**
+   * Encodes the current contents of the main canvas as a JPEG and triggers a browser download.
+   */
+  static DownloadScreenshot(filename: string = 'screenshot.jpg'): void {
     const dataURL = VID.mainwindow.toDataURL('image/jpeg');
     const link = document.createElement('a');
     link.href = dataURL;
-    link.download = 'screenshot.jpg';
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
