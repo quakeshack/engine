@@ -27,6 +27,16 @@ eventBus.subscribe('client.disconnected', () => {
   }
 });
 
+// Cold boot never fires `client.disconnected` (there's no prior connection to disconnect from),
+// so without this the player would sit at a blank screen until they happened to press Escape or
+// click. Fired once, right after the active game module has registered its pages -- see
+// `ClientLifecycle.initGame()`.
+eventBus.subscribe('client.game-initialized', () => {
+  if (CL.cls.state === clientConnectionState.disconnected && M.menuStack.isEmpty()) {
+    M.Menu_Main_f();
+  }
+});
+
 export type MenuPic = GLTexture & { translate?: GLTexture | null };
 
 export default class M {
@@ -349,6 +359,16 @@ export default class M {
    */
   static StartSingleplayerGame(): void {
     ClientLifecycle.startGame!.startSingleplayerGame();
+  }
+
+  /**
+   * Start (host) a multiplayer game on `mapname` via the active mod's `StartGameInterface`, or
+   * the engine's own default (`map <mapname>`) if the mod didn't provide one. Same routing
+   * rationale as `StartSingleplayerGame` above -- exposed as
+   * `ClientEngineAPI.Menu.StartMultiplayerGame`.
+   */
+  static StartMultiplayerGame(mapname: string): void {
+    ClientLifecycle.startGame!.startMultiplayerGame(mapname);
   }
 
   /**

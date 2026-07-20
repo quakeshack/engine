@@ -7,7 +7,7 @@ import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import {
-  ColorPicker, KeyBindItem, MenuItem, SaveSlotItem, Slider, Textbox, Toggle,
+  ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
 } from '../../source/engine/client/menu/MenuItem.ts';
 
 /**
@@ -476,6 +476,118 @@ void describe('ColorPicker', () => {
 
       picker.handleInput(K.ENTER);
       assert.equal(value, 6);
+    });
+  });
+});
+
+void describe('NumberInput', () => {
+  void test('clamps at the bounds instead of wrapping (unlike ColorPicker)', () => {
+    withMockWidgetRegistry(() => {
+      let value = 12;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 2, max: 12,
+      });
+
+      input.handleInput(K.RIGHTARROW);
+      assert.equal(value, 12); // stays at max instead of wrapping to min
+
+      value = 2;
+      input.handleInput(K.LEFTARROW);
+      assert.equal(value, 2); // stays at min instead of wrapping to max
+    });
+  });
+
+  void test('Right/Enter increase and Left decreases by step', () => {
+    withMockWidgetRegistry(({ sounds }) => {
+      let value = 5;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 0, max: 10, step: 2,
+      });
+
+      input.handleInput(K.RIGHTARROW);
+      assert.equal(value, 7);
+
+      input.handleInput(K.LEFTARROW);
+      assert.equal(value, 5);
+
+      input.handleInput(K.ENTER);
+      assert.equal(value, 7);
+
+      assert.deepEqual(sounds, ['menu3', 'menu3', 'menu3']);
+    });
+  });
+
+  void test('typing digits sets the value directly, clamped to [min, max]', () => {
+    withMockWidgetRegistry(() => {
+      let value = 10;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 2, max: 12,
+      });
+
+      input.handleInput('1'.charCodeAt(0));
+      input.handleInput('2'.charCodeAt(0));
+      assert.equal(value, 12);
+    });
+  });
+
+  void test('ignores digits typed past the field width instead of rolling over', () => {
+    withMockWidgetRegistry(() => {
+      let value = 0;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 0, max: 99,
+      });
+
+      input.handleInput('9'.charCodeAt(0));
+      input.handleInput('9'.charCodeAt(0));
+      assert.equal(value, 99);
+
+      input.handleInput('5'.charCodeAt(0)); // a 3rd digit -- field width is 2 (max = 99)
+      assert.equal(value, 99); // ignored, not 995 or 95
+    });
+  });
+
+  void test('Backspace edits the typed value starting from what is currently committed', () => {
+    withMockWidgetRegistry(() => {
+      let value = 25;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 0, max: 99,
+      });
+
+      input.handleInput(K.BACKSPACE);
+      assert.equal(value, 2);
+
+      input.handleInput(K.BACKSPACE);
+      assert.equal(value, 0); // no digits left -> falls back to min
+    });
+  });
+
+  void test('draw shows the in-progress typed text, then reverts to the committed value once focus moves away', () => {
+    withMockWidgetRegistry(({ printed }) => {
+      let value = 10;
+      const input = new NumberInput({
+        label: 'Rounds', getValue: () => value, setValue: (v) => { value = v; }, min: 2, max: 12,
+      });
+
+      input.handleInput('1'.charCodeAt(0));
+      input.draw(16, 32, true);
+      assert.deepEqual(printed, ['Rounds', '1']);
+
+      printed.length = 0;
+      input.draw(16, 32, false); // unfocused -> the typed buffer is abandoned
+      assert.deepEqual(printed, ['Rounds', String(value)]);
+    });
+  });
+
+  void test('does nothing when disabled', () => {
+    withMockWidgetRegistry(() => {
+      let value = 5;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 0, max: 10, enabled: false,
+      });
+
+      assert.equal(input.handleInput(K.RIGHTARROW), false);
+      assert.equal(input.handleInput('7'.charCodeAt(0)), false);
+      assert.equal(value, 5);
     });
   });
 });

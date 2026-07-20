@@ -40,11 +40,13 @@ than the default 8px line). Subclasses:
 | `Image` | Draws a `MenuPic`, optionally horizontally centered. |
 | `SaveSlotItem` | One load/save slot: Enter activates it, Del deletes it (if `canDelete`). |
 | `ColorPicker` | Wrapping numeric selector (Enter/Left/Right) for a `0..max` value, e.g. shirt/pants color. |
+| `NumberInput` | Clamped (not wrapping) numeric field with a `getValue`/`setValue` pair: Left/Right/Enter nudge by `step`, or digits can be typed directly (Backspace edits), like a native `<input type="number">`. |
 | `KeyBindItem` | A rebindable action row — Enter arms capture of the next keypress, Backspace/Del clears the binding. Owns its own `capturing` state instead of a page-level flag. |
 
 `draw(x, y, focused, valueX?)` — the optional 4th argument is an absolute column, set by
 `VerticalLayout` when it's using right-justified labels (see below), that value-drawing items
-(`Slider`, `Toggle`) should align their bar/value to instead of a fixed offset from `x`.
+(`Slider`, `Toggle`, `NumberInput`) should align their bar/value to instead of a fixed offset
+from `x`.
 
 #### `Textbox.customDraw` — composition instead of subclassing
 
@@ -96,6 +98,15 @@ A page owns `items`, a `layout`, optional `title`/`titlePic`/`logoPic`, and life
   Yes/No dialog's `y`/`n`/mouse-click-on-prompt handling.
 - `customGetBackButtonAnchor` — repositions the page-agnostic Back/Close button (e.g. centered
   under a dialog's message box) instead of the default bottom-left corner.
+- `pausesGame` — whether showing this page freezes single-player world simulation the way the
+  classic pause menu does; `true` by default. `Host.ServerFrame()` gates `SV.physics.physics()`
+  (monster think, physics, round timers) behind `M.AllowsSimulation()` for listen servers below
+  multiplayer capacity (`SV.svs.maxclients < 2`), which in turn defers to the current page's
+  `pausesGame`. Set `false` for a page meant to sit over a world that must keep running
+  regardless of one player having a menu open — e.g. an in-game buy menu in a coop mod, where the
+  mod is never really "single-player" even when only one player happens to be connected right
+  now. Has no effect once the server is genuinely multiplayer-capacity — that case never
+  auto-pauses on menu open in the first place.
 
 These four `custom*` hooks are the composition-based replacement for what used to be
 subclassing `MenuPage` directly (engine-only code could do that; game code, which can't import
@@ -210,10 +221,11 @@ directly (useful for pages a mod keeps a private reference to and never register
   texture built from its raw palette indices (for `DrawPicTranslate`, e.g. a player-color
   preview). Kept engine-side since it's raw LMP-format parsing, not menu content; exposed to game
   code as `ClientEngineAPI.Menu.LoadTranslatablePic`.
-- `M.StartSingleplayerGame()` — routes to `ClientLifecycle.startGame` (the active mod's
-  `StartGameInterface`, or the engine default). Lives on `M` rather than being called directly
-  from `GameAPIs.ts` to avoid a circular import (`ClientLifecycle.ts` already imports
-  `GameAPIs.ts`); exposed as `ClientEngineAPI.Menu.StartSingleplayerGame`.
+- `M.StartSingleplayerGame()` / `M.StartMultiplayerGame(mapname)` — route to
+  `ClientLifecycle.startGame` (the active mod's `StartGameInterface`, or the engine default).
+  Live on `M` rather than being called directly from `GameAPIs.ts` to avoid a circular import
+  (`ClientLifecycle.ts` already imports `GameAPIs.ts`); exposed as
+  `ClientEngineAPI.Menu.StartSingleplayerGame`/`StartMultiplayerGame`.
 - `M.SetOverlayNotice`/`ClearOverlayNotice`/`DrawOverlayNotice` — a generic notice banner,
   suppressed while the (game-owned, but name-known) `'alert'`/`'quit'` pages are showing.
 
@@ -264,6 +276,7 @@ static readonly Menu = {
 
   // Action helpers a few built-in pages need, kept out of the generic top-level API
   StartSingleplayerGame(): void;
+  StartMultiplayerGame(mapname: string): void;
   ToggleConsole(): void;
   ForceQuit(): void;                    // skips the `quit` command's own confirmation gate
 
@@ -277,7 +290,7 @@ static readonly Menu = {
 
   // Re-exported so mods never import engine internals directly:
   Action, Label, Slider, Toggle, Textbox, Spacer, Image,
-  ColorPicker, SaveSlotItem, KeyBindItem,
+  ColorPicker, NumberInput, SaveSlotItem, KeyBindItem,
   MenuPage, DialogPage, ListPage,
   VerticalLayout, ImageBasedLayout, ListLayout, GridLayout,
 };

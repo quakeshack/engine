@@ -34,6 +34,7 @@ The engine has an event bus.
 | client.connecting | 1. address | Trying to connect to a server. |
 | client.connected | 1. address | Successfully connected to a server. |
 | client.signon | 1. signon number | Triggered on each signon reply step. |
+| client.game-initialized | - | The active game module has finished `ClientGameAPI.Init()` (pages registered, including the root). `M` uses this to show the root menu on cold boot, since `client.disconnected` never fires without a prior connection. |
 
 ### Menu
 

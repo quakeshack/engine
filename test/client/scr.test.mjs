@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import SCR from '../../source/engine/client/SCR.ts';
+import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 
 /**
@@ -157,5 +158,85 @@ void describe('SCR.CenterPrint', () => {
       SCR.centertime_start = previousCenterTimeStart;
       SCR.centertime = previousCentertime;
     }
+  });
+});
+
+void describe('SCR.DrawNet', () => {
+  /**
+   * Installs `CL`/`Host`/`Draw`/`R` registry stubs for `SCR.DrawNet()`.
+   * @param {{ state: number, demoplayback?: boolean, lastReceivedMessage?: number, realtime?: number }} options
+   * @param {() => void} callback test callback
+   * @returns {Array<{ x: number, y: number, pic: unknown }>} Calls made to the mocked `Draw.Pic`.
+   */
+  function withMockNetRegistry({ state, demoplayback = false, lastReceivedMessage = 0, realtime = 1 }, callback) {
+    const previousCL = registry.CL;
+    const previousHost = registry.Host;
+    const previousDraw = registry.Draw;
+    const previousR = registry.R;
+    const previousNet = SCR.net;
+    const picCalls = [];
+
+    registry.CL = { cls: { state, demoplayback }, state: { last_received_message: lastReceivedMessage } };
+    registry.Host = { realtime };
+    registry.Draw = { Pic(x, y, pic) { picCalls.push({ x, y, pic }); } };
+    registry.R = { refdef: { vrect: { x: 0, y: 0 } } };
+    SCR.net = 'net-pic';
+    eventBus.publish('registry.frozen');
+
+    try {
+      callback();
+      return picCalls;
+    } finally {
+      registry.CL = previousCL;
+      registry.Host = previousHost;
+      registry.Draw = previousDraw;
+      registry.R = previousR;
+      SCR.net = previousNet;
+      eventBus.publish('registry.frozen');
+    }
+  }
+
+  void test('does not draw while disconnected, even though last_received_message is stale from boot', () => {
+    // Regression test: last_received_message defaults to 0 and is only ever set once a message
+    // actually arrives, so realtime - 0 exceeds the 0.3s threshold within a fraction of a second
+    // after boot -- without the connection-state guard this drew a permanent false "bad ping"
+    // indicator while never having connected at all.
+    const picCalls = withMockNetRegistry({ state: clientConnectionState.disconnected, realtime: 5 }, () => {
+      SCR.DrawNet();
+    });
+
+    assert.deepEqual(picCalls, []);
+  });
+
+  void test('does not draw while still connecting', () => {
+    const picCalls = withMockNetRegistry({ state: clientConnectionState.connecting, realtime: 5 }, () => {
+      SCR.DrawNet();
+    });
+
+    assert.deepEqual(picCalls, []);
+  });
+
+  void test('draws once connected and no message has arrived in over 0.3s', () => {
+    const picCalls = withMockNetRegistry({ state: clientConnectionState.connected, lastReceivedMessage: 1, realtime: 1.5 }, () => {
+      SCR.DrawNet();
+    });
+
+    assert.deepEqual(picCalls, [{ x: 0, y: 0, pic: 'net-pic' }]);
+  });
+
+  void test('does not draw while connected and a message arrived recently', () => {
+    const picCalls = withMockNetRegistry({ state: clientConnectionState.connected, lastReceivedMessage: 1.4, realtime: 1.5 }, () => {
+      SCR.DrawNet();
+    });
+
+    assert.deepEqual(picCalls, []);
+  });
+
+  void test('does not draw during demo playback even if connected and lagging', () => {
+    const picCalls = withMockNetRegistry({ state: clientConnectionState.connected, demoplayback: true, lastReceivedMessage: 1, realtime: 5 }, () => {
+      SCR.DrawNet();
+    });
+
+    assert.deepEqual(picCalls, []);
   });
 });

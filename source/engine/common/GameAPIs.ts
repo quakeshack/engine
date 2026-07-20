@@ -13,7 +13,7 @@ import Vector from '../../shared/Vector.ts';
 import { moveTypes, solid } from '../../shared/Defs.ts';
 import { clientConnectionState } from './Def.ts';
 import Key, { KeyDestination } from '../client/Key.ts';
-import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
+import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, NumberInput, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
 import { DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
 import type { MenuPic } from '../client/Menu.ts';
 import SessionDiscovery from '../client/menu/SessionDiscovery.ts';
@@ -1365,6 +1365,15 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
+     * Start (host) a multiplayer game on `mapname` via the active mod's `StartGameInterface`
+     * (`ClientGameInterface.GetStartGameInterface`), or the engine's own default
+     * (`map <mapname>`) if the mod didn't provide one.
+     */
+    StartMultiplayerGame(mapname: string): void {
+      M.StartMultiplayerGame(mapname);
+    },
+
+    /**
      * Load a lump-based pic together with a color-translation texture built from its raw
      * palette indices, for `DrawPicTranslate` (e.g. a player-color preview). The palette/LMP
      * parsing stays engine-side since it's raw asset format handling, not menu content.
@@ -1504,6 +1513,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     Spacer,
     Image,
     ColorPicker,
+    NumberInput,
     SaveSlotItem,
     KeyBindItem,
     MenuPage,

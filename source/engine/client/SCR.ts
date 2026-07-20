@@ -246,6 +246,14 @@ export default class SCR {
 
   /** Draws the network-lag indicator when packets are delayed. */
   static DrawNet(): void {
+    // `last_received_message` defaults to 0 and is only ever set once a message actually arrives
+    // (ClientConnection.ts) -- without this guard, `Host.realtime - 0` grows past the threshold
+    // within the first fraction of a second after boot and the indicator shows permanently while
+    // fully disconnected, misreporting "bad connection" when there's no connection at all.
+    if (CL.cls.state !== clientConnectionState.connected) {
+      return;
+    }
+
     if ((Host.realtime - CL.state.last_received_message >= 0.3) && !CL.cls.demoplayback) {
       Draw.Pic(R.refdef.vrect.x, R.refdef.vrect.y, SCR.net);
     }

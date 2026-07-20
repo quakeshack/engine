@@ -77,6 +77,14 @@ interface ColorPickerConfig extends MenuItemConfig {
   readonly max?: number;
 }
 
+interface NumberInputConfig extends MenuItemConfig {
+  readonly getValue: () => number;
+  readonly setValue: (value: number) => void;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+}
+
 let { Host, Key, M, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
@@ -696,6 +704,101 @@ export class ColorPicker extends MenuItem {
     if (key === K.RIGHTARROW || key === K.ENTER) {
       this.setValue(this.getValue() >= this.max ? 0 : this.getValue() + 1);
       S.LocalSound(M.sfx_menu3);
+      return true;
+    }
+
+    return false;
+  }
+}
+
+/**
+ * A numeric field. Left/Right (or Enter) nudge the value by `step`, clamped to [min, max];
+ * digits can also be typed directly (with Backspace), like a native `<input type="number">`,
+ * so reaching a value far from the current one doesn't need many arrow presses. Uses
+ * `getValue`/`setValue` closures rather than a mandatory `cvar` (same shape as `ColorPicker`/
+ * `Toggle`), so it stays usable — and testable — without touching the real `Cvar` registry.
+ */
+export class NumberInput extends MenuItem {
+  static readonly #digitZero = '0'.charCodeAt(0) as K;
+  static readonly #digitNine = '9'.charCodeAt(0) as K;
+
+  getValue: () => number;
+  setValue: (value: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  #typedDigits: string | null = null;
+
+  constructor(config: NumberInputConfig) {
+    super(config);
+    this.getValue = config.getValue;
+    this.setValue = config.setValue;
+    this.min = config.min ?? 0;
+    this.max = config.max ?? 99;
+    this.step = config.step ?? 1;
+  }
+
+  #clamp(value: number): number {
+    return Math.max(this.min, Math.min(this.max, value));
+  }
+
+  /**
+   * How many digits the largest representable value needs, capping typed input to that width.
+   * @returns Digit width of the wider of `min`/`max`.
+   */
+  #maxDigits(): number {
+    return Math.max(String(this.min).length, String(this.max).length);
+  }
+
+  override draw(x: number, y: number, focused: boolean, valueX?: number): void {
+    if (!this.visible) {
+      return;
+    }
+
+    // Losing focus abandons any in-progress typing; the value itself was already committed
+    // on every keystroke, so nothing but the raw display text is discarded.
+    if (!focused) {
+      this.#typedDigits = null;
+    }
+
+    M.Print(x, y, this.label);
+    M.PrintWhite(valueX ?? x + 116, y, this.#typedDigits ?? String(this.getValue()));
+  }
+
+  override handleInput(key: K): boolean {
+    if (!this.enabled) {
+      return false;
+    }
+
+    if (key === K.LEFTARROW) {
+      this.#typedDigits = null;
+      this.setValue(this.#clamp(this.getValue() - this.step));
+      S.LocalSound(M.sfx_menu3);
+      return true;
+    }
+
+    if (key === K.RIGHTARROW || key === K.ENTER) {
+      this.#typedDigits = null;
+      this.setValue(this.#clamp(this.getValue() + this.step));
+      S.LocalSound(M.sfx_menu3);
+      return true;
+    }
+
+    if (key === K.BACKSPACE) {
+      const digits = (this.#typedDigits ?? String(this.getValue())).slice(0, -1);
+      this.#typedDigits = digits;
+      this.setValue(digits === '' ? this.min : this.#clamp(Number.parseInt(digits, 10)));
+      return true;
+    }
+
+    if (key >= NumberInput.#digitZero && key <= NumberInput.#digitNine) {
+      const digits = this.#typedDigits ?? '';
+      if (digits.length >= this.#maxDigits()) {
+        return true; // Ignore extra digits past the field's width, but still consume the key.
+      }
+
+      this.#typedDigits = digits + String.fromCharCode(key);
+      this.setValue(this.#clamp(Number.parseInt(this.#typedDigits, 10)));
       return true;
     }
 

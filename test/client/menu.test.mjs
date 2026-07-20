@@ -620,3 +620,112 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
     }
   });
 });
+
+void describe('M.Init: showing the main menu on cold boot', () => {
+  void test('opens the main menu once the game module has initialized, if disconnected and nothing is showing', () => {
+    const previousStack = [...M.menuStack.stack];
+    const previousPages = new Map(M.menuStack.pages);
+    const previousKey = registry.Key;
+    const previousCL = registry.CL;
+    const previousIN = registry.IN;
+    const previousM = registry.M;
+    const mainPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
+
+    registry.Key = { destination: KeyDestination.game };
+    registry.CL = { cls: { state: clientConnectionState.disconnected, connecting: null } };
+    registry.IN = { ReleasePointerLock() {} };
+    registry.M = M;
+    M.menuStack.stack.length = 0;
+    M.menuStack.register('main', mainPage);
+    M.menuStack.setRootPage('main');
+    eventBus.publish('registry.frozen');
+
+    try {
+      eventBus.publish('client.game-initialized');
+
+      assert.equal(M.menuStack.current(), mainPage);
+      assert.equal(registry.Key.destination, KeyDestination.menu);
+    } finally {
+      registry.Key = previousKey;
+      registry.CL = previousCL;
+      registry.IN = previousIN;
+      registry.M = previousM;
+      M.menuStack.stack.length = 0;
+      M.menuStack.stack.push(...previousStack);
+      M.menuStack.pages.clear();
+      for (const [name, page] of previousPages) {
+        M.menuStack.pages.set(name, page);
+      }
+      eventBus.publish('registry.frozen');
+    }
+  });
+
+  void test('does not touch an already-open menu', () => {
+    const previousStack = [...M.menuStack.stack];
+    const previousKey = registry.Key;
+    const previousCL = registry.CL;
+    const previousIN = registry.IN;
+    const previousM = registry.M;
+    const openPage = { title: 'Options', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
+
+    registry.Key = { destination: KeyDestination.menu };
+    registry.CL = { cls: { state: clientConnectionState.disconnected, connecting: null } };
+    registry.IN = { ReleasePointerLock() {} };
+    registry.M = M;
+    M.menuStack.stack.length = 0;
+    M.menuStack.stack.push(openPage);
+    eventBus.publish('registry.frozen');
+
+    try {
+      eventBus.publish('client.game-initialized');
+
+      assert.equal(M.menuStack.current(), openPage);
+    } finally {
+      registry.Key = previousKey;
+      registry.CL = previousCL;
+      registry.IN = previousIN;
+      registry.M = previousM;
+      M.menuStack.stack.length = 0;
+      M.menuStack.stack.push(...previousStack);
+      eventBus.publish('registry.frozen');
+    }
+  });
+
+  void test('does nothing if a connection is already active or in progress by the time it fires', () => {
+    const previousStack = [...M.menuStack.stack];
+    const previousPages = new Map(M.menuStack.pages);
+    const previousKey = registry.Key;
+    const previousCL = registry.CL;
+    const previousIN = registry.IN;
+    const previousM = registry.M;
+    const mainPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
+
+    registry.Key = { destination: KeyDestination.game };
+    registry.CL = { cls: { state: clientConnectionState.connected, connecting: null } };
+    registry.IN = { ReleasePointerLock() {} };
+    registry.M = M;
+    M.menuStack.stack.length = 0;
+    M.menuStack.register('main', mainPage);
+    M.menuStack.setRootPage('main');
+    eventBus.publish('registry.frozen');
+
+    try {
+      eventBus.publish('client.game-initialized');
+
+      assert.equal(M.menuStack.isEmpty(), true);
+      assert.equal(registry.Key.destination, KeyDestination.game);
+    } finally {
+      registry.Key = previousKey;
+      registry.CL = previousCL;
+      registry.IN = previousIN;
+      registry.M = previousM;
+      M.menuStack.stack.length = 0;
+      M.menuStack.stack.push(...previousStack);
+      M.menuStack.pages.clear();
+      for (const [name, page] of previousPages) {
+        M.menuStack.pages.set(name, page);
+      }
+      eventBus.publish('registry.frozen');
+    }
+  });
+});
