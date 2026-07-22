@@ -16,6 +16,7 @@ import { clientConnectionState } from './Def.ts';
 import Key, { KeyDestination } from '../client/Key.ts';
 import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, NumberInput, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
 import { DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
+import { MenuViewport } from '../client/menu/MenuViewport.ts';
 import type { MenuPic } from '../client/Menu.ts';
 import SessionDiscovery from '../client/menu/SessionDiscovery.ts';
 import SaveSlotsService from '../client/menu/SaveSlots.ts';
@@ -1466,7 +1467,8 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
-     * Current mouse position in virtual 320x200 menu-space coordinates.
+     * Current mouse position in the current page's virtual menu-space coordinates (see
+     * `MenuViewport`/`MenuPage.viewport`).
      * @returns The horizontal position.
      */
     get mouseX(): number {
@@ -1474,18 +1476,40 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
-     * Current mouse position in virtual 320x200 menu-space coordinates.
+     * Current mouse position in the current page's virtual menu-space coordinates (see
+     * `MenuViewport`/`MenuPage.viewport`).
      * @returns The vertical position.
      */
     get mouseY(): number {
       return M.mouseY;
     },
 
+    /**
+     * Convert a virtual-space point (in the current page's viewport) into a real screen pixel
+     * position -- for a `customDraw` that needs to place a resolution-aware `DrawPic`/
+     * `DrawString` call (see above; a different coordinate system from `Print`/`DrawPic` below)
+     * at a virtual-space position.
+     * @returns The equivalent real screen position.
+     */
+    toScreenPosition(x: number, y: number): { x: number; y: number } {
+      return M.toScreenPosition(x, y);
+    },
+
+    /**
+     * The current page's resolved virtual-to-real pixel scale, e.g. to size a resolution-aware
+     * `DrawPic` call to match a virtual-space target width.
+     * @returns The scale factor.
+     */
+    get viewportScale(): number {
+      return M.viewportScale;
+    },
+
     // Low-level drawing primitives every widget/layout draws with, re-exported so a page's
     // `customDraw`/`customHandleInput` (and a custom MenuItem's `customDraw`) can reproduce the
-    // same look without reaching into engine internals. All operate in the classic virtual
-    // 320x200 centered coordinate space -- a different coordinate system from `DrawPic`/
-    // `DrawString` above, which are resolution-aware absolute pixel offsets.
+    // same look without reaching into engine internals. All operate in the current page's own
+    // virtual coordinate space (see `MenuViewport`/`MenuPage.viewport`, classic 320x200 by
+    // default) -- a different coordinate system from `DrawPic`/`DrawString` above, which are
+    // resolution-aware absolute pixel offsets.
 
     Print(cx: number, cy: number, str: string): void {
       M.Print(cx, cy, str);
@@ -1533,6 +1557,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     ImageBasedLayout,
     ListLayout,
     GridLayout,
+    MenuViewport,
   };
 
   static readonly Multiplayer = {

@@ -10,6 +10,7 @@ import { GLTexture } from './GL.ts';
 import { KeyDestination } from './Key.ts';
 import type { BackButtonAnchor } from './menu/MenuPage.ts';
 import { MenuStack } from './menu/MenuStack.ts';
+import { MenuViewport, type ResolvedMenuViewport } from './menu/MenuViewport.ts';
 import VID from './VID.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 
@@ -60,7 +61,8 @@ export default class M {
 
   static entersound = false;
 
-  // Current mouse position in virtual 320x200 menu-space coordinates, updated by MouseMove().
+  // Current mouse position in the current page's virtual menu-space coordinates (see
+  // MenuViewport), updated by MouseMove().
   static mouseX = 0;
   static mouseY = 0;
 
@@ -99,32 +101,82 @@ export default class M {
 
   static #saveDemonum = 0; // THIS IS THE REASON WHY I HATE UNINITIALIZED PROPERTIES, this line was missing and it quietly caused some NaNs deep in the demo code…
 
-  static DrawCharacter(cx: number, cy: number, num: number): void {
-    Draw.Character(cx * 2 + Math.floor(VID.width / 2) - 320, cy * 2 + Math.floor(VID.height / 2) - 200, num, 2.0);
-  }
-
-  static Print(cx: number, cy: number, str: string): void {
-    Draw.StringWhite(cx * 2 + Math.floor(VID.width / 2) - 320, cy * 2 + Math.floor(VID.height / 2) - 200, str, 2.0);
-  }
-
-  static PrintWhite(cx: number, cy: number, str: string): void {
-    Draw.String(cx * 2 + Math.floor(VID.width / 2) - 320, cy * 2 + Math.floor(VID.height / 2) - 200, str, 2.0);
-  }
-
-  static DrawPic(x: number, y: number, pic: MenuPic): void {
-    Draw.Pic(x * 2 + Math.floor(VID.width / 2) - 320, y * 2 + Math.floor(VID.height / 2) - 200, pic, 2.0);
-  }
-
-  static DrawPicTranslate(x: number, y: number, pic: MenuPic, top: number, bottom: number): void {
-    Draw.PicTranslate(x * 2 + Math.floor(VID.width / 2) - 320, y * 2 + Math.floor(VID.height / 2) - 200, pic, top, bottom, 2.0);
+  /**
+   * The virtual drawing-space the current page draws in -- the current page's own `viewport`
+   * (see `MenuPage`), or `MenuViewport.classic` (320x200, pixel-doubled) while no page is on the
+   * stack at all (e.g. `DrawOverlayNotice()` during live gameplay).
+   * @returns The active viewport and its transform resolved against the real canvas size.
+   */
+  static #activeViewport(): { viewport: MenuViewport; resolved: ResolvedMenuViewport } {
+    const viewport = M.menuStack.current()?.viewport ?? MenuViewport.classic;
+    return { viewport, resolved: viewport.resolve(VID.width, VID.height) };
   }
 
   /**
-   * Draws a string with a custom `BitmapFont` instead of the standard conchars font, using the
-   * same 320x200 virtual coordinate space (and 2x doubling) as `Print`/`PrintWhite`.
+   * Project a virtual-space point into real screen pixels, together with the scale factor a
+   * drawing call needs to pass through to `Draw`/`BitmapFont`.
+   * @returns The screen position and scale.
+   */
+  static #project(vx: number, vy: number): { x: number; y: number; scale: number } {
+    const { viewport, resolved } = M.#activeViewport();
+    const screen = viewport.toScreen(resolved, vx, vy);
+    return { x: screen.x, y: screen.y, scale: resolved.scale };
+  }
+
+  /**
+   * Convert a virtual-space point (in the current page's viewport) into a real screen pixel
+   * position -- exposed to game code via `ClientEngineAPI.Menu.toScreenPosition` for a
+   * `customDraw` that needs to place a resolution-aware `DrawPic`/`DrawString` call (a different
+   * coordinate system from `M`'s own drawing primitives) at a virtual-space position.
+   * @returns The equivalent real screen position.
+   */
+  static toScreenPosition(x: number, y: number): { x: number; y: number } {
+    const { viewport, resolved } = M.#activeViewport();
+    return viewport.toScreen(resolved, x, y);
+  }
+
+  /**
+   * The current page's resolved virtual-to-real pixel scale -- exposed to game code via
+   * `ClientEngineAPI.Menu.viewportScale`, e.g. to size a resolution-aware `DrawPic` call to match
+   * a virtual-space target width.
+   * @returns The scale factor.
+   */
+  static get viewportScale(): number {
+    return M.#activeViewport().resolved.scale;
+  }
+
+  static DrawCharacter(cx: number, cy: number, num: number): void {
+    const p = M.#project(cx, cy);
+    Draw.Character(p.x, p.y, num, p.scale);
+  }
+
+  static Print(cx: number, cy: number, str: string): void {
+    const p = M.#project(cx, cy);
+    Draw.StringWhite(p.x, p.y, str, p.scale);
+  }
+
+  static PrintWhite(cx: number, cy: number, str: string): void {
+    const p = M.#project(cx, cy);
+    Draw.String(p.x, p.y, str, p.scale);
+  }
+
+  static DrawPic(x: number, y: number, pic: MenuPic): void {
+    const p = M.#project(x, y);
+    Draw.Pic(p.x, p.y, pic, p.scale);
+  }
+
+  static DrawPicTranslate(x: number, y: number, pic: MenuPic, top: number, bottom: number): void {
+    const p = M.#project(x, y);
+    Draw.PicTranslate(p.x, p.y, pic, top, bottom, p.scale);
+  }
+
+  /**
+   * Draws a string with a custom `BitmapFont` instead of the standard conchars font, in the
+   * current page's virtual coordinate space -- see `Print`/`PrintWhite`.
    */
   static DrawBitmapString(cx: number, cy: number, str: string, font: BitmapFont, variant = 0): void {
-    font.draw(cx * 2 + Math.floor(VID.width / 2) - 320, cy * 2 + Math.floor(VID.height / 2) - 200, str, variant, 2.0);
+    const p = M.#project(cx, cy);
+    font.draw(p.x, p.y, str, variant, p.scale);
   }
 
   static DrawTextBox(x: number, y: number, width: number, lines: number): void {
@@ -208,11 +260,12 @@ export default class M {
       return;
     }
 
+    const { viewport } = M.#activeViewport();
     const widestLineLength = M.overlayNoticeLines.reduce((widest, line) => Math.max(widest, line.length), 0);
     const boxWidth = Math.max(24, Math.min(64, widestLineLength + 4));
     const maxTextLength = boxWidth - 2;
-    const x = Math.floor((320 - boxWidth * 8) / 2);
-    const y = Math.max(28, Math.floor((200 - (M.overlayNoticeLines.length + 6) * 8) / 2));
+    const x = Math.floor((viewport.width - boxWidth * 8) / 2);
+    const y = Math.max(28, Math.floor((viewport.height - (M.overlayNoticeLines.length + 6) * 8) / 2));
 
     M.DrawTextBox(x, y, boxWidth, M.overlayNoticeLines.length + 2);
 
@@ -226,13 +279,15 @@ export default class M {
   }
 
   /**
-   * Convert a canvas-relative CSS-pixel mouse position into virtual menu-space coordinates
-   * (inverting the transform every M.DrawPic/M.Print call applies) and forward it to the active
-   * page's hover tracking.
+   * Convert a canvas-relative CSS-pixel mouse position into the current page's virtual
+   * menu-space coordinates (inverting the transform every M.DrawPic/M.Print call applies) and
+   * forward it to the active page's hover tracking.
    */
   static MouseMove(canvasX: number, canvasY: number): void {
-    M.mouseX = (canvasX - (Math.floor(VID.width / 2) - 320)) / 2;
-    M.mouseY = (canvasY - (Math.floor(VID.height / 2) - 200)) / 2;
+    const { viewport, resolved } = M.#activeViewport();
+    const point = viewport.fromScreen(resolved, canvasX, canvasY);
+    M.mouseX = point.x;
+    M.mouseY = point.y;
     M.#usingMouse = true;
 
     if (Key.destination !== KeyDestination.menu) {
@@ -248,7 +303,11 @@ export default class M {
 
   /**
    * Where to draw/hit-test the Back/Close button: the current page's own override (e.g. a
-   * dialog centering it under its message box), or the default bottom-left corner.
+   * dialog centering it under its message box), the classic bottom-left corner for pages using
+   * the default `MenuViewport.classic` (preserving the exact legacy position), or an
+   * edge-anchored bottom-left corner (see `MenuViewport.anchor()`) for a page with its own,
+   * differently-sized viewport, so a mod's pages get a sensibly placed button for free without
+   * having to hand-tune one.
    * @returns The button's center-x and top-y in virtual menu-space coordinates.
    */
   static #backButtonAnchor(): BackButtonAnchor {
@@ -258,7 +317,14 @@ export default class M {
       return override;
     }
 
-    return { centerX: M.#backButtonX + (label.length * 8) / 2, y: M.#backButtonY };
+    const halfWidth = (label.length * 8) / 2;
+    const { viewport } = M.#activeViewport();
+    if (viewport === MenuViewport.classic) {
+      return { centerX: M.#backButtonX + halfWidth, y: M.#backButtonY };
+    }
+
+    const { x, y } = viewport.anchor('bottom-left', halfWidth * 2, 8);
+    return { centerX: x + halfWidth, y };
   }
 
   static #backButtonBounds(): { x0: number; y0: number; x1: number; y1: number } {

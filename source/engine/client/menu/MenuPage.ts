@@ -2,6 +2,7 @@ import { K } from '../../../shared/Keys.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import type { MenuPic } from '../Menu.ts';
 import { MenuItem } from './MenuItem.ts';
+import { MenuViewport } from './MenuViewport.ts';
 
 interface MenuPageConfig {
   readonly items?: MenuItem[];
@@ -9,6 +10,13 @@ interface MenuPageConfig {
   readonly title?: string | null;
   readonly titlePic?: MenuPic | null;
   readonly logoPic?: MenuPic | null;
+  /**
+   * The virtual drawing-space this page's coordinates are expressed in -- defaults to
+   * `MenuViewport.classic` (320x200, pixel-doubled), matching every built-in page. A mod
+   * replacing its own pages with a bespoke, wider layout sets this instead of hand-deriving a
+   * resolution-aware transform per drawing call.
+   */
+  readonly viewport?: MenuViewport;
   readonly onEnter?: () => void;
   readonly onExit?: () => void;
   readonly onEscape?: (() => void) | null;
@@ -94,6 +102,7 @@ export class MenuPage {
   title: string | null;
   titlePic: MenuPic | null;
   logoPic: MenuPic | null;
+  viewport: MenuViewport;
   cursor: number;
   onEnter: () => void;
   onExit: () => void;
@@ -110,6 +119,7 @@ export class MenuPage {
     this.title = config.title || null;
     this.titlePic = config.titlePic || null;
     this.logoPic = config.logoPic || null;
+    this.viewport = config.viewport ?? MenuViewport.classic;
     this.cursor = 0;
     this.onEnter = config.onEnter || (() => {});
     this.onExit = config.onExit || (() => {});
@@ -140,11 +150,12 @@ export class MenuPage {
     }
 
     // Draw title if provided
+    const centerX = this.viewport.width / 2;
     if (this.titlePic) {
-      const titleX = 160 - Math.floor((this.titlePic.width ?? 0) / 2);
+      const titleX = centerX - Math.floor((this.titlePic.width ?? 0) / 2);
       M.DrawPic(titleX, 4, this.titlePic);
     } else if (this.title) {
-      const titleX = 160 - (this.title.length * 8) / 2;
+      const titleX = centerX - (this.title.length * 8) / 2;
       M.Print(titleX, 8, this.title);
     }
 
@@ -384,7 +395,7 @@ export class VerticalLayout implements MenuLayout {
     }
   }
 
-  hitTest(items: MenuItem[], px: number, py: number): number | null {
+  hitTest(items: MenuItem[], _px: number, py: number): number | null {
     let y = this.startY;
 
     for (const [index, item] of items.entries()) {
@@ -395,8 +406,9 @@ export class VerticalLayout implements MenuLayout {
       const height = item.getHeight();
 
       // The whole row is clickable, not just the glyphs under the label/value, so the hit box
-      // spans the full virtual screen width regardless of where VerticalLayout placed the text.
-      if (item.focusable && px >= 0 && px < 320 && py >= y && py < y + height) {
+      // spans the full row width regardless of where VerticalLayout placed the text -- only the
+      // vertical band actually disambiguates one row from the next.
+      if (item.focusable && py >= y && py < y + height) {
         return index;
       }
 
@@ -506,7 +518,7 @@ export class ListLayout implements MenuLayout {
     }
   }
 
-  hitTest(items: MenuItem[], px: number, py: number): number | null {
+  hitTest(items: MenuItem[], _px: number, py: number): number | null {
     let y = this.startY;
 
     for (const [index, item] of items.entries()) {
@@ -514,7 +526,7 @@ export class ListLayout implements MenuLayout {
         continue;
       }
 
-      if (item.focusable && px >= 0 && px < 320 && py >= y && py < y + this.spacing) {
+      if (item.focusable && py >= y && py < y + this.spacing) {
         return index;
       }
 

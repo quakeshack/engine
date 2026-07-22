@@ -7,6 +7,7 @@ import type { GLTexture as GLTextureValue } from '../engine/client/GL.ts';
 import type { Action as ActionValue, ColorPicker as ColorPickerValue, KeyBindItem as KeyBindItemValue, MenuItem as MenuItemValue, SaveSlotItem as SaveSlotItemValue, Textbox as TextboxValue } from '../engine/client/menu/MenuItem.ts';
 import type { DialogPage as DialogPageValue, ListPage as ListPageValue, MenuPage as MenuPageValue } from '../engine/client/menu/MenuPage.ts';
 import type { BackButtonAnchor as BackButtonAnchorValue } from '../engine/client/menu/MenuPage.ts';
+import type { MenuViewport as MenuViewportValue, MenuViewportCorner as MenuViewportCornerValue } from '../engine/client/menu/MenuViewport.ts';
 import type { MenuPic as MenuPicValue } from '../engine/client/Menu.ts';
 import type { SFX as SFXValue } from '../engine/client/Sound.ts';
 import type CvarValue from '../engine/common/Cvar.ts';
@@ -40,6 +41,8 @@ export type SaveSlotItem = SaveSlotItemValue;
 export type KeyBindItem = KeyBindItemValue;
 export type MenuPic = MenuPicValue;
 export type BackButtonAnchor = BackButtonAnchorValue;
+export type MenuViewport = MenuViewportValue;
+export type MenuViewportCorner = MenuViewportCornerValue;
 
 export type PmoveConfiguration = Readonly<PmoveConfigurationValue>;
 export type PmoveQuake2Configuration = Readonly<PmoveQuake2ConfigurationValue>;
