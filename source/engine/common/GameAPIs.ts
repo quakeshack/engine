@@ -6,7 +6,7 @@ import type { SzBuffer } from '../network/MSG.ts';
 import type ParsedQC from './model/parsers/ParsedQC.ts';
 import type { BaseModel } from './model/BaseModel.ts';
 import type { Visibility } from './model/BSP.ts';
-import type { DiscoveredSession } from '../client/menu/SessionDiscovery.ts';
+import type { DiscoveredSession, SessionDiscoveryStatus } from '../client/menu/SessionDiscovery.ts';
 import type { SaveSlotInfo } from '../client/menu/SaveSlots.ts';
 
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
@@ -1569,6 +1569,26 @@ export class ClientEngineAPI extends CommonEngineAPI {
      */
     ListSessions(): Promise<DiscoveredSession[]> {
       return SessionDiscovery.listSessions();
+    },
+
+    /**
+     * Subscribes to live session updates for this client's active game (mod) over the master
+     * server's real-time `/browser` channel. See {@link SessionDiscovery.subscribe}.
+     * @returns An unsubscribe function; safe to call more than once.
+     */
+    SubscribeSessions(
+      onSessions: (sessions: DiscoveredSession[]) => void,
+      onStatus?: (status: SessionDiscoveryStatus) => void,
+    ): () => void {
+      return SessionDiscovery.subscribe(onSessions, onStatus);
+    },
+
+    /**
+     * Requests a fresh session snapshot over an already-open SubscribeSessions channel. See
+     * {@link SessionDiscovery.requestRefresh}.
+     */
+    RequestSessionsRefresh(): void {
+      SessionDiscovery.requestRefresh();
     },
   };
 

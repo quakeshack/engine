@@ -78,6 +78,40 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 
 When using control statements (`if`, `for`, `while`, etc.) with braces, always place the opening brace on the same line as the statement, but put the code block on the following line(s). This improves readability and follows standard formatting conventions.
 
+### Prefer `switch` over `if`/`else if` chains
+
+When branching on the same discriminant value (a string literal union, an enum, a `typeof`/`type` tag, etc.), use a `switch` statement instead of an `if`/`else if`/`else if` chain. A `switch` makes the shared discriminant and the exhaustive set of branches visually obvious at a glance, whereas an `if`/`else if` chain hides that structure and invites a mismatched condition on one of the branches.
+
+```typescript
+// ❌ Avoid this — repeats the discriminant on every branch, easy to typo one
+if (status === 'connecting') {
+  showMessage('Finding sessions...');
+} else if (status === 'reconnecting') {
+  showMessage('Unable to fetch sessions');
+} else if (status === 'unavailable') {
+  showMessage('Unable to fetch sessions');
+  logUnavailable();
+}
+
+// ✅ Prefer this — the discriminant appears once, branches are exhaustive-checkable
+switch (status) {
+  case 'connecting':
+    showMessage('Finding sessions...');
+    break;
+  case 'reconnecting':
+    showMessage('Unable to fetch sessions');
+    break;
+  case 'unavailable':
+    showMessage('Unable to fetch sessions');
+    logUnavailable();
+    break;
+  default:
+    break;
+}
+```
+
+This does not apply to short-circuit guards, early returns, or branches that each test a genuinely different condition (not the same discriminant) — those stay as `if`/`else`.
+
 ### Clean up global objects
 
 There are some old-style global objects, try to avoid them, do not replicate them. It’s better to create a class and move methods to it as static members, same applies to variables and properties.

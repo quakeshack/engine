@@ -41,8 +41,38 @@ void describe('ClientEngineAPI.Multiplayer.ListSessions', () => {
       const sessions = await ClientEngineAPI.Multiplayer.ListSessions();
 
       assert.deepEqual(sessions, [
-        { sessionId: 'a', map: 'dm3', currentPlayers: 1, maxPlayers: 4, colo: null, country: null },
+        { sessionId: 'a', hostname: 'UNNAMED', map: 'dm3', currentPlayers: 1, maxPlayers: 4, colo: null, country: null, settings: {} },
       ]);
     });
+  });
+});
+
+void describe('ClientEngineAPI.Multiplayer.SubscribeSessions/RequestSessionsRefresh', () => {
+  // Exercises the synchronous 'unavailable' path (no configured signaling URL) rather than a
+  // live channel -- the channel's own connect/reconnect/diff behavior is covered exhaustively by
+  // `test/client/session-discovery.test.mjs`; this file only needs to prove GameAPIs.ts wires
+  // through to SessionDiscovery correctly.
+  void test('delegates to SessionDiscovery.subscribe and .requestRefresh', () => {
+    const previousCOM = registry.COM;
+    const previousUrls = registry.urls;
+
+    registry.COM = { game: 'id1' };
+    registry.urls = {};
+    eventBus.publish('registry.frozen');
+
+    try {
+      const statuses = [];
+      const unsubscribe = ClientEngineAPI.Multiplayer.SubscribeSessions(() => {}, (status) => statuses.push(status));
+
+      assert.deepEqual(statuses, ['unavailable']);
+      assert.equal(typeof unsubscribe, 'function');
+      unsubscribe();
+
+      assert.doesNotThrow(() => { ClientEngineAPI.Multiplayer.RequestSessionsRefresh(); });
+    } finally {
+      registry.COM = previousCOM;
+      registry.urls = previousUrls;
+      eventBus.publish('registry.frozen');
+    }
   });
 });
