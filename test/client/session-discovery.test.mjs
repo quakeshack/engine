@@ -5,29 +5,77 @@ import { eventBus, registry } from '../../source/engine/registry.ts';
 import SessionDiscovery from '../../source/engine/client/menu/SessionDiscovery.ts';
 
 /**
- * Installs the minimal `COM`/`urls`/`Con` registry SessionDiscovery needs (`Con` silenced the
+ * A minimal `WebRTCDriver` test double for the ping-probe lifecycle (`startSessionPing`/
+ * `stopSessionPing`). Records every call so tests can assert on it, and keeps each session's
+ * `onPing` callback so a test can simulate a probe reporting a fresh RTT (or `null` for
+ * unreachable) whenever it likes via `simulatePing`.
+ */
+class FakeWebRTCDriver {
+  constructor() {
+    this.startCalls = /** @type {string[]} */ ([]);
+    this.stopCalls = /** @type {string[]} */ ([]);
+    this.onPingCallbacks = /** @type {Map<string, (rtt: number | null) => void>} */ (new Map());
+  }
+
+  /**
+   * @param {string} sessionId
+   * @param {(rtt: number | null) => void} onPing
+   */
+  startSessionPing(sessionId, onPing) {
+    this.startCalls.push(sessionId);
+    this.onPingCallbacks.set(sessionId, onPing);
+  }
+
+  /** @param {string} sessionId */
+  stopSessionPing(sessionId) {
+    this.stopCalls.push(sessionId);
+    this.onPingCallbacks.delete(sessionId);
+  }
+
+  /**
+   * Simulates a probe reporting a fresh RTT (or `null` for unreachable) for a session.
+   * @param {string} sessionId
+   * @param {number | null} rtt
+   */
+  simulatePing(sessionId, rtt) {
+    this.onPingCallbacks.get(sessionId)?.(rtt);
+  }
+}
+
+/**
+ * Installs the minimal `COM`/`urls`/`Con`/`NET` registry SessionDiscovery needs (`Con` silenced the
  * same way `network-drivers.test.mjs`'s `withSignalingScenario` does, since `subscribe()` logs
- * through it).
+ * through it). `NET.driverRegistry.get('webrtc')` resolves to a fresh `FakeWebRTCDriver`, passed to
+ * `callback` so tests can assert on/drive the ping-probe lifecycle.
  * @param {string} game active COM.game to simulate for the local client
- * @param {() => Promise<void>} callback async test callback
+ * @param {(webRTCDriver: FakeWebRTCDriver) => Promise<void>} callback async test callback
  * @param {{ urls?: { signalingURL?: string } }} [options] registry overrides, e.g. to simulate no signaling URL
  */
 async function withMockDiscoveryRegistry(game, callback, options = {}) {
   const previousCOM = registry.COM;
   const previousUrls = registry.urls;
   const previousCon = registry.Con;
+  const previousNET = registry.NET;
+
+  const webRTCDriver = new FakeWebRTCDriver();
 
   registry.COM = { game };
   registry.urls = options.urls ?? { signalingURL: 'wss://master.example.test/signal' };
   registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
+  registry.NET = { driverRegistry: { get: (name) => (name === 'webrtc' ? webRTCDriver : null) } };
   eventBus.publish('registry.frozen');
 
   try {
-    await callback();
+    await callback(webRTCDriver);
   } finally {
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     registry.COM = previousCOM;
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     registry.urls = previousUrls;
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     registry.Con = previousCon;
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
+    registry.NET = previousNET;
     eventBus.publish('registry.frozen');
   }
 }
@@ -44,6 +92,7 @@ async function withMockFetch(jsonBody, callback) {
   try {
     await callback();
   } finally {
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.fetch = previousFetch;
   }
 }
@@ -61,7 +110,7 @@ void describe('SessionDiscovery.listSessions', () => {
         const sessions = await SessionDiscovery.listSessions();
 
         assert.deepEqual(sessions, [
-          { sessionId: 'same-game', hostname: 'Alice\'s Server', map: 'start', currentPlayers: 1, maxPlayers: 8, colo: 'sea', country: 'US', settings: {} },
+          { sessionId: 'same-game', hostname: 'Alice\'s Server', map: 'start', currentPlayers: 1, maxPlayers: 8, colo: 'sea', country: 'US', settings: {}, ping: null, pingUnreachable: false },
         ]);
       });
     });
@@ -75,7 +124,7 @@ void describe('SessionDiscovery.listSessions', () => {
         const sessions = await SessionDiscovery.listSessions();
 
         assert.deepEqual(sessions, [
-          { sessionId: 'sparse', hostname: 'UNNAMED', map: '?', currentPlayers: 0, maxPlayers: 0, colo: null, country: null, settings: {} },
+          { sessionId: 'sparse', hostname: 'UNNAMED', map: '?', currentPlayers: 0, maxPlayers: 0, colo: null, country: null, settings: {}, ping: null, pingUnreachable: false },
         ]);
       });
     });
@@ -179,7 +228,9 @@ async function withMockWebSocket(callback) {
   try {
     await callback();
   } finally {
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.WebSocket = previousWebSocket;
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.location = previousLocation;
   }
 }
@@ -213,7 +264,7 @@ void describe('SessionDiscovery.subscribe', () => {
 
         assert.equal(received.length, 1);
         assert.deepEqual(received[0], [
-          { sessionId: 'a', hostname: 'Alice', map: 'start', currentPlayers: 1, maxPlayers: 8, colo: null, country: null, settings: {} },
+          { sessionId: 'a', hostname: 'Alice', map: 'start', currentPlayers: 1, maxPlayers: 8, colo: null, country: null, settings: {}, ping: null, pingUnreachable: false },
         ]);
 
         unsubscribe();
@@ -237,7 +288,7 @@ void describe('SessionDiscovery.subscribe', () => {
           server: { sessionId: 'x', serverInfo: { mod: 'id1', map: 'dm3', currentPlayers: 1, maxPlayers: 4 } },
         });
         assert.deepEqual(received.at(-1), [
-          { sessionId: 'x', hostname: 'UNNAMED', map: 'dm3', currentPlayers: 1, maxPlayers: 4, colo: null, country: null, settings: {} },
+          { sessionId: 'x', hostname: 'UNNAMED', map: 'dm3', currentPlayers: 1, maxPlayers: 4, colo: null, country: null, settings: {}, ping: null, pingUnreachable: false },
         ]);
 
         ws.simulateMessage({
@@ -339,5 +390,179 @@ void describe('SessionDiscovery.subscribe', () => {
         unsubscribe(); // must be safely callable even though nothing was ever opened
       });
     }, { urls: {} });
+  });
+});
+
+// Coverage for plans/session-ping-latency.md Phase 4: SessionDiscovery owns the ping-probe
+// lifecycle for every live session (start on appearance, stop on removal/disconnect), and sorts by
+// bracket rather than raw ms so a session only reorders when it crosses a bracket boundary.
+void describe('SessionDiscovery ping probes', () => {
+  void test('starts a ping probe when a session appears and reports ping updates through onSessions', async () => {
+    await withMockDiscoveryRegistry('hellwave', async (webRTCDriver) => {
+      await withMockWebSocket(() => {
+        const received = [];
+        const unsubscribe = SessionDiscovery.subscribe((sessions) => received.push(sessions));
+        const ws = FakeWebSocket.instances[0];
+        ws.simulateOpen();
+
+        ws.simulateMessage({
+          type: 'server-list',
+          servers: [{ sessionId: 'a', serverInfo: { mod: 'hellwave', map: 'start' } }],
+        });
+
+        assert.deepEqual(webRTCDriver.startCalls, ['a']);
+        assert.equal(received.at(-1)[0].ping, null);
+        assert.equal(received.at(-1)[0].pingUnreachable, false);
+
+        webRTCDriver.simulatePing('a', 42);
+
+        assert.equal(received.at(-1)[0].ping, 42);
+        assert.equal(received.at(-1)[0].pingUnreachable, false);
+
+        unsubscribe();
+      });
+    });
+  });
+
+  void test('never starts a probe for a session running a different game', async () => {
+    await withMockDiscoveryRegistry('hellwave', async (webRTCDriver) => {
+      await withMockWebSocket(() => {
+        const unsubscribe = SessionDiscovery.subscribe(() => {});
+        const ws = FakeWebSocket.instances[0];
+        ws.simulateOpen();
+        ws.simulateMessage({ type: 'server-list', servers: [{ sessionId: 'other', serverInfo: { mod: 'id1' } }] });
+
+        assert.deepEqual(webRTCDriver.startCalls, []);
+
+        unsubscribe();
+      });
+    });
+  });
+
+  void test('stops the ping probe when a session is removed', async () => {
+    await withMockDiscoveryRegistry('hellwave', async (webRTCDriver) => {
+      await withMockWebSocket(() => {
+        const unsubscribe = SessionDiscovery.subscribe(() => {});
+        const ws = FakeWebSocket.instances[0];
+        ws.simulateOpen();
+        ws.simulateMessage({ type: 'server-list', servers: [{ sessionId: 'a', serverInfo: { mod: 'hellwave' } }] });
+
+        assert.deepEqual(webRTCDriver.startCalls, ['a']);
+
+        ws.simulateMessage({ type: 'server-removed', sessionId: 'a' });
+
+        assert.deepEqual(webRTCDriver.stopCalls, ['a']);
+
+        unsubscribe();
+      });
+    });
+  });
+
+  void test('stops every running probe once the last subscriber unsubscribes', async () => {
+    await withMockDiscoveryRegistry('hellwave', async (webRTCDriver) => {
+      await withMockWebSocket(() => {
+        const unsubscribe = SessionDiscovery.subscribe(() => {});
+        const ws = FakeWebSocket.instances[0];
+        ws.simulateOpen();
+        ws.simulateMessage({
+          type: 'server-list',
+          servers: [
+            { sessionId: 'a', serverInfo: { mod: 'hellwave' } },
+            { sessionId: 'b', serverInfo: { mod: 'hellwave' } },
+          ],
+        });
+
+        assert.deepEqual(webRTCDriver.startCalls, ['a', 'b']);
+
+        unsubscribe();
+
+        assert.deepEqual(webRTCDriver.stopCalls.slice().sort(), ['a', 'b']);
+      });
+    });
+  });
+
+  void test('ignores a stale onPing callback from a probe that was already stopped', async () => {
+    await withMockDiscoveryRegistry('hellwave', async (webRTCDriver) => {
+      await withMockWebSocket(() => {
+        const received = [];
+        const unsubscribe = SessionDiscovery.subscribe((sessions) => received.push(sessions));
+        const ws = FakeWebSocket.instances[0];
+        ws.simulateOpen();
+        ws.simulateMessage({ type: 'server-list', servers: [{ sessionId: 'a', serverInfo: { mod: 'hellwave' } }] });
+
+        const staleOnPing = webRTCDriver.onPingCallbacks.get('a');
+        ws.simulateMessage({ type: 'server-removed', sessionId: 'a' });
+
+        const notifyCountBeforeStalePing = received.length;
+        staleOnPing(99); // arrives after the probe (and the session itself) was already removed
+
+        assert.equal(received.length, notifyCountBeforeStalePing);
+
+        unsubscribe();
+      });
+    });
+  });
+
+  void test('sorts sessions by ping bracket, not raw ping, and never reorders within a bracket', async () => {
+    await withMockDiscoveryRegistry('hellwave', async (webRTCDriver) => {
+      await withMockWebSocket(() => {
+        const received = [];
+        const unsubscribe = SessionDiscovery.subscribe((sessions) => received.push(sessions));
+        const ws = FakeWebSocket.instances[0];
+        ws.simulateOpen();
+        ws.simulateMessage({
+          type: 'server-list',
+          servers: [
+            { sessionId: 'slow', serverInfo: { mod: 'hellwave' } },
+            { sessionId: 'fast', serverInfo: { mod: 'hellwave' } },
+            { sessionId: 'medium', serverInfo: { mod: 'hellwave' } },
+          ],
+        });
+
+        webRTCDriver.simulatePing('slow', 400); // bracket 4 ("350ms+")
+        webRTCDriver.simulatePing('fast', 20); // bracket 0 ("<60ms")
+        webRTCDriver.simulatePing('medium', 90); // bracket 1 ("60-120ms")
+
+        assert.deepEqual(received.at(-1).map((s) => s.sessionId), ['fast', 'medium', 'slow']);
+
+        // A fluctuation that stays within the same bracket must not reorder anything.
+        webRTCDriver.simulatePing('fast', 55); // still bracket 0
+        assert.deepEqual(received.at(-1).map((s) => s.sessionId), ['fast', 'medium', 'slow']);
+
+        unsubscribe();
+      });
+    });
+  });
+
+  void test('sorts "still probing" after every measured bracket, and "unreachable" last of all', async () => {
+    await withMockDiscoveryRegistry('hellwave', async (webRTCDriver) => {
+      await withMockWebSocket(() => {
+        const received = [];
+        const unsubscribe = SessionDiscovery.subscribe((sessions) => received.push(sessions));
+        const ws = FakeWebSocket.instances[0];
+        ws.simulateOpen();
+        ws.simulateMessage({
+          type: 'server-list',
+          servers: [
+            { sessionId: 'measuring', serverInfo: { mod: 'hellwave' } },
+            { sessionId: 'measured', serverInfo: { mod: 'hellwave' } },
+            { sessionId: 'dead', serverInfo: { mod: 'hellwave' } },
+          ],
+        });
+
+        webRTCDriver.simulatePing('measured', 30);
+        webRTCDriver.simulatePing('dead', null);
+        // 'measuring' never gets a ping at all -- stays in the "still probing" state.
+
+        const bySessionId = Object.fromEntries(received.at(-1).map((s) => [s.sessionId, s]));
+
+        assert.deepEqual(received.at(-1).map((s) => s.sessionId), ['measured', 'measuring', 'dead']);
+        assert.equal(bySessionId.dead.pingUnreachable, true);
+        assert.equal(bySessionId.measuring.ping, null);
+        assert.equal(bySessionId.measuring.pingUnreachable, false);
+
+        unsubscribe();
+      });
+    });
   });
 });

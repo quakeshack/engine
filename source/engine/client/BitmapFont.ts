@@ -113,13 +113,19 @@ export class BitmapFont {
 
   /**
    * Draws `str` glyph by glyph in the given color variant. Unsupported characters (after
-   * uppercasing) are skipped but still advance the cursor.
+   * uppercasing) are skipped but still advance the cursor. `scale` is snapped to the nearest
+   * whole pixel multiple (see `GL.SnapPixelScale`) -- this atlas is nearest-filtered pixel art
+   * with fine (single-texel) alternating detail (e.g. the header font's diagonal hazard
+   * stripes), and magnifying that by a fractional factor beats against the stripe period and
+   * shows up as uneven/moiré banding instead of a clean scaled copy.
    * @returns The x position just past the last character.
    */
   draw(x: number, y: number, str: string, variant = 0, scale = 1): number {
     const program = GL.UseProgram('pic', true)!;
     gl.uniform3f(program.uColor!, 1.0, 1.0, 1.0);
     this.texture.bind(program.tTexture, true);
+
+    const pixelScale = GL.SnapPixelScale(scale);
 
     let cx = x;
 
@@ -129,12 +135,12 @@ export class BitmapFont {
       if (rect !== null) {
         GL.StreamDrawTexturedQuad(
           Math.floor(cx), Math.floor(y),
-          this.glyphWidth * scale, this.glyphHeight * scale,
+          this.glyphWidth * pixelScale, this.glyphHeight * pixelScale,
           rect.u0, rect.v0, rect.u1, rect.v1,
         );
       }
 
-      cx += this.cellWidth * scale;
+      cx += this.cellWidth * pixelScale;
     }
 
     GL.StreamFlush();

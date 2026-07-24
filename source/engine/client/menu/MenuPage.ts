@@ -144,29 +144,31 @@ export class MenuPage {
    * Draw the menu page.
    */
   draw(): void {
-    // Corner logo (e.g. the Quake plaque) shown alongside the title on several built-in screens.
-    if (this.logoPic) {
-      M.DrawPic(16, 4, this.logoPic);
-    }
+    M.withRenderingPage(this, () => {
+      // Corner logo (e.g. the Quake plaque) shown alongside the title on several built-in screens.
+      if (this.logoPic) {
+        M.DrawPic(16, 4, this.logoPic);
+      }
 
-    // Draw title if provided
-    const centerX = this.viewport.width / 2;
-    if (this.titlePic) {
-      const titleX = centerX - Math.floor((this.titlePic.width ?? 0) / 2);
-      M.DrawPic(titleX, 4, this.titlePic);
-    } else if (this.title) {
-      const titleX = centerX - (this.title.length * 8) / 2;
-      M.Print(titleX, 8, this.title);
-    }
+      // Draw title if provided
+      const centerX = this.viewport.width / 2;
+      if (this.titlePic) {
+        const titleX = centerX - Math.floor((this.titlePic.width ?? 0) / 2);
+        M.DrawPic(titleX, 4, this.titlePic);
+      } else if (this.title) {
+        const titleX = centerX - (this.title.length * 8) / 2;
+        M.Print(titleX, 8, this.title);
+      }
 
-    // Custom drawing (for special menus)
-    if (this.customDraw) {
-      this.customDraw(this);
-      return;
-    }
+      // Custom drawing (for special menus)
+      if (this.customDraw) {
+        this.customDraw(this);
+        return;
+      }
 
-    // Use layout system
-    this.layout?.draw(this.items, this.cursor);
+      // Use layout system
+      this.layout?.draw(this.items, this.cursor);
+    });
   }
 
   /**

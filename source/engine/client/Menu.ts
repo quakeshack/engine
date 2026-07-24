@@ -8,7 +8,7 @@ import type { BitmapFont } from './BitmapFont.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.ts';
 import { KeyDestination } from './Key.ts';
-import type { BackButtonAnchor } from './menu/MenuPage.ts';
+import type { BackButtonAnchor, MenuPage } from './menu/MenuPage.ts';
 import { MenuStack } from './menu/MenuStack.ts';
 import { MenuViewport, type ResolvedMenuViewport } from './menu/MenuViewport.ts';
 import VID from './VID.ts';
@@ -59,6 +59,13 @@ export type MenuPic = GLTexture & { translate?: GLTexture | null };
 export default class M {
   static menuStack = new MenuStack();
 
+  // The page whose viewport should resolve M's drawing primitives right now -- normally null,
+  // meaning "use the top of the stack" (see #activeViewport()). Set for the duration of a
+  // DialogPage drawing its backdrop (see withRenderingPage()), since the backdrop page draws
+  // while a *different* page (the dialog itself) still sits on top of menuStack, and the
+  // backdrop's own drawing calls must resolve against its own viewport, not the dialog's.
+  static #renderingPage: MenuPage | null = null;
+
   static entersound = false;
 
   // Current mouse position in the current page's virtual menu-space coordinates (see
@@ -108,8 +115,24 @@ export default class M {
    * @returns The active viewport and its transform resolved against the real canvas size.
    */
   static #activeViewport(): { viewport: MenuViewport; resolved: ResolvedMenuViewport } {
-    const viewport = M.menuStack.current()?.viewport ?? MenuViewport.classic;
+    const viewport = (M.#renderingPage ?? M.menuStack.current())?.viewport ?? MenuViewport.classic;
     return { viewport, resolved: viewport.resolve(VID.width, VID.height) };
+  }
+
+  /**
+   * Run `draw` with `page`'s own viewport as the active one for M's drawing primitives, then
+   * restore whatever was active before -- lets a page's draw() (see `MenuPage.draw()`) resolve
+   * its own coordinates correctly even when called as another page's backdrop (see
+   * `DialogPage.draw()`), while that other page still sits on top of `menuStack`.
+   */
+  static withRenderingPage(page: MenuPage, draw: () => void): void {
+    const previous = M.#renderingPage;
+    M.#renderingPage = page;
+    try {
+      draw();
+    } finally {
+      M.#renderingPage = previous;
+    }
   }
 
   /**

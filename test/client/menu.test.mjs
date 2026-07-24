@@ -5,6 +5,7 @@ import { K } from '../../source/shared/Keys.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
+import { MenuViewport } from '../../source/engine/client/menu/MenuViewport.ts';
 
 /**
  * Temporarily install a global value for the duration of a callback.
@@ -115,6 +116,46 @@ void describe('M.MouseMove', () => {
       M.menuStack.stack.pop();
       Key.destination = previousDestination;
       registry.Key = previousKey;
+      eventBus.publish('registry.frozen');
+    }
+  });
+});
+
+void describe('M.withRenderingPage', () => {
+  void test('projects through the given page\'s own viewport, not the top of menuStack', () => {
+    const previousDraw = registry.Draw;
+    const calls = [];
+
+    // A DialogPage (e.g. the quit-confirmation box) stays on top of menuStack for the whole
+    // time it draws its backdrop (e.g. a mod's own main menu with a wider, screen-filling
+    // viewport) -- M's drawing primitives must resolve against whichever page is actually
+    // rendering (see withRenderingPage()), not menuStack.current(), or the backdrop renders
+    // at the dialog's coordinates/scale instead of its own.
+    const dialogViewport = new MenuViewport({ width: 320, height: 200, fit: 'fixed', scale: 2 });
+    const backdropViewport = new MenuViewport({ width: 200, height: 100, fit: 'fixed', scale: 1 });
+    const dialogPage = { viewport: dialogViewport };
+    const backdropPage = { viewport: backdropViewport };
+
+    registry.Draw = { StringWhite(x, y, str, scale) { calls.push({
+      x, y, str, scale,
+    }); } };
+    eventBus.publish('registry.frozen');
+
+    try {
+      M.menuStack.stack.push(dialogPage);
+
+      M.withRenderingPage(backdropPage, () => { M.Print(10, 10, 'backdrop'); });
+      M.Print(10, 10, 'dialog');
+
+      // VID.width/height are 0 in this test environment, so each viewport's origin is
+      // `-((width * scale) / 2)`, `-((height * scale) / 2)` -- see MenuViewport.resolve().
+      assert.deepEqual(calls, [
+        { x: 10 * 1 - 100, y: 10 * 1 - 50, str: 'backdrop', scale: 1 },
+        { x: 10 * 2 - 320, y: 10 * 2 - 200, str: 'dialog', scale: 2 },
+      ]);
+    } finally {
+      M.menuStack.stack.pop();
+      registry.Draw = previousDraw;
       eventBus.publish('registry.frozen');
     }
   });

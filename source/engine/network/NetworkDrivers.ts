@@ -53,6 +53,38 @@ type WebRTCQueuedMessage = {
   reliable: boolean;
 };
 
+/**
+ * Host-side state for a single out-of-band (connectionless) peer connection --
+ * see `plans/session-ping-latency.md`. Deliberately not a `QSocket`/`WebRTCSocketState`: an OOB
+ * connection must never reach `NET.activeSockets`, `NET.NewQSocket`, or anything else the real
+ * game protocol reads from.
+ */
+type OobConnectionState = {
+  peerConnection: RTCPeerConnection;
+  channel: RTCDataChannel | null;
+  lastPingAt: number;
+  idleTimer: ReturnType<typeof setTimeout> | null;
+};
+
+/**
+ * Viewer-side state for a single session's out-of-band ping probe -- see
+ * `plans/session-ping-latency.md`. Each probe owns a dedicated `/signaling` WebSocket (never the
+ * driver's own `signalingWs`), since the master server tracks exactly one (sessionId, peerId) pair
+ * per signaling connection and a browsing client may probe several sessions at once.
+ */
+type ViewerOobProbeState = {
+  sessionId: string;
+  ws: WebSocket;
+  peerId: string | null;
+  peerConnection: RTCPeerConnection | null;
+  channel: RTCDataChannel | null;
+  pingTimer: ReturnType<typeof setInterval> | null;
+  sequence: number;
+  pendingSequence: number | null;
+  smoothedRtt: number | null;
+  onPing: (rtt: number | null) => void;
+};
+
 type ServerInfo = {
   hostname: string;
   maxPlayers: number;
@@ -71,6 +103,8 @@ type SignalingMessage = {
   fromPeerId?: string;
   hostToken?: string;
   isHost?: boolean;
+  /** Out-of-band (connectionless) peer -- see `plans/session-ping-latency.md`. */
+  isOob?: boolean;
   isPublic?: boolean;
   offer?: RTCSessionDescription | RTCSessionDescriptionInit | null;
   peerCount?: number;
@@ -915,6 +949,23 @@ export class WebSocketDriver extends BaseDriver {
 }
 
 export class WebRTCDriver extends BaseDriver {
+  /**
+   * Host-side caps for out-of-band connections, enforced locally regardless of what the master
+   * server or a remote peer claims -- see `plans/session-ping-latency.md` Security.
+   */
+  static readonly MAX_OOB_CONNECTIONS_PER_HOST = 16;
+  static readonly MIN_PING_INTERVAL_MS = 1000;
+  static readonly OOB_IDLE_TIMEOUT_MS = 30 * 1000;
+
+  /** `'oob'` channel wire format: `[1 byte type][4 byte sequence][8 byte timestamp]` = 13 bytes. */
+  static readonly OOB_FRAME_LENGTH = 13;
+  static readonly OOB_PING = 1;
+  static readonly OOB_PONG = 2;
+
+  /** Viewer-side ping cadence and smoothing -- see `plans/session-ping-latency.md` §6. */
+  static readonly PING_INTERVAL_MS = 4000;
+  static readonly PING_EMA_ALPHA = 0.3;
+
   creatingSession = false;
   hostToken: string | null = null;
   iceServers: RTCIceServer[] = [
@@ -924,6 +975,11 @@ export class WebRTCDriver extends BaseDriver {
   ];
   isHost = false;
   newConnections: QSocket[] = [];
+  /**
+   * Out-of-band (connectionless) peer connections, keyed by peerId -- never linked to a `QSocket`.
+   * See `plans/session-ping-latency.md`.
+   */
+  oobConnections = new Map<string, OobConnectionState>();
   peerId: string | null = null;
   pendingConnections = new Map<string, { peerConnection: RTCPeerConnection; qsocket: QSocket }>();
   pingInterval: ReturnType<typeof setInterval> | null = null;
@@ -932,6 +988,8 @@ export class WebRTCDriver extends BaseDriver {
   sessionId: string | null = null;
   signalingUrl: string | null = null;
   signalingWs: WebSocket | null = null;
+  /** Viewer-side ping probes, keyed by the probed sessionId. See `plans/session-ping-latency.md`. */
+  viewerOobProbes = new Map<string, ViewerOobProbeState>();
 
   constructor() {
     super('webrtc');
@@ -1009,6 +1067,258 @@ export class WebRTCDriver extends BaseDriver {
     }
 
     return sock;
+  }
+
+  /**
+   * Starts (or no-ops if already running) an out-of-band ping probe against a session's host,
+   * without ever joining it for real -- see `plans/session-ping-latency.md`. `onPing` is called
+   * with a smoothed RTT (ms) on every fresh pong, or `null` once the probe becomes unreachable
+   * (connection failure, session closed, etc.). Call `stopSessionPing` once the caller no longer
+   * cares (e.g. the session scrolled out of the visible lobby list).
+   */
+  startSessionPing(sessionId: string, onPing: (rtt: number | null) => void): void {
+    if (this.viewerOobProbes.has(sessionId)) {
+      return;
+    }
+
+    // Deliberately its own dedicated `/signaling` connection, never `this.signalingWs` -- the
+    // master server tracks exactly one (sessionId, peerId) pair per signaling socket, but a
+    // browsing client may probe several sessions concurrently.
+    const ws = new WebSocket(this.signalingUrl ?? '');
+    const state: ViewerOobProbeState = {
+      sessionId,
+      ws,
+      peerId: null,
+      peerConnection: null,
+      channel: null,
+      pingTimer: null,
+      sequence: 0,
+      pendingSequence: null,
+      smoothedRtt: null,
+      onPing,
+    };
+    this.viewerOobProbes.set(sessionId, state);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'join-session', sessionId, role: 'oob' }));
+    };
+
+    ws.onmessage = (event: MessageEvent<string>) => {
+      if (typeof event.data !== 'string') {
+        return;
+      }
+
+      this.#OnViewerOobSignalingMessage(state, JSON.parse(event.data) as SignalingMessage);
+    };
+
+    ws.onerror = (errorEvent: Event) => {
+      console.debug('WebRTCDriver: Out-of-band signaling WebSocket error', errorEvent);
+      state.onPing(null);
+    };
+
+    ws.onclose = () => {
+      state.onPing(null);
+      this.#TeardownViewerOobProbe(sessionId, state, false);
+    };
+  }
+
+  /** Stops a probe started by `startSessionPing`. Safe to call even if none is running. */
+  stopSessionPing(sessionId: string): void {
+    const state = this.viewerOobProbes.get(sessionId);
+
+    if (state === undefined) {
+      return;
+    }
+
+    this.#TeardownViewerOobProbe(sessionId, state, true);
+  }
+
+  #OnViewerOobSignalingMessage(state: ViewerOobProbeState, message: SignalingMessage): void {
+    switch (message.type) {
+      case 'session-joined':
+        state.peerId = message.peerId ?? null;
+        break;
+      case 'offer':
+        void this.#OnViewerOobOffer(state, message);
+        break;
+      case 'ice-candidate':
+        void this.#OnViewerOobIceCandidate(state, message);
+        break;
+      case 'session-closed':
+      case 'error':
+        state.onPing(null);
+        this.#TeardownViewerOobProbe(state.sessionId, state, false);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Answers the host's offer for this probe -- the host is always the initiator (matching
+   * `#OnPeerJoined`'s convention for a real peer), so the viewer's side of an OOB connection is
+   * always the answerer, receiving the one `'oob'` channel via `ondatachannel` rather than
+   * creating it.
+   */
+  async #OnViewerOobOffer(state: ViewerOobProbeState, message: SignalingMessage): Promise<void> {
+    if (message.fromPeerId === undefined || message.offer === undefined || message.offer === null || state.peerConnection !== null) {
+      return;
+    }
+
+    const peerConnection = new RTCPeerConnection({ iceServers: this.iceServers });
+    state.peerConnection = peerConnection;
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        state.ws.send(JSON.stringify({
+          type: 'ice-candidate',
+          targetPeerId: message.fromPeerId,
+          candidate: event.candidate,
+        }));
+      }
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+      if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'closed') {
+        state.onPing(null);
+        this.#TeardownViewerOobProbe(state.sessionId, state, false);
+      }
+    };
+
+    // The host created the one 'oob' channel it needs; any other channel is refused, same as the
+    // host-side rule in #CreateOobPeerConnection.
+    peerConnection.ondatachannel = (event) => {
+      const channel = event.channel;
+
+      if (channel.label !== 'oob' || state.channel !== null) {
+        channel.close();
+        return;
+      }
+
+      state.channel = channel;
+      this.#SetupViewerOobChannel(state, channel);
+    };
+
+    try {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(message.offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      state.ws.send(JSON.stringify({
+        type: 'answer',
+        targetPeerId: message.fromPeerId,
+        answer: peerConnection.localDescription,
+      }));
+    } catch (error) {
+      Con.PrintError(`WebRTCDriver: Error answering out-of-band offer for ${state.sessionId}: ${getErrorMessage(error as Throwable)}\n`);
+      state.onPing(null);
+      this.#TeardownViewerOobProbe(state.sessionId, state, false);
+    }
+  }
+
+  async #OnViewerOobIceCandidate(state: ViewerOobProbeState, message: SignalingMessage): Promise<void> {
+    if (state.peerConnection === null || !message.candidate) {
+      return;
+    }
+
+    try {
+      await state.peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+    } catch (error) {
+      Con.DPrint(`WebRTCDriver: Error adding out-of-band ICE candidate for ${state.sessionId}: ${getErrorMessage(error as Throwable)}\n`);
+    }
+  }
+
+  #SetupViewerOobChannel(state: ViewerOobProbeState, channel: RTCDataChannel): void {
+    channel.binaryType = 'arraybuffer';
+
+    channel.onopen = () => {
+      this.#StartViewerOobPingLoop(state, channel);
+    };
+
+    channel.onclose = () => {
+      state.onPing(null);
+      this.#TeardownViewerOobProbe(state.sessionId, state, false);
+    };
+
+    channel.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+      this.#HandleViewerOobPong(state, event.data);
+    };
+  }
+
+  #StartViewerOobPingLoop(state: ViewerOobProbeState, channel: RTCDataChannel): void {
+    const sendPing = (): void => {
+      if (channel.readyState !== 'open') {
+        return;
+      }
+
+      state.sequence = (state.sequence + 1) >>> 0;
+      state.pendingSequence = state.sequence;
+
+      const frame = new ArrayBuffer(WebRTCDriver.OOB_FRAME_LENGTH);
+      const view = new DataView(frame);
+      view.setUint8(0, WebRTCDriver.OOB_PING);
+      view.setUint32(1, state.sequence, true);
+      view.setFloat64(5, Date.now(), true);
+      channel.send(frame);
+    };
+
+    sendPing();
+    state.pingTimer = setInterval(sendPing, WebRTCDriver.PING_INTERVAL_MS);
+  }
+
+  /**
+   * Handles a pong on the viewer's side: validates the frame the same way the host does, ignores
+   * a stale/duplicate pong that doesn't match the currently in-flight ping's sequence (the 'oob'
+   * channel is unordered, so a late reply for an old ping can arrive after a newer one was already
+   * sent), then folds the fresh RTT into an exponential moving average before reporting it.
+   */
+  #HandleViewerOobPong(state: ViewerOobProbeState, data: ArrayBuffer): void {
+    if (data.byteLength !== WebRTCDriver.OOB_FRAME_LENGTH) {
+      return;
+    }
+
+    const view = new DataView(data);
+
+    if (view.getUint8(0) !== WebRTCDriver.OOB_PONG) {
+      return;
+    }
+
+    if (view.getUint32(1, true) !== state.pendingSequence) {
+      return;
+    }
+
+    state.pendingSequence = null;
+
+    const rtt = Math.max(0, Date.now() - view.getFloat64(5, true));
+    state.smoothedRtt = state.smoothedRtt === null
+      ? rtt
+      : state.smoothedRtt + (rtt - state.smoothedRtt) * WebRTCDriver.PING_EMA_ALPHA;
+
+    state.onPing(Math.round(state.smoothedRtt));
+  }
+
+  #TeardownViewerOobProbe(sessionId: string, state: ViewerOobProbeState, sendLeave: boolean): void {
+    if (this.viewerOobProbes.get(sessionId) !== state) {
+      return;
+    }
+
+    this.viewerOobProbes.delete(sessionId);
+
+    if (state.pingTimer !== null) {
+      clearInterval(state.pingTimer);
+    }
+
+    state.channel?.close();
+    state.peerConnection?.close();
+
+    if (sendLeave && state.ws.readyState === 1) {
+      state.ws.send(JSON.stringify({ type: 'leave-session' }));
+    }
+
+    state.ws.onopen = null;
+    state.ws.onmessage = null;
+    state.ws.onerror = null;
+    state.ws.onclose = null;
+    state.ws.close();
   }
 
   #ConnectSignaling(): boolean {
@@ -1381,26 +1691,29 @@ export class WebRTCDriver extends BaseDriver {
   }
 
   #OnPeerJoined(message: SignalingMessage): void {
-    if (message.peerId === undefined) {
+    if (message.peerId === undefined || !this.isHost) {
+      return;
+    }
+
+    if (message.isOob) {
+      this.#OnOobPeerJoined(message.peerId);
       return;
     }
 
     Con.DPrint(`WebRTCDriver: Peer ${message.peerId} joined\n`);
 
-    if (this.isHost) {
-      const peerSock = NET.NewQSocket(this);
-      peerSock.state = QSocket.STATE_CONNECTING;
-      peerSock.address = `WebRTC Peer ${message.peerId}`;
-      peerSock.transportState = createWebRTCSocketState({
-        sessionId: this.sessionId,
-        isHost: false,
-        peerId: message.peerId,
-      });
+    const peerSock = NET.NewQSocket(this);
+    peerSock.state = QSocket.STATE_CONNECTING;
+    peerSock.address = `WebRTC Peer ${message.peerId}`;
+    peerSock.transportState = createWebRTCSocketState({
+      sessionId: this.sessionId,
+      isHost: false,
+      peerId: message.peerId,
+    });
 
-      this.#CreatePeerConnection(peerSock, message.peerId, true);
-      this.newConnections.push(peerSock);
-      Con.DPrint(`WebRTCDriver: Created socket for peer ${message.peerId}, added to new connections\n`);
-    }
+    this.#CreatePeerConnection(peerSock, message.peerId, true);
+    this.newConnections.push(peerSock);
+    Con.DPrint(`WebRTCDriver: Created socket for peer ${message.peerId}, added to new connections\n`);
   }
 
   #OnPeerLeft(message: SignalingMessage): void {
@@ -1451,18 +1764,9 @@ export class WebRTCDriver extends BaseDriver {
 
     Con.DPrint(`WebRTCDriver: Received answer from ${message.fromPeerId}\n`);
 
-    const sock = this.isHost ? this.#FindSocketByPeerId(message.fromPeerId) : this.#FindSocketBySession(this.sessionId);
+    const peerConnection = this.#FindActivePeerConnection(message.fromPeerId);
 
-    const socketData = sock === null ? null : getWebRTCSocketState(sock);
-
-    if (sock === null || socketData === null) {
-      Con.PrintWarning(`WebRTCDriver._OnAnswer: No socket found for ${message.fromPeerId}\n`);
-      return;
-    }
-
-    const peerConnection = socketData.peerConnections.get(message.fromPeerId);
-
-    if (peerConnection === undefined) {
+    if (peerConnection === null) {
       Con.PrintWarning(`WebRTCDriver: No peer connection found for ${message.fromPeerId}\n`);
       return;
     }
@@ -1480,17 +1784,9 @@ export class WebRTCDriver extends BaseDriver {
       return;
     }
 
-    const sock = this.isHost ? this.#FindSocketByPeerId(message.fromPeerId) : this.#FindSocketBySession(this.sessionId);
+    const peerConnection = this.#FindActivePeerConnection(message.fromPeerId);
 
-    const socketData = sock === null ? null : getWebRTCSocketState(sock);
-
-    if (sock === null || socketData === null) {
-      return;
-    }
-
-    const peerConnection = socketData.peerConnections.get(message.fromPeerId);
-
-    if (peerConnection === undefined) {
+    if (peerConnection === null) {
       return;
     }
 
@@ -1501,6 +1797,26 @@ export class WebRTCDriver extends BaseDriver {
     } catch (error) {
       Con.DPrint(`WebRTCDriver: Error adding ICE candidate: ${getErrorMessage(error as Throwable)}\n`);
     }
+  }
+
+  /**
+   * Resolves the live `RTCPeerConnection` for a peerId, whether it belongs to a real,
+   * `QSocket`-linked connection or an out-of-band one (`plans/session-ping-latency.md`) -- shared
+   * by `#OnAnswer`/`#OnIceCandidate` since both are pure WebRTC signaling plumbing with no game-state
+   * involvement either way.
+   * @returns The matching peer connection, or `null` if none is tracked for this peerId.
+   */
+  #FindActivePeerConnection(peerId: string): RTCPeerConnection | null {
+    const oobState = this.oobConnections.get(peerId);
+
+    if (oobState !== undefined) {
+      return oobState.peerConnection;
+    }
+
+    const sock = this.isHost ? this.#FindSocketByPeerId(peerId) : this.#FindSocketBySession(this.sessionId);
+    const socketData = sock === null ? null : getWebRTCSocketState(sock);
+
+    return socketData?.peerConnections.get(peerId) ?? null;
   }
 
   #OnSessionClosed(message: SignalingMessage): void {
@@ -1666,6 +1982,11 @@ export class WebRTCDriver extends BaseDriver {
   }
 
   #ClosePeerConnection(peerId: string): void {
+    if (this.oobConnections.has(peerId)) {
+      this.#CloseOobPeerConnection(peerId);
+      return;
+    }
+
     const sock = this.isHost ? this.#FindSocketByPeerId(peerId) : this.#FindSocketBySession(this.sessionId);
 
     const socketData = sock === null ? null : getWebRTCSocketState(sock);
@@ -1686,6 +2007,191 @@ export class WebRTCDriver extends BaseDriver {
 
     socketData.dataChannels.delete(peerId);
     sock.state = QSocket.STATE_DISCONNECTED;
+  }
+
+  /**
+   * Host-side entry point for a `peer-joined` notification flagged `isOob` -- an out-of-band
+   * (connectionless) peer that must never become a `QSocket`/`ServerClient`. See
+   * `plans/session-ping-latency.md`.
+   */
+  #OnOobPeerJoined(peerId: string): void {
+    if (this.oobConnections.size >= WebRTCDriver.MAX_OOB_CONNECTIONS_PER_HOST) {
+      Con.DPrint(`WebRTCDriver: Refusing out-of-band peer ${peerId}, host cap reached\n`);
+      return;
+    }
+
+    Con.DPrint(`WebRTCDriver: Out-of-band peer ${peerId} joined\n`);
+    this.#CreateOobPeerConnection(peerId);
+  }
+
+  /**
+   * Creates the host's out-of-band peer connection. The host is always the initiator here (same
+   * convention as a real peer join, see `#OnPeerJoined`), creating a single `'oob'` data channel
+   * and sending the offer -- there is deliberately no `ondatachannel`/answerer branch, since an OOB
+   * connection is host-initiated by construction.
+   */
+  #CreateOobPeerConnection(peerId: string): void {
+    if (this.oobConnections.has(peerId)) {
+      return;
+    }
+
+    Con.DPrint(`WebRTCDriver: Creating out-of-band peer connection to ${peerId}\n`);
+
+    const peerConnection = new RTCPeerConnection({ iceServers: this.iceServers });
+    const state: OobConnectionState = {
+      peerConnection,
+      channel: null,
+      lastPingAt: 0,
+      idleTimer: null,
+    };
+    this.oobConnections.set(peerId, state);
+    this.#ResetOobIdleTimer(peerId, state);
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.#SendSignaling({
+          type: 'ice-candidate',
+          targetPeerId: peerId,
+          candidate: event.candidate,
+        });
+      }
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+      if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'closed') {
+        this.#CloseOobPeerConnection(peerId);
+      }
+    };
+
+    // The host already created the one 'oob' channel it needs (it's always the initiator here);
+    // any additional or differently-labeled channel the remote peer opens is refused outright,
+    // never wired to any handler.
+    peerConnection.ondatachannel = (event) => {
+      event.channel.close();
+    };
+
+    const channel = peerConnection.createDataChannel('oob', { ordered: false, maxRetransmits: 0 });
+    state.channel = channel;
+    this.#SetupOobChannelHandlers(peerId, state, channel);
+
+    void peerConnection.createOffer()
+      .then((offer) => peerConnection.setLocalDescription(offer))
+      .then(() => {
+        this.#SendSignaling({
+          type: 'offer',
+          targetPeerId: peerId,
+          offer: peerConnection.localDescription,
+        });
+      })
+      .catch((error) => {
+        Con.PrintError(`WebRTCDriver: Error creating out-of-band offer: ${getErrorMessage(error as Throwable)}\n`);
+        this.#CloseOobPeerConnection(peerId);
+      });
+  }
+
+  /**
+   * Wires the `'oob'` channel to the ping/pong handler. Deliberately separate from
+   * `#SetupDataChannelHandlers` -- an OOB channel never touches `receiveQueue`/`QSocket` state,
+   * only `#HandleOobMessage`'s own narrow, read-only dispatch.
+   */
+  #SetupOobChannelHandlers(peerId: string, state: OobConnectionState, channel: RTCDataChannel): void {
+    channel.binaryType = 'arraybuffer';
+
+    channel.onopen = () => {
+      Con.DPrint(`WebRTCDriver: Out-of-band channel opened with ${peerId}\n`);
+    };
+
+    channel.onclose = () => {
+      this.#CloseOobPeerConnection(peerId);
+    };
+
+    channel.onerror = (error) => {
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
+      Con.DPrint(`WebRTCDriver: Out-of-band channel error with ${peerId}: ${error}\n`);
+    };
+
+    channel.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+      this.#HandleOobMessage(peerId, state, event.data);
+    };
+  }
+
+  /**
+   * The entire out-of-band query dispatch for this pass: validates the fixed 13-byte frame shape
+   * before reading any content, rate-limits locally (never trusting the peer's own pacing), and
+   * answers `PING` with `PONG`. Any other type, or a malformed frame, is dropped silently -- never
+   * an error, never a larger response. This handler has no reference to `SV`/`Server.ts`/entity
+   * state; see `plans/session-ping-latency.md` Security §1 for why future query types must keep
+   * that property one narrow handler at a time rather than widening this one.
+   */
+  #HandleOobMessage(peerId: string, state: OobConnectionState, data: ArrayBuffer): void {
+    if (data.byteLength !== WebRTCDriver.OOB_FRAME_LENGTH) {
+      return;
+    }
+
+    const view = new DataView(data);
+
+    if (view.getUint8(0) !== WebRTCDriver.OOB_PING) {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (now - state.lastPingAt < WebRTCDriver.MIN_PING_INTERVAL_MS) {
+      return;
+    }
+
+    state.lastPingAt = now;
+    this.#ResetOobIdleTimer(peerId, state);
+
+    const sequence = view.getUint32(1, true);
+    const timestamp = view.getFloat64(5, true);
+
+    const pong = new ArrayBuffer(WebRTCDriver.OOB_FRAME_LENGTH);
+    const pongView = new DataView(pong);
+    pongView.setUint8(0, WebRTCDriver.OOB_PONG);
+    pongView.setUint32(1, sequence, true);
+    pongView.setFloat64(5, timestamp, true);
+
+    if (state.channel !== null && state.channel.readyState === 'open') {
+      state.channel.send(pong);
+    }
+  }
+
+  #ResetOobIdleTimer(peerId: string, state: OobConnectionState): void {
+    if (state.idleTimer !== null) {
+      clearTimeout(state.idleTimer);
+    }
+
+    state.idleTimer = setTimeout(() => {
+      Con.DPrint(`WebRTCDriver: Closing idle out-of-band connection to ${peerId}\n`);
+      this.#CloseOobPeerConnection(peerId);
+    }, WebRTCDriver.OOB_IDLE_TIMEOUT_MS);
+  }
+
+  #CloseOobPeerConnection(peerId: string): void {
+    const state = this.oobConnections.get(peerId);
+
+    if (state === undefined) {
+      return;
+    }
+
+    // Deleted before closing the channel/connection so a synchronous `onclose`/`onconnectionstatechange`
+    // callback re-entering this method (as it does for a real close) sees no state and no-ops,
+    // instead of double-closing or clearing an already-cleared timer.
+    this.oobConnections.delete(peerId);
+
+    if (state.idleTimer !== null) {
+      clearTimeout(state.idleTimer);
+    }
+
+    state.channel?.close();
+    state.peerConnection.close();
+  }
+
+  #CloseAllOobConnections(): void {
+    for (const peerId of this.oobConnections.keys()) {
+      this.#CloseOobPeerConnection(peerId);
+    }
   }
 
   #FindSocketBySession(sessionId: string | null): QSocket | null {
@@ -1933,6 +2439,7 @@ export class WebRTCDriver extends BaseDriver {
     if (socketData.isHost) {
       this.#StopPingInterval();
       this.#StopServerInfoSubscriptions();
+      this.#CloseAllOobConnections();
     }
 
     if (isSessionSocket && this.sessionId !== null) {

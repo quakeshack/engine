@@ -23,8 +23,11 @@ async function withMockMultiplayerApi(jsonBody, callback) {
   try {
     await callback();
   } finally {
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     registry.COM = previousCOM;
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     registry.urls = previousUrls;
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.fetch = previousFetch;
     eventBus.publish('registry.frozen');
   }
@@ -41,7 +44,7 @@ void describe('ClientEngineAPI.Multiplayer.ListSessions', () => {
       const sessions = await ClientEngineAPI.Multiplayer.ListSessions();
 
       assert.deepEqual(sessions, [
-        { sessionId: 'a', hostname: 'UNNAMED', map: 'dm3', currentPlayers: 1, maxPlayers: 4, colo: null, country: null, settings: {} },
+        { sessionId: 'a', hostname: 'UNNAMED', map: 'dm3', currentPlayers: 1, maxPlayers: 4, colo: null, country: null, settings: {}, ping: null, pingUnreachable: false },
       ]);
     });
   });

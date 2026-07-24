@@ -28,6 +28,7 @@ function withMockPageRegistry(callback) {
   const printed = [];
   const printedWhite = [];
   const slidersDrawn = [];
+  const renderingPages = [];
 
   registry.Host = { realtime: 0 };
   registry.Key = Key;
@@ -42,13 +43,14 @@ function withMockPageRegistry(callback) {
     DrawPic(_x, _y, pic) { drawnPics.push(pic); },
     DrawCharacter() {},
     DrawSlider(x) { slidersDrawn.push(x); },
+    withRenderingPage(page, draw) { renderingPages.push(page); draw(); },
   };
   registry.S = { LocalSound() {} };
   eventBus.publish('registry.frozen');
 
   try {
     callback({
-      drawnPics, printed, printedWhite, slidersDrawn,
+      drawnPics, printed, printedWhite, slidersDrawn, renderingPages,
     });
   } finally {
     registry.Host = previousHost;
@@ -186,6 +188,28 @@ void describe('DialogPage', () => {
       dialog.draw();
 
       assert.deepEqual(printed, ['dialog']);
+    });
+  });
+
+  // Regression test: a mod's backdrop page can declare its own viewport (e.g. hellwave's
+  // screen-filling main menu) that differs from the dialog's own (e.g. the classic 320x200
+  // quit-confirmation box). M resolves its drawing primitives against whichever page is
+  // *currently rendering*, which must be the backdrop while the backdrop draws -- not the
+  // dialog, even though the dialog stays on top of menuStack the whole time.
+  void test('renders the backdrop against its own viewport, not the dialog\'s', () => {
+    withMockPageRegistry(({ renderingPages }) => {
+      const backdropViewport = { width: 640 };
+      const dialogViewport = { width: 320 };
+      const backdrop = new MenuPage({ viewport: backdropViewport, layout: { draw() {} } });
+      const dialog = new DialogPage({
+        viewport: dialogViewport,
+        getBackdrop: () => backdrop,
+        layout: { draw() {} },
+      });
+
+      dialog.draw();
+
+      assert.deepEqual(renderingPages, [backdrop, dialog]);
     });
   });
 });
