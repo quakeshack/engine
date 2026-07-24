@@ -123,7 +123,7 @@ void describe('NetworkDrivers', () => {
  * Temporarily installs a `Con` stub plus `registry.urls`/`registry.isDedicatedServer` and a
  * `location` global (bare, not `window.location` -- matching how `NetworkDrivers.ts` reads it),
  * restoring everything afterward.
- * @param {{ location: { protocol: string, hostname: string }, urls?: { signalingURL?: string }, isDedicatedServer?: boolean }} overrides scenario overrides
+ * @param {{ location: { protocol: string, hostname: string }, urls?: { signalingURL?: string }, isDedicatedServer?: boolean, window?: object }} overrides scenario overrides
  * @param {() => void} callback test callback
  */
 function withSignalingScenario(overrides, callback) {
@@ -131,11 +131,13 @@ function withSignalingScenario(overrides, callback) {
   const previousUrls = registry.urls;
   const previousIsDedicatedServer = registry.isDedicatedServer;
   const previousLocation = globalThis.location;
+  const previousWindow = globalThis.window;
 
   registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
   registry.urls = overrides.urls;
   registry.isDedicatedServer = overrides.isDedicatedServer ?? false;
   globalThis.location = overrides.location;
+  globalThis.window = overrides.window ?? { addEventListener() {}, removeEventListener() {} };
   eventBus.publish('registry.frozen');
 
   try {
@@ -145,8 +147,37 @@ function withSignalingScenario(overrides, callback) {
     registry.urls = previousUrls;
     registry.isDedicatedServer = previousIsDedicatedServer;
     globalThis.location = previousLocation;
+    globalThis.window = previousWindow;
     eventBus.publish('registry.frozen');
   }
+}
+
+/**
+ * Minimal `window` stub that records the single listener registered per event type (browser
+ * `addEventListener` semantics for the same handler reference are irrelevant here -- the driver
+ * only ever registers one 'pagehide' handler). Lets a test dispatch the event directly and
+ * confirm `Shutdown()` removes the exact same reference `Init()` installed.
+ * @returns Stub with `addEventListener`/`removeEventListener` plus test-only `dispatch`/`has`.
+ */
+function createWindowStub() {
+  const listeners = new Map();
+
+  return {
+    addEventListener(type, handler) {
+      listeners.set(type, handler);
+    },
+    removeEventListener(type, handler) {
+      if (listeners.get(type) === handler) {
+        listeners.delete(type);
+      }
+    },
+    dispatch(type, event) {
+      listeners.get(type)?.(event);
+    },
+    has(type) {
+      return listeners.has(type);
+    },
+  };
 }
 
 void describe('WebRTCDriver.Init', () => {
@@ -197,6 +228,77 @@ void describe('WebRTCDriver.Init', () => {
       assert.equal(driver.Init(), false);
       assert.equal(driver.initialized, false);
       assert.equal(driver.signalingUrl, null);
+    });
+  });
+});
+
+// Coverage for tearing down a hosted session when the tab actually closes, instead of leaving
+// the master server to discover it via the stale-session sweep (see the master server's
+// STALE_SESSION_THRESHOLD_MS / MAINTENANCE_INTERVAL_MS).
+void describe('WebRTCDriver pagehide handling', () => {
+  void test('stops hosting when the tab closes while a session is active', () => {
+    const windowStub = createWindowStub();
+
+    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, () => {
+      const driver = new WebRTCDriver();
+      driver.Init();
+      driver.isHost = true;
+
+      let listenCalledWith;
+      driver.Listen = (listening) => { listenCalledWith = listening; };
+
+      windowStub.dispatch('pagehide', { persisted: false });
+
+      assert.equal(listenCalledWith, false);
+    });
+  });
+
+  void test('does nothing when the tab was never hosting', () => {
+    const windowStub = createWindowStub();
+
+    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, () => {
+      const driver = new WebRTCDriver();
+      driver.Init();
+      driver.isHost = false;
+
+      let listenCalled = false;
+      driver.Listen = () => { listenCalled = true; };
+
+      windowStub.dispatch('pagehide', { persisted: false });
+
+      assert.equal(listenCalled, false);
+    });
+  });
+
+  void test('does not tear down the session when the page is entering the bfcache', () => {
+    const windowStub = createWindowStub();
+
+    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, () => {
+      const driver = new WebRTCDriver();
+      driver.Init();
+      driver.isHost = true;
+
+      let listenCalled = false;
+      driver.Listen = () => { listenCalled = true; };
+
+      windowStub.dispatch('pagehide', { persisted: true });
+
+      assert.equal(listenCalled, false);
+    });
+  });
+
+  void test('Shutdown removes the pagehide listener installed by Init', () => {
+    const windowStub = createWindowStub();
+
+    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, () => {
+      const driver = new WebRTCDriver();
+      driver.Init();
+
+      assert.equal(windowStub.has('pagehide'), true);
+
+      driver.Shutdown();
+
+      assert.equal(windowStub.has('pagehide'), false);
     });
   });
 });
@@ -403,6 +505,7 @@ async function withOobHostScenario(callback) {
   const previousUrls = registry.urls;
   const previousIsDedicatedServer = registry.isDedicatedServer;
   const previousLocation = globalThis.location;
+  const previousWindow = globalThis.window;
   const previousSockets = NET.activeSockets.slice();
   const previousTime = NET.time;
   const previousMessage = NET.message;
@@ -429,6 +532,7 @@ async function withOobHostScenario(callback) {
   registry.urls = undefined;
   registry.isDedicatedServer = false;
   globalThis.location = { protocol: 'http:', hostname: 'localhost' };
+  globalThis.window = { addEventListener() {}, removeEventListener() {} };
   eventBus.publish('registry.frozen');
 
   NET.activeSockets = [];
@@ -485,6 +589,8 @@ async function withOobHostScenario(callback) {
     registry.isDedicatedServer = previousIsDedicatedServer;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.location = previousLocation;
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
+    globalThis.window = previousWindow;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     NET.activeSockets = previousSockets;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
@@ -651,6 +757,7 @@ async function withOobViewerScenario(callback) {
   const previousUrls = registry.urls;
   const previousIsDedicatedServer = registry.isDedicatedServer;
   const previousLocation = globalThis.location;
+  const previousWindow = globalThis.window;
 
   const createdWebSockets = [];
   const createdPeerConnections = [];
@@ -670,6 +777,7 @@ async function withOobViewerScenario(callback) {
   registry.urls = undefined;
   registry.isDedicatedServer = false;
   globalThis.location = { protocol: 'http:', hostname: 'localhost' };
+  globalThis.window = { addEventListener() {}, removeEventListener() {} };
   eventBus.publish('registry.frozen');
 
   let driver;
@@ -702,6 +810,8 @@ async function withOobViewerScenario(callback) {
     registry.isDedicatedServer = previousIsDedicatedServer;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.location = previousLocation;
+    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
+    globalThis.window = previousWindow;
     eventBus.publish('registry.frozen');
   }
 }

@@ -991,6 +991,25 @@ export class WebRTCDriver extends BaseDriver {
   /** Viewer-side ping probes, keyed by the probed sessionId. See `plans/session-ping-latency.md`. */
   viewerOobProbes = new Map<string, ViewerOobProbeState>();
 
+  /**
+   * Tears down an in-progress hosted session when the tab actually closes, instead of leaving
+   * the master server to discover it via the stale-session sweep. Declared as a bound field (not
+   * a method) so the same reference can be passed to both `addEventListener` and
+   * `removeEventListener`.
+   */
+  #handlePageHide = (event: PageTransitionEvent): void => {
+    // `persisted` means the page is entering the bfcache, not actually closing. An open signaling
+    // WebSocket normally disqualifies a page from bfcache eligibility anyway, but bail out
+    // defensively rather than tearing down a session that may resume.
+    if (event.persisted) {
+      return;
+    }
+
+    if (this.isHost) {
+      this.Listen(false);
+    }
+  };
+
   constructor() {
     super('webrtc');
   }
@@ -1013,7 +1032,15 @@ export class WebRTCDriver extends BaseDriver {
 
     this.initialized = true;
     Con.DPrint(`WebRTCDriver: Initialized with signaling at ${this.signalingUrl}\n`);
+
+    window.addEventListener('pagehide', this.#handlePageHide);
+
     return true;
+  }
+
+  override Shutdown(): void {
+    window.removeEventListener('pagehide', this.#handlePageHide);
+    super.Shutdown();
   }
 
   canHandle(host: string): boolean {
