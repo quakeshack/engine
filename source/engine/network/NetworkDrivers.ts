@@ -1039,7 +1039,10 @@ export class WebRTCDriver extends BaseDriver {
   }
 
   override Shutdown(): void {
-    window.removeEventListener('pagehide', this.#handlePageHide);
+    if (!registry.isDedicatedServer) {
+      window.removeEventListener('pagehide', this.#handlePageHide);
+    }
+
     super.Shutdown();
   }
 

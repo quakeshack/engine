@@ -230,6 +230,41 @@ void describe('WebRTCDriver.Init', () => {
       assert.equal(driver.signalingUrl, null);
     });
   });
+
+  // Regression test: `DriverRegistry.shutdown()` calls `Shutdown()` on every registered driver,
+  // including ones whose `Init()` bailed out early (see `getInitializedDrivers()` vs.
+  // `shutdown()` in DriverRegistry.ts). On a dedicated server `Init()` never installs the
+  // `pagehide` listener, so `Shutdown()` must not assume `window` exists either -- it doesn't in
+  // Node.js, and this used to throw `ReferenceError: window is not defined` out of `quit`
+  // (`nav_build_process 1` navmesh baking), which was misreported as a nav-save failure and left
+  // the process hanging past its intended `exit(0)`.
+  void test('Shutdown does not touch `window` on a dedicated server, where Init never ran', () => {
+    const previousIsDedicatedServer = registry.isDedicatedServer;
+    const previousLocation = globalThis.location;
+    const hadWindow = Object.hasOwn(globalThis, 'window');
+    const previousWindow = globalThis.window;
+
+    registry.isDedicatedServer = true;
+    globalThis.location = { protocol: 'http:', hostname: 'localhost' };
+    delete globalThis.window; // dedicated server (Node.js) never has a `window` global
+    eventBus.publish('registry.frozen');
+
+    try {
+      const driver = new WebRTCDriver();
+
+      assert.equal(driver.Init(), false);
+      assert.doesNotThrow(() => { driver.Shutdown(); });
+    } finally {
+      registry.isDedicatedServer = previousIsDedicatedServer;
+      globalThis.location = previousLocation;
+      if (hadWindow) {
+        globalThis.window = previousWindow;
+      } else {
+        delete globalThis.window;
+      }
+      eventBus.publish('registry.frozen');
+    }
+  });
 });
 
 // Coverage for tearing down a hosted session when the tab actually closes, instead of leaving
