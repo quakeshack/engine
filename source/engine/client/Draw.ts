@@ -258,14 +258,18 @@ export default class Draw {
   }
 
   /**
-   * Draws a single character at the specified position.
+   * Draws a single character at the specified position. `scale` is snapped to the nearest whole
+   * pixel multiple (see `GL.SnapPixelScale`) since the conchars atlas is nearest-filtered pixel
+   * art -- drawing it at a fractional scale shows up as uneven/moiré banding across the glyph's
+   * shadowed edges instead of a clean scaled copy.
    * @param x The x position.
    * @param y The y position.
    * @param num The character code.
    * @param scale The scale factor.
    */
   static Char(x: number, y: number, num: number, scale = 1.0): void {
-    GL.StreamDrawTexturedQuad(Math.floor(x), Math.floor(y), scale * 8, scale * 8,
+    const pixelScale = GL.SnapPixelScale(scale);
+    GL.StreamDrawTexturedQuad(Math.floor(x), Math.floor(y), pixelScale * 8, pixelScale * 8,
       (num & 15) * 0.0625, (num >> 4) * 0.0625,
       ((num & 15) + 1) * 0.0625, ((num >> 4) + 1) * 0.0625);
   }

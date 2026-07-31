@@ -6,19 +6,23 @@ import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
 
 /**
- * Temporarily installs a minimal `M` registry stub (MenuStack only needs `M.entersound`).
+ * Temporarily installs minimal `M`/`IN` registry stubs (MenuStack only needs `M.entersound`
+ * and `IN.ReleasePointerLock`, called on every push).
  * @param {() => void} callback test callback
  */
 function withMockMenuRegistry(callback) {
   const previousM = registry.M;
+  const previousIN = registry.IN;
 
   registry.M = { entersound: false };
+  registry.IN = { ReleasePointerLock() {} };
   eventBus.publish('registry.frozen');
 
   try {
     callback();
   } finally {
     registry.M = previousM;
+    registry.IN = previousIN;
     eventBus.publish('registry.frozen');
   }
 }
@@ -250,6 +254,94 @@ void describe('MenuStack', () => {
 
       assert.equal(stack.current(), page);
       assert.equal(page.enterCount, 1);
+    });
+  });
+
+  void describe('isShowing', () => {
+    void test('is true only for the currently showing named page', () => {
+      withMockMenuRegistry(() => {
+        const stack = new MenuStack();
+        const main = createTrackedPage('main');
+        const options = createTrackedPage('options');
+        stack.register('main', main);
+        stack.register('options', options);
+
+        stack.push('main');
+
+        assert.equal(stack.isShowing('main'), true);
+        assert.equal(stack.isShowing('options'), false);
+      });
+    });
+
+    void test('is false for an unregistered name', () => {
+      withMockMenuRegistry(() => {
+        const stack = new MenuStack();
+
+        assert.equal(stack.isShowing('does-not-exist'), false);
+      });
+    });
+  });
+
+  void describe('root page', () => {
+    void test('pushRoot pushes whatever is currently registered under the root name', () => {
+      withMockMenuRegistry(() => {
+        const stack = new MenuStack();
+        const main = createTrackedPage('main');
+        stack.register('main', main);
+        stack.setRootPage('main');
+
+        stack.pushRoot();
+
+        assert.equal(stack.current(), main);
+        assert.equal(stack.isShowingRoot(), true);
+      });
+    });
+
+    void test('isShowingRoot is false when nothing is showing, or a non-root page is current', () => {
+      withMockMenuRegistry(() => {
+        const stack = new MenuStack();
+        const main = createTrackedPage('main');
+        const options = createTrackedPage('options');
+        stack.register('main', main);
+        stack.register('options', options);
+        stack.setRootPage('main');
+
+        assert.equal(stack.isShowingRoot(), false);
+
+        stack.push('options');
+        assert.equal(stack.isShowingRoot(), false);
+      });
+    });
+
+    void test('isShowingRoot is false, and pushRoot leaves the stack untouched, when no root is set', () => {
+      withMockMenuRegistry(() => {
+        const stack = new MenuStack();
+        const main = createTrackedPage('main');
+        stack.register('main', main);
+
+        assert.equal(stack.isShowingRoot(), false);
+
+        stack.pushRoot();
+
+        assert.equal(stack.isEmpty(), true);
+      });
+    });
+
+    void test('re-registering the root name to a different page keeps the root correct without calling setRootPage again', () => {
+      withMockMenuRegistry(() => {
+        const stack = new MenuStack();
+        const originalMain = createTrackedPage('original main');
+        stack.register('main', originalMain);
+        stack.setRootPage('main');
+
+        const replacementMain = createTrackedPage('replacement main');
+        stack.register('main', replacementMain);
+
+        stack.pushRoot();
+
+        assert.equal(stack.current(), replacementMain);
+        assert.equal(stack.isShowingRoot(), true);
+      });
     });
   });
 });

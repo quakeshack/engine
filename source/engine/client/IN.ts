@@ -1,7 +1,9 @@
 import { K } from '../../shared/Keys.ts';
 import Cvar from '../common/Cvar.ts';
+import { clientConnectionState } from '../common/Def.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import { kbutton, kbuttons } from './ClientInput.ts';
+import { KeyDestination } from './Key.ts';
 import VID from './VID.ts';
 
 /** Browser-derived signals used to decide whether mobile play needs external input devices. */
@@ -198,6 +200,15 @@ export default class IN {
   static mobileInputSupport: MobileInputSupportState | null = null;
   static #mobileInputCapabilitySubscriptions: Array<() => void> = [];
 
+  /**
+   * True while a `document.exitPointerLock()` call below is in flight -- the resulting
+   * `pointerlockchange` event fires asynchronously, after this has already returned, so
+   * `onpointerlockchange` needs a way to tell "we asked for this" apart from an unrelated loss of
+   * lock (physical Escape, tab switch) it needs to compensate for. See its comment for why that
+   * distinction matters.
+   */
+  static #voluntaryUnlock = false;
+
   static readonly #mobileUnsupportedNoticeId = 'mobile-external-input';
   static readonly #mobileUnsupportedNotice = [
     'Playing on a mobile phone without a keyboard',
@@ -309,8 +320,23 @@ export default class IN {
   }
 
   static onclick(this: void): void {
-    if (document.pointerLockElement !== VID.mainwindow) {
+    // Only capture the pointer for mouselook during actual, connected gameplay — clicking the
+    // canvas to interact with the menu, message input, or the drop-down console (which can be
+    // open on top of gameplay) must not lock/hide the cursor. `Key.destination` alone isn't
+    // enough here: it also reads `game` while disconnected with no menu open (e.g. right after
+    // closing it), which shouldn't capture the mouse either.
+    if (Key.destination === KeyDestination.game && !Con.isOpen
+      && CL.cls.state === clientConnectionState.connected
+      && document.pointerLockElement !== VID.mainwindow) {
       void VID.mainwindow.requestPointerLock();
+    }
+  }
+
+  /** Releases the pointer lock, if held, so mouselook doesn't fight for input focus with a UI overlay. */
+  static ReleasePointerLock(): void {
+    if (document.pointerLockElement === VID.mainwindow) {
+      IN.#voluntaryUnlock = true;
+      document.exitPointerLock();
     }
   }
 
@@ -326,6 +352,15 @@ export default class IN {
 
   static onpointerlockchange(this: void): void {
     if (document.pointerLockElement === VID.mainwindow) {
+      return;
+    }
+
+    // Losing pointer lock because we ourselves called ReleasePointerLock() (e.g. opening a menu)
+    // is not a physical Escape press to compensate for -- synthesizing one here would immediately
+    // close whatever we just opened, since Key.destination has already moved on to it by the time
+    // this (necessarily async) event fires.
+    if (IN.#voluntaryUnlock) {
+      IN.#voluntaryUnlock = false;
       return;
     }
 

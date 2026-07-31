@@ -1,31 +1,52 @@
 import type { BaseClientEdictHandler } from './ClientEdict.ts';
-import type { ClientEngineAPI as ClientEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.ts';
+import type { ClientEngineAPI as ClientEngineApiValue, CommonEngineAPI as CommonEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.ts';
 import type { ClientEdict as ClientEdictValue } from '../engine/client/ClientEntities.ts';
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
+import type { BitmapFont as BitmapFontValue } from '../engine/client/BitmapFont.ts';
 import type { GLTexture as GLTextureValue } from '../engine/client/GL.ts';
-import type { MenuItem as MenuItemValue } from '../engine/client/menu/MenuItem.ts';
-import type { MenuPage as MenuPageValue } from '../engine/client/menu/MenuPage.ts';
+import type { Action as ActionValue, ColorPicker as ColorPickerValue, KeyBindItem as KeyBindItemValue, MenuItem as MenuItemValue, SaveSlotItem as SaveSlotItemValue, Textbox as TextboxValue } from '../engine/client/menu/MenuItem.ts';
+import type { DialogPage as DialogPageValue, ListPage as ListPageValue, MenuPage as MenuPageValue } from '../engine/client/menu/MenuPage.ts';
+import type { BackButtonAnchor as BackButtonAnchorValue } from '../engine/client/menu/MenuPage.ts';
+import type { MenuViewport as MenuViewportValue, MenuViewportCorner as MenuViewportCornerValue } from '../engine/client/menu/MenuViewport.ts';
+import type { MenuPic as MenuPicValue } from '../engine/client/Menu.ts';
 import type { SFX as SFXValue } from '../engine/client/Sound.ts';
 import type CvarValue from '../engine/common/Cvar.ts';
 import type Vector from './Vector.ts';
 import type { PmoveConfiguration as PmoveConfigurationValue, PmoveQuake2Configuration as PmoveQuake2ConfigurationValue } from '../shared/Pmove.ts';
 import type { BaseModel } from '../engine/common/model/BaseModel.ts';
 import type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
+import type { DiscoveredSession as DiscoveredSessionValue, SessionDiscoveryStatus as SessionDiscoveryStatusValue } from '../engine/client/menu/SessionDiscovery.ts';
 
 export type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
 
+export type DiscoveredSession = DiscoveredSessionValue;
+export type SessionDiscoveryStatus = SessionDiscoveryStatusValue;
+
 export type ClientEngineAPI = Readonly<typeof ClientEngineApiValue>;
 export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;
+export type CommonEngineAPI = Readonly<typeof CommonEngineApiValue>;
 export type ClientEdict = Readonly<ClientEdictValue>;
 export type ServerEdict = Readonly<ServerEdictValue>;
 
 export type GLTexture = GLTextureValue;
+export type BitmapFont = BitmapFontValue;
 export type Cvar = Readonly<CvarValue>;
 
 // Menu widgets are mutable-by-design (game code configures labels/items directly), so these
 // are plain aliases rather than Readonly wrappers.
 export type MenuPage = MenuPageValue;
+export type DialogPage = DialogPageValue;
+export type ListPage = ListPageValue;
 export type MenuItem = MenuItemValue;
+export type Action = ActionValue;
+export type Textbox = TextboxValue;
+export type ColorPicker = ColorPickerValue;
+export type SaveSlotItem = SaveSlotItemValue;
+export type KeyBindItem = KeyBindItemValue;
+export type MenuPic = MenuPicValue;
+export type BackButtonAnchor = BackButtonAnchorValue;
+export type MenuViewport = MenuViewportValue;
+export type MenuViewportCorner = MenuViewportCornerValue;
 
 export type PmoveConfiguration = Readonly<PmoveConfigurationValue>;
 export type PmoveQuake2Configuration = Readonly<PmoveQuake2ConfigurationValue>;
@@ -83,6 +104,19 @@ export type ClientDamageEvent = {
   armorLost: number;
   attackOrigin: Vector;
 };
+
+export type HostAlertSeverity = 'info' | 'error';
+
+/**
+ * Payload for the `host.alert` event, published by `Host.EndGame`/`Host.Error` instead of
+ * calling into the menu system directly -- game code decides independently whether/how to
+ * present it (see docs/events.md#host).
+ */
+export interface HostAlertEvent {
+  readonly title: string;
+  readonly message: string;
+  readonly severity: HostAlertSeverity;
+}
 
 export type PostProcessColorGradeDescriptor = {
   readonly saturation?: number;
@@ -151,7 +185,7 @@ export interface MapDetails {
 
 export interface StartServerListEntry {
   label: string;
-  callback: (serverEngineAPI: ServerEngineAPI) => void;
+  callback: (engineAPI: CommonEngineAPI) => void;
 }
 
 export type SerializedPrimitive = string | number | boolean | null;

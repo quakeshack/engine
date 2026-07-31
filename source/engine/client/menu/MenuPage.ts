@@ -2,6 +2,7 @@ import { K } from '../../../shared/Keys.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 import type { MenuPic } from '../Menu.ts';
 import { MenuItem } from './MenuItem.ts';
+import { MenuViewport } from './MenuViewport.ts';
 
 interface MenuPageConfig {
   readonly items?: MenuItem[];
@@ -9,11 +10,30 @@ interface MenuPageConfig {
   readonly title?: string | null;
   readonly titlePic?: MenuPic | null;
   readonly logoPic?: MenuPic | null;
+  /**
+   * The virtual drawing-space this page's coordinates are expressed in -- defaults to
+   * `MenuViewport.classic` (320x200, pixel-doubled), matching every built-in page. A mod
+   * replacing its own pages with a bespoke, wider layout sets this instead of hand-deriving a
+   * resolution-aware transform per drawing call.
+   */
+  readonly viewport?: MenuViewport;
   readonly onEnter?: () => void;
   readonly onExit?: () => void;
   readonly onEscape?: (() => void) | null;
   readonly onConfirm?: (() => void) | null;
   readonly customDraw?: ((page: MenuPage) => void) | null;
+  readonly customHandleInput?: ((key: K, page: MenuPage, defaultHandleInput: (key: K) => boolean) => boolean) | null;
+  readonly customGetBackButtonAnchor?: (() => BackButtonAnchor | null) | null;
+  /**
+   * Whether showing this page should freeze single-player world simulation (monster think,
+   * physics, round timers, ...) the way the classic Quake pause menu does -- `true` by default,
+   * matching every existing page. Set `false` for pages meant to stay open over a live,
+   * always-running world (e.g. an in-game buy menu in a coop mod), where freezing gameplay for
+   * every other connected player just because one player opened a menu would be wrong. Has no
+   * effect once `SV.svs.maxclients >= 2` -- multiplayer/coop servers never auto-pause on menu
+   * open in the first place, regardless of this flag.
+   */
+  readonly pausesGame?: boolean;
 }
 
 interface VerticalLayoutConfig {
@@ -51,6 +71,18 @@ interface GridLayoutConfig {
 
 export interface MenuLayout {
   draw(items: MenuItem[], focusedIndex: number): void;
+
+  /**
+   * Resolve which item, if any, occupies the given point in virtual menu-space coordinates.
+   * @returns The index of the focusable item under the point, or null if none.
+   */
+  hitTest(items: MenuItem[], px: number, py: number): number | null;
+}
+
+/** Where M should draw/hit-test the page-agnostic Back/Close button, in virtual menu-space. */
+export interface BackButtonAnchor {
+  readonly centerX: number;
+  readonly y: number;
 }
 
 // Destructure registry modules
@@ -70,12 +102,16 @@ export class MenuPage {
   title: string | null;
   titlePic: MenuPic | null;
   logoPic: MenuPic | null;
+  viewport: MenuViewport;
   cursor: number;
   onEnter: () => void;
   onExit: () => void;
   onEscape: (() => void) | null;
   onConfirm: (() => void) | null;
   customDraw: ((page: MenuPage) => void) | null;
+  customHandleInput: ((key: K, page: MenuPage, defaultHandleInput: (key: K) => boolean) => boolean) | null;
+  customGetBackButtonAnchor: (() => BackButtonAnchor | null) | null;
+  pausesGame: boolean;
 
   constructor(config: MenuPageConfig = {}) {
     this.items = config.items || [];
@@ -83,12 +119,16 @@ export class MenuPage {
     this.title = config.title || null;
     this.titlePic = config.titlePic || null;
     this.logoPic = config.logoPic || null;
+    this.viewport = config.viewport ?? MenuViewport.classic;
     this.cursor = 0;
     this.onEnter = config.onEnter || (() => {});
     this.onExit = config.onExit || (() => {});
     this.onEscape = config.onEscape || null;
     this.onConfirm = config.onConfirm || null;
     this.customDraw = config.customDraw || null;
+    this.customHandleInput = config.customHandleInput || null;
+    this.customGetBackButtonAnchor = config.customGetBackButtonAnchor || null;
+    this.pausesGame = config.pausesGame ?? true;
 
     // Find first focusable item
     this._moveCursorToFirstFocusable();
@@ -104,35 +144,54 @@ export class MenuPage {
    * Draw the menu page.
    */
   draw(): void {
-    // Corner logo (e.g. the Quake plaque) shown alongside the title on several built-in screens.
-    if (this.logoPic) {
-      M.DrawPic(16, 4, this.logoPic);
-    }
+    M.withRenderingPage(this, () => {
+      // Corner logo (e.g. the Quake plaque) shown alongside the title on several built-in screens.
+      if (this.logoPic) {
+        M.DrawPic(16, 4, this.logoPic);
+      }
 
-    // Draw title if provided
-    if (this.titlePic) {
-      const titleX = 160 - Math.floor((this.titlePic.width ?? 0) / 2);
-      M.DrawPic(titleX, 4, this.titlePic);
-    } else if (this.title) {
-      const titleX = 160 - (this.title.length * 8) / 2;
-      M.Print(titleX, 8, this.title);
-    }
+      // Draw title if provided
+      const centerX = this.viewport.width / 2;
+      if (this.titlePic) {
+        const titleX = centerX - Math.floor((this.titlePic.width ?? 0) / 2);
+        M.DrawPic(titleX, 4, this.titlePic);
+      } else if (this.title) {
+        const titleX = centerX - (this.title.length * 8) / 2;
+        M.Print(titleX, 8, this.title);
+      }
 
-    // Custom drawing (for special menus)
-    if (this.customDraw) {
-      this.customDraw(this);
-      return;
-    }
+      // Custom drawing (for special menus)
+      if (this.customDraw) {
+        this.customDraw(this);
+        return;
+      }
 
-    // Use layout system
-    this.layout?.draw(this.items, this.cursor);
+      // Use layout system
+      this.layout?.draw(this.items, this.cursor);
+    });
   }
 
   /**
-   * Handle keyboard input.
+   * Handle keyboard input. Delegates to `customHandleInput` when configured (e.g. a page that
+   * needs extra keys beyond the generic navigation below, like Left/Right page-turning or a
+   * Yes/No dialog prompt) -- it decides whether to fall back to the default handling via the
+   * `defaultHandleInput` callback it's passed.
    * @returns True if input was handled.
    */
   handleInput(key: K): boolean {
+    if (this.customHandleInput) {
+      return this.customHandleInput(key, this, (k) => this._defaultHandleInput(k));
+    }
+
+    return this._defaultHandleInput(key);
+  }
+
+  /**
+   * The generic navigation/activation behavior every page gets unless overridden via
+   * `customHandleInput`.
+   * @returns True if input was handled.
+   */
+  protected _defaultHandleInput(key: K): boolean {
     // Let focused item handle input first
     const focused = this.items[this.cursor];
     if (focused && focused.handleInput(key)) {
@@ -160,6 +219,24 @@ export class MenuPage {
       return true;
     }
 
+    // A click activates whatever item is under the cursor. Position-aware widgets (e.g. Slider)
+    // get first refusal via handleClick(); everything else falls back to Enter's semantics,
+    // the same way Enter activates the currently focused item.
+    if (key === K.MOUSE1) {
+      const index = this.layout?.hitTest(this.items, M.mouseX, M.mouseY) ?? null;
+      if (index === null) {
+        return false;
+      }
+
+      this.cursor = index;
+      const item = this.items[index];
+      if (item.handleClick(M.mouseX, M.mouseY)) {
+        return true;
+      }
+
+      return item.handleInput(K.ENTER);
+    }
+
     return false;
   }
 
@@ -169,6 +246,27 @@ export class MenuPage {
    */
   handlePaste(text: string): boolean {
     return this.items[this.cursor]?.handlePaste(text) ?? false;
+  }
+
+  /**
+   * Move the cursor to whatever focusable item is under the given point, without playing the
+   * keyboard-navigation sound. Called on every mouse move while this page is active.
+   */
+  updateHover(mx: number, my: number): void {
+    const index = this.layout?.hitTest(this.items, mx, my) ?? null;
+    if (index !== null && index !== this.cursor && this.items[index]?.focusable) {
+      this.cursor = index;
+    }
+  }
+
+  /**
+   * Where M should draw/hit-test the page-agnostic Back/Close button for this page. Returns
+   * null (the default) to use the standard bottom-left corner unless `customGetBackButtonAnchor`
+   * is configured, e.g. a dialog centering it under its own message box.
+   * @returns The button's anchor, or null to use the default corner.
+   */
+  getBackButtonAnchor(): BackButtonAnchor | null {
+    return this.customGetBackButtonAnchor ? this.customGetBackButtonAnchor() : null;
   }
 
   /**
@@ -298,6 +396,29 @@ export class VerticalLayout implements MenuLayout {
       y += item.getHeight() + this.spacing;
     }
   }
+
+  hitTest(items: MenuItem[], _px: number, py: number): number | null {
+    let y = this.startY;
+
+    for (const [index, item] of items.entries()) {
+      if (!item.visible) {
+        continue;
+      }
+
+      const height = item.getHeight();
+
+      // The whole row is clickable, not just the glyphs under the label/value, so the hit box
+      // spans the full row width regardless of where VerticalLayout placed the text -- only the
+      // vertical band actually disambiguates one row from the next.
+      if (item.focusable && py >= y && py < y + height) {
+        return index;
+      }
+
+      y += height + this.spacing;
+    }
+
+    return null;
+  }
 }
 
 /**
@@ -341,6 +462,23 @@ export class ImageBasedLayout implements MenuLayout {
       item.draw(0, 0, index === focusedIndex);
     }
   }
+
+  hitTest(items: MenuItem[], _px: number, py: number): number | null {
+    // Items have no individual geometry of their own here — hit-test the same fixed-height row
+    // band the animated dot cursor is drawn at for each index.
+    for (const [index, item] of items.entries()) {
+      if (!item.visible || !item.focusable) {
+        continue;
+      }
+
+      const rowY = this.cursorYBase + index * this.cursorYSpacing;
+      if (py >= rowY - this.cursorYSpacing / 2 && py < rowY + this.cursorYSpacing / 2) {
+        return index;
+      }
+    }
+
+    return null;
+  }
 }
 
 /**
@@ -381,6 +519,24 @@ export class ListLayout implements MenuLayout {
       y += this.spacing;
     }
   }
+
+  hitTest(items: MenuItem[], _px: number, py: number): number | null {
+    let y = this.startY;
+
+    for (const [index, item] of items.entries()) {
+      if (!item.visible) {
+        continue;
+      }
+
+      if (item.focusable && py >= y && py < y + this.spacing) {
+        return index;
+      }
+
+      y += this.spacing;
+    }
+
+    return null;
+  }
 }
 
 /**
@@ -416,6 +572,26 @@ export class GridLayout implements MenuLayout {
 
       item.draw(x, y, focused);
     }
+  }
+
+  hitTest(items: MenuItem[], px: number, py: number): number | null {
+    for (const [index, item] of items.entries()) {
+      if (!item.visible || !item.focusable) {
+        continue;
+      }
+
+      const row = Math.floor(index / this.columns);
+      const col = index % this.columns;
+
+      const x = this.startX + col * this.columnSpacing;
+      const y = this.startY + row * this.rowSpacing;
+
+      if (px >= x && px < x + this.columnSpacing && py >= y && py < y + this.rowSpacing) {
+        return index;
+      }
+    }
+
+    return null;
   }
 }
 

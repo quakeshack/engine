@@ -9,13 +9,31 @@ Everything related to this is in:
 
 ## Console Frontend
 
-* `Con.DrawNotify` is responsible for drawing the chat input box.
-* `Con.DrawInput` draws the input box for the actual console.
-* `Con.DrawConsole` is responsible for drawing everything.
-* `Key.destination` decides what is receiving key strokes:
-  * `KeyDestination.console` is for the console
-  * `KeyDestination.message` is for chatting
-  * However, actual handling of the key strokes is happening in `Key.Console`.
+The console is a Quake 3 Arena / Doom 3-style drop-down drawer, not the classic Quake 1 "one of
+four destinations" model: it's an independent overlay (`Con.isOpen`) that can pop open on top of
+*either* live gameplay or the menu, renders above everything else on screen, and takes exclusive
+keyboard focus while open — but doesn't pause the game behind it (world simulation and rendering
+both keep running; only client-side input routing changes).
+
+* `Con.isOpen` is the single source of truth for whether the drawer is toggled open —
+  independent of `Key.destination`, which continues to mean "what's active *underneath* the
+  console" (`game`, `menu`, or `message`; the old `console` destination value is gone).
+* `Con.ToggleConsole_f` (bound to `` ` ``/`~` by default via `bind`, like any other command) just
+  flips `Con.isOpen` and releases pointer lock on open, so mouselook doesn't keep spinning the
+  camera while you type.
+* `Key.Event()` gives an open console dispatch priority over whichever destination is
+  underneath: Escape closes it first (before touching the menu/game/message logic), and any key
+  it doesn't consume as text (e.g. the toggle key itself) still executes its bound command, via
+  the same `Key.consolekeys` typable-vs-bound-key split used before.
+* `Con.DrawNotify` draws the small recent-lines/chat-composition overlay shown when the console
+  itself is closed (`Key.destination === game || message`).
+* `Con.DrawInput` draws the blinking input-line prompt, gated on `Con.isOpen`.
+* `Con.DrawConsole` draws the whole panel (background, scrollback, input line) for a given slide
+  height; `SCR.UpdateScreen()` calls it either *before* the menu (the passive backdrop shown
+  whenever there's no valid connected game — `Con.forcedup`) or *after* the menu (the
+  actively-toggled drawer), so the interactive console always ends up on top.
+* Actual key handling (typing, history, tab-complete, scrollback) happens in `Key.Console`,
+  exactly as before — only the routing around it changed.
 
 ### Console Background Customization
 

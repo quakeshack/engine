@@ -7,7 +7,7 @@ import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 import {
-  ColorPicker, KeyBindItem, MenuItem, SaveSlotItem, Slider, Textbox, Toggle,
+  Action, ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
 } from '../../source/engine/client/menu/MenuItem.ts';
 
 /**
@@ -23,6 +23,7 @@ function withMockWidgetRegistry(callback) {
 
   const printed = [];
   const sounds = [];
+  const bitmapStrings = [];
 
   registry.Host = { realtime: 0 };
   registry.Key = Key;
@@ -33,12 +34,14 @@ function withMockWidgetRegistry(callback) {
     Print(_x, _y, str) { printed.push(str); },
     PrintWhite(_x, _y, str) { printed.push(str); },
     DrawCharacter() {},
+    DrawSlider() {},
+    DrawBitmapString(_x, _y, str, font, variant) { bitmapStrings.push({ str, font, variant }); },
   };
   registry.S = { LocalSound(sfx) { sounds.push(sfx); } };
   eventBus.publish('registry.frozen');
 
   try {
-    callback({ printed, sounds });
+    callback({ printed, sounds, bitmapStrings });
   } finally {
     registry.Host = previousHost;
     registry.Key = previousKey;
@@ -73,6 +76,68 @@ void describe('MenuItem.getHeight', () => {
   void test('respects heightOverride when provided', () => {
     const item = new MenuItem({ heightOverride: 24 });
     assert.equal(item.getHeight(), 24);
+  });
+});
+
+void describe('Action', () => {
+  void test('draws with PrintWhite when enabled and Print when disabled, without a font', () => {
+    withMockWidgetRegistry(({ printed }) => {
+      const action = new Action({ label: 'Start' });
+
+      action.draw(10, 20, false);
+      action.enabled = false;
+      action.draw(10, 20, false);
+
+      assert.deepEqual(printed, ['Start', 'Start']);
+    });
+  });
+
+  void test('invokes the action and plays a sound on Enter', () => {
+    withMockWidgetRegistry(({ sounds }) => {
+      let invoked = false;
+      const action = new Action({ label: 'Start', action: () => { invoked = true; } });
+
+      assert.equal(action.handleInput(K.ENTER), true);
+      assert.equal(invoked, true);
+      assert.deepEqual(sounds, ['menu2']);
+    });
+  });
+
+  void test('does nothing on Enter when disabled', () => {
+    withMockWidgetRegistry(() => {
+      let invoked = false;
+      const action = new Action({ label: 'Start', enabled: false, action: () => { invoked = true; } });
+
+      assert.equal(action.handleInput(K.ENTER), false);
+      assert.equal(invoked, false);
+    });
+  });
+
+  void test('draws through DrawBitmapString when a font is configured, variant 0 while focused', () => {
+    withMockWidgetRegistry(({ printed, bitmapStrings }) => {
+      const font = { charset: 'ABC' };
+      const action = new Action({ label: 'Quit', font });
+
+      action.draw(10, 20, true);
+      action.draw(10, 20, false);
+
+      assert.deepEqual(printed, []);
+      assert.deepEqual(bitmapStrings, [
+        { str: 'Quit', font, variant: 0 },
+        { str: 'Quit', font, variant: 1 },
+      ]);
+    });
+  });
+
+  void test('falls back to variant 1 through DrawBitmapString when disabled, even while focused', () => {
+    withMockWidgetRegistry(({ bitmapStrings }) => {
+      const font = { charset: 'ABC' };
+      const action = new Action({ label: 'Quit', font, enabled: false });
+
+      action.draw(10, 20, true);
+
+      assert.deepEqual(bitmapStrings, [{ str: 'Quit', font, variant: 1 }]);
+    });
   });
 });
 
@@ -142,6 +207,89 @@ void describe('Slider', () => {
 
         assert.equal(slider.handleInput(K.RIGHTARROW), false);
         assert.equal(slider.getValue(), 50);
+      });
+    });
+  });
+
+  void describe('handleClick', () => {
+    void test('sets the value from the click position instead of just nudging it', () => {
+      withMockWidgetRegistry(({ sounds }) => {
+        withScratchCvar('test_menu_slider_click', '0', () => {
+          const slider = new Slider({ cvar: 'test_menu_slider_click', min: 0, max: 100 });
+
+          slider.draw(16, 32, false); // bar drawn at the default x + 116 = 132.
+
+          assert.equal(slider.handleClick(132), true); // start of the bar -> min.
+          assert.equal(slider.getValue(), 0);
+
+          assert.equal(slider.handleClick(132 + 72), true); // end of the bar -> max.
+          assert.equal(slider.getValue(), 100);
+
+          assert.equal(slider.handleClick(132 + 36), true); // midpoint.
+          assert.equal(slider.getValue(), 50);
+
+          assert.deepEqual(sounds, ['menu3', 'menu3', 'menu3']);
+        });
+      });
+    });
+
+    void test('clamps clicks outside the bar to min/max instead of the label falling through to a full row click', () => {
+      withMockWidgetRegistry(() => {
+        withScratchCvar('test_menu_slider_click_clamp', '50', () => {
+          const slider = new Slider({ cvar: 'test_menu_slider_click_clamp', min: 0, max: 100 });
+
+          slider.draw(16, 32, false);
+
+          slider.handleClick(0); // well left of the bar, e.g. over the label.
+          assert.equal(slider.getValue(), 0);
+
+          slider.handleClick(9999); // well right of the bar.
+          assert.equal(slider.getValue(), 100);
+        });
+      });
+    });
+
+    void test('respects valueX from the layout instead of the default offset', () => {
+      withMockWidgetRegistry(() => {
+        withScratchCvar('test_menu_slider_click_valuex', '0', () => {
+          const slider = new Slider({ cvar: 'test_menu_slider_click_valuex', min: 0, max: 100 });
+
+          slider.draw(16, 32, false, 220);
+
+          slider.handleClick(220 + 36);
+          assert.equal(slider.getValue(), 50);
+        });
+      });
+    });
+
+    void test('inverts the click-to-value mapping for inverted sliders', () => {
+      withMockWidgetRegistry(() => {
+        withScratchCvar('test_menu_slider_click_invert', '0.75', () => {
+          const slider = new Slider({
+            cvar: 'test_menu_slider_click_invert', min: 0.5, max: 1.0, invert: true,
+          });
+
+          slider.draw(16, 32, false);
+
+          slider.handleClick(132); // start of the bar -> max for an inverted slider.
+          assert.equal(slider.getValue(), 1.0);
+
+          slider.handleClick(132 + 72); // end of the bar -> min.
+          assert.equal(slider.getValue(), 0.5);
+        });
+      });
+    });
+
+    void test('does nothing when disabled', () => {
+      withMockWidgetRegistry(() => {
+        withScratchCvar('test_menu_slider_click_disabled', '50', () => {
+          const slider = new Slider({ cvar: 'test_menu_slider_click_disabled', min: 0, max: 100, enabled: false });
+
+          slider.draw(16, 32, false);
+
+          assert.equal(slider.handleClick(132 + 72), false);
+          assert.equal(slider.getValue(), 50);
+        });
       });
     });
   });
@@ -392,6 +540,135 @@ void describe('ColorPicker', () => {
 
       picker.handleInput(K.ENTER);
       assert.equal(value, 6);
+    });
+  });
+});
+
+void describe('NumberInput', () => {
+  void test('clamps at the bounds instead of wrapping (unlike ColorPicker)', () => {
+    withMockWidgetRegistry(() => {
+      let value = 12;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 2, max: 12,
+      });
+
+      input.handleInput(K.RIGHTARROW);
+      assert.equal(value, 12); // stays at max instead of wrapping to min
+
+      value = 2;
+      input.handleInput(K.LEFTARROW);
+      assert.equal(value, 2); // stays at min instead of wrapping to max
+    });
+  });
+
+  void test('Right/Enter increase and Left decreases by step', () => {
+    withMockWidgetRegistry(({ sounds }) => {
+      let value = 5;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 0, max: 10, step: 2,
+      });
+
+      input.handleInput(K.RIGHTARROW);
+      assert.equal(value, 7);
+
+      input.handleInput(K.LEFTARROW);
+      assert.equal(value, 5);
+
+      input.handleInput(K.ENTER);
+      assert.equal(value, 7);
+
+      assert.deepEqual(sounds, ['menu3', 'menu3', 'menu3']);
+    });
+  });
+
+  void test('typing digits sets the value directly, clamped to [min, max]', () => {
+    withMockWidgetRegistry(() => {
+      let value = 10;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 2, max: 12,
+      });
+
+      input.handleInput('1'.charCodeAt(0));
+      input.handleInput('2'.charCodeAt(0));
+      assert.equal(value, 12);
+    });
+  });
+
+  void test('ignores digits typed past the field width instead of rolling over', () => {
+    withMockWidgetRegistry(() => {
+      let value = 0;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 0, max: 99,
+      });
+
+      input.handleInput('9'.charCodeAt(0));
+      input.handleInput('9'.charCodeAt(0));
+      assert.equal(value, 99);
+
+      input.handleInput('5'.charCodeAt(0)); // a 3rd digit -- field width is 2 (max = 99)
+      assert.equal(value, 99); // ignored, not 995 or 95
+    });
+  });
+
+  void test('Backspace edits the typed value starting from what is currently committed', () => {
+    withMockWidgetRegistry(() => {
+      let value = 25;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 0, max: 99,
+      });
+
+      input.handleInput(K.BACKSPACE);
+      assert.equal(value, 2);
+
+      input.handleInput(K.BACKSPACE);
+      assert.equal(value, 0); // no digits left -> falls back to min
+    });
+  });
+
+  void test('Backspace falls back to min instead of committing NaN when min is negative', () => {
+    withMockWidgetRegistry(() => {
+      let value = -5;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: -10, max: 10,
+      });
+
+      // Seeds the typed buffer from String(-5) === '-5'; slicing off the '5' leaves a bare '-',
+      // which used to parse to NaN and get committed directly.
+      input.handleInput(K.BACKSPACE);
+      assert.equal(value, -10); // falls back to min, not NaN
+
+      input.handleInput(K.BACKSPACE); // typed buffer is now '' -> also falls back to min
+      assert.equal(value, -10);
+    });
+  });
+
+  void test('draw shows the in-progress typed text, then reverts to the committed value once focus moves away', () => {
+    withMockWidgetRegistry(({ printed }) => {
+      let value = 10;
+      const input = new NumberInput({
+        label: 'Rounds', getValue: () => value, setValue: (v) => { value = v; }, min: 2, max: 12,
+      });
+
+      input.handleInput('1'.charCodeAt(0));
+      input.draw(16, 32, true);
+      assert.deepEqual(printed, ['Rounds', '1']);
+
+      printed.length = 0;
+      input.draw(16, 32, false); // unfocused -> the typed buffer is abandoned
+      assert.deepEqual(printed, ['Rounds', String(value)]);
+    });
+  });
+
+  void test('does nothing when disabled', () => {
+    withMockWidgetRegistry(() => {
+      let value = 5;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: 0, max: 10, enabled: false,
+      });
+
+      assert.equal(input.handleInput(K.RIGHTARROW), false);
+      assert.equal(input.handleInput('7'.charCodeAt(0)), false);
+      assert.equal(value, 5);
     });
   });
 });

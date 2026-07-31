@@ -1,17 +1,25 @@
 import type { EdictData, EdictValueType, SerializableType } from '../../shared/GameInterfaces.ts';
 import type { ClientDlight, ClientEdict } from '../client/ClientEntities.ts';
+import { BitmapFont, type BitmapFontConfig } from '../client/BitmapFont.ts';
 import type { GLTexture } from '../client/GL.ts';
 import type { SzBuffer } from '../network/MSG.ts';
 import type ParsedQC from './model/parsers/ParsedQC.ts';
 import type { BaseModel } from './model/BaseModel.ts';
 import type { Visibility } from './model/BSP.ts';
+import type { DiscoveredSession, SessionDiscoveryStatus } from '../client/menu/SessionDiscovery.ts';
+import type { SaveSlotInfo } from '../client/menu/SaveSlots.ts';
 
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
 import { moveTypes, solid } from '../../shared/Defs.ts';
+import { clientConnectionState } from './Def.ts';
 import Key, { KeyDestination } from '../client/Key.ts';
-import { Action, Image, Label, MenuItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
-import { GridLayout, ImageBasedLayout, ListLayout, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
+import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, NumberInput, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
+import { DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
+import { MenuViewport } from '../client/menu/MenuViewport.ts';
+import type { MenuPic } from '../client/Menu.ts';
+import SessionDiscovery from '../client/menu/SessionDiscovery.ts';
+import SaveSlotsService from '../client/menu/SaveSlots.ts';
 import { SFX as SFXValue } from '../client/Sound.ts';
 import VID from '../client/VID.ts';
 import * as Protocol from '../network/Protocol.ts';
@@ -922,6 +930,15 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
+   * Load a fixed-grid bitmap font atlas from a file (e.g. a stylized header font), described by
+   * `config`'s charset and glyph/cell metrics.
+   * @returns The loaded font.
+   */
+  static LoadBitmapFont(filename: string, config: Omit<BitmapFontConfig, 'texture'>): Promise<BitmapFont> {
+    return BitmapFont.FromImageFile(filename, config);
+  }
+
+  /**
    * Play a sound effect.
    */
   static PlaySound(sfx: SFXValue): void {
@@ -1163,6 +1180,21 @@ export class ClientEngineAPI extends CommonEngineAPI {
     get serverInfo() {
       return CL.cls.serverInfo;
     },
+    /**
+     * @returns True while fully connected to a server (local or remote).
+     */
+    get connected(): boolean {
+      return CL.cls.state === clientConnectionState.connected;
+    },
+  };
+
+  static readonly SV = {
+    /**
+     * @returns True while this client is also hosting a local (listen) server.
+     */
+    get active(): boolean {
+      return SV.server.active;
+    },
   };
 
   static readonly VID = {
@@ -1237,7 +1269,16 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * Unregister a previously registered page.
      */
     UnregisterPage(name: string): void {
-      M.menuStack.pages.delete(name);
+      M.menuStack.unregister(name);
+    },
+
+    /**
+     * Declare which registered page is the root -- what `togglemenu`/Escape opens, and what
+     * `Clear()`/an involuntary disconnect falls back to. Resolved by name, so re-registering
+     * that name to a different page later keeps the root correct without calling this again.
+     */
+    SetRootPage(name: string): void {
+      M.menuStack.setRootPage(name);
     },
 
     /**
@@ -1264,6 +1305,20 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
+     * Pop pages until the stack is at most `depth` deep.
+     */
+    PopTo(depth: number): void {
+      M.menuStack.popTo(depth);
+    },
+
+    /**
+     * Pop down to a single page, leaving only the bottom of the stack.
+     */
+    PopToRoot(): void {
+      M.menuStack.popToRoot();
+    },
+
+    /**
      * Replace the current page with a registered one, without growing the navigation stack.
      */
     Replace(name: string): void {
@@ -1278,24 +1333,107 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
+     * Pop every page off the stack without changing `Key.destination` -- unlike `Close()`, this
+     * doesn't return to the game/console, it just empties the navigation stack.
+     */
+    Clear(): void {
+      M.menuStack.clear();
+    },
+
+    /**
+     * Force the menu to close immediately and return control to the game, regardless of
+     * connection state -- unlike `Close()`, which stays open while disconnected (nothing to
+     * return to). Use this when the action itself is what's about to create a game to return
+     * to, e.g. starting a new game from a disconnected menu.
+     */
+    ForceClose(): void {
+      M.menuStack.clear();
+      M.ReturnToGame();
+    },
+
+    /**
+     * Toggle the drop-down console overlay.
+     */
+    ToggleConsole(): void {
+      Con.ToggleConsole_f();
+    },
+
+    /**
+     * Quit immediately, skipping Host.Quit_f()'s own confirmation gate -- for use after the
+     * player already confirmed via a mod's own quit dialog.
+     */
+    ForceQuit(): void {
+      Host.ForceQuit();
+    },
+
+    /**
+     * Start a new singleplayer game via the active mod's `StartGameInterface`
+     * (`ClientGameInterface.GetStartGameInterface`), or the engine's own default (`map start`)
+     * if the mod didn't provide one.
+     */
+    StartSingleplayerGame(): void {
+      M.StartSingleplayerGame();
+    },
+
+    /**
+     * Start (host) a multiplayer game on `mapname` via the active mod's `StartGameInterface`
+     * (`ClientGameInterface.GetStartGameInterface`), or the engine's own default
+     * (`map <mapname>`) if the mod didn't provide one.
+     */
+    StartMultiplayerGame(mapname: string): void {
+      M.StartMultiplayerGame(mapname);
+    },
+
+    /**
+     * Load a lump-based pic together with a color-translation texture built from its raw
+     * palette indices, for `DrawPicTranslate` (e.g. a player-color preview). The palette/LMP
+     * parsing stays engine-side since it's raw asset format handling, not menu content.
+     * @returns The pic, with `.translate` populated.
+     */
+    LoadTranslatablePic(lumpName: string): Promise<MenuPic> {
+      return M.LoadTranslatablePic(lumpName);
+    },
+
+    /**
      * Check whether the menu is open, optionally a specific registered page.
      * @returns True when the menu (or the named page) is currently shown.
      */
     IsOpen(name?: string): boolean {
-      const current = M.menuStack.current();
-
       if (name === undefined) {
-        return current !== null;
+        return M.menuStack.current() !== null;
       }
 
-      return current === M.menuStack.pages.get(name);
+      return M.menuStack.isShowing(name);
+    },
+
+    /**
+     * @returns The current navigation stack depth.
+     */
+    Depth(): number {
+      return M.menuStack.depth();
+    },
+
+    /**
+     * @returns True when nothing is on the navigation stack.
+     */
+    IsEmpty(): boolean {
+      return M.menuStack.isEmpty();
+    },
+
+    /**
+     * The page one level below the current one on the stack, if any -- e.g. a dialog's own
+     * `getBackdrop` wanting to draw whatever was open before it appeared.
+     * @returns The previous page, or null if the current page is at (or below) the root.
+     */
+    GetPreviousPage(): MenuPage | null {
+      return M.menuStack.getPreviousPage();
     },
 
     /**
      * Insert an item into a registered page, e.g. to extend a built-in screen from game code.
      */
     AddItem(pageName: string, item: MenuItem, index?: number): void {
-      const page = M.menuStack.pages.get(pageName);
+      const page = M.menuStack.getPage(pageName);
 
       console.assert(page !== undefined, 'ClientEngineAPI.Menu.AddItem: unknown page', pageName);
 
@@ -1314,7 +1452,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * Remove a previously added item from a registered page.
      */
     RemoveItem(pageName: string, item: MenuItem): void {
-      const page = M.menuStack.pages.get(pageName);
+      const page = M.menuStack.getPage(pageName);
 
       if (!page) {
         return;
@@ -1327,6 +1465,79 @@ export class ClientEngineAPI extends CommonEngineAPI {
       }
     },
 
+    /**
+     * Current mouse position in the current page's virtual menu-space coordinates (see
+     * `MenuViewport`/`MenuPage.viewport`).
+     * @returns The horizontal position.
+     */
+    get mouseX(): number {
+      return M.mouseX;
+    },
+
+    /**
+     * Current mouse position in the current page's virtual menu-space coordinates (see
+     * `MenuViewport`/`MenuPage.viewport`).
+     * @returns The vertical position.
+     */
+    get mouseY(): number {
+      return M.mouseY;
+    },
+
+    /**
+     * Convert a virtual-space point (in the current page's viewport) into a real screen pixel
+     * position -- for a `customDraw` that needs to place a resolution-aware `DrawPic`/
+     * `DrawString` call (see above; a different coordinate system from `Print`/`DrawPic` below)
+     * at a virtual-space position.
+     * @returns The equivalent real screen position.
+     */
+    toScreenPosition(x: number, y: number): { x: number; y: number } {
+      return M.toScreenPosition(x, y);
+    },
+
+    /**
+     * The current page's resolved virtual-to-real pixel scale, e.g. to size a resolution-aware
+     * `DrawPic` call to match a virtual-space target width.
+     * @returns The scale factor.
+     */
+    get viewportScale(): number {
+      return M.viewportScale;
+    },
+
+    // Low-level drawing primitives every widget/layout draws with, re-exported so a page's
+    // `customDraw`/`customHandleInput` (and a custom MenuItem's `customDraw`) can reproduce the
+    // same look without reaching into engine internals. All operate in the current page's own
+    // virtual coordinate space (see `MenuViewport`/`MenuPage.viewport`, classic 320x200 by
+    // default) -- a different coordinate system from `DrawPic`/`DrawString` above, which are
+    // resolution-aware absolute pixel offsets.
+
+    Print(cx: number, cy: number, str: string): void {
+      M.Print(cx, cy, str);
+    },
+
+    PrintWhite(cx: number, cy: number, str: string): void {
+      M.PrintWhite(cx, cy, str);
+    },
+
+    DrawCharacter(cx: number, cy: number, num: number): void {
+      M.DrawCharacter(cx, cy, num);
+    },
+
+    DrawPic(x: number, y: number, pic: MenuPic): void {
+      M.DrawPic(x, y, pic);
+    },
+
+    DrawPicTranslate(x: number, y: number, pic: MenuPic, top: number, bottom: number): void {
+      M.DrawPicTranslate(x, y, pic, top, bottom);
+    },
+
+    DrawTextBox(x: number, y: number, width: number, lines: number): void {
+      M.DrawTextBox(x, y, width, lines);
+    },
+
+    DrawSlider(x: number, y: number, range: number): void {
+      M.DrawSlider(x, y, range);
+    },
+
     Action,
     Label,
     Slider,
@@ -1334,11 +1545,67 @@ export class ClientEngineAPI extends CommonEngineAPI {
     Textbox,
     Spacer,
     Image,
+    ColorPicker,
+    NumberInput,
+    SaveSlotItem,
+    KeyBindItem,
     MenuPage,
+    DialogPage,
+    ListPage,
     VerticalLayout,
     ImageBasedLayout,
     ListLayout,
     GridLayout,
+    MenuViewport,
+  };
+
+  static readonly Multiplayer = {
+    /**
+     * Fetch currently joinable sessions for this client's active game (mod) from the master
+     * server. Throws if signaling is unavailable -- callers that can't assume it's configured
+     * should check first or catch.
+     * @returns Sessions matching the active game/mod.
+     */
+    ListSessions(): Promise<DiscoveredSession[]> {
+      return SessionDiscovery.listSessions();
+    },
+
+    /**
+     * Subscribes to live session updates for this client's active game (mod) over the master
+     * server's real-time `/browser` channel. See {@link SessionDiscovery.subscribe}.
+     * @returns An unsubscribe function; safe to call more than once.
+     */
+    SubscribeSessions(
+      onSessions: (sessions: DiscoveredSession[]) => void,
+      onStatus?: (status: SessionDiscoveryStatus) => void,
+    ): () => void {
+      return SessionDiscovery.subscribe(onSessions, onStatus);
+    },
+
+    /**
+     * Requests a fresh session snapshot over an already-open SubscribeSessions channel. See
+     * {@link SessionDiscovery.requestRefresh}.
+     */
+    RequestSessionsRefresh(): void {
+      SessionDiscovery.requestRefresh();
+    },
+  };
+
+  static readonly SaveSlots = {
+    /**
+     * List save-slot metadata for the currently active game directory.
+     * @returns Metadata for save slots `0..maxSlots - 1`.
+     */
+    List(maxSlots: number): SaveSlotInfo[] {
+      return SaveSlotsService.list(maxSlots);
+    },
+
+    /**
+     * Delete a save slot's data.
+     */
+    Delete(index: number): void {
+      SaveSlotsService.delete(index);
+    },
   };
 
   static get eventBus(): EventBus {

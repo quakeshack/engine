@@ -13,6 +13,7 @@ import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
  */
 function withMockClientEngineMenu(callback) {
   const previousM = registry.M;
+  const previousIN = registry.IN;
   const previousDestination = Key.destination;
 
   const menuStack = new MenuStack();
@@ -31,6 +32,8 @@ function withMockClientEngineMenu(callback) {
       menuStack.pop();
     },
   };
+  // MenuStack.push() releases pointer lock on every open — a no-op spy here.
+  registry.IN = { ReleasePointerLock() {} };
   eventBus.publish('registry.frozen');
 
   try {
@@ -41,6 +44,7 @@ function withMockClientEngineMenu(callback) {
     });
   } finally {
     registry.M = previousM;
+    registry.IN = previousIN;
     Key.destination = previousDestination;
     eventBus.publish('registry.frozen');
   }
@@ -171,6 +175,87 @@ void describe('ClientEngineAPI.Menu', () => {
       ClientEngineAPI.Menu.RemoveItem('options', item);
 
       assert.equal(page.items.includes(item), false);
+    });
+  });
+
+  void test('SetRootPage declares which registered page IsOpen()/root-dependent behavior resolves to', () => {
+    withMockClientEngineMenu(({ menuStack }) => {
+      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
+      ClientEngineAPI.Menu.RegisterPage('main', main);
+
+      ClientEngineAPI.Menu.SetRootPage('main');
+
+      assert.equal(menuStack.isShowingRoot(), false);
+      ClientEngineAPI.Menu.Push('main');
+      assert.equal(menuStack.isShowingRoot(), true);
+    });
+  });
+
+  void test('Depth/IsEmpty reflect the navigation stack', () => {
+    withMockClientEngineMenu(() => {
+      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
+      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
+      ClientEngineAPI.Menu.RegisterPage('main', main);
+      ClientEngineAPI.Menu.RegisterPage('options', options);
+
+      assert.equal(ClientEngineAPI.Menu.IsEmpty(), true);
+      assert.equal(ClientEngineAPI.Menu.Depth(), 0);
+
+      ClientEngineAPI.Menu.Push('main');
+      ClientEngineAPI.Menu.Push('options');
+
+      assert.equal(ClientEngineAPI.Menu.IsEmpty(), false);
+      assert.equal(ClientEngineAPI.Menu.Depth(), 2);
+    });
+  });
+
+  void test('PopTo pops down to the given depth', () => {
+    withMockClientEngineMenu(({ menuStack }) => {
+      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
+      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
+      const keys = new ClientEngineAPI.Menu.MenuPage({ title: 'Keys' });
+      ClientEngineAPI.Menu.RegisterPage('main', main);
+      ClientEngineAPI.Menu.RegisterPage('options', options);
+      ClientEngineAPI.Menu.RegisterPage('keys', keys);
+
+      ClientEngineAPI.Menu.Push('main');
+      ClientEngineAPI.Menu.Push('options');
+      ClientEngineAPI.Menu.Push('keys');
+      ClientEngineAPI.Menu.PopTo(1);
+
+      assert.equal(menuStack.current(), main);
+      assert.equal(ClientEngineAPI.Menu.Depth(), 1);
+    });
+  });
+
+  void test('PopToRoot pops down to a single page', () => {
+    withMockClientEngineMenu(({ menuStack }) => {
+      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
+      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
+      ClientEngineAPI.Menu.RegisterPage('main', main);
+      ClientEngineAPI.Menu.RegisterPage('options', options);
+
+      ClientEngineAPI.Menu.Push('main');
+      ClientEngineAPI.Menu.Push('options');
+      ClientEngineAPI.Menu.PopToRoot();
+
+      assert.equal(menuStack.current(), main);
+      assert.equal(ClientEngineAPI.Menu.Depth(), 1);
+    });
+  });
+
+  void test('Clear empties the stack without touching Key.destination', () => {
+    withMockClientEngineMenu(() => {
+      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
+      ClientEngineAPI.Menu.RegisterPage('main', main);
+      ClientEngineAPI.Menu.Open('main');
+
+      assert.equal(Key.destination, KeyDestination.menu);
+
+      ClientEngineAPI.Menu.Clear();
+
+      assert.equal(ClientEngineAPI.Menu.IsEmpty(), true);
+      assert.equal(Key.destination, KeyDestination.menu);
     });
   });
 });

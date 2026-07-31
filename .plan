@@ -27,12 +27,16 @@ Grouped by sections and then sorted by priority (more or less).
 - [_] M: introduce a password required dialog to join password protected servers
 - [_] M: touch support (how to escape etc) and mouse support
   - [X] mobile input capability detection + external input warning
+  - [X] mouse hover/click support for menu items + a clickable Back/Close button
   - [_] touch-first menu navigation and escape UX
   - [_] gameplay touch controls with mouse-equivalent look input
 - [_] M: rewrite the code using the new framework
 - [_] IN: proper virtual joystick and keyboard/UI
 - [_] M: expose GUI toolkit (draw routines etc.) to the client game code, put stuff in shared/
 - [X] CL: remove that chatlog stuff again, it’s all done in the Client code now
+- [X] Con: reworked to a Q3A/Doom3-style drop-down drawer — independent `Con.isOpen` overlay
+  instead of a `KeyDestination.console` peer state, renders above the menu, doesn't pause
+  gameplay behind it
 
 ### Code smell
 
@@ -174,6 +178,39 @@ Grouped by sections and then sorted by priority (more or less).
 - https://mus1n.github.io/Quake-3-Skybox/ 360 to skybox
 
 ## Log
+
+### 2026-07-24
+
+- menu: more refinements
+  - added pixel snapping for drawing bitmap fonts to avoid neighboring glyphs leaking in
+  - lobby uses real-time events now
+
+### 2026-07-22
+
+- menu: more refinements
+  - virtual size menu layout can be per menu page
+
+### 2026-07-20
+
+- menu: more refinements
+  - make client connect hide menus
+  - game lifecycle fixes, observing more CL events
+  - added NumberInput widget
+- added BitmapFont support for custom fonts
+
+### 2026-07-19
+
+- menu: more refinements, some menus no longer pause the game
+
+### 2026-07-18
+
+- console/menu: some more polish after restructuring Con and M
+- menu: started moving everything menu down to the game client code
+
+### 2026-07-13
+
+- menu: made menu clickable
+- console: made it behave more like id tech 3 and up
 
 ### 2026-07-12
 

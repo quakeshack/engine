@@ -594,10 +594,12 @@ void describe('Host.Loadgame_f', () => {
       },
     };
     const previousResumeGame = ClientLifecycle.resumeGame;
+    const previousSCR = registry.SCR;
 
     ClientLifecycle.resumeGame = (clientdata, particles) => {
       resumes.push({ clientdata, particles });
     };
+    registry.SCR = { BeginLoadingPlaque() { } };
 
     try {
       await withMockRegistry({
@@ -615,6 +617,7 @@ void describe('Host.Loadgame_f', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
+      registry.SCR = previousSCR;
     }
 
     assert.deepEqual(callOrder, [
@@ -774,16 +777,23 @@ void describe('Host.Loadgame_f', () => {
       },
     };
 
-    await withMockRegistry({
-      ...defaultMockRegistry(sv, client),
-      COM: mockCOM,
-      Con: consoleCapture.Con,
-    }, async () => {
-      await assert.rejects(
-        Host.Loadgame_f.call({ client: null }, 'save/e1m1'),
-        (error) => error instanceof Error && error.message.includes('needs 3 edicts but the server only allocated 2'),
-      );
-    });
+    const previousSCR = registry.SCR;
+    registry.SCR = { BeginLoadingPlaque() { } };
+
+    try {
+      await withMockRegistry({
+        ...defaultMockRegistry(sv, client),
+        COM: mockCOM,
+        Con: consoleCapture.Con,
+      }, async () => {
+        await assert.rejects(
+          Host.Loadgame_f.call({ client: null }, 'save/e1m1'),
+          (error) => error instanceof Error && error.message.includes('needs 3 edicts but the server only allocated 2'),
+        );
+      });
+    } finally {
+      registry.SCR = previousSCR;
+    }
 
     assert.equal(spawnCalls, 1);
     assert.deepEqual(callOrder, []);

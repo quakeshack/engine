@@ -69,6 +69,12 @@ export default class ClientLifecycle {
     }
 
     CL.gameCapabilities = [...activeGameModule.identification.capabilities];
+
+    // Published rather than calling into the menu system directly -- `Menu.ts` already imports
+    // this module (for `M.StartSingleplayerGame()`'s routing), so importing back would be
+    // circular. Only fires once, right after the game module has registered its pages (including
+    // the root), which is exactly when it becomes safe to push it.
+    eventBus.publish('client.game-initialized');
   }
 
   static resumeGame(clientdata: string | null, particles: SerializedParticle[] | null): void {

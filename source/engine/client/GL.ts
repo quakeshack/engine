@@ -462,6 +462,23 @@ class GL {
     GL.StreamWriteFloat4(x2, y2, u2, v2);
   }
 
+  /**
+   * Rounds a virtual-to-screen scale factor to the nearest whole pixel multiple (minimum 1), for
+   * sizing a nearest-filtered pixel-art quad (conchars, `BitmapFont` glyphs).
+   *
+   * Nearest-filtered textures with fine, hard-edged detail (drop-shadowed console-font glyphs,
+   * the header font's diagonal hazard stripes) only stay crisp when every source texel maps to a
+   * uniform block of screen pixels. Drawing them at a fractional scale -- the norm once a
+   * flexible virtual-resolution viewport resolves to something like 1.5 -- makes nearest
+   * filtering duplicate some texel rows/columns more than others, which reads as uneven/moiré
+   * banding rather than a clean scaled copy. Snapping to a whole multiple avoids that. Exposed as
+   * a standalone method so it can be unit-tested without a WebGL context.
+   * @returns The snapped scale, always >= 1.
+   */
+  static SnapPixelScale(scale: number): number {
+    return Math.max(1, Math.round(scale));
+  }
+
   static StreamDrawColoredQuad(x: number, y: number, w: number, h: number, r: number, g: number, b: number, a: number): void {
     const x2 = x + w;
     const y2 = y + h;

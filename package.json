@@ -36,9 +36,9 @@
     "ws": "^8.18.0"
   },
   "scripts": {
-    "test": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/**/*.test.mjs source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs",
+    "test": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/**/*.test.mjs source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs source/game/**/test/**/**/*.test.mjs",
     "test:engine": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/**/*.test.mjs",
-    "test:game": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs",
+    "test:game": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs source/game/**/test/**/**/*.test.mjs",
     "test:common": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/common/**/*.test.mjs",
     "test:physics": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/physics/**/*.test.mjs",
     "test:renderer": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/renderer/**/*.test.mjs",

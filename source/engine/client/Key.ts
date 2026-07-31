@@ -12,10 +12,14 @@ eventBus.subscribe('registry.frozen', () => {
   ({ CL, Con, Host, M } = getClientRegistry());
 });
 
-/** Where key events are routed to. */
+/**
+ * Where key events are routed to, when the drop-down console isn't the one claiming them.
+ * The console is no longer a peer destination — see `Con.isOpen`, which takes dispatch
+ * priority over whichever of these is active underneath it (kept numbered as before, minus
+ * the retired `console` member, so nothing here needs renumbering).
+ */
 export enum KeyDestination {
   game = 0,
-  console = 1,
   message = 2,
   menu = 3,
 }
@@ -162,8 +166,8 @@ export default class Key {
   /** Index into history lines for Up/Down navigation. */
   static history_line = 1;
 
-  /** Current active key destination. */
-  static destination = KeyDestination.console;
+  /** Current active key destination, when the drop-down console isn't claiming input. */
+  static destination = KeyDestination.game;
 
   /** Active key bindings, indexed by key code. */
   static bindings: (string | null)[] = [];
@@ -490,9 +494,15 @@ export default class Key {
       Key.shiftDown = down;
     }
 
-    // Escape handling: always consumed, routes to the active destination.
+    // Escape handling: always consumed. A drop-down console open on top of anything else always
+    // takes priority to close — it never touches whatever destination is underneath.
     if (key === K.ESCAPE) {
       if (!down) {
+        return;
+      }
+      if (Con.isOpen) {
+        Con.isOpen = false;
+        Key.history_line = Key.lines.length;
         return;
       }
       if (Key.destination === KeyDestination.message) {
@@ -522,19 +532,55 @@ export default class Key {
       return;
     }
 
+    // The drop-down console, when open, takes dispatch priority over whatever destination is
+    // underneath (game or menu) — it's an overlay, not a peer destination. Keys it doesn't
+    // consume as text (e.g. the toggle key itself) still execute their bound command, so `~`
+    // continues to close it.
+    if (Con.isOpen) {
+      if (!Key.consolekeys.has(key)) {
+        const binding = Key.bindings[key];
+        if (binding !== null && binding !== undefined) {
+          Key.appendBindAction(binding, key, true);
+        }
+        return;
+      }
+
+      if (Key.shiftDown) {
+        key = Key.shiftMap[key] as K;
+      }
+
+      Key.Console(key);
+      return;
+    }
+
     // During demo playback, any console key in game mode opens the menu.
     if (CL.cls.demoplayback && Key.consolekeys.has(key) && Key.destination === KeyDestination.game) {
       M.ToggleMenu_f();
       return;
     }
 
+    // Stuck at the "game" destination with no game actually running (e.g. right after closing
+    // the menu while disconnected) and no keyboard handy: clicking the canvas is a mouse-only
+    // escape hatch back to the menu, mirroring what Escape already does here. Checked at
+    // mousedown time (before M.Keydown() could react to this same click and change
+    // Key.destination) so a click on the menu's own Back/Close button can't immediately reopen
+    // what it was just asked to close.
+    if (key === K.MOUSE1 && Key.destination === KeyDestination.game && CL.cls.state !== clientConnectionState.connected) {
+      M.Menu_Main_f();
+      return;
+    }
+
     // Execute bindings when the key shouldn't be consumed by the active text input:
-    // - In the menu, F-keys always execute bindings.
-    // - In the console, non-console keys execute bindings.
-    // - In game, bindings execute unless the console is forced up and it's a console key.
-    if ((Key.destination === KeyDestination.menu && key >= K.F1 && key <= K.F12) ||
-      (Key.destination === KeyDestination.console && !Key.consolekeys.has(key)) ||
-      (Key.destination === KeyDestination.game && (!Con.forcedup || !Key.consolekeys.has(key)))) {
+    // - In game, bindings always execute (the console, if open, already claimed the key above).
+    // - In the menu, any key that isn't meaningful as literal text (F-keys, Ins, Pause, and —
+    //   importantly — the console's toggle key) executes its binding too, so `~` can pop the
+    //   console open even while a text field like "Your Name" is focused. Mouse buttons/wheel
+    //   are deliberately excluded here even though they're not console text either: those need
+    //   to keep reaching the menu's own click handling below.
+    const isMouseOrWheel = key === K.MOUSE1 || key === K.MOUSE2 || key === K.MOUSE3
+      || key === K.MWHEELUP || key === K.MWHEELDOWN;
+    if (Key.destination === KeyDestination.game
+      || (Key.destination === KeyDestination.menu && !isMouseOrWheel && !Key.consolekeys.has(key))) {
       const binding = Key.bindings[key];
       if (binding !== null && binding !== undefined) {
         Key.appendBindAction(binding, key, true);
@@ -554,20 +600,19 @@ export default class Key {
       case KeyDestination.menu:
         M.Keydown(key);
         break;
-      default:
-        Key.Console(key);
-        break;
     }
   }
 
   /** Forwards clipboard text (e.g. from a Ctrl+V shortcut) to the active text input. */
   static Paste(text: string): void {
+    if (Con.isOpen) {
+      Key.#consoleEditor.paste(text);
+      return;
+    }
+
     switch (Key.destination) {
       case KeyDestination.menu:
         M.Paste(text);
-        return;
-      case KeyDestination.console:
-        Key.#consoleEditor.paste(text);
         return;
       case KeyDestination.message:
         Key.#chatEditor.paste(text);

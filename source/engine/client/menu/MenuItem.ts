@@ -4,6 +4,7 @@ import { LineEditor } from '../../../shared/LineEditor.ts';
 import Cmd from '../../common/Cmd.ts';
 import Cvar from '../../common/Cvar.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
+import type { BitmapFont } from '../BitmapFont.ts';
 import type { MenuPic } from '../Menu.ts';
 
 interface MenuItemConfig {
@@ -18,6 +19,10 @@ type MenuAction = () => void | Promise<void>;
 
 interface ActionConfig extends MenuItemConfig {
   readonly action?: MenuAction;
+  // Optional stylized font (e.g. a chunky uppercase-only header font) to draw the label with
+  // instead of the standard conchars font -- see `Action.draw()`. `variant` 0 is used while
+  // focused, 1 otherwise, so the font's own color rows double as the hover/selection highlight.
+  readonly font?: BitmapFont;
 }
 
 interface SliderConfig extends MenuItemConfig {
@@ -45,6 +50,7 @@ interface TextboxConfig extends MenuItemConfig {
   readonly maxLength?: number;
   readonly validator?: (value: string) => boolean;
   readonly width?: number;
+  readonly customDraw?: ((textbox: Textbox, x: number, y: number, focused: boolean) => void) | null;
 }
 
 interface SpacerConfig extends MenuItemConfig {
@@ -74,6 +80,14 @@ interface ColorPickerConfig extends MenuItemConfig {
   readonly getValue: () => number;
   readonly setValue: (value: number) => void;
   readonly max?: number;
+}
+
+interface NumberInputConfig extends MenuItemConfig {
+  readonly getValue: () => number;
+  readonly setValue: (value: number) => void;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
 }
 
 let { Host, Key, M, S } = getClientRegistry();
@@ -117,6 +131,17 @@ export class MenuItem {
   }
 
   /**
+   * Handle a mouse click at the given point (virtual menu-space coordinates), for items whose
+   * behavior depends on where within their row they were clicked (e.g. Slider setting its value
+   * from the click position instead of just nudging it). Returns false to fall back to the
+   * default "click behaves like Enter" activation.
+   * @returns True if the click was handled.
+   */
+  handleClick(_px: number, _py: number): boolean {
+    return false;
+  }
+
+  /**
    * Handle a text paste (e.g. Ctrl+V), if the item supports text input.
    * @returns True if the paste was handled.
    */
@@ -152,14 +177,25 @@ export class MenuItem {
  */
 export class Action extends MenuItem {
   action: MenuAction;
+  font: BitmapFont | null;
 
   constructor(config: ActionConfig) {
     super(config);
     this.action = config.action || (() => {});
+    this.font = config.font ?? null;
   }
 
-  override draw(x: number, y: number, _focused: boolean): void {
+  override draw(x: number, y: number, focused: boolean): void {
     if (!this.visible) {
+      return;
+    }
+
+    if (this.font !== null) {
+      if (this.enabled) {
+        M.DrawBitmapString(x, y, this.label, this.font, focused ? 0 : 1);
+      } else {
+        M.DrawBitmapString(x, y, this.label, this.font, 1);
+      }
       return;
     }
 
@@ -189,12 +225,17 @@ export class Action extends MenuItem {
  * Slider for adjusting numeric values.
  */
 export class Slider extends MenuItem {
+  // Matches the travel distance M.DrawSlider() draws the bar/thumb across (see its `x` to
+  // `x + 72` characters), so a click can be mapped back to a normalized value.
+  static readonly #barTravel = 72;
+
   cvar: string;
   min: number;
   max: number;
   step: number;
   invert: boolean;
   displayScale: number;
+  #barX = 0;
 
   constructor(config: SliderConfig) {
     super(config);
@@ -240,8 +281,29 @@ export class Slider extends MenuItem {
       return;
     }
 
+    this.#barX = valueX ?? x + 116;
     M.Print(x, y, this.label);
-    M.DrawSlider(valueX ?? x + 116, y, this.getNormalizedValue());
+    M.DrawSlider(this.#barX, y, this.getNormalizedValue());
+  }
+
+  /**
+   * Set the value directly from a click position on the bar, rather than nudging it by one
+   * step — the click position maps linearly onto the min/max range.
+   * @returns True if the click was handled.
+   */
+  override handleClick(px: number): boolean {
+    if (!this.enabled) {
+      return false;
+    }
+
+    const normalized = Math.max(0, Math.min(1, (px - this.#barX) / Slider.#barTravel));
+    const value = this.invert
+      ? this.max - normalized * (this.max - this.min)
+      : this.min + normalized * (this.max - this.min);
+
+    this.setValue(value);
+    S.LocalSound(M.sfx_menu3);
+    return true;
   }
 
   override handleInput(key: K): boolean {
@@ -368,12 +430,14 @@ export class Toggle extends MenuItem {
 export class Textbox extends MenuItem {
   cvar: string | null;
   width: number;
+  customDraw: ((textbox: Textbox, x: number, y: number, focused: boolean) => void) | null;
   #editor: LineEditor;
 
   constructor(config: TextboxConfig) {
     super(config);
     this.cvar = config.cvar || null;
     this.width = config.width ?? 24;
+    this.customDraw = config.customDraw || null;
     this.#editor = new LineEditor(config.value || '', {
       maxLength: config.maxLength ?? 32,
       validator: config.validator || (() => true),
@@ -423,14 +487,15 @@ export class Textbox extends MenuItem {
   }
 
   /**
-   * Determines the glyph to draw for the blinking cursor, or null when the current blink
-   * phase should instead reveal the character already under the cursor. Exposed as
-   * `protected` for subclasses with custom layouts (e.g. `NameFieldTextbox`) that draw their
-   * own cursor rather than using `draw()` as-is.
+   * The glyph to draw for the blinking cursor this frame, or null when the current blink phase
+   * should instead reveal the character already under the cursor. Public (computes the blink
+   * phase from the current frame internally) so a `customDraw` callback with its own layout
+   * (e.g. a name field with the input box in a fixed column instead of below the label) can
+   * draw the same cursor without needing `draw()` as-is.
    * @returns A character code to draw at the cursor, or null to reveal the text underneath.
    */
-  protected _getCursorGlyph(blinkPhase: number): number | null {
-    return this.#editor.cursorGlyph(blinkPhase);
+  getCursorGlyph(): number | null {
+    return this.#editor.cursorGlyph((Host.realtime * 4.0) & 1);
   }
 
   override activate(): void {
@@ -467,6 +532,11 @@ export class Textbox extends MenuItem {
       return;
     }
 
+    if (this.customDraw) {
+      this.customDraw(this, x, y, focused);
+      return;
+    }
+
     M.Print(x, y, this.label);
 
     y += 16;
@@ -475,7 +545,7 @@ export class Textbox extends MenuItem {
     M.PrintWhite(x + 8, y, this.getValue());
 
     if (focused) {
-      const glyph = this._getCursorGlyph((Host.realtime * 4.0) & 1);
+      const glyph = this.getCursorGlyph();
       if (glyph !== null) {
         M.DrawCharacter(x + 8 + this.cursorPos * 8, y, glyph);
       }
@@ -567,35 +637,6 @@ export class Image extends MenuItem {
   }
 }
 
-export class PlayerSkin extends MenuItem {
-  value = 0;
-
-  constructor() {
-    super({ focusable: false });
-  }
-
-  override draw(x: number, y: number, _focused: boolean): void {
-    if (!this.visible) {
-      return;
-    }
-
-    const top = (this.value >> 4) & 0x0F;
-    const bottom = this.value & 0x0F;
-
-    M.DrawPic(x, y, M.bigbox);
-    M.DrawPicTranslate(
-      x + 12,
-      y + 8,
-      M.menuplyr,
-      (top << 4) + (top >= 8 ? 4 : 11),
-      (bottom << 4) + (bottom >= 8 ? 4 : 11),
-    );
-  }
-
-  override getHeight(): number {
-    return M.bigbox.height || 0;
-  }
-}
 
 /**
  * A single load/save game slot. Enter always activates the slot (the caller decides whether
@@ -679,6 +720,105 @@ export class ColorPicker extends MenuItem {
     if (key === K.RIGHTARROW || key === K.ENTER) {
       this.setValue(this.getValue() >= this.max ? 0 : this.getValue() + 1);
       S.LocalSound(M.sfx_menu3);
+      return true;
+    }
+
+    return false;
+  }
+}
+
+/**
+ * A numeric field. Left/Right (or Enter) nudge the value by `step`, clamped to [min, max];
+ * digits can also be typed directly (with Backspace), like a native `<input type="number">`,
+ * so reaching a value far from the current one doesn't need many arrow presses. Uses
+ * `getValue`/`setValue` closures rather than a mandatory `cvar` (same shape as `ColorPicker`/
+ * `Toggle`), so it stays usable — and testable — without touching the real `Cvar` registry.
+ */
+export class NumberInput extends MenuItem {
+  static readonly #digitZero = '0'.charCodeAt(0) as K;
+  static readonly #digitNine = '9'.charCodeAt(0) as K;
+
+  getValue: () => number;
+  setValue: (value: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  #typedDigits: string | null = null;
+
+  constructor(config: NumberInputConfig) {
+    super(config);
+    this.getValue = config.getValue;
+    this.setValue = config.setValue;
+    this.min = config.min ?? 0;
+    this.max = config.max ?? 99;
+    this.step = config.step ?? 1;
+  }
+
+  #clamp(value: number): number {
+    return Math.max(this.min, Math.min(this.max, value));
+  }
+
+  /**
+   * How many digits the largest representable value needs, capping typed input to that width.
+   * @returns Digit width of the wider of `min`/`max`.
+   */
+  #maxDigits(): number {
+    return Math.max(String(this.min).length, String(this.max).length);
+  }
+
+  override draw(x: number, y: number, focused: boolean, valueX?: number): void {
+    if (!this.visible) {
+      return;
+    }
+
+    // Losing focus abandons any in-progress typing; the value itself was already committed
+    // on every keystroke, so nothing but the raw display text is discarded.
+    if (!focused) {
+      this.#typedDigits = null;
+    }
+
+    M.Print(x, y, this.label);
+    M.PrintWhite(valueX ?? x + 116, y, this.#typedDigits ?? String(this.getValue()));
+  }
+
+  override handleInput(key: K): boolean {
+    if (!this.enabled) {
+      return false;
+    }
+
+    if (key === K.LEFTARROW) {
+      this.#typedDigits = null;
+      this.setValue(this.#clamp(this.getValue() - this.step));
+      S.LocalSound(M.sfx_menu3);
+      return true;
+    }
+
+    if (key === K.RIGHTARROW || key === K.ENTER) {
+      this.#typedDigits = null;
+      this.setValue(this.#clamp(this.getValue() + this.step));
+      S.LocalSound(M.sfx_menu3);
+      return true;
+    }
+
+    if (key === K.BACKSPACE) {
+      const digits = (this.#typedDigits ?? String(this.getValue())).slice(0, -1);
+      this.#typedDigits = digits;
+      // Number.parseInt('', 10) and Number.parseInt('-', 10) (the latter reachable when min is
+      // negative and backspacing the seeded "-5" down to a bare sign) both parse to NaN --
+      // fall back to min rather than committing NaN through setValue().
+      const parsed = Number.parseInt(digits, 10);
+      this.setValue(Number.isNaN(parsed) ? this.min : this.#clamp(parsed));
+      return true;
+    }
+
+    if (key >= NumberInput.#digitZero && key <= NumberInput.#digitNine) {
+      const digits = this.#typedDigits ?? '';
+      if (digits.length >= this.#maxDigits()) {
+        return true; // Ignore extra digits past the field's width, but still consume the key.
+      }
+
+      this.#typedDigits = digits + String.fromCharCode(key);
+      this.setValue(this.#clamp(Number.parseInt(this.#typedDigits, 10)));
       return true;
     }
 

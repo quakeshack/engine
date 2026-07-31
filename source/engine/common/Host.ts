@@ -8,7 +8,7 @@
 
 /* eslint-disable jsdoc/require-returns */
 
-import { SerializableEntity, type SerializedData, type ServerGameInterface } from '../../shared/GameInterfaces.ts';
+import { SerializableEntity, type HostAlertEvent, type SerializedData, type ServerGameInterface } from '../../shared/GameInterfaces.ts';
 import type { SerializedParticle } from '../client/R.ts';
 import type { AliasModel } from './model/AliasModel.ts';
 import { ED, type ServerEdict } from '../server/Edict.ts';
@@ -208,7 +208,7 @@ export default class Host {
     }
 
     CL.Disconnect();
-    M.Alert('Host.EndGame', message);
+    eventBus.publish<[HostAlertEvent]>('host.alert', { title: 'Host.EndGame', message, severity: 'info' });
   }
 
   static Error(error: string): never | void {
@@ -231,7 +231,7 @@ export default class Host {
     CL.Disconnect();
     CL.cls.demonum = -1;
     Host.inerror = false;
-    M.Alert('Host Error', error);
+    eventBus.publish<[HostAlertEvent]>('host.alert', { title: 'Host Error', message: error, severity: 'error' });
   }
 
   static FindMaxClients(): void {
@@ -456,7 +456,7 @@ export default class Host {
     SV.CheckForNewClients();
     SV.RunClients();
 
-    if (!SV.server.paused && (SV.svs.maxclients >= 2 || (!registry.isDedicatedServer && Key.destination === KeyDestination.game))) {
+    if (!SV.server.paused && (SV.svs.maxclients >= 2 || (!registry.isDedicatedServer && M.AllowsSimulation()))) {
       SV.physics.physics();
     }
 
@@ -725,12 +725,24 @@ export default class Host {
 
   // Commands
 
+  /**
+   * The `quit` command: asks for confirmation via game code's own quit dialog (see
+   * docs/events.md#host), unless typed directly into an already-open console (a deliberate
+   * enough action to skip the confirmation). Published as an event rather than calling into
+   * the menu system directly, same reasoning as `host.alert` -- the engine has no opinion on
+   * what a quit confirmation looks like, or whether one exists at all.
+   */
   static Quit_f(): void {
-    if (!registry.isDedicatedServer && Key.destination !== KeyDestination.console) {
-      M.Menu_Quit_f();
+    if (!registry.isDedicatedServer && !Con.isOpen) {
+      eventBus.publish('host.quit-requested');
       return;
     }
 
+    Host.ForceQuit();
+  }
+
+  /** Quits immediately, no confirmation — used once the player has already confirmed (e.g. the quit dialog's Yes). */
+  static ForceQuit(): void {
     if (SV.server.active) {
       Host.ShutdownServer();
     }
@@ -1244,6 +1256,10 @@ export default class Host {
     }
 
     CL.Disconnect();
+
+    if (!registry.isDedicatedServer) {
+      SCR.BeginLoadingPlaque();
+    }
 
     // Restore all server and game cvars.
     for (const [name, value] of gamestate.cvars) {
