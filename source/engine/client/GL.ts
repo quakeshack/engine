@@ -629,14 +629,6 @@ export class GLTexture {
   #textureModeListener: (() => void) | null = null;
   #textureWrap: TextureWrapMode = 'repeat';
 
-  /**
-   * @deprecated
-   * @returns {WebGLTexture | null} texture handle
-   */
-  get texnum(): WebGLTexture | null {
-    return this.#texnum;
-  }
-
   get ready(): boolean {
     return this.#texnum !== null;
   }
@@ -855,6 +847,14 @@ export class GLTexture {
     gl.bindTexture(gl.TEXTURE_2D, this.#texnum);
 
     return this;
+  }
+
+  /**
+   * Attaches this texture to the currently bound framebuffer.
+   * @param {number} attachmentPoint framebuffer attachment point
+   */
+  attachToFramebuffer(attachmentPoint: number): void {
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, this.#texnum, 0);
   }
 
   /**

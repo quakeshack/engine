@@ -74,7 +74,7 @@ export default class Draw {
     GL.StreamFlush();
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, Draw.#fbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture.texnum, 0);
+    texture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
     gl.viewport(0, 0, texture.width, texture.height);
 
     // Calc ortho for this texture
@@ -390,16 +390,6 @@ export default class Draw {
    */
   static async LoadPicFromFile(filename: string): Promise<GLTexture> {
     return (await GLTexture.FromImageFile(filename))!.lockTextureMode('GL_NEAREST');
-  }
-
-  /**
-   * Loads a picture from an image file, returning a placeholder immediately.
-   * @deprecated not implemented yet
-   * @returns The placeholder texture.
-   */
-  static LoadPicFromFileDeferred(filename: string): GLTexture {
-    const glt = GLTexture.Allocate(filename, 1, 1, new Uint8Array([0, 0, 0, 0])).lockTextureMode('GL_NEAREST');
-    return glt;
   }
 
   /**

@@ -13,7 +13,6 @@ interface MutableSpriteFrameImage {
   width: number;
   height: number;
   glt: GLTexture;
-  texturenum: WebGLTexture | null;
 }
 
 interface MutableSpriteSingleFrame extends MutableSpriteFrameImage {
@@ -132,7 +131,6 @@ export class SpriteSPRLoader extends ModelLoader {
     const texture = GLTexture.Allocate(identifier, frame.width, frame.height, rgba);
 
     frame.glt = texture;
-    frame.texturenum = texture.texnum;
 
     return inframe + 16 + frame.width * frame.height;
   }

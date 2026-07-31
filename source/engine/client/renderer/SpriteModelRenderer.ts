@@ -118,7 +118,7 @@ export class SpriteModelRenderer extends ModelRenderer {
     }
 
     // Bind texture
-    GL.Bind(program.tTexture!, frame.texturenum, true);
+    frame.glt.bind(program.tTexture!, true);
 
     // Calculate billboard orientation
     let r: { [n: number]: number };

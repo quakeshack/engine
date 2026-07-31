@@ -2190,13 +2190,6 @@ export class PmovePlayer { // pmove_t (player state only)
  * Instantiate one per context (one for client prediction, one for server).
  */
 export class Pmove implements PlayerCollisionWorld { // pmove_t
-  /** @deprecated import DIST_EPSILON instead */
-  static DIST_EPSILON = DIST_EPSILON;
-  /** @deprecated import STOP_EPSILON instead */
-  static STOP_EPSILON = STOP_EPSILON;
-  /** @deprecated import STEPSIZE instead */
-  static STEPSIZE = STEPSIZE;
-
   static MAX_CLIP_PLANES = MAX_CLIP_PLANES;
 
   static readonly PLAYER_MINS = new Vector(-16.0, -16.0, -24.0);

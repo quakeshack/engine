@@ -263,7 +263,7 @@ export default class Host {
     Host.pausable = new Cvar('pausable', '1', Cvar.FLAG.SERVER);
     Host.teamplay = new Cvar('teamplay', '0', Cvar.FLAG.SERVER); // actually a game cvar, but we need it here, since a bunch of server code is using it
 
-    /** @deprecated use registry.isDedicatedServer instead, this is only made available to the game code */
+    // CR: this is a leftover from QuakeC VM times, so that the game could query whether it is running in dedicated or not
     Host.dedicated = new Cvar('dedicated', registry.isDedicatedServer ? '1' : '0', Cvar.FLAG.READONLY, 'Set to 1, if running in dedicated server mode.');
 
     eventBus.subscribe('cvar.changed', (name: string) => {

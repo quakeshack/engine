@@ -362,7 +362,6 @@ const NAV_BLOCKED_LONG_LINK_COST = 1024.0;
 const NAV_TRAVERSAL_DROP_LIMIT = 256.0;
 
 export class Navigation {
-  static nav_save_waypoints: Cvar | null = null;
   static nav_debug_waypoints: Cvar | null = null;
   static nav_debug_graph: Cvar | null = null;
   static nav_debug_path: Cvar | null = null;
@@ -426,7 +425,6 @@ export class Navigation {
       this.nav_build_process = new Cvar('nav_build_process', '0', Cvar.FLAG.NONE, 'if set to 1, it will force build the nav mesh and quit');
     }
 
-    this.nav_save_waypoints = new Cvar('nav_save_waypoints', '0', Cvar.FLAG.NONE, 'deprecated, extracted waypoints stay in memory and are not written to nav files');
     this.nav_debug_graph = new Cvar('nav_debug_graph', '0', Cvar.FLAG.NONE, 'if set to 1, will render the navigation graph for debugging');
     this.nav_debug_waypoints = new Cvar('nav_debug_waypoints', '0', Cvar.FLAG.NONE, 'if set to 1, will render all waypoints for debugging');
     this.nav_debug_path = new Cvar('nav_debug_path', '0', Cvar.FLAG.NONE | Cvar.FLAG.CHEAT, 'if set to 1, will render the last computed path for debugging');

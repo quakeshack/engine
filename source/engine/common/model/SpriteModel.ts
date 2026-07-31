@@ -8,8 +8,6 @@ export interface SpriteFrameImage {
   readonly width: number;
   readonly height: number;
   readonly glt: GLTexture;
-  /** Raw WebGL texture handle, stored from {@link GLTexture.texnum}. */
-  readonly texturenum: WebGLTexture | null;
 }
 
 export interface SpriteSingleFrame {
@@ -18,8 +16,6 @@ export interface SpriteSingleFrame {
   readonly width: number;
   readonly height: number;
   readonly glt: GLTexture;
-  /** Raw WebGL texture handle, stored from {@link GLTexture.texnum}. */
-  readonly texturenum: WebGLTexture | null;
 }
 
 interface SpriteFrameGroup {

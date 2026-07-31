@@ -310,7 +310,6 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -371,7 +370,6 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -430,7 +428,6 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -497,7 +494,6 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -555,7 +551,6 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 1 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -621,7 +616,6 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -684,7 +678,6 @@ void describe('Navigation.build', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -754,7 +747,6 @@ void describe('Navigation.build (tight corridor)', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -927,7 +919,6 @@ void describe('Navigation.build (slope)', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -974,7 +965,6 @@ void describe('Navigation.findPath', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -1020,7 +1010,6 @@ void describe('Navigation.findPath', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -1082,7 +1071,6 @@ void describe('Navigation.findPath', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };
@@ -1256,7 +1244,6 @@ void describe('Navigation (two-level floor — drop-link regression)', () => {
     const navigation = new Navigation(worldmodel);
 
     Navigation.nav_build_process = null;
-    Navigation.nav_save_waypoints = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };
     Navigation.nav_debug_path = { value: 0 };

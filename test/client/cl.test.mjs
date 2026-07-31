@@ -7,6 +7,7 @@ import * as Def from '../../source/engine/common/Def.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { PM_TYPE, Pmove } from '../../source/engine/common/Pmove.ts';
 import { ClientPlayerState } from '../../source/engine/client/ClientMessages.ts';
+import { createBrushWorldModel } from '../physics/fixtures.mjs';
 
 void describe('CL.AppendChatMessage', () => {
   void test('publishes chat messages without a legacy engine HUD fallback', () => {
@@ -114,5 +115,81 @@ void describe('CL.PredictUsercmd', () => {
     assert.equal(pmove.dead, false);
     assert.equal(to.pmType, PM_TYPE.SPECTATOR);
     assert.ok(to.origin[2] > from.origin[2], `expected the spectator to fly upward, got z=${to.origin[2]}`);
+  });
+});
+
+void describe('CL.SetUpPlayerPrediction', () => {
+  /**
+   * @param {() => void} callback test body run with a save/restore of the pmove and worldmodel state.
+   */
+  function withRestoredPmoveState(callback) {
+    const previousNopred = CL.nopred;
+    const previousWorldmodel = CL.state.worldmodel;
+    const previousPhysents = [...CL.pmove.physents];
+    const clientDemos = CL.connection.clientDemos;
+    const previousDemoplayback = clientDemos.demoplayback;
+
+    try {
+      callback();
+    } finally {
+      CL.nopred = previousNopred;
+      CL.state.worldmodel = previousWorldmodel;
+      clientDemos.demoplayback = previousDemoplayback;
+      CL.pmove.physents.length = 0;
+      CL.pmove.physents.push(...previousPhysents);
+      CL.state.clientEntities.clear();
+    }
+  }
+
+  void test('clears pmove entities and skips setup when nopred is enabled', () => {
+    withRestoredPmoveState(() => {
+      CL.nopred = { value: 1 };
+      CL.pmove.physents.length = 0;
+      CL.pmove.physents.push({}, {}, {}); // pretend a previous setup left entities behind
+
+      CL.SetUpPlayerPrediction();
+
+      assert.equal(CL.pmove.physents.length, 1, 'clearEntities() should truncate back down to just the world slot');
+    });
+  });
+
+  void test('clears pmove entities and skips setup during demo playback', () => {
+    withRestoredPmoveState(() => {
+      CL.nopred = { value: 0 };
+      CL.connection.clientDemos.demoplayback = true;
+      CL.pmove.physents.length = 0;
+      CL.pmove.physents.push({}, {}, {});
+
+      CL.SetUpPlayerPrediction();
+
+      assert.equal(CL.pmove.physents.length, 1, 'clearEntities() should truncate back down to just the world slot');
+    });
+  });
+
+  void test('does nothing further when physents are empty and no worldmodel is available yet', () => {
+    withRestoredPmoveState(() => {
+      CL.nopred = { value: 0 };
+      CL.connection.clientDemos.demoplayback = false;
+      CL.state.worldmodel = null;
+      CL.pmove.physents.length = 0;
+
+      CL.SetUpPlayerPrediction();
+
+      assert.equal(CL.pmove.physents.length, 0, 'no worldmodel to seed physents with, so setup should stay skipped');
+    });
+  });
+
+  void test('lazily applies the pending worldmodel and sets up physents once one becomes available', () => {
+    withRestoredPmoveState(() => {
+      CL.nopred = { value: 0 };
+      CL.connection.clientDemos.demoplayback = false;
+      CL.state.clientEntities.clear();
+      CL.state.worldmodel = createBrushWorldModel({ halfExtents: [32, 32, 32] });
+      CL.pmove.physents.length = 0;
+
+      CL.SetUpPlayerPrediction();
+
+      assert.equal(CL.pmove.physents.length, 1, 'setWorldmodel() should populate physent[0] for the world, with no other entities to add');
+    });
   });
 });

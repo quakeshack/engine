@@ -10,10 +10,9 @@ import ClientDemos from './ClientDemos.ts';
 import { ClientPlayerState } from './ClientMessages.ts';
 import VID from './VID.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
-import ClientConnection from './ClientConnection.ts';
+import ClientConnection, { type IdentityCvars } from './ClientConnection.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { BrushModel } from '../common/Mod.ts';
-// import { materialFlags, PBRMaterial, QuakeMaterial } from './renderer/Materials.mjs';
 
 let { Con, Draw, Host } = getClientRegistry();
 
@@ -22,12 +21,6 @@ eventBus.subscribe('registry.frozen', () => {
 });
 
 export default class CL {
-  /** @deprecated – use Def.contentShift */
-  static cshift = Def.contentShift;
-
-  /** @deprecated – use Def.clientConnectionState */
-  static active = Def.clientConnectionState;
-
   static pmove = new Pmove();
 
   static #clientDemos = new ClientDemos();
@@ -39,9 +32,9 @@ export default class CL {
   static svc_strings: Array<[string, number]> = [];
 
   static {
-    this.#connection = new ClientConnection({ clientDemos: this.#clientDemos });
-    this.cls.bindClientDemos(this.#clientDemos);
-    this.svc_strings = Object.entries(Protocol.svc);
+    CL.#connection = new ClientConnection({ clientDemos: CL.#clientDemos });
+    CL.cls.bindClientDemos(CL.#clientDemos);
+    CL.svc_strings = Object.entries(Protocol.svc);
   }
 
   static nolerp: Cvar = null!;
@@ -70,27 +63,27 @@ export default class CL {
   static nullcmd = new Protocol.UserCmd();
 
   static StartDemos(demos: string[]): void {
-    this.#clientDemos.startDemos(demos);
+    CL.#clientDemos.startDemos(demos);
   }
 
   static async StartPlayback(demoname: string, timedemo = false): Promise<void> {
-    await this.#clientDemos.startPlayback(demoname, timedemo);
+    await CL.#clientDemos.startPlayback(demoname, timedemo);
   }
 
   static StopPlayback(): void { // public, by Host.js
-    this.#clientDemos.stopPlayback();
+    CL.#clientDemos.stopPlayback();
   }
 
   static StartRecording(demoname: string, forcetrack = -1): void {
-    this.#clientDemos.startRecording(demoname, forcetrack);
+    CL.#clientDemos.startRecording(demoname, forcetrack);
   }
 
   static async StopRecording(): Promise<void> {
-    await this.#clientDemos.stopRecording();
+    await CL.#clientDemos.stopRecording();
   }
 
   static NextDemo(): void { // public, by Host.js, M.js
-    this.#clientDemos.playNext();
+    CL.#clientDemos.playNext();
   }
 
   static async Init(): Promise<void> {
@@ -129,7 +122,7 @@ export default class CL {
     CL.#connection.clearState();
   }
 
-  static ConfigureConnectionIdentity(cvars: { name: Cvar | null; color: Cvar | null; rcon_password: Cvar | null }): void {
+  static ConfigureConnectionIdentity(cvars: IdentityCvars): void {
     CL.#connection.configureIdentityCvars(cvars);
   }
 
@@ -278,7 +271,7 @@ export default class CL {
     }
   };
 
-  static Rcon_f = class extends ConsoleCommand {
+  static Rcon_f = class RconCommand extends ConsoleCommand {
     run(...args: string[]): void { // private
       if (args.length === 0) {
         Con.Print('Usage: rcon <command>\n');
@@ -299,64 +292,49 @@ export default class CL {
   };
 
   static Draw(): void { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR
-    if (this.cls.changelevel || this.cls.connecting) {
+    if (CL.cls.changelevel || CL.cls.connecting) {
       Draw.BlackScreen();
 
-      if (this.state.gameAPI) {
-        this.state.gameAPI.drawLoading();
+      if (CL.state.gameAPI) {
+        CL.state.gameAPI.drawLoading();
       }
     }
 
-    if (this.cls.changelevel) {
+    if (CL.cls.changelevel) {
       Draw.String(VID.width / 2 - 96, VID.height / 2 - 32, 'Loading', 3.0); // TODO: use the loading graphic
     }
 
-    if (this.cls.connecting) {
+    if (CL.cls.connecting) {
       const x0 = VID.width / 2 - 36 * 8;
       const y0 = VID.height - 96;
-      // Draw.String(x0, y0, 'Connecting', 2.0);
-      Draw.StringWhite(x0, y0 + 48, this.cls.connecting.message);
+      Draw.StringWhite(x0, y0 + 48, CL.cls.connecting.message);
 
       const len = 30;
-      const p = this.cls.connecting.percentage;
-      Draw.String(x0, y0 + 24, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(0, ' ')}%`, 2.0);
+      const p = CL.cls.connecting.percentage;
+      Draw.String(x0, y0 + 24, `[${'#'.repeat(p / 100 * len).padEnd(len, '_')}] ${p.toFixed(0).padStart(3, ' ')}%`, 2.0);
     }
   }
 
   static DrawHUD(): void {
-    if (this.nohud.value !== 0) {
+    if (CL.nohud.value !== 0) {
       return;
     }
 
-    if (this.state.gameAPI) {
-      this.state.gameAPI.draw();
+    if (CL.state.gameAPI) {
+      CL.state.gameAPI.draw();
     }
   }
 
   static ClientFrame(): void {
-    if (this.cls.signon !== 4) {
+    if (CL.cls.signon !== 4) {
       return; // not ready yet
     }
 
-    if (this.state.gameAPI) {
-      this.state.gameAPI.startFrame();
+    if (CL.state.gameAPI) {
+      CL.state.gameAPI.startFrame();
     }
 
-    this.state.clientEntities.think();
-
-    // CR: playing around with rendering into textures
-    // const comptex = CL.state.worldmodel.textures.find((t) => t.name === 'BIGDOOR4');
-    // if (comptex && comptex instanceof QuakeMaterial) {
-    //   const dateTime = (new Date().toISOString()).split('T');
-    //   Draw.BeginTexture(comptex.texture);
-    //   Draw.String(8, 8, 'Hello world!', 1.0);
-    //   Draw.String(8, 24, dateTime[0], 1.0);
-    //   Draw.String(8, 32, dateTime[1], 1.0);
-    //   // comptex.flags |= materialFlags.MF_SKIP;
-    //   // R.RenderWorld();
-    //   // comptex.flags &= ~materialFlags.MF_SKIP;
-    //   Draw.EndTexture();
-    // }
+    CL.state.clientEntities.think();
   }
 
   static ServerInfo_f(): void { // private
@@ -421,18 +399,18 @@ export default class CL {
   }
 
   static PredictMove(): void { // public, by Host.js
-    this.state.time = Host.realtime - this.state.latency;
-    this.state.predicted = false;
+    CL.state.time = Host.realtime - CL.state.latency;
+    CL.state.predicted = false;
 
-    if (this.nopred.value !== 0) {
+    if (CL.nopred.value !== 0) {
       return;
     }
 
-    if (this.cls.demoplayback) {
+    if (CL.cls.demoplayback) {
       return;
     }
 
-    if (this.state.intermission !== 0) {
+    if (CL.state.intermission !== 0) {
       // The server freezes the player entity during intermission (movetype
       // none, fixed origin) and never re-sends its origin. Prediction has no
       // notion of that and would keep replaying gravity/collision from the
@@ -440,18 +418,18 @@ export default class CL {
       return;
     }
 
-    const playerEntity = this.state.playerentity;
+    const playerEntity = CL.state.playerentity;
     if (!playerEntity) {
       return;
     }
 
-    if (!this.pmove.physents.length) {
+    if (!CL.pmove.physents.length) {
       return;
     }
 
     // figure out how many unacknowledged commands we need to replay
-    const current = this.state.moveSequence;
-    const ack = this.state.acknowledgedMoveSequence;
+    const current = CL.state.moveSequence;
+    const ack = CL.state.acknowledgedMoveSequence;
     const pending = (current - ack) & 0xFF;
 
     if (pending === 0 || pending > Protocol.CMD_BUFFER_SIZE) {
@@ -460,28 +438,28 @@ export default class CL {
     }
 
     // get a player move instance
-    const pmove = this.pmove.newPlayerMove();
+    const pmove = CL.pmove.newPlayerMove();
 
     // build the initial “from” state from the last server-confirmed position
     const from = new ClientPlayerState(pmove);
     from.origin.set(playerEntity.msg_origins[0]);
     from.velocity.set(playerEntity.msg_velocity[0]);
-    from.onground = this.state.onground ? 0 : null;
+    from.onground = CL.state.onground ? 0 : null;
     // use server-acknowledged PM state for prediction base — these arrive
     // alongside the move ack in clientdata and are more reliable than the
     // playerstate array (which may not be populated for the local player)
-    from.pmFlags = this.state.ackedPmFlags;
-    from.pmTime = this.state.ackedPmTime;
-    from.oldbuttons = this.state.ackedPmOldButtons;
-    from.pmType = this.state.ackedPmType;
-    from.waterjumptime = this.state.playerstate?.waterjumptime ?? 0;
+    from.pmFlags = CL.state.ackedPmFlags;
+    from.pmTime = CL.state.ackedPmTime;
+    from.oldbuttons = CL.state.ackedPmOldButtons;
+    from.pmType = CL.state.ackedPmType;
+    from.waterjumptime = CL.state.playerstate?.waterjumptime ?? 0;
 
     const to = new ClientPlayerState(pmove);
 
     // replay each unacknowledged command
     for (let i = 1; i <= pending; i++) {
       const seq = (ack + i) & 0xFF;
-      const slot = this.state.cmdBuffer[seq & Protocol.CMD_BUFFER_MASK];
+      const slot = CL.state.cmdBuffer[seq & Protocol.CMD_BUFFER_MASK];
       const cmd = slot.cmd;
 
       CL.PredictUsercmd(pmove, from, to, cmd);
@@ -501,7 +479,7 @@ export default class CL {
     // apply predicted position to the player entity for rendering
     playerEntity.origin.set(to.origin);
     playerEntity.velocity.set(to.velocity);
-    this.state.predicted = true;
+    CL.state.predicted = true;
   }
 
   /**
@@ -509,11 +487,11 @@ export default class CL {
    * for collision detection during prediction.
    */
   static #setupPredictionPhysents(): void {
-    const pm = this.pmove;
+    const pm = CL.pmove;
     pm.clearEntities();
 
-    const entities = this.state.clientEntities.entities;
-    const playerEntNum = this.state.viewentity;
+    const entities = CL.state.clientEntities.entities;
+    const playerEntNum = CL.state.viewentity;
 
     for (let i = 1; i < entities.length; i++) {
       const ent = entities[i];
@@ -538,20 +516,14 @@ export default class CL {
     }
   }
 
-  /**
-   * @param {PmovePlayer} pmove pmove for player
-   * @param {ClientPlayerState} from previous state
-   * @param {ClientPlayerState} to current state
-   * @param {Protocol.UserCmd} u player commands
-   */
   static PredictUsercmd(pmove: PmovePlayer, from: ClientPlayerState, to: ClientPlayerState, u: Protocol.UserCmd): void { // private
     // split long commands
     if (u.msec > 50) {
       const mid = new ClientPlayerState(pmove);
       const split = u.copy();
       split.msec /= 2;
-      this.PredictUsercmd(pmove, from, mid, split);
-      this.PredictUsercmd(pmove, mid, to, split);
+      CL.PredictUsercmd(pmove, from, mid, split);
+      CL.PredictUsercmd(pmove, mid, to, split);
       return;
     }
 
@@ -597,24 +569,24 @@ export default class CL {
    * This sets up the first phase.
    */
   static SetUpPlayerPrediction(): void { // public, by Host.js
-    if (this.nopred.value !== 0 || this.cls.demoplayback) {
-      this.pmove.clearEntities();
+    if (CL.nopred.value !== 0 || CL.cls.demoplayback) {
+      CL.pmove.clearEntities();
       return;
     }
 
-    if (this.state.playerentity === null) {
-      this.pmove.clearEntities();
+    if (CL.state.playerentity === null) {
+      CL.pmove.clearEntities();
       return;
     }
 
-    if (!this.pmove.physents.length && this.state.worldmodel !== null) {
-      this.pmove.setWorldmodel(this.state.worldmodel);
+    if (!CL.pmove.physents.length && CL.state.worldmodel !== null) {
+      CL.pmove.setWorldmodel(CL.state.worldmodel);
     }
 
-    if (!this.pmove.physents.length) {
+    if (!CL.pmove.physents.length) {
       return;
     }
 
-    this.#setupPredictionPhysents();
+    CL.#setupPredictionPhysents();
   }
 }

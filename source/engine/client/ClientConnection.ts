@@ -11,7 +11,7 @@ import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.ts';
 import { ModelScope } from '../common/Mod.ts';
 
-type IdentityCvars = {
+export type IdentityCvars = {
   name: Cvar | null;
   color: Cvar | null;
   rcon_password: Cvar | null;

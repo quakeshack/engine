@@ -209,7 +209,7 @@ export default class V {
     }
     CL.state.faceanimtime = CL.state.time + 0.2;
 
-    const cshift = CL.state.cshifts[CL.cshift.damage];
+    const cshift = CL.state.cshifts[Def.contentShift.damage];
     cshift[3] += 3.0 * count;
     if (cshift[3] < 0.0) {
       cshift[3] = 0.0;
@@ -242,7 +242,7 @@ export default class V {
   }
 
   static BonusFlash_f(): void {
-    const cshift = CL.state.cshifts[CL.cshift.bonus];
+    const cshift = CL.state.cshifts[Def.contentShift.bonus];
     cshift[0] = 215.0;
     cshift[1] = 186.0;
     cshift[2] = 69.0;
@@ -278,7 +278,7 @@ export default class V {
   }
 
   static CalcBlend(): void {
-    let cshift = CL.state.cshifts[CL.cshift.powerup];
+    let cshift = CL.state.cshifts[Def.contentShift.powerup];
     if ((CL.state.items & Def.it.quad) !== 0) {
       cshift[0] = 0.0;
       cshift[1] = 0.0;
@@ -303,17 +303,17 @@ export default class V {
       cshift[3] = 0.0;
     }
 
-    CL.state.cshifts[CL.cshift.damage][3] -= Host.frametime * 150.0;
-    if (CL.state.cshifts[CL.cshift.damage][3] < 0.0) {
-      CL.state.cshifts[CL.cshift.damage][3] = 0.0;
+    CL.state.cshifts[Def.contentShift.damage][3] -= Host.frametime * 150.0;
+    if (CL.state.cshifts[Def.contentShift.damage][3] < 0.0) {
+      CL.state.cshifts[Def.contentShift.damage][3] = 0.0;
     }
-    CL.state.cshifts[CL.cshift.bonus][3] -= Host.frametime * 100.0;
-    if (CL.state.cshifts[CL.cshift.bonus][3] < 0.0) {
-      CL.state.cshifts[CL.cshift.bonus][3] = 0.0;
+    CL.state.cshifts[Def.contentShift.bonus][3] -= Host.frametime * 100.0;
+    if (CL.state.cshifts[Def.contentShift.bonus][3] < 0.0) {
+      CL.state.cshifts[Def.contentShift.bonus][3] = 0.0;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-    for (let i = CL.cshift.user1; i < CL.state.cshifts.length; i++) {
+    for (let i = Def.contentShift.user1; i < CL.state.cshifts.length; i++) {
       const userShift = CL.state.cshifts[i];
       userShift[3] -= Host.frametime * 100.0;
       if (userShift[3] < 0.0) {
