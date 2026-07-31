@@ -18,6 +18,7 @@ frame for always-on, non-modal UI (see [Non-modal panels](#non-modal-panels-hud-
 | `MenuItem` (+ subclasses) | `source/engine/client/menu/MenuItem.ts` | A single interactive or decorative row: label, focus state, draw, input handling. |
 | `MenuLayout` (+ implementations) | `source/engine/client/menu/MenuPage.ts` | Positions a page's items on screen and draws the navigation cursor. |
 | `MenuPage` (+ subclasses) | `source/engine/client/menu/MenuPage.ts` | A screen: an item list, a layout, and lifecycle hooks (`activate`/`deactivate`, `onEscape`/`onConfirm`, plus the composition hooks below). |
+| `MenuViewport` | `source/engine/client/menu/MenuViewport.ts` | A page's virtual drawing-space size and scaling strategy (see below). |
 | `MenuStack` | `source/engine/client/menu/MenuStack.ts` | Named page registry, a navigation stack (push/pop/replace/clear), and the root-page concept (see below). |
 | `M` | `source/engine/client/Menu.ts` | Owns the single `menuStack` instance and the pixel-drawing primitives (`M.Print`, `M.DrawPic`, `M.DrawTextBox`, `M.DrawSlider`, ...) that widgets call into. Builds **no pages** — it's pure machinery. |
 | `ClientEngineAPI.Menu` | `source/engine/common/GameAPIs.ts` | The only surface game code should use — wraps `M`/`M.menuStack` and re-exports the widget/layout classes plus the drawing primitives. |
@@ -80,6 +81,38 @@ Volume" vs. "CD Music Volume") can share one aligned value column — see
 `LABEL_VALUE_GAP` in `MenuPage.ts` for the fixed label/value gap this reproduces from the
 original hand-tuned layout.
 
+### MenuViewport
+
+`source/engine/client/menu/MenuViewport.ts` — a page's own virtual drawing-space size and
+scaling strategy, resolved against the real canvas size every time `M`'s drawing primitives draw.
+Set per-page via `MenuPage`'s `viewport` config (defaults to `MenuViewport.classic`, the exact
+historical 320×200/pixel-doubled/centered space every built-in id1 page still uses, so nothing
+renders differently for pages that don't opt in).
+
+- **`fit: 'fixed'`** — a constant `scale` (classic Quake's behavior): never grows to fill a
+  larger display, always leaves slack around a small, centered box.
+- **`fit: 'contain'`** — `scale = min(vidWidth / width, vidHeight / height)`, i.e. grows/shrinks
+  to fill as much of the real canvas as possible while preserving the width:height ratio.
+  `integerScale: true` floors that to a whole number for crisp nearest-neighbor pixel art;
+  left at the default (fractional scale allowed), fine for smooth hi-res art, but see the
+  `BitmapFont.measure()` caveat in its own file for content that snaps to a whole-pixel scale
+  internally.
+- **`resolve(vidWidth, vidHeight)`** — the scale and centering origin for the current real
+  canvas size. **`toScreen`**/**`fromScreen`** convert a virtual-space point to/from real screen
+  pixels given an already-resolved transform. **`anchor(corner, contentWidth, contentHeight,
+  marginX?, marginY?)`** returns the virtual-space top-left position to draw
+  `contentWidth`×`contentHeight` content flush against a corner with a margin, replacing
+  hand-derived "edge minus margin minus content size" math per page.
+
+`M` tracks which page's viewport is currently active for its drawing primitives (the page on top
+of `menuStack`, or whichever page `M.withRenderingPage()` is temporarily rendering — see
+`DialogPage`'s backdrop drawing) and resolves every `M.Print`/`M.DrawPic`/... call against it, so
+a page's content is always written in its own virtual coordinates regardless of the real canvas
+size. Exposed to game code as `ClientEngineAPI.Menu.toScreenPosition`/`viewportScale` (for a
+`customDraw` that needs to place a resolution-aware `DrawPic`/`DrawString` call at a
+virtual-space position) and `ClientEngineAPI.Menu.MenuViewport` (the class itself, so a mod can
+construct its own instead of using the classic space).
+
 ### MenuPage
 
 A page owns `items`, a `layout`, optional `title`/`titlePic`/`logoPic`, and lifecycle hooks:
@@ -128,10 +161,14 @@ Two subclasses (still genuinely useful as subclasses since they're reusable, gen
 The menu is rendered on a WebGL2 canvas, not the DOM, so mouse support is built from raw
 coordinates rather than element listeners:
 
-- `M.MouseMove(canvasX, canvasY)` converts a canvas-relative CSS-pixel position into the same
-  virtual 320×200 space `M.DrawPic`/`M.Print` already draw in (it's the exact inverse of that
-  transform), stores it as `M.mouseX`/`M.mouseY`, and — only while the menu is the active input
-  destination — forwards it to the current page's `updateHover()`. `Sys.ts` wires this up from a
+- `M.MouseMove(canvasX, canvasY)` converts a canvas-relative CSS-pixel position into the active
+  page's own virtual coordinate space (see `MenuViewport` above — classic 320×200 by default),
+  the exact inverse of the transform `M.DrawPic`/`M.Print` already draw with, stores it as
+  `M.mouseX`/`M.mouseY`, and forwards it to the current page's `updateHover()`. The whole
+  conversion — not just the hover forwarding — is skipped whenever the menu isn't the active
+  input destination: nothing reads `M.mouseX`/`M.mouseY`/hover state outside that case, and the
+  raw browser `mousemove` event fires continuously during gameplay mouselook too, so resolving a
+  viewport transform on every one of those would be wasted work. `Sys.ts` wires this up from a
   `mousemove` listener via `VID.mainwindow.getBoundingClientRect()`.
 - Every `MenuLayout` implements `hitTest(items, px, py): number | null`, resolving which
   focusable item (if any) occupies a point, mirroring that same layout's `draw()` position math.
@@ -206,10 +243,11 @@ directly (useful for pages a mod keeps a private reference to and never register
 - The low-level drawing primitives every widget/layout calls into: `M.Print`, `M.PrintWhite`,
   `M.DrawCharacter`, `M.DrawPic`, `M.DrawPicTranslate`, `M.DrawTextBox`, `M.DrawSlider`,
   `M.DrawBitmapString` (draws with a `BitmapFont` instead of the standard conchars font — see
-  `Action`'s `font` option above). These operate in the classic virtual 320×200 centered coordinate space
-  (`cx * 2 + VID.width/2 - 320`, ...) — **this is a different coordinate system from the HUD's
-  `Gfx`/`sbar` helpers**, which use resolution-aware absolute pixel offsets, and also different
-  from `ClientEngineAPI.DrawPic`/`DrawString` (resolution-aware, used outside the menu stack
+  `Action`'s `font` option above). These operate in whichever page's own `MenuViewport` is
+  currently active (see above) — classic virtual 320×200, pixel-doubled and centered, for every
+  page that doesn't declare its own — **a different coordinate system from the HUD's `Gfx`/`sbar`
+  helpers**, which use resolution-aware absolute pixel offsets, and also different from
+  `ClientEngineAPI.DrawPic`/`DrawString` (resolution-aware, used outside the menu stack
   entirely). Widgets built for menu pages are not directly reusable inside HUD draw code without
   going through `M`'s primitives (see [Non-modal panels](#non-modal-panels-hud-embedded-ui) for
   how HUD code uses them correctly).
@@ -284,9 +322,13 @@ static readonly Menu = {
   // Assets
   LoadTranslatablePic(lumpName: string): Promise<MenuPic>;
 
-  // Low-level drawing primitives (virtual 320x200 space -- see M above), mouse position
+  // Mouse position, in the current page's own MenuViewport space
   mouseX: number;
   mouseY: number;
+  toScreenPosition(x: number, y: number): { x: number; y: number }; // virtual-space -> real screen pixels
+  viewportScale: number;         // current page's resolved virtual-to-real pixel scale
+
+  // Low-level drawing primitives (current page's own MenuViewport space -- see M above)
   Print/PrintWhite/DrawCharacter/DrawPic/DrawPicTranslate/DrawTextBox/DrawSlider(...): void;
   DrawBitmapString(cx: number, cy: number, str: string, font: BitmapFont, variant?: number): void;
 
@@ -295,6 +337,7 @@ static readonly Menu = {
   ColorPicker, NumberInput, SaveSlotItem, KeyBindItem,
   MenuPage, DialogPage, ListPage,
   VerticalLayout, ImageBasedLayout, ListLayout, GridLayout,
+  MenuViewport,
 };
 ```
 
@@ -484,6 +527,8 @@ how) a game module chooses to present them (see [`events.md`](events.md#host) fo
 
 - `test/client/menu-stack.test.mjs` — `MenuStack` register/push/pop/replace/popTo/clear, plus
   `isShowing`/root-page (`setRootPage`/`pushRoot`/`isShowingRoot`).
+- `test/client/menu-viewport.test.mjs` — `MenuViewport`'s `resolve`/`toScreen`/`fromScreen`/
+  `anchor` math for both `fixed` and `contain` (with and without `integerScale`) fits.
 - `test/client/menu-item.test.mjs` — widget behaviors (cvar round-trip, focus-skipping, input
   handling per widget type).
 - `test/client/menu-page.test.mjs` — `MenuPage`/`DialogPage`/`ListPage` navigation and dialog

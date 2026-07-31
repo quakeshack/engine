@@ -625,6 +625,23 @@ void describe('NumberInput', () => {
     });
   });
 
+  void test('Backspace falls back to min instead of committing NaN when min is negative', () => {
+    withMockWidgetRegistry(() => {
+      let value = -5;
+      const input = new NumberInput({
+        getValue: () => value, setValue: (v) => { value = v; }, min: -10, max: 10,
+      });
+
+      // Seeds the typed buffer from String(-5) === '-5'; slicing off the '5' leaves a bare '-',
+      // which used to parse to NaN and get committed directly.
+      input.handleInput(K.BACKSPACE);
+      assert.equal(value, -10); // falls back to min, not NaN
+
+      input.handleInput(K.BACKSPACE); // typed buffer is now '' -> also falls back to min
+      assert.equal(value, -10);
+    });
+  });
+
   void test('draw shows the in-progress typed text, then reverts to the committed value once focus moves away', () => {
     withMockWidgetRegistry(({ printed }) => {
       let value = 10;

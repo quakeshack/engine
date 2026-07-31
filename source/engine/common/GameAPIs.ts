@@ -1269,7 +1269,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * Unregister a previously registered page.
      */
     UnregisterPage(name: string): void {
-      M.menuStack.pages.delete(name);
+      M.menuStack.unregister(name);
     },
 
     /**
@@ -1426,15 +1426,14 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * @returns The previous page, or null if the current page is at (or below) the root.
      */
     GetPreviousPage(): MenuPage | null {
-      const stack = M.menuStack.stack;
-      return stack.length > 1 ? stack[stack.length - 2] : null;
+      return M.menuStack.getPreviousPage();
     },
 
     /**
      * Insert an item into a registered page, e.g. to extend a built-in screen from game code.
      */
     AddItem(pageName: string, item: MenuItem, index?: number): void {
-      const page = M.menuStack.pages.get(pageName);
+      const page = M.menuStack.getPage(pageName);
 
       console.assert(page !== undefined, 'ClientEngineAPI.Menu.AddItem: unknown page', pageName);
 
@@ -1453,7 +1452,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * Remove a previously added item from a registered page.
      */
     RemoveItem(pageName: string, item: MenuItem): void {
-      const page = M.menuStack.pages.get(pageName);
+      const page = M.menuStack.getPage(pageName);
 
       if (!page) {
         return;

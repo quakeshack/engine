@@ -57,6 +57,30 @@ void describe('BitmapFont', () => {
       assert.equal(font.measure('NEW GAME'), 8 * 14);
       assert.equal(font.measure(''), 0);
     });
+
+    void test('defaults to scale 1, unaffected by draw()\'s scale snapping', () => {
+      const font = createHeaderFont();
+
+      assert.equal(font.measure('ABC', 1), font.measure('ABC'));
+    });
+
+    void test('is unaffected by an already-integer scale', () => {
+      const font = createHeaderFont();
+
+      // Still returned in virtual-space units -- an integer scale needs no snapping correction,
+      // so the ratio cancels out regardless of which whole number the scale is.
+      assert.equal(font.measure('ABC', 2), 3 * 14);
+    });
+
+    void test('accounts for draw()\'s whole-pixel scale snapping at a fractional scale', () => {
+      const font = createHeaderFont();
+
+      // draw() snaps a scale of 1.5 up to 2 (GL.SnapPixelScale rounds), so the virtual-space
+      // width returned here must be inflated by that same 2/1.5 ratio -- otherwise layout math
+      // built on measure() (e.g. MenuViewport.anchor()) reserves less space than draw() actually
+      // renders into at a fractional (non-integer) MenuViewport scale.
+      assert.equal(font.measure('ABC', 1.5), 3 * 14 * (2 / 1.5));
+    });
   });
 
   void describe('getGlyphRect', () => {

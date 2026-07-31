@@ -122,6 +122,22 @@ void describe('SCR.isConsolePassiveBackdrop', () => {
   });
 });
 
+void describe('SCR.ScreenShotClean_f', () => {
+  void test('arms a clean (view model/UI suppressed) capture for the next frame', () => {
+    const previous = SCR.screenshotClean;
+
+    try {
+      SCR.screenshotClean = false;
+
+      SCR.ScreenShotClean_f();
+
+      assert.equal(SCR.screenshotClean, true);
+    } finally {
+      SCR.screenshotClean = previous;
+    }
+  });
+});
+
 void describe('SCR.CenterPrint', () => {
   void test('publishes client.center-print after formatting the message', () => {
     const previousCL = registry.CL;

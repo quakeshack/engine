@@ -307,15 +307,15 @@ export default class M {
    * forward it to the active page's hover tracking.
    */
   static MouseMove(canvasX: number, canvasY: number): void {
+    if (Key.destination !== KeyDestination.menu) {
+      return;
+    }
+
     const { viewport, resolved } = M.#activeViewport();
     const point = viewport.fromScreen(resolved, canvasX, canvasY);
     M.mouseX = point.x;
     M.mouseY = point.y;
     M.#usingMouse = true;
-
-    if (Key.destination !== KeyDestination.menu) {
-      return;
-    }
 
     M.menuStack.current()?.updateHover(M.mouseX, M.mouseY);
   }

@@ -31,6 +31,21 @@ export class MenuStack {
   }
 
   /**
+   * Unregister a previously registered page by name.
+   */
+  unregister(name: string): void {
+    this.pages.delete(name);
+  }
+
+  /**
+   * Look up a registered page by name.
+   * @returns The page, or undefined if nothing is registered under that name.
+   */
+  getPage(name: string): MenuPage | undefined {
+    return this.pages.get(name);
+  }
+
+  /**
    * Check whether the named page is the one currently on top of the stack.
    * @returns True when the named page is current.
    */
@@ -143,6 +158,15 @@ export class MenuStack {
   }
 
   /**
+   * The page one level below the current one on the stack, if any -- e.g. a dialog's own
+   * backdrop wanting to draw whatever was open before it appeared.
+   * @returns The previous page, or null if the current page is at (or below) the root.
+   */
+  getPreviousPage(): MenuPage | null {
+    return this.stack.length > 1 ? this.stack[this.stack.length - 2] : null;
+  }
+
+  /**
    * Clear the entire stack.
    */
   clear(): void {
@@ -189,7 +213,7 @@ export class MenuStack {
   }
 
   /**
-   * Pop to root (main menu).
+   * Pop to the root page (see `setRootPage`), leaving only the bottom of the stack.
    */
   popToRoot(): void {
     this.popTo(1);

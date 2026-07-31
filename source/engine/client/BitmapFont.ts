@@ -78,12 +78,18 @@ export class BitmapFont {
   }
 
   /**
-   * Width in texture-pixel units (before any caller-applied scale) a string occupies -- every
-   * character, supported or not, advances by `cellWidth`.
-   * @returns The advance width.
+   * Width, in virtual menu-space units, a string occupies -- every character, supported or not,
+   * advances by `cellWidth`. Pass the same `scale` `draw()` will actually be called with (e.g.
+   * the current page's resolved `MenuViewport` scale, `ClientEngineAPI.Menu.viewportScale`) so
+   * the returned width accounts for `draw()`'s whole-pixel scale snapping -- at a fractional
+   * (non-integer) viewport scale, `draw()` still renders each glyph at a snapped, integer real
+   * pixel size (see `draw()`'s own doc comment), so a width computed from the raw scale would
+   * over- or under-estimate what actually gets drawn. Left at the default (`scale = 1`), the
+   * result is unaffected by snapping, same as before this parameter existed.
+   * @returns The advance width, in virtual menu-space units.
    */
-  measure(str: string): number {
-    return str.length * this.cellWidth;
+  measure(str: string, scale = 1): number {
+    return str.length * this.cellWidth * (GL.SnapPixelScale(scale) / scale);
   }
 
   /**

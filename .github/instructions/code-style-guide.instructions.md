@@ -215,6 +215,42 @@ class GL {
 
 - **Avoid accessing private or protected members** of other classes directly. Use public methods instead. If not available, consider refactoring.
 - **Do not do work of classes outside of them**. If you find yourself needing to manipulate internal state of another class, consider adding a public method to that class instead. Refactoring may be needed to maintain proper encapsulation.
+- **A public field is not an invitation to reach in.** Even when a field is technically public (e.g. an internal `Map`/array on a stack or registry class), other classes should still go through a dedicated method rather than reading/mutating the collection directly. Such a field being public often only exists so the *owning* class's own tests can drive it in isolation — that's not the same as it being part of another class's contract. Reaching in couples the caller to the internal representation (a `Map` vs an array, in-place mutation order, ...) instead of a stable behavior, and is exactly as much a boundary violation as reaching into a `private`/`protected` member.
+
+  ```typescript
+  // ❌ Reaches into MenuStack's internal Map/array directly from a different class
+  class GameAPIs {
+    static UnregisterPage(name: string): void {
+      M.menuStack.pages.delete(name);
+    }
+
+    static GetPreviousPage(): MenuPage | null {
+      const stack = M.menuStack.stack;
+      return stack.length > 1 ? stack[stack.length - 2] : null;
+    }
+  }
+
+  // ✅ MenuStack exposes the behavior it owns; callers never see the Map/array
+  class MenuStack {
+    unregister(name: string): void {
+      this.pages.delete(name);
+    }
+
+    getPreviousPage(): MenuPage | null {
+      return this.stack.length > 1 ? this.stack[this.stack.length - 2] : null;
+    }
+  }
+
+  class GameAPIs {
+    static UnregisterPage(name: string): void {
+      M.menuStack.unregister(name);
+    }
+
+    static GetPreviousPage(): MenuPage | null {
+      return M.menuStack.getPreviousPage();
+    }
+  }
+  ```
 
 ## Naming Conventions
 

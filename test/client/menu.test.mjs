@@ -74,11 +74,14 @@ void describe('Menu overlay notices', () => {
 void describe('M.MouseMove', () => {
   void test('converts canvas-relative pixels into virtual menu-space coordinates', () => {
     const previousKey = registry.Key;
+    const previousDestination = Key.destination;
 
-    // M.MouseMove() always checks Key.destination before forwarding hover updates, so the
-    // registry needs a real Key module wired up even for this pure coordinate-math assertion.
+    // M.MouseMove() is a no-op unless the menu is the active input destination -- see the test
+    // below -- so this needs a real Key module wired up and explicitly pointed at the menu, even
+    // for this otherwise-pure coordinate-math assertion.
     registry.Key = Key;
     eventBus.publish('registry.frozen');
+    Key.destination = KeyDestination.menu;
 
     try {
       // With VID.width/height at their default (0) test value, DrawPic's cx * 2 + floor(w/2) - 320
@@ -88,6 +91,7 @@ void describe('M.MouseMove', () => {
       assert.equal(M.mouseX, 320);
       assert.equal(M.mouseY, 200);
     } finally {
+      Key.destination = previousDestination;
       registry.Key = previousKey;
       eventBus.publish('registry.frozen');
     }
@@ -114,6 +118,33 @@ void describe('M.MouseMove', () => {
       assert.deepEqual(hovered, [[160, 100]]);
     } finally {
       M.menuStack.stack.pop();
+      Key.destination = previousDestination;
+      registry.Key = previousKey;
+      eventBus.publish('registry.frozen');
+    }
+  });
+
+  void test('is a no-op entirely -- not just skipping hover -- while the menu is not the active destination', () => {
+    const previousKey = registry.Key;
+    const previousDestination = Key.destination;
+
+    registry.Key = Key;
+    eventBus.publish('registry.frozen');
+
+    try {
+      Key.destination = KeyDestination.menu;
+      M.MouseMove(0, 0);
+      const [mouseXBefore, mouseYBefore] = [M.mouseX, M.mouseY];
+
+      // A raw mousemove fires continuously during gameplay mouselook too -- M.mouseX/M.mouseY
+      // (and the internal "mouse was last used" bookkeeping) must stay untouched rather than
+      // resolving a viewport transform for a position nothing will read.
+      Key.destination = KeyDestination.game;
+      M.MouseMove(999, 999);
+
+      assert.equal(M.mouseX, mouseXBefore);
+      assert.equal(M.mouseY, mouseYBefore);
+    } finally {
       Key.destination = previousDestination;
       registry.Key = previousKey;
       eventBus.publish('registry.frozen');

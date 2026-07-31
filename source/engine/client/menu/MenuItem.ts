@@ -803,7 +803,11 @@ export class NumberInput extends MenuItem {
     if (key === K.BACKSPACE) {
       const digits = (this.#typedDigits ?? String(this.getValue())).slice(0, -1);
       this.#typedDigits = digits;
-      this.setValue(digits === '' ? this.min : this.#clamp(Number.parseInt(digits, 10)));
+      // Number.parseInt('', 10) and Number.parseInt('-', 10) (the latter reachable when min is
+      // negative and backspacing the seeded "-5" down to a bare sign) both parse to NaN --
+      // fall back to min rather than committing NaN through setValue().
+      const parsed = Number.parseInt(digits, 10);
+      this.setValue(Number.isNaN(parsed) ? this.min : this.#clamp(parsed));
       return true;
     }
 
