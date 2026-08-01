@@ -7,7 +7,7 @@ import { eventBus, getClientRegistry, registry } from '../registry.ts';
 import Chase from './Chase.ts';
 import W from '../common/W.ts';
 import VID from './VID.ts';
-import GL, { ATTRIB_LOCATIONS, GLTexture } from './GL.ts';
+import GL, { ATTRIB_LOCATIONS, GLCubeTexture, GLRenderTexture, GLTexture, GLTextureArray } from './GL.ts';
 import { content, effect } from '../../shared/Defs.ts';
 import { modelRendererRegistry } from './renderer/ModelRendererRegistry.ts';
 import type { ModelRenderer } from './renderer/ModelRenderer.ts';
@@ -213,16 +213,16 @@ class R {
   static notexture: GLTexture = null!;
   static blacktexture: GLTexture = null!;
   static flatnormalmap: GLTexture = null!;
-  static deluxemap_texture: WebGLTexture = null!;
-  static lightmap_texture: WebGLTexture = null!;
-  static dlightmap_rgba_texture: WebGLTexture = null!;
-  static lightstyle_texture_a: WebGLTexture = null!;
-  static lightstyle_texture_b: WebGLTexture = null!;
-  static fullbright_texture: WebGLTexture = null!;
-  static null_texture: WebGLTexture = null!;
-  static normal_up_texture: WebGLTexture = null!;
-  static shadow_texture: WebGLTexture | null = null;
-  static point_shadow_textures: WebGLTexture[] = [];
+  static deluxemap_texture: GLTextureArray = null!;
+  static lightmap_texture: GLTextureArray = null!;
+  static dlightmap_rgba_texture: GLRenderTexture = null!;
+  static lightstyle_texture_a: GLRenderTexture = null!;
+  static lightstyle_texture_b: GLRenderTexture = null!;
+  static fullbright_texture: GLTextureArray = null!;
+  static null_texture: GLRenderTexture = null!;
+  static normal_up_texture: GLTextureArray = null!;
+  static shadow_texture: GLRenderTexture | null = null;
+  static point_shadow_textures: GLCubeTexture[] = [];
   static world_depth_texture: WebGLTexture | null = null;
   static dlightvecs: WebGLBuffer = null!;
   static dlightVAO: WebGLVertexArrayObject = null!;
@@ -407,9 +407,9 @@ class R {
         R.lightstylevalue_b[j] = 12;
       }
     }
-    GL.Bind(0, R.lightstyle_texture_a);
+    R.lightstyle_texture_a.bind(0);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 64, 1, gl.RED, gl.UNSIGNED_BYTE, R.lightstylevalue_a!);
-    GL.Bind(0, R.lightstyle_texture_b);
+    R.lightstyle_texture_b.bind(0);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 64, 1, gl.RED, gl.UNSIGNED_BYTE, R.lightstylevalue_b!);
   };
 
@@ -584,7 +584,7 @@ class R {
       }
     }
 
-    GL.Bind(0, R.dlightmap_rgba_texture);
+    R.dlightmap_rgba_texture.bind(0);
     for (let i = 0; i < LIGHTMAP_BLOCK_SIZE; i++) {
       if (!R.lightmap_modified[i]) {
         continue;
@@ -2160,38 +2160,38 @@ class R {
     R.blacktexture = GLTexture.Allocate('r_blacktexture', 1, 1, new Uint8Array([0, 0, 0, 255]));
     R.flatnormalmap = GLTexture.Allocate('r_flatnormalmap', 1, 1, new Uint8Array([128, 128, 255, 255]));
 
-    R.deluxemap_texture = gl.createTexture();
-    GL.BindArray(0, R.deluxemap_texture);
+    R.deluxemap_texture = new GLTextureArray();
+    R.deluxemap_texture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, 3);
 
-    R.lightmap_texture = gl.createTexture();
-    GL.BindArray(0, R.lightmap_texture);
+    R.lightmap_texture = new GLTextureArray();
+    R.lightmap_texture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, 3);
 
-    R.dlightmap_rgba_texture = gl.createTexture();
-    GL.Bind(0, R.dlightmap_rgba_texture);
+    R.dlightmap_rgba_texture = new GLRenderTexture();
+    R.dlightmap_rgba_texture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE);
 
-    R.lightstyle_texture_a = gl.createTexture();
-    GL.Bind(0, R.lightstyle_texture_a);
+    R.lightstyle_texture_a = new GLRenderTexture();
+    R.lightstyle_texture_a.bind(0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R8, 64, 1);
 
-    R.lightstyle_texture_b = gl.createTexture();
-    GL.Bind(0, R.lightstyle_texture_b);
+    R.lightstyle_texture_b = new GLRenderTexture();
+    R.lightstyle_texture_b.bind(0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R8, 64, 1);
 
-    R.fullbright_texture = gl.createTexture();
-    GL.BindArray(0, R.fullbright_texture);
+    R.fullbright_texture = new GLTextureArray();
+    R.fullbright_texture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 1, 1, 3);
@@ -2201,15 +2201,15 @@ class R {
       255, 0, 0, 0, // layer 2 (B): lightstyle 0 at full
     ]));
 
-    R.null_texture = gl.createTexture();
-    GL.Bind(0, R.null_texture);
+    R.null_texture = new GLRenderTexture();
+    R.null_texture.bind(0);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 1, 1);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-    R.normal_up_texture = gl.createTexture();
-    GL.BindArray(0, R.normal_up_texture);
+    R.normal_up_texture = new GLTextureArray();
+    R.normal_up_texture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 1, 1, 3);
@@ -2530,7 +2530,7 @@ class R {
       dlightmapsRgba[i] = 0;
     }
 
-    GL.Bind(0, R.dlightmap_rgba_texture);
+    R.dlightmap_rgba_texture.bind(0);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, dlightmapsRgba);
 
     // Reset the viewleafs so that the renderer will recalculate them on the next frame.
@@ -3411,12 +3411,12 @@ class R {
     }
 
     const layerBytes = LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_SIZE * 4;
-    GL.BindArray(0, R.lightmap_texture);
+    R.lightmap_texture.bind(0);
     for (let k = 0; k < 3; k++) {
       gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, k, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, R.lightmaps_rgb.subarray(k * layerBytes, (k + 1) * layerBytes));
     }
 
-    GL.BindArray(0, R.deluxemap_texture);
+    R.deluxemap_texture.bind(0);
     if (R.deluxemap) {
       for (let k = 0; k < 3; k++) {
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, k, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, R.deluxemap.subarray(k * layerBytes, (k + 1) * layerBytes));

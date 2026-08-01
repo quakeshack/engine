@@ -172,7 +172,15 @@ export class ServerArea {
     if (entity.solid !== Defs.solid.SOLID_BSP || !(model instanceof BrushModel)) { // CR: don’t ask
       const emaxs = entity.maxs;
       const emins = entity.mins;
-      // FIXME: create a new hull for this instead of mutating the box hull planes (which could cause issues if multiple entities use it at the same time)
+      // This mutates a single shared box_hull/box_planes pair rather than allocating a fresh hull
+      // per call — a verbatim port of vanilla Quake's SV_HullForBox, which uses the same shared
+      // static box_hull for the same reason: this path runs once per candidate entity for every
+      // trace against a non-BSP entity, so avoiding an allocation here matters. It's safe because
+      // every caller synchronously finishes reading the returned hull (recursiveHullCheck walks
+      // it to completion and copies out plane data before returning) before anything else can
+      // call back in and mutate it again. If a future caller ever needs to hold onto a hull
+      // across an async boundary or interleave two hullForEntity results, it must copy the
+      // planes out first.
       this.box_planes[0].dist = emaxs[0] - mins[0];
       this.box_planes[1].dist = emins[0] - maxs[0];
       this.box_planes[2].dist = emaxs[1] - mins[1];

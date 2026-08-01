@@ -21,6 +21,7 @@ import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../reg
 import Vector from '../../shared/Vector.ts';
 import Q from '../../shared/Q.ts';
 import { ServerClient } from '../server/Client.ts';
+import { QSocket } from '../network/NetworkDrivers.ts';
 import { ServerEngineAPI } from './GameAPIs.ts';
 import { KeyDestination } from '../client/Key.ts';
 import Chase from '../client/Chase.ts';
@@ -378,7 +379,7 @@ export default class Host {
     do {
       count = 0;
 
-      for (let index = 0; index < SV.svs.maxclients; index++) { // FIXME: this is completely broken, it won’t properly close connections
+      for (let index = 0; index < SV.svs.maxclients; index++) {
         const client = SV.svs.clients[index];
 
         if (client.state < ServerClient.STATE.CONNECTED || client.message.cursize === 0) {
@@ -388,6 +389,15 @@ export default class Host {
         if (NET.CanSendMessage(client.netconnection)) {
           NET.SendMessage(client.netconnection, client.message);
           client.message.clear();
+          continue;
+        }
+
+        // Unlike vanilla's UDP driver, none of this engine's transports have a "reliable send
+        // window is full, will accept more shortly" state that pumping GetMessage can unblock —
+        // CanSendMessage returning false here means the connection already finished closing.
+        // Counting it as still-pending would force every shutdown with such a client to burn the
+        // full timeout below for a message that can never be delivered.
+        if (client.netconnection?.state === QSocket.STATE_DISCONNECTED || client.netconnection?.state === QSocket.STATE_DISCONNECTING) {
           continue;
         }
 

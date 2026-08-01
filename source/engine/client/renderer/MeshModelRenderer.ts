@@ -137,18 +137,18 @@ export class MeshModelRenderer extends ModelRenderer {
 
     // Bind local shadow maps
     if (program.tShadowMap !== undefined && R.shadow_texture) {
-      GL.Bind(program.tShadowMap, R.shadow_texture);
+      R.shadow_texture.bind(program.tShadowMap);
     }
 
     // Bind point light cube shadow maps
     if (program.tPointShadowMap0 !== undefined && R.point_shadow_textures?.[0]) {
-      GL.BindCube(program.tPointShadowMap0, R.point_shadow_textures[0]);
+      R.point_shadow_textures[0].bind(program.tPointShadowMap0);
     }
     if (program.tPointShadowMap1 !== undefined && R.point_shadow_textures?.[1]) {
-      GL.BindCube(program.tPointShadowMap1, R.point_shadow_textures[1]);
+      R.point_shadow_textures[1].bind(program.tPointShadowMap1);
     }
     if (program.tPointShadowMap2 !== undefined && R.point_shadow_textures?.[2]) {
-      GL.BindCube(program.tPointShadowMap2, R.point_shadow_textures[2]);
+      R.point_shadow_textures[2].bind(program.tPointShadowMap2);
     }
 
     // Draw (IBO is captured in the VAO)

@@ -1,4 +1,4 @@
-import GL from '../GL.ts';
+import GL, { GLRenderTexture } from '../GL.ts';
 import Cvar from '../../common/Cvar.ts';
 import VID from '../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
@@ -37,13 +37,13 @@ export default class PostProcess {
   static fbo: WebGLFramebuffer | null = null;
 
   /** Color texture attachment (RGBA). */
-  static colorTexture: WebGLTexture | null = null;
+  static colorTexture: GLRenderTexture | null = null;
 
   /** Emissive texture attachment (RGBA). */
-  static emissiveTexture: WebGLTexture | null = null;
+  static emissiveTexture: GLRenderTexture | null = null;
 
   /** Depth texture attachment (DEPTH_COMPONENT24). */
-  static depthTexture: WebGLTexture | null = null;
+  static depthTexture: GLRenderTexture | null = null;
 
   /** Depth renderbuffer used temporarily during depth sampling. */
   static depthRenderbuffer: WebGLRenderbuffer | null = null;
@@ -99,7 +99,7 @@ export default class PostProcess {
   static turbulentBoundaryFBO: WebGLFramebuffer | null = null;
 
   /** Depth texture attachment for the turbulent boundary FBO. */
-  static turbulentBoundaryDepthTexture: WebGLTexture | null = null;
+  static turbulentBoundaryDepthTexture: GLRenderTexture | null = null;
 
   // ─── Ping-pong FBOs for effect chaining ──────────────────────────
 
@@ -107,13 +107,13 @@ export default class PostProcess {
   static pingFBO: WebGLFramebuffer | null = null;
 
   /** Ping color texture. */
-  static pingTexture: WebGLTexture | null = null;
+  static pingTexture: GLRenderTexture | null = null;
 
   /** Pong FBO for effect chaining. */
   static pongFBO: WebGLFramebuffer | null = null;
 
   /** Pong color texture. */
-  static pongTexture: WebGLTexture | null = null;
+  static pongTexture: GLRenderTexture | null = null;
 
   /** Ping-pong FBO width. */
   static ppWidth = 0;
@@ -183,24 +183,24 @@ export default class PostProcess {
     PostProcess.fbo = gl.createFramebuffer();
     {
       // Color texture
-      PostProcess.colorTexture = gl.createTexture();
-      GL.Bind(0, PostProcess.colorTexture);
+      PostProcess.colorTexture = new GLRenderTexture();
+      PostProcess.colorTexture.bind(0);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
       // Emissive texture
-      PostProcess.emissiveTexture = gl.createTexture();
-      GL.Bind(0, PostProcess.emissiveTexture);
+      PostProcess.emissiveTexture = new GLRenderTexture();
+      PostProcess.emissiveTexture.bind(0);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
       // Depth texture
-      PostProcess.depthTexture = gl.createTexture();
-      GL.Bind(0, PostProcess.depthTexture);
+      PostProcess.depthTexture = new GLRenderTexture();
+      PostProcess.depthTexture.bind(0);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -218,24 +218,24 @@ export default class PostProcess {
 
       // Assemble scene FBO
       gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.colorTexture, 0);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, PostProcess.emissiveTexture, 0);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, PostProcess.depthTexture, 0);
+      PostProcess.colorTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
+      PostProcess.emissiveTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT1);
+      PostProcess.depthTexture.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
       gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
       // Configure scratch depth-sampling FBO: color attachment keeps it complete,
       // depth renderbuffer receives copied scene depth for subsequent depth tests.
       gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.depthSamplingFBO);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.colorTexture, 0);
+      PostProcess.colorTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
       gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
       gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
     // Turbulent boundary depth FBO — depth-only, resized in resize().
-    PostProcess.turbulentBoundaryDepthTexture = gl.createTexture();
-    GL.Bind(0, PostProcess.turbulentBoundaryDepthTexture);
+    PostProcess.turbulentBoundaryDepthTexture = new GLRenderTexture();
+    PostProcess.turbulentBoundaryDepthTexture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -243,7 +243,7 @@ export default class PostProcess {
 
     PostProcess.turbulentBoundaryFBO = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.turbulentBoundaryFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, PostProcess.turbulentBoundaryDepthTexture, 0);
+    PostProcess.turbulentBoundaryDepthTexture.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
     gl.drawBuffers([gl.NONE]);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
@@ -266,25 +266,25 @@ export default class PostProcess {
 
     // Ping-pong FBOs for effect chaining
     PostProcess.pingFBO = gl.createFramebuffer();
-    PostProcess.pingTexture = gl.createTexture();
-    GL.Bind(0, PostProcess.pingTexture);
+    PostProcess.pingTexture = new GLRenderTexture();
+    PostProcess.pingTexture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.pingFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.pingTexture, 0);
+    PostProcess.pingTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     PostProcess.pongFBO = gl.createFramebuffer();
-    PostProcess.pongTexture = gl.createTexture();
-    GL.Bind(0, PostProcess.pongTexture);
+    PostProcess.pongTexture = new GLRenderTexture();
+    PostProcess.pongTexture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.pongFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.pongTexture, 0);
+    PostProcess.pongTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
@@ -300,15 +300,15 @@ export default class PostProcess {
     PostProcess.height = height;
 
     // Resize color texture
-    GL.Bind(0, PostProcess.colorTexture);
+    PostProcess.colorTexture!.bind(0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 
     // Resize emissive texture
-    GL.Bind(0, PostProcess.emissiveTexture);
+    PostProcess.emissiveTexture!.bind(0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 
     // Resize depth texture
-    GL.Bind(0, PostProcess.depthTexture);
+    PostProcess.depthTexture!.bind(0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
 
     // Resize depth renderbuffer
@@ -317,7 +317,7 @@ export default class PostProcess {
     gl.bindRenderbuffer(gl.RENDERBUFFER, null);
 
     // Resize turbulent boundary depth texture
-    GL.Bind(0, PostProcess.turbulentBoundaryDepthTexture);
+    PostProcess.turbulentBoundaryDepthTexture!.bind(0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
 
     // Resize MSAA renderbuffers (if enabled)
@@ -401,10 +401,10 @@ export default class PostProcess {
     PostProcess.ppWidth = width;
     PostProcess.ppHeight = height;
 
-    GL.Bind(0, PostProcess.pingTexture);
+    PostProcess.pingTexture!.bind(0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 
-    GL.Bind(0, PostProcess.pongTexture);
+    PostProcess.pongTexture!.bind(0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 
     // Notify effects of the new dimensions
@@ -482,7 +482,7 @@ export default class PostProcess {
    */
   static endDepthSampling(): void {
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, PostProcess.depthTexture, 0);
+    PostProcess.depthTexture!.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
   }
 
   /**
@@ -494,10 +494,10 @@ export default class PostProcess {
    * @param width Resolve width in pixels.
    * @param height Resolve height in pixels.
    */
-  static _resolveMSAAColorAttachment(readAttachment: GLenum, targetTexture: WebGLTexture, width: number, height: number): void {
+  static _resolveMSAAColorAttachment(readAttachment: GLenum, targetTexture: GLRenderTexture, width: number, height: number): void {
     gl.readBuffer(readAttachment);
     gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, null, 0);
-    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
+    targetTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
     gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
   }
@@ -518,8 +518,8 @@ export default class PostProcess {
     PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT0, PostProcess.colorTexture!, w, h);
     PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT1, PostProcess.emissiveTexture!, w, h);
 
-    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, PostProcess.colorTexture, 0);
-    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, PostProcess.emissiveTexture, 0);
+    PostProcess.colorTexture!.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
+    PostProcess.emissiveTexture!.attachToFramebuffer(gl.COLOR_ATTACHMENT1);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
@@ -545,7 +545,7 @@ export default class PostProcess {
    * When no effects are active, performs a simple blit. When effects are
    * active, chains them using ping-pong FBOs.
    */
-  static resolve(x: number, y: number, width: number, height: number, sceneTexture: WebGLTexture): void {
+  static resolve(x: number, y: number, width: number, height: number, sceneTexture: GLRenderTexture): void {
     const activeEffects = PostProcess.effects.filter((e) => e.active);
 
     if (activeEffects.length === 0) {
@@ -615,7 +615,7 @@ export default class PostProcess {
 
     gl.disable(gl.BLEND);
 
-    let input: WebGLTexture = PostProcess.colorTexture!;
+    let input: GLRenderTexture = PostProcess.colorTexture!;
     const fbos = [PostProcess.pingFBO, PostProcess.pongFBO];
     const textures = [PostProcess.pingTexture!, PostProcess.pongTexture!];
 
@@ -641,12 +641,12 @@ export default class PostProcess {
   /**
    * Blit a texture to the screen using the 'pic' shader.
    */
-  static _blitToScreen(texture: WebGLTexture, x: number, y: number, width: number, height: number): void {
+  static _blitToScreen(texture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
     gl.disable(gl.BLEND);
 
     const program = GL.UseProgram('pic')!;
     gl.uniform3f(program!.uColor!, 1.0, 1.0, 1.0);
-    GL.Bind(program!.tTexture!, texture);
+    texture.bind(program!.tTexture!);
     // FBO texture has (0,0) at bottom-left; 2D screen has (0,0) at top-left.
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
@@ -670,15 +670,15 @@ export default class PostProcess {
       PostProcess.fbo = null;
     }
     if (PostProcess.colorTexture) {
-      gl.deleteTexture(PostProcess.colorTexture);
+      PostProcess.colorTexture.free();
       PostProcess.colorTexture = null;
     }
     if (PostProcess.emissiveTexture) {
-      gl.deleteTexture(PostProcess.emissiveTexture);
+      PostProcess.emissiveTexture.free();
       PostProcess.emissiveTexture = null;
     }
     if (PostProcess.depthTexture) {
-      gl.deleteTexture(PostProcess.depthTexture);
+      PostProcess.depthTexture.free();
       PostProcess.depthTexture = null;
     }
     if (PostProcess.depthRenderbuffer) {
@@ -696,7 +696,7 @@ export default class PostProcess {
       PostProcess.turbulentBoundaryFBO = null;
     }
     if (PostProcess.turbulentBoundaryDepthTexture) {
-      gl.deleteTexture(PostProcess.turbulentBoundaryDepthTexture);
+      PostProcess.turbulentBoundaryDepthTexture.free();
       PostProcess.turbulentBoundaryDepthTexture = null;
     }
 
@@ -728,7 +728,7 @@ export default class PostProcess {
       PostProcess.pingFBO = null;
     }
     if (PostProcess.pingTexture) {
-      gl.deleteTexture(PostProcess.pingTexture);
+      PostProcess.pingTexture.free();
       PostProcess.pingTexture = null;
     }
     if (PostProcess.pongFBO) {
@@ -736,7 +736,7 @@ export default class PostProcess {
       PostProcess.pongFBO = null;
     }
     if (PostProcess.pongTexture) {
-      gl.deleteTexture(PostProcess.pongTexture);
+      PostProcess.pongTexture.free();
       PostProcess.pongTexture = null;
     }
 

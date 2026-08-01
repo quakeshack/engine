@@ -474,7 +474,12 @@ export class ServerPhysics {
         if (pusherEntity.blocked) {
           pusherEntity.blocked(checkEntity);
         }
-        for (const movedEdict of moved) { // FIXME: rewrite
+        // Undo every entity the pusher carried this call, including `check` itself (already
+        // restored above; `check` is always the last entry here, matching vanilla SV_Push, which
+        // walks this list back-to-front for the same reason). Order doesn't matter: each entry
+        // restores its own captured origin/angles independently, and relinking one entity into
+        // the area tree has no effect on any other entity's restore.
+        for (const movedEdict of moved) {
           movedEdict.edict.entity!.origin = movedEdict.origin;
           movedEdict.edict.entity!.angles = movedEdict.angles;
           SV.area.linkEdict(movedEdict.edict);

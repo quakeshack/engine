@@ -1386,8 +1386,10 @@ export class WebRTCDriver extends BaseDriver {
 
       this.signalingWs.onerror = (errorEvent: Event) => {
         console.debug('WebRTCDriver: Signaling WebSocket error', errorEvent);
-        // eslint-disable-next-line @typescript-eslint/no-base-to-string
-        Con.DPrint(`WebRTCDriver: Signaling error: ${errorEvent}\n`); // FIXME: this does not print anything useful, need to find a better way to log the error details
+        // The WebSocket spec deliberately withholds error details on the Event itself (e.g. for
+        // cross-origin connections); the close event that immediately follows carries the real
+        // code/reason, so just note that here instead of stringifying the useless Event object.
+        Con.DPrint(`WebRTCDriver: Signaling error (readyState=${this.signalingWs!.readyState}); see the following close event for details\n`);
         this.#OnSignalingError({ error: 'Signaling connection error', type: 'error' });
       };
 
@@ -1996,9 +1998,8 @@ export class WebRTCDriver extends BaseDriver {
       sock.state = QSocket.STATE_DISCONNECTED;
     };
 
-    channel.onerror = (error) => {
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      Con.PrintError(`WebRTCDriver: Data channel error with ${peerId}: ${error}\n`); // FIXME: this does not print anything useful, need to find a better way to log the error details
+    channel.onerror = (event) => {
+      Con.PrintError(`WebRTCDriver: Data channel error with ${peerId}: ${event.error.message} (${event.error.errorDetail})\n`);
       sock.state = QSocket.STATE_DISCONNECTED;
     };
 
@@ -2135,9 +2136,8 @@ export class WebRTCDriver extends BaseDriver {
       this.#CloseOobPeerConnection(peerId);
     };
 
-    channel.onerror = (error) => {
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      Con.DPrint(`WebRTCDriver: Out-of-band channel error with ${peerId}: ${error}\n`);
+    channel.onerror = (event) => {
+      Con.DPrint(`WebRTCDriver: Out-of-band channel error with ${peerId}: ${event.error.message} (${event.error.errorDetail})\n`);
     };
 
     channel.onmessage = (event: MessageEvent<ArrayBuffer>) => {

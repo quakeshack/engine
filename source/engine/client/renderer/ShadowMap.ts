@@ -1,4 +1,4 @@
-import GL from '../GL.ts';
+import GL, { GLCubeTexture, GLRenderTexture } from '../GL.ts';
 import Cvar from '../../common/Cvar.ts';
 import { limits } from '../../common/Def.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
@@ -111,10 +111,10 @@ export default class ShadowMap {
   static topdownFBO: WebGLFramebuffer | null = null;
 
   /** Depth texture with hardware comparison (sampler2DShadow). */
-  static topdownDepthTexture: WebGLTexture | null = null;
+  static topdownDepthTexture: GLRenderTexture | null = null;
 
   /** 1×1 always-lit dummy texture used when the top-down shadow is off. */
-  static topdownDummyTexture: WebGLTexture | null = null;
+  static topdownDummyTexture: GLRenderTexture | null = null;
 
   /** Column-major 4×4 top-down light-space view-projection matrix, recomputed every frame from the camera position. */
   static topdownMatrix: Float64Array = new Float64Array(16);
@@ -137,10 +137,10 @@ export default class ShadowMap {
   static pointFBO: WebGLFramebuffer | null = null;
 
   /** Depth cubemaps with hardware comparison (samplerCubeShadow), one per active point-light slot. */
-  static pointDepthCubes: WebGLTexture[] = [];
+  static pointDepthCubes: GLCubeTexture[] = [];
 
   /** 1×1 always-lit dummy cubemap used for inactive point-light slots. */
-  static pointDummyCube: WebGLTexture | null = null;
+  static pointDummyCube: GLCubeTexture | null = null;
 
   /** Column-major 4×4 per-face view-projection matrix (scratch, reused across slots and faces). */
   static pointFaceMatrix: Float64Array = new Float64Array(16);
@@ -196,8 +196,8 @@ export default class ShadowMap {
     ShadowMap.pitch = new Cvar('r_shadow_pitch', '-90', Cvar.FLAG.ARCHIVE, 'Top-down shadow direction pitch (degrees, negative = down)');
 
     // ── Top-down shadow depth texture ──────────────────────────────
-    ShadowMap.topdownDepthTexture = gl.createTexture()!;
-    GL.Bind(0, ShadowMap.topdownDepthTexture);
+    ShadowMap.topdownDepthTexture = new GLRenderTexture();
+    ShadowMap.topdownDepthTexture.bind(0);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, TOPDOWN_SHADOW_SIZE, TOPDOWN_SHADOW_SIZE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -209,14 +209,14 @@ export default class ShadowMap {
     // ── Depth-only FBO ─────────────────────────────────────────────
     ShadowMap.topdownFBO = gl.createFramebuffer()!;
     gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.topdownFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, ShadowMap.topdownDepthTexture, 0);
+    ShadowMap.topdownDepthTexture.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
     gl.drawBuffers([]);
     gl.readBuffer(gl.NONE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     // ── 1×1 dummy (always-lit) ─────────────────────────────────────
-    ShadowMap.topdownDummyTexture = gl.createTexture()!;
-    GL.Bind(0, ShadowMap.topdownDummyTexture);
+    ShadowMap.topdownDummyTexture = new GLRenderTexture();
+    ShadowMap.topdownDummyTexture.bind(0);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, 1, 1);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, new Uint32Array([0xFFFFFFFF]));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -233,8 +233,8 @@ export default class ShadowMap {
 
     ShadowMap.pointDepthCubes.length = 0;
     for (let slot = 0; slot < POINT_SHADOW_COUNT; slot++) {
-      const depthCube = gl.createTexture()!;
-      gl.bindTexture(gl.TEXTURE_CUBE_MAP, depthCube);
+      const depthCube = new GLCubeTexture();
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, depthCube.texture);
       for (let face = 0; face < 6; face++) {
         gl.texImage2D(
           gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.DEPTH_COMPONENT24,
@@ -257,15 +257,15 @@ export default class ShadowMap {
     gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.pointFBO);
     gl.framebufferTexture2D(
       gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
-      gl.TEXTURE_CUBE_MAP_POSITIVE_X, ShadowMap.pointDepthCubes[0], 0,
+      gl.TEXTURE_CUBE_MAP_POSITIVE_X, ShadowMap.pointDepthCubes[0].texture, 0,
     );
     gl.drawBuffers([]);
     gl.readBuffer(gl.NONE);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     // ── 1×1 dummy cubemap (always-lit) ─────────────────────────────
-    ShadowMap.pointDummyCube = gl.createTexture()!;
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, ShadowMap.pointDummyCube);
+    ShadowMap.pointDummyCube = new GLCubeTexture();
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, ShadowMap.pointDummyCube.texture);
     const dummyPixel = new Uint32Array([0xFFFFFFFF]);
     for (let face = 0; face < 6; face++) {
       gl.texImage2D(
@@ -421,7 +421,7 @@ export default class ShadowMap {
   }
 
   /** @returns The texture to bind as the top-down shadow map (real or dummy). */
-  static getActiveTopDownTexture(): WebGLTexture {
+  static getActiveTopDownTexture(): GLRenderTexture {
     return ShadowMap.enabled!.value ? ShadowMap.topdownDepthTexture! : ShadowMap.topdownDummyTexture!;
   }
 
@@ -763,7 +763,7 @@ export default class ShadowMap {
       gl.framebufferTexture2D(
         gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
         gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
-        ShadowMap.pointDepthCubes[slot], 0,
+        ShadowMap.pointDepthCubes[slot].texture, 0,
       );
       gl.clear(gl.DEPTH_BUFFER_BIT);
 
@@ -812,8 +812,8 @@ export default class ShadowMap {
   }
 
   /** @returns The cube textures to bind as point shadow maps, one per slot (real or dummy). */
-  static getActivePointTextures(): WebGLTexture[] {
-    const textures = new Array<WebGLTexture>(POINT_SHADOW_COUNT);
+  static getActivePointTextures(): GLCubeTexture[] {
+    const textures = new Array<GLCubeTexture>(POINT_SHADOW_COUNT);
     for (let i = 0; i < POINT_SHADOW_COUNT; i++) {
       textures[i] = i < ShadowMap.pointLightActiveCount
         ? ShadowMap.pointDepthCubes[i]

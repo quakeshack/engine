@@ -87,76 +87,6 @@ class GL {
   static identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
   static currentVAO: WebGLVertexArrayObject | null = null;
 
-  /**
-   * Binds a 2D texture.
-   * @param {number} target texture target
-   * @param {WebGLTexture | null} texnum texture number
-   * @param {boolean} flushStream flush the stream before binding
-   * @deprecated
-   */
-  static Bind(target: number, texnum: WebGLTexture | null, flushStream = false): void {
-    if (currentTextureTargets[target] === texnum) {
-      return;
-    }
-
-    if (flushStream) {
-      GL.StreamFlush();
-    }
-
-    if (currentTextureTarget !== target) {
-      currentTextureTarget = target;
-      gl.activeTexture(gl.TEXTURE0 + target);
-    }
-
-    currentTextureTargets[target] = texnum;
-    gl.bindTexture(gl.TEXTURE_2D, texnum);
-  }
-
-  /**
-   * Binds a 3D texture. Invalidates the 2D texture cache for this unit.
-   * @param {number} target texture unit (0-31)
-   * @param {WebGLTexture} texnum texture handle
-   */
-  static Bind3D(target: number, texnum: WebGLTexture): void {
-    if (currentTextureTarget !== target) {
-      currentTextureTarget = target;
-      gl.activeTexture(gl.TEXTURE0 + target);
-    }
-
-    currentTextureTargets[target] = null;
-    gl.bindTexture(gl.TEXTURE_3D, texnum);
-  }
-
-  /**
-   * Binds a 2D array texture. Invalidates the 2D texture cache for this unit.
-   * @param {number} target texture unit (0-31)
-   * @param {WebGLTexture} texnum texture handle
-   */
-  static BindArray(target: number, texnum: WebGLTexture): void {
-    if (currentTextureTarget !== target) {
-      currentTextureTarget = target;
-      gl.activeTexture(gl.TEXTURE0 + target);
-    }
-
-    currentTextureTargets[target] = null;
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texnum);
-  }
-
-  /**
-   * Binds a cube map texture. Invalidates the 2D texture cache for this unit.
-   * @param {number} target texture unit (0-31)
-   * @param {WebGLTexture} texnum texture handle
-   */
-  static BindCube(target: number, texnum: WebGLTexture): void {
-    if (currentTextureTarget !== target) {
-      currentTextureTarget = target;
-      gl.activeTexture(gl.TEXTURE0 + target);
-    }
-
-    currentTextureTargets[target] = null;
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texnum);
-  }
-
   static Set2D(): void {
     gl.viewport(0, 0, Math.floor(VID.width * VID.pixelRatio), Math.floor(VID.height * VID.pixelRatio));
     GL.UnbindProgram();
@@ -620,6 +550,160 @@ const currentTextureTargets: Array<WebGLTexture | null> = [];
 let currentTextureTarget: number | null = null;
 let savedDefaultAttribBits = 0;
 
+/**
+ *
+ */
+function activateTextureUnit(target: number): void {
+  if (currentTextureTarget !== target) {
+    currentTextureTarget = target;
+    gl.activeTexture(gl.TEXTURE0 + target);
+  }
+}
+
+/** Bind-cache-aware 2D texture-unit bind, shared by GLTexture, GLRenderTexture, and GL.Bind. */
+function bindTexture2D(target: number, texnum: WebGLTexture | null, flushStream: boolean): void {
+  if (currentTextureTargets[target] === texnum) {
+    return;
+  }
+
+  if (flushStream) {
+    GL.StreamFlush();
+  }
+
+  activateTextureUnit(target);
+
+  currentTextureTargets[target] = texnum;
+  gl.bindTexture(gl.TEXTURE_2D, texnum);
+}
+
+/**
+ * Binds a non-2D texture (3D/array/cube) to a unit. Always issues gl.bindTexture (no
+ * same-texture skip — these targets aren't rebound often enough per frame for that to have
+ * mattered) and unconditionally invalidates the unit's 2D bind-cache entry, even though the 2D
+ * and non-2D binding points of a unit don't actually collide in WebGL. This matches the
+ * pre-existing Bind3D/BindArray/BindCube behavior exactly; it's a pure API-surface change, not a
+ * behavior change.
+ */
+function bindTextureToUnit(target: number, glTarget: number, texnum: WebGLTexture): void {
+  activateTextureUnit(target);
+  currentTextureTargets[target] = null;
+  gl.bindTexture(glTarget, texnum);
+}
+
+/**
+ * A raw 2D render-target texture (post-process buffers, shadow maps, lightmap data textures,
+ * ...) that isn't a loaded asset and doesn't belong in GLTexture's identifier cache. Owns only
+ * bind-cache participation and lifecycle; callers keep issuing texImage2D/texStorage2D/
+ * texParameteri/texSubImage2D themselves via `.texture`.
+ */
+export class GLRenderTexture {
+  #texnum: WebGLTexture;
+
+  constructor() {
+    this.#texnum = requireValue(gl.createTexture(), 'Failed to create WebGL texture');
+  }
+
+  /**
+   * Raw handle, for gl.* calls this wrapper does not itself cover.
+   * @returns the raw WebGL texture handle.
+   */
+  get texture(): WebGLTexture {
+    return this.#texnum;
+  }
+
+  bind(target = 0, flushStream = false): this {
+    bindTexture2D(target, this.#texnum, flushStream);
+    return this;
+  }
+
+  /** Attaches this texture to the currently bound framebuffer. */
+  attachToFramebuffer(attachmentPoint: number): void {
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, this.#texnum, 0);
+  }
+
+  free(): void {
+    gl.deleteTexture(this.#texnum);
+  }
+}
+
+/** A 3D texture (fog-volume light probes). */
+export class GLVolumeTexture {
+  #texnum: WebGLTexture;
+
+  constructor() {
+    this.#texnum = requireValue(gl.createTexture(), 'Failed to create WebGL texture');
+  }
+
+  /**
+   * Raw handle, for gl.* calls this wrapper does not itself cover.
+   * @returns the raw WebGL texture handle.
+   */
+  get texture(): WebGLTexture {
+    return this.#texnum;
+  }
+
+  bind(target = 0): this {
+    bindTextureToUnit(target, gl.TEXTURE_3D, this.#texnum);
+    return this;
+  }
+
+  free(): void {
+    gl.deleteTexture(this.#texnum);
+  }
+}
+
+/** A 2D array texture (lightmap/deluxemap/fullbright/normal-up banks). */
+export class GLTextureArray {
+  #texnum: WebGLTexture;
+
+  constructor() {
+    this.#texnum = requireValue(gl.createTexture(), 'Failed to create WebGL texture');
+  }
+
+  /**
+   * Raw handle, for gl.* calls this wrapper does not itself cover.
+   * @returns the raw WebGL texture handle.
+   */
+  get texture(): WebGLTexture {
+    return this.#texnum;
+  }
+
+  bind(target = 0): this {
+    bindTextureToUnit(target, gl.TEXTURE_2D_ARRAY, this.#texnum);
+    return this;
+  }
+
+  free(): void {
+    gl.deleteTexture(this.#texnum);
+  }
+}
+
+/** A cube-map texture (point-light shadow cubes). */
+export class GLCubeTexture {
+  #texnum: WebGLTexture;
+
+  constructor() {
+    this.#texnum = requireValue(gl.createTexture(), 'Failed to create WebGL texture');
+  }
+
+  /**
+   * Raw handle, for gl.* calls this wrapper does not itself cover.
+   * @returns the raw WebGL texture handle.
+   */
+  get texture(): WebGLTexture {
+    return this.#texnum;
+  }
+
+  bind(target = 0): this {
+    bindTextureToUnit(target, gl.TEXTURE_CUBE_MAP, this.#texnum);
+    return this;
+  }
+
+  free(): void {
+    gl.deleteTexture(this.#texnum);
+  }
+}
+
 export class GLTexture {
   identifier = '';
   width = 0;
@@ -829,22 +913,7 @@ export class GLTexture {
       return this;
     }
 
-    if (currentTextureTargets[target] === this.#texnum) {
-      // already bound
-      return this;
-    }
-
-    if (flushStream) {
-      GL.StreamFlush();
-    }
-
-    if (currentTextureTarget !== target) {
-      currentTextureTarget = target;
-      gl.activeTexture(gl.TEXTURE0 + target);
-    }
-
-    currentTextureTargets[target] = this.#texnum;
-    gl.bindTexture(gl.TEXTURE_2D, this.#texnum);
+    bindTexture2D(target, this.#texnum!, flushStream);
 
     return this;
   }

@@ -47,9 +47,9 @@ describe('resolveBloomDebugMode', () => {
 describe('getBloomDebugPreviewItems', () => {
   test('returns all bloom preview textures for combined debug mode', () => {
     const textures = {
-      emissiveTexture: /** @type {WebGLTexture} */ ({}),
-      extractTexture: /** @type {WebGLTexture} */ ({}),
-      blurTexture: /** @type {WebGLTexture} */ ({}),
+      emissiveTexture: /** @type {import('../../source/engine/client/GL.ts').GLRenderTexture} */ ({}),
+      extractTexture: /** @type {import('../../source/engine/client/GL.ts').GLRenderTexture} */ ({}),
+      blurTexture: /** @type {import('../../source/engine/client/GL.ts').GLRenderTexture} */ ({}),
     };
 
     assert.deepEqual(getBloomDebugPreviewItems(4, textures), [
@@ -61,9 +61,9 @@ describe('getBloomDebugPreviewItems', () => {
 
   test('returns no previews when a selected texture is missing', () => {
     assert.deepEqual(getBloomDebugPreviewItems(2, {
-      emissiveTexture: /** @type {WebGLTexture|null} */ ({}),
+      emissiveTexture: /** @type {import('../../source/engine/client/GL.ts').GLRenderTexture|null} */ ({}),
       extractTexture: null,
-      blurTexture: /** @type {WebGLTexture|null} */ ({}),
+      blurTexture: /** @type {import('../../source/engine/client/GL.ts').GLRenderTexture|null} */ ({}),
     }), []);
   });
 });

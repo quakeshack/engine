@@ -1,4 +1,4 @@
-import GL from '../GL.ts';
+import GL, { type GLRenderTexture } from '../GL.ts';
 import Host from '../../common/Host.ts';
 import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
@@ -33,10 +33,10 @@ export default class ColorGradeEffect extends PostProcessEffect {
     };
   }
 
-  override apply(inputTexture: WebGLTexture, x: number, y: number, width: number, height: number): void {
+  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('color-grade')!;
     console.assert(program !== null, 'ColorGradeEffect: shader program not found');
-    GL.Bind(program.tTexture!, inputTexture);
+    inputTexture.bind(program.tTexture!);
     const s = ColorGradeEffect.resolveSettings(PostProcess.getStackEntry('color-grade') ?? {});
     const tint = s.tintColor;
     gl.uniform1f(program.uTime!, Host.realtime);

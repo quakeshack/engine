@@ -1,4 +1,4 @@
-import GL from '../GL.ts';
+import GL, { type GLRenderTexture } from '../GL.ts';
 import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
@@ -38,12 +38,12 @@ export default class UnderwaterFogEffect extends PostProcessEffect {
    * Apply underwater fog by drawing a fullscreen quad with the 'underwater-fog'
    * shader, sampling scene color, scene depth, and boundary depth.
    */
-  override apply(inputTexture: WebGLTexture, x: number, y: number, width: number, height: number): void {
+  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('underwater-fog')!;
 
-    GL.Bind(program.tScene!, inputTexture);
-    GL.Bind(program.tDepth!, PostProcess.depthTexture);
-    GL.Bind(program.tBoundaryDepth!, PostProcess.turbulentBoundaryDepthTexture);
+    inputTexture.bind(program.tScene!);
+    PostProcess.depthTexture!.bind(program.tDepth!);
+    PostProcess.turbulentBoundaryDepthTexture!.bind(program.tBoundaryDepth!);
 
     const [fr, fg, fb] = R.underwaterFogColor;
     gl.uniform3f(program.uFogColor!, fr, fg, fb);

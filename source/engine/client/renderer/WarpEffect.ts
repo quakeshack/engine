@@ -1,4 +1,4 @@
-import GL from '../GL.ts';
+import GL, { type GLRenderTexture } from '../GL.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
 
@@ -42,9 +42,9 @@ export default class WarpEffect extends PostProcessEffect {
    * @param width Viewport width.
    * @param height Viewport height.
    */
-  override apply(inputTexture: WebGLTexture, x: number, y: number, width: number, height: number): void {
+  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('warp');
-    GL.Bind(program!.tTexture!, inputTexture);
+    inputTexture.bind(program!.tTexture!);
     gl.uniform1f(program!.uTime!, Host.realtime % (Math.PI * 2.0));
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();

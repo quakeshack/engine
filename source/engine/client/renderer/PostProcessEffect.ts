@@ -1,3 +1,5 @@
+import type { GLRenderTexture } from '../GL.ts';
+
 /**
  * Base class for post-process effects.
  *
@@ -29,7 +31,7 @@ export default class PostProcessEffect {
    * The caller has already bound the correct output framebuffer and viewport.
    */
 
-  apply(_inputTexture: WebGLTexture, _x: number, _y: number, _width: number, _height: number): void {
+  apply(_inputTexture: GLRenderTexture, _x: number, _y: number, _width: number, _height: number): void {
     throw new Error(`PostProcessEffect.apply() not implemented for '${this.name}'`);
   }
 

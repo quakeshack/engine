@@ -1,4 +1,4 @@
-import GL from '../GL.ts';
+import GL, { GLRenderTexture } from '../GL.ts';
 import VID from '../VID.ts';
 import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
@@ -20,7 +20,7 @@ export default class BlurEffect extends PostProcessEffect {
   static intermediateFBO: WebGLFramebuffer | null = null;
 
   /** Color texture for the horizontal-pass result. */
-  static intermediateTexture: WebGLTexture | null = null;
+  static intermediateTexture: GLRenderTexture | null = null;
 
   constructor() {
     super('blur');
@@ -34,8 +34,8 @@ export default class BlurEffect extends PostProcessEffect {
   }
 
   override init(): void {
-    BlurEffect.intermediateTexture = gl.createTexture();
-    GL.Bind(0, BlurEffect.intermediateTexture);
+    BlurEffect.intermediateTexture = new GLRenderTexture();
+    BlurEffect.intermediateTexture.bind(0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -43,13 +43,13 @@ export default class BlurEffect extends PostProcessEffect {
 
     BlurEffect.intermediateFBO = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, BlurEffect.intermediateFBO);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, BlurEffect.intermediateTexture, 0);
+    BlurEffect.intermediateTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   override resize(width: number, height: number): void {
     if (!BlurEffect.intermediateTexture) { return; }
-    GL.Bind(0, BlurEffect.intermediateTexture);
+    BlurEffect.intermediateTexture.bind(0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   }
 
@@ -59,22 +59,22 @@ export default class BlurEffect extends PostProcessEffect {
       BlurEffect.intermediateFBO = null;
     }
     if (BlurEffect.intermediateTexture) {
-      gl.deleteTexture(BlurEffect.intermediateTexture);
+      BlurEffect.intermediateTexture.free();
       BlurEffect.intermediateTexture = null;
     }
   }
 
-  #blurPass(inputTexture: WebGLTexture, dirX: number, dirY: number, radius: number, x: number, y: number, width: number, height: number): void {
+  #blurPass(inputTexture: GLRenderTexture, dirX: number, dirY: number, radius: number, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('blur');
     if (!program) { return; }
-    GL.Bind(program.tTexture!, inputTexture);
+    inputTexture.bind(program.tTexture!);
     gl.uniform2f(program.uDirection!, dirX, dirY);
     gl.uniform1f(program.uRadius!, radius);
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();
   }
 
-  override apply(inputTexture: WebGLTexture, x: number, y: number, width: number, height: number): void {
+  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
     if (!BlurEffect.intermediateFBO || !BlurEffect.intermediateTexture) { return; }
 
     const s = BlurEffect.resolveSettings(PostProcess.getStackEntry('blur') ?? {});

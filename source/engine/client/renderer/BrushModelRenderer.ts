@@ -1,7 +1,7 @@
 import Vector from '../../../shared/Vector.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { eventBus, getClientRegistry } from '../../registry.ts';
-import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE } from '../GL.ts';
+import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../GL.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { MaterialFlags, type BaseMaterial } from './Materials.ts';
 import { BrushModel, type Node, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../common/model/BSP.ts';
@@ -69,7 +69,7 @@ export function resolveBrushBloomContributionStrength(strength: number): number 
 
 /** Internal data held per fog volume light probe. */
 interface FogLightProbeData {
-  texture: WebGLTexture;
+  texture: GLVolumeTexture;
   resX: number;
   resY: number;
   resZ: number;
@@ -129,7 +129,7 @@ export class BrushModelRenderer extends ModelRenderer {
   #fogProbeStyleFrame: number = -1;
 
   /** A 1×1 white texture used as a fallback when no light probe is available. */
-  #fogLightProbeWhite: WebGLTexture | null = null;
+  #fogLightProbeWhite: GLVolumeTexture | null = null;
 
   /**
    * Lazily created unit cube VBO for rendering world-level fog volumes.
@@ -532,8 +532,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uDynamicLightVec!, 0.0, 0.0, 0.0);
 
     this._setupBrushShaderCommon(program, clmodel, true);
-    GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
-    GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
+    R.lightstyle_texture_a.bind(program.tLightStyleA!);
+    R.lightstyle_texture_b.bind(program.tLightStyleB!);
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     for (let i = 0; i < clmodel.leafs.length; i++) {
@@ -649,8 +649,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uDynamicLightVec!, 0.0, 0.0, 0.0);
 
     this._setupBrushShaderCommon(program, clmodel, true);
-    GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
-    GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
+    R.lightstyle_texture_a.bind(program.tLightStyleA!);
+    R.lightstyle_texture_b.bind(program.tLightStyleB!);
     this._worldTransparentHasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     gl.enable(gl.BLEND);
@@ -794,18 +794,18 @@ export class BrushModelRenderer extends ModelRenderer {
 
     if (PostProcess.active) {
       PostProcess.beginDepthSampling();
-      GL.Bind(program.tDepth!, PostProcess.depthTexture);
+      PostProcess.depthTexture!.bind(program.tDepth!);
       gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
       // Per-surface alpha decides whether depth fog is active.
       gl.uniform1f(program.uWaterFogDensity!, 0.0);
     } else {
-      GL.Bind(program.tDepth!, R.null_texture);
+      R.null_texture.bind(program.tDepth!);
       gl.uniform1f(program.uWaterFogDensity!, 0.0);
     }
 
     this._setupBrushShaderCommon(program, clmodel, true);
-    GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
-    GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
+    R.lightstyle_texture_a.bind(program.tLightStyleA!);
+    R.lightstyle_texture_b.bind(program.tLightStyleB!);
 
     this._worldTurbulentProgram = program;
     this._worldTurbulentModel = clmodel;
@@ -841,7 +841,7 @@ export class BrushModelRenderer extends ModelRenderer {
       // The brush shader also uses unit 7 (tSpecular), and QuakeMaterial.bindTo
       // does not rebind that slot — leaving depthTexture simultaneously attached
       // as the FBO depth and sampled as tSpecular, which is a feedback loop.
-      GL.Bind(this._worldTurbulentProgram!.tDepth as number, R.null_texture);
+      R.null_texture.bind(this._worldTurbulentProgram!.tDepth as number);
       PostProcess.endDepthSampling();
     }
     this._worldTurbulentProgram = null;
@@ -931,7 +931,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.cullFace(gl.BACK);
     gl.enable(gl.CULL_FACE);
 
-    GL.Bind(program.tDepth!, PostProcess.depthTexture);
+    PostProcess.depthTexture!.bind(program.tDepth!);
     gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
 
     this._fogVolumeProgram = program;
@@ -955,11 +955,11 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uFogVolumeMaxOpacity!, fogVolume.maxOpacity);
 
     // Bind the light probe 3D texture for this fog volume.
-    // _getFogLightProbe / _getFogLightProbeWhite may upload via Bind3D(0, ...)
-    // which clobbers texture unit 0 (tDepth). Re-bind depth after.
+    // _getFogLightProbe / _getFogLightProbeWhite may upload via .bind(0), which
+    // clobbers texture unit 0 (tDepth). Re-bind depth after.
     const probe = this._getFogLightProbe(fogVolume);
-    GL.Bind3D(program.tLightProbe!, probe ? probe.texture : this._getFogLightProbeWhite());
-    GL.Bind(program.tDepth!, PostProcess.depthTexture);
+    (probe ? probe.texture : this._getFogLightProbeWhite()).bind(program.tLightProbe!);
+    PostProcess.depthTexture!.bind(program.tDepth!);
 
     this._uploadFogDlights(fogVolume);
 
@@ -1022,7 +1022,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
     // Unbind depthTexture from its sampler unit before reattaching it to the FBO,
     // for the same reason as endWorldTurbulentPass (feedback loop prevention).
-    GL.Bind(this._fogVolumeProgram!.tDepth as number, R.null_texture);
+    R.null_texture.bind(this._fogVolumeProgram!.tDepth as number);
     PostProcess.endDepthSampling();
     this._fogVolumeProgram = null;
   }
@@ -1158,29 +1158,29 @@ export class BrushModelRenderer extends ModelRenderer {
   /** @private */
   _setupBrushShaderCommon(program: GLProgramInfo, clmodel: BrushModel, isWorld: boolean): void {
     if ((R.fullbright.value !== 0) || (clmodel.lightdata === null && clmodel.lightdata_rgb === null)) {
-      GL.BindArray(program.tLightmap!, R.fullbright_texture);
+      R.fullbright_texture.bind(program.tLightmap!);
     } else {
-      GL.BindArray(program.tLightmap!, R.lightmap_texture);
+      R.lightmap_texture.bind(program.tLightmap!);
     }
 
     if (R.flashblend.value === 0 && (isWorld || clmodel.submodel)) {
-      GL.Bind(program.tDlight!, R.dlightmap_rgba_texture);
+      R.dlightmap_rgba_texture.bind(program.tDlight!);
     } else {
-      GL.Bind(program.tDlight!, R.null_texture);
+      R.null_texture.bind(program.tDlight!);
     }
 
     if (program.tShadowMap !== undefined && R.shadow_texture) {
-      GL.Bind(program.tShadowMap, R.shadow_texture);
+      R.shadow_texture.bind(program.tShadowMap);
     }
 
     if (program.tPointShadowMap0 !== undefined && R.point_shadow_textures?.[0]) {
-      GL.BindCube(program.tPointShadowMap0, R.point_shadow_textures[0]);
+      R.point_shadow_textures[0].bind(program.tPointShadowMap0);
     }
     if (program.tPointShadowMap1 !== undefined && R.point_shadow_textures?.[1]) {
-      GL.BindCube(program.tPointShadowMap1, R.point_shadow_textures[1]);
+      R.point_shadow_textures[1].bind(program.tPointShadowMap1);
     }
     if (program.tPointShadowMap2 !== undefined && R.point_shadow_textures?.[2]) {
-      GL.BindCube(program.tPointShadowMap2, R.point_shadow_textures[2]);
+      R.point_shadow_textures[2].bind(program.tPointShadowMap2);
     }
   }
 
@@ -1199,8 +1199,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
     this._setupBrushShaderCommon(program, clmodel, false);
-    GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
-    GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
+    R.lightstyle_texture_a.bind(program.tLightStyleA!);
+    R.lightstyle_texture_b.bind(program.tLightStyleB!);
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
@@ -1241,8 +1241,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
     this._setupBrushShaderCommon(program, clmodel, false);
-    GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
-    GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
+    R.lightstyle_texture_a.bind(program.tLightStyleA!);
+    R.lightstyle_texture_b.bind(program.tLightStyleB!);
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     gl.enable(gl.BLEND);
@@ -1292,8 +1292,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
 
     this._setupBrushShaderCommon(program, clmodel, false);
-    GL.Bind(program.tLightStyleA!, R.lightstyle_texture_a);
-    GL.Bind(program.tLightStyleB!, R.lightstyle_texture_b);
+    R.lightstyle_texture_a.bind(program.tLightStyleA!);
+    R.lightstyle_texture_b.bind(program.tLightStyleB!);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
       gl.depthMask(true);
@@ -1362,12 +1362,12 @@ export class BrushModelRenderer extends ModelRenderer {
     const hasDeluxemap = BrushModelRenderer.usesDeluxemap(clmodel, CL.state.worldmodel as BrushModel | null);
 
     if (hasDeluxemap) {
-      GL.BindArray(program.tDeluxemap!, R.deluxemap_texture);
+      R.deluxemap_texture.bind(program.tDeluxemap!);
       gl.uniform1f(program.uHaveDeluxemap!, 1.0);
       return true;
     }
 
-    GL.BindArray(program.tDeluxemap!, R.normal_up_texture);
+    R.normal_up_texture.bind(program.tDeluxemap!);
     gl.uniform1f(program.uHaveDeluxemap!, 0.0);
     return false;
   }
@@ -1395,13 +1395,13 @@ export class BrushModelRenderer extends ModelRenderer {
    * @private
    * @returns A white 3-D texture used when no probe data is available.
    */
-  _getFogLightProbeWhite(): WebGLTexture {
+  _getFogLightProbeWhite(): GLVolumeTexture {
     if (this.#fogLightProbeWhite) {
       return this.#fogLightProbeWhite;
     }
 
-    this.#fogLightProbeWhite = gl.createTexture()!;
-    GL.Bind3D(0, this.#fogLightProbeWhite);
+    this.#fogLightProbeWhite = new GLVolumeTexture();
+    this.#fogLightProbeWhite.bind(0);
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -1460,7 +1460,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
     if (existing) {
       this._sampleFogLightProbe(fogVolume, existing.data, existing.resX, existing.resY, existing.resZ);
-      GL.Bind3D(0, existing.texture);
+      existing.texture.bind(0);
       gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, existing.resX, existing.resY, existing.resZ, gl.RGBA, gl.UNSIGNED_BYTE, existing.data);
       return existing;
     }
@@ -1473,8 +1473,8 @@ export class BrushModelRenderer extends ModelRenderer {
 
     this._sampleFogLightProbe(fogVolume, data, resX, resY, resZ);
 
-    const texture = gl.createTexture()!;
-    GL.Bind3D(0, texture);
+    const texture = new GLVolumeTexture();
+    texture.bind(0);
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, resX, resY, resZ, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -1516,7 +1516,7 @@ export class BrushModelRenderer extends ModelRenderer {
   _freeFogLightProbes(): void {
     if (gl) {
       for (const { texture } of this.#fogLightProbes.values()) {
-        gl.deleteTexture(texture);
+        texture.free();
       }
     }
     this.#fogLightProbes.clear();

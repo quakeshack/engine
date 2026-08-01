@@ -8,6 +8,7 @@ import { eventBus } from '../../source/engine/registry.ts';
 void describe('PostProcess._resolveMSAAColorAttachment', () => {
   void test('resolves secondary attachments through draw attachment 0', () => {
     const operations = [];
+    const textureHandle = 'emissive-texture-handle';
     const mockGl = {
       COLOR_ATTACHMENT0: 0x8CE0,
       COLOR_ATTACHMENT1: 0x8CE1,
@@ -29,12 +30,20 @@ void describe('PostProcess._resolveMSAAColorAttachment', () => {
       },
     };
 
+    // GLRenderTexture stub: records the attach through the same mockGl calls
+    // a real GLRenderTexture.attachToFramebuffer() would make.
+    const targetTexture = /** @type {import('../../source/engine/client/GL.ts').GLRenderTexture} */ ({
+      attachToFramebuffer(attachmentPoint) {
+        mockGl.framebufferTexture2D(mockGl.DRAW_FRAMEBUFFER, attachmentPoint, mockGl.TEXTURE_2D, textureHandle, 0);
+      },
+    });
+
     const originalGl = GL.gl;
     GL.gl = /** @type {WebGL2RenderingContext} */ (mockGl);
     eventBus.publish('gl.ready');
 
     try {
-      PostProcess._resolveMSAAColorAttachment(mockGl.COLOR_ATTACHMENT1, 'emissive-texture', 320, 200);
+      PostProcess._resolveMSAAColorAttachment(mockGl.COLOR_ATTACHMENT1, targetTexture, 320, 200);
     } finally {
       GL.gl = originalGl;
       eventBus.publish('gl.shutdown');
@@ -46,7 +55,7 @@ void describe('PostProcess._resolveMSAAColorAttachment', () => {
     assert.deepEqual(operations, [
       ['readBuffer', mockGl.COLOR_ATTACHMENT1],
       ['framebufferTexture2D', mockGl.DRAW_FRAMEBUFFER, mockGl.COLOR_ATTACHMENT1, mockGl.TEXTURE_2D, null, 0],
-      ['framebufferTexture2D', mockGl.DRAW_FRAMEBUFFER, mockGl.COLOR_ATTACHMENT0, mockGl.TEXTURE_2D, 'emissive-texture', 0],
+      ['framebufferTexture2D', mockGl.DRAW_FRAMEBUFFER, mockGl.COLOR_ATTACHMENT0, mockGl.TEXTURE_2D, textureHandle, 0],
       ['drawBuffers', [mockGl.COLOR_ATTACHMENT0]],
       ['blitFramebuffer', 0, 0, 320, 200, 0, 0, 320, 200, mockGl.COLOR_BUFFER_BIT, mockGl.NEAREST],
     ]);
