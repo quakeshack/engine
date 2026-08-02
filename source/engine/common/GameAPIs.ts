@@ -1611,4 +1611,14 @@ export class ClientEngineAPI extends CommonEngineAPI {
   static get eventBus(): EventBus {
     return CL.state.eventBus;
   }
+
+  /**
+   * A second bus alongside `eventBus`, living for the whole game module's lifetime instead of
+   * being wiped on every disconnect/reconnect -- see `ClientState.ts`'s `moduleEventBus` for which
+   * events reach it (the same set as `eventBus`) and why.
+   * @returns The module-lifetime event bus.
+   */
+  static get moduleEventBus(): EventBus {
+    return CL.moduleEventBus;
+  }
 }

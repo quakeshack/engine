@@ -179,6 +179,14 @@ Grouped by sections and then sorted by priority (more or less).
 
 ## Log
 
+### 2026-08-02
+
+- introduced module scope event bus for client code, that makes four event buses
+  - client game event bus per map/connection lifetime
+  - client game event bus per whole game lifetime (the new module one)
+  - server game event bus per map/server lifetime
+  - engine game event bus
+
 ### 2026-07-24
 
 - menu: more refinements

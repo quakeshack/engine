@@ -9,7 +9,7 @@ import { gameCapabilities, solid } from '../../shared/Defs.ts';
 import ClientDemos from './ClientDemos.ts';
 import { ClientPlayerState } from './ClientMessages.ts';
 import VID from './VID.ts';
-import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import { clientRuntimeState, clientStaticState, moduleEventBus } from './ClientState.ts';
 import ClientConnection, { type IdentityCvars } from './ClientConnection.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { BrushModel } from '../common/Mod.ts';
@@ -29,6 +29,7 @@ export default class CL {
   static gameCapabilities: gameCapabilities[] = [];
   static cls = clientStaticState;
   static state = clientRuntimeState;
+  static moduleEventBus = moduleEventBus;
   static svc_strings: Array<[string, number]> = [];
 
   static {

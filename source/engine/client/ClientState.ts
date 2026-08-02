@@ -57,7 +57,27 @@ const clientGameEvents = [
   'client.damage',
   'client.chat.message',
   'client.clientdata.field-changed',
+  'host.alert',
+  'host.quit-requested',
 ] as const;
+
+/**
+ * Forwards `clientGameEvents` from the engine's top-level `eventBus` onto a second bus that lives
+ * for the whole game module's lifetime (boot -> a hypothetical future `ClientGameAPI.Shutdown()`)
+ * instead of `ClientRuntimeState.eventBus`'s per-connection one (wiped on every disconnect/
+ * reconnect, see `clear()` below). Exposed to game code as `ClientEngineAPI.moduleEventBus` (via
+ * `CL.moduleEventBus`) -- for listeners that must survive past a single connection, e.g. the menu
+ * system's `host.alert`/`host.quit-requested` handlers, which need to keep working even for a
+ * connection that's rejected before ever finishing. Deliberately the same event set as the
+ * per-connection bus (not a separate list) so a developer doesn't need to remember which bus
+ * carries which event -- only whether their own subscription needs to survive a reconnect. Set up
+ * once here (unlike the per-connection proxy below) since this bus is never wiped.
+ */
+const moduleEventBus = new EventBus('client-module');
+
+for (const event of clientGameEvents) {
+  eventBus.subscribe(event, (...args) => { moduleEventBus.publish(event, ...args); });
+}
 
 class ClientStaticState {
   signon = 0;
@@ -331,4 +351,5 @@ export {
   clientStaticState,
   clientRuntimeState,
   clientGameEvents,
+  moduleEventBus,
 };
