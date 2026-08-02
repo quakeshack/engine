@@ -21,3 +21,20 @@ void describe('BaseClientEdictHandler', () => {
     assert.equal(handler.think(), undefined);
   });
 });
+
+void describe('BaseClientEdictHandler.remove', () => {
+  class TestEdictHandler extends BaseClientEdictHandler {
+    triggerRemove() {
+      this.remove();
+    }
+  }
+
+  void test('marks the underlying client edict free', () => {
+    const clientEdict = { free: false, markFree() { this.free = true; } };
+    const handler = new TestEdictHandler(clientEdict, {});
+
+    handler.triggerRemove();
+
+    assert.equal(clientEdict.free, true);
+  });
+});

@@ -186,6 +186,7 @@ Grouped by sections and then sorted by priority (more or less).
   - client game event bus per whole game lifetime (the new module one)
   - server game event bus per map/server lifetime
   - engine game event bus
+- started cleaning up the client entities stuff
 
 ### 2026-07-24
 

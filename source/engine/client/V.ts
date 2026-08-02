@@ -491,11 +491,11 @@ export default class V {
 
     // allow lerping viewmodel by heuristic
     if (view.frame > 0) {
-      view.nextthink = ent.nextthink;
+      view.lerpEndTime = ent.lerpEndTime;
       view.framePrevious = view.frame - 1;
       view.frameTime = ent.frameTime;
     } else {
-      view.nextthink = -1;
+      view.lerpEndTime = -1;
       view.framePrevious = null;
       view.frameTime = 0.0;
     }

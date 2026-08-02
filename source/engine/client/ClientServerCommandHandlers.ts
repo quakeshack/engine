@@ -580,7 +580,7 @@ function parsePacketEntities() {
     }
 
     if (bits & Protocol.u.nextthink) {
-      clent.nextthink = CL.state.clientMessages.mtime[0] + NET.message.readByte() / 255.0;
+      clent.lerpEndTime = CL.state.clientMessages.mtime[0] + NET.message.readByte() / 255.0;
     }
 
     const classname = clent.classname;
@@ -615,7 +615,7 @@ function parsePacketEntities() {
 
     const time = CL.state.clientMessages.mtime[0];
 
-    if (clent.nextthink > time) {
+    if (clent.lerpEndTime > time) {
       if (!clent.msg_origins[0].equals(clent.origin)) {
         clent.originTime = time;
         clent.originPrevious.set(clent.origin);

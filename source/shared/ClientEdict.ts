@@ -38,4 +38,13 @@ export class BaseClientEdictHandler {
    */
   think() {
   }
+
+  /**
+   * Ends this entity's life: frees the underlying client edict so the allocator can recycle it
+   * and it stops thinking, emitting, and rendering as of the next frame. Safe to call from
+   * think()/emit().
+   */
+  protected remove(): void {
+    this.clientEdict.markFree();
+  }
 }

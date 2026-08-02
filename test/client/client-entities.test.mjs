@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { ClientDlight, ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import ClientEntities, { ClientDlight, ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
 
 /**
@@ -82,7 +83,7 @@ void describe('ClientEdict.lerp.angles', () => {
       entity.anglesPrevious.setTo(0.0, 350.0, 0.0);
       entity.angles.setTo(0.0, 10.0, 0.0);
       entity.anglesTime = 0.0;
-      entity.nextthink = 1.0;
+      entity.lerpEndTime = 1.0;
       registry.CL.state.clientMessages.renderTime = 0.5;
 
       const lerped = entity.lerp.angles;
@@ -99,7 +100,7 @@ void describe('ClientEdict.lerp.angles', () => {
       entity.anglesPrevious.setTo(35.0, -170.0, 80.0);
       entity.angles.setTo(-20.0, 175.0, -40.0);
       entity.anglesTime = 0.0;
-      entity.nextthink = 1.0;
+      entity.lerpEndTime = 1.0;
       registry.CL.state.clientMessages.renderTime = 0.5;
 
       void entity.lerp.angles;
@@ -122,7 +123,7 @@ void describe('ClientEdict.lerp.origin', () => {
       entity.originPrevious.setTo(0.0, 0.0, 0.0);
       entity.origin.setTo(100.0, 0.0, 0.0);
       entity.originTime = 0.0;
-      entity.nextthink = 1.0;
+      entity.lerpEndTime = 1.0;
 
       // mtime[0] simulates "last received snapshot time" and stays fixed
       // here, as it would between two network packets.
@@ -136,6 +137,38 @@ void describe('ClientEdict.lerp.origin', () => {
 
       assert.ok(second > first, `expected interpolation to advance (${first} -> ${second})`);
     });
+  });
+});
+
+void describe('ClientEdict.markFree', () => {
+  void test('sets free to true', () => {
+    const entity = new ClientEdict(-1);
+
+    assert.equal(entity.free, false);
+
+    entity.markFree();
+
+    assert.equal(entity.free, true);
+  });
+});
+
+void describe('ClientEntities.getEntities', () => {
+  void test('stops yielding a client-owned entity once its handler calls remove()', () => {
+    const clientEntities = new ClientEntities();
+    const entity = clientEntities.allocateClientEntity();
+
+    assert.ok([...clientEntities.getEntities()].includes(entity));
+
+    class TestEdictHandler extends BaseClientEdictHandler {
+      triggerRemove() {
+        this.remove();
+      }
+    }
+
+    new TestEdictHandler(entity, {}).triggerRemove();
+
+    assert.equal(entity.free, true);
+    assert.ok(![...clientEntities.getEntities()].includes(entity));
   });
 });
 

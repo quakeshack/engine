@@ -156,8 +156,13 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   /** whether is ClientEntity is ready to be recycled */
   free: boolean;
   syncbase: number;
-  /** we are using this to lerp animations and positions as well as in future steering client entities */
-  nextthink: number;
+  /**
+   * End time of the current network-driven lerp window (origin/angles/frame interpolate towards
+   * this entity's values until this time is reached). Despite the name (kept for now to match the
+   * `svc_update`/`Protocol.u.nextthink` wire bit that sets it), this does not gate `think()` —
+   * `think()` runs unconditionally every frame for every non-free entity.
+   */
+  lerpEndTime: number;
   maxs: Vector;
   mins: Vector;
   /** entity fields pushed by the server */
@@ -207,7 +212,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.updatecount = 0;
     this.free = false;
     this.syncbase = 0.0;
-    this.nextthink = -1;
+    this.lerpEndTime = -1;
     this.maxs = new Vector();
     this.mins = new Vector();
     this.extended = {};
@@ -225,17 +230,17 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.lerp = {
       get frame(): [number, number, number] {
         const time = CL.state.clientMessages.renderTime;
-        if (that.nextthink <= time || that.framePrevious === null || CL.nolerp.value) {
+        if (that.lerpEndTime <= time || that.framePrevious === null || CL.nolerp.value) {
           return [that.frame, that.frame, 0];
         }
-        return [that.framePrevious, that.frame, (time - that.frameTime) / (that.nextthink - that.frameTime)];
+        return [that.framePrevious, that.frame, (time - that.frameTime) / (that.lerpEndTime - that.frameTime)];
       },
       get origin(): Vector {
         const time = CL.state.clientMessages.renderTime;
-        if (that.nextthink <= time || CL.nolerp.value || that.originPrevious.isInfinite()) {
+        if (that.lerpEndTime <= time || CL.nolerp.value || that.originPrevious.isInfinite()) {
           return that.origin;
         }
-        const f = Math.min(1, Math.max(0, (time - that.originTime) / (that.nextthink - that.originTime)));
+        const f = Math.min(1, Math.max(0, (time - that.originTime) / (that.lerpEndTime - that.originTime)));
         const o0 = that.origin;
         const o1 = that.originPrevious;
         const l = new Vector(
@@ -247,10 +252,10 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
       },
       get angles(): Vector {
         const time = CL.state.clientMessages.renderTime;
-        if (that.nextthink <= time || CL.nolerp.value || that.anglesPrevious.isInfinite()) {
+        if (that.lerpEndTime <= time || CL.nolerp.value || that.anglesPrevious.isInfinite()) {
           return that.angles;
         }
-        const f = Math.min(1, Math.max(0, (time - that.anglesTime) / (that.nextthink - that.anglesTime)));
+        const f = Math.min(1, Math.max(0, (time - that.anglesTime) / (that.lerpEndTime - that.anglesTime)));
         return Quaternion.slerpAngles(that.anglesPrevious, that.angles, f, new Vector());
       },
     };
@@ -259,8 +264,22 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     Object.seal(this);
   }
 
-  isStatic(): boolean {
+  /**
+   * A client-owned entity has no corresponding server-tracked slot (`num === -1`): static
+   * (`svc_spawnstatic`) decorations, temp entities, and future client-only simulated entities
+   * all share this sentinel.
+   * @returns True when this entity has no server-tracked slot.
+   */
+  isClientOwned(): boolean {
     return this.num === -1;
+  }
+
+  /**
+   * Marks the entity as free for the allocator to recycle. Stops it thinking, emitting, and
+   * rendering as of the next frame.
+   */
+  markFree(): void {
+    this.free = true;
   }
 
   equals(other: { num: number } | null): boolean {
@@ -308,7 +327,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.anglesPrevious.setTo(Infinity, Infinity, Infinity);
     this.velocityTime = 0.0;
     this.velocityPrevious.setTo(Infinity, Infinity, Infinity);
-    this.nextthink = -1;
+    this.lerpEndTime = -1;
     // make sure we delete the field, not just replace the holding object
     for (const key of Object.keys(this.extended)) {
       delete this.extended[key];
@@ -323,7 +342,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     const worldmodel = CL.state.worldmodel;
 
     console.assert(worldmodel !== null, 'worldmodel must be set before linking an entity');
-    console.assert(this.isStatic(), 'linkEdict is only valid for client-side entities');
+    console.assert(this.isClientOwned(), 'linkEdict is only valid for client-side entities');
     console.assert(this.model !== null, 'model must be set before linking an entity');
 
     if (worldmodel === null || this.model === null) {
@@ -419,7 +438,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     const time = CL.state.clientMessages.mtime[0];
 
     // not precisely a position, but it is part of the lerp too
-    if (time > this.nextthink || this.framePrevious === null) {
+    if (time > this.lerpEndTime || this.framePrevious === null) {
       this.frameTime = time;
       this.framePrevious = this.frame;
     }
@@ -435,18 +454,18 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     //   console.log('updatePosition', this.num, this.classname, this.origin, this.angles, this.velocity);
     // }
 
-    // reset previous values when nextthink is over
-    if (time >= this.nextthink || this.originPrevious.isInfinite() || this.origin.distanceTo(this.originPrevious) > 150) {
+    // reset previous values when lerpEndTime is over
+    if (time >= this.lerpEndTime || this.originPrevious.isInfinite() || this.origin.distanceTo(this.originPrevious) > 150) {
       this.originTime = time;
       this.originPrevious.set(this.origin);
     }
 
-    if (time >= this.nextthink || this.anglesPrevious.isInfinite()) {
+    if (time >= this.lerpEndTime || this.anglesPrevious.isInfinite()) {
       this.anglesTime = time;
       this.anglesPrevious.set(this.angles);
     }
 
-    if (time >= this.nextthink || this.velocityPrevious.isInfinite() || this.velocity.distanceTo(this.velocityPrevious) > 150) {
+    if (time >= this.lerpEndTime || this.velocityPrevious.isInfinite() || this.velocity.distanceTo(this.velocityPrevious) > 150) {
       this.velocityTime = time;
       this.velocityPrevious.set(this.velocity);
     }
@@ -480,7 +499,14 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
 }
 
 export default class ClientEntities {
-  /** all entities */
+  /**
+   * All client-owned entities (`num === -1`), allocated via `allocateClientEntity()`. Despite the
+   * name, this holds two different intents: `svc_spawnstatic` decorations (spawn once, never
+   * move, regenerated automatically by the server's signon on every (re)connect) and future
+   * client-only simulated entities such as debris (spawned procedurally, expected to move and
+   * eventually free themselves). The name is kept for now since it still matches the wire
+   * message (`svc_spawnstatic`) that populates most of today's entries.
+   */
   static_entities: ClientEdict[] = [];
 
   /** all server managed entities */
@@ -673,9 +699,12 @@ export default class ClientEntities {
   }
 
   /**
-   * Allocates a client-only entity.
-   * It will not be managed by the server and is used for client-side effects (debris, gibs, projectiles etc.).
-   * @param classname optional classname to set for the temporary entity
+   * Allocates a client-only entity, i.e. one with no corresponding server-tracked slot.
+   * It will not be managed by the server. Used both for `svc_spawnstatic` decorations (parsed off
+   * the wire, regenerated automatically by the server's signon on every (re)connect) and, in the
+   * future, for procedurally-spawned client-side effects (debris, gibs, projectiles etc.) that
+   * need to move and eventually free themselves.
+   * @param classname optional classname to set for the entity
    * @returns a new client-only entity
    */
   allocateClientEntity(classname: string | null = null): ClientEdict {

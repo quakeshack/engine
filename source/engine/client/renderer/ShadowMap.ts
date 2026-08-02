@@ -485,7 +485,7 @@ export default class ShadowMap {
       return false;
     }
 
-    if (entity.num === 0 || entity.isStatic()) {
+    if (entity.num === 0 || entity.isClientOwned()) {
       return false;
     }
 
