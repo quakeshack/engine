@@ -336,8 +336,12 @@ export default class COM {
     const cdnURLPatternValue = registry.urls?.cdnURL;
 
     if (cdnURLPatternValue) {
+      // Hash filename + gameDir into a stable shard so the same asset always
+      // resolves to the same CDN host, allowing the browser cache to help.
+      const shard = (CRC16CCITT.Block(new TextEncoder().encode(`${gameDir}/${filename}`)) % 4) + 1;
+
       return cdnURLPatternValue
-        .replace('{shard}', Math.floor(Math.random() * 4 + 1).toFixed(0))
+        .replace('{shard}', shard.toFixed(0))
         .replace('{filename}', filename)
         .replace('{gameDir}', gameDir);
     }

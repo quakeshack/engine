@@ -277,7 +277,7 @@ export default class SV {
       const cvar = Cvar.FindVar(name)!;
 
       if ((cvar.flags & Cvar.FLAG.SERVER) && SV.server.active) {
-        SV.CvarChanged(cvar);
+        SV.messages.cvarChanged(cvar);
       }
     });
 
@@ -524,31 +524,6 @@ export default class SV {
     }
 
     Con.DPrint('Server shut down.\n');
-  }
-
-  static WriteCvar(msg: SzBuffer, cvar: Cvar): void {
-    if (cvar.flags & Cvar.FLAG.SECRET) {
-      msg.writeString(cvar.name);
-      msg.writeString(cvar.string ? 'REDACTED' : '');
-      return;
-    }
-
-    msg.writeString(cvar.name);
-    msg.writeString(cvar.string);
-  }
-
-  static CvarChanged(cvar: Cvar): void {
-    for (let i = 0; i < SV.svs.maxclients; i++) {
-      const client = SV.svs.clients[i];
-
-      if (client.state < ServerClient.STATE.CONNECTED) {
-        continue;
-      }
-
-      client.message.writeByte(Protocol.svc.cvar);
-      client.message.writeByte(1);
-      SV.WriteCvar(client.message, cvar);
-    }
   }
 
   static ReadClientMove(client: ServerClient): void {
