@@ -48,3 +48,5 @@ npx eslint --fix <file>
 @.github/instructions/shaders.instructions.md
 
 @.github/instructions/unit-tests.instructions.md
+
+@.github/instructions/graphify-usage.instructions.md

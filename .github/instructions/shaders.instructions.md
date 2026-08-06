@@ -60,7 +60,7 @@ Instead of using `if (len > 0.0)` guard checks to prevent division-by-zero when 
 ## 4. No Shader Preprocessor Limits
 QuakeShack currently uses raw GLSL ES 3.00 directly in JavaScript without a preprocessor build step (no `#include`).
 - **Consequence**: Shared routines (like `sampleLocalShadow` or lighting math) must be structurally duplicated across independent shaders (`alias.frag`, `mesh.frag`, `player.frag`, etc.).
-- **Action**: When updating a core rendering mechanism, remember to grep and update all manually duplicated instances consistently.
+- **Action**: When updating a core rendering mechanism, remember to grep and update all manually duplicated instances consistently. See the `.claude/skills/shader-duplication-propagation/SKILL.md` skill for the fast-path checklist.
 
 ## 5. Loop Unrolling for Small Kernels
 While modern graphics drivers eventually unroll static loops (like a 3x3 gaussian blur), explicitly unrolling them into linear texture fetches (e.g. 9 `texture()` calls with hardcoded offsets) ensures consistent optimized performance and prevents dynamic loop overheads across all downstream mobile and discrete GPUs.

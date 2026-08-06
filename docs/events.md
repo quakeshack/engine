@@ -14,6 +14,12 @@ The engine has an event bus.
 | com.fs.being | 1. filename | Started working on given filename. |
 | com.fs.end | 1. filename | Finished working on given filename. |
 
+### Registry
+
+| Event | Arguments | Description |
+| - | - | - |
+| registry.frozen | 1. registry | The registry has been frozen and every module is now final. Engine and game code that destructured registry members before this fires should re-read them afterward — see the registry pattern in `code-style-guide.instructions.md`. |
+
 ### Client
 
 | Event | Arguments | Description |
@@ -35,7 +41,6 @@ The engine has an event bus.
 | client.connected | 1. address | Successfully connected to a server. |
 | client.signon | 1. signon number | Triggered on each signon reply step. |
 | client.game-initialized | - | The active game module has finished `ClientGameAPI.Init()` (pages registered, including the root). `M` uses this to show the root menu on cold boot, since `client.disconnected` never fires without a prior connection. |
-| hud.showscores | 1. boolean | Published by the id1 `+showscores`/`-showscores` commands (`Q1HUD.Init`). The live HUD instance (any `Q1HUD` subclass) subscribes to update its own scoreboard-visibility flag. |
 
 ### Menu
 
@@ -107,6 +112,17 @@ Those events are only fired by the server code.
 | server.client.connected | 1. client num, 2. client name | Emitted when a client has fully connected and joined the server. |
 | server.client.disconnected | 1. client num, 2. client name | Emitted when a client has disconnected from the server. |
 
+### Navigation
+
+Those events are only fired by the server-side navigation subsystem (`Navigation.ts`).
+
+| Event | Arguments | Description |
+| - | - | - |
+| nav.load | 1. map name, 2. worldmodel checksum | Navigation finished initializing for the current map. |
+| nav.path.request | 1. request id, 2. start position (Vector), 3. goal position (Vector) | A pathfinding request was dispatched to the navigation worker; the worker resolves the matching promise via `id`. |
+| nav.debug.emit-dot.temporarily | 1. position (Vector), 2. color, 3. ttl (seconds) | Navigation debug visualization requested a debug dot that should be cleared after `ttl` seconds. |
+| nav.debug.emit-dot.permanently | 1. position (Vector), 2. color | Same as `nav.debug.emit-dot.temporarily`, but the dot should persist indefinitely. |
+
 ### WAD files
 
 | Event | Arguments | Description |
@@ -118,3 +134,17 @@ Those events are only fired by the server code.
 | Event | Arguments | Description |
 | - | - | - |
 | areaportals.changed | | Whenever a portal has changed. |
+
+## Game Events
+
+Game modules publish their own events (a `game.*`/`hud.*` family, by convention) rather than
+engine code, through the same event bus (`ClientEngineAPI.eventBus`/`ServerEngineAPI.eventBus`)
+engine events use, so engine and game code can subscribe to either's events. These are
+game-owned facts, not engine facts, so each game documents its own list rather than having it
+live here:
+
+- [`id1` events](../source/game/id1/docs/events.md)
+- [`hellwave` events](../source/game/hellwave/docs/events.md)
+
+A new game module should add its own `docs/events.md` (mirroring the two above) and a link here,
+rather than growing a new per-game section in this file.

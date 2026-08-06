@@ -165,6 +165,8 @@ class GL {
 - **Never do indirections through functions** for simple operations. It’s better to call the method directly, even if it’s a static method on a class, than to have an extra function that just calls it. Also not the other way around.
 - **Avoid unnecessary global objects**. If you need a namespace, use a class with static members instead of a plain object. This allows for better organization and potential future expansion.
 
+**On `this.foo` vs. `ClassName.foo` mixing within a static-facade class:** some existing classes (`CL.ts`, `Host.ts`) mix both styles for self-reference, while fully-split ones (`V.ts`, `SCR.ts`) use only `ClassName.foo`. This is leftover history, not carelessness — these subsystems used to live in one large legacy file before being split into smaller collaborator classes, and code untouched since that split still uses the old `ClassName.` style while code touched during/after it drifted to `this.`. When cleaning up a static facade class, standardize on `ClassName.foo` (matching `V.ts`/`SCR.ts`) rather than converting to `this.` — a quick `grep -c "this\.[a-zA-Z]"` vs. `grep -c "ClassName\.[a-zA-Z]"` on the file shows how mixed it currently is.
+
 ## Method Parameters
 
 ### Unused Parameters

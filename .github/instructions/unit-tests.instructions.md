@@ -8,6 +8,7 @@
 - **Folder ownership**: Keep engine-owned tests under `test/`. Keep game/mod-owned tests in repo-local folders under `source/game/<repo>/test/`.
 - **Repo-local organization**: Within game repos, prefer mirroring the source layout with folders such as `client/`, `entity/`, `helper/`, `monster/`, `props/`, and `core/` when that keeps related tests easier to find.
 - **Category globs**: Keep engine tests grouped by top-level area such as `test/common/`, `test/physics/`, and `test/renderer/`.
+- **Nested test directories**: `npm test`'s glob patterns only reach as many directory levels as `package.json` spells out explicitly (dash has no recursive `**`) — see the `.claude/skills/test-glob-coverage/SKILL.md` skill and verify coverage whenever a new subdirectory level is added under `test/`.
 - **File naming**: `<subsystem>.test.mjs`. One file per production class/module.
 - **Shared helpers**: `test/physics/fixtures.mjs` (no `.test.` — never auto-run).
 - **All files are ESM** (`.mjs`). Use `import`/`export` exclusively.
