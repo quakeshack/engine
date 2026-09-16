@@ -452,8 +452,8 @@ export default class PostProcess {
    *
    * Callers must bind `depthTexture` to whichever sampler unit their shader
    * reads it from (e.g. `tDepth`), and must unbind it from that same unit
-   * before calling {@link endDepthSampling}, since WebGL flags a feedback
-   * loop when a texture is simultaneously an FBO attachment and bound to any
+   * before calling `endDepthSampling()`, since WebGL flags a feedback loop
+   * when a texture is simultaneously an FBO attachment and bound to any
    * active sampler unit — even one a later draw's material doesn't touch.
    */
   static beginDepthSampling(): void {
@@ -486,7 +486,7 @@ export default class PostProcess {
   /**
    * Reattach the depth texture to the FBO after depth sampling is done.
    * Must be called only after the caller has unbound `depthTexture` from its
-   * sampler unit (see {@link beginDepthSampling}); otherwise the reattached
+   * sampler unit (see `beginDepthSampling()`); otherwise the reattached
    * texture forms a feedback loop with the still-bound sampler.
    */
   static endDepthSampling(): void {
