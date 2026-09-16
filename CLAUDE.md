@@ -39,8 +39,6 @@ npx eslint --fix <file>
 
 @.github/instructions/typescript-port.instructions.md
 
-@.github/instructions/game-logic-port.instructions.md
-
 @.github/instructions/event-bus.instructions.md
 
 @.github/instructions/workers.instructions.md
