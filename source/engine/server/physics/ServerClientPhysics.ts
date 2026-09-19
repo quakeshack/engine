@@ -330,7 +330,8 @@ export class ServerClientPhysics {
     console.assert(client !== null, 'client edict must have an attached server client');
 
     const activeClient = client!;
-    const gameAPI = SV.server.gameAPI as typeof SV.server.gameAPI & { time: number };
+    console.assert(SV.server.gameAPI !== null, 'physicsClient requires a live server game API');
+    const gameAPI = SV.server.gameAPI!;
 
     if (activeClient.state < ServerClient.STATE.CONNECTED) {
       return;

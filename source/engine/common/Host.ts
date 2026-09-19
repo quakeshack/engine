@@ -313,14 +313,8 @@ export default class Host {
 
     if (!crash) {
       if (client.edict && client.state === ServerClient.STATE.SPAWNED) {
-        const gameAPI = SV.server.gameAPI as typeof SV.server.gameAPI & { self?: ServerClient['edict'] };
-        const savedSelf = gameAPI.self;
-
-        gameAPI.ClientDisconnect(client.edict);
-
-        if (savedSelf !== undefined) {
-          gameAPI.self = savedSelf;
-        }
+        console.assert(SV.server.gameAPI !== null, 'a spawned client requires a live server game API');
+        SV.server.gameAPI!.ClientDisconnect(client.edict);
       }
 
       Sys.Print(`Client ${client.name} removed\n`);

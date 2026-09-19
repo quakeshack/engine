@@ -7,6 +7,18 @@ import { validateGameModuleContract } from '../../source/engine/common/GameModul
 class DummyServerGameAPI {}
 class DummyClientGameAPI {}
 
+/**
+ * @typedef {object} GameModuleStub
+ * @property {{ name: string, author: string, version: number[], capabilities: string[] }} identification module metadata
+ * @property {Function | null} ServerGameAPI server API constructor
+ * @property {Function | null} ClientGameAPI client API constructor
+ */
+
+/**
+ * Builds a minimal valid game module and applies the overrides on top of it.
+ * @param {Partial<GameModuleStub>} overrides properties replacing the defaults
+ * @returns {GameModuleStub} a game-module-shaped object
+ */
 function createGameModule(overrides = {}) {
   return {
     identification: {
@@ -26,6 +38,15 @@ void describe('validateGameModuleContract', () => {
     const gameModule = createGameModule();
 
     assert.equal(validateGameModuleContract(gameModule), gameModule);
+  });
+
+  void test('rejects a game module without ServerGameAPI', () => {
+    const gameModule = createGameModule({ ServerGameAPI: null });
+
+    assert.throws(
+      () => validateGameModuleContract(gameModule),
+      /ServerGameAPI/,
+    );
   });
 
   void test('rejects a game module without ClientGameAPI', () => {

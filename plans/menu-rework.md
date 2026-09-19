@@ -19,7 +19,11 @@ for its buy menu ([HUD.ts:208](../source/game/hellwave/client/HUD.ts#L208)). `Ge
 / `GetStartServerList()` already exist as static methods on `ServerGameInterface`
 ([GameInterfaces.ts:221-223](../source/shared/GameInterfaces.ts#L221-L223)), implemented in
 both `id1/GameAPI.ts` and overridden in
-[hellwave/GameAPI.ts:181,188](../source/game/hellwave/GameAPI.ts#L181). And
+[hellwave/GameAPI.ts:181,188](../source/game/hellwave/GameAPI.ts#L181). *(Correction:
+[game-module-contract.md](game-module-contract.md) Phase 2 removed them from
+`ServerGameInterface`. They are plain static helpers on each game's own server API class,
+called only by that game's menu code. The engine never called them, so they are not part of
+the engine contract.)* And
 `Multiplayer.ts` already has a half-built, commented-out map-list block
 ([Multiplayer.ts:61-80](../source/engine/client/menu/Multiplayer.ts#L61-L80)) plus a
 `// FIXME: move the start server list to the ClientGameAPI` comment sitting right at
@@ -249,7 +253,7 @@ static readonly SaveSlots = {
 `label = gamestate.comment || gamestate.mapname || ''`,
 [Menu.ts:821](../source/engine/client/Menu.ts#L821), discarding `mapname` once `comment`
 wins). Keeping it separate lets a save/load screen cross-reference
-`ServerGameInterface.GetMapList()`'s `pictures` field
+the game's own `GetMapList()` static helper's `pictures` field (see the correction in Context)
 ([GameInterfaces.ts:145-150](../source/shared/GameInterfaces.ts#L145-L150)) to show a map
 thumbnail next to each slot — not needed for id1's current text-only slot list, but there's
 no reason to throw the data away at the API boundary when a future mod might want it.

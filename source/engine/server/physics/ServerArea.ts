@@ -257,7 +257,8 @@ export class ServerArea {
   touchLinks(ent: ServerEdict): void {
     const tree = this.tree;
     const entity = ent.entity!;
-    const gameAPI = SV.server.gameAPI as typeof SV.server.gameAPI & { time: number };
+    console.assert(SV.server.gameAPI !== null, 'ServerArea.touchLinks requires a live server game API');
+    const gameAPI = SV.server.gameAPI!;
 
     console.assert(tree !== null, 'ServerArea tree must be initialized before touchLinks');
 

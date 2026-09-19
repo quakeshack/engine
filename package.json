@@ -44,7 +44,7 @@
     "test:renderer": "node --preserve-symlinks --preserve-symlinks-main --import tsx --test test/renderer/**/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "typecheck:watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
-    "build:wrangler": "npm run test && npm run build:production",
+    "build:wrangler": "npm run typecheck && npm run test && npm run build:production",
     "dev": "vite build --watch --mode development",
     "build": "vite build",
     "build:production": "vite build --mode production",

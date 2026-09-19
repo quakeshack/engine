@@ -26,6 +26,8 @@ without already knowing this rule.
    runs after `FROM builder AS test`).
 4. **New top-level source/config file the build needs:** add it to the `builder` stage's
    `COPY` list (the stage that runs `npm run build:production` / `dedicated:build:production`).
+   The `test` stage also runs `npm run typecheck`, so a file that a type-checked source file
+   imports must be copied too; otherwise `tsc` fails in Docker while it passes locally.
 5. Check `.dockerignore` doesn't silently exclude the new path:
    ```bash
    cat .dockerignore

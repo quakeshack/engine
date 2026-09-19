@@ -1,21 +1,11 @@
-import type { ClientGameConstructor, ServerGameConstructor } from '../../shared/GameInterfaces.ts';
+import type { GameModuleIdentification, GameModuleInterface } from '../../shared/GameInterfaces.ts';
 
 import { gameCapabilities } from '../../shared/Defs.ts';
 import { ServerEngineAPI } from './GameAPIs.ts';
 import { eventBus, getCommonRegistry } from '../registry.ts';
 
-export interface GameModuleIdentification {
-  readonly name: string;
-  readonly author: string;
-  readonly version: readonly [number, number, number];
-  readonly capabilities: readonly gameCapabilities[];
-}
-
-export interface GameModuleInterface {
-  readonly identification: GameModuleIdentification;
-  readonly ServerGameAPI: ServerGameConstructor;
-  readonly ClientGameAPI: ClientGameConstructor;
-}
+// The module contract lives in shared/ so game code can check itself against it without importing the engine.
+export type { GameModuleIdentification, GameModuleInterface } from '../../shared/GameInterfaces.ts';
 
 interface GameModuleContractCandidate {
   readonly identification?: unknown;

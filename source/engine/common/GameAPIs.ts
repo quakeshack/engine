@@ -1368,7 +1368,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
 
     /**
      * Start a new singleplayer game via the active mod's `StartGameInterface`
-     * (`ClientGameInterface.GetStartGameInterface`), or the engine's own default (`map start`)
+     * (`ClientGameConstructor.GetStartGameInterface`), or the engine's own default (`map start`)
      * if the mod didn't provide one.
      */
     StartSingleplayerGame(): void {
@@ -1377,7 +1377,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
 
     /**
      * Start (host) a multiplayer game on `mapname` via the active mod's `StartGameInterface`
-     * (`ClientGameInterface.GetStartGameInterface`), or the engine's own default
+     * (`ClientGameConstructor.GetStartGameInterface`), or the engine's own default
      * (`map <mapname>`) if the mod didn't provide one.
      */
     StartMultiplayerGame(mapname: string): void {

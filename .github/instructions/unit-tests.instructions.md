@@ -12,6 +12,7 @@
 - **File naming**: `<subsystem>.test.mjs`. One file per production class/module.
 - **Shared helpers**: `test/physics/fixtures.mjs` (no `.test.` — never auto-run).
 - **All files are ESM** (`.mjs`). Use `import`/`export` exclusively.
+- **Tests are not type-checked.** `npm run typecheck` does not cover them (`test/` and `source/game/**/test/` are outside `tsconfig.json`), so a test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a signature or a game/engine contract member, search the tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
 
 ### Test Structure
 

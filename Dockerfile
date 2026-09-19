@@ -39,6 +39,9 @@ COPY data/id1/maps/test_*.bsp ./data/id1/maps/
 COPY data/id1/maps/test_*.nav ./data/id1/maps/
 COPY data/bsp38-tests ./data/bsp38-tests
 
+# Vite/esbuild strip types without checking them, so tsc is the only thing that catches contract drift
+RUN npm run typecheck
+
 CMD ["npm", "run", "test"]
 
 # Production stage — dedicated server + web client host

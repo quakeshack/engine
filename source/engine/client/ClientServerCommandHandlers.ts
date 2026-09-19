@@ -2,7 +2,6 @@ import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
-import type { ClientGameInterface } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
 import GameModule from '../common/GameModule.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
@@ -101,7 +100,7 @@ function parseServerData() {
     throw new HostError(`Server (v${serverVersion.join('.')} ) is not compatible. You are running v${identification.version.join('.')}\nTry clearing your cache and connect again.`);
   }
 
-  CL.state.gameAPI = Reflect.construct(activeGameModule.ClientGameAPI, [ClientEngineAPI]) as ClientGameInterface;
+  CL.state.gameAPI = new activeGameModule.ClientGameAPI(ClientEngineAPI);
 
   CL.state.maxclients = NET.message.readByte();
   if ((CL.state.maxclients <= 0) || (CL.state.maxclients > 32)) {

@@ -13,6 +13,7 @@
   - `source/game/hellwave/` - the Hellwave game mod. A plain directory in this repo, not a submodule.
   - `source/game/baseq2/` - (future) Quake II game logic.
   - Game code must never directly import files from the engine; it should only use the public API exposed by the engine.
+  - The contract between the engine and a game module lives in `source/shared/GameInterfaces.ts` (`GameModuleInterface`, `ServerGameInterface`, `ClientGameInterface`, ...); see `docs/game-module-contract.md`. A game's API classes declare `implements` on the instance interfaces and its `main.ts` asserts `satisfies GameModuleInterface`, so `npm run typecheck` reports drift between the two sides.
 - There is code which is shared between the engine and game, located in `source/shared/`.
   - The idea is to keep engine-agnostic code here, such as math utilities, data structures, and algorithms.
   - Data structures and types implemented or declared in the engine, can be re-exported here.

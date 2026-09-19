@@ -1,8 +1,7 @@
-import type { ClientEdict, ServerGameInterface } from '../../shared/GameInterfaces.ts';
+import type { ServerGameInterface } from '../../shared/GameInterfaces.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import type { QSocket } from '../network/NetworkDrivers.ts';
 
-import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.ts';
 import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { SzBuffer } from '../network/MSG.ts';
@@ -44,40 +43,6 @@ type PlayerClientdataEntity = ServerClient['entity'] & {
   clientdataFields: string[];
 } & Record<string, unknown>;
 
-/**
- * Runtime view of the active game API owned by the server.
- *
- * This extends the public game-module contract with mutable state that the
- * server frame loop and QuakeC builtin layer exchange at runtime, such as
- * trace results, orientation vectors, and legacy global values like `self`.
- * Keeping that widened shape local to the server preserves the stable
- * `ServerGameInterface` boundary while still giving engine code a typed place
- * for the extra per-frame data that does not belong in the public API.
- */
-interface ServerRuntimeGameAPI extends ServerGameInterface {
-  coop?: number;
-  deathmatch?: number;
-  force_retouch?: number;
-  frametime: number;
-  mapname?: string | null;
-  msg_entity?: ServerEdict | null;
-  self?: ServerEdict | null;
-  time: number;
-  serverflags?: number;
-  trace_allsolid?: number;
-  trace_endpos?: Vector;
-  trace_ent?: { readonly entity: ClientEdict | NonNullable<ServerEdict['entity']> } | null;
-  trace_fraction?: number;
-  trace_inopen?: number;
-  trace_inwater?: number;
-  trace_plane_dist?: number;
-  trace_plane_normal?: Vector;
-  trace_startsolid?: number;
-  v_forward?: Vector;
-  v_right?: Vector;
-  v_up?: Vector;
-}
-
 interface ClientEntityFieldConfig {
   fields: string[];
   bitsWriter: BitsWriter | null;
@@ -95,7 +60,7 @@ interface ServerState {
   worldmodel: BrushModel | null;
   eventBus: EventBus;
   navigation: Navigation | null;
-  gameAPI: ServerRuntimeGameAPI | null;
+  gameAPI: ServerGameInterface | null;
   gameVersion: string | null;
   gameName: string | null;
   gameCapabilities: Defs.gameCapabilities[];
@@ -401,9 +366,7 @@ export default class SV {
     console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
     const gameAPI = SV.server.gameAPI!;
 
-    if ('serverflags' in gameAPI) {
-      SV.svs.serverflags = gameAPI.serverflags ?? 0;
-    }
+    SV.svs.serverflags = gameAPI.serverflags;
 
     for (let i = 0; i < SV.svs.maxclients; i++) {
       const client = SV.svs.clients[i];
@@ -685,9 +648,7 @@ export default class SV {
 
   static #loadGameProgs(): void {
     const activeGameModule = requireActiveGameModule();
-    const gameAPI = Reflect.construct(activeGameModule.ServerGameAPI, [ServerEngineAPI]) as ServerRuntimeGameAPI;
-
-    SV.server.gameAPI = gameAPI as ServerRuntimeGameAPI;
+    SV.server.gameAPI = new activeGameModule.ServerGameAPI(ServerEngineAPI);
     SV.server.gameVersion = activeGameModule.identification.version.join('.');
     SV.server.gameName = activeGameModule.identification.name;
     SV.server.gameCapabilities = [...activeGameModule.identification.capabilities];
