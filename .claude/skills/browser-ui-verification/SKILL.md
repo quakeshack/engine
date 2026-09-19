@@ -1,6 +1,6 @@
 ---
 name: browser-ui-verification
-description: Use before reporting any client/UI/frontend change as done — rendering, menu system, HUD, input handling, or anything touching source/engine/client or a game's client-side code. Verifying "in a real browser" here isn't obvious to do: there's no chromium-cli and no playwright/puppeteer project dependency, so it needs a specific local workaround. Treat this as the trigger to actually run that workaround before claiming a UI change works, instead of stopping at unit tests or a visual read of the diff.
+description: Use before reporting any client/UI/frontend change as done — rendering, menu system, HUD, input handling, or anything touching source/engine/client or a game's client-side code. Verifying "in a real browser" here isn't obvious to do — there's no chromium-cli and no playwright/puppeteer project dependency, so it needs a specific local workaround. Treat this as the trigger to actually run that workaround before claiming a UI change works, instead of stopping at unit tests or a visual read of the diff.
 ---
 
 # Browser UI verification

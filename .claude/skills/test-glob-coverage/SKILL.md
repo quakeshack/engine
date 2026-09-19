@@ -1,6 +1,6 @@
 ---
 name: test-glob-coverage
-description: Use whenever adding a new test file in a nested subdirectory under any test/ folder in this repo — e.g. splitting a test file into test/client/menu/*.test.mjs, or mirroring a new source/ subdirectory per unit-tests.instructions.md's "mirror the source layout" guidance. npm's test scripts pass ** glob patterns to dash (this machine's /bin/sh, and the Docker test stage's ash), neither of which supports real recursive ** — patterns only reach exactly as many directory levels as are spelled out explicitly. A new nesting level one deeper than what's already spelled out is silently skipped: npm test reports a clean, plausible-looking pass count with zero indication anything was excluded.
+description: Use whenever adding a new test file in a nested subdirectory under any test/ folder in this repo — e.g. splitting a test file into test/client/menu/*.test.mjs, or mirroring a new source/ subdirectory per unit-tests.instructions.md's "mirror the source layout" guidance. npm's test scripts pass ** glob patterns to dash (this machine's /bin/sh, and the Docker test stage's ash), neither of which supports real recursive ** — patterns only reach exactly as many directory levels as are spelled out explicitly. A new nesting level one deeper than what's already spelled out is silently skipped — npm test reports a clean, plausible-looking pass count with zero indication anything was excluded.
 ---
 
 # Test glob coverage
