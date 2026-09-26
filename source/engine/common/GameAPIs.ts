@@ -41,7 +41,7 @@ interface ClientTraceOptions {
   readonly filter?: ((entity: ClientEdict) => boolean) | null;
 }
 
-interface GameTrace {
+export interface GameTrace {
   readonly solid: {
     readonly all: boolean;
     readonly start: boolean;
@@ -1185,6 +1185,20 @@ export class ClientEngineAPI extends CommonEngineAPI {
      */
     get connected(): boolean {
       return CL.cls.state === clientConnectionState.connected;
+    },
+    /**
+     * Authoritative world gravity strength, synced from the server via `parsePmovevars()` --
+     * the same `movevars.gravity` value `ServerPhysics.addGravity()` scales by a per-entity
+     * multiplier server-side (`entity.gravity`, default 1.0). Client-only physics should read
+     * this instead of hardcoding a gravity value, applying its own multiplier the same way
+     * (see `ClientEntityPhysics.step()`'s `gravityMultiplier` option). Note `movevars.entgravity`
+     * is the local player's own scale from `Pmove`'s player-movement fields, not a per-entity
+     * value applicable to arbitrary client-only entities, so it is intentionally not folded in
+     * here.
+     * @returns Current world gravity.
+     */
+    get gravity(): number {
+      return CL.pmove.movevars.gravity;
     },
   };
 

@@ -355,6 +355,12 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
       return;
     }
 
+    // Recomputed from scratch every call -- #splitEntityOnNode only ever appends, so without this
+    // a repeatedly-moved entity (e.g. ClientEntityPhysics.step() calling setOrigin() every frame)
+    // would keep accumulating leaf numbers from every position it has ever occupied instead of
+    // reflecting where it actually is now.
+    this.leafs.length = 0;
+
     const emins = this.origin.copy().add(this.model.mins);
     const emaxs = this.origin.copy().add(this.model.maxs);
     this.#splitEntityOnNode(rootNode, emins, emaxs);

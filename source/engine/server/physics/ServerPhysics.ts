@@ -5,10 +5,9 @@ import type { CollisionTrace } from './ServerCollisionSupport.ts';
 import Vector, { Quaternion } from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import Q from '../../../shared/Q.ts';
+import PhysicsMath from '../../../shared/PhysicsMath.ts';
 import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
-  GROUND_ANGLE_THRESHOLD,
-  VELOCITY_EPSILON,
   MAX_BUMP_COUNT,
   BlockedFlags,
 } from './Defs.ts';
@@ -172,28 +171,6 @@ export class ServerPhysics {
   }
 
   /**
-   * Clips the velocity vector against a collision plane.
-   */
-  clipVelocity(vec: Vector, normal: Vector, out: Vector, overbounce: number): void {
-    const backoff = vec.dot(normal) * overbounce;
-
-    out[0] = vec[0] - normal[0] * backoff;
-    if ((out[0] > -VELOCITY_EPSILON) && (out[0] < VELOCITY_EPSILON)) {
-      out[0] = 0.0;
-    }
-
-    out[1] = vec[1] - normal[1] * backoff;
-    if ((out[1] > -VELOCITY_EPSILON) && (out[1] < VELOCITY_EPSILON)) {
-      out[1] = 0.0;
-    }
-
-    out[2] = vec[2] - normal[2] * backoff;
-    if ((out[2] > -VELOCITY_EPSILON) && (out[2] < VELOCITY_EPSILON)) {
-      out[2] = 0.0;
-    }
-  }
-
-  /**
    * Performs sliding movement with up to four collision planes.
    * @returns Blocked flags and an optional wall trace.
    */
@@ -232,7 +209,7 @@ export class ServerPhysics {
       console.assert(trace.ent !== null, 'trace.ent must not be null');
       const traceEnt = trace.ent!;
 
-      if (trace.plane.normal[2] > GROUND_ANGLE_THRESHOLD) {
+      if (trace.plane.normal[2] > PhysicsMath.GROUND_ANGLE_THRESHOLD) {
         blocked |= BlockedFlags.FLOOR;
         if (traceEnt.entity!.solid === Defs.solid.SOLID_BSP
             || traceEnt.entity!.solid === Defs.solid.SOLID_BBOX
@@ -263,7 +240,7 @@ export class ServerPhysics {
       let planeIndex: number;
       let otherPlaneIndex: number;
       for (planeIndex = 0; planeIndex < planes.length; planeIndex++) {
-        this.clipVelocity(originalVelocity, planes[planeIndex], newVelocity, 1.0);
+        PhysicsMath.clipVelocity(originalVelocity, planes[planeIndex], newVelocity, 1.0);
         for (otherPlaneIndex = 0; otherPlaneIndex < planes.length; otherPlaneIndex++) {
           if (otherPlaneIndex !== planeIndex) {
             const plane = planes[otherPlaneIndex];
@@ -655,7 +632,7 @@ export class ServerPhysics {
       }
       this.pushEntity(ent, dir);
       entity.velocity = new Vector(oldvel[0], oldvel[1], 0.0);
-      const result = this.flyMove(ent, VELOCITY_EPSILON);
+      const result = this.flyMove(ent, PhysicsMath.VELOCITY_EPSILON);
       const curorg = entity.origin;
       if (Math.abs(oldorg[1] - curorg[1]) > 4.0 || Math.abs(oldorg[0] - curorg[0]) > 4.0) {
         return result.blocked;
@@ -708,10 +685,10 @@ export class ServerPhysics {
     }
 
     const velocity = new Vector();
-    this.clipVelocity(entity.velocity, trace.plane.normal, velocity, movetype === Defs.moveType.MOVETYPE_BOUNCE ? 1.5 : 1.0);
+    PhysicsMath.clipVelocity(entity.velocity, trace.plane.normal, velocity, movetype === Defs.moveType.MOVETYPE_BOUNCE ? 1.5 : 1.0);
     entity.velocity = velocity;
 
-    if (trace.plane.normal[2] > GROUND_ANGLE_THRESHOLD) {
+    if (trace.plane.normal[2] > PhysicsMath.GROUND_ANGLE_THRESHOLD) {
       if (entity.velocity[2] < 60.0 || movetype !== Defs.moveType.MOVETYPE_BOUNCE) {
         console.assert(trace.ent !== null, 'grounding toss trace must resolve a hit entity');
         entity.flags |= Defs.flags.FL_ONGROUND;
@@ -730,7 +707,7 @@ export class ServerPhysics {
   physicsStep(ent: ServerEdict): void {
     const entity = ent.entity!;
     if ((entity.flags & (Defs.flags.FL_ONGROUND | Defs.flags.FL_FLY | Defs.flags.FL_SWIM)) === 0) {
-      const hitsound = entity.velocity[2] < (SV.gravity!.value * -VELOCITY_EPSILON);
+      const hitsound = entity.velocity[2] < (SV.gravity!.value * -PhysicsMath.VELOCITY_EPSILON);
       this.addGravity(ent);
       this.checkVelocity(ent);
       this.flyMove(ent, Host.frametime);

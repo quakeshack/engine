@@ -1449,24 +1449,6 @@ void describe('ServerPhysics', () => {
     });
   });
 
-  void describe('clipVelocity', () => {
-    void test('zeroes tiny residuals after clipping against an angled plane', () => {
-      const serverPhysics = new ServerPhysics();
-      const out = new Vector();
-
-      serverPhysics.clipVelocity(
-        new Vector(1, -1, 0.05),
-        new Vector(0, 1, 0),
-        out,
-        1.0,
-      );
-
-      assertNear(out[0], 1.0, 1e-9);
-      assert.equal(out[1], 0.0);
-      assert.equal(out[2], 0.0);
-    });
-  });
-
   void describe('physicsToss', () => {
     void test('keeps a bounce entity moving after a hard floor impact', () => {
       const serverPhysics = new ServerPhysics();

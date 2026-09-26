@@ -2,15 +2,39 @@
 
 ## Status
 
-🚧 In progress — phases 1 and 2 done. Phase 1 (vocabulary fixes: `isStatic()` → `isClientOwned()`,
+🚧 In progress — phases 1–3 done. Phase 1 (vocabulary fixes: `isStatic()` → `isClientOwned()`,
 `nextthink` → `lerpEndTime`, `static_entities`/`allocateClientEntity()` docstrings) and phase 2
 (`ClientEdict.markFree()` + `BaseClientEdictHandler.remove()`, with unit tests in
 `test/client/client-entities.test.mjs` and `test/common/client-edict.test.mjs`) are landed. Full
 test suite (1286 tests) and `tsc --noEmit` both clean relative to these changes (one pre-existing
 `tsc` error in `source/game/hellwave/entity/Items.ts` predated this work; it turned out to be a
 real bug and was fixed in [game-module-contract.md](game-module-contract.md) Phase 1, and
-`npm run typecheck` is clean as of 2026-09-21). Phases 3–6 (physics, sequencing, save/load, real
-consumer) not started; re-checked 2026-09-21, none of their files or symbols exist yet.
+`npm run typecheck` is clean as of 2026-09-21).
+
+Phase 3 (`ClientEntityPhysics`) landed 2026-09-26, per the recommended answers to open questions
+1, 2, and 6 (one sealed `ClientEdict` shape with opt-in helpers; a composed per-handler physics
+helper, not a static utility or base-class method; full `physicsToss()` orchestration sharing
+deferred, not folded into this plan): `clipVelocity`/`GROUND_ANGLE_THRESHOLD`/`VELOCITY_EPSILON`
+moved to `source/shared/PhysicsMath.ts` (`ServerPhysics`/`ServerClientPhysics` repointed at it,
+its own `clipVelocity` instance method removed, its direct unit test moved to
+`test/shared/physics-math.test.mjs`); `ClientEngineAPI.CL.gravity` added
+(`GameAPIs.ts`, reads `CL.pmove.movevars.gravity`, deliberately not multiplied by
+`movevars.entgravity` -- that field is the local player's own `Pmove` scale, not a per-entity
+one); and `source/shared/ClientEntityPhysics.ts` added (gravity integration + `engine.Traceline()`
+collision + the shared `clipVelocity`, always moving via `ClientEdict.setOrigin()`). Along the
+way, found and fixed a real latent bug this phase's own repeated-`setOrigin()`-per-frame usage
+would otherwise have hit: `ClientEdict.linkEdict()` never cleared `this.leafs` before
+repopulating it, so any entity calling `setOrigin()` more than once would accumulate every leaf
+it had ever occupied instead of reflecting only its current one -- harmless today since
+`svc_spawnstatic` is the only existing caller and calls it exactly once per entity, but exactly
+the kind of stale-PVS-culling footgun problem #5 warned about, now fixed with a regression test
+in `test/client/client-entities.test.mjs`. New tests: `test/shared/physics-math.test.mjs`,
+`test/client/client-entity-physics.test.mjs` (gravity read from `CL.gravity` not hardcoded,
+free-flight movement, floor-bounce reflection via the shared formula, full stop, all-solid
+short-circuit, leaf recompute across a BSP boundary). Full suite is 1303 tests, `npm run
+typecheck` clean, `eslint` clean.
+
+Phases 4–6 (sequencing, save/load, real consumer) not started.
 
 Originally written after a request to assess `source/shared/ClientEdict.ts` and
 `source/engine/client/ClientEntities.ts` and to plan how to make client-only entities (today:
@@ -469,14 +493,16 @@ same relative-time-on-save, absolute-time-on-restore trick `SerializeParticles()
    needed it before phase 3's debris-like entities exist), but it's now available and tested.
    Unit tests added: `ClientEdict.markFree()` sets `free`; `BaseClientEdictHandler.remove()` calls
    it; `ClientEntities.getEntities()` stops yielding an entity once `remove()` is called on it.
-3. **`ClientEntityPhysics`** — first hoist `clipVelocity`/`GROUND_ANGLE_THRESHOLD`/
-   `VELOCITY_EPSILON` into `source/shared/PhysicsMath.ts` and repoint `ServerPhysics` at the shared
-   copy (mechanical, behavior-preserving, full server physics test suite must stay green); add
-   `ClientEngineAPI.CL.gravity`; then build `ClientEntityPhysics` (gravity integration +
-   `Traceline`-based collision + the shared `clipVelocity`), unit-tested in isolation (mock
-   `ClientEngineAPI.Traceline`/`CL.gravity`/`CL.frametime`, assert position after N steps, assert a
-   bounce reduces velocity along the surface normal via the shared formula, assert `setOrigin()`
-   — not raw `.origin` mutation — is what moves the entity so `leafs` stays correct).
+3. ✅ **`ClientEntityPhysics`** — hoisted `clipVelocity`/`GROUND_ANGLE_THRESHOLD`/
+   `VELOCITY_EPSILON` into `source/shared/PhysicsMath.ts` and repointed `ServerPhysics`/
+   `ServerClientPhysics` at the shared copy (full server physics suite stayed green); added
+   `ClientEngineAPI.CL.gravity`; built `ClientEntityPhysics` (gravity integration +
+   `Traceline`-based collision + the shared `clipVelocity`), unit-tested in isolation with a mock
+   `ClientEngineAPI` (gravity read from `CL.gravity` not hardcoded, position after a step, a floor
+   bounce reducing velocity via the shared formula, all-solid short-circuit, and a regression test
+   confirming `setOrigin()` — not raw `.origin` mutation — is what moves the entity, including a
+   fix to a latent `ClientEdict.linkEdict()` leaf-accumulation bug this phase's repeated-call usage
+   surfaced). See Status for details.
 4. **`ClientAnimationSequence`** — `tick()`/`setState()`/`serialize()`, unit-tested standalone
    (advance-on-duration, terminal state stops advancing, `setState()` resumes mid-sequence without
    replaying `onEnter` side effects it already fired before a save).
@@ -517,12 +543,10 @@ same relative-time-on-save, absolute-time-on-restore trick `SerializeParticles()
 
 ## Open questions
 
-1. **Fork A confirmation** — recommendation above is to keep `ClientEdict` as one sealed shape and
-   only add opt-in helpers (not split into subclasses). Agree, or do you already know phase 6+
-   needs enough new per-entity state that the single-shape model won't hold up?
-2. **Fork B confirmation** — recommendation is a composed `ClientEntityPhysics` helper (mirroring
-   `EntityWrapper`), constructed per-handler and called explicitly from `think()`, rather than a
-   stateless static-method utility class or built into `BaseClientEdictHandler` itself. Agree?
+1. ✅ **Fork A confirmation** — resolved 2026-09-26: keep `ClientEdict` as one sealed shape with
+   opt-in helpers, not subclasses (recommended option).
+2. ✅ **Fork B confirmation** — resolved 2026-09-26: composed per-handler `ClientEntityPhysics`
+   helper, not a static utility or a `BaseClientEdictHandler` method (recommended option).
 3. **`static_entities` array** — resolved differently than originally framed: rather than splitting
    the array, add one `persistent` field plus two named allocators (see Save/load design above), so
    the array stays one pool but save/load, and any future code, can tell entries apart by intent
@@ -538,10 +562,8 @@ same relative-time-on-save, absolute-time-on-restore trick `SerializeParticles()
    (nested objects, entity references) to need the heavier format?
 5. **Phase 6 target** — is shell casings actually the right first real consumer, or is there a more
    pressing one (e.g. rocket debris, gib physics) that should drive the API instead?
-6. **Full toss/bounce orchestration sharing** — hoisting `clipVelocity` + the gravity/ground
-   constants (committed, phase 3) is the safe minimum; going further and sharing the *entire*
-   `physicsToss()` step via a `common/physics/TossPhysics.ts` core (mirroring how `Pmove` shares
-   the whole player-movement algorithm, not just its math) would mean touching `ServerPhysics.ts`'s
-   hot per-tick loop. Worth doing as part of this plan, or safer to land client-only first and
-   revisit `ServerPhysics.physicsToss()` as a separate, focused refactor once both ends of the
-   abstraction actually exist?
+6. ✅ **Full toss/bounce orchestration sharing** — resolved 2026-09-26: not now (recommended
+   option). Phase 3 hoisted only `clipVelocity` + the gravity/ground constants, per the design's
+   "safe minimum" framing; `ServerPhysics.physicsToss()` itself was left untouched. Revisit the
+   full `common/physics/TossPhysics.ts` orchestration-sharing idea later, once the client side has
+   a real, browser-verified consumer (phase 6) to prove the abstraction against on that end too.

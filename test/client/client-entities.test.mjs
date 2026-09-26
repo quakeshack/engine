@@ -4,6 +4,8 @@ import { describe, test } from 'node:test';
 import ClientEntities, { ClientDlight, ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
+import Vector from '../../source/shared/Vector.ts';
+import { content } from '../../source/shared/Defs.ts';
 
 /**
  * Computes wrapped angular delta in degrees.
@@ -136,6 +138,58 @@ void describe('ClientEdict.lerp.origin', () => {
       const second = entity.lerp.origin[0];
 
       assert.ok(second > first, `expected interpolation to advance (${first} -> ${second})`);
+    });
+  });
+});
+
+/**
+ * Runs a callback with a minimal `CL.state.worldmodel` installed so `ClientEdict.setOrigin()`/
+ * `linkEdict()` can recompute `leafs` against a real (if tiny) BSP node tree.
+ * @param {{nodes: unknown[]}} worldmodel worldmodel fixture with a root BSP node
+ * @param {() => void} callback
+ */
+function withMockWorldmodelRegistry(worldmodel, callback) {
+  const previousCL = registry.CL;
+
+  registry.CL = { state: { worldmodel } };
+  eventBus.publish('registry.frozen');
+
+  const restore = () => {
+    registry.CL = previousCL;
+    eventBus.publish('registry.frozen');
+  };
+
+  try {
+    callback();
+  } finally {
+    restore();
+  }
+}
+
+void describe('ClientEdict.linkEdict', () => {
+  void test('replaces leafs on each call instead of accumulating them across repeated setOrigin() calls', () => {
+    // Regression test: #splitEntityOnNode only ever appends to `leafs`, so without clearing it
+    // first, a repeatedly-moved entity (e.g. ClientEntityPhysics.step() calling setOrigin() every
+    // frame) would keep every leaf it had ever occupied instead of just its current one.
+    const leafA = { contents: content.CONTENT_EMPTY, num: 1 };
+    const leafB = { contents: content.CONTENT_EMPTY, num: 2 };
+    const worldmodel = {
+      nodes: [{
+        contents: 0,
+        plane: { normal: new Vector(1, 0, 0), dist: 0, type: 0, signbits: 0 },
+        children: [leafA, leafB],
+      }],
+    };
+
+    withMockWorldmodelRegistry(worldmodel, () => {
+      const entity = new ClientEdict(-1);
+      entity.model = { mins: new Vector(-8, -8, -8), maxs: new Vector(8, 8, 8) };
+
+      entity.setOrigin(new Vector(50, 0, 0));
+      assert.deepEqual(entity.leafs, [1]);
+
+      entity.setOrigin(new Vector(-50, 0, 0));
+      assert.deepEqual(entity.leafs, [2], 'expected the stale leaf from the previous position to be gone, not appended to');
     });
   });
 });
