@@ -1,5 +1,13 @@
 # Move all menu ownership into game code (Quake III Arena–style UI split)
 
+**Status:** Done, with one loose end. Phases 1 and 2 shipped (`MenuStack`, `SessionDiscovery`,
+`SaveSlots`, `host.alert`; every page now lives in id1's `client/Menu.ts`; `Multiplayer.ts` is
+deleted), and Phase 3 (the hellwave layout) was carried out in
+[hellwave-main-menu-rework.md](hellwave-main-menu-rework.md). The loose end is the parked
+`menu_*` console commands, see "Open questions". File and line references in Context and Design
+are as of writing (2026-07): `Menu.ts` has since shrunk to the drawing/stack core and
+`Multiplayer.ts` no longer exists.
+
 ## Context
 
 Menu UI (`MenuStack`, `MenuPage`, `MenuItem`, layouts) lives in
@@ -24,10 +32,10 @@ both `id1/GameAPI.ts` and overridden in
 `ServerGameInterface`. They are plain static helpers on each game's own server API class,
 called only by that game's menu code. The engine never called them, so they are not part of
 the engine contract.)* And
-`Multiplayer.ts` already has a half-built, commented-out map-list block
-([Multiplayer.ts:61-80](../source/engine/client/menu/Multiplayer.ts#L61-L80)) plus a
+`Multiplayer.ts` (deleted in Phase 2, so the line references below are unlinked) already has
+a half-built, commented-out map-list block (`Multiplayer.ts:61-80`) plus a
 `// FIXME: move the start server list to the ClientGameAPI` comment sitting right at
-[Multiplayer.ts:95](../source/engine/client/menu/Multiplayer.ts#L95). This plan mostly
+`Multiplayer.ts:95`. This plan mostly
 finishes work that was already flagged, rather than inventing a new subsystem.
 
 ### Decisions made with the user
@@ -198,7 +206,7 @@ still worth keeping on `MenuStack` as a small reusable primitive — id1 will wa
 ### B. Extract session discovery into a reusable engine service
 
 Pull the fetch + parse + mod-filter logic out of
-`MultiplayerMainMenu.refreshSessions()` ([Multiplayer.ts:141-203](../source/engine/client/menu/Multiplayer.ts#L141-L203))
+`MultiplayerMainMenu.refreshSessions()` (`Multiplayer.ts:141-203`)
 into a small class, e.g. `source/engine/client/menu/SessionDiscovery.ts`, exposing:
 
 ```typescript
@@ -219,7 +227,7 @@ class SessionDiscovery {
 It keeps the existing `serverInfo?.mod === COM.game` filter internally (id1 and hellwave
 sessions must never cross-list). Expose it as `ClientEngineAPI.Multiplayer.ListSessions()`
 (new namespace, parallel to `Menu`) — this is data, not UI. Resolves the FIXME at
-[Multiplayer.ts:95](../source/engine/client/menu/Multiplayer.ts#L95): id1's `launch_server`
+`Multiplayer.ts:95`: id1's `launch_server`
 page and hellwave's inline main-menu lobby both call the same service instead of one
 re-implementing the fetch.
 
@@ -509,7 +517,7 @@ override ([ClientAPI.ts:130](../source/game/hellwave/client/ClientAPI.ts#L130)),
 - Register a new `'newgame'` page built from `ServerGameAPI.GetMapList()`
   ([hellwave/GameAPI.ts:181](../source/game/hellwave/GameAPI.ts#L181)) — one `Action` per
   map that starts a hosted session, finishing the pattern already stubbed at
-  [Multiplayer.ts:61-80](../source/engine/client/menu/Multiplayer.ts#L61-L80). Not reusing
+  `Multiplayer.ts:61-80`. Not reusing
   `'singleplayer'`: hellwave's `startSingleplayerGame()` already just auto-picks a random
   map ([ClientAPI.ts:34-52](../source/game/hellwave/client/ClientAPI.ts#L34-L52)), so
   `'singleplayer'` isn't a meaningful concept here — the map picker is really a multiplayer
@@ -533,8 +541,10 @@ override ([ClientAPI.ts:130](../source/game/hellwave/client/ClientAPI.ts#L130)),
    builds no pages at all anymore; `Multiplayer.ts` is deleted. See "What actually shipped
    in Phase 2" below for the handful of things that came up mid-port that the original
    design didn't anticipate.
-3. **hellwave layout** — not started. New `'main'` override with inline lobby, new
-   `'newgame'` page from `GetMapList()`.
+3. **hellwave layout** — done, tracked in
+   [hellwave-main-menu-rework.md](hellwave-main-menu-rework.md) (which calls itself "Phase 3 of
+   menu-rework"). New `'main'` override with inline lobby, new-game map picker from
+   `GetMapList()`.
 
 Land and fully verify id1 after phase 2 before starting phase 3.
 
@@ -631,7 +641,7 @@ gap, all under `ClientEngineAPI.Menu` unless noted:
 
 ## Open questions
 
-All resolved:
+All resolved, except the last item (the `menu_*` callers check):
 
 - **`SaveSlotInfo` includes `mapname`** (Design C) — exposed as its own field (not just
   folded into `label`) so a future mod's save/load screen can show a map thumbnail via
@@ -643,8 +653,20 @@ All resolved:
   `RegisterCommand` is deferred to whenever id1 (or a mod) actually wants that console/bind
   compatibility back, not required for this plan's phases to be considered complete.
 
-Remaining implementation-time check, not a design fork:
+Implementation-time check, not a design fork. **Still open** (checked 2026-09-21):
 
 - Confirm no other `.mjs`/legacy callers depend on the `menu_*` commands being registered
   (default keybinds, other docs) before deleting them in Phase 2 — a quick repo-wide grep
   right before that phase starts, since this plan's grep only checked as of today.
+  - Phase 2 shipped without re-registering them: the engine now registers only `togglemenu`
+    (`Menu.ts`), and no `menu_*` string remains in `source/`.
+  - Config files still call four of them: `bind F2 "menu_save"`, `F3 "menu_load"`,
+    `F4 "menu_options"` and `F5 "menu_multiplayer"` in `data/id1/ironwail.cfg`,
+    `data/hellwave/ironwail.cfg`, `data/librequake/ironwail.cfg` and
+    `data/hellwave/default.cfg`, plus line 1 of `data/id1/autoexec.cfg` (`menu_multiplayer`,
+    run at startup). With the commands gone, those binds and that line do nothing today.
+  - Decision needed, unchanged from Design E: either id1 re-registers them via
+    `RegisterCommand` (mapping table above) or the configs drop the binds. Hellwave builds
+    no save, load or multiplayer pages (see
+    [hellwave-menu-asset-cleanup.md](hellwave-menu-asset-cleanup.md)), so its F2, F3 and F5
+    binds have nothing to open; only F4 (`options`) still could.
