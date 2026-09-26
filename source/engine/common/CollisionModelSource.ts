@@ -27,7 +27,13 @@ eventBus.subscribe('registry.frozen', () => {
 /**
  * Runtime-neutral model and world resolver for collision code.
  * Server and client bootstrap code inject live accessors so physics classes do
- * not need to know where model caches or world state live.
+ * not need to know where model caches or world state live. This is what makes
+ * `SV.collision`'s static-world helpers (`traceStaticWorldLine`, `pointContents`, ...) safe to
+ * call from client-only code (e.g. `R.ts`'s particle/dynamic-light collision) regardless of
+ * whether this process is hosting a listen server: `getWorldModel()` transparently prefers the
+ * live server worldmodel when hosting and falls back to the client's own locally-loaded copy
+ * otherwise, so those helpers always resolve against whichever worldmodel this process actually
+ * has, never `null`, on both a listen host and a pure remote client.
  */
 export class CollisionModelSource {
   #getServerWorldEntity: () => ServerEdict | null = () => null;
@@ -54,15 +60,20 @@ export class CollisionModelSource {
   }
 
   /**
-   * Return the active static-world entity, if any.
-   * @returns The current server world entity.
+   * Return the active static-world entity, if any. Unlike `getWorldModel()`, this has no
+   * client-side fallback -- it returns `null` when this process isn't hosting a server, which
+   * static-world trace/contents callers must treat as "no entity to attach to the result," not
+   * as an error.
+   * @returns The current server world entity, or null when not hosting.
    */
   getWorldEntity(): ServerEdict | null {
     return this.#getServerWorldEntity();
   }
 
   /**
-   * Return the active static-world model.
+   * Return the active static-world model: the live server worldmodel when hosting, otherwise the
+   * client's own locally-loaded copy of the current map. This fallback is why static-world
+   * collision helpers keep working correctly for a pure remote client with no local server.
    * @returns The current server or client world model.
    */
   getWorldModel(): BrushModel | null {

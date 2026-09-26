@@ -154,6 +154,14 @@ Those helpers exist to make the scope explicit:
 Game logic should not assume that `Traceline` means the same thing as `traceStaticWorldLine`.
 That equivalence is false on the server today, and it is only accidentally true on the client at the moment.
 
+These `SV.collision` helpers are also safe to call directly from client-only engine code (not just
+through `ClientEngineAPI.Traceline`) regardless of whether the local process is hosting a listen
+server. `SV.collision` is always initialized (a static field on `Server`, not created on demand
+when hosting), and `getWorldModel()` (`CollisionModelSource.ts`) transparently falls back from the
+live server worldmodel to the client's own locally-loaded copy of the current map, so these
+queries always resolve against the right geometry on a pure remote client too. `R.ts` relies on
+this for particle wall/floor collision and dynamic-light visibility checks.
+
 ## Related Contents Queries
 
 When code needs to classify the contents at a point rather than sweep a trace, use the contents APIs instead of `Traceline`.

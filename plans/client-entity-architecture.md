@@ -2,7 +2,7 @@
 
 ## Status
 
-🚧 In progress — phases 1–3 done. Phase 1 (vocabulary fixes: `isStatic()` → `isClientOwned()`,
+🚧 In progress — phases 1–3 and 7 done. Phase 1 (vocabulary fixes: `isStatic()` → `isClientOwned()`,
 `nextthink` → `lerpEndTime`, `static_entities`/`allocateClientEntity()` docstrings) and phase 2
 (`ClientEdict.markFree()` + `BaseClientEdictHandler.remove()`, with unit tests in
 `test/client/client-entities.test.mjs` and `test/common/client-edict.test.mjs`) are landed. Full
@@ -34,7 +34,36 @@ free-flight movement, floor-bounce reflection via the shared formula, full stop,
 short-circuit, leaf recompute across a BSP boundary). Full suite is 1303 tests, `npm run
 typecheck` clean, `eslint` clean.
 
-Phases 4–6 (sequencing, save/load, real consumer) not started.
+Phase 7 (gravity-particle collision in `R.ts`) landed 2026-09-26, per the 2026-09-26 decisions
+recorded in "Extension: gravity-particle collision" below (all six gravity-falling particle types,
+with a code-level per-type opt-out via `R.collidableParticleTypes`; a cheap BSP point-classification
+pre-filter gating the real trace). Shipped: `R.ResolveParticleCollision(origin, velocity,
+newOrigin)` -- a floor-like impact (`PhysicsMath.GROUND_ANGLE_THRESHOLD`) reflects velocity via the
+shared `PhysicsMath.clipVelocity()` (overbounce `1.5`, matching `MOVETYPE_BOUNCE`), a wall/ceiling-
+like impact (or a start already embedded in solid) reports a kill so `_renderAndAdvanceParticle()`
+sets `particle.die = -1.0`, reusing the particle system's existing early-death mechanism rather than
+inventing a new one. `SV.collision.pointContents()` (cheap point classification, already used
+elsewhere in this codebase for exactly this kind of check) gates the real `traceStaticWorldLine()`
+call so open-air flight -- the overwhelming majority of a particle's life -- never pays for a swept
+trace. Live browser verification (real dedicated server + real map + real BSP geometry, driven via
+Playwright, `docs/browser-verification.md`'s recipe) caught a real bug the unit tests' hand-crafted
+trace mocks couldn't: when the cheap point check flags `newOrigin` as solid but the swept trace
+finds no real obstruction along the path (a boundary/epsilon disagreement between point
+classification and segment tracing, observed live against real map geometry), the fallback
+`CollisionTrace`'s default zero plane (`normal.z === 0`) satisfied the wall-kill check and
+incorrectly killed the particle. Fixed by checking `trace.fraction >= 1.0` first and treating that
+as an uneventful move; regression test added. The live run also gave real numbers on the pre-filter's
+hit rate against actual map geometry: of ~2,600 `ResolveParticleCollision()` calls from one rocket
+explosion in a compact indoor room, roughly a quarter were real collisions the swept trace confirmed
+(the rest were the pre-filter's false positives, now handled correctly) -- of the real collisions,
+roughly 1 in 5 bounced (floor-like) and the rest were killed (wall/ceiling-like), which tracks for a
+tight room with more nearby walls than floor. New tests: `test/renderer/particle-physics.test.mjs`
+(`collidableParticleTypes` contents; `ResolveParticleCollision()`'s no-hit/bounce/kill/all-solid/
+fraction-1.0-false-positive cases). Full suite is 1309 tests, `npm run typecheck` clean, `eslint`
+clean.
+
+Phases 4–6 (sequencing, save/load, real consumer) not started. They don't depend on phase 7 or
+vice versa.
 
 Originally written after a request to assess `source/shared/ClientEdict.ts` and
 `source/engine/client/ClientEntities.ts` and to plan how to make client-only entities (today:
@@ -517,6 +546,12 @@ same relative-time-on-save, absolute-time-on-restore trick `SerializeParticles()
    real browser per this repo's usual workflow for client-visible changes. This is what proves the
    new API is actually convenient, not just theoretically so — don't skip it in favor of shipping
    infrastructure nobody has used yet.
+7. ✅ **Gravity-particle collision (`R.ts`)** — shipped `R.ResolveParticleCollision()` +
+   `R.collidableParticleTypes`, wired into `_renderAndAdvanceParticle()`. Verified live in a real
+   browser against a real dedicated server/map/BSP geometry (`docs/browser-verification.md`), which
+   caught and led to a fix for a real edge-case bug (see Status). Independent of phases 4–6; landed
+   without waiting on them. See "Extension: gravity-particle collision" below for the full design,
+   the 2026-09-26 decisions, and the live-verification findings.
 
 ## Testing
 
@@ -540,6 +575,8 @@ same relative-time-on-save, absolute-time-on-restore trick `SerializeParticles()
   non-persistent (static) entity is correctly excluded; a `free` entity is correctly excluded.
 - Existing tests for `DefaultClientEdictHandler`/`FireballEdictHandler`/`PlayerClientEntity` must
   keep passing unmodified — nothing about their behavior changes in this plan.
+- Phase 7's tests (`test/renderer/particle-physics.test.mjs`) are covered in "Extension:
+  gravity-particle collision" below, alongside its live-browser-verification findings.
 
 ## Open questions
 
@@ -567,3 +604,135 @@ same relative-time-on-save, absolute-time-on-restore trick `SerializeParticles()
    "safe minimum" framing; `ServerPhysics.physicsToss()` itself was left untouched. Revisit the
    full `common/physics/TossPhysics.ts` orchestration-sharing idea later, once the client side has
    a real, browser-verified consumer (phase 6) to prove the abstraction against on that end too.
+
+## Extension: gravity-particle collision (`R.ts`)
+
+Status: ✅ landed 2026-09-26 (phase 7 above). Independent of phases 4–6 — only depended on
+`PhysicsMath` (phase 3), not on `ClientAnimationSequence` or the save/load work.
+
+### Motivation
+
+Raised in follow-up discussion: explosion-spawned particles that are affected by gravity (`grav`,
+`slowgrav`, and the `explode`/`explode2`/`blob`/`blob2` types that already integrate gravity into
+their velocity, see Problem #4) currently fly straight through walls and floors — they only ever
+die by TTL (`Particle.die`), never by hitting geometry. The ask: give them toss-style bounce
+behavior (reflecting off a surface at an angle, not just falling straight through) and let them
+disappear on hitting a wall, instead of clipping through it.
+
+### Findings
+
+- `R.particles` (`R.ts:238`) is a flat, preallocated struct array (capacity `R.numparticles`,
+  32786 by default, `R.ts:2581`) — not `ClientEdict`s. Movement and rendering happen together in
+  one hot loop, `_renderAndAdvanceParticle()` (`R.ts:291`), called once per live particle every
+  frame from `DrawParticles()` (`R.ts:2998`).
+- Movement is per-type Euler integration via a `switch` on `ParticleType` (`R.ts:314-362`): plain
+  gravity accumulation for `grav`/`slowgrav`, drag-plus-gravity for `explode`/`explode2`/`blob`/
+  `blob2`. No collision detection exists anywhere in this loop today — particles are pure
+  ballistic motion until their `die` timestamp.
+- Volume is real: a single `ParticleExplosion()` call (`R.ts:2665`) allocates up to 1024
+  `explode`/`explode2` particles at once, with a 5s `die` window (`R.ts:2674`). Multiple explosions
+  in quick succession (rockets, grenades) can have several thousand gravity-affected particles
+  alive simultaneously.
+- `ClientEngineAPI.Traceline()` (`GameAPIs.ts:1040`) is the only collision primitive available
+  client-side, and it's a full BSP line trace — not free. Calling it unconditionally for every
+  gravity particle every frame, at the volumes above, is a real performance risk, unlike the
+  `ClientEntityPhysics` case (phase 3) where entity counts are expected to stay small (individual
+  debris/shell casings, not hundreds per explosion).
+
+### Decisions (2026-09-26)
+
+1. **Scope: all gravity-affected types, with a code-level opt-out.** Apply collision to all six
+   (`grav`, `slowgrav`, `explode`, `explode2`, `blob`, `blob2`) rather than a subset, but land it
+   behind a small per-type toggle so a specific type can be dropped later with a one-line change if
+   profiling shows it's not worth its cost for that type — not a full revert of the feature. Sketch:
+   a `static readonly collidableParticleTypes = new Set<ParticleType>([...])` in `R.ts`, checked at
+   the top of the gravity-affected `switch` cases; starts containing all six, shrinks if needed.
+   (A player/server-facing `Cvar` would also work but is more than what was asked for — "just in
+   case the performance penalty is a real thing" reads as a developer escape hatch, not a tunable;
+   revisit if it turns out players/server operators need control over this too.)
+2. **`Traceline()` cost: cheap pre-filter before the real trace, not cross-particle batching.**
+   Bucketing/sharing one trace result across particles heading the same way was considered and
+   rejected — it introduces visible approximation error between particles that should behave
+   identically, for a system where correctness (an angle-dependent bounce) is the whole point of
+   this work. Instead: reuse the same *cheap* BSP point-classification `ClientEdict.linkEdict()`'s
+   `#splitEntityOnNode` already does (plane-test descent to classify one point — no clipnode/hull
+   traversal, much cheaper than a swept trace) to classify each particle's projected destination
+   point every frame. Only when that destination classifies as solid does the frame pay for a real
+   `Traceline()` to get the fraction/normal needed to bounce or kill the particle. Since almost all
+   of a particle's flight is through open air, this turns "one `Traceline()` per gravity particle
+   per frame" into "one cheap point classification per particle per frame, full trace only on the
+   rare frame something is actually about to be hit" — which is where essentially all the volume
+   problem from Findings above goes away. Caveat to note in the implementation: pure endpoint
+   classification can in theory miss a particle tunneling through a wall thinner than one frame's
+   movement (typically a few units at particle speeds/60fps vs. Quake's usual wall thickness, so
+   low risk, not zero). If profiling after landing this still shows a problem, two further options
+   to reach for, in order of preference: (a) decimate the check to every 2nd–3rd frame per particle,
+   staggered by particle index so checks don't all land on the same frame; (b) for burst spawns
+   specifically (explosions), cache a handful of feeler-trace planes once at spawn time and have the
+   burst's particles test cheaply against that shared local geometry instead of the BSP tree —
+   noted as a stretch option, not baseline, since it's a bigger design commitment (a shared per-burst
+   context) and only stays accurate near the spawn origin.
+3. **Scope: keep it in this plan**, as its own phase (see Phasing) rather than a separate plan doc
+   — confirmed as a good use case for `PhysicsMath` sharing across the server/`ClientEntityPhysics`/
+   particle systems.
+
+### What shipped
+
+- Stayed inside the existing flat `Particle`/`_renderAndAdvanceParticle()` system — did **not**
+  route particles through `ClientEdict`/`ClientEntityPhysics`, per the design's reasoning (bulk,
+  performance-first system; promoting to full client entities would be the wrong layer).
+- `R.ResolveParticleCollision(origin, velocity, newOrigin): boolean` (`R.ts`) — a small, pure-ish,
+  independently testable static method (no `Particle` coupling, just `Vector`s in/out) that
+  `_renderAndAdvanceParticle()` calls only for types in `R.collidableParticleTypes`. Reuses
+  `PhysicsMath.clipVelocity()` for the bounce (overbounce `1.5`, matching `MOVETYPE_BOUNCE`) and
+  reports a kill (via the caller setting `particle.die = -1.0`, the same early-death mechanism
+  `fire`/`explode`/`explode2` already use for their ramp expiry) for a wall/ceiling-like hit or a
+  start already embedded in solid.
+- The cheap point-classification pre-filter turned out not to need a new shared helper at all: this
+  codebase already has `SV.collision.pointContents()`/`staticWorldContents()` (backed by
+  `BrushModel.getLeafForPoint()`, a plain root-to-leaf plane-test descent, no swept-hull work),
+  already used the same way elsewhere (`ServerPhysics`, `ServerMovement`, `Navigation`) for
+  point-in-solid checks. `R.ts` already calls `SV.collision` directly elsewhere too (`MarkLights`,
+  `IsDynamicLightSurfaceVisible`), so no new abstraction was needed — simpler than the plan
+  originally expected.
+- Scratch `Vector`s (`R.#scratchNewOrigin`, `R.#scratchClippedVelocity`) avoid a per-particle
+  allocation in the collision path; non-collidable types (`fire`, `tracer`) keep the exact original
+  zero-allocation 3-scalar origin update, untouched.
+
+### Live verification findings
+
+Verified in a real browser against a real dedicated server, a real map (`e1m1`), and real BSP
+collision data (`docs/browser-verification.md`'s recipe: cached Chromium + Playwright, a scratch
+dedicated server with `sv_cheats 1`, `?connect=ws://...` to join over a real WebSocket, console
+commands for `god`/`noclip`/`impulse` cheats, a live-patched `R.ResolveParticleCollision` logging
+every real invocation). This caught a real bug no hand-crafted unit-test trace mock had surfaced:
+
+- **Bug found and fixed:** when `SV.collision.pointContents(newOrigin)` flags the destination as
+  solid but the swept `traceStaticWorldLine()` call finds no real obstruction along the actual path
+  (a boundary/epsilon disagreement between point classification and segment tracing — observed live
+  against real map geometry, not reproducible with a synthetic mock unless deliberately constructed
+  after the fact), the no-hit trace's default zero plane (`normal.z === 0`) satisfied the
+  wall/ceiling check and incorrectly killed the particle. Fixed by checking `trace.fraction >= 1.0`
+  first and treating that case as an uneventful move. Regression test added
+  (`test/renderer/particle-physics.test.mjs`).
+- **Real-world pre-filter hit rate:** one rocket explosion in a compact indoor room produced ~2,600
+  `ResolveParticleCollision()` calls; roughly a quarter were real collisions the swept trace
+  confirmed, the rest were pre-filter false positives (now handled correctly, cheaply, without ever
+  reaching the expensive trace). Of the real collisions, roughly 1 in 5 bounced (floor-like) and the
+  rest were killed (wall/ceiling-like) — expected for a small room with more nearby walls than
+  floor. The false-positive rate is high enough to be worth knowing about, though it doesn't change
+  the design: even a "false positive" pre-filter check is far cheaper than the swept trace it's
+  gating, so the short-circuit still did its job.
+- A captured before/after pair confirmed the bounce math precisely: a particle falling at
+  `vel.z = -338.24` reflected to `vel.z = +169.12` upon landing exactly at the room's floor height
+  (`origin.z` snapped to `48.03125`, matching another particle's independently-computed landing
+  height in the same batch) — exactly `PhysicsMath.clipVelocity`'s formula for overbounce `1.5`
+  against a `(0,0,1)` floor normal.
+- No console errors/warnings beyond expected sandbox noise (WebGL software-renderer performance
+  messages, autoplay-blocked `AudioContext` warnings) — no regressions to other rendering paths.
+
+### Open questions
+
+1. ✅ Resolved 2026-09-26 — see Decisions #1.
+2. ✅ Resolved 2026-09-26 — see Decisions #2.
+3. ✅ Resolved 2026-09-26 — see Decisions #3; promoted to phase 7 in the Phasing section above.

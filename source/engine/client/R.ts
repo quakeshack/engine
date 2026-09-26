@@ -1,4 +1,5 @@
 import Vector from '../../shared/Vector.ts';
+import PhysicsMath from '../../shared/PhysicsMath.ts';
 import Cvar from '../common/Cvar.ts';
 import Cmd from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
@@ -136,6 +137,13 @@ enum ParticleType {
 const FOG_TURBULENT_SORT_EPSILON = 0.0001;
 
 /**
+ * Overbounce factor for a gravity particle reflecting off a floor-like surface, matching
+ * `MOVETYPE_BOUNCE`'s server-side factor (`ServerPhysics.physicsToss()`) for a consistent,
+ * lively bounce instead of a dead stop.
+ */
+const PARTICLE_BOUNCE_OVERBOUNCE = 1.5;
+
+/**
  * Resolve deterministic tie-break priority for transparent item kinds.
  * @returns Higher values are sorted earlier on near-equal depth.
  */
@@ -248,6 +256,25 @@ class R {
   static c_brush_texture_binds = 0;
   static c_alias_polys = 0;
 
+  /**
+   * Particle types that collide with world geometry in `_renderAndAdvanceParticle()` instead of
+   * flying through it -- every type whose velocity already integrates gravity (see the
+   * `ParticleType` switch below), except `fire`, whose upward "embers" drift is not gravity in
+   * the falling sense. A one-line escape hatch: drop a type from this set if profiling ever shows
+   * its collision cost isn't worth it for that type specifically, without reverting the feature.
+   */
+  static readonly collidableParticleTypes = new Set<ParticleType>([
+    ParticleType.grav,
+    ParticleType.slowgrav,
+    ParticleType.explode,
+    ParticleType.explode2,
+    ParticleType.blob,
+    ParticleType.blob2,
+  ]);
+
+  static #scratchNewOrigin = new Vector();
+  static #scratchClippedVelocity = new Vector();
+
   private static _textureAxisToVector(texVec: BrushTexVec): Vector {
     return new Vector(texVec[0], texVec[1], texVec[2]);
   }
@@ -286,6 +313,44 @@ class R {
   }
 
   /**
+   * Resolves a gravity particle's pending move from `origin` to `newOrigin` against world
+   * geometry: a floor-like surface (`PhysicsMath.GROUND_ANGLE_THRESHOLD`) reflects `velocity` via
+   * the shared `PhysicsMath.clipVelocity()` formula, matching `MOVETYPE_BOUNCE`'s overbounce; a
+   * wall/ceiling-like surface, or a start already embedded in solid, reports a kill instead of
+   * clipping through it. Always leaves `origin` at the particle's actual resting position for this
+   * step -- `newOrigin` when nothing was hit, the impact point otherwise. `SV.collision.
+   * pointContents()` (a cheap BSP point classification, no swept-hull work) gates the real
+   * `traceStaticWorldLine()` call, so the common case of open-air flight never pays for a full
+   * trace -- see the "Extension: gravity-particle collision" section of
+   * plans/client-entity-architecture.md for why this matters at explosion-burst particle counts.
+   * @returns True when the particle hit a wall/ceiling-like surface and should be killed.
+   */
+  static ResolveParticleCollision(origin: Vector, velocity: Vector, newOrigin: Vector): boolean {
+    if (SV.collision.pointContents(newOrigin) !== content.CONTENT_SOLID) {
+      origin.set(newOrigin);
+      return false;
+    }
+
+    const trace = SV.collision.traceStaticWorldLine(origin, newOrigin);
+    origin.set(trace.endpos);
+
+    if (!trace.allsolid && trace.fraction >= 1.0) {
+      // The cheap point check flagged newOrigin as solid, but the swept trace found nothing
+      // along the actual path -- a boundary/epsilon disagreement between point classification
+      // and segment tracing at the destination. Nothing was really hit; move on normally.
+      return false;
+    }
+
+    if (trace.allsolid || trace.plane.normal[2] <= PhysicsMath.GROUND_ANGLE_THRESHOLD) {
+      return true;
+    }
+
+    PhysicsMath.clipVelocity(velocity, trace.plane.normal, R.#scratchClippedVelocity, PARTICLE_BOUNCE_OVERBOUNCE);
+    velocity.set(R.#scratchClippedVelocity);
+    return false;
+  }
+
+  /**
    * Emit one particle billboard and advance its simulation by one frame.
    */
   private static _renderAndAdvanceParticle(particle: Particle, coords: number[], frameTime: number, grav: number, dvel: number): void {
@@ -307,9 +372,20 @@ class R {
       GL.StreamWriteUByte4(color & 0xff, (color >> 8) & 0xff, color >> 16, 255);
     }
 
-    particle.org[0] += particle.vel[0] * frameTime;
-    particle.org[1] += particle.vel[1] * frameTime;
-    particle.org[2] += particle.vel[2] * frameTime;
+    if (R.collidableParticleTypes.has(particle.type)) {
+      const newOrigin = R.#scratchNewOrigin;
+      newOrigin[0] = particle.org[0] + particle.vel[0] * frameTime;
+      newOrigin[1] = particle.org[1] + particle.vel[1] * frameTime;
+      newOrigin[2] = particle.org[2] + particle.vel[2] * frameTime;
+
+      if (R.ResolveParticleCollision(particle.org, particle.vel, newOrigin)) {
+        particle.die = -1.0;
+      }
+    } else {
+      particle.org[0] += particle.vel[0] * frameTime;
+      particle.org[1] += particle.vel[1] * frameTime;
+      particle.org[2] += particle.vel[2] * frameTime;
+    }
 
     switch (particle.type) {
     case R.ptype.fire:
