@@ -10,6 +10,7 @@
 
 import { SerializableEntity, type HostAlertEvent, type SerializedData, type ServerGameInterface } from '../../shared/GameInterfaces.ts';
 import type { SerializedParticle } from '../client/R.ts';
+import type { SerializedClientEntity } from '../client/ClientEntities.ts';
 import type { AliasModel } from './model/AliasModel.ts';
 import { ED, type ServerEdict } from '../server/Edict.ts';
 
@@ -76,6 +77,7 @@ interface SavegameState {
   readonly edicts: SavegameEdictEntry[];
   readonly num_edicts: number;
   readonly particles: SerializedParticle[];
+  readonly clientEntities: SerializedClientEntity[];
 }
 
 /**
@@ -1205,6 +1207,7 @@ export default class Host {
       edicts,
       num_edicts: SV.server.num_edicts,
       particles: R.SerializeParticles(),
+      clientEntities: CL.state.clientEntities.serialize(),
     };
 
     const filename = COM.DefaultExtension(savename, '.json');
@@ -1320,7 +1323,7 @@ export default class Host {
     const client = SV.svs.clients[0];
     client.spawn_parms = gamestate.spawn_parms;
 
-    ClientLifecycle.resumeGame(gamestate.clientdata, gamestate.particles);
+    ClientLifecycle.resumeGame(gamestate.clientdata, gamestate.particles, gamestate.clientEntities);
   }
 
   static Name_f(this: ConsoleCommand, ...names: string[]): void { // signon 2, step 1

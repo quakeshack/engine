@@ -1048,6 +1048,24 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
+   * Tell whether a client entity is in the PVS of the current view, even when it is not drawn.
+   * Meant for effect sources that should not do any work while the player cannot see them. It
+   * answers for the view of the previous frame, and true while there is no view yet.
+   * @returns True when the player could see the entity from where they are.
+   */
+  static IsInPVS(entity: ClientEdict): boolean {
+    return CL.state.clientEntities.isPotentiallyVisible(entity);
+  }
+
+  /**
+   * Find what contents the given point of the static world is in.
+   * @returns The contents constant.
+   */
+  static DetermineStaticWorldContents(origin: Vector): number {
+    return SV.collision.staticWorldContents(origin);
+  }
+
+  /**
    * Allocate a dynamic light for the given entity Id.
    * @returns The dynamic light instance.
    */
@@ -1060,10 +1078,30 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * This is a client-side entity, not a server-side edict.
    * Make sure to invoke spawn() when ready.
    * Make sure to use setOrigin() to set the position of the entity.
+   * @deprecated use `SpawnClientEntity()` instead, which resolves the classname's handler and can mark the entity for save/load.
    * @returns A new client entity.
    */
   static AllocEntity(): ClientEdict {
     return CL.state.clientEntities.allocateClientEntity();
+  }
+
+  /**
+   * Allocate a client-only entity (debris, gibs, shell casings, ...) with no server-tracked slot.
+   * The `ClientGameAPI.GetClientEdictHandler()` result for `classname` drives it. Set its `model`,
+   * `velocity` etc., place it with `setOrigin()`, then invoke `spawn()` when ready.
+   * @param classname Classname used to look up the entity's handler.
+   * @param options.persistent Whether the entity is captured by save games, defaulting to `true`.
+   * Use `false` only for entities the server regenerates on every (re)connect.
+   * @returns A new client-only entity.
+   */
+  static SpawnClientEntity(classname: string, options: { readonly persistent?: boolean } = {}): ClientEdict {
+    const clientEntities = CL.state.clientEntities;
+
+    if (options.persistent ?? true) {
+      return clientEntities.allocateSimulatedEntity(classname);
+    }
+
+    return clientEntities.allocateStaticEntity(classname);
   }
 
   /**
@@ -1191,7 +1229,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * the same `movevars.gravity` value `ServerPhysics.addGravity()` scales by a per-entity
      * multiplier server-side (`entity.gravity`, default 1.0). Client-only physics should read
      * this instead of hardcoding a gravity value, applying its own multiplier the same way
-     * (see `ClientEntityPhysics.step()`'s `gravityMultiplier` option). Note `movevars.entgravity`
+     * (see `ClientEdict.gravity` and `ClientEntityPhysics`). Note `movevars.entgravity`
      * is the local player's own scale from `Pmove`'s player-movement fields, not a per-entity
      * value applicable to arbitrary client-only entities, so it is intentionally not folded in
      * here.

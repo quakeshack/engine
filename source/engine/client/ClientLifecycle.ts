@@ -9,6 +9,7 @@ import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import type { SerializedParticle } from './R.ts';
+import type { SerializedClientEntity } from './ClientEntities.ts';
 
 let { Host } = getClientRegistry();
 
@@ -77,9 +78,9 @@ export default class ClientLifecycle {
     eventBus.publish('client.game-initialized');
   }
 
-  static resumeGame(clientdata: string | null, particles: SerializedParticle[] | null): void {
+  static resumeGame(clientdata: string | null, particles: SerializedParticle[] | null, clientEntities: SerializedClientEntity[] | null): void {
     CL.Connect('local');
-    clientRuntimeState.loadClientData = [clientdata, particles];
+    clientRuntimeState.loadClientData = [clientdata, particles, clientEntities];
   }
 
   static #registerCvars(): void {

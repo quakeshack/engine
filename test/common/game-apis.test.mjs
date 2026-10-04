@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
 import { moveTypes, solid } from '../../source/shared/Defs.ts';
-import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import GameModule from '../../source/engine/common/GameModule.ts';
 import { ClientEngineAPI, ServerEngineAPI } from '../../source/engine/common/GameAPIs.ts';
 import { ServerEdict } from '../../source/engine/server/Edict.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
@@ -255,6 +256,87 @@ void describe('ServerEngineAPI.Navigate', () => {
       const path = await ServerEngineAPI.NavigateAsync(new Vector(1, 2, 3), new Vector(4, 5, 6));
 
       assert.equal(path, null);
+    });
+  });
+});
+
+void describe('ClientEngineAPI.SpawnClientEntity', () => {
+  /**
+   * @param {() => void} callback runs with a real ClientEntities as `CL.state.clientEntities`
+   */
+  function withClientEntities(callback) {
+    const clientEntities = new ClientEntities();
+    const previousModule = GameModule.active;
+
+    GameModule.active = {
+      identification: { name: 'Test Game', author: 'test', version: [1, 0, 0], capabilities: [] },
+      ClientGameAPI: { GetClientEdictHandler: () => null },
+    };
+
+    try {
+      void withMockRegistry(defaultMockRegistry({}, { state: { clientEntities } }), () => {
+        callback(clientEntities);
+      });
+    } finally {
+      GameModule.active = previousModule;
+    }
+  }
+
+  void test('spawns a persistent client-only entity by default', () => {
+    withClientEntities((clientEntities) => {
+      const entity = ClientEngineAPI.SpawnClientEntity('test_debris');
+
+      assert.equal(entity.classname, 'test_debris');
+      assert.equal(entity.persistent, true);
+      assert.equal(entity.isClientOwned(), true);
+      assert.deepEqual([...clientEntities.getEntities()], [entity]);
+    });
+  });
+
+  void test('spawns a non-persistent entity on request', () => {
+    withClientEntities(() => {
+      const entity = ClientEngineAPI.SpawnClientEntity('test_decoration', { persistent: false });
+
+      assert.equal(entity.persistent, false);
+    });
+  });
+});
+
+void describe('ClientEngineAPI.DetermineStaticWorldContents', () => {
+  void test('asks the static world collision backend for the contents at the point', () => {
+    const queried = [];
+
+    void withMockRegistry(defaultMockRegistry({
+      collision: {
+        staticWorldContents(point) {
+          queried.push([...point]);
+          return -3;
+        },
+      },
+    }), () => {
+      assert.equal(ClientEngineAPI.DetermineStaticWorldContents(new Vector(1, 2, 3)), -3);
+      assert.deepEqual(queried, [[1, 2, 3]]);
+    });
+  });
+});
+
+void describe('ClientEngineAPI.IsInPVS', () => {
+  void test('asks the client entities whether the entity is in the PVS of the current view', () => {
+    const entity = new ClientEdict(-1);
+    const asked = [];
+
+    void withMockRegistry(defaultMockRegistry({}, {
+      state: {
+        clientEntities: {
+          isPotentiallyVisible(candidate) {
+            asked.push(candidate);
+            return false;
+          },
+        },
+      },
+    }), () => {
+      assert.equal(ClientEngineAPI.IsInPVS(entity), false);
+      assert.deepEqual(asked, [entity]);
     });
   });
 });

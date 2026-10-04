@@ -143,6 +143,7 @@ export enum clientConnectionState {
 }
 
 /**
- * Version used for savegames.
+ * Version used for savegames. Bumped to 3 when `SavegameState` gained `clientEntities`
+ * (persistent client-only entity save/load, `ClientEntities.serialize()`/`deserialize()`).
  */
-export const gamestateVersion = 2;
+export const gamestateVersion = 3;

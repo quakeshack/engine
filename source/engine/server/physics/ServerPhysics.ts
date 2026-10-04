@@ -5,7 +5,7 @@ import type { CollisionTrace } from './ServerCollisionSupport.ts';
 import Vector, { Quaternion } from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import Q from '../../../shared/Q.ts';
-import PhysicsMath from '../../../shared/PhysicsMath.ts';
+import PhysicsMath from '../../common/PhysicsMath.ts';
 import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
   MAX_BUMP_COUNT,
@@ -688,14 +688,12 @@ export class ServerPhysics {
     PhysicsMath.clipVelocity(entity.velocity, trace.plane.normal, velocity, movetype === Defs.moveType.MOVETYPE_BOUNCE ? 1.5 : 1.0);
     entity.velocity = velocity;
 
-    if (trace.plane.normal[2] > PhysicsMath.GROUND_ANGLE_THRESHOLD) {
-      if (entity.velocity[2] < 60.0 || movetype !== Defs.moveType.MOVETYPE_BOUNCE) {
-        console.assert(trace.ent !== null, 'grounding toss trace must resolve a hit entity');
-        entity.flags |= Defs.flags.FL_ONGROUND;
-        entity.groundentity = trace.ent!.entity!;
-        entity.velocity = new Vector();
-        entity.avelocity = new Vector();
-      }
+    if (PhysicsMath.shouldComeToRest(trace.plane.normal[2], entity.velocity[2], movetype === Defs.moveType.MOVETYPE_BOUNCE)) {
+      console.assert(trace.ent !== null, 'grounding toss trace must resolve a hit entity');
+      entity.flags |= Defs.flags.FL_ONGROUND;
+      entity.groundentity = trace.ent!.entity!;
+      entity.velocity = new Vector();
+      entity.avelocity = new Vector();
     }
 
     this.checkWaterTransition(ent);

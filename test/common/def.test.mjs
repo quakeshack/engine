@@ -8,7 +8,7 @@ void describe('common definitions', () => {
     assert.equal(productName, 'QuakeShack');
     assert.equal(defaultGame, 'id1');
     assert.equal(defaultBasedir, 'id1');
-    assert.equal(gamestateVersion, 2);
+    assert.equal(gamestateVersion, 3);
   });
 
   void test('keeps stable numeric limits and connection state values', () => {

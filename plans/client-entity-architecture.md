@@ -2,7 +2,10 @@
 
 ## Status
 
-🚧 In progress — phases 1–3 and 7 done. Phase 1 (vocabulary fixes: `isStatic()` → `isClientOwned()`,
+The user-facing reference for what shipped is [docs/client-entities.md](../docs/client-entities.md); this plan is the design record.
+
+✅ Done — all seven phases landed (phase 6, client-side gibs, on 2026-10-03; see "Phase 6: client-side
+gibs" below). Originally: phases 1–5 and 7 done, only phase 6 remained. Phase 1 (vocabulary fixes: `isStatic()` → `isClientOwned()`,
 `nextthink` → `lerpEndTime`, `static_entities`/`allocateClientEntity()` docstrings) and phase 2
 (`ClientEdict.markFree()` + `BaseClientEdictHandler.remove()`, with unit tests in
 `test/client/client-entities.test.mjs` and `test/common/client-edict.test.mjs`) are landed. Full
@@ -62,8 +65,85 @@ tight room with more nearby walls than floor. New tests: `test/renderer/particle
 fraction-1.0-false-positive cases). Full suite is 1309 tests, `npm run typecheck` clean, `eslint`
 clean.
 
-Phases 4–6 (sequencing, save/load, real consumer) not started. They don't depend on phase 7 or
-vice versa.
+Phase 4 (`ClientAnimationSequence`) landed 2026-09-26. Shipped `source/shared/
+ClientAnimationSequence.ts`: a typed-state-key sequence keyed on `S extends string`, with
+`tick(currentTime)` (enters the initial state on its first call, then auto-advances to `next` once
+`duration` has elapsed since entering the current state), `setState(state, enteredAt)` (jumps
+directly to a state without firing `onEnter`, for resuming from saved data), `current` (a getter),
+and `serialize(currentTime)` (a flat `{ state, enteredAt }` snapshot with `enteredAt` relative to
+`currentTime`, mirroring `SerializedParticle.die`'s relative-time-on-save convention -- re-anchor
+on load via `setState(data.state, newCurrentTime + data.enteredAt)`). One deviation from the plan's
+illustrative sketch, decided during implementation: `ClientSequenceState.keyframe` is `number`
+only, not `string | number` as sketched. The server's `_defineState` resolves a string keyframe
+against the model's QC-parsed frame-name table (`BaseEntity._modelData.frames`), but client models
+carry no equivalent name table, and new client-only cosmetic sequences are authored fresh in
+TypeScript anyway with no legacy named frames to resolve against -- confirmed with the developer
+before implementing rather than guessing, since it's a public API shape decision future phases
+build on. Entering a state (via `tick()`'s auto-advance or `setState()`) always writes
+`ClientEdict.frame` directly, the same "component owns applying one dimension of behavior to the
+edict" pattern `ClientEntityPhysics` established for `origin`/`velocity` in phase 3; `onEnter` only
+fires on a genuine `tick()`-driven entry, never on `setState()`, so resuming from a save doesn't
+replay a one-shot side effect (a spawned dlight, a played sound) that already fired before the
+save. New tests: `test/client/client-animation-sequence.test.mjs` (initial-state entry on first
+tick, no premature advance, advance-on-duration, terminal state never self-advances, `setState()`
+resume without replaying `onEnter`, `serialize()`'s relative time, and a full save→restore
+round-trip re-anchored to a new session time). Full suite is 1317 tests, `npm run typecheck`
+clean, `eslint` clean.
+
+Phase 5 (save/load) landed 2026-09-26, per the developer's answers to the two open forks it
+depended on: keep `static_entities` as one array with a `persistent` flag (the Design section's
+existing baseline, confirmed rather than split into two arrays), and use the heavier tagged-union
+`SerializedValue`/`SerializedData` format (`source/shared/GameInterfaces.ts`) for the handler-state
+blob instead of the flat `Record<string, string|number|boolean>` this doc had recommended.
+
+Shipped `source/shared/ClientSerialization.ts`: converts plain values to/from that same
+tagged-union wire format `BaseEntity`'s server-side `Serializer<T>` uses, but as a new, parallel,
+lighter implementation (the actual `Serializer<T>` class lives in `id1`'s `MiscHelpers.ts`, coupled
+to `ServerEngineAPI`, and importing it client-side would cross the game/engine boundary) supporting
+only the tags a client-only cosmetic handler can actually use: primitives, arrays, `Vector`s, and
+nested objects (`'P'`/`'A'`/`'V'`/`'S'`). Deliberately omits entity references (`'E'`, no
+`ServerEdict` to point at, and resolving a reference to another `ClientEdict` would need an
+id-indexed pool plus a two-pass restore this codebase has no client-side equivalent of),
+function-serialization (`'F'`, the same `toString()`/`new Function()` security/fragility concern
+already flagged for `ScheduledThink.callback`), and `Infinity`/skip markers (`'I'`/`'X'`, not
+needed by anything a handler would realistically save). `BaseClientEdictHandler` gained
+`serialize()`/`deserialize()` defaults (both no-ops, matching `spawn()`/`emit()`/`think()`'s
+shape); `ClientEdict` gained a matching pair that delegate to the handler.
+
+`ClientEdict.persistent` + `allocateStaticEntity()`/`allocateSimulatedEntity()` landed exactly as
+designed; `parseStaticEntity()` now uses the former. `ClientEntities.serialize()`/`deserialize()`
+mirror `R.SerializeParticles()`/`DeserializeParticles()`'s shape and wiring
+(`SavegameState.clientEntities`, `Host.Savegame_f`/`Loadgame_f`, `ClientLifecycle.resumeGame()`'s
+third parameter, `ClientState.ts`'s `ClientLoadData` tuple, the signon-complete handler,
+`Def.gamestateVersion` bumped `2` → `3`).
+
+One real ordering bug found and fixed while writing the round-trip test, a genuine deviation from
+this doc's own illustrative order ("`setOrigin()`/angles/velocity + `spawn()`"):
+`ClientEntities.deserialize()` calls `spawn()` **before** `setOrigin()`/angles/velocity, not after.
+`SerializedClientEntity` carries no model index, so a restored entity only gets its `model` from
+the handler's own `spawn()` (mirroring how a freshly-spawned, non-restored simulated entity would
+too); calling `setOrigin()` any earlier links against a still-null model and silently produces
+empty `leafs` for the entity's first frame back -- exactly the stale-PVS-culling footgun problem #5
+already warned about, just triggered by a different call site than phase 3's fix. `handler.
+deserialize()` still runs last, after `spawn()`, so it can correct whatever `spawn()`'s
+fresh-entity defaults initialized.
+
+Landing this also required updating three pre-existing tests that predated `clientEntities`:
+`test/common/def.test.mjs` hardcoded `gamestateVersion` as `2`; two `registry.CL.state` mocks in
+`test/common/savegame.test.mjs` (`Host.Savegame_f`'s unit test and the real-id1-map integration
+test) had no `clientEntities.serialize()` to call, and needed the mock plus updated expected-output
+assertions -- an intentional, plan-mandated adjustment, not a regression. New tests:
+`test/shared/client-serialization.test.mjs` (round trips for every supported tag, individually and
+mixed/nested); `test/client/client-entities-savegame.test.mjs` (a persistent entity survives with
+matching classname/origin/angles/velocity/handler blob; a non-persistent static entity is excluded;
+a free entity is excluded; a full save → restore round trip into a fresh `ClientEntities`,
+re-anchored to a new session's `CL.state.time`, with the saved relative die time chosen to be
+distinguishable from a fresh entity's own default so the test can't pass by accident). Full suite
+is 1327 tests, `npm run typecheck` clean, `eslint` clean (pre-existing, unrelated warnings already
+present in touched files -- e.g. `Host.ts`'s long-standing `Cmd.AddCommand` unbound-method warnings
+-- were left alone, not retroactively cleaned up as part of this phase).
+
+Phase 6 (client-side gibs, the real consumer) landed 2026-10-03 -- see "Phase 6: client-side gibs".
 
 Originally written after a request to assess `source/shared/ClientEdict.ts` and
 `source/engine/client/ClientEntities.ts` and to plan how to make client-only entities (today:
@@ -532,20 +612,25 @@ same relative-time-on-save, absolute-time-on-restore trick `SerializeParticles()
    confirming `setOrigin()` — not raw `.origin` mutation — is what moves the entity, including a
    fix to a latent `ClientEdict.linkEdict()` leaf-accumulation bug this phase's repeated-call usage
    surfaced). See Status for details.
-4. **`ClientAnimationSequence`** — `tick()`/`setState()`/`serialize()`, unit-tested standalone
-   (advance-on-duration, terminal state stops advancing, `setState()` resumes mid-sequence without
-   replaying `onEnter` side effects it already fired before a save).
-5. **Save/load** — `ClientEdict.persistent` + `allocateStaticEntity()`/`allocateSimulatedEntity()`,
-   `ClientEntities.serialize()`/`deserialize()`, the `SavegameState`/`ClientLifecycle`/signon-handler
-   wiring, and the `Def.gamestateVersion` bump. This phase has no real consumer to test against
-   until phase 6 exists, but the round-trip itself (serialize → deserialize → same classname/
-   origin/velocity/handler blob) is fully testable against a synthetic handler, same as phases 2–4.
-6. **One real consumer, as a smoke test** — pick the smallest concrete case (shell casings are the
-   simplest: spawn on weapon fire, short lifetime, a couple of bounces, no rotation needed) and
-   port it end-to-end using phases 2–5, including a save-mid-flight/load round trip, verified in a
-   real browser per this repo's usual workflow for client-visible changes. This is what proves the
-   new API is actually convenient, not just theoretically so — don't skip it in favor of shipping
-   infrastructure nobody has used yet.
+4. ✅ **`ClientAnimationSequence`** — shipped `tick()`/`setState()`/`current`/`serialize()`, with
+   `ClientSequenceState.keyframe` typed as `number` only (confirmed with the developer; see
+   Status for why) and writing `ClientEdict.frame` directly on every state entry. Unit-tested
+   standalone (advance-on-duration, terminal state stops advancing, `setState()` resumes
+   mid-sequence without replaying `onEnter` side effects it already fired before a save, plus a
+   full save→restore round trip re-anchored to a new session time). See Status for details.
+5. ✅ **Save/load** — shipped `ClientEdict.persistent` + `allocateStaticEntity()`/
+   `allocateSimulatedEntity()`, `ClientEntities.serialize()`/`deserialize()`, the new
+   `source/shared/ClientSerialization.ts` (the tagged-union handler-blob format, per the
+   confirmed answer to open question 4), and the `SavegameState`/`ClientLifecycle`/`ClientState`/
+   signon-handler wiring plus the `Def.gamestateVersion` bump. Tested standalone against a
+   synthetic handler, same as phases 2–4, since it has no real consumer until phase 6 -- including
+   a fix to a real ordering bug (`spawn()` must run before `setOrigin()` in `deserialize()`,
+   not after) found while writing that test. See Status for details.
+6. ✅ **One real consumer, as a smoke test: client-side gibs** — see "Phase 6: client-side gibs"
+   below. Replaces the server-side `GibEntity` end-to-end using phases 2–5, including a
+   save-mid-flight/load round trip, verified in a real browser per this repo's usual workflow for
+   client-visible changes. This is what proves the new API is actually convenient, not just
+   theoretically so — don't skip it in favor of shipping infrastructure nobody has used yet.
 7. ✅ **Gravity-particle collision (`R.ts`)** — shipped `R.ResolveParticleCollision()` +
    `R.collidableParticleTypes`, wired into `_renderAndAdvanceParticle()`. Verified live in a real
    browser against a real dedicated server/map/BSP geometry (`docs/browser-verification.md`), which
@@ -584,26 +669,310 @@ same relative-time-on-save, absolute-time-on-restore trick `SerializeParticles()
    opt-in helpers, not subclasses (recommended option).
 2. ✅ **Fork B confirmation** — resolved 2026-09-26: composed per-handler `ClientEntityPhysics`
    helper, not a static utility or a `BaseClientEdictHandler` method (recommended option).
-3. **`static_entities` array** — resolved differently than originally framed: rather than splitting
-   the array, add one `persistent` field plus two named allocators (see Save/load design above), so
-   the array stays one pool but save/load, and any future code, can tell entries apart by intent
-   without inferring it from context. Agree this is enough, or do you want the array itself split
-   (e.g. so `#emitEntities`'s static-entity loop and a future "step all simulated entities' physics"
-   loop don't have to filter the same array by different criteria)?
-4. **Handler-state blob shape** — recommendation is a flat `Record<string, string | number |
-   boolean>` per handler (mirroring `SerializedParticle`'s flat shape), explicitly *not* the
-   tagged-union `SerializedData`/`SerializedValue` machinery `BaseEntity` uses server-side. That
-   machinery exists to handle entity references, vectors, and nested objects generically across
-   ~200 field types; a client-only cosmetic handler's extra state (a die time, a sequence key) is
-   never going to need that generality. Agree, or do you expect handler state complex enough
-   (nested objects, entity references) to need the heavier format?
-5. **Phase 6 target** — is shell casings actually the right first real consumer, or is there a more
-   pressing one (e.g. rocket debris, gib physics) that should drive the API instead?
+3. ✅ **`static_entities` array** — resolved 2026-09-26: keep one array + `persistent` field
+   (recommended option), not split into two arrays.
+4. ✅ **Handler-state blob shape** — resolved 2026-09-26: the heavier tagged-union
+   `SerializedData`/`SerializedValue` format, not the flat `Record<string, string|number|boolean>`
+   this doc had recommended. Shipped as a new, lighter, parallel implementation in
+   `source/shared/ClientSerialization.ts` rather than reusing `BaseEntity`'s server-side
+   `Serializer<T>` (which lives in `id1`'s `MiscHelpers.ts`, coupled to `ServerEngineAPI` -- not
+   reachable from client-only code without crossing the game/engine boundary), and deliberately
+   trimmed to the tags a client-only cosmetic handler can actually use (primitives, arrays,
+   vectors, nested objects) -- see Status for the full rationale on what was left out and why.
+5. ✅ **Phase 6 target** — resolved 2026-10-03: client-side gibs (no shell-casing model exists in
+   this project; gibs already exist as `GibEntity`, are purely cosmetic, bounce, and live 10–20 s,
+   which makes them a better save/load test than a 0.2 s effect). The Shambler's lightning stays a
+   candidate for a later second consumer of `ClientAnimationSequence`. The developer also decided
+   the client gibs **replace** the server gibs outright (no feature flag).
 6. ✅ **Full toss/bounce orchestration sharing** — resolved 2026-09-26: not now (recommended
    option). Phase 3 hoisted only `clipVelocity` + the gravity/ground constants, per the design's
    "safe minimum" framing; `ServerPhysics.physicsToss()` itself was left untouched. Revisit the
    full `common/physics/TossPhysics.ts` orchestration-sharing idea later, once the client side has
    a real, browser-verified consumer (phase 6) to prove the abstraction against on that end too.
+
+## Phase 6: client-side gibs
+
+Today `GibEntity` (`source/game/id1/entity/Player.ts`) is a networked server entity
+(`MOVETYPE_BOUNCE`, `SOLID_NOT`, 10–20 s lifetime, tumbling via `avelocity`). It has no gameplay
+effect, and one kill spawns `ceil(volume / 16000)` of them, each costing a server edict and
+per-frame network updates. It becomes a client-only entity: the server broadcasts one client event
+(like `EMIT_DECAL` does) and each client simulates its own copies.
+
+### Gaps in the infrastructure this phase closes
+
+1. **Games cannot spawn a client-only entity.** `ClientEngineAPI.AllocEntity()` calls
+   `allocateClientEntity()` with no classname (no handler resolved) and never sets `persistent`.
+   Added `ClientEngineAPI.SpawnClientEntity(classname, { persistent })`; `AllocEntity()` is
+   `@deprecated` (no callers anywhere in the engine, id1, hellwave or tests) and goes away in a
+   later cleanup.
+2. **`ClientEntityPhysics` does not rotate.** Added an optional `angularVelocity` step option,
+   integrated with the same quaternion composition `ServerPhysics.physicsToss()` uses, so tumbling
+   matches the server's feel.
+3. **A restored entity has no model.** `SerializedClientEntity` carried none, so every handler with
+   a per-instance model (gib1/gib2/gib3/zom_gib) would need its own model-name plumbing plus a
+   re-link. `ClientEntities.serialize()` now records the model name and `deserialize()` resolves it
+   against the client's precache list before `spawn()`/`setOrigin()`, which also removes the
+   ordering footgun the phase 5 write-up described. `gamestateVersion` stays at `3` (this branch's
+   own bump has not shipped).
+4. **Client-only classnames have no registry home.** `GetClientEdictHandler()` only consulted the
+   server entity registry, and a client-only effect has no server entity class. id1 gains a
+   `ClientEdictHandlerRegistry` (`helper/ClientEdictHandlerRegistry.ts`, the client-side counterpart
+   of `EntityRegistry`): every handler class declares a static `classname`, and
+   `ClientGameAPI._clientEdictHandlerRegistry` is built from a list of them, so a mod can replace
+   it the way it replaces `_entityRegistry`. `GetClientEdictHandler()` asks it first and falls back
+   to the `clientEdictHandler` a server entity class may still carry (the fireball, the player).
+   *Superseded, see "Polish" below: all handlers are in the registry now.*
+
+### id1 changes
+
+- New `GibClientEdictHandler` (`client/entity/Gibs.ts`, classname `client_gib`): composes
+  `ClientEntityPhysics` with `bounce: 1.5` (`MOVETYPE_BOUNCE`'s overbounce), tumbles with a random
+  angular velocity, comes to rest on a floor-like hit with a small vertical speed (`< 60`, the
+  server's own grounding rule), then stops stepping and waits out its 10–20 s lifetime and calls
+  `remove()`. `serialize()`/`deserialize()` fold in the die time (relative), angular velocity and
+  rest flag.
+- New `clientEvent.EMIT_GIB` (`model: string, origin: Vector, velocity: Vector`), documented in
+  id1's `docs/events.md`. `ClientGameAPI.init()` subscribes and calls `SpawnClientEntity()`.
+- The `GibEntity` entity class is removed. Its static helpers (`throwGibs`, `throwMeatGib`,
+  `gibEntity`, plus a new `throwGib` primitive for `OldOne`'s custom launch) move to a plain
+  `Gibs` class in `entity/Gibs.ts`, which also owns precaching the gib models: the server still
+  has to precache them so they exist in the client's `model_precache`.
+
+### What shipped
+
+All four gaps and the id1 changes above landed as designed, plus:
+
+- `ClientEngineAPI.SpawnClientEntity(classname, { persistent })` (default `persistent: true`),
+  `AllocEntity()` marked `@deprecated`.
+- `ClientEntityPhysics.step()` takes `angularVelocity`, composed through the same quaternion path as
+  `ServerPhysics.physicsToss()`.
+- `SerializedClientEntity.model` plus the precache-list lookup in `ClientEntities.deserialize()`.
+  This supersedes the phase 5 note about restoring a model only via the handler's `spawn()`: the
+  model is restored first, a handler's `spawn()` may still override it, and `setOrigin()` links
+  against it in either case.
+- `GibClientEdictHandler` (`client_gib`), `clientEvent.EMIT_GIB`, `Gibs` (`entity/Gibs.ts`, the
+  `GibEntity` class is gone), and the registry lookup in `ClientGameAPI.GetClientEdictHandler()`. The spawn logic lives on
+  the handler class (`GibClientEdictHandler.spawnGib()`), not in `ClientGameAPI`.
+  `GameAPI._precacheResources()` calls `Gibs.precache()` so the models stay in the client's
+  `model_precache`.
+- Tests: handler behavior (`test/client/gib-edict-handler.test.mjs`), event wiring
+  (`test/client/client.test.mjs`), server side (`test/entity/gibs.test.mjs`), plus engine tests for
+  rotation, `SpawnClientEntity()` and the model round trip. The two pre-existing tests that touched
+  `GibEntity` (`oldone.test.mjs`, `player-weapons.test.mjs`) were updated. Full suite 1346 tests,
+  `npm run typecheck` clean, `eslint` clean on touched files.
+
+### Live verification (2026-10-03)
+
+Real browser (Chromium + Playwright, `docs/browser-verification.md`), a real `e1m1` listen server
+started from the single-player menu, and the real server path: a zombie was turned into gibs
+through `BaseMonster._gib()` from inside the server frame.
+
+- 4 client gibs appeared for a 57344-volume zombie (`ceil(57344 / 16000)`), with **0**
+  `misc_gib` server edicts. They rendered tumbling in the air and settled on the floor
+  (`velocity` zero, `angles` frozen), with `leafs` populated.
+- Save mid-flight, then `load`: gibs came back, a gib already at rest kept the exact same
+  position, and one that was still in the air at save time (`(568.8, 226.7, 33)`, falling) landed
+  at `(573.8, 252.1, 0)` after the load, consistent with continuing the flight. Gibs whose
+  remaining lifetime ran out during the (slow, software-GL) load were gone, as expected.
+- No console errors beyond sandbox noise (software-GL performance messages, unrelated 404s).
+- Not verified: anything involving Pointer Lock, and multi-client behavior (every client rolls its
+  own spin and lifetime by design).
+- Harness gotcha worth knowing: a server-side broadcast made from outside the server frame (e.g.
+  from `page.evaluate()`) is lost, because `SV.server.expedited_datagram` is cleared at the start
+  of the next frame before it is sent. Trigger test broadcasts from inside a frame.
+
+### Polish (2026-10-04)
+
+- **Layout:** all of id1's client edict handlers live in `client/entity/`, mirroring the server's
+  `entity/` folder: `Gibs.ts`, `Bubbles.ts`, `Misc.ts` (fireball), `Player.ts` and
+  `monster/Boss.ts` (lava ball), plus `ClientEdictHandlers.ts` with the list. The fireball and
+  player handlers used to be classes inside the server entities; the server entities no longer
+  carry a `clientEdictHandler`, and that field is gone from `BaseEntity`/`EntityClass`, so the
+  registry is the only way to attach a handler.
+- **Precache:** `BaseClientEdictHandler` has a `static _precache(engineAPI)` hook, like
+  `BaseEntity._precache()`. The gib and bubble handlers declare their models there, and
+  `ClientEdictHandlerRegistry.precacheAll()` calls them. `ServerGameAPI._precacheResources()`
+  calls it right after the entity registry's `precacheAll()`, so nothing precaches gib or bubble
+  models by name any more (`Gibs.precache()` and `Bubbles.precache()` are gone). The gib sounds
+  were already precached by the player and the monsters.
+- **One registry for both sides:** because the server has to reach it for the precache, it lives on
+  `ServerGameAPI._clientEdictHandlerRegistry`, and `ClientGameAPI._clientEdictHandlerRegistry`
+  defaults to the same instance. A mod defines it once and points both APIs at it (README).
+
+### Known limits
+
+- Client gibs are not synchronized between players: every client rolls its own spin and lifetime.
+  Fine for cosmetics, and deliberately not a goal.
+- Like particles, gibs step with `Host.frametime`, so they keep falling during a server pause.
+
+## Phase 8: client-side bubbles
+
+Follow-up to phase 6, requested 2026-10-04: bubbles were the other obvious pile of cosmetic
+server entities. Two sources feed `BubbleEntity` (`misc_bubble`, a `MOVETYPE_FLY` + `SOLID_TRIGGER`
+edict that is networked every frame): the player's death/drowning burst
+(`BubbleSpawnerEntity.bubble()`, one bubble every 0.1 s, up to 50) and every map-placed
+`air_bubbles` (one bubble every 1 to 2 s, forever, each living up to 10 s). Both become client-only.
+
+### Design
+
+- **No spawner entity for the death burst.** The server broadcasts one `clientEvent.EMIT_BUBBLES`
+  (`origin: Vector, count: number`); the client spawns `count` bubbles at once, each hidden until its
+  own start delay (`(i + 1) * 0.1 s`, the server's schedule) has elapsed. A spawner entity would
+  only exist to hold those two numbers.
+- **`air_bubbles` becomes a static client entity.** The server entity calls `makeStatic()` like the
+  torch lights do, so the signon regenerates it on every (re)connect, and the client handler
+  (`AirBubblesClientEdictHandler`, registered under `air_bubbles` in the client handler registry)
+  spawns a bubble every 1 to 2 s on its own. Zero network traffic after signon, and the spawner is
+  not `persistent`. `makeStatic()` needs a model index, so the spawner carries `progs/s_bubble.spr`
+  with `EF_NODRAW`.
+- **`BubbleClientEdictHandler` (`client_bubble`, persistent)** rises at 15 +/- 1 units/s, re-rolls
+  its +/-2 horizontal drift every second, and lives up to 10 s, as the server one did. It does not
+  use `ClientEntityPhysics`: there is no gravity or bounce, and a swept trace every frame for
+  hundreds of near-static bubbles is wasteful. It moves with `setOrigin()` each frame (keeping
+  `leafs` right) and runs its two checks four times per second: still in water (point contents),
+  and not within 8 units (the old trigger box) of the world above it.
+- **Spawn parameters.** The handler needs a per-instance start delay, and `spawn()` has no inputs.
+  Added an optional `parameters` argument to `ClientEdict.spawn()`/`BaseClientEdictHandler.spawn()`
+  (`ClientSpawnParameters`, the same value shapes `ClientSerialization` supports) instead of
+  having game code poke handler internals.
+- **Engine addition:** `ClientEngineAPI.DetermineStaticWorldContents(origin)`, the client-side
+  counterpart of the server API's method of the same name, for the water check.
+- **id1:** `misc_bubble` and `misc_bubble_spawner` are removed, `StaticBubbleSpawnerEntity` stays as
+  the `air_bubbles` map entity but no longer spawns anything server-side, and a new `Bubbles`
+  class (`entity/Bubbles.ts`) owns the broadcast and the model precache (clients need
+  `progs/s_bubble.spr` in `model_precache` even on maps without any `air_bubbles`).
+
+### What shipped (2026-10-04)
+
+All of the above as designed. Notes on what differs from or adds to it:
+
+- Handlers are looked up through `ClientEdictHandlerRegistry` (see phase 6, gap 4), so
+  `AirBubblesClientEdictHandler` is registered under `air_bubbles` there instead of hanging off the
+  server entity class.
+- `BubbleClientEdictHandler.spawnBubble()`/`spawnBurst()` hold the spawn logic, as
+  `GibClientEdictHandler.spawnGib()` does for gibs; `ClientGameAPI` only subscribes to the events.
+- Tests: `test/client/bubble-edict-handler.test.mjs` (hidden until the delay, rise and drift, pops
+  out of water and below a ceiling, check rate, old age, save/load of an appeared and of a waiting
+  bubble, burst spacing, the `air_bubbles` cadence), `test/entity/bubbles.test.mjs`,
+  `test/helper/client-edict-handler-registry.test.mjs`, the `air_bubbles` server entity in
+  `test/entity/misc.test.mjs`, event wiring in `test/client/client.test.mjs`, plus engine tests for
+  spawn parameters (`test/client/client-entities.test.mjs`) and `DetermineStaticWorldContents()`.
+  Full suite 1372 tests, `npm run typecheck` clean, `eslint` clean on touched files.
+
+### PVS culling (2026-10-04)
+
+Follow-up: an `air_bubbles` only releases bubbles while the player could see it.
+
+- `ClientEntities.isPotentiallyVisible(entity)` / `ClientEngineAPI.IsInPVS(entity)` answer from
+  the PVS the last `emit()` pass computed for the view (one frame behind), also for `EF_NODRAW`
+  entities, which the emit pass itself skips. It says "visible" when there is nothing to tell it by
+  (no view yet, or an entity linked into no leaf), so a spawner is never silenced by missing data.
+  The emit contract is unchanged: a hidden entity's `emit()` is still not called.
+- When the spawner comes back into view it replays the bubbles it missed (at most the last 10 s
+  worth), each spawned with an `age` that raises it by 15 units/s and shortens its life, so the
+  column is there at once instead of filling up over eight seconds. Bubbles above the water or
+  below a ceiling pop on their first check.
+- Tests: `isPotentiallyVisible()` in `test/client/client-entities.test.mjs`, the culling and replay
+  in `test/client/bubble-edict-handler.test.mjs`.
+
+### Live verification (2026-10-04)
+
+Real browser, real listen server, `e1m4` (two `air_bubbles`, loaded through the console `map`
+command):
+
+- Both `air_bubbles` showed up as non-persistent static client entities, bubbles streamed from them
+  (7 to 14 alive at a time, rising from z 445 to about 560, the water surface) and the server held
+  **0** `misc_bubble` edicts.
+- A server-broadcast `EMIT_BUBBLES` burst of 20 produced 20 more bubbles with staggered
+  visibility (23 of 33 visible 1.2 s in, all visible by 3.7 s).
+- Save and `load` brought the bubbles back (32 before the save, 33 after the load).
+- A bubble sprite rendered underwater. No console errors.
+- Not verified: the player-death trigger itself (`Bubbles.emit()` is covered by unit tests, the
+  live run broadcast the event directly), Pointer Lock, and multiple clients.
+
+### Known limits
+
+- A map author's `spread` key on `air_bubbles` is no longer honored: a static client entity does not
+  receive map fields, and no stock map sets it.
+- The PVS is coarse: an `air_bubbles` in a leaf the view can potentially see keeps releasing bubbles
+  even when a wall is in the way.
+
+## Phase 9: engine-driven physics by move type
+
+Raised 2026-10-04 after phase 6: the gib handler called `ClientEntityPhysics.step()` itself and
+carried a copy of the server's rest rule, so the next client-only entity would copy it again. This
+is open question 6 ("share the toss/bounce orchestration once there is a real consumer"), now with
+a consumer. Decisions (2026-10-04, all the recommended options): move types `NONE`, `TOSS` and
+`BOUNCE` only; the state as fields on `ClientEdict`; handlers get hooks instead of calling or
+polling anything; the server shares only the rest rule.
+
+### Direction
+
+The developer plans to drop in a proper physics engine later, one that simulates from the model, its
+skeleton and its hitboxes. So game code is a **user** of physics, never a provider: it declares a
+move type (and initial values like the tumble) and reacts to `impact()`/`rest()`, while everything
+that integrates, collides or decides about rest is engine-internal. A replacement backend then
+swaps one call site (`ClientEntities.#physicsEntities()` calling `ClientEntityPhysics.step()`)
+without touching a handler. The bubble handler is the one place where a game still moves its own
+entity, a gap to close when the engine can offer a buoyancy-like move type without a world trace
+per bubble per frame.
+
+### Design
+
+- **Fields on `ClientEdict`:** `movetype` (the shared `moveType` enum, default `MOVETYPE_NONE`),
+  `avelocity`, `gravity` (a multiplier, like the server's `entity.gravity`) and `onGround`. Entities
+  mirrored from the server stay at `NONE`: the protocol does not carry a move type, and only
+  client-owned entities (`static_entities`) are ever stepped.
+- **The step:** a new `ClientEntityPhysics.step(clent, frametime)` (`source/engine/client/ClientEntityPhysics.ts`, moved here from `source/shared/`)
+  that `ClientEntities.think()` runs for every live `TOSS`/`BOUNCE` entity that is not on the
+  ground, **before** the handlers' `think()`. It mirrors the relevant part of
+  `ServerPhysics.physicsToss()`: gravity from `movevars.gravity` times `clent.gravity`, the tumble
+  from `avelocity` through the same quaternion composition, a world trace
+  (`SV.collision.traceWorldLine()`, no `GameTrace` allocation on the hot path), `setOrigin()` to the
+  end point (so `leafs` stay right), `PhysicsMath.clipVelocity()` with overbounce 1.5 for `BOUNCE`
+  and 1.0 for `TOSS`, and the rest rule. Starting and staying inside solid counts as at rest.
+- **Pause:** the step is skipped while `CL.state.paused`, which removes the "keeps falling during a
+  server pause" limit of phase 6.
+- **Hooks:** `BaseClientEdictHandler.impact(trace)` (the world hit, as a `GameTrace`) and
+  `rest()` (the entity came to rest on a floor-like surface, or is stuck in solid). Both default to
+  doing nothing and are called by the engine, never by a handler.
+- **Rest rule shared with the server:** `PhysicsMath.shouldComeToRest(normalZ, velocityZ, bounces)`
+  holds the "floor-like plane, and for `BOUNCE` slower than `PhysicsMath.BOUNCE_REST_SPEED` (60)"
+  decision, and `ServerPhysics.physicsToss()` uses it too. Nothing else on the server changes.
+- **Saves:** `SerializedClientEntity` gains `movetype`, `avelocity`, `gravity` and `onGround`, which
+  the engine restores together with the origin, angles and velocity, after `spawn()` (so a handler
+  that sets them in `spawn()` does not overwrite what was saved). The gib handler's own saved state
+  shrinks to its remaining lifetime.
+- **Moved:** `ClientEntityPhysics` goes from `source/shared/` to `source/engine/client/` and loses its per-handler composition (phase 3's
+  fork B). The engine owns that code now, there is one implementation.
+- **Not engine physics:** bubbles keep their own cheap movement (no gravity or bounce, and a world
+  trace per bubble per frame would cost too much at hundreds of bubbles); they stay at `NONE`.
+
+### What shipped (2026-10-05)
+
+All of the above as designed. `PhysicsMath` moved from `source/shared/` to `source/engine/common/` (its test
+to `test/common/`) afterwards: only engine code uses it (`ServerPhysics`, `ServerClientPhysics`,
+`ClientEntityPhysics`, the particle collision in `R.ts`), game code never did, and with the physics
+owned by the engine it has no reason to sit in the tree game modules may import from. Earlier
+mentions of `source/shared/PhysicsMath.ts` in this plan are the history of that file. `ClientEntityPhysics` (now `source/engine/client/ClientEntityPhysics.ts`,
+a static class) is called from `ClientEntities.#physicsEntities()` at the start of `think()`, the
+gib handler shrank to `spawn()` (picks `MOVETYPE_BOUNCE` and a random tumble), a lifetime check in
+`think()` and a `serialize()` of the remaining lifetime. `PhysicsMath.shouldComeToRest()` and
+`BOUNCE_REST_SPEED` are shared with `ServerPhysics.physicsToss()`, whose own tests still pass
+unchanged.
+
+Tests: `test/client/client-entity-physics.test.mjs` (rewritten for the engine step: gravity from the
+world times the entity multiplier, tumble, bounce and toss, impact and rest hooks and their order,
+wall hits, stuck in solid, leaf recompute, stepping before `think()`, `NONE`/resting/freed/paused/
+server-mirrored entities not stepped), the physics fields in `test/client/client-entities-savegame.test.mjs`,
+`PhysicsMath.shouldComeToRest()` in `test/shared/physics-math.test.mjs`, and the gib handler on top of
+the real engine step in `test/client/entity/gib-edict-handler.test.mjs`. Full suite 1396 tests,
+`npm run typecheck` clean, `eslint` clean on touched files.
+
+Live (real browser, `e1m1` listen server, a zombie gibbed through `_gib()`): 4 gibs with
+`movetype` 10 flew, tumbled and came to rest (`onGround` set by the engine) with 0 server gib edicts.
+After a save mid-flight and a load, the resting gibs were back at exactly their saved positions and
+the ones still flying at save time came to rest afterwards. No console errors beyond the unrelated 404s.
 
 ## Extension: gravity-particle collision (`R.ts`)
 

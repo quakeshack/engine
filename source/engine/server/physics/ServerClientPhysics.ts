@@ -2,7 +2,7 @@ import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import PhysicsMath from '../../../shared/PhysicsMath.ts';
+import PhysicsMath from '../../common/PhysicsMath.ts';
 import { eventBus, getCommonRegistry } from '../../registry.ts';
 import { ServerClient } from '../Client.ts';
 import { PmovePlayer } from '../../common/Pmove.ts';

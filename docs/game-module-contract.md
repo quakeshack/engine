@@ -105,7 +105,7 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 3. The client loads the map's models and sounds, then calls `init()`, followed by `loadGame(data)` when a savegame is being restored.
 4. While connected, the engine writes the server's `clientdata` updates into `clientdata` and forwards client events to `handleClientEvent(code, ...args)`.
 5. Every frame: `startFrame()`; after the view is calculated, `updateRefDef(refdef)`; `draw()` for the HUD; `drawLoading()` while connecting or changing level. The engine reads `viewmodel` to draw the first-person weapon.
-6. `GetClientEdictHandler(classname)` is asked when a client entity is assigned a classname.
+6. `GetClientEdictHandler(classname)` is asked when a client entity is assigned a classname. That covers both entities mirrored from the server and client-only ones a game spawns itself with `ClientEngineAPI.SpawnClientEntity(classname, { persistent })`: a client-only classname has no server entity class, so the game resolves it from its own table (for example a registry of handler classes keyed by classname). A persistent client-only entity is captured by savegames, including its model name and whatever its handler's `serialize()` returns. See [Client Entities](client-entities.md).
 7. When the client disconnects, `shutdown()` runs.
 
 ## Who writes what
