@@ -2,10 +2,8 @@ import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
+import PhysicsMath from '../../common/PhysicsMath.ts';
 import { eventBus, getCommonRegistry } from '../../registry.ts';
-import {
-  VELOCITY_EPSILON,
-} from './Defs.ts';
 import { ServerClient } from '../Client.ts';
 import { PmovePlayer } from '../../common/Pmove.ts';
 import { BrushModel } from '../../common/Mod.ts';
@@ -240,11 +238,11 @@ export class ServerClientPhysics {
     for (let index = 1; index < 6; index++) {
       const step = z[index] - z[index - 1];
 
-      if (Math.abs(step) <= VELOCITY_EPSILON) {
+      if (Math.abs(step) <= PhysicsMath.VELOCITY_EPSILON) {
         continue;
       }
 
-      if (dir !== 0.0 && Math.abs(step - dir) > VELOCITY_EPSILON) {
+      if (dir !== 0.0 && Math.abs(step - dir) > PhysicsMath.VELOCITY_EPSILON) {
         return;
       }
 

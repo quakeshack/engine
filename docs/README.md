@@ -6,6 +6,7 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 
 - [Browser Verification Technique](browser-verification.md) - How to drive a live headless-browser smoke test of the client (no chromium-cli/playwright dependency) for verifying UI/frontend changes.
 - [BSPX Support](bspx.md) - Details on supported BSPX extensions and lumps for advanced mapping features.
+- [Client Entities](client-entities.md) - Client-only entities (gibs, bubbles, debris): handlers, spawning, physics, sequences, PVS culling and save games, and how that compares to WinQuake.
 - [Client Server Architecture](cs.md) - Overview of the client-side architecture.
 - [Code Style Guide](code-style-guide.md) - Coding conventions and style rules for the QuakeShack Engine codebase.
 - [Console](console.md) - Details regarding the console implementation.

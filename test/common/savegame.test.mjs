@@ -432,6 +432,11 @@ void describe('Host.Savegame_f', () => {
         intermission: 0,
         levelname: 'E1M1',
         gameAPI: clientGameAPI,
+        clientEntities: {
+          serialize() {
+            return [{ classname: 'debris' }];
+          },
+        },
       },
     };
     registry.COM = mockCOM;
@@ -485,6 +490,7 @@ void describe('Host.Savegame_f', () => {
     assert.equal(saved.edicts[2], null);
     assert.equal(saved.num_edicts, 2);
     assert.deepEqual(saved.particles, [{ type: 'spark' }]);
+    assert.deepEqual(saved.clientEntities, [{ classname: 'debris' }]);
     assert.deepEqual(consoleCapture.messages.warning, []);
     assert.deepEqual(consoleCapture.messages.error, []);
     assert.deepEqual(consoleCapture.messages.success, ['done.\n']);
@@ -932,12 +938,17 @@ void describe('Host.save/load integration', () => {
             return JSON.stringify({ hud: 'integration-client' });
           },
         },
+        clientEntities: {
+          serialize() {
+            return [];
+          },
+        },
       },
     };
     const previousResumeGame = ClientLifecycle.resumeGame;
 
-    ClientLifecycle.resumeGame = (clientdata, particles) => {
-      resumes.push({ clientdata, particles });
+    ClientLifecycle.resumeGame = (clientdata, particles, clientEntities) => {
+      resumes.push({ clientdata, particles, clientEntities });
     };
 
     try {
@@ -1042,6 +1053,7 @@ void describe('Host.save/load integration', () => {
         assert.deepEqual(resumes, [{
           clientdata: JSON.stringify({ hud: 'integration-client' }),
           particles: [],
+          clientEntities: [],
         }]);
       });
     } finally {

@@ -4,6 +4,9 @@ import { describe, test } from 'node:test';
 import ClientEntities, { ClientDlight, ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 import { eventBus, registry } from '../../source/engine/registry.ts';
+import Vector from '../../source/shared/Vector.ts';
+import { content, effect } from '../../source/shared/Defs.ts';
+import GameModule from '../../source/engine/common/GameModule.ts';
 
 /**
  * Computes wrapped angular delta in degrees.
@@ -140,6 +143,58 @@ void describe('ClientEdict.lerp.origin', () => {
   });
 });
 
+/**
+ * Runs a callback with a minimal `CL.state.worldmodel` installed so `ClientEdict.setOrigin()`/
+ * `linkEdict()` can recompute `leafs` against a real (if tiny) BSP node tree.
+ * @param {{nodes: unknown[]}} worldmodel worldmodel fixture with a root BSP node
+ * @param {() => void} callback
+ */
+function withMockWorldmodelRegistry(worldmodel, callback) {
+  const previousCL = registry.CL;
+
+  registry.CL = { state: { worldmodel } };
+  eventBus.publish('registry.frozen');
+
+  const restore = () => {
+    registry.CL = previousCL;
+    eventBus.publish('registry.frozen');
+  };
+
+  try {
+    callback();
+  } finally {
+    restore();
+  }
+}
+
+void describe('ClientEdict.linkEdict', () => {
+  void test('replaces leafs on each call instead of accumulating them across repeated setOrigin() calls', () => {
+    // Regression test: #splitEntityOnNode only ever appends to `leafs`, so without clearing it
+    // first, a repeatedly-moved entity (e.g. ClientEntityPhysics.step() calling setOrigin() every
+    // frame) would keep every leaf it had ever occupied instead of just its current one.
+    const leafA = { contents: content.CONTENT_EMPTY, num: 1 };
+    const leafB = { contents: content.CONTENT_EMPTY, num: 2 };
+    const worldmodel = {
+      nodes: [{
+        contents: 0,
+        plane: { normal: new Vector(1, 0, 0), dist: 0, type: 0, signbits: 0 },
+        children: [leafA, leafB],
+      }],
+    };
+
+    withMockWorldmodelRegistry(worldmodel, () => {
+      const entity = new ClientEdict(-1);
+      entity.model = { mins: new Vector(-8, -8, -8), maxs: new Vector(8, 8, 8) };
+
+      entity.setOrigin(new Vector(50, 0, 0));
+      assert.deepEqual(entity.leafs, [1]);
+
+      entity.setOrigin(new Vector(-50, 0, 0));
+      assert.deepEqual(entity.leafs, [2], 'expected the stale leaf from the previous position to be gone, not appended to');
+    });
+  });
+});
+
 void describe('ClientEdict.markFree', () => {
   void test('sets free to true', () => {
     const entity = new ClientEdict(-1);
@@ -169,6 +224,126 @@ void describe('ClientEntities.getEntities', () => {
 
     assert.equal(entity.free, true);
     assert.ok(![...clientEntities.getEntities()].includes(entity));
+  });
+});
+
+void describe('ClientEdict.spawn', () => {
+  /**
+   * Allocates a client-only entity whose handler records the parameters it is spawned with.
+   * @returns {{entity: ClientEdict, spawned: Array<object|undefined>}} the entity and the recorded spawn() arguments
+   */
+  function allocateRecordingEntity() {
+    const spawned = [];
+
+    class RecordingHandler extends BaseClientEdictHandler {
+      spawn(parameters) {
+        spawned.push(parameters);
+      }
+    }
+
+    const previous = GameModule.active;
+    GameModule.active = {
+      identification: { name: 'Test Game', author: 'test', version: [1, 0, 0], capabilities: [] },
+      ClientGameAPI: { GetClientEdictHandler: () => RecordingHandler },
+    };
+
+    try {
+      return { entity: new ClientEntities().allocateSimulatedEntity('test_recording'), spawned };
+    } finally {
+      GameModule.active = previous;
+    }
+  }
+
+  void test('hands the per-instance parameters on to the handler', () => {
+    const { entity, spawned } = allocateRecordingEntity();
+
+    entity.spawn({ delay: 2.5 });
+
+    assert.deepEqual(spawned, [{ delay: 2.5 }]);
+  });
+
+  void test('passes no parameters when the entity comes from the network, a map or a save game', () => {
+    const { entity, spawned } = allocateRecordingEntity();
+
+    entity.spawn();
+
+    assert.deepEqual(spawned, [undefined]);
+  });
+});
+
+void describe('ClientEntities.isPotentiallyVisible', () => {
+  /**
+   * Runs a callback with a registry fixture whose world answers every PVS lookup with the given
+   * visibility, so `emit()` can run its static entity pass.
+   * @param {{areRevealed: (leafs: number[]) => boolean}} visibility the PVS of the current view
+   * @param {() => void} callback
+   */
+  function withViewVisibility(visibility, callback) {
+    const previousCL = registry.CL;
+    const previousR = registry.R;
+
+    registry.CL = { state: { worldmodel: { getPvsByPoint: () => visibility }, viewentity: 1 } };
+    registry.R = { novis: { value: 0 }, refdef: { vieworg: new Vector() } };
+    eventBus.publish('registry.frozen');
+
+    try {
+      callback();
+    } finally {
+      registry.CL = previousCL;
+      registry.R = previousR;
+      eventBus.publish('registry.frozen');
+    }
+  }
+
+  void test('is true before any view has been processed', () => {
+    const entity = new ClientEdict(-1);
+    entity.leafs.push(7);
+
+    assert.equal(new ClientEntities().isPotentiallyVisible(entity), true);
+  });
+
+  void test('follows the PVS of the view of the last emit pass, also for entities that are not drawn', () => {
+    const clientEntities = new ClientEntities();
+    const seen = clientEntities.allocateStaticEntity('test_seen');
+    const hidden = clientEntities.allocateStaticEntity('test_hidden');
+    const undrawn = clientEntities.allocateStaticEntity('test_undrawn');
+    seen.leafs.push(1);
+    hidden.leafs.push(2);
+    undrawn.leafs.push(1);
+    undrawn.effects |= effect.EF_NODRAW;
+
+    withViewVisibility({ areRevealed: (leafs) => leafs.includes(1) }, () => {
+      clientEntities.emit();
+
+      assert.equal(clientEntities.isPotentiallyVisible(seen), true);
+      assert.equal(clientEntities.isPotentiallyVisible(hidden), false);
+      assert.equal(clientEntities.isPotentiallyVisible(undrawn), true);
+    });
+  });
+
+  void test('cannot tell an entity that is not linked into any leaf, so it counts as visible', () => {
+    const clientEntities = new ClientEntities();
+    const unlinked = clientEntities.allocateStaticEntity('test_unlinked');
+
+    withViewVisibility({ areRevealed: () => false }, () => {
+      clientEntities.emit();
+
+      assert.equal(clientEntities.isPotentiallyVisible(unlinked), true);
+    });
+  });
+
+  void test('forgets the view when the entities are cleared for a new map', () => {
+    const clientEntities = new ClientEntities();
+    const entity = clientEntities.allocateStaticEntity('test_entity');
+    entity.leafs.push(2);
+
+    withViewVisibility({ areRevealed: () => false }, () => {
+      clientEntities.emit();
+      assert.equal(clientEntities.isPotentiallyVisible(entity), false);
+
+      clientEntities.clear();
+      assert.equal(clientEntities.isPotentiallyVisible(entity), true);
+    });
   });
 });
 

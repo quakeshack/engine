@@ -1,4 +1,5 @@
-import type { ClientEventValue } from '../../shared/GameInterfaces.ts';
+import type { ClientEventValue, SerializedData } from '../../shared/GameInterfaces.ts';
+import type { GameTrace } from '../common/GameAPIs.ts';
 import type { SFX } from './Sound.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
@@ -7,13 +8,14 @@ import type { Pmove } from '../common/Pmove.ts';
 import Vector, { Quaternion } from '../../shared/Vector.ts';
 import { eventBus, getClientRegistry } from '../registry.ts';
 import * as Def from '../common/Def.ts';
-import { content, effect, solid } from '../../shared/Defs.ts';
+import { content, effect, moveType, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.ts';
+import ClientEntityPhysics from './ClientEntityPhysics.ts';
 import { DefaultClientEdictHandler } from './ClientLegacy.ts';
-import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
+import { BaseClientEdictHandler, type ClientSpawnParameters } from '../../shared/ClientEdict.ts';
 import GameModule from '../common/GameModule.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import { revealedVisibility, type Node } from '../common/model/BSP.ts';
+import { revealedVisibility, type Node, type Visibility } from '../common/model/BSP.ts';
 
 interface ClientEntityLerpState {
   readonly frame: [number, number, number];
@@ -29,6 +31,26 @@ interface TempEntitySounds {
   ric2: SFX | null;
   ric3: SFX | null;
   explosion: SFX | null;
+}
+
+/**
+ * Flat, JSON-safe save-game snapshot of one persistent client-only entity (`ClientEdict.
+ * persistent`), captured by `ClientEntities.serialize()`.
+ */
+export interface SerializedClientEntity {
+  readonly classname: string;
+  /** Name of the entity's model (e.g. `progs/gib1.mdl`), or `null` when it has none. */
+  readonly model: string | null;
+  readonly origin: readonly [number, number, number];
+  readonly angles: readonly [number, number, number];
+  readonly velocity: readonly [number, number, number];
+  /** The engine-driven physics state, see `ClientEdict.movetype`. */
+  readonly movetype: moveType;
+  readonly avelocity: readonly [number, number, number];
+  readonly gravity: number;
+  readonly onGround: boolean;
+  /** The owning handler's own `serialize()` result, or `null` when it saved nothing. */
+  readonly handlerData: SerializedData | null;
 }
 
 let { CL, Con, Host, Mod, R, S } = getClientRegistry();
@@ -112,10 +134,16 @@ export class ClientBeam {
 }
 
 /**
- * Client edict maps to a server edict.
- * It is used to keep track of entities on the client side.
- * Optionally there can be a ClientEdictHandler for each entity handling
- * more complex logic that is not part of a client-server session.
+ * The engine-side record of one entity on the client, the counterpart of `ServerEdict`. "Edict"
+ * is the engine's word for that record (number, model, origin, links); what a game thinks of as
+ * the entity is its handler.
+ *
+ * It serves three kinds of entities: ones mirrored from a server edict (`num >= 0`), static
+ * decorations from `svc_spawnstatic`, and client-only entities a game spawns itself (see
+ * `isClientOwned()` and `docs/client-entities.md`).
+ *
+ * Optionally there can be a `BaseClientEdictHandler` for each edict, handling the logic that is
+ * not part of a client-server session.
  */
 export class ClientEdict { // TODO: extends Protocol.EntityState
   #handler: BaseClientEdictHandler | null = null;
@@ -142,6 +170,19 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   velocityPrevious: Vector;
   velocityTime: number;
   velocity: Vector;
+  /**
+   * How the engine moves this entity. Only client-owned entities are ever stepped, and only with
+   * `MOVETYPE_TOSS` or `MOVETYPE_BOUNCE` (gravity, collision with the world, and for a bounce the
+   * rest rule, see `ClientEntityPhysics`); everything else, including every entity mirrored from
+   * the server, stays at `MOVETYPE_NONE` and is moved by whoever owns it.
+   */
+  movetype: moveType;
+  /** Tumble rate in degrees per second, applied while the entity is stepped. */
+  avelocity: Vector;
+  /** Multiplier of the world gravity for this entity, like the server's `entity.gravity`. */
+  gravity: number;
+  /** Whether the engine-driven physics has come to rest. A resting entity is not stepped again. */
+  onGround: boolean;
   dlightbits: number;
   dlightframe: number;
   /** keeps track of origin changes */
@@ -153,8 +194,15 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   leafs: number[];
   /** count of received updates */
   updatecount: number;
-  /** whether is ClientEntity is ready to be recycled */
+  /** whether this ClientEdict is ready to be recycled */
   free: boolean;
+  /**
+   * Whether this client-only entity survives save/load, set by `ClientEntities.
+   * allocateSimulatedEntity()` (procedurally-spawned effects like debris) but not
+   * `allocateStaticEntity()` (`svc_spawnstatic` decorations, regenerated by the server's signon on
+   * every (re)connect and thus never saved). See `ClientEntities.serialize()`.
+   */
+  persistent: boolean;
   syncbase: number;
   /**
    * End time of the current network-driven lerp window (origin/angles/frame interpolate towards
@@ -203,6 +251,10 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.velocityPrevious = new Vector(Infinity, Infinity, Infinity);
     this.velocityTime = 0.0;
     this.velocity = new Vector();
+    this.movetype = moveType.MOVETYPE_NONE;
+    this.avelocity = new Vector();
+    this.gravity = 1.0;
+    this.onGround = false;
     this.dlightbits = 0;
     this.dlightframe = 0;
     this.msg_origins = [new Vector(), new Vector()];
@@ -211,6 +263,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.leafs = [];
     this.updatecount = 0;
     this.free = false;
+    this.persistent = false;
     this.syncbase = 0.0;
     this.lerpEndTime = -1;
     this.maxs = new Vector();
@@ -310,6 +363,10 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.origin.setTo(Infinity, Infinity, Infinity);
     this.angles.setTo(Infinity, Infinity, Infinity);
     this.velocity.clear();
+    this.movetype = moveType.MOVETYPE_NONE;
+    this.avelocity.clear();
+    this.gravity = 1.0;
+    this.onGround = false;
     this.dlightbits = 0;
     this.dlightframe = 0;
     this.msg_origins[0].clear();
@@ -319,6 +376,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.leafs.length = 0;
     this.updatecount = 0;
     this.free = false;
+    this.persistent = false;
     this.maxs.clear();
     this.mins.clear();
     this.originTime = 0.0;
@@ -354,6 +412,12 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     if (rootNode === undefined) {
       return;
     }
+
+    // Recomputed from scratch every call -- #splitEntityOnNode only ever appends, so without this
+    // a repeatedly-moved entity (e.g. ClientEntityPhysics.step() calling setOrigin() every frame)
+    // would keep accumulating leaf numbers from every position it has ever occupied instead of
+    // reflecting where it actually is now.
+    this.leafs.length = 0;
 
     const emins = this.origin.copy().add(this.model.mins);
     const emaxs = this.origin.copy().add(this.model.maxs);
@@ -475,9 +539,13 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     this.velocity.set(this.msg_velocity[0]);
   }
 
-  spawn(): void {
+  /**
+   * Spawns the entity, delegating to the handler's `spawn()`.
+   * @param parameters per-instance inputs for the handler, see `ClientSpawnParameters`
+   */
+  spawn(parameters?: ClientSpawnParameters): void {
     if (this.#handler) {
-      this.#handler.spawn();
+      this.#handler.spawn(parameters);
     }
   }
 
@@ -491,6 +559,37 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
     if (this.#handler) {
       this.#handler.think();
     }
+  }
+
+  /**
+   * Tells the handler that the engine-driven physics hit the world.
+   * @param trace the world hit
+   */
+  impact(trace: GameTrace): void {
+    this.#handler?.impact(trace);
+  }
+
+  /**
+   * Tells the handler that the engine-driven physics has come to rest.
+   */
+  rest(): void {
+    this.#handler?.rest();
+  }
+
+  /**
+   * Delegates to the handler's `serialize()`, for `ClientEntities.serialize()` to fold in
+   * alongside this edict's own classname/origin/angles/velocity.
+   * @returns The handler's saved extras, or `null` when there is no handler or it saved nothing.
+   */
+  serialize(): SerializedData | null {
+    return this.#handler ? this.#handler.serialize() : null;
+  }
+
+  /**
+   * Delegates to the handler's `deserialize()`, restoring the extras `serialize()` captured.
+   */
+  deserialize(data: SerializedData): void {
+    this.#handler?.deserialize(data);
   }
 
   toString(): string {
@@ -529,6 +628,11 @@ export default class ClientEntities {
 
   num_temp_entities = 0;
   num_visedicts = 0;
+
+  /**
+   * The PVS of the view the last `emit()` pass was made for, `null` before the first pass of a map.
+   */
+  #viewVisibility: Visibility | null = null;
 
   tempEntitySounds: TempEntitySounds = {
     wizhit: null,
@@ -586,6 +690,7 @@ export default class ClientEntities {
 
     this.num_temp_entities = 0;
     this.num_visedicts = 0;
+    this.#viewVisibility = null;
 
     // preallocate
     this.dlights.length = Def.limits.dlights;
@@ -732,6 +837,106 @@ export default class ClientEntities {
   }
 
   /**
+   * Allocates a map-baked `svc_spawnstatic` decoration. `persistent` stays `false`: `SV.
+   * SpawnServer()` re-emits `makeStatic()` and thus regenerates these from scratch on every
+   * (re)connect, so `serialize()` correctly excludes them -- saving them would be redundant.
+   * @param classname classname to set for the entity
+   * @returns a new, non-persistent client-only entity
+   */
+  allocateStaticEntity(classname: string): ClientEdict {
+    return this.allocateClientEntity(classname);
+  }
+
+  /**
+   * Allocates a procedurally-spawned client-only entity (debris, gibs, shell casings, ...) that
+   * has no second source of truth to regenerate it from, so `persistent` is set and `serialize()`
+   * captures it for save/load.
+   * @param classname classname to set for the entity
+   * @returns a new, persistent client-only entity
+   */
+  allocateSimulatedEntity(classname: string): ClientEdict {
+    const ent = this.allocateClientEntity(classname);
+    ent.persistent = true;
+    return ent;
+  }
+
+  /**
+   * Captures every persistent, live client-only entity for save/load: `classname` + `origin` +
+   * `angles` + `velocity` (the universal fields every client-only entity has) plus one opaque
+   * blob from the owning handler (`ClientEdict.serialize()`). Mirrors `R.SerializeParticles()`'s
+   * shape and round-trip, extended to the handler-owned tagged `SerializedData` format (see
+   * `source/shared/ClientSerialization.ts`) instead of particles' flat fields, since a handler's
+   * extra state can be richer than a single die time.
+   * @returns The saved client-only entities.
+   */
+  serialize(): SerializedClientEntity[] {
+    const result: SerializedClientEntity[] = [];
+
+    for (const clent of this.static_entities) {
+      if (!clent.persistent || clent.free) {
+        continue;
+      }
+
+      console.assert(clent.classname !== null, 'a persistent client-only entity must have a classname');
+
+      if (clent.classname === null) {
+        continue;
+      }
+
+      result.push({
+        classname: clent.classname,
+        model: clent.model?.name ?? null,
+        origin: [clent.origin[0], clent.origin[1], clent.origin[2]],
+        angles: [clent.angles[0], clent.angles[1], clent.angles[2]],
+        velocity: [clent.velocity[0], clent.velocity[1], clent.velocity[2]],
+        movetype: clent.movetype,
+        avelocity: [clent.avelocity[0], clent.avelocity[1], clent.avelocity[2]],
+        gravity: clent.gravity,
+        onGround: clent.onGround,
+        handlerData: clent.serialize(),
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Restores persistent client-only entities saved by `serialize()`: re-creates each one via
+   * `allocateSimulatedEntity()`, restores its model by name from the client's precache list (a
+   * model that is no longer precached leaves it `null`), spawns it, restores its universal
+   * fields, then hands the saved blob (if any) to the handler's `deserialize()`. The model comes
+   * first so `setOrigin()` links against it and fills `leafs` for the entity's first frame back
+   * (an unlinked entity would be culled until it moved, problem #5's stale-PVS footgun); a handler
+   * whose `spawn()` assigns its own model still wins, as it does for a freshly spawned entity. The
+   * engine-driven physics state (`movetype` and friends) is restored after `spawn()` as well, so
+   * what a handler sets there while spawning does not overwrite what was saved.
+   * `deserialize()` runs last so it can correct whatever `spawn()`'s fresh-entity defaults
+   * initialized.
+   */
+  deserialize(data: readonly SerializedClientEntity[]): void {
+    for (const entry of data) {
+      const clent = this.allocateSimulatedEntity(entry.classname);
+
+      if (entry.model !== null) {
+        clent.model = CL.state.model_precache.find((model) => model?.name === entry.model) ?? null;
+      }
+
+      clent.spawn();
+      clent.setOrigin(new Vector(entry.origin[0], entry.origin[1], entry.origin[2]));
+      clent.angles.setTo(entry.angles[0], entry.angles[1], entry.angles[2]);
+      clent.velocity.setTo(entry.velocity[0], entry.velocity[1], entry.velocity[2]);
+      clent.movetype = entry.movetype;
+      clent.avelocity.setTo(entry.avelocity[0], entry.avelocity[1], entry.avelocity[2]);
+      clent.gravity = entry.gravity;
+      clent.onGround = entry.onGround;
+
+      if (entry.handlerData !== null) {
+        clent.deserialize(entry.handlerData);
+      }
+    }
+  }
+
+  /**
    * Returns a client entity by its number.
    * If the entity does not exist, it will be allocated as a null entity.
    * @param num entity number
@@ -831,7 +1036,30 @@ export default class ClientEntities {
     }
   }
 
+  /**
+   * Steps the engine-driven physics of every client-owned entity that is tossed or bouncing and not
+   * at rest yet. Skipped while paused.
+   */
+  #physicsEntities(): void {
+    if (CL.state.paused) {
+      return;
+    }
+
+    const frametime = Host.frametime;
+
+    for (const clent of this.static_entities) {
+      if (clent.free || clent.onGround) {
+        continue;
+      }
+
+      if (clent.movetype === moveType.MOVETYPE_TOSS || clent.movetype === moveType.MOVETYPE_BOUNCE) {
+        ClientEntityPhysics.step(clent, frametime);
+      }
+    }
+  }
+
   think(): void {
+    this.#physicsEntities();
     this.#thinkEntities();
     this.#thinkTempEntities();
     this.#thinkDlights();
@@ -885,6 +1113,7 @@ export default class ClientEntities {
     // get the PVS for the current view
     const rendererState = R as typeof R & { novis: { value: number } };
     const vis = rendererState.novis.value !== 0 ? revealedVisibility : worldmodel.getPvsByPoint(R.refdef.vieworg);
+    this.#viewVisibility = vis;
 
     for (const clent of this.static_entities) {
       // freed entity or invisible entity
@@ -905,6 +1134,19 @@ export default class ClientEntities {
       clent.emit();
       this.visedicts[this.num_visedicts++] = clent;
     }
+  }
+
+  /**
+   * Tells whether an entity sits in the PVS of the current view, i.e. whether the player could see
+   * it from where they are. Unlike the emit pass this also answers for entities that are not drawn
+   * (`EF_NODRAW`), which lets an invisible effect source skip its work while nobody can see it.
+   * Reflects the view of the last `emit()` pass, so it lags by a frame.
+   * @param clent the entity to check, its `leafs` have to be linked
+   * @returns True when the entity is in the PVS, or when there is nothing to tell it by: no view
+   * has been processed yet, or the entity is not linked into any leaf.
+   */
+  isPotentiallyVisible(clent: ClientEdict): boolean {
+    return this.#viewVisibility === null || clent.leafs.length === 0 || this.#viewVisibility.areRevealed(clent.leafs);
   }
 
   #emitProjectiles(): void {

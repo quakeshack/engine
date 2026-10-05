@@ -258,6 +258,9 @@ function parseServerData() {
     if (CL.state.loadClientData && Array.isArray(CL.state.loadClientData[1])) {
       R.DeserializeParticles(CL.state.loadClientData[1]);
     }
+    if (CL.state.loadClientData && Array.isArray(CL.state.loadClientData[2])) {
+      CL.state.clientEntities.deserialize(CL.state.loadClientData[2]);
+    }
     CL.state.loadClientData = null;
   });
 }
@@ -316,7 +319,7 @@ function parseStartSoundPacket() {
  * Parses a static entity definition.
  */
 function parseStaticEntity() {
-  const ent = CL.state.clientEntities.allocateClientEntity(NET.message.readString());
+  const ent = CL.state.clientEntities.allocateStaticEntity(NET.message.readString());
   const modelindex = NET.message.readByte();
   ent.modelindex = modelindex;
   ent.model = CL.state.model_precache[modelindex] || null;

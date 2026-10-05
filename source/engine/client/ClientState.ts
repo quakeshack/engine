@@ -9,7 +9,7 @@ import type { SerializedParticle } from './R.ts';
 import type { ClientGameInterface, ClientSerializableType, SFX } from '../../shared/GameInterfaces.ts';
 import type ClientDemos from './ClientDemos.ts';
 import { EventBus, eventBus, getClientRegistry } from '../registry.ts';
-import ClientEntities, { ClientEdict } from './ClientEntities.ts';
+import ClientEntities, { ClientEdict, type SerializedClientEntity } from './ClientEntities.ts';
 import { ClientMessages } from './ClientMessages.ts';
 
 type ClientConnectionProgress = {
@@ -27,7 +27,7 @@ type ClientMoveCommand = {
   msec: number;
 };
 
-type ClientLoadData = [string | null, SerializedParticle[] | null];
+type ClientLoadData = [string | null, SerializedParticle[] | null, SerializedClientEntity[] | null];
 
 let { CL } = getClientRegistry();
 
