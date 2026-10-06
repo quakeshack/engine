@@ -4,7 +4,7 @@
 file layer), Phase 2b (the server runtime and the realm services it uses without the registry) and Phase 3
 (the server in a worker, in three steps: 3a, 3b, 3c) are done (2026-10-05)**; the worker is the default in the
 browser, `?serverthread` opts out. See "Phase 1: what shipped" to "Phase 3c: what shipped" below. Phase 4 (the
-client side of the registry, deleting it) is next and waits for a go-ahead. `client-entity-architecture` was squash-merged to `main` as `9abb71b` (all phases, including
+client side of the registry, deleting it) is planned in detail below (forks settled 2026-10-06) and starts with 4a. `client-entity-architecture` was squash-merged to `main` as `9abb71b` (all phases, including
 the old phase 6), so the Phase 1 blocker is gone. The Phase 0 spikes were run on 2026-10-03; results
 are in "Phase 0 findings" and have been folded into the design. Written 2026-10-03 after a code survey
 (numbers in "Context" are as of that date, branch `client-entity-architecture`; the registry importer
@@ -1030,6 +1030,95 @@ Left for Phase 4: the registry inside the worker's realm, `registry.isDedicatedS
   Variables", `typescript-port.instructions.md` "Initialize the registry properly",
   `unit-tests.instructions.md` mock registry pattern, `CLAUDE.md`) in the same phase, game-agnostic
   per `source-directories.instructions.md`.
+
+#### Phase 4: forks settled before starting (2026-10-06)
+
+Decided with the developer:
+
+1. **Hybrid scope.** Instances for the coupling hubs and what tests have to replace: `Con`, `Mod`, `Host` (dissolved,
+   not converted), `CL` and `M`. `R`, `GL`, `S`, `IN`, `Key`, `Draw`, `SCR` and `V` wrap one-per-tab device resources
+   (one GL context, one audio context, one input source) and stay static classes imported directly. A second
+   renderer has no use case and `R` alone is 158 static members over 3.5k lines of hot paths. This deviates from A1's
+   "state moves to instance fields" for those classes only; the registry still goes away completely.
+2. **`ClientEngineAPI` becomes an instance** like `ServerEngineAPI` did in 3a: the same member surface, so a game that
+   reaches it only through the `Init`/constructor parameter compiles unchanged (Phase 0 finding 7: none uses it as a
+   value). The contract type in `shared/GameInterfaces.ts` changes to `Readonly<ClientEngineAPI>` of the instance.
+3. **Tests are converted to `.ts` as the module they cover is converted**, and `tsconfig.json` starts type-checking
+   them (Track G's first half). `unit-tests.instructions.md` says "all files are ESM `.mjs`"; it is updated when the first
+   `.ts` test lands. Only `.test.ts` files are included, so the conversion is incremental and the `.mjs` tests keep
+   running unchanged until their module's turn.
+
+Survey for the plan (2026-10-06, after Phase 3): 64 files import `registry.ts` (27 `client`, 11 `common`, 10
+`client/renderer`, 5 `common/model/loaders`, 5 `client/menu`, 2 `common/model`, 2 `bootstrap`, 2 in `engine/`); prolog
+members by frequency `Con` 31, `CL` 29, `Host` 26, `R` 19, `COM` 19, `S` 11, `M` 10, `NET` 9, `SCR` 8, `Key` 8, `V` 7,
+`Draw` 7. `registry.isDedicatedServer` has 36 reads, 15 in `Host`, 12 in the model loaders, 4 in `Console`/`Cmd`/`Mod`/`R`.
+Test files that touch the registry: about 80 of 130.
+
+**The real work is the common-to-client edges, not the facades.** `common/` is shared by the page, the dedicated server and
+the server worker, and the worker bundle must not contain client code (`engine-boundaries.test.mjs`). Five `common/` files
+still reach the client through the registry: `Console` (`CL`, `Draw`, `IN`, `Key`, `SCR`: it draws itself and
+captures keys), `Cmd` (`CL`, for forwarding), `Cvar` (`CL.serverController` and `CL.cls.serverInfo` for the cheat check),
+`Mod` (`CL`, for a client-only listing) and `Host` (everything). Deleting the registry means inverting those edges: the
+common service owns a narrow interface and the client installs an implementation of it, as `Cmd.forwardLocal` already does.
+That makes the rule "nothing under `common/` imports `client/` or the registry" enforceable by the boundary test, which
+is what keeps a worker bundle clean from now on.
+
+##### Open question for 4b: how a static facade reaches an instance
+
+`R`, `Key`, `SCR` and the other facades that stay static still need `Con`, `CL`, `Mod` and `M` once those are instances.
+A constructor cannot hand them over (a static class has none), and passing "the engine" around is the registry again.
+Recommended: each converted service is a class whose **default export is the one instance of its realm**
+(`export default new Console()`), constructed without dependencies and given what it needs through `init(deps)` from the
+composition root. Importers use it by plain ES import, so there is no lookup table and no `registry.frozen`; tests either
+construct a fresh instance with fakes (`new Console()` + `init(fakes)`) or call `init` on the shared one in a
+`beforeEach`. The cost is a module-level singleton for those five, which is what `Cvar` and `Cmd` already are in this plan
+(A1: realm singletons). The alternatives are (b) making every facade an instance too (the "Full instances" option, rejected
+above) or (c) leaving the five static (the "direct imports" option, rejected above). Not started until confirmed.
+
+#### Phase 4 steps
+
+Each step leaves `npm test`, `npm run typecheck` and eslint green and the game playable, and stops for a go-ahead.
+
+**4a, `common/` free of the registry and of the client (the worker's realm becomes registry-free)**
+
+1. Test groundwork: `test/physics/fixtures.mjs` to `fixtures.ts` with typed factories, `tsconfig` includes
+   `test/**/*.test.ts`, `package.json` test globs and the Dockerfile `test` stage check (`test-glob-coverage`,
+   `dockerfile-fixture-sync`), `unit-tests.instructions.md` updated.
+2. `isDedicatedServer` out of the model loaders: `Mod` takes a `loadRenderData` option from its composition root and
+   hands a `ModelLoadContext` to the loaders (12 sites: BSP29/38, AliasMDL, SpriteSPR, WavefrontOBJ, `QSMatLoader`).
+3. `Console`: an interface for what it needs from the client (`ConsoleView`: draw, key destination, screen update, the
+   in-game flag) that the client installs; `Cmd`, `Cvar` and `Mod` the same for their one client edge each
+   (`ServerController` for the cheat check, a client model listing hook).
+4. `Host` is not touched yet. `WorkerFramework`'s lean registry goes (the navigation worker gets its services the way
+   `createServerWorker` hands them over), `GameModule` and `Com` lose their prologs.
+5. Done when: no file under `source/engine/common/` (except `Host.ts`, which 4b removes), `network/`, `server/`,
+   `bootstrap/createServerWorker.ts` or `createDedicatedServer.ts` imports `registry.ts`, and a boundary test says so.
+
+**4b, the client runtime and `Host` (the allowlist shrinks to the facades that stay static)**
+
+1. `Host` dissolves: frame timing and the scheduler into one small clock/scheduler class shared by `ClientHost`,
+   `ServerRealm` and the dedicated server; config writing and the savegame commands to `ClientHost`; the dedicated server
+   uses `ServerRealm`. The 77 reads of `Host.realtime`/`Host.frametime` become reads of that clock.
+2. `CL` and `M` as instances (default-export pattern above, if confirmed), then `ClientEngineAPI` as an instance in
+   `client/ClientEngineAPI.ts` (it currently lives in `common/GameAPIs.ts`, which imports the menu, renderer and input).
+3. `createBrowserClient` composition root replaces the launcher in `main-browser.ts`.
+4. Done when: only the static facades (`R`, `GL`, `S`, `IN`, `Key`, `Draw`, `SCR`, `V` and their helpers) read the registry.
+
+**4c, delete the registry**
+
+1. The remaining facades import each other directly. Cycles that matter at module evaluation time are broken by moving
+   code, not by moving imports (A3.4).
+2. Delete `registry.ts`, `getCommonRegistry`/`getClientRegistry`, `registry.frozen`, `isDedicatedServer`, `isInsideWorker`,
+   `withMockRegistry` and the ESLint allowlist; update `code-style-guide`, `typescript-port`, `unit-tests` instructions,
+   `CLAUDE.md` and `docs/` (game-agnostic).
+3. Real-browser verification (the full 3c checklist) and the live pointer-lock / mouse-look test, which headless
+   Chromium cannot do.
+
+Risks: `Console` and `Host` are on the critical path of every frame and of boot order (config runs after cvars exist, the
+worker handshake is awaited at a specific point), so each of them gets a browser run before the next one starts;
+module-evaluation order changes when imports replace registry lookups, which is the failure mode that shows up only at
+boot, so 4c ends with a cold-start run of both builds.
+
 
 ### Later tracks (own plans, order flexible after Phase 3)
 
