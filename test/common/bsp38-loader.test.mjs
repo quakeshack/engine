@@ -10,7 +10,8 @@ import { BSP38Loader } from '../../source/engine/common/model/loaders/BSP38Loade
 import { QSMatLoader } from '../../source/engine/common/model/QSMatLoader.ts';
 import { GLTexture } from '../../source/engine/client/GL.ts';
 import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../source/engine/client/renderer/Materials.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 

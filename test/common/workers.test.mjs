@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import PlatformWorker from '../../source/engine/common/PlatformWorker.ts';
 import WorkerManager from '../../source/engine/common/WorkerManager.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 class FakeNodeWorker {
   constructor() {

@@ -1,6 +1,7 @@
 import { K } from '../../shared/Keys.ts';
 import Q from '../../shared/Q.ts';
-import { eventBus, getClientRegistry, registry } from '../registry.ts';
+import { getClientRegistry, registry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import Tools from './Tools.ts';
 import IN from './IN.ts';
 import { KeyDestination } from './Key.ts';

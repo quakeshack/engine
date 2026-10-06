@@ -4,18 +4,11 @@ import type { CollisionTrace } from './ServerCollisionSupport.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { DIST_EPSILON } from '../../common/Pmove.ts';
-import { eventBus, getCommonRegistry } from '../../registry.ts';
 
 interface LegacyHull extends Hull {
   readonly firstclipnode: number;
   readonly allowedClipNodes?: Uint8Array | null;
 }
-
-let { Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con } = getCommonRegistry());
-});
 
 /**
  * Check whether a clipnode belongs to the owning legacy hull subtree.
@@ -192,7 +185,7 @@ export function recursiveHullCheck(
     if (frac < 0.0) {
       trace.fraction = midf;
       trace.endpos = mid.copy();
-      Con.DPrint('backup past 0\n');
+      console.debug('ServerLegacyHullCollision: backup past 0');
       return false;
     }
 

@@ -1,16 +1,17 @@
 import type { ClientEdict } from './ClientEntities.ts';
-import type { GameTrace } from '../common/GameAPIs.ts';
+import type { GameTrace } from '../common/GameApiSupport.ts';
 import type { CollisionTrace } from '../server/physics/ServerCollisionSupport.ts';
 
 import Vector, { Quaternion } from '../../shared/Vector.ts';
 import PhysicsMath from '../common/PhysicsMath.ts';
 import { moveType } from '../../shared/Defs.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
-let { CL, SV } = getClientRegistry();
+let { CL } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, SV } = getClientRegistry());
+  ({ CL } = getClientRegistry());
 });
 
 /**
@@ -59,7 +60,7 @@ export default class ClientEntityPhysics {
     }
 
     const end = ClientEntityPhysics.#end.set(clent.velocity).multiply(frametime).add(clent.origin);
-    const trace = SV.collision.traceWorldLine(clent.origin, end);
+    const trace = CL.collision.traceStaticWorldLine(clent.origin, end);
 
     if (trace.allsolid) {
       ClientEntityPhysics.#settle(clent);

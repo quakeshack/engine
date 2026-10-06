@@ -3,10 +3,9 @@ import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
+import type CollisionModelSource from '../../common/CollisionModelSource.ts';
 import { AliasModel, BrushModel, MeshModel } from '../../common/Mod.ts';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
-import { eventBus, getCommonRegistry } from '../../registry.ts';
 import {
   AliasCollisionState,
   BrushCollisionState,
@@ -24,6 +23,7 @@ import {
   pointContents as legacyPointContents,
   recursiveHullCheck as legacyRecursiveHullCheck,
 } from './ServerLegacyHullCollision.ts';
+import type Server from '../Server.ts';
 
 type CollisionModel = BrushModel | MeshModel | AliasModel | object | null;
 
@@ -41,12 +41,6 @@ type LegacyHull = Hull & {
   readonly firstclipnode: number;
 };
 
-let { Con, SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, SV } = getCommonRegistry());
-});
-
 /**
  * Handles collision detection and tracing for entities in the world.
  * Uses shared brush tracing for BSP models when brush data is available,
@@ -57,12 +51,14 @@ export class ServerCollision {
   static readonly MISSILE_MAXS = new Vector(15.0, 15.0, 15.0);
 
   private readonly _modelSource: CollisionModelSource;
+  private readonly sv: Server;
 
   /**
    * Resolve a collision model by model index from either the active server or
    * the client precache populated by server signon data.
    */
-  constructor(modelSource: CollisionModelSource = createRegistryCollisionModelSource()) {
+  constructor(sv: Server, modelSource: CollisionModelSource) {
+    this.sv = sv;
     this._modelSource = modelSource;
   }
 
@@ -80,7 +76,7 @@ export class ServerCollision {
    * @returns The collision model associated with the entity.
    */
   _getEntityModel(ent: ServerEdict): CollisionModel {
-    if (ent === SV.server?.edicts?.[0]) {
+    if (ent === this.sv.server?.edicts?.[0]) {
       return this._getStaticWorldSource().worldModel;
     }
 
@@ -222,7 +218,7 @@ export class ServerCollision {
       : '<none>';
     const classname = typeof hitEntity.classname === 'string' ? hitEntity.classname : '<no classname>';
 
-    Con.DPrint(
+    this.sv.con.DPrint(
       `ServerCollision.move point trace hit ent=${trace.ent.num} classname=${classname} solid=${hitEntity.solid} movetype=${hitEntity.movetype} `
       + `modelindex=${hitEntity.modelindex} model=${modelName} fraction=${trace.fraction.toFixed(4)} `
       + `start=(${start[0].toFixed(1)} ${start[1].toFixed(1)} ${start[2].toFixed(1)}) `
@@ -268,7 +264,7 @@ export class ServerCollision {
       return false;
     }
 
-    if (state.ent === SV.server?.edicts?.[0]) {
+    if (state.ent === this.sv.server?.edicts?.[0]) {
       return true;
     }
 
@@ -374,7 +370,7 @@ export class ServerCollision {
     const trace = CollisionTrace.hullInitial(end);
 
     const offset = new Vector();
-    const hull = SV.area.hullForEntity(state.ent, mins, maxs, offset);
+    const hull = this.sv.area.hullForEntity(state.ent, mins, maxs, offset);
     const startLocal = start.copy().subtract(offset);
     const endLocal = end.copy().subtract(offset);
 
@@ -650,7 +646,7 @@ export class ServerCollision {
     maxs: Vector,
     end: Vector,
   ): TriangleTraceContext | null {
-    const triangleAdapter = state.createTriangleAdapter(SV.server?.time ?? 0.0);
+    const triangleAdapter = state.createTriangleAdapter(this.sv.server?.time ?? 0.0);
 
     if (triangleAdapter === null || triangleAdapter.triangleCount === 0) {
       return null;
@@ -892,7 +888,7 @@ export class ServerCollision {
     type: Defs.moveTypes,
     passedict: ServerEdict | null,
   ): MoveClip {
-    const worldEdict = SV.server.edicts[0];
+    const worldEdict = this.sv.server.edicts[0];
     const worldState = this._getEntityCollisionState(worldEdict) ?? this._getHullFallbackState(worldEdict);
     const worldTrace = this._clipMoveToEntityWithState(worldState, start, mins, maxs, end);
     console.assert(
@@ -927,9 +923,9 @@ export class ServerCollision {
    * Recursively checks the links in the area node BSP for collision.
    */
   clipToLinks(clip: MoveClip): void {
-    console.assert(SV.area.tree !== null, 'collision area tree must be initialized before clipping to links');
+    console.assert(this.sv.area.tree !== null, 'collision area tree must be initialized before clipping to links');
 
-    for (const touch of SV.area.tree!.queryAABB(clip.boxmins, clip.boxmaxs)) {
+    for (const touch of this.sv.area.tree!.queryAABB(clip.boxmins, clip.boxmaxs)) {
       if (this._shouldSkipTouch(clip, touch)) {
         continue;
       }

@@ -3,17 +3,11 @@ import type { ServerEdict } from '../Edict.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import PhysicsMath from '../../common/PhysicsMath.ts';
-import { eventBus, getCommonRegistry } from '../../registry.ts';
 import { ServerClient } from '../Client.ts';
 import { PmovePlayer } from '../../common/Pmove.ts';
 import { BrushModel } from '../../common/Mod.ts';
 import { HostError } from '../../common/Errors.ts';
-
-let { Host, SV, V } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host, SV, V } = getCommonRegistry());
-});
+import type Server from '../Server.ts';
 
 /**
  * Handles player-specific physics using the shared PmovePlayer for deterministic
@@ -22,25 +16,34 @@ eventBus.subscribe('registry.frozen', () => {
  * and server authoritative movement use the exact same code path.
  */
 export class ServerClientPhysics {
+  private readonly sv: Server;
+
+  /**
+   * @param sv The server whose entities are simulated.
+   */
+  constructor(sv: Server) {
+    this.sv = sv;
+  }
+
   // =========================================================================
   // Shared PmovePlayer integration
   // =========================================================================
 
   /**
-   * Populates SV.pmove physents with solid entities near the player.
+   * Populates this.sv.pmove physents with solid entities near the player.
    * Must be called before running a PmovePlayer for a client.
    * @param playerEdict Player edict (excluded from list).
    */
   _setupPhysents(playerEdict: ServerEdict): void {
-    const pm = SV.pmove;
+    const pm = this.sv.pmove;
     console.assert(pm !== null, 'SV.pmove must be initialized before setting up physents');
 
     const activePmove = pm!;
 
     activePmove.clearEntities();
 
-    for (let index = 1; index < SV.server.num_edicts; index++) {
-      const edict = SV.server.edicts[index];
+    for (let index = 1; index < this.sv.server.num_edicts; index++) {
+      const edict = this.sv.server.edicts[index];
       if (!edict || edict.isFree() || edict === playerEdict) {
         continue;
       }
@@ -57,7 +60,7 @@ export class ServerClientPhysics {
       }
 
       const model = solidType === Defs.solid.SOLID_BSP && entity.modelindex
-        ? SV.server.models[entity.modelindex]
+        ? this.sv.server.models[entity.modelindex]
         : null;
 
       activePmove.addEntity(entity, model instanceof BrushModel ? model : null);
@@ -74,7 +77,7 @@ export class ServerClientPhysics {
    */
   _runSharedPmove(ent: ServerEdict, client: ServerClient): void {
     const entity = ent.entity!;
-    const pm = SV.pmove;
+    const pm = this.sv.pmove;
     console.assert(pm !== null, 'SV.pmove must be initialized before running shared pmove');
 
     const activePmove = pm!;
@@ -95,7 +98,7 @@ export class ServerClientPhysics {
     pmove.oldbuttons = client.pmOldButtons;
     pmove.pmFlags = client.pmFlags;
     pmove.pmTime = client.pmTime;
-    pmove.waterjumptime = teleportTime > SV.server.time ? (teleportTime - SV.server.time) : 0;
+    pmove.waterjumptime = teleportTime > this.sv.server.time ? (teleportTime - this.sv.server.time) : 0;
     pmove.dead = entity.deadflag! > 0;
     pmove.spectator = false;
 
@@ -146,8 +149,8 @@ export class ServerClientPhysics {
         const physent = activePmove.physents[pmove.onground]!;
         const edictId = physent.edictId;
 
-        if (edictId !== undefined && edictId !== null && edictId < SV.server.num_edicts) {
-          entity.groundentity = SV.server.edicts[edictId].entity;
+        if (edictId !== undefined && edictId !== null && edictId < this.sv.server.num_edicts) {
+          entity.groundentity = this.sv.server.edicts[edictId].entity;
         } else {
           entity.groundentity = null;
         }
@@ -168,7 +171,7 @@ export class ServerClientPhysics {
     // Waterjump flag sync
     if (pmove.waterjumptime > 0) {
       entity.flags |= Defs.flags.FL_WATERJUMP;
-      entity.teleport_time = SV.server.time + pmove.waterjumptime;
+      entity.teleport_time = this.sv.server.time + pmove.waterjumptime;
     } else {
       entity.flags &= ~Defs.flags.FL_WATERJUMP;
     }
@@ -178,7 +181,7 @@ export class ServerClientPhysics {
     client.pmFlags = pmove.pmFlags;
     client.pmTime = pmove.pmTime;
 
-    // Touched entities - fire touch functions via SV.physics.impact
+    // Touched entities - fire touch functions via this.sv.physics.impact
     // to match the bidirectional touch semantics used by SV_FlyMove.
     const touchedSet = new Set<number>();
     for (const index of pmove.touchindices) {
@@ -187,10 +190,10 @@ export class ServerClientPhysics {
         const physent = activePmove.physents[index]!;
         const edictId = physent.edictId;
 
-        if (edictId !== undefined && edictId !== null && edictId < SV.server.num_edicts) {
-          const touchEdict = SV.server.edicts[edictId];
+        if (edictId !== undefined && edictId !== null && edictId < this.sv.server.num_edicts) {
+          const touchEdict = this.sv.server.edicts[edictId];
           if (!touchEdict.isFree()) {
-            SV.physics.impact(ent, touchEdict, entity.velocity.copy());
+            this.sv.physics.impact(ent, touchEdict, entity.velocity.copy());
           }
         }
       }
@@ -223,7 +226,7 @@ export class ServerClientPhysics {
       top[0] = bottom[0] = origin[0] + cosval * (index + 3) * 12.0;
       top[1] = bottom[1] = origin[1] + sinval * (index + 3) * 12.0;
 
-      const tr = SV.collision.move(top, Vector.origin, Vector.origin, bottom, 1, ent);
+      const tr = this.sv.collision.move(top, Vector.origin, Vector.origin, bottom, 1, ent);
 
       if (tr.allsolid || tr.fraction === 1.0) {
         return;
@@ -256,7 +259,7 @@ export class ServerClientPhysics {
     }
 
     if (steps >= 2) {
-      entity.idealpitch = -dir * SV.idealpitchscale!.value;
+      entity.idealpitch = -dir * this.sv.idealpitchscale!.value;
     }
   }
 
@@ -282,7 +285,7 @@ export class ServerClientPhysics {
 
     // Decay punch angle
     const punchangle = entity.punchangle.copy();
-    let len = punchangle.normalize() - 10.0 * Host.frametime;
+    let len = punchangle.normalize() - 10.0 * this.sv.server.frametime;
 
     if (len < 0.0) {
       len = 0.0;
@@ -299,7 +302,7 @@ export class ServerClientPhysics {
     const viewAngles = entity.v_angle ?? entity.angles;
     const v_angle = viewAngles.copy().add(entity.punchangle);
 
-    angles[2] = V.CalcRoll(angles, entity.velocity) * 4.0;
+    angles[2] = this.sv.view.CalcRoll(angles, entity.velocity) * 4.0;
     if (!entity.fixangle) {
       angles[0] = v_angle[0] / -3.0;
       angles[1] = v_angle[1];
@@ -328,21 +331,21 @@ export class ServerClientPhysics {
     console.assert(client !== null, 'client edict must have an attached server client');
 
     const activeClient = client!;
-    console.assert(SV.server.gameAPI !== null, 'physicsClient requires a live server game API');
-    const gameAPI = SV.server.gameAPI!;
+    console.assert(this.sv.server.gameAPI !== null, 'physicsClient requires a live server game API');
+    const gameAPI = this.sv.server.gameAPI!;
 
     if (activeClient.state < ServerClient.STATE.CONNECTED) {
       return;
     }
 
-    gameAPI.time = SV.server.time;
-    SV.server.gameAPI!.PlayerPreThink(ent);
-    SV.physics.checkVelocity(ent);
+    gameAPI.time = this.sv.server.time;
+    this.sv.server.gameAPI!.PlayerPreThink(ent);
+    this.sv.physics.checkVelocity(ent);
     const movetype = (ent.entity!.movetype >> 0) as Defs.moveType;
     if (movetype === Defs.moveType.MOVETYPE_TOSS || movetype === Defs.moveType.MOVETYPE_BOUNCE) {
-      SV.physics.physicsToss(ent);
+      this.sv.physics.physicsToss(ent);
     } else {
-      if (!SV.physics.runThink(ent)) {
+      if (!this.sv.physics.runThink(ent)) {
         return; // thinking might have freed the edict
       }
       switch (movetype) {
@@ -365,14 +368,14 @@ export class ServerClientPhysics {
           activeClient.pendingCmds.length = 0;
           break;
         case Defs.moveType.MOVETYPE_FLY:
-          SV.physics.flyMove(ent, Host.frametime);
+          this.sv.physics.flyMove(ent, this.sv.server.frametime);
           break;
         default:
           throw new HostError(`SV.Physics_Client: bad movetype ${movetype}`);
       }
     }
-    SV.area.linkEdict(ent, true);
-    gameAPI.time = SV.server.time;
-    SV.server.gameAPI!.PlayerPostThink(ent);
+    this.sv.area.linkEdict(ent, true);
+    gameAPI.time = this.sv.server.time;
+    this.sv.server.gameAPI!.PlayerPostThink(ent);
   }
 }

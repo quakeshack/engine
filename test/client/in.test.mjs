@@ -11,7 +11,8 @@ import IN, {
 } from '../../source/engine/client/IN.ts';
 import { KeyDestination } from '../../source/engine/client/Key.ts';
 import VID from '../../source/engine/client/VID.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { K } from '../../source/shared/Keys.ts';
 
 /**

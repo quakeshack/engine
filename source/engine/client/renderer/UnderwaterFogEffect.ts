@@ -1,7 +1,8 @@
 import GL, { type GLRenderTexture } from '../GL.ts';
 import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 
 let { R } = getClientRegistry();
 

@@ -1,6 +1,6 @@
 import type { Node } from './BSP.ts';
 
-import { eventBus } from '../../registry.ts';
+import { eventBus } from '../EventBus.ts';
 
 export interface PortalDefinition {
   readonly area0: number;

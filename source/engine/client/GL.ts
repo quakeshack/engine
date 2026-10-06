@@ -2,7 +2,8 @@ import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 import { WadLumpTexture } from '../common/W.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import { getCommonRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import VID from './VID.ts';
 
 interface TextureMode {

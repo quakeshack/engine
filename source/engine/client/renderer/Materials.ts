@@ -1,4 +1,5 @@
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import GL, { GLTexture, type GLProgramInfo } from '../GL.ts';
 

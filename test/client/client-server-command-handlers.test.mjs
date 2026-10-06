@@ -7,7 +7,8 @@ import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { parseServerMessage } from '../../source/engine/client/ClientServerCommandHandlers.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
 import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Builds the minimal client registry surface required by parseServerMessage().

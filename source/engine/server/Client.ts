@@ -5,14 +5,7 @@ import type { BaseEntity, ServerEdict } from './Edict.ts';
 import Vector from '../../shared/Vector.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
-
-let { SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ SV } = getCommonRegistry());
-});
 
 export enum ServerClientState {
   /** drop client as soon as possible */
@@ -27,15 +20,22 @@ export enum ServerClientState {
   SPAWNED = 3,
 }
 
-type ServerClientSpawnParameters = ReturnType<PlayerEntitySpawnParamsDynamic['saveSpawnParameters']> | null;
+export type ServerClientSpawnParameters = ReturnType<PlayerEntitySpawnParamsDynamic['saveSpawnParameters']> | null;
 type ServerClientEntity = BaseEntity & { netname?: string | null };
 type DynamicSpawnClientEntity = ServerClientEntity & PlayerEntitySpawnParamsDynamic;
 
 /**
  * Runtime state for one connected or connectable server client slot.
  */
+/** What a client slot needs from the server it belongs to. */
+export interface ServerClientOwner {
+  readonly server: { readonly edicts: readonly ServerEdict[] };
+}
+
 export class ServerClient {
   static readonly STATE = ServerClientState;
+
+  readonly #sv: ServerClientOwner;
 
   state: ServerClientState;
   readonly num: number;
@@ -63,7 +63,8 @@ export class ServerClient {
   lastMoveSequence: number;
   clientdataSnapshot: Record<string, SerializableType>;
 
-  constructor(num: number) {
+  constructor(num: number, sv: ServerClientOwner) {
+    this.#sv = sv;
     this.state = ServerClient.STATE.FREE;
     this.num = num;
     this.message = new SzBuffer(16000, `ServerClient ${num}`);
@@ -102,7 +103,7 @@ export class ServerClient {
    * @returns The client edict.
    */
   get edict(): ServerEdict {
-    return SV.server.edicts[this.num + 1] as ServerEdict;
+    return this.#sv.server.edicts[this.num + 1] as ServerEdict;
   }
 
   /**

@@ -3,9 +3,16 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
+import CollisionModelSource from '../../source/engine/common/CollisionModelSource.ts';
+import Server from '../../source/engine/server/Server.ts';
+import { ServerEngineAPI } from '../../source/engine/server/ServerEngineAPI.ts';
+import ServerHost from '../../source/engine/server/ServerHost.ts';
+import NET from '../../source/engine/network/Network.ts';
+import { SzBuffer } from '../../source/engine/network/MSG.ts';
 
 // ── Typedefs ────────────────────────────────────────────────────────────────
 
@@ -291,13 +298,17 @@ export function createMockEdict(entity) {
 // ── Mock Registry Helpers ───────────────────────────────────────────────────
 
 /**
- * Build a default mock registry config with silent console and standard frametime.
+ * Build a default mock registry config with silent console and a standard server frametime.
  * Supply SV overrides to configure server-side mocks.
  * @param {object} [sv] SV overrides
  * @param cl
  * @returns {MockRegistryConfig} registry config
  */
 export function defaultMockRegistry(sv = {}, cl = null) {
+  // Tests keep a reference to what they pass in, so it is completed in place instead of copied.
+  sv.server ??= {};
+  sv.server.frametime ??= 0.1;
+
   return {
     CL: cl,
     Con: { Print() {}, DPrint() {} },
@@ -432,7 +443,7 @@ export function withMockServerPhysics(callback) {
     },
   }, () => {
     callback({
-      serverPhysics: new ServerPhysics(),
+      serverPhysics: new ServerPhysics(registrySV()),
       pusherEdict,
       riderEdict,
       linkCalls,
@@ -456,4 +467,155 @@ export function assertNear(actual, expected, epsilon = 0.05) {
     Math.abs(actual - expected) <= epsilon,
     `expected ${actual} to be within ${epsilon} of ${expected}`,
   );
+}
+
+// ── Registry-backed stand-ins for what the server classes are constructed with ──
+
+/**
+ * A server stand-in that forwards every access to whatever `registry.SV` is at that moment, so a
+ * server class can be built once and still see the mock a test installs afterwards.
+ * @returns {import('../../source/engine/server/Server.ts').default} the forwarding server
+ */
+export function registrySV() {
+  // Services the server has as members, but tests keep in the registry.
+  const services = { con: 'Con', sys: 'Sys', net: 'NET', mod: 'Mod', view: 'V' };
+
+  const forwarding = /** @type {any} */ (new Proxy({}, {
+    get: (_target, key) => {
+      const sv = registry.SV ?? {};
+
+      if (!(key in sv) && typeof key === 'string' && key in services) {
+        return registry[services[key]];
+      }
+
+      if (!(key in sv) && key === 'engineAPI') {
+        return engineAPI;
+      }
+
+      return Reflect.get(sv, key);
+    },
+    set: (_target, key, value) => Reflect.set(registry.SV ?? {}, key, value),
+    has: (_target, key) => key in (registry.SV ?? {}),
+  }));
+  // The engine API a test server has unless the mock brings its own.
+  const engineAPI = new ServerEngineAPI(forwarding, () => ({ registered: true, hipnotic: false, rogue: false }));
+
+  return forwarding;
+}
+
+/**
+ * A collision model source that resolves the server and client models through the registry.
+ * @returns {CollisionModelSource} the model source
+ */
+export function registryCollisionModelSource() {
+  const modelSource = new CollisionModelSource();
+
+  modelSource.configureServer({
+    getWorldEntity: () => registry.SV?.server?.edicts?.[0] ?? null,
+    getWorldModel: () => registry.SV?.server?.worldmodel ?? null,
+    getModels: () => (registry.SV?.server?.models?.map((model) => model instanceof Promise ? null : model) ?? null),
+  });
+  modelSource.configureClient({
+    getWorldModel: () => registry.CL?.state?.worldmodel ?? null,
+    getModels: () => registry.CL?.state?.model_precache ?? null,
+  });
+
+  return modelSource;
+}
+
+/**
+ * The services a `Navigation` is built from, forwarding to the registry like `registrySV()` does.
+ * @returns {import('../../source/engine/server/Navigation.ts').NavigationServices} the services
+ */
+export function registryNavigationServices() {
+  const forward = (name) => new Proxy({}, { get: (_target, key) => registry[name]?.[key]?.bind(registry[name]) });
+
+  return /** @type {any} */ ({ con: forward('Con'), files: forward('COM'), sv: registrySV() });
+}
+
+/**
+ * Builds a real `Server` whose services are silent stand-ins, so tests can drive its methods without a registry.
+ * @param {Partial<import('../../source/engine/server/ServerDependencies.ts').ServerDependencies>} [overrides] services to replace
+ * @returns {Server} the server
+ */
+export function createTestServer(overrides = {}) {
+  return new Server({
+    con: { Print() {}, DPrint() {}, PrintWarning() {}, PrintError() {}, PrintSuccess() {}, StartCapturing() {}, StopCapturing: () => '' },
+    sys: { Print() {}, FloatTime: () => 0 },
+    net: /** @type {any} */ ({}),
+    mod: /** @type {any} */ ({}),
+    view: { CalcRoll: () => 0 },
+    files: { LoadFile: async () => null, WriteFile: async () => true },
+    collisionModelSource: new CollisionModelSource(),
+    engineVersion: () => 'test',
+    gameEdition: () => ({ registered: true, hipnotic: false, rogue: false }),
+    dedicated: true,
+    ...overrides,
+  });
+}
+
+/**
+ * Builds a `ServerHost` around a test server, with every process-level service replaced by a stand-in.
+ * @param {{ server?: Server, host?: Partial<import('../../source/engine/server/ServerHost.ts').ServerHostDependencies> }} [overrides] what to replace
+ * @returns {{ sv: Server, serverHost: ServerHost, scheduled: Array<() => void | Promise<void>>, noclip: boolean[] }} the host and what it recorded
+ */
+export function createTestServerHost({ server = createTestServer(), host = {} } = {}) {
+  const scheduled = [];
+  const noclip = [];
+  const serverHost = new ServerHost({
+    sv: server,
+    dedicated: true,
+    scheduleForNextFrame: (callback) => { scheduled.push(callback); },
+    profiling: () => false,
+    setNoclipAnglehack: (enabled) => { noclip.push(enabled); },
+    ...host,
+  });
+
+  return { sv: server, serverHost, scheduled, noclip };
+}
+
+/**
+ * Builds a network layer with silent services, so network code can be tested without a registry.
+ * @param {{ dedicated?: boolean, urls?: { signalingURL?: string }, mapname?: string, maxPlayers?: number, game?: string }} [options] what to replace
+ * @returns {NET} the network layer
+ */
+export function createTestNetwork({ dedicated = false, urls = undefined, mapname = 'start', maxPlayers = 4, game = 'id1' } = {}) {
+  const net = new NET({
+    con: { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {}, PrintSuccess() {} },
+    sys: { Print() {}, FloatTime() { return 1; } },
+    dedicated,
+    urls: () => urls,
+    serverInfo: () => ({ maxPlayers, mapname, game }),
+    webSocketModule: () => undefined,
+  });
+
+  net.time = 1;
+  net.message = new SzBuffer(128, 'test net message');
+
+  return net;
+}
+
+/**
+ * Two endpoints wired to each other. Messages are delivered at once but cloned the way a message
+ * port clones them, so a test cannot depend on sharing memory with the other side.
+ * @returns {[import('../../source/engine/network/ChannelDriver.ts').ChannelEndpoint, import('../../source/engine/network/ChannelDriver.ts').ChannelEndpoint]} the two ends
+ */
+export function createChannelEndpointPair() {
+  const receivers = [() => {}, () => {}];
+  const delivered = [[], []];
+
+  const endpointFor = (self) => ({
+    post(message, transfer = []) {
+      const other = 1 - self;
+      const copy = structuredClone(message, { transfer });
+
+      delivered[other].push(copy);
+      receivers[other](copy);
+    },
+    setReceiver(receiver) {
+      receivers[self] = receiver;
+    },
+  });
+
+  return [endpointFor(0), endpointFor(1)];
 }

@@ -3,7 +3,8 @@ import { K } from '../../../shared/Keys.ts';
 import { LineEditor } from '../../../shared/LineEditor.ts';
 import Cmd from '../../common/Cmd.ts';
 import Cvar from '../../common/Cvar.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import type { BitmapFont } from '../BitmapFont.ts';
 import type { MenuPic } from '../Menu.ts';
 

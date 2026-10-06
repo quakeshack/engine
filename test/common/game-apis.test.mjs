@@ -5,12 +5,12 @@ import Vector from '../../source/shared/Vector.ts';
 import { moveTypes, solid } from '../../source/shared/Defs.ts';
 import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
-import { ClientEngineAPI, ServerEngineAPI } from '../../source/engine/common/GameAPIs.ts';
-import { ServerEdict } from '../../source/engine/server/Edict.ts';
+import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
+import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
 import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
-import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import { defaultMockRegistry, withMockRegistry, registrySV, registryCollisionModelSource } from '../physics/fixtures.mjs';
 
 /**
  * @param {number} num entity number
@@ -33,21 +33,25 @@ function createClientTraceEntity(num, origin, mins, maxs) {
   return entity;
 }
 
+const serverEngineAPI = registrySV().engineAPI;
+
 void describe('ClientEngineAPI.Traceline', () => {
   void test('keeps the default client trace static-world only', () => {
     let clipMoveCalls = 0;
 
     void withMockRegistry(defaultMockRegistry({
       collision: {
-        traceWorldLine(_start, end) {
-          return CollisionTrace.empty(end);
-        },
         clipMoveToEntity() {
           clipMoveCalls += 1;
           return CollisionTrace.empty(Vector.origin);
         },
       },
     }, {
+      collision: {
+        traceWorldLine(_start, end) {
+          return CollisionTrace.empty(end);
+        },
+      },
       state: {
         clientEntities: {
           *getEntities() {
@@ -64,8 +68,8 @@ void describe('ClientEngineAPI.Traceline', () => {
   });
 
   void test('can trace current client entities on demand', () => {
-    const collision = new ServerCollision();
-    const area = new ServerArea();
+    const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
+    const area = new ServerArea(registrySV(), registryCollisionModelSource());
     area.initBoxHull();
 
     const target = createClientTraceEntity(
@@ -77,13 +81,13 @@ void describe('ClientEngineAPI.Traceline', () => {
 
     void withMockRegistry(defaultMockRegistry({
       area,
+    }, {
       collision: {
         traceWorldLine(_start, end) {
           return CollisionTrace.empty(end);
         },
         clipMoveToEntity: collision.clipMoveToEntity.bind(collision),
       },
-    }, {
       state: {
         clientEntities: {
           *getEntities() {
@@ -104,8 +108,8 @@ void describe('ClientEngineAPI.Traceline', () => {
   });
 
   void test('supports skipping and filtering client trace candidates', () => {
-    const collision = new ServerCollision();
-    const area = new ServerArea();
+    const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
+    const area = new ServerArea(registrySV(), registryCollisionModelSource());
     area.initBoxHull();
 
     const skipped = createClientTraceEntity(
@@ -123,13 +127,13 @@ void describe('ClientEngineAPI.Traceline', () => {
 
     void withMockRegistry(defaultMockRegistry({
       area,
+    }, {
       collision: {
         traceWorldLine(_start, end) {
           return CollisionTrace.empty(end);
         },
         clipMoveToEntity: collision.clipMoveToEntity.bind(collision),
       },
-    }, {
       state: {
         clientEntities: {
           *getEntities() {
@@ -168,7 +172,7 @@ void describe('ServerEngineAPI.Traceline', () => {
     void withMockRegistry(defaultMockRegistry({
       collision,
     }), () => {
-      const trace = ServerEngineAPI.Traceline(
+      const trace = serverEngineAPI.Traceline(
         new Vector(1, 2, 3),
         new Vector(4, 5, 6),
         true,
@@ -187,15 +191,16 @@ void describe('ServerEngineAPI.Traceline', () => {
 
 void describe('ServerEngineAPI.SpawnEntity', () => {
   void test('unwraps edict-backed initial entity references before prepareEntity', () => {
-    const worldEdict = new ServerEdict(0);
-    const ownerEdict = new ServerEdict(1);
-    const spawnedEdict = new ServerEdict(2);
+    const worldEdict = new ServerEdict(0, registrySV());
+    const ownerEdict = new ServerEdict(1, registrySV());
+    const spawnedEdict = new ServerEdict(2, registrySV());
     const ownerEntity = { classname: 'player' };
     let capturedInitialData = null;
 
     ownerEdict.entity = ownerEntity;
 
     void withMockRegistry(defaultMockRegistry({
+      ed: new ED(registrySV()),
       area: {
         unlinkEdict() {},
       },
@@ -217,7 +222,7 @@ void describe('ServerEngineAPI.SpawnEntity', () => {
         },
       },
     }), () => {
-      const result = ServerEngineAPI.SpawnEntity('test_entity', { owner: ownerEdict });
+      const result = serverEngineAPI.SpawnEntity('test_entity', { owner: ownerEdict });
 
       assert.equal(result, spawnedEdict);
     });
@@ -237,7 +242,7 @@ void describe('ServerEngineAPI.Navigate', () => {
         },
       },
     }), () => {
-      const path = ServerEngineAPI.Navigate(new Vector(1, 2, 3), new Vector(4, 5, 6));
+      const path = serverEngineAPI.Navigate(new Vector(1, 2, 3), new Vector(4, 5, 6));
 
       assert.equal(path, null);
     });
@@ -253,7 +258,7 @@ void describe('ServerEngineAPI.Navigate', () => {
         },
       },
     }), async () => {
-      const path = await ServerEngineAPI.NavigateAsync(new Vector(1, 2, 3), new Vector(4, 5, 6));
+      const path = await serverEngineAPI.NavigateAsync(new Vector(1, 2, 3), new Vector(4, 5, 6));
 
       assert.equal(path, null);
     });
@@ -303,12 +308,12 @@ void describe('ClientEngineAPI.SpawnClientEntity', () => {
 });
 
 void describe('ClientEngineAPI.DetermineStaticWorldContents', () => {
-  void test('asks the static world collision backend for the contents at the point', () => {
+  void test('asks the static world collision of the client for the contents at the point', () => {
     const queried = [];
 
-    void withMockRegistry(defaultMockRegistry({
+    void withMockRegistry(defaultMockRegistry({}, {
       collision: {
-        staticWorldContents(point) {
+        pointContents(point) {
           queried.push([...point]);
           return -3;
         },

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import CollisionModelSource, { createRegistryCollisionModelSource } from '../../source/engine/common/CollisionModelSource.ts';
-import { createBoxBrushModel, defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import CollisionModelSource from '../../source/engine/common/CollisionModelSource.ts';
+import { createBoxBrushModel, defaultMockRegistry, registryCollisionModelSource as createRegistryCollisionModelSource, withMockRegistry } from '../physics/fixtures.mjs';
 
 void describe('CollisionModelSource', () => {
   void test('uses injected server accessors before client fallbacks', () => {

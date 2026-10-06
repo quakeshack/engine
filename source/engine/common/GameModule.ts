@@ -1,8 +1,9 @@
 import type { GameModuleIdentification, GameModuleInterface } from '../../shared/GameInterfaces.ts';
 
 import { gameCapabilities } from '../../shared/Defs.ts';
-import { ServerEngineAPI } from './GameAPIs.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import type { ServerEngineAPI } from '../server/ServerEngineAPI.ts';
+import { getCommonRegistry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
 
 // The module contract lives in shared/ so game code can check itself against it without importing the engine.
 export type { GameModuleIdentification, GameModuleInterface } from '../../shared/GameInterfaces.ts';
@@ -110,9 +111,11 @@ export default class GameModule {
   static active: GameModuleInterface | null = null;
 
   /**
-   * Loads the active game module for the current COM game directory.
+   * Loads the active game module for the current COM game directory and hands its server side the engine API.
+   * @param serverEngineAPI What the game's server side sees of the engine, owned by the server of this realm.
+   *   `null` in a realm without a server, which only needs the client side of the game.
    */
-  static async Init(): Promise<void> {
+  static async Init(serverEngineAPI: ServerEngineAPI | null): Promise<void> {
     GameModule.active = null;
 
     const gameDirectory = COM.gamedir?.[0] ?? null;
@@ -122,10 +125,14 @@ export default class GameModule {
     }
 
     const activeGameModule = validateGameModuleContract(await loadGameModule(gameDirectory.filename));
-    activeGameModule.ServerGameAPI.Init(ServerEngineAPI);
+    if (serverEngineAPI !== null) {
+      activeGameModule.ServerGameAPI.Init(serverEngineAPI);
+    }
+
     GameModule.active = activeGameModule;
 
     const identification = activeGameModule.identification;
+    await COM.SetGameVersion(identification.version.join('.'));
     Con.Print(`GameModule.Init: ${identification.name} v${identification.version.join('.')} by ${identification.author} loaded.\n`);
   }
 }

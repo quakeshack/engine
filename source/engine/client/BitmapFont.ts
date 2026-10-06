@@ -1,4 +1,4 @@
-import { eventBus } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import GL, { GLTexture } from './GL.ts';
 
 let gl: WebGL2RenderingContext = null!;

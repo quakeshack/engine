@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Worker compatibility checks</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border: 1px solid #8884; padding: .3rem .6rem; text-align: left; vertical-align: top; }
+  .PASS { color: #0a7d2c; font-weight: 600; } .FAIL { color: #c62828; font-weight: 600; } .INFO { color: #888; }
+  pre { background: #8881; padding: .6rem; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>Worker compatibility checks</h1>
+<p>Checks the browser features the engine modernization plan relies on
+(<code>plans/engine-architecture-modernization.md</code>, "Phase 0 findings" 1, 2 and 6).
+Serve this directory over <code>http://localhost</code> (a secure context is required) and open the page:
+<code>cd scripts/worker-compat-check &amp;&amp; python3 -m http.server 8099</code>.
+When it says <b>done</b>, copy the JSON at the bottom into the plan.</p>
+<table id="results"><tr><th>Check</th><th>Result</th><th>Detail</th></tr></table>
+<h2>Raw result</h2>
+<pre id="raw">running...</pre>
+<script type="module">
+const rows = [];
+const table = document.getElementById('results');
+
+function report(name, status, detail) {
+  rows.push({ name, status, detail });
+  const tr = document.createElement('tr');
+  for (const text of [name, status, detail]) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    tr.appendChild(td);
+  }
+  tr.children[1].className = status;
+  table.appendChild(tr);
+}
+
+function askWorker(worker, message, transfer = []) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('worker timeout')), 8000);
+    worker.addEventListener('message', function handler(event) {
+      if (event.data.id !== message.id) { return; }
+      clearTimeout(timeout);
+      worker.removeEventListener('message', handler);
+      resolve(event.data);
+    });
+    worker.postMessage(message, transfer);
+  });
+}
+
+async function run() {
+  report('Browser', 'INFO', navigator.userAgent);
+  report('Secure context', isSecureContext ? 'PASS' : 'FAIL', `isSecureContext=${isSecureContext} (Cache Storage and Web Locks need true)`);
+
+  // --- Finding 6: primitives inside a (module) worker -------------------------------------
+  let worker;
+  try {
+    worker = new Worker('./worker.js', { type: 'module' });
+  } catch (error) {
+    report('Module worker', 'FAIL', String(error));
+    return;
+  }
+  worker.addEventListener('error', (event) => report('Worker error', 'FAIL', event.message));
+
+  const globals = await askWorker(worker, { id: 1, kind: 'globals' });
+  report('Module worker starts', 'PASS', 'type: "module" worker created');
+  report('Worker: caches', globals.caches === 'object' ? 'PASS' : 'FAIL', `typeof caches = ${globals.caches}`);
+  report('Worker: navigator.locks', globals.locks === 'object' ? 'PASS' : 'FAIL', `typeof navigator.locks = ${globals.locks}`);
+  report('Worker: indexedDB', globals.indexedDB === 'object' ? 'PASS' : 'FAIL', `typeof indexedDB = ${globals.indexedDB}`);
+  report('Worker: localStorage absent (expected)', globals.localStorage === 'undefined' ? 'PASS' : 'INFO', `typeof localStorage = ${globals.localStorage}`);
+  report('Worker: SharedArrayBuffer (expected unavailable)', 'INFO', `typeof SharedArrayBuffer = ${globals.sharedArrayBuffer}, crossOriginIsolated = ${globals.crossOriginIsolated}`);
+  report('Worker: RTCPeerConnection (expected undefined)', 'INFO', `typeof RTCPeerConnection = ${globals.rtcPeerConnection}`);
+  report('Worker: RTCDataChannel', 'INFO', `typeof RTCDataChannel = ${globals.rtcDataChannel}`);
+
+  // --- Finding 2: dynamic import inside a module worker (what Vite emits for import.meta.glob) -
+  const dynamic = await askWorker(worker, { id: 2, kind: 'dynamic-import' });
+  report('Worker: dynamic import() of a chunk', dynamic.ok ? 'PASS' : 'FAIL', dynamic.detail);
+
+  // --- Cross-realm Cache Storage: worker writes, main thread reads (the shared byte layer) ---
+  try {
+    const key = `/qfs/check-${Date.now()}.bin`;
+    const put = await askWorker(worker, { id: 3, kind: 'cache-put', key, bytes: [1, 2, 3, 4, 5] });
+    const cache = await caches.open('worker-compat-check');
+    const hit = await cache.match(key);
+    const length = hit ? (await hit.arrayBuffer()).byteLength : -1;
+    report('Cache Storage shared between worker and main', put.ok && length === 5 ? 'PASS' : 'FAIL', `worker put: ${put.detail}; main read ${length} bytes`);
+    await cache.delete(key);
+  } catch (error) {
+    report('Cache Storage shared between worker and main', 'FAIL', String(error));
+  }
+
+  // --- Cross-realm Web Locks: the main thread and the worker contend for one lock -----------
+  try {
+    const events = [];
+    const lockName = `asset:/qfs/check-lock-${Date.now()}`;
+    const mainRequest = navigator.locks.request(lockName, async () => {
+      events.push('main-enter');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      events.push('main-leave');
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const workerResult = await askWorker(worker, { id: 4, kind: 'lock', lockName });
+    await mainRequest;
+    const workerEnteredAfterMainLeft = workerResult.enteredAt - workerResult.requestedAt >= 200;
+    report('Web Locks serialize across worker and main', workerEnteredAfterMainLeft ? 'PASS' : 'FAIL', `main held 300 ms; worker waited ${Math.round(workerResult.enteredAt - workerResult.requestedAt)} ms (events: ${events.join(', ')})`);
+  } catch (error) {
+    report('Web Locks serialize across worker and main', 'FAIL', String(error));
+  }
+
+  // --- Cross-realm IndexedDB: worker writes, main thread reads ------------------------------
+  try {
+    const put = await askWorker(worker, { id: 5, kind: 'idb-put', value: 'hello-from-worker' });
+    const value = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('worker-compat-check', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('files');
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const get = request.result.transaction('files').objectStore('files').get('probe');
+        get.onsuccess = () => resolve(get.result);
+        get.onerror = () => reject(get.error);
+      };
+    });
+    report('IndexedDB shared between worker and main', put.ok && value === 'hello-from-worker' ? 'PASS' : 'FAIL', `worker wrote; main read ${JSON.stringify(value)}`);
+  } catch (error) {
+    report('IndexedDB shared between worker and main', 'FAIL', String(error));
+  }
+
+  // --- Finding 1: transfer an RTCDataChannel to the worker ----------------------------------
+  for (const side of ['answerer', 'offerer']) {
+    try {
+      const result = await transferTest(worker, side);
+      report(`RTCDataChannel transfer to worker (${side} side)`, result.ok ? 'PASS' : 'FAIL', result.detail);
+    } catch (error) {
+      report(`RTCDataChannel transfer to worker (${side} side)`, 'FAIL', String(error));
+    }
+  }
+}
+
+async function transferTest(worker, side) {
+  const pc1 = new RTCPeerConnection();
+  const pc2 = new RTCPeerConnection();
+  pc1.onicecandidate = (event) => { if (event.candidate) { void pc2.addIceCandidate(event.candidate); } };
+  pc2.onicecandidate = (event) => { if (event.candidate) { void pc1.addIceCandidate(event.candidate); } };
+  const farPeerReceived = [];
+  let farChannel = null;
+  const offererChannel = pc1.createDataChannel('game', { ordered: false, maxRetransmits: 0 });
+  const id = side === 'answerer' ? 100 : 101;
+  let workerAnswer = null;
+
+  const handOver = (channel) => {
+    workerAnswer = askWorker(worker, { id, kind: 'adopt-channel', channel }, [channel]);
+  };
+
+  if (side === 'offerer') {
+    handOver(offererChannel);
+    pc2.ondatachannel = (event) => {
+      farChannel = event.channel;
+      farChannel.binaryType = 'arraybuffer';
+      farChannel.onmessage = (message) => farPeerReceived.push(new TextDecoder().decode(message.data));
+    };
+  } else {
+    pc2.ondatachannel = (event) => handOver(event.channel);
+    offererChannel.binaryType = 'arraybuffer';
+    offererChannel.onmessage = (message) => farPeerReceived.push(new TextDecoder().decode(message.data));
+  }
+
+  await pc1.setLocalDescription(await pc1.createOffer());
+  await pc2.setRemoteDescription(pc1.localDescription);
+  await pc2.setLocalDescription(await pc2.createAnswer());
+  await pc1.setRemoteDescription(pc2.localDescription);
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  const sender = side === 'offerer' ? farChannel : offererChannel;
+  if (sender !== null && sender.readyState === 'open') {
+    sender.send(new TextEncoder().encode('from-far-peer'));
+  }
+  const answer = await workerAnswer;
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const final = await askWorker(worker, { id: id + 10, kind: 'channel-log' });
+  pc1.close();
+  pc2.close();
+
+  const workerGot = final.received.includes('from-far-peer');
+  const farGot = farPeerReceived.includes('hello-from-worker');
+  return {
+    ok: workerGot && farGot,
+    detail: `worker adopted channel (readyState ${answer.readyState}); worker received far peer: ${workerGot}; far peer received worker: ${farGot}`,
+  };
+}
+
+try {
+  await run();
+} catch (error) {
+  report('Harness', 'FAIL', String(error));
+}
+document.getElementById('raw').textContent = `done\n${JSON.stringify({ userAgent: navigator.userAgent, results: rows }, null, 2)}`;
+document.title = 'done - Worker compatibility checks';
+</script>
+</body>
+</html>

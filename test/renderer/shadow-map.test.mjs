@@ -3,7 +3,8 @@ import { describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import ShadowMap from '../../source/engine/client/renderer/ShadowMap.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../physics/fixtures.mjs';
 

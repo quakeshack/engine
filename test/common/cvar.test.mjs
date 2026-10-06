@@ -111,4 +111,80 @@ void describe('Cvar', () => {
       }
     });
   });
+
+  void describe('cheat variables', () => {
+    /**
+     * Tries to change a cheat variable.
+     * @param {{ serverActive?: boolean, cheatsOnServer?: string, viaController?: boolean }} options what the world looks like
+     * @returns {{ value: string, warnings: string[], prints: string[] }} the value afterwards and what was printed
+     */
+    function changeCheatVariable({ serverActive = false, cheatsOnServer = '0', viaController = false }) {
+      const consoleCapture = createConsoleCapture();
+      const sv = { server: { active: serverActive } };
+      // A client asks its controller, which is how a server in a worker is seen; a dedicated server has no client.
+      const cl = viaController
+        ? { cls: { serverInfo: { sv_cheats: cheatsOnServer } }, serverController: { state: { active: serverActive } } }
+        : null;
+      let value = '';
+
+      withMockRegistry({ ...defaultMockRegistry(sv, cl), Con: consoleCapture }, () => {
+        resetCvarState();
+
+        try {
+          const cheat = new Cvar('test_cheat', '0', Cvar.FLAG.CHEAT);
+
+          Cvar.Command_f('test_cheat', '1');
+          value = cheat.string;
+        } finally {
+          resetCvarState();
+        }
+      });
+
+      return { value, warnings: consoleCapture.warnings, prints: consoleCapture.prints };
+    }
+
+    void test('can be changed while no server is running', () => {
+      assert.equal(changeCheatVariable({ serverActive: false }).value, '1');
+    });
+
+    void test('are refused by a running server in this thread that does not allow cheats', () => {
+      const result = changeCheatVariable({ serverActive: true });
+
+      assert.equal(result.value, '0');
+      assert.deepEqual(result.prints, ['Cheats are not enabled on this server.\n']);
+    });
+
+    void test('are refused by a running server in a worker, which the client only knows from its controller', () => {
+      const result = changeCheatVariable({ serverActive: true, viaController: true });
+
+      assert.equal(result.value, '0');
+      assert.deepEqual(result.prints, ['Cheats are not enabled on this server.\n']);
+    });
+
+    void test('can be changed on a server that allows cheats', () => {
+      assert.equal(changeCheatVariable({ serverActive: true, cheatsOnServer: '1', viaController: true }).value, '1');
+    });
+
+    void test('do not need an in-thread server to be asked about at all', () => {
+      const consoleCapture = createConsoleCapture();
+      const cl = { cls: { serverInfo: {} }, serverController: { state: { active: false } } };
+      let value = '';
+
+      // The server of a client with a worker is not in the registry.
+      withMockRegistry({ ...defaultMockRegistry(undefined, cl), SV: undefined, Con: consoleCapture }, () => {
+        resetCvarState();
+
+        try {
+          const cheat = new Cvar('test_cheat', '0', Cvar.FLAG.CHEAT);
+
+          Cvar.Command_f('test_cheat', '1');
+          value = cheat.string;
+        } finally {
+          resetCvarState();
+        }
+      });
+
+      assert.equal(value, '1');
+    });
+  });
 });

@@ -1,4 +1,5 @@
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import { getCommonRegistry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
 import { BaseWorker, type WorkerMessageListener } from './Sys.ts';
 
 let { Host } = getCommonRegistry();
@@ -18,14 +19,14 @@ export interface WorkerMessageEnvelope {
 type NodeLikeWorker = {
   on(event: 'message', listener: (data: unknown) => void): void;
   on(event: 'error', listener: (error: Error) => void): void;
-  postMessage(message: unknown): void;
+  postMessage(message: unknown, transfer?: Transferable[]): void;
   terminate(): Promise<number>;
 };
 
 type BrowserLikeWorker = {
   addEventListener(event: 'message', listener: (event: MessageEvent<unknown>) => void): void;
   addEventListener(event: 'error', listener: (event: ErrorEvent) => void): void;
-  postMessage(message: unknown): void;
+  postMessage(message: unknown, transfer?: Transferable[]): void;
   terminate(): void;
 };
 
@@ -103,8 +104,8 @@ export default class PlatformWorker extends BaseWorker {
     }
   }
 
-  postMessage(message: unknown) {
-    this.#worker?.postMessage(message);
+  postMessage(message: unknown, transfer: Transferable[] = []) {
+    this.#worker?.postMessage(message, transfer);
   }
 
   async shutdown() {

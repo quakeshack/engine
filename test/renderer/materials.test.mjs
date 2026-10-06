@@ -3,7 +3,8 @@ import { describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import { MaterialFlags, QuakeMaterial, resolveMaterialLuminanceTexture } from '../../source/engine/client/renderer/Materials.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * A minimal {@link import('../../source/engine/client/GL.ts').GLTexture} stub

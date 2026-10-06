@@ -2,25 +2,26 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import R from '../../source/engine/client/R.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content } from '../../source/shared/Defs.ts';
 
 /**
- * Runs a callback with a mocked `SV.collision` installed, so `R.ResolveParticleCollision()` can
+ * Runs a callback with a mocked `CL.collision` installed, so `R.ResolveParticleCollision()` can
  * be tested without a real BSP world -- it only ever calls `pointContents()`/
  * `traceStaticWorldLine()`, both fully mocked here.
  * @param {{pointContents?: (point: Vector) => number, traceStaticWorldLine?: (start: Vector, end: Vector) => object}} collision mock collision methods
  * @param {() => void} callback
  */
 function withMockCollisionRegistry(collision, callback) {
-  const previousSV = registry.SV;
+  const previousCL = registry.CL;
 
-  registry.SV = /** @type {typeof import('../../source/engine/server/SV.ts').default} */ ({ collision });
+  registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ collision });
   eventBus.publish('registry.frozen');
 
   const restore = () => {
-    registry.SV = previousSV;
+    registry.CL = previousCL;
     eventBus.publish('registry.frozen');
   };
 

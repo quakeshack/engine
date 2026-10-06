@@ -1,4 +1,3 @@
-import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
 
 import type { ServerEdict } from '../server/Edict.ts';
 import { ModelType } from './Mod.ts';
@@ -15,14 +14,6 @@ interface ClientCollisionModelAccessors {
   readonly getWorldModel?: () => BrushModel | null;
   readonly getModels?: () => Array<BaseModel | null> | null;
 }
-
-let { SV } = getCommonRegistry();
-let { CL } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ SV } = getCommonRegistry());
-  ({ CL } = getClientRegistry());
-});
 
 /**
  * Runtime-neutral model and world resolver for collision code.
@@ -107,27 +98,6 @@ export class CollisionModelSource {
       ?? this.#getClientModels()?.[modelIndex]
       ?? null;
   }
-}
-
-/**
- * Compatibility adapter for tests and legacy call sites that still construct
- * collision helpers directly without explicit injection.
- * @returns A registry-backed collision model source.
- */
-export function createRegistryCollisionModelSource(): CollisionModelSource {
-  const modelSource = new CollisionModelSource();
-
-  modelSource.configureServer({
-    getWorldEntity: () => SV?.server?.edicts?.[0] ?? null,
-    getWorldModel: () => SV?.server?.worldmodel ?? null,
-    getModels: () => (SV?.server?.models?.map((model) => model instanceof Promise ? null : model) as Array<BaseModel | null> | undefined) ?? null,
-  });
-  modelSource.configureClient({
-    getWorldModel: () => CL?.state?.worldmodel ?? null,
-    getModels: () => CL?.state?.model_precache ?? null,
-  });
-
-  return modelSource;
 }
 
 export const sharedCollisionModelSource = new CollisionModelSource();

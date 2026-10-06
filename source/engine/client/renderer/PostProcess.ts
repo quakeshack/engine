@@ -2,7 +2,7 @@ import GL, { GLRenderTexture } from '../GL.ts';
 import Cvar from '../../common/Cvar.ts';
 import VID from '../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import { eventBus } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import type { PostProcessStack, PostProcessEffectDescriptor } from '../../../shared/GameInterfaces.ts';
 
 let gl: WebGL2RenderingContext = null!;

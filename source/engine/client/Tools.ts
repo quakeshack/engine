@@ -1,7 +1,8 @@
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 import W, { WadFileInterface } from '../common/W.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import { getCommonRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
 let { Con } = getCommonRegistry();
 

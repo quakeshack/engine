@@ -12,16 +12,7 @@ import { ServerCollision } from '../../source/engine/server/physics/ServerCollis
 import { AliasCollisionState, MeshCollisionState } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
-import {
-  assertNear,
-  createAxisPlane,
-  createBoxBrushModel,
-  createBrushWorldModel,
-  createMockEdict,
-  createMockEntity,
-  defaultMockRegistry,
-  withMockRegistry,
-} from './fixtures.mjs';
+import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockRegistry, withMockRegistry, registrySV, registryCollisionModelSource } from './fixtures.mjs';
 
 function createWallMeshModel(x = 0) {
   const model = new MeshModel(`wall-${x}.obj`);
@@ -106,8 +97,8 @@ function assertMonsterTouchUsesMeshHullFallback({
   configureEntity = () => {},
   time = 0.0,
 }) {
-  const collision = new ServerCollision();
-  const area = new ServerArea();
+  const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
+  const area = new ServerArea(registrySV(), registryCollisionModelSource());
 
   area.initBoxHull();
 
@@ -173,7 +164,7 @@ function assertMonsterTouchUsesMeshHullFallback({
 
 void describe('ServerCollision', () => {
   void test('stationary brush tests preserve exact resting contact', () => {
-    const collision = new ServerCollision();
+    const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
     const model = createBoxBrushModel({ halfExtents: [16, 16, 16] });
     const position = new Vector(100, 0, 40);
 
@@ -195,7 +186,7 @@ void describe('ServerCollision', () => {
 
   void describe('move', () => {
     void test('traces world brush sweeps through shared brush state', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
       const worldEntity = createMockEntity({
         origin: new Vector(),
@@ -241,7 +232,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('point trace against a hull-less brush world (e.g. BSP38) never calls ServerArea.hullForEntity', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
       worldModel.hulls = []; // BSP38 has no clipnodes/hulls at all, unlike BSP29/BSP2
       const worldEntity = createMockEntity({
@@ -284,7 +275,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('prefers a later legacy hull hit over an earlier world brush point hit', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldModel = createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush' });
       // _clipMoveToHullState is stubbed below and never touches this, but a non-empty
       // array is required to represent a world that has legacy hulls at all (BSP29/BSP2),
@@ -363,7 +354,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('keeps legacy world hull traces out of foreign clipnode subtrees', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldHull = {
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
@@ -424,7 +415,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('keeps outer legacy hull split points stable across deeper recursion', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldHull = {
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
@@ -488,7 +479,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('prefers a later legacy hull hit over an earlier unrotated BSP entity brush point hit', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldModel = createBoxBrushModel({ halfExtents: [16, 16, 16], name: 'world-brush', submodel: false });
       const entityModel = createBoxBrushModel({ halfExtents: [8, 8, 8], name: '*clip-brush' });
       // _clipMoveToHullState is stubbed below and never touches this, but a non-empty
@@ -585,7 +576,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('expands missile traces for monster broadphase and narrowphase', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const monsterEntity = createMockEntity({
         origin: new Vector(50, 12, 0),
@@ -701,7 +692,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('queries area-linked entities and filters skipped or out-of-bounds touches', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const passedict = createMockEdict(createMockEntity({
         mins: new Vector(-16, -16, -24),
@@ -804,7 +795,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('keeps the nearest hit across multi-entity clip chains', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const farEdict = createMockEdict(createMockEntity({
         origin: new Vector(72, 0, 0),
@@ -893,7 +884,7 @@ void describe('ServerCollision', () => {
 
   void describe('clipMoveToEntity', () => {
     void test('traces MeshModel SOLID_MESH entities through the shared triangle path', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const meshModel = createWallMeshModel(0);
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const meshEntity = createMockEntity({
@@ -935,7 +926,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('marks triangle-backed traces as startsolid when they begin on the face plane', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const meshModel = createWallMeshModel(0);
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const meshEntity = createMockEntity({
@@ -975,7 +966,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('queries only overlapping mesh triangles from the cached local broadphase', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const meshModel = createDoubleWallMeshModel(0, 256);
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
       const meshEntity = createMockEntity({
@@ -1019,7 +1010,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('traces AliasModel SOLID_MESH entities through the shared triangle path', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const aliasModel = createAliasWallModel([
         createAliasWallFrame('idle', 0),
       ]);
@@ -1065,7 +1056,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('uses server time to resolve grouped AliasModel collision frames', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const aliasModel = createAliasWallModel([
         {
           group: true,
@@ -1138,7 +1129,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('keeps rotated BSP point traces on the brush path', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const entityModel = createBoxBrushModel({ halfExtents: [8, 8, 8], name: '*rotating-brush' });
       const bspEntity = createMockEntity({
         origin: new Vector(32, 0, 0),
@@ -1194,7 +1185,7 @@ void describe('ServerCollision', () => {
 
   void describe('hullPointContents', () => {
     void test('treats masked foreign clipnodes as empty space', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const hull = {
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
@@ -1220,7 +1211,7 @@ void describe('ServerCollision', () => {
 
   void describe('pointContents', () => {
     void test('respects world hull ownership masks', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldHull = {
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
@@ -1258,7 +1249,7 @@ void describe('ServerCollision', () => {
 
   void describe('staticWorldContents', () => {
     void test('uses brush-backed world solids before leaf contents', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
 
@@ -1281,7 +1272,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('normalizes brush-backed current leaves to water', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
       worldModel.leafs[1].contents = content.CONTENT_CURRENT_DOWN;
       const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
@@ -1306,7 +1297,7 @@ void describe('ServerCollision', () => {
 
   void describe('traceStaticWorldLine', () => {
     void test('uses brush tracing for brush-backed world hull 0', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
       const worldEdict = createMockEdict(createMockEntity({
         origin: new Vector(),
@@ -1337,7 +1328,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('uses the client worldmodel when no local server worldspawn exists', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
 
       void withMockRegistry(defaultMockRegistry({
@@ -1367,7 +1358,7 @@ void describe('ServerCollision', () => {
     });
 
     void test('keeps legacy world hull traces out of foreign clipnode subtrees', () => {
-      const collision = new ServerCollision();
+      const collision = new ServerCollision(registrySV(), registryCollisionModelSource());
       const worldHull = {
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
@@ -1424,7 +1415,7 @@ void describe('ServerCollision', () => {
 
 void describe('ServerArea', () => {
   void test('resolves BSP hulls from the client model precache when the local server model table is empty', () => {
-    const area = new ServerArea();
+    const area = new ServerArea(registrySV(), registryCollisionModelSource());
     area.initBoxHull();
 
     const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
@@ -1458,7 +1449,7 @@ void describe('ServerArea', () => {
   });
 
   void test('invokes trigger touch with the trigger entity bound as this', () => {
-    const area = new ServerArea();
+    const area = new ServerArea(registrySV(), registryCollisionModelSource());
     const subjectEntity = createMockEntity({
       origin: new Vector(8, 0, 0),
       mins: new Vector(-16, -16, -24),

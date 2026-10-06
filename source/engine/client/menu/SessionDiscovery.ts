@@ -1,5 +1,6 @@
 import type { WebRTCDriver } from '../../network/NetworkDrivers.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 
 let { COM, Con, NET, urls } = getClientRegistry();
 

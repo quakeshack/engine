@@ -2,7 +2,6 @@ import { SerializableEntity, type EdictData } from '../../shared/GameInterfaces.
 import type { WorldspawnEntity as WorldspawnEntityValue } from '../../game/id1/entity/Worldspawn.ts';
 import type { OctreeNode } from '../../shared/Octree.ts';
 import type { Visibility } from '../common/model/BSP.ts';
-import type { ClientEdict } from '../client/ClientEntities.ts';
 import type { ServerClient } from './Client.ts';
 
 import Vector from '../../shared/Vector.ts';
@@ -10,12 +9,13 @@ import { SzBuffer, registerSerializableType } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from '../common/Def.ts';
 import * as Defs from '../../shared/Defs.ts';
-import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import Q from '../../shared/Q.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { ModelType } from '../common/Mod.ts';
 import { CorruptedResourceError, HostError } from '../common/Errors.ts';
-import { ServerEngineAPI } from '../common/GameAPIs.ts';
+import type Server from './Server.ts';
+import COM from '../common/Com.ts';
 
 // FIXME: we should improve this interface and make the actual BaseEntity implement it
 export interface BaseEntity extends SerializableEntity {
@@ -79,14 +79,6 @@ export interface BaseEntity extends SerializableEntity {
 }
 
 export type WorldspawnEntity = WorldspawnEntityValue;
-
-let { COM, Con, Host, NET, SV } = getCommonRegistry();
-let { CL } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL } = getClientRegistry());
-  ({ COM, Con, Host, NET, SV } = getCommonRegistry());
-});
 
 /** fields to hide from console output */
 const NON_PRINTABLE_ENTITY_FIELDS = new Set(['edict', 'engine', 'game']);
@@ -166,14 +158,22 @@ function formatPrintableEntityValue(value: unknown): string {
   return '[value]';
 }
 
+const SERVER: unique symbol = Symbol('ServerEdict.server');
+
 /**
  * Server-side edict allocation, parsing, and debugging helpers.
  */
 export class ED {
+  readonly #sv: Server;
+
+  constructor(sv: Server) {
+    this.#sv = sv;
+  }
+
   /**
    * Clears an edict for reuse.
    */
-  static ClearEdict(ed: ServerEdict): void {
+  ClearEdict(ed: ServerEdict): void {
     ed.clear();
     ed.free = false;
   }
@@ -182,32 +182,32 @@ export class ED {
    * Allocates a reusable edict slot.
    * @returns The allocated edict.
    */
-  static Alloc(): ServerEdict {
+  Alloc(): ServerEdict {
     let i: number;
     let edict: ServerEdict;
 
-    for (i = SV.svs.maxclients + 1; i < SV.server.num_edicts; i++) {
-      edict = SV.server.edicts[i] as ServerEdict;
+    for (i = this.#sv.svs.maxclients + 1; i < this.#sv.server.num_edicts; i++) {
+      edict = this.#sv.server.edicts[i] as ServerEdict;
 
-      if (edict.free && (edict.freetime < 2.0 || SV.server.time - edict.freetime > 0.5)) {
-        ED.ClearEdict(edict);
+      if (edict.free && (edict.freetime < 2.0 || this.#sv.server.time - edict.freetime > 0.5)) {
+        this.ClearEdict(edict);
         eventBus.publish('server.edict.assigned', edict.num);
         return edict;
       }
     }
 
     if (i % Def.limits.edicts === 0) {
-      SV.server.edicts.length += Def.limits.edicts;
+      this.#sv.server.edicts.length += Def.limits.edicts;
 
-      for (let j = i; j < SV.server.edicts.length; j++) {
-        SV.server.edicts[j] = new ServerEdict(j);
+      for (let j = i; j < this.#sv.server.edicts.length; j++) {
+        this.#sv.server.edicts[j] = new ServerEdict(j, this.#sv);
       }
 
-      Con.DPrint(`ED.Alloc triggered Def.limits.edicts (${Def.limits.edicts})\n`);
+      this.#sv.con.DPrint(`this.Alloc triggered Def.limits.edicts (${Def.limits.edicts})\n`);
     }
 
-    edict = SV.server.edicts[SV.server.num_edicts++] as ServerEdict;
-    ED.ClearEdict(edict);
+    edict = this.#sv.server.edicts[this.#sv.server.num_edicts++] as ServerEdict;
+    this.ClearEdict(edict);
     eventBus.publish('server.edict.assigned', edict.num);
     return edict;
   }
@@ -215,34 +215,34 @@ export class ED {
   /**
    * Marks an edict free so it can be reused later.
    */
-  static Free(ed: ServerEdict): void {
-    SV.area.unlinkEdict(ed);
+  Free(ed: ServerEdict): void {
+    this.#sv.area.unlinkEdict(ed);
     ed.free = true;
 
     if (ed.entity) {
       ed.entity.clear();
     }
 
-    ed.freetime = SV.server.time;
+    ed.freetime = this.#sv.server.time;
     eventBus.publish('server.edict.freed', ed.num);
   }
 
   /**
    * Prints an edict's fields to the console.
    */
-  static Print(ed: ServerEdict): void {
+  Print(ed: ServerEdict): void {
     if (ed.isFree()) {
       return;
     }
 
     const entity = ed.entity;
 
-    console.assert(entity !== null, 'ED.Print requires a live entity');
+    console.assert(entity !== null, 'this.Print requires a live entity');
 
-    Con.Print(`\nEDICT ${ed.num}:\n`);
+    this.#sv.con.Print(`\nEDICT ${ed.num}:\n`);
 
     if (entity === null) {
-      Con.Print('\nNULL ENTITY!\n');
+      this.#sv.con.Print('\nNULL ENTITY!\n');
       return;
     }
 
@@ -254,115 +254,109 @@ export class ED {
         continue;
       }
 
-      Con.Print(`${name.padStart(24, '.')}: ${formatPrintableEntityValue(printableValue)}\n`);
+      this.#sv.con.Print(`${name.padStart(24, '.')}: ${formatPrintableEntityValue(printableValue)}\n`);
     }
   }
 
   /**
    * Prints all active edicts.
    */
-  static PrintEdicts(): void {
-    if (!SV.server.active) {
+  PrintEdicts(): void {
+    if (!this.#sv.server.active) {
       return;
     }
 
-    Con.Print(`${SV.server.num_edicts} entities\n`);
-    SV.server.edicts.forEach((edict: ServerEdict) => {
-      ED.Print(edict);
+    this.#sv.con.Print(`${this.#sv.server.num_edicts} entities\n`);
+    this.#sv.server.edicts.forEach((edict: ServerEdict) => {
+      this.Print(edict);
     });
   }
 
   /**
    * Prints an edict summary.
    */
-  static PrintEdict_f = class PrintEdictCommand extends ConsoleCommand {
-    run(id?: string): void {
-      if (!SV.server.active) {
-        return;
-      }
-
-      if (id === undefined) {
-        Con.Print(`Usage: ${this.command} <num>\n`);
-        return;
-      }
-
-      const index = Q.atoi(id);
-
-      if (index >= 0 && index < SV.server.num_edicts) {
-        ED.Print(SV.server.edicts[index] as ServerEdict);
-      }
+  printEdictCommand(command: ConsoleCommand, id?: string): void {
+    if (!this.#sv.server.active) {
+      return;
     }
-  };
+
+    if (id === undefined) {
+      this.#sv.con.Print(`Usage: ${command.command} <num>\n`);
+      return;
+    }
+
+    const index = Q.atoi(id);
+
+    if (index >= 0 && index < this.#sv.server.num_edicts) {
+      this.Print(this.#sv.server.edicts[index] as ServerEdict);
+    }
+  }
 
   /**
    * Prints all active edicts.
    */
-  static PrintEdicts_f = class PrintEdictsCommand extends ConsoleCommand {
-    run(): void {
-      if (!SV.server.active) {
-        return;
-      }
-
-      ED.PrintEdicts();
+  printEdictsCommand(): void {
+    if (!this.#sv.server.active) {
+      return;
     }
-  };
+
+    this.PrintEdicts();
+  }
 
   /**
    * Prints an edict usage summary.
    */
-  static PrintEdictcount_f = class PrintEdictcountCommand extends ConsoleCommand {
-    run(): void {
-      if (!SV.server.active) {
-        return;
-      }
-
-      let active = 0;
-      let models = 0;
-      let solid = 0;
-      let step = 0;
-
-      for (let i = 0; i < SV.server.num_edicts; i++) {
-        const ent = SV.server.edicts[i] as ServerEdict;
-
-        if (ent.isFree()) {
-          continue;
-        }
-
-        const entity = ent.entity!;
-
-        console.assert(entity !== null, 'ED.Count requires a live entity');
-
-        active++;
-
-        if (entity.solid) {
-          solid++;
-        }
-
-        if (entity.model) {
-          models++;
-        }
-
-        if (entity.movetype === Defs.moveType.MOVETYPE_STEP) {
-          step++;
-        }
-      }
-
-      const numEdicts = SV.server.num_edicts;
-      const padWidth = Math.ceil(Math.log10(numEdicts + 1)) + 1;
-
-      Con.Print(`num_edicts :${numEdicts.toString().padStart(padWidth, ' ')}\n`);
-      Con.Print(`active     :${active.toString().padStart(padWidth, ' ')}\n`);
-      Con.Print(`view       :${models.toString().padStart(padWidth, ' ')}\n`);
-      Con.Print(`touch      :${solid.toString().padStart(padWidth, ' ')}\n`);
-      Con.Print(`step       :${step.toString().padStart(padWidth, ' ')}\n`);
+  printEdictcountCommand(): void {
+    if (!this.#sv.server.active) {
+      return;
     }
-  };
+
+    let active = 0;
+    let models = 0;
+    let solid = 0;
+    let step = 0;
+
+    for (let i = 0; i < this.#sv.server.num_edicts; i++) {
+      const ent = this.#sv.server.edicts[i] as ServerEdict;
+
+      if (ent.isFree()) {
+        continue;
+      }
+
+      const entity = ent.entity!;
+
+      console.assert(entity !== null, 'this.Count requires a live entity');
+
+      active++;
+
+      if (entity.solid) {
+        solid++;
+      }
+
+      if (entity.model) {
+        models++;
+      }
+
+      if (entity.movetype === Defs.moveType.MOVETYPE_STEP) {
+        step++;
+      }
+    }
+
+    const numEdicts = this.#sv.server.num_edicts;
+    const padWidth = Math.ceil(Math.log10(numEdicts + 1)) + 1;
+
+    this.#sv.con.Print(`num_edicts :${numEdicts.toString().padStart(padWidth, ' ')}\n`);
+    this.#sv.con.Print(`active     :${active.toString().padStart(padWidth, ' ')}\n`);
+    this.#sv.con.Print(`view       :${models.toString().padStart(padWidth, ' ')}\n`);
+    this.#sv.con.Print(`touch      :${solid.toString().padStart(padWidth, ' ')}\n`);
+    this.#sv.con.Print(`step       :${step.toString().padStart(padWidth, ' ')}\n`);
+  }
 
   /**
    * Parses one edict block from entity text.
    * @returns The remaining entity data after the parsed block.
    */
-  static ParseEdict(data: string, ent: ServerEdict, initialData: EdictData = {}): string {
+  ParseEdict(data: string, ent: ServerEdict, initialData: EdictData = {}): string {
     if (ent.num > 0) {
       ent.clear();
     }
@@ -381,7 +375,7 @@ export class ED {
       }
 
       if (data === null) {
-        throw new CorruptedResourceError('<entities.txt>', 'ED.ParseEdict: EOF without closing brace');
+        throw new CorruptedResourceError('<entities.txt>', 'this.ParseEdict: EOF without closing brace');
       }
 
       if (parsedKey.token === 'angle') {
@@ -403,11 +397,11 @@ export class ED {
       data = parsedValue.data!;
 
       if (data === null) {
-        throw new CorruptedResourceError('<entities.txt>', 'ED.ParseEdict: EOF without closing brace');
+        throw new CorruptedResourceError('<entities.txt>', 'this.ParseEdict: EOF without closing brace');
       }
 
       if (parsedValue.token.charCodeAt(0) === 125) {
-        throw new CorruptedResourceError('<entities.txt>', 'ED.ParseEdict: Closing brace without data');
+        throw new CorruptedResourceError('<entities.txt>', 'this.ParseEdict: Closing brace without data');
       }
 
       if (keyname.startsWith('_')) {
@@ -430,13 +424,13 @@ export class ED {
   /**
    * Loads all entities from the worldspawn entity lump.
    */
-  static async LoadFromFile(data: string): Promise<void> {
+  async LoadFromFile(data: string): Promise<void> {
     let inhibit = 0;
     let ent: ServerEdict | null = null;
 
-    console.assert(SV.server.gameAPI !== null, 'SV.server.gameAPI is required to load entities');
+    console.assert(this.#sv.server.gameAPI !== null, 'SV.server.gameAPI is required to load entities');
 
-    SV.server.gameAPI!.time = SV.server.time;
+    this.#sv.server.gameAPI!.time = this.#sv.server.time;
 
     while (true) {
       const parsed = COM.Parse(data);
@@ -448,45 +442,53 @@ export class ED {
       data = parsed.data;
 
       if (parsed.token !== '{') {
-        throw new CorruptedResourceError('<entities.txt>', `ED.LoadFromFile: found ${parsed.token} when expecting {`);
+        throw new CorruptedResourceError('<entities.txt>', `this.LoadFromFile: found ${parsed.token} when expecting {`);
       }
 
       const initialData: EdictData = {};
-      ent = ent ? ED.Alloc() : (SV.server.edicts[0] as ServerEdict);
-      data = ED.ParseEdict(data, ent, initialData);
+      ent = ent ? this.Alloc() : (this.#sv.server.edicts[0] as ServerEdict);
+      data = this.ParseEdict(data, ent, initialData);
 
       if (!initialData.classname) {
-        Con.Print(`No classname for edict ${ent.num}\n`);
-        ED.Free(ent);
+        this.#sv.con.Print(`No classname for edict ${ent.num}\n`);
+        this.Free(ent);
         continue;
       }
 
-      const maySpawn = SV.server.gameAPI!.prepareEntity(ent, initialData.classname as string, initialData);
+      const maySpawn = this.#sv.server.gameAPI!.prepareEntity(ent, initialData.classname as string, initialData);
 
       if (!maySpawn) {
-        ED.Free(ent);
+        this.Free(ent);
         inhibit++;
         continue;
       }
 
-      await SV.WaitForPrecachedResources();
+      await this.#sv.WaitForPrecachedResources();
 
-      const spawned = SV.server.gameAPI!.spawnPreparedEntity(ent);
+      const spawned = this.#sv.server.gameAPI!.spawnPreparedEntity(ent);
 
       if (!spawned) {
-        Con.Print(`Could not spawn entity for edict ${ent.num}:\n`);
-        ED.Print(ent);
-        ED.Free(ent);
+        this.#sv.con.Print(`Could not spawn entity for edict ${ent.num}:\n`);
+        this.Print(ent);
+        this.Free(ent);
       }
     }
 
-    Con.DPrint(`${inhibit} entities inhibited\n`);
+    this.#sv.con.DPrint(`${inhibit} entities inhibited\n`);
   }
 
-  static Init() {
-    Cmd.AddCommand('edict', ED.PrintEdict_f);
-    Cmd.AddCommand('edicts', ED.PrintEdicts_f);
-    Cmd.AddCommand('edictcount', ED.PrintEdictcount_f);
+  Init(): void {
+    const addCommand = (name: string, handler: (command: ConsoleCommand, ...args: string[]) => void): void => {
+      Cmd.AddCommand(name, class EdictCommand extends ConsoleCommand {
+        override run(...args: string[]): void {
+          handler(this, ...args);
+        }
+      });
+    };
+
+    addCommand('edict', (command, id) => { this.printEdictCommand(command, id); });
+    addCommand('edicts', () => { this.printEdictsCommand(); });
+    addCommand('edictcount', () => { this.printEdictcountCommand(); });
   }
 }
 
@@ -496,6 +498,8 @@ export class ED {
 export class ServerEdict {
   static #lastcheckpvs: Visibility | null = null;
 
+  /** The server this edict belongs to. Symbol-keyed so it stays out of the way of game code. */
+  readonly [SERVER]: Server;
   readonly num: number;
   free: boolean;
   octreeNode: OctreeNode<ServerEdict> | null;
@@ -503,7 +507,8 @@ export class ServerEdict {
   freetime: number;
   entity: BaseEntity | null;
 
-  constructor(num: number) {
+  constructor(num: number, sv: Server) {
+    this[SERVER] = sv;
     this.num = num;
     this.free = false;
     this.octreeNode = null;
@@ -567,7 +572,7 @@ export class ServerEdict {
    * Gives up this edict so it can be reused later.
    */
   freeEdict(): void {
-    ED.Free(this);
+    this[SERVER].ed.Free(this);
   }
 
   /**
@@ -603,7 +608,7 @@ export class ServerEdict {
    * Relinks the edict in the area tree.
    */
   linkEdict(touchTriggers = false): void {
-    SV.area.linkEdict(this, touchTriggers);
+    this[SERVER].area.linkEdict(this, touchTriggers);
   }
 
   /**
@@ -612,13 +617,13 @@ export class ServerEdict {
   setModel(model: string, touchTriggers = true): void {
     let i: number;
 
-    for (i = 0; i < SV.server.modelPrecache.length; i++) {
-      if (SV.server.modelPrecache[i] === model) {
+    for (i = 0; i < this[SERVER].server.modelPrecache.length; i++) {
+      if (this[SERVER].server.modelPrecache[i] === model) {
         break;
       }
     }
 
-    if (i === SV.server.modelPrecache.length) {
+    if (i === this[SERVER].server.modelPrecache.length) {
       throw new HostError(`Edict.setModel: ${model} not precached`);
     }
 
@@ -626,7 +631,7 @@ export class ServerEdict {
     entity.model = model;
     entity.modelindex = i;
 
-    const mod = SV.server.models[i];
+    const mod = this[SERVER].server.models[i];
 
     if (mod instanceof Promise) {
       void mod.then((loadedModel) => {
@@ -652,7 +657,7 @@ export class ServerEdict {
    * @returns True when walking succeeded.
    */
   walkMove(yaw: number, dist: number): boolean {
-    return SV.movement.walkMove(this, yaw, dist);
+    return this[SERVER].movement.walkMove(this, yaw, dist);
   }
 
   /**
@@ -662,7 +667,7 @@ export class ServerEdict {
   dropToFloor(z = -2048.0): boolean {
     const entity = this.entity!;
     const end = entity.origin.copy().add(new Vector(0.0, 0.0, z));
-    const trace = SV.collision.move(entity.origin, entity.mins, entity.maxs, end, 0, this);
+    const trace = this[SERVER].collision.move(entity.origin, entity.mins, entity.maxs, end, 0, this);
 
     if (trace.fraction === 1.0 || trace.allsolid) {
       return false;
@@ -679,7 +684,7 @@ export class ServerEdict {
    * @returns True when the edict touches the ground.
    */
   isOnTheFloor(): boolean {
-    return SV.movement.checkBottom(this);
+    return this[SERVER].movement.checkBottom(this);
   }
 
   /**
@@ -687,8 +692,8 @@ export class ServerEdict {
    */
   makeStatic(): void {
     const entity = this.entity!;
-    const message = SV.server.signon;
-    const modelIndex = SV.ModelIndex(entity.model)!;
+    const message = this[SERVER].server.signon;
+    const modelIndex = this[SERVER].ModelIndex(entity.model)!;
     console.assert(modelIndex !== null, `Edict.makeStatic: model ${entity.model} not precached`);
     message.writeByte(Protocol.svc.spawnstatic);
     message.writeString(entity.classname);
@@ -709,29 +714,29 @@ export class ServerEdict {
    * @returns The selected client edict, or null when none is visible.
    */
   getNextBestClient(): ServerEdict | null {
-    if (SV.server.time - SV.server.lastchecktime >= 0.1) {
-      let check = SV.server.lastcheck;
+    if (this[SERVER].server.time - this[SERVER].server.lastchecktime >= 0.1) {
+      let check = this[SERVER].server.lastcheck;
 
       if (check <= 0) {
         check = 1;
-      } else if (check > SV.svs.maxclients) {
-        check = SV.svs.maxclients;
+      } else if (check > this[SERVER].svs.maxclients) {
+        check = this[SERVER].svs.maxclients;
       }
 
       let i = 1;
 
-      if (check !== SV.svs.maxclients) {
+      if (check !== this[SERVER].svs.maxclients) {
         i += check;
       }
 
       let ent: ServerEdict;
 
       for (;; i++) {
-        if (i === SV.svs.maxclients + 1) {
+        if (i === this[SERVER].svs.maxclients + 1) {
           i = 1;
         }
 
-        ent = SV.server.edicts[i] as ServerEdict;
+        ent = this[SERVER].server.edicts[i] as ServerEdict;
 
         if (i === check) {
           break;
@@ -750,12 +755,12 @@ export class ServerEdict {
         break;
       }
 
-      SV.server.lastcheck = i;
-      ServerEdict.#lastcheckpvs = SV.server.worldmodel!.getPvsByPoint(ent.entity!.origin.copy().add(ent.entity!.view_ofs));
-      SV.server.lastchecktime = SV.server.time;
+      this[SERVER].server.lastcheck = i;
+      ServerEdict.#lastcheckpvs = this[SERVER].server.worldmodel!.getPvsByPoint(ent.entity!.origin.copy().add(ent.entity!.view_ofs));
+      this[SERVER].server.lastchecktime = this[SERVER].server.time;
     }
 
-    const ent = SV.server.edicts[SV.server.lastcheck] as ServerEdict;
+    const ent = this[SERVER].server.edicts[this[SERVER].server.lastcheck] as ServerEdict;
     const entity = ent.entity;
 
     if (ent.isFree() || entity === null || entity.health <= 0.0) {
@@ -768,7 +773,7 @@ export class ServerEdict {
       return null;
     }
 
-    const leaf = SV.server.worldmodel!.getLeafForPoint(this.entity!.origin.copy().add(this.entity!.view_ofs)).num;
+    const leaf = this[SERVER].server.worldmodel!.getLeafForPoint(this.entity!.origin.copy().add(this.entity!.view_ofs)).num;
 
     if (leaf === 0 || !lastcheckpvs.isRevealed(leaf)) {
       return null;
@@ -790,7 +795,7 @@ export class ServerEdict {
    * @returns True when the move succeeded.
    */
   moveToGoal(dist: number, target: Vector | null = null): boolean {
-    return SV.movement.moveToGoal(this, dist, target);
+    return this[SERVER].movement.moveToGoal(this, dist, target);
   }
 
   /**
@@ -803,21 +808,21 @@ export class ServerEdict {
     const origin = entity.origin.copy();
     const start = origin.add(new Vector(0.0, 0.0, 20.0));
     const end = new Vector(start[0] + 2048.0 * dir[0], start[1] + 2048.0 * dir[1], start[2] + 2048.0 * dir[2]);
-    const trace = SV.collision.move(start, Vector.origin, Vector.origin, end, 0, this);
+    const trace = this[SERVER].collision.move(start, Vector.origin, Vector.origin, end, 0, this);
 
     const hitEntity = trace.ent?.entity || null;
 
     // direct hit on a valid target, return the original direction
-    if (hitEntity !== null && hitEntity.takedamage === Defs.damage.DAMAGE_AIM && (!Host.teamplay!.value || entity.team <= 0 || entity.team !== hitEntity.team)) {
+    if (hitEntity !== null && hitEntity.takedamage === Defs.damage.DAMAGE_AIM && (!this[SERVER].teamplay!.value || entity.team <= 0 || entity.team !== hitEntity.team)) {
       return dir;
     }
 
     const bestdir = dir.copy();
-    let bestdist = SV.aim!.value;
+    let bestdist = this[SERVER].aim!.value;
     let bestent: ServerEdict | null = null;
 
     // check if there’s a better target in the vicinity
-    for (const check of ServerEngineAPI.FindInRadius(trace.endpos, 128.0)) {
+    for (const check of this[SERVER].engineAPI.FindInRadius(trace.endpos, 128.0)) {
       if (check.isFree()) {
         continue;
       }
@@ -832,7 +837,7 @@ export class ServerEdict {
         continue;
       }
 
-      if (Host.teamplay!.value !== 0 && entity.team > 0 && entity.team === checkEntity.team) {
+      if (this[SERVER].teamplay!.value !== 0 && entity.team > 0 && entity.team === checkEntity.team) {
         continue;
       }
 
@@ -846,7 +851,7 @@ export class ServerEdict {
         continue;
       }
 
-      const trace = SV.collision.move(start, Vector.origin, Vector.origin, center, 0, this);
+      const trace = this[SERVER].collision.move(start, Vector.origin, Vector.origin, center, 0, this);
 
       if (trace.ent === check) {
         bestdist = dist;
@@ -873,8 +878,8 @@ export class ServerEdict {
    * @returns The next active edict, or null if there are no more.
    */
   nextEdict(): ServerEdict | null {
-    for (let i = this.num + 1; i < SV.server.num_edicts; i++) {
-      const edict = SV.server.edicts[i] as ServerEdict;
+    for (let i = this.num + 1; i < this[SERVER].server.num_edicts; i++) {
+      const edict = this[SERVER].server.edicts[i] as ServerEdict;
 
       if (!edict.isFree()) {
         return edict;
@@ -891,7 +896,7 @@ export class ServerEdict {
   changeYaw(): number {
     const entity = this.entity!;
     const angles = entity.angles;
-    angles[1] = SV.movement.changeYaw(this);
+    angles[1] = this[SERVER].movement.changeYaw(this);
     entity.angles = angles;
     return angles[1];
   }
@@ -901,7 +906,7 @@ export class ServerEdict {
    * @returns The mapped client slot, or null when none exists.
    */
   getClient(): ServerClient | null {
-    return (SV.svs.clients[this.num - 1] as ServerClient | undefined) ?? null;
+    return (this[SERVER].svs.clients[this.num - 1] as ServerClient | undefined) ?? null;
   }
 
   /**
@@ -909,7 +914,7 @@ export class ServerEdict {
    * @returns True when the edict is within the active client slot range.
    */
   isClient(): boolean {
-    return this.num > 0 && this.num <= SV.svs.maxclients;
+    return this.num > 0 && this.num <= this[SERVER].svs.maxclients;
   }
 
   /**
@@ -927,23 +932,5 @@ registerSerializableType(ServerEdict, {
    */
   serialize(sz: SzBuffer, object: ServerEdict): void {
     sz.writeShort(object.num);
-  },
-
-  /**
-   * Deserializes a server edict reference on the server.
-   * @returns The referenced server edict.
-   */
-  deserializeOnServer(_sz: SzBuffer): ServerEdict {
-    const num = NET.message.readShort();
-    console.assert(num >= 0 && num < SV.server.num_edicts, `ServerEdict.deserialize: invalid edict number ${num}`);
-    return SV.server.edicts[num] as ServerEdict;
-  },
-
-  /**
-   * Deserializes a server edict reference on the client.
-   * @returns The client-side edict proxy.
-   */
-  deserializeOnClient(_sz: SzBuffer): ClientEdict {
-    return CL.state.clientEntities.getEntity(NET.message.readShort()) as ClientEdict;
   },
 });

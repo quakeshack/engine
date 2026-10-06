@@ -3,7 +3,8 @@ import { describe, test } from 'node:test';
 
 import { K } from '../../source/shared/Keys.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import { MenuViewport } from '../../source/engine/client/menu/MenuViewport.ts';
 

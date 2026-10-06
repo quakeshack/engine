@@ -1,4 +1,5 @@
-import { eventBus, getCommonRegistry } from '../../registry.ts';
+import { getCommonRegistry } from '../../registry.ts';
+import { eventBus } from '../EventBus.ts';
 import Q from '../../../shared/Q.ts';
 import Vector from '../../../shared/Vector.ts';
 import { type BSPXLumps, type BrushModel, type LightgridLeaf, type LightgridNode, type LightgridPointSample, type LightgridStyleSample } from './BSP.ts';

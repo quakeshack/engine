@@ -14,7 +14,14 @@ const typeAwareParserOptions = {
   sourceType: 'module',
   // Game modules vendored under source/game are responsible for shipping a
   // local tsconfig.json when they want typed linting for their own tests.
-  projectService: true,
+  projectService: {
+    allowDefaultProject: [
+      'test/*.test.mjs',
+      'test/*/*.test.mjs',
+      'test/*/*/*.test.mjs',
+    ],
+    maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINT: 64,
+  },
   tsconfigRootDir: __dirname,
 };
 
@@ -117,6 +124,79 @@ const tsStrictRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   '@typescript-eslint/unified-signatures': 'error',
 });
 
+/**
+ * The registry is going away (plans/engine-architecture-modernization.md). These are the files that
+ * still import it. The list may only shrink: a file that stops needing the registry comes off the
+ * list in the same change, and a file that is not on it must not import it.
+ */
+const registryImporters = [
+  'source/engine/bootstrap/createDedicatedServer.ts',
+  // Composition root of a server worker: fills the registry that code in the worker's realm still reads.
+  'source/engine/bootstrap/createServerWorker.ts',
+  'source/engine/client/CDAudio.ts',
+  'source/engine/client/Chase.ts',
+  'source/engine/client/ClientConnection.ts',
+  'source/engine/client/ClientDemos.ts',
+  'source/engine/client/ClientEntities.ts',
+  'source/engine/client/ClientEntityPhysics.ts',
+  'source/engine/client/ClientHost.ts',
+  'source/engine/client/ClientInput.ts',
+  'source/engine/client/ClientLegacy.ts',
+  'source/engine/client/ClientLifecycle.ts',
+  'source/engine/client/ClientMessages.ts',
+  'source/engine/client/ClientServerCommandHandlers.ts',
+  'source/engine/client/ClientState.ts',
+  'source/engine/client/CL.ts',
+  'source/engine/client/Draw.ts',
+  'source/engine/client/GL.ts',
+  'source/engine/client/IN.ts',
+  'source/engine/client/InviteCommand.ts',
+  'source/engine/client/Key.ts',
+  'source/engine/client/menu/MenuItem.ts',
+  'source/engine/client/menu/MenuPage.ts',
+  'source/engine/client/menu/MenuStack.ts',
+  'source/engine/client/menu/SaveSlots.ts',
+  'source/engine/client/menu/SessionDiscovery.ts',
+  'source/engine/client/Menu.ts',
+  'source/engine/client/NavigationDebug.ts',
+  'source/engine/client/renderer/AliasModelRenderer.ts',
+  'source/engine/client/renderer/BloomEffect.ts',
+  'source/engine/client/renderer/BrushModelRenderer.ts',
+  'source/engine/client/renderer/Materials.ts',
+  'source/engine/client/renderer/MeshModelRenderer.ts',
+  'source/engine/client/renderer/ShadowMap.ts',
+  'source/engine/client/renderer/Sky.ts',
+  'source/engine/client/renderer/SpriteModelRenderer.ts',
+  'source/engine/client/renderer/UnderwaterFogEffect.ts',
+  'source/engine/client/renderer/WarpEffect.ts',
+  'source/engine/client/R.ts',
+  'source/engine/client/SCR.ts',
+  'source/engine/client/Sound.ts',
+  'source/engine/client/Sys.ts',
+  'source/engine/client/Tools.ts',
+  'source/engine/client/V.ts',
+  'source/engine/common/Cmd.ts',
+  'source/engine/common/Console.ts',
+  'source/engine/common/Cvar.ts',
+  'source/engine/common/GameAPIs.ts',
+  'source/engine/common/GameModule.ts',
+  'source/engine/common/Host.ts',
+  'source/engine/common/model/BSPXLoader.ts',
+  'source/engine/common/model/loaders/AliasMDLLoader.ts',
+  'source/engine/common/model/loaders/BSP29Loader.ts',
+  'source/engine/common/model/loaders/BSP38Loader.ts',
+  'source/engine/common/model/loaders/SpriteSPRLoader.ts',
+  'source/engine/common/model/loaders/WavefrontOBJLoader.ts',
+  'source/engine/common/model/QSMatLoader.ts',
+  'source/engine/common/Mod.ts',
+  'source/engine/common/PlatformWorker.ts',
+  'source/engine/common/WorkerFramework.ts',
+  'source/engine/common/WorkerManager.ts',
+  'source/engine/common/W.ts',
+  'source/engine/main-browser.ts',
+  'source/engine/main-dedicated.ts',
+];
+
 export default defineConfig([
   {
     ignores: [
@@ -198,6 +278,46 @@ export default defineConfig([
     rules: {
       'jsdoc/require-param-type': 'off',
       'jsdoc/require-returns-type': 'off',
+    },
+  },
+  {
+    // Ratchet for removing the registry, see `registryImporters`.
+    files: ['source/**/*.ts'],
+    ignores: registryImporters,
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { regex: '(^|/)registry\\.ts$', caseSensitive: true, message: 'The registry is being removed, inject what you need instead. See plans/engine-architecture-modernization.md.' },
+        ],
+      }],
+    },
+  },
+  {
+    // The server runtime must not know the client runtime. `test/common/engine-boundaries.test.mjs`
+    // enforces the same boundary in `npm test`.
+    files: ['source/engine/server/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['**/client/**'], message: 'The server runtime must not import client code.' },
+          { group: ['**/registry.ts'], importNames: ['getClientRegistry'], message: 'The server runtime must not use the client registry.' },
+        ],
+      }],
+    },
+  },
+  {
+    // The client runtime reaches the local server through `CL.serverController`, never through `SV`.
+    files: ['source/engine/client/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['**/server/Server.ts'], message: 'The client runtime must not import SV, use CL.serverController.' },
+        ],
+      }],
+      'no-restricted-syntax': ['error', {
+        selector: 'ObjectPattern > Property[key.name="SV"]',
+        message: 'The client runtime must not take SV out of a registry, use CL.serverController.',
+      }],
     },
   },
   {

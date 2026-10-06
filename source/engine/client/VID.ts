@@ -1,5 +1,5 @@
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
-import { eventBus } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
 class FullscreenCommand extends ConsoleCommand {
   override async run(): Promise<void> {

@@ -3,7 +3,8 @@ import type { ClientSerializableType } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
 import { areSerializableValuesEqual } from '../../shared/SerializableValues.ts';
 import { PM_TYPE, PmovePlayer } from '../common/Pmove.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import { HostError } from '../common/Errors.ts';
 
 type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';

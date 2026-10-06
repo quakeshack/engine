@@ -1,7 +1,8 @@
 import Vector from '../../../shared/Vector.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import GL, { ATTRIB_LOCATIONS } from '../GL.ts';
 import { MeshModel } from '../../common/model/MeshModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';

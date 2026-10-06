@@ -9,10 +9,10 @@ import * as Defs from '../../shared/Defs.ts';
 import { areSerializableValuesEqual } from '../../shared/SerializableValues.ts';
 import Cvar from '../common/Cvar.ts';
 import { requireActiveGameModule } from '../common/GameModule.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
 import { ServerClient } from './Client.ts';
 import { ServerEntityState } from './ServerEntityState.ts';
 import { PmovePlayer } from '../common/Pmove.ts';
+import type Server from './Server.ts';
 
 type BitsWriter = 'writeByte' | 'writeShort' | 'writeLong';
 type DynamicEntityFieldValue = SerializableType | undefined;
@@ -69,12 +69,6 @@ interface ServerMessageEntity extends BaseEntity {
   weaponmodel: string | null;
 }
 
-let { Con, Host, NET, SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Host, NET, SV } = getCommonRegistry());
-});
-
 /**
  * Returns a live entity view for an edict.
  * @returns The typed entity bound to the edict.
@@ -91,8 +85,8 @@ function requireEntity(edict: ServerEdict): ServerMessageEntity {
  * Returns the initialized worldspawn entity.
  * @returns The current worldspawn entity.
  */
-function requireWorldspawnEntity(): WorldspawnMessageEntity {
-  const entity = SV.server.edicts[0]?.entity;
+function requireWorldspawnEntity(sv: Server): WorldspawnMessageEntity {
+  const entity = sv.server.edicts[0]?.entity;
 
   console.assert(entity !== null, 'ServerMessages requires a worldspawn entity');
 
@@ -142,13 +136,18 @@ function cloneSerializableValue(value: SerializableType): SerializableType {
  */
 export class ServerMessages {
   readonly nullcmd: Protocol.UserCmd;
+  private readonly sv: Server;
 
-  constructor() {
+  /**
+   * @param sv The server whose clients are served.
+   */
+  constructor(sv: Server) {
+    this.sv = sv;
     this.nullcmd = new Protocol.UserCmd();
   }
 
   startParticle(org: Vector, dir: Vector, color: number, count: number): void {
-    const datagram = SV.server.datagram;
+    const datagram = this.sv.server.datagram;
 
     // svc.particle(1) + org coordvector(12) + dir coordvector(12) + count(1) + color(1)
     if (!datagram.hasRoom(27)) {
@@ -168,21 +167,21 @@ export class ServerMessages {
     console.assert(channel >= 0 && channel <= 7, 'channel out of range', channel);
 
     let i;
-    for (i = 1; i < SV.server.soundPrecache.length; i++) {
-      if (sample === SV.server.soundPrecache[i]) {
+    for (i = 1; i < this.sv.server.soundPrecache.length; i++) {
+      if (sample === this.sv.server.soundPrecache[i]) {
         break;
       }
     }
-    if (i >= SV.server.soundPrecache.length) {
-      const datagram = SV.server.datagram;
+    if (i >= this.sv.server.soundPrecache.length) {
+      const datagram = this.sv.server.datagram;
 
       // svc.loadsound(1) + index(1) + sample string + null terminator(1)
       if (!datagram.hasRoom(sample.length + 3)) {
         return;
       }
 
-      Con.Print('SV.StartSound: ' + sample + ' was not precached\n');
-      SV.server.soundPrecache.push(sample);
+      this.sv.con.Print('SV.StartSound: ' + sample + ' was not precached\n');
+      this.sv.server.soundPrecache.push(sample);
 
       // Broadcast, not PHS-filtered: every client (present or future) needs this
       // index-to-sample mapping regardless of whether it's in range to hear this
@@ -219,13 +218,13 @@ export class ServerMessages {
     // Point-only logic entities (e.g. trap_spikeshooter) never set a model, so ServerArea never
     // populates their leafnums (see ServerArea.linkEdict). Fall back to the bbox-center point for
     // those, since merging PHS across zero leafs would otherwise hide the sound from everyone.
-    const worldmodel = SV.server.worldmodel;
+    const worldmodel = this.sv.server.worldmodel;
     console.assert(worldmodel !== null, 'ServerMessages.startSound requires a loaded worldmodel for PHS filtering');
     const phs = edict.leafnums.length > 0
       ? worldmodel!.getPhsByLeafs(edict.leafnums)
       : worldmodel!.getPhsByPoint(origin);
 
-    for (const client of SV.svs.spawnedClients()) {
+    for (const client of this.sv.svs.spawnedClients()) {
       const message = client.expedited_message;
 
       // Any client may still have a looping channel active for this exact (entity, channel)
@@ -270,12 +269,12 @@ export class ServerMessages {
    */
   sendServerData(client: ServerClient): void {
     const message = client.message;
-    const worldspawnEntity = requireWorldspawnEntity();
+    const worldspawnEntity = requireWorldspawnEntity(this.sv);
     const activeGameModule = requireActiveGameModule();
     const { author, name, version } = activeGameModule.identification;
 
     message.writeByte(Protocol.svc.print);
-    message.writeString(`\x02\nVERSION ${Host.version!.string} SERVER (${SV.server.gameVersion})\n`);
+    message.writeString(`\x02\nVERSION ${this.sv.engineVersion()} SERVER (${this.sv.server.gameVersion})\n`);
 
     message.writeByte(Protocol.svc.serverdata);
     message.writeByte(Protocol.version);
@@ -285,24 +284,24 @@ export class ServerMessages {
     message.writeByte(version[1]);
     message.writeByte(version[2]);
 
-    message.writeByte(SV.svs.maxclients);
-    message.writeString(worldspawnEntity.message || SV.server.mapname!);
-    // SV.pmove.movevars.sendToClient(message);
-    for (let i = 1; i < SV.server.modelPrecache.length; i++) {
-      message.writeString(SV.server.modelPrecache[i]);
+    message.writeByte(this.sv.svs.maxclients);
+    message.writeString(worldspawnEntity.message || this.sv.server.mapname!);
+    // this.sv.pmove.movevars.sendToClient(message);
+    for (let i = 1; i < this.sv.server.modelPrecache.length; i++) {
+      message.writeString(this.sv.server.modelPrecache[i]);
     }
     message.writeByte(0);
-    for (let i = 1; i < SV.server.soundPrecache.length; i++) {
-      message.writeString(SV.server.soundPrecache[i]);
+    for (let i = 1; i < this.sv.server.soundPrecache.length; i++) {
+      message.writeString(this.sv.server.soundPrecache[i]);
     }
     message.writeByte(0);
 
-    for (const field of SV.server.clientdataFields) {
+    for (const field of this.sv.server.clientdataFields) {
       message.writeString(field);
     }
     message.writeByte(0);
 
-    for (const [classname, { fields }] of Object.entries(SV.server.clientEntityFields)) {
+    for (const [classname, { fields }] of Object.entries(this.sv.server.clientEntityFields)) {
       message.writeString(classname);
       for (const field of fields) {
         message.writeString(field);
@@ -334,7 +333,7 @@ export class ServerMessages {
     }
 
     // make sure the client knows about the paused state
-    if (SV.server.paused) {
+    if (this.sv.server.paused) {
       client.message.writeByte(Protocol.svc.setpause);
       client.message.writeByte(1);
     }
@@ -356,8 +355,8 @@ export class ServerMessages {
   }
 
   cvarChanged(cvar: Cvar): void {
-    for (let i = 0; i < SV.svs.maxclients; i++) {
-      const client = SV.svs.clients[i];
+    for (let i = 0; i < this.sv.svs.maxclients; i++) {
+      const client = this.sv.svs.clients[i];
       if (client.state < ServerClient.STATE.CONNECTED) {
         continue;
       }
@@ -369,8 +368,8 @@ export class ServerMessages {
   }
 
   *traversePVS(pvs: Visibility, ignoreEdictIds: number[] = [], alwaysIncludeEdictIds: number[] = [], includeFree = false): Generator<ServerEdict, void, void> {
-    for (let e = 1; e < SV.server.num_edicts; e++) {
-      const ent = SV.server.edicts[e];
+    for (let e = 1; e < this.sv.server.num_edicts; e++) {
+      const ent = this.sv.server.edicts[e];
 
       if (alwaysIncludeEdictIds.includes(e)) {
         yield ent;
@@ -396,8 +395,8 @@ export class ServerMessages {
   writePlayersToClient(clientEdict: ServerEdict, pvs: Visibility, msg: SzBuffer): boolean {
     let changes = false;
 
-    for (let i = 0; i < SV.svs.maxclients; i++) {
-      const cl = SV.svs.clients[i];
+    for (let i = 0; i < this.sv.svs.maxclients; i++) {
+      const cl = this.sv.svs.clients[i];
       const playerEntity = requireEntity(cl.edict);
 
       if (cl.state !== ServerClient.STATE.SPAWNED) {
@@ -446,7 +445,7 @@ export class ServerMessages {
       msg.writeByte(playerEntity.frame);
 
       if (pflags & Protocol.pf.PF_MSEC) {
-        const msec = 1000 * (SV.server.time - cl.local_time);
+        const msec = 1000 * (this.sv.server.time - cl.local_time);
         msg.writeByte(Math.max(0, Math.min(msec, 255)));
       }
 
@@ -530,7 +529,7 @@ export class ServerMessages {
       bits |= Protocol.u.solid;
     }
 
-    if (to.nextthink >= SV.server.time && (to.nextthink - from.nextthink) > 0.001) {
+    if (to.nextthink >= this.sv.server.time && (to.nextthink - from.nextthink) > 0.001) {
       bits |= Protocol.u.nextthink;
     }
 
@@ -616,13 +615,13 @@ export class ServerMessages {
 
     if (bits & Protocol.u.nextthink) {
       if (from.nextthink <= 0) {
-        from.nextthink = SV.server.time;
+        from.nextthink = this.sv.server.time;
       }
       msg.writeByte(to.nextthink - from.nextthink < 0.250 ? Math.min(255, (to.nextthink - from.nextthink) * 255.0) : 0);
     }
 
-    if (SV.server.clientEntityFields[to.classname!]) {
-      const entityFields = SV.server.clientEntityFields[to.classname!];
+    if (this.sv.server.clientEntityFields[to.classname!]) {
+      const entityFields = this.sv.server.clientEntityFields[to.classname!];
       const fields = entityFields.fields;
       const bitsWriter = entityFields.bitsWriter as BitsWriter | null;
 
@@ -651,11 +650,11 @@ export class ServerMessages {
   writeEntitiesToClient(clientEdict: ServerEdict, msg: SzBuffer): boolean {
     const clientEntity = requireEntity(clientEdict);
     const origin = clientEntity.origin.copy().add(clientEntity.view_ofs);
-    const pvs = SV.server.worldmodel!.getFatPvsByPoint(origin);
+    const pvs = this.sv.server.worldmodel!.getFatPvsByPoint(origin);
 
     let changes = this.writePlayersToClient(clientEdict, pvs, msg) ? 1 : 0;
 
-    const cl = SV.svs.clients[clientEdict.num - 1];
+    const cl = this.sv.svs.clients[clientEdict.num - 1];
 
     msg.writeByte(Protocol.svc.deltapacketentities);
 
@@ -663,7 +662,7 @@ export class ServerMessages {
 
     for (const ent of this.traversePVS(pvs, [], [clientEdict.num])) {
       if (!msg.hasRoom(16)) {
-        Con.PrintWarning('SV.WriteEntitiesToClient: packet overflow, not writing more entities\n');
+        this.sv.con.PrintWarning('SV.WriteEntitiesToClient: packet overflow, not writing more entities\n');
         break;
       }
 
@@ -685,8 +684,8 @@ export class ServerMessages {
       toState.mins.set(entity.mins);
       toState.nextthink = entity.nextthink || 0;
 
-      if (SV.server.clientEntityFields[entity.classname]) {
-        const entityFields = SV.server.clientEntityFields[entity.classname];
+      if (this.sv.server.clientEntityFields[entity.classname]) {
+        const entityFields = this.sv.server.clientEntityFields[entity.classname];
         const fields = entityFields.fields;
         const serializableEntity = entity as ServerMessageEntity & Record<string, DynamicEntityFieldValue>;
 
@@ -708,8 +707,8 @@ export class ServerMessages {
       visedicts.push(ent.num);
     }
 
-    for (let i = 1; i < SV.server.num_edicts; i++) {
-      const ent = SV.server.edicts[i];
+    for (let i = 1; i < this.sv.server.num_edicts; i++) {
+      const ent = this.sv.server.edicts[i];
 
       if (visedicts.includes(ent.num)) {
         continue;
@@ -810,7 +809,7 @@ export class ServerMessages {
       msg.writeByte(PmovePlayer.resolvePmType(clientEntity.deadflag ?? 0, clientEntity.movetype));
     }
 
-    const clientdataFields = SV.server.clientdataFields;
+    const clientdataFields = this.sv.server.clientdataFields;
     const destination = msg;
 
     let fieldbits = 0;
@@ -837,7 +836,7 @@ export class ServerMessages {
       clientdataSnapshot[field] = cloneSerializableValue(value);
     }
 
-    const bitsWriter = SV.server.clientdataFieldsBitsWriter as BitsWriter | null;
+    const bitsWriter = this.sv.server.clientdataFieldsBitsWriter as BitsWriter | null;
     console.assert(bitsWriter !== null, 'clientdataFieldsBitsWriter must be configured for GameModule clientdata');
     if (bitsWriter !== null) {
       destination[bitsWriter](fieldbits);
@@ -854,13 +853,13 @@ export class ServerMessages {
   sendClientDatagram(client: ServerClient): boolean {
     const msg = new SzBuffer(65536, 'SV.SendClientDatagram');
     msg.writeByte(Protocol.svc.time);
-    msg.writeFloat(SV.server.time);
+    msg.writeFloat(this.sv.server.time);
 
     let changes = 0;
 
-    if (Host.realtime - client.last_ping_update >= 1) {
-      for (let i = 0; i < SV.svs.clients.length; i++) {
-        const pingClient = SV.svs.clients[i];
+    if (this.sv.svs.realtime - client.last_ping_update >= 1) {
+      for (let i = 0; i < this.sv.svs.clients.length; i++) {
+        const pingClient = this.sv.svs.clients[i];
 
         if (pingClient.state < ServerClient.STATE.CONNECTED) {
           continue;
@@ -873,7 +872,7 @@ export class ServerMessages {
         changes |= 1;
       }
 
-      client.last_ping_update = Host.realtime;
+      client.last_ping_update = this.sv.svs.realtime;
     }
 
     if (client.expedited_message.cursize > 0 && msg.hasRoom(client.expedited_message.cursize)) {
@@ -882,8 +881,8 @@ export class ServerMessages {
       changes |= 1;
     }
 
-    if (msg.hasRoom(SV.server.expedited_datagram.cursize)) {
-      msg.write(new Uint8Array(SV.server.expedited_datagram.data), SV.server.expedited_datagram.cursize);
+    if (msg.hasRoom(this.sv.server.expedited_datagram.cursize)) {
+      msg.write(new Uint8Array(this.sv.server.expedited_datagram.data), this.sv.server.expedited_datagram.cursize);
       changes |= 1;
     }
 
@@ -891,36 +890,36 @@ export class ServerMessages {
     changes |= this.writeEntitiesToClient(client.edict, msg) ? 1 : 0;
 
     if (client.state !== ServerClient.STATE.SPAWNED) {
-      Con.DPrint('SV.SendClientDatagram: not spawned\n');
+      this.sv.con.DPrint('SV.SendClientDatagram: not spawned\n');
       return true;
     }
 
     if (!changes) {
-      Con.DPrint('SV.SendClientDatagram: no changes for client ' + client.num + '\n');
+      this.sv.con.DPrint('SV.SendClientDatagram: no changes for client ' + client.num + '\n');
     }
 
-    client.last_update = SV.server.time;
+    client.last_update = this.sv.server.time;
 
-    if (msg.hasRoom(SV.server.datagram.cursize)) {
-      msg.write(new Uint8Array(SV.server.datagram.data), SV.server.datagram.cursize);
+    if (msg.hasRoom(this.sv.server.datagram.cursize)) {
+      msg.write(new Uint8Array(this.sv.server.datagram.data), this.sv.server.datagram.cursize);
     }
 
-    if (NET.SendUnreliableMessage(client.netconnection, msg) === -1) {
-      Host.DropClient(client, true, 'Connectivity issues');
+    if (this.sv.net.SendUnreliableMessage(client.netconnection, msg) === -1) {
+      this.sv.dropClient(client, true, 'Connectivity issues');
       return false;
     }
     return true;
   }
 
   updateToReliableMessages(): void {
-    for (let i = 0; i < SV.svs.maxclients; i++) {
-      const currentClient = SV.svs.clients[i];
+    for (let i = 0; i < this.sv.svs.maxclients; i++) {
+      const currentClient = this.sv.svs.clients[i];
       const frags = currentClient.edict.entity ? requireEntity(currentClient.edict).frags | 0 : 0;
       if (currentClient.old_frags === frags) {
         continue;
       }
-      for (let j = 0; j < SV.svs.maxclients; j++) {
-        const client = SV.svs.clients[j];
+      for (let j = 0; j < this.sv.svs.maxclients; j++) {
+        const client = this.sv.svs.clients[j];
         if (client.state < ServerClient.STATE.CONNECTED) {
           continue;
         }
@@ -931,21 +930,21 @@ export class ServerMessages {
       currentClient.old_frags = frags;
     }
 
-    for (let i = 0; i < SV.svs.maxclients; i++) {
-      const client = SV.svs.clients[i];
+    for (let i = 0; i < this.sv.svs.maxclients; i++) {
+      const client = this.sv.svs.clients[i];
       if (client.state >= ServerClient.STATE.CONNECTED) {
-        client.message.write(new Uint8Array(SV.server.reliable_datagram.data), SV.server.reliable_datagram.cursize);
+        client.message.write(new Uint8Array(this.sv.server.reliable_datagram.data), this.sv.server.reliable_datagram.cursize);
       }
     }
 
-    SV.server.reliable_datagram.clear();
+    this.sv.server.reliable_datagram.clear();
   }
 
   sendClientMessages(): void {
     this.updateToReliableMessages();
 
-    for (let i = 0; i < SV.svs.maxclients; i++) {
-      const client = SV.svs.clients[i];
+    for (let i = 0; i < this.sv.svs.maxclients; i++) {
+      const client = this.sv.svs.clients[i];
       if (client.state < ServerClient.STATE.CONNECTED) {
         continue;
       }
@@ -955,31 +954,31 @@ export class ServerMessages {
         }
       }
       if (client.message.overflowed) {
-        Host.DropClient(client, true, 'Connectivity issues, too many messages');
+        this.sv.dropClient(client, true, 'Connectivity issues, too many messages');
         client.message.overflowed = false;
         continue;
       }
       if (client.state === ServerClient.STATE.DROPASAP) {
-        if (NET.CanSendMessage(client.netconnection)) {
-          Host.DropClient(client, false, 'Connectivity issues, ASAP drop requested');
+        if (this.sv.net.CanSendMessage(client.netconnection)) {
+          this.sv.dropClient(client, false, 'Connectivity issues, ASAP drop requested');
         }
       } else if (client.message.cursize !== 0) {
-        if (!NET.CanSendMessage(client.netconnection)) {
+        if (!this.sv.net.CanSendMessage(client.netconnection)) {
           continue;
         }
-        if (NET.SendMessage(client.netconnection, client.message) === -1) {
-          Host.DropClient(client, true, 'Connectivity issues, failed to send message');
+        if (this.sv.net.SendMessage(client.netconnection, client.message) === -1) {
+          this.sv.dropClient(client, true, 'Connectivity issues, failed to send message');
         }
         client.message.clear();
       }
     }
 
-    for (let i = 1; i < SV.server.num_edicts; i++) {
-      if (SV.server.edicts[i].isFree()) {
+    for (let i = 1; i < this.sv.server.num_edicts; i++) {
+      if (this.sv.server.edicts[i].isFree()) {
         continue;
       }
 
-      requireEntity(SV.server.edicts[i] as ServerEdict).effects &= ~Defs.effect.EF_MUZZLEFLASH;
+      requireEntity(this.sv.server.edicts[i] as ServerEdict).effects &= ~Defs.effect.EF_MUZZLEFLASH;
     }
   }
 }

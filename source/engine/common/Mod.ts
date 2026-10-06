@@ -1,4 +1,5 @@
-import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
+import { getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
 import { MissingResourceError } from './Errors.ts';
 import { ModelLoaderRegistry } from './model/ModelLoaderRegistry.ts';
 import { AliasMDLLoader } from './model/loaders/AliasMDLLoader.ts';

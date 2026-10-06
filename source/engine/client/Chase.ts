@@ -1,11 +1,12 @@
 import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
-let { CL, R, SV } = getClientRegistry();
+let { CL, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, R, SV } = getClientRegistry());
+  ({ CL, R } = getClientRegistry());
 });
 
 export default class Chase {
@@ -25,7 +26,7 @@ export default class Chase {
     const { forward, right } = CL.state.viewangles.angleVectors();
     const back = forward.copy().subtract(new Vector(0.0, 128.0, 0.0));
     const org = R.refdef.vieworg;
-    const trace = SV.collision.traceStaticWorldLine(org, new Vector(
+    const trace = CL.collision.traceStaticWorldLine(org, new Vector(
       org[0] + 4096.0 * right[0],
       org[1] + 4096.0 * right[1],
       org[2] + 4096.0 * right[2],
@@ -44,7 +45,7 @@ export default class Chase {
   static Update(): void {
     const { forward, right } = CL.state.viewangles.angleVectors();
     const org = R.refdef.vieworg;
-    const trace = SV.collision.traceStaticWorldLine(org, new Vector(
+    const trace = CL.collision.traceStaticWorldLine(org, new Vector(
       org[0] + 4096.0 * forward[0],
       org[1] + 4096.0 * forward[1],
       org[2] + 4096.0 * forward[2],
@@ -60,7 +61,7 @@ export default class Chase {
     org2[0] -= forward[0] * Chase.back.value + right[0] * Chase.right.value;
     org2[1] -= forward[1] * Chase.back.value + right[1] * Chase.right.value;
     org2[2] += Chase.up.value;
-    const trace2 = SV.collision.traceStaticWorldLine(org, org2);
+    const trace2 = CL.collision.traceStaticWorldLine(org, org2);
     if (trace2.endpos) {
       org.set(trace2.endpos);
     } else {

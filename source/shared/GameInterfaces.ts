@@ -1,5 +1,6 @@
 import type { BaseClientEdictHandler } from './ClientEdict.ts';
-import type { ClientEngineAPI as ClientEngineApiValue, CommonEngineAPI as CommonEngineApiValue, ServerEngineAPI as ServerEngineApiValue } from '../engine/common/GameAPIs.ts';
+import type { ClientEngineAPI as ClientEngineApiValue, CommonEngineAPI as CommonEngineApiValue } from '../engine/common/GameAPIs.ts';
+import type { ServerEngineAPI as ServerEngineApiValue } from '../engine/server/ServerEngineAPI.ts';
 import type { ClientEdict as ClientEdictValue } from '../engine/client/ClientEntities.ts';
 import type { ServerEdict as ServerEdictValue } from '../engine/server/Edict.ts';
 import type { BitmapFont as BitmapFontValue } from '../engine/client/BitmapFont.ts';
@@ -24,7 +25,7 @@ export type DiscoveredSession = DiscoveredSessionValue;
 export type SessionDiscoveryStatus = SessionDiscoveryStatusValue;
 
 export type ClientEngineAPI = Readonly<typeof ClientEngineApiValue>;
-export type ServerEngineAPI = Readonly<typeof ServerEngineApiValue>;
+export type ServerEngineAPI = Readonly<ServerEngineApiValue>;
 export type CommonEngineAPI = Readonly<typeof CommonEngineApiValue>;
 export type ClientEdict = Readonly<ClientEdictValue>;
 export type ServerEdict = Readonly<ServerEdictValue>;

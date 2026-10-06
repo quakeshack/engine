@@ -5,7 +5,8 @@ import { K } from '../../source/shared/Keys.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import {
   Action, ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
 } from '../../source/engine/client/menu/MenuItem.ts';

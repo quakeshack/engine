@@ -1,14 +1,15 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
-import SV from '../../source/engine/server/Server.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
+import { createTestServer, registrySV } from './fixtures.mjs';
 
 /**
  * Installs a minimal server registry context for delta-entity message tests.
@@ -18,19 +19,16 @@ function installWriteDeltaEntityContext() {
   const previousCon = registry.Con;
   const previousHost = registry.Host;
   const previousSV = registry.SV;
-  const previousServer = SV.server;
 
   registry.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
   registry.Host = { frametime: 0.1 };
-
-  SV.server = {
-    ...SV.server,
-    time: 1,
-    gameCapabilities: [],
-    clientEntityFields: {},
-  };
-
-  registry.SV = SV;
+  registry.SV = /** @type {any} */ ({
+    server: {
+      time: 1,
+      gameCapabilities: [],
+      clientEntityFields: {},
+    },
+  });
   eventBus.publish('registry.frozen');
 
   return {
@@ -38,7 +36,6 @@ function installWriteDeltaEntityContext() {
       registry.Con = previousCon;
       registry.Host = previousHost;
       registry.SV = previousSV;
-      SV.server = previousServer;
       eventBus.publish('registry.frozen');
     },
   };
@@ -49,7 +46,7 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      const messages = new ServerMessages();
+      const messages = new ServerMessages(registrySV());
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity alpha fallback');
@@ -73,7 +70,7 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      const messages = new ServerMessages();
+      const messages = new ServerMessages(registrySV());
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity alpha scaling');
@@ -95,14 +92,14 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      SV.server.clientEntityFields = {
+      registry.SV.server.clientEntityFields = {
         monster_ogre: {
           fields: ['scale'],
           bitsWriter: 'writeByte',
         },
       };
 
-      const messages = new ServerMessages();
+      const messages = new ServerMessages(registrySV());
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity extended fields');
@@ -128,28 +125,17 @@ void describe('ServerMessages.writeDeltaEntity', () => {
 
 void describe('ServerMessages.startParticle', () => {
   void test('still writes once cursize passes the old stale 1009-byte threshold, as long as room remains in the real (16384-byte) buffer', () => {
-    const previousSV = registry.SV;
-    const previousServer = SV.server;
-
+    const sv = createTestServer();
     const datagram = new SzBuffer(16384, 'test datagram');
     datagram.cursize = 1200; // past the old hardcoded 1009 check, nowhere near the real 16384 capacity
 
-    SV.server = { ...SV.server, datagram };
-    registry.SV = SV;
-    eventBus.publish('registry.frozen');
+    sv.server.datagram = datagram;
 
-    try {
-      const messages = new ServerMessages();
-      const cursizeBefore = datagram.cursize;
+    const cursizeBefore = datagram.cursize;
 
-      messages.startParticle(new Vector(1, 2, 3), new Vector(0, 0, 1), 5, 10);
+    sv.messages.startParticle(new Vector(1, 2, 3), new Vector(0, 0, 1), 5, 10);
 
-      assert.ok(datagram.cursize > cursizeBefore);
-    } finally {
-      registry.SV = previousSV;
-      SV.server = previousServer;
-      eventBus.publish('registry.frozen');
-    }
+    assert.ok(datagram.cursize > cursizeBefore);
   });
 });
 
@@ -185,37 +171,24 @@ void describe('ServerMessages.startSound', () => {
    * }} context handle
    */
   function installStartSoundContext({ soundPrecache = ['', 'weapons/sgun1.wav'], clients = [], leafnums = [3, 7, 9] } = {}) {
-    const previousCon = registry.Con;
-    const previousSV = registry.SV;
-    const previousServer = SV.server;
-    const previousSvs = SV.svs;
-
-    registry.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
-
     const phsMarker = { marker: 'phs' };
     const getPhsByLeafsCalls = [];
     const getPhsByPointCalls = [];
+    const sv = createTestServer();
 
-    SV.server = {
-      ...SV.server,
-      datagram: new SzBuffer(2048, 'test datagram'),
-      soundPrecache: [...soundPrecache],
-      worldmodel: {
-        getPhsByLeafs(leafIndices) {
-          getPhsByLeafsCalls.push(leafIndices);
-          return phsMarker;
-        },
-        getPhsByPoint(origin) {
-          getPhsByPointCalls.push(origin);
-          return phsMarker;
-        },
+    sv.server.datagram = new SzBuffer(2048, 'test datagram');
+    sv.server.soundPrecache = [...soundPrecache];
+    sv.server.worldmodel = /** @type {any} */ ({
+      getPhsByLeafs(leafIndices) {
+        getPhsByLeafsCalls.push(leafIndices);
+        return phsMarker;
       },
-    };
-
-    SV.svs = { ...SV.svs, clients };
-
-    registry.SV = SV;
-    eventBus.publish('registry.frozen');
+      getPhsByPoint(origin) {
+        getPhsByPointCalls.push(origin);
+        return phsMarker;
+      },
+    });
+    sv.svs.clients = clients;
 
     const edict = {
       num: 5,
@@ -228,18 +201,13 @@ void describe('ServerMessages.startSound', () => {
     };
 
     return {
-      messages: new ServerMessages(),
+      sv,
+      messages: sv.messages,
       edict,
       phsMarker,
       getPhsByLeafsCalls,
       getPhsByPointCalls,
-      restore() {
-        registry.Con = previousCon;
-        registry.SV = previousSV;
-        SV.server = previousServer;
-        SV.svs = previousSvs;
-        eventBus.publish('registry.frozen');
-      },
+      restore() {},
     };
   }
 
@@ -313,14 +281,14 @@ void describe('ServerMessages.startSound', () => {
     try {
       context.messages.startSound(context.edict, 0, 'weapons/newsound.wav', 255, 1.0);
 
-      const datagram = SV.server.datagram;
+      const datagram = context.sv.server.datagram;
       datagram.beginReading();
       assert.equal(datagram.readByte(), Protocol.svc.loadsound);
       assert.equal(datagram.readByte(), 1);
       assert.equal(datagram.readString(), 'weapons/newsound.wav');
 
-      assert.equal(SV.server.soundPrecache.length, 2);
-      assert.equal(SV.server.soundPrecache[1], 'weapons/newsound.wav');
+      assert.equal(context.sv.server.soundPrecache.length, 2);
+      assert.equal(context.sv.server.soundPrecache[1], 'weapons/newsound.wav');
 
       // The client is out of PHS, so it must not receive the actual sound event — but it still
       // gets the unconditional stopsound guard (see the PHS test above for the rationale).

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import R, { compareTransparentItems } from '../../source/engine/client/R.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { Face, Plane } from '../../source/engine/common/model/BaseModel.ts';
 import { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';

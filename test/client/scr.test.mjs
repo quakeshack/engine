@@ -3,7 +3,8 @@ import { describe, test } from 'node:test';
 
 import SCR from '../../source/engine/client/SCR.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Installs minimal `CL`/`Con`/`Host` registry stubs for `SCR.SetUpToDrawConsole()`, plus a

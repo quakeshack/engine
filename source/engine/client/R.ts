@@ -4,7 +4,8 @@ import Cvar from '../common/Cvar.ts';
 import Cmd from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 
-import { eventBus, getClientRegistry, registry } from '../registry.ts';
+import { getClientRegistry, registry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import W from '../common/W.ts';
 import VID from './VID.ts';
@@ -32,10 +33,10 @@ import { ClientDlight, ClientEdict } from './ClientEntities.ts';
 import { avertexnormals } from '../common/model/loaders/AliasMDLLoader.ts';
 import { SkyRenderer } from './renderer/Sky.ts';
 
-let { CL, Host, SCR, SV, Sys, V } = getClientRegistry();
+let { CL, Host, SCR, Sys, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, SCR, SV, Sys, V } = getClientRegistry());
+  ({ CL, Host, SCR, Sys, V } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -318,7 +319,7 @@ class R {
    * the shared `PhysicsMath.clipVelocity()` formula, matching `MOVETYPE_BOUNCE`'s overbounce; a
    * wall/ceiling-like surface, or a start already embedded in solid, reports a kill instead of
    * clipping through it. Always leaves `origin` at the particle's actual resting position for this
-   * step -- `newOrigin` when nothing was hit, the impact point otherwise. `SV.collision.
+   * step -- `newOrigin` when nothing was hit, the impact point otherwise. `CL.collision.
    * pointContents()` (a cheap BSP point classification, no swept-hull work) gates the real
    * `traceStaticWorldLine()` call, so the common case of open-air flight never pays for a full
    * trace -- see the "Extension: gravity-particle collision" section of
@@ -326,12 +327,12 @@ class R {
    * @returns True when the particle hit a wall/ceiling-like surface and should be killed.
    */
   static ResolveParticleCollision(origin: Vector, velocity: Vector, newOrigin: Vector): boolean {
-    if (SV.collision.pointContents(newOrigin) !== content.CONTENT_SOLID) {
+    if (CL.collision.pointContents(newOrigin) !== content.CONTENT_SOLID) {
       origin.set(newOrigin);
       return false;
     }
 
-    const trace = SV.collision.traceStaticWorldLine(origin, newOrigin);
+    const trace = CL.collision.traceStaticWorldLine(origin, newOrigin);
     origin.set(trace.endpos);
 
     if (!trace.allsolid && trace.fraction >= 1.0) {
@@ -560,7 +561,7 @@ class R {
    */
   static IsDynamicLightSurfaceVisible(light: ClientDlight, surf: Face, impact: Vector): boolean {
     const end = impact.copy().add(surf.normal!.copy().multiply(1.0));
-    const trace = SV.collision.traceStaticWorldLine(light.origin, end);
+    const trace = CL.collision.traceStaticWorldLine(light.origin, end);
 
     return !trace.startsolid && !trace.allsolid && trace.fraction === 1.0;
   };
@@ -2960,7 +2961,7 @@ class R {
       const vectors = CL.state.viewangles.angleVectors();
       const forward = vectors.forward;
       const end = start.copy().add(forward.copy().multiply(8192));
-      const trace = SV.collision.traceStaticWorldLine(start, end);
+      const trace = CL.collision.traceStaticWorldLine(start, end);
 
       if (trace.allsolid || trace.startsolid || trace.fraction === 1.0) {
         return;

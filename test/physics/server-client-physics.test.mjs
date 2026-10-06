@@ -7,13 +7,7 @@ import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerClientPhysics } from '../../source/engine/server/physics/ServerClientPhysics.ts';
 
-import {
-  createBoxBrushModel,
-  createMockEdict,
-  createMockEntity,
-  defaultMockRegistry,
-  withMockRegistry,
-} from './fixtures.mjs';
+import { createBoxBrushModel, createMockEdict, createMockEntity, defaultMockRegistry, withMockRegistry, registrySV } from './fixtures.mjs';
 
 /**
  * @param {{msec?: number, forwardmove?: number, sidemove?: number, upmove?: number, impulse?: number}} [options]
@@ -32,7 +26,7 @@ function createUserCmd(options = {}) {
 void describe('ServerClientPhysics', () => {
   void describe('_runSharedPmove', () => {
     void test('syncs pmove state, splits long commands, and deduplicates touch impacts', () => {
-      const clientPhysics = new ServerClientPhysics();
+      const clientPhysics = new ServerClientPhysics(registrySV());
       const impacts = [];
       const addEntityCalls = [];
       const moveCalls = [];
@@ -157,7 +151,7 @@ void describe('ServerClientPhysics', () => {
         },
       };
 
-      const client = new ServerClient(0);
+      const client = new ServerClient(0, registrySV());
       client.state = ServerClient.STATE.CONNECTED;
       client.cmd = createUserCmd({ msec: 100, forwardmove: 200, impulse: 7 });
       client.pmOldButtons = 1;
@@ -215,14 +209,14 @@ void describe('ServerClientPhysics', () => {
 
   void describe('physicsClient', () => {
     void test('drains queued walk commands and links once per frame', () => {
-      const clientPhysics = new ServerClientPhysics();
+      const clientPhysics = new ServerClientPhysics(registrySV());
       const events = [];
       const entity = createMockEntity({
         movetype: moveType.MOVETYPE_WALK,
         solidType: solid.SOLID_BBOX,
       });
       const edict = createMockEdict(entity);
-      const client = new ServerClient(0);
+      const client = new ServerClient(0, registrySV());
       client.state = ServerClient.STATE.CONNECTED;
       client.pendingCmds = [
         createUserCmd({ msec: 20, forwardmove: 10, impulse: 1 }),
@@ -288,14 +282,14 @@ void describe('ServerClientPhysics', () => {
     });
 
     void test('skips movement when no walk commands are queued', () => {
-      const clientPhysics = new ServerClientPhysics();
+      const clientPhysics = new ServerClientPhysics(registrySV());
       const events = [];
       const entity = createMockEntity({
         movetype: moveType.MOVETYPE_WALK,
         solidType: solid.SOLID_BBOX,
       });
       const edict = createMockEdict(entity);
-      const client = new ServerClient(0);
+      const client = new ServerClient(0, registrySV());
       client.state = ServerClient.STATE.CONNECTED;
       edict.getClient = () => client;
 

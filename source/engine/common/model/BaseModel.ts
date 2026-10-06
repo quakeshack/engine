@@ -1,5 +1,5 @@
 import GL from '../../client/GL.ts';
-import { eventBus } from '../../registry.ts';
+import { eventBus } from '../EventBus.ts';
 import Vector from '../../../shared/Vector.ts';
 import type { ModelType } from '../Mod.ts';
 import { modelFlags } from '../../../shared/Defs.ts';

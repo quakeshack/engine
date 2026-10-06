@@ -65,6 +65,12 @@ A plain `+exec server.cfg` with no `-game` flag defaults to `id1` (`Def.ts`'s
 explicitly. The dedicated server serves both the game socket and the static browser client
 (`/qfs/*` via `Sys.ts`'s Express route) on that one port, so one process is enough.
 
+The dedicated build writes its worker bundles to `dist/dedicated/workers/` whatever `--outDir` says, so a
+scratch build with another `--outDir` still overwrites those (same sources, harmless), and its own server then
+cannot find its navigation worker. For a client-only check you do not need a new server at all: the watch
+build's `dist/browser/` is served by the dedicated server that is already running, and a server that runs in
+the browser's own worker (the default, `?serverthread` opts out, see [server-worker.md](server-worker.md)) needs nothing from it.
+
 If a `vite build --watch` process was already running, don't assume it picked up your
 latest edit — check before trusting it:
 
@@ -95,7 +101,7 @@ guessing from a screenshot.
 ## 5. Reach a gated menu/HUD page without its full physical trigger
 
 `Sys.ts`'s `Init()` exposes `window.registry` in the browser (`CL`, `COM`, `Con`, `Host`,
-`M`, `Key`, `SV`, etc.). From a Playwright `page.evaluate()`:
+`M`, `Key`, etc.; `SV` only with `?serverthread`, by default the server is in a worker and `CL.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
 
 ```js
 const { M, Key } = window.registry;
@@ -124,6 +130,15 @@ await page.keyboard.press('Backquote');
 
 This round-trips through the real `Key`/`Con`/`Cbuf`/`Cmd` pipeline, so it works for map
 loads and any cvar/console command (e.g. toggling `r_shadows`/`r_bloom`/`gl_msaa` live).
+Two traps when scripting this: the console closes itself after commands like `map`/`load`, so a
+fixed "press Backquote, type, press Enter, press Backquote" sequence drifts out of sync (the second
+Backquote then opens it again and the next command's first Backquote closes it, so the text lands in
+the game); check `window.registry.Con.isOpen` before and after each command instead. And the first
+character typed right after the console opens can be swallowed, so wait about 700 ms after the
+opening Backquote. To start a single-player game without typing `map`, press Enter twice on the main
+menu (Single Player, New Game). `window.registry.Con.text` holds the console lines, which is how to
+read the output of a command such as `status`.
+
 Screenshots plus zero console errors/warnings across a `page.on('console', ...)` capture is
 a strong signal a rendering-pipeline change (texture binding, FBO attachment points, etc.)
 didn't break anything a mocked-`gl` unit test wouldn't catch.

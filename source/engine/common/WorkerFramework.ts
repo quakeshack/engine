@@ -1,9 +1,10 @@
 import type { URLs } from '../build-config';
 
-import { eventBus, registry } from '../registry.ts';
+import { registry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
 import Mod from './Mod.ts';
 import Sys from './Sys.ts';
-import COM, { type SearchPath } from './Com.ts';
+import COM, { type ComDependencies, type SearchPath } from './Com.ts';
 
 type WorkerConsoleMessage = string;
 
@@ -22,6 +23,12 @@ type WorkerFrameworkPort = {
   addEventListener?(event: 'message', listener: (event: MessageEvent<WorkerPortMessage>) => void): void;
   on?(event: 'message', listener: (message: WorkerPortMessage) => void): void;
 };
+
+/** The services a worker script gets from its framework, instead of looking them up in a registry. */
+export interface WorkerServices {
+  readonly con: typeof WorkerConsole;
+  readonly com: COM;
+}
 
 type WorkerFrameworkInitPayload = [SearchPath[], SearchPath[] | null, string];
 
@@ -57,9 +64,8 @@ class WorkerSys extends Sys {
   }
 }
 
-class WorkerCOM extends COM {
-  // TODO: implement the COM stuff here for workers to share files etc.
-}
+/** The file system of a browser worker, which shares its files with the main thread through Cache Storage and IndexedDB. */
+class WorkerCOM extends COM {}
 
 /**
  * Worker Framework
@@ -74,9 +80,8 @@ class WorkerCOM extends COM {
 export default class WorkerFramework {
   static port: WorkerFrameworkPort | null = null;
 
-  static #InitRegistry(workerCom: typeof COM) {
+  static #InitRegistry(workerCom: COM) {
     registry.isDedicatedServer = true;
-    registry.isInsideWorker = true;
     registry.Con = WorkerConsole as typeof registry.Con;
     registry.Sys = WorkerSys;
     registry.COM = workerCom;
@@ -91,8 +96,19 @@ export default class WorkerFramework {
     Mod.Init();
   }
 
-  static async Init() {
-    let workerCom: typeof COM;
+  /**
+   * Boots the worker realm.
+   * @returns The realm services a worker script is built from.
+   */
+  static async Init(): Promise<WorkerServices> {
+    let workerCom: COM;
+
+    const comDependencies: ComDependencies = {
+      con: WorkerConsole,
+      sys: WorkerSys,
+      buildConfig: () => registry.buildConfig,
+      urls: () => registry.urls,
+    };
 
     const isNode = typeof process !== 'undefined' && process.versions !== undefined && process.versions.node !== undefined;
 
@@ -105,7 +121,7 @@ export default class WorkerFramework {
       this.port = parentPort as WorkerFrameworkPort;
       const serverComId = ['..', 'server', 'Com.ts'].join('/');
       const comModule = await import(/* @vite-ignore */ serverComId);
-      workerCom = comModule.default as typeof COM;
+      workerCom = new (comModule.default as typeof COM)(comDependencies);
 
       this.port.on?.('message', ({ event, args }) => {
         const eventArgs = Array.isArray(args) ? args as Array<Parameters<typeof eventBus.publish>[1]> : [];
@@ -113,7 +129,7 @@ export default class WorkerFramework {
       });
     } else {
       this.port = self as unknown as WorkerFrameworkPort;
-      workerCom = WorkerCOM;
+      workerCom = new WorkerCOM(comDependencies);
 
       this.port.addEventListener?.('message', (event) => {
         const { event: eventName, args } = event.data;
@@ -130,10 +146,15 @@ export default class WorkerFramework {
       workerCom.gamedir = comParams[1];
       workerCom.game = comParams[2];
 
+      // Inside a browser worker this opens the same Cache Storage and IndexedDB as the main thread.
+      void workerCom.InitStorage();
+
       Object.assign(registry.urls ?? (registry.urls = {} as URLs), urls ?? {});
     });
 
     console.debug('Worker Framework initialized.');
+
+    return { con: WorkerConsole, com: workerCom };
   }
 
   static Publish(event: string, ...data: unknown[]) {

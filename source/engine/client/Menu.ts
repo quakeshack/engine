@@ -3,7 +3,8 @@ import type { SFX } from './Sound.ts';
 import { K } from '../../shared/Keys.ts';
 import Cmd from '../common/Cmd.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import type { BitmapFont } from './BitmapFont.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { GLTexture } from './GL.ts';
@@ -428,7 +429,7 @@ export default class M {
 
   /**
    * Whether single-player world simulation (monster think, physics, round timers, ...) should
-   * keep running right now, consulted by `Host.ServerFrame()` for listen servers below
+   * keep running right now, consulted by `ClientHost.Frame()`, which hands it to the local server, for listen servers below
    * multiplayer capacity. `true` during gameplay; while a menu is open, defers to the current
    * page's `pausesGame` flag (`true` by default, matching classic pause-on-menu behavior) so a
    * page can opt out for a world that must keep running regardless of whether one player has a

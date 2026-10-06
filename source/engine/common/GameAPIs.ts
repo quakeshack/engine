@@ -1,17 +1,15 @@
-import type { EdictData, EdictValueType, SerializableType } from '../../shared/GameInterfaces.ts';
 import type { ClientDlight, ClientEdict } from '../client/ClientEntities.ts';
 import { BitmapFont, type BitmapFontConfig } from '../client/BitmapFont.ts';
 import type { GLTexture } from '../client/GL.ts';
-import type { SzBuffer } from '../network/MSG.ts';
 import type ParsedQC from './model/parsers/ParsedQC.ts';
 import type { BaseModel } from './model/BaseModel.ts';
-import type { Visibility } from './model/BSP.ts';
 import type { DiscoveredSession, SessionDiscoveryStatus } from '../client/menu/SessionDiscovery.ts';
 import type { SaveSlotInfo } from '../client/menu/SaveSlots.ts';
 
+import { type GameTrace, GameFlavors, type InternalTraceLike, internalTraceToGameTrace } from './GameApiSupport.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
-import { moveTypes, solid } from '../../shared/Defs.ts';
+import { solid } from '../../shared/Defs.ts';
 import { clientConnectionState } from './Def.ts';
 import Key, { KeyDestination } from '../client/Key.ts';
 import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, NumberInput, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
@@ -22,57 +20,20 @@ import SessionDiscovery from '../client/menu/SessionDiscovery.ts';
 import SaveSlotsService from '../client/menu/SaveSlots.ts';
 import { SFX as SFXValue } from '../client/Sound.ts';
 import VID from '../client/VID.ts';
-import * as Protocol from '../network/Protocol.ts';
-import { EventBus, eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
-import { ED, type BaseEntity, ServerEdict as ServerEdictValue } from '../server/Edict.ts';
+import { getClientRegistry, getCommonRegistry } from '../registry.ts';
+import { EventBus, eventBus } from './EventBus.ts';
 import Cmd from './Cmd.ts';
 import Cvar from './Cvar.ts';
 import { HostError } from './Errors.ts';
-import Mod, { ModelScope } from './Mod.ts';
+import Mod from './Mod.ts';
 import W from './W.ts';
 import PostProcess from '../client/renderer/PostProcess.ts';
 import type { PostProcessStack } from '../../shared/GameInterfaces.ts';
-
-type ServerEdict = ServerEdictValue;
 
 interface ClientTraceOptions {
   readonly includeEntities?: boolean;
   readonly passEntityId?: number | null;
   readonly filter?: ((entity: ClientEdict) => boolean) | null;
-}
-
-export interface GameTrace {
-  readonly solid: {
-    readonly all: boolean;
-    readonly start: boolean;
-  };
-  readonly fraction: number;
-  readonly plane: {
-    readonly normal: Vector;
-    readonly distance: number;
-  };
-  readonly contents: {
-    readonly inOpen: boolean;
-    readonly inWater: boolean;
-  };
-  readonly point: Vector;
-  readonly entity: BaseEntity | ClientEdict | null;
-}
-
-interface InternalTraceLike {
-  readonly allsolid: boolean;
-  readonly startsolid: boolean;
-  readonly fraction: number;
-  readonly plane: {
-    readonly normal: Vector;
-    readonly dist: number;
-  };
-  readonly inopen: boolean;
-  readonly inwater: boolean;
-  readonly endpos: Vector;
-  readonly ent: {
-    readonly entity: BaseEntity | ClientEdict;
-  } | null;
 }
 
 interface ClientTraceEntityAdapter {
@@ -81,30 +42,14 @@ interface ClientTraceEntityAdapter {
   equals(other: unknown): boolean;
 }
 
-/**
- * Normalize runtime entity references passed through dynamic spawn initial data.
- * @param initialData Initial field values supplied to SpawnEntity.
- * @returns Initial data with ServerEdict wrappers replaced by live entities.
- */
-function normalizeEntityInitialData(initialData: Record<string, EdictValueType>): EdictData {
-  const normalizedInitialData: EdictData = {};
-
-  for (const [key, value] of Object.entries(initialData)) {
-    normalizedInitialData[key] = value instanceof ServerEdictValue ? value.entity : value;
-  }
-
-  return normalizedInitialData;
-}
-
-type ServerEntityFilter = ((entity: ServerEdict) => boolean) | null;
 type ClientEntityFilter = ((entity: ClientEdict) => boolean) | null;
 type CommandCallback = (...args: string[]) => void | Promise<void>;
 
-let { COM, Con, Host, SV, V } = getCommonRegistry();
+let { COM, Con, Host, V } = getCommonRegistry();
 let { CL, Draw, M, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Host, SV, V } = getCommonRegistry());
+  ({ COM, Con, Host, V } = getCommonRegistry());
   ({ CL, Draw, M, R, S, SCR } = getClientRegistry());
 });
 
@@ -124,37 +69,9 @@ eventBus.subscribe('com.ready', () => {
   console.assert(COM.registered !== null, 'COM.registered must exist after com.ready');
 
   if (COM.registered!.value === 1) {
-    ServerEngineAPI.registered = true;
     ClientEngineAPI.registered = true;
   }
 });
-
-export enum GameFlavors {
-  hipnotic = 'hipnotic',
-  rogue = 'rogue',
-  shareware = 'shareware',
-}
-
-// eslint-disable-next-line jsdoc/require-jsdoc
-function internalTraceToGameTrace(trace: InternalTraceLike): GameTrace {
-  return {
-    solid: {
-      all: trace.allsolid,
-      start: trace.startsolid,
-    },
-    fraction: trace.fraction,
-    plane: {
-      normal: trace.plane.normal,
-      distance: trace.plane.dist,
-    },
-    contents: {
-      inOpen: trace.inopen,
-      inWater: trace.inwater,
-    },
-    point: trace.endpos,
-    entity: trace.ent ? trace.ent.entity : null,
-  };
-}
 
 /**
  * Return whether the entity can be traced against.
@@ -300,8 +217,7 @@ function traceClientEntities(
         return this === other;
       },
     };
-    const trace = SV.collision.clipMoveToEntity(
-      // @ts-ignore Client tracing reuses shared narrow-phase helpers with a lightweight ClientEdict adapter.
+    const trace = CL.collision.clipMoveToEntity(
       adapter,
       start,
       Vector.origin,
@@ -379,511 +295,6 @@ export class CommonEngineAPI {
    */
   static ParseQC(qcContent: string): ParsedQC {
     return Mod.ParseQC(qcContent);
-  }
-}
-
-export class ServerEngineAPI extends CommonEngineAPI {
-  /**
-   * Make sure to free the variable in shutdown().
-   * @see {@link Cvar}
-   * @returns The created variable.
-   */
-  static override RegisterCvar(name: string, value: string, flags = 0, description: string | null = null): Cvar {
-    return new Cvar(name, value, flags | Cvar.FLAG.GAME | Cvar.FLAG.SERVER, description);
-  }
-
-  static BroadcastPrint(str: string): void {
-    Host.BroadcastPrint(str);
-  }
-
-  static StartParticles(origin: Vector, direction: Vector, color: number, count: number): void {
-    SV.messages.startParticle(origin, direction, color, count);
-  }
-
-  static SpawnAmbientSound(origin: Vector, sfxName: string, volume: number, attenuation: number): boolean {
-    let index = 0;
-
-    for (; index < SV.server.soundPrecache.length; index++) {
-      if (SV.server.soundPrecache[index] === sfxName) {
-        break;
-      }
-    }
-
-    if (index === SV.server.soundPrecache.length) {
-      Con.Print(`no precache: ${sfxName}\n`);
-      return false;
-    }
-
-    const signon = SV.server.signon;
-    signon.writeByte(Protocol.svc.spawnstaticsound);
-    signon.writeCoordVector(origin);
-    signon.writeByte(index);
-    signon.writeByte(volume * 255.0);
-    signon.writeByte(attenuation * 64.0);
-
-    return true;
-  }
-
-  static StartSound(edict: ServerEdict, channel: number, sfxName: string, volume: number, attenuation: number): boolean {
-    SV.messages.startSound(edict, channel, sfxName, volume * 255.0, attenuation);
-
-    return true;
-  }
-
-  static Traceline(
-    start: Vector,
-    end: Vector,
-    noMonsters: boolean,
-    passEdict: ServerEdict | null,
-    mins: Vector | null = null,
-    maxs: Vector | null = null,
-  ): GameTrace {
-    const nullVec = Vector.origin;
-    const moveType = noMonsters ? moveTypes.MOVE_NOMONSTERS : moveTypes.MOVE_NORMAL;
-    const collision = SV.collision as {
-      move(
-        start: Vector,
-        mins: Vector,
-        maxs: Vector,
-        end: Vector,
-        type: moveTypes,
-        passedict: ServerEdict | null,
-      ): InternalTraceLike;
-    };
-    const trace = collision.move(
-      start,
-      mins ? mins : nullVec,
-      maxs ? maxs : nullVec,
-      end,
-      moveType,
-      passEdict,
-    );
-    return internalTraceToGameTrace(trace);
-  }
-
-  static TracelineLegacy(
-    start: Vector,
-    end: Vector,
-    noMonsters: boolean,
-    passEdict: ServerEdict | null,
-    mins: Vector | null = null,
-    maxs: Vector | null = null,
-  ): InternalTraceLike {
-    const nullVec = Vector.origin;
-    const moveType = noMonsters ? moveTypes.MOVE_NOMONSTERS : moveTypes.MOVE_NORMAL;
-    const collision = SV.collision as {
-      move(
-        start: Vector,
-        mins: Vector,
-        maxs: Vector,
-        end: Vector,
-        type: moveTypes,
-        passedict: ServerEdict | null,
-      ): InternalTraceLike;
-    };
-    return collision.move(
-      start,
-      mins ? mins : nullVec,
-      maxs ? maxs : nullVec,
-      end,
-      moveType,
-      passEdict,
-    );
-  }
-
-  /**
-   * Define a lightstyle (e.g. aazzaa).
-   * It will also send an update to all connected clients.
-   */
-  static Lightstyle(styleId: number, sequenceString: string): void {
-    const server = SV.server as typeof SV.server & { lightstyles: string[]; loading: boolean };
-
-    server.lightstyles[styleId] = sequenceString;
-
-    if (server.loading) {
-      return;
-    }
-
-    for (const client of SV.svs.spawnedClients()) {
-      client.message.writeByte(Protocol.svc.lightstyle);
-      client.message.writeByte(styleId);
-      client.message.writeString(sequenceString);
-    }
-  }
-
-  /**
-   * Find what contents the given point is in, using the active world collision backend.
-   * @returns The contents constant.
-   */
-  static DetermineStaticWorldContents(origin: Vector): number {
-    return SV.collision.staticWorldContents(origin);
-  }
-
-  /**
-   * Compatibility alias for DetermineStaticWorldContents.
-   * @returns The contents constant.
-   */
-  static DetermineWorldContents(origin: Vector): number {
-    return this.DetermineStaticWorldContents(origin);
-  }
-
-  /**
-   * Find what contents the given point is in.
-   * @returns The contents constant.
-   */
-  static DeterminePointContents(origin: Vector): number {
-    return this.DetermineStaticWorldContents(origin);
-  }
-
-  /**
-   * Set an area portal's open or close state.
-   */
-  static SetAreaPortalState(portalNum: number, open: boolean): void {
-    if (SV.server.worldmodel === null) {
-      return;
-    }
-
-    SV.server.worldmodel.areaPortals.setPortalState(portalNum, open);
-
-    for (const client of SV.svs.spawnedClients()) {
-      client.message.writeByte(Protocol.svc.setportalstate);
-      client.message.writeShort(portalNum);
-      client.message.writeByte(open ? 1 : 0);
-    }
-  }
-
-  /**
-   * Check whether two areas are connected through open portals.
-   * @returns True when the areas are connected.
-   */
-  static AreasConnected(area0: number, area1: number): boolean {
-    if (SV.server.worldmodel === null) {
-      return true;
-    }
-
-    return SV.server.worldmodel.areaPortals.areasConnected(area0, area1);
-  }
-
-  /**
-   * Return the auto-assigned portal number for a brush model.
-   * @returns The portal number, or `-1` when none exists.
-   */
-  static GetModelPortal(modelName: string): number {
-    if (SV.server.worldmodel === null) {
-      return -1;
-    }
-
-    return SV.server.worldmodel.modelPortalMap[modelName] ?? -1;
-  }
-
-  static ChangeLevel(mapname: string): void {
-    if (SV.svs.changelevelIssued) {
-      return;
-    }
-
-    Cmd.text += `changelevel ${mapname}\n`;
-  }
-
-  /**
-   * Find all edicts around the origin within the given radius.
-   * @returns Matching edicts.
-   */
-  static FindInRadius(origin: Vector, radius: number, filterFn: ServerEntityFilter = null): ServerEdict[] {
-    const vradius = new Vector(radius, radius, radius).multiply(1.5);
-    const mins = origin.copy().subtract(vradius);
-    const maxs = origin.copy().add(vradius);
-    const edicts: ServerEdict[] = [];
-    const tree = SV.area.tree!;
-
-    console.assert(tree !== null, 'SV.area.tree must be initialized before radius queries');
-
-    for (const ent of tree.queryAABB(mins, maxs)) {
-      if (ent.num === 0 || ent.isFree()) {
-        continue;
-      }
-
-      const entity = ent.entity!;
-      const eorg = origin.copy().subtract(entity.origin.copy().add(entity.mins.copy().add(entity.maxs).multiply(0.5)));
-
-      if (eorg.len() > radius) {
-        continue;
-      }
-
-      if (!filterFn || filterFn(ent)) {
-        edicts.push(ent);
-      }
-    }
-
-    return edicts; // used to be a generator, but we need to return an array due to changing linked lists in between
-  }
-
-  /**
-   * Find the first edict that matches the field value.
-   * @deprecated use FindAllByFieldAndValue instead
-   * @returns The first matching edict, if any.
-   */
-  static FindByFieldAndValue(field: string, value: EdictValueType, startEdictId = 0): ServerEdict | null {
-    for (let index = startEdictId; index < SV.server.num_edicts; index++) {
-      const ent = SV.server.edicts[index] as ServerEdict;
-
-      if (ent.isFree()) {
-        continue;
-      }
-
-      const entity = ent.entity!;
-      const entityFields = entity as BaseEntity & Record<string, EdictValueType | undefined>;
-
-      if (entityFields[field] === value) {
-        return ent; // FIXME: turn it into yield
-      }
-    }
-
-    return null;
-  }
-
-  // TODO: optimize lookups by using maps for fields such as classname, target, targetname
-  /**
-   * Yield all edicts whose field matches the supplied value.
-   * Complexity: O(n) where n is the number of edicts in the server.
-   * @yields Matching edicts.
-   */
-  static *FindAllByFieldAndValue(field: string, value: EdictValueType, startEdictId = 0): Generator<ServerEdict, void, void> { // FIXME: startEdictId should be edict? not 100% happy about this
-    for (let index = startEdictId; index < SV.server.num_edicts; index++) {
-      const ent = SV.server.edicts[index] as ServerEdict;
-
-      if (ent.isFree()) {
-        continue;
-      }
-
-      const entity = ent.entity!;
-      const entityFields = entity as BaseEntity & Record<string, EdictValueType | undefined>;
-
-      if (entityFields[field] === value) {
-        yield ent;
-      }
-    }
-  }
-
-  /**
-   * Yield all edicts that match the filter.
-   * Complexity: O(n) where n is the number of edicts in the server.
-   * @yields Matching edicts.
-   */
-  static *FindAllByFilter(filterFn: ServerEntityFilter = null, startEdictId = 0): Generator<ServerEdict, void, void> { // FIXME: startEdictId should be edict? not 100% happy about this
-    for (let index = startEdictId; index < SV.server.num_edicts; index++) {
-      const ent = SV.server.edicts[index] as ServerEdict;
-
-      if (ent.isFree()) {
-        continue;
-      }
-
-      if (!filterFn || filterFn(ent)) {
-        yield ent;
-      }
-    }
-  }
-
-  /**
-   * Yield all connected client edicts.
-   * @yields Connected client edicts.
-   */
-  static *GetClients(): Generator<ServerEdict, void, void> {
-    for (const client of SV.svs.spawnedClients()) {
-      yield client.edict;
-    }
-  }
-
-  static GetEdictById(edictId: number): ServerEdict | null {
-    if (edictId < 0 || edictId >= SV.server.num_edicts) {
-      return null;
-    }
-
-    return SV.server.edicts[edictId];
-  }
-
-  static PrecacheSound(sfxName: string): void {
-    console.assert(typeof sfxName === 'string', 'sfxName must be a string');
-
-    if (SV.server.soundPrecache.includes(sfxName)) {
-      return;
-    }
-
-    SV.server.soundPrecache.push(sfxName);
-  }
-
-  static PrecacheModel(modelName: string): void {
-    console.assert(typeof modelName === 'string', 'modelName must be a string');
-
-    if (SV.server.modelPrecache.includes(modelName)) {
-      return;
-    }
-
-    SV.server.modelPrecache.push(modelName);
-    SV.server.models.push(Mod.ForNameAsync(modelName, true, ModelScope.server)); // will cause promises in the array
-  }
-
-  /**
-   * Spawn an Edict, not an entity.
-   * @returns The spawned edict, or `null` on failure.
-   */
-  static SpawnEntity<T = BaseEntity>(classname: string, initialData: Record<string, EdictValueType> = {}): (Omit<ServerEdict, 'entity'> & { entity: T }) | null {
-    const edict = ED.Alloc();
-    const normalizedInitialData = normalizeEntityInitialData(initialData);
-
-    try {
-      const gameAPI = SV.server.gameAPI;
-      console.assert(gameAPI !== null, 'server gameAPI must exist before spawning entities');
-
-      if (gameAPI === null || !gameAPI.prepareEntity(edict, classname, normalizedInitialData)) {
-        edict.freeEdict();
-        return null;
-      }
-
-      if (!gameAPI.spawnPreparedEntity(edict)) {
-        edict.freeEdict();
-        return null;
-      }
-    } catch (e) {
-      edict.freeEdict();
-      throw e;
-    }
-
-    return edict as unknown as Omit<ServerEdict, 'entity'> & { entity: T };
-  }
-
-  static IsLoading(): boolean {
-    return SV.server.loading;
-  }
-
-  /**
-   * Dispatch a temporary entity protocol event.
-   * @deprecated use client events instead
-   */
-  static DispatchTempEntityEvent(tempEntityId: number, origin: Vector): void {
-    SV.server.datagram.writeByte(Protocol.svc.temp_entity);
-    SV.server.datagram.writeByte(tempEntityId);
-    SV.server.datagram.writeCoordVector(origin);
-  }
-
-  /**
-   * Dispatch a beam protocol event.
-   * @deprecated use client events instead
-   */
-  static DispatchBeamEvent(beamId: number, edictId: number, startOrigin: Vector, endOrigin: Vector): void {
-    SV.server.datagram.writeByte(Protocol.svc.temp_entity); // FIXME: unhappy about this
-    SV.server.datagram.writeByte(beamId);
-    SV.server.datagram.writeShort(edictId);
-    SV.server.datagram.writeCoordVector(startOrigin);
-    SV.server.datagram.writeCoordVector(endOrigin);
-  }
-
-  /**
-   * Make all clients play the specified audio track.
-   */
-  static PlayTrack(track: number): void {
-    SV.server.datagram.writeByte(Protocol.svc.cdtrack);
-    SV.server.datagram.writeByte(track);
-    SV.server.datagram.writeByte(0); // unused
-  }
-
-  /**
-   * Show the shareware sell screen to all clients.
-   */
-  static ShowSellScreen(): void {
-    SV.server.reliable_datagram.writeByte(Protocol.svc.sellscreen);
-  }
-
-  /**
-   * Dispatch a client event to the specified destination buffer.
-   */
-  static #DispatchClientEventOnDestination(destination: SzBuffer, eventCode: number, ...args: SerializableType[]): void {
-    console.assert(typeof eventCode === 'number', 'eventCode must be a number');
-
-    destination.writeByte(Protocol.svc.clientevent);
-    destination.writeByte(eventCode);
-
-    destination.writeSerializables(args);
-  }
-
-  /**
-   * Dispatch a client event to everyone.
-   */
-  static BroadcastClientEvent(expedited: boolean, eventCode: number, ...args: SerializableType[]): void {
-    this.#DispatchClientEventOnDestination(expedited ? SV.server.datagram : SV.server.expedited_datagram, eventCode, ...args);
-  }
-
-  /**
-   * Dispatch a client event to the specified receiver.
-   */
-  static DispatchClientEvent(receiverPlayerEdict: ServerEdict, expedited: boolean, eventCode: number, ...args: SerializableType[]): void {
-    console.assert(receiverPlayerEdict instanceof ServerEdictValue && receiverPlayerEdict.isClient(), 'emitterEdict must be a ServerEdict connected to a client');
-    console.assert(receiverPlayerEdict.getClient() !== null, 'receiverPlayerEdict must have a client');
-
-    const receiverClient = receiverPlayerEdict.getClient()!;
-    const destination = expedited ? receiverClient.expedited_message : receiverClient.message;
-
-    this.#DispatchClientEventOnDestination(destination, eventCode, ...args);
-  }
-
-  /**
-   * Return a series of waypoints from start to end.
-   * @deprecated use NavigateAsync instead
-   * @returns The waypoints from start to end, or `null` when no path could be found.
-   */
-  static Navigate(start: Vector, end: Vector): Vector[] | null {
-    return SV.server.navigation?.findPath(start, end) ?? null;
-  }
-
-  /**
-   * Return a series of waypoints from start to end asynchronously.
-   * @returns The waypoints from start to end, or `null` when no path could be found.
-   */
-  static NavigateAsync(start: Vector, end: Vector): Promise<Vector[] | null> {
-    return SV.server.navigation?.findPathAsync(start, end) ?? Promise.resolve(null);
-  }
-
-  static GetPHS(origin: Vector): Visibility {
-    const worldmodel = SV.server.worldmodel;
-    console.assert(worldmodel !== null, 'server worldmodel required for PHS queries');
-    return worldmodel!.getPhsByPoint(origin);
-  }
-
-  static GetPVS(origin: Vector): Visibility {
-    const worldmodel = SV.server.worldmodel;
-    console.assert(worldmodel !== null, 'server worldmodel required for PVS queries');
-    return worldmodel!.getPvsByPoint(origin);
-  }
-
-  /**
-   * Get the area index for a world position.
-   * @returns The area index, where `0` means outside or invalid.
-   */
-  static GetAreaForPoint(origin: Vector): number {
-    const worldmodel = SV.server.worldmodel;
-    console.assert(worldmodel !== null, 'server worldmodel required for area queries');
-    return worldmodel!.getLeafForPoint(origin).area;
-  }
-
-  /**
-   * Set the player movement configuration. This is used by the PMove code to determine how the player should move.
-   */
-  static SetPmoveConfiguration(config: PmoveConfiguration): void {
-    console.assert(config instanceof PmoveConfiguration, 'config must be an instance of PmoveConfiguration');
-    console.assert(SV.pmove !== null, 'SV.pmove must exist before setting configuration');
-
-    SV.pmove!.configuration = config;
-  }
-
-  static get maxplayers(): number {
-    return SV.svs.maxclients;
-  }
-
-  /**
-   * Server game event bus, reset on every map load.
-   * @returns The active server event bus.
-   */
-  static get eventBus(): EventBus {
-    return SV.server.eventBus;
   }
 }
 
@@ -1038,7 +449,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns The trace result.
    */
   static Traceline(start: Vector, end: Vector, options: ClientTraceOptions | null = null): GameTrace {
-    const worldTrace = SV.collision.traceWorldLine(start, end) as InternalTraceLike;
+    const worldTrace = CL.collision.traceWorldLine(start, end) as InternalTraceLike;
 
     if (options === null || !options.includeEntities) {
       return internalTraceToGameTrace(worldTrace);
@@ -1062,7 +473,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns The contents constant.
    */
   static DetermineStaticWorldContents(origin: Vector): number {
-    return SV.collision.staticWorldContents(origin);
+    return CL.collision.pointContents(origin);
   }
 
   /**
@@ -1245,7 +656,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * @returns True while this client is also hosting a local (listen) server.
      */
     get active(): boolean {
-      return SV.server.active;
+      return CL.serverController.state.active;
     },
   };
 

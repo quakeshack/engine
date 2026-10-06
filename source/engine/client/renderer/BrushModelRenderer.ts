@@ -1,6 +1,7 @@
 import Vector from '../../../shared/Vector.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../GL.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
 import { MaterialFlags, type BaseMaterial } from './Materials.ts';

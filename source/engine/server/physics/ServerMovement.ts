@@ -4,22 +4,25 @@ import type { BaseEntity, ServerEdict } from '../Edict.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { STEPSIZE } from '../../common/Pmove.ts';
-import { eventBus, getCommonRegistry } from '../../registry.ts';
+import type Server from '../Server.ts';
 
 interface EdictReferenceLike {
   readonly edict?: ReadonlyServerEdict | null;
 }
 
-let { SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ SV } = getCommonRegistry());
-});
-
 /**
  * Everything related to moving entities around.
  */
 export class ServerMovement {
+  private readonly sv: Server;
+
+  /**
+   * @param sv The server whose entities are moved.
+   */
+  constructor(sv: Server) {
+    this.sv = sv;
+  }
+
   /**
    * Checks if an entity has solid ground beneath all four bottom corners.
    * If all corners are solid, returns true immediately. Otherwise performs
@@ -34,10 +37,10 @@ export class ServerMovement {
 
     // Quick check: if all four corners are solid, we're definitely on ground
     const allCornersSolid =
-      SV.collision.pointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
-      SV.collision.pointContents(new Vector(mins[0], maxs[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
-      SV.collision.pointContents(new Vector(maxs[0], mins[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
-      SV.collision.pointContents(new Vector(maxs[0], maxs[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID;
+      this.sv.collision.pointContents(new Vector(mins[0], mins[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
+      this.sv.collision.pointContents(new Vector(mins[0], maxs[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
+      this.sv.collision.pointContents(new Vector(maxs[0], mins[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID &&
+      this.sv.collision.pointContents(new Vector(maxs[0], maxs[1], mins[2] - 1.0)) === Defs.content.CONTENT_SOLID;
 
     if (allCornersSolid) {
       return true;
@@ -47,7 +50,7 @@ export class ServerMovement {
     const start = entity.origin.copy().add(new Vector(0.0, 0.0, entity.mins[2] + 1.0));
     const stop = start.copy().add(new Vector(0.0, 0.0, -2.0 * STEPSIZE));
 
-    let trace = SV.collision.move(start, Vector.origin, Vector.origin, stop, Defs.moveTypes.MOVE_NOMONSTERS, ent);
+    let trace = this.sv.collision.move(start, Vector.origin, Vector.origin, stop, Defs.moveTypes.MOVE_NOMONSTERS, ent);
     if (trace.fraction === 1.0) {
       return false;
     }
@@ -58,7 +61,7 @@ export class ServerMovement {
       for (let y = 0; y <= 1; y++) {
         start[0] = stop[0] = x !== 0 ? maxs[0] : mins[0];
         start[1] = stop[1] = y !== 0 ? maxs[1] : mins[1];
-        trace = SV.collision.move(start, Vector.origin, Vector.origin, stop, Defs.moveTypes.MOVE_NOMONSTERS, ent);
+        trace = this.sv.collision.move(start, Vector.origin, Vector.origin, stop, Defs.moveTypes.MOVE_NOMONSTERS, ent);
         if (trace.fraction !== 1.0 && trace.endpos[2] > bottom) {
           bottom = trace.endpos[2];
         }
@@ -96,14 +99,14 @@ export class ServerMovement {
             neworg[2] += 8.0;
           }
         }
-        const trace = SV.collision.move(entity.origin, mins, maxs, neworg, Defs.moveTypes.MOVE_NORMAL, ent);
+        const trace = this.sv.collision.move(entity.origin, mins, maxs, neworg, Defs.moveTypes.MOVE_NORMAL, ent);
         if (trace.fraction === 1.0) {
-          if ((entity.flags & Defs.flags.FL_SWIM) !== 0 && SV.collision.pointContents(trace.endpos) === Defs.content.CONTENT_EMPTY) {
+          if ((entity.flags & Defs.flags.FL_SWIM) !== 0 && this.sv.collision.pointContents(trace.endpos) === Defs.content.CONTENT_EMPTY) {
             return false;
           }
           entity.origin = trace.endpos.copy();
           if (relink) {
-            SV.area.linkEdict(ent, true);
+            this.sv.area.linkEdict(ent, true);
           }
           return true;
         }
@@ -120,13 +123,13 @@ export class ServerMovement {
     neworg[2] += STEPSIZE;
     const end = neworg.copy();
     end[2] -= STEPSIZE * 2.0;
-    let trace = SV.collision.move(neworg, mins, maxs, end, Defs.moveTypes.MOVE_NORMAL, ent);
+    let trace = this.sv.collision.move(neworg, mins, maxs, end, Defs.moveTypes.MOVE_NORMAL, ent);
     if (trace.allsolid) {
       return false;
     }
     if (trace.startsolid) {
       neworg[2] -= STEPSIZE;
-      trace = SV.collision.move(neworg, mins, maxs, end, Defs.moveTypes.MOVE_NORMAL, ent);
+      trace = this.sv.collision.move(neworg, mins, maxs, end, Defs.moveTypes.MOVE_NORMAL, ent);
       if (trace.allsolid || trace.startsolid) {
         return false;
       }
@@ -138,7 +141,7 @@ export class ServerMovement {
         fallback[1] += move[1];
         entity.origin = fallback;
         if (relink) {
-          SV.area.linkEdict(ent, true);
+          this.sv.area.linkEdict(ent, true);
         }
         entity.flags &= ~Defs.flags.FL_ONGROUND;
         return true;
@@ -149,7 +152,7 @@ export class ServerMovement {
     if (!this.checkBottom(ent)) {
       if ((entity.flags & Defs.flags.FL_PARTIALGROUND) !== 0) {
         if (relink) {
-          SV.area.linkEdict(ent, true);
+          this.sv.area.linkEdict(ent, true);
         }
         return true;
       }
@@ -160,7 +163,7 @@ export class ServerMovement {
     entity.flags &= ~Defs.flags.FL_PARTIALGROUND;
     entity.groundentity = trace.ent!.entity;
     if (relink) {
-      SV.area.linkEdict(ent, true);
+      this.sv.area.linkEdict(ent, true);
     }
     return true;
   }
@@ -248,10 +251,10 @@ export class ServerMovement {
       if (delta > 45.0 && delta < 315.0) {
         entity.origin = entity.origin.set(oldorigin);
       }
-      SV.area.linkEdict(ent, true);
+      this.sv.area.linkEdict(ent, true);
       return true;
     }
-    SV.area.linkEdict(ent, true);
+    this.sv.area.linkEdict(ent, true);
     return false;
   }
 

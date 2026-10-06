@@ -132,9 +132,10 @@ A page owns `items`, a `layout`, optional `title`/`titlePic`/`logoPic`, and life
 - `customGetBackButtonAnchor` — repositions the page-agnostic Back/Close button (e.g. centered
   under a dialog's message box) instead of the default bottom-left corner.
 - `pausesGame` — whether showing this page freezes single-player world simulation the way the
-  classic pause menu does; `true` by default. `Host.ServerFrame()` gates `SV.physics.physics()`
-  (monster think, physics, round timers) behind `M.AllowsSimulation()` for listen servers below
-  multiplayer capacity (`SV.svs.maxclients < 2`), which in turn defers to the current page's
+  classic pause menu does; `true` by default. `ServerHost.ServerFrame()` runs `SV.physics.physics()`
+  (monster think, physics, round timers) only while the simulation gate is open. `ClientHost.Frame()`
+  sets the gate from `M.AllowsSimulation()` every frame, through `ServerController.setSimulationAllowed()`,
+  and `M.AllowsSimulation()` defers to the current page's
   `pausesGame`. Set `false` for a page meant to sit over a world that must keep running
   regardless of one player having a menu open — e.g. an in-game buy menu in a coop mod, where the
   mod is never really "single-player" even when only one player happens to be connected right

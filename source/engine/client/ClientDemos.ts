@@ -1,5 +1,6 @@
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { HostError } from '../common/Errors.ts';
 

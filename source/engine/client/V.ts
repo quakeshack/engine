@@ -5,8 +5,10 @@ import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import * as Def from '../common/Def.ts';
 import Q from '../../shared/Q.ts';
+import { calcRoll } from '../../shared/PlayerRoll.ts';
 import Vector from '../../shared/Vector.ts';
-import { eventBus, getClientRegistry, getCommonRegistry } from '../registry.ts';
+import { getClientRegistry, getCommonRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 
 let { Con, Host } = getCommonRegistry();
@@ -70,19 +72,13 @@ export default class V {
   static pitchdrift: Cvar = null!;
 
   /**
-   * @param {Vector} angles angles
-   * @param {Vector} velocity velocity
-   * @returns {number} roll angle
+   * Computes how far the view rolls for a player moving sideways.
+   * @param angles View angles.
+   * @param velocity Player velocity.
+   * @returns The roll angle.
    */
   static CalcRoll(angles: Vector, velocity: Vector): number { // FIXME: this is required for dedicated as well
-    const { right } = angles.angleVectors();
-    let side = velocity[0] * right[0] + velocity[1] * right[1] + velocity[2] * right[2];
-    const sign = side < 0 ? -1 : 1;
-    side = Math.abs(side);
-    if (side < V.rollspeed.value) {
-      return side * sign * V.rollangle.value / V.rollspeed.value;
-    }
-    return V.rollangle.value * sign;
+    return calcRoll(angles, velocity, V.rollspeed.value, V.rollangle.value);
   }
 
   static CalcBob(): number {

@@ -7,9 +7,13 @@ import GameModule from '../common/GameModule.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { registerClientDeserializer } from '../network/MSG.ts';
+import { ServerEdict } from '../server/Edict.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot } from './ClientState.ts';
+import type { ClientEdict } from './ClientEntities.ts';
 import type { SFX } from './Sound.ts';
 import PostProcess from './renderer/PostProcess.ts';
 
@@ -20,6 +24,9 @@ let { CL, Con, SCR, S, R, V, Host, NET, Mod } = getClientRegistry();
 eventBus.subscribe('registry.frozen', () => {
   ({ CL, Con, SCR, S, R, V, Host, NET, Mod } = getClientRegistry());
 });
+
+// An edict reference on the wire is the number of the client's own copy of it.
+registerClientDeserializer(ServerEdict, (): ClientEdict => CL.state.clientEntities.getEntity(NET.message.readShort()) as ClientEdict);
 
 sharedCollisionModelSource.configureClient({
   getWorldModel: () => CL?.state?.worldmodel ?? null,

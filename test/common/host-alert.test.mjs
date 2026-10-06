@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Host from '../../source/engine/common/Host.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Installs the minimal registry Host.EndGame/Host.Error need to reach their `host.alert`
@@ -15,12 +16,13 @@ function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callb
   const previous = {
     CL: registry.CL,
     Con: registry.Con,
-    SV: registry.SV,
+    serverHost: Host.serverHost,
     isDedicatedServer: registry.isDedicatedServer,
   };
 
   const prints = [];
   let disconnected = false;
+  const shutdowns = [];
 
   registry.CL = {
     cls: { demonum },
@@ -31,7 +33,7 @@ function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callb
     PrintSuccess(message) { prints.push(message); },
     PrintError(message) { prints.push(message); },
   };
-  registry.SV = { server: { active: serverActive } };
+  Host.serverHost = /** @type {any} */ ({ ShutdownServer() { shutdowns.push(serverActive); } });
   // Skips Host.Error's SCR.EndLoadingPlaque() call, so no SCR mock is needed.
   registry.isDedicatedServer = true;
   eventBus.publish('registry.frozen');
@@ -41,7 +43,7 @@ function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callb
   } finally {
     registry.CL = previous.CL;
     registry.Con = previous.Con;
-    registry.SV = previous.SV;
+    Host.serverHost = previous.serverHost;
     registry.isDedicatedServer = previous.isDedicatedServer;
     eventBus.publish('registry.frozen');
   }

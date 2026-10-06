@@ -4,7 +4,8 @@ import VID from '../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import Vector from '../../../shared/Vector.ts';
 import Host from '../../common/Host.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import { effect } from '../../../shared/Defs.ts';
 
 let { Draw, R } = getClientRegistry();

@@ -4,7 +4,8 @@ import { describe, test } from 'node:test';
 import { DefaultClientEdictHandler } from '../../source/engine/client/ClientLegacy.ts';
 import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { effect, modelFlags } from '../../source/shared/Defs.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Runs a callback with a real `ClientEntities` instance wired into the

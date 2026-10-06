@@ -5,7 +5,8 @@ import Mod, { ModelScope } from '../../source/engine/common/Mod.ts';
 import { AliasModel } from '../../source/engine/common/model/AliasModel.ts';
 import { Face } from '../../source/engine/common/model/BaseModel.ts';
 import { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 
 /** @typedef {import('../../source/engine/common/model/BaseModel.ts').BaseModel} BaseModel */

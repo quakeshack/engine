@@ -1,6 +1,7 @@
 import W from '../../common/W.ts';
 import { BrushModel } from '../../common/Mod.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import GL, { ATTRIB_LOCATIONS, GLTexture } from '../GL.ts';
 
 let { Host, R } = getClientRegistry();

@@ -3,13 +3,15 @@ import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
 import { moveType } from '../../source/shared/Defs.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import SV from '../../source/engine/server/Server.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { PM_TYPE } from '../../source/engine/common/Pmove.ts';
+import { registrySV } from './fixtures.mjs';
 
 /**
  * Install a minimal registry state for writeClientdataToMessage tests.
@@ -53,7 +55,7 @@ function installClientdataContext() {
   registry.SV = SV;
   eventBus.publish('registry.frozen');
 
-  const client = new ServerClient(0);
+  const client = new ServerClient(0, registrySV());
 
   return {
     restore() {
@@ -112,7 +114,7 @@ void describe('ServerMessages clientdata sparse updates', () => {
     const context = installClientdataContext();
 
     try {
-      const messages = new ServerMessages();
+      const messages = new ServerMessages(registrySV());
       const msgFirst = new SzBuffer(256, 'first clientdata message');
 
       messages.writeClientdataToMessage(context.client, msgFirst);
@@ -149,7 +151,7 @@ void describe('ServerMessages clientdata sparse updates', () => {
     const context = installClientdataContext();
 
     try {
-      const messages = new ServerMessages();
+      const messages = new ServerMessages(registrySV());
 
       const walkingMsg = new SzBuffer(256, 'walking clientdata message');
       messages.writeClientdataToMessage(context.client, walkingMsg);

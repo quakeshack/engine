@@ -1,44 +1,35 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import SV from '../../source/engine/server/Server.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 
+import { createTestServer } from '../physics/fixtures.mjs';
+
+/** @typedef {import('../../source/engine/server/Server.ts').default} Server */
+
 /**
- * Runs a callback with SV's static server state replaced, restoring it afterwards.
- * @param {{ gameAPI: object, clients?: object[] }} options replacement state
- * @param {() => void} callback test callback
+ * Builds a server with the given game and client slots.
+ * @param {{ gameAPI: object, clients?: object[] }} options server state
+ * @returns {Server} the server
  */
-function withServerState({ gameAPI, clients = [] }, callback) {
-  const previous = {
-    gameAPI: SV.server.gameAPI,
-    serverflags: SV.svs.serverflags,
-    maxclients: SV.svs.maxclients,
-    clients: SV.svs.clients,
-  };
+function createServer({ gameAPI, clients = [] }) {
+  const sv = createTestServer();
 
-  SV.server.gameAPI = gameAPI;
-  SV.svs.serverflags = 0;
-  SV.svs.maxclients = clients.length;
-  SV.svs.clients = clients;
+  sv.server.gameAPI = gameAPI;
+  sv.svs.serverflags = 0;
+  sv.svs.maxclients = clients.length;
+  sv.svs.clients = clients;
 
-  try {
-    callback();
-  } finally {
-    SV.server.gameAPI = previous.gameAPI;
-    SV.svs.serverflags = previous.serverflags;
-    SV.svs.maxclients = previous.maxclients;
-    SV.svs.clients = previous.clients;
-  }
+  return sv;
 }
 
 void describe('SV.SaveSpawnparms', () => {
   void test('carries the game serverflags into the state that survives level changes', () => {
-    withServerState({ gameAPI: { serverflags: 0b0101 } }, () => {
-      SV.SaveSpawnparms();
+    const sv = createServer({ gameAPI: { serverflags: 0b0101 } });
 
-      assert.equal(SV.svs.serverflags, 0b0101);
-    });
+    sv.SaveSpawnparms();
+
+    assert.equal(sv.svs.serverflags, 0b0101);
   });
 
   void test('has connected clients save their spawn parameters and skips clients that are not connected yet', () => {
@@ -50,7 +41,7 @@ void describe('SV.SaveSpawnparms', () => {
       },
     });
 
-    withServerState({
+    createServer({
       gameAPI: { serverflags: 0 },
       clients: [
         createClient('free', ServerClient.STATE.FREE),
@@ -58,9 +49,7 @@ void describe('SV.SaveSpawnparms', () => {
         createClient('connected', ServerClient.STATE.CONNECTED),
         createClient('spawned', ServerClient.STATE.SPAWNED),
       ],
-    }, () => {
-      SV.SaveSpawnparms();
-    });
+    }).SaveSpawnparms();
 
     assert.deepEqual(saved, ['connected', 'spawned']);
   });

@@ -6,7 +6,8 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import ClientDemos from '../../source/engine/client/ClientDemos.ts';
 import { clientRuntimeState, clientStaticState } from '../../source/engine/client/ClientState.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Builds a synthetic current-format demo file with a single message.

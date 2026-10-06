@@ -1,16 +1,17 @@
 import { ConsoleCommand } from '../common/Cmd.ts';
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
-let { Con, NET } = getCommonRegistry();
+let { Con, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con, NET } = getCommonRegistry());
+  ({ Con, NET } = getClientRegistry());
 });
 
 /**
  * Copy a join link for the currently hosted session.
  */
-export class InviteCommand extends ConsoleCommand {
+export default class InviteCommand extends ConsoleCommand {
   async run(): Promise<void> {
     const listenAddress = NET.GetListenAddress();
 

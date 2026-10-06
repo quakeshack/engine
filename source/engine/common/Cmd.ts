@@ -1,7 +1,8 @@
 import type { ServerClient } from '../server/Client.ts';
 
 import * as Protocol from '../network/Protocol.ts';
-import { eventBus, getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
+import { getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
 import Cvar from './Cvar.ts';
 import { clientConnectionState } from './Def.ts';
 
@@ -47,6 +48,11 @@ export class ConsoleCommand {
   forward(): boolean {
     if (this.client !== null) {
       return false;
+    }
+
+    // A server in a realm of its own has no client to send the command from, it runs it as the local player.
+    if (Cmd.forwardLocal !== null) {
+      return Cmd.forwardLocal(this);
     }
 
     if (registry.isDedicatedServer) {
@@ -120,6 +126,13 @@ export default class Cmd {
   static functions: CommandEntry[] = [];
   static text = '';
   static wait = false;
+
+  /**
+   * Runs a command that asks to be forwarded as the player of a local server. Set by a server realm
+   * that has no client of its own to forward from.
+   * @returns True, the command is taken care of.
+   */
+  static forwardLocal: ((command: ConsoleCommand) => boolean) | null = null;
 
   static #execSlots: ExecSlot[] = [];
 

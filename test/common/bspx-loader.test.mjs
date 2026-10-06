@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { Face } from '../../source/engine/common/model/BaseModel.ts';
 import { BSPXLoader } from '../../source/engine/common/model/BSPXLoader.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 const silentCon = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
   Print() {},

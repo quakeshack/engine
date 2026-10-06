@@ -7,7 +7,8 @@ import { clientRuntimeState } from './ClientState.ts';
 import GameModule from '../common/GameModule.ts';
 import { MoveVars, Pmove } from '../common/Pmove.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import type { SerializedParticle } from './R.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
 

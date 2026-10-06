@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { ServerEdict } from '../../source/engine/server/Edict.ts';
 
-import { defaultMockRegistry, withMockRegistry } from './fixtures.mjs';
+import { defaultMockRegistry, withMockRegistry, registrySV } from './fixtures.mjs';
 
 void describe('ServerEdict', () => {
   void test('keeps getClient slot mapping separate from isClient semantics', () => {
@@ -20,7 +20,7 @@ void describe('ServerEdict', () => {
         edicts: [],
       },
     }), () => {
-      const reservedWorldEdict = new ServerEdict(16);
+      const reservedWorldEdict = new ServerEdict(16, registrySV());
 
       assert.equal(reservedWorldEdict.isClient(), false);
       assert.equal(reservedWorldEdict.getClient(), reservedSlotClient);
@@ -41,7 +41,7 @@ void describe('ServerEdict', () => {
         models: [{ mins: new Vector(-16, -16, -24), maxs: new Vector(16, 16, 32) }],
       },
     }), () => {
-      const edict = new ServerEdict(1);
+      const edict = new ServerEdict(1, registrySV());
       edict.entity = {
         classname: 'player',
         alpha: 1,

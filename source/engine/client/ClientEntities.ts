@@ -1,12 +1,13 @@
 import type { ClientEventValue, SerializedData } from '../../shared/GameInterfaces.ts';
-import type { GameTrace } from '../common/GameAPIs.ts';
+import type { GameTrace } from '../common/GameApiSupport.ts';
 import type { SFX } from './Sound.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import type { Pmove } from '../common/Pmove.ts';
 
 import Vector, { Quaternion } from '../../shared/Vector.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import * as Def from '../common/Def.ts';
 import { content, effect, moveType, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.ts';

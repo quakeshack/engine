@@ -3,7 +3,8 @@ import { describe, test } from 'node:test';
 
 import ClientEntities, { ClientDlight, ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content, effect } from '../../source/shared/Defs.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';

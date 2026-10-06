@@ -5,7 +5,8 @@ import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEn
 import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 import ClientSerialization from '../../source/shared/ClientSerialization.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content, moveType } from '../../source/shared/Defs.ts';
 

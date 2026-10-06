@@ -4,7 +4,8 @@ import * as Protocol from '../network/Protocol.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { Pmove, PmovePlayer } from '../common/Pmove.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import { gameCapabilities, solid } from '../../shared/Defs.ts';
 import ClientDemos from './ClientDemos.ts';
 import { ClientPlayerState } from './ClientMessages.ts';
@@ -13,6 +14,9 @@ import { clientRuntimeState, clientStaticState, moduleEventBus } from './ClientS
 import ClientConnection, { type IdentityCvars } from './ClientConnection.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { BrushModel } from '../common/Mod.ts';
+import CollisionModelSource from '../common/CollisionModelSource.ts';
+import ClientCollision from './ClientCollision.ts';
+import type { ServerController } from '../common/ServerController.ts';
 
 let { Con, Draw, Host } = getClientRegistry();
 
@@ -20,8 +24,21 @@ eventBus.subscribe('registry.frozen', () => {
   ({ Con, Draw, Host } = getClientRegistry());
 });
 
+const clientCollisionModelSource = new CollisionModelSource();
+
+clientCollisionModelSource.configureClient({
+  getWorldModel: () => clientRuntimeState.worldmodel,
+  getModels: () => clientRuntimeState.model_precache,
+});
+
 export default class CL {
   static pmove = new Pmove();
+
+  /** Control plane to the server this client hosts locally, installed by the launcher before init. */
+  static serverController: ServerController;
+
+  /** Static-world collision against the client's own world model, never the server's. */
+  static readonly collision = new ClientCollision(clientCollisionModelSource);
 
   static #clientDemos = new ClientDemos();
   static #connection: ClientConnection;

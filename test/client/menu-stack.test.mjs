@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
 

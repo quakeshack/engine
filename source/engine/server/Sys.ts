@@ -9,11 +9,14 @@ import express from 'express';
 import { join } from 'path';
 import { createServer } from 'http';
 
-import { eventBus, getCommonRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import Cvar from '../common/Cvar.ts';
 import Cmd from '../common/Cmd.ts';
 import Q from '../../shared/Q.ts';
-import BaseSys from '../common/Sys.ts';
+import type COM from '../common/Com.ts';
+import type Host from '../common/Host.ts';
+import type NET from '../network/Network.ts';
+import type { SystemServices } from '../common/Services.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import workerFactories from '../common/WorkerFactories.ts';
 
@@ -28,12 +31,6 @@ type CrashReason =
       readonly message?: string;
       readonly constructor?: { readonly name?: string };
     };
-
-let { COM, Host, NET } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Host, NET } = getCommonRegistry());
-});
 
 eventBus.subscribe('host.crash', (error: CrashReason) => {
   console.error(error);
@@ -71,32 +68,49 @@ eventBus.subscribe('net.connection.accepted', () => {
 /**
  * System class to manage initialization, quitting, and REPL functionality.
  */
-export default class Sys extends BaseSys {
-  static #oldtime = 0;
-  static #isRunning = false;
+/** What the dedicated system services drive. */
+export interface DedicatedSysDependencies {
+  /** The file system, looked up when needed because it is built with these services. */
+  readonly com: () => COM;
+  readonly host: typeof Host;
+  /** The network layer, looked up when needed because it is built with these services. */
+  readonly net: () => NET;
+}
+
+/**
+ * System services of a dedicated server: the main loop, the web server, the REPL and the clock.
+ */
+export default class DedicatedSys implements SystemServices {
+  readonly #dependencies: DedicatedSysDependencies;
+  #oldtime = 0;
+  #isRunning = false;
+
+  constructor(dependencies: DedicatedSysDependencies) {
+    this.#dependencies = dependencies;
+  }
 
   /**
    * Initializes the low-level system.
    */
-  static override async Init(): Promise<void> {
+  async Init(): Promise<void> {
     // Initialize command-line arguments
-    COM.InitArgv(argv);
+    this.#dependencies.com().InitArgv(argv);
 
     eventBus.subscribe('console.print-line', (line: string) => {
       stdout.write(line + '\n');
     });
 
     // Record the initial time
-    Sys.#oldtime = Date.now() * 0.001;
+    this.#oldtime = Date.now() * 0.001;
 
     // Start worker manager
     WorkerManager.Init(workerFactories);
 
     // Start webserver
-    await Sys.#startWebserver();
+    await this.#startWebserver();
 
-    Sys.Print('Host.Init\n');
-    await Host.Init();
+    this.Print('Host.Init\n');
+    await this.#dependencies.host.Init();
 
     // Start a REPL instance (if stdout is a TTY)
     if (stdout && stdout.isTTY) {
@@ -114,32 +128,32 @@ export default class Sys extends BaseSys {
         },
       });
 
-      repl.on('exit', () => Sys.Quit());
+      repl.on('exit', () => this.Quit());
     }
 
     // eslint-disable-next-line require-atomic-updates
-    Sys.#isRunning = true;
+    this.#isRunning = true;
 
-    if (Host.refreshrate!.value === 0) {
-      Host.refreshrate!.set(60);
+    if (this.#dependencies.host.refreshrate!.value === 0) {
+      this.#dependencies.host.refreshrate!.set(60);
     }
 
     // Main loop
-    while (Sys.#isRunning) {
+    while (this.#isRunning) {
       const startTime = Date.now();
 
-      await Host.Frame();
+      await this.#dependencies.host.Frame();
 
       const dtime = Date.now() - startTime;
 
       if (dtime > 100) {
-        Sys.Print(`Host.Frame took too long: ${dtime} ms\n`);
+        this.Print(`Host.Frame took too long: ${dtime} ms\n`);
       }
 
-      await Q.sleep(Math.max(0, 1000.0 / Math.min(300, Math.max(60, Host.refreshrate!.value)) - dtime));
+      await Q.sleep(Math.max(0, 1000.0 / Math.min(300, Math.max(60, this.#dependencies.host.refreshrate!.value)) - dtime));
 
       // when there are no more commands to process and no active connections, we can sleep indefinitely
-      if (NET.activeconnections === 0 && Host._scheduledForNextFrame.length === 0 && !Cmd.HasPendingCommands()) {
+      if (this.#dependencies.net().activeconnections === 0 && this.#dependencies.host._scheduledForNextFrame.length === 0 && !Cmd.HasPendingCommands()) {
         await MainLoop.sleep();
       }
     }
@@ -148,18 +162,18 @@ export default class Sys extends BaseSys {
   /**
    * Handles quitting the system gracefully.
    */
-  static override Quit(): never {
-    Sys.#isRunning = false;
+  Quit(): never {
+    this.#isRunning = false;
 
-    Host.Shutdown();
-    Sys.Print('Sys.Quit: exitting process\n');
+    this.#dependencies.host.Shutdown();
+    this.Print('Sys.Quit: exitting process\n');
     exit(0);
   }
 
   /**
    * Prints a message to the console.
    */
-  static override Print(text: string): void {
+  Print(text: string): void {
     stdout.write(text.trim() + '\n');
   }
 
@@ -167,35 +181,35 @@ export default class Sys extends BaseSys {
    * Returns the time elapsed since initialization.
    * @returns The elapsed time in seconds.
    */
-  static override FloatTime(): number {
-    return Date.now() * 0.001 - Sys.#oldtime;
+  FloatTime(): number {
+    return Date.now() * 0.001 - this.#oldtime;
   }
 
   /**
    * Returns the time elapsed since initialization in milliseconds.
    * @returns The elapsed time in milliseconds.
    */
-  static override FloatMilliTime(): number {
+  FloatMilliTime(): number {
     return performance.now();
   }
 
   /**
    * Starts the dedicated server web frontend.
    */
-  static async #startWebserver(): Promise<void> {
-    if (COM.CheckParm('-noserver')) {
-      Sys.Print('Webserver disabled via -noserver\n');
+  async #startWebserver(): Promise<void> {
+    if (this.#dependencies.com().CheckParm('-noserver')) {
+      this.Print('Webserver disabled via -noserver\n');
       return;
     }
 
     const app = express();
 
-    const basepath = COM.GetParm('-basepath') || '';
+    const basepath = this.#dependencies.com().GetParm('-basepath') || '';
 
-    const listenPort = Number(COM.GetParm('-port') || 3000);
-    const listenAddress = COM.GetParm('-ip');
+    const listenPort = Number(this.#dependencies.com().GetParm('-port') || 3000);
+    const listenAddress = this.#dependencies.com().GetParm('-ip');
 
-    Sys.Print(`Webserver will listen on ${listenAddress || 'all interfaces'} on port ${listenPort}\n`);
+    this.Print(`Webserver will listen on ${listenAddress || 'all interfaces'} on port ${listenPort}\n`);
 
     const __dirname = import.meta.dirname + '/../..';
 
@@ -221,7 +235,7 @@ export default class Sys extends BaseSys {
         // e.g. "/data/id1/progs/player.mdl" -> "id1/progs/player.mdl"
         const requestedPath = req.path.substring(skipChars);
 
-        const fileData = await COM.LoadFile(requestedPath);
+        const fileData = await this.#dependencies.com().LoadFile(requestedPath);
 
         if (!fileData) {
           // File not found or empty result
@@ -230,7 +244,7 @@ export default class Sys extends BaseSys {
 
         // Set headers and send the file data
         res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Cache-Control', Host.developer!.value ? 'private, max-age=0' : 'public, max-age=86400');
+        res.setHeader('Cache-Control', this.#dependencies.host.developer!.value ? 'private, max-age=0' : 'public, max-age=86400');
 
         // Convert ArrayBuffer -> Buffer before sending
         return res.send(Buffer.from(fileData));
@@ -259,9 +273,9 @@ export default class Sys extends BaseSys {
         const address = server.address() as AddressInfo | string | null;
         const boundAddress = typeof address === 'object' && address !== null ? address.address : (listenAddress || 'all interfaces');
 
-        Sys.Print(`Webserver listening on port ${listenPort} (${boundAddress})\n`);
+        this.Print(`Webserver listening on port ${listenPort} (${boundAddress})\n`);
 
-        NET.server = server;
+        this.#dependencies.net().server = server;
         resolve();
       });
     });

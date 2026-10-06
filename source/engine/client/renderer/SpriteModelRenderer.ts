@@ -1,6 +1,7 @@
 import { ModelRenderer } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import GL from '../GL.ts';
 import { SpriteModel } from '../../common/model/SpriteModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';

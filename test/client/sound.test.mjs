@@ -1,7 +1,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import Sound from '../../source/engine/client/Sound.ts';
 import Vector from '../../source/shared/Vector.ts';

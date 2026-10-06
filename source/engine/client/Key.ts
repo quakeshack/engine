@@ -4,7 +4,8 @@ import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
 let { CL, Con, Host, M } = getClientRegistry();
 

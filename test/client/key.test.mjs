@@ -6,7 +6,8 @@ import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Temporarily installs a minimal `Con` registry stub (plus the real `COM` for

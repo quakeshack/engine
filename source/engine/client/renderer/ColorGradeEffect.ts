@@ -2,7 +2,7 @@ import GL, { type GLRenderTexture } from '../GL.ts';
 import Host from '../../common/Host.ts';
 import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import { eventBus } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import type { PostProcessColorGradeDescriptor } from '../../../shared/GameInterfaces.ts';
 
 let gl: WebGL2RenderingContext = null!;

@@ -1,6 +1,7 @@
 import Vector from '../../shared/Vector.ts';
 import { KeyDestination } from '../client/Key.ts';
-import { eventBus, getClientRegistry, registry } from '../registry.ts';
+import { getClientRegistry, registry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
 import Cvar from './Cvar.ts';
 import Cmd from './Cmd.ts';
 import VID from '../client/VID.ts';

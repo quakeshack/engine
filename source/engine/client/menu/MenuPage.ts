@@ -1,5 +1,6 @@
 import { K } from '../../../shared/Keys.ts';
-import { eventBus, getClientRegistry } from '../../registry.ts';
+import { getClientRegistry } from '../../registry.ts';
+import { eventBus } from '../../common/EventBus.ts';
 import type { MenuPic } from '../Menu.ts';
 import { MenuItem } from './MenuItem.ts';
 import { MenuViewport } from './MenuViewport.ts';

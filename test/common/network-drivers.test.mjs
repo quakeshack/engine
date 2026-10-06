@@ -4,13 +4,33 @@ import { describe, test } from 'node:test';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import NET from '../../source/engine/network/Network.ts';
 import { BaseDriver, LoopDriver, QSocket, WebRTCDriver } from '../../source/engine/network/NetworkDrivers.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+
+/**
+ * Builds a network layer with silent services, so a driver can be tested without a registry.
+ * @param {{ dedicated?: boolean, urls?: { signalingURL?: string }, mapname?: string, maxPlayers?: number, game?: string }} [options] what to replace
+ * @returns {NET} the network layer
+ */
+function createNet({ dedicated = false, urls = undefined, mapname = 'start', maxPlayers = 4, game = 'id1' } = {}) {
+  const net = new NET({
+    con: { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {}, PrintSuccess() {} },
+    sys: { Print() {}, FloatTime() { return 1; } },
+    dedicated,
+    urls: () => urls,
+    serverInfo: () => ({ maxPlayers, mapname, game }),
+    webSocketModule: () => undefined,
+  });
+
+  net.time = 1;
+  net.message = new SzBuffer(128, 'test net message');
+
+  return net;
+}
 
 class RecordingDriver extends BaseDriver {
   calls = [];
 
-  constructor() {
-    super('recording');
+  constructor(net = createNet()) {
+    super('recording', net);
     this.initialized = true;
   }
 
@@ -67,88 +87,45 @@ void describe('NetworkDrivers', () => {
   });
 
   void test('LoopDriver round-trips a reliable local message', () => {
-    const previousCon = registry.Con;
-    const previousCOM = registry.COM;
-    const previousNET = registry.NET;
-    const previousSV = registry.SV;
-    const previousSys = registry.Sys;
-    const previousSockets = NET.activeSockets.slice();
-    const previousTime = NET.time;
-    const previousMessage = NET.message;
+    const net = createNet();
+    const driver = new LoopDriver(net);
+    const serverSock = driver.Connect('local');
+    const clientSock = driver.CheckNewConnections();
 
-    registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
-    registry.COM = { game: 'id1' };
-    registry.NET = NET;
-    registry.SV = { server: { mapname: 'start' }, svs: { maxclients: 1 } };
-    registry.Sys = { FloatTime() { return 1; } };
-    eventBus.publish('registry.frozen');
+    assert.ok(serverSock instanceof QSocket);
+    assert.ok(clientSock instanceof QSocket);
 
-    try {
-      NET.activeSockets = [];
-      NET.time = 1;
-      NET.message = new SzBuffer(128, 'NET.message.test');
+    const payload = new SzBuffer(16, 'loop-message');
+    payload.writeByte(99);
 
-      const driver = new LoopDriver();
-      const serverSock = driver.Connect('local');
-      const clientSock = driver.CheckNewConnections();
-
-      assert.ok(serverSock instanceof QSocket);
-      assert.ok(clientSock instanceof QSocket);
-
-      const payload = new SzBuffer(16, 'loop-message');
-      payload.writeByte(99);
-
-      assert.equal(serverSock.SendMessage(payload), 1);
-      assert.equal(serverSock.CanSendMessage(), false);
-      assert.equal(clientSock.GetMessage(), 1);
-      assert.equal(new Uint8Array(NET.message.data)[0], 99);
-      assert.equal(serverSock.CanSendMessage(), true);
-      assert.equal(clientSock.transportState?.kind, 'loopback');
-      assert.equal(clientSock.transportState?.peer, serverSock);
-    } finally {
-      registry.Con = previousCon;
-      registry.COM = previousCOM;
-      registry.NET = previousNET;
-      registry.SV = previousSV;
-      registry.Sys = previousSys;
-      NET.activeSockets = previousSockets;
-      NET.time = previousTime;
-      NET.message = previousMessage;
-      eventBus.publish('registry.frozen');
-    }
+    assert.equal(serverSock.SendMessage(payload), 1);
+    assert.equal(serverSock.CanSendMessage(), false);
+    assert.equal(clientSock.GetMessage(), 1);
+    assert.equal(new Uint8Array(net.message.data)[0], 99);
+    assert.equal(serverSock.CanSendMessage(), true);
+    assert.equal(clientSock.transportState?.kind, 'loopback');
+    assert.equal(clientSock.transportState?.peer, serverSock);
   });
 });
 
 /**
- * Temporarily installs a `Con` stub plus `registry.urls`/`registry.isDedicatedServer` and a
- * `location` global (bare, not `window.location` -- matching how `NetworkDrivers.ts` reads it),
- * restoring everything afterward.
+ * Installs a `location` global (bare, not `window.location` -- matching how `NetworkDrivers.ts`
+ * reads it) and a `window` stub, builds a network layer for the scenario, and restores the globals afterward.
  * @param {{ location: { protocol: string, hostname: string }, urls?: { signalingURL?: string }, isDedicatedServer?: boolean, window?: object }} overrides scenario overrides
- * @param {() => void} callback test callback
+ * @param {(net: NET) => void} callback test callback
  */
 function withSignalingScenario(overrides, callback) {
-  const previousCon = registry.Con;
-  const previousUrls = registry.urls;
-  const previousIsDedicatedServer = registry.isDedicatedServer;
   const previousLocation = globalThis.location;
   const previousWindow = globalThis.window;
 
-  registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
-  registry.urls = overrides.urls;
-  registry.isDedicatedServer = overrides.isDedicatedServer ?? false;
   globalThis.location = overrides.location;
   globalThis.window = overrides.window ?? { addEventListener() {}, removeEventListener() {} };
-  eventBus.publish('registry.frozen');
 
   try {
-    callback();
+    callback(createNet({ dedicated: overrides.isDedicatedServer ?? false, urls: overrides.urls }));
   } finally {
-    registry.Con = previousCon;
-    registry.urls = previousUrls;
-    registry.isDedicatedServer = previousIsDedicatedServer;
     globalThis.location = previousLocation;
     globalThis.window = previousWindow;
-    eventBus.publish('registry.frozen');
   }
 }
 
@@ -182,8 +159,8 @@ function createWindowStub() {
 
 void describe('WebRTCDriver.Init', () => {
   void test('defaults to ws(s)://<hostname>:8787/signaling when no signaling URL is configured', () => {
-    withSignalingScenario({ location: { protocol: 'https:', hostname: 'play.quakeshack.dev' } }, () => {
-      const driver = new WebRTCDriver();
+    withSignalingScenario({ location: { protocol: 'https:', hostname: 'play.quakeshack.dev' } }, (net) => {
+      const driver = new WebRTCDriver(net);
 
       assert.equal(driver.Init(), true);
       assert.equal(driver.signalingUrl, 'wss://play.quakeshack.dev:8787/signaling');
@@ -198,8 +175,8 @@ void describe('WebRTCDriver.Init', () => {
     withSignalingScenario({
       location: { protocol: 'http:', hostname: 'localhost' },
       urls: { signalingURL: 'http://localhost:8787' },
-    }, () => {
-      const driver = new WebRTCDriver();
+    }, (net) => {
+      const driver = new WebRTCDriver(net);
 
       driver.Init();
       assert.equal(driver.signalingUrl, 'ws://localhost:8787/signaling');
@@ -210,8 +187,8 @@ void describe('WebRTCDriver.Init', () => {
     withSignalingScenario({
       location: { protocol: 'https:', hostname: 'localhost' },
       urls: { signalingURL: 'http://master.example.test' },
-    }, () => {
-      const driver = new WebRTCDriver();
+    }, (net) => {
+      const driver = new WebRTCDriver(net);
 
       driver.Init();
       assert.equal(driver.signalingUrl, 'wss://master.example.test/signaling');
@@ -222,8 +199,8 @@ void describe('WebRTCDriver.Init', () => {
     withSignalingScenario({
       location: { protocol: 'http:', hostname: 'localhost' },
       isDedicatedServer: true,
-    }, () => {
-      const driver = new WebRTCDriver();
+    }, (net) => {
+      const driver = new WebRTCDriver(net);
 
       assert.equal(driver.Init(), false);
       assert.equal(driver.initialized, false);
@@ -239,30 +216,25 @@ void describe('WebRTCDriver.Init', () => {
   // (`nav_build_process 1` navmesh baking), which was misreported as a nav-save failure and left
   // the process hanging past its intended `exit(0)`.
   void test('Shutdown does not touch `window` on a dedicated server, where Init never ran', () => {
-    const previousIsDedicatedServer = registry.isDedicatedServer;
     const previousLocation = globalThis.location;
     const hadWindow = Object.hasOwn(globalThis, 'window');
     const previousWindow = globalThis.window;
 
-    registry.isDedicatedServer = true;
     globalThis.location = { protocol: 'http:', hostname: 'localhost' };
     delete globalThis.window; // dedicated server (Node.js) never has a `window` global
-    eventBus.publish('registry.frozen');
 
     try {
-      const driver = new WebRTCDriver();
+      const driver = new WebRTCDriver(createNet({ dedicated: true }));
 
       assert.equal(driver.Init(), false);
       assert.doesNotThrow(() => { driver.Shutdown(); });
     } finally {
-      registry.isDedicatedServer = previousIsDedicatedServer;
       globalThis.location = previousLocation;
       if (hadWindow) {
         globalThis.window = previousWindow;
       } else {
         delete globalThis.window;
       }
-      eventBus.publish('registry.frozen');
     }
   });
 });
@@ -274,8 +246,8 @@ void describe('WebRTCDriver pagehide handling', () => {
   void test('stops hosting when the tab closes while a session is active', () => {
     const windowStub = createWindowStub();
 
-    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, () => {
-      const driver = new WebRTCDriver();
+    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, (net) => {
+      const driver = new WebRTCDriver(net);
       driver.Init();
       driver.isHost = true;
 
@@ -291,8 +263,8 @@ void describe('WebRTCDriver pagehide handling', () => {
   void test('does nothing when the tab was never hosting', () => {
     const windowStub = createWindowStub();
 
-    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, () => {
-      const driver = new WebRTCDriver();
+    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, (net) => {
+      const driver = new WebRTCDriver(net);
       driver.Init();
       driver.isHost = false;
 
@@ -308,8 +280,8 @@ void describe('WebRTCDriver pagehide handling', () => {
   void test('does not tear down the session when the page is entering the bfcache', () => {
     const windowStub = createWindowStub();
 
-    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, () => {
-      const driver = new WebRTCDriver();
+    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, (net) => {
+      const driver = new WebRTCDriver(net);
       driver.Init();
       driver.isHost = true;
 
@@ -325,8 +297,8 @@ void describe('WebRTCDriver pagehide handling', () => {
   void test('Shutdown removes the pagehide listener installed by Init', () => {
     const windowStub = createWindowStub();
 
-    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, () => {
-      const driver = new WebRTCDriver();
+    withSignalingScenario({ location: { protocol: 'http:', hostname: 'localhost' }, window: windowStub }, (net) => {
+      const driver = new WebRTCDriver(net);
       driver.Init();
 
       assert.equal(windowStub.has('pagehide'), true);
@@ -532,19 +504,10 @@ async function withOobHostScenario(callback) {
   const previousRTCPeerConnection = globalThis.RTCPeerConnection;
   const previousRTCSessionDescription = globalThis.RTCSessionDescription;
   const previousRTCIceCandidate = globalThis.RTCIceCandidate;
-  const previousCon = registry.Con;
-  const previousCOM = registry.COM;
-  const previousNET = registry.NET;
-  const previousSV = registry.SV;
-  const previousSys = registry.Sys;
-  const previousUrls = registry.urls;
-  const previousIsDedicatedServer = registry.isDedicatedServer;
   const previousLocation = globalThis.location;
   const previousWindow = globalThis.window;
-  const previousSockets = NET.activeSockets.slice();
-  const previousTime = NET.time;
-  const previousMessage = NET.message;
 
+  const net = createNet();
   const createdWebSockets = [];
   const createdPeerConnections = [];
   globalThis.WebSocket = class extends MockSignalingWebSocket {
@@ -559,25 +522,14 @@ async function withOobHostScenario(callback) {
   };
   globalThis.RTCSessionDescription = MockRTCSessionDescription;
   globalThis.RTCIceCandidate = MockRTCIceCandidate;
-  registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
-  registry.COM = { game: 'id1' };
-  registry.NET = NET;
-  registry.SV = { server: { mapname: 'start' }, svs: { maxclients: 4 } };
-  registry.Sys = { FloatTime() { return 1; } };
-  registry.urls = undefined;
-  registry.isDedicatedServer = false;
   globalThis.location = { protocol: 'http:', hostname: 'localhost' };
   globalThis.window = { addEventListener() {}, removeEventListener() {} };
-  eventBus.publish('registry.frozen');
 
-  NET.activeSockets = [];
-  NET.time = 1;
-  NET.message = new SzBuffer(128, 'oob-test-net-message');
 
   let driver;
 
   try {
-    driver = new WebRTCDriver();
+    driver = new WebRTCDriver(net);
     driver.Init();
     driver.Connect('webrtc://host');
 
@@ -609,30 +561,9 @@ async function withOobHostScenario(callback) {
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.RTCIceCandidate = previousRTCIceCandidate;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.Con = previousCon;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.COM = previousCOM;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.NET = previousNET;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.SV = previousSV;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.Sys = previousSys;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.urls = previousUrls;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.isDedicatedServer = previousIsDedicatedServer;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.location = previousLocation;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.window = previousWindow;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    NET.activeSockets = previousSockets;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    NET.time = previousTime;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    NET.message = previousMessage;
-    eventBus.publish('registry.frozen');
   }
 }
 
@@ -788,12 +719,10 @@ async function withOobViewerScenario(callback) {
   const previousRTCPeerConnection = globalThis.RTCPeerConnection;
   const previousRTCSessionDescription = globalThis.RTCSessionDescription;
   const previousRTCIceCandidate = globalThis.RTCIceCandidate;
-  const previousCon = registry.Con;
-  const previousUrls = registry.urls;
-  const previousIsDedicatedServer = registry.isDedicatedServer;
   const previousLocation = globalThis.location;
   const previousWindow = globalThis.window;
 
+  const net = createNet();
   const createdWebSockets = [];
   const createdPeerConnections = [];
   globalThis.WebSocket = class extends MockSignalingWebSocket {
@@ -808,17 +737,13 @@ async function withOobViewerScenario(callback) {
   };
   globalThis.RTCSessionDescription = MockRTCSessionDescription;
   globalThis.RTCIceCandidate = MockRTCIceCandidate;
-  registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
-  registry.urls = undefined;
-  registry.isDedicatedServer = false;
   globalThis.location = { protocol: 'http:', hostname: 'localhost' };
   globalThis.window = { addEventListener() {}, removeEventListener() {} };
-  eventBus.publish('registry.frozen');
 
   let driver;
 
   try {
-    driver = new WebRTCDriver();
+    driver = new WebRTCDriver(net);
     driver.Init();
 
     await callback({ driver, createdWebSockets, createdPeerConnections });
@@ -838,16 +763,9 @@ async function withOobViewerScenario(callback) {
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.RTCIceCandidate = previousRTCIceCandidate;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.Con = previousCon;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.urls = previousUrls;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.isDedicatedServer = previousIsDedicatedServer;
-    // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.location = previousLocation;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.window = previousWindow;
-    eventBus.publish('registry.frozen');
   }
 }
 

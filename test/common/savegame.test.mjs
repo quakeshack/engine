@@ -7,14 +7,16 @@ import Host from '../../source/engine/common/Host.ts';
 import * as Def from '../../source/engine/common/Def.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import ClientLifecycle from '../../source/engine/client/ClientLifecycle.ts';
-import { ServerEdict } from '../../source/engine/server/Edict.ts';
+import InThreadServerController from '../../source/engine/server/InThreadServerController.ts';
+import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
 import NodeCOM from '../../source/engine/server/Com.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { Serializer } from '../../source/game/id1/helper/MiscHelpers.ts';
 import { cvarFlags } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 
-import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import { defaultMockRegistry, withMockRegistry, registrySV } from '../physics/fixtures.mjs';
 
 const [{ ServerGameAPI }, { PlayerEntity }, { WorldspawnEntity }] = await Promise.all([
   import('../../source/game/id1/GameAPI.ts'),
@@ -351,7 +353,7 @@ function createIntegrationEngineAPI(getEdicts) {
 }
 
 void describe('Host.Savegame_f', () => {
-  void test('writes a save payload with serialized globals, edicts, and filtered cvars', () => {
+  void test('writes a save payload with serialized globals, edicts, and filtered cvars', async () => {
     const consoleCapture = createMockConsole();
     const writes = [];
     const worldspawn = createMockEntity({
@@ -408,6 +410,7 @@ void describe('Host.Savegame_f', () => {
     ];
     const mockCOM = {
       DefaultExtension: COMClass.DefaultExtension,
+      GetGamedir: () => 'id1',
       WriteTextFile(filename, data) {
         writes.push({ filename, data });
         return true;
@@ -428,6 +431,7 @@ void describe('Host.Savegame_f', () => {
     const previousFilter = Cvar.Filter;
 
     registry.CL = {
+      serverController: new InThreadServerController(sv, /** @type {any} */ ({})),
       state: {
         intermission: 0,
         levelname: 'E1M1',
@@ -455,7 +459,7 @@ void describe('Host.Savegame_f', () => {
     };
 
     try {
-      Host.Savegame_f.call({ client: null }, 'save/e1m1');
+      await Host.Savegame_f.call({ client: null }, 'save/e1m1');
     } finally {
       Cvar.Filter = previousFilter;
       registry.CL = previousRegistry.CL;
@@ -589,9 +593,13 @@ void describe('Host.Loadgame_f', () => {
       cls: { demonum: 0 },
       Disconnect() { },
       SetConnectingStep() { },
+      serverController: new InThreadServerController(/** @type {any} */ (sv), /** @type {any} */ ({})),
     };
+
+    sv.con = consoleCapture.Con;
     const mockCOM = {
       DefaultExtension: COMClass.DefaultExtension,
+      GetGamedir: () => 'id1',
       WriteTextFile() {
         return true;
       },
@@ -683,9 +691,13 @@ void describe('Host.Loadgame_f', () => {
       cls: { demonum: 0 },
       Disconnect() { },
       SetConnectingStep() { },
+      serverController: new InThreadServerController(/** @type {any} */ (sv), /** @type {any} */ ({})),
     };
+
+    sv.con = consoleCapture.Con;
     const mockCOM = {
       DefaultExtension: COMClass.DefaultExtension,
+      GetGamedir: () => 'id1',
       WriteTextFile() {
         return true;
       },
@@ -772,9 +784,13 @@ void describe('Host.Loadgame_f', () => {
       cls: { demonum: 0 },
       Disconnect() { },
       SetConnectingStep() { },
+      serverController: new InThreadServerController(/** @type {any} */ (sv), /** @type {any} */ ({})),
     };
+
+    sv.con = consoleCapture.Con;
     const mockCOM = {
       DefaultExtension: COMClass.DefaultExtension,
+      GetGamedir: () => 'id1',
       WriteTextFile() {
         return true;
       },
@@ -816,8 +832,12 @@ void describe('Host.save/load integration', () => {
     const previousIsDedicatedServer = registry.isDedicatedServer;
     const previousServerGameCvars = ServerGameAPI._cvars;
     const previousSys = registry.Sys;
-    const previousSearchpaths = COMClass.searchpaths;
-    const previousGamedir = COMClass.gamedir;
+    const nodeCom = new NodeCOM({
+      con: { Print() {}, DPrint() {}, PrintWarning() {}, PrintError() {}, PrintSuccess() {} },
+      sys: { Print() {}, FloatTime: () => 0 },
+      buildConfig: () => undefined,
+      urls: () => undefined,
+    });
     const savedCvars = [
       createMockCvar('sv_gravity', '800', cvarFlags.SERVER),
       createMockCvar('skill', '2', cvarFlags.GAME),
@@ -848,6 +868,8 @@ void describe('Host.save/load integration', () => {
     registry.Sys = {
       Print() { },
     };
+    const previousSCR = registry.SCR;
+    registry.SCR = { BeginLoadingPlaque() { } };
     registry.isDedicatedServer = true;
     eventBus.publish('registry.frozen');
 
@@ -857,7 +879,7 @@ void describe('Host.save/load integration', () => {
       ParseEntityLump: COMClass.ParseEntityLump,
       DefaultExtension: COMClass.DefaultExtension,
       async LoadFile(name) {
-        return NodeCOM.LoadFile(name);
+        return nodeCom.LoadFile(name);
       },
       async LoadTextFile(name) {
         if (name.endsWith('.json')) {
@@ -876,6 +898,7 @@ void describe('Host.save/load integration', () => {
       },
     };
     const sv = {
+      ed: new ED(registrySV()),
       server: {
         active: true,
         paused: false,
@@ -903,7 +926,7 @@ void describe('Host.save/load integration', () => {
         unlinkEdict() { },
       },
       SpawnServer: async (mapname) => {
-        const freshEdicts = [new ServerEdict(0), new ServerEdict(1), new ServerEdict(2)];
+        const freshEdicts = [new ServerEdict(0, registrySV()), new ServerEdict(1, registrySV()), new ServerEdict(2, registrySV())];
         currentEdicts = freshEdicts;
         const freshGameAPI = new ServerGameAPI(engineAPI);
         freshGameAPI.mapname = mapname;
@@ -930,6 +953,7 @@ void describe('Host.save/load integration', () => {
       cls: { demonum: 0 },
       Disconnect() { },
       SetConnectingStep() { },
+      serverController: new InThreadServerController(/** @type {any} */ (sv), /** @type {any} */ ({})),
       state: {
         intermission: 0,
         levelname: 'E1M1',
@@ -947,6 +971,7 @@ void describe('Host.save/load integration', () => {
     };
     const previousResumeGame = ClientLifecycle.resumeGame;
 
+    sv.con = consoleCapture.Con;
     ClientLifecycle.resumeGame = (clientdata, particles, clientEntities) => {
       resumes.push({ clientdata, particles, clientEntities });
     };
@@ -965,9 +990,7 @@ void describe('Host.save/load integration', () => {
         isDedicatedServer: true,
       }, async () => {
         // Load the real id1 pak metadata so maps/e1m1.bsp resolves through COM.
-        COMClass.searchpaths = [];
-        COMClass.gamedir = null;
-        await NodeCOM.AddGameDirectory('id1');
+        await nodeCom.AddGameDirectory('id1');
 
         Mod.Init();
 
@@ -982,7 +1005,7 @@ void describe('Host.save/load integration', () => {
         );
         const spawnOrigin = parseMapOrigin(spawnRecord.origin);
 
-        const saveEdicts = [new ServerEdict(0), new ServerEdict(1), new ServerEdict(2)];
+        const saveEdicts = [new ServerEdict(0, registrySV()), new ServerEdict(1, registrySV()), new ServerEdict(2, registrySV())];
         currentEdicts = saveEdicts;
 
         const saveGameAPI = new ServerGameAPI(engineAPI);
@@ -1026,7 +1049,7 @@ void describe('Host.save/load integration', () => {
           filterCvars: savedCvars,
           lookupCvars: currentCvarLookup,
         }, async () => {
-          assert.equal(Host.Savegame_f.call({ client: null }, 'integration/e1m1'), undefined);
+          assert.equal(await Host.Savegame_f.call({ client: null }, 'integration/e1m1'), undefined);
           await Host.Loadgame_f.call({ client: null }, 'integration/e1m1');
         });
 
@@ -1058,9 +1081,8 @@ void describe('Host.save/load integration', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
-      COMClass.searchpaths = previousSearchpaths;
-      COMClass.gamedir = previousGamedir;
       registry.R = previousRenderer;
+      registry.SCR = previousSCR;
       registry.Sys = previousSys;
       registry.isDedicatedServer = previousIsDedicatedServer;
       ServerGameAPI._cvars = previousServerGameCvars;

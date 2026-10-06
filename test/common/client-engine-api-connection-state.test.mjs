@@ -3,26 +3,24 @@ import { describe, test } from 'node:test';
 
 import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
- * Installs minimal `CL`/`SV` registry stubs for the duration of the callback.
+ * Installs a minimal `CL` registry stub, with a server controller, for the duration of the callback.
  * @param {{ state?: import('../../source/engine/common/Def.ts').clientConnectionState, serverActive?: boolean }} options registry overrides
  * @param {() => void} callback test callback
  */
 function withMockConnectionState({ state = clientConnectionState.disconnected, serverActive = false }, callback) {
   const previousCL = registry.CL;
-  const previousSV = registry.SV;
 
-  registry.CL = { cls: { state } };
-  registry.SV = { server: { active: serverActive } };
+  registry.CL = { cls: { state }, serverController: { state: { active: serverActive } } };
   eventBus.publish('registry.frozen');
 
   try {
     callback();
   } finally {
     registry.CL = previousCL;
-    registry.SV = previousSV;
     eventBus.publish('registry.frozen');
   }
 }

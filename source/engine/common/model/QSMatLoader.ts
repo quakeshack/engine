@@ -1,4 +1,5 @@
-import { eventBus, getCommonRegistry, registry } from '../../registry.ts';
+import { getCommonRegistry, registry } from '../../registry.ts';
+import { eventBus } from '../EventBus.ts';
 import { GLTexture } from '../../client/GL.ts';
 import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../client/renderer/Materials.ts';
 import type { BrushModel } from './BSP.ts';

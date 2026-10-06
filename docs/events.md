@@ -60,6 +60,7 @@ The engine has an event bus.
 
 | Event | Arguments | Description |
 | - | - | - |
+| cvar.registered | 1. Cvar name | When a Cvar has been created. A server in a worker reports it to the page's console, see [server-worker.md](server-worker.md). |
 | cvar.changed | 1. Cvar name | When a Cvar has been changed. |
 | cvar.changed.<cvar-name> | 1. Cvar | When a specific Cvar has been changed. |
 
@@ -107,7 +108,7 @@ Those events are only fired by the server code.
 | server.spawned | 1. map name | Emitted when spawning a server succeeded. |
 | server.edict.assigned | 1. edict id | Emitted when a server edict slot is assigned to a new entity. |
 | server.edict.freed | 1. edict id | Emitted when a server edict slot is freed and can be reused. |
-| server.shutting-down | | Emitted when shutting a server down. All clients are still connected. |
+| server.shutting-down | | Emitted when shutting a server down. The server is already marked inactive and all clients are still connected. A local client listens for it to disconnect together with its server. |
 | server.shutdown | | Emitted when the server is shut down and after cleaning up everything. |
 | server.client.connected | 1. client num, 2. client name | Emitted when a client has fully connected and joined the server. |
 | server.client.disconnected | 1. client num, 2. client name | Emitted when a client has disconnected from the server. |
@@ -134,6 +135,15 @@ Those events are only fired by the server-side navigation subsystem (`Navigation
 | Event | Arguments | Description |
 | - | - | - |
 | areaportals.changed | | Whenever a portal has changed. |
+
+## Events across a server worker
+
+When the server runs in a worker (see [server-worker.md](server-worker.md)) it has an event bus of its own.
+Only these events are forwarded to the page's bus, with their arguments, because the page reacts to them:
+`server.spawning`, `server.spawned`, `server.shutting-down`, `server.shutdown`, `server.client.connected`,
+`server.client.disconnected` and `nav.debug.emit-dot.temporarily`/`nav.debug.emit-dot.permanently`. The list is
+`forwardedServerEvents` in `source/engine/common/ServerWorkerProtocol.ts`. Arguments must survive structured
+cloning. Any other event stays in the realm that published it.
 
 ## Game Events
 

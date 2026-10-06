@@ -2,27 +2,25 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import COM from '../../source/engine/common/Com.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
 
 /**
- *
- * @param searchpaths
+ * Builds a COM with silent services and the given build config.
+ * @param {object | undefined} [buildConfig] the build config the COM reads
+ * @returns {COM} the file system under test
  */
-function cloneSearchPaths(searchpaths) {
-  if (searchpaths === null) {
-    return null;
-  }
-
-  return searchpaths.map((search) => ({
-    filename: search.filename,
-    pack: search.pack.map((pack) => [...pack]),
-  }));
+function createCom(buildConfig = undefined) {
+  return new COM({
+    con: { Print() {}, DPrint() {}, PrintWarning() {}, PrintError() {}, PrintSuccess() {} },
+    sys: { Print() {}, FloatTime: () => 0 },
+    buildConfig: () => buildConfig,
+    urls: () => undefined,
+  });
 }
 
 /**
- *
- * @param overrides
+ * Builds a build config for the tests.
+ * @param {object} [overrides] fields to replace
+ * @returns {object} the build config
  */
 function createBuildConfig(overrides = {}) {
   return {
@@ -33,48 +31,6 @@ function createBuildConfig(overrides = {}) {
     baseDir: null,
     ...overrides,
   };
-}
-
-/**
- *
- * @param callback
- */
-async function withFilesystemState(callback) {
-  const savedState = {
-    argv: [...COM.argv],
-    searchpaths: cloneSearchPaths(COM.searchpaths),
-    hipnotic: COM.hipnotic,
-    rogue: COM.rogue,
-    standardQuake: COM.standard_quake,
-    modified: COM.modified,
-    gamedir: cloneSearchPaths(COM.gamedir),
-    game: COM.game,
-    buildConfig: registry.buildConfig,
-  };
-
-  COM.argv = ['quake'];
-  COM.searchpaths = [];
-  COM.hipnotic = false;
-  COM.rogue = false;
-  COM.standard_quake = true;
-  COM.modified = false;
-  COM.gamedir = null;
-  COM.game = 'id1';
-  registry.buildConfig = undefined;
-
-  try {
-    await callback();
-  } finally {
-    COM.argv = savedState.argv;
-    COM.searchpaths = savedState.searchpaths ?? [];
-    COM.hipnotic = savedState.hipnotic;
-    COM.rogue = savedState.rogue;
-    COM.standard_quake = savedState.standardQuake;
-    COM.modified = savedState.modified;
-    COM.gamedir = savedState.gamedir;
-    COM.game = savedState.game;
-    registry.buildConfig = savedState.buildConfig;
-  }
 }
 
 void describe('COM', () => {
@@ -93,6 +49,16 @@ void describe('COM', () => {
 
     void test('ignores dots that appear only in parent directory names', () => {
       assert.equal(COM.DefaultExtension('maps.v1/e1m1', '.bsp'), 'maps.v1/e1m1.bsp');
+    });
+  });
+
+  void describe('instance access to the pure helpers', () => {
+    void test('reach the same functions as the static ones', () => {
+      const com = createCom();
+
+      assert.equal(com.Parse, COM.Parse);
+      assert.equal(com.ParseEntityLump, COM.ParseEntityLump);
+      assert.equal(com.DefaultExtension, COM.DefaultExtension);
     });
   });
 
@@ -139,118 +105,90 @@ void describe('COM', () => {
   });
 
   void describe('CheckParm / GetParm', () => {
-    const savedArgv = [...COM.argv];
-
     void test('CheckParm returns index when parameter exists', () => {
-      COM.argv = ['quake', '-game', 'hipnotic', '-developer'];
-      try {
-        assert.equal(COM.CheckParm('-game'), 1);
-        assert.equal(COM.CheckParm('-developer'), 3);
-        assert.equal(COM.CheckParm('-missing'), null);
-      } finally {
-        COM.argv = savedArgv;
-      }
+      const com = createCom();
+
+      com.argv = ['quake', '-game', 'hipnotic', '-developer'];
+
+      assert.equal(com.CheckParm('-game'), 1);
+      assert.equal(com.CheckParm('-developer'), 3);
+      assert.equal(com.CheckParm('-missing'), null);
     });
 
     void test('GetParm returns the value following the flag', () => {
-      COM.argv = ['quake', '-game', 'hipnotic', '-developer'];
-      try {
-        assert.equal(COM.GetParm('-game'), 'hipnotic');
-        assert.equal(COM.GetParm('-developer'), null); // no value after last flag
-        assert.equal(COM.GetParm('-missing'), null);
-      } finally {
-        COM.argv = savedArgv;
-      }
+      const com = createCom();
+
+      com.argv = ['quake', '-game', 'hipnotic', '-developer'];
+
+      assert.equal(com.GetParm('-game'), 'hipnotic');
+      assert.equal(com.GetParm('-developer'), null); // no value after last flag
+      assert.equal(com.GetParm('-missing'), null);
     });
   });
 
   void describe('InitArgv', () => {
     void test('populates argv and detects -rogue flag', () => {
-      const savedArgv = [...COM.argv];
-      const savedRogue = COM.rogue;
-      const savedStdQuake = COM.standard_quake;
-      try {
-        COM.argv = [];
-        COM.rogue = false;
-        COM.standard_quake = true;
-        COM.InitArgv(['quake', '-rogue']);
-        assert.equal(COM.rogue, true);
-        assert.equal(COM.standard_quake, false);
-        assert.equal(COM.argv[0], 'quake');
-      } finally {
-        COM.argv = savedArgv;
-        COM.rogue = savedRogue;
-        COM.standard_quake = savedStdQuake;
-      }
+      const com = createCom();
+
+      com.InitArgv(['quake', '-rogue']);
+
+      assert.equal(com.rogue, true);
+      assert.equal(com.standard_quake, false);
+      assert.equal(com.argv[0], 'quake');
     });
 
     void test('-safe appends disable flags', () => {
-      const savedArgv = [...COM.argv];
-      try {
-        COM.argv = [];
-        COM.InitArgv(['quake', '-safe']);
-        assert.ok(COM.argv.includes('-nosound'));
-        assert.ok(COM.argv.includes('-nocdaudio'));
-        assert.ok(COM.argv.includes('-nomouse'));
-      } finally {
-        COM.argv = savedArgv;
-      }
+      const com = createCom();
+
+      com.InitArgv(['quake', '-safe']);
+
+      assert.ok(com.argv.includes('-nosound'));
+      assert.ok(com.argv.includes('-nocdaudio'));
+      assert.ok(com.argv.includes('-nomouse'));
     });
   });
 
   void describe('InitFilesystem', () => {
     void test('uses the build-config base directory when no -basedir argument is provided', async () => {
-      await withMockRegistry({
-        ...defaultMockRegistry(),
-        COM,
-      }, async () => {
-        await withFilesystemState(async () => {
-          registry.buildConfig = createBuildConfig({ baseDir: 'lq1' });
+      const com = createCom(createBuildConfig({ baseDir: 'lq1' }));
 
-          await COM.InitFilesystem();
+      com.argv = ['quake'];
+      await com.InitFilesystem();
 
-          assert.deepEqual(COM.searchpaths.map((search) => search.filename), ['lq1']);
-          assert.equal(COM.gamedir?.[0].filename, 'lq1');
-        });
-      });
+      assert.deepEqual(com.searchpaths.map((search) => search.filename), ['lq1']);
+      assert.equal(com.gamedir?.[0].filename, 'lq1');
     });
 
     void test('prefers the command-line -basedir argument over the build-config fallback', async () => {
-      await withMockRegistry({
-        ...defaultMockRegistry(),
-        COM,
-      }, async () => {
-        await withFilesystemState(async () => {
-          COM.argv = ['quake', '-basedir', 'id1'];
-          registry.buildConfig = createBuildConfig({ baseDir: 'lq1' });
+      const com = createCom(createBuildConfig({ baseDir: 'lq1' }));
 
-          await COM.InitFilesystem();
+      com.argv = ['quake', '-basedir', 'id1'];
+      await com.InitFilesystem();
 
-          assert.deepEqual(COM.searchpaths.map((search) => search.filename), ['id1']);
-          assert.equal(COM.gamedir?.[0].filename, 'id1');
-        });
-      });
+      assert.deepEqual(com.searchpaths.map((search) => search.filename), ['id1']);
+      assert.equal(com.gamedir?.[0].filename, 'id1');
     });
 
     void test('layers the build-config game directory on top of the effective base directory', async () => {
-      await withMockRegistry({
-        ...defaultMockRegistry(),
-        COM,
-      }, async () => {
-        await withFilesystemState(async () => {
-          registry.buildConfig = createBuildConfig({
-            gameDir: 'hellwave',
-            baseDir: 'lq1',
-          });
+      const com = createCom(createBuildConfig({ gameDir: 'hellwave', baseDir: 'lq1' }));
 
-          await COM.InitFilesystem();
+      com.argv = ['quake'];
+      await com.InitFilesystem();
 
-          assert.deepEqual(COM.searchpaths.map((search) => search.filename), ['lq1', 'hellwave']);
-          assert.equal(COM.gamedir?.[0].filename, 'hellwave');
-          assert.equal(COM.game, 'hellwave');
-          assert.equal(COM.modified, true);
-        });
-      });
+      assert.deepEqual(com.searchpaths.map((search) => search.filename), ['lq1', 'hellwave']);
+      assert.equal(com.gamedir?.[0].filename, 'hellwave');
+      assert.equal(com.game, 'hellwave');
+      assert.equal(com.modified, true);
+    });
+
+    void test('keeps the state of one COM apart from another', async () => {
+      const first = createCom(createBuildConfig({ baseDir: 'lq1' }));
+      const second = createCom();
+
+      first.argv = ['quake'];
+      await first.InitFilesystem();
+
+      assert.deepEqual(second.searchpaths, []);
     });
   });
 });

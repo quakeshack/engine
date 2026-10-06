@@ -30,7 +30,7 @@ export class BaseWorker {
     this._shutdownListeners.push(listener);
   }
 
-  postMessage(_message: unknown) {
+  postMessage(_message: unknown, _transfer?: Transferable[]) {
     throw new NotImplementedError('Worker.postMessage must be implemented in a subclass');
   }
 

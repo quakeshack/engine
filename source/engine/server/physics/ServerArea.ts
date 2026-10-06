@@ -4,9 +4,9 @@ import type { BaseEntity, ServerEdict } from '../Edict.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { Octree } from '../../../shared/Octree.ts';
-import { eventBus, getCommonRegistry } from '../../registry.ts';
-import CollisionModelSource, { createRegistryCollisionModelSource } from '../../common/CollisionModelSource.ts';
+import type CollisionModelSource from '../../common/CollisionModelSource.ts';
 import { BrushModel } from '../../common/Mod.ts';
+import type Server from '../Server.ts';
 
 interface BoxClipNode {
   planenum: number;
@@ -29,12 +29,6 @@ interface BoxHull {
   lastclipnode: number;
 }
 
-let { SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ SV } = getCommonRegistry());
-});
-
 /**
  * Manages spatial partitioning and entity linking for efficient collision detection.
  * Handles the area node BSP tree used for spatial queries.
@@ -45,11 +39,14 @@ export class ServerArea {
   box_planes: BoxPlane[] = [];
   box_hull: BoxHull | null = null;
   readonly _modelSource: CollisionModelSource;
+  readonly sv: Server;
 
   /**
+   * @param sv The server this area belongs to.
    * @param modelSource Runtime model resolver.
    */
-  constructor(modelSource: CollisionModelSource = createRegistryCollisionModelSource()) {
+  constructor(sv: Server, modelSource: CollisionModelSource) {
+    this.sv = sv;
     this._modelSource = modelSource;
   }
 
@@ -257,8 +254,8 @@ export class ServerArea {
   touchLinks(ent: ServerEdict): void {
     const tree = this.tree;
     const entity = ent.entity!;
-    console.assert(SV.server.gameAPI !== null, 'ServerArea.touchLinks requires a live server game API');
-    const gameAPI = SV.server.gameAPI!;
+    console.assert(this.sv.server.gameAPI !== null, 'ServerArea.touchLinks requires a live server game API');
+    const gameAPI = this.sv.server.gameAPI!;
 
     console.assert(tree !== null, 'ServerArea tree must be initialized before touchLinks');
 
@@ -283,7 +280,7 @@ export class ServerArea {
 
       const touchFn = touchEntity.touch;
 
-      gameAPI.time = SV.server.time;
+      gameAPI.time = this.sv.server.time;
       touchFn.call(touchEntity, !ent.isFree() ? ent.entity : null);
     }
   }
@@ -328,14 +325,14 @@ export class ServerArea {
    * @param touchTriggers Whether triggers should be evaluated.
    */
   linkEdict(ent: ServerEdict, touchTriggers = false): void {
-    if (ent.equals(SV.server.edicts[0]) || ent.isFree()) {
+    if (ent.equals(this.sv.server.edicts[0]) || ent.isFree()) {
       return;
     }
 
     console.assert(ent.entity !== null);
     const entity = ent.entity! as BaseEntity;
 
-    SV.server.navigation!.relinkEdict(ent);
+    this.sv.server.navigation!.relinkEdict(ent);
     this.unlinkEdict(ent);
 
     const absmin = new Vector();
@@ -343,7 +340,7 @@ export class ServerArea {
 
     this._computeEntityBounds(ent, absmin, absmax);
 
-    if (SV.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK)) {
+    if (this.sv.server.gameCapabilities.includes(Defs.gameCapabilities.CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK)) {
       absmin.add(new Vector(-1.0, -1.0, -1.0));
       absmax.add(new Vector(1.0, 1.0, 1.0));
 
@@ -358,7 +355,7 @@ export class ServerArea {
 
     ent.leafnums = [];
     if (entity.modelindex !== 0) {
-      this.findTouchedLeafs(ent, SV.server.worldmodel!.nodes[0]);
+      this.findTouchedLeafs(ent, this.sv.server.worldmodel!.nodes[0]);
     }
 
     if (entity.solid === Defs.solid.SOLID_NOT) {

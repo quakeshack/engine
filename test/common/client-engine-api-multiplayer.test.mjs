@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Installs the minimal `COM`/`urls` registry SessionDiscovery (used internally by

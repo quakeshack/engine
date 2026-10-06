@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
-import { eventBus } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
-import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import { defaultMockRegistry, withMockRegistry, registrySV } from '../physics/fixtures.mjs';
 
 void describe('ED.Print', () => {
   void test('prints serializable and public entity fields without Progs fielddefs', () => {
@@ -48,7 +48,7 @@ void describe('ED.Print', () => {
         DPrint() {},
       },
     }, () => {
-      ED.Print(edict);
+      new ED(registrySV()).Print(edict);
     });
 
     const output = prints.join('');
@@ -68,9 +68,9 @@ void describe('ED.Print', () => {
 
 void describe('ED lifecycle events', () => {
   void test('emits server.edict.assigned when reusing a freed slot', () => {
-    const worldEdict = new ServerEdict(0);
-    const clientEdict = new ServerEdict(1);
-    const reusableEdict = new ServerEdict(2);
+    const worldEdict = new ServerEdict(0, registrySV());
+    const clientEdict = new ServerEdict(1, registrySV());
+    const reusableEdict = new ServerEdict(2, registrySV());
     reusableEdict.free = true;
     reusableEdict.freetime = 0;
 
@@ -90,7 +90,7 @@ void describe('ED lifecycle events', () => {
           edicts: [worldEdict, clientEdict, reusableEdict],
         },
       }), () => {
-        const assigned = ED.Alloc();
+        const assigned = new ED(registrySV()).Alloc();
         assert.equal(assigned.num, 2);
       });
     } finally {
@@ -101,11 +101,11 @@ void describe('ED lifecycle events', () => {
   });
 
   void test('emits server.edict.assigned when allocating a fresh slot', () => {
-    const worldEdict = new ServerEdict(0);
-    const clientEdict = new ServerEdict(1);
-    const activeEdict = new ServerEdict(2);
+    const worldEdict = new ServerEdict(0, registrySV());
+    const clientEdict = new ServerEdict(1, registrySV());
+    const activeEdict = new ServerEdict(2, registrySV());
     activeEdict.free = false;
-    const freshEdict = new ServerEdict(3);
+    const freshEdict = new ServerEdict(3, registrySV());
 
     const assignedEdictIds = [];
     const unsubscribe = eventBus.subscribe('server.edict.assigned', (edictId) => {
@@ -123,7 +123,7 @@ void describe('ED lifecycle events', () => {
           edicts: [worldEdict, clientEdict, activeEdict, freshEdict],
         },
       }), () => {
-        const assigned = ED.Alloc();
+        const assigned = new ED(registrySV()).Alloc();
         assert.equal(assigned.num, 3);
       });
     } finally {

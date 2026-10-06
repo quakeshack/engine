@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Con from '../../source/engine/common/Console.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Install minimal registry stubs for Console and fire registry.frozen so

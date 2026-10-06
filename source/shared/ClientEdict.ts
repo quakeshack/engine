@@ -1,5 +1,6 @@
 import type { ClientEdict } from '../engine/client/ClientEntities.ts';
-import type { ClientEngineAPI as ClientEngineApiValue, GameTrace } from '../engine/common/GameAPIs.ts';
+import type { ClientEngineAPI as ClientEngineApiValue } from '../engine/common/GameAPIs.ts';
+import type { GameTrace } from '../engine/common/GameApiSupport.ts';
 import type { ClientSerializableValue } from './ClientSerialization.ts';
 import type { SerializedData, ServerEngineAPI } from './GameInterfaces.ts';
 

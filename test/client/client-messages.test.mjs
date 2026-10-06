@@ -5,7 +5,8 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { registerSerializableType, SzBuffer } from '../../source/engine/network/MSG.ts';
 import { ClientMessages } from '../../source/engine/client/ClientMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 class MockClientSerializable {
   constructor(value) {

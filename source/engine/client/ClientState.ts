@@ -8,7 +8,8 @@ import type { BrushModel } from '../common/Mod.ts';
 import type { SerializedParticle } from './R.ts';
 import type { ClientGameInterface, ClientSerializableType, SFX } from '../../shared/GameInterfaces.ts';
 import type ClientDemos from './ClientDemos.ts';
-import { EventBus, eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { EventBus, eventBus } from '../common/EventBus.ts';
 import ClientEntities, { ClientEdict, type SerializedClientEntity } from './ClientEntities.ts';
 import { ClientMessages } from './ClientMessages.ts';
 

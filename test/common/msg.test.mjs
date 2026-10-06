@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
-import { SzBuffer } from '../../source/engine/network/MSG.ts';
+import { SzBuffer, registerClientDeserializer, registerSerializableType } from '../../source/engine/network/MSG.ts';
 import { UserCmd, button } from '../../source/engine/network/Protocol.ts';
 
 void describe('SzBuffer', () => {
@@ -90,5 +90,41 @@ void describe('SzBuffer', () => {
     assert.ok(decoded[7] instanceof Vector);
     assert.deepEqual(Array.from(decoded[7]), [1, 2, 3]);
     assert.deepEqual(decoded[8], [1, 'two', null]);
+  });
+});
+
+void describe('registerClientDeserializer', () => {
+  class Token {
+    constructor(value) {
+      this.value = value;
+    }
+  }
+
+  registerSerializableType(Token, {
+    serialize: (sz, token) => sz.writeShort(token.value),
+    deserializeOnServer: (sz) => new Token(sz.readShort()),
+  });
+
+  /**
+   * Writes a token into a fresh buffer, ready to be read back.
+   * @param {number} value the token's value
+   * @returns {SzBuffer} the buffer
+   */
+  function writeToken(value) {
+    const buffer = new SzBuffer(64, 'token');
+
+    buffer.writeSerializables([new Token(value)]);
+
+    return buffer;
+  }
+
+  void test('refuses to read a type on the client until its client side is registered', () => {
+    assert.throws(() => writeToken(7).readSerializablesOnClient(), /no client deserializer/);
+  });
+
+  void test('reads the type on the client once its client side is registered', () => {
+    registerClientDeserializer(Token, (sz) => ({ clientValue: sz.readShort() }));
+
+    assert.deepEqual(writeToken(7).readSerializablesOnClient(), [{ clientValue: 7 }]);
   });
 });

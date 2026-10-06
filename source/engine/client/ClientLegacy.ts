@@ -7,7 +7,8 @@ import Vector from '../../shared/Vector.ts';
 import { effect, modelFlags } from '../../shared/Defs.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 
 let { CL, R } = getClientRegistry();
 

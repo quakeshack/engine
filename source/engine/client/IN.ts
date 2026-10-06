@@ -1,7 +1,8 @@
 import { K } from '../../shared/Keys.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import { kbutton, kbuttons } from './ClientInput.ts';
 import { KeyDestination } from './Key.ts';
 import VID from './VID.ts';

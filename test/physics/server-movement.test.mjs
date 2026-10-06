@@ -5,18 +5,12 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, flags, solid } from '../../source/shared/Defs.ts';
 import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.ts';
 
-import {
-  assertNear,
-  createMockEdict,
-  createMockEntity,
-  defaultMockRegistry,
-  withMockRegistry,
-} from './fixtures.mjs';
+import { assertNear, createMockEdict, createMockEntity, defaultMockRegistry, withMockRegistry, registrySV } from './fixtures.mjs';
 
 describe('ServerMovement', () => {
   describe('checkBottom', () => {
     test('returns early when all four corners are solid', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const moveCalls = [];
       const cornerChecks = [];
       const entity = createMockEntity({
@@ -46,7 +40,7 @@ describe('ServerMovement', () => {
     });
 
     test('rejects support when a corner drops more than step size', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const moveCalls = [];
       let pointContentCalls = 0;
       const entity = createMockEntity({
@@ -89,7 +83,7 @@ describe('ServerMovement', () => {
 
   describe('movestep', () => {
     test('preserves horizontal progress on partial ground fallback', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const linkCalls = [];
       const moveCalls = [];
       const entity = createMockEntity({
@@ -133,7 +127,7 @@ describe('ServerMovement', () => {
     });
 
     test('returns false when both the raised trace and retry stay startsolid', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const linkCalls = [];
       const moveCalls = [];
       const entity = createMockEntity({
@@ -175,7 +169,7 @@ describe('ServerMovement', () => {
 
   describe('stepDirection', () => {
     test('restores origin when yaw delta stays too large', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const linkCalls = [];
       const entity = createMockEntity({
         origin: new Vector(10, 20, 30),
@@ -211,7 +205,7 @@ describe('ServerMovement', () => {
 
   describe('moveToGoal', () => {
     test('returns false when already close enough to a non-world enemy goal', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
       const goal = createMockEdict(createMockEntity());
       const enemy = createMockEdict(createMockEntity());
@@ -232,7 +226,7 @@ describe('ServerMovement', () => {
     });
 
     test('uses the direct stepDirection to movestep chain when the ideal yaw step succeeds', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const linkCalls = [];
       const moveCalls = [];
       const callOrder = [];
@@ -313,7 +307,7 @@ describe('ServerMovement', () => {
     });
 
     test('falls back to newChaseDir when stepDirection fails', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const actor = createMockEdict(createMockEntity({ flagsValue: flags.FL_ONGROUND }));
       const goal = createMockEdict(createMockEntity({ origin: new Vector(100, 50, 0) }));
       const explicitTarget = new Vector(12, 34, 56);
@@ -349,7 +343,7 @@ describe('ServerMovement', () => {
     });
 
     test('falls through to newChaseDir and then succeeds via stepDirection plus movestep', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const linkCalls = [];
       const moveCalls = [];
       const stepAngles = [];
@@ -432,7 +426,7 @@ describe('ServerMovement', () => {
 
   describe('newChaseDir', () => {
     test('restores old yaw and marks partial ground when every direction fails', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const actor = createMockEdict(createMockEntity({
         origin: new Vector(0, 0, 0),
         flagsValue: flags.FL_ONGROUND,
@@ -468,7 +462,7 @@ describe('ServerMovement', () => {
 
   describe('walkMove', () => {
     test('returns false when entity is not grounded, flying, or swimming', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const actor = createMockEdict(createMockEntity({ flagsValue: 0 }));
 
       movement.movestep = () => {
@@ -481,7 +475,7 @@ describe('ServerMovement', () => {
 
   describe('changeYaw', () => {
     test('wraps and clamps using the shortest turn direction', () => {
-      const movement = new ServerMovement();
+      const movement = new ServerMovement(registrySV());
       const actor = createMockEdict(createMockEntity({ angles: new Vector(0, 350, 0) }));
       actor.entity.yaw_speed = 5;
       actor.entity.ideal_yaw = 10;

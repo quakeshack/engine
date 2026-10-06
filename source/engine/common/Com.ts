@@ -1,4 +1,10 @@
-import { registry, eventBus, getCommonRegistry } from '../registry.ts';
+import type { BuildConfig, URLs } from '../build-config';
+import type { ConsoleOutput, SystemServices } from './Services.ts';
+import { eventBus } from './EventBus.ts';
+
+import { AssetCaches, CachedFetchAssetSource, type AssetSource } from './AssetSource.ts';
+import { BackendUserStore, MemoryBackend, type UserStore } from './UserStore.ts';
+import { IndexedDbBackend } from './IndexedDbBackend.ts';
 
 import Q from '../../shared/Q.ts';
 import { CorruptedResourceError } from './Errors.ts';
@@ -6,14 +12,8 @@ import { CorruptedResourceError } from './Errors.ts';
 import Cvar from './Cvar.ts';
 import W from './W.ts';
 import Cmd from './Cmd.ts';
-import { defaultBasedir, defaultGame } from './Def.ts';
+import { defaultBasedir, defaultGame, productVersion } from './Def.ts';
 import { CRC16CCITT } from './CRC.ts';
-
-let { Con, Sys } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Sys } = getCommonRegistry());
-});
 
 /** A file entry inside a .pak archive. */
 export interface PackFileEntry {
@@ -40,29 +40,78 @@ export interface ParseResult {
  * This is the base class shared by both the browser client and the Node.js
  * dedicated server (`server/Com.ts` extends this as `NodeCOM`).
  */
+/** What a `COM` depends on. */
+export interface ComDependencies {
+  readonly con: ConsoleOutput;
+  readonly sys: SystemServices;
+  /** The build this engine was made by, read when needed because a launcher may complete it late. */
+  readonly buildConfig: () => BuildConfig | undefined;
+  /** Where files are downloaded from, read when needed because it may be completed late. */
+  readonly urls: () => URLs | undefined;
+}
+
 export default class COM {
-  static argv: string[] = [];
-  static searchpaths: SearchPath[] = [];
+  readonly con: ConsoleOutput;
+  readonly sys: SystemServices;
+  readonly getBuildConfig: ComDependencies['buildConfig'];
+  readonly getUrls: ComDependencies['urls'];
 
-  static hipnotic = false;
-  static rogue = false;
-  static standard_quake = true;
-  static modified = false;
+  constructor(dependencies: ComDependencies) {
+    this.con = dependencies.con;
+    this.sys = dependencies.sys;
+    this.getBuildConfig = dependencies.buildConfig;
+    this.getUrls = dependencies.urls;
+  }
 
-  static registered: Cvar | null = null;
+  /** Same as the static helper, for code that reaches `COM` through an instance. */
+  readonly DefaultExtension = COM.DefaultExtension;
+
+  /** Same as the static helper, for code that reaches `COM` through an instance. */
+  readonly Parse = COM.Parse;
+
+  /** Same as the static helper, for code that reaches `COM` through an instance. */
+  readonly ParseEntityLump = COM.ParseEntityLump;
+
+  argv: string[] = [];
+  searchpaths: SearchPath[] = [];
+
+  hipnotic = false;
+  rogue = false;
+  standard_quake = true;
+  modified = false;
+
+  registered: Cvar | null = null;
 
   /**
    * Command line string — starts as a plain string from
-   * {@link COM.InitArgv}, then replaced with a Cvar in {@link COM.Init}.
+   * {@link COM#InitArgv}, then replaced with a Cvar in {@link COM#Init}.
    */
-  static cmdline: Cvar | string | null = null;
+  cmdline: Cvar | string | null = null;
 
-  static abortController: AbortController | null = null;
+  abortController: AbortController | null = null;
 
-  static gamedir: SearchPath[] | null = null;
+  gamedir: SearchPath[] | null = null;
 
   /** Active mod name. */
-  static game: string = defaultGame;
+  game: string = defaultGame;
+
+  /**
+   * Where content files are read from. Set by {@link COM#InitStorage}. The dedicated server does
+   * not use it, it reads the file system directly.
+   */
+  assetSource: AssetSource | null = null;
+
+  /**
+   * Where the files the engine writes live, and what overrides content files of the same name.
+   * Set by {@link COM#InitStorage}. The dedicated server does not use it.
+   */
+  userStore: UserStore | null = null;
+
+  /** Version of the loaded game module, `null` until it is loaded. Part of the asset cache name. */
+  gameVersion: string | null = null;
+
+  /** Settles when the user store is open, file reads and writes wait for it. */
+  #storageReady: Promise<void> = Promise.resolve();
 
   /**
    * Append a default file extension if none is present.
@@ -201,7 +250,7 @@ export default class COM {
    * Check if a command-line parameter is present.
    * @returns the argv index of the parameter, or null if not found
    */
-  static CheckParm(parm: string): number | null {
+  CheckParm(parm: string): number | null {
     for (let i = 1; i < this.argv.length; i++) {
       if (this.argv[i] === parm) {
         return i;
@@ -214,7 +263,7 @@ export default class COM {
    * Get a command-line parameter value (the argument after the flag).
    * @returns the value following `parm`, or null if not found
    */
-  static GetParm(parm: string): string | null {
+  GetParm(parm: string): string | null {
     for (let i = 1; i < this.argv.length; i++) {
       if (this.argv[i] === parm) {
         return this.argv[i + 1] || null;
@@ -223,12 +272,12 @@ export default class COM {
     return null;
   }
 
-  static async CheckRegistered(): Promise<boolean> { // TODO: consider patching it out or feature flag it
+  async CheckRegistered(): Promise<boolean> { // TODO: consider patching it out or feature flag it
     const filename = 'gfx/pop.lmp';
     const h = await this.LoadFile(filename);
 
     if (h === null) {
-      Con.PrintSuccess('Playing shareware version.\n');
+      this.con.PrintSuccess('Playing shareware version.\n');
       eventBus.publish('com.registered', false);
       return false;
     }
@@ -239,12 +288,12 @@ export default class COM {
     }
 
     this.registered!.set(true);
-    Con.PrintSuccess('Playing registered version.\n');
+    this.con.PrintSuccess('Playing registered version.\n');
     eventBus.publish('com.registered', true);
     return true;
   }
 
-  static InitArgv(argv: string[]) {
+  InitArgv(argv: string[]) {
     this.cmdline = `${argv.join(' ')} `.substring(0, 256);
     this.argv = [...argv];
     if (this.CheckParm('-safe')) {
@@ -261,7 +310,7 @@ export default class COM {
     eventBus.publish('com.argv.ready');
   }
 
-  static async Init() {
+  async Init() {
     this.abortController = new AbortController();
 
     this.registered = new Cvar('registered', '0', Cvar.FLAG.READONLY, 'Set to 1, when not playing shareware.');
@@ -269,71 +318,173 @@ export default class COM {
     this.cmdline = new Cvar('cmdline', this.cmdline as string, Cvar.FLAG.READONLY, 'Command line used to start the game.');
 
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    Cmd.AddCommand('path', this.Path_f);
+    Cmd.AddCommand('path', () => { this.Path_f(); });
 
     await this.InitFilesystem();
+    await this.InitStorage();
 
     await Promise.all([
       this.CheckRegistered(),
       W.LoadPalette('gfx/palette.lmp'), // CR: we early load the palette here, it's needed in both dedicated and browser processes
     ]);
 
-    Sys.Print('COM.Init: low-level initialization completed.\n');
+    this.sys.Print('COM.Init: low-level initialization completed.\n');
 
     eventBus.publish('com.ready');
   }
 
-  static Shutdown() {
-    Sys.Print('COM.Shutdown: signaling outstanding promises to abort\n');
-    this.abortController!.abort('COM.Shutdown');
+  Shutdown() {
+    this.sys.Print('COM.Shutdown: signaling outstanding promises to abort\n');
+    this.abortController!.abort('this.Shutdown');
   }
 
-  static Path_f() {
-    Con.Print('Files are served from the unified virtual filesystem.\n');
+  Path_f() {
+    this.con.Print('Files are served from the unified virtual filesystem.\n');
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
-  static async WriteFile(filename: string, data: ArrayLike<number>, len: number): Promise<boolean> {
-    if (registry.isInsideWorker) {
-      Sys.Print('COM.WriteFile: not supported inside worker threads\n');
-      return false;
+  /**
+   * Sets up where files are read from and written to in the browser: content comes through the
+   * Cache Storage of the origin, files the engine writes go to IndexedDB, and files an older version
+   * kept in `localStorage` are moved over once.
+   *
+   * Both work the same inside a worker, which is what lets a server in a worker share the files and
+   * the saves of the client.
+   */
+  async InitStorage(): Promise<void> {
+    this.assetSource = new CachedFetchAssetSource({
+      fetch: async (url, init) => await fetch(url, init),
+      caches: globalThis.caches,
+      locks: globalThis.navigator?.locks ?? null,
+      resolveUrl: (path) => {
+        const separator = path.indexOf('/');
+
+        return this.GetNetpath(path.substring(separator + 1), path.substring(0, separator));
+      },
+      cacheName: () => this.GetAssetCacheName(),
+      signal: () => this.abortController?.signal,
+      revalidate: this.getBuildConfig()?.mode === 'development',
+    });
+
+    this.#storageReady = this.#openUserStore().then((store) => {
+      this.userStore = store;
+    });
+
+    await this.#storageReady;
+  }
+
+  async #openUserStore(): Promise<UserStore> {
+    let store: BackendUserStore;
+
+    try {
+      store = new BackendUserStore(await IndexedDbBackend.open(globalThis.indexedDB));
+    } catch (error) {
+      this.sys.Print(`COM.InitStorage: IndexedDB is unavailable (${(error as Error).message}), files are not kept after a reload\n`);
+      return new BackendUserStore(new MemoryBackend());
     }
 
+    // localStorage does not exist inside workers, the main thread does the moving.
+    if (typeof localStorage !== 'undefined') {
+      const moved = await store.migrateFromLocalStorage(localStorage);
+
+      if (moved > 0) {
+        this.sys.Print(`COM.InitStorage: moved ${moved} file(s) from localStorage to IndexedDB\n`);
+      }
+    }
+
+    return store;
+  }
+
+  /**
+   * Version string of this engine build for the asset cache name: the commit when the build has
+   * one, otherwise the build time, so local rebuilds never serve stale files.
+   * @returns The engine build version.
+   */
+  GetEngineBuildVersion(): string {
+    const buildConfig = this.getBuildConfig();
+
+    return buildConfig?.commitHash ? `${productVersion}+${buildConfig.commitHash}` : `${productVersion}@${buildConfig?.timestamp ?? 'dev'}`;
+  }
+
+  /**
+   * Name of the cache the content files currently belong to.
+   * @returns The cache name.
+   */
+  GetAssetCacheName(): string {
+    return AssetCaches.name(this.GetEngineBuildVersion(), this.GetGamedir(), this.gameVersion);
+  }
+
+  /**
+   * Tells the file layer which game version is running. From then on content is cached for that
+   * version, and the caches of every other build and version are deleted.
+   */
+  async SetGameVersion(version: string): Promise<void> {
+    this.gameVersion = version;
+
+    if (this.assetSource === null) {
+      return;
+    }
+
+    try {
+      const bootName = AssetCaches.name(this.GetEngineBuildVersion(), this.GetGamedir(), null);
+      const deleted = await AssetCaches.prune(globalThis.caches, [this.GetAssetCacheName(), bootName]);
+
+      if (deleted.length > 0) {
+        this.con.DPrint(`COM.SetGameVersion: removed ${deleted.length} outdated asset cache(s)\n`);
+      }
+    } catch (error) {
+      this.con.DPrint(`COM.SetGameVersion: could not clean up asset caches (${(error as Error).message})\n`);
+    }
+  }
+
+  /**
+   * Writes a binary file to the user store.
+   * @returns whether the file was stored
+   */
+  async WriteFile(filename: string, data: ArrayLike<number>, len: number): Promise<boolean> {
+    await this.#storageReady;
+
     filename = filename.toLowerCase();
+
     const bytes = new Uint8Array(len);
+
     for (let i = 0; i < len; i++) {
       bytes[i] = data[i];
     }
-    const gameDir = this.searchpaths[this.searchpaths.length - 1].filename;
-    try {
-      localStorage.setItem(`Quake.${gameDir}/${filename}`, new TextDecoder('iso-8859-1').decode(bytes));
-    } catch (e) {
-      Sys.Print(`COM.WriteFile: failed on ${filename}, ${(e as Error).message}\n`);
+
+    if (this.userStore === null || !await this.userStore.write(`${this.GetGamedir()}/${filename}`, bytes)) {
+      this.sys.Print(`COM.WriteFile: failed on ${filename}\n`);
       return false;
     }
-    Sys.Print(`COM.WriteFile: ${filename}\n`);
+
+    this.sys.Print(`COM.WriteFile: ${filename}\n`);
     return true;
   }
 
-  static WriteTextFile(filename: string, data: string): boolean {
+  /**
+   * Writes a text file to the user store.
+   * @returns whether the file was stored
+   */
+  async WriteTextFile(filename: string, data: string): Promise<boolean> {
+    await this.#storageReady;
+
     filename = filename.toLowerCase();
-    const gameDir = this.searchpaths[this.searchpaths.length - 1].filename;
-    try {
-      localStorage.setItem(`Quake.${gameDir}/${filename}`, data);
-    } catch (e) {
-      Sys.Print(`COM.WriteTextFile: failed on ${filename}, ${(e as Error).message}\n`);
+
+    // Same byte mapping LoadTextFile reads it back with.
+    if (this.userStore === null || !await this.userStore.write(`${this.GetGamedir()}/${filename}`, new Uint8Array(Q.strmem(data)))) {
+      this.sys.Print(`COM.WriteTextFile: failed on ${filename}\n`);
       return false;
     }
-    Sys.Print(`COM.WriteTextFile: ${filename}\n`);
+
+    this.sys.Print(`COM.WriteTextFile: ${filename}\n`);
     return true;
   }
 
-  static GetNetpath(filename: string, gameDir: string | null = null): string {
+  GetNetpath(filename: string, gameDir: string | null = null): string {
     if (gameDir === null) {
       gameDir = this.GetGamedir();
     }
 
-    const cdnURLPatternValue = registry.urls?.cdnURL;
+    const cdnURLPatternValue = this.getUrls()?.cdnURL;
 
     if (cdnURLPatternValue) {
       // Hash filename + gameDir into a stable shard so the same asset always
@@ -353,7 +504,7 @@ export default class COM {
    * Get the current game directory.
    * @returns game name, e.g. `'id1'`
    */
-  static GetGamedir(): string {
+  GetGamedir(): string {
     return this.searchpaths.length > 0
       ? this.searchpaths[this.searchpaths.length - 1].filename
       : defaultGame;
@@ -361,47 +512,40 @@ export default class COM {
 
   /**
    * Load a file from the virtual filesystem.
-   * Searches localStorage first, then fetches from the CDN/server.
+   * Files the engine wrote override content, which is read through the asset cache.
    * @returns binary content, or null if not found
    */
-  static async LoadFile(filename: string): Promise<ArrayBuffer | null> {
+  async LoadFile(filename: string): Promise<ArrayBuffer | null> {
     filename = filename.toLowerCase();
 
     eventBus.publish('com.fs.being', filename);
 
     // Determine file path based on active game directory
     const gameDir = this.GetGamedir();
-    const netpath = this.GetNetpath(filename, gameDir);
+    const path = `${gameDir}/${filename}`;
 
-    // 1) Try localStorage first
-    if (!registry.isInsideWorker) {
-      const localData = localStorage.getItem(`Quake.${gameDir}/${filename}`);
-      if (localData !== null) {
-        Sys.Print(`COM.LoadFile: ${netpath} (localStorage)\n`);
-        eventBus.publish('com.fs.end', filename);
-        return Q.strmem(localData);
-      }
+    // 1) Files the engine wrote (saves, configuration, ...) come first.
+    await this.#storageReady;
+
+    const userData = await this.userStore?.read(path) ?? null;
+
+    if (userData !== null) {
+      this.sys.Print(`COM.LoadFile: ${path} (user store)\n`);
+      eventBus.publish('com.fs.end', filename);
+      return userData;
     }
 
-    // 2) Load from pre-merged filesystem (all PAKs and priorities resolved at build time)
-    try {
-      const directResponse = await fetch(netpath, {
-        signal: this.abortController?.signal, // unavailable in workers
-      });
+    // 2) Content from the pre-merged filesystem (all PAKs and priorities resolved at build time).
+    const data = await this.assetSource?.read(path) ?? null;
 
-      if (directResponse.ok) {
-        const data = await directResponse.arrayBuffer();
-        Sys.Print(`COM.LoadFile: ${netpath}\n`);
-        eventBus.publish('com.fs.end', filename);
-        return data;
-      }
-    } catch (e) {
-      console.warn(`COM.LoadFile: fetch failed for ${netpath}`, e);
-      // File doesn't exist
+    if (data !== null) {
+      this.sys.Print(`COM.LoadFile: ${this.GetNetpath(filename, gameDir)}\n`);
+      eventBus.publish('com.fs.end', filename);
+      return data;
     }
 
     // File not found
-    Sys.Print(`COM.LoadFile: can't find ${filename}\n`);
+    this.sys.Print(`COM.LoadFile: can't find ${filename}\n`);
     eventBus.publish('com.fs.end', filename);
     return null;
   }
@@ -410,7 +554,7 @@ export default class COM {
    * Load a text file, stripping carriage returns.
    * @returns file content as a string, or null if not found
    */
-  static async LoadTextFile(filename: string): Promise<string | null> {
+  async LoadTextFile(filename: string): Promise<string | null> {
     const buf = await this.LoadFile(filename);
     if (buf === null) {
       return null;
@@ -423,15 +567,15 @@ export default class COM {
    * Note: PAK files are pre-extracted at build time, so we only track the directory.
    */
   // eslint-disable-next-line @typescript-eslint/require-await
-  static async AddGameDirectory(dir: string) {
+  async AddGameDirectory(dir: string) {
     const search: SearchPath = { filename: dir, pack: [] };
     this.searchpaths.push(search);
-    Con.DPrint(`Added game directory: ${dir}\n`);
+    this.con.DPrint(`Added game directory: ${dir}\n`);
   }
 
-  static async InitFilesystem() {
+  async InitFilesystem() {
     let search: string | undefined;
-    const buildBaseDir = registry.buildConfig?.baseDir ?? null;
+    const buildBaseDir = this.getBuildConfig()?.baseDir ?? null;
 
     const i = this.CheckParm('-basedir');
     if (i !== null) {
@@ -443,12 +587,14 @@ export default class COM {
     // Build-time game overrides still select the active game directory, but
     // they now layer on top of the effective base directory instead of
     // bypassing it entirely.
-    if (registry.buildConfig?.gameDir) {
+    const buildGameDir = this.getBuildConfig()?.gameDir ?? null;
+
+    if (buildGameDir) {
       await this.AddGameDirectory(effectiveBaseDir);
-      if (registry.buildConfig.gameDir !== effectiveBaseDir) {
+      if (buildGameDir !== effectiveBaseDir) {
         this.modified = true;
-        this.game = registry.buildConfig.gameDir;
-        await this.AddGameDirectory(registry.buildConfig.gameDir);
+        this.game = buildGameDir;
+        await this.AddGameDirectory(buildGameDir);
       }
       this.gamedir = [this.searchpaths[this.searchpaths.length - 1]];
       return;

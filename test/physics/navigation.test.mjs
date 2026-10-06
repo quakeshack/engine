@@ -3,8 +3,10 @@ import { describe, test, before } from 'node:test';
 import { readFileSync } from 'node:fs';
 
 import Vector from '../../source/shared/Vector.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { Navigation } from '../../source/engine/server/Navigation.ts';
+import { registryNavigationServices } from './fixtures.mjs';
 
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
@@ -307,7 +309,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -367,7 +369,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -425,7 +427,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -491,7 +493,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -548,7 +550,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -613,7 +615,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -675,7 +677,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -744,7 +746,7 @@ void describe('Navigation.build (tight corridor)', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -916,7 +918,7 @@ void describe('Navigation.build (slope)', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -962,7 +964,7 @@ void describe('Navigation.findPath', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -1007,7 +1009,7 @@ void describe('Navigation.findPath', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -1046,7 +1048,7 @@ void describe('Navigation.findPath', () => {
   });
 
   void test('returns null when graph is empty', () => {
-    const navigation = new Navigation(null);
+    const navigation = new Navigation(null, registryNavigationServices());
 
     Navigation.nav_debug_path = { value: 0 };
 
@@ -1068,7 +1070,7 @@ void describe('Navigation.findPath', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -1241,7 +1243,7 @@ void describe('Navigation (two-level floor — drop-link regression)', () => {
    */
   async function buildTwoLevelNavigation() {
     const worldmodel = createTwoLevelWorldModel();
-    const navigation = new Navigation(worldmodel);
+    const navigation = new Navigation(worldmodel, registryNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -1314,7 +1316,7 @@ void describe('Navigation.findPath (test_e1m1.nav — in-game path regression)',
   let navigation;
 
   before(async () => {
-    navigation = new Navigation(null);
+    navigation = new Navigation(null, registryNavigationServices());
     Navigation.nav_debug_path = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };

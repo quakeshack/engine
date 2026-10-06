@@ -5,7 +5,8 @@ import Cmd from '../common/Cmd.ts';
 import ClientInput from './ClientInput.ts';
 import type ClientDemos from './ClientDemos.ts';
 import { clientRuntimeState, clientStaticState, type ClientRuntimeState, type ClientStaticState } from './ClientState.ts';
-import { eventBus, getClientRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
+import { eventBus } from '../common/EventBus.ts';
 import { HostError } from '../common/Errors.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.ts';
@@ -17,10 +18,10 @@ export type IdentityCvars = {
   rcon_password: Cvar | null;
 };
 
-let { Con, Host, IN, Mod, NET, SCR, S, SV } = getClientRegistry();
+let { CL, Con, Host, IN, Mod, NET, SCR, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Host, IN, Mod, NET, SCR, S, SV } = getClientRegistry());
+  ({ CL, Con, Host, IN, Mod, NET, SCR, S } = getClientRegistry());
 });
 
 export default class ClientConnection {
@@ -199,8 +200,8 @@ export default class ClientConnection {
         NET.Close(this.cls.netcon);
       }
       this.cls.state = Def.clientConnectionState.disconnected;
-      if (SV.server.active) {
-        Host.ShutdownServer();
+      if (CL.serverController.state.active) {
+        CL.serverController.stop();
       }
     }
 
@@ -257,6 +258,7 @@ export default class ClientConnection {
       throw new HostError('CL.Connect: connect failed\n');
     }
 
+    this.cls.state = Def.clientConnectionState.connecting;
     this.cls.netcon = sock;
   }
 

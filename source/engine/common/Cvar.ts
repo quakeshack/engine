@@ -1,4 +1,5 @@
-import { eventBus, getCommonRegistry, registry } from '../registry.ts';
+import { getCommonRegistry, registry } from '../registry.ts';
+import { eventBus } from './EventBus.ts';
 import Cmd from './Cmd.ts';
 import Q from '../../shared/Q.ts';
 import { cvarFlags } from '../../shared/Defs.ts';
@@ -55,6 +56,8 @@ export default class Cvar {
     console.assert(!Cvar._vars[name], 'Cvar name must not be used already', name);
 
     Cvar._vars[name] = this;
+
+    eventBus.publish('cvar.registered', name);
   }
 
   get archive(): boolean {
@@ -188,22 +191,46 @@ export default class Cvar {
       return true;
     }
 
-    if (variable.flags & Cvar.FLAG.READONLY) {
-      Con.PrintWarning(`"${variable.name}" is read-only\n`);
-      return true;
-    }
+    switch (Cvar.GetChangeBlock(variable)) {
+      case 'readonly':
+        Con.PrintWarning(`"${variable.name}" is read-only\n`);
+        return true;
 
-    const clientSvCheats = registry.CL?.cls.serverInfo?.sv_cheats;
+      case 'cheat':
+        Con.Print('Cheats are not enabled on this server.\n');
+        return true;
 
-    if ((variable.flags & Cvar.FLAG.CHEAT) && SV.server.active && clientSvCheats !== '1') {
-      Con.Print('Cheats are not enabled on this server.\n');
-      return true;
+      default:
+        break;
     }
 
     // TODO: check if there’s a min/max value and clamp accordingly
 
     variable.set(value);
     return true;
+  }
+
+  /**
+   * Tells why a variable may not be changed right now.
+   * @returns `readonly` for a read-only variable, `cheat` for a cheat variable while a server without cheats runs, `null` when it may be changed.
+   */
+  static GetChangeBlock(variable: Cvar): 'readonly' | 'cheat' | null {
+    if (variable.flags & Cvar.FLAG.READONLY) {
+      return 'readonly';
+    }
+
+    if (!(variable.flags & Cvar.FLAG.CHEAT)) {
+      return null;
+    }
+
+    // A client asks its server controller, which also knows about a server in a worker; a dedicated server has no client.
+    const sv = SV as typeof SV | undefined;
+    const serverActive = registry.CL?.serverController?.state.active ?? sv?.server.active ?? false;
+
+    // A client knows the cheats of the server it is connected to, a server knows its own.
+    const cheats = registry.CL?.cls.serverInfo?.sv_cheats ?? Cvar.FindVar('sv_cheats')?.string;
+
+    return serverActive && cheats !== '1' ? 'cheat' : null;
   }
 
   static WriteVariables(): string {

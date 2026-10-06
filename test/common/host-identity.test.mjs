@@ -4,7 +4,8 @@ import { describe, test } from 'node:test';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import Host from '../../source/engine/common/Host.ts';
 import * as Def from '../../source/engine/common/Def.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
  * Installs a minimal client-side registry (CL, Con, SV, isDedicatedServer) for the

@@ -5,7 +5,8 @@ import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import { PMF, Pmove } from '../../source/engine/common/Pmove.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 
 /**

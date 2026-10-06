@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 // first here avoids a TDZ error from importing BSP2Loader directly.
 await import('../../source/engine/common/Mod.ts');
 const { BSP2Loader } = await import('../../source/engine/common/model/loaders/BSP2Loader.ts');
-import { eventBus, registry } from '../../source/engine/registry.ts';
+import { registry } from '../../source/engine/registry.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
 import COMClass from '../../source/engine/common/Com.ts';
 
 /**
