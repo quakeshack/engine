@@ -101,7 +101,7 @@ guessing from a screenshot.
 ## 5. Reach a gated menu/HUD page without its full physical trigger
 
 `Sys.ts`'s `Init()` exposes `window.registry` in the browser (`CL`, `COM`, `Con`, `Host`,
-`M`, `Key`, etc.; `SV` only with `?serverthread`, by default the server is in a worker and `CL.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
+`M`, `Key`, etc.; `SV` only with `?serverthread`, by default the server is in a worker and `CL.cls.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
 
 ```js
 const { M, Key } = window.registry;

@@ -6,6 +6,7 @@ import NavigationDebug from '../../source/engine/client/NavigationDebug.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Runs a callback with a renderer that hands out particles from a fixed pool.
@@ -18,6 +19,8 @@ function withRenderer({ free }, callback) {
   const warnings = [];
 
   registry.CL = { state: { time: 10 } };
+
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.Con = { PrintWarning: (text) => { warnings.push(text); } };
   registry.R = {
     ptype: { tracer: 7 },

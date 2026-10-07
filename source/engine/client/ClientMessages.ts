@@ -6,13 +6,16 @@ import { PM_TYPE, PmovePlayer } from '../common/Pmove.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import { HostError } from '../common/Errors.ts';
+import { clientRuntimeState } from './ClientState.ts';
+import { clientPmove } from './ClientPhysics.ts';
+import CL from './CL.ts';
 
 type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';
 
-let { CL, Host, NET } = getClientRegistry();
+let { Host, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, NET } = getClientRegistry());
+  ({ Host, NET } = getClientRegistry());
 });
 
 /**
@@ -73,7 +76,7 @@ export class ClientPlayerState extends Protocol.EntityState {
     this.origin.set(NET.message.readCoordVector());
     this.frame = NET.message.readByte();
 
-    this.stateTime = CL.state.time;
+    this.stateTime = clientRuntimeState.time;
 
     if (this.flags & Protocol.pf.PF_MSEC) {
       const msec = NET.message.readByte();
@@ -171,28 +174,28 @@ export class ClientMessages {
   #parseClientGeneral(bits: number): void {
     // Parse the general client data.
 
-    CL.state.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? NET.message.readChar() : Protocol.default_viewheight;
-    CL.state.idealpitch = ((bits & Protocol.su.idealpitch) !== 0) ? NET.message.readChar() : 0.0;
+    clientRuntimeState.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? NET.message.readChar() : Protocol.default_viewheight;
+    clientRuntimeState.idealpitch = ((bits & Protocol.su.idealpitch) !== 0) ? NET.message.readChar() : 0.0;
 
     for (let i = 0; i < 3; i++) {
       if ((bits & (Protocol.su.punch1 << i)) !== 0) {
-        CL.state.punchangle[i] = NET.message.readShort() / 90.0;
+        clientRuntimeState.punchangle[i] = NET.message.readShort() / 90.0;
       } else {
-        CL.state.punchangle[i] = 0.0;
+        clientRuntimeState.punchangle[i] = 0.0;
       }
     }
 
-    CL.state.onground = (bits & Protocol.su.onground) !== 0;
-    CL.state.inwater = (bits & Protocol.su.inwater) !== 0;
+    clientRuntimeState.onground = (bits & Protocol.su.onground) !== 0;
+    clientRuntimeState.inwater = (bits & Protocol.su.inwater) !== 0;
 
     if ((bits & Protocol.su.moveack) !== 0) {
-      CL.state.acknowledgedMoveSequence = NET.message.readByte();
+      clientRuntimeState.acknowledgedMoveSequence = NET.message.readByte();
       // server sends authoritative PM state alongside the move ack so
       // client-side prediction replays from the correct pmFlags / pmTime / pmType
-      CL.state.ackedPmFlags = NET.message.readByte();
-      CL.state.ackedPmTime = NET.message.readByte();
-      CL.state.ackedPmOldButtons = NET.message.readByte();
-      CL.state.ackedPmType = NET.message.readByte();
+      clientRuntimeState.ackedPmFlags = NET.message.readByte();
+      clientRuntimeState.ackedPmTime = NET.message.readByte();
+      clientRuntimeState.ackedPmOldButtons = NET.message.readByte();
+      clientRuntimeState.ackedPmType = NET.message.readByte();
     }
   }
 
@@ -221,7 +224,7 @@ export class ClientMessages {
     }
 
     // we are writing directly into clientdata object
-    const clientdata = CL.state.gameAPI!.clientdata;
+    const clientdata = clientRuntimeState.gameAPI!.clientdata;
 
     if (clientdata === null) {
       throw new HostError('Client game API clientdata is not initialized');
@@ -256,7 +259,7 @@ export class ClientMessages {
     const eventCode = NET.message.readByte();
     const args = NET.message.readSerializablesOnClient();
 
-    CL.state.gameAPI!.handleClientEvent(eventCode, ...args);
+    clientRuntimeState.gameAPI!.handleClientEvent(eventCode, ...args);
   }
 
   /**
@@ -272,12 +275,12 @@ export class ClientMessages {
   parsePlayer(): void {
     const num = NET.message.readByte();
 
-    if (num > CL.state.maxclients) {
+    if (num > clientRuntimeState.maxclients) {
       throw new HostError('CL.ParsePlayerinfo: num > maxclients');
     }
 
     if (this.playerstates[num] === undefined) {
-      this.playerstates[num] = new ClientPlayerState(CL.pmove.newPlayerMove());
+      this.playerstates[num] = new ClientPlayerState(clientPmove.newPlayerMove());
     }
 
     const state = this.playerstates[num];

@@ -9,11 +9,12 @@ import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
+import { clientRuntimeState } from './ClientState.ts';
 
-let { CL, R } = getClientRegistry();
+let { R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, R } = getClientRegistry());
+  ({ R } = getClientRegistry());
 });
 
 /**
@@ -28,13 +29,13 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
     const modelBits = clent.model?.flags ?? 0;
 
     if ((modelBits & modelFlags.MF_ROTATE) !== 0) {
-      clent.angles[1] = Vector.anglemod(CL.state.time * 100.0);
+      clent.angles[1] = Vector.anglemod(clientRuntimeState.time * 100.0);
     }
     if ((clent.effects & effect.EF_BRIGHTFIELD) !== 0) {
       R.EntityParticles(clent);
     }
     if ((clent.effects & effect.EF_MUZZLEFLASH) !== 0) {
-      const dl = CL.state.clientEntities.allocateDynamicLight(clent.num);
+      const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
       const fv = clent.angles.angleVectors().forward;
       dl.origin = new Vector(
         clent.origin[0] + 20.0 * fv[0],
@@ -43,11 +44,11 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       );
       dl.radius = 200.0 + Math.random() * 32.0;
       dl.minlight = 32.0;
-      dl.die = CL.state.time + 0.5;
+      dl.die = clientRuntimeState.time + 0.5;
       dl.color = new Vector(1.0, 0.95, 0.85);
     }
     if ((clent.effects & effect.EF_BRIGHTLIGHT) !== 0) {
-      const dl = CL.state.clientEntities.allocateDynamicLight(clent.num);
+      const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
       dl.radius = 400.0 + Math.random() * 32.0;
       // Refreshed every frame while the effect is active, so `die` only
@@ -55,13 +56,13 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       // offset here leaves no headroom for ClientDlight.think()'s smooth
       // fade (and dlights are hard-culled from rendering once `die` has
       // passed), so the light previously appeared to vanish abruptly.
-      dl.die = CL.state.time + 0.1;
+      dl.die = clientRuntimeState.time + 0.1;
     }
     if ((clent.effects & effect.EF_DIMLIGHT) !== 0) {
-      const dl = CL.state.clientEntities.allocateDynamicLight(clent.num);
+      const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2] + 16.0);
       dl.radius = 200.0 + Math.random() * 32.0;
-      dl.die = CL.state.time + 0.1;
+      dl.die = clientRuntimeState.time + 0.1;
       // dl.color = new Vector(0.5, 0.5, 1.0);
     }
     if ((modelBits & modelFlags.MF_GIB) !== 0) {
@@ -74,10 +75,10 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       R.RocketTrail(oldorg, clent.origin, 5);
     } else if ((modelBits & modelFlags.MF_ROCKET) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 0);
-      const dl = CL.state.clientEntities.allocateDynamicLight(clent.num);
+      const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2]);
       dl.radius = 200.0;
-      dl.die = CL.state.time + 0.1;
+      dl.die = clientRuntimeState.time + 0.1;
     } else if ((modelBits & modelFlags.MF_GRENADE) !== 0) {
       R.RocketTrail(oldorg, clent.origin, 1);
     } else if ((modelBits & modelFlags.MF_TRACER3) !== 0) {

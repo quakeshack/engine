@@ -15,6 +15,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { K } from '../../source/shared/Keys.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Temporarily installs a global `document` stub with a settable `pointerLockElement`, since
@@ -148,6 +149,7 @@ void describe('IN.onclick', () => {
     registry.Key = { destination };
     ConsoleOverlay.isOpen = options.consoleOpen ?? false;
     registry.CL = { cls: { state: options.connectionState ?? clientConnectionState.connected } };
+    const restoreClientState = useClientStateOf(registry.CL);
     VID.mainwindow = { requestPointerLock: () => { requestedPointerLock = true; return Promise.resolve(); } };
     eventBus.publish('registry.frozen');
 
@@ -157,6 +159,7 @@ void describe('IN.onclick', () => {
       registry.Key = previousKey;
       ConsoleOverlay.isOpen = previousConsoleOpen;
       registry.CL = previousCL;
+      restoreClientState();
       VID.mainwindow = previousMainwindow;
       eventBus.publish('registry.frozen');
     }

@@ -4,11 +4,12 @@ import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
 import Cmd from '../common/Cmd.ts';
 import VID from './VID.ts';
+import { clientStaticState } from './ClientState.ts';
 
-let { CL, Draw, Host, IN, Key, SCR } = getClientRegistry();
+let { Draw, Host, IN, Key, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Draw, Host, IN, Key, SCR } = getClientRegistry());
+  ({ Draw, Host, IN, Key, SCR } = getClientRegistry());
 });
 
 /**
@@ -105,7 +106,7 @@ export default class ConsoleOverlay {
     Draw.ConsoleBackground(lines);
     ConsoleOverlay.vislines = lines;
 
-    if (CL.cls.changelevel) {
+    if (clientStaticState.changelevel) {
       // do not draw console during level changes
       return;
     }

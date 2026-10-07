@@ -28,6 +28,8 @@ import { ChannelDriver, MessagePortEndpoint } from './network/ChannelDriver.ts';
 import { LoopDriver, WebRTCDriver, WebSocketDriver } from './network/NetworkDrivers.ts';
 import { createServerRuntime } from './bootstrap/createServerRuntime.ts';
 import { editionOf } from './common/GameApiSupport.ts';
+import clientCvars from './client/ClientCvars.ts';
+import { clientStaticState } from './client/ClientState.ts';
 
 /**
  * Whether the server runs in a worker. It does unless the page asks for the server of the page's
@@ -63,7 +65,7 @@ export default class EngineLauncher {
       sys: Sys,
       dedicated: false,
       urls: () => registry.urls,
-      serverInfo: () => ({ maxPlayers: CL.serverController.state.maxclients, mapname: CL.serverController.state.mapname ?? '', game: com.game }),
+      serverInfo: () => ({ maxPlayers: clientStaticState.serverController.state.maxclients, mapname: clientStaticState.serverController.state.mapname ?? '', game: com.game }),
       webSocketModule: () => registry.WebSocket,
       createDrivers: (owner) => [
         // A server in a worker is reached through the channel to it, one in this thread through the loopback.
@@ -95,7 +97,7 @@ export default class EngineLauncher {
       let relay: PeerRelay | null = null;
       const worker = new PlatformWorker('server/ServerWorker.ts', workerFactories['server/ServerWorker.ts']('server'));
 
-      CL.serverController = new WorkerServerController({
+      clientStaticState.serverController = new WorkerServerController({
         worker,
         channel,
         createInit: () => ({
@@ -109,7 +111,7 @@ export default class EngineLauncher {
           buildConfig: registry.buildConfig,
         }),
         con: Con,
-        operatorName: () => CL.name.string,
+        operatorName: () => clientCvars.name.string,
         onNoclipAnglehack: (enabled) => { Host.noclip_anglehack = enabled; },
         publish: (name, ...args) => { eventBus.publish(name, ...(args as EventBusValue[])); },
         onSessionRequest: (request) => { ClientHost.HandleSessionRequest(request); },
@@ -122,7 +124,7 @@ export default class EngineLauncher {
         net,
         // The driver is built when the network layer starts, which is later than this.
         channel: { open: (address) => channelDriver!.open(address) },
-        state: CL.serverController.state,
+        state: clientStaticState.serverController.state,
         setListening: (listening) => { void Cmd.ExecuteString(listening ? 'listen 1' : 'listen 0'); },
       });
       relay.start();
@@ -131,7 +133,7 @@ export default class EngineLauncher {
 
       registry.SV = runtime.sv;
       Host.serverHost = runtime.serverHost;
-      CL.serverController = new InThreadServerController(runtime.sv, runtime.serverHost);
+      clientStaticState.serverController = new InThreadServerController(runtime.sv, runtime.serverHost);
     }
 
     // registry is ready

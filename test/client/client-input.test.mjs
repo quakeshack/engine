@@ -5,6 +5,8 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import ClientInput, { kbutton, kbuttons } from '../../source/engine/client/ClientInput.ts';
 import '../support/consoleBridge.ts';
+import { useClientStateOf } from '../support/clientState.ts';
+import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 
 /**
  *
@@ -42,6 +44,8 @@ function withMockClientInputRegistry(callback) {
     upspeed: { value: 200 },
     yawspeed: { value: 1 },
   };
+
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.Con = { Print() {}, DPrint() {} };
   registry.Host = { frametime: 0.1 };
   registry.NET = { SendUnreliableMessage() { return 0; } };
@@ -50,6 +54,7 @@ function withMockClientInputRegistry(callback) {
 
   const restore = () => {
     registry.CL = previousValues.CL;
+    restoreClientState();
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;
     registry.NET = previousValues.NET;
@@ -75,7 +80,7 @@ void describe('ClientInput', () => {
 
       ClientInput.BaseMove();
 
-      assert.equal(registry.CL.state.cmd.upmove, 20);
+      assert.equal(clientRuntimeState.cmd.upmove, 20);
     });
   });
 });

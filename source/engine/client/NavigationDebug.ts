@@ -2,13 +2,14 @@ import Vector from '../../shared/Vector.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
+import { clientRuntimeState } from './ClientState.ts';
 
 type VectorTuple = readonly [number, number, number];
 
-let { CL, R } = getClientRegistry();
+let { R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, R } = getClientRegistry());
+  ({ R } = getClientRegistry());
 });
 
 /**
@@ -38,7 +39,7 @@ export default class NavigationDebug {
     }
 
     const p = R.particles[pn[0]];
-    p.die = CL.state.time + ttl;
+    p.die = clientRuntimeState.time + ttl;
     p.color = color;
     p.vel = new Vector(0, 0, 0);
     p.org = position.copy();

@@ -10,11 +10,12 @@ import { AliasModel, type AliasSingleFrame, type AliasGroupedFrameEntry, type Al
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
 import Con from '../../common/Console.ts';
+import { clientRuntimeState } from '../ClientState.ts';
 
-let { CL, Host, R } = getClientRegistry();
+let { Host, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, R } = getClientRegistry());
+  ({ Host, R } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -113,8 +114,8 @@ export class AliasModelRenderer extends ModelRenderer {
       program = GL.UseProgram('player');
 
       // Calculate player colors
-      let top = (CL.state.scores[e.colormap - 1].colors & 0xf0) + 4;
-      let bottom = ((CL.state.scores[e.colormap - 1].colors & 0xf) << 4) + 4;
+      let top = (clientRuntimeState.scores[e.colormap - 1].colors & 0xf0) + 4;
+      let bottom = ((clientRuntimeState.scores[e.colormap - 1].colors & 0xf) << 4) + 4;
       if (top <= 127) {
         top += 7;
       }
@@ -247,7 +248,7 @@ export class AliasModelRenderer extends ModelRenderer {
    * @returns Selected frames and interpolation factor.
    */
   static _selectFrames(clmodel: AliasModel, e: ClientEdict): AliasFrameSelection {
-    const time = CL.state.time + e.syncbase;
+    const time = clientRuntimeState.time + e.syncbase;
     let num = e.frame;
 
     // Validate frame number
@@ -314,7 +315,7 @@ export class AliasModelRenderer extends ModelRenderer {
    * @returns Selected skin texture entry.
    */
   private _selectSkin(clmodel: AliasModel, e: ClientEdict): AliasRenderSkin {
-    const time = CL.state.time + e.syncbase;
+    const time = clientRuntimeState.time + e.syncbase;
     let num = e.skinnum;
 
     // Validate skin number

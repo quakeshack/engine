@@ -8,7 +8,7 @@ import type { BrushModel } from '../common/Mod.ts';
 import type { SerializedParticle } from './R.ts';
 import type { ClientGameInterface, ClientSerializableType, SFX } from '../../shared/GameInterfaces.ts';
 import type ClientDemos from './ClientDemos.ts';
-import { getClientRegistry } from '../registry.ts';
+import type { ServerController } from '../common/ServerController.ts';
 import { EventBus, eventBus } from '../common/EventBus.ts';
 import ClientEntities, { ClientEdict, type SerializedClientEntity } from './ClientEntities.ts';
 import { ClientMessages } from './ClientMessages.ts';
@@ -29,12 +29,6 @@ type ClientMoveCommand = {
 };
 
 type ClientLoadData = [string | null, SerializedParticle[] | null, SerializedClientEntity[] | null];
-
-let { CL } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL } = getClientRegistry());
-});
 
 /**
  * Create a stats array sized to the numeric legacy stat entries.
@@ -91,6 +85,8 @@ class ClientStaticState {
   serverInfo: Record<string, string> = {};
   lastcmdsent = 0;
   isLocalGame = false;
+  /** Control plane to the server this client hosts locally, installed by the launcher before the engine starts. */
+  serverController: ServerController = null!;
   movearound: ReturnType<typeof setInterval> | null = null;
   #clientDemos: ClientDemos | null = null;
   #runtimeState: ClientRuntimeState | null = null;
@@ -169,13 +165,15 @@ export class ScoreSlot {
   }
 
   get entity(): ClientEdict | null {
-    return CL.state.clientEntities.getEntity(this.index + 1);
+    return clientRuntimeState.clientEntities.getEntity(this.index + 1);
   }
 }
 
 class ClientRuntimeState {
-  clientEntities = new ClientEntities();
-  clientMessages = new ClientMessages();
+  // Created on first use: these classes read the client state themselves, and building them while this module is
+  // still being evaluated would make the order modules load in matter.
+  #clientEntities: ClientEntities | null = null;
+  #clientMessages: ClientMessages | null = null;
   clientEntityFields: Record<string, ClientEntityFieldDefinition> = {};
   clientdata: Record<string, ClientSerializableType> = {};
   movemessages = 0;
@@ -255,6 +253,22 @@ class ClientRuntimeState {
 
   constructor({ clientGameEvents }: { clientGameEvents: readonly string[] }) {
     this.#clientGameEvents = clientGameEvents;
+  }
+
+  get clientEntities(): ClientEntities {
+    return this.#clientEntities ??= new ClientEntities();
+  }
+
+  set clientEntities(clientEntities: ClientEntities) {
+    this.#clientEntities = clientEntities;
+  }
+
+  get clientMessages(): ClientMessages {
+    return this.#clientMessages ??= new ClientMessages();
+  }
+
+  set clientMessages(clientMessages: ClientMessages) {
+    this.#clientMessages = clientMessages;
   }
 
   get playernum(): number {

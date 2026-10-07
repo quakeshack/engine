@@ -6,6 +6,7 @@ import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Installs minimal `CL`/`Host` registry stubs and a clean `ConsoleOverlay` for `SCR.SetUpToDrawConsole()`, plus a
@@ -24,6 +25,7 @@ function withMockConsoleRegistry({ worldmodel, signon }, callback) {
   con.forcedup = false;
   con.isOpen = false;
   registry.CL = { state: { worldmodel }, cls: { signon } };
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.Host = { frametime: 0.1 };
   SCR.conspeed = { value: 300 };
   eventBus.publish('registry.frozen');
@@ -32,6 +34,7 @@ function withMockConsoleRegistry({ worldmodel, signon }, callback) {
     callback(con);
   } finally {
     registry.CL = previousCL;
+    restoreClientState();
     Object.assign(con, previousConsoleState);
     registry.Host = previousHost;
     SCR.con_current = previousConCurrent;
@@ -158,6 +161,8 @@ void describe('SCR.CenterPrint', () => {
         time: 4,
       },
     };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
     SCR.centertime = { value: 2 };
 
@@ -171,6 +176,7 @@ void describe('SCR.CenterPrint', () => {
     } finally {
       unsubscribe();
       registry.CL = previousCL;
+      restoreClientState();
       eventBus.publish('registry.frozen');
       SCR.centerstring = previousCenterString;
       SCR.centertime_off = previousCenterTimeOff;
@@ -196,6 +202,8 @@ void describe('SCR.DrawNet', () => {
     const picCalls = [];
 
     registry.CL = { cls: { state, demoplayback }, state: { last_received_message: lastReceivedMessage } };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.Host = { realtime };
     registry.Draw = { Pic(x, y, pic) { picCalls.push({ x, y, pic }); } };
     registry.R = { refdef: { vrect: { x: 0, y: 0 } } };
@@ -207,6 +215,7 @@ void describe('SCR.DrawNet', () => {
       return picCalls;
     } finally {
       registry.CL = previousCL;
+      restoreClientState();
       registry.Host = previousHost;
       registry.Draw = previousDraw;
       registry.R = previousR;

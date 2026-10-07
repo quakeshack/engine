@@ -3,7 +3,7 @@
  *
  * Owns the client frame and the console commands that start, change and leave a game from the
  * player's side. It never touches the server directly: the game it hosts locally is driven
- * through `CL.serverController`.
+ * through `clientStaticState.serverController`.
  */
 
  
@@ -25,11 +25,14 @@ import NavigationDebug from './NavigationDebug.ts';
 import Q from '../../shared/Q.ts';
 import { KeyDestination } from './Key.ts';
 import Con from '../common/Console.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import clientCvars from './ClientCvars.ts';
+import CL from './CL.ts';
 
-let { CL, Host, Key, M, NET, R, S, SCR } = getClientRegistry();
+let { Host, Key, M, NET, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, Key, M, NET, R, S, SCR } = getClientRegistry());
+  ({ Host, Key, M, NET, R, S, SCR } = getClientRegistry());
 });
 
 /**
@@ -42,7 +45,7 @@ export default class ClientHost {
   static Init(): void {
     // Kicks issued from the local console are issued by the local player.
     if (Host.serverHost !== null) {
-      Host.serverHost.getLocalOperatorName = () => CL.name.string;
+      Host.serverHost.getLocalOperatorName = () => clientCvars.name.string;
     }
 
     NavigationDebug.Init();
@@ -50,8 +53,8 @@ export default class ClientHost {
     // What the shared console and variables need to know about the server this client is connected to.
     Cmd.forwardToServer = (command) => ClientHost.ForwardToServer(command);
     Cvar.serverState = {
-      isServerActive: () => CL.serverController.state.active,
-      reportedCheats: () => CL.cls.serverInfo?.sv_cheats,
+      isServerActive: () => clientStaticState.serverController.state.active,
+      reportedCheats: () => clientStaticState.serverInfo?.sv_cheats,
     };
 
     Cmd.AddCommand('invite', InviteCommand);
@@ -92,7 +95,7 @@ export default class ClientHost {
 
     // A local client leaves together with its server.
     eventBus.subscribe('server.shutting-down', () => {
-      if (CL.cls.state === Def.clientConnectionState.connected) {
+      if (clientStaticState.state === Def.clientConnectionState.connected) {
         CL.Disconnect();
       }
     });
@@ -113,7 +116,7 @@ export default class ClientHost {
    * @returns False while the client is still connecting and no full frame ran.
    */
   static Frame(frametime: number, realtime: number): boolean {
-    if (CL.cls.state === Def.clientConnectionState.connecting) {
+    if (clientStaticState.state === Def.clientConnectionState.connecting) {
       CL.CheckConnectingState();
       SCR.UpdateScreen();
       return false;
@@ -121,7 +124,7 @@ export default class ClientHost {
 
     Cmd.Execute();
 
-    if (CL.cls.state === Def.clientConnectionState.connected) {
+    if (clientStaticState.state === Def.clientConnectionState.connected) {
       CL.ReadFromServer();
     }
 
@@ -141,8 +144,8 @@ export default class ClientHost {
 
     // The server takes its turn right after the client sent its command, like a remote one would.
     // A hidden page only gets throttled timers, a single player world would crawl, so it waits for the player to come back.
-    CL.serverController.setSimulationAllowed(M.AllowsSimulation() && !ClientHost.isPageHidden());
-    CL.serverController.runLocalFrame(frametime, realtime);
+    clientStaticState.serverController.setSimulationAllowed(M.AllowsSimulation() && !ClientHost.isPageHidden());
+    clientStaticState.serverController.runLocalFrame(frametime, realtime);
 
     // Set up prediction for other players.
     CL.SetUpPlayerPrediction();
@@ -162,7 +165,7 @@ export default class ClientHost {
     CL.SetUpPlayerPrediction();
 
     // Build a refresh entity list.
-    CL.state.clientEntities.emit();
+    clientRuntimeState.clientEntities.emit();
 
     SCR.UpdateScreen();
 
@@ -170,7 +173,7 @@ export default class ClientHost {
       console.profile('S.Update');
     }
 
-    if (CL.cls.signon === 4) {
+    if (clientStaticState.signon === 4) {
       S.Update(R.refdef.vieworg, R.vpn, R.vright, R.vup, R.viewleaf ? R.viewleaf.contents <= content.CONTENT_WATER : false);
     } else {
       S.Update(Vector.origin, Vector.origin, Vector.origin, Vector.origin, false);
@@ -205,18 +208,18 @@ export default class ClientHost {
       return true;
     }
 
-    if (CL.cls.state !== Def.clientConnectionState.connected) {
+    if (clientStaticState.state !== Def.clientConnectionState.connected) {
       Con.Print(`Can't "${name}", not connected\n`);
       return true;
     }
 
-    if (CL.cls.demoplayback) {
+    if (clientStaticState.demoplayback) {
       return true;
     }
 
     // send command to the server in behalf of the client
-    CL.cls.message.writeByte(Protocol.clc.stringcmd);
-    CL.cls.message.writeString(command.args ?? '');
+    clientStaticState.message.writeByte(Protocol.clc.stringcmd);
+    clientStaticState.message.writeString(command.args ?? '');
 
     return true;
   }
@@ -231,17 +234,17 @@ export default class ClientHost {
       return;
     }
 
-    CL.cls.demonum = -1;
+    clientStaticState.demonum = -1;
     CL.Disconnect();
-    CL.serverController.stop();
+    clientStaticState.serverController.stop();
 
     Key.destination = KeyDestination.game;
     SCR.BeginLoadingPlaque();
     CL.SetConnectingStep(5, 'Spawning server');
-    CL.cls.spawnparms = spawnparms.join(' ');
+    clientStaticState.spawnparms = spawnparms.join(' ');
 
     Host.ScheduleForNextFrame(async () => {
-      if (!await CL.serverController.start(mapname)) {
+      if (!await clientStaticState.serverController.start(mapname)) {
         throw new HostError(`Could not spawn server with map ${mapname}`);
       }
 
@@ -256,19 +259,19 @@ export default class ClientHost {
       return;
     }
 
-    if (!CL.serverController.state.active || CL.cls.demoplayback) {
+    if (!clientStaticState.serverController.state.active || clientStaticState.demoplayback) {
       Con.Print('Only the server may changelevel\n');
       return;
     }
 
-    CL.serverController.announceChangelevel(mapname);
+    clientStaticState.serverController.announceChangelevel(mapname);
 
     // This hack allows us to show the loading plaque while resetting the client renderer.
-    CL.cls.changelevel = true;
-    CL.cls.signon = 0;
+    clientStaticState.changelevel = true;
+    clientStaticState.signon = 0;
 
     Host.ScheduleForNextFrame(async () => {
-      if (!await CL.serverController.changelevel(mapname)) {
+      if (!await clientStaticState.serverController.changelevel(mapname)) {
         throw new HostError(`Could not spawn server for changelevel to ${mapname}`);
       }
 
@@ -285,7 +288,7 @@ export default class ClientHost {
     switch (request.kind) {
       case 'changelevel':
         // Asked twice before the first one ran (e.g. two triggers in one frame), the level changes once.
-        if (!CL.cls.changelevel) {
+        if (!clientStaticState.changelevel) {
           ClientHost.Changelevel_f(request.mapname);
         }
         break;
@@ -300,9 +303,9 @@ export default class ClientHost {
   }
 
   static Restart_f(this: ConsoleCommand): void {
-    const { state } = CL.serverController;
+    const { state } = clientStaticState.serverController;
 
-    if (state.active && !CL.cls.demoplayback && this.client === null) {
+    if (state.active && !clientStaticState.demoplayback && this.client === null) {
       void Cmd.ExecuteString(`map ${state.mapname}`);
     }
   }
@@ -318,9 +321,9 @@ export default class ClientHost {
       return;
     }
 
-    CL.cls.demonum = -1;
+    clientStaticState.demonum = -1;
 
-    if (CL.cls.demoplayback) {
+    if (clientStaticState.demoplayback) {
       CL.StopPlayback();
       CL.Disconnect();
     }
@@ -333,7 +336,7 @@ export default class ClientHost {
       CL.Connect(address);
     }
 
-    CL.cls.signon = 0;
+    clientStaticState.signon = 0;
   }
 
   /**
@@ -344,13 +347,13 @@ export default class ClientHost {
     Con.DPrint(`ClientHost.Name_f: ${this.client}\n`);
 
     if (names.length < 1) {
-      Con.Print(`"name" is "${CL.name.string}"\n`);
+      Con.Print(`"name" is "${clientCvars.name.string}"\n`);
       return;
     }
 
     Cvar.Set('_cl_name', names.join(' ').trim().substring(0, 15));
 
-    if (CL.cls.state === Def.clientConnectionState.connected) {
+    if (clientStaticState.state === Def.clientConnectionState.connected) {
       this.forward();
     }
   }
@@ -363,14 +366,14 @@ export default class ClientHost {
     Con.DPrint(`ClientHost.Color_f: ${this.client}\n`);
 
     if (argv.length === 0) {
-      Con.Print(`"color" is "${CL.color.value >> 4} ${CL.color.value & 15}"\ncolor <0-13> [0-13]\n`);
+      Con.Print(`"color" is "${clientCvars.color.value >> 4} ${clientCvars.color.value & 15}"\ncolor <0-13> [0-13]\n`);
       return;
     }
 
     const { top, bottom } = PlayerColors.parse(argv);
     Cvar.Set('_cl_color', PlayerColors.pack(top, bottom));
 
-    if (CL.cls.state === Def.clientConnectionState.connected) {
+    if (clientStaticState.state === Def.clientConnectionState.connected) {
       this.forward();
     }
   }

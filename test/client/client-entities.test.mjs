@@ -8,6 +8,8 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content, effect } from '../../source/shared/Defs.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
+import { useClientStateOf } from '../support/clientState.ts';
+import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 
 /**
  * Computes wrapped angular delta in degrees.
@@ -37,10 +39,13 @@ function withMockClientEntitiesRegistry(callback) {
       },
     },
   };
+
+  const restoreClientState = useClientStateOf(registry.CL);
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousCL;
+    restoreClientState();
     eventBus.publish('registry.frozen');
   };
 
@@ -63,11 +68,14 @@ function withMockDlightRegistry(time, frametime, callback) {
   const previousHost = registry.Host;
 
   registry.CL = { state: { time } };
+
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.Host = { frametime };
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousCL;
+    restoreClientState();
     registry.Host = previousHost;
     eventBus.publish('registry.frozen');
   };
@@ -88,7 +96,7 @@ void describe('ClientEdict.lerp.angles', () => {
       entity.angles.setTo(0.0, 10.0, 0.0);
       entity.anglesTime = 0.0;
       entity.lerpEndTime = 1.0;
-      registry.CL.state.clientMessages.renderTime = 0.5;
+      clientRuntimeState.clientMessages.renderTime = 0.5;
 
       const lerped = entity.lerp.angles;
       const deltaYaw = shortestAngleDelta(entity.anglesPrevious[1], lerped[1]);
@@ -105,7 +113,7 @@ void describe('ClientEdict.lerp.angles', () => {
       entity.angles.setTo(-20.0, 175.0, -40.0);
       entity.anglesTime = 0.0;
       entity.lerpEndTime = 1.0;
-      registry.CL.state.clientMessages.renderTime = 0.5;
+      clientRuntimeState.clientMessages.renderTime = 0.5;
 
       void entity.lerp.angles;
 
@@ -131,12 +139,12 @@ void describe('ClientEdict.lerp.origin', () => {
 
       // mtime[0] simulates "last received snapshot time" and stays fixed
       // here, as it would between two network packets.
-      registry.CL.state.clientMessages.mtime[0] = 0.0;
+      clientRuntimeState.clientMessages.mtime[0] = 0.0;
 
-      registry.CL.state.clientMessages.renderTime = 0.2;
+      clientRuntimeState.clientMessages.renderTime = 0.2;
       const first = entity.lerp.origin[0];
 
-      registry.CL.state.clientMessages.renderTime = 0.6;
+      clientRuntimeState.clientMessages.renderTime = 0.6;
       const second = entity.lerp.origin[0];
 
       assert.ok(second > first, `expected interpolation to advance (${first} -> ${second})`);
@@ -154,10 +162,13 @@ function withMockWorldmodelRegistry(worldmodel, callback) {
   const previousCL = registry.CL;
 
   registry.CL = { state: { worldmodel } };
+
+  const restoreClientState = useClientStateOf(registry.CL);
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousCL;
+    restoreClientState();
     eventBus.publish('registry.frozen');
   };
 
@@ -284,6 +295,8 @@ void describe('ClientEntities.isPotentiallyVisible', () => {
     const previousR = registry.R;
 
     registry.CL = { state: { worldmodel: { getPvsByPoint: () => visibility }, viewentity: 1 } };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.R = { novis: { value: 0 }, refdef: { vieworg: new Vector() } };
     eventBus.publish('registry.frozen');
 
@@ -291,6 +304,7 @@ void describe('ClientEntities.isPotentiallyVisible', () => {
       callback();
     } finally {
       registry.CL = previousCL;
+      restoreClientState();
       registry.R = previousR;
       eventBus.publish('registry.frozen');
     }

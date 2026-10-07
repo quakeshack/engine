@@ -2,11 +2,13 @@ import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
+import { clientRuntimeState } from './ClientState.ts';
+import { clientCollision } from './ClientPhysics.ts';
 
-let { CL, R } = getClientRegistry();
+let { R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, R } = getClientRegistry());
+  ({ R } = getClientRegistry());
 });
 
 export default class Chase {
@@ -23,10 +25,10 @@ export default class Chase {
   }
 
   static Update2(): void {
-    const { forward, right } = CL.state.viewangles.angleVectors();
+    const { forward, right } = clientRuntimeState.viewangles.angleVectors();
     const back = forward.copy().subtract(new Vector(0.0, 128.0, 0.0));
     const org = R.refdef.vieworg;
-    const trace = CL.collision.traceStaticWorldLine(org, new Vector(
+    const trace = clientCollision.traceStaticWorldLine(org, new Vector(
       org[0] + 4096.0 * right[0],
       org[1] + 4096.0 * right[1],
       org[2] + 4096.0 * right[2],
@@ -43,9 +45,9 @@ export default class Chase {
   }
 
   static Update(): void {
-    const { forward, right } = CL.state.viewangles.angleVectors();
+    const { forward, right } = clientRuntimeState.viewangles.angleVectors();
     const org = R.refdef.vieworg;
-    const trace = CL.collision.traceStaticWorldLine(org, new Vector(
+    const trace = clientCollision.traceStaticWorldLine(org, new Vector(
       org[0] + 4096.0 * forward[0],
       org[1] + 4096.0 * forward[1],
       org[2] + 4096.0 * forward[2],
@@ -61,7 +63,7 @@ export default class Chase {
     org2[0] -= forward[0] * Chase.back.value + right[0] * Chase.right.value;
     org2[1] -= forward[1] * Chase.back.value + right[1] * Chase.right.value;
     org2[2] += Chase.up.value;
-    const trace2 = CL.collision.traceStaticWorldLine(org, org2);
+    const trace2 = clientCollision.traceStaticWorldLine(org, org2);
     if (trace2.endpos) {
       org.set(trace2.endpos);
     } else {

@@ -7,6 +7,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import { MenuViewport } from '../../source/engine/client/menu/MenuViewport.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Temporarily install a global value for the duration of a callback.
@@ -285,6 +286,7 @@ void describe('M.Keydown back button', () => {
     registry.Key = { destination: KeyDestination.menu };
     registry.S = { LocalSound(sfx) { sounds.push(sfx); } };
     registry.CL = { cls: { state: clientConnectionState.connected } };
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
 
     try {
@@ -293,6 +295,7 @@ void describe('M.Keydown back button', () => {
       registry.Key = previousKey;
       registry.S = previousS;
       registry.CL = previousCL;
+      restoreClientState();
       eventBus.publish('registry.frozen');
     }
   }
@@ -413,6 +416,8 @@ void describe('M.Keydown back button', () => {
       };
 
       registry.CL = { cls: { state: clientConnectionState.disconnected } };
+
+      const restoreClientState = useClientStateOf(registry.CL);
       eventBus.publish('registry.frozen');
 
       try {
@@ -431,6 +436,7 @@ void describe('M.Keydown back button', () => {
         M.mouseX = previousMouseX;
         M.mouseY = previousMouseY;
         registry.CL = previousCL;
+        restoreClientState();
         eventBus.publish('registry.frozen');
       }
     });
@@ -449,6 +455,8 @@ void describe('M.Keydown back button', () => {
       };
 
       registry.CL = { cls: { state: clientConnectionState.disconnected } };
+
+      const restoreClientState = useClientStateOf(registry.CL);
       eventBus.publish('registry.frozen');
 
       try {
@@ -468,6 +476,7 @@ void describe('M.Keydown back button', () => {
         M.mouseX = previousMouseX;
         M.mouseY = previousMouseY;
         registry.CL = previousCL;
+        restoreClientState();
         eventBus.publish('registry.frozen');
       }
     });
@@ -540,6 +549,8 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
     const mainPage = createMockPage('Main');
 
     registry.CL = { cls: { state } };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.Key = { destination: KeyDestination.menu };
     registry.IN = { ReleasePointerLock() {} };
     registry.M = M; // MenuStack.push() sets M.entersound directly on the real registry entry.
@@ -552,6 +563,7 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
       callback({ mainPage });
     } finally {
       registry.CL = previousCL;
+      restoreClientState();
       registry.Key = previousKey;
       registry.IN = previousIN;
       registry.M = previousM;
@@ -635,6 +647,7 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
 
     registry.Key = { destination: KeyDestination.game };
     registry.CL = { cls: { connecting: null } };
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
@@ -650,6 +663,7 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
     } finally {
       registry.Key = previousKey;
       registry.CL = previousCL;
+      restoreClientState();
       registry.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
@@ -672,6 +686,7 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
 
     registry.Key = { destination: KeyDestination.menu };
     registry.CL = { cls: { connecting: null } };
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
@@ -685,6 +700,7 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
     } finally {
       registry.Key = previousKey;
       registry.CL = previousCL;
+      restoreClientState();
       registry.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
@@ -706,6 +722,7 @@ void describe('M.Init: showing the main menu on cold boot', () => {
 
     registry.Key = { destination: KeyDestination.game };
     registry.CL = { cls: { state: clientConnectionState.disconnected, connecting: null } };
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
@@ -721,6 +738,7 @@ void describe('M.Init: showing the main menu on cold boot', () => {
     } finally {
       registry.Key = previousKey;
       registry.CL = previousCL;
+      restoreClientState();
       registry.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
@@ -743,6 +761,7 @@ void describe('M.Init: showing the main menu on cold boot', () => {
 
     registry.Key = { destination: KeyDestination.menu };
     registry.CL = { cls: { state: clientConnectionState.disconnected, connecting: null } };
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
@@ -756,6 +775,7 @@ void describe('M.Init: showing the main menu on cold boot', () => {
     } finally {
       registry.Key = previousKey;
       registry.CL = previousCL;
+      restoreClientState();
       registry.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
@@ -775,6 +795,7 @@ void describe('M.Init: showing the main menu on cold boot', () => {
 
     registry.Key = { destination: KeyDestination.game };
     registry.CL = { cls: { state: clientConnectionState.connected, connecting: null } };
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
@@ -790,6 +811,7 @@ void describe('M.Init: showing the main menu on cold boot', () => {
     } finally {
       registry.Key = previousKey;
       registry.CL = previousCL;
+      restoreClientState();
       registry.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
@@ -813,6 +835,7 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
 
     registry.Key = { destination: KeyDestination.menu };
     registry.CL = { cls: { demonum: -1 } };
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.M = M;
     M.menuStack.stack.length = 0;
     M.menuStack.stack.push(openPage);
@@ -826,6 +849,7 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
     } finally {
       registry.Key = previousKey;
       registry.CL = previousCL;
+      restoreClientState();
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);
@@ -843,6 +867,7 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
 
     registry.Key = { destination: KeyDestination.menu };
     registry.CL = { cls: { demonum: -1 } };
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.M = M;
     M.menuStack.stack.length = 0;
     M.menuStack.stack.push(mainPage, gatePage);
@@ -856,6 +881,7 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
     } finally {
       registry.Key = previousKey;
       registry.CL = previousCL;
+      restoreClientState();
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);
@@ -871,6 +897,7 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
 
     registry.Key = { destination: KeyDestination.game };
     registry.CL = { cls: { demonum: -1 } };
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.M = M;
     M.menuStack.stack.length = 0;
     eventBus.publish('registry.frozen');
@@ -883,6 +910,7 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
     } finally {
       registry.Key = previousKey;
       registry.CL = previousCL;
+      restoreClientState();
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);

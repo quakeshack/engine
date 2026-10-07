@@ -7,6 +7,8 @@ import { ClientMessages } from '../../source/engine/client/ClientMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 class MockClientSerializable {
   constructor(value) {
@@ -41,6 +43,7 @@ function withMockClientMessagesRegistry({ CL, COM, NET, Host }, callback) {
   };
 
   registry.CL = CL;
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.COM = COM;
   registry.NET = NET;
   registry.Host = Host ?? { realtime: 0 };
@@ -48,6 +51,7 @@ function withMockClientMessagesRegistry({ CL, COM, NET, Host }, callback) {
 
   const restore = () => {
     registry.CL = previousValues.CL;
+    restoreClientState();
     registry.COM = previousValues.COM;
     registry.NET = previousValues.NET;
     registry.Host = previousValues.Host;
@@ -119,23 +123,26 @@ void describe('ClientMessages', () => {
       fieldChanges.push(args);
     });
 
+    let observed = null;
+
     void withMockClientMessagesRegistry({
       CL: mockCL,
       COM: { standard_quake: true },
       NET: { message: buffer },
     }, () => {
       messages.parseClient();
+      observed = { ...clientRuntimeState };
     });
 
     unsubscribe();
 
-    assert.equal(mockCL.state.acknowledgedMoveSequence, 17);
-    assert.equal(mockCL.state.ackedPmFlags, 3);
-    assert.equal(mockCL.state.ackedPmTime, 6);
-    assert.equal(mockCL.state.ackedPmOldButtons, 9);
-    assert.equal(mockCL.state.ackedPmType, 2);
-    assert.equal(mockCL.state.gameAPI.clientdata.health, 125);
-    assert.equal(mockCL.state.gameAPI.clientdata.alive, true);
+    assert.equal(observed.acknowledgedMoveSequence, 17);
+    assert.equal(observed.ackedPmFlags, 3);
+    assert.equal(observed.ackedPmTime, 6);
+    assert.equal(observed.ackedPmOldButtons, 9);
+    assert.equal(observed.ackedPmType, 2);
+    assert.equal(observed.gameAPI.clientdata.health, 125);
+    assert.equal(observed.gameAPI.clientdata.alive, true);
     assert.deepEqual(fieldChanges, [['health', 125, 10]]);
   });
 
@@ -213,17 +220,20 @@ void describe('ClientMessages', () => {
       },
     };
 
+    let observed = null;
+
     void withMockClientMessagesRegistry({
       CL: mockCL,
       COM: { standard_quake: true },
       NET: { message: buffer },
     }, () => {
       messages.parseClient();
+      observed = { ...clientRuntimeState };
     });
 
-    assert.deepEqual(mockCL.state.gameAPI.clientdata.inventory, [1, 2, 3]);
-    assert.equal(mockCL.state.gameAPI.clientdata.target instanceof MockClientSerializable, true);
-    assert.equal(mockCL.state.gameAPI.clientdata.target.value, 'teleporter');
+    assert.deepEqual(observed.gameAPI.clientdata.inventory, [1, 2, 3]);
+    assert.equal(observed.gameAPI.clientdata.target instanceof MockClientSerializable, true);
+    assert.equal(observed.gameAPI.clientdata.target.value, 'teleporter');
   });
 
   void test('publishes explicit field-change events for sparse clientdata transitions', () => {

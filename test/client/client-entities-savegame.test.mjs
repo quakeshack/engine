@@ -11,6 +11,8 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, moveType } from '../../source/shared/Defs.ts';
 
 import { assertNear } from '../physics/fixtures.mjs';
+import { useClientStateOf } from '../support/clientState.ts';
+import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 
 /**
  * A synthetic client-only handler standing in for a real debris/shell-casing handler: saves a
@@ -74,10 +76,13 @@ function withMockClRegistry(time, callback) {
       worldmodel: { nodes: [{ contents: content.CONTENT_EMPTY, num: 0 }] },
     },
   };
+
+  const restoreClientState = useClientStateOf(registry.CL);
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousCL;
+    restoreClientState();
     eventBus.publish('registry.frozen');
   };
 
@@ -156,7 +161,7 @@ void describe('ClientEntities.serialize/deserialize (save/load)', () => {
         // Simulate 2s passing in the same session before the save happens, so the saved relative
         // die time (3.0) is distinguishable from spawn()'s own fresh-entity default (5.0) below --
         // otherwise a deserialize() that did nothing at all would coincidentally match too.
-        registry.CL.state.time = 12.0;
+        clientRuntimeState.time = 12.0;
         saved = original.serialize();
       });
 
@@ -210,7 +215,7 @@ void describe('ClientEntities.serialize/deserialize (save/load)', () => {
 
       withMockClRegistry(2.0, () => {
         // model index 0 is never a real model, mirroring a real precache list
-        registry.CL.state.model_precache = [undefined, otherModel, modelFixture];
+        clientRuntimeState.model_precache = [undefined, otherModel, modelFixture];
 
         const restored = new ClientEntities();
         restored.deserialize(saved);
@@ -238,7 +243,7 @@ void describe('ClientEntities.serialize/deserialize (save/load)', () => {
 
     try {
       withMockClRegistry(2.0, () => {
-        registry.CL.state.model_precache = [];
+        clientRuntimeState.model_precache = [];
 
         const restored = new ClientEntities();
         restored.deserialize([{
@@ -300,7 +305,7 @@ void describe('ClientEntities.serialize/deserialize (save/load)', () => {
       assert.equal(saved[0].onGround, true);
 
       withMockClRegistry(2.0, () => {
-        registry.CL.state.model_precache = [undefined, { name: 'progs/gib1.mdl', mins: new Vector(-8, -8, -8), maxs: new Vector(8, 8, 8) }];
+        clientRuntimeState.model_precache = [undefined, { name: 'progs/gib1.mdl', mins: new Vector(-8, -8, -8), maxs: new Vector(8, 8, 8) }];
 
         const restored = new ClientEntities();
         restored.deserialize(saved);

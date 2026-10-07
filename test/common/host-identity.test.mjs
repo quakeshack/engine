@@ -7,6 +7,7 @@ import * as Def from '../../source/engine/common/Def.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Installs a minimal client-side registry (CL, Con, SV, isDedicatedServer) for the
@@ -28,6 +29,8 @@ function withIdentityRegistry({ cl, sv = { server: { active: false } }, isDedica
   const prints = [];
 
   registry.CL = cl;
+
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.Con = { Print(message) { prints.push(message); }, DPrint() {} };
   registry.SV = sv;
   registry.isDedicatedServer = isDedicatedServer;
@@ -37,6 +40,7 @@ function withIdentityRegistry({ cl, sv = { server: { active: false } }, isDedica
     callback(prints);
   } finally {
     registry.CL = previous.CL;
+    restoreClientState();
     registry.Con = previous.Con;
     registry.SV = previous.SV;
     registry.isDedicatedServer = previous.isDedicatedServer;

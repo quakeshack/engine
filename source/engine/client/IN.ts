@@ -8,6 +8,8 @@ import { KeyDestination } from './Key.ts';
 import VID from './VID.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import clientCvars from './ClientCvars.ts';
 
 /** Browser-derived signals used to decide whether mobile play needs external input devices. */
 export interface MobileInputEnvironment {
@@ -187,10 +189,10 @@ export function shouldShowMobileExternalInputWarning(state: MobileInputSupportSt
   return !state.hasKeyboardActivity || !hasMouseSupport(state);
 }
 
-let { CL, COM, Host, Key, M, V } = getClientRegistry();
+let { COM, Host, Key, M, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Host, Key, M, V } = getClientRegistry());
+  ({ COM, Host, Key, M, V } = getClientRegistry());
 });
 
 export default class IN {
@@ -279,17 +281,17 @@ export default class IN {
     }
     IN.old_mouse_x = IN.mouse_x;
     IN.old_mouse_y = IN.mouse_y;
-    mouseX *= CL.sensitivity.value;
-    mouseY *= CL.sensitivity.value;
+    mouseX *= clientCvars.sensitivity.value;
+    mouseY *= clientCvars.sensitivity.value;
 
     const strafe = kbuttons[kbutton.strafe].state & 1;
     const mlook = kbuttons[kbutton.mlook].state & 1;
-    const angles = CL.state.viewangles;
+    const angles = clientRuntimeState.viewangles;
 
-    if (strafe !== 0 || (CL.lookstrafe.value !== 0 && mlook !== 0)) {
-      CL.state.cmd.sidemove += CL.m_side.value * mouseX;
+    if (strafe !== 0 || (clientCvars.lookstrafe.value !== 0 && mlook !== 0)) {
+      clientRuntimeState.cmd.sidemove += clientCvars.m_side.value * mouseX;
     } else {
-      angles[1] -= CL.m_yaw.value * mouseX;
+      angles[1] -= clientCvars.m_yaw.value * mouseX;
     }
 
     if (mlook !== 0) {
@@ -297,16 +299,16 @@ export default class IN {
     }
 
     if (mlook !== 0 && strafe === 0) {
-      angles[0] += CL.m_pitch.value * mouseY;
+      angles[0] += clientCvars.m_pitch.value * mouseY;
       if (angles[0] > 80.0) {
         angles[0] = 80.0;
       } else if (angles[0] < -70.0) {
         angles[0] = -70.0;
       }
     } else if (strafe !== 0 && Host.noclip_anglehack) {
-      CL.state.cmd.upmove -= CL.m_forward.value * mouseY;
+      clientRuntimeState.cmd.upmove -= clientCvars.m_forward.value * mouseY;
     } else {
-      CL.state.cmd.forwardmove -= CL.m_forward.value * mouseY;
+      clientRuntimeState.cmd.forwardmove -= clientCvars.m_forward.value * mouseY;
     }
 
     IN.mouse_x = 0;
@@ -315,7 +317,7 @@ export default class IN {
 
   static Move(): void {
     // do not interpret input during demo playback
-    if (CL.cls.demoplayback) {
+    if (clientStaticState.demoplayback) {
       return;
     }
 
@@ -329,7 +331,7 @@ export default class IN {
     // enough here: it also reads `game` while disconnected with no menu open (e.g. right after
     // closing it), which shouldn't capture the mouse either.
     if (Key.destination === KeyDestination.game && !ConsoleOverlay.isOpen
-      && CL.cls.state === clientConnectionState.connected
+      && clientStaticState.state === clientConnectionState.connected
       && document.pointerLockElement !== VID.mainwindow) {
       void VID.mainwindow.requestPointerLock();
     }

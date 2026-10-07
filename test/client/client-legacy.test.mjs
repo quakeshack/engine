@@ -6,6 +6,8 @@ import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEn
 import { effect, modelFlags } from '../../source/shared/Defs.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { useClientStateOf } from '../support/clientState.ts';
+import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 
 /**
  * Runs a callback with a real `ClientEntities` instance wired into the
@@ -21,12 +23,15 @@ function withMockLegacyClientRegistry(callback) {
   const clientEntities = new ClientEntities();
 
   registry.CL = { state: { time: 0.0, clientEntities } };
+
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.Host = { frametime: 1 / 60 };
   registry.R = { RocketTrail() {}, EntityParticles() {} };
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousCL;
+    restoreClientState();
     registry.Host = previousHost;
     registry.R = previousR;
     eventBus.publish('registry.frozen');
@@ -59,7 +64,7 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
   function sampleRadiusUntilFree(clientEntities, dl) {
     const samples = [];
     for (let i = 0; i < 60 && !dl.isFree(); i++) {
-      registry.CL.state.time += registry.Host.frametime;
+      clientRuntimeState.time += registry.Host.frametime;
       clientEntities.think();
       samples.push(dl.radius);
     }
@@ -77,7 +82,7 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
       // Simulate the effect being refreshed for a few consecutive frames.
       for (let i = 0; i < 3; i++) {
         handler.emit();
-        registry.CL.state.time += registry.Host.frametime;
+        clientRuntimeState.time += registry.Host.frametime;
         clientEntities.think();
       }
 
@@ -87,7 +92,7 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
 
       // The effect stops being refreshed (e.g. the monster faces away), but
       // normal frames still elapse and think() still runs.
-      registry.CL.state.time += registry.Host.frametime;
+      clientRuntimeState.time += registry.Host.frametime;
       clientEntities.think();
 
       assert.ok(!dl.isFree(), 'dlight must not be culled on the very first missed frame');
@@ -111,14 +116,14 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
 
       for (let i = 0; i < 3; i++) {
         handler.emit();
-        registry.CL.state.time += registry.Host.frametime;
+        clientRuntimeState.time += registry.Host.frametime;
         clientEntities.think();
       }
 
       const dl = clientEntities.dlights.find((light) => light.entity === clent.num);
       assert.ok(dl, 'expected a dlight to be allocated for the rocket entity');
 
-      registry.CL.state.time += registry.Host.frametime;
+      clientRuntimeState.time += registry.Host.frametime;
       clientEntities.think();
 
       assert.ok(!dl.isFree(), 'rocket dlight must not be culled on the very first missed frame');

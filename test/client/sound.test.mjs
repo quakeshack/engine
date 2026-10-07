@@ -6,6 +6,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import Sound from '../../source/engine/client/Sound.ts';
 import Vector from '../../source/shared/Vector.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 void describe('Sound.IsPositionAudible', () => {
   /**
@@ -39,11 +40,14 @@ void describe('Sound.IsPositionAudible', () => {
     const previousListenerLeaf = Sound._listenerLeaf;
 
     registry.CL = { state: { worldmodel } };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
 
     return {
       restore() {
         registry.CL = previousCL;
+        restoreClientState();
         Sound._listenerLeaf = previousListenerLeaf;
         eventBus.publish('registry.frozen');
       },

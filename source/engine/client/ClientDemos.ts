@@ -4,11 +4,13 @@ import { eventBus } from '../common/EventBus.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { HostError } from '../common/Errors.ts';
 import Con from '../common/Console.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import CL from './CL.ts';
 
-let { CL, COM, Host, NET } = getClientRegistry();
+let { COM, Host, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Host, NET } = getClientRegistry());
+  ({ COM, Host, NET } = getClientRegistry());
 });
 
 /**
@@ -62,9 +64,9 @@ export default class ClientDemos {
     const demoFile = this.#getDemoFile();
     const view = new DataView(demoFile, this.demoofs, 16);
     view.setInt32(0, NET.message.cursize, true);
-    view.setFloat32(4, CL.state.viewangles[0], true);
-    view.setFloat32(8, CL.state.viewangles[1], true);
-    view.setFloat32(12, CL.state.viewangles[2], true);
+    view.setFloat32(4, clientRuntimeState.viewangles[0], true);
+    view.setFloat32(8, clientRuntimeState.viewangles[1], true);
+    view.setFloat32(12, clientRuntimeState.viewangles[2], true);
     new Uint8Array(demoFile).set(new Uint8Array(NET.message.data, 0, NET.message.cursize), this.demoofs + 16);
 
     this.demoofs = len;
@@ -73,7 +75,7 @@ export default class ClientDemos {
   getMessage(): 0 | 1 {
     console.assert(this.demoplayback, 'must be in playback mode to get message');
 
-    if (CL.cls.signon === 4) {
+    if (clientStaticState.signon === 4) {
       if (this.timedemo) {
         if (Host.framecount === this.td_lastframe) {
           return 0;
@@ -87,13 +89,13 @@ export default class ClientDemos {
         // we need to make sure we stick to the timeline
         if (this.demoBaseRealtime === null) {
           this.demoBaseRealtime = Host.realtime;
-          this.demoBaseServertime = CL.state.clientMessages.mtime[0];
+          this.demoBaseServertime = clientRuntimeState.clientMessages.mtime[0];
         }
 
         const elapsed = Host.realtime - this.demoBaseRealtime;
         const demoTime = this.demoBaseServertime + elapsed;
 
-        if (demoTime <= CL.state.clientMessages.mtime[0]) {
+        if (demoTime <= clientRuntimeState.clientMessages.mtime[0]) {
           return 0;
         }
       }
@@ -112,7 +114,7 @@ export default class ClientDemos {
       throw new HostError('Demo message > MAX_MSGLEN');
     }
 
-    CL.state.viewangles.setTo(
+    clientRuntimeState.viewangles.setTo(
       view.getFloat32(this.demoofs + 4, true),
       view.getFloat32(this.demoofs + 8, true),
       view.getFloat32(this.demoofs + 12, true),
@@ -138,7 +140,7 @@ export default class ClientDemos {
   }
 
   async startPlayback(demoname: string, timedemo = false): Promise<void> {
-    console.assert(CL.cls.state === clientConnectionState.disconnected, 'must be disconnected to start playback');
+    console.assert(clientStaticState.state === clientConnectionState.disconnected, 'must be disconnected to start playback');
     console.assert(!this.demoplayback, 'must not be in playback mode');
 
     const name = COM.DefaultExtension(demoname, '.dem');
@@ -156,7 +158,7 @@ export default class ClientDemos {
     this.demosize = demoFileBytes.length;
     this.demoplayback = true;
     // eslint-disable-next-line require-atomic-updates
-    CL.cls.state = clientConnectionState.connected;
+    clientStaticState.state = clientConnectionState.connected;
     this.forcetrack = 0;
 
     let index: number;
@@ -201,7 +203,7 @@ export default class ClientDemos {
     this.demofile = null;
     this.demoBaseRealtime = null;
     this.demoBaseServertime = 0;
-    CL.cls.state = clientConnectionState.disconnected;
+    clientStaticState.state = clientConnectionState.disconnected;
 
     if (this.timedemo) {
       this.#finishTimeDemo();
@@ -209,7 +211,7 @@ export default class ClientDemos {
   }
 
   startRecording(demoname: string, forcetrack = -1): void {
-    console.assert(CL.cls.state === clientConnectionState.connected, 'must be connected to start recording a demo');
+    console.assert(clientStaticState.state === clientConnectionState.connected, 'must be connected to start recording a demo');
 
     if (forcetrack !== -1) {
       Con.Print(`Forcing track ${forcetrack} for demo recording.\n`);

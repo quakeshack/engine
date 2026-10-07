@@ -9,6 +9,7 @@ import { clientRuntimeState, clientStaticState } from '../../source/engine/clien
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Builds a synthetic current-format demo file with a single message.
@@ -92,6 +93,7 @@ function withMockClientRegistry(mockedRegistry, callback) {
   };
 
   registry.CL = mockedRegistry.CL;
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.COM = mockedRegistry.COM;
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
@@ -100,6 +102,7 @@ function withMockClientRegistry(mockedRegistry, callback) {
 
   const restore = () => {
     registry.CL = previousValues.CL;
+    restoreClientState();
     registry.COM = previousValues.COM;
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;

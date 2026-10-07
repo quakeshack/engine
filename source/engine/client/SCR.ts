@@ -10,11 +10,13 @@ import VID from './VID.ts';
 import PostProcess from './renderer/PostProcess.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import CL from './CL.ts';
 
-let { CL, Draw, Host, Key, M, R, S, V } = getClientRegistry();
+let { Draw, Host, Key, M, R, S, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Draw, Host, Key, M, R, S, V } = getClientRegistry());
+  ({ Draw, Host, Key, M, R, S, V } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -89,7 +91,7 @@ export default class SCR {
   static CenterPrint(str: string): void {
     SCR.centerstring = SCR.#formatCenterLines(str);
     SCR.centertime_off = SCR.centertime.value;
-    SCR.centertime_start = CL.state.time;
+    SCR.centertime_start = clientRuntimeState.time;
     eventBus.publish('client.center-print', str);
   }
 
@@ -98,7 +100,7 @@ export default class SCR {
    */
   static DrawCenterString(): void {
     SCR.centertime_off -= Host.frametime;
-    if (((SCR.centertime_off <= 0.0) && (CL.state.intermission === 0)) || (Key.destination !== KeyDestination.game)) {
+    if (((SCR.centertime_off <= 0.0) && (clientRuntimeState.intermission === 0)) || (Key.destination !== KeyDestination.game)) {
       return;
     }
 
@@ -110,8 +112,8 @@ export default class SCR {
     }
 
     let i;
-    if (CL.state.intermission) {
-      let remaining = Math.floor(SCR.printspeed.value * (CL.state.time - SCR.centertime_start));
+    if (clientRuntimeState.intermission) {
+      let remaining = Math.floor(SCR.printspeed.value * (clientRuntimeState.time - SCR.centertime_start));
       let str; let x; let j;
       for (i = 0; i < SCR.centerstring.length; i++) {
         str = SCR.centerstring[i];
@@ -147,7 +149,7 @@ export default class SCR {
     }
 
     let size = 0.0, full = false;
-    if (CL.state.intermission !== 0) {
+    if (clientRuntimeState.intermission !== 0) {
       full = true;
       size = 1.0;
       SCR.hudReservedHeight = 0;
@@ -255,18 +257,18 @@ export default class SCR {
     // (ClientConnection.ts) -- without this guard, `Host.realtime - 0` grows past the threshold
     // within the first fraction of a second after boot and the indicator shows permanently while
     // fully disconnected, misreporting "bad connection" when there's no connection at all.
-    if (CL.cls.state !== clientConnectionState.connected) {
+    if (clientStaticState.state !== clientConnectionState.connected) {
       return;
     }
 
-    if ((Host.realtime - CL.state.last_received_message >= 0.3) && !CL.cls.demoplayback) {
+    if ((Host.realtime - clientRuntimeState.last_received_message >= 0.3) && !clientStaticState.demoplayback) {
       Draw.Pic(R.refdef.vrect.x, R.refdef.vrect.y, SCR.net);
     }
   }
 
   /** Draws the pause indicator when the game is paused. */
   static DrawPause(): void {
-    if (SCR.showpause.value !== 0 && CL.state.paused) {
+    if (SCR.showpause.value !== 0 && clientRuntimeState.paused) {
       Draw.Pic((VID.width - SCR.pause.width * 2) / 2, (VID.height - 48 - SCR.pause.height * 2) / 2, SCR.pause, 2);
     }
   }
@@ -289,7 +291,7 @@ export default class SCR {
    * `isConsolePassiveBackdrop()`), so there's no special-cased snap to reach.
    */
   static SetUpToDrawConsole(): void {
-    ConsoleOverlay.forcedup = (!CL.state.worldmodel) || (CL.cls.signon !== 4);
+    ConsoleOverlay.forcedup = (!clientRuntimeState.worldmodel) || (clientStaticState.signon !== 4);
 
     const conlines = ConsoleOverlay.isOpen ? 100 : 0;
 
@@ -314,7 +316,7 @@ export default class SCR {
       ConsoleOverlay.DrawConsole(SCR.con_current);
       return;
     }
-    if ((Key.destination === KeyDestination.game || Key.destination === KeyDestination.message) && CL.cls.signon === 4) {
+    if ((Key.destination === KeyDestination.game || Key.destination === KeyDestination.message) && clientStaticState.signon === 4) {
       ConsoleOverlay.DrawNotify();
     }
   }
@@ -336,7 +338,7 @@ export default class SCR {
   /** Stops all sounds and blanks the display while a map is loading. */
   static BeginLoadingPlaque(): void {
     S.StopAllSounds();
-    if ((CL.cls.state !== clientConnectionState.connected) || (CL.cls.signon !== 4)) {
+    if ((clientStaticState.state !== clientConnectionState.connected) || (clientStaticState.signon !== 4)) {
       return;
     }
     SCR.centertime_off = 0.0;
@@ -442,9 +444,9 @@ export default class SCR {
       // above, which are part of the scene rendering, not UI) -- skip every overlay,
       // including the console and menu, for this one frame.
       if (!captureClean) {
-        if (CL.cls.state === clientConnectionState.connecting) {
+        if (clientStaticState.state === clientConnectionState.connecting) {
           CL.Draw();
-        } else if ((CL.state.intermission !== 0) && (Key.destination === KeyDestination.game)) {
+        } else if ((clientRuntimeState.intermission !== 0) && (Key.destination === KeyDestination.game)) {
           CL.DrawHUD();
         } else {
           if (!SCR.disableCrosshair && SCR.crosshair.value !== 0) {
@@ -455,7 +457,7 @@ export default class SCR {
           SCR.DrawTurtle();
           SCR.DrawPause();
           SCR.DrawCenterString();
-          if (CL.cls.signon === 4) {
+          if (clientStaticState.signon === 4) {
             CL.DrawHUD();
           }
           CL.Draw();

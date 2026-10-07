@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import R from '../../source/engine/client/R.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content } from '../../source/shared/Defs.ts';
 
@@ -15,15 +14,7 @@ import { content } from '../../source/shared/Defs.ts';
  * @param {() => void} callback
  */
 function withMockCollisionRegistry(collision, callback) {
-  const previousCL = registry.CL;
-
-  registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ collision });
-  eventBus.publish('registry.frozen');
-
-  const restore = () => {
-    registry.CL = previousCL;
-    eventBus.publish('registry.frozen');
-  };
+  const restore = useClientStateOf({ collision });
 
   try {
     callback();

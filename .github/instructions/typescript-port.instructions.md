@@ -185,7 +185,7 @@ When TypeScript complains in render loops, BSP recursion, movement code, input d
 
 - **Do not create helper functions whose only purpose is syntactic narrowing** such as `isFoo(...)`, `requireBar(...)`, `resolveBaz(...)`, or `getNodeChild(...)` when the call site already knows the invariant and is in a hot path.
 - **Prefer local invariant checks** at the use site:
-  - `const worldmodel = CL.state.worldmodel!;`
+  - `const worldmodel = clientRuntimeState.worldmodel!;`
   - `console.assert(worldmodel !== null, 'worldmodel required');`
   - then use the narrowed local directly.
 - **Use small local `as` casts only after an adjacent `console.assert(...)` or branch that already proves the invariant.** Keep the cast at the use site instead of hiding it in another function.

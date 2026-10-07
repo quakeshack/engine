@@ -12,7 +12,7 @@ and loading, the development commands, hosting for other players over WebRTC.
 
 The worker is used unless the page is opened with `?serverthread`, for example `http://localhost:3000/?serverthread`,
 or the browser has no `Worker`. The flag has no value on purpose: a parameter with a value (`?server=thread`) would
-be run as a console command at startup. The controller you get is `CL.serverController`, a `WorkerServerController`
+be run as a console command at startup. The controller you get is `clientStaticState.serverController`, a `WorkerServerController`
 instead of an `InThreadServerController`; `registry.SV` is undefined on the page, because the server does not live there.
 
 ## Two channels, one port

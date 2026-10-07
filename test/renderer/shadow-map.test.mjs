@@ -7,6 +7,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../physics/fixtures.mjs';
+import { useClientStateOf } from '../support/clientState.ts';
 
 void describe('ShadowMap.renderPointLightShadow', () => {
   void test('limits entity casters to the active point light radius', () => {
@@ -63,6 +64,8 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         },
       },
     };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
 
     GL.gl = mockGl;
@@ -102,6 +105,8 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       }
 
       registry.CL = previousCL;
+
+      restoreClientState();
       eventBus.publish('registry.frozen');
     }
 
@@ -172,6 +177,8 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         },
       },
     };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
 
     GL.gl = mockGl;
@@ -211,6 +218,8 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       }
 
       registry.CL = previousCL;
+
+      restoreClientState();
       eventBus.publish('registry.frozen');
     }
 
@@ -291,6 +300,8 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         },
       },
     };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
 
     GL.gl = mockGl;
@@ -330,6 +341,8 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       }
 
       registry.CL = previousCL;
+
+      restoreClientState();
       eventBus.publish('registry.frozen');
     }
 
@@ -464,6 +477,8 @@ void describe('ShadowMap.selectPointLights', () => {
         clientEntities: { dlights: padded },
       },
     };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     ShadowMap.pointEnabled = { value: 1 };
     eventBus.publish('registry.frozen');
 
@@ -471,6 +486,7 @@ void describe('ShadowMap.selectPointLights', () => {
       callback();
     } finally {
       registry.CL = previousCL;
+      restoreClientState();
       ShadowMap.pointEnabled = previousPointEnabled;
       eventBus.publish('registry.frozen');
     }
@@ -816,6 +832,8 @@ void describe('ShadowMap.renderTopDownShadow', () => {
         },
       },
     };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
 
     GL.gl = mockGl;
@@ -848,6 +866,8 @@ void describe('ShadowMap.renderTopDownShadow', () => {
       }
 
       registry.CL = previousCL;
+
+      restoreClientState();
       eventBus.publish('registry.frozen');
     }
 
@@ -868,6 +888,8 @@ void describe('ShadowMap.renderTopDownShadow', () => {
     let bindFramebufferCalls = 0;
 
     registry.CL = { state: { worldmodel: null } };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
 
     const previousGL = GL.gl;
@@ -884,6 +906,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
         eventBus.publish('gl.shutdown');
       }
       registry.CL = previousCL;
+      restoreClientState();
       eventBus.publish('registry.frozen');
     }
 

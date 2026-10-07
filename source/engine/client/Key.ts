@@ -8,11 +8,13 @@ import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
+import { clientStaticState } from './ClientState.ts';
+import CL from './CL.ts';
 
-let { CL, Host, M } = getClientRegistry();
+let { Host, M } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, M } = getClientRegistry());
+  ({ Host, M } = getClientRegistry());
 });
 
 /**
@@ -476,7 +478,7 @@ export default class Key {
   /** Routes a raw key event to the appropriate handler based on current destination. */
   static Event(key: K, down: boolean): void {
     // Allow cancelling a pending connection with Escape.
-    if (CL.cls.state === clientConnectionState.connecting && key === K.ESCAPE && down) {
+    if (clientStaticState.state === clientConnectionState.connecting && key === K.ESCAPE && down) {
       CL.Disconnect();
       M.ToggleMenu_f();
       return;
@@ -557,7 +559,7 @@ export default class Key {
     }
 
     // During demo playback, any console key in game mode opens the menu.
-    if (CL.cls.demoplayback && Key.consolekeys.has(key) && Key.destination === KeyDestination.game) {
+    if (clientStaticState.demoplayback && Key.consolekeys.has(key) && Key.destination === KeyDestination.game) {
       M.ToggleMenu_f();
       return;
     }
@@ -568,7 +570,7 @@ export default class Key {
     // mousedown time (before M.Keydown() could react to this same click and change
     // Key.destination) so a click on the menu's own Back/Close button can't immediately reopen
     // what it was just asked to close.
-    if (key === K.MOUSE1 && Key.destination === KeyDestination.game && CL.cls.state !== clientConnectionState.connected) {
+    if (key === K.MOUSE1 && Key.destination === KeyDestination.game && clientStaticState.state !== clientConnectionState.connected) {
       M.Menu_Main_f();
       return;
     }

@@ -5,6 +5,7 @@ import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Installs a minimal `CL` registry stub, with a server controller, for the duration of the callback.
@@ -15,12 +16,14 @@ function withMockConnectionState({ state = clientConnectionState.disconnected, s
   const previousCL = registry.CL;
 
   registry.CL = { cls: { state }, serverController: { state: { active: serverActive } } };
+  const restoreClientState = useClientStateOf(registry.CL);
   eventBus.publish('registry.frozen');
 
   try {
     callback();
   } finally {
     registry.CL = previousCL;
+    restoreClientState();
     eventBus.publish('registry.frozen');
   }
 }

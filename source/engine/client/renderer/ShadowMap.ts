@@ -9,11 +9,12 @@ import Vector from '../../../shared/Vector.ts';
 import type { BrushModel } from '../../common/model/BSP.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import { modelRendererRegistry } from './ModelRendererRegistry.ts';
+import { clientRuntimeState } from '../ClientState.ts';
 
-let { CL, R } = getClientRegistry();
+let { R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, R } = getClientRegistry());
+  ({ R } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -159,7 +160,7 @@ export default class ShadowMap {
   static pointLightActiveCount: number = 0;
 
   /**
-   * Index into CL.state.clientEntities.dlights for each active point-light
+   * Index into clientRuntimeState.clientEntities.dlights for each active point-light
    * slot (-1 when the slot is unused). Read by R.AddDynamicLights() to
    * exclude these lights from the baked surface dlight texture, since their
    * contribution is instead computed analytically per-fragment and shadowed
@@ -408,7 +409,7 @@ export default class ShadowMap {
    * never contributes its own occlusion into the same depth map.
    */
   static renderTopDownShadow(viewOrigin: Vector): void {
-    if (!CL.state.worldmodel) {
+    if (!clientRuntimeState.worldmodel) {
       return;
     }
 
@@ -441,7 +442,7 @@ export default class ShadowMap {
     if (R.drawentities.value === 0) {
       return;
     }
-    for (const entity of CL.state.clientEntities.getVisibleEntities()) {
+    for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {
       if (!ShadowMap._isShadowCasterEntity(entity)) {
         continue;
       }
@@ -572,7 +573,7 @@ export default class ShadowMap {
       return 0;
     }
 
-    const dlights = CL.state.clientEntities.dlights;
+    const dlights = clientRuntimeState.clientEntities.dlights;
     const candidates: LightScoreCandidate[] = [];
 
     for (let i = 0; i < limits.dlights; i++) {
@@ -715,7 +716,7 @@ export default class ShadowMap {
 
   /** Render the point light shadow cube maps (all 6 faces) for every active slot. */
   static renderPointLightShadow(): void {
-    const worldmodel = CL.state.worldmodel as BrushModel | null;
+    const worldmodel = clientRuntimeState.worldmodel as BrushModel | null;
     if (!worldmodel) {
       return;
     }

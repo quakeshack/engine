@@ -11,13 +11,15 @@ import { getClientRegistry, getCommonRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import clientCvars from './ClientCvars.ts';
 
 let { Host } = getCommonRegistry();
-let { CL, R, SCR } = getClientRegistry();
+let { R, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
   ({ Host } = getCommonRegistry());
-  ({ CL, R, SCR } = getClientRegistry());
+  ({ R, SCR } = getClientRegistry());
 });
 
 /**
@@ -91,13 +93,13 @@ export default class V {
       return 0.0;
     }
 
-    let cycle = (CL.state.time - Math.floor(CL.state.time / V.bobcycle.value) * V.bobcycle.value) / V.bobcycle.value;
+    let cycle = (clientRuntimeState.time - Math.floor(clientRuntimeState.time / V.bobcycle.value) * V.bobcycle.value) / V.bobcycle.value;
     if (cycle < V.bobup.value) {
       cycle = Math.PI * cycle / V.bobup.value;
     } else {
       cycle = Math.PI + Math.PI * (cycle - V.bobup.value) / (1.0 - V.bobup.value);
     }
-    let bob = Math.hypot(CL.state.velocity[0], CL.state.velocity[1]) * V.bob.value;
+    let bob = Math.hypot(clientRuntimeState.velocity[0], clientRuntimeState.velocity[1]) * V.bob.value;
     bob = bob * 0.3 + bob * 0.7 * Math.sin(cycle);
     if (bob > 4.0) {
       bob = 4.0;
@@ -133,67 +135,67 @@ export default class V {
   }
 
   static StartPitchDrift(): void {
-    if (CL.state.laststop === CL.state.time) {
+    if (clientRuntimeState.laststop === clientRuntimeState.time) {
       return;
     }
-    if (CL.state.nodrift || CL.state.pitchvel === 0.0) {
-      CL.state.pitchvel = V.centerspeed.value;
-      CL.state.nodrift = false;
-      CL.state.driftmove = 0.0;
+    if (clientRuntimeState.nodrift || clientRuntimeState.pitchvel === 0.0) {
+      clientRuntimeState.pitchvel = V.centerspeed.value;
+      clientRuntimeState.nodrift = false;
+      clientRuntimeState.driftmove = 0.0;
     }
   }
 
   static StopPitchDrift(): void {
-    CL.state.laststop = CL.state.time;
-    CL.state.nodrift = true;
-    CL.state.pitchvel = 0.0;
+    clientRuntimeState.laststop = clientRuntimeState.time;
+    clientRuntimeState.nodrift = true;
+    clientRuntimeState.pitchvel = 0.0;
   }
 
   static DriftPitch(): void {
-    if (Host.noclip_anglehack || !CL.state.onground || CL.cls.demoplayback) {
-      CL.state.driftmove = 0.0;
-      CL.state.pitchvel = 0.0;
+    if (Host.noclip_anglehack || !clientRuntimeState.onground || clientStaticState.demoplayback) {
+      clientRuntimeState.driftmove = 0.0;
+      clientRuntimeState.pitchvel = 0.0;
       return;
     }
 
-    if (CL.state.nodrift) {
-      if (Math.abs(CL.state.cmd.forwardmove) < CL.forwardspeed.value) {
-        CL.state.driftmove = 0.0;
+    if (clientRuntimeState.nodrift) {
+      if (Math.abs(clientRuntimeState.cmd.forwardmove) < clientCvars.forwardspeed.value) {
+        clientRuntimeState.driftmove = 0.0;
       } else {
-        CL.state.driftmove += Host.frametime;
+        clientRuntimeState.driftmove += Host.frametime;
       }
-      if (CL.state.driftmove > V.centermove.value) {
+      if (clientRuntimeState.driftmove > V.centermove.value) {
         V.StartPitchDrift();
       }
       return;
     }
 
-    const delta = CL.state.idealpitch - CL.state.viewangles[0];
+    const delta = clientRuntimeState.idealpitch - clientRuntimeState.viewangles[0];
     if (delta === 0.0) {
-      CL.state.pitchvel = 0.0;
+      clientRuntimeState.pitchvel = 0.0;
       return;
     }
 
-    let move = Host.frametime * CL.state.pitchvel;
-    CL.state.pitchvel += Host.frametime * V.centerspeed.value;
+    let move = Host.frametime * clientRuntimeState.pitchvel;
+    clientRuntimeState.pitchvel += Host.frametime * V.centerspeed.value;
 
     if (delta > 0) {
       if (move > delta) {
-        CL.state.pitchvel = 0.0;
+        clientRuntimeState.pitchvel = 0.0;
         move = delta;
       }
-      CL.state.viewangles[0] += move;
+      clientRuntimeState.viewangles[0] += move;
     } else if (delta < 0) {
       if (move > -delta) {
-        CL.state.pitchvel = 0.0;
+        clientRuntimeState.pitchvel = 0.0;
         move = -delta;
       }
-      CL.state.viewangles[0] -= move;
+      clientRuntimeState.viewangles[0] -= move;
     }
   }
 
   static ApplyDamage(armor: number, blood: number, origin: Vector): void { // Client (formally known as V.ParseDamage)
-    const ent = CL.state.playerentity!;
+    const ent = clientRuntimeState.playerentity!;
     console.assert(ent !== null, 'Player entity is required for damage calculations');
     const from = origin.subtract(ent.origin);
 
@@ -204,9 +206,9 @@ export default class V {
     if (count < 10.0) {
       count = 10.0;
     }
-    CL.state.faceanimtime = CL.state.time + 0.2;
+    clientRuntimeState.faceanimtime = clientRuntimeState.time + 0.2;
 
-    const cshift = CL.state.cshifts[Def.contentShift.damage];
+    const cshift = clientRuntimeState.cshifts[Def.contentShift.damage];
     cshift[3] += 3.0 * count;
     if (cshift[3] < 0.0) {
       cshift[3] = 0.0;
@@ -239,7 +241,7 @@ export default class V {
   }
 
   static BonusFlash_f(): void {
-    const cshift = CL.state.cshifts[Def.contentShift.bonus];
+    const cshift = clientRuntimeState.cshifts[Def.contentShift.bonus];
     cshift[0] = 215.0;
     cshift[1] = 186.0;
     cshift[2] = 69.0;
@@ -247,7 +249,7 @@ export default class V {
   }
 
   static ContentShift(slot: number, color: Vector, alpha: number): void {
-    const cshift = CL.state.cshifts[slot];
+    const cshift = clientRuntimeState.cshifts[slot];
     cshift[0] = color[0] * 255.0;
     cshift[1] = color[1] * 255.0;
     cshift[2] = color[2] * 255.0;
@@ -260,38 +262,38 @@ export default class V {
   static SetContentsColor(contents: content): void {
     switch (contents) {
       case content.CONTENT_EMPTY:
-        CL.state.cshifts[Def.contentShift.contents] = V.cshift_empty;
+        clientRuntimeState.cshifts[Def.contentShift.contents] = V.cshift_empty;
         return;
       case content.CONTENT_LAVA:
-        CL.state.cshifts[Def.contentShift.contents] = V.cshift_lava;
+        clientRuntimeState.cshifts[Def.contentShift.contents] = V.cshift_lava;
         return;
       case content.CONTENT_SLIME:
-        CL.state.cshifts[Def.contentShift.contents] = V.cshift_slime;
+        clientRuntimeState.cshifts[Def.contentShift.contents] = V.cshift_slime;
         return;
       case content.CONTENT_WATER:
-        CL.state.cshifts[Def.contentShift.contents] = V.cshift_water;
+        clientRuntimeState.cshifts[Def.contentShift.contents] = V.cshift_water;
         return;
     }
   }
 
   static CalcBlend(): void {
-    let cshift = CL.state.cshifts[Def.contentShift.powerup];
-    if ((CL.state.items & Def.it.quad) !== 0) {
+    let cshift = clientRuntimeState.cshifts[Def.contentShift.powerup];
+    if ((clientRuntimeState.items & Def.it.quad) !== 0) {
       cshift[0] = 0.0;
       cshift[1] = 0.0;
       cshift[2] = 255.0;
       cshift[3] = 30.0;
-    } else if ((CL.state.items & Def.it.suit) !== 0) {
+    } else if ((clientRuntimeState.items & Def.it.suit) !== 0) {
       cshift[0] = 0.0;
       cshift[1] = 255.0;
       cshift[2] = 0.0;
       cshift[3] = 20.0;
-    } else if ((CL.state.items & Def.it.invisibility) !== 0) {
+    } else if ((clientRuntimeState.items & Def.it.invisibility) !== 0) {
       cshift[0] = 100.0;
       cshift[1] = 100.0;
       cshift[2] = 100.0;
       cshift[3] = 100.0;
-    } else if ((CL.state.items & Def.it.invulnerability) !== 0) {
+    } else if ((clientRuntimeState.items & Def.it.invulnerability) !== 0) {
       cshift[0] = 255.0;
       cshift[1] = 255.0;
       cshift[2] = 0.0;
@@ -300,18 +302,18 @@ export default class V {
       cshift[3] = 0.0;
     }
 
-    CL.state.cshifts[Def.contentShift.damage][3] -= Host.frametime * 150.0;
-    if (CL.state.cshifts[Def.contentShift.damage][3] < 0.0) {
-      CL.state.cshifts[Def.contentShift.damage][3] = 0.0;
+    clientRuntimeState.cshifts[Def.contentShift.damage][3] -= Host.frametime * 150.0;
+    if (clientRuntimeState.cshifts[Def.contentShift.damage][3] < 0.0) {
+      clientRuntimeState.cshifts[Def.contentShift.damage][3] = 0.0;
     }
-    CL.state.cshifts[Def.contentShift.bonus][3] -= Host.frametime * 100.0;
-    if (CL.state.cshifts[Def.contentShift.bonus][3] < 0.0) {
-      CL.state.cshifts[Def.contentShift.bonus][3] = 0.0;
+    clientRuntimeState.cshifts[Def.contentShift.bonus][3] -= Host.frametime * 100.0;
+    if (clientRuntimeState.cshifts[Def.contentShift.bonus][3] < 0.0) {
+      clientRuntimeState.cshifts[Def.contentShift.bonus][3] = 0.0;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-    for (let i = Def.contentShift.user1; i < CL.state.cshifts.length; i++) {
-      const userShift = CL.state.cshifts[i];
+    for (let i = Def.contentShift.user1; i < clientRuntimeState.cshifts.length; i++) {
+      const userShift = clientRuntimeState.cshifts[i];
       userShift[3] -= Host.frametime * 100.0;
       if (userShift[3] < 0.0) {
         userShift[3] = 0.0;
@@ -328,8 +330,8 @@ export default class V {
     let b = 0.0;
     let a = 0.0;
     let a2: number;
-    for (let i = 0; i < CL.state.cshifts.length; i++) {
-      cshift = CL.state.cshifts[i];
+    for (let i = 0; i < clientRuntimeState.cshifts.length; i++) {
+      cshift = clientRuntimeState.cshifts[i];
       a2 = cshift[3] * V.cshiftpercent.value / 25500.0;
       if (a2 === 0.0) {
         continue;
@@ -357,16 +359,16 @@ export default class V {
   }
 
   static CalcIntermissionRefdef(): void {
-    const ent = CL.state.playerentity!;
+    const ent = clientRuntimeState.playerentity!;
     console.assert(ent !== null, 'Player entity is required for intermission view calculations');
     R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]);
     R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]);
     R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]);
-    R.refdef.viewangles[0] = finiteOrZero(ent.angles[0]) + Math.sin(CL.state.time * V.ipitch_cycle.value) * V.ipitch_level.value;
-    R.refdef.viewangles[1] = finiteOrZero(ent.angles[1]) + Math.sin(CL.state.time * V.iyaw_cycle.value) * V.iyaw_level.value;
-    R.refdef.viewangles[2] = finiteOrZero(ent.angles[2]) + Math.sin(CL.state.time * V.iroll_cycle.value) * V.iroll_level.value;
-    console.assert(CL.state.viewent !== null, 'View entity is required for intermission view calculations');
-    CL.state.viewent!.model = null;
+    R.refdef.viewangles[0] = finiteOrZero(ent.angles[0]) + Math.sin(clientRuntimeState.time * V.ipitch_cycle.value) * V.ipitch_level.value;
+    R.refdef.viewangles[1] = finiteOrZero(ent.angles[1]) + Math.sin(clientRuntimeState.time * V.iyaw_cycle.value) * V.iyaw_level.value;
+    R.refdef.viewangles[2] = finiteOrZero(ent.angles[2]) + Math.sin(clientRuntimeState.time * V.iroll_cycle.value) * V.iroll_level.value;
+    console.assert(clientRuntimeState.viewent !== null, 'View entity is required for intermission view calculations');
+    clientRuntimeState.viewent!.model = null;
   }
 
   static CalcRefdef(): void { // TODO: Client
@@ -374,7 +376,7 @@ export default class V {
       V.DriftPitch();
     }
 
-    const ent = CL.state.playerentity!;
+    const ent = clientRuntimeState.playerentity!;
     console.assert(ent !== null, 'Player entity is required for view calculations');
 
     const bob = V.CalcBob();
@@ -386,8 +388,8 @@ export default class V {
     }
     const viewmodelBob = V.#smoothedViewmodelBob;
 
-    const currentPitch = CL.state.viewangles[0];
-    const currentYaw = CL.state.viewangles[1];
+    const currentPitch = clientRuntimeState.viewangles[0];
+    const currentYaw = clientRuntimeState.viewangles[1];
     if (!V.#viewmodelLookBobInitialized) {
       V.#previousViewPitch = currentPitch;
       V.#previousViewYaw = currentYaw;
@@ -406,11 +408,11 @@ export default class V {
 
     R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]) + 0.03125;
     R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]) + 0.03125;
-    R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) + CL.state.viewheight + bob + 0.03125;
+    R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) + clientRuntimeState.viewheight + bob + 0.03125;
 
-    R.refdef.viewangles[0] = CL.state.viewangles[0];
-    R.refdef.viewangles[1] = CL.state.viewangles[1];
-    R.refdef.viewangles[2] = CL.state.viewangles[2] + V.CalcRoll(ent.angles, CL.state.velocity);
+    R.refdef.viewangles[0] = clientRuntimeState.viewangles[0];
+    R.refdef.viewangles[1] = clientRuntimeState.viewangles[1];
+    R.refdef.viewangles[2] = clientRuntimeState.viewangles[2] + V.CalcRoll(ent.angles, clientRuntimeState.velocity);
 
     if (V.dmg_time > 0.0) {
       if (V.kicktime.value) {
@@ -420,9 +422,9 @@ export default class V {
       V.dmg_time -= Host.frametime;
     }
 
-    const ipitch = V.idlescale.value * Math.sin(CL.state.time * V.ipitch_cycle.value) * V.ipitch_level.value;
-    const iyaw = V.idlescale.value * Math.sin(CL.state.time * V.iyaw_cycle.value) * V.iyaw_level.value;
-    const iroll = V.idlescale.value * Math.sin(CL.state.time * V.iroll_cycle.value) * V.iroll_level.value;
+    const ipitch = V.idlescale.value * Math.sin(clientRuntimeState.time * V.ipitch_cycle.value) * V.ipitch_level.value;
+    const iyaw = V.idlescale.value * Math.sin(clientRuntimeState.time * V.iyaw_cycle.value) * V.iyaw_level.value;
+    const iroll = V.idlescale.value * Math.sin(clientRuntimeState.time * V.iroll_cycle.value) * V.iroll_level.value;
     R.refdef.viewangles[0] += ipitch;
     R.refdef.viewangles[1] += iyaw;
     R.refdef.viewangles[2] += iroll;
@@ -448,15 +450,15 @@ export default class V {
       R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) + 30.0;
     }
 
-    const view = CL.state.viewent!;
+    const view = clientRuntimeState.viewent!;
     console.assert(view !== null, 'View entity is required for view calculations');
 
     view.angles[0] = -R.refdef.viewangles[0] - ipitch;
     view.angles[1] = R.refdef.viewangles[1] - iyaw;
-    view.angles[2] = CL.state.viewangles[2] - iroll;
+    view.angles[2] = clientRuntimeState.viewangles[2] - iroll;
     view.origin[0] = finiteOrZero(ent.origin[0]) + forward[0] * viewmodelBob * 0.4;
     view.origin[1] = finiteOrZero(ent.origin[1]) + forward[1] * viewmodelBob * 0.4;
-    view.origin[2] = finiteOrZero(ent.origin[2]) + CL.state.viewheight + forward[2] * viewmodelBob * 0.4 + viewmodelBob;
+    view.origin[2] = finiteOrZero(ent.origin[2]) + clientRuntimeState.viewheight + forward[2] * viewmodelBob * 0.4 + viewmodelBob;
     view.origin[0] += right[0] * V.#viewmodelLookBobRight + up[0] * V.#viewmodelLookBobUp;
     view.origin[1] += right[1] * V.#viewmodelLookBobRight + up[1] * V.#viewmodelLookBobUp;
     view.origin[2] += right[2] * V.#viewmodelLookBobRight + up[2] * V.#viewmodelLookBobUp;
@@ -475,7 +477,7 @@ export default class V {
         view.origin[2] += 0.5;
     }
 
-    const viewmodel = CL.state.gameAPI?.viewmodel ?? null;
+    const viewmodel = clientRuntimeState.gameAPI?.viewmodel ?? null;
 
     if (viewmodel !== null) {
       view.model = viewmodel.model;
@@ -497,9 +499,9 @@ export default class V {
       view.frameTime = 0.0;
     }
 
-    R.refdef.viewangles.add(CL.state.punchangle);
+    R.refdef.viewangles.add(clientRuntimeState.punchangle);
 
-    if (CL.state.onground && (ent.origin[2] - V.oldz) > 0.0) {
+    if (clientRuntimeState.onground && (ent.origin[2] - V.oldz) > 0.0) {
       let steptime = Host.frametime;
       if (steptime < 0.0) {
         steptime = 0.0;
@@ -516,8 +518,8 @@ export default class V {
       V.oldz = finiteOrZero(ent.origin[2]);
     }
 
-    if (CL.state.gameAPI) {
-      CL.state.gameAPI.updateRefDef(R.refdef);
+    if (clientRuntimeState.gameAPI) {
+      clientRuntimeState.gameAPI.updateRefDef(R.refdef);
     }
 
     if (Chase.active.value) {
@@ -529,14 +531,14 @@ export default class V {
     if (ConsoleOverlay.forcedup) {
       return;
     }
-    if (CL.state.maxclients >= 2) {
+    if (clientRuntimeState.maxclients >= 2) {
       Cvar.Set('scr_ofsx', '0');
       Cvar.Set('scr_ofsy', '0');
       Cvar.Set('scr_ofsz', '0');
     }
-    if (CL.state.intermission > 0) {
+    if (clientRuntimeState.intermission > 0) {
       V.CalcIntermissionRefdef();
-    } else if (!CL.state.paused) {
+    } else if (!clientRuntimeState.paused) {
       V.CalcRefdef();
     }
     R.PreRenderScene();
@@ -546,10 +548,10 @@ export default class V {
     if (ConsoleOverlay.forcedup) {
       return;
     }
-    if (!CL.state.worldmodel) {
+    if (!clientRuntimeState.worldmodel) {
       return;
     }
-    if (CL.cls.signon < 4) {
+    if (clientStaticState.signon < 4) {
       return;
     }
     R.PushDlights();

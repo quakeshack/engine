@@ -11,6 +11,7 @@ import { content } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import V from '../../source/engine/client/V.ts';
 import { assertNear } from '../physics/fixtures.mjs';
+import { useClientStateOf } from '../support/clientState.ts';
 
 void describe('compareTransparentItems', () => {
   void test('sorts farther items first', () => {
@@ -87,6 +88,8 @@ void describe('R.GetEntityLightSamplePoint', () => {
     const previousMod = registry.Mod;
 
     registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { viewent: null } });
+
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.Mod = /** @type {typeof import('../../source/engine/common/Mod.ts').default} */ (/** @type {unknown} */ ({ type: { alias: 2, brush: 1 } }));
     eventBus.publish('registry.frozen');
 
@@ -102,6 +105,7 @@ void describe('R.GetEntityLightSamplePoint', () => {
       assert.deepEqual(Array.from(samplePoint), [-4, 8, 12]);
     } finally {
       registry.CL = previousCL;
+      restoreClientState();
       registry.Mod = previousMod;
       eventBus.publish('registry.frozen');
     }
@@ -137,12 +141,15 @@ void describe('R._SampleDeluxemapDirection', () => {
     const previousCL = registry.CL;
 
     registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { worldmodel } });
+
+    const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
 
     try {
       callback();
     } finally {
       registry.CL = previousCL;
+      restoreClientState();
       eventBus.publish('registry.frozen');
     }
   }
@@ -254,6 +261,8 @@ void describe('R.RecursiveLightPoint', () => {
     const { brushmodel, root } = makeFloorWorld();
 
     registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { worldmodel: brushmodel } });
+
+    const restoreClientState = useClientStateOf(registry.CL);
     // GetLightstyleInterpolation() only needs a Cvar-shaped value, disabling
     // interpolation so it returns early without touching CL.state.time.
     R.interpolation = /** @type {import('../../source/engine/common/Cvar.ts').default} */ ({ value: 0 });
@@ -263,6 +272,7 @@ void describe('R.RecursiveLightPoint', () => {
       callback(root);
     } finally {
       registry.CL = previousCL;
+      restoreClientState();
       R.interpolation = previousInterpolation;
       eventBus.publish('registry.frozen');
     }

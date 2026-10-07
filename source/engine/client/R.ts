@@ -32,11 +32,14 @@ import ShadowMap from './renderer/ShadowMap.ts';
 import { ClientDlight, ClientEdict } from './ClientEntities.ts';
 import { avertexnormals } from '../common/model/loaders/AliasMDLLoader.ts';
 import { SkyRenderer } from './renderer/Sky.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import clientCvars from './ClientCvars.ts';
+import { clientCollision } from './ClientPhysics.ts';
 
-let { CL, Host, SCR, Sys, V } = getClientRegistry();
+let { Host, SCR, Sys, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, SCR, Sys, V } = getClientRegistry());
+  ({ Host, SCR, Sys, V } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -319,7 +322,7 @@ class R {
    * the shared `PhysicsMath.clipVelocity()` formula, matching `MOVETYPE_BOUNCE`'s overbounce; a
    * wall/ceiling-like surface, or a start already embedded in solid, reports a kill instead of
    * clipping through it. Always leaves `origin` at the particle's actual resting position for this
-   * step -- `newOrigin` when nothing was hit, the impact point otherwise. `CL.collision.
+   * step -- `newOrigin` when nothing was hit, the impact point otherwise. `clientCollision.
    * pointContents()` (a cheap BSP point classification, no swept-hull work) gates the real
    * `traceStaticWorldLine()` call, so the common case of open-air flight never pays for a full
    * trace -- see the "Extension: gravity-particle collision" section of
@@ -327,12 +330,12 @@ class R {
    * @returns True when the particle hit a wall/ceiling-like surface and should be killed.
    */
   static ResolveParticleCollision(origin: Vector, velocity: Vector, newOrigin: Vector): boolean {
-    if (CL.collision.pointContents(newOrigin) !== content.CONTENT_SOLID) {
+    if (clientCollision.pointContents(newOrigin) !== content.CONTENT_SOLID) {
       origin.set(newOrigin);
       return false;
     }
 
-    const trace = CL.collision.traceStaticWorldLine(origin, newOrigin);
+    const trace = clientCollision.traceStaticWorldLine(origin, newOrigin);
     origin.set(trace.endpos);
 
     if (!trace.allsolid && trace.fraction >= 1.0) {
@@ -448,7 +451,7 @@ class R {
       return 0.0;
     }
 
-    return (CL.state.time % 0.2) / 0.2;
+    return (clientRuntimeState.time % 0.2) / 0.2;
   }
 
   /**
@@ -460,16 +463,16 @@ class R {
       return 0.0;
     }
 
-    const linear = (CL.state.time * 10.0) % 1.0;
+    const linear = (clientRuntimeState.time * 10.0) % 1.0;
 
     return linear * linear * (3.0 - 2.0 * linear);
   }
 
   static AnimateLight(): void {
     if (R.fullbright.value === 0) {
-      const i = Math.floor(CL.state.time * 10.0);
+      const i = Math.floor(clientRuntimeState.time * 10.0);
       for (let j = 0; j < 64; j++) {
-        const ls = CL.state.clientEntities.lightstyle[j];
+        const ls = clientRuntimeState.clientEntities.lightstyle[j];
         if (ls.length === 0) {
           R.lightstylevalue_a[j] = 12;
           R.lightstylevalue_b[j] = 12;
@@ -500,8 +503,8 @@ class R {
     console.assert(program !== null, 'dlight program required');
     GL.BindVAO(R.dlightVAO);
     for (let i = 0; i < Def.limits.dlights; i++) {
-      const l = CL.state.clientEntities.dlights[i];
-      if ((l.die < CL.state.time) || (l.radius === 0.0)) {
+      const l = clientRuntimeState.clientEntities.dlights[i];
+      if ((l.die < clientRuntimeState.time) || (l.radius === 0.0)) {
         continue;
       }
       if (l.origin.copy().subtract(R.refdef.vieworg).len() < (l.radius * 0.35)) {
@@ -526,7 +529,7 @@ class R {
    * @returns A known point on the surface plane.
    */
   static GetDynamicLightSurfacePoint(surf: Face): Vector {
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     const surfedge = worldmodel.surfedges[surf.firstedge!];
 
@@ -561,7 +564,7 @@ class R {
    */
   static IsDynamicLightSurfaceVisible(light: ClientDlight, surf: Face, impact: Vector): boolean {
     const end = impact.copy().add(surf.normal!.copy().multiply(1.0));
-    const trace = CL.collision.traceStaticWorldLine(light.origin, end);
+    const trace = clientCollision.traceStaticWorldLine(light.origin, end);
 
     return !trace.startsolid && !trace.allsolid && trace.fraction === 1.0;
   };
@@ -619,7 +622,7 @@ class R {
       return;
     }
 
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
 
     for (let i = 0; i < LIGHTMAP_BLOCK_SIZE; i++) {
@@ -629,11 +632,11 @@ class R {
     let bit = 1;
 
     for (let i = 0; i < Def.limits.dlights; i++) {
-      const l = CL.state.clientEntities.dlights[i];
+      const l = clientRuntimeState.clientEntities.dlights[i];
 
       if (!l.isFree()) {
         R.MarkLights(l, bit, worldmodel.nodes[0]);
-        for (const ent of CL.state.clientEntities.getVisibleEntities()) {
+        for (const ent of clientRuntimeState.clientEntities.getVisibleEntities()) {
           if (ent.model === null) {
             continue;
           }
@@ -686,7 +689,7 @@ class R {
       return null;
     }
 
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     const plane = node.plane!;
     console.assert(plane !== null, 'node plane required');
@@ -849,7 +852,7 @@ class R {
    * toward the light, or null when no deluxemap data is available for this face.
    */
   static _SampleDeluxemapDirection(surf: Face, tex: BrushTexInfo, smax: number, tmax: number, ds: number, dt: number, uInterpolation: number): Vector | null {
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
 
     if (worldmodel.deluxemap === null) {
@@ -901,7 +904,7 @@ class R {
   };
 
   static LightPoint(p: Vector): LightPointResult {
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
 
     if (worldmodel.lightdata === null && worldmodel.lightdata_rgb === null) {
@@ -937,7 +940,7 @@ class R {
    * @returns Point data or null when the octree has no lighting sample there.
    */
   static SampleLightgridPoint(gridPos: GridPosition): LightgridPointSample | null {
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     const grid = worldmodel.lightgrid;
 
@@ -1026,7 +1029,7 @@ class R {
    * @returns Interpolated RGB light and origin, or null when no grid sample is available.
    */
   static LightPointFromGrid(pos: Vector): LightPointResult | null {
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     const grid = worldmodel.lightgrid;
 
@@ -1189,7 +1192,7 @@ class R {
     const shadelight = ambientlight.copy();
 
     // never have a pitch black view model
-    if (e === CL.state.viewent && ambientlight.average() < 24.0) {
+    if (e === clientRuntimeState.viewent && ambientlight.average() < 24.0) {
       if (ambientlight.average() === 0) {
         ambientlight.setTo(1.0, 1.0, 1.0); // no color, set to white
       }
@@ -1203,7 +1206,7 @@ class R {
 
     // add dynamic lights
     for (let i = 0; i < Def.limits.dlights; i++) {
-      const dl = CL.state.clientEntities.dlights[i];
+      const dl = clientRuntimeState.clientEntities.dlights[i];
 
       if (dl.isFree()) {
         continue;
@@ -1242,7 +1245,7 @@ class R {
     if (e.effects & (effect.EF_FULLBRIGHT | effect.EF_MUZZLEFLASH)) {
       ambientlight.setTo(255.0, 255.0, 255.0);
       shadelight.set(ambientlight);
-    } else if ((e.num >= 1 && e.num <= CL.state.maxclients && shadelight.greatest() < 8.0) || (e.effects & effect.EF_MINLIGHT)) {
+    } else if ((e.num >= 1 && e.num <= clientRuntimeState.maxclients && shadelight.greatest() < 8.0) || (e.effects & effect.EF_MINLIGHT)) {
       // never let players go totally dark either
       if (ambientlight.average() === 0) {
         ambientlight.setTo(1.0, 1.0, 1.0); // no color, set to white
@@ -1325,7 +1328,7 @@ class R {
     // Group entities by renderer for batched rendering without numeric type dispatch.
     const entitiesByRenderer = new Map<ModelRenderer, ClientEdict[]>();
 
-    for (const entity of CL.state.clientEntities.getVisibleEntities()) {
+    for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {
       if (entity.model === null || entity.alpha === 0.0) {
         continue;
       }
@@ -1436,7 +1439,7 @@ class R {
       }
     }
 
-    R.decals = R.decals.filter((decal) => decal.die > CL.state.time);
+    R.decals = R.decals.filter((decal) => decal.die > clientRuntimeState.time);
     for (let i = 0; i < R.decals.length; i++) {
       const decal = R.decals[i];
       const dx = decal.origin[0] - vieworg[0];
@@ -1451,7 +1454,7 @@ class R {
 
     for (let i = 0; i < R.numparticles; i++) {
       const particle = R.particles[i];
-      if (particle.die < CL.state.time) {
+      if (particle.die < clientRuntimeState.time) {
         continue;
       }
 
@@ -1468,7 +1471,7 @@ class R {
     if (R.drawentities.value !== 0) {
       const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
 
-      for (const entity of CL.state.clientEntities.getVisibleEntities()) {
+      for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {
         if (entity.model === null || entity.alpha === 0.0) {
           continue;
         }
@@ -1509,7 +1512,7 @@ class R {
     let currentDecalTexture: GLTexture | null = null;
     const particleCoords = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
     const particleFrameTime = Host.frametime;
-    const particleGravity = +CL.cls.serverInfo.sv_gravity || 800;
+    const particleGravity = +clientStaticState.serverInfo.sv_gravity || 800;
     const particleGrav = particleFrameTime * particleGravity * 0.05;
     const particleDvel = particleFrameTime * 4.0;
     let activeKind: TransparentKind | -1 = -1;
@@ -1680,7 +1683,7 @@ class R {
       }
       case TransparentKind.Particle: {
         const particle = item.data as Particle;
-        if (particle.die < CL.state.time) {
+        if (particle.die < clientRuntimeState.time) {
           break;
         }
 
@@ -1710,7 +1713,7 @@ class R {
       return;
     }
 
-    const viewmodel = CL.state.gameAPI?.viewmodel ?? null;
+    const viewmodel = clientRuntimeState.gameAPI?.viewmodel ?? null;
 
     if (viewmodel === null) {
       return;
@@ -1733,7 +1736,7 @@ class R {
     console.assert(program !== null, 'alias program required');
     gl.uniformMatrix4fv(program.uPerspective!, false, R.perspective);
 
-    const viewent = CL.state.viewent;
+    const viewent = clientRuntimeState.viewent;
     if (viewent !== null && viewent.model !== null) {
       const aliasRenderer = modelRendererRegistry.getRendererForModel(viewent.model);
       console.assert(aliasRenderer !== null, 'alias renderer required');
@@ -2013,7 +2016,7 @@ class R {
 
   static PreRenderScene() {
     R.AnimateLight();
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     const {forward, right, up} = R.refdef.viewangles.angleVectors();
     [R.vpn, R.vright, R.vup] = [forward, right, up];
@@ -2087,7 +2090,7 @@ class R {
 
   static RenderWorld() {
     // Render world and entities using the renderer registry
-    const worldEntity = CL.state.clientEntities.getEntity(0);
+    const worldEntity = clientRuntimeState.clientEntities.getEntity(0);
     if (worldEntity && worldEntity.model) {
       const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel);
       console.assert(brushRenderer !== null, 'brush renderer required');
@@ -2139,7 +2142,7 @@ class R {
     // Turbulent boundary depth pre-pass — capture turbulent surface depths so the
     // underwater fog effect knows where the water boundary is per pixel.
     if (PostProcess.getEffect('underwater-fog')?.active && PostProcess.active) {
-      const worldEntity = CL.state.clientEntities.getEntity(0);
+      const worldEntity = clientRuntimeState.clientEntities.getEntity(0);
       const worldmodel = worldEntity?.model instanceof BrushModel ? worldEntity.model : null;
       const brushRenderer = worldmodel !== null
         ? modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer | null
@@ -2575,7 +2578,7 @@ class R {
   };
 
   static NewMapFog() {
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel must be loaded before InitFog');
 
     const fogInfo = worldmodel.worldspawnInfo.fog;
@@ -2674,13 +2677,13 @@ class R {
     for (let i = 0; i < R.numparticles; i++) {
       const p = R.particles[i];
 
-      if (p.die < CL.state.time) {
+      if (p.die < clientRuntimeState.time) {
         continue;
       }
 
       data.push({
         i: i,
-        die: round(p.die - CL.state.time),
+        die: round(p.die - clientRuntimeState.time),
         color: p.color,
         ramp: round(p.ramp),
         type: round(p.type),
@@ -2696,7 +2699,7 @@ class R {
     for (const p of data) {
       console.assert(p.i >= 0 && p.i < R.particles.length, 'valid particle index', p.i);
       R.particles[p.i] = {
-        die: p.die + CL.state.time,
+        die: p.die + clientRuntimeState.time,
         color: p.color,
         ramp: p.ramp,
         type: p.type,
@@ -2710,15 +2713,15 @@ class R {
     const allocated = R.AllocParticles(162);
 
     for (let i = 0; i < allocated.length; i++) {
-      const angleP = CL.state.time * R.avelocities[i][0];
+      const angleP = clientRuntimeState.time * R.avelocities[i][0];
       const sp = Math.sin(angleP);
       const cp = Math.cos(angleP);
-      const angleY = CL.state.time * R.avelocities[i][1];
+      const angleY = clientRuntimeState.time * R.avelocities[i][1];
       const sy = Math.sin(angleY);
       const cy = Math.cos(angleY);
 
       R.particles[allocated[i]] = { // TODO: Particle Class
-        die: CL.state.time + 0.01,
+        die: clientRuntimeState.time + 0.01,
         color: 0x6f,
         ramp: 0.0,
         type: R.ptype.explode,
@@ -2743,7 +2746,7 @@ class R {
     const allocated = R.AllocParticles(1024);
     for (let i = 0; i < allocated.length; i++) {
       R.particles[allocated[i]] = {
-        die: CL.state.time + 5.0,
+        die: clientRuntimeState.time + 5.0,
         color: R.ramp1[0],
         ramp: Math.floor(Math.random() * 4.0),
         type: ((i & 1) !== 0) ? R.ptype.explode : R.ptype.explode2,
@@ -2762,7 +2765,7 @@ class R {
     let colorMod = 0;
     for (let i = 0; i < allocated.length; i++) {
       R.particles[allocated[i]] = {
-        die: CL.state.time + 0.3,
+        die: clientRuntimeState.time + 0.3,
         color: colorStart + (colorMod++ % colorLength),
         ramp: 0.0,
         type: R.ptype.blob,
@@ -2780,7 +2783,7 @@ class R {
     const allocated = R.AllocParticles(1024);
     for (let i = 0; i < allocated.length; i++) {
       const p = R.particles[allocated[i]];
-      p.die = CL.state.time + 1.0 + Math.random() * 0.4;
+      p.die = clientRuntimeState.time + 1.0 + Math.random() * 0.4;
       if ((i & 1) !== 0) {
         p.type = R.ptype.blob;
         p.color = 66 + Math.floor(Math.random() * 7.0);
@@ -2801,7 +2804,7 @@ class R {
     const allocated = R.AllocParticles(count); let i;
     for (i = 0; i < allocated.length; i++) {
       R.particles[allocated[i]] = {
-        die: CL.state.time + 0.6 * Math.random(),
+        die: clientRuntimeState.time + 0.6 * Math.random(),
         color: (color & 0xf8) + Math.floor(Math.random() * 8.0),
         ramp: 0.0,
         type: R.ptype.slowgrav,
@@ -2824,7 +2827,7 @@ class R {
           return;
         }
         const p = R.particles[allocated[k++]];
-        p.die = CL.state.time + 2.0 + Math.random() * 0.64;
+        p.die = clientRuntimeState.time + 2.0 + Math.random() * 0.64;
         p.color = 224 + Math.floor(Math.random() * 8.0);
         p.type = R.ptype.slowgrav;
         const dir = new Vector((j + Math.random()) * 8.0, (i + Math.random()) * 8.0, 256.0);
@@ -2845,7 +2848,7 @@ class R {
             return;
           }
           const p = R.particles[allocated[l++]];
-          p.die = CL.state.time + 0.2 + Math.random() * 0.16;
+          p.die = clientRuntimeState.time + 0.2 + Math.random() * 0.16;
           p.color = 7 + Math.floor(Math.random() * 8.0);
           p.type = R.ptype.slowgrav;
           const dir = new Vector(j * 8.0, i * 8.0, k * 8.0);
@@ -2883,7 +2886,7 @@ class R {
     for (let i = 0; i < allocated.length; i++) {
       const p = R.particles[allocated[i]];
       p.vel = new Vector();
-      p.die = CL.state.time + 2.0;
+      p.die = clientRuntimeState.time + 2.0;
       switch (type) {
         case 7:
           type = 1;
@@ -2911,7 +2914,7 @@ class R {
           break;
         case 3:
         case 5:
-          p.die = CL.state.time + 0.5;
+          p.die = clientRuntimeState.time + 0.5;
           p.type = R.ptype.tracer;
           if (type === 3) {
             p.color = 52 + ((R.tracercount++ & 4) << 1);
@@ -2939,7 +2942,7 @@ class R {
         case 6:
           p.color = 152 + Math.floor(Math.random() * 4.0);
           p.type = R.ptype.tracer;
-          p.die = CL.state.time + 0.3;
+          p.die = clientRuntimeState.time + 0.3;
           p.org = new Vector(
             start[0] + Math.random() * 16.0 - 8.0,
             start[1] + Math.random() * 16.0 - 8.0,
@@ -2958,10 +2961,10 @@ class R {
 
     Cmd.AddCommand('test_decal', async () => {
       const start = R.refdef.vieworg;
-      const vectors = CL.state.viewangles.angleVectors();
+      const vectors = clientRuntimeState.viewangles.angleVectors();
       const forward = vectors.forward;
       const end = start.copy().add(forward.copy().multiply(8192));
-      const trace = CL.collision.traceStaticWorldLine(start, end);
+      const trace = clientCollision.traceStaticWorldLine(start, end);
 
       if (trace.allsolid || trace.startsolid || trace.fraction === 1.0) {
         return;
@@ -3009,7 +3012,7 @@ class R {
     }
 
     // Calculate lighting
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     const lightStart = origin.copy().add(normal.copy().multiply(4.0));
     const lightEnd = origin.copy().subtract(normal.copy().multiply(4.0));
@@ -3027,7 +3030,7 @@ class R {
       texture,
       verts,
       color,
-      die: CL.state.time + 10.0, // Lasts 10 seconds
+      die: clientRuntimeState.time + 10.0, // Lasts 10 seconds
       origin: origin.copy(),
     });
   };
@@ -3038,7 +3041,7 @@ class R {
     }
 
     // Remove dead decals
-    R.decals = R.decals.filter((d) => d.die > CL.state.time);
+    R.decals = R.decals.filter((d) => d.die > clientRuntimeState.time);
 
     if (R.decals.length === 0) {
       return;
@@ -3080,14 +3083,14 @@ class R {
     gl.enable(gl.BLEND);
 
     const frametime = Host.frametime;
-    const gravity = +CL.cls.serverInfo.sv_gravity || 800;
+    const gravity = +clientStaticState.serverInfo.sv_gravity || 800;
     const grav = frametime * gravity * 0.05;
     const dvel = frametime * 4.0;
 
     const coords = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
     for (let i = 0; i < R.numparticles; i++) {
       const p = R.particles[i];
-      if (p.die < CL.state.time) {
+      if (p.die < clientRuntimeState.time) {
         continue;
       }
 
@@ -3106,7 +3109,7 @@ class R {
       if (count === 0) {
         return allocated;
       }
-      if (R.particles[i].die < CL.state.time) {
+      if (R.particles[i].die < clientRuntimeState.time) {
         allocated[j++] = i;
         count--;
       }
@@ -3125,7 +3128,7 @@ class R {
   static AddDynamicLights(surf: Face): void {
     const lmshift = surf.lmshift!;
     console.assert(lmshift !== null, 'face lightmap shift required');
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     const dlightmapsRgba = R.dlightmaps_rgba!;
     console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
@@ -3150,7 +3153,7 @@ class R {
       if (ShadowMap.pointLightDlightIndices.includes(i)) {
         continue;
       }
-      const light = CL.state.clientEntities.dlights[i];
+      const light = clientRuntimeState.clientEntities.dlights[i];
       const lightImpact = R.GetDynamicLightSurfaceImpact(light, surf);
 
       if (lightImpact === null) {
@@ -3347,7 +3350,7 @@ class R {
   };
 
   static MarkLeafs() {
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
 
     if ((R.oldviewleaf === R.viewleaf) && (R.novis.value === 0)) {
@@ -3364,7 +3367,7 @@ class R {
       if (!vis.isRevealed(i)) {
         continue;
       }
-      if (CL.areaportals.value > 0 && R.viewleaf && !worldmodel.areaPortals.leafsConnected(R.viewleaf, worldmodel.leafs[i])) {
+      if (clientCvars.areaportals.value > 0 && R.viewleaf && !worldmodel.areaPortals.leafsConnected(R.viewleaf, worldmodel.leafs[i])) {
         continue;
       }
       for (let node: Node | null = worldmodel.leafs[i]; node !== null; node = node.parent) {
@@ -3399,7 +3402,7 @@ class R {
         if (!vis.isRevealed(i)) {
           continue;
         }
-        if (CL.areaportals.value > 0 && !worldmodel.areaPortals.leafsConnected(R.viewleaf, worldmodel.leafs[i])) {
+        if (clientCvars.areaportals.value > 0 && !worldmodel.areaPortals.leafsConnected(R.viewleaf, worldmodel.leafs[i])) {
           continue;
         }
         for (let node: Node | null = worldmodel.leafs[i]; node !== null; node = node.parent) {
@@ -3458,8 +3461,8 @@ class R {
     console.assert(brushRenderer !== null, 'brush renderer required');
     console.assert(meshRenderer !== null, 'mesh renderer required');
 
-    for (let i = 1; i < CL.state.model_precache.length; i++) {
-      const currentmodel = CL.state.model_precache[i];
+    for (let i = 1; i < clientRuntimeState.model_precache.length; i++) {
+      const currentmodel = clientRuntimeState.model_precache[i];
 
       // Handle brush models (BSP maps)
       if (currentmodel instanceof BrushModel) {
@@ -3520,7 +3523,7 @@ class R {
       R.skyrenderer.shutdown();
     }
 
-    const worldmodel = CL.state.worldmodel!;
+    const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     R.skyrenderer = worldmodel.newSkyRenderer();
 

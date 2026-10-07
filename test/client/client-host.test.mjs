@@ -8,6 +8,8 @@ import { KeyDestination } from '../../source/engine/client/Key.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import { clientStaticState } from '../../source/engine/client/ClientState.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Builds a client runtime mock that records what the host does to it, in order.
@@ -64,11 +66,13 @@ async function withRegistryMembers(members, callback) {
   const previous = Object.fromEntries(Object.keys(members).map((name) => [name, registry[name]]));
 
   Object.assign(registry, members);
+  const restoreClientState = useClientStateOf(members.CL);
   eventBus.publish('registry.frozen');
 
   try {
     await callback();
   } finally {
+    restoreClientState();
     Object.assign(registry, previous);
     eventBus.publish('registry.frozen');
   }
@@ -201,8 +205,8 @@ void describe('ClientHost', () => {
       await withRegistryMembers(runtime, async () => {
         ClientHost.Map_f.call({ client: null }, 'e1m2', 'a', 'b');
 
-        assert.equal(runtime.CL.cls.demonum, -1);
-        assert.equal(runtime.CL.cls.spawnparms, 'a b');
+        assert.equal(clientStaticState.demonum, -1);
+        assert.equal(clientStaticState.spawnparms, 'a b');
         assert.equal(runtime.Key.destination, KeyDestination.game);
         assert.equal(scheduled.length, 1);
         assert.deepEqual(calls.map(([name]) => name), ['Disconnect', 'stop', 'BeginLoadingPlaque', 'SetConnectingStep'], 'nothing spawns before the next frame');
@@ -260,8 +264,8 @@ void describe('ClientHost', () => {
         ClientHost.Changelevel_f('e1m2');
 
         assert.deepEqual(calls, [['announceChangelevel', 'e1m2']]);
-        assert.equal(runtime.CL.cls.changelevel, true);
-        assert.equal(runtime.CL.cls.signon, 0);
+        assert.equal(clientStaticState.changelevel, true);
+        assert.equal(clientStaticState.signon, 0);
 
         await scheduled[0]();
       });

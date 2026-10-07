@@ -12,11 +12,12 @@ import Mesh from './Mesh.ts';
 import PostProcess from './PostProcess.ts';
 import * as Def from '../../common/Def.ts';
 import { content } from '../../../shared/Defs.ts';
+import { clientRuntimeState } from '../ClientState.ts';
 
-let { CL, Host, R } = getClientRegistry();
+let { Host, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, R } = getClientRegistry());
+  ({ Host, R } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -418,7 +419,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const e = entity;
 
     // Check if this is the world entity (entity 0)
-    if (e === CL.state.clientEntities.getEntity(0)) {
+    if (e === clientRuntimeState.clientEntities.getEntity(0)) {
       if (pass === 0) {
         this.renderWorld(clmodel);
       } else if (pass === 1 && R.drawturbulents.value) {
@@ -512,7 +513,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Render the world (entity 0) opaque surfaces using the leafs structure.
    */
   renderWorld(clmodel: BrushModel): void {
-    const worldspawn = CL.state.clientEntities.getEntity(0);
+    const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
 
     GL.BindVAO(clmodel.opaqueVAO!);
     R.c_brush_vbos++;
@@ -663,7 +664,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * Must be called between `beginWorldTransparentPass` and `endWorldTransparentPass`.
    */
   renderWorldTransparentLeaf(clmodel: BrushModel, leaf: Node): void {
-    const worldspawn = CL.state.clientEntities.getEntity(0);
+    const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
     const program = this._worldTransparentProgram!;
     const hasDeluxemap = this._worldTransparentHasDeluxemap;
 
@@ -1111,7 +1112,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /** @private */
   _renderWorldTurbulentBatch(clmodel: BrushModel, textureIndex: number, firstVertex: number, vertexCount: number): void {
-    const worldspawn = CL.state.clientEntities.getEntity(0);
+    const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
     const program = this._worldTurbulentProgram!;
     const material = clmodel.textures[textureIndex] as BaseMaterial;
 
@@ -1121,7 +1122,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uAlpha!, alpha);
     // Only apply depth fog to translucent liquids when the map has opted in via
     // _qs_waterfog. Opaque turbulents rely on PVS and should not get absorption.
-    const waterfogEnabled = CL.state.worldmodel?.worldspawnInfo._qs_waterfog === '1';
+    const waterfogEnabled = clientRuntimeState.worldmodel?.worldspawnInfo._qs_waterfog === '1';
     gl.uniform1f(program.uWaterFogDensity!, PostProcess.active && alpha < 1.0 && waterfogEnabled ? 0.01 : 0.0);
 
     R.c_brush_verts += vertexCount;
@@ -1337,7 +1338,7 @@ export class BrushModelRenderer extends ModelRenderer {
       entity,
       // eslint-disable-next-line @typescript-eslint/unbound-method
       R._CalculateLightValues,
-      CL.state.worldmodel as BrushModel | null,
+      clientRuntimeState.worldmodel as BrushModel | null,
     );
 
     gl.uniform3fv(program.uAmbientLight!, lightingState.ambientlight);
@@ -1360,7 +1361,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * plain (non-PBR) surfaces too.
    */
   _bindBrushDeluxemap(program: GLProgramInfo, clmodel: BrushModel): boolean {
-    const hasDeluxemap = BrushModelRenderer.usesDeluxemap(clmodel, CL.state.worldmodel as BrushModel | null);
+    const hasDeluxemap = BrushModelRenderer.usesDeluxemap(clmodel, clientRuntimeState.worldmodel as BrushModel | null);
 
     if (hasDeluxemap) {
       R.deluxemap_texture.bind(program.tDeluxemap!);
@@ -1494,12 +1495,12 @@ export class BrushModelRenderer extends ModelRenderer {
    * @returns The probe data, or null when world lighting is unavailable.
    */
   _getFogLightProbe(fogVolume: FogVolumeInfo): FogLightProbeData | null {
-    const worldmodel = CL.state.worldmodel as BrushModel | null;
+    const worldmodel = clientRuntimeState.worldmodel as BrushModel | null;
     if (!worldmodel || (worldmodel.lightdata === null && worldmodel.lightdata_rgb === null)) {
       return null;
     }
 
-    const styleFrame = Math.floor(CL.state.time * 10.0);
+    const styleFrame = Math.floor(clientRuntimeState.time * 10.0);
     const needsUpdate = styleFrame !== this.#fogProbeStyleFrame;
 
     if (needsUpdate) {
@@ -1530,7 +1531,7 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   _collectFogDlights(fogVolume: FogVolumeInfo): FogDlightEntry[] {
     const results: FogDlightEntry[] = [];
-    const dlights = CL.state.clientEntities.dlights;
+    const dlights = clientRuntimeState.clientEntities.dlights;
 
     for (let i = 0; i < Def.limits.dlights; i++) {
       const dl = dlights[i];
@@ -2080,7 +2081,7 @@ export class BrushModelRenderer extends ModelRenderer {
    * @returns RGB fallback light values at the given position.
    */
   _getTurbulentFallbackLight(model: BrushModel, face: Face, worldPos: Vector, cache: Map<string, number[]> | null = null): number[] {
-    if (model.submodel || CL.state.worldmodel === null) {
+    if (model.submodel || clientRuntimeState.worldmodel === null) {
       return [1.0, 1.0, 1.0];
     }
 

@@ -11,6 +11,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Con from '../../source/engine/common/Console.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import '../support/consoleBridge.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Temporarily installs a minimal `Con` registry stub (plus the real `COM` for
@@ -430,6 +431,8 @@ void describe('Key', () => {
         registry.CL = {
           cls: { state: options.connectionState ?? clientConnectionState.connected, demoplayback: false },
         };
+
+        const restoreClientState = useClientStateOf(registry.CL);
         registry.M = {
           Keydown: (key) => { menuKeydownCalls.push(key); },
           ToggleMenu_f: () => { toggleMenu.count++; },
@@ -441,6 +444,7 @@ void describe('Key', () => {
           callback({ menuKeydownCalls, toggleMenu, menuMainCalls });
         } finally {
           registry.CL = previousCL;
+          restoreClientState();
           registry.M = previousM;
           eventBus.publish('registry.frozen');
         }
@@ -647,6 +651,8 @@ void describe('Key', () => {
         const menuMainCalls = { count: 0 };
 
         registry.CL = { cls: { state: connectionState, demoplayback: false } };
+
+        const restoreClientState = useClientStateOf(registry.CL);
         registry.M = {
           Menu_Main_f: () => { menuMainCalls.count++; },
           ToggleMenu_f: () => {},
@@ -658,6 +664,7 @@ void describe('Key', () => {
           callback({ menuMainCalls });
         } finally {
           registry.CL = previousCL;
+          restoreClientState();
           registry.M = previousM;
           eventBus.publish('registry.frozen');
         }

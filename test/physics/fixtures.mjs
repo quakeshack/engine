@@ -6,6 +6,7 @@ import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/B
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
@@ -328,6 +329,7 @@ export function defaultMockRegistry(sv = {}, cl = null) {
  */
 export function withMockRegistry(mockedRegistry, callback) {
   const previousServerState = Cvar.serverState;
+  const restoreClientState = useClientStateOf(mockedRegistry.CL);
 
   Cvar.serverState = {
     isServerActive: () => mockedRegistry.CL?.serverController?.state.active ?? mockedRegistry.SV?.server?.active ?? false,
@@ -348,6 +350,7 @@ export function withMockRegistry(mockedRegistry, callback) {
   eventBus.publish('registry.frozen');
 
   const restore = () => {
+    restoreClientState();
     Cvar.serverState = previousServerState;
     registry.COM = previousCOM;
     registry.CL = previousCL;

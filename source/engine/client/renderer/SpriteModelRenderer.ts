@@ -6,11 +6,12 @@ import GL from '../GL.ts';
 import { SpriteModel } from '../../common/model/SpriteModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
+import { clientRuntimeState } from '../ClientState.ts';
 
-let { CL, R } = getClientRegistry();
+let { R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, R } = getClientRegistry());
+  ({ R } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -102,7 +103,7 @@ export class SpriteModelRenderer extends ModelRenderer {
     // Handle frame groups (animated sprites)
     if (selectedFrame.group) {
       const groupedFrame = selectedFrame;
-      const time = CL.state.time + e.syncbase;
+      const time = clientRuntimeState.time + e.syncbase;
       const groupLen = groupedFrame.frames.length - 1;
       const fullinterval = groupedFrame.frames[groupLen].interval!;
       const targettime = time - Math.floor(time / fullinterval) * fullinterval;

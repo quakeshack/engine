@@ -9,6 +9,9 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { PM_TYPE, Pmove } from '../../source/engine/common/Pmove.ts';
 import { ClientPlayerState } from '../../source/engine/client/ClientMessages.ts';
 import { createBrushWorldModel } from '../physics/fixtures.mjs';
+import clientCvars from '../../source/engine/client/ClientCvars.ts';
+import { clientPmove } from '../../source/engine/client/ClientPhysics.ts';
+import { clientStaticState } from '../../source/engine/client/ClientState.ts';
 
 void describe('CL.AppendChatMessage', () => {
   void test('publishes chat messages without a legacy engine HUD fallback', () => {
@@ -41,7 +44,7 @@ void describe('CL.PredictMove', () => {
     // intermission and would keep applying gravity/collision from the fixed
     // base every frame — producing visible camera jitter.
     const previousHost = registry.Host;
-    const previousNopred = CL.nopred;
+    const previousNopred = clientCvars.nopred;
     const previousIntermission = CL.state.intermission;
     const previousViewentity = CL.state.viewentity;
     const previousMoveSequence = CL.state.moveSequence;
@@ -51,7 +54,7 @@ void describe('CL.PredictMove', () => {
     registry.Host = { realtime: 42.0 };
     eventBus.publish('registry.frozen');
 
-    CL.nopred = { value: 0 };
+    clientCvars.nopred = { value: 0 };
     CL.state.intermission = 1;
     CL.state.viewentity = 1;
     // 3 unacknowledged commands pending — prediction would normally replay them.
@@ -69,7 +72,7 @@ void describe('CL.PredictMove', () => {
     } finally {
       registry.Host = previousHost;
       eventBus.publish('registry.frozen');
-      CL.nopred = previousNopred;
+      clientCvars.nopred = previousNopred;
       CL.state.intermission = previousIntermission;
       CL.state.viewentity = previousViewentity;
       CL.state.moveSequence = previousMoveSequence;
@@ -119,78 +122,81 @@ void describe('CL.PredictUsercmd', () => {
   });
 });
 
+const clientDemos = { demoplayback: false };
+
 void describe('CL.SetUpPlayerPrediction', () => {
   /**
    * @param {() => void} callback test body run with a save/restore of the pmove and worldmodel state.
    */
   function withRestoredPmoveState(callback) {
-    const previousNopred = CL.nopred;
+    const previousNopred = clientCvars.nopred;
     const previousWorldmodel = CL.state.worldmodel;
-    const previousPhysents = [...CL.pmove.physents];
-    const clientDemos = CL.connection.clientDemos;
-    const previousDemoplayback = clientDemos.demoplayback;
+    const previousPhysents = [...clientPmove.physents];
+    // demo playback is what the demo player says; this test is about prediction, so a stand-in says it
+    clientDemos.demoplayback = false;
+    clientStaticState.bindClientDemos(/** @type {any} */ (clientDemos));
 
     try {
       callback();
     } finally {
-      CL.nopred = previousNopred;
+      clientCvars.nopred = previousNopred;
       CL.state.worldmodel = previousWorldmodel;
-      clientDemos.demoplayback = previousDemoplayback;
-      CL.pmove.physents.length = 0;
-      CL.pmove.physents.push(...previousPhysents);
+      clientStaticState.bindClientDemos(/** @type {any} */ (null));
+      clientPmove.physents.length = 0;
+      clientPmove.physents.push(...previousPhysents);
       CL.state.clientEntities.clear();
     }
   }
 
   void test('clears pmove entities and skips setup when nopred is enabled', () => {
     withRestoredPmoveState(() => {
-      CL.nopred = { value: 1 };
-      CL.pmove.physents.length = 0;
-      CL.pmove.physents.push({}, {}, {}); // pretend a previous setup left entities behind
+      clientCvars.nopred = { value: 1 };
+      clientPmove.physents.length = 0;
+      clientPmove.physents.push({}, {}, {}); // pretend a previous setup left entities behind
 
       CL.SetUpPlayerPrediction();
 
-      assert.equal(CL.pmove.physents.length, 1, 'clearEntities() should truncate back down to just the world slot');
+      assert.equal(clientPmove.physents.length, 1, 'clearEntities() should truncate back down to just the world slot');
     });
   });
 
   void test('clears pmove entities and skips setup during demo playback', () => {
     withRestoredPmoveState(() => {
-      CL.nopred = { value: 0 };
-      CL.connection.clientDemos.demoplayback = true;
-      CL.pmove.physents.length = 0;
-      CL.pmove.physents.push({}, {}, {});
+      clientCvars.nopred = { value: 0 };
+      clientDemos.demoplayback = true;
+      clientPmove.physents.length = 0;
+      clientPmove.physents.push({}, {}, {});
 
       CL.SetUpPlayerPrediction();
 
-      assert.equal(CL.pmove.physents.length, 1, 'clearEntities() should truncate back down to just the world slot');
+      assert.equal(clientPmove.physents.length, 1, 'clearEntities() should truncate back down to just the world slot');
     });
   });
 
   void test('does nothing further when physents are empty and no worldmodel is available yet', () => {
     withRestoredPmoveState(() => {
-      CL.nopred = { value: 0 };
-      CL.connection.clientDemos.demoplayback = false;
+      clientCvars.nopred = { value: 0 };
+      clientDemos.demoplayback = false;
       CL.state.worldmodel = null;
-      CL.pmove.physents.length = 0;
+      clientPmove.physents.length = 0;
 
       CL.SetUpPlayerPrediction();
 
-      assert.equal(CL.pmove.physents.length, 0, 'no worldmodel to seed physents with, so setup should stay skipped');
+      assert.equal(clientPmove.physents.length, 0, 'no worldmodel to seed physents with, so setup should stay skipped');
     });
   });
 
   void test('lazily applies the pending worldmodel and sets up physents once one becomes available', () => {
     withRestoredPmoveState(() => {
-      CL.nopred = { value: 0 };
-      CL.connection.clientDemos.demoplayback = false;
+      clientCvars.nopred = { value: 0 };
+      clientDemos.demoplayback = false;
       CL.state.clientEntities.clear();
       CL.state.worldmodel = createBrushWorldModel({ halfExtents: [32, 32, 32] });
-      CL.pmove.physents.length = 0;
+      clientPmove.physents.length = 0;
 
       CL.SetUpPlayerPrediction();
 
-      assert.equal(CL.pmove.physents.length, 1, 'setWorldmodel() should populate physent[0] for the world, with no other entities to add');
+      assert.equal(clientPmove.physents.length, 1, 'setWorldmodel() should populate physent[0] for the world, with no other entities to add');
     });
   });
 });

@@ -14,11 +14,12 @@ import { MenuStack } from './menu/MenuStack.ts';
 import { MenuViewport, type ResolvedMenuViewport } from './menu/MenuViewport.ts';
 import VID from './VID.ts';
 import { MissingResourceError } from '../common/Errors.ts';
+import { clientStaticState } from './ClientState.ts';
 
-let { CL, COM, Draw, Key, S } = getClientRegistry();
+let { COM, Draw, Key, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Draw, Key, S } = getClientRegistry());
+  ({ COM, Draw, Key, S } = getClientRegistry());
 });
 
 // An involuntary disconnect (server shutdown, kick, timeout) can happen with no menu open at
@@ -35,7 +36,7 @@ eventBus.subscribe('client.disconnected', () => {
 // click. Fired once, right after the active game module has registered its pages -- see
 // `ClientLifecycle.initGame()`.
 eventBus.subscribe('client.game-initialized', () => {
-  if (CL.cls.state === clientConnectionState.disconnected && M.menuStack.isEmpty()) {
+  if (clientStaticState.state === clientConnectionState.disconnected && M.menuStack.isEmpty()) {
     M.Menu_Main_f();
   }
 });
@@ -376,7 +377,7 @@ export default class M {
       return false;
     }
 
-    return M.menuStack.depth() > 1 || CL.cls.state === clientConnectionState.connected;
+    return M.menuStack.depth() > 1 || clientStaticState.state === clientConnectionState.connected;
   }
 
   static #isOverBackButton(mx: number, my: number): boolean {
@@ -403,7 +404,7 @@ export default class M {
   }
 
   static CloseMenu(): void {
-    if (CL.cls.state !== clientConnectionState.connected) {
+    if (clientStaticState.state !== clientConnectionState.connected) {
       // There's no game to return to while disconnected -- collapse back to the root page
       // instead of leaving nothing on screen to look at or interact with.
       if (!M.menuStack.isShowingRoot()) {
@@ -419,7 +420,7 @@ export default class M {
   static PopMenu(): void {
     M.menuStack.pop();
     if (M.menuStack.isEmpty()) {
-      if (CL.cls.state !== clientConnectionState.connected) {
+      if (clientStaticState.state !== clientConnectionState.connected) {
         M.menuStack.pushRoot();
         return;
       }
@@ -461,7 +462,7 @@ export default class M {
     Key.destination = KeyDestination.game;
     // Restore the demo-loop cursor paused (set to -1 in Menu_Main_f) when the menu was opened
     // over a playing demo, so ClientDemos can naturally advance to the next one when it ends.
-    CL.cls.demonum = M.#saveDemonum;
+    clientStaticState.demonum = M.#saveDemonum;
   }
 
   /**
@@ -546,13 +547,13 @@ export default class M {
    * the console up) in addition to the internal call sites below.
    */
   static Menu_Main_f(this: void): void {
-    if (CL.cls.connecting !== null) {
+    if (clientStaticState.connecting !== null) {
       return;
     }
 
     if (Key.destination !== KeyDestination.menu) {
-      M.#saveDemonum = CL.cls.demonum;
-      CL.cls.demonum = -1;
+      M.#saveDemonum = clientStaticState.demonum;
+      clientStaticState.demonum = -1;
     }
     Key.destination = KeyDestination.menu;
     M.menuStack.clear();

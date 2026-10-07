@@ -11,6 +11,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 import { assertNear } from '../physics/fixtures.mjs';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * A world trace result matching `CollisionTrace`'s shape.
@@ -67,6 +68,8 @@ function withWorld({ gravity = 800, paused = false, worldmodel = { nodes: [{ con
   const previous = { CL: registry.CL, Host: registry.Host };
 
   registry.CL = { pmove: { movevars: { gravity } }, state: { worldmodel, paused }, nolerp: { value: 0 }, collision: { traceStaticWorldLine: trace } };
+
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.Host = { frametime };
   eventBus.publish('registry.frozen');
 

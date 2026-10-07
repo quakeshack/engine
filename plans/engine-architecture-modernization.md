@@ -1192,6 +1192,60 @@ tabs or the dev tooling: the running `vite build --watch` alone holds 2 GB). Ope
 shrink, the lever is the world geometry: store vertexes, clip nodes and planes in typed arrays instead of object graphs, which
 B7 asked of the loaders anyway.
 
+#### Phase 4b, step 1a: the client state is imported, not looked up (2026-10-07, not committed)
+
+First slice of "`CL` without the registry", chosen after measuring the import graph: 535 of the roughly 700 reads of `CL` were
+`CL.state` (434) and `CL.cls` (101), and those two are plain module singletons (`clientRuntimeState`, `clientStaticState` in
+`ClientState.ts`). Reading them through `registry.CL` was two lookups where one import binding does, in the per-frame code of
+`R`, `SCR`, `V`, `IN`, `Key`, `ClientEntities`, `ClientInput`, the server message handlers and the renderers.
+
+- 21 client files and `GameAPIs.ts` now read `clientRuntimeState`/`clientStaticState` directly. `Host.ts` and `Materials.ts`
+  stay on the registry on purpose: `Host` is shared with the dedicated server, `Materials` is in the server worker's import
+  closure, and neither may import client state. `CL.state`/`CL.cls` still exist on the facade, they are the same objects.
+- Importing the state closes a cycle (`ClientState` constructs `ClientEntities` and `ClientMessages`, which read the state).
+  `ClientRuntimeState` therefore creates them on first use through getters (with setters, so a test can install its own),
+  and no module builds anything of another module while it is being evaluated.
+- Tests that mocked `registry.CL.state`/`.cls` now set the members on the real objects through `test/support/clientState.ts`
+  (`useClientStateOf(mock)`, restores afterwards, understands getter-only members and live getters); `withMockRegistry` does it
+  for every test that passes a `CL`. 17 test files were adapted, 2 of them in id1 (`gib-edict-handler`, `bubble-edict-handler`,
+  uncommitted changes inside the submodule).
+- 1752 tests pass, typecheck and lint clean, and the page was run again in Chromium (worker server: new game, status, god,
+  cvar sync, `changelevel`, `restart`, rendering of E1M2 with HUD and entities).
+
+What is left of `CL` after this is its own API: `serverController` (29 reads), `pmove` (18), `collision` (12), the client cvars
+(about 60) and the methods (`SetConnectingStep`, `Disconnect`, `Connect`, `SendCmd`, ...). Importing `CL` itself still makes a
+36-file cycle, because `CL.ts` builds a `Pmove`, a `ClientCollision` and the connection collaborators while it is being
+evaluated, and those reach the server collision code. The next slices, each its own step: move `serverController`, `pmove` and
+`collision` onto the state objects, the cvars into a leaf module, make `ClientConnection`/`ClientLifecycle` call each other
+instead of going back through `CL`, then `CL` becomes importable.
+
+#### Phase 4b, step 1b: `CL` is imported (2026-10-07, not committed)
+
+`CL` has no registry readers left in the client and `GameAPIs.ts`; only `Host.ts` (shared with the dedicated server) and
+`Materials.ts` (in the server worker's import closure) still look it up, through `CL`'s compatibility accessors. It stays a
+static class: moving it to an instance would not have changed a single lookup, and the point was fewer of them in the
+per-frame code, not a different shape.
+
+- **Moved out of `CL`** into modules that import nothing of the client above them: the console variables (`ClientCvars.ts`,
+  `clientCvars.sensitivity`), the predicted `Pmove` and the client's static-world collision (`ClientPhysics.ts`,
+  `clientPmove`, `clientCollision`), and the control plane to the local server (`clientStaticState.serverController`,
+  installed by the launcher). `CL.serverController` stays as an accessor for `Host`.
+- **`CL.ts` builds nothing while it loads.** The demo player and the connection are created by `CL.Init()` (or on the first
+  `CL.connection` read), and `CL.cls`/`CL.state`/`CL.moduleEventBus` are accessors, because this module is part of a cycle
+  with the one that creates the state. `ClientLifecycle` resets the movement variables instead of replacing the `Pmove`.
+- **Import graph**: the cycle that importing `CL` creates is the 17 files of the client core (`CL`, the `Client*` modules,
+  `Chase`, `Key`, `ConsoleOverlay`, `Sound`, `ClientPhysics`, `GameAPIs`). The 58-file cycle through `R`, `Host` and `M`
+  from the survey did not materialize because `Host` and `Materials` still go through the registry. Everything in the cycle is
+  safe to load in any order: nothing in it constructs anything of another module while it is being evaluated.
+- **Tests**: `useClientStateOf(mock)` also applies a mocked `pmove`, `collision`, `serverController`, cvars and the methods of
+  `CL` (it patches the real objects and restores them); `withMockRegistry` calls it for every test that passes a `CL`.
+- **Verified**: 1752 tests, typecheck and lint clean; in Chromium the development build (server in a worker and `?serverthread`)
+  and a production build both run the whole sequence (new game, status, god, cvar sync, changelevel, restart); the dedicated
+  server builds and spawns a map.
+
+What reads `CL` now is its API: `SetConnectingStep`, `Disconnect`, `Connect`, `SendCmd`, `ParseServerMessage`, ... and
+`Host.ts`/`Materials.ts`. Next in 4b: `R` (the other big hub, 19 readers), `M`, then `Host` itself.
+
 ### Later tracks (own plans, order flexible after Phase 3)
 
 C (lifetimes and typed events) can start after Phase 2. The replay recorder (Track G) starts after

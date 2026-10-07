@@ -21,10 +21,10 @@ export type IdentityCvars = {
   rcon_password: Cvar | null;
 };
 
-let { CL, Host, IN, NET, SCR, S } = getClientRegistry();
+let { Host, IN, NET, SCR, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, IN, NET, SCR, S } = getClientRegistry());
+  ({ Host, IN, NET, SCR, S } = getClientRegistry());
 });
 
 export default class ClientConnection {
@@ -203,8 +203,8 @@ export default class ClientConnection {
         NET.Close(this.cls.netcon);
       }
       this.cls.state = Def.clientConnectionState.disconnected;
-      if (CL.serverController.state.active) {
-        CL.serverController.stop();
+      if (clientStaticState.serverController.state.active) {
+        clientStaticState.serverController.stop();
       }
     }
 

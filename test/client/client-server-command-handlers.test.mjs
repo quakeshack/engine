@@ -10,6 +10,8 @@ import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
  * Builds the minimal client registry surface required by parseServerMessage().
@@ -89,6 +91,7 @@ function withMockClientRegistry(mockedRegistry, callback) {
   };
 
   registry.CL = mockedRegistry.CL;
+  const restoreClientState = useClientStateOf(registry.CL);
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
   registry.Mod = mockedRegistry.Mod;
@@ -101,6 +104,7 @@ function withMockClientRegistry(mockedRegistry, callback) {
 
   const restore = () => {
     registry.CL = previousValues.CL;
+    restoreClientState();
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;
     registry.Mod = previousValues.Mod;
@@ -215,16 +219,19 @@ void describe('parseServerMessage serverdata game construction', () => {
 
     writeServerData(mockedRegistry.NET.message);
 
+    let gameAPI = null;
+
     void withMockClientRegistry(mockedRegistry, () => {
       withActiveGameModule(ClientGameAPI, () => {
         assert.throws(() => parseServerMessage(), /Bad maxclients \(0\)/);
+        gameAPI = clientRuntimeState.gameAPI;
       });
     });
 
     assert.deepEqual(compatibilityChecks, [[1, 0, 0]]);
     assert.equal(constructedWith.length, 1);
     assert.equal(constructedWith[0], ClientEngineAPI);
-    assert.ok(mockedRegistry.CL.state.gameAPI instanceof ClientGameAPI);
+    assert.ok(gameAPI instanceof ClientGameAPI);
   });
 
   void test('rejects an incompatible server before constructing the client game', () => {

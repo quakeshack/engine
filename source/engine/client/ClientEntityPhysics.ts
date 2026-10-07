@@ -5,14 +5,8 @@ import type { CollisionTrace } from '../server/physics/ServerCollisionSupport.ts
 import Vector, { Quaternion } from '../../shared/Vector.ts';
 import PhysicsMath from '../common/PhysicsMath.ts';
 import { moveType } from '../../shared/Defs.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
+import { clientCollision, clientPmove } from './ClientPhysics.ts';
 
-let { CL } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL } = getClientRegistry());
-});
 
 /**
  * Overbounce factor of `MOVETYPE_BOUNCE`, as `ServerPhysics.physicsToss()` applies it.
@@ -50,7 +44,7 @@ export default class ClientEntityPhysics {
    */
   static step(clent: ClientEdict, frametime: number): void {
     const bounces = clent.movetype === moveType.MOVETYPE_BOUNCE;
-    clent.velocity[2] -= CL.pmove.movevars.gravity * clent.gravity * frametime;
+    clent.velocity[2] -= clientPmove.movevars.gravity * clent.gravity * frametime;
 
     if (!clent.avelocity.isOrigin()) {
       ClientEntityPhysics.#angularStep.set(clent.avelocity).multiply(frametime);
@@ -60,7 +54,7 @@ export default class ClientEntityPhysics {
     }
 
     const end = ClientEntityPhysics.#end.set(clent.velocity).multiply(frametime).add(clent.origin);
-    const trace = CL.collision.traceStaticWorldLine(clent.origin, end);
+    const trace = clientCollision.traceStaticWorldLine(clent.origin, end);
 
     if (trace.allsolid) {
       ClientEntityPhysics.#settle(clent);

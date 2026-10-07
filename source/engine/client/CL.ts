@@ -2,8 +2,7 @@ import Q from '../../shared/Q.ts';
 import * as Def from '../common/Def.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
-import Cvar from '../common/Cvar.ts';
-import { Pmove, PmovePlayer } from '../common/Pmove.ts';
+import type { PmovePlayer } from '../common/Pmove.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import { gameCapabilities, solid } from '../../shared/Defs.ts';
@@ -14,10 +13,10 @@ import { clientRuntimeState, clientStaticState, moduleEventBus } from './ClientS
 import ClientConnection, { type IdentityCvars } from './ClientConnection.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import { BrushModel } from '../common/Mod.ts';
-import CollisionModelSource from '../common/CollisionModelSource.ts';
-import ClientCollision from './ClientCollision.ts';
 import type { ServerController } from '../common/ServerController.ts';
 import Con from '../common/Console.ts';
+import clientCvars from './ClientCvars.ts';
+import { clientPmove } from './ClientPhysics.ts';
 
 let { Draw, Host } = getClientRegistry();
 
@@ -25,60 +24,41 @@ eventBus.subscribe('registry.frozen', () => {
   ({ Draw, Host } = getClientRegistry());
 });
 
-const clientCollisionModelSource = new CollisionModelSource();
-
-clientCollisionModelSource.configureClient({
-  getWorldModel: () => clientRuntimeState.worldmodel,
-  getModels: () => clientRuntimeState.model_precache,
-});
-
 export default class CL {
-  static pmove = new Pmove();
+  /** Control plane to the local server; lives on the static client state, this is for what still reaches it through the registry. */
+  static get serverController(): ServerController {
+    return clientStaticState.serverController;
+  }
 
-  /** Control plane to the server this client hosts locally, installed by the launcher before init. */
-  static serverController: ServerController;
+  static set serverController(serverController: ServerController) {
+    clientStaticState.serverController = serverController;
+  }
 
-  /** Static-world collision against the client's own world model, never the server's. */
-  static readonly collision = new ClientCollision(clientCollisionModelSource);
-
-  static #clientDemos = new ClientDemos();
-  static #connection: ClientConnection;
+  // Built by `Init()`: both read the client, so creating them while this module is still being evaluated would make
+  // the order modules load in matter.
+  static #clientDemos: ClientDemos = null!;
+  static #connection: ClientConnection = null!;
 
   static gameCapabilities: gameCapabilities[] = [];
-  static cls = clientStaticState;
-  static state = clientRuntimeState;
-  static moduleEventBus = moduleEventBus;
+
+  // Read on use: this module is part of a cycle with the one that creates the state, so it must not touch it while it is being evaluated.
+  static get cls(): typeof clientStaticState {
+    return clientStaticState;
+  }
+
+  static get state(): typeof clientRuntimeState {
+    return clientRuntimeState;
+  }
+
+  static get moduleEventBus(): typeof moduleEventBus {
+    return moduleEventBus;
+  }
   static svc_strings: Array<[string, number]> = [];
 
   static {
-    CL.#connection = new ClientConnection({ clientDemos: CL.#clientDemos });
-    CL.cls.bindClientDemos(CL.#clientDemos);
     CL.svc_strings = Object.entries(Protocol.svc);
   }
 
-  static nolerp: Cvar = null!;
-  static rcon_password: Cvar = null!;
-  static shownet: Cvar = null!;
-  static name: Cvar = null!;
-  static color: Cvar = null!;
-  static upspeed: Cvar = null!;
-  static forwardspeed: Cvar = null!;
-  static backspeed: Cvar = null!;
-  static sidespeed: Cvar = null!;
-  static movespeedkey: Cvar = null!;
-  static yawspeed: Cvar = null!;
-  static pitchspeed: Cvar = null!;
-  static anglespeedkey: Cvar = null!;
-  static lookspring: Cvar = null!;
-  static lookstrafe: Cvar = null!;
-  static sensitivity: Cvar = null!;
-  static m_pitch: Cvar = null!;
-  static m_yaw: Cvar = null!;
-  static m_forward: Cvar = null!;
-  static m_side: Cvar = null!;
-  static nopred: Cvar = null!;
-  static nohud: Cvar = null!;
-  static areaportals: Cvar = null!;
   static nullcmd = new Protocol.UserCmd();
 
   static StartDemos(demos: string[]): void {
@@ -106,6 +86,10 @@ export default class CL {
   }
 
   static async Init(): Promise<void> {
+    CL.#clientDemos = new ClientDemos();
+    CL.#connection = new ClientConnection({ clientDemos: CL.#clientDemos });
+    CL.cls.bindClientDemos(CL.#clientDemos);
+
     eventBus.subscribe('server.spawning', () => {
       CL.SetConnectingStep(1, 'Spawning server');
     });
@@ -146,6 +130,8 @@ export default class CL {
   }
 
   static get connection(): ClientConnection {
+    console.assert(CL.#connection !== null, 'CL.Init() must have run before the connection is used');
+
     return CL.#connection;
   }
 
@@ -297,7 +283,7 @@ export default class CL {
         return;
       }
 
-      const password = CL.rcon_password.string;
+      const password = clientCvars.rcon_password.string;
 
       if (!password) {
         Con.Print('You must set \'rcon_password\' before issuing an rcon command.\n');
@@ -335,7 +321,7 @@ export default class CL {
   }
 
   static DrawHUD(): void {
-    if (CL.nohud.value !== 0) {
+    if (clientCvars.nohud.value !== 0) {
       return;
     }
 
@@ -421,7 +407,7 @@ export default class CL {
     CL.state.time = Host.realtime - CL.state.latency;
     CL.state.predicted = false;
 
-    if (CL.nopred.value !== 0) {
+    if (clientCvars.nopred.value !== 0) {
       return;
     }
 
@@ -442,7 +428,7 @@ export default class CL {
       return;
     }
 
-    if (!CL.pmove.physents.length) {
+    if (!clientPmove.physents.length) {
       return;
     }
 
@@ -457,7 +443,7 @@ export default class CL {
     }
 
     // get a player move instance
-    const pmove = CL.pmove.newPlayerMove();
+    const pmove = clientPmove.newPlayerMove();
 
     // build the initial “from” state from the last server-confirmed position
     const from = new ClientPlayerState(pmove);
@@ -502,11 +488,11 @@ export default class CL {
   }
 
   /**
-   * Populates CL.pmove with solid entities from the client entity list
+   * Populates clientPmove with solid entities from the client entity list
    * for collision detection during prediction.
    */
   static #setupPredictionPhysents(): void {
-    const pm = CL.pmove;
+    const pm = clientPmove;
     pm.clearEntities();
 
     const entities = CL.state.clientEntities.entities;
@@ -588,21 +574,21 @@ export default class CL {
    * This sets up the first phase.
    */
   static SetUpPlayerPrediction(): void { // public, by Host.js
-    if (CL.nopred.value !== 0 || CL.cls.demoplayback) {
-      CL.pmove.clearEntities();
+    if (clientCvars.nopred.value !== 0 || CL.cls.demoplayback) {
+      clientPmove.clearEntities();
       return;
     }
 
     if (CL.state.playerentity === null) {
-      CL.pmove.clearEntities();
+      clientPmove.clearEntities();
       return;
     }
 
-    if (!CL.pmove.physents.length && CL.state.worldmodel !== null) {
-      CL.pmove.setWorldmodel(CL.state.worldmodel);
+    if (!clientPmove.physents.length && CL.state.worldmodel !== null) {
+      clientPmove.setWorldmodel(CL.state.worldmodel);
     }
 
-    if (!CL.pmove.physents.length) {
+    if (!clientPmove.physents.length) {
       return;
     }
 

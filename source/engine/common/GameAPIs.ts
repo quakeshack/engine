@@ -31,6 +31,9 @@ import PostProcess from '../client/renderer/PostProcess.ts';
 import type { PostProcessStack } from '../../shared/GameInterfaces.ts';
 import ConsoleOverlay from '../client/ConsoleOverlay.ts';
 import Con from './Console.ts';
+import { clientRuntimeState, clientStaticState } from '../client/ClientState.ts';
+import { clientCollision, clientPmove } from '../client/ClientPhysics.ts';
+import CL from '../client/CL.ts';
 
 interface ClientTraceOptions {
   readonly includeEntities?: boolean;
@@ -48,11 +51,11 @@ type ClientEntityFilter = ((entity: ClientEdict) => boolean) | null;
 type CommandCallback = (...args: string[]) => void | Promise<void>;
 
 let { COM, Host, V } = getCommonRegistry();
-let { CL, Draw, M, R, S, SCR } = getClientRegistry();
+let { Draw, M, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
   ({ COM, Host, V } = getCommonRegistry());
-  ({ CL, Draw, M, R, S, SCR } = getClientRegistry());
+  ({ Draw, M, R, S, SCR } = getClientRegistry());
 });
 
 eventBus.subscribe('com.ready', () => {
@@ -189,7 +192,7 @@ function traceClientEntities(
 
   let bestTrace: InternalTraceLike = worldTrace;
 
-  for (const entity of CL.state.clientEntities.getEntities()) {
+  for (const entity of clientRuntimeState.clientEntities.getEntities()) {
     if (entity.num === 0 || entity.free || entity.origin.isInfinite() || entity.model === null) {
       continue;
     }
@@ -219,7 +222,7 @@ function traceClientEntities(
         return this === other;
       },
     };
-    const trace = CL.collision.clipMoveToEntity(
+    const trace = clientCollision.clipMoveToEntity(
       adapter,
       start,
       Vector.origin,
@@ -419,7 +422,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @yields Client entities.
    */
   static *GetEntities(filter: ClientEntityFilter = null): Generator<ClientEdict, void, void> {
-    for (const entity of CL.state.clientEntities.getEntities()) {
+    for (const entity of clientRuntimeState.clientEntities.getEntities()) {
       if (filter && !filter(entity)) {
         continue;
       }
@@ -433,7 +436,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @yields Visible client entities.
    */
   static *GetVisibleEntities(filter: ClientEntityFilter = null): Generator<ClientEdict, void, void> {
-    for (const entity of CL.state.clientEntities.getVisibleEntities()) {
+    for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {
       if (filter && !filter(entity)) {
         continue;
       }
@@ -451,7 +454,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns The trace result.
    */
   static Traceline(start: Vector, end: Vector, options: ClientTraceOptions | null = null): GameTrace {
-    const worldTrace = CL.collision.traceWorldLine(start, end) as InternalTraceLike;
+    const worldTrace = clientCollision.traceWorldLine(start, end) as InternalTraceLike;
 
     if (options === null || !options.includeEntities) {
       return internalTraceToGameTrace(worldTrace);
@@ -467,7 +470,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns True when the player could see the entity from where they are.
    */
   static IsInPVS(entity: ClientEdict): boolean {
-    return CL.state.clientEntities.isPotentiallyVisible(entity);
+    return clientRuntimeState.clientEntities.isPotentiallyVisible(entity);
   }
 
   /**
@@ -475,7 +478,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns The contents constant.
    */
   static DetermineStaticWorldContents(origin: Vector): number {
-    return CL.collision.pointContents(origin);
+    return clientCollision.pointContents(origin);
   }
 
   /**
@@ -483,7 +486,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns The dynamic light instance.
    */
   static AllocDlight(entityId: number): ClientDlight {
-    return CL.state.clientEntities.allocateDynamicLight(entityId);
+    return clientRuntimeState.clientEntities.allocateDynamicLight(entityId);
   }
 
   /**
@@ -495,7 +498,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns A new client entity.
    */
   static AllocEntity(): ClientEdict {
-    return CL.state.clientEntities.allocateClientEntity();
+    return clientRuntimeState.clientEntities.allocateClientEntity();
   }
 
   /**
@@ -508,7 +511,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns A new client-only entity.
    */
   static SpawnClientEntity(classname: string, options: { readonly persistent?: boolean } = {}): ClientEdict {
-    const clientEntities = CL.state.clientEntities;
+    const clientEntities = clientRuntimeState.clientEntities;
 
     if (options.persistent ?? true) {
       return clientEntities.allocateSimulatedEntity(classname);
@@ -538,9 +541,9 @@ export class ClientEngineAPI extends CommonEngineAPI {
   static ModForName(modelName: string): BaseModel {
     console.assert(typeof modelName === 'string', 'modelName must be a string');
 
-    for (let index = 1; index < CL.state.model_precache.length; index++) {
-      if (CL.state.model_precache[index].name === modelName) {
-        return CL.state.model_precache[index];
+    for (let index = 1; index < clientRuntimeState.model_precache.length; index++) {
+      if (clientRuntimeState.model_precache[index].name === modelName) {
+        return clientRuntimeState.model_precache[index];
       }
     }
 
@@ -554,8 +557,8 @@ export class ClientEngineAPI extends CommonEngineAPI {
   static ModById(id: number): BaseModel {
     console.assert(typeof id === 'number' && id > 0, 'id must be a number and greater than 0');
 
-    if (CL.state.model_precache[id]) {
-      return CL.state.model_precache[id];
+    if (clientRuntimeState.model_precache[id]) {
+      return clientRuntimeState.model_precache[id];
     }
 
     throw new HostError(`ClientEngineAPI.ModById: ${id} not found`);
@@ -574,68 +577,68 @@ export class ClientEngineAPI extends CommonEngineAPI {
   static SetPmoveConfiguration(config: PmoveConfiguration): void {
     console.assert(config instanceof PmoveConfiguration, 'config must be an instance of PmoveConfiguration');
 
-    CL.pmove.configuration = config;
+    clientPmove.configuration = config;
   }
 
   static readonly CL = {
     get viewangles(): Vector {
-      return CL.state.viewangles.copy();
+      return clientRuntimeState.viewangles.copy();
     },
     get vieworigin(): Vector {
-      console.assert(CL.state.viewent !== null, 'client view entity must exist when reading vieworigin');
+      console.assert(clientRuntimeState.viewent !== null, 'client view entity must exist when reading vieworigin');
 
-      return CL.state.viewent!.origin.copy();
+      return clientRuntimeState.viewent!.origin.copy();
     },
     get maxclients(): number {
-      return CL.state.maxclients;
+      return clientRuntimeState.maxclients;
     },
     get levelname(): string {
-      return CL.state.levelname ?? '';
+      return clientRuntimeState.levelname ?? '';
     },
     get entityNum(): number {
-      return CL.state.viewentity;
+      return clientRuntimeState.viewentity;
     },
     /**
      * local time, not game time! If you are looking for SV.server.time, check gametime
      * @returns Local time.
      */
     get time(): number { // FIXME: rename to localtime to make the distinction clearer
-      return CL.state.time;
+      return clientRuntimeState.time;
     },
     /**
      * latest SV.server.time, NOT local time!
      * @returns Game time.
      */
     get gametime(): number {
-      return CL.state.clientMessages.mtime[0];
+      return clientRuntimeState.clientMessages.mtime[0];
     },
     get frametime(): number {
       return Host.frametime;
     },
     get intermission(): boolean {
-      return CL.state.intermission > 0;
+      return clientRuntimeState.intermission > 0;
     },
     /**
      * Current intermission mode: 0 = none, 1 = map exit, 2 = finale, 3 = cutscene.
      * @returns Current intermission mode.
      */
     get intermissionState(): number {
-      return CL.state.intermission;
+      return clientRuntimeState.intermission;
     },
     set intermission(value: boolean) {
-      CL.state.intermission = value ? 1 : 0;
+      clientRuntimeState.intermission = value ? 1 : 0;
     },
     score(num: number) {
-      return CL.state.scores[num];
+      return clientRuntimeState.scores[num];
     },
     get serverInfo() {
-      return CL.cls.serverInfo;
+      return clientStaticState.serverInfo;
     },
     /**
      * @returns True while fully connected to a server (local or remote).
      */
     get connected(): boolean {
-      return CL.cls.state === clientConnectionState.connected;
+      return clientStaticState.state === clientConnectionState.connected;
     },
     /**
      * Authoritative world gravity strength, synced from the server via `parsePmovevars()` --
@@ -649,7 +652,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * @returns Current world gravity.
      */
     get gravity(): number {
-      return CL.pmove.movevars.gravity;
+      return clientPmove.movevars.gravity;
     },
   };
 
@@ -658,7 +661,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * @returns True while this client is also hosting a local (listen) server.
      */
     get active(): boolean {
-      return CL.serverController.state.active;
+      return clientStaticState.serverController.state.active;
     },
   };
 
@@ -1074,7 +1077,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
   };
 
   static get eventBus(): EventBus {
-    return CL.state.eventBus;
+    return clientRuntimeState.eventBus;
   }
 
   /**
