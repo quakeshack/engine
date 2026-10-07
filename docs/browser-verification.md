@@ -133,7 +133,7 @@ loads and any cvar/console command (e.g. toggling `r_shadows`/`r_bloom`/`gl_msaa
 Two traps when scripting this: the console closes itself after commands like `map`/`load`, so a
 fixed "press Backquote, type, press Enter, press Backquote" sequence drifts out of sync (the second
 Backquote then opens it again and the next command's first Backquote closes it, so the text lands in
-the game); check `window.registry.Con.isOpen` before and after each command instead. And the first
+the game); check whether the drawer is open before and after each command instead (`ConsoleOverlay.isOpen` is not on `window.registry`, so take a screenshot, or look at whether `window.registry.Con.text` grew). And the first
 character typed right after the console opens can be swallowed, so wait about 700 ms after the
 opening Backquote. To start a single-player game without typing `map`, press Enter twice on the main
 menu (Single Player, New Game). `window.registry.Con.text` holds the console lines, which is how to

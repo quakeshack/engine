@@ -1,14 +1,7 @@
-import { getCommonRegistry, registry } from '../../registry.ts';
-import { eventBus } from '../EventBus.ts';
 import { GLTexture } from '../../client/GL.ts';
 import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../client/renderer/Materials.ts';
 import type { BrushModel } from './BSP.ts';
-
-let { COM, Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
-});
+import type { ModelLoadContext } from './ModelLoadContext.ts';
 
 interface MaterialDefinition {
   readonly diffuse?: string;
@@ -51,8 +44,8 @@ export class QSMatLoader {
    * Load and apply `.qsmat.json` overrides onto `loadmodel.textures`,
    * replacing matched entries with `PBRMaterial` instances.
    */
-  static async load(loadmodel: BrushModel): Promise<void> {
-    if (registry.isDedicatedServer) {
+  static async load(loadmodel: BrushModel, context: ModelLoadContext): Promise<void> {
+    if (!context.loadRenderData) {
       return;
     }
 
@@ -68,7 +61,7 @@ export class QSMatLoader {
       filenames.push(filename);
     }
 
-    const matfiles = await Promise.all(filenames.map((filename) => COM.LoadTextFile(filename)));
+    const matfiles = await Promise.all(filenames.map((filename) => context.files.LoadTextFile(filename)));
 
     for (let i = 0; i < filenames.length; i++) {
       const filename = filenames[i];
@@ -78,7 +71,7 @@ export class QSMatLoader {
         continue;
       }
 
-      Con.DPrint(`QSMatLoader: loaded material file ${filename}\n`);
+      context.con.DPrint(`QSMatLoader: loaded material file ${filename}\n`);
       const materialData = JSON.parse(matfile) as MaterialFile;
       console.assert(materialData.version === 1);
 
@@ -117,7 +110,7 @@ export class QSMatLoader {
               const hasBaseTextureSize = texture instanceof QuakeMaterial && texture.texture !== null;
 
               if (category === 'diffuse' && textures.width === undefined && textures.height === undefined && !hasBaseTextureSize) {
-                Con.DPrint(`QSMatLoader: ${texture.name} has no base texture and no explicit width/height in ${filename}; `
+                context.con.DPrint(`QSMatLoader: ${texture.name} has no base texture and no explicit width/height in ${filename}; `
                   + `approximating tiling scale from the diffuse image's own size ${loadedTexture.width}x${loadedTexture.height} `
                   + '(specify width/height in the material entry for correct tiling)\n');
                 pbr.width = loadedTexture.width;
@@ -125,10 +118,10 @@ export class QSMatLoader {
               }
             }
 
-            Con.DPrint(`QSMatLoader: loaded ${category} texture for ${texture.name} from ${texturePath} (material file ${filename})\n`);
+            context.con.DPrint(`QSMatLoader: loaded ${category} texture for ${texture.name} from ${texturePath} (material file ${filename})\n`);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            Con.PrintError(`QSMatLoader: failed to load ${texturePath} (material file ${filename}): ${errorMessage}\n`);
+            context.con.PrintError(`QSMatLoader: failed to load ${texturePath} (material file ${filename}): ${errorMessage}\n`);
           }
         }
 

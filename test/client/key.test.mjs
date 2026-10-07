@@ -8,6 +8,9 @@ import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import Con from '../../source/engine/common/Console.ts';
+import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Temporarily installs a minimal `Con` registry stub (plus the real `COM` for
@@ -21,8 +24,9 @@ function withMockKeyRegistry(callback) {
 
   const printed = [];
   const con = {
-    Print(msg) { printed.push(msg); }, backscroll: 0, text: [], isOpen: false,
+    Print(msg) { printed.push(msg); }, backscroll: 0, text: [],
   };
+  ConsoleOverlay.isOpen = false;
   registry.Con = con;
   registry.COM = COM;
   eventBus.publish('registry.frozen');
@@ -30,6 +34,7 @@ function withMockKeyRegistry(callback) {
   try {
     callback({ con, printed });
   } finally {
+    ConsoleOverlay.isOpen = false;
     registry.Con = previousCon;
     registry.COM = previousCOM;
     eventBus.publish('registry.frozen');
@@ -157,7 +162,7 @@ void describe('Key', () => {
   void describe('KeyDestination', () => {
     void test('enum values match expected constants', () => {
       // `console` was retired as a destination — the drop-down console is now the
-      // independent `Con.isOpen` overlay instead, taking dispatch priority over whichever of
+      // independent `ConsoleOverlay.isOpen` overlay instead, taking dispatch priority over whichever of
       // these is active underneath it. Values are kept as before (minus that member) so
       // nothing needed renumbering.
       assert.equal(KeyDestination.game, 0);
@@ -269,8 +274,11 @@ void describe('Key', () => {
     });
 
     void test('Ctrl+Home/Ctrl+End scroll the backscroll to the top/bottom instead', () => {
-      withMockKeyRegistry(({ con }) => {
+      withMockKeyRegistry(() => {
         withCleanInputState(() => {
+          // Key scrolls the engine's console buffer, which is the real one.
+          const con = Con;
+
           con.text = new Array(20).fill(null);
           con.backscroll = 0;
 
@@ -284,6 +292,7 @@ void describe('Key', () => {
             Key.Console(K.END);
             assert.equal(con.backscroll, 0);
           } finally {
+            con.Clear();
             Key.pressed.delete(K.CTRL);
           }
         });
@@ -361,9 +370,9 @@ void describe('Key', () => {
 
   void describe('Paste', () => {
     void test('routes to the console editor when the console is open', () => {
-      withMockKeyRegistry(({ con }) => {
+      withMockKeyRegistry(() => {
         withCleanInputState(() => {
-          con.isOpen = true;
+          ConsoleOverlay.isOpen = true;
           Key.edit_line = 'ac';
 
           Key.Console(K.HOME);
@@ -441,13 +450,13 @@ void describe('Key', () => {
     void test('Escape closes an open console instead of touching whatever is underneath', () => {
       withMockEventRegistry(({ menuKeydownCalls, toggleMenu }) => {
         withCleanInputState(() => {
-          registry.Con.isOpen = true;
+          ConsoleOverlay.isOpen = true;
           Key.destination = KeyDestination.game;
 
           Key.Event(K.ESCAPE, true);
           Key.Event(K.ESCAPE, false);
 
-          assert.equal(registry.Con.isOpen, false);
+          assert.equal(ConsoleOverlay.isOpen, false);
           assert.equal(menuKeydownCalls.length, 0);
           assert.equal(toggleMenu.count, 0);
         });
@@ -457,7 +466,7 @@ void describe('Key', () => {
     void test('routes typed keys to the console when open, even though destination still reads game', () => {
       withMockEventRegistry(() => {
         withCleanInputState(() => {
-          registry.Con.isOpen = true;
+          ConsoleOverlay.isOpen = true;
           Key.destination = KeyDestination.game;
           Key.edit_line = '';
 
@@ -472,7 +481,7 @@ void describe('Key', () => {
     void test('routes typed keys to the console when open, even over the menu', () => {
       withMockEventRegistry(({ menuKeydownCalls }) => {
         withCleanInputState(() => {
-          registry.Con.isOpen = true;
+          ConsoleOverlay.isOpen = true;
           Key.destination = KeyDestination.menu;
           Key.edit_line = '';
 
@@ -496,7 +505,7 @@ void describe('Key', () => {
             Key.bindings = [];
             Key.bindings[tick] = 'toggleconsole';
             Cmd.text = '';
-            registry.Con.isOpen = true;
+            ConsoleOverlay.isOpen = true;
 
             Key.Event(tick, true);
             Key.Event(tick, false);
@@ -520,7 +529,7 @@ void describe('Key', () => {
             Key.bindings = [];
             Key.bindings[K.SPACE] = '+jump';
             Cmd.text = '';
-            registry.Con.isOpen = false;
+            ConsoleOverlay.isOpen = false;
             Key.destination = KeyDestination.game;
 
             Key.Event(K.SPACE, true);
@@ -545,7 +554,7 @@ void describe('Key', () => {
             Key.bindings = [];
             Key.bindings[K.F1] = 'help';
             Cmd.text = '';
-            registry.Con.isOpen = false;
+            ConsoleOverlay.isOpen = false;
             Key.destination = KeyDestination.menu;
 
             Key.Event(K.F1, true);
@@ -564,7 +573,7 @@ void describe('Key', () => {
     void test('non-F-keys in the menu go to M.Keydown when the console is closed', () => {
       withMockEventRegistry(({ menuKeydownCalls }) => {
         withCleanInputState(() => {
-          registry.Con.isOpen = false;
+          ConsoleOverlay.isOpen = false;
           Key.destination = KeyDestination.menu;
 
           Key.Event(K.DOWNARROW, true);
@@ -590,7 +599,7 @@ void describe('Key', () => {
             Key.bindings = [];
             Key.bindings[tick] = 'toggleconsole';
             Cmd.text = '';
-            registry.Con.isOpen = false;
+            ConsoleOverlay.isOpen = false;
             Key.destination = KeyDestination.menu;
 
             Key.Event(tick, true);
@@ -612,7 +621,7 @@ void describe('Key', () => {
       // menu's own click/scroll handling needs to keep receiving.
       withMockEventRegistry(({ menuKeydownCalls }) => {
         withCleanInputState(() => {
-          registry.Con.isOpen = false;
+          ConsoleOverlay.isOpen = false;
           Key.destination = KeyDestination.menu;
 
           Key.Event(K.MOUSE1, true);

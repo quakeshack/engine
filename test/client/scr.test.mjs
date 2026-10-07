@@ -2,26 +2,28 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import SCR from '../../source/engine/client/SCR.ts';
+import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 /**
- * Installs minimal `CL`/`Con`/`Host` registry stubs for `SCR.SetUpToDrawConsole()`, plus a
+ * Installs minimal `CL`/`Host` registry stubs and a clean `ConsoleOverlay` for `SCR.SetUpToDrawConsole()`, plus a
  * fixed `SCR.conspeed` so the slide-speed math is deterministic.
  * @param {{ worldmodel: unknown, signon: number }} state
  * @param {() => void} callback test callback
  */
 function withMockConsoleRegistry({ worldmodel, signon }, callback) {
   const previousCL = registry.CL;
-  const previousCon = registry.Con;
   const previousHost = registry.Host;
   const previousConCurrent = SCR.con_current;
   const previousConspeed = SCR.conspeed;
-  const con = { forcedup: false, isOpen: false };
+  const con = ConsoleOverlay;
+  const previousConsoleState = { forcedup: con.forcedup, isOpen: con.isOpen };
 
+  con.forcedup = false;
+  con.isOpen = false;
   registry.CL = { state: { worldmodel }, cls: { signon } };
-  registry.Con = con;
   registry.Host = { frametime: 0.1 };
   SCR.conspeed = { value: 300 };
   eventBus.publish('registry.frozen');
@@ -30,7 +32,7 @@ function withMockConsoleRegistry({ worldmodel, signon }, callback) {
     callback(con);
   } finally {
     registry.CL = previousCL;
-    registry.Con = previousCon;
+    Object.assign(con, previousConsoleState);
     registry.Host = previousHost;
     SCR.con_current = previousConCurrent;
     SCR.conspeed = previousConspeed;

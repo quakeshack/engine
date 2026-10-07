@@ -1,5 +1,5 @@
-import { getCommonRegistry, registry } from '../registry.ts';
 import { eventBus } from './EventBus.ts';
+import Con from './Console.ts';
 import Cmd from './Cmd.ts';
 import Q from '../../shared/Q.ts';
 import { cvarFlags } from '../../shared/Defs.ts';
@@ -7,17 +7,25 @@ import { cvarFlags } from '../../shared/Defs.ts';
 type CvarValue = number | string | boolean;
 type CvarFilter = (variable: Cvar) => boolean;
 
-let { Con, SV } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con, SV } = getCommonRegistry());
-});
+/** What a realm tells the variables about the server it talks to, which is what the cheat rule needs. */
+export interface CvarServerState {
+  /** Whether a server is running that this realm is part of or connected to. */
+  isServerActive(): boolean;
+  /** The value of `sv_cheats` as the server this realm is connected to reports it, `undefined` when this realm knows no other than its own. */
+  reportedCheats(): string | undefined;
+}
 
 /**
  * Console Variable.
  */
 export default class Cvar {
   static _vars: Record<string, Cvar> = {};
+
+  /**
+   * Tells the cheat rule about the server this realm talks to. Installed by the composition root of the
+   * realm: a client reads its server controller, a server reads itself. Without it nothing is treated as a cheat.
+   */
+  static serverState: CvarServerState | null = null;
 
   static FLAG = cvarFlags;
 
@@ -223,14 +231,16 @@ export default class Cvar {
       return null;
     }
 
-    // A client asks its server controller, which also knows about a server in a worker; a dedicated server has no client.
-    const sv = SV as typeof SV | undefined;
-    const serverActive = registry.CL?.serverController?.state.active ?? sv?.server.active ?? false;
+    const serverState = Cvar.serverState;
+
+    if (serverState === null || !serverState.isServerActive()) {
+      return null;
+    }
 
     // A client knows the cheats of the server it is connected to, a server knows its own.
-    const cheats = registry.CL?.cls.serverInfo?.sv_cheats ?? Cvar.FindVar('sv_cheats')?.string;
+    const cheats = serverState.reportedCheats() ?? Cvar.FindVar('sv_cheats')?.string;
 
-    return serverActive && cheats !== '1' ? 'cheat' : null;
+    return cheats !== '1' ? 'cheat' : null;
   }
 
   static WriteVariables(): string {

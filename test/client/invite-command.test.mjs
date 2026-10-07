@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import InviteCommand from '../../source/engine/client/InviteCommand.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Temporarily install a global value for the duration of a callback.

@@ -239,7 +239,7 @@ async function runMapFrames({
     },
   });
   eventBus.publish('registry.frozen');
-  Mod.Init();
+  Mod.Init({ files: registry.COM, con: registry.Con, loadRenderData: false });
 
   try {
     const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ (await Mod.ForNameAsync(mapName, true));

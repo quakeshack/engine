@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import ClientInput, { kbutton, kbuttons } from '../../source/engine/client/ClientInput.ts';
+import '../support/consoleBridge.ts';
 
 /**
  *

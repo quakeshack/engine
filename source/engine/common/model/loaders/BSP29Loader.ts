@@ -3,10 +3,9 @@ import Q from '../../../../shared/Q.ts';
 import { content } from '../../../../shared/Defs.ts';
 import { GLTexture } from '../../../client/GL.ts';
 import W, { readWad3Texture, translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
+import COM from '../../Com.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
-import { getCommonRegistry, registry } from '../../../registry.ts';
-import { eventBus } from '../../EventBus.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 import { Brush, BrushModel, BrushSide, Node, type BrushTexInfo, type Clipnode, type Hull } from '../BSP.ts';
 import { QSMatLoader } from '../QSMatLoader.ts';
@@ -14,13 +13,6 @@ import { BSPXLoader } from '../BSPXLoader.ts';
 import { Face, Plane } from '../BaseModel.ts';
 import { MaterialFlags, noTextureMaterial, QuakeMaterial } from '../../../client/renderer/Materials.ts';
 import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.ts';
-
-// Get registry references (will be set by eventBus)
-let { COM, Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
-});
 
 interface AllowedClipnodeHull extends Hull {
   allowedClipNodes?: Uint8Array | null;
@@ -88,7 +80,7 @@ export class BSP29Loader extends ModelLoader {
     this._loadEdges(loadmodel, buffer);
     this.#loadSurfedges(loadmodel, buffer);
     this.#loadTextures(loadmodel, buffer);
-    await QSMatLoader.load(loadmodel);
+    await QSMatLoader.load(loadmodel, this.context);
     this.#loadLighting(loadmodel, buffer);
     this.#loadPlanes(loadmodel, buffer);
     this.#loadTexinfo(loadmodel, buffer);
@@ -100,7 +92,7 @@ export class BSP29Loader extends ModelLoader {
     this._loadNodes(loadmodel, buffer);
     this._loadClipnodes(loadmodel, buffer);
     this.#makeHull0(loadmodel);
-    BSPXLoader.load(loadmodel, buffer, loadmodel.bspxoffset);
+    BSPXLoader.load(loadmodel, buffer, loadmodel.bspxoffset, this.context.con);
     this._loadBrushList(loadmodel, buffer);
     this.#loadLightingRGB(loadmodel, buffer);
     this.#loadSubmodels(loadmodel, buffer); // CR: must be last, since it creates additional models based on this one
@@ -109,7 +101,7 @@ export class BSP29Loader extends ModelLoader {
       // Some third-party map compilers (e.g. certain BSP2 qbsp builds) can emit an
       // unclipped/infinite headnode bounding box for the world model. Recover by
       // deriving bounds from the actual vertex data instead of trusting the lump.
-      Con.PrintWarning(`BSP29Loader: ${name} has invalid model bounds in the models lump, recomputing from vertex data\n`);
+      this.context.con.PrintWarning(`BSP29Loader: ${name} has invalid model bounds in the models lump, recomputing from vertex data\n`);
       this.#recoverModelBoundsFromVertexes(loadmodel);
     }
 
@@ -133,7 +125,7 @@ export class BSP29Loader extends ModelLoader {
   }
 
   async #loadSkybox(loadmodel: BrushModel): Promise<void> {
-    if (registry.isDedicatedServer) {
+    if (!this.context.loadRenderData) {
       return;
     }
 
@@ -262,7 +254,7 @@ export class BSP29Loader extends ModelLoader {
       let luminanceTexture = null;
 
       // Load texture data (skip for dedicated server)
-      if (!registry.isDedicatedServer) {
+      if (this.context.loadRenderData) {
         const txname = tx.name.toLowerCase();
 
         // HACK: textures starting with sky are special
@@ -589,7 +581,7 @@ export class BSP29Loader extends ModelLoader {
       const submodel = loadmodel.submodels[def.modelIndex - 1]; // *N -> submodels[N-1]
 
       if (!submodel) {
-        Con.PrintWarning(`BSP29Loader.computeAreas: portal ${def.portalNum} references invalid model *${def.modelIndex}\n`);
+        this.context.con.PrintWarning(`BSP29Loader.computeAreas: portal ${def.portalNum} references invalid model *${def.modelIndex}\n`);
         continue;
       }
 
@@ -874,7 +866,7 @@ export class BSP29Loader extends ModelLoader {
     loadmodel.portalDefs = allConnections;
     loadmodel.areaPortals.init(loadmodel.numAreas, allConnections, numGroups);
 
-    Con.DPrint(`BSP29Loader.computeAreas: computed ${loadmodel.numAreas} areas, ${allConnections.length} connections, ${numGroups} groups\n`);
+    this.context.con.DPrint(`BSP29Loader.computeAreas: computed ${loadmodel.numAreas} areas, ${allConnections.length} connections, ${numGroups} groups\n`);
   }
 
   /**
@@ -892,7 +884,7 @@ export class BSP29Loader extends ModelLoader {
     const autoAssignDoors: { modelIndex: number; model: string }[] = [];
     let maxExplicitPortal = -1;
 
-    Con.DPrint('BSP29Loader.#parsePortalEntities: looking for portals in entity lump...\n');
+    this.context.con.DPrint('BSP29Loader.#parsePortalEntities: looking for portals in entity lump...\n');
 
     for (const ent of COM.ParseEntityLump(loadmodel.entities)) {
       if (!ent.model || !ent.model.startsWith('*')) {
@@ -924,7 +916,7 @@ export class BSP29Loader extends ModelLoader {
       // CR: temporarily disabled due to funny bugs
       // // Auto-assign portal numbers to door entities
       // if (ent.classname is an auto-assigned door classname) {
-      //   Con.DPrint(`...detected portal ${ent.classname} with model ${ent.model}\n`);
+      //   this.context.con.DPrint(`...detected portal ${ent.classname} with model ${ent.model}\n`);
       //   autoAssignDoors.push({ modelIndex, model: ent.model });
       // }
     }
@@ -1000,7 +992,7 @@ export class BSP29Loader extends ModelLoader {
     }
 
     if (autoAssignDoors.length > 0) {
-      Con.DPrint(`BSP29Loader.#parsePortalEntities: auto-assigned ${autoAssignDoors.length} door portals (${groupPortal.size} groups)\n`);
+      this.context.con.DPrint(`BSP29Loader.#parsePortalEntities: auto-assigned ${autoAssignDoors.length} door portals (${groupPortal.size} groups)\n`);
     }
 
     return portals;
@@ -1109,7 +1101,7 @@ export class BSP29Loader extends ModelLoader {
       const modelIndex = parseInt(entity.model.substring(1), 10);
 
       if (isNaN(modelIndex) || modelIndex <= 0) {
-        Con.PrintWarning(`func_fog has invalid model '${entity.model}'\n`);
+        this.context.con.PrintWarning(`func_fog has invalid model '${entity.model}'\n`);
         continue;
       }
 
@@ -1127,7 +1119,7 @@ export class BSP29Loader extends ModelLoader {
         maxs: submodel ? [submodel.maxs[0], submodel.maxs[1], submodel.maxs[2]] : [0, 0, 0],
       });
 
-      Con.DPrint(`Found func_fog: model *${modelIndex}, color ${colorParts}, density ${entity.fog_density || '0.01'}\n`);
+      this.context.con.DPrint(`Found func_fog: model *${modelIndex}, color ${colorParts}, density ${entity.fog_density || '0.01'}\n`);
     }
   }
 
@@ -1780,7 +1772,7 @@ export class BSP29Loader extends ModelLoader {
       offset += 4;
 
       if (ver !== 1) {
-        Con.Print(`BSP29Loader: unsupported BRUSHLIST version ${ver}\n`);
+        this.context.con.Print(`BSP29Loader: unsupported BRUSHLIST version ${ver}\n`);
         return;
       }
 
@@ -1797,7 +1789,7 @@ export class BSP29Loader extends ModelLoader {
 
       for (let b = 0; b < numbrushes; b++) {
         if (offset + 28 > endOffset) {
-          Con.Print('BSP29Loader: BRUSHLIST lump truncated at brush header\n');
+          this.context.con.Print('BSP29Loader: BRUSHLIST lump truncated at brush header\n');
           return;
         }
 
@@ -1826,7 +1818,7 @@ export class BSP29Loader extends ModelLoader {
 
         // Parse the non-axial planes from the lump
         if (offset + brushNumPlanes * 16 > endOffset) {
-          Con.Print('BSP29Loader: BRUSHLIST lump truncated at brush planes\n');
+          this.context.con.Print('BSP29Loader: BRUSHLIST lump truncated at brush planes\n');
           return;
         }
 
@@ -1883,7 +1875,7 @@ export class BSP29Loader extends ModelLoader {
       }
 
       if (planesRead !== numplanes) {
-        Con.Print(`BSP29Loader: BRUSHLIST plane count mismatch for model ${modelnum}: expected ${numplanes}, got ${planesRead}\n`);
+        this.context.con.Print(`BSP29Loader: BRUSHLIST plane count mismatch for model ${modelnum}: expected ${numplanes}, got ${planesRead}\n`);
       }
 
       modelBrushRanges.set(modelnum, { firstBrush, numBrushes: numbrushes });
@@ -2022,7 +2014,7 @@ export class BSP29Loader extends ModelLoader {
 
     loadmodel.leafbrushes = leafbrushes;
 
-    Con.DPrint(`BSP29Loader: loaded BRUSHLIST with ${allBrushes.length} brushes, ${allBrushSides.length} sides, ${leafbrushes.length} leaf-brush refs\n`);
+    this.context.con.DPrint(`BSP29Loader: loaded BRUSHLIST with ${allBrushes.length} brushes, ${allBrushSides.length} sides, ${leafbrushes.length} leaf-brush refs\n`);
   }
 
   /**
@@ -2050,10 +2042,10 @@ export class BSP29Loader extends ModelLoader {
   async #loadExternalLighting(loadmodel: BrushModel, filename: string): Promise<void> {
     const rgbFilename = filename.replace(/\.bsp$/i, '.lit');
 
-    const data = await COM.LoadFile(rgbFilename);
+    const data = await this.context.files.LoadFile(rgbFilename);
 
     if (!data) {
-      Con.DPrint(`BSP29Loader: no external RGB lighting file found: ${rgbFilename}\n`);
+      this.context.con.DPrint(`BSP29Loader: no external RGB lighting file found: ${rgbFilename}\n`);
       return;
     }
 

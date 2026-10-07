@@ -29,6 +29,8 @@ import Mod from './Mod.ts';
 import W from './W.ts';
 import PostProcess from '../client/renderer/PostProcess.ts';
 import type { PostProcessStack } from '../../shared/GameInterfaces.ts';
+import ConsoleOverlay from '../client/ConsoleOverlay.ts';
+import Con from './Console.ts';
 
 interface ClientTraceOptions {
   readonly includeEntities?: boolean;
@@ -45,11 +47,11 @@ interface ClientTraceEntityAdapter {
 type ClientEntityFilter = ((entity: ClientEdict) => boolean) | null;
 type CommandCallback = (...args: string[]) => void | Promise<void>;
 
-let { COM, Con, Host, V } = getCommonRegistry();
+let { COM, Host, V } = getCommonRegistry();
 let { CL, Draw, M, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Host, V } = getCommonRegistry());
+  ({ COM, Host, V } = getCommonRegistry());
   ({ CL, Draw, M, R, S, SCR } = getClientRegistry());
 });
 
@@ -818,7 +820,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * Toggle the drop-down console overlay.
      */
     ToggleConsole(): void {
-      Con.ToggleConsole_f();
+      ConsoleOverlay.ToggleConsole_f();
     },
 
     /**

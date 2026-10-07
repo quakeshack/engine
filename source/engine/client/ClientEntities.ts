@@ -17,6 +17,8 @@ import { BaseClientEdictHandler, type ClientSpawnParameters } from '../../shared
 import GameModule from '../common/GameModule.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import { revealedVisibility, type Node, type Visibility } from '../common/model/BSP.ts';
+import Con from '../common/Console.ts';
+import Mod from '../common/Mod.ts';
 
 interface ClientEntityLerpState {
   readonly frame: [number, number, number];
@@ -54,10 +56,10 @@ export interface SerializedClientEntity {
   readonly handlerData: SerializedData | null;
 }
 
-let { CL, Con, Host, Mod, R, S } = getClientRegistry();
+let { CL, Host, R, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, Mod, R, S } = getClientRegistry());
+  ({ CL, Host, R, S } = getClientRegistry());
 });
 
 export class ClientDlight {

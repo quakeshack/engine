@@ -29,14 +29,19 @@ import ClientHost from '../client/ClientHost.ts';
 import SaveSlots from '../client/menu/SaveSlots.ts';
 import type ServerHost from '../server/ServerHost.ts';
 import GameModule from './GameModule.ts';
+import WorkerManager from './WorkerManager.ts';
+import PlatformWorker from './PlatformWorker.ts';
 import { Pmove } from './Pmove.ts';
 import { ModelScope, ModelType } from './Mod.ts';
+import ConsoleOverlay from '../client/ConsoleOverlay.ts';
+import Con from './Console.ts';
+import Mod from './Mod.ts';
 
-let { COM, Con, Mod, NET, SV, Sys, V } = getCommonRegistry();
+let { COM, NET, SV, Sys, V } = getCommonRegistry();
 let { CL, Draw, IN, Key, M, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Mod, NET, SV, Sys, V } = getCommonRegistry());
+  ({ COM, NET, SV, Sys, V } = getCommonRegistry());
   ({ CL, Draw, IN, Key, M, R, S, SCR } = getClientRegistry());
 });
 
@@ -337,6 +342,17 @@ export default class Host {
 
   static async Init(): Promise<void> {
     Host.oldrealtime = Sys.FloatTime();
+
+    // What the shared parts of the engine need from this realm.
+    Cmd.files = COM;
+    GameModule.com = COM;
+    WorkerManager.services = { con: Con, com: COM, urls: () => registry.urls };
+    PlatformWorker.onCrash = (error) => { Host.HandleCrash(error); };
+
+    if (registry.isDedicatedServer) {
+      Cvar.serverState = { isServerActive: () => SV.server.active, reportedCheats: () => undefined };
+    }
+
     Cmd.Init();
     Cvar.Init();
 
@@ -353,7 +369,11 @@ export default class Host {
       Key.Init();
     }
 
-    Con.Init();
+    Con.Init({ clock: () => Host.realtime, developer: () => Boolean(Host.developer?.value) });
+
+    if (!registry.isDedicatedServer) {
+      ConsoleOverlay.Init();
+    }
 
     if (SV !== undefined) {
       await GameModule.Init(SV.engineAPI);
@@ -362,7 +382,12 @@ export default class Host {
       await Promise.all([CL.serverController.init(), GameModule.Init(null)]);
     }
 
-    Mod.Init();
+    Mod.Init({
+      files: COM,
+      con: Con,
+      loadRenderData: !registry.isDedicatedServer,
+      keptClientModels: registry.isDedicatedServer ? undefined : () => Object.keys(CL.state.clientEntities.tempEntityModels),
+    });
     NET.Init();
     Pmove.Init();
     SV?.Init();
@@ -432,7 +457,7 @@ export default class Host {
    * what a quit confirmation looks like, or whether one exists at all.
    */
   static Quit_f(): void {
-    if (!registry.isDedicatedServer && !Con.isOpen) {
+    if (!registry.isDedicatedServer && !ConsoleOverlay.isOpen) {
       eventBus.publish('host.quit-requested');
       return;
     }

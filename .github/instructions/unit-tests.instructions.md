@@ -9,10 +9,10 @@
 - **Repo-local organization**: Within game repos, prefer mirroring the source layout with folders such as `client/`, `entity/`, `helper/`, `monster/`, `props/`, and `core/` when that keeps related tests easier to find.
 - **Category globs**: Keep engine tests grouped by top-level area such as `test/common/`, `test/physics/`, and `test/renderer/`.
 - **Nested test directories**: `npm test`'s glob patterns only reach as many directory levels as `package.json` spells out explicitly (dash has no recursive `**`) — see the `.claude/skills/test-glob-coverage/SKILL.md` skill and verify coverage whenever a new subdirectory level is added under `test/`.
-- **File naming**: `<subsystem>.test.mjs`. One file per production class/module.
-- **Shared helpers**: `test/physics/fixtures.mjs` (no `.test.` — never auto-run).
-- **All files are ESM** (`.mjs`). Use `import`/`export` exclusively.
-- **Tests are not type-checked.** `npm run typecheck` does not cover them (`test/` and `source/game/**/test/` are outside `tsconfig.json`), so a test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a signature or a game/engine contract member, search the tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
+- **File naming**: `<subsystem>.test.mjs` or `<subsystem>.test.ts`. One file per production class/module.
+- **Shared helpers**: `test/physics/fixtures.mjs` and the typed ones in `test/support/` (no `.test.` — never auto-run). `test/support/consoleBridge.ts` makes the engine's shared console print to a mocked `registry.Con`, for tests that still mock one; it goes away with the registry.
+- **All files are ESM**. Use `import`/`export` exclusively. New tests and tests of a module that is being converted are written in TypeScript (`<subsystem>.test.ts`, run by `tsx` like the `.mjs` ones, included by the same globs); the rest are `.mjs` until their module's turn.
+- **Only `.test.ts` tests are type-checked.** `npm run typecheck` covers `test/**/*.test.ts` and `test/support/**` (shared typed helpers such as `modelContext.ts`); `.mjs` tests and `source/game/**/test/` are outside `tsconfig.json`, so a test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a signature or a game/engine contract member, search the tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
 
 ### Test Structure
 

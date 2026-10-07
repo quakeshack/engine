@@ -39,7 +39,7 @@ Com.LoadTextFile = async (name) => {
 };
 
 eventBus.publish('registry.frozen');
-Mod.Init();
+Mod.Init({ files: registry.COM, con: registry.Con, loadRenderData: false });
 
 async function debugMap(mapName) {
   console.log(`\n\n${'='.repeat(60)}`);

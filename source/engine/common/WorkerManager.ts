@@ -1,17 +1,23 @@
-import { registry, getCommonRegistry } from '../registry.ts';
+import type { URLs } from '../build-config';
+import type { ConsoleOutput } from './Services.ts';
 import { eventBus } from './EventBus.ts';
 import { SysError } from './Errors.ts';
+import type COM from './Com.ts';
 import PlatformWorker, { type WorkerFactoryRegistry, type WorkerMessageEnvelope } from './PlatformWorker.ts';
 
-let { Con, COM } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
-});
+/** What the worker manager needs from the realm it runs in, set by its composition root. */
+export interface WorkerManagerServices {
+  /** Where what the workers print is shown. */
+  readonly con: ConsoleOutput;
+  /** The file system of the realm, whose game directory a worker is told to use. */
+  readonly com: Pick<COM, 'searchpaths' | 'gamedir' | 'game'>;
+  /** The URLs the realm was configured with. */
+  readonly urls: () => URLs | undefined;
+}
 
 type WorkerFrameworkInitArgs = [
-  [typeof COM.searchpaths, typeof COM.gamedir, typeof COM.game],
-  typeof registry.urls,
+  [COM['searchpaths'], COM['gamedir'], COM['game']],
+  URLs | undefined,
 ];
 
 type WorkerOutboundEnvelope = {
@@ -21,6 +27,9 @@ type WorkerOutboundEnvelope = {
 
 export default class WorkerManager {
   static #factories: WorkerFactoryRegistry | null = null;
+
+  /** What the manager needs from its realm. Set by the composition root before the first worker is spawned. */
+  static services: WorkerManagerServices | null = null;
 
   /**
    * Initializes the worker manager with the worker factory registry.
@@ -72,6 +81,7 @@ export default class WorkerManager {
     }
 
     const worker = new PlatformWorker(script, rawWorker);
+    const { con, com, urls } = WorkerManager.services!;
 
     // worker thread --> main thread
     worker.addOnMessageListener((message: unknown) => {
@@ -81,27 +91,27 @@ export default class WorkerManager {
       switch (event) {
         case 'worker.con.print':
           // eslint-disable-next-line @typescript-eslint/no-base-to-string
-          Con.Print(String(data[0] ?? ''));
+          con.Print(String(data[0] ?? ''));
           break;
 
         case 'worker.con.print.success':
           // eslint-disable-next-line @typescript-eslint/no-base-to-string
-          Con.PrintSuccess(String(data[0] ?? ''));
+          con.PrintSuccess(String(data[0] ?? ''));
           break;
 
         case 'worker.con.print.warning':
           // eslint-disable-next-line @typescript-eslint/no-base-to-string
-          Con.PrintWarning(String(data[0] ?? ''));
+          con.PrintWarning(String(data[0] ?? ''));
           break;
 
         case 'worker.con.print.error':
           // eslint-disable-next-line @typescript-eslint/no-base-to-string
-          Con.PrintError(String(data[0] ?? ''));
+          con.PrintError(String(data[0] ?? ''));
           break;
 
         case 'worker.con.dprint':
           // eslint-disable-next-line @typescript-eslint/no-base-to-string
-          Con.DPrint(String(data[0] ?? ''));
+          con.DPrint(String(data[0] ?? ''));
           break;
 
         default:
@@ -133,8 +143,8 @@ export default class WorkerManager {
     }
 
     const initArgs: WorkerFrameworkInitArgs = [
-      [COM.searchpaths, COM.gamedir, COM.game], // COM
-      registry.urls, // urls
+      [com.searchpaths, com.gamedir, com.game], // COM
+      urls(), // urls
     ];
 
     // tell the worker that it can initialize now

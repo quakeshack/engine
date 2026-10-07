@@ -1,11 +1,12 @@
 import { ConsoleCommand } from '../common/Cmd.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
+import Con from '../common/Console.ts';
 
-let { Con, NET } = getClientRegistry();
+let { NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con, NET } = getClientRegistry());
+  ({ NET } = getClientRegistry());
 });
 
 /**

@@ -5,6 +5,8 @@ import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
+import Cvar from '../../source/engine/common/Cvar.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 import CollisionModelSource from '../../source/engine/common/CollisionModelSource.ts';
@@ -318,11 +320,20 @@ export function defaultMockRegistry(sv = {}, cl = null) {
 }
 
 /**
- * Run a callback with mocked registry values.
+ * Run a callback with mocked registry values. The shared console prints to the mocked `Con` (see
+ * `test/support/consoleBridge.ts`) and the cvars' cheat rule asks the mocked `CL`/`SV`: the shared parts no longer read the
+ * registry, so a test that still mocks one gets it bridged here until the registry is gone.
  * @param {MockRegistryConfig} mockedRegistry registry replacements
  * @param {() => void | Promise<void>} callback test callback
  */
 export function withMockRegistry(mockedRegistry, callback) {
+  const previousServerState = Cvar.serverState;
+
+  Cvar.serverState = {
+    isServerActive: () => mockedRegistry.CL?.serverController?.state.active ?? mockedRegistry.SV?.server?.active ?? false,
+    reportedCheats: () => mockedRegistry.CL?.cls?.serverInfo?.sv_cheats,
+  };
+
   const previousCOM = registry.COM;
   const previousCL = registry.CL;
   const previousCon = registry.Con;
@@ -337,6 +348,7 @@ export function withMockRegistry(mockedRegistry, callback) {
   eventBus.publish('registry.frozen');
 
   const restore = () => {
+    Cvar.serverState = previousServerState;
     registry.COM = previousCOM;
     registry.CL = previousCL;
     registry.Con = previousCon;

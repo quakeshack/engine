@@ -10,98 +10,32 @@ import { BSP38Loader } from '../../source/engine/common/model/loaders/BSP38Loade
 import { QSMatLoader } from '../../source/engine/common/model/QSMatLoader.ts';
 import { GLTexture } from '../../source/engine/client/GL.ts';
 import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../source/engine/client/renderer/Materials.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
-import COMClass from '../../source/engine/common/Com.ts';
-import Mod from '../../source/engine/common/Mod.ts';
-
-const silentCon = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
-  Print() {},
-  DPrint() {},
-  PrintWarning() {},
-  PrintError(...args) { console.error(...args); },
-  PrintSuccess() {},
-});
-
-/**
- * Temporarily install a mocked registry (COM/Con/isDedicatedServer) and
- * publish `registry.frozen` so module-level bindings (Mod, QSMatLoader, etc.)
- * pick up the mock, then restore the previous registry afterward.
- * @param {{isDedicatedServer?: boolean, COM?: object, Con?: object}} overrides registry overrides
- * @param {() => Promise<void>} callback test body to run under the mock
- */
-async function withMockedRegistry(overrides, callback) {
-  const previousRegistry = {
-    COM: registry.COM,
-    Con: registry.Con,
-    Mod: registry.Mod,
-    isDedicatedServer: registry.isDedicatedServer,
-  };
-
-  Object.assign(registry, { Mod, ...overrides });
-  eventBus.publish('registry.frozen');
-
-  try {
-    await callback();
-  } finally {
-    Object.assign(registry, previousRegistry);
-    eventBus.publish('registry.frozen');
-  }
-}
+import { Mod } from '../../source/engine/common/Mod.ts';
+import { createDirectoryFiles, createModelLoadContext, createSilentConsole } from '../support/modelContext.ts';
 
 /**
  * Load the shared BSP38 test fixture (data/bsp38-tests/maps/bsp38_areaportal.bsp)
- * through Com and Mod, mirroring the BSP29 loadBSPMap helper used by the
+ * through a model cache of its own, mirroring the BSP29 loadBSPMap helper used by the
  * physics collision-regressions tests.
- * @param {boolean} [isDedicatedServer] whether to load as a dedicated server (skips texture decoding)
- * @returns {Promise<import('../../source/engine/common/model/BSP.ts').BrushModel>} loaded model
+ * @param loadRenderData Whether to load as a client (decodes textures), a server skips that.
+ * @returns The loaded model.
  */
-async function loadBSP38Map(isDedicatedServer = true) {
-  const baseUrl = new URL('../../data/bsp38-tests/', import.meta.url);
-  const knownKeysBefore = new Set(Object.keys(Mod.known));
+async function loadBSP38Map(loadRenderData = false): Promise<BrushModel> {
+  const mod = new Mod();
 
-  let model;
-
-  await withMockedRegistry({
-    isDedicatedServer,
-    Con: silentCon,
-    COM: /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
-      Parse: COMClass.Parse,
-      ParseEntityLump: COMClass.ParseEntityLump,
-      async LoadFile(name) {
-        try {
-          const data = await fs.readFile(new URL(name, baseUrl));
-          return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-        } catch {
-          return null;
-        }
-      },
-      async LoadTextFile(name) {
-        try {
-          return await fs.readFile(new URL(name, baseUrl), 'utf8');
-        } catch {
-          return null;
-        }
-      },
-    }),
-  }, async () => {
-    Mod.Init();
-    model = /** @type {BrushModel} */ (await Mod.ForNameAsync('maps/bsp38_areaportal.bsp', true));
+  mod.Init({
+    files: createDirectoryFiles(new URL('../../data/bsp38-tests/', import.meta.url)),
+    con: createSilentConsole(),
+    loadRenderData,
   });
 
-  for (const name of Object.keys(Mod.known)) {
-    if (!knownKeysBefore.has(name)) {
-      delete Mod.known[name];
-    }
-  }
-
-  return model;
+  return await mod.ForNameAsync('maps/bsp38_areaportal.bsp', true) as BrushModel;
 }
 
 void describe('BSP38Loader', () => {
   void describe('format detection', () => {
     void test('reports the Quake 2 BSP38 magic number, extension and name', () => {
-      const loader = new BSP38Loader();
+      const loader = new BSP38Loader(createModelLoadContext());
 
       assert.deepEqual(loader.getMagicNumbers(), [1347633737]);
       assert.deepEqual(loader.getExtensions(), ['.bsp']);
@@ -175,12 +109,12 @@ void describe('BSP38Loader', () => {
       let maxEndByte = 0;
 
       for (const face of model.faces) {
-        const smax = (face.extents[0] >> face.lmshift) + 1;
-        const tmax = (face.extents[1] >> face.lmshift) + 1;
+        const smax = (face.extents[0] >> face.lmshift!) + 1;
+        const tmax = (face.extents[1] >> face.lmshift!) + 1;
         const startByte = face.lightofs * 3;
         const endByte = startByte + (smax * tmax * face.styles.length * 3);
 
-        assert.ok(endByte <= model.lightdata_rgb.length, `face texinfo=${face.texinfo} lightmap range exceeds lightdata_rgb bounds`);
+        assert.ok(endByte <= model.lightdata_rgb!.length, `face texinfo=${face.texinfo} lightmap range exceeds lightdata_rgb bounds`);
         maxEndByte = Math.max(maxEndByte, endByte);
       }
 
@@ -189,7 +123,7 @@ void describe('BSP38Loader', () => {
       // actually distinguishes "happens to fit" from "decoded correctly."
       // Without the /3 normalization, every face's byte range would run 3x
       // too far and blow past the buffer entirely, failing the bounds check above.
-      assert.ok(maxEndByte > model.lightdata_rgb.length * 0.99);
+      assert.ok(maxEndByte > model.lightdata_rgb!.length * 0.99);
     });
 
     void test('loads real .wal pixel data when opted in via worldspawn _qs_wal, replacing the 1x1 placeholder', async () => {
@@ -197,19 +131,19 @@ void describe('BSP38Loader', () => {
       // texture (not real game content) matching the fixture's only texture
       // name, so this exercises the full textures/<name>.wal lookup path.
       // The fixture's worldspawn sets "_qs_wal" "1" to opt in.
-      const fakeTexture = /** @type {GLTexture} */ ({ width: 8, height: 8 });
+      const fakeTexture = ({ width: 8, height: 8 } as unknown as GLTexture);
       const originalAllocate = GLTexture.Allocate;
 
       try {
         GLTexture.Allocate = () => fakeTexture;
 
-        const model = await loadBSP38Map(false);
+        const model = await loadBSP38Map(true);
 
         assert.equal(model.worldspawnInfo._qs_wal, '1');
         assert.equal(model.textures.length, 1);
         assert.equal(model.textures[0].width, 8);
         assert.equal(model.textures[0].height, 8);
-        assert.equal(model.textures[0].texture, fakeTexture);
+        assert.equal((model.textures[0] as QuakeMaterial).texture, fakeTexture);
       } finally {
         // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
         GLTexture.Allocate = originalAllocate;
@@ -234,25 +168,17 @@ void describe('BSP38Loader', () => {
         assert.ok(needleIndex >= 0, 'fixture must contain _qs_wal for this test to be meaningful');
         patched[needleIndex + needle.length - 1] = '0'.charCodeAt(0); // flip opted-in "1" to "0", same byte length
 
-        let model;
-
-        await withMockedRegistry({
-          isDedicatedServer: false,
-          Con: silentCon,
-          COM: /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
-            Parse: COMClass.Parse,
-            ParseEntityLump: COMClass.ParseEntityLump,
-            LoadFile(name) {
+        const context = createModelLoadContext({
+          loadRenderData: true,
+          files: {
+            LoadFile(name: string): Promise<ArrayBuffer | null> {
               throw new Error(`unexpected LoadFile(${name}) — .wal loading must not run when _qs_wal is off`);
             },
-            LoadTextFile() {
-              return Promise.resolve(null);
-            },
-          }),
-        }, async () => {
-          const buffer = patched.buffer.slice(patched.byteOffset, patched.byteOffset + patched.byteLength);
-          model = await new BSP38Loader().load(buffer, 'maps/bsp38_areaportal.bsp');
+            LoadTextFile: () => Promise.resolve(null),
+          },
         });
+        const buffer = patched.buffer.slice(patched.byteOffset, patched.byteOffset + patched.byteLength) as ArrayBuffer;
+        const model = await new BSP38Loader(context).load(buffer, 'maps/bsp38_areaportal.bsp') as BrushModel;
 
         assert.equal(model.worldspawnInfo._qs_wal, '0');
         assert.equal(model.textures[0].width, 1);
@@ -271,7 +197,7 @@ void describe('BSP38Loader', () => {
           throw new Error('GLTexture.Allocate must not be called on a dedicated server');
         };
 
-        const model = await loadBSP38Map(true);
+        const model = await loadBSP38Map(false);
 
         assert.equal(model.textures[0].width, 1);
         assert.equal(model.textures[0].height, 1);
@@ -289,8 +215,8 @@ void describe('BSP38Loader', () => {
       assert.equal(model.numclusters, 9);
       assert.ok(model.visdata !== null);
       assert.ok(model.phsdata !== null);
-      assert.equal(model.clusterPvsOffsets.length, model.numclusters);
-      assert.equal(model.clusterPhsOffsets.length, model.numclusters);
+      assert.equal(model.clusterPvsOffsets!.length, model.numclusters);
+      assert.equal(model.clusterPhsOffsets!.length, model.numclusters);
     });
 
     void test('reveals a leaf to itself via PVS', async () => {
@@ -309,9 +235,9 @@ void describe('BSP38Loader', () => {
       const model = await loadBSP38Map();
 
       assert.ok(model.hasBrushData);
-      assert.equal(model.brushes.length, 12);
+      assert.equal(model.brushes!.length, 12);
 
-      for (const brush of model.brushes) {
+      for (const brush of model.brushes!) {
         assert.ok(brush.mins !== null && brush.maxs !== null);
 
         for (let axis = 0; axis < 3; axis++) {
@@ -425,7 +351,7 @@ void describe('BSP38Loader', () => {
 
       assert.ok(model.deluxemap !== null);
       // deluxemap and lightdata_rgb are both 3 bytes/sample over the same face layout
-      assert.equal(model.deluxemap.length, model.lightdata_rgb.length);
+      assert.equal(model.deluxemap.length, model.lightdata_rgb!.length);
 
       let nonZeroBytes = 0;
       for (const byte of model.deluxemap) {
@@ -450,7 +376,7 @@ void describe('BSP38Loader', () => {
     void test('loads the FACENORMALS lump with unit-length per-vertex normals for every face', async () => {
       const model = await loadBSP38Map();
 
-      assert.ok('FACENORMALS' in model.bspxlumps);
+      assert.ok('FACENORMALS' in model.bspxlumps!);
       assert.ok(model.faces.length > 0);
 
       for (const face of model.faces) {
@@ -472,17 +398,17 @@ void describe('BSP38Loader', () => {
 
 void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alike)', () => {
   void test('replaces a placeholder texture with a PBRMaterial using explicit width/height from qsmat', async () => {
-    const fakeTexture = /** @type {GLTexture} */ ({ width: 256, height: 256 });
+    const fakeTexture = ({ width: 256, height: 256 } as unknown as GLTexture);
     const originalFromImageFile = GLTexture.FromImageFile;
 
     try {
       GLTexture.FromImageFile = () => Promise.resolve(fakeTexture);
 
-      await withMockedRegistry({
-        isDedicatedServer: false,
-        Con: silentCon,
-        COM: /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
-          LoadTextFile(name) {
+      const context = createModelLoadContext({
+        loadRenderData: true,
+        files: {
+          LoadFile: () => Promise.resolve(null),
+          LoadTextFile(name: string): Promise<string | null> {
             if (name !== 'textures/test.qsmat.json') {
               return Promise.resolve(null);
             }
@@ -499,20 +425,19 @@ void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alik
               },
             }));
           },
-        }),
-      }, async () => {
-        const model = new BrushModel('qsmat-test');
-        model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
-        model.textures = [new QuakeMaterial('e1u1/box1_5', 1, 1)];
-
-        await QSMatLoader.load(model);
-
-        assert.ok(model.textures[0] instanceof PBRMaterial);
-        assert.equal(model.textures[0].width, 64);
-        assert.equal(model.textures[0].height, 64);
-        assert.equal(model.textures[0].diffuse, fakeTexture);
-        assert.ok(model.textures[0].flags & MaterialFlags.MF_FULLBRIGHT);
+        },
       });
+      const model = new BrushModel('qsmat-test');
+      model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
+      model.textures = [new QuakeMaterial('e1u1/box1_5', 1, 1)];
+
+      await QSMatLoader.load(model, context);
+
+      assert.ok(model.textures[0] instanceof PBRMaterial);
+      assert.equal(model.textures[0].width, 64);
+      assert.equal(model.textures[0].height, 64);
+      assert.equal(model.textures[0].diffuse, fakeTexture);
+      assert.ok(model.textures[0].flags & MaterialFlags.MF_FULLBRIGHT);
     } finally {
       // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
       GLTexture.FromImageFile = originalFromImageFile;
@@ -523,35 +448,32 @@ void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alik
     // This is the BSP38-relevant case: before native .wal loading exists, the
     // placeholder texture has no real base size, so QSMatLoader must fall
     // back to the diffuse image's own dimensions as an approximation.
-    const fakeTexture = /** @type {GLTexture} */ ({ width: 128, height: 32 });
+    const fakeTexture = ({ width: 128, height: 32 } as unknown as GLTexture);
     const originalFromImageFile = GLTexture.FromImageFile;
 
     try {
       GLTexture.FromImageFile = () => Promise.resolve(fakeTexture);
 
-      await withMockedRegistry({
-        isDedicatedServer: false,
-        Con: silentCon,
-        COM: /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
-          LoadTextFile() {
-            return Promise.resolve(JSON.stringify({
-              version: 1,
-              materials: {
-                'e1u1/box1_5': { diffuse: 'textures/test_diffuse.png' },
-              },
-            }));
-          },
-        }),
-      }, async () => {
-        const model = new BrushModel('qsmat-test-fallback');
-        model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
-        model.textures = [new QuakeMaterial('e1u1/box1_5', 1, 1)]; // placeholder has no real base texture
-
-        await QSMatLoader.load(model);
-
-        assert.equal(model.textures[0].width, 128);
-        assert.equal(model.textures[0].height, 32);
+      const context = createModelLoadContext({
+        loadRenderData: true,
+        files: {
+          LoadFile: () => Promise.resolve(null),
+          LoadTextFile: () => Promise.resolve(JSON.stringify({
+            version: 1,
+            materials: {
+              'e1u1/box1_5': { diffuse: 'textures/test_diffuse.png' },
+            },
+          })),
+        },
       });
+      const model = new BrushModel('qsmat-test-fallback');
+      model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
+      model.textures = [new QuakeMaterial('e1u1/box1_5', 1, 1)]; // placeholder has no real base texture
+
+      await QSMatLoader.load(model, context);
+
+      assert.equal(model.textures[0].width, 128);
+      assert.equal(model.textures[0].height, 32);
     } finally {
       // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
       GLTexture.FromImageFile = originalFromImageFile;

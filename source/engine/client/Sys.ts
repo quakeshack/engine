@@ -8,15 +8,16 @@ import { KeyDestination } from './Key.ts';
 import VID from './VID.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import workerFactories from '../common/WorkerFactories.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
 
 interface LegacyWheelEvent extends Event {
   readonly wheelDeltaY: number;
 }
 
-let { COM, Con, Host, Key, M } = getClientRegistry();
+let { COM, Host, Key, M } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, Host, Key, M } = getClientRegistry());
+  ({ COM, Host, Key, M } = getClientRegistry());
 });
 
 eventBus.subscribe('host.crash', (error: unknown) => {
@@ -164,7 +165,7 @@ function handleKeyDown(event: KeyboardEvent): void {
   // Ctrl/Cmd+V: paste into the active text input instead of typing a literal 'v'. The console
   // can be open on top of gameplay (Key.destination still reading `game`), so it needs its own
   // check here rather than relying solely on the destination.
-  if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && (Con.isOpen || Key.destination !== KeyDestination.game)) {
+  if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && (ConsoleOverlay.isOpen || Key.destination !== KeyDestination.game)) {
     event.preventDefault();
     void pasteFromClipboard();
     return;

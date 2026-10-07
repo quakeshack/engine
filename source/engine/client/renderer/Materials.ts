@@ -5,19 +5,25 @@ import GL, { GLTexture, type GLProgramInfo } from '../GL.ts';
 
 let { CL, R } = getClientRegistry();
 
+/**
+ * No renderer is available in headless mode (the server, a worker, tests), so materials read the few members
+ * of it they need from this stand-in instead.
+ * @returns The stand-in.
+ */
+function createHeadlessRenderer(): typeof R {
+  return {
+    blacktexture: nullTexture,
+    notexture: nullTexture,
+    flatnormalmap: nullTexture,
+    interpolation: { value: false },
+    c_brush_texture_binds: 0,
+  } as unknown as typeof R;
+}
+
 eventBus.subscribe('registry.frozen', () => {
   ({ CL, R } = getClientRegistry());
 
-  // no renderer available in headless mode, so we need to provide a fallback for material renderer state access
-  if (!R) {
-    R = {
-      blacktexture: nullTexture,
-      notexture: nullTexture,
-      flatnormalmap: nullTexture,
-      interpolation: { value: false },
-      c_brush_texture_binds: 0,
-    } as unknown as typeof R;
-  }
+  R ??= createHeadlessRenderer();
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -34,6 +40,9 @@ const nullTexture: GLTexture = {
   bind() {},
   free() {},
 } as unknown as GLTexture;
+
+// A model can be loaded before the registry is frozen, or without it ever being (a test), so the stand-in is there from the start.
+R ??= createHeadlessRenderer();
 
 export enum MaterialFlags {
   MF_NONE = 0,

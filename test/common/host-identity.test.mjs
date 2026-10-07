@@ -6,6 +6,7 @@ import Host from '../../source/engine/common/Host.ts';
 import * as Def from '../../source/engine/common/Def.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Installs a minimal client-side registry (CL, Con, SV, isDedicatedServer) for the

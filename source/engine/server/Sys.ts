@@ -131,7 +131,7 @@ export default class DedicatedSys implements SystemServices {
       repl.on('exit', () => this.Quit());
     }
 
-    // eslint-disable-next-line require-atomic-updates
+     
     this.#isRunning = true;
 
     if (this.#dependencies.host.refreshrate!.value === 0) {

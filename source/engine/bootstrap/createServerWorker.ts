@@ -6,13 +6,14 @@ import type { WorkerFactoryRegistry } from '../common/PlatformWorker.ts';
 import type COM from '../common/Com.ts';
 
 import { eventBus } from '../common/EventBus.ts';
-import { registry } from '../registry.ts';
 import Cmd from '../common/Cmd.ts';
+import Console from '../common/Console.ts';
 import Cvar from '../common/Cvar.ts';
 import GameModule from '../common/GameModule.ts';
 import Mod from '../common/Mod.ts';
 import { Pmove } from '../common/Pmove.ts';
 import W from '../common/W.ts';
+import PlatformWorker from '../common/PlatformWorker.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import { ControlLink, forwardedServerEvents } from '../common/ServerWorkerProtocol.ts';
 import { ChannelDriver, MessagePortEndpoint } from '../network/ChannelDriver.ts';
@@ -46,8 +47,8 @@ export interface ServerWorker {
 
 /**
  * Composition root of a server worker: builds the realm services (console, clock, files, network),
- * the server runtime on top of them and the runtime that answers the main thread, hands them to the
- * registry that older code still reads inside this realm, and tells the main thread when it is ready.
+ * the server runtime on top of them and the runtime that answers the main thread, and tells the
+ * main thread when it is ready.
  * @param platform What differs between the platforms.
  * @param init Settings the main thread sent with the port.
  * @returns The booted worker.
@@ -57,6 +58,9 @@ export async function createServerWorker(platform: ServerWorkerPlatform, init: S
 
   const link = new ControlLink<ControlFromServer, ControlToServer>(platform.port, (message) => { runtime?.handle(message); });
   const con = new ServerWorkerConsole((message) => { link.send(message); });
+
+  // Whatever the shared code of this realm prints goes to the page's console as well.
+  Console.useDelegate(con);
   const { sys } = platform;
 
   const com = platform.createCom({
@@ -116,19 +120,12 @@ export async function createServerWorker(platform: ServerWorkerPlatform, init: S
 
   realm.serverHost = serverHost;
 
-  registry.isDedicatedServer = true;
-  registry.buildConfig = init.buildConfig;
-  registry.urls = init.urls;
-  registry.Con = con as unknown as typeof registry.Con;
-  registry.Sys = sys as unknown as typeof registry.Sys;
-  registry.COM = com;
-  registry.Mod = Mod;
-  registry.NET = net;
-  registry.SV = sv;
-  registry.Host = realm as unknown as typeof registry.Host;
-  eventBus.publish('registry.frozen');
-
   WorkerManager.Init(platform.workerFactories);
+  WorkerManager.services = { con, com, urls: () => init.urls };
+  PlatformWorker.onCrash = (error) => { realm.HandleCrash(error); };
+  Cmd.files = com;
+  GameModule.com = com;
+  Cvar.serverState = { isServerActive: () => sv.server.active, reportedCheats: () => undefined };
 
   Cmd.Init();
   Cvar.Init();
@@ -139,10 +136,11 @@ export async function createServerWorker(platform: ServerWorkerPlatform, init: S
   serverHost.InitSessionRequestCommands((request) => { link.send({ kind: 'session-request', request }); });
 
   await com.InitStorage();
+  W.files = com;
   await W.LoadPalette('gfx/palette.lmp');
   await GameModule.Init(sv.engineAPI);
 
-  Mod.Init();
+  Mod.Init({ files: com, con, loadRenderData: false });
   net.Init();
   Pmove.Init();
   sv.Init();

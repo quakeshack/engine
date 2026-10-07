@@ -17,6 +17,7 @@ import { cvarFlags } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 
 import { defaultMockRegistry, withMockRegistry, registrySV } from '../physics/fixtures.mjs';
+import '../support/consoleBridge.ts';
 
 const [{ ServerGameAPI }, { PlayerEntity }, { WorldspawnEntity }] = await Promise.all([
   import('../../source/game/id1/GameAPI.ts'),
@@ -992,7 +993,7 @@ void describe('Host.save/load integration', () => {
         // Load the real id1 pak metadata so maps/e1m1.bsp resolves through COM.
         await nodeCom.AddGameDirectory('id1');
 
-        Mod.Init();
+        Mod.Init({ files: mockCOM, con: consoleCapture.Con, loadRenderData: false });
 
         const model = await Mod.ForNameAsync('maps/e1m1.bsp', true);
         assert.ok(model !== null);

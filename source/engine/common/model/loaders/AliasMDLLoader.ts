@@ -1,7 +1,6 @@
 import Vector from '../../../../shared/Vector.ts';
 import Q from '../../../../shared/Q.ts';
 import GL, { GLTexture, resampleTexture8 } from '../../../client/GL.ts';
-import { registry } from '../../../registry.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { ModelType } from '../../Mod.ts';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
@@ -359,7 +358,7 @@ export class AliasMDLLoader extends ModelLoader {
     }
 
     // Prepare rendering data (if not dedicated server)
-    if (!registry.isDedicatedServer) {
+    if (this.context.loadRenderData) {
       this.#buildRenderCommands(loadmodel);
     }
 
@@ -454,7 +453,7 @@ export class AliasMDLLoader extends ModelLoader {
    * Translate player skin for color customization.
    */
   #translatePlayerSkin(loadmodel: AliasModel, data: Uint8Array, skin: MutableAliasRenderSkin): void {
-    if (registry.isDedicatedServer) {
+    if (!this.context.loadRenderData) {
       return;
     }
 
@@ -497,10 +496,10 @@ export class AliasMDLLoader extends ModelLoader {
         const { diffuse, luminance } = buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
         const singleSkin: MutableAliasSingleSkin = {
           group: false,
-          texturenum: !registry.isDedicatedServer
+          texturenum: this.context.loadRenderData
             ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}`, loadmodel._skin_width, loadmodel._skin_height, diffuse)
             : null,
-          luminanceTexture: !registry.isDedicatedServer
+          luminanceTexture: this.context.loadRenderData
             ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, luminance)
             : null,
         };
@@ -534,10 +533,10 @@ export class AliasMDLLoader extends ModelLoader {
           this.#floodFillSkin(loadmodel, skin);
           const { diffuse, luminance } = buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
 
-          group.skins[groupIndex].texturenum = !registry.isDedicatedServer
+          group.skins[groupIndex].texturenum = this.context.loadRenderData
             ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}`, loadmodel._skin_width, loadmodel._skin_height, diffuse)
             : null;
-          group.skins[groupIndex].luminanceTexture = !registry.isDedicatedServer
+          group.skins[groupIndex].luminanceTexture = this.context.loadRenderData
             ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, luminance)
             : null;
 

@@ -1,13 +1,14 @@
 import Vector from '../../shared/Vector.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
+import Con from '../common/Console.ts';
 
 type VectorTuple = readonly [number, number, number];
 
-let { CL, Con, R } = getClientRegistry();
+let { CL, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, R } = getClientRegistry());
+  ({ CL, R } = getClientRegistry());
 });
 
 /**

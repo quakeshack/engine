@@ -6,6 +6,8 @@ import { eventBus } from '../common/EventBus.ts';
 import { kbutton, kbuttons } from './ClientInput.ts';
 import { KeyDestination } from './Key.ts';
 import VID from './VID.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import Con from '../common/Console.ts';
 
 /** Browser-derived signals used to decide whether mobile play needs external input devices. */
 export interface MobileInputEnvironment {
@@ -185,10 +187,10 @@ export function shouldShowMobileExternalInputWarning(state: MobileInputSupportSt
   return !state.hasKeyboardActivity || !hasMouseSupport(state);
 }
 
-let { CL, COM, Con, Host, Key, M, V } = getClientRegistry();
+let { CL, COM, Host, Key, M, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Host, Key, M, V } = getClientRegistry());
+  ({ CL, COM, Host, Key, M, V } = getClientRegistry());
 });
 
 export default class IN {
@@ -326,7 +328,7 @@ export default class IN {
     // open on top of gameplay) must not lock/hide the cursor. `Key.destination` alone isn't
     // enough here: it also reads `game` while disconnected with no menu open (e.g. right after
     // closing it), which shouldn't capture the mouse either.
-    if (Key.destination === KeyDestination.game && !Con.isOpen
+    if (Key.destination === KeyDestination.game && !ConsoleOverlay.isOpen
       && CL.cls.state === clientConnectionState.connected
       && document.pointerLockElement !== VID.mainwindow) {
       void VID.mainwindow.requestPointerLock();

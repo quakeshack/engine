@@ -3,11 +3,12 @@ import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { HostError } from '../common/Errors.ts';
+import Con from '../common/Console.ts';
 
-let { CL, COM, Con, Host, NET } = getClientRegistry();
+let { CL, COM, Host, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Host, NET } = getClientRegistry());
+  ({ CL, COM, Host, NET } = getClientRegistry());
 });
 
 /**

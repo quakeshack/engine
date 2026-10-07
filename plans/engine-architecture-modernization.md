@@ -1079,7 +1079,7 @@ above) or (c) leaving the five static (the "direct imports" option, rejected abo
 
 Each step leaves `npm test`, `npm run typecheck` and eslint green and the game playable, and stops for a go-ahead.
 
-**4a, `common/` free of the registry and of the client (the worker's realm becomes registry-free)**
+**4a, `common/` free of the registry and of the client (the worker's realm becomes registry-free), done, see "Phase 4a: what shipped"**
 
 1. Test groundwork: `test/physics/fixtures.mjs` to `fixtures.ts` with typed factories, `tsconfig` includes
    `test/**/*.test.ts`, `package.json` test globs and the Dockerfile `test` stage check (`test-glob-coverage`,
@@ -1119,6 +1119,78 @@ worker handshake is awaited at a specific point), so each of them gets a browser
 module-evaluation order changes when imports replace registry lookups, which is the failure mode that shows up only at
 boot, so 4c ends with a cold-start run of both builds.
 
+
+#### Phase 4a: what shipped (2026-10-07, not committed: waiting for the developer's test and review)
+
+Done-condition met: nothing under `source/engine/common/` (except `Host.ts` and `GameAPIs.ts`, which 4b removes),
+`network/`, `server/` or `bootstrap/createServerWorker.ts` imports `registry.ts`, pinned by
+`test/common/engine-boundaries.test.mjs`. The server worker no longer fills a registry at all, and the import
+closure of its entry only reads the registry in the client data classes model loading drags in. The ESLint ratchet went from
+63 to 47 files, `registry.isDedicatedServer` reads from 39 to 26 (19 of them in `Host`, 2 in `R`, the rest in launchers),
+1752 tests pass (was 1727), `npm run typecheck` is clean, `eslint source/engine` has 0 errors.
+
+- **Models**: `ModelLoadContext` (`files`, `con`, `loadRenderData`) is handed to every loader through its constructor,
+  and to `QSMatLoader`/`BSPXLoader` as an argument. `isDedicatedServer` is gone from all of them. `Mod` is an instance
+  (`export class Mod`, default export `new Mod()`), initialized with `Mod.Init({ files, con, loadRenderData, keptClientModels })`
+  by the composition root of the realm.
+- **Console split**: `common/Console.ts` is the output side only (text buffer, `Print*`, capture, `ClearNotify`, the
+  `con_notifytime` variable), an instance with `Init({ clock, developer })` and `useDelegate()`. A server worker
+  routes it to its `ServerWorkerConsole`, so everything shared code prints there reaches the page. `client/ConsoleOverlay.ts`
+  (static) is what draws it: `isOpen`, `forcedup`, `vislines`, the toggle and message-mode commands, `DrawConsole`,
+  `DrawNotify`, `DrawInput`. Consumers were moved over (`SCR`, `Key`, `IN`, `V`, `Sys`, `ClientConnection`, `Host`, `GameAPIs`).
+  `Con` and `Mod` are imported directly everywhere now, 23 prologs were deleted.
+- **Hooks instead of registry reads in shared singletons** (`Cmd`, `Cvar`, `W`, `GameModule`, `WorkerManager`,
+  `PlatformWorker` stay realm singletons, as A1 says; the composition root of the realm sets what they need):
+  `Cmd.files` (`exec`, `stuffcmds`), `Cmd.forwardToServer` (installed by `ClientHost.Init`, the old `cmd`/forwarding body
+  moved to `ClientHost.ForwardToServer`; a realm without it swallows forwards, which is what the dedicated flag did),
+  `Cvar.serverState` (the cheat rule; client reads its controller, a server reads itself), `W.files` (set by `COM.Init`
+  and the worker roots), `GameModule.com`, `WorkerManager.services`, `PlatformWorker.onCrash`.
+- **`WorkerFramework`** (the navigation worker's realm) has no registry any more: local `urls`, `W.files`, console
+  delegate, `Mod.Init` with `loadRenderData: false`. `Materials.ts` creates its headless renderer stand-in at module
+  load instead of waiting for `registry.frozen`.
+- **Tests**: `tsconfig.json` includes `test/**/*.test.ts` and `test/support/**`. Converted to TypeScript: `bsp29-loader`,
+  `bsp38-loader`, `bspx-loader`, `model-cache` (a `Mod` instance per test, no global state to restore), `console` (new,
+  per-instance), `console-overlay` (new). New: `cmd-forward`, `cvar-change-block`, plus tests for the console delegate and
+  `ClientHost.ForwardToServer`. New typed helpers in `test/support/` (`modelContext.ts`; `consoleBridge.ts`, which makes the
+  shared console print to a mocked `registry.Con` for the tests that still mock one, and goes with the registry).
+  **Deviation from decision 3**: tests whose only change was plumbing (the physics, savegame, workers, key, in, scr and
+  client-host tests) stayed `.mjs` and were edited in place; converting them would have added casts and no checking.
+  They convert when their own module does (4b/4c).
+- **Behavior changes, all small**: `con_notifytime` exists in every realm as before; the dedicated server keeps it.
+  `ConsoleCommand.forward()` in a realm with neither a local server nor a client returns `true` without doing anything, as
+  before for the dedicated flag. `cmd <command>` still sends the whole line (`cmd status` reaches the server as `cmd status`,
+  which the server ignores): that was already so and is untouched; worth a look when `ClientHost` is split further.
+- **Verified in Chromium** (scratch builds, no commit): page with the server in a worker and with `?serverthread`: new
+  game, `status`, `god` refused without cheats, `sv_gravity` set and read back, `con_notifytime` read back, an unknown
+  command, `echo`, `changelevel e1m2` and `restart` (both land on the right map with signon 4), the drop-down console and
+  its colors render (screenshot); a page connected to the scratch dedicated server over WebSocket: `status` is forwarded
+  and answered, `say` works; the dedicated server boots and spawns a map from a fresh build; both production builds
+  compile. The only failed requests are the three missing assets that were already missing (`conback.png`,
+  `concharslarge.png`, `beam.mdl`). Not verified: pointer lock and mouse look (no change expected, but a live test is
+  still wanted), Firefox, the navigation worker with a real path request on the new `WorkerFramework`.
+
+#### Memory check after 4a (2026-10-07)
+
+The developer saw about 1.2 GB where it used to be about 300 MB on E1M1. Measured against the commit before this
+work (`9abb71b`, development builds of both, same data) in headless Chromium and in the system Chrome with a real GPU
+(`/usr/bin/google-chrome`, headed), process tree summed by proportional set size, JS heaps from CDP after a forced GC:
+
+| E1M1, idle | page heap | worker heap | tab renderer | all Chrome processes (PSS) |
+| :--- | :--- | :--- | :--- | :--- |
+| before (server in the page) | 60 MB | none | 214 MB | about 655 MB |
+| now (server in a worker) | 60 MB | 73 MB | 308 MB | about 780 MB |
+
+So the worker costs about 94 MB of renderer memory, which is the second copy of world and models that Phase 3 expected
+(it was 22 MB of JS heap in the Phase 3c measurement; the rest is typed-array backing stores). No growth: flat over 10 minutes
+of walking, over three `changelevel`s and over four `map` loads; warm caches, an attached DevTools session (scripts, network,
+console) and a running audio context change nothing. A heap snapshot of the worker (78 MB) is mostly world geometry kept as
+objects: `Vector` instances and their buffers about 30 MB, `ClipNode` 8 MB, `Plane` 4 MB, element arrays 16 MB.
+
+The 1.2 GB did not reproduce here, so it is something outside these runs (how it was measured, a long session, a mod, other
+tabs or the dev tooling: the running `vite build --watch` alone holds 2 GB). Open: which number it was (Chrome task manager
+"memory footprint" of the tab, or the renderer, or the whole browser) and in which session. If the worker's share needs to
+shrink, the lever is the world geometry: store vertexes, clip nodes and planes in typed arrays instead of object graphs, which
+B7 asked of the loaders anyway.
 
 ### Later tracks (own plans, order flexible after Phase 3)
 

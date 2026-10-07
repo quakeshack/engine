@@ -1,10 +1,19 @@
 import type { ServerClient } from '../server/Client.ts';
 
-import * as Protocol from '../network/Protocol.ts';
-import { getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
-import { eventBus } from './EventBus.ts';
+import COM from './Com.ts';
+import Con from './Console.ts';
 import Cvar from './Cvar.ts';
-import { clientConnectionState } from './Def.ts';
+
+/** The files and command line the `exec` and `stuffcmds` commands read. */
+export interface CommandFiles {
+  /** The command line arguments the process was started with. */
+  readonly argv: readonly string[];
+  /**
+   * Reads a script from the game's search path.
+   * @returns The script's text, `null` when it does not exist.
+   */
+  LoadTextFile(filename: string): Promise<string | null>;
+}
 
 type CommandFunction = (this: ConsoleCommand, ...args: string[]) => void | Promise<void>;
 type CommandConstructor = new () => ConsoleCommand;
@@ -17,12 +26,6 @@ type AliasEntry = {
   name: string;
   value: string;
 };
-
-let { COM, Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
-});
 
 /** @returns {boolean} True when the registration is a ConsoleCommand subclass. */
 function isConsoleCommandClass(command: CommandRegistration): command is CommandConstructor {
@@ -55,40 +58,8 @@ export class ConsoleCommand {
       return Cmd.forwardLocal(this);
     }
 
-    if (registry.isDedicatedServer) {
-      return true;
-    }
-
-    console.assert(this.client === null, 'must be executed locally');
-
-    const argv = [...this.argv];
-    let command = this.command;
-
-    if (command !== null && command.toLowerCase() === 'cmd') {
-      command = argv.shift() ?? null;
-    }
-
-    if (command === null) {
-      Con.Print('Usage: cmd <command> <args>\n');
-      return true;
-    }
-
-    const { CL } = getClientRegistry();
-
-    if (CL.cls.state !== clientConnectionState.connected) {
-      Con.Print(`Can't "${command}", not connected\n`);
-      return true;
-    }
-
-    if (CL.cls.demoplayback) {
-      return true;
-    }
-
-    // send command to the server in behalf of the client
-    CL.cls.message.writeByte(Protocol.clc.stringcmd);
-    CL.cls.message.writeString(this.args ?? '');
-
-    return true;
+    // A realm that has a server to send commands to installs how; a dedicated server has none and swallows them.
+    return Cmd.forwardToServer?.(this) ?? true;
   }
 }
 
@@ -133,6 +104,16 @@ export default class Cmd {
    * @returns True, the command is taken care of.
    */
   static forwardLocal: ((command: ConsoleCommand) => boolean) | null = null;
+
+  /**
+   * Sends a command that asks to be forwarded to the server this realm is connected to, in behalf of the
+   * local player. Set by the client; a realm without one has no server to forward to.
+   * @returns True, the command is taken care of.
+   */
+  static forwardToServer: ((command: ConsoleCommand) => boolean) | null = null;
+
+  /** Where `exec` and `stuffcmds` read from. Set by the composition root of the realm. */
+  static files: CommandFiles | null = null;
 
   static #execSlots: ExecSlot[] = [];
 
@@ -213,12 +194,12 @@ export default class Cmd {
     let readingCommand = false;
     let build = '';
 
-    for (let index = 0; index < COM.argv.length; index++) {
-      const firstCharacter = COM.argv[index][0];
+    for (let index = 0; index < Cmd.files!.argv.length; index++) {
+      const firstCharacter = Cmd.files!.argv[index][0];
 
       if (readingCommand) {
         if (firstCharacter === '+') {
-          build += `\n${COM.argv[index].substring(1)} `;
+          build += `\n${Cmd.files!.argv[index].substring(1)} `;
           continue;
         }
 
@@ -228,13 +209,13 @@ export default class Cmd {
           continue;
         }
 
-        build += `${COM.argv[index]} `;
+        build += `${Cmd.files!.argv[index]} `;
         continue;
       }
 
       if (firstCharacter === '+') {
         readingCommand = true;
-        build += `${COM.argv[index].substring(1)} `;
+        build += `${Cmd.files!.argv[index].substring(1)} `;
       }
     }
 
@@ -252,7 +233,7 @@ export default class Cmd {
 
       const slot = new ExecSlot(filename);
       Cmd.#execSlots.push(slot);
-      slot.content = await COM.LoadTextFile(filename);
+      slot.content = await Cmd.files!.LoadTextFile(filename);
       slot.isReady = true;
     }
   };

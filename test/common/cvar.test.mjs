@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import '../support/consoleBridge.ts';
 
 /** @returns {{ prints: string[], warnings: string[], dprints: string[], Print: (message: string) => void, PrintWarning: (message: string) => void, DPrint: (message: string) => void }} captured console methods */
 function createConsoleCapture() {

@@ -5,6 +5,7 @@ import { WadLumpTexture } from '../common/W.ts';
 import { getCommonRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import VID from './VID.ts';
+import Con from '../common/Console.ts';
 
 interface TextureMode {
   min: number;
@@ -485,10 +486,10 @@ class GL {
 
 export default GL;
 
-let { COM, Con } = getCommonRegistry();
+let { COM } = getCommonRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
+  ({ COM } = getCommonRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;

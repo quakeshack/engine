@@ -2,23 +2,16 @@ import { content } from '../../../../shared/Defs.ts';
 import Q from '../../../../shared/Q.ts';
 import Vector from '../../../../shared/Vector.ts';
 import { CRC16CCITT } from '../../CRC.ts';
-import { getCommonRegistry, registry } from '../../../registry.ts';
-import { eventBus } from '../../EventBus.ts';
 import { Face, Plane } from '../BaseModel.ts';
 import { Brush, BrushModel, BrushSide, Node, type BrushRange } from '../BSP.ts';
 import type { PortalDefinition } from '../AreaPortals.ts';
+import COM from '../../Com.ts';
 import { QSMatLoader } from '../QSMatLoader.ts';
 import { BSPXLoader } from '../BSPXLoader.ts';
 import { WalTextureLoader } from '../WalTextureLoader.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 import { GLTexture } from '../../../client/GL.ts';
 import { MaterialFlags, QuakeMaterial } from '../../../client/renderer/Materials.ts';
-
-let { COM, Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con } = getCommonRegistry());
-});
 
 interface LumpViews {
   [index: number]: DataView;
@@ -135,7 +128,7 @@ export class BSP38Loader extends ModelLoader {
     this.#loadPlanes(lumpViews[BSP38Lump.PLANES], loadmodel);
     this.#loadTexinfo(lumpViews[BSP38Lump.TEXINFO], loadmodel);
     await this.#loadWalTextures(loadmodel); // must run before QSMatLoader, whose base-diffuse fallback checks for a decoded texture
-    await QSMatLoader.load(loadmodel);
+    await QSMatLoader.load(loadmodel, this.context);
     this.#loadFaces(lumpViews[BSP38Lump.FACES], loadmodel);
     this.#loadMarksurfaces(lumpViews[BSP38Lump.LEAFFACES], loadmodel);
     this.#loadLighting(lumpViews[BSP38Lump.LIGHTING], loadmodel);
@@ -146,7 +139,7 @@ export class BSP38Loader extends ModelLoader {
     this.#computeBrushBounds(loadmodel);
     this.#loadNodes(lumpViews[BSP38Lump.NODES], loadmodel);
     this.#loadVisibility(lumpViews[BSP38Lump.VISIBILITY], loadmodel);
-    BSPXLoader.load(loadmodel, buffer, bspxoffset); // must run before submodels, which propagate the deluxemap
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, this.context.con); // must run before submodels, which propagate the deluxemap
     this.#loadSubmodels(lumpViews[BSP38Lump.MODELS], loadmodel); // must run after nodes/brushes/leafbrushes are loaded
     this.#loadAreas(lumpViews[BSP38Lump.AREAS], lumpViews[BSP38Lump.AREAPORTALS], loadmodel);
     this.#parseExplicitPortalKeys(loadmodel); // explicit "portal" key overrides, mirrors BSP29Loader's escape hatch
@@ -374,7 +367,7 @@ export class BSP38Loader extends ModelLoader {
    * request per texture, almost all guaranteed to fail.
    */
   async #loadWalTextures(loadmodel: BrushModel): Promise<void> {
-    if (registry.isDedicatedServer || loadmodel.worldspawnInfo._qs_wal !== '1') {
+    if (!this.context.loadRenderData || loadmodel.worldspawnInfo._qs_wal !== '1') {
       return;
     }
 
@@ -384,7 +377,7 @@ export class BSP38Loader extends ModelLoader {
       }
 
       const filename = `textures/${material.name}.wal`;
-      const data = await COM.LoadFile(filename);
+      const data = await this.context.files.LoadFile(filename);
 
       if (data === null) {
         return;
@@ -393,7 +386,7 @@ export class BSP38Loader extends ModelLoader {
       const decoded = WalTextureLoader.decode(data, material.name);
 
       if (decoded === null) {
-        Con.PrintWarning(`BSP38Loader: corrupt .wal texture ${filename}\n`);
+        this.context.con.PrintWarning(`BSP38Loader: corrupt .wal texture ${filename}\n`);
         return;
       }
 
@@ -955,7 +948,7 @@ export class BSP38Loader extends ModelLoader {
     loadmodel.portalDefs = portalDefs;
     loadmodel.areaPortals.init(numAreas, portalDefs);
 
-    Con.DPrint(`BSP38Loader: loaded ${numAreas} areas with ${portalDefs.length} portal connections\n`);
+    this.context.con.DPrint(`BSP38Loader: loaded ${numAreas} areas with ${portalDefs.length} portal connections\n`);
   }
 
   /**
@@ -1057,7 +1050,7 @@ export class BSP38Loader extends ModelLoader {
     }
 
     if (derived > 0) {
-      Con.DPrint(`BSP38Loader: auto-derived ${derived} model-to-portal mapping(s) from area data\n`);
+      this.context.con.DPrint(`BSP38Loader: auto-derived ${derived} model-to-portal mapping(s) from area data\n`);
     }
   }
 

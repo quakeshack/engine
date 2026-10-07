@@ -9,11 +9,12 @@ import { effect } from '../../../shared/Defs.ts';
 import { AliasModel, type AliasSingleFrame, type AliasGroupedFrameEntry, type AliasSingleSkin, type AliasGroupedSkinEntry } from '../../common/model/AliasModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
+import Con from '../../common/Console.ts';
 
-let { CL, Host, R, Con } = getClientRegistry();
+let { CL, Host, R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Host, R, Con } = getClientRegistry());
+  ({ CL, Host, R } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;

@@ -1,4 +1,5 @@
 import type { BaseModel } from './BaseModel.ts';
+import type { ModelLoadContext } from './ModelLoadContext.ts';
 
 /**
  * Abstract base class for model format loaders.
@@ -7,6 +8,12 @@ import type { BaseModel } from './BaseModel.ts';
  * a populated model instance.
  */
 export abstract class ModelLoader {
+  protected readonly context: ModelLoadContext;
+
+  constructor(context: ModelLoadContext) {
+    this.context = context;
+  }
+
   /**
    * Returns the magic numbers that identify this format.
    * Magic numbers are read from the first four bytes of the file.

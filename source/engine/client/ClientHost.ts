@@ -9,6 +9,7 @@
  
 
 import * as Def from '../common/Def.ts';
+import * as Protocol from '../network/Protocol.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
@@ -23,11 +24,12 @@ import InviteCommand from './InviteCommand.ts';
 import NavigationDebug from './NavigationDebug.ts';
 import Q from '../../shared/Q.ts';
 import { KeyDestination } from './Key.ts';
+import Con from '../common/Console.ts';
 
-let { CL, Con, Host, Key, M, NET, R, S, SCR } = getClientRegistry();
+let { CL, Host, Key, M, NET, R, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, Key, M, NET, R, S, SCR } = getClientRegistry());
+  ({ CL, Host, Key, M, NET, R, S, SCR } = getClientRegistry());
 });
 
 /**
@@ -44,6 +46,13 @@ export default class ClientHost {
     }
 
     NavigationDebug.Init();
+
+    // What the shared console and variables need to know about the server this client is connected to.
+    Cmd.forwardToServer = (command) => ClientHost.ForwardToServer(command);
+    Cvar.serverState = {
+      isServerActive: () => CL.serverController.state.active,
+      reportedCheats: () => CL.cls.serverInfo?.sv_cheats,
+    };
 
     Cmd.AddCommand('invite', InviteCommand);
 
@@ -172,6 +181,42 @@ export default class ClientHost {
     if (profiling) {
       console.profileEnd('S.Update');
     }
+
+    return true;
+  }
+
+  /**
+   * Sends a console command to the server this client is connected to, in behalf of the player.
+   * @param command The command that asked to be forwarded, `cmd` itself or one that forwards itself.
+   * @returns True, the command is taken care of.
+   */
+  static ForwardToServer(command: ConsoleCommand): boolean {
+    console.assert(command.client === null, 'must be executed locally');
+
+    const argv = [...command.argv];
+    let name = command.command;
+
+    if (name !== null && name.toLowerCase() === 'cmd') {
+      name = argv.shift() ?? null;
+    }
+
+    if (name === null) {
+      Con.Print('Usage: cmd <command> <args>\n');
+      return true;
+    }
+
+    if (CL.cls.state !== Def.clientConnectionState.connected) {
+      Con.Print(`Can't "${name}", not connected\n`);
+      return true;
+    }
+
+    if (CL.cls.demoplayback) {
+      return true;
+    }
+
+    // send command to the server in behalf of the client
+    CL.cls.message.writeByte(Protocol.clc.stringcmd);
+    CL.cls.message.writeString(command.args ?? '');
 
     return true;
   }

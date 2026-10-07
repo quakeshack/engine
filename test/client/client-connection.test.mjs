@@ -8,6 +8,7 @@ import { clientRuntimeState, clientStaticState } from '../../source/engine/clien
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Build a minimal demo subsystem stub for connection tests.

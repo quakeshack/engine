@@ -103,6 +103,21 @@ void describe('engine boundaries', () => {
     });
   });
 
+  void describe('shared engine code', () => {
+    // Host and the game API classes are what is left of the registry's readers in common/, they go away
+    // with Phase 4b. Everything else there gets what it needs handed to it, or imports it directly.
+    void test('does not import the registry, apart from Host and the game API classes', () => {
+      assert.deepEqual(
+        filesMatching('common', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/),
+        ['common/GameAPIs.ts', 'common/Host.ts'],
+      );
+    });
+
+    void test('the composition root of a server worker does not fill the registry', () => {
+      assert.deepEqual(filesMatching('bootstrap', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/), ['bootstrap/createDedicatedServer.ts']);
+    });
+  });
+
   void describe('client runtime', () => {
     void test('does not take SV out of a registry', () => {
       assert.deepEqual(filesMatching('client', /\{[^}]*\bSV\b[^}]*\}\s*=\s*get(?:Client|Common)Registry\(\)/), []);
@@ -143,6 +158,12 @@ void describe('engine boundaries', () => {
         .sort();
 
       assert.deepEqual(clientFiles, CLIENT_FILES_OF_MODEL_LOADERS);
+    });
+
+    void test('does not read the registry, apart from the data classes model loading drags in', () => {
+      const closure = [...importClosure(join(ENGINE_ROOT, 'server/ServerWorker.ts'))].filter((path) => /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/.test(readCode(path)));
+
+      assert.deepEqual(closure.map((path) => relative(ENGINE_ROOT, path)).sort(), CLIENT_FILES_OF_MODEL_LOADERS.filter((path) => path !== 'client/VID.ts'));
     });
 
     void test('does not load the game API classes of the client, they pull in the menu and the renderer', () => {

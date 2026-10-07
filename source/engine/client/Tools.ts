@@ -1,14 +1,7 @@
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 import W, { WadFileInterface } from '../common/W.ts';
-import { getCommonRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
-
-let { Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con } = getCommonRegistry());
-});
+import Con from '../common/Console.ts';
 
 /**
  * Returns a readable message for an unknown error value.

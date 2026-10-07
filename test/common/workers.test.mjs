@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 
 import PlatformWorker from '../../source/engine/common/PlatformWorker.ts';
 import WorkerManager from '../../source/engine/common/WorkerManager.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 class FakeNodeWorker {
@@ -66,45 +65,30 @@ function createConsoleCapture() {
 }
 
 /**
- * Run with a minimal worker-capable registry.
+ * Run with the services a worker-capable realm gives the worker manager and the crash hook of
+ * its workers, recording the crashes.
  * @param {ReturnType<typeof createConsoleCapture>} consoleCapture
- * @param {() => void | Promise<void>} callback
+ * @param {(context: { crashes: unknown[], com: { searchpaths: unknown[], gamedir: unknown[], game: string }, urls: object }) => void | Promise<void>} callback
  */
-async function withWorkerRegistry(consoleCapture, callback) {
-  const previousCon = registry.Con;
-  const previousCom = registry.COM;
-  const previousHost = registry.Host;
-  const previousUrls = registry.urls;
+async function withWorkerServices(consoleCapture, callback) {
+  const previousServices = WorkerManager.services;
+  const previousOnCrash = PlatformWorker.onCrash;
   const crashes = [];
-
-  Object.assign(registry, {
-    Con: /** @type {typeof import('../../source/engine/common/Console.ts').default} */ (/** @type {unknown} */ (consoleCapture)),
-    COM: /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
+  const com = {
     searchpaths: [{ filename: 'id1', pack: [] }],
     gamedir: [{ filename: 'id1', pack: [] }],
     game: 'id1',
-    }),
-    Host: /** @type {typeof import('../../source/engine/common/Host.ts').default} */ (/** @type {unknown} */ ({
-      crashes,
-      HandleCrash(error) {
-        crashes.push(error);
-      },
-    })),
-    urls: /** @type {import('../../source/engine/build-config').URLs} */ ({ cdnURL: 'https://cdn.example/{gameDir}/{filename}' }),
-  });
+  };
+  const urls = { cdnURL: 'https://cdn.example/{gameDir}/{filename}' };
 
-  eventBus.publish('registry.frozen');
+  WorkerManager.services = /** @type {any} */ ({ con: consoleCapture, com, urls: () => urls });
+  PlatformWorker.onCrash = (error) => { crashes.push(error); };
 
   try {
-    await callback();
+    await callback({ crashes, com, urls });
   } finally {
-    Object.assign(registry, {
-      Con: previousCon,
-      COM: previousCom,
-      Host: previousHost,
-      urls: previousUrls,
-    });
-    eventBus.publish('registry.frozen');
+    WorkerManager.services = previousServices;
+    PlatformWorker.onCrash = previousOnCrash;
   }
 }
 
@@ -112,7 +96,7 @@ void describe('PlatformWorker', () => {
   void test('forwards messages and runs shutdown listeners once on terminate', async () => {
     const consoleCapture = createConsoleCapture();
 
-    await withWorkerRegistry(consoleCapture, async () => {
+    await withWorkerServices(consoleCapture, async () => {
       const rawWorker = new FakeNodeWorker();
       const worker = new PlatformWorker('server/DummyWorker.ts', rawWorker);
       const messages = [];
@@ -136,18 +120,17 @@ void describe('PlatformWorker', () => {
     });
   });
 
-  void test('routes worker errors through Host.HandleCrash', async () => {
+  void test('routes worker errors to the crash hook of the realm', async () => {
     const consoleCapture = createConsoleCapture();
 
-    await withWorkerRegistry(consoleCapture, async () => {
+    await withWorkerServices(consoleCapture, async ({ crashes }) => {
       const rawWorker = new FakeNodeWorker();
       const worker = new PlatformWorker('server/DummyWorker.ts', rawWorker);
       const error = new Error('worker boom');
 
       rawWorker.emit('error', error);
 
-      const mockedHost = /** @type {{ crashes: Error[] }} */ (/** @type {unknown} */ (registry.Host));
-      assert.deepEqual(mockedHost.crashes, [error]);
+      assert.deepEqual(crashes, [error]);
       await worker.shutdown();
     });
   });
@@ -157,7 +140,7 @@ void describe('WorkerManager', () => {
   void test('subscribes worker events, forwards console messages, and sends framework init payload', async () => {
     const consoleCapture = createConsoleCapture();
 
-    await withWorkerRegistry(consoleCapture, async () => {
+    await withWorkerServices(consoleCapture, async ({ com, urls }) => {
       const rawWorker = new FakeNodeWorker();
 
       WorkerManager.Init({
@@ -169,8 +152,8 @@ void describe('WorkerManager', () => {
       assert.deepEqual(rawWorker.messages[0], {
         event: 'worker.framework.init',
         args: [
-          [registry.COM.searchpaths, registry.COM.gamedir, registry.COM.game],
-          registry.urls,
+          [com.searchpaths, com.gamedir, com.game],
+          urls,
         ],
       });
 

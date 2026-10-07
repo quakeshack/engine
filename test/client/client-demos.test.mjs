@@ -8,6 +8,7 @@ import ClientDemos from '../../source/engine/client/ClientDemos.ts';
 import { clientRuntimeState, clientStaticState } from '../../source/engine/client/ClientState.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Builds a synthetic current-format demo file with a single message.

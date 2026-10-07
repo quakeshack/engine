@@ -200,7 +200,7 @@ coordinates rather than element listeners:
   (`source/engine/client/Key.ts`) opens the root page (`M.Menu_Main_f()`) on a `K.MOUSE1` press
   while the console is up with no game running (disconnected or still connecting) — a
   mouse-only escape hatch for whenever a player is stuck on the console without a keyboard,
-  mirroring what Escape already does there (`Con.ToggleConsole_f()`). A click is a no-op while
+  mirroring what Escape already does there (`ConsoleOverlay.ToggleConsole_f()`). A click is a no-op while
   the console is up during an active connection, same as today — only Escape returns to gameplay
   from there. This has to live in `Key.Event()` (evaluated at mousedown time) rather than on the
   browser's later `click` event (which is where `IN.onclick()` handles the pointer-lock request):
@@ -497,7 +497,7 @@ in-game-navigable scoreboard while still moving), or a genuinely *modal* in-game
 that isn't the pause menu but still needs to steal input focus, e.g. a hypothetical inventory
 screen). That needs deliberate input-focus arbitration on top of `KeyDestination` and hasn't been
 designed for arbitrary panels yet — though the drop-down console (see `docs/console.md`) is now a
-working precedent for exactly that shape of problem: `Con.isOpen` is an independent overlay flag
+working precedent for exactly that shape of problem: `ConsoleOverlay.isOpen` is an independent overlay flag
 that takes `Key.Event()` dispatch priority over whichever `KeyDestination` is active underneath,
 rather than being folded into the destination enum itself. A generalized version of that pattern
 is the natural next extension if a mod ever needs a modal in-game panel; `MenuStack` isn't a

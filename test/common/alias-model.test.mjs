@@ -4,6 +4,12 @@ import { describe, test } from 'node:test';
 import Vector from '../../source/shared/Vector.ts';
 import { AliasModel } from '../../source/engine/common/model/AliasModel.ts';
 
+/**
+ *
+ * @param x
+ * @param y
+ * @param z
+ */
 function createPoseVertex(x, y, z) {
   return {
     v: new Vector(x, y, z),

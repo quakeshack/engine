@@ -1,6 +1,5 @@
 import Vector from '../../../../shared/Vector.ts';
 import { GLTexture } from '../../../client/GL.ts';
-import { registry } from '../../../registry.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import W, { translateIndexToRGBA } from '../../W.ts';
@@ -117,7 +116,7 @@ export class SpriteSPRLoader extends ModelLoader {
    * @returns The next byte offset after the frame, or null on dedicated server.
    */
   #loadSpriteFrame(identifier: string, buffer: ArrayBuffer, inframe: number, frame: MutableSpriteFrameImage): number | null {
-    if (registry.isDedicatedServer) {
+    if (!this.context.loadRenderData) {
       return null;
     }
 

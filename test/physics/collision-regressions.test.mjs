@@ -19,6 +19,7 @@ import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics
 import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import { registrySV, registryCollisionModelSource } from './fixtures.mjs';
+import { createModelLoadContext } from '../support/modelContext.ts';
 
 void test('PmovePlayer.DEBUG is disabled before Pmove.Init()', () => {
   assert.equal(PmovePlayer.DEBUG, false);
@@ -1031,7 +1032,7 @@ void test('ServerCollision.move prefers a later legacy hull hit over an earlier 
 });
 
 void test('BSP29Loader builds legacy clipnode masks from a model headnode subtree', () => {
-  const loader = new BSP29Loader();
+  const loader = new BSP29Loader(createModelLoadContext());
   const clipnodes = [
     { planenum: 0, children: [1, 2] },
     { planenum: 1, children: [content.CONTENT_EMPTY, 3] },
@@ -1050,7 +1051,7 @@ void test('BSP29Loader builds legacy clipnode masks from a model headnode subtre
 });
 
 void test('BSP29Loader inserts BRUSHLIST brushes into both leaves when they touch a BSP split plane', () => {
-  const loader = new BSP29Loader();
+  const loader = new BSP29Loader(createModelLoadContext());
   const loadmodel = new BrushModel();
   const frontLeaf = /** @type {import('../../source/engine/common/model/BSP.ts').Node} */ ({
     contents: content.CONTENT_EMPTY,
@@ -3630,7 +3631,7 @@ async function loadBSPMap(mapName) {
     },
   });
   eventBus.publish('registry.frozen');
-  Mod.Init();
+  Mod.Init({ files: registry.COM, con: registry.Con, loadRenderData: false });
 
   try {
     // Request with the 'maps/' prefix like pmove.test.mjs does

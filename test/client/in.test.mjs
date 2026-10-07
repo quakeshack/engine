@@ -14,6 +14,7 @@ import VID from '../../source/engine/client/VID.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { K } from '../../source/shared/Keys.ts';
+import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 
 /**
  * Temporarily installs a global `document` stub with a settable `pointerLockElement`, since
@@ -129,7 +130,7 @@ void describe('IN mobile external input warning', () => {
 
 void describe('IN.onclick', () => {
   /**
-   * Temporarily installs mock `Key`/`Con`/`CL` registry stubs (destination, whether the
+   * Temporarily installs mock `Key`/`CL` registry stubs, and sets `ConsoleOverlay` (destination, whether the
    * drop-down console is open, and connection state — defaults to connected, matching most of
    * these tests' intent) and a mock `VID.mainwindow.requestPointerLock` that records whether it
    * was called.
@@ -139,13 +140,13 @@ void describe('IN.onclick', () => {
    */
   function withMockClickEnvironment(destination, callback, options = {}) {
     const previousKey = registry.Key;
-    const previousCon = registry.Con;
+    const previousConsoleOpen = ConsoleOverlay.isOpen;
     const previousCL = registry.CL;
     const previousMainwindow = VID.mainwindow;
     let requestedPointerLock = false;
 
     registry.Key = { destination };
-    registry.Con = { isOpen: options.consoleOpen ?? false };
+    ConsoleOverlay.isOpen = options.consoleOpen ?? false;
     registry.CL = { cls: { state: options.connectionState ?? clientConnectionState.connected } };
     VID.mainwindow = { requestPointerLock: () => { requestedPointerLock = true; return Promise.resolve(); } };
     eventBus.publish('registry.frozen');
@@ -154,7 +155,7 @@ void describe('IN.onclick', () => {
       callback(() => requestedPointerLock);
     } finally {
       registry.Key = previousKey;
-      registry.Con = previousCon;
+      ConsoleOverlay.isOpen = previousConsoleOpen;
       registry.CL = previousCL;
       VID.mainwindow = previousMainwindow;
       eventBus.publish('registry.frozen');

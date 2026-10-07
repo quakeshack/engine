@@ -8,11 +8,13 @@ import { KeyDestination } from './Key.ts';
 import GL from './GL.ts';
 import VID from './VID.ts';
 import PostProcess from './renderer/PostProcess.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import Con from '../common/Console.ts';
 
-let { CL, Con, Draw, Host, Key, M, R, S, V } = getClientRegistry();
+let { CL, Draw, Host, Key, M, R, S, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Draw, Host, Key, M, R, S, V } = getClientRegistry());
+  ({ CL, Draw, Host, Key, M, R, S, V } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;
@@ -278,7 +280,7 @@ export default class SCR {
    * @returns True while the console should not be drawn at all.
    */
   static isConsolePassiveBackdrop(): boolean {
-    return Con.forcedup && !Con.isOpen;
+    return ConsoleOverlay.forcedup && !ConsoleOverlay.isOpen;
   }
 
   /**
@@ -287,9 +289,9 @@ export default class SCR {
    * `isConsolePassiveBackdrop()`), so there's no special-cased snap to reach.
    */
   static SetUpToDrawConsole(): void {
-    Con.forcedup = (!CL.state.worldmodel) || (CL.cls.signon !== 4);
+    ConsoleOverlay.forcedup = (!CL.state.worldmodel) || (CL.cls.signon !== 4);
 
-    const conlines = Con.isOpen ? 100 : 0;
+    const conlines = ConsoleOverlay.isOpen ? 100 : 0;
 
     if (conlines < SCR.con_current) {
       SCR.con_current -= SCR.conspeed.value * Host.frametime;
@@ -309,11 +311,11 @@ export default class SCR {
    */
   static DrawConsole(): void {
     if (SCR.con_current > 0) {
-      Con.DrawConsole(SCR.con_current);
+      ConsoleOverlay.DrawConsole(SCR.con_current);
       return;
     }
     if ((Key.destination === KeyDestination.game || Key.destination === KeyDestination.message) && CL.cls.signon === 4) {
-      Con.DrawNotify();
+      ConsoleOverlay.DrawNotify();
     }
   }
 
@@ -425,7 +427,7 @@ export default class SCR {
           bloomEffect.drawDebugPreview();
         }
       }
-      if (!Con.forcedup) {
+      if (!ConsoleOverlay.forcedup) {
         R.PolyBlend();
       } else {
         // V.RenderView() (above) skips the 3D scene render entirely while forcedup — and with

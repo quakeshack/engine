@@ -16,13 +16,15 @@ import { ScoreSlot } from './ClientState.ts';
 import type { ClientEdict } from './ClientEntities.ts';
 import type { SFX } from './Sound.ts';
 import PostProcess from './renderer/PostProcess.ts';
+import Con from '../common/Console.ts';
+import Mod from '../common/Mod.ts';
 
 type ClientSignonState = 0 | 1 | 2 | 3 | 4;
 
-let { CL, Con, SCR, S, R, V, Host, NET, Mod } = getClientRegistry();
+let { CL, SCR, S, R, V, Host, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, SCR, S, R, V, Host, NET, Mod } = getClientRegistry());
+  ({ CL, SCR, S, R, V, Host, NET } = getClientRegistry());
 });
 
 // An edict reference on the wire is the number of the client's own copy of it.

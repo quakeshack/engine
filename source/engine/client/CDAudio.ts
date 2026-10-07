@@ -3,11 +3,12 @@ import Cvar from '../common/Cvar.ts';
 import Q from '../../shared/Q.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
+import Con from '../common/Console.ts';
 
-let { COM, Con, S } = getClientRegistry();
+let { COM, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, S } = getClientRegistry());
+  ({ COM, S } = getClientRegistry());
 });
 
 export default class CDAudio {

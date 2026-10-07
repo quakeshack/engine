@@ -9,6 +9,7 @@ import GameModule from '../../source/engine/common/GameModule.ts';
 import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Builds the minimal client registry surface required by parseServerMessage().

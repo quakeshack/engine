@@ -6,6 +6,7 @@ import Cmd, { type ConsoleCommand } from '../common/Cmd.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import { HostError } from '../common/Errors.ts';
+import Con from '../common/Console.ts';
 
 interface KButtonState {
   down: [number, number];
@@ -57,10 +58,10 @@ const kbuttonByName = Object.freeze({
 
 const KBUTTON_COUNT = Object.keys(kbuttonByName).length;
 
-let { CL, Con, Host, NET, V } = getClientRegistry();
+let { CL, Host, NET, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, NET, V } = getClientRegistry());
+  ({ CL, Host, NET, V } = getClientRegistry());
 });
 
 /**

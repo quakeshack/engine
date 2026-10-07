@@ -6,11 +6,12 @@ import Cvar from '../common/Cvar.ts';
 import Q from '../../shared/Q.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
+import Con from '../common/Console.ts';
 
-let { CL, COM, Con, Host } = getClientRegistry();
+let { CL, COM, Host } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Host } = getClientRegistry());
+  ({ CL, COM, Host } = getClientRegistry());
 });
 
 const MAX_DYNAMIC_CHANNELS = 64;

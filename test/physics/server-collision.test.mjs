@@ -13,7 +13,12 @@ import { AliasCollisionState, MeshCollisionState } from '../../source/engine/ser
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
 import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockRegistry, withMockRegistry, registrySV, registryCollisionModelSource } from './fixtures.mjs';
+import { createModelLoadContext } from '../support/modelContext.ts';
 
+/**
+ *
+ * @param x
+ */
 function createWallMeshModel(x = 0) {
   const model = new MeshModel(`wall-${x}.obj`);
   model.vertices = new Float32Array([
@@ -30,6 +35,11 @@ function createWallMeshModel(x = 0) {
   return model;
 }
 
+/**
+ *
+ * @param nearX
+ * @param farX
+ */
 function createDoubleWallMeshModel(nearX = 0, farX = 256) {
   const model = new MeshModel(`double-wall-${nearX}-${farX}.obj`);
   model.vertices = new Float32Array([
@@ -50,6 +60,12 @@ function createDoubleWallMeshModel(nearX = 0, farX = 256) {
   return model;
 }
 
+/**
+ *
+ * @param x
+ * @param y
+ * @param z
+ */
 function createAliasPoseVertex(x, y, z) {
   return {
     v: new Vector(x, y, z),
@@ -57,6 +73,11 @@ function createAliasPoseVertex(x, y, z) {
   };
 }
 
+/**
+ *
+ * @param name
+ * @param x
+ */
 function createAliasWallFrame(name, x) {
   return {
     group: false,
@@ -72,6 +93,10 @@ function createAliasWallFrame(name, x) {
   };
 }
 
+/**
+ *
+ * @param frames
+ */
 function createAliasWallModel(frames) {
   const model = new AliasModel('progs/wall-test.mdl');
   model._scale = new Vector(1, 1, 1);
@@ -91,6 +116,14 @@ function createAliasWallModel(frames) {
   return model;
 }
 
+/**
+ *
+ * @param root0
+ * @param root0.model
+ * @param root0.expectedStateCtor
+ * @param root0.configureEntity
+ * @param root0.time
+ */
 function assertMonsterTouchUsesMeshHullFallback({
   model,
   expectedStateCtor,
@@ -1494,7 +1527,7 @@ void describe('ServerArea', () => {
 
 void describe('BSP29Loader', () => {
   void test('builds legacy clipnode masks from a model headnode subtree', () => {
-    const loader = new BSP29Loader();
+    const loader = new BSP29Loader(createModelLoadContext());
     const clipnodes = [
       { planenum: 0, children: [1, 2] },
       { planenum: 1, children: [content.CONTENT_EMPTY, 3] },

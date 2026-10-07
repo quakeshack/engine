@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import SessionDiscovery from '../../source/engine/client/menu/SessionDiscovery.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * A minimal `WebRTCDriver` test double for the ping-probe lifecycle (`startSessionPing`/

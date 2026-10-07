@@ -1,12 +1,4 @@
-import { getCommonRegistry } from '../registry.ts';
-import { eventBus } from './EventBus.ts';
 import { BaseWorker, type WorkerMessageListener } from './Sys.ts';
-
-let { Host } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host } = getCommonRegistry());
-});
 
 const isNode = typeof process !== 'undefined' && process.versions?.node !== undefined;
 
@@ -49,6 +41,9 @@ export type WorkerFactoryRegistry = Record<string, WorkerFactory>;
  * worker scripts that transitively import this module).
  */
 export default class PlatformWorker extends BaseWorker {
+  /** What happens when a worker fails: the realm decides, usually it shows the crash. Set by its composition root. */
+  static onCrash: ((error: Error | ErrorEvent) => void) | null = null;
+
   #worker: PlatformWorkerHandle | null = null;
 
   constructor(name: string, worker: PlatformWorkerHandle) {
@@ -71,7 +66,7 @@ export default class PlatformWorker extends BaseWorker {
 
         void this.shutdown();
 
-        Host.HandleCrash(error);
+        PlatformWorker.onCrash?.(error);
       });
     } else {
       (worker as BrowserLikeWorker).addEventListener('error', (error) => {
@@ -81,7 +76,7 @@ export default class PlatformWorker extends BaseWorker {
 
         void this.shutdown();
 
-        Host.HandleCrash(error);
+        PlatformWorker.onCrash?.(error);
       });
     }
   }

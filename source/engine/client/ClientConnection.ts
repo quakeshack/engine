@@ -11,6 +11,9 @@ import { HostError } from '../common/Errors.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
 import { parseServerMessage as parseServerCommandMessage } from './ClientServerCommandHandlers.ts';
 import { ModelScope } from '../common/Mod.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import Con from '../common/Console.ts';
+import Mod from '../common/Mod.ts';
 
 export type IdentityCvars = {
   name: Cvar | null;
@@ -18,10 +21,10 @@ export type IdentityCvars = {
   rcon_password: Cvar | null;
 };
 
-let { CL, Con, Host, IN, Mod, NET, SCR, S } = getClientRegistry();
+let { CL, Host, IN, NET, SCR, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, IN, Mod, NET, SCR, S } = getClientRegistry());
+  ({ CL, Host, IN, NET, SCR, S } = getClientRegistry());
 });
 
 export default class ClientConnection {
@@ -297,7 +300,7 @@ export default class ClientConnection {
       case 4:
         this.setConnectingStep(null, null);
         SCR.EndLoadingPlaque();
-        Con.forcedup = true;
+        ConsoleOverlay.forcedup = true;
         SCR.con_current = 0;
         this.cls.changelevel = false;
         S.LoadPendingFiles();

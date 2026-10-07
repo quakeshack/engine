@@ -17,11 +17,12 @@ import { BrushModel } from '../common/Mod.ts';
 import CollisionModelSource from '../common/CollisionModelSource.ts';
 import ClientCollision from './ClientCollision.ts';
 import type { ServerController } from '../common/ServerController.ts';
+import Con from '../common/Console.ts';
 
-let { Con, Draw, Host } = getClientRegistry();
+let { Draw, Host } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Draw, Host } = getClientRegistry());
+  ({ Draw, Host } = getClientRegistry());
 });
 
 const clientCollisionModelSource = new CollisionModelSource();

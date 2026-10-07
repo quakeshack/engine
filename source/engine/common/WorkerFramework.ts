@@ -1,6 +1,8 @@
 import type { URLs } from '../build-config';
+import type { ConsoleOutput } from './Services.ts';
 
-import { registry } from '../registry.ts';
+import Con from './Console.ts';
+import W from './W.ts';
 import { eventBus } from './EventBus.ts';
 import Mod from './Mod.ts';
 import Sys from './Sys.ts';
@@ -80,20 +82,21 @@ class WorkerCOM extends COM {}
 export default class WorkerFramework {
   static port: WorkerFrameworkPort | null = null;
 
-  static #InitRegistry(workerCom: COM) {
-    registry.isDedicatedServer = true;
-    registry.Con = WorkerConsole as typeof registry.Con;
-    registry.Sys = WorkerSys;
-    registry.COM = workerCom;
-    registry.Mod = Mod;
+  static #InitModules(workerCom: COM) {
+    W.files = workerCom;
 
-    registry.urls = {} as URLs; // will be set later
+    // What the shared parts of the engine print in this realm goes to the console of the main thread.
+    Con.useDelegate({
+      Print: (message) => { WorkerConsole.Print(message); },
+      PrintSuccess: (message) => { WorkerConsole.PrintSuccess(message); },
+      PrintWarning: (message) => { WorkerConsole.PrintWarning(message); },
+      PrintError: (message) => { WorkerConsole.PrintError(message); },
+      DPrint: (message) => { WorkerConsole.DPrint(message); },
+      StartCapturing() {},
+      StopCapturing: () => '',
+    });
 
-    eventBus.publish('registry.frozen');
-  }
-
-  static #InitModules() {
-    Mod.Init();
+    Mod.Init({ files: workerCom, con: WorkerConsole as unknown as ConsoleOutput, loadRenderData: false });
   }
 
   /**
@@ -103,11 +106,14 @@ export default class WorkerFramework {
   static async Init(): Promise<WorkerServices> {
     let workerCom: COM;
 
+    // The URLs are sent by the main thread once the worker is up, see `worker.framework.init`.
+    const urls = {} as URLs;
+
     const comDependencies: ComDependencies = {
       con: WorkerConsole,
       sys: WorkerSys,
-      buildConfig: () => registry.buildConfig,
-      urls: () => registry.urls,
+      buildConfig: () => undefined,
+      urls: () => urls,
     };
 
     const isNode = typeof process !== 'undefined' && process.versions !== undefined && process.versions.node !== undefined;
@@ -138,10 +144,9 @@ export default class WorkerFramework {
       });
     }
 
-    this.#InitRegistry(workerCom);
-    this.#InitModules();
+    this.#InitModules(workerCom);
 
-    eventBus.subscribe('worker.framework.init', (comParams: WorkerFrameworkInitPayload, urls: URLs | undefined) => {
+    eventBus.subscribe('worker.framework.init', (comParams: WorkerFrameworkInitPayload, receivedUrls: URLs | undefined) => {
       workerCom.searchpaths = comParams[0];
       workerCom.gamedir = comParams[1];
       workerCom.game = comParams[2];
@@ -149,7 +154,7 @@ export default class WorkerFramework {
       // Inside a browser worker this opens the same Cache Storage and IndexedDB as the main thread.
       void workerCom.InitStorage();
 
-      Object.assign(registry.urls ?? (registry.urls = {} as URLs), urls ?? {});
+      Object.assign(urls, receivedUrls ?? {});
     });
 
     console.debug('Worker Framework initialized.');

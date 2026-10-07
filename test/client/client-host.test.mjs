@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import * as Def from '../../source/engine/common/Def.ts';
+import * as Protocol from '../../source/engine/network/Protocol.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import { KeyDestination } from '../../source/engine/client/Key.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Builds a client runtime mock that records what the host does to it, in order.
@@ -265,6 +267,71 @@ void describe('ClientHost', () => {
       });
 
       assert.deepEqual(calls.slice(1), [['changelevel', 'e1m2'], ['SetConnectingStep', null, null]]);
+    });
+  });
+
+  void describe('ForwardToServer', () => {
+    /**
+     * Builds a command that asks to be forwarded.
+     * @param {string} name name it was typed with
+     * @param {string[]} argv arguments after the name
+     * @returns {{ client: null, command: string, argv: string[], args: string }} the command
+     */
+    function createCommand(name, argv) {
+      return { client: null, command: name, argv, args: [name, ...argv].join(' ') };
+    }
+
+    /**
+     * Runs a forward with a message buffer that records what is written to it.
+     * @param {object} command command to forward
+     * @param {{ state?: number, demoplayback?: boolean }} [options] connection state
+     * @returns {Promise<{ prints: string[], written: unknown[] }>} what the player saw and what was sent
+     */
+    async function forward(command, { state = Def.clientConnectionState.connected, demoplayback = false } = {}) {
+      const calls = [];
+      const runtime = createClientRuntime({ calls, scheduled: [], state, demoplayback });
+      const written = [];
+
+      runtime.CL.cls.message = { writeByte: (value) => written.push(['byte', value]), writeString: (value) => written.push(['string', value]) };
+
+      await withRegistryMembers(runtime, () => {
+        assert.equal(ClientHost.ForwardToServer(/** @type {any} */ (command)), true);
+      });
+
+      return { prints: calls.filter(([name]) => name === 'Print').map(([, text]) => text), written };
+    }
+
+    void test('sends the line to the server in behalf of the player', async () => {
+      const { written, prints } = await forward(createCommand('god', []));
+
+      assert.deepEqual(written, [['byte', Protocol.clc.stringcmd], ['string', 'god']]);
+      assert.deepEqual(prints, []);
+    });
+
+    void test('says so when not connected, and sends nothing', async () => {
+      const { written, prints } = await forward(createCommand('god', []), { state: Def.clientConnectionState.disconnected });
+
+      assert.deepEqual(written, []);
+      assert.deepEqual(prints, ['Can\'t "god", not connected\n']);
+    });
+
+    void test('sends nothing during demo playback', async () => {
+      const { written, prints } = await forward(createCommand('god', []), { demoplayback: true });
+
+      assert.deepEqual(written, []);
+      assert.deepEqual(prints, []);
+    });
+
+    void test('explains `cmd` typed without a command', async () => {
+      const { prints } = await forward(createCommand('cmd', []));
+
+      assert.deepEqual(prints, ['Usage: cmd <command> <args>\n']);
+    });
+
+    void test('names the command after `cmd` in its answer', async () => {
+      const { prints } = await forward(createCommand('cmd', ['give']), { state: Def.clientConnectionState.disconnected });
+
+      assert.deepEqual(prints, ['Can\'t "give", not connected\n']);
     });
   });
 

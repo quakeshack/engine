@@ -317,11 +317,13 @@ export default class COM {
     // FIXME: cmdline starts as a string from InitArgv, then becomes a Cvar here
     this.cmdline = new Cvar('cmdline', this.cmdline as string, Cvar.FLAG.READONLY, 'Command line used to start the game.');
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+     
     Cmd.AddCommand('path', () => { this.Path_f(); });
 
     await this.InitFilesystem();
     await this.InitStorage();
+
+    W.files = this;
 
     await Promise.all([
       this.CheckRegistered(),

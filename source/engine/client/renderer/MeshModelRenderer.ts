@@ -7,11 +7,12 @@ import GL, { ATTRIB_LOCATIONS } from '../GL.ts';
 import { MeshModel } from '../../common/model/MeshModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
+import Con from '../../common/Console.ts';
 
-let { Con, R } = getClientRegistry();
+let { R } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con, R } = getClientRegistry());
+  ({ R } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;

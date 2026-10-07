@@ -6,6 +6,7 @@ import COM from '../../source/engine/common/Com.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import '../support/consoleBridge.ts';
 
 /** @typedef {{ prints: string[], warnings: string[], errors: string[], dprints: string[], Print: (message: string) => void, PrintWarning: (message: string) => void, PrintError: (message: string) => void, DPrint: (message: string) => void }} ConsoleCapture */
 

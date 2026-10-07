@@ -5,16 +5,12 @@ import { parentPort } from 'node:worker_threads';
 
 import Cmd from '../../../source/engine/common/Cmd.ts';
 import Cvar from '../../../source/engine/common/Cvar.ts';
-import { eventBus } from '../../../source/engine/common/EventBus.ts';
 import { ControlLink } from '../../../source/engine/common/ServerWorkerProtocol.ts';
-import { registry } from '../../../source/engine/registry.ts';
 import ServerCvarSync from '../../../source/engine/server/ServerCvarSync.ts';
 import ServerWorkerRuntime from '../../../source/engine/server/ServerWorkerRuntime.ts';
 
-registry.Con = /** @type {any} */ ({ Print() {}, PrintWarning() {}, DPrint() {} });
-registry.SV = /** @type {any} */ ({ server: { active: true } });
-registry.CL = undefined;
-eventBus.publish('registry.frozen');
+// A server that is running and has no cheats of its own to report, like the realm of a server worker.
+Cvar.serverState = { isServerActive: () => true, reportedCheats: () => undefined };
 
 parentPort.once('message', ({ port }) => {
   Cmd.Init();

@@ -5,6 +5,7 @@ import Vector from '../../source/shared/Vector.ts';
 import NavigationDebug from '../../source/engine/client/NavigationDebug.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Runs a callback with a renderer that hands out particles from a fixed pool.

@@ -1,128 +1,121 @@
 import Vector from '../../shared/Vector.ts';
-import { KeyDestination } from '../client/Key.ts';
-import { getClientRegistry, registry } from '../registry.ts';
 import { eventBus } from './EventBus.ts';
 import Cvar from './Cvar.ts';
-import Cmd from './Cmd.ts';
-import VID from '../client/VID.ts';
-import { ClientEngineAPI } from './GameAPIs.ts';
-
-let { CL, Draw, Host, IN, Key, SCR } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Draw, Host, IN, Key, SCR } = getClientRegistry());
-});
+import W from './W.ts';
+import type { ConsoleCapture, ConsoleOutput } from './Services.ts';
 
 /** A single line entry in the console text buffer. */
-type ConsoleLine = {
+export interface ConsoleLine {
   text: string;
   time: number;
   color: Vector;
   doNotNotify: boolean;
-};
+}
+
+/** What the console needs from the realm it runs in. */
+export interface ConsoleDependencies {
+  /** The clock lines are stamped with, in seconds. */
+  readonly clock: () => number;
+  /** Whether `developer` is on, which is when `DPrint` prints. */
+  readonly developer: () => boolean;
+}
 
 /**
- * Console output and display.
+ * Console output: the text buffer everything prints to, and capturing of what a command prints so it
+ * can be sent back to a remote player. One instance per realm, the default export of this module, which
+ * the composition root of the realm hands its dependencies through `Init()`.
  *
- * Handles printing, notification display, and the interactive drop-down
- * console overlay used by both the browser client and dedicated server.
+ * Showing the buffer (the drop-down console, notifications) is the client's business, see
+ * `client/ConsoleOverlay.ts`.
  */
-export default class Con {
-  static backscroll = 0;
-  static current = 0;
-  static text: ConsoleLine[] = [];
-  static captureBuffer: string[] | null = null;
+export class Console {
+  backscroll = 0;
+  current = 0;
+  text: ConsoleLine[] = [];
+  captureBuffer: string[] | null = null;
 
-  /** Console notification display time. */
-  static notifytime: Cvar | null = null;
+  /** Console notification display time. Exists in every realm, so a configuration file that sets it is understood everywhere. */
+  notifytime: Cvar | null = null;
 
-  /** Used by the client to force the console to be up (there's no valid connected game). */
-  static forcedup = false;
+  /** Where output goes instead of the text buffer, in a realm that has no screen of its own (a server worker). */
+  #delegate: (ConsoleOutput & ConsoleCapture) | null = null;
+  #clock: ConsoleDependencies['clock'] = () => 0;
+  #developer: ConsoleDependencies['developer'] = () => false;
 
   /**
-   * Whether the player has toggled the drop-down console open. Independent of `Key.destination`
-   * — the console is an overlay that can appear on top of gameplay or the menu, not a peer
-   * destination, and takes dispatch priority over both while open (see `Key.Event`).
+   * Hands all output over to another console, which is what a realm does whose output is shown elsewhere:
+   * everything printed in a server worker is sent to the console of the page.
+   * @param delegate The console to print to and capture from, `null` to print to the text buffer again.
    */
-  static isOpen = false;
+  useDelegate(delegate: (ConsoleOutput & ConsoleCapture) | null): void {
+    this.#delegate = delegate;
+  }
 
-  /** Used by the client to determine how many lines to draw. */
-  static vislines = 0;
+  Init(dependencies: ConsoleDependencies): void {
+    this.#clock = dependencies.clock;
+    this.#developer = dependencies.developer;
 
-  static ToggleConsole_f() {
-    SCR.EndLoadingPlaque();
-    Con.isOpen = !Con.isOpen;
-    if (Con.isOpen) {
-      // Release mouselook so the camera doesn't keep spinning from residual deltas while typing.
-      IN.ReleasePointerLock();
-    } else {
-      // Key.edit_line = ''; // CR: this annoys me otherwise
-      Key.history_line = Key.lines.length;
+    this.notifytime = new Cvar('con_notifytime', '3', Cvar.FLAG.ARCHIVE, 'How long to display console messages.');
+
+    this.DPrint('Console initialized.\n');
+  }
+
+  /**
+   * Empties the text buffer.
+   */
+  Clear(): void {
+    this.backscroll = 0;
+    this.current = 0;
+    this.text = [];
+  }
+
+  /**
+   * Makes the last notification lines count as old, so they are not shown any more.
+   */
+  ClearNotify(): void {
+    for (let i = Math.max(0, this.text.length - 4); i < this.text.length; i++) {
+      this.text[i].time = 0.0;
     }
   }
 
-  static Clear_f() {
-    Con.backscroll = 0;
-    Con.current = 0;
-    Con.text = [];
-  }
-
-  static ClearNotify() {
-    for (let i = Math.max(0, Con.text.length - 4); i < Con.text.length; i++) {
-      Con.text[i].time = 0.0;
+  StartCapturing(): void {
+    if (this.#delegate !== null) {
+      this.#delegate.StartCapturing();
+      return;
     }
+
+    this.captureBuffer = [];
   }
 
-  static MessageMode_f() {
-    Key.destination = KeyDestination.message;
-    Key.team_message = false;
-  }
-
-  static MessageMode2_f() {
-    Key.destination = KeyDestination.message;
-    Key.team_message = true;
-  }
-
-  static Init() {
-    Con.DPrint('Console initialized.\n');
-
-    Con.notifytime = new Cvar('con_notifytime', '3', Cvar.FLAG.ARCHIVE, 'How long to display console messages.');
-
-    if (!registry.isDedicatedServer) {
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      Cmd.AddCommand('toggleconsole', Con.ToggleConsole_f);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      Cmd.AddCommand('messagemode', Con.MessageMode_f);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      Cmd.AddCommand('messagemode2', Con.MessageMode2_f);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      Cmd.AddCommand('clear', Con.Clear_f);
+  StopCapturing(): string {
+    if (this.#delegate !== null) {
+      return this.#delegate.StopCapturing();
     }
-  }
 
-  static StartCapturing() {
-    Con.captureBuffer = [];
-  }
-
-  static StopCapturing(): string {
-    const data = Con.captureBuffer!.join('\n') + '\n';
-    Con.captureBuffer = null;
+    const data = this.captureBuffer!.join('\n') + '\n';
+    this.captureBuffer = null;
     return data;
   }
 
-  static Print(msg: string, color = new Vector(1.0, 1.0, 1.0)) {
+  Print(msg: string, color?: Vector): void {
+    if (this.#delegate !== null) {
+      this.#delegate.Print(msg, color);
+      return;
+    }
+
+    const lineColor = color ?? new Vector(1.0, 1.0, 1.0);
     let doNotNotify = false;
 
-    Con.backscroll = 0;
+    this.backscroll = 0;
 
     // CR: handle legacy color codes at the start of the message
     if (msg.charCodeAt(0) <= 3) {
       switch (msg.charCodeAt(0)) {
         case 1:
-          color.set(ClientEngineAPI.IndexToRGB(47));
+          lineColor.set(Console.#paletteColor(47));
           break;
         case 2:
-          color.set(ClientEngineAPI.IndexToRGB(95));
+          lineColor.set(Console.#paletteColor(95));
           break;
         case 3: // QuakeShack only
           doNotNotify = true;
@@ -131,126 +124,80 @@ export default class Con {
       msg = msg.substring(1);
     }
     for (let i = 0; i < msg.length; i++) {
-      if (!Con.text[Con.current]) {
-        Con.text[Con.current] = { text: '', time: Host.realtime || 0, color, doNotNotify };
+      if (!this.text[this.current]) {
+        this.text[this.current] = { text: '', time: this.#clock() || 0, color: lineColor, doNotNotify };
       }
       if (msg.charCodeAt(i) === 10) {
-        const line = Con.text[Con.current].text;
-        if (Con.captureBuffer !== null) {
-          Con.captureBuffer.push(line);
+        const line = this.text[this.current].text;
+        if (this.captureBuffer !== null) {
+          this.captureBuffer.push(line);
         }
         eventBus.publish('console.print-line', line);
-        if (Con.text.length >= 1024) {
-          Con.text = Con.text.slice(-512);
-          Con.current = Con.text.length;
+        if (this.text.length >= 1024) {
+          this.text = this.text.slice(-512);
+          this.current = this.text.length;
         } else {
-          Con.current++;
+          this.current++;
         }
         continue;
       }
-      Con.text[Con.current].text += String.fromCharCode(msg.charCodeAt(i));
+      this.text[this.current].text += String.fromCharCode(msg.charCodeAt(i));
     }
   }
 
-  static DPrint(msg: string) {
-    if (!Host.developer?.value) {
+  DPrint(msg: string): void {
+    if (this.#delegate !== null) {
+      this.#delegate.DPrint(msg);
       return;
     }
 
-    Con.Print(msg, new Vector(0.7, 0.7, 1.0));
+    if (!this.#developer()) {
+      return;
+    }
+
+    this.Print(msg, new Vector(0.7, 0.7, 1.0));
   }
 
-  static PrintWarning(msg: string) {
+  PrintWarning(msg: string): void {
+    if (this.#delegate !== null) {
+      this.#delegate.PrintWarning(msg);
+      return;
+    }
+
     // TODO: make Con.Print make emit this as a console.warn
-    Con.Print(msg, new Vector(1.0, 1.0, 0.3));
+    this.Print(msg, new Vector(1.0, 1.0, 0.3));
   }
 
-  static PrintError(msg: string) {
+  PrintError(msg: string): void {
+    if (this.#delegate !== null) {
+      this.#delegate.PrintError(msg);
+      return;
+    }
+
     // TODO: make Con.Print make emit this as a console.error
-    Con.Print(msg, new Vector(1.0, 0.3, 0.3));
+    this.Print(msg, new Vector(1.0, 0.3, 0.3));
   }
 
-  static PrintSuccess(msg: string) {
-    Con.Print(msg, new Vector(0.3, 1.0, 0.3));
-  }
-
-  static DrawInput() {
-    if (!Con.isOpen) {
-      return;
-    }
-    let text = ']' + Key.consoleDisplayText((Host.realtime * 4.0) & 1);
-    const width = (VID.width / 16) - 2;
-    if (text.length >= width) {
-      text = text.substring(1 + text.length - width);
-    }
-    Draw.String(8, Con.vislines - 32, text, 2.0);
-  }
-
-  static DrawNotify() {
-    const width = (VID.width / 16) - 2;
-
-    let i = Con.text.length - 4, v = 0;
-
-    if (i < 0) {
-      i = 0;
-    }
-
-    for (; i < Con.text.length; i++) {
-      if (Con.text[i].doNotNotify || (Host.realtime - Con.text[i].time) > Con.notifytime!.value) {
-        continue;
-      }
-
-      Draw.String(8, v, Con.text[i].text.substring(0, width), 2.0, Con.text[i].color);
-      v += 16;
-    }
-
-    v += 16;
-
-    if (Key.destination === KeyDestination.message) {
-      Draw.String(8, v, 'say: ' + Key.chatDisplayText((Host.realtime * 4.0) & 1), 2.0);
-    }
-  }
-
-  static DrawConsole(lines: number) {
-    if (lines <= 0) {
-      return;
-    }
-    lines = Math.floor(lines * VID.height * 0.005);
-    Draw.ConsoleBackground(lines);
-    Con.vislines = lines;
-
-    if (CL.cls.changelevel) {
-      // do not draw console during level changes
+  PrintSuccess(msg: string): void {
+    if (this.#delegate !== null) {
+      this.#delegate.PrintSuccess(msg);
       return;
     }
 
-    const width = (VID.width / 8) - 2;
-    let rows;
-    let y = lines - 32;
-    let i;
-    for (i = Con.text.length - 1 - Con.backscroll; i >= 0;) {
-      if (Con.text[i].text.length === 0) {
-        y -= 16;
-      } else {
-        y -= Math.ceil(Con.text[i].text.length / width) << 4;
-      }
-      i--;
-      if (y <= 0) {
-        break;
-      }
-    }
-    for (i++; i < Con.text.length - Con.backscroll; i++) {
-      const { text, color } = Con.text[i];
-      rows = Math.ceil(text.length / width);
-      if (rows === 0) {
-        y += 16;
-        continue;
-      }
-      for (let j = 0; j < rows; j++) {
-        Draw.String(8, y, text.substring(j * width, (j + 1) * width), 2.0, color);
-        y += 16;
-      }
-    }
-    Con.DrawInput();
+    this.Print(msg, new Vector(0.3, 1.0, 0.3));
+  }
+
+  /**
+   * Looks a color of the game palette up, which is what the legacy color codes at the start of a message select.
+   * @returns The color with components in the range 0 to 1.
+   */
+  static #paletteColor(index: number): [number, number, number] {
+    return [
+      W.d_8to24table_u8[index * 3] / 256,
+      W.d_8to24table_u8[index * 3 + 1] / 256,
+      W.d_8to24table_u8[index * 3 + 2] / 256,
+    ];
   }
 }
+
+export default new Console();

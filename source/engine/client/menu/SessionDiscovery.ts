@@ -1,11 +1,12 @@
 import type { WebRTCDriver } from '../../network/NetworkDrivers.ts';
 import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
+import Con from '../../common/Console.ts';
 
-let { COM, Con, NET, urls } = getClientRegistry();
+let { COM, NET, urls } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Con, NET, urls } = getClientRegistry());
+  ({ COM, NET, urls } = getClientRegistry());
 });
 
 /** Fixed reconnect delay for the `/browser` push channel, matching `WebRTCDriver`'s signaling reconnect. */

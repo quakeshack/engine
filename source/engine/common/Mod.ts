@@ -1,5 +1,4 @@
-import { getClientRegistry, getCommonRegistry, registry } from '../registry.ts';
-import { eventBus } from './EventBus.ts';
+import type { ConsoleOutput } from './Services.ts';
 import { MissingResourceError } from './Errors.ts';
 import { ModelLoaderRegistry } from './model/ModelLoaderRegistry.ts';
 import { AliasMDLLoader } from './model/loaders/AliasMDLLoader.ts';
@@ -11,14 +10,7 @@ import ParsedQC from './model/parsers/ParsedQC.ts';
 import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
 import { BrushModel } from './model/BSP.ts';
-
-let { COM } = getCommonRegistry();
-let { CL } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM } = getCommonRegistry());
-  ({ CL } = getClientRegistry());
-});
+import type { ModelFiles, ModelLoadContext } from './model/ModelLoadContext.ts';
 
 export enum ModelType {
   brush = 0,
@@ -50,24 +42,42 @@ export { SpriteModel } from './model/SpriteModel.ts';
 export { MeshModel } from './model/MeshModel.ts';
 
 /**
- * Shared model cache and loading entry point.
+ * What the model cache is built from by the composition root of its realm.
  */
-export default class Mod {
-  static known: ModelCache = {};
-  static clientKnown: ModelCache = {};
-  static serverKnown: ModelCache = {};
-  static readonly pendingLoads: Record<string, Promise<BaseModel | null>> = {};
-  static readonly modelLoaderRegistry = new ModelLoaderRegistry();
+export interface ModDependencies {
+  /** Where model files are read from. */
+  readonly files: ModelFiles;
+  /** Where loaders report problems to. */
+  readonly con: ConsoleOutput;
+  /** Whether loaders create textures and the other data only a renderer needs. A server realm says no. */
+  readonly loadRenderData: boolean;
+  /** Names of client models that outlive a clear of the client scope (the models effects spawn at runtime). */
+  readonly keptClientModels?: () => string[];
+}
+
+/**
+ * Shared model cache and loading entry point. One instance per realm, the default export of this module;
+ * the composition root of the realm hands it its dependencies through `Init()`.
+ */
+export class Mod {
+  #files: ModelFiles | null = null;
+  #keptClientModels: () => string[] = () => [];
+
+  known: ModelCache = {};
+  clientKnown: ModelCache = {};
+  serverKnown: ModelCache = {};
+  readonly pendingLoads: Record<string, Promise<BaseModel | null>> = {};
+  readonly modelLoaderRegistry = new ModelLoaderRegistry();
 
   /**
    * Rebuilds scoped inline submodels against a scoped world view.
    */
-  static RegisterScopedSubmodels(sharedWorld: BaseModel, scopedWorld: BaseModel, scope: ModelScope): void {
+  RegisterScopedSubmodels(sharedWorld: BaseModel, scopedWorld: BaseModel, scope: ModelScope): void {
     if (!(sharedWorld instanceof BrushModel && sharedWorld.isWorldModel) || !(scopedWorld instanceof BrushModel)) {
       return;
     }
 
-    const scopedCache = Mod.GetScopeCache(scope);
+    const scopedCache = this.GetScopeCache(scope);
     scopedWorld.submodels = [];
 
     for (let index = 0; index < sharedWorld.submodels.length; index++) {
@@ -105,28 +115,37 @@ export default class Mod {
     }
   }
 
-  static Init(): void {
-    Mod.modelLoaderRegistry.clear();
-    Mod.modelLoaderRegistry.register(new BSP38Loader());
-    Mod.modelLoaderRegistry.register(new BSP2Loader()); // Register BSP2 before BSP29 so the more specific format wins.
-    Mod.modelLoaderRegistry.register(new BSP29Loader());
-    Mod.modelLoaderRegistry.register(new AliasMDLLoader());
-    Mod.modelLoaderRegistry.register(new SpriteSPRLoader());
-    Mod.modelLoaderRegistry.register(new WavefrontOBJLoader());
+  Init(dependencies: ModDependencies): void {
+    const context: ModelLoadContext = {
+      files: dependencies.files,
+      con: dependencies.con,
+      loadRenderData: dependencies.loadRenderData,
+    };
+
+    this.#files = dependencies.files;
+    this.#keptClientModels = dependencies.keptClientModels ?? (() => []);
+
+    this.modelLoaderRegistry.clear();
+    this.modelLoaderRegistry.register(new BSP38Loader(context));
+    this.modelLoaderRegistry.register(new BSP2Loader(context)); // Register BSP2 before BSP29 so the more specific format wins.
+    this.modelLoaderRegistry.register(new BSP29Loader(context));
+    this.modelLoaderRegistry.register(new AliasMDLLoader(context));
+    this.modelLoaderRegistry.register(new SpriteSPRLoader(context));
+    this.modelLoaderRegistry.register(new WavefrontOBJLoader(context));
   }
 
   /**
    * Returns the model cache for the requested scope.
    * @returns The cache object for the requested scope.
    */
-  static GetScopeCache(scope: ModelScope): ModelCache {
+  GetScopeCache(scope: ModelScope): ModelCache {
     switch (scope) {
       case ModelScope.client:
-        return Mod.clientKnown;
+        return this.clientKnown;
       case ModelScope.server:
-        return Mod.serverKnown;
+        return this.serverKnown;
       default:
-        return Mod.known;
+        return this.known;
     }
   }
 
@@ -135,18 +154,18 @@ export default class Mod {
    * view when needed.
    * @returns The scoped model instance, or `null` when unavailable.
    */
-  static ResolveScopedModel(name: string, scope: ModelScope): BaseModel | null {
+  ResolveScopedModel(name: string, scope: ModelScope): BaseModel | null {
     if (scope === ModelScope.shared) {
-      return Mod.known[name] ?? null;
+      return this.known[name] ?? null;
     }
 
-    const scopedCache = Mod.GetScopeCache(scope);
+    const scopedCache = this.GetScopeCache(scope);
 
     if (scopedCache[name]) {
       return scopedCache[name];
     }
 
-    const sharedModel = Mod.known[name];
+    const sharedModel = this.known[name];
 
     if (!sharedModel) {
       return null;
@@ -156,47 +175,41 @@ export default class Mod {
     scopedCache[name] = scopedModel;
 
     if (sharedModel instanceof BrushModel && sharedModel.isWorldModel) {
-      Mod.RegisterScopedSubmodels(sharedModel, scopedModel, scope);
+      this.RegisterScopedSubmodels(sharedModel, scopedModel, scope);
     }
 
     return scopedModel;
   }
 
-  static PruneSharedCache(): void {
-    for (const name of Object.keys(Mod.known)) {
-      if (Mod.clientKnown[name] || Mod.serverKnown[name]) {
+  PruneSharedCache(): void {
+    for (const name of Object.keys(this.known)) {
+      if (this.clientKnown[name] || this.serverKnown[name]) {
         continue;
       }
 
-      delete Mod.known[name];
+      delete this.known[name];
     }
   }
 
   /**
    * Clears cached models for a scope.
    */
-  static ClearAll(scope: ModelScope = ModelScope.shared): void {
+  ClearAll(scope: ModelScope = ModelScope.shared): void {
     if (scope === ModelScope.shared) {
       for (const scopedScope of [ModelScope.client, ModelScope.server]) {
-        Mod.ClearAll(scopedScope);
+        this.ClearAll(scopedScope);
       }
 
-      for (const name of Object.keys(Mod.known)) {
-        delete Mod.known[name];
+      for (const name of Object.keys(this.known)) {
+        delete this.known[name];
       }
 
       return;
     }
 
-    const tempEnts = (() => {
-      if (scope !== ModelScope.client || registry.isDedicatedServer) {
-        return [] as string[];
-      }
+    const tempEnts = scope === ModelScope.client ? this.#keptClientModels() : [];
 
-      return Object.keys(CL.state.clientEntities.tempEntityModels);
-    })();
-
-    const scopedCache = Mod.GetScopeCache(scope);
+    const scopedCache = this.GetScopeCache(scope);
 
     for (const name of Object.keys(scopedCache)) {
       const model = scopedCache[name];
@@ -209,33 +222,33 @@ export default class Mod {
       delete scopedCache[name];
     }
 
-    Mod.PruneSharedCache();
+    this.PruneSharedCache();
   }
 
-  static async LoadModelFromBuffer(name: string, buffer: ArrayBuffer): Promise<BaseModel> {
-    const model = await Mod.modelLoaderRegistry.load(buffer, name);
-    Mod.RegisterModel(model);
+  async LoadModelFromBuffer(name: string, buffer: ArrayBuffer): Promise<BaseModel> {
+    const model = await this.modelLoaderRegistry.load(buffer, name);
+    this.RegisterModel(model);
     return model;
   }
 
-  static RegisterModel(model: BaseModel): void {
-    Mod.known[model.name] = model;
+  RegisterModel(model: BaseModel): void {
+    this.known[model.name] = model;
   }
 
   /**
    * Loads a named model into the shared cache and returns the scoped instance.
    * @returns The scoped model instance, or `null` when the load fails without crashing.
    */
-  static async LoadModelAsync(name: string, crash: boolean, scope: ModelScope = ModelScope.shared): Promise<BaseModel | null> {
-    const scopedModel = Mod.ResolveScopedModel(name, scope);
+  async LoadModelAsync(name: string, crash: boolean, scope: ModelScope = ModelScope.shared): Promise<BaseModel | null> {
+    const scopedModel = this.ResolveScopedModel(name, scope);
 
     if (scopedModel !== null) {
       return scopedModel;
     }
 
-    if (Mod.pendingLoads[name] === undefined) {
-      Mod.pendingLoads[name] = (async () => {
-        const buffer = await COM.LoadFile(name);
+    if (this.pendingLoads[name] === undefined) {
+      this.pendingLoads[name] = (async () => {
+        const buffer = await this.#files!.LoadFile(name);
 
         if (buffer === null) {
           if (crash) {
@@ -245,44 +258,46 @@ export default class Mod {
           return null;
         }
 
-        return await Mod.LoadModelFromBuffer(name, buffer);
+        return await this.LoadModelFromBuffer(name, buffer);
       })().finally(() => {
-        delete Mod.pendingLoads[name];
+        delete this.pendingLoads[name];
       });
     }
 
-    const loadedModel = await Mod.pendingLoads[name];
+    const loadedModel = await this.pendingLoads[name];
 
     if (loadedModel === null) {
       return null;
     }
 
-    return Mod.ResolveScopedModel(name, scope);
+    return this.ResolveScopedModel(name, scope);
   }
 
   /**
    * Resolves an inline submodel from the already loaded world model cache.
    * @returns The scoped inline submodel, or `null` when it is unavailable.
    */
-  static ForName(name: string, scope: ModelScope = ModelScope.shared): BaseModel | null {
-    console.assert(name[0] === '*', 'only submodels supported in Mod.ForName');
-    return Mod.ResolveScopedModel(name, scope);
+  ForName(name: string, scope: ModelScope = ModelScope.shared): BaseModel | null {
+    console.assert(name[0] === '*', 'only submodels supported in this.ForName');
+    return this.ResolveScopedModel(name, scope);
   }
 
   /**
    * Returns the requested model, loading it first when necessary.
    * @returns The requested model, or `null` when it cannot be loaded.
    */
-  static async ForNameAsync(name: string, crash = false, scope: ModelScope = ModelScope.shared): Promise<BaseModel | null> {
+  async ForNameAsync(name: string, crash = false, scope: ModelScope = ModelScope.shared): Promise<BaseModel | null> {
     if (name[0] === '*') {
-      return Mod.ForName(name, scope);
+      return this.ForName(name, scope);
     }
 
-    return await Mod.LoadModelAsync(name, crash, scope);
+    return await this.LoadModelAsync(name, crash, scope);
   }
 
-  static ParseQC(qcContent: string) {
+  ParseQC(qcContent: string) {
     const data = new ParsedQC();
     return data.parseQC(qcContent);
   }
 }
+
+export default new Mod();

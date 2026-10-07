@@ -10,12 +10,13 @@ import Vector from '../../shared/Vector.ts';
 import { getClientRegistry, getCommonRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
 
-let { Con, Host } = getCommonRegistry();
+let { Host } = getCommonRegistry();
 let { CL, R, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Con, Host } = getCommonRegistry());
+  ({ Host } = getCommonRegistry());
   ({ CL, R, SCR } = getClientRegistry());
 });
 
@@ -525,7 +526,7 @@ export default class V {
   }
 
   static PreRenderView(): void {
-    if (Con.forcedup) {
+    if (ConsoleOverlay.forcedup) {
       return;
     }
     if (CL.state.maxclients >= 2) {
@@ -542,7 +543,7 @@ export default class V {
   }
 
   static RenderView(): void {
-    if (Con.forcedup) {
+    if (ConsoleOverlay.forcedup) {
       return;
     }
     if (!CL.state.worldmodel) {

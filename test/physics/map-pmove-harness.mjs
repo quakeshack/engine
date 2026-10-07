@@ -237,7 +237,7 @@ function installRegistry(baseDir) {
   };
 
   eventBus.publish('registry.frozen');
-  Mod.Init();
+  Mod.Init({ files: registry.COM, con: registry.Con, loadRenderData: false });
 }
 
 /**

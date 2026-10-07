@@ -6,16 +6,18 @@ import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import Con from '../common/Console.ts';
 
-let { CL, Con, Host, M } = getClientRegistry();
+let { CL, Host, M } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ CL, Con, Host, M } = getClientRegistry());
+  ({ CL, Host, M } = getClientRegistry());
 });
 
 /**
  * Where key events are routed to, when the drop-down console isn't the one claiming them.
- * The console is no longer a peer destination — see `Con.isOpen`, which takes dispatch
+ * The console is no longer a peer destination — see `ConsoleOverlay.isOpen`, which takes dispatch
  * priority over whichever of these is active underneath it (kept numbered as before, minus
  * the retired `console` member, so nothing here needs renumbering).
  */
@@ -501,8 +503,8 @@ export default class Key {
       if (!down) {
         return;
       }
-      if (Con.isOpen) {
-        Con.isOpen = false;
+      if (ConsoleOverlay.isOpen) {
+        ConsoleOverlay.isOpen = false;
         Key.history_line = Key.lines.length;
         return;
       }
@@ -537,7 +539,7 @@ export default class Key {
     // underneath (game or menu) — it's an overlay, not a peer destination. Keys it doesn't
     // consume as text (e.g. the toggle key itself) still execute their bound command, so `~`
     // continues to close it.
-    if (Con.isOpen) {
+    if (ConsoleOverlay.isOpen) {
       if (!Key.consolekeys.has(key)) {
         const binding = Key.bindings[key];
         if (binding !== null && binding !== undefined) {
@@ -606,7 +608,7 @@ export default class Key {
 
   /** Forwards clipboard text (e.g. from a Ctrl+V shortcut) to the active text input. */
   static Paste(text: string): void {
-    if (Con.isOpen) {
+    if (ConsoleOverlay.isOpen) {
       Key.#consoleEditor.paste(text);
       return;
     }

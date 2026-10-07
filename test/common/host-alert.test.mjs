@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import Host from '../../source/engine/common/Host.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import '../support/consoleBridge.ts';
 
 /**
  * Installs the minimal registry Host.EndGame/Host.Error need to reach their `host.alert`
