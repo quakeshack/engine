@@ -122,7 +122,8 @@ export default class ClientHost {
 
     // A local client leaves together with its server.
     eventBus.subscribe('server.shutting-down', () => {
-      if (clientStaticState.state === Def.clientConnectionState.connected) {
+      // A page that is closing has nothing left to leave: the renderer and the sound are gone already.
+      if (!Host.isdown && clientStaticState.state === Def.clientConnectionState.connected) {
         CL.Disconnect();
       }
     });

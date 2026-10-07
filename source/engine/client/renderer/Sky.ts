@@ -174,14 +174,19 @@ export class Quake1Sky extends SkyRenderer {
     this.#solidskytexture.free();
     this.#alphaskytexture.free();
 
-    if (this.#skybox) {
-      gl.deleteBuffer(this.#skybox);
-      this.#skybox = null;
+    // Without a context (the page is closing) the browser has freed the buffers already.
+    if (gl !== null) {
+      if (this.#skybox) {
+        gl.deleteBuffer(this.#skybox);
+      }
+
+      if (this.#skyboxVAO) {
+        gl.deleteVertexArray(this.#skyboxVAO);
+      }
     }
-    if (this.#skyboxVAO) {
-      gl.deleteVertexArray(this.#skyboxVAO);
-      this.#skyboxVAO = null;
-    }
+
+    this.#skybox = null;
+    this.#skyboxVAO = null;
   }
 
   #renderSkyboxDome(): void {
@@ -400,14 +405,19 @@ export class SimpleSkyBox extends SkyRenderer {
   }
 
   override shutdown(): void {
-    if (this.#cubeBuffer) {
-      gl.deleteBuffer(this.#cubeBuffer);
-      this.#cubeBuffer = null;
+    // Without a context (the page is closing) the browser has freed the buffers already.
+    if (gl !== null) {
+      if (this.#cubeBuffer) {
+        gl.deleteBuffer(this.#cubeBuffer);
+      }
+
+      if (this.#cubeVAO) {
+        gl.deleteVertexArray(this.#cubeVAO);
+      }
     }
-    if (this.#cubeVAO) {
-      gl.deleteVertexArray(this.#cubeVAO);
-      this.#cubeVAO = null;
-    }
+
+    this.#cubeBuffer = null;
+    this.#cubeVAO = null;
 
     this.#front = null;
     this.#back = null;

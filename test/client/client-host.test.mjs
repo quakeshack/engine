@@ -437,5 +437,21 @@ void describe('ClientHost', () => {
 
       assert.ok(calls.some(([name]) => name === 'Disconnect'));
     });
+
+    void test('does not disconnect when the host is already shutting down, the page is closing', async () => {
+      const calls = [];
+      const runtime = createClientRuntime({ calls, scheduled: [] });
+
+      runtime.CL.name = { string: 'Ranger' };
+      runtime.Host.serverHost = { getLocalOperatorName: () => 'unset' };
+      runtime.Host.isdown = true;
+
+      await withRegistryMembers(runtime, () => {
+        ClientHost.Init();
+        eventBus.publish('server.shutting-down');
+      });
+
+      assert.equal(calls.some(([name]) => name === 'Disconnect'), false);
+    });
   });
 });
