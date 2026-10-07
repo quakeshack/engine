@@ -10,6 +10,8 @@ import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
+import M from './Menu.ts';
+import Host from '../common/Host.ts';
 
 /** Browser-derived signals used to decide whether mobile play needs external input devices. */
 export interface MobileInputEnvironment {
@@ -189,10 +191,10 @@ export function shouldShowMobileExternalInputWarning(state: MobileInputSupportSt
   return !state.hasKeyboardActivity || !hasMouseSupport(state);
 }
 
-let { COM, Host, Key, M, V } = getClientRegistry();
+let { COM, Key, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Host, Key, M, V } = getClientRegistry());
+  ({ COM, Key, V } = getClientRegistry());
 });
 
 export default class IN {

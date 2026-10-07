@@ -13,7 +13,8 @@ import GL, { ATTRIB_LOCATIONS, GLCubeTexture, GLRenderTexture, GLTexture, GLText
 import { content, effect } from '../../shared/Defs.ts';
 import { modelRendererRegistry } from './renderer/ModelRendererRegistry.ts';
 import type { ModelRenderer } from './renderer/ModelRenderer.ts';
-import { BrushModelRenderer, LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from './renderer/BrushModelRenderer.ts';
+import { BrushModelRenderer } from './renderer/BrushModelRenderer.ts';
+import { LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from './renderer/LightmapAtlas.ts';
 import { AliasModelRenderer } from './renderer/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/MeshModelRenderer.ts';
@@ -35,11 +36,12 @@ import { SkyRenderer } from './renderer/Sky.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientCollision } from './ClientPhysics.ts';
+import Host from '../common/Host.ts';
 
-let { Host, SCR, Sys, V } = getClientRegistry();
+let { SCR, Sys, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, SCR, Sys, V } = getClientRegistry());
+  ({ SCR, Sys, V } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;

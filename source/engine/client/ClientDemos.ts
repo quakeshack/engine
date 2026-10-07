@@ -6,11 +6,12 @@ import { HostError } from '../common/Errors.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import CL from './CL.ts';
+import Host from '../common/Host.ts';
 
-let { COM, Host, NET } = getClientRegistry();
+let { COM, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Host, NET } = getClientRegistry());
+  ({ COM, NET } = getClientRegistry());
 });
 
 /**

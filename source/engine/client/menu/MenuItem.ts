@@ -7,6 +7,8 @@ import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import type { BitmapFont } from '../BitmapFont.ts';
 import type { MenuPic } from '../Menu.ts';
+import M from '../Menu.ts';
+import Host from '../../common/Host.ts';
 
 interface MenuItemConfig {
   readonly label?: string;
@@ -91,10 +93,10 @@ interface NumberInputConfig extends MenuItemConfig {
   readonly step?: number;
 }
 
-let { Host, Key, M, S } = getClientRegistry();
+let { Key, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, Key, M, S } = getClientRegistry());
+  ({ Key, S } = getClientRegistry());
 });
 
 /**

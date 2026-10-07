@@ -9,6 +9,8 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useHostOf } from '../support/host.ts';
+import Host from '../../source/engine/common/Host.ts';
 
 class MockClientSerializable {
   constructor(value) {
@@ -47,6 +49,7 @@ function withMockClientMessagesRegistry({ CL, COM, NET, Host }, callback) {
   registry.COM = COM;
   registry.NET = NET;
   registry.Host = Host ?? { realtime: 0 };
+  const restoreHost = useHostOf(registry.Host);
   eventBus.publish('registry.frozen');
 
   const restore = () => {
@@ -55,6 +58,7 @@ function withMockClientMessagesRegistry({ CL, COM, NET, Host }, callback) {
     registry.COM = previousValues.COM;
     registry.NET = previousValues.NET;
     registry.Host = previousValues.Host;
+    restoreHost();
     eventBus.publish('registry.frozen');
   };
 
@@ -336,7 +340,7 @@ void describe('ClientMessages.parseTime / renderTime', () => {
       assert.equal(messages.mtimeReceivedAt, 100.0);
       assert.equal(messages.renderTime, 10.0, 'renderTime matches mtime[0] right at receipt');
 
-      host.realtime = 100.25;
+      Host.realtime = 100.25; // the real host, the mocked one only provided the first value
       assert.equal(messages.renderTime, 10.25, 'renderTime keeps advancing with real elapsed time, unlike mtime[0]');
     });
   });

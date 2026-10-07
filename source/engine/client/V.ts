@@ -7,19 +7,19 @@ import * as Def from '../common/Def.ts';
 import Q from '../../shared/Q.ts';
 import { calcRoll } from '../../shared/PlayerRoll.ts';
 import Vector from '../../shared/Vector.ts';
-import { getClientRegistry, getCommonRegistry } from '../registry.ts';
+import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
+import R from './R.ts';
+import Host from '../common/Host.ts';
 
-let { Host } = getCommonRegistry();
-let { R, SCR } = getClientRegistry();
+let { SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host } = getCommonRegistry());
-  ({ R, SCR } = getClientRegistry());
+  ({ SCR } = getClientRegistry());
 });
 
 /**

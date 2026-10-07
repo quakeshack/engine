@@ -1,7 +1,6 @@
 import Vector from '../../../shared/Vector.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
-import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import GL from '../GL.ts';
 import W from '../../common/W.ts';
@@ -11,12 +10,9 @@ import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
 import Con from '../../common/Console.ts';
 import { clientRuntimeState } from '../ClientState.ts';
+import R from '../R.ts';
+import Host from '../../common/Host.ts';
 
-let { Host, R } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host, R } = getClientRegistry());
-});
 
 let gl: WebGL2RenderingContext = null!;
 

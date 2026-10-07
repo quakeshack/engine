@@ -8,6 +8,8 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
+import { useRendererOf } from '../support/renderer.ts';
+import { useHostOf } from '../support/host.ts';
 
 /**
  * Runs a callback with a real `ClientEntities` instance wired into the
@@ -26,14 +28,18 @@ function withMockLegacyClientRegistry(callback) {
 
   const restoreClientState = useClientStateOf(registry.CL);
   registry.Host = { frametime: 1 / 60 };
+  const restoreHost = useHostOf(registry.Host);
   registry.R = { RocketTrail() {}, EntityParticles() {} };
+  const restoreRenderer = useRendererOf(registry.R);
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousCL;
     restoreClientState();
     registry.Host = previousHost;
+    restoreHost();
     registry.R = previousR;
+    restoreRenderer();
     eventBus.publish('registry.frozen');
   };
 

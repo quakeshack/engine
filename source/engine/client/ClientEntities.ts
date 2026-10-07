@@ -21,6 +21,8 @@ import Con from '../common/Console.ts';
 import Mod from '../common/Mod.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
+import R from './R.ts';
+import Host from '../common/Host.ts';
 
 interface ClientEntityLerpState {
   readonly frame: [number, number, number];
@@ -58,10 +60,10 @@ export interface SerializedClientEntity {
   readonly handlerData: SerializedData | null;
 }
 
-let { Host, R, S } = getClientRegistry();
+let { S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, R, S } = getClientRegistry());
+  ({ S } = getClientRegistry());
 });
 
 export class ClientDlight {

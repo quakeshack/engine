@@ -7,6 +7,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useHostOf } from '../support/host.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
@@ -330,6 +331,7 @@ export function defaultMockRegistry(sv = {}, cl = null) {
 export function withMockRegistry(mockedRegistry, callback) {
   const previousServerState = Cvar.serverState;
   const restoreClientState = useClientStateOf(mockedRegistry.CL);
+  const restoreHost = useHostOf(mockedRegistry.Host);
 
   Cvar.serverState = {
     isServerActive: () => mockedRegistry.CL?.serverController?.state.active ?? mockedRegistry.SV?.server?.active ?? false,
@@ -350,6 +352,7 @@ export function withMockRegistry(mockedRegistry, callback) {
   eventBus.publish('registry.frozen');
 
   const restore = () => {
+    restoreHost();
     restoreClientState();
     Cvar.serverState = previousServerState;
     registry.COM = previousCOM;

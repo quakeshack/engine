@@ -4,18 +4,13 @@ import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
 import { clientStaticState } from './ClientState.ts';
 import CL from './CL.ts';
+import M from './Menu.ts';
+import Host from '../common/Host.ts';
 
-let { Host, M } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host, M } = getClientRegistry());
-});
 
 /**
  * Where key events are routed to, when the drop-down console isn't the one claiming them.

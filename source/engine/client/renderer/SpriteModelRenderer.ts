@@ -1,18 +1,13 @@
 import { ModelRenderer } from './ModelRenderer.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
-import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import GL from '../GL.ts';
 import { SpriteModel } from '../../common/model/SpriteModel.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import type { BaseModel } from '../../common/model/BaseModel.ts';
 import { clientRuntimeState } from '../ClientState.ts';
+import R from '../R.ts';
 
-let { R } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ R } = getClientRegistry());
-});
 
 let gl: WebGL2RenderingContext = null!;
 

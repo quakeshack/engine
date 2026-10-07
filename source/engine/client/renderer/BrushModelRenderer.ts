@@ -1,6 +1,5 @@
 import Vector from '../../../shared/Vector.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
-import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../GL.ts';
 import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
@@ -13,12 +12,10 @@ import PostProcess from './PostProcess.ts';
 import * as Def from '../../common/Def.ts';
 import { content } from '../../../shared/Defs.ts';
 import { clientRuntimeState } from '../ClientState.ts';
+import R from '../R.ts';
+import { LIGHTMAP_BLOCK_SIZE } from './LightmapAtlas.ts';
+import Host from '../../common/Host.ts';
 
-let { Host, R } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host, R } = getClientRegistry());
-});
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -29,16 +26,6 @@ eventBus.subscribe('gl.ready', () => {
 eventBus.subscribe('gl.shutdown', () => {
   gl = null!;
 });
-
-// Lightmap atlas configuration
-// LIGHTMAP_BLOCK_SIZE defines the width and height of each lightmap layer.
-// The lightmap is stored as a TEXTURE_2D_ARRAY with 3 layers (R, G, B).
-// Each layer is LIGHTMAP_BLOCK_SIZE x LIGHTMAP_BLOCK_SIZE pixels in RGBA8,
-// where the 4 RGBA channels carry the 4 lightstyle intensities.
-// LIGHTMAP_BLOCK_HEIGHT = LIGHTMAP_BLOCK_SIZE * 4 is the RGBA byte stride per row,
-// used internally for CPU-side lightmap data indexing.
-export const LIGHTMAP_BLOCK_SIZE = 2048;
-export const LIGHTMAP_BLOCK_HEIGHT = LIGHTMAP_BLOCK_SIZE * 4; // RGBA byte stride per row
 
 const TURBULENT_FALLBACK_NORMAL_OFFSET = 2.0;
 // Deeper along-normal probe distance used to punch through a large/deep liquid volume down to

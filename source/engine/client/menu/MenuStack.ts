@@ -3,11 +3,11 @@ import { eventBus } from '../../common/EventBus.ts';
 import type { MenuPage } from './MenuPage.ts';
 
 // Destructure registry modules
-let { IN, M } = getClientRegistry();
+let { IN } = getClientRegistry();
 
 // Update when registry is frozen
 eventBus.subscribe('registry.frozen', () => {
-  ({ IN, M } = getClientRegistry());
+  ({ IN } = getClientRegistry());
 });
 
 /**
@@ -17,8 +17,14 @@ export class MenuStack {
   stack: MenuPage[];
   pages: Map<string, MenuPage>;
   #rootPageName: string | null = null;
+  readonly #onNavigate: (() => void) | null;
 
-  constructor() {
+  /**
+   * @param onNavigate Called whenever a page was opened or revealed, which is when the menu plays its sound. The menu
+   *   passes it in because it owns the sound and this class must not need the menu to be there when it is created.
+   */
+  constructor(onNavigate: (() => void) | null = null) {
+    this.#onNavigate = onNavigate;
     this.stack = [];
     this.pages = new Map();
   }
@@ -118,7 +124,7 @@ export class MenuStack {
     // Push and activate
     this.stack.push(page);
     page.activate();
-    M.entersound = true;
+    this.#onNavigate?.();
     // Release mouselook so the camera doesn't keep spinning from residual deltas while the menu
     // has focus (the browser only auto-releases pointer lock on Escape, not on our own state
     // changes, and the menu can also be reached via mouse click/bound commands).
@@ -143,7 +149,7 @@ export class MenuStack {
     const current = this.current();
     if (current) {
       current.activate();
-      M.entersound = true;
+      this.#onNavigate?.();
       eventBus.publish('menu.opened', this.#nameOf(current));
     }
 

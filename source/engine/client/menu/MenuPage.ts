@@ -4,6 +4,8 @@ import { eventBus } from '../../common/EventBus.ts';
 import type { MenuPic } from '../Menu.ts';
 import { MenuItem } from './MenuItem.ts';
 import { MenuViewport } from './MenuViewport.ts';
+import M from '../Menu.ts';
+import Host from '../../common/Host.ts';
 
 interface MenuPageConfig {
   readonly items?: MenuItem[];
@@ -87,11 +89,11 @@ export interface BackButtonAnchor {
 }
 
 // Destructure registry modules
-let { Host, M, S } = getClientRegistry();
+let { S } = getClientRegistry();
 
 // Update when registry is frozen
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, M, S } = getClientRegistry());
+  ({ S } = getClientRegistry());
 });
 
 /**

@@ -1,16 +1,11 @@
 import Vector from '../../shared/Vector.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState } from './ClientState.ts';
+import R from './R.ts';
 
 type VectorTuple = readonly [number, number, number];
 
-let { R } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ R } = getClientRegistry());
-});
 
 /**
  * Draws the navigation debug visualization. The server only says where a dot belongs

@@ -9,6 +9,7 @@ import { HostError } from '../common/Errors.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
+import Host from '../common/Host.ts';
 
 interface KButtonState {
   down: [number, number];
@@ -60,10 +61,10 @@ const kbuttonByName = Object.freeze({
 
 const KBUTTON_COUNT = Object.keys(kbuttonByName).length;
 
-let { Host, NET, V } = getClientRegistry();
+let { NET, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, NET, V } = getClientRegistry());
+  ({ NET, V } = getClientRegistry());
 });
 
 /**

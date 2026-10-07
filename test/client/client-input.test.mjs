@@ -7,6 +7,7 @@ import ClientInput, { kbutton, kbuttons } from '../../source/engine/client/Clien
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
+import { useHostOf } from '../support/host.ts';
 
 /**
  *
@@ -48,6 +49,7 @@ function withMockClientInputRegistry(callback) {
   const restoreClientState = useClientStateOf(registry.CL);
   registry.Con = { Print() {}, DPrint() {} };
   registry.Host = { frametime: 0.1 };
+  const restoreHost = useHostOf(registry.Host);
   registry.NET = { SendUnreliableMessage() { return 0; } };
   registry.V = { startPitchDrift() {} };
   eventBus.publish('registry.frozen');
@@ -57,6 +59,7 @@ function withMockClientInputRegistry(callback) {
     restoreClientState();
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;
+    restoreHost();
     registry.NET = previousValues.NET;
     registry.V = previousValues.V;
     eventBus.publish('registry.frozen');

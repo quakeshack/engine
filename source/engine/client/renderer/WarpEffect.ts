@@ -1,13 +1,8 @@
 import GL, { type GLRenderTexture } from '../GL.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
+import Host from '../../common/Host.ts';
 
-let { Host } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host } = getClientRegistry());
-});
 
 let gl: WebGL2RenderingContext = null!;
 

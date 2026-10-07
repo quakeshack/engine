@@ -21,13 +21,16 @@ import Mod from '../common/Mod.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientPmove } from './ClientPhysics.ts';
 import CL from './CL.ts';
+import R from './R.ts';
+import Host from '../common/Host.ts';
+import ClientHost from './ClientHost.ts';
 
 type ClientSignonState = 0 | 1 | 2 | 3 | 4;
 
-let { SCR, S, R, V, Host, NET } = getClientRegistry();
+let { SCR, S, V, NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ SCR, S, R, V, Host, NET } = getClientRegistry());
+  ({ SCR, S, V, NET } = getClientRegistry());
 });
 
 // An edict reference on the wire is the number of the client's own copy of it.
@@ -695,7 +698,7 @@ function handleVersion() {
  * Processes svc_disconnect by surfacing the server-supplied message.
  */
 function handleDisconnect() {
-  Host.EndGame(`Server disconnected: ${NET.message.readString()}`);
+  ClientHost.EndGame(`Server disconnected: ${NET.message.readString()}`);
 }
 
 /**

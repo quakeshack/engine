@@ -34,6 +34,10 @@ import Con from './Console.ts';
 import { clientRuntimeState, clientStaticState } from '../client/ClientState.ts';
 import { clientCollision, clientPmove } from '../client/ClientPhysics.ts';
 import CL from '../client/CL.ts';
+import R from '../client/R.ts';
+import M from '../client/Menu.ts';
+import Host from './Host.ts';
+import ClientHost from '../client/ClientHost.ts';
 
 interface ClientTraceOptions {
   readonly includeEntities?: boolean;
@@ -50,12 +54,12 @@ interface ClientTraceEntityAdapter {
 type ClientEntityFilter = ((entity: ClientEdict) => boolean) | null;
 type CommandCallback = (...args: string[]) => void | Promise<void>;
 
-let { COM, Host, V } = getCommonRegistry();
-let { Draw, M, R, S, SCR } = getClientRegistry();
+let { COM, V } = getCommonRegistry();
+let { Draw, S, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Host, V } = getCommonRegistry());
-  ({ Draw, M, R, S, SCR } = getClientRegistry());
+  ({ COM, V } = getCommonRegistry());
+  ({ Draw, S, SCR } = getClientRegistry());
 });
 
 eventBus.subscribe('com.ready', () => {
@@ -827,11 +831,11 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
 
     /**
-     * Quit immediately, skipping Host.Quit_f()'s own confirmation gate -- for use after the
+     * Quit immediately, skipping ClientHost.Quit_f()'s own confirmation gate -- for use after the
      * player already confirmed via a mod's own quit dialog.
      */
     ForceQuit(): void {
-      Host.ForceQuit();
+      ClientHost.ForceQuit();
     },
 
     /**
@@ -1006,25 +1010,64 @@ export class ClientEngineAPI extends CommonEngineAPI {
       M.DrawSlider(x, y, range);
     },
 
-    Action,
-    Label,
-    Slider,
-    Toggle,
-    Textbox,
-    Spacer,
-    Image,
-    ColorPicker,
-    NumberInput,
-    SaveSlotItem,
-    KeyBindItem,
-    MenuPage,
-    DialogPage,
-    ListPage,
-    VerticalLayout,
-    ImageBasedLayout,
-    ListLayout,
-    GridLayout,
-    MenuViewport,
+    // Read on use: these classes are part of a module cycle with this one, so they are not there yet while this class is set up.
+    get Action() {
+      return Action;
+    },
+    get Label() {
+      return Label;
+    },
+    get Slider() {
+      return Slider;
+    },
+    get Toggle() {
+      return Toggle;
+    },
+    get Textbox() {
+      return Textbox;
+    },
+    get Spacer() {
+      return Spacer;
+    },
+    get Image() {
+      return Image;
+    },
+    get ColorPicker() {
+      return ColorPicker;
+    },
+    get NumberInput() {
+      return NumberInput;
+    },
+    get SaveSlotItem() {
+      return SaveSlotItem;
+    },
+    get KeyBindItem() {
+      return KeyBindItem;
+    },
+    get MenuPage() {
+      return MenuPage;
+    },
+    get DialogPage() {
+      return DialogPage;
+    },
+    get ListPage() {
+      return ListPage;
+    },
+    get VerticalLayout() {
+      return VerticalLayout;
+    },
+    get ImageBasedLayout() {
+      return ImageBasedLayout;
+    },
+    get ListLayout() {
+      return ListLayout;
+    },
+    get GridLayout() {
+      return GridLayout;
+    },
+    get MenuViewport() {
+      return MenuViewport;
+    },
   };
 
   static readonly Multiplayer = {

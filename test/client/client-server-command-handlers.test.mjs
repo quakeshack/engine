@@ -12,6 +12,8 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useRendererOf } from '../support/renderer.ts';
+import { useHostOf } from '../support/host.ts';
 
 /**
  * Builds the minimal client registry surface required by parseServerMessage().
@@ -94,9 +96,11 @@ function withMockClientRegistry(mockedRegistry, callback) {
   const restoreClientState = useClientStateOf(registry.CL);
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
+  const restoreHost = useHostOf(registry.Host);
   registry.Mod = mockedRegistry.Mod;
   registry.NET = mockedRegistry.NET;
   registry.R = mockedRegistry.R;
+  const restoreRenderer = useRendererOf(registry.R);
   registry.S = mockedRegistry.S;
   registry.SCR = mockedRegistry.SCR;
   registry.V = mockedRegistry.V;
@@ -107,9 +111,11 @@ function withMockClientRegistry(mockedRegistry, callback) {
     restoreClientState();
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;
+    restoreHost();
     registry.Mod = previousValues.Mod;
     registry.NET = previousValues.NET;
     registry.R = previousValues.R;
+    restoreRenderer();
     registry.S = previousValues.S;
     registry.SCR = previousValues.SCR;
     registry.V = previousValues.V;

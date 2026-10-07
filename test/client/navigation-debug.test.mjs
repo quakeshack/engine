@@ -7,6 +7,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useRendererOf } from '../support/renderer.ts';
 
 /**
  * Runs a callback with a renderer that hands out particles from a fixed pool.
@@ -34,6 +35,7 @@ function withRenderer({ free }, callback) {
       return [particles.length - 1];
     },
   };
+  const restoreRenderer = useRendererOf(registry.R);
   eventBus.publish('registry.frozen');
 
   try {

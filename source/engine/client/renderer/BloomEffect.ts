@@ -7,11 +7,12 @@ import Host from '../../common/Host.ts';
 import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import { effect } from '../../../shared/Defs.ts';
+import R from '../R.ts';
 
-let { Draw, R } = getClientRegistry();
+let { Draw } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Draw, R } = getClientRegistry());
+  ({ Draw } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;

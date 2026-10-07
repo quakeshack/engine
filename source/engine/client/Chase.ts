@@ -1,15 +1,9 @@
 import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import { clientCollision } from './ClientPhysics.ts';
+import R from './R.ts';
 
-let { R } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ R } = getClientRegistry());
-});
 
 export default class Chase {
   static back: Cvar;

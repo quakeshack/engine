@@ -7,18 +7,13 @@ import { clientRuntimeState } from './ClientState.ts';
 import GameModule from '../common/GameModule.ts';
 import { MoveVars } from '../common/Pmove.ts';
 import { ClientEngineAPI } from '../common/GameAPIs.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import type { SerializedParticle } from './R.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientPmove } from './ClientPhysics.ts';
+import Host from '../common/Host.ts';
 
-let { Host } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host } = getClientRegistry());
-});
 
 /** The client game can tell the menu what to do when a new game is requested. */
 export interface StartGameInterface {

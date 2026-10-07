@@ -7,6 +7,8 @@ import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { useMenuOf } from '../support/menu.ts';
+import { useHostOf } from '../support/host.ts';
 import {
   Action, ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
 } from '../../source/engine/client/menu/MenuItem.ts';
@@ -27,6 +29,8 @@ function withMockWidgetRegistry(callback) {
   const bitmapStrings = [];
 
   registry.Host = { realtime: 0 };
+
+  const restoreHost = useHostOf(registry.Host);
   registry.Key = Key;
   registry.M = {
     sfx_menu1: 'menu1',
@@ -38,6 +42,7 @@ function withMockWidgetRegistry(callback) {
     DrawSlider() {},
     DrawBitmapString(_x, _y, str, font, variant) { bitmapStrings.push({ str, font, variant }); },
   };
+  const restoreMenu = useMenuOf(registry.M);
   registry.S = { LocalSound(sfx) { sounds.push(sfx); } };
   eventBus.publish('registry.frozen');
 
@@ -45,8 +50,10 @@ function withMockWidgetRegistry(callback) {
     callback({ printed, sounds, bitmapStrings });
   } finally {
     registry.Host = previousHost;
+    restoreHost();
     registry.Key = previousKey;
     registry.M = previousM;
+    restoreMenu();
     registry.S = previousS;
     eventBus.publish('registry.frozen');
   }

@@ -14,6 +14,7 @@ import { ModelScope } from '../common/Mod.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
 import Mod from '../common/Mod.ts';
+import Host from '../common/Host.ts';
 
 export type IdentityCvars = {
   name: Cvar | null;
@@ -21,10 +22,10 @@ export type IdentityCvars = {
   rcon_password: Cvar | null;
 };
 
-let { Host, IN, NET, SCR, S } = getClientRegistry();
+let { IN, NET, SCR, S } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, IN, NET, SCR, S } = getClientRegistry());
+  ({ IN, NET, SCR, S } = getClientRegistry());
 });
 
 export default class ClientConnection {

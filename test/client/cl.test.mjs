@@ -12,6 +12,7 @@ import { createBrushWorldModel } from '../physics/fixtures.mjs';
 import clientCvars from '../../source/engine/client/ClientCvars.ts';
 import { clientPmove } from '../../source/engine/client/ClientPhysics.ts';
 import { clientStaticState } from '../../source/engine/client/ClientState.ts';
+import { useHostOf } from '../support/host.ts';
 
 void describe('CL.AppendChatMessage', () => {
   void test('publishes chat messages without a legacy engine HUD fallback', () => {
@@ -52,6 +53,8 @@ void describe('CL.PredictMove', () => {
     const previousPredicted = CL.state.predicted;
 
     registry.Host = { realtime: 42.0 };
+
+    const restoreHost = useHostOf(registry.Host);
     eventBus.publish('registry.frozen');
 
     clientCvars.nopred = { value: 0 };
@@ -71,6 +74,7 @@ void describe('CL.PredictMove', () => {
       assert.deepEqual([...playerEntity.origin], [100.0, 200.0, 300.0]);
     } finally {
       registry.Host = previousHost;
+      restoreHost();
       eventBus.publish('registry.frozen');
       clientCvars.nopred = previousNopred;
       CL.state.intermission = previousIntermission;

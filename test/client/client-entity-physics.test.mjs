@@ -12,6 +12,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useHostOf } from '../support/host.ts';
 
 /**
  * A world trace result matching `CollisionTrace`'s shape.
@@ -71,6 +72,7 @@ function withWorld({ gravity = 800, paused = false, worldmodel = { nodes: [{ con
 
   const restoreClientState = useClientStateOf(registry.CL);
   registry.Host = { frametime };
+  const restoreHost = useHostOf(registry.Host);
   eventBus.publish('registry.frozen');
 
   try {

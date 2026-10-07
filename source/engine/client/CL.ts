@@ -17,11 +17,12 @@ import type { ServerController } from '../common/ServerController.ts';
 import Con from '../common/Console.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientPmove } from './ClientPhysics.ts';
+import Host from '../common/Host.ts';
 
-let { Draw, Host } = getClientRegistry();
+let { Draw } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Draw, Host } = getClientRegistry());
+  ({ Draw } = getClientRegistry());
 });
 
 export default class CL {

@@ -12,6 +12,9 @@ import Con from '../../source/engine/common/Console.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useMenuOf } from '../support/menu.ts';
+import M from '../../source/engine/client/Menu.ts';
+import { patchMembers } from '../support/clientState.ts';
 
 /**
  * Temporarily installs a minimal `Con` registry stub (plus the real `COM` for
@@ -438,6 +441,7 @@ void describe('Key', () => {
           ToggleMenu_f: () => { toggleMenu.count++; },
           Menu_Main_f: () => { menuMainCalls.count++; },
         };
+        const restoreMenu = useMenuOf(registry.M);
         eventBus.publish('registry.frozen');
 
         try {
@@ -446,6 +450,7 @@ void describe('Key', () => {
           registry.CL = previousCL;
           restoreClientState();
           registry.M = previousM;
+          restoreMenu();
           eventBus.publish('registry.frozen');
         }
       });
@@ -658,6 +663,7 @@ void describe('Key', () => {
           ToggleMenu_f: () => {},
           Keydown: () => {},
         };
+        const restoreMenu = useMenuOf(registry.M);
         eventBus.publish('registry.frozen');
 
         try {
@@ -666,6 +672,7 @@ void describe('Key', () => {
           registry.CL = previousCL;
           restoreClientState();
           registry.M = previousM;
+          restoreMenu();
           eventBus.publish('registry.frozen');
         }
       });
@@ -731,16 +738,17 @@ void describe('Key', () => {
         Key.destination = KeyDestination.menu;
 
         withMockConsoleClickRegistry(clientConnectionState.disconnected, ({ menuMainCalls }) => {
-          registry.M.Keydown = () => {
-            // Simulate the Back/Close button popping the menu stack back to `game`.
-            Key.destination = KeyDestination.game;
-          };
-          eventBus.publish('registry.frozen');
+          // Simulate the Back/Close button popping the menu stack back to `game`.
+          const restoreKeydown = patchMembers(M, { Keydown: () => { Key.destination = KeyDestination.game; } });
 
-          Key.Event(K.MOUSE1, true);
+          try {
+            Key.Event(K.MOUSE1, true);
 
-          assert.equal(menuMainCalls.count, 0);
-          assert.equal(Key.destination, KeyDestination.game);
+            assert.equal(menuMainCalls.count, 0);
+            assert.equal(Key.destination, KeyDestination.game);
+          } finally {
+            restoreKeydown();
+          }
         });
       });
     });

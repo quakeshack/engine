@@ -12,11 +12,14 @@ import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import CL from './CL.ts';
+import R from './R.ts';
+import M from './Menu.ts';
+import Host from '../common/Host.ts';
 
-let { Draw, Host, Key, M, R, S, V } = getClientRegistry();
+let { Draw, Key, S, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Draw, Host, Key, M, R, S, V } = getClientRegistry());
+  ({ Draw, Key, S, V } = getClientRegistry());
 });
 
 let gl: WebGL2RenderingContext = null!;

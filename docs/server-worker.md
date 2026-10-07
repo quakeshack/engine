@@ -59,7 +59,7 @@ while it is connected.
 ## Console variables and commands
 
 Both realms have their own `Cvar` and `Cmd` tables, and the page owns the console and the configuration file.
-Whoever registers a variable owns it. `ServerController.attachConsole()` joins the two, and `Host.Init` calls it
+Whoever registers a variable owns it. `ServerController.attachConsole()` joins the two, and `ClientHost.Boot` calls it
 once every variable of the page exists, right before the configuration runs:
 
 | Registered by | Is | Where it lives |

@@ -515,13 +515,13 @@ Fired on the shared `eventBus` by `MenuStack`; documented alongside all other en
 | `menu.opened` | page name, or `null` if unregistered | A page became current (`push`). |
 | `menu.closed` | page name, or `null` if unregistered | A page stopped being current (`pop`, replaced, or the stack was cleared). |
 
-Two more, published by `Host.ts` rather than `MenuStack` — the engine reports these as plain
+Two more, published by `Host.ts`/`ClientHost.ts` rather than `MenuStack` — the engine reports these as plain
 events instead of calling into the menu system directly, so it has no dependency on whether (or
 how) a game module chooses to present them (see [`events.md`](events.md#host) for full details):
 
 | Event | Arguments | When |
 | - | - | - |
-| `host.alert` | `HostAlertEvent` (`title`, `message`, `severity`) | `Host.EndGame`/`Host.Error` reporting a fault or an expected end-of-game condition. id1 subscribes and opens its `'alert'` page. |
+| `host.alert` | `HostAlertEvent` (`title`, `message`, `severity`) | `ClientHost.EndGame`/`Host.Error` reporting a fault or an expected end-of-game condition. id1 subscribes and opens its `'alert'` page. |
 | `host.quit-requested` | - | The `quit` command wants confirmation. id1 subscribes and opens its `'quit'` page. |
 
 ## Testing
@@ -546,7 +546,7 @@ how) a game module chooses to present them (see [`events.md`](events.md#host) fo
   `test/common/client-engine-api-connection-state.test.mjs` — `ClientEngineAPI.Menu`/
   `.Multiplayer`/`.SaveSlots`/`.CL.connected`/`.SV.active` register/open/add-item round-trips,
   using the same mock-registry pattern as other client API tests.
-- `test/common/host-alert.test.mjs` — `Host.EndGame`/`Host.Error` publish `host.alert` with the
+- `test/common/host-alert.test.mjs` — `ClientHost.EndGame`/`Host.Error` publish `host.alert` with the
   right severity, and `Con.PrintError`/`PrintSuccess` still fire even with nothing subscribed.
 - `source/game/id1/test/client/menu.test.mjs` — `Id1Menu.Init()`: every built-in page registers
   and the root is `'main'`; each page's actual behavior (main menu navigation, new-game/load/save

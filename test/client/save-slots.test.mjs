@@ -5,6 +5,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import SaveSlots from '../../source/engine/client/menu/SaveSlots.ts';
 import { BackendUserStore, MemoryBackend } from '../../source/engine/common/UserStore.ts';
+import ClientHost from '../../source/engine/client/ClientHost.ts';
 
 /**
  * Installs a minimal `COM` registry stub (SaveSlots needs the game directory and the user store)
@@ -33,7 +34,7 @@ async function withMockSaveSlotsRegistry(callback) {
 }
 
 /**
- * Stores a save file the way `Host.Savegame_f` does.
+ * Stores a save file the way `ClientHost.Savegame_f` does.
  * @param {BackendUserStore} store the user store
  * @param {number} index slot index
  * @param {object} gamestate save game metadata

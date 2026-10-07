@@ -59,7 +59,7 @@ eventBus.subscribe('client.connecting', () => {
 export type MenuPic = GLTexture & { translate?: GLTexture | null };
 
 export default class M {
-  static menuStack = new MenuStack();
+  static menuStack = new MenuStack(() => { M.entersound = true; });
 
   // The page whose viewport should resolve M's drawing primitives right now -- normally null,
   // meaning "use the top of the stack" (see #activeViewport()). Set for the duration of a

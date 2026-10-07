@@ -14,7 +14,6 @@ import Cvar from '../common/Cvar.ts';
 import Cmd from '../common/Cmd.ts';
 import Q from '../../shared/Q.ts';
 import type COM from '../common/Com.ts';
-import type Host from '../common/Host.ts';
 import type NET from '../network/Network.ts';
 import type { SystemServices } from '../common/Services.ts';
 import WorkerManager from '../common/WorkerManager.ts';
@@ -69,10 +68,23 @@ eventBus.subscribe('net.connection.accepted', () => {
  * System class to manage initialization, quitting, and REPL functionality.
  */
 /** What the dedicated system services drive. */
+/** What the main loop of a dedicated server drives. */
+export interface DedicatedHostControls {
+  Init(): Promise<void>;
+  Frame(): Promise<void>;
+  Shutdown(): void;
+  readonly refreshrate: Cvar | null;
+  /** The `developer` variable, which also decides how long the browser may cache the client. */
+  readonly developer: Cvar | null;
+  /** Whether something is waiting for the next frame. */
+  hasScheduledWork(): boolean;
+}
+
 export interface DedicatedSysDependencies {
   /** The file system, looked up when needed because it is built with these services. */
   readonly com: () => COM;
-  readonly host: typeof Host;
+  /** The host, looked up when needed because it is built with these services. */
+  readonly host: () => DedicatedHostControls;
   /** The network layer, looked up when needed because it is built with these services. */
   readonly net: () => NET;
 }
@@ -110,7 +122,7 @@ export default class DedicatedSys implements SystemServices {
     await this.#startWebserver();
 
     this.Print('Host.Init\n');
-    await this.#dependencies.host.Init();
+    await this.#dependencies.host().Init();
 
     // Start a REPL instance (if stdout is a TTY)
     if (stdout && stdout.isTTY) {
@@ -134,15 +146,15 @@ export default class DedicatedSys implements SystemServices {
      
     this.#isRunning = true;
 
-    if (this.#dependencies.host.refreshrate!.value === 0) {
-      this.#dependencies.host.refreshrate!.set(60);
+    if (this.#dependencies.host().refreshrate!.value === 0) {
+      this.#dependencies.host().refreshrate!.set(60);
     }
 
     // Main loop
     while (this.#isRunning) {
       const startTime = Date.now();
 
-      await this.#dependencies.host.Frame();
+      await this.#dependencies.host().Frame();
 
       const dtime = Date.now() - startTime;
 
@@ -150,10 +162,10 @@ export default class DedicatedSys implements SystemServices {
         this.Print(`Host.Frame took too long: ${dtime} ms\n`);
       }
 
-      await Q.sleep(Math.max(0, 1000.0 / Math.min(300, Math.max(60, this.#dependencies.host.refreshrate!.value)) - dtime));
+      await Q.sleep(Math.max(0, 1000.0 / Math.min(300, Math.max(60, this.#dependencies.host().refreshrate!.value)) - dtime));
 
       // when there are no more commands to process and no active connections, we can sleep indefinitely
-      if (this.#dependencies.net().activeconnections === 0 && this.#dependencies.host._scheduledForNextFrame.length === 0 && !Cmd.HasPendingCommands()) {
+      if (this.#dependencies.net().activeconnections === 0 && !this.#dependencies.host().hasScheduledWork() && !Cmd.HasPendingCommands()) {
         await MainLoop.sleep();
       }
     }
@@ -165,7 +177,7 @@ export default class DedicatedSys implements SystemServices {
   Quit(): never {
     this.#isRunning = false;
 
-    this.#dependencies.host.Shutdown();
+    this.#dependencies.host().Shutdown();
     this.Print('Sys.Quit: exitting process\n');
     exit(0);
   }
@@ -244,7 +256,7 @@ export default class DedicatedSys implements SystemServices {
 
         // Set headers and send the file data
         res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Cache-Control', this.#dependencies.host.developer!.value ? 'private, max-age=0' : 'public, max-age=86400');
+        res.setHeader('Cache-Control', this.#dependencies.host().developer!.value ? 'private, max-age=0' : 'public, max-age=86400');
 
         // Convert ArrayBuffer -> Buffer before sending
         return res.send(Buffer.from(fileData));

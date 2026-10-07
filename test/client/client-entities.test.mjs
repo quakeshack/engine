@@ -10,6 +10,8 @@ import { content, effect } from '../../source/shared/Defs.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
+import { useRendererOf } from '../support/renderer.ts';
+import { useHostOf } from '../support/host.ts';
 
 /**
  * Computes wrapped angular delta in degrees.
@@ -71,12 +73,14 @@ function withMockDlightRegistry(time, frametime, callback) {
 
   const restoreClientState = useClientStateOf(registry.CL);
   registry.Host = { frametime };
+  const restoreHost = useHostOf(registry.Host);
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousCL;
     restoreClientState();
     registry.Host = previousHost;
+    restoreHost();
     eventBus.publish('registry.frozen');
   };
 
@@ -298,6 +302,7 @@ void describe('ClientEntities.isPotentiallyVisible', () => {
 
     const restoreClientState = useClientStateOf(registry.CL);
     registry.R = { novis: { value: 0 }, refdef: { vieworg: new Vector() } };
+    const restoreRenderer = useRendererOf(registry.R);
     eventBus.publish('registry.frozen');
 
     try {
@@ -306,6 +311,7 @@ void describe('ClientEntities.isPotentiallyVisible', () => {
       registry.CL = previousCL;
       restoreClientState();
       registry.R = previousR;
+      restoreRenderer();
       eventBus.publish('registry.frozen');
     }
   }

@@ -12,6 +12,7 @@ import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import V from '../../source/engine/client/V.ts';
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useHostOf } from '../support/host.ts';
 
 void describe('compareTransparentItems', () => {
   void test('sorts farther items first', () => {
@@ -331,6 +332,8 @@ void describe('R._SmoothLightValues', () => {
     const previousV = registry.V;
 
     registry.Host = /** @type {typeof import('../../source/engine/client/Host.ts').default} */ ({ frametime });
+
+    const restoreHost = useHostOf(registry.Host);
     registry.V = V;
     eventBus.publish('registry.frozen');
 
@@ -338,6 +341,7 @@ void describe('R._SmoothLightValues', () => {
       callback();
     } finally {
       registry.Host = previousHost;
+      restoreHost();
       registry.V = previousV;
       eventBus.publish('registry.frozen');
     }

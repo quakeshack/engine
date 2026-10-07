@@ -5,11 +5,12 @@ import Con from '../common/Console.ts';
 import Cmd from '../common/Cmd.ts';
 import VID from './VID.ts';
 import { clientStaticState } from './ClientState.ts';
+import Host from '../common/Host.ts';
 
-let { Draw, Host, IN, Key, SCR } = getClientRegistry();
+let { Draw, IN, Key, SCR } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Draw, Host, IN, Key, SCR } = getClientRegistry());
+  ({ Draw, IN, Key, SCR } = getClientRegistry());
 });
 
 /**

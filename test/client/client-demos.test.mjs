@@ -10,6 +10,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useHostOf } from '../support/host.ts';
 
 /**
  * Builds a synthetic current-format demo file with a single message.
@@ -97,6 +98,7 @@ function withMockClientRegistry(mockedRegistry, callback) {
   registry.COM = mockedRegistry.COM;
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
+  const restoreHost = useHostOf(registry.Host);
   registry.NET = mockedRegistry.NET;
   eventBus.publish('registry.frozen');
 
@@ -106,6 +108,7 @@ function withMockClientRegistry(mockedRegistry, callback) {
     registry.COM = previousValues.COM;
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;
+    restoreHost();
     registry.NET = previousValues.NET;
     eventBus.publish('registry.frozen');
   };

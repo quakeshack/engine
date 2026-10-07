@@ -15,7 +15,12 @@ import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
 import PlayerColors from '../common/PlayerColors.ts';
 import type { SessionRequest } from '../common/ServerController.ts';
-import { getClientRegistry } from '../registry.ts';
+import type { HostAlertEvent } from '../../shared/GameInterfaces.ts';
+import type { SerializedParticle } from './R.ts';
+import type { SerializedClientEntity } from './ClientEntities.ts';
+import type { AliasModel } from '../common/model/AliasModel.ts';
+import type { ServerSaveState, ViewthingState } from '../common/ServerController.ts';
+import { getClientRegistry, registry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Vector from '../../shared/Vector.ts';
 import { content } from '../../shared/Defs.ts';
@@ -28,12 +33,34 @@ import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import CL from './CL.ts';
+import R from './R.ts';
+import M from './Menu.ts';
+import Host from '../common/Host.ts';
+import GameModule from '../common/GameModule.ts';
+import WorkerManager from '../common/WorkerManager.ts';
+import PlatformWorker from '../common/PlatformWorker.ts';
+import { Pmove } from '../common/Pmove.ts';
+import { ModelScope, ModelType } from '../common/Mod.ts';
+import Mod from '../common/Mod.ts';
+import Chase from './Chase.ts';
+import VID from './VID.ts';
+import ClientLifecycle from './ClientLifecycle.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import SaveSlots from './menu/SaveSlots.ts';
 
-let { Host, Key, M, NET, R, S, SCR } = getClientRegistry();
+let { COM, Draw, IN, Key, NET, S, SCR, Sys, V } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, Key, M, NET, R, S, SCR } = getClientRegistry());
+  ({ COM, Draw, IN, Key, NET, S, SCR, Sys, V } = getClientRegistry());
 });
+
+/** A savegame file: the server's half and what only the client knows. */
+interface SavegameState extends ServerSaveState {
+  readonly comment: string | null;
+  readonly clientdata: string | null;
+  readonly particles: SerializedParticle[];
+  readonly clientEntities: SerializedClientEntity[];
+}
 
 /**
  * Client runtime facade: frame loop and the player's session commands.
@@ -100,6 +127,467 @@ export default class ClientHost {
       }
     });
   }
+
+  /**
+   * Boots the page: command and variable tables, the file system, the game module, the renderer, sound, input and
+   * the menu, then runs the configuration. The server is either in this thread (`SV`) or in a worker.
+   */
+  static async Boot(): Promise<void> {
+    Host.oldrealtime = Sys.FloatTime();
+
+    // What the shared parts of the engine need from this realm.
+    Host.files = COM;
+    Host.configExtras = () => Key.WriteBindings();
+    Host.recoverFromError = () => { ClientHost.RecoverFromError(); };
+    Host.quit = () => { Sys.Quit(); };
+    Cmd.files = COM;
+    GameModule.com = COM;
+    WorkerManager.services = { con: Con, com: COM, urls: () => registry.urls };
+    PlatformWorker.onCrash = (error) => { Host.HandleCrash(error); };
+
+    Cmd.Init();
+    Cvar.Init();
+
+    V.Init(); // required for V.CalcRoll
+    Chase.Init();
+
+    await COM.Init();
+    ClientHost.InitLocal();
+    Key.Init();
+
+    Con.Init({ clock: () => Host.realtime, developer: () => Boolean(Host.developer?.value) });
+    ConsoleOverlay.Init();
+
+    const { serverHost } = Host;
+
+    if (serverHost !== null) {
+      await GameModule.Init(serverHost.sv.engineAPI);
+    } else {
+      // The server lives in a worker and loads the game there, this thread needs the client side of it.
+      await Promise.all([clientStaticState.serverController.init(), GameModule.Init(null)]);
+    }
+
+    Mod.Init({
+      files: COM,
+      con: Con,
+      loadRenderData: true,
+      keptClientModels: () => Object.keys(clientRuntimeState.clientEntities.tempEntityModels),
+    });
+    NET.Init();
+    Pmove.Init();
+    serverHost?.sv.Init();
+
+    S.Init();
+    VID.Init();
+    await Draw.Init();
+    await R.Init();
+    await M.Init();
+    await SaveSlots.refresh();
+    await CL.Init();
+    SCR.Init();
+    CDAudio.Init();
+    IN.Init();
+
+    // Every cvar of this thread exists now, so the server's can be joined with them before the configuration runs.
+    clientStaticState.serverController.attachConsole();
+
+    Cmd.text = `exec better-quake.rc\n${Cmd.text}`;
+     
+    Host.initialized = true;
+    Sys.Print('========Host Initialized=========\n');
+
+    eventBus.publish('host.ready');
+  }
+
+  /**
+   * Stops the page's engine: writes the configuration and shuts the subsystems down.
+   */
+  static Shutdown(): void {
+    if (Host.isdown) {
+      Sys.Print('recursive shutdown\n');
+      return;
+    }
+
+    eventBus.publish('host.shutting-down');
+    Host.isdown = true;
+    Host.WriteConfiguration();
+
+    S.Shutdown();
+    CDAudio.Shutdown();
+    NET.Shutdown();
+    IN.Shutdown();
+    VID.Shutdown();
+    Pmove.Shutdown();
+    Cmd.Shutdown();
+    Cvar.Shutdown();
+    eventBus.publish('host.shutdown');
+  }
+
+  /**
+   * Runs one iteration of the page's main loop, and reports whatever goes wrong in it.
+   */
+  static async RunFrame(): Promise<void> {
+    if (Host.crashing) {
+      return;
+    }
+
+    try {
+      await Host.BeginFrame(Sys.FloatTime());
+
+      if (ClientHost.Frame(Host.frametime, Host.realtime)) {
+        Host.framecount++;
+      }
+    } catch (error) {
+      Host.HandleCrash(error as Error);
+    }
+  }
+
+  /**
+   * Registers the variables and commands of the page and hooks the client up to its local server.
+   */
+  static InitLocal(): void {
+    ClientHost.InitCommands();
+    Cmd.AddCommand('load', ClientHost.Loadgame_f);
+    Cmd.AddCommand('save', ClientHost.Savegame_f);
+    Cmd.AddCommand('viewmodel', ClientHost.Viewmodel_f);
+    Cmd.AddCommand('viewframe', ClientHost.Viewframe_f);
+    Cmd.AddCommand('viewnext', ClientHost.Viewnext_f);
+    Cmd.AddCommand('viewprev', ClientHost.Viewprev_f);
+
+    Host.serverHost?.InitCommands();
+    Cmd.AddCommand('quit', ClientHost.Quit_f);
+    Cmd.AddCommand('name', ClientHost.NameCommand);
+    Cmd.AddCommand('color', ClientHost.ColorCommand);
+    Host.InitCommands();
+
+    Host.InitLocal(registry.buildConfig?.commitHash ?? undefined, false);
+    Host.serverHost?.InitLocal();
+
+    clientStaticState.state = Def.clientConnectionState.disconnected;
+    ClientHost.Init();
+  }
+
+  /** Shuts the local server down, wherever it runs. */
+  static #ShutdownServer(): void {
+    if (Host.serverHost !== null) {
+      Host.serverHost.ShutdownServer();
+      return;
+    }
+
+    clientStaticState.serverController.stop();
+  }
+
+  /**
+   * What the page does after an error: the loading screen goes away, the local server stops and the player leaves the game.
+   */
+  static RecoverFromError(): void {
+    SCR.EndLoadingPlaque();
+
+    ClientHost.#ShutdownServer();
+
+    CL.Disconnect();
+    clientStaticState.demonum = -1;
+  }
+
+  /**
+   * Ends the game the player is in, with a notice, or goes on with the next demo.
+   * @param message Why it ended.
+   */
+  static EndGame(message: string): void {
+    Con.PrintSuccess(`Host.EndGame: ${message}\n`);
+
+    if (clientStaticState.demonum !== -1) {
+      CL.NextDemo();
+      return;
+    }
+
+    CL.Disconnect();
+    eventBus.publish<[HostAlertEvent]>('host.alert', { title: 'Host.EndGame', message, severity: 'info' });
+  }
+
+  /**
+   * The `quit` command: asks for confirmation via game code's own quit dialog (see
+   * docs/events.md#host), unless typed directly into an already-open console (a deliberate
+   * enough action to skip the confirmation). Published as an event rather than calling into
+   * the menu system directly, same reasoning as `host.alert` -- the engine has no opinion on
+   * what a quit confirmation looks like, or whether one exists at all.
+   */
+  static Quit_f(): void {
+    if (!ConsoleOverlay.isOpen) {
+      eventBus.publish('host.quit-requested');
+      return;
+    }
+
+    ClientHost.ForceQuit();
+  }
+
+  /** Quits immediately, no confirmation — used once the player has already confirmed (e.g. the quit dialog's Yes). */
+  static ForceQuit(): void {
+    ClientHost.#ShutdownServer();
+
+    COM.Shutdown();
+    Sys.Quit();
+  }
+
+  /**
+   * `name` and `color` exist on both sides: typed into the local console they set the local
+   * player's preference, sent by a client they change that client on the server. As long as both
+   * run in one command table, this decides which one is meant.
+   */
+  static NameCommand(this: ConsoleCommand, ...names: string[]): void {
+    if (this.client === null) {
+      ClientHost.Name_f.call(this, ...names);
+      return;
+    }
+
+    Host.serverHost?.name(this, ...names);
+  }
+
+  static ColorCommand(this: ConsoleCommand, ...argv: string[]): void {
+    if (this.client === null) {
+      ClientHost.Color_f.call(this, ...argv);
+      return;
+    }
+
+    Host.serverHost?.color(this, ...argv);
+  }
+
+  static async Savegame_f(this: ConsoleCommand, savename?: string): Promise<void> {
+    if (this.client !== null) {
+      return;
+    }
+
+    if (savename === undefined) {
+      Con.Print('Usage: save <savename>\n');
+      return;
+    }
+
+    const { state } = clientStaticState.serverController;
+
+    if (!state.active) {
+      Con.PrintWarning('Not playing a local game.\n');
+      return;
+    }
+
+    if (clientRuntimeState.intermission !== 0) {
+      Con.PrintWarning('Can\'t save in intermission.\n');
+      return;
+    }
+
+    if (state.maxclients !== 1) {
+      Con.PrintWarning('Can\'t save multiplayer games.\n');
+      return;
+    }
+
+    if (savename.includes('..')) {
+      Con.PrintWarning('Relative pathnames are not allowed.\n');
+      return;
+    }
+
+    // What the client knows is collected right now, the server's half arrives a moment later when it runs in a worker.
+    const clientHalf = {
+      comment: clientRuntimeState.levelname,
+      clientdata: clientRuntimeState.gameAPI ? clientRuntimeState.gameAPI.saveGame() : null,
+      particles: R.SerializeParticles(),
+      clientEntities: clientRuntimeState.clientEntities.serialize(),
+    };
+
+    const result = await clientStaticState.serverController.saveState();
+
+    if (!result.ok) {
+      Con.PrintWarning(`${result.reason}\n`);
+      return;
+    }
+
+    const gamestate: SavegameState = { ...result.state, ...clientHalf };
+    const filename = COM.DefaultExtension(savename, '.json');
+
+    Con.Print(`Saving game to ${filename}...\n`);
+
+    if (await COM.WriteTextFile(filename, JSON.stringify(gamestate))) {
+      await SaveSlots.refresh();
+      Con.PrintSuccess('done.\n');
+      return;
+    }
+
+    Con.PrintError('ERROR: couldn\'t open.\n');
+  }
+
+  static async Loadgame_f(this: ConsoleCommand, savename?: string): Promise<void> {
+    if (this.client !== null) {
+      return;
+    }
+
+    if (savename === undefined) {
+      Con.Print('Usage: load <savename>\n');
+      return;
+    }
+
+    if (savename.includes('..')) {
+      Con.PrintWarning('Relative pathnames are not allowed.\n');
+      return;
+    }
+
+    clientStaticState.demonum = -1;
+
+    const filename = COM.DefaultExtension(savename, '.json');
+
+    Con.Print(`Loading game from ${filename}...\n`);
+
+    const data = await COM.LoadTextFile(filename);
+
+    if (data === null) {
+      Con.PrintError('ERROR: couldn\'t open.\n');
+      return;
+    }
+
+    let gamestate: SavegameState;
+
+    try {
+      gamestate = JSON.parse(data) as SavegameState;
+    } catch {
+      throw new HostError(`Savegame ${filename} is corrupted or unreadable.`);
+    }
+
+    if (gamestate.version !== Def.gamestateVersion) {
+      throw new HostError(`Savegame is version ${gamestate.version}, not ${Def.gamestateVersion}\n`);
+    }
+
+    CL.Disconnect();
+    SCR.BeginLoadingPlaque();
+
+    // The server takes its half, the client resumes with the other once the server is up.
+    const { comment: _comment, clientdata, particles, clientEntities, ...serverHalf } = gamestate;
+
+    try {
+      await clientStaticState.serverController.restoreState(serverHalf, filename);
+    } catch (error) {
+      CL.SetConnectingStep(null, null);
+      throw error;
+    }
+
+    ClientLifecycle.resumeGame(clientdata, particles, clientEntities);
+  }
+
+  /**
+   * Reads the entity the `view*` commands act on, and says so when the map has none.
+   * @returns The state of the entity, `null` when there is none.
+   */
+  static async #GetViewthing(): Promise<ViewthingState | null> {
+    const viewthing = await clientStaticState.serverController.getViewthing();
+
+    if (viewthing === null) {
+      Con.Print('No viewthing on map\n');
+    }
+
+    return viewthing;
+  }
+
+  /**
+   * Looks up the model of the viewthing among the models the client has.
+   * @returns The alias model, `null` when the viewthing shows something else.
+   */
+  static #GetViewthingModel(viewthing: ViewthingState): AliasModel | null {
+    const model = clientRuntimeState.model_precache[viewthing.modelindex >> 0];
+
+    return model && model.type === ModelType.alias ? model as AliasModel : null;
+  }
+
+  static #PrintViewthingFrame(model: AliasModel, frame: number): void {
+    const frameData = model.frames[frame];
+    let frameName: string;
+
+    if (frameData.group) {
+      frameName = frameData.frames[0].name;
+    } else {
+      frameName = (frameData as Exclude<AliasModel['frames'][number], { group: true }>).name;
+    }
+
+    Con.Print(`frame ${frame}: ${frameName}\n`);
+  }
+
+  static async Viewmodel_f(model?: string): Promise<void> {
+    if (model === undefined) {
+      Con.Print('Usage: viewmodel <model>\n');
+      return;
+    }
+
+    const viewthing = await ClientHost.#GetViewthing();
+
+    if (viewthing === null) {
+      return;
+    }
+
+    const loadedModel = await Mod.ForNameAsync(model, false, ModelScope.client);
+
+    if (!loadedModel) {
+      Con.Print(`Can't load ${model}\n`);
+      return;
+    }
+
+    clientRuntimeState.model_precache[viewthing.modelindex] = loadedModel;
+    await clientStaticState.serverController.setViewthingFrame(0);
+  }
+
+  static async Viewframe_f(frame?: string): Promise<void> {
+    if (frame === undefined) {
+      Con.Print('Usage: viewframe <frame>\n');
+      return;
+    }
+
+    const viewthing = await ClientHost.#GetViewthing();
+
+    if (viewthing === null) {
+      return;
+    }
+
+    const model = ClientHost.#GetViewthingModel(viewthing);
+
+    if (model === null) {
+      return;
+    }
+
+    await clientStaticState.serverController.setViewthingFrame(Math.min(Q.atoi(frame), model.frames.length - 1));
+  }
+
+  static async Viewnext_f(): Promise<void> {
+    const viewthing = await ClientHost.#GetViewthing();
+
+    if (viewthing === null) {
+      return;
+    }
+
+    const model = ClientHost.#GetViewthingModel(viewthing);
+
+    if (model === null) {
+      return;
+    }
+
+    const nextFrame = Math.min((viewthing.frame >> 0) + 1, model.frames.length - 1);
+
+    await clientStaticState.serverController.setViewthingFrame(nextFrame);
+    ClientHost.#PrintViewthingFrame(model, nextFrame);
+  }
+
+  static async Viewprev_f(): Promise<void> {
+    const viewthing = await ClientHost.#GetViewthing();
+
+    if (viewthing === null) {
+      return;
+    }
+
+    const model = ClientHost.#GetViewthingModel(viewthing);
+
+    if (model === null) {
+      return;
+    }
+
+    const nextFrame = Math.max((viewthing.frame >> 0) - 1, 0);
+
+    await clientStaticState.serverController.setViewthingFrame(nextFrame);
+    ClientHost.#PrintViewthingFrame(model, nextFrame);
+  }
+
 
   /**
    * Whether the page is in a background tab, where the browser throttles its timers.

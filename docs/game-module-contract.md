@@ -60,7 +60,7 @@ export class ClientGameAPI implements ClientGameInterface { /* ... */ }
 
 ### Loading, once per process
 
-1. `Host.Init` calls `GameModule.Init()`. It picks the game directory (`-game <dir>`, `?game=<dir>` in the browser, or the build-time default), loads its `main.ts`, and checks the runtime shape: identification, supported capabilities, both classes present.
+1. `ClientHost.Boot` (the page) or `DedicatedHost.Init` (a dedicated server) calls `GameModule.Init()`. It picks the game directory (`-game <dir>`, `?game=<dir>` in the browser, or the build-time default), loads its `main.ts`, and checks the runtime shape: identification, supported capabilities, both classes present.
 2. `ServerGameAPI.Init(ServerEngineAPI)` runs. It is static, and the place to register cvars.
 3. On a client, `ClientGameAPI.Init(ClientEngineAPI)` runs next (for example to register menu pages), followed by `ClientGameAPI.GetStartGameInterface(ClientEngineAPI)`. Return `null` to keep the engine's default way of starting a game.
 

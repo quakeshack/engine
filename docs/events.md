@@ -84,10 +84,10 @@ The engine has an event bus.
 | - | - | - |
 | host.crash | 1. Error | Emitted when there was an uncaught exception during the main loop. |
 | host.ready | - | The engine is initialized and ready to roll. |
-| host.shutting-down | - | Shutting down. Being of Host.Shutdown. |
-| host.shutdown | - | Shut down. End of Host.Shutdown. |
+| host.shutting-down | - | Shutting down. Start of `ClientHost.Shutdown`/`DedicatedHost.Shutdown`. |
+| host.shutdown | - | Shut down. End of `ClientHost.Shutdown`/`DedicatedHost.Shutdown`. |
 | host.config.loaded | - | A saved config has been consumed. |
-| host.alert | 1. `HostAlertEvent` (`title`, `message`, `severity`: `'info' \| 'error'`) | `Host.EndGame`/`Host.Error` reporting a fault or an expected end-of-game condition. `Con.PrintError`/`PrintSuccess` already ran unconditionally before this publishes, so it's safe for nothing to be subscribed (e.g. a dedicated server, or before any game module has registered a handler) -- this is purely an opt-in richer presentation, not the only place the message is surfaced. |
+| host.alert | 1. `HostAlertEvent` (`title`, `message`, `severity`: `'info' \| 'error'`) | `ClientHost.EndGame`/`Host.Error` reporting a fault or an expected end-of-game condition. `Con.PrintError`/`PrintSuccess` already ran unconditionally before this publishes, so it's safe for nothing to be subscribed (e.g. a dedicated server, or before any game module has registered a handler) -- this is purely an opt-in richer presentation, not the only place the message is surfaced. |
 | host.quit-requested | - | The `quit` command wants confirmation before actually quitting (skipped when typed directly into an already-open console). The engine has no opinion on what a quit confirmation looks like, or whether one exists at all -- if nothing is subscribed, `quit` simply does nothing until a game module registers a handler. |
 
 ### Network

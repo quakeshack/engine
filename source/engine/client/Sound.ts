@@ -9,11 +9,12 @@ import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
+import Host from '../common/Host.ts';
 
-let { COM, Host } = getClientRegistry();
+let { COM } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Host } = getClientRegistry());
+  ({ COM } = getClientRegistry());
 });
 
 const MAX_DYNAMIC_CHANNELS = 64;

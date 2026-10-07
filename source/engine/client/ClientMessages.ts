@@ -9,13 +9,14 @@ import { HostError } from '../common/Errors.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import { clientPmove } from './ClientPhysics.ts';
 import CL from './CL.ts';
+import Host from '../common/Host.ts';
 
 type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';
 
-let { Host, NET } = getClientRegistry();
+let { NET } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ Host, NET } = getClientRegistry());
+  ({ NET } = getClientRegistry());
 });
 
 /**

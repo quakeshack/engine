@@ -8,6 +8,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import ClientHost from '../../source/engine/client/ClientHost.ts';
 
 /**
  * Installs a minimal client-side registry (CL, Con, SV, isDedicatedServer) for the
@@ -58,13 +59,13 @@ function createRealCvar(name, value) {
   return new Cvar(name, value, Cvar.FLAG.ARCHIVE);
 }
 
-void describe('Host.Name_f', () => {
+void describe('ClientHost.NameCommand', () => {
   void test('prints the current name when called without arguments', () => {
     const name = createRealCvar('_cl_name', 'player');
 
     try {
       withIdentityRegistry({ cl: { name, cls: { state: Def.clientConnectionState.disconnected } } }, (prints) => {
-        Host.Name_f.call({ client: null, forward: () => true });
+        ClientHost.NameCommand.call({ client: null, forward: () => true });
         assert.deepEqual(prints, ['"name" is "player"\n']);
       });
     } finally {
@@ -84,7 +85,7 @@ void describe('Host.Name_f', () => {
         cl: { name, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
-        Host.Name_f.call({ client: null, forward: () => { forwarded = true; return true; } }, 'NewName');
+        ClientHost.NameCommand.call({ client: null, forward: () => { forwarded = true; return true; } }, 'NewName');
 
         assert.equal(name.string, 'NewName');
         assert.equal(forwarded, true);
@@ -103,7 +104,7 @@ void describe('Host.Name_f', () => {
         cl: { name, cls: { state: Def.clientConnectionState.disconnected } },
         sv: { server: { active: false } },
       }, () => {
-        Host.Name_f.call({ client: null, forward: () => { forwarded = true; return true; } }, 'NewName');
+        ClientHost.NameCommand.call({ client: null, forward: () => { forwarded = true; return true; } }, 'NewName');
 
         assert.equal(name.string, 'NewName');
         assert.equal(forwarded, false);
@@ -114,13 +115,13 @@ void describe('Host.Name_f', () => {
   });
 });
 
-void describe('Host.Color_f', () => {
+void describe('ClientHost.ColorCommand', () => {
   void test('prints the current color when called without arguments', () => {
     const color = createRealCvar('_cl_color', String((3 << 4) + 5));
 
     try {
       withIdentityRegistry({ cl: { color, cls: { state: Def.clientConnectionState.disconnected } } }, (prints) => {
-        Host.Color_f.call({ client: null, forward: () => true });
+        ClientHost.ColorCommand.call({ client: null, forward: () => true });
         assert.deepEqual(prints, ['"color" is "3 5"\ncolor <0-13> [0-13]\n']);
       });
     } finally {
@@ -136,7 +137,7 @@ void describe('Host.Color_f', () => {
         cl: { color, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
-        Host.Color_f.call({ client: null, forward: () => true }, '7');
+        ClientHost.ColorCommand.call({ client: null, forward: () => true }, '7');
 
         assert.equal(color.value >> 4, 7);
         assert.equal(color.value & 15, 7);
@@ -159,7 +160,7 @@ void describe('Host.Color_f', () => {
         cl: { color, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
-        Host.Color_f.call({ client: null, forward: () => { forwarded = true; return true; } }, '3', '5');
+        ClientHost.ColorCommand.call({ client: null, forward: () => { forwarded = true; return true; } }, '3', '5');
 
         assert.equal(color.value >> 4, 3);
         assert.equal(color.value & 15, 5);
@@ -179,7 +180,7 @@ void describe('Host.Color_f', () => {
         cl: { color, cls: { state: Def.clientConnectionState.disconnected } },
         sv: { server: { active: false } },
       }, () => {
-        Host.Color_f.call({ client: null, forward: () => { forwarded = true; return true; } }, '3', '5');
+        ClientHost.ColorCommand.call({ client: null, forward: () => { forwarded = true; return true; } }, '3', '5');
 
         assert.equal(color.value >> 4, 3);
         assert.equal(color.value & 15, 5);

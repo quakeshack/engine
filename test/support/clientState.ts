@@ -45,7 +45,7 @@ function findMember(target: object, key: string): { readonly descriptor: Propert
  * @param overrides What a test wants it to be. A member mocked as a getter (a clock it advances) is followed live.
  * @returns A function that puts the members back.
  */
-function patch(target: object, overrides: object | undefined): () => void {
+export function patchMembers(target: object, overrides: object | undefined): () => void {
   const record = target as Record<string, unknown>;
   const undo: Array<() => void> = [];
 
@@ -97,12 +97,12 @@ export function useClientStateOf(mockedClient: ClientStateMock | null | undefine
   const cvars = Object.fromEntries(Object.entries(mockedClient ?? {}).filter(([name]) => CVAR_NAMES.has(name)));
   const ownMembers = Object.fromEntries(Object.entries(mockedClient ?? {}).filter(([name]) => !SPLIT_MEMBERS.has(name) && name in CL));
   const restores = [
-    patch(clientRuntimeState, mockedClient?.state),
-    patch(clientStaticState, mockedClient?.serverController === undefined ? mockedClient?.cls : { ...mockedClient.cls, serverController: mockedClient.serverController }),
-    patch(clientCvars, cvars),
-    patch(clientPmove, mockedClient?.pmove),
-    patch(clientCollision, mockedClient?.collision),
-    patch(CL, ownMembers),
+    patchMembers(clientRuntimeState, mockedClient?.state),
+    patchMembers(clientStaticState, mockedClient?.serverController === undefined ? mockedClient?.cls : { ...mockedClient.cls, serverController: mockedClient.serverController }),
+    patchMembers(clientCvars, cvars),
+    patchMembers(clientPmove, mockedClient?.pmove),
+    patchMembers(clientCollision, mockedClient?.collision),
+    patchMembers(CL, ownMembers),
   ];
 
   return () => {

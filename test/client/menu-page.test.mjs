@@ -7,6 +7,9 @@ import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { useMenuOf } from '../support/menu.ts';
+import M from '../../source/engine/client/Menu.ts';
+import { useHostOf } from '../support/host.ts';
 import {
   Action, KeyBindItem, Label, Slider, Textbox,
 } from '../../source/engine/client/menu/MenuItem.ts';
@@ -32,6 +35,8 @@ function withMockPageRegistry(callback) {
   const renderingPages = [];
 
   registry.Host = { realtime: 0 };
+
+  const restoreHost = useHostOf(registry.Host);
   registry.Key = Key;
   registry.M = {
     sfx_menu1: 'menu1',
@@ -46,6 +51,7 @@ function withMockPageRegistry(callback) {
     DrawSlider(x) { slidersDrawn.push(x); },
     withRenderingPage(page, draw) { renderingPages.push(page); draw(); },
   };
+  const restoreMenu = useMenuOf(registry.M);
   registry.S = { LocalSound() {} };
   eventBus.publish('registry.frozen');
 
@@ -55,8 +61,10 @@ function withMockPageRegistry(callback) {
     });
   } finally {
     registry.Host = previousHost;
+    restoreHost();
     registry.Key = previousKey;
     registry.M = previousM;
+    restoreMenu();
     registry.S = previousS;
     eventBus.publish('registry.frozen');
   }
@@ -397,8 +405,8 @@ void describe('MenuPage MOUSE1 handling', () => {
         ],
       });
 
-      registry.M.mouseX = 0;
-      registry.M.mouseY = 40; // second row
+      M.mouseX = 0;
+      M.mouseY = 40; // second row
 
       assert.equal(page.handleInput(K.MOUSE1), true);
       assert.equal(page.cursor, 1);
@@ -413,8 +421,8 @@ void describe('MenuPage MOUSE1 handling', () => {
         items: [new Action({ label: 'a' })],
       });
 
-      registry.M.mouseX = 0;
-      registry.M.mouseY = 999;
+      M.mouseX = 0;
+      M.mouseY = 999;
 
       assert.equal(page.handleInput(K.MOUSE1), false);
       assert.equal(page.cursor, 0);
@@ -440,8 +448,8 @@ void describe('MenuPage MOUSE1 handling', () => {
 
         // Click lands on the second row (y=[40,48)), but the focused (capturing) item consumes
         // the click first, binding MOUSE1 to its command instead of moving focus/activating row 2.
-        registry.M.mouseX = 0;
-        registry.M.mouseY = 44;
+        M.mouseX = 0;
+        M.mouseY = 44;
 
         assert.equal(page.handleInput(K.MOUSE1), true);
         assert.equal(captureItem.capturing, false);

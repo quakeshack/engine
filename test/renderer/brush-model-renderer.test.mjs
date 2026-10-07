@@ -6,6 +6,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/BrushModelRenderer.ts';
 import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.ts';
+import { useRendererOf } from '../support/renderer.ts';
 
 void describe('resolveBrushBloomContributionStrength', () => {
   void test('clamps invalid contribution strengths to zero', () => {
@@ -317,6 +318,7 @@ void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
         return false;
       },
     });
+    const restoreRenderer = useRendererOf(registry.R);
     eventBus.publish('registry.frozen');
 
     try {
@@ -346,6 +348,7 @@ void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
       assert.equal(items[0].dist, 96);
     } finally {
       registry.R = previousR;
+      restoreRenderer();
       eventBus.publish('registry.frozen');
     }
   });

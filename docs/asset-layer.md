@@ -68,7 +68,7 @@ was stored, and a marker is written last, so an interrupted run finishes on the 
 ## Writes are asynchronous
 
 `COM.WriteFile` and `COM.WriteTextFile` return a promise (they used to write `localStorage`
-synchronously). Callers `await` them: `Host.WriteConfiguration`, `Host.Savegame_f`, `ClientDemos`,
+synchronously). Callers `await` them: `Host.WriteConfiguration`, `ClientHost.Savegame_f`, `ClientDemos`,
 `Navigation`. A write started while the page is being closed (the configuration is written once more at
 shutdown) may not finish; archived cvar changes are written five seconds after they happen, so only the
 last moments are at risk.

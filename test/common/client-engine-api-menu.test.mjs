@@ -6,6 +6,7 @@ import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
+import { useMenuOf } from '../support/menu.ts';
 
 /**
  * Installs a fake `M` (Menu.ts) registry entry backed by a real MenuStack, so
@@ -33,6 +34,8 @@ function withMockClientEngineMenu(callback) {
       menuStack.pop();
     },
   };
+
+  const restoreMenu = useMenuOf(registry.M);
   // MenuStack.push() releases pointer lock on every open — a no-op spy here.
   registry.IN = { ReleasePointerLock() {} };
   eventBus.publish('registry.frozen');
@@ -45,6 +48,7 @@ function withMockClientEngineMenu(callback) {
     });
   } finally {
     registry.M = previousM;
+    restoreMenu();
     registry.IN = previousIN;
     Key.destination = previousDestination;
     eventBus.publish('registry.frozen');

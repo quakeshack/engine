@@ -9,6 +9,8 @@ import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import { useMenuOf } from '../support/menu.ts';
+import { useHostOf } from '../support/host.ts';
 
 /**
  * Build a minimal demo subsystem stub for connection tests.
@@ -107,17 +109,22 @@ function withMockClientRegistry(mockedRegistry, callback) {
 
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
+  const restoreHost = useHostOf(registry.Host);
   registry.IN = mockedRegistry.IN;
   registry.Mod = mockedRegistry.Mod;
   registry.NET = mockedRegistry.NET;
   registry.SCR = mockedRegistry.SCR;
   registry.S = mockedRegistry.S;
   registry.SV = mockedRegistry.SV;
+  // The menu listens for connection events too; this test is about the connection, so the menu does nothing.
+  const restoreMenu = useMenuOf({ Menu_Main_f() {}, ReturnToGame() {} });
   eventBus.publish('registry.frozen');
 
   const restore = () => {
+    restoreMenu();
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;
+    restoreHost();
     registry.IN = previousValues.IN;
     registry.Mod = previousValues.Mod;
     registry.NET = previousValues.NET;

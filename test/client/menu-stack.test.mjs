@@ -5,6 +5,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
+import { useMenuOf } from '../support/menu.ts';
 
 /**
  * Temporarily installs minimal `M`/`IN` registry stubs (MenuStack only needs `M.entersound`
@@ -16,6 +17,8 @@ function withMockMenuRegistry(callback) {
   const previousIN = registry.IN;
 
   registry.M = { entersound: false };
+
+  const restoreMenu = useMenuOf(registry.M);
   registry.IN = { ReleasePointerLock() {} };
   eventBus.publish('registry.frozen');
 
@@ -23,6 +26,7 @@ function withMockMenuRegistry(callback) {
     callback();
   } finally {
     registry.M = previousM;
+    restoreMenu();
     registry.IN = previousIN;
     eventBus.publish('registry.frozen');
   }
@@ -80,9 +84,10 @@ void describe('MenuStack', () => {
     });
   });
 
-  void test('push sets entersound and publishes menu.opened/menu.closed', () => {
+  void test('push tells the menu to play its sound and publishes menu.opened/menu.closed', () => {
     withMockMenuRegistry(() => {
-      const stack = new MenuStack();
+      let sounds = 0;
+      const stack = new MenuStack(() => { sounds += 1; });
       const main = createTrackedPage('main');
       const options = createTrackedPage('options');
       stack.register('main', main);
@@ -95,11 +100,10 @@ void describe('MenuStack', () => {
 
       try {
         stack.push('main');
-        assert.equal(registry.M.entersound, true);
-        registry.M.entersound = false;
+        assert.equal(sounds, 1);
 
         stack.push('options');
-        assert.equal(registry.M.entersound, true);
+        assert.equal(sounds, 2);
 
         assert.deepEqual(opened, ['main', 'options']);
         assert.deepEqual(closed, ['main']);

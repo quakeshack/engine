@@ -1246,6 +1246,60 @@ per-frame code, not a different shape.
 What reads `CL` now is its API: `SetConnectingStep`, `Disconnect`, `Connect`, `SendCmd`, `ParseServerMessage`, ... and
 `Host.ts`/`Materials.ts`. Next in 4b: `R` (the other big hub, 19 readers), `M`, then `Host` itself.
 
+#### Phase 4b, step 2: `R` is imported (2026-10-07, not committed)
+
+The renderers, `SCR`, `V`, `Chase`, `ClientEntities`, `ClientLegacy`, `ClientHost`, `ClientServerCommandHandlers`,
+`NavigationDebug` and `GameAPIs.ts` import `R` instead of looking it up. Still on the registry on purpose: `Materials.ts` and
+`Sky.ts` (in the server worker's import closure, they keep their headless stand-in) and `Host.ts`.
+
+- One load-order hazard surfaced and was fixed: `R` builds a lightmap array from `LIGHTMAP_BLOCK_SIZE` while its class is
+  being set up, and that constant lived in `BrushModelRenderer`, which imports `R`. The lightmap constants are in
+  `renderer/LightmapAtlas.ts` now, which imports nothing.
+- The client core cycle grows from 17 to 30 files (the renderers, `Draw`, `ClientHost`, `NavigationDebug`, `Host`), all of them
+  load-order safe for the same reason as before: nothing builds anything of another module while it is being evaluated.
+- Tests: `useRendererOf(mock)` (`test/support/renderer.ts`) sets a mocked renderer's members on the real `R` and restores them;
+  applied where a test installed `registry.R`, and in the `client-host` and `client-server-command-handlers` helpers.
+- 1752 tests, typecheck and lint clean; the page runs the whole sequence in the development build (worker and `?serverthread`)
+  and in a production build, and E1M2 renders as before (screenshot).
+
+Registry importers in the engine: 38 files on the allowlist now (from 47). Left in 4b: `M`, `Host`, then the realm services (`COM`, `NET`).
+
+#### Phase 4b, steps 3 and 4: `M` is imported, `Host` is split (2026-10-07, not committed)
+
+**`M`** (the menu): `ClientHost`, `IN`, `Key`, `SCR`, `Sys`, `MenuItem`, `MenuPage` and `GameAPIs.ts` import it. Two load-order
+hazards were removed instead of worked around: `MenuStack` needed the menu only to set `entersound`, so it takes a callback now
+(`new MenuStack(onNavigate)`, the menu passes `() => { M.entersound = true; }`) and no longer imports the menu, which lets the
+menu build its stack at load again; and `ClientEngineAPI.Menu` listed the menu item and page classes while its class was being
+set up, so those are getters now (read on use, game code is unchanged).
+
+**`Host`** no longer coordinates anything; what it did moved to where it belongs:
+
+- `common/Host.ts` is the shared state of the main loop and nothing else: clock (`realtime`, `frametime`, `framecount`), the
+  scheduler, the loop's cvars (`InitLocal(commitHash, dedicated)`), writing the configuration (the files and the client's key
+  bindings come in through `Host.files` and `Host.configExtras`), `Error`/`HandleCrash` (the process-specific part is
+  `Host.recoverFromError`/`Host.quit`), `BeginFrame(now)` and the commands every process has. It imports neither the client nor
+  the server runtime (a boundary test says so) and is imported directly by everything that reads the clock.
+- `client/ClientHost.ts` is the page's boot (`Boot`), `Shutdown`, `RunFrame`, `InitLocal`, `RecoverFromError`, `EndGame`,
+  `Quit_f`/`ForceQuit`, save and load (`Savegame_f`/`Loadgame_f`), the `view*` commands and the `name`/`color` router
+  (`NameCommand`/`ColorCommand`). The local server is found through `Host.serverHost`, the page no longer takes `SV` out of
+  the registry anywhere.
+- `bootstrap/DedicatedHost.ts` is the same for a dedicated server (`Init`, `Frame`, `Shutdown`, `ForceQuit`, commands), built
+  by `createDedicatedServer` with everything it needs; `DedicatedSys` drives it through a small `DedicatedHostControls`.
+  Fixes a latent crash: an error on a dedicated server used to call `CL.Disconnect()` on a client that does not exist.
+- 24 client files import `Host` now. `Sky.ts` stays on the registry (server worker import closure).
+
+Tests: `useMenuOf(mock)` and `useHostOf(mock)` (`test/support/menu.ts`, `host.ts`) do for `M` and `Host` what the other helpers do for the
+state; `withMockRegistry` applies the mocked `Host`; the tests of `EndGame`, `Savegame_f`, `Loadgame_f` and the identity commands call
+`ClientHost`; the host alert test installs the page's recovery hook the way `Boot` does.
+
+Verified: 1753 tests, typecheck and lint clean; the page in the development build (worker and `?serverthread`) and in a
+production build; save then load (`hosttest`) and `writeconfig` (the stored `config.cfg` has the 57 bind lines and `configready`);
+a fresh dedicated server build boots through `DedicatedHost`, spawns a map and a page connected to it can `name`, `color`, `say` and `status`.
+
+Registry importers in the engine: 31 (from 38). `registry.isDedicatedServer` has 7 mentions left (`R`, the launchers and the registry itself).
+What reads the registry now is the static client facades (`S`, `SCR`, `V`, `Key`, `IN`, `Draw`), the realm services `COM`, `NET`, `Sys`,
+`ClientEngineAPI`, the two launchers and the worker-closure files (`Materials`, `Sky`).
+
 ### Later tracks (own plans, order flexible after Phase 3)
 
 C (lifetimes and typed events) can start after Phase 2. The replay recorder (Track G) starts after

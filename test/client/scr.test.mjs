@@ -7,6 +7,8 @@ import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { useRendererOf } from '../support/renderer.ts';
+import { useHostOf } from '../support/host.ts';
 
 /**
  * Installs minimal `CL`/`Host` registry stubs and a clean `ConsoleOverlay` for `SCR.SetUpToDrawConsole()`, plus a
@@ -27,6 +29,7 @@ function withMockConsoleRegistry({ worldmodel, signon }, callback) {
   registry.CL = { state: { worldmodel }, cls: { signon } };
   const restoreClientState = useClientStateOf(registry.CL);
   registry.Host = { frametime: 0.1 };
+  const restoreHost = useHostOf(registry.Host);
   SCR.conspeed = { value: 300 };
   eventBus.publish('registry.frozen');
 
@@ -37,6 +40,7 @@ function withMockConsoleRegistry({ worldmodel, signon }, callback) {
     restoreClientState();
     Object.assign(con, previousConsoleState);
     registry.Host = previousHost;
+    restoreHost();
     SCR.con_current = previousConCurrent;
     SCR.conspeed = previousConspeed;
     eventBus.publish('registry.frozen');
@@ -205,8 +209,10 @@ void describe('SCR.DrawNet', () => {
 
     const restoreClientState = useClientStateOf(registry.CL);
     registry.Host = { realtime };
+    const restoreHost = useHostOf(registry.Host);
     registry.Draw = { Pic(x, y, pic) { picCalls.push({ x, y, pic }); } };
     registry.R = { refdef: { vrect: { x: 0, y: 0 } } };
+    const restoreRenderer = useRendererOf(registry.R);
     SCR.net = 'net-pic';
     eventBus.publish('registry.frozen');
 
@@ -217,8 +223,10 @@ void describe('SCR.DrawNet', () => {
       registry.CL = previousCL;
       restoreClientState();
       registry.Host = previousHost;
+      restoreHost();
       registry.Draw = previousDraw;
       registry.R = previousR;
+      restoreRenderer();
       SCR.net = previousNet;
       eventBus.publish('registry.frozen');
     }

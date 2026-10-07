@@ -9,15 +9,18 @@ import VID from './VID.ts';
 import WorkerManager from '../common/WorkerManager.ts';
 import workerFactories from '../common/WorkerFactories.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
+import M from './Menu.ts';
+import Host from '../common/Host.ts';
+import ClientHost from './ClientHost.ts';
 
 interface LegacyWheelEvent extends Event {
   readonly wheelDeltaY: number;
 }
 
-let { COM, Host, Key, M } = getClientRegistry();
+let { COM, Key } = getClientRegistry();
 
 eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Host, Key, M } = getClientRegistry());
+  ({ COM, Key } = getClientRegistry());
 });
 
 eventBus.subscribe('host.crash', (error: unknown) => {
@@ -355,7 +358,7 @@ export default class Sys {
 
     Sys.Print('Host.Init: Initializing game…\n');
 
-    await Host.Init();
+    await ClientHost.Boot();
 
     registerWindowListeners();
 
@@ -367,7 +370,7 @@ export default class Sys {
     while (Sys.#isRunning) {
       const startTime = Date.now();
 
-      await Host.Frame();
+      await ClientHost.RunFrame();
 
       const refreshRate = Host.refreshrate;
       // uncapped framerate
@@ -387,7 +390,7 @@ export default class Sys {
     unregisterWindowListeners();
 
     Tools.Shutdown();
-    Host.Shutdown();
+    ClientHost.Shutdown();
 
     document.body.style.cursor = 'auto';
 

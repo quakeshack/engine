@@ -12,6 +12,7 @@ import V from '../client/V.ts';
 import NodeCOM from '../server/Com.ts';
 import DedicatedSys from '../server/Sys.ts';
 import { createServerRuntime } from './createServerRuntime.ts';
+import DedicatedHost from './DedicatedHost.ts';
 import { editionOf } from '../common/GameApiSupport.ts';
 
 /**
@@ -36,7 +37,9 @@ export async function createDedicatedServer(buildConfig?: BuildConfig): Promise<
   let net!: NET;
   let sv!: Server;
 
-  const sys = new DedicatedSys({ com: () => com, host: Host, net: () => net });
+  let dedicatedHost!: DedicatedHost;
+
+  const sys = new DedicatedSys({ com: () => com, host: () => dedicatedHost, net: () => net });
 
   com = new NodeCOM({ con: Con, sys, buildConfig: () => registry.buildConfig, urls: () => registry.urls });
   net = new NET({
@@ -61,6 +64,17 @@ export async function createDedicatedServer(buildConfig?: BuildConfig): Promise<
   sv = runtime.sv;
   registry.SV = sv;
   Host.serverHost = runtime.serverHost;
+
+  dedicatedHost = new DedicatedHost({
+    com,
+    net,
+    sv,
+    serverHost: runtime.serverHost,
+    sys,
+    view: V,
+    urls: () => registry.urls,
+    commitHash: buildConfig?.commitHash ?? undefined,
+  });
 
   // registry is ready
   registryFreeze();

@@ -18,6 +18,9 @@ import Vector from '../../source/shared/Vector.ts';
 
 import { defaultMockRegistry, withMockRegistry, registrySV } from '../physics/fixtures.mjs';
 import '../support/consoleBridge.ts';
+import { useRendererOf } from '../support/renderer.ts';
+import ClientHost from '../../source/engine/client/ClientHost.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 const [{ ServerGameAPI }, { PlayerEntity }, { WorldspawnEntity }] = await Promise.all([
   import('../../source/game/id1/GameAPI.ts'),
@@ -353,7 +356,7 @@ function createIntegrationEngineAPI(getEdicts) {
   };
 }
 
-void describe('Host.Savegame_f', () => {
+void describe('ClientHost.Savegame_f', () => {
   void test('writes a save payload with serialized globals, edicts, and filtered cvars', async () => {
     const consoleCapture = createMockConsole();
     const writes = [];
@@ -444,9 +447,12 @@ void describe('Host.Savegame_f', () => {
         },
       },
     };
+
+    const restoreClientState = useClientStateOf(registry.CL);
     registry.COM = mockCOM;
     registry.Con = consoleCapture.Con;
     registry.R = renderer;
+    const restoreRenderer = useRendererOf(registry.R);
     registry.SV = sv;
     registry.isDedicatedServer = false;
     eventBus.publish('registry.frozen');
@@ -460,13 +466,15 @@ void describe('Host.Savegame_f', () => {
     };
 
     try {
-      await Host.Savegame_f.call({ client: null }, 'save/e1m1');
+      await ClientHost.Savegame_f.call({ client: null }, 'save/e1m1');
     } finally {
       Cvar.Filter = previousFilter;
       registry.CL = previousRegistry.CL;
+      restoreClientState();
       registry.COM = previousRegistry.COM;
       registry.Con = previousRegistry.Con;
       registry.R = previousRegistry.R;
+      restoreRenderer();
       registry.SV = previousRegistry.SV;
       registry.isDedicatedServer = previousRegistry.isDedicatedServer;
       eventBus.publish('registry.frozen');
@@ -502,7 +510,7 @@ void describe('Host.Savegame_f', () => {
   });
 });
 
-void describe('Host.Loadgame_f', () => {
+void describe('ClientHost.Loadgame_f', () => {
   void test('restores prepared edicts before global entity references', async () => {
     const consoleCapture = createMockConsole();
     const callOrder = [];
@@ -627,7 +635,7 @@ void describe('Host.Loadgame_f', () => {
             sv_gravity: gravityCvar,
           },
         }, async () => {
-          await Host.Loadgame_f.call({ client: null }, 'save/e1m1');
+          await ClientHost.Loadgame_f.call({ client: null }, 'save/e1m1');
         });
       });
     } finally {
@@ -713,7 +721,7 @@ void describe('Host.Loadgame_f', () => {
       Con: consoleCapture.Con,
     }, async () => {
       await assert.rejects(
-        Host.Loadgame_f.call({ client: null }, 'broken-save'),
+        ClientHost.Loadgame_f.call({ client: null }, 'broken-save'),
         (error) => error instanceof Error && error.message.includes('is corrupted or unreadable'),
       );
     });
@@ -810,7 +818,7 @@ void describe('Host.Loadgame_f', () => {
         Con: consoleCapture.Con,
       }, async () => {
         await assert.rejects(
-          Host.Loadgame_f.call({ client: null }, 'save/e1m1'),
+          ClientHost.Loadgame_f.call({ client: null }, 'save/e1m1'),
           (error) => error instanceof Error && error.message.includes('needs 3 edicts but the server only allocated 2'),
         );
       });
@@ -866,6 +874,7 @@ void describe('Host.save/load integration', () => {
         return [];
       },
     };
+    const restoreRenderer = useRendererOf(registry.R);
     registry.Sys = {
       Print() { },
     };
@@ -1050,8 +1059,8 @@ void describe('Host.save/load integration', () => {
           filterCvars: savedCvars,
           lookupCvars: currentCvarLookup,
         }, async () => {
-          assert.equal(await Host.Savegame_f.call({ client: null }, 'integration/e1m1'), undefined);
-          await Host.Loadgame_f.call({ client: null }, 'integration/e1m1');
+          assert.equal(await ClientHost.Savegame_f.call({ client: null }, 'integration/e1m1'), undefined);
+          await ClientHost.Loadgame_f.call({ client: null }, 'integration/e1m1');
         });
 
         const freshSaveGameAPI = sv.server.gameAPI;
@@ -1083,6 +1092,7 @@ void describe('Host.save/load integration', () => {
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
       registry.R = previousRenderer;
+      restoreRenderer();
       registry.SCR = previousSCR;
       registry.Sys = previousSys;
       registry.isDedicatedServer = previousIsDedicatedServer;

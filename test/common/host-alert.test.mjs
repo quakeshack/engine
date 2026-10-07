@@ -5,9 +5,11 @@ import Host from '../../source/engine/common/Host.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import ClientHost from '../../source/engine/client/ClientHost.ts';
+import { useClientStateOf } from '../support/clientState.ts';
 
 /**
- * Installs the minimal registry Host.EndGame/Host.Error need to reach their `host.alert`
+ * Installs the minimal registry ClientHost.EndGame/Host.Error need to reach their `host.alert`
  * publish, recording rather than performing the connection-state side effects
  * (CL.Disconnect/Host.ShutdownServer) they trigger along the way.
  * @param {{ demonum?: number, serverActive?: boolean }} options registry overrides
@@ -18,7 +20,7 @@ function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callb
     CL: registry.CL,
     Con: registry.Con,
     serverHost: Host.serverHost,
-    isDedicatedServer: registry.isDedicatedServer,
+    SCR: registry.SCR,
   };
 
   const prints = [];
@@ -30,34 +32,40 @@ function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callb
     NextDemo() { throw new Error('NextDemo should not be reached in these tests'); },
     Disconnect() { disconnected = true; },
   };
+  const restoreClientState = useClientStateOf(registry.CL);
+  const previousRecovery = Host.recoverFromError;
+
+  // What the page installs when it boots: an error leaves the game and stops the local server.
+  Host.recoverFromError = () => { ClientHost.RecoverFromError(); };
   registry.Con = {
     PrintSuccess(message) { prints.push(message); },
     PrintError(message) { prints.push(message); },
   };
   Host.serverHost = /** @type {any} */ ({ ShutdownServer() { shutdowns.push(serverActive); } });
-  // Skips Host.Error's SCR.EndLoadingPlaque() call, so no SCR mock is needed.
-  registry.isDedicatedServer = true;
+  registry.SCR = { EndLoadingPlaque() {} };
   eventBus.publish('registry.frozen');
 
   try {
     callback({ prints, disconnected: () => disconnected });
   } finally {
+    Host.recoverFromError = previousRecovery;
+    restoreClientState();
     registry.CL = previous.CL;
     registry.Con = previous.Con;
     Host.serverHost = previous.serverHost;
-    registry.isDedicatedServer = previous.isDedicatedServer;
+    registry.SCR = previous.SCR;
     eventBus.publish('registry.frozen');
   }
 }
 
-void describe('Host.EndGame', () => {
+void describe('ClientHost.EndGame', () => {
   void test('publishes host.alert with info severity and still prints to the console', () => {
     withMockHostAlertRegistry({}, ({ prints, disconnected }) => {
       const events = [];
       const unsubscribe = eventBus.subscribe('host.alert', (event) => events.push(event));
 
       try {
-        Host.EndGame('level complete');
+        ClientHost.EndGame('level complete');
 
         assert.deepEqual(events, [{ title: 'Host.EndGame', message: 'level complete', severity: 'info' }]);
         assert.deepEqual(prints, ['Host.EndGame: level complete\n']);
@@ -70,7 +78,7 @@ void describe('Host.EndGame', () => {
 
   void test('still prints to the console when nothing is subscribed to host.alert', () => {
     withMockHostAlertRegistry({}, ({ prints }) => {
-      assert.doesNotThrow(() => Host.EndGame('level complete'));
+      assert.doesNotThrow(() => ClientHost.EndGame('level complete'));
       assert.deepEqual(prints, ['Host.EndGame: level complete\n']);
     });
   });

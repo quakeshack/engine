@@ -104,13 +104,21 @@ void describe('engine boundaries', () => {
   });
 
   void describe('shared engine code', () => {
-    // Host and the game API classes are what is left of the registry's readers in common/, they go away
-    // with Phase 4b. Everything else there gets what it needs handed to it, or imports it directly.
-    void test('does not import the registry, apart from Host and the game API classes', () => {
+    // The game API classes are what is left of the registry's readers in common/, they go away
+    // with the instance conversion of `ClientEngineAPI`. Everything else there gets what it needs
+    // handed to it, or imports it directly.
+    void test('does not import the registry, apart from the game API classes', () => {
       assert.deepEqual(
         filesMatching('common', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/),
-        ['common/GameAPIs.ts', 'common/Host.ts'],
+        ['common/GameAPIs.ts'],
       );
+    });
+
+    void test('Host does not know the client or the server runtime', () => {
+      const code = readCode(join(ENGINE_ROOT, 'common/Host.ts'));
+
+      assert.equal(/from\s+'\.\.\/client\//.test(code), false);
+      assert.equal(/import\s+(?!type)[^;]*from\s+'\.\.\/server\//.test(code), false);
     });
 
     void test('the composition root of a server worker does not fill the registry', () => {
