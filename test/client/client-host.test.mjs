@@ -13,6 +13,7 @@ import { useClientStateOf } from '../support/clientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useMenuOf } from '../support/menu.ts';
 import { useHostOf } from '../support/host.ts';
+import { facades } from '../support/facades.ts';
 
 /**
  * Builds a client runtime mock that records what the host does to it, in order.
@@ -67,8 +68,11 @@ function createClientRuntime({ calls, scheduled, serverActive = true, mapname = 
  */
 async function withRegistryMembers(members, callback) {
   const previous = Object.fromEntries(Object.keys(members).map((name) => [name, registry[name]]));
+  const facadeMocks = Object.fromEntries(['Key', 'SCR', 'S'].filter((name) => name in members).map((name) => [name, members[name]]));
+  const previousFacades = Object.fromEntries(Object.keys(facadeMocks).map((name) => [name, facades[name]]));
 
   Object.assign(registry, members);
+  Object.assign(facades, facadeMocks);
   const restoreClientState = useClientStateOf(members.CL);
   const restoreRenderer = useRendererOf(members.R);
   const restoreMenu = useMenuOf(members.M);
@@ -82,6 +86,7 @@ async function withRegistryMembers(members, callback) {
     restoreMenu();
     restoreRenderer();
     restoreClientState();
+    Object.assign(facades, previousFacades);
     Object.assign(registry, previous);
     eventBus.publish('registry.frozen');
   }
@@ -216,7 +221,7 @@ void describe('ClientHost', () => {
 
         assert.equal(clientStaticState.demonum, -1);
         assert.equal(clientStaticState.spawnparms, 'a b');
-        assert.equal(runtime.Key.destination, KeyDestination.game);
+        assert.equal(facades.Key.destination, KeyDestination.game);
         assert.equal(scheduled.length, 1);
         assert.deepEqual(calls.map(([name]) => name), ['Disconnect', 'stop', 'BeginLoadingPlaque', 'SetConnectingStep'], 'nothing spawns before the next frame');
 

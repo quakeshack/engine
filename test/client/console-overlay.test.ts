@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
-import { registry, type ClientRegistry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { facades } from '../support/facades.ts';
 
 interface ToggleStubs {
   readonly key: { history_line: number; lines: string[] };
@@ -19,26 +18,25 @@ interface ToggleStubs {
  * @param callback The test body.
  */
 function withToggleRegistry(callback: (stubs: ToggleStubs) => void): void {
-  const previous = { SCR: registry.SCR, Key: registry.Key, IN: registry.IN };
+  const previous = { SCR: facades.SCR, Key: facades.Key, IN: facades.IN };
   let released = false;
   const key = { history_line: 0, lines: ['a', 'b', 'c'] };
   const scr = { EndLoadingPlaque() {}, con_current: 0 };
 
-  registry.SCR = scr as unknown as ClientRegistry['SCR'];
-  registry.Key = key as unknown as ClientRegistry['Key'];
-  registry.IN = { ReleasePointerLock() { released = true; } } as unknown as ClientRegistry['IN'];
-  eventBus.publish('registry.frozen');
+  facades.SCR = scr;
+  facades.Key = key;
+  facades.IN = { ReleasePointerLock() { released = true; } };
 
   ConsoleOverlay.isOpen = false;
   ConsoleOverlay.forcedup = false;
 
   try {
-    callback({ key, scr, pointerLockReleased: () => released });
+    // The stubs are patched onto the real facades, so state the overlay changes is read back from there.
+    callback({ key: facades.Key as ToggleStubs['key'], scr: facades.SCR as ToggleStubs['scr'], pointerLockReleased: () => released });
   } finally {
     ConsoleOverlay.isOpen = false;
     ConsoleOverlay.forcedup = false;
-    Object.assign(registry, previous);
-    eventBus.publish('registry.frozen');
+    Object.assign(facades, previous);
   }
 }
 

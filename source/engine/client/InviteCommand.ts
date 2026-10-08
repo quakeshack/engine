@@ -1,20 +1,13 @@
 import { ConsoleCommand } from '../common/Cmd.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
-
-let { NET } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ NET } = getClientRegistry());
-});
+import { net } from './PageServices.ts';
 
 /**
  * Copy a join link for the currently hosted session.
  */
 export default class InviteCommand extends ConsoleCommand {
   async run(): Promise<void> {
-    const listenAddress = NET.GetListenAddress();
+    const listenAddress = net.GetListenAddress();
 
     if (listenAddress === null) {
       Con.PrintWarning('Cannot create invite link, not hosting.\n');

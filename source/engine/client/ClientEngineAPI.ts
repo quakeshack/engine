@@ -1,43 +1,44 @@
-import type { ClientDlight, ClientEdict } from '../client/ClientEntities.ts';
-import { BitmapFont, type BitmapFontConfig } from '../client/BitmapFont.ts';
-import type { GLTexture } from '../client/GL.ts';
-import type ParsedQC from './model/parsers/ParsedQC.ts';
-import type { BaseModel } from './model/BaseModel.ts';
-import type { DiscoveredSession, SessionDiscoveryStatus } from '../client/menu/SessionDiscovery.ts';
-import type { SaveSlotInfo } from '../client/menu/SaveSlots.ts';
+import type { ClientDlight, ClientEdict } from './ClientEntities.ts';
+import { BitmapFont, type BitmapFontConfig } from './BitmapFont.ts';
+import type { GLTexture } from './GL.ts';
+import type { BaseModel } from '../common/model/BaseModel.ts';
+import type { DiscoveredSession, SessionDiscoveryStatus } from './menu/SessionDiscovery.ts';
+import type { SaveSlotInfo } from './menu/SaveSlots.ts';
 
-import { type GameTrace, GameFlavors, type InternalTraceLike, internalTraceToGameTrace } from './GameApiSupport.ts';
+import { type GameTrace, type InternalTraceLike, internalTraceToGameTrace } from '../common/GameApiSupport.ts';
+import { CommonEngineAPI } from '../common/CommonEngineAPI.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
 import { solid } from '../../shared/Defs.ts';
-import { clientConnectionState } from './Def.ts';
-import Key, { KeyDestination } from '../client/Key.ts';
-import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, NumberInput, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from '../client/menu/MenuItem.ts';
-import { DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from '../client/menu/MenuPage.ts';
-import { MenuViewport } from '../client/menu/MenuViewport.ts';
-import type { MenuPic } from '../client/Menu.ts';
-import SessionDiscovery from '../client/menu/SessionDiscovery.ts';
-import SaveSlotsService from '../client/menu/SaveSlots.ts';
-import { SFX as SFXValue } from '../client/Sound.ts';
-import VID from '../client/VID.ts';
-import { getClientRegistry, getCommonRegistry } from '../registry.ts';
-import { EventBus, eventBus } from './EventBus.ts';
-import Cmd from './Cmd.ts';
-import Cvar from './Cvar.ts';
-import { HostError } from './Errors.ts';
-import Mod from './Mod.ts';
-import W from './W.ts';
-import PostProcess from '../client/renderer/PostProcess.ts';
+import { clientConnectionState } from '../common/Def.ts';
+import Key, { KeyDestination } from './Key.ts';
+import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, NumberInput, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from './menu/MenuItem.ts';
+import { DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout } from './menu/MenuPage.ts';
+import { MenuViewport } from './menu/MenuViewport.ts';
+import type { MenuPic } from './Menu.ts';
+import SessionDiscovery from './menu/SessionDiscovery.ts';
+import SaveSlotsService from './menu/SaveSlots.ts';
+import { SFX as SFXValue } from './Sound.ts';
+import VID from './VID.ts';
+import type { EventBus } from '../common/EventBus.ts';
+import Cmd from '../common/Cmd.ts';
+import Cvar from '../common/Cvar.ts';
+import { HostError } from '../common/Errors.ts';
+import W from '../common/W.ts';
+import PostProcess from './renderer/PostProcess.ts';
 import type { PostProcessStack } from '../../shared/GameInterfaces.ts';
-import ConsoleOverlay from '../client/ConsoleOverlay.ts';
-import Con from './Console.ts';
-import { clientRuntimeState, clientStaticState } from '../client/ClientState.ts';
-import { clientCollision, clientPmove } from '../client/ClientPhysics.ts';
-import CL from '../client/CL.ts';
-import R from '../client/R.ts';
-import M from '../client/Menu.ts';
-import Host from './Host.ts';
-import ClientHost from '../client/ClientHost.ts';
+import ConsoleOverlay from './ConsoleOverlay.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import { clientCollision, clientPmove } from './ClientPhysics.ts';
+import CL from './CL.ts';
+import R from './R.ts';
+import M from './Menu.ts';
+import Host from '../common/Host.ts';
+import ClientHost from './ClientHost.ts';
+import Draw from './Draw.ts';
+import S from './Sound.ts';
+import SCR from './SCR.ts';
+import V from './V.ts';
 
 interface ClientTraceOptions {
   readonly includeEntities?: boolean;
@@ -53,34 +54,6 @@ interface ClientTraceEntityAdapter {
 
 type ClientEntityFilter = ((entity: ClientEdict) => boolean) | null;
 type CommandCallback = (...args: string[]) => void | Promise<void>;
-
-let { COM, V } = getCommonRegistry();
-let { Draw, S, SCR } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, V } = getCommonRegistry());
-  ({ Draw, S, SCR } = getClientRegistry());
-});
-
-eventBus.subscribe('com.ready', () => {
-  if (!COM.registered) {
-    CommonEngineAPI.gameFlavors.push(GameFlavors.shareware);
-  }
-
-  if (COM.hipnotic) {
-    CommonEngineAPI.gameFlavors.push(GameFlavors.hipnotic);
-  }
-
-  if (COM.rogue) {
-    CommonEngineAPI.gameFlavors.push(GameFlavors.rogue);
-  }
-
-  console.assert(COM.registered !== null, 'COM.registered must exist after com.ready');
-
-  if (COM.registered!.value === 1) {
-    ClientEngineAPI.registered = true;
-  }
-});
 
 /**
  * Return whether the entity can be traced against.
@@ -242,86 +215,25 @@ function traceClientEntities(
   return bestTrace;
 }
 
-export class CommonEngineAPI {
-  static registered = false;
-  static gameFlavors: GameFlavors[] = [];
-
-  /**
-   * Append text to the command buffer.
-   */
-  static AppendConsoleText(text: string): void {
-    Cmd.text += text;
-  }
-
-  /**
-   * Return a cvar by name.
-   * @returns The variable.
-   */
-  static GetCvar(name: string): Cvar | null {
-    return Cvar.FindVar(name);
-  }
-
-  /**
-   * Change the value of a cvar.
-   * @returns The modified variable.
-   */
-  static SetCvar(name: string, value: string): Cvar {
-    const variable = Cvar.Set(name, value);
-
-    console.assert(variable !== null, 'Cvar.Set requires a registered variable', name);
-
-    return variable!;
-  }
-
-  /**
-   * Make sure to free the variable in shutdown().
-   * @see {@link Cvar}
-   * @returns The created variable.
-   */
-  static RegisterCvar(name: string, value: string, flags = 0, description: string | null = null): Cvar {
-    return new Cvar(name, value, flags | Cvar.FLAG.GAME, description);
-  }
-
-  static ConsolePrint(msg: string, color = new Vector(1.0, 1.0, 1.0)): void {
-    Con.Print(msg, color);
-  }
-
-  static ConsoleWarning(msg: string): void {
-    Con.PrintWarning(msg);
-  }
-
-  static ConsoleError(msg: string): void {
-    Con.PrintError(msg);
-  }
-
-  static ConsoleDebug(str: string): void {
-    Con.DPrint(str);
-  }
-
-  /**
-   * Parse QuakeC for model animation information.
-   * @returns Parsed QC content.
-   */
-  static ParseQC(qcContent: string): ParsedQC {
-    return Mod.ParseQC(qcContent);
-  }
-}
-
+/**
+ * What a game's client side gets to see of the engine: the members of `ClientGameAPI.Init` and of the
+ * constructor of `ClientGameAPI`. One instance belongs to one page, the composition root installs it.
+ */
 export class ClientEngineAPI extends CommonEngineAPI {
   /**
    * Make sure to free the variable in shutdown().
    * @see {@link Cvar}
    * @returns The created variable.
    */
-  static override RegisterCvar(name: string, value: string, flags = 0, description: string | null = null): Cvar {
+  override RegisterCvar(name: string, value: string, flags = 0, description: string | null = null): Cvar {
     return new Cvar(name, value, flags | Cvar.FLAG.GAME | Cvar.FLAG.CLIENT, description);
   }
 
-  static RegisterCommand(name: string, callback: CommandCallback): void {
+  RegisterCommand(name: string, callback: CommandCallback): void {
     Cmd.AddCommand(name, callback);
   }
 
-  static UnregisterCommand(name: string): void {
+  UnregisterCommand(name: string): void {
     Cmd.RemoveCommand(name);
   }
 
@@ -329,7 +241,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Load a texture from a lump.
    * @returns The loaded texture.
    */
-  static LoadPicFromLump(name: string): GLTexture {
+  LoadPicFromLump(name: string): GLTexture {
     return Draw.LoadPicFromLumpDeferred(name);
   }
 
@@ -337,7 +249,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Load a texture from a WAD.
    * @returns The loaded texture.
    */
-  static LoadPicFromWad(name: string): GLTexture {
+  LoadPicFromWad(name: string): GLTexture {
     return Draw.LoadPicFromWad(name);
   }
 
@@ -345,7 +257,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Load a texture from a file.
    * @returns The loaded texture.
    */
-  static LoadPicFromFile(filename: string): Promise<GLTexture> {
+  LoadPicFromFile(filename: string): Promise<GLTexture> {
     return Draw.LoadPicFromFile(filename);
   }
 
@@ -354,14 +266,14 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * `config`'s charset and glyph/cell metrics.
    * @returns The loaded font.
    */
-  static LoadBitmapFont(filename: string, config: Omit<BitmapFontConfig, 'texture'>): Promise<BitmapFont> {
+  LoadBitmapFont(filename: string, config: Omit<BitmapFontConfig, 'texture'>): Promise<BitmapFont> {
     return BitmapFont.FromImageFile(filename, config);
   }
 
   /**
    * Play a sound effect.
    */
-  static PlaySound(sfx: SFXValue): void {
+  PlaySound(sfx: SFXValue): void {
     S.LocalSound(sfx);
   }
 
@@ -369,7 +281,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Load a sound effect. Can be used with PlaySound.
    * @returns The loaded sound effect.
    */
-  static LoadSound(sfxName: string): SFXValue {
+  LoadSound(sfxName: string): SFXValue {
     const sfx = S.PrecacheSound(sfxName);
 
     console.assert(sfx !== null, 'sound must be precached before being returned', sfxName);
@@ -380,21 +292,21 @@ export class ClientEngineAPI extends CommonEngineAPI {
   /**
    * Draw a picture at the specified position.
    */
-  static DrawPic(x: number, y: number, pic: GLTexture, scale = 1.0): void {
+  DrawPic(x: number, y: number, pic: GLTexture, scale = 1.0): void {
     Draw.Pic(x, y, pic, scale);
   }
 
   /**
    * Draw a string on the screen at the specified position.
    */
-  static DrawString(x: number, y: number, str: string, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)): void {
+  DrawString(x: number, y: number, str: string, scale = 1.0, color = new Vector(1.0, 1.0, 1.0)): void {
     Draw.String(x, y, str, scale, color);
   }
 
   /**
    * Fill a rectangle with a solid color.
    */
-  static DrawRect(x: number, y: number, w: number, h: number, c: Vector, a = 1.0): void {
+  DrawRect(x: number, y: number, w: number, h: number, c: Vector, a = 1.0): void {
     Draw.Fill(x, y, w, h, c, a);
   }
 
@@ -402,22 +314,15 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Translate a palette index into an RGB color vector.
    * @returns The RGB color vector.
    */
-  static IndexToRGB(index: number): [number, number, number] {
-    console.assert(typeof index === 'number', 'index must be a number');
-    console.assert(index >= 0 && index < 256, 'index must be in range [0, 255]');
-
-    return [
-      W.d_8to24table_u8[index * 3] / 256,
-      W.d_8to24table_u8[index * 3 + 1] / 256,
-      W.d_8to24table_u8[index * 3 + 2] / 256,
-    ];
+  IndexToRGB(index: number): [number, number, number] {
+    return W.IndexToRGB(index);
   }
 
   /**
    * Translate world coordinates to screen coordinates.
    * @returns Screen coordinates, or `null` if the point is behind the camera.
    */
-  static WorldToScreen(origin: Vector): Vector | null {
+  WorldToScreen(origin: Vector): Vector | null {
     return R.WorldToScreen(origin);
   }
 
@@ -425,7 +330,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Get all entities in the game. Both client-only and server entities.
    * @yields Client entities.
    */
-  static *GetEntities(filter: ClientEntityFilter = null): Generator<ClientEdict, void, void> {
+  *GetEntities(filter: ClientEntityFilter = null): Generator<ClientEdict, void, void> {
     for (const entity of clientRuntimeState.clientEntities.getEntities()) {
       if (filter && !filter(entity)) {
         continue;
@@ -439,7 +344,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Get all entities staged for rendering. Both client-only and server entities.
    * @yields Visible client entities.
    */
-  static *GetVisibleEntities(filter: ClientEntityFilter = null): Generator<ClientEdict, void, void> {
+  *GetVisibleEntities(filter: ClientEntityFilter = null): Generator<ClientEdict, void, void> {
     for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {
       if (filter && !filter(entity)) {
         continue;
@@ -457,7 +362,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * rename.
    * @returns The trace result.
    */
-  static Traceline(start: Vector, end: Vector, options: ClientTraceOptions | null = null): GameTrace {
+  Traceline(start: Vector, end: Vector, options: ClientTraceOptions | null = null): GameTrace {
     const worldTrace = clientCollision.traceWorldLine(start, end) as InternalTraceLike;
 
     if (options === null || !options.includeEntities) {
@@ -473,7 +378,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * answers for the view of the previous frame, and true while there is no view yet.
    * @returns True when the player could see the entity from where they are.
    */
-  static IsInPVS(entity: ClientEdict): boolean {
+  IsInPVS(entity: ClientEdict): boolean {
     return clientRuntimeState.clientEntities.isPotentiallyVisible(entity);
   }
 
@@ -481,7 +386,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Find what contents the given point of the static world is in.
    * @returns The contents constant.
    */
-  static DetermineStaticWorldContents(origin: Vector): number {
+  DetermineStaticWorldContents(origin: Vector): number {
     return clientCollision.pointContents(origin);
   }
 
@@ -489,7 +394,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Allocate a dynamic light for the given entity Id.
    * @returns The dynamic light instance.
    */
-  static AllocDlight(entityId: number): ClientDlight {
+  AllocDlight(entityId: number): ClientDlight {
     return clientRuntimeState.clientEntities.allocateDynamicLight(entityId);
   }
 
@@ -501,7 +406,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @deprecated use `SpawnClientEntity()` instead, which resolves the classname's handler and can mark the entity for save/load.
    * @returns A new client entity.
    */
-  static AllocEntity(): ClientEdict {
+  AllocEntity(): ClientEdict {
     return clientRuntimeState.clientEntities.allocateClientEntity();
   }
 
@@ -514,7 +419,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Use `false` only for entities the server regenerates on every (re)connect.
    * @returns A new client-only entity.
    */
-  static SpawnClientEntity(classname: string, options: { readonly persistent?: boolean } = {}): ClientEdict {
+  SpawnClientEntity(classname: string, options: { readonly persistent?: boolean } = {}): ClientEdict {
     const clientEntities = clientRuntimeState.clientEntities;
 
     if (options.persistent ?? true) {
@@ -527,14 +432,14 @@ export class ClientEngineAPI extends CommonEngineAPI {
   /**
    * Spawn a rocket trail effect from start to end.
    */
-  static RocketTrail(start: Vector, end: Vector, type: number): void {
+  RocketTrail(start: Vector, end: Vector, type: number): void {
     R.RocketTrail(start, end, type);
   }
 
   /**
    * Place a decal in the world.
    */
-  static PlaceDecal(origin: Vector, normal: Vector, texture: GLTexture): void {
+  PlaceDecal(origin: Vector, normal: Vector, texture: GLTexture): void {
     R.PlaceDecal(origin, normal, texture);
   }
 
@@ -542,7 +447,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Get a model by name. Must be precached first.
    * @returns The model.
    */
-  static ModForName(modelName: string): BaseModel {
+  ModForName(modelName: string): BaseModel {
     console.assert(typeof modelName === 'string', 'modelName must be a string');
 
     for (let index = 1; index < clientRuntimeState.model_precache.length; index++) {
@@ -558,7 +463,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Get a model by id.
    * @returns The model.
    */
-  static ModById(id: number): BaseModel {
+  ModById(id: number): BaseModel {
     console.assert(typeof id === 'number' && id > 0, 'id must be a number and greater than 0');
 
     if (clientRuntimeState.model_precache[id]) {
@@ -571,20 +476,20 @@ export class ClientEngineAPI extends CommonEngineAPI {
   /**
    * Apply a content shift.
    */
-  static ContentShift(slot: number, color: Vector, alpha = 0.5): void {
+  ContentShift(slot: number, color: Vector, alpha = 0.5): void {
     V.ContentShift(slot + 4, color, alpha);
   }
 
   /**
    * Set the player movement configuration. This is used by the PMove code to determine how the player will move.
    */
-  static SetPmoveConfiguration(config: PmoveConfiguration): void {
+  SetPmoveConfiguration(config: PmoveConfiguration): void {
     console.assert(config instanceof PmoveConfiguration, 'config must be an instance of PmoveConfiguration');
 
     clientPmove.configuration = config;
   }
 
-  static readonly CL = {
+  readonly CL = {
     get viewangles(): Vector {
       return clientRuntimeState.viewangles.copy();
     },
@@ -660,7 +565,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  static readonly SV = {
+  readonly SV = {
     /**
      * @returns True while this client is also hosting a local (listen) server.
      */
@@ -669,7 +574,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  static readonly VID = {
+  readonly VID = {
     get width(): number {
       return VID.width;
     },
@@ -681,7 +586,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  static readonly Key = {
+  readonly Key = {
     /**
      * Get the string representation of a key binding, e.g. "+attack" -> "mouse1".
      * @returns The bound key string, or `null` when not found.
@@ -691,7 +596,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  static readonly SCR = {
+  readonly SCR = {
     /**
      * @returns The current view size.
      */
@@ -711,7 +616,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  static readonly PostProcess = {
+  readonly PostProcess = {
     setStack(stack: PostProcessStack): void {
       PostProcess.setStack(stack);
     },
@@ -729,7 +634,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Menu registration and navigation, backed by the engine's menu stack (`source/engine/client/menu/`).
    * Widget classes are re-exported here so game code never has to import engine internals directly.
    */
-  static readonly Menu = {
+  readonly Menu = {
     /**
      * Register a page under a name so it can later be opened by `Open`/`Push`/`Replace`.
      */
@@ -1070,7 +975,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  static readonly Multiplayer = {
+  readonly Multiplayer = {
     /**
      * Fetch currently joinable sessions for this client's active game (mod) from the master
      * server. Throws if signaling is unavailable -- callers that can't assume it's configured
@@ -1102,7 +1007,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  static readonly SaveSlots = {
+  readonly SaveSlots = {
     /**
      * List save-slot metadata for the currently active game directory.
      * @returns Metadata for save slots `0..maxSlots - 1`.
@@ -1119,7 +1024,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  static get eventBus(): EventBus {
+  get eventBus(): EventBus {
     return clientRuntimeState.eventBus;
   }
 
@@ -1129,7 +1034,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * events reach it (the same set as `eventBus`) and why.
    * @returns The module-lifetime event bus.
    */
-  static get moduleEventBus(): EventBus {
+  get moduleEventBus(): EventBus {
     return CL.moduleEventBus;
   }
 }

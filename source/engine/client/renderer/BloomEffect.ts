@@ -4,16 +4,10 @@ import VID from '../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import Vector from '../../../shared/Vector.ts';
 import Host from '../../common/Host.ts';
-import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import { effect } from '../../../shared/Defs.ts';
 import R from '../R.ts';
-
-let { Draw } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Draw } = getClientRegistry());
-});
+import Draw from '../Draw.ts';
 
 let gl: WebGL2RenderingContext = null!;
 

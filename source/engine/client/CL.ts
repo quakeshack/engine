@@ -3,7 +3,6 @@ import * as Def from '../common/Def.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import type { PmovePlayer } from '../common/Pmove.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import { gameCapabilities, solid } from '../../shared/Defs.ts';
 import ClientDemos from './ClientDemos.ts';
@@ -18,12 +17,7 @@ import Con from '../common/Console.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientPmove } from './ClientPhysics.ts';
 import Host from '../common/Host.ts';
-
-let { Draw } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Draw } = getClientRegistry());
-});
+import Draw from './Draw.ts';
 
 export default class CL {
   /** Control plane to the local server; lives on the static client state, this is for what still reaches it through the registry. */

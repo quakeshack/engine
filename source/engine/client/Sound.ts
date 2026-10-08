@@ -4,18 +4,12 @@ import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import Q from '../../shared/Q.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import Host from '../common/Host.ts';
-
-let { COM } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM } = getClientRegistry());
-});
+import { com } from './PageServices.ts';
 
 const MAX_DYNAMIC_CHANNELS = 64;
 
@@ -264,7 +258,7 @@ export default class Sound {
     Cmd.AddCommand('stopsound', Sound.StopAllSounds.bind(Sound));
     Cmd.AddCommand('soundlist', Sound.SoundList_f.bind(Sound));
 
-    Sound._nosound = new Cvar('nosound', COM.CheckParm('-nosound') ? '1' : '0', Cvar.FLAG.READONLY);
+    Sound._nosound = new Cvar('nosound', com.CheckParm('-nosound') ? '1' : '0', Cvar.FLAG.READONLY);
     Sound.volume = new Cvar('volume', '0.7', Cvar.FLAG.ARCHIVE);
     Sound._precache = new Cvar('s_precache', '1', Cvar.FLAG.NONE, '0 = only load sounds when played, 1 = load all sounds at level start');
     Sound.bgmvolume = new Cvar('bgmvolume', '1', Cvar.FLAG.ARCHIVE);
@@ -422,7 +416,7 @@ export default class Sound {
 
     sfx.state = SFX.STATE.LOADING;
 
-    const data = await COM.LoadFile(`sound/${sfx.name}`);
+    const data = await com.LoadFile(`sound/${sfx.name}`);
     if (!data || !Sound._started) {
       // eslint-disable-next-line require-atomic-updates
       sfx.state = SFX.STATE.FAILED;
@@ -629,7 +623,7 @@ export default class Sound {
     }
 
     for (const sample of samples) {
-      const sfx = Sound.PrecacheSound(COM.DefaultExtension(sample, '.wav'));
+      const sfx = Sound.PrecacheSound(com.DefaultExtension(sample, '.wav'));
       if (sfx) {
         Sound.StartSound(clientRuntimeState.viewentity, 0, sfx, Sound._listenerOrigin, 1.0, 1.0);
       }
@@ -643,7 +637,7 @@ export default class Sound {
     }
 
     for (let i = 0; i < args.length; i += 2) {
-      const sfx = Sound.PrecacheSound(COM.DefaultExtension(args[i], '.wav'));
+      const sfx = Sound.PrecacheSound(com.DefaultExtension(args[i], '.wav'));
       if (sfx) {
         Sound.StartSound(clientRuntimeState.viewentity, 0, sfx, Sound._listenerOrigin, Q.atof(args[i + 1] || '0'), 1.0);
       }

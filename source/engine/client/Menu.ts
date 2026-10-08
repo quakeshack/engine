@@ -3,7 +3,6 @@ import type { SFX } from './Sound.ts';
 import { K } from '../../shared/Keys.ts';
 import Cmd from '../common/Cmd.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import type { BitmapFont } from './BitmapFont.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
@@ -15,12 +14,10 @@ import { MenuViewport, type ResolvedMenuViewport } from './menu/MenuViewport.ts'
 import VID from './VID.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 import { clientStaticState } from './ClientState.ts';
-
-let { COM, Draw, Key, S } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Draw, Key, S } = getClientRegistry());
-});
+import Draw from './Draw.ts';
+import Key from './Key.ts';
+import S from './Sound.ts';
+import { com } from './PageServices.ts';
 
 // An involuntary disconnect (server shutdown, kick, timeout) can happen with no menu open at
 // all -- e.g. mid-gameplay. There's nothing to show without a game running, so bring the main
@@ -469,8 +466,8 @@ export default class M {
    * Start a new singleplayer game via the active mod's `StartGameInterface`, or the engine's
    * own default (`map start`) if the mod didn't provide one. Exposed to game code via
    * `ClientEngineAPI.Menu.StartSingleplayerGame` -- routed through `M` rather than importing
-   * `ClientLifecycle` directly into `GameAPIs.ts`, which would create a circular import
-   * (`ClientLifecycle.ts` already imports `GameAPIs.ts`).
+   * `ClientLifecycle` directly into `ClientEngineAPI.ts`, which would create a circular import
+   * (`ClientLifecycle.ts` already imports `ClientEngineAPI.ts`).
    */
   static StartSingleplayerGame(): void {
     ClientLifecycle.startGame!.startSingleplayerGame();
@@ -496,7 +493,7 @@ export default class M {
   static async LoadTranslatablePic(lumpName: string): Promise<MenuPic> {
     const pic: MenuPic = Draw.LoadPicFromLumpDeferred(lumpName);
 
-    const lmpfile = await COM.LoadFile(`gfx/${lumpName}.lmp`);
+    const lmpfile = await com.LoadFile(`gfx/${lumpName}.lmp`);
     if (lmpfile === null) {
       throw new MissingResourceError(`gfx/${lumpName}.lmp`);
     }

@@ -1,14 +1,6 @@
-import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import type { MenuPage } from './MenuPage.ts';
-
-// Destructure registry modules
-let { IN } = getClientRegistry();
-
-// Update when registry is frozen
-eventBus.subscribe('registry.frozen', () => {
-  ({ IN } = getClientRegistry());
-});
+import IN from '../IN.ts';
 
 /**
  * Stack-based menu navigation system.

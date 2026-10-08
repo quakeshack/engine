@@ -3,13 +3,13 @@ import * as Protocol from '../network/Protocol.ts';
 import Q from '../../shared/Q.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import Cmd, { type ConsoleCommand } from '../common/Cmd.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
 import { HostError } from '../common/Errors.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import Host from '../common/Host.ts';
+import V from './V.ts';
+import { net } from './PageServices.ts';
 
 interface KButtonState {
   down: [number, number];
@@ -60,12 +60,6 @@ const kbuttonByName = Object.freeze({
 });
 
 const KBUTTON_COUNT = Object.keys(kbuttonByName).length;
-
-let { NET, V } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ NET, V } = getClientRegistry());
-});
 
 /**
  * Resolves a console command suffix to a legacy button index.
@@ -305,7 +299,7 @@ export default class ClientInput {
       return;
     }
     clientRuntimeState.lastcmd.set(clientRuntimeState.cmd);
-    if (NET.SendUnreliableMessage(clientStaticState.netcon, buf) === -1) {
+    if (net.SendUnreliableMessage(clientStaticState.netcon, buf) === -1) {
       Con.DPrint('CL.SendMove: lost server connection\n');
       throw new HostError('lost server connection');
     }

@@ -4,7 +4,6 @@ import Cvar from '../common/Cvar.ts';
 import Cmd from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 
-import { getClientRegistry, registry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import W from '../common/W.ts';
@@ -37,12 +36,9 @@ import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientCollision } from './ClientPhysics.ts';
 import Host from '../common/Host.ts';
-
-let { SCR, Sys, V } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ SCR, Sys, V } = getClientRegistry());
-});
+import SCR from './SCR.ts';
+import V from './V.ts';
+import Sys from './Sys.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -138,8 +134,6 @@ enum ParticleType {
   blob2 = 7,
 }
 
-
-
 const FOG_TURBULENT_SORT_EPSILON = 0.0001;
 
 /**
@@ -189,7 +183,6 @@ export function compareTransparentItems(itemA: SortKindDistance, itemB: SortKind
 
   return getTransparentKindPriority(itemB.kind) - getTransparentKindPriority(itemA.kind);
 }
-
 
 class R {
   // light
@@ -1800,7 +1793,6 @@ class R {
   static viewMatrix: number[] | null = null;
   static projectionMatrix: number[] | null = null;
 
-
   private static multiplyMatrixVec4(m: number[], v: Vec4): Vec4 {
     return [
       m[0]*v[0] + m[4]*v[1] + m[8]*v[2] + m[12]*v[3],
@@ -2208,10 +2200,6 @@ class R {
   // misc
 
   static InitTextures() {
-    if (registry.isDedicatedServer) {
-      return;
-    }
-
     // make a default texture (a red and black checkerboard)
     const data = new Uint8Array(new ArrayBuffer(256 * 4));
     for (let i = 0; i < 8; i++) {
@@ -2493,11 +2481,6 @@ class R {
   };
 
   static async Init() {
-    if (registry.isDedicatedServer) {
-      console.assert(false, 'R.Init called on dedicated server');
-      return;
-    }
-
     R.waterwarp = new Cvar('r_waterwarp', '1');
     R.fullbright = new Cvar('r_fullbright', '0', Cvar.FLAG.CHEAT);
     R.drawentities = new Cvar('r_drawentities', '1', Cvar.FLAG.CHEAT);

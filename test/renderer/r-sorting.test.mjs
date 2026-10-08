@@ -13,6 +13,7 @@ import V from '../../source/engine/client/V.ts';
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useHostOf } from '../support/host.ts';
+import { facades } from '../support/facades.ts';
 
 void describe('compareTransparentItems', () => {
   void test('sorts farther items first', () => {
@@ -329,12 +330,12 @@ void describe('R._SmoothLightValues', () => {
    */
   function withMockFrametime(frametime, callback) {
     const previousHost = registry.Host;
-    const previousV = registry.V;
+    const previousV = facades.V;
 
     registry.Host = /** @type {typeof import('../../source/engine/client/Host.ts').default} */ ({ frametime });
 
     const restoreHost = useHostOf(registry.Host);
-    registry.V = V;
+    facades.V = V;
     eventBus.publish('registry.frozen');
 
     try {
@@ -342,7 +343,7 @@ void describe('R._SmoothLightValues', () => {
     } finally {
       registry.Host = previousHost;
       restoreHost();
-      registry.V = previousV;
+      facades.V = previousV;
       eventBus.publish('registry.frozen');
     }
   }

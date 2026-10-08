@@ -1073,7 +1073,7 @@ composition root. Importers use it by plain ES import, so there is no lookup tab
 construct a fresh instance with fakes (`new Console()` + `init(fakes)`) or call `init` on the shared one in a
 `beforeEach`. The cost is a module-level singleton for those five, which is what `Cvar` and `Cmd` already are in this plan
 (A1: realm singletons). The alternatives are (b) making every facade an instance too (the "Full instances" option, rejected
-above) or (c) leaving the five static (the "direct imports" option, rejected above). Not started until confirmed.
+above) or (c) leaving the five static (the "direct imports" option, rejected above). Resolved in 4b step 5: `client/PageServices.ts`, see "Phase 4b, steps 5 to 8".
 
 #### Phase 4 steps
 
@@ -1094,7 +1094,7 @@ Each step leaves `npm test`, `npm run typecheck` and eslint green and the game p
 5. Done when: no file under `source/engine/common/` (except `Host.ts`, which 4b removes), `network/`, `server/`,
    `bootstrap/createServerWorker.ts` or `createDedicatedServer.ts` imports `registry.ts`, and a boundary test says so.
 
-**4b, the client runtime and `Host` (the allowlist shrinks to the facades that stay static)**
+**4b, the client runtime and `Host` (the allowlist shrinks to the facades that stay static), done, see "Phase 4b: what shipped"**
 
 1. `Host` dissolves: frame timing and the scheduler into one small clock/scheduler class shared by `ClientHost`,
    `ServerRealm` and the dedicated server; config writing and the savegame commands to `ClientHost`; the dedicated server
@@ -1299,6 +1299,58 @@ a fresh dedicated server build boots through `DedicatedHost`, spawns a map and a
 Registry importers in the engine: 31 (from 38). `registry.isDedicatedServer` has 7 mentions left (`R`, the launchers and the registry itself).
 What reads the registry now is the static client facades (`S`, `SCR`, `V`, `Key`, `IN`, `Draw`), the realm services `COM`, `NET`, `Sys`,
 `ClientEngineAPI`, the two launchers and the worker-closure files (`Materials`, `Sky`).
+
+#### Phase 4b, steps 5 to 8: the facades, the page's services, `ClientEngineAPI` and the composition root (2026-10-07, not committed)
+
+4b's done-condition is met and a little more: no client module reads the registry any more. What still imports it is
+`bootstrap/createBrowserClient.ts` and `createDedicatedServer.ts` (they fill it), `main-dedicated.ts` (a type) and the two data
+classes the server worker loads, `Materials.ts` and `Sky.ts`, which keep looking up the renderer, the client state and `Host`
+for their headless stand-in. The ESLint ratchet is at 5 files (from 31), `registry.isDedicatedServer` is read nowhere.
+
+- **Static facades** (`Draw`, `IN`, `Key`, `S`, `SCR`, `V`): imported directly by every client module, 28 prologs gone. They stay
+  static classes, as decided in fork 1. The client core import cycle grew accordingly; it stays safe to load in any order
+  because nothing builds anything of another module while it is being evaluated (the browser runs below confirm the cold start).
+- **The page's services** are the answer to the open question for 4b ("how a static facade reaches an instance"):
+  `client/PageServices.ts`, a leaf module with `import type` only, exports live bindings `com`, `net`, `engineApi`, `urls` and
+  `buildConfig` and an `installPageServices()` that the composition root calls once. Importers use them by plain ES import
+  (`com.LoadFile(...)`, `net.message`), tests install fakes with the same function and get a restore function back. This is the
+  default-export pattern of `Con`/`Mod` for services that cannot be built without the launcher's inputs (`COM` and `NET` are
+  constructed per realm: the page, the dedicated server and the server worker each have their own, so the classes stay
+  constructor-injected). `GL.ts` is in the server worker's closure and now loads `PageServices.ts` (no runtime imports there);
+  the boundary test lists it.
+- **`Sys`** is the static client class, imported directly; `R` imports it too. Its `window.registry` debug hook moved to the
+  composition root, see below.
+- **`ClientEngineAPI` is an instance** (`client/ClientEngineAPI.ts`), built on `CommonEngineAPI` (`common/CommonEngineAPI.ts`, takes
+  `edition: () => GameEdition` like `ServerEngineAPI`, so `registered` and `gameFlavors` are read on use instead of being
+  pushed by a `com.ready` listener). `common/GameAPIs.ts` is gone. Same member surface: a game that reaches it through the
+  `Init`/constructor parameter compiled unchanged (`npm run typecheck` over `id1` and `hellwave` is clean); the contract
+  types in `shared/GameInterfaces.ts` and `shared/ClientEdict.ts` are `Readonly<ClientEngineAPI>` / `ClientEngineAPI` of the
+  instance. The engine hands it on through `PageServices.engineApi` (`ClientLifecycle`, `ClientServerCommandHandlers`,
+  `ClientEntities`). `Draw` no longer asks the game API for a palette color: `W.IndexToRGB`.
+- **Composition root**: `bootstrap/createBrowserClient.ts` builds `COM`, `NET`, the server (worker or `?serverthread`), the
+  engine API, installs them, fills the three registry members `Materials`/`Sky` still look up, and starts `Sys.Init()`.
+  `main-browser.ts` is a thin launcher like `main-dedicated.ts` (`index.html` is unchanged).
+- **Dead code removed on the way**: the `isDedicatedServer` guards in `R.Init`/`R.InitTextures` (the dedicated server never
+  calls them).
+- **Debug handle renamed**: `window.registry` is now `window.engine` (`CL`, `COM`, `Con`, `ConsoleOverlay`, `Host`, `Mod`, `NET`,
+  `Sys`, `V`, `Key`, `S`, `Draw`, `R`, `M`, `SCR`, `IN`, `SV` which is `null` unless `?serverthread`). `docs/browser-verification.md`
+  and the `browser-ui-verification` skill are updated; plans and personal notes that mention `window.registry` are history.
+- **Tests**: `test/support/facades.ts` (`facades.Key = mock` patches the real facade, assigning the real one back restores),
+  `pageServices.ts` (the same for `COM`/`NET`/`urls`/`buildConfig`) and `clientEngineApi.ts` keep the existing tests' shape while
+  the registry still exists; 14 tests moved from `registry.<facade>` to `facades.<facade>`, 19 from `registry.COM/NET/urls`
+  to `pageServices`. Mocks are patched onto the real facade, so state a facade changes is read back from the facade, not from the
+  mock (three tests needed that). New: `page-services.test.ts`, and the boundary test now pins "the client reads the registry
+  only in `Materials` and `Sky`" and "`common/` does not import it". 1757 tests plus 8 new, typecheck and lint clean.
+  The flaky `MessagePortEndpoint` ordering test failed once in a full run and passed in 5 reruns; it is unrelated.
+- **Verified in Chromium** (headless, software GL): the development build with the server in a worker, with `?serverthread`, and
+  a production build served next to the game data: main menu, new game, E1M1 renders with HUD (screenshot), `status`, `god`
+  refused without cheats, menu open holds the world and closing it resumes, `changelevel`, `map`, `save`/`load`, `disconnect`.
+  The only failed requests are the three assets that were already missing. A fresh dedicated build boots and spawns E1M1. Not
+  verified: pointer lock and mouse look, Firefox, multiplayer (WebRTC and WebSocket) after this step, sound output.
+
+Left for 4c: `Materials` and `Sky` (they need a way to get the renderer and the client state without importing the client, or a
+split of the data class from the render hooks), the registry itself, `createDedicatedServer`'s fill of it, `isDedicatedServer`,
+`withMockRegistry` and the tests that still mock a registry, and the instruction files that describe the registry pattern.
 
 ### Later tracks (own plans, order flexible after Phase 3)
 

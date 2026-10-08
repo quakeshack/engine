@@ -1,18 +1,11 @@
 import { clientConnectionState } from '../common/Def.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
 import * as Protocol from '../network/Protocol.ts';
 import { HostError } from '../common/Errors.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import CL from './CL.ts';
 import Host from '../common/Host.ts';
-
-let { COM, NET } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, NET } = getClientRegistry());
-});
+import { com, net } from './PageServices.ts';
 
 /**
  * Returns a readable error message for demo playback failures.
@@ -54,7 +47,7 @@ export default class ClientDemos {
 
   writeDemoMessage(): void {
     const currentFile = this.#getDemoFile();
-    const len = this.demoofs + 16 + NET.message.cursize;
+    const len = this.demoofs + 16 + net.message.cursize;
 
     if (currentFile.byteLength < len) {
       const src = new Uint8Array(currentFile, 0, this.demoofs);
@@ -64,11 +57,11 @@ export default class ClientDemos {
 
     const demoFile = this.#getDemoFile();
     const view = new DataView(demoFile, this.demoofs, 16);
-    view.setInt32(0, NET.message.cursize, true);
+    view.setInt32(0, net.message.cursize, true);
     view.setFloat32(4, clientRuntimeState.viewangles[0], true);
     view.setFloat32(8, clientRuntimeState.viewangles[1], true);
     view.setFloat32(12, clientRuntimeState.viewangles[2], true);
-    new Uint8Array(demoFile).set(new Uint8Array(NET.message.data, 0, NET.message.cursize), this.demoofs + 16);
+    new Uint8Array(demoFile).set(new Uint8Array(net.message.data, 0, net.message.cursize), this.demoofs + 16);
 
     this.demoofs = len;
   }
@@ -109,9 +102,9 @@ export default class ClientDemos {
 
     const demoFile = this.#getDemoFile();
     const view = new DataView(demoFile);
-    NET.message.cursize = view.getUint32(this.demoofs, true);
+    net.message.cursize = view.getUint32(this.demoofs, true);
 
-    if (NET.message.cursize > 8000) {
+    if (net.message.cursize > 8000) {
       throw new HostError('Demo message > MAX_MSGLEN');
     }
 
@@ -123,19 +116,19 @@ export default class ClientDemos {
 
     this.demoofs += 16;
 
-    if ((this.demoofs + NET.message.cursize) > this.demosize) {
+    if ((this.demoofs + net.message.cursize) > this.demosize) {
       CL.StopPlayback();
       return 0;
     }
 
-    const src = new Uint8Array(demoFile, this.demoofs, NET.message.cursize);
-    const dest = new Uint8Array(NET.message.data, 0, NET.message.cursize);
+    const src = new Uint8Array(demoFile, this.demoofs, net.message.cursize);
+    const dest = new Uint8Array(net.message.data, 0, net.message.cursize);
 
-    for (let index = 0; index < NET.message.cursize; index++) {
+    for (let index = 0; index < net.message.cursize; index++) {
       dest[index] = src[index];
     }
 
-    this.demoofs += NET.message.cursize;
+    this.demoofs += net.message.cursize;
 
     return 1;
   }
@@ -144,10 +137,10 @@ export default class ClientDemos {
     console.assert(clientStaticState.state === clientConnectionState.disconnected, 'must be disconnected to start playback');
     console.assert(!this.demoplayback, 'must not be in playback mode');
 
-    const name = COM.DefaultExtension(demoname, '.dem');
+    const name = com.DefaultExtension(demoname, '.dem');
     Con.Print(`Playing demo from ${name}.\n`);
 
-    this.demofile = await COM.LoadFile(name);
+    this.demofile = await com.LoadFile(name);
     if (this.demofile === null) {
       Con.PrintError(`ERROR: couldn't open ${demoname}\n`);
       this.demonum = -1;
@@ -220,7 +213,7 @@ export default class ClientDemos {
 
     this.forcetrack = forcetrack;
 
-    this.demoname = COM.DefaultExtension(demoname, '.dem');
+    this.demoname = com.DefaultExtension(demoname, '.dem');
 
     Con.PrintSuccess(`recording to ${this.demoname}.\n`);
 
@@ -243,9 +236,9 @@ export default class ClientDemos {
       return false;
     }
 
-    NET.message.clear();
-    NET.message.writeByte(Protocol.svc.disconnect);
-    NET.message.writeString('ClientDemos.stopRecording: stopping demo recording');
+    net.message.clear();
+    net.message.writeByte(Protocol.svc.disconnect);
+    net.message.writeString('ClientDemos.stopRecording: stopping demo recording');
 
     this.writeDemoMessage();
 
@@ -255,7 +248,7 @@ export default class ClientDemos {
       throw new HostError('demo recording state is incomplete');
     }
 
-    if (!await COM.WriteFile(demoname, new Uint8Array(demoFile), this.demoofs)) {
+    if (!await com.WriteFile(demoname, new Uint8Array(demoFile), this.demoofs)) {
       Con.PrintError(`ERROR: couldn't write demo file ${demoname}!`);
       return false;
     }

@@ -1,21 +1,24 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
+import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
 import { useMenuOf } from '../support/menu.ts';
+import { facades } from '../support/facades.ts';
+
+const engineApi = createClientEngineApi();
 
 /**
  * Installs a fake `M` (Menu.ts) registry entry backed by a real MenuStack, so
- * ClientEngineAPI.Menu's delegation can be verified without a full client bootstrap.
+ * engineApi.Menu's delegation can be verified without a full client bootstrap.
  * @param {(context: { menuStack: MenuStack, getCloseMenuCalls: () => number, getPopMenuCalls: () => number }) => void} callback test callback
  */
 function withMockClientEngineMenu(callback) {
   const previousM = registry.M;
-  const previousIN = registry.IN;
+  const previousIN = facades.IN;
   const previousDestination = Key.destination;
 
   const menuStack = new MenuStack();
@@ -37,7 +40,7 @@ function withMockClientEngineMenu(callback) {
 
   const restoreMenu = useMenuOf(registry.M);
   // MenuStack.push() releases pointer lock on every open — a no-op spy here.
-  registry.IN = { ReleasePointerLock() {} };
+  facades.IN = { ReleasePointerLock() {} };
   eventBus.publish('registry.frozen');
 
   try {
@@ -49,7 +52,7 @@ function withMockClientEngineMenu(callback) {
   } finally {
     registry.M = previousM;
     restoreMenu();
-    registry.IN = previousIN;
+    facades.IN = previousIN;
     Key.destination = previousDestination;
     eventBus.publish('registry.frozen');
   }
@@ -58,26 +61,26 @@ function withMockClientEngineMenu(callback) {
 void describe('ClientEngineAPI.Menu', () => {
   void test('RegisterPage/Open registers and opens a page, switching Key.destination to menu', () => {
     withMockClientEngineMenu(({ menuStack }) => {
-      const page = new ClientEngineAPI.Menu.MenuPage({ title: 'Custom Page' });
+      const page = new engineApi.Menu.MenuPage({ title: 'Custom Page' });
       Key.destination = KeyDestination.game;
 
-      ClientEngineAPI.Menu.RegisterPage('custom', page);
-      ClientEngineAPI.Menu.Open('custom');
+      engineApi.Menu.RegisterPage('custom', page);
+      engineApi.Menu.Open('custom');
 
       assert.equal(menuStack.current(), page);
       assert.equal(Key.destination, KeyDestination.menu);
-      assert.equal(ClientEngineAPI.Menu.IsOpen(), true);
-      assert.equal(ClientEngineAPI.Menu.IsOpen('custom'), true);
-      assert.equal(ClientEngineAPI.Menu.IsOpen('other'), false);
+      assert.equal(engineApi.Menu.IsOpen(), true);
+      assert.equal(engineApi.Menu.IsOpen('custom'), true);
+      assert.equal(engineApi.Menu.IsOpen('other'), false);
     });
   });
 
   void test('UnregisterPage removes a page from the registry', () => {
     withMockClientEngineMenu(({ menuStack }) => {
-      const page = new ClientEngineAPI.Menu.MenuPage({ title: 'Custom Page' });
-      ClientEngineAPI.Menu.RegisterPage('custom', page);
+      const page = new engineApi.Menu.MenuPage({ title: 'Custom Page' });
+      engineApi.Menu.RegisterPage('custom', page);
 
-      ClientEngineAPI.Menu.UnregisterPage('custom');
+      engineApi.Menu.UnregisterPage('custom');
 
       assert.equal(menuStack.pages.has('custom'), false);
     });
@@ -85,14 +88,14 @@ void describe('ClientEngineAPI.Menu', () => {
 
   void test('Push stacks a page on top without touching Key.destination', () => {
     withMockClientEngineMenu(({ menuStack }) => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
-      ClientEngineAPI.Menu.RegisterPage('options', options);
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      const options = new engineApi.Menu.MenuPage({ title: 'Options' });
+      engineApi.Menu.RegisterPage('main', main);
+      engineApi.Menu.RegisterPage('options', options);
 
       Key.destination = KeyDestination.menu;
-      ClientEngineAPI.Menu.Push('main');
-      ClientEngineAPI.Menu.Push('options');
+      engineApi.Menu.Push('main');
+      engineApi.Menu.Push('options');
 
       assert.equal(menuStack.current(), options);
       assert.equal(menuStack.depth(), 2);
@@ -101,14 +104,14 @@ void describe('ClientEngineAPI.Menu', () => {
 
   void test('Pop delegates to M.PopMenu (revealing the page beneath, or closing when empty)', () => {
     withMockClientEngineMenu(({ menuStack, getPopMenuCalls }) => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
-      ClientEngineAPI.Menu.RegisterPage('options', options);
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      const options = new engineApi.Menu.MenuPage({ title: 'Options' });
+      engineApi.Menu.RegisterPage('main', main);
+      engineApi.Menu.RegisterPage('options', options);
 
-      ClientEngineAPI.Menu.Push('main');
-      ClientEngineAPI.Menu.Push('options');
-      ClientEngineAPI.Menu.Pop();
+      engineApi.Menu.Push('main');
+      engineApi.Menu.Push('options');
+      engineApi.Menu.Pop();
 
       assert.equal(getPopMenuCalls(), 1);
       assert.equal(menuStack.current(), main);
@@ -117,16 +120,16 @@ void describe('ClientEngineAPI.Menu', () => {
 
   void test('Replace swaps the current page without growing the stack', () => {
     withMockClientEngineMenu(({ menuStack }) => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
-      const keys = new ClientEngineAPI.Menu.MenuPage({ title: 'Keys' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
-      ClientEngineAPI.Menu.RegisterPage('options', options);
-      ClientEngineAPI.Menu.RegisterPage('keys', keys);
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      const options = new engineApi.Menu.MenuPage({ title: 'Options' });
+      const keys = new engineApi.Menu.MenuPage({ title: 'Keys' });
+      engineApi.Menu.RegisterPage('main', main);
+      engineApi.Menu.RegisterPage('options', options);
+      engineApi.Menu.RegisterPage('keys', keys);
 
-      ClientEngineAPI.Menu.Push('main');
-      ClientEngineAPI.Menu.Push('options');
-      ClientEngineAPI.Menu.Replace('keys');
+      engineApi.Menu.Push('main');
+      engineApi.Menu.Push('options');
+      engineApi.Menu.Replace('keys');
 
       assert.equal(menuStack.current(), keys);
       assert.equal(menuStack.depth(), 2);
@@ -135,11 +138,11 @@ void describe('ClientEngineAPI.Menu', () => {
 
   void test('Close delegates to M.CloseMenu, clearing the whole stack', () => {
     withMockClientEngineMenu(({ menuStack, getCloseMenuCalls }) => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
-      ClientEngineAPI.Menu.Push('main');
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      engineApi.Menu.RegisterPage('main', main);
+      engineApi.Menu.Push('main');
 
-      ClientEngineAPI.Menu.Close();
+      engineApi.Menu.Close();
 
       assert.equal(getCloseMenuCalls(), 1);
       assert.equal(menuStack.isEmpty(), true);
@@ -148,17 +151,17 @@ void describe('ClientEngineAPI.Menu', () => {
 
   void test('AddItem appends to a page, or inserts at a given index', () => {
     withMockClientEngineMenu(() => {
-      const page = new ClientEngineAPI.Menu.MenuPage({
-        items: [new ClientEngineAPI.Menu.Label({ label: 'first' })],
+      const page = new engineApi.Menu.MenuPage({
+        items: [new engineApi.Menu.Label({ label: 'first' })],
       });
-      ClientEngineAPI.Menu.RegisterPage('options', page);
+      engineApi.Menu.RegisterPage('options', page);
 
-      const appended = new ClientEngineAPI.Menu.Label({ label: 'appended' });
-      ClientEngineAPI.Menu.AddItem('options', appended);
+      const appended = new engineApi.Menu.Label({ label: 'appended' });
+      engineApi.Menu.AddItem('options', appended);
       assert.equal(page.items[page.items.length - 1], appended);
 
-      const inserted = new ClientEngineAPI.Menu.Label({ label: 'inserted' });
-      ClientEngineAPI.Menu.AddItem('options', inserted, 0);
+      const inserted = new engineApi.Menu.Label({ label: 'inserted' });
+      engineApi.Menu.AddItem('options', inserted, 0);
       assert.equal(page.items[0], inserted);
       assert.equal(page.items.length, 3);
     });
@@ -166,18 +169,18 @@ void describe('ClientEngineAPI.Menu', () => {
 
   void test('AddItem on an unknown page is a safe no-op', () => {
     withMockClientEngineMenu(() => {
-      const item = new ClientEngineAPI.Menu.Label({ label: 'x' });
-      assert.doesNotThrow(() => ClientEngineAPI.Menu.AddItem('does-not-exist', item));
+      const item = new engineApi.Menu.Label({ label: 'x' });
+      assert.doesNotThrow(() => engineApi.Menu.AddItem('does-not-exist', item));
     });
   });
 
   void test('RemoveItem removes a previously added item', () => {
     withMockClientEngineMenu(() => {
-      const item = new ClientEngineAPI.Menu.Label({ label: 'removable' });
-      const page = new ClientEngineAPI.Menu.MenuPage({ items: [item] });
-      ClientEngineAPI.Menu.RegisterPage('options', page);
+      const item = new engineApi.Menu.Label({ label: 'removable' });
+      const page = new engineApi.Menu.MenuPage({ items: [item] });
+      engineApi.Menu.RegisterPage('options', page);
 
-      ClientEngineAPI.Menu.RemoveItem('options', item);
+      engineApi.Menu.RemoveItem('options', item);
 
       assert.equal(page.items.includes(item), false);
     });
@@ -185,81 +188,81 @@ void describe('ClientEngineAPI.Menu', () => {
 
   void test('SetRootPage declares which registered page IsOpen()/root-dependent behavior resolves to', () => {
     withMockClientEngineMenu(({ menuStack }) => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      engineApi.Menu.RegisterPage('main', main);
 
-      ClientEngineAPI.Menu.SetRootPage('main');
+      engineApi.Menu.SetRootPage('main');
 
       assert.equal(menuStack.isShowingRoot(), false);
-      ClientEngineAPI.Menu.Push('main');
+      engineApi.Menu.Push('main');
       assert.equal(menuStack.isShowingRoot(), true);
     });
   });
 
   void test('Depth/IsEmpty reflect the navigation stack', () => {
     withMockClientEngineMenu(() => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
-      ClientEngineAPI.Menu.RegisterPage('options', options);
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      const options = new engineApi.Menu.MenuPage({ title: 'Options' });
+      engineApi.Menu.RegisterPage('main', main);
+      engineApi.Menu.RegisterPage('options', options);
 
-      assert.equal(ClientEngineAPI.Menu.IsEmpty(), true);
-      assert.equal(ClientEngineAPI.Menu.Depth(), 0);
+      assert.equal(engineApi.Menu.IsEmpty(), true);
+      assert.equal(engineApi.Menu.Depth(), 0);
 
-      ClientEngineAPI.Menu.Push('main');
-      ClientEngineAPI.Menu.Push('options');
+      engineApi.Menu.Push('main');
+      engineApi.Menu.Push('options');
 
-      assert.equal(ClientEngineAPI.Menu.IsEmpty(), false);
-      assert.equal(ClientEngineAPI.Menu.Depth(), 2);
+      assert.equal(engineApi.Menu.IsEmpty(), false);
+      assert.equal(engineApi.Menu.Depth(), 2);
     });
   });
 
   void test('PopTo pops down to the given depth', () => {
     withMockClientEngineMenu(({ menuStack }) => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
-      const keys = new ClientEngineAPI.Menu.MenuPage({ title: 'Keys' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
-      ClientEngineAPI.Menu.RegisterPage('options', options);
-      ClientEngineAPI.Menu.RegisterPage('keys', keys);
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      const options = new engineApi.Menu.MenuPage({ title: 'Options' });
+      const keys = new engineApi.Menu.MenuPage({ title: 'Keys' });
+      engineApi.Menu.RegisterPage('main', main);
+      engineApi.Menu.RegisterPage('options', options);
+      engineApi.Menu.RegisterPage('keys', keys);
 
-      ClientEngineAPI.Menu.Push('main');
-      ClientEngineAPI.Menu.Push('options');
-      ClientEngineAPI.Menu.Push('keys');
-      ClientEngineAPI.Menu.PopTo(1);
+      engineApi.Menu.Push('main');
+      engineApi.Menu.Push('options');
+      engineApi.Menu.Push('keys');
+      engineApi.Menu.PopTo(1);
 
       assert.equal(menuStack.current(), main);
-      assert.equal(ClientEngineAPI.Menu.Depth(), 1);
+      assert.equal(engineApi.Menu.Depth(), 1);
     });
   });
 
   void test('PopToRoot pops down to a single page', () => {
     withMockClientEngineMenu(({ menuStack }) => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      const options = new ClientEngineAPI.Menu.MenuPage({ title: 'Options' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
-      ClientEngineAPI.Menu.RegisterPage('options', options);
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      const options = new engineApi.Menu.MenuPage({ title: 'Options' });
+      engineApi.Menu.RegisterPage('main', main);
+      engineApi.Menu.RegisterPage('options', options);
 
-      ClientEngineAPI.Menu.Push('main');
-      ClientEngineAPI.Menu.Push('options');
-      ClientEngineAPI.Menu.PopToRoot();
+      engineApi.Menu.Push('main');
+      engineApi.Menu.Push('options');
+      engineApi.Menu.PopToRoot();
 
       assert.equal(menuStack.current(), main);
-      assert.equal(ClientEngineAPI.Menu.Depth(), 1);
+      assert.equal(engineApi.Menu.Depth(), 1);
     });
   });
 
   void test('Clear empties the stack without touching Key.destination', () => {
     withMockClientEngineMenu(() => {
-      const main = new ClientEngineAPI.Menu.MenuPage({ title: 'Main' });
-      ClientEngineAPI.Menu.RegisterPage('main', main);
-      ClientEngineAPI.Menu.Open('main');
+      const main = new engineApi.Menu.MenuPage({ title: 'Main' });
+      engineApi.Menu.RegisterPage('main', main);
+      engineApi.Menu.Open('main');
 
       assert.equal(Key.destination, KeyDestination.menu);
 
-      ClientEngineAPI.Menu.Clear();
+      engineApi.Menu.Clear();
 
-      assert.equal(ClientEngineAPI.Menu.IsEmpty(), true);
+      assert.equal(engineApi.Menu.IsEmpty(), true);
       assert.equal(Key.destination, KeyDestination.menu);
     });
   });

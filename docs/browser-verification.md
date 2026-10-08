@@ -100,11 +100,11 @@ guessing from a screenshot.
 
 ## 5. Reach a gated menu/HUD page without its full physical trigger
 
-`Sys.ts`'s `Init()` exposes `window.registry` in the browser (`CL`, `COM`, `Con`, `Host`,
-`M`, `Key`, etc.; `SV` only with `?serverthread`, by default the server is in a worker and `CL.cls.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
+The page's composition root (`bootstrap/createBrowserClient.ts`) exposes `window.engine` in the browser (`CL`, `COM`, `Con`,
+`ConsoleOverlay`, `Host`, `M`, `Key`, etc.; `SV` is `null` unless the page runs with `?serverthread`, by default the server is in a worker and `CL.cls.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
 
 ```js
-const { M, Key } = window.registry;
+const { M, Key } = window.engine;
 Key.destination = 3; // KeyDestination.menu — required, or the page becomes "active"
                       // (onEnter fires) but M.Draw() never renders it, since only
                       // ClientEngineAPI.Menu.Open() sets this before push()
@@ -116,8 +116,7 @@ live, and still exercises the real server round-trip for anything the page's act
 (e.g. a buy-menu row click sends a real `impulse N` to the same-process listen-server game,
 which validates it server-side) — without needing to physically navigate to the trigger.
 
-`Cmd`/`Cvar` are deliberately excluded from `window.registry` (see the registry pattern in
-`code-style-guide.instructions.md`), so `window.registry.Cmd.ExecuteString(...)` throws.
+`Cmd`/`Cvar` are not on `window.engine`, so `window.engine.Cmd.ExecuteString(...)` throws.
 Drive console commands through real keyboard input instead — `` ` ``/`~` opens the
 drop-down console by default:
 
@@ -133,10 +132,10 @@ loads and any cvar/console command (e.g. toggling `r_shadows`/`r_bloom`/`gl_msaa
 Two traps when scripting this: the console closes itself after commands like `map`/`load`, so a
 fixed "press Backquote, type, press Enter, press Backquote" sequence drifts out of sync (the second
 Backquote then opens it again and the next command's first Backquote closes it, so the text lands in
-the game); check whether the drawer is open before and after each command instead (`ConsoleOverlay.isOpen` is not on `window.registry`, so take a screenshot, or look at whether `window.registry.Con.text` grew). And the first
+the game); check whether the drawer is open before and after each command instead (read `window.engine.ConsoleOverlay.isOpen`, or take a screenshot, or look at whether `window.engine.Con.text` grew). And the first
 character typed right after the console opens can be swallowed, so wait about 700 ms after the
 opening Backquote. To start a single-player game without typing `map`, press Enter twice on the main
-menu (Single Player, New Game). `window.registry.Con.text` holds the console lines, which is how to
+menu (Single Player, New Game). `window.engine.Con.text` holds the console lines, which is how to
 read the output of a command such as `status`.
 
 Screenshots plus zero console errors/warnings across a `page.on('console', ...)` capture is

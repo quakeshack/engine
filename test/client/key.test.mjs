@@ -15,6 +15,7 @@ import { useClientStateOf } from '../support/clientState.ts';
 import { useMenuOf } from '../support/menu.ts';
 import M from '../../source/engine/client/Menu.ts';
 import { patchMembers } from '../support/clientState.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 /**
  * Temporarily installs a minimal `Con` registry stub (plus the real `COM` for
@@ -24,7 +25,7 @@ import { patchMembers } from '../support/clientState.ts';
  */
 function withMockKeyRegistry(callback) {
   const previousCon = registry.Con;
-  const previousCOM = registry.COM;
+  const previousCOM = pageServices.COM;
 
   const printed = [];
   const con = {
@@ -32,7 +33,7 @@ function withMockKeyRegistry(callback) {
   };
   ConsoleOverlay.isOpen = false;
   registry.Con = con;
-  registry.COM = COM;
+  pageServices.COM = COM;
   eventBus.publish('registry.frozen');
 
   try {
@@ -40,7 +41,7 @@ function withMockKeyRegistry(callback) {
   } finally {
     ConsoleOverlay.isOpen = false;
     registry.Con = previousCon;
-    registry.COM = previousCOM;
+    pageServices.COM = previousCOM;
     eventBus.publish('registry.frozen');
   }
 }

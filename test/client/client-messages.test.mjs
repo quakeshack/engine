@@ -11,6 +11,7 @@ import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useHostOf } from '../support/host.ts';
 import Host from '../../source/engine/common/Host.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 class MockClientSerializable {
   constructor(value) {
@@ -39,15 +40,15 @@ registerSerializableType(MockClientSerializable, {
 function withMockClientMessagesRegistry({ CL, COM, NET, Host }, callback) {
   const previousValues = {
     CL: registry.CL,
-    COM: registry.COM,
-    NET: registry.NET,
+    COM: pageServices.COM,
+    NET: pageServices.NET,
     Host: registry.Host,
   };
 
   registry.CL = CL;
   const restoreClientState = useClientStateOf(registry.CL);
-  registry.COM = COM;
-  registry.NET = NET;
+  pageServices.COM = COM;
+  pageServices.NET = NET;
   registry.Host = Host ?? { realtime: 0 };
   const restoreHost = useHostOf(registry.Host);
   eventBus.publish('registry.frozen');
@@ -55,8 +56,8 @@ function withMockClientMessagesRegistry({ CL, COM, NET, Host }, callback) {
   const restore = () => {
     registry.CL = previousValues.CL;
     restoreClientState();
-    registry.COM = previousValues.COM;
-    registry.NET = previousValues.NET;
+    pageServices.COM = previousValues.COM;
+    pageServices.NET = previousValues.NET;
     registry.Host = previousValues.Host;
     restoreHost();
     eventBus.publish('registry.frozen');

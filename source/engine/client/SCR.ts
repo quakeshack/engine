@@ -2,7 +2,6 @@ import { gameCapabilities } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import { KeyDestination } from './Key.ts';
 import GL from './GL.ts';
@@ -15,12 +14,10 @@ import CL from './CL.ts';
 import R from './R.ts';
 import M from './Menu.ts';
 import Host from '../common/Host.ts';
-
-let { Draw, Key, S, V } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Draw, Key, S, V } = getClientRegistry());
-});
+import Draw from './Draw.ts';
+import Key from './Key.ts';
+import S from './Sound.ts';
+import V from './V.ts';
 
 let gl: WebGL2RenderingContext = null!;
 

@@ -1,11 +1,4 @@
-import { getClientRegistry } from '../../registry.ts';
-import { eventBus } from '../../common/EventBus.ts';
-
-let { COM } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM } = getClientRegistry());
-});
+import { com } from '../PageServices.ts';
 
 interface SaveGameData {
   comment?: string;
@@ -35,7 +28,7 @@ export default class SaveSlots {
   static #snapshot = new Map<number, SaveGameData>();
 
   static #path(index: number): string {
-    return `${COM.GetGamedir()}/s${index}.json`;
+    return `${com.GetGamedir()}/s${index}.json`;
   }
 
   /**
@@ -45,7 +38,7 @@ export default class SaveSlots {
     const snapshot = new Map<number, SaveGameData>();
 
     for (let index = 0; index < SaveSlots.MAX_SLOTS; index++) {
-      const raw = await COM.userStore?.read(SaveSlots.#path(index)) ?? null;
+      const raw = await com.userStore?.read(SaveSlots.#path(index)) ?? null;
 
       if (raw === null) {
         continue;
@@ -92,6 +85,6 @@ export default class SaveSlots {
    */
   static delete(index: number): void {
     SaveSlots.#snapshot.delete(index);
-    void COM.userStore?.remove(SaveSlots.#path(index));
+    void com.userStore?.remove(SaveSlots.#path(index));
   }
 }

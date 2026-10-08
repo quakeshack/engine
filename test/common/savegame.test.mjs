@@ -21,6 +21,8 @@ import '../support/consoleBridge.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { facades } from '../support/facades.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 const [{ ServerGameAPI }, { PlayerEntity }, { WorldspawnEntity }] = await Promise.all([
   import('../../source/game/id1/GameAPI.ts'),
@@ -426,7 +428,7 @@ void describe('ClientHost.Savegame_f', () => {
 
     const previousRegistry = {
       CL: registry.CL,
-      COM: registry.COM,
+      COM: pageServices.COM,
       Con: registry.Con,
       R: registry.R,
       SV: registry.SV,
@@ -449,7 +451,7 @@ void describe('ClientHost.Savegame_f', () => {
     };
 
     const restoreClientState = useClientStateOf(registry.CL);
-    registry.COM = mockCOM;
+    pageServices.COM = mockCOM;
     registry.Con = consoleCapture.Con;
     registry.R = renderer;
     const restoreRenderer = useRendererOf(registry.R);
@@ -471,7 +473,7 @@ void describe('ClientHost.Savegame_f', () => {
       Cvar.Filter = previousFilter;
       registry.CL = previousRegistry.CL;
       restoreClientState();
-      registry.COM = previousRegistry.COM;
+      pageServices.COM = previousRegistry.COM;
       registry.Con = previousRegistry.Con;
       registry.R = previousRegistry.R;
       restoreRenderer();
@@ -617,12 +619,12 @@ void describe('ClientHost.Loadgame_f', () => {
       },
     };
     const previousResumeGame = ClientLifecycle.resumeGame;
-    const previousSCR = registry.SCR;
+    const previousSCR = facades.SCR;
 
     ClientLifecycle.resumeGame = (clientdata, particles) => {
       resumes.push({ clientdata, particles });
     };
-    registry.SCR = { BeginLoadingPlaque() { } };
+    facades.SCR = { BeginLoadingPlaque() { } };
 
     try {
       await withMockRegistry({
@@ -640,7 +642,7 @@ void describe('ClientHost.Loadgame_f', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
-      registry.SCR = previousSCR;
+      facades.SCR = previousSCR;
     }
 
     assert.deepEqual(callOrder, [
@@ -808,8 +810,8 @@ void describe('ClientHost.Loadgame_f', () => {
       },
     };
 
-    const previousSCR = registry.SCR;
-    registry.SCR = { BeginLoadingPlaque() { } };
+    const previousSCR = facades.SCR;
+    facades.SCR = { BeginLoadingPlaque() { } };
 
     try {
       await withMockRegistry({
@@ -823,7 +825,7 @@ void describe('ClientHost.Loadgame_f', () => {
         );
       });
     } finally {
-      registry.SCR = previousSCR;
+      facades.SCR = previousSCR;
     }
 
     assert.equal(spawnCalls, 1);
@@ -878,8 +880,8 @@ void describe('Host.save/load integration', () => {
     registry.Sys = {
       Print() { },
     };
-    const previousSCR = registry.SCR;
-    registry.SCR = { BeginLoadingPlaque() { } };
+    const previousSCR = facades.SCR;
+    facades.SCR = { BeginLoadingPlaque() { } };
     registry.isDedicatedServer = true;
     eventBus.publish('registry.frozen');
 
@@ -1093,7 +1095,7 @@ void describe('Host.save/load integration', () => {
       ClientLifecycle.resumeGame = previousResumeGame;
       registry.R = previousRenderer;
       restoreRenderer();
-      registry.SCR = previousSCR;
+      facades.SCR = previousSCR;
       registry.Sys = previousSys;
       registry.isDedicatedServer = previousIsDedicatedServer;
       ServerGameAPI._cvars = previousServerGameCvars;

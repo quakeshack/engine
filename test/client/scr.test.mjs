@@ -9,6 +9,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useHostOf } from '../support/host.ts';
+import { facades } from '../support/facades.ts';
 
 /**
  * Installs minimal `CL`/`Host` registry stubs and a clean `ConsoleOverlay` for `SCR.SetUpToDrawConsole()`, plus a
@@ -200,7 +201,7 @@ void describe('SCR.DrawNet', () => {
   function withMockNetRegistry({ state, demoplayback = false, lastReceivedMessage = 0, realtime = 1 }, callback) {
     const previousCL = registry.CL;
     const previousHost = registry.Host;
-    const previousDraw = registry.Draw;
+    const previousDraw = facades.Draw;
     const previousR = registry.R;
     const previousNet = SCR.net;
     const picCalls = [];
@@ -210,7 +211,7 @@ void describe('SCR.DrawNet', () => {
     const restoreClientState = useClientStateOf(registry.CL);
     registry.Host = { realtime };
     const restoreHost = useHostOf(registry.Host);
-    registry.Draw = { Pic(x, y, pic) { picCalls.push({ x, y, pic }); } };
+    facades.Draw = { Pic(x, y, pic) { picCalls.push({ x, y, pic }); } };
     registry.R = { refdef: { vrect: { x: 0, y: 0 } } };
     const restoreRenderer = useRendererOf(registry.R);
     SCR.net = 'net-pic';
@@ -224,7 +225,7 @@ void describe('SCR.DrawNet', () => {
       restoreClientState();
       registry.Host = previousHost;
       restoreHost();
-      registry.Draw = previousDraw;
+      facades.Draw = previousDraw;
       registry.R = previousR;
       restoreRenderer();
       SCR.net = previousNet;

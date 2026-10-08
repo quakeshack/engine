@@ -6,7 +6,8 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { parseServerMessage } from '../../source/engine/client/ClientServerCommandHandlers.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
-import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
+import { installPageServices } from '../../source/engine/client/PageServices.ts';
+import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
@@ -14,6 +15,8 @@ import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useHostOf } from '../support/host.ts';
+import { facades } from '../support/facades.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 /**
  * Builds the minimal client registry surface required by parseServerMessage().
@@ -85,11 +88,11 @@ function withMockClientRegistry(mockedRegistry, callback) {
     Con: registry.Con,
     Host: registry.Host,
     Mod: registry.Mod,
-    NET: registry.NET,
+    NET: pageServices.NET,
     R: registry.R,
-    S: registry.S,
-    SCR: registry.SCR,
-    V: registry.V,
+    S: facades.S,
+    SCR: facades.SCR,
+    V: facades.V,
   };
 
   registry.CL = mockedRegistry.CL;
@@ -98,12 +101,12 @@ function withMockClientRegistry(mockedRegistry, callback) {
   registry.Host = mockedRegistry.Host;
   const restoreHost = useHostOf(registry.Host);
   registry.Mod = mockedRegistry.Mod;
-  registry.NET = mockedRegistry.NET;
+  pageServices.NET = mockedRegistry.NET;
   registry.R = mockedRegistry.R;
   const restoreRenderer = useRendererOf(registry.R);
-  registry.S = mockedRegistry.S;
-  registry.SCR = mockedRegistry.SCR;
-  registry.V = mockedRegistry.V;
+  facades.S = mockedRegistry.S;
+  facades.SCR = mockedRegistry.SCR;
+  facades.V = mockedRegistry.V;
   eventBus.publish('registry.frozen');
 
   const restore = () => {
@@ -113,12 +116,12 @@ function withMockClientRegistry(mockedRegistry, callback) {
     registry.Host = previousValues.Host;
     restoreHost();
     registry.Mod = previousValues.Mod;
-    registry.NET = previousValues.NET;
+    pageServices.NET = previousValues.NET;
     registry.R = previousValues.R;
     restoreRenderer();
-    registry.S = previousValues.S;
-    registry.SCR = previousValues.SCR;
-    registry.V = previousValues.V;
+    facades.S = previousValues.S;
+    facades.SCR = previousValues.SCR;
+    facades.V = previousValues.V;
     eventBus.publish('registry.frozen');
   };
 
@@ -151,7 +154,7 @@ void describe('parseServerMessage', () => {
         /Protocol 15 \/ WinQuake serverdata is no longer supported\./,
       );
 
-      assert.equal(mockedRegistry.SCR.recalc_refdef, true);
+      assert.equal(facades.SCR.recalc_refdef, true);
       assert.deepEqual(mockedRegistry.CL.connection.lastServerMessages, ['serverdata']);
     });
   });
@@ -227,16 +230,23 @@ void describe('parseServerMessage serverdata game construction', () => {
 
     let gameAPI = null;
 
-    void withMockClientRegistry(mockedRegistry, () => {
-      withActiveGameModule(ClientGameAPI, () => {
-        assert.throws(() => parseServerMessage(), /Bad maxclients \(0\)/);
-        gameAPI = clientRuntimeState.gameAPI;
+    const engineApi = createClientEngineApi();
+    const restorePageServices = installPageServices({ engineApi });
+
+    try {
+      void withMockClientRegistry(mockedRegistry, () => {
+        withActiveGameModule(ClientGameAPI, () => {
+          assert.throws(() => parseServerMessage(), /Bad maxclients \(0\)/);
+          gameAPI = clientRuntimeState.gameAPI;
+        });
       });
-    });
+    } finally {
+      restorePageServices();
+    }
 
     assert.deepEqual(compatibilityChecks, [[1, 0, 0]]);
     assert.equal(constructedWith.length, 1);
-    assert.equal(constructedWith[0], ClientEngineAPI);
+    assert.equal(constructedWith[0], engineApi);
     assert.ok(gameAPI instanceof ClientGameAPI);
   });
 

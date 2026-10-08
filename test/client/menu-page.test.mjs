@@ -16,6 +16,7 @@ import {
 import {
   DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout,
 } from '../../source/engine/client/menu/MenuPage.ts';
+import { facades } from '../support/facades.ts';
 
 /**
  * Temporarily installs a minimal `Host`/`M`/`S` registry stub so page draw/navigation can run
@@ -24,9 +25,9 @@ import {
  */
 function withMockPageRegistry(callback) {
   const previousHost = registry.Host;
-  const previousKey = registry.Key;
+  const previousKey = facades.Key;
   const previousM = registry.M;
-  const previousS = registry.S;
+  const previousS = facades.S;
 
   const drawnPics = [];
   const printed = [];
@@ -37,7 +38,7 @@ function withMockPageRegistry(callback) {
   registry.Host = { realtime: 0 };
 
   const restoreHost = useHostOf(registry.Host);
-  registry.Key = Key;
+  facades.Key = Key;
   registry.M = {
     sfx_menu1: 'menu1',
     sfx_menu2: 'menu2',
@@ -52,7 +53,7 @@ function withMockPageRegistry(callback) {
     withRenderingPage(page, draw) { renderingPages.push(page); draw(); },
   };
   const restoreMenu = useMenuOf(registry.M);
-  registry.S = { LocalSound() {} };
+  facades.S = { LocalSound() {} };
   eventBus.publish('registry.frozen');
 
   try {
@@ -62,10 +63,10 @@ function withMockPageRegistry(callback) {
   } finally {
     registry.Host = previousHost;
     restoreHost();
-    registry.Key = previousKey;
+    facades.Key = previousKey;
     registry.M = previousM;
     restoreMenu();
-    registry.S = previousS;
+    facades.S = previousS;
     eventBus.publish('registry.frozen');
   }
 }

@@ -4,12 +4,11 @@ import Cmd from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
 import Vector from '../../shared/Vector.ts';
 import GameModule from '../common/GameModule.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.ts';
+import { engineApi } from './PageServices.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
 import { registerClientDeserializer } from '../network/MSG.ts';
 import { ServerEdict } from '../server/Edict.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot, clientRuntimeState, clientStaticState } from './ClientState.ts';
@@ -24,17 +23,15 @@ import CL from './CL.ts';
 import R from './R.ts';
 import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
+import S from './Sound.ts';
+import SCR from './SCR.ts';
+import V from './V.ts';
+import { net } from './PageServices.ts';
 
 type ClientSignonState = 0 | 1 | 2 | 3 | 4;
 
-let { SCR, S, V, NET } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ SCR, S, V, NET } = getClientRegistry());
-});
-
 // An edict reference on the wire is the number of the client's own copy of it.
-registerClientDeserializer(ServerEdict, (): ClientEdict => clientRuntimeState.clientEntities.getEntity(NET.message.readShort()) as ClientEdict);
+registerClientDeserializer(ServerEdict, (): ClientEdict => clientRuntimeState.clientEntities.getEntity(net.message.readShort()) as ClientEdict);
 
 sharedCollisionModelSource.configureClient({
   getWorldModel: () => CL?.state?.worldmodel ?? null,
@@ -49,13 +46,13 @@ let entitiesReceived = 0;
  * @returns Whether the unread payload starts with a legacy Protocol 15 serverdata header.
  */
 function isUnsupportedLegacyServerData(): boolean {
-  const remainingBytes = NET.message.cursize - NET.message.readcount;
+  const remainingBytes = net.message.cursize - net.message.readcount;
 
   if (remainingBytes < 4) {
     return false;
   }
 
-  return new DataView(NET.message.data, NET.message.readcount, remainingBytes).getInt32(0, true) === 15;
+  return new DataView(net.message.data, net.message.readcount, remainingBytes).getInt32(0, true) === 15;
 }
 
 /**
@@ -87,7 +84,7 @@ function parseServerData() {
   Con.DPrint('Serverdata packet received.\n');
   CL.ClearState();
 
-  const version = NET.message.readByte();
+  const version = net.message.readByte();
 
   if (version !== Protocol.version) {
     throw new HostError(`Server returned protocol version ${version}, not ${Protocol.version}\n`);
@@ -101,9 +98,9 @@ function parseServerData() {
     throw new HostError('Server is running a game module with client code provided,\nbut no matching client game module is loaded.\nTry clearing your cache and connect again.');
   }
 
-  const name = NET.message.readString();
-  const author = NET.message.readString();
-  const serverVersion = [NET.message.readByte(), NET.message.readByte(), NET.message.readByte()];
+  const name = net.message.readString();
+  const author = net.message.readString();
+  const serverVersion = [net.message.readByte(), net.message.readByte(), net.message.readByte()];
 
   const identification = activeGameModule.identification;
 
@@ -115,9 +112,9 @@ function parseServerData() {
     throw new HostError(`Server (v${serverVersion.join('.')} ) is not compatible. You are running v${identification.version.join('.')}\nTry clearing your cache and connect again.`);
   }
 
-  clientRuntimeState.gameAPI = new activeGameModule.ClientGameAPI(ClientEngineAPI);
+  clientRuntimeState.gameAPI = new activeGameModule.ClientGameAPI(engineApi);
 
-  clientRuntimeState.maxclients = NET.message.readByte();
+  clientRuntimeState.maxclients = net.message.readByte();
   if ((clientRuntimeState.maxclients <= 0) || (clientRuntimeState.maxclients > 32)) {
     throw new HostError('Bad maxclients (' + clientRuntimeState.maxclients + ') from server!');
   }
@@ -128,7 +125,7 @@ function parseServerData() {
     clientRuntimeState.scores[i] = new ScoreSlot(i);
   }
 
-  clientRuntimeState.levelname = NET.message.readString();
+  clientRuntimeState.levelname = net.message.readString();
 
   // parsePmovevars(CL);
 
@@ -140,7 +137,7 @@ function parseServerData() {
   let nummodels: number;
   const model_precache: string[] = [];
   for (nummodels = 1; ; nummodels++) {
-    str = NET.message.readString();
+    str = net.message.readString();
     if (str.length === 0) {
       break;
     }
@@ -149,7 +146,7 @@ function parseServerData() {
   let numsounds: number;
   const sound_precache: string[] = [];
   for (numsounds = 1; ; numsounds++) {
-    str = NET.message.readString();
+    str = net.message.readString();
     if (str.length === 0) {
       break;
     }
@@ -159,7 +156,7 @@ function parseServerData() {
   const clientdataFields: string[] = [];
 
   while (true) {
-    const fields = NET.message.readString();
+    const fields = net.message.readString();
     if (fields === '') {
       break;
     }
@@ -169,7 +166,7 @@ function parseServerData() {
   clientRuntimeState.clientMessages.clientdataFields = clientdataFields;
 
   while (true) {
-    const classname = NET.message.readString();
+    const classname = net.message.readString();
 
     if (classname === '') {
       break;
@@ -178,7 +175,7 @@ function parseServerData() {
     const fields: string[] = [];
 
     while (true) {
-      const field = NET.message.readString();
+      const field = net.message.readString();
 
       if (field === '') {
         break;
@@ -285,16 +282,16 @@ function parseServerData() {
  */
 function parsePmovevars() {
   const movevars = clientPmove.movevars;
-  movevars.gravity = NET.message.readFloat();
-  movevars.stopspeed = NET.message.readFloat();
-  movevars.maxspeed = NET.message.readFloat();
-  movevars.spectatormaxspeed = NET.message.readFloat();
-  movevars.accelerate = NET.message.readFloat();
-  movevars.airaccelerate = NET.message.readFloat();
-  movevars.wateraccelerate = NET.message.readFloat();
-  movevars.friction = NET.message.readFloat();
-  movevars.waterfriction = NET.message.readFloat();
-  movevars.entgravity = NET.message.readFloat();
+  movevars.gravity = net.message.readFloat();
+  movevars.stopspeed = net.message.readFloat();
+  movevars.maxspeed = net.message.readFloat();
+  movevars.spectatormaxspeed = net.message.readFloat();
+  movevars.accelerate = net.message.readFloat();
+  movevars.airaccelerate = net.message.readFloat();
+  movevars.wateraccelerate = net.message.readFloat();
+  movevars.friction = net.message.readFloat();
+  movevars.waterfriction = net.message.readFloat();
+  movevars.entgravity = net.message.readFloat();
 
   Con.DPrint('Reconfigured Pmovevars.\n');
 }
@@ -303,26 +300,26 @@ function parsePmovevars() {
  * Parses a lightstyle definition.
  */
 function parseLightstylePacket() {
-  const index = NET.message.readByte();
+  const index = net.message.readByte();
   if (index >= Def.limits.lightstyles) {
     throw new HostError('svc_lightstyle > MAX_LIGHTSTYLES');
   }
 
-  clientRuntimeState.clientEntities.setLightstyle(index, NET.message.readString());
+  clientRuntimeState.clientEntities.setLightstyle(index, net.message.readString());
 }
 
 /**
  * Parses a spatialized sound start request.
  */
 function parseStartSoundPacket() {
-  const fieldMask = NET.message.readByte();
-  const volume = ((fieldMask & 1) !== 0) ? NET.message.readByte() : 255;
-  const attenuation = ((fieldMask & 2) !== 0) ? NET.message.readByte() * 0.015625 : 1.0;
-  const entchannel = NET.message.readShort();
-  const soundNum = NET.message.readByte();
+  const fieldMask = net.message.readByte();
+  const volume = ((fieldMask & 1) !== 0) ? net.message.readByte() : 255;
+  const attenuation = ((fieldMask & 2) !== 0) ? net.message.readByte() * 0.015625 : 1.0;
+  const entchannel = net.message.readShort();
+  const soundNum = net.message.readByte();
   const ent = entchannel >> 3;
   const channel = entchannel & 7;
-  const pos = NET.message.readCoordVector();
+  const pos = net.message.readCoordVector();
 
   const sound = clientRuntimeState.sound_precache[soundNum];
   if (sound) {
@@ -334,18 +331,18 @@ function parseStartSoundPacket() {
  * Parses a static entity definition.
  */
 function parseStaticEntity() {
-  const ent = clientRuntimeState.clientEntities.allocateStaticEntity(NET.message.readString());
-  const modelindex = NET.message.readByte();
+  const ent = clientRuntimeState.clientEntities.allocateStaticEntity(net.message.readString());
+  const modelindex = net.message.readByte();
   ent.modelindex = modelindex;
   ent.model = clientRuntimeState.model_precache[modelindex] || null;
-  ent.frame = NET.message.readByte();
-  ent.colormap = NET.message.readByte();
-  ent.skinnum = NET.message.readByte();
-  ent.effects = NET.message.readByte();
-  ent.alpha = NET.message.readByte() / 255.0;
-  ent.solid = NET.message.readByte();
-  ent.angles.set(NET.message.readAngleVector());
-  ent.setOrigin(NET.message.readCoordVector());
+  ent.frame = net.message.readByte();
+  ent.colormap = net.message.readByte();
+  ent.skinnum = net.message.readByte();
+  ent.effects = net.message.readByte();
+  ent.alpha = net.message.readByte() / 255.0;
+  ent.solid = net.message.readByte();
+  ent.angles.set(net.message.readAngleVector());
+  ent.setOrigin(net.message.readCoordVector());
   ent.spawn();
 }
 
@@ -353,10 +350,10 @@ function parseStaticEntity() {
  * Parses a static ambient sound definition.
  */
 function parseStaticSound() {
-  const org = NET.message.readCoordVector();
-  const soundId = NET.message.readByte();
-  const vol = NET.message.readByte();
-  const attn = NET.message.readByte();
+  const org = net.message.readCoordVector();
+  const soundId = net.message.readByte();
+  const vol = net.message.readByte();
+  const attn = net.message.readByte();
   const sound = clientRuntimeState.sound_precache[soundId];
   if (sound) {
     S.StaticSound(sound, org, vol / 255.0, attn);
@@ -367,11 +364,11 @@ function parseStaticSound() {
  * Applies server cvar updates.
  */
 function parseServerCvars() {
-  let count = NET.message.readByte();
+  let count = net.message.readByte();
 
   while (count-- > 0) {
-    const name = NET.message.readString();
-    const value = NET.message.readString();
+    const name = net.message.readString();
+    const value = net.message.readString();
 
     clientStaticState.serverInfo[name] = value;
 
@@ -394,9 +391,9 @@ function parseServerCvars() {
  * @param {BaseModel | null | undefined} model Model to attach to the beam.
  */
 function parseBeam(model: BaseModel | null | undefined) {
-  const ent = NET.message.readShort();
-  const start = NET.message.readCoordVector();
-  const end = NET.message.readCoordVector();
+  const ent = net.message.readShort();
+  const start = net.message.readCoordVector();
+  const end = net.message.readCoordVector();
   if (!model) {
     return;
   }
@@ -430,7 +427,7 @@ function parseBeam(model: BaseModel | null | undefined) {
  * Decodes temporary entities (explosions, splashes, etc.).
  */
 function parseTemporaryEntity() {
-  const type = NET.message.readByte() as Protocol.te;
+  const type = net.message.readByte() as Protocol.te;
   console.assert(Object.values(Protocol.te).includes(type), `CL.ParseTEnt: invalid temp entity type ${type}`);
 
   switch (type) {
@@ -448,7 +445,7 @@ function parseTemporaryEntity() {
       return;
   }
 
-  const pos = NET.message.readCoordVector();
+  const pos = net.message.readCoordVector();
   const sounds = clientRuntimeState.clientEntities.tempEntitySounds;
 
   switch (type) {
@@ -498,8 +495,8 @@ function parseTemporaryEntity() {
       R.TeleportSplash(pos);
       return;
     case Protocol.te.explosion2: {
-      const colorStart = NET.message.readByte();
-      const colorLength = NET.message.readByte();
+      const colorStart = net.message.readByte();
+      const colorLength = net.message.readByte();
       R.ParticleExplosion2(pos, colorStart, colorLength);
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(0);
       dl.origin = pos.copy();
@@ -521,7 +518,7 @@ function parseTemporaryEntity() {
  */
 function parsePacketEntities() {
   while (true) {
-    const edictNum = NET.message.readUint16();
+    const edictNum = net.message.readUint16();
 
     if (edictNum === 0) {
       break;
@@ -529,25 +526,25 @@ function parsePacketEntities() {
 
     const clent = clientRuntimeState.clientEntities.getEntity(edictNum);
 
-    const bits = NET.message.readUint16();
+    const bits = net.message.readUint16();
 
     if (bits & Protocol.u.classname) {
-      clent.classname = NET.message.readString();
+      clent.classname = net.message.readString();
       clent.loadHandler();
       clent.spawn();
     }
 
     if (bits & Protocol.u.free) {
-      clent.free = NET.message.readByte() !== 0;
+      clent.free = net.message.readByte() !== 0;
     }
 
     if (bits & Protocol.u.frame) {
       clent.framePrevious = clent.frame;
-      clent.frame = NET.message.readByte();
+      clent.frame = net.message.readByte();
     }
 
     if (bits & Protocol.u.model) {
-      const modelindex = NET.message.readByte();
+      const modelindex = net.message.readByte();
       clent.modelindex = modelindex;
       clent.model = clientRuntimeState.model_precache[modelindex] || null;
 
@@ -560,20 +557,20 @@ function parsePacketEntities() {
     }
 
     if (bits & Protocol.u.colormap) {
-      clent.colormap = NET.message.readByte();
+      clent.colormap = net.message.readByte();
     }
 
     if (bits & Protocol.u.skin) {
-      clent.skinnum = NET.message.readByte();
+      clent.skinnum = net.message.readByte();
     }
 
     if (bits & Protocol.u.effects) {
-      clent.effects = NET.message.readByte();
-      clent.alpha = NET.message.readByte() / 255.0;
+      clent.effects = net.message.readByte();
+      clent.alpha = net.message.readByte() / 255.0;
     }
 
     if (bits & Protocol.u.solid) {
-      clent.solid = NET.message.readByte();
+      clent.solid = net.message.readByte();
     }
 
     const origin = clent.msg_origins[0];
@@ -582,22 +579,22 @@ function parsePacketEntities() {
 
     for (let i = 0; i < 3; i++) {
       if (bits & (Protocol.u.origin1 << i)) {
-        origin[i] = NET.message.readCoord();
+        origin[i] = net.message.readCoord();
       }
 
       if (bits & (Protocol.u.angle1 << i)) {
-        angles[i] = NET.message.readAngle();
-        velocity[i] = NET.message.readCoord();
+        angles[i] = net.message.readAngle();
+        velocity[i] = net.message.readCoord();
       }
     }
 
     if (bits & Protocol.u.size) {
-      clent.maxs.set(NET.message.readCoordVector());
-      clent.mins.set(NET.message.readCoordVector());
+      clent.maxs.set(net.message.readCoordVector());
+      clent.mins.set(net.message.readCoordVector());
     }
 
     if (bits & Protocol.u.nextthink) {
-      clent.lerpEndTime = clientRuntimeState.clientMessages.mtime[0] + NET.message.readByte() / 255.0;
+      clent.lerpEndTime = clientRuntimeState.clientMessages.mtime[0] + net.message.readByte() / 255.0;
     }
 
     const classname = clent.classname;
@@ -605,10 +602,10 @@ function parsePacketEntities() {
     if (clientEntityFields) {
       // TODO: optimize this
       const fieldbits = clientEntityFields.bitsReader === 'readByte'
-        ? NET.message.readByte()
+        ? net.message.readByte()
         : clientEntityFields.bitsReader === 'readShort'
-          ? NET.message.readShort()
-          : NET.message.readLong();
+          ? net.message.readShort()
+          : net.message.readLong();
 
       if (fieldbits > 0) {
         const fields = [];
@@ -622,7 +619,7 @@ function parsePacketEntities() {
 
         let counter = 0;
 
-        const values = NET.message.readSerializablesOnClient();
+        const values = net.message.readSerializablesOnClient();
 
         for (const value of values) {
           clent.extended[fields[counter++]] = value;
@@ -688,7 +685,7 @@ function handleClientData() {
  * Validates the negotiated protocol version and aborts if mismatched.
  */
 function handleVersion() {
-  const protocol = NET.message.readLong();
+  const protocol = net.message.readLong();
   if (protocol !== Protocol.version) {
     throw new HostError(`CL.ParseServerMessage: Server is protocol ${protocol} instead of ${Protocol.version}\n`);
   }
@@ -698,21 +695,21 @@ function handleVersion() {
  * Processes svc_disconnect by surfacing the server-supplied message.
  */
 function handleDisconnect() {
-  ClientHost.EndGame(`Server disconnected: ${NET.message.readString()}`);
+  ClientHost.EndGame(`Server disconnected: ${net.message.readString()}`);
 }
 
 /**
  * Routes svc_print text through the console.
  */
 function handlePrint() {
-  Con.Print(NET.message.readString());
+  Con.Print(net.message.readString());
 }
 
 /**
  * Displays server-sent center print text and mirrors it to the console.
  */
 function handleCenterPrint() {
-  const string = NET.message.readString();
+  const string = net.message.readString();
   SCR.CenterPrint(string);
   Con.Print(`\x03${string}\n`); // TODO: have a better system for this
 }
@@ -721,23 +718,23 @@ function handleCenterPrint() {
  * Handles chat payloads and appends them to the client chat log.
  */
 function handleChatMessage() {
-  CL.AppendChatMessage(NET.message.readString(), NET.message.readString(), NET.message.readByte() === 1);
+  CL.AppendChatMessage(net.message.readString(), net.message.readString(), net.message.readByte() === 1);
 }
 
 /**
  * Concatenates svc_stufftext into the pending console buffer.
  */
 function handleStuffText() {
-  Cmd.text += NET.message.readString();
+  Cmd.text += net.message.readString();
 }
 
 /**
  * Delegates svc_damage to the view module so it can spawn impacts.
  */
 function handleDamage() {
-  const armor = NET.message.readByte();
-  const blood = NET.message.readByte();
-  const origin = NET.message.readCoordVector();
+  const armor = net.message.readByte();
+  const blood = net.message.readByte();
+  const origin = net.message.readCoordVector();
   V.ApplyDamage(armor, blood, origin);
 }
 
@@ -758,7 +755,7 @@ function handleServerData() {
  * Processes map transitions and resets client signon state.
  */
 function handleChangeLevel() {
-  const mapname = NET.message.readString();
+  const mapname = net.message.readString();
   CL.SetConnectingStep(5, 'Changing level to ' + mapname);
   clientStaticState.signon = 0;
   clientStaticState.changelevel = true;
@@ -768,14 +765,14 @@ function handleChangeLevel() {
  * Updates the authoritative view angles of the local player.
  */
 function handleSetAngle() {
-  clientRuntimeState.viewangles.set(NET.message.readAngleVector());
+  clientRuntimeState.viewangles.set(net.message.readAngleVector());
 }
 
 /**
  * Selects the entity the client should render from.
  */
 function handleSetView() {
-  clientRuntimeState.viewentity = NET.message.readShort();
+  clientRuntimeState.viewentity = net.message.readShort();
 }
 
 /**
@@ -796,7 +793,7 @@ function handleSound() {
  * Stops a currently playing sound for an entity/channel pair.
  */
 function handleStopSound() {
-  const value = NET.message.readShort();
+  const value = net.message.readShort();
   S.StopSound(value >> 3, value & 7);
 }
 
@@ -804,8 +801,8 @@ function handleStopSound() {
  * Updates the server-specified sound precache entry.
  */
 function handleLoadSound() {
-  const index = NET.message.readByte();
-  const sound = S.PrecacheSound(NET.message.readString());
+  const index = net.message.readByte();
+  const sound = S.PrecacheSound(net.message.readString());
   if (sound === null) {
     return;
   }
@@ -817,11 +814,11 @@ function handleLoadSound() {
  * Mirrors scoreboard name updates and broadcasts change events.
  */
 function handleUpdateName() {
-  const slot = NET.message.readByte();
+  const slot = net.message.readByte();
   if (slot >= clientRuntimeState.maxclients) {
     throw new HostError('CL.ParseServerMessage: svc_updatename > MAX_SCOREBOARD');
   }
-  const newName = NET.message.readString();
+  const newName = net.message.readString();
   if (clientRuntimeState.scores[slot].name !== '' && newName !== '' && newName !== clientRuntimeState.scores[slot].name) {
     Con.Print(`${clientRuntimeState.scores[slot].name} renamed to ${newName}\n`);
     eventBus.publish('client.players.name-changed', slot, clientRuntimeState.scores[slot].name, newName);
@@ -833,11 +830,11 @@ function handleUpdateName() {
  * Updates frag counts for a player and notifies listeners.
  */
 function handleUpdateFrags() {
-  const slot = NET.message.readByte();
+  const slot = net.message.readByte();
   if (slot >= clientRuntimeState.maxclients) {
     throw new HostError('CL.ParseServerMessage: svc_updatefrags > MAX_SCOREBOARD');
   }
-  clientRuntimeState.scores[slot].frags = NET.message.readShort();
+  clientRuntimeState.scores[slot].frags = net.message.readShort();
   eventBus.publish('client.players.frags-updated', slot, clientRuntimeState.scores[slot].frags);
 }
 
@@ -845,11 +842,11 @@ function handleUpdateFrags() {
  * Updates color indices for a player and notifies listeners.
  */
 function handleUpdateColors() {
-  const slot = NET.message.readByte();
+  const slot = net.message.readByte();
   if (slot >= clientRuntimeState.maxclients) {
     throw new HostError('CL.ParseServerMessage: svc_updatecolors > MAX_SCOREBOARD');
   }
-  clientRuntimeState.scores[slot].colors = NET.message.readByte();
+  clientRuntimeState.scores[slot].colors = net.message.readByte();
   eventBus.publish('client.players.colors-updated', slot, clientRuntimeState.scores[slot].colors);
 }
 
@@ -857,21 +854,21 @@ function handleUpdateColors() {
  * Updates ping information for a player.
  */
 function handleUpdatePings() {
-  const slot = NET.message.readByte();
+  const slot = net.message.readByte();
   if (slot >= clientRuntimeState.maxclients) {
     throw new HostError('CL.ParseServerMessage: svc_updatepings > MAX_SCOREBOARD');
   }
-  clientRuntimeState.scores[slot].ping = NET.message.readShort() / 10;
+  clientRuntimeState.scores[slot].ping = net.message.readShort() / 10;
 }
 
 /**
  * Spawns particle effects from svc_particle payloads.
  */
 function handleParticle() {
-  const org = NET.message.readCoordVector();
-  const dir = NET.message.readCoordVector();
-  const msgcount = NET.message.readByte();
-  const color = NET.message.readByte();
+  const org = net.message.readCoordVector();
+  const dir = net.message.readCoordVector();
+  const msgcount = net.message.readByte();
+  const color = net.message.readByte();
   if (msgcount === 255) {
     R.ParticleExplosion(org);
   } else {
@@ -904,7 +901,7 @@ function handleTempEntity() {
  * Toggles the paused state and publishes pause events.
  */
 function handleSetPause() {
-  clientRuntimeState.paused = NET.message.readByte() !== 0;
+  clientRuntimeState.paused = net.message.readByte() !== 0;
   if (clientRuntimeState.paused) {
     eventBus.publish('client.paused');
   } else {
@@ -916,7 +913,7 @@ function handleSetPause() {
  * Tracks the server signon phase and advances the handshake.
  */
 function handleSignonNum() {
-  const signon = NET.message.readByte();
+  const signon = net.message.readByte();
   if (signon <= clientStaticState.signon) {
     throw new HostError('Received signon ' + signon + ' when at ' + clientStaticState.signon);
   }
@@ -937,8 +934,8 @@ function handleSpawnStaticSound() {
  * Starts or overrides the current CD track.
  */
 function handleCdTrack() {
-  clientRuntimeState.cdtrack = NET.message.readByte();
-  NET.message.readByte(); // unused (usually always the same as cdtrack)
+  clientRuntimeState.cdtrack = net.message.readByte();
+  net.message.readByte(); // unused (usually always the same as cdtrack)
 
   if ((clientStaticState.demoplayback || clientStaticState.demorecording) && clientStaticState.forcetrack !== -1) {
     eventBus.publish('client.cdtrack', clientStaticState.forcetrack);
@@ -963,7 +960,7 @@ function handleFinale() {
   clientRuntimeState.intermission = 2;
   clientRuntimeState.completed_time = clientRuntimeState.time;
   markRefdefDirty();
-  SCR.CenterPrint(NET.message.readString());
+  SCR.CenterPrint(net.message.readString());
 }
 
 /**
@@ -973,7 +970,7 @@ function handleCutscene() {
   clientRuntimeState.intermission = 3;
   clientRuntimeState.completed_time = clientRuntimeState.time;
   markRefdefDirty();
-  SCR.CenterPrint(NET.message.readString());
+  SCR.CenterPrint(net.message.readString());
 }
 
 /**
@@ -1024,8 +1021,8 @@ function handleClientEvent() {
  * Updates portal state.
  */
 function handleSetPortalState() {
-  const portalNum = NET.message.readShort();
-  const open = NET.message.readByte() !== 0;
+  const portalNum = net.message.readShort();
+  const open = net.message.readByte() !== 0;
   const worldmodel = clientRuntimeState.worldmodel;
   console.assert(worldmodel !== null, 'worldmodel must be available before changing portal state');
   if (worldmodel === null) {
@@ -1082,7 +1079,7 @@ const serverCommandHandlers: Partial<Record<number, () => void>> = {
  */
 export function parseServerMessage() {
   if (clientCvars.shownet.value === 1) {
-    Con.Print('NET: ' + NET.message.cursize + ' bytes\n');
+    Con.Print('NET: ' + net.message.cursize + ' bytes\n');
   }
 
   clientRuntimeState.onground = false;
@@ -1097,7 +1094,7 @@ export function parseServerMessage() {
     CL.connection.processingServerDataState = 0;
   } else {
     CL.connection.lastServerMessages.length = 0;
-    NET.message.beginReading();
+    net.message.beginReading();
   }
 
   const messages: string[] = [];
@@ -1107,12 +1104,12 @@ export function parseServerMessage() {
       break;
     }
 
-    if (NET.message.badread) {
+    if (net.message.badread) {
       CL.PrintLastServerMessages();
       throw new HostError('CL.ParseServerMessage: Bad server message');
     }
 
-    const cmd = NET.message.readByte();
+    const cmd = net.message.readByte();
 
     if (cmd === -1) {
       break;
@@ -1158,7 +1155,7 @@ export function parseServerMessage() {
   // clientRuntimeState.clientEntities.setSolidEntities(clientPmove);
 
   if (clientCvars.shownet.value === 2) {
-    Con.Print(`NET: (${NET.message.cursize}) ${messages.join(', ')}\n`);
+    Con.Print(`net: (${net.message.cursize}) ${messages.join(', ')}\n`);
   }
 }
 

@@ -6,6 +6,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import SaveSlots from '../../source/engine/client/menu/SaveSlots.ts';
 import { BackendUserStore, MemoryBackend } from '../../source/engine/common/UserStore.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 /**
  * Installs a minimal `COM` registry stub (SaveSlots needs the game directory and the user store)
@@ -14,10 +15,10 @@ import ClientHost from '../../source/engine/client/ClientHost.ts';
  * @returns {Promise<void>} resolves once the callback and the cleanup are done
  */
 async function withMockSaveSlotsRegistry(callback) {
-  const previousCOM = registry.COM;
+  const previousCOM = pageServices.COM;
   const store = new BackendUserStore(new MemoryBackend());
 
-  registry.COM = { GetGamedir: () => 'id1', userStore: store };
+  pageServices.COM = { GetGamedir: () => 'id1', userStore: store };
   eventBus.publish('registry.frozen');
 
   try {
@@ -25,10 +26,10 @@ async function withMockSaveSlotsRegistry(callback) {
     await callback(store);
   } finally {
     // Leave an empty snapshot behind for the next test.
-    registry.COM = { GetGamedir: () => 'id1', userStore: null };
+    pageServices.COM = { GetGamedir: () => 'id1', userStore: null };
     eventBus.publish('registry.frozen');
     await SaveSlots.refresh();
-    registry.COM = previousCOM;
+    pageServices.COM = previousCOM;
     eventBus.publish('registry.frozen');
   }
 }

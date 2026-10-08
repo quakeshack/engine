@@ -3,12 +3,12 @@ import { K } from '../../../shared/Keys.ts';
 import { LineEditor } from '../../../shared/LineEditor.ts';
 import Cmd from '../../common/Cmd.ts';
 import Cvar from '../../common/Cvar.ts';
-import { getClientRegistry } from '../../registry.ts';
-import { eventBus } from '../../common/EventBus.ts';
 import type { BitmapFont } from '../BitmapFont.ts';
 import type { MenuPic } from '../Menu.ts';
 import M from '../Menu.ts';
 import Host from '../../common/Host.ts';
+import Key from '../Key.ts';
+import S from '../Sound.ts';
 
 interface MenuItemConfig {
   readonly label?: string;
@@ -92,12 +92,6 @@ interface NumberInputConfig extends MenuItemConfig {
   readonly max?: number;
   readonly step?: number;
 }
-
-let { Key, S } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Key, S } = getClientRegistry());
-});
 
 /**
  * Base class for all menu items.
@@ -639,7 +633,6 @@ export class Image extends MenuItem {
     return this.pic?.height || 0;
   }
 }
-
 
 /**
  * A single load/save game slot. Enter always activates the slot (the caller decides whether

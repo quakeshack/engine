@@ -6,7 +6,7 @@ import CL from './CL.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import GameModule from '../common/GameModule.ts';
 import { MoveVars } from '../common/Pmove.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.ts';
+import { engineApi } from './PageServices.ts';
 import { eventBus } from '../common/EventBus.ts';
 import type { SerializedParticle } from './R.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
@@ -58,9 +58,9 @@ export default class ClientLifecycle {
 
     document.title = `${activeGameModule.identification.name} (${activeGameModule.identification.version.join('.')}) on ${Def.productName} (${hostVersion?.string ?? ''})`;
 
-    activeGameModule.ClientGameAPI.Init(ClientEngineAPI);
+    activeGameModule.ClientGameAPI.Init(engineApi);
 
-    this.startGame = activeGameModule.ClientGameAPI.GetStartGameInterface(ClientEngineAPI);
+    this.startGame = activeGameModule.ClientGameAPI.GetStartGameInterface(engineApi);
 
     if (!this.startGame) {
       this.startGame = new DefaultStartGameFunctions();

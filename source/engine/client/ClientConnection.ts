@@ -5,7 +5,6 @@ import Cmd from '../common/Cmd.ts';
 import ClientInput from './ClientInput.ts';
 import type ClientDemos from './ClientDemos.ts';
 import { clientRuntimeState, clientStaticState, type ClientRuntimeState, type ClientStaticState } from './ClientState.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import { HostError } from '../common/Errors.ts';
 import { QSocket } from '../network/NetworkDrivers.ts';
@@ -15,18 +14,16 @@ import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
 import Mod from '../common/Mod.ts';
 import Host from '../common/Host.ts';
+import IN from './IN.ts';
+import S from './Sound.ts';
+import SCR from './SCR.ts';
+import { net } from './PageServices.ts';
 
 export type IdentityCvars = {
   name: Cvar | null;
   color: Cvar | null;
   rcon_password: Cvar | null;
 };
-
-let { IN, NET, SCR, S } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ IN, NET, SCR, S } = getClientRegistry());
-});
 
 export default class ClientConnection {
   cls: ClientStaticState;
@@ -90,13 +87,13 @@ export default class ClientConnection {
     let result = 0;
 
     while (true) {
-      result = NET.GetMessage(netcon);
+      result = net.GetMessage(netcon);
 
       if (result !== 1 && result !== 2) {
         return result;
       }
 
-      if (NET.message.cursize === 1 && new Uint8Array(NET.message.data, 0, 1)[0] === Protocol.svc.nop) {
+      if (net.message.cursize === 1 && new Uint8Array(net.message.data, 0, 1)[0] === Protocol.svc.nop) {
         Con.DPrint('<-- server to client keepalive\n');
       } else {
         break;
@@ -141,12 +138,12 @@ export default class ClientConnection {
       throw new HostError('CL.SendCmd: no active connection');
     }
 
-    if (!NET.CanSendMessage(netcon)) {
+    if (!net.CanSendMessage(netcon)) {
       Con.DPrint('CL.SendCmd: can\'t send\n');
       return;
     }
 
-    if (NET.SendMessage(netcon, this.cls.message) === -1) {
+    if (net.SendMessage(netcon, this.cls.message) === -1) {
       throw new HostError('CL.SendCmd: lost server connection');
     }
 
@@ -197,11 +194,11 @@ export default class ClientConnection {
       this.cls.message.clear();
       this.cls.message.writeByte(Protocol.clc.disconnect);
       if (this.cls.netcon !== null) {
-        NET.SendUnreliableMessage(this.cls.netcon, this.cls.message);
+        net.SendUnreliableMessage(this.cls.netcon, this.cls.message);
       }
       this.cls.message.clear();
       if (this.cls.netcon !== null) {
-        NET.Close(this.cls.netcon);
+        net.Close(this.cls.netcon);
       }
       this.cls.state = Def.clientConnectionState.disconnected;
       if (clientStaticState.serverController.state.active) {
@@ -256,7 +253,7 @@ export default class ClientConnection {
 
     eventBus.publish('client.connecting', host);
 
-    const sock = NET.Connect(host);
+    const sock = net.Connect(host);
 
     if (sock === null) {
       throw new HostError('CL.Connect: connect failed\n');

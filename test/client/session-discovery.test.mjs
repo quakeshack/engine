@@ -5,6 +5,7 @@ import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import SessionDiscovery from '../../source/engine/client/menu/SessionDiscovery.ts';
 import '../support/consoleBridge.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 /**
  * A minimal `WebRTCDriver` test double for the ping-probe lifecycle (`startSessionPing`/
@@ -54,30 +55,30 @@ class FakeWebRTCDriver {
  * @param {{ urls?: { signalingURL?: string } }} [options] registry overrides, e.g. to simulate no signaling URL
  */
 async function withMockDiscoveryRegistry(game, callback, options = {}) {
-  const previousCOM = registry.COM;
-  const previousUrls = registry.urls;
+  const previousCOM = pageServices.COM;
+  const previousUrls = pageServices.urls;
   const previousCon = registry.Con;
-  const previousNET = registry.NET;
+  const previousNET = pageServices.NET;
 
   const webRTCDriver = new FakeWebRTCDriver();
 
-  registry.COM = { game };
-  registry.urls = options.urls ?? { signalingURL: 'wss://master.example.test/signal' };
+  pageServices.COM = { game };
+  pageServices.urls = options.urls ?? { signalingURL: 'wss://master.example.test/signal' };
   registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
-  registry.NET = { driverRegistry: { get: (name) => (name === 'webrtc' ? webRTCDriver : null) } };
+  pageServices.NET = { driverRegistry: { get: (name) => (name === 'webrtc' ? webRTCDriver : null) } };
   eventBus.publish('registry.frozen');
 
   try {
     await callback(webRTCDriver);
   } finally {
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.COM = previousCOM;
+    pageServices.COM = previousCOM;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.urls = previousUrls;
+    pageServices.urls = previousUrls;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     registry.Con = previousCon;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.NET = previousNET;
+    pageServices.NET = previousNET;
     eventBus.publish('registry.frozen');
   }
 }

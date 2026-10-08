@@ -8,6 +8,8 @@ import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useHostOf } from '../support/host.ts';
+import { facades } from '../support/facades.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 /**
  *
@@ -18,8 +20,8 @@ function withMockClientInputRegistry(callback) {
     CL: registry.CL,
     Con: registry.Con,
     Host: registry.Host,
-    NET: registry.NET,
-    V: registry.V,
+    NET: pageServices.NET,
+    V: facades.V,
   };
 
   registry.CL = {
@@ -50,8 +52,8 @@ function withMockClientInputRegistry(callback) {
   registry.Con = { Print() {}, DPrint() {} };
   registry.Host = { frametime: 0.1 };
   const restoreHost = useHostOf(registry.Host);
-  registry.NET = { SendUnreliableMessage() { return 0; } };
-  registry.V = { startPitchDrift() {} };
+  pageServices.NET = { SendUnreliableMessage() { return 0; } };
+  facades.V = { startPitchDrift() {} };
   eventBus.publish('registry.frozen');
 
   const restore = () => {
@@ -60,8 +62,8 @@ function withMockClientInputRegistry(callback) {
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;
     restoreHost();
-    registry.NET = previousValues.NET;
-    registry.V = previousValues.V;
+    pageServices.NET = previousValues.NET;
+    facades.V = previousValues.V;
     eventBus.publish('registry.frozen');
   };
 

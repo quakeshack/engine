@@ -6,8 +6,6 @@ import { ModelScope, type BrushModel } from '../common/Mod.ts';
 import type { Pmove } from '../common/Pmove.ts';
 
 import Vector, { Quaternion } from '../../shared/Vector.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
 import * as Def from '../common/Def.ts';
 import { content, effect, moveType, solid } from '../../shared/Defs.ts';
 import Chase from './Chase.ts';
@@ -15,7 +13,7 @@ import ClientEntityPhysics from './ClientEntityPhysics.ts';
 import { DefaultClientEdictHandler } from './ClientLegacy.ts';
 import { BaseClientEdictHandler, type ClientSpawnParameters } from '../../shared/ClientEdict.ts';
 import GameModule from '../common/GameModule.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.ts';
+import { engineApi } from './PageServices.ts';
 import { revealedVisibility, type Node, type Visibility } from '../common/model/BSP.ts';
 import Con from '../common/Console.ts';
 import Mod from '../common/Mod.ts';
@@ -23,6 +21,7 @@ import { clientRuntimeState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import R from './R.ts';
 import Host from '../common/Host.ts';
+import S from './Sound.ts';
 
 interface ClientEntityLerpState {
   readonly frame: [number, number, number];
@@ -59,12 +58,6 @@ export interface SerializedClientEntity {
   /** The owning handler's own `serialize()` result, or `null` when it saved nothing. */
   readonly handlerData: SerializedData | null;
 }
-
-let { S } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ S } = getClientRegistry());
-});
 
 export class ClientDlight {
   /** light radius */
@@ -498,7 +491,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
       return entityHandler;
     })() ?? DefaultClientEdictHandler;
 
-    this.#handler = new handler(this, ClientEngineAPI);
+    this.#handler = new handler(this, engineApi);
   }
 
   /**

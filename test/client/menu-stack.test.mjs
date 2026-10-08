@@ -6,6 +6,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
 import { useMenuOf } from '../support/menu.ts';
+import { facades } from '../support/facades.ts';
 
 /**
  * Temporarily installs minimal `M`/`IN` registry stubs (MenuStack only needs `M.entersound`
@@ -14,12 +15,12 @@ import { useMenuOf } from '../support/menu.ts';
  */
 function withMockMenuRegistry(callback) {
   const previousM = registry.M;
-  const previousIN = registry.IN;
+  const previousIN = facades.IN;
 
   registry.M = { entersound: false };
 
   const restoreMenu = useMenuOf(registry.M);
-  registry.IN = { ReleasePointerLock() {} };
+  facades.IN = { ReleasePointerLock() {} };
   eventBus.publish('registry.frozen');
 
   try {
@@ -27,7 +28,7 @@ function withMockMenuRegistry(callback) {
   } finally {
     registry.M = previousM;
     restoreMenu();
-    registry.IN = previousIN;
+    facades.IN = previousIN;
     eventBus.publish('registry.frozen');
   }
 }

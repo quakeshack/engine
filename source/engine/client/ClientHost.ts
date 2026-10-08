@@ -20,7 +20,6 @@ import type { SerializedParticle } from './R.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
 import type { AliasModel } from '../common/model/AliasModel.ts';
 import type { ServerSaveState, ViewthingState } from '../common/ServerController.ts';
-import { getClientRegistry, registry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Vector from '../../shared/Vector.ts';
 import { content } from '../../shared/Defs.ts';
@@ -47,12 +46,14 @@ import VID from './VID.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import SaveSlots from './menu/SaveSlots.ts';
-
-let { COM, Draw, IN, Key, NET, S, SCR, Sys, V } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Draw, IN, Key, NET, S, SCR, Sys, V } = getClientRegistry());
-});
+import Draw from './Draw.ts';
+import IN from './IN.ts';
+import Key from './Key.ts';
+import S from './Sound.ts';
+import SCR from './SCR.ts';
+import V from './V.ts';
+import { buildConfig, com, net, urls } from './PageServices.ts';
+import Sys from './Sys.ts';
 
 /** A savegame file: the server's half and what only the client knows. */
 interface SavegameState extends ServerSaveState {
@@ -67,7 +68,7 @@ interface SavegameState extends ServerSaveState {
  */
 export default class ClientHost {
   /**
-   * Hooks the client up to the local server's life cycle. Call once, after the registry is frozen.
+   * Hooks the client up to the local server's life cycle. Call once, after the page's services are installed.
    */
   static Init(): void {
     // Kicks issued from the local console are issued by the local player.
@@ -91,7 +92,7 @@ export default class ClientHost {
     eventBus.subscribe('server.spawned', async () => {
       await Q.sleep(5000);
 
-      if (!NET.listening) {
+      if (!net.listening) {
         return;
       }
 
@@ -106,7 +107,7 @@ export default class ClientHost {
 
       await Q.sleep(5000);
 
-      if (!NET.listening) {
+      if (!net.listening) {
         return;
       }
 
@@ -137,13 +138,13 @@ export default class ClientHost {
     Host.oldrealtime = Sys.FloatTime();
 
     // What the shared parts of the engine need from this realm.
-    Host.files = COM;
+    Host.files = com;
     Host.configExtras = () => Key.WriteBindings();
     Host.recoverFromError = () => { ClientHost.RecoverFromError(); };
     Host.quit = () => { Sys.Quit(); };
-    Cmd.files = COM;
-    GameModule.com = COM;
-    WorkerManager.services = { con: Con, com: COM, urls: () => registry.urls };
+    Cmd.files = com;
+    GameModule.com = com;
+    WorkerManager.services = { con: Con, com, urls: () => urls ?? undefined };
     PlatformWorker.onCrash = (error) => { Host.HandleCrash(error); };
 
     Cmd.Init();
@@ -152,7 +153,7 @@ export default class ClientHost {
     V.Init(); // required for V.CalcRoll
     Chase.Init();
 
-    await COM.Init();
+    await com.Init();
     ClientHost.InitLocal();
     Key.Init();
 
@@ -169,12 +170,12 @@ export default class ClientHost {
     }
 
     Mod.Init({
-      files: COM,
+      files: com,
       con: Con,
       loadRenderData: true,
       keptClientModels: () => Object.keys(clientRuntimeState.clientEntities.tempEntityModels),
     });
-    NET.Init();
+    net.Init();
     Pmove.Init();
     serverHost?.sv.Init();
 
@@ -215,7 +216,7 @@ export default class ClientHost {
 
     S.Shutdown();
     CDAudio.Shutdown();
-    NET.Shutdown();
+    net.Shutdown();
     IN.Shutdown();
     VID.Shutdown();
     Pmove.Shutdown();
@@ -261,7 +262,7 @@ export default class ClientHost {
     Cmd.AddCommand('color', ClientHost.ColorCommand);
     Host.InitCommands();
 
-    Host.InitLocal(registry.buildConfig?.commitHash ?? undefined, false);
+    Host.InitLocal(buildConfig?.commitHash ?? undefined, false);
     Host.serverHost?.InitLocal();
 
     clientStaticState.state = Def.clientConnectionState.disconnected;
@@ -326,7 +327,7 @@ export default class ClientHost {
   static ForceQuit(): void {
     ClientHost.#ShutdownServer();
 
-    COM.Shutdown();
+    com.Shutdown();
     Sys.Quit();
   }
 
@@ -401,11 +402,11 @@ export default class ClientHost {
     }
 
     const gamestate: SavegameState = { ...result.state, ...clientHalf };
-    const filename = COM.DefaultExtension(savename, '.json');
+    const filename = com.DefaultExtension(savename, '.json');
 
     Con.Print(`Saving game to ${filename}...\n`);
 
-    if (await COM.WriteTextFile(filename, JSON.stringify(gamestate))) {
+    if (await com.WriteTextFile(filename, JSON.stringify(gamestate))) {
       await SaveSlots.refresh();
       Con.PrintSuccess('done.\n');
       return;
@@ -431,11 +432,11 @@ export default class ClientHost {
 
     clientStaticState.demonum = -1;
 
-    const filename = COM.DefaultExtension(savename, '.json');
+    const filename = com.DefaultExtension(savename, '.json');
 
     Con.Print(`Loading game from ${filename}...\n`);
 
-    const data = await COM.LoadTextFile(filename);
+    const data = await com.LoadTextFile(filename);
 
     if (data === null) {
       Con.PrintError('ERROR: couldn\'t open.\n');
@@ -588,7 +589,6 @@ export default class ClientHost {
     await clientStaticState.serverController.setViewthingFrame(nextFrame);
     ClientHost.#PrintViewthingFrame(model, nextFrame);
   }
-
 
   /**
    * Whether the page is in a background tab, where the browser throttles its timers.

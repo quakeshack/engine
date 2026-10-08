@@ -104,14 +104,9 @@ void describe('engine boundaries', () => {
   });
 
   void describe('shared engine code', () => {
-    // The game API classes are what is left of the registry's readers in common/, they go away
-    // with the instance conversion of `ClientEngineAPI`. Everything else there gets what it needs
-    // handed to it, or imports it directly.
-    void test('does not import the registry, apart from the game API classes', () => {
-      assert.deepEqual(
-        filesMatching('common', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/),
-        ['common/GameAPIs.ts'],
-      );
+    // Everything there gets what it needs handed to it, or imports it directly.
+    void test('does not import the registry', () => {
+      assert.deepEqual(filesMatching('common', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/), []);
     });
 
     void test('Host does not know the client or the server runtime', () => {
@@ -122,11 +117,20 @@ void describe('engine boundaries', () => {
     });
 
     void test('the composition root of a server worker does not fill the registry', () => {
-      assert.deepEqual(filesMatching('bootstrap', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/), ['bootstrap/createDedicatedServer.ts']);
+      assert.deepEqual(filesMatching('bootstrap', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/), ['bootstrap/createBrowserClient.ts', 'bootstrap/createDedicatedServer.ts']);
     });
   });
 
   void describe('client runtime', () => {
+    // The two data classes that the model loaders drag into the server worker keep a headless stand-in for
+    // the renderer, which they look up; nothing else of the client reads the registry any more.
+    void test('does not import the registry, apart from the data classes the server worker loads', () => {
+      assert.deepEqual(
+        filesMatching('client', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/),
+        ['client/renderer/Materials.ts', 'client/renderer/Sky.ts'],
+      );
+    });
+
     void test('does not take SV out of a registry', () => {
       assert.deepEqual(filesMatching('client', /\{[^}]*\bSV\b[^}]*\}\s*=\s*get(?:Client|Common)Registry\(\)/), []);
     });
@@ -142,7 +146,7 @@ void describe('engine boundaries', () => {
 
   void describe('client engine API', () => {
     void test('does not reach for SV, a page whose server is in a worker has none', () => {
-      const code = readCode(join(ENGINE_ROOT, 'common/GameAPIs.ts'));
+      const code = readCode(join(ENGINE_ROOT, 'client/ClientEngineAPI.ts'));
 
       assert.equal(/\bSV\.|\bSV\b[^:]*=\s*get(?:Client|Common)Registry/.test(code), false);
     });
@@ -153,6 +157,7 @@ void describe('engine boundaries', () => {
     // the classes that hold the render data. Nothing else of the client may be loaded by the worker.
     const CLIENT_FILES_OF_MODEL_LOADERS = [
       'client/GL.ts',
+      'client/PageServices.ts',
       'client/VID.ts',
       'client/renderer/Materials.ts',
       'client/renderer/Sky.ts',
@@ -171,13 +176,13 @@ void describe('engine boundaries', () => {
     void test('does not read the registry, apart from the data classes model loading drags in', () => {
       const closure = [...importClosure(join(ENGINE_ROOT, 'server/ServerWorker.ts'))].filter((path) => /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/.test(readCode(path)));
 
-      assert.deepEqual(closure.map((path) => relative(ENGINE_ROOT, path)).sort(), CLIENT_FILES_OF_MODEL_LOADERS.filter((path) => path !== 'client/VID.ts'));
+      assert.deepEqual(closure.map((path) => relative(ENGINE_ROOT, path)).sort(), ['client/renderer/Materials.ts', 'client/renderer/Sky.ts']);
     });
 
     void test('does not load the game API classes of the client, they pull in the menu and the renderer', () => {
       const closure = [...importClosure(join(ENGINE_ROOT, 'server/ServerWorker.ts'))].map((path) => relative(ENGINE_ROOT, path));
 
-      assert.equal(closure.includes('common/GameAPIs.ts'), false);
+      assert.equal(closure.includes('client/ClientEngineAPI.ts'), false);
     });
   });
 });

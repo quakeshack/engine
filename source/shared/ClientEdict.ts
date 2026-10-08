@@ -1,10 +1,8 @@
 import type { ClientEdict } from '../engine/client/ClientEntities.ts';
-import type { ClientEngineAPI as ClientEngineApiValue } from '../engine/common/GameAPIs.ts';
+import type { ClientEngineAPI } from '../engine/client/ClientEngineAPI.ts';
 import type { GameTrace } from '../engine/common/GameApiSupport.ts';
 import type { ClientSerializableValue } from './ClientSerialization.ts';
 import type { SerializedData, ServerEngineAPI } from './GameInterfaces.ts';
-
-type ClientEngineAPI = typeof ClientEngineApiValue;
 
 /**
  * Per-instance inputs a game hands to a client-only entity's {@link BaseClientEdictHandler.spawn},

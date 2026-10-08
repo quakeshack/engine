@@ -5,12 +5,14 @@ import Vector from '../../source/shared/Vector.ts';
 import { moveTypes, solid } from '../../source/shared/Defs.ts';
 import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
-import { ClientEngineAPI } from '../../source/engine/common/GameAPIs.ts';
+import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
 import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 import { defaultMockRegistry, withMockRegistry, registrySV, registryCollisionModelSource } from '../physics/fixtures.mjs';
+
+const engineApi = createClientEngineApi();
 
 /**
  * @param {number} num entity number
@@ -59,7 +61,7 @@ void describe('ClientEngineAPI.Traceline', () => {
         },
       },
     }), () => {
-      const trace = ClientEngineAPI.Traceline(new Vector(), new Vector(128, 0, 0));
+      const trace = engineApi.Traceline(new Vector(), new Vector(128, 0, 0));
 
       assert.equal(trace.fraction, 1.0);
       assert.equal(trace.entity, null);
@@ -96,7 +98,7 @@ void describe('ClientEngineAPI.Traceline', () => {
         },
       },
     }), () => {
-      const trace = ClientEngineAPI.Traceline(
+      const trace = engineApi.Traceline(
         new Vector(0, 0, 0),
         new Vector(128, 0, 0),
         { includeEntities: true },
@@ -143,7 +145,7 @@ void describe('ClientEngineAPI.Traceline', () => {
         },
       },
     }), () => {
-      const trace = ClientEngineAPI.Traceline(
+      const trace = engineApi.Traceline(
         new Vector(0, 0, 0),
         new Vector(128, 0, 0),
         {
@@ -289,7 +291,7 @@ void describe('ClientEngineAPI.SpawnClientEntity', () => {
 
   void test('spawns a persistent client-only entity by default', () => {
     withClientEntities((clientEntities) => {
-      const entity = ClientEngineAPI.SpawnClientEntity('test_debris');
+      const entity = engineApi.SpawnClientEntity('test_debris');
 
       assert.equal(entity.classname, 'test_debris');
       assert.equal(entity.persistent, true);
@@ -300,7 +302,7 @@ void describe('ClientEngineAPI.SpawnClientEntity', () => {
 
   void test('spawns a non-persistent entity on request', () => {
     withClientEntities(() => {
-      const entity = ClientEngineAPI.SpawnClientEntity('test_decoration', { persistent: false });
+      const entity = engineApi.SpawnClientEntity('test_decoration', { persistent: false });
 
       assert.equal(entity.persistent, false);
     });
@@ -319,7 +321,7 @@ void describe('ClientEngineAPI.DetermineStaticWorldContents', () => {
         },
       },
     }), () => {
-      assert.equal(ClientEngineAPI.DetermineStaticWorldContents(new Vector(1, 2, 3)), -3);
+      assert.equal(engineApi.DetermineStaticWorldContents(new Vector(1, 2, 3)), -3);
       assert.deepEqual(queried, [[1, 2, 3]]);
     });
   });
@@ -340,7 +342,7 @@ void describe('ClientEngineAPI.IsInPVS', () => {
         },
       },
     }), () => {
-      assert.equal(ClientEngineAPI.IsInPVS(entity), false);
+      assert.equal(engineApi.IsInPVS(entity), false);
       assert.deepEqual(asked, [entity]);
     });
   });

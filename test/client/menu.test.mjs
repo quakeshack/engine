@@ -8,6 +8,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import { MenuViewport } from '../../source/engine/client/menu/MenuViewport.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { facades } from '../support/facades.ts';
 
 /**
  * Temporarily install a global value for the duration of a callback.
@@ -75,13 +76,13 @@ void describe('Menu overlay notices', () => {
 
 void describe('M.MouseMove', () => {
   void test('converts canvas-relative pixels into virtual menu-space coordinates', () => {
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousDestination = Key.destination;
 
     // M.MouseMove() is a no-op unless the menu is the active input destination -- see the test
     // below -- so this needs a real Key module wired up and explicitly pointed at the menu, even
     // for this otherwise-pure coordinate-math assertion.
-    registry.Key = Key;
+    facades.Key = Key;
     eventBus.publish('registry.frozen');
     Key.destination = KeyDestination.menu;
 
@@ -94,18 +95,18 @@ void describe('M.MouseMove', () => {
       assert.equal(M.mouseY, 200);
     } finally {
       Key.destination = previousDestination;
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       eventBus.publish('registry.frozen');
     }
   });
 
   void test('forwards to the current page hover tracking only while the menu is active', () => {
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousDestination = Key.destination;
     const hovered = [];
     const mockPage = { updateHover(mx, my) { hovered.push([mx, my]); } };
 
-    registry.Key = Key;
+    facades.Key = Key;
     eventBus.publish('registry.frozen');
 
     try {
@@ -121,16 +122,16 @@ void describe('M.MouseMove', () => {
     } finally {
       M.menuStack.stack.pop();
       Key.destination = previousDestination;
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       eventBus.publish('registry.frozen');
     }
   });
 
   void test('is a no-op entirely -- not just skipping hover -- while the menu is not the active destination', () => {
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousDestination = Key.destination;
 
-    registry.Key = Key;
+    facades.Key = Key;
     eventBus.publish('registry.frozen');
 
     try {
@@ -148,7 +149,7 @@ void describe('M.MouseMove', () => {
       assert.equal(M.mouseY, mouseYBefore);
     } finally {
       Key.destination = previousDestination;
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       eventBus.publish('registry.frozen');
     }
   });
@@ -156,7 +157,7 @@ void describe('M.MouseMove', () => {
 
 void describe('M.withRenderingPage', () => {
   void test('projects through the given page\'s own viewport, not the top of menuStack', () => {
-    const previousDraw = registry.Draw;
+    const previousDraw = facades.Draw;
     const calls = [];
 
     // A DialogPage (e.g. the quit-confirmation box) stays on top of menuStack for the whole
@@ -169,7 +170,7 @@ void describe('M.withRenderingPage', () => {
     const dialogPage = { viewport: dialogViewport };
     const backdropPage = { viewport: backdropViewport };
 
-    registry.Draw = { StringWhite(x, y, str, scale) { calls.push({
+    facades.Draw = { StringWhite(x, y, str, scale) { calls.push({
       x, y, str, scale,
     }); } };
     eventBus.publish('registry.frozen');
@@ -188,7 +189,7 @@ void describe('M.withRenderingPage', () => {
       ]);
     } finally {
       M.menuStack.stack.pop();
-      registry.Draw = previousDraw;
+      facades.Draw = previousDraw;
       eventBus.publish('registry.frozen');
     }
   });
@@ -196,22 +197,22 @@ void describe('M.withRenderingPage', () => {
 
 void describe('M.AllowsSimulation', () => {
   /**
-   * Run a callback with `registry.Key` wired to the real `Key` module (needed since
+   * Run a callback with `facades.Key` wired to the real `Key` module (needed since
    * `AllowsSimulation` reads `Key.destination`) and restore its destination afterward.
    * @param {() => void} callback test callback
    */
   function withMockKeyRegistry(callback) {
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousDestination = Key.destination;
 
-    registry.Key = Key;
+    facades.Key = Key;
     eventBus.publish('registry.frozen');
 
     try {
       callback();
     } finally {
       Key.destination = previousDestination;
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       eventBus.publish('registry.frozen');
     }
   }
@@ -278,13 +279,13 @@ void describe('M.Keydown back button', () => {
    * @param {(sounds: string[]) => void} callback test callback
    */
   function withMockSoundRegistry(callback) {
-    const previousKey = registry.Key;
-    const previousS = registry.S;
+    const previousKey = facades.Key;
+    const previousS = facades.S;
     const previousCL = registry.CL;
     const sounds = [];
 
-    registry.Key = { destination: KeyDestination.menu };
-    registry.S = { LocalSound(sfx) { sounds.push(sfx); } };
+    facades.Key = { destination: KeyDestination.menu };
+    facades.S = { LocalSound(sfx) { sounds.push(sfx); } };
     registry.CL = { cls: { state: clientConnectionState.connected } };
     const restoreClientState = useClientStateOf(registry.CL);
     eventBus.publish('registry.frozen');
@@ -292,8 +293,8 @@ void describe('M.Keydown back button', () => {
     try {
       callback(sounds);
     } finally {
-      registry.Key = previousKey;
-      registry.S = previousS;
+      facades.Key = previousKey;
+      facades.S = previousS;
       registry.CL = previousCL;
       restoreClientState();
       eventBus.publish('registry.frozen');
@@ -541,8 +542,8 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
    */
   function withMockDisconnectedRegistry(state, callback) {
     const previousCL = registry.CL;
-    const previousKey = registry.Key;
-    const previousIN = registry.IN;
+    const previousKey = facades.Key;
+    const previousIN = facades.IN;
     const previousM = registry.M;
     const previousStack = [...M.menuStack.stack];
     const previousPages = new Map(M.menuStack.pages);
@@ -551,8 +552,8 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
     registry.CL = { cls: { state } };
 
     const restoreClientState = useClientStateOf(registry.CL);
-    registry.Key = { destination: KeyDestination.menu };
-    registry.IN = { ReleasePointerLock() {} };
+    facades.Key = { destination: KeyDestination.menu };
+    facades.IN = { ReleasePointerLock() {} };
     registry.M = M; // MenuStack.push() sets M.entersound directly on the real registry entry.
     M.menuStack.stack.length = 0;
     M.menuStack.register('main', mainPage);
@@ -564,8 +565,8 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
     } finally {
       registry.CL = previousCL;
       restoreClientState();
-      registry.Key = previousKey;
-      registry.IN = previousIN;
+      facades.Key = previousKey;
+      facades.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);
@@ -584,7 +585,7 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
       M.CloseMenu();
 
       assert.equal(M.menuStack.current(), mainPage);
-      assert.equal(registry.Key.destination, KeyDestination.menu);
+      assert.equal(facades.Key.destination, KeyDestination.menu);
     });
   });
 
@@ -608,7 +609,7 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
       M.CloseMenu();
 
       assert.equal(M.menuStack.isEmpty(), true);
-      assert.equal(registry.Key.destination, KeyDestination.game);
+      assert.equal(facades.Key.destination, KeyDestination.game);
     });
   });
 
@@ -619,7 +620,7 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
       M.PopMenu();
 
       assert.equal(M.menuStack.current(), mainPage);
-      assert.equal(registry.Key.destination, KeyDestination.menu);
+      assert.equal(facades.Key.destination, KeyDestination.menu);
     });
   });
 
@@ -630,7 +631,7 @@ void describe('M.CloseMenu / M.PopMenu while disconnected', () => {
       M.PopMenu();
 
       assert.equal(M.menuStack.isEmpty(), true);
-      assert.equal(registry.Key.destination, KeyDestination.game);
+      assert.equal(facades.Key.destination, KeyDestination.game);
     });
   });
 });
@@ -639,16 +640,16 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
   void test('reopens the main menu when nothing is showing and the client disconnects', () => {
     const previousStack = [...M.menuStack.stack];
     const previousPages = new Map(M.menuStack.pages);
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousCL = registry.CL;
-    const previousIN = registry.IN;
+    const previousIN = facades.IN;
     const previousM = registry.M;
     const mainPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
 
-    registry.Key = { destination: KeyDestination.game };
+    facades.Key = { destination: KeyDestination.game };
     registry.CL = { cls: { connecting: null } };
     const restoreClientState = useClientStateOf(registry.CL);
-    registry.IN = { ReleasePointerLock() {} };
+    facades.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
     M.menuStack.register('main', mainPage);
@@ -659,12 +660,12 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
       eventBus.publish('client.disconnected');
 
       assert.equal(M.menuStack.current(), mainPage);
-      assert.equal(registry.Key.destination, KeyDestination.menu);
+      assert.equal(facades.Key.destination, KeyDestination.menu);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       registry.CL = previousCL;
       restoreClientState();
-      registry.IN = previousIN;
+      facades.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);
@@ -678,16 +679,16 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
 
   void test('does not touch an already-open menu on disconnect', () => {
     const previousStack = [...M.menuStack.stack];
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousCL = registry.CL;
-    const previousIN = registry.IN;
+    const previousIN = facades.IN;
     const previousM = registry.M;
     const openPage = { title: 'Options', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
 
-    registry.Key = { destination: KeyDestination.menu };
+    facades.Key = { destination: KeyDestination.menu };
     registry.CL = { cls: { connecting: null } };
     const restoreClientState = useClientStateOf(registry.CL);
-    registry.IN = { ReleasePointerLock() {} };
+    facades.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
     M.menuStack.stack.push(openPage);
@@ -698,10 +699,10 @@ void describe('M.Init: reopening the menu on an involuntary disconnect', () => {
 
       assert.equal(M.menuStack.current(), openPage);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       registry.CL = previousCL;
       restoreClientState();
-      registry.IN = previousIN;
+      facades.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);
@@ -714,16 +715,16 @@ void describe('M.Init: showing the main menu on cold boot', () => {
   void test('opens the main menu once the game module has initialized, if disconnected and nothing is showing', () => {
     const previousStack = [...M.menuStack.stack];
     const previousPages = new Map(M.menuStack.pages);
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousCL = registry.CL;
-    const previousIN = registry.IN;
+    const previousIN = facades.IN;
     const previousM = registry.M;
     const mainPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
 
-    registry.Key = { destination: KeyDestination.game };
+    facades.Key = { destination: KeyDestination.game };
     registry.CL = { cls: { state: clientConnectionState.disconnected, connecting: null } };
     const restoreClientState = useClientStateOf(registry.CL);
-    registry.IN = { ReleasePointerLock() {} };
+    facades.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
     M.menuStack.register('main', mainPage);
@@ -734,12 +735,12 @@ void describe('M.Init: showing the main menu on cold boot', () => {
       eventBus.publish('client.game-initialized');
 
       assert.equal(M.menuStack.current(), mainPage);
-      assert.equal(registry.Key.destination, KeyDestination.menu);
+      assert.equal(facades.Key.destination, KeyDestination.menu);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       registry.CL = previousCL;
       restoreClientState();
-      registry.IN = previousIN;
+      facades.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);
@@ -753,16 +754,16 @@ void describe('M.Init: showing the main menu on cold boot', () => {
 
   void test('does not touch an already-open menu', () => {
     const previousStack = [...M.menuStack.stack];
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousCL = registry.CL;
-    const previousIN = registry.IN;
+    const previousIN = facades.IN;
     const previousM = registry.M;
     const openPage = { title: 'Options', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
 
-    registry.Key = { destination: KeyDestination.menu };
+    facades.Key = { destination: KeyDestination.menu };
     registry.CL = { cls: { state: clientConnectionState.disconnected, connecting: null } };
     const restoreClientState = useClientStateOf(registry.CL);
-    registry.IN = { ReleasePointerLock() {} };
+    facades.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
     M.menuStack.stack.push(openPage);
@@ -773,10 +774,10 @@ void describe('M.Init: showing the main menu on cold boot', () => {
 
       assert.equal(M.menuStack.current(), openPage);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       registry.CL = previousCL;
       restoreClientState();
-      registry.IN = previousIN;
+      facades.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);
@@ -787,16 +788,16 @@ void describe('M.Init: showing the main menu on cold boot', () => {
   void test('does nothing if a connection is already active or in progress by the time it fires', () => {
     const previousStack = [...M.menuStack.stack];
     const previousPages = new Map(M.menuStack.pages);
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousCL = registry.CL;
-    const previousIN = registry.IN;
+    const previousIN = facades.IN;
     const previousM = registry.M;
     const mainPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
 
-    registry.Key = { destination: KeyDestination.game };
+    facades.Key = { destination: KeyDestination.game };
     registry.CL = { cls: { state: clientConnectionState.connected, connecting: null } };
     const restoreClientState = useClientStateOf(registry.CL);
-    registry.IN = { ReleasePointerLock() {} };
+    facades.IN = { ReleasePointerLock() {} };
     registry.M = M;
     M.menuStack.stack.length = 0;
     M.menuStack.register('main', mainPage);
@@ -807,12 +808,12 @@ void describe('M.Init: showing the main menu on cold boot', () => {
       eventBus.publish('client.game-initialized');
 
       assert.equal(M.menuStack.isEmpty(), true);
-      assert.equal(registry.Key.destination, KeyDestination.game);
+      assert.equal(facades.Key.destination, KeyDestination.game);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       registry.CL = previousCL;
       restoreClientState();
-      registry.IN = previousIN;
+      facades.IN = previousIN;
       registry.M = previousM;
       M.menuStack.stack.length = 0;
       M.menuStack.stack.push(...previousStack);
@@ -828,12 +829,12 @@ void describe('M.Init: showing the main menu on cold boot', () => {
 void describe('M.Init: closing the menu when a connection attempt starts', () => {
   void test('force-closes a single open menu page', () => {
     const previousStack = [...M.menuStack.stack];
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousCL = registry.CL;
     const previousM = registry.M;
     const openPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
 
-    registry.Key = { destination: KeyDestination.menu };
+    facades.Key = { destination: KeyDestination.menu };
     registry.CL = { cls: { demonum: -1 } };
     const restoreClientState = useClientStateOf(registry.CL);
     registry.M = M;
@@ -845,9 +846,9 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
       eventBus.publish('client.connecting', 'webrtc://some-session');
 
       assert.equal(M.menuStack.isEmpty(), true);
-      assert.equal(registry.Key.destination, KeyDestination.game);
+      assert.equal(facades.Key.destination, KeyDestination.game);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       registry.CL = previousCL;
       restoreClientState();
       registry.M = previousM;
@@ -859,13 +860,13 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
 
   void test('force-closes every page on the stack, not just the top one (e.g. a profile gate pushed over the main menu)', () => {
     const previousStack = [...M.menuStack.stack];
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousCL = registry.CL;
     const previousM = registry.M;
     const mainPage = { title: 'Main', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
     const gatePage = { title: 'Profile', activate() {}, deactivate() {}, updateHover() {}, handleInput() { return false; }, getBackButtonAnchor: () => null };
 
-    registry.Key = { destination: KeyDestination.menu };
+    facades.Key = { destination: KeyDestination.menu };
     registry.CL = { cls: { demonum: -1 } };
     const restoreClientState = useClientStateOf(registry.CL);
     registry.M = M;
@@ -877,9 +878,9 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
       eventBus.publish('client.connecting', 'local');
 
       assert.equal(M.menuStack.isEmpty(), true);
-      assert.equal(registry.Key.destination, KeyDestination.game);
+      assert.equal(facades.Key.destination, KeyDestination.game);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       registry.CL = previousCL;
       restoreClientState();
       registry.M = previousM;
@@ -891,11 +892,11 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
 
   void test('does nothing when no menu is open', () => {
     const previousStack = [...M.menuStack.stack];
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousCL = registry.CL;
     const previousM = registry.M;
 
-    registry.Key = { destination: KeyDestination.game };
+    facades.Key = { destination: KeyDestination.game };
     registry.CL = { cls: { demonum: -1 } };
     const restoreClientState = useClientStateOf(registry.CL);
     registry.M = M;
@@ -906,9 +907,9 @@ void describe('M.Init: closing the menu when a connection attempt starts', () =>
       eventBus.publish('client.connecting', 'local');
 
       assert.equal(M.menuStack.isEmpty(), true);
-      assert.equal(registry.Key.destination, KeyDestination.game);
+      assert.equal(facades.Key.destination, KeyDestination.game);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       registry.CL = previousCL;
       restoreClientState();
       registry.M = previousM;

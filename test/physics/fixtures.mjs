@@ -17,6 +17,7 @@ import { ServerEngineAPI } from '../../source/engine/server/ServerEngineAPI.ts';
 import ServerHost from '../../source/engine/server/ServerHost.ts';
 import NET from '../../source/engine/network/Network.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 // ── Typedefs ────────────────────────────────────────────────────────────────
 
@@ -332,6 +333,11 @@ export function withMockRegistry(mockedRegistry, callback) {
   const previousServerState = Cvar.serverState;
   const restoreClientState = useClientStateOf(mockedRegistry.CL);
   const restoreHost = useHostOf(mockedRegistry.Host);
+  const previousPageCom = pageServices.COM;
+
+  if (mockedRegistry.COM !== undefined) {
+    pageServices.COM = mockedRegistry.COM;
+  }
 
   Cvar.serverState = {
     isServerActive: () => mockedRegistry.CL?.serverController?.state.active ?? mockedRegistry.SV?.server?.active ?? false,
@@ -352,6 +358,7 @@ export function withMockRegistry(mockedRegistry, callback) {
   eventBus.publish('registry.frozen');
 
   const restore = () => {
+    pageServices.COM = previousPageCom;
     restoreHost();
     restoreClientState();
     Cvar.serverState = previousServerState;

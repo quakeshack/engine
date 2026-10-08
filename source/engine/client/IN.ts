@@ -1,8 +1,6 @@
 import { K } from '../../shared/Keys.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
 import { kbutton, kbuttons } from './ClientInput.ts';
 import { KeyDestination } from './Key.ts';
 import VID from './VID.ts';
@@ -12,6 +10,9 @@ import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import M from './Menu.ts';
 import Host from '../common/Host.ts';
+import Key from './Key.ts';
+import V from './V.ts';
+import { com } from './PageServices.ts';
 
 /** Browser-derived signals used to decide whether mobile play needs external input devices. */
 export interface MobileInputEnvironment {
@@ -191,12 +192,6 @@ export function shouldShowMobileExternalInputWarning(state: MobileInputSupportSt
   return !state.hasKeyboardActivity || !hasMouseSupport(state);
 }
 
-let { COM, Key, V } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, Key, V } = getClientRegistry());
-});
-
 export default class IN {
   static mouse_x = 0.0;
   static mouse_y = 0.0;
@@ -233,7 +228,7 @@ export default class IN {
 
   static StartupMouse(): void {
     IN.m_filter = new Cvar('m_filter', '1', Cvar.FLAG.ARCHIVE);
-    if (COM.CheckParm('-nomouse')) {
+    if (com.CheckParm('-nomouse')) {
       return;
     }
     if (!VID.mainwindow.requestPointerLock) {

@@ -7,6 +7,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { facades } from '../support/facades.ts';
 
 /**
  * Installs the minimal registry ClientHost.EndGame/Host.Error need to reach their `host.alert`
@@ -20,7 +21,7 @@ function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callb
     CL: registry.CL,
     Con: registry.Con,
     serverHost: Host.serverHost,
-    SCR: registry.SCR,
+    SCR: facades.SCR,
   };
 
   const prints = [];
@@ -42,7 +43,7 @@ function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callb
     PrintError(message) { prints.push(message); },
   };
   Host.serverHost = /** @type {any} */ ({ ShutdownServer() { shutdowns.push(serverActive); } });
-  registry.SCR = { EndLoadingPlaque() {} };
+  facades.SCR = { EndLoadingPlaque() {} };
   eventBus.publish('registry.frozen');
 
   try {
@@ -53,7 +54,7 @@ function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callb
     registry.CL = previous.CL;
     registry.Con = previous.Con;
     Host.serverHost = previous.serverHost;
-    registry.SCR = previous.SCR;
+    facades.SCR = previous.SCR;
     eventBus.publish('registry.frozen');
   }
 }

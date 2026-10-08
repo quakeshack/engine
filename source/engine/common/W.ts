@@ -93,6 +93,21 @@ export default class W {
   /** Current palette in 256 8 bit tuples for RGB. */
   static d_8to24table_u8 = new Uint8Array(768);
 
+  /**
+   * Translate a palette index into an RGB color vector.
+   * @returns The RGB color, each component in [0, 1).
+   */
+  static IndexToRGB(index: number): [number, number, number] {
+    console.assert(typeof index === 'number', 'index must be a number');
+    console.assert(index >= 0 && index < 256, 'index must be in range [0, 255]');
+
+    return [
+      W.d_8to24table_u8[index * 3] / 256,
+      W.d_8to24table_u8[index * 3 + 1] / 256,
+      W.d_8to24table_u8[index * 3 + 2] / 256,
+    ];
+  }
+
   /** Fill color index. */
   static filledColor: number | null = null;
 

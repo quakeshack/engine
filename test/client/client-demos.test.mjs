@@ -11,6 +11,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useHostOf } from '../support/host.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 /**
  * Builds a synthetic current-format demo file with a single message.
@@ -87,29 +88,29 @@ function createMockClientRegistry(clientDemos, demoFile) {
 function withMockClientRegistry(mockedRegistry, callback) {
   const previousValues = {
     CL: registry.CL,
-    COM: registry.COM,
+    COM: pageServices.COM,
     Con: registry.Con,
     Host: registry.Host,
-    NET: registry.NET,
+    NET: pageServices.NET,
   };
 
   registry.CL = mockedRegistry.CL;
   const restoreClientState = useClientStateOf(registry.CL);
-  registry.COM = mockedRegistry.COM;
+  pageServices.COM = mockedRegistry.COM;
   registry.Con = mockedRegistry.Con;
   registry.Host = mockedRegistry.Host;
   const restoreHost = useHostOf(registry.Host);
-  registry.NET = mockedRegistry.NET;
+  pageServices.NET = mockedRegistry.NET;
   eventBus.publish('registry.frozen');
 
   const restore = () => {
     registry.CL = previousValues.CL;
     restoreClientState();
-    registry.COM = previousValues.COM;
+    pageServices.COM = previousValues.COM;
     registry.Con = previousValues.Con;
     registry.Host = previousValues.Host;
     restoreHost();
-    registry.NET = previousValues.NET;
+    pageServices.NET = previousValues.NET;
     eventBus.publish('registry.frozen');
   };
 
@@ -152,8 +153,8 @@ void describe('ClientDemos', () => {
       assert.equal(clientDemos.demoplayback, true);
       assert.equal(clientStaticState.state, Def.clientConnectionState.connected);
       assert.equal(clientDemos.getMessage(), 1);
-      assert.equal(registry.NET.message.cursize, 1);
-      assert.equal(new Uint8Array(registry.NET.message.data, 0, 1)[0], Protocol.svc.nop);
+      assert.equal(pageServices.NET.message.cursize, 1);
+      assert.equal(new Uint8Array(pageServices.NET.message.data, 0, 1)[0], Protocol.svc.nop);
       assert.deepEqual(Array.from(clientRuntimeState.viewangles), [1, 2, 3]);
 
       assert.equal(clientDemos.getMessage(), 0);

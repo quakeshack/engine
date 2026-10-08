@@ -1,13 +1,6 @@
 import type { WebRTCDriver } from '../../network/NetworkDrivers.ts';
-import { getClientRegistry } from '../../registry.ts';
-import { eventBus } from '../../common/EventBus.ts';
 import Con from '../../common/Console.ts';
-
-let { COM, NET, urls } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM, NET, urls } = getClientRegistry());
-});
+import { com, net, urls } from '../PageServices.ts';
 
 /** Fixed reconnect delay for the `/browser` push channel, matching `WebRTCDriver`'s signaling reconnect. */
 const RECONNECT_DELAY_MS = 5000;
@@ -134,7 +127,7 @@ export default class SessionDiscovery {
     const response = await fetch(url);
     const data = await response.json() as ServerListResponse;
 
-    const servers = (data.servers ?? []).filter((session) => session.serverInfo?.mod === COM.game);
+    const servers = (data.servers ?? []).filter((session) => session.serverInfo?.mod === com.game);
 
     return servers.map((session) => SessionDiscovery.#toDiscoveredSession(session));
   }
@@ -239,20 +232,20 @@ export default class SessionDiscovery {
 
   static #computeFilteredSessions(): DiscoveredSession[] {
     const sessions = Array.from(SessionDiscovery.#sessionsById.values())
-      .filter((session) => session.serverInfo?.mod === COM.game)
+      .filter((session) => session.serverInfo?.mod === com.game)
       .map((session) => SessionDiscovery.#toDiscoveredSession(session));
 
     return SessionDiscovery.#sortByPing(sessions);
   }
 
   /**
-   * `NET.driverRegistry` always registers `'webrtc'` as a real `WebRTCDriver` (`Network.ts`'s own
+   * `net.driverRegistry` always registers `'webrtc'` as a real `WebRTCDriver` (`Network.ts`'s own
    * bootstrap) -- cast rather than `instanceof`, so a test double only needs to match the public
    * `startSessionPing`/`stopSessionPing` shape, not literally extend the class.
    * @returns The registered WebRTC driver, or `null` if somehow never registered.
    */
   static #getWebRTCDriver(): WebRTCDriver | null {
-    return NET.driverRegistry.get('webrtc') as WebRTCDriver | null;
+    return net.driverRegistry.get('webrtc') as WebRTCDriver | null;
   }
 
   /**
@@ -303,13 +296,13 @@ export default class SessionDiscovery {
 
   /**
    * Current game-matching sessionIds, i.e. exactly the set `#computeFilteredSessions` would probe.
-   * @returns The set of sessionIds currently matching `COM.game`.
+   * @returns The set of sessionIds currently matching `com.game`.
    */
   static #currentGameSessionIds(): Set<string> {
     const sessionIds = new Set<string>();
 
     for (const session of SessionDiscovery.#sessionsById.values()) {
-      if (session.serverInfo?.mod === COM.game) {
+      if (session.serverInfo?.mod === com.game) {
         sessionIds.add(session.sessionId);
       }
     }

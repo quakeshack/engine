@@ -6,7 +6,6 @@ import W, { WadFileInterface, WadLumpTexture } from '../common/W.ts';
 
 import { eventBus } from '../common/EventBus.ts';
 import GL, { GLTexture } from './GL.ts';
-import { ClientEngineAPI } from '../common/GameAPIs.ts';
 import Host from '../common/Host.ts';
 
 
@@ -132,7 +131,7 @@ export default class Draw {
     const halfCell = cellSize / 2;
     const shadowOffset = size / 512;
 
-    const c = ClientEngineAPI.IndexToRGB(95);
+    const c = W.IndexToRGB(95);
     const r = Math.floor(c[0] * 255);
     const g = Math.floor(c[1] * 255);
     const b = Math.floor(c[2] * 255);
@@ -220,7 +219,7 @@ export default class Draw {
 
       // we are writing the version into the conback texture
       const version = Host.version!.string;
-      const color = ClientEngineAPI.IndexToRGB(95);
+      const color = W.IndexToRGB(95);
       for (let i = 0; i < version.length; i++) {
         charToConback(conback.data, conchars.data, version.charCodeAt(i), 59829 - ((version.length - i) * 8), color);
       }

@@ -16,6 +16,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { K } from '../../source/shared/Keys.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { facades } from '../support/facades.ts';
 
 /**
  * Temporarily installs a global `document` stub with a settable `pointerLockElement`, since
@@ -140,13 +141,13 @@ void describe('IN.onclick', () => {
    * @param {{ consoleOpen?: boolean, connectionState?: number }} [options]
    */
   function withMockClickEnvironment(destination, callback, options = {}) {
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const previousConsoleOpen = ConsoleOverlay.isOpen;
     const previousCL = registry.CL;
     const previousMainwindow = VID.mainwindow;
     let requestedPointerLock = false;
 
-    registry.Key = { destination };
+    facades.Key = { destination };
     ConsoleOverlay.isOpen = options.consoleOpen ?? false;
     registry.CL = { cls: { state: options.connectionState ?? clientConnectionState.connected } };
     const restoreClientState = useClientStateOf(registry.CL);
@@ -156,7 +157,7 @@ void describe('IN.onclick', () => {
     try {
       callback(() => requestedPointerLock);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       ConsoleOverlay.isOpen = previousConsoleOpen;
       registry.CL = previousCL;
       restoreClientState();
@@ -260,16 +261,16 @@ void describe('IN.onpointerlockchange', () => {
    * @param {(events: [number, boolean][]) => void} callback test callback
    */
   function withMockKeyEvent(callback) {
-    const previousKey = registry.Key;
+    const previousKey = facades.Key;
     const events = [];
 
-    registry.Key = { Event: (key, down) => { events.push([key, down]); } };
+    facades.Key = { Event: (key, down) => { events.push([key, down]); } };
     eventBus.publish('registry.frozen');
 
     try {
       callback(events);
     } finally {
-      registry.Key = previousKey;
+      facades.Key = previousKey;
       eventBus.publish('registry.frozen');
     }
   }

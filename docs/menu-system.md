@@ -21,7 +21,7 @@ frame for always-on, non-modal UI (see [Non-modal panels](#non-modal-panels-hud-
 | `MenuViewport` | `source/engine/client/menu/MenuViewport.ts` | A page's virtual drawing-space size and scaling strategy (see below). |
 | `MenuStack` | `source/engine/client/menu/MenuStack.ts` | Named page registry, a navigation stack (push/pop/replace/clear), and the root-page concept (see below). |
 | `M` | `source/engine/client/Menu.ts` | Owns the single `menuStack` instance and the pixel-drawing primitives (`M.Print`, `M.DrawPic`, `M.DrawTextBox`, `M.DrawSlider`, ...) that widgets call into. Builds **no pages** — it's pure machinery. |
-| `ClientEngineAPI.Menu` | `source/engine/common/GameAPIs.ts` | The only surface game code should use — wraps `M`/`M.menuStack` and re-exports the widget/layout classes plus the drawing primitives. |
+| `ClientEngineAPI.Menu` | `source/engine/client/ClientEngineAPI.ts` | The only surface game code should use — wraps `M`/`M.menuStack` and re-exports the widget/layout classes plus the drawing primitives. |
 | `Id1Menu` | `source/game/id1/client/Menu.ts` | Builds and registers every built-in id1 page (`main`, `singleplayer`, `load`, `save`, `multiplayer`, `launch_server`, `options`, `keys`, `help`, `quit`, `alert`) via `ClientEngineAPI.Menu`, and declares `'main'` as the root. hellwave inherits this wholesale via `super.Init()` and only overrides what it wants to change. |
 
 ### MenuItem
@@ -263,8 +263,8 @@ directly (useful for pages a mod keeps a private reference to and never register
   code as `ClientEngineAPI.Menu.LoadTranslatablePic`.
 - `M.StartSingleplayerGame()` / `M.StartMultiplayerGame(mapname)` — route to
   `ClientLifecycle.startGame` (the active mod's `StartGameInterface`, or the engine default).
-  Live on `M` rather than being called directly from `GameAPIs.ts` to avoid a circular import
-  (`ClientLifecycle.ts` already imports `GameAPIs.ts`); exposed as
+  Live on `M` rather than being called directly from `ClientEngineAPI.ts` to avoid a circular import
+  (`ClientLifecycle.ts` already imports `ClientEngineAPI.ts`); exposed as
   `ClientEngineAPI.Menu.StartSingleplayerGame`/`StartMultiplayerGame`.
 - `M.SetOverlayNotice`/`ClearOverlayNotice`/`DrawOverlayNotice` — a generic notice banner,
   suppressed while the (game-owned, but name-known) `'alert'`/`'quit'` pages are showing.
@@ -289,7 +289,7 @@ calls — nothing currently does this by default.
 
 Game code (`source/game/id1`, `source/game/hellwave`, future mods) must never import
 `source/engine/client/menu/*` directly. Everything needed is exposed on
-`ClientEngineAPI.Menu` (`source/engine/common/GameAPIs.ts`):
+`ClientEngineAPI.Menu` (`source/engine/client/ClientEngineAPI.ts`):
 
 ```typescript
 static readonly Menu = {

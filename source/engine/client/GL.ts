@@ -2,10 +2,10 @@ import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { MissingResourceError } from '../common/Errors.ts';
 import { WadLumpTexture } from '../common/W.ts';
-import { getCommonRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import VID from './VID.ts';
 import Con from '../common/Console.ts';
+import { com } from './PageServices.ts';
 
 interface TextureMode {
   min: number;
@@ -486,12 +486,6 @@ class GL {
 
 export default GL;
 
-let { COM } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ COM } = getCommonRegistry());
-});
-
 let gl: WebGL2RenderingContext = null!;
 
 const textureModes: Record<string, TextureMode> = {};
@@ -805,7 +799,7 @@ export class GLTexture {
       return cachedTexture;
     }
 
-    const data = await COM.LoadFile(filename);
+    const data = await com.LoadFile(filename);
 
     if (data === null) {
       if (ignoreMissing) {

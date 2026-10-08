@@ -7,7 +7,6 @@ import * as Def from '../common/Def.ts';
 import Q from '../../shared/Q.ts';
 import { calcRoll } from '../../shared/PlayerRoll.ts';
 import Vector from '../../shared/Vector.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
@@ -15,12 +14,7 @@ import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import R from './R.ts';
 import Host from '../common/Host.ts';
-
-let { SCR } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ SCR } = getClientRegistry());
-});
+import SCR from './SCR.ts';
 
 /**
  * @param {number} value scalar component

@@ -3,21 +3,15 @@ import type { ClientSerializableType } from '../../shared/GameInterfaces.ts';
 import Vector from '../../shared/Vector.ts';
 import { areSerializableValuesEqual } from '../../shared/SerializableValues.ts';
 import { PM_TYPE, PmovePlayer } from '../common/Pmove.ts';
-import { getClientRegistry } from '../registry.ts';
 import { eventBus } from '../common/EventBus.ts';
 import { HostError } from '../common/Errors.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import { clientPmove } from './ClientPhysics.ts';
 import CL from './CL.ts';
 import Host from '../common/Host.ts';
+import { net } from './PageServices.ts';
 
 type ClientdataBitsReader = 'readLong' | 'readShort' | 'readByte';
-
-let { NET } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ NET } = getClientRegistry());
-});
 
 /**
  * ClientPlayerState is the information needed by a player entity
@@ -73,41 +67,41 @@ export class ClientPlayerState extends Protocol.EntityState {
   }
 
   readFromMessage(): void {
-    this.flags = NET.message.readShort();
-    this.origin.set(NET.message.readCoordVector());
-    this.frame = NET.message.readByte();
+    this.flags = net.message.readShort();
+    this.origin.set(net.message.readCoordVector());
+    this.frame = net.message.readByte();
 
     this.stateTime = clientRuntimeState.time;
 
     if (this.flags & Protocol.pf.PF_MSEC) {
-      const msec = NET.message.readByte();
+      const msec = net.message.readByte();
       this.stateTime -= msec / 1000.0;
     }
 
     // TODO: stateTime, parsecounttime
 
     if (this.flags & Protocol.pf.PF_COMMAND) {
-      this.command.set(NET.message.readDeltaUsercmd(CL.nullcmd));
+      this.command.set(net.message.readDeltaUsercmd(CL.nullcmd));
     }
 
     if (this.flags & Protocol.pf.PF_VELOCITY) {
-      this.velocity.set(NET.message.readCoordVector());
+      this.velocity.set(net.message.readCoordVector());
     }
 
     if (this.flags & Protocol.pf.PF_MODEL) {
-      this.modelindex = NET.message.readByte();
+      this.modelindex = net.message.readByte();
     }
 
     if (this.flags & Protocol.pf.PF_EFFECTS) {
-      this.effects = NET.message.readByte();
+      this.effects = net.message.readByte();
     }
 
     if (this.flags & Protocol.pf.PF_SKINNUM) {
-      this.skinnum = NET.message.readByte();
+      this.skinnum = net.message.readByte();
     }
 
     if (this.flags & Protocol.pf.PF_WEAPONFRAME) {
-      this.weaponframe = NET.message.readByte();
+      this.weaponframe = net.message.readByte();
     }
   }
 }
@@ -152,7 +146,7 @@ export class ClientMessages {
     // This is the time of the last message received from the server.
     this.mtime[1] = this.mtime[0];
     // This is the current time we got from the server.
-    this.mtime[0] = NET.message.readFloat();
+    this.mtime[0] = net.message.readFloat();
     this.mtimeReceivedAt = Host.realtime;
   }
 
@@ -175,12 +169,12 @@ export class ClientMessages {
   #parseClientGeneral(bits: number): void {
     // Parse the general client data.
 
-    clientRuntimeState.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? NET.message.readChar() : Protocol.default_viewheight;
-    clientRuntimeState.idealpitch = ((bits & Protocol.su.idealpitch) !== 0) ? NET.message.readChar() : 0.0;
+    clientRuntimeState.viewheight = ((bits & Protocol.su.viewheight) !== 0) ? net.message.readChar() : Protocol.default_viewheight;
+    clientRuntimeState.idealpitch = ((bits & Protocol.su.idealpitch) !== 0) ? net.message.readChar() : 0.0;
 
     for (let i = 0; i < 3; i++) {
       if ((bits & (Protocol.su.punch1 << i)) !== 0) {
-        clientRuntimeState.punchangle[i] = NET.message.readShort() / 90.0;
+        clientRuntimeState.punchangle[i] = net.message.readShort() / 90.0;
       } else {
         clientRuntimeState.punchangle[i] = 0.0;
       }
@@ -190,13 +184,13 @@ export class ClientMessages {
     clientRuntimeState.inwater = (bits & Protocol.su.inwater) !== 0;
 
     if ((bits & Protocol.su.moveack) !== 0) {
-      clientRuntimeState.acknowledgedMoveSequence = NET.message.readByte();
+      clientRuntimeState.acknowledgedMoveSequence = net.message.readByte();
       // server sends authoritative PM state alongside the move ack so
       // client-side prediction replays from the correct pmFlags / pmTime / pmType
-      clientRuntimeState.ackedPmFlags = NET.message.readByte();
-      clientRuntimeState.ackedPmTime = NET.message.readByte();
-      clientRuntimeState.ackedPmOldButtons = NET.message.readByte();
-      clientRuntimeState.ackedPmType = NET.message.readByte();
+      clientRuntimeState.ackedPmFlags = net.message.readByte();
+      clientRuntimeState.ackedPmTime = net.message.readByte();
+      clientRuntimeState.ackedPmOldButtons = net.message.readByte();
+      clientRuntimeState.ackedPmType = net.message.readByte();
     }
   }
 
@@ -208,7 +202,7 @@ export class ClientMessages {
       throw new HostError('Clientdata field bits reader not initialized');
     }
 
-    const fieldbits = NET.message[this.#readClientdataFieldsBits]();
+    const fieldbits = net.message[this.#readClientdataFieldsBits]();
 
     const fields: string[] = [];
 
@@ -231,7 +225,7 @@ export class ClientMessages {
       throw new HostError('Client game API clientdata is not initialized');
     }
 
-    const values = NET.message.readSerializablesOnClient();
+    const values = net.message.readSerializablesOnClient();
 
     if (values.length !== fields.length) {
       throw new HostError(`Mismatched clientdata payload: expected ${fields.length} values, received ${values.length}`);
@@ -257,8 +251,8 @@ export class ClientMessages {
   }
 
   parseClientEvent(): void {
-    const eventCode = NET.message.readByte();
-    const args = NET.message.readSerializablesOnClient();
+    const eventCode = net.message.readByte();
+    const args = net.message.readSerializablesOnClient();
 
     clientRuntimeState.gameAPI!.handleClientEvent(eventCode, ...args);
   }
@@ -267,14 +261,14 @@ export class ClientMessages {
    * Parses Protocol.svc.clientdata message.
    */
   parseClient(): void {
-    const bits = NET.message.readShort();
+    const bits = net.message.readShort();
 
     this.#parseClientGeneral(bits);
     this.#parseClientdata();
   }
 
   parsePlayer(): void {
-    const num = NET.message.readByte();
+    const num = net.message.readByte();
 
     if (num > clientRuntimeState.maxclients) {
       throw new HostError('CL.ParsePlayerinfo: num > maxclients');

@@ -12,7 +12,12 @@ import { content, moveType } from '../../source/shared/Defs.ts';
 
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
+import { installPageServices } from '../../source/engine/client/PageServices.ts';
+import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
+
+// Handlers are constructed with the page's engine API.
+installPageServices({ engineApi: createClientEngineApi() });
 
 /**
  * A synthetic client-only handler standing in for a real debris/shell-casing handler: saves a

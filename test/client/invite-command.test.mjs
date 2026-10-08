@@ -5,6 +5,7 @@ import InviteCommand from '../../source/engine/client/InviteCommand.ts';
 import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
+import { pageServices } from '../support/pageServices.ts';
 
 /**
  * Temporarily install a global value for the duration of a callback.
@@ -50,15 +51,15 @@ function withGlobalValue(name, value, callback) {
  */
 function withInviteRegistry(mockedNet, mockedCon, callback) {
   const previousCon = registry.Con;
-  const previousNET = registry.NET;
+  const previousNET = pageServices.NET;
 
   registry.Con = mockedCon;
-  registry.NET = mockedNet;
+  pageServices.NET = mockedNet;
   eventBus.publish('registry.frozen');
 
   return Promise.resolve(callback()).finally(() => {
     registry.Con = previousCon;
-    registry.NET = previousNET;
+    pageServices.NET = previousNET;
     eventBus.publish('registry.frozen');
   });
 }

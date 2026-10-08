@@ -12,6 +12,7 @@ import { useHostOf } from '../support/host.ts';
 import {
   Action, ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
 } from '../../source/engine/client/menu/MenuItem.ts';
+import { facades } from '../support/facades.ts';
 
 /**
  * Temporarily installs minimal `Host`/`Key`/`M`/`S` registry stubs so widget draw/input
@@ -20,9 +21,9 @@ import {
  */
 function withMockWidgetRegistry(callback) {
   const previousHost = registry.Host;
-  const previousKey = registry.Key;
+  const previousKey = facades.Key;
   const previousM = registry.M;
-  const previousS = registry.S;
+  const previousS = facades.S;
 
   const printed = [];
   const sounds = [];
@@ -31,7 +32,7 @@ function withMockWidgetRegistry(callback) {
   registry.Host = { realtime: 0 };
 
   const restoreHost = useHostOf(registry.Host);
-  registry.Key = Key;
+  facades.Key = Key;
   registry.M = {
     sfx_menu1: 'menu1',
     sfx_menu2: 'menu2',
@@ -43,7 +44,7 @@ function withMockWidgetRegistry(callback) {
     DrawBitmapString(_x, _y, str, font, variant) { bitmapStrings.push({ str, font, variant }); },
   };
   const restoreMenu = useMenuOf(registry.M);
-  registry.S = { LocalSound(sfx) { sounds.push(sfx); } };
+  facades.S = { LocalSound(sfx) { sounds.push(sfx); } };
   eventBus.publish('registry.frozen');
 
   try {
@@ -51,10 +52,10 @@ function withMockWidgetRegistry(callback) {
   } finally {
     registry.Host = previousHost;
     restoreHost();
-    registry.Key = previousKey;
+    facades.Key = previousKey;
     registry.M = previousM;
     restoreMenu();
-    registry.S = previousS;
+    facades.S = previousS;
     eventBus.publish('registry.frozen');
   }
 }

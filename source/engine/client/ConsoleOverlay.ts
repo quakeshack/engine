@@ -1,17 +1,13 @@
 import { KeyDestination } from './Key.ts';
-import { getClientRegistry } from '../registry.ts';
-import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
 import Cmd from '../common/Cmd.ts';
 import VID from './VID.ts';
 import { clientStaticState } from './ClientState.ts';
 import Host from '../common/Host.ts';
-
-let { Draw, IN, Key, SCR } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Draw, IN, Key, SCR } = getClientRegistry());
-});
+import Draw from './Draw.ts';
+import IN from './IN.ts';
+import Key from './Key.ts';
+import SCR from './SCR.ts';
 
 /**
  * Shows the console's text buffer: the drop-down console and the notification lines.
