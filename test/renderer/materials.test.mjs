@@ -3,8 +3,8 @@ import { describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import { MaterialFlags, QuakeMaterial, resolveMaterialLuminanceTexture } from '../../source/engine/client/renderer/Materials.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * A minimal {@link import('../../source/engine/client/GL.ts').GLTexture} stub
@@ -40,10 +40,10 @@ function withMockMaterialRenderer(callback) {
   const blackTexture = createTextureStub('black');
   const noTexture = createTextureStub('notexture');
 
-  const previousR = registry.R;
+  const previousR = engineMocks.R;
   const previousGl = GL.gl;
 
-  registry.R = /** @type {typeof import('../../source/engine/client/R.ts').default} */ ({
+  engineMocks.R = /** @type {typeof import('../../source/engine/client/R.ts').default} */ ({
     blacktexture: blackTexture,
     notexture: noTexture,
     flatnormalmap: flatNormal,
@@ -52,18 +52,16 @@ function withMockMaterialRenderer(callback) {
   });
   GL.gl = /** @type {WebGL2RenderingContext} */ (mockGl);
   eventBus.publish('gl.ready');
-  eventBus.publish('registry.frozen');
 
   try {
     callback({ flatNormal, blackTexture, noTexture }, uniformCalls);
   } finally {
-    registry.R = previousR;
+    engineMocks.R = previousR;
     GL.gl = previousGl;
     eventBus.publish('gl.shutdown');
     if (previousGl) {
       eventBus.publish('gl.ready');
     }
-    eventBus.publish('registry.frozen');
   }
 }
 

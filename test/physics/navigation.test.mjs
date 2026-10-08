@@ -3,10 +3,10 @@ import { describe, test, before } from 'node:test';
 import { readFileSync } from 'node:fs';
 
 import Vector from '../../source/shared/Vector.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { Navigation } from '../../source/engine/server/Navigation.ts';
-import { registryNavigationServices } from './fixtures.mjs';
+import { mockedNavigationServices } from './fixtures.mjs';
+import { engineMocks } from '../support/engineMocks.ts';
 
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);
 const NAV_MONSTER_MAXS = new Vector(16.0, 16.0, 40.0);
@@ -146,30 +146,28 @@ function createTrace(end, endpos, fraction, startsolid = false, allsolid = false
  * @returns {Promise<void>} callback result after registry restoration
  */
 function withNavigationRegistry(mockRegistry, callback) {
-  const previousCL = registry.CL;
-  const previousCOM = registry.COM;
-  const previousCon = registry.Con;
-  const previousHost = registry.Host;
-  const previousR = registry.R;
-  const previousSV = registry.SV;
+  const previousCL = engineMocks.CL;
+  const previousCOM = engineMocks.COM;
+  const previousCon = engineMocks.Con;
+  const previousHost = engineMocks.Host;
+  const previousR = engineMocks.R;
+  const previousSV = engineMocks.SV;
 
   const restore = () => {
-    registry.CL = previousCL;
-    registry.COM = previousCOM;
-    registry.Con = previousCon;
-    registry.Host = previousHost;
-    registry.R = previousR;
-    registry.SV = previousSV;
-    eventBus.publish('registry.frozen');
+    engineMocks.CL = previousCL;
+    engineMocks.COM = previousCOM;
+    engineMocks.Con = previousCon;
+    engineMocks.Host = previousHost;
+    engineMocks.R = previousR;
+    engineMocks.SV = previousSV;
   };
 
-  registry.CL = null;
-  registry.COM = mockRegistry.COM;
-  registry.Con = mockRegistry.Con;
-  registry.Host = { frametime: 0.1 };
-  registry.R = null;
-  registry.SV = mockRegistry.SV;
-  eventBus.publish('registry.frozen');
+  engineMocks.CL = null;
+  engineMocks.COM = mockRegistry.COM;
+  engineMocks.Con = mockRegistry.Con;
+  engineMocks.Host = { frametime: 0.1 };
+  engineMocks.R = null;
+  engineMocks.SV = mockRegistry.SV;
 
   let result;
 
@@ -309,7 +307,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -369,7 +367,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -427,7 +425,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -493,7 +491,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -550,7 +548,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -615,7 +613,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -640,7 +638,6 @@ void describe('Navigation.build', () => {
         },
       },
     }, async () => {
-      registry.isDedicatedServer = false;
 
       const unsubscribe = eventBus.subscribe('nav.load', (mapname, checksum) => {
         publishedLoads.push({ mapname, checksum });
@@ -677,7 +674,7 @@ void describe('Navigation.build', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -746,7 +743,7 @@ void describe('Navigation.build (tight corridor)', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -918,7 +915,7 @@ void describe('Navigation.build (slope)', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -964,7 +961,7 @@ void describe('Navigation.findPath', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -1009,7 +1006,7 @@ void describe('Navigation.findPath', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -1048,7 +1045,7 @@ void describe('Navigation.findPath', () => {
   });
 
   void test('returns null when graph is empty', () => {
-    const navigation = new Navigation(null, registryNavigationServices());
+    const navigation = new Navigation(null, mockedNavigationServices());
 
     Navigation.nav_debug_path = { value: 0 };
 
@@ -1070,7 +1067,7 @@ void describe('Navigation.findPath', () => {
       },
     };
 
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -1243,7 +1240,7 @@ void describe('Navigation (two-level floor — drop-link regression)', () => {
    */
   async function buildTwoLevelNavigation() {
     const worldmodel = createTwoLevelWorldModel();
-    const navigation = new Navigation(worldmodel, registryNavigationServices());
+    const navigation = new Navigation(worldmodel, mockedNavigationServices());
 
     Navigation.nav_build_process = null;
     Navigation.nav_debug_graph = { value: 0 };
@@ -1316,7 +1313,7 @@ void describe('Navigation.findPath (test_e1m1.nav — in-game path regression)',
   let navigation;
 
   before(async () => {
-    navigation = new Navigation(null, registryNavigationServices());
+    navigation = new Navigation(null, mockedNavigationServices());
     Navigation.nav_debug_path = { value: 0 };
     Navigation.nav_debug_graph = { value: 0 };
     Navigation.nav_debug_waypoints = { value: 0 };

@@ -5,7 +5,6 @@ import * as Def from '../../source/engine/common/Def.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import { KeyDestination } from '../../source/engine/client/Key.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { clientStaticState } from '../../source/engine/client/ClientState.ts';
@@ -13,7 +12,7 @@ import { useClientStateOf } from '../support/clientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useMenuOf } from '../support/menu.ts';
 import { useHostOf } from '../support/host.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Builds a client runtime mock that records what the host does to it, in order.
@@ -67,17 +66,13 @@ function createClientRuntime({ calls, scheduled, serverActive = true, mapname = 
  * @returns {Promise<void>} resolves once the callback and the cleanup are done
  */
 async function withRegistryMembers(members, callback) {
-  const previous = Object.fromEntries(Object.keys(members).map((name) => [name, registry[name]]));
-  const facadeMocks = Object.fromEntries(['Key', 'SCR', 'S'].filter((name) => name in members).map((name) => [name, members[name]]));
-  const previousFacades = Object.fromEntries(Object.keys(facadeMocks).map((name) => [name, facades[name]]));
+  const previous = Object.fromEntries(Object.keys(members).map((name) => [name, engineMocks[name]]));
 
-  Object.assign(registry, members);
-  Object.assign(facades, facadeMocks);
+  Object.assign(engineMocks, members);
   const restoreClientState = useClientStateOf(members.CL);
   const restoreRenderer = useRendererOf(members.R);
   const restoreMenu = useMenuOf(members.M);
   const restoreHost = useHostOf(members.Host);
-  eventBus.publish('registry.frozen');
 
   try {
     await callback();
@@ -86,9 +81,7 @@ async function withRegistryMembers(members, callback) {
     restoreMenu();
     restoreRenderer();
     restoreClientState();
-    Object.assign(facades, previousFacades);
-    Object.assign(registry, previous);
-    eventBus.publish('registry.frozen');
+    Object.assign(engineMocks, previous);
   }
 }
 
@@ -221,7 +214,7 @@ void describe('ClientHost', () => {
 
         assert.equal(clientStaticState.demonum, -1);
         assert.equal(clientStaticState.spawnparms, 'a b');
-        assert.equal(facades.Key.destination, KeyDestination.game);
+        assert.equal(engineMocks.Key.destination, KeyDestination.game);
         assert.equal(scheduled.length, 1);
         assert.deepEqual(calls.map(([name]) => name), ['Disconnect', 'stop', 'BeginLoadingPlaque', 'SetConnectingStep'], 'nothing spawns before the next frame');
 

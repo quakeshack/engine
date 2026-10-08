@@ -7,12 +7,11 @@ import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEn
 import ClientEntityPhysics from '../../source/engine/client/ClientEntityPhysics.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
 import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useHostOf } from '../support/host.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * A world trace result matching `CollisionTrace`'s shape.
@@ -66,20 +65,18 @@ function floorWorld(floorZ) {
  * @param {() => void} callback
  */
 function withWorld({ gravity = 800, paused = false, worldmodel = { nodes: [{ contents: content.CONTENT_EMPTY, num: 0 }] }, frametime = 0.1, trace }, callback) {
-  const previous = { CL: registry.CL, Host: registry.Host };
+  const previous = { CL: engineMocks.CL, Host: engineMocks.Host };
 
-  registry.CL = { pmove: { movevars: { gravity } }, state: { worldmodel, paused }, nolerp: { value: 0 }, collision: { traceStaticWorldLine: trace } };
+  engineMocks.CL = { pmove: { movevars: { gravity } }, state: { worldmodel, paused }, nolerp: { value: 0 }, collision: { traceStaticWorldLine: trace } };
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  registry.Host = { frametime };
-  const restoreHost = useHostOf(registry.Host);
-  eventBus.publish('registry.frozen');
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.Host = { frametime };
+  const restoreHost = useHostOf(engineMocks.Host);
 
   try {
     callback();
   } finally {
-    Object.assign(registry, previous);
-    eventBus.publish('registry.frozen');
+    Object.assign(engineMocks, previous);
   }
 }
 

@@ -15,41 +15,28 @@ Please follow these rules when writing or modifying code.
 5.  **Use specific types from imports**.
 6.  **Use `@type` for variable declarations** when the type cannot be inferred
 
-## Registry and Global Variables
+## Reaching Other Modules
 
-### Registry Pattern
+There is no registry. A module gets what it needs in one of these ways, in this order of preference:
 
-- **ALWAYS use destructuring** to get registry modules in EVERY file.
-- **NEVER access registry modules directly** via properties (e.g., `registry.Con`).
-- **Always include the destructuring prolog** at the top of the file, wrapped in a `registry.frozen` event listener if necessary.
-- **Do not carry registry items in context objects**; they are singletons.
+- **Import it.** `Con`, `Mod`, `Host`, `Cmd`, `Cvar`, `CL`, `M`, `R`, `GL`, `Draw`, `IN`, `Key`, `S`, `SCR`, `V`, `Sys` and the client state (`clientRuntimeState`, `clientStaticState`) are imported directly. Plain ES imports, no destructuring prolog, no `registry.frozen`. A cycle between client modules is fine as long as no module builds anything of another module while it is being evaluated; when one has to, move that code into an `Init()` or a lazy getter instead of reordering imports.
+- **Page services.** What only the composition root can build (the page's `COM`, `NET`, the client engine API, `urls`, `buildConfig`) is installed once into `source/engine/client/PageServices.ts` by `bootstrap/createBrowserClient.ts` and imported from there as live bindings (`import { com, net } from './PageServices.ts'`).
+- **Injection.** Anything that exists per realm or per server (`Server`, `ServerEngineAPI`, `ServerHost`, `Navigation`, the network layer, ...) is a class that receives its collaborators through its constructor, built by the composition root of its realm (`createBrowserClient`, `createDedicatedServer`, `createServerWorker`). Do not carry singletons around in context objects.
+- **Hooks.** A shared singleton that must reach into a realm-specific part gets an interface and an assignable member (`Cmd.files`, `Cmd.forwardToServer`, `Cvar.serverState`, `Host.files`, ...) that the composition root fills in.
 
-**Correct Pattern:**
+Code under `network/` and `server/` must not import `client/`, and the import closure of the server worker may contain only the few client data classes that model loading needs (`test/common/engine-boundaries.test.mjs` enforces both); that is what keeps the server worker bundle free of client code.
 
-```javascript
-let { CL, COM, Con, Host, Mod, SCR, SV, Sys, V } = registry;
+### Global GL Context
 
-eventBus.subscribe("registry.frozen", () => {
-  ({ CL, COM, Con, Host, Mod, SCR, SV, Sys, V } = registry);
-});
-```
-
-### Registry Contents
-
-- **In Registry:** `CL`, `COM`, `Con`, `Host`, `Mod`, `SCR`, `SV`, `Sys`, `V`.
-- **NOT in Registry:** `GL` (import directly), `Cmd`, `Cvar`.
+- Use the global `gl` (accessible via `GL.gl` after `'gl.ready'`) instead of passing it as a parameter.
 
 ### Event Bus Usage
 
 Use `eventBus` for **business logic events and lifecycle hooks**.
 
-- **Good Candidates:** `'registry.frozen'`, `'gl.ready'`, `'game.start'`, `'model.loaded'`, `'player.spawn'`, `'frame.start'`.
+- **Good Candidates:** `'gl.ready'`, `'game.start'`, `'model.loaded'`, `'player.spawn'`, `'frame.start'`.
 - **Poor Candidates:** Direct function calls, return values needed, tight coupling, hot paths.
 - All events are documented in `docs/events.md`.
-
-### Global GL Context
-
-- Use the global `gl` from the registry (accessible via `GL.gl` after `'gl.ready'`) instead of passing it as a parameter.
 
 ## File Organization
 

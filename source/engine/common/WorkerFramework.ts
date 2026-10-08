@@ -72,7 +72,7 @@ class WorkerCOM extends COM {}
 /**
  * Worker Framework
  *
- * Initializes the worker framework, setting up the registry and event bus.
+ * Initializes the worker framework, setting up the event bus.
  * Listens for messages from the parent thread and publishes them to the event bus.
  *
  * Also prepares lean versions of Con, Sys, and COM for use within the worker.

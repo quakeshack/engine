@@ -13,7 +13,7 @@ and loading, the development commands, hosting for other players over WebRTC.
 The worker is used unless the page is opened with `?serverthread`, for example `http://localhost:3000/?serverthread`,
 or the browser has no `Worker`. The flag has no value on purpose: a parameter with a value (`?server=thread`) would
 be run as a console command at startup. The controller you get is `clientStaticState.serverController`, a `WorkerServerController`
-instead of an `InThreadServerController`; `registry.SV` is undefined on the page, because the server does not live there.
+instead of an `InThreadServerController`; there is no `SV` on the page, because the server does not live there.
 
 ## Two channels, one port
 
@@ -146,8 +146,8 @@ The time step of a frame is the wall-clock time since the previous one, clamped 
 A worker is its own JavaScript realm, so it has its own `Cvar` and `Cmd` tables and its own module state.
 `bootstrap/createServerWorker.ts` is its composition root: it builds the realm services (console, clock,
 files, network with the channel as its only driver), the server runtime on top of them (`createServerRuntime`,
-the same one the page and the dedicated server use), and fills the registry that code in that realm still
-reads. `ServerRealm` plays the part `Host` plays on the page: frame timing, scheduling and the cvars
+the same one the page and the dedicated server use) and hands them to the worker's own copies of the
+shared singletons (`Con`, `Cmd`, `Mod`, `W`). `ServerRealm` plays the part `Host` plays on the page: frame timing, scheduling and the cvars
 (`developer`, `host_framerate`, `host_speeds`, `sys_ticrate`) the server code reads.
 
 The worker never loads a client: `test/common/engine-boundaries.test.mjs` fails when the import closure of

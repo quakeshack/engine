@@ -10,7 +10,7 @@
 - **Category globs**: Keep engine tests grouped by top-level area such as `test/common/`, `test/physics/`, and `test/renderer/`.
 - **Nested test directories**: `npm test`'s glob patterns only reach as many directory levels as `package.json` spells out explicitly (dash has no recursive `**`) — see the `.claude/skills/test-glob-coverage/SKILL.md` skill and verify coverage whenever a new subdirectory level is added under `test/`.
 - **File naming**: `<subsystem>.test.mjs` or `<subsystem>.test.ts`. One file per production class/module.
-- **Shared helpers**: `test/physics/fixtures.mjs` and the typed ones in `test/support/` (no `.test.` — never auto-run). `test/support/consoleBridge.ts` makes the engine's shared console print to a mocked `registry.Con`, for tests that still mock one; it goes away with the registry.
+- **Shared helpers**: `test/physics/fixtures.mjs` and the typed ones in `test/support/` (no `.test.` — never auto-run). `test/support/engineMocks.ts` is where a test puts the mocks it wants the engine's parts to see (see "Mock Pattern" below), and `test/support/consoleBridge.ts` makes the engine's shared console print to a mocked `engineMocks.Con`.
 - **All files are ESM**. Use `import`/`export` exclusively. New tests and tests of a module that is being converted are written in TypeScript (`<subsystem>.test.ts`, run by `tsx` like the `.mjs` ones, included by the same globs); the rest are `.mjs` until their module's turn.
 - **Only `.test.ts` tests are type-checked.** `npm run typecheck` covers `test/**/*.test.ts` and `test/support/**` (shared typed helpers such as `modelContext.ts`); `.mjs` tests and `source/game/**/test/` are outside `tsconfig.json`, so a test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a signature or a game/engine contract member, search the tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
 
@@ -29,37 +29,34 @@ Import shared factories from `test/physics/fixtures.mjs`:
 
 - `createMockEntity({ origin, mins, maxs, velocity, ... })` — returns a `MockEntity`.
 - `createMockEdict(entity)` — wraps a `MockEntity` in a `MockEdict` with sensible defaults.
-- `defaultMockRegistry(sv = {})` — provides silent `Con` and `Host.frametime: 0.1`. Pass SV overrides only.
-- `withMockRegistry(mockedRegistry, callback)` — temporarily installs a mock registry and fires `registry.frozen`.
+- `defaultMockEngine(sv = {})` — provides silent `Con` and `Host.frametime: 0.1`. Pass SV overrides only.
+- `withMockEngine(mockedEngine, callback)` — temporarily installs the mocks (client state, host, cheat rule, page `COM`) and restores them afterwards.
 - `withMockServerPhysics(callback)` — sets up a complete pusher/rider scenario for `pushMove` tests.
 - `assertNear(actual, expected, epsilon)` — floating-point equality within tolerance.
 - Geometry helpers: `createAxisPlane`, `createBoxBrushModel`, `createBrushWorldModel`, `createRoomHullFromBounds`, `createLegacyWorldModel`, `createPmoveBoxEntity`.
 
-### Mock Registry Pattern
+### Mock Pattern
 
-Never access registry singletons directly in tests. Instead:
+The engine's parts import their collaborators (`Con`, `Host`, `CL`'s state, `M`, `R`, `Key`, ...), so a test cannot hand them a fake through a lookup table. It patches the real singleton instead and puts it back:
 
-```javascript
-withMockRegistry(defaultMockRegistry({
-  collision: { move() { ... } },
-  server: { ... },
-}), () => {
-  // registry.SV is now the mocked SV object
-});
-```
+- `withMockEngine(defaultMockEngine({ ... }), () => { ... })` for server-side tests: `Host`, the client state, the cheat rule and the page's `COM` are mocked for the duration of the callback.
+- `engineMocks.Key = { destination: 0 }` (and the other facades `Draw`, `IN`, `S`, `SCR`, `V`) patches the members the mock has onto the real facade; assigning back what you read before undoes it. The facade reads as the real one, so state the engine changes is read from `engineMocks.Key`, not from your mock object.
+- `engineMocks.COM`, `NET`, `urls` and `buildConfig` install the page services (`client/PageServices.ts`); `installPageServices({ engineApi })` does the same for tests that need to install several.
+- `useClientStateOf`, `useHostOf`, `useMenuOf` and `useRendererOf` (`test/support/`) patch the real client state, host, menu and renderer and return a restore function.
+- Prefer constructing the class under test with fakes (`new Server(fakeDeps)`, `new Mod()`): per-realm classes take their collaborators through the constructor.
 
 When a test needs to capture output (e.g., `Con.Print`), spread the default and override `Con`:
 
 ```javascript
-withMockRegistry({
-  ...defaultMockRegistry(sv),
+withMockEngine({
+  ...defaultMockEngine(sv),
   Con: { Print(msg) { prints.push(msg); }, DPrint() {} },
 }, () => { ... });
 ```
 
 ### JSDoc in Tests
 
-- **Define typedefs** for mock shapes (`MockEntity`, `MockEdict`, `MockRegistryConfig`) in `fixtures.mjs`.
+- **Define typedefs** for mock shapes (`MockEntity`, `MockEdict`, `MockEngineConfig`) in `fixtures.mjs`.
 - **Never use `@returns {object}`** — always use a specific typedef.
 - Annotate factory parameters with `@param` when the shape is non-obvious.
 

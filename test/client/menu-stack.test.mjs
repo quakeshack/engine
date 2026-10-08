@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { MenuPage } from '../../source/engine/client/menu/MenuPage.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
 import { useMenuOf } from '../support/menu.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Temporarily installs minimal `M`/`IN` registry stubs (MenuStack only needs `M.entersound`
@@ -14,22 +13,20 @@ import { facades } from '../support/facades.ts';
  * @param {() => void} callback test callback
  */
 function withMockMenuRegistry(callback) {
-  const previousM = registry.M;
-  const previousIN = facades.IN;
+  const previousM = engineMocks.M;
+  const previousIN = engineMocks.IN;
 
-  registry.M = { entersound: false };
+  engineMocks.M = { entersound: false };
 
-  const restoreMenu = useMenuOf(registry.M);
-  facades.IN = { ReleasePointerLock() {} };
-  eventBus.publish('registry.frozen');
+  const restoreMenu = useMenuOf(engineMocks.M);
+  engineMocks.IN = { ReleasePointerLock() {} };
 
   try {
     callback();
   } finally {
-    registry.M = previousM;
+    engineMocks.M = previousM;
     restoreMenu();
-    facades.IN = previousIN;
-    eventBus.publish('registry.frozen');
+    engineMocks.IN = previousIN;
   }
 }
 

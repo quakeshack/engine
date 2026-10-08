@@ -14,12 +14,6 @@ The engine has an event bus.
 | com.fs.being | 1. filename | Started working on given filename. |
 | com.fs.end | 1. filename | Finished working on given filename. |
 
-### Registry
-
-| Event | Arguments | Description |
-| - | - | - |
-| registry.frozen | 1. registry | The registry has been frozen and every module is now final. Engine and game code that destructured registry members before this fires should re-read them afterward — see the registry pattern in `code-style-guide.instructions.md`. |
-
 ### Client
 
 | Event | Arguments | Description |

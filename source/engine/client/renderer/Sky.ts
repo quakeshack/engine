@@ -1,14 +1,9 @@
 import W from '../../common/W.ts';
 import { BrushModel } from '../../common/Mod.ts';
-import { getClientRegistry } from '../../registry.ts';
+import Host from '../../common/Host.ts';
+import { renderer as R } from './RenderContext.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import GL, { ATTRIB_LOCATIONS, GLTexture } from '../GL.ts';
-
-let { Host, R } = getClientRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Host, R } = getClientRegistry());
-});
 
 let gl: WebGL2RenderingContext = null!;
 

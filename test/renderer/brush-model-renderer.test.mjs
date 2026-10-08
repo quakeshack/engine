@@ -2,11 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/BrushModelRenderer.ts';
 import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.ts';
 import { useRendererOf } from '../support/renderer.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 void describe('resolveBrushBloomContributionStrength', () => {
   void test('clamps invalid contribution strengths to zero', () => {
@@ -311,15 +310,14 @@ void describe('BrushModelRenderer._buildTurbulentFallbackLightMap', () => {
 
 void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
   void test('sorts world turbulents by tight batch bounds instead of oversized leaf bounds', () => {
-    const previousR = registry.R;
-    registry.R = /** @type {typeof import('../../source/engine/client/R.ts').default} */ ({
+    const previousR = engineMocks.R;
+    engineMocks.R = /** @type {typeof import('../../source/engine/client/R.ts').default} */ ({
       visframecount: 7,
       CullBox() {
         return false;
       },
     });
-    const restoreRenderer = useRendererOf(registry.R);
-    eventBus.publish('registry.frozen');
+    const restoreRenderer = useRendererOf(engineMocks.R);
 
     try {
       const renderer = new BrushModelRenderer();
@@ -347,9 +345,8 @@ void describe('BrushModelRenderer.getWorldTurbulentChains', () => {
       assert.equal(items[0].chain, chain);
       assert.equal(items[0].dist, 96);
     } finally {
-      registry.R = previousR;
+      engineMocks.R = previousR;
       restoreRenderer();
-      eventBus.publish('registry.frozen');
     }
   });
 });

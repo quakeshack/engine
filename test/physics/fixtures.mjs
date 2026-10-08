@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useHostOf } from '../support/host.ts';
@@ -17,7 +15,7 @@ import { ServerEngineAPI } from '../../source/engine/server/ServerEngineAPI.ts';
 import ServerHost from '../../source/engine/server/ServerHost.ts';
 import NET from '../../source/engine/network/Network.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 // ── Typedefs ────────────────────────────────────────────────────────────────
 
@@ -57,7 +55,7 @@ import { pageServices } from '../support/pageServices.ts';
  */
 
 /**
- * @typedef MockRegistryConfig
+ * @typedef MockEngineConfig
  * @property {typeof import('../../source/engine/common/Com.ts').default | null} [COM]
  * @property {object|null} [CL]
  * @property {{ Print: Function, DPrint: Function }} Con
@@ -303,13 +301,13 @@ export function createMockEdict(entity) {
 // ── Mock Registry Helpers ───────────────────────────────────────────────────
 
 /**
- * Build a default mock registry config with silent console and a standard server frametime.
+ * Build a default mock engine config with silent console and a standard server frametime.
  * Supply SV overrides to configure server-side mocks.
  * @param {object} [sv] SV overrides
  * @param cl
- * @returns {MockRegistryConfig} registry config
+ * @returns {MockEngineConfig} engine config
  */
-export function defaultMockRegistry(sv = {}, cl = null) {
+export function defaultMockEngine(sv = {}, cl = null) {
   // Tests keep a reference to what they pass in, so it is completed in place instead of copied.
   sv.server ??= {};
   sv.server.frametime ??= 0.1;
@@ -323,51 +321,48 @@ export function defaultMockRegistry(sv = {}, cl = null) {
 }
 
 /**
- * Run a callback with mocked registry values. The shared console prints to the mocked `Con` (see
- * `test/support/consoleBridge.ts`) and the cvars' cheat rule asks the mocked `CL`/`SV`: the shared parts no longer read the
- * registry, so a test that still mocks one gets it bridged here until the registry is gone.
- * @param {MockRegistryConfig} mockedRegistry registry replacements
+ * Run a callback with mocked engine parts. The shared console prints to the mocked `Con` (see
+ * `test/support/consoleBridge.ts`) and the cvars' cheat rule asks the mocked `CL`/`SV`.
+ * @param {MockEngineConfig} mockedEngine replacements
  * @param {() => void | Promise<void>} callback test callback
  */
-export function withMockRegistry(mockedRegistry, callback) {
+export function withMockEngine(mockedEngine, callback) {
   const previousServerState = Cvar.serverState;
-  const restoreClientState = useClientStateOf(mockedRegistry.CL);
-  const restoreHost = useHostOf(mockedRegistry.Host);
-  const previousPageCom = pageServices.COM;
+  const restoreClientState = useClientStateOf(mockedEngine.CL);
+  const restoreHost = useHostOf(mockedEngine.Host);
+  const previousPageCom = engineMocks.COM;
 
-  if (mockedRegistry.COM !== undefined) {
-    pageServices.COM = mockedRegistry.COM;
+  if (mockedEngine.COM !== undefined) {
+    engineMocks.COM = mockedEngine.COM;
   }
 
   Cvar.serverState = {
-    isServerActive: () => mockedRegistry.CL?.serverController?.state.active ?? mockedRegistry.SV?.server?.active ?? false,
-    reportedCheats: () => mockedRegistry.CL?.cls?.serverInfo?.sv_cheats,
+    isServerActive: () => mockedEngine.CL?.serverController?.state.active ?? mockedEngine.SV?.server?.active ?? false,
+    reportedCheats: () => mockedEngine.CL?.cls?.serverInfo?.sv_cheats,
   };
 
-  const previousCOM = registry.COM;
-  const previousCL = registry.CL;
-  const previousCon = registry.Con;
-  const previousHost = registry.Host;
-  const previousSV = registry.SV;
+  const previousCOM = engineMocks.COM;
+  const previousCL = engineMocks.CL;
+  const previousCon = engineMocks.Con;
+  const previousHost = engineMocks.Host;
+  const previousSV = engineMocks.SV;
 
-  registry.COM = mockedRegistry.COM ?? previousCOM;
-  registry.CL = mockedRegistry.CL ?? null;
-  registry.Con = mockedRegistry.Con;
-  registry.Host = mockedRegistry.Host;
-  registry.SV = mockedRegistry.SV;
-  eventBus.publish('registry.frozen');
+  engineMocks.COM = mockedEngine.COM ?? previousCOM;
+  engineMocks.CL = mockedEngine.CL ?? null;
+  engineMocks.Con = mockedEngine.Con;
+  engineMocks.Host = mockedEngine.Host;
+  engineMocks.SV = mockedEngine.SV;
 
   const restore = () => {
-    pageServices.COM = previousPageCom;
+    engineMocks.COM = previousPageCom;
     restoreHost();
     restoreClientState();
     Cvar.serverState = previousServerState;
-    registry.COM = previousCOM;
-    registry.CL = previousCL;
-    registry.Con = previousCon;
-    registry.Host = previousHost;
-    registry.SV = previousSV;
-    eventBus.publish('registry.frozen');
+    engineMocks.COM = previousCOM;
+    engineMocks.CL = previousCL;
+    engineMocks.Con = previousCon;
+    engineMocks.Host = previousHost;
+    engineMocks.SV = previousSV;
   };
 
   try {
@@ -386,7 +381,7 @@ export function withMockRegistry(mockedRegistry, callback) {
 }
 
 /**
- * Run a callback with a minimal mocked server registry for ServerPhysics tests.
+ * Run a callback with minimal mocked server parts for ServerPhysics tests.
  * @param {(context: { serverPhysics: ServerPhysics, pusherEdict: MockEdict, riderEdict: MockEdict, linkCalls: object[], moveCalls: object[], testCalls: object[], blockedCalls: object[] }) => void} callback test callback
  */
 export function withMockServerPhysics(callback) {
@@ -430,7 +425,7 @@ export function withMockServerPhysics(callback) {
     linkCalls.push(edict);
   };
 
-  void withMockRegistry({
+  void withMockEngine({
     Con: {
       Print() {},
       DPrint() {},
@@ -468,7 +463,7 @@ export function withMockServerPhysics(callback) {
     },
   }, () => {
     callback({
-      serverPhysics: new ServerPhysics(registrySV()),
+      serverPhysics: new ServerPhysics(mockedSV()),
       pusherEdict,
       riderEdict,
       linkCalls,
@@ -497,20 +492,20 @@ export function assertNear(actual, expected, epsilon = 0.05) {
 // ── Registry-backed stand-ins for what the server classes are constructed with ──
 
 /**
- * A server stand-in that forwards every access to whatever `registry.SV` is at that moment, so a
+ * A server stand-in that forwards every access to whatever `engineMocks.SV` is at that moment, so a
  * server class can be built once and still see the mock a test installs afterwards.
  * @returns {import('../../source/engine/server/Server.ts').default} the forwarding server
  */
-export function registrySV() {
-  // Services the server has as members, but tests keep in the registry.
+export function mockedSV() {
+  // Services the server has as members, but tests keep in `engineMocks`.
   const services = { con: 'Con', sys: 'Sys', net: 'NET', mod: 'Mod', view: 'V' };
 
   const forwarding = /** @type {any} */ (new Proxy({}, {
     get: (_target, key) => {
-      const sv = registry.SV ?? {};
+      const sv = engineMocks.SV ?? {};
 
       if (!(key in sv) && typeof key === 'string' && key in services) {
-        return registry[services[key]];
+        return engineMocks[services[key]];
       }
 
       if (!(key in sv) && key === 'engineAPI') {
@@ -519,8 +514,8 @@ export function registrySV() {
 
       return Reflect.get(sv, key);
     },
-    set: (_target, key, value) => Reflect.set(registry.SV ?? {}, key, value),
-    has: (_target, key) => key in (registry.SV ?? {}),
+    set: (_target, key, value) => Reflect.set(engineMocks.SV ?? {}, key, value),
+    has: (_target, key) => key in (engineMocks.SV ?? {}),
   }));
   // The engine API a test server has unless the mock brings its own.
   const engineAPI = new ServerEngineAPI(forwarding, () => ({ registered: true, hipnotic: false, rogue: false }));
@@ -529,37 +524,37 @@ export function registrySV() {
 }
 
 /**
- * A collision model source that resolves the server and client models through the registry.
+ * A collision model source that resolves the server and client models through the mocked server.
  * @returns {CollisionModelSource} the model source
  */
-export function registryCollisionModelSource() {
+export function mockedCollisionModelSource() {
   const modelSource = new CollisionModelSource();
 
   modelSource.configureServer({
-    getWorldEntity: () => registry.SV?.server?.edicts?.[0] ?? null,
-    getWorldModel: () => registry.SV?.server?.worldmodel ?? null,
-    getModels: () => (registry.SV?.server?.models?.map((model) => model instanceof Promise ? null : model) ?? null),
+    getWorldEntity: () => engineMocks.SV?.server?.edicts?.[0] ?? null,
+    getWorldModel: () => engineMocks.SV?.server?.worldmodel ?? null,
+    getModels: () => (engineMocks.SV?.server?.models?.map((model) => model instanceof Promise ? null : model) ?? null),
   });
   modelSource.configureClient({
-    getWorldModel: () => registry.CL?.state?.worldmodel ?? null,
-    getModels: () => registry.CL?.state?.model_precache ?? null,
+    getWorldModel: () => engineMocks.CL?.state?.worldmodel ?? null,
+    getModels: () => engineMocks.CL?.state?.model_precache ?? null,
   });
 
   return modelSource;
 }
 
 /**
- * The services a `Navigation` is built from, forwarding to the registry like `registrySV()` does.
+ * The services a `Navigation` is built from, forwarding to the mocked server like `mockedSV()` does.
  * @returns {import('../../source/engine/server/Navigation.ts').NavigationServices} the services
  */
-export function registryNavigationServices() {
-  const forward = (name) => new Proxy({}, { get: (_target, key) => registry[name]?.[key]?.bind(registry[name]) });
+export function mockedNavigationServices() {
+  const forward = (name) => new Proxy({}, { get: (_target, key) => engineMocks[name]?.[key]?.bind(engineMocks[name]) });
 
-  return /** @type {any} */ ({ con: forward('Con'), files: forward('COM'), sv: registrySV() });
+  return /** @type {any} */ ({ con: forward('Con'), files: forward('COM'), sv: mockedSV() });
 }
 
 /**
- * Builds a real `Server` whose services are silent stand-ins, so tests can drive its methods without a registry.
+ * Builds a real `Server` whose services are silent stand-ins, so tests can drive its methods without the engine's globals.
  * @param {Partial<import('../../source/engine/server/ServerDependencies.ts').ServerDependencies>} [overrides] services to replace
  * @returns {Server} the server
  */
@@ -600,7 +595,7 @@ export function createTestServerHost({ server = createTestServer(), host = {} } 
 }
 
 /**
- * Builds a network layer with silent services, so network code can be tested without a registry.
+ * Builds a network layer with silent services, so network code can be tested without the engine's globals.
  * @param {{ dedicated?: boolean, urls?: { signalingURL?: string }, mapname?: string, maxPlayers?: number, game?: string }} [options] what to replace
  * @returns {NET} the network layer
  */

@@ -5,8 +5,6 @@ import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEn
 import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 import ClientSerialization from '../../source/shared/ClientSerialization.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content, moveType } from '../../source/shared/Defs.ts';
 
@@ -15,6 +13,7 @@ import { useClientStateOf } from '../support/clientState.ts';
 import { installPageServices } from '../../source/engine/client/PageServices.ts';
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 // Handlers are constructed with the page's engine API.
 installPageServices({ engineApi: createClientEngineApi() });
@@ -73,22 +72,20 @@ function withTestGameModule(callback) {
  * @param {() => void} callback
  */
 function withMockClRegistry(time, callback) {
-  const previousCL = registry.CL;
+  const previousCL = engineMocks.CL;
 
-  registry.CL = {
+  engineMocks.CL = {
     state: {
       time,
       worldmodel: { nodes: [{ contents: content.CONTENT_EMPTY, num: 0 }] },
     },
   };
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  eventBus.publish('registry.frozen');
+  const restoreClientState = useClientStateOf(engineMocks.CL);
 
   const restore = () => {
-    registry.CL = previousCL;
+    engineMocks.CL = previousCL;
     restoreClientState();
-    eventBus.publish('registry.frozen');
   };
 
   try {

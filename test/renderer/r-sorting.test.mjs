@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import R, { compareTransparentItems } from '../../source/engine/client/R.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { Face, Plane } from '../../source/engine/common/model/BaseModel.ts';
@@ -13,7 +12,7 @@ import V from '../../source/engine/client/V.ts';
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useHostOf } from '../support/host.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 void describe('compareTransparentItems', () => {
   void test('sorts farther items first', () => {
@@ -60,11 +59,11 @@ void describe('compareTransparentItems', () => {
 void describe('R.GetEntityLightSamplePoint', () => {
   // CR: this is currently not working, see original
   // test('derives alias sample height from negative mins to match classic Quake monsters', () => {
-  //   const previousCL = registry.CL;
-  //   const previousMod = registry.Mod;
+  //   const previousCL = engineMocks.CL;
+  //   const previousMod = engineMocks.Mod;
 
-  //   registry.CL = { state: { viewent: null } };
-  //   registry.Mod = { type: { alias: 2 } };
+  //   engineMocks.CL = { state: { viewent: null } };
+  //   engineMocks.Mod = { type: { alias: 2 } };
   //   eventBus.publish('registry.frozen');
 
   //   try {
@@ -79,21 +78,20 @@ void describe('R.GetEntityLightSamplePoint', () => {
   //     assert.deepEqual(Array.from(samplePoint), [10, 20, 54]);
   //     assert.deepEqual(Array.from(entity.lerp.origin), [10, 20, 30]);
   //   } finally {
-  //     registry.CL = previousCL;
-  //     registry.Mod = previousMod;
+  //     engineMocks.CL = previousCL;
+  //     engineMocks.Mod = previousMod;
   //     eventBus.publish('registry.frozen');
   //   }
   // });
 
   void test('keeps brush and sprite entities on their true origin', () => {
-    const previousCL = registry.CL;
-    const previousMod = registry.Mod;
+    const previousCL = engineMocks.CL;
+    const previousMod = engineMocks.Mod;
 
-    registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { viewent: null } });
+    engineMocks.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { viewent: null } });
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    registry.Mod = /** @type {typeof import('../../source/engine/common/Mod.ts').default} */ (/** @type {unknown} */ ({ type: { alias: 2, brush: 1 } }));
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
+    engineMocks.Mod = /** @type {typeof import('../../source/engine/common/Mod.ts').default} */ (/** @type {unknown} */ ({ type: { alias: 2, brush: 1 } }));
 
     try {
       const entity = /** @type {import('../../source/engine/client/ClientEntities.ts').ClientEdict} */ ({
@@ -106,10 +104,9 @@ void describe('R.GetEntityLightSamplePoint', () => {
 
       assert.deepEqual(Array.from(samplePoint), [-4, 8, 12]);
     } finally {
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
-      registry.Mod = previousMod;
-      eventBus.publish('registry.frozen');
+      engineMocks.Mod = previousMod;
     }
   });
 });
@@ -140,19 +137,17 @@ void describe('R._SampleDeluxemapDirection', () => {
    * @param callback Test body to run with the mock installed.
    */
   function withMockWorldmodel(worldmodel, callback) {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
 
-    registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { worldmodel } });
+    engineMocks.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { worldmodel } });
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
 
     try {
       callback();
     } finally {
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
-      eventBus.publish('registry.frozen');
     }
   }
 
@@ -257,26 +252,24 @@ void describe('R.RecursiveLightPoint', () => {
    * @param callback Test body to run with the mocks installed.
    */
   function withFloorWorld(callback) {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousInterpolation = R.interpolation;
 
     const { brushmodel, root } = makeFloorWorld();
 
-    registry.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { worldmodel: brushmodel } });
+    engineMocks.CL = /** @type {typeof import('../../source/engine/client/CL.ts').default} */ ({ state: { worldmodel: brushmodel } });
 
-    const restoreClientState = useClientStateOf(registry.CL);
+    const restoreClientState = useClientStateOf(engineMocks.CL);
     // GetLightstyleInterpolation() only needs a Cvar-shaped value, disabling
     // interpolation so it returns early without touching CL.state.time.
     R.interpolation = /** @type {import('../../source/engine/common/Cvar.ts').default} */ ({ value: 0 });
-    eventBus.publish('registry.frozen');
 
     try {
       callback(root);
     } finally {
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
       R.interpolation = previousInterpolation;
-      eventBus.publish('registry.frozen');
     }
   }
 
@@ -329,22 +322,20 @@ void describe('R._SmoothLightValues', () => {
    * @param callback Test body to run with the mock installed.
    */
   function withMockFrametime(frametime, callback) {
-    const previousHost = registry.Host;
-    const previousV = facades.V;
+    const previousHost = engineMocks.Host;
+    const previousV = engineMocks.V;
 
-    registry.Host = /** @type {typeof import('../../source/engine/client/Host.ts').default} */ ({ frametime });
+    engineMocks.Host = /** @type {typeof import('../../source/engine/client/Host.ts').default} */ ({ frametime });
 
-    const restoreHost = useHostOf(registry.Host);
-    facades.V = V;
-    eventBus.publish('registry.frozen');
+    const restoreHost = useHostOf(engineMocks.Host);
+    engineMocks.V = V;
 
     try {
       callback();
     } finally {
-      registry.Host = previousHost;
+      engineMocks.Host = previousHost;
       restoreHost();
-      facades.V = previousV;
-      eventBus.publish('registry.frozen');
+      engineMocks.V = previousV;
     }
   }
 

@@ -5,8 +5,6 @@ import { K } from '../../source/shared/Keys.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { useMenuOf } from '../support/menu.ts';
 import M from '../../source/engine/client/Menu.ts';
 import { useHostOf } from '../support/host.ts';
@@ -16,7 +14,7 @@ import {
 import {
   DialogPage, GridLayout, ImageBasedLayout, ListLayout, ListPage, MenuPage, VerticalLayout,
 } from '../../source/engine/client/menu/MenuPage.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Temporarily installs a minimal `Host`/`M`/`S` registry stub so page draw/navigation can run
@@ -24,10 +22,10 @@ import { facades } from '../support/facades.ts';
  * @param {() => void} callback test callback
  */
 function withMockPageRegistry(callback) {
-  const previousHost = registry.Host;
-  const previousKey = facades.Key;
-  const previousM = registry.M;
-  const previousS = facades.S;
+  const previousHost = engineMocks.Host;
+  const previousKey = engineMocks.Key;
+  const previousM = engineMocks.M;
+  const previousS = engineMocks.S;
 
   const drawnPics = [];
   const printed = [];
@@ -35,11 +33,11 @@ function withMockPageRegistry(callback) {
   const slidersDrawn = [];
   const renderingPages = [];
 
-  registry.Host = { realtime: 0 };
+  engineMocks.Host = { realtime: 0 };
 
-  const restoreHost = useHostOf(registry.Host);
-  facades.Key = Key;
-  registry.M = {
+  const restoreHost = useHostOf(engineMocks.Host);
+  engineMocks.Key = Key;
+  engineMocks.M = {
     sfx_menu1: 'menu1',
     sfx_menu2: 'menu2',
     sfx_menu3: 'menu3',
@@ -52,22 +50,20 @@ function withMockPageRegistry(callback) {
     DrawSlider(x) { slidersDrawn.push(x); },
     withRenderingPage(page, draw) { renderingPages.push(page); draw(); },
   };
-  const restoreMenu = useMenuOf(registry.M);
-  facades.S = { LocalSound() {} };
-  eventBus.publish('registry.frozen');
+  const restoreMenu = useMenuOf(engineMocks.M);
+  engineMocks.S = { LocalSound() {} };
 
   try {
     callback({
       drawnPics, printed, printedWhite, slidersDrawn, renderingPages,
     });
   } finally {
-    registry.Host = previousHost;
+    engineMocks.Host = previousHost;
     restoreHost();
-    facades.Key = previousKey;
-    registry.M = previousM;
+    engineMocks.Key = previousKey;
+    engineMocks.M = previousM;
     restoreMenu();
-    facades.S = previousS;
-    eventBus.publish('registry.frozen');
+    engineMocks.S = previousS;
   }
 }
 

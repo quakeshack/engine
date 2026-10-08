@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import Cvar from '../../source/engine/common/Cvar.ts';
 import ServerCvarSync from '../../source/engine/server/ServerCvarSync.ts';
-import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine } from '../physics/fixtures.mjs';
 
 /**
  * @returns {{ sync: ServerCvarSync, sent: object[] }} the sync and what it sent to the page
@@ -95,7 +95,7 @@ void describe('ServerCvarSync', () => {
       new Cvar('sv_cheats', '0', Cvar.FLAG.SERVER);
       const { sync, sent } = createSync();
 
-      withMockRegistry(defaultMockRegistry({ server: { active: true } }, null), () => {
+      withMockEngine(defaultMockEngine({ server: { active: true } }, null), () => {
         sync.apply('nav_debug_path', '1');
       });
 
@@ -108,7 +108,7 @@ void describe('ServerCvarSync', () => {
       new Cvar('sv_cheats', '1', Cvar.FLAG.SERVER);
       const { sync } = createSync();
 
-      withMockRegistry(defaultMockRegistry({ server: { active: true } }, null), () => {
+      withMockEngine(defaultMockEngine({ server: { active: true } }, null), () => {
         sync.apply('nav_debug_path', '1');
       });
 
@@ -119,7 +119,7 @@ void describe('ServerCvarSync', () => {
       const cheat = new Cvar('nav_debug_path', '0', Cvar.FLAG.CHEAT);
       const { sync } = createSync();
 
-      withMockRegistry(defaultMockRegistry({ server: { active: false } }, null), () => {
+      withMockEngine(defaultMockEngine({ server: { active: false } }, null), () => {
         sync.apply('nav_debug_path', '1');
       });
 

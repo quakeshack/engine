@@ -545,7 +545,7 @@ how) a game module chooses to present them (see [`events.md`](events.md#host) fo
   `test/common/client-engine-api-save-slots.test.mjs`,
   `test/common/client-engine-api-connection-state.test.mjs` — `ClientEngineAPI.Menu`/
   `.Multiplayer`/`.SaveSlots`/`.CL.connected`/`.SV.active` register/open/add-item round-trips,
-  using the same mock-registry pattern as other client API tests.
+  using the same `engineMocks` pattern as other client API tests.
 - `test/common/host-alert.test.mjs` — `ClientHost.EndGame`/`Host.Error` publish `host.alert` with the
   right severity, and `Con.PrintError`/`PrintSuccess` still fire even with nothing subscribed.
 - `source/game/id1/test/client/menu.test.mjs` — `Id1Menu.Init()`: every built-in page registers
@@ -554,8 +554,8 @@ how) a game module chooses to present them (see [`events.md`](events.md#host) fo
   name/color/join flow, the launch-server session list, and the `host.alert`/`host.quit-requested`
   subscriptions).
 
-All of the above follow the project's standard mock-registry pattern
-(`registry.X = {...}; eventBus.publish('registry.frozen');`) for engine-level tests, and the
+All of the above follow the project's standard mock pattern
+(`engineMocks.X = {...}`, see `test/support/engineMocks.ts`) for engine-level tests, and the
 `createMockClientEngine()` fixture (`source/game/id1/test/client/fixtures.ts`) for game-level
 ones — see [Unit Tests](../.github/instructions/unit-tests.instructions.md) for the general
 convention.

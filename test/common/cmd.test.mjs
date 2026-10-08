@@ -4,9 +4,9 @@ import { describe, test } from 'node:test';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine } from '../physics/fixtures.mjs';
 import '../support/consoleBridge.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /** @typedef {{ prints: string[], warnings: string[], errors: string[], dprints: string[], Print: (message: string) => void, PrintWarning: (message: string) => void, PrintError: (message: string) => void, DPrint: (message: string) => void }} ConsoleCapture */
 
@@ -46,11 +46,11 @@ function resetCommandState() {
 /**
  * @param {ConsoleCapture} consoleCapture captured console sinks
  * @param {{ frametime?: number }} [hostOverrides] host registry overrides
- * @returns {import('../physics/fixtures.mjs').MockRegistryConfig & { Host: { frametime: number } }} mock registry config
+ * @returns {import('../physics/fixtures.mjs').MockEngineConfig & { Host: { frametime: number } }} mock registry config
  */
-function createMockRegistryConfig(consoleCapture, hostOverrides = {}) {
+function createMockEngineConfig(consoleCapture, hostOverrides = {}) {
   return {
-    ...defaultMockRegistry({}, null),
+    ...defaultMockEngine({}, null),
     COM,
     Con: consoleCapture,
     Host: {
@@ -64,7 +64,7 @@ void describe('Cmd', () => {
   void test('lists aliases without creating a broken alias entry and overwrites existing aliases by name', async () => {
     const consoleCapture = createConsoleCapture();
 
-    await withMockRegistry(createMockRegistryConfig(consoleCapture), async () => {
+    await withMockEngine(createMockEngineConfig(consoleCapture), async () => {
       resetCommandState();
       Cmd.Init();
 
@@ -90,7 +90,7 @@ void describe('Cmd', () => {
   void test('exposes public command and variable name lists for completion', async () => {
     const consoleCapture = createConsoleCapture();
 
-    await withMockRegistry(createMockRegistryConfig(consoleCapture), () => {
+    await withMockEngine(createMockEngineConfig(consoleCapture), () => {
       resetCommandState();
       Cmd.Init();
 
@@ -112,7 +112,7 @@ void describe('Cmd', () => {
     const consoleCapture = createConsoleCapture();
     const invokingClient = { name: 'player' };
 
-    await withMockRegistry(createMockRegistryConfig(consoleCapture), async () => {
+    await withMockEngine(createMockEngineConfig(consoleCapture), async () => {
       resetCommandState();
       Cmd.Init();
 
@@ -123,7 +123,7 @@ void describe('Cmd', () => {
           assert.equal(this.command, 'asyncplain');
           assert.equal(this.args, 'asyncplain payload');
           assert.deepEqual(this.argv, ['asyncplain', 'payload']);
-          assert.equal(Object.hasOwn(registry.Host, 'client'), false);
+          assert.equal(Object.hasOwn(engineMocks.Host, 'client'), false);
 
           await Promise.resolve();
 
@@ -132,7 +132,7 @@ void describe('Cmd', () => {
 
         await Cmd.ExecuteString('asyncplain payload', invokingClient);
 
-        assert.equal(Object.hasOwn(registry.Host, 'client'), false);
+        assert.equal(Object.hasOwn(engineMocks.Host, 'client'), false);
         assert.deepEqual(consoleCapture.errors, ['Error executing command "asyncplain":\nboom\n']);
       } finally {
         resetCommandState();

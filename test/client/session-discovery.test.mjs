@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import SessionDiscovery from '../../source/engine/client/menu/SessionDiscovery.ts';
 import '../support/consoleBridge.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * A minimal `WebRTCDriver` test double for the ping-probe lifecycle (`startSessionPing`/
@@ -55,31 +53,29 @@ class FakeWebRTCDriver {
  * @param {{ urls?: { signalingURL?: string } }} [options] registry overrides, e.g. to simulate no signaling URL
  */
 async function withMockDiscoveryRegistry(game, callback, options = {}) {
-  const previousCOM = pageServices.COM;
-  const previousUrls = pageServices.urls;
-  const previousCon = registry.Con;
-  const previousNET = pageServices.NET;
+  const previousCOM = engineMocks.COM;
+  const previousUrls = engineMocks.urls;
+  const previousCon = engineMocks.Con;
+  const previousNET = engineMocks.NET;
 
   const webRTCDriver = new FakeWebRTCDriver();
 
-  pageServices.COM = { game };
-  pageServices.urls = options.urls ?? { signalingURL: 'wss://master.example.test/signal' };
-  registry.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
-  pageServices.NET = { driverRegistry: { get: (name) => (name === 'webrtc' ? webRTCDriver : null) } };
-  eventBus.publish('registry.frozen');
+  engineMocks.COM = { game };
+  engineMocks.urls = options.urls ?? { signalingURL: 'wss://master.example.test/signal' };
+  engineMocks.Con = { DPrint() {}, Print() {}, PrintError() {}, PrintWarning() {} };
+  engineMocks.NET = { driverRegistry: { get: (name) => (name === 'webrtc' ? webRTCDriver : null) } };
 
   try {
     await callback(webRTCDriver);
   } finally {
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    pageServices.COM = previousCOM;
+    engineMocks.COM = previousCOM;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    pageServices.urls = previousUrls;
+    engineMocks.urls = previousUrls;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    registry.Con = previousCon;
+    engineMocks.Con = previousCon;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    pageServices.NET = previousNET;
-    eventBus.publish('registry.frozen');
+    engineMocks.NET = previousNET;
   }
 }
 

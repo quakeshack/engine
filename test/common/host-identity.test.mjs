@@ -4,48 +4,41 @@ import { describe, test } from 'node:test';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import Host from '../../source/engine/common/Host.ts';
 import * as Def from '../../source/engine/common/Def.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
- * Installs a minimal client-side registry (CL, Con, SV, isDedicatedServer) for the
- * duration of the callback and restores the previous registry afterwards.
- * @param {object} root0 registry overrides
+ * Installs a minimal client-side mock (CL, Con, SV) for the
+ * duration of the callback and restores the previous one afterwards.
+ * @param {object} root0 mock overrides
  * @param {object} root0.cl CL replacement
  * @param {object} [root0.sv] SV replacement
- * @param {boolean} [root0.isDedicatedServer] isDedicatedServer replacement
  * @param {() => void} callback test callback
  */
-function withIdentityRegistry({ cl, sv = { server: { active: false } }, isDedicatedServer = false }, callback) {
+function withIdentityMocks({ cl, sv = { server: { active: false } } }, callback) {
   const previous = {
-    CL: registry.CL,
-    Con: registry.Con,
-    SV: registry.SV,
-    isDedicatedServer: registry.isDedicatedServer,
+    CL: engineMocks.CL,
+    Con: engineMocks.Con,
+    SV: engineMocks.SV,
   };
 
   const prints = [];
 
-  registry.CL = cl;
+  engineMocks.CL = cl;
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  registry.Con = { Print(message) { prints.push(message); }, DPrint() {} };
-  registry.SV = sv;
-  registry.isDedicatedServer = isDedicatedServer;
-  eventBus.publish('registry.frozen');
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.Con = { Print(message) { prints.push(message); }, DPrint() {} };
+  engineMocks.SV = sv;
 
   try {
     callback(prints);
   } finally {
-    registry.CL = previous.CL;
+    engineMocks.CL = previous.CL;
     restoreClientState();
-    registry.Con = previous.Con;
-    registry.SV = previous.SV;
-    registry.isDedicatedServer = previous.isDedicatedServer;
-    eventBus.publish('registry.frozen');
+    engineMocks.Con = previous.Con;
+    engineMocks.SV = previous.SV;
   }
 }
 
@@ -64,7 +57,7 @@ void describe('ClientHost.NameCommand', () => {
     const name = createRealCvar('_cl_name', 'player');
 
     try {
-      withIdentityRegistry({ cl: { name, cls: { state: Def.clientConnectionState.disconnected } } }, (prints) => {
+      withIdentityMocks({ cl: { name, cls: { state: Def.clientConnectionState.disconnected } } }, (prints) => {
         ClientHost.NameCommand.call({ client: null, forward: () => true });
         assert.deepEqual(prints, ['"name" is "player"\n']);
       });
@@ -81,7 +74,7 @@ void describe('ClientHost.NameCommand', () => {
     let forwarded = false;
 
     try {
-      withIdentityRegistry({
+      withIdentityMocks({
         cl: { name, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
@@ -100,7 +93,7 @@ void describe('ClientHost.NameCommand', () => {
     let forwarded = false;
 
     try {
-      withIdentityRegistry({
+      withIdentityMocks({
         cl: { name, cls: { state: Def.clientConnectionState.disconnected } },
         sv: { server: { active: false } },
       }, () => {
@@ -120,7 +113,7 @@ void describe('ClientHost.ColorCommand', () => {
     const color = createRealCvar('_cl_color', String((3 << 4) + 5));
 
     try {
-      withIdentityRegistry({ cl: { color, cls: { state: Def.clientConnectionState.disconnected } } }, (prints) => {
+      withIdentityMocks({ cl: { color, cls: { state: Def.clientConnectionState.disconnected } } }, (prints) => {
         ClientHost.ColorCommand.call({ client: null, forward: () => true });
         assert.deepEqual(prints, ['"color" is "3 5"\ncolor <0-13> [0-13]\n']);
       });
@@ -133,7 +126,7 @@ void describe('ClientHost.ColorCommand', () => {
     const color = createRealCvar('_cl_color', '0');
 
     try {
-      withIdentityRegistry({
+      withIdentityMocks({
         cl: { color, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
@@ -156,7 +149,7 @@ void describe('ClientHost.ColorCommand', () => {
     let forwarded = false;
 
     try {
-      withIdentityRegistry({
+      withIdentityMocks({
         cl: { color, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
@@ -176,7 +169,7 @@ void describe('ClientHost.ColorCommand', () => {
     let forwarded = false;
 
     try {
-      withIdentityRegistry({
+      withIdentityMocks({
         cl: { color, cls: { state: Def.clientConnectionState.disconnected } },
         sv: { server: { active: false } },
       }, () => {

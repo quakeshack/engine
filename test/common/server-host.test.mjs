@@ -6,7 +6,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
 
-import { createTestServer, createTestServerHost, defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import { createTestServer, createTestServerHost, defaultMockEngine, withMockEngine } from '../physics/fixtures.mjs';
 
 /** @typedef {import('../../source/engine/server/Server.ts').default} Server */
 /** @typedef {import('../../source/engine/server/ServerHost.ts').default} ServerHost */
@@ -356,7 +356,7 @@ void describe('ServerHost', () => {
 
       return { requests, sv, run: async (text, client = null) => {
           // The command parser reads the text through the registry's `COM`.
-          await withMockRegistry({ ...defaultMockRegistry({}, null), COM }, async () => { await Cmd.ExecuteString(text, client); });
+          await withMockEngine({ ...defaultMockEngine({}, null), COM }, async () => { await Cmd.ExecuteString(text, client); });
         },
       };
     }

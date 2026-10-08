@@ -5,7 +5,7 @@ import COM from '../../source/engine/common/Com.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import ServerRealm from '../../source/engine/server/ServerRealm.ts';
-import { withMockRegistry } from '../physics/fixtures.mjs';
+import { withMockEngine } from '../physics/fixtures.mjs';
 
 /**
  * Builds a realm with a clock a test controls.
@@ -110,7 +110,7 @@ void describe('ServerRealm', () => {
       Cmd.text += 'realm_test_command\n';
 
       // Executing commands tokenizes them with the static parser of COM.
-      await withMockRegistry({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
+      await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
         await realm.Frame();
       });
 

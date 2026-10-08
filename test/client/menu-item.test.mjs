@@ -5,14 +5,12 @@ import { K } from '../../source/shared/Keys.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import Key from '../../source/engine/client/Key.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { useMenuOf } from '../support/menu.ts';
 import { useHostOf } from '../support/host.ts';
 import {
   Action, ColorPicker, KeyBindItem, MenuItem, NumberInput, SaveSlotItem, Slider, Textbox, Toggle,
 } from '../../source/engine/client/menu/MenuItem.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Temporarily installs minimal `Host`/`Key`/`M`/`S` registry stubs so widget draw/input
@@ -20,20 +18,20 @@ import { facades } from '../support/facades.ts';
  * @param {() => void} callback test callback
  */
 function withMockWidgetRegistry(callback) {
-  const previousHost = registry.Host;
-  const previousKey = facades.Key;
-  const previousM = registry.M;
-  const previousS = facades.S;
+  const previousHost = engineMocks.Host;
+  const previousKey = engineMocks.Key;
+  const previousM = engineMocks.M;
+  const previousS = engineMocks.S;
 
   const printed = [];
   const sounds = [];
   const bitmapStrings = [];
 
-  registry.Host = { realtime: 0 };
+  engineMocks.Host = { realtime: 0 };
 
-  const restoreHost = useHostOf(registry.Host);
-  facades.Key = Key;
-  registry.M = {
+  const restoreHost = useHostOf(engineMocks.Host);
+  engineMocks.Key = Key;
+  engineMocks.M = {
     sfx_menu1: 'menu1',
     sfx_menu2: 'menu2',
     sfx_menu3: 'menu3',
@@ -43,20 +41,18 @@ function withMockWidgetRegistry(callback) {
     DrawSlider() {},
     DrawBitmapString(_x, _y, str, font, variant) { bitmapStrings.push({ str, font, variant }); },
   };
-  const restoreMenu = useMenuOf(registry.M);
-  facades.S = { LocalSound(sfx) { sounds.push(sfx); } };
-  eventBus.publish('registry.frozen');
+  const restoreMenu = useMenuOf(engineMocks.M);
+  engineMocks.S = { LocalSound(sfx) { sounds.push(sfx); } };
 
   try {
     callback({ printed, sounds, bitmapStrings });
   } finally {
-    registry.Host = previousHost;
+    engineMocks.Host = previousHost;
     restoreHost();
-    facades.Key = previousKey;
-    registry.M = previousM;
+    engineMocks.Key = previousKey;
+    engineMocks.M = previousM;
     restoreMenu();
-    facades.S = previousS;
-    eventBus.publish('registry.frozen');
+    engineMocks.S = previousS;
   }
 }
 

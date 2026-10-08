@@ -7,7 +7,7 @@ import Cvar from '../../source/engine/common/Cvar.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import ServerLocalConsole from '../../source/engine/server/ServerLocalConsole.ts';
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
-import { withMockRegistry } from '../physics/fixtures.mjs';
+import { withMockEngine } from '../physics/fixtures.mjs';
 
 /**
  * @param {string} address address of the connection
@@ -40,7 +40,7 @@ function createConsole(clients) {
  * @param {object | null} [client] who runs it
  */
 async function run(line, client = null) {
-  await withMockRegistry({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
+  await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
     await Cmd.ExecuteString(line, /** @type {any} */ (client));
   });
 }
@@ -158,7 +158,7 @@ void describe('ServerLocalConsole', () => {
         }
       });
 
-      await withMockRegistry({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, () => {
+      await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, () => {
         con.execute('probe', 'Ranger');
       });
 
@@ -169,7 +169,7 @@ void describe('ServerLocalConsole', () => {
       const { console: con, serverHost } = createConsole([]);
 
       Cmd.AddCommand('probe', () => {});
-      await withMockRegistry({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, () => {
+      await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, () => {
         con.execute('probe', 'Ranger');
       });
 

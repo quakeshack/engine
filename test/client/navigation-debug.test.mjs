@@ -3,11 +3,11 @@ import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
 import NavigationDebug from '../../source/engine/client/NavigationDebug.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Runs a callback with a renderer that hands out particles from a fixed pool.
@@ -15,15 +15,15 @@ import { useRendererOf } from '../support/renderer.ts';
  * @param {(context: { particles: object[], warnings: string[] }) => void} callback test callback
  */
 function withRenderer({ free }, callback) {
-  const previous = { CL: registry.CL, Con: registry.Con, R: registry.R };
+  const previous = { CL: engineMocks.CL, Con: engineMocks.Con, R: engineMocks.R };
   const particles = [];
   const warnings = [];
 
-  registry.CL = { state: { time: 10 } };
+  engineMocks.CL = { state: { time: 10 } };
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  registry.Con = { PrintWarning: (text) => { warnings.push(text); } };
-  registry.R = {
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.Con = { PrintWarning: (text) => { warnings.push(text); } };
+  engineMocks.R = {
     ptype: { tracer: 7 },
     particles,
     AllocParticles() {
@@ -35,14 +35,12 @@ function withRenderer({ free }, callback) {
       return [particles.length - 1];
     },
   };
-  const restoreRenderer = useRendererOf(registry.R);
-  eventBus.publish('registry.frozen');
+  const restoreRenderer = useRendererOf(engineMocks.R);
 
   try {
     callback({ particles, warnings });
   } finally {
-    Object.assign(registry, previous);
-    eventBus.publish('registry.frozen');
+    Object.assign(engineMocks, previous);
   }
 }
 

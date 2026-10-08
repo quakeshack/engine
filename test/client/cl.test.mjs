@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import CL from '../../source/engine/client/CL.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import * as Def from '../../source/engine/common/Def.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
@@ -13,6 +12,7 @@ import clientCvars from '../../source/engine/client/ClientCvars.ts';
 import { clientPmove } from '../../source/engine/client/ClientPhysics.ts';
 import { clientStaticState } from '../../source/engine/client/ClientState.ts';
 import { useHostOf } from '../support/host.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 void describe('CL.AppendChatMessage', () => {
   void test('publishes chat messages without a legacy engine HUD fallback', () => {
@@ -44,7 +44,7 @@ void describe('CL.PredictMove', () => {
     // commands and replay them through Pmove, which has no notion of
     // intermission and would keep applying gravity/collision from the fixed
     // base every frame — producing visible camera jitter.
-    const previousHost = registry.Host;
+    const previousHost = engineMocks.Host;
     const previousNopred = clientCvars.nopred;
     const previousIntermission = CL.state.intermission;
     const previousViewentity = CL.state.viewentity;
@@ -52,10 +52,9 @@ void describe('CL.PredictMove', () => {
     const previousAckedMoveSequence = CL.state.acknowledgedMoveSequence;
     const previousPredicted = CL.state.predicted;
 
-    registry.Host = { realtime: 42.0 };
+    engineMocks.Host = { realtime: 42.0 };
 
-    const restoreHost = useHostOf(registry.Host);
-    eventBus.publish('registry.frozen');
+    const restoreHost = useHostOf(engineMocks.Host);
 
     clientCvars.nopred = { value: 0 };
     CL.state.intermission = 1;
@@ -73,9 +72,8 @@ void describe('CL.PredictMove', () => {
       assert.equal(CL.state.predicted, false);
       assert.deepEqual([...playerEntity.origin], [100.0, 200.0, 300.0]);
     } finally {
-      registry.Host = previousHost;
+      engineMocks.Host = previousHost;
       restoreHost();
-      eventBus.publish('registry.frozen');
       clientCvars.nopred = previousNopred;
       CL.state.intermission = previousIntermission;
       CL.state.viewentity = previousViewentity;

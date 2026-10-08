@@ -11,12 +11,10 @@ import IN, {
 } from '../../source/engine/client/IN.ts';
 import { KeyDestination } from '../../source/engine/client/Key.ts';
 import VID from '../../source/engine/client/VID.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { K } from '../../source/shared/Keys.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import { useClientStateOf } from '../support/clientState.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Temporarily installs a global `document` stub with a settable `pointerLockElement`, since
@@ -141,28 +139,26 @@ void describe('IN.onclick', () => {
    * @param {{ consoleOpen?: boolean, connectionState?: number }} [options]
    */
   function withMockClickEnvironment(destination, callback, options = {}) {
-    const previousKey = facades.Key;
+    const previousKey = engineMocks.Key;
     const previousConsoleOpen = ConsoleOverlay.isOpen;
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousMainwindow = VID.mainwindow;
     let requestedPointerLock = false;
 
-    facades.Key = { destination };
+    engineMocks.Key = { destination };
     ConsoleOverlay.isOpen = options.consoleOpen ?? false;
-    registry.CL = { cls: { state: options.connectionState ?? clientConnectionState.connected } };
-    const restoreClientState = useClientStateOf(registry.CL);
+    engineMocks.CL = { cls: { state: options.connectionState ?? clientConnectionState.connected } };
+    const restoreClientState = useClientStateOf(engineMocks.CL);
     VID.mainwindow = { requestPointerLock: () => { requestedPointerLock = true; return Promise.resolve(); } };
-    eventBus.publish('registry.frozen');
 
     try {
       callback(() => requestedPointerLock);
     } finally {
-      facades.Key = previousKey;
+      engineMocks.Key = previousKey;
       ConsoleOverlay.isOpen = previousConsoleOpen;
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
       VID.mainwindow = previousMainwindow;
-      eventBus.publish('registry.frozen');
     }
   }
 
@@ -261,17 +257,15 @@ void describe('IN.onpointerlockchange', () => {
    * @param {(events: [number, boolean][]) => void} callback test callback
    */
   function withMockKeyEvent(callback) {
-    const previousKey = facades.Key;
+    const previousKey = engineMocks.Key;
     const events = [];
 
-    facades.Key = { Event: (key, down) => { events.push([key, down]); } };
-    eventBus.publish('registry.frozen');
+    engineMocks.Key = { Event: (key, down) => { events.push([key, down]); } };
 
     try {
       callback(events);
     } finally {
-      facades.Key = previousKey;
-      eventBus.publish('registry.frozen');
+      engineMocks.Key = previousKey;
     }
   }
 

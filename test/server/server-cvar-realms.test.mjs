@@ -6,7 +6,7 @@ import WorkerServerController from '../../source/engine/client/WorkerServerContr
 import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
-import { withMockRegistry } from '../physics/fixtures.mjs';
+import { withMockEngine } from '../physics/fixtures.mjs';
 
 /**
  * Runs a console line here; tokenizing it needs the static parser of COM.
@@ -14,7 +14,7 @@ import { withMockRegistry } from '../physics/fixtures.mjs';
  * @returns {Promise<void>} settles when the line was handled
  */
 async function typeLine(line) {
-  await withMockRegistry({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
+  await withMockEngine({ COM: /** @type {any} */ (COM), Con: { Print() {}, DPrint() {} }, Host: { frametime: 0.1 }, SV: {} }, async () => {
     await Cmd.ExecuteString(line);
   });
 }

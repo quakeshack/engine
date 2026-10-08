@@ -8,8 +8,6 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, moveType } from '../../source/shared/Defs.ts';
 import { DIST_EPSILON, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 
 import {
   assertNear,
@@ -18,6 +16,7 @@ import {
   createLegacyWorldModel,
   createPmoveBoxEntity,
 } from './fixtures.mjs';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Build a brush-backed world where a solid wall continues as a clip brush.
@@ -201,15 +200,13 @@ async function runMapFrames({
 }) {
   const baseUrl = new URL(basePath, import.meta.url);
   const previousRegistry = {
-    COM: registry.COM,
-    Con: registry.Con,
-    Mod: registry.Mod,
-    isDedicatedServer: registry.isDedicatedServer,
+    COM: engineMocks.COM,
+    Con: engineMocks.Con,
+    Mod: engineMocks.Mod,
   };
   const knownKeysBefore = new Set(Object.keys(Mod.known));
 
-  registry.isDedicatedServer = true;
-  registry.Con = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
+  engineMocks.Con = /** @type {typeof import('../../source/engine/common/Console.ts').default} */ ({
     Print() {},
     DPrint() {},
     PrintWarning() {},
@@ -218,8 +215,8 @@ async function runMapFrames({
     },
     PrintSuccess() {},
   });
-  registry.Mod = Mod;
-  registry.COM = /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
+  engineMocks.Mod = Mod;
+  engineMocks.COM = /** @type {typeof import('../../source/engine/common/Com.ts').default} */ ({
     Parse: COMClass.Parse,
     ParseEntityLump: COMClass.ParseEntityLump,
     async LoadFile(name) {
@@ -238,8 +235,7 @@ async function runMapFrames({
       }
     },
   });
-  eventBus.publish('registry.frozen');
-  Mod.Init({ files: registry.COM, con: registry.Con, loadRenderData: false });
+  Mod.Init({ files: engineMocks.COM, con: engineMocks.Con, loadRenderData: false });
 
   try {
     const model = /** @type {import('../../source/engine/common/model/BSP.ts').BrushModel} */ (await Mod.ForNameAsync(mapName, true));
@@ -291,8 +287,7 @@ async function runMapFrames({
       }
     }
 
-    Object.assign(registry, previousRegistry);
-    eventBus.publish('registry.frozen');
+    Object.assign(engineMocks, previousRegistry);
   }
 }
 

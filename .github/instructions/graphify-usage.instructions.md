@@ -46,8 +46,8 @@ itself at real scale.
 - `query "<question>" --graph <path>/graphify-out/graph.json` — BFS traversal answering
   free-form questions with cited file:line evidence.
 - `explain "<Symbol>" --graph <path>/graphify-out/graph.json` — one-hop neighbor summary
-  for a single symbol. Common names can be ambiguous across files (e.g. `EventBus` exists
-  in both `GameAPIs.ts` and `registry.ts`) — graphify reports the conflict and lists node
+  for a single symbol. Common names can be ambiguous across files (e.g. `Server` or `Sys` exist
+  in several realms) — graphify reports the conflict and lists node
   ids instead of guessing; retry with the printed node id or a more specific query.
 - `affected "<Symbol>" --graph <path>/graphify-out/graph.json` — reverse traversal to find
   what would be impacted by changing a symbol; use this before a rename or signature change.
@@ -98,10 +98,9 @@ tokens on Haiku. Use this as a ballpark for future runs of similar scope.
   codebase, spot-checked reported cycles turned out to be 2/3 type-only edges — compile-time
   constructs erased by esbuild, not real runtime circular dependencies. Verify every
   reported cycle by hand (`grep -n "^import" <file>`) before treating it as real.
-- **Knowledge Gaps / isolated-node counts.** The extractor misparses this repo's
-  registry-destructuring prolog (`let { CL, COM, Con, ... } = registry;`, mandated by
-  `code-style-guide.instructions.md`) as standalone unconnected nodes. Expect noise in
-  these counts; don't take them at face value.
+- **Knowledge Gaps / isolated-node counts.** The extractor can report module-level
+  `let` bindings (the `let gl: WebGL2RenderingContext = null!;` idiom, live bindings of `PageServices.ts`)
+  as standalone unconnected nodes. Expect noise in these counts; don't take them at face value.
 
 ### Non-goals
 

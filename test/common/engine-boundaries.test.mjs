@@ -79,62 +79,37 @@ function importClosure(entry) {
 }
 
 void describe('engine boundaries', () => {
+  void describe('registry', () => {
+    // Everything an engine part needs is imported or handed to it by the composition root of its realm.
+    void test('is gone, nothing looks anything up in it or waits for it to be frozen', () => {
+      assert.deepEqual(existsSync(join(ENGINE_ROOT, 'registry.ts')), false);
+      assert.deepEqual(filesMatching('.', /registry\.ts'|registry\.frozen|get(?:Client|Common)Registry/), []);
+    });
+  });
+
   void describe('server runtime', () => {
     void test('does not import anything from the client', () => {
       assert.deepEqual(filesMatching('server', /from\s+'(?:\.\.\/)+client\//), []);
     });
 
-    void test('does not ask for the client registry', () => {
-      assert.deepEqual(filesMatching('server', /getClientRegistry/), []);
-    });
-
-    void test('does not import the registry, everything it needs is handed to it', () => {
-      assert.deepEqual(filesMatching('server', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/), []);
-    });
   });
 
   void describe('network layer', () => {
-    void test('does not import the registry, everything it needs is handed to it', () => {
-      assert.deepEqual(filesMatching('network', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/), []);
-    });
-
     void test('does not import client or server code', () => {
       assert.deepEqual(filesMatching('network', /from\s+'(?:\.\.\/)+(?:client|server)\//), []);
     });
   });
 
   void describe('shared engine code', () => {
-    // Everything there gets what it needs handed to it, or imports it directly.
-    void test('does not import the registry', () => {
-      assert.deepEqual(filesMatching('common', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/), []);
-    });
-
     void test('Host does not know the client or the server runtime', () => {
       const code = readCode(join(ENGINE_ROOT, 'common/Host.ts'));
 
       assert.equal(/from\s+'\.\.\/client\//.test(code), false);
       assert.equal(/import\s+(?!type)[^;]*from\s+'\.\.\/server\//.test(code), false);
     });
-
-    void test('the composition root of a server worker does not fill the registry', () => {
-      assert.deepEqual(filesMatching('bootstrap', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/), ['bootstrap/createBrowserClient.ts', 'bootstrap/createDedicatedServer.ts']);
-    });
   });
 
   void describe('client runtime', () => {
-    // The two data classes that the model loaders drag into the server worker keep a headless stand-in for
-    // the renderer, which they look up; nothing else of the client reads the registry any more.
-    void test('does not import the registry, apart from the data classes the server worker loads', () => {
-      assert.deepEqual(
-        filesMatching('client', /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/),
-        ['client/renderer/Materials.ts', 'client/renderer/Sky.ts'],
-      );
-    });
-
-    void test('does not take SV out of a registry', () => {
-      assert.deepEqual(filesMatching('client', /\{[^}]*\bSV\b[^}]*\}\s*=\s*get(?:Client|Common)Registry\(\)/), []);
-    });
-
     void test('does not import the server module', () => {
       assert.deepEqual(filesMatching('client', /from\s+'(?:\.\.\/)+server\/Server\.ts'/), []);
     });
@@ -148,7 +123,7 @@ void describe('engine boundaries', () => {
     void test('does not reach for SV, a page whose server is in a worker has none', () => {
       const code = readCode(join(ENGINE_ROOT, 'client/ClientEngineAPI.ts'));
 
-      assert.equal(/\bSV\.|\bSV\b[^:]*=\s*get(?:Client|Common)Registry/.test(code), false);
+      assert.equal(/\bSV\./.test(code), false);
     });
   });
 
@@ -160,6 +135,7 @@ void describe('engine boundaries', () => {
       'client/PageServices.ts',
       'client/VID.ts',
       'client/renderer/Materials.ts',
+      'client/renderer/RenderContext.ts',
       'client/renderer/Sky.ts',
     ];
 
@@ -171,12 +147,6 @@ void describe('engine boundaries', () => {
         .sort();
 
       assert.deepEqual(clientFiles, CLIENT_FILES_OF_MODEL_LOADERS);
-    });
-
-    void test('does not read the registry, apart from the data classes model loading drags in', () => {
-      const closure = [...importClosure(join(ENGINE_ROOT, 'server/ServerWorker.ts'))].filter((path) => /from\s+'(?:\.\.\/|\.\/)+registry\.ts'/.test(readCode(path)));
-
-      assert.deepEqual(closure.map((path) => relative(ENGINE_ROOT, path)).sort(), ['client/renderer/Materials.ts', 'client/renderer/Sky.ts']);
     });
 
     void test('does not load the game API classes of the client, they pull in the menu and the renderer', () => {

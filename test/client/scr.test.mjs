@@ -4,12 +4,11 @@ import { describe, test } from 'node:test';
 import SCR from '../../source/engine/client/SCR.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useHostOf } from '../support/host.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Installs minimal `CL`/`Host` registry stubs and a clean `ConsoleOverlay` for `SCR.SetUpToDrawConsole()`, plus a
@@ -18,8 +17,8 @@ import { facades } from '../support/facades.ts';
  * @param {() => void} callback test callback
  */
 function withMockConsoleRegistry({ worldmodel, signon }, callback) {
-  const previousCL = registry.CL;
-  const previousHost = registry.Host;
+  const previousCL = engineMocks.CL;
+  const previousHost = engineMocks.Host;
   const previousConCurrent = SCR.con_current;
   const previousConspeed = SCR.conspeed;
   const con = ConsoleOverlay;
@@ -27,24 +26,22 @@ function withMockConsoleRegistry({ worldmodel, signon }, callback) {
 
   con.forcedup = false;
   con.isOpen = false;
-  registry.CL = { state: { worldmodel }, cls: { signon } };
-  const restoreClientState = useClientStateOf(registry.CL);
-  registry.Host = { frametime: 0.1 };
-  const restoreHost = useHostOf(registry.Host);
+  engineMocks.CL = { state: { worldmodel }, cls: { signon } };
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.Host = { frametime: 0.1 };
+  const restoreHost = useHostOf(engineMocks.Host);
   SCR.conspeed = { value: 300 };
-  eventBus.publish('registry.frozen');
 
   try {
     callback(con);
   } finally {
-    registry.CL = previousCL;
+    engineMocks.CL = previousCL;
     restoreClientState();
     Object.assign(con, previousConsoleState);
-    registry.Host = previousHost;
+    engineMocks.Host = previousHost;
     restoreHost();
     SCR.con_current = previousConCurrent;
     SCR.conspeed = previousConspeed;
-    eventBus.publish('registry.frozen');
   }
 }
 
@@ -151,7 +148,7 @@ void describe('SCR.ScreenShotClean_f', () => {
 
 void describe('SCR.CenterPrint', () => {
   void test('publishes client.center-print after formatting the message', () => {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousCenterString = SCR.centerstring;
     const previousCenterTimeOff = SCR.centertime_off;
     const previousCenterTimeStart = SCR.centertime_start;
@@ -161,14 +158,13 @@ void describe('SCR.CenterPrint', () => {
       receivedMessages.push(message);
     });
 
-    registry.CL = {
+    engineMocks.CL = {
       state: {
         time: 4,
       },
     };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
     SCR.centertime = { value: 2 };
 
     try {
@@ -180,9 +176,8 @@ void describe('SCR.CenterPrint', () => {
       assert.equal(SCR.centertime_start, 4);
     } finally {
       unsubscribe();
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
-      eventBus.publish('registry.frozen');
       SCR.centerstring = previousCenterString;
       SCR.centertime_off = previousCenterTimeOff;
       SCR.centertime_start = previousCenterTimeStart;
@@ -199,37 +194,35 @@ void describe('SCR.DrawNet', () => {
    * @returns {Array<{ x: number, y: number, pic: unknown }>} Calls made to the mocked `Draw.Pic`.
    */
   function withMockNetRegistry({ state, demoplayback = false, lastReceivedMessage = 0, realtime = 1 }, callback) {
-    const previousCL = registry.CL;
-    const previousHost = registry.Host;
-    const previousDraw = facades.Draw;
-    const previousR = registry.R;
+    const previousCL = engineMocks.CL;
+    const previousHost = engineMocks.Host;
+    const previousDraw = engineMocks.Draw;
+    const previousR = engineMocks.R;
     const previousNet = SCR.net;
     const picCalls = [];
 
-    registry.CL = { cls: { state, demoplayback }, state: { last_received_message: lastReceivedMessage } };
+    engineMocks.CL = { cls: { state, demoplayback }, state: { last_received_message: lastReceivedMessage } };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    registry.Host = { realtime };
-    const restoreHost = useHostOf(registry.Host);
-    facades.Draw = { Pic(x, y, pic) { picCalls.push({ x, y, pic }); } };
-    registry.R = { refdef: { vrect: { x: 0, y: 0 } } };
-    const restoreRenderer = useRendererOf(registry.R);
+    const restoreClientState = useClientStateOf(engineMocks.CL);
+    engineMocks.Host = { realtime };
+    const restoreHost = useHostOf(engineMocks.Host);
+    engineMocks.Draw = { Pic(x, y, pic) { picCalls.push({ x, y, pic }); } };
+    engineMocks.R = { refdef: { vrect: { x: 0, y: 0 } } };
+    const restoreRenderer = useRendererOf(engineMocks.R);
     SCR.net = 'net-pic';
-    eventBus.publish('registry.frozen');
 
     try {
       callback();
       return picCalls;
     } finally {
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
-      registry.Host = previousHost;
+      engineMocks.Host = previousHost;
       restoreHost();
-      facades.Draw = previousDraw;
-      registry.R = previousR;
+      engineMocks.Draw = previousDraw;
+      engineMocks.R = previousR;
       restoreRenderer();
       SCR.net = previousNet;
-      eventBus.publish('registry.frozen');
     }
   }
 

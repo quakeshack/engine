@@ -3,11 +3,9 @@ import { describe, test } from 'node:test';
 
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { MenuStack } from '../../source/engine/client/menu/MenuStack.ts';
 import { useMenuOf } from '../support/menu.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 const engineApi = createClientEngineApi();
 
@@ -17,15 +15,15 @@ const engineApi = createClientEngineApi();
  * @param {(context: { menuStack: MenuStack, getCloseMenuCalls: () => number, getPopMenuCalls: () => number }) => void} callback test callback
  */
 function withMockClientEngineMenu(callback) {
-  const previousM = registry.M;
-  const previousIN = facades.IN;
+  const previousM = engineMocks.M;
+  const previousIN = engineMocks.IN;
   const previousDestination = Key.destination;
 
   const menuStack = new MenuStack();
   let closeMenuCalls = 0;
   let popMenuCalls = 0;
 
-  registry.M = {
+  engineMocks.M = {
     entersound: false,
     menuStack,
     CloseMenu() {
@@ -38,10 +36,9 @@ function withMockClientEngineMenu(callback) {
     },
   };
 
-  const restoreMenu = useMenuOf(registry.M);
+  const restoreMenu = useMenuOf(engineMocks.M);
   // MenuStack.push() releases pointer lock on every open — a no-op spy here.
-  facades.IN = { ReleasePointerLock() {} };
-  eventBus.publish('registry.frozen');
+  engineMocks.IN = { ReleasePointerLock() {} };
 
   try {
     callback({
@@ -50,11 +47,10 @@ function withMockClientEngineMenu(callback) {
       getPopMenuCalls: () => popMenuCalls,
     });
   } finally {
-    registry.M = previousM;
+    engineMocks.M = previousM;
     restoreMenu();
-    facades.IN = previousIN;
+    engineMocks.IN = previousIN;
     Key.destination = previousDestination;
-    eventBus.publish('registry.frozen');
   }
 }
 

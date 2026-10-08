@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import SaveSlots from '../../source/engine/client/menu/SaveSlots.ts';
 import { BackendUserStore, MemoryBackend } from '../../source/engine/common/UserStore.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Installs a minimal `COM` registry stub (SaveSlots needs the game directory and the user store)
@@ -15,22 +13,19 @@ import { pageServices } from '../support/pageServices.ts';
  * @returns {Promise<void>} resolves once the callback and the cleanup are done
  */
 async function withMockSaveSlotsRegistry(callback) {
-  const previousCOM = pageServices.COM;
+  const previousCOM = engineMocks.COM;
   const store = new BackendUserStore(new MemoryBackend());
 
-  pageServices.COM = { GetGamedir: () => 'id1', userStore: store };
-  eventBus.publish('registry.frozen');
+  engineMocks.COM = { GetGamedir: () => 'id1', userStore: store };
 
   try {
     await SaveSlots.refresh();
     await callback(store);
   } finally {
     // Leave an empty snapshot behind for the next test.
-    pageServices.COM = { GetGamedir: () => 'id1', userStore: null };
-    eventBus.publish('registry.frozen');
+    engineMocks.COM = { GetGamedir: () => 'id1', userStore: null };
     await SaveSlots.refresh();
-    pageServices.COM = previousCOM;
-    eventBus.publish('registry.frozen');
+    engineMocks.COM = previousCOM;
   }
 }
 

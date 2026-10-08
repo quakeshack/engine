@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 interface ToggleStubs {
   readonly key: { history_line: number; lines: string[] };
@@ -18,25 +18,25 @@ interface ToggleStubs {
  * @param callback The test body.
  */
 function withToggleRegistry(callback: (stubs: ToggleStubs) => void): void {
-  const previous = { SCR: facades.SCR, Key: facades.Key, IN: facades.IN };
+  const previous = { SCR: engineMocks.SCR, Key: engineMocks.Key, IN: engineMocks.IN };
   let released = false;
   const key = { history_line: 0, lines: ['a', 'b', 'c'] };
   const scr = { EndLoadingPlaque() {}, con_current: 0 };
 
-  facades.SCR = scr;
-  facades.Key = key;
-  facades.IN = { ReleasePointerLock() { released = true; } };
+  engineMocks.SCR = scr;
+  engineMocks.Key = key;
+  engineMocks.IN = { ReleasePointerLock() { released = true; } };
 
   ConsoleOverlay.isOpen = false;
   ConsoleOverlay.forcedup = false;
 
   try {
     // The stubs are patched onto the real facades, so state the overlay changes is read back from there.
-    callback({ key: facades.Key as ToggleStubs['key'], scr: facades.SCR as ToggleStubs['scr'], pointerLockReleased: () => released });
+    callback({ key: engineMocks.Key as ToggleStubs['key'], scr: engineMocks.SCR as ToggleStubs['scr'], pointerLockReleased: () => released });
   } finally {
     ConsoleOverlay.isOpen = false;
     ConsoleOverlay.forcedup = false;
-    Object.assign(facades, previous);
+    Object.assign(engineMocks, previous);
   }
 }
 

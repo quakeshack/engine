@@ -1,12 +1,11 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import Sound from '../../source/engine/client/Sound.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 void describe('Sound.IsPositionAudible', () => {
   /**
@@ -36,20 +35,18 @@ void describe('Sound.IsPositionAudible', () => {
    * @returns {{ restore: () => void }} context handle
    */
   function installClientContext({ worldmodel = null } = {}) {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousListenerLeaf = Sound._listenerLeaf;
 
-    registry.CL = { state: { worldmodel } };
+    engineMocks.CL = { state: { worldmodel } };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
 
     return {
       restore() {
-        registry.CL = previousCL;
+        engineMocks.CL = previousCL;
         restoreClientState();
         Sound._listenerLeaf = previousListenerLeaf;
-        eventBus.publish('registry.frozen');
       },
     };
   }

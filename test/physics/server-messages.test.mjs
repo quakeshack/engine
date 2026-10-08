@@ -1,42 +1,39 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { createTestServer, registrySV } from './fixtures.mjs';
+import { createTestServer, mockedSV } from './fixtures.mjs';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Installs a minimal server registry context for delta-entity message tests.
  * @returns {{ restore: () => void }} A restore handle for the mocked registry state.
  */
 function installWriteDeltaEntityContext() {
-  const previousCon = registry.Con;
-  const previousHost = registry.Host;
-  const previousSV = registry.SV;
+  const previousCon = engineMocks.Con;
+  const previousHost = engineMocks.Host;
+  const previousSV = engineMocks.SV;
 
-  registry.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
-  registry.Host = { frametime: 0.1 };
-  registry.SV = /** @type {any} */ ({
+  engineMocks.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
+  engineMocks.Host = { frametime: 0.1 };
+  engineMocks.SV = /** @type {any} */ ({
     server: {
       time: 1,
       gameCapabilities: [],
       clientEntityFields: {},
     },
   });
-  eventBus.publish('registry.frozen');
 
   return {
     restore() {
-      registry.Con = previousCon;
-      registry.Host = previousHost;
-      registry.SV = previousSV;
-      eventBus.publish('registry.frozen');
+      engineMocks.Con = previousCon;
+      engineMocks.Host = previousHost;
+      engineMocks.SV = previousSV;
     },
   };
 }
@@ -46,7 +43,7 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      const messages = new ServerMessages(registrySV());
+      const messages = new ServerMessages(mockedSV());
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity alpha fallback');
@@ -70,7 +67,7 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      const messages = new ServerMessages(registrySV());
+      const messages = new ServerMessages(mockedSV());
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity alpha scaling');
@@ -92,14 +89,14 @@ void describe('ServerMessages.writeDeltaEntity', () => {
     const context = installWriteDeltaEntityContext();
 
     try {
-      registry.SV.server.clientEntityFields = {
+      engineMocks.SV.server.clientEntityFields = {
         monster_ogre: {
           fields: ['scale'],
           bitsWriter: 'writeByte',
         },
       };
 
-      const messages = new ServerMessages(registrySV());
+      const messages = new ServerMessages(mockedSV());
       const from = new ServerEntityState(1);
       const to = new ServerEntityState(1);
       const buffer = new SzBuffer(64, 'ServerMessages.writeDeltaEntity extended fields');

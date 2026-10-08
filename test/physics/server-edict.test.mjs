@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { ServerEdict } from '../../source/engine/server/Edict.ts';
 
-import { defaultMockRegistry, withMockRegistry, registrySV } from './fixtures.mjs';
+import { defaultMockEngine, withMockEngine, mockedSV } from './fixtures.mjs';
 
 void describe('ServerEdict', () => {
   void test('keeps getClient slot mapping separate from isClient semantics', () => {
     const reservedSlotClient = { state: 0 };
 
-    void withMockRegistry(defaultMockRegistry({
+    void withMockEngine(defaultMockEngine({
       svs: {
         maxclients: 4,
         clients: [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, reservedSlotClient],
@@ -20,7 +20,7 @@ void describe('ServerEdict', () => {
         edicts: [],
       },
     }), () => {
-      const reservedWorldEdict = new ServerEdict(16, registrySV());
+      const reservedWorldEdict = new ServerEdict(16, mockedSV());
 
       assert.equal(reservedWorldEdict.isClient(), false);
       assert.equal(reservedWorldEdict.getClient(), reservedSlotClient);
@@ -30,7 +30,7 @@ void describe('ServerEdict', () => {
   void test('can suppress trigger touches during model relinks', () => {
     const linkCalls = [];
 
-    void withMockRegistry(defaultMockRegistry({
+    void withMockEngine(defaultMockEngine({
       area: {
         linkEdict(_edict, touchTriggers) {
           linkCalls.push(touchTriggers);
@@ -41,7 +41,7 @@ void describe('ServerEdict', () => {
         models: [{ mins: new Vector(-16, -16, -24), maxs: new Vector(16, 16, 32) }],
       },
     }), () => {
-      const edict = new ServerEdict(1, registrySV());
+      const edict = new ServerEdict(1, mockedSV());
       edict.entity = {
         classname: 'player',
         alpha: 1,

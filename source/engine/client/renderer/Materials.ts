@@ -1,30 +1,7 @@
-import { getClientRegistry } from '../../registry.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import type { ClientEdict } from '../ClientEntities.ts';
 import GL, { GLTexture, type GLProgramInfo } from '../GL.ts';
-
-let { CL, R } = getClientRegistry();
-
-/**
- * No renderer is available in headless mode (the server, a worker, tests), so materials read the few members
- * of it they need from this stand-in instead.
- * @returns The stand-in.
- */
-function createHeadlessRenderer(): typeof R {
-  return {
-    blacktexture: nullTexture,
-    notexture: nullTexture,
-    flatnormalmap: nullTexture,
-    interpolation: { value: false },
-    c_brush_texture_binds: 0,
-  } as unknown as typeof R;
-}
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL, R } = getClientRegistry());
-
-  R ??= createHeadlessRenderer();
-});
+import { clientState, renderer as R } from './RenderContext.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -35,14 +12,6 @@ eventBus.subscribe('gl.ready', () => {
 eventBus.subscribe('gl.shutdown', () => {
   gl = null!;
 });
-
-const nullTexture: GLTexture = {
-  bind() {},
-  free() {},
-} as unknown as GLTexture;
-
-// A model can be loaded before the registry is frozen, or without it ever being (a test), so the stand-in is there from the start.
-R ??= createHeadlessRenderer();
 
 export enum MaterialFlags {
   MF_NONE = 0,
@@ -131,12 +100,12 @@ export class BaseMaterial {
       return 1.0;
     }
 
-    const worldspawn = CL.state.clientEntities.getEntity(0);
+    const worldspawn = clientState.clientEntities.getEntity(0);
     if (clientEdict !== worldspawn) {
       return 1.0;
     }
 
-    const worldspawnInfo = CL.state.worldmodel?.worldspawnInfo;
+    const worldspawnInfo = clientState.worldmodel?.worldspawnInfo;
     if (!worldspawnInfo) {
       return 1.0;
     }
@@ -198,7 +167,7 @@ class BrushMaterial extends BaseMaterial {
    */
   protected _bindInterpolation(program: GLProgramInfo): void {
     if (program.uInterpolation !== undefined) {
-      gl.uniform1f(program.uInterpolation!, R.interpolation.value ? (CL.state.time % 0.2) / 0.2 : 0);
+      gl.uniform1f(program.uInterpolation!, R.interpolation.value ? (clientState.time % 0.2) / 0.2 : 0);
     }
   }
 
@@ -346,7 +315,7 @@ export class QuakeMaterial extends BrushMaterial {
 
   override emit(clientEdict: ClientEdict | null = null): void {
     this.currentAlpha = this.resolveAlpha(clientEdict);
-    const frame = Math.floor((clientEdict !== null ? clientEdict.frame : 0) + CL.state.time * 5.0);
+    const frame = Math.floor((clientEdict !== null ? clientEdict.frame : 0) + clientState.time * 5.0);
     const useAlternate = (clientEdict !== null && clientEdict.frame > 0 && this.#alternateFrames > 0);
 
     if (useAlternate) {

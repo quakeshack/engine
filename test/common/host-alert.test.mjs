@@ -2,12 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Host from '../../source/engine/common/Host.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import { useClientStateOf } from '../support/clientState.ts';
-import { facades } from '../support/facades.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Installs the minimal registry ClientHost.EndGame/Host.Error need to reach their `host.alert`
@@ -18,44 +17,42 @@ import { facades } from '../support/facades.ts';
  */
 function withMockHostAlertRegistry({ demonum = -1, serverActive = false }, callback) {
   const previous = {
-    CL: registry.CL,
-    Con: registry.Con,
+    CL: engineMocks.CL,
+    Con: engineMocks.Con,
     serverHost: Host.serverHost,
-    SCR: facades.SCR,
+    SCR: engineMocks.SCR,
   };
 
   const prints = [];
   let disconnected = false;
   const shutdowns = [];
 
-  registry.CL = {
+  engineMocks.CL = {
     cls: { demonum },
     NextDemo() { throw new Error('NextDemo should not be reached in these tests'); },
     Disconnect() { disconnected = true; },
   };
-  const restoreClientState = useClientStateOf(registry.CL);
+  const restoreClientState = useClientStateOf(engineMocks.CL);
   const previousRecovery = Host.recoverFromError;
 
   // What the page installs when it boots: an error leaves the game and stops the local server.
   Host.recoverFromError = () => { ClientHost.RecoverFromError(); };
-  registry.Con = {
+  engineMocks.Con = {
     PrintSuccess(message) { prints.push(message); },
     PrintError(message) { prints.push(message); },
   };
   Host.serverHost = /** @type {any} */ ({ ShutdownServer() { shutdowns.push(serverActive); } });
-  facades.SCR = { EndLoadingPlaque() {} };
-  eventBus.publish('registry.frozen');
+  engineMocks.SCR = { EndLoadingPlaque() {} };
 
   try {
     callback({ prints, disconnected: () => disconnected });
   } finally {
     Host.recoverFromError = previousRecovery;
     restoreClientState();
-    registry.CL = previous.CL;
-    registry.Con = previous.Con;
+    engineMocks.CL = previous.CL;
+    engineMocks.Con = previous.Con;
     Host.serverHost = previous.serverHost;
-    facades.SCR = previous.SCR;
-    eventBus.publish('registry.frozen');
+    engineMocks.SCR = previous.SCR;
   }
 }
 

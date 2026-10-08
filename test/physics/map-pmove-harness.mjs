@@ -5,9 +5,8 @@ import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import { PMF, Pmove } from '../../source/engine/common/Pmove.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * @typedef {Record<string, string>} EntityKV
@@ -195,8 +194,7 @@ function parseOptions() {
  * @param {string} baseDir active game data directory
  */
 function installRegistry(baseDir) {
-  registry.isDedicatedServer = true;
-  registry.Con = {
+  engineMocks.Con = {
     Print(...args) {
       console.log(...args);
     },
@@ -211,8 +209,8 @@ function installRegistry(baseDir) {
       console.log(...args);
     },
   };
-  registry.Mod = Mod;
-  registry.COM = {
+  engineMocks.Mod = Mod;
+  engineMocks.COM = {
     Parse: COMClass.Parse,
     ParseEntityLump: COMClass.ParseEntityLump,
     async LoadFile(name) {
@@ -236,8 +234,7 @@ function installRegistry(baseDir) {
     },
   };
 
-  eventBus.publish('registry.frozen');
-  Mod.Init({ files: registry.COM, con: registry.Con, loadRenderData: false });
+  Mod.Init({ files: engineMocks.COM, con: engineMocks.Con, loadRenderData: false });
 }
 
 /**

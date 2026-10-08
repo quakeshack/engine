@@ -6,13 +6,11 @@ import * as Def from '../../source/engine/common/Def.ts';
 import ClientConnection from '../../source/engine/client/ClientConnection.ts';
 import { clientRuntimeState, clientStaticState } from '../../source/engine/client/ClientState.ts';
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useMenuOf } from '../support/menu.ts';
 import { useHostOf } from '../support/host.ts';
-import { facades } from '../support/facades.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Build a minimal demo subsystem stub for connection tests.
@@ -99,41 +97,39 @@ function createMockClientRegistry(overrides = {}) {
  */
 function withMockClientRegistry(mockedRegistry, callback) {
   const previousValues = {
-    Con: registry.Con,
-    Host: registry.Host,
-    IN: facades.IN,
-    Mod: registry.Mod,
-    NET: pageServices.NET,
-    SCR: facades.SCR,
-    S: facades.S,
-    SV: registry.SV,
+    Con: engineMocks.Con,
+    Host: engineMocks.Host,
+    IN: engineMocks.IN,
+    Mod: engineMocks.Mod,
+    NET: engineMocks.NET,
+    SCR: engineMocks.SCR,
+    S: engineMocks.S,
+    SV: engineMocks.SV,
   };
 
-  registry.Con = mockedRegistry.Con;
-  registry.Host = mockedRegistry.Host;
-  const restoreHost = useHostOf(registry.Host);
-  facades.IN = mockedRegistry.IN;
-  registry.Mod = mockedRegistry.Mod;
-  pageServices.NET = mockedRegistry.NET;
-  facades.SCR = mockedRegistry.SCR;
-  facades.S = mockedRegistry.S;
-  registry.SV = mockedRegistry.SV;
+  engineMocks.Con = mockedRegistry.Con;
+  engineMocks.Host = mockedRegistry.Host;
+  const restoreHost = useHostOf(engineMocks.Host);
+  engineMocks.IN = mockedRegistry.IN;
+  engineMocks.Mod = mockedRegistry.Mod;
+  engineMocks.NET = mockedRegistry.NET;
+  engineMocks.SCR = mockedRegistry.SCR;
+  engineMocks.S = mockedRegistry.S;
+  engineMocks.SV = mockedRegistry.SV;
   // The menu listens for connection events too; this test is about the connection, so the menu does nothing.
   const restoreMenu = useMenuOf({ Menu_Main_f() {}, ReturnToGame() {} });
-  eventBus.publish('registry.frozen');
 
   const restore = () => {
     restoreMenu();
-    registry.Con = previousValues.Con;
-    registry.Host = previousValues.Host;
+    engineMocks.Con = previousValues.Con;
+    engineMocks.Host = previousValues.Host;
     restoreHost();
-    facades.IN = previousValues.IN;
-    registry.Mod = previousValues.Mod;
-    pageServices.NET = previousValues.NET;
-    facades.SCR = previousValues.SCR;
-    facades.S = previousValues.S;
-    registry.SV = previousValues.SV;
-    eventBus.publish('registry.frozen');
+    engineMocks.IN = previousValues.IN;
+    engineMocks.Mod = previousValues.Mod;
+    engineMocks.NET = previousValues.NET;
+    engineMocks.SCR = previousValues.SCR;
+    engineMocks.S = previousValues.S;
+    engineMocks.SV = previousValues.SV;
   };
 
   try {

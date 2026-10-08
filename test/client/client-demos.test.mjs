@@ -6,12 +6,10 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import ClientDemos from '../../source/engine/client/ClientDemos.ts';
 import { clientRuntimeState, clientStaticState } from '../../source/engine/client/ClientState.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useHostOf } from '../support/host.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Builds a synthetic current-format demo file with a single message.
@@ -87,31 +85,29 @@ function createMockClientRegistry(clientDemos, demoFile) {
  */
 function withMockClientRegistry(mockedRegistry, callback) {
   const previousValues = {
-    CL: registry.CL,
-    COM: pageServices.COM,
-    Con: registry.Con,
-    Host: registry.Host,
-    NET: pageServices.NET,
+    CL: engineMocks.CL,
+    COM: engineMocks.COM,
+    Con: engineMocks.Con,
+    Host: engineMocks.Host,
+    NET: engineMocks.NET,
   };
 
-  registry.CL = mockedRegistry.CL;
-  const restoreClientState = useClientStateOf(registry.CL);
-  pageServices.COM = mockedRegistry.COM;
-  registry.Con = mockedRegistry.Con;
-  registry.Host = mockedRegistry.Host;
-  const restoreHost = useHostOf(registry.Host);
-  pageServices.NET = mockedRegistry.NET;
-  eventBus.publish('registry.frozen');
+  engineMocks.CL = mockedRegistry.CL;
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.COM = mockedRegistry.COM;
+  engineMocks.Con = mockedRegistry.Con;
+  engineMocks.Host = mockedRegistry.Host;
+  const restoreHost = useHostOf(engineMocks.Host);
+  engineMocks.NET = mockedRegistry.NET;
 
   const restore = () => {
-    registry.CL = previousValues.CL;
+    engineMocks.CL = previousValues.CL;
     restoreClientState();
-    pageServices.COM = previousValues.COM;
-    registry.Con = previousValues.Con;
-    registry.Host = previousValues.Host;
+    engineMocks.COM = previousValues.COM;
+    engineMocks.Con = previousValues.Con;
+    engineMocks.Host = previousValues.Host;
     restoreHost();
-    pageServices.NET = previousValues.NET;
-    eventBus.publish('registry.frozen');
+    engineMocks.NET = previousValues.NET;
   };
 
   try {
@@ -153,8 +149,8 @@ void describe('ClientDemos', () => {
       assert.equal(clientDemos.demoplayback, true);
       assert.equal(clientStaticState.state, Def.clientConnectionState.connected);
       assert.equal(clientDemos.getMessage(), 1);
-      assert.equal(pageServices.NET.message.cursize, 1);
-      assert.equal(new Uint8Array(pageServices.NET.message.data, 0, 1)[0], Protocol.svc.nop);
+      assert.equal(engineMocks.NET.message.cursize, 1);
+      assert.equal(new Uint8Array(engineMocks.NET.message.data, 0, 1)[0], Protocol.svc.nop);
       assert.deepEqual(Array.from(clientRuntimeState.viewangles), [1, 2, 3]);
 
       assert.equal(clientDemos.getMessage(), 0);

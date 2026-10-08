@@ -376,27 +376,9 @@ If you encounter important logic that is not covered by tests, add new tests to 
 
 If code looks risky or has had bugs before, but there are no tests for it, that's a strong signal that tests should be added. Don't skip this step just to get the TS port done faster — the goal is not just to convert to TypeScript, but to improve code quality and maintainability overall.
 
-### Initialize the registry properly
+### Reaching other modules
 
-```typescript
-
-// ❌ This will cause static analysis regarding e.g. Con being undefined:
-
-let { Con } = registry;
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con } = registry);
-});
-
-// ✅ Instead, initialize with the helper function that has the correct typing and will be updated when the registry is frozen:
-
-let { Con } = getCommonRegistry();
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ Con } = getCommonRegistry());
-});
-
-```
+There is no registry to initialize. Import what you need (`import Con from '../common/Console.ts'`); what only a composition root can build comes from `client/PageServices.ts` or a constructor parameter. See "Reaching Other Modules" in `code-style-guide.instructions.md`. When porting a file that still has a `let { Con } = registry;` prolog, delete the prolog and the `registry.frozen` subscription and import the module instead.
 
 ### Potential null and undefined values
 

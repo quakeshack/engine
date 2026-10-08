@@ -6,8 +6,6 @@ import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Con from '../../source/engine/common/Console.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import '../support/consoleBridge.ts';
@@ -15,7 +13,7 @@ import { useClientStateOf } from '../support/clientState.ts';
 import { useMenuOf } from '../support/menu.ts';
 import M from '../../source/engine/client/Menu.ts';
 import { patchMembers } from '../support/clientState.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Temporarily installs a minimal `Con` registry stub (plus the real `COM` for
@@ -24,25 +22,23 @@ import { pageServices } from '../support/pageServices.ts';
  * @param {(context: { con: object, printed: string[] }) => void} callback test callback
  */
 function withMockKeyRegistry(callback) {
-  const previousCon = registry.Con;
-  const previousCOM = pageServices.COM;
+  const previousCon = engineMocks.Con;
+  const previousCOM = engineMocks.COM;
 
   const printed = [];
   const con = {
     Print(msg) { printed.push(msg); }, backscroll: 0, text: [],
   };
   ConsoleOverlay.isOpen = false;
-  registry.Con = con;
-  pageServices.COM = COM;
-  eventBus.publish('registry.frozen');
+  engineMocks.Con = con;
+  engineMocks.COM = COM;
 
   try {
     callback({ con, printed });
   } finally {
     ConsoleOverlay.isOpen = false;
-    registry.Con = previousCon;
-    pageServices.COM = previousCOM;
-    eventBus.publish('registry.frozen');
+    engineMocks.Con = previousCon;
+    engineMocks.COM = previousCOM;
   }
 }
 
@@ -426,33 +422,31 @@ void describe('Key', () => {
      */
     function withMockEventRegistry(callback, options = {}) {
       withMockKeyRegistry(() => {
-        const previousCL = registry.CL;
-        const previousM = registry.M;
+        const previousCL = engineMocks.CL;
+        const previousM = engineMocks.M;
         const menuKeydownCalls = [];
         const toggleMenu = { count: 0 };
         const menuMainCalls = { count: 0 };
 
-        registry.CL = {
+        engineMocks.CL = {
           cls: { state: options.connectionState ?? clientConnectionState.connected, demoplayback: false },
         };
 
-        const restoreClientState = useClientStateOf(registry.CL);
-        registry.M = {
+        const restoreClientState = useClientStateOf(engineMocks.CL);
+        engineMocks.M = {
           Keydown: (key) => { menuKeydownCalls.push(key); },
           ToggleMenu_f: () => { toggleMenu.count++; },
           Menu_Main_f: () => { menuMainCalls.count++; },
         };
-        const restoreMenu = useMenuOf(registry.M);
-        eventBus.publish('registry.frozen');
+        const restoreMenu = useMenuOf(engineMocks.M);
 
         try {
           callback({ menuKeydownCalls, toggleMenu, menuMainCalls });
         } finally {
-          registry.CL = previousCL;
+          engineMocks.CL = previousCL;
           restoreClientState();
-          registry.M = previousM;
+          engineMocks.M = previousM;
           restoreMenu();
-          eventBus.publish('registry.frozen');
         }
       });
     }
@@ -652,29 +646,27 @@ void describe('Key', () => {
      */
     function withMockConsoleClickRegistry(connectionState, callback) {
       withMockKeyRegistry(() => {
-        const previousCL = registry.CL;
-        const previousM = registry.M;
+        const previousCL = engineMocks.CL;
+        const previousM = engineMocks.M;
         const menuMainCalls = { count: 0 };
 
-        registry.CL = { cls: { state: connectionState, demoplayback: false } };
+        engineMocks.CL = { cls: { state: connectionState, demoplayback: false } };
 
-        const restoreClientState = useClientStateOf(registry.CL);
-        registry.M = {
+        const restoreClientState = useClientStateOf(engineMocks.CL);
+        engineMocks.M = {
           Menu_Main_f: () => { menuMainCalls.count++; },
           ToggleMenu_f: () => {},
           Keydown: () => {},
         };
-        const restoreMenu = useMenuOf(registry.M);
-        eventBus.publish('registry.frozen');
+        const restoreMenu = useMenuOf(engineMocks.M);
 
         try {
           callback({ menuMainCalls });
         } finally {
-          registry.CL = previousCL;
+          engineMocks.CL = previousCL;
           restoreClientState();
-          registry.M = previousM;
+          engineMocks.M = previousM;
           restoreMenu();
-          eventBus.publish('registry.frozen');
         }
       });
     }

@@ -10,19 +10,17 @@ import ClientLifecycle from '../../source/engine/client/ClientLifecycle.ts';
 import InThreadServerController from '../../source/engine/server/InThreadServerController.ts';
 import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
 import NodeCOM from '../../source/engine/server/Com.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { Serializer } from '../../source/game/id1/helper/MiscHelpers.ts';
 import { cvarFlags } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 
-import { defaultMockRegistry, withMockRegistry, registrySV } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine, mockedSV } from '../physics/fixtures.mjs';
 import '../support/consoleBridge.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
 import { useClientStateOf } from '../support/clientState.ts';
-import { facades } from '../support/facades.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 const [{ ServerGameAPI }, { PlayerEntity }, { WorldspawnEntity }] = await Promise.all([
   import('../../source/game/id1/GameAPI.ts'),
@@ -427,16 +425,15 @@ void describe('ClientHost.Savegame_f', () => {
     };
 
     const previousRegistry = {
-      CL: registry.CL,
-      COM: pageServices.COM,
-      Con: registry.Con,
-      R: registry.R,
-      SV: registry.SV,
-      isDedicatedServer: registry.isDedicatedServer,
+      CL: engineMocks.CL,
+      COM: engineMocks.COM,
+      Con: engineMocks.Con,
+      R: engineMocks.R,
+      SV: engineMocks.SV,
     };
     const previousFilter = Cvar.Filter;
 
-    registry.CL = {
+    engineMocks.CL = {
       serverController: new InThreadServerController(sv, /** @type {any} */ ({})),
       state: {
         intermission: 0,
@@ -450,14 +447,12 @@ void describe('ClientHost.Savegame_f', () => {
       },
     };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    pageServices.COM = mockCOM;
-    registry.Con = consoleCapture.Con;
-    registry.R = renderer;
-    const restoreRenderer = useRendererOf(registry.R);
-    registry.SV = sv;
-    registry.isDedicatedServer = false;
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
+    engineMocks.COM = mockCOM;
+    engineMocks.Con = consoleCapture.Con;
+    engineMocks.R = renderer;
+    const restoreRenderer = useRendererOf(engineMocks.R);
+    engineMocks.SV = sv;
 
     Cvar.Filter = function* Filter(compareFn) {
       for (const cvar of filterCvars) {
@@ -471,15 +466,13 @@ void describe('ClientHost.Savegame_f', () => {
       await ClientHost.Savegame_f.call({ client: null }, 'save/e1m1');
     } finally {
       Cvar.Filter = previousFilter;
-      registry.CL = previousRegistry.CL;
+      engineMocks.CL = previousRegistry.CL;
       restoreClientState();
-      pageServices.COM = previousRegistry.COM;
-      registry.Con = previousRegistry.Con;
-      registry.R = previousRegistry.R;
+      engineMocks.COM = previousRegistry.COM;
+      engineMocks.Con = previousRegistry.Con;
+      engineMocks.R = previousRegistry.R;
       restoreRenderer();
-      registry.SV = previousRegistry.SV;
-      registry.isDedicatedServer = previousRegistry.isDedicatedServer;
-      eventBus.publish('registry.frozen');
+      engineMocks.SV = previousRegistry.SV;
     }
 
     assert.equal(writes.length, 1);
@@ -619,16 +612,16 @@ void describe('ClientHost.Loadgame_f', () => {
       },
     };
     const previousResumeGame = ClientLifecycle.resumeGame;
-    const previousSCR = facades.SCR;
+    const previousSCR = engineMocks.SCR;
 
     ClientLifecycle.resumeGame = (clientdata, particles) => {
       resumes.push({ clientdata, particles });
     };
-    facades.SCR = { BeginLoadingPlaque() { } };
+    engineMocks.SCR = { BeginLoadingPlaque() { } };
 
     try {
-      await withMockRegistry({
-        ...defaultMockRegistry(sv, client),
+      await withMockEngine({
+        ...defaultMockEngine(sv, client),
         COM: mockCOM,
         Con: consoleCapture.Con,
       }, async () => {
@@ -642,7 +635,7 @@ void describe('ClientHost.Loadgame_f', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
-      facades.SCR = previousSCR;
+      engineMocks.SCR = previousSCR;
     }
 
     assert.deepEqual(callOrder, [
@@ -717,8 +710,8 @@ void describe('ClientHost.Loadgame_f', () => {
       },
     };
 
-    await withMockRegistry({
-      ...defaultMockRegistry(sv, client),
+    await withMockEngine({
+      ...defaultMockEngine(sv, client),
       COM: mockCOM,
       Con: consoleCapture.Con,
     }, async () => {
@@ -810,12 +803,12 @@ void describe('ClientHost.Loadgame_f', () => {
       },
     };
 
-    const previousSCR = facades.SCR;
-    facades.SCR = { BeginLoadingPlaque() { } };
+    const previousSCR = engineMocks.SCR;
+    engineMocks.SCR = { BeginLoadingPlaque() { } };
 
     try {
-      await withMockRegistry({
-        ...defaultMockRegistry(sv, client),
+      await withMockEngine({
+        ...defaultMockEngine(sv, client),
         COM: mockCOM,
         Con: consoleCapture.Con,
       }, async () => {
@@ -825,7 +818,7 @@ void describe('ClientHost.Loadgame_f', () => {
         );
       });
     } finally {
-      facades.SCR = previousSCR;
+      engineMocks.SCR = previousSCR;
     }
 
     assert.equal(spawnCalls, 1);
@@ -839,10 +832,9 @@ void describe('Host.save/load integration', () => {
     const consoleCapture = createMockConsole();
     const knownKeysBefore = new Set(Object.keys(Mod.known));
     const resumes = [];
-    const previousRenderer = registry.R;
-    const previousIsDedicatedServer = registry.isDedicatedServer;
+    const previousRenderer = engineMocks.R;
     const previousServerGameCvars = ServerGameAPI._cvars;
-    const previousSys = registry.Sys;
+    const previousSys = engineMocks.Sys;
     const nodeCom = new NodeCOM({
       con: { Print() {}, DPrint() {}, PrintWarning() {}, PrintError() {}, PrintSuccess() {} },
       sys: { Print() {}, FloatTime: () => 0 },
@@ -871,19 +863,17 @@ void describe('Host.save/load integration', () => {
       deathmatch: createMockCvar('deathmatch', '0'),
       coop: createMockCvar('coop', '0'),
     };
-    registry.R = {
+    engineMocks.R = {
       SerializeParticles() {
         return [];
       },
     };
-    const restoreRenderer = useRendererOf(registry.R);
-    registry.Sys = {
+    const restoreRenderer = useRendererOf(engineMocks.R);
+    engineMocks.Sys = {
       Print() { },
     };
-    const previousSCR = facades.SCR;
-    facades.SCR = { BeginLoadingPlaque() { } };
-    registry.isDedicatedServer = true;
-    eventBus.publish('registry.frozen');
+    const previousSCR = engineMocks.SCR;
+    engineMocks.SCR = { BeginLoadingPlaque() { } };
 
     const engineAPI = createIntegrationEngineAPI(() => currentEdicts);
     const mockCOM = {
@@ -910,7 +900,7 @@ void describe('Host.save/load integration', () => {
       },
     };
     const sv = {
-      ed: new ED(registrySV()),
+      ed: new ED(mockedSV()),
       server: {
         active: true,
         paused: false,
@@ -938,7 +928,7 @@ void describe('Host.save/load integration', () => {
         unlinkEdict() { },
       },
       SpawnServer: async (mapname) => {
-        const freshEdicts = [new ServerEdict(0, registrySV()), new ServerEdict(1, registrySV()), new ServerEdict(2, registrySV())];
+        const freshEdicts = [new ServerEdict(0, mockedSV()), new ServerEdict(1, mockedSV()), new ServerEdict(2, mockedSV())];
         currentEdicts = freshEdicts;
         const freshGameAPI = new ServerGameAPI(engineAPI);
         freshGameAPI.mapname = mapname;
@@ -989,8 +979,8 @@ void describe('Host.save/load integration', () => {
     };
 
     try {
-      await withMockRegistry({
-        ...defaultMockRegistry(sv, client),
+      await withMockEngine({
+        ...defaultMockEngine(sv, client),
         COM: mockCOM,
         Con: consoleCapture.Con,
         Mod,
@@ -999,7 +989,6 @@ void describe('Host.save/load integration', () => {
             return [];
           },
         },
-        isDedicatedServer: true,
       }, async () => {
         // Load the real id1 pak metadata so maps/e1m1.bsp resolves through COM.
         await nodeCom.AddGameDirectory('id1');
@@ -1017,7 +1006,7 @@ void describe('Host.save/load integration', () => {
         );
         const spawnOrigin = parseMapOrigin(spawnRecord.origin);
 
-        const saveEdicts = [new ServerEdict(0, registrySV()), new ServerEdict(1, registrySV()), new ServerEdict(2, registrySV())];
+        const saveEdicts = [new ServerEdict(0, mockedSV()), new ServerEdict(1, mockedSV()), new ServerEdict(2, mockedSV())];
         currentEdicts = saveEdicts;
 
         const saveGameAPI = new ServerGameAPI(engineAPI);
@@ -1093,13 +1082,11 @@ void describe('Host.save/load integration', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
-      registry.R = previousRenderer;
+      engineMocks.R = previousRenderer;
       restoreRenderer();
-      facades.SCR = previousSCR;
-      registry.Sys = previousSys;
-      registry.isDedicatedServer = previousIsDedicatedServer;
+      engineMocks.SCR = previousSCR;
+      engineMocks.Sys = previousSys;
       ServerGameAPI._cvars = previousServerGameCvars;
-      eventBus.publish('registry.frozen');
 
       for (const name of Object.keys(Mod.known)) {
         if (!knownKeysBefore.has(name)) {

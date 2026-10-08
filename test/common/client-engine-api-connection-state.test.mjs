@@ -3,9 +3,8 @@ import { describe, test } from 'node:test';
 
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { useClientStateOf } from '../support/clientState.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 const engineApi = createClientEngineApi();
 
@@ -15,18 +14,16 @@ const engineApi = createClientEngineApi();
  * @param {() => void} callback test callback
  */
 function withMockConnectionState({ state = clientConnectionState.disconnected, serverActive = false }, callback) {
-  const previousCL = registry.CL;
+  const previousCL = engineMocks.CL;
 
-  registry.CL = { cls: { state }, serverController: { state: { active: serverActive } } };
-  const restoreClientState = useClientStateOf(registry.CL);
-  eventBus.publish('registry.frozen');
+  engineMocks.CL = { cls: { state }, serverController: { state: { active: serverActive } } };
+  const restoreClientState = useClientStateOf(engineMocks.CL);
 
   try {
     callback();
   } finally {
-    registry.CL = previousCL;
+    engineMocks.CL = previousCL;
     restoreClientState();
-    eventBus.publish('registry.frozen');
   }
 }
 

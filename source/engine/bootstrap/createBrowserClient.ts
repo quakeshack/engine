@@ -15,7 +15,6 @@ import Con from '../common/Console.ts';
 import Host from '../common/Host.ts';
 import Mod from '../common/Mod.ts';
 import NET from '../network/Network.ts';
-import { freeze as registryFreeze, registry } from '../registry.ts';
 import InThreadServerController from '../server/InThreadServerController.ts';
 import ClientHost from '../client/ClientHost.ts';
 import ConsoleOverlay from '../client/ConsoleOverlay.ts';
@@ -30,7 +29,8 @@ import { LoopDriver, WebRTCDriver, WebSocketDriver } from '../network/NetworkDri
 import { createServerRuntime } from './createServerRuntime.ts';
 import { editionOf } from '../common/GameApiSupport.ts';
 import clientCvars from '../client/ClientCvars.ts';
-import { clientStaticState } from '../client/ClientState.ts';
+import { clientRuntimeState, clientStaticState } from '../client/ClientState.ts';
+import { installRenderContext } from '../client/renderer/RenderContext.ts';
 import { ClientEngineAPI } from '../client/ClientEngineAPI.ts';
 import type Server from '../server/Server.ts';
 import { installPageServices } from '../client/PageServices.ts';
@@ -81,11 +81,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
 
   installPageServices({ com, net, engineApi, urls, buildConfig });
 
-  // Materials and Sky are loaded by the server worker as well, so they cannot import the client: they still look up
-  // the renderer and the client state in the registry until the registry goes.
-  registry.CL = CL;
-  registry.R = R;
-  registry.Host = Host;
+  installRenderContext({ renderer: R, clientState: clientRuntimeState });
 
   // the client only ever sees the controller, the server is in this thread or in a worker
   if (channel !== null) {
@@ -130,8 +126,6 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
     Host.serverHost = runtime.serverHost;
     clientStaticState.serverController = new InThreadServerController(runtime.sv, runtime.serverHost);
   }
-
-  registryFreeze();
 
   // The members that verification scripts in a browser reach for, see docs/browser-verification.md.
   (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, V, Key, S, Draw, R, M, SCR, IN, SV: inThreadServer };

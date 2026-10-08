@@ -3,25 +3,24 @@ import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
 import { moveType } from '../../source/shared/Defs.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import SV from '../../source/engine/server/Server.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { PM_TYPE } from '../../source/engine/common/Pmove.ts';
-import { registrySV } from './fixtures.mjs';
+import { mockedSV } from './fixtures.mjs';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Install a minimal registry state for writeClientdataToMessage tests.
  * @returns {{restore: () => void, client: ServerClient, entity: Record<string, unknown>}} Test context.
  */
 function installClientdataContext() {
-  const previousCon = registry.Con;
-  const previousHost = registry.Host;
-  const previousNET = registry.NET;
-  const previousSV = registry.SV;
+  const previousCon = engineMocks.Con;
+  const previousHost = engineMocks.Host;
+  const previousNET = engineMocks.NET;
+  const previousSV = engineMocks.SV;
   const previousServer = SV.server;
 
   const entity = {
@@ -49,22 +48,20 @@ function installClientdataContext() {
     edicts: [null, { num: 1, entity }],
   };
 
-  registry.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
-  registry.Host = { realtime: 0, version: { string: 'test' } };
-  registry.NET = { SendUnreliableMessage() { return 0; } };
-  registry.SV = SV;
-  eventBus.publish('registry.frozen');
+  engineMocks.Con = { Print() {}, DPrint() {}, PrintWarning() {} };
+  engineMocks.Host = { realtime: 0, version: { string: 'test' } };
+  engineMocks.NET = { SendUnreliableMessage() { return 0; } };
+  engineMocks.SV = SV;
 
-  const client = new ServerClient(0, registrySV());
+  const client = new ServerClient(0, mockedSV());
 
   return {
     restore() {
-      registry.Con = previousCon;
-      registry.Host = previousHost;
-      registry.NET = previousNET;
-      registry.SV = previousSV;
+      engineMocks.Con = previousCon;
+      engineMocks.Host = previousHost;
+      engineMocks.NET = previousNET;
+      engineMocks.SV = previousSV;
       SV.server = previousServer;
-      eventBus.publish('registry.frozen');
     },
     client,
     entity,
@@ -114,7 +111,7 @@ void describe('ServerMessages clientdata sparse updates', () => {
     const context = installClientdataContext();
 
     try {
-      const messages = new ServerMessages(registrySV());
+      const messages = new ServerMessages(mockedSV());
       const msgFirst = new SzBuffer(256, 'first clientdata message');
 
       messages.writeClientdataToMessage(context.client, msgFirst);
@@ -151,7 +148,7 @@ void describe('ServerMessages clientdata sparse updates', () => {
     const context = installClientdataContext();
 
     try {
-      const messages = new ServerMessages(registrySV());
+      const messages = new ServerMessages(mockedSV());
 
       const walkingMsg = new SzBuffer(256, 'walking clientdata message');
       messages.writeClientdataToMessage(context.client, walkingMsg);

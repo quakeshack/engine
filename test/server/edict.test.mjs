@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
-import { defaultMockRegistry, withMockRegistry, registrySV } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine, mockedSV } from '../physics/fixtures.mjs';
 
 void describe('ED.Print', () => {
   void test('prints serializable and public entity fields without Progs fielddefs', () => {
@@ -39,8 +39,8 @@ void describe('ED.Print', () => {
       },
     };
 
-    void withMockRegistry({
-      ...defaultMockRegistry({ server: { active: true } }),
+    void withMockEngine({
+      ...defaultMockEngine({ server: { active: true } }),
       Con: {
         Print(message) {
           prints.push(message);
@@ -48,7 +48,7 @@ void describe('ED.Print', () => {
         DPrint() {},
       },
     }, () => {
-      new ED(registrySV()).Print(edict);
+      new ED(mockedSV()).Print(edict);
     });
 
     const output = prints.join('');
@@ -68,9 +68,9 @@ void describe('ED.Print', () => {
 
 void describe('ED lifecycle events', () => {
   void test('emits server.edict.assigned when reusing a freed slot', () => {
-    const worldEdict = new ServerEdict(0, registrySV());
-    const clientEdict = new ServerEdict(1, registrySV());
-    const reusableEdict = new ServerEdict(2, registrySV());
+    const worldEdict = new ServerEdict(0, mockedSV());
+    const clientEdict = new ServerEdict(1, mockedSV());
+    const reusableEdict = new ServerEdict(2, mockedSV());
     reusableEdict.free = true;
     reusableEdict.freetime = 0;
 
@@ -80,7 +80,7 @@ void describe('ED lifecycle events', () => {
     });
 
     try {
-      void withMockRegistry(defaultMockRegistry({
+      void withMockEngine(defaultMockEngine({
         svs: {
           maxclients: 1,
         },
@@ -90,7 +90,7 @@ void describe('ED lifecycle events', () => {
           edicts: [worldEdict, clientEdict, reusableEdict],
         },
       }), () => {
-        const assigned = new ED(registrySV()).Alloc();
+        const assigned = new ED(mockedSV()).Alloc();
         assert.equal(assigned.num, 2);
       });
     } finally {
@@ -101,11 +101,11 @@ void describe('ED lifecycle events', () => {
   });
 
   void test('emits server.edict.assigned when allocating a fresh slot', () => {
-    const worldEdict = new ServerEdict(0, registrySV());
-    const clientEdict = new ServerEdict(1, registrySV());
-    const activeEdict = new ServerEdict(2, registrySV());
+    const worldEdict = new ServerEdict(0, mockedSV());
+    const clientEdict = new ServerEdict(1, mockedSV());
+    const activeEdict = new ServerEdict(2, mockedSV());
     activeEdict.free = false;
-    const freshEdict = new ServerEdict(3, registrySV());
+    const freshEdict = new ServerEdict(3, mockedSV());
 
     const assignedEdictIds = [];
     const unsubscribe = eventBus.subscribe('server.edict.assigned', (edictId) => {
@@ -113,7 +113,7 @@ void describe('ED lifecycle events', () => {
     });
 
     try {
-      void withMockRegistry(defaultMockRegistry({
+      void withMockEngine(defaultMockEngine({
         svs: {
           maxclients: 1,
         },
@@ -123,7 +123,7 @@ void describe('ED lifecycle events', () => {
           edicts: [worldEdict, clientEdict, activeEdict, freshEdict],
         },
       }), () => {
-        const assigned = new ED(registrySV()).Alloc();
+        const assigned = new ED(mockedSV()).Alloc();
         assert.equal(assigned.num, 3);
       });
     } finally {

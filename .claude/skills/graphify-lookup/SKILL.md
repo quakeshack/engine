@@ -48,5 +48,5 @@ trigger + command reference; read that one for depth.
   `.github/instructions/graphify-usage.instructions.md` for when and how.
 - Does not touch git hooks, CI, or `package.json` — this is a local dev/agent-assist tool.
 - Import-cycle and "isolated node" report sections are noisy on this codebase (type-only
-  imports and the registry-destructuring idiom both get misparsed) — verify before trusting
+  imports and module-level `let` bindings both get misparsed) — verify before trusting
   either, per the instructions file.

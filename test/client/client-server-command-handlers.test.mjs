@@ -8,15 +8,12 @@ import { parseServerMessage } from '../../source/engine/client/ClientServerComma
 import GameModule from '../../source/engine/common/GameModule.ts';
 import { installPageServices } from '../../source/engine/client/PageServices.ts';
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useHostOf } from '../support/host.ts';
-import { facades } from '../support/facades.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Builds the minimal client registry surface required by parseServerMessage().
@@ -84,45 +81,43 @@ function createMockClientRegistry(overrides = {}) {
  */
 function withMockClientRegistry(mockedRegistry, callback) {
   const previousValues = {
-    CL: registry.CL,
-    Con: registry.Con,
-    Host: registry.Host,
-    Mod: registry.Mod,
-    NET: pageServices.NET,
-    R: registry.R,
-    S: facades.S,
-    SCR: facades.SCR,
-    V: facades.V,
+    CL: engineMocks.CL,
+    Con: engineMocks.Con,
+    Host: engineMocks.Host,
+    Mod: engineMocks.Mod,
+    NET: engineMocks.NET,
+    R: engineMocks.R,
+    S: engineMocks.S,
+    SCR: engineMocks.SCR,
+    V: engineMocks.V,
   };
 
-  registry.CL = mockedRegistry.CL;
-  const restoreClientState = useClientStateOf(registry.CL);
-  registry.Con = mockedRegistry.Con;
-  registry.Host = mockedRegistry.Host;
-  const restoreHost = useHostOf(registry.Host);
-  registry.Mod = mockedRegistry.Mod;
-  pageServices.NET = mockedRegistry.NET;
-  registry.R = mockedRegistry.R;
-  const restoreRenderer = useRendererOf(registry.R);
-  facades.S = mockedRegistry.S;
-  facades.SCR = mockedRegistry.SCR;
-  facades.V = mockedRegistry.V;
-  eventBus.publish('registry.frozen');
+  engineMocks.CL = mockedRegistry.CL;
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.Con = mockedRegistry.Con;
+  engineMocks.Host = mockedRegistry.Host;
+  const restoreHost = useHostOf(engineMocks.Host);
+  engineMocks.Mod = mockedRegistry.Mod;
+  engineMocks.NET = mockedRegistry.NET;
+  engineMocks.R = mockedRegistry.R;
+  const restoreRenderer = useRendererOf(engineMocks.R);
+  engineMocks.S = mockedRegistry.S;
+  engineMocks.SCR = mockedRegistry.SCR;
+  engineMocks.V = mockedRegistry.V;
 
   const restore = () => {
-    registry.CL = previousValues.CL;
+    engineMocks.CL = previousValues.CL;
     restoreClientState();
-    registry.Con = previousValues.Con;
-    registry.Host = previousValues.Host;
+    engineMocks.Con = previousValues.Con;
+    engineMocks.Host = previousValues.Host;
     restoreHost();
-    registry.Mod = previousValues.Mod;
-    pageServices.NET = previousValues.NET;
-    registry.R = previousValues.R;
+    engineMocks.Mod = previousValues.Mod;
+    engineMocks.NET = previousValues.NET;
+    engineMocks.R = previousValues.R;
     restoreRenderer();
-    facades.S = previousValues.S;
-    facades.SCR = previousValues.SCR;
-    facades.V = previousValues.V;
-    eventBus.publish('registry.frozen');
+    engineMocks.S = previousValues.S;
+    engineMocks.SCR = previousValues.SCR;
+    engineMocks.V = previousValues.V;
   };
 
   try {
@@ -154,7 +149,7 @@ void describe('parseServerMessage', () => {
         /Protocol 15 \/ WinQuake serverdata is no longer supported\./,
       );
 
-      assert.equal(facades.SCR.recalc_refdef, true);
+      assert.equal(engineMocks.SCR.recalc_refdef, true);
       assert.deepEqual(mockedRegistry.CL.connection.lastServerMessages, ['serverdata']);
     });
   });

@@ -2,10 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import InviteCommand from '../../source/engine/client/InviteCommand.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Temporarily install a global value for the duration of a callback.
@@ -50,17 +48,15 @@ function withGlobalValue(name, value, callback) {
  * @returns {Promise<void>} Result of the callback.
  */
 function withInviteRegistry(mockedNet, mockedCon, callback) {
-  const previousCon = registry.Con;
-  const previousNET = pageServices.NET;
+  const previousCon = engineMocks.Con;
+  const previousNET = engineMocks.NET;
 
-  registry.Con = mockedCon;
-  pageServices.NET = mockedNet;
-  eventBus.publish('registry.frozen');
+  engineMocks.Con = mockedCon;
+  engineMocks.NET = mockedNet;
 
   return Promise.resolve(callback()).finally(() => {
-    registry.Con = previousCon;
-    pageServices.NET = previousNET;
-    eventBus.publish('registry.frozen');
+    engineMocks.Con = previousCon;
+    engineMocks.NET = previousNET;
   });
 }
 

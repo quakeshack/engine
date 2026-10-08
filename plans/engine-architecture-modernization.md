@@ -4,7 +4,7 @@
 file layer), Phase 2b (the server runtime and the realm services it uses without the registry) and Phase 3
 (the server in a worker, in three steps: 3a, 3b, 3c) are done (2026-10-05)**; the worker is the default in the
 browser, `?serverthread` opts out. See "Phase 1: what shipped" to "Phase 3c: what shipped" below. Phase 4 (the
-client side of the registry, deleting it) is planned in detail below (forks settled 2026-10-06) and starts with 4a. `client-entity-architecture` was squash-merged to `main` as `9abb71b` (all phases, including
+client side of the registry, deleting it) is done as well (2026-10-08): 4a, 4b and 4c, see "Phase 4a: what shipped" to "Phase 4c: what shipped"; `registry.ts` is gone. `client-entity-architecture` was squash-merged to `main` as `9abb71b` (all phases, including
 the old phase 6), so the Phase 1 blocker is gone. The Phase 0 spikes were run on 2026-10-03; results
 are in "Phase 0 findings" and have been folded into the design. Written 2026-10-03 after a code survey
 (numbers in "Context" are as of that date, branch `client-entity-architecture`; the registry importer
@@ -1351,6 +1351,38 @@ for their headless stand-in. The ESLint ratchet is at 5 files (from 31), `regist
 Left for 4c: `Materials` and `Sky` (they need a way to get the renderer and the client state without importing the client, or a
 split of the data class from the render hooks), the registry itself, `createDedicatedServer`'s fill of it, `isDedicatedServer`,
 `withMockRegistry` and the tests that still mock a registry, and the instruction files that describe the registry pattern.
+
+#### Phase 4c: what shipped (2026-10-08, not committed)
+
+`source/engine/registry.ts` is deleted, together with `getCommonRegistry`/`getClientRegistry`, the `registry.frozen` event,
+`isDedicatedServer`, `withMockRegistry` and the ESLint allowlist. Nothing under `source/` imports it, and a boundary test says
+so (`registry.ts`, `registry.frozen` and the getters may not appear anywhere under `source/engine/`).
+
+- **`Materials` and `Sky`** (the data classes the model loaders drag into the server worker) read the renderer and the client
+  state from `client/renderer/RenderContext.ts`, a leaf module without run-time imports: live bindings `renderer` (a headless
+  stand-in until the page installs `R`) and `clientState`, and `installRenderContext()`. `Sky` imports `Host` directly.
+  The worker's closure gained that one file and lost its registry readers.
+- **Composition roots** no longer fill anything: `createDedicatedServer` and `main-dedicated` return nothing, `createBrowserClient`
+  installs the page services and the render context and then runs the loop. The dedicated server's `urls` and the page's
+  `WebSocket` are plain arguments of `NET`/`COM`.
+- `CL.serverController` (an accessor for `Host`, no reader left) is gone; the page reads `CL.cls.serverController`.
+- **Tests**: one helper, `test/support/engineMocks.ts`, replaces `registry` in 48 test files (and the `facades.ts`/`pageServices.ts`
+  of 4b): assigning to a facade patches the real one, the page services are installed as they are assigned, the render context
+  gets the mocked renderer, and `CL`/`Host`/`M`/`R`/`Con`/`SV` are held for the `use...Of` helpers and `consoleBridge`.
+  `withMockRegistry`/`defaultMockRegistry` are `withMockEngine`/`defaultMockEngine`, the `registry*` fixtures `mocked*`. 1757 tests.
+- **Docs and instructions** (game-agnostic): `code-style-guide` ("Reaching Other Modules" replaces the registry rules, in
+  `.github/instructions/` and `docs/`), `typescript-port`, `unit-tests` ("Mock Pattern"), `copilot-instructions`, `workers`,
+  `graphify` caveats, `docs/events.md` (no `registry.frozen`), `docs/server-worker.md`, `docs/menu-system.md`.
+- **Verified in Chromium** with the development build (worker, `?serverthread`) and a production build: the full 4b sequence
+  again, plus E1M5 with its sky (screenshot: sky and materials draw through the render context) and E2M1 and E4M1 loads without
+  errors. A fresh dedicated build boots and spawns E1M1.
+  Not verified: pointer lock and mouse look (needs a live test, as for all of Phase 3 and Phase 4), Firefox, multiplayer over
+  WebRTC/WebSocket, sound output, the navigation worker with a real path request.
+
+Phase 4 done-condition met: no registry, the worker bundle contains no client code beyond the model data classes
+(`PageServices`, `RenderContext`, `GL`, `VID`, `Materials`, `Sky`), the instance conversions the plan promised for `Con`, `Mod`,
+`Host` (dissolved), `ClientEngineAPI` and the composition roots are done, and `CL`/`M`/`R`/`GL`/`S`/`IN`/`Key`/`Draw`/`SCR`/`V`
+stay static classes imported directly (fork 1).
 
 ### Later tracks (own plans, order flexible after Phase 3)
 

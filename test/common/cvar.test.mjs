@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Cvar from '../../source/engine/common/Cvar.ts';
-import { defaultMockRegistry, withMockRegistry } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine } from '../physics/fixtures.mjs';
 import '../support/consoleBridge.ts';
 
 /** @returns {{ prints: string[], warnings: string[], dprints: string[], Print: (message: string) => void, PrintWarning: (message: string) => void, DPrint: (message: string) => void }} captured console methods */
@@ -34,8 +34,8 @@ void describe('Cvar', () => {
   void test('coerces values and completes variable names', async () => {
     const consoleCapture = createConsoleCapture();
 
-    await withMockRegistry({
-      ...defaultMockRegistry({ server: { active: false } }, null),
+    await withMockEngine({
+      ...defaultMockEngine({ server: { active: false } }, null),
       Con: consoleCapture,
     }, () => {
       resetCvarState();
@@ -63,8 +63,8 @@ void describe('Cvar', () => {
   void test('reports variable metadata and blocks readonly changes', async () => {
     const consoleCapture = createConsoleCapture();
 
-    await withMockRegistry({
-      ...defaultMockRegistry({ server: { active: false } }, null),
+    await withMockEngine({
+      ...defaultMockEngine({ server: { active: false } }, null),
       Con: consoleCapture,
     }, () => {
       resetCvarState();
@@ -92,8 +92,8 @@ void describe('Cvar', () => {
   void test('marks archive variables and serializes them to config commands', async () => {
     const consoleCapture = createConsoleCapture();
 
-    await withMockRegistry({
-      ...defaultMockRegistry({ server: { active: false } }, null),
+    await withMockEngine({
+      ...defaultMockEngine({ server: { active: false } }, null),
       Con: consoleCapture,
     }, () => {
       resetCvarState();
@@ -128,7 +128,7 @@ void describe('Cvar', () => {
         : null;
       let value = '';
 
-      withMockRegistry({ ...defaultMockRegistry(sv, cl), Con: consoleCapture }, () => {
+      withMockEngine({ ...defaultMockEngine(sv, cl), Con: consoleCapture }, () => {
         resetCvarState();
 
         try {
@@ -172,7 +172,7 @@ void describe('Cvar', () => {
       let value = '';
 
       // The server of a client with a worker is not in the registry.
-      withMockRegistry({ ...defaultMockRegistry(undefined, cl), SV: undefined, Con: consoleCapture }, () => {
+      withMockEngine({ ...defaultMockEngine(undefined, cl), SV: undefined, Con: consoleCapture }, () => {
         resetCvarState();
 
         try {

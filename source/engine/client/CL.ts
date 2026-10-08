@@ -20,11 +20,6 @@ import Host from '../common/Host.ts';
 import Draw from './Draw.ts';
 
 export default class CL {
-  /** Control plane to the local server; lives on the static client state, this is for what still reaches it through the registry. */
-  static get serverController(): ServerController {
-    return clientStaticState.serverController;
-  }
-
   static set serverController(serverController: ServerController) {
     clientStaticState.serverController = serverController;
   }

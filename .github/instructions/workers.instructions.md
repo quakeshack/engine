@@ -16,7 +16,7 @@ sends back responses.
 - `source/engine/common/WorkerManager.ts` — Orchestrator that spawns workers and
   bridges the eventBus between the main thread and worker threads.
 - `source/engine/common/WorkerFramework.ts` — Bootstrap code that runs **inside** a
-  worker thread; sets up a lean registry, Con proxy, and message bridge.
+  worker thread; sets up the console delegate, the file services and the message bridge.
 
 ### Adding a new worker
 

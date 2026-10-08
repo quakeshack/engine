@@ -3,20 +3,18 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
 import { Mod } from '../../source/engine/common/Mod.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Com from '../../source/engine/common/Com.ts';
 import Console from '../../source/engine/common/Console.ts';
 import Vector from '../../source/shared/Vector.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const mapsDir = path.join(__dirname, '../../data/id1/maps');
 
-registry.Con = Console;
-registry.COM = Com;
-registry.Mod = Mod;
-registry.isDedicatedServer = true;
+engineMocks.Con = Console;
+engineMocks.COM = Com;
+engineMocks.Mod = Mod;
 
 Com.LoadFile = async (name) => {
   try {
@@ -38,8 +36,7 @@ Com.LoadTextFile = async (name) => {
   }
 };
 
-eventBus.publish('registry.frozen');
-Mod.Init({ files: registry.COM, con: registry.Con, loadRenderData: false });
+Mod.Init({ files: engineMocks.COM, con: engineMocks.Con, loadRenderData: false });
 
 async function debugMap(mapName) {
   console.log(`\n\n${'='.repeat(60)}`);

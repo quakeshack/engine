@@ -3,8 +3,6 @@ import { describe, test } from 'node:test';
 
 import ClientEntities, { ClientDlight, ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content, effect } from '../../source/shared/Defs.ts';
 import GameModule from '../../source/engine/common/GameModule.ts';
@@ -12,6 +10,7 @@ import { useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useHostOf } from '../support/host.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Computes wrapped angular delta in degrees.
@@ -28,9 +27,9 @@ function shortestAngleDelta(from, to) {
  * @param {() => void} callback
  */
 function withMockClientEntitiesRegistry(callback) {
-  const previousCL = registry.CL;
+  const previousCL = engineMocks.CL;
 
-  registry.CL = {
+  engineMocks.CL = {
     nolerp: { value: 0 },
     state: {
       clientMessages: {
@@ -42,13 +41,11 @@ function withMockClientEntitiesRegistry(callback) {
     },
   };
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  eventBus.publish('registry.frozen');
+  const restoreClientState = useClientStateOf(engineMocks.CL);
 
   const restore = () => {
-    registry.CL = previousCL;
+    engineMocks.CL = previousCL;
     restoreClientState();
-    eventBus.publish('registry.frozen');
   };
 
   try {
@@ -66,22 +63,20 @@ function withMockClientEntitiesRegistry(callback) {
  * @param {() => void} callback
  */
 function withMockDlightRegistry(time, frametime, callback) {
-  const previousCL = registry.CL;
-  const previousHost = registry.Host;
+  const previousCL = engineMocks.CL;
+  const previousHost = engineMocks.Host;
 
-  registry.CL = { state: { time } };
+  engineMocks.CL = { state: { time } };
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  registry.Host = { frametime };
-  const restoreHost = useHostOf(registry.Host);
-  eventBus.publish('registry.frozen');
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.Host = { frametime };
+  const restoreHost = useHostOf(engineMocks.Host);
 
   const restore = () => {
-    registry.CL = previousCL;
+    engineMocks.CL = previousCL;
     restoreClientState();
-    registry.Host = previousHost;
+    engineMocks.Host = previousHost;
     restoreHost();
-    eventBus.publish('registry.frozen');
   };
 
   try {
@@ -163,17 +158,15 @@ void describe('ClientEdict.lerp.origin', () => {
  * @param {() => void} callback
  */
 function withMockWorldmodelRegistry(worldmodel, callback) {
-  const previousCL = registry.CL;
+  const previousCL = engineMocks.CL;
 
-  registry.CL = { state: { worldmodel } };
+  engineMocks.CL = { state: { worldmodel } };
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  eventBus.publish('registry.frozen');
+  const restoreClientState = useClientStateOf(engineMocks.CL);
 
   const restore = () => {
-    registry.CL = previousCL;
+    engineMocks.CL = previousCL;
     restoreClientState();
-    eventBus.publish('registry.frozen');
   };
 
   try {
@@ -295,24 +288,22 @@ void describe('ClientEntities.isPotentiallyVisible', () => {
    * @param {() => void} callback
    */
   function withViewVisibility(visibility, callback) {
-    const previousCL = registry.CL;
-    const previousR = registry.R;
+    const previousCL = engineMocks.CL;
+    const previousR = engineMocks.R;
 
-    registry.CL = { state: { worldmodel: { getPvsByPoint: () => visibility }, viewentity: 1 } };
+    engineMocks.CL = { state: { worldmodel: { getPvsByPoint: () => visibility }, viewentity: 1 } };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    registry.R = { novis: { value: 0 }, refdef: { vieworg: new Vector() } };
-    const restoreRenderer = useRendererOf(registry.R);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
+    engineMocks.R = { novis: { value: 0 }, refdef: { vieworg: new Vector() } };
+    const restoreRenderer = useRendererOf(engineMocks.R);
 
     try {
       callback();
     } finally {
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
-      registry.R = previousR;
+      engineMocks.R = previousR;
       restoreRenderer();
-      eventBus.publish('registry.frozen');
     }
   }
 

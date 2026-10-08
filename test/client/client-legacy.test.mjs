@@ -4,12 +4,11 @@ import { describe, test } from 'node:test';
 import { DefaultClientEdictHandler } from '../../source/engine/client/ClientLegacy.ts';
 import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { effect, modelFlags } from '../../source/shared/Defs.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { useHostOf } from '../support/host.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  * Runs a callback with a real `ClientEntities` instance wired into the
@@ -18,29 +17,27 @@ import { useHostOf } from '../support/host.ts';
  * @param {() => void} callback
  */
 function withMockLegacyClientRegistry(callback) {
-  const previousCL = registry.CL;
-  const previousHost = registry.Host;
-  const previousR = registry.R;
+  const previousCL = engineMocks.CL;
+  const previousHost = engineMocks.Host;
+  const previousR = engineMocks.R;
 
   const clientEntities = new ClientEntities();
 
-  registry.CL = { state: { time: 0.0, clientEntities } };
+  engineMocks.CL = { state: { time: 0.0, clientEntities } };
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  registry.Host = { frametime: 1 / 60 };
-  const restoreHost = useHostOf(registry.Host);
-  registry.R = { RocketTrail() {}, EntityParticles() {} };
-  const restoreRenderer = useRendererOf(registry.R);
-  eventBus.publish('registry.frozen');
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.Host = { frametime: 1 / 60 };
+  const restoreHost = useHostOf(engineMocks.Host);
+  engineMocks.R = { RocketTrail() {}, EntityParticles() {} };
+  const restoreRenderer = useRendererOf(engineMocks.R);
 
   const restore = () => {
-    registry.CL = previousCL;
+    engineMocks.CL = previousCL;
     restoreClientState();
-    registry.Host = previousHost;
+    engineMocks.Host = previousHost;
     restoreHost();
-    registry.R = previousR;
+    engineMocks.R = previousR;
     restoreRenderer();
-    eventBus.publish('registry.frozen');
   };
 
   try {
@@ -70,7 +67,7 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
   function sampleRadiusUntilFree(clientEntities, dl) {
     const samples = [];
     for (let i = 0; i < 60 && !dl.isFree(); i++) {
-      clientRuntimeState.time += registry.Host.frametime;
+      clientRuntimeState.time += engineMocks.Host.frametime;
       clientEntities.think();
       samples.push(dl.radius);
     }
@@ -88,7 +85,7 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
       // Simulate the effect being refreshed for a few consecutive frames.
       for (let i = 0; i < 3; i++) {
         handler.emit();
-        clientRuntimeState.time += registry.Host.frametime;
+        clientRuntimeState.time += engineMocks.Host.frametime;
         clientEntities.think();
       }
 
@@ -98,7 +95,7 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
 
       // The effect stops being refreshed (e.g. the monster faces away), but
       // normal frames still elapse and think() still runs.
-      clientRuntimeState.time += registry.Host.frametime;
+      clientRuntimeState.time += engineMocks.Host.frametime;
       clientEntities.think();
 
       assert.ok(!dl.isFree(), 'dlight must not be culled on the very first missed frame');
@@ -122,14 +119,14 @@ void describe('DefaultClientEdictHandler.emit dynamic lights', () => {
 
       for (let i = 0; i < 3; i++) {
         handler.emit();
-        clientRuntimeState.time += registry.Host.frametime;
+        clientRuntimeState.time += engineMocks.Host.frametime;
         clientEntities.think();
       }
 
       const dl = clientEntities.dlights.find((light) => light.entity === clent.num);
       assert.ok(dl, 'expected a dlight to be allocated for the rocket entity');
 
-      clientRuntimeState.time += registry.Host.frametime;
+      clientRuntimeState.time += engineMocks.Host.frametime;
       clientEntities.think();
 
       assert.ok(!dl.isFree(), 'rocket dlight must not be culled on the very first missed frame');

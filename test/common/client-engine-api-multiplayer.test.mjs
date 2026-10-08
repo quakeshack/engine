@@ -2,9 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 const engineApi = createClientEngineApi();
 
@@ -15,25 +13,23 @@ const engineApi = createClientEngineApi();
  * @param {() => Promise<void>} callback async test callback
  */
 async function withMockMultiplayerApi(jsonBody, callback) {
-  const previousCOM = pageServices.COM;
-  const previousUrls = pageServices.urls;
+  const previousCOM = engineMocks.COM;
+  const previousUrls = engineMocks.urls;
   const previousFetch = globalThis.fetch;
 
-  pageServices.COM = { game: 'id1' };
-  pageServices.urls = { signalingURL: 'wss://master.example.test/signal' };
+  engineMocks.COM = { game: 'id1' };
+  engineMocks.urls = { signalingURL: 'wss://master.example.test/signal' };
   globalThis.fetch = () => Promise.resolve({ json: () => Promise.resolve(jsonBody) });
-  eventBus.publish('registry.frozen');
 
   try {
     await callback();
   } finally {
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    pageServices.COM = previousCOM;
+    engineMocks.COM = previousCOM;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-    pageServices.urls = previousUrls;
+    engineMocks.urls = previousUrls;
     // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
     globalThis.fetch = previousFetch;
-    eventBus.publish('registry.frozen');
   }
 }
 
@@ -60,12 +56,11 @@ void describe('ClientEngineAPI.Multiplayer.SubscribeSessions/RequestSessionsRefr
   // `test/client/session-discovery.test.mjs`; this file only needs to prove GameAPIs.ts wires
   // through to SessionDiscovery correctly.
   void test('delegates to SessionDiscovery.subscribe and .requestRefresh', () => {
-    const previousCOM = pageServices.COM;
-    const previousUrls = pageServices.urls;
+    const previousCOM = engineMocks.COM;
+    const previousUrls = engineMocks.urls;
 
-    pageServices.COM = { game: 'id1' };
-    pageServices.urls = {};
-    eventBus.publish('registry.frozen');
+    engineMocks.COM = { game: 'id1' };
+    engineMocks.urls = {};
 
     try {
       const statuses = [];
@@ -77,9 +72,8 @@ void describe('ClientEngineAPI.Multiplayer.SubscribeSessions/RequestSessionsRefr
 
       assert.doesNotThrow(() => { engineApi.Multiplayer.RequestSessionsRefresh(); });
     } finally {
-      pageServices.COM = previousCOM;
-      pageServices.urls = previousUrls;
-      eventBus.publish('registry.frozen');
+      engineMocks.COM = previousCOM;
+      engineMocks.urls = previousUrls;
     }
   });
 });

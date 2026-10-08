@@ -5,13 +5,12 @@ import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { registerSerializableType, SzBuffer } from '../../source/engine/network/MSG.ts';
 import { ClientMessages } from '../../source/engine/client/ClientMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useHostOf } from '../support/host.ts';
 import Host from '../../source/engine/common/Host.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 class MockClientSerializable {
   constructor(value) {
@@ -39,28 +38,26 @@ registerSerializableType(MockClientSerializable, {
  */
 function withMockClientMessagesRegistry({ CL, COM, NET, Host }, callback) {
   const previousValues = {
-    CL: registry.CL,
-    COM: pageServices.COM,
-    NET: pageServices.NET,
-    Host: registry.Host,
+    CL: engineMocks.CL,
+    COM: engineMocks.COM,
+    NET: engineMocks.NET,
+    Host: engineMocks.Host,
   };
 
-  registry.CL = CL;
-  const restoreClientState = useClientStateOf(registry.CL);
-  pageServices.COM = COM;
-  pageServices.NET = NET;
-  registry.Host = Host ?? { realtime: 0 };
-  const restoreHost = useHostOf(registry.Host);
-  eventBus.publish('registry.frozen');
+  engineMocks.CL = CL;
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.COM = COM;
+  engineMocks.NET = NET;
+  engineMocks.Host = Host ?? { realtime: 0 };
+  const restoreHost = useHostOf(engineMocks.Host);
 
   const restore = () => {
-    registry.CL = previousValues.CL;
+    engineMocks.CL = previousValues.CL;
     restoreClientState();
-    pageServices.COM = previousValues.COM;
-    pageServices.NET = previousValues.NET;
-    registry.Host = previousValues.Host;
+    engineMocks.COM = previousValues.COM;
+    engineMocks.NET = previousValues.NET;
+    engineMocks.Host = previousValues.Host;
     restoreHost();
-    eventBus.publish('registry.frozen');
   };
 
   try {

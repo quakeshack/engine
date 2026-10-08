@@ -1,15 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { registry } from '../../source/engine/registry.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import ClientInput, { kbutton, kbuttons } from '../../source/engine/client/ClientInput.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useHostOf } from '../support/host.ts';
-import { facades } from '../support/facades.ts';
-import { pageServices } from '../support/pageServices.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 /**
  *
@@ -17,14 +14,14 @@ import { pageServices } from '../support/pageServices.ts';
  */
 function withMockClientInputRegistry(callback) {
   const previousValues = {
-    CL: registry.CL,
-    Con: registry.Con,
-    Host: registry.Host,
-    NET: pageServices.NET,
-    V: facades.V,
+    CL: engineMocks.CL,
+    Con: engineMocks.Con,
+    Host: engineMocks.Host,
+    NET: engineMocks.NET,
+    V: engineMocks.V,
   };
 
-  registry.CL = {
+  engineMocks.CL = {
     cls: { signon: 4 },
     state: {
       cmd: {
@@ -48,23 +45,21 @@ function withMockClientInputRegistry(callback) {
     yawspeed: { value: 1 },
   };
 
-  const restoreClientState = useClientStateOf(registry.CL);
-  registry.Con = { Print() {}, DPrint() {} };
-  registry.Host = { frametime: 0.1 };
-  const restoreHost = useHostOf(registry.Host);
-  pageServices.NET = { SendUnreliableMessage() { return 0; } };
-  facades.V = { startPitchDrift() {} };
-  eventBus.publish('registry.frozen');
+  const restoreClientState = useClientStateOf(engineMocks.CL);
+  engineMocks.Con = { Print() {}, DPrint() {} };
+  engineMocks.Host = { frametime: 0.1 };
+  const restoreHost = useHostOf(engineMocks.Host);
+  engineMocks.NET = { SendUnreliableMessage() { return 0; } };
+  engineMocks.V = { startPitchDrift() {} };
 
   const restore = () => {
-    registry.CL = previousValues.CL;
+    engineMocks.CL = previousValues.CL;
     restoreClientState();
-    registry.Con = previousValues.Con;
-    registry.Host = previousValues.Host;
+    engineMocks.Con = previousValues.Con;
+    engineMocks.Host = previousValues.Host;
     restoreHost();
-    pageServices.NET = previousValues.NET;
-    facades.V = previousValues.V;
-    eventBus.publish('registry.frozen');
+    engineMocks.NET = previousValues.NET;
+    engineMocks.V = previousValues.V;
   };
 
   try {

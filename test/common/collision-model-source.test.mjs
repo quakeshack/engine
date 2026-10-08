@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import CollisionModelSource from '../../source/engine/common/CollisionModelSource.ts';
-import { createBoxBrushModel, defaultMockRegistry, registryCollisionModelSource as createRegistryCollisionModelSource, withMockRegistry } from '../physics/fixtures.mjs';
+import { createBoxBrushModel, defaultMockEngine, mockedCollisionModelSource as createRegistryCollisionModelSource, withMockEngine } from '../physics/fixtures.mjs';
 
 void describe('CollisionModelSource', () => {
   void test('uses injected server accessors before client fallbacks', () => {
@@ -32,7 +32,7 @@ void describe('CollisionModelSource', () => {
     const clientWorldModel = createBoxBrushModel({ name: 'client-world', halfExtents: [32, 32, 32] });
     const clientModel = { name: 'client-model' };
 
-    void withMockRegistry(defaultMockRegistry({
+    void withMockEngine(defaultMockEngine({
       server: {
         edicts: [],
         worldmodel: null,
@@ -55,7 +55,7 @@ void describe('CollisionModelSource', () => {
   void test('falls back to client precache slot 1 when the client world model is missing', () => {
     const clientWorldFromPrecache = createBoxBrushModel({ name: 'client-precache-world', halfExtents: [48, 48, 48] });
 
-    void withMockRegistry(defaultMockRegistry({
+    void withMockEngine(defaultMockEngine({
       server: {
         edicts: [],
         worldmodel: null,

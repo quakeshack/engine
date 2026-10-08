@@ -124,19 +124,6 @@ const tsStrictRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   '@typescript-eslint/unified-signatures': 'error',
 });
 
-/**
- * The registry is going away (plans/engine-architecture-modernization.md). These are the files that
- * still import it. The list may only shrink: a file that stops needing the registry comes off the
- * list in the same change, and a file that is not on it must not import it.
- */
-const registryImporters = [
-  'source/engine/bootstrap/createBrowserClient.ts',
-  'source/engine/bootstrap/createDedicatedServer.ts',
-  'source/engine/client/renderer/Materials.ts',
-  'source/engine/client/renderer/Sky.ts',
-  'source/engine/main-dedicated.ts',
-];
-
 export default defineConfig([
   {
     ignores: [
@@ -221,18 +208,6 @@ export default defineConfig([
     },
   },
   {
-    // Ratchet for removing the registry, see `registryImporters`.
-    files: ['source/**/*.ts'],
-    ignores: registryImporters,
-    rules: {
-      'no-restricted-imports': ['error', {
-        patterns: [
-          { regex: '(^|/)registry\\.ts$', caseSensitive: true, message: 'The registry is being removed, inject what you need instead. See plans/engine-architecture-modernization.md.' },
-        ],
-      }],
-    },
-  },
-  {
     // The server runtime must not know the client runtime. `test/common/engine-boundaries.test.mjs`
     // enforces the same boundary in `npm test`.
     files: ['source/engine/server/**/*.ts'],
@@ -240,7 +215,6 @@ export default defineConfig([
       '@typescript-eslint/no-restricted-imports': ['error', {
         patterns: [
           { group: ['**/client/**'], message: 'The server runtime must not import client code.' },
-          { group: ['**/registry.ts'], importNames: ['getClientRegistry'], message: 'The server runtime must not use the client registry.' },
         ],
       }],
     },
@@ -256,7 +230,7 @@ export default defineConfig([
       }],
       'no-restricted-syntax': ['error', {
         selector: 'ObjectPattern > Property[key.name="SV"]',
-        message: 'The client runtime must not take SV out of a registry, use CL.serverController.',
+        message: 'The client runtime must not reach the server through SV, use CL.serverController.',
       }],
     },
   },

@@ -3,15 +3,15 @@ import { describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import ShadowMap from '../../source/engine/client/renderer/ShadowMap.ts';
-import { registry } from '../../source/engine/registry.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
+import { engineMocks } from '../support/engineMocks.ts';
 
 void describe('ShadowMap.renderPointLightShadow', () => {
   void test('limits entity casters to the active point light radius', () => {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousGL = GL.gl;
     const previousBindVAO = GL.BindVAO;
     const previousUnbindVAO = GL.UnbindVAO;
@@ -56,7 +56,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       uLightSpaceMatrix: null,
     };
 
-    registry.CL = {
+    engineMocks.CL = {
       state: {
         worldmodel: {
           opaqueVAO: {},
@@ -65,8 +65,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       },
     };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
 
     GL.gl = mockGl;
     eventBus.publish('gl.ready');
@@ -104,10 +103,9 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         eventBus.publish('gl.shutdown');
       }
 
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
 
       restoreClientState();
-      eventBus.publish('registry.frozen');
     }
 
     assert.equal(renderEntitiesCalls.length, 6);
@@ -120,7 +118,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
   });
 
   void test('renders one cube per active point-light slot', () => {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousGL = GL.gl;
     const previousBindVAO = GL.BindVAO;
     const previousUnbindVAO = GL.UnbindVAO;
@@ -169,7 +167,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       uLightSpaceMatrix: null,
     };
 
-    registry.CL = {
+    engineMocks.CL = {
       state: {
         worldmodel: {
           opaqueVAO: {},
@@ -178,8 +176,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       },
     };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
 
     GL.gl = mockGl;
     eventBus.publish('gl.ready');
@@ -217,10 +214,9 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         eventBus.publish('gl.shutdown');
       }
 
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
 
       restoreClientState();
-      eventBus.publish('registry.frozen');
     }
 
     // 3 active slots × 6 faces each — each dlight gets its own independent
@@ -238,7 +234,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
   });
 
   void test('skips world leaves that reference inline submodel faces', () => {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousGL = GL.gl;
     const previousBindVAO = GL.BindVAO;
     const previousUnbindVAO = GL.UnbindVAO;
@@ -289,7 +285,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstmarksurface: 0, nummarksurfaces: 1 };
     const submodelLeaf = { skychain: 1, cmds: [[0, 12, 6]], firstmarksurface: 1, nummarksurfaces: 1 };
 
-    registry.CL = {
+    engineMocks.CL = {
       state: {
         worldmodel: {
           opaqueVAO: {},
@@ -301,8 +297,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       },
     };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
 
     GL.gl = mockGl;
     eventBus.publish('gl.ready');
@@ -340,10 +335,9 @@ void describe('ShadowMap.renderPointLightShadow', () => {
         eventBus.publish('gl.shutdown');
       }
 
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
 
       restoreClientState();
-      eventBus.publish('registry.frozen');
     }
 
     // The world leaf is drawn once per cube face; the submodel leaf never.
@@ -464,7 +458,7 @@ void describe('ShadowMap.selectPointLights', () => {
    * @param {() => void} callback
    */
   function withMockDlightRegistry(dlights, callback) {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousPointEnabled = ShadowMap.pointEnabled;
 
     const padded = dlights.slice();
@@ -472,23 +466,21 @@ void describe('ShadowMap.selectPointLights', () => {
       padded.push(createMockDlight(new Vector(), 0));
     }
 
-    registry.CL = {
+    engineMocks.CL = {
       state: {
         clientEntities: { dlights: padded },
       },
     };
 
-    const restoreClientState = useClientStateOf(registry.CL);
+    const restoreClientState = useClientStateOf(engineMocks.CL);
     ShadowMap.pointEnabled = { value: 1 };
-    eventBus.publish('registry.frozen');
 
     try {
       callback();
     } finally {
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
       ShadowMap.pointEnabled = previousPointEnabled;
-      eventBus.publish('registry.frozen');
     }
   }
 
@@ -800,7 +792,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
   }
 
   void test('renders only entities, never world geometry, centered on the camera', () => {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     const previousGL = GL.gl;
     const previousRenderEntitiesShadow = ShadowMap.renderEntitiesShadow;
     const previousRange = ShadowMap.range;
@@ -821,7 +813,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
     // the spots actually shadowed by something.
     const worldLeaf = { skychain: 1, cmds: [[0, 0, 12]], firstmarksurface: 0, nummarksurfaces: 1 };
 
-    registry.CL = {
+    engineMocks.CL = {
       state: {
         worldmodel: {
           opaqueVAO: {},
@@ -833,8 +825,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
       },
     };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
 
     GL.gl = mockGl;
     eventBus.publish('gl.ready');
@@ -865,10 +856,9 @@ void describe('ShadowMap.renderTopDownShadow', () => {
         eventBus.publish('gl.shutdown');
       }
 
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
 
       restoreClientState();
-      eventBus.publish('registry.frozen');
     }
 
     // No world geometry is drawn into the depth map.
@@ -884,13 +874,12 @@ void describe('ShadowMap.renderTopDownShadow', () => {
   });
 
   void test('does nothing when there is no worldmodel', () => {
-    const previousCL = registry.CL;
+    const previousCL = engineMocks.CL;
     let bindFramebufferCalls = 0;
 
-    registry.CL = { state: { worldmodel: null } };
+    engineMocks.CL = { state: { worldmodel: null } };
 
-    const restoreClientState = useClientStateOf(registry.CL);
-    eventBus.publish('registry.frozen');
+    const restoreClientState = useClientStateOf(engineMocks.CL);
 
     const previousGL = GL.gl;
     GL.gl = { bindFramebuffer() { bindFramebufferCalls++; } };
@@ -905,9 +894,8 @@ void describe('ShadowMap.renderTopDownShadow', () => {
       } else {
         eventBus.publish('gl.shutdown');
       }
-      registry.CL = previousCL;
+      engineMocks.CL = previousCL;
       restoreClientState();
-      eventBus.publish('registry.frozen');
     }
 
     assert.equal(bindFramebufferCalls, 0);

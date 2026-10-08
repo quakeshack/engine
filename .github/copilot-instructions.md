@@ -44,20 +44,8 @@ Be a good boy scout, whenever touching something, make sure it’s cleaner than 
 
 ## Critical Coding Conventions
 
-### The Registry Pattern (Strict)
-This project uses a unique "Registry" pattern for global modules.
-- **ALWAYS destructure** registry modules at top-level scope.
-- **NEVER** access properties directly (e.g. `registry.Con` is forbidden).
-- **Subscribe to `registry.frozen`** to re-assign modules after initialization.
-
-**Required Boilerplate:**
-```javascript
-let { CL, COM, Con, Host, Mod, SCR, SV, Sys, V } = registry;
-
-eventBus.subscribe("registry.frozen", () => {
-  ({ CL, COM, Con, Host, Mod, SCR, SV, Sys, V } = registry);
-});
-```
+### Reaching other modules
+There is no registry. **Import** the module you need (`Con`, `Mod`, `Host`, `CL`, `R`, ...); the page's `COM`/`NET`/engine API come from `source/engine/client/PageServices.ts`; per-realm classes (`Server`, `Navigation`, ...) get their collaborators through their constructor. See `.github/instructions/code-style-guide.instructions.md`.
 
 ### JSDoc & Typing
 - **Mandatory JSDoc** for class properties (no inline comments).
@@ -72,7 +60,7 @@ eventBus.subscribe("registry.frozen", () => {
 
 - **Module System**: ES Modules exclusively (`type: "module"` in package.json).
 - **Asset Paths**: Game data resides in `data/` (id1, hellwave) and `resources/`.
-- **Event Bus**: Use `eventBus` for lifecycle events (`registry.frozen`, `game.start`). See `docs/events.md`.
+- **Event Bus**: Use `eventBus` for lifecycle events (`gl.ready`, `game.start`). See `docs/events.md`.
 - **Physics**: Uses `ammojs3` / `cannon`.
 - **Legacy Compatibility**: Maintains Quake 1 structures (BSP, MDL) but wrapped in modern JS classes.
 - **Signaling**: Study `master-server` documentation for the exact WebSocket protocol used for WebRTC negotiation.
