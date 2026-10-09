@@ -284,26 +284,6 @@ export interface ServerInfoField {
   enumValues?: Record<string, string | number>;
 }
 
-/**
- * Describes one map a game offers. Game-side helper shape: games return it from their own static
- * helpers, the engine does not call them.
- */
-export interface MapDetails {
-  name: string;
-  label: string;
-  maxplayers: number;
-  pictures: string[];
-}
-
-/**
- * Describes one entry of a game's "start a server" menu. Game-side helper shape: games return it
- * from their own static helpers, the engine does not call them.
- */
-export interface StartServerListEntry {
-  label: string;
-  callback: (engineAPI: CommonEngineAPI) => void;
-}
-
 export type SerializedPrimitive = string | number | boolean | null;
 export type SerializedSkipped = ['X'];
 export type SerializedInfinity = ['I', number];
