@@ -24,3 +24,18 @@ export interface ModelLoadContext {
   /** Whether textures and the other data only a renderer needs are created while loading. */
   readonly loadRenderData: boolean;
 }
+
+/**
+ * What one load asks for beyond what the realm gives every load.
+ */
+export interface ModelLoadOptions {
+  /**
+   * Keep the per-vertex data collision code traces against (alias poses and triangles). Only matters
+   * to a realm that loads without render data: a renderer needs that data to draw, so such a realm
+   * always keeps it.
+   */
+  readonly collisionGeometry: boolean;
+}
+
+/** The options of a plain load: bounds and metadata only where the realm allows it. */
+export const DEFAULT_MODEL_LOAD_OPTIONS: ModelLoadOptions = Object.freeze({ collisionGeometry: false });

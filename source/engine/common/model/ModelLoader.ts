@@ -1,5 +1,5 @@
 import type { BaseModel } from './BaseModel.ts';
-import type { ModelLoadContext } from './ModelLoadContext.ts';
+import type { ModelLoadContext, ModelLoadOptions } from './ModelLoadContext.ts';
 
 /**
  * Abstract base class for model format loaders.
@@ -49,8 +49,9 @@ export abstract class ModelLoader {
   }
 
   /**
-   * Loads a model from the supplied file buffer.
+   * Loads a model from the supplied file buffer. A loader whose format has no optional geometry
+   * ignores the options.
    * @returns A promise resolving to the loaded model.
    */
-  abstract load(buffer: ArrayBuffer, name: string): Promise<BaseModel>;
+  abstract load(buffer: ArrayBuffer, name: string, options?: ModelLoadOptions): Promise<BaseModel>;
 }

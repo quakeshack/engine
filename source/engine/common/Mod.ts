@@ -10,7 +10,7 @@ import ParsedQC from './model/parsers/ParsedQC.ts';
 import { BSP38Loader } from './model/loaders/BSP38Loader.ts';
 import type { BaseModel } from './model/BaseModel.ts';
 import { BrushModel } from './model/BSP.ts';
-import type { ModelFiles, ModelLoadContext } from './model/ModelLoadContext.ts';
+import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelFiles, type ModelLoadContext, type ModelLoadOptions } from './model/ModelLoadContext.ts';
 
 export enum ModelType {
   brush = 0,
@@ -225,29 +225,66 @@ export class Mod {
     this.PruneSharedCache();
   }
 
-  async LoadModelFromBuffer(name: string, buffer: ArrayBuffer): Promise<BaseModel> {
-    const model = await this.modelLoaderRegistry.load(buffer, name);
+  /**
+   * Loads a model from a buffer and registers it in the shared cache.
+   * @returns The model now registered under that name, which is an earlier one when it already has more geometry.
+   */
+  async LoadModelFromBuffer(name: string, buffer: ArrayBuffer, options: ModelLoadOptions = DEFAULT_MODEL_LOAD_OPTIONS): Promise<BaseModel> {
+    const model = await this.modelLoaderRegistry.load(buffer, name, options);
     this.RegisterModel(model);
-    return model;
-  }
-
-  RegisterModel(model: BaseModel): void {
-    this.known[model.name] = model;
+    return this.known[model.name] ?? model;
   }
 
   /**
-   * Loads a named model into the shared cache and returns the scoped instance.
+   * Registers a model in the shared cache. Replacing a model drops the scoped views of the old one, so
+   * nobody keeps resolving it, but a model with less collision geometry never replaces one with more:
+   * two loads of the same name with different options may finish in either order.
+   */
+  RegisterModel(model: BaseModel): void {
+    const existing = this.known[model.name];
+
+    if (existing !== undefined && existing !== model) {
+      if (existing.hasCollisionGeometry && !model.hasCollisionGeometry) {
+        return;
+      }
+
+      this.#dropScopedViews(model.name);
+    }
+
+    this.known[model.name] = model;
+  }
+
+  #dropScopedViews(name: string): void {
+    for (const scope of [ModelScope.client, ModelScope.server]) {
+      const scopedCache = this.GetScopeCache(scope);
+      const scopedModel = scopedCache[name];
+
+      if (scopedModel === undefined) {
+        continue;
+      }
+
+      scopedModel.cleanupScopedView();
+      delete scopedCache[name];
+    }
+  }
+
+  /**
+   * Loads a named model into the shared cache and returns the scoped instance. A model that is cached
+   * without the collision geometry the options ask for is loaded again.
    * @returns The scoped model instance, or `null` when the load fails without crashing.
    */
-  async LoadModelAsync(name: string, crash: boolean, scope: ModelScope = ModelScope.shared): Promise<BaseModel | null> {
+  async LoadModelAsync(name: string, crash: boolean, scope: ModelScope = ModelScope.shared, options: ModelLoadOptions = DEFAULT_MODEL_LOAD_OPTIONS): Promise<BaseModel | null> {
     const scopedModel = this.ResolveScopedModel(name, scope);
 
-    if (scopedModel !== null) {
+    if (scopedModel !== null && (!options.collisionGeometry || scopedModel.hasCollisionGeometry)) {
       return scopedModel;
     }
 
-    if (this.pendingLoads[name] === undefined) {
-      this.pendingLoads[name] = (async () => {
+    // A load with collision geometry is a different load than one without, so they must not share a pending promise.
+    const pendingKey = options.collisionGeometry ? `${name}?collision` : name;
+
+    if (this.pendingLoads[pendingKey] === undefined) {
+      this.pendingLoads[pendingKey] = (async () => {
         const buffer = await this.#files!.LoadFile(name);
 
         if (buffer === null) {
@@ -258,13 +295,13 @@ export class Mod {
           return null;
         }
 
-        return await this.LoadModelFromBuffer(name, buffer);
+        return await this.LoadModelFromBuffer(name, buffer, options);
       })().finally(() => {
-        delete this.pendingLoads[name];
+        delete this.pendingLoads[pendingKey];
       });
     }
 
-    const loadedModel = await this.pendingLoads[name];
+    const loadedModel = await this.pendingLoads[pendingKey];
 
     if (loadedModel === null) {
       return null;
@@ -286,12 +323,12 @@ export class Mod {
    * Returns the requested model, loading it first when necessary.
    * @returns The requested model, or `null` when it cannot be loaded.
    */
-  async ForNameAsync(name: string, crash = false, scope: ModelScope = ModelScope.shared): Promise<BaseModel | null> {
+  async ForNameAsync(name: string, crash = false, scope: ModelScope = ModelScope.shared, options: ModelLoadOptions = DEFAULT_MODEL_LOAD_OPTIONS): Promise<BaseModel | null> {
     if (name[0] === '*') {
       return this.ForName(name, scope);
     }
 
-    return await this.LoadModelAsync(name, crash, scope);
+    return await this.LoadModelAsync(name, crash, scope, options);
   }
 
   ParseQC(qcContent: string) {

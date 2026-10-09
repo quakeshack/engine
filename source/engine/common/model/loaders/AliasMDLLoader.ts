@@ -6,6 +6,7 @@ import { ModelType } from '../../Mod.ts';
 import W, { translateIndexToLuminanceRGBA, translateIndexToRGBA } from '../../W.ts';
 import { AliasModel, type AliasFrame, type AliasSkin } from '../AliasModel.ts';
 import { ModelLoader } from '../ModelLoader.ts';
+import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelLoadOptions } from '../ModelLoadContext.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 
 interface AliasSkinLayers {
@@ -286,10 +287,12 @@ export class AliasMDLLoader extends ModelLoader {
   }
 
   /**
-   * Load an Alias MDL model from buffer.
+   * Load an Alias MDL model from buffer. A realm without a renderer only keeps the per-vertex data
+   * (poses and triangles) when the options ask for collision geometry: it is about 70 times larger
+   * in memory than in the file, and only entities that trace against the mesh read it.
    * @returns The loaded alias model.
    */
-  override load(buffer: ArrayBuffer, name: string): Promise<AliasModel> {
+  override load(buffer: ArrayBuffer, name: string, options: ModelLoadOptions = DEFAULT_MODEL_LOAD_OPTIONS): Promise<AliasModel> {
     const loadmodel = new AliasModel(name);
 
     loadmodel.type = ModelType.alias;
@@ -345,11 +348,14 @@ export class AliasMDLLoader extends ModelLoader {
     loadmodel.mins = new Vector(-16.0, -16.0, -16.0);
     loadmodel.maxs = new Vector(16.0, 16.0, 16.0);
 
+    // Without a renderer the poses and triangles are only needed for mesh collision.
+    const keepGeometry = this.context.loadRenderData || options.collisionGeometry;
+
     // Load model data
     let inmodel = this.#loadAllSkins(loadmodel, buffer, 84);
     inmodel = this.#loadSTVerts(loadmodel, buffer, inmodel);
-    inmodel = this.#loadTriangles(loadmodel, buffer, inmodel);
-    this.#loadAllFrames(loadmodel, buffer, inmodel);
+    inmodel = this.#loadTriangles(loadmodel, buffer, inmodel, keepGeometry);
+    this.#loadAllFrames(loadmodel, buffer, inmodel, keepGeometry);
 
     const collisionBounds = loadmodel.getCollisionBounds();
     if (collisionBounds !== null) {
@@ -373,6 +379,10 @@ export class AliasMDLLoader extends ModelLoader {
    * @returns The next byte offset after the ST vertex block.
    */
   #loadSTVerts(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number): number {
+    if (!this.context.loadRenderData) {
+      return inmodel + loadmodel._num_verts * 12; // texture coordinates are only used to build render commands
+    }
+
     const view = new DataView(buffer);
     loadmodel._stverts.length = loadmodel._num_verts;
 
@@ -392,7 +402,11 @@ export class AliasMDLLoader extends ModelLoader {
    * Load triangles.
    * @returns The next byte offset after the triangle block.
    */
-  #loadTriangles(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number): number {
+  #loadTriangles(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number, keepGeometry: boolean): number {
+    if (!keepGeometry) {
+      return inmodel + loadmodel._num_tris * 16;
+    }
+
     const view = new DataView(buffer);
     loadmodel._triangles.length = loadmodel._num_tris;
 
@@ -478,6 +492,20 @@ export class AliasMDLLoader extends ModelLoader {
   }
 
   /**
+   * Flood fills a skin and splits it into the diffuse and luminance layers the renderer uploads.
+   * @returns The layers, or `null` when this realm has no renderer to upload them to.
+   */
+  #buildSkinLayers(loadmodel: AliasModel, skin: Uint8Array): ReturnType<typeof buildAliasSkinLayers> | null {
+    if (!this.context.loadRenderData) {
+      return null;
+    }
+
+    this.#floodFillSkin(loadmodel, skin);
+
+    return buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
+  }
+
+  /**
    * Load all skins (textures) for the model.
    * @returns The next byte offset after the skin data.
    */
@@ -492,15 +520,14 @@ export class AliasMDLLoader extends ModelLoader {
       if (view.getUint32(inmodel - 4, true) === 0) {
         // Single skin
         const skin = new Uint8Array(buffer, inmodel, skinsize);
-        this.#floodFillSkin(loadmodel, skin);
-        const { diffuse, luminance } = buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
+        const layers = this.#buildSkinLayers(loadmodel, skin);
         const singleSkin: MutableAliasSingleSkin = {
           group: false,
-          texturenum: this.context.loadRenderData
-            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}`, loadmodel._skin_width, loadmodel._skin_height, diffuse)
+          texturenum: layers !== null
+            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}`, loadmodel._skin_width, loadmodel._skin_height, layers.diffuse)
             : null,
-          luminanceTexture: this.context.loadRenderData
-            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, luminance)
+          luminanceTexture: layers !== null
+            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, layers.luminance)
             : null,
         };
 
@@ -530,14 +557,13 @@ export class AliasMDLLoader extends ModelLoader {
 
         for (let groupIndex = 0; groupIndex < numskins; groupIndex++) {
           const skin = new Uint8Array(buffer, inmodel, skinsize);
-          this.#floodFillSkin(loadmodel, skin);
-          const { diffuse, luminance } = buildAliasSkinLayers(skin, loadmodel._skin_width, loadmodel._skin_height);
+          const layers = this.#buildSkinLayers(loadmodel, skin);
 
-          group.skins[groupIndex].texturenum = this.context.loadRenderData
-            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}`, loadmodel._skin_width, loadmodel._skin_height, diffuse)
+          group.skins[groupIndex].texturenum = layers !== null
+            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}`, loadmodel._skin_width, loadmodel._skin_height, layers.diffuse)
             : null;
-          group.skins[groupIndex].luminanceTexture = this.context.loadRenderData
-            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, luminance)
+          group.skins[groupIndex].luminanceTexture = layers !== null
+            ? GLTexture.Allocate(`${loadmodel.name}_${skinIndex}_${groupIndex}_luma`, loadmodel._skin_width, loadmodel._skin_height, layers.luminance)
             : null;
 
           if (loadmodel.player) {
@@ -557,7 +583,7 @@ export class AliasMDLLoader extends ModelLoader {
   /**
    * Load all animation frames.
    */
-  #loadAllFrames(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number): void {
+  #loadAllFrames(loadmodel: AliasModel, buffer: ArrayBuffer, inmodel: number, keepGeometry: boolean): void {
     loadmodel.frames = [];
     const view = new DataView(buffer);
 
@@ -575,12 +601,16 @@ export class AliasMDLLoader extends ModelLoader {
         };
         inmodel += 24;
 
-        for (let vertexIndex = 0; vertexIndex < loadmodel._num_verts; vertexIndex++) {
-          frame.v[vertexIndex] = {
-            v: new Vector(view.getUint8(inmodel), view.getUint8(inmodel + 1), view.getUint8(inmodel + 2)),
-            lightnormalindex: view.getUint8(inmodel + 3),
-          };
-          inmodel += 4;
+        if (keepGeometry) {
+          for (let vertexIndex = 0; vertexIndex < loadmodel._num_verts; vertexIndex++) {
+            frame.v[vertexIndex] = {
+              v: new Vector(view.getUint8(inmodel), view.getUint8(inmodel + 1), view.getUint8(inmodel + 2)),
+              lightnormalindex: view.getUint8(inmodel + 3),
+            };
+            inmodel += 4;
+          }
+        } else {
+          inmodel += loadmodel._num_verts * 4;
         }
 
         loadmodel.frames[frameIndex] = frame as AliasFrame;
@@ -617,12 +647,16 @@ export class AliasMDLLoader extends ModelLoader {
           frame.v = [];
           inmodel += 24;
 
-          for (let vertexIndex = 0; vertexIndex < loadmodel._num_verts; vertexIndex++) {
-            frame.v[vertexIndex] = {
-              v: new Vector(view.getUint8(inmodel), view.getUint8(inmodel + 1), view.getUint8(inmodel + 2)),
-              lightnormalindex: view.getUint8(inmodel + 3),
-            };
-            inmodel += 4;
+          if (keepGeometry) {
+            for (let vertexIndex = 0; vertexIndex < loadmodel._num_verts; vertexIndex++) {
+              frame.v[vertexIndex] = {
+                v: new Vector(view.getUint8(inmodel), view.getUint8(inmodel + 1), view.getUint8(inmodel + 2)),
+                lightnormalindex: view.getUint8(inmodel + 3),
+              };
+              inmodel += 4;
+            }
+          } else {
+            inmodel += loadmodel._num_verts * 4;
           }
         }
 

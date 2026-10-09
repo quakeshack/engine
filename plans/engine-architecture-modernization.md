@@ -146,8 +146,9 @@ on this branch, so it waits for the merge too.
   fallbacks are not built.
 - A from-scratch rewrite. Every phase is a refactor of the running engine.
 - Multi-threading the client (renderer in an OffscreenCanvas worker). Possible later; not planned.
-- SharedArrayBuffer between client and server (needs cross-origin isolation headers on the hosting
-  setup and would constrain embedding). Message passing only.
+- SharedArrayBuffer between client and server in this pass. Message passing only. **Parked, not ruled out
+  (2026-10-09):** the hosting already sends the isolation headers, so the remaining cost is the embedding
+  constraint; see "Parked: SharedArrayBuffer" under "Open questions".
 - Changing the game's entity/gameplay code (`source/game/*`), except where a contract change forces
   it (flagged where it happens).
 
@@ -405,9 +406,10 @@ Design, three layers:
    dedicated-server branches as an explicit option. What really is duplicated is geometry (planes,
    nodes, clip nodes, leafs, visibility): the server needs it for collision and PVS, the client for
    rendering and for prediction hulls. Sharing parsed structures across threads needs
-   `SharedArrayBuffer`, which is a non-goal, so this duplication is accepted and measured in Phase 3.
-   Loaders should keep putting bulk data in typed arrays rather than object graphs, so that moving
-   to shared memory stays possible if cross-origin isolation ever becomes acceptable.
+   `SharedArrayBuffer`, which is parked (see "Parked: SharedArrayBuffer"), so this duplication is accepted
+   and measured in Phase 3. Loaders should keep putting bulk data in typed arrays rather than object
+   graphs, so that moving to shared memory stays possible. The typed-array rule is what makes SAB
+   possible at all: SAB shares bytes, never object graphs.
 
 *Writable storage.* The same interface fronts a **user store** for what the engine writes (saves,
 `config.cfg`, generated `.nav` files). Browser: IndexedDB (async, present in workers), replacing
@@ -1453,6 +1455,26 @@ Open as of 2026-10-09 (one item):
   longer imports the server game class. Hellwave's `GetStartServerList` override was dead code (id1's menu never saw it).
 - The navigation worker check above.
 
+**Parked: SharedArrayBuffer (2026-10-09).** The non-goal was justified by "needs isolation headers on the hosting
+setup", and the engine already sends them, so the premise was stale. Parked rather than adopted, because it has not
+been needed yet and carries a real cost: with `require-corp`, cross-origin subresources need CORP/CORS, a page
+embedding the game in an iframe has to be isolated too, and every host that does not send the headers (the Vite dev
+server, a third-party static host) has no SAB, so any use needs a feature-detected fallback. What it would and would not
+change in other phases:
+
+- It shares bytes, not object graphs. The 22x model blow-up and the world geometry kept as `Vector`/`ClipNode`/`Plane`
+  objects (the 78 MB worker heap above) are not fixed by SAB; typed-array storage is the prerequisite either way, which
+  is what B7 already asks of the loaders. `plans/server-model-memory.md` Phase 1 does this for alias models.
+- Its only gain after that is dropping the second copy between the page and the server worker (listen server and
+  single player only; a dedicated server has no client in the process). For alias models that is a few MB. For world
+  geometry (planes, nodes, clip nodes, leafs, visibility; about 90 MB total server share) it is the real candidate, and
+  needs a flat-array BSP layout first.
+- Phase 3's accepted duplication, B7 point 3 and the "lever is the world geometry" note above stay valid; they just
+  carry "and SAB could remove the copy" as a later option.
+- Revisit when: the typed-array BSP layout exists, the deployed site is confirmed `crossOriginIsolated`, and the
+  embedding constraint is acceptable. Until then new loader code should be SAB-compatible (plain `Uint8Array` over an
+  `ArrayBuffer`, no per-model objects) at no cost.
+
 Replay is in scope (decision 14). New questions get added here as phases surface them, for example the replay plan's open
 details (storage format, whether the recorder ships in production builds).
 
@@ -1513,7 +1535,12 @@ only; finding 6 was also run in Firefox and a second Chrome (see there).
    Results: Chromium 151 (headless, my run) and, from the developer on 2026-10-03, **Firefox 155.0
    and Chrome 154, both on Linux, pass every row.** Inside a worker: `caches`, `navigator.locks` and
    `indexedDB` are objects; `localStorage` is `undefined`; `SharedArrayBuffer` is `undefined` with
-   `crossOriginIsolated` false (no cross-origin isolation, so it is not available to this design);
+   `crossOriginIsolated` false. **Correction (2026-10-09):** that result only describes the check page,
+   which `python3 -m http.server` serves without COOP/COEP headers. It says nothing about production:
+   `source/cloudflare/worker.mjs` and the Express server in `server/Sys.ts` both send
+   `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`
+   (since 2026-02-12). Whether the deployed site is actually `crossOriginIsolated` has not been checked,
+   and the Vite dev server sets no such headers. See "Parked: SharedArrayBuffer";
    `RTCPeerConnection` is `undefined` and `RTCDataChannel` exists. A worker's Cache Storage `put` is
    readable from the main thread. A lock held by the main thread for 300 ms made the worker's request
    wait about 250 ms in all three browsers (strict serialization across realms). A worker's IndexedDB

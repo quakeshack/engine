@@ -13,9 +13,18 @@ import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { type GameEdition, GameFlavors, type GameTrace, type InternalTraceLike, internalTraceToGameTrace } from '../common/GameApiSupport.ts';
 import Mod, { ModelScope } from '../common/Mod.ts';
+import type { ModelLoadOptions } from '../common/model/ModelLoadContext.ts';
 import { type BaseEntity, ServerEdict } from './Edict.ts';
 
 type ServerEntityFilter = ((entity: ServerEdict) => boolean) | null;
+
+/**
+ * What a game asks for when it precaches a model.
+ */
+export interface PrecacheModelOptions {
+  /** Keep the model's triangles and poses, for entities that are solid as `SOLID_MESH`. */
+  readonly meshCollision?: boolean;
+}
 
 /**
  * Normalize runtime entity references passed through dynamic spawn initial data.
@@ -455,15 +464,29 @@ export class ServerEngineAPI {
     this.#sv.server.soundPrecache.push(sfxName);
   }
 
-  PrecacheModel(modelName: string): void {
+  /**
+   * Precaches a model for this map. The server keeps only what it reads from a model (its bounds) unless told
+   * otherwise: an entity that is solid as `SOLID_MESH` is traced against the model's triangles, so whoever
+   * precaches its model has to pass `{ meshCollision: true }`. Precaching a model again with the option reloads
+   * it with its geometry. A `SOLID_MESH` entity whose model was precached without it falls back to its
+   * bounding box and the server prints a warning.
+   */
+  PrecacheModel(modelName: string, options: PrecacheModelOptions = {}): void {
     console.assert(typeof modelName === 'string', 'modelName must be a string');
 
-    if (this.#sv.server.modelPrecache.includes(modelName)) {
+    const loadOptions: ModelLoadOptions = { collisionGeometry: options.meshCollision === true };
+    const index = this.#sv.server.modelPrecache.indexOf(modelName);
+
+    if (index === -1) {
+      this.#sv.server.modelPrecache.push(modelName);
+      this.#sv.server.models.push(this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions)); // will cause promises in the array
       return;
     }
 
-    this.#sv.server.modelPrecache.push(modelName);
-    this.#sv.server.models.push(this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server)); // will cause promises in the array
+    if (loadOptions.collisionGeometry) {
+      // Already precached, possibly without its geometry: the cache reloads it only when that is the case.
+      this.#sv.server.models[index] = this.#sv.mod.ForNameAsync(modelName, true, ModelScope.server, loadOptions);
+    }
   }
 
   /**

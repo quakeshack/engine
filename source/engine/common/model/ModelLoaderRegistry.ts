@@ -1,6 +1,7 @@
 import { NotImplementedError } from '../Errors.ts';
 import type { BaseModel } from './BaseModel.ts';
 import type { ModelLoader } from './ModelLoader.ts';
+import { DEFAULT_MODEL_LOAD_OPTIONS, type ModelLoadOptions } from './ModelLoadContext.ts';
 
 /**
  * Registry for managing model format loaders.
@@ -36,14 +37,14 @@ export class ModelLoaderRegistry {
    * Loads a model using the first compatible registered loader.
    * @returns A promise resolving to the loaded model.
    */
-  async load(buffer: ArrayBuffer, name: string): Promise<BaseModel> {
+  async load(buffer: ArrayBuffer, name: string, options: ModelLoadOptions = DEFAULT_MODEL_LOAD_OPTIONS): Promise<BaseModel> {
     const loader = this.findLoader(buffer, name);
 
     if (loader === null) {
       throw new NotImplementedError(`No loader found for model format: ${name}`);
     }
 
-    return await loader.load(buffer, name);
+    return await loader.load(buffer, name, options);
   }
 
   /**

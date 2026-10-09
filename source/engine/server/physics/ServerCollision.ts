@@ -52,6 +52,7 @@ export class ServerCollision {
 
   private readonly _modelSource: CollisionModelSource;
   private readonly sv: Server;
+  readonly #warnedMissingGeometry = new Set<string>();
 
   /**
    * Resolve a collision model by model index from either the active server or
@@ -84,6 +85,19 @@ export class ServerCollision {
   }
 
   /**
+   * Tells the developer, once per model, that a `SOLID_MESH` entity is traced as its bounding box because
+   * the game precached the model without `{ meshCollision: true }`.
+   */
+  #warnMissingCollisionGeometry(ent: ServerEdict, model: AliasModel): void {
+    if (this.#warnedMissingGeometry.has(model.name)) {
+      return;
+    }
+
+    this.#warnedMissingGeometry.add(model.name);
+    this.sv.con.PrintWarning(`${ent.entity!.classname} is SOLID_MESH, but ${model.name} was precached without { meshCollision: true }, using its bounding box\n`);
+  }
+
+  /**
    * Resolve the collision state used by an entity during tracing.
    * @returns The resolved collision state, or `null` when the entity cannot be traced.
    */
@@ -98,6 +112,11 @@ export class ServerCollision {
       }
 
       if (this._isAliasModel(model)) {
+        if (!model.hasCollisionGeometry) {
+          this.#warnMissingCollisionGeometry(ent, model);
+          return new HullCollisionState(ent);
+        }
+
         return new AliasCollisionState(ent, model);
       }
 

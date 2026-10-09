@@ -9,7 +9,7 @@ import { MeshModel } from '../../source/engine/common/model/MeshModel.ts';
 import { DIST_EPSILON, Pmove } from '../../source/engine/common/Pmove.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
-import { AliasCollisionState, MeshCollisionState } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
+import { AliasCollisionState, HullCollisionState, MeshCollisionState } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
 import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource } from './fixtures.mjs';
@@ -1086,6 +1086,44 @@ void describe('ServerCollision', () => {
         assertNear(trace.endpos[0], -DIST_EPSILON, 0.000001);
         assert.deepEqual([...trace.plane.normal], [-1, 0, 0]);
       });
+    });
+
+    void test('falls back to the bounding box and warns once for a SOLID_MESH AliasModel without collision geometry', () => {
+      const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
+      const aliasModel = createAliasWallModel([
+        createAliasWallFrame('idle', 0),
+      ]);
+      // What a server realm keeps of a model that was precached without { meshCollision: true }.
+      aliasModel._triangles = [];
+      assert.equal(aliasModel.hasCollisionGeometry, false);
+
+      const worldEdict = createMockEdict(createMockEntity({ solidType: solid.SOLID_BSP }));
+      const aliasEntity = createMockEntity({
+        origin: new Vector(),
+        movetype: moveType.MOVETYPE_NONE,
+        solidType: solid.SOLID_MESH,
+      });
+      aliasEntity.classname = 'monster_test';
+      aliasEntity.modelindex = 1;
+      const aliasEdict = createMockEdict(aliasEntity);
+      const warnings = [];
+
+      void withMockEngine({
+        ...defaultMockEngine({
+          server: {
+            edicts: [worldEdict, aliasEdict],
+            worldmodel: null,
+            models: [null, aliasModel],
+          },
+        }),
+        Con: { Print() {}, DPrint() {}, PrintWarning(message) { warnings.push(message); } },
+      }, () => {
+        assert.ok(collision._getEntityCollisionState(aliasEdict) instanceof HullCollisionState);
+        assert.ok(collision._getEntityCollisionState(aliasEdict) instanceof HullCollisionState);
+      });
+
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /monster_test is SOLID_MESH, but progs\/wall-test\.mdl was precached without \{ meshCollision: true \}/);
     });
 
     void test('uses server time to resolve grouped AliasModel collision frames', () => {

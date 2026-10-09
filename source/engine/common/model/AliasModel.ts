@@ -199,6 +199,14 @@ export class AliasModel extends BaseModel {
   }
 
   /**
+   * An alias model has collision geometry when its triangles were kept; the poses are kept along with them.
+   * @returns True when mesh collision can trace against this model.
+   */
+  override get hasCollisionGeometry(): boolean {
+    return this._triangles.length > 0;
+  }
+
+  /**
    * Resolve the active collision pose for a model frame at a given time.
    * @returns The resolved collision pose, or `null` when the frame index is invalid.
    */
