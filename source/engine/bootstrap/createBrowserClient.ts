@@ -31,6 +31,8 @@ import { editionOf } from '../common/GameApiSupport.ts';
 import clientCvars from '../client/ClientCvars.ts';
 import { clientRuntimeState, clientStaticState } from '../client/ClientState.ts';
 import { installRenderContext } from '../client/renderer/RenderContext.ts';
+import { ShaderLibrary } from '../client/renderer/ShaderLibrary.ts';
+import GL from '../client/GL.ts';
 import { ClientEngineAPI } from '../client/ClientEngineAPI.ts';
 import type Server from '../server/Server.ts';
 import { installPageServices } from '../client/PageServices.ts';
@@ -82,6 +84,9 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
   installPageServices({ com, net, engineApi, urls, buildConfig });
 
   installRenderContext({ renderer: R, clientState: clientRuntimeState });
+
+  // The shader text is only bundled for the page, GL.ts is also reachable from the server worker.
+  GL.shaderLibrary = ShaderLibrary.fromBundle();
 
   // the client only ever sees the controller, the server is in this thread or in a worker
   if (channel !== null) {

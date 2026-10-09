@@ -40,26 +40,27 @@ export type GLProgramInfo = {
 
 type GLProgramMutable = GLProgramInfo & Record<string, string | number | WebGLProgram | GLProgramAttrib[] | GLProgramAttrib | WebGLUniformLocation | null | undefined>;
 
-type ShaderSources = Record<string, string>;
 type TextureWrapMode = 'repeat' | 'clamp';
 
-let shaderSources: ShaderSources | null = null;
-
-try {
-  // Vite rewrites this at build time; raw Node.js leaves it undefined and falls back.
-  // @ts-ignore Vite-specific import.meta.glob
-  shaderSources = import.meta.glob('./shaders/*.{vert,frag}', {
-    eager: true,
-    import: 'default',
-    query: '?raw',
-  }) as ShaderSources;
-} catch {
-  shaderSources = null;
+/**
+ * One shader stage as `GL.CreateProgram` compiles it.
+ */
+export interface ShaderStageSource {
+  readonly source: string;
+  /**
+   * Rewrites a driver info log so it points at the files the source was assembled from.
+   */
+  mapInfoLog(log: string): string;
 }
 
 /**
- *
+ * Where `GL.CreateProgram` gets its shader text from. The composition root of the page installs one into
+ * `GL.shaderLibrary`, so this module does not carry the shader text (and the server worker, which reaches this module, does not either).
  */
+export interface ShaderSourceProvider {
+  build(identifier: string): { readonly vertex: ShaderStageSource; readonly fragment: ShaderStageSource };
+}
+
 /**
  * @param value value that must be present
  * @param message error message when the value is null
@@ -88,6 +89,7 @@ class GL {
   static gl: WebGL2RenderingContext = null!;
   static identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
   static currentVAO: WebGLVertexArrayObject | null = null;
+  static shaderLibrary: ShaderSourceProvider | null = null;
 
   static Set2D(): void {
     gl.viewport(0, 0, Math.floor(VID.width * VID.pixelRatio), Math.floor(VID.height * VID.pixelRatio));
@@ -124,42 +126,24 @@ class GL {
       attribBits: 0,
     } as GLProgramMutable;
 
-    if (shaderSources === null) {
+    if (GL.shaderLibrary === null) {
       throw new Error('Shader sources are unavailable in this runtime');
     }
 
-    const vertexShaderPath = `./shaders/${identifier}.vert`;
-    const fragmentShaderPath = `./shaders/${identifier}.frag`;
-    const vsource = shaderSources[vertexShaderPath];
-    const fsource = shaderSources[fragmentShaderPath];
-
-    if (vsource === undefined || fsource === undefined) {
-      const missingResources: string[] = [];
-
-      if (vsource === undefined) {
-        missingResources.push(vertexShaderPath);
-      }
-      if (fsource === undefined) {
-        missingResources.push(fragmentShaderPath);
-      }
-
-      throw new MissingResourceError(
-        `${missingResources.join(', ')}. If these shader files were added while the dev session was already running, restart the active Vite build/watch process so import.meta.glob rebuilds the shader manifest.`,
-      );
-    }
+    const { vertex, fragment } = GL.shaderLibrary.build(identifier);
 
     const vsh = requireValue(gl.createShader(gl.VERTEX_SHADER), 'Failed to create vertex shader');
-    gl.shaderSource(vsh, vsource);
+    gl.shaderSource(vsh, vertex.source);
     gl.compileShader(vsh);
     if (!gl.getShaderParameter(vsh, gl.COMPILE_STATUS)) {
-      throw new Error('Error compiling shader: ' + gl.getShaderInfoLog(vsh));
+      throw new Error(`Error compiling shader: ${vertex.mapInfoLog(gl.getShaderInfoLog(vsh) ?? '')}`);
     }
 
     const fsh = requireValue(gl.createShader(gl.FRAGMENT_SHADER), 'Failed to create fragment shader');
-    gl.shaderSource(fsh, fsource);
+    gl.shaderSource(fsh, fragment.source);
     gl.compileShader(fsh);
     if (!gl.getShaderParameter(fsh, gl.COMPILE_STATUS)) {
-      throw new Error('Error compiling shader: ' + gl.getShaderInfoLog(fsh));
+      throw new Error(`Error compiling shader: ${fragment.mapInfoLog(gl.getShaderInfoLog(fsh) ?? '')}`);
     }
 
     gl.attachShader(p, vsh);

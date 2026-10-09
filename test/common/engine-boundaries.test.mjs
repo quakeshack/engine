@@ -149,6 +149,14 @@ void describe('engine boundaries', () => {
       assert.deepEqual(clientFiles, CLIENT_FILES_OF_MODEL_LOADERS);
     });
 
+    void test('does not carry the shader text, it is installed into GL by the page', () => {
+      const closure = [...importClosure(join(ENGINE_ROOT, 'server/ServerWorker.ts'))].map((path) => relative(ENGINE_ROOT, path));
+
+      assert.equal(closure.includes('client/renderer/ShaderLibrary.ts'), false);
+      assert.equal(closure.includes('client/renderer/ShaderPreprocessor.ts'), false);
+      assert.equal(/import\.meta\.glob/.test(readCode(join(ENGINE_ROOT, 'client/GL.ts'))), false);
+    });
+
     void test('does not load the game API classes of the client, they pull in the menu and the renderer', () => {
       const closure = [...importClosure(join(ENGINE_ROOT, 'server/ServerWorker.ts'))].map((path) => relative(ENGINE_ROOT, path));
 

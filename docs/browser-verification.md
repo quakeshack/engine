@@ -183,6 +183,30 @@ die) to simulate the host leaving. With a Playwright page already sitting on the
 session-list menu, toggling this synthetic host on/off and asserting the list updates with
 no navigation/click in between is a fast, real end-to-end proof of a realtime push feature.
 
+## 8. Comparing two builds (before/after screenshots)
+
+A refactor that must not change a pixel (shader chunks are the example) is proven by rendering the same scene with
+the build from `HEAD` and the build from the working tree.
+
+- **Do not build into `dist/`.** A `vite build --watch` is usually running and rewrites it, so a scratch build there
+  is clobbered half way through a capture. Build each side into its own folder:
+  `VITE_GAME_DIR=<game> VITE_BASE_DIR=<base> npx vite build --mode production --outDir <scratch>/dist-after --emptyOutDir`,
+  and for `HEAD` do the same from a copy of the tree with the changed files restored from `git show HEAD:<path>`.
+- **Set `VITE_GAME_DIR` and `VITE_BASE_DIR` yourself.** The shell that runs the watch build may export them (it
+  baked `hellwave`/`librequake` into the page and the dedicated server it started), and a build without them defaults
+  to `id1`. A page built for one game against a server that serves the other reports `Could not spawn server`.
+- **Serve each folder with a throwaway static server** that proxies `/qfs/*` to the running dedicated server, one
+  port per side, and leave that server alone.
+- **Freeze the scene:** `map <name>`, `god`, `impulse 9`, `pause`, then put dlights into
+  `CL.state.clientEntities.dlights` (`radius`, `origin`, `color`, `die` far in the future) relative to the player's
+  origin. `chase_active 1` (with `chase_back`, `chase_up`) shows the player model.
+- **Expect noise and measure it.** The sky, turbulent (water, lava) surfaces and the HUD clock animate even while
+  paused, and the idle pose of a model is whichever frame the pause hit. Capture the baseline twice, build a mask from
+  where those captures differ (dilated by a few pixels), and compare before/after outside it. Report the masked
+  pixel count next to the result. A model whose pose varies cannot be compared pixel by pixel across builds.
+- Two captures of the same build 1.5 s apart differ only in the noise; if they differ elsewhere, the scene is not
+  frozen yet.
+
 ## Reporting results
 
 State plainly whether verification actually happened. If Chromium/Playwright aren't

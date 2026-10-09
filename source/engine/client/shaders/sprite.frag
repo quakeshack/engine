@@ -11,8 +11,7 @@ uniform sampler2D tTexture;
 uniform float uBloomEmissiveScale;
 
 in vec2 vTexCoord;
-in float vFog;
-uniform vec3 uFogColor;
+#include "fog-fragment.glsl"
 
 void main(void) {
   fragColor = texture(tTexture, vTexCoord);

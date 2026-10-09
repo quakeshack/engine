@@ -57,10 +57,14 @@ Instead of using `if (len > 0.0)` guard checks to prevent division-by-zero when 
   worldPos += worldNormal * bias * step(0.0001, normalLen);
   ```
 
-## 4. No Shader Preprocessor Limits
-QuakeShack currently uses raw GLSL ES 3.00 directly in JavaScript without a preprocessor build step (no `#include`).
-- **Consequence**: Shared routines (like `sampleLocalShadow` or lighting math) must be structurally duplicated across independent shaders (`alias.frag`, `mesh.frag`, `player.frag`, etc.).
-- **Action**: When updating a core rendering mechanism, remember to grep and update all manually duplicated instances consistently. See the `.claude/skills/shader-duplication-propagation/SKILL.md` skill for the fast-path checklist.
+## 4. Shared routines live in chunks
+GLSL ES 3.00 has no `#include`, so QuakeShack expands it: `ShaderPreprocessor` (in `GL.CreateProgram`, via `ShaderLibrary`) replaces `#include "name.glsl"` with `source/engine/client/shaders/include/name.glsl`. See `docs/shader-chunks.md`.
+- **Edit a shared routine in its chunk, once.** Never paste it into a program. `#version` and the `precision` statements stay in each program, ahead of the first include.
+- **A chunk owns the uniforms and varyings its functions read.** The program does not declare them again.
+- **Vertex outputs and fragment inputs come as pairs** (`fog-vertex.glsl`/`fog-fragment.glsl`, `entity-varyings-out.glsl`/`entity-varyings-in.glsl`); change both sides together. Linking catches a mismatch, compiling alone does not.
+- **Per-program differences** are function parameters or a `const` declared before the include, not `#ifdef`.
+- **Still per program on purpose:** `brush.frag`'s `sampleLocalShadowPCF` and `samplePointLightContribution`, `fog-volume.frag`'s volume code, the bloom helpers, `sky.vert`'s `vFog`. Do not unify these without a reason.
+- See the `.claude/skills/shader-chunks/SKILL.md` skill for the checklist (who includes the chunk, the glslang link check, the screenshot pair).
 
 ## 5. Loop Unrolling for Small Kernels
 While modern graphics drivers eventually unroll static loops (like a 3x3 gaussian blur), explicitly unrolling them into linear texture fetches (e.g. 9 `texture()` calls with hardcoded offsets) ensures consistent optimized performance and prevents dynamic loop overheads across all downstream mobile and discrete GPUs.

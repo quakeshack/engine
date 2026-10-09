@@ -8,8 +8,7 @@ uniform float uGamma;
 
 in vec2 vCoord;
 in vec3 vColor;
-in float vFog;
-uniform vec3 uFogColor;
+#include "fog-fragment.glsl"
 
 void main(void) {
   fragColor = vec4(vColor, 1.0 - smoothstep(0.75, 1.0, length(vCoord)));

@@ -213,7 +213,7 @@ New `source/engine/client/renderer/StudioModelRenderer.ts`, registered in
   `body` selects one submodel per body part (`(body / base) % numModels`, per the format).
 - **Lighting** reuses `R._CalculateLightValues()` and the alias fragment lighting math. Per
   `shaders.instructions.md` there is no `#include`: the shared routines get **hand-duplicated** into
-  `studio.frag`; run the `shader-duplication-propagation` skill when this lands, and write the
+  `studio.frag`; run the `shader-chunks` skill when this lands, and write the
   list of duplicated routines in the plan's "What shipped" section.
 - **Texture flags**: `FULLBRIGHT` → luminance layer (existing `tLuminance`); `MASKED` → alpha
   from index 255; `ADDITIVE` → transparent pass with additive blend; `FLATSHADE` → ignore normals;
