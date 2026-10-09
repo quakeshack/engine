@@ -111,7 +111,7 @@ void describe('NetworkDrivers', () => {
 /**
  * Installs a `location` global (bare, not `window.location` -- matching how `NetworkDrivers.ts`
  * reads it) and a `window` stub, builds a network layer for the scenario, and restores the globals afterward.
- * @param {{ location: { protocol: string, hostname: string }, urls?: { signalingURL?: string }, isDedicatedServer?: boolean, window?: object }} overrides scenario overrides
+ * @param {{ location: { protocol: string, hostname: string }, urls?: { signalingURL?: string }, dedicated?: boolean, window?: object }} overrides scenario overrides
  * @param {(net: NET) => void} callback test callback
  */
 function withSignalingScenario(overrides, callback) {
@@ -122,7 +122,7 @@ function withSignalingScenario(overrides, callback) {
   globalThis.window = overrides.window ?? { addEventListener() {}, removeEventListener() {} };
 
   try {
-    callback(createNet({ dedicated: overrides.isDedicatedServer ?? false, urls: overrides.urls }));
+    callback(createNet({ dedicated: overrides.dedicated ?? false, urls: overrides.urls }));
   } finally {
     globalThis.location = previousLocation;
     globalThis.window = previousWindow;
@@ -198,7 +198,7 @@ void describe('WebRTCDriver.Init', () => {
   void test('does nothing on a dedicated server', () => {
     withSignalingScenario({
       location: { protocol: 'http:', hostname: 'localhost' },
-      isDedicatedServer: true,
+      dedicated: true,
     }, (net) => {
       const driver = new WebRTCDriver(net);
 

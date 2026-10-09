@@ -67,77 +67,23 @@ This document outlines the coding conventions and style rules for the QuakeShack
    /** @type {import('../../common/model/BSP.ts').BrushModel} */
    ```
 
-## Registry and Global Variables
+## Reaching Other Modules
 
-### Registry Pattern
+There is no registry. A module gets what it needs in one of these ways, in this order of preference:
 
-**ALWAYS use destructuring** to get registry modules in EVERY file - this helps IDEs infer types and is the ONLY correct pattern:
+- **Import it.** `Con`, `Mod`, `Host`, `Cmd`, `Cvar`, `CL`, `M`, `R`, `GL`, `Draw`, `IN`, `Key`, `S`, `SCR`, `V`, `Sys` and the client state (`clientRuntimeState`, `clientStaticState`) are imported directly. Plain ES imports, no destructuring prolog. A cycle between client modules is fine as long as no module builds anything of another module while it is being evaluated; when one has to, move that code into an `Init()` or a lazy getter instead of reordering imports.
+- **Page services.** What only the composition root can build (the page's `COM`, `NET`, the client engine API, `urls`, `buildConfig`) is installed once into `source/engine/client/PageServices.ts` by `bootstrap/createBrowserClient.ts` and imported from there as live bindings (`import { com, net } from './PageServices.ts'`).
+- **Injection.** Anything that exists per realm or per server (`Server`, `ServerEngineAPI`, `ServerHost`, `Navigation`, the network layer, ...) is a class that receives its collaborators through its constructor, built by the composition root of its realm (`createBrowserClient`, `createDedicatedServer`, `createServerWorker`). Do not carry singletons around in context objects.
+- **Hooks.** A shared singleton that must reach into a realm-specific part gets an interface and an assignable member (`Cmd.files`, `Cmd.forwardToServer`, `Cvar.serverState`, `Host.files`, ...) that the composition root fills in.
 
-```javascript
-// ✅ GOOD - IDE can infer types from registry
-let { CL, COM, Con, Host, Mod, SCR, SV, Sys, V } = registry;
-
-eventBus.subscribe('registry.frozen', () => {
-  ({ CL, COM, Con, Host, Mod, SCR, SV, Sys, V } = registry);
-});
-```
-
-```javascript
-// ❌ BAD - No type inference, requires manual annotations
-let Mod = null;
-let R = null;
-
-eventBus.subscribe('registry.frozen', () => {
-  Mod = registry.Mod;
-  R = registry.R;
-});
-```
-
-```javascript
-// ❌ NEVER ACCESS DIRECTLY - This breaks in nested scopes and loses type inference
-registry.Con.DPrint(...);  // WRONG!
-registry.Mod.ClearAll();    // WRONG!
-
-// ✅ ALWAYS USE - Destructured variables work everywhere
-Con.DPrint(...);           // CORRECT!
-Mod.ClearAll();            // CORRECT!
-```
-
-**Important:** Even in files that already have registry access, always set up the destructuring prolog at the top of the file. Never use `registry.ModuleName` syntax anywhere in the code.
-
-**Also**: Do not carry things from the registry in context objects or anything like that. Things being put on the registry are always considered being a singleton.
-
-### What Goes in the Registry
-
-**Only modules that need to avoid circular dependencies** should be in the registry.
-
-- ✅ Use registry: `CL`, `COM`, `Con`, `Host`, `Mod`, `SCR`, `SV`, `Sys`, `V`
-
-- ✅ Use registry: `CL`, `COM`, `Con`, `Host`, `Mod`, `SCR`, `SV`, `Sys`, `V`
-- ❌ **NOT in registry**: `GL` (use direct import instead)
-
-```javascript
-// ✅ GOOD - GL is not in registry, import directly
-import GL from './GL.ts';
-
-let gl = null;
-eventBus.subscribe('gl.ready', () => {
-  gl = GL.gl;
-});
-```
-
-### What is not in the Registry
-
-There are a couple of classes that are not in the registry, such as `Cmd` and `Cvar` since they are encapsulated enough to not rely on the registry pattern.
-
-Whenever there is no circular dependency, there’s no need for the registry anymore.
+Code under `network/` and `server/` must not import `client/`, and the import closure of the server worker may contain only the few client data classes that model loading needs (`test/common/engine-boundaries.test.mjs` enforces both).
 
 ### Event Bus Usage
 
 Use `eventBus` for **business logic events and lifecycle hooks**, not just initialization:
 
 **Good candidates for eventBus:**
-- ✅ System lifecycle: `'registry.frozen'`, `'gl.ready'`, `'gl.shutdown'`
+- ✅ System lifecycle: `'gl.ready'`, `'gl.shutdown'`
 - ✅ Game state changes: `'game.start'`, `'game.end'`, `'map.loaded'`
 - ✅ Resource loading: `'model.loaded'`, `'texture.uploaded'`
 - ✅ Cross-module notifications: `'player.spawn'`, `'entity.remove'`
@@ -165,7 +111,7 @@ eventBus.publish('model.loaded', loadedModel);
 
 ### Global GL Context
 
-Use the global `gl` from registry instead of passing it as a parameter:
+Use the global `gl` (accessible via `GL.gl` after `'gl.ready'`) instead of passing it as a parameter:
 
 ```javascript
 // ❌ BAD
@@ -322,7 +268,7 @@ Keep `@protected` and `@private` tags only when a mixed JS/TS boundary still nee
 
 3. **Workarounds** - Explain why they're necessary
    ```javascript
-   // Note: Uses global `gl` from registry rather than passing as parameter
+   // Note: Uses global `gl` rather than passing as parameter
    ```
 
 ### When NOT to Use Comments
@@ -338,7 +284,7 @@ Keep `@protected` and `@private` tags only when a mixed JS/TS boundary still nee
 When creating polymorphic behavior:
 1. Create abstract base class with interface
 2. Implement concrete classes for each variant
-3. Use registry for runtime lookup
+3. Look the implementation up in a table keyed by type
 
 ```javascript
 // Base class

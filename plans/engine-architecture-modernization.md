@@ -4,7 +4,7 @@
 file layer), Phase 2b (the server runtime and the realm services it uses without the registry) and Phase 3
 (the server in a worker, in three steps: 3a, 3b, 3c) are done (2026-10-05)**; the worker is the default in the
 browser, `?serverthread` opts out. See "Phase 1: what shipped" to "Phase 3c: what shipped" below. Phase 4 (the
-client side of the registry, deleting it) is done as well (2026-10-08): 4a, 4b and 4c, see "Phase 4a: what shipped" to "Phase 4c: what shipped"; `registry.ts` is gone. `client-entity-architecture` was squash-merged to `main` as `9abb71b` (all phases, including
+client side of the registry, deleting it) is done as well (2026-10-08): 4a, 4b and 4c, see "Phase 4a: what shipped" to "Phase 4c: what shipped"; `registry.ts` is gone, and the live checks after it (pointer lock, Firefox, multiplayer, sound, memory) passed on 2026-10-09, see "Check-up after Phase 4". `client-entity-architecture` was squash-merged to `main` as `9abb71b` (all phases, including
 the old phase 6), so the Phase 1 blocker is gone. The Phase 0 spikes were run on 2026-10-03; results
 are in "Phase 0 findings" and have been folded into the design. Written 2026-10-03 after a code survey
 (numbers in "Context" are as of that date, branch `client-entity-architecture`; the registry importer
@@ -1120,7 +1120,7 @@ module-evaluation order changes when imports replace registry lookups, which is 
 boot, so 4c ends with a cold-start run of both builds.
 
 
-#### Phase 4a: what shipped (2026-10-07, not committed: waiting for the developer's test and review)
+#### Phase 4a: what shipped (2026-10-07)
 
 Done-condition met: nothing under `source/engine/common/` (except `Host.ts` and `GameAPIs.ts`, which 4b removes),
 `network/`, `server/` or `bootstrap/createServerWorker.ts` imports `registry.ts`, pinned by
@@ -1186,13 +1186,13 @@ of walking, over three `changelevel`s and over four `map` loads; warm caches, an
 console) and a running audio context change nothing. A heap snapshot of the worker (78 MB) is mostly world geometry kept as
 objects: `Vector` instances and their buffers about 30 MB, `ClipNode` 8 MB, `Plane` 4 MB, element arrays 16 MB.
 
-The 1.2 GB did not reproduce here, so it is something outside these runs (how it was measured, a long session, a mod, other
-tabs or the dev tooling: the running `vite build --watch` alone holds 2 GB). Open: which number it was (Chrome task manager
-"memory footprint" of the tab, or the renderer, or the whole browser) and in which session. If the worker's share needs to
-shrink, the lever is the world geometry: store vertexes, clip nodes and planes in typed arrays instead of object graphs, which
-B7 asked of the loaders anyway.
+The 1.2 GB did not reproduce here, so it was something outside these runs (the running `vite build --watch` alone holds 2 GB).
+**Resolved 2026-10-09:** the developer sees stable memory usage now, and the server's share (about 90 MB) is accepted as the
+price of taking the simulation off the frame time budget. No action. If the worker's share ever needs to shrink, the lever is the
+world geometry: store vertexes, clip nodes and planes in typed arrays instead of object graphs, which B7 asked of the loaders
+anyway.
 
-#### Phase 4b, step 1a: the client state is imported, not looked up (2026-10-07, not committed)
+#### Phase 4b, step 1a: the client state is imported, not looked up (2026-10-07)
 
 First slice of "`CL` without the registry", chosen after measuring the import graph: 535 of the roughly 700 reads of `CL` were
 `CL.state` (434) and `CL.cls` (101), and those two are plain module singletons (`clientRuntimeState`, `clientStaticState` in
@@ -1219,7 +1219,7 @@ evaluated, and those reach the server collision code. The next slices, each its 
 `collision` onto the state objects, the cvars into a leaf module, make `ClientConnection`/`ClientLifecycle` call each other
 instead of going back through `CL`, then `CL` becomes importable.
 
-#### Phase 4b, step 1b: `CL` is imported (2026-10-07, not committed)
+#### Phase 4b, step 1b: `CL` is imported (2026-10-07)
 
 `CL` has no registry readers left in the client and `GameAPIs.ts`; only `Host.ts` (shared with the dedicated server) and
 `Materials.ts` (in the server worker's import closure) still look it up, through `CL`'s compatibility accessors. It stays a
@@ -1246,7 +1246,7 @@ per-frame code, not a different shape.
 What reads `CL` now is its API: `SetConnectingStep`, `Disconnect`, `Connect`, `SendCmd`, `ParseServerMessage`, ... and
 `Host.ts`/`Materials.ts`. Next in 4b: `R` (the other big hub, 19 readers), `M`, then `Host` itself.
 
-#### Phase 4b, step 2: `R` is imported (2026-10-07, not committed)
+#### Phase 4b, step 2: `R` is imported (2026-10-07)
 
 The renderers, `SCR`, `V`, `Chase`, `ClientEntities`, `ClientLegacy`, `ClientHost`, `ClientServerCommandHandlers`,
 `NavigationDebug` and `GameAPIs.ts` import `R` instead of looking it up. Still on the registry on purpose: `Materials.ts` and
@@ -1264,7 +1264,7 @@ The renderers, `SCR`, `V`, `Chase`, `ClientEntities`, `ClientLegacy`, `ClientHos
 
 Registry importers in the engine: 38 files on the allowlist now (from 47). Left in 4b: `M`, `Host`, then the realm services (`COM`, `NET`).
 
-#### Phase 4b, steps 3 and 4: `M` is imported, `Host` is split (2026-10-07, not committed)
+#### Phase 4b, steps 3 and 4: `M` is imported, `Host` is split (2026-10-07)
 
 **`M`** (the menu): `ClientHost`, `IN`, `Key`, `SCR`, `Sys`, `MenuItem`, `MenuPage` and `GameAPIs.ts` import it. Two load-order
 hazards were removed instead of worked around: `MenuStack` needed the menu only to set `entersound`, so it takes a callback now
@@ -1300,7 +1300,7 @@ Registry importers in the engine: 31 (from 38). `registry.isDedicatedServer` has
 What reads the registry now is the static client facades (`S`, `SCR`, `V`, `Key`, `IN`, `Draw`), the realm services `COM`, `NET`, `Sys`,
 `ClientEngineAPI`, the two launchers and the worker-closure files (`Materials`, `Sky`).
 
-#### Phase 4b, steps 5 to 8: the facades, the page's services, `ClientEngineAPI` and the composition root (2026-10-07, not committed)
+#### Phase 4b, steps 5 to 8: the facades, the page's services, `ClientEngineAPI` and the composition root (2026-10-07)
 
 4b's done-condition is met and a little more: no client module reads the registry any more. What still imports it is
 `bootstrap/createBrowserClient.ts` and `createDedicatedServer.ts` (they fill it), `main-dedicated.ts` (a type) and the two data
@@ -1352,7 +1352,7 @@ Left for 4c: `Materials` and `Sky` (they need a way to get the renderer and the 
 split of the data class from the render hooks), the registry itself, `createDedicatedServer`'s fill of it, `isDedicatedServer`,
 `withMockRegistry` and the tests that still mock a registry, and the instruction files that describe the registry pattern.
 
-#### Phase 4c: what shipped (2026-10-08, not committed)
+#### Phase 4c: what shipped (2026-10-08)
 
 `source/engine/registry.ts` is deleted, together with `getCommonRegistry`/`getClientRegistry`, the `registry.frozen` event,
 `isDedicatedServer`, `withMockRegistry` and the ESLint allowlist. Nothing under `source/` imports it, and a boundary test says
@@ -1383,6 +1383,18 @@ Phase 4 done-condition met: no registry, the worker bundle contains no client co
 (`PageServices`, `RenderContext`, `GL`, `VID`, `Materials`, `Sky`), the instance conversions the plan promised for `Con`, `Mod`,
 `Host` (dissolved), `ClientEngineAPI` and the composition roots are done, and `CL`/`M`/`R`/`GL`/`S`/`IN`/`Key`/`Draw`/`SCR`/`V`
 stay static classes imported directly (fork 1).
+
+#### Check-up after Phase 4 (2026-10-09)
+
+State of the branch: `npm test` 1757 pass, `npm run typecheck` 0 errors, `eslint source/engine` 0 errors. Tests and docs that
+still taught the registry were cleaned (`docs/code-style-guide.md` had the whole registry section, now "Reaching Other
+Modules"; dead `registry.frozen` comments and an `isDedicatedServer` option name in two tests).
+
+What the developer verified live: pointer lock and mouse look, Firefox, multiplayer over
+WebRTC and WebSocket, sound output. All work. Memory is stable (see "Memory check after 4a").
+
+Still unverified: the navigation worker with a real path request on the new `WorkerFramework`. It needs `.nav` files, so it
+waits for the navigation meshes of the Hellwave maps and is checked there.
 
 ### Later tracks (own plans, order flexible after Phase 3)
 
@@ -1433,9 +1445,16 @@ Resolved on 2026-10-03, see "Decisions already made" and "Phase 0 findings":
 - Browser coverage: Firefox and Chrome pass every worker check (finding 6); Safari is out of scope
   (decision 12).
 
-Nothing is open at the moment. The map-list helpers stay until after Phase 4 (decision 13) and
-replay is in scope (decision 14). New questions get added here as phases surface them, for example
-the replay plan's open details (storage format, whether the recorder ships in production builds).
+Open as of 2026-10-09 (one item):
+
+- **The map-list helpers (decision 13): done 2026-10-09.** `GetMapList()` and `GetStartServerList()` are removed from both
+  games' `ServerGameAPI`, and `MapDetails` and `StartServerListEntry` from `shared/GameInterfaces.ts`. The menus own that data
+  now: Hellwave's `client/MapCatalog.ts` (`MAP_CATALOG`), id1's `START_SERVER_ACTIONS` in `client/Menu.ts`. Client game code no
+  longer imports the server game class. Hellwave's `GetStartServerList` override was dead code (id1's menu never saw it).
+- The navigation worker check above.
+
+Replay is in scope (decision 14). New questions get added here as phases surface them, for example the replay plan's open
+details (storage format, whether the recorder ships in production builds).
 
 ## Phase 0 findings
 

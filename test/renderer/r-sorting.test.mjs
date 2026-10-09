@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import R, { compareTransparentItems } from '../../source/engine/client/R.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { Face, Plane } from '../../source/engine/common/model/BaseModel.ts';
 import { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';
@@ -64,7 +63,6 @@ void describe('R.GetEntityLightSamplePoint', () => {
 
   //   engineMocks.CL = { state: { viewent: null } };
   //   engineMocks.Mod = { type: { alias: 2 } };
-  //   eventBus.publish('registry.frozen');
 
   //   try {
   //     const entity = {
@@ -80,7 +78,6 @@ void describe('R.GetEntityLightSamplePoint', () => {
   //   } finally {
   //     engineMocks.CL = previousCL;
   //     engineMocks.Mod = previousMod;
-  //     eventBus.publish('registry.frozen');
   //   }
   // });
 
@@ -131,8 +128,8 @@ void describe('R._SampleDeluxemapDirection', () => {
   });
 
   /**
-   * Temporarily installs a mock worldmodel on the client registry for the
-   * duration of the callback, then restores the previous registry state.
+   * Temporarily installs a mock worldmodel on the client state for the
+   * duration of the callback, then restores the previous client state.
    * @param worldmodel Mock worldmodel exposing just the fields under test.
    * @param callback Test body to run with the mock installed.
    */
@@ -248,7 +245,7 @@ void describe('R.RecursiveLightPoint', () => {
 
   /**
    * Runs the callback with a mocked worldmodel/interpolation Cvar installed,
-   * restoring the previous registry state afterwards.
+   * restoring the previous client state afterwards.
    * @param callback Test body to run with the mocks installed.
    */
   function withFloorWorld(callback) {
@@ -317,7 +314,7 @@ void describe('R.RecursiveLightPoint', () => {
 void describe('R._SmoothLightValues', () => {
   /**
    * Runs the callback with a mocked `Host.frametime`, restoring the previous
-   * registry entry afterwards.
+   * host afterwards.
    * @param frametime Frame delta time to expose via `Host.frametime`.
    * @param callback Test body to run with the mock installed.
    */
