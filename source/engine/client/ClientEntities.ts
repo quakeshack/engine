@@ -495,6 +495,16 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
   }
 
   /**
+   * Makes `lerp.origin` return `origin` as is, for as long as nothing snapshots a new previous origin.
+   * Client prediction moves the player's origin every frame, so interpolating it from the origin
+   * the last server message found would drag the player along a line between that stale point and
+   * the predicted one (a flicker, and a sweep across the map after a teleport).
+   */
+  dropOriginLerp(): void {
+    this.originPrevious.setTo(Infinity, Infinity, Infinity);
+  }
+
+  /**
    * Sets origin and angles according to the current message.
    * @param doLerp whether to do a point lerp
    */
@@ -1086,6 +1096,8 @@ export default class ClientEntities {
       if (clientRuntimeState.predicted && clent.num === clientRuntimeState.viewentity) {
         // prediction already set origin/velocity, only update angles from server state
         clent.angles.set(clent.msg_angles[0]);
+        // a server message snapshots originPrevious, which must not leak into the rendered origin (see chase cam)
+        clent.dropOriginLerp();
       } else {
         clent.updatePosition(clent.num !== clientRuntimeState.viewentity);
       }

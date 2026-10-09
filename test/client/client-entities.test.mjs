@@ -151,6 +151,44 @@ void describe('ClientEdict.lerp.origin', () => {
   });
 });
 
+void describe('ClientEdict.dropOriginLerp', () => {
+  void test('renders the predicted origin as is instead of interpolating from the origin of the last message', () => {
+    // Regression test: the player entity is moved by client prediction every frame while a server message
+    // snapshots originPrevious. Rendering lerp(originPrevious, origin) made the chase cam player flicker
+    // along that line, and sweep across the map after a teleport.
+    withMockClientEntitiesRegistry(() => {
+      const entity = new ClientEdict(4);
+
+      entity.originPrevious.setTo(0.0, 0.0, 0.0);
+      entity.origin.setTo(2000.0, 0.0, 0.0); // predicted position right after a teleport
+      entity.originTime = 0.0;
+      entity.lerpEndTime = 1.0;
+      clientRuntimeState.clientMessages.renderTime = 0.2;
+
+      assert.ok(entity.lerp.origin[0] < 2000.0, 'without the fix the origin is interpolated');
+
+      entity.dropOriginLerp();
+
+      assert.deepEqual([...entity.lerp.origin], [2000.0, 0.0, 0.0]);
+    });
+  });
+
+  void test('lerping resumes when a later message snapshots a new previous origin', () => {
+    withMockClientEntitiesRegistry(() => {
+      const entity = new ClientEdict(5);
+
+      entity.origin.setTo(100.0, 0.0, 0.0);
+      entity.dropOriginLerp();
+      entity.originPrevious.setTo(0.0, 0.0, 0.0);
+      entity.originTime = 0.0;
+      entity.lerpEndTime = 1.0;
+      clientRuntimeState.clientMessages.renderTime = 0.5;
+
+      assert.equal(entity.lerp.origin[0], 50.0);
+    });
+  });
+});
+
 /**
  * Runs a callback with a minimal `CL.state.worldmodel` installed so `ClientEdict.setOrigin()`/
  * `linkEdict()` can recompute `leafs` against a real (if tiny) BSP node tree.
