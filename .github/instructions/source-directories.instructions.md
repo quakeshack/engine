@@ -10,7 +10,7 @@
   - `source/engine/network/` - Networking code such as protocols and message handling.
 - The game is organized in `source/game/` and follows a slightly different structure:
   - `source/game/id1/` - the original Quake game logic. A separate git submodule (`game.git`); changes there need their own commit inside the submodule (see the `submodule-aware-commit` skill).
-  - `source/game/hellwave/` - the Hellwave game mod. A plain directory in this repo, not a submodule.
+  - `source/game/hellwave/` - the Hellwave game mod. Its own git repo (`hellwave-game`) checked out inside this one, but not a registered submodule and untracked by the outer repo: commit inside it, never from the outer repo.
   - `source/game/baseq2/` - (future) Quake II game logic.
   - Game code must never directly import files from the engine; it should only use the public API exposed by the engine.
   - The contract between the engine and a game module lives in `source/shared/GameInterfaces.ts` (`GameModuleInterface`, `ServerGameInterface`, `ClientGameInterface`, ...); see `docs/game-module-contract.md`. A game's API classes declare `implements` on the instance interfaces and its `main.ts` asserts `satisfies GameModuleInterface`, so `npm run typecheck` reports drift between the two sides.
