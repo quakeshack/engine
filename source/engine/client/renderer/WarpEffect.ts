@@ -21,7 +21,6 @@ eventBus.subscribe('gl.shutdown', () => {
  * simulating the visual distortion seen when the camera is submerged
  * in water, slime, or lava.
  *
- * This replaces the previous R.WarpScreen / R.warpbuffer implementation.
  * Scene capture is handled by the shared PostProcess framebuffer.
  */
 export default class WarpEffect extends PostProcessEffect {

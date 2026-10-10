@@ -230,12 +230,9 @@ class R {
   static normal_up_texture: GLTextureArray = null!;
   static shadow_texture: GLRenderTexture | null = null;
   static point_shadow_textures: GLCubeTexture[] = [];
-  static world_depth_texture: WebGLTexture | null = null;
-  static dlightvecs: WebGLBuffer = null!;
   static dlightVAO: WebGLVertexArrayObject = null!;
 
   static usePostProcess = false;
-  static dowarp = false;
 
   /** RGB fog color used by the underwater fog effect this frame (0-1 range). */
   static underwaterFogColor: [number, number, number] = [0.05, 0.15, 0.2];
@@ -250,7 +247,6 @@ class R {
   static c_brush_verts = 0;
   static c_brush_tris = 0;
   static c_brush_draws = 0;
-  static c_brush_draws_pbr = 0;
   static c_brush_vbos = 0;
   static c_brush_texture_binds = 0;
   static c_alias_polys = 0;
@@ -2017,12 +2013,10 @@ class R {
     R.viewleaf = worldmodel.getLeafForPoint(R.refdef.vieworg);
     V.SetContentsColor(R.viewleaf.contents);
     V.CalcBlend();
-    R.dowarp = (R.waterwarp.value !== 0) && (R.viewleaf.contents <= content.CONTENT_WATER);
-
-    // Update warp effect active state
+    // Underwater warp is a post-process effect, active while the camera is inside a liquid.
     const warpEffect = PostProcess.getEffect('warp');
     if (warpEffect) {
-      warpEffect.active = R.dowarp;
+      warpEffect.active = (R.waterwarp.value !== 0) && (R.viewleaf.contents <= content.CONTENT_WATER);
     }
 
     const bloomEnabled = R.bloom.value !== 0;
@@ -2165,7 +2159,6 @@ class R {
     R.c_brush_verts = 0;
     R.c_brush_tris = 0;
     R.c_brush_draws = 0;
-    R.c_brush_draws_pbr = 0;  // Draw calls with PBR materials
     R.c_brush_vbos = 0;
     R.c_brush_texture_binds = 0;  // Track texture binding overhead
     R.c_alias_polys = 0;
@@ -2176,7 +2169,7 @@ class R {
       const c_alias_polys = R.c_alias_polys;
       const avgTrisPerDraw = (R.c_brush_tris / R.c_brush_draws).toFixed(1);
 
-      R._speeds[0] = `${R.c_brush_draws.toFixed().padStart(5)} draw calls (${R.c_brush_draws_pbr} PBR)`;
+      R._speeds[0] = `${R.c_brush_draws.toFixed().padStart(5)} draw calls`;
       R._speeds[1] = `${R.c_brush_tris.toFixed().padStart(5)} tris, ${R.c_brush_verts.toFixed().padStart(5)} verts`;
       R._speeds[2] = `${R.c_brush_vbos.toFixed().padStart(5)} VBOs used, ${R.c_brush_texture_binds.toFixed().padStart(5)} texture binds`;
       R._speeds[3] = `${c_alias_polys.toFixed().padStart(5)} alias polys, ${c_brush_polys.toFixed().padStart(5)} brush polys`;
@@ -2557,7 +2550,7 @@ class R {
       { location: ATTRIB_LOCATIONS.aPosition, components: 3, type: gl.FLOAT, normalized: false, stride: 0, offset: 0 },
     ]);
 
-    Object.assign(R, { dlightvecs, dlightVAO });
+    Object.assign(R, { dlightVAO });
 
     R.ClearAll();
   };
@@ -2627,7 +2620,6 @@ class R {
 
     R.shadow_texture = null;
     R.point_shadow_textures = [];
-    R.world_depth_texture = null;
 
     R.ClearParticles();
     R.ClearDecals();
@@ -3489,7 +3481,7 @@ class R {
     }
   };
 
-  // warp
+  // sky
 
   static skyrenderer: SkyRenderer | null = null;
   static drawsky = true;

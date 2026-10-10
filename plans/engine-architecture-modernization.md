@@ -474,7 +474,8 @@ Ordered cheapest and most valuable first; each is its own plan:
    across `alias.frag`/`mesh.frag`/`player.frag` and the `shader-duplication-propagation` skill's
    checklist.
 2. **Split `R.ts`** (3561 lines) into passes and per-feature collaborators, in line with the
-   existing `BrushModelRenderer`/`PostProcess`/`ShadowMap` split.
+   existing `BrushModelRenderer`/`PostProcess`/`ShadowMap` split. Planned in `plans/r-split.md`
+   (2026-10-10; Phase 0 partly done).
 3. **Frame graph** with declared resource reads/writes per pass. The depth-sampling feedback-loop
    trap (`PostProcess.beginDepthSampling`/`endDepthSampling`) becomes a graph validation error
    instead of a JSDoc contract.
