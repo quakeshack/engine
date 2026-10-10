@@ -4,4 +4,3 @@ data/
 dist/
 .wrangler/
 .fallow/
-graphify-out/

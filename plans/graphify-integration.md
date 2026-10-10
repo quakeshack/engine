@@ -1,9 +1,9 @@
 # Graphify integration for agentic exploration
 
-**Status:** Done. Setup script, gitignore entry, and instructions file are in place. The
-trial runs that motivated this are documented below for future reference — re-verify the
-caveats if graphify is upgraded, since they're specific to the version tested
-(`graphifyy` 0.9.34).
+**Status:** Removed (2026-10-10). It brought no benefit over grep and the code itself: the setup
+script, the `graphify-lookup` skill, the usage instructions, the `CLAUDE.md` import and trap entry
+and the gitignore line are deleted. This file stays as the record of the trial; the text below is
+what was true while it was in place (version tested: `graphifyy` 0.9.34).
 
 ## Context
 
