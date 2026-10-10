@@ -274,7 +274,13 @@ void describe('MessagePortEndpoint', () => {
     port1.postMessage({ somethingElse: true });
     port1.postMessage({ channel: { kind: 'close', connection: 1 } });
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // messages arrive in order, so once the channel message is there the other one has been looked at too;
+    // a fixed delay is not enough when the whole suite runs in parallel
+    const deadline = Date.now() + 2000;
+
+    while (seen.length === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
 
     try {
       assert.deepEqual(seen, [{ kind: 'close', connection: 1 }]);
