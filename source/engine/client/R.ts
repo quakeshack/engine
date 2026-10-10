@@ -1,12 +1,9 @@
 import Vector from '../../shared/Vector.ts';
-import PhysicsMath from '../common/PhysicsMath.ts';
 import Cvar from '../common/Cvar.ts';
-import Cmd from '../common/Cmd.ts';
 import * as Def from '../common/Def.ts';
 
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
-import W from '../common/W.ts';
 import VID from './VID.ts';
 import GL, { ATTRIB_LOCATIONS, GLCubeTexture, GLRenderTexture, GLTexture, GLTextureArray } from './GL.ts';
 import { content, effect } from '../../shared/Defs.ts';
@@ -30,9 +27,10 @@ import WarpEffect from './renderer/postprocess/WarpEffect.ts';
 import UnderwaterFogEffect from './renderer/postprocess/UnderwaterFogEffect.ts';
 import ShadowMap from './renderer/lighting/ShadowMap.ts';
 import { ClientDlight, ClientEdict } from './ClientEntities.ts';
-import { avertexnormals } from '../common/model/loaders/AliasMDLLoader.ts';
 import { SkyRenderer } from './renderer/scene/Sky.ts';
-import { clientRuntimeState, clientStaticState } from './ClientState.ts';
+import Particles, { type Particle } from './renderer/effects/Particles.ts';
+import Decals, { type Decal } from './renderer/effects/Decals.ts';
+import { clientRuntimeState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientCollision } from './ClientPhysics.ts';
 import Host from '../common/Host.ts';
@@ -94,54 +92,7 @@ type EntityLightValues = [Vector, Vector, Vector, Vector, Vector];
 type GridPosition = [number, number, number];
 type Vec4 = [number, number, number, number];
 
-export interface SerializedParticle {
-  i: number;
-  die: number;
-  color: number;
-  ramp: number;
-  type: number;
-  org: [number, number, number];
-  vel: [number, number, number];
-}
-
-interface Particle {
-  die: number;
-  color: number;
-  ramp: number;
-  type: ParticleType;
-  org: Vector;
-  vel: Vector;
-}
-
-interface Decal {
-  readonly texture: GLTexture;
-  readonly verts: [Vector, Vector, Vector, Vector];
-  readonly color: Vector;
-  readonly die: number;
-  readonly origin: Vector;
-}
-
-type AngularVelocity = [number, number, number];
-
-enum ParticleType {
-  tracer = 0,
-  grav = 1,
-  slowgrav = 2,
-  fire = 3,
-  explode = 4,
-  explode2 = 5,
-  blob = 6,
-  blob2 = 7,
-}
-
 const FOG_TURBULENT_SORT_EPSILON = 0.0001;
-
-/**
- * Overbounce factor for a gravity particle reflecting off a floor-like surface, matching
- * `MOVETYPE_BOUNCE`'s server-side factor (`ServerPhysics.physicsToss()`) for a consistent,
- * lively bounce instead of a dead stop.
- */
-const PARTICLE_BOUNCE_OVERBOUNCE = 1.5;
 
 /**
  * Resolve deterministic tie-break priority for transparent item kinds.
@@ -239,10 +190,6 @@ class R {
 
   /** Fog density exponent used by the underwater fog effect this frame. */
   static underwaterFogDensity = 0.05;
-  static particles: Particle[] = [];
-  static decals: Decal[] = [];
-  static numparticles = 0;
-  static avelocities: AngularVelocity[] = [];
   static allocated: number[] = [];
   static c_brush_verts = 0;
   static c_brush_tris = 0;
@@ -251,186 +198,8 @@ class R {
   static c_brush_texture_binds = 0;
   static c_alias_polys = 0;
 
-  /**
-   * Particle types that collide with world geometry in `_renderAndAdvanceParticle()` instead of
-   * flying through it -- every type whose velocity already integrates gravity (see the
-   * `ParticleType` switch below), except `fire`, whose upward "embers" drift is not gravity in
-   * the falling sense. A one-line escape hatch: drop a type from this set if profiling ever shows
-   * its collision cost isn't worth it for that type specifically, without reverting the feature.
-   */
-  static readonly collidableParticleTypes = new Set<ParticleType>([
-    ParticleType.grav,
-    ParticleType.slowgrav,
-    ParticleType.explode,
-    ParticleType.explode2,
-    ParticleType.blob,
-    ParticleType.blob2,
-  ]);
-
-  static #scratchNewOrigin = new Vector();
-  static #scratchClippedVelocity = new Vector();
-
   private static _textureAxisToVector(texVec: BrushTexVec): Vector {
     return new Vector(texVec[0], texVec[1], texVec[2]);
-  }
-
-  private static _createDeadParticle(): Particle {
-    return {
-      die: -1.0,
-      color: 0,
-      ramp: 0.0,
-      type: ParticleType.slowgrav,
-      org: new Vector(),
-      vel: new Vector(),
-    };
-  }
-
-  /**
-   * Emit one decal quad into the stream buffer.
-   */
-  private static _emitDecalQuad(decal: Decal): void {
-    GL.StreamGetSpace(6);
-
-    // Quad vertices: 0, 1, 2, 0, 2, 3
-    const v = decal.verts;
-    const c = decal.color;
-    const r = c[0];
-    const g = c[1];
-    const b = c[2];
-
-    GL.StreamWriteFloat3(v[0][0], v[0][1], v[0][2]); GL.StreamWriteFloat2(0, 0); GL.StreamWriteUByte4(r, g, b, 255);
-    GL.StreamWriteFloat3(v[1][0], v[1][1], v[1][2]); GL.StreamWriteFloat2(1, 0); GL.StreamWriteUByte4(r, g, b, 255);
-    GL.StreamWriteFloat3(v[2][0], v[2][1], v[2][2]); GL.StreamWriteFloat2(1, 1); GL.StreamWriteUByte4(r, g, b, 255);
-
-    GL.StreamWriteFloat3(v[0][0], v[0][1], v[0][2]); GL.StreamWriteFloat2(0, 0); GL.StreamWriteUByte4(r, g, b, 255);
-    GL.StreamWriteFloat3(v[2][0], v[2][1], v[2][2]); GL.StreamWriteFloat2(1, 1); GL.StreamWriteUByte4(r, g, b, 255);
-    GL.StreamWriteFloat3(v[3][0], v[3][1], v[3][2]); GL.StreamWriteFloat2(0, 1); GL.StreamWriteUByte4(r, g, b, 255);
-  }
-
-  /**
-   * Resolves a gravity particle's pending move from `origin` to `newOrigin` against world
-   * geometry: a floor-like surface (`PhysicsMath.GROUND_ANGLE_THRESHOLD`) reflects `velocity` via
-   * the shared `PhysicsMath.clipVelocity()` formula, matching `MOVETYPE_BOUNCE`'s overbounce; a
-   * wall/ceiling-like surface, or a start already embedded in solid, reports a kill instead of
-   * clipping through it. Always leaves `origin` at the particle's actual resting position for this
-   * step -- `newOrigin` when nothing was hit, the impact point otherwise. `clientCollision.
-   * pointContents()` (a cheap BSP point classification, no swept-hull work) gates the real
-   * `traceStaticWorldLine()` call, so the common case of open-air flight never pays for a full
-   * trace -- see the "Extension: gravity-particle collision" section of
-   * plans/client-entity-architecture.md for why this matters at explosion-burst particle counts.
-   * @returns True when the particle hit a wall/ceiling-like surface and should be killed.
-   */
-  static ResolveParticleCollision(origin: Vector, velocity: Vector, newOrigin: Vector): boolean {
-    if (clientCollision.pointContents(newOrigin) !== content.CONTENT_SOLID) {
-      origin.set(newOrigin);
-      return false;
-    }
-
-    const trace = clientCollision.traceStaticWorldLine(origin, newOrigin);
-    origin.set(trace.endpos);
-
-    if (!trace.allsolid && trace.fraction >= 1.0) {
-      // The cheap point check flagged newOrigin as solid, but the swept trace found nothing
-      // along the actual path -- a boundary/epsilon disagreement between point classification
-      // and segment tracing at the destination. Nothing was really hit; move on normally.
-      return false;
-    }
-
-    if (trace.allsolid || trace.plane.normal[2] <= PhysicsMath.GROUND_ANGLE_THRESHOLD) {
-      return true;
-    }
-
-    PhysicsMath.clipVelocity(velocity, trace.plane.normal, R.#scratchClippedVelocity, PARTICLE_BOUNCE_OVERBOUNCE);
-    velocity.set(R.#scratchClippedVelocity);
-    return false;
-  }
-
-  /**
-   * Emit one particle billboard and advance its simulation by one frame.
-   */
-  private static _renderAndAdvanceParticle(particle: Particle, coords: number[], frameTime: number, grav: number, dvel: number): void {
-    const color = W.d_8to24table[particle.color];
-    let scale = (particle.org[0] - R.refdef.vieworg[0]) * R.vpn[0]
-      + (particle.org[1] - R.refdef.vieworg[1]) * R.vpn[1]
-      + (particle.org[2] - R.refdef.vieworg[2]) * R.vpn[2];
-    if (scale < 20.0) {
-      scale = 0.375;
-    } else {
-      scale = 0.375 + scale * 0.0015;
-    }
-
-    GL.StreamGetSpace(6);
-    for (let j = 0; j < 6; j++) {
-      GL.StreamWriteFloat3(particle.org[0], particle.org[1], particle.org[2]);
-      GL.StreamWriteFloat2(coords[j * 2], coords[j * 2 + 1]);
-      GL.StreamWriteFloat(scale);
-      GL.StreamWriteUByte4(color & 0xff, (color >> 8) & 0xff, color >> 16, 255);
-    }
-
-    if (R.collidableParticleTypes.has(particle.type)) {
-      const newOrigin = R.#scratchNewOrigin;
-      newOrigin[0] = particle.org[0] + particle.vel[0] * frameTime;
-      newOrigin[1] = particle.org[1] + particle.vel[1] * frameTime;
-      newOrigin[2] = particle.org[2] + particle.vel[2] * frameTime;
-
-      if (R.ResolveParticleCollision(particle.org, particle.vel, newOrigin)) {
-        particle.die = -1.0;
-      }
-    } else {
-      particle.org[0] += particle.vel[0] * frameTime;
-      particle.org[1] += particle.vel[1] * frameTime;
-      particle.org[2] += particle.vel[2] * frameTime;
-    }
-
-    switch (particle.type) {
-    case R.ptype.fire:
-      particle.ramp += frameTime * 5.0;
-      if (particle.ramp >= 6.0) {
-        particle.die = -1.0;
-      } else {
-        particle.color = R.ramp3[Math.floor(particle.ramp)];
-      }
-      particle.vel[2] += grav;
-      return;
-    case R.ptype.explode:
-      particle.ramp += frameTime * 10.0;
-      if (particle.ramp >= 8.0) {
-        particle.die = -1.0;
-      } else {
-        particle.color = R.ramp1[Math.floor(particle.ramp)];
-      }
-      particle.vel[0] += particle.vel[0] * dvel;
-      particle.vel[1] += particle.vel[1] * dvel;
-      particle.vel[2] += particle.vel[2] * dvel - grav;
-      return;
-    case R.ptype.explode2:
-      particle.ramp += frameTime * 15.0;
-      if (particle.ramp >= 8.0) {
-        particle.die = -1.0;
-      } else {
-        particle.color = R.ramp2[Math.floor(particle.ramp)];
-      }
-      particle.vel[0] -= particle.vel[0] * frameTime;
-      particle.vel[1] -= particle.vel[1] * frameTime;
-      particle.vel[2] -= particle.vel[2] * frameTime + grav;
-      return;
-    case R.ptype.blob:
-      particle.vel[0] += particle.vel[0] * dvel;
-      particle.vel[1] += particle.vel[1] * dvel;
-      particle.vel[2] += particle.vel[2] * dvel - grav;
-      return;
-    case R.ptype.blob2:
-      particle.vel[0] += particle.vel[0] * dvel;
-      particle.vel[1] += particle.vel[1] * dvel;
-      particle.vel[2] -= grav;
-      return;
-    case R.ptype.grav:
-    case R.ptype.slowgrav:
-      particle.vel[2] -= grav;
-      return;
-    default:
-      return;
-    }
   }
 
   /**
@@ -1430,9 +1199,9 @@ class R {
       }
     }
 
-    R.decals = R.decals.filter((decal) => decal.die > clientRuntimeState.time);
-    for (let i = 0; i < R.decals.length; i++) {
-      const decal = R.decals[i];
+    Decals.PruneExpired();
+    for (let i = 0; i < Decals.list.length; i++) {
+      const decal = Decals.list[i];
       const dx = decal.origin[0] - vieworg[0];
       const dy = decal.origin[1] - vieworg[1];
       const dz = decal.origin[2] - vieworg[2];
@@ -1443,8 +1212,8 @@ class R {
       });
     }
 
-    for (let i = 0; i < R.numparticles; i++) {
-      const particle = R.particles[i];
+    for (let i = 0; i < Particles.numparticles; i++) {
+      const particle = Particles.particles[i];
       if (particle.die < clientRuntimeState.time) {
         continue;
       }
@@ -1501,11 +1270,7 @@ class R {
 
     const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
     let currentDecalTexture: GLTexture | null = null;
-    const particleCoords = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
-    const particleFrameTime = Host.frametime;
-    const particleGravity = +clientStaticState.serverInfo.sv_gravity || 800;
-    const particleGrav = particleFrameTime * particleGravity * 0.05;
-    const particleDvel = particleFrameTime * 4.0;
+    const particleFrame = Particles.BeginFrame();
     let activeKind: TransparentKind | -1 = -1;
 
     const endActivePass = (): void => {
@@ -1669,7 +1434,7 @@ class R {
           currentDecalTexture = decal.texture;
         }
 
-        R._emitDecalQuad(decal);
+        Decals.EmitQuad(decal);
         break;
       }
       case TransparentKind.Particle: {
@@ -1678,7 +1443,7 @@ class R {
           break;
         }
 
-        R._renderAndAdvanceParticle(particle, particleCoords, particleFrameTime, particleGrav, particleDvel);
+        Particles.RenderAndAdvance(particle, particleFrame);
 
         break;
       }
@@ -2097,8 +1862,8 @@ class R {
       R._renderTransparentsUnified(worldEntity);
       gl.disable(gl.CULL_FACE);
     } else {
-      R.DrawDecals();
-      R.DrawParticles();
+      Decals.Draw();
+      Particles.Draw();
     }
   };
 
@@ -2503,8 +2268,8 @@ class R {
     R.underwater_fog_density = new Cvar('r_underwater_fog_density', '0.01', Cvar.FLAG.CHEAT, 'Fog density exponent for the underwater fog effect.');
 
     R.InitTextures();
-    R.InitParticles();
-    R.InitDecals();
+    Particles.Init();
+    Decals.Init();
     await R.InitShaders();
 
     // Register model renderers
@@ -2600,10 +2365,6 @@ class R {
   };
 
   static ClearAll() {
-    if (R.particles) {
-      R.particles.length = 0;
-    }
-
     for (let i = 0; i < 64; i++) {
       R.lightstylevalue_a[i] = 12;
       R.lightstylevalue_b[i] = 12;
@@ -2621,478 +2382,9 @@ class R {
     R.shadow_texture = null;
     R.point_shadow_textures = [];
 
-    R.ClearParticles();
-    R.ClearDecals();
+    Particles.Clear();
+    Decals.Clear();
     R.ClearSky();
-  };
-
-  // part
-
-  static readonly ptype = ParticleType;
-
-  static ramp1 = [0x6f, 0x6d, 0x6b, 0x69, 0x67, 0x65, 0x63, 0x61];
-  static ramp2 = [0x6f, 0x6e, 0x6d, 0x6c, 0x6b, 0x6a, 0x68, 0x66];
-  static ramp3 = [0x6d, 0x6b, 6, 5, 4, 3];
-
-  static InitParticles() {
-    R.numparticles = 32786;
-    R.avelocities = [];
-    for (let i = 0; i <= 161; i++) {
-      R.avelocities[i] = [Math.random() * 2.56, Math.random() * 2.56, Math.random() * 2.56];
-    }
-  };
-
-  static SerializeParticles(): SerializedParticle[] {
-    const data = [];
-    const round = (num: number): number => Math.round(num * 10) / 10; // we do not need a high precision here
-    const roundVector = (vector: Vector): [number, number, number] => [
-      round(vector[0]),
-      round(vector[1]),
-      round(vector[2]),
-    ];
-
-    for (let i = 0; i < R.numparticles; i++) {
-      const p = R.particles[i];
-
-      if (p.die < clientRuntimeState.time) {
-        continue;
-      }
-
-      data.push({
-        i: i,
-        die: round(p.die - clientRuntimeState.time),
-        color: p.color,
-        ramp: round(p.ramp),
-        type: round(p.type),
-        org: roundVector(p.org),
-        vel: roundVector(p.vel),
-      });
-    }
-
-    return data;
-  };
-
-  static DeserializeParticles(data: SerializedParticle[]): void {
-    for (const p of data) {
-      console.assert(p.i >= 0 && p.i < R.particles.length, 'valid particle index', p.i);
-      R.particles[p.i] = {
-        die: p.die + clientRuntimeState.time,
-        color: p.color,
-        ramp: p.ramp,
-        type: p.type,
-        org: new Vector(...p.org),
-        vel: new Vector(...p.vel),
-      };
-    }
-  };
-
-  static EntityParticles(ent: ClientEdict): void {
-    const allocated = R.AllocParticles(162);
-
-    for (let i = 0; i < allocated.length; i++) {
-      const angleP = clientRuntimeState.time * R.avelocities[i][0];
-      const sp = Math.sin(angleP);
-      const cp = Math.cos(angleP);
-      const angleY = clientRuntimeState.time * R.avelocities[i][1];
-      const sy = Math.sin(angleY);
-      const cy = Math.cos(angleY);
-
-      R.particles[allocated[i]] = { // TODO: Particle Class
-        die: clientRuntimeState.time + 0.01,
-        color: 0x6f,
-        ramp: 0.0,
-        type: R.ptype.explode,
-        org: new Vector(
-          ent.origin[0] + avertexnormals[i * 3 + 0] * 64.0 + cp * cy * 16.0,
-          ent.origin[1] + avertexnormals[i * 3 + 1] * 64.0 + cp * sy * 16.0,
-          ent.origin[2] + avertexnormals[i * 3 + 2] * 64.0 + sp * -16.0,
-        ),
-        vel: new Vector(),
-      };
-    }
-  };
-
-  static ClearParticles() {
-    R.particles = [];
-    for (let i = 0; i < R.numparticles; i++) {
-      R.particles[i] = R._createDeadParticle();
-    }
-  };
-
-  static ParticleExplosion(org: Vector): void {
-    const allocated = R.AllocParticles(1024);
-    for (let i = 0; i < allocated.length; i++) {
-      R.particles[allocated[i]] = {
-        die: clientRuntimeState.time + 5.0,
-        color: R.ramp1[0],
-        ramp: Math.floor(Math.random() * 4.0),
-        type: ((i & 1) !== 0) ? R.ptype.explode : R.ptype.explode2,
-        org: new Vector(
-          org[0] + Math.random() * 32.0 - 16.0,
-          org[1] + Math.random() * 32.0 - 16.0,
-          org[2] + Math.random() * 32.0 - 16.0,
-        ),
-        vel: new Vector(Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0),
-      };
-    }
-  };
-
-  static ParticleExplosion2(org: Vector, colorStart: number, colorLength: number): void {
-    const allocated = R.AllocParticles(512);
-    let colorMod = 0;
-    for (let i = 0; i < allocated.length; i++) {
-      R.particles[allocated[i]] = {
-        die: clientRuntimeState.time + 0.3,
-        color: colorStart + (colorMod++ % colorLength),
-        ramp: 0.0,
-        type: R.ptype.blob,
-        org: new Vector(
-          org[0] + Math.random() * 32.0 - 16.0,
-          org[1] + Math.random() * 32.0 - 16.0,
-          org[2] + Math.random() * 32.0 - 16.0,
-        ),
-        vel: new Vector(Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0),
-      };
-    }
-  };
-
-  static BlobExplosion(org: Vector): void {
-    const allocated = R.AllocParticles(1024);
-    for (let i = 0; i < allocated.length; i++) {
-      const p = R.particles[allocated[i]];
-      p.die = clientRuntimeState.time + 1.0 + Math.random() * 0.4;
-      if ((i & 1) !== 0) {
-        p.type = R.ptype.blob;
-        p.color = 66 + Math.floor(Math.random() * 7.0);
-      } else {
-        p.type = R.ptype.blob2;
-        p.color = 150 + Math.floor(Math.random() * 7.0);
-      }
-      p.org = new Vector(
-        org[0] + Math.random() * 32.0 - 16.0,
-        org[1] + Math.random() * 32.0 - 16.0,
-        org[2] + Math.random() * 32.0 - 16.0,
-      );
-      p.vel = new Vector(Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0, Math.random() * 512.0 - 256.0);
-    }
-  };
-
-  static RunParticleEffect(org: Vector, dir: Vector, color: number, count: number): void {
-    const allocated = R.AllocParticles(count); let i;
-    for (i = 0; i < allocated.length; i++) {
-      R.particles[allocated[i]] = {
-        die: clientRuntimeState.time + 0.6 * Math.random(),
-        color: (color & 0xf8) + Math.floor(Math.random() * 8.0),
-        ramp: 0.0,
-        type: R.ptype.slowgrav,
-        org: new Vector(
-          org[0] + Math.random() * 16.0 - 8.0,
-          org[1] + Math.random() * 16.0 - 8.0,
-          org[2] + Math.random() * 16.0 - 8.0,
-        ),
-        vel: dir.copy().multiply(15.0),
-      };
-    }
-  };
-
-  static LavaSplash(org: Vector): void {
-    const allocated = R.AllocParticles(1024);
-    let k = 0;
-    for (let i = -16; i <= 15; i++) {
-      for (let j = -16; j <= 15; j++) {
-        if (k >= allocated.length) {
-          return;
-        }
-        const p = R.particles[allocated[k++]];
-        p.die = clientRuntimeState.time + 2.0 + Math.random() * 0.64;
-        p.color = 224 + Math.floor(Math.random() * 8.0);
-        p.type = R.ptype.slowgrav;
-        const dir = new Vector((j + Math.random()) * 8.0, (i + Math.random()) * 8.0, 256.0);
-        p.org = new Vector(org[0] + dir[0], org[1] + dir[1], org[2] + Math.random() * 64.0);
-        dir.normalize();
-        p.vel = dir.multiply(50.0 + Math.random() * 64.0);
-      }
-    }
-  };
-
-  static TeleportSplash(org: Vector): void {
-    const allocated = R.AllocParticles(896);
-    let l = 0;
-    for (let i = -16; i <= 15; i += 4) {
-      for (let j = -16; j <= 15; j += 4) {
-        for (let k = -24; k <= 31; k += 4) {
-          if (l >= allocated.length) {
-            return;
-          }
-          const p = R.particles[allocated[l++]];
-          p.die = clientRuntimeState.time + 0.2 + Math.random() * 0.16;
-          p.color = 7 + Math.floor(Math.random() * 8.0);
-          p.type = R.ptype.slowgrav;
-          const dir = new Vector(j * 8.0, i * 8.0, k * 8.0);
-          p.org = new Vector(
-            org[0] + i + Math.random() * 4.0,
-            org[1] + j + Math.random() * 4.0,
-            org[2] + k + Math.random() * 4.0,
-          );
-          dir.normalize();
-          p.vel = dir.multiply(50.0 + Math.random() * 64.0);
-        }
-      }
-    }
-  };
-
-  static tracercount = 0;
-  static RocketTrail(start: Vector, end: Vector, type: number): void {
-    let vec = end.copy().subtract(start);
-
-    const len = vec.len();
-
-    if (len === 0.0 || !isFinite(len)) {
-      return;
-    }
-
-    vec.normalize();
-
-    let allocated;
-    if (type === 4) {
-      allocated = R.AllocParticles(Math.floor(len / 6.0));
-    } else {
-      allocated = R.AllocParticles(Math.floor(len / 3.0));
-    }
-
-    for (let i = 0; i < allocated.length; i++) {
-      const p = R.particles[allocated[i]];
-      p.vel = new Vector();
-      p.die = clientRuntimeState.time + 2.0;
-      switch (type) {
-        case 7:
-          type = 1;
-          p.die += 8.0;
-        // eslint-disable-next-line no-fallthrough
-        case 0:
-        case 1:
-          p.ramp = Math.floor(Math.random() * 4.0) + (type << 1);
-          p.color = R.ramp3[p.ramp];
-          p.type = R.ptype.fire;
-          p.org = new Vector(
-            start[0] + Math.random() * 6.0 - 3.0,
-            start[1] + Math.random() * 6.0 - 3.0,
-            start[2] + Math.random() * 6.0 - 3.0,
-          );
-          break;
-        case 2:
-          p.type = R.ptype.grav;
-          p.color = 67 + Math.floor(Math.random() * 4.0);
-          p.org = new Vector(
-            start[0] + Math.random() * 6.0 - 3.0,
-            start[1] + Math.random() * 6.0 - 3.0,
-            start[2] + Math.random() * 6.0 - 3.0,
-          );
-          break;
-        case 3:
-        case 5:
-          p.die = clientRuntimeState.time + 0.5;
-          p.type = R.ptype.tracer;
-          if (type === 3) {
-            p.color = 52 + ((R.tracercount++ & 4) << 1);
-          } else {
-            p.color = 230 + ((R.tracercount++ & 4) << 1);
-          }
-          p.org = new Vector(start[0], start[1], start[2]);
-          if ((R.tracercount & 1) !== 0) {
-            p.vel[0] = 30.0 * vec[1];
-            p.vel[2] = -30.0 * vec[0];
-          } else {
-            p.vel[0] = -30.0 * vec[1];
-            p.vel[2] = 30.0 * vec[0];
-          }
-          break;
-        case 4:
-          p.type = R.ptype.grav;
-          p.color = 67 + Math.floor(Math.random() * 4.0);
-          p.org = new Vector(
-            start[0] + Math.random() * 6.0 - 3.0,
-            start[1] + Math.random() * 6.0 - 3.0,
-            start[2] + Math.random() * 6.0 - 3.0,
-          );
-          break;
-        case 6:
-          p.color = 152 + Math.floor(Math.random() * 4.0);
-          p.type = R.ptype.tracer;
-          p.die = clientRuntimeState.time + 0.3;
-          p.org = new Vector(
-            start[0] + Math.random() * 16.0 - 8.0,
-            start[1] + Math.random() * 16.0 - 8.0,
-            start[2] + Math.random() * 16.0 - 8.0,
-          );
-          break;
-        default:
-          console.assert(false, 'Unknown particle type: ' + type);
-      }
-      start.add(vec);
-    }
-  };
-
-  static InitDecals() {
-    R.decals = [];
-
-    Cmd.AddCommand('test_decal', async () => {
-      const start = R.refdef.vieworg;
-      const vectors = clientRuntimeState.viewangles.angleVectors();
-      const forward = vectors.forward;
-      const end = start.copy().add(forward.copy().multiply(8192));
-      const trace = clientCollision.traceStaticWorldLine(start, end);
-
-      if (trace.allsolid || trace.startsolid || trace.fraction === 1.0) {
-        return;
-      }
-
-      // Use a particle texture for testing if no bullet texture exists
-      R.PlaceDecal(trace.endpos, trace.plane.normal, await Draw.LoadPicFromLump('box_tl'));
-    });
-  };
-
-  static ClearDecals() {
-    R.decals = [];
-  };
-
-  static PlaceDecal(origin: Vector, normal: Vector, texture: GLTexture | null): void {
-    if (!texture) {
-      return;
-    }
-
-    // Calculate basis vectors for the decal quad
-    const up = new Vector(0, 0, 1);
-
-    if (Math.abs(normal.dot(up)) > 0.99) {
-      up.setTo(1, 0, 0);
-    }
-
-    const right = normal.cross(up);
-    right.normalize();
-    up.set(right.cross(normal));
-    up.normalize();
-
-    const size = 4.0; // Decal size
-
-    const verts: [Vector, Vector, Vector, Vector] = [
-      origin.copy().add(right.copy().multiply(-size)).add(up.copy().multiply(size)),
-      origin.copy().add(right.copy().multiply(size)).add(up.copy().multiply(size)),
-      origin.copy().add(right.copy().multiply(size)).add(up.copy().multiply(-size)),
-      origin.copy().add(right.copy().multiply(-size)).add(up.copy().multiply(-size)),
-    ];
-
-    // Apply polygon offset
-    const offset = normal.copy().multiply(0.5);
-    for (let i = 0; i < 4; i++) {
-      verts[i].add(offset);
-    }
-
-    // Calculate lighting
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-    const lightStart = origin.copy().add(normal.copy().multiply(4.0));
-    const lightEnd = origin.copy().subtract(normal.copy().multiply(4.0));
-    const lightResult = R.RecursiveLightPoint(worldmodel.nodes[0], lightStart, lightEnd);
-
-    let color = new Vector(255, 255, 255); // Default to white
-    if (lightResult) {
-      const r = Math.min(255, Math.max(0, Math.floor(lightResult[0][0])));
-      const g = Math.min(255, Math.max(0, Math.floor(lightResult[0][1])));
-      const b = Math.min(255, Math.max(0, Math.floor(lightResult[0][2])));
-      color.setTo(r, g, b);
-    }
-
-    R.decals.push({
-      texture,
-      verts,
-      color,
-      die: clientRuntimeState.time + 10.0, // Lasts 10 seconds
-      origin: origin.copy(),
-    });
-  };
-
-  static DrawDecals() {
-    if (!R.decals || R.decals.length === 0) {
-      return;
-    }
-
-    // Remove dead decals
-    R.decals = R.decals.filter((d) => d.die > clientRuntimeState.time);
-
-    if (R.decals.length === 0) {
-      return;
-    }
-
-    GL.StreamFlush();
-
-    const program = GL.UseProgram('decal')!;
-    console.assert(program !== null, 'decal program required');
-    gl.depthMask(false);
-    gl.enable(gl.BLEND);
-
-    gl.uniform1f(program.uAlpha!, 1.0);
-
-    let currentTexture = null;
-
-    for (let i = 0; i < R.decals.length; i++) {
-      const decal = R.decals[i];
-
-      if (decal.texture !== currentTexture) {
-        GL.StreamFlush();
-        decal.texture.bind(program.tTexture!);
-        currentTexture = decal.texture;
-      }
-
-      R._emitDecalQuad(decal);
-    }
-
-    GL.StreamFlush();
-    gl.depthMask(true);
-    gl.disable(gl.BLEND);
-  };
-
-  static DrawParticles() {
-    GL.StreamFlush();
-
-    GL.UseProgram('particle');
-    gl.depthMask(false);
-    gl.enable(gl.BLEND);
-
-    const frametime = Host.frametime;
-    const gravity = +clientStaticState.serverInfo.sv_gravity || 800;
-    const grav = frametime * gravity * 0.05;
-    const dvel = frametime * 4.0;
-
-    const coords = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
-    for (let i = 0; i < R.numparticles; i++) {
-      const p = R.particles[i];
-      if (p.die < clientRuntimeState.time) {
-        continue;
-      }
-
-      R._renderAndAdvanceParticle(p, coords, frametime, grav, dvel);
-    }
-
-    GL.StreamFlush();
-
-    gl.disable(gl.BLEND);
-    gl.depthMask(true);
-  };
-
-  static AllocParticles(count: number): number[] {
-    const allocated = new Array<number>(count);
-    for (let i = 0, j = 0; i < R.numparticles; i++) {
-      if (count === 0) {
-        return allocated;
-      }
-      if (R.particles[i].die < clientRuntimeState.time) {
-        allocated[j++] = i;
-        count--;
-      }
-    }
-    allocated.length = allocated.length - count;
-    return allocated;
   };
 
   // surf

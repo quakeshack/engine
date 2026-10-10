@@ -8,7 +8,7 @@ import { effect, modelFlags } from '../../shared/Defs.ts';
 import { BaseClientEdictHandler } from '../../shared/ClientEdict.ts';
 
 import { clientRuntimeState } from './ClientState.ts';
-import R from './R.ts';
+import Particles from './renderer/effects/Particles.ts';
 
 
 /**
@@ -26,7 +26,7 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       clent.angles[1] = Vector.anglemod(clientRuntimeState.time * 100.0);
     }
     if ((clent.effects & effect.EF_BRIGHTFIELD) !== 0) {
-      R.EntityParticles(clent);
+      Particles.EntityParticles(clent);
     }
     if ((clent.effects & effect.EF_MUZZLEFLASH) !== 0) {
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
@@ -60,23 +60,23 @@ export class DefaultClientEdictHandler extends BaseClientEdictHandler {
       // dl.color = new Vector(0.5, 0.5, 1.0);
     }
     if ((modelBits & modelFlags.MF_GIB) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 2);
+      Particles.RocketTrail(oldorg, clent.origin, 2);
     } else if ((modelBits & modelFlags.MF_ZOMGIB) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 4);
+      Particles.RocketTrail(oldorg, clent.origin, 4);
     } else if ((modelBits & modelFlags.MF_TRACER) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 3);
+      Particles.RocketTrail(oldorg, clent.origin, 3);
     } else if ((modelBits & modelFlags.MF_TRACER2) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 5);
+      Particles.RocketTrail(oldorg, clent.origin, 5);
     } else if ((modelBits & modelFlags.MF_ROCKET) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 0);
+      Particles.RocketTrail(oldorg, clent.origin, 0);
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(clent.num);
       dl.origin = new Vector(clent.origin[0], clent.origin[1], clent.origin[2]);
       dl.radius = 200.0;
       dl.die = clientRuntimeState.time + 0.1;
     } else if ((modelBits & modelFlags.MF_GRENADE) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 1);
+      Particles.RocketTrail(oldorg, clent.origin, 1);
     } else if ((modelBits & modelFlags.MF_TRACER3) !== 0) {
-      R.RocketTrail(oldorg, clent.origin, 6);
+      Particles.RocketTrail(oldorg, clent.origin, 6);
     }
   }
 

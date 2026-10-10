@@ -21,6 +21,7 @@ import clientCvars from './ClientCvars.ts';
 import { clientPmove } from './ClientPhysics.ts';
 import CL from './CL.ts';
 import R from './R.ts';
+import Particles from './renderer/effects/Particles.ts';
 import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
 import S from './Sound.ts';
@@ -268,7 +269,7 @@ function parseServerData() {
       }
     }
     if (clientRuntimeState.loadClientData && Array.isArray(clientRuntimeState.loadClientData[1])) {
-      R.DeserializeParticles(clientRuntimeState.loadClientData[1]);
+      Particles.DeserializeParticles(clientRuntimeState.loadClientData[1]);
     }
     if (clientRuntimeState.loadClientData && Array.isArray(clientRuntimeState.loadClientData[2])) {
       clientRuntimeState.clientEntities.deserialize(clientRuntimeState.loadClientData[2]);
@@ -450,28 +451,28 @@ function parseTemporaryEntity() {
 
   switch (type) {
     case Protocol.te.wizspike:
-      R.RunParticleEffect(pos, Vector.origin, 20, 20);
+      Particles.RunParticleEffect(pos, Vector.origin, 20, 20);
       if (sounds.wizhit !== null && S.IsPositionAudible(pos)) {
         S.StartSound(-1, 0, sounds.wizhit, pos, 1.0, 1.0);
       }
       return;
     case Protocol.te.knightspike:
-      R.RunParticleEffect(pos, Vector.origin, 226, 20);
+      Particles.RunParticleEffect(pos, Vector.origin, 226, 20);
       if (sounds.knighthit !== null && S.IsPositionAudible(pos)) {
         S.StartSound(-1, 0, sounds.knighthit, pos, 1.0, 1.0);
       }
       return;
     case Protocol.te.spike:
-      R.RunParticleEffect(pos, Vector.origin, 0, 10);
+      Particles.RunParticleEffect(pos, Vector.origin, 0, 10);
       return;
     case Protocol.te.superspike:
-      R.RunParticleEffect(pos, Vector.origin, 0, 20);
+      Particles.RunParticleEffect(pos, Vector.origin, 0, 20);
       return;
     case Protocol.te.gunshot:
-      R.RunParticleEffect(pos, Vector.origin, 0, 20);
+      Particles.RunParticleEffect(pos, Vector.origin, 0, 20);
       return;
     case Protocol.te.explosion: {
-      R.ParticleExplosion(pos);
+      Particles.ParticleExplosion(pos);
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(0);
       dl.origin = pos.copy();
       dl.radius = 350.0;
@@ -483,21 +484,21 @@ function parseTemporaryEntity() {
     }
       return;
     case Protocol.te.tarexplosion:
-      R.BlobExplosion(pos);
+      Particles.BlobExplosion(pos);
       if (sounds.explosion !== null && S.IsPositionAudible(pos)) {
         S.StartSound(-1, 0, sounds.explosion, pos, 1.0, 1.0);
       }
       return;
     case Protocol.te.lavasplash:
-      R.LavaSplash(pos);
+      Particles.LavaSplash(pos);
       return;
     case Protocol.te.teleport:
-      R.TeleportSplash(pos);
+      Particles.TeleportSplash(pos);
       return;
     case Protocol.te.explosion2: {
       const colorStart = net.message.readByte();
       const colorLength = net.message.readByte();
-      R.ParticleExplosion2(pos, colorStart, colorLength);
+      Particles.ParticleExplosion2(pos, colorStart, colorLength);
       const dl = clientRuntimeState.clientEntities.allocateDynamicLight(0);
       dl.origin = pos.copy();
       dl.radius = 350.0;
@@ -870,9 +871,9 @@ function handleParticle() {
   const msgcount = net.message.readByte();
   const color = net.message.readByte();
   if (msgcount === 255) {
-    R.ParticleExplosion(org);
+    Particles.ParticleExplosion(org);
   } else {
-    R.RunParticleEffect(org, dir, color, msgcount);
+    Particles.RunParticleEffect(org, dir, color, msgcount);
   }
 }
 

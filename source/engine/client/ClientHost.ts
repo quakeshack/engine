@@ -16,7 +16,7 @@ import { HostError } from '../common/Errors.ts';
 import PlayerColors from '../common/PlayerColors.ts';
 import type { SessionRequest } from '../common/ServerController.ts';
 import type { HostAlertEvent } from '../../shared/GameInterfaces.ts';
-import type { SerializedParticle } from './R.ts';
+import Particles, { type SerializedParticle } from './renderer/effects/Particles.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
 import type { AliasModel } from '../common/model/AliasModel.ts';
 import type { ServerSaveState, ViewthingState } from '../common/ServerController.ts';
@@ -390,7 +390,7 @@ export default class ClientHost {
     const clientHalf = {
       comment: clientRuntimeState.levelname,
       clientdata: clientRuntimeState.gameAPI ? clientRuntimeState.gameAPI.saveGame() : null,
-      particles: R.SerializeParticles(),
+      particles: Particles.SerializeParticles(),
       clientEntities: clientRuntimeState.clientEntities.serialize(),
     };
 

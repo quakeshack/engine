@@ -20,7 +20,7 @@ installPageServices({ engineApi: createClientEngineApi() });
 
 /**
  * A synthetic client-only handler standing in for a real debris/shell-casing handler: saves a
- * die time relative to `engine.CL.time`, the same convention `R.SerializeParticles()` uses for
+ * die time relative to `engine.CL.time`, the same convention `Particles.SerializeParticles()` uses for
  * `die`, and a trivial model so `setOrigin()`'s `linkEdict()` succeeds without assertion noise.
  */
 class TestDebrisHandler extends BaseClientEdictHandler {

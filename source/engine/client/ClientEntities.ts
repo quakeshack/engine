@@ -873,7 +873,7 @@ export default class ClientEntities {
   /**
    * Captures every persistent, live client-only entity for save/load: `classname` + `origin` +
    * `angles` + `velocity` (the universal fields every client-only entity has) plus one opaque
-   * blob from the owning handler (`ClientEdict.serialize()`). Mirrors `R.SerializeParticles()`'s
+   * blob from the owning handler (`ClientEdict.serialize()`). Mirrors `Particles.SerializeParticles()`'s
    * shape and round-trip, extended to the handler-owned tagged `SerializedData` format (see
    * `source/shared/ClientSerialization.ts`) instead of particles' flat fields, since a handler's
    * extra state can be richer than a single die time.

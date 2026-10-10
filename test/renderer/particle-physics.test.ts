@@ -1,19 +1,24 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import R from '../../source/engine/client/R.ts';
+import Particles, { ParticleType } from '../../source/engine/client/renderer/effects/Particles.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content } from '../../source/shared/Defs.ts';
 
+interface CollisionMock {
+  readonly pointContents?: (point: Vector) => number;
+  readonly traceStaticWorldLine?: (start: Vector, end: Vector) => object;
+}
+
 /**
- * Runs a callback with a mocked `CL.collision` installed, so `R.ResolveParticleCollision()` can
+ * Runs a callback with a mocked `CL.collision` installed, so `Particles.ResolveParticleCollision()` can
  * be tested without a real BSP world -- it only ever calls `pointContents()`/
  * `traceStaticWorldLine()`, both fully mocked here.
- * @param {{pointContents?: (point: Vector) => number, traceStaticWorldLine?: (start: Vector, end: Vector) => object}} collision mock collision methods
- * @param {() => void} callback
+ * @param collision The mock collision methods.
+ * @param callback What to run with the mock installed.
  */
-function withMockCollisionRegistry(collision, callback) {
+function withMockCollisionRegistry(collision: CollisionMock, callback: () => void): void {
   const restore = useClientStateOf({ collision });
 
   try {
@@ -23,20 +28,20 @@ function withMockCollisionRegistry(collision, callback) {
   }
 }
 
-void describe('R.collidableParticleTypes', () => {
+void describe('Particles.collidableParticleTypes', () => {
   void test('contains exactly the gravity-falling particle types, excluding fire and tracer', () => {
     // fire drifts upward (embers) rather than falling, and tracer never integrates gravity at
     // all -- neither should pay for collision checks.
     assert.deepEqual(
-      [...R.collidableParticleTypes].sort((a, b) => a - b),
-      [R.ptype.grav, R.ptype.slowgrav, R.ptype.explode, R.ptype.explode2, R.ptype.blob, R.ptype.blob2].sort((a, b) => a - b),
+      [...Particles.collidableParticleTypes].sort((a, b) => a - b),
+      [ParticleType.grav, ParticleType.slowgrav, ParticleType.explode, ParticleType.explode2, ParticleType.blob, ParticleType.blob2].sort((a, b) => a - b),
     );
-    assert.equal(R.collidableParticleTypes.has(R.ptype.fire), false);
-    assert.equal(R.collidableParticleTypes.has(R.ptype.tracer), false);
+    assert.equal(Particles.collidableParticleTypes.has(ParticleType.fire), false);
+    assert.equal(Particles.collidableParticleTypes.has(ParticleType.tracer), false);
   });
 });
 
-void describe('R.ResolveParticleCollision', () => {
+void describe('Particles.ResolveParticleCollision', () => {
   void test('moves to newOrigin and skips the real trace when the destination is not solid', () => {
     let traceCalls = 0;
 
@@ -51,7 +56,7 @@ void describe('R.ResolveParticleCollision', () => {
       const velocity = new Vector(10, 0, -50);
       const newOrigin = new Vector(1, 0, 95);
 
-      const died = R.ResolveParticleCollision(origin, velocity, newOrigin);
+      const died = Particles.ResolveParticleCollision(origin, velocity, newOrigin);
 
       assert.equal(died, false);
       assert.deepEqual([...origin], [1, 0, 95]);
@@ -75,7 +80,7 @@ void describe('R.ResolveParticleCollision', () => {
       const velocity = new Vector(0, 0, -100);
       const newOrigin = new Vector(0, 0, -9);
 
-      const died = R.ResolveParticleCollision(origin, velocity, newOrigin);
+      const died = Particles.ResolveParticleCollision(origin, velocity, newOrigin);
 
       assert.equal(died, false, 'a floor-like impact bounces instead of killing the particle');
       assert.deepEqual([...origin], [0, 0, -4], 'origin snaps to the trace impact point, not newOrigin');
@@ -100,7 +105,7 @@ void describe('R.ResolveParticleCollision', () => {
       const velocity = new Vector(200, 0, 0);
       const newOrigin = new Vector(20, 0, 50);
 
-      const died = R.ResolveParticleCollision(origin, velocity, newOrigin);
+      const died = Particles.ResolveParticleCollision(origin, velocity, newOrigin);
 
       assert.equal(died, true);
       assert.deepEqual([...velocity], [200, 0, 0], 'velocity is left alone for a particle about to be killed');
@@ -122,7 +127,7 @@ void describe('R.ResolveParticleCollision', () => {
       const velocity = new Vector(0, 0, -50);
       const newOrigin = new Vector(0, 0, -5);
 
-      const died = R.ResolveParticleCollision(origin, velocity, newOrigin);
+      const died = Particles.ResolveParticleCollision(origin, velocity, newOrigin);
 
       assert.equal(died, true);
     });
@@ -149,7 +154,7 @@ void describe('R.ResolveParticleCollision', () => {
       const velocity = new Vector(10, 0, -30);
       const newOrigin = new Vector(1, 0, 47);
 
-      const died = R.ResolveParticleCollision(origin, velocity, newOrigin);
+      const died = Particles.ResolveParticleCollision(origin, velocity, newOrigin);
 
       assert.equal(died, false);
       assert.deepEqual([...origin], [1, 0, 47]);

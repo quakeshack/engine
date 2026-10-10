@@ -6,6 +6,8 @@ import GL from '../../source/engine/client/GL.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
+import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
+import Decals from '../../source/engine/client/renderer/effects/Decals.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
 import { modelRendererRegistry } from '../../source/engine/client/renderer/models/ModelRendererRegistry.ts';
 import type PostProcessEffect from '../../source/engine/client/renderer/postprocess/PostProcessEffect.ts';
@@ -49,8 +51,8 @@ void describe('R.Init', () => {
     eventBus.publish('gl.ready');
 
     mock.method(R, 'InitTextures', () => { steps.push('textures'); });
-    mock.method(R, 'InitParticles', () => { steps.push('particles'); });
-    mock.method(R, 'InitDecals', () => { steps.push('decals'); });
+    mock.method(Particles, 'Init', () => { steps.push('particles'); });
+    mock.method(Decals, 'Init', () => { steps.push('decals'); });
     mock.method(R, 'InitShaders', () => {
       steps.push('shaders');
 

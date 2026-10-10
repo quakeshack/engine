@@ -90,7 +90,7 @@ export class BaseClientEdictHandler {
    * (`ClientEdict.persistent`); map-baked `svc_spawnstatic` decorations are never saved, since
    * `SV.SpawnServer()` regenerates them from scratch on the next signon. Build the returned value
    * with `ClientSerialization.serialize()` (`source/shared/ClientSerialization.ts`), giving times
-   * relative to `engine.CL.time` the same way `R.SerializeParticles()` does for `die`, so they
+   * relative to `engine.CL.time` the same way `Particles.SerializeParticles()` does for `die`, so they
    * re-anchor correctly against a new session's clock on load. The default implementation saves
    * nothing.
    * @returns This handler's saved extras, or `null` when there is nothing to save.

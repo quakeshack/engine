@@ -4,9 +4,9 @@ import { describe, test } from 'node:test';
 import { DefaultClientEdictHandler } from '../../source/engine/client/ClientLegacy.ts';
 import ClientEntities, { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { effect, modelFlags } from '../../source/shared/Defs.ts';
-import { useClientStateOf } from '../support/clientState.ts';
+import { patchMembers, useClientStateOf } from '../support/clientState.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
-import { useRendererOf } from '../support/renderer.ts';
+import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import { useHostOf } from '../support/host.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
@@ -19,7 +19,6 @@ import { engineMocks } from '../support/engineMocks.ts';
 function withMockLegacyClientRegistry(callback) {
   const previousCL = engineMocks.CL;
   const previousHost = engineMocks.Host;
-  const previousR = engineMocks.R;
 
   const clientEntities = new ClientEntities();
 
@@ -28,16 +27,14 @@ function withMockLegacyClientRegistry(callback) {
   const restoreClientState = useClientStateOf(engineMocks.CL);
   engineMocks.Host = { frametime: 1 / 60 };
   const restoreHost = useHostOf(engineMocks.Host);
-  engineMocks.R = { RocketTrail() {}, EntityParticles() {} };
-  const restoreRenderer = useRendererOf(engineMocks.R);
+  const restoreParticles = patchMembers(Particles, { RocketTrail() {}, EntityParticles() {} });
 
   const restore = () => {
     engineMocks.CL = previousCL;
     restoreClientState();
     engineMocks.Host = previousHost;
     restoreHost();
-    engineMocks.R = previousR;
-    restoreRenderer();
+    restoreParticles();
   };
 
   try {

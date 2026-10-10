@@ -5,7 +5,7 @@ import * as Def from '../common/Def.ts';
 import Vector from '../../shared/Vector.ts';
 import type { BaseModel } from '../common/model/BaseModel.ts';
 import type { BrushModel } from '../common/Mod.ts';
-import type { SerializedParticle } from './R.ts';
+import type { SerializedParticle } from './renderer/effects/Particles.ts';
 import type { ClientGameInterface, ClientSerializableType, SFX } from '../../shared/GameInterfaces.ts';
 import type ClientDemos from './ClientDemos.ts';
 import type { ServerController } from '../common/ServerController.ts';

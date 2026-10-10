@@ -2,7 +2,7 @@ import Vector from '../../shared/Vector.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState } from './ClientState.ts';
-import R from './R.ts';
+import Particles, { ParticleType } from './renderer/effects/Particles.ts';
 
 type VectorTuple = readonly [number, number, number];
 
@@ -26,18 +26,18 @@ export default class NavigationDebug {
   }
 
   static #emitDot(position: Vector, color: number, ttl: number): void {
-    const pn = R.AllocParticles(1);
+    const pn = Particles.AllocParticles(1);
 
     if (pn.length !== 1) {
       Con.PrintWarning(`Navigation: failed to allocate particle for debug dot at [${position}]\n`);
       return;
     }
 
-    const p = R.particles[pn[0]];
+    const p = Particles.particles[pn[0]];
     p.die = clientRuntimeState.time + ttl;
     p.color = color;
     p.vel = new Vector(0, 0, 0);
     p.org = position.copy();
-    p.type = R.ptype.tracer;
+    p.type = ParticleType.tracer;
   }
 }

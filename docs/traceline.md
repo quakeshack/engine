@@ -154,11 +154,11 @@ Those helpers exist to make the scope explicit:
 Game logic should not assume that `Traceline` means the same thing as `traceStaticWorldLine`.
 That equivalence is false on the server today, and it is only accidentally true on the client at the moment.
 
-Client-only engine code (`R.ts`, `Chase.ts`, `ClientEntityPhysics.ts`) does not use `SV.collision`.
+Client-only engine code (`R.ts`, `renderer/effects/Particles.ts`, `Chase.ts`, `ClientEntityPhysics.ts`) does not use `SV.collision`.
 It queries `clientCollision` (`ClientCollision.ts`), which answers `pointContents()` and
 `traceStaticWorldLine()` from the client's own copy of the current map and never touches the
 server. That works the same on a pure remote client, a listen host and, later, a client whose
-server runs in a worker. `R.ts` relies on it for particle wall/floor collision and dynamic-light
+server runs in a worker. `Particles.ts` relies on it for particle wall/floor collision and `R.ts` for dynamic-light
 visibility checks. `clientCollision` knows the static world only, so `CollisionTrace.ent` is always
 `null` there.
 

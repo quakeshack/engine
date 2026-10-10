@@ -32,6 +32,8 @@ import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import { clientCollision, clientPmove } from './ClientPhysics.ts';
 import CL from './CL.ts';
 import R from './R.ts';
+import Particles from './renderer/effects/Particles.ts';
+import Decals from './renderer/effects/Decals.ts';
 import M from './Menu.ts';
 import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
@@ -433,14 +435,14 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * Spawn a rocket trail effect from start to end.
    */
   RocketTrail(start: Vector, end: Vector, type: number): void {
-    R.RocketTrail(start, end, type);
+    Particles.RocketTrail(start, end, type);
   }
 
   /**
    * Place a decal in the world.
    */
   PlaceDecal(origin: Vector, normal: Vector, texture: GLTexture): void {
-    R.PlaceDecal(origin, normal, texture);
+    Decals.PlaceDecal(origin, normal, texture);
   }
 
   /**

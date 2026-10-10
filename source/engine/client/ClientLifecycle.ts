@@ -8,7 +8,7 @@ import GameModule from '../common/GameModule.ts';
 import { MoveVars } from '../common/Pmove.ts';
 import { engineApi } from './PageServices.ts';
 import { eventBus } from '../common/EventBus.ts';
-import type { SerializedParticle } from './R.ts';
+import type { SerializedParticle } from './renderer/effects/Particles.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientPmove } from './ClientPhysics.ts';

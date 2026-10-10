@@ -1,8 +1,8 @@
 # Split `R.ts` into renderer subsystems
 
 Track D2 of `plans/engine-architecture-modernization.md`. Status: **plan agreed, all open questions settled
-(2026-10-10); Phases 0 and 0b are done, committed, and wait for a go-ahead for Phase 1.** The renderer files have
-moved into their folders; no class has been extracted yet.
+(2026-10-10); Phases 0, 0b and 1 are done and wait for a go-ahead for Phase 2.** The renderer files are in their
+folders, and `Particles` and `Decals` are extracted.
 
 ## Context
 
@@ -392,6 +392,35 @@ calls `Particles`/`Decals` for emit and advance. `Decals.PlaceDecal` temporarily
 `docs/client-entities.md` (`R.collidableParticleTypes`) and `docs/traceline.md` are updated. `Particles`,
 `ParticleType` and `Decals` are added to the `window.engine` object in `bootstrap/createBrowserClient.ts`, so
 `scripts/renderer-capture/capture.mjs` finds them (its adapter already tries `engine.Particles` first).
+
+#### Phase 1: what shipped (2026-10-10)
+
+`renderer/effects/Particles.ts` (`Particles`, `ParticleType`, `Particle`, `SerializedParticle`, `ParticleFrame`) and
+`renderer/effects/Decals.ts` (`Decals`, `Decal`). `R.ts` went from 3540 to 2834 lines (the two new files are 677 and 197).
+
+- **No forwarders.** There are 6 engine callers and a handful of tests, so each was updated in the phase
+  (`ClientLegacy`, `NavigationDebug`, `ClientEngineAPI`, `ClientHost`, `ClientServerCommandHandlers`,
+  `ClientLifecycle`/`ClientState` for the type). The forwarder ledger stays empty.
+- **Names:** the effect spawners keep their Quake names (`ParticleExplosion`, `RunParticleEffect`, `RocketTrail`,
+  `AllocParticles`, `SerializeParticles`, ...); lifecycle members are `Init`, `Clear`, `Draw`. `R.ptype` is gone,
+  callers import `ParticleType`.
+- **Two small API changes the move needed:** the per-frame constants the transparent pass used to compute inline
+  are `Particles.BeginFrame()` (also used by `Particles.Draw()`, which had a second copy), and the billboard step is
+  public as `Particles.RenderAndAdvance(particle, frame)`. `Decals.PruneExpired()` replaces the pass assigning
+  `R.decals` from outside. `Particles.Clear()` now truncates the old array itself (it used to be done by
+  `R.ClearAll`).
+- **Temporary cycle:** `Particles` and `Decals` import `R` for `refdef`/`vpn` and `RecursiveLightPoint`. Nothing
+  is built at module evaluation, so it is harmless; Phases 2 and 4 remove it.
+- **Verification hooks:** `Particles`, `ParticleType` and `Decals` are on `window.engine`, and the capture script
+  found them (`engine.Particles` is its first lookup).
+- **Tests:** `particle-physics` converted to `.test.ts`; `particle-pool`, `renderer-init` and the mocks in
+  `client-legacy`, `navigation-debug` and `savegame` now patch `Particles`. New: `decals.test.ts` (placement
+  geometry, light color, lifetime, pruning, the streamed quad) and `particle-simulation.test.ts` (`BeginFrame`,
+  billboard emission, and the per-type motion and color ramps). Two unused imports at the top of
+  `savegame.test.mjs` that failed lint at HEAD were removed.
+- **Verified:** `npm test` 1880 pass, `npm run typecheck` clean, `eslint` 0 errors on touched files; browser
+  capture of the build before and after (2 + 2 runs): no view beyond the noise between captures of one build,
+  identical `r_speeds`, no console errors. The effects view shows the particles and the decal.
 
 ### Phase 2: Light sampling and lightstyles
 

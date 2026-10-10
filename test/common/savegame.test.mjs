@@ -3,23 +3,21 @@ import { describe, test } from 'node:test';
 
 import COMClass from '../../source/engine/common/Com.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
-import Host from '../../source/engine/common/Host.ts';
 import * as Def from '../../source/engine/common/Def.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import ClientLifecycle from '../../source/engine/client/ClientLifecycle.ts';
 import InThreadServerController from '../../source/engine/server/InThreadServerController.ts';
 import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
 import NodeCOM from '../../source/engine/server/Com.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { Serializer } from '../../source/game/id1/helper/MiscHelpers.ts';
 import { cvarFlags } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 
 import { defaultMockEngine, withMockEngine, mockedSV } from '../physics/fixtures.mjs';
 import '../support/consoleBridge.ts';
-import { useRendererOf } from '../support/renderer.ts';
+import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
-import { useClientStateOf } from '../support/clientState.ts';
+import { patchMembers, useClientStateOf } from '../support/clientState.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 const [{ ServerGameAPI }, { PlayerEntity }, { WorldspawnEntity }] = await Promise.all([
@@ -402,6 +400,7 @@ void describe('ClientHost.Savegame_f', () => {
         clients: [client],
       },
     };
+    // what the pool of particles writes into the savegame
     const renderer = {
       SerializeParticles() {
         return [{ type: 'spark' }];
@@ -428,7 +427,6 @@ void describe('ClientHost.Savegame_f', () => {
       CL: engineMocks.CL,
       COM: engineMocks.COM,
       Con: engineMocks.Con,
-      R: engineMocks.R,
       SV: engineMocks.SV,
     };
     const previousFilter = Cvar.Filter;
@@ -450,8 +448,7 @@ void describe('ClientHost.Savegame_f', () => {
     const restoreClientState = useClientStateOf(engineMocks.CL);
     engineMocks.COM = mockCOM;
     engineMocks.Con = consoleCapture.Con;
-    engineMocks.R = renderer;
-    const restoreRenderer = useRendererOf(engineMocks.R);
+    const restoreParticles = patchMembers(Particles, renderer);
     engineMocks.SV = sv;
 
     Cvar.Filter = function* Filter(compareFn) {
@@ -470,8 +467,7 @@ void describe('ClientHost.Savegame_f', () => {
       restoreClientState();
       engineMocks.COM = previousRegistry.COM;
       engineMocks.Con = previousRegistry.Con;
-      engineMocks.R = previousRegistry.R;
-      restoreRenderer();
+      restoreParticles();
       engineMocks.SV = previousRegistry.SV;
     }
 
@@ -832,7 +828,6 @@ void describe('Host.save/load integration', () => {
     const consoleCapture = createMockConsole();
     const knownKeysBefore = new Set(Object.keys(Mod.known));
     const resumes = [];
-    const previousRenderer = engineMocks.R;
     const previousServerGameCvars = ServerGameAPI._cvars;
     const previousSys = engineMocks.Sys;
     const nodeCom = new NodeCOM({
@@ -863,12 +858,6 @@ void describe('Host.save/load integration', () => {
       deathmatch: createMockCvar('deathmatch', '0'),
       coop: createMockCvar('coop', '0'),
     };
-    engineMocks.R = {
-      SerializeParticles() {
-        return [];
-      },
-    };
-    const restoreRenderer = useRendererOf(engineMocks.R);
     engineMocks.Sys = {
       Print() { },
     };
@@ -984,11 +973,6 @@ void describe('Host.save/load integration', () => {
         COM: mockCOM,
         Con: consoleCapture.Con,
         Mod,
-        R: {
-          SerializeParticles() {
-            return [];
-          },
-        },
       }, async () => {
         // Load the real id1 pak metadata so maps/e1m1.bsp resolves through COM.
         await nodeCom.AddGameDirectory('id1');
@@ -1082,8 +1066,6 @@ void describe('Host.save/load integration', () => {
       });
     } finally {
       ClientLifecycle.resumeGame = previousResumeGame;
-      engineMocks.R = previousRenderer;
-      restoreRenderer();
       engineMocks.SCR = previousSCR;
       engineMocks.Sys = previousSys;
       ServerGameAPI._cvars = previousServerGameCvars;
