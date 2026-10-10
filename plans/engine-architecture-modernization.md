@@ -1406,6 +1406,24 @@ Phase 3, as `plans/server-replay.md`. D1 (shader chunks) is independent of A/B
 and can run at any time as a quick win. E, F and G start where noted in their sections; G's test
 conversion rides along with Phases 2 to 4.
 
+## Release: 1.3.0
+
+Decided 2026-10-10. When everything this plan tracks is finished, the QuakeShack version becomes **1.3.0** (it is
+1.2.2 now). Nothing is bumped before that, so intermediate builds keep naming the version they branched from.
+
+"Everything" means: Tracks A to D with their follow-ups (D2 is `plans/r-split.md`, finished at its Phase 7, which
+also ticks D2 here; the SCR and V dissolve in `plans/scr-v-split.md` is part of it), the later tracks E to G in the
+form their own plans define as done, and no open item left in "Open questions".
+
+The bump itself, in one commit with no other change:
+
+- `package.json` and `package-lock.json` (`version`).
+- `productVersion` in `source/engine/common/Def.ts`. It is what `Host` builds the `version` cvar from and, through
+  decision 9, the engine half of the asset cache namespace, so players download everything once after the update.
+  That is the intended effect of a release.
+- Any doc or tooling that spells the version out (check with a search for the old string).
+- Games declare their own version in `identification.version`; they are not bumped by this.
+
 ## Testing
 
 - **Per phase:** `npm test`, `npm run typecheck`, `npx eslint --fix` on touched files. Test files
