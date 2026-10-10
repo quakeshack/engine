@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
-import R from '../../source/engine/client/R.ts';
+import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
+import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
+import Visibility from '../../source/engine/client/renderer/scene/Visibility.ts';
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { BrushModel, Node } from '../../source/engine/common/model/BSP.ts';
 import { content } from '../../source/shared/Defs.ts';
+import Vector from '../../source/shared/Vector.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 
 interface FakeWorld {
@@ -72,13 +75,13 @@ function createWorld(): FakeWorld {
   return world;
 }
 
-void describe('R.MarkLeafs', () => {
+void describe('Visibility.MarkLeafs', () => {
   const previous = {
-    visframecount: R.visframecount,
-    viewleaf: R.viewleaf,
-    oldviewleaf: R.oldviewleaf,
-    drawsky: R.drawsky,
-    novis: R.novis,
+    visframecount: Visibility.visframecount,
+    viewleaf: Visibility.viewleaf,
+    oldviewleaf: Visibility.oldviewleaf,
+    skyVisible: Visibility.skyVisible,
+    novis: rendererCvars.novis,
   };
   let world: FakeWorld = null!;
   let areaportals = 0;
@@ -97,72 +100,72 @@ void describe('R.MarkLeafs', () => {
   beforeEach(() => {
     world = createWorld();
     areaportals = 0;
-    R.visframecount = 100;
-    R.viewleaf = world.leafs[1];
-    R.oldviewleaf = null;
-    R.drawsky = false;
-    R.novis = { value: 0 } as unknown as Cvar;
+    Visibility.visframecount = 100;
+    Visibility.viewleaf = world.leafs[1];
+    Visibility.oldviewleaf = null;
+    Visibility.skyVisible = false;
+    rendererCvars.novis = { value: 0 } as unknown as Cvar;
     install();
   });
 
   afterEach(() => {
     restoreClientState();
-    R.visframecount = previous.visframecount;
-    R.viewleaf = previous.viewleaf;
-    R.oldviewleaf = previous.oldviewleaf;
-    R.drawsky = previous.drawsky;
-    R.novis = previous.novis;
+    Visibility.visframecount = previous.visframecount;
+    Visibility.viewleaf = previous.viewleaf;
+    Visibility.oldviewleaf = previous.oldviewleaf;
+    Visibility.skyVisible = previous.skyVisible;
+    rendererCvars.novis = previous.novis;
   });
 
   void test('advances the frame counter and remembers the leaf it marked for', () => {
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(R.visframecount, 101);
-    assert.equal(R.oldviewleaf, world.leafs[1]);
+    assert.equal(Visibility.visframecount, 101);
+    assert.equal(Visibility.oldviewleaf, world.leafs[1]);
   });
 
   void test('does nothing while the view stays in the same leaf', () => {
-    R.MarkLeafs();
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(R.visframecount, 101);
+    assert.equal(Visibility.visframecount, 101);
   });
 
   void test('marks again every frame with r_novis set, as the visible set is not cached then', () => {
-    R.novis = { value: 1 } as unknown as Cvar;
+    rendererCvars.novis = { value: 1 } as unknown as Cvar;
 
-    R.MarkLeafs();
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(R.visframecount, 102);
+    assert.equal(Visibility.visframecount, 102);
   });
 
   void test('stamps the leafs the PVS reveals and leaves the others alone', () => {
     world.revealedLeafs.add(1);
 
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(world.leafs[1].visframe, R.visframecount);
-    assert.notEqual(world.leafs[2].visframe, R.visframecount);
+    assert.equal(world.leafs[1].visframe, Visibility.visframecount);
+    assert.notEqual(world.leafs[2].visframe, Visibility.visframecount);
   });
 
   void test('marks the parents of a revealed leaf so the BSP walk can reach it', () => {
     world.revealedLeafs.add(2);
 
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(world.root.markvisframe, R.visframecount);
-    assert.equal(world.leafs[2].markvisframe, R.visframecount);
-    assert.notEqual(world.leafs[1].markvisframe, R.visframecount);
+    assert.equal(world.root.markvisframe, Visibility.visframecount);
+    assert.equal(world.leafs[2].markvisframe, Visibility.visframecount);
+    assert.notEqual(world.leafs[1].markvisframe, Visibility.visframecount);
   });
 
   void test('reveals every leaf when r_novis is 1', () => {
-    R.novis = { value: 1 } as unknown as Cvar;
+    rendererCvars.novis = { value: 1 } as unknown as Cvar;
 
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(world.leafs[1].visframe, R.visframecount);
-    assert.equal(world.leafs[2].visframe, R.visframecount);
+    assert.equal(world.leafs[1].visframe, Visibility.visframecount);
+    assert.equal(world.leafs[2].visframe, Visibility.visframecount);
   });
 
   void test('skips leafs that the area portals cut off when cl_areaportals is on', () => {
@@ -173,19 +176,19 @@ void describe('R.MarkLeafs', () => {
     world.revealedLeafs.add(2);
     world.connected = false;
 
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.notEqual(world.leafs[1].visframe, R.visframecount);
-    assert.notEqual(world.leafs[2].visframe, R.visframecount);
+    assert.notEqual(world.leafs[1].visframe, Visibility.visframecount);
+    assert.notEqual(world.leafs[2].visframe, Visibility.visframecount);
   });
 
   void test('ignores the area portals when cl_areaportals is off', () => {
     world.revealedLeafs.add(1);
     world.connected = false;
 
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(world.leafs[1].visframe, R.visframecount);
+    assert.equal(world.leafs[1].visframe, Visibility.visframecount);
   });
 
   void test('asks for the sky when a visible leaf has sky surfaces', () => {
@@ -193,52 +196,99 @@ void describe('R.MarkLeafs', () => {
     world.leafs[1].skychain = 0;
     world.leafs[1].waterchain = 2;
 
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(R.drawsky, true);
+    assert.equal(Visibility.skyVisible, true);
   });
 
   void test('does not ask for the sky when no visible leaf has sky surfaces', () => {
     world.revealedLeafs.add(1);
 
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
-    assert.equal(R.drawsky, false);
+    assert.equal(Visibility.skyVisible, false);
+  });
+});
+
+void describe('Visibility view leaf', () => {
+  const previous = {
+    viewleaf: Visibility.viewleaf,
+    oldviewleaf: Visibility.oldviewleaf,
+    vieworg: Camera.refdef.vieworg.copy(),
+  };
+  let restoreClientState: () => void = () => {};
+
+  afterEach(() => {
+    restoreClientState();
+    Visibility.viewleaf = previous.viewleaf;
+    Visibility.oldviewleaf = previous.oldviewleaf;
+    Camera.refdef.vieworg.set(previous.vieworg);
+  });
+
+  void test('UpdateViewLeaf asks the world for the leaf at the view origin and returns it', () => {
+    const asked: number[][] = [];
+    const leaf = createNode(5, content.CONTENT_WATER);
+
+    restoreClientState = useClientStateOf({
+      state: {
+        worldmodel: {
+          getLeafForPoint: (point: Vector) => {
+            asked.push([point[0], point[1], point[2]]);
+            return leaf;
+          },
+        },
+      },
+    });
+    Camera.refdef.vieworg.setTo(12.0, -34.0, 56.0);
+
+    assert.equal(Visibility.UpdateViewLeaf(), leaf);
+    assert.equal(Visibility.viewleaf, leaf);
+    assert.deepEqual(asked, [[12.0, -34.0, 56.0]]);
+  });
+
+  void test('Reset forgets the view leaf and the marking so the next frame marks again', () => {
+    Visibility.viewleaf = createNode(1, content.CONTENT_EMPTY);
+    Visibility.oldviewleaf = createNode(1, content.CONTENT_EMPTY);
+
+    Visibility.Reset();
+
+    assert.equal(Visibility.viewleaf, null);
+    assert.equal(Visibility.oldviewleaf, null);
   });
 });
 
 void describe('view leaf invalidation', () => {
-  const previousOldViewLeaf = R.oldviewleaf;
+  const previousOldViewLeaf = Visibility.oldviewleaf;
 
   beforeEach(() => {
-    R.oldviewleaf = createNode(1, content.CONTENT_EMPTY);
+    Visibility.oldviewleaf = createNode(1, content.CONTENT_EMPTY);
   });
 
   afterEach(() => {
-    R.oldviewleaf = previousOldViewLeaf;
+    Visibility.oldviewleaf = previousOldViewLeaf;
   });
 
   void test('is forced when the area portals change', () => {
     eventBus.publish('areaportals.changed');
 
-    assert.equal(R.oldviewleaf, null);
+    assert.equal(Visibility.oldviewleaf, null);
   });
 
   void test('is forced when r_novis changes', () => {
     eventBus.publish('cvar.changed', 'r_novis');
 
-    assert.equal(R.oldviewleaf, null);
+    assert.equal(Visibility.oldviewleaf, null);
   });
 
   void test('is forced when cl_areaportals changes', () => {
     eventBus.publish('cvar.changed', 'cl_areaportals');
 
-    assert.equal(R.oldviewleaf, null);
+    assert.equal(Visibility.oldviewleaf, null);
   });
 
   void test('is kept when an unrelated console variable changes', () => {
     eventBus.publish('cvar.changed', 'r_bloom');
 
-    assert.notEqual(R.oldviewleaf, null);
+    assert.notEqual(Visibility.oldviewleaf, null);
   });
 });

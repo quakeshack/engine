@@ -219,7 +219,7 @@ New `source/engine/client/renderer/StudioModelRenderer.ts`, registered in
   from index 255; `ADDITIVE` → transparent pass with additive blend; `FLATSHADE` → ignore normals;
   `CHROME` → sphere-map UVs computed in the vertex shader from the bone-transformed normal.
   Chrome and additive are Phase 4 polish; Phase 3 renders them as plain diffuse.
-- **Culling**: bounding sphere from the model's view bounds (not per-pose), same `R.CullBox` path.
+- **Culling**: bounding sphere from the model's view bounds (not per-pose), same `Camera.CullBox` path.
 - **Shadows**: `renderShadow()` draws the CPU-skinned buffer with the existing shadow programs.
 - **Viewmodel / player colour remap** (HL's `Remap` texture naming): out of scope for now.
 

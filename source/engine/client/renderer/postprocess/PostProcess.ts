@@ -182,6 +182,28 @@ export default class PostProcess {
     return PostProcess.effects.some((e) => e.active) || PostProcess.stack.length > 0;
   }
 
+  /** Whether the frame preparation asked for the scene to be captured, see {@link PostProcess.requestSceneCapture}. */
+  static #sceneCaptureRequested = false;
+
+  /**
+   * Tells the post-process system whether something in the scene needs to sample the captured color or depth
+   * (turbulent surfaces, fog volumes, underwater fog), independent of whether a screen-space effect is active.
+   * The frame preparation calls it every frame; the request stays until it is called again.
+   */
+  static requestSceneCapture(required: boolean): void {
+    PostProcess.#sceneCaptureRequested = required;
+  }
+
+  /**
+   * Whether the scene is rendered into the capture FBO this frame and resolved from it afterwards: something
+   * asked for it with {@link PostProcess.requestSceneCapture}, or a screen-space effect needs the capture.
+   * The single predicate for `R.SetupGL` (begin) and `SCR.UpdateScreen` (end and resolve).
+   * @returns True when the frame goes through the capture FBO.
+   */
+  static needsSceneCapture(): boolean {
+    return PostProcess.#sceneCaptureRequested || PostProcess.hasActiveEffects();
+  }
+
   /**
    * Initialize the post-process system.
    * Creates scene FBO, MSAA FBO (if enabled), and ping-pong FBOs.

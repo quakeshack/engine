@@ -9,7 +9,7 @@ import GL from '../../GL.ts';
 import { clientRuntimeState, clientStaticState } from '../../ClientState.ts';
 import { clientCollision } from '../../ClientPhysics.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
-import R from '../../R.ts';
+import Camera from '../scene/Camera.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -172,9 +172,9 @@ export class Particles {
   static RenderAndAdvance(particle: Particle, frame: ParticleFrame): void {
     const { coords, frameTime, grav, dvel } = frame;
     const color = W.d_8to24table[particle.color];
-    let scale = (particle.org[0] - R.refdef.vieworg[0]) * R.vpn[0]
-      + (particle.org[1] - R.refdef.vieworg[1]) * R.vpn[1]
-      + (particle.org[2] - R.refdef.vieworg[2]) * R.vpn[2];
+    let scale = (particle.org[0] - Camera.refdef.vieworg[0]) * Camera.vpn[0]
+      + (particle.org[1] - Camera.refdef.vieworg[1]) * Camera.vpn[1]
+      + (particle.org[2] - Camera.refdef.vieworg[2]) * Camera.vpn[2];
     if (scale < 20.0) {
       scale = 0.375;
     } else {

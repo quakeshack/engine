@@ -19,9 +19,10 @@ import Con from '../common/Console.ts';
 import Mod from '../common/Mod.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
-import R from './R.ts';
+import rendererCvars from './renderer/resources/RendererCvars.ts';
 import Host from '../common/Host.ts';
 import S from './Sound.ts';
+import Camera from './renderer/scene/Camera.ts';
 
 interface ClientEntityLerpState {
   readonly frame: [number, number, number];
@@ -1123,8 +1124,7 @@ export default class ClientEntities {
     }
 
     // get the PVS for the current view
-    const rendererState = R as typeof R & { novis: { value: number } };
-    const vis = rendererState.novis.value !== 0 ? revealedVisibility : worldmodel.getPvsByPoint(R.refdef.vieworg);
+    const vis = rendererCvars.novis.value !== 0 ? revealedVisibility : worldmodel.getPvsByPoint(Camera.refdef.vieworg);
     this.#viewVisibility = vis;
 
     for (const clent of this.static_entities) {

@@ -18,6 +18,7 @@ import Draw from './Draw.ts';
 import Key from './Key.ts';
 import S from './Sound.ts';
 import V from './V.ts';
+import Camera from './renderer/scene/Camera.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -169,7 +170,7 @@ export default class SCR {
       size *= 0.01;
     }
 
-    const vrect = R.refdef.vrect;
+    const vrect = Camera.refdef.vrect;
     vrect.width = Math.floor(VID.width * size);
     if (vrect.width < 96) {
       size = 96.0 / vrect.width;
@@ -192,16 +193,16 @@ export default class SCR {
       Cvar.Set('fov', '170');
     }
     if ((vrect.width * 0.75) <= vrect.height) {
-      R.refdef.fov_x = SCR.fov.value;
-      R.refdef.fov_y = Math.atan(vrect.height / (vrect.width / Math.tan(SCR.fov.value * Math.PI / 360.0))) * 360.0 / Math.PI;
+      Camera.refdef.fov_x = SCR.fov.value;
+      Camera.refdef.fov_y = Math.atan(vrect.height / (vrect.width / Math.tan(SCR.fov.value * Math.PI / 360.0))) * 360.0 / Math.PI;
     } else {
-      R.refdef.fov_x = Math.atan(vrect.width / (vrect.height / Math.tan(SCR.fov.value * 0.82 * Math.PI / 360.0))) * 360.0 / Math.PI;
-      R.refdef.fov_y = SCR.fov.value * 0.82;
+      Camera.refdef.fov_x = Math.atan(vrect.width / (vrect.height / Math.tan(SCR.fov.value * 0.82 * Math.PI / 360.0))) * 360.0 / Math.PI;
+      Camera.refdef.fov_y = SCR.fov.value * 0.82;
     }
 
-    const ymax = 4.0 * Math.tan(R.refdef.fov_y * Math.PI / 360.0);
-    R.perspective[0] = 4.0 / (ymax * R.refdef.vrect.width / R.refdef.vrect.height);
-    R.perspective[5] = 4.0 / ymax;
+    const ymax = 4.0 * Math.tan(Camera.refdef.fov_y * Math.PI / 360.0);
+    Camera.perspective[0] = 4.0 / (ymax * Camera.refdef.vrect.width / Camera.refdef.vrect.height);
+    Camera.perspective[5] = 4.0 / ymax;
   }
 
   /** Console command: increases the view size. */
@@ -247,7 +248,7 @@ export default class SCR {
       return;
     }
     if (++SCR.count >= 3) {
-      Draw.Pic(R.refdef.vrect.x, R.refdef.vrect.y, SCR.turtle);
+      Draw.Pic(Camera.refdef.vrect.x, Camera.refdef.vrect.y, SCR.turtle);
     }
   }
 
@@ -262,7 +263,7 @@ export default class SCR {
     }
 
     if ((Host.realtime - clientRuntimeState.last_received_message >= 0.3) && !clientStaticState.demoplayback) {
-      Draw.Pic(R.refdef.vrect.x, R.refdef.vrect.y, SCR.net);
+      Draw.Pic(Camera.refdef.vrect.x, Camera.refdef.vrect.y, SCR.net);
     }
   }
 
@@ -411,7 +412,7 @@ export default class SCR {
 
       V.RenderView();
       GL.Set2D();
-      if (R.usePostProcess || PostProcess.hasActiveEffects()) {
+      if (PostProcess.needsSceneCapture()) {
         PostProcess.end();
         console.assert(PostProcess.colorTexture !== null, 'PostProcess color texture is not set');
         if (PostProcess.hasGameplayStack()) {
@@ -419,8 +420,8 @@ export default class SCR {
         }
 
         PostProcess.resolve(
-          R.refdef.vrect.x, R.refdef.vrect.y,
-          R.refdef.vrect.width, R.refdef.vrect.height,
+          Camera.refdef.vrect.x, Camera.refdef.vrect.y,
+          Camera.refdef.vrect.width, Camera.refdef.vrect.height,
           PostProcess.colorTexture!,
         );
 
@@ -450,8 +451,8 @@ export default class SCR {
           CL.DrawHUD();
         } else {
           if (!SCR.disableCrosshair && SCR.crosshair.value !== 0) {
-            Draw.Character(R.refdef.vrect.x + (R.refdef.vrect.width / 2) + SCR.crossx.value,
-              R.refdef.vrect.y + (R.refdef.vrect.height / 2) + SCR.crossy.value, 43);
+            Draw.Character(Camera.refdef.vrect.x + (Camera.refdef.vrect.width / 2) + SCR.crossx.value,
+              Camera.refdef.vrect.y + (Camera.refdef.vrect.height / 2) + SCR.crossy.value, 43);
           }
           SCR.DrawNet();
           SCR.DrawTurtle();

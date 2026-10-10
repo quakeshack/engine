@@ -15,6 +15,24 @@ export class RendererCvars {
 
   /** `gl_flashblend`: draw dynamic lights as coronas instead of lighting the surfaces they reach. */
   flashblend: Cvar = null!;
+
+  /** `r_novis`: 0 uses the PVS, 1 reveals every leaf, 2 uses the PHS, a cheat. */
+  novis: Cvar = null!;
+
+  /** `r_fog_color`: global fog color as "R G B" in the 0 to 255 range. */
+  fog_color: Cvar = null!;
+
+  /** `r_fog_start`: distance where linear fog begins. */
+  fog_start: Cvar = null!;
+
+  /** `r_fog_end`: distance where linear fog is opaque. */
+  fog_end: Cvar = null!;
+
+  /** `r_fog_density`: density of exponential fog. */
+  fog_density: Cvar = null!;
+
+  /** `r_fog_mode`: 0 linear, 1 exp, 2 exp2, -1 off. */
+  fog_mode: Cvar = null!;
 }
 
 const rendererCvars = new RendererCvars();

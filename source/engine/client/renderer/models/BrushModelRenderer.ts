@@ -22,6 +22,8 @@ import EntityLighting from '../lighting/EntityLighting.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import { LIGHTMAP_BLOCK_SIZE } from '../lighting/LightmapAtlas.ts';
 import Host from '../../../common/Host.ts';
+import Camera from '../scene/Camera.ts';
+import Visibility from '../scene/Visibility.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -426,7 +428,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
     // Regular brush entity — frustum cull
     if (clmodel.submodel) {
-      if (R.CullBox(
+      if (Camera.CullBox(
         new Vector(
           e.origin[0] + clmodel.mins[0],
           e.origin[1] + clmodel.mins[1],
@@ -440,7 +442,7 @@ export class BrushModelRenderer extends ModelRenderer {
         return;
       }
     } else {
-      if (R.CullBox(
+      if (Camera.CullBox(
         new Vector(
           e.origin[0] - clmodel.radius,
           e.origin[1] - clmodel.radius,
@@ -535,11 +537,11 @@ export class BrushModelRenderer extends ModelRenderer {
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
 
-      if (leaf.visframe !== R.visframecount || leaf.skychain === 0) {
+      if (leaf.visframe !== Visibility.visframecount || leaf.skychain === 0) {
         continue;
       }
 
-      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
+      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
 
@@ -576,10 +578,10 @@ export class BrushModelRenderer extends ModelRenderer {
     this.beginWorldTransparentPass(clmodel);
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
-      if (leaf.visframe !== R.visframecount || leaf.skychain === 0) {
+      if (leaf.visframe !== Visibility.visframecount || leaf.skychain === 0) {
         continue;
       }
-      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
+      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
       this.renderWorldTransparentLeaf(clmodel, leaf);
@@ -596,10 +598,10 @@ export class BrushModelRenderer extends ModelRenderer {
     const items: { leaf: Node; dist: number }[] = [];
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
-      if (leaf.visframe !== R.visframecount || leaf.skychain === 0) {
+      if (leaf.visframe !== Visibility.visframecount || leaf.skychain === 0) {
         continue;
       }
-      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
+      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
       let hasTransparent = false;
@@ -703,10 +705,10 @@ export class BrushModelRenderer extends ModelRenderer {
     this.beginWorldTurbulentPass(clmodel);
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
-      if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+      if ((leaf.visframe !== Visibility.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
         continue;
       }
-      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
+      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
       this.renderWorldTurbulentLeaf(clmodel, leaf);
@@ -723,10 +725,10 @@ export class BrushModelRenderer extends ModelRenderer {
     const items: { leaf: Node; dist: number }[] = [];
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
-      if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+      if ((leaf.visframe !== Visibility.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
         continue;
       }
-      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
+      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
       const dist = this._getBoundsDistanceToView(leaf.mins!, leaf.maxs!, vieworg);
@@ -745,16 +747,16 @@ export class BrushModelRenderer extends ModelRenderer {
 
     for (let i = 0; i < clmodel.leafs.length; i++) {
       const leaf = clmodel.leafs[i];
-      if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+      if ((leaf.visframe !== Visibility.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
         continue;
       }
-      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
+      if (Camera.CullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
 
       for (let j = 0; j < leaf.turbulentChains.length; j++) {
         const chain = leaf.turbulentChains[j];
-        if (R.CullBox(chain.mins!, chain.maxs!)) {
+        if (Camera.CullBox(chain.mins!, chain.maxs!)) {
           continue;
         }
 
@@ -785,7 +787,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
 
-    const cameraInside = R.viewleaf !== null && R.viewleaf.contents <= content.CONTENT_WATER ? 1.0 : 0.0;
+    const cameraInside = Visibility.viewleaf !== null && Visibility.viewleaf.contents <= content.CONTENT_WATER ? 1.0 : 0.0;
     gl.uniform1f(program.uCameraInside!, cameraInside);
 
     if (PostProcess.active) {
@@ -858,7 +860,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uTime!, Host.realtime);
 
     for (const leaf of clmodel.leafs) {
-      if ((leaf.visframe !== R.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
+      if ((leaf.visframe !== Visibility.visframecount) || (leaf.waterchain === leaf.cmds.length)) {
         continue;
       }
       for (let j = leaf.waterchain; j < leaf.cmds.length; j++) {

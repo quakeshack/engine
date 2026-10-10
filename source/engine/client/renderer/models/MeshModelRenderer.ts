@@ -10,6 +10,7 @@ import Con from '../../../common/Console.ts';
 import R from '../../R.ts';
 import EntityLighting from '../lighting/EntityLighting.ts';
 import ShadowMap from '../lighting/ShadowMap.ts';
+import Camera from '../scene/Camera.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -88,7 +89,7 @@ export class MeshModelRenderer extends ModelRenderer {
     }
 
     // Frustum culling
-    if (R.CullBox(
+    if (Camera.CullBox(
       new Vector(
         e.origin[0] + clmodel.mins[0],
         e.origin[1] + clmodel.mins[1],

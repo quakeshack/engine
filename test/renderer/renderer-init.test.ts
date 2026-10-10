@@ -9,6 +9,7 @@ import PostProcess from '../../source/engine/client/renderer/postprocess/PostPro
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import Decals from '../../source/engine/client/renderer/effects/Decals.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
+import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import { modelRendererRegistry } from '../../source/engine/client/renderer/models/ModelRendererRegistry.ts';
 import type PostProcessEffect from '../../source/engine/client/renderer/postprocess/PostProcessEffect.ts';
 
@@ -127,11 +128,11 @@ void describe('R.Init', () => {
     ]);
   });
 
-  void test('exposes the created console variables on the renderer', async () => {
+  void test('exposes the created console variables where the renderer reads them', async () => {
     await runInit();
 
     assert.equal(R.bloom.name, 'r_bloom');
-    assert.equal(R.fog_mode.string, '-1');
+    assert.equal(rendererCvars.fog_mode.string, '-1');
     assert.equal(R.drawentities.value, 1);
   });
 });

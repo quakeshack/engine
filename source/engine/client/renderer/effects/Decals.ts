@@ -5,8 +5,8 @@ import Draw from '../../Draw.ts';
 import GL, { type GLTexture } from '../../GL.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import { clientCollision } from '../../ClientPhysics.ts';
-import R from '../../R.ts';
 import LightSampler from '../lighting/LightSampler.ts';
+import Camera from '../scene/Camera.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -63,7 +63,7 @@ export class Decals {
     Decals.list = [];
 
     Cmd.AddCommand('test_decal', async () => {
-      const start = R.refdef.vieworg;
+      const start = Camera.refdef.vieworg;
       const vectors = clientRuntimeState.viewangles.angleVectors();
       const forward = vectors.forward;
       const end = start.copy().add(forward.copy().multiply(8192));

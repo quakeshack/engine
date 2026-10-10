@@ -8,12 +8,12 @@ import GL, { ATTRIB_LOCATIONS } from '../../GL.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import { clientCollision } from '../../ClientPhysics.ts';
 import type { ClientDlight } from '../../ClientEntities.ts';
-import R from '../../R.ts';
 import V from '../../V.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import LightSampler from './LightSampler.ts';
 import Lightmaps from './Lightmaps.ts';
 import ShadowMap from './ShadowMap.ts';
+import Camera from '../scene/Camera.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -88,7 +88,7 @@ export class DynamicLights {
       if ((l.die < clientRuntimeState.time) || (l.radius === 0.0)) {
         continue;
       }
-      if (l.origin.copy().subtract(R.refdef.vieworg).len() < (l.radius * 0.35)) {
+      if (l.origin.copy().subtract(Camera.refdef.vieworg).len() < (l.radius * 0.35)) {
         a = l.radius * 0.0003;
         V.blend[3] += a * (1.0 - V.blend[3]);
         a /= V.blend[3];

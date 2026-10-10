@@ -13,10 +13,9 @@ import { AliasModelRenderer } from './renderer/models/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/models/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/models/MeshModelRenderer.ts';
 import Draw from './Draw.ts';
-import { BrushModel, type FogVolumeInfo, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
+import { BrushModel, type FogVolumeInfo, Node, type WorldTurbulentChainInfo } from '../common/model/BSP.ts';
 import { MeshModel } from '../common/model/MeshModel.ts';
 import { SpriteModel } from '../common/model/SpriteModel.ts';
-import { Plane } from '../common/model/BaseModel.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
 import BloomEffect from './renderer/postprocess/BloomEffect.ts';
 import ColorGradeEffect from './renderer/postprocess/ColorGradeEffect.ts';
@@ -30,10 +29,12 @@ import LightStyles from './renderer/lighting/LightStyles.ts';
 import Lightmaps from './renderer/lighting/Lightmaps.ts';
 import DynamicLights from './renderer/lighting/DynamicLights.ts';
 import rendererCvars from './renderer/resources/RendererCvars.ts';
+import Camera from './renderer/scene/Camera.ts';
+import FrameUniforms from './renderer/scene/FrameUniforms.ts';
+import Visibility from './renderer/scene/Visibility.ts';
 import Particles, { type Particle } from './renderer/effects/Particles.ts';
 import Decals, { type Decal } from './renderer/effects/Decals.ts';
 import { clientRuntimeState } from './ClientState.ts';
-import clientCvars from './ClientCvars.ts';
 import SCR from './SCR.ts';
 import V from './V.ts';
 import Sys from './Sys.ts';
@@ -66,23 +67,6 @@ const enum TransparentKind {
 interface TransparentItem extends SortKindDistance {
   readonly data: Node | WorldTurbulentChainInfo | FogVolumeInfo | ClientEdict | Particle | Decal;
 }
-
-interface RefdefRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-interface RefdefState {
-  vrect: RefdefRect;
-  vieworg: Vector;
-  viewangles: Vector;
-  fov_x: number;
-  fov_y: number;
-}
-
-type Vec4 = [number, number, number, number];
 
 const FOG_TURBULENT_SORT_EPSILON = 0.0001;
 
@@ -156,6 +140,33 @@ class R {
     return ShadowMap.getActivePointTextures();
   }
 
+  /**
+   * The marking counter of the current PVS, for `Sky`, which reads it through the renderer.
+   * @deprecated Moved to `Visibility.visframecount`; goes away with `RenderContext` (Phase 5 of plans/r-split.md).
+   * @returns The counter.
+   */
+  static get visframecount(): number {
+    return Visibility.visframecount;
+  }
+
+  /**
+   * The view of this frame, for `Sky`, which reads it through the renderer.
+   * @deprecated Moved to `Camera.refdef`; goes away with `RenderContext` (Phase 5 of plans/r-split.md).
+   * @returns The refdef.
+   */
+  static get refdef(): typeof Camera.refdef {
+    return Camera.refdef;
+  }
+
+  /**
+   * Whether a box is outside of the view frustum, for `Sky`, which reads it through the renderer.
+   * @deprecated Moved to `Camera.CullBox`; goes away with `RenderContext` (Phase 5 of plans/r-split.md).
+   * @returns True when the box can be skipped.
+   */
+  static CullBox(mins: Vector, maxs: Vector): boolean {
+    return Camera.CullBox(mins, maxs);
+  }
+
   // light
 
   static waterwarp: Cvar = null!;
@@ -163,7 +174,6 @@ class R {
   static drawviewmodel: Cvar = null!;
   static drawturbulents: Cvar = null!;
   static underwater_fog_density: Cvar = null!;
-  static novis: Cvar = null!;
   static speeds: Cvar = null!;
   static polyblend: Cvar = null!;
   static nocolors: Cvar = null!;
@@ -174,11 +184,6 @@ class R {
   static bloomSpecularStrength: Cvar = null!;
   static bloomDownsample: Cvar = null!;
   static bloomDebug: Cvar = null!;
-  static fog_color: Cvar = null!;
-  static fog_start: Cvar = null!;
-  static fog_end: Cvar = null!;
-  static fog_density: Cvar = null!;
-  static fog_mode: Cvar = null!;
 
   static notexture: GLTexture = null!;
   static blacktexture: GLTexture = null!;
@@ -186,8 +191,6 @@ class R {
   static fullbright_texture: GLTextureArray = null!;
   static null_texture: GLRenderTexture = null!;
   static normal_up_texture: GLTextureArray = null!;
-
-  static usePostProcess = false;
 
   /** RGB fog color used by the underwater fog effect this frame (0-1 range). */
   static underwaterFogColor: [number, number, number] = [0.05, 0.15, 0.2];
@@ -202,50 +205,6 @@ class R {
   static c_alias_polys = 0;
 
   // main
-
-  static visframecount = 0;
-
-  static frustum: Plane[] = [
-    new Plane(new Vector(), 0),
-    new Plane(new Vector(), 0),
-    new Plane(new Vector(), 0),
-    new Plane(new Vector(), 0),
-  ];
-
-  static vup = new Vector();
-  static vpn = new Vector();
-  static vright = new Vector();
-
-  static refdef: RefdefState = {
-    vrect: {
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
-    },
-    vieworg: new Vector(),
-    viewangles: new Vector(),
-    fov_x: 0,
-    fov_y: 0,
-  };
-
-  static oldviewleaf: Node | null = null;
-
-  static CullBox(mins: Vector, maxs: Vector): boolean {
-    if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[0]) === 2) {
-      return true;
-    }
-    if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[1]) === 2) {
-      return true;
-    }
-    if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[2]) === 2) {
-      return true;
-    }
-    if (Vector.boxOnPlaneSide(mins, maxs, R.frustum[3]) === 2) {
-      return true;
-    }
-    return false;
-  };
 
   static DrawEntitiesOnList() {
     if (R.drawentities.value === 0) {
@@ -337,7 +296,7 @@ class R {
    */
   static _renderTransparentsUnified(worldEntity: ClientEdict): void {
     const worldmodel = worldEntity.model instanceof BrushModel ? worldEntity.model : null;
-    const vieworg = R.refdef.vieworg;
+    const vieworg = Camera.refdef.vieworg;
     const items: TransparentItem[] = [];
 
     const brushRenderer = worldmodel !== null
@@ -653,11 +612,11 @@ class R {
     gl.depthRange(0.0, 0.3);
 
     let ymax = 4.0 * Math.tan(SCR.fov.value * 0.82 * Math.PI / 360.0);
-    R.perspective[0] = 4.0 / (ymax * R.refdef.vrect.width / R.refdef.vrect.height);
-    R.perspective[5] = 4.0 / ymax;
+    Camera.perspective[0] = 4.0 / (ymax * Camera.refdef.vrect.width / Camera.refdef.vrect.height);
+    Camera.perspective[5] = 4.0 / ymax;
     let program = GL.UseProgram('alias')!;
     console.assert(program !== null, 'alias program required');
-    gl.uniformMatrix4fv(program.uPerspective!, false, R.perspective);
+    gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
 
     const viewent = clientRuntimeState.viewent;
     if (viewent !== null && viewent.model !== null) {
@@ -668,12 +627,12 @@ class R {
       aliasRenderer!.cleanupRenderState(0);
     }
 
-    ymax = 4.0 * Math.tan(R.refdef.fov_y * Math.PI / 360.0);
-    R.perspective[0] = 4.0 / (ymax * R.refdef.vrect.width / R.refdef.vrect.height);
-    R.perspective[5] = 4.0 / ymax;
+    ymax = 4.0 * Math.tan(Camera.refdef.fov_y * Math.PI / 360.0);
+    Camera.perspective[0] = 4.0 / (ymax * Camera.refdef.vrect.width / Camera.refdef.vrect.height);
+    Camera.perspective[5] = 4.0 / ymax;
     program = GL.UseProgram('alias')!;
     console.assert(program !== null, 'alias program required');
-    gl.uniformMatrix4fv(program.uPerspective!, false, R.perspective);
+    gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
 
     gl.depthRange(0.0, 1.0);
   };
@@ -686,241 +645,17 @@ class R {
       return;
     }
     GL.UseProgram('fill', true);
-    const vrect = R.refdef.vrect;
+    const vrect = Camera.refdef.vrect;
     GL.StreamDrawColoredQuad(vrect.x, vrect.y, vrect.width, vrect.height, V.blend[0], V.blend[1], V.blend[2], V.blend[3] * 255.0);
   };
 
-  static SetFrustum() {
-    if (R.vup.isOrigin() || R.vright.isOrigin() || R.vpn.isOrigin()) { // can’t set frustum with these
-      return;
-    }
-    R.frustum[0].normal = R.vup.rotatePointAroundVector(R.vpn, -(90.0 - R.refdef.fov_x * 0.5));
-    R.frustum[1].normal = R.vup.rotatePointAroundVector(R.vpn, 90.0 - R.refdef.fov_x * 0.5);
-    R.frustum[2].normal = R.vright.rotatePointAroundVector(R.vpn, 90.0 - R.refdef.fov_y * 0.5);
-    R.frustum[3].normal = R.vright.rotatePointAroundVector(R.vpn, -(90.0 - R.refdef.fov_y * 0.5));
-    for (let i = 0; i < 4; i++) {
-      const out = R.frustum[i];
-      out.type = 5;
-      out.dist = R.refdef.vieworg.dot(out.normal);
-      out.signbits = 0;
-      if (out.normal[0] < 0.0) {
-        out.signbits = 1;
-      }
-      if (out.normal[1] < 0.0) {
-        out.signbits += 2;
-      }
-      if (out.normal[2] < 0.0) {
-        out.signbits += 4;
-      }
-      if (out.normal[3] < 0.0) {
-        out.signbits += 8;
-      }
-    }
-  };
-
-  static viewMatrix: number[] | null = null;
-  static projectionMatrix: number[] | null = null;
-
-  private static multiplyMatrixVec4(m: number[], v: Vec4): Vec4 {
-    return [
-      m[0]*v[0] + m[4]*v[1] + m[8]*v[2] + m[12]*v[3],
-      m[1]*v[0] + m[5]*v[1] + m[9]*v[2] + m[13]*v[3],
-      m[2]*v[0] + m[6]*v[1] + m[10]*v[2] + m[14]*v[3],
-      m[3]*v[0] + m[7]*v[1] + m[11]*v[2] + m[15]*v[3],
-    ];
-  }
-
-  /**
-   * Convert a world-space position into screen coordinates.
-   * @returns Screen coordinates or null when the point is off-screen.
-   */
-  static WorldToScreen(origin: Vector): Vector | null {
-    const projectionMatrix = R.projectionMatrix;
-    const viewMatrix = R.viewMatrix; // This is uViewAngles — rotation only
-
-    if (projectionMatrix === null || viewMatrix === null) {
-      return null;
-    }
-
-    // world-space delta from camera
-    const delta = [
-      origin[0] - R.refdef.vieworg[0],
-      origin[1] - R.refdef.vieworg[1],
-      origin[2] - R.refdef.vieworg[2],
-    ];
-
-    // Apply view rotation
-    const x =
-      viewMatrix[0] * delta[0] +
-      viewMatrix[4] * delta[1] +
-      viewMatrix[8] * delta[2];
-    const y =
-      viewMatrix[1] * delta[0] +
-      viewMatrix[5] * delta[1] +
-      viewMatrix[9] * delta[2];
-    const z =
-      viewMatrix[2] * delta[0] +
-      viewMatrix[6] * delta[1] +
-      viewMatrix[10] * delta[2];
-
-    // Mimic gl_Position = projection * vec4(xz, -y, 1.0)
-    const posVec = [x, z, -y, 1.0]; // Swizzle + flip Y
-
-    const clip = R.multiplyMatrixVec4(projectionMatrix, posVec as Vec4);
-
-    // If the clip space W coordinate is zero, we can't convert to NDC
-    if (clip[3] === 0) {
-      return null;
-    }
-
-    const ndc = [
-      clip[0] / clip[3],
-      clip[1] / clip[3],
-      clip[2] / clip[3],
-    ];
-
-    if (clip[3] > 0 && ndc[0] >= -1 && ndc[0] <= 1 && ndc[1] >= -1 && ndc[1] <= 1 && ndc[2] >= 0 && ndc[2] <= 1) {
-      return new Vector(
-        R.refdef.vrect.x + (ndc[0] + 1) * 0.5 * R.refdef.vrect.width,
-        R.refdef.vrect.y + (1 - ndc[1]) * 0.5 * R.refdef.vrect.height,
-        ndc[2],
-      );
-    }
-
-    return null;
-  };
-
-  static perspective = [
-    0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, -65540.0 / 65532.0, -1.0,
-    0.0, 0.0, -524288.0 / 65532.0, 0.0,
-  ];
-
-  static Perspective() {
-    const viewangles = [
-      R.refdef.viewangles[0] * Math.PI / 180.0,
-      (R.refdef.viewangles[1] - 90.0) * Math.PI / -180.0,
-      R.refdef.viewangles[2] * Math.PI / -180.0,
-    ];
-    const sp = Math.sin(viewangles[0]);
-    const cp = Math.cos(viewangles[0]);
-    const sy = Math.sin(viewangles[1]);
-    const cy = Math.cos(viewangles[1]);
-    const sr = Math.sin(viewangles[2]);
-    const cr = Math.cos(viewangles[2]);
-    const viewMatrix = [
-      cr * cy + sr * sp * sy,		cp * sy,	-sr * cy + cr * sp * sy,
-      cr * -sy + sr * sp * cy,	cp * cy,	-sr * -sy + cr * sp * cy,
-      sr * cp,					-sp,		cr * cp,
-    ];
-
-    R.viewMatrix = [
-      viewMatrix[0], viewMatrix[1], viewMatrix[2], 0.0,
-      viewMatrix[3], viewMatrix[4], viewMatrix[5], 0.0,
-      viewMatrix[6], viewMatrix[7], viewMatrix[8], 0.0,
-      0.0,           0.0,           0.0,           1.0,
-    ];
-
-    R.projectionMatrix = R.perspective;
-
-    if (V.gamma.value < 0.5) {
-      V.gamma.set(0.5);
-    } else if (V.gamma.value > 1.0) {
-      V.gamma.set(1.0);
-    }
-
-    GL.UnbindProgram();
-    for (let i = 0; i < GL.programs.length; i++) {
-      const program = GL.programs[i];
-      gl.useProgram(program.program);
-      if (program.uViewOrigin !== undefined) {
-        gl.uniform3fv(program.uViewOrigin, R.refdef.vieworg);
-      }
-      if (program.uViewAngles !== undefined) {
-        gl.uniformMatrix3fv(program.uViewAngles, false, viewMatrix);
-      }
-      if (program.uPerspective !== undefined) {
-        gl.uniformMatrix4fv(program.uPerspective, false, R.perspective);
-      }
-      if (program.uGamma !== undefined) {
-        gl.uniform1f(program.uGamma, V.gamma.value);
-      }
-      // global fog uniforms (only set when shader declares them)
-      if (program.uFogColor !== undefined) {
-        const colParts = (R.fog_color.string || '128 128 128').split(/\s+/).map(Number);
-        gl.uniform3fv(program.uFogColor, [(colParts[0]||128)/255.0, (colParts[1]||128)/255.0, (colParts[2]||128)/255.0]);
-      }
-      if (program.uFogParams !== undefined) {
-        // uFogParams = vec4(start, end, density, mode)
-        gl.uniform4f(program.uFogParams, R.fog_start.value, R.fog_end.value, R.fog_density.value, R.fog_mode.value);
-      }
-      // shadow mapping uniforms (set on all programs that declare them)
-      if (program.uLightSpaceMatrix !== undefined) {
-        gl.uniformMatrix4fv(program.uLightSpaceMatrix, false, ShadowMap.topdownMatrix);
-      }
-      if (program.uShadowEnabled !== undefined) {
-        gl.uniform1f(program.uShadowEnabled, ShadowMap.enabled!.value ? 1.0 : 0.0);
-      }
-      if (program.uShadowDarkness !== undefined) {
-        gl.uniform1f(program.uShadowDarkness, ShadowMap.darkness!.value);
-      }
-      if (program.uShadowMapSize !== undefined) {
-        gl.uniform1f(program.uShadowMapSize, ShadowMap.size);
-      }
-      if (program.uShadowMaxDepthNDC !== undefined) {
-        // Convert the world-unit max-depth cvar into the top-down shadow
-        // map's normalized [0,1] depth space (which spans 2 * range world
-        // units — see ShadowMap.updateTopDownMatrix's near/far planes).
-        gl.uniform1f(program.uShadowMaxDepthNDC, ShadowMap.maxDepth!.value / (2.0 * ShadowMap.range!.value));
-      }
-      if (program.uShadowLightDir !== undefined) {
-        gl.uniform3fv(program.uShadowLightDir, ShadowMap.lightDir);
-      }
-      // Point light shadow uniforms
-      if (program.uPointShadowEnabled !== undefined) {
-        gl.uniform1f(program.uPointShadowEnabled, ShadowMap.pointLightActiveCount > 0 ? 1.0 : 0.0);
-      }
-      if (program.uPointLightPos0 !== undefined) {
-        gl.uniform3fv(program.uPointLightPos0, ShadowMap.pointLightOrigins[0]);
-      }
-      if (program.uPointLightRadius0 !== undefined) {
-        gl.uniform1f(program.uPointLightRadius0, ShadowMap.pointLightRadii[0]);
-      }
-      if (program.uPointLightColor0 !== undefined) {
-        gl.uniform3fv(program.uPointLightColor0, ShadowMap.pointLightColors[0]);
-      }
-      if (program.uPointLightPos1 !== undefined) {
-        gl.uniform3fv(program.uPointLightPos1, ShadowMap.pointLightOrigins[1]);
-      }
-      if (program.uPointLightRadius1 !== undefined) {
-        gl.uniform1f(program.uPointLightRadius1, ShadowMap.pointLightRadii[1]);
-      }
-      if (program.uPointLightColor1 !== undefined) {
-        gl.uniform3fv(program.uPointLightColor1, ShadowMap.pointLightColors[1]);
-      }
-      if (program.uPointLightPos2 !== undefined) {
-        gl.uniform3fv(program.uPointLightPos2, ShadowMap.pointLightOrigins[2]);
-      }
-      if (program.uPointLightRadius2 !== undefined) {
-        gl.uniform1f(program.uPointLightRadius2, ShadowMap.pointLightRadii[2]);
-      }
-      if (program.uPointLightColor2 !== undefined) {
-        gl.uniform3fv(program.uPointLightColor2, ShadowMap.pointLightColors[2]);
-      }
-      if (program.uPointShadowBias !== undefined) {
-        gl.uniform1f(program.uPointShadowBias, ShadowMap.pointBias!.value);
-      }
-    }
-  };
-
   static SetupGL() {
-    const vrect = R.refdef.vrect;
+    const vrect = Camera.refdef.vrect;
     const pixelRatio = VID.pixelRatio;
     const w = (vrect.width * pixelRatio) >> 0;
     const h = (vrect.height * pixelRatio) >> 0;
 
-    if (R.usePostProcess || PostProcess.hasActiveEffects()) {
+    if (PostProcess.needsSceneCapture()) {
       // Render the scene to the shared post-process capture FBO whenever a
       // screen-space effect needs to sample it. Depth-aware passes like fog
       // use the same capture path and sample the depth texture mid-frame.
@@ -930,25 +665,27 @@ class R {
     } else {
       gl.viewport((vrect.x * pixelRatio) >> 0, ((VID.height - vrect.height - vrect.y) * pixelRatio) >> 0, w, h);
     }
-    R.Perspective();
+    Camera.UpdateMatrices();
+    FrameUniforms.Upload();
     gl.enable(gl.DEPTH_TEST);
   };
 
-  static viewleaf: Node | null = null;
-
+  /**
+   * Sets up what the frame's passes read: lightstyles, the effects that depend on where the camera is, the fog
+   * tint, and whether the scene needs to be captured. `V.PreRenderView` runs it after `Camera.UpdateViewVectors()`
+   * and `Visibility.UpdateViewLeaf()`, because it reads the view leaf.
+   */
   static PreRenderScene() {
     LightStyles.Animate();
     const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
-    const {forward, right, up} = R.refdef.viewangles.angleVectors();
-    [R.vpn, R.vright, R.vup] = [forward, right, up];
-    R.viewleaf = worldmodel.getLeafForPoint(R.refdef.vieworg);
-    V.SetContentsColor(R.viewleaf.contents);
-    V.CalcBlend();
+    const viewleaf = Visibility.viewleaf!;
+    console.assert(viewleaf !== null, 'view leaf required, Visibility.UpdateViewLeaf() runs before this');
+
     // Underwater warp is a post-process effect, active while the camera is inside a liquid.
     const warpEffect = PostProcess.getEffect('warp');
     if (warpEffect) {
-      warpEffect.active = (R.waterwarp.value !== 0) && (R.viewleaf.contents <= content.CONTENT_WATER);
+      warpEffect.active = (R.waterwarp.value !== 0) && (viewleaf.contents <= content.CONTENT_WATER);
     }
 
     const bloomEnabled = R.bloom.value !== 0;
@@ -963,7 +700,7 @@ class R {
     // Configure underwater fog when the camera is inside a liquid.
     // Opt-in per map: worldspawn key _qs_waterfog must be "1" to enable.
     const waterfogEnabled = worldmodel.worldspawnInfo._qs_waterfog === '1';
-    const isUnderwater = R.viewleaf.contents <= content.CONTENT_WATER;
+    const isUnderwater = viewleaf.contents <= content.CONTENT_WATER;
     const underwaterFogEffect = PostProcess.getEffect('underwater-fog');
     if (underwaterFogEffect) {
       underwaterFogEffect.active = waterfogEnabled && isUnderwater && R.drawturbulents.value !== 0;
@@ -975,7 +712,7 @@ class R {
       //      where no surface is in view, and correctly distinguishes between
       //      multiple distinct liquid bodies of the same content type.
       //   3. Hardcoded content-type defaults as a last resort.
-      const firstChain = R.viewleaf.turbulentChains[0];
+      const firstChain = viewleaf.turbulentChains[0];
       const material = firstChain !== undefined
         ? worldmodel.textures[firstChain.texture]
         : undefined;
@@ -983,14 +720,14 @@ class R {
       let fogTint = material?.fogTint ?? null;
 
       if (fogTint === null) {
-        fogTint = R.#nearestLiquidFogTint(worldmodel, R.refdef.vieworg);
+        fogTint = R.#nearestLiquidFogTint(worldmodel, Camera.refdef.vieworg);
       }
 
       if (fogTint !== null) {
         R.underwaterFogColor = fogTint;
-      } else if (R.viewleaf.contents <= content.CONTENT_LAVA) {
+      } else if (viewleaf.contents <= content.CONTENT_LAVA) {
         R.underwaterFogColor = [0.25, 0.05, 0.0];
-      } else if (R.viewleaf.contents <= content.CONTENT_SLIME) {
+      } else if (viewleaf.contents <= content.CONTENT_SLIME) {
         R.underwaterFogColor = [0.02, 0.12, 0.0];
       } else {
         R.underwaterFogColor = [0.05, 0.15, 0.2];
@@ -1000,10 +737,8 @@ class R {
 
     // Enable post-process FBO (and thus depth texture) whenever turbulents, fog
     // volumes, or underwater fog are active so shaders can sample scene depth.
-    R.usePostProcess = R.drawturbulents.value !== 0 || worldmodel.fogVolumes.length > 0
-      || (waterfogEnabled && isUnderwater && R.drawturbulents.value !== 0);
-
-    // Choose the shadow textures for this frame (real or dummy)
+    PostProcess.requestSceneCapture(R.drawturbulents.value !== 0 || worldmodel.fogVolumes.length > 0
+      || (waterfogEnabled && isUnderwater && R.drawturbulents.value !== 0));
   };
 
   static RenderWorld() {
@@ -1033,27 +768,25 @@ class R {
   };
 
   static RenderScene() {
-    R.SetFrustum();
+    Camera.SetFrustum();
     console.assert(ShadowMap.enabled !== null, 'shadow toggle required');
 
     // Top-down shadow pass — a single fixed-direction directional shadow,
     // centered on the camera. World and entities both cast into it.
     if (ShadowMap.enabled!.value) {
-      ShadowMap.renderTopDownShadow(R.refdef.vieworg);
+      ShadowMap.renderTopDownShadow(Camera.refdef.vieworg);
     }
 
     // Point light shadow pass — render world BSP into a cube depth map per
     // active point-light slot, from the strongest nearby dlights' positions.
-    if (ShadowMap.selectPointLights(R.refdef.vieworg) > 0) {
+    if (ShadowMap.selectPointLights(Camera.refdef.vieworg) > 0) {
       ShadowMap.renderPointLightShadow();
     }
-    // Update point shadow textures AFTER selectPointLights so the correct
-    // textures (real or dummy) are bound for this frame. PreRenderScene
-    // runs before selectPointLights updates pointLightActiveCount, so its
-    // assignment may be stale on the first frame a dlight appears.
 
+    // The point-light state that FrameUniforms uploads is only final once selectPointLights has run, so the
+    // uniforms are written here and not in PreRenderScene.
     R.SetupGL();
-    R.MarkLeafs();
+    Visibility.MarkLeafs();
 
     // Turbulent boundary depth pre-pass — capture turbulent surface depths so the
     // underwater fog effect knows where the water boundary is per pixel.
@@ -1381,7 +1114,7 @@ class R {
     R.drawentities = new Cvar('r_drawentities', '1', Cvar.FLAG.CHEAT);
     R.drawviewmodel = new Cvar('r_drawviewmodel', '1');
     R.drawturbulents = new Cvar('r_drawturbulents', '1', Cvar.FLAG.CHEAT);
-    R.novis = new Cvar('r_novis', '0', Cvar.FLAG.CHEAT);
+    rendererCvars.novis = new Cvar('r_novis', '0', Cvar.FLAG.CHEAT);
     R.speeds = new Cvar('r_speeds', '0');
     R.polyblend = new Cvar('gl_polyblend', '1');
     rendererCvars.flashblend = new Cvar('gl_flashblend', '0');
@@ -1395,11 +1128,11 @@ class R {
     R.bloomDebug = new Cvar('r_bloom_debug', '0', Cvar.FLAG.NONE, 'Bloom debug preview: 0 = off, 1 = emissive, 2 = extract, 3 = blur, 4 = all.');
     rendererCvars.interpolation = new Cvar('r_interpolation', '1', Cvar.FLAG.NONE, 'Interpolation of textures and animation groups, 0 - off, 1 - on');
     // fog controls (TODO: make that a cheat, but resetting cvar to default is done after R.NewMapFog, so need to rethink the order of operations)
-    R.fog_color = new Cvar('r_fog_color', '128 128 128', Cvar.FLAG.NONE, 'Fog color: R G B (0-255)');
-    R.fog_start = new Cvar('r_fog_start', '128', Cvar.FLAG.NONE, 'Fog start distance (linear)');
-    R.fog_end = new Cvar('r_fog_end', '4096', Cvar.FLAG.NONE, 'Fog end distance (linear)');
-    R.fog_density = new Cvar('r_fog_density', '0.01', Cvar.FLAG.NONE, 'Fog density (for exp/exp2)');
-    R.fog_mode = new Cvar('r_fog_mode', '-1', Cvar.FLAG.NONE, 'Fog mode: 0=linear, 1=exp, 2=exp2, -1=disable');
+    rendererCvars.fog_color = new Cvar('r_fog_color', '128 128 128', Cvar.FLAG.NONE, 'Fog color: R G B (0-255)');
+    rendererCvars.fog_start = new Cvar('r_fog_start', '128', Cvar.FLAG.NONE, 'Fog start distance (linear)');
+    rendererCvars.fog_end = new Cvar('r_fog_end', '4096', Cvar.FLAG.NONE, 'Fog end distance (linear)');
+    rendererCvars.fog_density = new Cvar('r_fog_density', '0.01', Cvar.FLAG.NONE, 'Fog density (for exp/exp2)');
+    rendererCvars.fog_mode = new Cvar('r_fog_mode', '-1', Cvar.FLAG.NONE, 'Fog mode: 0=linear, 1=exp, 2=exp2, -1=disable');
 
     // fog controls for underwater fog effect (post-process)
     R.underwater_fog_density = new Cvar('r_underwater_fog_density', '0.01', Cvar.FLAG.CHEAT, 'Fog density exponent for the underwater fog effect.');
@@ -1439,7 +1172,7 @@ class R {
     const fogInfo = worldmodel.worldspawnInfo.fog;
 
     if (!fogInfo) {
-      R.fog_mode.set(-1);
+      rendererCvars.fog_mode.set(-1);
       return;
     }
 
@@ -1450,9 +1183,9 @@ class R {
     const SphericalCorrection = 0.85; // compensate higher perceived density with spherical fog
     const DensityScale = ExpAdjustment * SphericalCorrection / 64.0;
 
-    R.fog_density.set(exp / DensityScale);
-    R.fog_color.set(`${r * 255} ${g * 255} ${b * 255}`);
-    R.fog_mode.set(1);
+    rendererCvars.fog_density.set(exp / DensityScale);
+    rendererCvars.fog_color.set(`${r * 255} ${g * 255} ${b * 255}`);
+    rendererCvars.fog_mode.set(1);
   };
 
   static NewMap() {
@@ -1460,8 +1193,7 @@ class R {
     Lightmaps.ResetDynamic();
 
     // Reset the viewleafs so that the renderer will recalculate them on the next frame.
-    R.viewleaf = null;
-    R.oldviewleaf = null;
+    Visibility.Reset();
 
     R.NewMapFog();
     R.MakeSky();
@@ -1470,105 +1202,13 @@ class R {
   static ClearAll() {
     LightStyles.Clear();
 
-    R.oldviewleaf = null;
-    R.viewleaf = null;
+    Visibility.Reset();
 
     Lightmaps.Clear();
 
     Particles.Clear();
     Decals.Clear();
     R.ClearSky();
-  };
-
-  static RecursiveWorldNode(node: Node): void {
-    if (node.contents === content.CONTENT_SOLID) {
-      return;
-    }
-    if (node.contents < content.CONTENT_NONE) {
-      if (node.markvisframe !== R.visframecount) {
-        return;
-      }
-      node.visframe = R.visframecount;
-      if (node.skychain !== node.waterchain) {
-        R.drawsky = true;
-      }
-      return;
-    }
-    const frontChild = node.children[0] as Node;
-    const backChild = node.children[1] as Node;
-    console.assert(frontChild instanceof Node, `R.RecursiveWorldNode expected linked BSP child 0 on node ${node.num}`);
-    console.assert(backChild instanceof Node, `R.RecursiveWorldNode expected linked BSP child 1 on node ${node.num}`);
-    R.RecursiveWorldNode(frontChild);
-    R.RecursiveWorldNode(backChild);
-  };
-
-  static MarkLeafs() {
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-
-    if ((R.oldviewleaf === R.viewleaf) && (R.novis.value === 0)) {
-      return;
-    }
-    R.visframecount++;
-    R.oldviewleaf = R.viewleaf;
-    const vis = (R.novis.value === 1 || R.viewleaf === null || R.viewleaf.num === 0) ? revealedVisibility : (
-      R.novis.value === 2 ?
-        worldmodel.getPhsByLeaf(R.viewleaf) :
-        worldmodel.getPvsByLeaf(R.viewleaf)
-    );
-    for (let i = 1; i < worldmodel.leafs.length; i++) {
-      if (!vis.isRevealed(i)) {
-        continue;
-      }
-      if (clientCvars.areaportals.value > 0 && R.viewleaf && !worldmodel.areaPortals.leafsConnected(R.viewleaf, worldmodel.leafs[i])) {
-        continue;
-      }
-      for (let node: Node | null = worldmodel.leafs[i]; node !== null; node = node.parent) {
-        if (node.markvisframe === R.visframecount) {
-          break;
-        }
-        node.markvisframe = R.visframecount;
-      }
-    }
-    do {
-      if (R.novis.value !== 0 || R.viewleaf === null) {
-        break;
-      }
-      const p = R.refdef.vieworg.copy();
-      let leaf: Node;
-      if (R.viewleaf.contents <= content.CONTENT_WATER) {
-        leaf = worldmodel.getLeafForPoint(p.add(new Vector(0, 0, 16.0)));
-        if (leaf.contents <= content.CONTENT_WATER) {
-          break;
-        }
-      } else {
-        leaf = worldmodel.getLeafForPoint(p.add(new Vector(0, 0, -16.0)));
-        if (leaf.contents > content.CONTENT_WATER) {
-          break;
-        }
-      }
-      if (leaf === R.viewleaf) {
-        break;
-      }
-      const vis = worldmodel.getPvsByLeaf(leaf);
-      for (let i = 1; i < worldmodel.leafs.length; i++) {
-        if (!vis.isRevealed(i)) {
-          continue;
-        }
-        if (clientCvars.areaportals.value > 0 && !worldmodel.areaPortals.leafsConnected(R.viewleaf, worldmodel.leafs[i])) {
-          continue;
-        }
-        for (let node: Node | null = worldmodel.leafs[i]; node !== null; node = node.parent) {
-          if (node.markvisframe === R.visframecount) {
-            break;
-          }
-          node.markvisframe = R.visframecount;
-        }
-      }
-    // eslint-disable-next-line no-constant-condition
-    } while (false);
-    R.drawsky = false;
-    R.RecursiveWorldNode(worldmodel.nodes[0]);
   };
 
   /**
@@ -1606,10 +1246,9 @@ class R {
   // sky
 
   static skyrenderer: SkyRenderer | null = null;
-  static drawsky = true;
 
   static DrawSkyBox() {
-    if (!R.drawsky || !R.skyrenderer) {
+    if (!Visibility.skyVisible || !R.skyrenderer) {
       return;
     }
 
@@ -1648,17 +1287,3 @@ export default R;
 eventBus.subscribe('client.disconnected', () => {
   R.ClearAll();
 });
-
-eventBus.subscribe('areaportals.changed', () => {
-  R.oldviewleaf = null;
-});
-
-eventBus.subscribe('cvar.changed', (cvarName) => {
-  switch (cvarName) {
-    case 'r_novis':
-    case 'cl_areaportals':
-      R.oldviewleaf = null;
-      break;
-  }
-});
-

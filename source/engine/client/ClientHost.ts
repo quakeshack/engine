@@ -54,6 +54,8 @@ import SCR from './SCR.ts';
 import V from './V.ts';
 import { buildConfig, com, net, urls } from './PageServices.ts';
 import Sys from './Sys.ts';
+import Camera from './renderer/scene/Camera.ts';
+import Visibility from './renderer/scene/Visibility.ts';
 
 /** A savegame file: the server's half and what only the client knows. */
 interface SavegameState extends ServerSaveState {
@@ -663,7 +665,7 @@ export default class ClientHost {
     }
 
     if (clientStaticState.signon === 4) {
-      S.Update(R.refdef.vieworg, R.vpn, R.vright, R.vup, R.viewleaf ? R.viewleaf.contents <= content.CONTENT_WATER : false);
+      S.Update(Camera.refdef.vieworg, Camera.vpn, Camera.vright, Camera.vup, Visibility.viewleaf ? Visibility.viewleaf.contents <= content.CONTENT_WATER : false);
     } else {
       S.Update(Vector.origin, Vector.origin, Vector.origin, Vector.origin, false);
     }

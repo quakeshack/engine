@@ -13,6 +13,8 @@ import ConsoleOverlay from './ConsoleOverlay.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import R from './R.ts';
+import Camera from './renderer/scene/Camera.ts';
+import Visibility from './renderer/scene/Visibility.ts';
 import DynamicLights from './renderer/lighting/DynamicLights.ts';
 import Host from '../common/Host.ts';
 import SCR from './SCR.ts';
@@ -356,12 +358,12 @@ export default class V {
   static CalcIntermissionRefdef(): void {
     const ent = clientRuntimeState.playerentity!;
     console.assert(ent !== null, 'Player entity is required for intermission view calculations');
-    R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]);
-    R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]);
-    R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]);
-    R.refdef.viewangles[0] = finiteOrZero(ent.angles[0]) + Math.sin(clientRuntimeState.time * V.ipitch_cycle.value) * V.ipitch_level.value;
-    R.refdef.viewangles[1] = finiteOrZero(ent.angles[1]) + Math.sin(clientRuntimeState.time * V.iyaw_cycle.value) * V.iyaw_level.value;
-    R.refdef.viewangles[2] = finiteOrZero(ent.angles[2]) + Math.sin(clientRuntimeState.time * V.iroll_cycle.value) * V.iroll_level.value;
+    Camera.refdef.vieworg[0] = finiteOrZero(ent.origin[0]);
+    Camera.refdef.vieworg[1] = finiteOrZero(ent.origin[1]);
+    Camera.refdef.vieworg[2] = finiteOrZero(ent.origin[2]);
+    Camera.refdef.viewangles[0] = finiteOrZero(ent.angles[0]) + Math.sin(clientRuntimeState.time * V.ipitch_cycle.value) * V.ipitch_level.value;
+    Camera.refdef.viewangles[1] = finiteOrZero(ent.angles[1]) + Math.sin(clientRuntimeState.time * V.iyaw_cycle.value) * V.iyaw_level.value;
+    Camera.refdef.viewangles[2] = finiteOrZero(ent.angles[2]) + Math.sin(clientRuntimeState.time * V.iroll_cycle.value) * V.iroll_level.value;
     console.assert(clientRuntimeState.viewent !== null, 'View entity is required for intermission view calculations');
     clientRuntimeState.viewent!.model = null;
   }
@@ -401,18 +403,18 @@ export default class V {
       V.#previousViewYaw = currentYaw;
     }
 
-    R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]) + 0.03125;
-    R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]) + 0.03125;
-    R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) + clientRuntimeState.viewheight + bob + 0.03125;
+    Camera.refdef.vieworg[0] = finiteOrZero(ent.origin[0]) + 0.03125;
+    Camera.refdef.vieworg[1] = finiteOrZero(ent.origin[1]) + 0.03125;
+    Camera.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) + clientRuntimeState.viewheight + bob + 0.03125;
 
-    R.refdef.viewangles[0] = clientRuntimeState.viewangles[0];
-    R.refdef.viewangles[1] = clientRuntimeState.viewangles[1];
-    R.refdef.viewangles[2] = clientRuntimeState.viewangles[2] + V.CalcRoll(ent.angles, clientRuntimeState.velocity);
+    Camera.refdef.viewangles[0] = clientRuntimeState.viewangles[0];
+    Camera.refdef.viewangles[1] = clientRuntimeState.viewangles[1];
+    Camera.refdef.viewangles[2] = clientRuntimeState.viewangles[2] + V.CalcRoll(ent.angles, clientRuntimeState.velocity);
 
     if (V.dmg_time > 0.0) {
       if (V.kicktime.value) {
-        R.refdef.viewangles[2] += (V.dmg_time / V.kicktime.value) * V.dmg_roll;
-        R.refdef.viewangles[0] -= (V.dmg_time / V.kicktime.value) * V.dmg_pitch;
+        Camera.refdef.viewangles[2] += (V.dmg_time / V.kicktime.value) * V.dmg_roll;
+        Camera.refdef.viewangles[0] -= (V.dmg_time / V.kicktime.value) * V.dmg_pitch;
       }
       V.dmg_time -= Host.frametime;
     }
@@ -420,36 +422,36 @@ export default class V {
     const ipitch = V.idlescale.value * Math.sin(clientRuntimeState.time * V.ipitch_cycle.value) * V.ipitch_level.value;
     const iyaw = V.idlescale.value * Math.sin(clientRuntimeState.time * V.iyaw_cycle.value) * V.iyaw_level.value;
     const iroll = V.idlescale.value * Math.sin(clientRuntimeState.time * V.iroll_cycle.value) * V.iroll_level.value;
-    R.refdef.viewangles[0] += ipitch;
-    R.refdef.viewangles[1] += iyaw;
-    R.refdef.viewangles[2] += iroll;
+    Camera.refdef.viewangles[0] += ipitch;
+    Camera.refdef.viewangles[1] += iyaw;
+    Camera.refdef.viewangles[2] += iroll;
 
     const { forward, right, up } = new Vector(finiteOrZero(-ent.angles[0]), finiteOrZero(ent.angles[1]), finiteOrZero(ent.angles[2])).angleVectors();
-    R.refdef.vieworg[0] += V.ofsx.value * forward[0] + V.ofsy.value * right[0] + V.ofsz.value * up[0];
-    R.refdef.vieworg[1] += V.ofsx.value * forward[1] + V.ofsy.value * right[1] + V.ofsz.value * up[1];
-    R.refdef.vieworg[2] += V.ofsx.value * forward[2] + V.ofsy.value * right[2] + V.ofsz.value * up[2];
+    Camera.refdef.vieworg[0] += V.ofsx.value * forward[0] + V.ofsy.value * right[0] + V.ofsz.value * up[0];
+    Camera.refdef.vieworg[1] += V.ofsx.value * forward[1] + V.ofsy.value * right[1] + V.ofsz.value * up[1];
+    Camera.refdef.vieworg[2] += V.ofsx.value * forward[2] + V.ofsy.value * right[2] + V.ofsz.value * up[2];
 
-    if (R.refdef.vieworg[0] < (ent.origin[0] - 14.0)) {
-      R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]) - 14.0;
-    } else if (R.refdef.vieworg[0] > (ent.origin[0] + 14.0)) {
-      R.refdef.vieworg[0] = finiteOrZero(ent.origin[0]) + 14.0;
+    if (Camera.refdef.vieworg[0] < (ent.origin[0] - 14.0)) {
+      Camera.refdef.vieworg[0] = finiteOrZero(ent.origin[0]) - 14.0;
+    } else if (Camera.refdef.vieworg[0] > (ent.origin[0] + 14.0)) {
+      Camera.refdef.vieworg[0] = finiteOrZero(ent.origin[0]) + 14.0;
     }
-    if (R.refdef.vieworg[1] < (ent.origin[1] - 14.0)) {
-      R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]) - 14.0;
-    } else if (R.refdef.vieworg[1] > (ent.origin[1] + 14.0)) {
-      R.refdef.vieworg[1] = finiteOrZero(ent.origin[1]) + 14.0;
+    if (Camera.refdef.vieworg[1] < (ent.origin[1] - 14.0)) {
+      Camera.refdef.vieworg[1] = finiteOrZero(ent.origin[1]) - 14.0;
+    } else if (Camera.refdef.vieworg[1] > (ent.origin[1] + 14.0)) {
+      Camera.refdef.vieworg[1] = finiteOrZero(ent.origin[1]) + 14.0;
     }
-    if (R.refdef.vieworg[2] < (ent.origin[2] - 22.0)) {
-      R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) - 22.0;
-    } else if (R.refdef.vieworg[2] > (ent.origin[2] + 30.0)) {
-      R.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) + 30.0;
+    if (Camera.refdef.vieworg[2] < (ent.origin[2] - 22.0)) {
+      Camera.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) - 22.0;
+    } else if (Camera.refdef.vieworg[2] > (ent.origin[2] + 30.0)) {
+      Camera.refdef.vieworg[2] = finiteOrZero(ent.origin[2]) + 30.0;
     }
 
     const view = clientRuntimeState.viewent!;
     console.assert(view !== null, 'View entity is required for view calculations');
 
-    view.angles[0] = -R.refdef.viewangles[0] - ipitch;
-    view.angles[1] = R.refdef.viewangles[1] - iyaw;
+    view.angles[0] = -Camera.refdef.viewangles[0] - ipitch;
+    view.angles[1] = Camera.refdef.viewangles[1] - iyaw;
     view.angles[2] = clientRuntimeState.viewangles[2] - iroll;
     view.origin[0] = finiteOrZero(ent.origin[0]) + forward[0] * viewmodelBob * 0.4;
     view.origin[1] = finiteOrZero(ent.origin[1]) + forward[1] * viewmodelBob * 0.4;
@@ -494,7 +496,7 @@ export default class V {
       view.frameTime = 0.0;
     }
 
-    R.refdef.viewangles.add(clientRuntimeState.punchangle);
+    Camera.refdef.viewangles.add(clientRuntimeState.punchangle);
 
     if (clientRuntimeState.onground && (ent.origin[2] - V.oldz) > 0.0) {
       let steptime = Host.frametime;
@@ -507,14 +509,14 @@ export default class V {
       } else if ((ent.origin[2] - V.oldz) > 12.0) {
         V.oldz = finiteOrZero(ent.origin[2]) - 12.0;
       }
-      R.refdef.vieworg[2] += V.oldz - finiteOrZero(ent.origin[2]);
+      Camera.refdef.vieworg[2] += V.oldz - finiteOrZero(ent.origin[2]);
       view.origin[2] += V.oldz - finiteOrZero(ent.origin[2]);
     } else {
       V.oldz = finiteOrZero(ent.origin[2]);
     }
 
     if (clientRuntimeState.gameAPI) {
-      clientRuntimeState.gameAPI.updateRefDef(R.refdef);
+      clientRuntimeState.gameAPI.updateRefDef(Camera.refdef);
     }
 
     if (Chase.active.value) {
@@ -536,6 +538,12 @@ export default class V {
     } else if (!clientRuntimeState.paused) {
       V.CalcRefdef();
     }
+
+    // The refdef is final from here on. Derive what the frame reads from it, in the order each step needs.
+    Camera.UpdateViewVectors();
+    const viewleaf = Visibility.UpdateViewLeaf();
+    V.SetContentsColor(viewleaf.contents);
+    V.CalcBlend();
     R.PreRenderScene();
   }
 

@@ -136,12 +136,15 @@ function installAdapter() {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
-  // V.CalcRefdef runs before PreRenderScene, so setting the view here wins over it
+  // V.CalcRefdef runs before the view vectors are derived, so setting the view here wins over it. Until the
+  // Camera extraction the vectors were derived inside R.PreRenderScene, which is where the hook goes then.
   window.__capture.camera_override = null;
 
-  const original = R.PreRenderScene;
+  const hookOwner = engine.Camera ?? R;
+  const hookName = engine.Camera ? 'UpdateViewVectors' : 'PreRenderScene';
+  const original = hookOwner[hookName];
 
-  R.PreRenderScene = function () {
+  hookOwner[hookName] = function () {
     const override = window.__capture.camera_override;
 
     if (override !== null) {
@@ -149,7 +152,7 @@ function installAdapter() {
       window.__capture.camera.refdef.viewangles.setTo(...override.angles);
     }
 
-    return original.call(R);
+    return original.call(hookOwner);
   };
 }
 

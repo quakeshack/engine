@@ -6,7 +6,7 @@ import { SpriteModel } from '../../../common/model/SpriteModel.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
-import R from '../../R.ts';
+import Camera from '../scene/Camera.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -127,8 +127,8 @@ export class SpriteModelRenderer extends ModelRenderer {
       u = up;
     } else {
       // Sprite faces camera
-      r = R.vright;
-      u = R.vup;
+      r = Camera.vright;
+      u = Camera.vup;
     }
 
     // Build billboard quad geometry

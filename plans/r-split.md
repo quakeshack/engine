@@ -1,9 +1,10 @@
 # Split `R.ts` into renderer subsystems
 
 Track D2 of `plans/engine-architecture-modernization.md`. Status: **plan agreed, all open questions settled
-(2026-10-10); Phases 0, 0b, 1 and 2 are committed, Phase 3 is done and not committed yet; Phase 4 waits for a
+(2026-10-10); Phases 0, 0b, 1, 2 and 3 are committed, Phase 4 is done and not committed yet; Phase 5 waits for a
 go-ahead.** The renderer files are in their folders; `Particles`, `Decals`, `LightStyles`, `LightSampler`,
-`EntityLighting`, `Interpolation`, `Lightmaps`, `DynamicLights` and the start of `RendererCvars` are extracted.
+`EntityLighting`, `Interpolation`, `Lightmaps`, `DynamicLights`, `Camera`, `Visibility`, `FrameUniforms` and part of
+`RendererCvars` are extracted.
 
 ## Context
 
@@ -513,6 +514,61 @@ lightmaps, a rocket's dynamic light on a wall, flashblend on and off, a deluxema
 uses, `CullBox` 12). Done as a mechanical rename plus the extraction of the uniform loop. `V.ts` and `SCR.ts`
 change in imports and in the one scene-capture predicate. The three event subscriptions move with `Visibility`.
 
+#### Phase 4: what shipped (2026-10-10)
+
+`renderer/scene/Camera.ts`, `renderer/scene/Visibility.ts` and `renderer/scene/FrameUniforms.ts`, plus Design E
+items 2 and 3. `R.ts` went from 1664 to 1289 lines (the new files are 246, 169 and 124).
+
+- **`Camera`** owns `refdef` (and the `RefdefState`/`RefdefRect` types), `vpn`/`vup`/`vright`, `frustum`,
+  `perspective`, `viewMatrix`, `projectionMatrix`, `rotation` and the four calls `UpdateViewVectors`, `SetFrustum`,
+  `CullBox`, `UpdateMatrices`, plus `WorldToScreen`. It imports no GL and nothing else of the renderer. `rotation`
+  is new as a name only: it is the 3x3 that `Perspective()` kept in a local and uploaded as `uViewAngles`, now
+  stored so that `FrameUniforms` can take it without recomputing.
+- **`FrameUniforms.Upload()`** is the uniform loop of `Perspective()`, unchanged apart from the fog color string
+  being parsed once per frame instead of once per program. The gamma clamp that sat in front of the loop moved with
+  it, since the gamma uniform is what it protects. `R.Perspective` is gone; `R.SetupGL` calls
+  `Camera.UpdateMatrices()` and `FrameUniforms.Upload()` after the capture FBO is set up, which is the order it had.
+- **`Visibility`** owns `visframecount`, `viewleaf`, `oldviewleaf`, `skyVisible` (was `R.drawsky`), `UpdateViewLeaf()`,
+  `Reset()`, `MarkLeafs()` and the `areaportals.changed` and `cvar.changed` subscriptions. `RecursiveWorldNode` is
+  its private `#walkMarkedNodes`. `R.NewMap` and `R.ClearAll` call `Visibility.Reset()` at the positions where they
+  nulled the two leafs.
+- **Design E item 3 (explicit view state):** `V.PreRenderView` now spells out the order: refdef calculation,
+  `Camera.UpdateViewVectors()`, `Visibility.UpdateViewLeaf()`, `V.SetContentsColor()`, `V.CalcBlend()`, then
+  `R.PreRenderScene()`. The blend color used to be computed from inside the renderer; it is the view's business
+  now. `R.PreRenderScene` keeps what is renderer-side (lightstyles, warp/bloom/underwater-fog activation, the fog
+  tint) and asserts the view leaf is there. The only reordering is that `LightStyles.Animate()` now runs after the
+  blend instead of before the vectors; they share no state.
+- **Design E item 2 (one capture predicate):** `PostProcess.requestSceneCapture(required)` is fed by
+  `R.PreRenderScene`, `PostProcess.needsSceneCapture()` is what `R.SetupGL` and `SCR.UpdateScreen` ask.
+  `R.usePostProcess` and the two copies of `R.usePostProcess || PostProcess.hasActiveEffects()` are gone. The
+  request stays until the next call, as the old flag did.
+- **`RendererCvars` grew** by `novis` and the five `fog_*` cvars (needed by `Visibility` and `FrameUniforms`);
+  `R.Init` creates them at the same positions, so the `cvarlist` order is unchanged. The `R as typeof R & { novis }`
+  cast in `ClientEntities` is gone.
+- **Callers** now import `Camera`/`Visibility` directly: `V`, `SCR`, `Chase`, `ClientHost`, `ClientEngineAPI`,
+  `ClientEntities`, `Particles`, `Decals`, `DynamicLights`, the four model renderers and `UnderwaterFogEffect`.
+  `Particles`, `Decals`, `DynamicLights` and `SpriteModelRenderer` no longer import `R` at all, and `Chase` and
+  `ClientEngineAPI` do not either. `Camera` and `Visibility` are on `window.engine`, and the capture script hooks
+  `Camera.UpdateViewVectors` (it hooked `R.PreRenderScene` while the vectors were derived there).
+- **Three forwarders** on `R` for `Sky`, which reads the renderer through `RenderContext` and must not import
+  `Camera` or `Visibility` (the first would put one more client file in the worker closure, the second pulls in the
+  client state): see the ledger.
+- **Tests:** `view-frustum` became `camera.test.ts` (adds `UpdateViewVectors`, `UpdateMatrices`, and a chain that
+  goes from angles to a screen point), `mark-leafs` became `visibility.test.ts` (adds `UpdateViewLeaf` and `Reset`).
+  New: `frame-uniforms.test.ts` (declared-uniform filtering, gamma clamp, fog packing, shadow depth conversion,
+  point-light flag) and `post-process-scene-capture.test.ts`. `useRendererOf` in `test/support/renderer.ts` sorts a
+  mock written against the old facade onto `Camera`, `Visibility` and `rendererCvars`, the way `useClientStateOf`
+  does for the split client state, so `client-host`, `client-entities`, `scr` and the brush renderer tests keep
+  their mocks.
+- **Verified:** `npm test` 1961 pass, `npm run typecheck` clean, `eslint` 0 errors on all new and touched `.ts`
+  files (the `.mjs` tests still print the parser-service errors they printed before); browser capture of a build
+  from HEAD and a build from the working tree (2 + 2 runs, interleaved): nothing beyond the noise between captures
+  of one build, identical `r_speeds` in all 9 views, and the console logs of all four runs are identical (three
+  404s and software-GL performance warnings that the HEAD build prints as well). Not covered by the capture, as
+  before: underwater fog, a map other than `e1m1`, pointer lock and input; this phase does not touch the latter.
+  Not measured: the frame-time check the plan asks for before Phase 4. Software GL at 3 to 5 FPS says nothing
+  about `Camera` access patterns, so it needs a run on real hardware (see Testing).
+
 ### Phase 5: Resources, cvars, init, stats, fog, sky, headless
 
 `RendererCvars`, `DefaultTextures`, `ShaderPrograms`, `RenderStats`, `Fog`, `SkyBox`, then Design C: `Materials` as
@@ -592,3 +648,6 @@ Every forwarder added in Phases 1 to 6 is listed here with the phase that adds i
 | `static get interpolation()` (returns `rendererCvars.interpolation`) | Phase 2 | `Materials` reads `r_interpolation` through `RenderContext` (`typeof R`) | `RenderContext`, Phase 5 |
 | `static get shadow_texture()` (returns `ShadowMap.getActiveTopDownTexture()`) | Phase 3 | `Sky` reads it through `RenderContext` and must not import `ShadowMap` | `RenderContext`, Phase 5 |
 | `static get point_shadow_textures()` (returns `ShadowMap.getActivePointTextures()`) | Phase 3 | same | `RenderContext`, Phase 5 |
+| `static get visframecount()` (returns `Visibility.visframecount`) | Phase 4 | `Sky` reads it through `RenderContext` and must not import `Visibility` | `RenderContext`, Phase 5 |
+| `static get refdef()` (returns `Camera.refdef`) | Phase 4 | same | `RenderContext`, Phase 5 |
+| `static CullBox()` (calls `Camera.CullBox`) | Phase 4 | same; `Sky` calls it per leaf, so it goes first in Phase 5 | `RenderContext`, Phase 5 |

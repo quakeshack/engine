@@ -3,6 +3,7 @@ import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import R from '../../R.ts';
+import Camera from '../scene/Camera.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -44,7 +45,7 @@ export default class UnderwaterFogEffect extends PostProcessEffect {
     const [fr, fg, fb] = R.underwaterFogColor;
     gl.uniform3f(program.uFogColor!, fr, fg, fb);
     gl.uniform1f(program.uFogDensity!, R.underwaterFogDensity);
-    gl.uniformMatrix4fv(program.uPerspective!, false, R.perspective);
+    gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
 
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();

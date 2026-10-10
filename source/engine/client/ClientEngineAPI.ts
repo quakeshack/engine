@@ -31,7 +31,6 @@ import ConsoleOverlay from './ConsoleOverlay.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import { clientCollision, clientPmove } from './ClientPhysics.ts';
 import CL from './CL.ts';
-import R from './R.ts';
 import Particles from './renderer/effects/Particles.ts';
 import Decals from './renderer/effects/Decals.ts';
 import M from './Menu.ts';
@@ -41,6 +40,7 @@ import Draw from './Draw.ts';
 import S from './Sound.ts';
 import SCR from './SCR.ts';
 import V from './V.ts';
+import Camera from './renderer/scene/Camera.ts';
 
 interface ClientTraceOptions {
   readonly includeEntities?: boolean;
@@ -325,7 +325,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * @returns Screen coordinates, or `null` if the point is behind the camera.
    */
   WorldToScreen(origin: Vector): Vector | null {
-    return R.WorldToScreen(origin);
+    return Camera.WorldToScreen(origin);
   }
 
   /**
@@ -610,10 +610,10 @@ export class ClientEngineAPI extends CommonEngineAPI {
      */
     get viewRect(): { x: number; y: number; width: number; height: number } {
       return {
-        x: R.refdef.vrect.x,
-        y: R.refdef.vrect.y,
-        width: R.refdef.vrect.width,
-        height: R.refdef.vrect.height,
+        x: Camera.refdef.vrect.x,
+        y: Camera.refdef.vrect.y,
+        width: Camera.refdef.vrect.width,
+        height: Camera.refdef.vrect.height,
       };
     },
   };

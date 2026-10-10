@@ -15,6 +15,7 @@ import EntityLighting from '../lighting/EntityLighting.ts';
 import ShadowMap from '../lighting/ShadowMap.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import Host from '../../../common/Host.ts';
+import Camera from '../scene/Camera.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -93,7 +94,7 @@ export class AliasModelRenderer extends ModelRenderer {
     const e = entity;
 
     // Frustum culling
-    if (R.CullBox(
+    if (Camera.CullBox(
       new Vector(
         e.origin[0] - clmodel.boundingradius,
         e.origin[1] - clmodel.boundingradius,
