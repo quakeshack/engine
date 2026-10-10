@@ -279,19 +279,18 @@ additive: nothing changes for a game that calls `setStack` as today.
   Phase 3 and the input path around it is read, not run.
 - Dockerfile: sources and tests are copied whole; no change expected.
 
-## Open questions
+## Open questions (parked 2026-10-11)
 
 Closed on 2026-10-11: where `Viewport` lives (decision 4); that color shifts are post-process entries (decision 6);
-placement and timing as generic features (decisions 7 and 8). Open:
+placement and timing as generic features (decisions 7 and 8). The four below are **parked** by the developer: nobody
+works on them now, and each one has a default so that nothing waits for an answer by accident. "Needed by" is the
+phase that has to settle it before it starts; every phase stops for a go-ahead anyway.
 
-1. G6: confirm after the hellwave prototype that the interface in "G6 in detail" is enough, or drop it and keep
-   `updateRefDef` as the only hook (the developer is unsure).
-2. Channels: is `setStack(stack, { channel })` the right shape, or should a game register channels up front? The
-   default channel keeps every existing call unchanged either way.
-3. Neutral settings per effect: where they live (a `neutral` member of each `PostProcessEffect`, or beside the
-   descriptor type so a game can read them) and how an effect with a non-numeric setting interpolates (the
-   `tintColor` of the grade stays, its strength carries the intensity).
-4. Order of the frame: the game would set the liquid tint from `viewContents`, which needs the view leaf, which needs
-   the final view origin; with G6 that origin comes from the game itself. Check in Phase 2 whether the tint is set
-   from the previous frame's leaf (one frame of lag, invisible in practice) or the leaf is looked up again after the
-   game's view result.
+| # | Question | Needed by | Default if not decided |
+|---|---|---|---|
+| 1 | G6: is the interface in "G6 in detail" enough once prototyped in hellwave, or does the game keep only `updateRefDef`? (the developer is unsure) | Phase 5, G6 only | The engine keeps `FirstPersonView`; G6 is not started |
+| 2 | Channels: is `setStack(stack, { channel })` the right shape, or should a game register channels up front? | Phase 1 | `setStack(stack, { channel })`, default channel `'default'`, so every existing call is unchanged |
+| 3 | Neutral settings per effect: where they live (a `neutral` member of each `PostProcessEffect`, or beside the descriptor type so a game can read them), and how a non-numeric setting interpolates | Phase 1 | A `neutral` member of each effect; `tintColor` of the grade stays, its strength carries the intensity |
+| 4 | Order of the frame: the game sets the liquid tint from `viewContents`, which needs the view leaf, which needs the final view origin (from the game itself with G6): previous frame's leaf, or looked up again after the game's view result? | Phase 2 | The previous frame's leaf (one frame of lag, invisible in practice) |
+
+Phase 0 (characterization tests and the small fixes) depends on none of them.
