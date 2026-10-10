@@ -6,8 +6,8 @@ import Vector from '../../../../shared/Vector.ts';
 import Host from '../../../common/Host.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import { effect } from '../../../../shared/Defs.ts';
-import R from '../../R.ts';
 import Draw from '../../Draw.ts';
+import rendererCvars from '../resources/RendererCvars.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -281,7 +281,7 @@ export default class BloomEffect extends PostProcessEffect {
    * @param height New height in pixels.
    */
   override resize(width: number, height: number): void {
-    const downsample = R.bloomDownsample ? R.bloomDownsample.value : 4;
+    const downsample = rendererCvars.bloomDownsample ? rendererCvars.bloomDownsample.value : 4;
     const size = getBloomBufferSize(width, height, downsample);
 
     if (BloomEffect.width === size.width && BloomEffect.height === size.height) {
@@ -420,7 +420,7 @@ export default class BloomEffect extends PostProcessEffect {
 
   /** Draw an on-screen bloom debug preview. */
   override drawDebugPreview(): void {
-    const mode = resolveBloomDebugMode(R.bloomDebug ? R.bloomDebug.value : 0);
+    const mode = resolveBloomDebugMode(rendererCvars.bloomDebug ? rendererCvars.bloomDebug.value : 0);
 
     if (mode === 0) {
       return;
@@ -577,7 +577,7 @@ export default class BloomEffect extends PostProcessEffect {
     inputTexture.bind(program!.tScene!);
     BloomEffect.extractTexture!.bind(program!.tBloom!);
     BloomEffect.adaptationTextures[BloomEffect.adaptationReadIndex]!.bind(program!.tAdaptation!);
-    gl.uniform1f(program!.uStrength!, R.bloomStrength.value);
+    gl.uniform1f(program!.uStrength!, rendererCvars.bloomStrength.value);
     gl.uniform2f(program!.uBloomTexelOffset!, 1.0 / BloomEffect.width, 1.0 / BloomEffect.height);
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);
     GL.StreamFlush();

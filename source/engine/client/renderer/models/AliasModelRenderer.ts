@@ -10,12 +10,13 @@ import type { ClientEdict } from '../../ClientEntities.ts';
 import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import Con from '../../../common/Console.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
-import R from '../../R.ts';
 import EntityLighting from '../lighting/EntityLighting.ts';
 import ShadowMap from '../lighting/ShadowMap.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import Host from '../../../common/Host.ts';
 import Camera from '../scene/Camera.ts';
+import DefaultTextures from '../resources/DefaultTextures.ts';
+import RenderStats from '../scene/RenderStats.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -110,7 +111,7 @@ export class AliasModelRenderer extends ModelRenderer {
 
     // Select shader program (player vs normal)
     let program;
-    if (e.colormap !== 0 && clmodel.player && R.nocolors.value === 0) {
+    if (e.colormap !== 0 && clmodel.player && rendererCvars.nocolors.value === 0) {
       program = GL.UseProgram('player');
 
       // Calculate player colors
@@ -145,7 +146,7 @@ export class AliasModelRenderer extends ModelRenderer {
     gl.uniform3fv(program!.uDynamicLightVec!, dynamicLightVector);
 
     // Update performance counter
-    R.c_alias_polys += clmodel._num_tris;
+    RenderStats.c_alias_polys += clmodel._num_tris;
 
     // Select animation frames
     const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(clmodel, e);
@@ -166,7 +167,7 @@ export class AliasModelRenderer extends ModelRenderer {
     // Select and bind skin texture
     const skin = this._selectSkin(clmodel, e);
     skin.texturenum!.bind(program!.tTexture!);
-    (skin.luminanceTexture || R.blacktexture).bind(program!.tLuminance!);
+    (skin.luminanceTexture || DefaultTextures.blacktexture).bind(program!.tLuminance!);
     if (clmodel.player) {
       skin.playertexture!.bind(program!.tPlayer!);
     }

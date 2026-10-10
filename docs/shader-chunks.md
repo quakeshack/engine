@@ -72,7 +72,7 @@ Still per program on purpose: `brush.frag`'s `sampleLocalShadowPCF` and `sampleP
 
 1. Create `shaders/include/<name>.glsl`, named for what it is. Put the uniforms and varyings its functions read in it.
 2. `#include` it from the programs, after their `precision` statements. Remove the copies they had.
-3. Add the uniform names to the `uniforms` argument of the program's `GL.CreateProgram` call in `R.ts`/`Draw.ts`
+3. Add the uniform names to the `uniforms` argument of the program's `GL.CreateProgram` call in `renderer/programs/ShaderPrograms.ts` (or `Draw.ts`)
    when they were not there. The list of live uniform names is still TypeScript, not read back from the compiled
    program.
 4. `node --import tsx --test test/renderer/shader-library.test.ts`: every program expands, no function is defined in

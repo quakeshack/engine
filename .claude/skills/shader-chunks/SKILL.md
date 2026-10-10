@@ -37,6 +37,6 @@ and a program pulls it in with `#include "name.glsl"` (a whole line, flat name, 
 ## What this skill does NOT do
 
 - It does not add `#define`-driven shader variants or an ubershader.
-- It does not cover the uniform name lists in `R.ts`/`Draw.ts` (`GL.CreateProgram`'s `uniforms` argument). A
+- It does not cover the uniform name lists in `renderer/programs/ShaderPrograms.ts`/`Draw.ts` (`GL.CreateProgram`'s `uniforms` argument). A
   chunk-owned uniform is only live when the program's TypeScript lists it there; that list is still maintained by
   hand.

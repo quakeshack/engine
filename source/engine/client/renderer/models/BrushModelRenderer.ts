@@ -12,7 +12,6 @@ import PostProcess from '../postprocess/PostProcess.ts';
 import * as Def from '../../../common/Def.ts';
 import { content } from '../../../../shared/Defs.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
-import R from '../../R.ts';
 import Interpolation from '../scene/Interpolation.ts';
 import LightStyles from '../lighting/LightStyles.ts';
 import Lightmaps from '../lighting/Lightmaps.ts';
@@ -24,6 +23,9 @@ import { LIGHTMAP_BLOCK_SIZE } from '../lighting/LightmapAtlas.ts';
 import Host from '../../../common/Host.ts';
 import Camera from '../scene/Camera.ts';
 import Visibility from '../scene/Visibility.ts';
+import DefaultTextures from '../resources/DefaultTextures.ts';
+import MaterialBinder from './MaterialBinder.ts';
+import RenderStats from '../scene/RenderStats.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -418,7 +420,7 @@ export class BrushModelRenderer extends ModelRenderer {
     if (e === clientRuntimeState.clientEntities.getEntity(0)) {
       if (pass === 0) {
         this.renderWorld(clmodel);
-      } else if (pass === 1 && R.drawturbulents.value) {
+      } else if (pass === 1 && rendererCvars.drawturbulents.value) {
         this.renderWorldTurbolents(clmodel);
       } else if (pass === 2) {
         this.renderWorldTransparent(clmodel);
@@ -461,17 +463,17 @@ export class BrushModelRenderer extends ModelRenderer {
 
     if (pass === 0) {
       GL.BindVAO(clmodel.opaqueVAO!);
-      R.c_brush_vbos++;
+      RenderStats.c_brush_vbos++;
       this._renderOpaqueSurfaces(clmodel, e, viewMatrix);
       GL.UnbindVAO();
-    } else if (pass === 1 && R.drawturbulents.value) {
+    } else if (pass === 1 && rendererCvars.drawturbulents.value) {
       GL.BindVAO(clmodel.turbulentVAO!);
-      R.c_brush_vbos++;
+      RenderStats.c_brush_vbos++;
       this._renderTurbulentSurfaces(clmodel, e, viewMatrix);
       GL.UnbindVAO();
     } else if (pass === 2) {
       GL.BindVAO(clmodel.opaqueVAO!);
-      R.c_brush_vbos++;
+      RenderStats.c_brush_vbos++;
       this._renderTransparentSurfaces(clmodel, e, viewMatrix);
       GL.UnbindVAO();
     }
@@ -512,7 +514,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const worldspawn = clientRuntimeState.clientEntities.getEntity(0);
 
     GL.BindVAO(clmodel.opaqueVAO!);
-    R.c_brush_vbos++;
+    RenderStats.c_brush_vbos++;
 
     const program = GL.UseProgram('brush')!;
     gl.uniform3f(program.uAmbientLight!, 1.0, 1.0, 1.0);
@@ -521,8 +523,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uOrigin!, 0.0, 0.0, 0.0);
     gl.uniform1f(program.uAlpha!, 1.0);
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
-    gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
-    gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
+    gl.uniform1f(program.uBloomDlightScale!, rendererCvars.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(rendererCvars.bloomSpecularStrength?.value ?? 0.0));
     gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
     gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
@@ -557,14 +559,14 @@ export class BrushModelRenderer extends ModelRenderer {
           continue;
         }
 
-        R.c_brush_verts += cmds[2];
-        R.c_brush_tris += cmds[2] / 3;
+        RenderStats.c_brush_verts += cmds[2];
+        RenderStats.c_brush_tris += cmds[2] / 3;
 
-        material.emit(worldspawn);
-        material.bindTo(program, hasDeluxemap);
+        MaterialBinder.Emit(material, worldspawn);
+        MaterialBinder.Bind(material, program, hasDeluxemap);
 
         gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
-        R.c_brush_draws++;
+        RenderStats.c_brush_draws++;
       }
     }
 
@@ -626,7 +628,7 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   beginWorldTransparentPass(clmodel: BrushModel): void {
     GL.BindVAO(clmodel.opaqueVAO!);
-    R.c_brush_vbos++;
+    RenderStats.c_brush_vbos++;
 
     const program = GL.UseProgram('brush')!;
     this._worldTransparentProgram = program;
@@ -638,8 +640,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uOrigin!, 0.0, 0.0, 0.0);
     gl.uniform1f(program.uAlpha!, 1.0);
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
-    gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
-    gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
+    gl.uniform1f(program.uBloomDlightScale!, rendererCvars.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(rendererCvars.bloomSpecularStrength?.value ?? 0.0));
     gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
     gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
@@ -675,14 +677,14 @@ export class BrushModelRenderer extends ModelRenderer {
         continue;
       }
 
-      R.c_brush_verts += cmds[2];
-      R.c_brush_tris += cmds[2] / 3;
+      RenderStats.c_brush_verts += cmds[2];
+      RenderStats.c_brush_tris += cmds[2] / 3;
 
-      material.emit(worldspawn);
-      material.bindTo(program, hasDeluxemap);
+      MaterialBinder.Emit(material, worldspawn);
+      MaterialBinder.Bind(material, program, hasDeluxemap);
 
       gl.drawArrays(gl.TRIANGLES, cmds[1], cmds[2]);
-      R.c_brush_draws++;
+      RenderStats.c_brush_draws++;
     }
   }
 
@@ -776,7 +778,7 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   beginWorldTurbulentPass(clmodel: BrushModel): void {
     GL.BindVAO(clmodel.turbulentVAO!);
-    R.c_brush_vbos++;
+    RenderStats.c_brush_vbos++;
 
     const program = GL.UseProgram('turbulent')!;
     gl.uniform3f(program.uOrigin!, 0.0, 0.0, 0.0);
@@ -785,7 +787,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
     gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
-    gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomDlightScale!, rendererCvars.bloomDlightStrength.value);
 
     const cameraInside = Visibility.viewleaf !== null && Visibility.viewleaf.contents <= content.CONTENT_WATER ? 1.0 : 0.0;
     gl.uniform1f(program.uCameraInside!, cameraInside);
@@ -797,7 +799,7 @@ export class BrushModelRenderer extends ModelRenderer {
       // Per-surface alpha decides whether depth fog is active.
       gl.uniform1f(program.uWaterFogDensity!, 0.0);
     } else {
-      R.null_texture.bind(program.tDepth!);
+      DefaultTextures.null_texture.bind(program.tDepth!);
       gl.uniform1f(program.uWaterFogDensity!, 0.0);
     }
 
@@ -852,7 +854,7 @@ export class BrushModelRenderer extends ModelRenderer {
   renderWorldTurbulentsBoundaryDepth(clmodel: BrushModel): void {
     const program = GL.UseProgram('turbulent-depth')!;
     GL.BindVAO(clmodel.turbulentVAO!);
-    R.c_brush_vbos++;
+    RenderStats.c_brush_vbos++;
 
     // World model is always at the origin with identity rotation.
     gl.uniform3f(program.uOrigin!, 0.0, 0.0, 0.0);
@@ -866,7 +868,7 @@ export class BrushModelRenderer extends ModelRenderer {
       for (let j = leaf.waterchain; j < leaf.cmds.length; j++) {
         const cmd = leaf.cmds[j];
         gl.drawArrays(gl.TRIANGLES, cmd[1], cmd[2]);
-        R.c_brush_verts += cmd[2];
+        RenderStats.c_brush_verts += cmd[2];
       }
     }
 
@@ -978,11 +980,11 @@ export class BrushModelRenderer extends ModelRenderer {
       // Bind the fog cube VAO directly instead of through GL.BindVAO/UnbindVAO
       // to avoid attribute/program state being cleared between volumes.
       gl.bindVertexArray(this.#fogCubeVAO);
-      R.c_brush_vbos++;
+      RenderStats.c_brush_vbos++;
 
       gl.drawArrays(gl.TRIANGLES, 0, 36);
       gl.bindVertexArray(null);
-      R.c_brush_draws++;
+      RenderStats.c_brush_draws++;
     } else {
       const submodel = worldmodel.submodels[fogVolume.modelIndex - 1];
 
@@ -994,13 +996,13 @@ export class BrushModelRenderer extends ModelRenderer {
       gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, submodel.cmds as WebGLBuffer);
-      R.c_brush_vbos++;
+      RenderStats.c_brush_vbos++;
       gl.vertexAttribPointer(program.aPosition!.location as number, 3, gl.FLOAT, false, 80, 0);
 
       if (submodel.chains) {
         for (const chain of submodel.chains) {
           gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
-          R.c_brush_draws++;
+          RenderStats.c_brush_draws++;
         }
       }
     }
@@ -1107,7 +1109,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const program = this._worldTurbulentProgram!;
     const material = clmodel.textures[textureIndex] as BaseMaterial;
 
-    material.emit(worldspawn);
+    MaterialBinder.Emit(material, worldspawn);
     const alpha = this._getTurbulentMaterialAlpha(material, worldspawn);
     this._setTurbulentSurfaceState(alpha);
     gl.uniform1f(program.uAlpha!, alpha);
@@ -1116,11 +1118,11 @@ export class BrushModelRenderer extends ModelRenderer {
     const waterfogEnabled = clientRuntimeState.worldmodel?.worldspawnInfo._qs_waterfog === '1';
     gl.uniform1f(program.uWaterFogDensity!, PostProcess.active && alpha < 1.0 && waterfogEnabled ? 0.01 : 0.0);
 
-    R.c_brush_verts += vertexCount;
-    R.c_brush_tris += vertexCount / 3;
-    material.bindTo(program);
+    RenderStats.c_brush_verts += vertexCount;
+    RenderStats.c_brush_tris += vertexCount / 3;
+    MaterialBinder.Bind(material, program);
     gl.drawArrays(gl.TRIANGLES, firstVertex, vertexCount);
-    R.c_brush_draws++;
+    RenderStats.c_brush_draws++;
   }
 
   /**
@@ -1151,7 +1153,7 @@ export class BrushModelRenderer extends ModelRenderer {
   /** @private */
   _setupBrushShaderCommon(program: GLProgramInfo, clmodel: BrushModel, isWorld: boolean): void {
     if ((rendererCvars.fullbright.value !== 0) || (clmodel.lightdata === null && clmodel.lightdata_rgb === null)) {
-      R.fullbright_texture.bind(program.tLightmap!);
+      DefaultTextures.fullbright_texture.bind(program.tLightmap!);
     } else {
       Lightmaps.lightmap_texture.bind(program.tLightmap!);
     }
@@ -1159,7 +1161,7 @@ export class BrushModelRenderer extends ModelRenderer {
     if (rendererCvars.flashblend.value === 0 && (isWorld || clmodel.submodel)) {
       Lightmaps.dlightmap_rgba_texture.bind(program.tDlight!);
     } else {
-      R.null_texture.bind(program.tDlight!);
+      DefaultTextures.null_texture.bind(program.tDlight!);
     }
 
     const topDownShadow = ShadowMap.getActiveTopDownTexture();
@@ -1190,8 +1192,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniform1f(program.uAlpha!, 1.0);
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
-    gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
-    gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
+    gl.uniform1f(program.uBloomDlightScale!, rendererCvars.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(rendererCvars.bloomSpecularStrength?.value ?? 0.0));
 
     this._setupBrushShaderCommon(program, clmodel, false);
     LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
@@ -1210,14 +1212,14 @@ export class BrushModelRenderer extends ModelRenderer {
         continue;
       }
 
-      R.c_brush_verts += chain[2];
-      R.c_brush_tris += chain[2] / 3;
+      RenderStats.c_brush_verts += chain[2];
+      RenderStats.c_brush_tris += chain[2] / 3;
 
-      material.emit(e);
-      material.bindTo(program, hasDeluxemap);
+      MaterialBinder.Emit(material, e);
+      MaterialBinder.Bind(material, program, hasDeluxemap);
 
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
-      R.c_brush_draws++;
+      RenderStats.c_brush_draws++;
     }
   }
 
@@ -1232,8 +1234,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniform1f(program.uAlpha!, e.alpha);
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
-    gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
-    gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
+    gl.uniform1f(program.uBloomDlightScale!, rendererCvars.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(rendererCvars.bloomSpecularStrength?.value ?? 0.0));
 
     this._setupBrushShaderCommon(program, clmodel, false);
     LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
@@ -1262,14 +1264,14 @@ export class BrushModelRenderer extends ModelRenderer {
         continue;
       }
 
-      R.c_brush_verts += chain[2];
-      R.c_brush_tris += chain[2] / 3;
+      RenderStats.c_brush_verts += chain[2];
+      RenderStats.c_brush_tris += chain[2] / 3;
 
-      material.emit(e);
-      material.bindTo(program, hasDeluxemap);
+      MaterialBinder.Emit(material, e);
+      MaterialBinder.Bind(material, program, hasDeluxemap);
 
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
-      R.c_brush_draws++;
+      RenderStats.c_brush_draws++;
     }
 
     gl.disable(gl.BLEND);
@@ -1284,7 +1286,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
     gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
-    gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
+    gl.uniform1f(program.uBloomDlightScale!, rendererCvars.bloomDlightStrength.value);
 
     this._setupBrushShaderCommon(program, clmodel, false);
     LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
@@ -1308,16 +1310,16 @@ export class BrushModelRenderer extends ModelRenderer {
         continue;
       }
 
-      material.emit(e);
+      MaterialBinder.Emit(material, e);
       const alpha = this._getTurbulentMaterialAlpha(material, e);
       this._setTurbulentSurfaceState(alpha);
       gl.uniform1f(program.uAlpha!, alpha);
-      material.bindTo(program);
+      MaterialBinder.Bind(material, program);
 
-      R.c_brush_verts += chain[2];
-      R.c_brush_tris += chain[2] / 3;
+      RenderStats.c_brush_verts += chain[2];
+      RenderStats.c_brush_tris += chain[2] / 3;
       gl.drawArrays(gl.TRIANGLES, chain[1], chain[2]);
-      R.c_brush_draws++;
+      RenderStats.c_brush_draws++;
     }
 
     gl.depthMask(true);
@@ -1362,7 +1364,7 @@ export class BrushModelRenderer extends ModelRenderer {
       return true;
     }
 
-    R.normal_up_texture.bind(program.tDeluxemap!);
+    DefaultTextures.normal_up_texture.bind(program.tDeluxemap!);
     gl.uniform1f(program.uHaveDeluxemap!, 0.0);
     return false;
   }

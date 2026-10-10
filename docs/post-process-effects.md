@@ -127,7 +127,7 @@ onBerserkExpired(): void {
 
 ## Adding New Effects
 
-1. Create `source/engine/client/renderer/MyEffect.ts` extending `PostProcessEffect` with `this.stackable = true`. Implement `apply()`, and `init()`/`resize()`/`shutdown()` if the effect owns GPU resources.
+1. Create `source/engine/client/renderer/postprocess/MyEffect.ts` extending `PostProcessEffect` with `this.stackable = true`. Implement `apply()`, and `init()`/`resize()`/`shutdown()` if the effect owns GPU resources.
 2. Add `MyEffectDescriptor` to `PostProcessEffectDescriptor` in `source/shared/GameInterfaces.ts`.
-3. Register the GLSL program in `R.ts` alongside the existing `color-grade` and `blur` registrations.
+3. Register the GLSL program in `renderer/programs/ShaderPrograms.ts` alongside the existing `color-grade` and `blur` registrations.
 4. Call `PostProcess.addEffect(new MyEffect())` in `R.ts` after `PostProcess.init()`.

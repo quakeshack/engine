@@ -135,7 +135,6 @@ void describe('engine boundaries', () => {
       'client/PageServices.ts',
       'client/VID.ts',
       'client/renderer/models/Materials.ts',
-      'client/renderer/resources/RenderContext.ts',
       'client/renderer/scene/Sky.ts',
     ];
 

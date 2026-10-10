@@ -246,8 +246,10 @@ node scripts/renderer-capture/compare.mjs \
   `capture.mjs` names every member it uses and looks for its new home first, so a change that moves a member
   teaches that function and exposes the new home in `bootstrap/createBrowserClient.ts`, and the same script keeps
   working on the build before and the build after.
-- What they do not cover: input and pointer lock (section 6), underwater fog (`e1m1` has no `_qs_waterfog`
-  volume), anything that needs another map, and a second renderer state such as a changed resolution.
+- What they do not cover: input and pointer lock (section 6), anything that needs another map, and a second
+  renderer state such as a changed resolution. Underwater fog is only covered with `CAPTURE_WATERFOG=1` in the
+  environment of `capture.mjs`: `e1m1` has no `_qs_waterfog` volume, so the key is set on the worldspawn before the
+  liquid views and the "inside the lava" view then shows the underwater fog effect.
 
 ## Reporting results
 

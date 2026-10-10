@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 const turbulentShaderSource = readFileSync(new URL('../../source/engine/client/shaders/turbulent.frag', import.meta.url), 'utf8');
-const rendererSource = readFileSync(new URL('../../source/engine/client/R.ts', import.meta.url), 'utf8');
+const rendererSource = readFileSync(new URL('../../source/engine/client/renderer/programs/ShaderPrograms.ts', import.meta.url), 'utf8');
 
 void describe('turbulent lightstyle interpolation shader wiring', () => {
   void test('mixes lightstyle A/B with uInterpolation in turbulent shader', () => {

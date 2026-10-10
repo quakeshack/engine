@@ -1,10 +1,11 @@
 # Split `R.ts` into renderer subsystems
 
 Track D2 of `plans/engine-architecture-modernization.md`. Status: **plan agreed, all open questions settled
-(2026-10-10); Phases 0, 0b, 1, 2 and 3 are committed, Phase 4 is done and not committed yet; Phase 5 waits for a
-go-ahead.** The renderer files are in their folders; `Particles`, `Decals`, `LightStyles`, `LightSampler`,
-`EntityLighting`, `Interpolation`, `Lightmaps`, `DynamicLights`, `Camera`, `Visibility`, `FrameUniforms` and part of
-`RendererCvars` are extracted.
+(2026-10-10); Phases 0, 0b, 1, 2, 3 and 4 are committed, Phase 5 is done and not committed yet; Phase 6 is decided
+by the developer now that `R.ts` can be read again.** Extracted: `Particles`, `Decals`, `LightStyles`,
+`LightSampler`, `EntityLighting`, `Interpolation`, `Lightmaps`, `DynamicLights`, `Camera`, `Visibility`,
+`FrameUniforms`, `RendererCvars`, `DefaultTextures`, `ShaderPrograms`, `RenderStats`, `Fog`, `SkyBox`,
+`MaterialBinder`. `R.ts` is at 799 lines.
 
 ## Context
 
@@ -576,6 +577,59 @@ data, `MaterialBinder`, `Sky` with a draw context, `RenderContext` deleted, `eng
 `useRendererOf` updated. `R.Init` becomes the ordered list of subsystem inits below. `R.NewMap` and `ClearAll`
 become fan-outs. This is where `R.ts` drops under about 1000 lines.
 
+#### Phase 5: what shipped (2026-10-10)
+
+`R.ts` went from 1289 to 799 lines. New: `resources/DefaultTextures.ts`, `programs/ShaderPrograms.ts`,
+`scene/RenderStats.ts`, `scene/Fog.ts`, `scene/SkyBox.ts`, `models/MaterialBinder.ts`; `RendererCvars` now holds every
+cvar of the renderer; `resources/RenderContext.ts` is deleted.
+
+- **`RendererCvars`:** the remaining 15 cvars moved (`waterwarp`, `drawentities`, `drawviewmodel`, `drawturbulents`,
+  `underwater_fog_density`, `speeds`, `polyblend`, `nocolors` and the seven bloom ones). `R.Init` still creates them,
+  all 25 in today's order (the `cvarlist` order test is unchanged).
+- **`DefaultTextures`** owns the six fallback textures and publishes `renderer.textures.initialized`.
+  `Lightmaps.Init()` and `LightStyles.Init()` used to run in the middle of its body; `R.Init` now calls the three in
+  sequence, so the GL texture ids of the lightmap and lightstyle textures differ from before and nothing else does.
+- **`ShaderPrograms.Init()`** is the old `InitShaders` text, moved without edits (it still publishes
+  `renderer.shaders.initialized`); `turbulent-lightstyle-interpolation.test.mjs` reads it from there.
+- **`RenderStats`** has the six counters, `Reset()`, `Summarize(frameStartMs)` and `Print(fps)`; the `r_speeds`
+  lines are `RenderStats.lines`. `SCR` passes its FPS in, so `RenderStats` does not import `SCR`.
+- **`Fog`** has `NewMap()` (was `NewMapFog`), `SelectUnderwaterTint(worldmodel, viewleaf, vieworg)` (the underwater
+  block of `PreRenderScene` minus the effect activation, which stays there) and `underwaterFogColor`/`Density`.
+- **`SkyBox`** has `Make()`, `Clear()`, `Draw()`. `Draw` builds a `SkyDrawContext` (`visframecount`, `vieworg`,
+  `bloomSkyStrength`, the two shadow texture getters, `cullBox`) and passes it to `SkyRenderer.render(context)`.
+  `Sky.ts` imports no renderer system any more.
+- **Design C done.** `Materials.ts` is data: it has no runtime imports. Layers that defaulted to a fallback texture are
+  `GLTexture | null` (`null` is "the default"), `QuakeMaterial` keeps the frame selection as `selectFrame(entityFrame,
+  time)` and exposes `currentTexture`/`nextTexture`/`currentLuminanceTexture`, `NoTextureMaterial` is exported.
+  `MaterialBinder.Emit(material, entity)` resolves alpha and frame, `MaterialBinder.Bind(material, program,
+  hasDeluxemap)` binds (it dispatches on the material class with `instanceof`; there are three). The counters,
+  `Interpolation` and the default textures are reached from there. `resolveMaterialLuminanceTexture` moved with it.
+- **Forwarders: all six deleted** (ledger below is empty). `RenderContext`, `installRenderContext`, the headless
+  stand-in and its entry in the `engine-boundaries` allow-list are gone; the worker closure is the five client files
+  the plan said it would remain (`GL.ts`, `PageServices.ts`, `VID.ts`, `Materials.ts`, `Sky.ts`).
+- **`R.Init`** reads as the list: cvars, `DefaultTextures`, `Lightmaps`, `LightStyles`, `Particles`, `Decals`,
+  `ShaderPrograms`, the four model renderers, `PostProcess` and the effects in resolve order, `ShadowMap`,
+  `DynamicLights`, `ClearAll`. `NewMap` is `PrepareModels`, `Lightmaps.ResetDynamic`, `Visibility.Reset`, `Fog.NewMap`,
+  `SkyBox.Make`; `ClearAll` is the matching `Clear` of each.
+- **Tests:** `materials.test.mjs` became `materials.test.ts` (data: frame selection incl. wrap and alternate frames,
+  `free`, null layers, built and freed with no renderer and no GL) and `material-binder.test.ts` (the old three
+  `bindTo` tests, PBR defaults and layers, `NoTextureMaterial`, binding counts, interpolation factor, worldspawn
+  alpha, frame selection from the entity). `renderer-init.test.ts` pins the finer init order. `useRendererOf` also
+  routes the textures, fog and counters to their new classes; `engineMocks` no longer installs a render context.
+- **Capture:** `capture.mjs` takes `CAPTURE_WATERFOG=1`, which sets `_qs_waterfog` on the `e1m1` worldspawn so the
+  underwater fog effect and `Fog.SelectUnderwaterTint` are exercised in the "inside the lava" view
+  (`docs/browser-verification.md` §8).
+- **Verified:** `npm test` 1985 pass, `npm run typecheck` clean, `eslint` 0 errors on all new and touched `.ts`
+  files; browser capture of the Phase 4 build against the working tree: 4 + 4 runs of the default `e1m1` set (nothing
+  beyond the noise between captures of one build, identical `r_speeds`, no console errors beyond the three 404s
+  the previous build prints too) and 2 + 2 runs with `CAPTURE_WATERFOG=1`, which puts the underwater fog effect and
+  `Fog.SelectUnderwaterTint` into the "inside the lava" view (also within noise). With only two captures per side
+  `08-water-below` was flagged once; four per side put the closest pair at 24885 pixels against a noise of 388104,
+  so it was the lava animation. The first run of the new build crashed in the capture script, not in the engine:
+  it read `RenderStats._speeds`, which is `lines` now.
+- **Docs:** the program-registration mentions in `docs/shader-chunks.md`, the `shader-chunks` skill and
+  `docs/post-process-effects.md` (which also named a stale effect path), and `docs/traceline.md` name the new files.
+
 ### Phase 6: Scene orchestration
 
 `TransparentPass`, then `RenderScene`/`RenderWorld`/`PreRenderScene` reduced to the readable list of steps they
@@ -645,9 +699,4 @@ Every forwarder added in Phases 1 to 6 is listed here with the phase that adds i
 
 | Forwarder on `R` | Added | Why it stays | Goes with |
 |---|---|---|---|
-| `static get interpolation()` (returns `rendererCvars.interpolation`) | Phase 2 | `Materials` reads `r_interpolation` through `RenderContext` (`typeof R`) | `RenderContext`, Phase 5 |
-| `static get shadow_texture()` (returns `ShadowMap.getActiveTopDownTexture()`) | Phase 3 | `Sky` reads it through `RenderContext` and must not import `ShadowMap` | `RenderContext`, Phase 5 |
-| `static get point_shadow_textures()` (returns `ShadowMap.getActivePointTextures()`) | Phase 3 | same | `RenderContext`, Phase 5 |
-| `static get visframecount()` (returns `Visibility.visframecount`) | Phase 4 | `Sky` reads it through `RenderContext` and must not import `Visibility` | `RenderContext`, Phase 5 |
-| `static get refdef()` (returns `Camera.refdef`) | Phase 4 | same | `RenderContext`, Phase 5 |
-| `static CullBox()` (calls `Camera.CullBox`) | Phase 4 | same; `Sky` calls it per leaf, so it goes first in Phase 5 | `RenderContext`, Phase 5 |
+| none | | | The six that Phases 2 to 4 added (`interpolation`, `shadow_texture`, `point_shadow_textures`, `visframecount`, `refdef`, `CullBox`) were deleted with `RenderContext` in Phase 5. |

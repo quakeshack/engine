@@ -2,8 +2,8 @@ import GL, { type GLRenderTexture } from '../../GL.ts';
 import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import { eventBus } from '../../../common/EventBus.ts';
-import R from '../../R.ts';
 import Camera from '../scene/Camera.ts';
+import Fog from '../scene/Fog.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -42,9 +42,9 @@ export default class UnderwaterFogEffect extends PostProcessEffect {
     PostProcess.depthTexture!.bind(program.tDepth!);
     PostProcess.turbulentBoundaryDepthTexture!.bind(program.tBoundaryDepth!);
 
-    const [fr, fg, fb] = R.underwaterFogColor;
+    const [fr, fg, fb] = Fog.underwaterFogColor;
     gl.uniform3f(program.uFogColor!, fr, fg, fb);
-    gl.uniform1f(program.uFogDensity!, R.underwaterFogDensity);
+    gl.uniform1f(program.uFogDensity!, Fog.underwaterFogDensity);
     gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
 
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);

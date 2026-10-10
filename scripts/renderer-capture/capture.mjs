@@ -310,7 +310,7 @@ async function capture(name) {
   await page.waitForTimeout(SETTLE_MS);
   await page.screenshot({ path: path.join(outDir, `${name}.png`) });
 
-  const speeds = await page.evaluate(() => window.__capture.stats._speeds.slice(0, 4).map((line) => String(line).trim()));
+  const speeds = await page.evaluate(() => (window.__capture.stats.lines ?? window.__capture.stats._speeds).slice(0, 4).map((line) => String(line).trim()));
 
   views[name] = { speeds };
 }
@@ -384,6 +384,14 @@ await enter('r_fog_density 0.004');
 await enter('r_fog_color "40 60 90"');
 await capture('05-fog');
 await enter('r_fog_mode -1');
+
+// e1m1 has no _qs_waterfog volume; with CAPTURE_WATERFOG=1 the key is set on the worldspawn at run time, so the
+// underwater fog effect and its tint selection are part of the "inside the liquid" view
+if (process.env.CAPTURE_WATERFOG === '1') {
+  await page.evaluate(() => {
+    window.engine.CL.state.worldmodel.worldspawnInfo._qs_waterfog = '1';
+  });
+}
 
 // 5. sky, and liquid from above and from inside, found in the map rather than guessed
 const sky = await page.evaluate(findFace, 'sky');

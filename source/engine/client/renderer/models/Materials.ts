@@ -1,17 +1,4 @@
-import { eventBus } from '../../../common/EventBus.ts';
-import type { ClientEdict } from '../../ClientEntities.ts';
-import GL, { GLTexture, type GLProgramInfo } from '../../GL.ts';
-import { clientState, renderer as R } from '../resources/RenderContext.ts';
-
-let gl: WebGL2RenderingContext = null!;
-
-eventBus.subscribe('gl.ready', () => {
-  gl = GL.gl;
-});
-
-eventBus.subscribe('gl.shutdown', () => {
-  gl = null!;
-});
+import type { GLTexture } from '../../GL.ts';
 
 export enum MaterialFlags {
   MF_NONE = 0,
@@ -20,28 +7,6 @@ export enum MaterialFlags {
   MF_TURBULENT = 4,
   MF_SKIP = 8,
   MF_FULLBRIGHT = 16,
-}
-
-/**
- * Resolve the luminance texture for a material draw.
- * Materials flagged MF_FULLBRIGHT fall back to their diffuse texture when they
- * do not provide a separate luminance map.
- * @param flags Material flags.
- * @param luminanceTexture Explicit luminance texture.
- * @param diffuseTexture Active diffuse texture.
- * @param fallbackTexture Renderer fallback texture.
- * @returns Luminance texture to bind for the draw.
- */
-export function resolveMaterialLuminanceTexture(flags: number, luminanceTexture: GLTexture | null, diffuseTexture: GLTexture | null, fallbackTexture: GLTexture): GLTexture {
-  if (luminanceTexture && luminanceTexture !== fallbackTexture) {
-    return luminanceTexture;
-  }
-
-  if ((flags & MaterialFlags.MF_FULLBRIGHT) !== 0 && diffuseTexture !== null) {
-    return diffuseTexture;
-  }
-
-  return fallbackTexture;
 }
 
 /**
@@ -81,56 +46,12 @@ export class BaseMaterial {
     this.height = height;
   }
 
-
-  bindTo(_program: GLProgramInfo, _hasDeluxemap: boolean = false): void {
-    // to be implemented by subclasses
-  }
-
-  emit(clientEdict: ClientEdict | null = null): void {
-    this.currentAlpha = this.resolveAlpha(clientEdict);
-  }
-
   /**
-   * Resolve the effective alpha for this material on the current draw.
-   * @param clientEdict Client entity being rendered.
-   * @returns Alpha in the 0..1 range.
-   */
-  protected resolveAlpha(clientEdict: ClientEdict | null = null): number {
-    if ((this.flags & MaterialFlags.MF_TURBULENT) === 0 || clientEdict === null) {
-      return 1.0;
-    }
-
-    const worldspawn = clientState.clientEntities.getEntity(0);
-    if (clientEdict !== worldspawn) {
-      return 1.0;
-    }
-
-    const worldspawnInfo = clientState.worldmodel?.worldspawnInfo;
-    if (!worldspawnInfo) {
-      return 1.0;
-    }
-
-    const alphaKeys = this._getLiquidAlphaKeys();
-    for (let i = 0; i < alphaKeys.length; i++) {
-      const rawValue = worldspawnInfo[alphaKeys[i]];
-      if (rawValue === undefined) {
-        continue;
-      }
-
-      const parsedAlpha = Number.parseFloat(rawValue);
-      if (Number.isFinite(parsedAlpha)) {
-        return Math.max(0.0, Math.min(parsedAlpha, 1.0));
-      }
-    }
-
-    return 1.0;
-  }
-
-  /**
-   * Pick the relevant worldspawn alpha keys for this turbulent material.
+   * Pick the relevant worldspawn alpha keys for this turbulent material, which is where a map sets how
+   * transparent its liquids are.
    * @returns Ordered list of worldspawn keys to query.
    */
-  protected _getLiquidAlphaKeys(): string[] {
+  getLiquidAlphaKeys(): string[] {
     const lowerName = this.name.toLowerCase();
 
     if (lowerName.includes('lava')) {
@@ -154,77 +75,16 @@ export class BaseMaterial {
 }
 
 class BrushMaterial extends BaseMaterial {
-  /** Luminance/emissive texture for this material. */
-  luminance: GLTexture;
-
-  constructor(name: string, width: number, height: number) {
-    super(name, width, height);
-    this.luminance = R.blacktexture;
-  }
-
-  /**
-   * @param program Active shader program.
-   */
-  protected _bindInterpolation(program: GLProgramInfo): void {
-    if (program.uInterpolation !== undefined) {
-      gl.uniform1f(program.uInterpolation!, R.interpolation.value ? (clientState.time % 0.2) / 0.2 : 0);
-    }
-  }
-
-  /**
-   * @returns Luminance texture for the current draw.
-   */
-  protected _getLuminanceTexture(): GLTexture {
-    return resolveMaterialLuminanceTexture(this.flags, this.luminance, this._getCurrentTexture(), R.blacktexture);
-  }
-
-  /**
-   * @param program Active shader program.
-   */
-  protected _bindLuminance(program: GLProgramInfo): void {
-    if (program.tLuminance !== undefined) {
-      this._getLuminanceTexture().bind(program.tLuminance!);
-      R.c_brush_texture_binds++;
-    }
-  }
-
-  /**
-   * @returns Current diffuse texture for the draw.
-   */
-  protected _getCurrentTexture(): GLTexture {
-    return R.notexture;
-  }
-
-  /**
-   * @returns Next diffuse texture for interpolated draws.
-   */
-  protected _getNextTexture(): GLTexture {
-    return this._getCurrentTexture();
-  }
-
-  /**
-   * @param program Active shader program.
-   */
-  protected _bindPrimaryTextures(program: GLProgramInfo): void {
-    const currentTexture = this._getCurrentTexture();
-
-    if (program.tTextureA !== undefined && program.tTextureB !== undefined) {
-      currentTexture.bind(program.tTextureA!);
-      this._getNextTexture().bind(program.tTextureB!);
-      R.c_brush_texture_binds += 2;
-    }
-
-    if (program.tTexture !== undefined) {
-      currentTexture.bind(program.tTexture!);
-      R.c_brush_texture_binds++;
-    }
-  }
+  /** Luminance/emissive texture for this material, `null` for none (the renderer draws black). */
+  luminance: GLTexture | null = null;
 }
 
 /**
  * A class representing a Quake-style material with animation frames.
  * It supports multiple frames and alternate frames for different states.
  * No support for PBR or advanced features.
+ *
+ * It holds the textures and picks the animation frame; `MaterialBinder` binds them for a draw.
  */
 export class QuakeMaterial extends BrushMaterial {
   #textures: GLTexture[] = [];
@@ -233,34 +93,6 @@ export class QuakeMaterial extends BrushMaterial {
   #alternateFrames = 0;
   #frame = 0;
   #nextFrame = 0;
-
-  /**
-   * Bind this material's textures and lighting mode for the current draw.
-   * When the model being drawn carries BSPX `LIGHTINGDIR` data, per-pixel
-   * Lambertian shading against the deluxemap direction is enabled using a
-   * flat normal map, so plain (non-`.qsmat.json`) surfaces benefit from the
-   * baked directional lighting the same way PBR materials do.
-   */
-  override bindTo(program: GLProgramInfo, hasDeluxemap: boolean = false): void {
-    gl.uniform1i(program.uPerformDotLighting!, hasDeluxemap ? 1 : 0);
-    this._bindInterpolation(program);
-    this._bindPrimaryTextures(program);
-    this._bindLuminance(program);
-
-    if (!hasDeluxemap) {
-      return;
-    }
-
-    if (program.tNormal !== undefined) {
-      R.flatnormalmap.bind(program.tNormal!);
-      R.c_brush_texture_binds++;
-    }
-
-    if (program.tSpecular !== undefined) {
-      R.blacktexture.bind(program.tSpecular!);
-      R.c_brush_texture_binds++;
-    }
-  }
 
   set texture(texture: GLTexture) {
     this.#textures[0] = texture;
@@ -281,24 +113,27 @@ export class QuakeMaterial extends BrushMaterial {
   }
 
   /**
-   * @returns Current diffuse texture for the active animation frame.
+   * The diffuse texture of the animation frame selected by the last `selectFrame`.
+   * @returns The texture, `null` when the frame has none (the renderer draws its fallback).
    */
-  protected override _getCurrentTexture(): GLTexture {
-    return this.#textures[this.#frame] || R.notexture;
+  get currentTexture(): GLTexture | null {
+    return this.#textures[this.#frame] || null;
   }
 
   /**
-   * @returns Next diffuse texture for the active animation frame.
+   * The diffuse texture of the frame after the selected one, which interpolated draws blend towards.
+   * @returns The texture, `null` when that frame has none.
    */
-  protected override _getNextTexture(): GLTexture {
-    return this.#textures[this.#nextFrame] || this._getCurrentTexture();
+  get nextTexture(): GLTexture | null {
+    return this.#textures[this.#nextFrame] || null;
   }
 
   /**
-   * @returns Luminance texture for the active animation frame.
+   * The luminance texture of the selected animation frame.
+   * @returns The texture, `null` when the frame has none.
    */
-  protected override _getLuminanceTexture(): GLTexture {
-    return resolveMaterialLuminanceTexture(this.flags, this.#luminanceTextures[this.#frame] || null, this._getCurrentTexture(), R.blacktexture);
+  get currentLuminanceTexture(): GLTexture | null {
+    return this.#luminanceTextures[this.#frame] || null;
   }
 
   addAnimationFrame(num: number, frameTexture: GLTexture, frameLuminanceTexture: GLTexture | null = null): void {
@@ -313,10 +148,15 @@ export class QuakeMaterial extends BrushMaterial {
     this.#luminanceTextures[num + 10] = frameLuminanceTexture;
   }
 
-  override emit(clientEdict: ClientEdict | null = null): void {
-    this.currentAlpha = this.resolveAlpha(clientEdict);
-    const frame = Math.floor((clientEdict !== null ? clientEdict.frame : 0) + clientState.time * 5.0);
-    const useAlternate = (clientEdict !== null && clientEdict.frame > 0 && this.#alternateFrames > 0);
+  /**
+   * Selects the animation frame for a draw: the frames of the material advance five times per second, and an
+   * entity with a frame above 0 shows the alternate animation when the material has one.
+   * @param entityFrame The `frame` of the entity being drawn, 0 for the world.
+   * @param time The client time.
+   */
+  selectFrame(entityFrame: number, time: number): void {
+    const frame = Math.floor(entityFrame + time * 5.0);
+    const useAlternate = entityFrame > 0 && this.#alternateFrames > 0;
 
     if (useAlternate) {
       this.#frame = 10 + (frame % this.#alternateFrames);
@@ -333,9 +173,7 @@ export class QuakeMaterial extends BrushMaterial {
     }
 
     for (const tex of this.#luminanceTextures) {
-      if (tex && tex !== R.blacktexture) {
-        tex.free();
-      }
+      tex?.free();
     }
 
     this.#textures.length = 0;
@@ -344,83 +182,32 @@ export class QuakeMaterial extends BrushMaterial {
 }
 
 /**
- * A class representing a PBR material.
+ * A class representing a PBR material. A layer that is `null` has none, and the renderer draws its default for it.
  */
 export class PBRMaterial extends BrushMaterial {
   /** Diffuse (albedo) texture. */
-  diffuse: GLTexture;
+  diffuse: GLTexture | null = null;
 
   /** Specular texture. */
-  specular: GLTexture;
+  specular: GLTexture | null = null;
 
   /** Normal map texture. */
-  normal: GLTexture;
-
-  constructor(name: string, width: number, height: number) {
-    super(name, width, height);
-    this.diffuse = R.notexture;
-    this.specular = R.blacktexture;
-    this.normal = R.flatnormalmap;
-  }
-
-  override bindTo(program: GLProgramInfo, _hasDeluxemap: boolean = false): void {
-    if (program.uPerformDotLighting !== undefined) {
-      gl.uniform1i(program.uPerformDotLighting!, 1);
-    }
-
-    this._bindInterpolation(program);
-    this._bindPrimaryTextures(program);
-
-    if (program.tSpecular !== undefined) {
-      this.specular.bind(program.tSpecular!);
-      R.c_brush_texture_binds++;
-    }
-
-    if (program.tNormal !== undefined) {
-      this.normal.bind(program.tNormal!);
-      R.c_brush_texture_binds++;
-    }
-
-    this._bindLuminance(program);
-  }
-
-  override emit(clientEdict: ClientEdict | null = null): void {
-    this.currentAlpha = this.resolveAlpha(clientEdict);
-  }
+  normal: GLTexture | null = null;
 
   override free(): void {
-    if (this.diffuse !== R.notexture) {
-      this.diffuse.free();
-    }
-
-    if (this.luminance !== R.blacktexture) {
-      this.luminance.free();
-    }
-
-    if (this.specular !== R.blacktexture) {
-      this.specular.free();
-    }
-
-    if (this.normal !== R.flatnormalmap) {
-      this.normal.free();
-    }
-  }
-
-  /**
-   * @returns Current diffuse texture for PBR draws.
-   */
-  protected override _getCurrentTexture(): GLTexture {
-    return this.diffuse || R.notexture;
+    this.diffuse?.free();
+    this.luminance?.free();
+    this.specular?.free();
+    this.normal?.free();
   }
 }
 
-class NoTextureMaterial extends BaseMaterial {
+/**
+ * The material of a surface whose texture is missing; the renderer draws its checkerboard.
+ */
+export class NoTextureMaterial extends BaseMaterial {
   constructor() {
     super('notexture', 16, 16);
-  }
-
-  override bindTo(_program: GLProgramInfo): void {
-    R.notexture.bind(0);
   }
 }
 

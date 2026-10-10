@@ -5,7 +5,6 @@ import S from '../../source/engine/client/Sound.ts';
 import SCR from '../../source/engine/client/SCR.ts';
 import V from '../../source/engine/client/V.ts';
 import * as services from '../../source/engine/client/PageServices.ts';
-import { installRenderContext } from '../../source/engine/client/renderer/resources/RenderContext.ts';
 import { patchMembers } from './clientState.ts';
 
 type Restore = () => void;
@@ -33,20 +32,15 @@ const slots = new Map<string, Slot>();
  * @returns A function that takes it away again, or `null` when the name is only held.
  */
 function restoreFor(name: string, mock: object): Restore | null {
-  if (name in facades) {
-    return patchMembers(facades[name], mock);
-  }
-
-  // The materials and the sky draw with the renderer installed in the render context.
-  return name === 'R' ? installRenderContext({ renderer: mock as never }) : null;
+  return name in facades ? patchMembers(facades[name], mock) : null;
 }
 
 /**
  * Where a test puts the mocks it wants the engine's parts to see, under the names they are known by. Assigning a
  * mock to a facade (`engineMocks.Key = {...}`) patches it onto the real one, and assigning what was read before puts
  * the real one back; the page services (`COM`, `NET`, `urls`, `buildConfig`) are installed as they are assigned.
- * The renderer (`R`) is installed in the render context that the materials and the sky draw with. Everything else (`CL`, `Host`, `M`, `Con`, `SV`, `Mod`, `Sys`) is only held, for the test to read back, for a
- * helper such as `consoleBridge`, and for the `use...Of` helpers that patch the real client state, host, menu and
+ * Everything else (`R`, `CL`, `Host`, `M`, `Con`, `SV`, `Mod`, `Sys`) is only held, for the test to read back, for
+ * a helper such as `consoleBridge`, and for the `use...Of` helpers that patch the real client state, host, menu and
  * renderer.
  */
 export const engineMocks: Record<string, unknown> = new Proxy({} as Record<string, unknown>, {

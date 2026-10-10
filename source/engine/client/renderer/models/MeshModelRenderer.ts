@@ -7,10 +7,12 @@ import { MeshModel } from '../../../common/model/MeshModel.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import Con from '../../../common/Console.ts';
-import R from '../../R.ts';
 import EntityLighting from '../lighting/EntityLighting.ts';
 import ShadowMap from '../lighting/ShadowMap.ts';
 import Camera from '../scene/Camera.ts';
+import DefaultTextures from '../resources/DefaultTextures.ts';
+import MaterialBinder from './MaterialBinder.ts';
+import RenderStats from '../scene/RenderStats.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -130,9 +132,9 @@ export class MeshModelRenderer extends ModelRenderer {
 
     // Bind texture
     if (clmodel.texture) {
-      clmodel.texture.bindTo(program);
+      MaterialBinder.Bind(clmodel.texture, program);
     } else {
-      R.notexture.bind(program.tTexture!);
+      DefaultTextures.notexture.bind(program.tTexture!);
     }
 
     // Bind local shadow maps
@@ -159,7 +161,7 @@ export class MeshModelRenderer extends ModelRenderer {
     GL.UnbindVAO();
 
     // Track non-brush geometry together with alias-model poly counts in r_speeds.
-    R.c_alias_polys += clmodel.numTriangles;
+    RenderStats.c_alias_polys += clmodel.numTriangles;
   }
 
   override renderShadow(model: BaseModel, entity: ClientEdict, ctx: ShadowRenderContext): void {

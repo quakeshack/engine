@@ -9,6 +9,10 @@ import PostProcess from '../../source/engine/client/renderer/postprocess/PostPro
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import Decals from '../../source/engine/client/renderer/effects/Decals.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
+import Lightmaps from '../../source/engine/client/renderer/lighting/Lightmaps.ts';
+import LightStyles from '../../source/engine/client/renderer/lighting/LightStyles.ts';
+import ShaderPrograms from '../../source/engine/client/renderer/programs/ShaderPrograms.ts';
+import DefaultTextures from '../../source/engine/client/renderer/resources/DefaultTextures.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import { modelRendererRegistry } from '../../source/engine/client/renderer/models/ModelRendererRegistry.ts';
 import type PostProcessEffect from '../../source/engine/client/renderer/postprocess/PostProcessEffect.ts';
@@ -51,10 +55,12 @@ void describe('R.Init', () => {
     mock.method(GL, 'CreateVAO', () => ({}) as WebGLVertexArrayObject);
     eventBus.publish('gl.ready');
 
-    mock.method(R, 'InitTextures', () => { steps.push('textures'); });
+    mock.method(DefaultTextures, 'Init', () => { steps.push('default textures'); });
+    mock.method(Lightmaps, 'Init', () => { steps.push('lightmaps'); });
+    mock.method(LightStyles, 'Init', () => { steps.push('lightstyles'); });
     mock.method(Particles, 'Init', () => { steps.push('particles'); });
     mock.method(Decals, 'Init', () => { steps.push('decals'); });
-    mock.method(R, 'InitShaders', () => {
+    mock.method(ShaderPrograms, 'Init', () => {
       steps.push('shaders');
 
       return Promise.resolve();
@@ -108,7 +114,9 @@ void describe('R.Init', () => {
     const { steps } = await runInit();
 
     assert.deepEqual(steps, [
-      'textures',
+      'default textures',
+      'lightmaps',
+      'lightstyles',
       'particles',
       'decals',
       'shaders',
@@ -131,8 +139,8 @@ void describe('R.Init', () => {
   void test('exposes the created console variables where the renderer reads them', async () => {
     await runInit();
 
-    assert.equal(R.bloom.name, 'r_bloom');
+    assert.equal(rendererCvars.bloom.name, 'r_bloom');
     assert.equal(rendererCvars.fog_mode.string, '-1');
-    assert.equal(R.drawentities.value, 1);
+    assert.equal(rendererCvars.drawentities.value, 1);
   });
 });

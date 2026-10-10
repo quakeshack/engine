@@ -1,9 +1,9 @@
 import W from '../../../common/W.ts';
 import { BrushModel } from '../../../common/Mod.ts';
 import Host from '../../../common/Host.ts';
-import { renderer as R } from '../resources/RenderContext.ts';
 import { eventBus } from '../../../common/EventBus.ts';
-import GL, { ATTRIB_LOCATIONS, GLTexture } from '../../GL.ts';
+import type Vector from '../../../../shared/Vector.ts';
+import GL, { ATTRIB_LOCATIONS, GLTexture, type GLCubeTexture, type GLRenderTexture } from '../../GL.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -24,6 +24,33 @@ export function resolveSkyBloomEmissiveScale(strength: number): number {
 }
 
 /**
+ * What a sky renderer reads of the frame it draws in. `SkyBox` builds it per draw, so the renderers need nothing of
+ * the camera, the visibility or the lighting systems themselves, and run in a realm that has none of them.
+ */
+export interface SkyDrawContext {
+  /** Leafs with this `visframe` are revealed from the view leaf. */
+  readonly visframecount: number;
+
+  /** The camera origin. */
+  readonly vieworg: Vector;
+
+  /** The `r_bloom_sky_strength` value, or 0 before the cvar exists. */
+  readonly bloomSkyStrength: number;
+
+  /** The top-down shadow map to sample (the real one or the dummy), `null` before shadow mapping is set up. */
+  readonly shadowTexture: GLRenderTexture | null;
+
+  /** The point-light shadow cubes to sample (real or dummy), one per slot. */
+  readonly pointShadowTextures: ReadonlyArray<GLCubeTexture | null>;
+
+  /**
+   * Whether a box is outside of the view frustum.
+   * @returns True when the box can be skipped.
+   */
+  cullBox(mins: Vector, maxs: Vector): boolean;
+}
+
+/**
  * Base class for sky rendering.
  * Allows different sky rendering techniques to be implemented.
  * Right now the BSP model loader sets up the desired sky renderer.
@@ -39,7 +66,7 @@ export class SkyRenderer {
   /**
    * Renders the stencil mask for sky surfaces.
    */
-  protected _renderStencilMask(): void {
+  protected _renderStencilMask(context: SkyDrawContext): void {
     // Disable color writes - we only want to mark the depth buffer where sky is visible
     gl.colorMask(false, false, false, false);
 
@@ -53,12 +80,12 @@ export class SkyRenderer {
       const leaf = this.worldmodel.leafs[i];
 
       // Skip leafs that aren't visible or don't have sky surfaces
-      if (leaf.visframe !== R.visframecount || leaf.skychain === leaf.waterchain) {
+      if (leaf.visframe !== context.visframecount || leaf.skychain === leaf.waterchain) {
         continue;
       }
 
       // Frustum culling
-      if (R.CullBox(leaf.mins!, leaf.maxs!)) {
+      if (context.cullBox(leaf.mins!, leaf.maxs!)) {
         continue;
       }
 
@@ -77,7 +104,7 @@ export class SkyRenderer {
 
   shutdown(): void {}
 
-  render(): void {}
+  render(_context: SkyDrawContext): void {}
 }
 
 /**
@@ -184,7 +211,7 @@ export class Quake1Sky extends SkyRenderer {
     this.#skyboxVAO = null;
   }
 
-  #renderSkyboxDome(): void {
+  #renderSkyboxDome(context: SkyDrawContext): void {
     // Configure depth testing: only draw sky where depth > existing (i.e., behind everything)
     gl.depthFunc(gl.GREATER);
     gl.depthMask(false); // Don't write to depth buffer
@@ -194,7 +221,7 @@ export class Quake1Sky extends SkyRenderer {
     const program = GL.UseProgram('sky')!;
     // Two scrolling layers at different speeds for parallax effect
     gl.uniform2f(program.uTime!, (Host.realtime * 0.125) % 1.0, (Host.realtime * 0.03125) % 1.0);
-    gl.uniform1f(program.uBloomEmissiveScale!, resolveSkyBloomEmissiveScale(R.bloomSkyStrength?.value ?? 0.0));
+    gl.uniform1f(program.uBloomEmissiveScale!, resolveSkyBloomEmissiveScale(context.bloomSkyStrength));
     this.#solidskytexture.bind(program.tSolid!); // Base sky layer
     this.#alphaskytexture.bind(program.tAlpha!); // Overlay layer (e.g., clouds)
 
@@ -244,10 +271,10 @@ export class Quake1Sky extends SkyRenderer {
    * not behind walls or geometry. The skybox itself is rendered 8 times (once
    * for each octant of the sphere) using a procedurally-generated dome mesh.
    */
-  override render(): void {
+  override render(context: SkyDrawContext): void {
     console.assert(this.#skybox !== null, 'Skybox mesh not initialized');
-    this._renderStencilMask();
-    this.#renderSkyboxDome();
+    this._renderStencilMask(context);
+    this.#renderSkyboxDome(context);
   }
 
   /**
@@ -422,38 +449,38 @@ export class SimpleSkyBox extends SkyRenderer {
     this.#down = null;
   }
 
-  override render(): void {
+  override render(context: SkyDrawContext): void {
     if (!this.#front) {
       return;
     }
 
-    this._renderStencilMask();
+    this._renderStencilMask(context);
 
     gl.depthFunc(gl.GREATER);
     gl.depthMask(false);
     gl.disable(gl.CULL_FACE);
 
     const program = GL.UseProgram('mesh')!;
-    gl.uniform3fv(program.uOrigin!, R.refdef.vieworg);
+    gl.uniform3fv(program.uOrigin!, context.vieworg);
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform3f(program.uAmbientLight!, 1.0, 1.0, 1.0);
     gl.uniform3f(program.uShadeLight!, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicShadeLight!, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uLightVec!, 0.0, 0.0, 1.0);
     gl.uniform1f(program.uAlpha!, 1.0);
-    gl.uniform1f(program.uBloomEmissiveScale!, resolveSkyBloomEmissiveScale(R.bloomSkyStrength?.value ?? 0.0));
+    gl.uniform1f(program.uBloomEmissiveScale!, resolveSkyBloomEmissiveScale(context.bloomSkyStrength));
 
-    if (program.tShadowMap !== undefined && R.shadow_texture) {
-      R.shadow_texture.bind(program.tShadowMap);
+    if (program.tShadowMap !== undefined && context.shadowTexture) {
+      context.shadowTexture.bind(program.tShadowMap);
     }
-    if (program.tPointShadowMap0 !== undefined && R.point_shadow_textures?.[0]) {
-      R.point_shadow_textures[0].bind(program.tPointShadowMap0);
+    if (program.tPointShadowMap0 !== undefined && context.pointShadowTextures[0]) {
+      context.pointShadowTextures[0].bind(program.tPointShadowMap0);
     }
-    if (program.tPointShadowMap1 !== undefined && R.point_shadow_textures?.[1]) {
-      R.point_shadow_textures[1].bind(program.tPointShadowMap1);
+    if (program.tPointShadowMap1 !== undefined && context.pointShadowTextures[1]) {
+      context.pointShadowTextures[1].bind(program.tPointShadowMap1);
     }
-    if (program.tPointShadowMap2 !== undefined && R.point_shadow_textures?.[2]) {
-      R.point_shadow_textures[2].bind(program.tPointShadowMap2);
+    if (program.tPointShadowMap2 !== undefined && context.pointShadowTextures[2]) {
+      context.pointShadowTextures[2].bind(program.tPointShadowMap2);
     }
 
     GL.BindVAO(this.#cubeVAO!);

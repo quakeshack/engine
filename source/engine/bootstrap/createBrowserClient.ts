@@ -9,6 +9,10 @@ import R from '../client/R.ts';
 import Particles, { ParticleType } from '../client/renderer/effects/Particles.ts';
 import Decals from '../client/renderer/effects/Decals.ts';
 import Camera from '../client/renderer/scene/Camera.ts';
+import RenderStats from '../client/renderer/scene/RenderStats.ts';
+import DefaultTextures from '../client/renderer/resources/DefaultTextures.ts';
+import Fog from '../client/renderer/scene/Fog.ts';
+import SkyBox from '../client/renderer/scene/SkyBox.ts';
 import Visibility from '../client/renderer/scene/Visibility.ts';
 import S from '../client/Sound.ts';
 import Sys from '../client/Sys.ts';
@@ -33,8 +37,7 @@ import { LoopDriver, WebRTCDriver, WebSocketDriver } from '../network/NetworkDri
 import { createServerRuntime } from './createServerRuntime.ts';
 import { editionOf } from '../common/GameApiSupport.ts';
 import clientCvars from '../client/ClientCvars.ts';
-import { clientRuntimeState, clientStaticState } from '../client/ClientState.ts';
-import { installRenderContext } from '../client/renderer/resources/RenderContext.ts';
+import { clientStaticState } from '../client/ClientState.ts';
 import { ShaderLibrary } from '../client/renderer/programs/ShaderLibrary.ts';
 import GL from '../client/GL.ts';
 import { ClientEngineAPI } from '../client/ClientEngineAPI.ts';
@@ -87,8 +90,6 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
 
   installPageServices({ com, net, engineApi, urls, buildConfig });
 
-  installRenderContext({ renderer: R, clientState: clientRuntimeState });
-
   // The shader text is only bundled for the page, GL.ts is also reachable from the server worker.
   GL.shaderLibrary = ShaderLibrary.fromBundle();
 
@@ -137,7 +138,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
   }
 
   // The members that verification scripts in a browser reach for, see docs/browser-verification.md.
-  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, V, Key, S, Draw, R, Camera, Visibility, Particles, ParticleType, Decals, M, SCR, IN, SV: inThreadServer };
+  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, V, Key, S, Draw, R, Camera, Visibility, RenderStats, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, M, SCR, IN, SV: inThreadServer };
 
   await Sys.Init();
 }

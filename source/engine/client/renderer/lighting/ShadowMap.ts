@@ -9,7 +9,7 @@ import type { BrushModel } from '../../../common/model/BSP.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
 import { modelRendererRegistry } from '../models/ModelRendererRegistry.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
-import R from '../../R.ts';
+import rendererCvars from '../resources/RendererCvars.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -440,7 +440,7 @@ export default class ShadowMap {
     cutoffOrigin: Vector,
     cutoffDistSq: number,
   ): void {
-    if (R.drawentities.value === 0) {
+    if (rendererCvars.drawentities.value === 0) {
       return;
     }
     for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {

@@ -19,6 +19,8 @@ import Key from './Key.ts';
 import S from './Sound.ts';
 import V from './V.ts';
 import Camera from './renderer/scene/Camera.ts';
+import RenderStats from './renderer/scene/RenderStats.ts';
+import rendererCvars from './renderer/resources/RendererCvars.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -405,9 +407,9 @@ export default class SCR {
       SCR._lastAnimationTime = animationTime;
 
       const captureClean = SCR.screenshotClean;
-      const previousDrawViewModel = R.drawviewmodel.value;
+      const previousDrawViewModel = rendererCvars.drawviewmodel.value;
       if (captureClean) {
-        R.drawviewmodel.set(0);
+        rendererCvars.drawviewmodel.set(0);
       }
 
       V.RenderView();
@@ -426,7 +428,7 @@ export default class SCR {
         );
 
         const bloomEffect = PostProcess.getEffect('bloom');
-        if (bloomEffect && bloomEffect.active && R.bloomDebug && R.bloomDebug.value !== 0) {
+        if (bloomEffect && bloomEffect.active && rendererCvars.bloomDebug && rendererCvars.bloomDebug.value !== 0) {
           bloomEffect.drawDebugPreview();
         }
       }
@@ -480,13 +482,13 @@ export default class SCR {
       GL.StreamFlush();
 
       if (!captureClean) {
-        R.PrintSpeeds();
+        RenderStats.Print(SCR.FPS);
       }
 
       gl.disable(gl.BLEND);
 
       if (captureClean) {
-        R.drawviewmodel.set(previousDrawViewModel);
+        rendererCvars.drawviewmodel.set(previousDrawViewModel);
         gl.finish();
         VID.DownloadScreenshot('screenshot-clean.jpg');
         SCR.screenshotClean = false;
