@@ -11,6 +11,8 @@ import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import Con from '../../../common/Console.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import R from '../../R.ts';
+import EntityLighting from '../lighting/EntityLighting.ts';
+import rendererCvars from '../resources/RendererCvars.ts';
 import Host from '../../../common/Host.ts';
 
 
@@ -133,7 +135,7 @@ export class AliasModelRenderer extends ModelRenderer {
     gl.uniformMatrix3fv(program!.uAngles!, false, e.lerp.angles.toRotationMatrix());
 
     // Setup lighting
-    const [ambientlight, shadelight, lightVector, dynamicShadeLight, dynamicLightVector] = R._CalculateLightValues(e);
+    const [ambientlight, shadelight, lightVector, dynamicShadeLight, dynamicLightVector] = EntityLighting.CalculateLightValues(e);
     gl.uniform3fv(program!.uAmbientLight!, ambientlight);
     gl.uniform3fv(program!.uShadeLight!, shadelight);
     gl.uniform3fv(program!.uLightVec!, lightVector);
@@ -147,7 +149,7 @@ export class AliasModelRenderer extends ModelRenderer {
     const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(clmodel, e);
 
     // Setup interpolation
-    gl.uniform1f(program!.uInterpolation!, R.interpolation.value && (e.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
+    gl.uniform1f(program!.uInterpolation!, rendererCvars.interpolation.value && (e.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
     gl.uniform1f(program!.uTime!, Host.realtime);
     gl.uniform1f(program!.uAlpha!, e.alpha);
     gl.uniform1f(program!.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
@@ -210,7 +212,7 @@ export class AliasModelRenderer extends ModelRenderer {
 
     const { frameA, frameB, targettime } = AliasModelRenderer._selectFrames(clmodel, entity);
 
-    gl.uniform1f(program.uInterpolation!, R.interpolation.value && (entity.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
+    gl.uniform1f(program.uInterpolation!, rendererCvars.interpolation.value && (entity.effects & effect.EF_MUZZLEFLASH) === 0 ? Math.min(1, Math.max(0, targettime)) : 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, clmodel.cmds as WebGLBuffer);
     gl.enableVertexAttribArray(program.aPositionA!.location as number);
@@ -273,7 +275,7 @@ export class AliasModelRenderer extends ModelRenderer {
           break;
         }
       }
-    } else if (R.interpolation.value && (e.effects & effect.EF_MUZZLEFLASH) === 0) {
+    } else if (rendererCvars.interpolation.value && (e.effects & effect.EF_MUZZLEFLASH) === 0) {
       // Handle lerp-based interpolation
       const [previousFrame, nextFrame, f] = e.lerp.frame;
       const previous = clmodel.frames[previousFrame];

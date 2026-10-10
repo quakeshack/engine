@@ -219,7 +219,7 @@ export class ClientEdict { // TODO: extends Protocol.EntityState
 
   /**
    * Time-smoothed static/dynamic lighting terms, blended towards the newly
-   * sampled values each frame by `R._CalculateLightValues` so lighting eases
+   * sampled values each frame by `EntityLighting.CalculateLightValues` so lighting eases
    * across lightmap boundaries instead of snapping. Null until first sampled.
    */
   smoothedAmbientLight: Vector | null;

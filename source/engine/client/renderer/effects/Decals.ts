@@ -6,6 +6,7 @@ import GL, { type GLTexture } from '../../GL.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import { clientCollision } from '../../ClientPhysics.ts';
 import R from '../../R.ts';
+import LightSampler from '../lighting/LightSampler.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -125,7 +126,7 @@ export class Decals {
     console.assert(worldmodel !== null, 'worldmodel required');
     const lightStart = origin.copy().add(normal.copy().multiply(4.0));
     const lightEnd = origin.copy().subtract(normal.copy().multiply(4.0));
-    const lightResult = R.RecursiveLightPoint(worldmodel.nodes[0], lightStart, lightEnd);
+    const lightResult = LightSampler.RecursiveLightPoint(worldmodel.nodes[0], lightStart, lightEnd);
 
     let color = new Vector(255, 255, 255); // Default to white
     if (lightResult) {

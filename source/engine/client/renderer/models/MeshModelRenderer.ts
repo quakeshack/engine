@@ -8,6 +8,7 @@ import type { ClientEdict } from '../../ClientEntities.ts';
 import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import Con from '../../../common/Console.ts';
 import R from '../../R.ts';
+import EntityLighting from '../lighting/EntityLighting.ts';
 
 
 let gl: WebGL2RenderingContext = null!;
@@ -117,7 +118,7 @@ export class MeshModelRenderer extends ModelRenderer {
     gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
 
     // Lighting
-    const [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition] = R._CalculateLightValues(e);
+    const [ambientlight, shadelight, lightPosition, dynamicShadeLight, dynamicLightPosition] = EntityLighting.CalculateLightValues(e);
     gl.uniform3fv(program.uAmbientLight!, ambientlight);
     gl.uniform3fv(program.uShadeLight!, shadelight);
     gl.uniform3fv(program.uLightVec!, lightPosition);

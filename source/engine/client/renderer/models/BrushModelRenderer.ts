@@ -13,6 +13,11 @@ import * as Def from '../../../common/Def.ts';
 import { content } from '../../../../shared/Defs.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import R from '../../R.ts';
+import Interpolation from '../scene/Interpolation.ts';
+import LightStyles from '../lighting/LightStyles.ts';
+import LightSampler from '../lighting/LightSampler.ts';
+import EntityLighting from '../lighting/EntityLighting.ts';
+import rendererCvars from '../resources/RendererCvars.ts';
 import { LIGHTMAP_BLOCK_SIZE } from '../lighting/LightmapAtlas.ts';
 import Host from '../../../common/Host.ts';
 
@@ -248,7 +253,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /**
    * Sample fallback light at a vertex position by probing the world in a neighborhood.
-   * @param sampleLightPoint Light sampler callback from R.LightPoint.
+   * @param sampleLightPoint Light sampler callback from LightSampler.LightPoint.
    * @returns RGB light values in the 0..1 renderer range.
    */
   static sampleTurbulentFallbackLight(
@@ -514,15 +519,15 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
-    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
-    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
+    gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
+    gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform4f(program.uLightVec!, 0.0, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicLightVec!, 0.0, 0.0, 0.0);
 
     this._setupBrushShaderCommon(program, clmodel, true);
-    R.lightstyle_texture_a.bind(program.tLightStyleA!);
-    R.lightstyle_texture_b.bind(program.tLightStyleB!);
+    LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
+    LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     for (let i = 0; i < clmodel.leafs.length; i++) {
@@ -631,15 +636,15 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
-    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
-    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
+    gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
+    gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform4f(program.uLightVec!, 0.0, 0.0, 0.0, 0.0);
     gl.uniform3f(program.uDynamicLightVec!, 0.0, 0.0, 0.0);
 
     this._setupBrushShaderCommon(program, clmodel, true);
-    R.lightstyle_texture_a.bind(program.tLightStyleA!);
-    R.lightstyle_texture_b.bind(program.tLightStyleB!);
+    LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
+    LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
     this._worldTransparentHasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     gl.enable(gl.BLEND);
@@ -773,8 +778,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3f(program.uOrigin!, 0.0, 0.0, 0.0);
     gl.uniformMatrix3fv(program.uAngles!, false, GL.identity);
     gl.uniform1f(program.uTime!, Host.realtime);
-    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
-    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
+    gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
+    gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniform1f(program.uBloomEmissiveScale!, 0.0);
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
 
@@ -793,8 +798,8 @@ export class BrushModelRenderer extends ModelRenderer {
     }
 
     this._setupBrushShaderCommon(program, clmodel, true);
-    R.lightstyle_texture_a.bind(program.tLightStyleA!);
-    R.lightstyle_texture_b.bind(program.tLightStyleB!);
+    LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
+    LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
 
     this._worldTurbulentProgram = program;
     this._worldTurbulentModel = clmodel;
@@ -1146,7 +1151,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /** @private */
   _setupBrushShaderCommon(program: GLProgramInfo, clmodel: BrushModel, isWorld: boolean): void {
-    if ((R.fullbright.value !== 0) || (clmodel.lightdata === null && clmodel.lightdata_rgb === null)) {
+    if ((rendererCvars.fullbright.value !== 0) || (clmodel.lightdata === null && clmodel.lightdata_rgb === null)) {
       R.fullbright_texture.bind(program.tLightmap!);
     } else {
       R.lightmap_texture.bind(program.tLightmap!);
@@ -1180,16 +1185,16 @@ export class BrushModelRenderer extends ModelRenderer {
 
     gl.uniform3fv(program.uOrigin!, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
-    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
-    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
+    gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
+    gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniform1f(program.uAlpha!, 1.0);
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
     this._setupBrushShaderCommon(program, clmodel, false);
-    R.lightstyle_texture_a.bind(program.tLightStyleA!);
-    R.lightstyle_texture_b.bind(program.tLightStyleB!);
+    LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
+    LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
@@ -1222,16 +1227,16 @@ export class BrushModelRenderer extends ModelRenderer {
 
     gl.uniform3fv(program.uOrigin!, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
-    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
-    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
+    gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
+    gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniform1f(program.uAlpha!, e.alpha);
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
     gl.uniform1f(program.uBloomSpecularScale!, resolveBrushBloomContributionStrength(R.bloomSpecularStrength?.value ?? 0.0));
 
     this._setupBrushShaderCommon(program, clmodel, false);
-    R.lightstyle_texture_a.bind(program.tLightStyleA!);
-    R.lightstyle_texture_b.bind(program.tLightStyleB!);
+    LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
+    LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
     const hasDeluxemap = this._bindBrushDeluxemap(program, clmodel);
 
     gl.enable(gl.BLEND);
@@ -1275,14 +1280,14 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform3fv(program.uOrigin!, e.lerp.origin);
     gl.uniformMatrix3fv(program.uAngles!, false, viewMatrix);
     gl.uniform1f(program.uTime!, Host.realtime % (Math.PI * 2.0));
-    gl.uniform1f(program.uInterpolation!, R.GetTextureInterpolation());
-    gl.uniform1f(program.uLightstyleInterpolation!, R.GetLightstyleInterpolation());
+    gl.uniform1f(program.uInterpolation!, Interpolation.Texture());
+    gl.uniform1f(program.uLightstyleInterpolation!, Interpolation.Lightstyle());
     gl.uniform1f(program.uBloomEmissiveScale!, getEntityBloomEmissiveScale(e.effects));
     gl.uniform1f(program.uBloomDlightScale!, R.bloomDlightStrength.value);
 
     this._setupBrushShaderCommon(program, clmodel, false);
-    R.lightstyle_texture_a.bind(program.tLightStyleA!);
-    R.lightstyle_texture_b.bind(program.tLightStyleB!);
+    LightStyles.lightstyle_texture_a.bind(program.tLightStyleA!);
+    LightStyles.lightstyle_texture_b.bind(program.tLightStyleB!);
 
     if (!clmodel.chains || clmodel.chains.length === 0) {
       gl.depthMask(true);
@@ -1324,7 +1329,7 @@ export class BrushModelRenderer extends ModelRenderer {
       clmodel,
       entity,
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      R._CalculateLightValues,
+      EntityLighting.CalculateLightValues,
       clientRuntimeState.worldmodel as BrushModel | null,
     );
 
@@ -1419,7 +1424,7 @@ export class BrushModelRenderer extends ModelRenderer {
             fogVolume.mins[2] + w * sizeZ,
           );
 
-          const [color] = R.LightPoint(worldPos);
+          const [color] = LightSampler.LightPoint(worldPos);
 
           const idx = (iz * sliceSize + iy * resX + ix) * 4;
           const maxComp = Math.max(color[0], color[1], color[2]);
@@ -2081,12 +2086,12 @@ export class BrushModelRenderer extends ModelRenderer {
       }
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      const fallbackLight = BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, R.LightPoint);
+      const fallbackLight = BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, LightSampler.LightPoint);
       cache.set(cacheKey, fallbackLight);
       return fallbackLight;
     }
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
-    return BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, R.LightPoint);
+    return BrushModelRenderer.sampleTurbulentFallbackLight(model, face, worldPos, LightSampler.LightPoint);
   }
 }

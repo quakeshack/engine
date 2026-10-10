@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import Decals, { type Decal } from '../../source/engine/client/renderer/effects/Decals.ts';
-import R from '../../source/engine/client/R.ts';
+import LightSampler from '../../source/engine/client/renderer/lighting/LightSampler.ts';
 import GL from '../../source/engine/client/GL.ts';
 import type { GLTexture } from '../../source/engine/client/GL.ts';
 import Vector from '../../source/shared/Vector.ts';
@@ -31,7 +31,7 @@ void describe('Decals', () => {
     Decals.Clear();
     lightResult = null;
     restoreClientState = useClientStateOf({ state: { time: CLOCK, worldmodel: { nodes: [{}] } } });
-    restoreRenderer = patchMembers(R, { RecursiveLightPoint: () => lightResult });
+    restoreRenderer = patchMembers(LightSampler, { RecursiveLightPoint: () => lightResult });
   });
 
   afterEach(() => {

@@ -1,8 +1,9 @@
 # Split `R.ts` into renderer subsystems
 
 Track D2 of `plans/engine-architecture-modernization.md`. Status: **plan agreed, all open questions settled
-(2026-10-10); Phases 0, 0b and 1 are done and wait for a go-ahead for Phase 2.** The renderer files are in their
-folders, and `Particles` and `Decals` are extracted.
+(2026-10-10); Phases 0, 0b, 1 and 2 are done. Phase 2 is not committed yet; Phase 3 waits for a go-ahead.** The
+renderer files are in their folders; `Particles`, `Decals`, `LightStyles`, `LightSampler`, `EntityLighting`,
+`Interpolation` and the start of `RendererCvars` are extracted.
 
 ## Context
 
@@ -428,6 +429,34 @@ calls `Particles`/`Decals` for emit and advance. `Decals.PlaceDecal` temporarily
 uploads, so `r-sorting.test.mjs` moves with them and is converted to `.ts`. BrushModelRenderer, Alias/Mesh renderers
 and Decals switch imports.
 
+#### Phase 2: what shipped (2026-10-10)
+
+`renderer/lighting/LightStyles.ts`, `LightSampler.ts`, `EntityLighting.ts`, `renderer/scene/Interpolation.ts` and
+`renderer/resources/RendererCvars.ts`. `R.ts` went from 2834 to 2177 lines.
+
+- **`RendererCvars` started here, not in Phase 5.** The new classes needed `r_fullbright` and `r_interpolation`
+  and must not import `R`, so those two cvars are the first fields of `rendererCvars` (the `ClientCvars` shape).
+  `R.Init` still creates them at the same positions of the creation order; the rest follow in Phase 5.
+- **No cycle back into `R`:** `LightSampler`, `EntityLighting`, `LightStyles` and `Interpolation` import nothing of
+  `R`. `Decals` still imports `R`, but only for `refdef` now (Phase 4).
+- **Names:** `Interpolation.Texture()`/`Lightstyle()`, `LightStyles.Init()/Animate()/Clear()`,
+  `LightSampler.LightPoint/RecursiveLightPoint/LightPointFromGrid/SampleLightgridPoint/SampleDeluxemapDirection/
+  TextureAxisToVector`, `EntityLighting.GetEntityLightSamplePoint/CalculateLightValues/SmoothLightValues/
+  SmoothVectorTowards`. The underscore of the ones that were public-with-underscore is gone.
+- **One forwarder**, see the ledger: `R.interpolation` as a read-only getter, because `Materials` reads the cvar
+  through `RenderContext` (`typeof R`) until Phase 5.
+- **`LightStyles.Init()`** is called from `R.InitTextures` where the two textures used to be created, so the GL
+  object creation order is unchanged.
+- **Tests:** `r-sorting.test.mjs` is split: the transparent sort stays as `transparent-sorting.test.ts`, the light
+  tests became typed `light-sampler.test.ts` and `entity-lighting.test.ts`. New coverage that did not exist:
+  `CalculateLightValues` (overbright cap, fullbright, the player minimum, dynamic lights), the lightgrid trilinear
+  sampling and its missing-data paths, the baked color of a floor with a lightstyle, `LightStyles.Animate`
+  (letters to intensities, wrap, `r_fullbright`, the two uploads) and `Interpolation`. `decals.test.ts` now patches
+  `LightSampler`.
+- **Verified:** `npm test` 1903 pass, `npm run typecheck` clean, `eslint` clean on all new and touched files;
+  browser capture (2 before, 2 after): nothing beyond the noise between captures of one build, identical `r_speeds`,
+  no console errors.
+
 ### Phase 3: Lightmaps and dynamic lights
 
 `Lightmaps`, `DynamicLights`, plus Design E item 1 (shadow textures read from `ShadowMap`) and the Design F
@@ -513,4 +542,8 @@ None open. Settled on 2026-10-10: decisions 13 to 16 above. New questions are ad
 
 ## Forwarder ledger
 
-Empty. Every forwarder added in Phases 1 to 6 is listed here with the phase that adds it; Phase 7 deletes them.
+Every forwarder added in Phases 1 to 6 is listed here with the phase that adds it; Phase 7 deletes them.
+
+| Forwarder on `R` | Added | Why it stays | Goes with |
+|---|---|---|---|
+| `static get interpolation()` (returns `rendererCvars.interpolation`) | Phase 2 | `Materials` reads `r_interpolation` through `RenderContext` (`typeof R`) | `RenderContext`, Phase 5 |

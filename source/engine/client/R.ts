@@ -6,7 +6,7 @@ import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import VID from './VID.ts';
 import GL, { ATTRIB_LOCATIONS, GLCubeTexture, GLRenderTexture, GLTexture, GLTextureArray } from './GL.ts';
-import { content, effect } from '../../shared/Defs.ts';
+import { content } from '../../shared/Defs.ts';
 import { modelRendererRegistry } from './renderer/models/ModelRendererRegistry.ts';
 import type { ModelRenderer } from './renderer/models/ModelRenderer.ts';
 import { BrushModelRenderer } from './renderer/models/BrushModelRenderer.ts';
@@ -15,7 +15,7 @@ import { AliasModelRenderer } from './renderer/models/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/models/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/models/MeshModelRenderer.ts';
 import Draw from './Draw.ts';
-import { BrushModel, type BrushTexInfo, type BrushTexVec, type FogVolumeInfo, type LightgridPointSample, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
+import { BrushModel, type FogVolumeInfo, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
 import { MeshModel } from '../common/model/MeshModel.ts';
 import { SpriteModel } from '../common/model/SpriteModel.ts';
 import { type Face, Plane } from '../common/model/BaseModel.ts';
@@ -28,12 +28,14 @@ import UnderwaterFogEffect from './renderer/postprocess/UnderwaterFogEffect.ts';
 import ShadowMap from './renderer/lighting/ShadowMap.ts';
 import { ClientDlight, ClientEdict } from './ClientEntities.ts';
 import { SkyRenderer } from './renderer/scene/Sky.ts';
+import LightStyles from './renderer/lighting/LightStyles.ts';
+import LightSampler from './renderer/lighting/LightSampler.ts';
+import rendererCvars from './renderer/resources/RendererCvars.ts';
 import Particles, { type Particle } from './renderer/effects/Particles.ts';
 import Decals, { type Decal } from './renderer/effects/Decals.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import { clientCollision } from './ClientPhysics.ts';
-import Host from '../common/Host.ts';
 import SCR from './SCR.ts';
 import V from './V.ts';
 import Sys from './Sys.ts';
@@ -87,9 +89,6 @@ interface RefdefState {
   fov_y: number;
 }
 
-type LightPointResult = [Vector, Vector];
-type EntityLightValues = [Vector, Vector, Vector, Vector, Vector];
-type GridPosition = [number, number, number];
 type Vec4 = [number, number, number, number];
 
 const FOG_TURBULENT_SORT_EPSILON = 0.0001;
@@ -136,15 +135,20 @@ export function compareTransparentItems(itemA: SortKindDistance, itemB: SortKind
 }
 
 class R {
+  /**
+   * The `r_interpolation` console variable, which `Materials` still reads through the renderer.
+   * @deprecated Moved to `rendererCvars.interpolation`; goes away with `RenderContext` (Phase 5 of plans/r-split.md).
+   * @returns The console variable.
+   */
+  static get interpolation(): Cvar {
+    return rendererCvars.interpolation;
+  }
+
   // light
 
   static dlightframecount = 0;
 
-  static lightstylevalue_a = new Uint8Array(new ArrayBuffer(64));
-  static lightstylevalue_b = new Uint8Array(new ArrayBuffer(64));
-
   static waterwarp: Cvar = null!;
-  static fullbright: Cvar = null!;
   static drawentities: Cvar = null!;
   static drawviewmodel: Cvar = null!;
   static drawturbulents: Cvar = null!;
@@ -161,7 +165,6 @@ class R {
   static bloomSpecularStrength: Cvar = null!;
   static bloomDownsample: Cvar = null!;
   static bloomDebug: Cvar = null!;
-  static interpolation: Cvar = null!;
   static fog_color: Cvar = null!;
   static fog_start: Cvar = null!;
   static fog_end: Cvar = null!;
@@ -174,8 +177,6 @@ class R {
   static deluxemap_texture: GLTextureArray = null!;
   static lightmap_texture: GLTextureArray = null!;
   static dlightmap_rgba_texture: GLRenderTexture = null!;
-  static lightstyle_texture_a: GLRenderTexture = null!;
-  static lightstyle_texture_b: GLRenderTexture = null!;
   static fullbright_texture: GLTextureArray = null!;
   static null_texture: GLRenderTexture = null!;
   static normal_up_texture: GLTextureArray = null!;
@@ -197,61 +198,6 @@ class R {
   static c_brush_vbos = 0;
   static c_brush_texture_binds = 0;
   static c_alias_polys = 0;
-
-  private static _textureAxisToVector(texVec: BrushTexVec): Vector {
-    return new Vector(texVec[0], texVec[1], texVec[2]);
-  }
-
-  /**
-   * Returns interpolation for animated texture/material groups.
-   * @returns The 0..1 interpolation factor for animated textures.
-   */
-  static GetTextureInterpolation(): number {
-    if (R.interpolation.value === 0) {
-      return 0.0;
-    }
-
-    return (clientRuntimeState.time % 0.2) / 0.2;
-  }
-
-  /**
-   * Returns smoothed interpolation for 10 Hz lightstyle animation.
-   * @returns The smoothed 0..1 lightstyle interpolation factor.
-   */
-  static GetLightstyleInterpolation(): number {
-    if (R.interpolation.value === 0) {
-      return 0.0;
-    }
-
-    const linear = (clientRuntimeState.time * 10.0) % 1.0;
-
-    return linear * linear * (3.0 - 2.0 * linear);
-  }
-
-  static AnimateLight(): void {
-    if (R.fullbright.value === 0) {
-      const i = Math.floor(clientRuntimeState.time * 10.0);
-      for (let j = 0; j < 64; j++) {
-        const ls = clientRuntimeState.clientEntities.lightstyle[j];
-        if (ls.length === 0) {
-          R.lightstylevalue_a[j] = 12;
-          R.lightstylevalue_b[j] = 12;
-          continue;
-        }
-        R.lightstylevalue_a[j] = ls.charCodeAt(i % ls.length) - 97;
-        R.lightstylevalue_b[j] = ls.charCodeAt((i + 1) % ls.length) - 97;
-      }
-    } else {
-      for (let j = 0; j < 64; j++) {
-        R.lightstylevalue_a[j] = 12;
-        R.lightstylevalue_b[j] = 12;
-      }
-    }
-    R.lightstyle_texture_a.bind(0);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 64, 1, gl.RED, gl.UNSIGNED_BYTE, R.lightstylevalue_a!);
-    R.lightstyle_texture_b.bind(0);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 64, 1, gl.RED, gl.UNSIGNED_BYTE, R.lightstylevalue_b!);
-  };
 
   static RenderDlights() {
     if (R.flashblend.value === 0) {
@@ -444,441 +390,6 @@ class R {
     R.dlightframecount++;
   };
 
-  static RecursiveLightPoint(node: Node, start: Vector, end: Vector): LightPointResult | null {
-    if (node.contents < content.CONTENT_NONE) {
-      return null;
-    }
-
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-    const plane = node.plane!;
-    console.assert(plane !== null, 'node plane required');
-    const normal = plane.normal;
-    const front = start[0] * normal[0] + start[1] * normal[1] + start[2] * normal[2] - plane.dist;
-    const back = end[0] * normal[0] + end[1] * normal[1] + end[2] * normal[2] - plane.dist;
-    const side = front < 0;
-    const frontChild = node.children[side ? 1 : 0] as Node;
-    const backChild = node.children[side ? 0 : 1] as Node;
-    console.assert(frontChild instanceof Node, `R.RecursiveLightPoint expected linked front child on node ${node.num}`);
-    console.assert(backChild instanceof Node, `R.RecursiveLightPoint expected linked back child on node ${node.num}`);
-
-    if ((back < 0) === side) {
-      return R.RecursiveLightPoint(frontChild, start, end);
-    }
-
-    const frac = front / (front - back);
-    const mid = new Vector(
-      start[0] + (end[0] - start[0]) * frac,
-      start[1] + (end[1] - start[1]) * frac,
-      start[2] + (end[2] - start[2]) * frac,
-    );
-
-    const r = R.RecursiveLightPoint(frontChild, start, mid);
-
-    if (r !== null) {
-      return r;
-    }
-
-    if ((back < 0) === side) {
-      return null;
-    }
-
-    for (const surf of node.facesIter()) {
-      if (surf.sky) {
-        continue;
-      }
-
-      const tex = worldmodel.texinfo[surf.texinfo];
-      const s = mid.dot(R._textureAxisToVector(tex.vecs[0])) + tex.vecs[0][3];
-      const t = mid.dot(R._textureAxisToVector(tex.vecs[1])) + tex.vecs[1][3];
-      if ((s < surf.texturemins[0]) || (t < surf.texturemins[1])) {
-        continue;
-      }
-
-      let ds = s - surf.texturemins[0];
-      let dt = t - surf.texturemins[1];
-      if ((ds > surf.extents[0]) || (dt > surf.extents[1])) {
-        continue;
-      }
-
-      if (surf.styles.length === 0 || surf.lightofs < 0) {
-        return [new Vector(), mid];
-      }
-
-      const lmshift = surf.lmshift!;
-      console.assert(lmshift !== null, 'face lightmap shift required');
-
-      ds >>= lmshift;
-      dt >>= lmshift;
-
-      const smax = (surf.extents[0] >> lmshift) + 1;
-      const tmax = (surf.extents[1] >> lmshift) + 1;
-
-      const r3 = new Vector();
-      const haveRGB = worldmodel.lightdata_rgb !== null;
-      const lightdata = (haveRGB ? worldmodel.lightdata_rgb : worldmodel.lightdata)!;
-      console.assert(lightdata !== null, 'world lightdata required');
-      const channels = haveRGB ? 3 : 1;
-      const uInterpolation = R.GetLightstyleInterpolation();
-
-      for (let k = 0; k < channels; k++) {
-        let lightmap = surf.lightofs + dt * smax + ds;
-
-        for (let maps = 0; maps < surf.styles.length; maps++) {
-          const scale = (
-            R.lightstylevalue_a[surf.styles[maps]] * (1 - uInterpolation) +
-            R.lightstylevalue_b[surf.styles[maps]] * uInterpolation
-          ) * 22.0;
-
-          r3[k] += lightdata[lightmap * channels + k] * scale;
-
-          lightmap += tmax * smax;
-        }
-      }
-
-      if (!haveRGB) {
-        // replicate for green and blue
-        r3[1] = r3[0];
-        r3[2] = r3[0];
-      }
-
-      r3[0] = r3[0] >> 8;
-      r3[1] = r3[1] >> 8;
-      r3[2] = r3[2] >> 8;
-
-      const deluxeDirection = R._SampleDeluxemapDirection(surf, tex, smax, tmax, ds, dt, uInterpolation);
-
-      // Without a deluxemap, assume the light comes mostly from directly
-      // above rather than trusting the hit surface's own normal: a downward
-      // trace grazing a slanted ramp or wall ledge can return a tilted
-      // normal that doesn't represent the area's general lighting, and
-      // top-down is what classic Quake always assumed here anyway. Use
-      // #topDownFallbackDirection (a slight tilt) rather than a pure
-      // (0, 0, 1): entities only ever yaw about world Z, and a perfectly
-      // vertical light direction is invariant to rotation about that same
-      // axis, so an entity spinning in place keeps an entirely unchanged
-      // relationship between its own normals and a light directly
-      // overhead — the diffuse/specular response would never change while
-      // it turns, reading as the highlight being stuck to the mesh. The
-      // slight tilt breaks that symmetry.
-      return [
-        r3,
-        deluxeDirection !== null
-          ? mid.add(deluxeDirection.multiply(R.#lightOriginProxyDistance))
-          : mid.add(R.#topDownFallbackDirection.copy().multiply(R.#lightOriginProxyDistance)),
-      ];
-    }
-
-    return R.RecursiveLightPoint(backChild, mid, end);
-  };
-
-  /**
-   * Distance used to project a light direction — either deluxemap-derived or
-   * the top-down fallback used when no deluxemap texel is available — into a
-   * proxy light-origin point. Must dominate the sampled entity's height above
-   * the surface (tens of units) so the true direction isn't swamped by that
-   * gap; otherwise the proxy origin sits close enough to the model that the
-   * light-to-vertex direction is driven by the model's own local geometry
-   * instead of a consistent world-space direction, leaving specular
-   * highlights fixed to the mesh instead of sweeping as the camera orbits.
-   */
-  static readonly #lightOriginProxyDistance = 512.0;
-
-  /**
-   * Unit direction toward the assumed light source when a face has no
-   * deluxemap texel (see the fallback branch above). 30° off vertical at an
-   * arbitrary azimuth: entities only ever rotate (yaw) about world Z, and a
-   * direction with no horizontal component at all is invariant to that
-   * rotation, so it can never be told apart from an entity-attached light —
-   * an entity spinning in place would show no change whatsoever in its
-   * diffuse or specular response. The tilt keeps this reading as mostly an
-   * overhead light while still varying with an entity's facing.
-   */
-  static readonly #topDownFallbackDirection = new Vector(
-    Math.sin(30.0 * Math.PI / 180.0) * Math.cos(45.0 * Math.PI / 180.0),
-    Math.sin(30.0 * Math.PI / 180.0) * Math.sin(45.0 * Math.PI / 180.0),
-    Math.cos(30.0 * Math.PI / 180.0),
-  );
-
-  /**
-   * Samples the BSPX deluxemap (dominant light direction per lightmap texel,
-   * written by ericw-tools' `LIGHTINGDIR` lump) at the given face texel and
-   * decodes it into a world-space, entity-independent light direction.
-   * Mirrors the RGB lightdata sampling loop above, blending across active
-   * lightstyles with the same intensity weighting, and reconstructs the
-   * tangent-space-encoded direction into world space via the face's texture
-   * axes and normal, matching the encoding in ericw-tools' `WriteSingleLightmap`.
-   * @returns Normalized world-space direction pointing from the surface
-   * toward the light, or null when no deluxemap data is available for this face.
-   */
-  static _SampleDeluxemapDirection(surf: Face, tex: BrushTexInfo, smax: number, tmax: number, ds: number, dt: number, uInterpolation: number): Vector | null {
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-
-    if (worldmodel.deluxemap === null) {
-      return null;
-    }
-
-    const deluxemap = worldmodel.deluxemap;
-    const tangentDir = new Vector();
-    let totalWeight = 0.0;
-
-    for (let k = 0; k < 3; k++) {
-      let lightmap = surf.lightofs + dt * smax + ds;
-
-      for (let maps = 0; maps < surf.styles.length; maps++) {
-        const scale = (
-          R.lightstylevalue_a[surf.styles[maps]] * (1 - uInterpolation) +
-          R.lightstylevalue_b[surf.styles[maps]] * uInterpolation
-        ) * 22.0;
-
-        tangentDir[k] += (deluxemap[lightmap * 3 + k] / 128.0 - 1.0) * scale;
-
-        if (k === 0) {
-          totalWeight += scale;
-        }
-
-        lightmap += tmax * smax;
-      }
-    }
-
-    if (totalWeight <= 0.0) {
-      return null;
-    }
-
-    tangentDir.multiply(1.0 / totalWeight);
-
-    const sAxis = R._textureAxisToVector(tex.vecs[0]);
-    sAxis.normalize();
-    const tAxis = R._textureAxisToVector(tex.vecs[1]);
-    tAxis.normalize();
-    tAxis.multiply(-1.0);
-
-    const worldDir = new Vector(
-      tangentDir[0] * sAxis[0] + tangentDir[1] * tAxis[0] + tangentDir[2] * surf.normal[0],
-      tangentDir[0] * sAxis[1] + tangentDir[1] * tAxis[1] + tangentDir[2] * surf.normal[1],
-      tangentDir[0] * sAxis[2] + tangentDir[1] * tAxis[2] + tangentDir[2] * surf.normal[2],
-    );
-
-    return worldDir.normalize() > 0.0001 ? worldDir : null;
-  };
-
-  static LightPoint(p: Vector): LightPointResult {
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-
-    if (worldmodel.lightdata === null && worldmodel.lightdata_rgb === null) {
-      return [new Vector(255, 255, 255), new Vector(0, 0, 0)];
-    }
-
-    // Try lightgrid first if available
-    if (worldmodel.lightgrid !== null) {
-      const gridResult = R.LightPointFromGrid(p);
-      if (gridResult !== null) {
-        // Get a proper light origin from surface trace for directional shading.
-        // The lightgrid provides correct color but has no surface information,
-        // so we trace downward to find the surface below the entity.
-        const surfaceTrace = R.RecursiveLightPoint(worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
-        if (surfaceTrace !== null) {
-          gridResult[1] = surfaceTrace[1];
-        }
-        return gridResult;
-      }
-    }
-
-    const r = R.RecursiveLightPoint(worldmodel.nodes[0], p, new Vector(p[0], p[1], p[2] - 2048.0));
-
-    if (r === null) {
-      return [new Vector(0, 0, 0), new Vector(0, 0, 0)];
-    }
-
-    return r;
-  };
-
-  /**
-   * Samples a single point from the lightgrid octree.
-   * @returns Point data or null when the octree has no lighting sample there.
-   */
-  static SampleLightgridPoint(gridPos: GridPosition): LightgridPointSample | null {
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-    const grid = worldmodel.lightgrid;
-
-    if (grid === null) {
-      return null;
-    }
-
-    const LGNODE_LEAF = 1 << 31;
-    const LGNODE_MISSING = 1 << 30;
-
-    // Walk the octree to find the leaf
-    let nodeIndex = grid.rootnode;
-
-    while (true) {
-      // Check if we've hit a leaf or missing node
-      if ((nodeIndex & LGNODE_LEAF) !== 0) {
-        const leafIndex = nodeIndex & ~(LGNODE_LEAF | LGNODE_MISSING);
-
-        if ((nodeIndex & LGNODE_MISSING) !== 0) {
-          // Missing data at this point
-          return null;
-        }
-
-        // Check if leaf index is valid
-        if (leafIndex >= grid.leafs.length) {
-          return null;
-        }
-
-        const leaf = grid.leafs[leafIndex];
-
-        // Calculate index within the leaf
-        const localX = gridPos[0] - leaf.mins[0];
-        const localY = gridPos[1] - leaf.mins[1];
-        const localZ = gridPos[2] - leaf.mins[2];
-
-        // Check bounds
-        if (localX < 0 || localX >= leaf.size[0] ||
-            localY < 0 || localY >= leaf.size[1] ||
-            localZ < 0 || localZ >= leaf.size[2]) {
-          return null;
-        }
-
-        const pointIndex = localZ * leaf.size[0] * leaf.size[1] + localY * leaf.size[0] + localX;
-
-        // Check if point index is valid
-        if (pointIndex >= leaf.points.length) {
-          return null;
-        }
-
-        const point = leaf.points[pointIndex];
-
-        if (point.stylecount === 0xff) {
-          // No data at this point
-          return null;
-        }
-
-        return point;
-      }
-
-      // Internal node - traverse
-      // Check if node index is valid
-      if (nodeIndex >= grid.nodes.length) {
-        return null;
-      }
-
-      const node = grid.nodes[nodeIndex];
-
-      // Calculate child index: ((z>=mid[2])<<0) | ((y>=mid[1])<<1) | ((x>=mid[0])<<2)
-      let childIdx = 0;
-      if (gridPos[2] >= node.mid[2]) {
-        childIdx |= 1;
-      }
-      if (gridPos[1] >= node.mid[1]) {
-        childIdx |= 2;
-      }
-      if (gridPos[0] >= node.mid[0]) {
-        childIdx |= 4;
-      }
-
-      nodeIndex = node.child[childIdx];
-    }
-  };
-
-  /**
-   * Samples lighting from the lightgrid octree with trilinear interpolation.
-   * @returns Interpolated RGB light and origin, or null when no grid sample is available.
-   */
-  static LightPointFromGrid(pos: Vector): LightPointResult | null {
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-    const grid = worldmodel.lightgrid;
-
-    if (grid === null) {
-      return null;
-    }
-
-    // Convert world position to grid space
-    const gridPosFloat = [
-      (pos[0] - grid.mins[0]) / grid.step[0],
-      (pos[1] - grid.mins[1]) / grid.step[1],
-      (pos[2] - grid.mins[2]) / grid.step[2],
-    ];
-
-    // Get the 8 surrounding grid points
-    const baseX = Math.floor(gridPosFloat[0]);
-    const baseY = Math.floor(gridPosFloat[1]);
-    const baseZ = Math.floor(gridPosFloat[2]);
-
-    // Calculate fractional part for interpolation
-    const fracX = gridPosFloat[0] - baseX;
-    const fracY = gridPosFloat[1] - baseY;
-    const fracZ = gridPosFloat[2] - baseZ;
-
-    // Sample the 8 corner points
-    const samples = [];
-    const weights = [];
-    let totalWeight = 0;
-
-    for (let dz = 0; dz <= 1; dz++) {
-      for (let dy = 0; dy <= 1; dy++) {
-        for (let dx = 0; dx <= 1; dx++) {
-          const gridPos: GridPosition = [baseX + dx, baseY + dy, baseZ + dz];
-          const sample = R.SampleLightgridPoint(gridPos);
-
-          // Calculate trilinear weight
-          const wx = dx === 0 ? (1 - fracX) : fracX;
-          const wy = dy === 0 ? (1 - fracY) : fracY;
-          const wz = dz === 0 ? (1 - fracZ) : fracZ;
-          const weight = wx * wy * wz;
-
-          if (sample !== null) {
-            samples.push(sample);
-            weights.push(weight);
-            totalWeight += weight;
-          }
-        }
-      }
-    }
-
-    // If no samples found, return null
-    if (samples.length === 0) {
-      return null;
-    }
-
-    // Compensate for missing samples by renormalizing weights
-    if (totalWeight > 0) {
-      for (let i = 0; i < weights.length; i++) {
-        weights[i] /= totalWeight;
-      }
-    }
-
-    // Accumulate weighted RGB values
-    const r3 = new Vector(0, 0, 0);
-    const uInterpolation = R.GetLightstyleInterpolation();
-
-    for (let i = 0; i < samples.length; i++) {
-      const sample = samples[i];
-      const weight = weights[i];
-
-      for (let s = 0; s < sample.styles.length; s++) {
-        const style = sample.styles[s];
-        const stylenum = style.stylenum;
-
-        // Apply lightstyle animation (matches RecursiveLightPoint: lightstyle * 22.0 / 256.0)
-        const scale = (
-          R.lightstylevalue_a[stylenum] * (1 - uInterpolation) +
-          R.lightstylevalue_b[stylenum] * uInterpolation
-        ) * 0.0859375; // 22.0 / 256.0
-
-        r3[0] += style.rgb[0] * scale * weight;
-        r3[1] += style.rgb[1] * scale * weight;
-        r3[2] += style.rgb[2] * scale * weight;
-      }
-    }
-
-    return [r3, pos.copy()];
-  };
-
   // main
 
   static visframecount = 0;
@@ -923,161 +434,6 @@ class R {
       return true;
     }
     return false;
-  };
-
-  /**
-   * Alias models in Quake sample static light slightly above their origin so
-   * monsters are lit from torso height rather than foot height.
-   * @returns World position used for static light sampling.
-   */
-  static GetEntityLightSamplePoint(entity: ClientEdict): Vector {
-    const samplePoint = entity.lerp.origin.copy();
-
-    if (entity.model !== null) {
-      // samplePoint[2] -= entity.mins[2] + 24.0; // effectively +24.0u on alias models
-      // CR: fun, that makes the boss in E1M7 pitch black
-    }
-
-    // console.log(`Sampling light for entity ${entity.num} at ${samplePoint}`, entity.model, entity.mins, entity.maxs);
-
-    return samplePoint;
-  };
-
-  /**
-   * Calculates static and dynamic lighting terms for a rendered entity.
-   * @returns Ambient light, shade light, nearest light origin, dynamic shade light, and dynamic light origin.
-   */
-  static _CalculateLightValues(e: ClientEdict): EntityLightValues {
-    const [ambientlight, lightOrigin] = R.LightPoint(R.GetEntityLightSamplePoint(e));
-    const shadelight = ambientlight.copy();
-
-    // never have a pitch black view model
-    if (e === clientRuntimeState.viewent && ambientlight.average() < 24.0) {
-      if (ambientlight.average() === 0) {
-        ambientlight.setTo(1.0, 1.0, 1.0); // no color, set to white
-      }
-      ambientlight.multiply(24.0);
-      shadelight.set(ambientlight);
-    }
-
-    const dynamicShadeLight = new Vector(0.0, 0.0, 0.0);
-    const dynamicLightOrigin = new Vector(0.0, 0.0, 0.0);
-    let maxAdd = 0.0;
-
-    // add dynamic lights
-    for (let i = 0; i < Def.limits.dlights; i++) {
-      const dl = clientRuntimeState.clientEntities.dlights[i];
-
-      if (dl.isFree()) {
-        continue;
-      }
-
-      const add = dl.radius - e.lerp.origin.distanceTo(dl.origin);
-
-      if (add > 0.0) {
-        const color = dl.color.copy();
-        const vadd = color.multiply(add);
-        dynamicShadeLight.add(vadd);
-
-        if (add > maxAdd) {
-          maxAdd = add;
-          dynamicLightOrigin.set(dl.origin);
-        }
-      }
-    }
-
-    // do not overbright
-    const alavg = ambientlight.greatest();
-    if (alavg > 128.0) {
-      ambientlight.multiply(128.0 / alavg);
-    }
-
-    const slavg = shadelight.greatest();
-    if (slavg > 128.0) {
-      shadelight.multiply(128.0 / slavg);
-    }
-
-    const dlavg = dynamicShadeLight.greatest();
-    if (dlavg > 128.0) {
-      dynamicShadeLight.multiply(128.0 / dlavg);
-    }
-
-    if (e.effects & (effect.EF_FULLBRIGHT | effect.EF_MUZZLEFLASH)) {
-      ambientlight.setTo(255.0, 255.0, 255.0);
-      shadelight.set(ambientlight);
-    } else if ((e.num >= 1 && e.num <= clientRuntimeState.maxclients && shadelight.greatest() < 8.0) || (e.effects & effect.EF_MINLIGHT)) {
-      // never let players go totally dark either
-      if (ambientlight.average() === 0) {
-        ambientlight.setTo(1.0, 1.0, 1.0); // no color, set to white
-      }
-      ambientlight.multiply(8.0);
-      shadelight[0] = Math.max(shadelight[0], ambientlight[0]);
-      shadelight[1] = Math.max(shadelight[1], ambientlight[1]);
-      shadelight[2] = Math.max(shadelight[2], ambientlight[2]);
-    }
-
-    ambientlight.multiply(0.0078125); // / 128.0
-    shadelight.multiply(0.0078125); // / 128.0
-    dynamicShadeLight.multiply(0.0078125);
-
-    return R._SmoothLightValues(e, ambientlight, shadelight, lightOrigin, dynamicShadeLight, dynamicLightOrigin);
-  };
-
-  /**
-   * How quickly smoothed lighting eases towards a freshly sampled value; see
-   * `V.SmoothValue` for the exponential-decay formula this drives. Chosen to
-   * be slow enough to hide lightmap-boundary popping but still track normal
-   * movement speeds without feeling laggy.
-   */
-  static readonly #lightSmoothingSharpness = 10.0;
-
-  /**
-   * A freshly sampled light origin this far from the entity's previously
-   * smoothed origin is treated as a teleport or edict-slot reuse (a
-   * `ClientEdict` is recycled by number for unrelated game objects) rather
-   * than normal movement, and snaps instead of easing in.
-   */
-  static readonly #lightTeleportDistance = 500.0;
-
-  /**
-   * Blends freshly sampled lighting terms into the entity's persisted
-   * smoothed state, easing across lightmap boundaries instead of snapping.
-   * Snaps immediately on first sample or when the light origin jumps far
-   * enough to indicate a teleport or a recycled edict slot.
-   * @returns The entity's smoothed ambient/shade/dynamic lighting terms.
-   */
-  static _SmoothLightValues(e: ClientEdict, ambientlight: Vector, shadelight: Vector, lightOrigin: Vector, dynamicShadeLight: Vector, dynamicLightOrigin: Vector): EntityLightValues {
-    const teleported = e.smoothedLightOrigin !== null && lightOrigin.distanceTo(e.smoothedLightOrigin) > R.#lightTeleportDistance;
-
-    if (e.smoothedAmbientLight === null || teleported) {
-      e.smoothedAmbientLight = ambientlight.copy();
-      e.smoothedShadeLight = shadelight.copy();
-      e.smoothedLightOrigin = lightOrigin.copy();
-      e.smoothedDynamicShadeLight = dynamicShadeLight.copy();
-      e.smoothedDynamicLightOrigin = dynamicLightOrigin.copy();
-
-      return [ e.smoothedAmbientLight, e.smoothedShadeLight, e.smoothedLightOrigin, e.smoothedDynamicShadeLight, e.smoothedDynamicLightOrigin ];
-    }
-
-    const deltaTime = Host.frametime;
-
-    R._SmoothVectorTowards(e.smoothedAmbientLight, ambientlight, deltaTime);
-    R._SmoothVectorTowards(e.smoothedShadeLight!, shadelight, deltaTime);
-    R._SmoothVectorTowards(e.smoothedLightOrigin!, lightOrigin, deltaTime);
-    R._SmoothVectorTowards(e.smoothedDynamicShadeLight!, dynamicShadeLight, deltaTime);
-    R._SmoothVectorTowards(e.smoothedDynamicLightOrigin!, dynamicLightOrigin, deltaTime);
-
-    return [ e.smoothedAmbientLight, e.smoothedShadeLight!, e.smoothedLightOrigin!, e.smoothedDynamicShadeLight!, e.smoothedDynamicLightOrigin! ];
-  };
-
-  /**
-   * Eases `current` towards `target` component-wise in place, using
-   * `#lightSmoothingSharpness` as the exponential decay rate.
-   */
-  static _SmoothVectorTowards(current: Vector, target: Vector, deltaTime: number): void {
-    current[0] = V.SmoothValue(current[0], target[0], R.#lightSmoothingSharpness, deltaTime);
-    current[1] = V.SmoothValue(current[1], target[1], R.#lightSmoothingSharpness, deltaTime);
-    current[2] = V.SmoothValue(current[2], target[2], R.#lightSmoothingSharpness, deltaTime);
   };
 
   static DrawEntitiesOnList() {
@@ -1770,7 +1126,7 @@ class R {
   static viewleaf: Node | null = null;
 
   static PreRenderScene() {
-    R.AnimateLight();
+    LightStyles.Animate();
     const worldmodel = clientRuntimeState.worldmodel!;
     console.assert(worldmodel !== null, 'worldmodel required');
     const {forward, right, up} = R.refdef.viewangles.angleVectors();
@@ -2006,17 +1362,7 @@ class R {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE);
 
-    R.lightstyle_texture_a = new GLRenderTexture();
-    R.lightstyle_texture_a.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R8, 64, 1);
-
-    R.lightstyle_texture_b = new GLRenderTexture();
-    R.lightstyle_texture_b.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R8, 64, 1);
+    LightStyles.Init();
 
     R.fullbright_texture = new GLTextureArray();
     R.fullbright_texture.bind(0);
@@ -2240,7 +1586,7 @@ class R {
 
   static async Init() {
     R.waterwarp = new Cvar('r_waterwarp', '1');
-    R.fullbright = new Cvar('r_fullbright', '0', Cvar.FLAG.CHEAT);
+    rendererCvars.fullbright = new Cvar('r_fullbright', '0', Cvar.FLAG.CHEAT);
     R.drawentities = new Cvar('r_drawentities', '1', Cvar.FLAG.CHEAT);
     R.drawviewmodel = new Cvar('r_drawviewmodel', '1');
     R.drawturbulents = new Cvar('r_drawturbulents', '1', Cvar.FLAG.CHEAT);
@@ -2256,7 +1602,7 @@ class R {
     R.bloomSpecularStrength = new Cvar('r_bloom_specular_strength', '0.33', Cvar.FLAG.NONE, 'Specular reflection contribution added to the bloom emissive target. Set to 0 to disable.');
     R.bloomDownsample = new Cvar('r_bloom_downsample', '4', Cvar.FLAG.NONE, 'Bloom buffer downsample divisor, clamped to 1-8.');
     R.bloomDebug = new Cvar('r_bloom_debug', '0', Cvar.FLAG.NONE, 'Bloom debug preview: 0 = off, 1 = emissive, 2 = extract, 3 = blur, 4 = all.');
-    R.interpolation = new Cvar('r_interpolation', '1', Cvar.FLAG.NONE, 'Interpolation of textures and animation groups, 0 - off, 1 - on');
+    rendererCvars.interpolation = new Cvar('r_interpolation', '1', Cvar.FLAG.NONE, 'Interpolation of textures and animation groups, 0 - off, 1 - on');
     // fog controls (TODO: make that a cheat, but resetting cvar to default is done after R.NewMapFog, so need to rethink the order of operations)
     R.fog_color = new Cvar('r_fog_color', '128 128 128', Cvar.FLAG.NONE, 'Fog color: R G B (0-255)');
     R.fog_start = new Cvar('r_fog_start', '128', Cvar.FLAG.NONE, 'Fog start distance (linear)');
@@ -2365,10 +1711,7 @@ class R {
   };
 
   static ClearAll() {
-    for (let i = 0; i < 64; i++) {
-      R.lightstylevalue_a[i] = 12;
-      R.lightstylevalue_b[i] = 12;
-    }
+    LightStyles.Clear();
 
     R.oldviewleaf = null;
     R.viewleaf = null;
@@ -2438,8 +1781,8 @@ class R {
       const impact = lightImpact.impact;
       const tex = worldmodel.texinfo[surf.texinfo];
       const local = [
-        impact.dot(R._textureAxisToVector(tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0],
-        impact.dot(R._textureAxisToVector(tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1],
+        impact.dot(LightSampler.TextureAxisToVector(tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0],
+        impact.dot(LightSampler.TextureAxisToVector(tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1],
       ];
       for (let t = 0; t < tmax; t++) {
         let td = local[1] - (t << lmshift);
