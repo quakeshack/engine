@@ -207,6 +207,45 @@ the build from `HEAD` and the build from the working tree.
 - Two captures of the same build 1.5 s apart differ only in the noise; if they differ elsewhere, the scene is not
   frozen yet.
 
+### The capture scripts
+
+`scripts/renderer-capture/` automates the recipe above for renderer work:
+
+```bash
+# one production build per side, never into dist/
+npx vite build --mode production --outDir <scratch>/dist-before --emptyOutDir
+# ... change or check out the other side, then
+npx vite build --mode production --outDir <scratch>/dist-after --emptyOutDir
+
+# capture each build at least twice (a dedicated server must be running, see section 2)
+node scripts/renderer-capture/capture.mjs <scratch>/dist-before <scratch>/before-a 3101
+node scripts/renderer-capture/capture.mjs <scratch>/dist-before <scratch>/before-b 3102
+node scripts/renderer-capture/capture.mjs <scratch>/dist-after  <scratch>/after-a  3103
+node scripts/renderer-capture/capture.mjs <scratch>/dist-after  <scratch>/after-b  3104
+
+node scripts/renderer-capture/compare.mjs \
+  --before <scratch>/before-a,<scratch>/before-b --after <scratch>/after-a,<scratch>/after-b
+```
+
+- `capture.mjs` loads `e1m1`, pauses, pins the client clock and seeds the particle generator, and writes nine
+  views: the spawn view, two dynamic lights with particles and a decal, the player model in chase view, bloom, fog,
+  a camera under the largest sky face, above the largest liquid surface and inside it, and the spawn view again.
+  It records the `r_speeds` lines of each view in `views.json`. A capture takes about 80 seconds; the page runs on
+  software GL at 3 to 5 FPS, so it says nothing about frame time.
+- `compare.mjs` needs at least two captures on one side. It measures how far two captures of one build are apart
+  and flags a view only when even the closest before/after pair is further apart than that. A view that is
+  flagged by a small margin is worth a third capture before it is worth a look. A broken sky or particle pass is
+  flagged by a wide margin (tested by disabling both).
+- **`r_speeds` is not a rendering check.** It counts brush and alias draws, not sky, particles, decals, coronas or
+  post-processing. A build with sky and particles disabled has identical counts. The pixel comparison is what
+  sees those.
+- The scripts reach into the engine through `window.engine` (see section 5). `installAdapter()` at the top of
+  `capture.mjs` names every member it uses and looks for its new home first, so a change that moves a member
+  teaches that function and exposes the new home in `bootstrap/createBrowserClient.ts`, and the same script keeps
+  working on the build before and the build after.
+- What they do not cover: input and pointer lock (section 6), underwater fog (`e1m1` has no `_qs_waterfog`
+  volume), anything that needs another map, and a second renderer state such as a changed resolution.
+
 ## Reporting results
 
 State plainly whether verification actually happened. If Chromium/Playwright aren't

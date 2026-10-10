@@ -333,13 +333,16 @@ What shipped:
   `test/physics/fixtures.mjs` drags that file into the type check.
 - Mutation check: breaking `CullBox`, the `oldviewleaf` bookkeeping, `AllocBlock` and the particle clock rule each
   turns the new tests red.
-- **Browser baseline tooling**, in the session scratchpad (`capture.mjs`, `compare.py`, per
-  `docs/browser-verification.md` section 8): a production build of the working tree is driven through the real
-  client on `e1m1`, paused, with a seeded `Math.random` and a camera override. It captures 9 views and the
-  `r_speeds` lines: spawn, dynamic lights + particles + decal, chase (alias model), bloom, fog, sky (camera under a
-  sky face), lava from above, inside the lava, spawn again. Comparison is a pixel diff outside a noise mask (two
-  captures of the same build) plus a coarse 120 px block-mean check for the animated full-screen views. A build with
-  the sky draw and the particle billboards disabled is flagged in 7 of 9 views, so the tool does see regressions.
+- **Browser baseline tooling**, now in the repo as `scripts/renderer-capture/` (`capture.mjs`, `compare.mjs`;
+  recipe in `docs/browser-verification.md` §8, "The capture scripts"): a production build is driven through the real
+  client on `e1m1`, paused, with a pinned client clock, a seeded `Math.random` and a camera override. It captures
+  9 views and the `r_speeds` lines: spawn, dynamic lights + particles + decal, chase (alias model), bloom, fog,
+  sky (camera under a sky face), lava from above, inside the lava, spawn again. `compare.mjs` takes at least two
+  captures per side and flags a view only when the closest before/after pair is further apart than the furthest
+  pair of captures of one build. A build with the sky draw and the particle billboards disabled is flagged in 7
+  of 9 views, so the tool does see regressions. The script reaches the engine through an adapter that tries a
+  member's new home first, so the same script captures the build before and after each phase; each phase that
+  moves a member it uses updates `installAdapter()` and exposes the new class on `window.engine`.
 - Verified: `npm test` 1861 pass, `npm run typecheck` clean, `eslint` clean on everything touched.
 
 Baseline `r_speeds` for the working tree (`e1m1`, 960x600; identical across two runs, so these are exact):
@@ -374,7 +377,9 @@ imports of unmoved files are fixed too). One commit, no logic change.
   `base-b`). The capture needed two fixes along the way and still has run-to-run noise from something I did not pin
   down (the lightstyle phase and the sky are the suspects). Particles and effects are seeded and placed after a
   reseed; the client clock is pinned. What it can prove is "no more different than the same build is from itself".
-  Treat the `r_speeds` counts as the exact check.
+  `r_speeds` is exact, but it counts brush and alias draws only (sky, particles, decals and post-processing are not
+  in it; a build without sky and particles has the same counts), so for this pure rename the compiler, the tests
+  and the build are the real proof.
 - Unrelated fix on the way, own commit: `channel-driver.test.mjs` "ignores messages that are not channel
   messages" waited a fixed 20 ms and failed twice under full-suite load; it now polls up to 2 s.
 
@@ -384,7 +389,9 @@ imports of unmoved files are fixed too). One commit, no logic change.
 ClientHost, ClientEngineAPI, tests). `compareTransparentItems` stays exported from `R.ts`; the transparent pass
 calls `Particles`/`Decals` for emit and advance. `Decals.PlaceDecal` temporarily calls `R.RecursiveLightPoint`
 (an R ↔ Decals import cycle, harmless: nothing is built at module evaluation) until Phase 2.
-`docs/client-entities.md` (`R.collidableParticleTypes`) and `docs/traceline.md` are updated.
+`docs/client-entities.md` (`R.collidableParticleTypes`) and `docs/traceline.md` are updated. `Particles`,
+`ParticleType` and `Decals` are added to the `window.engine` object in `bootstrap/createBrowserClient.ts`, so
+`scripts/renderer-capture/capture.mjs` finds them (its adapter already tries `engine.Particles` first).
 
 ### Phase 2: Light sampling and lightstyles
 
@@ -461,7 +468,9 @@ test depend on it).
   `test-glob-coverage` does not apply.
 - **Dockerfile:** the `test` and `builder` stages copy `source` and `test` whole, so new and moved files under them
   need no change. `dockerfile-fixture-sync` applies only if a fixture directory is added.
-- **Real browser, every phase from 0b:** the before/after pair and `r_speeds` numbers. Pointer-lock and mouse look
+- **Real browser, every phase from 1:** `scripts/renderer-capture/` before and after, two captures per side. Do not
+  read `r_speeds` as a rendering check: it counts brush and alias draws only, a build with the sky and particles
+  turned off has identical counts. Pointer-lock and mouse look
   are not touched by this plan, so there is nothing to hand off for a live test; each phase report says so.
 - **Frame time:** record median frame time on the baseline scene before Phase 4 and after Phase 5 (the static
   facade is hot-path code and `Camera` changes access patterns). A regression above noise is a finding.

@@ -23,7 +23,11 @@ trigger to actually use it instead of settling for "the unit tests pass" on a UI
    with the software-GL args, and drive the actual page (clicks via the virtual-space
    coordinate formula, console commands via real keyboard input, gated menu pages via
    `window.engine`).
-3. **If neither is available:** this is an environment gap, not a license to silently
+3. **For a change that must not alter what is drawn** (a renderer refactor, a shader move), use the capture
+   scripts in `scripts/renderer-capture/` instead of writing a one-off: `capture.mjs` renders nine fixed views of
+   a build, `compare.mjs` compares two builds against the noise between captures of one build (recipe and
+   limits: `docs/browser-verification.md` §8, "The capture scripts").
+4. **If neither is available:** this is an environment gap, not a license to silently
    skip verification. Say so explicitly in your final report — "UI change not verified in
    a live browser: Chromium/Playwright unavailable in this sandbox" — rather than implying
    the change was checked when only unit tests or a code read actually happened.
