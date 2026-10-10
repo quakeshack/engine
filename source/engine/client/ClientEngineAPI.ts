@@ -25,7 +25,7 @@ import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
 import W from '../common/W.ts';
-import PostProcess from './renderer/PostProcess.ts';
+import PostProcess from './renderer/postprocess/PostProcess.ts';
 import type { PostProcessStack } from '../../shared/GameInterfaces.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';

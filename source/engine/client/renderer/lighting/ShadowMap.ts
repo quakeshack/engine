@@ -1,15 +1,15 @@
-import GL, { GLCubeTexture, GLRenderTexture } from '../GL.ts';
-import Cvar from '../../common/Cvar.ts';
-import { limits } from '../../common/Def.ts';
-import { eventBus } from '../../common/EventBus.ts';
-import { MaterialFlags } from './Materials.ts';
-import { effect } from '../../../shared/Defs.ts';
-import Vector from '../../../shared/Vector.ts';
-import type { BrushModel } from '../../common/model/BSP.ts';
-import type { ClientEdict } from '../ClientEntities.ts';
-import { modelRendererRegistry } from './ModelRendererRegistry.ts';
-import { clientRuntimeState } from '../ClientState.ts';
-import R from '../R.ts';
+import GL, { GLCubeTexture, GLRenderTexture } from '../../GL.ts';
+import Cvar from '../../../common/Cvar.ts';
+import { limits } from '../../../common/Def.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import { MaterialFlags } from '../models/Materials.ts';
+import { effect } from '../../../../shared/Defs.ts';
+import Vector from '../../../../shared/Vector.ts';
+import type { BrushModel } from '../../../common/model/BSP.ts';
+import type { ClientEdict } from '../../ClientEntities.ts';
+import { modelRendererRegistry } from '../models/ModelRendererRegistry.ts';
+import { clientRuntimeState } from '../../ClientState.ts';
+import R from '../../R.ts';
 
 
 let gl: WebGL2RenderingContext = null!;

@@ -1,20 +1,20 @@
-import Vector from '../../../shared/Vector.ts';
+import Vector from '../../../../shared/Vector.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
-import { eventBus } from '../../common/EventBus.ts';
-import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../GL.ts';
-import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../../GL.ts';
+import { getEntityBloomEmissiveScale } from '../postprocess/BloomEffect.ts';
 import { MaterialFlags, type BaseMaterial } from './Materials.ts';
-import { BrushModel, type Node, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../common/model/BSP.ts';
-import type { Face, BaseModel } from '../../common/model/BaseModel.ts';
-import type { ClientEdict } from '../ClientEntities.ts';
+import { BrushModel, type Node, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../../common/model/BSP.ts';
+import type { Face, BaseModel } from '../../../common/model/BaseModel.ts';
+import type { ClientEdict } from '../../ClientEntities.ts';
 import Mesh from './Mesh.ts';
-import PostProcess from './PostProcess.ts';
-import * as Def from '../../common/Def.ts';
-import { content } from '../../../shared/Defs.ts';
-import { clientRuntimeState } from '../ClientState.ts';
-import R from '../R.ts';
-import { LIGHTMAP_BLOCK_SIZE } from './LightmapAtlas.ts';
-import Host from '../../common/Host.ts';
+import PostProcess from '../postprocess/PostProcess.ts';
+import * as Def from '../../../common/Def.ts';
+import { content } from '../../../../shared/Defs.ts';
+import { clientRuntimeState } from '../../ClientState.ts';
+import R from '../../R.ts';
+import { LIGHTMAP_BLOCK_SIZE } from '../lighting/LightmapAtlas.ts';
+import Host from '../../../common/Host.ts';
 
 
 let gl: WebGL2RenderingContext = null!;

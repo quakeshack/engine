@@ -1,9 +1,9 @@
-import W from '../../common/W.ts';
-import { BrushModel } from '../../common/Mod.ts';
-import Host from '../../common/Host.ts';
-import { renderer as R } from './RenderContext.ts';
-import { eventBus } from '../../common/EventBus.ts';
-import GL, { ATTRIB_LOCATIONS, GLTexture } from '../GL.ts';
+import W from '../../../common/W.ts';
+import { BrushModel } from '../../../common/Mod.ts';
+import Host from '../../../common/Host.ts';
+import { renderer as R } from '../resources/RenderContext.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import GL, { ATTRIB_LOCATIONS, GLTexture } from '../../GL.ts';
 
 let gl: WebGL2RenderingContext = null!;
 

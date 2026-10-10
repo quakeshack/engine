@@ -5,10 +5,10 @@ import R from '../../source/engine/client/R.ts';
 import GL from '../../source/engine/client/GL.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
-import PostProcess from '../../source/engine/client/renderer/PostProcess.ts';
-import ShadowMap from '../../source/engine/client/renderer/ShadowMap.ts';
-import { modelRendererRegistry } from '../../source/engine/client/renderer/ModelRendererRegistry.ts';
-import type PostProcessEffect from '../../source/engine/client/renderer/PostProcessEffect.ts';
+import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
+import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
+import { modelRendererRegistry } from '../../source/engine/client/renderer/models/ModelRendererRegistry.ts';
+import type PostProcessEffect from '../../source/engine/client/renderer/postprocess/PostProcessEffect.ts';
 
 /**
  * A stand-in for a WebGL context that creates objects for anything asked of it.

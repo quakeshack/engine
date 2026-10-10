@@ -249,7 +249,7 @@ material data instead of adding a new flat table. Checked `QSMatLoader.ts` and
    calls, safe on dedicated server) out from `MaterialFile` texture loading (client-only),
    which today are one undifferentiated method.
 3. **`MaterialFlags` (the only existing "material typing" concept) is purely a render enum**
-   ([Materials.ts:37-44](../source/engine/client/renderer/Materials.ts#L37-L44)) —
+   ([Materials.ts:37-44](../source/engine/client/renderer/models/Materials.ts#L37-L44)) —
    `MF_TRANSPARENT`/`MF_SKY`/`MF_TURBULENT`/`MF_SKIP`/`MF_FULLBRIGHT`. There is no existing
    gameplay-material axis (footstep, physics friction, damage type, ...) anywhere in the
    material system to extend — it would be new either way.

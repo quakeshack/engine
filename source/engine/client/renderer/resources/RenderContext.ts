@@ -1,6 +1,6 @@
-import type R from '../R.ts';
-import type { ClientRuntimeState } from '../ClientState.ts';
-import type { GLTexture } from '../GL.ts';
+import type R from '../../R.ts';
+import type { ClientRuntimeState } from '../../ClientState.ts';
+import type { GLTexture } from '../../GL.ts';
 
 /** The renderer as the materials and the sky see it. */
 export type RendererView = typeof R;

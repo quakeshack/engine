@@ -143,7 +143,7 @@ Avoid barrel exports - use direct imports instead:
 import { BrushModelRenderer } from './renderer';
 
 // ✅ GOOD (direct import)
-import { BrushModelRenderer } from './renderer/BrushModelRenderer.ts';
+import { BrushModelRenderer } from './renderer/models/BrushModelRenderer.ts';
 ```
 
 **Rationale:**

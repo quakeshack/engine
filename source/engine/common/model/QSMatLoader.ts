@@ -1,5 +1,5 @@
 import { GLTexture } from '../../client/GL.ts';
-import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../client/renderer/Materials.ts';
+import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../client/renderer/models/Materials.ts';
 import type { BrushModel } from './BSP.ts';
 import type { ModelLoadContext } from './ModelLoadContext.ts';
 

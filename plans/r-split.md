@@ -1,9 +1,8 @@
 # Split `R.ts` into renderer subsystems
 
 Track D2 of `plans/engine-architecture-modernization.md`. Status: **plan agreed, all open questions settled
-(2026-10-10); Phase 0 is done and waits for a go-ahead for Phase 0b.** Everything so far is in the working tree,
-uncommitted: the dead-member sweep, the graphify removal, five new test files and `test/support/assertions.ts`.
-No code has moved yet.
+(2026-10-10); Phases 0 and 0b are done, committed, and wait for a go-ahead for Phase 1.** The renderer files have
+moved into their folders; no class has been extracted yet.
 
 ## Context
 
@@ -357,9 +356,27 @@ is mostly masked there and only the block means and the `r_speeds` counts protec
 FPS, so it says nothing about frame time. The `e1m1` start has no water other than lava and no `_qs_waterfog`
 volume, so underwater fog is not covered by a view. It also does not touch pointer lock or any input path.
 
-### Phase 0b: Directory layout
+### Phase 0b: Directory layout (done 2026-10-10)
 
-The mechanical move in "Directory layout". One commit, no logic change. Tests and typecheck green.
+The mechanical move in "Directory layout": 21 `git mv`s and 159 import specifiers rewritten in 48 files by a script
+that resolves each relative specifier from the old location and writes it relative to the new one (so a moved file's
+imports of unmoved files are fixed too). One commit, no logic change.
+
+- `ShaderLibrary`'s two `import.meta.glob('../shaders/...')` became `'../../shaders/...'`.
+- Path text was updated in `docs/`, `.github/`, `.claude/`, `CLAUDE.md`, the other plans and
+  `test/common/engine-boundaries.test.mjs`, so no link or allow-list names an old path.
+- `renderer/` itself now holds only the folders; `R.ts` stays in `client/`.
+- Verified: `npm test` 1861 pass, `npm run typecheck` clean, `eslint` 0 errors (the `.mjs` tests outside the project
+  service still print the parser-service errors they printed before), a production browser build succeeds, and the
+  browser capture shows identical `r_speeds` in all 9 views in 4 runs (2 before, 2 after).
+- The pixel comparison is weaker than I wanted: four runs of two builds cluster by run, not by build (one
+  "before" run is the outlier against the other three, `after-a` vs `after-b` differ as much as `base-a` vs
+  `base-b`). The capture needed two fixes along the way and still has run-to-run noise from something I did not pin
+  down (the lightstyle phase and the sky are the suspects). Particles and effects are seeded and placed after a
+  reseed; the client clock is pinned. What it can prove is "no more different than the same build is from itself".
+  Treat the `r_speeds` counts as the exact check.
+- Unrelated fix on the way, own commit: `channel-driver.test.mjs` "ignores messages that are not channel
+  messages" waited a fixed 20 ms and failed twice under full-suite load; it now polls up to 2 s.
 
 ### Phase 1: Particles and decals
 

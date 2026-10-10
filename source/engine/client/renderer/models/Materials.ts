@@ -1,7 +1,7 @@
-import { eventBus } from '../../common/EventBus.ts';
-import type { ClientEdict } from '../ClientEntities.ts';
-import GL, { GLTexture, type GLProgramInfo } from '../GL.ts';
-import { clientState, renderer as R } from './RenderContext.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import type { ClientEdict } from '../../ClientEntities.ts';
+import GL, { GLTexture, type GLProgramInfo } from '../../GL.ts';
+import { clientState, renderer as R } from '../resources/RenderContext.ts';
 
 let gl: WebGL2RenderingContext = null!;
 

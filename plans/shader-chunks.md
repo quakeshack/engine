@@ -147,7 +147,7 @@ Chunks are named for what they are, not who uses them, so a future program can i
 
 `GL.ts` today owns the glob. New split:
 
-- `client/renderer/ShaderLibrary.ts` (name illustrative) owns the two globs (programs and chunks) and
+- `client/renderer/programs/ShaderLibrary.ts` (name illustrative) owns the two globs (programs and chunks) and
   `ShaderPreprocessor`. It exposes `ShaderLibrary.build(identifier)` which returns `{ vertex, fragment, lineTable }`.
 - `GL.CreateProgram` gets its sources from `GL.shaderLibrary`, a hook that `bootstrap/createBrowserClient.ts` fills
   in (the "Hooks" rule of `code-style-guide.instructions.md`), not from an import. `GL.ts` then no longer references
@@ -203,9 +203,9 @@ go-ahead.
 
 #### What actually shipped in Phase 1
 
-- `client/renderer/ShaderPreprocessor.ts`: `ShaderPreprocessor` (pure, `expand(stageName, source)`, `chunkNames`) and
+- `client/renderer/programs/ShaderPreprocessor.ts`: `ShaderPreprocessor` (pure, `expand(stageName, source)`, `chunkNames`) and
   `ExpandedShader` (`source`, `files`, `mapInfoLog`). A stage without includes comes back as the very same string.
-- `client/renderer/ShaderLibrary.ts`: owns both globs (`../shaders/*.{vert,frag}`, `../shaders/include/*.glsl`, keyed by
+- `client/renderer/programs/ShaderLibrary.ts`: owns both globs (`../shaders/*.{vert,frag}`, `../shaders/include/*.glsl`, keyed by
   file name), caches `build(identifier)` per program, throws the old `MissingResourceError` text for a missing stage.
   The constructor takes the two maps, so tests build a library from files read with `fs`; `fromBundle()` is the only
   place that touches `import.meta.glob` and throws "unavailable in this runtime" under raw Node.

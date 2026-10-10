@@ -14,7 +14,7 @@ import type { BaseModel } from '../common/model/BaseModel.ts';
 import { ScoreSlot, clientRuntimeState, clientStaticState } from './ClientState.ts';
 import type { ClientEdict } from './ClientEntities.ts';
 import type { SFX } from './Sound.ts';
-import PostProcess from './renderer/PostProcess.ts';
+import PostProcess from './renderer/postprocess/PostProcess.ts';
 import Con from '../common/Console.ts';
 import Mod from '../common/Mod.ts';
 import clientCvars from './ClientCvars.ts';

@@ -1,4 +1,4 @@
-import type { GLRenderTexture } from '../GL.ts';
+import type { GLRenderTexture } from '../../GL.ts';
 
 /**
  * Base class for post-process effects.

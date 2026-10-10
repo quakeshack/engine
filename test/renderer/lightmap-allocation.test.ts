@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import R from '../../source/engine/client/R.ts';
-import { LIGHTMAP_BLOCK_SIZE } from '../../source/engine/client/renderer/LightmapAtlas.ts';
+import { LIGHTMAP_BLOCK_SIZE } from '../../source/engine/client/renderer/lighting/LightmapAtlas.ts';
 import type { Face } from '../../source/engine/common/model/BaseModel.ts';
 
 // Classic Quake lightmap shift: one lightmap texel covers 16 world units.

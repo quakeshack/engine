@@ -1,13 +1,13 @@
-import GL, { GLRenderTexture } from '../GL.ts';
+import GL, { GLRenderTexture } from '../../GL.ts';
 import PostProcess from './PostProcess.ts';
-import VID from '../VID.ts';
+import VID from '../../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import Vector from '../../../shared/Vector.ts';
-import Host from '../../common/Host.ts';
-import { eventBus } from '../../common/EventBus.ts';
-import { effect } from '../../../shared/Defs.ts';
-import R from '../R.ts';
-import Draw from '../Draw.ts';
+import Vector from '../../../../shared/Vector.ts';
+import Host from '../../../common/Host.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import { effect } from '../../../../shared/Defs.ts';
+import R from '../../R.ts';
+import Draw from '../../Draw.ts';
 
 let gl: WebGL2RenderingContext = null!;
 

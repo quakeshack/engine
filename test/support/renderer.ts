@@ -1,5 +1,5 @@
 import R from '../../source/engine/client/R.ts';
-import { installRenderContext } from '../../source/engine/client/renderer/RenderContext.ts';
+import { installRenderContext } from '../../source/engine/client/renderer/resources/RenderContext.ts';
 import { patchMembers } from './clientState.ts';
 
 /**

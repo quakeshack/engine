@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { describe, test } from 'node:test';
 
 import { MissingResourceError } from '../../source/engine/common/Errors.ts';
-import { ShaderLibrary } from '../../source/engine/client/renderer/ShaderLibrary.ts';
+import { ShaderLibrary } from '../../source/engine/client/renderer/programs/ShaderLibrary.ts';
 
 const SHADER_DIRECTORY = new URL('../../source/engine/client/shaders/', import.meta.url);
 

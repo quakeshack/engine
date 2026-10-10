@@ -134,9 +134,9 @@ void describe('engine boundaries', () => {
       'client/GL.ts',
       'client/PageServices.ts',
       'client/VID.ts',
-      'client/renderer/Materials.ts',
-      'client/renderer/RenderContext.ts',
-      'client/renderer/Sky.ts',
+      'client/renderer/models/Materials.ts',
+      'client/renderer/resources/RenderContext.ts',
+      'client/renderer/scene/Sky.ts',
     ];
 
     void test('does not load client code, apart from what model loading drags in', () => {
@@ -152,8 +152,8 @@ void describe('engine boundaries', () => {
     void test('does not carry the shader text, it is installed into GL by the page', () => {
       const closure = [...importClosure(join(ENGINE_ROOT, 'server/ServerWorker.ts'))].map((path) => relative(ENGINE_ROOT, path));
 
-      assert.equal(closure.includes('client/renderer/ShaderLibrary.ts'), false);
-      assert.equal(closure.includes('client/renderer/ShaderPreprocessor.ts'), false);
+      assert.equal(closure.includes('client/renderer/programs/ShaderLibrary.ts'), false);
+      assert.equal(closure.includes('client/renderer/programs/ShaderPreprocessor.ts'), false);
       assert.equal(/import\.meta\.glob/.test(readCode(join(ENGINE_ROOT, 'client/GL.ts'))), false);
     });
 

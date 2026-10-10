@@ -1,17 +1,17 @@
-import Vector from '../../../shared/Vector.ts';
+import Vector from '../../../../shared/Vector.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
-import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
-import { eventBus } from '../../common/EventBus.ts';
-import GL from '../GL.ts';
-import W from '../../common/W.ts';
-import { effect } from '../../../shared/Defs.ts';
-import { AliasModel, type AliasSingleFrame, type AliasGroupedFrameEntry, type AliasSingleSkin, type AliasGroupedSkinEntry } from '../../common/model/AliasModel.ts';
-import type { ClientEdict } from '../ClientEntities.ts';
-import type { BaseModel } from '../../common/model/BaseModel.ts';
-import Con from '../../common/Console.ts';
-import { clientRuntimeState } from '../ClientState.ts';
-import R from '../R.ts';
-import Host from '../../common/Host.ts';
+import { getEntityBloomEmissiveScale } from '../postprocess/BloomEffect.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import GL from '../../GL.ts';
+import W from '../../../common/W.ts';
+import { effect } from '../../../../shared/Defs.ts';
+import { AliasModel, type AliasSingleFrame, type AliasGroupedFrameEntry, type AliasSingleSkin, type AliasGroupedSkinEntry } from '../../../common/model/AliasModel.ts';
+import type { ClientEdict } from '../../ClientEntities.ts';
+import type { BaseModel } from '../../../common/model/BaseModel.ts';
+import Con from '../../../common/Console.ts';
+import { clientRuntimeState } from '../../ClientState.ts';
+import R from '../../R.ts';
+import Host from '../../../common/Host.ts';
 
 
 let gl: WebGL2RenderingContext = null!;

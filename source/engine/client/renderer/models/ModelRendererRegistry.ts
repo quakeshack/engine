@@ -1,4 +1,4 @@
-import type { BaseModel } from '../../common/model/BaseModel.ts';
+import type { BaseModel } from '../../../common/model/BaseModel.ts';
 import { ModelRenderer } from './ModelRenderer.ts';
 
 /**

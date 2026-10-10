@@ -1,12 +1,12 @@
 import { ModelRenderer } from './ModelRenderer.ts';
-import { getEntityBloomEmissiveScale } from './BloomEffect.ts';
-import { eventBus } from '../../common/EventBus.ts';
-import GL from '../GL.ts';
-import { SpriteModel } from '../../common/model/SpriteModel.ts';
-import type { ClientEdict } from '../ClientEntities.ts';
-import type { BaseModel } from '../../common/model/BaseModel.ts';
-import { clientRuntimeState } from '../ClientState.ts';
-import R from '../R.ts';
+import { getEntityBloomEmissiveScale } from '../postprocess/BloomEffect.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import GL from '../../GL.ts';
+import { SpriteModel } from '../../../common/model/SpriteModel.ts';
+import type { ClientEdict } from '../../ClientEntities.ts';
+import type { BaseModel } from '../../../common/model/BaseModel.ts';
+import { clientRuntimeState } from '../../ClientState.ts';
+import R from '../../R.ts';
 
 
 let gl: WebGL2RenderingContext = null!;

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import PostProcess from '../../source/engine/client/renderer/PostProcess.ts';
-import PostProcessEffect from '../../source/engine/client/renderer/PostProcessEffect.ts';
-import ColorGradeEffect from '../../source/engine/client/renderer/ColorGradeEffect.ts';
-import BlurEffect from '../../source/engine/client/renderer/BlurEffect.ts';
+import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
+import PostProcessEffect from '../../source/engine/client/renderer/postprocess/PostProcessEffect.ts';
+import ColorGradeEffect from '../../source/engine/client/renderer/postprocess/ColorGradeEffect.ts';
+import BlurEffect from '../../source/engine/client/renderer/postprocess/BlurEffect.ts';
 
 class MockEffect extends PostProcessEffect {
   constructor(name, calls) {

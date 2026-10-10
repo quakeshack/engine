@@ -70,8 +70,8 @@ a skeleton today:
   `ModelType` ([Mod.ts:22](../source/engine/common/Mod.ts#L22)) is `brush | sprite | alias | mesh`.
 - **Renderers** are strategies registered per model class
   ([R.ts:2529-2532](../source/engine/client/R.ts#L2529-L2532),
-  [ModelRendererRegistry.ts](../source/engine/client/renderer/ModelRendererRegistry.ts)).
-  [AliasModelRenderer.ts](../source/engine/client/renderer/AliasModelRenderer.ts) is the template
+  [ModelRendererRegistry.ts](../source/engine/client/renderer/models/ModelRendererRegistry.ts)).
+  [AliasModelRenderer.ts](../source/engine/client/renderer/models/AliasModelRenderer.ts) is the template
   for lighting uniforms, the player/normal shader choice, the transparent pass, and
   `renderShadow()`.
 - **Dedicated server.** `AliasMDLLoader` skips GL texture creation when `registry.isDedicatedServer`

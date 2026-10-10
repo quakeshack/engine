@@ -6,7 +6,7 @@ import { eventBus } from '../common/EventBus.ts';
 import { KeyDestination } from './Key.ts';
 import GL from './GL.ts';
 import VID from './VID.ts';
-import PostProcess from './renderer/PostProcess.ts';
+import PostProcess from './renderer/postprocess/PostProcess.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';

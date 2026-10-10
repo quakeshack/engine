@@ -1,6 +1,6 @@
-import { NotImplementedError } from '../../common/Errors.ts';
-import { BaseModel } from '../../common/model/BaseModel.ts';
-import type { ClientEdict } from '../ClientEntities.ts';
+import { NotImplementedError } from '../../../common/Errors.ts';
+import { BaseModel } from '../../../common/model/BaseModel.ts';
+import type { ClientEdict } from '../../ClientEntities.ts';
 
 /**
  * Per-entity context passed to renderShadow, carrying the shadow-pass uniforms needed

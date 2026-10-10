@@ -1,9 +1,9 @@
-import GL, { GLRenderTexture } from '../GL.ts';
-import VID from '../VID.ts';
+import GL, { GLRenderTexture } from '../../GL.ts';
+import VID from '../../VID.ts';
 import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import { eventBus } from '../../common/EventBus.ts';
-import type { PostProcessBlurDescriptor } from '../../../shared/GameInterfaces.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import type { PostProcessBlurDescriptor } from '../../../../shared/GameInterfaces.ts';
 
 let gl: WebGL2RenderingContext = null!;
 

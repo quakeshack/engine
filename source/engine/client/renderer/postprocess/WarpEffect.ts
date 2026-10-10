@@ -1,7 +1,7 @@
-import GL, { type GLRenderTexture } from '../GL.ts';
+import GL, { type GLRenderTexture } from '../../GL.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
-import { eventBus } from '../../common/EventBus.ts';
-import Host from '../../common/Host.ts';
+import { eventBus } from '../../../common/EventBus.ts';
+import Host from '../../../common/Host.ts';
 
 
 let gl: WebGL2RenderingContext = null!;

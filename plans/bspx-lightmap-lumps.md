@@ -129,7 +129,7 @@ float    world_to_lm_space[2][4]; // row 0 -> s, row 1 -> t; lmcoord = dot(world
   Setting `lmshift = 0` and `extents = [lmwidth - 1, lmheight - 1]` means `R.AllocBlock`,
   `R.BuildLightMap`, and `R.BuildLightMapEx` need **no changes** — `smax = (extents[0] >> 0) + 1 === lmwidth` etc. already falls out correctly from the existing formulas.
 - **Renderer change** — `BrushModelRenderer._buildSurfaceDisplayList`
-  ([BrushModelRenderer.ts:1922-1929](source/engine/client/renderer/BrushModelRenderer.ts#L1922-L1929)):
+  ([BrushModelRenderer.ts:1922-1929](source/engine/client/renderer/models/BrushModelRenderer.ts#L1922-L1929)):
   texture UV (`vert[3]`/`vert[4]`) keeps using `texinfo.vecs` unchanged. Lightmap UV
   (`vert[5]`/`vert[6]`) branches when `face.decoupledLightmapVecs` is set:
   ```typescript

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
-import { MaterialFlags, QuakeMaterial, resolveMaterialLuminanceTexture } from '../../source/engine/client/renderer/Materials.ts';
+import { MaterialFlags, QuakeMaterial, resolveMaterialLuminanceTexture } from '../../source/engine/client/renderer/models/Materials.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 

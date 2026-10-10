@@ -9,7 +9,7 @@ import { BrushTrace } from '../../source/engine/common/Pmove.ts';
 import { BSP38Loader } from '../../source/engine/common/model/loaders/BSP38Loader.ts';
 import { QSMatLoader } from '../../source/engine/common/model/QSMatLoader.ts';
 import { GLTexture } from '../../source/engine/client/GL.ts';
-import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../source/engine/client/renderer/Materials.ts';
+import { MaterialFlags, PBRMaterial, QuakeMaterial } from '../../source/engine/client/renderer/models/Materials.ts';
 import { Mod } from '../../source/engine/common/Mod.ts';
 import { createDirectoryFiles, createModelLoadContext, createSilentConsole } from '../support/modelContext.ts';
 

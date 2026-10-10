@@ -5,7 +5,7 @@ import S from '../../source/engine/client/Sound.ts';
 import SCR from '../../source/engine/client/SCR.ts';
 import V from '../../source/engine/client/V.ts';
 import * as services from '../../source/engine/client/PageServices.ts';
-import { installRenderContext } from '../../source/engine/client/renderer/RenderContext.ts';
+import { installRenderContext } from '../../source/engine/client/renderer/resources/RenderContext.ts';
 import { patchMembers } from './clientState.ts';
 
 type Restore = () => void;

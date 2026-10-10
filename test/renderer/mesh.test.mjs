@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import Mesh from '../../source/engine/client/renderer/Mesh.ts';
+import Mesh from '../../source/engine/client/renderer/models/Mesh.ts';
 
 const STRIDE = 20;
 const TANGENT_EPSILON = 1e-6;

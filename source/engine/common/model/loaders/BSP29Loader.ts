@@ -11,8 +11,8 @@ import { Brush, BrushModel, BrushSide, Node, type BrushTexInfo, type Clipnode, t
 import { QSMatLoader } from '../QSMatLoader.ts';
 import { BSPXLoader } from '../BSPXLoader.ts';
 import { Face, Plane } from '../BaseModel.ts';
-import { MaterialFlags, noTextureMaterial, QuakeMaterial } from '../../../client/renderer/Materials.ts';
-import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/Sky.ts';
+import { MaterialFlags, noTextureMaterial, QuakeMaterial } from '../../../client/renderer/models/Materials.ts';
+import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/scene/Sky.ts';
 
 interface AllowedClipnodeHull extends Hull {
   allowedClipNodes?: Uint8Array | null;

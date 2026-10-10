@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import { effect } from '../../source/shared/Defs.ts';
-import { advanceBloomAdaptation, getBloomBufferSize, getBloomDebugPreviewItems, getEntityBloomEmissiveScale, resolveBloomAdaptationTarget, resolveBloomDebugMode, resolveBloomDownsample } from '../../source/engine/client/renderer/BloomEffect.ts';
+import { advanceBloomAdaptation, getBloomBufferSize, getBloomDebugPreviewItems, getEntityBloomEmissiveScale, resolveBloomAdaptationTarget, resolveBloomDebugMode, resolveBloomDownsample } from '../../source/engine/client/renderer/postprocess/BloomEffect.ts';
 
 const bloomBlurShaderSource = readFileSync(new URL('../../source/engine/client/shaders/bloom-blur.frag', import.meta.url), 'utf8');
 

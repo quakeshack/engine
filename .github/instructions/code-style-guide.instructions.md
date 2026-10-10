@@ -43,7 +43,7 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 ### No index.ts Files
 
 - **Avoid barrel exports**. Use direct imports instead.
-- Example: Import `BrushModelRenderer` from `./renderer/BrushModelRenderer.ts`, not `./renderer`.
+- Example: Import `BrushModelRenderer` from `./renderer/models/BrushModelRenderer.ts`, not `./renderer`.
 
 ## General Style Guidelines
 

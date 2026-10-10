@@ -29,12 +29,12 @@ Two of graphify's higher-value report sections are unreliable on this codebase:
 
 - **Import Cycles.** The full-tree run flagged a dozen 3–4 file "cycles," e.g.
   `engine/client/ClientEntities.ts → engine/common/model/BSP.ts →
-  engine/client/renderer/Materials.ts → engine/client/ClientEntities.ts`. Verified by hand:
+  engine/client/renderer/models/Materials.ts → engine/client/ClientEntities.ts`. Verified by hand:
 
   ```
   source/engine/client/ClientEntities.ts:16   import { revealedVisibility, type Node } from '../common/model/BSP.ts';
-  source/engine/common/model/BSP.ts:1         import type { BaseMaterial } from '../../client/renderer/Materials.ts';
-  source/engine/client/renderer/Materials.ts:2 import type { ClientEdict } from '../ClientEntities.ts';
+  source/engine/common/model/BSP.ts:1         import type { BaseMaterial } from '../../client/renderer/models/Materials.ts';
+  source/engine/client/renderer/models/Materials.ts:2 import type { ClientEdict } from '../ClientEntities.ts';
   ```
 
   Two of the three edges are `import type` — erased by esbuild at compile time, no actual

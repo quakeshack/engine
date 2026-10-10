@@ -2,7 +2,7 @@ import Vector from '../../../../shared/Vector.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { Face } from '../BaseModel.ts';
 import { BrushModel, Node } from '../BSP.ts';
-import { MaterialFlags } from '../../../client/renderer/Materials.ts';
+import { MaterialFlags } from '../../../client/renderer/models/Materials.ts';
 import { BSP29Loader } from './BSP29Loader.ts';
 import { content } from '../../../../shared/Defs.ts';
 

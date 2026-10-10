@@ -1257,7 +1257,7 @@ The renderers, `SCR`, `V`, `Chase`, `ClientEntities`, `ClientLegacy`, `ClientHos
 
 - One load-order hazard surfaced and was fixed: `R` builds a lightmap array from `LIGHTMAP_BLOCK_SIZE` while its class is
   being set up, and that constant lived in `BrushModelRenderer`, which imports `R`. The lightmap constants are in
-  `renderer/LightmapAtlas.ts` now, which imports nothing.
+  `renderer/lighting/LightmapAtlas.ts` now, which imports nothing.
 - The client core cycle grows from 17 to 30 files (the renderers, `Draw`, `ClientHost`, `NavigationDebug`, `Host`), all of them
   load-order safe for the same reason as before: nothing builds anything of another module while it is being evaluated.
 - Tests: `useRendererOf(mock)` (`test/support/renderer.ts`) sets a mocked renderer's members on the real `R` and restores them;
@@ -1362,7 +1362,7 @@ split of the data class from the render hooks), the registry itself, `createDedi
 so (`registry.ts`, `registry.frozen` and the getters may not appear anywhere under `source/engine/`).
 
 - **`Materials` and `Sky`** (the data classes the model loaders drag into the server worker) read the renderer and the client
-  state from `client/renderer/RenderContext.ts`, a leaf module without run-time imports: live bindings `renderer` (a headless
+  state from `client/renderer/resources/RenderContext.ts`, a leaf module without run-time imports: live bindings `renderer` (a headless
   stand-in until the page installs `R`) and `clientState`, and `installRenderContext()`. `Sky` imports `Host` directly.
   The worker's closure gained that one file and lost its registry readers.
 - **Composition roots** no longer fill anything: `createDedicatedServer` and `main-dedicated` return nothing, `createBrowserClient`

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { ShaderPreprocessor } from '../../source/engine/client/renderer/ShaderPreprocessor.ts';
+import { ShaderPreprocessor } from '../../source/engine/client/renderer/programs/ShaderPreprocessor.ts';
 
 const STAGE = [
   '#version 300 es',

@@ -1,4 +1,4 @@
-import { EPSILON } from '../../../shared/Defs.ts';
+import { EPSILON } from '../../../../shared/Defs.ts';
 
 /**
  * Mesh utility helpers.

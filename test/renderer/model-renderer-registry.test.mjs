@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
-import { ModelRenderer } from '../../source/engine/client/renderer/ModelRenderer.ts';
-import { ModelRendererRegistry } from '../../source/engine/client/renderer/ModelRendererRegistry.ts';
+import { ModelRenderer } from '../../source/engine/client/renderer/models/ModelRenderer.ts';
+import { ModelRendererRegistry } from '../../source/engine/client/renderer/models/ModelRendererRegistry.ts';
 
 class TestModel extends BaseModel {}
 class TestModelChild extends TestModel {}

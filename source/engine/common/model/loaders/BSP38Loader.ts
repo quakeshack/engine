@@ -11,7 +11,7 @@ import { BSPXLoader } from '../BSPXLoader.ts';
 import { WalTextureLoader } from '../WalTextureLoader.ts';
 import { ModelLoader } from '../ModelLoader.ts';
 import { GLTexture } from '../../../client/GL.ts';
-import { MaterialFlags, QuakeMaterial } from '../../../client/renderer/Materials.ts';
+import { MaterialFlags, QuakeMaterial } from '../../../client/renderer/models/Materials.ts';
 
 interface LumpViews {
   [index: number]: DataView;

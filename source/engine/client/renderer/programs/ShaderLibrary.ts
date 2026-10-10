@@ -1,4 +1,4 @@
-import { MissingResourceError } from '../../common/Errors.ts';
+import { MissingResourceError } from '../../../common/Errors.ts';
 import { type ExpandedShader, ShaderPreprocessor } from './ShaderPreprocessor.ts';
 
 /**
@@ -43,9 +43,9 @@ export class ShaderLibrary {
     try {
       // Vite rewrites these at build time; raw Node.js leaves them undefined and falls through to the catch.
       // @ts-ignore Vite-specific import.meta.glob
-      programs = ShaderLibrary.#byFileName(import.meta.glob('../shaders/*.{vert,frag}', { eager: true, import: 'default', query: '?raw' }) as ShaderSources);
+      programs = ShaderLibrary.#byFileName(import.meta.glob('../../shaders/*.{vert,frag}', { eager: true, import: 'default', query: '?raw' }) as ShaderSources);
       // @ts-ignore Vite-specific import.meta.glob
-      chunks = ShaderLibrary.#byFileName(import.meta.glob('../shaders/include/*.glsl', { eager: true, import: 'default', query: '?raw' }) as ShaderSources);
+      chunks = ShaderLibrary.#byFileName(import.meta.glob('../../shaders/include/*.glsl', { eager: true, import: 'default', query: '?raw' }) as ShaderSources);
     } catch {
       throw new Error('Shader sources are unavailable in this runtime');
     }

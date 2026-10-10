@@ -3,7 +3,7 @@ import { afterEach, describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
-import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.ts';
+import { SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 
 /**

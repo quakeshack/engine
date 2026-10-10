@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
-import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/BrushModelRenderer.ts';
-import { SimpleSkyBox } from '../../source/engine/client/renderer/Sky.ts';
+import { BrushModelRenderer, resolveBrushBloomContributionStrength } from '../../source/engine/client/renderer/models/BrushModelRenderer.ts';
+import { SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
 import { useRendererOf } from '../support/renderer.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
