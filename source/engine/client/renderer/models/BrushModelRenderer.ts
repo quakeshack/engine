@@ -15,6 +15,8 @@ import { clientRuntimeState } from '../../ClientState.ts';
 import R from '../../R.ts';
 import Interpolation from '../scene/Interpolation.ts';
 import LightStyles from '../lighting/LightStyles.ts';
+import Lightmaps from '../lighting/Lightmaps.ts';
+import ShadowMap from '../lighting/ShadowMap.ts';
 import LightSampler from '../lighting/LightSampler.ts';
 import EntityLighting from '../lighting/EntityLighting.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
@@ -788,7 +790,7 @@ export class BrushModelRenderer extends ModelRenderer {
 
     if (PostProcess.active) {
       PostProcess.beginDepthSampling();
-      PostProcess.depthTexture!.bind(program.tDepth!);
+      PostProcess.bindDepthForSampling(program.tDepth!);
       gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
       // Per-surface alpha decides whether depth fog is active.
       gl.uniform1f(program.uWaterFogDensity!, 0.0);
@@ -830,12 +832,9 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.depthMask(true);
     GL.UnbindVAO();
     if (PostProcess.active) {
-      // Unbind depthTexture from its sampler unit before reattaching it to the
-      // FBO. The turbulent shader leaves depthTexture bound to unit 7 (tDepth).
-      // The brush shader also uses unit 7 (tSpecular), and QuakeMaterial.bindTo
-      // does not rebind that slot — leaving depthTexture simultaneously attached
-      // as the FBO depth and sampled as tSpecular, which is a feedback loop.
-      R.null_texture.bind(this._worldTurbulentProgram!.tDepth as number);
+      // The turbulent shader leaves the depth texture bound to unit 7 (tDepth), the same unit the brush
+      // shader reads tSpecular from, and QuakeMaterial.bindTo does not rebind that slot. endDepthSampling()
+      // releases the unit, otherwise the depth texture would be sampled as tSpecular while attached to the FBO.
       PostProcess.endDepthSampling();
     }
     this._worldTurbulentProgram = null;
@@ -925,7 +924,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.cullFace(gl.BACK);
     gl.enable(gl.CULL_FACE);
 
-    PostProcess.depthTexture!.bind(program.tDepth!);
+    PostProcess.bindDepthForSampling(program.tDepth!);
     gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
 
     this._fogVolumeProgram = program;
@@ -1014,9 +1013,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
     gl.disable(gl.BLEND);
 
-    // Unbind depthTexture from its sampler unit before reattaching it to the FBO,
-    // for the same reason as endWorldTurbulentPass (feedback loop prevention).
-    R.null_texture.bind(this._fogVolumeProgram!.tDepth as number);
+    // Releases the depth texture's sampler unit, for the same reason as in endWorldTurbulentPass.
     PostProcess.endDepthSampling();
     this._fogVolumeProgram = null;
   }
@@ -1154,27 +1151,29 @@ export class BrushModelRenderer extends ModelRenderer {
     if ((rendererCvars.fullbright.value !== 0) || (clmodel.lightdata === null && clmodel.lightdata_rgb === null)) {
       R.fullbright_texture.bind(program.tLightmap!);
     } else {
-      R.lightmap_texture.bind(program.tLightmap!);
+      Lightmaps.lightmap_texture.bind(program.tLightmap!);
     }
 
-    if (R.flashblend.value === 0 && (isWorld || clmodel.submodel)) {
-      R.dlightmap_rgba_texture.bind(program.tDlight!);
+    if (rendererCvars.flashblend.value === 0 && (isWorld || clmodel.submodel)) {
+      Lightmaps.dlightmap_rgba_texture.bind(program.tDlight!);
     } else {
       R.null_texture.bind(program.tDlight!);
     }
 
-    if (program.tShadowMap !== undefined && R.shadow_texture) {
-      R.shadow_texture.bind(program.tShadowMap);
+    const topDownShadow = ShadowMap.getActiveTopDownTexture();
+    if (program.tShadowMap !== undefined && topDownShadow) {
+      topDownShadow.bind(program.tShadowMap);
     }
+    const pointShadows = ShadowMap.getActivePointTextures();
 
-    if (program.tPointShadowMap0 !== undefined && R.point_shadow_textures?.[0]) {
-      R.point_shadow_textures[0].bind(program.tPointShadowMap0);
+    if (program.tPointShadowMap0 !== undefined && pointShadows[0]) {
+      pointShadows[0].bind(program.tPointShadowMap0);
     }
-    if (program.tPointShadowMap1 !== undefined && R.point_shadow_textures?.[1]) {
-      R.point_shadow_textures[1].bind(program.tPointShadowMap1);
+    if (program.tPointShadowMap1 !== undefined && pointShadows[1]) {
+      pointShadows[1].bind(program.tPointShadowMap1);
     }
-    if (program.tPointShadowMap2 !== undefined && R.point_shadow_textures?.[2]) {
-      R.point_shadow_textures[2].bind(program.tPointShadowMap2);
+    if (program.tPointShadowMap2 !== undefined && pointShadows[2]) {
+      pointShadows[2].bind(program.tPointShadowMap2);
     }
   }
 
@@ -1356,7 +1355,7 @@ export class BrushModelRenderer extends ModelRenderer {
     const hasDeluxemap = BrushModelRenderer.usesDeluxemap(clmodel, clientRuntimeState.worldmodel as BrushModel | null);
 
     if (hasDeluxemap) {
-      R.deluxemap_texture.bind(program.tDeluxemap!);
+      Lightmaps.deluxemap_texture.bind(program.tDeluxemap!);
       gl.uniform1f(program.uHaveDeluxemap!, 1.0);
       return true;
     }

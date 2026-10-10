@@ -139,6 +139,9 @@ export default class ShadowMap {
   /** 1×1 always-lit dummy cubemap used for inactive point-light slots. */
   static pointDummyCube: GLCubeTexture | null = null;
 
+  /** Reused by {@link ShadowMap.getActivePointTextures}. */
+  static readonly #activePointTextures: Array<GLCubeTexture | null> = new Array<GLCubeTexture | null>(POINT_SHADOW_COUNT).fill(null);
+
   /** Column-major 4×4 per-face view-projection matrix (scratch, reused across slots and faces). */
   static pointFaceMatrix: Float64Array = new Float64Array(16);
 
@@ -156,7 +159,7 @@ export default class ShadowMap {
 
   /**
    * Index into clientRuntimeState.clientEntities.dlights for each active point-light
-   * slot (-1 when the slot is unused). Read by R.AddDynamicLights() to
+   * slot (-1 when the slot is unused). Read by DynamicLights.AddDynamicLights() to
    * exclude these lights from the baked surface dlight texture, since their
    * contribution is instead computed analytically per-fragment and shadowed
    * independently by their own cube depth map.
@@ -417,9 +420,12 @@ export default class ShadowMap {
     ShadowMap.endTopDown();
   }
 
-  /** @returns The texture to bind as the top-down shadow map (real or dummy). */
-  static getActiveTopDownTexture(): GLRenderTexture {
-    return ShadowMap.enabled!.value ? ShadowMap.topdownDepthTexture! : ShadowMap.topdownDummyTexture!;
+  /**
+   * The texture to bind as the top-down shadow map this frame: the real one while shadows are on, the dummy otherwise.
+   * @returns The texture, `null` before {@link ShadowMap.init}.
+   */
+  static getActiveTopDownTexture(): GLRenderTexture | null {
+    return ShadowMap.enabled !== null && ShadowMap.enabled.value ? ShadowMap.topdownDepthTexture : ShadowMap.topdownDummyTexture;
   }
 
   // ─── Entity shadow rendering ──────────────────────────────────────
@@ -808,13 +814,18 @@ export default class ShadowMap {
     GL.UnbindVAO();
   }
 
-  /** @returns The cube textures to bind as point shadow maps, one per slot (real or dummy). */
-  static getActivePointTextures(): GLCubeTexture[] {
-    const textures = new Array<GLCubeTexture>(POINT_SHADOW_COUNT);
+  /**
+   * The cube textures to bind as point shadow maps this frame, one per slot: the depth cube of a slot that has a
+   * light, the dummy cube for the others. The array is reused by every call, so a draw does not allocate; do not
+   * keep it across calls.
+   * @returns The cubes, `null` before {@link ShadowMap.init}.
+   */
+  static getActivePointTextures(): ReadonlyArray<GLCubeTexture | null> {
+    const textures = ShadowMap.#activePointTextures;
     for (let i = 0; i < POINT_SHADOW_COUNT; i++) {
       textures[i] = i < ShadowMap.pointLightActiveCount
         ? ShadowMap.pointDepthCubes[i]
-        : ShadowMap.pointDummyCube!;
+        : ShadowMap.pointDummyCube;
     }
     return textures;
   }

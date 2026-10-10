@@ -1,16 +1,14 @@
 import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.ts';
-import * as Def from '../common/Def.ts';
 
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import VID from './VID.ts';
-import GL, { ATTRIB_LOCATIONS, GLCubeTexture, GLRenderTexture, GLTexture, GLTextureArray } from './GL.ts';
+import GL, { GLCubeTexture, GLRenderTexture, GLTexture, GLTextureArray } from './GL.ts';
 import { content } from '../../shared/Defs.ts';
 import { modelRendererRegistry } from './renderer/models/ModelRendererRegistry.ts';
 import type { ModelRenderer } from './renderer/models/ModelRenderer.ts';
 import { BrushModelRenderer } from './renderer/models/BrushModelRenderer.ts';
-import { LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from './renderer/lighting/LightmapAtlas.ts';
 import { AliasModelRenderer } from './renderer/models/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/models/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/models/MeshModelRenderer.ts';
@@ -18,7 +16,7 @@ import Draw from './Draw.ts';
 import { BrushModel, type FogVolumeInfo, Node, type WorldTurbulentChainInfo, revealedVisibility } from '../common/model/BSP.ts';
 import { MeshModel } from '../common/model/MeshModel.ts';
 import { SpriteModel } from '../common/model/SpriteModel.ts';
-import { type Face, Plane } from '../common/model/BaseModel.ts';
+import { Plane } from '../common/model/BaseModel.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
 import BloomEffect from './renderer/postprocess/BloomEffect.ts';
 import ColorGradeEffect from './renderer/postprocess/ColorGradeEffect.ts';
@@ -26,16 +24,16 @@ import BlurEffect from './renderer/postprocess/BlurEffect.ts';
 import WarpEffect from './renderer/postprocess/WarpEffect.ts';
 import UnderwaterFogEffect from './renderer/postprocess/UnderwaterFogEffect.ts';
 import ShadowMap from './renderer/lighting/ShadowMap.ts';
-import { ClientDlight, ClientEdict } from './ClientEntities.ts';
+import { ClientEdict } from './ClientEntities.ts';
 import { SkyRenderer } from './renderer/scene/Sky.ts';
 import LightStyles from './renderer/lighting/LightStyles.ts';
-import LightSampler from './renderer/lighting/LightSampler.ts';
+import Lightmaps from './renderer/lighting/Lightmaps.ts';
+import DynamicLights from './renderer/lighting/DynamicLights.ts';
 import rendererCvars from './renderer/resources/RendererCvars.ts';
 import Particles, { type Particle } from './renderer/effects/Particles.ts';
 import Decals, { type Decal } from './renderer/effects/Decals.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
-import { clientCollision } from './ClientPhysics.ts';
 import SCR from './SCR.ts';
 import V from './V.ts';
 import Sys from './Sys.ts';
@@ -63,11 +61,6 @@ const enum TransparentKind {
   Sprite = 4,
   Decal = 5,
   Particle = 6,
-}
-
-interface DynamicLightSurfaceImpact {
-  readonly distanceToPlane: number;
-  readonly impact: Vector;
 }
 
 interface TransparentItem extends SortKindDistance {
@@ -144,9 +137,26 @@ class R {
     return rendererCvars.interpolation;
   }
 
-  // light
+  /**
+   * The top-down shadow map to sample this frame (the real one or the dummy), for `Sky`, which reads it through
+   * the renderer.
+   * @deprecated Ask `ShadowMap.getActiveTopDownTexture()`; goes away with `RenderContext` (Phase 5 of plans/r-split.md).
+   * @returns The texture, `null` before `ShadowMap.init()`.
+   */
+  static get shadow_texture(): GLRenderTexture | null {
+    return ShadowMap.getActiveTopDownTexture();
+  }
 
-  static dlightframecount = 0;
+  /**
+   * The point-light shadow cubes to sample this frame (real or dummy), for `Sky`.
+   * @deprecated Ask `ShadowMap.getActivePointTextures()`; goes away with `RenderContext` (Phase 5 of plans/r-split.md).
+   * @returns The cubes, one per slot.
+   */
+  static get point_shadow_textures(): ReadonlyArray<GLCubeTexture | null> {
+    return ShadowMap.getActivePointTextures();
+  }
+
+  // light
 
   static waterwarp: Cvar = null!;
   static drawentities: Cvar = null!;
@@ -156,7 +166,6 @@ class R {
   static novis: Cvar = null!;
   static speeds: Cvar = null!;
   static polyblend: Cvar = null!;
-  static flashblend: Cvar = null!;
   static nocolors: Cvar = null!;
   static bloom: Cvar = null!;
   static bloomStrength: Cvar = null!;
@@ -174,15 +183,9 @@ class R {
   static notexture: GLTexture = null!;
   static blacktexture: GLTexture = null!;
   static flatnormalmap: GLTexture = null!;
-  static deluxemap_texture: GLTextureArray = null!;
-  static lightmap_texture: GLTextureArray = null!;
-  static dlightmap_rgba_texture: GLRenderTexture = null!;
   static fullbright_texture: GLTextureArray = null!;
   static null_texture: GLRenderTexture = null!;
   static normal_up_texture: GLTextureArray = null!;
-  static shadow_texture: GLRenderTexture | null = null;
-  static point_shadow_textures: GLCubeTexture[] = [];
-  static dlightVAO: WebGLVertexArrayObject = null!;
 
   static usePostProcess = false;
 
@@ -191,204 +194,12 @@ class R {
 
   /** Fog density exponent used by the underwater fog effect this frame. */
   static underwaterFogDensity = 0.05;
-  static allocated: number[] = [];
   static c_brush_verts = 0;
   static c_brush_tris = 0;
   static c_brush_draws = 0;
   static c_brush_vbos = 0;
   static c_brush_texture_binds = 0;
   static c_alias_polys = 0;
-
-  static RenderDlights() {
-    if (R.flashblend.value === 0) {
-      return;
-    }
-    R.dlightframecount++;
-    gl.enable(gl.BLEND);
-    const program = GL.UseProgram('dlight')!; let a;
-    console.assert(program !== null, 'dlight program required');
-    GL.BindVAO(R.dlightVAO);
-    for (let i = 0; i < Def.limits.dlights; i++) {
-      const l = clientRuntimeState.clientEntities.dlights[i];
-      if ((l.die < clientRuntimeState.time) || (l.radius === 0.0)) {
-        continue;
-      }
-      if (l.origin.copy().subtract(R.refdef.vieworg).len() < (l.radius * 0.35)) {
-        a = l.radius * 0.0003;
-        V.blend[3] += a * (1.0 - V.blend[3]);
-        a /= V.blend[3];
-        V.blend[0] = V.blend[1] * (1.0 - a) + (255.0 * a);
-        V.blend[1] = V.blend[1] * (1.0 - a) + (127.5 * a);
-        V.blend[2] *= 1.0 - a;
-        continue;
-      }
-      gl.uniform3fv(program.uOrigin!, l.origin);
-      gl.uniform1f(program.uRadius!, l.radius);
-      gl.drawArrays(gl.TRIANGLE_FAN, 0, 18);
-    }
-    GL.UnbindVAO();
-    gl.disable(gl.BLEND);
-  };
-
-  /**
-   * Returns a known point on the face plane for dynamic-light projection.
-   * @returns A known point on the surface plane.
-   */
-  static GetDynamicLightSurfacePoint(surf: Face): Vector {
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-    const surfedge = worldmodel.surfedges[surf.firstedge!];
-
-    if (surfedge >= 0) {
-      return worldmodel.vertexes[worldmodel.edges[surfedge][0]].copy();
-    }
-
-    return worldmodel.vertexes[worldmodel.edges[-surfedge][1]].copy();
-  };
-
-  /**
-   * Projects a dynamic light onto a face plane when the light is in front of the surface.
-   * @returns Surface-plane hit information when the light is in front of the face.
-   */
-  static GetDynamicLightSurfaceImpact(light: ClientDlight, surf: Face): DynamicLightSurfaceImpact | null {
-    const faceNormal = surf.normal!.copy();
-    const surfacePoint = R.GetDynamicLightSurfacePoint(surf);
-    const distanceToPlane = light.origin.copy().subtract(surfacePoint).dot(faceNormal);
-
-    if (distanceToPlane <= 0.0 || distanceToPlane >= light.radius) {
-      return null;
-    }
-
-    const impact = light.origin.copy().subtract(faceNormal.copy().multiply(distanceToPlane));
-
-    return { distanceToPlane, impact };
-  };
-
-  /**
-   * Returns whether the light can see the face at the projected impact point.
-   * @returns True when the light has line of sight to the surface.
-   */
-  static IsDynamicLightSurfaceVisible(light: ClientDlight, surf: Face, impact: Vector): boolean {
-    const end = impact.copy().add(surf.normal!.copy().multiply(1.0));
-    const trace = clientCollision.traceStaticWorldLine(light.origin, end);
-
-    return !trace.startsolid && !trace.allsolid && trace.fraction === 1.0;
-  };
-
-  /**
-   * Propagates a dynamic light through the BSP and marks touched faces.
-   */
-  static MarkLights(light: ClientDlight, bit: number, node: Node): void {
-    if (node.contents < content.CONTENT_NONE) {
-      return;
-    }
-    const plane = node.plane!;
-    console.assert(plane !== null, 'node plane required');
-    const normal = plane.normal;
-    const dist = light.origin.dot(normal) - plane.dist;
-    if (dist > light.radius) {
-      const frontChild = node.children[0] as Node;
-      console.assert(frontChild instanceof Node, `R.MarkLights expected linked BSP child 0 on node ${node.num}`);
-      R.MarkLights(light, bit, frontChild);
-      return;
-    }
-    if (dist < -light.radius) {
-      const backChild = node.children[1] as Node;
-      console.assert(backChild instanceof Node, `R.MarkLights expected linked BSP child 1 on node ${node.num}`);
-      R.MarkLights(light, bit, backChild);
-      return;
-    }
-    for (const surf of node.facesIter()) {
-      if (surf.sky) {
-        continue;
-      }
-
-      const lightImpact = R.GetDynamicLightSurfaceImpact(light, surf);
-
-      if (lightImpact === null || !R.IsDynamicLightSurfaceVisible(light, surf, lightImpact.impact)) {
-        continue;
-      }
-
-      if (surf.dlightframe !== (R.dlightframecount + 1)) {
-        surf.dlightbits = 0;
-        surf.dlightframe = R.dlightframecount + 1;
-      }
-      surf.dlightbits |= bit;
-    }
-    const frontChild = node.children[0] as Node;
-    const backChild = node.children[1] as Node;
-    console.assert(frontChild instanceof Node, `R.MarkLights expected linked BSP child 0 on node ${node.num}`);
-    console.assert(backChild instanceof Node, `R.MarkLights expected linked BSP child 1 on node ${node.num}`);
-    R.MarkLights(light, bit, frontChild);
-    R.MarkLights(light, bit, backChild);
-  };
-
-  static PushDlights() {
-    if (R.flashblend.value !== 0) {
-      return;
-    }
-
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-
-    for (let i = 0; i < LIGHTMAP_BLOCK_SIZE; i++) {
-      R.lightmap_modified[i] = 0;
-    }
-
-    let bit = 1;
-
-    for (let i = 0; i < Def.limits.dlights; i++) {
-      const l = clientRuntimeState.clientEntities.dlights[i];
-
-      if (!l.isFree()) {
-        R.MarkLights(l, bit, worldmodel.nodes[0]);
-        for (const ent of clientRuntimeState.clientEntities.getVisibleEntities()) {
-          if (ent.model === null) {
-            continue;
-          }
-          if (!(ent.model instanceof BrushModel) || !ent.model.submodel) {
-            continue;
-          }
-          const firstClipNode = ent.model.hulls[0]?.firstclipnode;
-          const submodelNode = firstClipNode !== undefined ? worldmodel.nodes[firstClipNode] : null;
-
-          if (submodelNode !== undefined && submodelNode !== null) {
-            R.MarkLights(l, bit, submodelNode);
-          }
-        }
-      }
-      bit += bit;
-    }
-
-    let surf;
-    for (let i = 0; i < worldmodel.faces.length; i++) {
-      surf = worldmodel.faces[i];
-      if (surf.dlightframe === R.dlightframecount) {
-        R.RemoveDynamicLights(surf);
-      } else if (surf.dlightframe === (R.dlightframecount + 1)) {
-        R.AddDynamicLights(surf);
-      }
-    }
-
-    R.dlightmap_rgba_texture.bind(0);
-    for (let i = 0; i < LIGHTMAP_BLOCK_SIZE; i++) {
-      if (!R.lightmap_modified[i]) {
-        continue;
-      }
-      for (let j = LIGHTMAP_BLOCK_SIZE - 1; j >= i; j--) {
-        if (!R.lightmap_modified[j]) {
-          continue;
-        }
-        const dlightmapsRgba = R.dlightmaps_rgba!;
-        console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, i, LIGHTMAP_BLOCK_SIZE, j - i + 1, gl.RGBA, gl.UNSIGNED_BYTE, dlightmapsRgba.subarray(i * LIGHTMAP_BLOCK_SIZE * 4, (j + 1) * LIGHTMAP_BLOCK_SIZE * 4));
-        break;
-      }
-      break;
-    }
-
-    R.dlightframecount++;
-  };
 
   // main
 
@@ -1193,8 +1004,6 @@ class R {
       || (waterfogEnabled && isUnderwater && R.drawturbulents.value !== 0);
 
     // Choose the shadow textures for this frame (real or dummy)
-    R.shadow_texture = ShadowMap.getActiveTopDownTexture();
-    R.point_shadow_textures = ShadowMap.getActivePointTextures();
   };
 
   static RenderWorld() {
@@ -1211,7 +1020,7 @@ class R {
     R.DrawEntitiesOnList();
 
     gl.disable(gl.CULL_FACE);
-    R.RenderDlights();
+    DynamicLights.RenderCoronas();
 
     if (worldEntity && worldEntity.model) {
       gl.enable(gl.CULL_FACE);
@@ -1232,7 +1041,6 @@ class R {
     if (ShadowMap.enabled!.value) {
       ShadowMap.renderTopDownShadow(R.refdef.vieworg);
     }
-    R.shadow_texture = ShadowMap.getActiveTopDownTexture();
 
     // Point light shadow pass — render world BSP into a cube depth map per
     // active point-light slot, from the strongest nearby dlights' positions.
@@ -1243,7 +1051,6 @@ class R {
     // textures (real or dummy) are bound for this frame. PreRenderScene
     // runs before selectPointLights updates pointLightActiveCount, so its
     // assignment may be stale on the first frame a dlight appears.
-    R.point_shadow_textures = ShadowMap.getActivePointTextures();
 
     R.SetupGL();
     R.MarkLeafs();
@@ -1344,23 +1151,7 @@ class R {
     R.blacktexture = GLTexture.Allocate('r_blacktexture', 1, 1, new Uint8Array([0, 0, 0, 255]));
     R.flatnormalmap = GLTexture.Allocate('r_flatnormalmap', 1, 1, new Uint8Array([128, 128, 255, 255]));
 
-    R.deluxemap_texture = new GLTextureArray();
-    R.deluxemap_texture.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, 3);
-
-    R.lightmap_texture = new GLTextureArray();
-    R.lightmap_texture.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, 3);
-
-    R.dlightmap_rgba_texture = new GLRenderTexture();
-    R.dlightmap_rgba_texture.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE);
+    Lightmaps.Init();
 
     LightStyles.Init();
 
@@ -1593,7 +1384,7 @@ class R {
     R.novis = new Cvar('r_novis', '0', Cvar.FLAG.CHEAT);
     R.speeds = new Cvar('r_speeds', '0');
     R.polyblend = new Cvar('gl_polyblend', '1');
-    R.flashblend = new Cvar('gl_flashblend', '0');
+    rendererCvars.flashblend = new Cvar('gl_flashblend', '0');
     R.nocolors = new Cvar('gl_nocolors', '0');
     R.bloom = new Cvar('r_bloom', '0', Cvar.FLAG.NONE, 'Screen-space bloom post-process, 0 = off, 1 = on.');
     R.bloomStrength = new Cvar('r_bloom_strength', '0.8', Cvar.FLAG.NONE, 'Additive bloom intensity.');
@@ -1636,32 +1427,7 @@ class R {
     // Initialize shadow mapping (depth-only FBO + sun light)
     ShadowMap.init();
 
-    const dlightvecs = gl.createBuffer();
-    console.assert(dlightvecs !== null, 'Expected a dynamic light vertex buffer');
-    gl.bindBuffer(gl.ARRAY_BUFFER, dlightvecs);
-    gl.bufferData(gl.ARRAY_BUFFER, (() => {
-      const positions = [];
-
-      // 1) The "down" vector
-      positions.push(0, -1, 0);
-
-      // 2) 16 equally spaced vectors around the circle in y=0 plane
-      const numSegments = 16;
-      for (let i = 0; i <= numSegments; i++) {
-        // Angle in radians
-        const angle = (2 * Math.PI * i) / numSegments;
-        // Match the pattern: x = -sin(angle), z = cos(angle)
-        positions.push(-Math.sin(angle), 0, Math.cos(angle));
-      }
-
-      return new Float32Array(positions);
-    })(), gl.STATIC_DRAW);
-
-    const dlightVAO = GL.CreateVAO(dlightvecs, [
-      { location: ATTRIB_LOCATIONS.aPosition, components: 3, type: gl.FLOAT, normalized: false, stride: 0, offset: 0 },
-    ]);
-
-    Object.assign(R, { dlightVAO });
+    DynamicLights.Init();
 
     R.ClearAll();
   };
@@ -1690,17 +1456,8 @@ class R {
   };
 
   static NewMap() {
-    R.BuildLightmaps();
-
-    const dlightmapsRgba = R.dlightmaps_rgba!;
-    console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
-
-    for (let i = 0; i < dlightmapsRgba.length; i++) {
-      dlightmapsRgba[i] = 0;
-    }
-
-    R.dlightmap_rgba_texture.bind(0);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, dlightmapsRgba);
+    R.PrepareModels();
+    Lightmaps.ResetDynamic();
 
     // Reset the viewleafs so that the renderer will recalculate them on the next frame.
     R.viewleaf = null;
@@ -1716,227 +1473,11 @@ class R {
     R.oldviewleaf = null;
     R.viewleaf = null;
 
-    R.deluxemap = null;
-    R.lightmaps_rgb = null;
-    R.dlightmaps_rgba = null;
-
-    R.allocated = [];
-
-    R.shadow_texture = null;
-    R.point_shadow_textures = [];
+    Lightmaps.Clear();
 
     Particles.Clear();
     Decals.Clear();
     R.ClearSky();
-  };
-
-  // surf
-
-  static lightmap_modified = new Uint8Array(LIGHTMAP_BLOCK_SIZE);
-  static lightmaps_rgb: Uint8Array | null = null; // allocated on demand
-  static dlightmaps_rgba: Uint8Array | null = null; // allocated on demand
-  static deluxemap: Uint8Array | null = null; // allocated on demand
-
-  static AddDynamicLights(surf: Face): void {
-    const lmshift = surf.lmshift!;
-    console.assert(lmshift !== null, 'face lightmap shift required');
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-    const dlightmapsRgba = R.dlightmaps_rgba!;
-    console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
-    const smax = (surf.extents[0] >> lmshift) + 1;
-    const tmax = (surf.extents[1] >> lmshift) + 1;
-    const size = smax * tmax;
-
-    const blocklights: number[] = [];
-    for (let i = 0; i < size * 3; i++) {
-      blocklights[i] = 0;
-    }
-
-    for (let i = 0; i < Def.limits.dlights; i++) {
-      if (((surf.dlightbits >>> i) & 1) === 0) {
-        continue;
-      }
-      // Lights promoted to a point-shadow slot are excluded from this baked
-      // sum — their contribution is instead computed analytically per-fragment
-      // in the scene shaders and occluded by their own cube depth map, so
-      // multiple nearby dlights correctly shadow each other independently
-      // instead of only the single strongest one darkening the combined sum.
-      if (ShadowMap.pointLightDlightIndices.includes(i)) {
-        continue;
-      }
-      const light = clientRuntimeState.clientEntities.dlights[i];
-      const lightImpact = R.GetDynamicLightSurfaceImpact(light, surf);
-
-      if (lightImpact === null) {
-        continue;
-      }
-      let dist = lightImpact.distanceToPlane;
-      const rad = light.radius - dist;
-      let minlight = light.minlight;
-      if (rad < minlight) {
-        continue;
-      }
-      minlight = rad - minlight;
-      const impact = lightImpact.impact;
-      const tex = worldmodel.texinfo[surf.texinfo];
-      const local = [
-        impact.dot(LightSampler.TextureAxisToVector(tex.vecs[0])) + tex.vecs[0][3] - surf.texturemins[0],
-        impact.dot(LightSampler.TextureAxisToVector(tex.vecs[1])) + tex.vecs[1][3] - surf.texturemins[1],
-      ];
-      for (let t = 0; t < tmax; t++) {
-        let td = local[1] - (t << lmshift);
-        if (td < 0.0) {
-          td = -td;
-        }
-        td = Math.floor(td);
-        for (let s = 0; s < smax; s++) {
-          let sd = local[0] - (s << lmshift);
-          if (sd < 0) {
-            sd = -sd;
-          }
-          sd = Math.floor(sd);
-          if (sd > td) {
-            dist = sd + (td >> 1);
-          } else {
-            dist = td + (sd >> 1);
-          }
-          if (dist < minlight) {
-            const bl = Math.floor((rad - dist) * 256.0);
-            const pos = (t * smax + s) * 3;
-            for (let i = 0; i < 3; i++) {
-              blocklights[pos + i] += bl * light.color[i];
-            }
-          }
-        }
-      }
-    }
-
-    for (let t = 0, i = 0; t < tmax; t++) {
-      R.lightmap_modified[surf.light_t + t] = 1;
-      const dest = ((surf.light_t + t) * LIGHTMAP_BLOCK_SIZE) + surf.light_s;
-      for (let s = 0; s < smax; s++) {
-        const dldest = (dest + s) * 4;
-        const blrgb = [
-          Math.min(Math.floor(blocklights[i * 3] / 128), 255),
-          Math.min(Math.floor(blocklights[i * 3 + 1] / 128), 255),
-          Math.min(Math.floor(blocklights[i * 3 + 2] / 128), 255),
-        ];
-        // console.log(blrgb);
-        i++;
-        for (let i = 0; i < 3; i++) {
-          dlightmapsRgba[dldest + i] = blrgb[i];
-        }
-      }
-    }
-  };
-
-  static RemoveDynamicLights(surf: Face): void {
-    const lmshift = surf.lmshift!;
-    console.assert(lmshift !== null, 'face lightmap shift required');
-    const dlightmapsRgba = R.dlightmaps_rgba!;
-    console.assert(dlightmapsRgba !== null, 'dynamic lightmap buffer required');
-    const smax = (surf.extents[0] >> lmshift) + 1;
-    const tmax = (surf.extents[1] >> lmshift) + 1;
-    for (let t = 0; t < tmax; t++) {
-      R.lightmap_modified[surf.light_t + t] = 1;
-      const dest = ((surf.light_t + t) * LIGHTMAP_BLOCK_SIZE) + surf.light_s;
-      for (let s = 0; s < smax; s++) {
-        const dldest = (dest + s) * 4;
-        for (let i = 0; i < 3; i++) {
-          dlightmapsRgba[dldest + i] = 0;
-        }
-        dlightmapsRgba[dldest + 3] = 255; // fully opaque
-      }
-    }
-  };
-
-  static BuildLightMap(currentmodel: BrushModel, surf: Face): void {
-    const lmshift = surf.lmshift!;
-    console.assert(lmshift !== null, 'face lightmap shift required');
-    const lightmapsRgb = R.lightmaps_rgb!;
-    console.assert(lightmapsRgb !== null, 'lightmap buffer required');
-    const lightdata = currentmodel.lightdata!;
-    console.assert(lightdata !== null, 'brush lightdata required');
-    const smax = (surf.extents[0] >> lmshift) + 1;
-    const tmax = (surf.extents[1] >> lmshift) + 1;
-
-    for (let k = 0; k < 3; k++) {
-      const offset = LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_HEIGHT * k;
-      let lightmap = surf.lightofs;
-      let maps;
-
-      for (maps = 0; maps < surf.styles.length; maps++) {
-        let dest = (surf.light_t * LIGHTMAP_BLOCK_HEIGHT) + (surf.light_s << 2) + maps;
-        for (let i = 0; i < tmax; i++) {
-          for (let j = 0; j < smax; j++) {
-            lightmapsRgb[dest + (j << 2) + offset] = lightdata[lightmap + j];
-          }
-          lightmap += smax;
-          dest += LIGHTMAP_BLOCK_HEIGHT;
-        }
-      }
-
-      for (; maps < 4; maps++) {
-        let dest = (surf.light_t * LIGHTMAP_BLOCK_HEIGHT) + (surf.light_s << 2) + maps;
-        for (let i = 0; i < tmax; i++) {
-          for (let j = 0; j < smax; j++) {
-            lightmapsRgb[dest + (j << 2) + offset] = 0;
-          }
-          dest += LIGHTMAP_BLOCK_HEIGHT;
-        }
-      }
-    }
-  };
-
-  static BuildLightMapEx(currentmodel: BrushModel, surf: Face): void {
-    const lmshift = surf.lmshift!;
-    console.assert(lmshift !== null, 'face lightmap shift required');
-    const lightmapsRgb = R.lightmaps_rgb!;
-    console.assert(lightmapsRgb !== null, 'lightmap buffer required');
-    const lightdataRgb = currentmodel.lightdata_rgb!;
-    console.assert(lightdataRgb !== null, 'brush rgb lightdata required');
-    const smax = (surf.extents[0] >> lmshift) + 1;
-    const tmax = (surf.extents[1] >> lmshift) + 1;
-
-    if (currentmodel.deluxemap && !R.deluxemap) {
-      R.deluxemap = new Uint8Array(new ArrayBuffer(LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_HEIGHT * 3));
-    }
-
-    for (let k = 0; k < 3; k++) {
-      const offset = LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_HEIGHT * k;
-      let lightmap = surf.lightofs * 3;
-      let maps;
-
-      for (maps = 0; maps < surf.styles.length; maps++) {
-        let dest = (surf.light_t * LIGHTMAP_BLOCK_HEIGHT) + (surf.light_s << 2) + maps;
-        for (let i = 0; i < tmax; i++) {
-          for (let j = 0; j < smax; j++) {
-            lightmapsRgb[dest + (j << 2) + offset] = lightdataRgb[(lightmap + j * 3) + k];
-
-            if (currentmodel.deluxemap) {
-              R.deluxemap![dest + (j << 2) + offset] = currentmodel.deluxemap[(lightmap + j * 3) + k];
-            }
-          }
-          lightmap += smax * 3;
-          dest += LIGHTMAP_BLOCK_HEIGHT;
-        }
-      }
-
-      for (; maps < 4; maps++) {
-        let dest = (surf.light_t * LIGHTMAP_BLOCK_HEIGHT) + (surf.light_s << 2) + maps;
-        for (let i = 0; i < tmax; i++) {
-          for (let j = 0; j < smax; j++) {
-            lightmapsRgb[dest + (j << 2) + offset] = 0;
-
-            if (currentmodel.deluxemap) {
-              R.deluxemap![dest + (j << 2) + offset] = 0;
-            }
-          }
-          dest += LIGHTMAP_BLOCK_HEIGHT;
-        }
-      }
-    }
   };
 
   static RecursiveWorldNode(node: Node): void {
@@ -2030,43 +1571,12 @@ class R {
     R.RecursiveWorldNode(worldmodel.nodes[0]);
   };
 
-  static AllocBlock(surf: Face): void {
-    const lmshift = surf.lmshift!;
-    console.assert(lmshift !== null, 'face lightmap shift required');
-    const w = (surf.extents[0] >> lmshift) + 1;
-    const h = (surf.extents[1] >> lmshift) + 1;
-    let x = 0; let y = 0; let i; let j; let best = LIGHTMAP_BLOCK_SIZE; let best2;
-    for (i = 0; i < (LIGHTMAP_BLOCK_SIZE - w); i++) {
-      best2 = 0;
-      for (j = 0; j < w; j++) {
-        if (R.allocated[i + j] >= best) {
-          break;
-        }
-        if (R.allocated[i + j] > best2) {
-          best2 = R.allocated[i + j];
-        }
-      }
-      if (j === w) {
-        x = i;
-        y = best = best2;
-      }
-    }
-    best += h;
-    if (best > LIGHTMAP_BLOCK_SIZE) {
-      throw new Error('R.AllocBlock: full');
-    }
-    for (i = 0; i < w; i++) {
-      R.allocated[x + i] = best;
-    }
-    surf.light_s = x;
-    surf.light_t = y;
-  };
-
-  static BuildLightmaps() {
-    R.allocated = (new Array(LIGHTMAP_BLOCK_SIZE)).fill(0);
-
-    R.lightmaps_rgb = new Uint8Array(new ArrayBuffer(LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_HEIGHT * 3));
-    R.dlightmaps_rgba = new Uint8Array(new ArrayBuffer(LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_SIZE * 4));
+  /**
+   * Prepares every model of the map for drawing: gives faces their place in the lightmap atlas, lets the model
+   * renderers build their buffers, and uploads the atlas. The world is model 1, the rest are entity models.
+   */
+  static PrepareModels(): void {
+    Lightmaps.Begin();
 
     const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel);
     const meshRenderer = modelRendererRegistry.getRendererForModelClass(MeshModel);
@@ -2078,19 +1588,7 @@ class R {
 
       // Handle brush models (BSP maps)
       if (currentmodel instanceof BrushModel) {
-        if (currentmodel.name[0] !== '*') { // skip submodels
-          for (let j = 0; j < currentmodel.faces.length; j++) {
-            const surf = currentmodel.faces[j];
-            if (!surf.sky) {
-              R.AllocBlock(surf);
-              if (currentmodel.lightdata_rgb !== null) {
-                R.BuildLightMapEx(currentmodel, surf);
-              } else if (currentmodel.lightdata !== null) {
-                R.BuildLightMap(currentmodel, surf);
-              }
-            }
-          }
-        }
+        Lightmaps.AddModel(currentmodel);
         // Use the brush renderer to prepare the model
         // Only model index 1 is the world model, all others are entity models
         brushRenderer!.prepareModel(currentmodel, i === 1);
@@ -2102,19 +1600,8 @@ class R {
       }
     }
 
-    const layerBytes = LIGHTMAP_BLOCK_SIZE * LIGHTMAP_BLOCK_SIZE * 4;
-    R.lightmap_texture.bind(0);
-    for (let k = 0; k < 3; k++) {
-      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, k, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, R.lightmaps_rgb.subarray(k * layerBytes, (k + 1) * layerBytes));
-    }
-
-    R.deluxemap_texture.bind(0);
-    if (R.deluxemap) {
-      for (let k = 0; k < 3; k++) {
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, k, LIGHTMAP_BLOCK_SIZE, LIGHTMAP_BLOCK_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, R.deluxemap.subarray(k * layerBytes, (k + 1) * layerBytes));
-      }
-    }
-  };
+    Lightmaps.Upload();
+  }
 
   // sky
 

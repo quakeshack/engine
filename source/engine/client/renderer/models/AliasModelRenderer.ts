@@ -12,6 +12,7 @@ import Con from '../../../common/Console.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import R from '../../R.ts';
 import EntityLighting from '../lighting/EntityLighting.ts';
+import ShadowMap from '../lighting/ShadowMap.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import Host from '../../../common/Host.ts';
 
@@ -170,19 +171,21 @@ export class AliasModelRenderer extends ModelRenderer {
     }
 
     // Bind top-down shadow map
-    if (program!.tShadowMap !== undefined && R.shadow_texture) {
-      R.shadow_texture.bind(program!.tShadowMap);
+    const topDownShadow = ShadowMap.getActiveTopDownTexture();
+    if (program!.tShadowMap !== undefined && topDownShadow) {
+      topDownShadow.bind(program!.tShadowMap);
     }
+    const pointShadows = ShadowMap.getActivePointTextures();
 
     // Bind point light cube shadow maps
-    if (program!.tPointShadowMap0 !== undefined && R.point_shadow_textures?.[0]) {
-      R.point_shadow_textures[0].bind(program!.tPointShadowMap0);
+    if (program!.tPointShadowMap0 !== undefined && pointShadows[0]) {
+      pointShadows[0].bind(program!.tPointShadowMap0);
     }
-    if (program!.tPointShadowMap1 !== undefined && R.point_shadow_textures?.[1]) {
-      R.point_shadow_textures[1].bind(program!.tPointShadowMap1);
+    if (program!.tPointShadowMap1 !== undefined && pointShadows[1]) {
+      pointShadows[1].bind(program!.tPointShadowMap1);
     }
-    if (program!.tPointShadowMap2 !== undefined && R.point_shadow_textures?.[2]) {
-      R.point_shadow_textures[2].bind(program!.tPointShadowMap2);
+    if (program!.tPointShadowMap2 !== undefined && pointShadows[2]) {
+      pointShadows[2].bind(program!.tPointShadowMap2);
     }
 
     if (pass === 2) {

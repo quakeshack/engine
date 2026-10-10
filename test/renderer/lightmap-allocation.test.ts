@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
-import R from '../../source/engine/client/R.ts';
+import Lightmaps from '../../source/engine/client/renderer/lighting/Lightmaps.ts';
 import { LIGHTMAP_BLOCK_SIZE } from '../../source/engine/client/renderer/lighting/LightmapAtlas.ts';
 import type { Face } from '../../source/engine/common/model/BaseModel.ts';
 
@@ -29,38 +29,38 @@ function createFace(width: number, height: number): Face & Allocation {
   } as unknown as Face & Allocation;
 }
 
-void describe('R.AllocBlock', () => {
-  const previousAllocated = R.allocated;
+void describe('Lightmaps.AllocBlock', () => {
+  const previousAllocated = Lightmaps.allocated;
 
   beforeEach(() => {
-    R.allocated = new Array<number>(LIGHTMAP_BLOCK_SIZE).fill(0);
+    Lightmaps.allocated = new Array<number>(LIGHTMAP_BLOCK_SIZE).fill(0);
   });
 
   afterEach(() => {
-    R.allocated = previousAllocated;
+    Lightmaps.allocated = previousAllocated;
   });
 
   void test('places the first block in the top left corner', () => {
     const face = createFace(4, 3);
 
-    R.AllocBlock(face);
+    Lightmaps.AllocBlock(face);
 
     assert.equal(face.light_s, 0);
     assert.equal(face.light_t, 0);
   });
 
   void test('raises the skyline of the columns it used by the block height', () => {
-    R.AllocBlock(createFace(4, 3));
+    Lightmaps.AllocBlock(createFace(4, 3));
 
-    assert.deepEqual(R.allocated.slice(0, 6), [3, 3, 3, 3, 0, 0]);
+    assert.deepEqual(Lightmaps.allocated.slice(0, 6), [3, 3, 3, 3, 0, 0]);
   });
 
   void test('puts the next block beside the first one while the columns next to it are lower', () => {
     const first = createFace(2, 3);
     const second = createFace(2, 5);
 
-    R.AllocBlock(first);
-    R.AllocBlock(second);
+    Lightmaps.AllocBlock(first);
+    Lightmaps.AllocBlock(second);
 
     assert.equal(second.light_s, 2);
     assert.equal(second.light_t, 0);
@@ -70,16 +70,16 @@ void describe('R.AllocBlock', () => {
     const wide = createFace(LIGHTMAP_BLOCK_SIZE - 1, 10);
     const above = createFace(LIGHTMAP_BLOCK_SIZE - 1, 2);
 
-    R.AllocBlock(wide);
-    R.AllocBlock(above);
+    Lightmaps.AllocBlock(wide);
+    Lightmaps.AllocBlock(above);
 
     assert.equal(above.light_s, 0);
     assert.equal(above.light_t, 10);
   });
 
   void test('throws when a block does not fit anymore', () => {
-    R.AllocBlock(createFace(LIGHTMAP_BLOCK_SIZE - 1, 1));
+    Lightmaps.AllocBlock(createFace(LIGHTMAP_BLOCK_SIZE - 1, 1));
 
-    assert.throws(() => { R.AllocBlock(createFace(LIGHTMAP_BLOCK_SIZE - 1, LIGHTMAP_BLOCK_SIZE)); }, /full/);
+    assert.throws(() => { Lightmaps.AllocBlock(createFace(LIGHTMAP_BLOCK_SIZE - 1, LIGHTMAP_BLOCK_SIZE)); }, /full/);
   });
 });

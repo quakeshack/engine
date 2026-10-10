@@ -12,6 +12,9 @@ export class RendererCvars {
 
   /** `r_interpolation`: interpolate animated textures and lightstyles between their steps. */
   interpolation: Cvar = null!;
+
+  /** `gl_flashblend`: draw dynamic lights as coronas instead of lighting the surfaces they reach. */
+  flashblend: Cvar = null!;
 }
 
 const rendererCvars = new RendererCvars();

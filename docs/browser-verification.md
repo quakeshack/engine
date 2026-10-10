@@ -62,7 +62,10 @@ node ./dist/dedicated/dedicated.mjs -game <mod> -port 3001 +exec server.cfg   # 
 
 A plain `+exec server.cfg` with no `-game` flag defaults to `id1` (`Def.ts`'s
 `defaultGame`/`defaultBasedir`), not whichever mod you're testing — pass `-game <mod>`
-explicitly. The dedicated server serves both the game socket and the static browser client
+explicitly. A mod that sits on another base game needs `-basedir` as well (`-basedir librequake -game hellwave`
+for the Hellwave maps; with the default base `id1` the server cannot find the assets and the client fails with
+`Couldn't load progs/...`), and the browser build has to be made with the matching
+`VITE_GAME_DIR`/`VITE_BASE_DIR` (section 8). The dedicated server serves both the game socket and the static browser client
 (`/qfs/*` via `Sys.ts`'s Express route) on that one port, so one process is enough.
 
 The dedicated build writes its worker bundles to `dist/dedicated/workers/` whatever `--outDir` says, so a

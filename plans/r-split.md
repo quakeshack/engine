@@ -1,9 +1,9 @@
 # Split `R.ts` into renderer subsystems
 
 Track D2 of `plans/engine-architecture-modernization.md`. Status: **plan agreed, all open questions settled
-(2026-10-10); Phases 0, 0b, 1 and 2 are done. Phase 2 is not committed yet; Phase 3 waits for a go-ahead.** The
-renderer files are in their folders; `Particles`, `Decals`, `LightStyles`, `LightSampler`, `EntityLighting`,
-`Interpolation` and the start of `RendererCvars` are extracted.
+(2026-10-10); Phases 0, 0b, 1 and 2 are committed, Phase 3 is done and not committed yet; Phase 4 waits for a
+go-ahead.** The renderer files are in their folders; `Particles`, `Decals`, `LightStyles`, `LightSampler`,
+`EntityLighting`, `Interpolation`, `Lightmaps`, `DynamicLights` and the start of `RendererCvars` are extracted.
 
 ## Context
 
@@ -464,6 +464,49 @@ depth-sampling fix (`PostProcess.bindDepthForSampling`, the two call sites in `B
 the Known Trap entry in `CLAUDE.md`). `BuildLightmaps` is split as described in Design A. First phase that moves GL textures, so the browser pair matters: static
 lightmaps, a rocket's dynamic light on a wall, flashblend on and off, a deluxemap map, a point-light shadow.
 
+#### Phase 3: what shipped (2026-10-10)
+
+`renderer/lighting/Lightmaps.ts` and `renderer/lighting/DynamicLights.ts`, plus Design E item 1 and Design F.
+`R.ts` went from 2177 to 1664 lines (the two new files are 344 and 337).
+
+- **`Lightmaps`** owns the atlas: `allocated`, the three CPU buffers, `lightmap_modified`, the three textures,
+  `Init`, `Begin`, `AddModel`, `Upload`, `ResetDynamic`, `Clear`, `AllocBlock`, `BuildLightMap`, `BuildLightMapEx`.
+  It also owns every write into the dynamic lightmap, so no other class touches its buffers:
+  `WriteDynamicBlock`, `ClearDynamicBlock`, `ResetModifiedRows` and `UploadDynamic` (which is the old
+  first-to-last-row upload loop, written with `indexOf`/`lastIndexOf`).
+- **`DynamicLights`** owns `dlightframecount`, the corona VAO (`Init`), `RenderCoronas()` (was `RenderDlights`),
+  `Push()` (was `PushDlights`), `MarkLights`, `AddDynamicLights`, `RemoveDynamicLights` and the surface
+  projection helpers. It computes the light of a face and hands the bytes to `Lightmaps`.
+- **`BuildLightmaps` is split as planned:** `R.PrepareModels()` (called from `R.NewMap`) loops over the model
+  precache and calls `Lightmaps.Begin/AddModel/Upload` around the model renderers' `prepareModel`;
+  `Lightmaps.ResetDynamic()` replaces the zero-and-upload in `NewMap`.
+- **`gl_flashblend` joined `RendererCvars`** (needed by `DynamicLights` and `BrushModelRenderer`); `R.Init` still
+  creates it at the same position.
+- **Design E item 1 done:** `R.shadow_texture`, `R.point_shadow_textures` and their assignments in
+  `PreRenderScene`/`RenderScene` are gone. The renderers ask `ShadowMap.getActiveTopDownTexture()` and
+  `ShadowMap.getActivePointTextures()` where they draw. `getActivePointTextures()` fills one reused array (it
+  allocated a new one per frame before) and both return `null` before `ShadowMap.init()`, which the renderers'
+  existing guards already handled.
+- **Design F done:** `PostProcess.bindDepthForSampling(unit)` records the unit, `endDepthSampling()` binds
+  `PostProcess.nullTexture` (a 1x1 transparent texture it creates in `init()`, the same content as
+  `R.null_texture`) to every recorded unit before it reattaches. The two `end*Pass()` methods of
+  `BrushModelRenderer` lost their hand-written unbind; the `CLAUDE.md` trap entry now says to use the API, and
+  the memory note about it was updated.
+- **Two new forwarders** on `R`, read-only getters for `Sky`, which still reads the renderer through
+  `RenderContext` and must not import `ShadowMap`: see the ledger.
+- **Tests:** `lightmap-allocation` re-pointed; new `lightmaps` (skyline, monochrome and RGB layout, sky and
+  submodel skipping, dynamic block write/clear/upload range, reset, clear), `dynamic-lights` (surface impact,
+  visibility, marking, the Push flow incl. clearing and flashblend), `shadow-active-textures`,
+  `post-process-depth-sampling` (unbind before reattach, all units released, cleared between passes).
+- **Verified:** `npm test` 1941 pass, `npm run typecheck` clean, `eslint` clean on all new and touched files;
+  browser capture (2 before, 2 after): nothing beyond the noise between captures of one build, identical
+  `r_speeds`, no console errors and no feedback-loop warnings. The `e1m1` scene exercises the turbulent depth
+  pass (`usePostProcess`) but has no fog volume, so the fog-volume depth pass was checked separately on the
+  Hellwave map `hw_e1m2` (7 `func_fog` volumes; the dedicated server needs `-basedir librequake -game hellwave`
+  and the client build `VITE_GAME_DIR=hellwave VITE_BASE_DIR=librequake`): 2 captures of the build from before
+  Phase 3 and 2 after, the view is within the noise between captures of one build, and there are no GL
+  warnings. (`capture.mjs` itself is still `e1m1`-only; that check used a one-off variant of it.)
+
 ### Phase 4: Camera, frame uniforms and visibility
 
 `Camera`, `FrameUniforms`, `Visibility`, plus Design E items 2 and 3. The biggest call-site count (`refdef` 105
@@ -547,3 +590,5 @@ Every forwarder added in Phases 1 to 6 is listed here with the phase that adds i
 | Forwarder on `R` | Added | Why it stays | Goes with |
 |---|---|---|---|
 | `static get interpolation()` (returns `rendererCvars.interpolation`) | Phase 2 | `Materials` reads `r_interpolation` through `RenderContext` (`typeof R`) | `RenderContext`, Phase 5 |
+| `static get shadow_texture()` (returns `ShadowMap.getActiveTopDownTexture()`) | Phase 3 | `Sky` reads it through `RenderContext` and must not import `ShadowMap` | `RenderContext`, Phase 5 |
+| `static get point_shadow_textures()` (returns `ShadowMap.getActivePointTextures()`) | Phase 3 | same | `RenderContext`, Phase 5 |

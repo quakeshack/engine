@@ -13,6 +13,7 @@ import ConsoleOverlay from './ConsoleOverlay.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import R from './R.ts';
+import DynamicLights from './renderer/lighting/DynamicLights.ts';
 import Host from '../common/Host.ts';
 import SCR from './SCR.ts';
 
@@ -548,7 +549,7 @@ export default class V {
     if (clientStaticState.signon < 4) {
       return;
     }
-    R.PushDlights();
+    DynamicLights.Push();
     R.RenderView();
   }
 

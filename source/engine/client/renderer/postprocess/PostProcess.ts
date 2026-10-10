@@ -51,6 +51,15 @@ export default class PostProcess {
   /** Scratch FBO used to blit scene depth into the temporary depth renderbuffer. */
   static depthSamplingFBO: WebGLFramebuffer | null = null;
 
+  /**
+   * A 1x1 transparent texture. {@link PostProcess.endDepthSampling} binds it to the sampler units that were given
+   * the depth texture, so the depth texture is no longer bound anywhere when it is attached to the FBO again.
+   */
+  static nullTexture: GLRenderTexture | null = null;
+
+  /** The sampler units that {@link PostProcess.bindDepthForSampling} bound the depth texture to. */
+  static readonly #sampledDepthUnits: number[] = [];
+
   /** Current scene FBO width in pixels. */
   static width = 0;
 
@@ -215,6 +224,14 @@ export default class PostProcess {
 
       // Scratch FBO for depth blits into the temporary depth renderbuffer.
       PostProcess.depthSamplingFBO = gl.createFramebuffer();
+
+      // What the depth texture's sampler units are reset to after depth sampling.
+      PostProcess.nullTexture = new GLRenderTexture();
+      PostProcess.nullTexture.bind(0);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 1, 1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
       // Assemble scene FBO
       gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
@@ -450,11 +467,11 @@ export default class PostProcess {
    * If MSAA is active, resolves to the texture FBO first so the depth
    * texture contains valid data.
    *
-   * Callers must bind `depthTexture` to whichever sampler unit their shader
-   * reads it from (e.g. `tDepth`), and must unbind it from that same unit
-   * before calling `endDepthSampling()`, since WebGL flags a feedback loop
-   * when a texture is simultaneously an FBO attachment and bound to any
-   * active sampler unit — even one a later draw's material doesn't touch.
+   * Callers bind the depth texture with {@link PostProcess.bindDepthForSampling},
+   * and `endDepthSampling()` takes it off those sampler units again. WebGL
+   * flags a feedback loop when a texture is simultaneously an FBO attachment
+   * and bound to any sampler unit — even one a later draw's material doesn't
+   * touch — so a unit must never keep it after the pass.
    */
   static beginDepthSampling(): void {
     if (PostProcess.msaaSamples > 0 && !PostProcess.msaaResolved) {
@@ -484,12 +501,29 @@ export default class PostProcess {
   }
 
   /**
-   * Reattach the depth texture to the FBO after depth sampling is done.
-   * Must be called only after the caller has unbound `depthTexture` from its
-   * sampler unit (see `beginDepthSampling()`); otherwise the reattached
-   * texture forms a feedback loop with the still-bound sampler.
+   * Binds the scene depth texture to a sampler unit for the pass between
+   * `beginDepthSampling()` and `endDepthSampling()`, and remembers the unit so
+   * that `endDepthSampling()` can release it.
+   * @param unit The sampler unit the shader reads the depth from (e.g. `program.tDepth`).
+   */
+  static bindDepthForSampling(unit: number): void {
+    console.assert(PostProcess.depthTexture !== null, 'depth texture required');
+    PostProcess.depthTexture!.bind(unit);
+    PostProcess.#sampledDepthUnits.push(unit);
+  }
+
+  /**
+   * Ends depth sampling: takes the depth texture off the sampler units it was
+   * bound to by {@link PostProcess.bindDepthForSampling} and attaches it to the
+   * FBO again.
    */
   static endDepthSampling(): void {
+    for (const unit of PostProcess.#sampledDepthUnits) {
+      PostProcess.nullTexture!.bind(unit);
+    }
+
+    PostProcess.#sampledDepthUnits.length = 0;
+
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     PostProcess.depthTexture!.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
   }
@@ -693,6 +727,10 @@ export default class PostProcess {
     if (PostProcess.depthRenderbuffer) {
       gl.deleteRenderbuffer(PostProcess.depthRenderbuffer);
       PostProcess.depthRenderbuffer = null;
+    }
+    if (PostProcess.nullTexture) {
+      PostProcess.nullTexture.free();
+      PostProcess.nullTexture = null;
     }
     if (PostProcess.depthSamplingFBO) {
       gl.deleteFramebuffer(PostProcess.depthSamplingFBO);
