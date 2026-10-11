@@ -112,6 +112,10 @@ export class BrushModelRenderer extends ModelRenderer {
    */
   static MAX_FOG_DLIGHTS = 8;
 
+  /** Reused by `getEntityViewDistance()`, once per transparent brush entity and frame. */
+  static readonly #scratchMins: [number, number, number] = [0, 0, 0];
+  static readonly #scratchMaxs: [number, number, number] = [0, 0, 0];
+
   // ─── Private instance fields ──────────────────────────────────────
 
   /**
@@ -1082,6 +1086,32 @@ export class BrushModelRenderer extends ModelRenderer {
   }
 
   // ─── Private helpers ──────────────────────────────────────────────
+
+  /**
+   * Distance from the viewpoint to the nearest point of the bounds of a brush entity, the same measure the world
+   * leafs, turbulent chains and fog volumes sort by, so they rank against each other in the transparent pass.
+   * An inline submodel keeps its vertices at world coordinates, so a door or a window that has not moved has the
+   * origin 0 0 0 wherever it is in the map: its bounds are the model bounds moved by the origin, as the frustum
+   * cull in `render()` has it. A model that is not a submodel is bounded by its radius around the origin.
+   * @returns Distance in world units.
+   */
+  getEntityViewDistance(clmodel: BrushModel, entity: ClientEdict, vieworg: Float32Array | number[]): number {
+    const origin = entity.origin;
+
+    if (clmodel.submodel) {
+      for (let axis = 0; axis < 3; axis++) {
+        BrushModelRenderer.#scratchMins[axis] = origin[axis] + clmodel.mins[axis];
+        BrushModelRenderer.#scratchMaxs[axis] = origin[axis] + clmodel.maxs[axis];
+      }
+    } else {
+      for (let axis = 0; axis < 3; axis++) {
+        BrushModelRenderer.#scratchMins[axis] = origin[axis] - clmodel.radius;
+        BrushModelRenderer.#scratchMaxs[axis] = origin[axis] + clmodel.radius;
+      }
+    }
+
+    return this._getBoundsDistanceToView(BrushModelRenderer.#scratchMins, BrushModelRenderer.#scratchMaxs, vieworg);
+  }
 
   /**
    * Distance from the viewpoint to the nearest point of an axis-aligned bounding box.

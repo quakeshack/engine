@@ -1,11 +1,10 @@
 # Split `R.ts` into renderer subsystems
 
 Track D2 of `plans/engine-architecture-modernization.md`. Status: **plan agreed, all open questions settled
-(2026-10-10); Phases 0, 0b, 1, 2, 3 and 4 are committed, Phase 5 is done and not committed yet; Phase 6 is decided
-by the developer now that `R.ts` can be read again.** Extracted: `Particles`, `Decals`, `LightStyles`,
-`LightSampler`, `EntityLighting`, `Interpolation`, `Lightmaps`, `DynamicLights`, `Camera`, `Visibility`,
-`FrameUniforms`, `RendererCvars`, `DefaultTextures`, `ShaderPrograms`, `RenderStats`, `Fog`, `SkyBox`,
-`MaterialBinder`. `R.ts` is at 799 lines.
+(2026-10-10); Phases 0, 0b, 1, 2, 3, 4 and 5 are committed, Phase 6 is done and not committed yet; Phase 7 is
+next.** Extracted: `Particles`, `Decals`, `LightStyles`, `LightSampler`, `EntityLighting`, `Interpolation`,
+`Lightmaps`, `DynamicLights`, `Camera`, `Visibility`, `FrameUniforms`, `RendererCvars`, `DefaultTextures`,
+`ShaderPrograms`, `RenderStats`, `Fog`, `SkyBox`, `MaterialBinder`, `TransparentPass`. `R.ts` is at 485 lines.
 
 ## Context
 
@@ -645,6 +644,63 @@ geometry sits at world coordinates), so every such entity sorts by a distance th
 is. If that is right, the fix is to sort brush entities by the center of their bounds. It becomes a test on
 `compareTransparentItems`/the collection step, and its own commit, so a before/after pair for the move phases is
 never mixed with a behavior change.
+
+#### Phase 6: what shipped (2026-10-11)
+
+`renderer/scene/TransparentPass.ts`. `R.ts` went from 799 to 485 lines (the new file is 482). Two separable
+changes: the move, and the sort fix. The move is the first, and the browser pair below was taken on a build with
+the fix switched off.
+
+**The move**
+
+- **`TransparentPass`** has `Collect(worldEntity)` (the items of a frame, unsorted), `Render(worldEntity)` (collect,
+  sort, draw) and `Compare` (was the exported function `compareTransparentItems`; the style guide asks for a class
+  and `R.ts` no longer exports it). `TransparentKind`, `TransparentItem` and `SortKindDistance` are exported.
+  The closures of the old function (`beginKindPass`, `endActivePass`, the decal texture and the active kind it
+  captured) are private static methods and fields, and the frame's items are one reused array that `Render`
+  truncates, so a finished frame does not keep its entities and particles alive.
+- **`R.RenderScene`** reads as the list: `Camera.SetFrustum()`, `#renderShadowMaps()`, `SetupGL()`,
+  `Visibility.MarkLeafs()`, `#renderTurbulentBoundaryDepth()`, sky, view model, `RenderWorld()`. The two new
+  private methods are the shadow block and the turbulent boundary block, unchanged. `RenderWorld` keeps the
+  opaque world, the opaque entities, the coronas and the call into `TransparentPass`. The stray `;` after method
+  bodies in `R.ts` is gone, and every public method has a description.
+- **What stays on `R`:** `DrawEntitiesOnList`, `DrawViewModel`, `PolyBlend`, `SetupGL`, `PreRenderScene` (as
+  decided in Design A). `PolyBlend` and the `Camera.perspective` writes of `DrawViewModel` go with the SCR and V
+  split (`plans/scr-v-split.md`).
+- **The 400-line target is not met.** `R.ts` is 485. `Init` is 60 lines, 28 of them cvar creation (the creation
+  order is what `cvarlist` shows and a test pins it); `DrawEntitiesOnList`, `DrawViewModel` and `PolyBlend` are
+  about 115 between them; `PrepareModels` is 28. Moving the cvar creation into `RendererCvars` would give that
+  module a value import of `Cvar`, which is the load-order property it was made for, so I left it. `PolyBlend`
+  leaves with the SCR and V split.
+- **"Resolve" and "poly blend"** of the step list in the phase text are not in `R`: `SCR.UpdateScreen` calls
+  `PostProcess.resolve()` and `R.PolyBlend()` after `V.RenderView()` returns, so they are not steps of `RenderScene`.
+
+**The sort fix (own change)**
+
+- **Hypothesis confirmed by a test first.** A brush entity at origin `0 0 0` with geometry 500 units away ranked at
+  distance 0, and a door that moved 100 units from geometry at x 200 ranked at 100 instead of 300. The test failed
+  before the fix.
+- **The fix is not "the center of the bounds"**, as the hypothesis said. The world leafs, turbulent chains and fog
+  volumes that an entity ranks against in the same list are measured to the *nearest point* of their bounds
+  (`BrushModelRenderer._getBoundsDistanceToView`). A center for entities and a nearest point for the rest would be
+  a second inconsistency. `BrushModelRenderer.getEntityViewDistance(model, entity, vieworg)` measures to the nearest
+  point of the bounds the frustum cull in `render()` already uses: `origin + mins/maxs` for an inline submodel,
+  `origin ± radius` for a model that is its own file. `TransparentPass` asks it for every brush entity; sprites,
+  alias and mesh entities still sort by the distance of their origin.
+- **Tests:** `transparent-sorting.test.ts` now uses the real kinds (the old test labelled kind 1 "fog" and kind 0
+  "turbulent", which are turbulent and world leaf, and passed by coincidence of the priorities) and adds the full
+  tie ranking and distance over kind. New `transparent-collect.test.ts`: sprite by origin, brush entity by geometry,
+  offset by origin, radius for a non-submodel, view inside the bounds, and the resulting draw order of a window,
+  a sprite and a nearer window.
+- **Verified:** `npm test` 1992 pass, `npm run typecheck` clean, `eslint` 0 errors on all new and touched files.
+  Browser capture, three production builds (HEAD, the move with the fix switched off, the move with the fix), 2 + 2 +
+  2 runs interleaved: HEAD against the move shows nothing beyond the noise between captures of one build and
+  identical `r_speeds` in all 9 views; the move against the fix is the same; the console logs of all six runs are
+  identical (three 404s and software-GL performance warnings, as before). The effects view exercises
+  `TransparentPass` with decals and particles. Pointer lock and input are not touched by this phase.
+- **Not verified visually.** The capture scene (`e1m1`) has no translucent brush entity, so the pixel pair cannot
+  show the fix. It is covered by the tests above and by the build not regressing; whether it matches what the
+  developer saw needs a map with a translucent `func_wall` or door in front of a sprite or another window.
 
 ### Phase 7: Forwarder cleanup and docs
 

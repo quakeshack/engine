@@ -116,11 +116,19 @@ class TransparentPass {
   }
 
   /**
-   * Computes the sort distance of an entity. Entities sort by origin distance for consistency with prior
-   * behavior and because model bounds are not uniformly available here.
-   * @returns Euclidean distance from the view origin to the entity origin.
+   * Computes the sort distance of an entity. A brush entity sorts by its bounds, like the world surfaces it
+   * ranks against, because its origin is usually not where its geometry is. The other models sort by the
+   * distance of their origin, because model bounds are not uniformly available here.
+   * @returns Distance from the view origin to the entity.
    */
   static #getEntityDistance(entity: ClientEdict, vieworg: Vector): number {
+    const model = entity.model;
+    const brushRenderer = TransparentPass.#brushRenderer;
+
+    if (model instanceof BrushModel && brushRenderer !== null) {
+      return brushRenderer.getEntityViewDistance(model, entity, vieworg);
+    }
+
     const dx = entity.origin[0] - vieworg[0];
     const dy = entity.origin[1] - vieworg[1];
     const dz = entity.origin[2] - vieworg[2];
@@ -140,9 +148,8 @@ class TransparentPass {
 
     items.length = 0;
 
-    const brushRenderer = worldmodel !== null
-      ? modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer
-      : null;
+    // Brush entities need the renderer for their bounds even where there is no world model.
+    const brushRenderer = modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer | null;
 
     TransparentPass.#worldmodel = worldmodel;
     TransparentPass.#brushRenderer = brushRenderer;
