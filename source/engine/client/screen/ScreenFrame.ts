@@ -19,7 +19,6 @@ import RenderStats from '../renderer/scene/RenderStats.ts';
 import Visibility from '../renderer/scene/Visibility.ts';
 import FirstPersonView from '../view/FirstPersonView.ts';
 import Viewport from '../view/Viewport.ts';
-import CenterPrint from './CenterPrint.ts';
 import FramePacing from './FramePacing.ts';
 import ScreenIndicators from './ScreenIndicators.ts';
 import Screenshots from './Screenshots.ts';
@@ -50,7 +49,6 @@ export default class ScreenFrame {
   static Init(): void {
     Viewport.Init();
     ScreenIndicators.Init();
-    CenterPrint.Init();
     Screenshots.Init();
   }
 
@@ -129,14 +127,13 @@ export default class ScreenFrame {
   }
 
   /**
-   * Stops all sounds and puts the console and the center print away while a map is loading.
+   * Stops all sounds and puts the console away while a map is loading.
    */
   static BeginLoadingPlaque(): void {
     S.StopAllSounds();
     if ((clientStaticState.state !== clientConnectionState.connected) || (clientStaticState.signon !== 4)) {
       return;
     }
-    CenterPrint.Clear();
     ConsoleOverlay.Reset();
   }
 
@@ -216,7 +213,6 @@ export default class ScreenFrame {
       CL.DrawHUD();
     } else {
       ScreenIndicators.Draw();
-      CenterPrint.Draw();
       if (clientStaticState.signon === 4) {
         CL.DrawHUD();
       }

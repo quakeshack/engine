@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/unbound-method -- handing the methods of the new classes to a test is the point of this file */
-import CenterPrint from '../../source/engine/client/screen/CenterPrint.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import ScreenFrame from '../../source/engine/client/screen/ScreenFrame.ts';
 import Screenshots from '../../source/engine/client/screen/Screenshots.ts';
@@ -32,13 +31,6 @@ export const screenFacade = {
   },
   set EndLoadingPlaque(value: () => void) {
     ScreenFrame.EndLoadingPlaque = value;
-  },
-
-  get CenterPrint(): (text: string) => void {
-    return CenterPrint.Print;
-  },
-  set CenterPrint(value: (text: string) => void) {
-    CenterPrint.Print = value;
   },
 
   get con_current(): number {

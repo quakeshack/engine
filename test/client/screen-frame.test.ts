@@ -12,7 +12,6 @@ import Draw from '../../source/engine/client/Draw.ts';
 import GL from '../../source/engine/client/GL.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import M from '../../source/engine/client/Menu.ts';
-import CenterPrint from '../../source/engine/client/screen/CenterPrint.ts';
 import FramePacing from '../../source/engine/client/screen/FramePacing.ts';
 import ScreenFrame from '../../source/engine/client/screen/ScreenFrame.ts';
 import ScreenIndicators from '../../source/engine/client/screen/ScreenIndicators.ts';
@@ -133,7 +132,6 @@ void describe('ScreenFrame', () => {
     record(M, 'Draw', 'M.Draw');
     record(M, 'DrawOverlayNotice', 'M.DrawOverlayNotice');
     record(ScreenIndicators, 'Draw', 'ScreenIndicators.Draw');
-    record(CenterPrint, 'Draw', 'CenterPrint.Draw');
     record(ConsoleOverlay, 'Draw', 'ConsoleOverlay.Draw');
     record(RenderStats, 'Print', 'RenderStats.Print');
     mock.method(VID, 'DownloadScreenshot', (filename?: string) => { calls.push(`VID.DownloadScreenshot(${filename ?? ''})`); });
@@ -167,7 +165,6 @@ void describe('ScreenFrame', () => {
         'ScreenFrame.RenderScene',
         'GL.Set2D',
         'ScreenIndicators.Draw',
-        'CenterPrint.Draw',
         'CL.DrawHUD',
         'CL.Draw',
         'M.Draw',

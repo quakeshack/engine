@@ -579,6 +579,22 @@ Order, as agreed: G4, G5, G2 and G3, then G6. One commit per item in each repo t
 - **Tests.** Engine: the ladder with a game that answers like id1, what is asked and when, no game, a game without
   the member, an intermission, answers that are not heights. id1: the three heights.
 
+#### G2, the game draws the center print
+
+- **Engine.** `CenterPrint` (the lines, the timer, the typewriter, `scr_centertime` and `scr_printspeed`) is gone. The three
+  handlers (`svc_centerprint`, finale, cutscene) publish `client.center-print` and nothing draws it. Everything
+  that came with it is gone: its call in the overlays, the clearing in the loading plaque, the `engineMocks.SCR`
+  member. `docs/events.md` says the engine draws nothing of it.
+- **id1.** The HUD already kept the message for its intermission screens; it now also shows it in the game, for
+  `scr_centertime` seconds, wrapped at 40 characters and centered as Quake does, drawn through its own overlay
+  (virtual 640 by 480, so it scales with the screen, where the engine's was in screen pixels). It registers
+  `scr_centertime` and `scr_printspeed` under the names the engine had, so configurations that set them still work, and
+  the typewriter of a finale reads the latter. hellwave inherits it.
+- **Visible changes:** the center print is part of the HUD now, so `nohud 1` hides it (the engine drew it
+  regardless); it is drawn under the status bar and the messages instead of under the HUD as a whole.
+- **Tests.** Engine: the center-print tests go with the class. id1: shows for the time of the cvar and then lets go,
+  wrapping, the cvar the game owns, a new level clears it, an empty print is nothing.
+
 ## Testing
 
 - New tests are `.test.ts` in `test/client/` (one level, glob-safe); `v.test.mjs` and `scr.test.mjs` are replaced.

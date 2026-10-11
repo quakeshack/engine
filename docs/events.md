@@ -27,7 +27,7 @@ The engine has an event bus.
 | client.server-info.ready | 1. map<string,string> | Initial update of server info. |
 | client.server-info.updated | 1. name, 2. value | A server info has been updated. |
 | client.damage | 1. ClientDamageEvent | Damage event. Sent when the player received damage. |
-| client.center-print | 1. message | Center print text was requested. |
+| client.center-print | 1. message | The server printed text in the middle of the screen, or started a finale or cutscene text. The engine draws nothing of it: the game does, for as long as it wants. |
 | client.chat.message | 1. name, 2. message, 3. whether is a direct message or not. | Chat message received. |
 | client.clientdata.field-changed | 1. field, 2. value, 3. previousValue | A sparse clientdata field changed in the latest server snapshot. |
 | client.disconnected | - | Essentially the game stopped. |

@@ -25,7 +25,6 @@ import Particles from './renderer/effects/Particles.ts';
 import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
 import S from './Sound.ts';
-import CenterPrint from './screen/CenterPrint.ts';
 import Viewport from './view/Viewport.ts';
 import FirstPersonView from './view/FirstPersonView.ts';
 import { net } from './PageServices.ts';
@@ -708,11 +707,11 @@ function handlePrint() {
 }
 
 /**
- * Displays server-sent center print text and mirrors it to the console.
+ * Hands server-sent center print text to the game, which draws it (`client.center-print`), and mirrors it to the console.
  */
 function handleCenterPrint() {
   const string = net.message.readString();
-  CenterPrint.Print(string);
+  eventBus.publish('client.center-print', string);
   Con.Print(`\x03${string}\n`); // TODO: have a better system for this
 }
 
@@ -962,7 +961,7 @@ function handleFinale() {
   clientRuntimeState.intermission = 2;
   clientRuntimeState.completed_time = clientRuntimeState.time;
   markRefdefDirty();
-  CenterPrint.Print(net.message.readString());
+  eventBus.publish('client.center-print', net.message.readString());
 }
 
 /**
@@ -972,7 +971,7 @@ function handleCutscene() {
   clientRuntimeState.intermission = 3;
   clientRuntimeState.completed_time = clientRuntimeState.time;
   markRefdefDirty();
-  CenterPrint.Print(net.message.readString());
+  eventBus.publish('client.center-print', net.message.readString());
 }
 
 /**
