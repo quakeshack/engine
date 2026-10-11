@@ -61,7 +61,7 @@ export function patchMembers(target: object, overrides: object | undefined): () 
       const ownBefore = found !== null && found.own ? found.descriptor : null;
 
       Object.defineProperty(target, key, wanted.get !== undefined
-        ? { get: wanted.get, configurable: true, enumerable: true }
+        ? { ...wanted, configurable: true, enumerable: true }
         : { value: wanted.value as unknown, writable: true, configurable: true, enumerable: true });
       undo.push(() => {
         delete record[key];

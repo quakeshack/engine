@@ -1,7 +1,7 @@
 # Dissolve `SCR.ts` and `V.ts`
 
 Follow-up to `plans/r-split.md`. Status: **plan drafted 2026-10-10, developer decisions 1 to 8 recorded (4 to 8 on 2026-10-11); G6 is a
-direction, not a closed decision; Phases 0 to 5 are committed, Phase 6 is done and waits for its commit (2026-10-11). Open: the 1.3.0 release steps of `plans/engine-architecture-modernization.md`.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
+direction, not a closed decision; Phases 0 to 6 are done and committed (2026-10-11). Open: the 1.3.0 release steps of `plans/engine-architecture-modernization.md`.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
 
 ## Context
 
@@ -700,9 +700,11 @@ Docs and the cleaning up the plan left for the end, plus the three "definitely" 
   it gives 0; `name`, `color`, `impulse`, `save` and `load` run without an unknown command and `load` returns to a
   connected, active server; `pause` and `pause` round-trip with the datagram rates above; no console error (the
   404s are optional files: `start.nav`, `music/0.opus`, `beam.mdl`, a sound, a charset PNG).
-- **Left, not part of the plan's list:** seven `unbound-method` warnings in tests that save a static method to
-  put it back (`bsp38-loader.test.ts` 5, `sky.test.ts` 1, `test/support/clientState.ts` 1), in files this
-  work did not touch. The release bump to 1.3.0 is the developer's.
+- **The seven test warnings** that were left (developer, same day): a test that saved a static method to put it
+  back (`bsp38-loader.test.ts` 5, `sky.test.ts` 1) uses `t.mock.method`, which restores it when the test ends and
+  needs no try/finally, and `test/support/clientState.ts` spreads the property descriptor instead of naming its
+  getter. Two warnings of `source/cloudflare/worker.mjs` (a method signature the JSDoc parser rejects, a missing
+  `@returns`) went with them: `npm run lint` is clean. The release bump to 1.3.0 is the developer's.
 
 ## Testing
 

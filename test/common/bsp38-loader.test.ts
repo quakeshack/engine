@@ -126,85 +126,64 @@ void describe('BSP38Loader', () => {
       assert.ok(maxEndByte > model.lightdata_rgb!.length * 0.99);
     });
 
-    void test('loads real .wal pixel data when opted in via worldspawn _qs_wal, replacing the 1x1 placeholder', async () => {
+    void test('loads real .wal pixel data when opted in via worldspawn _qs_wal, replacing the 1x1 placeholder', async (t) => {
       // data/bsp38-tests/textures/e1u1/box1_5.wal is a synthetic 8x8 test
       // texture (not real game content) matching the fixture's only texture
       // name, so this exercises the full textures/<name>.wal lookup path.
       // The fixture's worldspawn sets "_qs_wal" "1" to opt in.
       const fakeTexture = ({ width: 8, height: 8 } as unknown as GLTexture);
-      const originalAllocate = GLTexture.Allocate;
+      t.mock.method(GLTexture, 'Allocate', () => fakeTexture);
 
-      try {
-        GLTexture.Allocate = () => fakeTexture;
+      const model = await loadBSP38Map(true);
 
-        const model = await loadBSP38Map(true);
-
-        assert.equal(model.worldspawnInfo._qs_wal, '1');
-        assert.equal(model.textures.length, 1);
-        assert.equal(model.textures[0].width, 8);
-        assert.equal(model.textures[0].height, 8);
-        assert.equal((model.textures[0] as QuakeMaterial).texture, fakeTexture);
-      } finally {
-        // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-        GLTexture.Allocate = originalAllocate;
-      }
+      assert.equal(model.worldspawnInfo._qs_wal, '1');
+      assert.equal(model.textures.length, 1);
+      assert.equal(model.textures[0].width, 8);
+      assert.equal(model.textures[0].height, 8);
+      assert.equal((model.textures[0] as QuakeMaterial).texture, fakeTexture);
     });
 
-    void test('.wal loading is opt-in: skipped by default even when not on a dedicated server', async () => {
-      const originalAllocate = GLTexture.Allocate;
+    void test('.wal loading is opt-in: skipped by default even when not on a dedicated server', async (t) => {
+      t.mock.method(GLTexture, 'Allocate', () => {
+        throw new Error('GLTexture.Allocate must not be called when _qs_wal is not opted in');
+      });
 
-      try {
-        GLTexture.Allocate = () => {
-          throw new Error('GLTexture.Allocate must not be called when _qs_wal is not opted in');
-        };
+      const bspPath = new URL('../../data/bsp38-tests/maps/bsp38_areaportal.bsp', import.meta.url);
+      const raw = await fs.readFile(bspPath);
+      const patched = new Uint8Array(raw);
+      // ASCII text, so a latin1 decode keeps a 1:1 byte<->char index mapping
+      const text = new TextDecoder('latin1').decode(patched);
+      const needle = '_qs_wal" "1';
+      const needleIndex = text.indexOf(needle);
+      assert.ok(needleIndex >= 0, 'fixture must contain _qs_wal for this test to be meaningful');
+      patched[needleIndex + needle.length - 1] = '0'.charCodeAt(0); // flip opted-in "1" to "0", same byte length
 
-        const bspPath = new URL('../../data/bsp38-tests/maps/bsp38_areaportal.bsp', import.meta.url);
-        const raw = await fs.readFile(bspPath);
-        const patched = new Uint8Array(raw);
-        // ASCII text, so a latin1 decode keeps a 1:1 byte<->char index mapping
-        const text = new TextDecoder('latin1').decode(patched);
-        const needle = '_qs_wal" "1';
-        const needleIndex = text.indexOf(needle);
-        assert.ok(needleIndex >= 0, 'fixture must contain _qs_wal for this test to be meaningful');
-        patched[needleIndex + needle.length - 1] = '0'.charCodeAt(0); // flip opted-in "1" to "0", same byte length
-
-        const context = createModelLoadContext({
-          loadRenderData: true,
-          files: {
-            LoadFile(name: string): Promise<ArrayBuffer | null> {
-              throw new Error(`unexpected LoadFile(${name}) — .wal loading must not run when _qs_wal is off`);
-            },
-            LoadTextFile: () => Promise.resolve(null),
+      const context = createModelLoadContext({
+        loadRenderData: true,
+        files: {
+          LoadFile(name: string): Promise<ArrayBuffer | null> {
+            throw new Error(`unexpected LoadFile(${name}) — .wal loading must not run when _qs_wal is off`);
           },
-        });
-        const buffer = patched.buffer.slice(patched.byteOffset, patched.byteOffset + patched.byteLength) as ArrayBuffer;
-        const model = await new BSP38Loader(context).load(buffer, 'maps/bsp38_areaportal.bsp') as BrushModel;
+          LoadTextFile: () => Promise.resolve(null),
+        },
+      });
+      const buffer = patched.buffer.slice(patched.byteOffset, patched.byteOffset + patched.byteLength) as ArrayBuffer;
+      const model = await new BSP38Loader(context).load(buffer, 'maps/bsp38_areaportal.bsp') as BrushModel;
 
-        assert.equal(model.worldspawnInfo._qs_wal, '0');
-        assert.equal(model.textures[0].width, 1);
-        assert.equal(model.textures[0].height, 1);
-      } finally {
-        // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-        GLTexture.Allocate = originalAllocate;
-      }
+      assert.equal(model.worldspawnInfo._qs_wal, '0');
+      assert.equal(model.textures[0].width, 1);
+      assert.equal(model.textures[0].height, 1);
     });
 
-    void test('does not touch GLTexture.Allocate on a dedicated server (no .wal decoding at all)', async () => {
-      const originalAllocate = GLTexture.Allocate;
+    void test('does not touch GLTexture.Allocate on a dedicated server (no .wal decoding at all)', async (t) => {
+      t.mock.method(GLTexture, 'Allocate', () => {
+        throw new Error('GLTexture.Allocate must not be called on a dedicated server');
+      });
 
-      try {
-        GLTexture.Allocate = () => {
-          throw new Error('GLTexture.Allocate must not be called on a dedicated server');
-        };
+      const model = await loadBSP38Map(false);
 
-        const model = await loadBSP38Map(false);
-
-        assert.equal(model.textures[0].width, 1);
-        assert.equal(model.textures[0].height, 1);
-      } finally {
-        // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-        GLTexture.Allocate = originalAllocate;
-      }
+      assert.equal(model.textures[0].width, 1);
+      assert.equal(model.textures[0].height, 1);
     });
   });
 
@@ -397,86 +376,72 @@ void describe('BSP38Loader', () => {
 });
 
 void describe('QSMatLoader (used by BSP38Loader, BSP29Loader and BSP2Loader alike)', () => {
-  void test('replaces a placeholder texture with a PBRMaterial using explicit width/height from qsmat', async () => {
+  void test('replaces a placeholder texture with a PBRMaterial using explicit width/height from qsmat', async (t) => {
     const fakeTexture = ({ width: 256, height: 256 } as unknown as GLTexture);
-    const originalFromImageFile = GLTexture.FromImageFile;
+    t.mock.method(GLTexture, 'FromImageFile', () => Promise.resolve(fakeTexture));
 
-    try {
-      GLTexture.FromImageFile = () => Promise.resolve(fakeTexture);
+    const context = createModelLoadContext({
+      loadRenderData: true,
+      files: {
+        LoadFile: () => Promise.resolve(null),
+        LoadTextFile(name: string): Promise<string | null> {
+          if (name !== 'textures/test.qsmat.json') {
+            return Promise.resolve(null);
+          }
 
-      const context = createModelLoadContext({
-        loadRenderData: true,
-        files: {
-          LoadFile: () => Promise.resolve(null),
-          LoadTextFile(name: string): Promise<string | null> {
-            if (name !== 'textures/test.qsmat.json') {
-              return Promise.resolve(null);
-            }
-
-            return Promise.resolve(JSON.stringify({
-              version: 1,
-              materials: {
-                'e1u1/box1_5': {
-                  diffuse: 'textures/test_diffuse.png',
-                  width: 64,
-                  height: 64,
-                  flags: ['MF_FULLBRIGHT'],
-                },
+          return Promise.resolve(JSON.stringify({
+            version: 1,
+            materials: {
+              'e1u1/box1_5': {
+                diffuse: 'textures/test_diffuse.png',
+                width: 64,
+                height: 64,
+                flags: ['MF_FULLBRIGHT'],
               },
-            }));
-          },
+            },
+          }));
         },
-      });
-      const model = new BrushModel('qsmat-test');
-      model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
-      model.textures = [new QuakeMaterial('e1u1/box1_5', 1, 1)];
+      },
+    });
+    const model = new BrushModel('qsmat-test');
+    model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
+    model.textures = [new QuakeMaterial('e1u1/box1_5', 1, 1)];
 
-      await QSMatLoader.load(model, context);
+    await QSMatLoader.load(model, context);
 
-      assert.ok(model.textures[0] instanceof PBRMaterial);
-      assert.equal(model.textures[0].width, 64);
-      assert.equal(model.textures[0].height, 64);
-      assert.equal(model.textures[0].diffuse, fakeTexture);
-      assert.ok(model.textures[0].flags & MaterialFlags.MF_FULLBRIGHT);
-    } finally {
-      // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-      GLTexture.FromImageFile = originalFromImageFile;
-    }
+    assert.ok(model.textures[0] instanceof PBRMaterial);
+    assert.equal(model.textures[0].width, 64);
+    assert.equal(model.textures[0].height, 64);
+    assert.equal(model.textures[0].diffuse, fakeTexture);
+    assert.ok(model.textures[0].flags & MaterialFlags.MF_FULLBRIGHT);
   });
 
-  void test('falls back to the loaded diffuse image size when no width/height or base texture is available', async () => {
+  void test('falls back to the loaded diffuse image size when no width/height or base texture is available', async (t) => {
     // This is the BSP38-relevant case: before native .wal loading exists, the
     // placeholder texture has no real base size, so QSMatLoader must fall
     // back to the diffuse image's own dimensions as an approximation.
     const fakeTexture = ({ width: 128, height: 32 } as unknown as GLTexture);
-    const originalFromImageFile = GLTexture.FromImageFile;
+    t.mock.method(GLTexture, 'FromImageFile', () => Promise.resolve(fakeTexture));
 
-    try {
-      GLTexture.FromImageFile = () => Promise.resolve(fakeTexture);
+    const context = createModelLoadContext({
+      loadRenderData: true,
+      files: {
+        LoadFile: () => Promise.resolve(null),
+        LoadTextFile: () => Promise.resolve(JSON.stringify({
+          version: 1,
+          materials: {
+            'e1u1/box1_5': { diffuse: 'textures/test_diffuse.png' },
+          },
+        })),
+      },
+    });
+    const model = new BrushModel('qsmat-test-fallback');
+    model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
+    model.textures = [new QuakeMaterial('e1u1/box1_5', 1, 1)]; // placeholder has no real base texture
 
-      const context = createModelLoadContext({
-        loadRenderData: true,
-        files: {
-          LoadFile: () => Promise.resolve(null),
-          LoadTextFile: () => Promise.resolve(JSON.stringify({
-            version: 1,
-            materials: {
-              'e1u1/box1_5': { diffuse: 'textures/test_diffuse.png' },
-            },
-          })),
-        },
-      });
-      const model = new BrushModel('qsmat-test-fallback');
-      model.worldspawnInfo = { _qs_mat: 'textures/test.qsmat.json' };
-      model.textures = [new QuakeMaterial('e1u1/box1_5', 1, 1)]; // placeholder has no real base texture
+    await QSMatLoader.load(model, context);
 
-      await QSMatLoader.load(model, context);
-
-      assert.equal(model.textures[0].width, 128);
-      assert.equal(model.textures[0].height, 32);
-    } finally {
-      // eslint-disable-next-line require-atomic-updates -- sequential test cleanup, not a real race
-      GLTexture.FromImageFile = originalFromImageFile;
-    }
+    assert.equal(model.textures[0].width, 128);
+    assert.equal(model.textures[0].height, 32);
   });
 });

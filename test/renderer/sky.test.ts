@@ -18,16 +18,14 @@ function createFakeContext(): WebGL2RenderingContext {
 
 void describe('Sky shutdown', () => {
   const previousContext = GL.gl;
-  const previousCreateVAO = GL.CreateVAO;
 
   afterEach(() => {
     GL.gl = previousContext;
-    GL.CreateVAO = previousCreateVAO;
   });
 
-  void test('a skybox with buffers can be shut down after its context is gone, as when the page is closing', () => {
+  void test('a skybox with buffers can be shut down after its context is gone, as when the page is closing', (t) => {
     GL.gl = createFakeContext();
-    GL.CreateVAO = () => ({}) as WebGLVertexArrayObject;
+    t.mock.method(GL, 'CreateVAO', () => ({}) as WebGLVertexArrayObject);
     eventBus.publish('gl.ready');
 
     const sky = new SimpleSkyBox({ textures: [] } as unknown as BrushModel);
@@ -40,9 +38,9 @@ void describe('Sky shutdown', () => {
     assert.doesNotThrow(() => { sky.shutdown(); });
   });
 
-  void test('shutting a skybox down twice is harmless', () => {
+  void test('shutting a skybox down twice is harmless', (t) => {
     GL.gl = createFakeContext();
-    GL.CreateVAO = () => ({}) as WebGLVertexArrayObject;
+    t.mock.method(GL, 'CreateVAO', () => ({}) as WebGLVertexArrayObject);
     eventBus.publish('gl.ready');
 
     const sky = new SimpleSkyBox({ textures: [] } as unknown as BrushModel);
