@@ -1,7 +1,6 @@
 import type { ViewInput, ViewResult } from '../../../shared/GameInterfaces.ts';
 import { calcRoll } from '../../../shared/PlayerRoll.ts';
 import Vector from '../../../shared/Vector.ts';
-import Cvar from '../../common/Cvar.ts';
 import { eventBus } from '../../common/EventBus.ts';
 import Host from '../../common/Host.ts';
 import Chase from '../Chase.ts';
@@ -61,30 +60,10 @@ export default class FirstPersonView {
   };
 
   /**
-   * Creates the console variables of the view, in the order `cvarlist` shows them.
+   * Creates the console variables of the view and starts the weapon from where the view is on every new level.
    */
   static Init(): void {
-    viewCvars.centermove = new Cvar('v_centermove', '0.15');
-    viewCvars.centerspeed = new Cvar('v_centerspeed', '500');
-    viewCvars.iyaw_cycle = new Cvar('v_iyaw_cycle', '2');
-    viewCvars.iroll_cycle = new Cvar('v_iroll_cycle', '0.5');
-    viewCvars.ipitch_cycle = new Cvar('v_ipitch_cycle', '1');
-    viewCvars.iyaw_level = new Cvar('v_iyaw_level', '0.3');
-    viewCvars.iroll_level = new Cvar('v_iroll_level', '0.1');
-    viewCvars.ipitch_level = new Cvar('v_ipitch_level', '0.3');
-    viewCvars.idlescale = new Cvar('v_idlescale', '0');
-    viewCvars.ofsx = new Cvar('scr_ofsx', '0');
-    viewCvars.ofsy = new Cvar('scr_ofsy', '0');
-    viewCvars.ofsz = new Cvar('scr_ofsz', '0');
-    viewCvars.rollspeed = new Cvar('cl_rollspeed', '200');
-    viewCvars.rollangle = new Cvar('cl_rollangle', '2.0');
-    viewCvars.bob = new Cvar('cl_bob', '0.02');
-    viewCvars.bobcycle = new Cvar('cl_bobcycle', '0.6');
-    viewCvars.bobup = new Cvar('cl_bobup', '0.5');
-    viewCvars.kicktime = new Cvar('v_kicktime', '0.5');
-    viewCvars.kickroll = new Cvar('v_kickroll', '0.6');
-    viewCvars.kickpitch = new Cvar('v_kickpitch', '0.6');
-    viewCvars.pitchdrift = new Cvar('v_pitchdrift', '1', Cvar.FLAG.ARCHIVE, 'Vanilla Quake drift pitch when moving forward.');
+    viewCvars.register();
 
     // a new level starts the weapon from where the view is
     eventBus.subscribe('server.spawning', () => {

@@ -1,5 +1,3 @@
-import Cvar from '../common/Cvar.ts';
-
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import VID from './VID.ts';
@@ -341,35 +339,7 @@ class R {
    * Creates the console variables, then the resources and subsystems in the order they depend on each other.
    */
   static async Init() {
-    rendererCvars.waterwarp = new Cvar('r_waterwarp', '1');
-    rendererCvars.fullbright = new Cvar('r_fullbright', '0', Cvar.FLAG.CHEAT);
-    rendererCvars.drawentities = new Cvar('r_drawentities', '1', Cvar.FLAG.CHEAT);
-    rendererCvars.drawviewmodel = new Cvar('r_drawviewmodel', '1');
-    rendererCvars.drawturbulents = new Cvar('r_drawturbulents', '1', Cvar.FLAG.CHEAT);
-    rendererCvars.novis = new Cvar('r_novis', '0', Cvar.FLAG.CHEAT);
-    rendererCvars.speeds = new Cvar('r_speeds', '0');
-    rendererCvars.polyblend = new Cvar('gl_polyblend', '1');
-    rendererCvars.cshiftpercent = new Cvar('gl_cshiftpercent', '100');
-    rendererCvars.gamma = new Cvar('gamma', '0.8', Cvar.FLAG.ARCHIVE | Cvar.FLAG.CHEAT); // CR: 1 is too dark
-    rendererCvars.flashblend = new Cvar('gl_flashblend', '0');
-    rendererCvars.nocolors = new Cvar('gl_nocolors', '0');
-    rendererCvars.bloom = new Cvar('r_bloom', '0', Cvar.FLAG.NONE, 'Screen-space bloom post-process, 0 = off, 1 = on.');
-    rendererCvars.bloomStrength = new Cvar('r_bloom_strength', '0.8', Cvar.FLAG.NONE, 'Additive bloom intensity.');
-    rendererCvars.bloomSkyStrength = new Cvar('r_bloom_sky_strength', '0.33', Cvar.FLAG.NONE, 'Sky contribution added to the bloom emissive target. Lower than 1 keeps the sky glow subtle.');
-    rendererCvars.bloomDlightStrength = new Cvar('r_bloom_dlight_strength', '0.33', Cvar.FLAG.NONE, 'Dynamic-light surface contribution added to the bloom emissive target. Set to 0 to disable.');
-    rendererCvars.bloomSpecularStrength = new Cvar('r_bloom_specular_strength', '0.33', Cvar.FLAG.NONE, 'Specular reflection contribution added to the bloom emissive target. Set to 0 to disable.');
-    rendererCvars.bloomDownsample = new Cvar('r_bloom_downsample', '4', Cvar.FLAG.NONE, 'Bloom buffer downsample divisor, clamped to 1-8.');
-    rendererCvars.bloomDebug = new Cvar('r_bloom_debug', '0', Cvar.FLAG.NONE, 'Bloom debug preview: 0 = off, 1 = emissive, 2 = extract, 3 = blur, 4 = all.');
-    rendererCvars.interpolation = new Cvar('r_interpolation', '1', Cvar.FLAG.NONE, 'Interpolation of textures and animation groups, 0 - off, 1 - on');
-    // fog controls (TODO: make that a cheat, but resetting cvar to default is done after Fog.NewMap, so need to rethink the order of operations)
-    rendererCvars.fog_color = new Cvar('r_fog_color', '128 128 128', Cvar.FLAG.NONE, 'Fog color: R G B (0-255)');
-    rendererCvars.fog_start = new Cvar('r_fog_start', '128', Cvar.FLAG.NONE, 'Fog start distance (linear)');
-    rendererCvars.fog_end = new Cvar('r_fog_end', '4096', Cvar.FLAG.NONE, 'Fog end distance (linear)');
-    rendererCvars.fog_density = new Cvar('r_fog_density', '0.01', Cvar.FLAG.NONE, 'Fog density (for exp/exp2)');
-    rendererCvars.fog_mode = new Cvar('r_fog_mode', '-1', Cvar.FLAG.NONE, 'Fog mode: 0=linear, 1=exp, 2=exp2, -1=disable');
-
-    // fog controls for underwater fog effect (post-process)
-    rendererCvars.underwater_fog_density = new Cvar('r_underwater_fog_density', '0.01', Cvar.FLAG.CHEAT, 'Fog density exponent for the underwater fog effect.');
+    rendererCvars.register();
 
     DefaultTextures.Init();
     Lightmaps.Init();

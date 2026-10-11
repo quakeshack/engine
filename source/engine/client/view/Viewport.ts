@@ -29,11 +29,9 @@ export default class Viewport {
   static #lastViewsize = 0;
 
   /**
-   * Creates the `fov` and `viewsize` variables and registers `sizeup` and `sizedown`.
+   * Registers `sizeup` and `sizedown`.
    */
   static Init(): void {
-    viewCvars.fov = new Cvar('fov', '90', Cvar.FLAG.CHEAT);
-    viewCvars.viewsize = new Cvar('viewsize', '120', Cvar.FLAG.ARCHIVE);
     Cmd.AddCommand('sizeup', Viewport.SizeUp_f);
     Cmd.AddCommand('sizedown', Viewport.SizeDown_f);
   }
