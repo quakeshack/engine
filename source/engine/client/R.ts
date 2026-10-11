@@ -1,10 +1,9 @@
-import Vector from '../../shared/Vector.ts';
 import Cvar from '../common/Cvar.ts';
 
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import VID from './VID.ts';
-import GL, { GLTexture } from './GL.ts';
+import GL from './GL.ts';
 import { content } from '../../shared/Defs.ts';
 import { modelRendererRegistry } from './renderer/models/ModelRendererRegistry.ts';
 import type { ModelRenderer } from './renderer/models/ModelRenderer.ts';
@@ -12,9 +11,8 @@ import { BrushModelRenderer } from './renderer/models/BrushModelRenderer.ts';
 import { AliasModelRenderer } from './renderer/models/AliasModelRenderer.ts';
 import { SpriteModelRenderer } from './renderer/models/SpriteModelRenderer.ts';
 import { MeshModelRenderer } from './renderer/models/MeshModelRenderer.ts';
-import { BrushModel, type FogVolumeInfo, Node, type WorldTurbulentChainInfo } from '../common/model/BSP.ts';
+import { BrushModel } from '../common/model/BSP.ts';
 import { MeshModel } from '../common/model/MeshModel.ts';
-import { SpriteModel } from '../common/model/SpriteModel.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
 import BloomEffect from './renderer/postprocess/BloomEffect.ts';
 import ColorGradeEffect from './renderer/postprocess/ColorGradeEffect.ts';
@@ -22,12 +20,13 @@ import BlurEffect from './renderer/postprocess/BlurEffect.ts';
 import WarpEffect from './renderer/postprocess/WarpEffect.ts';
 import UnderwaterFogEffect from './renderer/postprocess/UnderwaterFogEffect.ts';
 import ShadowMap from './renderer/lighting/ShadowMap.ts';
-import { ClientEdict } from './ClientEntities.ts';
+import type { ClientEdict } from './ClientEntities.ts';
 import DefaultTextures from './renderer/resources/DefaultTextures.ts';
 import ShaderPrograms from './renderer/programs/ShaderPrograms.ts';
 import Fog from './renderer/scene/Fog.ts';
 import RenderStats from './renderer/scene/RenderStats.ts';
 import SkyBox from './renderer/scene/SkyBox.ts';
+import TransparentPass from './renderer/scene/TransparentPass.ts';
 import LightStyles from './renderer/lighting/LightStyles.ts';
 import Lightmaps from './renderer/lighting/Lightmaps.ts';
 import DynamicLights from './renderer/lighting/DynamicLights.ts';
@@ -35,8 +34,8 @@ import rendererCvars from './renderer/resources/RendererCvars.ts';
 import Camera from './renderer/scene/Camera.ts';
 import FrameUniforms from './renderer/scene/FrameUniforms.ts';
 import Visibility from './renderer/scene/Visibility.ts';
-import Particles, { type Particle } from './renderer/effects/Particles.ts';
-import Decals, { type Decal } from './renderer/effects/Decals.ts';
+import Particles from './renderer/effects/Particles.ts';
+import Decals from './renderer/effects/Decals.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import SCR from './SCR.ts';
 import V from './V.ts';
@@ -52,69 +51,15 @@ eventBus.subscribe('gl.shutdown', () => {
   gl = null!;
 });
 
-interface SortKindDistance {
-  readonly dist: number;
-  readonly kind: TransparentKind;
-}
-
-const enum TransparentKind {
-  WorldLeaf = 0,
-  Turbulent = 1,
-  FogVolume = 2,
-  Entity = 3,
-  Sprite = 4,
-  Decal = 5,
-  Particle = 6,
-}
-
-interface TransparentItem extends SortKindDistance {
-  readonly data: Node | WorldTurbulentChainInfo | FogVolumeInfo | ClientEdict | Particle | Decal;
-}
-
-const FOG_TURBULENT_SORT_EPSILON = 0.0001;
-
 /**
- * Resolve deterministic tie-break priority for transparent item kinds.
- * @returns Higher values are sorted earlier on near-equal depth.
+ * The renderer of the page: creates and tears down the renderer's subsystems and runs the frame's passes in
+ * order. What a pass draws, and the state it needs, lives in the classes under `renderer/`.
  */
-function getTransparentKindPriority(kind: TransparentKind): number {
-  switch (kind) {
-  case TransparentKind.FogVolume:
-    return 7;
-  case TransparentKind.Turbulent:
-    return 6;
-  case TransparentKind.WorldLeaf:
-    return 5;
-  case TransparentKind.Entity:
-    return 4;
-  case TransparentKind.Sprite:
-    return 3;
-  case TransparentKind.Decal:
-    return 2;
-  case TransparentKind.Particle:
-    return 1;
-  default:
-    return 0;
-  }
-}
-
-/**
- * Compare unified transparent items for a single back-to-front pass.
- * Distances sort far-to-near. Near ties use deterministic kind priority,
- * with fog volumes before turbulent surfaces so liquid can blend over fog.
- * @returns Sort comparator result.
- */
-export function compareTransparentItems(itemA: SortKindDistance, itemB: SortKindDistance): number {
-  const distDelta = itemB.dist - itemA.dist;
-
-  if (Math.abs(distDelta) > FOG_TURBULENT_SORT_EPSILON) {
-    return distDelta;
-  }
-
-  return getTransparentKindPriority(itemB.kind) - getTransparentKindPriority(itemA.kind);
-}
-
 class R {
+  /**
+   * Draws the opaque entities, batched by the model renderer that handles their model. Blended entities are
+   * left to `TransparentPass`.
+   */
   static DrawEntitiesOnList() {
     if (rendererCvars.drawentities.value === 0) {
       return;
@@ -155,315 +100,11 @@ class R {
       renderer.cleanupRenderState(0);
     }
     GL.StreamFlush();
-  };
-
-  /**
-   * Compute transparent sort distance for an entity.
-   * We currently sort entities by origin distance for consistency with prior
-   * behavior and because model bounds are not uniformly available here.
-   * @returns Euclidean distance from view origin to entity origin.
-   */
-  private static _getEntityTransparentDistance(entity: ClientEdict, vieworg: Vector): number {
-    const dx = entity.origin[0] - vieworg[0];
-    const dy = entity.origin[1] - vieworg[1];
-    const dz = entity.origin[2] - vieworg[2];
-
-    return Math.hypot(dx, dy, dz);
   }
 
   /**
-   * Render all blended geometry in a single back-to-front sorted pass.
+   * Draws the weapon model in front of the world, in a depth range of its own and with its own field of view.
    */
-  static _renderTransparentsUnified(worldEntity: ClientEdict): void {
-    const worldmodel = worldEntity.model instanceof BrushModel ? worldEntity.model : null;
-    const vieworg = Camera.refdef.vieworg;
-    const items: TransparentItem[] = [];
-
-    const brushRenderer = worldmodel !== null
-      ? modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer
-      : null;
-    if (worldmodel !== null) {
-      console.assert(brushRenderer !== null, 'brush renderer required');
-
-      const worldLeaves = brushRenderer!.getWorldTransparentLeaves(worldmodel, vieworg);
-      for (let i = 0; i < worldLeaves.length; i++) {
-        items.push({ dist: worldLeaves[i].dist, kind: TransparentKind.WorldLeaf, data: worldLeaves[i].leaf });
-      }
-
-      if (rendererCvars.drawturbulents.value !== 0) {
-        const turbulentChains = brushRenderer!.getWorldTurbulentChains(worldmodel, vieworg);
-        for (let i = 0; i < turbulentChains.length; i++) {
-          items.push({ dist: turbulentChains[i].dist, kind: TransparentKind.Turbulent, data: turbulentChains[i].chain });
-        }
-      }
-
-      if (PostProcess.active && worldmodel.fogVolumes && worldmodel.fogVolumes.length > 0) {
-        const fogItems = brushRenderer!.getFogVolumeItems(worldmodel, vieworg);
-        for (let i = 0; i < fogItems.length; i++) {
-          items.push({ dist: fogItems[i].dist, kind: TransparentKind.FogVolume, data: fogItems[i].fogVolume });
-        }
-      }
-    }
-
-    Decals.PruneExpired();
-    for (let i = 0; i < Decals.list.length; i++) {
-      const decal = Decals.list[i];
-      const dx = decal.origin[0] - vieworg[0];
-      const dy = decal.origin[1] - vieworg[1];
-      const dz = decal.origin[2] - vieworg[2];
-      items.push({
-        dist: Math.hypot(dx, dy, dz),
-        kind: TransparentKind.Decal,
-        data: decal,
-      });
-    }
-
-    for (let i = 0; i < Particles.numparticles; i++) {
-      const particle = Particles.particles[i];
-      if (particle.die < clientRuntimeState.time) {
-        continue;
-      }
-
-      const dx = particle.org[0] - vieworg[0];
-      const dy = particle.org[1] - vieworg[1];
-      const dz = particle.org[2] - vieworg[2];
-      items.push({
-        dist: Math.hypot(dx, dy, dz),
-        kind: TransparentKind.Particle,
-        data: particle,
-      });
-    }
-
-    if (rendererCvars.drawentities.value !== 0) {
-      const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
-
-      for (const entity of clientRuntimeState.clientEntities.getVisibleEntities()) {
-        if (entity.model === null || entity.alpha === 0.0) {
-          continue;
-        }
-
-        const renderer = modelRendererRegistry.getRendererForModel(entity.model);
-        console.assert(renderer !== null, `renderer required for ${entity.model.constructor.name}`);
-
-        if (renderer === spriteRenderer) {
-          items.push({
-            dist: R._getEntityTransparentDistance(entity, vieworg),
-            kind: TransparentKind.Sprite,
-            data: entity,
-          });
-          continue;
-        }
-
-        if (!renderer!.rendersTransparentPass(entity.model, entity)) {
-          continue;
-        }
-
-        items.push({
-          dist: R._getEntityTransparentDistance(entity, vieworg),
-          kind: TransparentKind.Entity,
-          data: entity,
-        });
-      }
-    }
-
-    if (items.length === 0) {
-      return;
-    }
-
-    items.sort(compareTransparentItems);
-
-    gl.depthMask(false);
-
-    const spriteRenderer = modelRendererRegistry.getRendererForModelClass(SpriteModel);
-    let currentDecalTexture: GLTexture | null = null;
-    const particleFrame = Particles.BeginFrame();
-    let activeKind: TransparentKind | -1 = -1;
-
-    const endActivePass = (): void => {
-      switch (activeKind) {
-      case TransparentKind.WorldLeaf:
-        brushRenderer?.endWorldTransparentPass();
-        GL.StreamFlush();
-        break;
-      case TransparentKind.Turbulent:
-        brushRenderer?.endWorldTurbulentPass();
-        break;
-      case TransparentKind.FogVolume:
-        brushRenderer?.endFogVolumePass();
-        break;
-      case TransparentKind.Entity:
-        GL.StreamFlush();
-        break;
-      case TransparentKind.Sprite:
-        if (spriteRenderer !== null) {
-          spriteRenderer.cleanupRenderState(1);
-        }
-        GL.StreamFlush();
-        break;
-      case TransparentKind.Decal:
-        GL.StreamFlush();
-        break;
-      case TransparentKind.Particle:
-        GL.StreamFlush();
-        break;
-      default:
-        break;
-      }
-
-      activeKind = -1;
-    };
-
-    const beginKindPass = (kind: TransparentKind): boolean => {
-      gl.enable(gl.BLEND);
-      gl.depthMask(false);
-
-      switch (kind) {
-      case TransparentKind.WorldLeaf:
-        if (brushRenderer === null || worldmodel === null) {
-          return false;
-        }
-        gl.enable(gl.CULL_FACE);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        brushRenderer.beginWorldTransparentPass(worldmodel);
-        return true;
-      case TransparentKind.Turbulent:
-        if (brushRenderer === null || worldmodel === null) {
-          return false;
-        }
-        gl.enable(gl.CULL_FACE);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        brushRenderer.beginWorldTurbulentPass(worldmodel);
-        return true;
-      case TransparentKind.FogVolume:
-        if (brushRenderer === null || worldmodel === null) {
-          return false;
-        }
-        if (!brushRenderer.beginFogVolumePass(worldmodel)) {
-          gl.enable(gl.CULL_FACE);
-          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-          return false;
-        }
-        return true;
-      case TransparentKind.Entity:
-        gl.enable(gl.CULL_FACE);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        return true;
-      case TransparentKind.Sprite:
-        gl.enable(gl.CULL_FACE);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        if (spriteRenderer !== null) {
-          spriteRenderer.setupRenderState(1);
-          return true;
-        }
-        return false;
-      case TransparentKind.Decal: {
-        gl.disable(gl.CULL_FACE);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        const program = GL.UseProgram('decal')!;
-        console.assert(program !== null, 'decal program required');
-        gl.uniform1f(program.uAlpha!, 1.0);
-        currentDecalTexture = null;
-        return true;
-      }
-      case TransparentKind.Particle:
-        gl.disable(gl.CULL_FACE);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        GL.UseProgram('particle');
-        return true;
-      default:
-        return false;
-      }
-    };
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-
-      if (item.kind !== activeKind) {
-        endActivePass();
-        if (!beginKindPass(item.kind)) {
-          continue;
-        }
-        activeKind = item.kind;
-      }
-
-      switch (item.kind) {
-      case TransparentKind.WorldLeaf:
-        if (brushRenderer === null || worldmodel === null) {
-          break;
-        }
-        brushRenderer.renderWorldTransparentLeaf(worldmodel, item.data as Node);
-        break;
-      case TransparentKind.Turbulent:
-        if (brushRenderer === null || worldmodel === null) {
-          break;
-        }
-        brushRenderer.renderWorldTurbulentChain(worldmodel, item.data as WorldTurbulentChainInfo);
-        break;
-      case TransparentKind.FogVolume:
-        if (brushRenderer === null || worldmodel === null) {
-          break;
-        }
-        brushRenderer.renderSingleFogVolume(worldmodel, item.data as FogVolumeInfo);
-        break;
-      case TransparentKind.Entity: {
-        const entity = item.data as ClientEdict;
-        if (entity.model === null) {
-          break;
-        }
-
-        const renderer = modelRendererRegistry.getRendererForModel(entity.model);
-        console.assert(renderer !== null, `renderer required for ${entity.model.constructor.name}`);
-
-        renderer!.setupRenderState(2);
-        renderer!.render(entity.model, entity, 2);
-        renderer!.cleanupRenderState(2);
-        GL.StreamFlush();
-        break;
-      }
-      case TransparentKind.Sprite: {
-        const entity = item.data as ClientEdict;
-        if (entity.model === null || spriteRenderer === null) {
-          break;
-        }
-
-        spriteRenderer.render(entity.model, entity, 1);
-        break;
-      }
-      case TransparentKind.Decal: {
-        const decal = item.data as Decal;
-        const program = GL.UseProgram('decal')!;
-        console.assert(program !== null, 'decal program required');
-
-        if (decal.texture !== currentDecalTexture) {
-          GL.StreamFlush();
-          decal.texture.bind(program.tTexture!);
-          currentDecalTexture = decal.texture;
-        }
-
-        Decals.EmitQuad(decal);
-        break;
-      }
-      case TransparentKind.Particle: {
-        const particle = item.data as Particle;
-        if (particle.die < clientRuntimeState.time) {
-          break;
-        }
-
-        Particles.RenderAndAdvance(particle, particleFrame);
-
-        break;
-      }
-      default:
-        break;
-      }
-    }
-
-    endActivePass();
-    gl.enable(gl.CULL_FACE);
-    gl.disable(gl.BLEND);
-    gl.depthMask(true);
-  };
-
   static DrawViewModel() {
     if (rendererCvars.drawviewmodel.value === 0) {
       return;
@@ -515,8 +156,11 @@ class R {
     gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
 
     gl.depthRange(0.0, 1.0);
-  };
+  }
 
+  /**
+   * Draws the full-screen color shift (damage, pickups, underwater tint) over the view.
+   */
   static PolyBlend() {
     if (rendererCvars.polyblend.value === 0) {
       return;
@@ -527,8 +171,12 @@ class R {
     GL.UseProgram('fill', true);
     const vrect = Camera.refdef.vrect;
     GL.StreamDrawColoredQuad(vrect.x, vrect.y, vrect.width, vrect.height, V.blend[0], V.blend[1], V.blend[2], V.blend[3] * 255.0);
-  };
+  }
 
+  /**
+   * Binds the target of the frame (the capture FBO when an effect needs the scene, the screen otherwise) and
+   * uploads the matrices and the per-frame uniforms of every program.
+   */
   static SetupGL() {
     const vrect = Camera.refdef.vrect;
     const pixelRatio = VID.pixelRatio;
@@ -548,7 +196,7 @@ class R {
     Camera.UpdateMatrices();
     FrameUniforms.Upload();
     gl.enable(gl.DEPTH_TEST);
-  };
+  }
 
   /**
    * Sets up what the frame's passes read: lightstyles, the effects that depend on where the camera is, the fog
@@ -593,8 +241,12 @@ class R {
     // volumes, or underwater fog are active so shaders can sample scene depth.
     PostProcess.requestSceneCapture(rendererCvars.drawturbulents.value !== 0 || worldmodel.fogVolumes.length > 0
       || (waterfogEnabled && isUnderwater && rendererCvars.drawturbulents.value !== 0));
-  };
+  }
 
+  /**
+   * Draws the world, the entities and everything blended, in the order the passes need: opaque world surfaces,
+   * opaque entities, coronas, then the single sorted pass of everything transparent.
+   */
   static RenderWorld() {
     // Render world and entities using the renderer registry
     const worldEntity = clientRuntimeState.clientEntities.getEntity(0);
@@ -613,16 +265,19 @@ class R {
 
     if (worldEntity && worldEntity.model) {
       gl.enable(gl.CULL_FACE);
-      R._renderTransparentsUnified(worldEntity);
+      TransparentPass.Render(worldEntity);
       gl.disable(gl.CULL_FACE);
     } else {
       Decals.Draw();
       Particles.Draw();
     }
-  };
+  }
 
-  static RenderScene() {
-    Camera.SetFrustum();
+  /**
+   * Renders the depth maps the scene is lit with: the top-down directional shadow and the cube maps of the
+   * strongest point lights.
+   */
+  static #renderShadowMaps(): void {
     console.assert(ShadowMap.enabled !== null, 'shadow toggle required');
 
     // Top-down shadow pass — a single fixed-direction directional shadow,
@@ -636,33 +291,55 @@ class R {
     if (ShadowMap.selectPointLights(Camera.refdef.vieworg) > 0) {
       ShadowMap.renderPointLightShadow();
     }
+  }
+
+  /**
+   * Turbulent boundary depth pre-pass — captures turbulent surface depths so the underwater fog effect knows
+   * where the water boundary is per pixel.
+   */
+  static #renderTurbulentBoundaryDepth(): void {
+    if (!PostProcess.getEffect('underwater-fog')?.active || !PostProcess.active) {
+      return;
+    }
+
+    const worldEntity = clientRuntimeState.clientEntities.getEntity(0);
+    const worldmodel = worldEntity?.model instanceof BrushModel ? worldEntity.model : null;
+    const brushRenderer = worldmodel !== null
+      ? modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer | null
+      : null;
+
+    if (brushRenderer === null || worldmodel === null) {
+      return;
+    }
+
+    PostProcess.beginTurbulentBoundaryPass();
+    brushRenderer.renderWorldTurbulentsBoundaryDepth(worldmodel);
+    PostProcess.endTurbulentBoundaryPass();
+  }
+
+  /**
+   * Renders the 3D scene of the frame into the current target, in pass order: shadow maps, the frame's GL and
+   * uniform setup, visibility, the turbulent boundary depth, sky, view model, then world and entities.
+   */
+  static RenderScene() {
+    Camera.SetFrustum();
+    R.#renderShadowMaps();
 
     // The point-light state that FrameUniforms uploads is only final once selectPointLights has run, so the
     // uniforms are written here and not in PreRenderScene.
     R.SetupGL();
     Visibility.MarkLeafs();
-
-    // Turbulent boundary depth pre-pass — capture turbulent surface depths so the
-    // underwater fog effect knows where the water boundary is per pixel.
-    if (PostProcess.getEffect('underwater-fog')?.active && PostProcess.active) {
-      const worldEntity = clientRuntimeState.clientEntities.getEntity(0);
-      const worldmodel = worldEntity?.model instanceof BrushModel ? worldEntity.model : null;
-      const brushRenderer = worldmodel !== null
-        ? modelRendererRegistry.getRendererForModelClass(BrushModel) as BrushModelRenderer | null
-        : null;
-      if (brushRenderer !== null && worldmodel !== null) {
-        PostProcess.beginTurbulentBoundaryPass();
-        brushRenderer.renderWorldTurbulentsBoundaryDepth(worldmodel);
-        PostProcess.endTurbulentBoundaryPass();
-      }
-    }
+    R.#renderTurbulentBoundaryDepth();
 
     gl.enable(gl.CULL_FACE);
     SkyBox.Draw();
     R.DrawViewModel();
     R.RenderWorld();
-  };
+  }
 
+  /**
+   * Renders one frame of the 3D view, with the `r_speeds` bookkeeping around it.
+   */
   static RenderView() {
     let time1 = 0;
     if (rendererCvars.speeds.value !== 0) {
@@ -675,8 +352,11 @@ class R {
     if (rendererCvars.speeds.value !== 0) {
       RenderStats.Summarize(time1);
     }
-  };
+  }
 
+  /**
+   * Creates the console variables, then the resources and subsystems in the order they depend on each other.
+   */
   static async Init() {
     rendererCvars.waterwarp = new Cvar('r_waterwarp', '1');
     rendererCvars.fullbright = new Cvar('r_fullbright', '0', Cvar.FLAG.CHEAT);
@@ -734,8 +414,11 @@ class R {
     DynamicLights.Init();
 
     R.ClearAll();
-  };
+  }
 
+  /**
+   * Prepares the renderer for the map that was just loaded.
+   */
   static NewMap() {
     R.PrepareModels();
     Lightmaps.ResetDynamic();
@@ -745,8 +428,11 @@ class R {
 
     Fog.NewMap();
     SkyBox.Make();
-  };
+  }
 
+  /**
+   * Releases what belongs to the current map, on a disconnect and before the next map.
+   */
   static ClearAll() {
     LightStyles.Clear();
 
@@ -757,7 +443,7 @@ class R {
     Particles.Clear();
     Decals.Clear();
     SkyBox.Clear();
-  };
+  }
 
   /**
    * Prepares every model of the map for drawing: gives faces their place in the lightmap atlas, lets the model
