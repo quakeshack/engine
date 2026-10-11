@@ -8,7 +8,6 @@ import GL, { ATTRIB_LOCATIONS } from '../../GL.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import { clientCollision } from '../../ClientPhysics.ts';
 import type { ClientDlight } from '../../ClientEntities.ts';
-import QuakeColorShifts from '../../view/QuakeColorShifts.ts';
 import PostProcess from '../postprocess/PostProcess.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import LightSampler from './LightSampler.ts';
@@ -36,6 +35,9 @@ interface DynamicLightSurfaceImpact {
  * (`Lightmaps`) and draws the coronas of `gl_flashblend`.
  */
 export class DynamicLights {
+  /** The post-process channel of the tint of a corona that the eye is inside of, which comes after the game's. */
+  static readonly CORONA_CHANNEL = 'engine.corona';
+
   /**
    * Counts frames in which dynamic lights were marked; a face whose `dlightframe` is the current count (or the
    * one after it) has been touched in the last two frames and needs its dynamic lightmap added or cleared.
@@ -93,7 +95,11 @@ export class DynamicLights {
         // the eye is inside the glare: a frame of tint over the view. Only while this frame is captured, the
         // scene is not there to tint otherwise.
         if (PostProcess.active) {
-          QuakeColorShifts.Corona(l.radius * 0.0003);
+          PostProcess.pulse({
+            id: 'color-shift',
+            settings: { color: [1.0, 0.5, 0.0], alpha: l.radius * 0.0003 },
+            timing: {},
+          }, { channel: DynamicLights.CORONA_CHANNEL });
         }
         continue;
       }

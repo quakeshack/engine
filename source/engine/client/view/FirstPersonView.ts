@@ -7,7 +7,6 @@ import Chase from '../Chase.ts';
 import { clientRuntimeState } from '../ClientState.ts';
 import Camera from '../renderer/scene/Camera.ts';
 import PitchDrift from './PitchDrift.ts';
-import QuakeColorShifts from './QuakeColorShifts.ts';
 import ViewmodelMotion from './ViewmodelMotion.ts';
 import viewCvars from './ViewCvars.ts';
 
@@ -71,8 +70,8 @@ export default class FirstPersonView {
   }
 
   /**
-   * A hit the server told this client about: lets the game know, starts the face animation, tints the view and
-   * kicks it away from where the damage came from.
+   * A hit the server told this client about: lets the game know (`client.damage`, which is where a game tints the
+   * view), starts the face animation and kicks the view away from where the damage came from.
    * @param armor How much damage the armor took.
    * @param blood How much damage reached the player.
    * @param origin Where the damage came from.
@@ -90,8 +89,6 @@ export default class FirstPersonView {
       count = 10.0;
     }
     clientRuntimeState.faceanimtime = clientRuntimeState.time + 0.2;
-
-    QuakeColorShifts.Damage(armor, blood, count);
 
     const { forward, right } = ent.angles.angleVectors();
     FirstPersonView.dmg_roll = count * (from[0] * right[0] + from[1] * right[1] + from[2] * right[2]) * viewCvars.kickroll.value;

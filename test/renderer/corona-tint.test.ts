@@ -11,7 +11,6 @@ import DynamicLights from '../../source/engine/client/renderer/lighting/DynamicL
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
-import QuakeColorShifts from '../../source/engine/client/view/QuakeColorShifts.ts';
 import { assertNear } from '../support/assertions.ts';
 import { patchMembers } from '../support/clientState.ts';
 
@@ -60,7 +59,11 @@ void describe('DynamicLights.RenderCoronas', () => {
     mock.method(GL, 'UseProgram', () => ({ uOrigin: 1, uRadius: 2 }) as never);
     mock.method(GL, 'BindVAO', () => {});
     mock.method(GL, 'UnbindVAO', () => {});
-    mock.method(QuakeColorShifts, 'Corona', (alpha: number) => { tints.push(alpha); });
+    mock.method(PostProcess, 'pulse', (descriptor: { settings: { alpha: number; color: number[] } }, options: { channel: string }) => {
+      assert.equal(options.channel, 'engine.corona');
+      assert.deepEqual(descriptor.settings.color, [1, 0.5, 0]);
+      tints.push(descriptor.settings.alpha);
+    });
   });
 
   afterEach(() => {

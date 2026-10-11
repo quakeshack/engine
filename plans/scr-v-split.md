@@ -1,7 +1,7 @@
 # Dissolve `SCR.ts` and `V.ts`
 
 Follow-up to `plans/r-split.md`. Status: **plan drafted 2026-10-10, developer decisions 1 to 8 recorded (4 to 8 on 2026-10-11); G6 is a
-direction, not a closed decision; Phases 0 to 4 are done (2026-10-11; Phase 4 not committed), Phases 5 and 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
+direction, not a closed decision; Phases 0 to 4 are done and committed (2026-10-11), Phase 5 is in progress (G4 done), Phase 6 is not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
 
 ## Context
 
@@ -535,6 +535,38 @@ and the `SCR` call are gone.
   spawn); no console error beyond the usual. Not covered: a center print on screen (the unit tests cover wrapping,
   timing and the typewriter), the net and turtle indicators in the browser, and `screenshot`/`screenshot_clean`
   downloads (unit tests only).
+
+### Phase 5: what shipped (2026-10-11)
+
+Order, as agreed: G4, G5, G2 and G3, then G6. One commit per item in each repo that it touches.
+
+#### G4, color shifts are the game's
+
+- **Engine.** `QuakeColorShifts`, `Def.contentShift`, `clientRuntimeState.cshifts`, `ClientEngineAPI.ContentShift` and the
+  commands `bf` and `v_cshift` are gone, and `ScreenFrame.Prepare` no longer sets anything (it still derives the
+  view leaf). What stays engine-side is the corona, which `DynamicLights` now pulses itself on the channel
+  `engine.corona`. `FirstPersonView.ApplyDamage` keeps the event, the face animation and the kick.
+- **New game-facing member:** `engine.CL.viewContents`, the contents of the leaf the view was in when the last
+  frame was drawn (open question 4: the previous frame's leaf, one frame behind, as the default said).
+- **id1** (`client/ColorShifts.ts`): the liquid tint (Quake's water, slime and lava, kept when the eye is in a
+  solid, taken off in clear air), a hit (3 alpha units per point of half the damage, at least 10, at most 150 in
+  all, falling at 150 per second, red, pink for armor, between for some), the pickup and secret flashes (falling at
+  100) and the powerup tint, each on a channel of its own, created in Quake's mixing order. The damage flash adds
+  to what is left of the last one, which is why the game tracks it. `Q1HUD` sets them from `startFrame()`, so they
+  also run with `nohud`, and takes them off on `client.disconnected`. The game's own `contentShift` enum is gone.
+  **hellwave** inherits all of it through `Q1HUD` and only changes the one flash it already used.
+- **One visible change:** a game that tinted for the powerup from its HUD *and* had the engine tint from the items
+  was tinted twice (finding 6). Only the game's tint is left.
+- **Tests.** Engine: the Phase 2 default-set tests are gone with the code; `first-person-view-damage.test.ts` keeps
+  the kick, the event and the face animation; `corona-tint` follows. Games: `color-shifts.test.mjs` (the channels
+  and their order, each tint with its numbers, the accumulation and its cap, the decay, `reset`, and through the
+  HUD: the damage event, pickups, secrets, the liquid from `viewContents`, the quad and its removal, disconnect);
+  the fixtures record the post-process calls instead of `ContentShift`.
+- **Verified:** `npm test` 2229 pass, `npm run typecheck` clean, `eslint`; browser, production build against the id1
+  server: the contents hooked to lava, slime and water give 255 80 0 at 150, 0 25 5 at 150 and 130 80 50 at 128,
+  nothing in clear air; a 40 damage hit gives 255 0 0 at 60 falling 34, 12, 0 (150 per second). Not covered: the
+  liquid tint on a real liquid leaf (the start hall has none and `map e1m1` does not load in this headless setup, for
+  a reason I did not chase), and the quad by eye.
 
 ## Testing
 

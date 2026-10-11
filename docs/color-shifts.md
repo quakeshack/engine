@@ -69,26 +69,28 @@ rest. A flash of alpha `a` (0 to 1) that falls at `r` units per second has a `fa
 Order between a game's own tints is the order of their channels (the order they were first used), and within a
 channel pulses can sit `below` or `above` the stack.
 
-## What the engine tints with when a game does not
+## What the engine tints with
 
-Until a game sets its own, the engine applies Quake's set, in Quake's order, as entries on the channel
-`engine.color-shifts`:
+Nothing, but a dynamic light that the eye is inside of (with `gl_flashblend` on): its glare is an orange tint
+for one frame, on the channel `engine.corona`, which comes after the channels of the game. Everything else is the
+game's: the engine does not know the colors of the liquids, of damage or of Quake's powerups.
 
-| Slot | What | Color and alpha | Decay (alpha units per second) |
-| --- | --- | --- | --- |
-| `contents` | the liquid the eye is in | `v_cshift` for clear air (alpha 0), water 130 80 50 at 128, slime 0 25 5 at 150, lava 255 80 0 at 150 | none, replaced when the contents change |
-| `damage` | damage from `svc_damage` | red for flesh, pinkish for armor; adds 3 per point of half the damage (at least 10), at most 150 | 150 |
-| `bonus` | the `bf` command | 215 186 69 at 50 | 100 |
-| `powerup` | the items the player has | quad blue at 30, suit green at 20, invisibility grey at 100, invulnerability yellow at 30 | none, set from the items every frame |
-| `user1` to `user4` | `ClientEngineAPI.ContentShift` | what the game sets | 100 |
+A game gets what it needs to tint the view from:
 
-A dynamic light whose glare the eye is inside of (with `gl_flashblend` on) tints the frame orange for one frame, on
-the channel `engine.corona`, after the ones above.
+| What | Where |
+| --- | --- |
+| The liquid the eye is in | `engine.CL.viewContents` (`content.CONTENT_WATER`, `CONTENT_SLIME`, `CONTENT_LAVA`, ...), one frame behind the view |
+| A hit the player took | the `client.damage` event, `{ damageReceived, armorLost, attackOrigin }` |
+| What the player carries | the game's own client data, which is the game's to read |
+| Time | `engine.CL.frametime` |
 
-`ClientEngineAPI.ContentShift(slot, color, alpha)` sets one of the four user slots. It is deprecated: use
-`PostProcess.pulse` or `setStack`, where the timing is the game's. The engine's set is deleted together with it once
-the games set their own tints (plans/scr-v-split.md, phase 5). Until then a game that sets its own tint *and* leaves
-the engine's alone is tinted by both, which is what a game that mirrors the powerup from its HUD sees today.
+`startFrame()` of the client game runs every frame, also with `nohud`, and is the place to set tints.
+
+The id1 game keeps Quake's set in `source/game/id1/client/ColorShifts.ts`, and hellwave gets it through the HUD it
+inherits: the liquid tints of Quake (water 130 80 50 at 128, slime 0 25 5 at 150, lava 255 80 0 at 150, in 0 to 255
+units), a hit that adds 3 alpha units per point of half the damage (at least 10, at most 150 in all) and falls at
+150 per second, red for flesh and pinker with armor, and the pickup and secret flashes that fall at 100. Each is a
+channel of its own, created in Quake's order, so they mix the way Quake mixed its slots.
 
 ## Adding another effect that mixes its entries
 

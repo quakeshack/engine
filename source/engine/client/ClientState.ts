@@ -202,7 +202,6 @@ class ClientRuntimeState {
   stats = createLegacyStatsArray();
   items = 0;
   item_gettime = new Array(32).fill(0.0);
-  cshifts = Array.from({ length: 8 }, () => [0.0, 0.0, 0.0, 0.0]);
   faceanimtime = 0.0;
   viewangles = new Vector();
   punchangle = new Vector();
@@ -308,9 +307,6 @@ class ClientRuntimeState {
     this.stats = createLegacyStatsArray();
     this.items = 0;
     this.item_gettime.fill(0.0);
-    for (const cshift of this.cshifts) {
-      cshift.fill(0.0);
-    }
     this.faceanimtime = 0.0;
     this.viewangles = new Vector();
     this.punchangle = new Vector();

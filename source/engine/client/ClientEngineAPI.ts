@@ -9,7 +9,7 @@ import { type GameTrace, type InternalTraceLike, internalTraceToGameTrace } from
 import { CommonEngineAPI } from '../common/CommonEngineAPI.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import Vector from '../../shared/Vector.ts';
-import { solid } from '../../shared/Defs.ts';
+import { content, solid } from '../../shared/Defs.ts';
 import { clientConnectionState } from '../common/Def.ts';
 import Key, { KeyDestination } from './Key.ts';
 import { Action, ColorPicker, Image, KeyBindItem, Label, MenuItem, NumberInput, SaveSlotItem, Slider, Spacer, Textbox, Toggle } from './menu/MenuItem.ts';
@@ -39,8 +39,8 @@ import ClientHost from './ClientHost.ts';
 import Draw from './Draw.ts';
 import S from './Sound.ts';
 import viewCvars from './view/ViewCvars.ts';
-import QuakeColorShifts from './view/QuakeColorShifts.ts';
 import Camera from './renderer/scene/Camera.ts';
+import Visibility from './renderer/scene/Visibility.ts';
 
 interface ClientTraceOptions {
   readonly includeEntities?: boolean;
@@ -476,19 +476,6 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
-   * Tints the whole view for a moment: the color takes hold at once with the given alpha and decays at 100 alpha
-   * units per second, as Quake's own pickup flash does. Call it again to keep a tint up.
-   * @param slot Which of the four slots of the game, 0 to 3. A slot is mixed over the ones before it.
-   * @param color Red, green and blue, each 0 to 1.
-   * @param alpha How much it covers the view, 0 to 1.
-   * @deprecated Set an entry of the `color-shift` effect through `PostProcess.pulse` or `PostProcess.setStack`:
-   * the timing is the game's to choose there. Kept until the games have moved (plans/scr-v-split.md).
-   */
-  ContentShift(slot: number, color: Vector, alpha = 0.5): void {
-    QuakeColorShifts.ContentShift(slot + 4, color, alpha);
-  }
-
-  /**
    * Set the player movement configuration. This is used by the PMove code to determine how the player will move.
    */
   SetPmoveConfiguration(config: PmoveConfiguration): void {
@@ -508,6 +495,14 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
     get maxclients(): number {
       return clientRuntimeState.maxclients;
+    },
+    /**
+     * What the eye is in: the contents of the leaf the view was in when the last frame was drawn. A game that
+     * tints the view for liquid reads it from `startFrame()`; it lags the view by one frame.
+     * @returns `CONTENT_EMPTY` before there is a view.
+     */
+    get viewContents(): content {
+      return Visibility.viewleaf?.contents ?? content.CONTENT_EMPTY;
     },
     get levelname(): string {
       return clientRuntimeState.levelname ?? '';

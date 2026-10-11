@@ -18,7 +18,6 @@ import Camera from '../renderer/scene/Camera.ts';
 import RenderStats from '../renderer/scene/RenderStats.ts';
 import Visibility from '../renderer/scene/Visibility.ts';
 import FirstPersonView from '../view/FirstPersonView.ts';
-import QuakeColorShifts from '../view/QuakeColorShifts.ts';
 import Viewport from '../view/Viewport.ts';
 import CenterPrint from './CenterPrint.ts';
 import FramePacing from './FramePacing.ts';
@@ -93,8 +92,6 @@ export default class ScreenFrame {
    */
   static Prepare(): void {
     if (ConsoleOverlay.forcedup) {
-      // there is no 3D view to tint, and a tint left over would only keep the scene capture on
-      QuakeColorShifts.Clear();
       return;
     }
     if (clientRuntimeState.maxclients >= 2) {
@@ -110,9 +107,7 @@ export default class ScreenFrame {
 
     // The refdef is final from here on. Derive what the frame reads from it, in the order each step needs.
     Camera.UpdateViewVectors();
-    const viewleaf = Visibility.UpdateViewLeaf();
-    QuakeColorShifts.SetContentsColor(viewleaf.contents);
-    QuakeColorShifts.Update();
+    Visibility.UpdateViewLeaf();
     R.PreRenderScene();
   }
 

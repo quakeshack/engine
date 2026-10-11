@@ -120,20 +120,6 @@ export enum hit {
 }
 
 /**
- * Bit shifts used by legacy contents flags.
- */
-export enum contentShift {
-  contents = 0,
-  damage = 1,
-  bonus = 2,
-  powerup = 3,
-  user1 = 4,
-  user2 = 5,
-  user3 = 6,
-  user4 = 7,
-}
-
-/**
  * High-level client connection states.
  */
 export enum clientConnectionState {

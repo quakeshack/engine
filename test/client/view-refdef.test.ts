@@ -14,7 +14,6 @@ import R from '../../source/engine/client/R.ts';
 import ScreenFrame from '../../source/engine/client/screen/ScreenFrame.ts';
 import viewCvars from '../../source/engine/client/view/ViewCvars.ts';
 import FirstPersonView from '../../source/engine/client/view/FirstPersonView.ts';
-import QuakeColorShifts from '../../source/engine/client/view/QuakeColorShifts.ts';
 import ViewmodelMotion from '../../source/engine/client/view/ViewmodelMotion.ts';
 import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
 import Visibility from '../../source/engine/client/renderer/scene/Visibility.ts';
@@ -470,7 +469,6 @@ void describe('FirstPersonView', () => {
 
         return { contents: -1 } as never;
       });
-      mock.method(QuakeColorShifts, 'Update', () => { calls.push('QuakeColorShifts.Update'); });
       mock.method(FirstPersonView, 'CalcRefdef', () => { calls.push('FirstPersonView.CalcRefdef'); });
       mock.method(FirstPersonView, 'CalcIntermissionRefdef', () => { calls.push('FirstPersonView.CalcIntermissionRefdef'); });
     });
@@ -486,7 +484,6 @@ void describe('FirstPersonView', () => {
         'FirstPersonView.CalcRefdef',
         'Camera.UpdateViewVectors',
         'Visibility.UpdateViewLeaf',
-        'QuakeColorShifts.Update',
         'R.PreRenderScene',
       ]);
     });
