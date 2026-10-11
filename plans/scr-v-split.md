@@ -1,7 +1,7 @@
 # Dissolve `SCR.ts` and `V.ts`
 
 Follow-up to `plans/r-split.md`. Status: **plan drafted 2026-10-10, developer decisions 1 to 8 recorded (4 to 8 on 2026-10-11); G6 is a
-direction, not a closed decision; Phases 0 to 3 are done (2026-10-11; Phase 3 not committed), Phases 4 to 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
+direction, not a closed decision; Phases 0 to 4 are done (2026-10-11; Phase 4 not committed), Phases 5 and 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
 
 ## Context
 
@@ -110,7 +110,7 @@ no barrel files.
 | `smoothing` (in `source/shared/`) | `SmoothValue`, `ShortestAngleDelta`; `CalcRoll` stays with `PlayerRoll.ts` | V |
 | `Viewport` | `viewsize`, `fov`, `sizeup`/`sizedown`, vrect and FOV into `Camera`, the HUD reservation | SCR |
 | `Camera.UpdateProjection(fovY, aspect)` | the only writer of `perspective[0]`/`[5]`, used by `Viewport` and `R.DrawViewModel` | SCR, R |
-| `ConsoleSlide` | `con_current`, `conspeed`, `SetUpToDrawConsole`, `DrawConsole`, passive-backdrop rule | SCR |
+| `ConsoleOverlay` (existing; the slide is merged into it, see Phase 4) | `con_current`, `conspeed`, `SetUpToDrawConsole`, `DrawConsole`, passive-backdrop rule | SCR |
 | `FramePacing` | FPS window, refresh-rate detection | SCR |
 | `Screenshots` | the two commands and the capture dance | SCR |
 | `ScreenFrame` | `UpdateScreen` as named steps: prepare, scene, resolve, overlays, finish | SCR |
@@ -278,7 +278,7 @@ additive: nothing changes for a game that calls `setStack` as today.
   a damage flash, a pickup and a powerup by eye.
 - **Phase 3, V's view.** `ViewCvars`, `ViewmodelMotion`, `PitchDrift`, `FirstPersonView`; `V` is deleted;
   `gamma` to `RendererCvars`.
-- **Phase 4, SCR.** `Viewport` and `Camera.UpdateProjection`, `ConsoleSlide`, `FramePacing`, `Screenshots`,
+- **Phase 4, SCR.** `Viewport` and `Camera.UpdateProjection`, the console slide (into `ConsoleOverlay`), `FramePacing`, `Screenshots`,
   `ScreenFrame`; `SCR` is deleted.
 - **Phase 5, game handover**, one commit per item that the developer picks from G2 to G6 (G4 is decided: the game
   sets its entries and pulses and the engine default goes; G6 starts with the hellwave prototype), each with the
@@ -486,6 +486,55 @@ and the `SCR` call are gone.
   `v_centerspeed`, `centerview` and `cl_rollangle` exist with their defaults. No console error beyond what `HEAD` prints.
   Not covered: the browser's in-thread server roll (the unit test covers `PlayerRollView` with injected cvars),
   and pitch drift by hand (pointer lock and look keys, covered by the unit tests).
+
+### Phase 4: what shipped (2026-10-11)
+
+`SCR.ts` is deleted. Its members are in `client/view/` (what reads the client state to place the view) and
+`client/screen/` (the frame and what is drawn on it).
+
+- **`Camera.UpdateProjection(fovY, aspect)`** is the only writer of `perspective[0]` and `[5]` now. `Viewport` calls
+  it, and `R.DrawViewModel` calls it twice (the weapon's narrower field of view, then the world's again) instead of
+  repeating the formula.
+- **`view/Viewport`**: `fov`, `viewsize`, `sizeup`, `sizedown`, the rectangle and the field of view
+  (`Recalculate`, the old `CalcRefdef` unchanged), `Update` (what notices a change of `fov` or `viewsize`),
+  `Invalidate` (new map, resize of the screen), and `hudReservedHeight`. `fov` and `viewsize` are in `ViewCvars`.
+  `FirstPersonView` reads `viewCvars.viewsize`, which removes the last import cycle of the view.
+- **`screen/ScreenFrame`**: `Init` (creates everything the screen has, in the order `cvarlist` showed it), `Update`
+  (the old `UpdateScreen` up to the request for the frame), `Prepare` and `RenderScene` (was `PreRenderView` and
+  `RenderView`), and the frame as private steps: the draw callback, `#resolve`, `#drawOverlays`, `#finish`. The
+  loading plaque is here too (`BeginLoadingPlaque`, `EndLoadingPlaque`), which is not where the plan put it
+  (`ClientHost`/`CL`): what it does is to put the console slide and the center print away, state that lives in the
+  screen, so the screen is the one place that has to know.
+- **The console slide is part of `ConsoleOverlay`** (review, 2026-10-11: a separate `ConsoleSlide` had no state of
+  its own, it only read `isOpen` and wrote `forcedup`, and its height was the same quantity as `vislines`): `current`,
+  `conspeed` (`scr_conspeed`, created in `ConsoleOverlay.Init`), `Update`, `Draw`, `IsPassiveBackdrop`, `Reset`.
+  It stays in `client/` and stays one class: the console is one unit, and drawing it is client only. **`CenterPrint`**
+  (`Print`, `Draw`, `Clear`, the lines and the timer), **`ScreenIndicators`** (net, turtle, pause),
+  **`Screenshots`** (the two commands, `TakeRequested`, `BeginClean`, `EndClean`) and **`FramePacing`** (`FPS`,
+  `Record`, `Reset`). Bodies moved verbatim, except `FramePacing`.
+- **`FramePacing` changed behavior, as agreed** (quirk 1): the refresh rate is the next step of 15 up only once the
+  frame rate is clearly above the current one (the tolerance is 5 percent: 63 for 60), and it is set only after
+  the same pick held for a whole window of 30 frames, after ten windows have been drawn. A browser that delivers
+  60.0004 FPS gets 60, where it got 75 before. The headless run of the verification below showed exactly that:
+  `Host.refreshrate` is 75 on the build of `HEAD` and 60 on this one.
+- **Callers**: `ClientHost`, `ClientConnection`, `ConsoleOverlay`, `ClientServerCommandHandlers`, `ClientEngineAPI`
+  (the game-facing `engine.SCR.viewsize` and `viewRect` are unchanged, they read `ViewCvars` and `Camera`) and
+  `createBrowserClient` (`window.engine.SCR` is `window.engine.ScreenFrame` now).
+- **Tests.** The characterization tests of phase 0 moved with their code: `viewport`, `center-print`,
+  `screen-frame` (the order of a frame, with `ScreenIndicators.Draw` as one step), and new `console-slide`,
+  `screenshots`, `screen-indicators` (the `DrawNet` regressions are kept) and `frame-pacing` (the window, the
+  threshold, "not from a single window", already set) plus `Camera.UpdateProjection` and `Viewport.Update`. `scr.test.mjs`
+  is gone. Tests of other parts that stub `engineMocks.SCR` keep working through `test/support/screen.ts`, which
+  sorts the old members onto the new classes the way `useRendererOf` does for the renderer; `.github/instructions/
+  unit-tests.instructions.md` says so, and new tests patch the classes directly. Mutants (the open height of the
+  slide, the order of `PostProcess.advance` and `Prepare`, a HUD height, the tolerance) are caught.
+- **Verified:** `npm test` 2234 pass, `npm run typecheck` clean, `eslint` 0 errors on touched files; browser, production
+  builds of `HEAD` and the working tree: three captures per side show nothing beyond the noise between captures of
+  one build with identical `r_speeds`; the pause sign, HUD, the console drawer over the scene and the menu over the
+  game draw as before (screenshots of both builds side by side, the pixel differences are the view settling after
+  spawn); no console error beyond the usual. Not covered: a center print on screen (the unit tests cover wrapping,
+  timing and the typewriter), the net and turtle indicators in the browser, and `screenshot`/`screenshot_clean`
+  downloads (unit tests only).
 
 ## Testing
 

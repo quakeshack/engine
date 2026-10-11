@@ -12,7 +12,12 @@ import Draw from '../../source/engine/client/Draw.ts';
 import GL from '../../source/engine/client/GL.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import M from '../../source/engine/client/Menu.ts';
-import SCR from '../../source/engine/client/SCR.ts';
+import CenterPrint from '../../source/engine/client/screen/CenterPrint.ts';
+import FramePacing from '../../source/engine/client/screen/FramePacing.ts';
+import ScreenFrame from '../../source/engine/client/screen/ScreenFrame.ts';
+import ScreenIndicators from '../../source/engine/client/screen/ScreenIndicators.ts';
+import Screenshots from '../../source/engine/client/screen/Screenshots.ts';
+import viewCvars from '../../source/engine/client/view/ViewCvars.ts';
 import VID from '../../source/engine/client/VID.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
@@ -31,13 +36,13 @@ function createFakeContext(): WebGL2RenderingContext {
   }) as unknown as WebGL2RenderingContext;
 }
 
-void describe('SCR.UpdateScreen', () => {
+void describe('ScreenFrame', () => {
   const globals = globalThis as { requestAnimationFrame?: unknown };
   const previousRequestAnimationFrame = globals.requestAnimationFrame;
   const previousContext = GL.gl;
-  const previousConspeed = SCR.conspeed;
-  const previousFov = SCR.fov;
-  const previousViewsize = SCR.viewsize;
+  const previousConspeed = ConsoleOverlay.conspeed;
+  const previousFov = viewCvars.fov;
+  const previousViewsize = viewCvars.viewsize;
 
   let restores: Array<() => void> = [];
   let calls: string[] = [];
@@ -68,10 +73,10 @@ void describe('SCR.UpdateScreen', () => {
 
   /**
    * The work that happens in the animation frame, without the setup in front of it.
-   * @returns The recorded calls from the first `SCR.RenderView` on.
+   * @returns The recorded calls from the first `ScreenFrame.RenderScene` on.
    */
   function frameCalls(): string[] {
-    return calls.slice(calls.indexOf('SCR.RenderView'));
+    return calls.slice(calls.indexOf('ScreenFrame.RenderScene'));
   }
 
   beforeEach(() => {
@@ -84,16 +89,14 @@ void describe('SCR.UpdateScreen', () => {
     eventBus.publish('gl.ready');
     globals.requestAnimationFrame = (callback: AnimationCallback) => { frames.push(callback); return frames.length; };
 
-    SCR.fov = { value: 90 } as Cvar;
-    SCR.viewsize = { value: 120 } as Cvar;
-    SCR.conspeed = { value: 300 } as Cvar;
-    SCR.oldfov = 90;
-    SCR.oldscreensize = 120;
-    SCR.recalc_refdef = false;
-    SCR.con_current = 0;
-    SCR._requestedAnimationFrames = 0;
-    SCR.screenshot = false;
-    SCR.screenshotClean = false;
+    viewCvars.fov = { value: 90 } as Cvar;
+    viewCvars.viewsize = { value: 120 } as Cvar;
+    ConsoleOverlay.conspeed = { value: 300 } as Cvar;
+    ConsoleOverlay.current = 0;
+    ScreenFrame.pendingFrames = 0;
+    Screenshots.requested = false;
+    Screenshots.cleanRequested = false;
+    FramePacing.Reset();
 
     restores = [
       patchMembers(Host, { frametime: 0.1, realtime: 5, framecount: 0, refreshrate: { value: 60, set() {} } as unknown as Cvar }),
@@ -114,8 +117,8 @@ void describe('SCR.UpdateScreen', () => {
     ];
 
     record(PostProcess, 'advance', 'PostProcess.advance');
-    record(SCR, 'PreRenderView', 'SCR.PreRenderView');
-    record(SCR, 'RenderView', 'SCR.RenderView');
+    record(ScreenFrame, 'Prepare', 'ScreenFrame.Prepare');
+    record(ScreenFrame, 'RenderScene', 'ScreenFrame.RenderScene');
     record(GL, 'Set2D', 'GL.Set2D');
     record(GL, 'StreamFlush', 'GL.StreamFlush');
     mock.method(PostProcess, 'needsSceneCapture', () => sceneCapture);
@@ -129,11 +132,9 @@ void describe('SCR.UpdateScreen', () => {
     record(CL, 'DrawHUD', 'CL.DrawHUD');
     record(M, 'Draw', 'M.Draw');
     record(M, 'DrawOverlayNotice', 'M.DrawOverlayNotice');
-    record(SCR, 'DrawNet', 'SCR.DrawNet');
-    record(SCR, 'DrawTurtle', 'SCR.DrawTurtle');
-    record(SCR, 'DrawPause', 'SCR.DrawPause');
-    record(SCR, 'DrawCenterString', 'SCR.DrawCenterString');
-    record(SCR, 'DrawConsole', 'SCR.DrawConsole');
+    record(ScreenIndicators, 'Draw', 'ScreenIndicators.Draw');
+    record(CenterPrint, 'Draw', 'CenterPrint.Draw');
+    record(ConsoleOverlay, 'Draw', 'ConsoleOverlay.Draw');
     record(RenderStats, 'Print', 'RenderStats.Print');
     mock.method(VID, 'DownloadScreenshot', (filename?: string) => { calls.push(`VID.DownloadScreenshot(${filename ?? ''})`); });
   });
@@ -148,31 +149,29 @@ void describe('SCR.UpdateScreen', () => {
     eventBus.publish('gl.shutdown');
     GL.gl = previousContext;
     globals.requestAnimationFrame = previousRequestAnimationFrame;
-    SCR.conspeed = previousConspeed;
-    SCR.fov = previousFov;
-    SCR.viewsize = previousViewsize;
+    ConsoleOverlay.conspeed = previousConspeed;
+    viewCvars.fov = previousFov;
+    viewCvars.viewsize = previousViewsize;
   });
 
   void describe('a frame of a connected game', () => {
     void test('prepares the view before the frame is requested, then draws scene, tint, overlays and flushes', () => {
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
 
-      assert.deepEqual(calls, ['PostProcess.advance', 'SCR.PreRenderView']);
+      assert.deepEqual(calls, ['PostProcess.advance', 'ScreenFrame.Prepare']);
       assert.equal(frames.length, 1);
 
       runFrame();
 
       assert.deepEqual(frameCalls(), [
-        'SCR.RenderView',
+        'ScreenFrame.RenderScene',
         'GL.Set2D',
-        'SCR.DrawNet',
-        'SCR.DrawTurtle',
-        'SCR.DrawPause',
-        'SCR.DrawCenterString',
+        'ScreenIndicators.Draw',
+        'CenterPrint.Draw',
         'CL.DrawHUD',
         'CL.Draw',
         'M.Draw',
-        'SCR.DrawConsole',
+        'ConsoleOverlay.Draw',
         'M.DrawOverlayNotice',
         'GL.StreamFlush',
         'RenderStats.Print',
@@ -183,7 +182,7 @@ void describe('SCR.UpdateScreen', () => {
       const characters: number[] = [];
       mock.method(Draw, 'Character', (_x: number, _y: number, code: number) => { characters.push(code); });
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
       assert.deepEqual(characters, []);
@@ -193,11 +192,11 @@ void describe('SCR.UpdateScreen', () => {
       sceneCapture = true;
       gameplayStack = true;
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
       assert.deepEqual(frameCalls().slice(0, 5), [
-        'SCR.RenderView',
+        'ScreenFrame.RenderScene',
         'GL.Set2D',
         'PostProcess.end',
         'PostProcess.resolveGameplayStack',
@@ -208,7 +207,7 @@ void describe('SCR.UpdateScreen', () => {
     void test('skips the game stack when there is none', () => {
       sceneCapture = true;
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
       assert.equal(frameCalls().includes('PostProcess.resolveGameplayStack'), false);
@@ -217,21 +216,21 @@ void describe('SCR.UpdateScreen', () => {
 
     void test('does not draw the console while it is closed', () => {
       // con_current is 0 and nothing is notifying: DrawConsole is called, it decides what to draw
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
-      assert.equal(frameCalls().includes('SCR.DrawConsole'), true);
+      assert.equal(frameCalls().includes('ConsoleOverlay.Draw'), true);
     });
 
     void test('draws the intermission HUD alone, without indicators or menu', () => {
       clientRuntimeState.intermission = 1;
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
       assert.deepEqual(frameCalls().slice(2), [
         'CL.DrawHUD',
-        'SCR.DrawConsole',
+        'ConsoleOverlay.Draw',
         'M.DrawOverlayNotice',
         'GL.StreamFlush',
         'RenderStats.Print',
@@ -244,13 +243,13 @@ void describe('SCR.UpdateScreen', () => {
       clientRuntimeState.worldmodel = null;
       ConsoleOverlay.isOpen = true;
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
       assert.deepEqual(frameCalls().slice(2), [
         'Draw.BlackScreen',
         'CL.Draw',
-        'SCR.DrawConsole',
+        'ConsoleOverlay.Draw',
         'M.DrawOverlayNotice',
         'GL.StreamFlush',
         'RenderStats.Print',
@@ -262,116 +261,97 @@ void describe('SCR.UpdateScreen', () => {
     void test('shows a black screen and draws the menu over it', () => {
       clientRuntimeState.worldmodel = null;
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
       assert.equal(ConsoleOverlay.forcedup, true);
-      assert.deepEqual(frameCalls().slice(0, 4), ['SCR.RenderView', 'GL.Set2D', 'Draw.BlackScreen', 'SCR.DrawNet']);
+      assert.deepEqual(frameCalls().slice(0, 4), ['ScreenFrame.RenderScene', 'GL.Set2D', 'Draw.BlackScreen', 'ScreenIndicators.Draw']);
       assert.equal(frameCalls().includes('M.Draw'), true);
     });
 
     void test('does not draw the console at all unless the player opened it', () => {
       clientRuntimeState.worldmodel = null;
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
-      assert.equal(frameCalls().includes('SCR.DrawConsole'), false);
+      assert.equal(frameCalls().includes('ConsoleOverlay.Draw'), false);
     });
 
     void test('draws the console when the player opened it', () => {
       clientRuntimeState.worldmodel = null;
       ConsoleOverlay.isOpen = true;
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
-      assert.equal(frameCalls().includes('SCR.DrawConsole'), true);
+      assert.equal(frameCalls().includes('ConsoleOverlay.Draw'), true);
     });
   });
 
   void describe('pacing', () => {
     void test('does not queue a second frame while one is waiting', () => {
-      SCR.UpdateScreen();
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
+      ScreenFrame.Update();
 
       assert.equal(frames.length, 1);
-      assert.deepEqual(calls, ['PostProcess.advance', 'SCR.PreRenderView']);
+      assert.deepEqual(calls, ['PostProcess.advance', 'ScreenFrame.Prepare']);
     });
 
     void test('queues the next frame once the callback has run', () => {
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
 
       assert.equal(frames.length, 1);
     });
 
     void test('does nothing in the callback once the GL context is gone', () => {
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       eventBus.publish('gl.shutdown');
 
       runFrame();
 
-      assert.equal(calls.includes('SCR.RenderView'), false);
+      assert.equal(calls.includes('ScreenFrame.RenderScene'), false);
     });
 
-    void test('measures the frame rate over the last frames and sets the refresh rate from it once there are enough', () => {
-      const set = mock.fn();
-      SCR._frameTimes.fill(null);
-      SCR._frameTimeIndex = 0;
-      SCR._lastAnimationTime = 0;
-      Host.refreshrate = { value: 0, set } as unknown as Cvar;
-      Host.framecount = 301;
+    void test('hands the time the browser gave the frame to the frame pacing', () => {
+      const times: number[] = [];
+      mock.method(FramePacing, 'Record', (animationTime: number) => { times.push(animationTime); });
 
-      // 17 ms apart is 58.8 frames per second, which rounds up to the next multiple of 15. A rate that measures
-      // a hair above a multiple of 15 (60.0000001) rounds up to the next one as well, so the detection is
-      // only as good as the timestamps of the browser.
-      for (let frame = 0; frame < 3; frame++) {
-        SCR.UpdateScreen();
-        runFrame(1000 + frame * 17);
-      }
+      ScreenFrame.Update();
+      runFrame(1234.5);
 
-      assertAlmost(SCR.FPS, 1000 / 17);
-      assert.deepEqual(set.mock.calls.map((call) => call.arguments), [[60], [60]]);
+      assert.deepEqual(times, [1234.5]);
     });
-
-    /**
-     * Compares two numbers with a tolerance suited to millisecond sums.
-     * @param actual The value under test.
-     * @param expected The value it should have.
-     */
-    function assertAlmost(actual: number, expected: number): void {
-      assert.ok(Math.abs(actual - expected) < 1e-6, `expected ${actual} to be ${expected}`);
-    }
   });
 
   void describe('screenshots', () => {
     void test('downloads a regular screenshot right after the frame is requested', () => {
-      SCR.screenshot = true;
+      Screenshots.requested = true;
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
 
-      assert.equal(SCR.screenshot, false);
-      assert.deepEqual(calls, ['PostProcess.advance', 'SCR.PreRenderView', 'VID.DownloadScreenshot()']);
+      assert.equal(Screenshots.requested, false);
+      assert.deepEqual(calls, ['PostProcess.advance', 'ScreenFrame.Prepare', 'VID.DownloadScreenshot()']);
     });
 
     void test('renders a clean screenshot without the weapon and every overlay, then restores the weapon', () => {
-      SCR.screenshotClean = true;
+      Screenshots.cleanRequested = true;
       let weaponWhileRendering: number | null = null;
-      mock.method(SCR, 'RenderView', () => {
-        calls.push('SCR.RenderView');
+      mock.method(ScreenFrame, 'RenderScene', () => {
+        calls.push('ScreenFrame.RenderScene');
         weaponWhileRendering = rendererCvars.drawviewmodel.value;
       });
 
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       runFrame();
 
       assert.equal(weaponWhileRendering, 0);
       assert.equal(rendererCvars.drawviewmodel.value, 1);
-      assert.equal(SCR.screenshotClean, false);
+      assert.equal(Screenshots.cleanRequested, false);
       assert.deepEqual(frameCalls(), [
-        'SCR.RenderView',
+        'ScreenFrame.RenderScene',
         'GL.Set2D',
         'GL.StreamFlush',
         'VID.DownloadScreenshot(screenshot-clean.jpg)',

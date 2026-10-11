@@ -21,7 +21,7 @@ export interface RefdefState {
 type Vec4 = [number, number, number, number];
 
 /**
- * The view of the current frame: the refdef that `FirstPersonView` and `SCR` fill in, the vectors, frustum and matrices derived
+ * The view of the current frame: the refdef that `FirstPersonView` and `Viewport` fill in, the vectors, frustum and matrices derived
  * from it, and the queries that depend on them (culling a box, projecting a point to the screen).
  *
  * The derived state is rebuilt by explicit calls, in the order the frame needs them: the view vectors once the
@@ -34,7 +34,7 @@ class Camera {
   static vup = new Vector();
   static vright = new Vector();
 
-  /** The view as `FirstPersonView` and `SCR` set it. Nothing else assigns to it, they change its members in place. */
+  /** The view as `FirstPersonView` and `Viewport` set it. Nothing else assigns to it, they change its members in place. */
   static readonly refdef: RefdefState = {
     vrect: {
       x: 0,
@@ -66,8 +66,8 @@ class Camera {
   static rotation: number[] = [];
 
   /**
-   * The projection matrix. `SCR.CalcRefdef` and `R.DrawViewModel` write the two scale entries when the field of
-   * view changes, everything else only reads it.
+   * The projection matrix. Only `UpdateProjection` writes its two scale entries, when the field of view changes;
+   * everything else only reads it.
    */
   static readonly perspective = [
     0.0, 0.0, 0.0, 0.0,
@@ -75,6 +75,20 @@ class Camera {
     0.0, 0.0, -65540.0 / 65532.0, -1.0,
     0.0, 0.0, -524288.0 / 65532.0, 0.0,
   ];
+
+  /**
+   * Sets the two scale entries of the projection matrix for a vertical field of view and the aspect ratio of
+   * the area that is drawn. The view model is drawn with a narrower field of view than the world, so the matrix is
+   * written twice a frame.
+   * @param fovY Vertical field of view in degrees.
+   * @param aspect Width over height of the area the view is drawn into.
+   */
+  static UpdateProjection(fovY: number, aspect: number): void {
+    const ymax = 4.0 * Math.tan(fovY * Math.PI / 360.0);
+
+    Camera.perspective[0] = 4.0 / (ymax * aspect);
+    Camera.perspective[5] = 4.0 / ymax;
+  }
 
   /**
    * Derives the forward, right and up vectors from the view angles. Run once per frame after the refdef is final

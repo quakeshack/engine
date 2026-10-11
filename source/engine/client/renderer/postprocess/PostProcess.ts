@@ -244,7 +244,7 @@ export default class PostProcess {
   /**
    * Whether the scene is rendered into the capture FBO this frame and resolved from it afterwards: something
    * asked for it with {@link PostProcess.requestSceneCapture}, or a screen-space effect needs the capture.
-   * The single predicate for `R.SetupGL` (begin) and `SCR.UpdateScreen` (end and resolve).
+   * The single predicate for `R.SetupGL` (begin) and `ScreenFrame` (end and resolve).
    * @returns True when the frame goes through the capture FBO.
    */
   static needsSceneCapture(): boolean {

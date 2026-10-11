@@ -1,20 +1,28 @@
 import { KeyDestination } from './Key.ts';
 import Con from '../common/Console.ts';
 import Cmd from '../common/Cmd.ts';
+import Cvar from '../common/Cvar.ts';
 import VID from './VID.ts';
-import { clientStaticState } from './ClientState.ts';
+import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import Host from '../common/Host.ts';
 import Draw from './Draw.ts';
 import IN from './IN.ts';
 import Key from './Key.ts';
-import SCR from './SCR.ts';
+import ScreenFrame from './screen/ScreenFrame.ts';
 
 /**
- * Shows the console's text buffer: the drop-down console and the notification lines.
+ * The console on the screen: the drop-down console with its slide, the notification lines when it is closed,
+ * the input line, and whether it is open.
  */
 export default class ConsoleOverlay {
   /** Used by the client to force the console to be up (there's no valid connected game). */
   static forcedup = false;
+
+  /** How far the console has slid down, in lines: 0 is closed, 100 is open. */
+  static current = 0;
+
+  /** `scr_conspeed`: how fast the console slides, in lines per second. */
+  static conspeed: Cvar = null!;
 
   /**
    * Whether the player has toggled the drop-down console open. Independent of `Key.destination`
@@ -27,7 +35,7 @@ export default class ConsoleOverlay {
   static vislines = 0;
 
   static ToggleConsole_f(): void {
-    SCR.EndLoadingPlaque();
+    ScreenFrame.EndLoadingPlaque();
     ConsoleOverlay.isOpen = !ConsoleOverlay.isOpen;
     if (ConsoleOverlay.isOpen) {
       // Release mouselook so the camera doesn't keep spinning from residual deltas while typing.
@@ -49,6 +57,7 @@ export default class ConsoleOverlay {
   }
 
   static Init(): void {
+    ConsoleOverlay.conspeed = new Cvar('scr_conspeed', '300');
     // eslint-disable-next-line @typescript-eslint/unbound-method
     Cmd.AddCommand('toggleconsole', ConsoleOverlay.ToggleConsole_f);
     // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -56,6 +65,61 @@ export default class ConsoleOverlay {
     // eslint-disable-next-line @typescript-eslint/unbound-method
     Cmd.AddCommand('messagemode2', ConsoleOverlay.MessageMode2_f);
     Cmd.AddCommand('clear', () => { Con.Clear(); });
+  }
+
+  /**
+   * Puts the console away at once, for a new level or a disconnect.
+   */
+  static Reset(): void {
+    ConsoleOverlay.current = 0;
+  }
+
+  /**
+   * True while the console has no business being drawn at all: there's no valid connected game
+   * (so the main menu is always showing instead — see `M.CloseMenu()`) and the player hasn't
+   * actively toggled the drop-down drawer open. Used by the frame to suppress the console draw call entirely in
+   * that state, instead of rendering it as a full-screen backdrop behind the menu.
+   * @returns True while the console should not be drawn at all.
+   */
+  static IsPassiveBackdrop(): boolean {
+    return ConsoleOverlay.forcedup && !ConsoleOverlay.isOpen;
+  }
+
+  /**
+   * Animates the console's slide height toward its target (open/closed), regardless of
+   * connection state — the console is never drawn full-screen anymore (see
+   * `IsPassiveBackdrop()`), so there's no special-cased snap to reach. Also decides whether the console is
+   * forced up, which is when there is no connected game to show.
+   */
+  static Update(): void {
+    ConsoleOverlay.forcedup = (!clientRuntimeState.worldmodel) || (clientStaticState.signon !== 4);
+
+    const conlines = ConsoleOverlay.isOpen ? 100 : 0;
+
+    if (conlines < ConsoleOverlay.current) {
+      ConsoleOverlay.current -= ConsoleOverlay.conspeed.value * Host.frametime;
+      if (conlines > ConsoleOverlay.current) {
+        ConsoleOverlay.current = conlines;
+      }
+    } else if (conlines > ConsoleOverlay.current) {
+      ConsoleOverlay.current += ConsoleOverlay.conspeed.value * Host.frametime;
+      if (conlines < ConsoleOverlay.current) {
+        ConsoleOverlay.current = conlines;
+      }
+    }
+  }
+
+  /**
+   * Draws the console or, if it is hidden, the notify messages.
+   */
+  static Draw(): void {
+    if (ConsoleOverlay.current > 0) {
+      ConsoleOverlay.DrawConsole(ConsoleOverlay.current);
+      return;
+    }
+    if ((Key.destination === KeyDestination.game || Key.destination === KeyDestination.message) && clientStaticState.signon === 4) {
+      ConsoleOverlay.DrawNotify();
+    }
   }
 
   static DrawInput(): void {

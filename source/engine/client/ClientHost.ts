@@ -50,7 +50,7 @@ import Draw from './Draw.ts';
 import IN from './IN.ts';
 import Key from './Key.ts';
 import S from './Sound.ts';
-import SCR from './SCR.ts';
+import ScreenFrame from './screen/ScreenFrame.ts';
 import PitchDrift from './view/PitchDrift.ts';
 import FirstPersonView from './view/FirstPersonView.ts';
 import QuakeColorShifts from './view/QuakeColorShifts.ts';
@@ -194,7 +194,7 @@ export default class ClientHost {
     await M.Init();
     await SaveSlots.refresh();
     await CL.Init();
-    SCR.Init();
+    ScreenFrame.Init();
     CDAudio.Init();
     IN.Init();
 
@@ -291,7 +291,7 @@ export default class ClientHost {
    * What the page does after an error: the loading screen goes away, the local server stops and the player leaves the game.
    */
   static RecoverFromError(): void {
-    SCR.EndLoadingPlaque();
+    ScreenFrame.EndLoadingPlaque();
 
     ClientHost.#ShutdownServer();
 
@@ -464,7 +464,7 @@ export default class ClientHost {
     }
 
     CL.Disconnect();
-    SCR.BeginLoadingPlaque();
+    ScreenFrame.BeginLoadingPlaque();
 
     // The server takes its half, the client resumes with the other once the server is up.
     const { comment: _comment, clientdata, particles, clientEntities, ...serverHalf } = gamestate;
@@ -615,7 +615,7 @@ export default class ClientHost {
   static Frame(frametime: number, realtime: number): boolean {
     if (clientStaticState.state === Def.clientConnectionState.connecting) {
       CL.CheckConnectingState();
-      SCR.UpdateScreen();
+      ScreenFrame.Update();
       return false;
     }
 
@@ -664,7 +664,7 @@ export default class ClientHost {
     // Build a refresh entity list.
     clientRuntimeState.clientEntities.emit();
 
-    SCR.UpdateScreen();
+    ScreenFrame.Update();
 
     if (profiling) {
       console.profile('S.Update');
@@ -736,7 +736,7 @@ export default class ClientHost {
     clientStaticState.serverController.stop();
 
     Key.destination = KeyDestination.game;
-    SCR.BeginLoadingPlaque();
+    ScreenFrame.BeginLoadingPlaque();
     CL.SetConnectingStep(5, 'Spawning server');
     clientStaticState.spawnparms = spawnparms.join(' ');
 

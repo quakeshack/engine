@@ -20,7 +20,7 @@ import Sys from '../client/Sys.ts';
 import FirstPersonView from '../client/view/FirstPersonView.ts';
 import viewCvars from '../client/view/ViewCvars.ts';
 import PlayerRollView from '../server/PlayerRollView.ts';
-import SCR from '../client/SCR.ts';
+import ScreenFrame from '../client/screen/ScreenFrame.ts';
 import COM from '../common/Com.ts';
 import Con from '../common/Console.ts';
 import Host from '../common/Host.ts';
@@ -141,7 +141,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
   }
 
   // The members that verification scripts in a browser reach for, see docs/browser-verification.md.
-  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, FirstPersonView, Key, S, Draw, R, Camera, Visibility, RenderStats, PostProcess, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, M, SCR, IN, SV: inThreadServer };
+  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, FirstPersonView, Key, S, Draw, R, Camera, Visibility, RenderStats, PostProcess, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, M, ScreenFrame, IN, SV: inThreadServer };
 
   await Sys.Init();
 }

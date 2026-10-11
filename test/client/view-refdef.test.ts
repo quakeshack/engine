@@ -11,7 +11,8 @@ import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import R from '../../source/engine/client/R.ts';
-import SCR from '../../source/engine/client/SCR.ts';
+import ScreenFrame from '../../source/engine/client/screen/ScreenFrame.ts';
+import viewCvars from '../../source/engine/client/view/ViewCvars.ts';
 import FirstPersonView from '../../source/engine/client/view/FirstPersonView.ts';
 import QuakeColorShifts from '../../source/engine/client/view/QuakeColorShifts.ts';
 import ViewmodelMotion from '../../source/engine/client/view/ViewmodelMotion.ts';
@@ -91,7 +92,7 @@ void describe('FirstPersonView', () => {
 
     restores = [
       patchMembers(Host, { frametime: FRAME_TIME }),
-      patchMembers(SCR, { viewsize: { value: 120 } as Cvar }),
+      patchMembers(viewCvars, { viewsize: { value: 120 } as Cvar }),
       patchMembers(clientRuntimeState, {
         playerentity: player,
         viewent,
@@ -350,7 +351,7 @@ void describe('FirstPersonView', () => {
         const expectedNudges: Array<[number, number]> = [[120, 0], [110, 1], [100, 2], [90, 1], [80, 0.5], [70, 0]];
 
         for (const [viewsize, nudge] of expectedNudges) {
-          SCR.viewsize = { value: viewsize } as Cvar;
+          viewCvars.viewsize = { value: viewsize } as Cvar;
 
           FirstPersonView.CalcRefdef();
 
@@ -479,7 +480,7 @@ void describe('FirstPersonView', () => {
     });
 
     void test('derives the frame from the refdef in the order each step needs', () => {
-      SCR.PreRenderView();
+      ScreenFrame.Prepare();
 
       assert.deepEqual(calls, [
         'FirstPersonView.CalcRefdef',
@@ -493,20 +494,20 @@ void describe('FirstPersonView', () => {
     void test('does nothing while the console is forced up', () => {
       ConsoleOverlay.forcedup = true;
 
-      SCR.PreRenderView();
+      ScreenFrame.Prepare();
 
       assert.deepEqual(calls, []);
     });
 
     void test('uses the intermission camera, and keeps the view as it was while paused', () => {
       clientRuntimeState.intermission = 1;
-      SCR.PreRenderView();
+      ScreenFrame.Prepare();
       assert.equal(calls[0], 'FirstPersonView.CalcIntermissionRefdef');
 
       calls.length = 0;
       clientRuntimeState.intermission = 0;
       clientRuntimeState.paused = true;
-      SCR.PreRenderView();
+      ScreenFrame.Prepare();
       assert.equal(calls.includes('FirstPersonView.CalcRefdef'), false);
       assert.equal(calls.includes('Camera.UpdateViewVectors'), true);
     });
@@ -515,7 +516,7 @@ void describe('FirstPersonView', () => {
       setCvar('scr_ofsx', 5);
       clientRuntimeState.maxclients = 4;
 
-      SCR.PreRenderView();
+      ScreenFrame.Prepare();
 
       assert.equal(Cvar._vars.scr_ofsx.value, 0);
     });

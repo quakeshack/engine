@@ -6,7 +6,6 @@ import Host from '../../common/Host.ts';
 import Chase from '../Chase.ts';
 import { clientRuntimeState } from '../ClientState.ts';
 import Camera from '../renderer/scene/Camera.ts';
-import SCR from '../SCR.ts';
 import PitchDrift from './PitchDrift.ts';
 import QuakeColorShifts from './QuakeColorShifts.ts';
 import ViewmodelMotion from './ViewmodelMotion.ts';
@@ -193,7 +192,7 @@ export default class FirstPersonView {
     view.angles[1] += ViewmodelMotion.lookBobRight * 0.45;
     view.angles[0] += ViewmodelMotion.lookBobUp * 0.35;
     view.angles[2] -= ViewmodelMotion.lookBobRight * 0.25;
-    switch (SCR.viewsize.value) {
+    switch (viewCvars.viewsize.value) {
       case 110:
       case 90:
         view.origin[2] += 1.0;

@@ -1,12 +1,19 @@
 import type Cvar from '../../common/Cvar.ts';
 
 /**
- * The console variables of the first-person view: the walking bob, the roll into a strafe, the kick of a hit, the
- * idle sway, the pitch drift back to level. They are created by `FirstPersonView.Init()`, and read from here by
- * everything that needs them. Nothing in this file imports anything that could import it back, so reading a
- * variable never depends on the order modules load in.
+ * The console variables of the view: the field of view and the size of the 3D view on the screen, the walking
+ * bob, the roll into a strafe, the kick of a hit, the idle sway, the pitch drift back to level. They are created
+ * by `Viewport.Init()` and `FirstPersonView.Init()`, and read from here by everything that needs them. Nothing in
+ * this file imports anything that could import it back, so reading a variable never depends on the order modules
+ * load in.
  */
 export class ViewCvars {
+  /** `fov`: horizontal field of view in degrees, 10 to 170, a cheat. */
+  fov: Cvar = null!;
+
+  /** `viewsize`: size of the 3D view on the screen, 30 to 120, where 120 is the whole screen without a status bar. */
+  viewsize: Cvar = null!;
+
   /** `v_centermove`: seconds of walking forward at full speed before the view drifts back to level. */
   centermove: Cvar = null!;
 

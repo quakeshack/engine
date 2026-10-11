@@ -25,7 +25,8 @@ import Particles from './renderer/effects/Particles.ts';
 import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
 import S from './Sound.ts';
-import SCR from './SCR.ts';
+import CenterPrint from './screen/CenterPrint.ts';
+import Viewport from './view/Viewport.ts';
 import FirstPersonView from './view/FirstPersonView.ts';
 import { net } from './PageServices.ts';
 
@@ -75,7 +76,7 @@ function storeLoadedSlice<T>(target: T[], startIndex: number, loaded: Array<T | 
 
 /** Marks the screen refdef as dirty for the next frame. */
 function markRefdefDirty(): void {
-  (SCR as typeof SCR & { recalc_refdef: boolean }).recalc_refdef = true;
+  Viewport.Invalidate();
 }
 
 /**
@@ -711,7 +712,7 @@ function handlePrint() {
  */
 function handleCenterPrint() {
   const string = net.message.readString();
-  SCR.CenterPrint(string);
+  CenterPrint.Print(string);
   Con.Print(`\x03${string}\n`); // TODO: have a better system for this
 }
 
@@ -961,7 +962,7 @@ function handleFinale() {
   clientRuntimeState.intermission = 2;
   clientRuntimeState.completed_time = clientRuntimeState.time;
   markRefdefDirty();
-  SCR.CenterPrint(net.message.readString());
+  CenterPrint.Print(net.message.readString());
 }
 
 /**
@@ -971,7 +972,7 @@ function handleCutscene() {
   clientRuntimeState.intermission = 3;
   clientRuntimeState.completed_time = clientRuntimeState.time;
   markRefdefDirty();
-  SCR.CenterPrint(net.message.readString());
+  CenterPrint.Print(net.message.readString());
 }
 
 /**

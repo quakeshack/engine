@@ -38,7 +38,7 @@ import Visibility from './renderer/scene/Visibility.ts';
 import Particles from './renderer/effects/Particles.ts';
 import Decals from './renderer/effects/Decals.ts';
 import { clientRuntimeState } from './ClientState.ts';
-import SCR from './SCR.ts';
+import viewCvars from './view/ViewCvars.ts';
 import Sys from './Sys.ts';
 
 let gl: WebGL2RenderingContext = null!;
@@ -132,9 +132,9 @@ class R {
 
     gl.depthRange(0.0, 0.3);
 
-    let ymax = 4.0 * Math.tan(SCR.fov.value * 0.82 * Math.PI / 360.0);
-    Camera.perspective[0] = 4.0 / (ymax * Camera.refdef.vrect.width / Camera.refdef.vrect.height);
-    Camera.perspective[5] = 4.0 / ymax;
+    // the weapon is drawn with a narrower field of view than the world
+    const aspect = Camera.refdef.vrect.width / Camera.refdef.vrect.height;
+    Camera.UpdateProjection(viewCvars.fov.value * 0.82, aspect);
     let program = GL.UseProgram('alias')!;
     console.assert(program !== null, 'alias program required');
     gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
@@ -148,9 +148,7 @@ class R {
       aliasRenderer!.cleanupRenderState(0);
     }
 
-    ymax = 4.0 * Math.tan(Camera.refdef.fov_y * Math.PI / 360.0);
-    Camera.perspective[0] = 4.0 / (ymax * Camera.refdef.vrect.width / Camera.refdef.vrect.height);
-    Camera.perspective[5] = 4.0 / ymax;
+    Camera.UpdateProjection(Camera.refdef.fov_y, aspect);
     program = GL.UseProgram('alias')!;
     console.assert(program !== null, 'alias program required');
     gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
@@ -185,7 +183,7 @@ class R {
 
   /**
    * Sets up what the frame's passes read: lightstyles, the effects that depend on where the camera is, the fog
-   * tint, and whether the scene needs to be captured. `SCR.PreRenderView` runs it after `Camera.UpdateViewVectors()`
+   * tint, and whether the scene needs to be captured. `ScreenFrame.Prepare` runs it after `Camera.UpdateViewVectors()`
    * and `Visibility.UpdateViewLeaf()`, because it reads the view leaf.
    */
   static PreRenderScene() {

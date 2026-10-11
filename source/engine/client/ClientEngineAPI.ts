@@ -38,7 +38,7 @@ import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
 import Draw from './Draw.ts';
 import S from './Sound.ts';
-import SCR from './SCR.ts';
+import viewCvars from './view/ViewCvars.ts';
 import QuakeColorShifts from './view/QuakeColorShifts.ts';
 import Camera from './renderer/scene/Camera.ts';
 
@@ -609,7 +609,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
      * @returns The current view size.
      */
     get viewsize(): number {
-      return (SCR as typeof SCR & { viewsize: Cvar }).viewsize.value as number;
+      return viewCvars.viewsize.value;
     },
     /**
      * @returns The current 3D view rectangle in screen coordinates.

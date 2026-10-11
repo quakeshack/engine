@@ -286,7 +286,7 @@ export default class CL {
     }
   };
 
-  static Draw(): void { // public, called by SCR.js // FIXME: maybe put that into M?, called by SCR
+  static Draw(): void { // public, called by ScreenFrame // FIXME: maybe put that into M?
     if (CL.cls.changelevel || CL.cls.connecting) {
       Draw.BlackScreen();
 

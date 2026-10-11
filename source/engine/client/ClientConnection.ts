@@ -16,7 +16,7 @@ import Mod from '../common/Mod.ts';
 import Host from '../common/Host.ts';
 import IN from './IN.ts';
 import S from './Sound.ts';
-import SCR from './SCR.ts';
+import ScreenFrame from './screen/ScreenFrame.ts';
 import { net } from './PageServices.ts';
 
 export type IdentityCvars = {
@@ -63,7 +63,7 @@ export default class ClientConnection {
     }
 
     Con.DPrint(`${percentage.toFixed(0).padStart(3, ' ')}% ${message}\n`);
-    SCR.con_current = 0;
+    ConsoleOverlay.Reset();
 
     const normalized = Math.round(percentage);
 
@@ -297,9 +297,9 @@ export default class ClientConnection {
         break;
       case 4:
         this.setConnectingStep(null, null);
-        SCR.EndLoadingPlaque();
+        ScreenFrame.EndLoadingPlaque();
         ConsoleOverlay.forcedup = true;
-        SCR.con_current = 0;
+        ConsoleOverlay.Reset();
         this.cls.changelevel = false;
         S.LoadPendingFiles();
         break;

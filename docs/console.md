@@ -42,9 +42,13 @@ both keep running; only client-side input routing changes).
   itself is closed (`Key.destination === game || message`).
 * `ConsoleOverlay.DrawInput` draws the blinking input-line prompt, gated on `ConsoleOverlay.isOpen`.
 * `ConsoleOverlay.DrawConsole` draws the whole panel (background, scrollback, input line) for a given slide
-  height; `SCR.UpdateScreen()` calls it either *before* the menu (the passive backdrop shown
-  whenever there's no valid connected game — `ConsoleOverlay.forcedup`) or *after* the menu (the
-  actively-toggled drawer), so the interactive console always ends up on top.
+  height.
+* The slide: `ConsoleOverlay.current` is how far the console has slid down (0 closed, 100 open) and
+  `ConsoleOverlay.Update()` moves it toward its target at `scr_conspeed` lines per second, once per frame; it also
+  decides `forcedup`, which is true while there is no connected game. `ConsoleOverlay.Draw()` is what the frame
+  calls, after everything else including the menu, so the interactive console always ends up on top: the
+  drawer while it is slid down, the notify lines otherwise. While the console is forced up and not opened by the
+  player (`IsPassiveBackdrop()`) nothing of it is drawn, the menu is showing instead.
 * Actual key handling (typing, history, tab-complete, scrollback) happens in `Key.Console`,
   exactly as before — only the routing around it changed.
 

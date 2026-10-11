@@ -252,4 +252,38 @@ void describe('Camera', () => {
       assert.equal(Camera.WorldToScreen(new Vector(100.0, 0.0, 0.0)), null);
     });
   });
+
+  void describe('UpdateProjection', () => {
+    const saved = [Camera.perspective[0], Camera.perspective[5]];
+
+    afterEach(() => {
+      Camera.perspective[0] = saved[0];
+      Camera.perspective[5] = saved[5];
+    });
+
+    void test('scales the two diagonal entries by the vertical field of view and the aspect', () => {
+      // a 90 degree field of view has a tangent of 1: ymax is 4, so y scales by 1 and x by 1 / aspect
+      Camera.UpdateProjection(90, 2);
+
+      assertNear(Camera.perspective[5], 1.0);
+      assertNear(Camera.perspective[0], 0.5);
+    });
+
+    void test('makes a narrower field of view magnify more', () => {
+      Camera.UpdateProjection(90, 1);
+      const wide = Camera.perspective[5];
+
+      Camera.UpdateProjection(45, 1);
+
+      assert.ok(Camera.perspective[5] > wide);
+    });
+
+    void test('leaves the depth entries of the matrix as they are', () => {
+      const depth = [Camera.perspective[10], Camera.perspective[11], Camera.perspective[14]];
+
+      Camera.UpdateProjection(70, 1.6);
+
+      assert.deepEqual([Camera.perspective[10], Camera.perspective[11], Camera.perspective[14]], depth);
+    });
+  });
 });
