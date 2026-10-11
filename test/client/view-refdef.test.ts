@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
-import type { ClientGameInterface } from '../../source/shared/GameInterfaces.ts';
+import type { ClientGameInterface, ViewInput, ViewResult } from '../../source/shared/GameInterfaces.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import Host from '../../source/engine/common/Host.ts';
 import { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
@@ -435,6 +435,121 @@ void describe('FirstPersonView', () => {
         // 0.1 s at 10 units per second
         assertNear(clientRuntimeState.viewangles[0], 29, 1e-5);
       });
+    });
+  });
+
+  void describe('a game that calculates the view', () => {
+    void test('is given what the view is calculated from, and its result is the view', () => {
+      let seen: ViewInput | null = null;
+      player.angles.setTo(0, 90, 0);
+      velocity = new Vector(10, 20, 0);
+      clientRuntimeState.viewangles.setTo(5, 6, 7);
+      clientRuntimeState.punchangle.setTo(1, 0, 0);
+      clientRuntimeState.onground = true;
+      clientRuntimeState.time = 42;
+      clientRuntimeState.gameAPI = {
+        viewmodel: null,
+        updateRefDef() {},
+        calcView(input: ViewInput, result: ViewResult) {
+          seen = {
+            origin: input.origin.copy(),
+            angles: input.angles.copy(),
+            velocity: input.velocity.copy(),
+            viewangles: input.viewangles.copy(),
+            punchangle: input.punchangle.copy(),
+            viewheight: input.viewheight,
+            onground: input.onground,
+            time: input.time,
+            frametime: input.frametime,
+            viewsize: input.viewsize,
+          };
+          result.vieworg.setTo(1, 2, 3);
+          result.viewangles.setTo(4, 5, 6);
+          result.weaponOrigin.setTo(7, 8, 9);
+          result.weaponAngles.setTo(10, 11, 12);
+        },
+      } as unknown as ClientGameInterface;
+
+      FirstPersonView.CalcRefdef();
+
+      const input = seen as unknown as ViewInput;
+      assert.deepEqual(Array.from(input.origin), [100, 200, 300]);
+      assert.deepEqual(Array.from(input.angles), [0, 90, 0]);
+      assert.deepEqual(Array.from(input.velocity), [10, 20, 0]);
+      assert.deepEqual(Array.from(input.viewangles), [5, 6, 7]);
+      assert.deepEqual(Array.from(input.punchangle), [1, 0, 0]);
+      assert.equal(input.viewheight, VIEW_HEIGHT);
+      assert.equal(input.onground, true);
+      assert.equal(input.time, 42);
+      assert.equal(input.frametime, FRAME_TIME);
+      assert.equal(input.viewsize, 120);
+
+      assert.deepEqual(Array.from(Camera.refdef.vieworg), [1, 2, 3]);
+      assert.deepEqual(Array.from(Camera.refdef.viewangles), [4, 5, 6]);
+      assert.deepEqual(Array.from(viewent.origin), [7, 8, 9]);
+      assert.deepEqual(Array.from(viewent.angles), [10, 11, 12]);
+    });
+
+    void test('is followed by the weapon model of the game, updateRefDef and the chase camera, in that order', () => {
+      const calls: string[] = [];
+      clientRuntimeState.gameAPI = {
+        viewmodel: { model: new BaseModel('models/v_axe.mdl'), frame: 2, visible: true },
+        updateRefDef() {
+          calls.push('updateRefDef');
+        },
+        calcView(_input: ViewInput, result: ViewResult) {
+          calls.push('calcView');
+          result.vieworg.setTo(0, 0, 0);
+        },
+      } as unknown as ClientGameInterface;
+      Chase.active = { value: 1 } as Cvar;
+      mock.method(Chase, 'Update', () => { calls.push('chase'); });
+
+      FirstPersonView.CalcRefdef();
+
+      assert.deepEqual(calls, ['calcView', 'updateRefDef', 'chase']);
+      assert.equal(viewent.frame, 2);
+      assert.equal(viewent.framePrevious, 1);
+    });
+
+    void test('can take the engine\'s own view and adjust it', () => {
+      clientRuntimeState.gameAPI = {
+        viewmodel: null,
+        updateRefDef() {},
+        calcView(input: ViewInput, result: ViewResult) {
+          FirstPersonView.Calculate(input, result);
+          result.vieworg[2] += 100;
+        },
+      } as unknown as ClientGameInterface;
+
+      FirstPersonView.CalcRefdef();
+
+      assertNear(Camera.refdef.vieworg[2], 300 + VIEW_HEIGHT + 0.03125 + 100);
+    });
+
+    void test('gives the same view as no calcView at all when it only calls the engine\'s', () => {
+      clientRuntimeState.viewangles.setTo(10, 20, 0);
+      clientRuntimeState.punchangle.setTo(1, 2, 3);
+      FirstPersonView.dmg_time = 0.25;
+      FirstPersonView.dmg_roll = 4;
+      FirstPersonView.dmg_pitch = 2;
+      FirstPersonView.CalcRefdef();
+      const withoutHook = { vieworg: Array.from(Camera.refdef.vieworg), viewangles: Array.from(Camera.refdef.viewangles), weapon: Array.from(viewent.origin) };
+
+      ViewmodelMotion.Reset();
+      FirstPersonView.dmg_time = 0.25;
+      clientRuntimeState.gameAPI = {
+        viewmodel: null,
+        updateRefDef() {},
+        calcView(input: ViewInput, result: ViewResult) {
+          FirstPersonView.Calculate(input, result);
+        },
+      } as unknown as ClientGameInterface;
+      FirstPersonView.CalcRefdef();
+
+      assert.deepEqual(Array.from(Camera.refdef.vieworg), withoutHook.vieworg);
+      assert.deepEqual(Array.from(Camera.refdef.viewangles), withoutHook.viewangles);
+      assert.deepEqual(Array.from(viewent.origin), withoutHook.weapon);
     });
   });
 

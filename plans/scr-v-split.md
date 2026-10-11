@@ -608,6 +608,38 @@ Order, as agreed: G4, G5, G2 and G3, then G6. One commit per item in each repo t
 - **Tests.** Engine: the indicators test lost the pause cases and checks that `Draw` does not draw it. id1: size and
   position, nothing while running, `showpause`.
 
+#### G6, the first-person view as an interface (prototype)
+
+Built as the prototype the plan asked for, to answer open question 1: is the interface of "G6 in detail" enough
+without touching engine internals. **The engine half is real and opt-in, the hellwave half is a prototype behind a
+cvar and off by default; nothing changes for a game that does not implement it.**
+
+- **Interface.** `ClientGameInterface.calcView?(input: ViewInput, result: ViewResult)`. The input is what the plan
+  listed: the player's origin, the angles of the entity (the roll needs them), velocity, the view angles of the
+  input, the punch angle, view height, on-ground, client time, frame time and the view size. The result is the eye
+  (`vieworg`, `viewangles` with the punch already in them) and the weapon (`weaponOrigin`, `weaponAngles`).
+  `ClientEngineAPI.View.calculateDefault(input, result)` is the engine's own calculation for a game that adjusts it.
+- **Engine.** `FirstPersonView.CalcRefdef` gathers the input, calls the game's `calcView` or its own
+  `FirstPersonView.Calculate`, writes the result into `Camera.refdef` and the view entity, and then does what it did:
+  the weapon's model and frame and their lerp, `updateRefDef`, the chase camera. `Calculate` is the old body moved,
+  reading its input instead of the client state; the characterization tests of phase 0 pass unchanged, and a test
+  checks that a `calcView` that only calls `Calculate` gives the same view as none. Pitch drift (G7) and the
+  intermission camera stay the engine's, as the plan said.
+- **hellwave** (`hw_view`, default 0): 0 calls `calculateDefault`; 1 is a steady eye (origin plus view height, the
+  input angles plus the punch, no bob, no roll, no sway, no smoothing of steps) with its own kick: a hit lifts the
+  view by 0.15 degrees per point of damage, at most 10, falling off at 12 degrees per second, from the
+  `client.damage` event. It is about 25 lines, and needed nothing of the engine but the interface.
+- **What the prototype says about the doubt.** The interface was enough for a distinct view and for composing with the
+  default. What it does not give a game, and a real implementation would need to decide: the weapon's *lag* and
+  look bob (they are `ViewmodelMotion` state and come with `calculateDefault`; a game that writes its own has to write
+  those too), the state of the step smoothing, and chase-camera interplay (the chase camera runs after the game's
+  result and moves it, which is what the plan said it should do). None of these needed an engine change.
+- **Verified:** `npm test` 2239 pass, `npm run typecheck` clean; live, a production client of hellwave on `hw_e1m2`
+  against a hellwave dedicated server, walking at 200 units per second with `cl_bob 0.02` and `v_idlescale 1`:
+  `hw_view 0` bobs the eye by 5.5 units and sways the pitch by 4.2 degrees, `hw_view 1` holds the eye at exactly the
+  view height (22) with no sway, switched at run time with no console error. Not covered: a hit by eye in hellwave
+  (the kick is covered by unit tests), and the chase camera together with `hw_view 1`.
+
 ## Testing
 
 - New tests are `.test.ts` in `test/client/` (one level, glob-safe); `v.test.mjs` and `scr.test.mjs` are replaced.

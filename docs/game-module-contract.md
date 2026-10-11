@@ -104,7 +104,7 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 2. `new ClientGameAPI(ClientEngineAPI)` creates a new instance. The previous one is replaced without `shutdown()`.
 3. The client loads the map's models and sounds, then calls `init()`, followed by `loadGame(data)` when a savegame is being restored.
 4. While connected, the engine writes the server's `clientdata` updates into `clientdata` and forwards client events to `handleClientEvent(code, ...args)`.
-5. Every frame: `startFrame()`; after the view is calculated, `updateRefDef(refdef)`; `draw()` for the HUD; `drawLoading()` while connecting or changing level. The engine reads `viewmodel` to draw the first-person weapon.
+5. Every frame: `startFrame()`; the view is calculated (by the game's `calcView(input, result)` when it has one, by the engine otherwise), then `updateRefDef(refdef)`; `draw()` for the HUD; `drawLoading()` while connecting or changing level. The engine reads `viewmodel` to draw the first-person weapon.
 6. `GetClientEdictHandler(classname)` is asked when a client entity is assigned a classname. That covers both entities mirrored from the server and client-only ones a game spawns itself with `ClientEngineAPI.SpawnClientEntity(classname, { persistent })`: a client-only classname has no server entity class, so the game resolves it from its own table (for example a registry of handler classes keyed by classname). A persistent client-only entity is captured by savegames, including its model name and whatever its handler's `serialize()` returns. See [Client Entities](client-entities.md).
 7. When the client disconnects, `shutdown()` runs.
 
@@ -118,6 +118,7 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 | `ServerGameInterface.serverflags` | game | engine | Game-defined bits that survive a changelevel (for example Quake's episode runes). Passed to `init`. |
 | `ClientGameInterface.clientdata` | engine writes its contents | game | Must be non-null before the first server update arrives. |
 | `ClientGameInterface.viewmodel` | game | engine | A `null` model draws nothing. |
+| `ClientGameInterface.calcView(input, result)` | game | engine | Optional. Calculates the first-person view in place of the engine's: the eye and the weapon go into `result`. `ClientEngineAPI.View.calculateDefault(input, result)` is the engine's own, for a game that adjusts it. The engine does the pitch drift before, and the weapon's model and frame, `updateRefDef` and the chase camera after. |
 | `ClientGameInterface.hudReservedHeight(viewsize)` | game | engine | Optional. Pixels at the bottom of the screen that the HUD keeps, so the 3D view is drawn above them. Without it the view has the whole height. |
 
 ## What is not part of the contract

@@ -127,6 +127,59 @@ export interface HostAlertEvent {
   readonly severity: HostAlertSeverity;
 }
 
+/**
+ * What a first-person view is calculated from, for a client game that calculates its own (`calcView`). The vectors
+ * are the engine's and valid for the call only; read them, and copy what is kept.
+ */
+export interface ViewInput {
+  /** Where the player is. */
+  readonly origin: Vector;
+
+  /** The angles of the player entity, which are not the view's: they face where the model faces. */
+  readonly angles: Vector;
+
+  /** How fast the player moves. */
+  readonly velocity: Vector;
+
+  /** Where the player looks, from the input and the prediction. Prediction reads it, so a game does not write it back. */
+  readonly viewangles: Vector;
+
+  /** The kick the server gave the view, which is added to the angles last. */
+  readonly punchangle: Vector;
+
+  /** Height of the eye above the origin. */
+  readonly viewheight: number;
+
+  /** Whether the player stands on something. */
+  readonly onground: boolean;
+
+  /** Client time in seconds. */
+  readonly time: number;
+
+  /** Seconds since the last frame. */
+  readonly frametime: number;
+
+  /** The `viewsize` variable. */
+  readonly viewsize: number;
+}
+
+/**
+ * Where a first-person view puts the eye and the weapon. A `calcView` writes every member, in place.
+ */
+export interface ViewResult {
+  /** The eye. */
+  readonly vieworg: Vector;
+
+  /** Where the eye looks, with the punch angle already in it. */
+  readonly viewangles: Vector;
+
+  /** Where the weapon model is. */
+  readonly weaponOrigin: Vector;
+
+  /** The angles of the weapon model. */
+  readonly weaponAngles: Vector;
+}
+
 export type PostProcessColorGradeDescriptor = {
   readonly saturation?: number;
   readonly contrast?: number;
@@ -317,6 +370,16 @@ export interface ClientGameInterface {
    * @returns Pixels, 0 or more.
    */
   hudReservedHeight?(viewsize: number): number;
+
+  /**
+   * Calculates the first-person view of a frame, in place of the engine's (bob, roll into a strafe, damage kick,
+   * idle sway, smoothing of steps). The engine does the pitch drift before, and after it: the model and frame of
+   * the weapon, `updateRefDef`, and the chase camera. `ClientEngineAPI.View.calculateDefault` is the engine's own
+   * calculation, for a game that wants it and adjusts the result. Leave it out to get the engine's.
+   * @param input What the view is calculated from.
+   * @param result Where the eye and the weapon go. Write every member.
+   */
+  calcView?(input: ViewInput, result: ViewResult): void;
 }
 
 /**

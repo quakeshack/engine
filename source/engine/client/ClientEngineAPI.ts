@@ -26,7 +26,7 @@ import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
 import W from '../common/W.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
-import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions } from '../../shared/GameInterfaces.ts';
+import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions, ViewInput, ViewResult } from '../../shared/GameInterfaces.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import { clientCollision, clientPmove } from './ClientPhysics.ts';
@@ -38,6 +38,7 @@ import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
 import Draw from './Draw.ts';
 import S from './Sound.ts';
+import FirstPersonView from './view/FirstPersonView.ts';
 import viewCvars from './view/ViewCvars.ts';
 import Camera from './renderer/scene/Camera.ts';
 import Visibility from './renderer/scene/Visibility.ts';
@@ -623,6 +624,22 @@ export class ClientEngineAPI extends CommonEngineAPI {
         width: Camera.refdef.vrect.width,
         height: Camera.refdef.vrect.height,
       };
+    },
+  };
+
+  /**
+   * The first-person view, for a game that calculates its own (`ClientGameInterface.calcView`).
+   */
+  readonly View = {
+    /**
+     * Calculates the engine's own first-person view: the bob, the roll into a strafe, the damage kick, the idle
+     * sway, the offsets and the smoothing of steps, with the cvars that tune them (`cl_bob*`, `v_kick*`,
+     * `v_idlescale`, `scr_ofs*`). Call it from `calcView` and adjust the result, or leave it and write your own.
+     * @param input What the view is calculated from, as `calcView` was given it.
+     * @param result Where the eye and the weapon go; every member is written.
+     */
+    calculateDefault(input: ViewInput, result: ViewResult): void {
+      FirstPersonView.Calculate(input, result);
     },
   };
 
