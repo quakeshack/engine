@@ -1,7 +1,7 @@
 # Dissolve `SCR.ts` and `V.ts`
 
 Follow-up to `plans/r-split.md`. Status: **plan drafted 2026-10-10, developer decisions 1 to 8 recorded (4 to 8 on 2026-10-11); G6 is a
-direction, not a closed decision; nothing implemented.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
+direction, not a closed decision; Phase 0 is done (2026-10-11, not committed), Phases 1 to 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
 
 ## Context
 
@@ -51,7 +51,21 @@ be: several unrelated jobs each, with the renderer and the game reaching into th
    center-print wrapping (`formatCenterPrintLines`) and a `client.center-print` subscriber. By reading the code the
    engine's items-based tint and the game's both apply; not yet confirmed on screen.
 7. **Almost no tests.** `v.test.mjs` pins three math helpers, `scr.test.mjs` a pause/net indicator case.
-   `CalcRefdef`, `CalcBlend`, `DriftPitch` and `UpdateScreen` are not covered.
+   `CalcRefdef`, `CalcBlend`, `DriftPitch` and `UpdateScreen` are not covered. (Covered since Phase 0.)
+8. **Quirks the characterization tests pinned, found by writing them** (2026-10-11), none changed in Phase 0.
+   The developer's answers are in italics.
+   - Refresh-rate detection rounds the measured FPS *up* to a multiple of 15, so a measurement a hair above one
+     (60.0000001 from floating-point timestamps) becomes the next multiple, 75. *Fix in `FramePacing` (Phase 4):
+     step up to the next multiple only once the measurement is clearly above the current one, about 63 for 60
+     (3 FPS, 5 percent), a threshold to be pinned by a test. Not set from a single measurement window either.*
+   - `V.CalcRefdef` clamps the eye against the player origin *unsanitized*: a `NaN` coordinate leaves the eye
+     unclamped (0.03125), a `+Infinity` one puts it 14 units below zero. Only reachable with a broken origin.
+     *No known issue, origins populate quickly; no action. The characterization test stays, so it is a visible
+     decision if `FirstPersonView` ever sanitizes the origin once at the top.*
+   - The viewmodel and look bob are smoothed with module state (`#smoothedViewmodelBob`, the look-bob pair), so
+     the first frame after a map change starts from the previous map's values. The tests had to run quiet frames
+     between cases to reset it. *Accepted as is.* `ViewmodelMotion` (Phase 3) owns that state anyway; resetting it
+     on a map change is free there, and optional.
 
 ## Decisions
 
@@ -267,7 +281,60 @@ additive: nothing changes for a game that calls `setStack` as today.
 - **Phase 5, game handover**, one commit per item that the developer picks from G2 to G6 (G4 is decided: the game
   sets its entries and pulses and the engine default goes; G6 starts with the hellwave prototype), each with the
   engine half, the id1 and hellwave half in their repos, and `docs/game-module-contract.md`.
-- **Phase 6, docs.** `docs/`, the instructions and skills name the new files; the forwarder ledger is empty.
+- **Phase 6, docs and cleaning up.** `docs/`, the instructions and skills name the new files; the forwarder ledger is
+  empty. Also the cleaning up phase for the lint warnings the split leaves in files it touches: the 27
+  `@typescript-eslint/unbound-method` warnings of `ClientHost.ts` (15), `ClientInput.ts` (5), `ClientLifecycle.ts`
+  (3), `Draw.ts` (2) and `VID.ts` (2), and the two `jsdoc/require-returns` of `DedicatedHost.ts` (developer,
+  2026-10-11: clean them up here). The fix for each is the `this: void` annotation the rule suggests, or a method
+  registered as an arrow function; no behavior change.
+
+### Phase 0: what shipped (2026-10-11)
+
+Characterization first, then the small fixes, so the tests ran green against the code as it was before anything moved.
+
+**The safety net** (6 new `.test.ts` files in `test/client/`, 99 tests; mutation-checked: dropping the 1/32 eye
+nudge, the damage decay constant, the HUD height, the wrapping column, the black-screen branch and the step
+threshold each turn a test red, after one case was added for the last):
+
+- `view-refdef.test.ts`: `V.CalcRefdef` (eye height, the 1/32 nudge, walking bob and its cap, roll, damage kick,
+  idle sway, the `scr_ofs` offsets and the 14/22/30 clamp, punch angle, step smoothing, the `viewsize` weapon
+  nudge, the viewmodel from the game, the `updateRefDef` then chase order, drift when `v_pitchdrift` is on),
+  `CalcIntermissionRefdef`, and `PreRenderView` (the order of the derived steps, forced-up, intermission, paused,
+  the multiplayer offset reset).
+- `view-color-shifts.test.ts`: `CalcBlend` (mixing formula and order, `gl_cshiftpercent`, the powerup priority,
+  the decay rates, the cap), `SetContentsColor`, `ContentShift`, `BonusFlash_f`, `cshift_f`, `ApplyDamage`.
+- `pitch-drift.test.ts`: `StartPitchDrift`, `StopPitchDrift`, `DriftPitch`.
+- `scr-viewport.test.ts`: `SCR.CalcRefdef` (the view size ladder and the HUD heights 0/24/48, the 96 pixel
+  minimum, the clamps, the intermission, FOV from aspect, the two projection scale entries).
+- `scr-center-print.test.ts`: wrapping at 40 and at newlines, the timer, centering, the typewriter.
+- `scr-update-screen.test.ts`: the order of a frame with a fake GL and recorded calls: connected, scene capture,
+  intermission, connecting, forced-up (black screen instead of the tint, the console only when opened), pacing,
+  refresh-rate detection, the two screenshots.
+
+**The fixes**
+
+- **Decision 1, the engine crosshair is gone.** `SCR.crosshair`, `crossx`, `crossy`, `disableCrosshair` and the
+  branch in `UpdateScreen` are removed (the latent crash of finding 1 with them), and `CAP_HUD_INCLUDES_CROSSHAIR`
+  is removed from `Defs.ts`. A game that still lists it is rejected at load with "unsupported capabilities", which
+  a test pins. **Two game repos changed, not committed:** `source/game/id1/main.ts` and `source/game/hellwave/main.ts`
+  lose the one line (and hellwave its now unused import), each needs its own commit, see `submodule-aware-commit`.
+  A game built against the previous engine that lists the capability will not load on this one.
+- **Decision 2, the dedicated server does not load the client `V`.** `createDedicatedServer` passes
+  `new PlayerRollView()` as the server's view (as the server worker already did), and `DedicatedHost` lost its
+  `view` dependency and `view.Init()`. A new test in `engine-boundaries.test.mjs` pins what the dedicated closure
+  loads from `client/`: the same five model-loading files as the worker, no `V`, `R` or `Camera`. The browser's
+  in-thread server (`?serverthread`) still takes its roll from the client's `V`, as that realm has one. Smoke:
+  a production dedicated build boots on a spare port, loads `e1m1` and logs no error.
+- **Dead plaque flags removed.** `disabled_for_loading` and `disabled_time` are gone, and with them the TODO in
+  `ClientDemos.ts` that wanted to reset one (nothing reads the flag, so there was nothing left to reset).
+- **`smoothing` moved to `source/shared/smoothing.ts`** (`smoothValue`, `shortestAngleDelta`, functions, since there
+  are two). `V.SmoothValue` and `V.ShortestAngleDelta` are deleted without forwarders; `EntityLighting` no longer
+  imports `V`. The tests moved to `test/shared/smoothing.test.ts` (adds the exact closing fraction, step
+  composition and the half-turn edge); `v.test.mjs` keeps `CalcRoll` and `ComputeViewmodelLookBobTargets` until
+  Phase 3.
+- **Verified:** `npm test` 2114 pass (was 1992), `npm run typecheck` clean, `eslint` 0 errors on everything
+  touched. No browser capture: nothing in this phase changes what the renderer draws, and `V` and `SCR` calculate
+  from the same code as before (the new numbers are the proof). Pointer lock and input are not touched.
 
 ## Testing
 

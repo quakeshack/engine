@@ -1,10 +1,10 @@
 import Vector from '../../../../shared/Vector.ts';
 import { effect } from '../../../../shared/Defs.ts';
+import { smoothValue } from '../../../../shared/smoothing.ts';
 import * as Def from '../../../common/Def.ts';
 import Host from '../../../common/Host.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import type { ClientEdict } from '../../ClientEntities.ts';
-import V from '../../V.ts';
 import LightSampler from './LightSampler.ts';
 
 /** Ambient light, shade light, nearest light origin, dynamic shade light and dynamic light origin of an entity. */
@@ -115,7 +115,7 @@ export class EntityLighting {
 
   /**
    * How quickly smoothed lighting eases towards a freshly sampled value; see
-   * `V.SmoothValue` for the exponential-decay formula this drives. Chosen to
+   * `smoothValue` for the exponential-decay formula this drives. Chosen to
    * be slow enough to hide lightmap-boundary popping but still track normal
    * movement speeds without feeling laggy.
    */
@@ -165,9 +165,9 @@ export class EntityLighting {
    * `#lightSmoothingSharpness` as the exponential decay rate.
    */
   static SmoothVectorTowards(current: Vector, target: Vector, deltaTime: number): void {
-    current[0] = V.SmoothValue(current[0], target[0], EntityLighting.#lightSmoothingSharpness, deltaTime);
-    current[1] = V.SmoothValue(current[1], target[1], EntityLighting.#lightSmoothingSharpness, deltaTime);
-    current[2] = V.SmoothValue(current[2], target[2], EntityLighting.#lightSmoothingSharpness, deltaTime);
+    current[0] = smoothValue(current[0], target[0], EntityLighting.#lightSmoothingSharpness, deltaTime);
+    current[1] = smoothValue(current[1], target[1], EntityLighting.#lightSmoothingSharpness, deltaTime);
+    current[2] = smoothValue(current[2], target[2], EntityLighting.#lightSmoothingSharpness, deltaTime);
   }
 }
 

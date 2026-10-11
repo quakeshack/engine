@@ -144,7 +144,6 @@ export default class ClientDemos {
     if (this.demofile === null) {
       Con.PrintError(`ERROR: couldn't open ${demoname}\n`);
       this.demonum = -1;
-      // TODO: SCR.disabled_for_loading = false;
       return;
     }
 

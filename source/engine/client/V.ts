@@ -7,6 +7,7 @@ import * as Def from '../common/Def.ts';
 import Q from '../../shared/Q.ts';
 import { calcRoll } from '../../shared/PlayerRoll.ts';
 import Vector from '../../shared/Vector.ts';
+import { shortestAngleDelta, smoothValue } from '../../shared/smoothing.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Chase from './Chase.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
@@ -104,20 +105,6 @@ export default class V {
       bob = -7.0;
     }
     return bob;
-  }
-
-  static SmoothValue(current: number, target: number, sharpness: number, deltaTime: number): number {
-    const smoothing = 1.0 - Math.exp(-Math.max(0.0, sharpness) * Math.max(0.0, deltaTime));
-    return current + (target - current) * smoothing;
-  }
-
-  /**
-   * @param {number} from previous yaw angle in degrees
-   * @param {number} to current yaw angle in degrees
-   * @returns {number} shortest wrapped delta in [-180, 180).
-   */
-  static ShortestAngleDelta(from: number, to: number): number {
-    return ((to - from + 540.0) % 360.0) - 180.0;
   }
 
   /**
@@ -381,7 +368,7 @@ export default class V {
       V.#smoothedViewmodelBob = bob;
       V.#smoothedViewmodelBobInitialized = true;
     } else {
-      V.#smoothedViewmodelBob = V.SmoothValue(V.#smoothedViewmodelBob, bob, 72.0, Host.frametime);
+      V.#smoothedViewmodelBob = smoothValue(V.#smoothedViewmodelBob, bob, 72.0, Host.frametime);
     }
     const viewmodelBob = V.#smoothedViewmodelBob;
 
@@ -395,10 +382,10 @@ export default class V {
       V.#viewmodelLookBobInitialized = true;
     } else {
       const pitchDelta = currentPitch - V.#previousViewPitch;
-      const yawDelta = V.ShortestAngleDelta(V.#previousViewYaw, currentYaw);
+      const yawDelta = shortestAngleDelta(V.#previousViewYaw, currentYaw);
       const [lookBobRightTarget, lookBobUpTarget] = V.ComputeViewmodelLookBobTargets(pitchDelta, yawDelta);
-      V.#viewmodelLookBobRight = V.SmoothValue(V.#viewmodelLookBobRight, lookBobRightTarget, 18.0, Host.frametime);
-      V.#viewmodelLookBobUp = V.SmoothValue(V.#viewmodelLookBobUp, lookBobUpTarget, 18.0, Host.frametime);
+      V.#viewmodelLookBobRight = smoothValue(V.#viewmodelLookBobRight, lookBobRightTarget, 18.0, Host.frametime);
+      V.#viewmodelLookBobUp = smoothValue(V.#viewmodelLookBobUp, lookBobUpTarget, 18.0, Host.frametime);
       V.#previousViewPitch = currentPitch;
       V.#previousViewYaw = currentYaw;
     }

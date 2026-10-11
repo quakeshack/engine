@@ -1,4 +1,3 @@
-import { gameCapabilities } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { clientConnectionState } from '../common/Def.ts';
@@ -49,13 +48,8 @@ export default class SCR {
   static _requestedAnimationFrames = 0;
 
   static recalc_refdef = false;
-  static disabled_for_loading = false;
-  static disabled_time = 0;
   static screenshot = false;
   static screenshotClean = false;
-
-  /** True when the crosshair should be suppressed (e.g. HUD includes its own crosshair). */
-  static disableCrosshair = false;
 
   /** Bottom-of-screen pixels reserved for HUD elements at the current view size. */
   static hudReservedHeight = 0;
@@ -79,9 +73,6 @@ export default class SCR {
   static showpause: Cvar = null!;
   static centertime: Cvar = null!;
   static printspeed: Cvar = null!;
-  static crosshair: Cvar = null!;
-  static crossx: Cvar = null!;
-  static crossy: Cvar = null!;
 
   // Textures — initialized in Init()
   static net: ReturnType<typeof Draw.LoadPicFromWad> = null!;
@@ -237,7 +228,6 @@ export default class SCR {
     SCR.net = Draw.LoadPicFromWad('NET');
     SCR.turtle = Draw.LoadPicFromWad('TURTLE');
     SCR.pause = Draw.LoadPicFromLumpDeferred('pause');
-    SCR.disableCrosshair = CL.gameCapabilities.includes(gameCapabilities.CAP_HUD_INCLUDES_CROSSHAIR);
   }
 
   /** Draws the low-frame-rate turtle indicator. */
@@ -338,7 +328,7 @@ export default class SCR {
     SCR.screenshotClean = true;
   }
 
-  /** Stops all sounds and blanks the display while a map is loading. */
+  /** Stops all sounds and closes the console and the center print while a map is loading. */
   static BeginLoadingPlaque(): void {
     S.StopAllSounds();
     if ((clientStaticState.state !== clientConnectionState.connected) || (clientStaticState.signon !== 4)) {
@@ -346,14 +336,11 @@ export default class SCR {
     }
     SCR.centertime_off = 0.0;
     SCR.con_current = 0;
-    SCR.disabled_for_loading = true;
-    SCR.disabled_time = Host.realtime + 60.0;
   }
 
-  /** Unhides the display and clears console notifications after loading completes. */
+  /** Clears console notifications after loading completes. */
   static EndLoadingPlaque(): void {
     Draw.EndDisc();
-    SCR.disabled_for_loading = false;
     Con.ClearNotify();
   }
 
@@ -452,10 +439,6 @@ export default class SCR {
         } else if ((clientRuntimeState.intermission !== 0) && (Key.destination === KeyDestination.game)) {
           CL.DrawHUD();
         } else {
-          if (!SCR.disableCrosshair && SCR.crosshair.value !== 0) {
-            Draw.Character(Camera.refdef.vrect.x + (Camera.refdef.vrect.width / 2) + SCR.crossx.value,
-              Camera.refdef.vrect.y + (Camera.refdef.vrect.height / 2) + SCR.crossy.value, 43);
-          }
           SCR.DrawNet();
           SCR.DrawTurtle();
           SCR.DrawPause();

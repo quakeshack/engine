@@ -7,7 +7,7 @@ import Host from '../common/Host.ts';
 import Mod from '../common/Mod.ts';
 import NET from '../network/Network.ts';
 import type Server from '../server/Server.ts';
-import V from '../client/V.ts';
+import PlayerRollView from '../server/PlayerRollView.ts';
 import NodeCOM from '../server/Com.ts';
 import DedicatedSys from '../server/Sys.ts';
 import { createServerRuntime } from './createServerRuntime.ts';
@@ -42,7 +42,7 @@ export async function createDedicatedServer(buildConfig?: BuildConfig): Promise<
   });
 
 
-  const runtime = createServerRuntime({ con: Con, sys, net, mod: Mod, com, host: Host, view: V, gameEdition: () => editionOf(com) }, true);
+  const runtime = createServerRuntime({ con: Con, sys, net, mod: Mod, com, host: Host, view: new PlayerRollView(), gameEdition: () => editionOf(com) }, true);
 
   sv = runtime.sv;
   Host.serverHost = runtime.serverHost;
@@ -53,7 +53,6 @@ export async function createDedicatedServer(buildConfig?: BuildConfig): Promise<
     sv,
     serverHost: runtime.serverHost,
     sys,
-    view: V,
     urls: () => undefined,
     commitHash: buildConfig?.commitHash ?? undefined,
   });

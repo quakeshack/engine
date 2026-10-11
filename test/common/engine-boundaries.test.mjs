@@ -6,6 +6,18 @@ import { dirname, join, relative, resolve } from 'node:path';
 const ENGINE_ROOT = new URL('../../source/engine/', import.meta.url).pathname;
 
 /**
+ * The model loaders skip everything that needs a GL context in a server realm, but they still import the classes
+ * that hold the render data. Nothing else of the client may be loaded by a server, in a worker or on its own.
+ */
+const CLIENT_FILES_OF_MODEL_LOADERS = [
+  'client/GL.ts',
+  'client/PageServices.ts',
+  'client/VID.ts',
+  'client/renderer/models/Materials.ts',
+  'client/renderer/scene/Sky.ts',
+];
+
+/**
  * Lists all TypeScript files below a directory of the engine source.
  * @param {string} directory absolute directory path
  * @returns {string[]} absolute file paths
@@ -127,17 +139,19 @@ void describe('engine boundaries', () => {
     });
   });
 
-  void describe('server worker', () => {
-    // The model loaders skip everything that needs a GL context in a server realm, but they still import
-    // the classes that hold the render data. Nothing else of the client may be loaded by the worker.
-    const CLIENT_FILES_OF_MODEL_LOADERS = [
-      'client/GL.ts',
-      'client/PageServices.ts',
-      'client/VID.ts',
-      'client/renderer/models/Materials.ts',
-      'client/renderer/scene/Sky.ts',
-    ];
+  void describe('dedicated server', () => {
+    void test('does not load client code, apart from what model loading drags in', () => {
+      const closure = importClosure(join(ENGINE_ROOT, 'bootstrap/createDedicatedServer.ts'));
+      const clientFiles = [...closure]
+        .map((path) => relative(ENGINE_ROOT, path))
+        .filter((path) => path.startsWith('client/'))
+        .sort();
 
+      assert.deepEqual(clientFiles, CLIENT_FILES_OF_MODEL_LOADERS);
+    });
+  });
+
+  void describe('server worker', () => {
     void test('does not load client code, apart from what model loading drags in', () => {
       const closure = importClosure(join(ENGINE_ROOT, 'server/ServerWorker.ts'));
       const clientFiles = [...closure]

@@ -33,8 +33,6 @@ export interface DedicatedHostDependencies {
   readonly serverHost: ServerHost;
   /** The platform of the process, which can also end it. */
   readonly sys: SystemServices & { Quit(): never };
-  /** The view code the server needs set up, it computes the roll of a player. */
-  readonly view: { Init(): void };
   readonly urls: () => URLs | undefined;
   /** The commit the build was made from, if it knows one. */
   readonly commitHash: string | undefined;
@@ -72,7 +70,7 @@ export default class DedicatedHost {
    * Boots the server: tables, file system, game module, models and network, then runs the configuration.
    */
   async Init(): Promise<void> {
-    const { com, net, sv, sys, view } = this.#deps;
+    const { com, net, sv, sys } = this.#deps;
 
     Host.oldrealtime = sys.FloatTime();
 
@@ -88,8 +86,6 @@ export default class DedicatedHost {
 
     Cmd.Init();
     CvarTable.Init();
-
-    view.Init(); // required for V.CalcRoll
 
     await com.Init();
     this.#InitLocal();

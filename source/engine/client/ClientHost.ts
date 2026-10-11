@@ -152,7 +152,7 @@ export default class ClientHost {
     Cmd.Init();
     Cvar.Init();
 
-    V.Init(); // required for V.CalcRoll
+    V.Init(); // an in-thread server (?serverthread) takes the roll of a player from V as well
     Chase.Init();
 
     await com.Init();

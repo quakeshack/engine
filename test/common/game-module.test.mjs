@@ -64,7 +64,7 @@ void describe('validateGameModuleContract', () => {
         name: 'Test Game',
         author: 'test',
         version: [1, 0, 0],
-        capabilities: [gameCapabilities.CAP_HUD_INCLUDES_CROSSHAIR],
+        capabilities: [gameCapabilities.CAP_ENTITY_BBOX_ADJUSTMENTS_DURING_LINK],
       },
     });
 
@@ -80,6 +80,23 @@ void describe('validateGameModuleContract', () => {
         capabilities: [
           'CAP_HUD_INCLUDES_SBAR',
         ],
+      },
+    });
+
+    assert.throws(
+      () => validateGameModuleContract(gameModule),
+      /unsupported capabilities/,
+    );
+  });
+
+  void test('rejects a game module that still asks the engine to draw the crosshair', () => {
+    // the engine does not draw a crosshair any more: the game does, so there is nothing left to opt out of
+    const gameModule = createGameModule({
+      identification: {
+        name: 'Test Game',
+        author: 'test',
+        version: [1, 0, 0],
+        capabilities: ['CAP_HUD_INCLUDES_CROSSHAIR'],
       },
     });
 
