@@ -200,6 +200,19 @@ class GL {
 - **Use `#` prefix** for private methods.
 - In `.ts` files, prefer native `protected` / `private` keywords. See `typescript-port.instructions.md`.
 
+### Console commands and variables
+
+- **A command that does not use its context** is a static method declared `this: void` (`static Quit_f(this: void): void`), so
+  registering `Cmd.AddCommand('quit', ClientHost.Quit_f)` does not trip `@typescript-eslint/unbound-method`.
+- **A command that does** (`this.client`, `this.forward()`, `this.command`) is a `ConsoleCommand` subclass, the way
+  `Cmd.Exec_f` and `ClientHost.Savegame_f` are: `static Foo_f = class FooConsoleCommand extends ConsoleCommand { override run(...) {} }`.
+  A `this: ConsoleCommand` method is flagged at every registration. A test runs the class with `runConsoleCommand`
+  (`test/support/consoleCommands.ts`) or through `Cmd.ExecuteString`.
+- **Variables live with the class that reads them.** A group of variables with several readers is a `<Group>Cvars`
+  class (`ClientCvars`, `ViewCvars`, `RendererCvars`) with a `register()` method that creates them in the order
+  `cvarlist` shows them; its owner calls `register()` once at startup. Such a file imports `Cvar` and nothing that
+  could import it back.
+
 ### Respect boundaries of abstraction
 
 - **Avoid accessing private or protected members** of other classes directly. Use public methods instead. If not available, consider refactoring.

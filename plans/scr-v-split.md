@@ -1,7 +1,7 @@
 # Dissolve `SCR.ts` and `V.ts`
 
 Follow-up to `plans/r-split.md`. Status: **plan drafted 2026-10-10, developer decisions 1 to 8 recorded (4 to 8 on 2026-10-11); G6 is a
-direction, not a closed decision; Phases 0 to 4 are done and committed (2026-10-11), Phase 5 is in progress (G4 done), Phase 6 is not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
+direction, not a closed decision; Phases 0 to 5 are committed, Phase 6 is done and waits for its commit (2026-10-11). Open: the 1.3.0 release steps of `plans/engine-architecture-modernization.md`.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
 
 ## Context
 
@@ -602,9 +602,12 @@ Order, as agreed: G4, G5, G2 and G3, then G6. One commit per item in each repo t
   `engine.CL.paused` is new and read-only.
 - **id1.** The HUD loads the `pause` lump and draws it at twice its size, centered and a little above the middle,
   while `CL.paused` and `showpause`; it registers `showpause` under the engine's old name. hellwave inherits it.
-- **One visible change, and a decision to confirm:** the sign is drawn by the game's `draw()`, which `nohud 1`
-  skips, so `nohud` hides the pause sign now where the engine drew it regardless (the plan's G3 row said pause should
-  not vanish with `nohud`). The alternative is a second hook that runs with `nohud`; I did not add one for a sign.
+- **`nohud` (settled 2026-10-11 by the developer: the sign stays):** the sign is drawn by the game's `draw()`, which
+  `nohud 1` skips, so for a moment `nohud` hid it where the engine drew it regardless. `ClientGameInterface` has an
+  optional `drawOverlay()` now, which `CL.DrawHUD` calls after `draw()` and also with `nohud`; the id1 HUD draws the
+  sign there (not in an intermission, as before). The center print is still part of `draw()` and hidden by `nohud`.
+  Checked live on `start` (software GL): with `cl_nohud 1` and the game paused the sign region differs from the
+  running view by 7726 pixels against a noise of 289, `showpause 0` takes it away again (339).
 - **Tests.** Engine: the indicators test lost the pause cases and checks that `Draw` does not draw it. id1: size and
   position, nothing while running, `showpause`.
 
@@ -640,6 +643,67 @@ cvar and off by default; nothing changes for a game that does not implement it.*
   view height (22) with no sway, switched at run time with no console error. Not covered: a hit by eye in hellwave
   (the kick is covered by unit tests), and the chase camera together with `hw_view 1`.
 
+### Phase 6: what shipped (2026-10-11)
+
+Docs and the cleaning up the plan left for the end, plus the three "definitely" items of the developer's
+`post-cleanup-todos.md`.
+
+- **The lint warnings of the split.** `source/engine` and `source/shared` lint at zero warnings. A command that
+  does not use its context is declared `this: void` (`ClientHost`: `Quit_f`, the four `view*` commands,
+  `Changelevel_f`, `Connect_f`, `Reconnect_f`; `ClientInput.Impulse_f`; `CL.Disconnect`, `CL.ServerInfo_f`,
+  `CL.MoveAround_f`; `Draw.BeginDisc`/`EndDisc`; `VID.Resize`; and the same in `Cmd`, `Com`, `Cvar` and `Host` that the
+  rule found there). The plan said "`this: void` or an arrow function" for all of them, but **nine of the commands
+  use their context** (`this.client`, `this.forward()`, `this.command`) and a `this: ConsoleCommand` method is
+  flagged at every registration whatever its annotation says. Those are `ConsoleCommand` subclasses now, the way
+  `Cmd.Exec_f` already was: `ClientHost.NameCommand`, `ColorCommand`, `Savegame_f`, `Loadgame_f`, `Map_f`,
+  `Restart_f` and `ClientInput`'s `KeyDown_f`, `KeyUp_f` and `MLookUp_f` (which extends `KeyUp_f` and calls
+  `super.run()` instead of `KeyUp_f.call(this)`). The bodies did not change, they were re-indented. 6 `@returns`
+  were added to JSDoc blocks (`DedicatedHost`, `Host`, `Navigation`, `ServerRealm`), and four
+  `require-atomic-updates` warnings of single-writer startup assignments got a one-line reason and a disable.
+- **Tests.** The 18 call sites that ran a command with `.call({ client: null }, ...)` (`savegame`, `host-identity`,
+  `client-host` tests) use `runConsoleCommand` (`test/support/consoleCommands.ts`). `ClientInput`'s key commands had
+  no test at all: `client-input-commands.test.ts` covers down, up, a second and a third key, the console form
+  without a key, `+mlook`/`-mlook` with `lookspring`, and `impulse` (16 tests).
+- **Registration moved in with the variables** (developer's note): `ClientCvars.register()` (was
+  `ClientLifecycle.#registerCvars`), `RendererCvars.register()` (was the head of `R.Init`) and
+  `ViewCvars.register()` (was `Viewport.Init` for `fov` and `viewsize` plus `FirstPersonView.Init` for the rest).
+  The order is the old one. `fov` and `viewsize` are created with the other view variables in `Boot`, ahead of
+  `R.Init`, instead of after `CL.Init`, which only moves them in the order `cvarlist` and the config file list them in.
+  The three files now import `Cvar` (a module of `common/` that nothing client-side can be imported by).
+- **`LightmapAtlas.ts` is gone**: its two constants are exported from `Lightmaps.ts`. The load-order hazard that
+  made it a leaf (a constant read while `R` was being set up, from a module that imported `R`) is gone with `R`'s
+  own lightmap array; `BrushModelRenderer` reads the constant in a method and already imported `Lightmaps`.
+- **A paused game keeps the server worker idle** (developer's note). Physics were skipped already; every frame
+  still built the full entity datagram of every client, a frame was started by every move packet of the client
+  (60 a second) and by the fallback timer. While paused, a client gets a datagram at most every
+  `ServerMessages.PAUSED_DATAGRAM_INTERVAL` (0.1 s of wall clock), a client that has none yet gets one in its first
+  frame, reliable messages go out in every frame, and a muzzle flash is cleared only once a datagram carried it.
+  Measured in the browser against the id1 `start` map on software GL: the client reads 44 datagrams a second
+  running and 9 paused, and the `pause` that ends it arrives within the same second. `docs/server-worker.md` has a
+  section for it. Frames themselves still run, a paused server has to hear the unpause and new connections.
+- **Docs.** `docs/README.md` lists `color-shifts.md` and says what `post-process-effects.md` covers now;
+  `code-style-guide.instructions.md` has a "Console commands and variables" section (the two kinds of command, where
+  variables are registered); `unit-tests.instructions.md` names `runConsoleCommand`. A search of `docs/`,
+  `.github/`, `.claude/` and `source/engine` for the names of the dissolved classes and members finds none left, and
+  the plan's forwarders (`ContentShift`, `R.PolyBlend`, `V.blend`) are deleted. The `@deprecated` members that remain
+  in `ClientEngineAPI`/`ServerEngineAPI` are older and not part of this plan.
+- **A second look at the commands** (developer, same day). What is left of functions that read the command through a
+  typed `this`: `ClientHost.Name_f` and `Color_f` take the command as a parameter now, like the server's `name`
+  and `color`; the dedicated host's two `function (this: ConsoleCommand)` registrations are classes; a leftover
+  `.call(context, ...)` of `Cvar.Command_f`, which never read `this`, and the empty command context class built for
+  it are gone. **Not done, on purpose:** `Cmd.AddCommand` still accepts a plain function and runs it with the
+  command as `this` (`CommandFunction`). `test/common/cmd.test.mjs` pins that a registered function reads
+  `this.client` and `this.argv`, and a game's `RegisterCommand` callback goes through it, so dropping it would break
+  games outside this repo. A plain function that needs no context is the common case (78 of the 88 registrations).
+- **Verified:** `npm test` 2272 pass, `npm run typecheck` clean; live, a production client of id1 on `start`
+  (software GL, the page's server in its worker): holding `w` gives `forwardmove` 400 and moves the player, releasing
+  it gives 0; `name`, `color`, `impulse`, `save` and `load` run without an unknown command and `load` returns to a
+  connected, active server; `pause` and `pause` round-trip with the datagram rates above; no console error (the
+  404s are optional files: `start.nav`, `music/0.opus`, `beam.mdl`, a sound, a charset PNG).
+- **Left, not part of the plan's list:** seven `unbound-method` warnings in tests that save a static method to
+  put it back (`bsp38-loader.test.ts` 5, `sky.test.ts` 1, `test/support/clientState.ts` 1), in files this
+  work did not touch. The release bump to 1.3.0 is the developer's.
+
 ## Testing
 
 - New tests are `.test.ts` in `test/client/` (one level, glob-safe); `v.test.mjs` and `scr.test.mjs` are replaced.
@@ -659,7 +723,7 @@ phase that has to settle it before it starts; every phase stops for a go-ahead a
 
 | # | Question | Needed by | Default if not decided |
 |---|---|---|---|
-| 1 | G6: is the interface in "G6 in detail" enough once prototyped in hellwave, or does the game keep only `updateRefDef`? (the developer is unsure) | Phase 5, G6 only | The engine keeps `FirstPersonView`; G6 is not started |
+| 1 | ~~G6: is the interface in "G6 in detail" enough once prototyped in hellwave, or does the game keep only `updateRefDef`?~~ | Phase 5, G6 only | **Settled 2026-10-11 by the developer:** the interface and the hellwave prototype (`hw_view`, off by default) stay for now |
 | 2 | ~~Channels: is `setStack(stack, { channel })` the right shape, or should a game register channels up front?~~ | Phase 1 | **Settled 2026-10-11 by the developer:** `setStack(stack, { channel })`, default channel `'default'`, so every existing call is unchanged |
 | 3 | ~~Neutral settings per effect: where they live, and how a non-numeric setting interpolates~~ | Phase 1 | **Settled 2026-10-11 by the developer:** a `neutral` member of each effect; `tintColor` of the grade stays, its strength carries the intensity |
 | 4 | Order of the frame: the game sets the liquid tint from `viewContents`, which needs the view leaf, which needs the final view origin (from the game itself with G6): previous frame's leaf, or looked up again after the game's view result? | Phase 2 | The previous frame's leaf (one frame of lag, invisible in practice) |
