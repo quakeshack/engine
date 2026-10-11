@@ -568,6 +568,17 @@ Order, as agreed: G4, G5, G2 and G3, then G6. One commit per item in each repo t
   liquid tint on a real liquid leaf (the start hall has none and `map e1m1` does not load in this headless setup, for
   a reason I did not chase), and the quad by eye.
 
+#### G5, the HUD keeps its own height
+
+- **Engine.** `ClientGameInterface.hudReservedHeight?(viewsize)`, optional: how many pixels at the bottom of the screen
+  the HUD keeps. `Viewport.Recalculate` asks it (not in an intermission, which uses the whole screen), repairs an
+  answer that is not a height, and without it the 3D view has the whole height. The thresholds 24 and 48 are gone
+  from the engine; the rule that a view size of 100 or more fills the width and has no border stays, it is what the
+  size means. `docs/game-module-contract.md` lists the member.
+- **id1** implements it (none at 120, 24 from 110, 48 below, as before) and hellwave inherits it.
+- **Tests.** Engine: the ladder with a game that answers like id1, what is asked and when, no game, a game without
+  the member, an intermission, answers that are not heights. id1: the three heights.
+
 ## Testing
 
 - New tests are `.test.ts` in `test/client/` (one level, glob-safe); `v.test.mjs` and `scr.test.mjs` are replaced.

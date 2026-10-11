@@ -308,6 +308,15 @@ export interface ClientGameInterface {
    * rendered.
    */
   updateRefDef(refdef: RefDef): void;
+
+  /**
+   * How many pixels at the bottom of the screen the game's HUD keeps for itself at a view size, so that the
+   * 3D view is drawn above them (a status bar). Asked whenever the view rectangle is calculated, and not during
+   * an intermission, which uses the whole screen. Leave it out to get the whole height of the screen.
+   * @param viewsize The value of the `viewsize` variable, 30 to 120.
+   * @returns Pixels, 0 or more.
+   */
+  hudReservedHeight?(viewsize: number): number;
 }
 
 /**

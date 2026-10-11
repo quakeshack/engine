@@ -118,6 +118,7 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 | `ServerGameInterface.serverflags` | game | engine | Game-defined bits that survive a changelevel (for example Quake's episode runes). Passed to `init`. |
 | `ClientGameInterface.clientdata` | engine writes its contents | game | Must be non-null before the first server update arrives. |
 | `ClientGameInterface.viewmodel` | game | engine | A `null` model draws nothing. |
+| `ClientGameInterface.hudReservedHeight(viewsize)` | game | engine | Optional. Pixels at the bottom of the screen that the HUD keeps, so the 3D view is drawn above them. Without it the view has the whole height. |
 
 ## What is not part of the contract
 

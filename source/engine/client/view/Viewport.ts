@@ -13,7 +13,7 @@ eventBus.subscribe('vid.resize', () => {
 /**
  * Where the 3D view is on the screen: its rectangle and the field of view that fits it, from the `viewsize` and
  * `fov` variables, the size of the screen and whether an intermission is on. It writes them into `Camera.refdef`
- * and the projection matrix, and tells how much of the bottom of the screen the HUD has.
+ * and the projection matrix, and keeps the height the game's HUD asks for (`hudReservedHeight`) free below it.
  */
 export default class Viewport {
   /** Bottom-of-screen pixels reserved for HUD elements at the current view size. */
@@ -84,13 +84,11 @@ export default class Viewport {
       Viewport.hudReservedHeight = 0;
     } else {
       size = viewCvars.viewsize.value;
-      if (size >= 120.0) {
-        Viewport.hudReservedHeight = 0;
-      } else if (size >= 110.0) {
-        Viewport.hudReservedHeight = 24;
-      } else {
-        Viewport.hudReservedHeight = 48;
-      }
+
+      // the game says how much of the bottom of the screen its HUD keeps, a game without one has all of it
+      const reserved = clientRuntimeState.gameAPI?.hudReservedHeight?.(size) ?? 0;
+      Viewport.hudReservedHeight = Number.isFinite(reserved) ? Math.max(0, Math.floor(reserved)) : 0;
+
       if (size >= 100.0) {
         full = true;
         size = 100.0;

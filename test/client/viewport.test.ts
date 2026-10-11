@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import type { ClientGameInterface } from '../../source/shared/GameInterfaces.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import Viewport from '../../source/engine/client/view/Viewport.ts';
 import viewCvars from '../../source/engine/client/view/ViewCvars.ts';
@@ -15,6 +16,17 @@ void describe('Viewport.Recalculate', () => {
   let restores: Array<() => void> = [];
   let viewsize: Cvar = null!;
   let fov: Cvar = null!;
+  /** What the game says its HUD keeps, as id1's status bar does: none at 120, 24 from 110, 48 below. */
+  const asked: number[] = [];
+  const statusBar = (size: number): number => {
+    asked.push(size);
+
+    if (size >= 120) {
+      return 0;
+    }
+
+    return size >= 110 ? 24 : 48;
+  };
   const previousCvars = { viewsize: viewCvars.viewsize, fov: viewCvars.fov };
 
   beforeEach(() => {
@@ -25,9 +37,14 @@ void describe('Viewport.Recalculate', () => {
     viewCvars.fov = fov;
     Viewport.hudReservedHeight = 0;
 
+    asked.length = 0;
+
     restores = [
       patchMembers(VID, { width: 640, height: 480 }),
-      patchMembers(clientRuntimeState, { intermission: 0 }),
+      patchMembers(clientRuntimeState, {
+        intermission: 0,
+        gameAPI: { hudReservedHeight: statusBar } as unknown as ClientGameInterface,
+      }),
     ];
   });
 
@@ -113,6 +130,63 @@ void describe('Viewport.Recalculate', () => {
 
       assert.equal(Viewport.hudReservedHeight, 0);
       assert.deepEqual({ ...Camera.refdef.vrect }, { x: 0, y: 0, width: 640, height: 480 });
+    });
+  });
+
+  void describe('the HUD height the game asks for', () => {
+    void test('is asked with the view size', () => {
+      viewsize.set(90);
+
+      Viewport.Recalculate();
+
+      assert.deepEqual(asked, [90]);
+    });
+
+    void test('is nothing for a game that has not got one, and the view has the whole height', () => {
+      clientRuntimeState.gameAPI = {} as unknown as ClientGameInterface;
+      viewsize.set(100);
+
+      Viewport.Recalculate();
+
+      assert.equal(Viewport.hudReservedHeight, 0);
+      assert.equal(Camera.refdef.vrect.height, 480);
+    });
+
+    void test('is nothing before a game is there', () => {
+      clientRuntimeState.gameAPI = null;
+      viewsize.set(100);
+
+      Viewport.Recalculate();
+
+      assert.equal(Viewport.hudReservedHeight, 0);
+    });
+
+    void test('is not asked in an intermission, which uses the whole screen', () => {
+      clientRuntimeState.intermission = 2;
+
+      Viewport.Recalculate();
+
+      assert.deepEqual(asked, []);
+    });
+
+    void test('is repaired when the game answers with something that is not a height', () => {
+      for (const answer of [Number.NaN, -20, Number.POSITIVE_INFINITY]) {
+        clientRuntimeState.gameAPI = { hudReservedHeight: () => answer } as unknown as ClientGameInterface;
+        viewsize.set(100);
+
+        Viewport.Recalculate();
+
+        assert.equal(Viewport.hudReservedHeight, 0, `for ${answer}`);
+      }
+    });
+
+    void test('is taken in whole pixels', () => {
+      clientRuntimeState.gameAPI = { hudReservedHeight: () => 31.7 } as unknown as ClientGameInterface;
+      viewsize.set(100);
+
+      Viewport.Recalculate();
+
+      assert.equal(Viewport.hudReservedHeight, 31);
     });
   });
 
