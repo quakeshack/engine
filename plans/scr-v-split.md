@@ -1,7 +1,7 @@
 # Dissolve `SCR.ts` and `V.ts`
 
 Follow-up to `plans/r-split.md`. Status: **plan drafted 2026-10-10, developer decisions 1 to 8 recorded (4 to 8 on 2026-10-11); G6 is a
-direction, not a closed decision; Phase 0 is done (2026-10-11, not committed), Phases 1 to 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
+direction, not a closed decision; Phases 0 and 1 are done (2026-10-11; Phase 1 not committed), Phases 2 to 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
 
 ## Context
 
@@ -179,7 +179,9 @@ What it becomes (an additive extension; a game that calls `setStack` as today se
     removed by the engine; the same `key` restarts it.
   - `PostProcess.setStack(stack, { fade })`: cross-fades from the previous stack of that channel to the new one
     over `fade` seconds; an id that is new fades in from neutral, one that is gone fades out.
-  Timers run on `Host.frametime`, so a paused game does not fade, as the Quake color shifts do not today.
+  Timers run on the real clock (see "Phase 1: what shipped": `Host.frametime` never stops while the game is paused,
+  so a menu blur fades in over a paused game, which is wanted here).
+  (Corrected 2026-10-11, this sentence used to say that a paused game does not fade.)
 - **Several entries of one id.** `apply` receives the entry's settings instead of looking up the first one, and
   `resolveGameplayStack` applies every entry. `color-shift` uses it for its layers; for `color-grade` and `blur`
   repeating an id now does what it says.
@@ -336,6 +338,60 @@ threshold each turn a test red, after one case was added for the last):
   touched. No browser capture: nothing in this phase changes what the renderer draws, and `V` and `SCR` calculate
   from the same code as before (the new numbers are the proof). Pointer lock and input are not touched.
 
+### Phase 1: what shipped (2026-10-11)
+
+The post-process entry model, additive: a game that calls `setStack(stack)` and `clearStack()` as before sees no
+change. `postprocess/PostProcessEntries.ts` is new and has no GL in it; `PostProcess` holds one instance.
+
+- **`PostProcessEntries`** keeps the channels (in the order they were first used), each with its stack, the fade
+  every entry is in, and its pulses. `setStack(stack, { channel, fade })`, `clearStack(channel?)`,
+  `hasStack(channel?)`, `pulse(descriptor, { channel })`, `advance(dt)`, `collect(stage)` and `reset()`.
+  `PostProcessEntries.blend` and `pulseIntensity` are pure statics.
+- **Timing.** A pulse's `timing` is `{ fadeIn, hold, fadeOut }` seconds; its intensity runs 0 to 1 and back and
+  moves the numbers an effect lists as `neutral`; anything else (a tint color, a pulse period) is taken as it is.
+  The same `key` restarts a pulse. A pulse without any duration is shown for one frame. A stack fade is linear
+  per entry between the old displayed settings (or nothing) and the new ones (or nothing, when it leaves).
+- **Matching** an entry of a new stack to the previous one is by `key`, or by position among the entries of the
+  same effect, so reordering needs keys. An entry that is gone fades out and is applied after the new ones; one that
+  comes back while fading out is picked up from where it was.
+- **Several entries of one effect are all applied.** `apply(input, x, y, w, h, settings)` receives the settings of
+  its entry; `PostProcess.getStackEntry` is gone, so `ColorGradeEffect` and `BlurEffect` no longer look up "the
+  first entry". The renderer's own effects get `null`.
+- **Stages.** `scene` entries run in `resolveGameplayStack` as before; `final` entries run in `resolve` after the
+  renderer's own effects, as its last pass, and replace the plain blit when they are all there is. An effect has a
+  `defaultStage` (`scene` for both of today's).
+- **The clock** is `PostProcess.advance()`, called once per rendered frame from `SCR.UpdateScreen` (so before
+  `V.PreRenderView`, after the "frame still pending" return) on `Host.realtime`, clamped to 0.1 s per step. It is
+  not `Host.frametime`, as the plan assumed: `Host.frametime` is the real frame delta and does not stop while the
+  game is paused either, so nothing could make "a paused game does not fade" true, and it is not wanted.
+- **Public surface:** `ClientEngineAPI.PostProcess` gained `pulse`, and `setStack`/`clearStack`/`hasStack` take
+  the channel and fade. New types in `GameInterfaces.ts`: `PostProcessStage`, `PostProcessTiming`,
+  `PostProcessPlacement`, `PostProcessEntryOptions`, `PostProcessPulseDescriptor`, `PostProcessStackOptions`,
+  `PostProcessPulseOptions`. `timing` and `placement` exist on pulses only, so a stack entry that carries one is a
+  type error and not a silent no-op. `PostProcess` is on `window.engine` now.
+- **A bug that was already there, fixed on the way (found by the browser check):** `resolveGameplayStack` left
+  the scene FBO bound, so with only a game stack active (no bloom, warp or underwater fog on) the scene was blitted
+  into the FBO, the HUD was drawn into it too, and the screen stayed black with `GL_INVALID_OPERATION: Active draw
+  buffers with missing fragment shader outputs` in the console. A bloom or warp that happened to be on masked it,
+  since `resolve` binds the screen for its last effect. It now binds the screen again and puts the viewport back.
+  The same black frame is on `HEAD` before this phase (built and captured), and a test pins the fix.
+- **Tests:** new `post-process-entries.test.ts` (envelope, blend, stack order, repeats, null and unknown entries,
+  stages, channels, fades in and out and mid-fade, key matching, tint carried whole, pulses incl. restart, stacking,
+  placement, channels, zero duration, bad numbers, `advance` clamp); `post-process-stack.test.mjs` became
+  `.test.ts` and covers the facade, the clock, `resolveGameplayStack` and `resolve` with recording effects and a fake
+  GL, the effects' `neutral` and `resolveSettings`, and the unbind; `post-process-scene-capture.test.ts` and
+  `scr-update-screen.test.ts` follow the new API and the `advance` call.
+- **Verified:** `npm test`, `npm run typecheck` and `eslint` on touched files clean; browser, a production build
+  against the id1 server, with the game paused: a grayscale stack takes the view's colorfulness from 14.5 to the
+  3.5 of the un-graded PAUSE plaque and clearing brings it back; a 6 s cross-fade passes 14.4, 10.6, 6.6, 3.5 and
+  back out to 14.7; a pulse (0.5/4/1.5 s) is gray while it holds, is gone after its end and `hasStack` stays
+  false while `hasGameplayStack` is true; a `final` blur drops the edge measure from 4.6 to 1.7 and leaves the
+  colors; two channels, with one cleared on its own, leave the other; with `r_bloom 1` on, a grayscale stack and a
+  `final` blur on top of it also come out right (colorfulness 14.6, 3.6, 3.6 and back to 14.8, edge 4.6 to 1.7);
+  no console errors beyond the usual 404s. Not covered: hellwave's own game-over and buy-menu stacks (they use
+  the unchanged `setStack`), warp and underwater fog together with a stack, and a color-grade fade of `tintColor`
+  by eye.
+
 ## Testing
 
 - New tests are `.test.ts` in `test/client/` (one level, glob-safe); `v.test.mjs` and `scr.test.mjs` are replaced.
@@ -356,8 +412,8 @@ phase that has to settle it before it starts; every phase stops for a go-ahead a
 | # | Question | Needed by | Default if not decided |
 |---|---|---|---|
 | 1 | G6: is the interface in "G6 in detail" enough once prototyped in hellwave, or does the game keep only `updateRefDef`? (the developer is unsure) | Phase 5, G6 only | The engine keeps `FirstPersonView`; G6 is not started |
-| 2 | Channels: is `setStack(stack, { channel })` the right shape, or should a game register channels up front? | Phase 1 | `setStack(stack, { channel })`, default channel `'default'`, so every existing call is unchanged |
-| 3 | Neutral settings per effect: where they live (a `neutral` member of each `PostProcessEffect`, or beside the descriptor type so a game can read them), and how a non-numeric setting interpolates | Phase 1 | A `neutral` member of each effect; `tintColor` of the grade stays, its strength carries the intensity |
+| 2 | ~~Channels: is `setStack(stack, { channel })` the right shape, or should a game register channels up front?~~ | Phase 1 | **Settled 2026-10-11 by the developer:** `setStack(stack, { channel })`, default channel `'default'`, so every existing call is unchanged |
+| 3 | ~~Neutral settings per effect: where they live, and how a non-numeric setting interpolates~~ | Phase 1 | **Settled 2026-10-11 by the developer:** a `neutral` member of each effect; `tintColor` of the grade stays, its strength carries the intensity |
 | 4 | Order of the frame: the game sets the liquid tint from `viewContents`, which needs the view leaf, which needs the final view origin (from the game itself with G6): previous frame's leaf, or looked up again after the game's view result? | Phase 2 | The previous frame's leaf (one frame of lag, invisible in practice) |
 
 Phase 0 (characterization tests and the small fixes) depends on none of them.

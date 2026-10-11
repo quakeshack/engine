@@ -1,6 +1,5 @@
 import GL, { type GLRenderTexture } from '../../GL.ts';
 import Host from '../../../common/Host.ts';
-import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import type { PostProcessColorGradeDescriptor } from '../../../../shared/GameInterfaces.ts';
@@ -16,6 +15,18 @@ eventBus.subscribe('gl.shutdown', () => {
 });
 
 export default class ColorGradeEffect extends PostProcessEffect {
+  /**
+   * Nothing changes at these values. The tint color and the pulse period are not listed: they come from the
+   * entry as it is, and the strengths carry how much of them shows.
+   */
+  override readonly neutral: PostProcessColorGradeDescriptor = {
+    saturation: 1.0,
+    contrast: 1.0,
+    exposure: 0.0,
+    tintStrength: 0.0,
+    pulseStrength: 0.0,
+  };
+
   constructor() {
     super('color-grade');
     this.stackable = true;
@@ -33,11 +44,15 @@ export default class ColorGradeEffect extends PostProcessEffect {
     };
   }
 
-  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
+  override resolveSettings(settings: PostProcessColorGradeDescriptor): PostProcessColorGradeDescriptor {
+    return ColorGradeEffect.resolveSettings(settings);
+  }
+
+  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number, settings: PostProcessColorGradeDescriptor | null = null): void {
     const program = GL.UseProgram('color-grade')!;
     console.assert(program !== null, 'ColorGradeEffect: shader program not found');
     inputTexture.bind(program.tTexture!);
-    const s = ColorGradeEffect.resolveSettings(PostProcess.getStackEntry('color-grade') ?? {});
+    const s = ColorGradeEffect.resolveSettings(settings ?? {});
     const tint = s.tintColor;
     gl.uniform1f(program.uTime!, Host.realtime);
     gl.uniform1f(program.uSaturation!, s.saturation!);

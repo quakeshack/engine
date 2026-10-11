@@ -26,7 +26,7 @@ import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
 import W from '../common/W.ts';
 import PostProcess from './renderer/postprocess/PostProcess.ts';
-import type { PostProcessStack } from '../../shared/GameInterfaces.ts';
+import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions } from '../../shared/GameInterfaces.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import { clientCollision, clientPmove } from './ClientPhysics.ts';
@@ -618,17 +618,45 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
+  /**
+   * Screen-space effects on the 3D scene, see `docs/post-process-effects.md`: a stack of entries per channel
+   * that stays until it is replaced, and pulses that remove themselves.
+   */
   readonly PostProcess = {
-    setStack(stack: PostProcessStack): void {
-      PostProcess.setStack(stack);
+    /**
+     * Replaces the stack of a channel.
+     * @param stack The entries in the order they are applied.
+     * @param options The channel (`'default'` when left out) and the seconds to cross-fade from its previous stack.
+     */
+    setStack(stack: PostProcessStack, options?: PostProcessStackOptions): void {
+      PostProcess.setStack(stack, options);
     },
 
-    clearStack(): void {
-      PostProcess.clearStack();
+    /**
+     * Removes the stack of a channel at once. Pulses that are running end on their own.
+     * @param channel The channel, every channel when left out.
+     */
+    clearStack(channel?: string): void {
+      PostProcess.clearStack(channel);
     },
 
-    hasStack(): boolean {
-      return PostProcess.hasGameplayStack();
+    /**
+     * Whether a stack is set and meant to stay, not counting pulses and entries that are fading out.
+     * @param channel The channel, any channel when left out.
+     * @returns True when there is such an entry.
+     */
+    hasStack(channel?: string): boolean {
+      return PostProcess.hasStack(channel);
+    },
+
+    /**
+     * Starts an entry that fades in, holds, fades out and is gone, for a damage flash or a power-up pulse. The
+     * same `key` starts it over instead of stacking a second one.
+     * @param descriptor The entry and its timing.
+     * @param options The channel it is composed with.
+     */
+    pulse(descriptor: PostProcessPulseDescriptor, options?: PostProcessPulseOptions): void {
+      PostProcess.pulse(descriptor, options);
     },
   };
 

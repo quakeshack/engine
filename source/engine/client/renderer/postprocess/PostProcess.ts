@@ -1,9 +1,11 @@
 import GL, { GLRenderTexture } from '../../GL.ts';
 import Cvar from '../../../common/Cvar.ts';
 import VID from '../../VID.ts';
+import Host from '../../../common/Host.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
+import PostProcessEntries, { type ResolvedPostProcessEntry } from './PostProcessEntries.ts';
 import { eventBus } from '../../../common/EventBus.ts';
-import type { PostProcessStack, PostProcessEffectDescriptor } from '../../../../shared/GameInterfaces.ts';
+import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions } from '../../../../shared/GameInterfaces.ts';
 
 let gl: WebGL2RenderingContext = null!;
 
@@ -135,8 +137,14 @@ export default class PostProcess {
   /** Registered effects, applied in order. */
   static effects: PostProcessEffect[] = [];
 
-  /** Active gameplay-driven post-process stack. */
-  static stack: PostProcessStack = [];
+  /**
+   * The gameplay-driven entries: the stack of each channel, with its fades, and the pulses. The entries name
+   * effects of {@link PostProcess.effects} by id.
+   */
+  static readonly entries = new PostProcessEntries((id) => PostProcess.getEffect(id));
+
+  /** The clock reading of the last {@link PostProcess.advance}, `null` before the first. */
+  static #lastAdvanceTime: number | null = null;
 
   /**
    * Register a post-process effect. Effects are applied in the order
@@ -148,22 +156,61 @@ export default class PostProcess {
     PostProcess.effects.push(effect);
   }
 
-  static setStack(stack: PostProcessStack): void {
-    PostProcess.stack = stack.filter((entry): entry is PostProcessEffectDescriptor => entry !== null && entry !== undefined);
+  /**
+   * Replaces the stack of a channel. It is applied from the next rendered frame on.
+   * @param stack The entries in the order they are applied.
+   * @param options The channel, and the seconds to cross-fade from the previous stack of that channel.
+   */
+  static setStack(stack: PostProcessStack, options?: PostProcessStackOptions): void {
+    PostProcess.entries.setStack(stack, options);
   }
 
-  static getStackEntry<T extends PostProcessEffectDescriptor['id']>(effectName: T): Extract<PostProcessEffectDescriptor, { id: T }>['settings'] | undefined {
-    const entry = PostProcess.stack.find((stackEntry) => stackEntry.id === effectName) as Extract<PostProcessEffectDescriptor, { id: T }> | undefined;
-
-    return entry?.settings;
+  /**
+   * Removes the stack of a channel at once; pulses that are running end on their own.
+   * @param channel The channel, every channel when left out.
+   */
+  static clearStack(channel?: string): void {
+    PostProcess.entries.clearStack(channel);
   }
 
-  static clearStack(): void {
-    PostProcess.stack = [];
+  /**
+   * Starts an entry that lives for the time its timing says and then removes itself. A pulse that is running
+   * under the same key starts over.
+   * @param descriptor The entry and its timing.
+   * @param options The channel it is composed with.
+   */
+  static pulse(descriptor: PostProcessPulseDescriptor, options?: PostProcessPulseOptions): void {
+    PostProcess.entries.pulse(descriptor, options);
   }
 
+  /**
+   * Whether a game has set a stack that is meant to stay.
+   * @param channel The channel, any channel when left out.
+   * @returns True when there is such an entry. Pulses and entries that fade out do not count.
+   */
+  static hasStack(channel?: string): boolean {
+    return PostProcess.entries.hasStack(channel);
+  }
+
+  /**
+   * Whether the game drives anything this frame: a stack, an entry that fades out, or a pulse.
+   * @returns True when {@link PostProcess.resolveGameplayStack} or the resolve have something to apply.
+   */
   static hasGameplayStack(): boolean {
-    return PostProcess.stack.length > 0;
+    return PostProcess.entries.hasEntries();
+  }
+
+  /**
+   * Lets the time since the previous call pass for the fades and pulses. Called once per rendered frame, on the
+   * real clock: a fade keeps going over a paused game, where a menu blur is wanted most. A stalled frame moves
+   * time by at most 0.1 s, so it does not skip a fade.
+   */
+  static advance(): void {
+    const now = Host.realtime;
+    const elapsed = PostProcess.#lastAdvanceTime === null ? 0 : now - PostProcess.#lastAdvanceTime;
+
+    PostProcess.#lastAdvanceTime = now;
+    PostProcess.entries.advance(elapsed);
   }
 
   /**
@@ -179,7 +226,7 @@ export default class PostProcess {
    * @returns True when at least one registered effect is active.
    */
   static hasActiveEffects(): boolean {
-    return PostProcess.effects.some((e) => e.active) || PostProcess.stack.length > 0;
+    return PostProcess.effects.some((e) => e.active) || PostProcess.entries.hasEntries();
   }
 
   /** Whether the frame preparation asked for the scene to be captured, see {@link PostProcess.requestSceneCapture}. */
@@ -611,7 +658,18 @@ export default class PostProcess {
    * active, chains them using ping-pong FBOs.
    */
   static resolve(x: number, y: number, width: number, height: number, sceneTexture: GLRenderTexture): void {
-    const activeEffects = PostProcess.effects.filter((e) => e.active);
+    // the renderer's own effects in registration order, then what the game put in the final stage
+    const activeEffects: Array<{ effect: PostProcessEffect; settings: object | null }> = PostProcess.effects
+      .filter((e) => e.active)
+      .map((effect) => ({ effect, settings: null }));
+
+    for (const entry of PostProcess.entries.collect('final')) {
+      const effect = PostProcess.getEffect(entry.id);
+
+      if (effect !== undefined) {
+        activeEffects.push({ effect, settings: entry.settings });
+      }
+    }
 
     if (activeEffects.length === 0) {
       // No effects — simple blit to screen
@@ -640,14 +698,14 @@ export default class PostProcess {
         // Last effect renders directly to screen
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
-        activeEffects[i].apply(inputTexture, x, y, width, height);
+        activeEffects[i].effect.apply(inputTexture, x, y, width, height, activeEffects[i].settings);
       } else {
         // Intermediate effects render to the next ping-pong FBO
         const targetFBO = fbos[i % 2];
         gl.bindFramebuffer(gl.FRAMEBUFFER, targetFBO);
         gl.viewport(0, 0, pixelWidth, pixelHeight);
         // Draw at ortho-space dimensions (VID.width/height) so the ortho matrix works
-        activeEffects[i].apply(inputTexture, 0, 0, VID.width, VID.height);
+        activeEffects[i].effect.apply(inputTexture, 0, 0, VID.width, VID.height, activeEffects[i].settings);
         inputTexture = textures[i % 2]!;
       }
     }
@@ -662,15 +720,17 @@ export default class PostProcess {
    * it without an FBO read/write hazard.
    */
   static resolveGameplayStack(): void {
-    if (PostProcess.stack.length === 0) {
-      return;
+    const entries: Array<{ effect: PostProcessEffect; settings: ResolvedPostProcessEntry['settings'] }> = [];
+
+    for (const entry of PostProcess.entries.collect('scene')) {
+      const effect = PostProcess.getEffect(entry.id);
+
+      if (effect !== undefined) {
+        entries.push({ effect, settings: entry.settings });
+      }
     }
 
-    const activeEffects = PostProcess.stack
-      .map((entry) => PostProcess.getEffect(entry.id))
-      .filter((effect): effect is PostProcessEffect => effect !== undefined);
-
-    if (activeEffects.length === 0) {
+    if (entries.length === 0) {
       return;
     }
 
@@ -687,10 +747,10 @@ export default class PostProcess {
     const fbos = [PostProcess.pingFBO, PostProcess.pongFBO];
     const textures = [PostProcess.pingTexture!, PostProcess.pongTexture!];
 
-    for (let i = 0; i < activeEffects.length; i++) {
+    for (let i = 0; i < entries.length; i++) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[i % 2]);
       gl.viewport(0, 0, w, h);
-      activeEffects[i].apply(input, 0, 0, VID.width, VID.height);
+      entries[i].effect.apply(input, 0, 0, VID.width, VID.height, entries[i].settings);
       input = textures[i % 2];
     }
 
@@ -731,6 +791,9 @@ export default class PostProcess {
    * Clean up all GPU resources.
    */
   static shutdown(): void {
+    PostProcess.entries.reset();
+    PostProcess.#lastAdvanceTime = null;
+
     // Shut down all effects
     for (const effect of PostProcess.effects) {
       effect.shutdown();

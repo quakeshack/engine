@@ -9,6 +9,7 @@ import R from '../client/R.ts';
 import Particles, { ParticleType } from '../client/renderer/effects/Particles.ts';
 import Decals from '../client/renderer/effects/Decals.ts';
 import Camera from '../client/renderer/scene/Camera.ts';
+import PostProcess from '../client/renderer/postprocess/PostProcess.ts';
 import RenderStats from '../client/renderer/scene/RenderStats.ts';
 import DefaultTextures from '../client/renderer/resources/DefaultTextures.ts';
 import Fog from '../client/renderer/scene/Fog.ts';
@@ -138,7 +139,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
   }
 
   // The members that verification scripts in a browser reach for, see docs/browser-verification.md.
-  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, V, Key, S, Draw, R, Camera, Visibility, RenderStats, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, M, SCR, IN, SV: inThreadServer };
+  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, V, Key, S, Draw, R, Camera, Visibility, RenderStats, PostProcess, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, M, SCR, IN, SV: inThreadServer };
 
   await Sys.Init();
 }

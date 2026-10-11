@@ -1,3 +1,4 @@
+import type { PostProcessStage } from '../../../../shared/GameInterfaces.ts';
 import type { GLRenderTexture } from '../../GL.ts';
 
 /**
@@ -22,16 +23,41 @@ export default class PostProcessEffect {
   /** Whether this effect is managed by the gameplay-driven stack. */
   stackable = false;
 
+  /**
+   * Settings with which the effect changes nothing. A stack entry fades in from them and out to them, so they
+   * list the numbers that carry an entry's intensity; settings that are not listed (a tint color, a period)
+   * are not interpolated.
+   */
+  readonly neutral: object = {};
+
+  /**
+   * The stage the effect is applied in when an entry does not name one: `scene` before the renderer's own
+   * effects, `final` after them.
+   */
+  readonly defaultStage: PostProcessStage = 'scene';
+
   constructor(name: string) {
     this.name = name;
   }
 
   /**
+   * Completes the settings of a stack entry: what the game left out becomes the effect's default and what is not
+   * a finite number is repaired.
+   * @param settings The settings as the game gave them.
+   * @returns The settings the effect applies, which it can be asked to apply again unchanged.
+   */
+  resolveSettings(settings: object): object {
+    return settings;
+  }
+
+  /**
    * Apply the effect by drawing a fullscreen quad with the appropriate shader.
    * The caller has already bound the correct output framebuffer and viewport.
+   * @param settings The settings of the stack entry that is applied, as the effect's `resolveSettings` returned
+   * them (faded, for an entry that is fading or pulsing). `null` for the renderer's own effects, which have none.
    */
 
-  apply(_inputTexture: GLRenderTexture, _x: number, _y: number, _width: number, _height: number): void {
+  apply(_inputTexture: GLRenderTexture, _x: number, _y: number, _width: number, _height: number, _settings: object | null = null): void {
     throw new Error(`PostProcessEffect.apply() not implemented for '${this.name}'`);
   }
 

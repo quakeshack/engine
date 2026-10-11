@@ -115,6 +115,7 @@ void describe('SCR.UpdateScreen', () => {
       }),
     ];
 
+    record(PostProcess, 'advance', 'PostProcess.advance');
     record(V, 'PreRenderView', 'V.PreRenderView');
     record(V, 'RenderView', 'V.RenderView');
     record(GL, 'Set2D', 'GL.Set2D');
@@ -159,7 +160,7 @@ void describe('SCR.UpdateScreen', () => {
     void test('prepares the view before the frame is requested, then draws scene, tint, overlays and flushes', () => {
       SCR.UpdateScreen();
 
-      assert.deepEqual(calls, ['V.PreRenderView']);
+      assert.deepEqual(calls, ['PostProcess.advance', 'V.PreRenderView']);
       assert.equal(frames.length, 1);
 
       runFrame();
@@ -302,7 +303,7 @@ void describe('SCR.UpdateScreen', () => {
       SCR.UpdateScreen();
 
       assert.equal(frames.length, 1);
-      assert.deepEqual(calls, ['V.PreRenderView']);
+      assert.deepEqual(calls, ['PostProcess.advance', 'V.PreRenderView']);
     });
 
     void test('queues the next frame once the callback has run', () => {
@@ -359,7 +360,7 @@ void describe('SCR.UpdateScreen', () => {
       SCR.UpdateScreen();
 
       assert.equal(SCR.screenshot, false);
-      assert.deepEqual(calls, ['V.PreRenderView', 'VID.DownloadScreenshot()']);
+      assert.deepEqual(calls, ['PostProcess.advance', 'V.PreRenderView', 'VID.DownloadScreenshot()']);
     });
 
     void test('renders a clean screenshot without the weapon and every overlay, then restores the weapon', () => {

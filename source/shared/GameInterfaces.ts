@@ -141,11 +141,84 @@ export type PostProcessBlurDescriptor = {
   readonly radius?: number;
 };
 
+/**
+ * Where in the frame an entry is applied. `scene` is before the renderer's own effects (bloom, warp), so they see
+ * the result; `final` is after them, over everything and under the HUD. Each effect has a default.
+ */
+export type PostProcessStage = 'scene' | 'final';
+
+/**
+ * The shape of a pulse over time, in seconds: it fades in from nothing, holds, fades out and is gone. Parts that
+ * are left out are zero.
+ */
+export interface PostProcessTiming {
+  readonly fadeIn?: number;
+  readonly hold?: number;
+  readonly fadeOut?: number;
+}
+
+/**
+ * Whether a pulse sits below or above the entries of the stack it shares a channel with.
+ */
+export type PostProcessPlacement = 'below' | 'above';
+
+/**
+ * What every entry of the stack and every pulse carries besides its effect and settings.
+ */
+export interface PostProcessEntryOptions {
+  /**
+   * Names the entry. A new stack keeps the entries it shares a key with (an effect id without a key matches the
+   * n-th entry of that id) and fades them from their old settings to the new ones. For a pulse, a pulse that is
+   * already running under the same key restarts instead of a second one stacking up.
+   */
+  readonly key?: string;
+
+  /**
+   * Where in the frame the entry is applied, `scene` unless the effect says otherwise.
+   */
+  readonly stage?: PostProcessStage;
+}
+
 export type PostProcessEffectDescriptor =
-  | { readonly id: 'color-grade'; readonly settings: PostProcessColorGradeDescriptor }
-  | { readonly id: 'blur'; readonly settings: PostProcessBlurDescriptor };
+  | ({ readonly id: 'color-grade'; readonly settings: PostProcessColorGradeDescriptor } & PostProcessEntryOptions)
+  | ({ readonly id: 'blur'; readonly settings: PostProcessBlurDescriptor } & PostProcessEntryOptions);
 
 export type PostProcessStack = readonly PostProcessEffectDescriptor[];
+
+/**
+ * An entry that lives for a while and then removes itself, see `PostProcess.pulse`.
+ */
+export type PostProcessPulseDescriptor = PostProcessEffectDescriptor & {
+  readonly timing: PostProcessTiming;
+  readonly placement?: PostProcessPlacement;
+};
+
+/**
+ * What `PostProcess.setStack` can be asked besides the stack.
+ */
+export interface PostProcessStackOptions {
+  /**
+   * The channel the stack belongs to. Channels are composed in the order they were first used and replaced and
+   * cleared on their own, so two parts of a game do not have to know about each other. `'default'` when left out.
+   */
+  readonly channel?: string;
+
+  /**
+   * Seconds to cross-fade from the channel's previous stack to this one: new entries fade in from nothing, entries
+   * that are gone fade out, entries that stay move to their new settings. Instant when left out.
+   */
+  readonly fade?: number;
+}
+
+/**
+ * What `PostProcess.pulse` can be asked besides the entry.
+ */
+export interface PostProcessPulseOptions {
+  /**
+   * The channel whose entries the pulse is composed with. `'default'` when left out.
+   */
+  readonly channel?: string;
+}
 
 /**
  * Everything the engine calls, reads, or writes on a running client-side game instance.

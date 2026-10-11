@@ -1,6 +1,5 @@
 import GL, { GLRenderTexture } from '../../GL.ts';
 import VID from '../../VID.ts';
-import PostProcess from './PostProcess.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import type { PostProcessBlurDescriptor } from '../../../../shared/GameInterfaces.ts';
@@ -22,6 +21,9 @@ export default class BlurEffect extends PostProcessEffect {
   /** Color texture for the horizontal-pass result. */
   static intermediateTexture: GLRenderTexture | null = null;
 
+  /** Nothing is blurred at a radius of 0. */
+  override readonly neutral: PostProcessBlurDescriptor = { radius: 0.0 };
+
   constructor() {
     super('blur');
     this.stackable = true;
@@ -31,6 +33,10 @@ export default class BlurEffect extends PostProcessEffect {
     return {
       radius: Number.isFinite(settings.radius ?? NaN) ? settings.radius : 4.0,
     };
+  }
+
+  override resolveSettings(settings: PostProcessBlurDescriptor): PostProcessBlurDescriptor {
+    return BlurEffect.resolveSettings(settings);
   }
 
   override init(): void {
@@ -74,10 +80,10 @@ export default class BlurEffect extends PostProcessEffect {
     GL.StreamFlush();
   }
 
-  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
+  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number, settings: PostProcessBlurDescriptor | null = null): void {
     if (!BlurEffect.intermediateFBO || !BlurEffect.intermediateTexture) { return; }
 
-    const s = BlurEffect.resolveSettings(PostProcess.getStackEntry('blur') ?? {});
+    const s = BlurEffect.resolveSettings(settings ?? {});
     const radius = s.radius!;
 
     // Remember the output binding the caller set up.

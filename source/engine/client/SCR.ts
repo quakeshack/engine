@@ -368,6 +368,9 @@ export default class SCR {
       return;
     }
 
+    // the fades and pulses of the post-process entries count the frames that are drawn
+    PostProcess.advance();
+
     V.PreRenderView(); // do some calculations independent of rendering
 
     requestAnimationFrame((animationTime) => {
