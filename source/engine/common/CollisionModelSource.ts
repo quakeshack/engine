@@ -20,7 +20,7 @@ interface ClientCollisionModelAccessors {
  * Server and client bootstrap code inject live accessors so physics classes do
  * not need to know where model caches or world state live. This is what makes
  * `SV.collision`'s static-world helpers (`traceStaticWorldLine`, `pointContents`, ...) safe to
- * call from client-only code (e.g. `R.ts`'s particle/dynamic-light collision) regardless of
+ * call from client-only code (e.g. the particle collision in `Particles.ts`) regardless of
  * whether this process is hosting a listen server: `getWorldModel()` transparently prefers the
  * live server worldmodel when hosting and falls back to the client's own locally-loaded copy
  * otherwise, so those helpers always resolve against whichever worldmodel this process actually

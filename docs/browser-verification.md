@@ -242,10 +242,10 @@ node scripts/renderer-capture/compare.mjs \
 - **`r_speeds` is not a rendering check.** It counts brush and alias draws, not sky, particles, decals, coronas or
   post-processing. A build with sky and particles disabled has identical counts. The pixel comparison is what
   sees those.
-- The scripts reach into the engine through `window.engine` (see section 5). `installAdapter()` at the top of
-  `capture.mjs` names every member it uses and looks for its new home first, so a change that moves a member
-  teaches that function and exposes the new home in `bootstrap/createBrowserClient.ts`, and the same script keeps
-  working on the build before and the build after.
+- The scripts reach into the engine through `window.engine` (see section 5). `installAdapter()` in
+  `capture.mjs` names every member it uses, once. A change that moves a member updates that function and exposes
+  the new home in `bootstrap/createBrowserClient.ts`; to capture the build from before such a move with the same
+  script, give that one lookup a fallback to the old home (`engine.Camera ?? engine.R`) while the refactor lasts.
 - What they do not cover: input and pointer lock (section 6), anything that needs another map, and a second
   renderer state such as a changed resolution. Underwater fog is only covered with `CAPTURE_WATERFOG=1` in the
   environment of `capture.mjs`: `e1m1` has no `_qs_waterfog` volume, so the key is set on the worldspawn before the

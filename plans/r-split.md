@@ -1,10 +1,10 @@
 # Split `R.ts` into renderer subsystems
 
 Track D2 of `plans/engine-architecture-modernization.md`. Status: **plan agreed, all open questions settled
-(2026-10-10); Phases 0, 0b, 1, 2, 3, 4 and 5 are committed, Phase 6 is done and not committed yet; Phase 7 is
-next.** Extracted: `Particles`, `Decals`, `LightStyles`, `LightSampler`, `EntityLighting`, `Interpolation`,
-`Lightmaps`, `DynamicLights`, `Camera`, `Visibility`, `FrameUniforms`, `RendererCvars`, `DefaultTextures`,
-`ShaderPrograms`, `RenderStats`, `Fog`, `SkyBox`, `MaterialBinder`, `TransparentPass`. `R.ts` is at 485 lines.
+(2026-10-10); Phases 0 to 7 are done (2026-10-11).** Extracted: `Particles`, `Decals`, `LightStyles`,
+`LightSampler`, `EntityLighting`, `Interpolation`, `Lightmaps`, `DynamicLights`, `Camera`, `Visibility`,
+`FrameUniforms`, `RendererCvars`, `DefaultTextures`, `ShaderPrograms`, `RenderStats`, `Fog`, `SkyBox`,
+`MaterialBinder`, `TransparentPass`. `R.ts` is at 485 lines.
 
 ## Context
 
@@ -709,6 +709,38 @@ Delete every forwarder on `R`. Rename leftover `_`-prefixed statics to the style
 `programs/ShaderPrograms.ts`), the `shader-chunks` skill, `docs/events.md` if the owner text of
 `renderer.textures.initialized` / `renderer.shaders.initialized` changes, and `.github/instructions/*`. Record
 "what shipped" in this file and tick D2 in the parent plan.
+
+#### Phase 7: what shipped (2026-10-11)
+
+Mostly a check that the earlier phases left nothing behind, because each of them already deleted what it moved.
+
+- **Forwarders:** none left to delete. The ledger below was emptied in Phase 5 and `grep -n "@deprecated Moved"
+  source/engine/client/R.ts` returns nothing. A sweep of every `R.<member>` in `source/`, `docs/`, `.github/`,
+  `.claude/`, `scripts/` and `test/` for a member that is no longer on `R` found four stale mentions, all fixed:
+  `docs/code-style-guide.md` (an example comment naming `R.c_alias_polys`, now `RenderStats`),
+  `CollisionModelSource.ts` (a JSDoc saying "`R.ts`'s particle collision"), and the capture script (below).
+- **Underscore statics:** `R` has none. The ones left in other classes (`ShadowMap`, `PostProcess`, `Mesh`,
+  `AliasModelRenderer`, `BrushModelRenderer`) were not part of this split, tests call several of them by name, and
+  renaming them is its own cleanup, so they stay.
+- **`docs/post-process-effects.md`:** the sentence that said bloom and warp "always run independently of this
+  stack" now says what the code does: the renderer registers its own effects (bloom, underwater fog, warp), turns them
+  on itself, they are not `stackable`, and they resolve together with the rest in registration order after the
+  game's stack.
+- **`docs/shader-chunks.md`, the `shader-chunks` skill, `docs/events.md`:** checked, no change. Phase 5 already
+  names `programs/ShaderPrograms.ts`; the events table has no owner column, and both events are still published,
+  by `DefaultTextures` and `ShaderPrograms`.
+- **Capture script:** the adapter's fallbacks to the old homes on `R` (`engine.Camera ?? R`, `R.ptype`,
+  `_speeds`, the `PreRenderScene` hook) are gone, since every member has moved. `docs/browser-verification.md` §8
+  says how to add a fallback for the duration of a refactor that needs the same script on both sides.
+- **Parent plan:** D2 is ticked in `plans/engine-architecture-modernization.md`.
+- **Tests that were missing:** `Fog` and `SkyBox` had none (the capture covers them, but a capture is not a test).
+  New `fog.test.ts` (the worldspawn fog key and its scaling, the tint priority: surface, anchor, content default,
+  and the density cvar) and `skybox.test.ts` (renderer lifecycle across maps, no draw without visible sky, the
+  context handed to the renderer).
+- **Goals check:** `R.ts` is 485 lines (target was under 400, see Phase 6); no file under `renderer/` imports `R`;
+  a model loader needs no renderer; the four ordering contracts are structure; every extracted subsystem has tests.
+  The one goal not met is the line count, and the remaining weight is `Init`'s pinned cvar creation and three pass
+  methods that the SCR and V split moves or removes.
 
 ### Init order that must be preserved
 

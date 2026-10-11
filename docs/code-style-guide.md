@@ -263,7 +263,7 @@ Keep `@protected` and `@private` tags only when a mixed JS/TS boundary still nee
 2. **TODOs and FIXMEs** - Always include context
    ```javascript
    // FIXME: private property access - should use public API
-   R.c_alias_polys += clmodel._num_tris;
+   RenderStats.c_alias_polys += clmodel._num_tris;
    ```
 
 3. **Workarounds** - Explain why they're necessary

@@ -16,8 +16,9 @@
  *
  * Which parts of the engine the script touches is collected in `installAdapter()`: when a refactor moves a
  * member, that is the one place to teach about its new home (and the member has to be exposed on `window.engine`
- * by `bootstrap/createBrowserClient.ts`). Every lookup tries the new home first and falls back to the old one, so
- * the same script can capture the build before and the build after a move.
+ * by `bootstrap/createBrowserClient.ts`). The adapter names one home per member, so a refactor that moves one
+ * breaks the capture of builds from before it. Give the lookup a fallback to the old home for the duration of
+ * that refactor when its before/after pair needs the same script on both sides.
  */
 import fs from 'node:fs';
 import http from 'node:http';
@@ -109,17 +110,13 @@ async function startServer(port) {
  */
 function installAdapter() {
   const engine = window.engine;
-  const R = engine.R;
 
   window.__capture = {
     engine,
-    R,
-    // each of these has a new home after the corresponding extraction from R.ts (plans/r-split.md); until then
-    // `engine.X` is undefined and the member is still on R
-    camera: engine.Camera ?? R,
-    particles: engine.Particles ?? R,
-    particleTypes: engine.ParticleType ?? R.ptype,
-    stats: engine.RenderStats ?? R,
+    camera: engine.Camera,
+    particles: engine.Particles,
+    particleTypes: engine.ParticleType,
+    stats: engine.RenderStats,
   };
 
   let seed = 0;
@@ -136,15 +133,13 @@ function installAdapter() {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
-  // V.CalcRefdef runs before the view vectors are derived, so setting the view here wins over it. Until the
-  // Camera extraction the vectors were derived inside R.PreRenderScene, which is where the hook goes then.
+  // V.CalcRefdef runs before the view vectors are derived, so setting the view here wins over it.
   window.__capture.camera_override = null;
 
-  const hookOwner = engine.Camera ?? R;
-  const hookName = engine.Camera ? 'UpdateViewVectors' : 'PreRenderScene';
-  const original = hookOwner[hookName];
+  const hookOwner = engine.Camera;
+  const original = hookOwner.UpdateViewVectors;
 
-  hookOwner[hookName] = function () {
+  hookOwner.UpdateViewVectors = function () {
     const override = window.__capture.camera_override;
 
     if (override !== null) {
@@ -310,7 +305,7 @@ async function capture(name) {
   await page.waitForTimeout(SETTLE_MS);
   await page.screenshot({ path: path.join(outDir, `${name}.png`) });
 
-  const speeds = await page.evaluate(() => (window.__capture.stats.lines ?? window.__capture.stats._speeds).slice(0, 4).map((line) => String(line).trim()));
+  const speeds = await page.evaluate(() => window.__capture.stats.lines.slice(0, 4).map((line) => String(line).trim()));
 
   views[name] = { speeds };
 }

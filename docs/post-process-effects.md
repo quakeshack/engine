@@ -2,7 +2,7 @@
 
 Game code can push an ordered stack of screen-space effects onto the renderer each frame. Effects are applied to the 3D scene only — the HUD and UI are always drawn on top, sharp and unaffected.
 
-Bloom and screen-warp are renderer-owned and always run independently of this stack.
+The renderer owns a few effects of its own (bloom, underwater fog, screen-warp). `R.Init()` registers them with the same `PostProcess` that holds the stack's effects, and the renderer turns them on and off itself from its console variables and from where the camera is. They are not `stackable`, so a stack cannot name them. The stack runs first (`PostProcess.resolveGameplayStack()`), then every active effect, the renderer's included, resolves to the screen in registration order (`PostProcess.resolve()`).
 
 ## API
 
