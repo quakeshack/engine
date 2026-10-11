@@ -141,6 +141,21 @@ adds up to a few frames (Phase 0 finding 4).
 The time step of a frame is the wall-clock time since the previous one, clamped to 1 ms to 100 ms like
 `Host` does, or `host_framerate`.
 
+### While the game is paused
+
+A paused server still takes its frames: the `pause` command that ends the pause, a client that connects and the
+reliable messages all need one. What a frame skips is the work that has nothing to say:
+
+- No physics, no game logic and no scheduled thinking (`ServerHost.ServerFrame()`), as in Quake.
+- No entity datagram for a client that got one less than `ServerMessages.PAUSED_DATAGRAM_INTERVAL` (0.1 s) of
+  wall-clock time ago. Nothing moves, so the datagram would repeat the last one: it takes the visibility traversal
+  of the world and one delta per visible entity for nothing. A client that spawns during the pause has not got one
+  yet and is served in its first frame, and the datagram a frame skips is the unreliable one only: reliable messages
+  are sent in every frame.
+
+The datagram timing uses the wall clock (`svs.realtime`), because `server.time` does not advance while paused.
+A muzzle flash is only cleared from an entity once a datagram carried it.
+
 ## The realm of the worker
 
 A worker is its own JavaScript realm, so it has its own `Cvar` and `Cmd` tables and its own module state.

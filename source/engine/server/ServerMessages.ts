@@ -135,6 +135,13 @@ function cloneSerializableValue(value: SerializableType): SerializableType {
  * Handles all server to client message assembly and related helpers.
  */
 export class ServerMessages {
+  /**
+   * Seconds between two datagrams to a client while the game is paused. Nothing moves then, so a datagram says what
+   * the last one did; sending one now and then still gets a client that spawned or a cheat command that changed
+   * something onto the screen, and keeps the worker idle in between.
+   */
+  static readonly PAUSED_DATAGRAM_INTERVAL = 0.1;
+
   readonly nullcmd: Protocol.UserCmd;
   private readonly sv: Server;
 
@@ -851,6 +858,8 @@ export class ServerMessages {
    * @returns True when the datagram contained any replicated changes.
    */
   sendClientDatagram(client: ServerClient): boolean {
+    client.last_datagram_realtime = this.sv.svs.realtime;
+
     const msg = new SzBuffer(65536, 'SV.SendClientDatagram');
     msg.writeByte(Protocol.svc.time);
     msg.writeFloat(this.sv.server.time);
@@ -943,12 +952,16 @@ export class ServerMessages {
   sendClientMessages(): void {
     this.updateToReliableMessages();
 
+    let datagrams = 0;
+
     for (let i = 0; i < this.sv.svs.maxclients; i++) {
       const client = this.sv.svs.clients[i];
       if (client.state < ServerClient.STATE.CONNECTED) {
         continue;
       }
-      if (client.state === ServerClient.STATE.SPAWNED) {
+      if (client.state === ServerClient.STATE.SPAWNED && this.#isDatagramDue(client)) {
+        datagrams++;
+
         if (!this.sendClientDatagram(client)) {
           continue;
         }
@@ -973,6 +986,11 @@ export class ServerMessages {
       }
     }
 
+    // A muzzle flash is a one-frame effect: it is cleared once a datagram carried it, not before.
+    if (datagrams === 0 && this.sv.server.paused) {
+      return;
+    }
+
     for (let i = 1; i < this.sv.server.num_edicts; i++) {
       if (this.sv.server.edicts[i].isFree()) {
         continue;
@@ -980,5 +998,19 @@ export class ServerMessages {
 
       requireEntity(this.sv.server.edicts[i] as ServerEdict).effects &= ~Defs.effect.EF_MUZZLEFLASH;
     }
+  }
+
+  /**
+   * Decides whether a client is sent a datagram in this frame: always while the game runs, at
+   * {@link ServerMessages.PAUSED_DATAGRAM_INTERVAL} while it is paused.
+   * @param client The spawned client.
+   * @returns True when the datagram is to be built now.
+   */
+  #isDatagramDue(client: ServerClient): boolean {
+    if (!this.sv.server.paused) {
+      return true;
+    }
+
+    return this.sv.svs.realtime - client.last_datagram_realtime >= ServerMessages.PAUSED_DATAGRAM_INTERVAL;
   }
 }

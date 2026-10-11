@@ -45,6 +45,9 @@ export class ServerClient {
   old_frags: number;
   last_update: number;
   last_ping_update: number;
+
+  /** Wall-clock seconds at which the last datagram was built for this client, `-Infinity` before the first. */
+  last_datagram_realtime: number;
   readonly ping_times: number[];
   num_pings: number;
   netconnection: QSocket | null;
@@ -75,6 +78,7 @@ export class ServerClient {
     this.old_frags = 0;
     this.last_update = 0;
     this.last_ping_update = 0;
+    this.last_datagram_realtime = Number.NEGATIVE_INFINITY;
     this.ping_times = new Array(16);
     this.num_pings = 0;
     this.netconnection = null;
@@ -126,6 +130,7 @@ export class ServerClient {
     this.colors = 0;
     this.old_frags = 0;
     this.last_ping_update = 0.0;
+    this.last_datagram_realtime = Number.NEGATIVE_INFINITY;
     this.num_pings = 0;
     this.ping_times.fill(0);
     this.cmd.reset();
