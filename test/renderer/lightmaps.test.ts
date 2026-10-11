@@ -4,8 +4,7 @@ import { afterEach, before, beforeEach, describe, test } from 'node:test';
 import GL from '../../source/engine/client/GL.ts';
 import type { GLRenderTexture } from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
-import Lightmaps from '../../source/engine/client/renderer/lighting/Lightmaps.ts';
-import { LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from '../../source/engine/client/renderer/lighting/LightmapAtlas.ts';
+import Lightmaps, { LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from '../../source/engine/client/renderer/lighting/Lightmaps.ts';
 import { Face } from '../../source/engine/common/model/BaseModel.ts';
 import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 
