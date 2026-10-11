@@ -59,7 +59,7 @@ import Camera from './renderer/scene/Camera.ts';
 import Visibility from './renderer/scene/Visibility.ts';
 
 /** A savegame file: the server's half and what only the client knows. */
-interface SavegameState extends ServerSaveState {
+export interface SavegameState extends ServerSaveState {
   readonly comment: string | null;
   readonly clientdata: string | null;
   readonly particles: SerializedParticle[];
@@ -368,6 +368,64 @@ export default class ClientHost {
     }
   };
 
+  /**
+   * Collects a savegame of the local game that is running: what the client knows right now and the server's half, which
+   * arrives a moment later when the server runs in a worker.
+   * @returns The state, or why this game cannot be saved.
+   */
+  static async CaptureGame(): Promise<{ readonly ok: true; readonly state: SavegameState } | { readonly ok: false; readonly reason: string }> {
+    const { state } = clientStaticState.serverController;
+
+    if (!state.active) {
+      return { ok: false, reason: 'Not playing a local game.' };
+    }
+
+    if (clientRuntimeState.intermission !== 0) {
+      return { ok: false, reason: 'Can\'t save in intermission.' };
+    }
+
+    if (state.maxclients !== 1) {
+      return { ok: false, reason: 'Can\'t save multiplayer games.' };
+    }
+
+    const clientHalf = {
+      comment: clientRuntimeState.levelname,
+      clientdata: clientRuntimeState.gameAPI ? clientRuntimeState.gameAPI.saveGame() : null,
+      particles: Particles.SerializeParticles(),
+      clientEntities: clientRuntimeState.clientEntities.serialize(),
+    };
+
+    const result = await clientStaticState.serverController.saveState();
+
+    if (!result.ok) {
+      return { ok: false, reason: result.reason };
+    }
+
+    return { ok: true, state: { ...result.state, ...clientHalf } };
+  }
+
+  /**
+   * Starts a local game from a savegame: the client lets go of the game it was in, the server takes its half and the
+   * client resumes with the other once the server is up.
+   * @param gamestate What `CaptureGame` returned or a savegame file held.
+   * @param source Where the state came from, named in errors.
+   */
+  static async RestoreGame(gamestate: SavegameState, source: string): Promise<void> {
+    CL.Disconnect();
+    ScreenFrame.BeginLoadingPlaque();
+
+    const { comment: _comment, clientdata, particles, clientEntities, ...serverHalf } = gamestate;
+
+    try {
+      await clientStaticState.serverController.restoreState(serverHalf, source);
+    } catch (error) {
+      CL.SetConnectingStep(null, null);
+      throw error;
+    }
+
+    ClientLifecycle.resumeGame(clientdata, particles, clientEntities);
+  }
+
   static Savegame_f = class SavegameConsoleCommand extends ConsoleCommand {
     override async run(savename?: string): Promise<void> {
       if (this.client !== null) {
@@ -379,49 +437,23 @@ export default class ClientHost {
         return;
       }
 
-      const { state } = clientStaticState.serverController;
-
-      if (!state.active) {
-        Con.PrintWarning('Not playing a local game.\n');
-        return;
-      }
-
-      if (clientRuntimeState.intermission !== 0) {
-        Con.PrintWarning('Can\'t save in intermission.\n');
-        return;
-      }
-
-      if (state.maxclients !== 1) {
-        Con.PrintWarning('Can\'t save multiplayer games.\n');
-        return;
-      }
-
       if (savename.includes('..')) {
         Con.PrintWarning('Relative pathnames are not allowed.\n');
         return;
       }
 
-      // What the client knows is collected right now, the server's half arrives a moment later when it runs in a worker.
-      const clientHalf = {
-        comment: clientRuntimeState.levelname,
-        clientdata: clientRuntimeState.gameAPI ? clientRuntimeState.gameAPI.saveGame() : null,
-        particles: Particles.SerializeParticles(),
-        clientEntities: clientRuntimeState.clientEntities.serialize(),
-      };
+      const captured = await ClientHost.CaptureGame();
 
-      const result = await clientStaticState.serverController.saveState();
-
-      if (!result.ok) {
-        Con.PrintWarning(`${result.reason}\n`);
+      if (!captured.ok) {
+        Con.PrintWarning(`${captured.reason}\n`);
         return;
       }
 
-      const gamestate: SavegameState = { ...result.state, ...clientHalf };
       const filename = com.DefaultExtension(savename, '.json');
 
       Con.Print(`Saving game to ${filename}...\n`);
 
-      if (await com.WriteTextFile(filename, JSON.stringify(gamestate))) {
+      if (await com.WriteTextFile(filename, JSON.stringify(captured.state))) {
         await SaveSlots.refresh();
         Con.PrintSuccess('done.\n');
         return;
@@ -472,20 +504,7 @@ export default class ClientHost {
         throw new HostError(`Savegame is version ${gamestate.version}, not ${Def.gamestateVersion}\n`);
       }
 
-      CL.Disconnect();
-      ScreenFrame.BeginLoadingPlaque();
-
-      // The server takes its half, the client resumes with the other once the server is up.
-      const { comment: _comment, clientdata, particles, clientEntities, ...serverHalf } = gamestate;
-
-      try {
-        await clientStaticState.serverController.restoreState(serverHalf, filename);
-      } catch (error) {
-        CL.SetConnectingStep(null, null);
-        throw error;
-      }
-
-      ClientLifecycle.resumeGame(clientdata, particles, clientEntities);
+      await ClientHost.RestoreGame(gamestate, filename);
     }
   };
 

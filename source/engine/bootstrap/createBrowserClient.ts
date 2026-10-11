@@ -31,8 +31,9 @@ import ClientHost from '../client/ClientHost.ts';
 import ConsoleOverlay from '../client/ConsoleOverlay.ts';
 import WorkerServerController from '../client/WorkerServerController.ts';
 import PeerRelay from '../client/PeerRelay.ts';
+import ServerReloader from '../client/ServerReloader.ts';
 import Cmd from '../common/Cmd.ts';
-import PlatformWorker from '../common/PlatformWorker.ts';
+import PlatformWorker, { type PlatformWorkerHandle } from '../common/PlatformWorker.ts';
 import workerFactories from '../common/WorkerFactories.ts';
 import { eventBus } from '../common/EventBus.ts';
 import { ChannelDriver, MessagePortEndpoint } from '../network/ChannelDriver.ts';
@@ -55,6 +56,24 @@ import { installPageServices } from '../client/PageServices.ts';
  */
 function wantsServerWorker(): boolean {
   return 'Worker' in globalThis && !new URLSearchParams(window.location.search).has('serverthread');
+}
+
+/**
+ * Starts the script of the server worker. A development build reads the bundle the watch build wrote last, past the
+ * browser's cache (its entry keeps one name, see `vite.config.mjs`), which is what lets a reload see new code. A
+ * production build uses the hashed file the bundler resolved.
+ * @returns The new worker.
+ */
+function createServerWorkerScript(): PlatformWorkerHandle {
+  if (!__DEV__) {
+    return workerFactories['server/ServerWorker.ts']('server');
+  }
+
+  // Put together from parts so that the bundler does not take it for a worker import of its own.
+  const url = new URL(['.', 'worker-ServerWorker.js'].join('/'), import.meta.url);
+  url.searchParams.set('v', String(Date.now()));
+
+  return new Worker(url, { name: 'server', type: 'module' });
 }
 
 /**
@@ -99,7 +118,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
   // the client only ever sees the controller, the server is in this thread or in a worker
   if (channel !== null) {
     let relay: PeerRelay | null = null;
-    const worker = new PlatformWorker('server/ServerWorker.ts', workerFactories['server/ServerWorker.ts']('server'));
+    const worker = new PlatformWorker('server/ServerWorker.ts', createServerWorkerScript());
 
     clientStaticState.serverController = new WorkerServerController({
       worker,
@@ -132,6 +151,25 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
       setListening: (listening) => { void Cmd.ExecuteString(listening ? 'listen 1' : 'listen 0'); },
     });
     relay.start();
+
+    if (__DEV__) {
+      // A development build can replace its server worker with one made from the bundle the watch build wrote last.
+      const controller = clientStaticState.serverController as WorkerServerController;
+      const reloader = new ServerReloader({
+        controller,
+        spawn: () => ({ worker: new PlatformWorker('server/ServerWorker.ts', createServerWorkerScript()), channel: new MessageChannel() }),
+        attachChannel: (port) => { channelDriver!.replaceEndpoint(new MessagePortEndpoint(port)); },
+        closePeers: () => { relay?.closeAll(); },
+        capture: () => ClientHost.CaptureGame(),
+        restore: (state, source) => ClientHost.RestoreGame(state, source),
+        disconnect: () => { CL.Disconnect(); },
+        startMap: (mapname) => { void Cmd.ExecuteString(`map ${mapname}`); },
+        con: Con,
+      });
+
+      // the command table is rebuilt when the host initializes, which is after this
+      eventBus.subscribe('host.ready', () => { Cmd.AddCommand('server_reload', reloader.createCommand()); });
+    }
   } else {
     const runtime = createServerRuntime({ con: Con, sys: Sys, net, mod: Mod, com, host: Host, view: new PlayerRollView(viewCvars), gameEdition: () => editionOf(com) }, false);
 

@@ -74,7 +74,7 @@ export class ChannelDriver extends BaseDriver {
   /** The address of the server in the other thread. */
   static readonly LOCAL_ADDRESS = 'local';
 
-  readonly #endpoint: ChannelEndpoint;
+  #endpoint: ChannelEndpoint;
   readonly #sockets = new Map<number, QSocket>();
   readonly #newConnections: QSocket[] = [];
   #nextConnection = 1;
@@ -99,6 +99,27 @@ export class ChannelDriver extends BaseDriver {
 
     this.#endpoint.setReceiver(() => {});
     super.Shutdown();
+  }
+
+  /**
+   * Lets go of every socket and carries on over another channel, for a server in a worker that was replaced. The
+   * sockets belonged to the server that is gone, so their other end is not told anything.
+   * @param endpoint The end of the new channel.
+   */
+  replaceEndpoint(endpoint: ChannelEndpoint): void {
+    for (const sock of [...this.#sockets.values()]) {
+      const state = ChannelDriver.#state(sock);
+
+      if (state !== null) {
+        this.#release(sock, state);
+      }
+    }
+
+    this.#endpoint.setReceiver(() => {});
+    this.#endpoint = endpoint;
+    this.#newConnections.length = 0;
+    this.#nextConnection = 1;
+    endpoint.setReceiver((message) => { this.#onMessage(message); });
   }
 
   override canHandle(host: string): boolean {

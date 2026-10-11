@@ -11,6 +11,7 @@ const SERVER = Cvar.FLAG.SERVER;
  * @param {string} name name
  * @param {string} value value on the server
  * @param {number} [flags] flags on the server
+ * @param {string | null} [text] description on the server
  * @returns {{ name: string, value: string, flags: number, description: string | null }} a description as the server sends it
  */
 function description(name, value, flags = SERVER, text = null) {
@@ -189,6 +190,56 @@ void describe('ServerCvarMirror', () => {
       mirror.attach([description('sv_gravity', '800')]);
       mirror.stop();
       Cvar.FindVar('sv_gravity').set('1');
+
+      assert.deepEqual(sent, []);
+    });
+  });
+
+  void describe('release', () => {
+    void test('makes the variables of a server that is replaced writable again', () => {
+      const { mirror } = createMirror();
+
+      mirror.attach([description('sv_gravity', '800')]);
+      mirror.markInactive();
+      assert.ok((Cvar.FindVar('sv_gravity').flags & Cvar.FLAG.READONLY) !== 0);
+
+      mirror.release();
+
+      assert.equal(Cvar.FindVar('sv_gravity').flags & Cvar.FLAG.READONLY, 0);
+    });
+
+    void test('keeps a variable that is read-only on the server read-only', () => {
+      const { mirror } = createMirror();
+
+      mirror.attach([description('sv_version', '1', SERVER | Cvar.FLAG.READONLY)]);
+      mirror.markInactive();
+      mirror.release();
+
+      assert.ok((Cvar.FindVar('sv_version').flags & Cvar.FLAG.READONLY) !== 0);
+    });
+
+    void test('lets the next mirror hand the values of today to the new server', () => {
+      const first = createMirror();
+
+      first.mirror.attach([description('sv_gravity', '800')]);
+      Cvar.FindVar('sv_gravity').set('400');
+      first.sent.length = 0;
+      first.mirror.markInactive();
+      first.mirror.release();
+
+      const second = createMirror();
+      second.mirror.attach([description('sv_gravity', '800')]);
+      second.mirror.stop();
+
+      assert.deepEqual(second.sent, [['sv_gravity', '400']]);
+    });
+
+    void test('stops sending changes', () => {
+      const { mirror, sent } = createMirror();
+
+      mirror.attach([description('sv_gravity', '800')]);
+      mirror.release();
+      Cvar.FindVar('sv_gravity').set('200');
 
       assert.deepEqual(sent, []);
     });

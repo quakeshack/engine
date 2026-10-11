@@ -3,8 +3,8 @@
 Track C of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-11, the four forks
 are settled (same day, see "Decisions"). Phase 0 (the bugs the survey found) is done and browser-verified, Phases 1 (the typed
 event map), 2 (scopes) and 3 (de-wiring) are done, and so is the per-game typed view of a game's own events (see
-"What actually shipped for a game's own events"), all 2026-10-11. Phase 4 is parked: the design below is the plan for when Track C is picked up
-again, and each phase still stops for a go-ahead.** Written after a survey of the code (numbers below are as of that date,
+"What actually shipped for a game's own events"), all 2026-10-11. Phase 4 (server hot reload) is done as well, 2026-10-12, for the browser worker only (see "What actually
+shipped in Phase 4"): Track C is complete.** Written after a survey of the code (numbers below are as of that date,
 branch `engine-architecture-modernization`; "What actually shipped" says what the code looks like now).
 
 ## Context
@@ -165,9 +165,12 @@ event is removed: a published event may have subscribers in a game that grep ove
 
 ### D. Hot reload (dev only, server side)
 
-Terminating the server worker and spawning a new one is already a clean operation (`WorkerServerController.stop()` then
-`start()`, which re-imports the game module's server code in a fresh realm). A dev-only command and a watcher for the rebuilt
-worker bundle can respawn it and re-issue the current `map`. No scope work is required for the server (the realm dies).
+**Correction found when Phase 4 was picked up:** `stop()` then `start()` is *not* a fresh realm. The worker of a page lives as
+long as the page, so `start(map)` reuses its module cache and the old game code; and the dedicated Node server runs its
+server in the main thread, not in a worker. A reload therefore needs a replaceable worker in the controller, a channel the
+network layer can be pointed at again, a worker bundle the running page can find (development builds hash it, and the old
+page has the old name baked in), and it only exists for the browser. A dev-only command respawns the worker and brings the
+level back; no scope work is required for the server (the realm dies).
 Client side needs scope teardown plus a re-import of the game module with a cache-busting URL, and the module's
 `ClientGameAPI.Init`-registered menu pages, cvars and commands have no unregister path today; that is the real cost and why it
 is out of this pass.
@@ -190,7 +193,7 @@ Each phase ends with `npm test`, `npm run typecheck` and `npx eslint source/engi
   bus. Tests: scope end releases every listener (including ones made by engine code through the scope), nested disposal order,
   a listener added during a publish, no listener leak across 100 changelevels (count of the realm bus's listeners).
 - **Phase 3: classify and de-wire** (Design C). **Done 2026-10-11**, see "Phase 3 classification" and "What actually shipped in Phase 3".
-- **Phase 4 (parked): server hot reload** (Design D, decision 3). Own browser pass.
+- **Phase 4: server hot reload** (Design D, decision 3). **Done 2026-10-12**, see "What actually shipped in Phase 4".
 
 ## Testing
 
@@ -397,6 +400,43 @@ Not done, by decision: removing the eight listener-less events of group A and th
 turning `host.crash`, `console.print-line`, `areaportals.changed` and `com.fs.*` into hooks (group E). The eight of group A
 are the first candidates the day something makes a listener-less event a cost.
 
+## What actually shipped in Phase 4 (2026-10-12)
+
+Decisions of the developer: build it for the browser worker (not only document the F5 loop), triggered by a console command
+only (no polling of the bundle), and `server_reload` keeps the state by default with a fallback. 2355 tests, `npm run
+typecheck` and ESLint are clean.
+
+- **`server_reload [restart]`** (development builds, server in a worker, `ServerReloader.ts`): captures the game with the
+  savegame machinery (`ClientHost.CaptureGame`, extracted from `save`), disconnects, closes the relayed peers, starts a
+  new worker, points the channel driver at its channel, replaces the worker of the controller, and puts the game back
+  (`ClientHost.RestoreGame`, extracted from `load`). `restart` skips the capture. The capture refused (multiplayer, dead
+  player, intermission) or the restore failing (game version, a field that no longer fits) falls back to `map <name>`,
+  with the reason printed.
+- **`WorkerServerController.replaceWorker`**: stops a running server the proper way, waits for a stop that is in flight,
+  fails what is pending, ends the worker, makes a new link (messages of the old worker are ignored by generation), resets
+  the mirror and the lists, boots the new worker and takes its variables and commands over again.
+  `ServerCvarMirror.release()` gives the variables back (and keeps the ones read-only on the server read-only); the next
+  mirror sees them registered and hands the values of today to the new server. `ChannelDriver.replaceEndpoint` lets go of
+  the sockets of the old server and continues over the new channel.
+- **The bundle**: a development build writes the server worker as the single file `libs/worker-ServerWorker.js`
+  (`inlineDynamicImports`, unhashed entry, `vite.config.mjs`); the page starts it with a changing query. A first attempt
+  with the entry plus hashed chunks loaded the engine **twice** in the worker (a chunk imports the entry by its plain URL,
+  the browser keys modules by URL): `instanceof Vector` failed in the savegame. The other workers and production keep the
+  hashed names, and a production build does not contain the command (checked).
+- **When the command is registered**: `Cmd.Init()` rebuilds the command table when the host initializes, which is after
+  the composition root, so the command is registered on `host.ready`.
+- **Dedicated server**: `npm run dedicated:watch` (`node --watch-path=./dist/dedicated`) restarts the process when
+  `dedicated:dev` rebuilds; there is no worker to replace there.
+- **Tests**: `server-reloader.test.ts` (8: order of the steps, restart, both fallbacks, no server running, not entered twice,
+  the command and its local-only guard), `replaceWorker` in `worker-server-controller.test.mjs` (5), `replaceEndpoint` in
+  `channel-driver.test.mjs` (3), `release` in `server-cvar-mirror.test.mjs` (4).
+- **Browser** (a scratch development build served with a one-hour cache lifetime on purpose): the player walked from the
+  start to another spot; `server_reload` brought the page back at that spot (the savegame path kept the entities, same
+  page, same GL context), a marker added to the game's server code and rebuilt in between ran in the new worker and not in
+  the old one, `server_reload restart` put the player back at the start, and the console had no errors.
+- **Not covered**: remote players relayed through `PeerRelay` (closed, not tested live), a game whose savegame does not
+  restore (falls back, covered by a unit test only), and Firefox (Chromium only).
+
 ## What actually shipped for a game's own events (2026-10-11)
 
 The per-game typed view of Design B and decision 2, done after Phase 3 with three decisions of the developer: a type-only
@@ -493,7 +533,7 @@ Not done:
 
 ## Open questions
 
-- **When Track C is picked up again**, start at Phase 4 (server hot reload), which needs its own browser pass. The survey numbers above are as of 2026-10-11; re-count before using them.
+- **Track C has no open phase.** What is left are the two "not done" items: typing the server side of client events and giving the game tests a real `Scope`.
 - **There is no "map ended" event on the client.** `clearState()` runs at every `svc.serverdata` and publishes nothing, so a
   game cannot hear a changelevel; `server.spawning` is the nearest and, as far as the code says, only reaches the page when the
   server runs in the page's own worker (`forwardedServerEvents` is worker to page), so a client connected to a remote server

@@ -16,6 +16,8 @@ export default class ServerCvarMirror {
   readonly #send: (name: string, value: string) => void;
   readonly #mirrored = new Set<string>();
   readonly #shared = new Set<string>();
+  /** The variables that `markInactive` made read-only, which were not before. */
+  readonly #lockedByMirror = new Set<string>();
   #unsubscribe: (() => void) | null = null;
   #applying = false;
 
@@ -97,10 +99,31 @@ export default class ServerCvarMirror {
     for (const name of this.#mirrored) {
       const cvar = Cvar.FindVar(name);
 
-      if (cvar !== null) {
+      if (cvar !== null && (cvar.flags & Cvar.FLAG.READONLY) === 0) {
         cvar.flags |= Cvar.FLAG.READONLY;
+        this.#lockedByMirror.add(name);
       }
     }
+  }
+
+  /**
+   * Lets go of the variables this mirror took over, for a server that is replaced by a new one: they stay, with the
+   * values they had, and can be changed again. The mirror that takes over finds them registered and treats them as
+   * variables both sides know, so the values they have now are what the new server is given.
+   */
+  release(): void {
+    for (const name of this.#lockedByMirror) {
+      const cvar = Cvar.FindVar(name);
+
+      if (cvar !== null) {
+        cvar.flags &= ~Cvar.FLAG.READONLY;
+      }
+    }
+
+    this.#lockedByMirror.clear();
+    this.#mirrored.clear();
+    this.#shared.clear();
+    this.stop();
   }
 
   /**

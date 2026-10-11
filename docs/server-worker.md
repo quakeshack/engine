@@ -107,6 +107,37 @@ half (entities, game globals, spawn parameters, server and game cvars) is `Serve
 before the server's arrives. The development commands `viewmodel`, `viewframe`, `viewnext` and `viewprev` read and
 set the viewthing's model and frame through `getViewthing()` and `setViewthingFrame()`.
 
+## Reloading the server in a development build
+
+A change of a game's server code normally needs a page reload, with the watch build (`vite build --watch --mode
+development`) writing the new bundle first. A development build can replace its server worker
+instead, with the page (renderer, textures, menu) staying where it is:
+
+```
+server_reload            # keeps the game: capture, new worker, restore
+server_reload restart    # starts the level from scratch on the new worker
+```
+
+- **What happens.** The client disconnects, the relayed remote players are closed, the old worker is told to stop (so the
+  game and the navigation worker shut down as they do at the end of a level) and ends. A new worker is made from the bundle
+  the build wrote last, the channel driver is pointed at its channel, its variables and commands are taken over again (a
+  variable this side changed is handed to the new server), and the level comes back.
+- **Keeping the game** is the savegame machinery in memory: every edict by classname and its `@serializable` fields, the
+  game's globals, the time, the server and game variables, and the client's half. The new code creates the entities, so a
+  changed field type or a renamed class shows up here the way it does for a savegame. It has the savegame's limits (a single
+  player game, a living player, the same game version string) and falls back to starting the level from scratch, saying
+  why, when the capture is refused or the restore throws.
+- **Only with the server in a worker** (not `?serverthread`) and only in a build that is not `production`: the command does
+  not exist otherwise.
+- **How it gets the new code past the cache.** A development build writes the server worker as one file,
+  `libs/worker-ServerWorker.js`, and the page starts it with a query that changes every time. It has to be one file: a
+  chunk that imports the entry loads it a second time under its plain URL, which is a second copy of the engine in the
+  worker (`instanceof Vector` fails first, in the savegame). The other workers and a production build keep their hashed
+  names.
+- **The dedicated server is not a worker.** Its server runs in the main thread of the Node process, so there is nothing to
+  replace; a change there needs the process restarted. `npm run dedicated:watch` does that when `dedicated:dev` rebuilds
+  `dist/dedicated` (clients are dropped and reconnect).
+
 ## Hosting for other players
 
 A worker has no `RTCPeerConnection` (and `RTCDataChannel` can only be handed over before it opens), so the peers of

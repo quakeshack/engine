@@ -56,10 +56,17 @@ interface PendingRequest {
  * player arrive, so `runLocalFrame` has nothing to do.
  */
 export default class WorkerServerController implements ServerController {
+  /** How long, in milliseconds, `replaceWorker` waits for requests that are on their way. */
+  static readonly REPLACE_TIMEOUT = 5000;
+
   readonly state: ServerStateMirror;
 
   readonly #deps: WorkerServerControllerDependencies;
-  readonly #link: ControlLink<ControlToServer, ControlFromServer>;
+  #worker: ServerWorkerHandle;
+  #channel: WorkerServerControllerDependencies['channel'];
+  #link: ControlLink<ControlToServer, ControlFromServer>;
+  /** Counts the links made, so that a message from a worker that was replaced is not taken for one of the new worker. */
+  #generation = 0;
   readonly #pending = new Map<number, PendingRequest>();
   #mirror: ServerStateMirror = { active: false, maxclients: 0, mapname: null, paused: false };
   #nextRequest = 1;
@@ -73,7 +80,9 @@ export default class WorkerServerController implements ServerController {
 
   constructor(dependencies: WorkerServerControllerDependencies) {
     this.#deps = dependencies;
-    this.#link = new ControlLink<ControlToServer, ControlFromServer>(dependencies.channel.port1, (message) => { this.#onMessage(message); });
+    this.#worker = dependencies.worker;
+    this.#channel = dependencies.channel;
+    this.#link = this.#createLink(dependencies.channel.port1);
 
     const mirror = (): ServerStateMirror => this.#mirror;
 
@@ -104,11 +113,11 @@ export default class WorkerServerController implements ServerController {
 
     const boot: ServerWorkerBoot = {
       event: 'server.worker.boot',
-      port: this.#deps.channel.port2,
+      port: this.#channel.port2,
       init: this.#deps.createInit(),
     };
 
-    this.#deps.worker.postMessage(boot, [boot.port]);
+    this.#worker.postMessage(boot, [boot.port]);
 
     return this.#booted;
   }
@@ -191,7 +200,61 @@ export default class WorkerServerController implements ServerController {
    */
   async dispose(reason = 'The server worker was shut down'): Promise<void> {
     this.#fail(new Error(reason));
-    await this.#deps.worker.shutdown();
+    await this.#worker.shutdown();
+  }
+
+  /**
+   * Replaces the worker with a new one that has not started: the old server is stopped the proper way when it is
+   * running, the worker ends, and the new one boots with the settings of today. The cvars and commands the server has
+   * are taken over again, and what this side set on a variable the server also has is handed to the new server.
+   * Whoever called this has to carry the new channel to the network layer (`ChannelDriver.replaceEndpoint`) first.
+   * @param next The new worker and the two ends of its channel.
+   */
+  async replaceWorker(next: Pick<WorkerServerControllerDependencies, 'worker' | 'channel'>): Promise<void> {
+    const attached = this.#cvars !== null;
+
+    if (!this.#dead && this.#mirror.active) {
+      // let the game and the navigation worker shut down the way they do when a level ends
+      await this.#request<boolean>({ kind: 'stop', crash: false });
+    }
+
+    // a stop that was asked for a moment ago, by the client letting go of the server, may still be on its way
+    for (let waited = 0; this.#pending.size > 0 && waited < WorkerServerController.REPLACE_TIMEOUT; waited += 20) {
+      await new Promise<void>((resolve) => { setTimeout(resolve, 20); });
+    }
+
+    this.#fail(new Error('The server worker is being replaced'));
+    await this.#worker.shutdown();
+
+    this.#cvars?.release();
+    this.#cvars = null;
+
+    this.#worker = next.worker;
+    this.#channel = next.channel;
+    this.#link = this.#createLink(next.channel.port1);
+    this.#dead = false;
+    this.#booted = null;
+    this.#bootSettled = null;
+    this.#simulationAllowed = null;
+    this.#mirror = { active: false, maxclients: 0, mapname: null, paused: false };
+    this.#cvarList = [];
+    this.#commandList = [];
+
+    await this.init();
+
+    if (attached) {
+      this.attachConsole();
+    }
+  }
+
+  #createLink(port: MessagePort): ControlLink<ControlToServer, ControlFromServer> {
+    const generation = ++this.#generation;
+
+    return new ControlLink<ControlToServer, ControlFromServer>(port, (message) => {
+      if (generation === this.#generation) {
+        this.#onMessage(message);
+      }
+    });
   }
 
   #send(message: ControlToServer): void {

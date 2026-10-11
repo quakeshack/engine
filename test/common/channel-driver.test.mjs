@@ -241,6 +241,58 @@ void describe('ChannelDriver', () => {
   });
 });
 
+void describe('ChannelDriver.replaceEndpoint', () => {
+  void test('lets go of the sockets of the server that is gone, without telling it', () => {
+    const { client, clientSocket, server } = connect();
+    const closed = [];
+    const [, otherEnd] = createChannelEndpointPair();
+
+    // what the old server would hear: nothing is sent to it any more
+    otherEnd.setReceiver((message) => closed.push(message));
+    client.driver.replaceEndpoint(otherEnd);
+
+    assert.equal(clientSocket.state, QSocket.STATE_DISCONNECTED);
+    assert.equal(server.net.CheckNewConnections(), null);
+    assert.deepEqual(closed, []);
+  });
+
+  void test('carries on over the new channel, with connection numbers starting again', () => {
+    const { client } = connect();
+    const [clientEndpoint, serverEndpoint] = createChannelEndpointPair();
+    const server = createChannelNet(serverEndpoint);
+
+    client.driver.replaceEndpoint(clientEndpoint);
+
+    const socket = client.net.Connect('local');
+    const serverSocket = server.net.CheckNewConnections();
+
+    assert.ok(socket !== null);
+    assert.ok(serverSocket !== null);
+    assert.equal(serverSocket.transportState.connection, 1);
+
+    assert.equal(client.net.SendMessage(socket, buffer([7, 8])), 1);
+    assert.equal(server.net.GetMessage(serverSocket), 1);
+    assert.deepEqual(received(server.net), [7, 8]);
+  });
+
+  void test('no longer hears the old server', () => {
+    const [clientEndpoint, serverEndpoint] = createChannelEndpointPair();
+    const client = createChannelNet(clientEndpoint);
+    const oldServer = createChannelNet(serverEndpoint);
+    const [newClientEndpoint] = createChannelEndpointPair();
+
+    const socket = client.net.Connect('local');
+    assert.ok(socket !== null);
+    assert.ok(oldServer.net.CheckNewConnections() !== null);
+
+    client.driver.replaceEndpoint(newClientEndpoint);
+
+    // a late packet of the old server finds nobody to read it
+    assert.equal(client.net.CheckNewConnections(), null);
+    assert.equal(socket.state, QSocket.STATE_DISCONNECTED);
+  });
+});
+
 void describe('MessagePortEndpoint', () => {
   void test('carries messages over a real message channel and moves the payload', async () => {
     const { port1, port2 } = new MessageChannel();

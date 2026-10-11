@@ -68,7 +68,7 @@ function flush() {
 
 void describe('WorkerServerController', () => {
   void describe('init', () => {
-    void test('boots the worker with the port and the settings, moving the port', async () => {
+    void test('boots the worker with the port and the settings, moving the port', () => {
       const setup = createController();
 
       void setup.controller.init();
@@ -379,6 +379,165 @@ void describe('WorkerServerController', () => {
         assert.equal(setup.worker.shutdowns, 1);
       } finally {
         setup.close();
+      }
+    });
+  });
+
+  void describe('replaceWorker', () => {
+    /**
+     * @returns {{ worker: object, channel: MessageChannel, booted: object[], far: ControlLink, received: object[], close: () => void }} a worker that has not started
+     */
+    function createNext() {
+      const channel = new MessageChannel();
+      const booted = [];
+      const received = [];
+      const worker = {
+        shutdowns: 0,
+        postMessage(message, transfer) { booted.push({ message, transfer }); },
+        shutdown() { this.shutdowns++; return Promise.resolve(); },
+      };
+
+      return {
+        worker,
+        channel,
+        booted,
+        received,
+        far: new ControlLink(/** @type {any} */ (channel.port2), (message) => received.push(message)),
+        close() { channel.port1.close(); channel.port2.close(); },
+      };
+    }
+
+    void test('ends the old worker, boots the new one with the settings of today and settles when it is ready', async () => {
+      const setup = createController();
+      const next = createNext();
+      let replaced = false;
+
+      void setup.controller.init();
+      setup.far.send({ kind: 'ready', cvars: [], commands: [] });
+      await flush();
+
+      const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: /** @type {any} */ (next.channel) }).then(() => { replaced = true; });
+      await flush();
+
+      try {
+        assert.equal(setup.worker.shutdowns, 1);
+        assert.equal(next.booted.length, 1);
+        assert.equal(next.booted[0].message.init, INIT);
+        assert.equal(replaced, false);
+
+        next.far.send({ kind: 'ready', cvars: [], commands: [] });
+        await replacing;
+
+        assert.equal(replaced, true);
+      } finally {
+        setup.close();
+        next.close();
+      }
+    });
+
+    void test('fails what still waits for the old worker, and asks the new one nothing it asked the old', async () => {
+      const setup = createController();
+      const next = createNext();
+
+      void setup.controller.init();
+      setup.far.send({ kind: 'ready', cvars: [], commands: [] });
+      await flush();
+
+      const waiting = setup.controller.saveState();
+      const rejected = assert.rejects(waiting, /being replaced/);
+      const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: /** @type {any} */ (next.channel) });
+
+      await flush();
+      next.far.send({ kind: 'ready', cvars: [], commands: [] });
+      await replacing;
+      await rejected;
+
+      try {
+        assert.deepEqual(next.received, []);
+      } finally {
+        setup.close();
+        next.close();
+      }
+    });
+
+    void test('ignores what the old worker still says', async () => {
+      const setup = createController();
+      const next = createNext();
+
+      void setup.controller.init();
+      setup.far.send({ kind: 'ready', cvars: [], commands: [] });
+      await flush();
+
+      const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: /** @type {any} */ (next.channel) });
+      await flush();
+      next.far.send({ kind: 'ready', cvars: [], commands: [] });
+      await replacing;
+
+      setup.far.send({ kind: 'state', state: { active: true, maxclients: 1, mapname: 'e1m1', paused: false } });
+      await flush();
+
+      try {
+        assert.equal(setup.controller.state.active, false);
+        assert.equal(setup.controller.state.mapname, null);
+      } finally {
+        setup.close();
+        next.close();
+      }
+    });
+
+    void test('follows the new worker afterwards', async () => {
+      const setup = createController();
+      const next = createNext();
+
+      void setup.controller.init();
+      setup.far.send({ kind: 'ready', cvars: [], commands: [] });
+      await flush();
+
+      const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: /** @type {any} */ (next.channel) });
+      await flush();
+      next.far.send({ kind: 'ready', cvars: [], commands: [] });
+      await replacing;
+
+      next.far.send({ kind: 'state', state: { active: true, maxclients: 4, mapname: 'e1m2', paused: false } });
+      await flush();
+
+      try {
+        assert.equal(setup.controller.state.active, true);
+        assert.equal(setup.controller.state.mapname, 'e1m2');
+        assert.equal(setup.controller.state.maxclients, 4);
+      } finally {
+        setup.close();
+        next.close();
+      }
+    });
+
+    void test('stops a running server the proper way before it ends the worker', async () => {
+      const setup = createController();
+      const next = createNext();
+
+      void setup.controller.init();
+      setup.far.send({ kind: 'ready', cvars: [], commands: [] });
+      setup.far.send({ kind: 'state', state: { active: true, maxclients: 1, mapname: 'e1m1', paused: false } });
+      await flush();
+
+      const replacing = setup.controller.replaceWorker({ worker: next.worker, channel: /** @type {any} */ (next.channel) });
+      await flush();
+
+      const stop = setup.received.find((message) => message.kind === 'request' && message.request.kind === 'stop');
+
+      try {
+        assert.ok(stop !== undefined, 'the old worker was asked to stop');
+        assert.equal(setup.worker.shutdowns, 0, 'it is not ended before it answered');
+
+        setup.far.send({ kind: 'response', id: stop.id, ok: true, result: true });
+        await flush();
+        assert.equal(setup.worker.shutdowns, 1);
+
+        next.far.send({ kind: 'ready', cvars: [], commands: [] });
+        await replacing;
+      } finally {
+        setup.close();
+        next.close();
       }
     });
   });
