@@ -2,7 +2,7 @@ import Vector from '../../shared/Vector.ts';
 import * as Protocol from '../network/Protocol.ts';
 import Q from '../../shared/Q.ts';
 import { SzBuffer } from '../network/MSG.ts';
-import Cmd, { type ConsoleCommand } from '../common/Cmd.ts';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { HostError } from '../common/Errors.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
@@ -74,87 +74,93 @@ export const kbuttons: KButtonState[] = new Array(KBUTTON_COUNT);
 export default class ClientInput {
   static impulse = 0;
 
-  private static KeyDown_f(this: ConsoleCommand, cmd?: string): void {
-    const command = this.command;
-    if (command === null) {
-      return;
+  private static KeyDown_f = class KeyDownConsoleCommand extends ConsoleCommand {
+    override run(cmd?: string): void {
+      const command = this.command;
+      if (command === null) {
+        return;
+      }
+
+      const buttonIndex = getButtonIndex(command.substring(1));
+      if (buttonIndex === null) {
+        return;
+      }
+
+      const button = kbuttons[buttonIndex];
+
+      const key = cmd !== undefined ? Q.atoi(cmd) : -1;
+
+      if (key === button.down[0] || key === button.down[1]) {
+        return;
+      }
+
+      if (button.down[0] === 0) {
+        button.down[0] = key;
+      } else if (button.down[1] === 0) {
+        button.down[1] = key;
+      } else {
+        Con.DPrint('Three keys down for a button!\n');
+        return;
+      }
+
+      if ((button.state & 1) === 0) {
+        button.state |= 3;
+      }
     }
+  };
 
-    const buttonIndex = getButtonIndex(command.substring(1));
-    if (buttonIndex === null) {
-      return;
+  private static KeyUp_f = class KeyUpConsoleCommand extends ConsoleCommand {
+    override run(cmd?: string): void {
+      const command = this.command;
+      if (command === null) {
+        return;
+      }
+
+      const buttonIndex = getButtonIndex(command.substring(1));
+      if (buttonIndex === null) {
+        return;
+      }
+
+      const button = kbuttons[buttonIndex];
+
+      if (cmd === undefined) {
+        button.down[0] = 0;
+        button.down[1] = 0;
+        button.state = 4;
+        return;
+      }
+
+      const key = Q.atoi(cmd);
+
+      if (button.down[0] === key) {
+        button.down[0] = 0;
+      } else if (button.down[1] === key) {
+        button.down[1] = 0;
+      } else {
+        return;
+      }
+
+      if (button.down[0] !== 0 || button.down[1] !== 0) {
+        return;
+      }
+
+      if ((button.state & 1) !== 0) {
+        button.state = (button.state - 1) | 4;
+      }
     }
+  };
 
-    const button = kbuttons[buttonIndex];
+  private static MLookUp_f = class MLookUpConsoleCommand extends ClientInput.KeyUp_f {
+    override run(cmd?: string): void {
+      super.run(cmd);
 
-    const key = cmd !== undefined ? Q.atoi(cmd) : -1;
-
-    if (key === button.down[0] || key === button.down[1]) {
-      return;
+      if (((kbuttons[kbutton.mlook].state & 1) === 0) && (clientCvars.lookspring.value !== 0)) {
+        PitchDrift.Start();
+      }
     }
+  };
 
-    if (button.down[0] === 0) {
-      button.down[0] = key;
-    } else if (button.down[1] === 0) {
-      button.down[1] = key;
-    } else {
-      Con.DPrint('Three keys down for a button!\n');
-      return;
-    }
-
-    if ((button.state & 1) === 0) {
-      button.state |= 3;
-    }
-  }
-
-  private static KeyUp_f(this: ConsoleCommand, cmd?: string): void {
-    const command = this.command;
-    if (command === null) {
-      return;
-    }
-
-    const buttonIndex = getButtonIndex(command.substring(1));
-    if (buttonIndex === null) {
-      return;
-    }
-
-    const button = kbuttons[buttonIndex];
-
-    if (cmd === undefined) {
-      button.down[0] = 0;
-      button.down[1] = 0;
-      button.state = 4;
-      return;
-    }
-
-    const key = Q.atoi(cmd);
-
-    if (button.down[0] === key) {
-      button.down[0] = 0;
-    } else if (button.down[1] === key) {
-      button.down[1] = 0;
-    } else {
-      return;
-    }
-
-    if (button.down[0] !== 0 || button.down[1] !== 0) {
-      return;
-    }
-
-    if ((button.state & 1) !== 0) {
-      button.state = (button.state - 1) | 4;
-    }
-  }
-
-  private static MLookUp_f(this: ConsoleCommand, cmd?: string): void {
-    ClientInput.KeyUp_f.call(this, cmd);
-
-    if (((kbuttons[kbutton.mlook].state & 1) === 0) && (clientCvars.lookspring.value !== 0)) {
-      PitchDrift.Start();
-    }
-  }
-
-  private static Impulse_f(code?: string): void {
+  private static Impulse_f(this: void, code?: string): void {
     if (code === undefined) {
       Con.Print('Usage: impulse <code>\n');
       return;

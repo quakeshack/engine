@@ -14,7 +14,7 @@ import type NET from '../network/Network.ts';
 import type Server from '../server/Server.ts';
 import type ServerHost from '../server/ServerHost.ts';
 
-import Cmd, { type ConsoleCommand } from '../common/Cmd.ts';
+import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import CvarTable from '../common/Cvar.ts';
 import Con from '../common/Console.ts';
 import { eventBus } from '../common/EventBus.ts';
@@ -48,12 +48,18 @@ export default class DedicatedHost {
     this.#deps = dependencies;
   }
 
-  /** How many frames per second the main loop aims for. */
+  /**
+   * How many frames per second the main loop aims for.
+   * @returns The `host_refreshrate` variable, null before the host is initialized.
+   */
   get refreshrate(): Cvar | null {
     return Host.refreshrate;
   }
 
-  /** The `developer` variable. */
+  /**
+   * The `developer` variable.
+   * @returns The variable, null before the host is initialized.
+   */
   get developer(): Cvar | null {
     return Host.developer;
   }
@@ -116,8 +122,16 @@ export default class DedicatedHost {
     serverHost.InitDedicatedCommands();
     serverHost.InitCommands();
     Cmd.AddCommand('quit', () => { this.ForceQuit(); });
-    Cmd.AddCommand('name', function nameCommand(this: ConsoleCommand, ...names: string[]): void { serverHost.name(this, ...names); });
-    Cmd.AddCommand('color', function colorCommand(this: ConsoleCommand, ...colors: string[]): void { serverHost.color(this, ...colors); });
+    Cmd.AddCommand('name', class NameConsoleCommand extends ConsoleCommand {
+      override run(...names: string[]): void {
+        serverHost.name(this, ...names);
+      }
+    });
+    Cmd.AddCommand('color', class ColorConsoleCommand extends ConsoleCommand {
+      override run(...colors: string[]): void {
+        serverHost.color(this, ...colors);
+      }
+    });
     Host.InitCommands();
 
     Host.InitLocal(this.#deps.commitHash, true);

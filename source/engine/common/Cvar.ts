@@ -258,18 +258,18 @@ export default class Cvar {
     }
   }
 
-  static Set_f(name?: string, value?: string): void {
+  static Set_f(this: void, name?: string, value?: string): void {
     if (name === undefined) {
       Con.Print('Usage: set <name> <value>\n');
       return;
     }
 
-    if (!Cvar.Command_f.call(this, name, value)) {
+    if (!Cvar.Command_f(name, value)) {
       Con.PrintWarning(`Unknown variable "${name}"\n`);
     }
   }
 
-  static Seta_f(name?: string, value?: string): void {
+  static Seta_f(this: void, name?: string, value?: string): void {
     if (name === undefined) {
       Con.Print('Usage: seta <name> <value>\n');
       return;
@@ -287,12 +287,12 @@ export default class Cvar {
       Con.DPrint(`"${name}" flagged as archive variable\n`);
     }
 
-    if (!Cvar.Command_f.call(this, name, value)) {
+    if (!Cvar.Command_f(name, value)) {
       Con.PrintWarning(`Unknown variable "${name}"\n`);
     }
   }
 
-  static Toggle_f(name?: string): void {
+  static Toggle_f(this: void, name?: string): void {
     if (name === undefined) {
       Con.Print('Usage: toggle <name>\n');
       return;
@@ -314,7 +314,7 @@ export default class Cvar {
     Con.Print(`"${name}" toggled to "${variable.string}"\n`);
   }
 
-  static Cvarlist_f(start?: string): void {
+  static Cvarlist_f(this: void, start?: string): void {
     const names = Cvar.GetVariableNames().sort();
 
     for (const name of names) {

@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import * as Def from '../../source/engine/common/Def.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
+import { runConsoleCommand } from '../support/consoleCommands.ts';
 import { KeyDestination } from '../../source/engine/client/Key.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import '../support/consoleBridge.ts';
@@ -187,7 +188,7 @@ void describe('ClientHost', () => {
       const runtime = createClientRuntime({ calls, scheduled: [] });
 
       await withRegistryMembers(runtime, () => {
-        ClientHost.Map_f.call({ client: null });
+        runConsoleCommand(ClientHost.Map_f, { client: null });
       });
 
       assert.deepEqual(calls, [['Print', 'Usage: map <map>\n']]);
@@ -198,7 +199,7 @@ void describe('ClientHost', () => {
       const runtime = createClientRuntime({ calls, scheduled: [] });
 
       await withRegistryMembers(runtime, () => {
-        ClientHost.Map_f.call({ client: {} }, 'e1m1');
+        runConsoleCommand(ClientHost.Map_f, { client: {} }, 'e1m1');
       });
 
       assert.deepEqual(calls, []);
@@ -210,7 +211,7 @@ void describe('ClientHost', () => {
       const runtime = createClientRuntime({ calls, scheduled });
 
       await withRegistryMembers(runtime, async () => {
-        ClientHost.Map_f.call({ client: null }, 'e1m2', 'a', 'b');
+        runConsoleCommand(ClientHost.Map_f, { client: null }, 'e1m2', 'a', 'b');
 
         assert.equal(clientStaticState.demonum, -1);
         assert.equal(clientStaticState.spawnparms, 'a b');
@@ -230,7 +231,7 @@ void describe('ClientHost', () => {
       const runtime = createClientRuntime({ calls, scheduled, startResult: false });
 
       await withRegistryMembers(runtime, async () => {
-        ClientHost.Map_f.call({ client: null }, 'nowhere');
+        runConsoleCommand(ClientHost.Map_f, { client: null }, 'nowhere');
 
         await assert.rejects(scheduled[0](), /Could not spawn server with map nowhere/);
       });
@@ -401,7 +402,7 @@ void describe('ClientHost', () => {
 
       try {
         await withRegistryMembers(runtime, () => {
-          ClientHost.Restart_f.call({ client: null });
+          runConsoleCommand(ClientHost.Restart_f, { client: null });
         });
       } finally {
         Cmd.ExecuteString = originalExecuteString;

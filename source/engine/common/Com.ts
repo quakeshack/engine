@@ -117,7 +117,7 @@ export default class COM {
    * Append a default file extension if none is present.
    * @returns the path with extension appended when no extension was found
    */
-  static DefaultExtension(path: string, extension: string): string {
+  static DefaultExtension(this: void, path: string, extension: string): string {
     const lastSlashIndex = path.lastIndexOf('/');
     const lastDotIndex = path.lastIndexOf('.');
 
@@ -136,7 +136,7 @@ export default class COM {
    * together with the remaining unparsed data.
    * @returns parsed token and remaining data
    */
-  static Parse(data: string): ParseResult {
+  static Parse(this: void, data: string): ParseResult {
     // ASCII codes used by Quake's token parser.
     const CHAR_SPACE = 32; // ' '
     const CHAR_QUOTE = 34; // '"'
@@ -213,7 +213,7 @@ export default class COM {
    * parsing the remainder of the lump.
    * @yields one record per entity, in lump order
    */
-  static *ParseEntityLump(data: string | null): Generator<Record<string, string>> {
+  static *ParseEntityLump(this: void, data: string | null): Generator<Record<string, string>> {
     while (data) {
       const parsed = COM.Parse(data);
       data = parsed.data;

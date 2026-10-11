@@ -63,19 +63,6 @@ export class ConsoleCommand {
   }
 }
 
-/**
- * Just the naked console command context.
- */
-class AnonymousConsoleCommand extends ConsoleCommand {
-  override run(): void {
-    console.assert(false, 'AnonymousConsoleCommand.run() cannot be used');
-  }
-
-  override forward(): boolean {
-    return false;
-  }
-}
-
 class ForwardCommand extends ConsoleCommand {
   override run(): void {
     this.forward();
@@ -121,7 +108,7 @@ export default class Cmd {
     return this.wait || this.text.length > 0 || this.#execSlots.length > 0;
   }
 
-  static Wait_f(): void {
+  static Wait_f(this: void): void {
     Cmd.wait = true;
   }
 
@@ -190,7 +177,7 @@ export default class Cmd {
   /**
    * Executes all console commands passed by the command line.
    */
-  static StuffCmds_f(): void {
+  static StuffCmds_f(this: void): void {
     let readingCommand = false;
     let build = '';
 
@@ -245,7 +232,7 @@ export default class Cmd {
     }
   };
 
-  static Alias_f(...argv: string[]): void {
+  static Alias_f(this: void, ...argv: string[]): void {
     if (argv.length === 0) {
       Con.Print('Current alias commands:\n');
 
@@ -412,14 +399,8 @@ export default class Cmd {
       return undefined;
     }
 
-    const context = new AnonymousConsoleCommand();
-    context.client = client;
-    context.args = text;
-    context.command = commandName;
-    context.argv = argv;
-
     // ask Cvar, if it knows more
-    if (Cvar.Command_f.call(context, argv[0], argv[1])) {
+    if (Cvar.Command_f(argv[0], argv[1])) {
       return undefined;
     }
 

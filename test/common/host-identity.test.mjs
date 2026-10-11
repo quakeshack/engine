@@ -7,6 +7,7 @@ import * as Def from '../../source/engine/common/Def.ts';
 import '../support/consoleBridge.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
+import { runConsoleCommand } from '../support/consoleCommands.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 /**
@@ -58,7 +59,7 @@ void describe('ClientHost.NameCommand', () => {
 
     try {
       withIdentityMocks({ cl: { name, cls: { state: Def.clientConnectionState.disconnected } } }, (prints) => {
-        ClientHost.NameCommand.call({ client: null, forward: () => true });
+        runConsoleCommand(ClientHost.NameCommand, { client: null, forward: () => true });
         assert.deepEqual(prints, ['"name" is "player"\n']);
       });
     } finally {
@@ -78,7 +79,7 @@ void describe('ClientHost.NameCommand', () => {
         cl: { name, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
-        ClientHost.NameCommand.call({ client: null, forward: () => { forwarded = true; return true; } }, 'NewName');
+        runConsoleCommand(ClientHost.NameCommand, { client: null, forward: () => { forwarded = true; return true; } }, 'NewName');
 
         assert.equal(name.string, 'NewName');
         assert.equal(forwarded, true);
@@ -97,7 +98,7 @@ void describe('ClientHost.NameCommand', () => {
         cl: { name, cls: { state: Def.clientConnectionState.disconnected } },
         sv: { server: { active: false } },
       }, () => {
-        ClientHost.NameCommand.call({ client: null, forward: () => { forwarded = true; return true; } }, 'NewName');
+        runConsoleCommand(ClientHost.NameCommand, { client: null, forward: () => { forwarded = true; return true; } }, 'NewName');
 
         assert.equal(name.string, 'NewName');
         assert.equal(forwarded, false);
@@ -114,7 +115,7 @@ void describe('ClientHost.ColorCommand', () => {
 
     try {
       withIdentityMocks({ cl: { color, cls: { state: Def.clientConnectionState.disconnected } } }, (prints) => {
-        ClientHost.ColorCommand.call({ client: null, forward: () => true });
+        runConsoleCommand(ClientHost.ColorCommand, { client: null, forward: () => true });
         assert.deepEqual(prints, ['"color" is "3 5"\ncolor <0-13> [0-13]\n']);
       });
     } finally {
@@ -130,7 +131,7 @@ void describe('ClientHost.ColorCommand', () => {
         cl: { color, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
-        ClientHost.ColorCommand.call({ client: null, forward: () => true }, '7');
+        runConsoleCommand(ClientHost.ColorCommand, { client: null, forward: () => true }, '7');
 
         assert.equal(color.value >> 4, 7);
         assert.equal(color.value & 15, 7);
@@ -153,7 +154,7 @@ void describe('ClientHost.ColorCommand', () => {
         cl: { color, cls: { state: Def.clientConnectionState.connected } },
         sv: { server: { active: false } },
       }, () => {
-        ClientHost.ColorCommand.call({ client: null, forward: () => { forwarded = true; return true; } }, '3', '5');
+        runConsoleCommand(ClientHost.ColorCommand, { client: null, forward: () => { forwarded = true; return true; } }, '3', '5');
 
         assert.equal(color.value >> 4, 3);
         assert.equal(color.value & 15, 5);
@@ -173,7 +174,7 @@ void describe('ClientHost.ColorCommand', () => {
         cl: { color, cls: { state: Def.clientConnectionState.disconnected } },
         sv: { server: { active: false } },
       }, () => {
-        ClientHost.ColorCommand.call({ client: null, forward: () => { forwarded = true; return true; } }, '3', '5');
+        runConsoleCommand(ClientHost.ColorCommand, { client: null, forward: () => { forwarded = true; return true; } }, '3', '5');
 
         assert.equal(color.value >> 4, 3);
         assert.equal(color.value & 15, 5);

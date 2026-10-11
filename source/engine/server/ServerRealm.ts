@@ -61,7 +61,10 @@ export default class ServerRealm implements ServerRealmHost {
     this.version = { string: dependencies.engineVersion };
   }
 
-  /** Whether the local player flies through walls, which changes how their view is handled. */
+  /**
+   * Whether the local player flies through walls, which changes how their view is handled.
+   * @returns True while the local player is in noclip.
+   */
   get noclip_anglehack(): boolean {
     return this.#noclipAnglehack;
   }

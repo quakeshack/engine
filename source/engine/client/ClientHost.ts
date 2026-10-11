@@ -200,7 +200,9 @@ export default class ClientHost {
     clientStaticState.serverController.attachConsole();
 
     Cmd.text = `exec better-quake.rc\n${Cmd.text}`;
-     
+
+    // Boot runs once, nothing else assigns this while it awaits the subsystems above.
+    // eslint-disable-next-line require-atomic-updates
     Host.initialized = true;
     Sys.Print('========Host Initialized=========\n');
 
@@ -320,7 +322,7 @@ export default class ClientHost {
    * the menu system directly, same reasoning as `host.alert` -- the engine has no opinion on
    * what a quit confirmation looks like, or whether one exists at all.
    */
-  static Quit_f(): void {
+  static Quit_f(this: void): void {
     if (!ConsoleOverlay.isOpen) {
       eventBus.publish('host.quit-requested');
       return;
@@ -342,140 +344,148 @@ export default class ClientHost {
    * player's preference, sent by a client they change that client on the server. As long as both
    * run in one command table, this decides which one is meant.
    */
-  static NameCommand(this: ConsoleCommand, ...names: string[]): void {
-    if (this.client === null) {
-      ClientHost.Name_f.call(this, ...names);
-      return;
+  static NameCommand = class NameConsoleCommand extends ConsoleCommand {
+    override run(...names: string[]): void {
+      if (this.client === null) {
+        ClientHost.Name_f(this, ...names);
+        return;
+      }
+
+      Host.serverHost?.name(this, ...names);
     }
+  };
 
-    Host.serverHost?.name(this, ...names);
-  }
+  static ColorCommand = class ColorConsoleCommand extends ConsoleCommand {
+    override run(...argv: string[]): void {
+      if (this.client === null) {
+        ClientHost.Color_f(this, ...argv);
+        return;
+      }
 
-  static ColorCommand(this: ConsoleCommand, ...argv: string[]): void {
-    if (this.client === null) {
-      ClientHost.Color_f.call(this, ...argv);
-      return;
+      Host.serverHost?.color(this, ...argv);
     }
+  };
 
-    Host.serverHost?.color(this, ...argv);
-  }
+  static Savegame_f = class SavegameConsoleCommand extends ConsoleCommand {
+    override async run(savename?: string): Promise<void> {
+      if (this.client !== null) {
+        return;
+      }
 
-  static async Savegame_f(this: ConsoleCommand, savename?: string): Promise<void> {
-    if (this.client !== null) {
-      return;
-    }
+      if (savename === undefined) {
+        Con.Print('Usage: save <savename>\n');
+        return;
+      }
 
-    if (savename === undefined) {
-      Con.Print('Usage: save <savename>\n');
-      return;
-    }
+      const { state } = clientStaticState.serverController;
 
-    const { state } = clientStaticState.serverController;
+      if (!state.active) {
+        Con.PrintWarning('Not playing a local game.\n');
+        return;
+      }
 
-    if (!state.active) {
-      Con.PrintWarning('Not playing a local game.\n');
-      return;
-    }
+      if (clientRuntimeState.intermission !== 0) {
+        Con.PrintWarning('Can\'t save in intermission.\n');
+        return;
+      }
 
-    if (clientRuntimeState.intermission !== 0) {
-      Con.PrintWarning('Can\'t save in intermission.\n');
-      return;
-    }
+      if (state.maxclients !== 1) {
+        Con.PrintWarning('Can\'t save multiplayer games.\n');
+        return;
+      }
 
-    if (state.maxclients !== 1) {
-      Con.PrintWarning('Can\'t save multiplayer games.\n');
-      return;
-    }
+      if (savename.includes('..')) {
+        Con.PrintWarning('Relative pathnames are not allowed.\n');
+        return;
+      }
 
-    if (savename.includes('..')) {
-      Con.PrintWarning('Relative pathnames are not allowed.\n');
-      return;
-    }
+      // What the client knows is collected right now, the server's half arrives a moment later when it runs in a worker.
+      const clientHalf = {
+        comment: clientRuntimeState.levelname,
+        clientdata: clientRuntimeState.gameAPI ? clientRuntimeState.gameAPI.saveGame() : null,
+        particles: Particles.SerializeParticles(),
+        clientEntities: clientRuntimeState.clientEntities.serialize(),
+      };
 
-    // What the client knows is collected right now, the server's half arrives a moment later when it runs in a worker.
-    const clientHalf = {
-      comment: clientRuntimeState.levelname,
-      clientdata: clientRuntimeState.gameAPI ? clientRuntimeState.gameAPI.saveGame() : null,
-      particles: Particles.SerializeParticles(),
-      clientEntities: clientRuntimeState.clientEntities.serialize(),
-    };
+      const result = await clientStaticState.serverController.saveState();
 
-    const result = await clientStaticState.serverController.saveState();
+      if (!result.ok) {
+        Con.PrintWarning(`${result.reason}\n`);
+        return;
+      }
 
-    if (!result.ok) {
-      Con.PrintWarning(`${result.reason}\n`);
-      return;
-    }
+      const gamestate: SavegameState = { ...result.state, ...clientHalf };
+      const filename = com.DefaultExtension(savename, '.json');
 
-    const gamestate: SavegameState = { ...result.state, ...clientHalf };
-    const filename = com.DefaultExtension(savename, '.json');
+      Con.Print(`Saving game to ${filename}...\n`);
 
-    Con.Print(`Saving game to ${filename}...\n`);
+      if (await com.WriteTextFile(filename, JSON.stringify(gamestate))) {
+        await SaveSlots.refresh();
+        Con.PrintSuccess('done.\n');
+        return;
+      }
 
-    if (await com.WriteTextFile(filename, JSON.stringify(gamestate))) {
-      await SaveSlots.refresh();
-      Con.PrintSuccess('done.\n');
-      return;
-    }
-
-    Con.PrintError('ERROR: couldn\'t open.\n');
-  }
-
-  static async Loadgame_f(this: ConsoleCommand, savename?: string): Promise<void> {
-    if (this.client !== null) {
-      return;
-    }
-
-    if (savename === undefined) {
-      Con.Print('Usage: load <savename>\n');
-      return;
-    }
-
-    if (savename.includes('..')) {
-      Con.PrintWarning('Relative pathnames are not allowed.\n');
-      return;
-    }
-
-    clientStaticState.demonum = -1;
-
-    const filename = com.DefaultExtension(savename, '.json');
-
-    Con.Print(`Loading game from ${filename}...\n`);
-
-    const data = await com.LoadTextFile(filename);
-
-    if (data === null) {
       Con.PrintError('ERROR: couldn\'t open.\n');
-      return;
     }
+  };
 
-    let gamestate: SavegameState;
+  static Loadgame_f = class LoadgameConsoleCommand extends ConsoleCommand {
+    override async run(savename?: string): Promise<void> {
+      if (this.client !== null) {
+        return;
+      }
 
-    try {
-      gamestate = JSON.parse(data) as SavegameState;
-    } catch {
-      throw new HostError(`Savegame ${filename} is corrupted or unreadable.`);
+      if (savename === undefined) {
+        Con.Print('Usage: load <savename>\n');
+        return;
+      }
+
+      if (savename.includes('..')) {
+        Con.PrintWarning('Relative pathnames are not allowed.\n');
+        return;
+      }
+
+      clientStaticState.demonum = -1;
+
+      const filename = com.DefaultExtension(savename, '.json');
+
+      Con.Print(`Loading game from ${filename}...\n`);
+
+      const data = await com.LoadTextFile(filename);
+
+      if (data === null) {
+        Con.PrintError('ERROR: couldn\'t open.\n');
+        return;
+      }
+
+      let gamestate: SavegameState;
+
+      try {
+        gamestate = JSON.parse(data) as SavegameState;
+      } catch {
+        throw new HostError(`Savegame ${filename} is corrupted or unreadable.`);
+      }
+
+      if (gamestate.version !== Def.gamestateVersion) {
+        throw new HostError(`Savegame is version ${gamestate.version}, not ${Def.gamestateVersion}\n`);
+      }
+
+      CL.Disconnect();
+      ScreenFrame.BeginLoadingPlaque();
+
+      // The server takes its half, the client resumes with the other once the server is up.
+      const { comment: _comment, clientdata, particles, clientEntities, ...serverHalf } = gamestate;
+
+      try {
+        await clientStaticState.serverController.restoreState(serverHalf, filename);
+      } catch (error) {
+        CL.SetConnectingStep(null, null);
+        throw error;
+      }
+
+      ClientLifecycle.resumeGame(clientdata, particles, clientEntities);
     }
-
-    if (gamestate.version !== Def.gamestateVersion) {
-      throw new HostError(`Savegame is version ${gamestate.version}, not ${Def.gamestateVersion}\n`);
-    }
-
-    CL.Disconnect();
-    ScreenFrame.BeginLoadingPlaque();
-
-    // The server takes its half, the client resumes with the other once the server is up.
-    const { comment: _comment, clientdata, particles, clientEntities, ...serverHalf } = gamestate;
-
-    try {
-      await clientStaticState.serverController.restoreState(serverHalf, filename);
-    } catch (error) {
-      CL.SetConnectingStep(null, null);
-      throw error;
-    }
-
-    ClientLifecycle.resumeGame(clientdata, particles, clientEntities);
-  }
+  };
 
   /**
    * Reads the entity the `view*` commands act on, and says so when the map has none.
@@ -514,7 +524,7 @@ export default class ClientHost {
     Con.Print(`frame ${frame}: ${frameName}\n`);
   }
 
-  static async Viewmodel_f(model?: string): Promise<void> {
+  static async Viewmodel_f(this: void, model?: string): Promise<void> {
     if (model === undefined) {
       Con.Print('Usage: viewmodel <model>\n');
       return;
@@ -537,7 +547,7 @@ export default class ClientHost {
     await clientStaticState.serverController.setViewthingFrame(0);
   }
 
-  static async Viewframe_f(frame?: string): Promise<void> {
+  static async Viewframe_f(this: void, frame?: string): Promise<void> {
     if (frame === undefined) {
       Con.Print('Usage: viewframe <frame>\n');
       return;
@@ -558,7 +568,7 @@ export default class ClientHost {
     await clientStaticState.serverController.setViewthingFrame(Math.min(Q.atoi(frame), model.frames.length - 1));
   }
 
-  static async Viewnext_f(): Promise<void> {
+  static async Viewnext_f(this: void): Promise<void> {
     const viewthing = await ClientHost.#GetViewthing();
 
     if (viewthing === null) {
@@ -577,7 +587,7 @@ export default class ClientHost {
     ClientHost.#PrintViewthingFrame(model, nextFrame);
   }
 
-  static async Viewprev_f(): Promise<void> {
+  static async Viewprev_f(this: void): Promise<void> {
     const viewthing = await ClientHost.#GetViewthing();
 
     if (viewthing === null) {
@@ -719,36 +729,38 @@ export default class ClientHost {
     return true;
   }
 
-  static Map_f(this: ConsoleCommand, mapname?: string, ...spawnparms: string[]): void {
-    if (mapname === undefined) {
-      Con.Print('Usage: map <map>\n');
-      return;
-    }
-
-    if (this.client !== null) {
-      return;
-    }
-
-    clientStaticState.demonum = -1;
-    CL.Disconnect();
-    clientStaticState.serverController.stop();
-
-    Key.destination = KeyDestination.game;
-    ScreenFrame.BeginLoadingPlaque();
-    CL.SetConnectingStep(5, 'Spawning server');
-    clientStaticState.spawnparms = spawnparms.join(' ');
-
-    Host.ScheduleForNextFrame(async () => {
-      if (!await clientStaticState.serverController.start(mapname)) {
-        throw new HostError(`Could not spawn server with map ${mapname}`);
+  static Map_f = class MapConsoleCommand extends ConsoleCommand {
+    override run(mapname?: string, ...spawnparms: string[]): void {
+      if (mapname === undefined) {
+        Con.Print('Usage: map <map>\n');
+        return;
       }
 
-      CL.SetConnectingStep(null, null);
-      CL.Connect('local');
-    });
-  }
+      if (this.client !== null) {
+        return;
+      }
 
-  static Changelevel_f(mapname?: string): void {
+      clientStaticState.demonum = -1;
+      CL.Disconnect();
+      clientStaticState.serverController.stop();
+
+      Key.destination = KeyDestination.game;
+      ScreenFrame.BeginLoadingPlaque();
+      CL.SetConnectingStep(5, 'Spawning server');
+      clientStaticState.spawnparms = spawnparms.join(' ');
+
+      Host.ScheduleForNextFrame(async () => {
+        if (!await clientStaticState.serverController.start(mapname)) {
+          throw new HostError(`Could not spawn server with map ${mapname}`);
+        }
+
+        CL.SetConnectingStep(null, null);
+        CL.Connect('local');
+      });
+    }
+  };
+
+  static Changelevel_f(this: void, mapname?: string): void {
     if (mapname === undefined) {
       Con.Print('Usage: changelevel <levelname>\n');
       return;
@@ -797,19 +809,21 @@ export default class ClientHost {
     }
   }
 
-  static Restart_f(this: ConsoleCommand): void {
-    const { state } = clientStaticState.serverController;
+  static Restart_f = class RestartConsoleCommand extends ConsoleCommand {
+    override run(): void {
+      const { state } = clientStaticState.serverController;
 
-    if (state.active && !clientStaticState.demoplayback && this.client === null) {
-      void Cmd.ExecuteString(`map ${state.mapname}`);
+      if (state.active && !clientStaticState.demoplayback && this.client === null) {
+        void Cmd.ExecuteString(`map ${state.mapname}`);
+      }
     }
-  }
+  };
 
-  static Reconnect_f(): void {
+  static Reconnect_f(this: void): void {
     Con.PrintWarning('NOT IMPLEMENTED: reconnect\n'); // TODO: reimplement reconnect here
   }
 
-  static Connect_f(address?: string): void {
+  static Connect_f(this: void, address?: string): void {
     if (address === undefined) {
       Con.Print('Usage: connect <address>\n');
       Con.Print(' - <address> can be "self", connecting to the current domain name\n');
@@ -836,10 +850,12 @@ export default class ClientHost {
 
   /**
    * The local console's half of `name`: remember the name and tell the server it is connected to.
-   * The server's half is `ServerHost.Name_f`.
+   * The server's half is `ServerHost.name`.
+   * @param command The command as it was typed.
+   * @param names What follows `name`.
    */
-  static Name_f(this: ConsoleCommand, ...names: string[]): void { // signon 2, step 1
-    Con.DPrint(`ClientHost.Name_f: ${this.client}\n`);
+  static Name_f(command: ConsoleCommand, ...names: string[]): void { // signon 2, step 1
+    Con.DPrint(`ClientHost.Name_f: ${command.client}\n`);
 
     if (names.length < 1) {
       Con.Print(`"name" is "${clientCvars.name.string}"\n`);
@@ -849,16 +865,18 @@ export default class ClientHost {
     Cvar.Set('_cl_name', names.join(' ').trim().substring(0, 15));
 
     if (clientStaticState.state === Def.clientConnectionState.connected) {
-      this.forward();
+      command.forward();
     }
   }
 
   /**
    * The local console's half of `color`: remember the colors and tell the server it is connected
-   * to. The server's half is `ServerHost.Color_f`.
+   * to. The server's half is `ServerHost.color`.
+   * @param command The command as it was typed.
+   * @param argv What follows `color`.
    */
-  static Color_f(this: ConsoleCommand, ...argv: string[]): void { // signon 2, step 2
-    Con.DPrint(`ClientHost.Color_f: ${this.client}\n`);
+  static Color_f(command: ConsoleCommand, ...argv: string[]): void { // signon 2, step 2
+    Con.DPrint(`ClientHost.Color_f: ${command.client}\n`);
 
     if (argv.length === 0) {
       Con.Print(`"color" is "${clientCvars.color.value >> 4} ${clientCvars.color.value & 15}"\ncolor <0-13> [0-13]\n`);
@@ -869,7 +887,7 @@ export default class ClientHost {
     Cvar.Set('_cl_color', PlayerColors.pack(top, bottom));
 
     if (clientStaticState.state === Def.clientConnectionState.connected) {
-      this.forward();
+      command.forward();
     }
   }
 

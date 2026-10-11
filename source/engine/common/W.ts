@@ -146,8 +146,11 @@ export default class W {
       throw new MissingResourceError(filename);
     }
 
+    // The palette is loaded once at startup, a second load of the same file would store the same table.
+    /* eslint-disable require-atomic-updates */
     W.d_8to24table_u8 = new Uint8Array(palette);
     W.filledColor = null;
+    /* eslint-enable require-atomic-updates */
 
     for (let i = 0, src = 0; i < 256; i++) {
       const pal = W.d_8to24table_u8;

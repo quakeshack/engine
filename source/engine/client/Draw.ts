@@ -494,7 +494,7 @@ export default class Draw {
   /**
    * Begins showing the loading disc.
    */
-  static BeginDisc(): void {
+  static BeginDisc(this: void): void {
     Draw.#loadingCounter++;
     if (Draw.#loadingElem === null) {
       return;
@@ -506,7 +506,7 @@ export default class Draw {
   /**
    * Ends showing the loading disc.
    */
-  static EndDisc(): void {
+  static EndDisc(this: void): void {
     if (--Draw.#loadingCounter > 0) {
       return;
     }

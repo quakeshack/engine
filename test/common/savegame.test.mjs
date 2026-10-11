@@ -17,6 +17,7 @@ import { defaultMockEngine, withMockEngine, mockedSV } from '../physics/fixtures
 import '../support/consoleBridge.ts';
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';
+import { runConsoleCommand } from '../support/consoleCommands.ts';
 import { patchMembers, useClientStateOf } from '../support/clientState.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
@@ -460,7 +461,7 @@ void describe('ClientHost.Savegame_f', () => {
     };
 
     try {
-      await ClientHost.Savegame_f.call({ client: null }, 'save/e1m1');
+      await runConsoleCommand(ClientHost.Savegame_f, { client: null }, 'save/e1m1');
     } finally {
       Cvar.Filter = previousFilter;
       engineMocks.CL = previousRegistry.CL;
@@ -626,7 +627,7 @@ void describe('ClientHost.Loadgame_f', () => {
             sv_gravity: gravityCvar,
           },
         }, async () => {
-          await ClientHost.Loadgame_f.call({ client: null }, 'save/e1m1');
+          await runConsoleCommand(ClientHost.Loadgame_f, { client: null }, 'save/e1m1');
         });
       });
     } finally {
@@ -712,7 +713,7 @@ void describe('ClientHost.Loadgame_f', () => {
       Con: consoleCapture.Con,
     }, async () => {
       await assert.rejects(
-        ClientHost.Loadgame_f.call({ client: null }, 'broken-save'),
+        runConsoleCommand(ClientHost.Loadgame_f, { client: null }, 'broken-save'),
         (error) => error instanceof Error && error.message.includes('is corrupted or unreadable'),
       );
     });
@@ -809,7 +810,7 @@ void describe('ClientHost.Loadgame_f', () => {
         Con: consoleCapture.Con,
       }, async () => {
         await assert.rejects(
-          ClientHost.Loadgame_f.call({ client: null }, 'save/e1m1'),
+          runConsoleCommand(ClientHost.Loadgame_f, { client: null }, 'save/e1m1'),
           (error) => error instanceof Error && error.message.includes('needs 3 edicts but the server only allocated 2'),
         );
       });
@@ -1034,8 +1035,8 @@ void describe('Host.save/load integration', () => {
           filterCvars: savedCvars,
           lookupCvars: currentCvarLookup,
         }, async () => {
-          assert.equal(await ClientHost.Savegame_f.call({ client: null }, 'integration/e1m1'), undefined);
-          await ClientHost.Loadgame_f.call({ client: null }, 'integration/e1m1');
+          assert.equal(await runConsoleCommand(ClientHost.Savegame_f, { client: null }, 'integration/e1m1'), undefined);
+          await runConsoleCommand(ClientHost.Loadgame_f, { client: null }, 'integration/e1m1');
         });
 
         const freshSaveGameAPI = sv.server.gameAPI;

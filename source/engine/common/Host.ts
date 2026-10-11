@@ -43,7 +43,10 @@ export interface HostFiles {
   WriteTextFile(filename: string, content: string): Promise<boolean>;
 }
 
-/** Extracts a display name from a CrashLike value. */
+/**
+ * Extracts a display name from a CrashLike value.
+ * @returns The name of the error, `Error` when it has none.
+ */
 function crashName(error: CrashLike): string {
   if (error instanceof Error) {
     return error.name;
@@ -56,7 +59,10 @@ function crashName(error: CrashLike): string {
   return error?.name ?? error?.constructor?.name ?? 'Error';
 }
 
-/** Extracts a human-readable message from a CrashLike value. */
+/**
+ * Extracts a human-readable message from a CrashLike value.
+ * @returns The message of the error.
+ */
 function crashMessage(error: CrashLike): string {
   if (error instanceof Error) {
     return error.message;
@@ -168,7 +174,7 @@ export default class Host {
     });
   }
 
-  static ConfigReady_f(): void {
+  static ConfigReady_f(this: void): void {
     eventBus.publish('host.config.loaded');
     Con.DPrint('Loaded configuration\n');
   }
@@ -196,7 +202,7 @@ export default class Host {
     }, 5.0);
   }
 
-  static WriteConfiguration_f(): void {
+  static WriteConfiguration_f(this: void): void {
     Con.Print('Writing configuration\n');
     Host.WriteConfiguration();
   }

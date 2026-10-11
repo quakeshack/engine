@@ -13,7 +13,7 @@ export default class VID {
   static mainwindow: HTMLCanvasElement;
   static pixelRatio = 1;
 
-  static Resize(): void {
+  static Resize(this: void): void {
     const root = document.documentElement;
     const width = root.clientWidth <= 320 ? 320 : root.clientWidth;
     const height = root.clientHeight <= 200 ? 200 : root.clientHeight;

@@ -434,6 +434,7 @@ export class Navigation {
   /**
    * The server whose world is navigated. Only the navigation that serves a server has one, the
    * worker that searches paths never does and must not ask for it.
+   * @returns The server this navigation serves.
    */
   get sv(): Server {
     console.assert(this.#sv !== null, 'this navigation does not belong to a server');

@@ -127,6 +127,8 @@ export default class GameModule {
       activeGameModule.ServerGameAPI.Init(serverEngineAPI);
     }
 
+    // Init runs once per realm, nothing else assigns this while the module loads.
+    // eslint-disable-next-line require-atomic-updates
     GameModule.active = activeGameModule;
 
     const identification = activeGameModule.identification;

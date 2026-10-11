@@ -137,7 +137,7 @@ export default class CL {
     CL.connection.printLastServerMessages();
   }
 
-  static Disconnect(): void {
+  static Disconnect(this: void): void {
     CL.#connection.disconnect();
   }
 
@@ -332,7 +332,7 @@ export default class CL {
     CL.state.clientEntities.think();
   }
 
-  static ServerInfo_f(): void { // private
+  static ServerInfo_f(this: void): void { // private
     if (CL.cls.state !== Def.clientConnectionState.connected) {
       Con.Print('Can\'t "serverinfo", not connected\n');
       return;
@@ -343,7 +343,7 @@ export default class CL {
     }
   }
 
-  static MoveAround_f(): void { // private
+  static MoveAround_f(this: void): void { // private
     if (CL.cls.state !== Def.clientConnectionState.connected) {
       Con.Print('Can\'t "movearound", not connected\n');
       return;
