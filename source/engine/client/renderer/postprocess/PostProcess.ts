@@ -678,6 +678,9 @@ export default class PostProcess {
     const h = PostProcess.height;
     PostProcess.resizePingPong(w, h);
 
+    // the caller draws to the screen next, at the viewport it set up before
+    const savedViewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
+
     gl.disable(gl.BLEND);
 
     let input: GLRenderTexture = PostProcess.colorTexture!;
@@ -699,6 +702,11 @@ export default class PostProcess {
     gl.viewport(0, 0, w, h);
     PostProcess._blitToScreen(input, 0, 0, VID.width, VID.height);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+
+    // Back to the screen, as `end()` left it. `resolve()` without an effect of the renderer blits to whatever is
+    // bound, which was the scene FBO: nothing reached the screen and the HUD was drawn into the FBO.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
 
     gl.enable(gl.BLEND);
   }
