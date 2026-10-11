@@ -1,6 +1,6 @@
 ---
 name: event-bus-docs-sync
-description: Use whenever a task adds, renames, removes, or changes the arguments of an eventBus event — a new eventBus.publish()/emit() call, a new subscribe() for an event not seen before, or an edit to an existing event's payload. event-bus.instructions.md requires every event to be documented, in docs/events.md for engine events or source/game/<mod>/docs/events.md for that game's own events, and engine events are typed in source/shared/EngineEvents.ts (a test compares that with docs/events.md), but a game's own events are checked by nothing, so those docs drift silently. Check it every time an event changes, not just when asked to update docs.
+description: Use whenever a task adds, renames, removes, or changes the arguments of an eventBus event — a new eventBus.publish()/emit() call, a new subscribe() for an event not seen before, or an edit to an existing event's payload. event-bus.instructions.md requires every event to be documented, in docs/events.md for engine events or source/game/<mod>/docs/events.md for that game's own events, and both are typed (engine events in source/shared/EngineEvents.ts, a game's in its own Events.ts) with a test that compares the names with the docs; the Arguments and description columns are checked by nothing, so those drift silently. Check it every time an event changes, not just when asked to update docs.
 ---
 
 # Event bus docs sync
@@ -15,13 +15,19 @@ real drift: `docs/events.md` had no `### Game` or `### Nav` section at all, so e
 and `nav.*` event was completely undocumented despite being actively published. Treat that as
 evidence this needs an active check, not a one-time cleanup.
 
-## Engine events are checked, game events are not (yet)
+## Engine events and game events are both checked
 
 An engine event lives in three places that have to agree: `EngineEventMap` and `engineEventTable` in
 `source/shared/EngineEvents.ts`, and a row in `docs/events.md`. `publish` and `subscribe` are typed by the map, so
 `npm run typecheck` fails for a name or argument it does not know, and `test/common/event-map-docs.test.ts` fails when
 the table and the document name different events. The *Arguments* column and the description are still yours to keep
-right. A game's own events have no map yet (Track C, Phase 2), so for those the steps below are the only check.
+right.
+
+A game's own events are declared in the game's `Events.ts` (an interface of name to argument tuple, plus a list of the
+names), published and subscribed through its `serverEvents(engine)`/`clientEvents(engine)` helper, and the game's own
+test (`test/core/events-docs.test.mjs` in id1) fails when its `docs/events.md` names other events. A new game event is
+added to the interface, to the name list (or, for a client event, to `clientEvent` and `Id1ClientEventArguments`), and
+to the document; the compiler and the test tell you which one you forgot.
 
 ## Fast path
 
@@ -61,5 +67,4 @@ right. A game's own events have no map yet (Track C, Phase 2), so for those the 
   change — only check the event(s) the current task actually touches. A full-file audit is
   a separate, explicit task (compare `grep -rhoE "eventBus\.(publish|emit)\(['\"][a-zA-Z0-9_.\-]+" source --include='*.ts'`
   output against the doc's rows) if the user asks for one.
-- Does not change event-bus behavior. Only the engine's events have a machine check; a game's own events are
-  documented by hand until they get a typed map of their own.
+- Does not change event-bus behavior. The *Arguments* and description columns are the only part nothing checks.

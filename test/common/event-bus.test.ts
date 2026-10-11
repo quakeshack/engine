@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { EventBus, GameEventBus, type ClientGameEventMap, type ServerGameEventMap } from '../../source/engine/common/EventBus.ts';
+import { EventBus, GameEventBus, type ClientGameEventMap, type ServerGameEventMap, type TypedEventBus } from '../../source/engine/common/EventBus.ts';
 import { clientGameEventNames } from '../../source/shared/EngineEvents.ts';
 
 void describe('EventBus', () => {
@@ -164,3 +164,49 @@ void describe('GameEventBus', () => {
     assert.deepEqual(seen, ['sv_nextmap']);
   });
 });
+
+void describe('TypedEventBus', () => {
+  /** What a game declares for itself. */
+  interface PhaseEvents {
+    'game.phase.changed': [phase: string, previous: string];
+  }
+
+  /**
+   * Casts the bus once, the way a game's `clientEvents(engine)` helper does.
+   * @returns The same bus, typed by the engine's events and the game's.
+   */
+  function createView(): TypedEventBus<ClientGameEventMap & PhaseEvents> {
+    return new GameEventBus<ClientGameEventMap>('client-game') as unknown as TypedEventBus<ClientGameEventMap & PhaseEvents>;
+  }
+
+  void test('carries the game\'s own events and the engine\'s through the same bus object', () => {
+    const view = createView();
+    const heard: string[] = [];
+
+    view.subscribe('game.phase.changed', (phase, previous) => { heard.push(`${previous} -> ${phase}`); });
+    view.subscribe('client.center-print', (message) => { heard.push(message); });
+    view.publish('game.phase.changed', 'action', 'quiet');
+    view.publish('client.center-print', 'Welcome');
+
+    assert.deepEqual(heard, ['quiet -> action', 'Welcome']);
+  });
+
+  void test('refuses a typo or a wrong payload of a game event at compile time', () => {
+    const view = createView();
+
+    // @ts-expect-error not an event of the game or the engine
+    view.publish('game.phase.changd', 'action', 'quiet');
+    // @ts-expect-error the event carries two strings
+    view.publish('game.phase.changed', 3, 'quiet');
+    // @ts-expect-error the listener has to take what is published
+    view.subscribe('game.phase.changed', (phase: number) => { assert.equal(typeof phase, 'number'); });
+  });
+
+  void test('refuses an engine event the game was not given', () => {
+    const view = createView();
+
+    // @ts-expect-error `gl.ready` is not an event of the client game
+    view.subscribe('gl.ready', () => {});
+  });
+});
+

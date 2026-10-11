@@ -2,7 +2,8 @@
 
 Track C of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-11, the four forks
 are settled (same day, see "Decisions"). Phase 0 (the bugs the survey found) is done and browser-verified, Phases 1 (the typed
-event map), 2 (scopes) and 3 (de-wiring) are done, all 2026-10-11. Phase 4 is parked: the design below is the plan for when Track C is picked up
+event map), 2 (scopes) and 3 (de-wiring) are done, and so is the per-game typed view of a game's own events (see
+"What actually shipped for a game's own events"), all 2026-10-11. Phase 4 is parked: the design below is the plan for when Track C is picked up
 again, and each phase still stops for a go-ahead.** Written after a survey of the code (numbers below are as of that date,
 branch `engine-architecture-modernization`; "What actually shipped" says what the code looks like now).
 
@@ -139,7 +140,8 @@ interface Scope {
 - Game events: each game declares its own `GameEvents` interface and gets a typed view of the scoped bus (decision 2);
   engine-owned names stay strictly typed and a game view rejects publishing them. **Phase 1 stops short of this**: it
   types the engine names a game receives and leaves a game's own names loosely typed (any name, the game's argument
-  tuple); the per-game map needs changes in the game repos and is **still open after Phase 2** (see its "Not done").
+  tuple); the per-game map needed changes in the game repos and was done afterwards, see "What actually shipped for a
+game's own events".
 - **Enforcement tests:** (1) the documented names in `docs/events.md` equal the map keys, (2) every `crossesWorker` event is in
   `ServerWorkerProtocol`'s list and the arguments are structured-cloneable by type, (3) a game's `docs/events.md` equals that
   game's own event map (same test helper, run from the game's test folder).
@@ -289,7 +291,8 @@ Decided, not done:
   the per-name form. Phase 2's `forwardFamily` makes it a one-flag change in `engineEventTable` (`clientGame: true`) the day a
   client game needs it.
 - **A game's own events are not typed yet** (see Design B). `docs/events.md` of a game is therefore still checked by the
-  `event-bus-docs-sync` skill and by hand; Test (3) of the enforcement list goes with the per-game typed view (open, see Phase 2's "Not done").
+  `event-bus-docs-sync` skill and by hand; Test (3) of the enforcement list came with the per-game typed view (see "What actually shipped for a game's own
+events").
 - **The game repos were edited** (id1 `client/ClientAPI.ts`, hellwave `client/HUD.ts`, one line each), which
   `typescript-port.instructions.md` asks to be raised first. They are type fixes the compiler required. **Neither is
   committed**: id1 is a submodule and hellwave its own repo, see the `submodule-aware-commit` skill.
@@ -394,6 +397,50 @@ Not done, by decision: removing the eight listener-less events of group A and th
 turning `host.crash`, `console.print-line`, `areaportals.changed` and `com.fs.*` into hooks (group E). The eight of group A
 are the first candidates the day something makes a listener-less event a cost.
 
+## What actually shipped for a game's own events (2026-10-11)
+
+The per-game typed view of Design B and decision 2, done after Phase 3 with three decisions of the developer: a type-only
+export plus one helper per game (not a method on the engine's bus, not a generic engine API), honest publisher types with
+`instanceof` at the listener, and id1 and hellwave in one go. 2335 engine tests (477 of them the game suites),
+`npm run typecheck` and ESLint are clean.
+
+- **Engine**: `TypedEventBus<TMap>` (`common/EventBus.ts`), a strict-only view of a bus, a type and nothing else.
+  `shared/GameInterfaces.ts` exports it with `ClientGameEventMap` and `ServerGameEventMap`, which is all a game needs from
+  the engine, so the games still import no engine code and the mock buses of the game tests keep working.
+- **id1** (`Events.ts`): `Id1ServerEvents` (the six `game.*` events), `Id1ClientEventArguments` (the arguments of every
+  `clientEvent` opcode), `ClientEventTopics<Arguments>` (an opcode map to its `client.event-received.<opcode>` topics),
+  `Id1ClientEvents` (with `hud.showscores`), and `serverEvents(engine)`/`clientEvents(engine)`, which cast the engine's bus
+  once. `clientEventName` returns the topic as a literal type for a literal opcode. A compile-time check keeps every
+  opcode of `clientEvent` in the arguments map. All 44 publish/subscribe sites of id1 go through the helpers; the one
+  dynamic publish (`handleClientEvent`, an opcode off the wire) stays on the loose overload and says so.
+- **Hellwave** (`Events.ts`): `HellwaveServerEvents extends Id1ServerEvents` (its three `game.*` events), the same for the
+  client opcodes 200 to 204, and its own helpers. All 27 sites go through them.
+- **Documents and tests**: id1's `docs/events.md` lists the client events (14 rows, they were not documented before) and
+  hellwave's its five; `test/core/events-docs.test.mjs` (id1) and `test/hellwave-events-docs.test.mjs` compare each with the
+  names of the game's `Events.ts` and its `clientEvent` opcodes. The engine's `docs/events.md` says how a game declares its
+  events ("Declaring a game's events"), the instructions and the `event-bus-docs-sync` skill name the pieces.
+
+What the types found (each fixed where it was):
+
+- **A latent crash in id1's boss death**: `BossMonster` published `game.monster.killed` with `this.enemy`, which can be
+  `null` (the code right below checks for it), and the stats listener reads `attackerEntity.edict`. It publishes
+  `this.enemy ?? this` now, a boss with nobody to blame is its own killer, as for a self-inflicted player death. This is a
+  change of game behavior (a count and no `TypeError`), documented in id1's `docs/events.md`.
+- `ITEM_PICKED` can carry `null` as its entity; the HUD's listener said `object`.
+- Hellwave listened to `game.player.died` as a `HellwavePlayer` and `game.monster.killed` as a `BaseMonster`, which id1
+  does not guarantee. The first only compares identity, so it takes a `PlayerEntity`; the second skips an entity that is not
+  a `BaseMonster` (all id1 monsters are).
+- The frozen `clientEvent` object of Hellwave spreads id1's enum and so carries its reverse mapping (`clientEvent[1] ===
+  'BONUS_FLASH'`). Harmless, but it is why the Hellwave docs test filters for numbers.
+
+Browser (same script): the center print, the disconnect order and the leak counts are as before, and the client event
+`BONUS_FLASH` (opcode 1) from `impulse 9` reached its topic through the typed helpers. The other opcodes were not
+triggered; they need an item pickup, a kill or a round of Hellwave.
+
+Not done: typing the server side of a client event (`BroadcastClientEvent`/`DispatchClientEvent` take
+`...args`), which could use the same `Id1ClientEventArguments` (with a `ServerEdict` where the client gets an edict
+reference); and giving the game tests a real `Scope` instead of the hand-made bus.
+
 ## What actually shipped in Phase 2 (2026-10-11)
 
 Decisions taken with the developer first: the server game gets `ServerEngineAPI.moduleEventBus` (additive contract change),
@@ -426,6 +473,7 @@ event yet. 2325 tests, `npm run typecheck` and ESLint on every touched file are 
 
 Not done:
 
+- **A game's own events are typed** (done after Phase 3, see "What actually shipped for a game's own events").
 - **The game tests still use hand-made buses** (`source/game/id1/test/client/fixtures.ts`); building the game against a real
   `Scope` needs changes in the game repos.
 - **No game uses `ServerEngineAPI.moduleEventBus` yet**, and the engine registers nothing through `onDispose`. Candidates for

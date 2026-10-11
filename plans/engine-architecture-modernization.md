@@ -1409,7 +1409,8 @@ State on 2026-10-11 (the release in the next section waits for these, or for an 
   docs-equals-map test) and Phase 2 (scopes for the client and the server game, `ServerEngineAPI.moduleEventBus`) and
   Phase 3 (the de-wiring: `vid.ready`, `vid.shutdown` and `gl.texturemode` became direct calls, the rest of the classified
   events stay) are done. The scopes are three, `engine`, `module` and `map`, not the four sketched in the Track C section
-  above. Phase 4 (server hot reload) is parked.
+  above. A game's own events are typed too (a per-game `Events.ts`, `TypedEventBus`, a docs test in each game). Phase 4
+  (server hot reload) is parked.
 - **D3 and D4** (frame graph, GPU abstraction): not started, no plan.
 - **E**: not started. `sharedCollisionModelSource` is still one module-level instance, there is no `CollisionWorld` interface and
   no client/server `Pmove` determinism test.

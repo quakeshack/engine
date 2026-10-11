@@ -21,6 +21,7 @@ import type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
 import type { DiscoveredSession as DiscoveredSessionValue, SessionDiscoveryStatus as SessionDiscoveryStatusValue } from '../engine/client/menu/SessionDiscovery.ts';
 
 export type { StartGameInterface } from '../engine/client/ClientLifecycle.ts';
+export type { ClientGameEventMap, ServerGameEventMap, TypedEventBus } from '../engine/common/EventBus.ts';
 
 export type DiscoveredSession = DiscoveredSessionValue;
 export type SessionDiscoveryStatus = SessionDiscoveryStatusValue;

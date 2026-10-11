@@ -2,7 +2,7 @@ import { isEngineEventName, type ClientGameEventName, type EngineEventMap, type 
 
 export type EventBusValue = bigint | boolean | null | number | object | string | symbol | undefined;
 type EventBusArgs = readonly EventBusValue[];
-type EventBusListener<TArgs extends EventBusArgs = EventBusArgs> = (...args: TArgs) => void;
+export type EventBusListener<TArgs extends EventBusArgs = EventBusArgs> = (...args: TArgs) => void;
 type EventBusFamilyListener = (eventName: string, args: EventBusArgs) => void;
 
 /** What a map of event names to argument tuples looks like: every argument list is a tuple of values. */
@@ -225,6 +225,29 @@ export class EventBus<TMap extends EventMapLike<TMap> = EngineEventMap> {
       listeners.delete(listener);
     };
   }
+}
+
+/**
+ * A bus seen through a map of every event it may carry, the engine's and the game's own, with nothing else accepted.
+ * This is what a game gets by declaring the events it publishes (an interface of name to argument tuple) and casting
+ * the bus the engine hands it once, in one place: a typo in a name or a wrong payload is then a compile error for the
+ * game's own events as well. It is a type only, the object is the game's `eventBus`.
+ */
+export interface TypedEventBus<TMap extends EventMapLike<TMap>> {
+  /**
+   * Registers an event listener for an event of the map.
+   * @param eventName The event type to listen for.
+   * @param listener The function to call when the event is triggered.
+   * @returns A function that removes the listener.
+   */
+  subscribe<Name extends keyof TMap & string>(eventName: Name, listener: EventBusListener<TMap[Name]>): () => void;
+
+  /**
+   * Publishes an event of the map.
+   * @param eventName The event type to trigger.
+   * @param args The arguments to pass to the event listeners.
+   */
+  publish<Name extends keyof TMap & string>(eventName: Name, ...args: TMap[Name]): void;
 }
 
 /**

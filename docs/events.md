@@ -200,3 +200,19 @@ live here:
 
 A new game module should add its own `docs/events.md` (mirroring the two above) and a link here,
 rather than growing a new per-game section in this file.
+
+### Declaring a game's events
+
+A game declares what it publishes the way the engine does, so that a typo in a name or a wrong payload is a compile
+error for its own events as well:
+
+- An interface of event name to argument tuple (`Id1ServerEvents`, `Id1ClientEvents` in `source/game/id1/Events.ts`). A
+  module built on another extends that game's interface (`HellwaveServerEvents extends Id1ServerEvents`).
+- A client event the server sends by opcode (`BroadcastClientEvent`, `DispatchClientEvent`) arrives as
+  `client.event-received.<opcode>`; a map of opcode to arguments gives the topics their types.
+- A helper per realm that casts the engine's bus to the typed view once (`serverEvents(engine)`,
+  `clientEvents(engine)`). It uses only `TypedEventBus` and the event maps that `shared/GameInterfaces.ts` exports, so
+  nothing is imported from the engine and a test that hands the game a hand-made bus keeps working.
+- The types say what is *published*. A listener that wants a subtype narrows with `instanceof`.
+- A test in the game's own test folder compares the names with the game's `docs/events.md`
+  (`test/core/events-docs.test.mjs` in id1).
