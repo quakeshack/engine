@@ -40,7 +40,7 @@ Import shared factories from `test/physics/fixtures.mjs`:
 The engine's parts import their collaborators (`Con`, `Host`, `CL`'s state, `M`, `R`, `Key`, ...), so a test cannot hand them a fake through a lookup table. It patches the real singleton instead and puts it back:
 
 - `withMockEngine(defaultMockEngine({ ... }), () => { ... })` for server-side tests: `Host`, the client state, the cheat rule and the page's `COM` are mocked for the duration of the callback.
-- `engineMocks.Key = { destination: 0 }` (and the other facades `Draw`, `IN`, `S`, `SCR`, `V`) patches the members the mock has onto the real facade; assigning back what you read before undoes it. The facade reads as the real one, so state the engine changes is read from `engineMocks.Key`, not from your mock object.
+- `engineMocks.Key = { destination: 0 }` (and the other facades `Draw`, `IN`, `S`, `SCR`) patches the members the mock has onto the real facade; assigning back what you read before undoes it. The facade reads as the real one, so state the engine changes is read from `engineMocks.Key`, not from your mock object.
 - `engineMocks.COM`, `NET`, `urls` and `buildConfig` install the page services (`client/PageServices.ts`); `installPageServices({ engineApi })` does the same for tests that need to install several.
 - `useClientStateOf`, `useHostOf`, `useMenuOf` and `useRendererOf` (`test/support/`) patch the real client state, host, menu and renderer and return a restore function.
 - Prefer constructing the class under test with fakes (`new Server(fakeDeps)`, `new Mod()`): per-realm classes take their collaborators through the constructor.

@@ -51,7 +51,9 @@ import IN from './IN.ts';
 import Key from './Key.ts';
 import S from './Sound.ts';
 import SCR from './SCR.ts';
-import V from './V.ts';
+import PitchDrift from './view/PitchDrift.ts';
+import FirstPersonView from './view/FirstPersonView.ts';
+import QuakeColorShifts from './view/QuakeColorShifts.ts';
 import { buildConfig, com, net, urls } from './PageServices.ts';
 import Sys from './Sys.ts';
 import Camera from './renderer/scene/Camera.ts';
@@ -152,7 +154,11 @@ export default class ClientHost {
     Cmd.Init();
     Cvar.Init();
 
-    V.Init(); // an in-thread server (?serverthread) takes the roll of a player from V as well
+    // the view cvars exist before the first thing that can ask for them; an in-thread server (?serverthread) takes
+    // the roll of a player from them as well
+    QuakeColorShifts.Init();
+    PitchDrift.Init();
+    FirstPersonView.Init();
     Chase.Init();
 
     await com.Init();

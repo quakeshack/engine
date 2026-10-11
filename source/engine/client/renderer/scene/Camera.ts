@@ -21,7 +21,7 @@ export interface RefdefState {
 type Vec4 = [number, number, number, number];
 
 /**
- * The view of the current frame: the refdef that `V` and `SCR` fill in, the vectors, frustum and matrices derived
+ * The view of the current frame: the refdef that `FirstPersonView` and `SCR` fill in, the vectors, frustum and matrices derived
  * from it, and the queries that depend on them (culling a box, projecting a point to the screen).
  *
  * The derived state is rebuilt by explicit calls, in the order the frame needs them: the view vectors once the
@@ -34,7 +34,7 @@ class Camera {
   static vup = new Vector();
   static vright = new Vector();
 
-  /** The view as `V` and `SCR` set it. Nothing else assigns to it, they change its members in place. */
+  /** The view as `FirstPersonView` and `SCR` set it. Nothing else assigns to it, they change its members in place. */
   static readonly refdef: RefdefState = {
     vrect: {
       x: 0,
@@ -78,7 +78,7 @@ class Camera {
 
   /**
    * Derives the forward, right and up vectors from the view angles. Run once per frame after the refdef is final
-   * (`V.CalcRefdef`, the game's `updateRefDef` and the chase camera have all had their say).
+   * (`FirstPersonView.CalcRefdef`, the game's `updateRefDef` and the chase camera have all had their say).
    */
   static UpdateViewVectors(): void {
     const { forward, right, up } = Camera.refdef.viewangles.angleVectors();

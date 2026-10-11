@@ -8,7 +8,7 @@ import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import clientCvars from './ClientCvars.ts';
 import Host from '../common/Host.ts';
-import V from './V.ts';
+import PitchDrift from './view/PitchDrift.ts';
 import { net } from './PageServices.ts';
 
 interface KButtonState {
@@ -150,7 +150,7 @@ export default class ClientInput {
     ClientInput.KeyUp_f.call(this, cmd);
 
     if (((kbuttons[kbutton.mlook].state & 1) === 0) && (clientCvars.lookspring.value !== 0)) {
-      V.StartPitchDrift();
+      PitchDrift.Start();
     }
   }
 
@@ -192,7 +192,7 @@ export default class ClientInput {
       angles[1] = Vector.anglemod(angles[1]);
     }
     if ((kbuttons[kbutton.klook].state & 1) !== 0) {
-      V.StopPitchDrift();
+      PitchDrift.Stop();
       angles[0] += speed * clientCvars.pitchspeed.value * (ClientInput.KeyState(kbutton.back) - ClientInput.KeyState(kbutton.forward));
     }
 
@@ -200,7 +200,7 @@ export default class ClientInput {
     const down = ClientInput.KeyState(kbutton.lookdown);
     if ((up !== 0.0) || (down !== 0.0)) {
       angles[0] += speed * clientCvars.pitchspeed.value * (down - up);
-      V.StopPitchDrift();
+      PitchDrift.Stop();
     }
 
     if (angles[0] > 80.0) {

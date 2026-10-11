@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import type { GLProgramInfo } from '../../source/engine/client/GL.ts';
-import V from '../../source/engine/client/V.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
@@ -52,7 +51,7 @@ void describe('FrameUniforms.Upload', () => {
     context: GL.gl,
     programs: GL.programs,
     currentProgram: GL.currentProgram,
-    gamma: V.gamma,
+    gamma: rendererCvars.gamma,
     fogColor: rendererCvars.fog_color,
     fogStart: rendererCvars.fog_start,
     fogEnd: rendererCvars.fog_end,
@@ -93,7 +92,7 @@ void describe('FrameUniforms.Upload', () => {
     } as unknown as WebGL2RenderingContext;
     eventBus.publish('gl.ready');
 
-    V.gamma = fakeCvar(1.0);
+    rendererCvars.gamma = fakeCvar(1.0);
     rendererCvars.fog_color = fakeCvar(0, '255 0 51');
     rendererCvars.fog_start = fakeCvar(128);
     rendererCvars.fog_end = fakeCvar(4096);
@@ -114,7 +113,7 @@ void describe('FrameUniforms.Upload', () => {
     GL.gl = previous.context;
     GL.programs = previous.programs;
     GL.currentProgram = previous.currentProgram;
-    V.gamma = previous.gamma;
+    rendererCvars.gamma = previous.gamma;
     rendererCvars.fog_color = previous.fogColor;
     rendererCvars.fog_start = previous.fogStart;
     rendererCvars.fog_end = previous.fogEnd;
@@ -162,14 +161,14 @@ void describe('FrameUniforms.Upload', () => {
   void test('clamps the gamma cvar before it is uploaded', () => {
     GL.programs = [fakeProgram('uGamma')];
 
-    V.gamma = fakeCvar(0.2);
+    rendererCvars.gamma = fakeCvar(0.2);
     FrameUniforms.Upload();
-    assert.equal(V.gamma.value, 0.5);
+    assert.equal(rendererCvars.gamma.value, 0.5);
     assert.deepEqual(calls.at(-1), ['uniform1f', 'uGamma', 0.5]);
 
-    V.gamma = fakeCvar(3.0);
+    rendererCvars.gamma = fakeCvar(3.0);
     FrameUniforms.Upload();
-    assert.equal(V.gamma.value, 1.0);
+    assert.equal(rendererCvars.gamma.value, 1.0);
     assert.deepEqual(calls.at(-1), ['uniform1f', 'uGamma', 1.0]);
   });
 

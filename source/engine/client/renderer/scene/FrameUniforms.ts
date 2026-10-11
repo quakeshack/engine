@@ -1,6 +1,5 @@
 import { eventBus } from '../../../common/EventBus.ts';
 import GL from '../../GL.ts';
-import V from '../../V.ts';
 import ShadowMap from '../lighting/ShadowMap.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import Camera from './Camera.ts';
@@ -28,10 +27,10 @@ class FrameUniforms {
    * the shadow passes of the frame have chosen their lights.
    */
   static Upload(): void {
-    if (V.gamma.value < 0.5) {
-      V.gamma.set(0.5);
-    } else if (V.gamma.value > 1.0) {
-      V.gamma.set(1.0);
+    if (rendererCvars.gamma.value < 0.5) {
+      rendererCvars.gamma.set(0.5);
+    } else if (rendererCvars.gamma.value > 1.0) {
+      rendererCvars.gamma.set(1.0);
     }
 
     const fogColorParts = (rendererCvars.fog_color.string || DEFAULT_FOG_COLOR).split(/\s+/).map(Number);
@@ -51,7 +50,7 @@ class FrameUniforms {
         gl.uniformMatrix4fv(program.uPerspective, false, Camera.perspective);
       }
       if (program.uGamma !== undefined) {
-        gl.uniform1f(program.uGamma, V.gamma.value);
+        gl.uniform1f(program.uGamma, rendererCvars.gamma.value);
       }
       // global fog uniforms (only set when shader declares them)
       if (program.uFogColor !== undefined) {

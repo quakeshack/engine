@@ -17,7 +17,9 @@ import SkyBox from '../client/renderer/scene/SkyBox.ts';
 import Visibility from '../client/renderer/scene/Visibility.ts';
 import S from '../client/Sound.ts';
 import Sys from '../client/Sys.ts';
-import V from '../client/V.ts';
+import FirstPersonView from '../client/view/FirstPersonView.ts';
+import viewCvars from '../client/view/ViewCvars.ts';
+import PlayerRollView from '../server/PlayerRollView.ts';
 import SCR from '../client/SCR.ts';
 import COM from '../common/Com.ts';
 import Con from '../common/Console.ts';
@@ -131,7 +133,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
     });
     relay.start();
   } else {
-    const runtime = createServerRuntime({ con: Con, sys: Sys, net, mod: Mod, com, host: Host, view: V, gameEdition: () => editionOf(com) }, false);
+    const runtime = createServerRuntime({ con: Con, sys: Sys, net, mod: Mod, com, host: Host, view: new PlayerRollView(viewCvars), gameEdition: () => editionOf(com) }, false);
 
     inThreadServer = runtime.sv;
     Host.serverHost = runtime.serverHost;
@@ -139,7 +141,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
   }
 
   // The members that verification scripts in a browser reach for, see docs/browser-verification.md.
-  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, V, Key, S, Draw, R, Camera, Visibility, RenderStats, PostProcess, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, M, SCR, IN, SV: inThreadServer };
+  (window as Window & { engine?: object }).engine = { CL, COM: com, Con, ConsoleOverlay, Host, Mod, NET: net, Sys, FirstPersonView, Key, S, Draw, R, Camera, Visibility, RenderStats, PostProcess, DefaultTextures, Fog, SkyBox, Particles, ParticleType, Decals, M, SCR, IN, SV: inThreadServer };
 
   await Sys.Init();
 }

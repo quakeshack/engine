@@ -5,18 +5,19 @@ import type Cvar from '../../source/engine/common/Cvar.ts';
 import Host from '../../source/engine/common/Host.ts';
 import clientCvars from '../../source/engine/client/ClientCvars.ts';
 import { clientRuntimeState, clientStaticState } from '../../source/engine/client/ClientState.ts';
-import V from '../../source/engine/client/V.ts';
+import PitchDrift from '../../source/engine/client/view/PitchDrift.ts';
+import viewCvars from '../../source/engine/client/view/ViewCvars.ts';
 import { assertNear } from '../support/assertions.ts';
 import { patchMembers } from '../support/clientState.ts';
 
-void describe('V pitch drift', () => {
+void describe('PitchDrift', () => {
   let restores: Array<() => void> = [];
-  const previousCentermove = V.centermove;
-  const previousCenterspeed = V.centerspeed;
+  const previousCentermove = viewCvars.centermove;
+  const previousCenterspeed = viewCvars.centerspeed;
 
   beforeEach(() => {
-    V.centermove = { value: 0.15 } as Cvar;
-    V.centerspeed = { value: 500 } as Cvar;
+    viewCvars.centermove = { value: 0.15 } as Cvar;
+    viewCvars.centerspeed = { value: 500 } as Cvar;
 
     restores = [
       patchMembers(Host, { frametime: 0.1, noclip_anglehack: false }),
@@ -41,16 +42,16 @@ void describe('V pitch drift', () => {
       restore();
     }
 
-    V.centermove = previousCentermove;
-    V.centerspeed = previousCenterspeed;
+    viewCvars.centermove = previousCentermove;
+    viewCvars.centerspeed = previousCenterspeed;
   });
 
-  void describe('StartPitchDrift', () => {
+  void describe('Start', () => {
     void test('starts at the centerspeed when drift was stopped', () => {
       clientRuntimeState.nodrift = true;
       clientRuntimeState.driftmove = 3;
 
-      V.StartPitchDrift();
+      PitchDrift.Start();
 
       assert.equal(clientRuntimeState.pitchvel, 500);
       assert.equal(clientRuntimeState.nodrift, false);
@@ -61,7 +62,7 @@ void describe('V pitch drift', () => {
       clientRuntimeState.nodrift = true;
       clientRuntimeState.laststop = 10;
 
-      V.StartPitchDrift();
+      PitchDrift.Start();
 
       assert.equal(clientRuntimeState.pitchvel, 0);
       assert.equal(clientRuntimeState.nodrift, true);
@@ -70,17 +71,17 @@ void describe('V pitch drift', () => {
     void test('leaves a drift that is already running alone', () => {
       clientRuntimeState.pitchvel = 123;
 
-      V.StartPitchDrift();
+      PitchDrift.Start();
 
       assert.equal(clientRuntimeState.pitchvel, 123);
     });
   });
 
-  void describe('StopPitchDrift', () => {
+  void describe('Stop', () => {
     void test('stops the drift and remembers when', () => {
       clientRuntimeState.pitchvel = 200;
 
-      V.StopPitchDrift();
+      PitchDrift.Stop();
 
       assert.equal(clientRuntimeState.laststop, 10);
       assert.equal(clientRuntimeState.nodrift, true);
@@ -88,26 +89,26 @@ void describe('V pitch drift', () => {
     });
   });
 
-  void describe('DriftPitch', () => {
+  void describe('Update', () => {
     void test('resets while noclipping, in the air or watching a demo', () => {
       clientRuntimeState.pitchvel = 50;
       clientRuntimeState.driftmove = 1;
 
       clientRuntimeState.onground = false;
-      V.DriftPitch();
+      PitchDrift.Update();
       assert.equal(clientRuntimeState.pitchvel, 0);
       assert.equal(clientRuntimeState.driftmove, 0);
 
       clientRuntimeState.onground = true;
       clientRuntimeState.pitchvel = 50;
       Host.noclip_anglehack = true;
-      V.DriftPitch();
+      PitchDrift.Update();
       assert.equal(clientRuntimeState.pitchvel, 0);
 
       Host.noclip_anglehack = false;
       clientRuntimeState.pitchvel = 50;
       restores.push(patchMembers(clientStaticState, { demoplayback: true }));
-      V.DriftPitch();
+      PitchDrift.Update();
       assert.equal(clientRuntimeState.pitchvel, 0);
     });
 
@@ -115,12 +116,12 @@ void describe('V pitch drift', () => {
       clientRuntimeState.nodrift = true;
       clientRuntimeState.cmd.forwardmove = 400;
 
-      V.DriftPitch();
+      PitchDrift.Update();
       assertNear(clientRuntimeState.driftmove, 0.1);
       assert.equal(clientRuntimeState.nodrift, true);
 
       // 0.2 > v_centermove 0.15: the next frame starts the drift
-      V.DriftPitch();
+      PitchDrift.Update();
       assert.equal(clientRuntimeState.nodrift, false);
       assert.equal(clientRuntimeState.pitchvel, 500);
     });
@@ -130,7 +131,7 @@ void describe('V pitch drift', () => {
       clientRuntimeState.driftmove = 0.1;
       clientRuntimeState.cmd.forwardmove = 100;
 
-      V.DriftPitch();
+      PitchDrift.Update();
 
       assert.equal(clientRuntimeState.driftmove, 0);
     });
@@ -139,7 +140,7 @@ void describe('V pitch drift', () => {
       clientRuntimeState.viewangles.setTo(30, 0, 0);
       clientRuntimeState.pitchvel = 10;
 
-      V.DriftPitch();
+      PitchDrift.Update();
 
       // 0.1 s * 10 units per second, then the speed grows by 0.1 * 500
       assertNear(clientRuntimeState.viewangles[0], 29);
@@ -150,7 +151,7 @@ void describe('V pitch drift', () => {
       clientRuntimeState.viewangles.setTo(-0.5, 0, 0);
       clientRuntimeState.pitchvel = 100;
 
-      V.DriftPitch();
+      PitchDrift.Update();
 
       // 0.1 * 100 = 10 would pass the ideal: it stops on it and the speed is reset
       assertNear(clientRuntimeState.viewangles[0], 0);
@@ -160,7 +161,7 @@ void describe('V pitch drift', () => {
     void test('rests when the view is already at the ideal pitch', () => {
       clientRuntimeState.pitchvel = 80;
 
-      V.DriftPitch();
+      PitchDrift.Update();
 
       assert.equal(clientRuntimeState.pitchvel, 0);
     });

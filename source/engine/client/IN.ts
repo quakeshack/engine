@@ -11,7 +11,7 @@ import clientCvars from './ClientCvars.ts';
 import M from './Menu.ts';
 import Host from '../common/Host.ts';
 import Key from './Key.ts';
-import V from './V.ts';
+import PitchDrift from './view/PitchDrift.ts';
 import { com } from './PageServices.ts';
 
 /** Browser-derived signals used to decide whether mobile play needs external input devices. */
@@ -292,7 +292,7 @@ export default class IN {
     }
 
     if (mlook !== 0) {
-      V.StopPitchDrift();
+      PitchDrift.Stop();
     }
 
     if (mlook !== 0 && strafe === 0) {

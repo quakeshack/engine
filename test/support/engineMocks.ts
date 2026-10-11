@@ -3,14 +3,13 @@ import IN from '../../source/engine/client/IN.ts';
 import Key from '../../source/engine/client/Key.ts';
 import S from '../../source/engine/client/Sound.ts';
 import SCR from '../../source/engine/client/SCR.ts';
-import V from '../../source/engine/client/V.ts';
 import * as services from '../../source/engine/client/PageServices.ts';
 import { patchMembers } from './clientState.ts';
 
 type Restore = () => void;
 
 /** The static facades of the client: a mock is patched onto the real one. */
-const facades: Record<string, object> = { Draw, IN, Key, S, SCR, V };
+const facades: Record<string, object> = { Draw, IN, Key, S, SCR };
 
 /** The page services, which are installed by assignment (what a test read before is what it puts back). */
 const pageServiceKeys: Record<string, 'com' | 'net' | 'urls' | 'buildConfig'> = {

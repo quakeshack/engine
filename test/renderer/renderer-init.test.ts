@@ -92,6 +92,7 @@ void describe('R.Init', () => {
       'r_speeds',
       'gl_polyblend',
       'gl_cshiftpercent',
+      'gamma',
       'gl_flashblend',
       'gl_nocolors',
       'r_bloom',

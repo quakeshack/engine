@@ -133,7 +133,7 @@ function installAdapter() {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
-  // V.CalcRefdef runs before the view vectors are derived, so setting the view here wins over it.
+  // FirstPersonView.CalcRefdef runs before the view vectors are derived, so setting the view here wins over it.
   window.__capture.camera_override = null;
 
   const hookOwner = engine.Camera;

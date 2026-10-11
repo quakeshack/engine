@@ -26,7 +26,7 @@ import Host from '../common/Host.ts';
 import ClientHost from './ClientHost.ts';
 import S from './Sound.ts';
 import SCR from './SCR.ts';
-import V from './V.ts';
+import FirstPersonView from './view/FirstPersonView.ts';
 import { net } from './PageServices.ts';
 
 type ClientSignonState = 0 | 1 | 2 | 3 | 4;
@@ -736,7 +736,7 @@ function handleDamage() {
   const armor = net.message.readByte();
   const blood = net.message.readByte();
   const origin = net.message.readCoordVector();
-  V.ApplyDamage(armor, blood, origin);
+  FirstPersonView.ApplyDamage(armor, blood, origin);
 }
 
 /**

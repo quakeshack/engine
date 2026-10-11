@@ -1,7 +1,7 @@
 # Dissolve `SCR.ts` and `V.ts`
 
 Follow-up to `plans/r-split.md`. Status: **plan drafted 2026-10-10, developer decisions 1 to 8 recorded (4 to 8 on 2026-10-11); G6 is a
-direction, not a closed decision; Phases 0 to 2 are done (2026-10-11; Phase 2 not committed), Phases 3 to 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
+direction, not a closed decision; Phases 0 to 3 are done (2026-10-11; Phase 3 not committed), Phases 4 to 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
 
 ## Context
 
@@ -445,6 +445,47 @@ and the `SCR` call are gone.
   and no capture request. **Not covered:** the liquid tints in the browser (the capture's map, the start hall,
   has none, the earlier captures found lava on it; `SetContentsColor` is covered by the unit test), and the
   tint through `r_drawturbulents 0`.
+
+### Phase 3: what shipped (2026-10-11)
+
+`V.ts` is deleted. Its members went to the classes of the target table, in `client/view/`, with no forwarder left.
+
+- **`ViewCvars`** (`view/ViewCvars.ts`, the `ClientCvars` shape: fields only, one exported instance, imports the
+  `Cvar` type only) holds the 21 view cvars, with a description of each. `FirstPersonView.Init()` creates them in
+  the order `V.Init` did.
+- **`FirstPersonView`**: `Init`, `CalcRefdef`, `CalcIntermissionRefdef`, `ApplyDamage` (the view kick, the event, the
+  face animation, and a call to `QuakeColorShifts.Damage`), and the state `dmg_time`, `dmg_roll`, `dmg_pitch`, `oldz`.
+  A body moved verbatim, only the names of what it reads changed. The roll is `calcRoll` of `shared/PlayerRoll.ts`
+  called with the two cvars, so `CalcRoll` and its `FIXME` are gone.
+- **`ViewmodelMotion`**: `CalcBob`, `ComputeLookBobTargets` (was `ComputeViewmodelLookBobTargets`), `Advance(bob,
+  pitch, yaw)` for the smoothing that `CalcRefdef` did inline, `Reset()`, and the public `bob`, `lookBobRight`,
+  `lookBobUp`. The module state of the old `V` is here and no longer private to a facade nobody could reset.
+  **`FirstPersonView.Init()` resets it on `server.spawning`**, so the weapon does not glide in from the previous
+  map's values (the quirk of finding 8, free to fix here).
+- **`PitchDrift`**: `Init` (the `centerview` command), `Start`, `Stop`, `Update`; `ClientInput` and `IN` call it.
+- **`gamma`** is in `RendererCvars` and created by `R.Init` after `gl_cshiftpercent` (same flags: archive and cheat);
+  `FrameUniforms` keeps its clamp. The configuration runs after every init, so an archived value still reaches it.
+- **`PreRenderView` and `RenderView` moved to `SCR`**, unchanged, because `SCR` drives them and that ends the `V` and
+  `SCR` import cycle; phase 4 turns them into the steps of `ScreenFrame`. `FirstPersonView` still imports `SCR` for
+  `viewsize` (the weapon nudge), the one cycle that remains, gone with `Viewport` in phase 4.
+- **In-thread server (`?serverthread`)**: `PlayerRollView` takes the cvar object it reads the roll from, and the page
+  passes `viewCvars`, which is filled in later and read when a roll is asked for. The dedicated server and the
+  worker construct it with its own cvars, as before. `window.engine.V` is `window.engine.FirstPersonView` now.
+- **Tests.** `v.test.mjs` is deleted: its smoothing tests moved in phase 0, `CalcRoll` is `test/shared/
+  player-roll.test.ts` (adds the cap and the zero case) and `ComputeViewmodelLookBobTargets` is in the new
+  `viewmodel-motion.test.ts` (the bob formula, its off switches and caps, the targets, `Advance` on the first and the
+  next frames, the short way round the yaw, settling, `Reset`). `view-refdef`, `pitch-drift`, `quake-color-shifts`,
+  `scr-update-screen` and `frame-uniforms` are re-pointed with every expectation kept, except the weapon bob of
+  the first frame, which is exact now that tests `Reset()` instead of running quiet frames. Docs and instructions
+  no longer name `V` or `V.ts`.
+- **Verified:** `npm test` 2205 pass, `npm run typecheck` clean, `eslint` 0 errors on touched files; browser, a live
+  (unpaused) game on production builds of `HEAD` and the working tree, same script: standing eye height 22.03 on
+  both, a walk at 200 units per second bobs the eye and the weapon (range 5.6 and 4.5, sampled at arbitrary phases of
+  a 0.3 s cycle) and not with `cl_bob 0`, `v_idlescale 1` sways the pitch by about 3 degrees, a 40 damage hit from
+  the side rolls the view -12 and back (-7.9, -3.8, 0 against -7.8, -4.4, -0.8, timing noise), and `gamma`,
+  `v_centerspeed`, `centerview` and `cl_rollangle` exist with their defaults. No console error beyond what `HEAD` prints.
+  Not covered: the browser's in-thread server roll (the unit test covers `PlayerRollView` with injected cvars),
+  and pitch drift by hand (pointer lock and look keys, covered by the unit tests).
 
 ## Testing
 

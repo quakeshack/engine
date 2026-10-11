@@ -9,7 +9,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Host from '../../source/engine/common/Host.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
-import V from '../../source/engine/client/V.ts';
+import FirstPersonView from '../../source/engine/client/view/FirstPersonView.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 import ColorShiftEffect from '../../source/engine/client/renderer/postprocess/ColorShiftEffect.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
@@ -63,7 +63,7 @@ void describe('the engine\'s color shifts', () => {
 
   beforeEach(() => {
     if (Cvar._vars.v_kicktime === undefined) {
-      V.Init();
+      FirstPersonView.Init();
     }
 
     for (let slot = 0; slot < clientRuntimeState.cshifts.length; slot++) {
@@ -331,7 +331,7 @@ void describe('the engine\'s color shifts', () => {
     });
   });
 
-  void describe('ApplyDamage', () => {
+  void describe('FirstPersonView.ApplyDamage', () => {
     let published: unknown[] = [];
     let player: ClientEdict = new ClientEdict(1);
 
@@ -350,39 +350,39 @@ void describe('the engine\'s color shifts', () => {
     });
 
     void test('flashes red for flesh damage, 3 alpha per point of half the damage, at least 10', () => {
-      V.ApplyDamage(0, 20, new Vector(100, 0, 0));
+      FirstPersonView.ApplyDamage(0, 20, new Vector(100, 0, 0));
 
       // count = max(10, (20 + 0) / 2) = 10
       assert.deepEqual(Array.from(clientRuntimeState.cshifts[DAMAGE]), [255, 0, 0, 30]);
     });
 
     void test('flashes pinkish when armor took most of it, and between when armor took some', () => {
-      V.ApplyDamage(30, 10, new Vector(100, 0, 0));
+      FirstPersonView.ApplyDamage(30, 10, new Vector(100, 0, 0));
       assert.deepEqual(Array.from(clientRuntimeState.cshifts[DAMAGE]).slice(0, 3), [200, 100, 100]);
 
-      V.ApplyDamage(10, 30, new Vector(100, 0, 0));
+      FirstPersonView.ApplyDamage(10, 30, new Vector(100, 0, 0));
       assert.deepEqual(Array.from(clientRuntimeState.cshifts[DAMAGE]).slice(0, 3), [220, 50, 50]);
     });
 
     void test('adds up to at most 150 alpha', () => {
-      V.ApplyDamage(0, 200, new Vector(100, 0, 0));
-      V.ApplyDamage(0, 200, new Vector(100, 0, 0));
+      FirstPersonView.ApplyDamage(0, 200, new Vector(100, 0, 0));
+      FirstPersonView.ApplyDamage(0, 200, new Vector(100, 0, 0));
 
       assert.equal(clientRuntimeState.cshifts[DAMAGE][3], 150);
     });
 
     void test('kicks the view away from the direction the damage came from', () => {
       // from the front: along the player's forward axis, none sideways
-      V.ApplyDamage(0, 20, new Vector(100, 0, 0));
+      FirstPersonView.ApplyDamage(0, 20, new Vector(100, 0, 0));
 
       // count 10 * dot(from, forward) 1 * kickpitch 0.6
-      assertNear(V.dmg_pitch, 6, 1e-4);
-      assertNear(V.dmg_roll, 0, 1e-4);
-      assert.equal(V.dmg_time, 0.5);
+      assertNear(FirstPersonView.dmg_pitch, 6, 1e-4);
+      assertNear(FirstPersonView.dmg_roll, 0, 1e-4);
+      assert.equal(FirstPersonView.dmg_time, 0.5);
     });
 
     void test('starts the face animation for 0.2 s and tells the game', () => {
-      V.ApplyDamage(5, 15, new Vector(0, 100, 0));
+      FirstPersonView.ApplyDamage(5, 15, new Vector(0, 100, 0));
 
       assertNear(clientRuntimeState.faceanimtime, 50.2);
 

@@ -56,6 +56,9 @@ export class RendererCvars {
   /** `gl_polyblend`: tint the whole view with the damage, pickup and liquid color. */
   polyblend: Cvar = null!;
 
+  /** `gamma`: brightness of the display, clamped to 0.5 to 1 when the frame's uniforms are written. */
+  gamma: Cvar = null!;
+
   /** `gl_cshiftpercent`: how strongly the color shifts tint the view, in percent. */
   cshiftpercent: Cvar = null!;
 

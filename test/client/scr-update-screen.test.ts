@@ -13,7 +13,6 @@ import GL from '../../source/engine/client/GL.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import M from '../../source/engine/client/Menu.ts';
 import SCR from '../../source/engine/client/SCR.ts';
-import V from '../../source/engine/client/V.ts';
 import VID from '../../source/engine/client/VID.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
@@ -69,10 +68,10 @@ void describe('SCR.UpdateScreen', () => {
 
   /**
    * The work that happens in the animation frame, without the setup in front of it.
-   * @returns The recorded calls from the first `V.RenderView` on.
+   * @returns The recorded calls from the first `SCR.RenderView` on.
    */
   function frameCalls(): string[] {
-    return calls.slice(calls.indexOf('V.RenderView'));
+    return calls.slice(calls.indexOf('SCR.RenderView'));
   }
 
   beforeEach(() => {
@@ -115,8 +114,8 @@ void describe('SCR.UpdateScreen', () => {
     ];
 
     record(PostProcess, 'advance', 'PostProcess.advance');
-    record(V, 'PreRenderView', 'V.PreRenderView');
-    record(V, 'RenderView', 'V.RenderView');
+    record(SCR, 'PreRenderView', 'SCR.PreRenderView');
+    record(SCR, 'RenderView', 'SCR.RenderView');
     record(GL, 'Set2D', 'GL.Set2D');
     record(GL, 'StreamFlush', 'GL.StreamFlush');
     mock.method(PostProcess, 'needsSceneCapture', () => sceneCapture);
@@ -158,13 +157,13 @@ void describe('SCR.UpdateScreen', () => {
     void test('prepares the view before the frame is requested, then draws scene, tint, overlays and flushes', () => {
       SCR.UpdateScreen();
 
-      assert.deepEqual(calls, ['PostProcess.advance', 'V.PreRenderView']);
+      assert.deepEqual(calls, ['PostProcess.advance', 'SCR.PreRenderView']);
       assert.equal(frames.length, 1);
 
       runFrame();
 
       assert.deepEqual(frameCalls(), [
-        'V.RenderView',
+        'SCR.RenderView',
         'GL.Set2D',
         'SCR.DrawNet',
         'SCR.DrawTurtle',
@@ -198,7 +197,7 @@ void describe('SCR.UpdateScreen', () => {
       runFrame();
 
       assert.deepEqual(frameCalls().slice(0, 5), [
-        'V.RenderView',
+        'SCR.RenderView',
         'GL.Set2D',
         'PostProcess.end',
         'PostProcess.resolveGameplayStack',
@@ -267,7 +266,7 @@ void describe('SCR.UpdateScreen', () => {
       runFrame();
 
       assert.equal(ConsoleOverlay.forcedup, true);
-      assert.deepEqual(frameCalls().slice(0, 4), ['V.RenderView', 'GL.Set2D', 'Draw.BlackScreen', 'SCR.DrawNet']);
+      assert.deepEqual(frameCalls().slice(0, 4), ['SCR.RenderView', 'GL.Set2D', 'Draw.BlackScreen', 'SCR.DrawNet']);
       assert.equal(frameCalls().includes('M.Draw'), true);
     });
 
@@ -297,7 +296,7 @@ void describe('SCR.UpdateScreen', () => {
       SCR.UpdateScreen();
 
       assert.equal(frames.length, 1);
-      assert.deepEqual(calls, ['PostProcess.advance', 'V.PreRenderView']);
+      assert.deepEqual(calls, ['PostProcess.advance', 'SCR.PreRenderView']);
     });
 
     void test('queues the next frame once the callback has run', () => {
@@ -314,7 +313,7 @@ void describe('SCR.UpdateScreen', () => {
 
       runFrame();
 
-      assert.equal(calls.includes('V.RenderView'), false);
+      assert.equal(calls.includes('SCR.RenderView'), false);
     });
 
     void test('measures the frame rate over the last frames and sets the refresh rate from it once there are enough', () => {
@@ -354,14 +353,14 @@ void describe('SCR.UpdateScreen', () => {
       SCR.UpdateScreen();
 
       assert.equal(SCR.screenshot, false);
-      assert.deepEqual(calls, ['PostProcess.advance', 'V.PreRenderView', 'VID.DownloadScreenshot()']);
+      assert.deepEqual(calls, ['PostProcess.advance', 'SCR.PreRenderView', 'VID.DownloadScreenshot()']);
     });
 
     void test('renders a clean screenshot without the weapon and every overlay, then restores the weapon', () => {
       SCR.screenshotClean = true;
       let weaponWhileRendering: number | null = null;
-      mock.method(V, 'RenderView', () => {
-        calls.push('V.RenderView');
+      mock.method(SCR, 'RenderView', () => {
+        calls.push('SCR.RenderView');
         weaponWhileRendering = rendererCvars.drawviewmodel.value;
       });
 
@@ -372,7 +371,7 @@ void describe('SCR.UpdateScreen', () => {
       assert.equal(rendererCvars.drawviewmodel.value, 1);
       assert.equal(SCR.screenshotClean, false);
       assert.deepEqual(frameCalls(), [
-        'V.RenderView',
+        'SCR.RenderView',
         'GL.Set2D',
         'GL.StreamFlush',
         'VID.DownloadScreenshot(screenshot-clean.jpg)',

@@ -15,7 +15,11 @@ import Host from '../common/Host.ts';
 import Draw from './Draw.ts';
 import Key from './Key.ts';
 import S from './Sound.ts';
-import V from './V.ts';
+import R from './R.ts';
+import FirstPersonView from './view/FirstPersonView.ts';
+import QuakeColorShifts from './view/QuakeColorShifts.ts';
+import DynamicLights from './renderer/lighting/DynamicLights.ts';
+import Visibility from './renderer/scene/Visibility.ts';
 import Camera from './renderer/scene/Camera.ts';
 import RenderStats from './renderer/scene/RenderStats.ts';
 import rendererCvars from './renderer/resources/RendererCvars.ts';
@@ -127,6 +131,52 @@ export default class SCR {
       Draw.String((VID.width - (SCR.centerstring[i].length * 16)) / 2, y, SCR.centerstring[i], 2.0);
       y += 16;
     }
+  }
+
+  /**
+   * Prepares the 3D view of the frame: the first-person view, then what the frame derives from it, in the order
+   * each step needs it. Nothing while the console is forced up, there is no 3D view then.
+   */
+  static PreRenderView(): void {
+    if (ConsoleOverlay.forcedup) {
+      // there is no 3D view to tint, and a tint left over would only keep the scene capture on
+      QuakeColorShifts.Clear();
+      return;
+    }
+    if (clientRuntimeState.maxclients >= 2) {
+      Cvar.Set('scr_ofsx', '0');
+      Cvar.Set('scr_ofsy', '0');
+      Cvar.Set('scr_ofsz', '0');
+    }
+    if (clientRuntimeState.intermission > 0) {
+      FirstPersonView.CalcIntermissionRefdef();
+    } else if (!clientRuntimeState.paused) {
+      FirstPersonView.CalcRefdef();
+    }
+
+    // The refdef is final from here on. Derive what the frame reads from it, in the order each step needs.
+    Camera.UpdateViewVectors();
+    const viewleaf = Visibility.UpdateViewLeaf();
+    QuakeColorShifts.SetContentsColor(viewleaf.contents);
+    QuakeColorShifts.Update();
+    R.PreRenderScene();
+  }
+
+  /**
+   * Renders the 3D view of the frame, when there is a map to render and the connection is ready for it.
+   */
+  static RenderView(): void {
+    if (ConsoleOverlay.forcedup) {
+      return;
+    }
+    if (!clientRuntimeState.worldmodel) {
+      return;
+    }
+    if (clientStaticState.signon < 4) {
+      return;
+    }
+    DynamicLights.Push();
+    R.RenderView();
   }
 
   /**
@@ -370,7 +420,7 @@ export default class SCR {
     // the fades and pulses of the post-process entries count the frames that are drawn
     PostProcess.advance();
 
-    V.PreRenderView(); // do some calculations independent of rendering
+    SCR.PreRenderView(); // do some calculations independent of rendering
 
     requestAnimationFrame((animationTime) => {
       // we are already shutting down
@@ -401,7 +451,7 @@ export default class SCR {
         rendererCvars.drawviewmodel.set(0);
       }
 
-      V.RenderView();
+      SCR.RenderView();
       GL.Set2D();
       if (PostProcess.needsSceneCapture()) {
         PostProcess.end();
@@ -422,7 +472,7 @@ export default class SCR {
         }
       }
       if (ConsoleOverlay.forcedup) {
-        // V.RenderView() (above) skips the 3D scene render entirely while forcedup — and with
+        // SCR.RenderView() (above) skips the 3D scene render entirely while forcedup — and with
         // it, the gl.clear() that normally happens inside R.RenderView(). Without this, a
         // half-open console drawer or the menu's own semi-transparent fade would blend against
         // whatever 3D frame is still sitting in the framebuffer from the last time a game was

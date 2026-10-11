@@ -185,7 +185,7 @@ class R {
 
   /**
    * Sets up what the frame's passes read: lightstyles, the effects that depend on where the camera is, the fog
-   * tint, and whether the scene needs to be captured. `V.PreRenderView` runs it after `Camera.UpdateViewVectors()`
+   * tint, and whether the scene needs to be captured. `SCR.PreRenderView` runs it after `Camera.UpdateViewVectors()`
    * and `Visibility.UpdateViewLeaf()`, because it reads the view leaf.
    */
   static PreRenderScene() {
@@ -352,6 +352,7 @@ class R {
     rendererCvars.speeds = new Cvar('r_speeds', '0');
     rendererCvars.polyblend = new Cvar('gl_polyblend', '1');
     rendererCvars.cshiftpercent = new Cvar('gl_cshiftpercent', '100');
+    rendererCvars.gamma = new Cvar('gamma', '0.8', Cvar.FLAG.ARCHIVE | Cvar.FLAG.CHEAT); // CR: 1 is too dark
     rendererCvars.flashblend = new Cvar('gl_flashblend', '0');
     rendererCvars.nocolors = new Cvar('gl_nocolors', '0');
     rendererCvars.bloom = new Cvar('r_bloom', '0', Cvar.FLAG.NONE, 'Screen-space bloom post-process, 0 = off, 1 = on.');
