@@ -311,13 +311,17 @@ export default class CL {
   }
 
   static DrawHUD(): void {
-    if (clientCvars.nohud.value !== 0) {
+    const gameAPI = CL.state.gameAPI;
+
+    if (!gameAPI) {
       return;
     }
 
-    if (CL.state.gameAPI) {
-      CL.state.gameAPI.draw();
+    if (clientCvars.nohud.value === 0) {
+      gameAPI.draw();
     }
+
+    gameAPI.drawOverlay?.();
   }
 
   static ClientFrame(): void {

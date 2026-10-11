@@ -335,6 +335,12 @@ export interface ClientGameInterface {
   draw(): void;
 
   /**
+   * Called every frame the HUD is drawn, right after `draw()`, and also while the `nohud` cvar is set. For what the
+   * player has to see whatever the HUD shows, such as the pause sign. Leave it out when there is none.
+   */
+  drawOverlay?(): void;
+
+  /**
    * Called every frame while the client is connecting or changing level, right after the engine
    * cleared the screen to black.
    */
