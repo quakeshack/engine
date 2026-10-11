@@ -8,7 +8,8 @@ import GL, { ATTRIB_LOCATIONS } from '../../GL.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import { clientCollision } from '../../ClientPhysics.ts';
 import type { ClientDlight } from '../../ClientEntities.ts';
-import V from '../../V.ts';
+import QuakeColorShifts from '../../view/QuakeColorShifts.ts';
+import PostProcess from '../postprocess/PostProcess.ts';
 import rendererCvars from '../resources/RendererCvars.ts';
 import LightSampler from './LightSampler.ts';
 import Lightmaps from './Lightmaps.ts';
@@ -80,7 +81,7 @@ export class DynamicLights {
     }
     DynamicLights.dlightframecount++;
     gl.enable(gl.BLEND);
-    const program = GL.UseProgram('dlight')!; let a;
+    const program = GL.UseProgram('dlight')!;
     console.assert(program !== null, 'dlight program required');
     GL.BindVAO(DynamicLights.dlightVAO);
     for (let i = 0; i < Def.limits.dlights; i++) {
@@ -89,12 +90,11 @@ export class DynamicLights {
         continue;
       }
       if (l.origin.copy().subtract(Camera.refdef.vieworg).len() < (l.radius * 0.35)) {
-        a = l.radius * 0.0003;
-        V.blend[3] += a * (1.0 - V.blend[3]);
-        a /= V.blend[3];
-        V.blend[0] = V.blend[1] * (1.0 - a) + (255.0 * a);
-        V.blend[1] = V.blend[1] * (1.0 - a) + (127.5 * a);
-        V.blend[2] *= 1.0 - a;
+        // the eye is inside the glare: a frame of tint over the view. Only while this frame is captured, the
+        // scene is not there to tint otherwise.
+        if (PostProcess.active) {
+          QuakeColorShifts.Corona(l.radius * 0.0003);
+        }
         continue;
       }
       gl.uniform3fv(program.uOrigin!, l.origin);

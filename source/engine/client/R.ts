@@ -17,6 +17,7 @@ import PostProcess from './renderer/postprocess/PostProcess.ts';
 import BloomEffect from './renderer/postprocess/BloomEffect.ts';
 import ColorGradeEffect from './renderer/postprocess/ColorGradeEffect.ts';
 import BlurEffect from './renderer/postprocess/BlurEffect.ts';
+import ColorShiftEffect from './renderer/postprocess/ColorShiftEffect.ts';
 import WarpEffect from './renderer/postprocess/WarpEffect.ts';
 import UnderwaterFogEffect from './renderer/postprocess/UnderwaterFogEffect.ts';
 import ShadowMap from './renderer/lighting/ShadowMap.ts';
@@ -38,7 +39,6 @@ import Particles from './renderer/effects/Particles.ts';
 import Decals from './renderer/effects/Decals.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import SCR from './SCR.ts';
-import V from './V.ts';
 import Sys from './Sys.ts';
 
 let gl: WebGL2RenderingContext = null!;
@@ -156,21 +156,6 @@ class R {
     gl.uniformMatrix4fv(program.uPerspective!, false, Camera.perspective);
 
     gl.depthRange(0.0, 1.0);
-  }
-
-  /**
-   * Draws the full-screen color shift (damage, pickups, underwater tint) over the view.
-   */
-  static PolyBlend() {
-    if (rendererCvars.polyblend.value === 0) {
-      return;
-    }
-    if (V.blend[3] === 0.0) {
-      return;
-    }
-    GL.UseProgram('fill', true);
-    const vrect = Camera.refdef.vrect;
-    GL.StreamDrawColoredQuad(vrect.x, vrect.y, vrect.width, vrect.height, V.blend[0], V.blend[1], V.blend[2], V.blend[3] * 255.0);
   }
 
   /**
@@ -366,6 +351,7 @@ class R {
     rendererCvars.novis = new Cvar('r_novis', '0', Cvar.FLAG.CHEAT);
     rendererCvars.speeds = new Cvar('r_speeds', '0');
     rendererCvars.polyblend = new Cvar('gl_polyblend', '1');
+    rendererCvars.cshiftpercent = new Cvar('gl_cshiftpercent', '100');
     rendererCvars.flashblend = new Cvar('gl_flashblend', '0');
     rendererCvars.nocolors = new Cvar('gl_nocolors', '0');
     rendererCvars.bloom = new Cvar('r_bloom', '0', Cvar.FLAG.NONE, 'Screen-space bloom post-process, 0 = off, 1 = on.');
@@ -407,6 +393,7 @@ class R {
     PostProcess.addEffect(new WarpEffect());
     PostProcess.addEffect(new ColorGradeEffect());
     PostProcess.addEffect(new BlurEffect());
+    PostProcess.addEffect(new ColorShiftEffect());
 
     // Initialize shadow mapping (depth-only FBO + sun light)
     ShadowMap.init();

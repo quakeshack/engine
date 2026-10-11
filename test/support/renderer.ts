@@ -23,7 +23,7 @@ const VISIBILITY_MEMBERS: Record<string, string> = {
 /** Console variables that were on the renderer and now live in `rendererCvars`. */
 const CVAR_MEMBERS = new Set([
   'novis', 'fog_color', 'fog_start', 'fog_end', 'fog_density', 'fog_mode',
-  'waterwarp', 'drawentities', 'drawviewmodel', 'drawturbulents', 'underwater_fog_density', 'speeds', 'polyblend',
+  'waterwarp', 'drawentities', 'drawviewmodel', 'drawturbulents', 'underwater_fog_density', 'speeds', 'polyblend', 'cshiftpercent',
   'nocolors', 'bloom', 'bloomStrength', 'bloomSkyStrength', 'bloomDlightStrength', 'bloomSpecularStrength',
   'bloomDownsample', 'bloomDebug', 'interpolation',
 ]);

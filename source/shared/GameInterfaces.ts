@@ -142,6 +142,18 @@ export type PostProcessBlurDescriptor = {
 };
 
 /**
+ * A tint over the whole view. Entries of this effect that follow each other are mixed into one tint, in the
+ * order they are applied, as Quake mixes its color shifts: each is laid over the result of the ones before.
+ */
+export type PostProcessColorShiftDescriptor = {
+  /** Red, green and blue, each 0 to 1. Black when left out. */
+  readonly color?: ArrayLike<number>;
+
+  /** How much the color covers the view, 0 to 1. Nothing when left out. */
+  readonly alpha?: number;
+};
+
+/**
  * Where in the frame an entry is applied. `scene` is before the renderer's own effects (bloom, warp), so they see
  * the result; `final` is after them, over everything and under the HUD. Each effect has a default.
  */
@@ -181,7 +193,8 @@ export interface PostProcessEntryOptions {
 
 export type PostProcessEffectDescriptor =
   | ({ readonly id: 'color-grade'; readonly settings: PostProcessColorGradeDescriptor } & PostProcessEntryOptions)
-  | ({ readonly id: 'blur'; readonly settings: PostProcessBlurDescriptor } & PostProcessEntryOptions);
+  | ({ readonly id: 'blur'; readonly settings: PostProcessBlurDescriptor } & PostProcessEntryOptions)
+  | ({ readonly id: 'color-shift'; readonly settings: PostProcessColorShiftDescriptor } & PostProcessEntryOptions);
 
 export type PostProcessStack = readonly PostProcessEffectDescriptor[];
 

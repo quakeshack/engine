@@ -89,7 +89,7 @@ Each entry has a `stage`:
 | Stage | Where it is applied |
 | --- | --- |
 | `'scene'` | Before the renderer's own effects (bloom, underwater fog, warp), so they see the result. The default for `color-grade` and `blur`. |
-| `'final'` | After the renderer's own effects, as the last pass before the HUD. |
+| `'final'` | After the renderer's own effects, as the last pass before the HUD. The default for `color-shift`. |
 
 Set `stage` on an entry to override the default of its effect. A `final` entry costs no extra pass when it is the only thing that is active: it replaces the plain copy of the scene to the screen.
 
@@ -116,6 +116,16 @@ Two-pass separable Gaussian blur (9-tap, σ = 1.5). All fields are optional.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `radius` | `number` | `4.0` | Pixel spread of the Gaussian. Higher values produce a wider blur. `0` = no blur. |
+
+### `color-shift`
+
+Tints the whole view: a damage flash, a pickup, a powerup, the color of a liquid. Entries that follow each other are
+mixed into one tint. See [color-shifts.md](color-shifts.md).
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `color` | `Vector` or `[r, g, b]` | black | Red, green and blue, each 0 to 1. |
+| `alpha` | `number` | `0` | How much the color covers the view, 0 to 1. Only this fades. |
 
 ## Usage Examples
 
@@ -186,6 +196,9 @@ onBerserkExpired(): void {
    - `neutral`: the settings with which the effect changes nothing. The numbers listed here are the ones that fade, so list those that carry the intensity and leave out colors and periods.
    - `resolveSettings(settings)`: fills in what an entry left out and repairs numbers that are not finite. It must return settings it can be asked to resolve again.
    - `defaultStage`, if the effect belongs after the renderer's own effects.
+   - `combineSettings(settings)`, if the entries of the effect are layers of one thing (a tint) and not passes of
+     their own: entries that follow each other are handed to it in one list and it returns the one set of settings to
+     apply, or `null` for nothing.
 3. `apply(input, x, y, width, height, settings)` gets the settings of the entry it is applied for, already resolved and faded to where the entry is. Do not look them up on `PostProcess`: with several entries of one effect there is no single answer.
 4. Add `MyEffectDescriptor` to `PostProcessEffectDescriptor` in `source/shared/GameInterfaces.ts`.
 5. Register the GLSL program in `renderer/programs/ShaderPrograms.ts` alongside the existing `color-grade` and `blur` registrations.

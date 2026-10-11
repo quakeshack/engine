@@ -1,7 +1,7 @@
 # Dissolve `SCR.ts` and `V.ts`
 
 Follow-up to `plans/r-split.md`. Status: **plan drafted 2026-10-10, developer decisions 1 to 8 recorded (4 to 8 on 2026-10-11); G6 is a
-direction, not a closed decision; Phases 0 and 1 are done (2026-10-11; Phase 1 not committed), Phases 2 to 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
+direction, not a closed decision; Phases 0 to 2 are done (2026-10-11; Phase 2 not committed), Phases 3 to 6 are not started.** Written for the maintainers; the game-side suggestions are proposals, each its own go/no-go.
 
 ## Context
 
@@ -391,6 +391,60 @@ change. `postprocess/PostProcessEntries.ts` is new and has no GL in it; `PostPro
   no console errors beyond the usual 404s. Not covered: hellwave's own game-over and buy-menu stacks (they use
   the unchanged `setStack`), warp and underwater fog together with a stack, and a color-grade fade of `tintColor`
   by eye.
+
+### Phase 2: what shipped (2026-10-11)
+
+V's color shifts are entries of a `color-shift` post-process effect now, and `R.PolyBlend`, `V.blend`, `V.CalcBlend`
+and the `SCR` call are gone.
+
+- **`ColorShiftEffect`** (`renderer/postprocess/`, registered after `blur`, `final` stage, `stackable`). Settings
+  `{ color, alpha }`, 0 to 1. `ColorShiftEffect.mix(layers, percent)` is the pure mixing (Quake's formula, the
+  clamps), tested without GL, including that it equals laying the layers over a scene with ordinary alpha
+  blending. The effect draws the input with the `pic` program and then one `fill` quad with blending, the two
+  draws `resolve` and `R.PolyBlend` made before, so a frame with a tint costs what it did.
+- **Entries that mix.** `PostProcessEntryEffect` and `PostProcessEffect` gained an optional `combineSettings(list)`;
+  `PostProcessEntries.collect` hands a run of entries of such an effect to it and applies the one result, or none
+  when it returns `null`. That is how "the effect receives all of its entries" is true with Phase 1's one-pass-
+  per-entry model: the run is mixed in the order it is applied and drawn once. `gl_polyblend` 0 and a mix that
+  covers nothing return `null`, so no pass runs at all.
+- **`gl_cshiftpercent`** is in `RendererCvars` and created by `R.Init` after `gl_polyblend` (it was `V.Init`'s). The
+  `cvarlist` order changes by that one name; the order test pins it.
+- **The engine's default set is `client/view/QuakeColorShifts.ts`** (the first file of `client/view/`). Deviation
+  from the plan: it keeps Quake's eight slots in `clientRuntimeState.cshifts` and their decay, and each frame
+  (`Update`, called where `CalcBlend` was) hands one entry per slot that covers something to the stack, in slot
+  order, on the channel `engine.color-shifts`. Pulses are not used for damage and the pickup flash, because a new
+  damage flash is added to what is left of the last one (3 per point, at most 150) and the mixing order of the
+  slots has to stay exactly Quake's; both are the engine default's, and the game's half (phase 5) uses pulses.
+  `V` keeps the view kick of `ApplyDamage`, and calls `QuakeColorShifts.Damage` for the color half.
+  `v_cshift` and `bf` are registered by `QuakeColorShifts.Init()`, which `V.Init()` calls.
+- **`ClientEngineAPI.ContentShift`** is a deprecated forwarder to the user slots (`slot + 4`), as before, with
+  the JSDoc saying what to use instead. It is deleted with the default set in phase 5.
+- **The corona** (a dynamic light the eye is inside of, `gl_flashblend` on) is a one-frame pulse on the channel
+  `engine.corona`, mixed after the engine's slots, and only while the frame is captured (`PostProcess.active`),
+  because a pulse started during the draw would otherwise turn the capture on for a scene that was not drawn into
+  it. **One visible change:** the old code computed its red channel from the green one
+  (`V.blend[0] = V.blend[1] * ...`), so the glare's color depended on what the tint was; it is plain orange now.
+- **Forced up.** `V.PreRenderView` clears the engine's channel while the console is forced up, so no tint is left
+  to keep the capture on and `SCR` only draws the black screen.
+- **Tests.** `view-color-shifts.test.ts` became `quake-color-shifts.test.ts` and keeps every Phase 0 expectation,
+  read through what the stack would draw (plus the channel, `gl_polyblend`, the corona and `Clear`);
+  `color-shift-effect.test.ts` (mixing, settings, `combineSettings`, `apply` with a recording GL: the blit, the
+  quad over the same rectangle with bytes clamped and rounded, the blend state left as the chain expects);
+  `corona-tint.test.ts`; run mixing in `post-process-entries.test.ts`; `renderer-init` (the cvar and the effect)
+  and `scr-update-screen` (no `PolyBlend` call, the black screen when forced up) follow.
+- **Docs.** `docs/color-shifts.md` is new (the effect, mixing, the player's two controls, setting a tint and a flash
+  from a game with the Quake rate mapping, what the engine tints with); `post-process-effects.md` lists the effect
+  and `combineSettings`.
+- **Verified:** `npm test` 2190 pass, `npm run typecheck` clean, `eslint` on touched files; browser, production builds
+  of HEAD and the working tree: three captures per side show nothing beyond the noise between captures of one build
+  (`r_speeds` identical), and the same scenarios on both builds give the same mean colors within animation noise:
+  no tint 36.3 against 36.4, a clear-air tint of 255 0 0 at 128 142.7 against 142.6, at 50 percent 89.5 against
+  89.4, with `gl_polyblend 0` 36.2 against 36.3, with the quad 32.9 against 32.8, and red + quad + bloom 125.8
+  against 126.5. On the new build: the pickup flash falls 32, 17, 8 (from 50 at 100 per second), a 40 damage hit
+  47, 22 (at 150), the corona is orange at 0.09, a game pulse mixes in, and with nothing active there are no entries
+  and no capture request. **Not covered:** the liquid tints in the browser (the capture's map, the start hall,
+  has none, the earlier captures found lava on it; `SetContentsColor` is covered by the unit test), and the
+  tint through `r_drawturbulents 0`.
 
 ## Testing
 

@@ -39,7 +39,7 @@ import ClientHost from './ClientHost.ts';
 import Draw from './Draw.ts';
 import S from './Sound.ts';
 import SCR from './SCR.ts';
-import V from './V.ts';
+import QuakeColorShifts from './view/QuakeColorShifts.ts';
 import Camera from './renderer/scene/Camera.ts';
 
 interface ClientTraceOptions {
@@ -476,10 +476,16 @@ export class ClientEngineAPI extends CommonEngineAPI {
   }
 
   /**
-   * Apply a content shift.
+   * Tints the whole view for a moment: the color takes hold at once with the given alpha and decays at 100 alpha
+   * units per second, as Quake's own pickup flash does. Call it again to keep a tint up.
+   * @param slot Which of the four slots of the game, 0 to 3. A slot is mixed over the ones before it.
+   * @param color Red, green and blue, each 0 to 1.
+   * @param alpha How much it covers the view, 0 to 1.
+   * @deprecated Set an entry of the `color-shift` effect through `PostProcess.pulse` or `PostProcess.setStack`:
+   * the timing is the game's to choose there. Kept until the games have moved (plans/scr-v-split.md).
    */
   ContentShift(slot: number, color: Vector, alpha = 0.5): void {
-    V.ContentShift(slot + 4, color, alpha);
+    QuakeColorShifts.ContentShift(slot + 4, color, alpha);
   }
 
   /**

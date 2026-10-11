@@ -91,6 +91,7 @@ void describe('R.Init', () => {
       'r_novis',
       'r_speeds',
       'gl_polyblend',
+      'gl_cshiftpercent',
       'gl_flashblend',
       'gl_nocolors',
       'r_bloom',
@@ -131,6 +132,7 @@ void describe('R.Init', () => {
       'effect warp',
       'effect color-grade',
       'effect blur',
+      'effect color-shift',
       'shadowmap',
       'clear',
     ]);

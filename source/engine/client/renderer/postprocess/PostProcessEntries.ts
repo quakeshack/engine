@@ -32,6 +32,14 @@ export interface PostProcessEntryEffect {
    * @returns The complete settings.
    */
   resolveSettings(settings: object): object;
+
+  /**
+   * Mixes the entries of this effect that follow each other into one, for an effect whose entries are layers of
+   * one thing (a tint) and not passes of their own. Without it every entry is a pass.
+   * @param settings The settings of the run, in the order they are applied.
+   * @returns The settings of the one pass to apply, `null` when there is nothing to draw.
+   */
+  combineSettings?(settings: readonly object[]): object | null;
 }
 
 /**
@@ -335,7 +343,8 @@ export default class PostProcessEntries {
   /**
    * Lists what to apply in a stage, in the order to apply it: channels in the order they were first used and
    * within one the pulses placed below, the stack, then the pulses placed above, each group in the order it was
-   * started. Entries of an effect that is not registered are skipped.
+   * started. Entries of an effect that is not registered are skipped. Entries of an effect that mixes its entries
+   * (`combineSettings`) are mixed where they follow each other, and dropped when the mix draws nothing.
    * @param stage The stage.
    * @returns The effects and the settings they show right now.
    */
@@ -362,6 +371,42 @@ export default class PostProcessEntries {
           this.#collectPulse(pulse, stage, result);
         }
       }
+    }
+
+    return this.#combineRuns(result);
+  }
+
+  /**
+   * Replaces each run of entries of an effect that mixes its entries by the one entry it mixes to.
+   * @returns The list, with the runs mixed.
+   */
+  #combineRuns(entries: ResolvedPostProcessEntry[]): ResolvedPostProcessEntry[] {
+    const result: ResolvedPostProcessEntry[] = [];
+    let start = 0;
+
+    while (start < entries.length) {
+      const entry = entries[start];
+      const effect = this.#lookup(entry.id);
+
+      if (effect?.combineSettings === undefined) {
+        result.push(entry);
+        start++;
+        continue;
+      }
+
+      let end = start + 1;
+
+      while (end < entries.length && entries[end].id === entry.id) {
+        end++;
+      }
+
+      const combined = effect.combineSettings(entries.slice(start, end).map((member) => member.settings));
+
+      if (combined !== null) {
+        result.push({ id: entry.id, settings: combined });
+      }
+
+      start = end;
     }
 
     return result;

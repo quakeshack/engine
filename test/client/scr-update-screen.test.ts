@@ -12,7 +12,6 @@ import Draw from '../../source/engine/client/Draw.ts';
 import GL from '../../source/engine/client/GL.ts';
 import Key, { KeyDestination } from '../../source/engine/client/Key.ts';
 import M from '../../source/engine/client/Menu.ts';
-import R from '../../source/engine/client/R.ts';
 import SCR from '../../source/engine/client/SCR.ts';
 import V from '../../source/engine/client/V.ts';
 import VID from '../../source/engine/client/VID.ts';
@@ -126,7 +125,6 @@ void describe('SCR.UpdateScreen', () => {
     record(PostProcess, 'end', 'PostProcess.end');
     record(PostProcess, 'resolveGameplayStack', 'PostProcess.resolveGameplayStack');
     record(PostProcess, 'resolve', 'PostProcess.resolve');
-    record(R, 'PolyBlend', 'R.PolyBlend');
     record(Draw, 'BlackScreen', 'Draw.BlackScreen');
     record(CL, 'Draw', 'CL.Draw');
     record(CL, 'DrawHUD', 'CL.DrawHUD');
@@ -168,7 +166,6 @@ void describe('SCR.UpdateScreen', () => {
       assert.deepEqual(frameCalls(), [
         'V.RenderView',
         'GL.Set2D',
-        'R.PolyBlend',
         'SCR.DrawNet',
         'SCR.DrawTurtle',
         'SCR.DrawPause',
@@ -193,20 +190,19 @@ void describe('SCR.UpdateScreen', () => {
       assert.deepEqual(characters, []);
     });
 
-    void test('resolves the captured scene between the 2D setup and the tint, with the game stack first', () => {
+    void test('resolves the captured scene after the 2D setup, with the game stack first', () => {
       sceneCapture = true;
       gameplayStack = true;
 
       SCR.UpdateScreen();
       runFrame();
 
-      assert.deepEqual(frameCalls().slice(0, 6), [
+      assert.deepEqual(frameCalls().slice(0, 5), [
         'V.RenderView',
         'GL.Set2D',
         'PostProcess.end',
         'PostProcess.resolveGameplayStack',
         'PostProcess.resolve',
-        'R.PolyBlend',
       ]);
     });
 
@@ -235,7 +231,6 @@ void describe('SCR.UpdateScreen', () => {
       runFrame();
 
       assert.deepEqual(frameCalls().slice(2), [
-        'R.PolyBlend',
         'CL.DrawHUD',
         'SCR.DrawConsole',
         'M.DrawOverlayNotice',
@@ -265,14 +260,13 @@ void describe('SCR.UpdateScreen', () => {
   });
 
   void describe('while the console is forced up', () => {
-    void test('replaces the tint by a black screen and draws the menu over it', () => {
+    void test('shows a black screen and draws the menu over it', () => {
       clientRuntimeState.worldmodel = null;
 
       SCR.UpdateScreen();
       runFrame();
 
       assert.equal(ConsoleOverlay.forcedup, true);
-      assert.equal(frameCalls().includes('R.PolyBlend'), false);
       assert.deepEqual(frameCalls().slice(0, 4), ['V.RenderView', 'GL.Set2D', 'Draw.BlackScreen', 'SCR.DrawNet']);
       assert.equal(frameCalls().includes('M.Draw'), true);
     });
@@ -380,7 +374,6 @@ void describe('SCR.UpdateScreen', () => {
       assert.deepEqual(frameCalls(), [
         'V.RenderView',
         'GL.Set2D',
-        'R.PolyBlend',
         'GL.StreamFlush',
         'VID.DownloadScreenshot(screenshot-clean.jpg)',
       ]);

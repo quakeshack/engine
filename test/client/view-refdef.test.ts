@@ -13,6 +13,7 @@ import ConsoleOverlay from '../../source/engine/client/ConsoleOverlay.ts';
 import R from '../../source/engine/client/R.ts';
 import SCR from '../../source/engine/client/SCR.ts';
 import V from '../../source/engine/client/V.ts';
+import QuakeColorShifts from '../../source/engine/client/view/QuakeColorShifts.ts';
 import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
 import Visibility from '../../source/engine/client/renderer/scene/Visibility.ts';
 import { assertNear } from '../support/assertions.ts';
@@ -464,7 +465,7 @@ void describe('V first-person view', () => {
 
         return { contents: -1 } as never;
       });
-      mock.method(V, 'CalcBlend', () => { calls.push('V.CalcBlend'); });
+      mock.method(QuakeColorShifts, 'Update', () => { calls.push('QuakeColorShifts.Update'); });
       mock.method(V, 'CalcRefdef', () => { calls.push('V.CalcRefdef'); });
       mock.method(V, 'CalcIntermissionRefdef', () => { calls.push('V.CalcIntermissionRefdef'); });
     });
@@ -480,7 +481,7 @@ void describe('V first-person view', () => {
         'V.CalcRefdef',
         'Camera.UpdateViewVectors',
         'Visibility.UpdateViewLeaf',
-        'V.CalcBlend',
+        'QuakeColorShifts.Update',
         'R.PreRenderScene',
       ]);
     });

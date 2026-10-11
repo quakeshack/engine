@@ -56,6 +56,9 @@ export class RendererCvars {
   /** `gl_polyblend`: tint the whole view with the damage, pickup and liquid color. */
   polyblend: Cvar = null!;
 
+  /** `gl_cshiftpercent`: how strongly the color shifts tint the view, in percent. */
+  cshiftpercent: Cvar = null!;
+
   /** `gl_nocolors`: do not apply the player's shirt and pants colors to other players. */
   nocolors: Cvar = null!;
 

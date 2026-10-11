@@ -63,6 +63,15 @@ void describe('PostProcessEntries', () => {
       'color-grade': createEffect({ saturation: 1, tintStrength: 0 }, { saturation: 1, tintStrength: 0 }),
       blur: createEffect({ radius: 0 }, { radius: 4 }),
       shift: createEffect({ alpha: 0 }, { alpha: 0 }, 'final'),
+      // layers of one tint: a run is added up into one pass, and dropped when it adds up to nothing
+      tint: {
+        ...createEffect({ alpha: 0 }, { alpha: 0 }, 'final'),
+        combineSettings: (settings) => {
+          const alpha = settings.reduce((sum, entry) => sum + (entry as { alpha: number }).alpha, 0);
+
+          return alpha > 0 ? { alpha, layers: settings.length } : null;
+        },
+      },
     };
 
     entries = new PostProcessEntries((id) => effects[id]);
@@ -377,6 +386,44 @@ void describe('PostProcessEntries', () => {
       entries.advance(-1);
 
       assert.deepEqual(radii(entries), [0]);
+    });
+  });
+
+  void describe('entries that mix', () => {
+    const tint = (alpha: number): PostProcessEffectDescriptor =>
+      ({ id: 'tint', settings: { alpha } }) as unknown as PostProcessEffectDescriptor;
+
+    void test('are mixed into one pass where they follow each other', () => {
+      entries.setStack([tint(0.25), tint(0.5)]);
+
+      assert.deepEqual(entries.collect('final'), [{ id: 'tint', settings: { alpha: 0.75, layers: 2 } }]);
+    });
+
+    void test('are mixed across the stack and the pulses of a channel, and across channels', () => {
+      entries.setStack([tint(0.25)], { channel: 'a' });
+      entries.setStack([tint(0.25)], { channel: 'b' });
+      entries.pulse({ id: 'tint', settings: { alpha: 0.25 }, timing: { hold: 1 } } as unknown as PostProcessPulseDescriptor, { channel: 'b' });
+
+      assert.deepEqual(entries.collect('final'), [{ id: 'tint', settings: { alpha: 0.75, layers: 3 } }]);
+    });
+
+    void test('are not mixed across another effect between them, which is applied in its place', () => {
+      entries.setStack([tint(0.25), blur(2, { stage: 'final' }), tint(0.5)]);
+
+      assert.deepEqual(entries.collect('final').map((entry) => entry.id), ['tint', 'blur', 'tint']);
+    });
+
+    void test('are dropped when the mix draws nothing', () => {
+      entries.setStack([tint(0)]);
+
+      assert.deepEqual(entries.collect('final'), []);
+      assert.equal(entries.hasStack(), true);
+    });
+
+    void test('leave the entries of an effect that does not mix as passes of their own', () => {
+      entries.setStack([blur(2), blur(3)]);
+
+      assert.deepEqual(radii(entries), [2, 3]);
     });
   });
 });

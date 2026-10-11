@@ -51,6 +51,14 @@ export default class PostProcessEffect {
   }
 
   /**
+   * Mixes entries of this effect that follow each other into one, for an effect whose entries are layers of a
+   * single thing, like a tint. Leave it out for an effect whose every entry is a pass of its own.
+   * @param settings The resolved settings of the run, in the order they are applied.
+   * @returns The settings of the one pass to apply, or `null` when nothing is to be drawn.
+   */
+  combineSettings?(settings: readonly object[]): object | null;
+
+  /**
    * Apply the effect by drawing a fullscreen quad with the appropriate shader.
    * The caller has already bound the correct output framebuffer and viewport.
    * @param settings The settings of the stack entry that is applied, as the effect's `resolveSettings` returned

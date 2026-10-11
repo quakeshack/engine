@@ -10,7 +10,6 @@ import ConsoleOverlay from './ConsoleOverlay.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState, clientStaticState } from './ClientState.ts';
 import CL from './CL.ts';
-import R from './R.ts';
 import M from './Menu.ts';
 import Host from '../common/Host.ts';
 import Draw from './Draw.ts';
@@ -422,9 +421,7 @@ export default class SCR {
           bloomEffect.drawDebugPreview();
         }
       }
-      if (!ConsoleOverlay.forcedup) {
-        R.PolyBlend();
-      } else {
+      if (ConsoleOverlay.forcedup) {
         // V.RenderView() (above) skips the 3D scene render entirely while forcedup — and with
         // it, the gl.clear() that normally happens inside R.RenderView(). Without this, a
         // half-open console drawer or the menu's own semi-transparent fade would blend against

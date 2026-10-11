@@ -1,10 +1,5 @@
-type ColorShift = [number, number, number, number];
-
-import { content } from '../../shared/Defs.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
-import * as Def from '../common/Def.ts';
-import Q from '../../shared/Q.ts';
 import { calcRoll } from '../../shared/PlayerRoll.ts';
 import Vector from '../../shared/Vector.ts';
 import { shortestAngleDelta, smoothValue } from '../../shared/smoothing.ts';
@@ -17,6 +12,7 @@ import R from './R.ts';
 import Camera from './renderer/scene/Camera.ts';
 import Visibility from './renderer/scene/Visibility.ts';
 import DynamicLights from './renderer/lighting/DynamicLights.ts';
+import QuakeColorShifts from './view/QuakeColorShifts.ts';
 import Host from '../common/Host.ts';
 import SCR from './SCR.ts';
 
@@ -41,13 +37,6 @@ export default class V {
   static #viewmodelLookBobRight = 0.0;
   static #viewmodelLookBobUp = 0.0;
 
-  static cshift_empty: ColorShift = [130.0, 80.0, 50.0, 0.0];
-  static cshift_water: ColorShift = [130.0, 80.0, 50.0, 128.0];
-  static cshift_slime: ColorShift = [0.0, 25.0, 5.0, 150.0];
-  static cshift_lava: ColorShift = [255.0, 80.0, 0.0, 150.0];
-
-  static blend: ColorShift = [0.0, 0.0, 0.0, 0.0];
-
   static centermove: Cvar = null!;
   static centerspeed: Cvar = null!;
   static iyaw_cycle: Cvar = null!;
@@ -57,7 +46,6 @@ export default class V {
   static iroll_level: Cvar = null!;
   static ipitch_level: Cvar = null!;
   static idlescale: Cvar = null!;
-  static cshiftpercent: Cvar = null!;
   static ofsx: Cvar = null!;
   static ofsy: Cvar = null!;
   static ofsz: Cvar = null!;
@@ -192,154 +180,12 @@ export default class V {
     }
     clientRuntimeState.faceanimtime = clientRuntimeState.time + 0.2;
 
-    const cshift = clientRuntimeState.cshifts[Def.contentShift.damage];
-    cshift[3] += 3.0 * count;
-    if (cshift[3] < 0.0) {
-      cshift[3] = 0.0;
-    } else if (cshift[3] > 150.0) {
-      cshift[3] = 150.0;
-    }
-
-    if (armor > blood) {
-      cshift[0] = 200.0;
-      cshift[1] = cshift[2] = 100.0;
-    } else if (armor !== 0) {
-      cshift[0] = 220.0;
-      cshift[1] = cshift[2] = 50.0;
-    } else {
-      cshift[0] = 255.0;
-      cshift[1] = cshift[2] = 0.0;
-    }
+    QuakeColorShifts.Damage(armor, blood, count);
 
     const { forward, right } = ent.angles.angleVectors();
     V.dmg_roll = count * (from[0] * right[0] + from[1] * right[1] + from[2] * right[2]) * V.kickroll.value;
     V.dmg_pitch = count * (from[0] * forward[0] + from[1] * forward[1] + from[2] * forward[2]) * V.kickpitch.value;
     V.dmg_time = V.kicktime.value;
-  }
-
-  static cshift_f(...args: string[]): void {
-    const cshift = V.cshift_empty;
-    for (let i = 0; i < Math.min(args.length, cshift.length); i++) {
-      cshift[i] = Q.atoi(args[i]);
-    }
-  }
-
-  static BonusFlash_f(): void {
-    const cshift = clientRuntimeState.cshifts[Def.contentShift.bonus];
-    cshift[0] = 215.0;
-    cshift[1] = 186.0;
-    cshift[2] = 69.0;
-    cshift[3] = 50.0;
-  }
-
-  static ContentShift(slot: number, color: Vector, alpha: number): void {
-    const cshift = clientRuntimeState.cshifts[slot];
-    cshift[0] = color[0] * 255.0;
-    cshift[1] = color[1] * 255.0;
-    cshift[2] = color[2] * 255.0;
-    cshift[3] = alpha * 255.0;
-  }
-
-  /**
-   * @param {content} contents content classification
-   */
-  static SetContentsColor(contents: content): void {
-    switch (contents) {
-      case content.CONTENT_EMPTY:
-        clientRuntimeState.cshifts[Def.contentShift.contents] = V.cshift_empty;
-        return;
-      case content.CONTENT_LAVA:
-        clientRuntimeState.cshifts[Def.contentShift.contents] = V.cshift_lava;
-        return;
-      case content.CONTENT_SLIME:
-        clientRuntimeState.cshifts[Def.contentShift.contents] = V.cshift_slime;
-        return;
-      case content.CONTENT_WATER:
-        clientRuntimeState.cshifts[Def.contentShift.contents] = V.cshift_water;
-        return;
-    }
-  }
-
-  static CalcBlend(): void {
-    let cshift = clientRuntimeState.cshifts[Def.contentShift.powerup];
-    if ((clientRuntimeState.items & Def.it.quad) !== 0) {
-      cshift[0] = 0.0;
-      cshift[1] = 0.0;
-      cshift[2] = 255.0;
-      cshift[3] = 30.0;
-    } else if ((clientRuntimeState.items & Def.it.suit) !== 0) {
-      cshift[0] = 0.0;
-      cshift[1] = 255.0;
-      cshift[2] = 0.0;
-      cshift[3] = 20.0;
-    } else if ((clientRuntimeState.items & Def.it.invisibility) !== 0) {
-      cshift[0] = 100.0;
-      cshift[1] = 100.0;
-      cshift[2] = 100.0;
-      cshift[3] = 100.0;
-    } else if ((clientRuntimeState.items & Def.it.invulnerability) !== 0) {
-      cshift[0] = 255.0;
-      cshift[1] = 255.0;
-      cshift[2] = 0.0;
-      cshift[3] = 30.0;
-    } else {
-      cshift[3] = 0.0;
-    }
-
-    clientRuntimeState.cshifts[Def.contentShift.damage][3] -= Host.frametime * 150.0;
-    if (clientRuntimeState.cshifts[Def.contentShift.damage][3] < 0.0) {
-      clientRuntimeState.cshifts[Def.contentShift.damage][3] = 0.0;
-    }
-    clientRuntimeState.cshifts[Def.contentShift.bonus][3] -= Host.frametime * 100.0;
-    if (clientRuntimeState.cshifts[Def.contentShift.bonus][3] < 0.0) {
-      clientRuntimeState.cshifts[Def.contentShift.bonus][3] = 0.0;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-    for (let i = Def.contentShift.user1; i < clientRuntimeState.cshifts.length; i++) {
-      const userShift = clientRuntimeState.cshifts[i];
-      userShift[3] -= Host.frametime * 100.0;
-      if (userShift[3] < 0.0) {
-        userShift[3] = 0.0;
-      }
-    }
-
-    if (V.cshiftpercent.value === 0) {
-      V.blend[0] = V.blend[1] = V.blend[2] = V.blend[3] = 0.0;
-      return;
-    }
-
-    let r = 0.0;
-    let g = 0.0;
-    let b = 0.0;
-    let a = 0.0;
-    let a2: number;
-    for (let i = 0; i < clientRuntimeState.cshifts.length; i++) {
-      cshift = clientRuntimeState.cshifts[i];
-      a2 = cshift[3] * V.cshiftpercent.value / 25500.0;
-      if (a2 === 0.0) {
-        continue;
-      }
-      a = a + a2 * (1.0 - a);
-      a2 = a2 / a;
-      r = r * (1.0 - a2) + cshift[0] * a2;
-      g = g * (1.0 - a2) + cshift[1] * a2;
-      b = b * (1.0 - a2) + cshift[2] * a2;
-    }
-    if (a > 1.0) {
-      a = 1.0;
-    } else if (a < 0.0) {
-      a = 0.0;
-    }
-    V.blend[0] = r;
-    V.blend[1] = g;
-    V.blend[2] = b;
-    V.blend[3] = a;
-    if (V.blend[3] > 1.0) {
-      V.blend[3] = 1.0;
-    } else if (V.blend[3] < 0.0) {
-      V.blend[3] = 0.0;
-    }
   }
 
   static CalcIntermissionRefdef(): void {
@@ -513,6 +359,8 @@ export default class V {
 
   static PreRenderView(): void {
     if (ConsoleOverlay.forcedup) {
+      // there is no 3D view to tint, and a tint left over would only keep the scene capture on
+      QuakeColorShifts.Clear();
       return;
     }
     if (clientRuntimeState.maxclients >= 2) {
@@ -529,8 +377,8 @@ export default class V {
     // The refdef is final from here on. Derive what the frame reads from it, in the order each step needs.
     Camera.UpdateViewVectors();
     const viewleaf = Visibility.UpdateViewLeaf();
-    V.SetContentsColor(viewleaf.contents);
-    V.CalcBlend();
+    QuakeColorShifts.SetContentsColor(viewleaf.contents);
+    QuakeColorShifts.Update();
     R.PreRenderScene();
   }
 
@@ -549,10 +397,7 @@ export default class V {
   }
 
   static Init(): void {
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    Cmd.AddCommand('v_cshift', V.cshift_f);
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    Cmd.AddCommand('bf', V.BonusFlash_f);
+    QuakeColorShifts.Init();
     // eslint-disable-next-line @typescript-eslint/unbound-method
     Cmd.AddCommand('centerview', V.StartPitchDrift);
     V.centermove = new Cvar('v_centermove', '0.15');
@@ -564,7 +409,6 @@ export default class V {
     V.iroll_level = new Cvar('v_iroll_level', '0.1');
     V.ipitch_level = new Cvar('v_ipitch_level', '0.3');
     V.idlescale = new Cvar('v_idlescale', '0');
-    V.cshiftpercent = new Cvar('gl_cshiftpercent', '100');
     V.ofsx = new Cvar('scr_ofsx', '0');
     V.ofsy = new Cvar('scr_ofsy', '0');
     V.ofsz = new Cvar('scr_ofsz', '0');
