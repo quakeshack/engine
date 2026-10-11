@@ -4,22 +4,17 @@ import Host from '../../common/Host.ts';
 import { clientRuntimeState, clientStaticState } from '../ClientState.ts';
 import Draw from '../Draw.ts';
 import Camera from '../renderer/scene/Camera.ts';
-import VID from '../VID.ts';
 
 /**
- * The small pictures in the corner and the middle of the screen that tell about the connection and the game: the
- * turtle for a low frame rate, the net for a connection that is stalling, the pause sign.
+ * The small pictures in the corner of the screen that tell about the connection: the turtle for a low frame rate
+ * and the net for a connection that is stalling. (The pause sign is the game's.)
  */
 export default class ScreenIndicators {
   /** `showturtle`: show the turtle while the frame rate is low. */
   static showturtle: Cvar = null!;
 
-  /** `showpause`: show the pause sign while the game is paused. */
-  static showpause: Cvar = null!;
-
   static net: ReturnType<typeof Draw.LoadPicFromWad> = null!;
   static turtle: ReturnType<typeof Draw.LoadPicFromWad> = null!;
-  static pause: ReturnType<typeof Draw.LoadPicFromLumpDeferred> = null!;
 
   /** How many frames in a row were slow, the turtle shows after three. */
   static #slowFrames = 0;
@@ -29,19 +24,16 @@ export default class ScreenIndicators {
    */
   static Init(): void {
     ScreenIndicators.showturtle = new Cvar('showturtle', '0');
-    ScreenIndicators.showpause = new Cvar('showpause', '1');
     ScreenIndicators.net = Draw.LoadPicFromWad('NET');
     ScreenIndicators.turtle = Draw.LoadPicFromWad('TURTLE');
-    ScreenIndicators.pause = Draw.LoadPicFromLumpDeferred('pause');
   }
 
   /**
-   * Draws the net, the turtle and the pause sign, whichever apply.
+   * Draws the net and the turtle, whichever apply.
    */
   static Draw(): void {
     ScreenIndicators.DrawNet();
     ScreenIndicators.DrawTurtle();
-    ScreenIndicators.DrawPause();
   }
 
   /** Draws the low-frame-rate turtle indicator. */
@@ -70,13 +62,6 @@ export default class ScreenIndicators {
 
     if ((Host.realtime - clientRuntimeState.last_received_message >= 0.3) && !clientStaticState.demoplayback) {
       Draw.Pic(Camera.refdef.vrect.x, Camera.refdef.vrect.y, ScreenIndicators.net);
-    }
-  }
-
-  /** Draws the pause indicator when the game is paused. */
-  static DrawPause(): void {
-    if (ScreenIndicators.showpause.value !== 0 && clientRuntimeState.paused) {
-      Draw.Pic((VID.width - ScreenIndicators.pause.width * 2) / 2, (VID.height - 48 - ScreenIndicators.pause.height * 2) / 2, ScreenIndicators.pause, 2);
     }
   }
 }

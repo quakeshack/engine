@@ -595,6 +595,19 @@ Order, as agreed: G4, G5, G2 and G3, then G6. One commit per item in each repo t
 - **Tests.** Engine: the center-print tests go with the class. id1: shows for the time of the cvar and then lets go,
   wrapping, the cvar the game owns, a new level clears it, an empty print is nothing.
 
+#### G3, the game draws the pause sign
+
+- **Engine.** `ScreenIndicators` keeps the net and the turtle (an engine diagnostic of the connection and the frame
+  rate, with the `NET` and `TURTLE` pictures of the WAD) and loses the pause sign, `showpause` and the `pause` lump.
+  `engine.CL.paused` is new and read-only.
+- **id1.** The HUD loads the `pause` lump and draws it at twice its size, centered and a little above the middle,
+  while `CL.paused` and `showpause`; it registers `showpause` under the engine's old name. hellwave inherits it.
+- **One visible change, and a decision to confirm:** the sign is drawn by the game's `draw()`, which `nohud 1`
+  skips, so `nohud` hides the pause sign now where the engine drew it regardless (the plan's G3 row said pause should
+  not vanish with `nohud`). The alternative is a second hook that runs with `nohud`; I did not add one for a sign.
+- **Tests.** Engine: the indicators test lost the pause cases and checks that `Draw` does not draw it. id1: size and
+  position, nothing while running, `showpause`.
+
 ## Testing
 
 - New tests are `.test.ts` in `test/client/` (one level, glob-safe); `v.test.mjs` and `scr.test.mjs` are replaced.

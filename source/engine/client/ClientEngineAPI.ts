@@ -497,6 +497,13 @@ export class ClientEngineAPI extends CommonEngineAPI {
       return clientRuntimeState.maxclients;
     },
     /**
+     * Whether the server has paused the game.
+     * @returns True while it is paused.
+     */
+    get paused(): boolean {
+      return clientRuntimeState.paused;
+    },
+    /**
      * What the eye is in: the contents of the leaf the view was in when the last frame was drawn. A game that
      * tints the view for liquid reads it from `startFrame()`; it lags the view by one frame.
      * @returns `CONTENT_EMPTY` before there is a view.

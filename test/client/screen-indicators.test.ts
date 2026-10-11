@@ -21,9 +21,7 @@ void describe('ScreenIndicators', () => {
   const previous = {
     net: ScreenIndicators.net,
     turtle: ScreenIndicators.turtle,
-    pause: ScreenIndicators.pause,
     showturtle: ScreenIndicators.showturtle,
-    showpause: ScreenIndicators.showpause,
   };
   let restores: Array<() => void> = [];
   let pics: PicCall[] = [];
@@ -32,9 +30,7 @@ void describe('ScreenIndicators', () => {
     pics = [];
     ScreenIndicators.net = 'net-pic' as never;
     ScreenIndicators.turtle = 'turtle-pic' as never;
-    ScreenIndicators.pause = { width: 64, height: 24 } as never;
     ScreenIndicators.showturtle = { value: 1 } as Cvar;
-    ScreenIndicators.showpause = { value: 1 } as Cvar;
 
     restores = [
       patchMembers(Host, { realtime: 5, frametime: 0.016 }),
@@ -147,34 +143,17 @@ void describe('ScreenIndicators', () => {
     });
   });
 
-  void describe('DrawPause', () => {
-    void test('draws the sign centered, a little above the middle, while paused', () => {
-      clientRuntimeState.paused = true;
-
-      ScreenIndicators.DrawPause();
-
-      assert.deepEqual(pics, [{ x: (640 - 64 * 2) / 2, y: (480 - 48 - 24 * 2) / 2, pic: ScreenIndicators.pause }]);
-    });
-
-    void test('draws nothing while the game runs, or with showpause at 0', () => {
-      ScreenIndicators.DrawPause();
-      assert.deepEqual(pics, []);
-
-      clientRuntimeState.paused = true;
-      ScreenIndicators.showpause = { value: 0 } as Cvar;
-      ScreenIndicators.DrawPause();
-      assert.deepEqual(pics, []);
-    });
-  });
-
   void describe('Draw', () => {
-    void test('draws the net, the turtle and the pause sign that apply', () => {
+    void test('draws the net and the turtle that apply, and not the pause sign, which is the game\'s', () => {
       clientRuntimeState.last_received_message = 1;
       clientRuntimeState.paused = true;
+      Host.frametime = 0.2;
 
       ScreenIndicators.Draw();
+      ScreenIndicators.Draw();
+      ScreenIndicators.Draw();
 
-      assert.deepEqual(pics.map((call) => call.pic), ['net-pic', ScreenIndicators.pause]);
+      assert.deepEqual(pics.map((call) => call.pic), ['net-pic', 'net-pic', 'net-pic', 'turtle-pic']);
     });
   });
 });
