@@ -6,7 +6,6 @@
  * `client/ClientHost.ts` and `bootstrap/DedicatedHost.ts`, which also install what happens when the host hits an error.
  */
 
-import type { HostAlertEvent } from '../../shared/GameInterfaces.ts';
 import type ServerHost from '../server/ServerHost.ts';
 
 import Cvar from './Cvar.ts';
@@ -138,7 +137,7 @@ export default class Host {
     Host.recoverFromError();
 
     Host.inerror = false;
-    eventBus.publish<[HostAlertEvent]>('host.alert', { title: 'Host Error', message: error, severity: 'error' });
+    eventBus.publish('host.alert', { title: 'Host Error', message: error, severity: 'error' });
   }
 
   /**
@@ -336,7 +335,7 @@ export default class Host {
           return;
         }
 
-        eventBus.publish(eventName, ...args);
+        eventBus.publishUntyped(eventName, ...args);
       }
     });
   }

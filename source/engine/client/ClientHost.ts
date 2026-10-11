@@ -15,7 +15,6 @@ import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
 import PlayerColors from '../common/PlayerColors.ts';
 import type { SessionRequest } from '../common/ServerController.ts';
-import type { HostAlertEvent } from '../../shared/GameInterfaces.ts';
 import Particles, { type SerializedParticle } from './renderer/effects/Particles.ts';
 import type { SerializedClientEntity } from './ClientEntities.ts';
 import type { AliasModel } from '../common/model/AliasModel.ts';
@@ -43,6 +42,7 @@ import { ModelScope, ModelType } from '../common/Mod.ts';
 import Mod from '../common/Mod.ts';
 import Chase from './Chase.ts';
 import VID from './VID.ts';
+import GL from './GL.ts';
 import ClientLifecycle from './ClientLifecycle.ts';
 import ConsoleOverlay from './ConsoleOverlay.ts';
 import SaveSlots from './menu/SaveSlots.ts';
@@ -187,6 +187,7 @@ export default class ClientHost {
 
     S.Init();
     VID.Init();
+    GL.Init();
     await Draw.Init();
     await R.Init();
     await M.Init();
@@ -227,6 +228,7 @@ export default class ClientHost {
     net.Shutdown();
     IN.Shutdown();
     VID.Shutdown();
+    GL.Shutdown();
     Pmove.Shutdown();
     Cmd.Shutdown();
     Cvar.Shutdown();
@@ -312,7 +314,7 @@ export default class ClientHost {
     }
 
     CL.Disconnect();
-    eventBus.publish<[HostAlertEvent]>('host.alert', { title: 'Host.EndGame', message, severity: 'info' });
+    eventBus.publish('host.alert', { title: 'Host.EndGame', message, severity: 'info' });
   }
 
   /**

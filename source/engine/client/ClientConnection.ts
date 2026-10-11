@@ -206,11 +206,14 @@ export default class ClientConnection {
       }
     }
 
+    // Published before the state is cleared: clearing drops the listeners a game made on its per-map bus, and the game
+    // needs to hear that the client is gone (it takes its post-process tints off, for one).
+    eventBus.publish('client.disconnected');
+
     this.clearState();
     this.cls.signon = 0;
     this.cls.changelevel = false;
     this.resetCheatCvars();
-    eventBus.publish('client.disconnected');
   }
 
   checkConnectingState(): void {

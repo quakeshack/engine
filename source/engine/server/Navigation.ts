@@ -1,5 +1,6 @@
 // import sampleBSpline from '../../shared/BSpline.ts';
 import * as Def from '../../shared/Defs.ts';
+import type { EventPath } from '../../shared/EngineEvents.ts';
 import { Octree, type OctreeNode } from '../../shared/Octree.ts';
 import Vector from '../../shared/Vector.ts';
 import Cmd from '../common/Cmd.ts';
@@ -19,8 +20,6 @@ import type { ConsoleOutput } from '../common/Services.ts';
 
 type VectorTuple = [number, number, number];
 type PlanePoint = [number, number];
-type WorkerVectorLike = Vector | VectorTuple;
-type WorkerPath = WorkerVectorLike[] | null;
 type NeighborLink = [id: number, cost: number, temporaryCostAdjustment: number];
 type SerializedWaypoint = [origin: VectorTuple, availableHeight: number, nearLedge: boolean, isClipping: boolean, isFloating: boolean];
 type SerializedWalkableSurface = [stability: number, normal: VectorTuple, faceIndex: number, waypoints: SerializedWaypoint[]];
@@ -478,7 +477,7 @@ export class Navigation {
   }
 
   #subscribePathResponse(): void {
-    this.#pathResponseEventListener = eventBus.subscribe('nav.path.response', (id: string, path: WorkerPath): void => {
+    this.#pathResponseEventListener = eventBus.subscribe('nav.path.response', (id: string, path: EventPath): void => {
       const vecpath = path ? path.map((point) => new Vector(...point)) : null;
 
       if (vecpath && Navigation.nav_debug_path?.value) {
@@ -527,7 +526,7 @@ export class Navigation {
     this.#initWorker();
     this.#subscribePathResponse();
     this.#subscribeDebugCvars();
-    eventBus.publish('nav.load', this.sv.server.mapname, this.sv.server.worldmodel!.checksum);
+    eventBus.publish('nav.load', this.sv.server.mapname!, this.sv.server.worldmodel!.checksum);
   }
 
   shutdown(): void {
@@ -761,7 +760,7 @@ export class Navigation {
     await this.files.WriteFile(filename, out, out.length);
 
     // Keep the worker in sync after every successful rebuild, including listen-server sessions.
-    eventBus.publish('nav.load', this.sv.server.mapname, this.worldmodel!.checksum);
+    eventBus.publish('nav.load', this.sv.server.mapname!, this.worldmodel!.checksum);
   }
 
   #newWalkerStandOffset(): Vector {

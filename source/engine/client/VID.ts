@@ -70,15 +70,11 @@ export default class VID {
     window.addEventListener('resize', VID.Resize);
 
     Cmd.AddCommand('fullscreen', FullscreenCommand);
-
-    eventBus.publish('vid.ready');
   }
 
   static Shutdown(): void {
     VID.mainwindow.style.display = 'none';
 
     window.removeEventListener('resize', VID.Resize);
-
-    eventBus.publish('vid.shutdown');
   }
 }

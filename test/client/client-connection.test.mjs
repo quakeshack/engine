@@ -189,6 +189,57 @@ void describe('ClientConnection', () => {
     resetClientConnectionState();
   });
 
+  void test('tells the game that the client is gone before it drops the game\'s listeners', () => {
+    resetClientConnectionState();
+
+    const heard = [];
+    const gameListener = clientRuntimeState.eventBus.subscribe('client.disconnected', () => {
+      heard.push('disconnected');
+    });
+
+    try {
+      void withMockClientRegistry(createMockClientRegistry(), () => {
+        const connection = new ClientConnection({ clientDemos: createMockClientDemos() });
+
+        connection.disconnect();
+      });
+
+      assert.deepEqual(heard, ['disconnected']);
+
+      // dropped with the rest of the per-map state, so a second disconnect finds nobody listening
+      eventBus.publish('client.disconnected');
+      assert.deepEqual(heard, ['disconnected']);
+    } finally {
+      gameListener();
+      resetClientConnectionState();
+    }
+  });
+
+  void test('shuts the game down first, then tells it that the client is gone, then drops its listeners', () => {
+    resetClientConnectionState();
+
+    const order = [];
+    const gameListener = clientRuntimeState.eventBus.subscribe('client.disconnected', () => {
+      order.push(`disconnected (game instance: ${clientRuntimeState.gameAPI === null ? 'gone' : 'still there'})`);
+    });
+    clientRuntimeState.gameAPI = { shutdown() { order.push('shutdown'); } };
+
+    try {
+      void withMockClientRegistry(createMockClientRegistry(), () => {
+        const connection = new ClientConnection({ clientDemos: createMockClientDemos() });
+
+        connection.disconnect();
+      });
+
+      // this is the order `ClientGameInterface.shutdown` documents
+      assert.deepEqual(order, ['shutdown', 'disconnected (game instance: gone)']);
+      assert.equal(clientRuntimeState.eventBus.listenerCount, 0);
+    } finally {
+      gameListener();
+      resetClientConnectionState();
+    }
+  });
+
   void test('establishes a connection and transitions into the connected state', () => {
     resetClientConnectionState();
 

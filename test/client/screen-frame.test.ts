@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import { clientConnectionState } from '../../source/engine/common/Def.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import Host from '../../source/engine/common/Host.ts';
 import CL from '../../source/engine/client/CL.ts';
 import { clientRuntimeState, clientStaticState } from '../../source/engine/client/ClientState.ts';
@@ -85,7 +86,7 @@ void describe('ScreenFrame', () => {
     gameplayStack = false;
 
     GL.gl = createFakeContext();
-    eventBus.publish('gl.ready');
+    publishGlReady();
     globals.requestAnimationFrame = (callback: AnimationCallback) => { frames.push(callback); return frames.length; };
 
     viewCvars.fov = { value: 90 } as Cvar;

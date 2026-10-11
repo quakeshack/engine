@@ -34,7 +34,7 @@ import PeerRelay from '../client/PeerRelay.ts';
 import Cmd from '../common/Cmd.ts';
 import PlatformWorker from '../common/PlatformWorker.ts';
 import workerFactories from '../common/WorkerFactories.ts';
-import { type EventBusValue, eventBus } from '../common/EventBus.ts';
+import { eventBus } from '../common/EventBus.ts';
 import { ChannelDriver, MessagePortEndpoint } from '../network/ChannelDriver.ts';
 import { LoopDriver, WebRTCDriver, WebSocketDriver } from '../network/NetworkDrivers.ts';
 import { createServerRuntime } from './createServerRuntime.ts';
@@ -117,7 +117,7 @@ export async function createBrowserClient(urls: URLs, buildConfig: BuildConfig):
       con: Con,
       operatorName: () => clientCvars.name.string,
       onNoclipAnglehack: (enabled) => { Host.noclip_anglehack = enabled; },
-      publish: (name, ...args) => { eventBus.publish(name, ...(args as EventBusValue[])); },
+      publish: (name, ...args) => { eventBus.publishUntyped(name, ...args); },
       onSessionRequest: (request) => { ClientHost.HandleSessionRequest(request); },
       onError: (message) => { relay?.closeAll(); Host.Error(message); },
       onCrash: (error) => { relay?.stop(); Host.HandleCrash(error); },

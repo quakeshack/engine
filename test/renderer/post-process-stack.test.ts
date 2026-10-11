@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import Host from '../../source/engine/common/Host.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import GL, { type GLRenderTexture } from '../../source/engine/client/GL.ts';
 import VID from '../../source/engine/client/VID.ts';
 import BlurEffect from '../../source/engine/client/renderer/postprocess/BlurEffect.ts';
@@ -53,7 +54,7 @@ void describe('PostProcess gameplay stack', () => {
   beforeEach(() => {
     calls = [];
     GL.gl = createFakeContext();
-    eventBus.publish('gl.ready');
+    publishGlReady();
 
     PostProcess.effects = [
       new RecordingEffect('color-grade', calls),

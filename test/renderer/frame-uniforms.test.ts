@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import GL from '../../source/engine/client/GL.ts';
 import type { GLProgramInfo } from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
@@ -90,7 +91,7 @@ void describe('FrameUniforms.Upload', () => {
       uniformMatrix3fv: record('uniformMatrix3fv'),
       uniformMatrix4fv: record('uniformMatrix4fv'),
     } as unknown as WebGL2RenderingContext;
-    eventBus.publish('gl.ready');
+    publishGlReady();
 
     rendererCvars.gamma = fakeCvar(1.0);
     rendererCvars.fog_color = fakeCvar(0, '255 0 51');

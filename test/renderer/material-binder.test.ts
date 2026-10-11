@@ -9,6 +9,7 @@ import DefaultTextures from '../../source/engine/client/renderer/resources/Defau
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import RenderStats from '../../source/engine/client/renderer/scene/RenderStats.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import { patchMembers, useClientStateOf } from '../support/clientState.ts';
 
 type Binding = [name: string, unit: number];
@@ -76,7 +77,7 @@ void describe('MaterialBinder', () => {
       uniform1i: (location: string, value: number) => { uniformCalls.push([location, value]); },
       uniform1f: (location: string, value: number) => { uniformCalls.push([location, value]); },
     } as unknown as WebGL2RenderingContext;
-    eventBus.publish('gl.ready');
+    publishGlReady();
     RenderStats.Reset();
   });
 

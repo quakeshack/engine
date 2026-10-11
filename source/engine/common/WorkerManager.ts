@@ -1,5 +1,6 @@
 import type { URLs } from '../build-config';
 import type { ConsoleOutput } from './Services.ts';
+import type { EngineEventName } from '../../shared/EngineEvents.ts';
 import { eventBus } from './EventBus.ts';
 import { SysError } from './Errors.ts';
 import type COM from './Com.ts';
@@ -62,7 +63,7 @@ export default class WorkerManager {
    * Spawns a worker thread and sets up event forwarding.
    * @returns worker thread wrapper
    */
-  static SpawnWorker(script: string, events: string[]): PlatformWorker {
+  static SpawnWorker(script: string, events: readonly EngineEventName[]): PlatformWorker {
     const factory = WorkerManager.#factories?.[script];
 
     console.assert(factory, `No worker factory found for script "${script}". Make sure it's registered in WorkerFactories.ts.`);
@@ -115,7 +116,7 @@ export default class WorkerManager {
           break;
 
         default:
-          eventBus.publish(event, ...(data as Array<Parameters<typeof eventBus.publish>[1]>));
+          eventBus.publishUntyped(event, ...data);
           break;
       }
     });

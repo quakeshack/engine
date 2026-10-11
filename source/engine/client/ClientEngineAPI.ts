@@ -20,7 +20,7 @@ import SessionDiscovery from './menu/SessionDiscovery.ts';
 import SaveSlotsService from './menu/SaveSlots.ts';
 import { SFX as SFXValue } from './Sound.ts';
 import VID from './VID.ts';
-import type { EventBus } from '../common/EventBus.ts';
+import type { ClientGameEventMap, GameEventBus } from '../common/EventBus.ts';
 import Cmd from '../common/Cmd.ts';
 import Cvar from '../common/Cvar.ts';
 import { HostError } from '../common/Errors.ts';
@@ -1079,7 +1079,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
     },
   };
 
-  get eventBus(): EventBus {
+  get eventBus(): GameEventBus<ClientGameEventMap> {
     return clientRuntimeState.eventBus;
   }
 
@@ -1089,7 +1089,7 @@ export class ClientEngineAPI extends CommonEngineAPI {
    * events reach it (the same set as `eventBus`) and why.
    * @returns The module-lifetime event bus.
    */
-  get moduleEventBus(): EventBus {
+  get moduleEventBus(): GameEventBus<ClientGameEventMap> {
     return CL.moduleEventBus;
   }
 }

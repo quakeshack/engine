@@ -320,6 +320,10 @@ export interface ClientGameInterface {
    * Called when the client disconnects from the server, right before the engine drops its
    * reference to this instance. Not called on a changelevel: the engine replaces the instance with
    * a new one.
+   *
+   * The order on a disconnect is: `shutdown()`, then `client.disconnected` is published, then the
+   * map's `eventBus` listeners are released. A game that unsubscribes in `shutdown()` therefore
+   * does not hear `client.disconnected`; one that leaves its listeners to the engine does.
    */
   shutdown(): void;
 

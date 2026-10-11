@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import LightStyles from '../../source/engine/client/renderer/lighting/LightStyles.ts';
 import Interpolation from '../../source/engine/client/renderer/scene/Interpolation.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
@@ -35,7 +36,7 @@ void describe('LightStyles', () => {
       UNSIGNED_BYTE: 3,
       texSubImage2D: (...args: unknown[]) => { uploads.push({ texture: bound, data: [...(args[8] as Uint8Array)] }); },
     } as unknown as WebGL2RenderingContext;
-    eventBus.publish('gl.ready');
+    publishGlReady();
   });
 
   afterEach(() => {

@@ -5,6 +5,7 @@ import Vector from '../../source/shared/Vector.ts';
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import * as Def from '../../source/engine/common/Def.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import GL from '../../source/engine/client/GL.ts';
 import DynamicLights from '../../source/engine/client/renderer/lighting/DynamicLights.ts';
@@ -44,7 +45,7 @@ void describe('DynamicLights.RenderCoronas', () => {
     lights = Array.from({ length: Def.limits.dlights }, () => ({ radius: 0, die: 0, origin: new Vector() }));
 
     GL.gl = createFakeContext();
-    eventBus.publish('gl.ready');
+    publishGlReady();
 
     restores = [
       patchMembers(rendererCvars, { flashblend: { value: 1 } as unknown as Cvar }),
@@ -90,7 +91,7 @@ void describe('DynamicLights.RenderCoronas', () => {
         return typeof property === 'string' && /^[A-Z_0-9]+$/.test(property) ? 0 : () => ({});
       },
     }) as unknown as WebGL2RenderingContext;
-    eventBus.publish('gl.ready');
+    publishGlReady();
   }
 
   void test('tints the view when the eye is inside the glare of a light, by the radius of the light', () => {

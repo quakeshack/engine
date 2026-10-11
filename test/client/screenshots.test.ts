@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import GL from '../../source/engine/client/GL.ts';
 import VID from '../../source/engine/client/VID.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
@@ -30,7 +31,7 @@ void describe('Screenshots', () => {
         return typeof property === 'string' && /^[A-Z_0-9]+$/.test(property) ? 0 : () => ({});
       },
     }) as unknown as WebGL2RenderingContext;
-    eventBus.publish('gl.ready');
+    publishGlReady();
 
     restores = [
       patchMembers(rendererCvars, {

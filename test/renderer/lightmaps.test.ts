@@ -4,6 +4,7 @@ import { afterEach, before, beforeEach, describe, test } from 'node:test';
 import GL from '../../source/engine/client/GL.ts';
 import type { GLRenderTexture } from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import Lightmaps, { LIGHTMAP_BLOCK_HEIGHT, LIGHTMAP_BLOCK_SIZE } from '../../source/engine/client/renderer/lighting/Lightmaps.ts';
 import { Face } from '../../source/engine/common/model/BaseModel.ts';
 import { BrushModel } from '../../source/engine/common/model/BSP.ts';
@@ -61,7 +62,7 @@ void describe('Lightmaps', () => {
       texSubImage2D: (...args: unknown[]) => { uploads2D.push({ args }); },
       texSubImage3D: (...args: unknown[]) => { uploads3D.push({ args }); },
     } as unknown as WebGL2RenderingContext;
-    eventBus.publish('gl.ready');
+    publishGlReady();
 
     Lightmaps.lightmaps_rgb!.fill(0);
     Lightmaps.dlightmaps_rgba!.fill(0);

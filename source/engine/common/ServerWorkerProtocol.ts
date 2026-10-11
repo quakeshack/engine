@@ -2,6 +2,7 @@ import type { BuildConfig, URLs } from '../build-config';
 import type { ServerStateMirror } from './ServerController.ts';
 import type { GameEdition } from './GameApiSupport.ts';
 import type { SearchPath } from './Com.ts';
+import { forwardedServerEventNames, type ForwardedServerEventName } from '../../shared/EngineEvents.ts';
 import type { ServerSaveResult, ServerSaveState, SessionRequest, ViewthingState } from './ServerController.ts';
 
 /**
@@ -61,17 +62,11 @@ export type ControlToServer =
 /** How loud a printed line is. */
 export type ServerPrintLevel = 'print' | 'success' | 'warning' | 'error' | 'debug';
 
-/** Engine events that are forwarded from the server's realm to the main thread, with their arguments. */
-export const forwardedServerEvents = Object.freeze([
-  'server.spawning',
-  'server.spawned',
-  'server.shutting-down',
-  'server.shutdown',
-  'server.client.connected',
-  'server.client.disconnected',
-  'nav.debug.emit-dot.temporarily',
-  'nav.debug.emit-dot.permanently',
-] as const);
+/**
+ * Engine events that are forwarded from the server's realm to the main thread, with their arguments. Derived from the
+ * `crossesWorker` flag of `engineEventTable` (`shared/EngineEvents.ts`), which is where an event is added to it.
+ */
+export const forwardedServerEvents: readonly ForwardedServerEventName[] = forwardedServerEventNames;
 
 /** Messages from the server worker to the main thread. */
 export type ControlFromServer =
@@ -84,7 +79,7 @@ export type ControlFromServer =
   | { readonly kind: 'response'; readonly id: number; readonly ok: false; readonly error: string }
   | { readonly kind: 'state'; readonly state: ServerStateMirror }
   | { readonly kind: 'print'; readonly level: ServerPrintLevel; readonly text: string; readonly color?: readonly [number, number, number] }
-  | { readonly kind: 'event'; readonly name: (typeof forwardedServerEvents)[number]; readonly args: unknown[] }
+  | { readonly kind: 'event'; readonly name: ForwardedServerEventName; readonly args: unknown[] }
   | { readonly kind: 'error'; readonly message: string }
   | { readonly kind: 'crash'; readonly name: string; readonly message: string; readonly stack?: string };
 

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import type Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import GL, { type GLRenderTexture } from '../../source/engine/client/GL.ts';
 import ColorShiftEffect, { type MixedColorShift } from '../../source/engine/client/renderer/postprocess/ColorShiftEffect.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
@@ -160,7 +161,7 @@ void describe('ColorShiftEffect', () => {
           return typeof property === 'string' && /^[A-Z_0-9]+$/.test(property) ? 0 : () => ({});
         },
       }) as unknown as WebGL2RenderingContext;
-      eventBus.publish('gl.ready');
+      publishGlReady();
 
       mock.method(PostProcess, '_blitToScreen', (_texture: unknown, x: number, y: number, width: number, height: number) => {
         events.push(`blit ${x} ${y} ${width} ${height}`);

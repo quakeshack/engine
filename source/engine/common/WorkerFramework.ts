@@ -6,7 +6,8 @@ import W from './W.ts';
 import { eventBus } from './EventBus.ts';
 import Mod from './Mod.ts';
 import Sys from './Sys.ts';
-import COM, { type ComDependencies, type SearchPath } from './Com.ts';
+import COM, { type ComDependencies } from './Com.ts';
+import type { WorkerFrameworkInitPayload } from '../../shared/EngineEvents.ts';
 
 type WorkerConsoleMessage = string;
 
@@ -31,8 +32,6 @@ export interface WorkerServices {
   readonly con: typeof WorkerConsole;
   readonly com: COM;
 }
-
-type WorkerFrameworkInitPayload = [SearchPath[], SearchPath[] | null, string];
 
 class WorkerConsole {
   static Print(message: WorkerConsoleMessage) {
@@ -130,8 +129,7 @@ export default class WorkerFramework {
       workerCom = new (comModule.default as typeof COM)(comDependencies);
 
       this.port.on?.('message', ({ event, args }) => {
-        const eventArgs = Array.isArray(args) ? args as Array<Parameters<typeof eventBus.publish>[1]> : [];
-        eventBus.publish(event, ...eventArgs);
+        eventBus.publishUntyped(event, ...(Array.isArray(args) ? args as unknown[] : []));
       });
     } else {
       this.port = self as unknown as WorkerFrameworkPort;
@@ -139,8 +137,7 @@ export default class WorkerFramework {
 
       this.port.addEventListener?.('message', (event) => {
         const { event: eventName, args } = event.data;
-        const eventArgs = Array.isArray(args) ? args as Array<Parameters<typeof eventBus.publish>[1]> : [];
-        eventBus.publish(eventName, ...eventArgs);
+        eventBus.publishUntyped(eventName, ...(Array.isArray(args) ? args as unknown[] : []));
       });
     }
 

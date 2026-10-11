@@ -3,6 +3,7 @@ import { afterEach, describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import { SimpleSkyBox } from '../../source/engine/client/renderer/scene/Sky.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 
@@ -26,7 +27,7 @@ void describe('Sky shutdown', () => {
   void test('a skybox with buffers can be shut down after its context is gone, as when the page is closing', (t) => {
     GL.gl = createFakeContext();
     t.mock.method(GL, 'CreateVAO', () => ({}) as WebGLVertexArrayObject);
-    eventBus.publish('gl.ready');
+    publishGlReady();
 
     const sky = new SimpleSkyBox({ textures: [] } as unknown as BrushModel);
 
@@ -41,7 +42,7 @@ void describe('Sky shutdown', () => {
   void test('shutting a skybox down twice is harmless', (t) => {
     GL.gl = createFakeContext();
     t.mock.method(GL, 'CreateVAO', () => ({}) as WebGLVertexArrayObject);
-    eventBus.publish('gl.ready');
+    publishGlReady();
 
     const sky = new SimpleSkyBox({ textures: [] } as unknown as BrushModel);
 

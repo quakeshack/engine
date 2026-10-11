@@ -1,11 +1,9 @@
+import type { EventPosition } from '../../shared/EngineEvents.ts';
 import Vector from '../../shared/Vector.ts';
 import { eventBus } from '../common/EventBus.ts';
 import Con from '../common/Console.ts';
 import { clientRuntimeState } from './ClientState.ts';
 import Particles, { ParticleType } from './renderer/effects/Particles.ts';
-
-type VectorTuple = readonly [number, number, number];
-
 
 /**
  * Draws the navigation debug visualization. The server only says where a dot belongs
@@ -16,11 +14,11 @@ export default class NavigationDebug {
    * Subscribes to the debug dot events of the navigation system. Call once at client startup.
    */
   static Init(): void {
-    eventBus.subscribe('nav.debug.emit-dot.temporarily', (position: VectorTuple, color: number, ttl: number): void => {
+    eventBus.subscribe('nav.debug.emit-dot.temporarily', (position: EventPosition, color: number, ttl: number): void => {
       NavigationDebug.#emitDot(new Vector(...position), color, ttl);
     });
 
-    eventBus.subscribe('nav.debug.emit-dot.permanently', (position: VectorTuple, color: number): void => {
+    eventBus.subscribe('nav.debug.emit-dot.permanently', (position: EventPosition, color: number): void => {
       NavigationDebug.#emitDot(new Vector(...position), color, Infinity);
     });
   }

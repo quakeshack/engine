@@ -446,15 +446,16 @@ a remote client does, so there is one path to test.
 
 ### C. Game module lifetimes, typed events, hot reload (Track C)
 
-- **Lifetime scopes** `engine > module > connection > map`, each a disposable owner. Anything a game
-  or the engine subscribes in a scope is released when the scope ends. This replaces both "wipe the
-  per-connection bus on disconnect" and the separate `ClientEngineAPI.moduleEventBus`; today's two
-  buses become two scopes of one mechanism with the same observable behavior. `unsubscribeAll()`
-  has no exceptions, by design, and that stays true at scope end.
-- **Typed event map**: one `interface EngineEvents` in `source/shared/` mapping event name to
-  payload tuple (games augment their own), so `publish`/`subscribe` are checked. A test asserts the
-  documented events in `docs/events.md` equal the keys of the map, which is the enforcement the
-  `event-bus-docs-sync` skill says is currently missing.
+- **Lifetime scopes** `engine > module > map` (no `connection` scope: nothing needs "survives changelevel, dies on
+  disconnect" yet, see the Track C plan), each a disposable owner. Anything a game or the engine subscribes in a scope is
+  released when the scope ends. This replaces both "wipe the per-map bus on every serverdata" and the separate
+  `ClientEngineAPI.moduleEventBus`; today's two buses become two scopes of one mechanism with the same observable
+  behavior. `unsubscribeAll()` has no exceptions, by design, and that stays true at scope end.
+- **Typed event map** (Phase 1, done): `EngineEventMap` and `engineEventTable` in `source/shared/EngineEvents.ts` map an
+  event name to its argument tuple and to the flags that say whether a game sees it and whether it crosses the worker
+  boundary, so `publish`/`subscribe` are checked. Each game gets its own typed view for its own events (declaration merging
+  would put two games in one namespace), engine names stay strict. A test asserts the documented events in `docs/events.md`
+  equal the keys of the table, which is the enforcement the `event-bus-docs-sync` skill used to say was missing.
 - **Events stop being wiring.** After Track A the bus no longer breaks circular dependencies; what
   remains are lifecycle and cross-realm notifications. Direct calls replace event use where a return
   value or hot path is involved.
@@ -1400,6 +1401,21 @@ Still unverified: the navigation worker with a real path request on the new `Wor
 waits for the navigation meshes of the Hellwave maps and is checked there.
 
 ### Later tracks (own plans, order flexible after Phase 3)
+
+State on 2026-10-11 (the release in the next section waits for these, or for an amendment of its scope):
+
+- **C**: `plans/track-c-lifetimes-and-events.md`. Phase 0 (three events games listened for but never received, and a disconnect
+  event published after the listeners were gone) and Phase 1 (the typed event map, `GameEventBus`, the derived lists and the
+  docs-equals-map test) and Phase 2 (scopes for the client and the server game, `ServerEngineAPI.moduleEventBus`) and
+  Phase 3 (the de-wiring: `vid.ready`, `vid.shutdown` and `gl.texturemode` became direct calls, the rest of the classified
+  events stay) are done. The scopes are three, `engine`, `module` and `map`, not the four sketched in the Track C section
+  above. Phase 4 (server hot reload) is parked.
+- **D3 and D4** (frame graph, GPU abstraction): not started, no plan.
+- **E**: not started. `sharedCollisionModelSource` is still one module-level instance, there is no `CollisionWorld` interface and
+  no client/server `Pmove` determinism test.
+- **F**: only the first step (the shared `AssetSource`) exists. Content-hash addressing and the rest have no plan.
+- **G**: half of the type-checked tests (55 `.test.ts` against 118 `.mjs`); `plans/server-replay.md` does not exist; the
+  `console.profile` calls are still in `ClientHost`.
 
 C (lifetimes and typed events) can start after Phase 2. The replay recorder (Track G) starts after
 Phase 3, as `plans/server-replay.md`. D1 (shader chunks) is independent of A/B

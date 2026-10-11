@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import GL from '../../source/engine/client/GL.ts';
 import type { GLRenderTexture } from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 
 void describe('PostProcess depth sampling', () => {
@@ -31,7 +32,7 @@ void describe('PostProcess depth sampling', () => {
       RENDERBUFFER: 3,
       framebufferRenderbuffer: () => { log.push('detach the depth renderbuffer'); },
     } as unknown as WebGL2RenderingContext;
-    eventBus.publish('gl.ready');
+    publishGlReady();
   });
 
   afterEach(() => {

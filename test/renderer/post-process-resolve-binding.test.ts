@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import GL from '../../source/engine/client/GL.ts';
 import VID from '../../source/engine/client/VID.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
@@ -74,7 +75,7 @@ void describe('PostProcess.resolveGameplayStack', () => {
         return typeof property === 'string' && /^[A-Z_0-9]+$/.test(property) ? 0 : () => ({});
       },
     }) as unknown as WebGL2RenderingContext;
-    eventBus.publish('gl.ready');
+    publishGlReady();
     PostProcess.setStack([{ id: 'blur', settings: { radius: 2 } }]);
 
     PostProcess.resolveGameplayStack();

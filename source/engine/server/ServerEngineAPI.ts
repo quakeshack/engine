@@ -2,7 +2,7 @@ import type { EdictData, EdictValueType, SerializableType } from '../../shared/G
 import type { SzBuffer } from '../network/MSG.ts';
 import type ParsedQC from '../common/model/parsers/ParsedQC.ts';
 import type { Visibility } from '../common/model/BSP.ts';
-import type { EventBus } from '../common/EventBus.ts';
+import type { GameEventBus, ServerGameEventMap } from '../common/EventBus.ts';
 import type Server from './Server.ts';
 
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
@@ -646,10 +646,20 @@ export class ServerEngineAPI {
   }
 
   /**
-   * Server game event bus, reset on every map load.
+   * Server game event bus, reset on every map load. See `moduleEventBus` for a listener that has to outlive a map.
    * @returns The active server event bus.
    */
-  get eventBus(): EventBus {
+  get eventBus(): GameEventBus<ServerGameEventMap> {
     return this.#sv.server.eventBus;
+  }
+
+  /**
+   * A second bus alongside `eventBus`, living for the whole game module instead of one map: it is not wiped when a
+   * map spawns or shuts down, so a listener set up once (in the static `ServerGameAPI.Init`) keeps working. It is
+   * given the same engine events as `eventBus`. A listener made on `eventBus` in `Init` is dropped at the first spawn.
+   * @returns The module-lifetime event bus.
+   */
+  get moduleEventBus(): GameEventBus<ServerGameEventMap> {
+    return this.#sv.moduleScope.events;
   }
 }

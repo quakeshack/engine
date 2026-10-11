@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
 import DynamicLights from '../../source/engine/client/renderer/lighting/DynamicLights.ts';
 import Lightmaps, { LIGHTMAP_BLOCK_SIZE } from '../../source/engine/client/renderer/lighting/Lightmaps.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
@@ -222,7 +223,7 @@ void describe('DynamicLights', () => {
       );
 
       GL.gl = { TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, texSubImage2D() {} } as unknown as WebGL2RenderingContext;
-      eventBus.publish('gl.ready');
+      publishGlReady();
     });
 
     afterEach(() => {

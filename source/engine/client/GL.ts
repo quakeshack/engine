@@ -466,6 +466,123 @@ class GL {
     gl.bindVertexArray(null);
     return vao;
   }
+
+  /**
+   * Initializes the WebGL context and sets up the default state. Called by `ClientHost` once the viewport exists.
+   */
+  static Init(): void {
+    try {
+      const options: WebGLContextAttributes = {
+        alpha: false,
+        preserveDrawingBuffer: true,
+      };
+
+      gl = requireValue(VID.mainwindow.getContext('webgl2', options) as WebGL2RenderingContext | null, 'Unable to initialize WebGL2. Your browser may not support it.');
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Unable to initialize WebGL2. ${error.message}`);
+      }
+      throw new Error('Unable to initialize WebGL2.');
+    }
+
+    GL.maxtexturesize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+
+    gl.cullFace(gl.FRONT);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+
+    textureModes['GL_NEAREST'] = { min: gl.NEAREST, max: gl.NEAREST };
+    textureModes['GL_LINEAR'] = { min: gl.LINEAR, max: gl.LINEAR };
+    textureModes['GL_NEAREST_MIPMAP_NEAREST'] = { min: gl.NEAREST_MIPMAP_NEAREST, max: gl.NEAREST };
+    textureModes['GL_LINEAR_MIPMAP_NEAREST'] = { min: gl.LINEAR_MIPMAP_NEAREST, max: gl.LINEAR };
+    textureModes['GL_NEAREST_MIPMAP_LINEAR'] = { min: gl.NEAREST_MIPMAP_LINEAR, max: gl.NEAREST };
+    textureModes['GL_LINEAR_MIPMAP_LINEAR'] = { min: gl.LINEAR_MIPMAP_LINEAR, max: gl.LINEAR };
+
+    currentTextureMode = 'GL_LINEAR_MIPMAP_LINEAR';
+
+    GL.picmip = new Cvar('gl_picmip', '0');
+    GL.clear = new Cvar('gl_clear', '0', Cvar.FLAG.ARCHIVE, '1 = clear with magenta color, 0 = clear black');
+    Cmd.AddCommand('gl_texturemode', TextureModeCommand);
+    Cmd.AddCommand('gl_texturelist', TextureListCommand);
+
+    initClear();
+    eventBus.subscribe('cvar.changed.gl_clear', () => { initClear(); });
+
+    GL.streamArray = new ArrayBuffer(8192);
+    GL.streamArrayBytes = new Uint8Array(GL.streamArray);
+    GL.streamArrayPosition = 0;
+    GL.streamArrayVertexCount = 0;
+    GL.streamArrayView = new DataView(GL.streamArray);
+    GL.streamBuffer = requireValue(gl.createBuffer(), 'Failed to create stream vertex buffer');
+    gl.bindBuffer(gl.ARRAY_BUFFER, GL.streamBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, GL.streamArray.byteLength, gl.DYNAMIC_DRAW);
+    GL.streamBufferPosition = 0;
+    missingPicTexture.upload((() => {
+      const l = 32;
+      const data = new Uint8Array(l * l * 4);
+      for (let i = 0; i < data.length; i += 4) {
+        const unevenRow = Math.floor(i / (l * 4)) % 2 === 1;
+        data[i] = ((unevenRow ? 1 : 0) + Math.floor(i / 4)) % 2 === 0 ? 255 : 0;
+        data[i + 1] = 0;
+        data[i + 2] = 0;
+        data[i + 3] = 255;
+      }
+      return data;
+    })());
+
+    if (profileGL) {
+      // wrap the context in a debug proxy to trap errors and do some profiling
+      gl = wrapGL(gl);
+
+      setInterval(() => {
+        const pairs = Object.entries(glProfilingStats);
+        pairs.sort((a, b) => b[1] - a[1]);
+
+        if (pairs.length > 0) {
+          console.info('GL Profiling Stats:');
+          for (const [key, value] of pairs) {
+            if (value === 0) {
+              continue;
+            }
+
+            console.info(`  ${key}: ${value}`);
+          }
+        }
+
+        for (const key in glProfilingStats) {
+          glProfilingStats[key] = 0;
+        }
+      }, 5000);
+    }
+
+    GL.gl = gl;
+    eventBus.publish('gl.ready', gl);
+  }
+
+  /**
+   * Cleans up the WebGL context and releases resources. Called by `ClientHost` after the viewport is shut down.
+   */
+  static Shutdown(): void {
+    for (const { program } of GL.programs) {
+      gl.deleteProgram(program);
+    }
+
+    currentTextureTargets.length = 0;
+    currentTextureTarget = null;
+
+    for (const texture of textureCache.values()) {
+      texture.free();
+    }
+
+    textureCache.clear();
+
+    GL.programs.length = 0;
+    GL.currentProgram = null;
+    GL.currentVAO = null;
+    savedDefaultAttribBits = 0;
+    GL.gl = null!;
+    gl = null!;
+    eventBus.publish('gl.shutdown');
+  }
 }
 
 export default GL;
@@ -690,7 +807,8 @@ export class GLTexture {
   height = 0;
   #texnum: WebGLTexture | null = null;
   #textureMode = '';
-  #textureModeListener: (() => void) | null = null;
+  /** Whether the texture keeps the mode it was given and ignores `gl_texturemode`. */
+  #textureModeLocked = false;
   #textureWrap: TextureWrapMode = 'repeat';
 
   get ready(): boolean {
@@ -717,12 +835,6 @@ export class GLTexture {
     if (data !== null) {
       this.upload(data);
     }
-
-    this.#textureModeListener = eventBus.subscribe('gl.texturemode', (name: string) => {
-      if (this.#textureMode !== name) {
-        this._setTextureMode(name);
-      }
-    });
   }
 
   /**
@@ -830,6 +942,16 @@ export class GLTexture {
   }
 
   /**
+   * Applies the texture mode the `gl_texturemode` command chose, unless the texture is locked to a mode of its own.
+   * @param name texture mode name
+   */
+  followTextureMode(name: string): void {
+    if (!this.#textureModeLocked && this.#textureMode !== name) {
+      this._setTextureMode(name);
+    }
+  }
+
+  /**
    * Will lock the texture mode to the specified name.
    * Changes to gl_texturemode will no longer change this texture’s mode.
    * @param {string} name texture mode name
@@ -838,10 +960,7 @@ export class GLTexture {
   lockTextureMode(name: string): this {
     console.assert(textureModes[name] !== undefined, 'Valid texture mode required');
 
-    if (this.#textureModeListener !== null) {
-      this.#textureModeListener();
-      this.#textureModeListener = null;
-    }
+    this.#textureModeLocked = true;
 
     if (this.#textureMode !== name) {
       this._setTextureMode(name);
@@ -942,11 +1061,6 @@ export class GLTexture {
   }
 
   free(): void {
-    if (this.#textureModeListener !== null) {
-      this.#textureModeListener();
-      this.#textureModeListener = null;
-    }
-
     if (this.#texnum !== null) {
       gl.deleteTexture(this.#texnum);
       this.#texnum = null;
@@ -980,9 +1094,10 @@ class TextureModeCommand extends ConsoleCommand {
 
     currentTextureMode = uppercaseName;
 
-    const { min, max } = textureModes[currentTextureMode];
-
-    eventBus.publish('gl.texturemode', uppercaseName, { min, max });
+    // every texture in the cache is alive: `free()` takes it out
+    for (const texture of textureCache.values()) {
+      texture.followTextureMode(uppercaseName);
+    }
 
     Con.Print('Texture mode set to: ' + uppercaseName + '\n');
   }
@@ -1073,122 +1188,3 @@ function initClear(): void {
   }
 }
 
-/**
- * Initializes the WebGL context and sets up the default state.
- */
-function GL_Init(): void {
-  try {
-    const options: WebGLContextAttributes = {
-      alpha: false,
-      preserveDrawingBuffer: true,
-    };
-
-    gl = requireValue(VID.mainwindow.getContext('webgl2', options) as WebGL2RenderingContext | null, 'Unable to initialize WebGL2. Your browser may not support it.');
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Unable to initialize WebGL2. ${error.message}`);
-    }
-    throw new Error('Unable to initialize WebGL2.');
-  }
-
-  GL.maxtexturesize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-
-  gl.cullFace(gl.FRONT);
-  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
-
-  textureModes['GL_NEAREST'] = { min: gl.NEAREST, max: gl.NEAREST };
-  textureModes['GL_LINEAR'] = { min: gl.LINEAR, max: gl.LINEAR };
-  textureModes['GL_NEAREST_MIPMAP_NEAREST'] = { min: gl.NEAREST_MIPMAP_NEAREST, max: gl.NEAREST };
-  textureModes['GL_LINEAR_MIPMAP_NEAREST'] = { min: gl.LINEAR_MIPMAP_NEAREST, max: gl.LINEAR };
-  textureModes['GL_NEAREST_MIPMAP_LINEAR'] = { min: gl.NEAREST_MIPMAP_LINEAR, max: gl.NEAREST };
-  textureModes['GL_LINEAR_MIPMAP_LINEAR'] = { min: gl.LINEAR_MIPMAP_LINEAR, max: gl.LINEAR };
-
-  currentTextureMode = 'GL_LINEAR_MIPMAP_LINEAR';
-
-  GL.picmip = new Cvar('gl_picmip', '0');
-  GL.clear = new Cvar('gl_clear', '0', Cvar.FLAG.ARCHIVE, '1 = clear with magenta color, 0 = clear black');
-  Cmd.AddCommand('gl_texturemode', TextureModeCommand);
-  Cmd.AddCommand('gl_texturelist', TextureListCommand);
-
-  initClear();
-  eventBus.subscribe('cvar.changed.gl_clear', () => { initClear(); });
-
-  GL.streamArray = new ArrayBuffer(8192);
-  GL.streamArrayBytes = new Uint8Array(GL.streamArray);
-  GL.streamArrayPosition = 0;
-  GL.streamArrayVertexCount = 0;
-  GL.streamArrayView = new DataView(GL.streamArray);
-  GL.streamBuffer = requireValue(gl.createBuffer(), 'Failed to create stream vertex buffer');
-  gl.bindBuffer(gl.ARRAY_BUFFER, GL.streamBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, GL.streamArray.byteLength, gl.DYNAMIC_DRAW);
-  GL.streamBufferPosition = 0;
-  missingPicTexture.upload((() => {
-    const l = 32;
-    const data = new Uint8Array(l * l * 4);
-    for (let i = 0; i < data.length; i += 4) {
-      const unevenRow = Math.floor(i / (l * 4)) % 2 === 1;
-      data[i] = ((unevenRow ? 1 : 0) + Math.floor(i / 4)) % 2 === 0 ? 255 : 0;
-      data[i + 1] = 0;
-      data[i + 2] = 0;
-      data[i + 3] = 255;
-    }
-    return data;
-  })());
-
-  if (profileGL) {
-    // wrap the context in a debug proxy to trap errors and do some profiling
-    gl = wrapGL(gl);
-
-    setInterval(() => {
-      const pairs = Object.entries(glProfilingStats);
-      pairs.sort((a, b) => b[1] - a[1]);
-
-      if (pairs.length > 0) {
-        console.info('GL Profiling Stats:');
-        for (const [key, value] of pairs) {
-          if (value === 0) {
-            continue;
-          }
-
-          console.info(`  ${key}: ${value}`);
-        }
-      }
-
-      for (const key in glProfilingStats) {
-        glProfilingStats[key] = 0;
-      }
-    }, 5000);
-  }
-
-  GL.gl = gl;
-  eventBus.publish('gl.ready', gl);
-}
-
-/**
- * Cleans up the WebGL context and releases resources.
- */
-function GL_Shutdown(): void {
-  for (const { program } of GL.programs) {
-    gl.deleteProgram(program);
-  }
-
-  currentTextureTargets.length = 0;
-  currentTextureTarget = null;
-
-  for (const texture of textureCache.values()) {
-    texture.free();
-  }
-
-  textureCache.clear();
-
-  GL.programs.length = 0;
-  GL.currentProgram = null;
-  GL.currentVAO = null;
-  savedDefaultAttribBits = 0;
-  GL.gl = null!;
-  gl = null!;
-  eventBus.publish('gl.shutdown');
-}
-
-eventBus.subscribe('vid.ready', () => { GL_Init(); });
-eventBus.subscribe('vid.shutdown', () => { GL_Shutdown(); });

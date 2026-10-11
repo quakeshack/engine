@@ -9,7 +9,9 @@ import * as Protocol from '../network/Protocol.ts';
 import * as Def from './../common/Def.ts';
 import Cmd, { ConsoleCommand } from '../common/Cmd.ts';
 import { ED, ServerEdict } from './Edict.ts';
-import { EventBus, eventBus } from '../common/EventBus.ts';
+import { eventBus, type ServerGameEventMap } from '../common/EventBus.ts';
+import { Scope } from '../common/Scope.ts';
+import { serverGameEventFamilies, serverGameEventNames } from '../../shared/EngineEvents.ts';
 import { requireActiveGameModule } from '../common/GameModule.ts';
 import { ServerEngineAPI } from './ServerEngineAPI.ts';
 import * as Defs from '../../shared/Defs.ts';
@@ -54,7 +56,8 @@ interface ServerState {
   edicts: ServerEdict[];
   mapname: string | null;
   worldmodel: BrushModel | null;
-  eventBus: EventBus;
+  /** The bus of the server game for one map, `ServerEngineAPI.eventBus`: the map scope's `events`. */
+  readonly eventBus: Scope<ServerGameEventMap>['events'];
   navigation: Navigation | null;
   gameAPI: ServerGameInterface | null;
   gameVersion: string | null;
@@ -127,6 +130,27 @@ export default class Server {
   /** What a game's server side sees of the engine. */
   readonly engineAPI: ServerEngineAPI;
 
+  /**
+   * The lifetime of the loaded game module, for as long as the server exists: its bus is
+   * `ServerEngineAPI.moduleEventBus`, which a map change does not wipe.
+   */
+  readonly moduleScope = new Scope<ServerGameEventMap>('module', {
+    source: eventBus,
+    names: serverGameEventNames,
+    families: serverGameEventFamilies,
+  });
+
+  /**
+   * The lifetime of one map: from `SpawnServer` to `ShutdownServer`. Its bus is `ServerEngineAPI.eventBus`, and
+   * whatever the game or the engine registered on it is released when the map ends.
+   */
+  readonly mapScope = new Scope<ServerGameEventMap>('map', {
+    parent: this.moduleScope,
+    source: eventBus,
+    names: serverGameEventNames,
+    families: serverGameEventFamilies,
+  });
+
   /** current server state */
   server: ServerState = {
     time: 0,
@@ -139,7 +163,7 @@ export default class Server {
     edicts: [],
     mapname: null,
     worldmodel: null,
-    eventBus: new EventBus('server-game'),
+    eventBus: this.mapScope.events,
     navigation: null,
     gameAPI: null,
     gameVersion: null,
@@ -292,6 +316,11 @@ export default class Server {
         this.messages.cvarChanged(cvar);
       }
     });
+
+    // The game's buses are their own: the scopes hand it `cvar.changed` and `cvar.changed.<cvar-name>` as `Cvar.set`
+    // publishes them. The map scope is restarted at every spawn, the module scope is never ended.
+    this.moduleScope.begin();
+    this.mapScope.begin();
 
     this.InitNextmapStuff();
     this.InitPmove();
@@ -547,7 +576,7 @@ export default class Server {
     this.#setupClientDataFields();
     this.#setupExtendedEntityFields();
 
-    this.server.eventBus.unsubscribeAll();
+    this.mapScope.restart();
     this.server.navigation = new Navigation(worldmodel, { con: this.con, files: this.files, sv: this });
 
     console.assert(this.server.gameAPI !== null, 'SV.server.gameAPI is initialized');
@@ -602,7 +631,7 @@ export default class Server {
       this.server.navigation = null;
     }
 
-    this.server.eventBus.unsubscribeAll();
+    this.mapScope.end();
     this.svs.changelevelIssued = false;
 
     if (isCrashShutdown) {
