@@ -99,6 +99,13 @@ culling) would solve problems this renderer does not have. What it does have is 
 
 ## Design
 
+**Read this as the design that was drafted. Where the build differs, the "what shipped" section of the phase says
+so; the differences, in one place:** B has no declarations file, a pass declares itself by its call and the targets
+supply the rest (Phase 2). C is not a swap of the depth texture for a renderbuffer with a resolve at the first
+sampling pass; the depth is copied into a texture of its own and the frame stays multisampled, so the scene is
+resolved once at the end (Phase 3). `PostProcess.active` was not replaced (Phase 2). `RenderTarget`, the output handed
+to effects (D), the record and the `r_framegraph` dump (E) are as designed. Option 2 and Phase 4 were not built.
+
 ### A. `RenderTarget`
 
 A class (new directory `source/engine/client/renderer/frame/`, not `GL.ts`: `GL.ts` is in the server worker's import
