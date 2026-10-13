@@ -1,6 +1,7 @@
-import GL, { GLRenderTexture } from '../../GL.ts';
+import GL, { type GLRenderTexture } from '../../GL.ts';
 import VID from '../../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
+import RenderTarget from '../frame/RenderTarget.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import type { PostProcessBlurDescriptor } from '../../../../shared/GameInterfaces.ts';
 
@@ -15,11 +16,8 @@ eventBus.subscribe('gl.shutdown', () => {
 });
 
 export default class BlurEffect extends PostProcessEffect {
-  /** Intermediate FBO for the horizontal pass. */
-  static intermediateFBO: WebGLFramebuffer | null = null;
-
-  /** Color texture for the horizontal-pass result. */
-  static intermediateTexture: GLRenderTexture | null = null;
+  /** Target of the horizontal pass, whose texture the vertical pass reads. */
+  static intermediateTarget: RenderTarget | null = null;
 
   /** Nothing is blurred at a radius of 0. */
   override readonly neutral: PostProcessBlurDescriptor = { radius: 0.0 };
@@ -40,34 +38,16 @@ export default class BlurEffect extends PostProcessEffect {
   }
 
   override init(): void {
-    BlurEffect.intermediateTexture = new GLRenderTexture();
-    BlurEffect.intermediateTexture.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    BlurEffect.intermediateFBO = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BlurEffect.intermediateFBO);
-    BlurEffect.intermediateTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    BlurEffect.intermediateTarget = new RenderTarget({ name: 'blur-intermediate', color: [{ storage: 'texture', filter: 'linear' }], depth: null });
   }
 
   override resize(width: number, height: number): void {
-    if (!BlurEffect.intermediateTexture) { return; }
-    BlurEffect.intermediateTexture.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    BlurEffect.intermediateTarget?.resize(width, height);
   }
 
   override shutdown(): void {
-    if (BlurEffect.intermediateFBO) {
-      gl.deleteFramebuffer(BlurEffect.intermediateFBO);
-      BlurEffect.intermediateFBO = null;
-    }
-    if (BlurEffect.intermediateTexture) {
-      BlurEffect.intermediateTexture.free();
-      BlurEffect.intermediateTexture = null;
-    }
+    BlurEffect.intermediateTarget?.free();
+    BlurEffect.intermediateTarget = null;
   }
 
   #blurPass(inputTexture: GLRenderTexture, dirX: number, dirY: number, radius: number, x: number, y: number, width: number, height: number): void {
@@ -81,7 +61,11 @@ export default class BlurEffect extends PostProcessEffect {
   }
 
   override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number, settings: PostProcessBlurDescriptor | null = null): void {
-    if (!BlurEffect.intermediateFBO || !BlurEffect.intermediateTexture) { return; }
+    const intermediate = BlurEffect.intermediateTarget;
+
+    if (!intermediate) {
+      return;
+    }
 
     const s = BlurEffect.resolveSettings(settings ?? {});
     const radius = s.radius!;
@@ -94,13 +78,13 @@ export default class BlurEffect extends PostProcessEffect {
     const ph = (height * VID.pixelRatio) >> 0;
 
     // Horizontal pass → intermediate FBO.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BlurEffect.intermediateFBO);
+    intermediate.bind();
     gl.viewport(0, 0, pw, ph);
     this.#blurPass(inputTexture, 1.0, 0.0, radius, 0, 0, VID.width, VID.height);
 
     // Vertical pass → original output FBO.
     gl.bindFramebuffer(gl.FRAMEBUFFER, outputFBO);
     gl.viewport(outputViewport[0], outputViewport[1], outputViewport[2], outputViewport[3]);
-    this.#blurPass(BlurEffect.intermediateTexture, 0.0, 1.0, radius, x, y, width, height);
+    this.#blurPass(intermediate.colorTexture(0), 0.0, 1.0, radius, x, y, width, height);
   }
 }

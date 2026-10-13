@@ -8,10 +8,12 @@
  *
  * - `<distDir>` is a production browser build (`npx vite build --mode production --outDir <dir> --emptyOutDir`).
  * - It is served on `[port]` (default 3101) with `/qfs/*` proxied to a running dedicated server, which is left
- *   alone. `DEDICATED_PORT` overrides its port (default 3000). Both must run the same game (`id1`).
+ *   alone. `DEDICATED_PORT` overrides its port (default 3000). Both must run the same game (`id1` unless
+ *   `CAPTURE_GAME` says otherwise). `CAPTURE_MAP` loads that map with the `map` command instead of the new-game menu
+ *   path, and `CAPTURE_MSAA` sets `gl_msaa` before the first view.
  * - `playwright` is not a dependency of this repo, see section 1 of the doc for how to make it importable.
  *
- * The scene is `e1m1`, paused, with the client clock pinned and the particle generator seeded, so that two
+ * The scene is the map the new-game menu path starts (`start`), paused, with the client clock pinned and the particle generator seeded, so that two
  * captures of one build differ only in what animates in real time (sky, liquids, the FPS counter).
  *
  * Which parts of the engine the script touches is collected in `installAdapter()`: when a refactor moves a
@@ -36,6 +38,12 @@ if (distDir === undefined || outDir === undefined) {
 
 const DEDICATED = { host: '127.0.0.1', port: Number(process.env.DEDICATED_PORT ?? 3000) };
 const VIEWPORT = { width: 960, height: 600 };
+
+// `CAPTURE_MAP` loads another map than the new-game menu path does (`CAPTURE_GAME` is the mod the build and the
+// dedicated server run, `id1` when left out), `CAPTURE_MSAA` sets `gl_msaa` before the first view
+const MAP = process.env.CAPTURE_MAP ?? null;
+const GAME = process.env.CAPTURE_GAME ?? 'id1';
+const MSAA = process.env.CAPTURE_MSAA ?? null;
 
 // a fixed point in time: where lightstyles and entity animation are read from while the game is paused
 const PINNED_CLIENT_TIME = 5000.25;
@@ -320,16 +328,31 @@ async function setCamera(view) {
   }, view);
 }
 
-await page.goto(`http://127.0.0.1:${portArgument}/`, { waitUntil: 'load' });
+await page.goto(`http://127.0.0.1:${portArgument}/${GAME === 'id1' ? '' : `?game=${GAME}`}`, { waitUntil: 'load' });
 await page.waitForFunction(() => window.engine?.CL?.cls?.serverController, null, { timeout: 60000 });
 await page.waitForTimeout(3000);
 
-// main menu: Single Player, New Game
-await page.keyboard.press('Enter');
-await page.waitForTimeout(500);
-await page.keyboard.press('Enter');
+if (MAP === null) {
+  // main menu: Single Player, New Game
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(500);
+  await page.keyboard.press('Enter');
+} else {
+  await enter(`map ${MAP}`);
+}
+
 await page.waitForFunction(() => window.engine.CL.cls.signon === 4 && window.engine.CL.cls.serverController.state.active, null, { timeout: 90000 });
 await page.waitForTimeout(3000);
+
+if (MSAA !== null) {
+  await enter(`gl_msaa ${MSAA}`);
+
+  // the scene target only takes the sample count up when its size changes
+  await page.setViewportSize({ width: VIEWPORT.width + 1, height: VIEWPORT.height });
+  await page.waitForTimeout(1000);
+  await page.setViewportSize(VIEWPORT);
+  await page.waitForTimeout(1000);
+}
 
 await enter('r_speeds 1');
 await enter('pause');
@@ -409,7 +432,14 @@ if (water !== null) {
 await setCamera(spawn);
 await capture('09-spawn-again');
 
-fs.writeFileSync(path.join(outDir, 'views.json'), JSON.stringify({ views, found: { sky: sky !== null, water: water !== null }, log: consoleLog.slice(0, 40) }, null, 2));
+const setup = await page.evaluate(() => ({
+  map: window.engine.CL.state.worldmodel?.name ?? null,
+  gl_msaa: window.engine.PostProcess.msaa.value,
+  msaaSamples: window.engine.PostProcess.msaaSamples,
+  fogVolumes: window.engine.CL.state.worldmodel?.fogVolumes?.length ?? 0,
+}));
+
+fs.writeFileSync(path.join(outDir, 'views.json'), JSON.stringify({ setup, views, found: { sky: sky !== null, water: water !== null }, log: consoleLog.slice(0, 40) }, null, 2));
 console.log(`${Object.keys(views).length} views written to ${outDir}`);
 
 await browser.close();

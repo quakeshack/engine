@@ -8,6 +8,7 @@ import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
 import { engineMocks } from '../support/engineMocks.ts';
+import { createFakeRenderTarget } from '../support/renderTargets.ts';
 
 void describe('ShadowMap.renderPointLightShadow', () => {
   void test('limits entity casters to the active point light radius', () => {
@@ -77,7 +78,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       renderEntitiesCalls.push(args);
     };
 
-    ShadowMap.pointFBO = {};
+    ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
     ShadowMap.pointDepthCubes = [{}];
     ShadowMap.pointNormalBias = { value: 1.5 };
     ShadowMap.pointLightOrigins = [pointLightOrigin];
@@ -188,7 +189,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
       renderEntitiesCalls.push(args);
     };
 
-    ShadowMap.pointFBO = {};
+    ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
     ShadowMap.pointDepthCubes = [{}, {}, {}];
     ShadowMap.pointNormalBias = { value: 1.5 };
     ShadowMap.pointLightOrigins = origins;
@@ -307,7 +308,7 @@ void describe('ShadowMap.renderPointLightShadow', () => {
     GL.UseProgram = () => program;
     ShadowMap.renderEntitiesShadow = () => {};
 
-    ShadowMap.pointFBO = {};
+    ShadowMap.pointTarget = createFakeRenderTarget('shadow-point');
     ShadowMap.pointDepthCubes = [{}];
     ShadowMap.pointNormalBias = { value: 1.5 };
     ShadowMap.pointLightOrigins = [new Float64Array([0, 0, 0])];
@@ -798,7 +799,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
     const previousRange = ShadowMap.range;
     const previousYaw = ShadowMap.yaw;
     const previousPitch = ShadowMap.pitch;
-    const previousTopdownFBO = ShadowMap.topdownFBO;
+    const previousTopdownTarget = ShadowMap.topdownTarget;
 
     const drawCalls = [];
     const renderEntitiesCalls = [];
@@ -833,7 +834,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
       renderEntitiesCalls.push(args);
     };
 
-    ShadowMap.topdownFBO = {};
+    ShadowMap.topdownTarget = createFakeRenderTarget('shadow-topdown');
     ShadowMap.range = { value: 512 };
     ShadowMap.yaw = { value: 0 };
     ShadowMap.pitch = { value: -90 };
@@ -847,7 +848,7 @@ void describe('ShadowMap.renderTopDownShadow', () => {
       ShadowMap.range = previousRange;
       ShadowMap.yaw = previousYaw;
       ShadowMap.pitch = previousPitch;
-      ShadowMap.topdownFBO = previousTopdownFBO;
+      ShadowMap.topdownTarget = previousTopdownTarget;
 
       GL.gl = previousGL;
       if (previousGL) {

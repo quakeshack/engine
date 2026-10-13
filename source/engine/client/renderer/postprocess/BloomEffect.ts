@@ -1,5 +1,7 @@
 import GL, { GLRenderTexture } from '../../GL.ts';
 import PostProcess from './PostProcess.ts';
+import RenderTarget from '../frame/RenderTarget.ts';
+import RenderTargetPair from '../frame/RenderTargetPair.ts';
 import VID from '../../VID.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import Vector from '../../../../shared/Vector.ts';
@@ -202,32 +204,20 @@ export function advanceBloomAdaptation(currentMultiplier: number, targetMultipli
  * Emissive-driven bloom effect with quarter-resolution blur and additive composite.
  */
 export default class BloomEffect extends PostProcessEffect {
-  /** Bright-pass framebuffer. */
-  static extractFBO: WebGLFramebuffer | null = null;
+  /** Bright-pass target, then the vertical blur's result: the bloom the composite reads. */
+  static extractTarget: RenderTarget | null = null;
 
-  /** Bright-pass texture. */
-  static extractTexture: GLRenderTexture | null = null;
+  /** Target of the horizontal blur. */
+  static blurTarget: RenderTarget | null = null;
 
-  /** Blur framebuffer. */
-  static blurFBO: WebGLFramebuffer | null = null;
+  /** 1x1 bloom metric target. */
+  static metricTarget: RenderTarget | null = null;
 
-  /** Blur texture. */
-  static blurTexture: GLRenderTexture | null = null;
-
-  /** 1x1 bloom metric framebuffer. */
-  static metricFBO: WebGLFramebuffer | null = null;
-
-  /** 1x1 bloom metric texture. */
-  static metricTexture: GLRenderTexture | null = null;
-
-  /** 1x1 bloom adaptation framebuffers. */
-  static adaptationFBOs: Array<WebGLFramebuffer | null> = [null, null];
-
-  /** 1x1 bloom adaptation textures. */
-  static adaptationTextures: Array<GLRenderTexture | null> = [null, null];
-
-  /** Index of the latest adaptation texture. */
-  static adaptationReadIndex = 0;
+  /**
+   * 1x1 bloom adaptation history. The read side is what the previous frame measured, the write side is what this
+   * frame produces; they swap once it is written.
+   */
+  static adaptation: RenderTargetPair | null = null;
 
   /** Whether the adaptation history is valid for the next frame. */
   static historyValid = false;
@@ -244,36 +234,17 @@ export default class BloomEffect extends PostProcessEffect {
 
   /** Create bloom framebuffers and textures. */
   override init(): void {
-    BloomEffect.extractFBO = gl.createFramebuffer();
-    BloomEffect.extractTexture = BloomEffect.#createColorTexture();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.extractFBO);
-    BloomEffect.extractTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
+    BloomEffect.extractTarget = new RenderTarget({ name: 'bloom-extract', color: [{ storage: 'texture', filter: 'linear' }], depth: null });
+    BloomEffect.blurTarget = new RenderTarget({ name: 'bloom-blur', color: [{ storage: 'texture', filter: 'linear' }], depth: null });
 
-    BloomEffect.blurFBO = gl.createFramebuffer();
-    BloomEffect.blurTexture = BloomEffect.#createColorTexture();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.blurFBO);
-    BloomEffect.blurTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
+    BloomEffect.metricTarget = new RenderTarget({ name: 'bloom-metric', color: [{ storage: 'texture', filter: 'nearest' }], depth: null });
+    BloomEffect.#uploadSolidColor(BloomEffect.metricTarget.colorTexture(0), 0, 0, 0, 255);
 
-    BloomEffect.metricFBO = gl.createFramebuffer();
-    BloomEffect.metricTexture = BloomEffect.#createColorTexture(gl.NEAREST);
-    BloomEffect.#uploadSolidColor(BloomEffect.metricTexture, 0, 0, 0, 255);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.metricFBO);
-    BloomEffect.metricTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
+    BloomEffect.adaptation = new RenderTargetPair({ name: 'bloom-adaptation', color: [{ storage: 'texture', filter: 'nearest' }], depth: null });
+    BloomEffect.#uploadSolidColor(BloomEffect.adaptation.read.colorTexture(0), 255, 255, 255, 255);
+    BloomEffect.#uploadSolidColor(BloomEffect.adaptation.write.colorTexture(0), 255, 255, 255, 255);
 
-    for (let i = 0; i < BloomEffect.adaptationFBOs.length; ++i) {
-      const adaptationFBO = gl.createFramebuffer();
-      const adaptationTexture = BloomEffect.#createColorTexture(gl.NEAREST);
-
-      BloomEffect.adaptationFBOs[i] = adaptationFBO;
-      BloomEffect.adaptationTextures[i] = adaptationTexture;
-      BloomEffect.#uploadSolidColor(adaptationTexture, 255, 255, 255, 255);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, adaptationFBO);
-      adaptationTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-    }
-
-    BloomEffect.adaptationReadIndex = 0;
     BloomEffect.historyValid = false;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   /**
@@ -291,11 +262,8 @@ export default class BloomEffect extends PostProcessEffect {
     BloomEffect.width = size.width;
     BloomEffect.height = size.height;
 
-    BloomEffect.extractTexture!.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size.width, size.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-
-    BloomEffect.blurTexture!.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size.width, size.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    BloomEffect.extractTarget!.resize(size.width, size.height);
+    BloomEffect.blurTarget!.resize(size.width, size.height);
 
     BloomEffect.historyValid = false;
   }
@@ -308,7 +276,12 @@ export default class BloomEffect extends PostProcessEffect {
    * @param height Output viewport height.
    */
   override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
-    if (!BloomEffect.extractFBO || !BloomEffect.blurFBO || !BloomEffect.metricFBO || BloomEffect.width === 0 || BloomEffect.height === 0) {
+    const extract = BloomEffect.extractTarget;
+    const blur = BloomEffect.blurTarget;
+    const metric = BloomEffect.metricTarget;
+    const adaptation = BloomEffect.adaptation;
+
+    if (!extract || !blur || !metric || !adaptation || BloomEffect.width === 0 || BloomEffect.height === 0) {
       return;
     }
 
@@ -318,44 +291,36 @@ export default class BloomEffect extends PostProcessEffect {
       BloomEffect.#resetAdaptationState();
     }
 
-    const previousAdaptationTexture = BloomEffect.adaptationTextures[BloomEffect.adaptationReadIndex];
-    const nextAdaptationIndex = (BloomEffect.adaptationReadIndex + 1) % BloomEffect.adaptationTextures.length;
-    const nextAdaptationFBO = BloomEffect.adaptationFBOs[nextAdaptationIndex];
-
-    if (!previousAdaptationTexture || !nextAdaptationFBO) {
-      return;
-    }
-
     const outputFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
     const outputViewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
 
     gl.disable(gl.BLEND);
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.extractFBO);
+    extract.bind();
     gl.viewport(0, 0, BloomEffect.width, BloomEffect.height);
     gl.clear(gl.COLOR_BUFFER_BIT);
     BloomEffect.#extract();
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.blurFBO);
+    blur.bind();
     gl.viewport(0, 0, BloomEffect.width, BloomEffect.height);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    BloomEffect.#blur(BloomEffect.extractTexture!, 1.0 / BloomEffect.width, 0.0);
+    BloomEffect.#blur(extract.colorTexture(0), 1.0 / BloomEffect.width, 0.0);
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.extractFBO);
+    extract.bind();
     gl.viewport(0, 0, BloomEffect.width, BloomEffect.height);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    BloomEffect.#blur(BloomEffect.blurTexture!, 0.0, 1.0 / BloomEffect.height);
+    BloomEffect.#blur(blur.colorTexture(0), 0.0, 1.0 / BloomEffect.height);
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, BloomEffect.metricFBO);
+    metric.bind();
     gl.viewport(0, 0, 1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    BloomEffect.#measure(BloomEffect.extractTexture!);
+    BloomEffect.#measure(extract.colorTexture(0));
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, nextAdaptationFBO);
+    adaptation.write.bind();
     gl.viewport(0, 0, 1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    BloomEffect.#adapt(previousAdaptationTexture, firstFrame);
-    BloomEffect.adaptationReadIndex = nextAdaptationIndex;
+    BloomEffect.#adapt(adaptation.read.colorTexture(0), firstFrame);
+    adaptation.swap();
     BloomEffect.historyValid = true;
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, outputFramebuffer);
@@ -365,48 +330,17 @@ export default class BloomEffect extends PostProcessEffect {
 
   /** Clean up bloom GPU resources. */
   override shutdown(): void {
-    if (BloomEffect.extractFBO) {
-      gl.deleteFramebuffer(BloomEffect.extractFBO);
-      BloomEffect.extractFBO = null;
-    }
-    if (BloomEffect.extractTexture) {
-      BloomEffect.extractTexture.free();
-      BloomEffect.extractTexture = null;
-    }
-    if (BloomEffect.blurFBO) {
-      gl.deleteFramebuffer(BloomEffect.blurFBO);
-      BloomEffect.blurFBO = null;
-    }
-    if (BloomEffect.blurTexture) {
-      BloomEffect.blurTexture.free();
-      BloomEffect.blurTexture = null;
-    }
-    if (BloomEffect.metricFBO) {
-      gl.deleteFramebuffer(BloomEffect.metricFBO);
-      BloomEffect.metricFBO = null;
-    }
-    if (BloomEffect.metricTexture) {
-      BloomEffect.metricTexture.free();
-      BloomEffect.metricTexture = null;
-    }
-    for (let i = 0; i < BloomEffect.adaptationFBOs.length; ++i) {
-      const adaptationFBO = BloomEffect.adaptationFBOs[i];
-      const adaptationTexture = BloomEffect.adaptationTextures[i];
-
-      if (adaptationFBO) {
-        gl.deleteFramebuffer(adaptationFBO);
-      }
-      if (adaptationTexture) {
-        adaptationTexture.free();
-      }
-
-      BloomEffect.adaptationFBOs[i] = null;
-      BloomEffect.adaptationTextures[i] = null;
-    }
+    BloomEffect.extractTarget?.free();
+    BloomEffect.extractTarget = null;
+    BloomEffect.blurTarget?.free();
+    BloomEffect.blurTarget = null;
+    BloomEffect.metricTarget?.free();
+    BloomEffect.metricTarget = null;
+    BloomEffect.adaptation?.free();
+    BloomEffect.adaptation = null;
 
     BloomEffect.width = 0;
     BloomEffect.height = 0;
-    BloomEffect.adaptationReadIndex = 0;
     BloomEffect.historyValid = false;
     this.active = false;
   }
@@ -428,8 +362,8 @@ export default class BloomEffect extends PostProcessEffect {
 
     const previewItems = getBloomDebugPreviewItems(mode, {
       emissiveTexture: PostProcess.emissiveTexture,
-      extractTexture: BloomEffect.extractTexture,
-      blurTexture: BloomEffect.blurTexture,
+      extractTexture: BloomEffect.extractTarget?.colorTexture(0) ?? null,
+      blurTexture: BloomEffect.blurTarget?.colorTexture(0) ?? null,
     });
 
     if (previewItems.length === 0) {
@@ -465,18 +399,6 @@ export default class BloomEffect extends PostProcessEffect {
     }
   }
 
-  /** @returns Newly configured bloom texture. */
-  static #createColorTexture(filter: number = gl.LINEAR): GLRenderTexture {
-    const texture = new GLRenderTexture();
-    texture.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    return texture;
-  }
-
   /**
    * Upload a solid color into a 1x1 texture.
    */
@@ -499,17 +421,16 @@ export default class BloomEffect extends PostProcessEffect {
    * Reset the adaptation history to the unattenuated bloom state.
    */
   static #resetAdaptationState(): void {
-    if (BloomEffect.metricTexture) {
-      BloomEffect.#uploadSolidColor(BloomEffect.metricTexture, 0, 0, 0, 255);
+    if (BloomEffect.metricTarget) {
+      BloomEffect.#uploadSolidColor(BloomEffect.metricTarget.colorTexture(0), 0, 0, 0, 255);
     }
 
-    for (const texture of BloomEffect.adaptationTextures) {
-      if (texture) {
-        BloomEffect.#uploadSolidColor(texture, 255, 255, 255, 255);
-      }
+    if (BloomEffect.adaptation) {
+      BloomEffect.adaptation.reset();
+      BloomEffect.#uploadSolidColor(BloomEffect.adaptation.read.colorTexture(0), 255, 255, 255, 255);
+      BloomEffect.#uploadSolidColor(BloomEffect.adaptation.write.colorTexture(0), 255, 255, 255, 255);
     }
 
-    BloomEffect.adaptationReadIndex = 0;
     BloomEffect.historyValid = false;
   }
 
@@ -537,7 +458,7 @@ export default class BloomEffect extends PostProcessEffect {
    */
   static #adapt(previousTexture: GLRenderTexture, firstFrame: boolean): void {
     const program = GL.UseProgram('bloom-adapt');
-    BloomEffect.metricTexture!.bind(program!.tMetric!);
+    BloomEffect.metricTarget!.colorTexture(0).bind(program!.tMetric!);
     previousTexture.bind(program!.tPrevious!);
     gl.uniform1f(program!.uFrameTime!, Host.frametime);
     gl.uniform1f(program!.uSettleRate!, BLOOM_ADAPTATION_SETTLE_RATE);
@@ -575,8 +496,8 @@ export default class BloomEffect extends PostProcessEffect {
   static #composite(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('bloom-composite');
     inputTexture.bind(program!.tScene!);
-    BloomEffect.extractTexture!.bind(program!.tBloom!);
-    BloomEffect.adaptationTextures[BloomEffect.adaptationReadIndex]!.bind(program!.tAdaptation!);
+    BloomEffect.extractTarget!.colorTexture(0).bind(program!.tBloom!);
+    BloomEffect.adaptation!.read.colorTexture(0).bind(program!.tAdaptation!);
     gl.uniform1f(program!.uStrength!, rendererCvars.bloomStrength.value);
     gl.uniform2f(program!.uBloomTexelOffset!, 1.0 / BloomEffect.width, 1.0 / BloomEffect.height);
     GL.StreamDrawTexturedQuad(x, y, width, height, 0.0, 1.0, 1.0, 0.0);

@@ -8,6 +8,7 @@ import VID from '../../source/engine/client/VID.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 import PostProcessEffect from '../../source/engine/client/renderer/postprocess/PostProcessEffect.ts';
 import { patchMembers } from '../support/clientState.ts';
+import { createFakeRenderTarget } from '../support/renderTargets.ts';
 
 /** An effect that draws nothing. */
 class NoopEffect extends PostProcessEffect {
@@ -28,12 +29,9 @@ void describe('PostProcess.resolveGameplayStack', () => {
     PostProcess.effects = [new NoopEffect('blur')];
     restores = [
       patchMembers(PostProcess, {
-        colorTexture: { id: 'scene' } as never,
-        fbo: { id: 'scene fbo' } as never,
-        pingFBO: { id: 'ping' } as never,
-        pongFBO: { id: 'pong' } as never,
-        pingTexture: { id: 'ping texture' } as never,
-        pongTexture: { id: 'pong texture' } as never,
+        scene: createFakeRenderTarget('scene'),
+        ping: createFakeRenderTarget('ping'),
+        pong: createFakeRenderTarget('pong'),
       }),
       patchMembers(VID, { width: 640, height: 480, pixelRatio: 1 }),
     ];

@@ -4,6 +4,7 @@ import VID from '../../VID.ts';
 import Host from '../../../common/Host.ts';
 import PostProcessEffect from './PostProcessEffect.ts';
 import PostProcessEntries, { type ResolvedPostProcessEntry } from './PostProcessEntries.ts';
+import RenderTarget from '../frame/RenderTarget.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions } from '../../../../shared/GameInterfaces.ts';
 
@@ -33,25 +34,16 @@ eventBus.subscribe('gl.shutdown', () => {
  * and are NOT part of the post-resolve effect pipeline.
  */
 export default class PostProcess {
-  // ─── Scene FBO (depth-aware rendering) ───────────────────────────
+  // ─── Scene target (depth-aware rendering) ────────────────────────
 
-  /** Scene framebuffer object. */
-  static fbo: WebGLFramebuffer | null = null;
+  /** The scene: color and emissive textures and a depth texture, drawn into when nothing is multisampled. */
+  static scene: RenderTarget | null = null;
 
-  /** Color texture attachment (RGBA). */
-  static colorTexture: GLRenderTexture | null = null;
-
-  /** Emissive texture attachment (RGBA). */
-  static emissiveTexture: GLRenderTexture | null = null;
-
-  /** Depth texture attachment (DEPTH_COMPONENT24). */
-  static depthTexture: GLRenderTexture | null = null;
-
-  /** Depth renderbuffer used temporarily during depth sampling. */
-  static depthRenderbuffer: WebGLRenderbuffer | null = null;
-
-  /** Scratch FBO used to blit scene depth into the temporary depth renderbuffer. */
-  static depthSamplingFBO: WebGLFramebuffer | null = null;
+  /**
+   * Scratch target that the scene depth is blitted into while the depth texture is sampled: its color attachment is
+   * the scene color (to be complete), its depth renderbuffer takes the depth test over from the scene target.
+   */
+  static depthCopy: RenderTarget | null = null;
 
   /**
    * A 1x1 transparent texture. {@link PostProcess.endDepthSampling} binds it to the sampler units that were given
@@ -76,26 +68,11 @@ export default class PostProcess {
   /** MSAA sample count (0 = off, 2/4/8). */
   static msaa: Cvar | null = null;
 
-  /** Multisampled FBO for scene rendering. */
-  static msaaFBO: WebGLFramebuffer | null = null;
-
-  /** Multisampled color renderbuffer. */
-  static msaaColorRB: WebGLRenderbuffer | null = null;
-
-  /** Multisampled emissive renderbuffer. */
-  static msaaEmissiveRB: WebGLRenderbuffer | null = null;
-
-  /** Multisampled depth renderbuffer. */
-  static msaaDepthRB: WebGLRenderbuffer | null = null;
+  /** Multisampled scene target: two color renderbuffers (color, emissive) and a depth renderbuffer. */
+  static msaaTarget: RenderTarget | null = null;
 
   /** Current MSAA sample count (0 = disabled). */
   static msaaSamples = 0;
-
-  /** Current MSAA FBO width. */
-  static msaaWidth = 0;
-
-  /** Current MSAA FBO height. */
-  static msaaHeight = 0;
 
   /** Whether MSAA has been resolved to the texture FBO this frame. */
   static msaaResolved = false;
@@ -103,28 +80,19 @@ export default class PostProcess {
   // ─── Turbulent boundary depth FBO (underwater fog) ───────────────
 
   /**
-   * Depth-only FBO for capturing turbulent surface depths before the main
+   * Depth-only target for capturing turbulent surface depths before the main
    * scene render. Used by the underwater fog effect to determine where the
    * water surface boundary is per-pixel.
    */
-  static turbulentBoundaryFBO: WebGLFramebuffer | null = null;
+  static turbulentBoundary: RenderTarget | null = null;
 
-  /** Depth texture attachment for the turbulent boundary FBO. */
-  static turbulentBoundaryDepthTexture: GLRenderTexture | null = null;
+  // ─── Ping-pong targets for effect chaining ───────────────────────
 
-  // ─── Ping-pong FBOs for effect chaining ──────────────────────────
+  /** Ping target for effect chaining. */
+  static ping: RenderTarget | null = null;
 
-  /** Ping FBO for effect chaining. */
-  static pingFBO: WebGLFramebuffer | null = null;
-
-  /** Ping color texture. */
-  static pingTexture: GLRenderTexture | null = null;
-
-  /** Pong FBO for effect chaining. */
-  static pongFBO: WebGLFramebuffer | null = null;
-
-  /** Pong color texture. */
-  static pongTexture: GLRenderTexture | null = null;
+  /** Pong target for effect chaining. */
+  static pong: RenderTarget | null = null;
 
   /** Ping-pong FBO width. */
   static ppWidth = 0;
@@ -145,6 +113,38 @@ export default class PostProcess {
 
   /** The clock reading of the last {@link PostProcess.advance}, `null` before the first. */
   static #lastAdvanceTime: number | null = null;
+
+  /**
+   * Color texture of the scene.
+   * @returns The texture, `null` before {@link PostProcess.init}.
+   */
+  static get colorTexture(): GLRenderTexture | null {
+    return PostProcess.scene?.colorTexture(0) ?? null;
+  }
+
+  /**
+   * Emissive texture of the scene, the second color attachment.
+   * @returns The texture, `null` before {@link PostProcess.init}.
+   */
+  static get emissiveTexture(): GLRenderTexture | null {
+    return PostProcess.scene?.colorTexture(1) ?? null;
+  }
+
+  /**
+   * Depth texture of the scene.
+   * @returns The texture, `null` before {@link PostProcess.init}.
+   */
+  static get depthTexture(): GLRenderTexture | null {
+    return PostProcess.scene?.depthTexture ?? null;
+  }
+
+  /**
+   * Depth texture of the turbulent boundary pass.
+   * @returns The texture, `null` before {@link PostProcess.init}.
+   */
+  static get turbulentBoundaryDepthTexture(): GLRenderTexture | null {
+    return PostProcess.turbulentBoundary?.depthTexture ?? null;
+  }
 
   /**
    * Register a post-process effect. Effects are applied in the order
@@ -253,200 +253,76 @@ export default class PostProcess {
 
   /**
    * Initialize the post-process system.
-   * Creates scene FBO, MSAA FBO (if enabled), and ping-pong FBOs.
+   * Creates the scene target, the MSAA target (storage is allocated when it is enabled), and ping-pong targets.
    */
   static init(): void {
     PostProcess.msaa = new Cvar('gl_msaa', '4', Cvar.FLAG.ARCHIVE, ' MSAA sample count (0 = off, 2/4/8)');
 
-    PostProcess.fbo = gl.createFramebuffer();
-    {
-      // Color texture
-      PostProcess.colorTexture = new GLRenderTexture();
-      PostProcess.colorTexture.bind(0);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    PostProcess.scene = new RenderTarget({
+      name: 'scene',
+      color: [{ storage: 'texture', filter: 'linear' }, { storage: 'texture', filter: 'linear' }],
+      depth: { storage: 'texture', filter: 'nearest' },
+    });
 
-      // Emissive texture
-      PostProcess.emissiveTexture = new GLRenderTexture();
-      PostProcess.emissiveTexture.bind(0);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    // Scratch target for depth blits: the color attachment keeps it complete, the depth renderbuffer receives the
+    // copied scene depth for subsequent depth tests.
+    PostProcess.depthCopy = new RenderTarget({
+      name: 'scene-depth-copy',
+      color: [{ storage: 'external', texture: PostProcess.scene.colorTexture(0) }],
+      depth: { storage: 'renderbuffer' },
+    });
 
-      // Depth texture
-      PostProcess.depthTexture = new GLRenderTexture();
-      PostProcess.depthTexture.bind(0);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-      // Depth renderbuffer (temporary during depth sampling)
-      PostProcess.depthRenderbuffer = gl.createRenderbuffer();
-      // Some drivers require a renderbuffer to be bound at least once before
-      // attaching it with framebufferRenderbuffer.
-      gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
-      gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-
-      // Scratch FBO for depth blits into the temporary depth renderbuffer.
-      PostProcess.depthSamplingFBO = gl.createFramebuffer();
-
-      // What the depth texture's sampler units are reset to after depth sampling.
-      PostProcess.nullTexture = new GLRenderTexture();
-      PostProcess.nullTexture.bind(0);
-      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 1, 1);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-
-      // Assemble scene FBO
-      gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
-      PostProcess.colorTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-      PostProcess.emissiveTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT1);
-      PostProcess.depthTexture.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
-      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-      // Configure scratch depth-sampling FBO: color attachment keeps it complete,
-      // depth renderbuffer receives copied scene depth for subsequent depth tests.
-      gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.depthSamplingFBO);
-      PostProcess.colorTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
-      gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    }
-
-    // Turbulent boundary depth FBO — depth-only, resized in resize().
-    PostProcess.turbulentBoundaryDepthTexture = new GLRenderTexture();
-    PostProcess.turbulentBoundaryDepthTexture.bind(0);
+    // What the depth texture's sampler units are reset to after depth sampling.
+    PostProcess.nullTexture = new GLRenderTexture();
+    PostProcess.nullTexture.bind(0);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 1, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    PostProcess.turbulentBoundaryFBO = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.turbulentBoundaryFBO);
-    PostProcess.turbulentBoundaryDepthTexture.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
-    gl.drawBuffers([gl.NONE]);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // Turbulent boundary depth target — depth-only, resized in resize().
+    PostProcess.turbulentBoundary = new RenderTarget({
+      name: 'turbulent-boundary',
+      color: [],
+      depth: { storage: 'texture', filter: 'nearest' },
+    });
 
-    // MSAA FBO with multisampled renderbuffers (storage allocated in _resizeMSAA).
-    // Each renderbuffer must be bound at least once before framebufferRenderbuffer.
-    PostProcess.msaaFBO = gl.createFramebuffer();
-    PostProcess.msaaColorRB = gl.createRenderbuffer();
-    PostProcess.msaaEmissiveRB = gl.createRenderbuffer();
-    PostProcess.msaaDepthRB = gl.createRenderbuffer();
-    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaColorRB);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaEmissiveRB);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaDepthRB);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.msaaFBO);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, PostProcess.msaaColorRB);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, PostProcess.msaaEmissiveRB);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, PostProcess.msaaDepthRB);
-    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // MSAA target with multisampled renderbuffers (storage allocated in resize()).
+    PostProcess.msaaTarget = new RenderTarget({
+      name: 'scene-msaa',
+      color: [{ storage: 'renderbuffer' }, { storage: 'renderbuffer' }],
+      depth: { storage: 'renderbuffer' },
+    });
 
-    // Ping-pong FBOs for effect chaining
-    PostProcess.pingFBO = gl.createFramebuffer();
-    PostProcess.pingTexture = new GLRenderTexture();
-    PostProcess.pingTexture.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.pingFBO);
-    PostProcess.pingTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-    PostProcess.pongFBO = gl.createFramebuffer();
-    PostProcess.pongTexture = new GLRenderTexture();
-    PostProcess.pongTexture.bind(0);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.pongFBO);
-    PostProcess.pongTexture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // Ping-pong targets for effect chaining
+    PostProcess.ping = new RenderTarget({ name: 'post-process-ping', color: [{ storage: 'texture', filter: 'linear' }], depth: null });
+    PostProcess.pong = new RenderTarget({ name: 'post-process-pong', color: [{ storage: 'texture', filter: 'linear' }], depth: null });
   }
 
   /**
-   * Resize the scene FBO textures to match the viewport dimensions.
+   * Resize the scene targets to match the viewport dimensions, and follow `gl_msaa`: a change of the variable is
+   * taken up here, the next time the scene is captured.
    */
   static resize(width: number, height: number): void {
-    if (PostProcess.width === width && PostProcess.height === height) {
-      return;
-    }
-
     PostProcess.width = width;
     PostProcess.height = height;
 
-    // Resize color texture
-    PostProcess.colorTexture!.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    PostProcess.scene!.resize(width, height);
+    PostProcess.depthCopy!.resize(width, height);
+    PostProcess.turbulentBoundary!.resize(width, height);
 
-    // Resize emissive texture
-    PostProcess.emissiveTexture!.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-
-    // Resize depth texture
-    PostProcess.depthTexture!.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-
-    // Resize depth renderbuffer
-    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, width, height);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-
-    // Resize turbulent boundary depth texture
-    PostProcess.turbulentBoundaryDepthTexture!.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-
-    // Resize MSAA renderbuffers (if enabled)
-    PostProcess._resizeMSAA(width, height);
-  }
-
-  /**
-   * Allocate (or deallocate) multisampled renderbuffer storage.
-   * Called from `resize()` whenever the scene dimensions change.
-   */
-  static _resizeMSAA(width: number, height: number): void {
+    // Multisampled renderbuffers (if enabled)
     const requested = PostProcess.msaa!.value >> 0;
-    if (requested <= 0) {
-      PostProcess.msaaSamples = 0;
-      PostProcess.msaaWidth = 0;
-      PostProcess.msaaHeight = 0;
-      return;
-    }
-
-    const maxSamples = gl.getParameter(gl.MAX_SAMPLES) as number;
-    const samples = Math.min(requested, maxSamples);
-
-    if (PostProcess.msaaWidth === width && PostProcess.msaaHeight === height
-      && PostProcess.msaaSamples === samples) {
-      return;
-    }
+    const samples = requested > 0 ? Math.min(requested, RenderTarget.limits.maxSamples) : 0;
 
     PostProcess.msaaSamples = samples;
-    PostProcess.msaaWidth = width;
-    PostProcess.msaaHeight = height;
 
-    // Multisampled color renderbuffer (RGBA8)
-    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaColorRB);
-    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height);
-
-    // Multisampled emissive renderbuffer (RGBA8)
-    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaEmissiveRB);
-    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height);
-
-    // Multisampled depth renderbuffer (DEPTH_COMPONENT24)
-    gl.bindRenderbuffer(gl.RENDERBUFFER, PostProcess.msaaDepthRB);
-    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, width, height);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+    if (samples > 0) {
+      PostProcess.msaaTarget!.resize(width, height, samples);
+    } else {
+      // nothing is drawn into it, so it does not keep the memory
+      PostProcess.msaaTarget!.resize(0, 0, 0);
+    }
   }
 
   /**
@@ -456,7 +332,7 @@ export default class PostProcess {
    * Call endTurbulentBoundaryPass when the pass is complete.
    */
   static beginTurbulentBoundaryPass(): void {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.turbulentBoundaryFBO);
+    PostProcess.turbulentBoundary!.bind();
     gl.viewport(0, 0, PostProcess.width, PostProcess.height);
     gl.enable(gl.DEPTH_TEST);
     gl.depthMask(true);
@@ -472,7 +348,7 @@ export default class PostProcess {
   static endTurbulentBoundaryPass(): void {
     gl.enable(gl.CULL_FACE);
     // Restore whichever scene FBO was active before the pre-pass.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.msaaSamples > 0 ? PostProcess.msaaFBO : PostProcess.fbo);
+    (PostProcess.msaaSamples > 0 ? PostProcess.msaaTarget! : PostProcess.scene!).bind();
     gl.viewport(0, 0, PostProcess.width, PostProcess.height);
   }
 
@@ -487,11 +363,8 @@ export default class PostProcess {
     PostProcess.ppWidth = width;
     PostProcess.ppHeight = height;
 
-    PostProcess.pingTexture!.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-
-    PostProcess.pongTexture!.bind(0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    PostProcess.ping!.resize(width, height);
+    PostProcess.pong!.resize(width, height);
 
     // Notify effects of the new dimensions
     for (const effect of PostProcess.effects) {
@@ -507,26 +380,15 @@ export default class PostProcess {
    */
   static begin(): void {
     if (PostProcess.msaaSamples > 0) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.msaaFBO);
+      PostProcess.msaaTarget!.bind();
       PostProcess.msaaResolved = false;
     } else {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
+      PostProcess.scene!.bind();
     }
     gl.viewport(0, 0, PostProcess.width, PostProcess.height);
     gl.clearBufferfv(gl.COLOR, 0, [0.0, 0.0, 0.0, 0.0]);
     gl.clearBufferfv(gl.COLOR, 1, [0.0, 0.0, 0.0, 0.0]);
     gl.clear(gl.DEPTH_BUFFER_BIT);
-    PostProcess.active = true;
-  }
-
-  /**
-   * Begin rendering the scene to an effect's own FBO.
-   * Used when only pipeline effects are active (no depth-texture scene FBO needed).
-   */
-  static beginToEffectFBO(fbo: WebGLFramebuffer, width: number, height: number): void {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.viewport(0, 0, width, height);
     PostProcess.active = true;
   }
 
@@ -549,8 +411,8 @@ export default class PostProcess {
 
     // Keep depth testing valid for geometry passes that sample depth by first
     // copying the current scene depth texture into the temporary depth renderbuffer.
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, PostProcess.fbo);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, PostProcess.depthSamplingFBO);
+    PostProcess.scene!.bindForRead();
+    PostProcess.depthCopy!.bindForDraw();
     gl.blitFramebuffer(
       0,
       0,
@@ -564,9 +426,7 @@ export default class PostProcess {
       gl.NEAREST,
     );
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, null, 0);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, PostProcess.depthRenderbuffer);
+    PostProcess.scene!.swapDepthToRenderbuffer(PostProcess.depthCopy!.depthRenderbuffer!);
   }
 
   /**
@@ -593,8 +453,7 @@ export default class PostProcess {
 
     PostProcess.#sampledDepthUnits.length = 0;
 
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
-    PostProcess.depthTexture!.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
+    PostProcess.scene!.restoreDepthTexture();
   }
 
   /**
@@ -623,18 +482,19 @@ export default class PostProcess {
   static resolveMSAA(): void {
     const w = PostProcess.width;
     const h = PostProcess.height;
+    const scene = PostProcess.scene!;
 
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, PostProcess.msaaFBO);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, PostProcess.fbo);
+    PostProcess.msaaTarget!.bindForRead();
+    scene.bindForDraw();
 
-    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT0, PostProcess.colorTexture!, w, h);
-    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT1, PostProcess.emissiveTexture!, w, h);
+    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT0, scene.colorTexture(0), w, h);
+    PostProcess._resolveMSAAColorAttachment(gl.COLOR_ATTACHMENT1, scene.colorTexture(1), w, h);
 
-    PostProcess.colorTexture!.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-    PostProcess.emissiveTexture!.attachToFramebuffer(gl.COLOR_ATTACHMENT1);
+    scene.colorTexture(0).attachToFramebuffer(gl.COLOR_ATTACHMENT0);
+    scene.colorTexture(1).attachToFramebuffer(gl.COLOR_ATTACHMENT1);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
+    scene.bind();
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     PostProcess.msaaResolved = true;
   }
@@ -688,8 +548,7 @@ export default class PostProcess {
     gl.disable(gl.BLEND);
 
     let inputTexture = sceneTexture;
-    const fbos = [PostProcess.pingFBO, PostProcess.pongFBO];
-    const textures = [PostProcess.pingTexture, PostProcess.pongTexture];
+    const targets = [PostProcess.ping!, PostProcess.pong!];
 
     for (let i = 0; i < activeEffects.length; i++) {
       const isLast = (i === activeEffects.length - 1);
@@ -701,12 +560,12 @@ export default class PostProcess {
         activeEffects[i].effect.apply(inputTexture, x, y, width, height, activeEffects[i].settings);
       } else {
         // Intermediate effects render to the next ping-pong FBO
-        const targetFBO = fbos[i % 2];
-        gl.bindFramebuffer(gl.FRAMEBUFFER, targetFBO);
+        const target = targets[i % 2];
+        target.bind();
         gl.viewport(0, 0, pixelWidth, pixelHeight);
         // Draw at ortho-space dimensions (VID.width/height) so the ortho matrix works
         activeEffects[i].effect.apply(inputTexture, 0, 0, VID.width, VID.height, activeEffects[i].settings);
-        inputTexture = textures[i % 2]!;
+        inputTexture = target.colorTexture(0);
       }
     }
 
@@ -744,20 +603,20 @@ export default class PostProcess {
     gl.disable(gl.BLEND);
 
     let input: GLRenderTexture = PostProcess.colorTexture!;
-    const fbos = [PostProcess.pingFBO, PostProcess.pongFBO];
-    const textures = [PostProcess.pingTexture!, PostProcess.pongTexture!];
+    const targets = [PostProcess.ping!, PostProcess.pong!];
 
     for (let i = 0; i < entries.length; i++) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[i % 2]);
+      const target = targets[i % 2];
+      target.bind();
       gl.viewport(0, 0, w, h);
       entries[i].effect.apply(input, 0, 0, VID.width, VID.height, entries[i].settings);
-      input = textures[i % 2];
+      input = target.colorTexture(0);
     }
 
     // Write the final result back into COLOR_ATTACHMENT0 of the scene FBO so
     // that PostProcess.resolve() reads from colorTexture without a ping-pong
     // read/write hazard.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, PostProcess.fbo);
+    PostProcess.scene!.bind();
     gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
     gl.viewport(0, 0, w, h);
     PostProcess._blitToScreen(input, 0, 0, VID.width, VID.height);
@@ -800,85 +659,30 @@ export default class PostProcess {
     }
     PostProcess.effects.length = 0;
 
-    // Scene FBO
-    if (PostProcess.fbo) {
-      gl.deleteFramebuffer(PostProcess.fbo);
-      PostProcess.fbo = null;
-    }
-    if (PostProcess.colorTexture) {
-      PostProcess.colorTexture.free();
-      PostProcess.colorTexture = null;
-    }
-    if (PostProcess.emissiveTexture) {
-      PostProcess.emissiveTexture.free();
-      PostProcess.emissiveTexture = null;
-    }
-    if (PostProcess.depthTexture) {
-      PostProcess.depthTexture.free();
-      PostProcess.depthTexture = null;
-    }
-    if (PostProcess.depthRenderbuffer) {
-      gl.deleteRenderbuffer(PostProcess.depthRenderbuffer);
-      PostProcess.depthRenderbuffer = null;
-    }
+    // Scene targets
+    PostProcess.depthCopy?.free();
+    PostProcess.depthCopy = null;
+    PostProcess.scene?.free();
+    PostProcess.scene = null;
+
     if (PostProcess.nullTexture) {
       PostProcess.nullTexture.free();
       PostProcess.nullTexture = null;
     }
-    if (PostProcess.depthSamplingFBO) {
-      gl.deleteFramebuffer(PostProcess.depthSamplingFBO);
-      PostProcess.depthSamplingFBO = null;
-    }
 
-    // Turbulent boundary depth FBO
-    if (PostProcess.turbulentBoundaryFBO) {
-      gl.deleteFramebuffer(PostProcess.turbulentBoundaryFBO);
-      PostProcess.turbulentBoundaryFBO = null;
-    }
-    if (PostProcess.turbulentBoundaryDepthTexture) {
-      PostProcess.turbulentBoundaryDepthTexture.free();
-      PostProcess.turbulentBoundaryDepthTexture = null;
-    }
+    PostProcess.turbulentBoundary?.free();
+    PostProcess.turbulentBoundary = null;
 
-    // MSAA FBO
-    if (PostProcess.msaaFBO) {
-      gl.deleteFramebuffer(PostProcess.msaaFBO);
-      PostProcess.msaaFBO = null;
-    }
-    if (PostProcess.msaaColorRB) {
-      gl.deleteRenderbuffer(PostProcess.msaaColorRB);
-      PostProcess.msaaColorRB = null;
-    }
-    if (PostProcess.msaaEmissiveRB) {
-      gl.deleteRenderbuffer(PostProcess.msaaEmissiveRB);
-      PostProcess.msaaEmissiveRB = null;
-    }
-    if (PostProcess.msaaDepthRB) {
-      gl.deleteRenderbuffer(PostProcess.msaaDepthRB);
-      PostProcess.msaaDepthRB = null;
-    }
+    PostProcess.msaaTarget?.free();
+    PostProcess.msaaTarget = null;
     PostProcess.msaaSamples = 0;
-    PostProcess.msaaWidth = 0;
-    PostProcess.msaaHeight = 0;
     PostProcess.msaaResolved = false;
 
-    // Ping-pong FBOs
-    if (PostProcess.pingFBO) {
-      gl.deleteFramebuffer(PostProcess.pingFBO);
-      PostProcess.pingFBO = null;
-    }
-    if (PostProcess.pingTexture) {
-      PostProcess.pingTexture.free();
-      PostProcess.pingTexture = null;
-    }
-    if (PostProcess.pongFBO) {
-      gl.deleteFramebuffer(PostProcess.pongFBO);
-      PostProcess.pongFBO = null;
-    }
-    if (PostProcess.pongTexture) {
-      PostProcess.pongTexture.free();
-      PostProcess.pongTexture = null;
-    }
+    // Ping-pong targets
+    PostProcess.ping?.free();
+    PostProcess.ping = null;
+    PostProcess.pong?.free();
+    PostProcess.pong = null;
 
     PostProcess.width = 0;
     PostProcess.height = 0;

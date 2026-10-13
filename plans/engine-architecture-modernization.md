@@ -1411,11 +1411,14 @@ State on 2026-10-11 (the release in the next section waits for these, or for an 
   events stay) are done. The scopes are three, `engine`, `module` and `map`, not the four sketched in the Track C section
   above. A game's own events are typed too (a per-game `Events.ts`, `TypedEventBus`, a docs test in each game). Phase 4
   (server hot reload: `server_reload` in a development build, the browser worker only) is done, so is Track C.
-- **D3 and D4** (frame graph, GPU abstraction): not started, no plan.
+- **D3** (frame graph): plan drafted 2026-10-13 in `plans/frame-graph.md`, nothing implemented, scope fork open.
+- **D4** (GPU abstraction, WebGPU spike): **postponed past 1.3.0 (decided 2026-10-13).** Not started, no plan.
 - **E**: not started. `sharedCollisionModelSource` is still one module-level instance, there is no `CollisionWorld` interface and
   no client/server `Pmove` determinism test.
-- **F**: only the first step (the shared `AssetSource`) exists. Content-hash addressing and the rest have no plan.
-- **G**: half of the type-checked tests (55 `.test.ts` against 118 `.mjs`); `plans/server-replay.md` does not exist; the
+- **F**: **postponed past 1.3.0 (decided 2026-10-13).** Only the first step (the shared `AssetSource`) exists. Content-hash
+  addressing and the rest have no plan.
+- **G**: **postponed past 1.3.0 (decided 2026-10-13), including deterministic replay (decision 14), which stays in scope for
+  later.** State: half of the type-checked tests (55 `.test.ts` against 118 `.mjs`); `plans/server-replay.md` does not exist; the
   `console.profile` calls are still in `ClientHost`.
 
 C (lifetimes and typed events) can start after Phase 2. The replay recorder (Track G) starts after
@@ -1431,6 +1434,11 @@ Decided 2026-10-10. When everything this plan tracks is finished, the QuakeShack
 "Everything" means: Tracks A to D with their follow-ups (D2 is `plans/r-split.md`, finished at its Phase 7, which
 also ticks D2 here; the SCR and V dissolve in `plans/scr-v-split.md` is part of it), the later tracks E to G in the
 form their own plans define as done, and no open item left in "Open questions".
+
+**Scope cut, 2026-10-13:** Track F, Track G (including deterministic replay) and D4 are postponed past 1.3.0 and are not
+part of "everything". What 1.3.0 still waits for: D3 (frame graph) and Track E, each needing its own plan, unless they are
+postponed too, and the one open item in "Open questions" (the navigation worker check with a real path request, which needs
+the Hellwave `.nav` files).
 
 The bump itself, in one commit with no other change:
 

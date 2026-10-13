@@ -1,17 +1,13 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
-import GL from '../../source/engine/client/GL.ts';
 import type { GLRenderTexture } from '../../source/engine/client/GL.ts';
-import { eventBus } from '../../source/engine/common/EventBus.ts';
-import { publishGlReady } from '../support/glEvents.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
+import { createFakeRenderTarget } from '../support/renderTargets.ts';
 
 void describe('PostProcess depth sampling', () => {
-  const previousContext = GL.gl;
-  const previousDepth = PostProcess.depthTexture;
+  const previousScene = PostProcess.scene;
   const previousNull = PostProcess.nullTexture;
-  const previousRenderbuffer = PostProcess.depthRenderbuffer;
   let log: string[] = [];
 
   beforeEach(() => {
@@ -19,28 +15,16 @@ void describe('PostProcess depth sampling', () => {
 
     const texture = (name: string) => ({
       bind: (unit: number) => { log.push(`bind ${name} to unit ${unit}`); },
-      attachToFramebuffer: () => { log.push(`attach ${name} to the framebuffer`); },
     }) as unknown as GLRenderTexture;
 
-    PostProcess.depthTexture = texture('depth');
+    // the scene target's depth texture is what the sampling passes bind, and what endDepthSampling attaches again
+    PostProcess.scene = Object.assign(createFakeRenderTarget('scene', log), { depthTexture: texture('depth') });
     PostProcess.nullTexture = texture('null');
-    PostProcess.depthRenderbuffer = {} as WebGLRenderbuffer;
-
-    GL.gl = {
-      FRAMEBUFFER: 1,
-      DEPTH_ATTACHMENT: 2,
-      RENDERBUFFER: 3,
-      framebufferRenderbuffer: () => { log.push('detach the depth renderbuffer'); },
-    } as unknown as WebGL2RenderingContext;
-    publishGlReady();
   });
 
   afterEach(() => {
-    eventBus.publish('gl.shutdown');
-    GL.gl = previousContext;
-    PostProcess.depthTexture = previousDepth;
+    PostProcess.scene = previousScene;
     PostProcess.nullTexture = previousNull;
-    PostProcess.depthRenderbuffer = previousRenderbuffer;
   });
 
   void test('endDepthSampling takes the depth texture off the unit before attaching it again', () => {
@@ -50,8 +34,7 @@ void describe('PostProcess depth sampling', () => {
     assert.deepEqual(log, [
       'bind depth to unit 7',
       'bind null to unit 7',
-      'detach the depth renderbuffer',
-      'attach depth to the framebuffer',
+      'restore depth texture of scene',
     ]);
   });
 
@@ -72,6 +55,6 @@ void describe('PostProcess depth sampling', () => {
 
     PostProcess.endDepthSampling();
 
-    assert.deepEqual(log, ['detach the depth renderbuffer', 'attach depth to the framebuffer']);
+    assert.deepEqual(log, ['restore depth texture of scene']);
   });
 });

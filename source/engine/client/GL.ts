@@ -589,6 +589,11 @@ export default GL;
 
 let gl: WebGL2RenderingContext = null!;
 
+// `GL.Init` publishes the context it created; taking it from the event lets a test hand this module its own.
+eventBus.subscribe('gl.ready', (context) => {
+  gl = context;
+});
+
 const textureModes: Record<string, TextureMode> = {};
 let currentTextureMode = 'GL_LINEAR_MIPMAP_LINEAR';
 

@@ -13,6 +13,7 @@ import PostProcessEffect from '../../source/engine/client/renderer/postprocess/P
 import PostProcessEntries from '../../source/engine/client/renderer/postprocess/PostProcessEntries.ts';
 import { assertNear } from '../support/assertions.ts';
 import { patchMembers } from '../support/clientState.ts';
+import { createFakeRenderTarget } from '../support/renderTargets.ts';
 
 type Call = [name: string, input: unknown, settings: object | null];
 
@@ -61,7 +62,11 @@ void describe('PostProcess gameplay stack', () => {
       new RecordingEffect('blur', calls),
     ];
     restores = [
-      patchMembers(PostProcess, { colorTexture: { id: 'scene' } as unknown as GLRenderTexture }),
+      patchMembers(PostProcess, {
+        scene: createFakeRenderTarget('scene'),
+        ping: createFakeRenderTarget('ping'),
+        pong: createFakeRenderTarget('pong'),
+      }),
       patchMembers(VID, { width: 640, height: 480, pixelRatio: 1 }),
     ];
     mock.method(PostProcess, 'resizePingPong', () => {});

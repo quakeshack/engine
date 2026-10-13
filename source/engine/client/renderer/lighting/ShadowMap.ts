@@ -1,4 +1,5 @@
 import GL, { GLCubeTexture, GLRenderTexture } from '../../GL.ts';
+import RenderTarget from '../frame/RenderTarget.ts';
 import Cvar from '../../../common/Cvar.ts';
 import { limits } from '../../../common/Def.ts';
 import { eventBus } from '../../../common/EventBus.ts';
@@ -104,8 +105,8 @@ export default class ShadowMap {
   /** Top-down shadow direction pitch (degrees, negative = downward; -90 = straight down). */
   static pitch: Cvar | null = null;
 
-  /** Depth-only FBO for the top-down shadow pass. */
-  static topdownFBO: WebGLFramebuffer | null = null;
+  /** Depth-only target of the top-down shadow pass; its depth attachment is {@link ShadowMap.topdownDepthTexture}. */
+  static topdownTarget: RenderTarget | null = null;
 
   /** Depth texture with hardware comparison (sampler2DShadow). */
   static topdownDepthTexture: GLRenderTexture | null = null;
@@ -130,8 +131,8 @@ export default class ShadowMap {
 
   // ─── Point light (cube) shadow ────────────────────────────────────
 
-  /** Depth-only FBO for point light shadow (reused for all slots and faces). */
-  static pointFBO: WebGLFramebuffer | null = null;
+  /** Depth-only target for point light shadow (reused for all slots and faces; the cube face is attached per pass). */
+  static pointTarget: RenderTarget | null = null;
 
   /** Depth cubemaps with hardware comparison (samplerCubeShadow), one per active point-light slot. */
   static pointDepthCubes: GLCubeTexture[] = [];
@@ -207,12 +208,11 @@ export default class ShadowMap {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
 
     // ── Depth-only FBO ─────────────────────────────────────────────
-    ShadowMap.topdownFBO = gl.createFramebuffer()!;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.topdownFBO);
-    ShadowMap.topdownDepthTexture.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
-    gl.drawBuffers([]);
-    gl.readBuffer(gl.NONE);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    ShadowMap.topdownTarget = new RenderTarget({
+      name: 'shadow-topdown',
+      color: [],
+      depth: { storage: 'external', texture: ShadowMap.topdownDepthTexture },
+    });
 
     // ── 1×1 dummy (always-lit) ─────────────────────────────────────
     ShadowMap.topdownDummyTexture = new GLRenderTexture();
@@ -253,14 +253,9 @@ export default class ShadowMap {
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
 
     // ── Point light depth FBO (face and slot attachment swapped each pass) ──
-    ShadowMap.pointFBO = gl.createFramebuffer()!;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.pointFBO);
-    gl.framebufferTexture2D(
-      gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
-      gl.TEXTURE_CUBE_MAP_POSITIVE_X, ShadowMap.pointDepthCubes[0].texture, 0,
-    );
-    gl.drawBuffers([]);
-    gl.readBuffer(gl.NONE);
+    ShadowMap.pointTarget = new RenderTarget({ name: 'shadow-point', color: [], depth: null });
+    ShadowMap.pointTarget.bind();
+    ShadowMap.pointTarget.attachDepthCubeFace(ShadowMap.pointDepthCubes[0].texture, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     // ── 1×1 dummy cubemap (always-lit) ─────────────────────────────
@@ -374,7 +369,7 @@ export default class ShadowMap {
    * depth, and sets GL state.
    */
   static beginTopDown(): void {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.topdownFBO);
+    ShadowMap.topdownTarget!.bind();
     gl.viewport(0, 0, TOPDOWN_SHADOW_SIZE, TOPDOWN_SHADOW_SIZE);
     gl.enable(gl.DEPTH_TEST);
     gl.clear(gl.DEPTH_BUFFER_BIT);
@@ -724,7 +719,7 @@ export default class ShadowMap {
 
     const submodelLeafFlags = ShadowMap._getSubmodelLeafFlags(worldmodel);
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, ShadowMap.pointFBO);
+    ShadowMap.pointTarget!.bind();
     gl.viewport(0, 0, POINT_SHADOW_SIZE, POINT_SHADOW_SIZE);
     gl.enable(gl.DEPTH_TEST);
     gl.colorMask(false, false, false, false);
@@ -763,11 +758,7 @@ export default class ShadowMap {
     gl.uniform1f(program.uNormalBias!, ShadowMap.pointNormalBias!.value);
 
     for (let face = 0; face < 6; face++) {
-      gl.framebufferTexture2D(
-        gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
-        gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
-        ShadowMap.pointDepthCubes[slot].texture, 0,
-      );
+      ShadowMap.pointTarget!.attachDepthCubeFace(ShadowMap.pointDepthCubes[slot].texture, face);
       gl.clear(gl.DEPTH_BUFFER_BIT);
 
       ShadowMap.buildPointFaceMatrix(face, slot);

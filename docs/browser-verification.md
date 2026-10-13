@@ -230,7 +230,7 @@ node scripts/renderer-capture/compare.mjs \
   --before <scratch>/before-a,<scratch>/before-b --after <scratch>/after-a,<scratch>/after-b
 ```
 
-- `capture.mjs` loads `e1m1`, pauses, pins the client clock and seeds the particle generator, and writes nine
+- `capture.mjs` loads the map the new-game menu path starts (`start`), pauses, pins the client clock and seeds the particle generator, and writes nine
   views: the spawn view, two dynamic lights with particles and a decal, the player model in chase view, bloom, fog,
   a camera under the largest sky face, above the largest liquid surface and inside it, and the spawn view again.
   It records the `r_speeds` lines of each view in `views.json`. A capture takes about 80 seconds; the page runs on
@@ -242,13 +242,20 @@ node scripts/renderer-capture/compare.mjs \
 - **`r_speeds` is not a rendering check.** It counts brush and alias draws, not sky, particles, decals, coronas or
   post-processing. A build with sky and particles disabled has identical counts. The pixel comparison is what
   sees those.
+- Three environment variables of `capture.mjs` change the setup: `CAPTURE_MAP=<map>` loads that map with the `map`
+  command (the default is the new-game menu path, which loads `start`), `CAPTURE_GAME=<mod>` makes the page run that mod (the build,
+  the dedicated server and its `-basedir` have to match, see section 2), and `CAPTURE_MSAA=<samples>` sets `gl_msaa`
+  and nudges the viewport by a pixel and back. A build from before 2026-10-13 takes a new sample count only when the
+  size of the scene target changes; later builds take it up at the next frame, and the nudge does no harm there.
+  `DEDICATED_PORT` points the file proxy at the right server. `views.json` records the map, `gl_msaa`, the sample
+  count in effect and the number of fog volumes under `setup`.
 - The scripts reach into the engine through `window.engine` (see section 5). `installAdapter()` in
   `capture.mjs` names every member it uses, once. A change that moves a member updates that function and exposes
   the new home in `bootstrap/createBrowserClient.ts`; to capture the build from before such a move with the same
   script, give that one lookup a fallback to the old home (`engine.Camera ?? engine.R`) while the refactor lasts.
 - What they do not cover: input and pointer lock (section 6), anything that needs another map, and a second
   renderer state such as a changed resolution. Underwater fog is only covered with `CAPTURE_WATERFOG=1` in the
-  environment of `capture.mjs`: `e1m1` has no `_qs_waterfog` volume, so the key is set on the worldspawn before the
+  environment of `capture.mjs`: `start` has no `_qs_waterfog` volume, so the key is set on the worldspawn before the
   liquid views and the "inside the lava" view then shows the underwater fog effect.
 
 ## Reporting results

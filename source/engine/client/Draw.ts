@@ -52,61 +52,6 @@ export default class Draw {
   static #loading: WadLumpTexture | null = null;
   static #conback: GLTexture | null = null;
   static #loadingCounter = 0;
-  static #fbo: WebGLFramebuffer | null = null;
-  static #currentTexture: GLTexture | null = null;
-
-  /**
-   * Redirects all subsequent Draw calls to the specified texture.
-   * @param texture The texture to render to.
-   */
-  static BeginTexture(texture: GLTexture): void {
-    if (!texture.ready) {
-      texture.upload(null);
-    }
-
-    Draw.#currentTexture = texture;
-
-    GL.StreamFlush();
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, Draw.#fbo);
-    texture.attachToFramebuffer(gl.COLOR_ATTACHMENT0);
-    gl.viewport(0, 0, texture.width, texture.height);
-
-    // Calc ortho for this texture
-    const ortho = [
-      2.0 / texture.width, 0.0, 0.0, 0.0,
-      0.0, 2.0 / texture.height, 0.0, 0.0,
-      0.0, 0.0, -1.0, 0.0,
-      -1.0, -1.0, 0.0, 1.0,
-    ];
-
-    for (const { program, uOrtho } of GL.programs) {
-      if (!uOrtho) {
-        continue;
-      }
-      gl.useProgram(program);
-      gl.uniformMatrix4fv(uOrtho, false, ortho);
-    }
-
-    // Reset current program tracking so next UseProgram works correctly
-    GL.UnbindProgram();
-  }
-
-  /**
-   * Ends rendering to texture and restores screen output.
-   */
-  static EndTexture(): void {
-    GL.StreamFlush();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-    if (Draw.#currentTexture !== null) {
-      Draw.#currentTexture.bind(0);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      Draw.#currentTexture = null;
-    }
-
-    GL.Set2D();
-  }
 
   /**
    * Generates a GLTexture from a given font string to be used as a replacement for ConChars.
@@ -249,7 +194,6 @@ export default class Draw {
       VID.mainwindow.style.backgroundImage = `url("${backtile.toDataURL()}")`;
     }
 
-    Draw.#fbo = gl.createFramebuffer(); // TODO: cleanup
   }
 
   /**
