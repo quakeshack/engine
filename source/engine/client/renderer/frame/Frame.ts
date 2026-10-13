@@ -109,6 +109,16 @@ export default class Frame {
     console.assert(Frame.#redirect(output), Frame.#lastViolation);
   }
 
+  /**
+   * Says that this frame shows what an earlier frame drew into a target, because it drew nothing into it itself (a
+   * map that is loading still presents the last picture). Without this, sampling the target would be reported as
+   * the read of a result nothing produced.
+   * @param target The target whose picture is shown again.
+   */
+  static reuse(target: RenderTarget): void {
+    console.assert(Frame.#carryOver(target), Frame.#lastViolation);
+  }
+
   /** Closes the pass that was opened last; the framebuffer bound now has to be the one of its target. */
   static endPass(): void {
     console.assert(Frame.#leave(), Frame.#lastViolation);
@@ -187,6 +197,23 @@ export default class Frame {
     Frame.#open.push({ name, output, record });
 
     return clean;
+  }
+
+  /**
+   * Records that a target is shown again.
+   * @returns True.
+   */
+  static #carryOver(target: RenderTarget): boolean {
+    Frame.#written.add(target);
+    Frame.#records.push({
+      name: `${target.name} of an earlier frame`,
+      depth: Frame.#open.length,
+      output: target.name,
+      inputs: [],
+      violations: [],
+    });
+
+    return true;
   }
 
   /**

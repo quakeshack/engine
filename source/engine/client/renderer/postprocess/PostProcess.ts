@@ -30,9 +30,8 @@ eventBus.subscribe('gl.shutdown', () => {
  * from one texture and writes to another, with the final result blitted to
  * the default framebuffer (screen).
  *
- * Effects that need the depth buffer (e.g. fog volumes) are handled during
- * scene rendering via `beginDepthSampling`/`endDepthSampling`
- * and are NOT part of the post-resolve effect pipeline.
+ * Passes that need the depth of the scene while it is drawn (turbulent surfaces, fog volumes) sample the copy that
+ * {@link PostProcess.copySceneDepth} makes, and are NOT part of the post-resolve effect pipeline.
  */
 export default class PostProcess {
   // ─── Scene target (depth-aware rendering) ────────────────────────
@@ -41,19 +40,11 @@ export default class PostProcess {
   static scene: RenderTarget | null = null;
 
   /**
-   * Scratch target that the scene depth is blitted into while the depth texture is sampled: its color attachment is
-   * the scene color (to be complete), its depth renderbuffer takes the depth test over from the scene target.
+   * Depth-only target whose texture holds a copy of the depth of what is being drawn into the scene, made by
+   * {@link PostProcess.copySceneDepth}. A pass samples this one, never the depth texture of the scene itself, which
+   * is attached to the framebuffer that is drawn into.
    */
   static depthCopy: RenderTarget | null = null;
-
-  /**
-   * A 1x1 transparent texture. {@link PostProcess.endDepthSampling} binds it to the sampler units that were given
-   * the depth texture, so the depth texture is no longer bound anywhere when it is attached to the FBO again.
-   */
-  static nullTexture: GLRenderTexture | null = null;
-
-  /** The sampler units that {@link PostProcess.bindDepthForSampling} bound the depth texture to. */
-  static readonly #sampledDepthUnits: number[] = [];
 
   /** Current scene FBO width in pixels. */
   static width = 0;
@@ -74,9 +65,6 @@ export default class PostProcess {
 
   /** Current MSAA sample count (0 = disabled). */
   static msaaSamples = 0;
-
-  /** Whether MSAA has been resolved to the texture FBO this frame. */
-  static msaaResolved = false;
 
   // ─── Turbulent boundary depth FBO (underwater fog) ───────────────
 
@@ -135,7 +123,9 @@ export default class PostProcess {
   }
 
   /**
-   * Depth texture of the scene.
+   * Depth texture of the scene. Once the scene is resolved it is what the effects of the chain read; while the scene
+   * is drawn it is attached to the framebuffer (unless the frame is multisampled), so a pass samples
+   * {@link PostProcess.copySceneDepth} instead.
    * @returns The texture, `null` before {@link PostProcess.init}.
    */
   static get depthTexture(): GLRenderTexture | null {
@@ -268,21 +258,12 @@ export default class PostProcess {
       depth: { storage: 'texture', filter: 'nearest' },
     });
 
-    // Scratch target for depth blits: the color attachment keeps it complete, the depth renderbuffer receives the
-    // copied scene depth for subsequent depth tests.
+    // Where the depth of the scene is copied to for the passes that sample it, see copySceneDepth().
     PostProcess.depthCopy = new RenderTarget({
       name: 'scene-depth-copy',
-      color: [{ storage: 'external', texture: PostProcess.scene.colorTexture(0) }],
-      depth: { storage: 'renderbuffer' },
+      color: [],
+      depth: { storage: 'texture', filter: 'nearest' },
     });
-
-    // What the depth texture's sampler units are reset to after depth sampling.
-    PostProcess.nullTexture = new GLRenderTexture();
-    PostProcess.nullTexture.bind(0);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 1, 1);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
     // Turbulent boundary depth target — depth-only, resized in resize().
     PostProcess.turbulentBoundary = new RenderTarget({
@@ -389,10 +370,6 @@ export default class PostProcess {
 
     target.bind();
 
-    if (PostProcess.msaaSamples > 0) {
-      PostProcess.msaaResolved = false;
-    }
-
     gl.viewport(0, 0, PostProcess.width, PostProcess.height);
     gl.clearBufferfv(gl.COLOR, 0, [0.0, 0.0, 0.0, 0.0]);
     gl.clearBufferfv(gl.COLOR, 1, [0.0, 0.0, 0.0, 0.0]);
@@ -402,72 +379,32 @@ export default class PostProcess {
   }
 
   /**
-   * Detach the depth texture from the FBO so it can be sampled in shaders.
-   * Attaches a depth renderbuffer instead to keep the FBO complete.
-   * If MSAA is active, resolves to the texture FBO first so the depth
-   * texture contains valid data.
+   * Copies the depth of what is being drawn into the scene so far into a texture that a pass can sample while it goes
+   * on drawing. The copy comes from the multisampled target when the frame is multisampled (the blit resolves it)
+   * and from the scene otherwise, and the frame stays in the target it was in: the transparent geometry that follows
+   * is multisampled as the opaque one is, and the scene is resolved once, by `end()`.
    *
-   * Callers bind the depth texture with {@link PostProcess.bindDepthForSampling},
-   * and `endDepthSampling()` takes it off those sampler units again. WebGL
-   * flags a feedback loop when a texture is simultaneously an FBO attachment
-   * and bound to any sampler unit — even one a later draw's material doesn't
-   * touch — so a unit must never keep it after the pass.
+   * The copy is made now: a pass that depends on depth drawn after this call asks again. Bind the returned texture
+   * to a sampler unit, and put another texture on that unit when the pass is done if the unit is one that a later
+   * draw expects to hold something of its own.
+   * @returns The depth texture of {@link PostProcess.depthCopy}.
    */
-  static beginDepthSampling(): void {
-    if (PostProcess.msaaSamples > 0 && !PostProcess.msaaResolved) {
-      PostProcess.resolveMSAA();
-    }
+  static copySceneDepth(): GLRenderTexture {
+    const source = RenderTarget.bound;
+    const copy = PostProcess.depthCopy!;
 
-    // Keep depth testing valid for geometry passes that sample depth by first
-    // copying the current scene depth texture into the temporary depth renderbuffer.
-    PostProcess.scene!.bindForRead();
-    PostProcess.depthCopy!.bindForDraw();
-    gl.blitFramebuffer(
-      0,
-      0,
-      PostProcess.width,
-      PostProcess.height,
-      0,
-      0,
-      PostProcess.width,
-      PostProcess.height,
-      gl.DEPTH_BUFFER_BIT,
-      gl.NEAREST,
-    );
+    console.assert(source !== null && (source === PostProcess.scene || source === PostProcess.msaaTarget), 'the scene is the target while its depth is copied');
 
-    PostProcess.scene!.swapDepthToRenderbuffer(PostProcess.depthCopy!.depthRenderbuffer!);
-
-    // the depth texture is off the framebuffer now, which is what lets the pass sample it
-    Frame.beginPass('scene-depth-sample', PostProcess.scene, PostProcess.depthTexture);
-  }
-
-  /**
-   * Binds the scene depth texture to a sampler unit for the pass between
-   * `beginDepthSampling()` and `endDepthSampling()`, and remembers the unit so
-   * that `endDepthSampling()` can release it.
-   * @param unit The sampler unit the shader reads the depth from (e.g. `program.tDepth`).
-   */
-  static bindDepthForSampling(unit: number): void {
-    console.assert(PostProcess.depthTexture !== null, 'depth texture required');
-    PostProcess.depthTexture!.bind(unit);
-    PostProcess.#sampledDepthUnits.push(unit);
-  }
-
-  /**
-   * Ends depth sampling: takes the depth texture off the sampler units it was
-   * bound to by {@link PostProcess.bindDepthForSampling} and attaches it to the
-   * FBO again.
-   */
-  static endDepthSampling(): void {
+    // a multisampled scene has its depth in a renderbuffer, which is not a texture and is not an input of the pass
+    Frame.beginPass('scene-depth-copy', copy, source === PostProcess.scene ? PostProcess.depthTexture : null);
+    source!.bindForRead();
+    copy.bindForDraw();
+    gl.blitFramebuffer(0, 0, PostProcess.width, PostProcess.height, 0, 0, PostProcess.width, PostProcess.height, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
     Frame.endPass();
 
-    for (const unit of PostProcess.#sampledDepthUnits) {
-      PostProcess.nullTexture!.bind(unit);
-    }
+    source!.bind();
 
-    PostProcess.#sampledDepthUnits.length = 0;
-
-    PostProcess.scene!.restoreDepthTexture();
+    return copy.depthTexture!;
   }
 
   /**
@@ -490,7 +427,7 @@ export default class PostProcess {
   /**
    * Resolve the multisampled FBO to the texture-backed scene FBO.
    * Blits both color and depth so the texture FBO has valid data for
-   * depth sampling and the effect pipeline. After this call, the
+   * the effect pipeline. After this call, the
    * texture FBO is bound as the active FRAMEBUFFER.
    */
   static resolveMSAA(): void {
@@ -511,7 +448,6 @@ export default class PostProcess {
     gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
     scene.bind();
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
-    PostProcess.msaaResolved = true;
     Frame.endPass();
 
     // the part of the frame that was multisampled is over: what is drawn from here on goes into the resolved scene
@@ -519,12 +455,21 @@ export default class PostProcess {
   }
 
   /**
-   * End scene rendering. If MSAA is active and hasn't been resolved yet
-   * (no-fog path), resolves to the texture FBO first so the color texture
-   * is available for the effect pipeline. Then unbinds the FBO.
+   * End scene rendering. If MSAA is active, resolves the multisampled scene to the
+   * texture FBO, once, so the color texture is available for the effect pipeline.
+   * Then unbinds the FBO.
+   *
+   * A frame in which the scene was not drawn (a map that is loading, the console forced up) still ends the scene
+   * and resolves it to the screen, which shows the picture of the last frame that drew it: there is nothing to
+   * resolve and no framebuffer to leave then.
    */
   static end(): void {
-    if (PostProcess.msaaSamples > 0 && !PostProcess.msaaResolved) {
+    if (!PostProcess.active) {
+      Frame.reuse(PostProcess.scene!);
+      return;
+    }
+
+    if (PostProcess.msaaSamples > 0) {
       PostProcess.resolveMSAA();
     }
     Frame.endPass();
@@ -712,18 +657,12 @@ export default class PostProcess {
     PostProcess.scene?.free();
     PostProcess.scene = null;
 
-    if (PostProcess.nullTexture) {
-      PostProcess.nullTexture.free();
-      PostProcess.nullTexture = null;
-    }
-
     PostProcess.turbulentBoundary?.free();
     PostProcess.turbulentBoundary = null;
 
     PostProcess.msaaTarget?.free();
     PostProcess.msaaTarget = null;
     PostProcess.msaaSamples = 0;
-    PostProcess.msaaResolved = false;
 
     // Ping-pong targets
     PostProcess.ping?.free();

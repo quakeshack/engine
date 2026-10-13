@@ -175,9 +175,6 @@ export default class RenderTarget {
   readonly #colors: AttachmentSlot[] = [];
   readonly #depth: AttachmentSlot | null;
 
-  /** Whether the depth texture is off the framebuffer, replaced by a renderbuffer, see `swapDepthToRenderbuffer`. */
-  #depthDetached = false;
-
   /**
    * Creates the framebuffer and its attachments. The framebuffer binding is left on the default framebuffer, as
    * every creation in the renderer did.
@@ -391,8 +388,8 @@ export default class RenderTarget {
   }
 
   /**
-   * Whether a texture is attached to the framebuffer right now, which makes sampling it a feedback loop. The depth
-   * texture is not while it is swapped for a renderbuffer.
+   * Whether a texture is attached to the framebuffer, which makes sampling it while the framebuffer is drawn into a
+   * feedback loop.
    * @param texture The texture a pass is about to sample.
    * @returns True when the framebuffer would draw into it.
    */
@@ -403,7 +400,7 @@ export default class RenderTarget {
       }
     }
 
-    return !this.#depthDetached && this.#depth !== null && this.#depth.texture === texture;
+    return this.#depth !== null && this.#depth.texture === texture;
   }
 
   /**
@@ -414,31 +411,6 @@ export default class RenderTarget {
    */
   attachDepthCubeFace(texture: WebGLTexture, face: number): void {
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, texture, 0);
-  }
-
-  /**
-   * Takes the depth texture off the framebuffer and puts a renderbuffer in its place, so that the texture can be
-   * sampled while the framebuffer is drawn to. Binds the framebuffer.
-   * @param renderbuffer What keeps the depth test going meanwhile.
-   */
-  swapDepthToRenderbuffer(renderbuffer: WebGLRenderbuffer): void {
-    this.bind();
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, null, 0);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer);
-    this.#depthDetached = true;
-  }
-
-  /**
-   * Undoes {@link RenderTarget.swapDepthToRenderbuffer}: the depth texture is the depth attachment again. Binds the
-   * framebuffer.
-   */
-  restoreDepthTexture(): void {
-    console.assert(this.#depth?.texture !== null && this.#depth?.texture !== undefined, `render target ${this.name} has no depth texture`);
-
-    this.bind();
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
-    this.#depth!.texture!.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
-    this.#depthDetached = false;
   }
 
   /** Deletes the framebuffer and the attachments the target owns. */

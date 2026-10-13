@@ -1411,7 +1411,9 @@ State on 2026-10-11 (the release in the next section waits for these, or for an 
   events stay) are done. The scopes are three, `engine`, `module` and `map`, not the four sketched in the Track C section
   above. A game's own events are typed too (a per-game `Events.ts`, `TypedEventBus`, a docs test in each game). Phase 4
   (server hot reload: `server_reload` in a development build, the browser worker only) is done, so is Track C.
-- **D3** (frame graph): plan drafted 2026-10-13 in `plans/frame-graph.md`, nothing implemented, scope fork open.
+- **D3** (frame graph): **done 2026-10-13**, see `plans/frame-graph.md` (render targets, a frame that records and checks its
+  passes, effects handed their output, depth sampled from a copy with the frame staying multisampled). Open there: the
+  frame time of the transparent pass on a real GPU, and Firefox.
 - **D4** (GPU abstraction, WebGPU spike): **postponed past 1.3.0 (decided 2026-10-13).** Not started, no plan.
 - **E**: not started. `sharedCollisionModelSource` is still one module-level instance, there is no `CollisionWorld` interface and
   no client/server `Pmove` determinism test.
@@ -1436,9 +1438,9 @@ also ticks D2 here; the SCR and V dissolve in `plans/scr-v-split.md` is part of 
 form their own plans define as done, and no open item left in "Open questions".
 
 **Scope cut, 2026-10-13:** Track F, Track G (including deterministic replay) and D4 are postponed past 1.3.0 and are not
-part of "everything". What 1.3.0 still waits for: D3 (frame graph) and Track E, each needing its own plan, unless they are
-postponed too, and the one open item in "Open questions" (the navigation worker check with a real path request, which needs
-the Hellwave `.nav` files).
+part of "everything". D3 (frame graph) was done the same day, `plans/frame-graph.md`. What 1.3.0 still waits for: Track E,
+which needs its own plan unless it is postponed too, and the one open item in "Open questions" (the navigation worker
+check with a real path request, which needs the Hellwave `.nav` files).
 
 The bump itself, in one commit with no other change:
 

@@ -138,9 +138,7 @@ void describe('the frame of the renderer', () => {
     }
 
     for (let i = 0; i < config.depthSamplingPasses; i++) {
-      PostProcess.beginDepthSampling();
-      PostProcess.bindDepthForSampling(7);
-      PostProcess.endDepthSampling();
+      PostProcess.copySceneDepth().bind(7);
     }
 
     PostProcess.end();
@@ -184,18 +182,55 @@ void describe('the frame of the renderer', () => {
     assert.equal(configurations, 96);
   });
 
-  void test('a multisampled frame with a depth sampling pass resolves the scene first, and says so', () => {
-    runFrame({ msaa: 4, depthSamplingPasses: 1, underwaterFog: false, bloom: false, stack: 'none' });
+  void test('a frame in which the scene is not drawn presents the picture of the last one, without violations', () => {
+    // the last frame that drew the scene, multisampled
+    runFrame({ msaa: 4, depthSamplingPasses: 1, underwaterFog: false, bloom: true, stack: 'scene' });
+    assert.deepEqual(Frame.violations, []);
+
+    // a map is loading: ScreenFrame still ends the scene, runs the game's stack and the effects, and presents
+    mock.method(PostProcess, 'resizePingPong', () => {});
+    PostProcess.effects = [new ScratchEffect('bloom', scratch, [PostProcess.emissiveTexture!])];
+    PostProcess.effects[0].active = true;
+    const recording = createRecordingContext();
+
+    Frame.beginFrame();
+    GL.gl = recording.gl;
+    publishGlReady(recording.gl);
+    PostProcess.end();
+    PostProcess.resolveGameplayStack();
+    PostProcess.resolve(0, 0, 640, 480, PostProcess.colorTexture!);
+
+    assert.deepEqual(Frame.violations, []);
+    assert.equal(RenderTarget.bound, null);
+    assert.equal(Frame.records[0].name, 'scene of an earlier frame');
+    // nothing was resolved: no multisample blit
+    assert.deepEqual(recording.calls('blitFramebuffer'), []);
+  });
+
+  void test('a multisampled frame copies the depth from the multisampled target and resolves the scene once, at the end', () => {
+    runFrame({ msaa: 4, depthSamplingPasses: 2, underwaterFog: false, bloom: false, stack: 'none' });
 
     const names = Frame.records.map((record) => `${'  '.repeat(record.depth)}${record.name}`);
 
-    assert.deepEqual(names.slice(0, 4), [
+    assert.deepEqual(names, [
       'scene',
+      '  scene-depth-copy',
+      '  scene-depth-copy',
       '  msaa-resolve',
-      '  scene-depth-sample',
       'present',
+      'overlays',
     ]);
     assert.equal(Frame.records[0].output, 'scene-msaa -> scene');
+
+    // a renderbuffer is not an input of the pass; without multisampling the depth texture of the scene is
+    assert.deepEqual(Frame.records[1].inputs, []);
+  });
+
+  void test('a frame without multisampling copies the depth of the scene itself', () => {
+    runFrame({ msaa: 0, depthSamplingPasses: 1, underwaterFog: false, bloom: false, stack: 'none' });
+
+    assert.deepEqual(Frame.records[1].inputs, ['scene.depth']);
+    assert.equal(Frame.records[0].output, 'scene');
   });
 
   void test('an effect that leaves its own target bound is reported, and so is what is drawn into it afterwards', () => {

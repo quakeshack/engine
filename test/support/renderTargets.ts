@@ -65,14 +65,6 @@ export function createFakeRenderTarget(name: string, log: string[] = []): Render
       log.push(`attach ${name} cube face ${face}`);
     },
 
-    swapDepthToRenderbuffer(): void {
-      log.push(`swap depth of ${name} to a renderbuffer`);
-    },
-
-    restoreDepthTexture(): void {
-      log.push(`restore depth texture of ${name}`);
-    },
-
     free(): void {
       log.push(`free ${name}`);
     },

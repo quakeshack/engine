@@ -218,10 +218,11 @@ frame 412: 9 passes, 0 violations
 shadow-topdown -> shadow-topdown  reads -
 scene -> scene-msaa -> scene  reads -
   turbulent-boundary -> turbulent-boundary  reads -
+  scene-depth-copy -> scene-depth-copy  reads -
+  scene-depth-copy -> scene-depth-copy  reads -
   msaa-resolve -> scene  reads -
-  scene-depth-sample -> scene  reads scene.depth
 post-process:underwater-fog -> screen  reads scene.color0, scene.depth, turbulent-boundary.depth
 overlays -> screen  reads -
 ```
 
-`scene -> scene-msaa -> scene` is the scene that was multisampled and was resolved by the first pass that needed the depth texture: what is drawn after that point is not multisampled.
+`scene -> scene-msaa -> scene` is the scene that was drawn multisampled and was resolved at its end. A `scene-depth-copy` is a pass that needed the depth of the scene while it is drawn (turbulent surfaces, a fog volume): the depth is copied into a texture of its own and the frame goes on drawing into the multisampled target, so what is drawn after it is antialiased as well. `reads -` there is a multisampled depth renderbuffer, which is not a texture; without multisampling the pass reads `scene.depth`.

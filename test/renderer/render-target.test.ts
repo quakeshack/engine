@@ -151,25 +151,52 @@ void describe('RenderTarget', () => {
     });
   });
 
-  void describe('depth sampling', () => {
-    void test('swaps the depth texture for a renderbuffer and back, binding the framebuffer each time', () => {
+  void describe('isAttached', () => {
+    void test('is true for the textures the framebuffer draws into and false for any other', () => {
+      const external = new GLRenderTexture();
+      const target = new RenderTarget({
+        name: 'scene',
+        color: [{ storage: 'texture' }, { storage: 'external', texture: external }],
+        depth: { storage: 'texture' },
+      });
+      const other = new RenderTarget({ name: 'ping', color: [{ storage: 'texture' }], depth: null });
+
+      assert.equal(target.isAttached(target.colorTexture(0)), true);
+      assert.equal(target.isAttached(external), true);
+      assert.equal(target.isAttached(target.depthTexture!), true);
+      assert.equal(target.isAttached(other.colorTexture(0)), false);
+    });
+
+    void test('names the textures after their target, and an external one after its first owner', () => {
       const target = new RenderTarget({ name: 'scene', color: [{ storage: 'texture' }], depth: { storage: 'texture' } });
-      const renderbuffer = {} as WebGLRenderbuffer;
+      const copy = new RenderTarget({ name: 'copy', color: [{ storage: 'external', texture: target.colorTexture(0) }], depth: null });
 
-      recording.log.length = 0;
-      target.swapDepthToRenderbuffer(renderbuffer);
-      target.restoreDepthTexture();
+      assert.equal(RenderTarget.describeTexture(target.colorTexture(0)), 'scene.color0');
+      assert.equal(RenderTarget.describeTexture(target.depthTexture!), 'scene.depth');
+      assert.equal(RenderTarget.ownerOf(copy.colorTexture(0)), target);
+    });
+  });
 
-      assert.deepEqual(recording.log.map((line) => line.replace(/\(.*$/, '')), [
-        'bindFramebuffer',
-        'framebufferTexture2D',
-        'framebufferRenderbuffer',
-        'bindFramebuffer',
-        'framebufferRenderbuffer',
-        'framebufferTexture2D',
-      ]);
-      assert.equal(recording.calls('framebufferTexture2D')[0], 'framebufferTexture2D(FRAMEBUFFER, DEPTH_ATTACHMENT, TEXTURE_2D, null, 0)');
-      assert.equal(recording.calls('framebufferRenderbuffer')[1], 'framebufferRenderbuffer(FRAMEBUFFER, DEPTH_ATTACHMENT, RENDERBUFFER, null)');
+  void describe('bound', () => {
+    void test('follows the binds of the class and the screen after unbind', () => {
+      const target = new RenderTarget({ name: 'scene', color: [{ storage: 'texture' }], depth: null });
+
+      assert.equal(RenderTarget.bound, null);
+
+      target.bind();
+      assert.equal(RenderTarget.bound, target);
+
+      RenderTarget.unbind();
+      assert.equal(RenderTarget.bound, null);
+
+      target.bindForRead();
+      assert.equal(RenderTarget.bound, null);
+
+      target.bindForDraw();
+      assert.equal(RenderTarget.bound, target);
+
+      RenderTarget.bindOutput(null);
+      assert.equal(RenderTarget.bound, null);
     });
   });
 

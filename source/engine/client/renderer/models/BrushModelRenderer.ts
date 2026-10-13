@@ -1,7 +1,7 @@
 import Vector from '../../../../shared/Vector.ts';
 import { ModelRenderer, type ShadowRenderContext } from './ModelRenderer.ts';
 import { eventBus } from '../../../common/EventBus.ts';
-import GL, { type GLProgramInfo, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../../GL.ts';
+import GL, { type GLProgramInfo, type GLRenderTexture, ATTRIB_LOCATIONS, BRUSH_VERTEX_STRIDE, GLVolumeTexture } from '../../GL.ts';
 import { getEntityBloomEmissiveScale } from '../postprocess/BloomEffect.ts';
 import { MaterialFlags, type BaseMaterial } from './Materials.ts';
 import { BrushModel, type Node, type FogVolumeInfo, type WorldTurbulentChainInfo } from '../../../common/model/BSP.ts';
@@ -162,6 +162,9 @@ export class BrushModelRenderer extends ModelRenderer {
 
   /** Active 'fog-volume' program during fog volume pass. */
   _fogVolumeProgram: GLProgramInfo | null = null;
+
+  /** The depth copy a fog volume pass samples, kept so that it can be bound again after a light probe was uploaded. */
+  _fogVolumeDepth: GLRenderTexture | null = null;
 
   // ─── Static methods ───────────────────────────────────────────────
 
@@ -796,8 +799,7 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.uniform1f(program.uCameraInside!, cameraInside);
 
     if (PostProcess.active) {
-      PostProcess.beginDepthSampling();
-      PostProcess.bindDepthForSampling(program.tDepth!);
+      PostProcess.copySceneDepth().bind(program.tDepth!);
       gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
       // Per-surface alpha decides whether depth fog is active.
       gl.uniform1f(program.uWaterFogDensity!, 0.0);
@@ -839,10 +841,10 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.depthMask(true);
     GL.UnbindVAO();
     if (PostProcess.active) {
-      // The turbulent shader leaves the depth texture bound to unit 7 (tDepth), the same unit the brush
-      // shader reads tSpecular from, and QuakeMaterial.bindTo does not rebind that slot. endDepthSampling()
-      // releases the unit, otherwise the depth texture would be sampled as tSpecular while attached to the FBO.
-      PostProcess.endDepthSampling();
+      // The turbulent shader leaves the depth copy bound to unit 7 (tDepth), the same unit the brush shader reads
+      // tSpecular from, and QuakeMaterial.bindTo does not rebind that slot: without this the depth would be sampled
+      // as the specular map of the surfaces that follow.
+      DefaultTextures.null_texture.bind(this._worldTurbulentProgram!.tDepth!);
     }
     this._worldTurbulentProgram = null;
     this._worldTurbulentModel = null;
@@ -920,8 +922,7 @@ export class BrushModelRenderer extends ModelRenderer {
       return false;
     }
 
-    PostProcess.beginDepthSampling();
-
+    const depthCopy = PostProcess.copySceneDepth();
     const program = GL.UseProgram('fog-volume')!;
 
     gl.enable(gl.BLEND);
@@ -931,10 +932,11 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.cullFace(gl.BACK);
     gl.enable(gl.CULL_FACE);
 
-    PostProcess.bindDepthForSampling(program.tDepth!);
+    depthCopy.bind(program.tDepth!);
     gl.uniform2f(program.uScreenSize!, PostProcess.width, PostProcess.height);
 
     this._fogVolumeProgram = program;
+    this._fogVolumeDepth = depthCopy;
     return true;
   }
 
@@ -959,7 +961,7 @@ export class BrushModelRenderer extends ModelRenderer {
     // clobbers texture unit 0 (tDepth). Re-bind depth after.
     const probe = this._getFogLightProbe(fogVolume);
     (probe ? probe.texture : this._getFogLightProbeWhite()).bind(program.tLightProbe!);
-    PostProcess.depthTexture!.bind(program.tDepth!);
+    this._fogVolumeDepth!.bind(program.tDepth!);
 
     this._uploadFogDlights(fogVolume);
 
@@ -1020,9 +1022,8 @@ export class BrushModelRenderer extends ModelRenderer {
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
     gl.disable(gl.BLEND);
 
-    // Releases the depth texture's sampler unit, for the same reason as in endWorldTurbulentPass.
-    PostProcess.endDepthSampling();
     this._fogVolumeProgram = null;
+    this._fogVolumeDepth = null;
   }
 
 

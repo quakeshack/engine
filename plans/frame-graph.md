@@ -1,7 +1,8 @@
 # Frame graph: render targets and passes as declarations, hazards checked
 
 Track D3 of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-13. Option 1 (validated
-scopes) was chosen the same day. Phase 0, Phase 1 and Phase 2 are done (2026-10-13); Phase 3 is next.**
+scopes) was chosen the same day. Phases 0 to 3 are done (2026-10-13); the plan is complete apart from the GPU and
+Firefox checks listed under Phase 3.**
 Written for the maintainers. Numbers are from a read of the tree on that date (branch
 `engine-architecture-modernization`), not from a profiler.
 
@@ -404,6 +405,56 @@ Option 1: the frame records and checks its passes; call order is still the hand-
   (`scene-msaa -> scene`) with `turbulent-boundary`, `msaa-resolve` and `scene-depth-sample` inside it, then
   `post-process:underwater-fog` into ping, `warp` into pong, `color-shift` to the screen, `overlays`; the fog volume
   view has six `scene-depth-sample` passes in one frame.
+- **Capture comparison of the production build** against `b378c0c` (the matrix of Phase 0, two captures per side):
+  `start` at `gl_msaa` 4 and 0 and `hw_e1m2` at 4 show nothing beyond the noise between captures of one build in any
+  of the nine views, and `r_speeds` are identical. The console has the same entries as the baseline (the 404s, the
+  ReadPixels stall of the screenshots and the driver's `outsideRenderPass` note, four times, present before this work).
+
+### Phase 3: what shipped (2026-10-13)
+
+Open question 4 was put to the developer and decided: **sample a depth copy and stay multisampled.** The swap the plan
+sketched (resolve at the first sampling pass, detach the depth texture for a renderbuffer) was replaced, not
+reorganized. 2416 tests pass, `npm run typecheck` and eslint are clean.
+
+- **`PostProcess.copySceneDepth()`** blits the depth of whatever is drawn into (`RenderTarget.bound`: the
+  multisampled target, or the scene) into the depth texture of `PostProcess.depthCopy`, a depth-only target, and
+  returns that texture. The blit resolves a multisampled depth. The frame stays where it was, so transparent geometry
+  after the first sampling pass is drawn into the multisampled target as the opaque geometry is, and `end()` resolves
+  the scene **once**, always. The pass is recorded as `scene-depth-copy` (its input is `scene.depth` without
+  multisampling and nothing with it, a renderbuffer is not a texture).
+- **Deleted**: `beginDepthSampling`, `bindDepthForSampling`, `endDepthSampling`, the sampler-unit list, `nullTexture`
+  (it duplicated `DefaultTextures.null_texture`), the `msaaResolved` flag, the depth renderbuffer and
+  `RenderTarget.swapDepthToRenderbuffer`/`restoreDepthTexture`. `isAttached` no longer has a special case.
+- **Same blit count as before** for a multisampled frame with fog volumes or turbulents: one per sampling pass, plus
+  the resolve (two color and one depth, which used to happen at the first pass and now at the end). Without
+  multisampling it is one depth blit per pass, as it was.
+- **`BrushModelRenderer`**: the turbulent and fog-volume passes call `copySceneDepth().bind(unit)` once and have no
+  end call. The turbulent pass still puts `DefaultTextures.null_texture` back on its `tDepth` unit when it is done,
+  which is unit 7, the `tSpecular` of the brush shader: the material binding does not rebind that slot, so the copy
+  would otherwise be sampled as a specular map by the surfaces that follow. The fog-volume pass keeps its own
+  re-bind after a light probe upload (which uploads on unit 0, the unit of `tDepth`) and keeps the copy in
+  `_fogVolumeDepth` for it instead of reading `PostProcess.depthTexture`.
+- **The trap in `CLAUDE.md`** now says: bind what `copySceneDepth()` returns, never `PostProcess.depthTexture`, and
+  put a neutral texture back on a unit that is not yours. The unit-release rule it used to carry is gone as a hazard
+  and survives only as that hygiene note.
+- **Found by the developer's live run, fixed in the same change**: a frame in which the scene is not drawn (a map that is
+  loading, the console forced up) still ends the scene and presents the last picture, so `ScreenFrame` calls
+  `PostProcess.end()` with no `begin()`. Phase 2 reported `endPass without an open pass` for it in development builds
+  and this phase's unconditional resolve added `continueIn outside of a pass`. `end()` does nothing then, apart from
+  `Frame.reuse(scene)`, which records `scene of an earlier frame` and tells the checks that the picture presented was
+  not drawn this frame. A script that loads four maps in a row gave 144 failed assertions without the fix and none with
+  it; `frame-matrix.test.ts` has the frame (it fails without the guard). This could not show in a production build,
+  which strips the checks.
+- **Tests**: `post-process-depth-sampling.test.ts` is rewritten over the real `PostProcess` and a recording context (the
+  blit and what stays bound in a single-sample and in a multisampled frame, one resolve at the end however many
+  copies); `frame.test.ts` and `frame-matrix.test.ts` follow the new passes (96 configurations again, the multisampled
+  frame records `scene`, two `scene-depth-copy`, `msaa-resolve`, `present`, `overlays`); `render-target.test.ts`
+  covers `isAttached`, `describeTexture`/`ownerOf` and `bound`.
+- **Verified in Chromium, development builds** (`start` with underwater fog, and `hw_e1m2`): 0 violations in all 18
+  views and nothing in the console, in particular no feedback-loop error from blitting into a depth texture that is
+  still bound to a sampler unit.
+- **Not verified**: frame time of the transparent pass with the multisampled target on a real GPU, which is the cost the
+  developer accepted with this decision, and Firefox.
 
 ## Testing
 
@@ -422,7 +473,8 @@ Option 1: the frame records and checks its passes; call order is still the hand-
 
 Settled 2026-10-13, before Phase 2: **1** Option 1, validated scopes, Phases 0 to 3; no compile step. **2** The validator
 is development-only (`console.assert`, stripped in production) with the matrix test covering the call order. **3** The
-`apply` signature change for the effects is accepted. Still open: 4, decided in Phase 3, and 5.
+`apply` signature change for the effects is accepted. **4** was decided with the developer in Phase 3: the depth is
+copied into a texture of its own and the frame stays multisampled (see "Phase 3: what shipped"). Still open: 5.
 
 1. **Scope: Option 1 (validated scopes, Phases 0 to 3) or Option 2 (compiled graph, plus Phase 4), or stop after Phase
    1?** Recommendation: Option 1. The pass order is a fixed, short sequence; a compiler would hold the same list the

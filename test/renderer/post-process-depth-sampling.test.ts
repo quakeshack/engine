@@ -1,65 +1,92 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
-import type { GLRenderTexture } from '../../source/engine/client/GL.ts';
-import Frame from '../../source/engine/client/renderer/frame/Frame.ts';
+import GL from '../../source/engine/client/GL.ts';
+import RenderTarget from '../../source/engine/client/renderer/frame/RenderTarget.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
-import { createFakeRenderTarget } from '../support/renderTargets.ts';
+import { eventBus } from '../../source/engine/common/EventBus.ts';
+import { publishGlReady } from '../support/glEvents.ts';
+import { createRecordingContext, type RecordingContext } from '../support/recordingContext.ts';
 
-void describe('PostProcess depth sampling', () => {
-  const previousScene = PostProcess.scene;
-  const previousNull = PostProcess.nullTexture;
-  let log: string[] = [];
+void describe('PostProcess.copySceneDepth', () => {
+  const previousContext = GL.gl;
+  let recording: RecordingContext = null!;
 
   beforeEach(() => {
-    log = [];
-
-    const texture = (name: string) => ({
-      bind: (unit: number) => { log.push(`bind ${name} to unit ${unit}`); },
-    }) as unknown as GLRenderTexture;
-
-    // the scene target's depth texture is what the sampling passes bind, and what endDepthSampling attaches again
-    PostProcess.scene = Object.assign(createFakeRenderTarget('scene', log), { depthTexture: texture('depth') });
-    PostProcess.nullTexture = texture('null');
+    recording = createRecordingContext();
+    GL.gl = recording.gl;
+    publishGlReady(recording.gl);
+    PostProcess.init();
   });
 
   afterEach(() => {
-    PostProcess.scene = previousScene;
-    PostProcess.nullTexture = previousNull;
+    PostProcess.msaa!.free();
+    PostProcess.shutdown();
+    eventBus.publish('gl.shutdown');
+    GL.gl = previousContext;
   });
 
-  void test('endDepthSampling takes the depth texture off the unit before attaching it again', () => {
-    Frame.beginPass('scene-depth-sample', null);
-    PostProcess.bindDepthForSampling(7);
-    PostProcess.endDepthSampling();
+  /**
+   * Starts the scene the way the frame does.
+   * @param samples The value of `gl_msaa`.
+   */
+  function beginScene(samples: number): void {
+    PostProcess.msaa!.set(String(samples));
+    PostProcess.resize(640, 480);
+    PostProcess.begin();
+    recording.log.length = 0;
+  }
 
-    assert.deepEqual(log, [
-      'bind depth to unit 7',
-      'bind null to unit 7',
-      'restore depth texture of scene',
+  void test('blits the depth of the scene into the copy and goes on drawing into the scene', () => {
+    beginScene(0);
+
+    const texture = PostProcess.copySceneDepth();
+
+    assert.equal(texture, PostProcess.depthCopy!.depthTexture);
+    assert.deepEqual(recording.calls('blitFramebuffer'), [
+      'blitFramebuffer(0, 0, 640, 480, 0, 0, 640, 480, DEPTH_BUFFER_BIT, NEAREST)',
     ]);
+    assert.equal(RenderTarget.bound, PostProcess.scene);
   });
 
-  void test('releases every unit the depth texture was bound to', () => {
-    Frame.beginPass('scene-depth-sample', null);
-    PostProcess.bindDepthForSampling(7);
-    PostProcess.bindDepthForSampling(3);
-    log.length = 0;
+  void test('reads the multisampled target when the frame is multisampled, and does not resolve or leave it', () => {
+    beginScene(4);
 
-    PostProcess.endDepthSampling();
+    PostProcess.copySceneDepth();
 
-    assert.deepEqual(log.slice(0, 2), ['bind null to unit 7', 'bind null to unit 3']);
+    // one depth blit: the multisampled depth is resolved into the copy, nothing of the scene is touched
+    assert.deepEqual(recording.calls('blitFramebuffer'), [
+      'blitFramebuffer(0, 0, 640, 480, 0, 0, 640, 480, DEPTH_BUFFER_BIT, NEAREST)',
+    ]);
+    assert.equal(RenderTarget.bound, PostProcess.msaaTarget);
   });
 
-  void test('forgets the units after a pass, the next one starts clean', () => {
-    Frame.beginPass('scene-depth-sample', null);
-    PostProcess.bindDepthForSampling(7);
-    PostProcess.endDepthSampling();
-    log.length = 0;
+  void test('asks again every time, the depth changes between two passes', () => {
+    beginScene(4);
 
-    Frame.beginPass('scene-depth-sample', null);
-    PostProcess.endDepthSampling();
+    PostProcess.copySceneDepth();
+    PostProcess.copySceneDepth();
+    PostProcess.copySceneDepth();
 
-    assert.deepEqual(log, ['restore depth texture of scene']);
+    assert.equal(recording.calls('blitFramebuffer').length, 3);
+  });
+
+  void test('the scene is resolved once, by end(), however many copies were made', () => {
+    beginScene(4);
+
+    PostProcess.copySceneDepth();
+    PostProcess.copySceneDepth();
+    recording.log.length = 0;
+    PostProcess.end();
+
+    // two color attachments and the depth
+    assert.deepEqual(recording.calls('blitFramebuffer').map((call) => call.includes('COLOR_BUFFER_BIT') ? 'color' : 'depth'), ['color', 'color', 'depth']);
+    assert.equal(RenderTarget.bound, null);
+  });
+
+  void test('is never the depth texture of the scene, which the framebuffer draws into', () => {
+    beginScene(0);
+
+    assert.notEqual(PostProcess.copySceneDepth(), PostProcess.depthTexture);
   });
 });
