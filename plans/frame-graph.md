@@ -453,8 +453,21 @@ reorganized. 2416 tests pass, `npm run typecheck` and eslint are clean.
 - **Verified in Chromium, development builds** (`start` with underwater fog, and `hw_e1m2`): 0 violations in all 18
   views and nothing in the console, in particular no feedback-loop error from blitting into a depth texture that is
   still bound to a sampler unit.
+- **Frame trace** (`hw_e1m2`, `gl_msaa` 4, the method of Phase 0): before, 10 shadow draws, 470 draws at 4 samples, a
+  resolve at the first sampling pass and the remaining 49 draws at 0 samples. Now 10 shadow draws, **519 draws at 4
+  samples** (the same 470 and 49), three depth blits one per sampling pass with no resolve among them, and one resolve
+  (two color blits and a depth blit) at the end; the 5 draws of the effects chain and the overlays as before. This is
+  the intended change, shown in draw order and sample counts.
+- **Capture comparison of the production build** against `b378c0c` (two captures per side): `start` at `gl_msaa` 0 (the
+  water views included, which go through the copy) and `hw_e1m2` at `gl_msaa` 0 (7 fog volumes) show nothing beyond the
+  noise between captures of one build in any of the nine views, with identical `r_speeds`: without multisampling the
+  frame is the one of before. `hw_e1m2` at `gl_msaa` 4 is also within the noise, which is **no evidence either way**
+  about the intended change: what it changes are the edge pixels of transparent geometry, thousands against a noise of
+  twenty thousand pixels in the quietest views (the sky and the liquids animate). The trace above is what shows it.
+- **Tests on an idle machine**: 2416 pass, 0 fail. A `worker-server-controller` test failed once while the captures
+  were running and passes 32 of 32 alone, three times: a timing flake under load, in code this work does not touch.
 - **Not verified**: frame time of the transparent pass with the multisampled target on a real GPU, which is the cost the
-  developer accepted with this decision, and Firefox.
+  developer accepted with this decision, and Firefox. The developer's own smoke test of the loading-frame fix passed.
 
 ## Testing
 
