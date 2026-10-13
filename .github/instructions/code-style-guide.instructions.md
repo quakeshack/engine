@@ -65,6 +65,18 @@ Use `eventBus` for **business logic events and lifecycle hooks**.
 
 When using control statements (`if`, `for`, `while`, etc.) with braces, always place the opening brace on the same line as the statement, but put the code block on the following line(s). This improves readability and follows standard formatting conventions.
 
+```typescript
+// ❌ Never
+if (!entity) { return; }
+
+// ✅ Always
+if (!entity) {
+  return;
+}
+```
+
+The `quakeshack/block-on-own-lines` rule (`eslint.rules.mjs`) enforces it for `if`/`else`, the loops and `try`/`catch`/`finally`, and `eslint --fix` (`npm run lint`) rewrites a violation. A one-line arrow function or getter is not a control statement and stays as it is.
+
 ### Prefer `switch` over `if`/`else if` chains
 
 When branching on the same discriminant value (a string literal union, an enum, a `typeof`/`type` tag, etc.), use a `switch` statement instead of an `if`/`else if`/`else if` chain. A `switch` makes the shared discriminant and the exhaustive set of branches visually obvious at a glance, whereas an `if`/`else if` chain hides that structure and invites a mismatched condition on one of the branches.

@@ -265,9 +265,15 @@ export class BSP38Loader extends ModelLoader {
       const plane = new Plane(normal, dist);
       plane.type = planesLump.getInt32(offset + 16, true);
 
-      if (normal[0] < 0) { plane.signbits |= 1; }
-      if (normal[1] < 0) { plane.signbits |= 2; }
-      if (normal[2] < 0) { plane.signbits |= 4; }
+      if (normal[0] < 0) {
+        plane.signbits |= 1;
+      }
+      if (normal[1] < 0) {
+        plane.signbits |= 2;
+      }
+      if (normal[2] < 0) {
+        plane.signbits |= 4;
+      }
 
       loadmodel.planes[index] = plane;
     }

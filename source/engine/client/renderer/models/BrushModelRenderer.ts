@@ -1762,12 +1762,24 @@ export class BrushModelRenderer extends ModelRenderer {
   _expandBounds(mins: Vector, maxs: Vector, verts: number[][]): void {
     for (let v = 0; v < verts.length; v++) {
       const vert = verts[v];
-      if (vert[0] < mins[0]) { mins[0] = vert[0]; }
-      if (vert[1] < mins[1]) { mins[1] = vert[1]; }
-      if (vert[2] < mins[2]) { mins[2] = vert[2]; }
-      if (vert[0] > maxs[0]) { maxs[0] = vert[0]; }
-      if (vert[1] > maxs[1]) { maxs[1] = vert[1]; }
-      if (vert[2] > maxs[2]) { maxs[2] = vert[2]; }
+      if (vert[0] < mins[0]) {
+        mins[0] = vert[0];
+      }
+      if (vert[1] < mins[1]) {
+        mins[1] = vert[1];
+      }
+      if (vert[2] < mins[2]) {
+        mins[2] = vert[2];
+      }
+      if (vert[0] > maxs[0]) {
+        maxs[0] = vert[0];
+      }
+      if (vert[1] > maxs[1]) {
+        maxs[1] = vert[1];
+      }
+      if (vert[2] > maxs[2]) {
+        maxs[2] = vert[2];
+      }
     }
   }
 

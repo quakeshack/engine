@@ -950,9 +950,21 @@ export class BrushTrace {
       if (!ctx.isPoint) {
         // Push the plane out appropriately for mins/maxs
         let ofs0 = 0, ofs1 = 0, ofs2 = 0;
-        if (plane.normal[0] < 0) { ofs0 = ctx.maxs[0]; } else { ofs0 = ctx.mins[0]; }
-        if (plane.normal[1] < 0) { ofs1 = ctx.maxs[1]; } else { ofs1 = ctx.mins[1]; }
-        if (plane.normal[2] < 0) { ofs2 = ctx.maxs[2]; } else { ofs2 = ctx.mins[2]; }
+        if (plane.normal[0] < 0) {
+          ofs0 = ctx.maxs[0];
+        } else {
+          ofs0 = ctx.mins[0];
+        }
+        if (plane.normal[1] < 0) {
+          ofs1 = ctx.maxs[1];
+        } else {
+          ofs1 = ctx.mins[1];
+        }
+        if (plane.normal[2] < 0) {
+          ofs2 = ctx.maxs[2];
+        } else {
+          ofs2 = ctx.mins[2];
+        }
         dist = plane.dist - (ofs0 * plane.normal[0] + ofs1 * plane.normal[1] + ofs2 * plane.normal[2]);
       } else {
         dist = plane.dist;

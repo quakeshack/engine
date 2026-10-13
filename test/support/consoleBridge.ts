@@ -22,7 +22,11 @@ interface MockedConsole {
 const mocked = (): MockedConsole | undefined => engineMocks.Con as unknown as MockedConsole | undefined;
 
 Con.useDelegate({
-  Print: (text, color) => { if (color === undefined) { mocked()?.Print?.(text); } else { mocked()?.Print?.(text, color); } },
+  Print: (text, color) => { if (color === undefined) {
+    mocked()?.Print?.(text);
+  } else {
+    mocked()?.Print?.(text, color);
+  } },
   DPrint: (text) => { mocked()?.DPrint?.(text); },
   PrintWarning: (text) => { mocked()?.PrintWarning?.(text); },
   PrintError: (text) => { mocked()?.PrintError?.(text); },

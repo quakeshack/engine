@@ -1237,9 +1237,15 @@ export class BSP29Loader extends ModelLoader {
       const dist = view.getFloat32(fileofs + 12, true);
       const out = new Plane(normal, dist);
       out.type = view.getUint32(fileofs + 16, true);
-      if (out.normal[0] < 0) { out.signbits |= 1; }
-      if (out.normal[1] < 0) { out.signbits |= 2; }
-      if (out.normal[2] < 0) { out.signbits |= 4; }
+      if (out.normal[0] < 0) {
+        out.signbits |= 1;
+      }
+      if (out.normal[1] < 0) {
+        out.signbits |= 2;
+      }
+      if (out.normal[2] < 0) {
+        out.signbits |= 4;
+      }
       loadmodel.planes[i] = out;
       fileofs += 20;
     }
@@ -1758,9 +1764,15 @@ export class BSP29Loader extends ModelLoader {
       } else {
         p.type = 5;
       }
-      if (normal[0] < 0) { p.signbits |= 1; }
-      if (normal[1] < 0) { p.signbits |= 2; }
-      if (normal[2] < 0) { p.signbits |= 4; }
+      if (normal[0] < 0) {
+        p.signbits |= 1;
+      }
+      if (normal[1] < 0) {
+        p.signbits |= 2;
+      }
+      if (normal[2] < 0) {
+        p.signbits |= 4;
+      }
       return p;
     };
 

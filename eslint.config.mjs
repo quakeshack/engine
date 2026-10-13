@@ -7,6 +7,7 @@ import jsdoc from 'eslint-plugin-jsdoc';
 import stylistic from '@stylistic/eslint-plugin';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
+import controlStatementBlocks from './eslint.rules.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const typeAwareParserOptions = {
@@ -48,6 +49,7 @@ const commonRules = /** @type {import('eslint').Linter.RulesRecord} */ ({
   'no-unmodified-loop-condition': 'error',
   'no-unreachable-loop': 'warn',
   'curly': 'error',
+  'quakeshack/block-on-own-lines': 'error',
   'consistent-return': 'error',
   'consistent-this': ['error', 'that'],
   'func-name-matching': 'error',
@@ -147,6 +149,7 @@ export default defineConfig([
       '@stylistic': stylisticPlugin,
       '@typescript-eslint': typeScriptEslintPlugin,
       jsdoc: jsdocPlugin,
+      quakeshack: controlStatementBlocks,
     },
     rules: commonRules,
   },
@@ -161,6 +164,7 @@ export default defineConfig([
       '@stylistic': stylisticPlugin,
       '@typescript-eslint': typeScriptEslintPlugin,
       jsdoc: jsdocPlugin,
+      quakeshack: controlStatementBlocks,
     },
     rules: {
       ...commonRules,

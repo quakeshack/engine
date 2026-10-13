@@ -1629,12 +1629,24 @@ export class Navigation {
 
     for (const n of this.graph.nodes) {
       const o = n.origin;
-      if (o[0] < minX) { minX = o[0]; }
-      if (o[1] < minY) { minY = o[1]; }
-      if (o[2] < minZ) { minZ = o[2]; }
-      if (o[0] > maxX) { maxX = o[0]; }
-      if (o[1] > maxY) { maxY = o[1]; }
-      if (o[2] > maxZ) { maxZ = o[2]; }
+      if (o[0] < minX) {
+        minX = o[0];
+      }
+      if (o[1] < minY) {
+        minY = o[1];
+      }
+      if (o[2] < minZ) {
+        minZ = o[2];
+      }
+      if (o[0] > maxX) {
+        maxX = o[0];
+      }
+      if (o[1] > maxY) {
+        maxY = o[1];
+      }
+      if (o[2] > maxZ) {
+        maxZ = o[2];
+      }
     }
 
     const cx = (minX + maxX) / 2;

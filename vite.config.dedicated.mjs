@@ -135,7 +135,9 @@ function dedicatedWorkerBundlePlugin(mode) {
             // We undo that here so Rollup can resolve and bundle them.
             name: 'resolve-worker-dynamic-imports',
             transform(/** @type {string} */ code, /** @type {string} */ id) {
-              if (!id.includes('WorkerFramework')) { return null; }
+              if (!id.includes('WorkerFramework')) {
+                return null;
+              }
               // Replace the two-step variable + import() patterns with direct
               // literal import() calls so Rollup can statically resolve them.
               // esbuild may convert single quotes to double quotes and reformat

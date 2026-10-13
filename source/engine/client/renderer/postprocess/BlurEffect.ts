@@ -52,7 +52,9 @@ export default class BlurEffect extends PostProcessEffect {
 
   #blurPass(inputTexture: GLRenderTexture, dirX: number, dirY: number, radius: number, x: number, y: number, width: number, height: number): void {
     const program = GL.UseProgram('blur');
-    if (!program) { return; }
+    if (!program) {
+      return;
+    }
     inputTexture.bind(program.tTexture!);
     gl.uniform2f(program.uDirection!, dirX, dirY);
     gl.uniform1f(program.uRadius!, radius);
