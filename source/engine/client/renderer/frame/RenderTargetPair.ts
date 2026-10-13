@@ -14,8 +14,8 @@ export default class RenderTargetPair {
    */
   constructor(descriptor: RenderTargetDescriptor) {
     this.#targets = [
-      new RenderTarget({ ...descriptor, name: `${descriptor.name}-0` }),
-      new RenderTarget({ ...descriptor, name: `${descriptor.name}-1` }),
+      new RenderTarget({ ...descriptor, name: `${descriptor.name}-0`, persistent: true }),
+      new RenderTarget({ ...descriptor, name: `${descriptor.name}-1`, persistent: true }),
     ];
   }
 

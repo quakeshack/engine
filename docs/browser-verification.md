@@ -103,7 +103,7 @@ guessing from a screenshot.
 
 ## 5. Reach a gated menu/HUD page without its full physical trigger
 
-The page's composition root (`bootstrap/createBrowserClient.ts`) exposes `window.engine` in the browser (`CL`, `COM`, `Con`,
+The page's composition root (`bootstrap/createBrowserClient.ts`) exposes `window.engine` in the browser (`Frame`, whose `records` and `violations` are the passes of the last frame in a development build, `CL`, `COM`, `Con`,
 `ConsoleOverlay`, `Host`, `M`, `Key`, etc.; `SV` is `null` unless the page runs with `?serverthread`, by default the server is in a worker and `CL.cls.serverController.state` is what the page knows of it). From a Playwright `page.evaluate()`:
 
 ```js
@@ -248,7 +248,9 @@ node scripts/renderer-capture/compare.mjs \
   and nudges the viewport by a pixel and back. A build from before 2026-10-13 takes a new sample count only when the
   size of the scene target changes; later builds take it up at the next frame, and the nudge does no harm there.
   `DEDICATED_PORT` points the file proxy at the right server. `views.json` records the map, `gl_msaa`, the sample
-  count in effect and the number of fog volumes under `setup`.
+  count in effect and the number of fog volumes under `setup`, and for each view the passes of the frame and its
+  violations (`frame`, `null` in a production build, which does not record: build with `--mode development` to
+  check the frame as well, and a failing check also lands in `log`).
 - The scripts reach into the engine through `window.engine` (see section 5). `installAdapter()` in
   `capture.mjs` names every member it uses, once. A change that moves a member updates that function and exposes
   the new home in `bootstrap/createBrowserClient.ts`; to capture the build from before such a move with the same

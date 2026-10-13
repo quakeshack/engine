@@ -31,6 +31,15 @@ export default class UnderwaterFogEffect extends PostProcessEffect {
     super('underwater-fog');
   }
 
+  /** The effect samples the depth of the scene and of the turbulent boundary pass, which the frame checks. */
+  override init(): void {
+    const { depthTexture, turbulentBoundaryDepthTexture } = PostProcess;
+
+    this.sampledTextures = depthTexture !== null && turbulentBoundaryDepthTexture !== null
+      ? [depthTexture, turbulentBoundaryDepthTexture]
+      : [];
+  }
+
   /**
    * Apply underwater fog by drawing a fullscreen quad with the 'underwater-fog'
    * shader, sampling scene color, scene depth, and boundary depth.

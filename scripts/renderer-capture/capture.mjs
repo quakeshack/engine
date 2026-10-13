@@ -260,7 +260,8 @@ const page = await browser.newPage({ viewport: VIEWPORT });
 const consoleLog = [];
 
 page.on('console', (message) => {
-  if (message.type() === 'error' || message.type() === 'warning') {
+  // a failing assert is how the frame's checks (`Frame`) report in a development build
+  if (message.type() === 'error' || message.type() === 'warning' || message.type() === 'assert') {
     consoleLog.push(`[${message.type()}] ${message.text()}`);
   }
 });
@@ -315,7 +316,21 @@ async function capture(name) {
 
   const speeds = await page.evaluate(() => window.__capture.stats.lines.slice(0, 4).map((line) => String(line).trim()));
 
-  views[name] = { speeds };
+  // the passes of the last frame and what the frame found wrong with them; a production build records nothing
+  const frame = await page.evaluate(() => {
+    const { Frame } = window.engine;
+
+    if (!Frame || Frame.records.length === 0) {
+      return null;
+    }
+
+    return {
+      passes: Frame.records.map((record) => `${'  '.repeat(record.depth)}${record.name} -> ${record.output}`),
+      violations: [...Frame.violations],
+    };
+  });
+
+  views[name] = { speeds, frame };
 }
 
 /**

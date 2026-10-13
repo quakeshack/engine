@@ -11,6 +11,7 @@ import Key, { KeyDestination } from '../Key.ts';
 import M from '../Menu.ts';
 import R from '../R.ts';
 import S from '../Sound.ts';
+import Frame from '../renderer/frame/Frame.ts';
 import DynamicLights from '../renderer/lighting/DynamicLights.ts';
 import PostProcess from '../renderer/postprocess/PostProcess.ts';
 import rendererCvars from '../renderer/resources/RendererCvars.ts';
@@ -151,6 +152,7 @@ export default class ScreenFrame {
    */
   static #draw(animationTime: number): void {
     FramePacing.Record(animationTime);
+    Frame.beginFrame();
 
     const clean = Screenshots.BeginClean();
 
@@ -171,7 +173,9 @@ export default class ScreenFrame {
     // above, which are part of the scene rendering, not UI) -- skip every overlay,
     // including the console and menu, for this one frame.
     if (!clean) {
+      Frame.beginPass('overlays', null);
       ScreenFrame.#drawOverlays();
+      Frame.endPass();
     }
 
     ScreenFrame.#finish(clean);

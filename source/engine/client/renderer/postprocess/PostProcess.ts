@@ -2,8 +2,9 @@ import GL, { GLRenderTexture } from '../../GL.ts';
 import Cvar from '../../../common/Cvar.ts';
 import VID from '../../VID.ts';
 import Host from '../../../common/Host.ts';
-import PostProcessEffect from './PostProcessEffect.ts';
+import PostProcessEffect, { type PostProcessOutput } from './PostProcessEffect.ts';
 import PostProcessEntries, { type ResolvedPostProcessEntry } from './PostProcessEntries.ts';
+import Frame from '../frame/Frame.ts';
 import RenderTarget from '../frame/RenderTarget.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import type { PostProcessPulseDescriptor, PostProcessPulseOptions, PostProcessStack, PostProcessStackOptions } from '../../../../shared/GameInterfaces.ts';
@@ -113,6 +114,9 @@ export default class PostProcess {
 
   /** The clock reading of the last {@link PostProcess.advance}, `null` before the first. */
   static #lastAdvanceTime: number | null = null;
+
+  /** What the chain tells an effect about where it draws; one object for all of them, see {@link PostProcessOutput}. */
+  static readonly #output: PostProcessOutput = { target: null, viewport: new Int32Array(4) };
 
   /**
    * Color texture of the scene.
@@ -333,6 +337,7 @@ export default class PostProcess {
    */
   static beginTurbulentBoundaryPass(): void {
     PostProcess.turbulentBoundary!.bind();
+    Frame.beginPass('turbulent-boundary', PostProcess.turbulentBoundary);
     gl.viewport(0, 0, PostProcess.width, PostProcess.height);
     gl.enable(gl.DEPTH_TEST);
     gl.depthMask(true);
@@ -346,6 +351,7 @@ export default class PostProcess {
    * End the turbulent boundary depth pre-pass and restore the scene FBO.
    */
   static endTurbulentBoundaryPass(): void {
+    Frame.endPass();
     gl.enable(gl.CULL_FACE);
     // Restore whichever scene FBO was active before the pre-pass.
     (PostProcess.msaaSamples > 0 ? PostProcess.msaaTarget! : PostProcess.scene!).bind();
@@ -379,17 +385,20 @@ export default class PostProcess {
    * texture FBO before depth sampling or at `end()`.
    */
   static begin(): void {
+    const target = PostProcess.msaaSamples > 0 ? PostProcess.msaaTarget! : PostProcess.scene!;
+
+    target.bind();
+
     if (PostProcess.msaaSamples > 0) {
-      PostProcess.msaaTarget!.bind();
       PostProcess.msaaResolved = false;
-    } else {
-      PostProcess.scene!.bind();
     }
+
     gl.viewport(0, 0, PostProcess.width, PostProcess.height);
     gl.clearBufferfv(gl.COLOR, 0, [0.0, 0.0, 0.0, 0.0]);
     gl.clearBufferfv(gl.COLOR, 1, [0.0, 0.0, 0.0, 0.0]);
     gl.clear(gl.DEPTH_BUFFER_BIT);
     PostProcess.active = true;
+    Frame.beginPass('scene', target);
   }
 
   /**
@@ -427,6 +436,9 @@ export default class PostProcess {
     );
 
     PostProcess.scene!.swapDepthToRenderbuffer(PostProcess.depthCopy!.depthRenderbuffer!);
+
+    // the depth texture is off the framebuffer now, which is what lets the pass sample it
+    Frame.beginPass('scene-depth-sample', PostProcess.scene, PostProcess.depthTexture);
   }
 
   /**
@@ -447,6 +459,8 @@ export default class PostProcess {
    * FBO again.
    */
   static endDepthSampling(): void {
+    Frame.endPass();
+
     for (const unit of PostProcess.#sampledDepthUnits) {
       PostProcess.nullTexture!.bind(unit);
     }
@@ -484,6 +498,7 @@ export default class PostProcess {
     const h = PostProcess.height;
     const scene = PostProcess.scene!;
 
+    Frame.beginPass('msaa-resolve', scene);
     PostProcess.msaaTarget!.bindForRead();
     scene.bindForDraw();
 
@@ -497,6 +512,10 @@ export default class PostProcess {
     scene.bind();
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     PostProcess.msaaResolved = true;
+    Frame.endPass();
+
+    // the part of the frame that was multisampled is over: what is drawn from here on goes into the resolved scene
+    Frame.continueIn(scene);
   }
 
   /**
@@ -508,7 +527,8 @@ export default class PostProcess {
     if (PostProcess.msaaSamples > 0 && !PostProcess.msaaResolved) {
       PostProcess.resolveMSAA();
     }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    Frame.endPass();
+    RenderTarget.unbind();
     PostProcess.active = false;
   }
 
@@ -533,7 +553,9 @@ export default class PostProcess {
 
     if (activeEffects.length === 0) {
       // No effects — simple blit to screen
+      Frame.beginPass('present', null, sceneTexture);
       PostProcess._blitToScreen(sceneTexture, x, y, width, height);
+      Frame.endPass();
       return;
     }
 
@@ -549,22 +571,35 @@ export default class PostProcess {
 
     let inputTexture = sceneTexture;
     const targets = [PostProcess.ping!, PostProcess.pong!];
+    const output = PostProcess.#output;
 
     for (let i = 0; i < activeEffects.length; i++) {
       const isLast = (i === activeEffects.length - 1);
+      const { effect, settings } = activeEffects[i];
 
       if (isLast) {
         // Last effect renders directly to screen
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        RenderTarget.unbind();
         gl.viewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
-        activeEffects[i].effect.apply(inputTexture, x, y, width, height, activeEffects[i].settings);
+        output.target = null;
+        output.viewport.set(savedViewport);
+        Frame.beginPass(effect.passName, null, inputTexture, effect.sampledTextures);
+        effect.apply(inputTexture, x, y, width, height, settings, output);
+        Frame.endPass();
       } else {
         // Intermediate effects render to the next ping-pong FBO
         const target = targets[i % 2];
         target.bind();
         gl.viewport(0, 0, pixelWidth, pixelHeight);
+        output.target = target;
+        output.viewport[0] = 0;
+        output.viewport[1] = 0;
+        output.viewport[2] = pixelWidth;
+        output.viewport[3] = pixelHeight;
+        Frame.beginPass(effect.passName, target, inputTexture, effect.sampledTextures);
         // Draw at ortho-space dimensions (VID.width/height) so the ortho matrix works
-        activeEffects[i].effect.apply(inputTexture, 0, 0, VID.width, VID.height, activeEffects[i].settings);
+        effect.apply(inputTexture, 0, 0, VID.width, VID.height, settings, output);
+        Frame.endPass();
         inputTexture = target.colorTexture(0);
       }
     }
@@ -604,12 +639,22 @@ export default class PostProcess {
 
     let input: GLRenderTexture = PostProcess.colorTexture!;
     const targets = [PostProcess.ping!, PostProcess.pong!];
+    const output = PostProcess.#output;
 
     for (let i = 0; i < entries.length; i++) {
+      const { effect, settings } = entries[i];
       const target = targets[i % 2];
+
       target.bind();
       gl.viewport(0, 0, w, h);
-      entries[i].effect.apply(input, 0, 0, VID.width, VID.height, entries[i].settings);
+      output.target = target;
+      output.viewport[0] = 0;
+      output.viewport[1] = 0;
+      output.viewport[2] = w;
+      output.viewport[3] = h;
+      Frame.beginPass(effect.passName, target, input, effect.sampledTextures);
+      effect.apply(input, 0, 0, VID.width, VID.height, settings, output);
+      Frame.endPass();
       input = target.colorTexture(0);
     }
 
@@ -617,14 +662,16 @@ export default class PostProcess {
     // that PostProcess.resolve() reads from colorTexture without a ping-pong
     // read/write hazard.
     PostProcess.scene!.bind();
+    Frame.beginPass('gameplay-stack-writeback', PostProcess.scene, input);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
     gl.viewport(0, 0, w, h);
     PostProcess._blitToScreen(input, 0, 0, VID.width, VID.height);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    Frame.endPass();
 
     // Back to the screen, as `end()` left it. `resolve()` without an effect of the renderer blits to whatever is
     // bound, which was the scene FBO: nothing reached the screen and the HUD was drawn into the FBO.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    RenderTarget.unbind();
     gl.viewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
 
     gl.enable(gl.BLEND);

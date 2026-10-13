@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import type { GLRenderTexture } from '../../source/engine/client/GL.ts';
+import Frame from '../../source/engine/client/renderer/frame/Frame.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 import { createFakeRenderTarget } from '../support/renderTargets.ts';
 
@@ -28,6 +29,7 @@ void describe('PostProcess depth sampling', () => {
   });
 
   void test('endDepthSampling takes the depth texture off the unit before attaching it again', () => {
+    Frame.beginPass('scene-depth-sample', null);
     PostProcess.bindDepthForSampling(7);
     PostProcess.endDepthSampling();
 
@@ -39,6 +41,7 @@ void describe('PostProcess depth sampling', () => {
   });
 
   void test('releases every unit the depth texture was bound to', () => {
+    Frame.beginPass('scene-depth-sample', null);
     PostProcess.bindDepthForSampling(7);
     PostProcess.bindDepthForSampling(3);
     log.length = 0;
@@ -49,10 +52,12 @@ void describe('PostProcess depth sampling', () => {
   });
 
   void test('forgets the units after a pass, the next one starts clean', () => {
+    Frame.beginPass('scene-depth-sample', null);
     PostProcess.bindDepthForSampling(7);
     PostProcess.endDepthSampling();
     log.length = 0;
 
+    Frame.beginPass('scene-depth-sample', null);
     PostProcess.endDepthSampling();
 
     assert.deepEqual(log, ['restore depth texture of scene']);

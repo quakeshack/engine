@@ -6,6 +6,7 @@ import GL from '../../source/engine/client/GL.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { publishGlReady } from '../support/glEvents.ts';
+import Frame from '../../source/engine/client/renderer/frame/Frame.ts';
 import PostProcess from '../../source/engine/client/renderer/postprocess/PostProcess.ts';
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import Decals from '../../source/engine/client/renderer/effects/Decals.ts';
@@ -56,6 +57,7 @@ void describe('R.Init', () => {
     mock.method(GL, 'CreateVAO', () => ({}) as WebGLVertexArrayObject);
     publishGlReady();
 
+    mock.method(Frame, 'Init', () => { steps.push('frame'); });
     mock.method(DefaultTextures, 'Init', () => { steps.push('default textures'); });
     mock.method(Lightmaps, 'Init', () => { steps.push('lightmaps'); });
     mock.method(LightStyles, 'Init', () => { steps.push('lightstyles'); });
@@ -117,6 +119,7 @@ void describe('R.Init', () => {
     const { steps } = await runInit();
 
     assert.deepEqual(steps, [
+      'frame',
       'default textures',
       'lightmaps',
       'lightstyles',

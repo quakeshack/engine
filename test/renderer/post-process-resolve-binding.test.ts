@@ -35,6 +35,8 @@ void describe('PostProcess.resolveGameplayStack', () => {
       }),
       patchMembers(VID, { width: 640, height: 480, pixelRatio: 1 }),
     ];
+    // the frame's checks look at the real RenderTarget.bound, which fakes never are
+    mock.method(console, 'assert', () => {});
     mock.method(PostProcess, 'resizePingPong', () => {});
     mock.method(PostProcess, '_blitToScreen', () => {});
   });

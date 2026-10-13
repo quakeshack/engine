@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import GL from '../../source/engine/client/GL.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
@@ -9,6 +9,15 @@ import { assertNear } from '../physics/fixtures.mjs';
 import { useClientStateOf } from '../support/clientState.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 import { createFakeRenderTarget } from '../support/renderTargets.ts';
+
+// the passes of the frame check the real RenderTarget.bound, which the fake targets of these tests never are
+beforeEach(() => {
+  mock.method(console, 'assert', () => {});
+});
+
+afterEach(() => {
+  mock.restoreAll();
+});
 
 void describe('ShadowMap.renderPointLightShadow', () => {
   void test('limits entity casters to the active point light radius', () => {

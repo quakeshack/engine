@@ -1,4 +1,5 @@
 import GL, { GLCubeTexture, GLRenderTexture } from '../../GL.ts';
+import Frame from '../frame/Frame.ts';
 import RenderTarget from '../frame/RenderTarget.ts';
 import Cvar from '../../../common/Cvar.ts';
 import { limits } from '../../../common/Def.ts';
@@ -256,7 +257,7 @@ export default class ShadowMap {
     ShadowMap.pointTarget = new RenderTarget({ name: 'shadow-point', color: [], depth: null });
     ShadowMap.pointTarget.bind();
     ShadowMap.pointTarget.attachDepthCubeFace(ShadowMap.pointDepthCubes[0].texture, 0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    RenderTarget.unbind();
 
     // ── 1×1 dummy cubemap (always-lit) ─────────────────────────────
     ShadowMap.pointDummyCube = new GLCubeTexture();
@@ -370,6 +371,7 @@ export default class ShadowMap {
    */
   static beginTopDown(): void {
     ShadowMap.topdownTarget!.bind();
+    Frame.beginPass('shadow-topdown', ShadowMap.topdownTarget);
     gl.viewport(0, 0, TOPDOWN_SHADOW_SIZE, TOPDOWN_SHADOW_SIZE);
     gl.enable(gl.DEPTH_TEST);
     gl.clear(gl.DEPTH_BUFFER_BIT);
@@ -385,7 +387,8 @@ export default class ShadowMap {
     gl.cullFace(gl.FRONT);
     gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.colorMask(true, true, true, true);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    Frame.endPass();
+    RenderTarget.unbind();
   }
 
   /**
@@ -720,6 +723,7 @@ export default class ShadowMap {
     const submodelLeafFlags = ShadowMap._getSubmodelLeafFlags(worldmodel);
 
     ShadowMap.pointTarget!.bind();
+    Frame.beginPass('shadow-point', ShadowMap.pointTarget);
     gl.viewport(0, 0, POINT_SHADOW_SIZE, POINT_SHADOW_SIZE);
     gl.enable(gl.DEPTH_TEST);
     gl.colorMask(false, false, false, false);
@@ -732,7 +736,8 @@ export default class ShadowMap {
     gl.enable(gl.CULL_FACE);
     gl.cullFace(gl.FRONT);
     gl.colorMask(true, true, true, true);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    Frame.endPass();
+    RenderTarget.unbind();
   }
 
   /**

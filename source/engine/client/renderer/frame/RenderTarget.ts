@@ -51,6 +51,12 @@ export interface RenderTargetDescriptor {
 
   /** The depth attachment, `null` when the pass that draws into it brings its own (a cube face, say). */
   readonly depth: AttachmentDescriptor | null;
+
+  /**
+   * Whether what the target holds is the result of an earlier frame (a history), so that reading it before it was
+   * written this frame is not a hazard.
+   */
+  readonly persistent?: boolean;
 }
 
 /** The limits of the context that decide what a target can have. */
@@ -59,6 +65,15 @@ export interface RenderTargetLimits {
   readonly maxDrawBuffers: number;
   readonly maxSamples: number;
 }
+
+/** Which target a texture belongs to, and what it is called there. */
+interface TextureOwner {
+  readonly target: RenderTarget;
+  readonly label: string;
+}
+
+/** Owners of the textures of every target, so that a pass can be checked and named by the textures it samples. */
+const textureOwners = new WeakMap<GLRenderTexture, TextureOwner>();
 
 /** One attachment of a target. */
 interface AttachmentSlot {
@@ -90,11 +105,63 @@ export default class RenderTarget {
     return cachedLimits;
   }
 
+  /** The target the draw framebuffer is, as far as the renderer's own binds know; `null` for the screen. */
+  static #bound: RenderTarget | null = null;
+
+  /**
+   * The target drawn into now. Every bind of a framebuffer goes through this class, so this is what GL has bound
+   * without asking it.
+   * @returns The target, `null` when the default framebuffer (the screen) is bound.
+   */
+  static get bound(): RenderTarget | null {
+    return RenderTarget.#bound;
+  }
+
+  /**
+   * Binds the output of a pass: a target, or the screen.
+   * @param target The target, `null` for the screen.
+   */
+  static bindOutput(target: RenderTarget | null): void {
+    if (target === null) {
+      RenderTarget.unbind();
+      return;
+    }
+
+    target.bind();
+  }
+
+  /** Binds the default framebuffer, the screen. */
+  static unbind(): void {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    RenderTarget.#bound = null;
+  }
+
+  /**
+   * The target a texture belongs to.
+   * @param texture A texture of a target, attached or external.
+   * @returns The target, `null` for a texture that no target registered.
+   */
+  static ownerOf(texture: GLRenderTexture): RenderTarget | null {
+    return textureOwners.get(texture)?.target ?? null;
+  }
+
+  /**
+   * A name for a texture of a target, for logs: `scene.color1`, `scene.depth`.
+   * @param texture A texture.
+   * @returns The name, `a texture` for one that no target registered.
+   */
+  static describeTexture(texture: GLRenderTexture): string {
+    return textureOwners.get(texture)?.label ?? 'a texture';
+  }
+
   /** Names the target in logs and assertions. */
   readonly name: string;
 
   /** The framebuffer object. */
   readonly framebuffer: WebGLFramebuffer;
+
+  /** Whether the target holds the result of an earlier frame, see {@link RenderTargetDescriptor.persistent}. */
+  readonly persistent: boolean;
 
   /** Width of the attachments in pixels, 0 before the first {@link RenderTarget.resize}. */
   width = 0;
@@ -108,6 +175,9 @@ export default class RenderTarget {
   readonly #colors: AttachmentSlot[] = [];
   readonly #depth: AttachmentSlot | null;
 
+  /** Whether the depth texture is off the framebuffer, replaced by a renderbuffer, see `swapDepthToRenderbuffer`. */
+  #depthDetached = false;
+
   /**
    * Creates the framebuffer and its attachments. The framebuffer binding is left on the default framebuffer, as
    * every creation in the renderer did.
@@ -117,6 +187,7 @@ export default class RenderTarget {
     console.assert(descriptor.color.length <= RenderTarget.limits.maxDrawBuffers, `render target ${descriptor.name} has more color attachments than the context draws to`);
 
     this.name = descriptor.name;
+    this.persistent = descriptor.persistent ?? false;
     this.framebuffer = gl.createFramebuffer();
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
@@ -126,11 +197,13 @@ export default class RenderTarget {
 
       this.#colors.push(slot);
       RenderTarget.#attach(slot, gl.COLOR_ATTACHMENT0 + i);
+      this.#register(slot, `${descriptor.name}.color${i}`);
     }
 
     if (descriptor.depth !== null) {
       this.#depth = RenderTarget.#createSlot(descriptor.depth, 'nearest');
       RenderTarget.#attach(this.#depth, gl.DEPTH_ATTACHMENT);
+      this.#register(this.#depth, `${descriptor.name}.depth`);
     } else {
       this.#depth = null;
     }
@@ -144,6 +217,19 @@ export default class RenderTarget {
     }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    RenderTarget.#bound = null;
+  }
+
+  /**
+   * Remembers that the texture of a slot belongs to this target, unless an earlier target already owns it (an
+   * external attachment keeps the name its first owner gave it).
+   * @param slot The attachment.
+   * @param label What the attachment is called.
+   */
+  #register(slot: AttachmentSlot, label: string): void {
+    if (slot.texture !== null && !textureOwners.has(slot.texture)) {
+      textureOwners.set(slot.texture, { target: this, label });
+    }
   }
 
   /**
@@ -290,6 +376,7 @@ export default class RenderTarget {
   /** Binds the framebuffer for reading and drawing. */
   bind(): void {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+    RenderTarget.#bound = this;
   }
 
   /** Binds the framebuffer as the source of a blit. */
@@ -297,9 +384,26 @@ export default class RenderTarget {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.framebuffer);
   }
 
-  /** Binds the framebuffer as the destination of a blit. */
+  /** Binds the framebuffer as the destination of a blit, and of everything drawn until the next bind. */
   bindForDraw(): void {
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.framebuffer);
+    RenderTarget.#bound = this;
+  }
+
+  /**
+   * Whether a texture is attached to the framebuffer right now, which makes sampling it a feedback loop. The depth
+   * texture is not while it is swapped for a renderbuffer.
+   * @param texture The texture a pass is about to sample.
+   * @returns True when the framebuffer would draw into it.
+   */
+  isAttached(texture: GLRenderTexture): boolean {
+    for (const slot of this.#colors) {
+      if (slot.texture === texture) {
+        return true;
+      }
+    }
+
+    return !this.#depthDetached && this.#depth !== null && this.#depth.texture === texture;
   }
 
   /**
@@ -321,6 +425,7 @@ export default class RenderTarget {
     this.bind();
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, null, 0);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer);
+    this.#depthDetached = true;
   }
 
   /**
@@ -333,11 +438,16 @@ export default class RenderTarget {
     this.bind();
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     this.#depth!.texture!.attachToFramebuffer(gl.DEPTH_ATTACHMENT);
+    this.#depthDetached = false;
   }
 
   /** Deletes the framebuffer and the attachments the target owns. */
   free(): void {
     gl.deleteFramebuffer(this.framebuffer);
+
+    if (RenderTarget.#bound === this) {
+      RenderTarget.#bound = null;
+    }
 
     const slots = this.#depth !== null ? [...this.#colors, this.#depth] : this.#colors;
 

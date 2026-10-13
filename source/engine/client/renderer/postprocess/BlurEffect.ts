@@ -1,6 +1,6 @@
 import GL, { type GLRenderTexture } from '../../GL.ts';
 import VID from '../../VID.ts';
-import PostProcessEffect from './PostProcessEffect.ts';
+import PostProcessEffect, { type PostProcessOutput } from './PostProcessEffect.ts';
 import RenderTarget from '../frame/RenderTarget.ts';
 import { eventBus } from '../../../common/EventBus.ts';
 import type { PostProcessBlurDescriptor } from '../../../../shared/GameInterfaces.ts';
@@ -62,7 +62,7 @@ export default class BlurEffect extends PostProcessEffect {
     GL.StreamFlush();
   }
 
-  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number, settings: PostProcessBlurDescriptor | null = null): void {
+  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number, settings: PostProcessBlurDescriptor | null | undefined, output: PostProcessOutput): void {
     const intermediate = BlurEffect.intermediateTarget;
 
     if (!intermediate) {
@@ -72,10 +72,6 @@ export default class BlurEffect extends PostProcessEffect {
     const s = BlurEffect.resolveSettings(settings ?? {});
     const radius = s.radius!;
 
-    // Remember the output binding the caller set up.
-    const outputFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
-    const outputViewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
-
     const pw = (width * VID.pixelRatio) >> 0;
     const ph = (height * VID.pixelRatio) >> 0;
 
@@ -84,9 +80,9 @@ export default class BlurEffect extends PostProcessEffect {
     gl.viewport(0, 0, pw, ph);
     this.#blurPass(inputTexture, 1.0, 0.0, radius, 0, 0, VID.width, VID.height);
 
-    // Vertical pass → original output FBO.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, outputFBO);
-    gl.viewport(outputViewport[0], outputViewport[1], outputViewport[2], outputViewport[3]);
+    // Vertical pass → the output the chain handed in.
+    RenderTarget.bindOutput(output.target);
+    gl.viewport(output.viewport[0], output.viewport[1], output.viewport[2], output.viewport[3]);
     this.#blurPass(intermediate.colorTexture(0), 0.0, 1.0, radius, x, y, width, height);
   }
 }

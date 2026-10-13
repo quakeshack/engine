@@ -31,6 +31,7 @@ import Lightmaps from './renderer/lighting/Lightmaps.ts';
 import DynamicLights from './renderer/lighting/DynamicLights.ts';
 import rendererCvars from './renderer/resources/RendererCvars.ts';
 import Camera from './renderer/scene/Camera.ts';
+import Frame from './renderer/frame/Frame.ts';
 import FrameUniforms from './renderer/scene/FrameUniforms.ts';
 import Visibility from './renderer/scene/Visibility.ts';
 import Particles from './renderer/effects/Particles.ts';
@@ -340,6 +341,7 @@ class R {
    */
   static async Init() {
     rendererCvars.register();
+    Frame.Init();
 
     DefaultTextures.Init();
     Lightmaps.Init();

@@ -5,9 +5,10 @@ import type RenderTarget from '../../source/engine/client/renderer/frame/RenderT
 const FRAMEBUFFER = 0x8D40;
 
 /**
- * A render target that allocates nothing. Binding it tells the page's `GL.gl` (when that has a
- * `bindFramebuffer`) which framebuffer was bound, so a test that watches the context still sees the order of
- * bindings; every call is also appended to `log`.
+ * A render target that allocates nothing. Binding it tells the page's `GL.gl` (when that has a `bindFramebuffer`)
+ * which framebuffer was bound, so a test that watches the context still sees the order of bindings; every call is
+ * also appended to `log`. It is never `RenderTarget.bound`, so a test that runs passes of the frame over fakes
+ * silences `console.assert` for the checks of `Frame`.
  * @param name Names the target and its textures.
  * @param log Receives one line per call, `bind <name>` and so on.
  * @returns The fake, typed as the real class.
@@ -36,6 +37,10 @@ export function createFakeRenderTarget(name: string, log: string[] = []): Render
 
     bindForDraw(): void {
       log.push(`bind ${name} for draw`);
+    },
+
+    isAttached(): boolean {
+      return false;
     },
 
     colorTexture(index = 0): GLRenderTexture {

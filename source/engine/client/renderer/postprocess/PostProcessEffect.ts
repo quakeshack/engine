@@ -1,5 +1,15 @@
 import type { PostProcessStage } from '../../../../shared/GameInterfaces.ts';
 import type { GLRenderTexture } from '../../GL.ts';
+import type RenderTarget from '../frame/RenderTarget.ts';
+
+/** Where an effect draws, handed in by the chain that bound it. The chain reuses one object: do not keep it. */
+export interface PostProcessOutput {
+  /** The target the effect draws into, `null` for the screen. */
+  target: RenderTarget | null;
+
+  /** The viewport the chain set for it: x, y, width, height in pixels. */
+  readonly viewport: Int32Array;
+}
 
 /**
  * Base class for post-process effects.
@@ -23,6 +33,15 @@ export default class PostProcessEffect {
   /** Whether this effect is managed by the gameplay-driven stack. */
   stackable = false;
 
+  /** The name of the effect's pass in the record of the frame. */
+  readonly passName: string;
+
+  /**
+   * The textures of other targets the effect samples besides the one it is given (scene depth, the emissive
+   * buffer). Set in `init()`, when the targets exist; the frame checks them against the output.
+   */
+  sampledTextures: readonly GLRenderTexture[] = [];
+
   /**
    * Settings with which the effect changes nothing. A stack entry fades in from them and out to them, so they
    * list the numbers that carry an entry's intensity; settings that are not listed (a tint color, a period)
@@ -38,6 +57,7 @@ export default class PostProcessEffect {
 
   constructor(name: string) {
     this.name = name;
+    this.passName = `post-process:${name}`;
   }
 
   /**
@@ -63,9 +83,9 @@ export default class PostProcessEffect {
    * The caller has already bound the correct output framebuffer and viewport.
    * @param settings The settings of the stack entry that is applied, as the effect's `resolveSettings` returned
    * them (faded, for an entry that is fading or pulsing). `null` for the renderer's own effects, which have none.
+   * @param output Where it draws. An effect that binds something else on the way puts this back when it is done.
    */
-
-  apply(_inputTexture: GLRenderTexture, _x: number, _y: number, _width: number, _height: number, _settings: object | null = null): void {
+  apply(_inputTexture: GLRenderTexture, _x: number, _y: number, _width: number, _height: number, _settings: object | null | undefined, _output: PostProcessOutput): void {
     throw new Error(`PostProcessEffect.apply() not implemented for '${this.name}'`);
   }
 

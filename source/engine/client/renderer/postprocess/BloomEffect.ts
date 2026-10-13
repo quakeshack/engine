@@ -3,7 +3,7 @@ import PostProcess from './PostProcess.ts';
 import RenderTarget from '../frame/RenderTarget.ts';
 import RenderTargetPair from '../frame/RenderTargetPair.ts';
 import VID from '../../VID.ts';
-import PostProcessEffect from './PostProcessEffect.ts';
+import PostProcessEffect, { type PostProcessOutput } from './PostProcessEffect.ts';
 import Vector from '../../../../shared/Vector.ts';
 import Host from '../../../common/Host.ts';
 import { eventBus } from '../../../common/EventBus.ts';
@@ -245,6 +245,9 @@ export default class BloomEffect extends PostProcessEffect {
     BloomEffect.#uploadSolidColor(BloomEffect.adaptation.write.colorTexture(0), 255, 255, 255, 255);
 
     BloomEffect.historyValid = false;
+
+    // the extraction reads the emissive buffer of the scene
+    this.sampledTextures = PostProcess.emissiveTexture !== null ? [PostProcess.emissiveTexture] : [];
   }
 
   /**
@@ -274,8 +277,10 @@ export default class BloomEffect extends PostProcessEffect {
    * @param y Output viewport y position.
    * @param width Output viewport width.
    * @param height Output viewport height.
+   * @param _settings Not used.
+   * @param output Where the composite is drawn, which is put back after the bloom's own passes.
    */
-  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number): void {
+  override apply(inputTexture: GLRenderTexture, x: number, y: number, width: number, height: number, _settings: object | null | undefined, output: PostProcessOutput): void {
     const extract = BloomEffect.extractTarget;
     const blur = BloomEffect.blurTarget;
     const metric = BloomEffect.metricTarget;
@@ -290,9 +295,6 @@ export default class BloomEffect extends PostProcessEffect {
     if (firstFrame) {
       BloomEffect.#resetAdaptationState();
     }
-
-    const outputFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
-    const outputViewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
 
     gl.disable(gl.BLEND);
 
@@ -323,8 +325,8 @@ export default class BloomEffect extends PostProcessEffect {
     adaptation.swap();
     BloomEffect.historyValid = true;
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, outputFramebuffer);
-    gl.viewport(outputViewport[0], outputViewport[1], outputViewport[2], outputViewport[3]);
+    RenderTarget.bindOutput(output.target);
+    gl.viewport(output.viewport[0], output.viewport[1], output.viewport[2], output.viewport[3]);
     BloomEffect.#composite(inputTexture, x, y, width, height);
   }
 

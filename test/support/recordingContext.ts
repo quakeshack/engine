@@ -32,6 +32,12 @@ const CONSTANTS: Readonly<Record<string, number>> = {
   MAX_SAMPLES: 0x8D57,
   COLOR_BUFFER_BIT: 0x4000,
   DEPTH_BUFFER_BIT: 0x0100,
+  COLOR: 0x1800,
+  BLEND: 0x0BE2,
+  DEPTH_TEST: 0x0B71,
+  CULL_FACE: 0x0B44,
+  LESS: 0x0201,
+  VIEWPORT: 0x0BA2,
 };
 
 /** What `createRecordingContext` returns. */
@@ -53,7 +59,7 @@ export interface RecordingContext {
 /**
  * A stand-in for a WebGL context that records the calls made on it and hands out numbered objects (`texture 1`,
  * `framebuffer 2`, ...) for the `create*` methods. It answers `getParameter` for the three capability limits (8
- * attachments, 8 draw buffers, 4 samples) and throws on a constant that is not in its table, so a test that needs one
+ * attachments, 8 draw buffers, 4 samples) and for the viewport (0, 0, 640, 480), and throws on a constant that is not in its table, so a test that needs one
  * has to add it.
  * @returns The context and its record.
  */
@@ -69,10 +75,11 @@ export function createRecordingContext(): RecordingContext {
     }
   }
 
-  const limits = new Map<number, number>([
+  const limits = new Map<number, number | Int32Array>([
     [CONSTANTS.MAX_COLOR_ATTACHMENTS, 8],
     [CONSTANTS.MAX_DRAW_BUFFERS, 8],
     [CONSTANTS.MAX_SAMPLES, 4],
+    [CONSTANTS.VIEWPORT, new Int32Array([0, 0, 640, 480])],
   ]);
 
   // GL_NONE is 0, which is also a size or an index everywhere else; only these two methods mean the constant by it

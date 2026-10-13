@@ -199,9 +199,29 @@ onBerserkExpired(): void {
    - `combineSettings(settings)`, if the entries of the effect are layers of one thing (a tint) and not passes of
      their own: entries that follow each other are handed to it in one list and it returns the one set of settings to
      apply, or `null` for nothing.
-3. `apply(input, x, y, width, height, settings)` gets the settings of the entry it is applied for, already resolved and faded to where the entry is. Do not look them up on `PostProcess`: with several entries of one effect there is no single answer.
+3. `apply(input, x, y, width, height, settings, output)` gets the settings of the entry it is applied for, already resolved and faded to where the entry is. Do not look them up on `PostProcess`: with several entries of one effect there is no single answer. `output` says where the chain bound it to draw (`output.target`, `null` for the screen, and `output.viewport`): an effect that draws into a target of its own on the way puts it back with `RenderTarget.bindOutput(output.target)` and `gl.viewport(...output.viewport)` before the pass that produces the result. Do not ask GL what is bound.
+   An effect that samples a texture besides the one it is given (the scene depth, the emissive buffer) lists it in `sampledTextures` in `init()`; the frame checks that it was drawn this frame and is not attached to the output (see `r_framegraph` below).
 4. Add `MyEffectDescriptor` to `PostProcessEffectDescriptor` in `source/shared/GameInterfaces.ts`.
 5. Register the GLSL program in `renderer/programs/ShaderPrograms.ts` alongside the existing `color-grade` and `blur` registrations.
 6. Call `PostProcess.addEffect(new MyEffect())` in `R.ts` after `PostProcess.init()`.
 
 The entries themselves (timing, channels, fades, order) live in `PostProcessEntries.ts`, which knows nothing of GL and is tested on its own.
+
+## The frame record and `r_framegraph`
+
+`Frame` (`renderer/frame/Frame.ts`) records the passes of every frame: what each one draws into and which textures it samples, nested the way they run. In development builds it also checks them (a pass that samples a texture attached to its own output, one that samples a target nothing drew into this frame, a pass that ends with another framebuffer bound than its own, a pass left open); each violation is a `console.assert` and is listed by the command. A production build keeps no record and does none of this, the calls are stripped with their arguments.
+
+`r_framegraph` prints the passes of the last frame:
+
+```
+frame 412: 9 passes, 0 violations
+shadow-topdown -> shadow-topdown  reads -
+scene -> scene-msaa -> scene  reads -
+  turbulent-boundary -> turbulent-boundary  reads -
+  msaa-resolve -> scene  reads -
+  scene-depth-sample -> scene  reads scene.depth
+post-process:underwater-fog -> screen  reads scene.color0, scene.depth, turbulent-boundary.depth
+overlays -> screen  reads -
+```
+
+`scene -> scene-msaa -> scene` is the scene that was multisampled and was resolved by the first pass that needed the depth texture: what is drawn after that point is not multisampled.

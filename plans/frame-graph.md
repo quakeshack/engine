@@ -1,7 +1,7 @@
 # Frame graph: render targets and passes as declarations, hazards checked
 
-Track D3 of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-13, nothing implemented.
-The scope fork (Open question 1) is the developer's call; the recommendation is the smaller of the two options.**
+Track D3 of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-13. Option 1 (validated
+scopes) was chosen the same day. Phase 0, Phase 1 and Phase 2 are done (2026-10-13); Phase 3 is next.**
 Written for the maintainers. Numbers are from a read of the tree on that date (branch
 `engine-architecture-modernization`), not from a profiler.
 
@@ -358,6 +358,53 @@ sample count of the framebuffer each draw lands in (`gl.getParameter(gl.SAMPLES)
   cannot see a few pixels; the frame trace above is the finer instrument for the order of draws and binds.
 - **Not covered**: a real GPU, and Firefox. Both need a live run by the developer, as in the earlier phases.
 
+### Phase 2: what shipped (2026-10-13)
+
+Option 1: the frame records and checks its passes; call order is still the hand-written one. 2408 tests pass,
+`npm run typecheck` and eslint are clean.
+
+- **`renderer/frame/Frame.ts`**: `beginFrame()`, `beginPass(name, output, input?, extraInputs?)`, `continueIn(target)`,
+  `endPass()`, `Frame.violations`, `Frame.records`, and the `r_framegraph` command. Every call is a `console.assert`, so
+  a production build strips it with its arguments and keeps no record (the command says so). The checks are the ones
+  of Goals: a pass samples a texture attached to its own output; samples a texture of a target that nothing drew into
+  this frame (which covers a multisampled scene that was never resolved); ends with another framebuffer bound than the
+  one it was opened with; a pass is left open or closed without having been opened.
+- **Deviation from design B: there is no declarations file.** A pass declares itself by its call, the target it draws
+  into and the textures it samples, and the frame learns the rest from the targets themselves (`RenderTarget.isAttached`,
+  `ownerOf`, `bound`). A table of resource names would be a second description of the frame to keep in step with the
+  one the code already has, and the matrix test can run the real code instead.
+- **`RenderTarget`** gained `bound` and `unbind()`/`bindOutput()` (every bind goes through the class, so what GL has
+  bound is known without asking it), `isAttached()` (honest about a depth texture that is swapped out),
+  `ownerOf()`/`describeTexture()` and `persistent` (set on the sides of a `RenderTargetPair`).
+  `test/renderer/framebuffer-binds.test.ts` fails when `bindFramebuffer`, `createFramebuffer` or `createRenderbuffer`
+  appear anywhere under `client/` outside `RenderTarget.ts`.
+- **Effects are handed their output**: `apply(input, x, y, width, height, settings, output)`, `output` being the target
+  (`null` for the screen) and the viewport the chain set. `BloomEffect` and `BlurEffect` put it back with
+  `RenderTarget.bindOutput` and no longer call `getParameter` (four sites). `PostProcess` keeps its two reads of the
+  screen viewport, once per frame, which the caller (`GL.Set2D`) sets. `PostProcessEffect` has `passName` and
+  `sampledTextures` (`UnderwaterFogEffect` lists scene and boundary depth, `BloomEffect` the emissive buffer).
+- **Passes recorded**: `scene` (output `scene-msaa -> scene` when the resolve moved it), nested `turbulent-boundary`,
+  `msaa-resolve` and `scene-depth-sample`; `gameplay-stack-writeback`; `post-process:<effect>` per effect, `present`
+  when there is none, `shadow-topdown`, `shadow-point`, `overlays`. `ScreenFrame` starts the frame.
+- **`PostProcess.active` stays.** The plan said to replace it by a query of the frame; but it is real state that the
+  six readers need in a production build, which keeps no record, so the frame cannot answer it. It remains the one
+  flag of "the scene is being captured".
+- **Behavior is the same**; the one visible difference is that `window.engine.Frame` exists and `capture.mjs` records the
+  passes and violations of each view when the build is a development one.
+- **Tests**: `frame.test.ts` (13: what a good frame records and what each check catches, negative controls, the
+  command's output), `frame-matrix.test.ts` (96 configurations of `gl_msaa` 0 and 4, 0, 1 and 3 depth sampling
+  passes, underwater fog, bloom and four game stacks, over the real `PostProcess` code and real targets; no violation,
+  the screen is bound at the end, nothing is left open; and a bloom that leaves its scratch target bound is reported
+  together with the overlays that would have been drawn into it, the bug of `5f8a761`), `framebuffer-binds.test.ts`.
+  Existing tests that run passes over fake targets silence `console.assert`, because a fake is never
+  `RenderTarget.bound`.
+- **Verified in Chromium, development builds, real maps** (`capture.mjs` with the frame record): `start` with
+  `CAPTURE_WATERFOG=1` and `hw_e1m2` (7 fog volumes), nine views each, **0 violations in all 18**, and no failing
+  assertion in the console. The record shows the structure: the underwater view is `shadow-topdown`, `scene`
+  (`scene-msaa -> scene`) with `turbulent-boundary`, `msaa-resolve` and `scene-depth-sample` inside it, then
+  `post-process:underwater-fog` into ping, `warp` into pong, `color-shift` to the screen, `overlays`; the fog volume
+  view has six `scene-depth-sample` passes in one frame.
+
 ## Testing
 
 - Unit: `RenderTarget` against a recording fake `gl` (create/attach/resize/free order, `drawBuffers`, multisample
@@ -372,6 +419,10 @@ sample count of the framebuffer each draw lands in (`gl.getParameter(gl.SAMPLES)
   on a real GPU, Firefox; those need the developer's run.
 
 ## Open questions
+
+Settled 2026-10-13, before Phase 2: **1** Option 1, validated scopes, Phases 0 to 3; no compile step. **2** The validator
+is development-only (`console.assert`, stripped in production) with the matrix test covering the call order. **3** The
+`apply` signature change for the effects is accepted. Still open: 4, decided in Phase 3, and 5.
 
 1. **Scope: Option 1 (validated scopes, Phases 0 to 3) or Option 2 (compiled graph, plus Phase 4), or stop after Phase
    1?** Recommendation: Option 1. The pass order is a fixed, short sequence; a compiler would hold the same list the
