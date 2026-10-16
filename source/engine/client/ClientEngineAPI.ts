@@ -561,8 +561,8 @@ export class ClientEngineAPI extends CommonEngineAPI {
       return clientStaticState.state === clientConnectionState.connected;
     },
     /**
-     * Authoritative world gravity strength, synced from the server via `parsePmovevars()` --
-     * the same `movevars.gravity` value `ServerPhysics.addGravity()` scales by a per-entity
+     * Authoritative world gravity strength, synced from the server's `sv_gravity` cvar --
+     * the same value `ServerPhysics.addGravity()` scales by a per-entity
      * multiplier server-side (`entity.gravity`, default 1.0). Client-only physics should read
      * this instead of hardcoding a gravity value, applying its own multiplier the same way
      * (see `ClientEdict.gravity` and `ClientEntityPhysics`). Note `movevars.entgravity`

@@ -14,6 +14,7 @@ import * as Protocol from '../network/Protocol.ts';
 import { content, moveType } from '../../shared/Defs.ts';
 import { BrushModel } from './Mod.ts';
 import Cvar from './Cvar.ts';
+import Q from '../../shared/Q.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import type { ClientEdict } from '../client/ClientEntities.ts';
 import type { BaseEntity } from '../server/Edict.ts';
@@ -78,10 +79,33 @@ export enum PM_TYPE {
 // MoveVars: shared physics tuning knobs
 // ---------------------------------------------------------------------------
 
+/** The movement variables that a server cvar sets. */
+export type MoveVarName = 'gravity' | 'stopspeed' | 'maxspeed' | 'spectatormaxspeed' | 'accelerate' | 'airaccelerate' | 'wateraccelerate' | 'friction' | 'waterfriction' | 'edgefriction';
+
+/**
+ * The server cvar behind each movement variable. All of them are `SERVER` cvars, so the server sends their values to a client
+ * when it connects and whenever they change, which is how the client's prediction learns them (see `MoveVars.setFromCvar`).
+ */
+export const MOVEVAR_CVARS: Readonly<Record<MoveVarName, string>> = Object.freeze({
+  gravity: 'sv_gravity',
+  stopspeed: 'sv_stopspeed',
+  maxspeed: 'sv_maxspeed',
+  spectatormaxspeed: 'sv_spectatormaxspeed',
+  accelerate: 'sv_accelerate',
+  airaccelerate: 'sv_airaccelerate',
+  wateraccelerate: 'sv_wateraccelerate',
+  friction: 'sv_friction',
+  waterfriction: 'sv_waterfriction',
+  edgefriction: 'edgefriction',
+});
+
+const MOVEVAR_OF_CVAR = new Map<string, MoveVarName>((Object.entries(MOVEVAR_CVARS) as Array<[MoveVarName, string]>).map(([variable, cvarName]) => [cvarName, variable]));
+
 /**
  * Pmove variable defaults.
  *
- * Physics tuning knobs shared between client and server.
+ * Physics tuning knobs shared between client and server. Both sides hold a plain instance and set it from the server's
+ * cvars with `setFromCvar`, so the values the server moves players with are the ones the client predicts with.
  */
 export class MoveVars { // movevars_t
   /** World gravity strength. */
@@ -125,6 +149,24 @@ export class MoveVars { // movevars_t
     this.waterspeed = 400;
     this.entgravity = 1.0;
     this.edgefriction = 2;
+  }
+
+  /**
+   * Takes over the value of a server cvar if it is one of the movement variables.
+   * @param cvarName - name of the cvar that has a new value
+   * @param text - the new value as the cvar holds it, read the way `Cvar.value` reads it
+   * @returns true when the cvar sets a movement variable
+   */
+  setFromCvar(cvarName: string, text: string): boolean {
+    const variable = MOVEVAR_OF_CVAR.get(cvarName);
+
+    if (variable === undefined) {
+      return false;
+    }
+
+    this[variable] = text === '' ? 0 : Q.atof(text);
+
+    return true;
   }
 }
 

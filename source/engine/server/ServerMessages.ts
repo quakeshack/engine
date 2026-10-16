@@ -293,7 +293,6 @@ export class ServerMessages {
 
     message.writeByte(this.sv.svs.maxclients);
     message.writeString(worldspawnEntity.message || this.sv.server.mapname!);
-    // this.sv.pmove.movevars.sendToClient(message);
     for (let i = 1; i < this.sv.server.modelPrecache.length; i++) {
       message.writeString(this.sv.server.modelPrecache[i]);
     }

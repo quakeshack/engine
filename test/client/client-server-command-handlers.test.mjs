@@ -9,6 +9,8 @@ import GameModule from '../../source/engine/common/GameModule.ts';
 import { installPageServices } from '../../source/engine/client/PageServices.ts';
 import { createClientEngineApi } from '../support/clientEngineApi.ts';
 import '../support/consoleBridge.ts';
+import { clientPmove } from '../../source/engine/client/ClientPhysics.ts';
+import { MoveVars } from '../../source/engine/common/Pmove.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { useRendererOf } from '../support/renderer.ts';
@@ -152,6 +154,37 @@ void describe('parseServerMessage', () => {
       assert.equal(engineMocks.SCR.recalc_refdef, true);
       assert.deepEqual(mockedRegistry.CL.connection.lastServerMessages, ['serverdata']);
     });
+  });
+});
+
+void describe('svc.cvar', () => {
+  void test('sets the movement variables prediction uses from the server cvars', () => {
+    const mockedRegistry = createMockClientRegistry({ CL: { cls: { state: Def.clientConnectionState.connected, signon: 4, serverInfo: {} } } });
+    const { message } = mockedRegistry.NET;
+    const previousMoveVars = clientPmove.movevars;
+
+    message.writeByte(Protocol.svc.cvar);
+    message.writeByte(3);
+    message.writeString('sv_gravity');
+    message.writeString('100');
+    message.writeString('sv_friction');
+    message.writeString('9');
+    message.writeString('teamplay');
+    message.writeString('1');
+
+    clientPmove.movevars = new MoveVars();
+
+    try {
+      void withMockClientRegistry(mockedRegistry, () => {
+        parseServerMessage();
+      });
+
+      assert.equal(clientPmove.movevars.gravity, 100);
+      assert.equal(clientPmove.movevars.friction, 9);
+      assert.equal(clientPmove.movevars.maxspeed, 320, 'a variable that was not sent keeps its value');
+    } finally {
+      clientPmove.movevars = previousMoveVars;
+    }
   });
 });
 

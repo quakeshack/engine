@@ -3,7 +3,7 @@ import type { BaseModel } from '../common/model/BaseModel.ts';
 import type { QSocket } from '../network/NetworkDrivers.ts';
 
 import Cvar from '../common/Cvar.ts';
-import { MoveVars, Pmove } from '../common/Pmove.ts';
+import { MOVEVAR_CVARS, Pmove } from '../common/Pmove.ts';
 import { SzBuffer } from '../network/MSG.ts';
 import * as Protocol from '../network/Protocol.ts';
 import * as Def from './../common/Def.ts';
@@ -268,7 +268,10 @@ export default class Server {
 
   InitPmove(): void {
     this.pmove = new Pmove();
-    this.pmove.movevars = new PlayerMoveCvars(this);
+
+    for (const cvarName of Object.values(MOVEVAR_CVARS)) {
+      this.pmove.movevars.setFromCvar(cvarName, Cvar.FindVar(cvarName)!.string);
+    }
   }
 
   Init(): void {
@@ -281,12 +284,12 @@ export default class Server {
     this.nostep = new Cvar('sv_nostep', '0');
     this.cheats = new Cvar('sv_cheats', '0', Cvar.FLAG.SERVER);
     this.gravity = new Cvar('sv_gravity', '800', Cvar.FLAG.SERVER);
-    this.friction = new Cvar('sv_friction', '4', Cvar.FLAG.SERVER);
+    this.friction = new Cvar('sv_friction', '6', Cvar.FLAG.SERVER);
     this.maxspeed = new Cvar('sv_maxspeed', '320', Cvar.FLAG.SERVER);
     this.airaccelerate = new Cvar('sv_airaccelerate', '0.7', Cvar.FLAG.SERVER);
     this.wateraccelerate = new Cvar('sv_wateraccelerate', '10', Cvar.FLAG.SERVER);
     this.spectatormaxspeed = new Cvar('sv_spectatormaxspeed', '500', Cvar.FLAG.SERVER);
-    this.waterfriction = new Cvar('sv_waterfriction', '4', Cvar.FLAG.SERVER);
+    this.waterfriction = new Cvar('sv_waterfriction', '1', Cvar.FLAG.SERVER);
     this.rcon_password = new Cvar('sv_rcon_password', '', Cvar.FLAG.ARCHIVE);
     this.public = new Cvar('sv_public', '1', Cvar.FLAG.ARCHIVE | Cvar.FLAG.SERVER, 'Make this server publicly listed in the master server');
 
@@ -311,6 +314,8 @@ export default class Server {
 
     eventBus.subscribe('cvar.changed', (name: string) => {
       const cvar = Cvar.FindVar(name)!;
+
+      this.pmove?.movevars.setFromCvar(name, cvar.string);
 
       if ((cvar.flags & Cvar.FLAG.SERVER) && this.server.active) {
         this.messages.cvarChanged(cvar);
@@ -1063,65 +1068,5 @@ export default class Server {
         this.con.DPrint(`SV.ReadClientMessage: unknown command ${cmd} from ${client.netconnection?.address ?? 'unknown'}\n`);
         return false;
     }
-  }
-}
-
-/**
- * Simple class hooking up all movevars with corresponding cvars.
- */
-class PlayerMoveCvars extends MoveVars {
-  readonly #sv: Server;
-
-  constructor(sv: Server) {
-    super();
-    this.#sv = sv;
-  }
-
-  // @ts-ignore
-  get gravity(): number { return this.#sv.gravity!.value; }
-  // @ts-ignore
-  get stopspeed(): number { return this.#sv.stopspeed!.value; }
-  // @ts-ignore
-  get maxspeed(): number { return this.#sv.maxspeed!.value; }
-  // @ts-ignore
-  get spectatormaxspeed(): number { return this.#sv.spectatormaxspeed!.value; }
-  // @ts-ignore
-  get accelerate(): number { return this.#sv.accelerate!.value; }
-  // @ts-ignore
-  get airaccelerate(): number { return this.#sv.airaccelerate!.value; }
-  // @ts-ignore
-  get wateraccelerate(): number { return this.#sv.wateraccelerate!.value; }
-  // @ts-ignore
-  get friction(): number { return this.#sv.friction!.value; }
-  // @ts-ignore
-  get waterfriction(): number { return this.#sv.waterfriction!.value; }
-  // @ts-ignore
-  get edgefriction(): number { return this.#sv.edgefriction!.value; }
-
-  set gravity(_value: number) {}
-  set stopspeed(_value: number) {}
-  set maxspeed(_value: number) {}
-  set spectatormaxspeed(_value: number) {}
-  set accelerate(_value: number) {}
-  set airaccelerate(_value: number) {}
-  set wateraccelerate(_value: number) {}
-  set friction(_value: number) {}
-  set waterfriction(_value: number) {}
-  set edgefriction(_value: number) {}
-
-  /**
-   * Writes the movevars to the client.
-   */
-  sendToClient(message: SzBuffer): void {
-    message.writeFloat(this.gravity);
-    message.writeFloat(this.stopspeed);
-    message.writeFloat(this.maxspeed);
-    message.writeFloat(this.spectatormaxspeed);
-    message.writeFloat(this.accelerate);
-    message.writeFloat(this.airaccelerate);
-    message.writeFloat(this.wateraccelerate);
-    message.writeFloat(this.friction);
-    message.writeFloat(this.waterfriction);
-    message.writeFloat(this.entgravity);
   }
 }

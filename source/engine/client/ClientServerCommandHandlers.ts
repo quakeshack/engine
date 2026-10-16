@@ -128,8 +128,6 @@ function parseServerData() {
 
   clientRuntimeState.levelname = net.message.readString();
 
-  // parsePmovevars(CL);
-
   Con.Print('\x02' + clientRuntimeState.levelname + '\n\n');
 
   CL.SetConnectingStep(15, 'Received server info');
@@ -279,25 +277,6 @@ function parseServerData() {
 }
 
 /**
- * Reads pmove configuration values from the network stream.
- */
-function parsePmovevars() {
-  const movevars = clientPmove.movevars;
-  movevars.gravity = net.message.readFloat();
-  movevars.stopspeed = net.message.readFloat();
-  movevars.maxspeed = net.message.readFloat();
-  movevars.spectatormaxspeed = net.message.readFloat();
-  movevars.accelerate = net.message.readFloat();
-  movevars.airaccelerate = net.message.readFloat();
-  movevars.wateraccelerate = net.message.readFloat();
-  movevars.friction = net.message.readFloat();
-  movevars.waterfriction = net.message.readFloat();
-  movevars.entgravity = net.message.readFloat();
-
-  Con.DPrint('Reconfigured Pmovevars.\n');
-}
-
-/**
  * Parses a lightstyle definition.
  */
 function parseLightstylePacket() {
@@ -372,6 +351,9 @@ function parseServerCvars() {
     const value = net.message.readString();
 
     clientStaticState.serverInfo[name] = value;
+
+    // the movement variables prediction uses are server cvars like any other
+    clientPmove.movevars.setFromCvar(name, value);
 
     if (clientStaticState.signon === 4) {
       if (clientRuntimeState.maxclients > 1) { // don’t bother printing cvar changes in single player
@@ -982,13 +964,6 @@ function handleSellScreen() {
 }
 
 /**
- * Updates client-only movement variables such as gravity.
- */
-function handlePmoveVars() {
-  parsePmovevars();
-}
-
-/**
  * Updates player-specific interpolation data.
  */
 function handlePlayerInfo() {
@@ -1067,7 +1042,6 @@ const serverCommandHandlers: Partial<Record<number, () => void>> = {
   [Protocol.svc.finale]: handleFinale,
   [Protocol.svc.cutscene]: handleCutscene,
   [Protocol.svc.sellscreen]: handleSellScreen,
-  [Protocol.svc.pmovevars]: handlePmoveVars,
   [Protocol.svc.playerinfo]: handlePlayerInfo,
   [Protocol.svc.deltapacketentities]: handleDeltaPacketEntities,
   [Protocol.svc.cvar]: handleCvar,

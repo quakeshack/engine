@@ -6,7 +6,7 @@ import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { content, moveType } from '../../source/shared/Defs.ts';
-import { DIST_EPSILON, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
+import { DIST_EPSILON, MOVEVAR_CVARS, MoveVars, PM_TYPE, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 
 import {
@@ -1296,6 +1296,50 @@ void describe('Pmove', () => {
 
       assert.deepEqual(recordedWishspeeds, [pmove.movevars.duckspeed]);
       assert.equal(player.velocity[2], 0);
+    });
+  });
+});
+
+void describe('MoveVars', () => {
+  void describe('setFromCvar', () => {
+    void test('sets the variable behind each movement cvar and says so', () => {
+      const vars = new MoveVars();
+
+      for (const [variable, cvarName] of Object.entries(MOVEVAR_CVARS)) {
+        assert.equal(vars.setFromCvar(cvarName, '123.5'), true, cvarName);
+        assert.equal(vars[variable], 123.5, cvarName);
+      }
+    });
+
+    void test('reads the text the way a cvar reads it', () => {
+      const vars = new MoveVars();
+
+      vars.setFromCvar('sv_gravity', '');
+      assert.equal(vars.gravity, 0);
+
+      vars.setFromCvar('sv_friction', '0.7');
+      assert.equal(vars.friction, 0.7);
+    });
+
+    void test('leaves the variables alone for any other cvar', () => {
+      const vars = new MoveVars();
+      const before = { ...vars };
+
+      assert.equal(vars.setFromCvar('sv_cheats', '1'), false);
+      assert.equal(vars.setFromCvar('gravity', '1'), false);
+      assert.deepEqual({ ...vars }, before);
+    });
+
+    void test('does not touch the variables no cvar sets', () => {
+      const vars = new MoveVars();
+
+      for (const cvarName of Object.values(MOVEVAR_CVARS)) {
+        vars.setFromCvar(cvarName, '1');
+      }
+
+      assert.equal(vars.entgravity, 1.0);
+      assert.equal(vars.duckspeed, 100);
+      assert.equal(vars.waterspeed, 400);
     });
   });
 });
