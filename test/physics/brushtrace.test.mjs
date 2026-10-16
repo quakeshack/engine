@@ -410,6 +410,42 @@ describe('BrushTrace', () => {
       assertNear(trace.endpos[2], 0);
     });
 
+    test('a box that only touches the side of a brush falls past its top instead of landing on it', () => {
+      // brush: x 32..96, y -16..16, z -16..16. A player box centered at y = 32 touches the face at y = 16 exactly.
+      // Moving straight down along that face, the box cannot reach the brush, so it must not stop on the brush's top
+      // (the player would be lifted on top of a ledge they only brush against, e.g. a step-high lower brush of a wall).
+      const worldModel = createBrushWorldModel({ halfExtents: [32, 16, 16] });
+      const trace = BrushTrace.boxTrace(
+        worldModel,
+        0,
+        new Vector(64, 32, 60),
+        new Vector(64, 32, 0),
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+      );
+
+      assert.equal(trace.startsolid, false);
+      assert.equal(trace.fraction, 1.0);
+      assert.deepEqual([...trace.endpos], [64, 32, 0]);
+    });
+
+    test('a box that overlaps the side of a brush by a little still lands on its top', () => {
+      const worldModel = createBrushWorldModel({ halfExtents: [32, 16, 16] });
+      const trace = BrushTrace.boxTrace(
+        worldModel,
+        0,
+        new Vector(64, 31, 60),
+        new Vector(64, 31, 0),
+        Pmove.PLAYER_MINS,
+        Pmove.PLAYER_MAXS,
+      );
+
+      assert.ok(trace.fraction < 1.0);
+      // the box rests on the top at z = 16, so its origin is 24 above
+      assertNear(trace.endpos[2], 40, 0.05);
+      assertNear(trace.plane.normal[2], 1);
+    });
+
     test('testPosition traverses BSP nodes', () => {
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
 
