@@ -5,6 +5,7 @@ import { content } from '../../../shared/Defs.ts';
 import { BaseModel, type Face, type Plane } from './BaseModel.ts';
 import { SkyRenderer } from '../../client/renderer/scene/Sky.ts';
 import { AreaPortals, type PortalDefinition } from './AreaPortals.ts';
+import type { Lightgrid } from './Lightgrid.ts';
 
 export interface Clipnode {
   /** Index into planes array. */
@@ -127,37 +128,6 @@ export interface BrushTexInfo {
 
   /** Optional Quake 2 linked texture-info index. */
   readonly nexttexinfo?: number;
-}
-
-export interface LightgridStyleSample {
-  readonly stylenum: number;
-  readonly rgb: [number, number, number];
-}
-
-export interface LightgridPointSample {
-  readonly stylecount: number;
-  readonly styles: LightgridStyleSample[];
-}
-
-export interface LightgridLeaf {
-  readonly mins: [number, number, number];
-  readonly size: [number, number, number];
-  readonly points: LightgridPointSample[];
-}
-
-export interface LightgridNode {
-  readonly mid: [number, number, number];
-  readonly child: number[];
-}
-
-export interface LightgridOctree {
-  readonly step: [number, number, number];
-  readonly size: [number, number, number];
-  readonly mins: Vector;
-  readonly numstyles: number;
-  readonly rootnode: number;
-  readonly nodes: LightgridNode[];
-  readonly leafs: LightgridLeaf[];
 }
 
 type NodeChild = Node | number | null;
@@ -617,7 +587,7 @@ export class BrushModel extends BaseModel {
   deluxemap: Uint8Array | null = null;
 
   /** Lightgrid octree data. */
-  lightgrid: LightgridOctree | null = null;
+  lightgrid: Lightgrid | null = null;
 
   /** Visibility data for PVS. */
   visdata: Uint8Array | null = null;

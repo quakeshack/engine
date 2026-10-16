@@ -92,7 +92,7 @@ export class BSP29Loader extends ModelLoader {
     this._loadNodes(loadmodel, buffer);
     this._loadClipnodes(loadmodel, buffer);
     this.#makeHull0(loadmodel);
-    BSPXLoader.load(loadmodel, buffer, loadmodel.bspxoffset, this.context.con);
+    BSPXLoader.load(loadmodel, buffer, loadmodel.bspxoffset, this.context.con, this.context.loadRenderData);
     this._loadBrushList(loadmodel, buffer);
     this.#loadLightingRGB(loadmodel, buffer);
     this.#loadSubmodels(loadmodel, buffer); // CR: must be last, since it creates additional models based on this one

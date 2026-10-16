@@ -139,7 +139,7 @@ export class BSP38Loader extends ModelLoader {
     this.#computeBrushBounds(loadmodel);
     this.#loadNodes(lumpViews[BSP38Lump.NODES], loadmodel);
     this.#loadVisibility(lumpViews[BSP38Lump.VISIBILITY], loadmodel);
-    BSPXLoader.load(loadmodel, buffer, bspxoffset, this.context.con); // must run before submodels, which propagate the deluxemap
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, this.context.con, this.context.loadRenderData); // must run before submodels, which propagate the deluxemap
     this.#loadSubmodels(lumpViews[BSP38Lump.MODELS], loadmodel); // must run after nodes/brushes/leafbrushes are loaded
     this.#loadAreas(lumpViews[BSP38Lump.AREAS], lumpViews[BSP38Lump.AREAPORTALS], loadmodel);
     this.#parseExplicitPortalKeys(loadmodel); // explicit "portal" key overrides, mirrors BSP29Loader's escape hatch

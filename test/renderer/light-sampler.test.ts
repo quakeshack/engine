@@ -5,14 +5,14 @@ import LightSampler from '../../source/engine/client/renderer/lighting/LightSamp
 import LightStyles from '../../source/engine/client/renderer/lighting/LightStyles.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import { Face, Plane } from '../../source/engine/common/model/BaseModel.ts';
-import { BrushModel, Node, type BrushTexInfo, type LightgridOctree } from '../../source/engine/common/model/BSP.ts';
+import { BrushModel, Node, type BrushTexInfo } from '../../source/engine/common/model/BSP.ts';
+import { Lightgrid } from '../../source/engine/common/model/Lightgrid.ts';
 import { content } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { assertNear } from '../support/assertions.ts';
 import { patchMembers, useClientStateOf } from '../support/clientState.ts';
-
-const LGNODE_LEAF = 1 << 31;
-const LGNODE_MISSING = 1 << 30;
+import { createSilentConsole } from '../support/modelContext.ts';
+import { encodeLightgridLump, LGNODE_LEAF, LGNODE_MISSING, singleLeafLightgrid } from '../support/lightgridLump.ts';
 
 const floorTexinfo = { vecs: [[1, 0, 0, 0], [0, 1, 0, 0]], texture: 0, flags: 0 } as unknown as BrushTexInfo;
 
@@ -187,18 +187,14 @@ void describe('LightSampler', () => {
      * @param rootnode Root node reference, a leaf by default.
      * @returns The octree.
      */
-    function makeGrid(rootnode = LGNODE_LEAF): LightgridOctree {
-      const point = { stylecount: 1, styles: [{ stylenum: 0, rgb: [100, 50, 0] as [number, number, number] }] };
+    function makeGrid(rootnode = LGNODE_LEAF): Lightgrid {
+      const point = [{ stylenum: 0, rgb: [100, 50, 0] as const }];
+      const lump = encodeLightgridLump({ ...singleLeafLightgrid([2, 2, 2], new Array(8).fill(point)), rootnode });
+      const grid = Lightgrid.parse(lump.buffer as ArrayBuffer, lump.byteOffset, lump.length, createSilentConsole());
 
-      return {
-        step: [1, 1, 1],
-        size: [2, 2, 2],
-        mins: new Vector(0, 0, 0),
-        numstyles: 1,
-        rootnode,
-        nodes: [],
-        leafs: [{ mins: [0, 0, 0], size: [2, 2, 2], points: new Array(8).fill(point) }],
-      };
+      assert.ok(grid !== null);
+
+      return grid;
     }
 
     void test('interpolates between the grid points and applies the lightstyle', () => {

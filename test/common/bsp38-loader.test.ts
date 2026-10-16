@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { describe, test } from 'node:test';
+import { after, before, describe, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import Vector from '../../source/shared/Vector.ts';
@@ -314,19 +314,28 @@ void describe('BSP38Loader', () => {
   });
 
   void describe('BSPX extension lumps', () => {
+    // loading render data uploads the .wal textures, which needs a GL context this test does not have
+    before(() => {
+      mock.method(GLTexture, 'Allocate', () => ({ width: 1, height: 1 }) as unknown as GLTexture);
+    });
+
+    after(() => {
+      mock.restoreAll();
+    });
+
     void test('loads the BSPX trailer and the LIGHTGRID_OCTREE lump', async () => {
-      const model = await loadBSP38Map();
+      const model = await loadBSP38Map(true);
 
       assert.ok(model.bspxlumps !== null);
       assert.ok('LIGHTGRID_OCTREE' in model.bspxlumps);
 
       assert.ok(model.lightgrid !== null);
-      assert.ok(model.lightgrid.nodes.length > 0);
-      assert.ok(model.lightgrid.leafs.length > 0);
+      assert.ok(model.lightgrid.nodeCount > 0);
+      assert.ok(model.lightgrid.leafCount > 0);
     });
 
     void test('loads the LIGHTINGDIR (deluxemap) lump with one sample per lightdata_rgb texel', async () => {
-      const model = await loadBSP38Map();
+      const model = await loadBSP38Map(true);
 
       assert.ok(model.deluxemap !== null);
       // deluxemap and lightdata_rgb are both 3 bytes/sample over the same face layout
@@ -343,7 +352,7 @@ void describe('BSP38Loader', () => {
     });
 
     void test('propagates the deluxemap to submodels', async () => {
-      const model = await loadBSP38Map();
+      const model = await loadBSP38Map(true);
 
       assert.equal(model.submodels.length, 2);
 
@@ -353,7 +362,7 @@ void describe('BSP38Loader', () => {
     });
 
     void test('loads the FACENORMALS lump with unit-length per-vertex normals for every face', async () => {
-      const model = await loadBSP38Map();
+      const model = await loadBSP38Map(true);
 
       assert.ok('FACENORMALS' in model.bspxlumps!);
       assert.ok(model.faces.length > 0);

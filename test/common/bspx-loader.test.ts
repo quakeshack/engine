@@ -5,6 +5,7 @@ import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { Face } from '../../source/engine/common/model/BaseModel.ts';
 import { BSPXLoader } from '../../source/engine/common/model/BSPXLoader.ts';
 import { createSilentConsole } from '../support/modelContext.ts';
+import { encodeLightgridLump, singleLeafLightgrid } from '../support/lightgridLump.ts';
 
 const con = createSilentConsole();
 
@@ -105,7 +106,7 @@ void describe('BSPXLoader FACENORMALS lump', () => {
     ]);
     const { buffer, bspxoffset } = buildBspxBuffer(0, 'FACENORMALS', payload);
 
-    BSPXLoader.load(loadmodel, buffer, bspxoffset, con);
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, con, true);
 
     assert.ok(loadmodel.bspxlumps !== null);
     assert.ok('FACENORMALS' in loadmodel.bspxlumps);
@@ -127,7 +128,7 @@ void describe('BSPXLoader FACENORMALS lump', () => {
 
     const { buffer, bspxoffset } = buildBspxBuffer(0, 'LIGHTINGDIR', new Uint8Array(3));
 
-    BSPXLoader.load(loadmodel, buffer, bspxoffset, con);
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, con, true);
 
     assert.equal(loadmodel.faces[0].vertexNormals, null);
   });
@@ -141,7 +142,7 @@ void describe('BSPXLoader FACENORMALS lump', () => {
     const truncatedPayload = fullPayload.subarray(0, fullPayload.length - 4);
     const { buffer, bspxoffset } = buildBspxBuffer(0, 'FACENORMALS', truncatedPayload);
 
-    assert.doesNotThrow(() => { BSPXLoader.load(loadmodel, buffer, bspxoffset, con); });
+    assert.doesNotThrow(() => { BSPXLoader.load(loadmodel, buffer, bspxoffset, con, true); });
 
     assert.equal(loadmodel.faces[0].vertexNormals, null);
   });
@@ -154,7 +155,55 @@ void describe('BSPXLoader FACENORMALS lump', () => {
     const payload = encodeFaceNormals(vecs, [[[0, 0, 5]]]); // index 5 is out of range
     const { buffer, bspxoffset } = buildBspxBuffer(0, 'FACENORMALS', payload);
 
-    BSPXLoader.load(loadmodel, buffer, bspxoffset, con);
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, con, true);
+
+    assert.equal(loadmodel.faces[0].vertexNormals, null);
+  });
+});
+
+void describe('BSPXLoader render-only lumps', () => {
+  void test('loads the lightgrid when render data is wanted', () => {
+    const loadmodel = new BrushModel('test');
+    const { buffer, bspxoffset } = buildBspxBuffer(0, 'LIGHTGRID_OCTREE', encodeLightgridLump(singleLeafLightgrid([1, 1, 1], [[{ stylenum: 0, rgb: [10, 20, 30] }]])));
+
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, con, true);
+
+    assert.equal(loadmodel.lightgrid?.leafCount, 1);
+
+    const offset = loadmodel.lightgrid.findPoint(0, 0, 0);
+
+    assert.ok(offset >= 0);
+    assert.deepEqual([...loadmodel.lightgrid.points.subarray(offset + 2, offset + 5)], [10, 20, 30]);
+  });
+
+  void test('skips the lightgrid on a server, and keeps the lump directory', () => {
+    const loadmodel = new BrushModel('test');
+    const { buffer, bspxoffset } = buildBspxBuffer(0, 'LIGHTGRID_OCTREE', encodeLightgridLump(singleLeafLightgrid([1, 1, 1], [[{ stylenum: 0, rgb: [10, 20, 30] }]])));
+
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, con, false);
+
+    assert.equal(loadmodel.lightgrid, null);
+    assert.ok(loadmodel.bspxlumps !== null && 'LIGHTGRID_OCTREE' in loadmodel.bspxlumps);
+  });
+
+  void test('skips the deluxemap on a server', () => {
+    const loadmodel = new BrushModel('test');
+    const { buffer, bspxoffset } = buildBspxBuffer(0, 'LIGHTINGDIR', new Uint8Array([1, 2, 3]));
+
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, con, true);
+    assert.deepEqual([...loadmodel.deluxemap!], [1, 2, 3]);
+
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, con, false);
+    assert.equal(loadmodel.deluxemap, null);
+  });
+
+  void test('skips the face normals on a server', () => {
+    const loadmodel = new BrushModel('test');
+    loadmodel.faces = [createFace(3)];
+    const payload = encodeFaceNormals([[0, 0, 1]], [[[0, 0, 0], [0, 0, 0], [0, 0, 0]]]);
+    const { buffer, bspxoffset } = buildBspxBuffer(0, 'FACENORMALS', payload);
+
+    BSPXLoader.load(loadmodel, buffer, bspxoffset, con, false);
 
     assert.equal(loadmodel.faces[0].vertexNormals, null);
   });

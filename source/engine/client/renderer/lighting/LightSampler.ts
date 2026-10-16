@@ -1,6 +1,6 @@
 import Vector from '../../../../shared/Vector.ts';
 import { content } from '../../../../shared/Defs.ts';
-import { type BrushTexInfo, type BrushTexVec, type LightgridPointSample, Node } from '../../../common/model/BSP.ts';
+import { type BrushTexInfo, type BrushTexVec, Node } from '../../../common/model/BSP.ts';
 import type { Face } from '../../../common/model/BaseModel.ts';
 import { clientRuntimeState } from '../../ClientState.ts';
 import Interpolation from '../scene/Interpolation.ts';
@@ -9,13 +9,17 @@ import LightStyles from './LightStyles.ts';
 /** Light color (0-255 per channel) and the point lighting seems to come from, as the shaders take them. */
 export type LightPointResult = [Vector, Vector];
 
-type GridPosition = [number, number, number];
-
 /**
  * Samples the baked light of the world at a point: the lightmap of the surface below it, the BSPX lightgrid and
  * the deluxemap direction, with the current lightstyles applied.
  */
 export class LightSampler {
+  /** Offsets in the grid data of the corner points of the sample in progress. */
+  static readonly #gridPointOffsets = new Int32Array(8);
+
+  /** Weights of the corner points of the sample in progress. */
+  static readonly #gridPointWeights = new Float64Array(8);
+
   /**
    * Converts a texture axis of a surface (s or t) to a vector.
    * @returns The axis as a vector, the offset in `[3]` is not part of it.
@@ -276,95 +280,6 @@ export class LightSampler {
   }
 
   /**
-   * Samples a single point from the lightgrid octree.
-   * @returns Point data or null when the octree has no lighting sample there.
-   */
-  static SampleLightgridPoint(gridPos: GridPosition): LightgridPointSample | null {
-    const worldmodel = clientRuntimeState.worldmodel!;
-    console.assert(worldmodel !== null, 'worldmodel required');
-    const grid = worldmodel.lightgrid;
-
-    if (grid === null) {
-      return null;
-    }
-
-    const LGNODE_LEAF = 1 << 31;
-    const LGNODE_MISSING = 1 << 30;
-
-    // Walk the octree to find the leaf
-    let nodeIndex = grid.rootnode;
-
-    while (true) {
-      // Check if we've hit a leaf or missing node
-      if ((nodeIndex & LGNODE_LEAF) !== 0) {
-        const leafIndex = nodeIndex & ~(LGNODE_LEAF | LGNODE_MISSING);
-
-        if ((nodeIndex & LGNODE_MISSING) !== 0) {
-          // Missing data at this point
-          return null;
-        }
-
-        // Check if leaf index is valid
-        if (leafIndex >= grid.leafs.length) {
-          return null;
-        }
-
-        const leaf = grid.leafs[leafIndex];
-
-        // Calculate index within the leaf
-        const localX = gridPos[0] - leaf.mins[0];
-        const localY = gridPos[1] - leaf.mins[1];
-        const localZ = gridPos[2] - leaf.mins[2];
-
-        // Check bounds
-        if (localX < 0 || localX >= leaf.size[0] ||
-            localY < 0 || localY >= leaf.size[1] ||
-            localZ < 0 || localZ >= leaf.size[2]) {
-          return null;
-        }
-
-        const pointIndex = localZ * leaf.size[0] * leaf.size[1] + localY * leaf.size[0] + localX;
-
-        // Check if point index is valid
-        if (pointIndex >= leaf.points.length) {
-          return null;
-        }
-
-        const point = leaf.points[pointIndex];
-
-        if (point.stylecount === 0xff) {
-          // No data at this point
-          return null;
-        }
-
-        return point;
-      }
-
-      // Internal node - traverse
-      // Check if node index is valid
-      if (nodeIndex >= grid.nodes.length) {
-        return null;
-      }
-
-      const node = grid.nodes[nodeIndex];
-
-      // Calculate child index: ((z>=mid[2])<<0) | ((y>=mid[1])<<1) | ((x>=mid[0])<<2)
-      let childIdx = 0;
-      if (gridPos[2] >= node.mid[2]) {
-        childIdx |= 1;
-      }
-      if (gridPos[1] >= node.mid[1]) {
-        childIdx |= 2;
-      }
-      if (gridPos[0] >= node.mid[0]) {
-        childIdx |= 4;
-      }
-
-      nodeIndex = node.child[childIdx];
-    }
-  }
-
-  /**
    * Samples lighting from the lightgrid octree with trilinear interpolation.
    * @returns Interpolated RGB light and origin, or null when no grid sample is available.
    */
@@ -394,16 +309,16 @@ export class LightSampler {
     const fracY = gridPosFloat[1] - baseY;
     const fracZ = gridPosFloat[2] - baseZ;
 
-    // Sample the 8 corner points
-    const samples = [];
-    const weights = [];
+    // Sample the 8 corner points: the offsets of the points in the grid data, and the weights of their corners
+    const offsets = LightSampler.#gridPointOffsets;
+    const weights = LightSampler.#gridPointWeights;
+    let sampleCount = 0;
     let totalWeight = 0;
 
     for (let dz = 0; dz <= 1; dz++) {
       for (let dy = 0; dy <= 1; dy++) {
         for (let dx = 0; dx <= 1; dx++) {
-          const gridPos: GridPosition = [baseX + dx, baseY + dy, baseZ + dz];
-          const sample = LightSampler.SampleLightgridPoint(gridPos);
+          const offset = grid.findPoint(baseX + dx, baseY + dy, baseZ + dz);
 
           // Calculate trilinear weight
           const wx = dx === 0 ? (1 - fracX) : fracX;
@@ -411,9 +326,10 @@ export class LightSampler {
           const wz = dz === 0 ? (1 - fracZ) : fracZ;
           const weight = wx * wy * wz;
 
-          if (sample !== null) {
-            samples.push(sample);
-            weights.push(weight);
+          if (offset >= 0) {
+            offsets[sampleCount] = offset;
+            weights[sampleCount] = weight;
+            sampleCount++;
             totalWeight += weight;
           }
         }
@@ -421,13 +337,13 @@ export class LightSampler {
     }
 
     // If no samples found, return null
-    if (samples.length === 0) {
+    if (sampleCount === 0) {
       return null;
     }
 
     // Compensate for missing samples by renormalizing weights
     if (totalWeight > 0) {
-      for (let i = 0; i < weights.length; i++) {
+      for (let i = 0; i < sampleCount; i++) {
         weights[i] /= totalWeight;
       }
     }
@@ -435,14 +351,16 @@ export class LightSampler {
     // Accumulate weighted RGB values
     const r3 = new Vector(0, 0, 0);
     const uInterpolation = Interpolation.Lightstyle();
+    const data = grid.points;
 
-    for (let i = 0; i < samples.length; i++) {
-      const sample = samples[i];
+    for (let i = 0; i < sampleCount; i++) {
       const weight = weights[i];
+      const offset = offsets[i];
+      const stylecount = data[offset];
 
-      for (let s = 0; s < sample.styles.length; s++) {
-        const style = sample.styles[s];
-        const stylenum = style.stylenum;
+      for (let s = 0; s < stylecount; s++) {
+        const style = offset + 1 + s * 4;
+        const stylenum = data[style];
 
         // Apply lightstyle animation (matches RecursiveLightPoint: lightstyle * 22.0 / 256.0)
         const scale = (
@@ -450,9 +368,9 @@ export class LightSampler {
           LightStyles.lightstylevalue_b[stylenum] * uInterpolation
         ) * 0.0859375; // 22.0 / 256.0
 
-        r3[0] += style.rgb[0] * scale * weight;
-        r3[1] += style.rgb[1] * scale * weight;
-        r3[2] += style.rgb[2] * scale * weight;
+        r3[0] += data[style + 1] * scale * weight;
+        r3[1] += data[style + 2] * scale * weight;
+        r3[2] += data[style + 3] * scale * weight;
       }
     }
 
