@@ -5,7 +5,6 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, solid } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import ClientCollision from '../../source/engine/client/ClientCollision.ts';
-import CollisionModelSource from '../../source/engine/common/CollisionModelSource.ts';
 
 import { assertNear, createBrushWorldModel, createLegacyWorldModel } from '../physics/fixtures.mjs';
 
@@ -15,11 +14,7 @@ import { assertNear, createBrushWorldModel, createLegacyWorldModel } from '../ph
  * @returns {ClientCollision} the collision under test
  */
 function createClientCollision(worldModel) {
-  const modelSource = new CollisionModelSource();
-
-  modelSource.configureClient({ getWorldModel: () => worldModel });
-
-  return new ClientCollision(modelSource);
+  return new ClientCollision({ getWorldEntity: () => null, getWorldModel: () => worldModel, getModelByIndex: () => null });
 }
 
 // A wall of 16 units thickness, centered 64 units along +x of the origin: it occupies x in [56, 72].

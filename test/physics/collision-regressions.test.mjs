@@ -6,7 +6,6 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
 import { BrushTrace, Hull, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
-import { CollisionModelSource } from '../../source/engine/common/CollisionModelSource.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
@@ -3738,8 +3737,7 @@ void test('ServerCollision.traceStaticWorldLine keeps the E1M1 brushlist dog sig
   const dogEye = new Vector(432, 2120, -143);
   const playerEye = new Vector(179.875, 1969.625, -162);
   const createCollision = (model) => {
-    const modelSource = new CollisionModelSource();
-    modelSource.configureClient({ getWorldModel: () => model });
+    const modelSource = { getWorldEntity: () => null, getWorldModel: () => model, getModelByIndex: () => null };
     return new ServerCollision(mockedSV(), modelSource);
   };
 

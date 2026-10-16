@@ -1,6 +1,6 @@
 # Track E: collision and movement, one source per realm and a determinism test
 
-Track E of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-16, forks settled the same day (see Open questions). Phase 0 is done (2026-10-16) and so are the two fixes it led to (the msec split and the movement variables), see "Phase 0: what shipped" and "Phase 0 follow-ups". Phase 1 has not started.**
+Track E of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-16, forks settled the same day (see Open questions). Phase 0 is done (2026-10-16) and so are the two fixes it led to (the msec split and the movement variables), see "Phase 0: what shipped" and "Phase 0 follow-ups". Phase 1 is implemented (2026-10-16), see "Phase 1: what shipped".**
 Written for the maintainers. Numbers and claims are from a read of the tree on that date (branch
 `engine-architecture-modernization`); where something was only read and not run, it says so.
 
@@ -264,6 +264,33 @@ test helper. A unit test per implementation (world model, model by index, null b
 Verify in a real browser on both server paths: the worker path (the default) and the in-thread path. Check how
 `createBrowserClient` picks `channel === null` first; if there is no switch to force it, say so and rely on the unit test for
 that path. Particles, dynamic-light occlusion and the chase camera are the visible `clientCollision` consumers.
+
+#### Phase 1: what shipped (2026-10-16)
+
+`CollisionModelSource` is an interface now (`common/CollisionModelSource.ts`, in place of the class, not in
+`CollisionContracts.ts` as the Design said: the file already carried the name and every importer takes it from there).
+Implementations: `ServerCollisionModelSource` (`server/physics/`, built by the `Server` from its own state and handed to
+`ServerArea` and `ServerCollision`) and `ClientCollisionModelSource` (`client/`, built in `ClientPhysics.ts`).
+
+- Gone: the class with its two `configure*` methods, `sharedCollisionModelSource`, `ServerDependencies.collisionModelSource`, the
+  `configureClient` side effect in `ClientServerCommandHandlers.ts`, and the cross-realm fallback (a server asking for a model it
+  does not have no longer gets the client's, and a server without a world no longer traces against the client's).
+- The client implementation takes a getter for the client state, not the state: `ClientPhysics.ts` builds it while `ClientState`
+  is still being evaluated (an import closes a cycle, the value itself does not exist yet).
+- A side effect worth having: the server's accessor used to build a new array of all models on every `getModels()` call, once
+  per model lookup in a trace; it reads the one slot now.
+- Tests: one file per implementation (`test/server/server-collision-model-source.test.ts`, `test/client/client-collision-model-source.test.ts`),
+  and a test with a real `Server` and a world in the real client state, asserting the server does not see it. Two existing tests
+  asserted the fallback itself (a `ServerCollision` that "uses the client worldmodel", a `ServerArea` that "resolves hulls from the
+  client model precache"); they now assert the opposite and the model table of the server. `mockedCollisionModelSource()` in
+  `fixtures.mjs` is a server-only double. `npm test` 2541 pass, `npm run typecheck` 0 errors.
+- Live, in headless Chromium against the running dedicated server (`start` map, software GL): the default worker path and
+  `?serverthread` both load the map and walk the player about 380 to 400 units; on `?serverthread` the server's `collision` sees
+  its own world (empty at the player, the floor 24 units below, the world entity returned). The three 404s both runs log are
+  `gfx/concharslarge.png`, `gfx/conback.png` and `progs/beam.mdl` (optional console art, a model this data directory does not
+  have), nothing to do with collision. Not compared against a build from before the change.
+  Not covered live: a pure remote client (no server in the page at all), and the visible consumers of `clientCollision` (particles,
+  dynamic-light occlusion, the chase camera) beyond "no error".
 
 ### Phase 2: `ClientCollision` without a stand-in (optional, own go-ahead)
 

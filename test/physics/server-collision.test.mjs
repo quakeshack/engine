@@ -1398,7 +1398,7 @@ void describe('ServerCollision', () => {
       });
     });
 
-    void test('uses the client worldmodel when no local server worldspawn exists', () => {
+    void test('does not use a client worldmodel when the server has no world, the realms do not look into each other', () => {
       const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
 
@@ -1423,8 +1423,8 @@ void describe('ServerCollision', () => {
 
         assert.equal(trace.startsolid, false);
         assert.equal(trace.ent, null);
-        assert.ok(trace.fraction < 1.0);
-        assertNear(trace.endpos[0], 47.96875, 0.001);
+        assert.equal(trace.fraction, 1.0);
+        assertNear(trace.endpos[0], 100, 0.001);
       });
     });
 
@@ -1485,7 +1485,7 @@ void describe('ServerCollision', () => {
 });
 
 void describe('ServerArea', () => {
-  void test('resolves BSP hulls from the client model precache when the local server model table is empty', () => {
+  void test('resolves BSP hulls from the model table of the server', () => {
     const area = new ServerArea(mockedSV(), mockedCollisionModelSource());
     area.initBoxHull();
 
@@ -1503,12 +1503,7 @@ void describe('ServerArea', () => {
     void withMockEngine(defaultMockEngine({
       server: {
         edicts: [],
-        models: [],
-        worldmodel: null,
-      },
-    }, {
-      state: {
-        model_precache: [null, worldModel],
+        models: [null, worldModel],
         worldmodel: worldModel,
       },
     }), () => {

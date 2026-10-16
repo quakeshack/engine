@@ -1,7 +1,6 @@
 import type { ConsoleCapture, ConsoleOutput, SystemServices } from '../common/Services.ts';
 import type { GameEdition } from '../common/GameApiSupport.ts';
 import type Vector from '../../shared/Vector.ts';
-import type CollisionModelSource from '../common/CollisionModelSource.ts';
 import type Mod from '../common/Mod.ts';
 import type NET from '../network/Network.ts';
 
@@ -36,8 +35,6 @@ export interface ServerDependencies {
   readonly net: ServerNetwork;
   readonly mod: ModelCache;
   readonly view: PlayerView;
-  /** Resolves models for collision, shared with whoever else needs to see the world. */
-  readonly collisionModelSource: CollisionModelSource;
   /** Engine version shown to clients, e.g. `1.2.2+abc123`. */
   readonly engineVersion: () => string;
   /** Where navigation meshes are read from and written to. */

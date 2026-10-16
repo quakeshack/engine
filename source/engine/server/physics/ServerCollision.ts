@@ -3,7 +3,7 @@ import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
-import type CollisionModelSource from '../../common/CollisionModelSource.ts';
+import type { CollisionModelSource } from '../../common/CollisionModelSource.ts';
 import { AliasModel, BrushModel, MeshModel } from '../../common/Mod.ts';
 import { BrushTrace, DIST_EPSILON, Trace as SharedTrace } from '../../common/Pmove.ts';
 import {

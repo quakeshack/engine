@@ -3,7 +3,6 @@ import { after, describe, test } from 'node:test';
 
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
-import { CollisionModelSource } from '../../source/engine/common/CollisionModelSource.ts';
 import Server from '../../source/engine/server/Server.ts';
 import type { ServerDependencies } from '../../source/engine/server/ServerDependencies.ts';
 
@@ -23,7 +22,6 @@ function createServer(): Server {
     mod: {} as ServerDependencies['mod'],
     view: { CalcRoll: () => 0 },
     files: { LoadFile: () => Promise.resolve(null), WriteFile: () => Promise.resolve(true) },
-    collisionModelSource: new CollisionModelSource(),
     engineVersion: () => 'test',
     gameEdition: () => ({ registered: true, hipnotic: false, rogue: false }),
     dedicated: true,

@@ -6,7 +6,6 @@ import Vector from '../../shared/Vector.ts';
 import GameModule from '../common/GameModule.ts';
 import { engineApi } from './PageServices.ts';
 import { ModelScope, type BrushModel } from '../common/Mod.ts';
-import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
 import { registerClientDeserializer } from '../network/MSG.ts';
 import { ServerEdict } from '../server/Edict.ts';
 import { eventBus } from '../common/EventBus.ts';
@@ -33,11 +32,6 @@ type ClientSignonState = 0 | 1 | 2 | 3 | 4;
 
 // An edict reference on the wire is the number of the client's own copy of it.
 registerClientDeserializer(ServerEdict, (): ClientEdict => clientRuntimeState.clientEntities.getEntity(net.message.readShort()) as ClientEdict);
-
-sharedCollisionModelSource.configureClient({
-  getWorldModel: () => CL?.state?.worldmodel ?? null,
-  getModels: () => CL?.state?.model_precache ?? null,
-});
 
 /** Tracks entity updates during message parsing */
 let entitiesReceived = 0;

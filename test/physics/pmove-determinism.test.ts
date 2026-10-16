@@ -7,7 +7,6 @@ import CL from '../../source/engine/client/CL.ts';
 import { ClientPlayerState } from '../../source/engine/client/ClientMessages.ts';
 import { MOVEVAR_CVARS, MoveVars, PM_TYPE, PMF, Pmove, PmovePlayer, type MoveVarName } from '../../source/engine/common/Pmove.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
-import { CollisionModelSource } from '../../source/engine/common/CollisionModelSource.ts';
 import { ServerClientPhysics } from '../../source/engine/server/physics/ServerClientPhysics.ts';
 import type { ServerClient } from '../../source/engine/server/Client.ts';
 import Server from '../../source/engine/server/Server.ts';
@@ -456,7 +455,6 @@ function createBareServer(): Server {
     mod: {} as ServerDependencies['mod'],
     view: { CalcRoll: () => 0 },
     files: { LoadFile: () => Promise.resolve(null), WriteFile: () => Promise.resolve(true) },
-    collisionModelSource: new CollisionModelSource(),
     engineVersion: () => 'test',
     gameEdition: () => ({ registered: true, hipnotic: false, rogue: false }),
     dedicated: true,

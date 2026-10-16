@@ -9,7 +9,6 @@ import { useHostOf } from '../support/host.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
-import CollisionModelSource from '../../source/engine/common/CollisionModelSource.ts';
 import Server from '../../source/engine/server/Server.ts';
 import { ServerEngineAPI } from '../../source/engine/server/ServerEngineAPI.ts';
 import ServerHost from '../../source/engine/server/ServerHost.ts';
@@ -524,23 +523,19 @@ export function mockedSV() {
 }
 
 /**
- * A collision model source that resolves the server and client models through the mocked server.
- * @returns {CollisionModelSource} the model source
+ * A collision model source that resolves the world and the models through whatever server is mocked at the time of the call.
+ * @returns {import('../../source/engine/common/CollisionModelSource.ts').CollisionModelSource} the model source
  */
 export function mockedCollisionModelSource() {
-  const modelSource = new CollisionModelSource();
-
-  modelSource.configureServer({
+  return {
     getWorldEntity: () => engineMocks.SV?.server?.edicts?.[0] ?? null,
     getWorldModel: () => engineMocks.SV?.server?.worldmodel ?? null,
-    getModels: () => (engineMocks.SV?.server?.models?.map((model) => model instanceof Promise ? null : model) ?? null),
-  });
-  modelSource.configureClient({
-    getWorldModel: () => engineMocks.CL?.state?.worldmodel ?? null,
-    getModels: () => engineMocks.CL?.state?.model_precache ?? null,
-  });
+    getModelByIndex: (modelIndex) => {
+      const model = engineMocks.SV?.server?.models?.[modelIndex];
 
-  return modelSource;
+      return model instanceof Promise ? null : model ?? null;
+    },
+  };
 }
 
 /**
@@ -566,7 +561,6 @@ export function createTestServer(overrides = {}) {
     mod: /** @type {any} */ ({}),
     view: { CalcRoll: () => 0 },
     files: { LoadFile: async () => null, WriteFile: async () => true },
-    collisionModelSource: new CollisionModelSource(),
     engineVersion: () => 'test',
     gameEdition: () => ({ registered: true, hipnotic: false, rogue: false }),
     dedicated: true,

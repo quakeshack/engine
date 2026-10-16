@@ -4,7 +4,7 @@ import type { BaseEntity, ServerEdict } from '../Edict.ts';
 import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import { Octree } from '../../../shared/Octree.ts';
-import type CollisionModelSource from '../../common/CollisionModelSource.ts';
+import type { CollisionModelSource } from '../../common/CollisionModelSource.ts';
 import { BrushModel } from '../../common/Mod.ts';
 import type Server from '../Server.ts';
 

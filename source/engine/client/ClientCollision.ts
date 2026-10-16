@@ -4,7 +4,7 @@ import type { ServerEdict } from '../server/Edict.ts';
 
 import Vector from '../../shared/Vector.ts';
 import * as Defs from '../../shared/Defs.ts';
-import type CollisionModelSource from '../common/CollisionModelSource.ts';
+import type { CollisionModelSource } from '../common/CollisionModelSource.ts';
 import { BrushTrace, Trace as SharedTrace } from '../common/Pmove.ts';
 import { CollisionPlane, CollisionTrace } from '../server/physics/ServerCollisionSupport.ts';
 import { ServerArea } from '../server/physics/ServerArea.ts';

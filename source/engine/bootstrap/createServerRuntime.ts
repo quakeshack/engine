@@ -4,7 +4,6 @@ import type NET from '../network/Network.ts';
 import type { SystemServices } from '../common/Services.ts';
 import type { ModelCache, PlayerView, ServerDependencies } from '../server/ServerDependencies.ts';
 
-import { sharedCollisionModelSource } from '../common/CollisionModelSource.ts';
 import Server from '../server/Server.ts';
 import ServerHost from '../server/ServerHost.ts';
 
@@ -56,7 +55,6 @@ export function createServerRuntime(services: ServerRuntimeServices, dedicated: 
     mod: services.mod,
     view: services.view,
     files: services.com,
-    collisionModelSource: sharedCollisionModelSource,
     engineVersion: () => host.version!.string,
     gameEdition: services.gameEdition,
     dedicated,

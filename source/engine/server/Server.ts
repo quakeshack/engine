@@ -21,6 +21,7 @@ import { ServerClientPhysics } from './physics/ServerClientPhysics.ts';
 import { ServerMessages } from './ServerMessages.ts';
 import { ServerMovement } from './physics/ServerMovement.ts';
 import { ServerArea } from './physics/ServerArea.ts';
+import { ServerCollisionModelSource } from './physics/ServerCollisionModelSource.ts';
 import { ServerCollision } from './physics/ServerCollision.ts';
 import type { ServerDependencies } from './ServerDependencies.ts';
 import { BrushModel, ModelScope } from '../common/Mod.ts';
@@ -255,15 +256,11 @@ export default class Server {
     this.clientPhysics = new ServerClientPhysics(this);
     this.messages = new ServerMessages(this);
     this.movement = new ServerMovement(this);
-    this.area = new ServerArea(this, dependencies.collisionModelSource);
-    this.collision = new ServerCollision(this, dependencies.collisionModelSource);
-    this.ed = new ED(this);
+    const modelSource = new ServerCollisionModelSource(this);
 
-    dependencies.collisionModelSource.configureServer({
-      getWorldEntity: () => this.server.edicts[0] ?? null,
-      getWorldModel: () => this.server.worldmodel,
-      getModels: () => this.server.models.map((model) => model instanceof Promise ? null : model),
-    });
+    this.area = new ServerArea(this, modelSource);
+    this.collision = new ServerCollision(this, modelSource);
+    this.ed = new ED(this);
   }
 
   InitPmove(): void {
