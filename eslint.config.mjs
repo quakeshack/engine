@@ -21,6 +21,7 @@ const typeAwareParserOptions = {
       'test/*/*.test.mjs',
       'test/*/*/*.test.mjs',
       'scripts/*/*.mjs',
+      'scripts/*.mts',
     ],
     maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINT: 64,
   },
