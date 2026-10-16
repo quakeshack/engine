@@ -1,6 +1,6 @@
 # Track E: collision and movement, one source per realm and a determinism test
 
-Track E of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-16, forks settled the same day (see Open questions). Phase 0 is done (2026-10-16) and so are the two fixes it led to (the msec split and the movement variables), see "Phase 0: what shipped" and "Phase 0 follow-ups". Phase 1 is committed (`f825831`); Phase 2 is implemented (2026-10-16) and waits for review, see "Phase 2: what shipped".**
+Track E of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-16, forks settled the same day (see Open questions). Phase 0 is done (2026-10-16) and so are the two fixes it led to (the msec split and the movement variables), see "Phase 0: what shipped" and "Phase 0 follow-ups". Phase 1 is committed (`f825831`), Phase 2 is committed (`fbd6577`). Phase 3 (close-out) is done and waits for review; the track is complete.**
 Written for the maintainers. Numbers and claims are from a read of the tree on that date (branch
 `engine-architecture-modernization`); where something was only read and not run, it says so.
 
@@ -296,7 +296,7 @@ Implementations: `ServerCollisionModelSource` (`server/physics/`, built by the `
 
 E3. Only if the answer under Open questions is "yes", and only after the separability check.
 
-#### Phase 2: what shipped (2026-10-16, not committed yet, waits for review)
+#### Phase 2: what shipped (2026-10-16, `fbd6577`)
 
 The separability check came back clean: `hullForEntity` and `initBoxHull` of `ServerArea` read nothing but the model source, so
 the box hull moved out of the area unchanged.
@@ -328,6 +328,19 @@ the box hull moved out of the area unchanged.
 Update the umbrella plan (Track E section, the "Later tracks" state line, the 1.3.0 "what it still waits for" note), JSDoc on
 `Pmove`, `CollisionModelSource`, and the comment in `ServerClientPhysics.ts` about the
 identical time steps so that it says what is actually true. Record what shipped here, with the test counts.
+
+
+#### Phase 3: what shipped (2026-10-16, waits for review)
+
+The umbrella plan's Track E section, its "Later tracks" line and the 1.3.0 note say the track is done. JSDoc on `Pmove` states the
+determinism contract and names the test that holds it; `CollisionModelSource` and the new classes were documented as they were
+written; the comment in `ServerClientPhysics.ts` that claimed identical time steps is true now and is the `#moveSplit` doc. No
+Dockerfile change: every new test file sits in a directory that already had tests, and the worlds are built in code, so there
+is no fixture. No new event, so `docs/events.md` is untouched.
+
+**Left for later, not part of the track:** `ClientCollision.clipMoveToEntity` still casts its target to a `ServerEdict` because the
+narrow phase is typed on server edicts; the friction defaults (6 and 1, vanilla Quake's 4 and 1) are the maintainers' call;
+removing the in-thread browser server path stays a separate decision after 1.3.0.
 
 ## Testing
 

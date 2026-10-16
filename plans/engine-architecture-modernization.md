@@ -486,11 +486,16 @@ Ordered cheapest and most valuable first; each is its own plan:
 
 ### E. Collision and movement (Track E)
 
-- `Pmove` is already registry-free. Keep it that way and add determinism tests asserting client and
-  server produce bit-identical results over recorded and randomized `usercmd` sequences.
-- Formalize `CollisionModelSource` as a `CollisionWorld` interface. Each realm gets its own instance
-  (today a module-level `sharedCollisionModelSource` is shared by `SV.area` and `SV.collision`), which
-  falls out of Track A.
+**Done 2026-10-16**, see `plans/track-e-collision-and-movement.md`.
+
+- `Pmove` is registry-free and stays so. A test runs the server's player movement against client prediction, and two separate
+  `Pmove` worlds against each other, over scripted and seeded random `usercmd` sequences in ten scenarios: bit-identical, in Node,
+  Chrome and Firefox alike. It found and fixed two real divergences: the server split long commands once where prediction
+  splits recursively, and the movement variables (`sv_gravity` and the other cvars) never reached player movement on either side.
+- `CollisionModelSource` is an interface with one implementation per realm (`ServerCollisionModelSource`,
+  `ClientCollisionModelSource`) and no fallback between them. `EntityHulls` owns the hull choice, and `ServerCollision` takes a
+  `CollisionHost` instead of a `Server`, so `ClientCollision` no longer fakes one. The name `CollisionWorld` was not used,
+  `PlayerCollisionWorld` already means the movement queries.
 
 ### F. Asset pipeline (Track F)
 
@@ -1415,8 +1420,8 @@ State on 2026-10-11 (the release in the next section waits for these, or for an 
   passes, effects handed their output, depth sampled from a copy with the frame staying multisampled). Open there: the
   frame time of the transparent pass on a real GPU, and Firefox.
 - **D4** (GPU abstraction, WebGPU spike): **postponed past 1.3.0 (decided 2026-10-13).** Not started, no plan.
-- **E**: plan drafted 2026-10-16, `plans/track-e-collision-and-movement.md`, nothing implemented. `sharedCollisionModelSource` is
-  still one module-level instance, there is no `CollisionWorld` interface and no client/server `Pmove` determinism test.
+- **E**: **done 2026-10-16**, `plans/track-e-collision-and-movement.md` (determinism tests, the msec split and the movement
+  variables fixed, a model source per realm, entity hulls in their own class, `ClientCollision` without a stand-in server).
 - **F**: **postponed past 1.3.0 (decided 2026-10-13).** Only the first step (the shared `AssetSource`) exists. Content-hash
   addressing and the rest have no plan.
 - **G**: **postponed past 1.3.0 (decided 2026-10-13), including deterministic replay (decision 14), which stays in scope for
@@ -1438,9 +1443,9 @@ also ticks D2 here; the SCR and V dissolve in `plans/scr-v-split.md` is part of 
 form their own plans define as done, and no open item left in "Open questions".
 
 **Scope cut, 2026-10-13:** Track F, Track G (including deterministic replay) and D4 are postponed past 1.3.0 and are not
-part of "everything". D3 (frame graph) was done the same day, `plans/frame-graph.md`. What 1.3.0 still waits for: Track E,
-which needs its own plan unless it is postponed too, and the one open item in "Open questions" (the navigation worker
-check with a real path request, which needs the Hellwave `.nav` files).
+part of "everything". D3 (frame graph) was done the same day, `plans/frame-graph.md`. Track E was done on 2026-10-16. What 1.3.0 still waits for:
+the one open item in "Open questions" (the navigation worker check with a real path request, which needs the Hellwave `.nav`
+files).
 
 The bump itself, in one commit with no other change:
 

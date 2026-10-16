@@ -2231,6 +2231,15 @@ export class PmovePlayer { // pmove_t (player state only)
  * Holds the world (physents) and provides collision primitives.
  * Instantiate one per context (one for client prediction, one for server).
  */
+/**
+ * The world player movement runs in: the physents (index 0 is the static world), the movement variables and the
+ * configuration. One per realm, the server's and the client's prediction each build their own and fill it from their
+ * own model of the world.
+ *
+ * Client prediction and the server run the same code (`PmovePlayer.move`) and have to compute the same result from the
+ * same command; `test/physics/pmove-determinism.test.ts` holds that, bit for bit. Anything that reads global state, the
+ * clock or a random number inside the movement code would break it.
+ */
 export class Pmove implements PlayerCollisionWorld { // pmove_t
   static MAX_CLIP_PLANES = MAX_CLIP_PLANES;
 
