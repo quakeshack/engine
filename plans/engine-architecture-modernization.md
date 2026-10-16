@@ -1415,8 +1415,8 @@ State on 2026-10-11 (the release in the next section waits for these, or for an 
   passes, effects handed their output, depth sampled from a copy with the frame staying multisampled). Open there: the
   frame time of the transparent pass on a real GPU, and Firefox.
 - **D4** (GPU abstraction, WebGPU spike): **postponed past 1.3.0 (decided 2026-10-13).** Not started, no plan.
-- **E**: not started. `sharedCollisionModelSource` is still one module-level instance, there is no `CollisionWorld` interface and
-  no client/server `Pmove` determinism test.
+- **E**: plan drafted 2026-10-16, `plans/track-e-collision-and-movement.md`, nothing implemented. `sharedCollisionModelSource` is
+  still one module-level instance, there is no `CollisionWorld` interface and no client/server `Pmove` determinism test.
 - **F**: **postponed past 1.3.0 (decided 2026-10-13).** Only the first step (the shared `AssetSource`) exists. Content-hash
   addressing and the rest have no plan.
 - **G**: **postponed past 1.3.0 (decided 2026-10-13), including deterministic replay (decision 14), which stays in scope for
