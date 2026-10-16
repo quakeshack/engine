@@ -7,16 +7,13 @@ import COM from '../../Com.ts';
 import { CRC16CCITT } from '../../CRC.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { ModelLoader } from '../ModelLoader.ts';
-import { Brush, BrushModel, BrushSide, Node, type BrushTexInfo, type Clipnode, type Hull } from '../BSP.ts';
+import { Brush, BrushModel, BrushSide, Node, type BrushTexInfo } from '../BSP.ts';
+import { ClipTree, Hull, PlaneTable } from '../../collision/Hull.ts';
 import { QSMatLoader } from '../QSMatLoader.ts';
 import { BSPXLoader } from '../BSPXLoader.ts';
 import { Face, Plane } from '../BaseModel.ts';
 import { MaterialFlags, noTextureMaterial, QuakeMaterial } from '../../../client/renderer/models/Materials.ts';
 import { Quake1Sky, SimpleSkyBox } from '../../../client/renderer/scene/Sky.ts';
-
-interface AllowedClipnodeHull extends Hull {
-  allowedClipNodes?: Uint8Array | null;
-}
 
 /**
  * Helper function to get a child node from a BSP node, with type assertion.
@@ -1249,6 +1246,7 @@ export class BSP29Loader extends ModelLoader {
       loadmodel.planes[i] = out;
       fileofs += 20;
     }
+    loadmodel.planeTable = PlaneTable.fromPlanes(loadmodel.planes);
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
   }
 
@@ -1481,31 +1479,15 @@ export class BSP29Loader extends ModelLoader {
     let fileofs = view.getUint32((lump.clipnodes << 3) + 4, true);
     const filelen = view.getUint32((lump.clipnodes << 3) + 8, true);
     const count = filelen >> 3;
-    loadmodel.clipnodes.length = 0;
+    const tree = new ClipTree(count);
+    loadmodel.clipTree = tree;
 
     loadmodel.hulls.length = 0;
-    loadmodel.hulls[1] = {
-      clipnodes: loadmodel.clipnodes,
-      firstclipnode: 0,
-      lastclipnode: count - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(-16.0, -16.0, -24.0),
-      clip_maxs: new Vector(16.0, 16.0, 32.0),
-    };
-    loadmodel.hulls[2] = {
-      clipnodes: loadmodel.clipnodes,
-      firstclipnode: 0,
-      lastclipnode: count - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(-32.0, -32.0, -24.0),
-      clip_maxs: new Vector(32.0, 32.0, 64.0),
-    };
+    loadmodel.hulls[1] = new Hull(loadmodel.planeTable, tree, new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0), 0, count - 1);
+    loadmodel.hulls[2] = new Hull(loadmodel.planeTable, tree, new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 64.0), 0, count - 1);
 
     for (let i = 0; i < count; i++) {
-      loadmodel.clipnodes[i] = {
-        planenum: view.getUint32(fileofs, true),
-        children: [view.getInt16(fileofs + 4, true), view.getInt16(fileofs + 6, true)],
-      };
+      tree.set(i, view.getUint32(fileofs, true), view.getInt16(fileofs + 4, true), view.getInt16(fileofs + 6, true));
       fileofs += 8;
     }
     loadmodel.bspxoffset = Math.max(loadmodel.bspxoffset, fileofs);
@@ -1515,27 +1497,22 @@ export class BSP29Loader extends ModelLoader {
    * Create hull0 (point hull) from BSP nodes for collision detection.
    */
   #makeHull0(loadmodel: BrushModel): void {
-    type Clipnode = { planenum: number; children: (number | Node)[] };
-
-    const clipnodes = [] as Clipnode[];
-    const hull = {
-      clipnodes: clipnodes,
-      lastclipnode: loadmodel.nodes.length - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(),
-      clip_maxs: new Vector(),
-    } as Hull;
+    const tree = new ClipTree(loadmodel.nodes.length);
 
     for (let i = 0; i < loadmodel.nodes.length; i++) {
       const node = loadmodel.nodes[i];
-      const out = { planenum: node.planenum, children: [] } as Clipnode;
       const child0 = node.children[0] as Node;
       const child1 = node.children[1] as Node;
-      out.children[0] = child0.contents < content.CONTENT_NONE ? child0.contents : child0.num;
-      out.children[1] = child1.contents < content.CONTENT_NONE ? child1.contents : child1.num;
-      clipnodes[i] = out;
+
+      tree.set(
+        i,
+        node.planenum,
+        child0.contents < content.CONTENT_NONE ? child0.contents : child0.num,
+        child1.contents < content.CONTENT_NONE ? child1.contents : child1.num,
+      );
     }
-    loadmodel.hulls[0] = hull;
+
+    loadmodel.hulls[0] = new Hull(loadmodel.planeTable, tree, new Vector(), new Vector(), 0, loadmodel.nodes.length - 1);
   }
 
   /**
@@ -1544,29 +1521,26 @@ export class BSP29Loader extends ModelLoader {
    * submodels, so traces must stay within the owning subtree.
    * @returns A mask of reachable clipnodes, or null when the requested root is invalid.
    */
-  _buildAllowedClipnodeMask(clipnodes: Clipnode[], firstclipnode: number): Uint8Array | null {
-    if (!clipnodes || clipnodes.length === 0 || firstclipnode < 0 || firstclipnode >= clipnodes.length) {
+  _buildAllowedClipnodeMask(tree: ClipTree, firstclipnode: number): Uint8Array | null {
+    if (tree.count === 0 || firstclipnode < 0 || firstclipnode >= tree.count) {
       return null;
     }
 
-    const allowedClipNodes = new Uint8Array(clipnodes.length);
+    const allowedClipNodes = new Uint8Array(tree.count);
     const stack = [firstclipnode];
 
     while (stack.length > 0) {
       const nodeIndex = stack.pop()!;
 
-      if (nodeIndex < 0 || nodeIndex >= clipnodes.length || allowedClipNodes[nodeIndex] === 1) {
+      if (nodeIndex < 0 || nodeIndex >= tree.count || allowedClipNodes[nodeIndex] === 1) {
         continue;
       }
 
       allowedClipNodes[nodeIndex] = 1;
 
-      const node = clipnodes[nodeIndex];
-      if (!node) {
-        continue;
-      }
+      for (let side = 0; side < 2; side++) {
+        const childIndex = tree.children[nodeIndex * 2 + side];
 
-      for (const childIndex of node.children) {
         if (childIndex >= 0) {
           stack.push(childIndex);
         }
@@ -1579,12 +1553,8 @@ export class BSP29Loader extends ModelLoader {
   /**
    * Attach the owning subtree mask to a legacy hull.
    */
-  #assignAllowedClipnodeMask(hull?: AllowedClipnodeHull): void {
-    if (!hull || hull.firstclipnode === undefined) {
-      return;
-    }
-
-    hull.allowedClipNodes = this._buildAllowedClipnodeMask(hull.clipnodes, hull.firstclipnode);
+  #assignAllowedClipnodeMask(hull: Hull): void {
+    hull.allowedClipNodes = this._buildAllowedClipnodeMask(hull.tree, hull.firstClipNode);
   }
 
   /**
@@ -1624,47 +1594,29 @@ export class BSP29Loader extends ModelLoader {
 
     loadmodel.mins.setTo(view.getFloat32(fileofs, true) - 1.0, view.getFloat32(fileofs + 4, true) - 1.0, view.getFloat32(fileofs + 8, true) - 1.0);
     loadmodel.maxs.setTo(view.getFloat32(fileofs + 12, true) + 1.0, view.getFloat32(fileofs + 16, true) + 1.0, view.getFloat32(fileofs + 20, true) + 1.0);
-    loadmodel.hulls[0].firstclipnode = view.getUint32(fileofs + 36, true);
-    loadmodel.hulls[1].firstclipnode = view.getUint32(fileofs + 40, true);
-    loadmodel.hulls[2].firstclipnode = view.getUint32(fileofs + 44, true);
+    loadmodel.hulls[0].firstClipNode = view.getUint32(fileofs + 36, true);
+    loadmodel.hulls[1].firstClipNode = view.getUint32(fileofs + 40, true);
+    loadmodel.hulls[2].firstClipNode = view.getUint32(fileofs + 44, true);
     this.#assignAllowedClipnodeMask(loadmodel.hulls[0]);
     this.#assignAllowedClipnodeMask(loadmodel.hulls[1]);
     this.#assignAllowedClipnodeMask(loadmodel.hulls[2]);
     fileofs += 64;
 
-    const clipnodes = loadmodel.hulls[0].clipnodes;
+    const hull0Tree = loadmodel.hulls[0].tree;
     for (let i = 1; i < count; i++) {
       const out = new BrushModel('*' + i);
       out.submodel = true;
       out.mins.setTo(view.getFloat32(fileofs, true) - 1.0, view.getFloat32(fileofs + 4, true) - 1.0, view.getFloat32(fileofs + 8, true) - 1.0);
       out.maxs.setTo(view.getFloat32(fileofs + 12, true) + 1.0, view.getFloat32(fileofs + 16, true) + 1.0, view.getFloat32(fileofs + 20, true) + 1.0);
       out.origin.setTo(view.getFloat32(fileofs + 24, true), view.getFloat32(fileofs + 28, true), view.getFloat32(fileofs + 32, true));
+      // the planes and the trees are shared with the world, a hull of a submodel only has a root of its own
       out.hulls = [
-        {
-          clipnodes: clipnodes,
-          firstclipnode: view.getUint32(fileofs + 36, true),
-          lastclipnode: loadmodel.nodes.length - 1,
-          planes: loadmodel.planes,
-          clip_mins: new Vector(),
-          clip_maxs: new Vector(),
-        },
-        {
-          clipnodes: loadmodel.clipnodes,
-          firstclipnode: view.getUint32(fileofs + 40, true),
-          lastclipnode: loadmodel.clipnodes.length - 1,
-          planes: loadmodel.planes,
-          clip_mins: new Vector(-16.0, -16.0, -24.0),
-          clip_maxs: new Vector(16.0, 16.0, 32.0),
-        },
-        {
-          clipnodes: loadmodel.clipnodes,
-          firstclipnode: view.getUint32(fileofs + 44, true),
-          lastclipnode: loadmodel.clipnodes.length - 1,
-          planes: loadmodel.planes,
-          clip_mins: new Vector(-32.0, -32.0, -24.0),
-          clip_maxs: new Vector(32.0, 32.0, 64.0),
-        },
+        new Hull(loadmodel.planeTable, hull0Tree, new Vector(), new Vector(), view.getUint32(fileofs + 36, true), loadmodel.nodes.length - 1),
+        new Hull(loadmodel.planeTable, loadmodel.clipTree, new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0), view.getUint32(fileofs + 40, true), loadmodel.clipTree.count - 1),
+        new Hull(loadmodel.planeTable, loadmodel.clipTree, new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 64.0), view.getUint32(fileofs + 44, true), loadmodel.clipTree.count - 1),
       ];
+      out.planeTable = loadmodel.planeTable;
+      out.clipTree = loadmodel.clipTree;
       this.#assignAllowedClipnodeMask(out.hulls[0]);
       this.#assignAllowedClipnodeMask(out.hulls[1]);
       this.#assignAllowedClipnodeMask(out.hulls[2]);

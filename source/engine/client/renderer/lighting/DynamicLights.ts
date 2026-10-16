@@ -228,7 +228,7 @@ export class DynamicLights {
           if (!(ent.model instanceof BrushModel) || !ent.model.submodel) {
             continue;
           }
-          const firstClipNode = ent.model.hulls[0]?.firstclipnode;
+          const firstClipNode = ent.model.hulls[0]?.firstClipNode;
           const submodelNode = firstClipNode !== undefined ? worldmodel.nodes[firstClipNode] : null;
 
           if (submodelNode !== undefined && submodelNode !== null) {

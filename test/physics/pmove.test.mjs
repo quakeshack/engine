@@ -1175,6 +1175,7 @@ void describe('Pmove', () => {
 
     assert.equal(pmove.physents[0].constructor.name, 'PhysEnt');
     assert.equal(pmove.physents[0].hulls.length, worldModel.hulls.length);
+    assert.equal(pmove.physents[0].hulls, worldModel.hulls, 'Pmove uses the hulls of the model and does not copy them');
 
     pmove.addEntity(entity);
 

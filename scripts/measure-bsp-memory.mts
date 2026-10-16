@@ -70,7 +70,8 @@ const GROUPS: { name: string; members: (keyof BrushModel)[] }[] = [
   { name: 'submodels (views of the world arrays)', members: ['submodels'] },
   { name: 'hulls', members: ['hulls'] },
   { name: 'nodes + leafs', members: ['nodes', 'leafs'] },
-  { name: 'clipnodes', members: ['clipnodes'] },
+  { name: 'clipnodes (typed tree)', members: ['clipTree'] },
+  { name: 'plane table (typed)', members: ['planeTable'] },
   { name: 'planes', members: ['planes'] },
   { name: 'faces', members: ['faces'] },
   { name: 'vertexes', members: ['vertexes'] },
@@ -113,7 +114,7 @@ function countOf(model: BrushModel): string {
     `${model.planes.length} planes`,
     `${model.nodes.length} nodes`,
     `${model.leafs.length} leafs`,
-    `${model.clipnodes.length} clipnodes`,
+    `${model.clipTree.count} clipnodes`,
     `${model.faces.length} faces`,
     `${model.vertexes.length} vertexes`,
     `${model.brushes?.length ?? 0} brushes`,
@@ -137,7 +138,7 @@ async function measure(file: string): Promise<void> {
   const pmove = new Pmove();
   pmove.setWorldmodel(model);
   const pmoveCopy = heapBytes() - beforePmove;
-  console.log(`  Pmove world built from the model (private hull copies) ${megabytes(pmoveCopy)}`);
+  console.log(`  Pmove world built from the model (what it keeps of its own) ${megabytes(pmoveCopy)}`);
   pmove.physents.length = 0;
 
   let remaining = heapBytes();

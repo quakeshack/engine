@@ -7,6 +7,7 @@ import { BrushModel } from '../../source/engine/common/Mod.ts';
 import type { BaseModel } from '../../source/engine/common/model/BaseModel.ts';
 import type { CollisionModelSource } from '../../source/engine/common/CollisionModelSource.ts';
 import { EntityHulls } from '../../source/engine/common/collision/EntityHulls.ts';
+import { ClipTree, Hull, PlaneTable } from '../../source/engine/common/collision/Hull.ts';
 import type { ServerEdict } from '../../source/engine/server/Edict.ts';
 
 /** Fields of an entity that a hull is picked by. */
@@ -44,7 +45,7 @@ function createEdict(fields: Partial<HullEntity>): ServerEdict {
 function createDoorModel(): BrushModel {
   const model = new BrushModel('*1');
 
-  model.hulls = [0, 1, 2].map((index) => ({ clip_mins: new Vector(-index * 10, -index * 10, -index * 10) })) as unknown as BrushModel['hulls'];
+  model.hulls = [0, 1, 2].map((index) => new Hull(new PlaneTable(0), new ClipTree(0), new Vector(-index * 10, -index * 10, -index * 10)));
 
   return model;
 }
@@ -67,9 +68,9 @@ void describe('EntityHulls', () => {
 
       assert.deepEqual([...offset], [10, 20, 30], 'the box sits at the origin of the entity');
       // the planes are the entity's bounds pushed out by the mover's: max - mover mins, min - mover maxs
-      assert.deepEqual(hull.planes.map((plane) => plane.dist), [16 + 4, -16 - 7, 16 + 5, -16 - 8, 32 + 6, -24 - 9]);
-      assert.equal(hull.firstclipnode, 0);
-      assert.equal(hull.lastclipnode, 5);
+      assert.deepEqual([...hull.planes.dists], [16 + 4, -16 - 7, 16 + 5, -16 - 8, 32 + 6, -24 - 9]);
+      assert.equal(hull.firstClipNode, 0);
+      assert.equal(hull.lastClipNode, 5);
     });
 
     void test('is the same box hull every time, updated in place', () => {
@@ -78,7 +79,7 @@ void describe('EntityHulls', () => {
       const second = hulls.forEntity(createEdict({ maxs: new Vector(5, 5, 5), mins: new Vector(-5, -5, -5) }), Vector.origin, Vector.origin, new Vector());
 
       assert.equal(first, second);
-      assert.equal(second.planes[0]!.dist, 5);
+      assert.equal(second.planes.dists[0], 5);
     });
 
     void test('is also the hull of a BSP entity whose model this realm does not have', () => {
@@ -86,7 +87,7 @@ void describe('EntityHulls', () => {
       const offset = new Vector();
       const edict = createEdict({ origin: new Vector(1, 2, 3), solid: solid.SOLID_BSP, modelindex: 1, movetype: moveType.MOVETYPE_PUSH });
 
-      assert.equal(hulls.forEntity(edict, Vector.origin, Vector.origin, offset).planes.length, 6);
+      assert.equal(hulls.forEntity(edict, Vector.origin, Vector.origin, offset).planes.count, 6);
       assert.deepEqual([...offset], [1, 2, 3]);
     });
 
@@ -97,8 +98,8 @@ void describe('EntityHulls', () => {
 
       server.forEntity(edict, Vector.origin, Vector.origin, new Vector());
 
-      assert.equal(client.forEntity(createEdict({ maxs: new Vector(2, 2, 2) }), Vector.origin, Vector.origin, new Vector()).planes[0]!.dist, 2);
-      assert.equal(server.forEntity(edict, Vector.origin, Vector.origin, new Vector()).planes[0]!.dist, 9);
+      assert.equal(client.forEntity(createEdict({ maxs: new Vector(2, 2, 2) }), Vector.origin, Vector.origin, new Vector()).planes.dists[0], 2);
+      assert.equal(server.forEntity(edict, Vector.origin, Vector.origin, new Vector()).planes.dists[0], 9);
     });
   });
 
@@ -131,7 +132,7 @@ void describe('EntityHulls', () => {
     });
 
     void test('offsets by the clip bounds of the hull, the mover and the origin of the entity', () => {
-      // hull 1: clip_mins = -10; mover mins = -16 -> -10 - (-16) + origin
+      // hull 1: clipMins = -10; mover mins = -16 -> -10 - (-16) + origin
       assert.deepEqual([...hullFor(32).offset], [-10 + 16 + 100, -10 + 16 + 200, -10 + 16 + 300]);
     });
   });

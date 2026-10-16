@@ -6,37 +6,7 @@ import { BaseModel, type Face, type Plane } from './BaseModel.ts';
 import { SkyRenderer } from '../../client/renderer/scene/Sky.ts';
 import { AreaPortals, type PortalDefinition } from './AreaPortals.ts';
 import type { Lightgrid } from './Lightgrid.ts';
-
-export interface Clipnode {
-  /** Index into planes array. */
-  readonly planenum: number;
-
-  /** Child node indices `[front, back]`. */
-  readonly children: [number, number];
-}
-
-export interface Hull {
-  /** Clipnodes for this hull. */
-  readonly clipnodes: Clipnode[];
-
-  /** Planes for collision detection. */
-  readonly planes: Plane[];
-
-  /** Index of the first clipnode, when the hull is a subrange. */
-  firstclipnode?: number;
-
-  /** Index of the last clipnode. */
-  readonly lastclipnode: number;
-
-  /** Minimum bounding box for this hull. */
-  readonly clip_mins: Vector;
-
-  /** Maximum bounding box for this hull. */
-  readonly clip_maxs: Vector;
-
-  /** Optional mask restricting traversal to the owning clipnode subtree. */
-  allowedClipNodes?: Uint8Array | null;
-}
+import { ClipTree, PlaneTable, type Hull } from '../collision/Hull.ts';
 
 /**
  * Optional settings carried by the worldspawn entity, which may be used by the renderer etc.
@@ -592,8 +562,11 @@ export class BrushModel extends BaseModel {
   /** Visibility data for PVS. */
   visdata: Uint8Array | null = null;
 
-  /** Clipnodes for collision detection. */
-  clipnodes: Clipnode[] = [];
+  /** The planes as typed arrays, which the collision hulls are cut by. */
+  planeTable = new PlaneTable(0);
+
+  /** Clipnodes for collision detection, shared by the hulls of the world and its inline models. */
+  clipTree = new ClipTree(0);
 
   /** Collision hulls for physics. */
   hulls: Hull[] = [];

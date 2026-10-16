@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { content, flags, moveType, moveTypes, solid } from '../../source/shared/Defs.ts';
 import { Brush, BrushModel, BrushSide } from '../../source/engine/common/model/BSP.ts';
-import { BrushTrace, Hull, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
+import { BrushTrace, PMF, Pmove, PmovePlayer, Trace } from '../../source/engine/common/Pmove.ts';
 import { BSP29Loader } from '../../source/engine/common/model/loaders/BSP29Loader.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
@@ -17,6 +17,7 @@ import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import { mockedSV, mockedCollisionModelSource } from './fixtures.mjs';
 import { createModelLoadContext } from '../support/modelContext.ts';
+import { createClipTree, createLegacyHull, createRoomHull } from '../support/hulls.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 void test('PmovePlayer.DEBUG is disabled before Pmove.Init()', () => {
@@ -138,33 +139,10 @@ function assertNear(actual, expected, epsilon = 0.05) {
  * Build a room hull whose interior is empty and whose exterior is solid.
  * @param {Vector} mins room mins
  * @param {Vector} maxs room maxs
- * @returns {{clip_mins: Vector, clip_maxs: Vector, firstclipnode: number, lastclipnode: number, clipnodes: {planenum: number, children: number[]}[], planes: {normal: Vector, dist: number, type: number, signbits: 0}[]}} model hull fixture
+ * @returns {import('../../source/engine/common/collision/Hull.ts').Hull} model hull fixture
  */
 function createRoomHullFromBounds(mins, maxs) {
-  const planes = /** @type {{normal: Vector, dist: number, type: number, signbits: 0}[]} */ ([
-    createAxisPlane([1, 0, 0], maxs[0], 0),
-    createAxisPlane([1, 0, 0], mins[0], 0),
-    createAxisPlane([0, 1, 0], maxs[1], 1),
-    createAxisPlane([0, 1, 0], mins[1], 1),
-    createAxisPlane([0, 0, 1], maxs[2], 2),
-    createAxisPlane([0, 0, 1], mins[2], 2),
-  ]);
-
-  return {
-    clip_mins: mins.copy(),
-    clip_maxs: maxs.copy(),
-    firstclipnode: 0,
-    lastclipnode: 5,
-    clipnodes: [
-      { planenum: 0, children: [content.CONTENT_SOLID, 1] },
-      { planenum: 1, children: [2, content.CONTENT_SOLID] },
-      { planenum: 2, children: [content.CONTENT_SOLID, 3] },
-      { planenum: 3, children: [4, content.CONTENT_SOLID] },
-      { planenum: 4, children: [content.CONTENT_SOLID, 5] },
-      { planenum: 5, children: [content.CONTENT_EMPTY, content.CONTENT_SOLID] },
-    ],
-    planes,
-  };
+  return createRoomHull(mins, maxs);
 }
 
 /**
@@ -748,6 +726,7 @@ void test('Pmove server-style smoke setup mirrors TestServerside assertions', ()
 
   assert.equal(pmove.physents[0].constructor.name, 'PhysEnt');
   assert.equal(pmove.physents[0].hulls.length, worldModel.hulls.length);
+    assert.equal(pmove.physents[0].hulls, worldModel.hulls, 'Pmove uses the hulls of the model and does not copy them');
 
   pmove.addEntity(entity);
 
@@ -1039,13 +1018,13 @@ void test('BSP29Loader builds legacy clipnode masks from a model headnode subtre
     { planenum: 4, children: [content.CONTENT_EMPTY, content.CONTENT_SOLID] },
   ];
 
-  const worldMask = loader._buildAllowedClipnodeMask(clipnodes, 0);
-  const submodelMask = loader._buildAllowedClipnodeMask(clipnodes, 2);
+  const worldMask = loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 0);
+  const submodelMask = loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 2);
 
   assert.deepEqual(Array.from(worldMask), [1, 1, 1, 1, 1]);
   assert.deepEqual(Array.from(submodelMask), [0, 0, 1, 0, 1]);
-  assert.equal(loader._buildAllowedClipnodeMask(clipnodes, -1), null);
-  assert.equal(loader._buildAllowedClipnodeMask(clipnodes, 99), null);
+  assert.equal(loader._buildAllowedClipnodeMask(createClipTree(clipnodes), -1), null);
+  assert.equal(loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 99), null);
 });
 
 void test('BSP29Loader inserts BRUSHLIST brushes into both leaves when they touch a BSP split plane', () => {
@@ -1104,9 +1083,8 @@ void test('BSP29Loader inserts BRUSHLIST brushes into both leaves when they touc
   assert.deepEqual(loadmodel.leafbrushes, [0, 0]);
 });
 
-void test('ServerCollision.hullPointContents treats masked foreign clipnodes as empty space', () => {
-  const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-  const hull = {
+void test('Hull.pointContents treats masked foreign clipnodes as empty space', () => {
+  const hull = createLegacyHull({
     clip_mins: new Vector(),
     clip_maxs: new Vector(),
     firstclipnode: 0,
@@ -1120,16 +1098,16 @@ void test('ServerCollision.hullPointContents treats masked foreign clipnodes as 
       { planenum: 0, children: [1, content.CONTENT_EMPTY] },
       { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
     ],
-  };
+  });
 
   assert.equal(
-    collision.hullPointContents(hull, hull.firstclipnode, new Vector(100, 0, 0)),
+    hull.pointContents(new Vector(100, 0, 0), hull.firstClipNode),
     content.CONTENT_EMPTY,
   );
 });
 
 void test('Hull respects allowed clipnode masks in point and sweep tests', () => {
-  const hull = Hull.fromModelHull({
+  const hull = createLegacyHull({
     clip_mins: new Vector(),
     clip_maxs: new Vector(),
     firstclipnode: 0,
@@ -1149,7 +1127,7 @@ void test('Hull respects allowed clipnode masks in point and sweep tests', () =>
   const end = new Vector(110, 0, 0);
 
   trace.endpos.set(end);
-  hull.check(0.0, 1.0, start, end, trace);
+  hull.trace(trace, start, end, true);
 
   assert.equal(hull.pointContents(start), content.CONTENT_EMPTY);
   assert.equal(trace.startsolid, false);
@@ -1160,7 +1138,7 @@ void test('Hull respects allowed clipnode masks in point and sweep tests', () =>
 
 void test('ServerCollision.pointContents respects world hull ownership masks', () => {
   const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-  const worldHull = {
+  const worldHull = createLegacyHull({
     clip_mins: new Vector(),
     clip_maxs: new Vector(),
     firstclipnode: 0,
@@ -1174,7 +1152,7 @@ void test('ServerCollision.pointContents respects world hull ownership masks', (
       { planenum: 0, children: [1, content.CONTENT_WATER] },
       { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
     ],
-  };
+  });
 
   withMockEngine({
     Con: {
@@ -1301,7 +1279,7 @@ void test('ServerCollision.traceStaticWorldLine uses brush tracing for brush-bac
 
 void test('ServerCollision.move keeps legacy world hull traces out of foreign clipnode subtrees', () => {
   const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-  const worldHull = {
+  const worldHull = createLegacyHull({
     clip_mins: new Vector(),
     clip_maxs: new Vector(),
     firstclipnode: 0,
@@ -1315,7 +1293,7 @@ void test('ServerCollision.move keeps legacy world hull traces out of foreign cl
       { planenum: 0, children: [1, content.CONTENT_EMPTY] },
       { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
     ],
-  };
+  });
   const worldModel = new BrushModel();
   worldModel.name = 'legacy-world';
   worldModel.hulls = [worldHull, worldHull, worldHull];
@@ -1371,7 +1349,7 @@ void test('ServerCollision.move keeps legacy world hull traces out of foreign cl
 
 void test('ServerCollision.traceWorldLine keeps legacy world hull traces out of foreign clipnode subtrees', () => {
   const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-  const worldHull = {
+  const worldHull = createLegacyHull({
     clip_mins: new Vector(),
     clip_maxs: new Vector(),
     firstclipnode: 0,
@@ -1385,7 +1363,7 @@ void test('ServerCollision.traceWorldLine keeps legacy world hull traces out of 
       { planenum: 0, children: [1, content.CONTENT_EMPTY] },
       { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
     ],
-  };
+  });
   const worldModel = new BrushModel();
   worldModel.name = 'legacy-world-line';
   worldModel.hulls = [worldHull, worldHull, worldHull];
@@ -1435,7 +1413,7 @@ void test('ServerCollision.traceWorldLine keeps legacy world hull traces out of 
 void describe('ServerCollision.move legacy hull recursion regressions', () => {
   void test('keeps outer legacy hull split points stable across deeper recursion', () => {
   const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-  const worldHull = {
+  const worldHull = createLegacyHull({
     clip_mins: new Vector(),
     clip_maxs: new Vector(),
     firstclipnode: 0,
@@ -1450,7 +1428,7 @@ void describe('ServerCollision.move legacy hull recursion regressions', () => {
       { planenum: 1, children: [content.CONTENT_EMPTY, content.CONTENT_EMPTY] },
       { planenum: 2, children: [content.CONTENT_SOLID, content.CONTENT_EMPTY] },
     ],
-  };
+  });
   const worldModel = new BrushModel();
   worldModel.name = 'legacy-midpoint-world';
   worldModel.hulls = [worldHull, worldHull, worldHull];
@@ -3700,9 +3678,9 @@ void describe('test_clip_4 regression: brushlist vs hull collision', () => {
 
     // Use the hull system for this test
     if (model.hulls && model.hulls[1]) {
-      const hull = Hull.fromModelHull(model.hulls[1]);
+      const hull = model.hulls[1];
       const moveEnd = new Vector(playerStart[0] - 200, playerStart[1], playerStart[2]);
-      hull.check(0.0, 1.0, playerStart, moveEnd, trace);
+      hull.trace(trace, playerStart, moveEnd, true);
 
       // Should also be blocked by columns
       assert.ok(trace.fraction < 1.0, 'Hull collision should also block player');

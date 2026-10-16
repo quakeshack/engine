@@ -1,4 +1,4 @@
-import type { Hull } from '../../common/model/BSP.ts';
+import type { Hull } from '../../common/collision/Hull.ts';
 import type { ServerEdict } from '../Edict.ts';
 
 import Vector from '../../../shared/Vector.ts';
@@ -18,11 +18,7 @@ import {
   TriangleCollisionState,
   TriangleTraceContext,
 } from './ServerCollisionSupport.ts';
-import {
-  hullPointContents as legacyHullPointContents,
-  pointContents as legacyPointContents,
-  recursiveHullCheck as legacyRecursiveHullCheck,
-} from './ServerLegacyHullCollision.ts';
+import { pointContents as legacyPointContents } from './ServerLegacyHullCollision.ts';
 import type { Octree } from '../../../shared/Octree.ts';
 import type { EntityHulls } from '../../common/collision/EntityHulls.ts';
 import type { ConsoleOutput } from '../../common/Services.ts';
@@ -38,10 +34,6 @@ interface TraceExtents {
   readonly mins: Vector;
   readonly maxs: Vector;
 }
-
-type LegacyHull = Hull & {
-  readonly firstclipnode: number;
-};
 
 /**
  * What the collision code needs from whoever owns it: the entities and the time of a server, a console for warnings, and
@@ -412,7 +404,7 @@ export class ServerCollision {
     const startLocal = start.copy().subtract(offset);
     const endLocal = end.copy().subtract(offset);
 
-    this.recursiveHullCheck(hull, hull.firstclipnode ?? 0, 0.0, 1.0, startLocal, endLocal, trace);
+    hull.trace(trace, startLocal, endLocal, false);
 
     if (trace.fraction !== 1.0) {
       trace.endpos.add(offset);
@@ -432,17 +424,8 @@ export class ServerCollision {
    */
   _traceLegacyHullLine(hull: Hull, start: Vector, end: Vector): CollisionTrace {
     const trace = CollisionTrace.hullInitial(end);
-    const legacyHull = this._asLegacyHull(hull);
-    this.recursiveHullCheck(legacyHull, legacyHull.firstclipnode, 0.0, 1.0, start, end, trace);
+    hull.trace(trace, start, end, false);
     return trace;
-  }
-
-  /**
-   * Determines the contents inside a hull by descending the clipnode tree.
-   * @returns The contents value at the point within the hull.
-   */
-  hullPointContents(hull: Hull, num: number, p: Vector): number {
-    return legacyHullPointContents(this._asLegacyHull(hull), num, p);
   }
 
   /**
@@ -568,32 +551,6 @@ export class ServerCollision {
    */
   traceWorldLine(start: Vector, end: Vector, hullNum = 0): CollisionTrace {
     return this.traceStaticWorldLine(start, end, hullNum);
-  }
-
-  /**
-   * Recursively tests a swept hull against the world and aggregates the trace result.
-   * @returns True when traversal should continue.
-   */
-  recursiveHullCheck(
-    hull: Hull,
-    num: number,
-    p1f: number,
-    p2f: number,
-    p1: Vector,
-    p2: Vector,
-    trace: CollisionTrace,
-    depth = 0,
-  ): boolean {
-    return legacyRecursiveHullCheck(this._asLegacyHull(hull), num, p1f, p2f, p1, p2, trace, depth);
-  }
-
-  /**
-   * Narrow a BSP hull to the legacy shape required by clipnode traversal.
-   * @returns The hull with a concrete first clipnode.
-   */
-  _asLegacyHull(hull: Hull): LegacyHull {
-    console.assert(typeof hull.firstclipnode === 'number', 'legacy hull requires firstclipnode');
-    return hull as LegacyHull;
   }
 
   /**

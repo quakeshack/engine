@@ -1,4 +1,4 @@
-import type { BrushModel, Hull } from '../common/model/BSP.ts';
+import type { BrushModel } from '../common/model/BSP.ts';
 import type { ClientEdict } from './ClientEntities.ts';
 import type { ServerEdict } from '../server/Edict.ts';
 
@@ -10,14 +10,7 @@ import { CollisionPlane, CollisionTrace } from '../server/physics/ServerCollisio
 import Con from '../common/Console.ts';
 import { EntityHulls } from '../common/collision/EntityHulls.ts';
 import { ServerCollision } from '../server/physics/ServerCollision.ts';
-import {
-  pointContents as legacyPointContents,
-  recursiveHullCheck as legacyRecursiveHullCheck,
-} from '../server/physics/ServerLegacyHullCollision.ts';
-
-type LegacyHull = Hull & {
-  readonly firstclipnode: number;
-};
+import { pointContents as legacyPointContents } from '../server/physics/ServerLegacyHullCollision.ts';
 
 /** A client entity as the narrow phase of entity collision sees it. */
 export interface ClientCollisionTarget {
@@ -109,9 +102,8 @@ export default class ClientCollision {
     }
 
     // Legacy path for worlds that only carry clipnode hulls.
-    const hull = worldModel.hulls[0] as LegacyHull;
     const trace = CollisionTrace.hullInitial(end);
-    legacyRecursiveHullCheck(hull, hull.firstclipnode, 0.0, 1.0, start, end, trace);
+    worldModel.hulls[0].trace(trace, start, end, false);
     return trace;
   }
 

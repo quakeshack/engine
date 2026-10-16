@@ -13,6 +13,7 @@ import { BrushModel } from '../../source/engine/common/Mod.ts';
 import { MoveVars, Pmove, PmovePlayer } from '../../source/engine/common/Pmove.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
+import { createRoomHull } from './hulls.ts';
 
 /** The plane shape the brush model carries. */
 type ModelPlane = BrushModel['planes'][number];
@@ -65,36 +66,6 @@ function createEmptyBrushModel(name: string, submodel: boolean): BrushModel {
   model.hulls = [];
 
   return model;
-}
-
-/**
- * Builds the hull of a room whose inside is empty and whose outside is solid, which is what the world's hulls are when only the brushes matter.
- * @returns A hull for a brush model.
- */
-function createRoomHull(mins: Vector, maxs: Vector): BrushModel['hulls'][number] {
-  const planeAt = (axis: 0 | 1 | 2, dist: number): ModelPlane => {
-    const normal = new Vector();
-
-    normal[axis] = 1;
-
-    return { normal, dist, type: axis, signbits: 0 } as unknown as ModelPlane;
-  };
-
-  return {
-    clip_mins: mins.copy(),
-    clip_maxs: maxs.copy(),
-    firstclipnode: 0,
-    lastclipnode: 5,
-    clipnodes: [
-      { planenum: 0, children: [content.CONTENT_SOLID, 1] },
-      { planenum: 1, children: [2, content.CONTENT_SOLID] },
-      { planenum: 2, children: [content.CONTENT_SOLID, 3] },
-      { planenum: 3, children: [4, content.CONTENT_SOLID] },
-      { planenum: 4, children: [content.CONTENT_SOLID, 5] },
-      { planenum: 5, children: [content.CONTENT_EMPTY, content.CONTENT_SOLID] },
-    ],
-    planes: [planeAt(0, maxs[0]), planeAt(0, mins[0]), planeAt(1, maxs[1]), planeAt(1, mins[1]), planeAt(2, maxs[2]), planeAt(2, mins[2])],
-  } as unknown as BrushModel['hulls'][number];
 }
 
 /**

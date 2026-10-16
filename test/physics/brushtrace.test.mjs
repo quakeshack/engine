@@ -478,7 +478,7 @@ describe('BrushTrace', () => {
       worldModel.nodes = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([solidLeaf]);
       worldModel.leafs = /** @type {import('../../source/engine/common/model/BSP.ts').Node[]} */ ([solidLeaf]);
       worldModel.leafbrushes = [0];
-      worldModel.hulls = /** @type {typeof worldModel.hulls} */ ([{ firstclipnode: 0 }]);
+      worldModel.hulls = /** @type {typeof worldModel.hulls} */ ([{ firstClipNode: 0 }]);
 
       const trace = BrushTrace.boxTrace(
         worldModel,

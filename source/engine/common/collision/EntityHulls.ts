@@ -1,32 +1,10 @@
-import type { Hull } from '../model/BSP.ts';
 import type { ServerEdict } from '../../server/Edict.ts';
+import type Vector from '../../../shared/Vector.ts';
 
-import Vector from '../../../shared/Vector.ts';
 import * as Defs from '../../../shared/Defs.ts';
 import type { CollisionModelSource } from '../CollisionModelSource.ts';
 import { BrushModel } from '../Mod.ts';
-
-interface BoxClipNode {
-  planenum: number;
-  children: [number, number];
-}
-
-interface BoxPlane {
-  type: number;
-  normal: Vector;
-  dist: number;
-  signbits: Hull['planes'][number]['signbits'];
-}
-
-/** The hull of a box, which stands in for an entity that has no brush model. */
-export interface BoxHull {
-  clipnodes: BoxClipNode[];
-  planes: BoxPlane[];
-  clip_mins: Vector;
-  clip_maxs: Vector;
-  firstclipnode: number;
-  lastclipnode: number;
-}
+import { BoxHull, type Hull } from './Hull.ts';
 
 /**
  * Finds the hull to clip against for an entity: a hull of its brush model, picked by the size of what moves, or a box
@@ -35,46 +13,13 @@ export interface BoxHull {
  */
 export class EntityHulls {
   readonly #modelSource: CollisionModelSource;
-  readonly #boxClipnodes: BoxClipNode[] = [];
-  readonly #boxPlanes: BoxPlane[] = [];
-  readonly #boxHull: BoxHull;
+  readonly #boxHull = new BoxHull();
 
   /**
    * @param modelSource - resolves the model of an entity in the realm that asks
    */
   constructor(modelSource: CollisionModelSource) {
     this.#modelSource = modelSource;
-    this.#boxHull = {
-      clipnodes: this.#boxClipnodes,
-      planes: this.#boxPlanes,
-      clip_mins: Vector.origin,
-      clip_maxs: Vector.origin,
-      firstclipnode: 0,
-      lastclipnode: 5,
-    };
-
-    for (let index = 0; index <= 5; index++) {
-      const node: BoxClipNode = {
-        planenum: index,
-        children: [0, 0],
-      };
-      this.#boxClipnodes[index] = node;
-      node.children[index & 1] = Defs.content.CONTENT_EMPTY;
-      if (index !== 5) {
-        node.children[1 - (index & 1)] = index + 1;
-      } else {
-        node.children[1 - (index & 1)] = Defs.content.CONTENT_SOLID;
-      }
-
-      const plane: BoxPlane = {
-        type: index >> 1,
-        normal: new Vector(),
-        dist: 0.0,
-        signbits: 0,
-      };
-      this.#boxPlanes[index] = plane;
-      plane.normal[index >> 1] = 1.0;
-    }
   }
 
   /**
@@ -85,7 +30,7 @@ export class EntityHulls {
    * @param outOffset - receives the hull offset relative to entity origin
    * @returns the hull structure used for collision tests
    */
-  forEntity(ent: ServerEdict, mins: Vector, maxs: Vector, outOffset: Vector): Hull | BoxHull {
+  forEntity(ent: ServerEdict, mins: Vector, maxs: Vector, outOffset: Vector): Hull {
     const entity = ent.entity!;
     const model = this.#modelSource.getModelByIndex(entity.modelindex);
     const origin = entity.origin;
@@ -97,17 +42,15 @@ export class EntityHulls {
       // per call — a verbatim port of vanilla Quake's SV_HullForBox, which uses the same shared
       // static box_hull for the same reason: this path runs once per candidate entity for every
       // trace against a non-BSP entity, so avoiding an allocation here matters. It's safe because
-      // every caller synchronously finishes reading the returned hull (recursiveHullCheck walks
+      // every caller synchronously finishes reading the returned hull (the hull trace walks
       // it to completion and copies out plane data before returning) before anything else can
       // call back in and mutate it again. If a future caller ever needs to hold onto a hull
       // across an async boundary or interleave two forEntity results, it must copy the
       // planes out first.
-      this.#boxPlanes[0].dist = emaxs[0] - mins[0];
-      this.#boxPlanes[1].dist = emins[0] - maxs[0];
-      this.#boxPlanes[2].dist = emaxs[1] - mins[1];
-      this.#boxPlanes[3].dist = emins[1] - maxs[1];
-      this.#boxPlanes[4].dist = emaxs[2] - mins[2];
-      this.#boxPlanes[5].dist = emins[2] - maxs[2];
+      this.#boxHull.setBounds(
+        emins[0] - maxs[0], emins[1] - maxs[1], emins[2] - maxs[2],
+        emaxs[0] - mins[0], emaxs[1] - mins[1], emaxs[2] - mins[2],
+      );
       outOffset.set(origin);
       return this.#boxHull;
     }
@@ -126,9 +69,9 @@ export class EntityHulls {
     }
 
     outOffset.setTo(
-      hull.clip_mins[0] - mins[0] + origin[0],
-      hull.clip_mins[1] - mins[1] + origin[1],
-      hull.clip_mins[2] - mins[2] + origin[2],
+      hull.clipMins[0] - mins[0] + origin[0],
+      hull.clipMins[1] - mins[1] + origin[1],
+      hull.clipMins[2] - mins[2] + origin[2],
     );
 
     return hull;

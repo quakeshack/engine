@@ -15,6 +15,7 @@ import ServerHost from '../../source/engine/server/ServerHost.ts';
 import NET from '../../source/engine/network/Network.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { engineMocks } from '../support/engineMocks.ts';
+import { createRoomHull } from '../support/hulls.ts';
 
 // ── Typedefs ────────────────────────────────────────────────────────────────
 
@@ -128,33 +129,10 @@ export function createBoxBrushModel({ center = [0, 0, 0], halfExtents, name = '*
  * Build a room hull whose interior is empty and whose exterior is solid.
  * @param {Vector} mins room mins
  * @param {Vector} maxs room maxs
- * @returns {{clip_mins: Vector, clip_maxs: Vector, firstclipnode: number, lastclipnode: number, clipnodes: {planenum: number, children: number[]}[], planes: {normal: Vector, dist: number, type: number, signbits: 0}[]}} model hull fixture
+ * @returns {import('../../source/engine/common/collision/Hull.ts').Hull} model hull fixture
  */
 export function createRoomHullFromBounds(mins, maxs) {
-  const planes = /** @type {{normal: Vector, dist: number, type: number, signbits: 0}[]} */ ([
-    createAxisPlane([1, 0, 0], maxs[0], 0),
-    createAxisPlane([1, 0, 0], mins[0], 0),
-    createAxisPlane([0, 1, 0], maxs[1], 1),
-    createAxisPlane([0, 1, 0], mins[1], 1),
-    createAxisPlane([0, 0, 1], maxs[2], 2),
-    createAxisPlane([0, 0, 1], mins[2], 2),
-  ]);
-
-  return {
-    clip_mins: mins.copy(),
-    clip_maxs: maxs.copy(),
-    firstclipnode: 0,
-    lastclipnode: 5,
-    clipnodes: [
-      { planenum: 0, children: [content.CONTENT_SOLID, 1] },
-      { planenum: 1, children: [2, content.CONTENT_SOLID] },
-      { planenum: 2, children: [content.CONTENT_SOLID, 3] },
-      { planenum: 3, children: [4, content.CONTENT_SOLID] },
-      { planenum: 4, children: [content.CONTENT_SOLID, 5] },
-      { planenum: 5, children: [content.CONTENT_EMPTY, content.CONTENT_SOLID] },
-    ],
-    planes,
-  };
+  return createRoomHull(mins, maxs);
 }
 
 /**

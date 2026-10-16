@@ -212,7 +212,7 @@ export class BrushTrace {
    * Resolve the head node for world-model BSP traversal.
    */
   static _getHeadNode(model: BrushModel): number {
-    return model.hulls[0]?.firstclipnode ?? 0;
+    return model.hulls[0]?.firstClipNode ?? 0;
   }
 
   /**

@@ -18,15 +18,14 @@ import Q from '../../shared/Q.ts';
 import { PmoveConfiguration } from '../../shared/Pmove.ts';
 import type { ClientEdict } from '../client/ClientEntities.ts';
 import type { BaseEntity } from '../server/Edict.ts';
-import { type Hull as BSPHull } from './model/BSP.ts';
+import { BoxHull, DIST_EPSILON, Hull } from './collision/Hull.ts';
 import { BrushTrace } from './collision/BrushTrace.ts';
 import { shouldUseHullTangentFallback } from './collision/BrushHullCompatibility.ts';
 import { debugLogPositionMismatch, debugLogTraceMismatch, isAxialNormal } from './collision/BrushHullDiagnostics.ts';
 import type { PlayerCollisionEntity, PlayerCollisionWorld } from './collision/CollisionContracts.ts';
 
-export { BrushTrace };
+export { BrushTrace, DIST_EPSILON };
 
-export const DIST_EPSILON = 0.03125;
 export const STOP_EPSILON = 0.1;
 export const STEPSIZE = 18.0;
 
@@ -174,7 +173,7 @@ export class MoveVars { // movevars_t
 }
 
 // ---------------------------------------------------------------------------
-// Geometry primitives: Plane, Trace, ClipNode, Hull, BoxHull
+// Geometry primitives: Plane, Trace (the hulls live in collision/Hull.ts)
 // ---------------------------------------------------------------------------
 
 export class Plane { // mplane_t
@@ -256,302 +255,13 @@ export class Trace { // pmtrace_t
   }
 }
 
-export class ClipNode { // dclipnode_t
-  /** Plane index used by this BSP clip node. */
-  readonly planeNum: number;
-  /** Child node indices or negative contents values. */
-  readonly children: [number, number];
-
-  constructor(planeNum = 0) {
-    this.planeNum = planeNum;
-    this.children = [0, 0];
-  }
-}
-
-export class Hull { // hull_t
-  /** Hull-space minimum bounds for this collision hull. */
-  clipMins: Vector;
-  /** Hull-space maximum bounds for this collision hull. */
-  clipMaxs: Vector;
-  /** First valid BSP clip node index. */
-  firstClipNode: number;
-  /** Last valid BSP clip node index. */
-  lastClipNode: number;
-  /** Optional mask restricting which clip nodes may be traversed. */
-  allowedClipNodes: Uint8Array | null;
-  /** BSP clip nodes used for hull traversal. */
-  clipNodes: ClipNode[];
-  /** Plane list referenced by the clip nodes. */
-  planes: Plane[];
-
-  constructor() {
-    this.clipMins = new Vector();
-    this.clipMaxs = new Vector();
-    this.firstClipNode = 0;
-    this.lastClipNode = 0;
-    this.allowedClipNodes = null;
-    this.clipNodes = [];
-    this.planes = [];
-  }
-
-  /**
-   * Clone collision data from a model hull into runtime Hull objects.
-   * @param hull - source hull from model loading
-   * @returns copied runtime hull
-   */
-  static fromModelHull(hull: BSPHull): Hull {
-    const newHull = new Hull();
-    newHull.clipMins = hull.clip_mins.copy();
-    newHull.clipMaxs = hull.clip_maxs.copy();
-    newHull.firstClipNode = hull.firstclipnode!;
-    newHull.lastClipNode = hull.lastclipnode!;
-    newHull.allowedClipNodes = hull.allowedClipNodes?.slice() ?? null;
-    newHull.clipNodes = hull.clipnodes.map((clipnode) => {
-      const node = new ClipNode(clipnode.planenum);
-      node.children[0] = clipnode.children[0];
-      node.children[1] = clipnode.children[1];
-      return node;
-    });
-    newHull.planes = hull.planes.map((plane) => {
-      const newPlane = new Plane();
-      newPlane.normal = plane.normal.copy();
-      newPlane.dist = plane.dist;
-      newPlane.type = plane.type;
-      newPlane.signBits = plane.signbits;
-      return newPlane;
-    });
-
-    return newHull;
-  }
-
-  /**
-   * Determine if a point is inside the hull and if so, return the content type.
-   * @param point - point to classify in hull space
-   * @param num - starting clip node index
-   * @returns negative Quake contents value for the containing leaf
-   */
-  pointContents(point: Vector, num: number = this.firstClipNode): content {
-    // as long as num is a valid node, keep going down the tree
-    while (num >= 0) {
-      if (this.allowedClipNodes !== null && this.allowedClipNodes[num] !== 1) {
-        return content.CONTENT_EMPTY;
-      }
-
-      console.assert(num >= this.firstClipNode && num <= this.lastClipNode, 'valid hull node', num);
-
-      console.assert(!!this.clipNodes[num], 'valid hull node', num);
-      const node = this.clipNodes[num];
-
-      console.assert(!!this.planes[node.planeNum], 'valid hull plane', node.planeNum);
-      const plane = this.planes[node.planeNum];
-
-      let d = 0;
-
-      if (plane.type < 3) {
-        d = point[plane.type] - plane.dist;
-      } else {
-        d = plane.normal.dot(point) - plane.dist;
-      }
-
-      // Q1: d < 0 → children[1], else children[0].
-      // Must match hull.check’s `t1 >= 0 && t2 >= 0 → children[0]`
-      // so that pointContents and check agree on boundary classification.
-      num = node.children[d < 0 ? 1 : 0];
-    }
-
-    return num;
-  }
-
-  static readonly _midPool: Vector[] = Array.from({ length: 64 }, () => new Vector());
-
-  /**
-   * Check against hull.
-   * @param p1f - starting fraction along the trace segment
-   * @param p2f - ending fraction along the trace segment
-   * @param p1 - start point in hull space
-   * @param p2 - end point in hull space
-   * @param trace - trace result being updated in place
-   * @param num - current clip node index
-   * @param depth - recursion depth for pooled midpoint scratch vectors
-   * @returns true while traversal should continue, false after a blocking hit
-   */
-  check(p1f: number, p2f: number, p1: Vector, p2: Vector, trace: Trace, num: number = this.firstClipNode, depth: number = 0): boolean {
-    // check for empty
-    if (num < 0) {
-      const contentNum = num as content;
-      if (contentNum !== content.CONTENT_SOLID && contentNum !== content.CONTENT_SKY) {
-        trace.allsolid = false;
-        if (contentNum === content.CONTENT_EMPTY) {
-          trace.inopen = true;
-        } else {
-          trace.inwater = true;
-        }
-      } else {
-        trace.startsolid = true;
-      }
-      return true; // going down the tree
-    }
-
-    if (this.allowedClipNodes !== null && this.allowedClipNodes[num] !== 1) {
-      trace.allsolid = false;
-      trace.inopen = true;
-      return true;
-    }
-
-    console.assert(num >= this.firstClipNode && num <= this.lastClipNode, 'valid node number', num);
-
-    // find the point distances
-    const node = this.clipNodes[num];
-    const plane = this.planes[node.planeNum];
-    const t1 = (plane.type < 3 ? p1[plane.type] : plane.normal[0] * p1[0] + plane.normal[1] * p1[1] + plane.normal[2] * p1[2]) - plane.dist;
-    const t2 = (plane.type < 3 ? p2[plane.type] : plane.normal[0] * p2[0] + plane.normal[1] * p2[1] + plane.normal[2] * p2[2]) - plane.dist;
-
-    // checking children on side 1
-    if (t1 >= 0.0 && t2 >= 0.0) {
-      return this.check(p1f, p2f, p1, p2, trace, node.children[0], depth + 1);
-    }
-
-    // checking children on side 2
-    if (t1 < 0.0 && t2 < 0.0) {
-      return this.check(p1f, p2f, p1, p2, trace, node.children[1], depth + 1);
-    }
-
-    // put the crosspoint DIST_EPSILON pixels on the near side
-    let frac = Math.max(0.0, Math.min(1.0, (t1 + (t1 < 0.0 ? DIST_EPSILON : -DIST_EPSILON)) / (t1 - t2))); // epsilon value of 0.03125 = 1/32
-    let midf = p1f + (p2f - p1f) * frac;
-    while (depth >= Hull._midPool.length) {
-      Hull._midPool.push(new Vector());
-    }
-    const mid = Hull._midPool[depth];
-    mid[0] = p1[0] + frac * (p2[0] - p1[0]);
-    mid[1] = p1[1] + frac * (p2[1] - p1[1]);
-    mid[2] = p1[2] + frac * (p2[2] - p1[2]);
-    const side = t1 < 0.0 ? 1 : 0;
-
-    // move up to the node
-    if (!this.check(p1f, midf, p1, mid, trace, node.children[side], depth + 1)) {
-      return false;
-    }
-
-    // go past the node
-    const pointContents = this.pointContents(mid, node.children[1 - side]);
-    if (pointContents !== content.CONTENT_SOLID && pointContents !== content.CONTENT_SKY) {
-      return this.check(midf, p2f, mid, p2, trace, node.children[1 - side], depth + 1);
-    }
-
-    // never got out of the solid area
-    if (trace.allsolid) {
-      return false;
-    }
-
-    // the other side of the node is solid, this is the impact point
-    if (side === 0) {
-      trace.plane.normal.set(plane.normal);
-      trace.plane.dist = plane.dist;
-    } else {
-      trace.plane.normal.set(plane.normal).multiply(-1);
-      trace.plane.dist = -plane.dist;
-    }
-
-    while ([content.CONTENT_SOLID, content.CONTENT_SKY].includes(this.pointContents(mid))) {
-      // shouldn’t really happen, but does occasionally
-      frac -= 0.1;
-      if (frac < 0.0) {
-        trace.fraction = midf;
-        trace.endpos.set(mid);
-        console.warn('fraction < 0.0', frac, trace);
-        return false;
-      }
-      midf = p1f + (p2f - p1f) * frac;
-      mid[0] = p1[0] + frac * (p2[0] - p1[0]);
-      mid[1] = p1[1] + frac * (p2[1] - p1[1]);
-      mid[2] = p1[2] + frac * (p2[2] - p1[2]);
-    }
-
-    trace.fraction = midf;
-    trace.endpos.set(mid);
-
-    return false;
-  }
-};
-
-// ---------------------------------------------------------------------------
-// BoxHull: AABB → BSP conversion for non-BSP entity collision
-// ---------------------------------------------------------------------------
-
-/**
- * Set up the planes and clipnodes so that the six floats of a bounding box
- * can just be stored out and get a proper hull_t structure.
- * To keep everything totally uniform, bounding boxes are turned into small
- * BSP trees instead of being compared directly.
- * Use setSize() to set the box size.
- */
-export class BoxHull extends Hull {
-  constructor() {
-    super();
-
-    this.clipNodes = [
-      new ClipNode(0),
-      new ClipNode(1),
-      new ClipNode(2),
-      new ClipNode(3),
-      new ClipNode(4),
-      new ClipNode(5),
-    ];
-
-    this.firstClipNode = 0;
-    this.lastClipNode = 5;
-
-    this.planes = [
-      new Plane(), // 0
-      new Plane(), // 1
-      new Plane(), // 2
-      new Plane(), // 3
-      new Plane(), // 4
-      new Plane(), // 5
-    ];
-
-    for (let i = 0; i < 6; i++) {
-      const side = i & 1;
-
-      this.clipNodes[i].children[side] = content.CONTENT_EMPTY;
-      this.clipNodes[i].children[side ^ 1] = i !== 5 ? i + 1 : content.CONTENT_SOLID;
-
-      this.planes[i].type = i >> 1;
-      // Axis-aligned unit normal, matches Q1: box_planes[i].normal[i>>1] = 1
-      const normal = new Vector(0, 0, 0);
-      normal[i >> 1] = 1;
-      this.planes[i].normal = normal;
-    }
-  }
-
-  /**
-   * Configure the reusable box hull to match an entity bounding box.
-   * @param mins - local minimum corner
-   * @param maxs - local maximum corner
-   * @returns this box hull for chaining
-   */
-  setSize(mins: Vector, maxs: Vector): this {
-    console.assert(mins instanceof Vector, 'mins must be a Vector');
-    console.assert(maxs instanceof Vector, 'maxs must be a Vector');
-
-    // Even planes (0,2,4) use maxs; odd planes (1,3,5) use mins.
-    // Matches Q1’s SV_HullForBox.
-    for (let i = 0; i < 6; i++) {
-      this.planes[i].dist = (i & 1) ? mins[i >> 1] : maxs[i >> 1];
-    }
-
-    return this;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // PhysEnt: a physics entity stored in the Pmove world
 // ---------------------------------------------------------------------------
 
 export class PhysEnt implements PlayerCollisionEntity { // physent_t
-  /** Legacy Q1 hulls used when brush tracing is unavailable. */
-  hulls: Hull[];
+  /** Legacy Q1 hulls of the model, shared with it and never changed, used when brush tracing is unavailable. */
+  hulls: readonly Hull[];
   /** Entity origin in world space. */
   origin: Vector;
   /** Entity rotation used for transformed brush traces. */
@@ -714,7 +424,7 @@ export class PhysEnt implements PlayerCollisionEntity { // physent_t
         const startLocal = this.toHullSpace(start);
         const endLocal = this.toHullSpace(end);
         hullTrace.endpos.set(endLocal);
-        hull.check(0.0, 1.0, startLocal, endLocal, hullTrace);
+        hull.trace(hullTrace, startLocal, endLocal, true);
 
         const brushBlocks = brushTrace.fraction < 1.0 || brushTrace.startsolid || brushTrace.allsolid;
         const hullBlocks = hullTrace.fraction < 1.0 || hullTrace.startsolid || hullTrace.allsolid;
@@ -745,7 +455,7 @@ export class PhysEnt implements PlayerCollisionEntity { // physent_t
     const hull = this.getClippingHull();
     const trace = new Trace();
     trace.endpos.set(traceEnd);
-    hull.check(0.0, 1.0, traceStart, traceEnd, trace);
+    hull.trace(trace, traceStart, traceEnd, true);
     trace.endpos = this.toWorldSpace(trace.endpos, trace.endpos);
     return trace;
   }
@@ -2271,9 +1981,6 @@ export class Pmove implements PlayerCollisionWorld { // pmove_t
     Pmove.debug = null;
   }
 
-  /** Cache for cloned model hulls keyed by model name. */
-  readonly #modelHullsCache = new Map<string, Hull[]>();
-
   /**
    * Normalize static-world contents values so current volumes behave like water.
    * @param contents - raw contents value from the collision backend
@@ -2494,19 +2201,16 @@ export class Pmove implements PlayerCollisionWorld { // pmove_t
     console.assert(model instanceof BrushModel, 'model');
 
     this.physents.length = 0;
-    this.#modelHullsCache.clear();
 
     const pe = new PhysEnt(this);
 
     // Always set up hulls (hull0 needed for staticWorldContents fallback regardless of mode)
-    for (const modelHull of model.hulls) {
-      pe.hulls.push(Hull.fromModelHull(modelHull));
-    }
+    pe.hulls = model.hulls;
 
     // Enable brush-based collision when the map has brush data
     if (model.hasBrushData) {
       pe.brushWorldModel = model;
-      pe.brushHeadNode = model.hulls[0]?.firstclipnode ?? 0;
+      pe.brushHeadNode = model.hulls[0]?.firstClipNode ?? 0;
     }
 
     this.physents.push(pe);
@@ -2555,14 +2259,7 @@ export class Pmove implements PlayerCollisionWorld { // pmove_t
       }
 
       // Always set up hull data as fallback (and for hull0 pointContents)
-      if (this.#modelHullsCache.has(model.name)) {
-        pe.hulls = this.#modelHullsCache.get(model.name)!;
-      } else {
-        for (const modelHull of model.hulls) {
-          pe.hulls.push(Hull.fromModelHull(modelHull));
-        }
-        this.#modelHullsCache.set(model.name, pe.hulls);
-      }
+      pe.hulls = model.hulls;
     } else {
       console.assert(entity.mins instanceof Vector, 'valid entity mins', entity.mins);
       console.assert(entity.maxs instanceof Vector, 'valid entity maxs', entity.maxs);

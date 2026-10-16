@@ -2,6 +2,7 @@ import Vector from '../../../../shared/Vector.ts';
 import { CorruptedResourceError } from '../../Errors.ts';
 import { Face } from '../BaseModel.ts';
 import { BrushModel, Node } from '../BSP.ts';
+import { ClipTree, Hull } from '../../collision/Hull.ts';
 import { MaterialFlags } from '../../../client/renderer/models/Materials.ts';
 import { BSP29Loader } from './BSP29Loader.ts';
 import { content } from '../../../../shared/Defs.ts';
@@ -261,30 +262,14 @@ export class BSP2Loader extends BSP29Loader {
     }
 
     const count = filelen / 12;
-    loadmodel.clipnodes.length = count;
+    const tree = new ClipTree(count);
+    loadmodel.clipTree = tree;
     loadmodel.hulls.length = 3;
-    loadmodel.hulls[1] = {
-      clipnodes: loadmodel.clipnodes,
-      firstclipnode: 0,
-      lastclipnode: count - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(-16.0, -16.0, -24.0),
-      clip_maxs: new Vector(16.0, 16.0, 32.0),
-    };
-    loadmodel.hulls[2] = {
-      clipnodes: loadmodel.clipnodes,
-      firstclipnode: 0,
-      lastclipnode: count - 1,
-      planes: loadmodel.planes,
-      clip_mins: new Vector(-32.0, -32.0, -24.0),
-      clip_maxs: new Vector(32.0, 32.0, 64.0),
-    };
+    loadmodel.hulls[1] = new Hull(loadmodel.planeTable, tree, new Vector(-16.0, -16.0, -24.0), new Vector(16.0, 16.0, 32.0), 0, count - 1);
+    loadmodel.hulls[2] = new Hull(loadmodel.planeTable, tree, new Vector(-32.0, -32.0, -24.0), new Vector(32.0, 32.0, 64.0), 0, count - 1);
 
     for (let i = 0; i < count; i++) {
-      loadmodel.clipnodes[i] = {
-        planenum: view.getInt32(fileofs, true),
-        children: [view.getInt32(fileofs + 4, true), view.getInt32(fileofs + 8, true)],
-      };
+      tree.set(i, view.getInt32(fileofs, true), view.getInt32(fileofs + 4, true), view.getInt32(fileofs + 8, true));
       fileofs += 12;
     }
 

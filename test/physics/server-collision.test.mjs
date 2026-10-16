@@ -12,6 +12,7 @@ import { ServerCollision } from '../../source/engine/server/physics/ServerCollis
 import { AliasCollisionState, HullCollisionState, MeshCollisionState } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
+import { createClipTree, createLegacyHull } from '../support/hulls.ts';
 import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource } from './fixtures.mjs';
 import { createModelLoadContext } from '../support/modelContext.ts';
 
@@ -389,7 +390,7 @@ void describe('ServerCollision', () => {
 
     void test('keeps legacy world hull traces out of foreign clipnode subtrees', () => {
       const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-      const worldHull = {
+      const worldHull = createLegacyHull({
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
         firstclipnode: 0,
@@ -403,7 +404,7 @@ void describe('ServerCollision', () => {
           { planenum: 0, children: [1, content.CONTENT_EMPTY] },
           { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
         ],
-      };
+      });
       const worldModel = new BrushModel();
       worldModel.name = 'legacy-world';
       worldModel.hulls = [worldHull, worldHull, worldHull];
@@ -452,7 +453,7 @@ void describe('ServerCollision', () => {
 
     void test('keeps outer legacy hull split points stable across deeper recursion', () => {
       const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-      const worldHull = {
+      const worldHull = createLegacyHull({
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
         firstclipnode: 0,
@@ -467,7 +468,7 @@ void describe('ServerCollision', () => {
           { planenum: 1, children: [content.CONTENT_EMPTY, content.CONTENT_EMPTY] },
           { planenum: 2, children: [content.CONTENT_SOLID, content.CONTENT_EMPTY] },
         ],
-      };
+      });
       const worldModel = new BrushModel();
       worldModel.name = 'legacy-midpoint-world';
       worldModel.hulls = [worldHull, worldHull, worldHull];
@@ -1259,10 +1260,9 @@ void describe('ServerCollision', () => {
     });
   });
 
-  void describe('hullPointContents', () => {
+  void describe('hull point contents', () => {
     void test('treats masked foreign clipnodes as empty space', () => {
-      const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-      const hull = {
+      const hull = createLegacyHull({
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
         firstclipnode: 0,
@@ -1276,10 +1276,10 @@ void describe('ServerCollision', () => {
           { planenum: 0, children: [1, content.CONTENT_EMPTY] },
           { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
         ],
-      };
+      });
 
       assert.equal(
-        collision.hullPointContents(hull, hull.firstclipnode, new Vector(100, 0, 0)),
+        hull.pointContents(new Vector(100, 0, 0), hull.firstClipNode),
         content.CONTENT_EMPTY,
       );
     });
@@ -1288,7 +1288,7 @@ void describe('ServerCollision', () => {
   void describe('pointContents', () => {
     void test('respects world hull ownership masks', () => {
       const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-      const worldHull = {
+      const worldHull = createLegacyHull({
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
         firstclipnode: 0,
@@ -1302,7 +1302,7 @@ void describe('ServerCollision', () => {
           { planenum: 0, children: [1, content.CONTENT_WATER] },
           { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
         ],
-      };
+      });
 
       void withMockEngine(defaultMockEngine({
         area: {
@@ -1435,7 +1435,7 @@ void describe('ServerCollision', () => {
 
     void test('keeps legacy world hull traces out of foreign clipnode subtrees', () => {
       const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
-      const worldHull = {
+      const worldHull = createLegacyHull({
         clip_mins: new Vector(),
         clip_maxs: new Vector(),
         firstclipnode: 0,
@@ -1449,7 +1449,7 @@ void describe('ServerCollision', () => {
           { planenum: 0, children: [1, content.CONTENT_EMPTY] },
           { planenum: 1, children: [content.CONTENT_SOLID, content.CONTENT_SOLID] },
         ],
-      };
+      });
       const worldModel = new BrushModel();
       worldModel.name = 'legacy-world-line';
       worldModel.hulls = [worldHull, worldHull, worldHull];
@@ -1515,7 +1515,7 @@ void describe('ServerArea', () => {
       const hull = area.hulls.forEntity(movingEdict, Vector.origin, Vector.origin, offset);
 
       assert.equal(hull, worldModel.hulls[0]);
-      assert.deepEqual([...offset], [...worldModel.hulls[0].clip_mins]);
+      assert.deepEqual([...offset], [...worldModel.hulls[0].clipMins]);
     });
   });
 
@@ -1574,12 +1574,12 @@ void describe('BSP29Loader', () => {
       { planenum: 4, children: [content.CONTENT_EMPTY, content.CONTENT_SOLID] },
     ];
 
-    const worldMask = loader._buildAllowedClipnodeMask(clipnodes, 0);
-    const submodelMask = loader._buildAllowedClipnodeMask(clipnodes, 2);
+    const worldMask = loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 0);
+    const submodelMask = loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 2);
 
     assert.deepEqual(Array.from(worldMask), [1, 1, 1, 1, 1]);
     assert.deepEqual(Array.from(submodelMask), [0, 0, 1, 0, 1]);
-    assert.equal(loader._buildAllowedClipnodeMask(clipnodes, -1), null);
-    assert.equal(loader._buildAllowedClipnodeMask(clipnodes, 99), null);
+    assert.equal(loader._buildAllowedClipnodeMask(createClipTree(clipnodes), -1), null);
+    assert.equal(loader._buildAllowedClipnodeMask(createClipTree(clipnodes), 99), null);
   });
 });

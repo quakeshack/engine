@@ -1,6 +1,6 @@
 # BSP flat layout: one collision core, typed arrays, no copies, then shared memory
 
-**Status:** Decisions made 2026-10-16 (see "Decisions"). Phase 0 is under way; Phase 1 starts after its go-ahead. Follows from the "Parked: SharedArrayBuffer" note in `plans/engine-architecture-modernization.md` (its
+**Status:** Decisions made 2026-10-16 (see "Decisions"). Phase 0 and Phase 1 are done (2026-10-17); Phase 2 waits for a look at the numbers and a go-ahead. Follows from the "Parked: SharedArrayBuffer" note in `plans/engine-architecture-modernization.md` (its
 "revisit when" condition is a typed-array BSP layout) and from `plans/server-model-memory.md`.
 
 ## Decisions
@@ -232,6 +232,61 @@ lightgrid first).
 `EntityHulls`, `ClientCollision` switch over; the old hull types, `fromModelHull` and the cache go. Done when there is exactly
 one traversal implementation, Pmove copies nothing, and the determinism and trace tests pass unchanged.
 
+#### Phase 1: what shipped (2026-10-17)
+
+`npm test` 2596 pass, `npm run typecheck` 0 errors, eslint clean on the touched files. Done-when holds: one traversal
+implementation, Pmove copies nothing, the determinism and trace tests pass unchanged.
+
+- **`source/engine/common/collision/Hull.ts`**: `PlaneTable` (normals as `Float32Array`, distances as `Float64Array` so a box
+  hull can hold non-float32 distances exactly, types and sign bits as `Uint8Array`), `ClipTree` (`Int32Array`s), `Hull` and `BoxHull`.
+  `Hull.pointContents(point, num)` and `Hull.trace(trace, start, end, skyBlocks)` are the only implementations of the point and
+  line queries; `skyBlocks` is Decision 1 (`true` for player movement, `false` for entity movement). Mid points come from a
+  depth-indexed pool, the server's per-level allocation is gone.
+- **Gone**: Pmove's `Plane`-based `ClipNode`, `Hull`, `BoxHull`, `Hull.fromModelHull` and `#modelHullsCache`; the model's `Clipnode`
+  and `Hull` interfaces; the server's `recursiveHullCheck`, `hullPointContents` and `ServerCollision`'s wrappers of them; the box
+  hull `EntityHulls` kept for itself (it uses `BoxHull.setBounds`, no vectors). `ServerLegacyHullCollision.ts` keeps only the world
+  `pointContents` that counts the current volumes as water.
+- **The model**: `BrushModel.hulls` are `Hull`s over the model's `planeTable` and `clipTree` (new fields; `planes: Plane[]` stays
+  until Phase 2 because nodes, faces and the brush trace use it). Hulls 1 and 2 share both with the world; hull 0 is a tree of
+  its own built from the nodes (two `Int32Array`s instead of an object per node); the hulls of an inline model share the same
+  data and only start at a node of their own. `PhysEnt.hulls` is the model's array, not a copy. Fields are camelCase now
+  (`clipMins`, `firstClipNode`).
+- **Not changed on purpose**: `planeTable` holds the planes of the plane lump only; the planes a BRUSHLIST adds go to `planes[]`
+  and the brush trace, hulls never refer to them.
+
+**Verified against the old code, not only by new tests.** The same 14000 seeded cases (40 random trees with sky, solid, water,
+current and open leafs and some masks; 8000 point queries and 6000 segments, each for player and entity movement; 2463 of the
+segments hit something and 1846 are told apart by sky and currents) were run through the old Pmove and server traversals in a
+worktree of the previous commit and through `Hull`: the output is byte-identical, and `hull-traversal.test.ts` keeps the sha256
+of it (`d3dcf60e...`), so the equality is checked on every run.
+
+**Numbers** (`scripts/measure-bsp-memory.mts`, server-style load, heap kept alive by each group):
+
+| | before | after |
+| :-- | --: | --: |
+| Pmove's copy of the hulls, hw_village / hw_e1m2 / lqdm3 | 10.0 / 4.3 / 5.9 MB | 0.0 MB |
+| hulls + clipnodes + plane table, hw_village | 2.2 MB (objects) | 0.4 MB |
+| 200000 traces + 200000 point queries on hw_e1m2 hull 1 (median of 10) | 696 ms | 394 ms |
+
+That settles open question 3: the typed layout is faster in the hot loop (1.75x here; most random start points are inside
+solid, so the sample is short traversals, and the results are identical: 284 hits, same contents sum). A listen server saves the
+Pmove copy in both realms.
+
+Found while doing it:
+
+- `Hull.trace` stops at `trace.fraction <= p1f` (the server had it, Pmove did not). It never triggers for a fresh trace, and
+  `hull-traversal.test.ts` pins the case where a trace already hit something nearer.
+- The "backup past 0" message is `console.debug` for both now (Pmove used `console.warn`, the server `console.debug`).
+- **A bug in the brush trace that predates this plan** showed up while testing Phase 1 in `hw_village`: a player flush against a
+  wall of two stacked brushes, the lower one a step high, was lifted onto the lower brush when walking along the wall. Cause: a
+  box that exactly touches the side of a brush (`d1 = 0`) is treated by `_clipBoxToBrush` as keeping the other faces of the
+  brush in play (the tangent rule from the clip_4 fix), so a straight down trace hit the top of the lower brush. Found with a
+  scripted walk that is identical on the commit before Phase 1 (the Phase 1 changes are byte-identical in movement on 12 maps)
+  and fixed separately: a purely vertical move no longer uses that rule. It also stops a wall contact from dropping the ground
+  under the player. Tests: `brushtrace.test.mjs`.
+- `WorkerServerController` "follows what the worker reports" failed once in a full run under load and passed alone and in the
+  next full run; it is a timing test and not related.
+
 ### Phase 2: tree, leafs, visibility
 
 `NodeTable`, `LeafTable`, renderer-owned state, per-trace dedup counters, index-based hot paths, the cold-caller view, loader
@@ -268,5 +323,4 @@ Decided on 2026-10-16: sky handling, scope of the first deliverable and the cold
 1. **Who parses in Phase 4** (server worker or page), and whether the page keeps a second parse of the render-only lumps.
 2. **SAB policy.** Recommended: feature-detect with a clone fallback. Requiring isolation would simplify the code and break the
    dev server and third-party hosts. Both wait for Phase 4.
-3. **Hot-path cost.** Plane distance by index into four arrays versus an object per plane: expected neutral or better, but
-   Phase 1 must measure it on a movement-heavy scene before Phase 2 builds on it.
+3. ~~**Hot-path cost.**~~ Settled by Phase 1: 1.75x faster than the objects, see "Phase 1: what shipped".
