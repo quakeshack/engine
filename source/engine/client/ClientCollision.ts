@@ -7,7 +7,8 @@ import * as Defs from '../../shared/Defs.ts';
 import type { CollisionModelSource } from '../common/CollisionModelSource.ts';
 import { BrushTrace, Trace as SharedTrace } from '../common/Pmove.ts';
 import { CollisionPlane, CollisionTrace } from '../server/physics/ServerCollisionSupport.ts';
-import { ServerArea } from '../server/physics/ServerArea.ts';
+import Con from '../common/Console.ts';
+import { EntityHulls } from '../common/collision/EntityHulls.ts';
 import { ServerCollision } from '../server/physics/ServerCollision.ts';
 import {
   pointContents as legacyPointContents,
@@ -17,9 +18,6 @@ import {
 type LegacyHull = Hull & {
   readonly firstclipnode: number;
 };
-
-/** The server the entity collision code is written for, which a client stands in for. */
-type CollisionOwner = ConstructorParameters<typeof ServerArea>[0];
 
 /** A client entity as the narrow phase of entity collision sees it. */
 export interface ClientCollisionTarget {
@@ -58,19 +56,17 @@ export default class ClientCollision {
   }
 
   /**
-   * The narrow phase of the server's collision only asks its server for the world entity, the time
-   * and a console for diagnostics, and its area for the box hull. A client has no server to give
-   * those, so it brings stand-ins: no entities to be the world, and a box hull of its own.
+   * The narrow phase of the server's collision needs a host with a console, a clock, entities and hulls. A client has no
+   * server entities and no spatial tree (it is handed the entity to trace against), and the hulls come from the models of
+   * the client.
    * @returns Entity collision that works without a server.
    */
   #createEntityCollision(): ServerCollision {
-    const standIn = { server: { edicts: [], time: 0 }, con: { DPrint(): void {} } } as unknown as CollisionOwner & { area: ServerArea };
-    const area = new ServerArea(standIn, this.#modelSource);
-
-    area.initBoxHull();
-    standIn.area = area;
-
-    return new ServerCollision(standIn, this.#modelSource);
+    return new ServerCollision({
+      server: { edicts: [], time: 0 },
+      con: Con,
+      area: { tree: null, hulls: new EntityHulls(this.#modelSource) },
+    }, this.#modelSource);
   }
 
   /**

@@ -951,7 +951,6 @@ void describe('ServerPhysics', () => {
         },
       };
       const area = new ServerArea(mockedSV(), modelSource);
-      area.initBoxHull();
       const collision = new ServerCollision(mockedSV(), modelSource);
       const serverPhysics = new ServerPhysics(mockedSV());
 

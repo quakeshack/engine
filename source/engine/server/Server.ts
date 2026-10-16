@@ -326,7 +326,6 @@ export default class Server {
 
     this.InitNextmapStuff();
     this.InitPmove();
-    this.area.initBoxHull();
   }
 
   InitNextmapStuff(): void {

@@ -132,9 +132,6 @@ function assertMonsterTouchUsesMeshHullFallback({
 }) {
   const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
   const area = new ServerArea(mockedSV(), mockedCollisionModelSource());
-
-  area.initBoxHull();
-
   const movingMonsterEdict = createMockEdict(createMockEntity({
     origin: new Vector(-200, 16, 16),
     mins: Pmove.PLAYER_MINS.copy(),
@@ -231,9 +228,11 @@ void describe('ServerCollision', () => {
 
       void withMockEngine(defaultMockEngine({
         area: {
-          hullForEntity(_ent, _mins, _maxs, offset) {
-            offset.clear();
-            return worldModel.hulls[0];
+          hulls: {
+            forEntity(_ent, _mins, _maxs, offset) {
+              offset.clear();
+              return worldModel.hulls[0];
+            },
           },
           tree: {
             queryAABB() {
@@ -264,7 +263,7 @@ void describe('ServerCollision', () => {
       });
     });
 
-    void test('point trace against a hull-less brush world (e.g. BSP38) never calls ServerArea.hullForEntity', () => {
+    void test('point trace against a hull-less brush world (e.g. BSP38) never asks for a hull', () => {
       const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
       const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
       worldModel.hulls = []; // BSP38 has no clipnodes/hulls at all, unlike BSP29/BSP2
@@ -278,8 +277,10 @@ void describe('ServerCollision', () => {
 
       void withMockEngine(defaultMockEngine({
         area: {
-          hullForEntity() {
-            throw new Error('hullForEntity must not be called for a model with no legacy hulls');
+          hulls: {
+            forEntity() {
+              throw new Error('no hull is wanted for a model with no legacy hulls');
+            },
           },
           tree: {
             queryAABB() {
@@ -417,8 +418,10 @@ void describe('ServerCollision', () => {
 
       void withMockEngine(defaultMockEngine({
         area: {
-          hullForEntity() {
-            return worldHull;
+          hulls: {
+            forEntity() {
+              return worldHull;
+            },
           },
           tree: {
             queryAABB() {
@@ -479,8 +482,10 @@ void describe('ServerCollision', () => {
 
       void withMockEngine(defaultMockEngine({
         area: {
-          hullForEntity() {
-            return worldHull;
+          hulls: {
+            forEntity() {
+              return worldHull;
+            },
           },
           tree: {
             queryAABB() {
@@ -1459,8 +1464,10 @@ void describe('ServerCollision', () => {
 
       void withMockEngine(defaultMockEngine({
         area: {
-          hullForEntity() {
-            return worldHull;
+          hulls: {
+            forEntity() {
+              return worldHull;
+            },
           },
           tree: {
             queryAABB() {
@@ -1487,8 +1494,6 @@ void describe('ServerCollision', () => {
 void describe('ServerArea', () => {
   void test('resolves BSP hulls from the model table of the server', () => {
     const area = new ServerArea(mockedSV(), mockedCollisionModelSource());
-    area.initBoxHull();
-
     const worldModel = createBrushWorldModel({ halfExtents: [16, 16, 16] });
     const movingEntity = createMockEntity({
       origin: new Vector(),
@@ -1507,7 +1512,7 @@ void describe('ServerArea', () => {
         worldmodel: worldModel,
       },
     }), () => {
-      const hull = area.hullForEntity(movingEdict, Vector.origin, Vector.origin, offset);
+      const hull = area.hulls.forEntity(movingEdict, Vector.origin, Vector.origin, offset);
 
       assert.equal(hull, worldModel.hulls[0]);
       assert.deepEqual([...offset], [...worldModel.hulls[0].clip_mins]);

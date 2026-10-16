@@ -907,9 +907,11 @@ void test('ServerCollision.move traces world brush sweeps through shared brush s
     Host: { frametime: 0.1 },
     SV: {
       area: {
-        hullForEntity(_ent, _mins, _maxs, offset) {
-          offset.clear();
-          return worldModel.hulls[0];
+        hulls: {
+          forEntity(_ent, _mins, _maxs, offset) {
+            offset.clear();
+            return worldModel.hulls[0];
+          },
         },
         tree: {
           queryAABB() {
@@ -1334,8 +1336,10 @@ void test('ServerCollision.move keeps legacy world hull traces out of foreign cl
     Host: { frametime: 0.1 },
     SV: {
       area: {
-        hullForEntity() {
-          return worldHull;
+        hulls: {
+          forEntity() {
+            return worldHull;
+          },
         },
         tree: {
           queryAABB() {
@@ -1402,8 +1406,10 @@ void test('ServerCollision.traceWorldLine keeps legacy world hull traces out of 
     Host: { frametime: 0.1 },
     SV: {
       area: {
-        hullForEntity() {
-          return worldHull;
+        hulls: {
+          forEntity() {
+            return worldHull;
+          },
         },
         tree: {
           queryAABB() {
@@ -1465,8 +1471,10 @@ void describe('ServerCollision.move legacy hull recursion regressions', () => {
       Host: { frametime: 0.1 },
       SV: {
         area: {
-          hullForEntity() {
-            return worldHull;
+          hulls: {
+            forEntity() {
+              return worldHull;
+            },
           },
           tree: {
             queryAABB() {

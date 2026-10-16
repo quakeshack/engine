@@ -23,7 +23,9 @@ import {
   pointContents as legacyPointContents,
   recursiveHullCheck as legacyRecursiveHullCheck,
 } from './ServerLegacyHullCollision.ts';
-import type Server from '../Server.ts';
+import type { Octree } from '../../../shared/Octree.ts';
+import type { EntityHulls } from '../../common/collision/EntityHulls.ts';
+import type { ConsoleOutput } from '../../common/Services.ts';
 
 type CollisionModel = BrushModel | MeshModel | AliasModel | object | null;
 
@@ -42,6 +44,23 @@ type LegacyHull = Hull & {
 };
 
 /**
+ * What the collision code needs from whoever owns it: the entities and the time of a server, a console for warnings, and
+ * the spatial tree and the hulls of its area. A `Server` is one; the client builds one for the narrow phase against the
+ * entities it knows (`ClientCollision`), which has no tree and no server entities.
+ */
+export interface CollisionHost {
+  readonly server: {
+    readonly edicts: readonly ServerEdict[];
+    readonly time: number;
+  };
+  readonly con: Pick<ConsoleOutput, 'DPrint' | 'PrintWarning'>;
+  readonly area: {
+    readonly tree: Octree<ServerEdict> | null;
+    readonly hulls: EntityHulls;
+  };
+}
+
+/**
  * Handles collision detection and tracing for entities in the world.
  * Uses shared brush tracing for BSP models when brush data is available,
  * falling back to legacy hull traces otherwise.
@@ -51,14 +70,14 @@ export class ServerCollision {
   static readonly MISSILE_MAXS = new Vector(15.0, 15.0, 15.0);
 
   private readonly _modelSource: CollisionModelSource;
-  private readonly sv: Server;
+  private readonly sv: CollisionHost;
   readonly #warnedMissingGeometry = new Set<string>();
 
   /**
    * Resolve a collision model by model index from either the active server or
    * the client precache populated by server signon data.
    */
-  constructor(sv: Server, modelSource: CollisionModelSource) {
+  constructor(sv: CollisionHost, modelSource: CollisionModelSource) {
     this.sv = sv;
     this._modelSource = modelSource;
   }
@@ -389,7 +408,7 @@ export class ServerCollision {
     const trace = CollisionTrace.hullInitial(end);
 
     const offset = new Vector();
-    const hull = this.sv.area.hullForEntity(state.ent, mins, maxs, offset);
+    const hull = this.sv.area.hulls.forEntity(state.ent, mins, maxs, offset);
     const startLocal = start.copy().subtract(offset);
     const endLocal = end.copy().subtract(offset);
 

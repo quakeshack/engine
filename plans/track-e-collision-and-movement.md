@@ -1,6 +1,6 @@
 # Track E: collision and movement, one source per realm and a determinism test
 
-Track E of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-16, forks settled the same day (see Open questions). Phase 0 is done (2026-10-16) and so are the two fixes it led to (the msec split and the movement variables), see "Phase 0: what shipped" and "Phase 0 follow-ups". Phase 1 is implemented (2026-10-16), see "Phase 1: what shipped".**
+Track E of `plans/engine-architecture-modernization.md`. Status: **plan drafted 2026-10-16, forks settled the same day (see Open questions). Phase 0 is done (2026-10-16) and so are the two fixes it led to (the msec split and the movement variables), see "Phase 0: what shipped" and "Phase 0 follow-ups". Phase 1 is committed (`f825831`); Phase 2 is implemented (2026-10-16) and waits for review, see "Phase 2: what shipped".**
 Written for the maintainers. Numbers and claims are from a read of the tree on that date (branch
 `engine-architecture-modernization`); where something was only read and not run, it says so.
 
@@ -295,6 +295,33 @@ Implementations: `ServerCollisionModelSource` (`server/physics/`, built by the `
 ### Phase 2: `ClientCollision` without a stand-in (optional, own go-ahead)
 
 E3. Only if the answer under Open questions is "yes", and only after the separability check.
+
+#### Phase 2: what shipped (2026-10-16, not committed yet, waits for review)
+
+The separability check came back clean: `hullForEntity` and `initBoxHull` of `ServerArea` read nothing but the model source, so
+the box hull moved out of the area unchanged.
+
+- **`EntityHulls`** (`common/collision/EntityHulls.ts`): the box hull and `forEntity(ent, mins, maxs, outOffset)`, built from a
+  model source. Each realm has its own, so the shared box hull of vanilla's `SV_HullForBox` is no longer one object for both.
+  `ServerArea.hulls` holds the server's; `initBoxHull()` and `hullForEntity()` are gone from the area (the constructor builds the
+  hull, `Server.Init()` no longer calls it).
+- **`CollisionHost`** (in `ServerCollision.ts`): what `ServerCollision` needs from its owner, `server.edicts`, `server.time`, a console
+  with `DPrint` and `PrintWarning`, and `area.tree` and `area.hulls`. A `Server` is one without any change.
+- **`ClientCollision`** passes a real host: no server entities, time 0, the page's `Con`, no tree, and `EntityHulls` over the
+  client's model source. The `as unknown as CollisionOwner` stand-in and the client's import of `ServerArea` are gone. One cast
+  is left, `target as unknown as ServerEdict` in `clipMoveToEntity`: the narrow phase is typed on server edicts throughout and
+  narrowing that is a larger change than this track.
+- **A latent crash gone with it:** the stand-in console had only `DPrint`, and the narrow phase calls `PrintWarning` for a
+  `SOLID_MESH` entity precached without `meshCollision`, so a client tracing against one would have thrown.
+- Tests: `test/common/entity-hulls.test.ts` (box hull values, the in-place update, the three hull sizes and their offsets, one
+  box per instance); a client trace against a BSP entity with the model from the client's own models; the mocks in
+  `server-collision`, `collision-regressions`, `game-apis` and `server-physics` tests take `area.hulls.forEntity` where they had
+  `area.hullForEntity`. `npm test` 2551 pass, `npm run typecheck` 0 errors.
+- Live, headless Chromium against the running dedicated server, with the watch build that contains the change: the default worker
+  path and `?serverthread` both load `start` and walk the player (343 and 310 units); on `?serverthread` the server's collision still
+  sees its own world (empty at the player, the same floor 24 units below, the world entity) and `sv.area.hulls.forEntity` returns
+  the box hull (6 planes) for the player. The same three unrelated 404s as before. Not covered live: a client trace against a
+  moving BSP entity (`ClientEngineAPI`'s entity trace), only by the unit test.
 
 ### Phase 3: close out
 

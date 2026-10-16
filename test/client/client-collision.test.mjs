@@ -6,15 +6,16 @@ import { content, solid } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import ClientCollision from '../../source/engine/client/ClientCollision.ts';
 
-import { assertNear, createBrushWorldModel, createLegacyWorldModel } from '../physics/fixtures.mjs';
+import { assertNear, createBoxBrushModel, createBrushWorldModel, createLegacyWorldModel } from '../physics/fixtures.mjs';
 
 /**
  * Creates a client collision whose model source only knows the given client world.
  * @param {import('../../source/engine/common/model/BSP.ts').BrushModel | null} worldModel the client's world model
+ * @param {import('../../source/engine/common/model/BaseModel.ts').BaseModel[]} [models] the client's precached models by index
  * @returns {ClientCollision} the collision under test
  */
-function createClientCollision(worldModel) {
-  return new ClientCollision({ getWorldEntity: () => null, getWorldModel: () => worldModel, getModelByIndex: () => null });
+function createClientCollision(worldModel, models = []) {
+  return new ClientCollision({ getWorldEntity: () => null, getWorldModel: () => worldModel, getModelByIndex: (modelIndex) => models[modelIndex] ?? null });
 }
 
 // A wall of 16 units thickness, centered 64 units along +x of the origin: it occupies x in [56, 72].
@@ -139,6 +140,21 @@ void describe('ClientCollision', () => {
       assert.ok(trace.fraction < (64 - 16) / 128);
     });
 
+    void test('stops a trace at a BSP entity, with the model from the client\'s own models', () => {
+      const door = createBoxBrushModel({ halfExtents: [8, 8, 8], name: '*1' });
+      const collision = createClientCollision(null, [null, door]);
+      const target = createTarget(new Vector(64, 0, 0));
+
+      target.entity.solid = solid.SOLID_BSP;
+      target.entity.modelindex = 1;
+      target.entity.angles.clear();
+
+      const trace = collision.clipMoveToEntity(target, new Vector(0, 0, 0), Vector.origin, Vector.origin, new Vector(128, 0, 0));
+
+      assert.ok(trace.fraction < 1.0);
+      assertNear(trace.endpos[0], 56, 0.1);
+    });
+
     void test('lets a trace pass an entity that is out of the way', () => {
       const collision = createClientCollision(null);
       const trace = collision.clipMoveToEntity(createTarget(new Vector(64, 200, 0)), new Vector(0, 0, 0), Vector.origin, Vector.origin, new Vector(128, 0, 0));
@@ -146,7 +162,7 @@ void describe('ClientCollision', () => {
       assert.equal(trace.fraction, 1.0);
     });
 
-    void test('can be asked again, the stand-in server is reused', () => {
+    void test('can be asked again, the entity collision is reused', () => {
       const collision = createClientCollision(null);
       const target = createTarget(new Vector(64, 0, 0));
       const first = collision.clipMoveToEntity(target, new Vector(0, 0, 0), Vector.origin, Vector.origin, new Vector(128, 0, 0));

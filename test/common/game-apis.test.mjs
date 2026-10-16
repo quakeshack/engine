@@ -72,7 +72,6 @@ void describe('ClientEngineAPI.Traceline', () => {
   void test('can trace current client entities on demand', () => {
     const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
     const area = new ServerArea(mockedSV(), mockedCollisionModelSource());
-    area.initBoxHull();
 
     const target = createClientTraceEntity(
       2,
@@ -112,7 +111,6 @@ void describe('ClientEngineAPI.Traceline', () => {
   void test('supports skipping and filtering client trace candidates', () => {
     const collision = new ServerCollision(mockedSV(), mockedCollisionModelSource());
     const area = new ServerArea(mockedSV(), mockedCollisionModelSource());
-    area.initBoxHull();
 
     const skipped = createClientTraceEntity(
       1,
