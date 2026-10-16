@@ -33,7 +33,7 @@ Here is the list of available server console variables in QuakeShack:
 | `sv_aim` | `0.93` | Auto-aim tolerance factor. |
 | `sv_airaccelerate` | `0.7` | Air acceleration rate. |
 | `sv_cheats` | `0` | Enables cheats if set to `1`. |
-| `sv_friction` | `6` | Ground friction value. |
+| `sv_friction` | `4` | Ground friction value. |
 | `sv_gravity` | `800` | World gravity value. |
 | `sv_idealpitchscale` | `0.8` | Controls the scaling of the ideal pitch when auto-look/lookspring is used. |
 | `sv_maplist` | *(empty)* | Comma-separated list of maps to cycle through after each map change. |
@@ -46,7 +46,7 @@ Here is the list of available server console variables in QuakeShack:
 | `sv_spectatormaxspeed` | `500` | Maximum flight speed for spectators. |
 | `sv_stopspeed` | `100` | Minimum speed limit at which player movement comes to a complete halt. |
 | `sv_wateraccelerate` | `10` | Acceleration rate inside of water. |
-| `sv_waterfriction` | `1` | Friction applied while in water. |
+| `sv_waterfriction` | `4` | Friction applied while in water. |
 | `teamplay` | `0` | Enables team play configuration when set to `1` (game-specific rules). |
 | `timelimit` | `0` | Time in minutes before a map naturally ends (`deathmatch` or `coop`) naturally ends. |
 

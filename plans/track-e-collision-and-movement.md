@@ -239,10 +239,30 @@ time steps it predicted instead of two coarse ones.
   `MoveVars.setFromCvar(name, text)` sets it, reading the text as `Cvar.value` does. The server calls it for every movement cvar
   when it creates its `Pmove` and on each `cvar.changed`; the client calls it for every cvar in `parseServerCvars`. One table, no
   getters, so the shadowing trap cannot come back. `PlayerMoveCvars` is deleted.
-- The defaults. `sv_friction` was `4` and `sv_waterfriction` `4` while the players had always moved with `MoveVars`' `6` and
-  `1`. To change nothing about how the game feels, the cvars now default to `6` and `1` (also in `docs/dedicated.md`); a test
-  compares every movement cvar's default with `MoveVars`' and fails if they drift. Vanilla Quake's values are `4` and `1`; if you
-  want those it is a one-line change of two defaults, and it would change how every player moves.
+- The defaults are `4` and `4` for `sv_friction` and `sv_waterfriction`, in the cvars, in `MoveVars` and in `docs/dedicated.md`; the
+  test compares the cvar defaults with `MoveVars`' and fails if they drift. They were first set to `6` and `1` in this change, to keep
+  how players had moved since the TypeScript port, and set back to the original `4` and `4` on the developer's request (the
+  original source has `4` and `4`; an earlier version of this paragraph wrongly said vanilla uses `4` and `1`). How `6` and `1`
+  got there, from the history:
+  - 2025-04-02 (`d395b11`) `MoveVars` starts as a stub of zeros. 2025-07-19 (`6695ee1`) it has `4` and `4` and the server's
+    `PlayerMoveCvars` reads the cvars; the movement code is the QuakeWorld `pmove.c` one.
+  - 2025-11-29 (`a43434b`, "server code cleanup, client code cleanup") the server stops sending the variables to the client
+    (the call is commented out). From here the client predicts with its own `MoveVars` defaults, which still equal the cvars.
+  - 2026-02-22 (`9345cdb`, "Pmove", the Quake 2 style rewrite with client-side prediction) the `MoveVars` defaults become `6` and `1`,
+    Quake 2's `pm_friction` and `pm_waterfriction`. In the JavaScript of that time `PlayerMoveCvars` still worked (the fields were
+    only assigned in the constructor, so the getters of the subclass won), so the server kept moving players with the cvars, `4`
+    and `4`, while the client predicted with `6` and `1`. Read from the source, not run: for these seven weeks friction and water
+    friction differed between server and prediction.
+  - 2026-04-09 (`8212f49`, the TypeScript port) the fields are declared, and with `useDefineForClassFields` they shadow the
+    getters. The server moves players with `6` and `1` from here, and client and server agree again, by accident.
+  - 2026-10-16 (this track): the cvars work again and the client gets them, so both sides move with the cvars, `4` and `4`.
+  What a player notices against the last six months of builds: less ground friction (4 instead of 6, so more sliding) and about
+  four times the drag when swimming (4 instead of 1).
+- A profile for a future Quake 2 game, so the history above does not have to be dug up again: `PmoveQuake2MoveVars` in
+  `source/shared/Pmove.ts` holds the Quake 2 values of `qcommon/pmove.c` as cvar values (friction 6, water friction 1, max speed
+  300, air acceleration 0, ...). It is plain data; the game applies it with `SetCvar` when it starts (decided with the developer
+  over having `SetPmoveConfiguration` set the cvars, which would let the engine overwrite what an admin set). The contract is in
+  `docs/game-module-contract.md`, "Player movement". No game uses it yet.
 - What changes for real: a game that sets these cvars now has an effect on players. `id1` sets `sv_gravity` to `100` on `e1m8`
   (the finale's low gravity) and `800` elsewhere, which until now only moved the server-side entities, not the player. Hellwave sets
   none of them. Client-side physics that reads `ClientEngineAPI.gravity` (gibs) follows the same value now.
@@ -339,7 +359,7 @@ Dockerfile change: every new test file sits in a directory that already had test
 is no fixture. No new event, so `docs/events.md` is untouched.
 
 **Left for later, not part of the track:** `ClientCollision.clipMoveToEntity` still casts its target to a `ServerEdict` because the
-narrow phase is typed on server edicts; the friction defaults (6 and 1, vanilla Quake's 4 and 1) are the maintainers' call;
+narrow phase is typed on server edicts; the friction defaults are `4` and `4` again, as in the original source;
 removing the in-thread browser server path stays a separate decision after 1.3.0.
 
 ## Testing
@@ -370,7 +390,7 @@ Settled with the developer on 2026-10-16:
 
 Settled after Phase 0 (2026-10-16):
 
-6. **The movement variables:** fixed in this track, see "Phase 0 follow-ups". Open from it: the two friction defaults (above).
+6. **The movement variables:** fixed in this track, see "Phase 0 follow-ups"; the friction defaults are back at the original `4` and `4`.
 7. **The msec fix:** applied, see "Phase 0 follow-ups".
 
 Nothing else is open. Phase 1 starts on the developer's go-ahead.

@@ -281,12 +281,12 @@ export default class Server {
     this.nostep = new Cvar('sv_nostep', '0');
     this.cheats = new Cvar('sv_cheats', '0', Cvar.FLAG.SERVER);
     this.gravity = new Cvar('sv_gravity', '800', Cvar.FLAG.SERVER);
-    this.friction = new Cvar('sv_friction', '6', Cvar.FLAG.SERVER);
+    this.friction = new Cvar('sv_friction', '4', Cvar.FLAG.SERVER);
     this.maxspeed = new Cvar('sv_maxspeed', '320', Cvar.FLAG.SERVER);
     this.airaccelerate = new Cvar('sv_airaccelerate', '0.7', Cvar.FLAG.SERVER);
     this.wateraccelerate = new Cvar('sv_wateraccelerate', '10', Cvar.FLAG.SERVER);
     this.spectatormaxspeed = new Cvar('sv_spectatormaxspeed', '500', Cvar.FLAG.SERVER);
-    this.waterfriction = new Cvar('sv_waterfriction', '1', Cvar.FLAG.SERVER);
+    this.waterfriction = new Cvar('sv_waterfriction', '4', Cvar.FLAG.SERVER);
     this.rcon_password = new Cvar('sv_rcon_password', '', Cvar.FLAG.ARCHIVE);
     this.public = new Cvar('sv_public', '1', Cvar.FLAG.ARCHIVE | Cvar.FLAG.SERVER, 'Make this server publicly listed in the master server');
 

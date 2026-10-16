@@ -106,6 +106,9 @@ const MOVEVAR_OF_CVAR = new Map<string, MoveVarName>((Object.entries(MOVEVAR_CVA
  *
  * Physics tuning knobs shared between client and server. Both sides hold a plain instance and set it from the server's
  * cvars with `setFromCvar`, so the values the server moves players with are the ones the client predicts with.
+ *
+ * The defaults are the starting values of the `sv_*` cvars (a test keeps them equal). `friction` and `waterfriction` are 4 and 4
+ * as in the original source; Quake 2 has 6 and 1 (see `PmoveQuake2Configuration` for the Quake 2 list).
  */
 export class MoveVars { // movevars_t
   /** World gravity strength. */
@@ -144,8 +147,8 @@ export class MoveVars { // movevars_t
     this.accelerate = 10;
     this.airaccelerate = 0.7;
     this.wateraccelerate = 10;
-    this.friction = 6;
-    this.waterfriction = 1;
+    this.friction = 4;
+    this.waterfriction = 4;
     this.waterspeed = 400;
     this.entgravity = 1.0;
     this.edgefriction = 2;

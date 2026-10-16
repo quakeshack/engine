@@ -409,15 +409,10 @@ export function toUserCmd(spec: CommandSpec): UserCmd {
 
 /**
  * The movement variables both sides of a test use, so that the variables are not what differs.
- * @returns Movement variables with the defaults of the server's cvars for friction and water friction.
+ * @returns Movement variables with their defaults, which are what the server's cvars start with.
  */
 export function createMoveVars(): MoveVars {
-  const vars = new MoveVars();
-
-  vars.friction = 4;
-  vars.waterfriction = 4;
-
-  return vars;
+  return new MoveVars();
 }
 
 /**
