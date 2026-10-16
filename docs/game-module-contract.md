@@ -121,6 +121,18 @@ Every `serverdata` message starts this sequence, on connect and after every `cha
 | `ClientGameInterface.calcView(input, result)` | game | engine | Optional. Calculates the first-person view in place of the engine's: the eye and the weapon go into `result`. `ClientEngineAPI.View.calculateDefault(input, result)` is the engine's own, for a game that adjusts it. The engine does the pitch drift before, and the weapon's model and frame, `updateRefDef` and the chase camera after. |
 | `ClientGameInterface.hudReservedHeight(viewsize)` | game | engine | Optional. Pixels at the bottom of the screen that the HUD keeps, so the 3D view is drawn above them. Without it the view has the whole height. |
 
+## Player movement
+
+Server and client run the same movement code (`Pmove`) on the same commands and have to get the same result, so a game tunes it in
+two places and the engine carries both to the client:
+
+- **Behavior switches:** `SetPmoveConfiguration(config)` on the server API and on the client API (prediction needs it too), with a
+  `PmoveConfiguration` (QuakeWorld-style, the default) or a `PmoveQuake2Configuration`, both in `source/shared/Pmove.ts`.
+- **Tuning values:** the `sv_*` cvars `sv_gravity`, `sv_stopspeed`, `sv_maxspeed`, `sv_spectatormaxspeed`, `sv_accelerate`,
+  `sv_airaccelerate`, `sv_wateraccelerate`, `sv_friction`, `sv_waterfriction` and `edgefriction`. Changing one takes effect on the server
+  and, through the usual cvar sync, in the prediction of every connected client. A game sets them with `SetCvar`; a Quake 2 game
+  applies `PmoveQuake2MoveVars` (same file) for the values of `qcommon/pmove.c`.
+
 ## What is not part of the contract
 
 - **Static helpers a game adds for its own use**, such as lists of maps or start-server entries for its menus. The engine never calls them, so they can be named and shaped freely.
