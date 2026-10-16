@@ -68,6 +68,28 @@ export class ServerClientPhysics {
   }
 
   /**
+   * Runs one command, splitting it in halves until no piece is longer than 50 ms. This is the same recursive
+   * split `CL.PredictUsercmd` does, so a 200 ms command is four 50 ms moves on both sides and the server computes
+   * the time steps the client predicted. Float division on purpose: the pieces must be bit-identical to the client's.
+   * Only the first piece carries the impulse.
+   * @param pmove Player mover with the command already copied in.
+   * @param msec Duration of the piece to run.
+   */
+  #moveSplit(pmove: PmovePlayer, msec: number): void {
+    if (msec > 50) {
+      const halfMsec = msec / 2;
+
+      this.#moveSplit(pmove, halfMsec);
+      pmove.cmd.impulse = 0;
+      this.#moveSplit(pmove, halfMsec);
+      return;
+    }
+
+    pmove.cmd.msec = msec;
+    pmove.move();
+  }
+
+  /**
    * Runs the shared PmovePlayer for a client, copying state in and out of
    * the entity and client objects. This replaces the old server-side
    * walkMove/airMove/waterMove/friction/accelerate code with the same
@@ -124,19 +146,7 @@ export class ServerClientPhysics {
     pmove.cmd.msec = Math.min(200, Math.max(1, client.cmd.msec));
 
     // --- Execute movement (split long commands like QW’s SV_RunCmd) ---
-    // Use float division (/2) to match the client’s PredictUsercmd split
-    // (split.msec /= 2) so both sides compute identical time steps.
-    if (pmove.cmd.msec > 50) {
-      const halfMsec = pmove.cmd.msec / 2;
-      pmove.cmd.msec = halfMsec;
-      pmove.move();
-      // second half, no impulse, carry forward state
-      pmove.cmd.impulse = 0;
-      pmove.cmd.msec = halfMsec;
-      pmove.move();
-    } else {
-      pmove.move();
-    }
+    this.#moveSplit(pmove, pmove.cmd.msec);
 
     // --- Copy results back -> entity ---
     entity.origin = entity.origin.set(pmove.origin);

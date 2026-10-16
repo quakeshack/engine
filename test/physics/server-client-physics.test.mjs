@@ -207,6 +207,74 @@ void describe('ServerClientPhysics', () => {
     });
   });
 
+  void describe('_runSharedPmove: long commands', () => {
+    /**
+     * Runs one command through the server's player movement with a recording stand-in for the mover.
+     * @param {number} msec duration of the command
+     * @returns {{msec: number, impulse: number}[]} the moves the mover was asked for
+     */
+    function movesOfCommand(msec) {
+      const moves = [];
+      const mover = {
+        origin: new Vector(),
+        velocity: new Vector(),
+        angles: new Vector(),
+        cmd: new UserCmd(),
+        touchindices: [],
+        onground: null,
+        move() {
+          moves.push({ msec: this.cmd.msec, impulse: this.cmd.impulse });
+        },
+      };
+      const pmove = {
+        physents: [{}],
+        clearEntities() {
+          return this;
+        },
+        newPlayerMove() {
+          return mover;
+        },
+      };
+      const playerEntity = createMockEntity({ movetype: moveType.MOVETYPE_WALK, solidType: solid.SOLID_SLIDEBOX });
+      playerEntity.deadflag = 0;
+      const playerEdict = createMockEdict(playerEntity);
+      const client = new ServerClient(0, mockedSV());
+      client.cmd = createUserCmd({ msec, impulse: 7 });
+
+      void withMockEngine(defaultMockEngine({
+        pmove,
+        server: { time: 1.0, num_edicts: 2, edicts: [createMockEdict(createMockEntity()), playerEdict], models: [] },
+      }), () => {
+        new ServerClientPhysics(mockedSV())._runSharedPmove(playerEdict, client);
+      });
+
+      return moves;
+    }
+
+    // Client prediction splits a command in halves until a piece is 50 ms or less, the server has to take the same steps.
+    void test('a command of 50 ms or less is one move', () => {
+      assert.deepEqual(movesOfCommand(16), [{ msec: 16, impulse: 7 }]);
+      assert.deepEqual(movesOfCommand(50), [{ msec: 50, impulse: 7 }]);
+    });
+
+    void test('a command between 51 and 100 ms is two halves, the impulse only on the first', () => {
+      assert.deepEqual(movesOfCommand(51), [{ msec: 25.5, impulse: 7 }, { msec: 25.5, impulse: 0 }]);
+      assert.deepEqual(movesOfCommand(100), [{ msec: 50, impulse: 7 }, { msec: 50, impulse: 0 }]);
+    });
+
+    void test('a command above 100 ms is split again until no piece is longer than 50 ms', () => {
+      assert.deepEqual(movesOfCommand(200), [
+        { msec: 50, impulse: 7 }, { msec: 50, impulse: 0 }, { msec: 50, impulse: 0 }, { msec: 50, impulse: 0 },
+      ]);
+      assert.deepEqual(movesOfCommand(101).map((move) => move.msec), [25.25, 25.25, 25.25, 25.25]);
+    });
+
+    void test('a command is clamped to 1 to 200 ms before it is split', () => {
+      assert.equal(movesOfCommand(900).length, 4);
+      assert.deepEqual(movesOfCommand(0), [{ msec: 1, impulse: 7 }]);
+    });
+  });
+
   void describe('physicsClient', () => {
     void test('drains queued walk commands and links once per frame', () => {
       const clientPhysics = new ServerClientPhysics(mockedSV());
