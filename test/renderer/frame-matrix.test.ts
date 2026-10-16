@@ -207,6 +207,25 @@ void describe('the frame of the renderer', () => {
     assert.deepEqual(recording.calls('blitFramebuffer'), []);
   });
 
+  void test('a frame without a world still presents the underwater fog of the last one, without violations', () => {
+    // the last frame that drew the scene, underwater, which drew the turbulent boundary depth the fog samples
+    runFrame({ msaa: 0, depthSamplingPasses: 0, underwaterFog: true, bloom: false, stack: 'none' });
+    assert.deepEqual(Frame.violations, []);
+
+    // a host error disconnects the client: the effects keep the state the last frame preparation gave them, but the
+    // scene and the turbulent boundary are not drawn
+    mock.method(PostProcess, 'resizePingPong', () => {});
+    PostProcess.effects = [new ScratchEffect('underwater-fog', scratch, [PostProcess.depthTexture!, PostProcess.turbulentBoundaryDepthTexture!])];
+    PostProcess.effects[0].active = true;
+
+    Frame.beginFrame();
+    PostProcess.end();
+    PostProcess.resolve(0, 0, 640, 480, PostProcess.colorTexture!);
+
+    assert.deepEqual(Frame.violations, []);
+    assert.deepEqual(Frame.records.slice(0, 2).map((record) => record.name), ['scene of an earlier frame', 'turbulent-boundary of an earlier frame']);
+  });
+
   void test('a multisampled frame copies the depth from the multisampled target and resolves the scene once, at the end', () => {
     runFrame({ msaa: 4, depthSamplingPasses: 2, underwaterFog: false, bloom: false, stack: 'none' });
 

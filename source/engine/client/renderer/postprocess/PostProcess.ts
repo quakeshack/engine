@@ -466,6 +466,10 @@ export default class PostProcess {
   static end(): void {
     if (!PostProcess.active) {
       Frame.reuse(PostProcess.scene!);
+      // The underwater fog of the picture samples the boundary depth of the frame that drew it, and it is still
+      // active when the world is gone (a host error on the way to a disconnect), as the effects are decided by the
+      // frame preparation, which does not run for a frame without a world.
+      Frame.reuse(PostProcess.turbulentBoundary!);
       return;
     }
 
