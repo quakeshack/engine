@@ -7,7 +7,7 @@ import * as Def from '../../source/engine/common/Def.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { PM_TYPE, Pmove } from '../../source/engine/common/Pmove.ts';
 import { ClientPlayerState } from '../../source/engine/client/ClientMessages.ts';
-import { createBrushWorldModel } from '../physics/fixtures.mjs';
+import { createBrushWorldModel } from '../support/fixtures.ts';
 import clientCvars from '../../source/engine/client/ClientCvars.ts';
 import { clientPmove } from '../../source/engine/client/ClientPhysics.ts';
 import { clientStaticState } from '../../source/engine/client/ClientState.ts';

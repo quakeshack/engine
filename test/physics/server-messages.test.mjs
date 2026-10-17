@@ -7,7 +7,7 @@ import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerEntityState } from '../../source/engine/server/ServerEntityState.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { createTestServer, mockedSV } from './fixtures.mjs';
+import { createTestServer, mockedSV } from '../support/fixtures.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 /**

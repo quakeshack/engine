@@ -10,7 +10,7 @@ import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 import { ServerCollision } from '../../source/engine/server/physics/ServerCollision.ts';
 import { CollisionTrace } from '../../source/engine/server/physics/ServerCollisionSupport.ts';
-import { defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource } from '../support/fixtures.ts';
 
 const engineApi = createClientEngineApi();
 

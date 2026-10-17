@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import { BaseDriver, QSocket } from '../../source/engine/network/NetworkDrivers.ts';
 
-import { createTestNetwork } from '../physics/fixtures.mjs';
+import { createTestNetwork } from '../support/fixtures.ts';
 
 class FakeDriver extends BaseDriver {
   constructor(net = createTestNetwork()) {

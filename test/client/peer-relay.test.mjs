@@ -6,7 +6,7 @@ import { ChannelDriver } from '../../source/engine/network/ChannelDriver.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import NET from '../../source/engine/network/Network.ts';
 import { BaseDriver, QSocket } from '../../source/engine/network/NetworkDrivers.ts';
-import { createChannelEndpointPair } from '../physics/fixtures.mjs';
+import { createChannelEndpointPair } from '../support/fixtures.ts';
 
 /**
  * Stands in for the WebRTC driver: remote players are made up by the test.

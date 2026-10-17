@@ -6,7 +6,7 @@ import { ChannelDriver, MessagePortEndpoint } from '../../source/engine/network/
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import NET from '../../source/engine/network/Network.ts';
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
-import { createChannelEndpointPair } from '../physics/fixtures.mjs';
+import { createChannelEndpointPair } from '../support/fixtures.ts';
 
 /**
  * Builds a network layer with a single channel driver, with silent services.

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import Cvar from '../../source/engine/common/Cvar.ts';
-import { defaultMockEngine, withMockEngine } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine } from '../support/fixtures.ts';
 import '../support/consoleBridge.ts';
 
 /** @returns {{ prints: string[], warnings: string[], dprints: string[], Print: (message: string) => void, PrintWarning: (message: string) => void, DPrint: (message: string) => void }} captured console methods */

@@ -8,7 +8,7 @@ import ClientEntityPhysics from '../../source/engine/client/ClientEntityPhysics.
 import GameModule from '../../source/engine/common/GameModule.ts';
 import { BaseClientEdictHandler } from '../../source/shared/ClientEdict.ts';
 
-import { assertNear } from '../physics/fixtures.mjs';
+import { assertNear } from '../support/fixtures.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { createSingleLeafWorld, createTreeModel } from '../support/bspTree.ts';
 import { useHostOf } from '../support/host.ts';

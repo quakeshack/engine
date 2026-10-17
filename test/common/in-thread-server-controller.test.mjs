@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import InThreadServerController from '../../source/engine/server/InThreadServerController.ts';
 
-import { createTestServer, createTestServerHost } from '../physics/fixtures.mjs';
+import { createTestServer, createTestServerHost } from '../support/fixtures.ts';
 
 /**
  * Builds a controller over a test server with the facts the controller mirrors.

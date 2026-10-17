@@ -13,7 +13,7 @@ import { AliasCollisionState, HullCollisionState, MeshCollisionState } from '../
 import { ServerArea } from '../../source/engine/server/physics/ServerArea.ts';
 
 import { createClipTree, createLegacyHull } from '../support/hulls.ts';
-import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource } from './fixtures.mjs';
+import { assertNear, createAxisPlane, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV, mockedCollisionModelSource } from '../support/fixtures.ts';
 import { createModelLoadContext } from '../support/modelContext.ts';
 
 /**

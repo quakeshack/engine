@@ -10,7 +10,7 @@
 - **Category globs**: Keep engine tests grouped by top-level area such as `test/common/`, `test/physics/`, and `test/renderer/`.
 - **Nested test directories**: `npm test`'s glob patterns only reach as many directory levels as `package.json` spells out explicitly (dash has no recursive `**`) — see the `.claude/skills/test-glob-coverage/SKILL.md` skill and verify coverage whenever a new subdirectory level is added under `test/`.
 - **File naming**: `<subsystem>.test.mjs` or `<subsystem>.test.ts`. One file per production class/module.
-- **Shared helpers**: `test/physics/fixtures.mjs` and the typed ones in `test/support/` (no `.test.` — never auto-run). `runConsoleCommand` (`test/support/consoleCommands.ts`) runs a `ConsoleCommand` class with the context a test gives it (`{ client: null }`). `test/support/engineMocks.ts` is where a test puts the mocks it wants the engine's parts to see (see "Mock Pattern" below), and `test/support/consoleBridge.ts` makes the engine's shared console print to a mocked `engineMocks.Con`.
+- **Shared helpers**: `test/support/fixtures.ts` (the engine mocks and the geometry, entity and server factories) and the other typed ones in `test/support/`, among them `cvarStub.ts` for a variable a test only reads (no `.test.` — never auto-run). `runConsoleCommand` (`test/support/consoleCommands.ts`) runs a `ConsoleCommand` class with the context a test gives it (`{ client: null }`). `test/support/engineMocks.ts` is where a test puts the mocks it wants the engine's parts to see (see "Mock Pattern" below), and `test/support/consoleBridge.ts` makes the engine's shared console print to a mocked `engineMocks.Con`.
 - **All files are ESM**. Use `import`/`export` exclusively. New tests and tests of a module that is being converted are written in TypeScript (`<subsystem>.test.ts`, run by `tsx` like the `.mjs` ones, included by the same globs); the rest are `.mjs` until their module's turn.
 - **Only `.test.ts` tests are type-checked.** `npm run typecheck` covers `test/**/*.test.ts` and `test/support/**` (shared typed helpers such as `modelContext.ts`); `.mjs` tests and `source/game/**/test/` are outside `tsconfig.json`, so a test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a signature or a game/engine contract member, search the tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
 
@@ -25,7 +25,7 @@
 
 ### Fixture Conventions
 
-Import shared factories from `test/physics/fixtures.mjs`:
+Import shared factories from `test/support/fixtures.ts`:
 
 - `createMockEntity({ origin, mins, maxs, velocity, ... })` — returns a `MockEntity`.
 - `createMockEdict(entity)` — wraps a `MockEntity` in a `MockEdict` with sensible defaults.
@@ -57,7 +57,7 @@ withMockEngine({
 
 ### JSDoc in Tests
 
-- **Define typedefs** for mock shapes (`MockEntity`, `MockEdict`, `MockEngineConfig`) in `fixtures.mjs`.
+- **Define interfaces** for mock shapes (`MockEntity`, `MockEdict`, `MockEngineConfig`) in `fixtures.ts`.
 - **Never use `@returns {object}`** — always use a specific typedef.
 - Annotate factory parameters with `@param` when the shape is non-obvious.
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import PhysicsMath from '../../source/engine/common/PhysicsMath.ts';
 
-import { assertNear } from '../physics/fixtures.mjs';
+import { assertNear } from '../support/fixtures.ts';
 
 void describe('PhysicsMath', () => {
   void describe('clipVelocity', () => {

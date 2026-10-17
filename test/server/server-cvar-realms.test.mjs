@@ -6,7 +6,7 @@ import WorkerServerController from '../../source/engine/client/WorkerServerContr
 import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
-import { withMockEngine } from '../physics/fixtures.mjs';
+import { withMockEngine } from '../support/fixtures.ts';
 
 /**
  * Runs a console line here; tokenizing it needs the static parser of COM.
@@ -19,7 +19,7 @@ async function typeLine(line) {
   });
 }
 
-const REALM = new URL('./fixtures/cvar-realm.mjs', import.meta.url);
+const REALM = new URL('../support/serverCvarRealm.ts', import.meta.url);
 
 const INIT = Object.freeze({
   searchpaths: [], gamedir: null, game: 'id1', urls: {}, engineVersion: 'test', edition: { registered: true, hipnotic: false, rogue: false }, argv: [], buildConfig: undefined,

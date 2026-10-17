@@ -15,7 +15,7 @@ import {
   createBrushWorldModel,
   createLegacyWorldModel,
   createPmoveBoxEntity,
-} from './fixtures.mjs';
+} from '../support/fixtures.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 /**

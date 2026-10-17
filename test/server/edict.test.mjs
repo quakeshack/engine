@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { ED, ServerEdict } from '../../source/engine/server/Edict.ts';
-import { defaultMockEngine, withMockEngine, mockedSV } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
 
 void describe('ED.Print', () => {
   void test('prints serializable and public entity fields without Progs fielddefs', () => {

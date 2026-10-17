@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
-import type Cvar from '../../source/engine/common/Cvar.ts';
+import { createCvarStub } from '../support/cvarStub.ts';
 import { clientRuntimeState } from '../../source/engine/client/ClientState.ts';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
@@ -49,7 +49,7 @@ void describe('SkyBox', () => {
 
   beforeEach(() => {
     restores = [
-      patchMembers(rendererCvars, { bloomSkyStrength: { value: 0.33 } as unknown as Cvar }),
+      patchMembers(rendererCvars, { bloomSkyStrength: createCvarStub(0.33) }),
     ];
   });
 

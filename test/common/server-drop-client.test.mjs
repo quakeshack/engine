@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import { ServerClient } from '../../source/engine/server/Client.ts';
 
-import { createTestServer } from '../physics/fixtures.mjs';
+import { createTestServer } from '../support/fixtures.ts';
 
 /**
  * Builds a server whose network and system services record what dropping a client does to them.

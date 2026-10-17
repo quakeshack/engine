@@ -13,7 +13,7 @@ import { Serializer } from '../../source/game/id1/helper/MiscHelpers.ts';
 import { cvarFlags } from '../../source/shared/Defs.ts';
 import Vector from '../../source/shared/Vector.ts';
 
-import { defaultMockEngine, withMockEngine, mockedSV } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
 import '../support/consoleBridge.ts';
 import Particles from '../../source/engine/client/renderer/effects/Particles.ts';
 import ClientHost from '../../source/engine/client/ClientHost.ts';

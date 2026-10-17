@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
 
-import { createTestServer, createTestServerHost } from '../physics/fixtures.mjs';
+import { createTestServer, createTestServerHost } from '../support/fixtures.ts';
 
 /** @typedef {import('../../source/engine/server/Server.ts').default} Server */
 /** @typedef {import('../../source/engine/server/ServerHost.ts').default} ServerHost */

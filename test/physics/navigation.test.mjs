@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import Vector from '../../source/shared/Vector.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { Navigation } from '../../source/engine/server/Navigation.ts';
-import { mockedNavigationServices } from './fixtures.mjs';
+import { mockedNavigationServices } from '../support/fixtures.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 const NAV_MONSTER_MINS = new Vector(-16.0, -16.0, -24.0);

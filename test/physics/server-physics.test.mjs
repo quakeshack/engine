@@ -8,7 +8,7 @@ import { ServerCollision } from '../../source/engine/server/physics/ServerCollis
 import { ServerPhysics } from '../../source/engine/server/physics/ServerPhysics.ts';
 import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.ts';
 
-import { assertNear, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, withMockServerPhysics, mockedSV } from './fixtures.mjs';
+import { assertNear, createBoxBrushModel, createBrushWorldModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, withMockServerPhysics, mockedSV } from '../support/fixtures.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 void describe('ServerPhysics', () => {

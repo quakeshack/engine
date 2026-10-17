@@ -8,7 +8,7 @@ import GameModule from '../../source/engine/common/GameModule.ts';
 import Vector from '../../source/shared/Vector.ts';
 import { moveType } from '../../source/shared/Defs.ts';
 
-import { assertNear } from '../physics/fixtures.mjs';
+import { assertNear } from '../support/fixtures.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { createSingleLeafWorld } from '../support/bspTree.ts';
 import { installPageServices } from '../../source/engine/client/PageServices.ts';

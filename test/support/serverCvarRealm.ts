@@ -3,16 +3,24 @@
 // look into this realm and play the part of the game.
 import { parentPort } from 'node:worker_threads';
 
-import Cmd from '../../../source/engine/common/Cmd.ts';
-import Cvar from '../../../source/engine/common/Cvar.ts';
-import { ControlLink } from '../../../source/engine/common/ServerWorkerProtocol.ts';
-import ServerCvarSync from '../../../source/engine/server/ServerCvarSync.ts';
-import ServerWorkerRuntime from '../../../source/engine/server/ServerWorkerRuntime.ts';
+import Cmd from '../../source/engine/common/Cmd.ts';
+import Cvar from '../../source/engine/common/Cvar.ts';
+import { ControlLink, type ControlFromServer, type ControlToServer } from '../../source/engine/common/ServerWorkerProtocol.ts';
+import ServerCvarSync from '../../source/engine/server/ServerCvarSync.ts';
+import ServerWorkerRuntime from '../../source/engine/server/ServerWorkerRuntime.ts';
+
+/** A request the test makes of this realm, to look into it or to play the game. */
+interface Probe {
+  readonly kind: 'get' | 'set' | 'executed';
+  readonly id: number;
+  readonly name: string;
+  readonly value: string;
+}
 
 // A server that is running and has no cheats of its own to report, like the realm of a server worker.
 Cvar.serverState = { isServerActive: () => true, reportedCheats: () => undefined };
 
-parentPort.once('message', ({ port }) => {
+parentPort!.once('message', ({ port }: { port: MessagePort }) => {
   Cmd.Init();
 
   new Cvar('sv_gravity', '800', Cvar.FLAG.SERVER | Cvar.FLAG.ARCHIVE, 'Gravity.');
@@ -21,15 +29,15 @@ parentPort.once('message', ({ port }) => {
   new Cvar('nav_debug_path', '0', Cvar.FLAG.CHEAT);
   new Cvar('developer', '0');
 
-  const executed = [];
-  let runtime = null;
-  const link = new ControlLink(port, (message) => runtime.handle(message));
-  const sync = new ServerCvarSync((message) => link.send(message));
+  const executed: string[] = [];
+  let runtime: ServerWorkerRuntime | null = null;
+  const link = new ControlLink<ControlFromServer, ControlToServer>(port, (message) => { runtime!.handle(message); });
+  const sync = new ServerCvarSync((message) => { link.send(message); });
 
   sync.start();
 
   runtime = new ServerWorkerRuntime({
-    send: (message) => link.send(message),
+    send: (message) => { link.send(message); },
     readState: () => ({ active: true, maxclients: 1, mapname: 'start', paused: false }),
     host: { simulationAllowed: false, StartMap: () => Promise.resolve(true), AnnounceChangelevel() {}, Changelevel: () => Promise.resolve(true), ShutdownServer() {}, getViewthing: () => null, setViewthingFrame() {} },
     console: {
@@ -43,7 +51,7 @@ parentPort.once('message', ({ port }) => {
     isServerActive: () => true,
   });
 
-  port.addEventListener('message', (event) => {
+  port.addEventListener('message', (event: MessageEvent<{ probe?: Probe }>) => {
     const probe = event.data?.probe;
 
     if (probe === undefined) {

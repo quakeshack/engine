@@ -6,7 +6,7 @@ import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
 
-import { createTestServer, createTestServerHost, defaultMockEngine, withMockEngine } from '../physics/fixtures.mjs';
+import { createTestServer, createTestServerHost, defaultMockEngine, withMockEngine } from '../support/fixtures.ts';
 
 /** @typedef {import('../../source/engine/server/Server.ts').default} Server */
 /** @typedef {import('../../source/engine/server/ServerHost.ts').default} ServerHost */

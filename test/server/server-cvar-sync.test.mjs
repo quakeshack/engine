@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import Cvar from '../../source/engine/common/Cvar.ts';
 import ServerCvarSync from '../../source/engine/server/ServerCvarSync.ts';
-import { defaultMockEngine, withMockEngine } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine } from '../support/fixtures.ts';
 
 /**
  * @returns {{ sync: ServerCvarSync, sent: object[] }} the sync and what it sent to the page

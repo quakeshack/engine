@@ -15,7 +15,7 @@ import { ServerMovement } from '../../source/engine/server/physics/ServerMovemen
 import { BlockedFlags, MAX_BUMP_COUNT } from '../../source/engine/server/physics/Defs.ts';
 import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
-import { mockedSV, mockedCollisionModelSource } from './fixtures.mjs';
+import { mockedSV, mockedCollisionModelSource } from '../support/fixtures.ts';
 import { createModelLoadContext } from '../support/modelContext.ts';
 import { createClipTree, createLegacyHull, createRoomHull } from '../support/hulls.ts';
 import { setBspTree } from '../support/bspTree.ts';

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import { GameFlavors } from '../../source/engine/common/GameApiSupport.ts';
 import { ServerEngineAPI } from '../../source/engine/server/ServerEngineAPI.ts';
-import { createTestServer } from '../physics/fixtures.mjs';
+import { createTestServer } from '../support/fixtures.ts';
 
 void describe('ServerEngineAPI', () => {
   void describe('ownership', () => {

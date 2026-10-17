@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import Vector from '../../source/shared/Vector.ts';
 import { ServerEdict } from '../../source/engine/server/Edict.ts';
 
-import { defaultMockEngine, withMockEngine, mockedSV } from './fixtures.mjs';
+import { defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
 
 void describe('ServerEdict', () => {
   void test('keeps getClient slot mapping separate from isClient semantics', () => {

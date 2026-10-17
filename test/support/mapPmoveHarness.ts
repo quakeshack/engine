@@ -4,35 +4,49 @@ import path from 'node:path';
 import COMClass from '../../source/engine/common/Com.ts';
 import Mod from '../../source/engine/common/Mod.ts';
 import { PMF, Pmove } from '../../source/engine/common/Pmove.ts';
+import { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { engineMocks } from '../support/engineMocks.ts';
+import { engineMocks } from './engineMocks.ts';
 
-/**
- * @typedef {Record<string, string>} EntityKV
+/*
+ * A command line tool, not a test: it loads a BSP, drops a player on a spawn point and prints how the player
+ * moves, one JSON row per frame, so a collision repro map can be inspected without a game.
+ *
+ *   npx tsx test/support/mapPmoveHarness.ts --map=maps/test_clip.bsp --game=id1 --frames=80
+ *
+ * Options: --map, --game, --spawn, --orientation-target, --frames, --msec, --forwardmove, --probe-distance.
  */
 
-/**
- * @typedef {object} HarnessOptions
- * @property {string} mapName BSP path relative to the selected game directory.
- * @property {string} gameDir Game directory used to resolve the BSP and assets.
- * @property {string} spawnClassname Spawn classname used to place the probe entity.
- * @property {string} orientationTargetname Optional targetname used to derive the probe yaw.
- * @property {number} frames Number of movement frames to simulate.
- * @property {number} msec Frame duration in milliseconds for each simulated command.
- * @property {number} forwardmove Forward movement command applied each frame.
- * @property {number} probeDistance Distance used for optional forward probe traces.
- */
+type EntityKV = Record<string, string>;
+
+interface HarnessOptions {
+  /** BSP path relative to the selected game directory. */
+  mapName: string;
+  /** Game directory used to resolve the BSP and assets. */
+  gameDir: string;
+  /** Spawn classname used to place the probe entity. */
+  spawnClassname: string;
+  /** Optional targetname used to derive the probe yaw. */
+  orientationTargetname: string;
+  /** Number of movement frames to simulate. */
+  frames: number;
+  /** Frame duration in milliseconds for each simulated command. */
+  msec: number;
+  /** Forward movement command applied each frame. */
+  forwardmove: number;
+  /** Distance used for optional forward probe traces. */
+  probeDistance: number;
+}
 
 /**
  * Parse the BSP entity lump using the engine's token parser.
- * @param {string} text entity lump text
- * @returns {EntityKV[]} parsed entities
+ * @param text Entity lump text.
+ * @returns The parsed entities.
  */
-function parseEntities(text) {
-  /** @type {EntityKV[]} */
-  const entities = [];
-  let data = text;
+function parseEntities(text: string): EntityKV[] {
+  const entities: EntityKV[] = [];
+  let data: string | null = text;
 
   while (data !== null) {
     let parsed = COMClass.Parse(data);
@@ -46,16 +60,23 @@ function parseEntities(text) {
       continue;
     }
 
-    /** @type {EntityKV} */
-    const entity = {};
+    const entity: EntityKV = {};
 
     while (true) {
+      if (data === null) {
+        throw new Error('Entity lump ends inside an entity');
+      }
+
       parsed = COMClass.Parse(data);
       data = parsed.data;
 
       if (parsed.token === '}') {
         entities.push(entity);
         break;
+      }
+
+      if (data === null) {
+        throw new Error('Entity lump ends inside an entity');
       }
 
       const key = parsed.token;
@@ -70,22 +91,22 @@ function parseEntities(text) {
 
 /**
  * Convert a Quake origin string into a Vector.
- * @param {string} origin entity origin string
- * @returns {Vector} parsed vector
+ * @param origin Entity origin string.
+ * @returns The parsed vector.
  */
-function parseOrigin(origin) {
+function parseOrigin(origin: string): Vector {
   const components = origin.split(/\s+/).map(Number);
   return new Vector(components[0], components[1], components[2]);
 }
 
 /**
  * Resolve the first entity matching the predicate or throw a clear error.
- * @param {EntityKV[]} entities parsed entity list
- * @param {(entity: EntityKV) => boolean} predicate entity predicate
- * @param {string} label entity description for error messages
- * @returns {EntityKV} matching entity
+ * @param entities Parsed entity list.
+ * @param predicate Entity predicate.
+ * @param label Entity description for error messages.
+ * @returns The matching entity.
  */
-function requireEntity(entities, predicate, label) {
+function requireEntity(entities: EntityKV[], predicate: (entity: EntityKV) => boolean, label: string): EntityKV {
   const entity = entities.find(predicate);
 
   if (entity === undefined) {
@@ -99,12 +120,12 @@ function requireEntity(entities, predicate, label) {
  * Resolve the movement yaw for the harness.
  * Prefer the explicit spawn angle when present so authored repro maps can
  * encode the exact forward vector directly on the spawn.
- * @param {EntityKV} spawn spawn entity
- * @param {EntityKV[]} entities parsed entity list
- * @param {string} orientationTargetname targetname used for legacy direction markers
- * @returns {{ yaw: number, orientationOrigin: Vector|null, forward: Vector }} yaw and derived forward vector
+ * @param spawn Spawn entity.
+ * @param entities Parsed entity list.
+ * @param orientationTargetname Targetname used for legacy direction markers.
+ * @returns The yaw and the derived forward vector.
  */
-function resolveYaw(spawn, entities, orientationTargetname) {
+function resolveYaw(spawn: EntityKV, entities: EntityKV[], orientationTargetname: string): { yaw: number; orientationOrigin: Vector | null; forward: Vector } {
   if (spawn.angle !== undefined) {
     const yaw = Number(spawn.angle);
     const radians = yaw * Math.PI / 180;
@@ -134,11 +155,10 @@ function resolveYaw(spawn, entities, orientationTargetname) {
 
 /**
  * Parse simple `--name=value` command line options.
- * @returns {HarnessOptions} normalized harness options
+ * @returns The normalized harness options.
  */
-function parseOptions() {
-  /** @type {HarnessOptions} */
-  const options = {
+function parseOptions(): HarnessOptions {
+  const options: HarnessOptions = {
     mapName: 'maps/test_clip.bsp',
     gameDir: 'id1',
     spawnClassname: 'info_player_start',
@@ -183,6 +203,8 @@ function parseOptions() {
       case 'probe-distance':
         options.probeDistance = Number(value);
         break;
+      default:
+        break;
     }
   }
 
@@ -190,30 +212,29 @@ function parseOptions() {
 }
 
 /**
- * Install enough registry state to load BSPs in a dedicated-style harness.
- * @param {string} baseDir active game data directory
+ * Install enough engine state to load BSPs in a dedicated-style harness.
+ * @param baseDir Active game data directory.
  */
-function installRegistry(baseDir) {
-  engineMocks.Con = {
-    Print(...args) {
+function installEngine(baseDir: string): void {
+  const con = {
+    Print(...args: unknown[]) {
       console.log(...args);
     },
     DPrint() {},
-    PrintWarning(...args) {
+    PrintWarning(...args: unknown[]) {
       console.warn(...args);
     },
-    PrintError(...args) {
+    PrintError(...args: unknown[]) {
       console.error(...args);
     },
-    PrintSuccess(...args) {
+    PrintSuccess(...args: unknown[]) {
       console.log(...args);
     },
   };
-  engineMocks.Mod = Mod;
-  engineMocks.COM = {
+  const files = {
     Parse: COMClass.Parse,
     ParseEntityLump: COMClass.ParseEntityLump,
-    async LoadFile(name) {
+    async LoadFile(name: string) {
       const resolved = path.join(baseDir, name);
 
       try {
@@ -223,7 +244,7 @@ function installRegistry(baseDir) {
         return null;
       }
     },
-    async LoadTextFile(name) {
+    async LoadTextFile(name: string) {
       const resolved = path.join(baseDir, name);
 
       try {
@@ -234,24 +255,29 @@ function installRegistry(baseDir) {
     },
   };
 
-  Mod.Init({ files: engineMocks.COM, con: engineMocks.Con, loadRenderData: false });
+  engineMocks.Con = con;
+  engineMocks.Mod = Mod;
+  engineMocks.COM = files;
+
+  Mod.Init({ files, con, loadRenderData: false });
 }
 
 /**
- * @param {number} value numeric value
- * @returns {number} rounded value for compact output
+ * Round a number for compact output.
+ * @param value The number.
+ * @returns The rounded number.
  */
-function round(value) {
+function round(value: number): number {
   return Number(value.toFixed(3));
 }
 
 const options = parseOptions();
 const baseDir = path.resolve(`./data/${options.gameDir}`);
 
-installRegistry(baseDir);
+installEngine(baseDir);
 
-const model = await Mod.ForNameAsync(options.mapName, true);
-const entities = parseEntities(model.entities);
+const model = await Mod.ForNameAsync(options.mapName, true) as BrushModel;
+const entities = parseEntities(model.entities!);
 const spawn = requireEntity(
   entities,
   (entity) => entity.classname === options.spawnClassname,

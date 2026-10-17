@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import { ServerClient } from '../../source/engine/server/Client.ts';
 
-import { createTestServer } from '../physics/fixtures.mjs';
+import { createTestServer } from '../support/fixtures.ts';
 
 /** @typedef {import('../../source/engine/server/Server.ts').default} Server */
 

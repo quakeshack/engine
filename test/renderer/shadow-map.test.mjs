@@ -5,7 +5,7 @@ import GL from '../../source/engine/client/GL.ts';
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import Vector from '../../source/shared/Vector.ts';
-import { assertNear } from '../physics/fixtures.mjs';
+import { assertNear } from '../support/fixtures.ts';
 import { useClientStateOf } from '../support/clientState.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 import { createFakeRenderTarget } from '../support/renderTargets.ts';

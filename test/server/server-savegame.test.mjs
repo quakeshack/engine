@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import * as Def from '../../source/engine/common/Def.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import ServerSavegame from '../../source/engine/server/ServerSavegame.ts';
-import { createTestServer } from '../physics/fixtures.mjs';
+import { createTestServer } from '../support/fixtures.ts';
 
 /**
  * Builds a server with one connected player, ready to be saved.

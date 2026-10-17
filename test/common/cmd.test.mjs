@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import COM from '../../source/engine/common/Com.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
-import { defaultMockEngine, withMockEngine } from '../physics/fixtures.mjs';
+import { defaultMockEngine, withMockEngine } from '../support/fixtures.ts';
 import '../support/consoleBridge.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
@@ -46,7 +46,7 @@ function resetCommandState() {
 /**
  * @param {ConsoleCapture} consoleCapture captured console sinks
  * @param {{ frametime?: number }} [hostOverrides] host registry overrides
- * @returns {import('../physics/fixtures.mjs').MockEngineConfig & { Host: { frametime: number } }} mock registry config
+ * @returns {import('../support/fixtures.ts').MockEngineConfig & { Host: { frametime: number } }} mock registry config
  */
 function createMockEngineConfig(consoleCapture, hostOverrides = {}) {
   return {

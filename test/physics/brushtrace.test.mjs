@@ -11,7 +11,7 @@ import {
   createAxisPlane,
   createBoxBrushModel,
   createBrushWorldModel,
-} from './fixtures.mjs';
+} from '../support/fixtures.ts';
 import { setBspTree } from '../support/bspTree.ts';
 
 /**

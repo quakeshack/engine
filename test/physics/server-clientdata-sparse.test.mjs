@@ -9,7 +9,7 @@ import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerMessages } from '../../source/engine/server/ServerMessages.ts';
 import { SzBuffer } from '../../source/engine/network/MSG.ts';
 import { PM_TYPE } from '../../source/engine/common/Pmove.ts';
-import { mockedSV } from './fixtures.mjs';
+import { mockedSV } from '../support/fixtures.ts';
 import { engineMocks } from '../support/engineMocks.ts';
 
 /**

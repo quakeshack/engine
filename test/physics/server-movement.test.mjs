@@ -5,7 +5,7 @@ import Vector from '../../source/shared/Vector.ts';
 import { content, flags, solid } from '../../source/shared/Defs.ts';
 import { ServerMovement } from '../../source/engine/server/physics/ServerMovement.ts';
 
-import { assertNear, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV } from './fixtures.mjs';
+import { assertNear, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
 
 describe('ServerMovement', () => {
   describe('checkBottom', () => {

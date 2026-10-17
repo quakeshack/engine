@@ -5,7 +5,7 @@ import COM from '../../source/engine/common/Com.ts';
 import Cmd from '../../source/engine/common/Cmd.ts';
 import Cvar from '../../source/engine/common/Cvar.ts';
 import ServerRealm from '../../source/engine/server/ServerRealm.ts';
-import { withMockEngine } from '../physics/fixtures.mjs';
+import { withMockEngine } from '../support/fixtures.ts';
 
 /**
  * Builds a realm with a clock a test controls.

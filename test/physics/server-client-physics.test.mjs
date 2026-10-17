@@ -7,7 +7,7 @@ import { UserCmd } from '../../source/engine/network/Protocol.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import { ServerClientPhysics } from '../../source/engine/server/physics/ServerClientPhysics.ts';
 
-import { createBoxBrushModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV } from './fixtures.mjs';
+import { createBoxBrushModel, createMockEdict, createMockEntity, defaultMockEngine, withMockEngine, mockedSV } from '../support/fixtures.ts';
 
 /**
  * @param {{msec?: number, forwardmove?: number, sidemove?: number, upmove?: number, impulse?: number}} [options]

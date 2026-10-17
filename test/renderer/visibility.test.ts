@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import rendererCvars from '../../source/engine/client/renderer/resources/RendererCvars.ts';
 import Camera from '../../source/engine/client/renderer/scene/Camera.ts';
 import Visibility from '../../source/engine/client/renderer/scene/Visibility.ts';
-import type Cvar from '../../source/engine/common/Cvar.ts';
+import { createCvarStub } from '../support/cvarStub.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import type { BrushModel } from '../../source/engine/common/model/BSP.ts';
 import { WorldRenderState } from '../../source/engine/common/model/WorldRenderState.ts';
@@ -81,7 +81,7 @@ void describe('Visibility.MarkLeafs', () => {
     Visibility.viewleaf = 1;
     Visibility.oldviewleaf = null;
     Visibility.skyVisible = false;
-    rendererCvars.novis = { value: 0 } as unknown as Cvar;
+    rendererCvars.novis = createCvarStub(0);
     install();
   });
 
@@ -109,7 +109,7 @@ void describe('Visibility.MarkLeafs', () => {
   });
 
   void test('marks again every frame with r_novis set, as the visible set is not cached then', () => {
-    rendererCvars.novis = { value: 1 } as unknown as Cvar;
+    rendererCvars.novis = createCvarStub(1);
 
     Visibility.MarkLeafs();
     Visibility.MarkLeafs();
@@ -138,7 +138,7 @@ void describe('Visibility.MarkLeafs', () => {
   });
 
   void test('reveals every leaf when r_novis is 1', () => {
-    rendererCvars.novis = { value: 1 } as unknown as Cvar;
+    rendererCvars.novis = createCvarStub(1);
 
     Visibility.MarkLeafs();
 

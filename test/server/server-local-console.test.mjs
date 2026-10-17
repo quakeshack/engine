@@ -7,7 +7,7 @@ import Cvar from '../../source/engine/common/Cvar.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 import ServerLocalConsole from '../../source/engine/server/ServerLocalConsole.ts';
 import { QSocket } from '../../source/engine/network/NetworkDrivers.ts';
-import { withMockEngine } from '../physics/fixtures.mjs';
+import { withMockEngine } from '../support/fixtures.ts';
 
 /**
  * @param {string} address address of the connection

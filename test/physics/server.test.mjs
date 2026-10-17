@@ -5,7 +5,7 @@ import Vector from '../../source/shared/Vector.ts';
 import * as Protocol from '../../source/engine/network/Protocol.ts';
 import { ServerClient } from '../../source/engine/server/Client.ts';
 
-import { createMockEdict, createMockEntity, createTestServer } from './fixtures.mjs';
+import { createMockEdict, createMockEntity, createTestServer } from '../support/fixtures.ts';
 
 /** @typedef {import('../../source/engine/server/Server.ts').default} Server */
 

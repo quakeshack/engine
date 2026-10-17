@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 
 import Vector from '../../source/shared/Vector.ts';
-import type Cvar from '../../source/engine/common/Cvar.ts';
+import { createCvarStub } from '../support/cvarStub.ts';
 import * as Def from '../../source/engine/common/Def.ts';
 import { eventBus } from '../../source/engine/common/EventBus.ts';
 import { publishGlReady } from '../support/glEvents.ts';
@@ -48,7 +48,7 @@ void describe('DynamicLights.RenderCoronas', () => {
     publishGlReady();
 
     restores = [
-      patchMembers(rendererCvars, { flashblend: { value: 1 } as unknown as Cvar }),
+      patchMembers(rendererCvars, { flashblend: createCvarStub(1) }),
       patchMembers(clientRuntimeState, {
         time: 10,
         clientEntities: { dlights: lights },
@@ -133,7 +133,7 @@ void describe('DynamicLights.RenderCoronas', () => {
   });
 
   void test('draws and tints nothing with flashblend off', () => {
-    rendererCvars.flashblend = { value: 0 } as unknown as Cvar;
+    rendererCvars.flashblend = createCvarStub(0);
     lights[0] = { radius: 200, die: 100, origin: new Vector(10, 0, 0) };
 
     DynamicLights.RenderCoronas();

@@ -6,7 +6,7 @@ import { content, solid } from '../../source/shared/Defs.ts';
 import { ClientEdict } from '../../source/engine/client/ClientEntities.ts';
 import ClientCollision from '../../source/engine/client/ClientCollision.ts';
 
-import { assertNear, createBoxBrushModel, createBrushWorldModel, createLegacyWorldModel } from '../physics/fixtures.mjs';
+import { assertNear, createBoxBrushModel, createBrushWorldModel, createLegacyWorldModel } from '../support/fixtures.ts';
 
 /**
  * Creates a client collision whose model source only knows the given client world.

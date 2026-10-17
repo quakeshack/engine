@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import ShadowMap from '../../source/engine/client/renderer/lighting/ShadowMap.ts';
 import type { GLCubeTexture, GLRenderTexture } from '../../source/engine/client/GL.ts';
-import type Cvar from '../../source/engine/common/Cvar.ts';
+import { createCvarStub } from '../support/cvarStub.ts';
 
 const depth = { name: 'depth' } as unknown as GLRenderTexture;
 const dummy = { name: 'dummy' } as unknown as GLRenderTexture;
@@ -21,7 +21,7 @@ void describe('ShadowMap active textures', () => {
   };
 
   beforeEach(() => {
-    ShadowMap.enabled = { value: 1 } as unknown as Cvar;
+    ShadowMap.enabled = createCvarStub(1);
     ShadowMap.topdownDepthTexture = depth;
     ShadowMap.topdownDummyTexture = dummy;
     ShadowMap.pointDepthCubes = cubes;
@@ -44,7 +44,7 @@ void describe('ShadowMap active textures', () => {
     });
 
     void test('is the dummy while shadows are off', () => {
-      ShadowMap.enabled = { value: 0 } as unknown as Cvar;
+      ShadowMap.enabled = createCvarStub(0);
 
       assert.equal(ShadowMap.getActiveTopDownTexture(), dummy);
     });
