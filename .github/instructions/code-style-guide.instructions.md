@@ -1,138 +1,45 @@
-Here is the code style guide for the QuakeShack Engine.
-Please follow these rules when writing or modifying code.
-
-## JSDoc Documentation
-
-### General Rules
-
-1.  **Always use JSDoc** for class properties instead of inline comments.
-2.  **No `@returns {void}` annotations** - It's implied.
-3.  **Avoid vague types** - Never use `unknown`, `*`, or `any`.
-    - Example: Use `ArrayBuffer` instead of `any` for data.
-4.  **No generic `object` type** - Create proper typedefs instead.
-    - Example: Define `WorldspawnInfo` as `Record<string, string>` instead of just `object`.
-    - In case an object is not really defined it, consider defining it.
-5.  **Use specific types from imports**.
-6.  **Use `@type` for variable declarations** when the type cannot be inferred
+Code style for the QuakeShack Engine. TypeScript specifics (types, modifiers, null handling, JSDoc) are in `typescript-port.instructions.md`.
 
 ## Reaching Other Modules
 
-There is no registry. A module gets what it needs in one of these ways, in this order of preference:
+A module gets what it needs in one of these ways, in this order of preference:
 
-- **Import it.** `Con`, `Mod`, `Host`, `Cmd`, `Cvar`, `CL`, `M`, `R`, `GL`, `Draw`, `IN`, `Key`, `S`, `Sys` and the client state (`clientRuntimeState`, `clientStaticState`) are imported directly. Plain ES imports, no destructuring prolog, no `registry.frozen`. A cycle between client modules is fine as long as no module builds anything of another module while it is being evaluated; when one has to, move that code into an `Init()` or a lazy getter instead of reordering imports.
+- **Import it.** `Con`, `Mod`, `Host`, `Cmd`, `Cvar`, `CL`, `M`, `R`, `GL`, `Draw`, `IN`, `Key`, `S`, `Sys` and the client state (`clientRuntimeState`, `clientStaticState`) are imported directly. A cycle between client modules is fine as long as no module builds anything of another module while it is being evaluated; when one has to, move that code into an `Init()` or a lazy getter instead of reordering imports.
 - **Page services.** What only the composition root can build (the page's `COM`, `NET`, the client engine API, `urls`, `buildConfig`) is installed once into `source/engine/client/PageServices.ts` by `bootstrap/createBrowserClient.ts` and imported from there as live bindings (`import { com, net } from './PageServices.ts'`).
 - **Injection.** Anything that exists per realm or per server (`Server`, `ServerEngineAPI`, `ServerHost`, `Navigation`, the network layer, ...) is a class that receives its collaborators through its constructor, built by the composition root of its realm (`createBrowserClient`, `createDedicatedServer`, `createServerWorker`). Do not carry singletons around in context objects.
 - **Hooks.** A shared singleton that must reach into a realm-specific part gets an interface and an assignable member (`Cmd.files`, `Cmd.forwardToServer`, `Cvar.serverState`, `Host.files`, ...) that the composition root fills in.
 
-Code under `network/` and `server/` must not import `client/`, and the import closure of the server worker may contain only the few client data classes that model loading needs (`test/common/engine-boundaries.test.ts` enforces both); that is what keeps the server worker bundle free of client code.
+Code under `network/` and `server/` must not import `client/`, and the import closure of the server worker may contain only the few client data classes that model loading needs (`test/common/engine-boundaries.test.ts` enforces both).
 
-### Global GL Context
+## Respect boundaries of abstraction
 
-- Use the global `gl` (accessible via `GL.gl` after `'gl.ready'`) instead of passing it as a parameter.
+- **Do not reach into another class's private or protected members**, and do not do its work from outside. If it lacks a method you need, add one.
+- **A public field is not an invitation to reach in.** An internal `Map` or array that is public only so the owning class's tests can drive it is still not part of another class's contract. Callers use a method that states the behavior (`M.menuStack.unregister(name)`, `M.menuStack.getPreviousPage()`), not `M.menuStack.pages.delete(name)` or `M.menuStack.stack[...]`.
 
-### Event Bus Usage
+## Conventions
 
-Use `eventBus` for **business logic events and lifecycle hooks**.
+- **Global GL context**: use the global `gl` (`GL.gl` after `'gl.ready'`) instead of passing it as a parameter.
+- **Event bus**: use `eventBus` for business logic events and lifecycle hooks (`'gl.ready'`, `'game.start'`, `'player.spawn'`), not for direct calls, return values, tight coupling or hot paths. Rules and documentation duty: `event-bus.instructions.md`.
+- **No `index.ts` barrel files.** Import directly (`./renderer/models/BrushModelRenderer.ts`, not `./renderer`).
+- **Files**: PascalCase for classes (`BrushModelRenderer.ts`), camelCase for utilities (`modelUtils.ts`), always `.ts`.
+- **Names**: descriptive camelCase, PascalCase classes, UPPER_CASE constants, no abbreviations (`model` or `clmodel`, not `m`; `entity`, not `ent` or `e`). Prefix an intentionally unused parameter with `_`.
+- **Language**: American English.
 
-- **Good Candidates:** `'gl.ready'`, `'game.start'`, `'model.loaded'`, `'player.spawn'`, `'frame.start'`.
-- **Poor Candidates:** Direct function calls, return values needed, tight coupling, hot paths.
-- All events are documented in `docs/events.md`.
+## General Style
 
-## File Organization
-
-### No index.ts Files
-
-- **Avoid barrel exports**. Use direct imports instead.
-- Example: Import `BrushModelRenderer` from `./renderer/models/BrushModelRenderer.ts`, not `./renderer`.
-
-## General Style Guidelines
-
-- **Use `const` and `let`** instead of `var`.
-- **Use camelCase** for variables and functions, PascalCase for classes.
-- **Use descriptive names** for variables and functions.
-- **Keep functions small** and focused on a single task or a single responsibility.
-- **Prefer function declarations** for helper functions when arrow-function semantics are not needed.
-- **Use early returns** to reduce nesting and improve readability.
-- **Avoid deep nesting**; refactor into helper functions if necessary.
-- **Never mutate function parameters**; create new variables instead.
-- **Always put code blocks in braces** (`{}`), even for single statements.
-- **Do not be too expressive with syntax**; prefer clarity and consistency over cleverness.
-- **Use template literals** for string concatenation when it improves readability.
-- **Avoid unnecessary boolean checks**, e.g. `if (isReady) { ... }` instead of `if (isReady === true) { ... }`.
-- **Avoid standalone functions**, group them into classes when appropriate (i.e. more than three) and use static methods if they do not need to access instance state.
-
-### Control Statement Formatting
-
-When using control statements (`if`, `for`, `while`, etc.) with braces, always place the opening brace on the same line as the statement, but put the code block on the following line(s). This improves readability and follows standard formatting conventions.
-
-```typescript
-// ❌ Never
-if (!entity) { return; }
-
-// ✅ Always
-if (!entity) {
-  return;
-}
-```
-
-The `quakeshack/block-on-own-lines` rule (`eslint.rules.mjs`) enforces it for `if`/`else`, the loops and `try`/`catch`/`finally`, and `eslint --fix` (`npm run lint`) rewrites a violation. A one-line arrow function or getter is not a control statement and stays as it is.
-
-### Prefer `switch` over `if`/`else if` chains
-
-When branching on the same discriminant value (a string literal union, an enum, a `typeof`/`type` tag, etc.), use a `switch` statement instead of an `if`/`else if`/`else if` chain. A `switch` makes the shared discriminant and the exhaustive set of branches visually obvious at a glance, whereas an `if`/`else if` chain hides that structure and invites a mismatched condition on one of the branches.
-
-```typescript
-// ❌ Avoid this — repeats the discriminant on every branch, easy to typo one
-if (status === 'connecting') {
-  showMessage('Finding sessions...');
-} else if (status === 'reconnecting') {
-  showMessage('Unable to fetch sessions');
-} else if (status === 'unavailable') {
-  showMessage('Unable to fetch sessions');
-  logUnavailable();
-}
-
-// ✅ Prefer this — the discriminant appears once, branches are exhaustive-checkable
-switch (status) {
-  case 'connecting':
-    showMessage('Finding sessions...');
-    break;
-  case 'reconnecting':
-    showMessage('Unable to fetch sessions');
-    break;
-  case 'unavailable':
-    showMessage('Unable to fetch sessions');
-    logUnavailable();
-    break;
-  default:
-    break;
-}
-```
-
-This does not apply to short-circuit guards, early returns, or branches that each test a genuinely different condition (not the same discriminant) — those stay as `if`/`else`.
+- `const` and `let`, never `var`. Prefer function declarations for helpers unless arrow-function semantics are needed; `const foo = () => ...` only then.
+- Keep functions small and single-purpose. Use early returns, avoid deep nesting, never mutate parameters.
+- Always put blocks in braces. The opening brace stays on the statement's line and the body goes on the following lines; the `quakeshack/block-on-own-lines` ESLint rule enforces it for `if`/`else`, the loops and `try`/`catch`/`finally`, and `eslint --fix` rewrites a violation. A one-line arrow function or getter is not a control statement.
+- Skip needless boolean comparisons (`if (isReady)`, not `if (isReady === true)`). Do not be clever with syntax.
+- **Prefer `switch` over an `if`/`else if` chain** when branching on one discriminant (a literal union, an enum, a type tag). The discriminant appears once and the set of branches is visible; end with `default: break;`. Short-circuit guards, early returns and branches that test different conditions stay as `if`.
+- Avoid standalone functions: group more than three into a class with static methods.
+- Use `for...of` over `forEach`; use `{}` over `Map` for a few string keys that are never added or removed.
 
 ### Clean up global objects
 
-There are some old-style global objects, try to avoid them, do not replicate them. It’s better to create a class and move methods to it as static members, same applies to variables and properties.
+Old-style global objects (`const GL = {...}; GL.BindProgram = function ...`) are not to be replicated. Use a class with static members for the state and the methods:
 
-Example:
-
-```javascript
-
-// Avoid this:
-
-const GL = {
-  programs: [],
-  currentProgram: null,
-};
-
-GL.BindProgram = function (program) {
-  GL.currentProgram = program;
-  gl.useProgram(program);
-};
-
-// Better:
-
+```typescript
 class GL {
   static programs = [];
   static currentProgram = null;
@@ -142,175 +49,30 @@ class GL {
     gl.useProgram(program);
   }
 }
-
-// Never this:
-
-function GL_BindProgram(program) {
-  GL.currentProgram = program;
-  gl.useProgram(program);
-}
-
-class GL {
-  static programs = [];
-  static currentProgram = null;
-
-  static BindProgram(program) {
-    GL_BindProgram(program);
-  }
-}
-
 ```
 
-- **Never do indirections through functions** for simple operations. It’s better to call the method directly, even if it’s a static method on a class, than to have an extra function that just calls it. Also not the other way around.
-- **Avoid unnecessary global objects**. If you need a namespace, use a class with static members instead of a plain object. This allows for better organization and potential future expansion.
-
-**On `this.foo` vs. `ClassName.foo` mixing within a static-facade class:** some existing classes (`CL.ts`, `ClientHost.ts`) mix both styles for self-reference, while fully-split ones (`Camera.ts`, `ScreenFrame.ts`) use only `ClassName.foo`. This is leftover history, not carelessness — these subsystems used to live in one large legacy file before being split into smaller collaborator classes, and code untouched since that split still uses the old `ClassName.` style while code touched during/after it drifted to `this.`. When cleaning up a static facade class, standardize on `ClassName.foo` (matching `Camera.ts`/`ScreenFrame.ts`) rather than converting to `this.` — a quick `grep -c "this\.[a-zA-Z]"` vs. `grep -c "ClassName\.[a-zA-Z]"` on the file shows how mixed it currently is.
-
-## Method Parameters
-
-### Unused Parameters
-
-- **Use `_` prefix** for parameters that are intentionally unused (e.g., in interface implementations).
-
-## Type Safety
-
-### Import Paths
-
-- **Verify import paths are correct** and relative to the current file.
-
-### Return Types
-
-- **Know your types**. Example: `Vector.toRotationMatrix()` returns `number[]`, not `Float32Array`.
-
-### Use of `null` and `undefined`
-
-- **Prefer `null` over `undefined`** for missing values.
-- Unless `null` already has a different meaning in the context, then use `undefined` for missing values.
-
-### `null` initializations
-
-- **Explicitly initialize variables to `null`** when they will later hold an object reference.
-  - In `.ts` files: `let model: BaseModel | null = null;`
-  - In `.mjs` files: `let model = /** @type {BaseModel} */ (null);`
-
-### Empty Arrays
-
-- **Initialize empty arrays with `[]`** instead of `new Array()`.
-  - In `.ts` files: `const vertices: number[] = [];`
-  - In `.mjs` files: `let vertices = /** @type {number[]} */ ([]);`
-
-## Class and Interface Design
-
-### Abstract Base Classes
-
-- Throw `NotImplementedError` for abstract methods.
-- Add unreachable return statements if needed for type inference.
-
-### Protected and Private Methods
-
-- **Use `_` prefix** for protected methods. Add `@protected` JSDoc tag.
-- **Use `#` prefix** for private methods.
-- In `.ts` files, prefer native `protected` / `private` keywords. See `typescript-port.instructions.md`.
+- **No indirection through a function** for a simple operation (a `GL_BindProgram()` that the static method merely calls), and not the other way around either.
+- **In a static facade class refer to yourself as `ClassName.foo`, not `this.foo`** (`Camera.ts` and `ScreenFrame.ts` do; `CL.ts` and `ClientHost.ts` still mix both because they were once one monolithic file). When tidying such a class, standardize on `ClassName.foo`; `grep -c "this\.[a-zA-Z]"` against `grep -c "ClassName\.[a-zA-Z]"` shows how mixed it is.
 
 ### Console commands and variables
 
-- **A command that does not use its context** is a static method declared `this: void` (`static Quit_f(this: void): void`), so
-  registering `Cmd.AddCommand('quit', ClientHost.Quit_f)` does not trip `@typescript-eslint/unbound-method`.
-- **A command that does** (`this.client`, `this.forward()`, `this.command`) is a `ConsoleCommand` subclass, the way
-  `Cmd.Exec_f` and `ClientHost.Savegame_f` are: `static Foo_f = class FooConsoleCommand extends ConsoleCommand { override run(...) {} }`.
-  A `this: ConsoleCommand` method is flagged at every registration. A test runs the class with `runConsoleCommand`
-  (`test/support/consoleCommands.ts`) or through `Cmd.ExecuteString`.
-- **Variables live with the class that reads them.** A group of variables with several readers is a `<Group>Cvars`
-  class (`ClientCvars`, `ViewCvars`, `RendererCvars`) with a `register()` method that creates them in the order
-  `cvarlist` shows them; its owner calls `register()` once at startup. Such a file imports `Cvar` and nothing that
-  could import it back.
+- **A command that does not use its context** is a static method declared `this: void` (`static Quit_f(this: void): void`), so `Cmd.AddCommand('quit', ClientHost.Quit_f)` does not trip `@typescript-eslint/unbound-method`.
+- **A command that does** (`this.client`, `this.forward()`, `this.command`) is a `ConsoleCommand` subclass, the way `Cmd.Exec_f` and `ClientHost.Savegame_f` are: `static Foo_f = class FooConsoleCommand extends ConsoleCommand { override run(...) {} }`. A `this: ConsoleCommand` method is flagged at every registration. A test runs the class with `runConsoleCommand` (`test/support/consoleCommands.ts`) or through `Cmd.ExecuteString`.
+- **Variables live with the class that reads them.** A group of variables with several readers is a `<Group>Cvars` class (`ClientCvars`, `ViewCvars`, `RendererCvars`) with a `register()` method that creates them in the order `cvarlist` shows them; its owner calls `register()` once at startup. Such a file imports `Cvar` and nothing that could import it back.
 
-### Respect boundaries of abstraction
+## Design
 
-- **Avoid accessing private or protected members** of other classes directly. Use public methods instead. If not available, consider refactoring.
-- **Do not do work of classes outside of them**. If you find yourself needing to manipulate internal state of another class, consider adding a public method to that class instead. Refactoring may be needed to maintain proper encapsulation.
-- **A public field is not an invitation to reach in.** Even when a field is technically public (e.g. an internal `Map`/array on a stack or registry class), other classes should still go through a dedicated method rather than reading/mutating the collection directly. Such a field being public often only exists so the *owning* class's own tests can drive it in isolation — that's not the same as it being part of another class's contract. Reaching in couples the caller to the internal representation (a `Map` vs an array, in-place mutation order, ...) instead of a stable behavior, and is exactly as much a boundary violation as reaching into a `private`/`protected` member.
-
-  ```typescript
-  // ❌ Reaches into MenuStack's internal Map/array directly from a different class
-  class GameAPIs {
-    static UnregisterPage(name: string): void {
-      M.menuStack.pages.delete(name);
-    }
-
-    static GetPreviousPage(): MenuPage | null {
-      const stack = M.menuStack.stack;
-      return stack.length > 1 ? stack[stack.length - 2] : null;
-    }
-  }
-
-  // ✅ MenuStack exposes the behavior it owns; callers never see the Map/array
-  class MenuStack {
-    unregister(name: string): void {
-      this.pages.delete(name);
-    }
-
-    getPreviousPage(): MenuPage | null {
-      return this.stack.length > 1 ? this.stack[this.stack.length - 2] : null;
-    }
-  }
-
-  class GameAPIs {
-    static UnregisterPage(name: string): void {
-      M.menuStack.unregister(name);
-    }
-
-    static GetPreviousPage(): MenuPage | null {
-      return M.menuStack.getPreviousPage();
-    }
-  }
-  ```
-
-## Naming Conventions
-
-- **Variables:** Descriptive names, camelCase. Avoid abbreviations.
-  - `model` (or `clmodel`) instead of `m`.
-  - `entity` instead of `ent` or `e`.
-- **Constants:** UPPER_CASE.
-- **Files:** PascalCase for classes (`BrushModelRenderer.ts`), camelCase for utils (`modelUtils.ts`). Always `.ts` for TypeScript source files.
+- **Abstract base classes** throw `NotImplementedError` from abstract methods (add an unreachable `return` if needed for type inference).
+- **Strategy pattern** for polymorphic behavior (abstract base, concrete implementations, registry lookup); composition over inheritance, shallow hierarchies; inheritance for real polymorphism and shared base behavior.
 
 ## Comments
 
-- **Use for:** Complex algorithms ("why"), TODOs/FIXMEs (with context), workarounds.
-- **Do NOT use for:** Obvious code, inline property descriptions (use JSDoc), commented-out code.
-- **Do NOT have empty JSDoc comments**, always add a description.
+Use comments for the *why* of a complex algorithm, for TODO/FIXME with context, and for workarounds. Not for obvious code, not for property descriptions (JSDoc), never for commented-out code.
 
-## Architecture Patterns
+## Performance and resources
 
-- **Strategy Pattern:** Use for polymorphic behavior (Abstract base -> Concrete impls -> Registry lookup).
-- **Composition over Inheritance:** Shallow hierarchies, mixins/helpers.
-- **Use Inheritance for:** Polymorphism, shared base functionality.
-
-## Performance Considerations
-
-- **Batch similar operations**.
-- **Minimize state changes**.
-- **Use streaming buffers** for dynamic geometry.
-- **Cache expensive calculations**.
-- **Use `for...of` loops** over `forEach`.
-- **Avoid unnecessary array copying**; use in-place modifications when possible.
-- **Use `{}` over `Map` for small key-value pairs** when keys are strings and not dynamically added/removed.
-- **Consider using scrap variables** for temporary values in very hot paths instead of creating new objects.
-
-## Dangling Resources
-
-- **Always clean up WebGL resources** (buffers, textures, shaders) when no longer needed.
-- **Always truncate arrays** (e.g. `a.length = 0`) when reusing them to both avoid memory leaks and in case some reference is kept elsewhere.
-
-## Common Pitfalls
-
-- Do not access private properties externally.
-- Do not mutate parameters unexpectedly.
-- **Use `let` or `const`**, never `var`.
-- Clean up WebGL resources.
-- Validate array indices.
-
-## Random Tips
-
-- **Prefer `Math.hypot(x, y)`** over `Math.sqrt(x*x + y*y)` in not so hot paths and when range is not critical.
-- Avoid empty JSDoc comments, they add no value. If a comment is needed, make sure it provides useful information that is not obvious from the code itself.
+- Batch similar operations, minimize state changes, use streaming buffers for dynamic geometry, cache expensive calculations, avoid copying arrays (modify in place).
+- In very hot paths, use scrap variables for temporaries instead of allocating objects.
+- Clean up WebGL resources (buffers, textures, shaders) when they are no longer needed.
+- Truncate a reused array with `a.length = 0`, so no memory leaks and any other reference sees it empty.
+- Validate array indices. Prefer `Math.hypot(x, y)` over `Math.sqrt(x*x + y*y)` outside hot paths where range is not critical.

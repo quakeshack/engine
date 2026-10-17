@@ -26,29 +26,28 @@ npx eslint --fix <file>
 
 ## Working Agreements
 
-How the maintainers want substantial work run: architecture changes, cross-cutting refactors, new subsystems. Not for bug fixes or single-file edits. The `plan-first-workflow` skill (`.claude/skills/plan-first-workflow/SKILL.md`) has the details.
+For substantial work (architecture changes, cross-cutting refactors, new subsystems; not bug fixes or single-file edits) follow the `plan-first-workflow` skill: write `plans/<topic>.md` first (`plans/menu-rework.md` is the reference), put real forks (composition vs. subclassing, event-bus boundaries, public API shape, scope) to the developer instead of picking one, implement one phase at a time and stop at each boundary for a go-ahead, and record what shipped in the plan.
 
-- **Plan first.** Write `plans/<topic>.md` before touching code: Context, Goals, Non-goals, Design, Phasing, Testing, Open questions. `plans/menu-rework.md` is the reference example.
-- **Ask on real forks.** Composition vs. subclassing, event-bus boundaries, public API shape, scope: put the options to the developer instead of picking one. Decide implementation details yourself.
-- **Work in phases.** Implement the phases the plan lays out and stop at each boundary for a go-ahead rather than running the whole plan unprompted. Record what actually shipped in the plan.
-- **Verify UI-facing changes in a real browser**, not just with unit tests (`browser-ui-verification` skill, `docs/browser-verification.md`). If you couldn't verify something, say so. Headless Chromium here never gets real Pointer Lock, so pointer-lock, mouse-look, and hover bugs can't be confirmed or ruled out by an automated pass; they need a live test.
-- **LLM output gets reviewed.** `LLM.md` explains how this project uses LLMs: output is read, adjusted, or rewritten, never taken on faith, and LLMs know Quake engine internals only shallowly. This code has diverged a lot from WinQuake, so check the source instead of trusting recalled engine details.
+- **Verify UI-facing changes in a real browser**, not just with unit tests (`browser-ui-verification` skill, `docs/browser-verification.md`). If you couldn't verify something, say so. Headless Chromium here never gets real Pointer Lock, so pointer-lock, mouse-look and hover bugs need a live test.
+- **LLM output gets reviewed.** `LLM.md` explains how this project uses LLMs: output is read, adjusted or rewritten, never taken on faith, and LLMs know Quake engine internals only shallowly. This code has diverged a lot from WinQuake, so check the source instead of trusting recalled engine details.
 
 ## Known Traps
 
-Things that fail silently, so nothing tells you that you tripped them. Skills live in `.claude/skills/<name>/SKILL.md`: Claude Code loads them on demand by their `description`, and they are plain Markdown that any other tool or developer can read.
+Things that fail silently, so nothing tells you that you tripped them. Skills live in `.claude/skills/<name>/SKILL.md` and load on demand by their `description`.
 
-- **Committing under `source/game/id1/`** → `submodule-aware-commit`. `id1` is its own git repo (submodule `game.git`), so a top-level `git add -A && git commit` silently skips its files. Commit inside the submodule first, then bump the pointer. `source/game/hellwave` is its own git repo too (`hellwave-game`), but not a registered submodule: the outer repo leaves it untracked, so commit inside it and never `git add` it from the outer repo (that would record an embedded-repo gitlink).
-- **Adding a test file in a new subdirectory under any `test/`** → `test-glob-coverage`. npm runs the test globs through `dash`, where `**` does not recurse, so files nested deeper than the spelled-out patterns are skipped while `npm test` still reports a clean pass.
+- **Committing under `source/game/id1/`** → `submodule-aware-commit`. `id1` is its own git repo (submodule `game.git`), so a top-level `git add -A && git commit` silently skips its files. Commit inside the submodule first, then bump the pointer. `source/game/hellwave` is its own repo too, but the outer repo leaves it untracked: commit inside it and never `git add` it from the outer repo.
 - **Adding a test fixture or a new top-level source/config file** → `dockerfile-fixture-sync`. The Dockerfile's `test` and `builder` stages only see files they explicitly `COPY`, so it passes locally and fails only in CI.
-- **Editing a `.frag`/`.vert` file or a chunk in `shaders/include/`** → `shader-chunks`. Shared GLSL lives once in a chunk and is pulled in with `#include`, so a chunk edit changes every program that includes it, and a routine pasted into a program starts a new copy. Vertex-output/fragment-input chunks come in pairs that must change together.
-- **Adding or changing an `eventBus` event** → `event-bus-docs-sync`. Every event must be documented in `docs/events.md` (engine) or the game's own `docs/events.md`; nothing enforces it.
+- **Editing a `.frag`/`.vert` file or a chunk in `shaders/include/`** → `shader-chunks` (it also holds the GLSL style rules: branchless math, vectorizing, safe normalization). A chunk edit changes every program that includes it, and a routine pasted into a program starts a new copy.
+- **Adding or changing an `eventBus` event** → `event-bus-docs-sync`. Every event must be documented in `docs/events.md` (engine) or the game's own `docs/events.md`; nothing checks the Arguments and description columns.
 - **Changing client, UI, HUD, or input code** → `browser-ui-verification`. Unit tests can't catch texture-binding, FBO, or input-pipeline bugs, and there is no `chromium-cli` or Playwright dependency, so verification needs a specific recipe.
+- **Writing or changing a test** → `writing-engine-tests`. It lists the fixture factories and the mock helpers, and which file each lives in.
 - **Sampling the scene depth while the scene is drawn.** Bind the texture that `PostProcess.copySceneDepth()` returns, never `PostProcess.depthTexture`: that one is attached to the framebuffer that is drawn into (unless the frame is multisampled), and sampling it raises a `GL_INVALID_OPERATION` feedback-loop error. Ask again for every pass, the copy is of the depth at that moment. A unit that keeps the copy after the pass is sampled by whatever draws next with that unit (unit 7 is `tSpecular` of the brush shader), so put a neutral texture back if the unit is not yours. The contract is JSDoc on `copySceneDepth()` in `source/engine/client/renderer/postprocess/PostProcess.ts`, and in development builds `Frame` asserts it (`r_framegraph` shows the pass that sampled an attached texture).
-- **Tidying a static facade class (`CL.ts`, `ClientHost.ts`).** Some mix `this.foo` and `ClassName.foo` because they were once one monolithic file. Standardize on `ClassName.foo`; see "Clean up global objects" in `code-style-guide.instructions.md`.
+- **Tidying a static facade class (`CL.ts`, `ClientHost.ts`).** Some mix `this.foo` and `ClassName.foo` because they were once one monolithic file. Standardize on `ClassName.foo` ("Clean up global objects" in `code-style-guide.instructions.md`).
+- **Adding a worker.** It must be registered in `WorkerFactories.ts` and its file must end in `Worker.ts` (`docs/workers.md`).
+- **Adding a test in a new, deeper subdirectory.** `npm test` globs reach one level under dash; `test/common/test-globs.test.ts` fails when a test file is skipped.
 - **Writing engine-level docs, instructions, or skills.** Keep them game-agnostic: references to `id1` or `hellwave` are illustrative examples, not engine facts (`source-directories.instructions.md`).
 
-**Where new knowledge goes.** When you learn a repo gotcha that isn't obvious from the code, record it in the repo instead of only in a personal agent memory, so it reaches every developer. An API contract goes in JSDoc on the API. A reference or how-to goes in `docs/`. Something to *do at a specific moment* (a trigger plus a checklist) becomes a skill. A cross-cutting rule goes in the matching `.github/instructions/` file. Add it to the list above only when none of those fit.
+**Where new knowledge goes.** When you learn a repo gotcha that isn't obvious from the code, record it in the repo instead of only in a personal agent memory, so it reaches every developer. An API contract goes in JSDoc on the API. A reference or how-to goes in `docs/`. Something to *do at a specific moment* (a trigger plus a checklist) becomes a skill. A cross-cutting rule goes in the matching `.github/instructions/` file. Add it to the list above only when none of those fit. Everything in "Imported Guidelines" below is loaded into every session, so keep those files short and move detail into a skill or `docs/`.
 
 ## Miscellaneous
 
@@ -67,9 +66,5 @@ Things that fail silently, so nothing tells you that you tripped them. Skills li
 @.github/instructions/typescript-port.instructions.md
 
 @.github/instructions/event-bus.instructions.md
-
-@.github/instructions/workers.instructions.md
-
-@.github/instructions/shaders.instructions.md
 
 @.github/instructions/unit-tests.instructions.md

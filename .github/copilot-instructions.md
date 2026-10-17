@@ -1,71 +1,20 @@
 # QuakeShack AI Assistant Instructions
 
-**Important**: Also consider .github/instructions/**.md for more specific architectural rules and coding conventions.
+QuakeShack is a TypeScript port of the Quake 1 engine (browser and Node.js) integrated with Cloudflare services. The full rules are in `CLAUDE.md` at the root of `engine/`. It pulls its guidelines in with `@imports`, which Copilot does not follow, so read these files yourself: `.github/instructions/source-directories.instructions.md`, `architecture`, `build-and-deploy`, `code-style-guide`, `typescript-port` (the TypeScript conventions), `event-bus` and `unit-tests`, all in `.github/instructions/`. `LLM.md` explains how this project uses LLMs.
 
-You are working on QuakeShack, a modern JavaScript port of the Quake 1 engine integrated with Cloudflare services.
+## Multi-root workspace
 
-Be a good boy scout, whenever touching something, make sure it’s cleaner than before. Refactor and improve code quality, readability, and maintainability whenever possible. Follow the coding conventions and architectural rules outlined in the documentation and instruction files. Also write unit tests for things you work on, and make sure all existing tests pass. Always use `eslint --fix` and follow the configured rules. If you are making a change that affects the public API, make sure to update the JSDoc comments accordingly.
+- `engine/`: the game engine (browser client, listen server, Node.js dedicated server). Adapted from WinQuake but heavily modernized.
+- `master-server/`: the global server browser and WebRTC signaling (Cloudflare Workers with Durable Objects: server listing over REST, signaling over a WebSocket upgrade). Study its documentation for the exact WebSocket protocol used for WebRTC negotiation.
+- `tools/`: map compilers and utilities (C++ based, e.g. `ericw-tools`).
 
-## Project Structure & Architecture
+## Commands
 
-- **Multi-Root Workspace**:
-  - `engine/`: Core game engine (Browser/Node.js). Adapted from WinQuake but heavily modernized.
-  - `master-server/`: Global server browser & WebRTC signaling (Cloudflare Workers + Durable Objects).
-  - `tools/`: Map compilers and utilities (C++ based, e.g., `ericw-tools`).
+- **Engine:** `npm run build:production` (browser client into `dist/browser/`), `npm run dedicated:dev` then `npm run dedicated:start` (dedicated server, entry `dedicated.ts`), `npm test`, `npm run typecheck` (must stay at zero errors), `npx eslint --fix <file>`.
+- **Master server:** `wrangler dev` (local Cloudflare emulation) and `wrangler deploy -e production`. The `wrangler.toml` files of `engine/` and `master-server/` are separate.
 
-### Engine Architecture (`engine/`)
-- **Runtime Targets**:
-  - **Browser**: Client (WebGL, WebAudio) & Listen Server.
-  - **Node.js**: Dedicated Server (`dedicated.mjs`).
-- **Networking**:
-  - **WebRTC**: Peer-to-peer multiplayer (Client <-> Listen Server).
-  - **WebSocket**: Client <-> Dedicated Server & Signaling with Master Server.
-  - **Loopback**: Used for Singleplayer (Client <-> Server in same process).
-- **Resource Loading**: Modern asynchronous asset loading (WAD3, BSP2, textures).
-- **Rendering**: WebGL-based. Supports colored lighting (`.lit`, RGBLIGHTING), dynamic lights, and static skyboxes.
+## Always
 
-### Master Server Architecture (`master-server/`)
-- **Infrastructure**: Cloudflare Workers with Durable Objects for state persistence.
-- **Function**: Handles server listing (REST) and WebRTC signaling (WebSocket upgrade).
-
-## Key Developer Workflows
-
-### Engine
-- **Build**: `npm run build:production` (via Vite). Output in `dist/`.
-- **Run**:
-  - Browser: Served via Vite during dev.
-  - Dedicated: `src/dedicated.mjs` (Node environment).
-- **Linting**: Strict ESLint configuration (`eslint.config.mjs`).
-- **Type checking**: `npm run typecheck` (`tsc`). Vite/esbuild do not check types, so this is what catches them. It gates the Cloudflare build (`npm run build:wrangler`) and the Docker `test` stage, and it must stay at zero errors. The engine's tests (`test/**/*.test.ts`) are type-checked with it; the `.mjs` tests of the games under `source/game/` are not.
-
-### Master Server
-- **Run/Dev**: `wrangler dev` (Cloudflare local emulation).
-- **Deploy**: `wrangler deploy -e production`.
-
-## Critical Coding Conventions
-
-### Reaching other modules
-There is no registry. **Import** the module you need (`Con`, `Mod`, `Host`, `CL`, `R`, ...); the page's `COM`/`NET`/engine API come from `source/engine/client/PageServices.ts`; per-realm classes (`Server`, `Navigation`, ...) get their collaborators through their constructor. See `.github/instructions/code-style-guide.instructions.md`.
-
-### JSDoc & Typing
-- **Mandatory JSDoc** for class properties (no inline comments).
-- **No `any`, `unknown`, or `*`**. Use specific types (e.g. `ArrayBuffer`).
-- **No `@returns {void}`**.
-
-### Helper Functions
-- **Prefer function declarations** for helper functions when lexical `this`, expression semantics, or very local inline usage are not needed.
-- **Use `const foo = (...) => ...`** only when arrow-function behavior is actually relevant.
-
-## Specific Patterns to Observe
-
-- **Module System**: ES Modules exclusively (`type: "module"` in package.json).
-- **Asset Paths**: Game data resides in `data/` (id1, hellwave) and `resources/`.
-- **Event Bus**: Use `eventBus` for lifecycle events (`gl.ready`, `game.start`). See `docs/events.md`.
-- **Physics**: Uses `ammojs3` / `cannon`.
-- **Legacy Compatibility**: Maintains Quake 1 structures (BSP, MDL) but wrapped in modern JS classes.
-- **Signaling**: Study `master-server` documentation for the exact WebSocket protocol used for WebRTC negotiation.
-
-## Specialized Files
-- `LLM.md`: Project philosophy regarding AI contribution.
-- `engine/.github/instructions/*.md`: Detailed architectural rules.
-- `wrangler.toml`: Cloudflare configuration (exists in both `engine` and `master-server`).
+- Leave code cleaner than you found it. Write unit tests for what you touch, keep the existing ones passing, run `eslint --fix`, and update JSDoc when a public API changes.
+- Import the module you need (`Con`, `Host`, `CL`, `R`, ...); per-realm classes get their collaborators through the constructor. Details in `code-style-guide.instructions.md`.
+- Game code under `source/game/` never imports engine files; it uses the API the engine passes in.

@@ -123,7 +123,7 @@ Those events are only fired by the server-side navigation subsystem (`Navigation
 
 ### Workers
 
-Messages between the main thread and a worker (see [workers](../.github/instructions/workers.instructions.md)) travel as
+Messages between the main thread and a worker (see [workers](workers.md)) travel as
 events over the worker's own bus bridge. Not visible to games.
 
 | Event | Arguments | Description |

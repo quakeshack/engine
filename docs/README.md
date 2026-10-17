@@ -10,7 +10,6 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 - [BSPX Support](bspx.md) - Details on supported BSPX extensions and lumps for advanced mapping features.
 - [Client Entities](client-entities.md) - Client-only entities (gibs, bubbles, debris): handlers, spawning, physics, sequences, PVS culling and save games, and how that compares to WinQuake.
 - [Client Server Architecture](cs.md) - Overview of the client-side architecture.
-- [Code Style Guide](code-style-guide.md) - Coding conventions and style rules for the QuakeShack Engine codebase.
 - [Color Shifts](color-shifts.md) - Screen tints for damage, pickups, powerups and liquids: a game-owned set of channels on the `color-shift` post-process effect, the mixing formula and what the engine still tints for.
 - [Console](console.md) - Details regarding the console implementation.
 - [Dedicated Server](dedicated.md) - Information on running QuakeShack as a dedicated server in a Node.js environment.
@@ -22,4 +21,5 @@ This directory contains documentation for the QuakeShack engine codebase and fea
 - [Shader Chunks](shader-chunks.md) - `#include` for GLSL: the chunk folder, once-per-stage expansion, `#line` based error mapping, the list of chunks and how to add one.
 - [Traceline API](traceline.md) - Contract and semantics of the gameplay-facing trace query used by server and client game logic.
 - [Volumetric Fog](volumetric-fog.md) - Guide on creating atmospheric fog volumes in maps.
+- [Workers](workers.md) - The `PlatformWorker` abstraction for Node.js and the browser: key files, registering a new worker and how the bundles are built.
 - [WebRTC Implementation](webrtc.md) - Details the WebRTC implementation for peer-to-peer networking in the QuakeShack engine.

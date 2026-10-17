@@ -1,6 +1,6 @@
 ---
 name: event-bus-docs-sync
-description: Use whenever a task adds, renames, removes, or changes the arguments of an eventBus event — a new eventBus.publish()/emit() call, a new subscribe() for an event not seen before, or an edit to an existing event's payload. event-bus.instructions.md requires every event to be documented, in docs/events.md for engine events or source/game/<mod>/docs/events.md for that game's own events, and both are typed (engine events in source/shared/EngineEvents.ts, a game's in its own Events.ts) with a test that compares the names with the docs; the Arguments and description columns are checked by nothing, so those drift silently. Check it every time an event changes, not just when asked to update docs.
+description: Use when an eventBus event is added, renamed, removed or its arguments change (publish/emit/subscribe). The event must be in the typed map and in docs/events.md (engine) or the game's own docs/events.md; the Arguments and description columns are checked by nothing.
 ---
 
 # Event bus docs sync
@@ -10,10 +10,7 @@ description: Use whenever a task adds, renames, removes, or changes the argument
 `source/game/<mod>/docs/events.md` (see `id1`/`hellwave` for examples), linked from
 `docs/events.md`'s "Game Events" section rather than duplicated into it. Nothing mechanically
 enforces this — the files are hand-maintained tables, so they drift every time an event is
-added, renamed, or has its argument list changed without a matching edit. A prior audit found
-real drift: `docs/events.md` had no `### Game` or `### Nav` section at all, so every `game.*`
-and `nav.*` event was completely undocumented despite being actively published. Treat that as
-evidence this needs an active check, not a one-time cleanup.
+added, renamed, or has its argument list changed without a matching edit.
 
 ## Engine events and game events are both checked
 

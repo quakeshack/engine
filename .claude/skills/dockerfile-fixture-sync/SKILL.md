@@ -1,6 +1,6 @@
 ---
 name: dockerfile-fixture-sync
-description: Use whenever a task adds or moves a test fixture (a new data/ subdirectory, a new map/texture/pak asset referenced via import.meta.url or readFileSync in a .test.ts file) or adds a new top-level source file, config file, or directory that npm run build:production / dedicated:build:production needs. The Dockerfile's test/builder stages only see files they explicitly COPY — nothing else keeps them in sync with the working tree, so this drifts into a CI failure that only shows up in Docker, not locally.
+description: Use when adding a test fixture (data/ path read via import.meta.url or readFileSync) or a new top-level source/config file or directory the build or typecheck needs. The Dockerfile only sees what it COPYs, so this fails only in CI.
 ---
 
 # Dockerfile / test-fixture sync

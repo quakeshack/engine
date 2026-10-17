@@ -1,94 +1,13 @@
 ## Unit Tests
 
-### Runner and File Layout
+Fixture factories, the mock helpers and how to patch a singleton are in the `writing-engine-tests` skill (`.claude/skills/writing-engine-tests/SKILL.md`). Load it before writing a test.
 
-- **Test runner**: Node.js built-in (`node:test`). No third-party frameworks.
-- **Primary engine glob**: `node --import tsx --test test/**/*.test.ts` (see `package.json` scripts).
-- **Repo-local game globs**: `node --test source/game/**/test/*.test.mjs source/game/**/test/**/*.test.mjs`.
-- **Folder ownership**: Keep engine-owned tests under `test/`. Keep game/mod-owned tests in repo-local folders under `source/game/<repo>/test/`.
-- **Repo-local organization**: Within game repos, prefer mirroring the source layout with folders such as `client/`, `entity/`, `helper/`, `monster/`, `props/`, and `core/` when that keeps related tests easier to find.
-- **Category globs**: Keep engine tests grouped by top-level area such as `test/common/`, `test/physics/`, and `test/renderer/`.
-- **Nested test directories**: `npm test`'s glob patterns only reach as many directory levels as `package.json` spells out explicitly (dash has no recursive `**`) — see the `.claude/skills/test-glob-coverage/SKILL.md` skill and verify coverage whenever a new subdirectory level is added under `test/`.
-- **File naming**: `<subsystem>.test.ts` for the engine; the games' tests are still `<subsystem>.test.mjs`. One file per production class/module.
-- **Shared helpers**: `test/support/fixtures.ts` (the engine mocks and the geometry, entity and server factories) and the other typed ones in `test/support/`, among them `cvarStub.ts` for a variable a test only reads (no `.test.` — never auto-run). `runConsoleCommand` (`test/support/consoleCommands.ts`) runs a `ConsoleCommand` class with the context a test gives it (`{ client: null }`). `test/support/engineMocks.ts` is where a test puts the mocks it wants the engine's parts to see (see "Mock Pattern" below), and `test/support/consoleBridge.ts` makes the engine's shared console print to a mocked `engineMocks.Con`.
-- **All files are ESM**. Use `import`/`export` exclusively. The engine's tests are TypeScript (`<subsystem>.test.ts`, run by `tsx`); the games' tests under `source/game/<mod>/test/` are `.mjs` until their repos are converted.
-- **The engine's tests are type-checked, the games' are not.** `npm run typecheck` covers `test/**/*.test.ts` and `test/support/**` (shared typed helpers such as `fixtures.ts`), so a changed signature fails the build. `source/game/**/test/` is outside `tsconfig.json`: a game test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a game/engine contract member, search the games' tests for it by hand. This once hid a wrong override signature in a game mod behind a green test.
-- **Type the mock, not the call.** Mocks are built by the typed factories in `test/support/fixtures.ts` (`createMockEntity`, `createMockEdict`, `createPmoveTrace`, `createCvarStub`, `createBoundsModel`, `createGameModuleStub`, `installGlobals`); a stand-in for a whole subsystem that has no factory is cast once with `as unknown as T` and a comment saying which members it needs. No `any`, no `@ts-ignore`.
-
-### Test Structure
-
-- **Always use `describe()` blocks** to group tests by method or logical concern.
-- Nest `describe()` when a method has multiple distinct scenarios (e.g., `describe('pushMove', () => { ... })`).
-- Use plain `test()` inside each `describe`. One assertion focus per test.
-- **Test names should describe the observable behavior**, not the implementation detail.
-  - Good: `'clears NaNs and clamps to maxvelocity'`
-  - Bad: `'calls checkVelocity correctly'`
-
-### Fixture Conventions
-
-Import shared factories from `test/support/fixtures.ts`:
-
-- `createMockEntity({ origin, mins, maxs, velocity, ... })` — returns a `MockEntity`.
-- `createMockEdict(entity)` — wraps a `MockEntity` in a `MockEdict` with sensible defaults.
-- `defaultMockEngine(sv = {})` — provides silent `Con` and `Host.frametime: 0.1`. Pass SV overrides only.
-- `withMockEngine(mockedEngine, callback)` — temporarily installs the mocks (client state, host, cheat rule, page `COM`) and restores them afterwards.
-- `withMockServerPhysics(callback)` — sets up a complete pusher/rider scenario for `pushMove` tests.
-- `assertNear(actual, expected, epsilon)` — floating-point equality within tolerance.
-- Geometry helpers: `createAxisPlane`, `createBoxBrushModel`, `createBrushWorldModel`, `createRoomHullFromBounds`, `createLegacyWorldModel`, `createPmoveBoxEntity`.
-
-### Mock Pattern
-
-The engine's parts import their collaborators (`Con`, `Host`, `CL`'s state, `M`, `R`, `Key`, ...), so a test cannot hand them a fake through a lookup table. It patches the real singleton instead and puts it back:
-
-- `withMockEngine(defaultMockEngine({ ... }), () => { ... })` for server-side tests: `Host`, the client state, the cheat rule and the page's `COM` are mocked for the duration of the callback.
-- `engineMocks.Key = { destination: 0 }` (and the other facades `Draw`, `IN`, `S`) patches the members the mock has onto the real facade; assigning back what you read before undoes it. The facade reads as the real one, so state the engine changes is read from `engineMocks.Key`, not from your mock object.
-- `engineMocks.SCR` is what the screen was before it was dissolved: `UpdateScreen`, `BeginLoadingPlaque`, `EndLoadingPlaque`, `con_current`, `recalc_refdef`, `viewsize`, `fov` and `screenshotClean` are sorted onto `ScreenFrame`, `ConsoleOverlay`, `Viewport`, `ViewCvars` and `Screenshots` (`test/support/screen.ts`). A new test patches those classes directly.
-- `engineMocks.COM`, `NET`, `urls` and `buildConfig` install the page services (`client/PageServices.ts`); `installPageServices({ engineApi })` does the same for tests that need to install several.
-- `withEngineMocks({ Con, Host, CL, ... }, () => { ... })` (`test/support/withEngineMocks.ts`) installs several of these at once for a callback and puts every one back afterwards, whether the callback returns, throws or (when asynchronous) settles; `CL`, `Host`, `M` and `R` are also patched onto the real client state, host, menu and renderer. `installEngineMocks({ ... })` does the same without a callback and returns the function that undoes it, for a test that sets up other state around it. A test helper that saves and restores `engineMocks.X` by hand is a copy of this.
-- `useClientStateOf`, `useHostOf`, `useMenuOf` and `useRendererOf` (`test/support/`) patch the real client state, host, menu and renderer and return a restore function.
-- Prefer constructing the class under test with fakes (`new Server(fakeDeps)`, `new Mod()`): per-realm classes take their collaborators through the constructor.
-
-When a test needs to capture output (e.g., `Con.Print`), spread the default and override `Con`:
-
-```javascript
-withMockEngine({
-  ...defaultMockEngine(sv),
-  Con: { Print(msg) { prints.push(msg); }, DPrint() {} },
-}, () => { ... });
-```
-
-### JSDoc in Tests
-
-- **Define interfaces** for mock shapes (`MockEntity`, `MockEdict`, `MockEngineConfig`) in `fixtures.ts`.
-- **Never use `@returns {object}`** — always use a specific typedef.
-- Annotate factory parameters with `@param` when the shape is non-obvious.
-
-### Writing New Tests
-
-1. **One file per production module**: `ServerPhysics` → `test/physics/server-physics.test.ts`, `Mod` → `test/common/model-cache.test.ts`.
-2. **Game/mod tests live with their repo**: `source/game/id1/test/entity/items.test.mjs`, `source/game/id1/test/monster/ogre.test.mjs`, `source/game/hellwave/test/hellwave-game-api.test.mjs`.
-3. **Regression tests go in the relevant subsystem file**, not a catch-all file.
-4. **Document magic numbers** with a comment explaining the derivation. Example:
-  ```javascript
-  // checkStuck tries: 1 (current pos) + 1 (oldorigin) + 18 z × 3 x × 3 y = 164
-  assert.equal(testCallCount, 164);
-  ```
-5. **Prefer precise assertions** (`assert.deepEqual`, `assert.equal`) over loose checks.
-6. **Use `assertNear`** for any floating-point comparison.
-7. **Avoid `Math.random` in production paths** — if production uses it, save and restore in tests:
-  ```javascript
-  const originalRandom = Math.random;
-  Math.random = () => 0.0;
-  try { ... } finally { Math.random = originalRandom; }
-  ```
-
-### Running Tests
-
-```bash
-npm test               # all tests
-npm run test:game      # repo-local game/mod tests
-npm run test:common    # common engine tests
-npm run test:physics       # all physics tests
-npm run test:renderer      # renderer tests
-node --import tsx --test test/physics/server-physics.test.ts  # single file
-```
+- **Runner**: Node's built-in `node:test` with `node:assert/strict`, loaded through `tsx`. No third-party framework. All files are ESM.
+- **Where tests live**: engine tests under `test/`, grouped by area (`test/common/`, `test/physics/`, `test/renderer/`, ...). A game's tests live in its own repo under `source/game/<repo>/test/`, mirroring the source layout (`client/`, `entity/`, `monster/`, ...).
+- **Naming**: `<subsystem>.test.ts` for the engine, `<subsystem>.test.mjs` for the games' tests. One file per production class or module.
+- **Globs**: npm runs the test globs through `dash`, where `**` reaches one directory level. `test/common/test-globs.test.ts` fails when a `test*` script skips a test file, so a deeper directory does not go unnoticed.
+- **Structure**: group tests with `describe()` (nest it when a method has several scenarios), plain `test()` inside, one assertion focus per test. Name the observable behavior (`'clears NaNs and clamps to maxvelocity'`), not the implementation (`'calls checkVelocity correctly'`).
+- **The engine's tests are type-checked, the games' are not.** `npm run typecheck` covers `test/**/*.test.ts` and `test/support/**`, so a changed signature fails the build. `source/game/**/test/` is outside `tsconfig.json`: a game test that calls a `.ts` method with a stale signature, or mocks an outdated shape, keeps passing when the code changes. After changing a game/engine contract member, search the games' tests for it by hand.
+- **Type the mock, not the call.** Use the typed factories in `test/support/` (`fixtures.ts` and its neighbors). No `any`, no `@ts-ignore`.
+- **Floating point** is compared with `assertNear` from `test/support/assertions.ts` (default tolerance 1e-6). Use `assert.deepEqual`/`assert.equal` over loose checks.
+- Run a single file with `node --import tsx --test <file>`; `npm test` runs everything.
